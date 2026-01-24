@@ -1,9 +1,12 @@
 # M0: Project Setup
 
+**Status: COMPLETE**
+
 ## Milestone Overview
 
 | Field | Value |
 |-------|-------|
+| **Status** | Complete |
 | **Duration** | 1 week |
 | **Dependencies** | None |
 | **Outputs** | Monorepo structure, build system, CI/CD, dev environment |
@@ -783,15 +786,15 @@ export default function App() {
 
 ## Acceptance Criteria
 
-- [ ] `pnpm install` completes without errors
-- [ ] `pnpm build` builds all packages successfully
-- [ ] `pnpm test` runs (with placeholder tests passing)
-- [ ] `pnpm lint` passes with no errors
-- [ ] `pnpm typecheck` passes
-- [ ] CI pipeline passes on GitHub
-- [ ] All packages have correct exports and types
-- [ ] Tree-shaking works (verified with bundler analysis)
-- [ ] Changeset is configured and working
+- [x] `pnpm install` completes without errors
+- [x] `pnpm build` builds all packages successfully
+- [x] `pnpm test` runs (with placeholder tests passing)
+- [x] `pnpm lint` passes with no errors
+- [x] `pnpm typecheck` passes
+- [x] CI pipeline passes on GitHub
+- [x] All packages have correct exports and types
+- [x] Tree-shaking works (verified with bundler analysis)
+- [x] Changeset is configured and working
 
 ---
 

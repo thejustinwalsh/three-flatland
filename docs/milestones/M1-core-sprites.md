@@ -1,9 +1,12 @@
 # M1: Core Sprites
 
+**Status: COMPLETE**
+
 ## Milestone Overview
 
 | Field | Value |
 |-------|-------|
+| **Status** | Complete |
 | **Duration** | 2 weeks |
 | **Dependencies** | M0 (Project Setup) |
 | **Outputs** | Sprite2D class, Sprite2DMaterial (TSL), SpriteSheetLoader |
@@ -1216,19 +1219,19 @@ describe('SpriteSheetLoader', () => {
 
 ## Acceptance Criteria
 
-- [ ] `Sprite2D` creates a mesh with correct geometry and material
-- [ ] TSL material compiles without errors (WebGL and WebGPU)
-- [ ] Frame UV mapping works correctly
-- [ ] Tint color applies correctly
-- [ ] Alpha/opacity works correctly
-- [ ] Flip X/Y works correctly
-- [ ] Anchor point affects positioning correctly
-- [ ] `SpriteSheetLoader` loads JSON Hash format
-- [ ] `SpriteSheetLoader` loads JSON Array format
-- [ ] Sprites display correctly in Three.js scene
-- [ ] R3F integration works (`<sprite2D />`)
-- [ ] All tests pass
-- [ ] TypeScript types are correct and complete
+- [x] `Sprite2D` creates a mesh with correct geometry and material
+- [x] TSL material compiles without errors (WebGL and WebGPU)
+- [x] Frame UV mapping works correctly
+- [x] Tint color applies correctly
+- [x] Alpha/opacity works correctly
+- [x] Flip X/Y works correctly
+- [x] Anchor point affects positioning correctly
+- [x] `SpriteSheetLoader` loads JSON Hash format
+- [x] `SpriteSheetLoader` loads JSON Array format
+- [x] Sprites display correctly in Three.js scene
+- [x] R3F integration works (`<sprite2D />`)
+- [x] All tests pass
+- [x] TypeScript types are correct and complete
 
 ---
 

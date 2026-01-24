@@ -175,7 +175,7 @@ material.colorNode = hueShift(
 ## Roadmap
 
 - [x] Project setup and monorepo structure
-- [ ] Core sprite system (Sprite2D, materials, loaders)
+- [x] Core sprite system (Sprite2D, materials, loaders)
 - [ ] Animation system
 - [ ] 2D render pipeline with batching
 - [ ] TSL effect nodes
