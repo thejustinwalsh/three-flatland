@@ -1,0 +1,71 @@
+{
+  "name": "@three-flatland/react",
+  "version": "0.0.0",
+  "description": "React Three Fiber integration for three-flatland",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    },
+    "./extend": {
+      "import": {
+        "types": "./dist/extend.d.ts",
+        "default": "./dist/extend.js"
+      },
+      "require": {
+        "types": "./dist/extend.d.cts",
+        "default": "./dist/extend.cjs"
+      }
+    },
+    "./resource": {
+      "import": {
+        "types": "./dist/resource.d.ts",
+        "default": "./dist/resource.js"
+      },
+      "require": {
+        "types": "./dist/resource.d.cts",
+        "default": "./dist/resource.cjs"
+      }
+    }
+  },
+  "files": ["dist"],
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "peerDependencies": {
+    "@react-three/fiber": "catalog:",
+    "react": "catalog:",
+    "three": "catalog:"
+  },
+  "dependencies": {
+    "@three-flatland/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@react-three/fiber": "catalog:",
+    "@types/react": "catalog:",
+    "@types/three": "catalog:",
+    "react": "catalog:",
+    "three": "catalog:"
+  },
+  "keywords": ["react", "three.js", "r3f", "react-three-fiber", "sprites"],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/your-org/three-flatland.git",
+    "directory": "packages/react"
+  }
+}

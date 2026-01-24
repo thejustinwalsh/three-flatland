@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>three-flatland examples</title>
+    <style>
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      body {
+        font-family: system-ui, -apple-system, sans-serif;
+        background: #0a0a0a;
+        color: #fafafa;
+        min-height: 100vh;
+        padding: 4rem 2rem;
+      }
+      .container {
+        max-width: 640px;
+        margin: 0 auto;
+      }
+      h1 {
+        font-size: 2rem;
+        font-weight: 300;
+        margin-bottom: 0.5rem;
+      }
+      .subtitle {
+        color: #888;
+        margin-bottom: 3rem;
+      }
+      h2 {
+        font-size: 0.75rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        color: #666;
+        margin-bottom: 1rem;
+      }
+      .examples {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+        margin-bottom: 2.5rem;
+      }
+      a {
+        display: block;
+        padding: 1rem 1.25rem;
+        background: #141414;
+        border: 1px solid #262626;
+        border-radius: 8px;
+        color: #fafafa;
+        text-decoration: none;
+        transition: border-color 0.15s, background 0.15s;
+      }
+      a:hover {
+        border-color: #404040;
+        background: #1a1a1a;
+      }
+      .name {
+        font-weight: 500;
+      }
+      .path {
+        font-size: 0.875rem;
+        color: #666;
+        font-family: monospace;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>three-flatland</h1>
+      <p class="subtitle">2D sprite and effects library for Three.js</p>
+
+      <h2>React Examples</h2>
+      <div class="examples">
+        <a href="/react/basic-sprite/">
+          <div class="name">Basic Sprite</div>
+          <div class="path">/react/basic-sprite/</div>
+        </a>
+      </div>
+
+      <h2>Vanilla Examples</h2>
+      <div class="examples">
+        <a href="/vanilla/basic-sprite/">
+          <div class="name">Basic Sprite</div>
+          <div class="path">/vanilla/basic-sprite/</div>
+        </a>
+      </div>
+    </div>
+  </body>
+</html>

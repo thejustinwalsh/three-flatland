@@ -1,0 +1,21 @@
+{
+  "name": "example-vanilla-basic-sprite",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite dev --port $TURBO_MFE_PORT",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@three-flatland/core": "workspace:*",
+    "@three-flatland/nodes": "workspace:*",
+    "three": "catalog:"
+  },
+  "devDependencies": {
+    "@types/three": "catalog:",
+    "typescript": "catalog:",
+    "vite": "catalog:"
+  }
+}

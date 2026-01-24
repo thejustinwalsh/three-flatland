@@ -1,0 +1,28 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pnpm install)",
+      "Bash(pnpm build:*)",
+      "Bash(pnpm typecheck:*)",
+      "Bash(pnpm lint:*)",
+      "Bash(pnpm test:*)",
+      "Bash(corepack install:*)",
+      "Bash(pnpm --version:*)",
+      "Bash(corepack use:*)",
+      "Bash(pnpm approve-builds:*)",
+      "Bash(pnpm lint:fix:*)",
+      "WebFetch(domain:r3f.docs.pmnd.rs)",
+      "WebSearch",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(npm view:*)",
+      "Bash(pnpm list:*)",
+      "WebFetch(domain:github.com)",
+      "Bash(pnpm vitest run:*)",
+      "Bash(gh api:*)",
+      "Bash(gh release view:*)",
+      "Bash(curl:*)",
+      "WebFetch(domain:turborepo.dev)",
+      "Skill(turborepo)"
+    ]
+  }
+}

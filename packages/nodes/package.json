@@ -1,0 +1,43 @@
+{
+  "name": "@three-flatland/nodes",
+  "version": "0.0.0",
+  "description": "TSL (Three Shader Language) nodes for three-flatland",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    }
+  },
+  "files": ["dist"],
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "peerDependencies": {
+    "three": ">=0.170.0"
+  },
+  "devDependencies": {
+    "@types/three": "catalog:",
+    "three": "catalog:"
+  },
+  "keywords": ["three.js", "tsl", "shaders", "nodes", "webgpu"],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/your-org/three-flatland.git",
+    "directory": "packages/nodes"
+  }
+}

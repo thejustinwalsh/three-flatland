@@ -1,0 +1,41 @@
+{
+  "$schema": "https://turborepo.dev/microfrontends/schema.json",
+  "options": {
+    "localProxyPort": 5173
+  },
+  "applications": {
+    "example-home": {
+      "development": {
+        "local": {
+          "port": 4000
+        }
+      }
+    },
+    "example-react-basic-sprite": {
+      "development": {
+        "local": {
+          "port": 4001
+        }
+      },
+      "routing": [
+        {
+          "group": "react-examples",
+          "paths": ["/react/basic-sprite", "/react/basic-sprite/:path*"]
+        }
+      ]
+    },
+    "example-vanilla-basic-sprite": {
+      "development": {
+        "local": {
+          "port": 4002
+        }
+      },
+      "routing": [
+        {
+          "group": "vanilla-examples",
+          "paths": ["/vanilla/basic-sprite", "/vanilla/basic-sprite/:path*"]
+        }
+      ]
+    }
+  }
+}
