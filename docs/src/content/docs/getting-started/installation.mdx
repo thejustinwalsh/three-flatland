@@ -1,0 +1,59 @@
+---
+title: Installation
+description: Install three-flatland in your project.
+---
+
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
+## Package Manager
+
+<Tabs syncKey="pkg">
+  <TabItem label="npm">
+    ```bash
+    npm install @three-flatland/core three
+    ```
+  </TabItem>
+  <TabItem label="pnpm">
+    ```bash
+    pnpm add @three-flatland/core three
+    ```
+  </TabItem>
+  <TabItem label="yarn">
+    ```bash
+    yarn add @three-flatland/core three
+    ```
+  </TabItem>
+</Tabs>
+
+### React Three Fiber
+
+For React projects using React Three Fiber:
+
+<Tabs syncKey="pkg">
+  <TabItem label="npm">
+    ```bash
+    npm install @three-flatland/react @react-three/fiber three react react-dom
+    ```
+  </TabItem>
+  <TabItem label="pnpm">
+    ```bash
+    pnpm add @three-flatland/react @react-three/fiber three react react-dom
+    ```
+  </TabItem>
+  <TabItem label="yarn">
+    ```bash
+    yarn add @three-flatland/react @react-three/fiber three react react-dom
+    ```
+  </TabItem>
+</Tabs>
+
+## Requirements
+
+- **Three.js**: >= 0.182.0 (required for TSL/WebGPU support)
+- **React**: >= 19.0.0 (for `@three-flatland/react`)
+- **@react-three/fiber**: >= 10.0.0-alpha.0 (for `@three-flatland/react`)
+- **Node.js**: >= 18
+
+## TypeScript
+
+three-flatland is written in TypeScript and ships with full type definitions. No additional `@types` packages are required.

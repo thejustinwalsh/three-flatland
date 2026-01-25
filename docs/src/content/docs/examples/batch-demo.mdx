@@ -1,0 +1,79 @@
+---
+title: Batch Rendering
+description: Render thousands of sprites efficiently with automatic batching.
+---
+
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+import ExamplePreview from '../../../components/ExamplePreview';
+import StackBlitzEmbed from '../../../components/StackBlitzEmbed';
+import { loadExample } from '../../../utils/loadExample';
+
+export const vanillaFiles = loadExample('vanilla', 'batch-demo');
+export const reactFiles = loadExample('react', 'batch-demo');
+
+<Tabs>
+  <TabItem label="Preview" icon="rocket">
+    <ExamplePreview client:load type="vanilla" name="batch-demo" />
+  </TabItem>
+  <TabItem label="Three.js" icon="seti:javascript">
+    <StackBlitzEmbed
+      client:load
+      title="Batch Demo - Three.js"
+      files={vanillaFiles}
+      openFile="main.ts"
+      height={600}
+    />
+  </TabItem>
+  <TabItem label="React" icon="seti:react">
+    <StackBlitzEmbed
+      client:load
+      title="Batch Demo - React"
+      files={reactFiles}
+      openFile="App.tsx"
+      height={600}
+    />
+  </TabItem>
+</Tabs>
+
+## Automatic Batching
+
+`Renderer2D` automatically batches sprites that share the same material, minimizing draw calls:
+
+```typescript
+const renderer2D = new Renderer2D();
+scene.add(renderer2D);
+
+// All sprites with the same material are batched together
+for (let i = 0; i < 1000; i++) {
+  const sprite = new Sprite2D({ material: sharedMaterial });
+  sprite.position.set(x, y, 0);
+  renderer2D.add(sprite);
+}
+```
+
+## Layers and Sorting
+
+Use layers and zIndex for proper depth sorting:
+
+```typescript
+import { Layers } from '@three-flatland/core';
+
+sprite.layer = Layers.ENTITIES;
+sprite.zIndex = -Math.floor(sprite.position.y); // Y-sort
+```
+
+## Stats
+
+Monitor batching performance with the stats object:
+
+```typescript
+renderer2D.update();
+
+const { spriteCount, batchCount, drawCalls } = renderer2D.stats;
+console.log(`Sprites: ${spriteCount}, Batches: ${batchCount}, Draw Calls: ${drawCalls}`);
+```
+
+## Next Steps
+
+- [TSL Nodes](/examples/tsl-nodes) - Add shader effects
+- [Tilemap](/examples/tilemap) - Efficient tile-based rendering

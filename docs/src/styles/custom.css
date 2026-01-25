@@ -1,0 +1,16 @@
+/* Narrow the right sidebar */
+:root {
+  --sl-content-inline-start: 18rem;
+  --sl-sidebar-width: 18rem;
+}
+
+/* Override right sidebar width directly */
+@media (min-width: 72rem) {
+  :root {
+    --sl-content-width: 45rem;
+  }
+
+  [data-has-toc] {
+    --sl-content-width: 45rem;
+  }
+}

@@ -1,0 +1,73 @@
+---
+title: Animation
+description: Animate sprites using spritesheets with three-flatland.
+---
+
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+import ExamplePreview from '../../../components/ExamplePreview';
+import StackBlitzEmbed from '../../../components/StackBlitzEmbed';
+import { loadExample } from '../../../utils/loadExample';
+
+export const vanillaFiles = loadExample('vanilla', 'animation');
+export const reactFiles = loadExample('react', 'animation');
+
+<Tabs>
+  <TabItem label="Preview" icon="rocket">
+    <ExamplePreview client:load type="vanilla" name="animation" />
+  </TabItem>
+  <TabItem label="Three.js" icon="seti:javascript">
+    <StackBlitzEmbed
+      client:load
+      title="Animation - Three.js"
+      files={vanillaFiles}
+      openFile="main.ts"
+      height={600}
+    />
+  </TabItem>
+  <TabItem label="React" icon="seti:react">
+    <StackBlitzEmbed
+      client:load
+      title="Animation - React"
+      files={reactFiles}
+      openFile="App.tsx"
+      height={600}
+    />
+  </TabItem>
+</Tabs>
+
+## AnimatedSprite2D
+
+The `AnimatedSprite2D` class extends `Sprite2D` with animation capabilities:
+
+```typescript
+const sprite = new AnimatedSprite2D({
+  texture: spritesheetTexture,
+  frameWidth: 32,
+  frameHeight: 32,
+  frameCount: 8,
+  fps: 12,
+});
+
+sprite.play();
+```
+
+## Spritesheet Layout
+
+Spritesheets should have frames arranged left-to-right, top-to-bottom. The frame index starts at 0 in the top-left corner.
+
+## Animation Update
+
+For vanilla Three.js, call the update method in your animation loop:
+
+```typescript
+function animate(time: number) {
+  sprite.update(time);
+  renderer.render(scene, camera);
+  requestAnimationFrame(animate);
+}
+```
+
+## Next Steps
+
+- [TSL Nodes](/examples/tsl-nodes) - Add custom shader effects
+- [Tilemap](/examples/tilemap) - Create tile-based maps

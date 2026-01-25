@@ -1,0 +1,91 @@
+---
+title: Sprites
+description: Learn how to create and customize 2D sprites.
+---
+
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
+## Creating a Sprite
+
+The `Sprite2D` class is the foundation for 2D rendering in three-flatland.
+
+<Tabs syncKey="framework">
+  <TabItem label="Vanilla" icon="seti:javascript">
+    ```typescript
+    import { Sprite2D, Renderer2D } from '@three-flatland/core';
+
+    const sprite = new Sprite2D({
+      texture: myTexture,
+      anchor: [0.5, 0.5],  // Center anchor
+    });
+
+    renderer2D.add(sprite);
+    ```
+  </TabItem>
+  <TabItem label="React" icon="seti:react">
+    ```tsx
+    <renderer2D>
+      <sprite2D texture={myTexture} anchor={[0.5, 0.5]} />
+    </renderer2D>
+    ```
+  </TabItem>
+</Tabs>
+
+## Properties
+
+### Position
+
+Sprites inherit from Three.js `Mesh` and support standard transform properties:
+
+```typescript
+sprite.position.set(100, 200, 0);
+sprite.rotation.z = Math.PI / 4;  // 45 degree rotation
+sprite.scale.set(2, 2, 1);  // 2x scale
+```
+
+### Anchor
+
+The anchor point determines the sprite's origin for positioning and rotation. Values range from 0 to 1.
+
+| Anchor | Description |
+|--------|-------------|
+| `[0, 0]` | Bottom-left corner |
+| `[0.5, 0.5]` | Center (default) |
+| `[0.5, 0]` | Bottom-center |
+| `[1, 1]` | Top-right corner |
+
+### Size
+
+Sprite size is automatically determined from the texture dimensions but can be overridden:
+
+```typescript
+const sprite = new Sprite2D({
+  texture: myTexture,
+  width: 64,
+  height: 64,
+});
+```
+
+## Renderer2D
+
+All sprites must be added to a `Renderer2D` instance for proper 2D rendering:
+
+```typescript
+const renderer2D = new Renderer2D();
+scene.add(renderer2D);
+
+renderer2D.add(sprite1);
+renderer2D.add(sprite2);
+```
+
+## Layers
+
+Use the `Layers` enum to control render order:
+
+```typescript
+import { Layers } from '@three-flatland/core';
+
+sprite.layers = Layers.BACKGROUND;  // Renders behind other sprites
+sprite.layers = Layers.DEFAULT;     // Normal render order
+sprite.layers = Layers.FOREGROUND;  // Renders in front
+```

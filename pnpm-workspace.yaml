@@ -1,6 +1,7 @@
 packages:
   - "packages/*"
   - "examples/**"
+  - "docs"
 
 catalog:
   # Three.js ecosystem

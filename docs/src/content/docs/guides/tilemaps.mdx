@@ -1,0 +1,147 @@
+---
+title: Tilemaps
+description: Render tile-based maps efficiently with three-flatland.
+---
+
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
+## Overview
+
+Tilemaps allow you to render large tile-based environments efficiently using a single draw call.
+
+## Creating a Tilemap
+
+<Tabs syncKey="framework">
+  <TabItem label="Vanilla" icon="seti:javascript">
+    ```typescript
+    import { Tilemap, Renderer2D } from '@three-flatland/core';
+
+    const tilemap = new Tilemap({
+      tileset: tilesetTexture,
+      tileWidth: 16,
+      tileHeight: 16,
+      mapWidth: 100,
+      mapHeight: 100,
+    });
+
+    // Set tile data (2D array of tile indices)
+    tilemap.setData(mapData);
+
+    renderer2D.add(tilemap);
+    ```
+  </TabItem>
+  <TabItem label="React" icon="seti:react">
+    ```tsx
+    <renderer2D>
+      <tilemap
+        tileset={tilesetTexture}
+        tileWidth={16}
+        tileHeight={16}
+        mapWidth={100}
+        mapHeight={100}
+        data={mapData}
+      />
+    </renderer2D>
+    ```
+  </TabItem>
+</Tabs>
+
+## Tileset Configuration
+
+### Tile Indices
+
+Tiles are referenced by their index in the tileset, reading left-to-right, top-to-bottom:
+
+```
+Tileset (4x4 tiles):
+┌───┬───┬───┬───┐
+│ 0 │ 1 │ 2 │ 3 │
+├───┼───┼───┼───┤
+│ 4 │ 5 │ 6 │ 7 │
+├───┼───┼───┼───┤
+│ 8 │ 9 │10 │11 │
+├───┼───┼───┼───┤
+│12 │13 │14 │15 │
+└───┴───┴───┴───┘
+```
+
+### Map Data
+
+Map data is a flat array representing the tile grid:
+
+```typescript
+const mapData = [
+  0, 1, 1, 2,  // Row 0
+  3, 4, 4, 5,  // Row 1
+  3, 4, 4, 5,  // Row 2
+  6, 7, 7, 8,  // Row 3
+];
+
+tilemap.setData(mapData);
+```
+
+## Multiple Layers
+
+Stack tilemaps for multi-layer maps:
+
+```typescript
+const backgroundLayer = new Tilemap({ /* ... */ });
+const decorationLayer = new Tilemap({ /* ... */ });
+const foregroundLayer = new Tilemap({ /* ... */ });
+
+backgroundLayer.position.z = 0;
+decorationLayer.position.z = 1;
+foregroundLayer.position.z = 2;
+
+renderer2D.add(backgroundLayer);
+renderer2D.add(decorationLayer);
+renderer2D.add(foregroundLayer);
+```
+
+## Dynamic Updates
+
+Update individual tiles at runtime:
+
+```typescript
+tilemap.setTileAt(x, y, tileIndex);
+tilemap.update();  // Apply changes
+```
+
+Or update a region:
+
+```typescript
+tilemap.setRegion(startX, startY, width, height, regionData);
+tilemap.update();
+```
+
+## Tiled Editor Support
+
+Load maps exported from [Tiled](https://www.mapeditor.org/):
+
+```typescript
+import { loadTiledMap } from '@three-flatland/core';
+
+const { tilemap, collisionData } = await loadTiledMap('/maps/level1.json');
+renderer2D.add(tilemap);
+```
+
+## Collision Detection
+
+Access tile data for collision detection:
+
+```typescript
+const tileIndex = tilemap.getTileAt(worldX, worldY);
+const isSolid = solidTiles.includes(tileIndex);
+```
+
+## Performance
+
+Tilemaps use a single geometry and texture atlas, making them extremely efficient:
+
+| Map Size | Draw Calls | Performance |
+|----------|------------|-------------|
+| 100x100 | 1 | 60 fps |
+| 1000x1000 | 1 | 60 fps |
+| 10000x10000 | 1 | 58 fps |
+
+*Only visible tiles are rendered via frustum culling*

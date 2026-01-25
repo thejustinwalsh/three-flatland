@@ -1,0 +1,93 @@
+---
+title: Tilemap
+description: Render tile-based maps efficiently with three-flatland.
+---
+
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+import ExamplePreview from '../../../components/ExamplePreview';
+import StackBlitzEmbed from '../../../components/StackBlitzEmbed';
+import { loadExample } from '../../../utils/loadExample';
+
+export const vanillaFiles = loadExample('vanilla', 'tilemap');
+export const reactFiles = loadExample('react', 'tilemap');
+
+<Tabs>
+  <TabItem label="Preview" icon="rocket">
+    <ExamplePreview client:load type="vanilla" name="tilemap" />
+  </TabItem>
+  <TabItem label="Three.js" icon="seti:javascript">
+    <StackBlitzEmbed
+      client:load
+      title="Tilemap - Three.js"
+      files={vanillaFiles}
+      openFile="main.ts"
+      height={600}
+    />
+  </TabItem>
+  <TabItem label="React" icon="seti:react">
+    <StackBlitzEmbed
+      client:load
+      title="Tilemap - React"
+      files={reactFiles}
+      openFile="App.tsx"
+      height={600}
+    />
+  </TabItem>
+</Tabs>
+
+## Tilemap Setup
+
+Create a tilemap with a tileset texture:
+
+```typescript
+const tilemap = new Tilemap({
+  tileset: tilesetTexture,
+  tileWidth: 16,
+  tileHeight: 16,
+  mapWidth: 20,
+  mapHeight: 15,
+});
+
+renderer2D.add(tilemap);
+```
+
+## Tile Data
+
+Set the map data as a flat array of tile indices:
+
+```typescript
+const mapData = [
+  0, 1, 1, 1, 2,  // Row 0
+  3, 4, 4, 4, 5,  // Row 1
+  3, 4, 4, 4, 5,  // Row 2
+  6, 7, 7, 7, 8,  // Row 3
+];
+
+tilemap.setData(mapData);
+```
+
+## Tile Indices
+
+Tiles are numbered left-to-right, top-to-bottom in the tileset image:
+
+```
++---+---+---+---+
+| 0 | 1 | 2 | 3 |
++---+---+---+---+
+| 4 | 5 | 6 | 7 |
++---+---+---+---+
+```
+
+## Dynamic Updates
+
+Update individual tiles at runtime:
+
+```typescript
+tilemap.setTileAt(x, y, newTileIndex);
+tilemap.update();
+```
+
+## Next Steps
+
+- [Tilemaps Guide](/guides/tilemaps) - Advanced tilemap features
+- [Batch Rendering](/examples/batch-demo) - Other optimization techniques

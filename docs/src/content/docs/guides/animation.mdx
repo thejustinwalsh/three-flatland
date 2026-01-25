@@ -1,0 +1,104 @@
+---
+title: Animation
+description: Animate sprites using spritesheets and frame-based animation.
+---
+
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
+## Spritesheet Animation
+
+three-flatland supports frame-based animation using spritesheets.
+
+<Tabs syncKey="framework">
+  <TabItem label="Vanilla" icon="seti:javascript">
+    ```typescript
+    import { AnimatedSprite2D, Renderer2D } from '@three-flatland/core';
+
+    const sprite = new AnimatedSprite2D({
+      texture: spritesheetTexture,
+      frameWidth: 32,
+      frameHeight: 32,
+      frameCount: 8,
+      fps: 12,
+    });
+
+    renderer2D.add(sprite);
+    sprite.play();
+    ```
+  </TabItem>
+  <TabItem label="React" icon="seti:react">
+    ```tsx
+    <renderer2D>
+      <animatedSprite2D
+        texture={spritesheetTexture}
+        frameWidth={32}
+        frameHeight={32}
+        frameCount={8}
+        fps={12}
+        autoPlay
+      />
+    </renderer2D>
+    ```
+  </TabItem>
+</Tabs>
+
+## Animation Properties
+
+### Frame Configuration
+
+| Property | Description |
+|----------|-------------|
+| `frameWidth` | Width of each frame in pixels |
+| `frameHeight` | Height of each frame in pixels |
+| `frameCount` | Total number of frames |
+| `fps` | Playback speed in frames per second |
+
+### Playback Control
+
+```typescript
+sprite.play();       // Start animation
+sprite.pause();      // Pause at current frame
+sprite.stop();       // Stop and reset to first frame
+sprite.gotoAndPlay(3);  // Jump to frame 3 and play
+sprite.gotoAndStop(0);  // Jump to frame 0 and pause
+```
+
+### Looping
+
+```typescript
+sprite.loop = true;   // Loop animation (default)
+sprite.loop = false;  // Play once and stop
+```
+
+## Animation Events
+
+Listen for animation lifecycle events:
+
+```typescript
+sprite.addEventListener('animationComplete', () => {
+  console.log('Animation finished');
+});
+
+sprite.addEventListener('frameChange', (event) => {
+  console.log('Frame:', event.frame);
+});
+```
+
+## Multiple Animations
+
+For sprites with multiple animations in a single spritesheet:
+
+```typescript
+const sprite = new AnimatedSprite2D({
+  texture: spritesheetTexture,
+  frameWidth: 32,
+  frameHeight: 32,
+  animations: {
+    idle: { start: 0, end: 3, fps: 8 },
+    walk: { start: 4, end: 11, fps: 12 },
+    jump: { start: 12, end: 15, fps: 10, loop: false },
+  },
+});
+
+sprite.playAnimation('walk');
+```

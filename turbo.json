@@ -16,6 +16,24 @@
     },
     "clean": {
       "cache": false
+    },
+    "docs#build": {
+      "dependsOn": ["^build", "@three-flatland/core#build", "@three-flatland/nodes#build", "@three-flatland/react#build", "@three-flatland/presets#build"],
+      "outputs": ["dist/**"],
+      "inputs": [
+        "src/**",
+        "public/**",
+        "astro.config.mjs",
+        "tsconfig.json",
+        "../examples/**/*.ts",
+        "../examples/**/*.tsx",
+        "../examples/**/*.json",
+        "../examples/**/*.html"
+      ]
+    },
+    "docs#dev": {
+      "cache": false,
+      "persistent": true
     }
   }
 }

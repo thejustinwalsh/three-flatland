@@ -1,0 +1,77 @@
+---
+title: TSL Nodes
+description: Create custom shader effects using Three Shader Language nodes.
+---
+
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+import ExamplePreview from '../../../components/ExamplePreview';
+import StackBlitzEmbed from '../../../components/StackBlitzEmbed';
+import { loadExample } from '../../../utils/loadExample';
+
+export const vanillaFiles = loadExample('vanilla', 'tsl-nodes');
+export const reactFiles = loadExample('react', 'tsl-nodes');
+
+<Tabs>
+  <TabItem label="Preview" icon="rocket">
+    <ExamplePreview client:load type="vanilla" name="tsl-nodes" />
+  </TabItem>
+  <TabItem label="Three.js" icon="seti:javascript">
+    <StackBlitzEmbed
+      client:load
+      title="TSL Nodes - Three.js"
+      files={vanillaFiles}
+      openFile="main.ts"
+      height={600}
+    />
+  </TabItem>
+  <TabItem label="React" icon="seti:react">
+    <StackBlitzEmbed
+      client:load
+      title="TSL Nodes - React"
+      files={reactFiles}
+      openFile="App.tsx"
+      height={600}
+    />
+  </TabItem>
+</Tabs>
+
+## Applying Effects
+
+Use the `@three-flatland/nodes` package for pre-built effects:
+
+```typescript
+import { outlineNode, glowNode } from '@three-flatland/nodes';
+
+sprite.material.colorNode = outlineNode({
+  color: 0xff0000,
+  width: 2,
+});
+```
+
+## Available Nodes
+
+| Node | Description |
+|------|-------------|
+| `outlineNode` | Solid colored outline |
+| `glowNode` | Soft glow effect |
+| `pixelateNode` | Retro pixelation |
+| `colorReplaceNode` | Swap colors |
+
+## Custom Nodes
+
+Create custom effects using Three.js TSL functions:
+
+```typescript
+import { tslFn, vec4, uv, texture } from 'three/tsl';
+
+const customEffect = tslFn(({ tex }) => {
+  const color = texture(tex, uv());
+  // Invert colors
+  return vec4(1.0 - color.r, 1.0 - color.g, 1.0 - color.b, color.a);
+});
+```
+
+## Next Steps
+
+- [Tilemap](/examples/tilemap) - Tile-based map rendering
+- [TSL Nodes Guide](/guides/tsl-nodes) - Detailed node documentation

@@ -135,24 +135,17 @@ export default defineConfig({
 | Port | Application |
 |------|-------------|
 | 5173 | Turbo proxy (user-facing URL) |
-| 4000 | example-home (default/landing page) |
-| 4001 | example-react-basic-sprite |
-| 4002 | example-vanilla-basic-sprite |
-| 4003 | example-vanilla-animation |
-| 4004 | example-react-animation |
-| 4005+ | future examples |
+| 4000 | docs (Starlight documentation site) |
 
 ### Default Application
 
-Turborepo requires one application with **no routing config** to serve as the default (catches `/` and unmatched routes). The `example-home` landing page serves this role and links to all other examples.
+The `docs` site (Starlight) serves as the default application and includes all examples as embedded StackBlitz demos.
 
 ### How It Works
 
-- `pnpm dev` starts all example dev servers + a proxy on port 5173
-- Turbo injects `$TURBO_MFE_PORT` environment variable to each app
-- Vite receives port via `--port $TURBO_MFE_PORT` CLI argument
-- Proxy routes requests based on `routing.paths` to each app
-- Access all examples via `http://localhost:5173/{type}/{name}`
+- `pnpm dev` starts the docs site on port 5173
+- Examples are embedded in the docs site via StackBlitz
+- To run individual examples directly, use `pnpm --filter=example-vanilla-basic-sprite dev`
 
 ## Dependency Management
 
@@ -282,7 +275,7 @@ Keep `README.md` up to date as milestones are completed:
 3. **Package Table** - When adding new packages, update the packages table
 4. **Requirements** - When changing peer dependency versions, update the Requirements section
 
-The README should remain concise and focused on getting users started quickly. Detailed documentation belongs in `/docs` or a documentation site.
+The README should remain concise and focused on getting users started quickly. Detailed documentation belongs in the docs site (`/docs` folder, built with Starlight/Astro).
 
 ### R3F-Compatible Constructor Pattern
 

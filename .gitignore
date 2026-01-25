@@ -5,6 +5,9 @@ node_modules/
 dist/
 *.tsbuildinfo
 
+# Generated demo builds for docs
+docs/public/examples/
+
 # IDE
 .idea/
 .vscode/

@@ -1,0 +1,62 @@
+---
+title: Basic Sprite
+description: Create a simple 2D sprite with three-flatland.
+---
+
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+import ExamplePreview from '../../../components/ExamplePreview';
+import StackBlitzEmbed from '../../../components/StackBlitzEmbed';
+import { loadExample } from '../../../utils/loadExample';
+
+export const vanillaFiles = loadExample('vanilla', 'basic-sprite');
+export const reactFiles = loadExample('react', 'basic-sprite');
+
+<Tabs>
+  <TabItem label="Preview" icon="rocket">
+    <ExamplePreview client:load type="vanilla" name="basic-sprite" />
+  </TabItem>
+  <TabItem label="Three.js" icon="seti:javascript">
+    <StackBlitzEmbed
+      client:load
+      title="Basic Sprite - Three.js"
+      files={vanillaFiles}
+      openFile="main.ts"
+      height={600}
+    />
+  </TabItem>
+  <TabItem label="React" icon="seti:react">
+    <StackBlitzEmbed
+      client:load
+      title="Basic Sprite - React"
+      files={reactFiles}
+      openFile="App.tsx"
+      height={600}
+    />
+  </TabItem>
+</Tabs>
+
+## Renderer2D
+
+The `Renderer2D` class manages 2D sprite rendering. All sprites must be added to a `Renderer2D` instance:
+
+```typescript
+const renderer2D = new Renderer2D();
+scene.add(renderer2D);
+renderer2D.add(sprite);
+```
+
+## Sprite2D
+
+The `Sprite2D` class represents a 2D sprite. It requires a texture and supports optional properties like anchor point and size:
+
+```typescript
+const sprite = new Sprite2D({
+  texture: myTexture,
+  anchor: [0.5, 0.5],  // Center anchor
+});
+```
+
+## Next Steps
+
+- [Animation](/examples/animation) - Add spritesheet animation
+- [Batch Demo](/examples/batch-demo) - Render thousands of sprites

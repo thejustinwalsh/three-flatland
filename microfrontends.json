@@ -4,14 +4,14 @@
     "localProxyPort": 5173
   },
   "applications": {
-    "example-home": {
+    "docs": {
       "development": {
         "local": {
           "port": 4000
         }
       }
     },
-    "example-react-basic-sprite": {
+    "example-vanilla-basic-sprite": {
       "development": {
         "local": {
           "port": 4001
@@ -19,20 +19,6 @@
       },
       "routing": [
         {
-          "group": "react-examples",
-          "paths": ["/react/basic-sprite", "/react/basic-sprite/:path*"]
-        }
-      ]
-    },
-    "example-vanilla-basic-sprite": {
-      "development": {
-        "local": {
-          "port": 4002
-        }
-      },
-      "routing": [
-        {
-          "group": "vanilla-examples",
           "paths": ["/vanilla/basic-sprite", "/vanilla/basic-sprite/:path*"]
         }
       ]
@@ -40,17 +26,28 @@
     "example-vanilla-animation": {
       "development": {
         "local": {
+          "port": 4002
+        }
+      },
+      "routing": [
+        {
+          "paths": ["/vanilla/animation", "/vanilla/animation/:path*"]
+        }
+      ]
+    },
+    "example-vanilla-batch-demo": {
+      "development": {
+        "local": {
           "port": 4003
         }
       },
       "routing": [
         {
-          "group": "vanilla-examples",
-          "paths": ["/vanilla/animation", "/vanilla/animation/:path*"]
+          "paths": ["/vanilla/batch-demo", "/vanilla/batch-demo/:path*"]
         }
       ]
     },
-    "example-react-animation": {
+    "example-vanilla-tsl-nodes": {
       "development": {
         "local": {
           "port": 4004
@@ -58,12 +55,11 @@
       },
       "routing": [
         {
-          "group": "react-examples",
-          "paths": ["/react/animation", "/react/animation/:path*"]
+          "paths": ["/vanilla/tsl-nodes", "/vanilla/tsl-nodes/:path*"]
         }
       ]
     },
-    "example-vanilla-batch-demo": {
+    "example-vanilla-tilemap": {
       "development": {
         "local": {
           "port": 4005
@@ -71,12 +67,11 @@
       },
       "routing": [
         {
-          "group": "vanilla-examples",
-          "paths": ["/vanilla/batch-demo", "/vanilla/batch-demo/:path*"]
+          "paths": ["/vanilla/tilemap", "/vanilla/tilemap/:path*"]
         }
       ]
     },
-    "example-react-batch-demo": {
+    "example-react-basic-sprite": {
       "development": {
         "local": {
           "port": 4006
@@ -84,12 +79,11 @@
       },
       "routing": [
         {
-          "group": "react-examples",
-          "paths": ["/react/batch-demo", "/react/batch-demo/:path*"]
+          "paths": ["/react/basic-sprite", "/react/basic-sprite/:path*"]
         }
       ]
     },
-    "example-vanilla-tsl-nodes": {
+    "example-react-animation": {
       "development": {
         "local": {
           "port": 4007
@@ -97,12 +91,11 @@
       },
       "routing": [
         {
-          "group": "vanilla-examples",
-          "paths": ["/vanilla/tsl-nodes", "/vanilla/tsl-nodes/:path*"]
+          "paths": ["/react/animation", "/react/animation/:path*"]
         }
       ]
     },
-    "example-react-tsl-nodes": {
+    "example-react-batch-demo": {
       "development": {
         "local": {
           "port": 4008
@@ -110,12 +103,11 @@
       },
       "routing": [
         {
-          "group": "react-examples",
-          "paths": ["/react/tsl-nodes", "/react/tsl-nodes/:path*"]
+          "paths": ["/react/batch-demo", "/react/batch-demo/:path*"]
         }
       ]
     },
-    "example-vanilla-tilemap": {
+    "example-react-tsl-nodes": {
       "development": {
         "local": {
           "port": 4009
@@ -123,8 +115,7 @@
       },
       "routing": [
         {
-          "group": "vanilla-examples",
-          "paths": ["/vanilla/tilemap", "/vanilla/tilemap/:path*"]
+          "paths": ["/react/tsl-nodes", "/react/tsl-nodes/:path*"]
         }
       ]
     },
@@ -136,7 +127,6 @@
       },
       "routing": [
         {
-          "group": "react-examples",
           "paths": ["/react/tilemap", "/react/tilemap/:path*"]
         }
       ]

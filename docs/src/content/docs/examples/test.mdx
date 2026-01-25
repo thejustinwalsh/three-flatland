@@ -1,0 +1,19 @@
+---
+title: Test Example
+description: Testing StackBlitz embed.
+---
+
+import StackBlitzEmbed from '../../../components/StackBlitzEmbed';
+import { loadExample } from '../../../utils/loadExample';
+
+export const vanillaFiles = loadExample('vanilla', 'basic-sprite');
+
+## Test Embed
+
+<StackBlitzEmbed
+  client:load
+  title="Test - Vanilla"
+  files={vanillaFiles}
+  openFile="main.ts"
+  height={600}
+/>

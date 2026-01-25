@@ -1,0 +1,136 @@
+---
+title: TSL Nodes
+description: Create custom shader effects using Three Shader Language.
+---
+
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
+## Overview
+
+TSL (Three Shader Language) is a node-based shader system in Three.js that enables custom GPU effects without writing raw WGSL/GLSL code.
+
+three-flatland provides pre-built TSL nodes for common 2D effects.
+
+## Using Built-in Nodes
+
+<Tabs syncKey="framework">
+  <TabItem label="Vanilla" icon="seti:javascript">
+    ```typescript
+    import { Sprite2D, Renderer2D } from '@three-flatland/core';
+    import { outlineNode, glowNode } from '@three-flatland/nodes';
+
+    const sprite = new Sprite2D({ texture: myTexture });
+
+    // Add outline effect
+    sprite.material.colorNode = outlineNode({
+      color: 0xff0000,
+      width: 2,
+    });
+
+    renderer2D.add(sprite);
+    ```
+  </TabItem>
+  <TabItem label="React" icon="seti:react">
+    ```tsx
+    import { outlineNode } from '@three-flatland/nodes';
+
+    <renderer2D>
+      <sprite2D texture={texture}>
+        <sprite2DMaterial colorNode={outlineNode({ color: 0xff0000, width: 2 })} />
+      </sprite2D>
+    </renderer2D>
+    ```
+  </TabItem>
+</Tabs>
+
+## Available Nodes
+
+### `outlineNode`
+
+Adds a solid outline around the sprite.
+
+```typescript
+outlineNode({
+  color: 0xff0000,    // Outline color
+  width: 2,           // Outline width in pixels
+  alpha: 1.0,         // Outline opacity
+});
+```
+
+### `glowNode`
+
+Adds a soft glow effect.
+
+```typescript
+glowNode({
+  color: 0x00ffff,    // Glow color
+  intensity: 1.0,     // Glow brightness
+  radius: 8,          // Glow spread in pixels
+});
+```
+
+### `pixelateNode`
+
+Applies a pixelation effect.
+
+```typescript
+pixelateNode({
+  pixelSize: 4,       // Size of each "pixel"
+});
+```
+
+### `colorReplaceNode`
+
+Replaces one color with another.
+
+```typescript
+colorReplaceNode({
+  originalColor: 0xff0000,
+  newColor: 0x00ff00,
+  tolerance: 0.1,
+});
+```
+
+## Custom Nodes
+
+Create your own TSL nodes using Three.js node functions:
+
+```typescript
+import { tslFn, vec4, uv, texture } from 'three/tsl';
+
+const customEffect = tslFn(({ tex }) => {
+  const texCoord = uv();
+  const color = texture(tex, texCoord);
+
+  // Invert colors
+  return vec4(
+    1.0 - color.r,
+    1.0 - color.g,
+    1.0 - color.b,
+    color.a
+  );
+});
+
+sprite.material.colorNode = customEffect({ tex: sprite.texture });
+```
+
+## Combining Nodes
+
+Chain multiple nodes together:
+
+```typescript
+import { mix } from 'three/tsl';
+
+const outline = outlineNode({ color: 0xff0000, width: 2 });
+const glow = glowNode({ color: 0xff6600, intensity: 0.5 });
+
+sprite.material.colorNode = mix(outline, glow, 0.5);
+```
+
+## Performance Considerations
+
+TSL nodes compile to optimized WGSL shaders. Keep in mind:
+
+- Complex node graphs increase shader compile time
+- Use `uniform` for values that change frequently
+- Cache compiled materials when reusing effects

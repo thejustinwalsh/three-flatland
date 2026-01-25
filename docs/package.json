@@ -1,0 +1,28 @@
+{
+  "name": "docs",
+  "type": "module",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "astro dev --port $TURBO_MFE_PORT",
+    "prebuild": "node scripts/build-examples.js",
+    "build": "astro check && astro build",
+    "preview": "astro preview"
+  },
+  "dependencies": {
+    "@astrojs/check": "^0.9.4",
+    "@astrojs/react": "^4.2.1",
+    "@astrojs/starlight": "^0.33.0",
+    "@stackblitz/sdk": "^1.11.0",
+    "astro": "^5.2.3",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "sharp": "^0.33.5",
+    "yaml": "^2.7.0"
+  },
+  "devDependencies": {
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "typescript": "catalog:"
+  }
+}
