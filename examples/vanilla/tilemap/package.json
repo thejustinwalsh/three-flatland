@@ -1,0 +1,20 @@
+{
+  "name": "example-vanilla-tilemap",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite dev --port $TURBO_MFE_PORT",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@three-flatland/core": "workspace:*",
+    "three": "catalog:"
+  },
+  "devDependencies": {
+    "@types/three": "catalog:",
+    "typescript": "catalog:",
+    "vite": "catalog:"
+  }
+}

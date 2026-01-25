@@ -114,6 +114,32 @@
           "paths": ["/react/tsl-nodes", "/react/tsl-nodes/:path*"]
         }
       ]
+    },
+    "example-vanilla-tilemap": {
+      "development": {
+        "local": {
+          "port": 4009
+        }
+      },
+      "routing": [
+        {
+          "group": "vanilla-examples",
+          "paths": ["/vanilla/tilemap", "/vanilla/tilemap/:path*"]
+        }
+      ]
+    },
+    "example-react-tilemap": {
+      "development": {
+        "local": {
+          "port": 4010
+        }
+      },
+      "routing": [
+        {
+          "group": "react-examples",
+          "paths": ["/react/tilemap", "/react/tilemap/:path*"]
+        }
+      ]
     }
   }
 }
