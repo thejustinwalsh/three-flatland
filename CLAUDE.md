@@ -196,49 +196,62 @@ To update a shared dependency version, change it in `pnpm-workspace.yaml` and ru
 - Billboard transformations
 
 ### React Package
-- **No wrapper components or side-effect imports** - Tree-shaking is critical for bundle size
-- Users call R3F's `extend()` directly with classes from `@three-flatland/core`
+- Re-exports everything from `@three-flatland/core` plus React-specific utilities
 - Type augmentation via `ThreeElements` interface for TypeScript JSX support
 - React 19 resource utilities for Suspense
 
-#### R3F Integration Pattern
+#### Import Pattern: React vs Vanilla
 
-We follow the standard R3F pattern for custom elements. **Do not create wrapper functions or side-effect imports** - users call `extend()` themselves with only what they need.
-
-**WebGPU Renderer**: R3F v10+ is required for proper WebGPU support. Import from `@react-three/fiber/webgpu` for TSL/WebGPU features. The renderer automatically falls back to WebGL on browsers without WebGPU support (e.g., Safari).
+**R3F users** import from `@three-flatland/react` - this provides all core classes plus automatic JSX type augmentation:
 
 ```tsx
-// Import from /webgpu for WebGPU + TSL support
 import { Canvas, extend } from '@react-three/fiber/webgpu'
-import { Sprite2D } from '@three-flatland/core'
-// Import for ThreeElements type augmentation
-import type {} from '@three-flatland/react'
+import { Sprite2D, Renderer2D, Layers } from '@three-flatland/react'
 
-// Register only what you need (tree-shakeable)
-extend({ Sprite2D })
+extend({ Sprite2D, Renderer2D })
 
 function App() {
   return (
-    <Canvas renderer={{ antialias: true }}>
-      <sprite2D texture={myTexture} />
+    <Canvas>
+      <renderer2D>
+        <sprite2D texture={myTexture} />
+      </renderer2D>
     </Canvas>
   )
 }
 ```
 
-Type augmentation in `types.ts` uses the proper R3F pattern:
+**Vanilla users** import from `@three-flatland/core` - no React dependencies:
+
+```typescript
+import { Sprite2D, Renderer2D, Layers } from '@three-flatland/core'
+
+const sprite = new Sprite2D({ texture: myTexture })
+renderer2D.add(sprite)
+```
+
+This pattern mirrors how `@react-three/drei` works - users import from the React package which re-exports core functionality plus React-specific features and type augmentation.
+
+#### R3F Integration Details
+
+**WebGPU Renderer**: R3F v10+ is required for proper WebGPU support. Import from `@react-three/fiber/webgpu` for TSL/WebGPU features.
+
+Type augmentation in `packages/react/src/types.ts` uses the standard R3F pattern:
 
 ```typescript
 import type { ThreeElement } from '@react-three/fiber'
-import type { Sprite2D, Sprite2DMaterial } from '@three-flatland/core'
+import type { Sprite2D, Sprite2DMaterial, Renderer2D } from '@three-flatland/core'
 
 declare module '@react-three/fiber' {
   interface ThreeElements {
     sprite2D: ThreeElement<typeof Sprite2D>
     sprite2DMaterial: ThreeElement<typeof Sprite2DMaterial>
+    renderer2D: ThreeElement<typeof Renderer2D>
   }
 }
 ```
+
+The augmentation is automatically included when users import from `@three-flatland/react` because `index.ts` includes a side-effect import of the types file.
 
 Reference: https://r3f.docs.pmnd.rs/api/typescript#extending-threeelements
 

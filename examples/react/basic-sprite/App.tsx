@@ -1,9 +1,7 @@
 import { Canvas, extend, useFrame } from '@react-three/fiber/webgpu'
 import { useRef, useMemo } from 'react'
 import { CanvasTexture } from 'three'
-import { Sprite2D } from '@three-flatland/core'
-// Import for ThreeElements type augmentation
-import type {} from '@three-flatland/react'
+import { Sprite2D } from '@three-flatland/react'
 
 // Register Sprite2D with R3F (tree-shakeable)
 extend({ Sprite2D })

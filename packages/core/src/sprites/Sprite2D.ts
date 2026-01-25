@@ -236,6 +236,15 @@ export class Sprite2D extends Mesh {
   }
 
   /**
+   * Set the current frame (R3F prop compatibility).
+   */
+  set frame(value: SpriteFrame | null) {
+    if (value) {
+      this.setFrame(value)
+    }
+  }
+
+  /**
    * Set the current frame.
    * Note: Does not modify scale - call updateSize() manually if needed after first frame.
    */

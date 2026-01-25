@@ -6,6 +6,7 @@ import type {
   Sprite2DOptions,
   AnimatedSprite2D,
   AnimatedSprite2DOptions,
+  Renderer2D,
 } from '@three-flatland/core'
 
 /**
@@ -71,5 +72,6 @@ declare module '@react-three/fiber' {
     sprite2D: ThreeElement<typeof Sprite2D>
     sprite2DMaterial: ThreeElement<typeof Sprite2DMaterial>
     animatedSprite2D: ThreeElement<typeof AnimatedSprite2D>
+    renderer2D: ThreeElement<typeof Renderer2D>
   }
 }

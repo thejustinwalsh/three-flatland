@@ -6,9 +6,7 @@ import {
   SpriteSheetLoader,
   Layers,
   type AnimationSetDefinition,
-} from '@three-flatland/core'
-// Import for ThreeElements type augmentation
-import type {} from '@three-flatland/react'
+} from '@three-flatland/react'
 
 // Register AnimatedSprite2D with R3F (tree-shakeable)
 extend({ AnimatedSprite2D })
