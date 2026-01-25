@@ -35,5 +35,8 @@ coverage/
 tmp/
 temp/
 
-# Sprite library for examples
+# Agents
+settings.local.json
+
+# Vendor Library for examples to pull from
 vendor/
