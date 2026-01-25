@@ -211,7 +211,7 @@ material.colorNode = hueShift(
 - [x] Core sprite system (Sprite2D, materials, loaders)
 - [x] Animation system (AnimatedSprite2D, AnimationController)
 - [x] 2D render pipeline with batching
-- [ ] TSL effect nodes
+- [x] TSL effect nodes
 - [ ] Tilemap support (Tiled, LDtk)
 - [ ] Text rendering (SDF, MSDF, bitmap)
 - [ ] React Three Fiber integration

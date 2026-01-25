@@ -1,0 +1,8 @@
+export { uvScale } from './uvScale'
+export { uvOffset } from './uvOffset'
+export { uvRotate } from './uvRotate'
+export { uvFlip } from './uvFlip'
+export { pixelate, pixelateBySize } from './pixelate'
+export { outline, outline8 } from './outline'
+export type { OutlineOptions } from './outline'
+export { sampleSprite, spriteUV } from './sampleSprite'

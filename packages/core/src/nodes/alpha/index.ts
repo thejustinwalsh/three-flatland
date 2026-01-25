@@ -1,0 +1,5 @@
+export { alphaTest, alphaTestOpaque } from './alphaTest'
+export { alphaMask, alphaMaskValue, alphaMaskInvert } from './alphaMask'
+export { fadeEdge, fadeEdgeRadial, fadeEdgeHorizontal, fadeEdgeVertical } from './fadeEdge'
+export { dissolve, dissolveSimple, dissolvePixelated, dissolveDirectional } from './dissolve'
+export type { DissolveOptions } from './dissolve'

@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>TSL Nodes - Vanilla | three-flatland</title>
+    <style>
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      body {
+        background: #1a1a2e;
+        overflow: hidden;
+        font-family: monospace;
+      }
+      canvas {
+        display: block;
+      }
+      #info {
+        position: fixed;
+        top: 20px;
+        left: 20px;
+        color: #4a9eff;
+        font-size: 12px;
+        z-index: 100;
+      }
+      #controls {
+        position: fixed;
+        bottom: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        justify-content: center;
+        max-width: 90vw;
+        z-index: 100;
+      }
+      button {
+        padding: 10px 16px;
+        font-size: 12px;
+        font-family: monospace;
+        border: 2px solid #4a9eff;
+        background: rgba(74, 158, 255, 0.1);
+        color: #4a9eff;
+        cursor: pointer;
+        border-radius: 4px;
+        transition: all 0.15s;
+      }
+      button:hover {
+        background: rgba(74, 158, 255, 0.2);
+      }
+      button.active {
+        background: #4a9eff;
+        color: #1a1a2e;
+      }
+      #attribution {
+        position: fixed;
+        bottom: 120px;
+        left: 50%;
+        transform: translateX(-50%);
+        color: #666;
+        font-size: 10px;
+        text-align: center;
+        z-index: 100;
+      }
+      #attribution a {
+        color: #888;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="info">
+      Effect: <span id="current-effect">Normal</span><br />
+      Press 1-8 or click buttons
+    </div>
+    <div id="controls">
+      <button id="btn-normal" class="active">1: Normal</button>
+      <button id="btn-damage">2: Damage</button>
+      <button id="btn-dissolve">3: Dissolve</button>
+      <button id="btn-powerup">4: Power-Up</button>
+      <button id="btn-petrify">5: Petrify</button>
+      <button id="btn-select">6: Select</button>
+      <button id="btn-shadow">7: Shadow</button>
+      <button id="btn-pixelate">8: Pixelate</button>
+    </div>
+    <div id="attribution">
+      Knight sprite by
+      <a href="https://analogstudios.itch.io/camelot" target="_blank">analogStudios_</a>
+      (CC0)
+    </div>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

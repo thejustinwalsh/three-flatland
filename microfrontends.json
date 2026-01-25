@@ -88,6 +88,32 @@
           "paths": ["/react/batch-demo", "/react/batch-demo/:path*"]
         }
       ]
+    },
+    "example-vanilla-tsl-nodes": {
+      "development": {
+        "local": {
+          "port": 4007
+        }
+      },
+      "routing": [
+        {
+          "group": "vanilla-examples",
+          "paths": ["/vanilla/tsl-nodes", "/vanilla/tsl-nodes/:path*"]
+        }
+      ]
+    },
+    "example-react-tsl-nodes": {
+      "development": {
+        "local": {
+          "port": 4008
+        }
+      },
+      "routing": [
+        {
+          "group": "react-examples",
+          "paths": ["/react/tsl-nodes", "/react/tsl-nodes/:path*"]
+        }
+      ]
     }
   }
 }

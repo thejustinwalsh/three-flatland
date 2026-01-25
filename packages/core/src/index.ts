@@ -17,3 +17,6 @@ export * from './loaders'
 
 // Pipeline
 export * from './pipeline'
+
+// TSL Nodes
+export * from './nodes'
