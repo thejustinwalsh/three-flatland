@@ -62,6 +62,32 @@
           "paths": ["/react/animation", "/react/animation/:path*"]
         }
       ]
+    },
+    "example-vanilla-batch-demo": {
+      "development": {
+        "local": {
+          "port": 4005
+        }
+      },
+      "routing": [
+        {
+          "group": "vanilla-examples",
+          "paths": ["/vanilla/batch-demo", "/vanilla/batch-demo/:path*"]
+        }
+      ]
+    },
+    "example-react-batch-demo": {
+      "development": {
+        "local": {
+          "port": 4006
+        }
+      },
+      "routing": [
+        {
+          "group": "react-examples",
+          "paths": ["/react/batch-demo", "/react/batch-demo/:path*"]
+        }
+      ]
     }
   }
 }

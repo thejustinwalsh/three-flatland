@@ -1,9 +1,14 @@
-import { Mesh, PlaneGeometry, Vector2, Vector3, type Color, type Texture } from 'three'
+import {
+  Mesh,
+  PlaneGeometry,
+  Vector2,
+  Vector3,
+  Color,
+  BufferAttribute,
+  type Texture,
+} from 'three'
 import { Sprite2DMaterial } from '../materials/Sprite2DMaterial'
 import type { Sprite2DOptions, SpriteFrame } from './types'
-
-// Shared geometry for all sprites (memory optimization)
-const sharedGeometry = new PlaneGeometry(1, 1)
 
 /**
  * A 2D sprite for use with three-flatland's render pipeline.
@@ -48,6 +53,12 @@ export class Sprite2D extends Mesh {
   /** Source texture */
   private _texture: Texture | null = null
 
+  /** Tint color */
+  private _tint: Color = new Color(1, 1, 1)
+
+  /** Alpha/opacity (0-1) */
+  private _alpha: number = 1
+
   /** Flip state */
   private _flipX: boolean = false
   private _flipY: boolean = false
@@ -57,6 +68,32 @@ export class Sprite2D extends Mesh {
 
   /** Custom geometry for anchor offset */
   private _geometry: PlaneGeometry | null = null
+
+  /**
+   * Instance attribute buffers for single-sprite rendering.
+   * PlaneGeometry has 4 vertices, so we need 4 copies of each value.
+   */
+  // instanceUV: 4 vertices × vec4 = 16 floats
+  private _instanceUVBuffer: Float32Array = new Float32Array([
+    0, 0, 1, 1, // vertex 0
+    0, 0, 1, 1, // vertex 1
+    0, 0, 1, 1, // vertex 2
+    0, 0, 1, 1, // vertex 3
+  ])
+  // instanceColor: 4 vertices × vec4 = 16 floats
+  private _instanceColorBuffer: Float32Array = new Float32Array([
+    1, 1, 1, 1, // vertex 0
+    1, 1, 1, 1, // vertex 1
+    1, 1, 1, 1, // vertex 2
+    1, 1, 1, 1, // vertex 3
+  ])
+  // instanceFlip: 4 vertices × vec2 = 8 floats
+  private _instanceFlipBuffer: Float32Array = new Float32Array([
+    1, 1, // vertex 0
+    1, 1, // vertex 1
+    1, 1, // vertex 2
+    1, 1, // vertex 3
+  ])
 
   /**
    * Create a new Sprite2D.
@@ -71,8 +108,16 @@ export class Sprite2D extends Mesh {
         transparent: true,
       })
 
-    // Use shared geometry initially
-    super(sharedGeometry, material)
+    // Create geometry with instance attributes for single-sprite rendering
+    // (Cannot use shared geometry because each sprite needs its own attribute buffers)
+    const geometry = new PlaneGeometry(1, 1)
+    super(geometry, material)
+
+    // Store reference so we can dispose it
+    this._geometry = geometry
+
+    // Set up instance attributes on the geometry
+    this._setupInstanceAttributes()
 
     // Frustum culling friendly name
     this.name = 'Sprite2D'
@@ -107,7 +152,9 @@ export class Sprite2D extends Mesh {
         sourceWidth: (options.texture.image as HTMLImageElement | undefined)?.width ?? 1,
         sourceHeight: (options.texture.image as HTMLImageElement | undefined)?.height ?? 1,
       }
+      this._updateInstanceUV()
       this.updateSize()
+      this.visible = true
     }
 
     if (options.anchor) {
@@ -173,6 +220,7 @@ export class Sprite2D extends Mesh {
           sourceWidth: (value.image as HTMLImageElement | undefined)?.width ?? 1,
           sourceHeight: (value.image as HTMLImageElement | undefined)?.height ?? 1,
         }
+        this._updateInstanceUV()
         this.updateSize()
       }
       // Show sprite once texture is set
@@ -194,7 +242,7 @@ export class Sprite2D extends Mesh {
   setFrame(frame: SpriteFrame): this {
     const isFirstFrame = this._frame === null
     this._frame = frame
-    this.material.setFrame(frame.x, frame.y, frame.width, frame.height)
+    this._updateInstanceUV()
     // Only auto-size on first frame set (not during animation)
     if (isFirstFrame) {
       this.updateSize()
@@ -236,28 +284,36 @@ export class Sprite2D extends Mesh {
    * Get tint color.
    */
   get tint(): Color {
-    return this.material.tintColor.value.clone()
+    return this._tint.clone()
   }
 
   /**
    * Set tint color.
    */
   set tint(value: Color | string | number) {
-    this.material.setTint(value)
+    if (value instanceof Color) {
+      this._tint.copy(value)
+    } else if (typeof value === 'string') {
+      this._tint.set(value)
+    } else {
+      this._tint.set(value)
+    }
+    this._updateInstanceColor()
   }
 
   /**
    * Get alpha/opacity.
    */
   get alpha(): number {
-    return this.material.alphaValue.value
+    return this._alpha
   }
 
   /**
    * Set alpha/opacity (0-1).
    */
   set alpha(value: number) {
-    this.material.setAlpha(value)
+    this._alpha = value
+    this._updateInstanceColor()
   }
 
   /**
@@ -331,22 +387,113 @@ export class Sprite2D extends Mesh {
     const offsetX = 0.5 - this._anchor.x
     const offsetY = 0.5 - this._anchor.y
 
-    // Dispose old custom geometry if exists
+    // Dispose old geometry
     if (this._geometry) {
       this._geometry.dispose()
     }
 
     // Create new geometry with offset
-    this._geometry = sharedGeometry.clone()
+    this._geometry = new PlaneGeometry(1, 1)
     this._geometry.translate(offsetX, offsetY, 0)
     this.geometry = this._geometry
+
+    // Re-setup instance attributes on the new geometry
+    this._setupInstanceAttributes()
   }
 
   /**
-   * Update flip flags on material.
+   * Update flip flags in instance attribute (all 4 vertices).
    */
   private updateFlip() {
-    this.material.setFlip(this._flipX, this._flipY)
+    const flipX = this._flipX ? -1 : 1
+    const flipY = this._flipY ? -1 : 1
+
+    // Write to all 4 vertices
+    for (let i = 0; i < 4; i++) {
+      this._instanceFlipBuffer[i * 2 + 0] = flipX
+      this._instanceFlipBuffer[i * 2 + 1] = flipY
+    }
+
+    const flipAttr = this.geometry.getAttribute('instanceFlip') as BufferAttribute
+    if (flipAttr) {
+      flipAttr.needsUpdate = true
+    }
+  }
+
+  /**
+   * Set up instance attributes on the geometry for single-sprite rendering.
+   * These are the same attributes used by SpriteBatch for batched rendering.
+   */
+  private _setupInstanceAttributes() {
+    const geo = this.geometry
+
+    // instanceUV: vec4 (x, y, width, height) - frame in atlas
+    const uvAttr = new BufferAttribute(this._instanceUVBuffer, 4)
+    geo.setAttribute('instanceUV', uvAttr)
+
+    // instanceColor: vec4 (r, g, b, a) - tint color and alpha
+    const colorAttr = new BufferAttribute(this._instanceColorBuffer, 4)
+    geo.setAttribute('instanceColor', colorAttr)
+
+    // instanceFlip: vec2 (x, y) - flip flags (1 = normal, -1 = flipped)
+    const flipAttr = new BufferAttribute(this._instanceFlipBuffer, 2)
+    geo.setAttribute('instanceFlip', flipAttr)
+  }
+
+  /**
+   * Update the instanceUV attribute from current frame (all 4 vertices).
+   */
+  private _updateInstanceUV() {
+    let x: number, y: number, w: number, h: number
+
+    if (this._frame) {
+      x = this._frame.x
+      y = this._frame.y
+      w = this._frame.width
+      h = this._frame.height
+    } else {
+      // Default: full texture
+      x = 0
+      y = 0
+      w = 1
+      h = 1
+    }
+
+    // Write to all 4 vertices
+    for (let i = 0; i < 4; i++) {
+      this._instanceUVBuffer[i * 4 + 0] = x
+      this._instanceUVBuffer[i * 4 + 1] = y
+      this._instanceUVBuffer[i * 4 + 2] = w
+      this._instanceUVBuffer[i * 4 + 3] = h
+    }
+
+    const uvAttr = this.geometry.getAttribute('instanceUV') as BufferAttribute
+    if (uvAttr) {
+      uvAttr.needsUpdate = true
+    }
+  }
+
+  /**
+   * Update the instanceColor attribute from current tint and alpha (all 4 vertices).
+   */
+  private _updateInstanceColor() {
+    const r = this._tint.r
+    const g = this._tint.g
+    const b = this._tint.b
+    const a = this._alpha
+
+    // Write to all 4 vertices
+    for (let i = 0; i < 4; i++) {
+      this._instanceColorBuffer[i * 4 + 0] = r
+      this._instanceColorBuffer[i * 4 + 1] = g
+      this._instanceColorBuffer[i * 4 + 2] = b
+      this._instanceColorBuffer[i * 4 + 3] = a
+    }
+
+    const colorAttr = this.geometry.getAttribute('instanceColor') as BufferAttribute
+    if (colorAttr) {
+      colorAttr.needsUpdate = true
+    }
   }
 
   /**
@@ -400,6 +547,27 @@ export class Sprite2D extends Mesh {
   clearInstanceValues(): this {
     this.instanceValues.clear()
     return this
+  }
+
+  /**
+   * Update the matrix with automatic Z offset for depth-based layer/zIndex sorting.
+   * This ensures proper rendering order whether the sprite is standalone or batched.
+   *
+   * Z offset formula: layer * 10 + zIndex * 0.001
+   * Higher layer/zIndex = higher Z = closer to camera = renders in front
+   */
+  override updateMatrix(): void {
+    // Store original Z position
+    const originalZ = this.position.z
+
+    // Apply Z offset based on layer and zIndex for depth sorting
+    this.position.z += this.layer * 10 + this.zIndex * 0.001
+
+    // Compute matrix with offset
+    super.updateMatrix()
+
+    // Restore original Z position (so user's position.z is preserved)
+    this.position.z = originalZ
   }
 
   /**

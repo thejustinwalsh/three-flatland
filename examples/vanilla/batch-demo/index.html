@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Village Builder - three-flatland</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        overflow: hidden;
+        font-family: system-ui, -apple-system, sans-serif;
+      }
+      canvas {
+        display: block;
+      }
+
+      #ui {
+        position: fixed;
+        bottom: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        display: flex;
+        gap: 8px;
+        padding: 12px;
+        background: rgba(0, 0, 0, 0.7);
+        border-radius: 12px;
+        z-index: 100;
+      }
+
+      .building-btn {
+        width: 64px;
+        height: 64px;
+        border: 3px solid transparent;
+        border-radius: 8px;
+        background-size: contain;
+        background-position: center;
+        background-repeat: no-repeat;
+        background-color: rgba(255, 255, 255, 0.1);
+        cursor: pointer;
+        transition: all 0.15s ease;
+      }
+
+      .building-btn:hover {
+        background-color: rgba(255, 255, 255, 0.2);
+        transform: scale(1.05);
+      }
+
+      .building-btn.selected {
+        border-color: #4a9eff;
+        background-color: rgba(74, 158, 255, 0.2);
+      }
+
+      .building-btn[data-building="house"] {
+        background-image: url('/vanilla/batch-demo/assets/buildings/House_Blue.png');
+      }
+      .building-btn[data-building="tower"] {
+        background-image: url('/vanilla/batch-demo/assets/buildings/Tower_Blue.png');
+      }
+      .building-btn[data-building="tree"] {
+        background-image: url('/vanilla/batch-demo/assets/deco/Tree.png');
+        /* Tree.png is 768x576, each tree is 192x192. Show first tree only. */
+        background-size: 400% 300%; /* 768/192=4, 576/192=3 */
+        background-position: 0% 0%;
+      }
+
+      #stats {
+        position: fixed;
+        top: 20px;
+        left: 20px;
+        padding: 10px 16px;
+        background: rgba(0, 0, 0, 0.7);
+        color: #4a9eff;
+        font-family: monospace;
+        font-size: 13px;
+        border-radius: 8px;
+        z-index: 100;
+      }
+
+      #title {
+        position: fixed;
+        top: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        padding: 10px 20px;
+        background: rgba(0, 0, 0, 0.7);
+        color: white;
+        font-size: 18px;
+        font-weight: 600;
+        border-radius: 8px;
+        z-index: 100;
+      }
+
+      #credits {
+        position: fixed;
+        bottom: 115px;
+        left: 50%;
+        transform: translateX(-50%);
+        color: rgba(0, 0, 0, 0.5);
+        font-size: 11px;
+        z-index: 100;
+      }
+      #credits a {
+        color: rgba(0, 0, 0, 0.6);
+      }
+
+      #hint {
+        position: fixed;
+        top: 70px;
+        left: 50%;
+        transform: translateX(-50%);
+        padding: 8px 16px;
+        background: rgba(0, 0, 0, 0.5);
+        color: rgba(255, 255, 255, 0.8);
+        font-size: 13px;
+        border-radius: 6px;
+        z-index: 100;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="title">Village Builder</div>
+    <div id="hint">Click to place buildings</div>
+    <div id="stats">Loading...</div>
+
+    <div id="ui">
+      <button class="building-btn selected" data-building="house" title="House"></button>
+      <button class="building-btn" data-building="tower" title="Tower"></button>
+      <button class="building-btn" data-building="tree" title="Tree"></button>
+    </div>
+
+    <div id="credits">
+      Assets from <a href="https://pixelfrog-assets.itch.io/tiny-swords" target="_blank">Tiny Swords</a> by Pixel Frog
+    </div>
+
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

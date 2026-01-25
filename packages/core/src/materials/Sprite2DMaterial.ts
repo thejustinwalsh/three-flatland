@@ -1,6 +1,7 @@
 import { MeshBasicNodeMaterial } from 'three/webgpu'
-import { uniform, texture, uv, vec2, vec4, float, Fn, If, Discard, select } from 'three/tsl'
+import { attribute, texture, uv, vec2, vec4, float, Fn, If, Discard, select } from 'three/tsl'
 import { Color, Vector2, Vector4, type Texture, FrontSide, NormalBlending } from 'three'
+import type { InstanceAttributeConfig, InstanceAttributeType } from '../pipeline/types'
 
 export interface Sprite2DMaterialOptions {
   map?: Texture
@@ -8,30 +9,46 @@ export interface Sprite2DMaterialOptions {
   alphaTest?: number
 }
 
+// Global material ID counter for batching
+let nextMaterialId = 0
+
 /**
  * TSL-based material for 2D sprites.
  *
- * Supports:
- * - Texture atlas frame sampling
- * - Tint color
- * - Alpha/opacity
- * - Flip X/Y
- * - Alpha testing
+ * UNIFIED API: This material reads from instance attributes, which works for:
+ * - Single sprites (Sprite2D sets attributes on its geometry)
+ * - Batched sprites (SpriteBatch sets instanced attributes)
+ *
+ * Core instance attributes (always present):
+ * - instanceUV (vec4): frame UV (x, y, width, height) in atlas
+ * - instanceColor (vec4): tint color and alpha (r, g, b, a)
+ * - instanceFlip (vec2): flip flags (x, y) where 1 = normal, -1 = flipped
+ *
+ * Custom instance attributes can be added via addInstanceFloat(), etc.
  */
 export class Sprite2DMaterial extends MeshBasicNodeMaterial {
-  // Uniforms exposed for animation/updates
-  readonly frameUV = uniform(new Vector4(0, 0, 1, 1)) // x, y, w, h
-  readonly tintColor = uniform(new Color(0xffffff))
-  readonly alphaValue = uniform(1.0)
-  readonly flipFlags = uniform(new Vector2(1, 1)) // 1 or -1
+  /**
+   * Unique batch ID for this material instance (used for batching).
+   */
+  readonly batchId: number
 
   private _spriteTexture: Texture | null = null
+
+  /**
+   * Custom instance attribute schema.
+   * Defines additional per-sprite attributes for effects.
+   */
+  private _instanceAttributes: Map<string, InstanceAttributeConfig> = new Map()
 
   constructor(options: Sprite2DMaterialOptions = {}) {
     super()
 
+    this.batchId = nextMaterialId++
+
     this.transparent = options.transparent ?? true
-    this.depthWrite = false
+    // Enable depth write by default for proper zIndex sorting within batches
+    // The batch system automatically sets Z position based on layer/zIndex
+    this.depthWrite = true
     this.depthTest = true
     this.side = FrontSide
     this.blending = NormalBlending
@@ -46,21 +63,26 @@ export class Sprite2DMaterial extends MeshBasicNodeMaterial {
 
     const mapTexture = this._spriteTexture
 
-    // Color node: sample texture with frame UV, apply tint and alpha
+    // Read from instance attributes (works for both single sprites and batched)
+    const instanceUV = attribute('instanceUV', 'vec4')
+    const instanceColor = attribute('instanceColor', 'vec4')
+    const instanceFlip = attribute('instanceFlip', 'vec2')
+
+    // Color node: sample texture with instance UV, apply instance color
     this.colorNode = Fn(() => {
       // Get base UV
       const baseUV = uv()
 
-      // Apply flip
+      // Apply flip using instance attribute
       const flippedUV = vec2(
-        select(this.flipFlags.x.greaterThan(float(0)), baseUV.x, float(1).sub(baseUV.x)),
-        select(this.flipFlags.y.greaterThan(float(0)), baseUV.y, float(1).sub(baseUV.y))
+        select(instanceFlip.x.greaterThan(float(0)), baseUV.x, float(1).sub(baseUV.x)),
+        select(instanceFlip.y.greaterThan(float(0)), baseUV.y, float(1).sub(baseUV.y))
       )
 
-      // Remap to frame in atlas
+      // Remap to frame in atlas using instance UV
       const atlasUV = flippedUV
-        .mul(vec2(this.frameUV.z, this.frameUV.w))
-        .add(vec2(this.frameUV.x, this.frameUV.y))
+        .mul(vec2(instanceUV.z, instanceUV.w))
+        .add(vec2(instanceUV.x, instanceUV.y))
 
       // Sample texture
       const texColor = texture(mapTexture, atlasUV)
@@ -70,8 +92,11 @@ export class Sprite2DMaterial extends MeshBasicNodeMaterial {
         Discard()
       })
 
-      // Apply tint and alpha
-      return vec4(texColor.rgb.mul(this.tintColor), texColor.a.mul(this.alphaValue))
+      // Apply instance color (tint) and alpha
+      return vec4(
+        texColor.rgb.mul(instanceColor.rgb),
+        texColor.a.mul(instanceColor.a)
+      )
     })()
   }
 
@@ -88,45 +113,141 @@ export class Sprite2DMaterial extends MeshBasicNodeMaterial {
   setTexture(value: Texture | null) {
     this._spriteTexture = value
     if (value) {
-      // Rebuild nodes with new texture
       this.setupNodes()
       this.needsUpdate = true
     }
   }
 
+  // ============================================
+  // INSTANCE ATTRIBUTE SYSTEM
+  // ============================================
+
   /**
-   * Set the frame UV coordinates.
+   * Add a float instance attribute.
    */
-  setFrame(x: number, y: number, width: number, height: number) {
-    this.frameUV.value.set(x, y, width, height)
+  addInstanceFloat(name: string, defaultValue: number = 0): this {
+    this._instanceAttributes.set(name, {
+      name,
+      type: 'float',
+      defaultValue,
+    })
+    return this
   }
 
   /**
-   * Set tint color.
+   * Add a vec2 instance attribute.
    */
-  setTint(color: Color | string | number) {
-    if (color instanceof Color) {
-      this.tintColor.value.copy(color)
-    } else {
-      this.tintColor.value.set(color)
+  addInstanceVec2(name: string, defaultValue: [number, number] = [0, 0]): this {
+    this._instanceAttributes.set(name, {
+      name,
+      type: 'vec2',
+      defaultValue,
+    })
+    return this
+  }
+
+  /**
+   * Add a vec3 instance attribute.
+   */
+  addInstanceVec3(name: string, defaultValue: [number, number, number] = [0, 0, 0]): this {
+    this._instanceAttributes.set(name, {
+      name,
+      type: 'vec3',
+      defaultValue,
+    })
+    return this
+  }
+
+  /**
+   * Add a vec4 instance attribute.
+   */
+  addInstanceVec4(name: string, defaultValue: [number, number, number, number] = [0, 0, 0, 0]): this {
+    this._instanceAttributes.set(name, {
+      name,
+      type: 'vec4',
+      defaultValue,
+    })
+    return this
+  }
+
+  /**
+   * Remove an instance attribute.
+   */
+  removeInstanceAttribute(name: string): this {
+    this._instanceAttributes.delete(name)
+    return this
+  }
+
+  /**
+   * Check if an instance attribute exists.
+   */
+  hasInstanceAttribute(name: string): boolean {
+    return this._instanceAttributes.has(name)
+  }
+
+  /**
+   * Get an instance attribute configuration.
+   */
+  getInstanceAttribute(name: string): InstanceAttributeConfig | undefined {
+    return this._instanceAttributes.get(name)
+  }
+
+  /**
+   * Get all instance attribute configurations.
+   * Used by SpriteBatch to create InstancedBufferAttributes.
+   */
+  getInstanceAttributeSchema(): Map<string, InstanceAttributeConfig> {
+    return this._instanceAttributes
+  }
+
+  /**
+   * Get the number of floats needed per instance for custom attributes.
+   */
+  getInstanceAttributeStride(): number {
+    let stride = 0
+    for (const config of this._instanceAttributes.values()) {
+      stride += getTypeSize(config.type)
     }
+    return stride
   }
 
   /**
-   * Set alpha/opacity.
+   * Clone this material.
+   * Ensures the cloned material has the texture and nodes set up properly.
    */
-  setAlpha(alpha: number) {
-    this.alphaValue.value = alpha
-  }
+  override clone(): this {
+    const cloned = new Sprite2DMaterial({
+      map: this._spriteTexture ?? undefined,
+      transparent: this.transparent,
+      alphaTest: this.alphaTest,
+    }) as this
 
-  /**
-   * Set flip flags.
-   */
-  setFlip(flipX: boolean, flipY: boolean) {
-    this.flipFlags.value.set(flipX ? -1 : 1, flipY ? -1 : 1)
+    // Copy instance attributes
+    for (const [name, config] of this._instanceAttributes) {
+      ;(cloned as Sprite2DMaterial)._instanceAttributes.set(name, { ...config })
+    }
+
+    return cloned
   }
 
   dispose() {
     super.dispose()
+    this._instanceAttributes.clear()
+  }
+}
+
+/**
+ * Get the number of floats for an attribute type.
+ */
+function getTypeSize(type: InstanceAttributeType): number {
+  switch (type) {
+    case 'float':
+      return 1
+    case 'vec2':
+      return 2
+    case 'vec3':
+      return 3
+    case 'vec4':
+      return 4
   }
 }

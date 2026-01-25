@@ -1,4 +1,4 @@
-import { type Texture, TextureLoader } from 'three'
+import { type Texture, TextureLoader, SRGBColorSpace } from 'three'
 import type {
   SpriteSheet,
   SpriteFrame,
@@ -164,6 +164,8 @@ export class SpriteSheetLoader {
         (texture) => {
           // Configure texture for pixel art (optional, can be overridden)
           texture.generateMipmaps = false
+          // Ensure proper gamma handling for sRGB textures
+          texture.colorSpace = SRGBColorSpace
           resolve(texture)
         },
         undefined,
