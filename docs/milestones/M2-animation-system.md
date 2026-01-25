@@ -1347,16 +1347,16 @@ describe('AnimatedSprite2D', () => {
 
 ## Acceptance Criteria
 
-- [ ] `AnimatedSprite2D` plays animations correctly
-- [ ] Frame timing is accurate (fps-based and per-frame duration)
-- [ ] Loop, ping-pong, and single-play modes work
-- [ ] Animation events fire at correct frames
-- [ ] Speed multiplier affects playback
-- [ ] Pause/resume works correctly
-- [ ] Animation utilities create animations from patterns
-- [ ] R3F integration works (`<animatedSprite2D />`)
-- [ ] All tests pass
-- [ ] TypeScript types are correct and complete
+- [x] `AnimatedSprite2D` plays animations correctly
+- [x] Frame timing is accurate (fps-based and per-frame duration)
+- [x] Loop, ping-pong, and single-play modes work
+- [x] Animation events fire at correct frames
+- [x] Speed multiplier affects playback
+- [x] Pause/resume works correctly
+- [x] Animation utilities create animations from patterns
+- [x] R3F integration works (`<animatedSprite2D />`)
+- [x] All tests pass (55 tests)
+- [x] TypeScript types are correct and complete
 
 ---
 

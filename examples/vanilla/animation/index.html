@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Animation Example - three-flatland</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        overflow: hidden;
+        background: #1a1a2e;
+      }
+      canvas {
+        display: block;
+      }
+      #controls {
+        position: fixed;
+        bottom: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        display: flex;
+        gap: 10px;
+        z-index: 100;
+      }
+      button {
+        padding: 10px 20px;
+        font-size: 14px;
+        font-family: monospace;
+        border: 2px solid #4a9eff;
+        background: rgba(74, 158, 255, 0.1);
+        color: #4a9eff;
+        cursor: pointer;
+        border-radius: 4px;
+        transition: all 0.2s;
+      }
+      button:hover {
+        background: rgba(74, 158, 255, 0.3);
+      }
+      button.active {
+        background: #4a9eff;
+        color: #1a1a2e;
+      }
+      #info {
+        position: fixed;
+        top: 20px;
+        left: 20px;
+        font-family: monospace;
+        color: #4a9eff;
+        font-size: 12px;
+        z-index: 100;
+      }
+      #credits {
+        position: fixed;
+        bottom: 100px;
+        left: 50%;
+        transform: translateX(-50%);
+        font-family: monospace;
+        color: #666;
+        font-size: 10px;
+        text-align: center;
+        z-index: 100;
+      }
+      #credits a {
+        color: #888;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="info">
+      Animation: <span id="current-anim">idle</span><br />
+      Frame: <span id="current-frame">0</span><br />
+      Speed: <span id="current-speed">1x</span>
+    </div>
+    <div id="credits">
+      Knight sprite by <a href="https://analogstudios.itch.io/camelot" target="_blank">analogStudios_</a> (CC0)
+    </div>
+    <div id="controls">
+      <button id="btn-idle" class="active">Idle</button>
+      <button id="btn-run">Run</button>
+      <button id="btn-roll">Roll</button>
+      <button id="btn-hit">Hit</button>
+      <button id="btn-death">Death</button>
+      <button id="btn-speed">Speed: 1x</button>
+    </div>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

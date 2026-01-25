@@ -142,6 +142,39 @@ const sprite = new Sprite2D({ material })
 sprite.setInstanceValue('dissolve', 0.5)
 ```
 
+### Animation
+
+Create animated sprites with frame-based animations:
+
+```typescript
+import { AnimatedSprite2D, SpriteSheetLoader } from '@three-flatland/core'
+
+const sheet = await SpriteSheetLoader.load('/sprites/player.json')
+
+const player = new AnimatedSprite2D({
+  spriteSheet: sheet,
+  animationSet: {
+    animations: {
+      idle: { frames: ['idle_0', 'idle_1', 'idle_2'], fps: 8 },
+      run: { frames: ['run_0', 'run_1', 'run_2', 'run_3'], fps: 12 },
+      attack: { frames: ['attack_0', 'attack_1'], fps: 15, loop: false },
+    },
+  },
+  animation: 'idle',
+})
+
+// In update loop
+player.update(deltaMs)
+
+// Change animation
+player.play('run')
+
+// Play with callbacks
+player.play('attack', {
+  onComplete: () => player.play('idle'),
+})
+```
+
 ### TSL Effects
 
 Build effects using Three.js Shading Language:
@@ -176,7 +209,7 @@ material.colorNode = hueShift(
 
 - [x] Project setup and monorepo structure
 - [x] Core sprite system (Sprite2D, materials, loaders)
-- [ ] Animation system
+- [x] Animation system (AnimatedSprite2D, AnimationController)
 - [ ] 2D render pipeline with batching
 - [ ] TSL effect nodes
 - [ ] Tilemap support (Tiled, LDtk)

@@ -76,7 +76,9 @@ describe('SpriteSheetLoader', () => {
       const frame = result.frames.get('player_idle_0')
       expect(frame).toBeDefined()
       expect(frame?.x).toBe(0)
-      expect(frame?.y).toBe(0)
+      // Y is flipped for UV coordinates: 1 - (imageY/height) - (frameHeight/height)
+      // Frame at y=0, h=32 in 128px image: 1 - 0 - 0.25 = 0.75
+      expect(frame?.y).toBe(0.75)
       expect(frame?.width).toBe(32 / 128)
       expect(frame?.height).toBe(32 / 128)
       expect(frame?.sourceWidth).toBe(32)
@@ -97,7 +99,9 @@ describe('SpriteSheetLoader', () => {
       const frame = result.frames.get('enemy_walk_0')
       expect(frame).toBeDefined()
       expect(frame?.x).toBe(0)
-      expect(frame?.y).toBe(0)
+      // Y is flipped for UV coordinates: 1 - (imageY/height) - (frameHeight/height)
+      // Frame at y=0, h=64 in 256px image: 1 - 0 - 0.25 = 0.75
+      expect(frame?.y).toBe(0.75)
       expect(frame?.width).toBe(64 / 256)
       expect(frame?.height).toBe(64 / 256)
       expect(frame?.sourceWidth).toBe(64)

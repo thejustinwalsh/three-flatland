@@ -74,12 +74,15 @@ export class SpriteSheetLoader {
     const { w: atlasWidth, h: atlasHeight } = json.meta.size
 
     for (const [name, data] of Object.entries(json.frames)) {
+      // Convert to normalized UV coordinates
+      // Note: UV Y is flipped (0 = bottom, 1 = top) vs image coords (0 = top)
+      const normalizedHeight = data.frame.h / atlasHeight
       const frame: SpriteFrame = {
         name,
         x: data.frame.x / atlasWidth,
-        y: data.frame.y / atlasHeight,
+        y: 1 - (data.frame.y / atlasHeight) - normalizedHeight,
         width: data.frame.w / atlasWidth,
-        height: data.frame.h / atlasHeight,
+        height: normalizedHeight,
         sourceWidth: data.sourceSize.w,
         sourceHeight: data.sourceSize.h,
         rotated: data.rotated,
@@ -115,12 +118,15 @@ export class SpriteSheetLoader {
     const { w: atlasWidth, h: atlasHeight } = json.meta.size
 
     for (const data of json.frames) {
+      // Convert to normalized UV coordinates
+      // Note: UV Y is flipped (0 = bottom, 1 = top) vs image coords (0 = top)
+      const normalizedHeight = data.frame.h / atlasHeight
       const frame: SpriteFrame = {
         name: data.filename,
         x: data.frame.x / atlasWidth,
-        y: data.frame.y / atlasHeight,
+        y: 1 - (data.frame.y / atlasHeight) - normalizedHeight,
         width: data.frame.w / atlasWidth,
-        height: data.frame.h / atlasHeight,
+        height: normalizedHeight,
         sourceWidth: data.sourceSize.w,
         sourceHeight: data.sourceSize.h,
         rotated: data.rotated,

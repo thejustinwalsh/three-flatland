@@ -22,7 +22,11 @@
       "Bash(gh release view:*)",
       "Bash(curl:*)",
       "WebFetch(domain:turborepo.dev)",
-      "Skill(turborepo)"
+      "Skill(turborepo)",
+      "Bash(sips:*)",
+      "Bash(for f in /Users/tjw/Developer/three-flatland/vendor/brackeys_platformer_assets/sprites/*.png)",
+      "Bash(do echo \"=== $f ===\")",
+      "Bash(done)"
     ]
   }
 }

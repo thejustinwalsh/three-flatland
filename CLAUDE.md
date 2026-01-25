@@ -112,13 +112,13 @@ export default defineConfig({
 })
 ```
 
-3. **Register in microfrontends.json** - Add entry with unique port (4003+) and routing:
+3. **Register in microfrontends.json** - Add entry with unique port (4005+) and routing:
 
 ```json
 "example-{type}-{name}": {
   "development": {
     "local": {
-      "port": 4003
+      "port": 4005
     }
   },
   "routing": [
@@ -138,7 +138,9 @@ export default defineConfig({
 | 4000 | example-home (default/landing page) |
 | 4001 | example-react-basic-sprite |
 | 4002 | example-vanilla-basic-sprite |
-| 4003+ | future examples |
+| 4003 | example-vanilla-animation |
+| 4004 | example-react-animation |
+| 4005+ | future examples |
 
 ### Default Application
 

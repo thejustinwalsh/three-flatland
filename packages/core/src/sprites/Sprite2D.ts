@@ -78,6 +78,9 @@ export class Sprite2D extends Mesh {
     this.name = 'Sprite2D'
     this.frustumCulled = true
 
+    // Hide until properly configured (prevents flash on load)
+    this.visible = false
+
     // If no options, we're being created by R3F - properties will be set via setters
     if (!options) {
       return
@@ -172,6 +175,8 @@ export class Sprite2D extends Mesh {
         }
         this.updateSize()
       }
+      // Show sprite once texture is set
+      this.visible = true
     }
   }
 
@@ -184,11 +189,18 @@ export class Sprite2D extends Mesh {
 
   /**
    * Set the current frame.
+   * Note: Does not modify scale - call updateSize() manually if needed after first frame.
    */
   setFrame(frame: SpriteFrame): this {
+    const isFirstFrame = this._frame === null
     this._frame = frame
     this.material.setFrame(frame.x, frame.y, frame.width, frame.height)
-    this.updateSize()
+    // Only auto-size on first frame set (not during animation)
+    if (isFirstFrame) {
+      this.updateSize()
+    }
+    // Show sprite once it has a valid frame
+    this.visible = true
     return this
   }
 

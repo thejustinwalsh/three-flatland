@@ -34,3 +34,6 @@ coverage/
 # Temporary
 tmp/
 temp/
+
+# Sprite library for examples
+vendor/

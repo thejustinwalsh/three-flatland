@@ -36,6 +36,32 @@
           "paths": ["/vanilla/basic-sprite", "/vanilla/basic-sprite/:path*"]
         }
       ]
+    },
+    "example-vanilla-animation": {
+      "development": {
+        "local": {
+          "port": 4003
+        }
+      },
+      "routing": [
+        {
+          "group": "vanilla-examples",
+          "paths": ["/vanilla/animation", "/vanilla/animation/:path*"]
+        }
+      ]
+    },
+    "example-react-animation": {
+      "development": {
+        "local": {
+          "port": 4004
+        }
+      },
+      "routing": [
+        {
+          "group": "react-examples",
+          "paths": ["/react/animation", "/react/animation/:path*"]
+        }
+      ]
     }
   }
 }

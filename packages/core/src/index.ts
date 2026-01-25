@@ -1,10 +1,13 @@
 // @three-flatland/core
 // Core library for 2D sprites and effects in Three.js
 
-export const VERSION = '0.1.0'
+export const VERSION = '0.2.0'
 
 // Sprites
 export * from './sprites'
+
+// Animation
+export * from './animation'
 
 // Materials
 export * from './materials'
