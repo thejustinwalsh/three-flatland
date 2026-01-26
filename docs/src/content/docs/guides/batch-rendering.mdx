@@ -38,13 +38,23 @@ When you add sprites to a `Renderer2D`, they're grouped by material:
   </TabItem>
   <TabItem label="React" icon="seti:react">
     ```tsx
-    import { useRef } from 'react';
-    import { useFrame } from '@react-three/fiber/webgpu';
+    import { useRef, useMemo } from 'react';
+    import { extend, useFrame } from '@react-three/fiber/webgpu';
     import { Sprite2D, Renderer2D, Sprite2DMaterial } from '@three-flatland/react';
 
-    function Particles({ count = 1000 }) {
+    extend({ Sprite2D, Renderer2D, Sprite2DMaterial });
+
+    function Particles({ count = 1000, spriteSheet }) {
       const rendererRef = useRef<Renderer2D>(null);
-      const materialRef = useRef<Sprite2DMaterial>(null);
+
+      // Create shared material
+      const material = useMemo(() => new Sprite2DMaterial({ map: spriteSheet }), [spriteSheet]);
+
+      // Generate random positions once
+      const positions = useMemo(
+        () => Array.from({ length: count }, () => [Math.random() * 100, Math.random() * 100, 0]),
+        [count]
+      );
 
       useFrame(() => {
         rendererRef.current?.update();
@@ -52,13 +62,8 @@ When you add sprites to a `Renderer2D`, they're grouped by material:
 
       return (
         <renderer2D ref={rendererRef}>
-          <sprite2DMaterial ref={materialRef} map={spriteSheet} />
-          {Array.from({ length: count }, (_, i) => (
-            <sprite2D
-              key={i}
-              material={materialRef.current!}
-              position={[Math.random() * 100, Math.random() * 100, 0]}
-            />
+          {positions.map((pos, i) => (
+            <sprite2D key={i} material={material} position={pos} />
           ))}
         </renderer2D>
       );

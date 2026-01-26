@@ -1,7 +1,7 @@
 import { Canvas, extend, useFrame, useLoader } from '@react-three/fiber/webgpu'
 import { useRef, useState, useCallback } from 'react'
-import { TextureLoader, Color, SRGBColorSpace } from 'three'
-import { Sprite2D } from '@three-flatland/react'
+import { Color } from 'three'
+import { Sprite2D, TextureLoader } from '@three-flatland/react'
 
 // Register Sprite2D with R3F (tree-shakeable)
 extend({ Sprite2D })
@@ -16,9 +16,8 @@ function InteractiveSprite() {
   const [isHovered, setIsHovered] = useState(false)
   const [isPressed, setIsPressed] = useState(false)
 
-  // Load the flatland logo
+  // Load the flatland logo (presets are automatically applied)
   const texture = useLoader(TextureLoader, import.meta.env.BASE_URL + 'icon.svg')
-  texture.colorSpace = SRGBColorSpace
 
   // Sprite size (SVGs may not have proper dimensions, so we set explicit size)
   const spriteSize = 30

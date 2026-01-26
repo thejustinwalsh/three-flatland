@@ -13,8 +13,8 @@ This guide shows you how to create your first sprite using three-flatland.
   <TabItem label="Three.js" icon="seti:javascript">
     ```typescript
     import { WebGPURenderer } from 'three/webgpu';
-    import { Scene, OrthographicCamera, TextureLoader, SRGBColorSpace } from 'three';
-    import { Sprite2D } from '@three-flatland/core';
+    import { Scene, OrthographicCamera } from 'three';
+    import { Sprite2D, TextureLoader } from '@three-flatland/core';
 
     async function main() {
       // Create scene and camera
@@ -29,10 +29,8 @@ This guide shows you how to create your first sprite using three-flatland.
       document.body.appendChild(renderer.domElement);
       await renderer.init();
 
-      // Load texture
-      const loader = new TextureLoader();
-      const texture = await loader.loadAsync('/sprite.png');
-      texture.colorSpace = SRGBColorSpace;
+      // Load texture (presets automatically applied)
+      const texture = await TextureLoader.load('/sprite.png');
 
       // Create sprite
       const sprite = new Sprite2D({ texture, anchor: [0.5, 0.5] });
@@ -53,14 +51,13 @@ This guide shows you how to create your first sprite using three-flatland.
   <TabItem label="React" icon="seti:react">
     ```tsx
     import { Canvas, extend, useLoader } from '@react-three/fiber/webgpu';
-    import { TextureLoader, SRGBColorSpace } from 'three';
-    import { Sprite2D } from '@three-flatland/react';
+    import { Sprite2D, TextureLoader } from '@three-flatland/react';
 
     extend({ Sprite2D });
 
     function Sprite() {
+      // Presets automatically applied (pixel-art by default)
       const texture = useLoader(TextureLoader, '/sprite.png');
-      texture.colorSpace = SRGBColorSpace;
 
       return (
         <sprite2D texture={texture} anchor={[0.5, 0.5]} scale={[100, 100, 1]} />

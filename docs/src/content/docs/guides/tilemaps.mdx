@@ -34,25 +34,31 @@ Tilemaps allow you to render large tile-based environments efficiently using chu
   </TabItem>
   <TabItem label="React" icon="seti:react">
     ```tsx
+    import { Suspense, useRef } from 'react';
+    import { extend, useFrame, useLoader } from '@react-three/fiber/webgpu';
     import { TileMap2D, TiledLoader } from '@three-flatland/react';
-    import { useRef, useEffect, useState } from 'react';
-    import { useFrame } from '@react-three/fiber/webgpu';
+
+    extend({ TileMap2D });
 
     function Level() {
-      const [mapData, setMapData] = useState(null);
+      // useLoader suspends while loading, presets applied automatically
+      const mapData = useLoader(TiledLoader, '/maps/level1.json');
       const tilemapRef = useRef<TileMap2D>(null);
-
-      useEffect(() => {
-        TiledLoader.load('/maps/level1.json').then(setMapData);
-      }, []);
 
       useFrame((_, delta) => {
         tilemapRef.current?.update(delta * 1000);
       });
 
-      if (!mapData) return null;
-
       return <tileMap2D ref={tilemapRef} data={mapData} chunkSize={16} />;
+    }
+
+    // Wrap with Suspense in parent
+    function App() {
+      return (
+        <Suspense fallback={null}>
+          <Level />
+        </Suspense>
+      );
     }
     ```
   </TabItem>
@@ -84,25 +90,88 @@ interface TileMapData {
 
 Load maps created with the [Tiled Map Editor](https://www.mapeditor.org/):
 
-```typescript
-import { TiledLoader } from '@three-flatland/core';
+<Tabs syncKey="framework">
+  <TabItem label="Three.js" icon="seti:javascript">
+    ```typescript
+    import { TileMap2D, TiledLoader } from '@three-flatland/core';
 
-const mapData = await TiledLoader.load('/maps/level1.json');
-const tilemap = new TileMap2D({ data: mapData });
-```
+    const mapData = await TiledLoader.load('/maps/level1.json');
+    const tilemap = new TileMap2D({ data: mapData });
+    scene.add(tilemap);
+    ```
+  </TabItem>
+  <TabItem label="React" icon="seti:react">
+    ```tsx
+    import { Suspense } from 'react';
+    import { extend, useLoader } from '@react-three/fiber/webgpu';
+    import { TileMap2D, TiledLoader } from '@three-flatland/react';
+
+    extend({ TileMap2D });
+
+    function TiledMap() {
+      const mapData = useLoader(TiledLoader, '/maps/level1.json');
+      return <tileMap2D data={mapData} />;
+    }
+
+    // Usage with Suspense
+    <Suspense fallback={<LoadingIndicator />}>
+      <TiledMap />
+    </Suspense>
+    ```
+  </TabItem>
+</Tabs>
 
 ### LDtk Editor (.ldtk)
 
 Load maps created with [LDtk](https://ldtk.io/):
 
-```typescript
-import { LDtkLoader } from '@three-flatland/core';
+<Tabs syncKey="framework">
+  <TabItem label="Three.js" icon="seti:javascript">
+    ```typescript
+    import { TileMap2D, LDtkLoader } from '@three-flatland/core';
 
-const project = await LDtkLoader.loadProject('/maps/world.ldtk');
-const level = await LDtkLoader.loadLevel(project, 'Level_0');
+    // Load a specific level by name
+    const mapData = await LDtkLoader.load('/maps/world.ldtk', 'Level_0');
+    const tilemap = new TileMap2D({ data: mapData });
+    scene.add(tilemap);
 
-const tilemap = new TileMap2D({ data: level.mapData });
-```
+    // List all levels in project
+    const levelIds = await LDtkLoader.getLevelIds('/maps/world.ldtk');
+    ```
+  </TabItem>
+  <TabItem label="React" icon="seti:react">
+    ```tsx
+    import { Suspense } from 'react';
+    import { extend, useLoader } from '@react-three/fiber/webgpu';
+    import { TileMap2D, LDtkLoader } from '@three-flatland/react';
+
+    extend({ TileMap2D });
+
+    function LDtkMap() {
+      // Loads first level by default
+      const mapData = useLoader(LDtkLoader, '/maps/world.ldtk');
+      return <tileMap2D data={mapData} />;
+    }
+
+    // Specify level via extension callback
+    function SpecificLevel() {
+      const mapData = useLoader(LDtkLoader, '/maps/world.ldtk', (loader) => {
+        loader.levelId = 'Level_0';
+      });
+      return <tileMap2D data={mapData} />;
+    }
+
+    // Usage with Suspense
+    <Suspense fallback={<LoadingIndicator />}>
+      <LDtkMap />
+    </Suspense>
+    ```
+  </TabItem>
+</Tabs>
+
+:::tip[Texture Configuration]
+See the [Loaders guide](/guides/loaders#texture-presets) to configure texture filtering for pixel-art or smooth rendering.
+:::
 
 ## Working with Layers
 

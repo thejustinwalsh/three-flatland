@@ -1,7 +1,15 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react'
 import { Canvas, useFrame, useLoader, useThree, extend } from '@react-three/fiber/webgpu'
-import { TextureLoader, NearestFilter, SRGBColorSpace, Vector2, Raycaster, Plane, Vector3, type Texture } from 'three'
-import { Sprite2D, Sprite2DMaterial, Renderer2D, Layers, type SpriteFrame, type RenderStats } from '@three-flatland/react'
+import { Vector2, Raycaster, Plane, Vector3, type Texture } from 'three'
+import {
+  Sprite2D,
+  Sprite2DMaterial,
+  Renderer2D,
+  Layers,
+  TextureLoader,
+  type SpriteFrame,
+  type RenderStats,
+} from '@three-flatland/react'
 
 // Extend R3F with our custom classes
 extend({ Renderer2D, Sprite2D, Sprite2DMaterial })
@@ -201,19 +209,10 @@ interface VillageSceneProps {
 function VillageScene({ entities, selectedBuilding, onPlaceBuilding, onStats }: VillageSceneProps) {
   const { camera, gl } = useThree()
 
-  // Load textures - destructure individually for stable references
+  // Load textures (presets are automatically applied - NearestFilter + SRGBColorSpace)
   const grassTex = useLoader(TextureLoader, ASSET_BASE + 'terrain/Tilemap_Flat.png')
   const shadowTex = useLoader(TextureLoader, ASSET_BASE + 'terrain/Shadows.png')
   const [houseTex, towerTex, treeTex] = useLoader(TextureLoader, BUILDING_TEXTURE_URLS) as Texture[]
-
-  // Configure textures once
-  useMemo(() => {
-    ;[grassTex, shadowTex, houseTex, towerTex, treeTex].forEach((tex) => {
-      tex.minFilter = NearestFilter
-      tex.magFilter = NearestFilter
-      tex.colorSpace = SRGBColorSpace
-    })
-  }, [grassTex, shadowTex, houseTex, towerTex, treeTex])
 
   // Create materials (stable - each texture is a stable reference)
   const grassMaterial = useMemo(() => new Sprite2DMaterial({ map: grassTex }), [grassTex])

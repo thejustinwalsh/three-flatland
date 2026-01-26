@@ -1,6 +1,6 @@
 import { WebGPURenderer } from 'three/webgpu'
-import { Scene, OrthographicCamera, Color, TextureLoader, SRGBColorSpace } from 'three'
-import { Sprite2D } from '@three-flatland/core'
+import { Scene, OrthographicCamera, Color } from 'three'
+import { Sprite2D, TextureLoader } from '@three-flatland/core'
 
 async function main() {
   // Scene setup
@@ -29,10 +29,8 @@ async function main() {
   // Wait for renderer to initialize
   await renderer.init()
 
-  // Load the flatland logo
-  const loader = new TextureLoader()
-  const texture = await loader.loadAsync(import.meta.env.BASE_URL + 'icon.svg')
-  texture.colorSpace = SRGBColorSpace
+  // Load the flatland logo (uses 'pixel-art' preset by default with proper colorSpace)
+  const texture = await TextureLoader.load(import.meta.env.BASE_URL + 'icon.svg')
 
   // Create sprite with explicit size (SVGs may not have proper dimensions)
   const spriteSize = 150

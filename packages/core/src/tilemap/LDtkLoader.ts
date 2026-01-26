@@ -1,4 +1,4 @@
-import { type Texture, TextureLoader, NearestFilter, SRGBColorSpace } from 'three'
+import { Loader } from 'three'
 import type {
   TileMapData,
   TilesetData,
@@ -7,6 +7,8 @@ import type {
   TileDefinition,
   TileMapObject,
 } from './types'
+import { type TexturePreset, type TextureOptions, resolveTextureOptions } from '../loaders/texturePresets'
+import { TextureLoader } from '../loaders/TextureLoader'
 
 /**
  * LDtk JSON format types.
@@ -130,8 +132,17 @@ interface LDtkFieldInstance {
 }
 
 /**
+ * Options for loading an LDtk project.
+ */
+export interface LDtkLoaderOptions {
+  /** Texture preset or custom options. Overrides loader and global defaults. */
+  texture?: TexturePreset | TextureOptions
+}
+
+/**
  * Loader for LDtk JSON format.
  *
+ * Extends Three.js's Loader class for compatibility with R3F's useLoader.
  * Supports:
  * - Single level or multi-level projects
  * - Tile layers (Tiles, AutoLayer, IntGrid)
@@ -142,24 +153,78 @@ interface LDtkFieldInstance {
  *
  * @example
  * ```typescript
- * // Load a specific level
+ * // Vanilla usage - static API
  * const mapData = await LDtkLoader.load('/maps/world.ldtk', 'Level_0')
- * const tilemap = new TileMap2D({ data: mapData })
  *
- * // Load entire project (all levels)
- * const allLevels = await LDtkLoader.loadProject('/maps/world.ldtk')
+ * // Override for this load
+ * const mapData = await LDtkLoader.load('/maps/world.ldtk', 'Level_0', { texture: 'smooth' })
+ *
+ * // R3F usage - works with useLoader (loads first level)
+ * import { LDtkLoader } from '@three-flatland/react';
+ * const mapData = useLoader(LDtkLoader, '/maps/world.ldtk');
+ *
+ * // Override preset via extension
+ * const mapData = useLoader(LDtkLoader, '/maps/world.ldtk', (loader) => {
+ *   loader.preset = 'smooth';
+ *   loader.levelId = 'Level_1';  // Specify level to load
+ * });
+ *
+ * // Set loader-level default
+ * LDtkLoader.options = 'pixel-art'
  * ```
  */
-export class LDtkLoader {
-  private static textureLoader = new TextureLoader()
+export class LDtkLoader extends Loader<TileMapData> {
   private static cache = new Map<string, Promise<LDtkProject>>()
 
   /**
-   * Load a single level from an LDtk project.
+   * Texture options for this loader class.
+   * When undefined, falls through to TextureConfig.options.
    */
-  static async load(url: string, levelId?: string | number): Promise<TileMapData> {
+  static options: TexturePreset | TextureOptions | undefined = undefined
+
+  /**
+   * Instance-level preset override.
+   * Set via R3F's useLoader extension callback.
+   */
+  preset: TexturePreset | TextureOptions | undefined = undefined
+
+  /**
+   * Level ID to load (for R3F useLoader).
+   * If undefined, loads the first level.
+   *
+   * @example
+   * ```tsx
+   * const mapData = useLoader(LDtkLoader, '/maps/world.ldtk', (loader) => {
+   *   loader.levelId = 'Level_1';
+   * });
+   * ```
+   */
+  levelId: string | number | undefined = undefined
+
+  /**
+   * Load an LDtk level asynchronously (for R3F useLoader compatibility).
+   * Presets and levelId are automatically applied from instance properties.
+   */
+  loadAsync(url: string): Promise<TileMapData> {
+    const resolved = resolveTextureOptions(this.preset, LDtkLoader.options)
+    return LDtkLoader.load(url, this.levelId, { texture: resolved })
+  }
+
+  // ==========================================
+  // Static API for vanilla usage
+  // ==========================================
+
+  /**
+   * Load a single level from an LDtk project (static method for vanilla usage).
+   */
+  static async load(
+    url: string,
+    levelId?: string | number,
+    options?: LDtkLoaderOptions
+  ): Promise<TileMapData> {
     const project = await this.loadProject(url)
     const baseUrl = url.substring(0, url.lastIndexOf('/') + 1)
+    const resolved = resolveTextureOptions(options?.texture, this.options)
 
     // Find level
     let level: LDtkLevel | undefined
@@ -175,7 +240,7 @@ export class LDtkLoader {
       throw new Error(`Level not found: ${levelId}`)
     }
 
-    return this.parseLevel(level, project, baseUrl)
+    return this.parseLevel(level, project, baseUrl, resolved)
   }
 
   /**
@@ -208,7 +273,8 @@ export class LDtkLoader {
   private static async parseLevel(
     level: LDtkLevel,
     project: LDtkProject,
-    baseUrl: string
+    baseUrl: string,
+    textureOptions: TexturePreset | TextureOptions
   ): Promise<TileMapData> {
     // Calculate map size in tiles (use first tile layer's grid)
     const firstTileLayer = level.layerInstances?.find(
@@ -232,7 +298,7 @@ export class LDtkLoader {
     for (const tsDef of project.defs.tilesets) {
       if (!usedTilesetUids.has(tsDef.uid)) continue
 
-      const tileset = await this.parseTileset(tsDef, baseUrl, firstGid)
+      const tileset = await this.parseTileset(tsDef, baseUrl, firstGid, textureOptions)
       tilesets.push(tileset)
       firstGid += tileset.tileCount
     }
@@ -289,7 +355,8 @@ export class LDtkLoader {
   private static async parseTileset(
     def: LDtkTilesetDef,
     baseUrl: string,
-    firstGid: number
+    firstGid: number,
+    textureOptions: TexturePreset | TextureOptions
   ): Promise<TilesetData> {
     const columns = Math.floor(def.pxWid / def.tileGridSize)
     const rows = Math.floor(def.pxHei / def.tileGridSize)
@@ -297,7 +364,7 @@ export class LDtkLoader {
 
     // Load texture
     const textureUrl = baseUrl + def.relPath
-    const texture = await this.loadTexture(textureUrl)
+    const texture = await this.loadTexture(textureUrl, textureOptions)
 
     // Parse tile definitions (custom data, enum tags)
     const tiles = new Map<number, TileDefinition>()
@@ -494,23 +561,10 @@ export class LDtkLoader {
   }
 
   /**
-   * Load a texture.
+   * Load a texture with the specified options.
    */
-  private static loadTexture(url: string): Promise<Texture> {
-    return new Promise((resolve, reject) => {
-      this.textureLoader.load(
-        url,
-        (texture) => {
-          texture.minFilter = NearestFilter
-          texture.magFilter = NearestFilter
-          texture.generateMipmaps = false
-          texture.colorSpace = SRGBColorSpace
-          resolve(texture)
-        },
-        undefined,
-        reject
-      )
-    })
+  private static loadTexture(url: string, preset: TexturePreset | TextureOptions) {
+    return TextureLoader.load(url, { texture: preset })
   }
 
   /**

@@ -13,6 +13,7 @@ PALETTE = {
     'white': '#f0edd8',
     'black': '#00021c',
     'pink': '#d94c87',
+    'dark_pink': '#8a2f55',
     'purple': '#732866',
     'dark_purple': '#3d1b47',
     'deep_purple': '#1e0f2e',
@@ -21,7 +22,9 @@ PALETTE = {
     'blue': '#0bafe6',
     'dark_blue': '#0a5580',
     'yellow': '#f2d24b',
+    'dark_yellow': '#a8912e',
     'orange': '#e87d3e',
+    'dark_orange': '#9c4a20',
     'green': '#5db858',
     'red': '#c93038',
     'navy': '#0a0b24',
@@ -78,6 +81,43 @@ def generate_dots_svg_4x(color: str, spacing: int = 4) -> str:
 def generate_crosshatch_svg_4x(color: str) -> str:
     """Generate 4x scaled crosshatch pattern (32x32)."""
     svg = f'<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32"><path d="M0,0 L32,32 M32,0 L0,32" stroke="{color}" stroke-width="4"/></svg>'
+    return svg_to_uri(svg)
+
+
+def generate_bayer_horizontal_gradient_svg(color: str, width_cells: int = 60, solid_cells: int = 40) -> str:
+    """
+    Generate a horizontal Bayer dither gradient SVG.
+    Creates a gradient that starts solid, then fades to transparent using Bayer dithering.
+    Uses proper 4x4 Bayer matrix thresholds for each column.
+
+    width_cells: total number of 4x4 Bayer cells horizontally (each cell is 16px wide at 4x scale)
+    solid_cells: number of cells that are fully solid before the dither fade begins
+    Default 60 cells = 960px wide, with 40 solid cells (640px solid) + 20 cells dither fade (320px)
+    """
+    pixels = []
+    pattern_width = width_cells * 4 * SCALE  # Total width in pixels
+    pattern_height = 4 * SCALE  # Height is one Bayer cell (16px)
+
+    fade_cells = width_cells - solid_cells  # Cells used for the dither fade
+
+    for cell_x in range(width_cells):
+        if cell_x < solid_cells:
+            # Solid region - full threshold
+            threshold = 16
+        else:
+            # Dither fade region
+            fade_progress = (cell_x - solid_cells) / (fade_cells - 1) if fade_cells > 1 else 0
+            threshold = int(16 * (1 - fade_progress))
+
+        for y, row in enumerate(BAYER_4x4):
+            for x, val in enumerate(row):
+                if val < threshold:
+                    # Position within the full pattern
+                    px = (cell_x * 4 + x) * SCALE
+                    py = y * SCALE
+                    pixels.append(f'<rect x="{px}" y="{py}" width="{SCALE}" height="{SCALE}" fill="{color}"/>')
+
+    svg = f'<svg xmlns="http://www.w3.org/2000/svg" width="{pattern_width}" height="{pattern_height}">{"".join(pixels)}</svg>'
     return svg_to_uri(svg)
 
 
@@ -232,6 +272,33 @@ def main():
     print("  /* Crosshatch - 32x32 with 4px strokes */")
     print(f"  --pattern-crosshatch: {generate_crosshatch_svg_4x(PALETTE['dark_purple'])};")
     print(f"  --pattern-crosshatch-light: {generate_crosshatch_svg_4x(PALETTE['purple'])};")
+    print()
+
+    # -------------------------------------------------------------------------
+    # HORIZONTAL BAYER GRADIENT PATTERNS (for callouts, etc.)
+    # -------------------------------------------------------------------------
+    print("  /* ==========================================================================")
+    print("     HORIZONTAL BAYER GRADIENTS - Dithered fade left to right")
+    print("     192px wide (12 cells), tiles vertically, use background-repeat: repeat-y")
+    print("     ========================================================================== */")
+    print()
+
+    print("  /* Callout accent gradients - light */")
+    print(f"  --gradient-bayer-cyan: {generate_bayer_horizontal_gradient_svg(PALETTE['cyan'])};")
+    print(f"  --gradient-bayer-pink: {generate_bayer_horizontal_gradient_svg(PALETTE['pink'])};")
+    print(f"  --gradient-bayer-orange: {generate_bayer_horizontal_gradient_svg(PALETTE['orange'])};")
+    print(f"  --gradient-bayer-blue: {generate_bayer_horizontal_gradient_svg(PALETTE['blue'])};")
+    print(f"  --gradient-bayer-yellow: {generate_bayer_horizontal_gradient_svg(PALETTE['yellow'])};")
+    print(f"  --gradient-bayer-purple: {generate_bayer_horizontal_gradient_svg(PALETTE['purple'])};")
+    print()
+
+    print("  /* Callout accent gradients - dark */")
+    print(f"  --gradient-bayer-dark-cyan: {generate_bayer_horizontal_gradient_svg(PALETTE['dark_cyan'])};")
+    print(f"  --gradient-bayer-dark-pink: {generate_bayer_horizontal_gradient_svg(PALETTE['dark_pink'])};")
+    print(f"  --gradient-bayer-dark-orange: {generate_bayer_horizontal_gradient_svg(PALETTE['dark_orange'])};")
+    print(f"  --gradient-bayer-dark-blue: {generate_bayer_horizontal_gradient_svg(PALETTE['dark_blue'])};")
+    print(f"  --gradient-bayer-dark-yellow: {generate_bayer_horizontal_gradient_svg(PALETTE['dark_yellow'])};")
+    print(f"  --gradient-bayer-dark-purple: {generate_bayer_horizontal_gradient_svg(PALETTE['dark_purple'])};")
     print()
 
     # -------------------------------------------------------------------------

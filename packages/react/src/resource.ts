@@ -1,8 +1,13 @@
 // @three-flatland/react/resource
 // React 19 resource utilities for three-flatland
 
-import { SpriteSheetLoader, type SpriteSheet } from '@three-flatland/core'
-import { TextureLoader, type Texture } from 'three'
+import {
+  SpriteSheetLoader,
+  TextureLoader,
+  type SpriteSheet,
+  type TextureLoaderOptions,
+} from '@three-flatland/core'
+import type { Texture } from 'three'
 
 /**
  * Create a resource for React 19's use() hook
@@ -72,12 +77,22 @@ export function spriteSheet(url: string): Promise<SpriteSheet> {
 /**
  * Create a Texture resource for use with React 19's use() hook.
  *
+ * Supports the hierarchical preset system:
+ * 1. Per-call options (highest priority)
+ * 2. TextureLoader.options (loader default)
+ * 3. TextureConfig.options (global default)
+ * 4. 'pixel-art' (system default)
+ *
  * @example
  * ```tsx
  * import { texture } from '@three-flatland/react/resource'
  * import { use } from 'react'
  *
+ * // Use global defaults (pixel-art)
  * const myTexture = texture('/sprites/player.png')
+ *
+ * // Override for this texture
+ * const hdTexture = texture('/sprites/ui.png', { texture: 'smooth' })
  *
  * function Player() {
  *   const tex = use(myTexture)
@@ -85,6 +100,6 @@ export function spriteSheet(url: string): Promise<SpriteSheet> {
  * }
  * ```
  */
-export function texture(url: string): Promise<Texture> {
-  return new TextureLoader().loadAsync(url)
+export function texture(url: string, options?: TextureLoaderOptions): Promise<Texture> {
+  return TextureLoader.load(url, options)
 }

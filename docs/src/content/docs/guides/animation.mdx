@@ -11,12 +11,9 @@ three-flatland supports frame-based animation using spritesheets. The `AnimatedS
   <TabItem label="Three.js" icon="seti:javascript">
     ```typescript
     import { AnimatedSprite2D, SpriteSheetLoader, Layers } from '@three-flatland/core';
-    import { NearestFilter } from 'three';
 
-    // Load spritesheet (Aseprite JSON format)
+    // Load spritesheet (texture presets automatically applied)
     const spriteSheet = await SpriteSheetLoader.load('/sprites/character.json');
-    spriteSheet.texture.minFilter = NearestFilter;
-    spriteSheet.texture.magFilter = NearestFilter;
 
     // Create animated sprite
     const sprite = new AnimatedSprite2D({
@@ -58,15 +55,19 @@ three-flatland supports frame-based animation using spritesheets. The `AnimatedS
   </TabItem>
   <TabItem label="React" icon="seti:react">
     ```tsx
-    import { useRef } from 'react';
-    import { useFrame } from '@react-three/fiber/webgpu';
+    import { Suspense, useRef } from 'react';
+    import { extend, useFrame, useLoader } from '@react-three/fiber/webgpu';
     import { AnimatedSprite2D, SpriteSheetLoader, Layers } from '@three-flatland/react';
 
-    function Character({ spriteSheet }) {
+    extend({ AnimatedSprite2D });
+
+    function Character() {
+      // useLoader suspends while loading, presets applied automatically
+      const spriteSheet = useLoader(SpriteSheetLoader, '/sprites/character.json');
       const spriteRef = useRef<AnimatedSprite2D>(null);
 
       useFrame((_, delta) => {
-        spriteRef.current?.update(delta * 1000); // Convert to ms
+        spriteRef.current?.update(delta * 1000);
       });
 
       return (
@@ -84,6 +85,15 @@ three-flatland supports frame-based animation using spritesheets. The `AnimatedS
           layer={Layers.ENTITIES}
           scale={[64, 64, 1]}
         />
+      );
+    }
+
+    // Wrap with Suspense in parent
+    function App() {
+      return (
+        <Suspense fallback={null}>
+          <Character />
+        </Suspense>
       );
     }
     ```
@@ -158,23 +168,22 @@ sprite.play('attack', {
 
 ## Loading Spritesheets
 
-The `SpriteSheetLoader` supports Aseprite JSON format:
+The `SpriteSheetLoader` supports Aseprite JSON format. Texture presets (like `NearestFilter` for pixel art) are automatically applied:
 
 ```typescript
 import { SpriteSheetLoader } from '@three-flatland/core';
-import { NearestFilter } from 'three';
 
-// Load spritesheet
+// Load spritesheet (presets automatically applied)
 const spriteSheet = await SpriteSheetLoader.load('/sprites/character.json');
-
-// Configure for pixel art
-spriteSheet.texture.minFilter = NearestFilter;
-spriteSheet.texture.magFilter = NearestFilter;
 
 // Access frame data
 const frame = spriteSheet.getFrame('idle_0');
 console.log(frame); // { x, y, width, height, sourceWidth, sourceHeight, ... }
 ```
+
+:::tip[Texture Configuration]
+See the [Loaders guide](/guides/loaders#texture-presets) to configure presets for smooth or pixel-art rendering.
+:::
 
 ## Update Loop
 

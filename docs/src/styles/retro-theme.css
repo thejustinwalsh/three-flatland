@@ -832,12 +832,10 @@ th {
 }
 
 /* -----------------------------------------------------------------------------
-   CARDS & CALLOUTS - 4x scaled dithering
+   CARDS - 4x scaled dithering
    ----------------------------------------------------------------------------- */
 .card,
-.sl-link-card,
-.callout,
-.aside {
+.sl-link-card {
   /* Diagonal gradient with visible dither overlay */
   background:
     var(--dither-dark-50),
@@ -874,70 +872,149 @@ th {
 }
 
 /* -----------------------------------------------------------------------------
-   CALLOUTS/ASIDES - Colored backgrounds per type
+   CALLOUTS/ASIDES - Compact with horizontal Bayer dither gradient
+   Three distinct color zones: border | dither | background
+   Uses color theory: dark bg + vibrant accent + white text
    ----------------------------------------------------------------------------- */
-.starlight-aside--note,
-.aside[data-type="note"] {
-  background:
-    var(--dither-blue-12),
-    linear-gradient(
-      135deg,
-      var(--retro-navy) 0%,
-      var(--retro-navy) 60%,
-      var(--retro-deep-purple) 100%
-    ) !important;
-  background-size: var(--dither-size) var(--dither-size), 100% 100% !important;
-  border-left: 4px solid var(--retro-blue) !important;
+.starlight-aside,
+.callout,
+.aside {
+  /* CSS variables for theming - override per type */
+  --aside-bg: var(--retro-deep-purple);
+  --aside-accent: var(--retro-blue);
+  --aside-gradient: var(--gradient-bayer-blue);
+
+  /* Solid background with horizontal dither fade overlay */
+  position: relative;
+  background: var(--aside-bg) !important;
+  border: none !important;
+  border-left: 4px solid var(--aside-accent) !important;
+  box-shadow: 2px 2px 0 var(--retro-black);
+  padding: var(--space-sm) var(--space-md) !important;
+  margin: var(--space-md) 0 !important;
+  overflow: hidden;
 }
 
-.starlight-aside--tip,
-.aside[data-type="tip"] {
-  background:
-    var(--dither-cyan-12),
-    linear-gradient(
-      135deg,
-      var(--retro-dark-cyan) 0%,
-      rgba(27, 107, 90, 0.6) 60%,
-      var(--retro-deep-purple) 100%
-    ) !important;
-  background-size: var(--dither-size) var(--dither-size), 100% 100% !important;
-  border-left: 4px solid var(--retro-cyan) !important;
+/* Horizontal Bayer dither gradient overlay - reduced opacity for readability */
+.starlight-aside::before,
+.callout::before,
+.aside::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0; /* Align right edge with container */
+  bottom: 0;
+  width: 960px; /* Width of Bayer gradient pattern (60 cells * 16px) - overflows left */
+  background: var(--aside-gradient);
+  background-repeat: repeat-y;
+  pointer-events: none;
+  opacity: 0.4; /* Reduced for better text contrast */
 }
 
-.starlight-aside--caution,
-.aside[data-type="caution"] {
-  background:
-    var(--dither-orange-12),
-    linear-gradient(
-      135deg,
-      rgba(232, 125, 62, 0.2) 0%,
-      rgba(232, 125, 62, 0.1) 60%,
-      var(--retro-deep-purple) 100%
-    ) !important;
-  background-size: var(--dither-size) var(--dither-size), 100% 100% !important;
-  border-left: 4px solid var(--retro-orange) !important;
-}
-
-.starlight-aside--danger,
-.aside[data-type="danger"] {
-  background:
-    var(--dither-pink-12),
-    linear-gradient(
-      135deg,
-      rgba(217, 76, 135, 0.2) 0%,
-      rgba(217, 76, 135, 0.1) 60%,
-      var(--retro-deep-purple) 100%
-    ) !important;
-  background-size: var(--dither-size) var(--dither-size), 100% 100% !important;
-  border-left: 4px solid var(--retro-pink) !important;
-}
-
-/* Aside titles */
+/* Aside titles - white with drop shadow for readability */
 .starlight-aside__title,
 .aside .title {
   font-family: var(--font-pixel) !important;
   text-transform: uppercase;
   letter-spacing: 0.05em;
+  font-size: 1rem !important;
+  margin-bottom: var(--space-xs) !important;
+  color: var(--retro-white) !important;
+  text-shadow: 1px 1px 0 var(--retro-black);
+  position: relative;
+  z-index: 1;
+}
+
+/* Icon - the SVG element itself has .starlight-aside__icon class */
+/* Hide the SVG paths and use background-image instead */
+svg.starlight-aside__icon {
+  overflow: visible;
+  filter: drop-shadow(1px 1px 0 var(--retro-black));
+}
+
+svg.starlight-aside__icon path {
+  display: none;
+}
+
+svg.starlight-aside__icon::before {
+  content: '';
+  display: block;
+  width: 24px;
+  height: 24px;
+  background-size: contain;
+  background-repeat: no-repeat;
+  image-rendering: pixelated;
+}
+
+/* Note icon - notes/notepad (blue) */
+.starlight-aside--note svg.starlight-aside__icon {
+  background-image: url("data:image/svg+xml,%3Csvg fill='none' xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M5 2h16v20H3V2h2zm14 18V4H5v16h14zM7 6h10v2H7V6zm10 4H7v2h10v-2zM7 14h7v2H7v-2z' fill='%230bafe6'/%3E%3C/svg%3E");
+  background-size: contain;
+}
+
+/* Tip icon - ship/rocket (cyan) */
+.starlight-aside--tip svg.starlight-aside__icon {
+  background-image: url("data:image/svg+xml,%3Csvg fill='none' xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M8 4v2h4v2H6v2h6V8h2v2h8v6h-2v-4H4v6h14v-2h2v2h4v2H0v-2h2v-8h2V6h2V4h2z' fill='%2347cca9'/%3E%3C/svg%3E");
+  background-size: contain;
+}
+
+/* Caution icon - warning-box (orange) */
+.starlight-aside--caution svg.starlight-aside__icon {
+  background-image: url("data:image/svg+xml,%3Csvg fill='none' xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M3 3h16v2H5v14h14v2H3V3zm18 0h-2v18h2V3zM11 15h2v2h-2v-2zm2-8h-2v6h2V7z' fill='%23e87d3e'/%3E%3C/svg%3E");
+  background-size: contain;
+}
+
+/* Danger icon - alert (pink) */
+.starlight-aside--danger svg.starlight-aside__icon {
+  background-image: url("data:image/svg+xml,%3Csvg fill='none' xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M13 1h-2v2H9v2H7v2H5v2H3v2H1v2h2v2h2v2h2v2h2v2h2v2h2v-2h2v-2h2v-2h2v-2h2v-2h2v-2h-2V9h-2V7h-2V5h-2V3h-2V1zm0 2v2h2v2h2v2h2v2h2v2h-2v2h-2v2h-2v2h-2v2h-2v-2H9v-2H7v-2H5v-2H3v-2h2V9h2V7h2V5h2V3h2zm0 4h-2v6h2V7zm0 8h-2v2h2v-2z' fill='%23d94c87'/%3E%3C/svg%3E");
+  background-size: contain;
+}
+
+/* Aside content - compact with drop shadow for readability */
+.starlight-aside p,
+.aside p,
+.callout p {
+  margin: 0 !important;
+  font-size: 0.9rem;
+  position: relative;
+  z-index: 1;
+  text-shadow: 1px 1px 0 rgba(0, 2, 28, 0.5);
+}
+
+/* =============================================================================
+   CALLOUT TYPES - Unique dark bg per type + light dither + light border
+   ============================================================================= */
+
+/* Note type - Dark blue bg, light blue dither/border */
+.starlight-aside--note,
+.aside[data-type="note"] {
+  --aside-bg: #0a1a2e; /* Dark navy blue */
+  --aside-accent: var(--retro-blue);
+  --aside-gradient: var(--gradient-bayer-blue);
+}
+
+/* Tip type - Dark teal bg, light cyan dither/border */
+.starlight-aside--tip,
+.aside[data-type="tip"] {
+  --aside-bg: #0a2622; /* Dark teal */
+  --aside-accent: var(--retro-cyan);
+  --aside-gradient: var(--gradient-bayer-cyan);
+}
+
+/* Caution type - Dark brown bg, light orange dither/border */
+.starlight-aside--caution,
+.aside[data-type="caution"] {
+  --aside-bg: #2a1a0a; /* Dark brown */
+  --aside-accent: var(--retro-orange);
+  --aside-gradient: var(--gradient-bayer-orange);
+}
+
+/* Danger type - Dark maroon bg, light pink dither/border */
+.starlight-aside--danger,
+.aside[data-type="danger"] {
+  --aside-bg: #2a0a1a; /* Dark maroon */
+  --aside-accent: var(--retro-pink);
+  --aside-gradient: var(--gradient-bayer-pink);
 }
 
 /* -----------------------------------------------------------------------------

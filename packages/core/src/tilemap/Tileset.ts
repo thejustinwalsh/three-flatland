@@ -1,5 +1,11 @@
-import { type Texture, NearestFilter, ClampToEdgeWrapping } from 'three'
+import type { Texture } from 'three'
 import type { TilesetData, TileDefinition, TileAnimationFrame } from './types'
+import {
+  type TexturePreset,
+  type TextureOptions,
+  applyTextureOptions,
+  TextureConfig,
+} from '../loaders/texturePresets'
 
 /**
  * Represents a tileset with tile definitions and texture atlas.
@@ -48,6 +54,9 @@ export class Tileset {
   /** Texture atlas */
   private _texture: Texture | null = null
 
+  /** Texture options for this tileset */
+  private _textureOptions: TexturePreset | TextureOptions | undefined
+
   /** Tile definitions (keyed by local ID, not GID) */
   private tiles: Map<number, TileDefinition> = new Map()
 
@@ -88,16 +97,32 @@ export class Tileset {
 
   /**
    * Set the texture atlas.
+   * Applies texture options from textureOptions property or TextureConfig.options.
    */
   set texture(value: Texture | null) {
     this._texture = value
     if (value) {
-      // Configure for pixel-perfect rendering
-      value.minFilter = NearestFilter
-      value.magFilter = NearestFilter
-      value.wrapS = ClampToEdgeWrapping
-      value.wrapT = ClampToEdgeWrapping
-      value.generateMipmaps = false
+      const opts = this._textureOptions ?? TextureConfig.options
+      applyTextureOptions(value, opts)
+    }
+  }
+
+  /**
+   * Get the texture options for this tileset.
+   */
+  get textureOptions(): TexturePreset | TextureOptions | undefined {
+    return this._textureOptions
+  }
+
+  /**
+   * Set the texture options for this tileset.
+   * If a texture is already set, it will be updated with the new options.
+   */
+  set textureOptions(value: TexturePreset | TextureOptions | undefined) {
+    this._textureOptions = value
+    if (this._texture) {
+      const opts = value ?? TextureConfig.options
+      applyTextureOptions(this._texture, opts)
     }
   }
 

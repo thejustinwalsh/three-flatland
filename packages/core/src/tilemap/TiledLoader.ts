@@ -1,4 +1,4 @@
-import { type Texture, TextureLoader, NearestFilter, SRGBColorSpace } from 'three'
+import { Loader } from 'three'
 import type {
   TileMapData,
   TilesetData,
@@ -7,6 +7,8 @@ import type {
   TileDefinition,
   CollisionShape,
 } from './types'
+import { type TexturePreset, type TextureOptions, resolveTextureOptions } from '../loaders/texturePresets'
+import { TextureLoader } from '../loaders/TextureLoader'
 
 /**
  * Tiled JSON format types.
@@ -104,8 +106,17 @@ interface TiledProperty {
 }
 
 /**
+ * Options for loading a Tiled map.
+ */
+export interface TiledLoaderOptions {
+  /** Texture preset or custom options. Overrides loader and global defaults. */
+  texture?: TexturePreset | TextureOptions
+}
+
+/**
  * Loader for Tiled JSON format (.tmj/.json).
  *
+ * Extends Three.js's Loader class for compatibility with R3F's useLoader.
  * Supports:
  * - Standard JSON map format
  * - Embedded and external tilesets
@@ -117,33 +128,92 @@ interface TiledProperty {
  *
  * @example
  * ```typescript
+ * // Vanilla usage - static API
  * const mapData = await TiledLoader.load('/maps/level1.json')
- * const tilemap = new TileMap2D({ data: mapData })
- * scene.add(tilemap)
+ *
+ * // Override for this load
+ * const mapData = await TiledLoader.load('/maps/hd-level.json', { texture: 'smooth' })
+ *
+ * // R3F usage - works with useLoader
+ * import { TiledLoader } from '@three-flatland/react';
+ * const mapData = useLoader(TiledLoader, '/maps/level1.json');
+ *
+ * // Override preset via extension
+ * const mapData = useLoader(TiledLoader, '/maps/hd-level.json', (loader) => {
+ *   loader.preset = 'smooth';
+ * });
+ *
+ * // Set loader-level default
+ * TiledLoader.options = 'pixel-art'
  * ```
  */
-export class TiledLoader {
-  private static textureLoader = new TextureLoader()
+export class TiledLoader extends Loader<TileMapData> {
   private static cache = new Map<string, Promise<TileMapData>>()
 
   /**
-   * Load a Tiled JSON map.
-   * Results are cached by URL.
+   * Texture options for this loader class.
+   * When undefined, falls through to TextureConfig.options.
    */
-  static load(url: string): Promise<TileMapData> {
-    if (this.cache.has(url)) {
-      return this.cache.get(url)!
+  static options: TexturePreset | TextureOptions | undefined = undefined
+
+  /**
+   * Instance-level preset override.
+   * Set via R3F's useLoader extension callback.
+   *
+   * @example
+   * ```tsx
+   * const mapData = useLoader(TiledLoader, '/maps/level.json', (loader) => {
+   *   loader.preset = 'smooth';
+   * });
+   * ```
+   */
+  preset: TexturePreset | TextureOptions | undefined = undefined
+
+  /**
+   * Load a Tiled map asynchronously (for R3F useLoader compatibility).
+   * Presets are automatically applied.
+   */
+  loadAsync(url: string): Promise<TileMapData> {
+    const resolved = resolveTextureOptions(this.preset, TiledLoader.options)
+    return TiledLoader.loadUncached(url, { texture: resolved })
+  }
+
+  // ==========================================
+  // Static API for vanilla usage
+  // ==========================================
+
+  /**
+   * Load a Tiled JSON map (static method for vanilla usage).
+   * Results are cached by URL and resolved options.
+   */
+  static load(url: string, options?: TiledLoaderOptions): Promise<TileMapData> {
+    const cacheKey = this.getCacheKey(url, options)
+
+    if (this.cache.has(cacheKey)) {
+      return this.cache.get(cacheKey)!
     }
 
-    const promise = this.loadUncached(url)
-    this.cache.set(url, promise)
+    const promise = this.loadUncached(url, options)
+    this.cache.set(cacheKey, promise)
     return promise
+  }
+
+  /**
+   * Get cache key including resolved options.
+   */
+  private static getCacheKey(url: string, options?: TiledLoaderOptions): string {
+    const resolved = resolveTextureOptions(options?.texture, this.options)
+    const optionsKey = typeof resolved === 'string' ? resolved : JSON.stringify(resolved)
+    return `${url}:${optionsKey}`
   }
 
   /**
    * Load without caching.
    */
-  private static async loadUncached(url: string): Promise<TileMapData> {
+  private static async loadUncached(
+    url: string,
+    options?: TiledLoaderOptions
+  ): Promise<TileMapData> {
     const response = await fetch(url)
     if (!response.ok) {
       throw new Error(`Failed to load Tiled map: ${url}`)
@@ -151,18 +221,23 @@ export class TiledLoader {
 
     const json = (await response.json()) as TiledMap
     const baseUrl = url.substring(0, url.lastIndexOf('/') + 1)
+    const resolved = resolveTextureOptions(options?.texture, this.options)
 
-    return this.parseMap(json, baseUrl)
+    return this.parseMap(json, baseUrl, resolved)
   }
 
   /**
    * Parse Tiled JSON map.
    */
-  private static async parseMap(json: TiledMap, baseUrl: string): Promise<TileMapData> {
+  private static async parseMap(
+    json: TiledMap,
+    baseUrl: string,
+    textureOptions: TexturePreset | TextureOptions
+  ): Promise<TileMapData> {
     // Load tilesets (including external ones)
     const tilesets: TilesetData[] = []
     for (const ts of json.tilesets) {
-      const tileset = await this.parseTileset(ts, baseUrl)
+      const tileset = await this.parseTileset(ts, baseUrl, textureOptions)
       tilesets.push(tileset)
     }
 
@@ -200,7 +275,11 @@ export class TiledLoader {
   /**
    * Parse tileset (embedded or external).
    */
-  private static async parseTileset(ts: TiledTileset, baseUrl: string): Promise<TilesetData> {
+  private static async parseTileset(
+    ts: TiledTileset,
+    baseUrl: string,
+    textureOptions: TexturePreset | TextureOptions
+  ): Promise<TilesetData> {
     // Handle external tileset reference
     if (ts.source) {
       const externalUrl = baseUrl + ts.source
@@ -211,7 +290,7 @@ export class TiledLoader {
       const externalTs = (await response.json()) as TiledTileset
       // Merge firstgid from reference
       externalTs.firstgid = ts.firstgid
-      return this.parseTileset(externalTs, baseUrl)
+      return this.parseTileset(externalTs, baseUrl, textureOptions)
     }
 
     // Parse tile definitions
@@ -244,7 +323,7 @@ export class TiledLoader {
 
     // Load texture
     const textureUrl = baseUrl + ts.image
-    const texture = await this.loadTexture(textureUrl)
+    const texture = await this.loadTexture(textureUrl, textureOptions)
 
     return {
       name: ts.name,
@@ -453,24 +532,10 @@ export class TiledLoader {
   }
 
   /**
-   * Load a texture.
+   * Load a texture with the specified options.
    */
-  private static loadTexture(url: string): Promise<Texture> {
-    return new Promise((resolve, reject) => {
-      this.textureLoader.load(
-        url,
-        (texture) => {
-          // Configure for pixel-perfect rendering
-          texture.minFilter = NearestFilter
-          texture.magFilter = NearestFilter
-          texture.generateMipmaps = false
-          texture.colorSpace = SRGBColorSpace
-          resolve(texture)
-        },
-        undefined,
-        reject
-      )
-    })
+  private static loadTexture(url: string, preset: TexturePreset | TextureOptions) {
+    return TextureLoader.load(url, { texture: preset })
   }
 
   /**
@@ -483,7 +548,7 @@ export class TiledLoader {
   /**
    * Preload multiple maps.
    */
-  static preload(urls: string[]): Promise<TileMapData[]> {
-    return Promise.all(urls.map((url) => this.load(url)))
+  static preload(urls: string[], options?: TiledLoaderOptions): Promise<TileMapData[]> {
+    return Promise.all(urls.map((url) => this.load(url, options)))
   }
 }

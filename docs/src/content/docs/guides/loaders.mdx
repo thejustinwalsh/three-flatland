@@ -1,0 +1,496 @@
+---
+title: Loaders
+description: Load spritesheets and tilemaps with configurable texture presets.
+---
+
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
+three-flatland provides loaders for common 2D asset formats. All loaders share a unified texture configuration system with hierarchical presets.
+
+## Available Loaders
+
+| Loader | Format | Use Case |
+|--------|--------|----------|
+| `TextureLoader` | PNG, JPG, SVG, etc. | Single textures with preset support |
+| `SpriteSheetLoader` | TexturePacker JSON | Spritesheets and atlases |
+| `TiledLoader` | Tiled .json/.tmj | Tile-based maps |
+| `LDtkLoader` | LDtk .ldtk | Level design with entities |
+
+## TextureLoader
+
+Load textures with automatic preset application. Works seamlessly with R3F's `useLoader`.
+
+<Tabs syncKey="framework">
+  <TabItem label="Three.js" icon="seti:javascript">
+    ```typescript
+    import { TextureLoader, Sprite2D } from '@three-flatland/core';
+
+    // Load texture (presets automatically applied)
+    const texture = await TextureLoader.load('/sprites/player.png');
+
+    const sprite = new Sprite2D({ texture });
+    ```
+  </TabItem>
+  <TabItem label="React" icon="seti:react">
+    ```tsx
+    import { useLoader } from '@react-three/fiber/webgpu';
+    import { TextureLoader, Sprite2D } from '@three-flatland/react';
+    import { extend } from '@react-three/fiber/webgpu';
+
+    extend({ Sprite2D });
+
+    function Player() {
+      // Presets automatically applied (pixel-art by default)
+      const texture = useLoader(TextureLoader, '/sprites/player.png');
+
+      return <sprite2D texture={texture} />;
+    }
+    ```
+  </TabItem>
+</Tabs>
+
+### Multiple Textures
+
+<Tabs syncKey="framework">
+  <TabItem label="Three.js" icon="seti:javascript">
+    ```typescript
+    import { TextureLoader } from '@three-flatland/core';
+
+    // Preload multiple textures
+    const textures = await TextureLoader.preload([
+      '/sprites/player.png',
+      '/sprites/enemy.png',
+      '/sprites/items.png',
+    ]);
+    ```
+  </TabItem>
+  <TabItem label="React" icon="seti:react">
+    ```tsx
+    import { useLoader } from '@react-three/fiber/webgpu';
+    import { TextureLoader } from '@three-flatland/react';
+
+    // Define URLs at module level for stable references
+    const TEXTURE_URLS = ['/sprites/player.png', '/sprites/enemy.png', '/sprites/items.png'];
+
+    function Game() {
+      // Load multiple textures at once
+      const [playerTex, enemyTex, itemsTex] = useLoader(TextureLoader, TEXTURE_URLS);
+      // ...
+    }
+    ```
+  </TabItem>
+</Tabs>
+
+### Override Presets
+
+<Tabs syncKey="framework">
+  <TabItem label="Three.js" icon="seti:javascript">
+    ```typescript
+    // Override preset for specific texture
+    const smoothTexture = await TextureLoader.load('/sprites/hd-ui.png', {
+      texture: 'smooth'
+    });
+    ```
+  </TabItem>
+  <TabItem label="React" icon="seti:react">
+    ```tsx
+    // Override preset via extension callback
+    const smoothTexture = useLoader(TextureLoader, '/sprites/hd-ui.png', (loader) => {
+      loader.preset = 'smooth';
+    });
+    ```
+  </TabItem>
+</Tabs>
+
+## SpriteSheetLoader
+
+Load spritesheets exported from [TexturePacker](https://www.codeandweb.com/texturepacker) or compatible tools.
+
+<Tabs syncKey="framework">
+  <TabItem label="Three.js" icon="seti:javascript">
+    ```typescript
+    import { SpriteSheetLoader, Sprite2D } from '@three-flatland/core';
+
+    const sheet = await SpriteSheetLoader.load('/sprites/player.json');
+
+    // Access frames
+    const idleFrame = sheet.getFrame('player_idle_0');
+    const allFrames = sheet.getFrameNames();
+
+    // Use with Sprite2D
+    const sprite = new Sprite2D({ texture: sheet.texture });
+    sprite.setFrame(idleFrame);
+    ```
+  </TabItem>
+  <TabItem label="React" icon="seti:react">
+    ```tsx
+    import { Suspense } from 'react';
+    import { useLoader } from '@react-three/fiber/webgpu';
+    import { SpriteSheetLoader, Sprite2D } from '@three-flatland/react';
+    import { extend } from '@react-three/fiber/webgpu';
+
+    extend({ Sprite2D });
+
+    function Player() {
+      // useLoader suspends while loading, presets applied automatically
+      const sheet = useLoader(SpriteSheetLoader, '/sprites/player.json');
+      const frame = sheet.getFrame('player_idle_0');
+
+      return <sprite2D texture={sheet.texture} frame={frame} />;
+    }
+
+    // Wrap with Suspense
+    <Suspense fallback={null}>
+      <Player />
+    </Suspense>
+    ```
+  </TabItem>
+</Tabs>
+
+### Multiple Spritesheets
+
+<Tabs syncKey="framework">
+  <TabItem label="Three.js" icon="seti:javascript">
+    ```typescript
+    const sheets = await SpriteSheetLoader.preload([
+      '/sprites/player.json',
+      '/sprites/enemies.json',
+    ]);
+    ```
+  </TabItem>
+  <TabItem label="React" icon="seti:react">
+    ```tsx
+    // Define URLs at module level for stable references
+    const SHEET_URLS = ['/sprites/player.json', '/sprites/enemies.json'];
+
+    function Game() {
+      const [playerSheet, enemySheet] = useLoader(SpriteSheetLoader, SHEET_URLS);
+      // ...
+    }
+    ```
+  </TabItem>
+</Tabs>
+
+### Supported Formats
+
+- **JSON Hash** (TexturePacker default) - Frames as object properties
+- **JSON Array** - Frames as array with `filename` property
+
+## TiledLoader
+
+Load maps from [Tiled Map Editor](https://www.mapeditor.org/). See the [Tilemaps guide](/guides/tilemaps) for detailed usage.
+
+<Tabs syncKey="framework">
+  <TabItem label="Three.js" icon="seti:javascript">
+    ```typescript
+    import { TiledLoader, TileMap2D } from '@three-flatland/core';
+
+    const mapData = await TiledLoader.load('/maps/level1.json');
+    const tilemap = new TileMap2D({ data: mapData });
+    ```
+  </TabItem>
+  <TabItem label="React" icon="seti:react">
+    ```tsx
+    import { Suspense } from 'react';
+    import { useLoader } from '@react-three/fiber/webgpu';
+    import { TiledLoader, TileMap2D } from '@three-flatland/react';
+    import { extend } from '@react-three/fiber/webgpu';
+
+    extend({ TileMap2D });
+
+    function Level() {
+      const mapData = useLoader(TiledLoader, '/maps/level1.json');
+      return <tileMap2D data={mapData} />;
+    }
+
+    // Wrap with Suspense
+    <Suspense fallback={null}>
+      <Level />
+    </Suspense>
+    ```
+  </TabItem>
+</Tabs>
+
+### Features
+
+- Embedded and external tilesets
+- Tile layers with flip flags
+- Object layers for entities and collision
+- Tile animations
+- Infinite maps with chunks
+
+## LDtkLoader
+
+Load projects from [LDtk](https://ldtk.io/). See the [Tilemaps guide](/guides/tilemaps) for detailed usage.
+
+<Tabs syncKey="framework">
+  <TabItem label="Three.js" icon="seti:javascript">
+    ```typescript
+    import { LDtkLoader, TileMap2D } from '@three-flatland/core';
+
+    // Load a specific level
+    const mapData = await LDtkLoader.load('/maps/world.ldtk', 'Level_0');
+    const tilemap = new TileMap2D({ data: mapData });
+
+    // List all levels in project
+    const levelIds = await LDtkLoader.getLevelIds('/maps/world.ldtk');
+    ```
+  </TabItem>
+  <TabItem label="React" icon="seti:react">
+    ```tsx
+    import { Suspense } from 'react';
+    import { useLoader } from '@react-three/fiber/webgpu';
+    import { LDtkLoader, TileMap2D } from '@three-flatland/react';
+    import { extend } from '@react-three/fiber/webgpu';
+
+    extend({ TileMap2D });
+
+    function Level() {
+      // Loads first level by default
+      const mapData = useLoader(LDtkLoader, '/maps/world.ldtk');
+      return <tileMap2D data={mapData} />;
+    }
+
+    // Specify level via extension callback
+    function SpecificLevel() {
+      const mapData = useLoader(LDtkLoader, '/maps/world.ldtk', (loader) => {
+        loader.levelId = 'Level_1';
+      });
+      return <tileMap2D data={mapData} />;
+    }
+
+    // Wrap with Suspense
+    <Suspense fallback={null}>
+      <Level />
+    </Suspense>
+    ```
+  </TabItem>
+</Tabs>
+
+### Features
+
+- Multi-level projects
+- Tile layers (Tiles, AutoLayer, IntGrid)
+- Entity layers with custom fields
+- IntGrid collision data
+- Tile flip flags
+
+## Texture Presets
+
+All loaders use a unified texture configuration system. Presets control filtering, wrapping, and mipmaps.
+
+### Available Presets
+
+| Preset | Filtering | Wrap | Mipmaps | Best For |
+|--------|-----------|------|---------|----------|
+| `'pixel-art'` | Nearest | Clamp | Off | Pixel art, retro games, tilemaps |
+| `'smooth'` | Linear | Clamp | On | HD sprites, smooth graphics |
+| `'none'` | — | — | — | Full manual control |
+
+### Configuration Hierarchy
+
+Texture options follow a hierarchy (highest to lowest priority):
+
+```
+Instance preset/options  →  Loader.options  →  TextureConfig.options  →  'pixel-art'
+     (highest)                (middle)            (lowest)              (default)
+```
+
+For `TextureLoader` with R3F's `useLoader`, the instance preset is set via the extension callback:
+
+```tsx
+// Instance-level override via extension
+const texture = useLoader(TextureLoader, '/sprite.png', (loader) => {
+  loader.preset = 'smooth';  // Highest priority
+});
+```
+
+Each level overrides the ones below it. If nothing is set, `'pixel-art'` is used.
+
+### Global Configuration
+
+Set a system-wide default for all loaders:
+
+```typescript
+import { TextureConfig } from '@three-flatland/core';
+
+// Change global default
+TextureConfig.options = 'smooth';
+
+// All loaders now use smooth filtering
+const sheet = await SpriteSheetLoader.load('/sprites/player.json');
+const mapData = await TiledLoader.load('/maps/level.json');
+
+// Reset to system default
+TextureConfig.reset();  // Back to 'pixel-art'
+```
+
+### Per-Loader Configuration
+
+Override the default for a specific loader type:
+
+```typescript
+import { TextureLoader, SpriteSheetLoader, TiledLoader } from '@three-flatland/core';
+
+// HD textures with smooth filtering
+TextureLoader.options = 'smooth';
+
+// HD sprites with smooth filtering
+SpriteSheetLoader.options = 'smooth';
+
+// Tilemaps stay pixel-perfect
+TiledLoader.options = 'pixel-art';
+
+// Now these use different settings
+const texture = await TextureLoader.load('/sprites/hd-player.png');    // smooth
+const sprites = await SpriteSheetLoader.load('/sprites/ui.json');      // smooth
+const mapData = await TiledLoader.load('/maps/dungeon.json');          // pixel-art
+```
+
+### Per-Instance Configuration
+
+Override for a specific load call:
+
+<Tabs syncKey="framework">
+  <TabItem label="Three.js" icon="seti:javascript">
+    ```typescript
+    // One-off override
+    const hdSheet = await SpriteSheetLoader.load('/sprites/hd-ui.json', {
+      texture: 'smooth'
+    });
+
+    // Custom options
+    const customSheet = await SpriteSheetLoader.load('/sprites/special.json', {
+      texture: {
+        minFilter: LinearFilter,
+        magFilter: NearestFilter,  // Mix filtering modes
+      }
+    });
+    ```
+  </TabItem>
+  <TabItem label="React" icon="seti:react">
+    ```tsx
+    // Override preset via extension callback
+    const hdSheet = useLoader(SpriteSheetLoader, '/sprites/hd-ui.json', (loader) => {
+      loader.preset = 'smooth';
+    });
+
+    // Custom options
+    const customSheet = useLoader(SpriteSheetLoader, '/sprites/special.json', (loader) => {
+      loader.preset = {
+        minFilter: LinearFilter,
+        magFilter: NearestFilter,
+      };
+    });
+    ```
+  </TabItem>
+</Tabs>
+
+### Full Manual Control
+
+Use `'none'` for complete control via `.then()`:
+
+```typescript
+import { RepeatWrapping } from 'three';
+
+const sheet = await SpriteSheetLoader.load('/sprites/tiles.json', {
+  texture: 'none'
+}).then(s => {
+  // Full manual configuration
+  s.texture.wrapS = RepeatWrapping;
+  s.texture.wrapT = RepeatWrapping;
+  s.texture.anisotropy = 16;
+  return s;
+});
+```
+
+### Common Patterns
+
+**Pixel Art Game (default)**
+```typescript
+// Just use defaults - pixel-art is the system default
+const sheet = await SpriteSheetLoader.load('/sprites/player.json');
+const mapData = await TiledLoader.load('/maps/level.json');
+```
+
+**HD Game**
+```typescript
+// Set global default once at startup
+TextureConfig.options = 'smooth';
+
+// All loads now use smooth filtering
+const sheet = await SpriteSheetLoader.load('/sprites/player.json');
+```
+
+**Mixed Styles**
+```typescript
+// Configure each loader type
+SpriteSheetLoader.options = 'smooth';  // HD sprites
+TiledLoader.options = 'pixel-art';     // Pixel tilemaps
+
+// Or override per-instance
+const pixelSprite = await SpriteSheetLoader.load('/sprites/retro.json', {
+  texture: 'pixel-art'
+});
+```
+
+## Caching
+
+All loaders cache results by URL and texture options. Subsequent loads return the cached promise:
+
+```typescript
+// First load - fetches from network
+const sheet1 = await SpriteSheetLoader.load('/sprites/player.json');
+
+// Second load - returns cached result instantly
+const sheet2 = await SpriteSheetLoader.load('/sprites/player.json');
+
+console.log(sheet1 === sheet2);  // true
+```
+
+Different texture options create separate cache entries:
+
+```typescript
+// These are cached separately
+const pixelSheet = await SpriteSheetLoader.load('/sprites/ui.json', { texture: 'pixel-art' });
+const smoothSheet = await SpriteSheetLoader.load('/sprites/ui.json', { texture: 'smooth' });
+
+console.log(pixelSheet === smoothSheet);  // false
+```
+
+Clear the cache when needed:
+
+```typescript
+TextureLoader.clearCache();
+SpriteSheetLoader.clearCache();
+TiledLoader.clearCache();
+LDtkLoader.clearCache();
+```
+
+## Preloading
+
+Load multiple assets in parallel:
+
+```typescript
+// Preload spritesheets
+const sheets = await SpriteSheetLoader.preload([
+  '/sprites/player.json',
+  '/sprites/enemies.json',
+  '/sprites/items.json',
+]);
+
+// Preload maps
+const maps = await TiledLoader.preload([
+  '/maps/level1.json',
+  '/maps/level2.json',
+]);
+```
+
+With texture options:
+
+```typescript
+const sheets = await SpriteSheetLoader.preload(
+  ['/sprites/ui.json', '/sprites/hud.json'],
+  { texture: 'smooth' }
+);
+```

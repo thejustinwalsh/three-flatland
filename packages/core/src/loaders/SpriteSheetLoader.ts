@@ -1,47 +1,111 @@
-import { type Texture, TextureLoader, SRGBColorSpace } from 'three'
-import type {
-  SpriteSheet,
-  SpriteFrame,
-  SpriteSheetJSONHash,
-  SpriteSheetJSONArray,
-} from '../sprites/types'
+import { Loader } from 'three'
+import type { Texture } from 'three'
+import type { SpriteSheet, SpriteFrame, SpriteSheetJSONHash, SpriteSheetJSONArray } from '../sprites/types'
+import { type TexturePreset, type TextureOptions, resolveTextureOptions } from './texturePresets'
+import { TextureLoader } from './TextureLoader'
+
+/**
+ * Options for loading a spritesheet.
+ */
+export interface SpriteSheetLoaderOptions {
+  /** Texture preset or custom options. Overrides loader and global defaults. */
+  texture?: TexturePreset | TextureOptions
+}
 
 /**
  * Loader for spritesheet JSON files.
  *
+ * Extends Three.js's Loader class for compatibility with R3F's useLoader.
  * Supports:
  * - JSON Hash format (TexturePacker default)
  * - JSON Array format
  *
  * @example
  * ```typescript
+ * // Vanilla usage - static API
  * const sheet = await SpriteSheetLoader.load('/sprites/player.json');
- * const frame = sheet.getFrame('player_idle_0');
+ *
+ * // R3F usage - works with useLoader
+ * import { SpriteSheetLoader } from '@three-flatland/react';
+ * const sheet = useLoader(SpriteSheetLoader, '/sprites/player.json');
+ *
+ * // Override preset via extension
+ * const sheet = useLoader(SpriteSheetLoader, '/sprites/ui.json', (loader) => {
+ *   loader.preset = 'smooth';
+ * });
+ *
+ * // Set loader-level default
+ * SpriteSheetLoader.options = 'smooth';
  * ```
  */
-export class SpriteSheetLoader {
-  private static textureLoader = new TextureLoader()
+export class SpriteSheetLoader extends Loader<SpriteSheet> {
   private static cache = new Map<string, Promise<SpriteSheet>>()
 
   /**
-   * Load a spritesheet from a JSON file.
-   * Results are cached by URL.
+   * Texture options for this loader class.
+   * When undefined, falls through to TextureConfig.options.
    */
-  static load(url: string): Promise<SpriteSheet> {
+  static options: TexturePreset | TextureOptions | undefined = undefined
+
+  /**
+   * Instance-level preset override.
+   * Set via R3F's useLoader extension callback.
+   *
+   * @example
+   * ```tsx
+   * const sheet = useLoader(SpriteSheetLoader, '/sprites/ui.json', (loader) => {
+   *   loader.preset = 'smooth';
+   * });
+   * ```
+   */
+  preset: TexturePreset | TextureOptions | undefined = undefined
+
+  /**
+   * Load a spritesheet asynchronously (for R3F useLoader compatibility).
+   * Presets are automatically applied.
+   */
+  loadAsync(url: string): Promise<SpriteSheet> {
+    const resolved = resolveTextureOptions(this.preset, SpriteSheetLoader.options)
+    return SpriteSheetLoader.loadUncached(url, { texture: resolved })
+  }
+
+  // ==========================================
+  // Static API for vanilla usage
+  // ==========================================
+
+  /**
+   * Load a spritesheet from a JSON file (static method for vanilla usage).
+   * Results are cached by URL and resolved options.
+   */
+  static load(url: string, options?: SpriteSheetLoaderOptions): Promise<SpriteSheet> {
+    const cacheKey = this.getCacheKey(url, options)
+
     // Return cached promise if exists
-    if (this.cache.has(url)) {
-      return this.cache.get(url)!
+    if (this.cache.has(cacheKey)) {
+      return this.cache.get(cacheKey)!
     }
 
-    const promise = this.loadUncached(url)
-    this.cache.set(url, promise)
+    const promise = this.loadUncached(url, options)
+    this.cache.set(cacheKey, promise)
     return promise
+  }
+
+  /**
+   * Get cache key including resolved options.
+   */
+  private static getCacheKey(url: string, options?: SpriteSheetLoaderOptions): string {
+    const resolved = resolveTextureOptions(options?.texture, this.options)
+    const optionsKey = typeof resolved === 'string' ? resolved : JSON.stringify(resolved)
+    return `${url}:${optionsKey}`
   }
 
   /**
    * Load without caching.
    */
-  private static async loadUncached(url: string): Promise<SpriteSheet> {
+  private static async loadUncached(
+    url: string,
+    options?: SpriteSheetLoaderOptions
+  ): Promise<SpriteSheet> {
     // Fetch JSON
     const response = await fetch(url)
     if (!response.ok) {
@@ -59,8 +123,9 @@ export class SpriteSheetLoader {
     const baseUrl = url.substring(0, url.lastIndexOf('/') + 1)
     const textureUrl = baseUrl + parsed.imagePath
 
-    // Load texture
-    const texture = await this.loadTexture(textureUrl)
+    // Load texture with resolved options
+    const resolved = resolveTextureOptions(options?.texture, this.options)
+    const texture = await this.loadTexture(textureUrl, resolved)
 
     // Create SpriteSheet
     return this.createSpriteSheet(texture, parsed.frames, parsed.width, parsed.height)
@@ -155,23 +220,10 @@ export class SpriteSheetLoader {
   }
 
   /**
-   * Load a texture.
+   * Load a texture with the specified options.
    */
-  private static loadTexture(url: string): Promise<Texture> {
-    return new Promise((resolve, reject) => {
-      this.textureLoader.load(
-        url,
-        (texture) => {
-          // Configure texture for pixel art (optional, can be overridden)
-          texture.generateMipmaps = false
-          // Ensure proper gamma handling for sRGB textures
-          texture.colorSpace = SRGBColorSpace
-          resolve(texture)
-        },
-        undefined,
-        reject
-      )
-    })
+  private static loadTexture(url: string, preset: TexturePreset | TextureOptions) {
+    return TextureLoader.load(url, { texture: preset })
   }
 
   /**
@@ -211,7 +263,10 @@ export class SpriteSheetLoader {
   /**
    * Preload multiple spritesheets.
    */
-  static preload(urls: string[]): Promise<SpriteSheet[]> {
-    return Promise.all(urls.map((url) => this.load(url)))
+  static preload(
+    urls: string[],
+    options?: SpriteSheetLoaderOptions
+  ): Promise<SpriteSheet[]> {
+    return Promise.all(urls.map((url) => this.load(url, options)))
   }
 }

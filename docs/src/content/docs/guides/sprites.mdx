@@ -22,12 +22,26 @@ The `Sprite2D` class is the foundation for 2D rendering in three-flatland.
   </TabItem>
   <TabItem label="React" icon="seti:react">
     ```tsx
-    <renderer2D>
-      <sprite2D texture={myTexture} anchor={[0.5, 0.5]} />
-    </renderer2D>
+    import { extend } from '@react-three/fiber/webgpu';
+    import { Sprite2D, Renderer2D } from '@three-flatland/react';
+
+    // Register with R3F (required once)
+    extend({ Sprite2D, Renderer2D });
+
+    function Scene() {
+      return (
+        <renderer2D>
+          <sprite2D texture={myTexture} anchor={[0.5, 0.5]} />
+        </renderer2D>
+      );
+    }
     ```
   </TabItem>
 </Tabs>
+
+:::tip[Loading Textures]
+Use `TextureLoader` from `@three-flatland/core` (or `@three-flatland/react`) to load textures with automatic preset configuration. For spritesheets, use `SpriteSheetLoader`. See the [Loaders guide](/guides/loaders) for details.
+:::
 
 ## Properties
 
@@ -66,15 +80,50 @@ const sprite = new Sprite2D({
 
 ## Renderer2D
 
-All sprites must be added to a `Renderer2D` instance for proper 2D rendering:
+For batched rendering with many sprites, use `Renderer2D`:
 
-```typescript
-const renderer2D = new Renderer2D();
-scene.add(renderer2D);
+<Tabs syncKey="framework">
+  <TabItem label="Three.js" icon="seti:javascript">
+    ```typescript
+    import { Renderer2D } from '@three-flatland/core';
 
-renderer2D.add(sprite1);
-renderer2D.add(sprite2);
-```
+    const renderer2D = new Renderer2D();
+    scene.add(renderer2D);
+
+    renderer2D.add(sprite1);
+    renderer2D.add(sprite2);
+
+    // In animation loop
+    renderer2D.update();
+    ```
+  </TabItem>
+  <TabItem label="React" icon="seti:react">
+    ```tsx
+    import { useRef } from 'react';
+    import { extend, useFrame } from '@react-three/fiber/webgpu';
+    import { Sprite2D, Renderer2D } from '@three-flatland/react';
+
+    extend({ Sprite2D, Renderer2D });
+
+    function Scene() {
+      const rendererRef = useRef<Renderer2D>(null);
+
+      useFrame(() => {
+        rendererRef.current?.update();
+      });
+
+      return (
+        <renderer2D ref={rendererRef}>
+          <sprite2D texture={texture1} />
+          <sprite2D texture={texture2} />
+        </renderer2D>
+      );
+    }
+    ```
+  </TabItem>
+</Tabs>
+
+For simple cases with few sprites, you can add them directly to the scene without `Renderer2D`.
 
 ## Layers
 

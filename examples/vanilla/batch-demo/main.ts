@@ -1,18 +1,6 @@
 import { WebGPURenderer } from 'three/webgpu'
-import {
-  Scene,
-  OrthographicCamera,
-  Color,
-  NearestFilter,
-  SRGBColorSpace,
-  TextureLoader,
-  Vector2,
-  Raycaster,
-  Plane,
-  Vector3,
-  type Texture,
-} from 'three'
-import { Sprite2D, Sprite2DMaterial, Renderer2D, Layers } from '@three-flatland/core'
+import { Scene, OrthographicCamera, Color, Vector2, Raycaster, Plane, Vector3 } from 'three'
+import { Sprite2D, Sprite2DMaterial, Renderer2D, Layers, TextureLoader } from '@three-flatland/core'
 
 // Configuration
 const TILE_SIZE = 64
@@ -77,22 +65,11 @@ async function main() {
 
   await renderer.init()
 
-  // Load textures
-  const loader = new TextureLoader()
-  const loadTexture = (path: string): Promise<Texture> =>
-    new Promise((resolve) => {
-      loader.load(ASSET_BASE + path, (tex) => {
-        tex.minFilter = NearestFilter
-        tex.magFilter = NearestFilter
-        tex.colorSpace = SRGBColorSpace // Proper gamma handling
-        resolve(tex)
-      })
-    })
-
+  // Load textures (uses 'pixel-art' preset by default with NearestFilter + SRGBColorSpace)
   const [grassTex, shadowTex, ...buildingTextures] = await Promise.all([
-    loadTexture('terrain/Tilemap_Flat.png'),
-    loadTexture('terrain/Shadows.png'),
-    ...BUILDINGS.map((b) => loadTexture(b.texture)),
+    TextureLoader.load(ASSET_BASE + 'terrain/Tilemap_Flat.png'),
+    TextureLoader.load(ASSET_BASE + 'terrain/Shadows.png'),
+    ...BUILDINGS.map((b) => TextureLoader.load(ASSET_BASE + b.texture)),
   ])
 
   // Create materials

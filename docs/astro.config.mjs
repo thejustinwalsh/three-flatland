@@ -143,6 +143,7 @@ export default defineConfig({
             { label: 'Sprites', slug: 'guides/sprites' },
             { label: 'Animation', slug: 'guides/animation' },
             { label: 'Batch Rendering', slug: 'guides/batch-rendering' },
+            { label: 'Loaders', slug: 'guides/loaders' },
             { label: 'TSL Nodes', slug: 'guides/tsl-nodes' },
             { label: 'Tilemaps', slug: 'guides/tilemaps' },
           ],
