@@ -4,6 +4,127 @@
 
 ---
 
+## Asset Loading with useLoader
+
+All three-flatland loaders extend Three.js's `Loader` class and work with R3F's `useLoader`. This provides:
+- Automatic Suspense integration (component suspends while loading)
+- Texture presets automatically applied
+- Extension callback for per-load customization
+
+### TextureLoader
+
+```tsx
+import { useLoader } from '@react-three/fiber/webgpu';
+import { TextureLoader } from '@three-flatland/react';
+
+function Sprite() {
+  // Presets automatically applied (pixel-art by default)
+  const texture = useLoader(TextureLoader, '/sprites/player.png');
+  return <sprite2D texture={texture} />;
+}
+
+// Multiple textures
+const TEXTURE_URLS = ['/house.png', '/tree.png', '/tower.png'];
+
+function Buildings() {
+  const [house, tree, tower] = useLoader(TextureLoader, TEXTURE_URLS);
+  // All textures have presets applied
+}
+```
+
+### SpriteSheetLoader
+
+```tsx
+import { useLoader } from '@react-three/fiber/webgpu';
+import { SpriteSheetLoader, AnimatedSprite2D } from '@three-flatland/react';
+
+function Player() {
+  const sheet = useLoader(SpriteSheetLoader, '/sprites/player.json');
+  return <animatedSprite2D spriteSheet={sheet} animation="idle" />;
+}
+
+// Multiple spritesheets (array URL pattern)
+const SHEET_URLS = ['/sprites/player.json', '/sprites/enemy.json', '/sprites/items.json'];
+
+function Game() {
+  const [playerSheet, enemySheet, itemsSheet] = useLoader(SpriteSheetLoader, SHEET_URLS);
+  // ...
+}
+
+// Override preset
+const hdSheet = useLoader(SpriteSheetLoader, '/sprites/hd-ui.json', (loader) => {
+  loader.preset = 'smooth';
+});
+```
+
+### TiledLoader
+
+```tsx
+import { useLoader } from '@react-three/fiber/webgpu';
+import { TiledLoader, TileMap2D } from '@three-flatland/react';
+
+function Level() {
+  const mapData = useLoader(TiledLoader, '/maps/level1.json');
+  return <tileMap2D data={mapData} />;
+}
+
+// Preload multiple levels
+const LEVEL_URLS = ['/maps/level1.json', '/maps/level2.json', '/maps/level3.json'];
+
+function Game() {
+  const [level1, level2, level3] = useLoader(TiledLoader, LEVEL_URLS);
+  // Switch between levels without loading delay
+}
+
+// Override preset
+const hdMap = useLoader(TiledLoader, '/maps/hd-level.json', (loader) => {
+  loader.preset = 'smooth';
+});
+```
+
+### LDtkLoader
+
+```tsx
+import { useLoader } from '@react-three/fiber/webgpu';
+import { LDtkLoader, TileMap2D } from '@three-flatland/react';
+
+function Level() {
+  // Loads first level by default
+  const mapData = useLoader(LDtkLoader, '/maps/world.ldtk');
+  return <tileMap2D data={mapData} />;
+}
+
+// Specify level and preset via extension
+const mapData = useLoader(LDtkLoader, '/maps/world.ldtk', (loader) => {
+  loader.levelId = 'Level_1';
+  loader.preset = 'pixel-art';
+});
+```
+
+### Extension Callback with Arrays
+
+When using arrays, R3F calls the extension callback for each loader instance:
+
+```tsx
+const URLS = ['/a.png', '/b.png', '/c.png'];
+
+// Extension is called 3 times - once per URL
+const textures = useLoader(TextureLoader, URLS, (loader) => {
+  loader.preset = 'smooth';  // Applied to all
+});
+```
+
+### Preset Hierarchy
+
+All loaders follow the same preset resolution order:
+
+1. **Instance `preset`** - Set via extension callback (highest priority)
+2. **`Loader.options`** - Static class-level default
+3. **`TextureConfig.options`** - Global config default
+4. **`'pixel-art'`** - System default (NearestFilter + SRGBColorSpace)
+
+---
+
 ## Async Data Loading
 
 ### The Problem with Module-Level Promises
@@ -22,13 +143,8 @@ Create a loader **function** at module level, then call it in `useState` initial
 
 ```tsx
 // ✅ GOOD: Function at module level, called in useState initializer
-const loadSpriteSheet = () => SpriteSheetLoader.load('/sprites/player.json').then(
-  (sheet) => {
-    sheet.texture.minFilter = NearestFilter;
-    sheet.texture.magFilter = NearestFilter;
-    return sheet;
-  }
-);
+// Note: SpriteSheetLoader already applies texture presets automatically
+const loadSpriteSheet = () => SpriteSheetLoader.load('/sprites/player.json');
 
 function Player() {
   const [spriteSheetPromise] = useState(loadSpriteSheet);
@@ -42,7 +158,7 @@ function Player() {
 - No side effects on module import
 - Fetch starts when component first renders
 - Promise is stable across re-renders (useState only calls initializer once)
-- Can include transformations in the promise chain
+- Texture presets are automatically applied by the loader
 
 ### Pattern 2: Call Loader Directly in useState
 
@@ -205,20 +321,14 @@ function AnimatedCharacter({ spriteSheet }) {
 ```tsx
 import { Suspense, useRef, useState, use } from 'react';
 import { Canvas, extend, useFrame } from '@react-three/fiber/webgpu';
-import { NearestFilter } from 'three';
 import { AnimatedSprite2D, SpriteSheetLoader, Layers } from '@three-flatland/react';
 
 // Register with R3F
 extend({ AnimatedSprite2D });
 
 // Loader function at module level (no side effects)
-const loadPlayerSheet = () => SpriteSheetLoader.load('/sprites/player.json').then(
-  (sheet) => {
-    sheet.texture.minFilter = NearestFilter;
-    sheet.texture.magFilter = NearestFilter;
-    return sheet;
-  }
-);
+// Texture presets (NearestFilter, SRGBColorSpace) are applied automatically
+const loadPlayerSheet = () => SpriteSheetLoader.load('/sprites/player.json');
 
 function Player() {
   // Call loader in useState initializer - starts fetch on first render
@@ -263,18 +373,25 @@ export default function App() {
 
 | Pattern | When to Use |
 |---------|-------------|
-| `useState(() => loader())` | Static resources, no prop dependencies |
-| `useState(loadFn)` where `loadFn` is module-level | Reusable loader with transformations |
-| `useState(() => loader(prop))` | Props-dependent resources |
+| `useLoader(TextureLoader, url)` | Single texture with automatic presets |
+| `useLoader(TextureLoader, urls)` | Multiple textures (returns array) |
+| `useLoader(SpriteSheetLoader, url)` | Spritesheet for animations |
+| `useLoader(TiledLoader, url)` | Tiled map data |
+| `useLoader(LDtkLoader, url)` | LDtk project (first level) |
+| `useLoader(Loader, url, (l) => l.preset = 'smooth')` | Override preset via extension |
+| `useLoader(LDtkLoader, url, (l) => l.levelId = 'Level_1')` | Load specific LDtk level |
+| `useState(() => loader())` | When `useLoader` won't work (dynamic URLs from props) |
 | Parent passes promise as prop | Shared resources, coordinated loading |
 
 ## Anti-Patterns to Avoid
 
 | ❌ Anti-Pattern | ✅ Correct Pattern |
 |----------------|-------------------|
-| Promise created at module level | Loader function at module level, called in `useState` |
-| `useEffect` + `setState` for data fetching | `use()` with promise from `useState` |
+| Promise created at module level | `useLoader(Loader, url)` or loader function in `useState` |
+| `useEffect` + `setState` for data fetching | `useLoader()` (suspends automatically) |
 | `if (!data) return null` loading checks | `<Suspense fallback={...}>` |
-| Creating promises inside render | Create in `useState` initializer |
-| `async function` inside `useEffect` | Promise chain with `.then()` in loader function |
-| Multiple `useState` for loading/error/data | Single promise + Suspense + ErrorBoundary |
+| Creating promises inside render | `useLoader()` or `useState` initializer |
+| Multiple `useState` for loading/error/data | `useLoader()` + Suspense + ErrorBoundary |
+| Manual `texture.minFilter = NearestFilter` | Use our loaders (presets applied automatically) |
+| Three.js `TextureLoader` for textures | `@three-flatland/react` `TextureLoader` with `useLoader` |
+| `useState` + `use()` for static URLs | `useLoader()` (simpler, same result) |
