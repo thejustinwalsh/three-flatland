@@ -3,6 +3,8 @@
 > **Purpose:** Ensure documentation code samples are accurate and reflect the actual library API.
 > **Core Principle:** Docs should be derived from working examples, not theoretical code.
 
+**Required Reading:** [react-best-practices.md](react-best-practices.md) - Modern React 19 async patterns
+
 ---
 
 ## When to Use This Skill
@@ -56,7 +58,8 @@ For each code sample, verify:
 - [ ] **Property names** - Singular vs plural, exact spelling
 - [ ] **Function signatures** - Parameters and return types
 - [ ] **JSX component names** - Lowercase with proper extends
-- [ ] **Three.js and React examples** - Ensure we provide code samples for both frameworks, using the framework key in tabs. Sample code should follow framework best-practices, and produce the same results when run.
+- [ ] **Three.js and React examples** - Ensure we provide code samples for both frameworks using the framework key in tabs. Avoiding unnecessary duplication where code is shared. Sample code should follow framework best-practices, and produce the same results when run.
+- [ ] **Modern React async patterns** - Use `use()` with Suspense, NOT `useEffect` + `useState` for data loading. See [react-best-practices.md](react-best-practices.md)
 
 ### 4. Common Discrepancies to Watch
 
@@ -68,6 +71,12 @@ For each code sample, verify:
 | Methods | Missing or renamed | Check class definition |
 | Options | Different option names | Check constructor/factory signature |
 | TSL nodes | Wrong package/names | Nodes are in `@three-flatland/core`, not `@three-flatland/nodes` |
+| R3F extend() | Missing `extend()` call | React examples MUST include `extend({ ClassName })` for custom elements |
+| R3F imports | Missing `extend` import | Import from `@react-three/fiber/webgpu` |
+| React async | `useEffect` + `useState` for loading | Use `use()` + Suspense pattern instead |
+| React async | `if (!data) return null` guards | Wrap with `<Suspense fallback={...}>` |
+| React async | Promise created at module level | Creates side effect on import - use loader function + `useState` instead |
+| React async | Promise created in render | Create in `useState(() => loader())` initializer |
 
 ---
 
