@@ -11,7 +11,7 @@
         }
       }
     },
-    "example-vanilla-basic-sprite": {
+    "example-react-basic-sprite": {
       "development": {
         "local": {
           "port": 4001
@@ -19,11 +19,12 @@
       },
       "routing": [
         {
-          "paths": ["/vanilla/basic-sprite", "/vanilla/basic-sprite/:path*"]
+          "group": "react-examples",
+          "paths": ["/react/basic-sprite", "/react/basic-sprite/:path*"]
         }
       ]
     },
-    "example-vanilla-animation": {
+    "example-vanilla-basic-sprite": {
       "development": {
         "local": {
           "port": 4002
@@ -31,11 +32,12 @@
       },
       "routing": [
         {
-          "paths": ["/vanilla/animation", "/vanilla/animation/:path*"]
+          "group": "vanilla-examples",
+          "paths": ["/vanilla/basic-sprite", "/vanilla/basic-sprite/:path*"]
         }
       ]
     },
-    "example-vanilla-batch-demo": {
+    "example-vanilla-animation": {
       "development": {
         "local": {
           "port": 4003
@@ -43,11 +45,12 @@
       },
       "routing": [
         {
-          "paths": ["/vanilla/batch-demo", "/vanilla/batch-demo/:path*"]
+          "group": "vanilla-examples",
+          "paths": ["/vanilla/animation", "/vanilla/animation/:path*"]
         }
       ]
     },
-    "example-vanilla-tsl-nodes": {
+    "example-react-animation": {
       "development": {
         "local": {
           "port": 4004
@@ -55,11 +58,12 @@
       },
       "routing": [
         {
-          "paths": ["/vanilla/tsl-nodes", "/vanilla/tsl-nodes/:path*"]
+          "group": "react-examples",
+          "paths": ["/react/animation", "/react/animation/:path*"]
         }
       ]
     },
-    "example-vanilla-tilemap": {
+    "example-vanilla-batch-demo": {
       "development": {
         "local": {
           "port": 4005
@@ -67,11 +71,12 @@
       },
       "routing": [
         {
-          "paths": ["/vanilla/tilemap", "/vanilla/tilemap/:path*"]
+          "group": "vanilla-examples",
+          "paths": ["/vanilla/batch-demo", "/vanilla/batch-demo/:path*"]
         }
       ]
     },
-    "example-react-basic-sprite": {
+    "example-react-batch-demo": {
       "development": {
         "local": {
           "port": 4006
@@ -79,11 +84,12 @@
       },
       "routing": [
         {
-          "paths": ["/react/basic-sprite", "/react/basic-sprite/:path*"]
+          "group": "react-examples",
+          "paths": ["/react/batch-demo", "/react/batch-demo/:path*"]
         }
       ]
     },
-    "example-react-animation": {
+    "example-vanilla-tsl-nodes": {
       "development": {
         "local": {
           "port": 4007
@@ -91,11 +97,12 @@
       },
       "routing": [
         {
-          "paths": ["/react/animation", "/react/animation/:path*"]
+          "group": "vanilla-examples",
+          "paths": ["/vanilla/tsl-nodes", "/vanilla/tsl-nodes/:path*"]
         }
       ]
     },
-    "example-react-batch-demo": {
+    "example-react-tsl-nodes": {
       "development": {
         "local": {
           "port": 4008
@@ -103,11 +110,12 @@
       },
       "routing": [
         {
-          "paths": ["/react/batch-demo", "/react/batch-demo/:path*"]
+          "group": "react-examples",
+          "paths": ["/react/tsl-nodes", "/react/tsl-nodes/:path*"]
         }
       ]
     },
-    "example-react-tsl-nodes": {
+    "example-vanilla-tilemap": {
       "development": {
         "local": {
           "port": 4009
@@ -115,7 +123,8 @@
       },
       "routing": [
         {
-          "paths": ["/react/tsl-nodes", "/react/tsl-nodes/:path*"]
+          "group": "vanilla-examples",
+          "paths": ["/vanilla/tilemap", "/vanilla/tilemap/:path*"]
         }
       ]
     },
@@ -127,6 +136,7 @@
       },
       "routing": [
         {
+          "group": "react-examples",
           "paths": ["/react/tilemap", "/react/tilemap/:path*"]
         }
       ]

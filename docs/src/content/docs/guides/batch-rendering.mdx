@@ -1,57 +1,67 @@
 ---
 title: Batch Rendering
-description: Optimize performance when rendering thousands of sprites.
+description: How automatic batching works and tips for optimal performance.
 ---
 
 import { Tabs, TabItem } from '@astrojs/starlight/components';
 
 ## Overview
 
-Batch rendering combines multiple sprites into a single draw call, dramatically improving performance when rendering many sprites.
+Renderer2D automatically batches sprites that share the same material into single draw calls. You don't need to do anything special—just add sprites and the batching happens behind the scenes.
 
-## Instanced Rendering
+## How It Works
 
-For sprites sharing the same texture, use instanced rendering:
+When you add sprites to a `Renderer2D`, they're grouped by material:
 
 <Tabs syncKey="framework">
-  <TabItem label="Vanilla" icon="seti:javascript">
+  <TabItem label="Three.js" icon="seti:javascript">
     ```typescript
-    import { InstancedSprite2D, Renderer2D } from '@three-flatland/core';
+    import { Sprite2D, Renderer2D, Sprite2DMaterial } from '@three-flatland/core';
 
-    const instancedSprite = new InstancedSprite2D({
-      texture: myTexture,
-      count: 1000,  // Maximum instance count
-    });
+    const renderer2D = new Renderer2D();
+    scene.add(renderer2D);
 
-    renderer2D.add(instancedSprite);
+    // These sprites share a material, so they batch together
+    const material = new Sprite2DMaterial({ map: spriteSheet });
 
-    // Set individual instance transforms
     for (let i = 0; i < 1000; i++) {
-      instancedSprite.setPositionAt(i, x, y);
-      instancedSprite.setScaleAt(i, scaleX, scaleY);
-      instancedSprite.setRotationAt(i, rotation);
+      const sprite = new Sprite2D({ material });
+      sprite.position.set(Math.random() * 100, Math.random() * 100, 0);
+      renderer2D.add(sprite);
     }
 
-    instancedSprite.update();  // Apply changes
+    // In your render loop
+    function animate() {
+      renderer2D.update();  // Rebuilds batches and uploads to GPU
+      renderer.render(scene, camera);
+      requestAnimationFrame(animate);
+    }
     ```
   </TabItem>
   <TabItem label="React" icon="seti:react">
     ```tsx
-    function Particles() {
-      const ref = useRef<InstancedSprite2D>(null);
+    import { useRef } from 'react';
+    import { useFrame } from '@react-three/fiber/webgpu';
+    import { Sprite2D, Renderer2D, Sprite2DMaterial } from '@three-flatland/react';
+
+    function Particles({ count = 1000 }) {
+      const rendererRef = useRef<Renderer2D>(null);
+      const materialRef = useRef<Sprite2DMaterial>(null);
 
       useFrame(() => {
-        if (!ref.current) return;
-        // Update instance transforms each frame
-        for (let i = 0; i < 1000; i++) {
-          ref.current.setPositionAt(i, positions[i].x, positions[i].y);
-        }
-        ref.current.update();
+        rendererRef.current?.update();
       });
 
       return (
-        <renderer2D>
-          <instancedSprite2D ref={ref} texture={texture} count={1000} />
+        <renderer2D ref={rendererRef}>
+          <sprite2DMaterial ref={materialRef} map={spriteSheet} />
+          {Array.from({ length: count }, (_, i) => (
+            <sprite2D
+              key={i}
+              material={materialRef.current!}
+              position={[Math.random() * 100, Math.random() * 100, 0]}
+            />
+          ))}
         </renderer2D>
       );
     }
@@ -59,53 +69,88 @@ For sprites sharing the same texture, use instanced rendering:
   </TabItem>
 </Tabs>
 
-## Performance Tips
+## Renderer Options
+
+Configure batching behavior when creating the renderer:
+
+```typescript
+const renderer2D = new Renderer2D({
+  maxBatchSize: 10000,    // Max sprites per batch (default: 10000)
+  autoSort: true,         // Sort by layer/zIndex (default: true)
+  frustumCulling: true,   // Cull off-screen sprites (default: true)
+});
+```
+
+## Performance Monitoring
+
+Check batch efficiency with the `stats` property:
+
+```typescript
+const stats = renderer2D.stats;
+
+console.log(`Sprites: ${stats.spriteCount}`);
+console.log(`Batches: ${stats.batchCount}`);
+console.log(`Draw calls: ${stats.drawCalls}`);
+console.log(`Visible: ${stats.visibleSprites}`);
+```
+
+**Goal:** Keep `batchCount` low relative to `spriteCount`. If you have 1000 sprites but 100 batches, you're not batching efficiently.
+
+## Optimization Tips
+
+### Share Materials
+
+Sprites only batch together when they share the **same material instance**:
+
+```typescript
+// Good: One material, one batch
+const material = new Sprite2DMaterial({ map: atlas });
+sprites.forEach(s => s.material = material);
+
+// Bad: Many materials, many batches
+sprites.forEach(s => {
+  s.material = new Sprite2DMaterial({ map: atlas }); // Creates new batch each time!
+});
+```
 
 ### Use Texture Atlases
 
-Combine multiple sprite textures into a single atlas to minimize texture bindings:
+Combine textures into a single atlas. All sprites using the atlas can share one material:
 
 ```typescript
-const atlas = new TextureAtlas({
-  textures: [sprite1, sprite2, sprite3],
-  padding: 2,
-});
+// Load a sprite sheet with frame data
+const { texture, frames } = await SpriteSheetLoader.load('/sprites/atlas.json');
 
-const sprite = new Sprite2D({
-  texture: atlas.texture,
-  frame: atlas.getFrame('sprite1'),
-});
+const material = new Sprite2DMaterial({ map: texture });
+
+// Different frames, same material = same batch
+const player = new Sprite2D({ material, frame: frames.get('player') });
+const enemy = new Sprite2D({ material, frame: frames.get('enemy') });
 ```
 
-### Instance Count
+### Organize by Layer
 
-Set the instance count to your expected maximum. Growing the buffer dynamically is expensive.
+Sprites are sorted by layer before batching. Keep related sprites on the same layer:
 
 ```typescript
-// Good: Set expected maximum upfront
-const particles = new InstancedSprite2D({
-  count: 10000,
-});
+import { Layers } from '@three-flatland/core';
 
-// Then only render what you need
-particles.visibleCount = activeParticleCount;
+// Background sprites batch together
+backgrounds.forEach(s => s.layer = Layers.BACKGROUND);
+
+// Entity sprites batch together
+entities.forEach(s => s.layer = Layers.ENTITIES);
 ```
 
-### Frustum Culling
+### Invalidate Efficiently
 
-Sprites outside the camera view are automatically culled. For large scenes, consider spatial partitioning:
+When sprites change, mark them for update:
 
 ```typescript
-renderer2D.frustumCulled = true;  // Enabled by default
+// Single sprite changed
+sprite.position.x += 10;
+renderer2D.invalidate(sprite);
+
+// Many sprites changed
+renderer2D.invalidateAll();
 ```
-
-## Benchmarks
-
-| Sprite Count | Regular Sprites | Instanced Sprites |
-|-------------|-----------------|-------------------|
-| 100 | 60 fps | 60 fps |
-| 1,000 | 45 fps | 60 fps |
-| 10,000 | 8 fps | 60 fps |
-| 100,000 | < 1 fps | 55 fps |
-
-*Tested on M1 MacBook Pro with WebGPU*

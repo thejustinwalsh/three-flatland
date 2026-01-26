@@ -1,0 +1,157 @@
+---
+/**
+ * SoundToggle - Mute/unmute toggle for retro sound effects
+ * Uses pixelated volume icons and lazy-loads the sound system.
+ */
+import Icon from './Icon.astro';
+---
+
+<flatland-sound-toggle>
+  <button
+    type="button"
+    class="sound-toggle"
+    data-sound="none"
+    aria-label="Toggle sound effects"
+  >
+    <span class="icon icon-on"><Icon name="volume-3" size="1rem" /></span>
+    <span class="icon icon-off"><Icon name="volume-x" size="1rem" /></span>
+  </button>
+</flatland-sound-toggle>
+
+<script>
+  class FlatlandSoundToggle extends HTMLElement {
+    private button: HTMLButtonElement | null = null;
+    private enabled: boolean = false;
+    private soundsModule: typeof import('../scripts/sounds') | null = null;
+    private audioInitialized: boolean = false;
+
+    constructor() {
+      super();
+      this.button = this.querySelector('button');
+
+      // Get initial state from localStorage
+      this.enabled = this.getSavedState();
+      this.updateIcon();
+
+      this.button?.addEventListener('click', () => this.toggle());
+
+      // Lazy load sounds module and setup events
+      this.loadSoundsModule();
+    }
+
+    private getSavedState(): boolean {
+      if (typeof localStorage === 'undefined') return false;
+      return localStorage.getItem('flatland-sound-enabled') === 'true';
+    }
+
+    private async loadSoundsModule() {
+      try {
+        this.soundsModule = await import('../scripts/sounds');
+        // Setup global sound event handlers
+        this.soundsModule.setupSoundEvents();
+        // Setup view transition support for SPA navigation
+        this.soundsModule.setupViewTransitionSupport();
+      } catch (e) {
+        console.warn('Could not load sound module:', e);
+      }
+    }
+
+    private async ensureAudioInitialized(): Promise<boolean> {
+      if (this.audioInitialized) return true;
+      if (!this.soundsModule) return false;
+
+      const success = await this.soundsModule.initAudio();
+      if (success) {
+        this.audioInitialized = true;
+      }
+      return success;
+    }
+
+    private async toggle() {
+      // Always init audio on toggle click (this is a user gesture)
+      await this.ensureAudioInitialized();
+
+      this.enabled = !this.enabled;
+
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem('flatland-sound-enabled', String(this.enabled));
+      }
+
+      this.updateIcon();
+
+      // Play feedback sound
+      if (this.soundsModule) {
+        if (this.enabled) {
+          this.soundsModule.playToggleOn();
+        } else {
+          this.soundsModule.playToggleOff();
+        }
+      }
+    }
+
+    private updateIcon() {
+      const onIcon = this.querySelector('.icon-on');
+      const offIcon = this.querySelector('.icon-off');
+
+      if (onIcon && offIcon) {
+        onIcon.classList.toggle('active', this.enabled);
+        offIcon.classList.toggle('active', !this.enabled);
+      }
+
+      // Update aria-label
+      const label = this.enabled ? 'Sound on (click to mute)' : 'Sound off (click to unmute)';
+      this.button?.setAttribute('aria-label', label);
+    }
+  }
+
+  customElements.define('flatland-sound-toggle', FlatlandSoundToggle);
+</script>
+
+<style>
+  flatland-sound-toggle {
+    display: flex;
+    align-items: center;
+  }
+
+  .sound-toggle,
+  .sound-toggle:hover,
+  .sound-toggle:focus,
+  .sound-toggle:active {
+    all: unset;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    color: var(--retro-white);
+  }
+
+  .sound-toggle:hover {
+    color: var(--retro-cyan);
+  }
+
+  .icon {
+    display: none;
+    align-items: center;
+    justify-content: center;
+    width: 1rem;
+    height: 1rem;
+    line-height: 0;
+  }
+
+  .icon.active {
+    display: flex;
+  }
+
+  .icon :global(svg) {
+    display: block;
+  }
+
+  /* Light mode */
+  :global([data-theme='light']) .sound-toggle {
+    color: var(--retro-black);
+  }
+
+  :global([data-theme='light']) .sound-toggle:hover {
+    color: var(--retro-purple);
+  }
+</style>

@@ -1,7 +1,7 @@
 import { defineConfig } from 'vite'
 
 export default defineConfig({
-  base: '/vanilla/tilemap',
+  base: '/vanilla/tilemap/',
   server: {
     strictPort: true,
   },

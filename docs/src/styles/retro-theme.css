@@ -1,0 +1,1451 @@
+/* =============================================================================
+   RETRO 16-BIT PIXEL ART THEME
+   ============================================================================= */
+
+/* -----------------------------------------------------------------------------
+   SPACING SYSTEM (8pt grid)
+   ----------------------------------------------------------------------------- */
+:root {
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 16px;
+  --space-lg: 24px;
+  --space-xl: 32px;
+  --space-2xl: 48px;
+  --space-3xl: 64px;
+
+  /* Pattern sizes for 4x scaled dithering */
+  --dither-size: 16px;
+  --dither-size-2x: 32px;
+}
+
+/* -----------------------------------------------------------------------------
+   COLOR PALETTE - Dark Mode (Default)
+   ----------------------------------------------------------------------------- */
+:root {
+  /* Jehkoba32 palette - https://lospec.com/palette-list/jehkoba32 */
+  --retro-white: #f0edd8;      /* 9 */
+  --retro-black: #00021c;      /* 2 */
+  --retro-pink: #d94c87;       /* 12 */
+  --retro-purple: #732866;     /* 10 */
+  --retro-cyan: #47cca9;       /* 26 */
+  --retro-blue: #0bafe6;       /* 30 */
+  --retro-yellow: #f7c93e;     /* 21 */
+  --retro-orange: #f09c60;     /* 18 */
+
+  /* Dark variants for shadows */
+  --retro-dark-pink: #a6216e;  /* 11 */
+  --retro-dark-purple: #343473; /* 4 */
+  --retro-deep-purple: #1c284d; /* 3 */
+  --retro-dark-cyan: #17735f;  /* 22 */
+  --retro-dark-blue: #2469b3;  /* 28 */
+  --retro-dark-yellow: #b38f24; /* 19 */
+  --retro-dark-orange: #b36159; /* 17 */
+
+  --retro-navy: #1c284d;       /* 3 */
+  --retro-midnight: #00021c;   /* 2 */
+
+  /* Starlight overrides - Dark Mode */
+  --sl-color-accent: var(--retro-cyan);
+  --sl-color-accent-high: var(--retro-pink);
+  --sl-color-text: var(--retro-white);
+  --sl-color-text-accent: var(--retro-cyan);
+  --sl-color-bg: var(--retro-midnight);
+  --sl-color-bg-nav: var(--retro-midnight);
+  --sl-color-bg-sidebar: var(--retro-midnight);
+  --sl-color-hairline: var(--retro-dark-purple);
+  --sl-color-hairline-light: var(--retro-deep-purple);
+}
+
+/* -----------------------------------------------------------------------------
+   COLOR PALETTE - Light Mode
+   High contrast, readable, WCAG AA compliant
+   ----------------------------------------------------------------------------- */
+:root[data-theme='light'] {
+  /* Core light mode palette */
+  --sl-color-bg: var(--retro-white);
+  --sl-color-text: var(--retro-black);
+  --sl-color-text-accent: #1a5247; /* Darker cyan for contrast */
+  --sl-color-bg-nav: #e8e5d0;
+  --sl-color-bg-sidebar: #e8e5d0;
+  --sl-color-hairline: #a8a593;
+  --sl-color-hairline-light: #c5c2b0;
+
+  /* Accent colors - darker variants for accessibility */
+  --sl-color-accent: #1a5247;
+  --sl-color-accent-high: #5a1f50;
+
+  /* Light mode specific colors */
+  --light-card-bg: #e8e5d0;
+  --light-card-border: #a8a593;
+  --light-text-muted: #3d3d35;
+}
+
+/* =============================================================================
+   LIGHT MODE TYPOGRAPHY - Clean, high contrast, no distracting shadows
+   ============================================================================= */
+
+/* All text defaults to black for readability */
+:root[data-theme='light'] body,
+:root[data-theme='light'] p,
+:root[data-theme='light'] li,
+:root[data-theme='light'] td {
+  color: var(--retro-black) !important;
+}
+
+/* H1 - Bold, clean, subtle accent underline instead of shadows */
+:root[data-theme='light'] h1 {
+  color: var(--retro-black) !important;
+  text-shadow: none !important;
+  border-bottom: 4px solid var(--retro-pink);
+  padding-bottom: var(--space-sm);
+}
+
+/* H2 - Clean with purple underline */
+:root[data-theme='light'] h2 {
+  color: var(--retro-black) !important;
+  text-shadow: none !important;
+  border-bottom: 2px solid var(--retro-purple);
+}
+
+/* H3 - Purple for visual hierarchy */
+:root[data-theme='light'] h3 {
+  color: #5a1f50 !important; /* Darker purple for contrast */
+}
+
+/* H4-H6 - Dark orange for distinction */
+:root[data-theme='light'] h4,
+:root[data-theme='light'] h5,
+:root[data-theme='light'] h6 {
+  color: #b35d28 !important; /* Darker orange for contrast */
+}
+
+/* =============================================================================
+   LIGHT MODE LINKS - High contrast
+   ============================================================================= */
+:root[data-theme='light'] a {
+  color: #5a1f50; /* Dark purple */
+  text-decoration: underline;
+  text-decoration-color: rgba(90, 31, 80, 0.3);
+}
+
+:root[data-theme='light'] a:hover {
+  color: #1a5247; /* Dark cyan */
+  text-decoration-color: rgba(26, 82, 71, 0.5);
+}
+
+/* =============================================================================
+   LIGHT MODE CODE - Override Expressive Code with direct property overrides
+   Expressive Code CSS loads AFTER our styles, so we must use direct overrides
+   ============================================================================= */
+
+/* --- Inline code (not in pre blocks) --- */
+:root[data-theme='light'] :not(pre) > code {
+  background: #d6d3be !important;
+  color: #1a1a1a !important;
+  border: 1px solid #a8a593 !important;
+  padding: 0.2em 0.4em;
+  font-weight: 500;
+}
+
+/* --- Force light background on code blocks --- */
+:root[data-theme='light'] .expressive-code pre {
+  background: #e8e5d0 !important;
+  border: 2px solid #5a1f50 !important;
+}
+
+:root[data-theme='light'] .expressive-code .frame {
+  box-shadow: 3px 3px 0 #a8a593 !important;
+}
+
+:root[data-theme='light'] .expressive-code .frame pre {
+  background: #e8e5d0 !important;
+}
+
+/* --- Force dark text color on code --- */
+:root[data-theme='light'] .expressive-code pre > code {
+  color: #1a1a1a !important;
+}
+
+:root[data-theme='light'] .expressive-code .ec-line .code {
+  color: #1a1a1a !important;
+}
+
+/* --- Header/tab bar styling --- */
+:root[data-theme='light'] .expressive-code .header {
+  background: #d6d3be !important;
+  border-color: #a8a593 !important;
+}
+
+:root[data-theme='light'] .expressive-code .frame.has-title .header {
+  background: linear-gradient(to top, #a8a593 1px, transparent 1px), #d6d3be !important;
+}
+
+:root[data-theme='light'] .expressive-code .title {
+  background: #e8e5d0 !important;
+  color: #1a1a1a !important;
+  border-color: #a8a593 !important;
+}
+
+:root[data-theme='light'] .expressive-code .title::after {
+  border-top-color: #5a1f50 !important;
+  border-bottom-color: transparent !important;
+}
+
+/* --- Gutter (line numbers) --- */
+:root[data-theme='light'] .expressive-code .gutter {
+  color: #5a5a52 !important;
+}
+
+:root[data-theme='light'] .expressive-code .ec-line .code {
+  border-color: #c5c2b0 !important;
+}
+
+/* --- Copy button --- */
+:root[data-theme='light'] .expressive-code .copy button {
+  background: #d6d3be !important;
+}
+
+:root[data-theme='light'] .expressive-code .copy button div {
+  background: #1a1a1a !important;
+}
+
+:root[data-theme='light'] .expressive-code .copy button::before {
+  border-color: #a8a593 !important;
+}
+
+:root[data-theme='light'] .expressive-code .copy button::after {
+  background-color: #1a1a1a !important;
+}
+
+/* --- Terminal frame --- */
+:root[data-theme='light'] .expressive-code .frame.is-terminal .header {
+  background: #d6d3be !important;
+  color: #1a1a1a !important;
+  border-color: #a8a593 !important;
+}
+
+/* --- Highlighted/marked lines --- */
+:root[data-theme='light'] .expressive-code .ec-line.mark,
+:root[data-theme='light'] .expressive-code .ec-line.highlight {
+  background: rgba(90, 31, 80, 0.1) !important;
+}
+
+:root[data-theme='light'] .expressive-code .ec-line.ins {
+  background: rgba(46, 125, 50, 0.15) !important;
+}
+
+:root[data-theme='light'] .expressive-code .ec-line.del {
+  background: rgba(198, 40, 40, 0.15) !important;
+}
+
+/* =============================================================================
+   LIGHT MODE CARDS - Solid, readable backgrounds
+   ============================================================================= */
+:root[data-theme='light'] .card,
+:root[data-theme='light'] .sl-link-card {
+  background: var(--light-card-bg) !important;
+  border: 2px solid var(--light-card-border) !important;
+  box-shadow: 3px 3px 0 #a8a593;
+}
+
+:root[data-theme='light'] .card .title,
+:root[data-theme='light'] .sl-link-card .title {
+  color: #5a1f50 !important; /* Dark purple */
+}
+
+:root[data-theme='light'] .card .body,
+:root[data-theme='light'] .sl-link-card .body,
+:root[data-theme='light'] .card p,
+:root[data-theme='light'] .sl-link-card p {
+  color: var(--retro-black) !important;
+}
+
+:root[data-theme='light'] .card:hover,
+:root[data-theme='light'] .sl-link-card:hover {
+  border-color: var(--retro-purple) !important;
+  box-shadow:
+    3px 3px 0 var(--retro-purple),
+    6px 6px 0 #a8a593;
+}
+
+:root[data-theme='light'] .card:hover .title,
+:root[data-theme='light'] .sl-link-card:hover .title {
+  color: #1a5247 !important; /* Dark cyan */
+}
+
+/* =============================================================================
+   LIGHT MODE CALLOUTS/ASIDES - Colored borders, readable backgrounds
+   ============================================================================= */
+:root[data-theme='light'] .starlight-aside,
+:root[data-theme='light'] .aside,
+:root[data-theme='light'] .callout {
+  background: #e8e5d0 !important;
+  color: var(--retro-black) !important;
+}
+
+:root[data-theme='light'] .starlight-aside p,
+:root[data-theme='light'] .aside p,
+:root[data-theme='light'] .callout p {
+  color: var(--retro-black) !important;
+}
+
+:root[data-theme='light'] .starlight-aside--note,
+:root[data-theme='light'] .aside[data-type="note"] {
+  background: #dce8e6 !important; /* Light blue-gray tint */
+  border-left: 4px solid #0a7ea4 !important;
+}
+
+:root[data-theme='light'] .starlight-aside--tip,
+:root[data-theme='light'] .aside[data-type="tip"] {
+  background: #dce8e3 !important; /* Light green tint */
+  border-left: 4px solid #1a5247 !important;
+}
+
+:root[data-theme='light'] .starlight-aside--caution,
+:root[data-theme='light'] .aside[data-type="caution"] {
+  background: #eae3d5 !important; /* Light orange tint */
+  border-left: 4px solid #b35d28 !important;
+}
+
+:root[data-theme='light'] .starlight-aside--danger,
+:root[data-theme='light'] .aside[data-type="danger"] {
+  background: #e8dce1 !important; /* Light pink tint */
+  border-left: 4px solid #9a2c4e !important;
+}
+
+:root[data-theme='light'] .starlight-aside__title,
+:root[data-theme='light'] .aside .title {
+  color: var(--retro-black) !important;
+}
+
+/* =============================================================================
+   LIGHT MODE BUTTONS - Clear, high contrast
+   ============================================================================= */
+:root[data-theme='light'] button:not(.theme-toggle):not(.sound-toggle),
+:root[data-theme='light'] .sl-link-button,
+:root[data-theme='light'] .action {
+  background: #e8e5d0 !important;
+  border: 2px solid var(--retro-purple) !important;
+  color: var(--retro-black) !important;
+  box-shadow: 3px 3px 0 #a8a593;
+}
+
+:root[data-theme='light'] button:not(.theme-toggle):not(.sound-toggle):hover,
+:root[data-theme='light'] .sl-link-button:hover,
+:root[data-theme='light'] .action:hover {
+  background: var(--retro-purple) !important;
+  color: var(--retro-white) !important;
+}
+
+/* Theme toggle & sound toggle in light mode */
+:root[data-theme='light'] .theme-toggle,
+:root[data-theme='light'] .theme-toggle:hover,
+:root[data-theme='light'] .sound-toggle,
+:root[data-theme='light'] .sound-toggle:hover {
+  all: unset !important;
+  display: flex !important;
+  align-items: center !important;
+  cursor: pointer !important;
+}
+
+:root[data-theme='light'] .theme-toggle,
+:root[data-theme='light'] .sound-toggle {
+  color: var(--retro-black) !important;
+}
+
+:root[data-theme='light'] .theme-toggle:hover,
+:root[data-theme='light'] .sound-toggle:hover {
+  color: var(--retro-purple) !important;
+}
+
+:root[data-theme='light'] .sl-link-button.primary,
+:root[data-theme='light'] a.primary.action {
+  background: #9a2c4e !important; /* Darker pink for contrast */
+  border-color: #9a2c4e !important;
+  color: var(--retro-white) !important;
+}
+
+:root[data-theme='light'] .sl-link-button.primary:hover,
+:root[data-theme='light'] a.primary.action:hover {
+  background: #5a1f50 !important;
+  border-color: #5a1f50 !important;
+}
+
+/* =============================================================================
+   LIGHT MODE TABLES - Clear borders and readable cells
+   ============================================================================= */
+:root[data-theme='light'] table {
+  border: 2px solid var(--retro-purple);
+  background: var(--retro-white);
+}
+
+:root[data-theme='light'] th {
+  background: var(--retro-purple) !important;
+  color: var(--retro-white) !important;
+}
+
+:root[data-theme='light'] td {
+  background: var(--retro-white) !important;
+  color: var(--retro-black) !important;
+  border-bottom: 1px solid #c5c2b0;
+}
+
+:root[data-theme='light'] tr:nth-child(even) td {
+  background: #e8e5d0 !important;
+}
+
+/* =============================================================================
+   LIGHT MODE PAGINATION
+   ============================================================================= */
+:root[data-theme='light'] .pagination-links a,
+:root[data-theme='light'] a.pagination-link {
+  background: var(--light-card-bg) !important;
+  border: 2px solid var(--light-card-border) !important;
+  box-shadow: 3px 3px 0 #a8a593;
+}
+
+:root[data-theme='light'] .pagination-links a .link-title,
+:root[data-theme='light'] a.pagination-link .link-title {
+  color: #5a1f50 !important;
+}
+
+:root[data-theme='light'] .pagination-links a .link-label,
+:root[data-theme='light'] a.pagination-link .link-label {
+  color: #3d3d35 !important;
+}
+
+:root[data-theme='light'] .pagination-links a:hover,
+:root[data-theme='light'] a.pagination-link:hover {
+  border-color: var(--retro-purple) !important;
+}
+
+:root[data-theme='light'] .pagination-links a:hover .link-title,
+:root[data-theme='light'] a.pagination-link:hover .link-title {
+  color: #1a5247 !important;
+}
+
+/* =============================================================================
+   LIGHT MODE SIDEBAR
+   ============================================================================= */
+:root[data-theme='light'] nav.sidebar {
+  background: #e8e5d0 !important;
+  border-right: 1px solid #c5c2b0;
+}
+
+:root[data-theme='light'] nav.sidebar::after {
+  display: none; /* No dither effect in light mode */
+}
+
+:root[data-theme='light'] nav.sidebar a {
+  color: var(--retro-black) !important;
+}
+
+:root[data-theme='light'] nav.sidebar a:hover {
+  color: var(--retro-purple) !important;
+}
+
+:root[data-theme='light'] .sidebar-content a[aria-current='page'] {
+  color: #5a1f50 !important;
+  background: rgba(90, 31, 80, 0.1);
+  font-weight: 600;
+}
+
+:root[data-theme='light'] .sidebar-content summary,
+:root[data-theme='light'] .sidebar-content .large {
+  color: #5a1f50 !important;
+}
+
+/* =============================================================================
+   LIGHT MODE HEADER
+   ============================================================================= */
+:root[data-theme='light'] .header {
+  background: #e8e5d0 !important;
+  border-bottom: 1px solid #c5c2b0;
+}
+
+:root[data-theme='light'] .site-title-text {
+  color: var(--retro-black) !important;
+  text-shadow: none !important;
+}
+
+/* =============================================================================
+   LIGHT MODE RIGHT SIDEBAR (TOC)
+   ============================================================================= */
+:root[data-theme='light'] starlight-toc a {
+  color: #3d3d35 !important;
+}
+
+:root[data-theme='light'] starlight-toc a:hover {
+  color: #1a5247 !important;
+}
+
+:root[data-theme='light'] starlight-toc a[aria-current='true'] {
+  color: #5a1f50 !important;
+  font-weight: 600;
+}
+
+/* =============================================================================
+   LIGHT MODE SCROLLBAR - Firefox only
+   ============================================================================= */
+:root[data-theme='light'] * {
+  scrollbar-color: #a8a593 var(--retro-white);
+}
+
+/* =============================================================================
+   LIGHT MODE SELECTION
+   ============================================================================= */
+:root[data-theme='light'] ::selection {
+  background: var(--retro-purple);
+  color: var(--retro-white);
+}
+
+/* =============================================================================
+   LIGHT MODE MAIN CONTENT - Remove scanlines overlay
+   ============================================================================= */
+:root[data-theme='light'] .main-pane::before {
+  display: none; /* Scanlines don't work well on light backgrounds */
+}
+
+/* -----------------------------------------------------------------------------
+   SQUARE CORNERS
+   ----------------------------------------------------------------------------- */
+*, *::before, *::after {
+  border-radius: 0 !important;
+}
+
+/* Rainbow accent bar at top */
+body::before {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(
+    90deg,
+    var(--retro-cyan) 0%,
+    var(--retro-cyan) 16%,
+    var(--retro-blue) 16%,
+    var(--retro-blue) 33%,
+    var(--retro-purple) 33%,
+    var(--retro-purple) 50%,
+    var(--retro-pink) 50%,
+    var(--retro-pink) 66%,
+    var(--retro-orange) 66%,
+    var(--retro-orange) 83%,
+    var(--retro-yellow) 83%
+  );
+  z-index: 9999;
+}
+
+/* -----------------------------------------------------------------------------
+   TYPOGRAPHY
+   ----------------------------------------------------------------------------- */
+h1 {
+  font-family: var(--font-pixel) !important;
+  color: var(--retro-white) !important;
+  text-shadow:
+    2px 2px 0 var(--retro-pink),
+    4px 4px 0 var(--retro-purple);
+  margin-bottom: var(--space-lg);
+}
+
+h2 {
+  font-family: var(--font-pixel) !important;
+  color: var(--retro-white) !important;
+  text-shadow: 1px 1px 0 var(--retro-dark-cyan);
+  border-bottom: 2px solid var(--retro-dark-purple);
+  padding-bottom: var(--space-sm);
+  margin-top: var(--space-2xl);
+  margin-bottom: var(--space-md);
+}
+
+.sl-markdown-content h3 {
+  font-family: var(--font-pixel) !important;
+  color: var(--retro-pink) !important;
+  margin-top: var(--space-xl);
+  margin-bottom: var(--space-sm);
+}
+
+/* Override for custom components - white titles with colored shadows */
+.sl-markdown-content .value-prop h3,
+.sl-markdown-content .feature-card h3 {
+  color: var(--retro-white) !important;
+  margin-top: 0;
+}
+
+/* Light mode - dark titles for custom components */
+:root[data-theme='light'] .sl-markdown-content .value-prop h3,
+:root[data-theme='light'] .sl-markdown-content .feature-card h3 {
+  color: var(--retro-black) !important;
+}
+
+/* Reset Starlight's adjacent sibling margins inside custom components */
+.sl-markdown-content .stats-banner > *,
+.sl-markdown-content .stats-grid > *,
+.sl-markdown-content .feature-grid > *,
+.sl-markdown-content .value-prop > *,
+.sl-markdown-content .feature-card > * {
+  margin-top: 0 !important;
+}
+
+h4, h5, h6 {
+  font-family: var(--font-pixel) !important;
+  color: var(--retro-yellow) !important;
+  margin-top: var(--space-lg);
+  margin-bottom: var(--space-xs);
+}
+
+body, p, li, td, th {
+  font-family: var(--font-body) !important;
+}
+
+code, pre, kbd {
+  font-family: var(--font-mono) !important;
+}
+
+/* -----------------------------------------------------------------------------
+   LINKS
+   ----------------------------------------------------------------------------- */
+a {
+  color: var(--retro-pink);
+}
+
+a:hover {
+  color: var(--retro-blue);
+}
+
+/* -----------------------------------------------------------------------------
+   HEADER
+   ----------------------------------------------------------------------------- */
+.header {
+  background: var(--retro-midnight) !important;
+}
+
+/* -----------------------------------------------------------------------------
+   LEFT SIDEBAR - Solid opaque background
+   ----------------------------------------------------------------------------- */
+nav.sidebar {
+  background: var(--retro-midnight) !important;
+  position: relative;
+}
+
+/* Dithered edge fade on sidebar */
+nav.sidebar::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 24px;
+  background: var(--dither-purple-12);
+  background-size: var(--dither-size) var(--dither-size);
+  pointer-events: none;
+  opacity: 0.5;
+}
+
+nav.sidebar a {
+  color: var(--retro-white) !important;
+  transition: color 0.1s ease;
+}
+
+nav.sidebar a:hover {
+  color: #ffffff !important;
+}
+
+.sidebar-pane, .sidebar-content {
+  border: none !important;
+  box-shadow: none !important;
+}
+
+.sidebar-content a[aria-current='page'] {
+  color: var(--retro-blue) !important;
+  background: rgba(217, 76, 135, 0.1);
+}
+
+/* Sidebar group labels */
+.sidebar-content summary,
+.sidebar-content .large {
+  font-family: var(--font-pixel) !important;
+  color: var(--retro-pink) !important;
+  text-transform: uppercase;
+  font-size: 0.7rem;
+  letter-spacing: 0.1em;
+}
+
+/* -----------------------------------------------------------------------------
+   RIGHT SIDEBAR - Clean, minimal
+   ----------------------------------------------------------------------------- */
+starlight-toc,
+.right-sidebar,
+.right-sidebar-panel {
+  border: none !important;
+  box-shadow: none !important;
+  background: transparent !important;
+}
+
+starlight-toc a:hover {
+  color: var(--retro-cyan);
+}
+
+starlight-toc a[aria-current='true'] {
+  color: var(--retro-pink);
+}
+
+/* -----------------------------------------------------------------------------
+   MAIN CONTENT - Subtle scanline texture
+   ----------------------------------------------------------------------------- */
+.main-pane {
+  position: relative;
+}
+
+.main-pane::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--pattern-scanlines);
+  background-size: 1px 8px;
+  pointer-events: none;
+  opacity: 0.03;
+  z-index: 1;
+}
+
+/* Ensure content is above scanlines */
+.main-pane > * {
+  position: relative;
+  z-index: 2;
+}
+
+/* -----------------------------------------------------------------------------
+   CODE BLOCKS
+   ----------------------------------------------------------------------------- */
+pre.astro-code,
+.expressive-code pre,
+pre:has(code) {
+  background: var(--retro-navy) !important;
+  border: 2px solid var(--retro-dark-purple) !important;
+  box-shadow: 3px 3px 0 var(--retro-deep-purple);
+}
+
+:not(pre) > code {
+  background: var(--retro-dark-purple) !important;
+  color: var(--retro-cyan) !important;
+  padding: 0.15em 0.35em;
+  border: 1px solid var(--retro-purple);
+}
+
+/* -----------------------------------------------------------------------------
+   BUTTONS
+   ----------------------------------------------------------------------------- */
+button:not(.theme-toggle):not(.sound-toggle),
+.sl-link-button,
+.action {
+  font-family: var(--font-pixel) !important;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border: 2px solid var(--retro-cyan) !important;
+  background: var(--retro-dark-purple) !important;
+  color: var(--retro-white) !important;
+  box-shadow: 3px 3px 0 var(--retro-purple);
+  transition: transform 0.1s ease, box-shadow 0.1s ease;
+}
+
+/* Theme toggle & sound toggle - clean icon style like social icons */
+.theme-toggle,
+.sound-toggle {
+  all: unset !important;
+  display: flex !important;
+  align-items: center !important;
+  cursor: pointer !important;
+  color: var(--retro-white) !important;
+}
+
+.theme-toggle:hover,
+.sound-toggle:hover {
+  all: unset !important;
+  display: flex !important;
+  align-items: center !important;
+  cursor: pointer !important;
+  color: var(--retro-cyan) !important;
+}
+
+button:hover,
+.sl-link-button:hover,
+.action:hover {
+  background: var(--retro-purple) !important;
+  border-color: var(--retro-pink) !important;
+  color: var(--retro-yellow) !important;
+  transform: translate(1px, 1px);
+  box-shadow: 2px 2px 0 var(--retro-dark-purple);
+}
+
+.sl-link-button.primary,
+a.primary.action {
+  background: var(--retro-pink) !important;
+  border-color: var(--retro-pink) !important;
+}
+
+/* -----------------------------------------------------------------------------
+   TABLES
+   ----------------------------------------------------------------------------- */
+table {
+  width: 100% !important;
+  min-width: 100% !important;
+  table-layout: fixed;
+  border: 2px solid var(--retro-purple);
+  background: var(--retro-navy);
+}
+
+thead,
+tbody,
+tr {
+  display: table;
+  width: 100%;
+  table-layout: fixed;
+  margin: 0 !important;
+  border-spacing: 0;
+}
+
+tbody tr {
+  margin: 0 !important;
+}
+
+th,
+td {
+  display: table-cell;
+  vertical-align: middle;
+  padding: 0.75rem 1rem !important;
+}
+
+th:first-child,
+td:first-child {
+  width: 35%;
+  white-space: nowrap;
+}
+
+th {
+  background: var(--retro-purple) !important;
+  color: var(--retro-white) !important;
+  font-family: var(--font-pixel) !important;
+  font-size: 0.875rem;
+}
+
+/* -----------------------------------------------------------------------------
+   CARDS & CALLOUTS - 4x scaled dithering
+   ----------------------------------------------------------------------------- */
+.card,
+.sl-link-card,
+.callout,
+.aside {
+  /* Diagonal gradient with visible dither overlay */
+  background:
+    var(--dither-dark-50),
+    linear-gradient(
+      135deg,
+      var(--retro-dark-purple) 0%,
+      var(--retro-dark-purple) 40%,
+      var(--retro-deep-purple) 100%
+    ) !important;
+  background-size: var(--dither-size) var(--dither-size), 100% 100% !important;
+  border: none !important;
+  box-shadow: 3px 3px 0 var(--retro-deep-purple);
+  transition: box-shadow 0.15s ease, transform 0.15s ease;
+}
+
+.card:hover,
+.sl-link-card:hover {
+  box-shadow:
+    3px 3px 0 var(--retro-pink),
+    6px 6px 0 var(--retro-deep-purple);
+  transform: translate(-1px, -1px);
+}
+
+.card:hover .title,
+.sl-link-card:hover .title {
+  color: var(--retro-yellow) !important;
+}
+
+/* Card titles */
+.card .title,
+.sl-link-card .title {
+  font-family: var(--font-pixel) !important;
+  color: var(--retro-cyan) !important;
+}
+
+/* -----------------------------------------------------------------------------
+   CALLOUTS/ASIDES - Colored backgrounds per type
+   ----------------------------------------------------------------------------- */
+.starlight-aside--note,
+.aside[data-type="note"] {
+  background:
+    var(--dither-blue-12),
+    linear-gradient(
+      135deg,
+      var(--retro-navy) 0%,
+      var(--retro-navy) 60%,
+      var(--retro-deep-purple) 100%
+    ) !important;
+  background-size: var(--dither-size) var(--dither-size), 100% 100% !important;
+  border-left: 4px solid var(--retro-blue) !important;
+}
+
+.starlight-aside--tip,
+.aside[data-type="tip"] {
+  background:
+    var(--dither-cyan-12),
+    linear-gradient(
+      135deg,
+      var(--retro-dark-cyan) 0%,
+      rgba(27, 107, 90, 0.6) 60%,
+      var(--retro-deep-purple) 100%
+    ) !important;
+  background-size: var(--dither-size) var(--dither-size), 100% 100% !important;
+  border-left: 4px solid var(--retro-cyan) !important;
+}
+
+.starlight-aside--caution,
+.aside[data-type="caution"] {
+  background:
+    var(--dither-orange-12),
+    linear-gradient(
+      135deg,
+      rgba(232, 125, 62, 0.2) 0%,
+      rgba(232, 125, 62, 0.1) 60%,
+      var(--retro-deep-purple) 100%
+    ) !important;
+  background-size: var(--dither-size) var(--dither-size), 100% 100% !important;
+  border-left: 4px solid var(--retro-orange) !important;
+}
+
+.starlight-aside--danger,
+.aside[data-type="danger"] {
+  background:
+    var(--dither-pink-12),
+    linear-gradient(
+      135deg,
+      rgba(217, 76, 135, 0.2) 0%,
+      rgba(217, 76, 135, 0.1) 60%,
+      var(--retro-deep-purple) 100%
+    ) !important;
+  background-size: var(--dither-size) var(--dither-size), 100% 100% !important;
+  border-left: 4px solid var(--retro-pink) !important;
+}
+
+/* Aside titles */
+.starlight-aside__title,
+.aside .title {
+  font-family: var(--font-pixel) !important;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* -----------------------------------------------------------------------------
+   PAGINATION LINKS - Same treatment as cards
+   ----------------------------------------------------------------------------- */
+.pagination-links a,
+a.pagination-link {
+  background:
+    var(--dither-dark-50),
+    linear-gradient(
+      135deg,
+      var(--retro-dark-purple) 0%,
+      var(--retro-dark-purple) 40%,
+      var(--retro-deep-purple) 100%
+    ) !important;
+  background-size: var(--dither-size) var(--dither-size), 100% 100% !important;
+  border: none !important;
+  box-shadow: 3px 3px 0 var(--retro-deep-purple);
+  font-family: var(--font-pixel) !important;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  transition: box-shadow 0.15s ease, transform 0.15s ease;
+}
+
+.pagination-links a:hover,
+a.pagination-link:hover {
+  box-shadow:
+    3px 3px 0 var(--retro-pink),
+    6px 6px 0 var(--retro-deep-purple);
+  transform: translate(-1px, -1px);
+}
+
+/* Pagination link text */
+.pagination-links a .link-title,
+a.pagination-link .link-title {
+  font-family: var(--font-pixel) !important;
+  color: var(--retro-cyan) !important;
+}
+
+.pagination-links a:hover .link-title,
+a.pagination-link:hover .link-title {
+  color: var(--retro-yellow) !important;
+}
+
+/* Pagination direction labels */
+.pagination-links a .link-label,
+a.pagination-link .link-label {
+  font-family: var(--font-pixel) !important;
+  font-size: 0.7rem;
+  color: var(--retro-pink) !important;
+  text-transform: uppercase;
+}
+
+/* -----------------------------------------------------------------------------
+   HR DIVIDERS - Rainbow stepped
+   ----------------------------------------------------------------------------- */
+hr {
+  border: none;
+  height: 3px;
+  background: linear-gradient(
+    90deg,
+    var(--retro-cyan) 0%,
+    var(--retro-cyan) 16%,
+    var(--retro-blue) 16%,
+    var(--retro-blue) 33%,
+    var(--retro-purple) 33%,
+    var(--retro-purple) 50%,
+    var(--retro-pink) 50%,
+    var(--retro-pink) 66%,
+    var(--retro-orange) 66%,
+    var(--retro-orange) 83%,
+    var(--retro-yellow) 83%
+  );
+}
+
+/* -----------------------------------------------------------------------------
+   PAGE HEADER
+   ----------------------------------------------------------------------------- */
+.content-panel > header,
+.main-pane > header {
+  border: none !important;
+}
+
+.content-panel[class*="astro-"] {
+  border: none !important;
+  padding-bottom: 0;
+}
+
+/* -----------------------------------------------------------------------------
+   TABS - Hover effects
+   ----------------------------------------------------------------------------- */
+starlight-tabs .tab > [role='tab'] {
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+starlight-tabs .tab > [role='tab']:hover {
+  color: var(--retro-white);
+  border-bottom-color: var(--retro-pink);
+}
+
+/* Light mode tabs */
+:root[data-theme='light'] starlight-tabs .tab > [role='tab']:hover {
+  border-bottom-color: var(--retro-purple);
+}
+
+/* -----------------------------------------------------------------------------
+   SCROLLBAR - Subtle styling for Firefox/Safari
+   ----------------------------------------------------------------------------- */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--retro-dark-purple) transparent;
+}
+
+/* -----------------------------------------------------------------------------
+   SELECTION
+   ----------------------------------------------------------------------------- */
+::selection {
+  background: var(--retro-pink);
+  color: var(--retro-white);
+}
+
+/* -----------------------------------------------------------------------------
+   PIXEL IMAGES & ICONS
+   ----------------------------------------------------------------------------- */
+/* Site title with black outline + pink shadow */
+.site-title-text {
+  font-family: var(--font-pixel) !important;
+  text-shadow:
+    -1px -1px 0 var(--retro-black),
+    1px -1px 0 var(--retro-black),
+    -1px 1px 0 var(--retro-black),
+    1px 1px 0 var(--retro-black),
+    2px 2px 0 var(--retro-pink) !important;
+}
+
+.site-title-link:hover .site-title-text,
+.site-title-link:hover {
+  color: var(--retro-white) !important;
+}
+
+.site-title img {
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+
+/* Card icons */
+.card .icon,
+.sl-link-card .icon {
+  background: none !important;
+  border: none !important;
+  padding: 0 !important;
+}
+
+.card .pixel-icon,
+.sl-link-card .pixel-icon {
+  width: 2.5rem !important;
+  height: 2.5rem !important;
+}
+
+/* -----------------------------------------------------------------------------
+   HERO SECTION - Dramatic dithered gradient
+   ----------------------------------------------------------------------------- */
+.hero {
+  position: relative;
+  overflow: hidden;
+  padding-top: var(--space-3xl) !important;
+  padding-bottom: var(--space-3xl) !important;
+}
+
+/* Multi-layer dithered gradient background */
+.hero::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  /* Base gradient: midnight -> deep purple -> dark purple */
+  background: linear-gradient(
+    to bottom,
+    var(--retro-midnight) 0%,
+    var(--retro-deep-purple) 40%,
+    var(--retro-dark-purple) 70%,
+    var(--retro-purple) 100%
+  );
+  z-index: -3;
+}
+
+/* Cyan dither band at top */
+.hero::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 40%;
+  background:
+    var(--dither-cyan-37),
+    linear-gradient(to bottom, var(--retro-cyan) 0%, transparent 100%);
+  background-size: var(--dither-size) var(--dither-size), 100% 100%;
+  mask-image: linear-gradient(to bottom, black 0%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, black 0%, transparent 100%);
+  z-index: -2;
+  opacity: 0.6;
+}
+
+/* Additional color layers via extra pseudo elements on children */
+.hero > .sl-flex {
+  position: relative;
+  z-index: 1;
+}
+
+/* Blue/pink accent dithering on hero */
+.hero .hero-html {
+  position: relative;
+}
+
+.hero .hero-html::before {
+  content: '';
+  position: absolute;
+  left: -100vw;
+  right: -100vw;
+  bottom: -50%;
+  height: 80%;
+  background:
+    var(--dither-pink-25),
+    var(--dither-purple-50);
+  background-size: var(--dither-size) var(--dither-size);
+  background-position: 0 0, 8px 8px;
+  mask-image: linear-gradient(to top, black 0%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to top, black 0%, transparent 100%);
+  z-index: -1;
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+/* Scanline overlay on hero */
+.hero .hero-html::after {
+  content: '';
+  position: absolute;
+  left: -100vw;
+  right: -100vw;
+  top: -100%;
+  bottom: -100%;
+  background: var(--pattern-scanlines);
+  background-size: 1px 8px;
+  opacity: 0.04;
+  z-index: 0;
+  pointer-events: none;
+}
+
+/* Hero title special treatment */
+.hero h1 {
+  text-shadow:
+    2px 2px 0 var(--retro-pink),
+    4px 4px 0 var(--retro-purple),
+    6px 6px 0 var(--retro-deep-purple) !important;
+  font-size: clamp(2rem, 5vw, 3.5rem) !important;
+}
+
+/* Hero tagline */
+.hero .tagline {
+  color: var(--retro-white);
+  text-shadow: 1px 1px 0 var(--retro-navy);
+  max-width: 42em;
+}
+
+/* Hero action buttons - extra pop */
+.hero .action {
+  font-size: 0.9rem;
+  padding: 0.75rem 1.5rem;
+}
+
+.hero .action.primary {
+  background: var(--retro-pink) !important;
+  border-color: var(--retro-pink) !important;
+  box-shadow:
+    3px 3px 0 var(--retro-purple),
+    6px 6px 0 var(--retro-deep-purple);
+}
+
+.hero .action.primary:hover {
+  background: var(--retro-cyan) !important;
+  border-color: var(--retro-cyan) !important;
+  color: var(--retro-black) !important;
+  transform: translate(2px, 2px);
+  box-shadow:
+    1px 1px 0 var(--retro-purple),
+    4px 4px 0 var(--retro-deep-purple);
+}
+
+/* =============================================================================
+   LIGHT MODE HERO - Clean, readable, still distinctive
+   ============================================================================= */
+:root[data-theme='light'] .hero::before {
+  background: linear-gradient(
+    to bottom,
+    #e8e5d0 0%,
+    #dfdcc7 50%,
+    #d6d3be 100%
+  );
+}
+
+:root[data-theme='light'] .hero::after {
+  display: none; /* Remove dither effects in light mode */
+}
+
+:root[data-theme='light'] .hero .hero-html::before,
+:root[data-theme='light'] .hero .hero-html::after {
+  display: none; /* Remove overlays in light mode */
+}
+
+:root[data-theme='light'] .hero h1 {
+  color: var(--retro-black) !important;
+  text-shadow: none !important;
+  border-bottom: 4px solid var(--retro-pink);
+  padding-bottom: var(--space-sm);
+}
+
+:root[data-theme='light'] .hero .tagline {
+  color: var(--retro-black) !important;
+  text-shadow: none;
+}
+
+:root[data-theme='light'] .hero .action.primary {
+  background: #9a2c4e !important;
+  border-color: #9a2c4e !important;
+  color: var(--retro-white) !important;
+}
+
+:root[data-theme='light'] .hero .action.primary:hover {
+  background: #5a1f50 !important;
+  border-color: #5a1f50 !important;
+}
+
+:root[data-theme='light'] .hero .action:not(.primary) {
+  background: #e8e5d0 !important;
+  border-color: var(--retro-purple) !important;
+  color: var(--retro-black) !important;
+}
+
+:root[data-theme='light'] .hero .action:not(.primary):hover {
+  background: var(--retro-purple) !important;
+  color: var(--retro-white) !important;
+}
+
+/* -----------------------------------------------------------------------------
+   MOBILE OPTIMIZATIONS - Reduce pattern intensity on small screens
+   ----------------------------------------------------------------------------- */
+@media (max-width: 768px) {
+  /* Reduce dither pattern visibility on mobile */
+  .card,
+  .sl-link-card,
+  .callout,
+  .aside,
+  .pagination-links a,
+  a.pagination-link {
+    background-size: var(--dither-size-2x) var(--dither-size-2x), 100% 100% !important;
+  }
+
+  /* Remove sidebar dither edge on mobile */
+  nav.sidebar::after {
+    display: none;
+  }
+
+  /* Reduce scanline visibility on mobile */
+  .main-pane::before {
+    opacity: 0.015;
+  }
+
+  /* Tighter spacing on mobile */
+  h1 { margin-bottom: var(--space-md); }
+  h2 {
+    margin-top: var(--space-xl);
+    margin-bottom: var(--space-sm);
+  }
+  h3 { margin-top: var(--space-lg); }
+}
+
+/* Very small screens - minimal patterns */
+@media (max-width: 480px) {
+  .card,
+  .sl-link-card,
+  .callout,
+  .aside,
+  .pagination-links a,
+  a.pagination-link {
+    /* Use sparser dither on very small screens */
+    background:
+      var(--dither-dark-25),
+      linear-gradient(
+        135deg,
+        var(--retro-dark-purple) 0%,
+        var(--retro-deep-purple) 100%
+      ) !important;
+    background-size: var(--dither-size-2x) var(--dither-size-2x), 100% 100% !important;
+  }
+}
+
+/* =============================================================================
+   API REFERENCE PAGES - Programmer-friendly typography
+   H1/H2 keep pixel fonts, H3-H6 use monospace for code identifiers
+   ============================================================================= */
+
+/* API page headings - monospace font, preserve casing */
+[data-page-type="api"] .sl-markdown-content h3,
+[data-page-type="api"] .sl-markdown-content h4,
+[data-page-type="api"] .sl-markdown-content h5,
+[data-page-type="api"] .sl-markdown-content h6 {
+  font-family: var(--font-mono) !important;
+  text-transform: none !important;
+  letter-spacing: normal !important;
+  font-weight: 600;
+}
+
+/* H3 - Method/property names - cyan accent */
+[data-page-type="api"] .sl-markdown-content h3 {
+  color: var(--retro-cyan) !important;
+  font-size: 1.1rem;
+  border-bottom: 1px solid var(--retro-dark-purple);
+  padding-bottom: var(--space-xs);
+}
+
+/* H4 - Section labels (Parameters, Returns, etc) - pink accent */
+[data-page-type="api"] .sl-markdown-content h4 {
+  color: var(--retro-pink) !important;
+  font-size: 0.95rem;
+  margin-top: var(--space-md);
+}
+
+/* H5/H6 - Sub-sections - muted colors */
+[data-page-type="api"] .sl-markdown-content h5,
+[data-page-type="api"] .sl-markdown-content h6 {
+  color: var(--retro-orange) !important;
+  font-size: 0.875rem;
+}
+
+/* API blockquotes - type signatures and definitions */
+[data-page-type="api"] .sl-markdown-content blockquote {
+  font-family: var(--font-mono) !important;
+  font-size: 0.9rem;
+  background: var(--retro-navy) !important;
+  border-left: 3px solid var(--retro-purple) !important;
+  padding: var(--space-sm) var(--space-md);
+  margin: var(--space-sm) 0;
+}
+
+[data-page-type="api"] .sl-markdown-content blockquote p {
+  font-family: var(--font-mono) !important;
+  margin: 0;
+}
+
+/* Property/method names (bold) - white */
+[data-page-type="api"] .sl-markdown-content blockquote strong {
+  color: var(--retro-white) !important;
+  font-weight: 600;
+}
+
+/* ALL inline code on API pages - remove boxes, cyan color */
+[data-page-type="api"] .sl-markdown-content :not(pre) > code {
+  background: none !important;
+  border: none !important;
+  padding: 0 !important;
+  color: var(--retro-cyan) !important;
+}
+
+/* ALL links on API pages - pink, no underline decoration issues */
+[data-page-type="api"] .sl-markdown-content a {
+  color: var(--retro-pink) !important;
+  text-decoration: none;
+}
+
+[data-page-type="api"] .sl-markdown-content a:hover {
+  color: var(--retro-white) !important;
+  text-decoration: underline;
+}
+
+/* Light mode API pages */
+:root[data-theme='light'] [data-page-type="api"] .sl-markdown-content h3 {
+  color: #1a5247 !important;
+  border-bottom-color: #c5c2b0;
+}
+
+:root[data-theme='light'] [data-page-type="api"] .sl-markdown-content h4 {
+  color: #5a1f50 !important;
+}
+
+:root[data-theme='light'] [data-page-type="api"] .sl-markdown-content h5,
+:root[data-theme='light'] [data-page-type="api"] .sl-markdown-content h6 {
+  color: #b35d28 !important;
+}
+
+:root[data-theme='light'] [data-page-type="api"] .sl-markdown-content blockquote {
+  background: #e8e5d0 !important;
+  border-left-color: var(--retro-purple) !important;
+}
+
+:root[data-theme='light'] [data-page-type="api"] .sl-markdown-content blockquote strong {
+  color: var(--retro-black) !important;
+}
+
+/* Light mode: all inline code - teal */
+:root[data-theme='light'] [data-page-type="api"] .sl-markdown-content :not(pre) > code {
+  color: #1a5247 !important;
+}
+
+/* Light mode: all links - purple */
+:root[data-theme='light'] [data-page-type="api"] .sl-markdown-content a {
+  color: #5a1f50 !important;
+}
+
+:root[data-theme='light'] [data-page-type="api"] .sl-markdown-content a:hover {
+  color: #1a5247 !important;
+}

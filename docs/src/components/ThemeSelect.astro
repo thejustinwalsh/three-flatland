@@ -1,0 +1,148 @@
+---
+/**
+ * ThemeSelect - Combined theme toggle + sound toggle
+ * The sound toggle appears first (between theme and separator)
+ * Uses pixelated icons from pixelarticons.
+ */
+import Icon from './Icon.astro';
+import SoundToggle from './SoundToggle.astro';
+---
+
+<div class="header-toggles">
+  <SoundToggle />
+  <starlight-theme-toggle>
+    <button
+      type="button"
+      class="theme-toggle"
+      data-sound="none"
+      aria-label="Toggle theme"
+    >
+      <span class="icon icon-system"><Icon name="monitor" size="1rem" /></span>
+      <span class="icon icon-light"><Icon name="sun" size="1rem" /></span>
+      <span class="icon icon-dark"><Icon name="moon" size="1rem" /></span>
+    </button>
+  </starlight-theme-toggle>
+</div>
+
+<script>
+  import { playClick } from '../scripts/sounds';
+
+  class StarlightThemeToggle extends HTMLElement {
+    private button: HTMLButtonElement | null = null;
+    private modes: ('auto' | 'light' | 'dark')[] = ['auto', 'light', 'dark'];
+    private currentIndex: number = 0;
+
+    constructor() {
+      super();
+      this.button = this.querySelector('button');
+
+      // Get current theme from localStorage or default to auto
+      const stored = typeof localStorage !== 'undefined'
+        ? localStorage.getItem('starlight-theme')
+        : null;
+
+      if (stored === 'light') {
+        this.currentIndex = 1;
+      } else if (stored === 'dark') {
+        this.currentIndex = 2;
+      } else {
+        this.currentIndex = 0;
+      }
+
+      this.updateIcon();
+      this.button?.addEventListener('click', () => this.cycle());
+    }
+
+    private cycle() {
+      this.currentIndex = (this.currentIndex + 1) % this.modes.length;
+      const mode = this.modes[this.currentIndex];
+      this.setTheme(mode);
+      this.updateIcon();
+
+      // Play click sound
+      playClick();
+    }
+
+    private setTheme(mode: 'auto' | 'light' | 'dark') {
+      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+
+      if (mode === 'auto') {
+        localStorage.removeItem('starlight-theme');
+        document.documentElement.dataset.theme = prefersDark ? 'dark' : 'light';
+      } else {
+        localStorage.setItem('starlight-theme', mode);
+        document.documentElement.dataset.theme = mode;
+      }
+    }
+
+    private updateIcon() {
+      const mode = this.modes[this.currentIndex];
+      const icons = this.querySelectorAll('.icon');
+      icons.forEach(icon => {
+        icon.classList.remove('active');
+      });
+      this.querySelector(`.icon-${mode === 'auto' ? 'system' : mode}`)?.classList.add('active');
+
+      // Update aria-label
+      const labels = { auto: 'System theme', light: 'Light theme', dark: 'Dark theme' };
+      this.button?.setAttribute('aria-label', `${labels[mode]} (click to change)`);
+    }
+  }
+
+  customElements.define('starlight-theme-toggle', StarlightThemeToggle);
+</script>
+
+<style>
+  .header-toggles {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  starlight-theme-toggle {
+    display: flex;
+    align-items: center;
+  }
+
+  .theme-toggle,
+  .theme-toggle:hover,
+  .theme-toggle:focus,
+  .theme-toggle:active {
+    all: unset;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    color: var(--retro-white);
+  }
+
+  .theme-toggle:hover {
+    color: var(--retro-cyan);
+  }
+
+  .icon {
+    display: none;
+    align-items: center;
+    justify-content: center;
+    width: 1rem;
+    height: 1rem;
+    line-height: 0;
+  }
+
+  .icon.active {
+    display: flex;
+  }
+
+  .icon :global(svg) {
+    display: block;
+  }
+
+  /* Light mode */
+  :global([data-theme='light']) .theme-toggle {
+    color: var(--retro-black);
+  }
+
+  :global([data-theme='light']) .theme-toggle:hover {
+    color: var(--retro-purple);
+  }
+</style>

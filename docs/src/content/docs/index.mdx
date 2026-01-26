@@ -1,46 +1,214 @@
 ---
 title: three-flatland
-description: High-performance 2D sprite and effects library for Three.js using WebGPU and TSL.
+description: The complete 2D solution for Three.js and React Three Fiber. Built for WebGPU with composable TSL shaders.
 template: splash
 hero:
-  tagline: High-performance 2D sprites and effects for Three.js using WebGPU and TSL (Three Shader Language).
+  tagline: The complete 2D solution for Three.js and React Three Fiber. Built for WebGPU with composable TSL shaders.
   actions:
     - text: Get Started
       link: /getting-started/introduction/
       icon: right-arrow
       variant: primary
     - text: View on GitHub
-      link: https://github.com/tjw/three-flatland
+      link: https://github.com/thejustinwalsh/three-flatland
       icon: external
 ---
 
-import { Card, CardGrid } from '@astrojs/starlight/components';
+import FeatureCard from '../../components/FeatureCard.astro';
+import StatsBanner from '../../components/StatsBanner.astro';
+import ValueProp from '../../components/ValueProp.astro';
+import { Tabs, TabItem } from '@astrojs/starlight/components';
 
-## Features
+<StatsBanner stats={[
+  { value: "10,000+", label: "Sprites at 60fps", color: "cyan" },
+  { value: "1", label: "Draw Call", color: "pink" },
+  { value: "0", label: "CPU Overhead", color: "yellow" },
+  { value: "100%", label: "TypeScript", color: "blue" },
+]} />
 
-<CardGrid stagger>
-  <Card title="WebGPU Native" icon="rocket">
-    Built from the ground up for WebGPU with TSL shaders for maximum performance.
-  </Card>
-  <Card title="Batch Rendering" icon="list-format">
-    Automatic batching and instancing for rendering thousands of sprites efficiently.
-  </Card>
-  <Card title="React Three Fiber" icon="puzzle">
-    First-class React Three Fiber integration with declarative JSX components.
-  </Card>
-  <Card title="Animation System" icon="forward-slash">
-    Built-in sprite animation with spritesheet support and frame-based timing.
-  </Card>
-</CardGrid>
+## Power Features
 
-## Quick Example
+<div class="feature-grid">
+  <FeatureCard
+    icon="rocket"
+    title="WebGPU Native"
+    color="cyan"
+    stat="Next-Gen"
+    statLabel="Graphics API"
+  >
+    Built from the ground up for WebGPU. No WebGL fallbacks, no compromises. Pure TSL shader power for effects that weren't possible before.
+  </FeatureCard>
 
+  <FeatureCard
+    icon="list-format"
+    title="Batch Rendering"
+    color="pink"
+    stat="10,000+"
+    statLabel="Sprites per batch"
+  >
+    Automatic batching and GPU instancing. Every sprite shares geometry and materials. Your GPU does the heavy lifting.
+  </FeatureCard>
+
+  <FeatureCard
+    icon="puzzle"
+    title="React Three Fiber"
+    color="yellow"
+    stat="R3F v10"
+    statLabel="WebGPU Support"
+  >
+    First-class R3F integration. Declarative JSX components that feel native. Full TypeScript support with accurate types.
+  </FeatureCard>
+
+  <FeatureCard
+    icon="forward-slash"
+    title="Animation System"
+    color="blue"
+    stat="60fps"
+    statLabel="Frame-perfect timing"
+  >
+    Built-in sprite animation with spritesheet support. Define animations in JSON, play them with one call. Buttery smooth.
+  </FeatureCard>
+
+  <FeatureCard
+    icon="star"
+    title="TSL Shader Nodes"
+    color="orange"
+    stat="Composable"
+    statLabel="Effect pipeline"
+  >
+    Mix and match shader effects. Palette swaps, outlines, glow, distortion. Build your visual style node by node.
+  </FeatureCard>
+
+  <FeatureCard
+    icon="document"
+    title="Tilemap Support"
+    color="purple"
+    stat="Tiled"
+    statLabel="JSON format"
+  >
+    Efficient tilemap rendering with Tiled editor support. Multiple layers, animated tiles, collision data. Build worlds fast.
+  </FeatureCard>
+</div>
+
+## Quick Start
+
+<Tabs>
+  <TabItem label="Three.js" icon="seti:javascript">
 ```typescript
-import { Sprite2D, Renderer2D } from '@three-flatland/core';
+import { Sprite2D, Renderer2D } from '@three-flatland/core'
 
-const renderer2D = new Renderer2D();
-scene.add(renderer2D);
+// Create a 2D renderer and add to your scene
+const renderer2D = new Renderer2D()
+scene.add(renderer2D)
 
-const sprite = new Sprite2D({ texture: myTexture });
-renderer2D.add(sprite);
+// Create sprites with textures
+const player = new Sprite2D({ texture: playerTexture })
+const enemy = new Sprite2D({ texture: enemyTexture })
+enemy.position.set(2, 0, 0)
+
+// Add sprites to the renderer
+renderer2D.add(player, enemy)
 ```
+  </TabItem>
+  <TabItem label="React" icon="seti:react">
+```tsx
+import { Canvas, extend } from '@react-three/fiber/webgpu'
+import { Sprite2D, Renderer2D } from '@three-flatland/react'
+
+extend({ Sprite2D, Renderer2D })
+
+function Game() {
+  return (
+    <Canvas>
+      <renderer2D>
+        <sprite2D texture={playerTexture} position={[0, 0, 0]} />
+        <sprite2D texture={enemyTexture} position={[2, 0, 0]} />
+      </renderer2D>
+    </Canvas>
+  )
+}
+```
+  </TabItem>
+</Tabs>
+
+## Why three-flatland?
+
+<ValueProp title="Built for the Future" color="cyan">
+  three-flatland is designed **exclusively** for Three.js WebGPU renderer. No legacy code, no WebGL baggage. By targeting WebGPU from day one, we leverage **TSL (Three Shader Language)** for shader composition that simply isn't possible with GLSL strings.
+
+  This means **real-time shader effects** that would tank performance on WebGL run buttery smooth. Palette cycling, CRT effects, per-sprite distortion — all composable, all fast.
+</ValueProp>
+
+<ValueProp title="Performance Obsessed" color="pink" align="right">
+  Every sprite in your scene shares the same geometry and materials through **automatic batching**. Whether you have 10 sprites or 10,000, three-flatland keeps your draw calls minimal and your frame rate high.
+
+  The GPU does what GPUs do best. Your CPU stays free for game logic. **Zero per-sprite overhead** in your render loop.
+</ValueProp>
+
+<ValueProp title="Developer Joy" color="yellow">
+  Full **TypeScript** support with types that actually help. React Three Fiber users get JSX components that integrate seamlessly. Vanilla Three.js users get a clean, intuitive API.
+
+  No configuration hell. No boilerplate. Import, create, render. **Ship your game, not your build config.**
+</ValueProp>
+
+<div class="ai-disclaimer">
+  <p>This documentation was created with AI assistance. AI can make mistakes — please verify claims and test code examples, and submit corrections <a href="https://github.com/thejustinwalsh/three-flatland/issues">here</a>.</p>
+</div>
+
+<style>
+{`
+  .ai-disclaimer {
+    margin: 4rem auto 2rem;
+    padding: 1rem 1.5rem;
+    max-width: 600px;
+    text-align: center;
+    font-size: 0.8rem;
+    color: var(--sl-color-gray-4);
+    border-top: 1px solid var(--sl-color-gray-6);
+  }
+
+  .ai-disclaimer p {
+    margin: 0;
+    opacity: 0.8;
+  }
+
+  .ai-disclaimer a {
+    color: inherit;
+    text-decoration: underline;
+  }
+
+  .ai-disclaimer a:hover {
+    opacity: 1;
+  }
+
+  .feature-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
+    gap: 1.5rem;
+    margin: 2rem 0;
+    align-items: stretch;
+  }
+
+  .feature-grid > :global(article) {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .feature-grid > :global(article) :global(.card-content) {
+    flex: 1;
+  }
+
+  @media (min-width: 900px) {
+    .feature-grid {
+      grid-template-columns: repeat(3, 1fr);
+    }
+  }
+
+  @media (min-width: 600px) and (max-width: 899px) {
+    .feature-grid {
+      grid-template-columns: repeat(2, 1fr);
+    }
+  }
+`}
+</style>

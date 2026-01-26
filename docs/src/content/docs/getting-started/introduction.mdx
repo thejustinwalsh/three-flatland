@@ -3,26 +3,20 @@ title: Introduction
 description: High-performance 2D sprite and effects library for Three.js using WebGPU and TSL.
 ---
 
-import { Card, CardGrid } from '@astrojs/starlight/components';
+import FeatureList from '../../../components/FeatureList.astro';
 
-**three-flatland** is a high-performance 2D sprite and effects library for [Three.js](https://threejs.org/) using WebGPU and TSL (Three Shader Language).
+**three-flatland** is a high-performance 2D sprite and effects library for [Three.js](https://threejs.org/) and [React Three Fiber](https://r3f.docs.pmnd.rs/), using WebGPU and TSL (Three Shader Language).
 
 ## Features
 
-<CardGrid>
-  <Card title="WebGPU Native" icon="rocket">
-    Built from the ground up for WebGPU with TSL shaders for maximum performance.
-  </Card>
-  <Card title="Batch Rendering" icon="list-format">
-    Automatic batching and instancing for rendering thousands of sprites efficiently.
-  </Card>
-  <Card title="React Three Fiber" icon="puzzle">
-    First-class React Three Fiber integration with declarative JSX components.
-  </Card>
-  <Card title="Animation System" icon="forward-slash">
-    Built-in sprite animation with spritesheet support and frame-based timing.
-  </Card>
-</CardGrid>
+<FeatureList features={[
+  { icon: "rocket", title: "WebGPU Native", description: "Built for WebGPU with TSL shaders" },
+  { icon: "list-format", title: "Batch Rendering", description: "Automatic batching for thousands of sprites" },
+  { icon: "puzzle", title: "React Three Fiber", description: "First-class R3F integration with JSX components" },
+  { icon: "forward-slash", title: "Animation System", description: "Spritesheet support with frame-based timing" },
+  { icon: "star", title: "TSL Shader Nodes", description: "Composable effects: palette swaps, outlines, glow" },
+  { icon: "document", title: "Tilemap Support", description: "Tiled editor format with animated tiles" },
+]} />
 
 ## Packages
 
@@ -39,6 +33,3 @@ import { Card, CardGrid } from '@astrojs/starlight/components';
 - **React** >= 19.0.0 (for React packages)
 - **@react-three/fiber** >= 10.0.0-alpha.0 (for React packages)
 
-## Browser Support
-
-three-flatland requires WebGPU support. Check [caniuse.com/webgpu](https://caniuse.com/webgpu) for current browser compatibility.

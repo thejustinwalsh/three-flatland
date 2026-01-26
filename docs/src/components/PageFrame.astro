@@ -1,0 +1,101 @@
+---
+/**
+ * PageFrame - Solid dark background with subtle bottom ombre gradient.
+ *
+ * Simplified design: solid --retro-midnight background with a Bayer
+ * dithered gradient only at the bottom 20% for a subtle retro touch.
+ * Ombre only shows on splash/landing pages (no sidebar).
+ */
+import type { Props } from '@astrojs/starlight/props';
+import Default from '@astrojs/starlight/components/PageFrame.astro';
+
+// Check if we're on the landing page by URL path
+// This is more reliable than checking Starlight props which may vary
+const pathname = Astro.url.pathname;
+const isLandingPage = pathname === '/' || pathname === '/three-flatland/' || pathname === '/three-flatland';
+const isApiPage = pathname.includes('/api/');
+---
+
+<!-- Global page background: solid color with bottom ombre -->
+<div class="retro-page-bg" aria-hidden="true"></div>
+{isLandingPage && <div class="retro-page-ombre" aria-hidden="true"></div>}
+<div class="retro-page-scanlines" aria-hidden="true"></div>
+
+<div data-page-type={isApiPage ? 'api' : 'content'}>
+<Default {...Astro.props}>
+  <slot name="header" slot="header" />
+  <slot name="sidebar" slot="sidebar" />
+  <slot />
+</Default>
+</div>
+
+<style is:global>
+  /* ==========================================================================
+     SOLID PAGE BACKGROUND WITH BOTTOM OMBRE
+     ========================================================================== */
+
+  /* Main solid background */
+  .retro-page-bg {
+    position: fixed;
+    inset: 0;
+    z-index: -100;
+    pointer-events: none;
+    background: var(--retro-midnight);
+  }
+
+  /* Bottom ombre gradient - at document bottom, only visible when scrolled down */
+  .retro-page-ombre {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 300px;
+    z-index: -99;
+    pointer-events: none;
+    /* Bayer dithered gradient SVG for subtle bottom fade */
+    background: url('/patterns/bottom-ombre.svg') repeat-x bottom;
+    background-size: auto 100%;
+    /* Critical: preserve pixel art crispness */
+    image-rendering: pixelated;
+    image-rendering: -moz-crisp-edges;
+    image-rendering: crisp-edges;
+  }
+
+  /* Ensure html/body allow absolute positioning at document bottom */
+  html {
+    position: relative;
+    min-height: 100%;
+  }
+
+  /* Subtle scanline texture */
+  .retro-page-scanlines {
+    position: fixed;
+    inset: 0;
+    z-index: -98;
+    pointer-events: none;
+    background: repeating-linear-gradient(
+      to bottom,
+      transparent 0px,
+      transparent 3px,
+      rgba(0, 0, 0, 0.015) 3px,
+      rgba(0, 0, 0, 0.015) 4px
+    );
+  }
+
+  /* Light mode: hide the retro background */
+  [data-theme='light'] .retro-page-bg {
+    background: var(--retro-white);
+  }
+
+  [data-theme='light'] .retro-page-ombre,
+  [data-theme='light'] .retro-page-scanlines {
+    display: none;
+  }
+
+  /* Mobile: reduce scanline intensity */
+  @media (max-width: 768px) {
+    .retro-page-scanlines {
+      opacity: 0.5;
+    }
+  }
+</style>

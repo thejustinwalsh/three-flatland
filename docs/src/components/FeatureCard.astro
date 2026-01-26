@@ -1,0 +1,208 @@
+---
+/**
+ * FeatureCard - Bold, colorful SNES-style feature card.
+ * Each card gets its own signature color from the retro palette.
+ */
+import Icon from './Icon.astro';
+
+interface Props {
+  icon?: string;
+  title: string;
+  color: 'cyan' | 'pink' | 'yellow' | 'blue' | 'orange' | 'purple';
+  stat?: string;
+  statLabel?: string;
+}
+
+const { icon, title, color, stat, statLabel } = Astro.props;
+
+const colorMap = {
+  cyan: {
+    bg: 'var(--retro-dark-cyan)',
+    accent: 'var(--retro-cyan)',
+    shadow: 'var(--retro-dark-cyan)',
+    glow: 'rgba(71, 204, 169, 0.3)',
+  },
+  pink: {
+    bg: 'var(--retro-purple)',
+    accent: 'var(--retro-pink)',
+    shadow: 'var(--retro-dark-pink)',
+    glow: 'rgba(217, 76, 135, 0.3)',
+  },
+  yellow: {
+    bg: 'var(--retro-dark-yellow)',
+    accent: 'var(--retro-yellow)',
+    shadow: 'var(--retro-dark-yellow)',
+    glow: 'rgba(242, 210, 75, 0.3)',
+  },
+  blue: {
+    bg: 'var(--retro-dark-blue)',
+    accent: 'var(--retro-blue)',
+    shadow: 'var(--retro-dark-blue)',
+    glow: 'rgba(11, 175, 230, 0.3)',
+  },
+  orange: {
+    bg: 'var(--retro-dark-orange)',
+    accent: 'var(--retro-orange)',
+    shadow: 'var(--retro-dark-orange)',
+    glow: 'rgba(232, 125, 62, 0.3)',
+  },
+  purple: {
+    bg: 'var(--retro-deep-purple)',
+    accent: 'var(--retro-purple)',
+    shadow: 'var(--retro-dark-purple)',
+    glow: 'rgba(115, 40, 102, 0.3)',
+  },
+};
+
+const colors = colorMap[color];
+---
+
+<article class="feature-card" data-sound="card" style={`--card-bg: ${colors.bg}; --card-accent: ${colors.accent}; --card-shadow: ${colors.shadow}; --card-glow: ${colors.glow};`}>
+  <div class="card-accent-bar"></div>
+  <div class="card-content">
+    {icon && (
+      <div class="icon-wrapper">
+        <Icon name={icon} class="icon" size="3rem" color={colors.accent} />
+      </div>
+    )}
+    <h3 class="title" set:html={title} />
+    {stat && (
+      <div class="stat-block">
+        <span class="stat-value">{stat}</span>
+        {statLabel && <span class="stat-label">{statLabel}</span>}
+      </div>
+    )}
+    <p class="description"><slot /></p>
+  </div>
+  <div class="card-corner tl"></div>
+  <div class="card-corner tr"></div>
+  <div class="card-corner bl"></div>
+  <div class="card-corner br"></div>
+</article>
+
+<style>
+  .feature-card {
+    position: relative;
+    background: var(--card-bg);
+    border: 3px solid var(--card-accent);
+    padding: 0;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+  }
+
+  .feature-card:hover {
+    transform: translate(-4px, -4px);
+    box-shadow:
+      4px 4px 0 var(--card-accent),
+      8px 8px 0 var(--retro-midnight);
+  }
+
+  /* Accent bar at top */
+  .card-accent-bar {
+    height: 8px;
+    background: var(--card-accent);
+    /* Pixel pattern */
+    background-image: repeating-linear-gradient(
+      90deg,
+      var(--card-accent) 0px,
+      var(--card-accent) 8px,
+      transparent 8px,
+      transparent 16px
+    );
+    background-size: 16px 8px;
+  }
+
+  .card-content {
+    padding: 1.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  .icon-wrapper {
+    width: 64px;
+    height: 64px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--retro-midnight);
+    border: 2px solid var(--card-accent);
+    box-shadow: inset 0 0 20px var(--card-glow);
+  }
+
+  .title {
+    font-family: var(--font-pixel);
+    font-size: 1.25rem;
+    color: var(--retro-white) !important;
+    margin: 0;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    text-shadow: 2px 2px 0 var(--card-shadow);
+  }
+
+  .stat-block {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+
+  .stat-value {
+    font-family: var(--font-pixel);
+    font-size: 2rem;
+    color: var(--retro-white);
+    text-shadow:
+      2px 2px 0 var(--card-accent),
+      4px 4px 0 var(--retro-midnight);
+  }
+
+  .stat-label {
+    font-family: var(--font-pixel);
+    font-size: 0.75rem;
+    color: var(--card-accent);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+  }
+
+  .description {
+    font-size: 0.95rem;
+    color: var(--retro-white);
+    margin: 0;
+    line-height: 1.6;
+    opacity: 0.9;
+  }
+
+  /* Pixel corner decorations */
+  .card-corner {
+    position: absolute;
+    width: 8px;
+    height: 8px;
+    background: var(--card-accent);
+  }
+
+  .card-corner.tl { top: -3px; left: -3px; }
+  .card-corner.tr { top: -3px; right: -3px; }
+  .card-corner.bl { bottom: -3px; left: -3px; }
+  .card-corner.br { bottom: -3px; right: -3px; }
+
+  /* Light mode */
+  :global([data-theme='light']) .feature-card {
+    background: var(--retro-white);
+  }
+
+  :global([data-theme='light']) .icon-wrapper {
+    background: #e8e5d0;
+  }
+
+  :global([data-theme='light']) .title {
+    color: var(--retro-black) !important;
+    text-shadow: none;
+  }
+
+  :global([data-theme='light']) .stat-value {
+    color: var(--retro-black);
+    text-shadow: 2px 2px 0 var(--card-accent);
+  }
+
+  :global([data-theme='light']) .description {
+    color: var(--retro-black);
+  }
+</style>

@@ -1,0 +1,276 @@
+---
+/**
+ * HeroGradient component - Creates a dramatic multi-color dithered gradient
+ * behind the hero section using authentic SNES-style color blending.
+ *
+ * Usage: <HeroGradient />
+ *
+ * The gradient transitions through cyan -> blue -> purple -> pink
+ * using layered Bayer dither patterns for that classic 16-bit look.
+ */
+interface Props {
+  /** Height of the gradient section */
+  height?: string;
+}
+
+const { height = '400px' } = Astro.props;
+---
+
+<div class="hero-gradient" style={`--gradient-height: ${height}`}>
+  <div class="hero-gradient__layer hero-gradient__layer--base"></div>
+  <div class="hero-gradient__layer hero-gradient__layer--cyan"></div>
+  <div class="hero-gradient__layer hero-gradient__layer--blue"></div>
+  <div class="hero-gradient__layer hero-gradient__layer--purple"></div>
+  <div class="hero-gradient__layer hero-gradient__layer--pink"></div>
+  <div class="hero-gradient__layer hero-gradient__layer--scanlines"></div>
+  <slot />
+</div>
+
+<style>
+  .hero-gradient {
+    position: relative;
+    min-height: var(--gradient-height, 400px);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+  }
+
+  .hero-gradient__layer {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+  }
+
+  /* Base layer - midnight to deep purple */
+  .hero-gradient__layer--base {
+    background: linear-gradient(
+      to bottom,
+      var(--retro-midnight) 0%,
+      var(--retro-deep-purple) 50%,
+      var(--retro-dark-purple) 100%
+    );
+  }
+
+  /* Cyan layer - visible at top, fades with dither */
+  .hero-gradient__layer--cyan {
+    background: var(--retro-cyan);
+    mask-image: linear-gradient(
+      to bottom,
+      black 0%,
+      black 5%,
+      transparent 35%
+    );
+    -webkit-mask-image: linear-gradient(
+      to bottom,
+      black 0%,
+      black 5%,
+      transparent 35%
+    );
+  }
+
+  /* Cyan dither transition */
+  .hero-gradient__layer--cyan::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: var(--dither-cyan-50);
+    background-size: var(--dither-size, 16px) var(--dither-size, 16px);
+    mask-image: linear-gradient(
+      to bottom,
+      transparent 5%,
+      black 15%,
+      black 25%,
+      transparent 40%
+    );
+    -webkit-mask-image: linear-gradient(
+      to bottom,
+      transparent 5%,
+      black 15%,
+      black 25%,
+      transparent 40%
+    );
+  }
+
+  /* Blue layer - middle section */
+  .hero-gradient__layer--blue {
+    background: var(--retro-blue);
+    mask-image: linear-gradient(
+      to bottom,
+      transparent 20%,
+      black 30%,
+      black 40%,
+      transparent 55%
+    );
+    -webkit-mask-image: linear-gradient(
+      to bottom,
+      transparent 20%,
+      black 30%,
+      black 40%,
+      transparent 55%
+    );
+    opacity: 0.8;
+  }
+
+  /* Blue dither edges */
+  .hero-gradient__layer--blue::before,
+  .hero-gradient__layer--blue::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: var(--dither-blue-50);
+    background-size: var(--dither-size, 16px) var(--dither-size, 16px);
+  }
+
+  .hero-gradient__layer--blue::before {
+    mask-image: linear-gradient(
+      to bottom,
+      black 15%,
+      black 25%,
+      transparent 35%
+    );
+    -webkit-mask-image: linear-gradient(
+      to bottom,
+      black 15%,
+      black 25%,
+      transparent 35%
+    );
+  }
+
+  .hero-gradient__layer--blue::after {
+    mask-image: linear-gradient(
+      to bottom,
+      transparent 40%,
+      black 50%,
+      black 55%,
+      transparent 65%
+    );
+    -webkit-mask-image: linear-gradient(
+      to bottom,
+      transparent 40%,
+      black 50%,
+      black 55%,
+      transparent 65%
+    );
+  }
+
+  /* Purple layer - lower middle */
+  .hero-gradient__layer--purple {
+    background: var(--retro-purple);
+    mask-image: linear-gradient(
+      to bottom,
+      transparent 45%,
+      black 55%,
+      black 65%,
+      transparent 80%
+    );
+    -webkit-mask-image: linear-gradient(
+      to bottom,
+      transparent 45%,
+      black 55%,
+      black 65%,
+      transparent 80%
+    );
+    opacity: 0.9;
+  }
+
+  /* Purple dither transition */
+  .hero-gradient__layer--purple::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: var(--dither-purple-50);
+    background-size: var(--dither-size, 16px) var(--dither-size, 16px);
+    mask-image: linear-gradient(
+      to bottom,
+      transparent 50%,
+      black 60%,
+      black 70%,
+      transparent 85%
+    );
+    -webkit-mask-image: linear-gradient(
+      to bottom,
+      transparent 50%,
+      black 60%,
+      black 70%,
+      transparent 85%
+    );
+  }
+
+  /* Pink layer - near bottom */
+  .hero-gradient__layer--pink {
+    background: var(--retro-pink);
+    mask-image: linear-gradient(
+      to bottom,
+      transparent 70%,
+      black 80%,
+      black 90%,
+      transparent 100%
+    );
+    -webkit-mask-image: linear-gradient(
+      to bottom,
+      transparent 70%,
+      black 80%,
+      black 90%,
+      transparent 100%
+    );
+    opacity: 0.7;
+  }
+
+  /* Pink dither transition */
+  .hero-gradient__layer--pink::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: var(--dither-pink-37);
+    background-size: var(--dither-size, 16px) var(--dither-size, 16px);
+    mask-image: linear-gradient(
+      to bottom,
+      transparent 65%,
+      black 75%,
+      black 90%,
+      transparent 100%
+    );
+    -webkit-mask-image: linear-gradient(
+      to bottom,
+      transparent 65%,
+      black 75%,
+      black 90%,
+      transparent 100%
+    );
+  }
+
+  /* Scanline overlay - subtle CRT effect */
+  .hero-gradient__layer--scanlines {
+    background: var(--pattern-scanlines);
+    background-size: 1px 8px;
+    opacity: 0.05;
+    z-index: 5;
+  }
+
+  /* Content slot should be above all layers */
+  .hero-gradient > :global(:not(.hero-gradient__layer)) {
+    position: relative;
+    z-index: 10;
+  }
+
+  /* Mobile: simplify the gradient layers */
+  @media (max-width: 768px) {
+    .hero-gradient {
+      min-height: calc(var(--gradient-height, 400px) * 0.75);
+    }
+
+    /* Reduce dither density on mobile */
+    .hero-gradient__layer--cyan::after,
+    .hero-gradient__layer--blue::before,
+    .hero-gradient__layer--blue::after,
+    .hero-gradient__layer--purple::after,
+    .hero-gradient__layer--pink::after {
+      background-size: var(--dither-size-2x, 32px) var(--dither-size-2x, 32px);
+    }
+
+    .hero-gradient__layer--scanlines {
+      opacity: 0.02;
+    }
+  }
+</style>

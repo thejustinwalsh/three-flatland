@@ -1,0 +1,99 @@
+---
+/**
+ * FeatureList - Simple styled list for feature callouts.
+ * Compact and scannable for documentation pages.
+ */
+interface Feature {
+  icon: string;
+  title: string;
+  description: string;
+  color?: string;
+}
+
+interface Props {
+  features: Feature[];
+}
+
+import Icon from './Icon.astro';
+
+const { features } = Astro.props;
+
+const defaultColors = [
+  'var(--retro-cyan)',
+  'var(--retro-pink)',
+  'var(--retro-yellow)',
+  'var(--retro-blue)',
+  'var(--retro-orange)',
+  'var(--retro-purple)',
+];
+---
+
+<ul class="feature-list">
+  {features.map((feature, i) => {
+    const color = feature.color || defaultColors[i % defaultColors.length];
+    return (
+      <li class="feature-item" style={`--accent: ${color};`}>
+        <span class="feature-name">
+          <Icon name={feature.icon} size="1.25rem" color={color} />
+          <span class="feature-title">{feature.title}</span>
+        </span>
+        <span class="feature-desc">{feature.description}</span>
+      </li>
+    );
+  })}
+</ul>
+
+<style>
+  .feature-list {
+    list-style: none;
+    padding: 0;
+    margin: 1rem 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+  }
+
+  .feature-item {
+    display: grid;
+    grid-template-columns: 14rem 1fr;
+    align-items: center;
+    gap: 1rem;
+    line-height: 1.5;
+  }
+
+  .feature-name {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    line-height: 1.5;
+  }
+
+  .feature-title {
+    font-family: var(--font-pixel);
+    font-size: 0.875rem;
+    color: var(--accent);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    line-height: 1.5;
+  }
+
+  .feature-desc {
+    font-size: 0.875rem;
+    color: var(--retro-white);
+    opacity: 0.8;
+    line-height: 1.5;
+  }
+
+  /* Light mode */
+  :global([data-theme='light']) .feature-desc {
+    color: var(--retro-black);
+  }
+
+  /* Mobile: stack vertically */
+  @media (max-width: 600px) {
+    .feature-item {
+      grid-template-columns: 1fr;
+      gap: 0.25rem;
+    }
+  }
+</style>

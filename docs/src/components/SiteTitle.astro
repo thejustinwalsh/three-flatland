@@ -1,0 +1,46 @@
+---
+import { Image } from 'astro:assets';
+import icon from '../assets/icon.svg';
+---
+
+<a href="/" class="site-title-link">
+  <Image
+    src={icon}
+    alt="three-flatland"
+    width={32}
+    height={32}
+    class="site-icon"
+  />
+  <span class="site-title-text">three-flatland</span>
+</a>
+
+<style>
+  .site-title-link {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    text-decoration: none;
+    color: var(--retro-white, #f0edd8);
+  }
+
+  .site-title-link:hover {
+    text-shadow: 0 0 12px var(--retro-cyan, #47cca9);
+  }
+
+  .site-icon {
+    width: 32px;
+    height: 32px;
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+  }
+
+  .site-title-text {
+    font-family: 'Silkscreen', monospace;
+    font-size: 1.25rem;
+    font-weight: 700;
+    text-shadow:
+      2px 2px 0 var(--retro-pink, #d94c87),
+      4px 4px 0 var(--retro-purple, #732866);
+    letter-spacing: 0.02em;
+  }
+</style>

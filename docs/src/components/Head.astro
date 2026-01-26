@@ -1,0 +1,11 @@
+---
+/**
+ * Custom Head component that enables View Transitions for SPA-like navigation.
+ * This preserves audio context and sound state across page navigations.
+ */
+import StarlightHead from '@astrojs/starlight/components/Head.astro';
+import { ClientRouter } from 'astro:transitions';
+---
+
+<StarlightHead {...Astro.props}><slot /></StarlightHead>
+<ClientRouter />

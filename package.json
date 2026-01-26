@@ -24,7 +24,10 @@
     "release": "turbo run build && changeset publish"
   },
   "pnpm": {
-    "onlyBuiltDependencies": ["esbuild"]
+    "onlyBuiltDependencies": [
+      "esbuild",
+      "sharp"
+    ]
   },
   "devDependencies": {
     "@changesets/cli": "^2.27.10",

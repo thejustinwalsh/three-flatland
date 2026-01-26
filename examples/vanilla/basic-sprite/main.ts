@@ -1,5 +1,5 @@
 import { WebGPURenderer } from 'three/webgpu'
-import { Scene, OrthographicCamera, Color, CanvasTexture } from 'three'
+import { Scene, OrthographicCamera, Color, TextureLoader, SRGBColorSpace } from 'three'
 import { Sprite2D } from '@three-flatland/core'
 
 async function main() {
@@ -29,25 +29,77 @@ async function main() {
   // Wait for renderer to initialize
   await renderer.init()
 
-  // Create a test texture (a simple colored square)
-  const canvas = document.createElement('canvas')
-  canvas.width = 64
-  canvas.height = 64
-  const ctx = canvas.getContext('2d')!
-  ctx.fillStyle = '#4a9eff'
-  ctx.fillRect(0, 0, 64, 64)
-  ctx.fillStyle = '#ff4a9e'
-  ctx.fillRect(16, 16, 32, 32)
+  // Load the flatland logo
+  const loader = new TextureLoader()
+  const texture = await loader.loadAsync(import.meta.env.BASE_URL + 'icon.svg')
+  texture.colorSpace = SRGBColorSpace
 
-  const texture = new CanvasTexture(canvas)
-
-  // Create sprite
+  // Create sprite with explicit size (SVGs may not have proper dimensions)
+  const spriteSize = 150
   const sprite = new Sprite2D({
     texture,
     anchor: [0.5, 0.5],
   })
   sprite.position.set(0, 0, 0)
+  sprite.scale.set(spriteSize, spriteSize, 1)
   scene.add(sprite)
+
+  // Interaction state
+  let isHovered = false
+  let isPressed = false
+  let currentScale = spriteSize
+  const baseScale = spriteSize
+  const hoverScale = spriteSize * 1.1
+  const pressedScale = spriteSize * 0.9
+  const lerpSpeed = 10
+
+  // Colors for tint (only hover effect)
+  const normalTint = new Color(1, 1, 1)
+  const hoverTint = new Color(0.6, 0.85, 1.0) // Soft cyan highlight
+
+  // Helper to check if mouse is over sprite
+  function isMouseOverSprite(mouseX: number, mouseY: number): boolean {
+    // Convert mouse coords to normalized device coords
+    const rect = renderer.domElement.getBoundingClientRect()
+    const x = ((mouseX - rect.left) / rect.width) * 2 - 1
+    const y = -((mouseY - rect.top) / rect.height) * 2 + 1
+
+    // Convert to world coords (need to recalculate aspect for resize)
+    const currentAspect = window.innerWidth / window.innerHeight
+    const worldX = (x * frustumSize * currentAspect) / 2
+    const worldY = (y * frustumSize) / 2
+
+    // Get sprite bounds (currentScale is the actual size in world units)
+    const halfSize = currentScale / 2
+
+    return (
+      worldX >= sprite.position.x - halfSize &&
+      worldX <= sprite.position.x + halfSize &&
+      worldY >= sprite.position.y - halfSize &&
+      worldY <= sprite.position.y + halfSize
+    )
+  }
+
+  // Mouse event handlers
+  renderer.domElement.addEventListener('mousemove', (event) => {
+    isHovered = isMouseOverSprite(event.clientX, event.clientY)
+    renderer.domElement.style.cursor = isHovered ? 'pointer' : 'default'
+  })
+
+  renderer.domElement.addEventListener('mousedown', (event) => {
+    if (isMouseOverSprite(event.clientX, event.clientY)) {
+      isPressed = true
+    }
+  })
+
+  renderer.domElement.addEventListener('mouseup', () => {
+    isPressed = false
+  })
+
+  renderer.domElement.addEventListener('mouseleave', () => {
+    isHovered = false
+    isPressed = false
+  })
 
   // Handle resize
   window.addEventListener('resize', () => {
@@ -60,12 +112,36 @@ async function main() {
     renderer.setSize(window.innerWidth, window.innerHeight)
   })
 
+  // Current tint (lerped each frame)
+  const currentTint = new Color(1, 1, 1)
+
   // Animation loop
+  let lastTime = performance.now()
+
   function animate() {
     requestAnimationFrame(animate)
 
-    // Rotate the sprite
-    sprite.rotation.z += 0.01
+    const now = performance.now()
+    const delta = (now - lastTime) / 1000
+    lastTime = now
+
+    // Determine target scale and tint
+    const targetScale = isPressed ? pressedScale : isHovered ? hoverScale : baseScale
+    const targetTint = isHovered ? hoverTint : normalTint
+
+    // Lerp scale
+    const lerpFactor = Math.min(lerpSpeed * delta, 1)
+    currentScale = currentScale + (targetScale - currentScale) * lerpFactor
+    sprite.scale.set(currentScale, currentScale, 1)
+
+    // Lerp tint (update our tracked tint, then set it)
+    currentTint.r += (targetTint.r - currentTint.r) * lerpFactor
+    currentTint.g += (targetTint.g - currentTint.g) * lerpFactor
+    currentTint.b += (targetTint.b - currentTint.b) * lerpFactor
+    sprite.tint = currentTint
+
+    // Slow rotation
+    sprite.rotation.z += 0.2 * delta
 
     renderer.render(scene, camera)
   }

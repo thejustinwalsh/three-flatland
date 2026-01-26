@@ -23,6 +23,11 @@ import { Tabs, TabItem } from '@astrojs/starlight/components';
     yarn add @three-flatland/core three
     ```
   </TabItem>
+  <TabItem label="bun">
+    ```bash
+    bun add @three-flatland/core three
+    ```
+  </TabItem>
 </Tabs>
 
 ### React Three Fiber
@@ -32,17 +37,22 @@ For React projects using React Three Fiber:
 <Tabs syncKey="pkg">
   <TabItem label="npm">
     ```bash
-    npm install @three-flatland/react @react-three/fiber three react react-dom
+    npm install @three-flatland/react @react-three/fiber@alpha three react react-dom
     ```
   </TabItem>
   <TabItem label="pnpm">
     ```bash
-    pnpm add @three-flatland/react @react-three/fiber three react react-dom
+    pnpm add @three-flatland/react @react-three/fiber@alpha three react react-dom
     ```
   </TabItem>
   <TabItem label="yarn">
     ```bash
-    yarn add @three-flatland/react @react-three/fiber three react react-dom
+    yarn add @three-flatland/react @react-three/fiber@alpha three react react-dom
+    ```
+  </TabItem>
+  <TabItem label="bun">
+    ```bash
+    bun add @three-flatland/react @react-three/fiber@alpha three react react-dom
     ```
   </TabItem>
 </Tabs>
@@ -52,7 +62,7 @@ For React projects using React Three Fiber:
 - **Three.js**: >= 0.182.0 (required for TSL/WebGPU support)
 - **React**: >= 19.0.0 (for `@three-flatland/react`)
 - **@react-three/fiber**: >= 10.0.0-alpha.0 (for `@three-flatland/react`)
-- **Node.js**: >= 18
+- **Node.js**: >= 22 (LTS)
 
 ## TypeScript
 

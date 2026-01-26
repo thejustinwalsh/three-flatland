@@ -1,0 +1,100 @@
+---
+/**
+ * Custom Card component with pixelarticons.
+ */
+import Icon from './Icon.astro';
+
+interface Props {
+  icon?: string;
+  iconColor?: string;
+  title: string;
+}
+
+const { icon, iconColor = 'var(--retro-cyan)', title } = Astro.props;
+---
+
+<article class="card sl-flex" data-sound="card" style={`--card-accent: ${iconColor};`}>
+  <p class="title sl-flex">
+    {icon && <Icon name={icon} class="icon" size="2rem" color={iconColor} />}
+    <span set:html={title} />
+  </p>
+  <div class="body"><slot /></div>
+</article>
+
+<style>
+  /* Dark mode styles (default) */
+  .card {
+    background:
+      var(--dither-dark-50),
+      linear-gradient(
+        135deg,
+        var(--retro-dark-purple) 0%,
+        var(--retro-dark-purple) 40%,
+        var(--retro-deep-purple) 100%
+      );
+    background-size: var(--dither-size, 16px) var(--dither-size, 16px), 100% 100%;
+    border: none;
+    box-shadow: 3px 3px 0 var(--retro-deep-purple);
+    padding: clamp(1rem, calc(0.125rem + 3vw), 2.5rem);
+    flex-direction: column;
+    gap: clamp(0.5rem, calc(0.125rem + 1vw), 1rem);
+    transition: box-shadow 0.15s ease, transform 0.15s ease;
+  }
+
+  .card:hover {
+    box-shadow:
+      3px 3px 0 var(--card-accent, var(--retro-pink)),
+      6px 6px 0 var(--retro-deep-purple);
+  }
+
+  .title {
+    font-family: var(--font-pixel);
+    font-weight: 600;
+    font-size: var(--sl-text-h4);
+    color: var(--card-accent, var(--retro-cyan));
+    line-height: var(--sl-line-height-headings);
+    gap: 1rem;
+    align-items: center;
+  }
+
+  .card:hover .title {
+    color: var(--retro-white);
+    text-shadow: 1px 1px 0 var(--card-accent);
+  }
+
+  .card .icon {
+    flex-shrink: 0;
+  }
+
+  .card .body {
+    margin: 0;
+    font-size: clamp(var(--sl-text-sm), calc(0.5rem + 1vw), var(--sl-text-body));
+    color: var(--retro-white);
+  }
+
+  /* Light mode overrides */
+  :global([data-theme='light']) .card {
+    background: #e8e5d0;
+    border: 2px solid #a8a593;
+    box-shadow: 3px 3px 0 #a8a593;
+  }
+
+  :global([data-theme='light']) .card:hover {
+    border-color: #732866;
+    box-shadow:
+      3px 3px 0 #732866,
+      6px 6px 0 #a8a593;
+  }
+
+  :global([data-theme='light']) .title {
+    color: #5a1f50;
+  }
+
+  :global([data-theme='light']) .card:hover .title {
+    color: #1a5247;
+  }
+
+  :global([data-theme='light']) .card .body {
+    color: #00021c;
+  }
+</style>

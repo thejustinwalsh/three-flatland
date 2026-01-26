@@ -1,0 +1,106 @@
+---
+/**
+ * Custom pixel icon component using pixelarticons SVGs.
+ */
+import { readFileSync } from 'fs';
+import { join } from 'path';
+
+interface Props {
+  name: string;
+  label?: string;
+  size?: string;
+  color?: string;
+  class?: string;
+}
+
+const { name, label, size = '1.5em', color = 'currentColor', class: className } = Astro.props;
+
+// Map Starlight icon names to pixelarticons SVG filenames
+const iconMap: Record<string, string> = {
+  // Card icons
+  'rocket': 'ship',
+  'list-format': 'list',
+  'puzzle': 'grid',
+  'forward-slash': 'animation',
+
+  // Tab icons
+  'seti:javascript': 'code',
+  'seti:react': 'code',
+
+  // Navigation
+  'right-arrow': 'arrow-right',
+  'left-arrow': 'arrow-left',
+  'external': 'external-link',
+
+  // UI
+  'close': 'close',
+  'menu': 'menu',
+  'search': 'search',
+  'sun': 'sun',
+  'moon': 'moon',
+  'monitor': 'monitor',
+  'github': 'github',
+
+  // Audio
+  'volume': 'volume',
+  'volume-3': 'volume-3',
+  'volume-x': 'volume-x',
+  'volume-1': 'volume-1',
+  'volume-2': 'volume-2',
+
+  // Misc
+  'document': 'file',
+  'pencil': 'edit',
+  'information': 'info-box',
+  'warning': 'warning-box',
+  'error': 'alert',
+  'star': 'heart',
+
+  // Starlight specific
+  'open-book': 'book-open',
+  'laptop': 'device-laptop',
+  'approve-check': 'check',
+  'approve-check-circle': 'check',
+};
+
+// Get the mapped icon name or use the name directly
+const iconFileName = iconMap[name] || name;
+
+// Try to read the SVG file
+let svgContent = '';
+try {
+  const svgPath = join(process.cwd(), 'node_modules/pixelarticons/svg', `${iconFileName}.svg`);
+  svgContent = readFileSync(svgPath, 'utf-8');
+  // Remove the outer svg tag, we'll create our own
+  svgContent = svgContent
+    .replace(/<svg[^>]*>/, '')
+    .replace(/<\/svg>/, '')
+    // Remove any fill attributes so it inherits from parent SVG
+    .replace(/fill="[^"]*"/g, '')
+    .trim();
+} catch (e) {
+  // Fallback: simple square
+  svgContent = '<rect x="4" y="4" width="16" height="16"/>';
+}
+---
+
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  viewBox="0 0 24 24"
+  width={size}
+  height={size}
+  aria-hidden={label ? undefined : 'true'}
+  aria-label={label}
+  class:list={['pixel-icon', className]}
+  style={`fill: ${color}; color: ${color};`}
+>
+  <Fragment set:html={svgContent} />
+</svg>
+
+<style>
+  .pixel-icon {
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+    shape-rendering: crispEdges;
+  }
+</style>

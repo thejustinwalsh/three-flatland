@@ -1,0 +1,154 @@
+---
+/**
+ * RetroBackground - Full-page SNES-style banded gradient background
+ *
+ * Creates a dramatic scrolling gradient that spans the entire page,
+ * using authentic 16-bit color banding with dithered transitions.
+ *
+ * SNES gradients work by:
+ * 1. Solid color bands (not smooth gradients)
+ * 2. Bayer dithering ONLY at transitions between bands
+ * 3. Limited color palette (we use our retro palette)
+ */
+---
+
+<div class="retro-bg" aria-hidden="true">
+  <!-- Band 1: Midnight at top -->
+  <div class="retro-bg__band retro-bg__band--midnight"></div>
+
+  <!-- Dither transition: Midnight to Deep Purple -->
+  <div class="retro-bg__dither retro-bg__dither--midnight-deep"></div>
+
+  <!-- Band 2: Deep Purple -->
+  <div class="retro-bg__band retro-bg__band--deep-purple"></div>
+
+  <!-- Dither transition: Deep Purple to Dark Purple -->
+  <div class="retro-bg__dither retro-bg__dither--deep-dark"></div>
+
+  <!-- Band 3: Dark Purple -->
+  <div class="retro-bg__band retro-bg__band--dark-purple"></div>
+
+  <!-- Dither transition: Dark Purple to Purple -->
+  <div class="retro-bg__dither retro-bg__dither--dark-purple"></div>
+
+  <!-- Band 4: Purple -->
+  <div class="retro-bg__band retro-bg__band--purple"></div>
+
+  <!-- Dither transition: Purple to Dark Cyan -->
+  <div class="retro-bg__dither retro-bg__dither--purple-cyan"></div>
+
+  <!-- Band 5: Dark Cyan (footer area) -->
+  <div class="retro-bg__band retro-bg__band--dark-cyan"></div>
+
+  <!-- Scanline overlay -->
+  <div class="retro-bg__scanlines"></div>
+</div>
+
+<style>
+  .retro-bg {
+    position: fixed;
+    inset: 0;
+    z-index: -100;
+    overflow: hidden;
+    pointer-events: none;
+  }
+
+  /* Solid color bands - these are the "clean" areas */
+  .retro-bg__band {
+    position: absolute;
+    left: 0;
+    right: 0;
+  }
+
+  .retro-bg__band--midnight {
+    top: 0;
+    height: 15vh;
+    background: var(--retro-midnight);
+  }
+
+  .retro-bg__band--deep-purple {
+    top: 20vh;
+    height: 20vh;
+    background: var(--retro-deep-purple);
+  }
+
+  .retro-bg__band--dark-purple {
+    top: 45vh;
+    height: 20vh;
+    background: var(--retro-dark-purple);
+  }
+
+  .retro-bg__band--purple {
+    top: 70vh;
+    height: 15vh;
+    background: var(--retro-purple);
+  }
+
+  .retro-bg__band--dark-cyan {
+    top: 90vh;
+    bottom: 0;
+    background: var(--retro-dark-cyan);
+  }
+
+  /* Dither transitions - ONLY between bands */
+  .retro-bg__dither {
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 10vh;
+    background-size: var(--dither-size, 16px) var(--dither-size, 16px);
+  }
+
+  /* Midnight -> Deep Purple transition */
+  .retro-bg__dither--midnight-deep {
+    top: 12vh;
+    background-image: var(--dither-deep-purple-50, var(--dither-purple-50));
+    background-color: var(--retro-midnight);
+  }
+
+  /* Deep Purple -> Dark Purple transition */
+  .retro-bg__dither--deep-dark {
+    top: 37vh;
+    background-image: var(--dither-dark-50);
+    background-color: var(--retro-deep-purple);
+  }
+
+  /* Dark Purple -> Purple transition */
+  .retro-bg__dither--dark-purple {
+    top: 62vh;
+    background-image: var(--dither-purple-50);
+    background-color: var(--retro-dark-purple);
+  }
+
+  /* Purple -> Dark Cyan transition */
+  .retro-bg__dither--purple-cyan {
+    top: 82vh;
+    background-image: var(--dither-cyan-37);
+    background-color: var(--retro-purple);
+  }
+
+  /* Subtle scanlines */
+  .retro-bg__scanlines {
+    position: absolute;
+    inset: 0;
+    background: var(--pattern-scanlines);
+    background-size: 1px 8px;
+    opacity: 0.03;
+  }
+
+  /* Light mode: hide the background */
+  :global([data-theme='light']) .retro-bg {
+    display: none;
+  }
+
+  /* Mobile: reduce complexity */
+  @media (max-width: 768px) {
+    .retro-bg__dither {
+      background-size: var(--dither-size-2x, 32px) var(--dither-size-2x, 32px);
+    }
+
+    .retro-bg__scanlines {
+      opacity: 0.015;
+    }
+  }
+</style>

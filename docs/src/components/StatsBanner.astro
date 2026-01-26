@@ -1,0 +1,132 @@
+---
+/**
+ * StatsBanner - Bold performance stats in SNES style.
+ * Big numbers that grab attention and sell the performance story.
+ */
+interface StatItem {
+  value: string;
+  label: string;
+  color: 'cyan' | 'pink' | 'yellow' | 'blue';
+}
+
+interface Props {
+  stats: StatItem[];
+}
+
+const { stats } = Astro.props;
+
+const colorMap = {
+  cyan: { dark: 'var(--retro-cyan)', light: 'var(--retro-dark-cyan)' },
+  pink: { dark: 'var(--retro-pink)', light: 'var(--retro-dark-pink)' },
+  yellow: { dark: 'var(--retro-yellow)', light: 'var(--retro-dark-yellow)' },
+  blue: { dark: 'var(--retro-blue)', light: 'var(--retro-dark-blue)' },
+};
+---
+
+<div class="stats-banner">
+  <div class="stats-grid">
+    {stats.map((stat) => (
+      <div class="stat-item" style={`--stat-color: ${colorMap[stat.color].dark}; --stat-color-light: ${colorMap[stat.color].light};`}>
+        <span class="stat-value">{stat.value}</span>
+        <span class="stat-label">{stat.label}</span>
+      </div>
+    ))}
+  </div>
+  <div class="banner-border top"></div>
+  <div class="banner-border bottom"></div>
+</div>
+
+<style>
+  .stats-banner {
+    position: relative;
+    background: var(--retro-navy);
+    padding: 3rem 2rem;
+    margin: 4rem 0;
+  }
+
+  .banner-border {
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 4px;
+    background: linear-gradient(
+      90deg,
+      var(--retro-cyan) 0%,
+      var(--retro-cyan) 16%,
+      var(--retro-blue) 16%,
+      var(--retro-blue) 33%,
+      var(--retro-purple) 33%,
+      var(--retro-purple) 50%,
+      var(--retro-pink) 50%,
+      var(--retro-pink) 66%,
+      var(--retro-orange) 66%,
+      var(--retro-orange) 83%,
+      var(--retro-yellow) 83%
+    );
+  }
+
+  .banner-border.top { top: 0; }
+  .banner-border.bottom { bottom: 0; }
+
+  .stats-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 2rem;
+    max-width: 1000px;
+    margin: 0 auto;
+    text-align: center;
+  }
+
+  @media (max-width: 768px) {
+    .stats-grid {
+      grid-template-columns: repeat(2, 1fr);
+    }
+  }
+
+  @media (max-width: 480px) {
+    .stats-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  .stat-item {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .stat-value {
+    font-family: var(--font-pixel);
+    font-size: clamp(2.5rem, 5vw, 4rem);
+    color: var(--stat-color);
+    text-shadow:
+      3px 3px 0 var(--retro-midnight),
+      -1px -1px 0 var(--retro-midnight),
+      1px -1px 0 var(--retro-midnight),
+      -1px 1px 0 var(--retro-midnight);
+    line-height: 1;
+  }
+
+  .stat-label {
+    font-family: var(--font-pixel);
+    font-size: 0.875rem;
+    color: var(--retro-white);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    opacity: 0.8;
+  }
+
+  /* Light mode */
+  :global([data-theme='light']) .stats-banner {
+    background: #e8e5d0;
+  }
+
+  :global([data-theme='light']) .stat-value {
+    color: var(--stat-color-light);
+    text-shadow: 2px 2px 0 rgba(0, 0, 0, 0.15);
+  }
+
+  :global([data-theme='light']) .stat-label {
+    color: var(--retro-black);
+  }
+</style>

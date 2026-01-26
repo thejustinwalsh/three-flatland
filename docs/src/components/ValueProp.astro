@@ -1,0 +1,134 @@
+---
+/**
+ * ValueProp - Color-blocked value proposition panel.
+ * Each panel has its own color theme for visual drama.
+ */
+interface Props {
+  title: string;
+  color: 'cyan' | 'pink' | 'yellow' | 'blue' | 'orange';
+  align?: 'left' | 'right';
+}
+
+const { title, color, align = 'left' } = Astro.props;
+
+const colorMap = {
+  cyan: {
+    bg: 'var(--retro-dark-cyan)',
+    accent: 'var(--retro-cyan)',
+    shadow: 'var(--retro-dark-cyan)',
+    border: 'var(--retro-cyan)',
+  },
+  pink: {
+    bg: 'var(--retro-purple)',
+    accent: 'var(--retro-pink)',
+    shadow: 'var(--retro-dark-pink)',
+    border: 'var(--retro-pink)',
+  },
+  yellow: {
+    bg: 'var(--retro-dark-yellow)',
+    accent: 'var(--retro-yellow)',
+    shadow: 'var(--retro-dark-yellow)',
+    border: 'var(--retro-yellow)',
+  },
+  blue: {
+    bg: 'var(--retro-dark-blue)',
+    accent: 'var(--retro-blue)',
+    shadow: 'var(--retro-dark-blue)',
+    border: 'var(--retro-blue)',
+  },
+  orange: {
+    bg: 'var(--retro-dark-orange)',
+    accent: 'var(--retro-orange)',
+    shadow: 'var(--retro-dark-orange)',
+    border: 'var(--retro-orange)',
+  },
+};
+
+const colors = colorMap[color];
+---
+
+<div
+  class:list={['value-prop', { 'align-right': align === 'right' }]}
+  style={`--vp-bg: ${colors.bg}; --vp-accent: ${colors.accent}; --vp-shadow: ${colors.shadow}; --vp-border: ${colors.border};`}
+>
+  <div class="vp-accent-side"></div>
+  <div class="vp-content">
+    <h3 class="vp-title" set:html={title} />
+    <div class="vp-body"><slot /></div>
+  </div>
+</div>
+
+<style>
+  .value-prop {
+    display: flex;
+    background: var(--vp-bg);
+    margin: 2rem 0;
+    position: relative;
+  }
+
+  .value-prop.align-right {
+    flex-direction: row-reverse;
+  }
+
+  .vp-accent-side {
+    width: 8px;
+    min-height: 100%;
+    background: var(--vp-accent);
+    flex-shrink: 0;
+  }
+
+  .vp-content {
+    padding: 2rem;
+    flex: 1;
+  }
+
+  .vp-title {
+    font-family: var(--font-pixel);
+    font-size: 1.5rem;
+    color: var(--retro-white) !important;
+    margin: 0 0 1rem 0;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    text-shadow:
+      2px 2px 0 var(--vp-shadow);
+  }
+
+  .vp-body {
+    color: var(--retro-white);
+    font-size: 1.1rem;
+    line-height: 1.7;
+  }
+
+  .vp-body :global(p) {
+    margin: 0 0 1rem 0;
+  }
+
+  .vp-body :global(p:last-child) {
+    margin-bottom: 0;
+  }
+
+  .vp-body :global(strong) {
+    color: var(--vp-accent);
+  }
+
+  /* Light mode */
+  :global([data-theme='light']) .value-prop {
+    background: #e8e5d0;
+    border: 2px solid var(--vp-border);
+    border-left: none;
+  }
+
+  :global([data-theme='light']) .value-prop.align-right {
+    border-left: 2px solid var(--vp-border);
+    border-right: none;
+  }
+
+  :global([data-theme='light']) .vp-title {
+    color: var(--retro-black) !important;
+    text-shadow: none;
+  }
+
+  :global([data-theme='light']) .vp-body {
+    color: var(--retro-black);
+  }
+</style>

@@ -14,3 +14,15 @@
     --sl-content-width: 45rem;
   }
 }
+
+/* Page Header Fixes */
+/* Remove border below page header */
+.content-panel > header,
+.main-pane > header {
+  border-bottom: none !important;
+}
+
+/* Tighten spacing after main title */
+h1#_top {
+  margin-bottom: 0.5rem !important;
+}

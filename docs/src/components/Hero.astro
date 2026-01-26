@@ -1,0 +1,93 @@
+---
+/**
+ * Custom Hero component - transparent, lets page gradient show through.
+ * No separate hero gradient needed.
+ */
+import type { Props } from '@astrojs/starlight/props';
+import Default from '@astrojs/starlight/components/Hero.astro';
+---
+
+<div class="retro-hero-wrapper">
+  <Default {...Astro.props}><slot /></Default>
+</div>
+
+<style>
+  .retro-hero-wrapper {
+    position: relative;
+  }
+
+  /* Transparent hero - page gradient shows through */
+  .retro-hero-wrapper :global(.hero) {
+    position: relative;
+    z-index: 10;
+    background: transparent !important;
+  }
+
+  /* Remove any default hero backgrounds/overlays */
+  .retro-hero-wrapper :global(.hero)::before,
+  .retro-hero-wrapper :global(.hero)::after,
+  .retro-hero-wrapper :global(.hero .hero-html)::before,
+  .retro-hero-wrapper :global(.hero .hero-html)::after {
+    display: none !important;
+  }
+
+  /* Title with dark outline for contrast */
+  .retro-hero-wrapper :global(.hero h1) {
+    color: var(--retro-white) !important;
+    text-shadow:
+      -2px -2px 0 var(--retro-navy),
+      2px -2px 0 var(--retro-navy),
+      -2px 2px 0 var(--retro-navy),
+      2px 2px 0 var(--retro-navy),
+      4px 4px 0 var(--retro-pink),
+      8px 8px 0 var(--retro-purple) !important;
+  }
+
+  /* Tagline with dark outline */
+  .retro-hero-wrapper :global(.hero .tagline) {
+    color: var(--retro-white);
+    text-shadow:
+      -1px -1px 0 var(--retro-navy),
+      1px -1px 0 var(--retro-navy),
+      -1px 1px 0 var(--retro-navy),
+      1px 1px 0 var(--retro-navy);
+  }
+
+  /* ==========================================================================
+     LIGHT MODE
+     ========================================================================== */
+
+  :global([data-theme='light']) .retro-hero-wrapper :global(.hero) {
+    background: linear-gradient(
+      to bottom,
+      #e8e5d0 0%,
+      #dfdcc7 100%
+    ) !important;
+  }
+
+  :global([data-theme='light']) .retro-hero-wrapper :global(.hero h1) {
+    color: var(--retro-black) !important;
+    text-shadow: none !important;
+  }
+
+  :global([data-theme='light']) .retro-hero-wrapper :global(.hero .tagline) {
+    color: var(--retro-black);
+    text-shadow: none;
+  }
+
+  /* ==========================================================================
+     RESPONSIVE
+     ========================================================================== */
+
+  @media (max-width: 768px) {
+    .retro-hero-wrapper :global(.hero h1) {
+      text-shadow:
+        -1px -1px 0 var(--retro-navy),
+        1px -1px 0 var(--retro-navy),
+        -1px 1px 0 var(--retro-navy),
+        1px 1px 0 var(--retro-navy),
+        2px 2px 0 var(--retro-pink),
+        4px 4px 0 var(--retro-purple) !important;
+    }
+  }
+</style>

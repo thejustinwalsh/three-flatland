@@ -1,0 +1,36 @@
+---
+/**
+ * Custom CardGrid component.
+ */
+interface Props {
+  stagger?: boolean;
+}
+
+const { stagger = false } = Astro.props;
+---
+
+<div class:list={['card-grid', { stagger }]}>
+  <slot />
+</div>
+
+<style>
+  .card-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));
+    gap: 1rem;
+  }
+
+  .card-grid.stagger {
+    --stagger-height: 5rem;
+  }
+
+  .card-grid.stagger > :global(:nth-child(2n)) {
+    margin-top: var(--stagger-height);
+  }
+
+  @media (max-width: 50rem) {
+    .card-grid.stagger > :global(:nth-child(2n)) {
+      margin-top: 0;
+    }
+  }
+</style>

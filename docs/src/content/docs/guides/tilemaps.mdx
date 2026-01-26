@@ -12,7 +12,7 @@ Tilemaps allow you to render large tile-based environments efficiently using a s
 ## Creating a Tilemap
 
 <Tabs syncKey="framework">
-  <TabItem label="Vanilla" icon="seti:javascript">
+  <TabItem label="Three.js" icon="seti:javascript">
     ```typescript
     import { Tilemap, Renderer2D } from '@three-flatland/core';
 
@@ -133,15 +133,3 @@ Access tile data for collision detection:
 const tileIndex = tilemap.getTileAt(worldX, worldY);
 const isSolid = solidTiles.includes(tileIndex);
 ```
-
-## Performance
-
-Tilemaps use a single geometry and texture atlas, making them extremely efficient:
-
-| Map Size | Draw Calls | Performance |
-|----------|------------|-------------|
-| 100x100 | 1 | 60 fps |
-| 1000x1000 | 1 | 60 fps |
-| 10000x10000 | 1 | 58 fps |
-
-*Only visible tiles are rendered via frustum culling*

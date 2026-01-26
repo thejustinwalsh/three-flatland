@@ -1,0 +1,350 @@
+---
+/**
+ * RetroHero - Dramatic SNES-style hero section with banded dither gradients
+ *
+ * Features:
+ * - Clean horizontal color bands (authentic SNES technique)
+ * - Bayer matrix dithering ONLY at band transitions
+ * - Dramatic color progression: Cyan -> Blue -> Purple -> Pink
+ * - CRT scanline overlay for authenticity
+ *
+ * The key insight for SNES gradients: they're NOT smooth gradients.
+ * They're discrete color bands with ordered dithering at boundaries.
+ */
+interface Props {
+  title: string;
+  tagline?: string;
+}
+
+const { title, tagline } = Astro.props;
+---
+
+<section class="retro-hero">
+  <!-- Background layers (in order, bottom to top) -->
+  <div class="retro-hero__bg" aria-hidden="true">
+    <!-- Base: Dark foundation -->
+    <div class="retro-hero__band retro-hero__band--base"></div>
+
+    <!-- Band 1: Cyan glow at top -->
+    <div class="retro-hero__band retro-hero__band--cyan"></div>
+    <div class="retro-hero__transition retro-hero__transition--cyan-blue"></div>
+
+    <!-- Band 2: Blue middle -->
+    <div class="retro-hero__band retro-hero__band--blue"></div>
+    <div class="retro-hero__transition retro-hero__transition--blue-purple"></div>
+
+    <!-- Band 3: Purple lower -->
+    <div class="retro-hero__band retro-hero__band--purple"></div>
+    <div class="retro-hero__transition retro-hero__transition--purple-pink"></div>
+
+    <!-- Band 4: Pink accent at bottom -->
+    <div class="retro-hero__band retro-hero__band--pink"></div>
+
+    <!-- Scanline overlay -->
+    <div class="retro-hero__scanlines"></div>
+  </div>
+
+  <!-- Content -->
+  <div class="retro-hero__content">
+    <h1 class="retro-hero__title">{title}</h1>
+    {tagline && <p class="retro-hero__tagline">{tagline}</p>}
+    <div class="retro-hero__actions">
+      <slot />
+    </div>
+  </div>
+</section>
+
+<style>
+  .retro-hero {
+    position: relative;
+    min-height: 70vh;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    padding: var(--space-3xl, 64px) var(--space-lg, 24px);
+    overflow: hidden;
+    margin-top: -1px; /* Prevent gap from header */
+  }
+
+  /* Background container */
+  .retro-hero__bg {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+  }
+
+  /* ==========================================================================
+     COLOR BANDS - Solid fills, positioned vertically
+     ========================================================================== */
+
+  .retro-hero__band {
+    position: absolute;
+    left: 0;
+    right: 0;
+  }
+
+  /* Base layer - fills everything */
+  .retro-hero__band--base {
+    inset: 0;
+    background: var(--retro-deep-purple);
+  }
+
+  /* Cyan band - top 20% */
+  .retro-hero__band--cyan {
+    top: 0;
+    height: 22%;
+    background: var(--retro-cyan);
+  }
+
+  /* Blue band - 20-45% */
+  .retro-hero__band--blue {
+    top: 28%;
+    height: 20%;
+    background: var(--retro-blue);
+  }
+
+  /* Purple band - 50-75% */
+  .retro-hero__band--purple {
+    top: 54%;
+    height: 20%;
+    background: var(--retro-purple);
+  }
+
+  /* Pink band - bottom */
+  .retro-hero__band--pink {
+    top: 80%;
+    bottom: 0;
+    background: var(--retro-pink);
+  }
+
+  /* ==========================================================================
+     DITHER TRANSITIONS - Bayer pattern overlay between bands
+     ========================================================================== */
+
+  .retro-hero__transition {
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 12%;
+    background-size: var(--dither-size, 16px) var(--dither-size, 16px);
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+  }
+
+  /* Cyan -> Blue: cyan dither fading into blue */
+  .retro-hero__transition--cyan-blue {
+    top: 18%;
+    background-color: var(--retro-blue);
+    background-image: var(--dither-cyan-62);
+  }
+
+  /* Blue -> Purple: blue dither fading into purple */
+  .retro-hero__transition--blue-purple {
+    top: 44%;
+    background-color: var(--retro-purple);
+    background-image: var(--dither-blue-50);
+  }
+
+  /* Purple -> Pink: purple dither fading into pink */
+  .retro-hero__transition--purple-pink {
+    top: 70%;
+    background-color: var(--retro-pink);
+    background-image: var(--dither-purple-62);
+  }
+
+  /* Scanline overlay - subtle CRT effect */
+  .retro-hero__scanlines {
+    position: absolute;
+    inset: 0;
+    background: var(--pattern-scanlines);
+    background-size: 1px 8px;
+    opacity: 0.06;
+    z-index: 1;
+  }
+
+  /* ==========================================================================
+     CONTENT
+     ========================================================================== */
+
+  .retro-hero__content {
+    position: relative;
+    z-index: 10;
+    text-align: center;
+    max-width: 900px;
+    padding: 0 var(--space-md, 16px);
+  }
+
+  .retro-hero__title {
+    font-family: var(--font-pixel) !important;
+    font-size: clamp(2.5rem, 8vw, 5rem);
+    font-weight: 700;
+    color: var(--retro-white) !important;
+    text-shadow:
+      4px 4px 0 var(--retro-pink),
+      8px 8px 0 var(--retro-purple),
+      12px 12px 0 rgba(0, 0, 0, 0.3);
+    margin: 0 0 var(--space-lg, 24px) 0;
+    line-height: 1.1;
+    letter-spacing: -0.02em;
+  }
+
+  .retro-hero__tagline {
+    font-family: var(--font-body);
+    font-size: clamp(1rem, 2.5vw, 1.375rem);
+    color: var(--retro-white);
+    text-shadow: 2px 2px 0 rgba(0, 0, 0, 0.5);
+    max-width: 600px;
+    margin: 0 auto var(--space-xl, 32px) auto;
+    line-height: 1.5;
+    opacity: 0.95;
+  }
+
+  .retro-hero__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-md, 16px);
+    justify-content: center;
+  }
+
+  /* Action button styling */
+  .retro-hero__actions :global(a),
+  .retro-hero__actions :global(button) {
+    font-family: var(--font-pixel) !important;
+    font-size: 0.875rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 0.875rem 1.75rem;
+    border: 2px solid var(--retro-cyan);
+    background: var(--retro-dark-purple);
+    color: var(--retro-white);
+    box-shadow:
+      4px 4px 0 var(--retro-purple),
+      8px 8px 0 rgba(0, 0, 0, 0.2);
+    transition: transform 0.1s ease, box-shadow 0.1s ease;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .retro-hero__actions :global(a:hover),
+  .retro-hero__actions :global(button:hover) {
+    transform: translate(2px, 2px);
+    box-shadow:
+      2px 2px 0 var(--retro-purple),
+      6px 6px 0 rgba(0, 0, 0, 0.2);
+    background: var(--retro-purple);
+    border-color: var(--retro-pink);
+    color: var(--retro-yellow);
+  }
+
+  .retro-hero__actions :global(a.primary),
+  .retro-hero__actions :global(.primary) {
+    background: var(--retro-pink);
+    border-color: var(--retro-pink);
+    box-shadow:
+      4px 4px 0 var(--retro-purple),
+      8px 8px 0 rgba(0, 0, 0, 0.3);
+  }
+
+  .retro-hero__actions :global(a.primary:hover),
+  .retro-hero__actions :global(.primary:hover) {
+    background: var(--retro-cyan);
+    border-color: var(--retro-cyan);
+    color: var(--retro-black);
+  }
+
+  /* ==========================================================================
+     LIGHT MODE - Clean, minimal gradient
+     ========================================================================== */
+
+  :global([data-theme='light']) .retro-hero__bg {
+    display: none;
+  }
+
+  :global([data-theme='light']) .retro-hero {
+    background: linear-gradient(
+      to bottom,
+      #e8e5d0 0%,
+      #dfdcc7 50%,
+      #d6d3be 100%
+    );
+  }
+
+  :global([data-theme='light']) .retro-hero__title {
+    color: var(--retro-black) !important;
+    text-shadow: none !important;
+    border-bottom: 4px solid var(--retro-pink);
+    padding-bottom: var(--space-sm);
+    display: inline-block;
+  }
+
+  :global([data-theme='light']) .retro-hero__tagline {
+    color: var(--retro-black);
+    text-shadow: none;
+  }
+
+  :global([data-theme='light']) .retro-hero__actions :global(a),
+  :global([data-theme='light']) .retro-hero__actions :global(button) {
+    background: #e8e5d0;
+    border-color: var(--retro-purple);
+    color: var(--retro-black);
+    box-shadow: 3px 3px 0 #a8a593;
+  }
+
+  :global([data-theme='light']) .retro-hero__actions :global(a.primary),
+  :global([data-theme='light']) .retro-hero__actions :global(.primary) {
+    background: #9a2c4e;
+    border-color: #9a2c4e;
+    color: var(--retro-white);
+  }
+
+  /* ==========================================================================
+     RESPONSIVE
+     ========================================================================== */
+
+  @media (max-width: 768px) {
+    .retro-hero {
+      min-height: 60vh;
+      padding: var(--space-2xl, 48px) var(--space-md, 16px);
+    }
+
+    .retro-hero__transition {
+      background-size: var(--dither-size-2x, 32px) var(--dither-size-2x, 32px);
+    }
+
+    .retro-hero__scanlines {
+      opacity: 0.03;
+    }
+
+    .retro-hero__title {
+      text-shadow:
+        2px 2px 0 var(--retro-pink),
+        4px 4px 0 var(--retro-purple);
+    }
+
+    .retro-hero__actions {
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .retro-hero__actions :global(a),
+    .retro-hero__actions :global(button) {
+      width: 100%;
+      max-width: 280px;
+      justify-content: center;
+    }
+  }
+
+  @media (max-width: 480px) {
+    .retro-hero {
+      min-height: 50vh;
+    }
+
+    /* Simplify dithering on small screens */
+    .retro-hero__transition {
+      height: 8%;
+    }
+  }
+</style>

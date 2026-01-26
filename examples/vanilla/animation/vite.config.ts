@@ -1,7 +1,7 @@
 import { defineConfig } from 'vite'
 
 export default defineConfig({
-  base: '/vanilla/animation',
+  base: '/vanilla/animation/',
   server: {
     strictPort: true,
   },
