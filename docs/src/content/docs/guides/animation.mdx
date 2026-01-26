@@ -5,100 +5,193 @@ description: Animate sprites using spritesheets and frame-based animation.
 
 import { Tabs, TabItem } from '@astrojs/starlight/components';
 
-## Spritesheet Animation
-
-three-flatland supports frame-based animation using spritesheets.
+three-flatland supports frame-based animation using spritesheets. The `AnimatedSprite2D` class works with `SpriteSheetLoader` to load and play animations.
 
 <Tabs syncKey="framework">
   <TabItem label="Three.js" icon="seti:javascript">
     ```typescript
-    import { AnimatedSprite2D, Renderer2D } from '@three-flatland/core';
+    import { AnimatedSprite2D, SpriteSheetLoader, Layers } from '@three-flatland/core';
+    import { NearestFilter } from 'three';
 
+    // Load spritesheet (Aseprite JSON format)
+    const spriteSheet = await SpriteSheetLoader.load('/sprites/character.json');
+    spriteSheet.texture.minFilter = NearestFilter;
+    spriteSheet.texture.magFilter = NearestFilter;
+
+    // Create animated sprite
     const sprite = new AnimatedSprite2D({
-      texture: spritesheetTexture,
-      frameWidth: 32,
-      frameHeight: 32,
-      frameCount: 8,
-      fps: 12,
+      spriteSheet,
+      animationSet: {
+        fps: 10, // Default fps for all animations
+        animations: {
+          idle: {
+            frames: ['idle_0', 'idle_1', 'idle_2', 'idle_3'],
+            fps: 8,
+            loop: true,
+          },
+          run: {
+            frames: ['run_0', 'run_1', 'run_2', 'run_3'],
+            fps: 12,
+            loop: true,
+          },
+          jump: {
+            frames: ['jump_0', 'jump_1', 'jump_2'],
+            fps: 10,
+            loop: false,
+          },
+        },
+      },
+      animation: 'idle', // Start with idle animation
+      layer: Layers.ENTITIES,
     });
 
-    renderer2D.add(sprite);
-    sprite.play();
+    sprite.scale.set(64, 64, 1);
+    scene.add(sprite);
+
+    // In your animation loop
+    function animate() {
+      const deltaMs = /* time since last frame */;
+      sprite.update(deltaMs);
+      renderer.render(scene, camera);
+    }
     ```
   </TabItem>
   <TabItem label="React" icon="seti:react">
     ```tsx
-    <renderer2D>
-      <animatedSprite2D
-        texture={spritesheetTexture}
-        frameWidth={32}
-        frameHeight={32}
-        frameCount={8}
-        fps={12}
-        autoPlay
-      />
-    </renderer2D>
+    import { useRef } from 'react';
+    import { useFrame } from '@react-three/fiber/webgpu';
+    import { AnimatedSprite2D, SpriteSheetLoader, Layers } from '@three-flatland/react';
+
+    function Character({ spriteSheet }) {
+      const spriteRef = useRef<AnimatedSprite2D>(null);
+
+      useFrame((_, delta) => {
+        spriteRef.current?.update(delta * 1000); // Convert to ms
+      });
+
+      return (
+        <animatedSprite2D
+          ref={spriteRef}
+          spriteSheet={spriteSheet}
+          animationSet={{
+            fps: 10,
+            animations: {
+              idle: { frames: ['idle_0', 'idle_1', 'idle_2', 'idle_3'], fps: 8, loop: true },
+              run: { frames: ['run_0', 'run_1', 'run_2', 'run_3'], fps: 12, loop: true },
+            },
+          }}
+          animation="idle"
+          layer={Layers.ENTITIES}
+          scale={[64, 64, 1]}
+        />
+      );
+    }
     ```
   </TabItem>
 </Tabs>
 
-## Animation Properties
+## Animation Set Definition
 
-### Frame Configuration
-
-| Property | Description |
-|----------|-------------|
-| `frameWidth` | Width of each frame in pixels |
-| `frameHeight` | Height of each frame in pixels |
-| `frameCount` | Total number of frames |
-| `fps` | Playback speed in frames per second |
-
-### Playback Control
+The `animationSet` option provides a structured way to define multiple animations:
 
 ```typescript
-sprite.play();       // Start animation
-sprite.pause();      // Pause at current frame
-sprite.stop();       // Stop and reset to first frame
-sprite.gotoAndPlay(3);  // Jump to frame 3 and play
-sprite.gotoAndStop(0);  // Jump to frame 0 and pause
-```
-
-### Looping
-
-```typescript
-sprite.loop = true;   // Loop animation (default)
-sprite.loop = false;  // Play once and stop
-```
-
-## Animation Events
-
-Listen for animation lifecycle events:
-
-```typescript
-sprite.addEventListener('animationComplete', () => {
-  console.log('Animation finished');
-});
-
-sprite.addEventListener('frameChange', (event) => {
-  console.log('Frame:', event.frame);
-});
-```
-
-## Multiple Animations
-
-For sprites with multiple animations in a single spritesheet:
-
-```typescript
-const sprite = new AnimatedSprite2D({
-  texture: spritesheetTexture,
-  frameWidth: 32,
-  frameHeight: 32,
+animationSet: {
+  fps: 12, // Default fps (optional)
   animations: {
-    idle: { start: 0, end: 3, fps: 8 },
-    walk: { start: 4, end: 11, fps: 12 },
-    jump: { start: 12, end: 15, fps: 10, loop: false },
+    idle: {
+      frames: ['frame_0', 'frame_1', 'frame_2'], // Frame names from spritesheet
+      fps: 8,           // Override default fps (optional)
+      loop: true,       // Loop animation (default: true)
+      pingPong: false,  // Play forward then backward (optional)
+    },
+    attack: {
+      frames: ['attack_0', 'attack_1', 'attack_2'],
+      fps: 15,
+      loop: false,
+    },
+  },
+}
+```
+
+## Playback Control
+
+```typescript
+sprite.play('run');              // Play animation by name
+sprite.pause();                  // Pause at current frame
+sprite.resume();                 // Resume paused animation
+sprite.stop();                   // Stop and reset
+sprite.gotoFrame(3);             // Jump to specific frame
+
+// Check animation state
+sprite.isPlaying();              // Is any animation playing?
+sprite.isPlaying('run');         // Is 'run' animation playing?
+sprite.currentAnimation;         // Get current animation name
+```
+
+## Playback Speed
+
+```typescript
+sprite.speed = 1.5;  // 1.5x speed
+sprite.speed = 0.5;  // Half speed
+sprite.speed = 2;    // Double speed
+```
+
+## Animation Callbacks
+
+Use the `play()` method's options to handle animation events:
+
+```typescript
+sprite.play('attack', {
+  onFrame: (frameIndex) => {
+    console.log('Frame:', frameIndex);
+    if (frameIndex === 2) {
+      // Trigger damage on specific frame
+      dealDamage();
+    }
+  },
+  onComplete: () => {
+    // Animation finished (non-looping only)
+    sprite.play('idle');
   },
 });
+```
 
-sprite.playAnimation('walk');
+## Loading Spritesheets
+
+The `SpriteSheetLoader` supports Aseprite JSON format:
+
+```typescript
+import { SpriteSheetLoader } from '@three-flatland/core';
+import { NearestFilter } from 'three';
+
+// Load spritesheet
+const spriteSheet = await SpriteSheetLoader.load('/sprites/character.json');
+
+// Configure for pixel art
+spriteSheet.texture.minFilter = NearestFilter;
+spriteSheet.texture.magFilter = NearestFilter;
+
+// Access frame data
+const frame = spriteSheet.getFrame('idle_0');
+console.log(frame); // { x, y, width, height, sourceWidth, sourceHeight, ... }
+```
+
+## Update Loop
+
+The `update(deltaMs)` method must be called each frame to advance the animation:
+
+```typescript
+let lastTime = performance.now();
+
+function animate() {
+  const now = performance.now();
+  const deltaMs = now - lastTime;
+  lastTime = now;
+
+  // Update all animated sprites
+  sprite.update(deltaMs);
+
+  renderer.render(scene, camera);
+  requestAnimationFrame(animate);
+}
 ```

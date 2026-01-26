@@ -5,132 +5,293 @@ description: Create custom shader effects using Three Shader Language.
 
 import { Tabs, TabItem } from '@astrojs/starlight/components';
 
-## Overview
-
 TSL (Three Shader Language) is a node-based shader system in Three.js that enables custom GPU effects without writing raw WGSL/GLSL code.
 
-three-flatland provides pre-built TSL nodes for common 2D effects.
+three-flatland provides pre-built TSL nodes for common 2D sprite effects. All nodes are exported from `@three-flatland/core`.
 
 ## Using Built-in Nodes
 
 <Tabs syncKey="framework">
   <TabItem label="Three.js" icon="seti:javascript">
     ```typescript
-    import { Sprite2D, Renderer2D } from '@three-flatland/core';
-    import { outlineNode, glowNode } from '@three-flatland/nodes';
+    import { MeshBasicNodeMaterial } from 'three/webgpu';
+    import { texture as sampleTexture, uv, Fn } from 'three/tsl';
+    import {
+      SpriteSheetLoader,
+      sampleSprite,
+      spriteUV,
+      tint,
+      outline8,
+      hueShift,
+      dissolvePixelated,
+    } from '@three-flatland/core';
 
-    const sprite = new Sprite2D({ texture: myTexture });
+    // Load spritesheet
+    const spriteSheet = await SpriteSheetLoader.load('/sprites/character.json');
 
-    // Add outline effect
-    sprite.material.colorNode = outlineNode({
-      color: 0xff0000,
-      width: 2,
-    });
+    // Create material with TSL nodes
+    const material = new MeshBasicNodeMaterial();
+    material.transparent = true;
 
-    renderer2D.add(sprite);
+    // Frame uniform for animation
+    const frameUniform = uniform(new Vector4(0, 0, 0.125, 0.125));
+
+    // Apply outline effect
+    material.colorNode = Fn(() => {
+      const frameUV = spriteUV(frameUniform);
+      const color = sampleTexture(spriteSheet.texture, frameUV);
+      return outline8(color, frameUV, spriteSheet.texture, {
+        color: [1, 0, 0, 1],  // Red outline
+        thickness: 0.003,
+      });
+    })();
     ```
   </TabItem>
   <TabItem label="React" icon="seti:react">
     ```tsx
-    import { outlineNode } from '@three-flatland/nodes';
+    import { useMemo } from 'react';
+    import { MeshBasicNodeMaterial } from 'three/webgpu';
+    import { Fn } from 'three/tsl';
+    import { sampleSprite, tint } from '@three-flatland/core';
 
-    <renderer2D>
-      <sprite2D texture={texture}>
-        <sprite2DMaterial colorNode={outlineNode({ color: 0xff0000, width: 2 })} />
-      </sprite2D>
-    </renderer2D>
+    function TintedSprite({ texture, frameUniform }) {
+      const material = useMemo(() => {
+        const mat = new MeshBasicNodeMaterial();
+        mat.transparent = true;
+        mat.colorNode = Fn(() => {
+          const color = sampleSprite(texture, frameUniform);
+          return tint(color, [1.0, 0.5, 0.5]); // Pink tint
+        })();
+        return mat;
+      }, [texture, frameUniform]);
+
+      return <mesh material={material}>...</mesh>;
+    }
     ```
   </TabItem>
 </Tabs>
 
-## Available Nodes
+## Sprite Sampling Nodes
 
-### `outlineNode`
+### `sampleSprite`
 
-Adds a solid outline around the sprite.
+Sample a texture with frame coordinates and optional alpha test:
 
 ```typescript
-outlineNode({
-  color: 0xff0000,    // Outline color
-  width: 2,           // Outline width in pixels
-  alpha: 1.0,         // Outline opacity
+import { sampleSprite } from '@three-flatland/core';
+
+// Sample with alpha test (discard transparent pixels)
+const color = sampleSprite(texture, frameUniform, { alphaTest: 0.01 });
+
+// Sample without alpha test
+const color = sampleSprite(texture, frameUniform);
+```
+
+### `spriteUV`
+
+Convert frame uniform to UV coordinates:
+
+```typescript
+import { spriteUV } from '@three-flatland/core';
+
+const frameUV = spriteUV(frameUniform);
+// Use frameUV for texture sampling or effects
+```
+
+## Color Nodes
+
+### `tint` / `tintAdditive`
+
+Apply color tint to a sprite:
+
+```typescript
+import { tint, tintAdditive } from '@three-flatland/core';
+
+// Multiplicative tint (darkens)
+const tinted = tint(color, [1.0, 0.5, 0.5]); // Pink
+
+// Additive tint with strength (damage flash)
+const flashed = tintAdditive(color, [1, 1, 1], flashStrength);
+```
+
+### `hueShift`
+
+Rotate hue (rainbow effect):
+
+```typescript
+import { hueShift } from '@three-flatland/core';
+
+// Shift by radians (animate timeUniform for rainbow)
+const shifted = hueShift(color, timeUniform.mul(3.0));
+```
+
+### `saturate` / `grayscale`
+
+Adjust saturation:
+
+```typescript
+import { saturate, grayscale } from '@three-flatland/core';
+
+// Full grayscale (petrified effect)
+const gray = saturate(color, 0);
+
+// Increase saturation
+const vivid = saturate(color, 1.5);
+
+// Direct grayscale conversion
+const gray = grayscale(color);
+```
+
+### `brightness` / `contrast`
+
+Adjust brightness and contrast:
+
+```typescript
+import { brightness, contrast } from '@three-flatland/core';
+
+// Brighten
+const bright = brightness(color, 0.2);
+
+// Increase contrast
+const contrasty = contrast(color, 1.5);
+```
+
+## Effect Nodes
+
+### `outline8`
+
+Add outline around sprite (8-direction sampling):
+
+```typescript
+import { outline8 } from '@three-flatland/core';
+
+const outlined = outline8(color, uv, texture, {
+  color: [0.3, 1, 0.3, 1],  // Green outline
+  thickness: 0.003,          // Outline width
 });
 ```
 
-### `glowNode`
+### `pixelate`
 
-Adds a soft glow effect.
-
-```typescript
-glowNode({
-  color: 0x00ffff,    // Glow color
-  intensity: 1.0,     // Glow brightness
-  radius: 8,          // Glow spread in pixels
-});
-```
-
-### `pixelateNode`
-
-Applies a pixelation effect.
+Apply pixelation effect:
 
 ```typescript
-pixelateNode({
-  pixelSize: 4,       // Size of each "pixel"
-});
+import { pixelate, pixelateBySize } from '@three-flatland/core';
+
+// By pixel count
+const pixelatedUV = pixelate(uv, vec2(32, 32));
+
+// By pixel size
+const pixelatedUV = pixelateBySize(uv, vec2(0.03125));
 ```
 
-### `colorReplaceNode`
+### `dissolve`
 
-Replaces one color with another.
+Dissolve effect with noise texture:
 
 ```typescript
-colorReplaceNode({
-  originalColor: 0xff0000,
-  newColor: 0x00ff00,
-  tolerance: 0.1,
-});
+import { dissolve, dissolvePixelated, dissolveDirectional } from '@three-flatland/core';
+
+// Basic dissolve
+const dissolved = dissolve(color, uv, progress, noiseTexture);
+
+// Pixelated dissolve (retro style)
+const dissolved = dissolvePixelated(color, uv, progress, noiseTexture, 16);
+
+// Directional dissolve
+const dissolved = dissolveDirectional(color, uv, progress, direction);
 ```
 
-## Custom Nodes
+## Retro Effect Nodes
 
-Create your own TSL nodes using Three.js node functions:
+### `colorReplace`
+
+Replace one color with another:
 
 ```typescript
-import { tslFn, vec4, uv, texture } from 'three/tsl';
+import { colorReplace, colorReplaceHard, colorReplaceMultiple } from '@three-flatland/core';
 
-const customEffect = tslFn(({ tex }) => {
-  const texCoord = uv();
-  const color = texture(tex, texCoord);
+// Soft replacement with tolerance
+const replaced = colorReplace(color, oldColor, newColor, 0.1);
 
-  // Invert colors
-  return vec4(
-    1.0 - color.r,
-    1.0 - color.g,
-    1.0 - color.b,
-    color.a
-  );
-});
+// Hard replacement (exact match)
+const replaced = colorReplaceHard(color, oldColor, newColor);
 
-sprite.material.colorNode = customEffect({ tex: sprite.texture });
+// Replace multiple colors
+const replaced = colorReplaceMultiple(color, colorPairs, 0.1);
 ```
 
-## Combining Nodes
+### `bayerDither`
 
-Chain multiple nodes together:
+Ordered dithering (retro style):
 
 ```typescript
-import { mix } from 'three/tsl';
+import { bayerDither2x2, bayerDither4x4, bayerDither8x8 } from '@three-flatland/core';
 
-const outline = outlineNode({ color: 0xff0000, width: 2 });
-const glow = glowNode({ color: 0xff6600, intensity: 0.5 });
+// 2x2 matrix dithering
+const dithered = bayerDither2x2(color, levels, scale);
 
-sprite.material.colorNode = mix(outline, glow, 0.5);
+// 4x4 matrix (default)
+const dithered = bayerDither4x4(color, levels, scale);
+
+// 8x8 matrix (finest)
+const dithered = bayerDither8x8(color, levels, scale);
 ```
 
-## Performance Considerations
+### `palettize`
 
-TSL nodes compile to optimized WGSL shaders. Keep in mind:
+Map colors to a palette:
+
+```typescript
+import { palettize, palettizeDithered, palettizeNearest } from '@three-flatland/core';
+
+// With dithering (smooth gradients)
+const paletted = palettizeDithered(color, paletteTexture);
+
+// Nearest color (hard edges)
+const paletted = palettizeNearest(color, paletteTexture);
+```
+
+### `posterize`
+
+Reduce color levels:
+
+```typescript
+import { posterize } from '@three-flatland/core';
+
+// Reduce to 4 levels per channel
+const posterized = posterize(color, 4);
+```
+
+## Combining Effects
+
+Chain multiple effects together:
+
+```typescript
+import { Fn } from 'three/tsl';
+import { sampleSprite, tint, outline8, hueShift } from '@three-flatland/core';
+
+material.colorNode = Fn(() => {
+  // Sample sprite
+  const color = sampleSprite(texture, frameUniform, { alphaTest: 0.01 });
+
+  // Apply hue shift
+  const shifted = hueShift(color, timeUniform);
+
+  // Add outline
+  const frameUV = spriteUV(frameUniform);
+  const outlined = outline8(shifted, frameUV, texture, {
+    color: [1, 1, 0, 1],
+    thickness: 0.002,
+  });
+
+  return outlined;
+})();
+```
+
+## Performance Tips
 
 - Complex node graphs increase shader compile time
-- Use `uniform` for values that change frequently
+- Use `uniform()` for values that change frequently
 - Cache compiled materials when reusing effects
+- Avoid dynamic branching in hot paths

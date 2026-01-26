@@ -5,8 +5,6 @@ description: How automatic batching works and tips for optimal performance.
 
 import { Tabs, TabItem } from '@astrojs/starlight/components';
 
-## Overview
-
 Renderer2D automatically batches sprites that share the same material into single draw calls. You don't need to do anything special—just add sprites and the batching happens behind the scenes.
 
 ## How It Works
@@ -71,14 +69,11 @@ When you add sprites to a `Renderer2D`, they're grouped by material:
 
 ## Renderer Options
 
-Configure batching behavior when creating the renderer:
+The `Renderer2D` constructor accepts optional batch configuration:
 
 ```typescript
-const renderer2D = new Renderer2D({
-  maxBatchSize: 10000,    // Max sprites per batch (default: 10000)
-  autoSort: true,         // Sort by layer/zIndex (default: true)
-  frustumCulling: true,   // Cull off-screen sprites (default: true)
-});
+const renderer2D = new Renderer2D();
+scene.add(renderer2D);
 ```
 
 ## Performance Monitoring

@@ -12,59 +12,64 @@ This guide shows you how to create your first sprite using three-flatland.
 <Tabs syncKey="framework">
   <TabItem label="Three.js" icon="seti:javascript">
     ```typescript
-    import * as THREE from 'three/webgpu';
-    import { Sprite2D, Renderer2D } from '@three-flatland/core';
+    import { WebGPURenderer } from 'three/webgpu';
+    import { Scene, OrthographicCamera, TextureLoader, SRGBColorSpace } from 'three';
+    import { Sprite2D } from '@three-flatland/core';
 
-    // Create WebGPU renderer
-    const renderer = new THREE.WebGPURenderer();
-    await renderer.init();
-    document.body.appendChild(renderer.domElement);
+    async function main() {
+      // Create scene and camera
+      const scene = new Scene();
+      const aspect = window.innerWidth / window.innerHeight;
+      const camera = new OrthographicCamera(-200 * aspect, 200 * aspect, 200, -200, 0.1, 1000);
+      camera.position.z = 100;
 
-    // Create scene and camera
-    const scene = new THREE.Scene();
-    const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 10);
-    camera.position.z = 1;
+      // Create WebGPU renderer
+      const renderer = new WebGPURenderer({ antialias: true });
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      document.body.appendChild(renderer.domElement);
+      await renderer.init();
 
-    // Load texture
-    const textureLoader = new THREE.TextureLoader();
-    const texture = await textureLoader.loadAsync('/sprite.png');
+      // Load texture
+      const loader = new TextureLoader();
+      const texture = await loader.loadAsync('/sprite.png');
+      texture.colorSpace = SRGBColorSpace;
 
-    // Create 2D renderer and sprite
-    const renderer2D = new Renderer2D();
-    scene.add(renderer2D);
+      // Create sprite
+      const sprite = new Sprite2D({ texture, anchor: [0.5, 0.5] });
+      sprite.scale.set(100, 100, 1);
+      scene.add(sprite);
 
-    const sprite = new Sprite2D({ texture });
-    renderer2D.add(sprite);
-
-    // Animation loop
-    function animate() {
-      requestAnimationFrame(animate);
-      renderer.render(scene, camera);
+      // Animation loop
+      function animate() {
+        requestAnimationFrame(animate);
+        renderer.render(scene, camera);
+      }
+      animate();
     }
-    animate();
+
+    main();
     ```
   </TabItem>
   <TabItem label="React" icon="seti:react">
     ```tsx
-    import { Canvas, extend } from '@react-three/fiber/webgpu';
-    import { Sprite2D, Renderer2D } from '@three-flatland/react';
-    import { useTexture } from '@react-three/drei';
+    import { Canvas, extend, useLoader } from '@react-three/fiber/webgpu';
+    import { TextureLoader, SRGBColorSpace } from 'three';
+    import { Sprite2D } from '@three-flatland/react';
 
-    extend({ Sprite2D, Renderer2D });
+    extend({ Sprite2D });
 
     function Sprite() {
-      const texture = useTexture('/sprite.png');
+      const texture = useLoader(TextureLoader, '/sprite.png');
+      texture.colorSpace = SRGBColorSpace;
 
       return (
-        <renderer2D>
-          <sprite2D texture={texture} />
-        </renderer2D>
+        <sprite2D texture={texture} anchor={[0.5, 0.5]} scale={[100, 100, 1]} />
       );
     }
 
     export default function App() {
       return (
-        <Canvas orthographic camera={{ zoom: 100 }}>
+        <Canvas orthographic camera={{ zoom: 5, position: [0, 0, 100] }}>
           <Sprite />
         </Canvas>
       );
