@@ -149,7 +149,7 @@ export class TiledLoader {
       throw new Error(`Failed to load Tiled map: ${url}`)
     }
 
-    const json: TiledMap = await response.json()
+    const json = (await response.json()) as TiledMap
     const baseUrl = url.substring(0, url.lastIndexOf('/') + 1)
 
     return this.parseMap(json, baseUrl)
@@ -208,7 +208,7 @@ export class TiledLoader {
       if (!response.ok) {
         throw new Error(`Failed to load external tileset: ${externalUrl}`)
       }
-      const externalTs: TiledTileset = await response.json()
+      const externalTs = (await response.json()) as TiledTileset
       // Merge firstgid from reference
       externalTs.firstgid = ts.firstgid
       return this.parseTileset(externalTs, baseUrl)

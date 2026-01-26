@@ -101,7 +101,7 @@ export class SpriteBatch extends InstancedMesh {
     geometry.setAttribute('instanceFlip', flipAttr)
 
     // Clone the material to ensure shader is compiled correctly for instanced rendering
-    const clonedMaterial = material.clone() as Sprite2DMaterial
+    const clonedMaterial = material.clone()
 
     // Create InstancedMesh - geometry now has all required attributes
     super(geometry, clonedMaterial, maxSize)

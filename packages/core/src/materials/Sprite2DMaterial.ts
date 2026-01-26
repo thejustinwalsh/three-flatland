@@ -1,6 +1,6 @@
 import { MeshBasicNodeMaterial } from 'three/webgpu'
 import { attribute, texture, uv, vec2, vec4, float, Fn, If, Discard, select } from 'three/tsl'
-import { Color, Vector2, Vector4, type Texture, FrontSide, NormalBlending } from 'three'
+import { type Texture, FrontSide, NormalBlending } from 'three'
 import type { InstanceAttributeConfig, InstanceAttributeType } from '../pipeline/types'
 
 export interface Sprite2DMaterialOptions {

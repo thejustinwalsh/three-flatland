@@ -179,11 +179,13 @@ export function bayerDither2x2(
   const scaleNode = typeof scale === 'number' ? float(scale) : scale
 
   // Default to positionLocal.xy if no coord provided
-  const coord = screenCoord ?? inputColor.positionLocal?.xy ?? float(0)
-  const scaledCoord = coord.div(scaleNode)
+  // Note: TSLNode's Record<string, any> typing causes chained access to be 'any'
+  const positionLocal = inputColor.positionLocal as TSLNode | undefined
+  const coord: TSLNode = screenCoord ?? positionLocal?.xy ?? float(0)
+  const scaledCoord: TSLNode = coord.div(scaleNode)
 
-  const x = floor(scaledCoord.x).toInt()
-  const y = floor(scaledCoord.y).toInt()
+  const x = floor(scaledCoord.x as TSLNode).toInt()
+  const y = floor(scaledCoord.y as TSLNode).toInt()
 
   const threshold = getBayer2x2(x, y)
 
@@ -219,11 +221,13 @@ export function bayerDither4x4(
   const levelsNode = typeof levels === 'number' ? float(levels) : levels
   const scaleNode = typeof scale === 'number' ? float(scale) : scale
 
-  const coord = screenCoord ?? inputColor.positionLocal?.xy ?? float(0)
-  const scaledCoord = coord.div(scaleNode)
+  // Note: TSLNode's Record<string, any> typing causes chained access to be 'any'
+  const positionLocal = inputColor.positionLocal as TSLNode | undefined
+  const coord: TSLNode = screenCoord ?? positionLocal?.xy ?? float(0)
+  const scaledCoord: TSLNode = coord.div(scaleNode)
 
-  const x = floor(scaledCoord.x).toInt()
-  const y = floor(scaledCoord.y).toInt()
+  const x = floor(scaledCoord.x as TSLNode).toInt()
+  const y = floor(scaledCoord.y as TSLNode).toInt()
 
   const threshold = getBayer4x4(x, y)
 
@@ -258,11 +262,13 @@ export function bayerDither8x8(
   const levelsNode = typeof levels === 'number' ? float(levels) : levels
   const scaleNode = typeof scale === 'number' ? float(scale) : scale
 
-  const coord = screenCoord ?? inputColor.positionLocal?.xy ?? float(0)
-  const scaledCoord = coord.div(scaleNode)
+  // Note: TSLNode's Record<string, any> typing causes chained access to be 'any'
+  const positionLocal = inputColor.positionLocal as TSLNode | undefined
+  const coord: TSLNode = screenCoord ?? positionLocal?.xy ?? float(0)
+  const scaledCoord: TSLNode = coord.div(scaleNode)
 
-  const x = floor(scaledCoord.x).toInt()
-  const y = floor(scaledCoord.y).toInt()
+  const x = floor(scaledCoord.x as TSLNode).toInt()
+  const y = floor(scaledCoord.y as TSLNode).toInt()
 
   const threshold = getBayer8x8(x, y)
 

@@ -1,4 +1,5 @@
 import type { Texture } from 'three'
+import type { Tileset } from './Tileset'
 
 /**
  * A single tile definition in a tileset.
@@ -226,7 +227,7 @@ export interface TileChunkOptions {
   /** Tile height in pixels */
   tileHeight: number
   /** Tileset for this chunk */
-  tileset: import('./Tileset').Tileset
+  tileset: Tileset
 }
 
 /**
@@ -236,7 +237,7 @@ export interface TileLayerOptions {
   /** Layer data */
   data: TileLayerData
   /** Tileset for this layer */
-  tileset: import('./Tileset').Tileset
+  tileset: Tileset
   /** Tile width in pixels */
   tileWidth: number
   /** Tile height in pixels */

@@ -157,7 +157,7 @@ export function palettizeNearest(
 
   // Sample first palette color as initial best match
   let bestColor: TSLNode = sampleTexture(paletteTex, vec3(float(0.5 / size), float(0.5), float(0)).xy)
-  let bestDiff = inputColor.rgb.sub(bestColor.rgb)
+  const bestDiff = inputColor.rgb.sub(bestColor.rgb)
   let bestDist: TSLNode = bestDiff.dot(bestDiff)
 
   // Check each palette color

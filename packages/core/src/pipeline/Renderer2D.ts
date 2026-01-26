@@ -57,7 +57,6 @@ export class Renderer2D extends Group {
    * Add a sprite to the renderer.
    * Note: Named addSprite to avoid conflict with Group.add()
    */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   override add(...objects: Object3D[]): this
   override add(sprite: Sprite2D): this
   override add(spriteOrObject: Sprite2D | Object3D, ...rest: Object3D[]): this {
@@ -67,7 +66,7 @@ export class Renderer2D extends Group {
     }
     // Check if it's a Sprite2D (has layer property)
     if ('layer' in spriteOrObject && 'zIndex' in spriteOrObject) {
-      this._batchManager.add(spriteOrObject as Sprite2D)
+      this._batchManager.add(spriteOrObject)
     } else {
       super.add(spriteOrObject)
     }
@@ -96,7 +95,7 @@ export class Renderer2D extends Group {
     }
     // Check if it's a Sprite2D
     if ('layer' in spriteOrObject && 'zIndex' in spriteOrObject) {
-      this._batchManager.remove(spriteOrObject as Sprite2D)
+      this._batchManager.remove(spriteOrObject)
     } else {
       super.remove(spriteOrObject)
     }
@@ -153,9 +152,8 @@ export class Renderer2D extends Group {
     // Note: We iterate backwards to avoid index shifting
     for (let i = this.children.length - 1; i >= 0; i--) {
       const child = this.children[i]
-      // Remove if not in active batches
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      if (child && !batches.includes(child as any)) {
+      // Remove if not in active batches (check by reference)
+      if (child && !batches.some((batch) => batch === child)) {
         super.remove(child)
       }
     }

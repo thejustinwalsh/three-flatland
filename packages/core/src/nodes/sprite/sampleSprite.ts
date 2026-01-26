@@ -49,10 +49,10 @@ export function sampleSprite(
     frameH = float(frame[3])
   } else {
     // Assume it's a vec4 uniform with x, y, z, w components
-    frameX = (frame as TSLNode).x
-    frameY = (frame as TSLNode).y
-    frameW = (frame as TSLNode).z
-    frameH = (frame as TSLNode).w
+    frameX = frame.x
+    frameY = frame.y
+    frameW = frame.z
+    frameH = frame.w
   }
 
   const frameOffset = vec2(frameX, frameY)
@@ -98,10 +98,10 @@ export function spriteUV(frame: Vec4Input): TSLNode {
     frameW = float(frame[2])
     frameH = float(frame[3])
   } else {
-    frameX = (frame as TSLNode).x
-    frameY = (frame as TSLNode).y
-    frameW = (frame as TSLNode).z
-    frameH = (frame as TSLNode).w
+    frameX = frame.x
+    frameY = frame.y
+    frameW = frame.z
+    frameH = frame.w
   }
 
   const frameOffset = vec2(frameX, frameY)

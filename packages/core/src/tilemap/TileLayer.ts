@@ -174,19 +174,6 @@ export class TileLayer extends Group {
         this.tileset
       )
 
-      // Adjust tile positions for this chunk's coordinate system
-      const adjustedTiles = tiles.map((tile) => ({
-        ...tile,
-        y: tile.y - worldChunkY * this.chunkSize * this.tileHeight,
-        x: tile.x - coord.x * this.chunkSize * this.tileWidth,
-      }))
-
-      // Reset positions to be relative to chunk origin
-      for (const tile of tiles) {
-        tile.x = tile.x
-        tile.y = tile.y
-      }
-
       chunk.setTiles(tiles, this.tileset)
       chunk.upload()
 

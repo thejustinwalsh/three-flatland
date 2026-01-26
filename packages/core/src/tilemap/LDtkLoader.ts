@@ -199,7 +199,7 @@ export class LDtkLoader {
     if (!response.ok) {
       throw new Error(`Failed to load LDtk project: ${url}`)
     }
-    return response.json()
+    return response.json() as Promise<LDtkProject>
   }
 
   /**

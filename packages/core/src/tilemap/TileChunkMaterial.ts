@@ -1,5 +1,5 @@
 import { MeshBasicNodeMaterial } from 'three/webgpu'
-import { texture, uv, vec2, vec4, float, Fn, If, Discard, attribute } from 'three/tsl'
+import { texture, uv, vec2, float, Fn, If, Discard, attribute } from 'three/tsl'
 import { type Texture, FrontSide, NormalBlending } from 'three'
 
 export interface TileChunkMaterialOptions {
