@@ -1,4 +1,4 @@
-![three-flatland banner](./assets/banner.png)
+![three-flatland banner](./assets/icon.svg)
 
 # three-flatland
 
