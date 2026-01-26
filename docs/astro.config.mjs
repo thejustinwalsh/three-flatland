@@ -8,7 +8,7 @@ import { watchExamples } from './vite-plugins/watch-examples.js';
 const isProduction = process.env.NODE_ENV === 'production';
 
 export default defineConfig({
-  site: 'https://tjw.github.io',
+  site: 'https://thejustinwalsh.com',
   base: isProduction ? '/three-flatland' : '/',
   integrations: [
     starlight({
