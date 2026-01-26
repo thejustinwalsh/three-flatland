@@ -17,3 +17,6 @@ export * from './color'
 
 // Alpha nodes
 export * from './alpha'
+
+// Retro effect nodes
+export * from './retro'
