@@ -30,6 +30,7 @@ export default defineConfig({
             collapsed: false,
           },
           typeDoc: {
+            gitRevision: 'main',
             externalSymbolLinkMappings: {
               '@types/three': {
                 // Core

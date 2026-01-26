@@ -6,6 +6,7 @@ on:
     paths:
       - 'docs/**'
       - 'examples/**'
+      - 'packages/*/src/**'
       - 'packages/*/package.json'
   workflow_dispatch:
 

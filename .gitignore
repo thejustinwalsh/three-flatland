@@ -8,6 +8,9 @@ dist/
 # Generated demo builds for docs
 docs/public/examples/
 
+# Generated API docs (starlight-typedoc)
+docs/src/content/docs/api/
+
 # IDE
 .idea/
 .vscode/
@@ -28,6 +31,9 @@ coverage/
 
 # Turbo
 .turbo/
+
+# Astro
+.astro/
 
 # Environment
 .env
