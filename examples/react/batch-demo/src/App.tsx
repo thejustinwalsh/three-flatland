@@ -18,7 +18,7 @@ extend({ Renderer2D, Sprite2D, Sprite2DMaterial })
 const TILE_SIZE = 64
 const GRID_WIDTH = 12
 const GRID_HEIGHT = 8
-const ASSET_BASE = '/react/batch-demo/assets/'
+const ASSET_BASE = import.meta.env.BASE_URL + 'assets/'
 
 // Grass tilemap UV size (32x32 tiles in 640x256 texture)
 const TILE_UV_SIZE = { width: 32 / 640, height: 32 / 256 }
