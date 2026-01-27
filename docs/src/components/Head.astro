@@ -12,6 +12,28 @@ const isDev = import.meta.env.DEV;
 <StarlightHead {...Astro.props}><slot /></StarlightHead>
 <ClientRouter />
 
+<!-- Theme persistence across view transitions -->
+<script is:inline>
+(function() {
+  function applyTheme() {
+    const stored = localStorage.getItem('starlight-theme');
+    if (stored === 'light' || stored === 'dark') {
+      document.documentElement.dataset.theme = stored;
+    } else {
+      // Auto mode - use system preference
+      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      document.documentElement.dataset.theme = prefersDark ? 'dark' : 'light';
+    }
+  }
+
+  // Apply immediately on script load (handles initial page load)
+  applyTheme();
+
+  // Re-apply after view transitions swap in new content
+  document.addEventListener('astro:after-swap', applyTheme);
+})();
+</script>
+
 {/* In dev mode, re-dispatch astro:page-load after HMR to fix ClientRouter state */}
 {isDev && (
   <script>

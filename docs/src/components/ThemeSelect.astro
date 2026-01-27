@@ -36,6 +36,18 @@ import SoundToggle from './SoundToggle.astro';
       super();
       this.button = this.querySelector('button');
 
+      this.syncFromStorage();
+      this.updateIcon();
+      this.button?.addEventListener('click', () => this.cycle());
+
+      // Re-sync after view transitions
+      document.addEventListener('astro:page-load', () => {
+        this.syncFromStorage();
+        this.updateIcon();
+      });
+    }
+
+    private syncFromStorage() {
       // Get current theme from localStorage or default to auto
       const stored = typeof localStorage !== 'undefined'
         ? localStorage.getItem('starlight-theme')
@@ -48,9 +60,6 @@ import SoundToggle from './SoundToggle.astro';
       } else {
         this.currentIndex = 0;
       }
-
-      this.updateIcon();
-      this.button?.addEventListener('click', () => this.cycle());
     }
 
     private cycle() {

@@ -1177,6 +1177,7 @@ starlight-tabs .tab > [role='tab']:hover {
 
 /* Light mode tabs */
 :root[data-theme='light'] starlight-tabs .tab > [role='tab']:hover {
+  color: var(--retro-purple);
   border-bottom-color: var(--retro-purple);
 }
 
