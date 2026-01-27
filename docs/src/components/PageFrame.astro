@@ -12,7 +12,10 @@ import Default from '@astrojs/starlight/components/PageFrame.astro';
 // Check if we're on the landing page by URL path
 // This is more reliable than checking Starlight props which may vary
 const pathname = Astro.url.pathname;
-const isLandingPage = pathname === '/' || pathname === '/three-flatland/' || pathname === '/three-flatland';
+const baseUrl = import.meta.env.BASE_URL || '/';
+// Normalize: baseUrl could be '/' or '/three-flatland/'
+const landingPaths = [baseUrl, baseUrl.replace(/\/$/, ''), '/'];
+const isLandingPage = landingPaths.includes(pathname) || landingPaths.includes(pathname.replace(/\/$/, ''));
 const isApiPage = pathname.includes('/api/');
 ---
 

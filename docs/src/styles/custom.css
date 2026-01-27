@@ -1,10 +1,14 @@
-/* Narrow the right sidebar */
-:root {
-  --sl-content-inline-start: 18rem;
-  --sl-sidebar-width: 18rem;
+/* Sidebar width customizations - only apply on pages WITH a sidebar */
+/* Starlight shows sidebar at 50rem breakpoint */
+/* The :has(.sidebar) selector ensures splash pages (no sidebar) aren't affected */
+@media (min-width: 50rem) {
+  :root:has(.sidebar) {
+    --sl-content-inline-start: 18rem;
+    --sl-sidebar-width: 18rem;
+  }
 }
 
-/* Override right sidebar width directly */
+/* Override content width on larger screens */
 @media (min-width: 72rem) {
   :root {
     --sl-content-width: 45rem;

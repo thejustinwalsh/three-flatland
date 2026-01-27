@@ -1,6 +1,8 @@
 ---
 /**
- * SoundToggle - Mute/unmute toggle for retro sound effects
+ * SoundToggle - Volume control for retro sound effects
+ * Cycles through: mute -> low -> medium -> high -> mute
+ * Shows disabled state until browser allows audio playback.
  * Uses pixelated volume icons and lazy-loads the sound system.
  */
 import Icon from './Icon.astro';
@@ -11,42 +13,54 @@ import Icon from './Icon.astro';
     type="button"
     class="sound-toggle"
     data-sound="none"
-    aria-label="Toggle sound effects"
+    aria-label="Enable sound"
   >
-    <span class="icon icon-on"><Icon name="volume-3" size="1rem" /></span>
-    <span class="icon icon-off"><Icon name="volume-x" size="1rem" /></span>
+    <span class="icon icon-disabled"><Icon name="volume" size="1rem" /></span>
+    <span class="icon icon-mute"><Icon name="volume-x" size="1rem" /></span>
+    <span class="icon icon-low"><Icon name="volume-1" size="1rem" /></span>
+    <span class="icon icon-medium"><Icon name="volume-2" size="1rem" /></span>
+    <span class="icon icon-high"><Icon name="volume-3" size="1rem" /></span>
   </button>
 </flatland-sound-toggle>
 
 <script>
+  import type { VolumeLevel } from '../scripts/sounds';
+
   class FlatlandSoundToggle extends HTMLElement {
     private button: HTMLButtonElement | null = null;
-    private enabled: boolean = false;
+    private volumeLevel: VolumeLevel = 0;
     private soundsModule: typeof import('../scripts/sounds') | null = null;
     private audioInitialized: boolean = false;
+    private unsubscribeAudioState: (() => void) | null = null;
 
     constructor() {
       super();
       this.button = this.querySelector('button');
 
-      // Get initial state from localStorage
-      this.enabled = this.getSavedState();
+      // Show disabled state initially
       this.updateIcon();
 
-      this.button?.addEventListener('click', () => this.toggle());
-
-      // Lazy load sounds module and setup events
+      // Lazy load sounds module first, then setup
       this.loadSoundsModule();
-    }
 
-    private getSavedState(): boolean {
-      if (typeof localStorage === 'undefined') return false;
-      return localStorage.getItem('flatland-sound-enabled') === 'true';
+      this.button?.addEventListener('click', () => this.handleClick());
     }
 
     private async loadSoundsModule() {
       try {
         this.soundsModule = await import('../scripts/sounds');
+        // Initialize volume level from storage
+        this.soundsModule.initVolumeLevel();
+        this.volumeLevel = this.soundsModule.getVolumeLevel();
+        this.audioInitialized = this.soundsModule.isAudioInitialized();
+
+        // Listen for audio state changes
+        this.unsubscribeAudioState = this.soundsModule.onAudioStateChange((initialized) => {
+          this.audioInitialized = initialized;
+          this.updateIcon();
+        });
+
+        this.updateIcon();
         // Setup global sound event handlers
         this.soundsModule.setupSoundEvents();
         // Setup view transition support for SPA navigation
@@ -54,6 +68,11 @@ import Icon from './Icon.astro';
       } catch (e) {
         console.warn('Could not load sound module:', e);
       }
+    }
+
+    disconnectedCallback() {
+      // Cleanup subscription when element is removed
+      this.unsubscribeAudioState?.();
     }
 
     private async ensureAudioInitialized(): Promise<boolean> {
@@ -67,40 +86,84 @@ import Icon from './Icon.astro';
       return success;
     }
 
-    private async toggle() {
-      // Always init audio on toggle click (this is a user gesture)
+    private async handleClick() {
+      if (!this.soundsModule) return;
+
+      // Always init audio on click (this is a user gesture)
+      const wasInitialized = this.audioInitialized;
       await this.ensureAudioInitialized();
 
-      this.enabled = !this.enabled;
+      // If this was the first click that initialized audio from the sound toggle,
+      // enable sound (don't stay muted - user explicitly clicked sound icon)
+      if (!wasInitialized && this.audioInitialized) {
+        // Get stored preference
+        this.volumeLevel = this.soundsModule.getVolumeLevel();
 
-      if (typeof localStorage !== 'undefined') {
-        localStorage.setItem('flatland-sound-enabled', String(this.enabled));
+        // If muted or no preference, set to low (user clicked icon to enable sound)
+        if (this.volumeLevel === 0) {
+          this.soundsModule.setVolumeLevel(1);
+          this.volumeLevel = 1;
+        }
+
+        this.updateIcon();
+        // Play feedback sound
+        this.soundsModule.playToggleOn();
+        return;
       }
 
+      // Normal cycling behavior
+      this.volumeLevel = this.soundsModule.cycleVolumeLevel();
       this.updateIcon();
 
-      // Play feedback sound
-      if (this.soundsModule) {
-        if (this.enabled) {
-          this.soundsModule.playToggleOn();
-        } else {
-          this.soundsModule.playToggleOff();
-        }
+      // Play feedback sound at new level (if not muted)
+      if (this.volumeLevel > 0) {
+        this.soundsModule.playToggleOn();
       }
     }
 
     private updateIcon() {
-      const onIcon = this.querySelector('.icon-on');
-      const offIcon = this.querySelector('.icon-off');
+      const icons = {
+        disabled: this.querySelector('.icon-disabled'),
+        mute: this.querySelector('.icon-mute'),
+        low: this.querySelector('.icon-low'),
+        medium: this.querySelector('.icon-medium'),
+        high: this.querySelector('.icon-high'),
+      };
 
-      if (onIcon && offIcon) {
-        onIcon.classList.toggle('active', this.enabled);
-        offIcon.classList.toggle('active', !this.enabled);
+      // Hide all icons first
+      Object.values(icons).forEach(icon => icon?.classList.remove('active'));
+
+      // If audio isn't initialized, show disabled state
+      if (!this.audioInitialized) {
+        icons.disabled?.classList.add('active');
+        this.button?.setAttribute('aria-label', 'Click to enable sound');
+        return;
+      }
+
+      // Show the current level icon
+      switch (this.volumeLevel) {
+        case 0:
+          icons.mute?.classList.add('active');
+          break;
+        case 1:
+          icons.low?.classList.add('active');
+          break;
+        case 2:
+          icons.medium?.classList.add('active');
+          break;
+        case 3:
+          icons.high?.classList.add('active');
+          break;
       }
 
       // Update aria-label
-      const label = this.enabled ? 'Sound on (click to mute)' : 'Sound off (click to unmute)';
-      this.button?.setAttribute('aria-label', label);
+      const labels: Record<VolumeLevel, string> = {
+        0: 'Volume: muted (click for low)',
+        1: 'Volume: low (click for medium)',
+        2: 'Volume: medium (click for high)',
+        3: 'Volume: high (click to mute)',
+      };
+      this.button?.setAttribute('aria-label', labels[this.volumeLevel]);
     }
   }
 
@@ -144,6 +207,17 @@ import Icon from './Icon.astro';
 
   .icon :global(svg) {
     display: block;
+  }
+
+  /* Disabled state - audio not yet unlocked by browser */
+  .icon-disabled {
+    opacity: 0.5;
+  }
+
+  /* Muted state - pink to indicate intentionally off */
+  .icon-mute {
+    color: var(--retro-pink);
+    opacity: 0.6;
   }
 
   /* Light mode */

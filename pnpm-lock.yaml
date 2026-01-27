@@ -6,21 +6,36 @@ settings:
 
 catalogs:
   default:
+    '@react-three/fiber':
+      specifier: ^10.0.0-alpha.2
+      version: 10.0.0-alpha.2
     '@types/react':
       specifier: ^19.0.2
       version: 19.2.9
     '@types/react-dom':
       specifier: ^19.0.2
       version: 19.2.3
+    '@types/three':
+      specifier: ^0.182.0
+      version: 0.182.0
+    '@vitejs/plugin-react':
+      specifier: ^4.3.4
+      version: 4.7.0
     react:
       specifier: ^19.0.0
       version: 19.2.3
     react-dom:
       specifier: ^19.0.0
       version: 19.2.3
+    three:
+      specifier: ^0.182.0
+      version: 0.182.0
     typescript:
       specifier: ^5.7.3
       version: 5.9.3
+    vite:
+      specifier: ^6.0.7
+      version: 6.4.1
 
 importers:
 
@@ -71,6 +86,15 @@ importers:
       '@astrojs/starlight':
         specifier: ^0.33.0
         version: 0.33.2(astro@5.16.15(@types/node@22.19.7)(jiti@1.21.7)(rollup@4.56.0)(typescript@5.9.3)(yaml@2.8.2))
+      '@fontsource/ibm-plex-mono':
+        specifier: ^5.2.7
+        version: 5.2.7
+      '@fontsource/ibm-plex-sans':
+        specifier: ^5.2.8
+        version: 5.2.8
+      '@fontsource/silkscreen':
+        specifier: ^5.2.8
+        version: 5.2.8
       '@stackblitz/sdk':
         specifier: ^1.11.0
         version: 1.11.0
@@ -1205,6 +1229,15 @@ packages:
 
   '@expressive-code/plugin-text-markers@0.41.6':
     resolution: {integrity: sha512-PBFa1wGyYzRExMDzBmAWC6/kdfG1oLn4pLpBeTfIRrALPjcGA/59HP3e7q9J0Smk4pC7U+lWkA2LHR8FYV8U7Q==}
+
+  '@fontsource/ibm-plex-mono@5.2.7':
+    resolution: {integrity: sha512-MKAb8qV+CaiMQn2B0dIi1OV3565NYzp3WN5b4oT6LTkk+F0jR6j0ZN+5BKJiIhffDC3rtBULsYZE65+0018z9w==}
+
+  '@fontsource/ibm-plex-sans@5.2.8':
+    resolution: {integrity: sha512-eztSXjDhPhcpxNIiGTgMebdLP9qS4rWkysuE1V7c+DjOR0qiezaiDaTwQE7bTnG5HxAY/8M43XKDvs3cYq6ZYQ==}
+
+  '@fontsource/silkscreen@5.2.8':
+    resolution: {integrity: sha512-PfVe2BRZdjY/UIEXsrpzCo/W8FIGo6jEEMHuQiKfma+E5LXb6WfFFBfCEsO89ZWOSwl2mLE1Yq0d8gagmcaBpQ==}
 
   '@gerrit0/mini-shiki@3.21.0':
     resolution: {integrity: sha512-9PrsT5DjZA+w3lur/aOIx3FlDeHdyCEFlv9U+fmsVyjPZh61G5SYURQ/1ebe2U63KbDmI2V8IhIUegWb8hjOyg==}
@@ -5037,6 +5070,12 @@ snapshots:
   '@expressive-code/plugin-text-markers@0.41.6':
     dependencies:
       '@expressive-code/core': 0.41.6
+
+  '@fontsource/ibm-plex-mono@5.2.7': {}
+
+  '@fontsource/ibm-plex-sans@5.2.8': {}
+
+  '@fontsource/silkscreen@5.2.8': {}
 
   '@gerrit0/mini-shiki@3.21.0':
     dependencies:

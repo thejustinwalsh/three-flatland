@@ -1,0 +1,116 @@
+---
+/**
+ * ExampleTabs - Wrapper for Starlight Tabs that adds a mobile skip link.
+ * On mobile, iframes can capture scroll touches, making it hard to scroll past.
+ * The skip link allows users to jump to the next content section.
+ */
+---
+
+<div class="example-tabs-wrapper not-content">
+  <slot />
+  <a href="#" class="skip-link" role="button" aria-label="Skip to next section">
+    <svg fill="none" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+      <path d="M11 4h2v12h2v2h-2v2h-2v-2H9v-2h2V4zM7 14v2h2v-2H7zm0 0v-2H5v2h2zm10 0v2h-2v-2h2zm0 0v-2h2v2h-2z" fill="currentColor"/>
+    </svg>
+  </a>
+</div>
+
+<style>
+  .example-tabs-wrapper {
+    position: relative;
+  }
+
+  .skip-link {
+    position: absolute;
+    top: 0.4rem;
+    right: 0;
+    z-index: 10;
+    padding: 0 0 1rem 0.5rem;
+    color: var(--retro-white, #f0edd8);
+    opacity: 0.5;
+    text-decoration: none;
+    line-height: 1;
+    /* Minimum 44x44px tap target for accessibility */
+    min-width: 44px;
+    min-height: 44px;
+    align-items: flex-start;
+    justify-content: center;
+    /* Hidden by default, shown via media queries */
+    display: none;
+  }
+
+  .skip-link:hover,
+  .skip-link:focus {
+    opacity: 1;
+    color: var(--retro-cyan, #47cca9);
+    outline: none;
+  }
+
+  .skip-link svg {
+    display: block;
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+  }
+
+  /* Only show on mobile/touch devices */
+  @media (max-width: 50rem) {
+    .skip-link {
+      display: flex;
+    }
+  }
+
+  /* Also show on touch devices regardless of width */
+  @media (pointer: coarse) {
+    .skip-link {
+      display: flex;
+    }
+  }
+</style>
+
+<script>
+  function initSkipLinks() {
+    const wrappers = document.querySelectorAll('.example-tabs-wrapper');
+
+    wrappers.forEach(wrapper => {
+      const link = wrapper.querySelector('.skip-link');
+      if (!link || link.hasAttribute('data-initialized')) return;
+
+      link.setAttribute('data-initialized', 'true');
+
+      link.addEventListener('click', (e) => {
+        e.preventDefault();
+
+        // Find the next heading after this wrapper
+        let nextElement = wrapper.nextElementSibling;
+
+        while (nextElement && !isContentElement(nextElement)) {
+          nextElement = nextElement.nextElementSibling;
+        }
+
+        if (nextElement) {
+          // Scroll so the heading is visible below the sticky header
+          const headerOffset = 100;
+          const elementPosition = nextElement.getBoundingClientRect().top;
+          const offsetPosition = elementPosition + window.scrollY - headerOffset;
+
+          window.scrollTo({
+            top: offsetPosition,
+            behavior: 'smooth'
+          });
+        }
+      });
+    });
+  }
+
+  function isContentElement(el: Element): boolean {
+    const tagName = el.tagName.toLowerCase();
+    if (/^h[1-6]$/.test(tagName)) return true;
+    if (['p', 'ul', 'ol', 'pre', 'blockquote', 'table', 'div', 'section', 'article'].includes(tagName)) {
+      return (el.textContent?.trim().length ?? 0) > 0 || el.querySelector('img, video, iframe') !== null;
+    }
+    return false;
+  }
+
+  document.addEventListener('DOMContentLoaded', initSkipLinks);
+  document.addEventListener('astro:page-load', initSkipLinks);
+</script>

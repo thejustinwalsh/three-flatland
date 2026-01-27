@@ -30,8 +30,83 @@ type ZzFXParams = [
 ];
 
 let zzfxLoaded = false;
-const zzfxV = 0.08; // Master volume
 let zzfxX: AudioContext | null = null;
+
+// Callbacks for when audio state changes
+type AudioStateCallback = (initialized: boolean) => void;
+const audioStateCallbacks: Set<AudioStateCallback> = new Set();
+
+function onAudioStateChange(callback: AudioStateCallback): () => void {
+  audioStateCallbacks.add(callback);
+  // Return unsubscribe function
+  return () => audioStateCallbacks.delete(callback);
+}
+
+function notifyAudioStateChange(): void {
+  audioStateCallbacks.forEach(cb => cb(zzfxLoaded));
+}
+
+function isAudioInitialized(): boolean {
+  return zzfxLoaded;
+}
+
+// Volume levels: 0 = mute, 1 = low, 2 = medium, 3 = high
+export type VolumeLevel = 0 | 1 | 2 | 3;
+const VOLUME_LEVELS: Record<VolumeLevel, number> = {
+  0: 0,      // Mute
+  1: 0.024,  // Low (30% of max)
+  2: 0.048,  // Medium (60% of max)
+  3: 0.08,   // High (100% - original master volume)
+};
+
+// Current volume level (default to muted)
+let currentVolumeLevel: VolumeLevel = 0;
+
+// Get the actual volume multiplier for the current level
+function getZzfxV(): number {
+  return VOLUME_LEVELS[currentVolumeLevel];
+}
+
+/**
+ * Compute a normalized volume that compensates for perceptual loudness differences.
+ * Based on simplified equal-loudness contours (Fletcher-Munson curves) and waveform energy.
+ *
+ * @param baseVolume - The desired perceptual volume (0-1 scale)
+ * @param frequency - The fundamental frequency in Hz
+ * @param shape - The waveform shape (0=sine, 1=square, 2=saw, 3=triangle, 4=noise)
+ * @returns Adjusted volume that should sound perceptually similar across different sounds
+ */
+function normalizeVolume(baseVolume: number, frequency: number, shape: number = 0): number {
+  // Frequency compensation based on simplified A-weighting curve
+  // Reference point is 1000 Hz (most sensitive range)
+  // Lower frequencies need boost, very high frequencies need slight reduction
+  let freqCompensation: number;
+  if (frequency < 200) {
+    freqCompensation = 2.0; // Bass needs significant boost
+  } else if (frequency < 500) {
+    freqCompensation = 1.4 + (500 - frequency) / 500 * 0.6; // 1.4 - 2.0
+  } else if (frequency < 1000) {
+    freqCompensation = 1.0 + (1000 - frequency) / 500 * 0.4; // 1.0 - 1.4
+  } else if (frequency < 2000) {
+    freqCompensation = 1.0; // Most sensitive range
+  } else if (frequency < 4000) {
+    freqCompensation = 0.9; // Still sensitive
+  } else {
+    freqCompensation = 0.8; // High frequencies roll off
+  }
+
+  // Waveform compensation - square/saw have more energy than sine
+  const shapeCompensation: Record<number, number> = {
+    0: 1.0,   // Sine - reference
+    1: 0.65,  // Square - much more energy (harmonics)
+    2: 0.75,  // Sawtooth - more energy
+    3: 0.9,   // Triangle - slightly more than sine
+    4: 0.7,   // Noise - lots of energy
+  };
+  const shapeComp = shapeCompensation[shape] ?? 1.0;
+
+  return baseVolume * freqCompensation * shapeComp;
+}
 
 // Lazy-load ZzFX audio context
 async function initAudio(): Promise<boolean> {
@@ -41,6 +116,7 @@ async function initAudio(): Promise<boolean> {
     // Create audio context on first user interaction
     zzfxX = new AudioContext();
     zzfxLoaded = true;
+    notifyAudioStateChange();
     return true;
   } catch {
     console.warn('Audio not available');
@@ -188,7 +264,7 @@ function zzfx(...params: ZzFXParams): AudioBufferSourceNode | undefined {
     }
 
     // Apply volume and envelope
-    data[i] = sample * d * volume * zzfxV;
+    data[i] = sample * d * volume * getZzfxV();
   }
 
   const source = zzfxX.createBufferSource();
@@ -198,91 +274,149 @@ function zzfx(...params: ZzFXParams): AudioBufferSourceNode | undefined {
   return source;
 }
 
-// Sound presets with subtle randomization
-// Each sound has base parameters that get slight random variation
+// Sound presets with normalized volumes for consistent perceived loudness
+// Base volume is the target perceptual level, normalizeVolume adjusts for freq/shape
 
-// Satisfying click - consistent sound every time
+const BASE_VOL = 0.5; // Target perceptual volume (before master volume scaling)
+
+// Satisfying click - soft, warm tap
 function playClick() {
   if (!isSoundEnabled()) return;
-  zzfx(0.05, 0, 650, 0, 0.02, 0.05, 1, 0.5, 0, 0, 0, 0, 0, 0.1, 0, 8);
+  const freq = 400, shape = 3; // Triangle wave, warm tone
+  zzfx(normalizeVolume(BASE_VOL * 0.7, freq, shape), 0, freq, 0, 0.015, 0.035, shape, 1, 0, 0, 0, 0, 0, 0, 0, 0);
 }
 
 // Button press - deeper, more tactile, consistent
 function playButtonPress() {
   if (!isSoundEnabled()) return;
-  zzfx(0.08, 0, 420, 0.01, 0.03, 0.08, 1, 0.3, -20, 0, 0, 0, 0, 0.15, 0, 8);
+  const freq = 420, shape = 1;
+  zzfx(normalizeVolume(BASE_VOL, freq, shape), 0, freq, 0.01, 0.03, 0.08, shape, 0.3, -20, 0, 0, 0, 0, 0.15, 0, 8);
 }
 
-// Hover - subtle high-pitched tick
+// Hover - subtle soft tick with slight variation
 function playHover() {
   if (!isSoundEnabled()) return;
-  const pitch = 1200 + Math.random() * 200; // 1200-1400 Hz
-  zzfx(0.04, 0.05, pitch, 0, 0.01, 0.02, 1, 0.8, 0, 0, 0, 0, 0, 0, 0, 12);
+  const freq = 500 + Math.random() * 100, shape = 3; // 500-600 Hz, triangle wave
+  zzfx(normalizeVolume(BASE_VOL * 0.6, freq, shape), 0.05, freq, 0, 0.015, 0.03, shape, 1, 0, 0, 0, 0, 0, 0, 0, 0);
 }
 
 // Card hover - clean sweep with subtle pitch rise
 function playCardHover() {
   if (!isSoundEnabled()) return;
-  const pitch = 350 + Math.random() * 30;
-  zzfx(0.08, 0, pitch, 0, 0.03, 0.06, 0, 1, 0, 0, 80, 0.02, 0, 0, 0, 0);
+  const freq = 350 + Math.random() * 30, shape = 0;
+  zzfx(normalizeVolume(BASE_VOL, freq, shape), 0, freq, 0, 0.03, 0.06, shape, 1, 0, 0, 80, 0.02, 0, 0, 0, 0);
 }
 
-// Toggle on - rising blip
+// Toggle on - pleasant two-tone chirp
 function playToggleOn() {
   if (!isSoundEnabled()) return;
-  zzfx(0.08, 0, 500, 0, 0.02, 0.06, 1, 0.5, 100, 0, 0, 0, 0, 0.1, 0, 8);
+  const freq = 280, shape = 0; // Sine wave, warm low tone
+  zzfx(normalizeVolume(BASE_VOL, freq, shape), 0, freq, 0, 0.04, 0.08, shape, 1, 0, 0, 180, 0.025, 0, 0, 0, 0);
 }
 
-// Toggle off - falling blip
+// Toggle off - descending two-tone chirp
 function playToggleOff() {
   if (!isSoundEnabled()) return;
-  zzfx(0.08, 0, 600, 0, 0.02, 0.06, 1, 0.5, -100, 0, 0, 0, 0, 0.1, 0, 8);
+  const freq = 380, shape = 0; // Sine wave, starts higher then drops
+  zzfx(normalizeVolume(BASE_VOL, freq, shape), 0, freq, 0, 0.04, 0.08, shape, 1, 0, 0, -120, 0.025, 0, 0, 0, 0);
 }
 
 // Accordion open - clean rising two-tone
 function playAccordionOpen() {
   if (!isSoundEnabled()) return;
-  zzfx(0.05, 0, 300, 0, 0.03, 0.05, 0, 1, 0, 0, 150, 0.03, 0, 0, 0, 0);
+  const freq = 300, shape = 0;
+  zzfx(normalizeVolume(BASE_VOL, freq, shape), 0, freq, 0, 0.03, 0.05, shape, 1, 0, 0, 150, 0.03, 0, 0, 0, 0);
 }
 
 // Accordion close - clean falling two-tone
 function playAccordionClose() {
   if (!isSoundEnabled()) return;
-  zzfx(0.05, 0, 450, 0, 0.03, 0.05, 0, 1, 0, 0, -150, 0.03, 0, 0, 0, 0);
+  const freq = 450, shape = 0;
+  zzfx(normalizeVolume(BASE_VOL, freq, shape), 0, freq, 0, 0.03, 0.05, shape, 1, 0, 0, -150, 0.03, 0, 0, 0, 0);
 }
 
-// Mute/unmute state
-const SOUND_STORAGE_KEY = 'flatland-sound-enabled';
+// Volume state management
+const SOUND_STORAGE_KEY = 'flatland-sound-volume';
 
 function isSoundEnabled(): boolean {
-  if (typeof localStorage === 'undefined') return false;
-  const stored = localStorage.getItem(SOUND_STORAGE_KEY);
-  // Default to muted - user must opt-in
-  return stored === 'true';
+  return currentVolumeLevel > 0;
 }
 
-function setSoundEnabled(enabled: boolean): void {
-  if (typeof localStorage === 'undefined') return;
-  localStorage.setItem(SOUND_STORAGE_KEY, String(enabled));
+function getVolumeLevel(): VolumeLevel {
+  return currentVolumeLevel;
+}
 
-  // Initialize audio on first enable
-  if (enabled && !zzfxLoaded) {
+function setVolumeLevel(level: VolumeLevel): void {
+  currentVolumeLevel = level;
+  if (typeof localStorage !== 'undefined') {
+    localStorage.setItem(SOUND_STORAGE_KEY, String(level));
+  }
+
+  // Initialize audio on first non-mute
+  if (level > 0 && !zzfxLoaded) {
     initAudio();
   }
 }
 
-function toggleSound(): boolean {
-  const newState = !isSoundEnabled();
-  setSoundEnabled(newState);
+// Check if user has ever set a volume preference
+function hasVolumePreference(): boolean {
+  if (typeof localStorage === 'undefined') return false;
+  return localStorage.getItem(SOUND_STORAGE_KEY) !== null ||
+         localStorage.getItem('flatland-sound-enabled') !== null;
+}
 
-  // Play feedback sound when enabling
-  if (newState) {
+function loadVolumeLevel(): VolumeLevel {
+  if (typeof localStorage === 'undefined') return 0;
+
+  // Check new storage key first
+  const stored = localStorage.getItem(SOUND_STORAGE_KEY);
+  if (stored !== null) {
+    const level = parseInt(stored, 10);
+    if (level >= 0 && level <= 3) {
+      return level as VolumeLevel;
+    }
+  }
+
+  // Migration: check old boolean storage key
+  const oldStored = localStorage.getItem('flatland-sound-enabled');
+  if (oldStored === 'true') {
+    // Was enabled, migrate to medium (not max, for smoother experience)
+    localStorage.removeItem('flatland-sound-enabled');
+    return 2;
+  } else if (oldStored === 'false') {
+    // Was disabled, migrate to mute
+    localStorage.removeItem('flatland-sound-enabled');
+    return 0;
+  }
+
+  // No preference stored - default to muted
+  return 0;
+}
+
+// Cycle through volume levels: mute -> low -> medium -> high -> mute
+function cycleVolumeLevel(): VolumeLevel {
+  const nextLevel = ((currentVolumeLevel + 1) % 4) as VolumeLevel;
+  setVolumeLevel(nextLevel);
+  return nextLevel;
+}
+
+// Legacy toggle function for backwards compatibility
+function toggleSound(): boolean {
+  if (isSoundEnabled()) {
+    setVolumeLevel(0);
+    return false;
+  } else {
+    setVolumeLevel(3);
     initAudio().then(() => {
       playToggleOn();
     });
+    return true;
   }
+}
 
-  return newState;
+// Initialize volume level from storage
+function initVolumeLevel(): void {
+  currentVolumeLevel = loadVolumeLevel();
 }
 
 // Track which elements we're currently hovering to avoid repeat sounds
@@ -311,16 +445,22 @@ function findSoundElement(target: HTMLElement): { element: Element; sound: Sound
   return null;
 }
 
+// Track if event handlers have been set up (prevent duplicate listeners)
+let soundEventsSetup = false;
+
 // Event handler helpers - attach to elements
 function setupSoundEvents() {
   // Wait for DOM to be ready
   if (typeof document === 'undefined') return;
 
-  // Initialize audio context on first user interaction if sounds are enabled
+  // Prevent duplicate event listeners on repeated calls (view transitions, HMR)
+  if (soundEventsSetup) return;
+  soundEventsSetup = true;
+
+  // Initialize audio context on first user interaction
+  // Always init so UI can show correct state (muted vs disabled)
   const initOnInteraction = async () => {
-    if (isSoundEnabled()) {
-      await initAudio();
-    }
+    await initAudio();
     document.removeEventListener('click', initOnInteraction);
     document.removeEventListener('keydown', initOnInteraction);
   };
@@ -351,9 +491,10 @@ function setupSoundEvents() {
     lastHoverTime = now;
 
     // Play appropriate hover sound
+    // Note: 'click' type intentionally excluded - only plays on click, not hover
     if (sound === 'card') {
       playCardHover();
-    } else if (sound === 'hover' || sound === 'button' || sound === 'click') {
+    } else if (sound === 'hover' || sound === 'button') {
       playHover();
     }
   });
@@ -427,8 +568,14 @@ function setupViewTransitionSupport() {
 // Export for use in components
 export {
   initAudio,
+  isAudioInitialized,
+  onAudioStateChange,
   isSoundEnabled,
-  setSoundEnabled,
+  hasVolumePreference,
+  getVolumeLevel,
+  setVolumeLevel,
+  cycleVolumeLevel,
+  initVolumeLevel,
   toggleSound,
   playClick,
   playButtonPress,

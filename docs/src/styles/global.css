@@ -3,25 +3,16 @@
    Font imports and base custom properties
    ============================================================================= */
 
-/* Google Fonts - Silkscreen for pixel titles, IBM Plex for body */
-@import url('https://fonts.googleapis.com/css2?family=Silkscreen:wght@400;700&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap');
-
-/* Pixelarticons font */
-@font-face {
-  font-family: 'pixelarticons';
-  src: url('/fonts/pixelart-icons-font.woff2') format('woff2'),
-       url('/fonts/pixelart-icons-font.woff') format('woff');
-  font-weight: normal;
-  font-style: normal;
-  font-display: block;
-}
-
 /* Font Custom Properties */
 :root {
+  /* Our custom font variables */
   --font-pixel: 'Silkscreen', monospace;
   --font-body: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, sans-serif;
   --font-mono: 'IBM Plex Mono', monospace;
-  --font-icons: 'pixelarticons';
+
+  /* Override Starlight's font variables */
+  --sl-font: var(--font-body);
+  --sl-font-mono: var(--font-mono);
 }
 
 /* Smooth scrolling */

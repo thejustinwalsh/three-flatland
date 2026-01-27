@@ -1,9 +1,11 @@
 ---
 import { Image } from 'astro:assets';
 import icon from '../assets/icon.svg';
+
+const baseUrl = import.meta.env.BASE_URL || '/';
 ---
 
-<a href="/" class="site-title-link">
+<a href={baseUrl} class="site-title-link" data-sound="click">
   <Image
     src={icon}
     alt="three-flatland"
@@ -14,7 +16,7 @@ import icon from '../assets/icon.svg';
   <span class="site-title-text">three-flatland</span>
 </a>
 
-<style>
+<style is:global>
   .site-title-link {
     display: flex;
     align-items: center;
@@ -32,15 +34,5 @@ import icon from '../assets/icon.svg';
     height: 32px;
     image-rendering: pixelated;
     image-rendering: crisp-edges;
-  }
-
-  .site-title-text {
-    font-family: 'Silkscreen', monospace;
-    font-size: 1.25rem;
-    font-weight: 700;
-    text-shadow:
-      2px 2px 0 var(--retro-pink, #d94c87),
-      4px 4px 0 var(--retro-purple, #732866);
-    letter-spacing: 0.02em;
   }
 </style>

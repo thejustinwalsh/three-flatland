@@ -5,7 +5,81 @@
  */
 import StarlightHead from '@astrojs/starlight/components/Head.astro';
 import { ClientRouter } from 'astro:transitions';
+
+const isDev = import.meta.env.DEV;
 ---
 
 <StarlightHead {...Astro.props}><slot /></StarlightHead>
 <ClientRouter />
+
+{/* In dev mode, re-dispatch astro:page-load after HMR to fix ClientRouter state */}
+{isDev && (
+  <script>
+    if (import.meta.hot) {
+      import.meta.hot.on('vite:afterUpdate', () => {
+        document.dispatchEvent(new Event('astro:page-load'));
+      });
+    }
+  </script>
+)}
+
+<!-- Table scroll enhancement script -->
+<script is:inline>
+(function() {
+  function enhanceTables() {
+    // Find all tables in markdown content
+    const tables = document.querySelectorAll('.sl-markdown-content table');
+
+    tables.forEach(table => {
+      // Skip if already wrapped
+      if (table.parentElement?.classList.contains('table-scroll-wrapper')) return;
+
+      // Create outer container for positioning
+      // 'not-content' exempts from Starlight's adjacent sibling margins
+      const container = document.createElement('div');
+      container.className = 'table-scroll-container not-content';
+
+      // Create scroll wrapper
+      const wrapper = document.createElement('div');
+      wrapper.className = 'table-scroll-wrapper';
+
+      // Create scroll indicator overlay
+      const indicator = document.createElement('div');
+      indicator.className = 'table-scroll-indicator';
+      indicator.setAttribute('aria-hidden', 'true');
+
+      // Build structure: container > (wrapper > table) + indicator
+      table.parentNode.insertBefore(container, table);
+      wrapper.appendChild(table);
+      container.appendChild(wrapper);
+      container.appendChild(indicator);
+
+      // Check if scrollable and update indicator position
+      function updateScrollIndicator() {
+        const isScrollable = wrapper.scrollWidth > wrapper.clientWidth;
+        const isScrolledToEnd = wrapper.scrollLeft + wrapper.clientWidth >= wrapper.scrollWidth - 2;
+        const showIndicator = isScrollable && !isScrolledToEnd;
+        container.classList.toggle('is-scrollable', showIndicator);
+
+        // Calculate scrollbar height (wrapper height - table height)
+        if (showIndicator) {
+          const scrollbarHeight = wrapper.offsetHeight - table.offsetHeight;
+          const borderWidth = 2; // table border
+          indicator.style.top = borderWidth + 'px';
+          indicator.style.bottom = (scrollbarHeight + borderWidth) + 'px';
+        }
+      }
+
+      wrapper.addEventListener('scroll', updateScrollIndicator, { passive: true });
+      window.addEventListener('resize', updateScrollIndicator, { passive: true });
+
+      // Initial check
+      setTimeout(updateScrollIndicator, 100);
+    });
+  }
+
+  // Run on page load and after view transitions
+  document.addEventListener('DOMContentLoaded', enhanceTables);
+  document.addEventListener('astro:page-load', enhanceTables);
+})();
+</script>

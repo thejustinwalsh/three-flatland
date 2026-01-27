@@ -395,6 +395,15 @@
   background: #e8e5d0 !important;
 }
 
+/* Light mode scroll indicator */
+:root[data-theme='light'] .table-scroll-indicator {
+  background: linear-gradient(to right, transparent, var(--retro-white));
+}
+
+:root[data-theme='light'] .table-scroll-wrapper {
+  scrollbar-color: var(--retro-purple) #e8e5d0;
+}
+
 /* =============================================================================
    LIGHT MODE PAGINATION
    ============================================================================= */
@@ -787,28 +796,70 @@ a.primary.action {
 }
 
 /* -----------------------------------------------------------------------------
-   TABLES
+   TABLES - Responsive with horizontal scroll
    ----------------------------------------------------------------------------- */
+
+/* Table scroll container (outer wrapper for positioning) */
+.table-scroll-container {
+  position: relative;
+  margin: var(--space-md) 0;
+}
+
+/* Table scroll wrapper (inner, handles scrolling) */
+.table-scroll-wrapper {
+  display: block;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  scrollbar-color: var(--retro-purple) var(--retro-navy);
+}
+
+/* Scroll indicator overlay - position set dynamically via JS */
+.table-scroll-indicator {
+  display: none;
+  position: absolute;
+  right: 0;
+  width: 32px;
+  background: linear-gradient(to right, transparent, var(--retro-navy));
+  pointer-events: none;
+  z-index: 1;
+}
+
+.table-scroll-container.is-scrollable .table-scroll-indicator {
+  display: block;
+}
+
+
 table {
-  width: 100% !important;
-  min-width: 100% !important;
-  table-layout: fixed;
+  width: 100%;
+  min-width: 600px; /* Minimum width before scrolling kicks in */
   border: 2px solid var(--retro-purple);
   background: var(--retro-navy);
+  border-collapse: collapse;
+  table-layout: auto; /* Let columns size based on content */
+  margin: 0 !important; /* Override Starlight's first-child margin */
 }
 
-thead,
-tbody,
+/* Override Starlight's adjacent sibling margins */
+.table-scroll-wrapper table,
+.sl-markdown-content table,
+.sl-markdown-content :not(a, strong, em, del, span, input, code, br) + table,
+.sl-markdown-content .table-scroll-container,
+.sl-markdown-content :not(a, strong, em, del, span, input, code, br) + .table-scroll-container {
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+}
+
+thead {
+  display: table-header-group;
+}
+
+tbody {
+  display: table-row-group;
+}
+
 tr {
-  display: table;
-  width: 100%;
-  table-layout: fixed;
-  margin: 0 !important;
-  border-spacing: 0;
-}
-
-tbody tr {
-  margin: 0 !important;
+  display: table-row;
 }
 
 th,
@@ -818,10 +869,17 @@ td {
   padding: 0.75rem 1rem !important;
 }
 
+/* First column: labels, keep compact */
 th:first-child,
 td:first-child {
-  width: 35%;
   white-space: nowrap;
+  width: 1%; /* Shrink to fit content */
+}
+
+/* Other columns: allow wrapping, fill remaining space */
+th:not(:first-child),
+td:not(:first-child) {
+  white-space: normal;
 }
 
 th {
@@ -829,6 +887,8 @@ th {
   color: var(--retro-white) !important;
   font-family: var(--font-pixel) !important;
   font-size: 0.875rem;
+  position: relative;
+  text-align: left;
 }
 
 /* -----------------------------------------------------------------------------

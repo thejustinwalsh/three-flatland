@@ -18,14 +18,14 @@ const { name, label, size = '1.5em', color = 'currentColor', class: className } 
 // Map Starlight icon names to pixelarticons SVG filenames
 const iconMap: Record<string, string> = {
   // Card icons
-  'rocket': 'ship',
+  'rocket': 'lightbulb',   // Feature card icon
   'list-format': 'list',
-  'puzzle': 'grid',
+  'puzzle': 'human',
   'forward-slash': 'animation',
 
-  // Tab icons
-  'seti:javascript': 'code',
-  'seti:react': 'code',
+  // Tab icons - use our custom pixel art icons
+  'seti:javascript': 'javascript',  // Custom JS icon
+  'seti:react': 'react',            // Custom React icon
 
   // Navigation
   'right-arrow': 'arrow-right',
@@ -47,8 +47,10 @@ const iconMap: Record<string, string> = {
   'volume-x': 'volume-x',
   'volume-1': 'volume-1',
   'volume-2': 'volume-2',
+  'volume-minus': 'volume-minus',
 
   // Misc
+  'map': 'map',
   'document': 'file',
   'pencil': 'edit',
   'information': 'info-box',
@@ -66,10 +68,16 @@ const iconMap: Record<string, string> = {
 // Get the mapped icon name or use the name directly
 const iconFileName = iconMap[name] || name;
 
+// Custom icons that live in src/icons (not from pixelarticons)
+const customIcons = ['javascript', 'react'];
+
 // Try to read the SVG file
 let svgContent = '';
 try {
-  const svgPath = join(process.cwd(), 'node_modules/pixelarticons/svg', `${iconFileName}.svg`);
+  // Check custom icons first, then pixelarticons
+  const svgPath = customIcons.includes(iconFileName)
+    ? join(process.cwd(), 'src/icons', `${iconFileName}.svg`)
+    : join(process.cwd(), 'node_modules/pixelarticons/svg', `${iconFileName}.svg`);
   svgContent = readFileSync(svgPath, 'utf-8');
   // Remove the outer svg tag, we'll create our own
   svgContent = svgContent

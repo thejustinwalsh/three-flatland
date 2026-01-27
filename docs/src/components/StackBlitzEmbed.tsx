@@ -36,10 +36,39 @@ export default function StackBlitzEmbed({
   const containerRef = useRef<HTMLDivElement>(null);
   const vmRef = useRef<VM | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isVisible, setIsVisible] = useState(false);
 
+  // Only initialize when visible (prevents race conditions with tabs)
   useEffect(() => {
     const container = containerRef.current;
-    if (!container || vmRef.current) return;
+    if (!container) return;
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setIsVisible(true);
+          observer.disconnect();
+        }
+      },
+      { threshold: 0.1 }
+    );
+
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    if (!isVisible) return;
+
+    const container = containerRef.current;
+    if (!container) return;
+
+    // Skip if no files or already initialized
+    const fileCount = Object.keys(files || {}).length;
+    if (fileCount === 0) return;
+    if (vmRef.current || container.querySelector('iframe')) return;
+
+    let cancelled = false;
 
     sdk.embedProject(
       container,
@@ -56,13 +85,20 @@ export default function StackBlitzEmbed({
         height,
       }
     ).then((vm) => {
+      if (cancelled) return;
       vmRef.current = vm;
       setIsLoading(false);
     }).catch((e) => {
+      if (cancelled) return;
       console.error('StackBlitz embed error:', e);
       setIsLoading(false);
     });
-  }, [title, files, openFile, height]);
+
+    // Cleanup on unmount
+    return () => {
+      cancelled = true;
+    };
+  }, [isVisible, title, files, openFile, height]);
 
   return (
     <>

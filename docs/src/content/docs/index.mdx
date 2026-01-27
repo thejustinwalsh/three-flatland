@@ -6,7 +6,7 @@ hero:
   tagline: The complete 2D solution for Three.js and React Three Fiber. Built for WebGPU with composable TSL shaders.
   actions:
     - text: Get Started
-      link: /getting-started/introduction/
+      link: getting-started/introduction/
       icon: right-arrow
       variant: primary
     - text: View on GitHub
@@ -17,7 +17,7 @@ hero:
 import FeatureCard from '../../components/FeatureCard.astro';
 import StatsBanner from '../../components/StatsBanner.astro';
 import ValueProp from '../../components/ValueProp.astro';
-import { Tabs, TabItem } from '@astrojs/starlight/components';
+import { Tabs, TabItem } from '../../components/Tabs';
 
 <StatsBanner stats={[
   { value: "10,000+", label: "Sprites at 60fps", color: "cyan" },
@@ -80,7 +80,7 @@ import { Tabs, TabItem } from '@astrojs/starlight/components';
   </FeatureCard>
 
   <FeatureCard
-    icon="document"
+    icon="map"
     title="Tilemap Support"
     color="purple"
     stat="Tiled"
@@ -152,7 +152,7 @@ function Game() {
 </ValueProp>
 
 <div class="ai-disclaimer">
-  <p>This documentation was created with AI assistance. AI can make mistakes — please verify claims and test code examples, and submit corrections <a href="https://github.com/thejustinwalsh/three-flatland/issues">here</a>.</p>
+  <p>This documentation was created with AI assistance. AI can make mistakes — please verify claims and test code examples. Submit corrections <a href="https://github.com/thejustinwalsh/three-flatland/issues">here</a>.</p>
 </div>
 
 <style>

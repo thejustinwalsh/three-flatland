@@ -6,7 +6,8 @@ interface Props {
 
 export default function ExamplePreview({ type, name, height = 600 }: Props) {
   const isDev = import.meta.env.DEV;
-  const base = import.meta.env.BASE_URL;
+  // Ensure base URL has trailing slash
+  const base = (import.meta.env.BASE_URL || '/').replace(/\/?$/, '/');
 
   // Dev: iframe to microfrontend proxy (port 5173)
   // Prod: iframe to built static files

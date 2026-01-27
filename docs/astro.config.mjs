@@ -4,12 +4,11 @@ import starlightTypeDoc, { typeDocSidebarGroup } from 'starlight-typedoc';
 import react from '@astrojs/react';
 import { watchExamples } from './vite-plugins/watch-examples.js';
 
-// Use /three-flatland base path only for production (GitHub Pages)
-const isProduction = process.env.NODE_ENV === 'production';
+const isProd = process.env.NODE_ENV === 'production';
 
 export default defineConfig({
   site: 'https://thejustinwalsh.com',
-  base: isProduction ? '/three-flatland' : '/',
+  base: isProd ? 'three-flatland' : undefined,
   integrations: [
     starlight({
       title: 'three-flatland',
@@ -113,12 +112,23 @@ export default defineConfig({
       components: {
         SiteTitle: './src/components/SiteTitle.astro',
         Icon: './src/components/Icon.astro',
+        SocialIcons: './src/components/SocialIcons.astro',
         Hero: './src/components/Hero.astro',
         PageFrame: './src/components/PageFrame.astro',
         ThemeSelect: './src/components/ThemeSelect.astro',
         Head: './src/components/Head.astro',
       },
       customCss: [
+        // Fontsource fonts (bundled locally, no external requests)
+        '@fontsource/silkscreen/400.css',
+        '@fontsource/silkscreen/700.css',
+        '@fontsource/ibm-plex-sans/400.css',
+        '@fontsource/ibm-plex-sans/500.css',
+        '@fontsource/ibm-plex-sans/600.css',
+        '@fontsource/ibm-plex-sans/700.css',
+        '@fontsource/ibm-plex-mono/400.css',
+        '@fontsource/ibm-plex-mono/500.css',
+        // Custom styles
         './src/styles/global.css',
         './src/styles/patterns.css',
         './src/styles/retro-theme.css',
