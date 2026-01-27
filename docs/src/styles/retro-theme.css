@@ -1490,7 +1490,7 @@ starlight-tabs .tab > [role='tab']:hover {
 
 /* H3 - Method/property names - cyan accent */
 [data-page-type="api"] .sl-markdown-content h3 {
-  color: var(--retro-cyan) !important;
+  color: var(--retro-orange) !important;
   font-size: 1.1rem;
   border-bottom: 1px solid var(--retro-dark-purple);
   padding-bottom: var(--space-xs);
@@ -1506,7 +1506,7 @@ starlight-tabs .tab > [role='tab']:hover {
 /* H5/H6 - Sub-sections - muted colors */
 [data-page-type="api"] .sl-markdown-content h5,
 [data-page-type="api"] .sl-markdown-content h6 {
-  color: var(--retro-orange) !important;
+  color: var(--retro-cyan) !important;
   font-size: 0.875rem;
 }
 
@@ -1537,12 +1537,6 @@ starlight-tabs .tab > [role='tab']:hover {
   border: none !important;
   padding: 0 !important;
   color: var(--retro-cyan) !important;
-}
-
-/* ALL links on API pages - pink, no underline decoration issues */
-[data-page-type="api"] .sl-markdown-content a {
-  color: var(--retro-pink) !important;
-  text-decoration: none;
 }
 
 [data-page-type="api"] .sl-markdown-content a:hover {
@@ -1586,4 +1580,25 @@ starlight-tabs .tab > [role='tab']:hover {
 
 :root[data-theme='light'] [data-page-type="api"] .sl-markdown-content a:hover {
   color: #1a5247 !important;
+}
+
+/* -----------------------------------------------------------------------------
+   EXTERNAL LINKS - Icon indicator for links opening in new tab
+   ----------------------------------------------------------------------------- */
+.external-link-icon {
+  display: inline-block;
+  vertical-align: middle;
+  margin-top: 0.1em;
+  margin-left: 0.2em;
+  opacity: 0.7;
+  color: inherit;
+}
+
+.external-link-icon svg {
+  padding-bottom: 0.25em;
+  fill: currentColor;
+}
+
+.external-link:hover .external-link-icon {
+  opacity: 1;
 }

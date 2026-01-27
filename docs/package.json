@@ -25,6 +25,7 @@
     "starlight-typedoc": "^0.21.5",
     "typedoc": "^0.28.0",
     "typedoc-plugin-markdown": "^4.9.0",
+    "unist-util-visit": "^5.1.0",
     "yaml": "^2.7.0"
   },
   "devDependencies": {

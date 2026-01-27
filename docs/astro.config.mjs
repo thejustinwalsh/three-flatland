@@ -3,6 +3,7 @@ import starlight from '@astrojs/starlight';
 import starlightTypeDoc, { typeDocSidebarGroup } from 'starlight-typedoc';
 import react from '@astrojs/react';
 import { watchExamples } from './vite-plugins/watch-examples.js';
+import { rehypeExternalLinks } from './rehype-plugins/external-links.js';
 
 const isProd = process.env.NODE_ENV === 'production';
 
@@ -15,6 +16,7 @@ export default defineConfig({
       logo: {
         src: './src/assets/icon.svg',
       },
+      favicon: '/favicon.svg',
       plugins: [
         starlightTypeDoc({
           entryPoints: [
@@ -30,80 +32,81 @@ export default defineConfig({
           },
           typeDoc: {
             gitRevision: 'main',
+            plugin: ['./typedoc-plugins/external-source-links.js'],
             externalSymbolLinkMappings: {
               '@types/three': {
                 // Core
-                'Object3D': 'https://github.com/mrdoob/three.js/blob/dev/src/core/Object3D.js',
-                'BufferGeometry': 'https://github.com/mrdoob/three.js/blob/dev/src/core/BufferGeometry.js',
-                'BufferAttribute': 'https://github.com/mrdoob/three.js/blob/dev/src/core/BufferAttribute.js',
-                'InstancedBufferGeometry': 'https://github.com/mrdoob/three.js/blob/dev/src/core/InstancedBufferGeometry.js',
-                'InstancedBufferAttribute': 'https://github.com/mrdoob/three.js/blob/dev/src/core/InstancedBufferAttribute.js',
-                'EventDispatcher': 'https://github.com/mrdoob/three.js/blob/dev/src/core/EventDispatcher.js',
-                'Layers': 'https://github.com/mrdoob/three.js/blob/dev/src/core/Layers.js',
-                'Raycaster': 'https://github.com/mrdoob/three.js/blob/dev/src/core/Raycaster.js',
+                'Object3D': 'https://threejs.org/docs/#api/en/core/Object3D',
+                'BufferGeometry': 'https://threejs.org/docs/#api/en/core/BufferGeometry',
+                'BufferAttribute': 'https://threejs.org/docs/#api/en/core/BufferAttribute',
+                'InstancedBufferGeometry': 'https://threejs.org/docs/#api/en/core/InstancedBufferGeometry',
+                'InstancedBufferAttribute': 'https://threejs.org/docs/#api/en/core/InstancedBufferAttribute',
+                'EventDispatcher': 'https://threejs.org/docs/#api/en/core/EventDispatcher',
+                'Layers': 'https://threejs.org/docs/#api/en/core/Layers',
+                'Raycaster': 'https://threejs.org/docs/#api/en/core/Raycaster',
                 // Math
-                'Vector2': 'https://github.com/mrdoob/three.js/blob/dev/src/math/Vector2.js',
-                'Vector3': 'https://github.com/mrdoob/three.js/blob/dev/src/math/Vector3.js',
-                'Vector4': 'https://github.com/mrdoob/three.js/blob/dev/src/math/Vector4.js',
-                'Matrix3': 'https://github.com/mrdoob/three.js/blob/dev/src/math/Matrix3.js',
-                'Matrix4': 'https://github.com/mrdoob/three.js/blob/dev/src/math/Matrix4.js',
-                'Quaternion': 'https://github.com/mrdoob/three.js/blob/dev/src/math/Quaternion.js',
-                'Euler': 'https://github.com/mrdoob/three.js/blob/dev/src/math/Euler.js',
-                'Color': 'https://github.com/mrdoob/three.js/blob/dev/src/math/Color.js',
-                'Box2': 'https://github.com/mrdoob/three.js/blob/dev/src/math/Box2.js',
-                'Box3': 'https://github.com/mrdoob/three.js/blob/dev/src/math/Box3.js',
-                'Sphere': 'https://github.com/mrdoob/three.js/blob/dev/src/math/Sphere.js',
-                'Ray': 'https://github.com/mrdoob/three.js/blob/dev/src/math/Ray.js',
-                'MathUtils': 'https://github.com/mrdoob/three.js/blob/dev/src/math/MathUtils.js',
+                'Vector2': 'https://threejs.org/docs/#api/en/math/Vector2',
+                'Vector3': 'https://threejs.org/docs/#api/en/math/Vector3',
+                'Vector4': 'https://threejs.org/docs/#api/en/math/Vector4',
+                'Matrix3': 'https://threejs.org/docs/#api/en/math/Matrix3',
+                'Matrix4': 'https://threejs.org/docs/#api/en/math/Matrix4',
+                'Quaternion': 'https://threejs.org/docs/#api/en/math/Quaternion',
+                'Euler': 'https://threejs.org/docs/#api/en/math/Euler',
+                'Color': 'https://threejs.org/docs/#api/en/math/Color',
+                'Box2': 'https://threejs.org/docs/#api/en/math/Box2',
+                'Box3': 'https://threejs.org/docs/#api/en/math/Box3',
+                'Sphere': 'https://threejs.org/docs/#api/en/math/Sphere',
+                'Ray': 'https://threejs.org/docs/#api/en/math/Ray',
+                'MathUtils': 'https://threejs.org/docs/#api/en/math/MathUtils',
                 // Objects
-                'Mesh': 'https://github.com/mrdoob/three.js/blob/dev/src/objects/Mesh.js',
-                'Group': 'https://github.com/mrdoob/three.js/blob/dev/src/objects/Group.js',
-                'Line': 'https://github.com/mrdoob/three.js/blob/dev/src/objects/Line.js',
-                'Points': 'https://github.com/mrdoob/three.js/blob/dev/src/objects/Points.js',
-                'Sprite': 'https://github.com/mrdoob/three.js/blob/dev/src/objects/Sprite.js',
-                'BatchedMesh': 'https://github.com/mrdoob/three.js/blob/dev/src/objects/BatchedMesh.js',
-                'InstancedMesh': 'https://github.com/mrdoob/three.js/blob/dev/src/objects/InstancedMesh.js',
+                'Mesh': 'https://threejs.org/docs/#api/en/objects/Mesh',
+                'Group': 'https://threejs.org/docs/#api/en/objects/Group',
+                'Line': 'https://threejs.org/docs/#api/en/objects/Line',
+                'Points': 'https://threejs.org/docs/#api/en/objects/Points',
+                'Sprite': 'https://threejs.org/docs/#api/en/objects/Sprite',
+                'BatchedMesh': 'https://threejs.org/docs/#api/en/objects/BatchedMesh',
+                'InstancedMesh': 'https://threejs.org/docs/#api/en/objects/InstancedMesh',
                 // Textures
-                'Texture': 'https://github.com/mrdoob/three.js/blob/dev/src/textures/Texture.js',
-                'DataTexture': 'https://github.com/mrdoob/three.js/blob/dev/src/textures/DataTexture.js',
-                'CanvasTexture': 'https://github.com/mrdoob/three.js/blob/dev/src/textures/CanvasTexture.js',
-                'CompressedTexture': 'https://github.com/mrdoob/three.js/blob/dev/src/textures/CompressedTexture.js',
-                'CubeTexture': 'https://github.com/mrdoob/three.js/blob/dev/src/textures/CubeTexture.js',
-                'VideoTexture': 'https://github.com/mrdoob/three.js/blob/dev/src/textures/VideoTexture.js',
+                'Texture': 'https://threejs.org/docs/#api/en/textures/Texture',
+                'DataTexture': 'https://threejs.org/docs/#api/en/textures/DataTexture',
+                'CanvasTexture': 'https://threejs.org/docs/#api/en/textures/CanvasTexture',
+                'CompressedTexture': 'https://threejs.org/docs/#api/en/textures/CompressedTexture',
+                'CubeTexture': 'https://threejs.org/docs/#api/en/textures/CubeTexture',
+                'VideoTexture': 'https://threejs.org/docs/#api/en/textures/VideoTexture',
                 // Materials
-                'Material': 'https://github.com/mrdoob/three.js/blob/dev/src/materials/Material.js',
-                'MeshBasicMaterial': 'https://github.com/mrdoob/three.js/blob/dev/src/materials/MeshBasicMaterial.js',
-                'MeshStandardMaterial': 'https://github.com/mrdoob/three.js/blob/dev/src/materials/MeshStandardMaterial.js',
-                'ShaderMaterial': 'https://github.com/mrdoob/three.js/blob/dev/src/materials/ShaderMaterial.js',
-                'SpriteMaterial': 'https://github.com/mrdoob/three.js/blob/dev/src/materials/SpriteMaterial.js',
+                'Material': 'https://threejs.org/docs/#api/en/materials/Material',
+                'MeshBasicMaterial': 'https://threejs.org/docs/#api/en/materials/MeshBasicMaterial',
+                'MeshStandardMaterial': 'https://threejs.org/docs/#api/en/materials/MeshStandardMaterial',
+                'ShaderMaterial': 'https://threejs.org/docs/#api/en/materials/ShaderMaterial',
+                'SpriteMaterial': 'https://threejs.org/docs/#api/en/materials/SpriteMaterial',
                 // Geometries
-                'PlaneGeometry': 'https://github.com/mrdoob/three.js/blob/dev/src/geometries/PlaneGeometry.js',
-                'BoxGeometry': 'https://github.com/mrdoob/three.js/blob/dev/src/geometries/BoxGeometry.js',
-                'SphereGeometry': 'https://github.com/mrdoob/three.js/blob/dev/src/geometries/SphereGeometry.js',
+                'PlaneGeometry': 'https://threejs.org/docs/#api/en/geometries/PlaneGeometry',
+                'BoxGeometry': 'https://threejs.org/docs/#api/en/geometries/BoxGeometry',
+                'SphereGeometry': 'https://threejs.org/docs/#api/en/geometries/SphereGeometry',
                 // Loaders
-                'Loader': 'https://github.com/mrdoob/three.js/blob/dev/src/loaders/Loader.js',
-                'TextureLoader': 'https://github.com/mrdoob/three.js/blob/dev/src/loaders/TextureLoader.js',
-                'ImageLoader': 'https://github.com/mrdoob/three.js/blob/dev/src/loaders/ImageLoader.js',
-                'FileLoader': 'https://github.com/mrdoob/three.js/blob/dev/src/loaders/FileLoader.js',
+                'Loader': 'https://threejs.org/docs/#api/en/loaders/Loader',
+                'TextureLoader': 'https://threejs.org/docs/#api/en/loaders/TextureLoader',
+                'ImageLoader': 'https://threejs.org/docs/#api/en/loaders/ImageLoader',
+                'FileLoader': 'https://threejs.org/docs/#api/en/loaders/FileLoader',
                 // Scenes
-                'Scene': 'https://github.com/mrdoob/three.js/blob/dev/src/scenes/Scene.js',
+                'Scene': 'https://threejs.org/docs/#api/en/scenes/Scene',
                 // Cameras
-                'Camera': 'https://github.com/mrdoob/three.js/blob/dev/src/cameras/Camera.js',
-                'PerspectiveCamera': 'https://github.com/mrdoob/three.js/blob/dev/src/cameras/PerspectiveCamera.js',
-                'OrthographicCamera': 'https://github.com/mrdoob/three.js/blob/dev/src/cameras/OrthographicCamera.js',
+                'Camera': 'https://threejs.org/docs/#api/en/cameras/Camera',
+                'PerspectiveCamera': 'https://threejs.org/docs/#api/en/cameras/PerspectiveCamera',
+                'OrthographicCamera': 'https://threejs.org/docs/#api/en/cameras/OrthographicCamera',
                 // Renderers
-                'WebGLRenderer': 'https://github.com/mrdoob/three.js/blob/dev/src/renderers/WebGLRenderer.js',
+                'WebGLRenderer': 'https://threejs.org/docs/#api/en/renderers/WebGLRenderer',
                 // Lights
-                'Light': 'https://github.com/mrdoob/three.js/blob/dev/src/lights/Light.js',
-                'AmbientLight': 'https://github.com/mrdoob/three.js/blob/dev/src/lights/AmbientLight.js',
-                'DirectionalLight': 'https://github.com/mrdoob/three.js/blob/dev/src/lights/DirectionalLight.js',
-                'PointLight': 'https://github.com/mrdoob/three.js/blob/dev/src/lights/PointLight.js',
-                'SpotLight': 'https://github.com/mrdoob/three.js/blob/dev/src/lights/SpotLight.js',
+                'Light': 'https://threejs.org/docs/#api/en/lights/Light',
+                'AmbientLight': 'https://threejs.org/docs/#api/en/lights/AmbientLight',
+                'DirectionalLight': 'https://threejs.org/docs/#api/en/lights/DirectionalLight',
+                'PointLight': 'https://threejs.org/docs/#api/en/lights/PointLight',
+                'SpotLight': 'https://threejs.org/docs/#api/en/lights/SpotLight',
                 // Fallback
-                '*': 'https://github.com/mrdoob/three.js/tree/dev/src',
+                '*': 'https://threejs.org/docs/',
               },
               'three': {
-                '*': 'https://github.com/mrdoob/three.js/tree/dev/src',
+                '*': 'https://threejs.org/docs/',
               },
             },
           },
@@ -173,6 +176,9 @@ export default defineConfig({
     }),
     react(),
   ],
+  markdown: {
+    rehypePlugins: [rehypeExternalLinks],
+  },
   vite: {
     plugins: [watchExamples()],
     server: {
