@@ -335,6 +335,14 @@ function playAccordionClose() {
   zzfx(normalizeVolume(BASE_VOL, freq, shape), 0, freq, 0, 0.03, 0.05, shape, 1, 0, 0, -150, 0.03, 0, 0, 0, 0);
 }
 
+// Warp - retro teleport/transition sound for navigating home
+function playWarp() {
+  if (!isSoundEnabled()) return;
+  const freq = 220, shape = 0; // Sine wave base
+  // Rising sweep with pitch jump for that classic warp feel
+  zzfx(normalizeVolume(BASE_VOL * 0.8, freq, shape), 0, freq, 0.02, 0.08, 0.15, shape, 1, 50, 0, 200, 0.04, 0, 0, 0, 4);
+}
+
 // Volume state management
 const SOUND_STORAGE_KEY = 'flatland-sound-volume';
 
@@ -423,7 +431,7 @@ function initVolumeLevel(): void {
 const hoveredElements = new WeakSet<Element>();
 
 // Sound type definitions for data-sound attribute
-type SoundType = 'card' | 'button' | 'hover' | 'click' | 'accordion' | 'none';
+type SoundType = 'card' | 'button' | 'hover' | 'click' | 'accordion' | 'warp' | 'none';
 
 // Find the sound element and its type
 function findSoundElement(target: HTMLElement): { element: Element; sound: SoundType } | null {
@@ -544,7 +552,9 @@ function setupSoundEvents() {
     const { sound } = result;
 
     // Play appropriate click sound
-    if (sound === 'button') {
+    if (sound === 'warp') {
+      playWarp();
+    } else if (sound === 'button') {
       playButtonPress();
     } else if (sound === 'click' || sound === 'hover' || sound === 'card') {
       playClick();
@@ -553,16 +563,32 @@ function setupSoundEvents() {
 
 }
 
+// Track mouse position for view transition handling
+let lastMouseX = 0;
+let lastMouseY = 0;
+
 // Re-setup after view transitions (SPA navigation)
 function setupViewTransitionSupport() {
   if (typeof document === 'undefined') return;
 
-  // Listen for Astro's page swap event (view transitions)
-  document.addEventListener('astro:page-load', () => {
-    // Clear hover state on navigation
-    // WeakSet entries will be garbage collected naturally
-  });
+  // Track mouse position so we know what's under cursor after page swap
+  document.addEventListener('mousemove', (e) => {
+    lastMouseX = e.clientX;
+    lastMouseY = e.clientY;
+  }, { passive: true });
 
+  // After view transition swaps DOM, pre-populate hoveredElements with
+  // whatever is now under the cursor. This prevents spurious hover sounds
+  // when new elements appear under the cursor during navigation.
+  document.addEventListener('astro:after-swap', () => {
+    const elementsUnderCursor = document.elementsFromPoint(lastMouseX, lastMouseY);
+    for (const el of elementsUnderCursor) {
+      const result = findSoundElement(el as HTMLElement);
+      if (result) {
+        hoveredElements.add(result.element);
+      }
+    }
+  });
 }
 
 // Export for use in components
@@ -585,6 +611,7 @@ export {
   playToggleOff,
   playAccordionOpen,
   playAccordionClose,
+  playWarp,
   setupSoundEvents,
   setupViewTransitionSupport,
 };
