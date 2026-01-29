@@ -3,29 +3,33 @@ title: Installation
 description: Install three-flatland in your project.
 ---
 
-import { Tabs, TabItem } from '@astrojs/starlight/components';
+import { Tabs, TabItem, Aside } from '@astrojs/starlight/components';
+
+<Aside type="caution" title="Coming Soon">
+  three-flatland is not yet published to npm. We're preparing the initial alpha release. Star the repo to get notified when it's ready!
+</Aside>
 
 ## Package Manager
 
 <Tabs syncKey="pkg">
   <TabItem label="npm">
     ```bash
-    npm install @three-flatland/core three
+    npm install @three-flatland/core@alpha three
     ```
   </TabItem>
   <TabItem label="pnpm">
     ```bash
-    pnpm add @three-flatland/core three
+    pnpm add @three-flatland/core@alpha three
     ```
   </TabItem>
   <TabItem label="yarn">
     ```bash
-    yarn add @three-flatland/core three
+    yarn add @three-flatland/core@alpha three
     ```
   </TabItem>
   <TabItem label="bun">
     ```bash
-    bun add @three-flatland/core three
+    bun add @three-flatland/core@alpha three
     ```
   </TabItem>
 </Tabs>
@@ -37,22 +41,22 @@ For React projects using React Three Fiber:
 <Tabs syncKey="pkg">
   <TabItem label="npm">
     ```bash
-    npm install @three-flatland/react @react-three/fiber@alpha three react react-dom
+    npm install @three-flatland/react@alpha @react-three/fiber@alpha three react react-dom
     ```
   </TabItem>
   <TabItem label="pnpm">
     ```bash
-    pnpm add @three-flatland/react @react-three/fiber@alpha three react react-dom
+    pnpm add @three-flatland/react@alpha @react-three/fiber@alpha three react react-dom
     ```
   </TabItem>
   <TabItem label="yarn">
     ```bash
-    yarn add @three-flatland/react @react-three/fiber@alpha three react react-dom
+    yarn add @three-flatland/react@alpha @react-three/fiber@alpha three react react-dom
     ```
   </TabItem>
   <TabItem label="bun">
     ```bash
-    bun add @three-flatland/react @react-three/fiber@alpha three react react-dom
+    bun add @three-flatland/react@alpha @react-three/fiber@alpha three react react-dom
     ```
   </TabItem>
 </Tabs>

@@ -964,8 +964,9 @@ th {
   top: 0;
   right: 0; /* Align right edge with container */
   bottom: 0;
-  width: 960px; /* Width of Bayer gradient pattern (60 cells * 16px) - overflows left */
+  width: 100%;
   background: var(--aside-gradient);
+  background-position: right 30px top;
   background-repeat: repeat-y;
   pointer-events: none;
   opacity: 0.4; /* Reduced for better text contrast */
