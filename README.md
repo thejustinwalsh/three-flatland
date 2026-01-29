@@ -4,6 +4,9 @@
 
 A TSL-native 2D rendering library for Three.js. High-performance sprites, tilemaps, text, and effects using WebGPU and the Three.js Shading Language.
 
+> [!IMPORTANT]
+> **Early Alpha** — three-flatland is in active development. We're exploring performant, maintainable, and extensible patterns for GPU-driven 2D rendering with WebGPU. The API will evolve as we refine these systems. Your feedback shapes what we build.
+
 ## Features
 
 - **TSL-Native Shaders** - All effects built with Three.js Shading Language, works on WebGL and WebGPU
