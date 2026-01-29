@@ -10,6 +10,11 @@ import { DEFAULT_BATCH_SIZE } from './SpriteBatch'
  * Add Renderer2D to your scene and add sprites to it.
  * Sprites are automatically batched by material and sorted by layer/zIndex.
  *
+ * With the shared buffer architecture:
+ * - Sprite property changes (tint, alpha, UV, flip) write directly to batch buffers
+ * - Only transforms need explicit invalidation (or use autoInvalidateTransforms)
+ * - No rebuild needed for property changes - zero-copy updates
+ *
  * @example
  * ```typescript
  * const renderer2D = new Renderer2D()
@@ -17,9 +22,10 @@ import { DEFAULT_BATCH_SIZE } from './SpriteBatch'
  *
  * const sprite = new Sprite2D({ texture })
  * sprite.layer = Layers.ENTITIES
- * renderer2D.addSprite(sprite)
+ * renderer2D.add(sprite)
  *
- * // In render loop
+ * // In render loop - sprites move, so invalidate transforms
+ * renderer2D.invalidateTransforms()
  * renderer2D.update()
  * renderer.render(scene, camera)
  * ```
@@ -40,6 +46,13 @@ export class Renderer2D extends Group {
    */
   autoSort: boolean
 
+  /**
+   * Whether to automatically invalidate transforms every frame.
+   * Enable for games where sprites move frequently.
+   * Disable for static UIs and call invalidateTransforms() manually.
+   */
+  autoInvalidateTransforms: boolean
+
   constructor(options: Renderer2DOptions = {}) {
     super()
 
@@ -51,6 +64,7 @@ export class Renderer2D extends Group {
 
     this.autoSort = options.autoSort ?? true
     this.frustumCulling = options.frustumCulling ?? true
+    this.autoInvalidateTransforms = options.autoInvalidateTransforms ?? true
   }
 
   /**
@@ -113,8 +127,9 @@ export class Renderer2D extends Group {
   }
 
   /**
-   * Mark a sprite as needing update.
-   * Call when sprite transform, layer, zIndex, or appearance changes.
+   * Mark a sprite as needing sort recalculation.
+   * Call when sprite's layer or zIndex changes.
+   * Note: Property changes (tint, alpha, etc.) don't need invalidation.
    */
   invalidate(sprite: Sprite2D): void {
     this._batchManager.invalidate(sprite)
@@ -122,9 +137,19 @@ export class Renderer2D extends Group {
 
   /**
    * Mark all sprites as needing update.
+   * Triggers sort recalculation and transform update.
    */
   invalidateAll(): void {
     this._batchManager.invalidateAll()
+  }
+
+  /**
+   * Mark transforms as needing update.
+   * Call when sprite positions/rotations/scales have changed.
+   * Note: This is separate from property changes which write directly to buffers.
+   */
+  invalidateTransforms(): void {
+    this._batchManager.invalidateTransforms()
   }
 
   /**
@@ -132,7 +157,12 @@ export class Renderer2D extends Group {
    * Call once per frame before rendering.
    */
   update(): void {
-    // Prepare batches (sort and rebuild if needed)
+    // Auto-invalidate transforms if enabled
+    if (this.autoInvalidateTransforms) {
+      this._batchManager.invalidateTransforms()
+    }
+
+    // Prepare batches (sort if needed)
     this._batchManager.prepare()
 
     // Upload batch data to GPU

@@ -9,6 +9,12 @@ import type { SpriteEntry, RenderStats } from './types'
  *
  * Groups sprites by material identity, sorts by layer/material/zIndex,
  * and maintains batch pools for efficient reuse.
+ *
+ * With the shared buffer architecture, sprites write directly to batch buffers.
+ * BatchManager only handles:
+ * - Adding/removing sprites from batches
+ * - Sorting and reordering when layer/zIndex changes
+ * - Transform updates (safest to read from sprites)
  */
 export class BatchManager {
   /**
@@ -34,7 +40,12 @@ export class BatchManager {
   /**
    * Whether sorting/batching needs to be recalculated.
    */
-  private _dirty: boolean = false
+  private _sortDirty: boolean = false
+
+  /**
+   * Whether transforms need to be re-read.
+   */
+  private _transformsDirty: boolean = false
 
   /**
    * Maximum sprites per batch.
@@ -64,11 +75,11 @@ export class BatchManager {
     const entry: SpriteEntry = {
       sprite,
       sortKey: this._computeSortKey(sprite),
-      dirty: true,
+      dirty: false, // Not used for property changes anymore, only for sort changes
     }
 
     this._sprites.set(sprite, entry)
-    this._dirty = true
+    this._sortDirty = true
   }
 
   /**
@@ -77,13 +88,24 @@ export class BatchManager {
   remove(sprite: Sprite2D): void {
     if (!this._sprites.has(sprite)) return
 
+    // Remove from its current batch
+    if (sprite._batchTarget) {
+      // Find the batch and remove
+      for (const batch of this._activeBatches) {
+        if (batch === sprite._batchTarget) {
+          batch.removeSprite(sprite)
+          break
+        }
+      }
+    }
+
     this._sprites.delete(sprite)
-    this._dirty = true
+    this._sortDirty = true
   }
 
   /**
-   * Mark a sprite as needing update.
-   * Call when sprite transform, layer, zIndex, or appearance changes.
+   * Mark a sprite as needing sort recalculation.
+   * Call when sprite's layer or zIndex changes.
    */
   invalidate(sprite: Sprite2D): void {
     const entry = this._sprites.get(sprite)
@@ -92,20 +114,27 @@ export class BatchManager {
     const newSortKey = this._computeSortKey(sprite)
     if (entry.sortKey !== newSortKey) {
       entry.sortKey = newSortKey
-      this._dirty = true
+      this._sortDirty = true
     }
-    entry.dirty = true
   }
 
   /**
    * Mark all sprites as needing update.
+   * Triggers sort recalculation and transform update.
    */
   invalidateAll(): void {
     for (const entry of this._sprites.values()) {
       entry.sortKey = this._computeSortKey(entry.sprite)
-      entry.dirty = true
     }
-    this._dirty = true
+    this._sortDirty = true
+    this._transformsDirty = true
+  }
+
+  /**
+   * Mark transforms as needing update (for position/rotation/scale changes).
+   */
+  invalidateTransforms(): void {
+    this._transformsDirty = true
   }
 
   /**
@@ -118,16 +147,28 @@ export class BatchManager {
 
   /**
    * Prepare batches for rendering.
-   * Sorts sprites and rebuilds batches if dirty.
+   * Sorts sprites and rebuilds batches if sort order changed.
    */
   prepare(): void {
-    if (!this._dirty) {
-      // Just update dirty sprites in existing batches
-      this._updateDirtySprites()
-      return
+    if (this._sortDirty) {
+      this._rebuildBatches()
+      this._sortDirty = false
     }
 
-    // Clear active batches
+    // Mark all batches as needing transform update
+    if (this._transformsDirty) {
+      for (const batch of this._activeBatches) {
+        batch.invalidateTransforms()
+      }
+      this._transformsDirty = false
+    }
+  }
+
+  /**
+   * Rebuild all batches with proper sorting.
+   */
+  private _rebuildBatches(): void {
+    // Detach all sprites from current batches and recycle batches
     this._recycleBatches()
 
     // Sort sprites by sort key
@@ -153,33 +194,11 @@ export class BatchManager {
         currentLayer = layer
       }
 
+      // Add sprite to batch - it will sync its state to batch buffers
       currentBatch.addSprite(sprite)
-      entry.dirty = false
     }
 
-    this._dirty = false
     this._updateStats()
-  }
-
-  /**
-   * Update only dirty sprites without rebuilding batches.
-   */
-  private _updateDirtySprites(): void {
-    // For now, rebuild all batches when any sprite is dirty
-    // A more optimized approach would track which batches contain dirty sprites
-    let hasDirty = false
-    for (const entry of this._sprites.values()) {
-      if (entry.dirty) {
-        hasDirty = true
-        entry.dirty = false
-      }
-    }
-
-    if (hasDirty) {
-      for (const batch of this._activeBatches) {
-        batch.rebuild()
-      }
-    }
   }
 
   /**
@@ -294,7 +313,8 @@ export class BatchManager {
     }
     this._batchPool.length = 0
 
-    this._dirty = false
+    this._sortDirty = false
+    this._transformsDirty = false
     this._updateStats()
   }
 

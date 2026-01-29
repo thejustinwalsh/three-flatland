@@ -39,8 +39,8 @@ export interface Sprite2DOptions {
   frame?: SpriteFrame
   /** Anchor/pivot point (0-1), default [0.5, 0.5] (center) */
   anchor?: Vector2 | [number, number]
-  /** Tint color, default white */
-  tint?: Color | string | number
+  /** Tint color, default white. Accepts Color, hex string, hex number, or [r, g, b] array (0-1) */
+  tint?: Color | string | number | [number, number, number]
   /** Opacity 0-1, default 1 */
   alpha?: number
   /** Flip horizontally */

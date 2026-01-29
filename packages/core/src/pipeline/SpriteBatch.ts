@@ -3,10 +3,12 @@ import {
   PlaneGeometry,
   InstancedBufferAttribute,
   DynamicDrawUsage,
+  type Matrix4,
 } from 'three'
 import type { Sprite2D } from '../sprites/Sprite2D'
 import type { Sprite2DMaterial } from '../materials/Sprite2DMaterial'
 import type { InstanceAttributeType } from './types'
+import type { BatchTarget } from './BatchTarget'
 
 /**
  * Default maximum sprites per batch.
@@ -22,8 +24,10 @@ export const DEFAULT_BATCH_SIZE = 10000
  * - Color (instanceColor)
  * - Flip (instanceFlip)
  * - Custom attributes from material schema
+ *
+ * Implements BatchTarget interface for zero-copy direct writes from sprites.
  */
-export class SpriteBatch extends InstancedMesh {
+export class SpriteBatch extends InstancedMesh implements BatchTarget {
   /**
    * The material used by all sprites in this batch.
    */
@@ -35,14 +39,24 @@ export class SpriteBatch extends InstancedMesh {
   readonly maxSize: number
 
   /**
-   * Current number of sprites in the batch.
+   * Current number of active sprites in the batch.
    */
-  private _count: number = 0
+  private _activeCount: number = 0
 
   /**
-   * Sprites currently in this batch.
+   * Sprites currently in this batch (null = free slot).
    */
-  private _sprites: Sprite2D[] = []
+  private _sprites: (Sprite2D | null)[] = []
+
+  /**
+   * Free slot indices for reuse (pooling).
+   */
+  private _freeList: number[] = []
+
+  /**
+   * Next index to allocate when freeList is empty.
+   */
+  private _nextIndex: number = 0
 
   /**
    * Core attribute buffers.
@@ -52,14 +66,21 @@ export class SpriteBatch extends InstancedMesh {
   private _instanceFlip: Float32Array
 
   /**
-   * Custom attribute buffers (from material schema).
+   * Core attribute references.
    */
-  private _customAttributes: Map<string, { buffer: Float32Array; size: number }> = new Map()
+  private _uvAttribute: InstancedBufferAttribute
+  private _colorAttribute: InstancedBufferAttribute
+  private _flipAttribute: InstancedBufferAttribute
 
   /**
-   * Whether the batch data needs to be re-uploaded to GPU.
+   * Custom attribute buffers (from material schema).
    */
-  private _dirty: boolean = false
+  private _customAttributes: Map<string, { buffer: Float32Array; size: number; attribute: InstancedBufferAttribute }> = new Map()
+
+  /**
+   * Whether transforms need to be re-read from sprites during upload.
+   */
+  private _transformsDirty: boolean = false
 
   constructor(material: Sprite2DMaterial, maxSize: number = DEFAULT_BATCH_SIZE) {
     // Allocate core attribute buffers BEFORE creating InstancedMesh
@@ -85,7 +106,8 @@ export class SpriteBatch extends InstancedMesh {
       instanceFlip[i * 2 + 1] = 1
     }
 
-    // Create geometry and add instance attributes BEFORE super()
+    // Create geometry and add ALL instance attributes BEFORE super()
+    // This ensures attributes exist when shader compiles
     const geometry = new PlaneGeometry(1, 1)
 
     const uvAttr = new InstancedBufferAttribute(instanceUV, 4)
@@ -100,42 +122,18 @@ export class SpriteBatch extends InstancedMesh {
     flipAttr.setUsage(DynamicDrawUsage)
     geometry.setAttribute('instanceFlip', flipAttr)
 
-    // Clone the material to ensure shader is compiled correctly for instanced rendering
-    const clonedMaterial = material.clone()
-
-    // Create InstancedMesh - geometry now has all required attributes
-    super(geometry, clonedMaterial, maxSize)
-
-    // Store references
-    this._instanceUV = instanceUV
-    this._instanceColor = instanceColor
-    this._instanceFlip = instanceFlip
-    this.spriteMaterial = material // Keep reference to original for batchId matching
-    this.maxSize = maxSize
-    this.frustumCulled = false // Batches manage their own culling
-
-    // Set initial count to 0 (no sprites yet)
-    this.count = 0
-
-    // Create custom attributes from material schema
-    this._createCustomAttributes()
-  }
-
-
-  /**
-   * Create custom attributes from material's instance attribute schema.
-   */
-  private _createCustomAttributes() {
-    const schema = this.spriteMaterial.getInstanceAttributeSchema()
-    const geo = this.geometry
-
+    // Create custom attributes from material schema BEFORE super()
+    // This is critical - the shader may compile in super() or on first render,
+    // and all attributes must be present on the geometry at that time
+    const customAttributes = new Map<string, { buffer: Float32Array; size: number; attribute: InstancedBufferAttribute }>()
+    const schema = material.getInstanceAttributeSchema()
     for (const [name, config] of schema) {
       const size = getTypeSize(config.type)
-      const buffer = new Float32Array(this.maxSize * size)
+      const buffer = new Float32Array(maxSize * size)
 
       // Fill with default values
       const defaultValue = config.defaultValue
-      for (let i = 0; i < this.maxSize; i++) {
+      for (let i = 0; i < maxSize; i++) {
         if (typeof defaultValue === 'number') {
           buffer[i * size] = defaultValue
         } else {
@@ -145,201 +143,251 @@ export class SpriteBatch extends InstancedMesh {
         }
       }
 
-      this._customAttributes.set(name, { buffer, size })
-
       const attr = new InstancedBufferAttribute(buffer, size)
       attr.setUsage(DynamicDrawUsage)
-      geo.setAttribute(name, attr)
+      geometry.setAttribute(name, attr)
+      customAttributes.set(name, { buffer, size, attribute: attr })
+    }
+
+    // Use the material directly - it's already set up for instanced rendering
+    // (cloning was causing issues with custom colorNodes that have captured closures)
+    // Note: multiple batches with the same material will share shader compilation,
+    // which is actually more efficient
+
+    // Create InstancedMesh - geometry now has all required attributes
+    super(geometry, material, maxSize)
+
+    // Store references
+    this._instanceUV = instanceUV
+    this._instanceColor = instanceColor
+    this._instanceFlip = instanceFlip
+    this._uvAttribute = uvAttr
+    this._colorAttribute = colorAttr
+    this._flipAttribute = flipAttr
+    this._customAttributes = customAttributes
+    this.spriteMaterial = material // Keep reference to original for batchId matching
+    this.maxSize = maxSize
+    this.frustumCulled = false // Batches manage their own culling
+
+    // Set initial count to 0 (no sprites yet)
+    this.count = 0
+  }
+
+  // ============================================
+  // BatchTarget interface implementation
+  // ============================================
+
+  writeColor(index: number, r: number, g: number, b: number, a: number): void {
+    this._instanceColor[index * 4 + 0] = r
+    this._instanceColor[index * 4 + 1] = g
+    this._instanceColor[index * 4 + 2] = b
+    this._instanceColor[index * 4 + 3] = a
+  }
+
+  writeUV(index: number, x: number, y: number, w: number, h: number): void {
+    this._instanceUV[index * 4 + 0] = x
+    this._instanceUV[index * 4 + 1] = y
+    this._instanceUV[index * 4 + 2] = w
+    this._instanceUV[index * 4 + 3] = h
+  }
+
+  writeFlip(index: number, flipX: number, flipY: number): void {
+    this._instanceFlip[index * 2 + 0] = flipX
+    this._instanceFlip[index * 2 + 1] = flipY
+  }
+
+  writeMatrix(index: number, matrix: Matrix4): void {
+    this.setMatrixAt(index, matrix)
+  }
+
+  writeCustom(index: number, name: string, value: number | number[]): void {
+    const custom = this._customAttributes.get(name)
+    if (!custom) return
+
+    const { buffer, size } = custom
+    if (typeof value === 'number') {
+      buffer[index * size] = value
+    } else {
+      for (let i = 0; i < value.length && i < size; i++) {
+        buffer[index * size + i] = value[i] ?? 0
+      }
     }
   }
+
+  getCustomBuffer(name: string): { buffer: Float32Array; size: number } | undefined {
+    const custom = this._customAttributes.get(name)
+    return custom ? { buffer: custom.buffer, size: custom.size } : undefined
+  }
+
+  getColorAttribute(): InstancedBufferAttribute {
+    return this._colorAttribute
+  }
+
+  getUVAttribute(): InstancedBufferAttribute {
+    return this._uvAttribute
+  }
+
+  getFlipAttribute(): InstancedBufferAttribute {
+    return this._flipAttribute
+  }
+
+  getCustomAttribute(name: string): InstancedBufferAttribute | undefined {
+    return this._customAttributes.get(name)?.attribute
+  }
+
+  // ============================================
+  // Sprite management
+  // ============================================
 
   /**
    * Get current sprite count.
    */
   get spriteCount(): number {
-    return this._count
+    return this._activeCount
   }
 
   /**
    * Check if batch is full.
    */
   get isFull(): boolean {
-    return this._count >= this.maxSize
+    return this._freeList.length === 0 && this._nextIndex >= this.maxSize
   }
 
   /**
    * Check if batch is empty.
    */
   get isEmpty(): boolean {
-    return this._count === 0
-  }
-
-  /**
-   * Check if batch needs GPU upload.
-   */
-  get isDirty(): boolean {
-    return this._dirty
+    return this._activeCount === 0
   }
 
   /**
    * Add a sprite to the batch.
+   * The sprite will write directly to this batch's buffers.
    *
    * @returns The index of the sprite in the batch, or -1 if batch is full
    */
   addSprite(sprite: Sprite2D): number {
-    if (this._count >= this.maxSize) {
-      return -1
+    let index: number
+
+    // Reuse free slot if available
+    if (this._freeList.length > 0) {
+      index = this._freeList.pop()!
+    } else {
+      // Allocate new slot
+      if (this._nextIndex >= this.maxSize) {
+        return -1 // Batch is full
+      }
+      index = this._nextIndex++
     }
 
-    const index = this._count
     this._sprites[index] = sprite
-    this._count++
-    this._dirty = true
+    this._activeCount++
 
-    // Write sprite data to buffers
-    this._writeSprite(index, sprite)
+    // Attach sprite to this batch - it will sync its current state
+    sprite._attachToBatch(this, index)
+
+    // Mark transforms dirty for upload
+    this._transformsDirty = true
 
     return index
+  }
+
+  /**
+   * Remove a sprite from the batch.
+   * The sprite will revert to using its own buffers.
+   */
+  removeSprite(sprite: Sprite2D): void {
+    const index = sprite._batchIndex
+    if (index < 0 || this._sprites[index] !== sprite) return
+
+    // Make slot invisible (alpha = 0) so it doesn't render
+    this._instanceColor[index * 4 + 3] = 0
+    this._colorAttribute.needsUpdate = true
+
+    // Clear the slot and add to free list
+    this._sprites[index] = null
+    this._freeList.push(index)
+    this._activeCount--
+
+    // Detach sprite from batch - it will sync to its own buffers
+    sprite._detachFromBatch()
   }
 
   /**
    * Clear all sprites from the batch.
    */
   clearSprites(): void {
-    this._count = 0
+    // Detach all sprites
+    for (let i = 0; i < this._sprites.length; i++) {
+      const sprite = this._sprites[i]
+      if (sprite) {
+        sprite._detachFromBatch()
+      }
+    }
+
+    this._activeCount = 0
     this._sprites.length = 0
-    this._dirty = true
+    this._freeList.length = 0
+    this._nextIndex = 0
     this.count = 0
   }
 
   /**
-   * Rebuild the batch from current sprites.
-   * Call after sprites have been modified.
+   * Mark transforms as needing update.
+   * Call when sprite positions/rotations/scales have changed.
    */
-  rebuild(): void {
-    for (let i = 0; i < this._count; i++) {
-      const sprite = this._sprites[i]
-      if (sprite) {
-        this._writeSprite(i, sprite)
-      }
-    }
-    this._dirty = true
-  }
-
-  /**
-   * Write a sprite's data to the buffers at the given index.
-   */
-  private _writeSprite(index: number, sprite: Sprite2D): void {
-    // Transform matrix (Sprite2D.updateMatrix() handles Z offset for layer/zIndex sorting)
-    sprite.updateMatrix()
-    this.setMatrixAt(index, sprite.matrix)
-
-    // Frame UV
-    const frame = sprite.frame
-    if (frame) {
-      this._instanceUV[index * 4 + 0] = frame.x
-      this._instanceUV[index * 4 + 1] = frame.y
-      this._instanceUV[index * 4 + 2] = frame.width
-      this._instanceUV[index * 4 + 3] = frame.height
-    } else {
-      // Default: full texture
-      this._instanceUV[index * 4 + 0] = 0
-      this._instanceUV[index * 4 + 1] = 0
-      this._instanceUV[index * 4 + 2] = 1
-      this._instanceUV[index * 4 + 3] = 1
-    }
-
-    // Color (tint + alpha)
-    const tint = sprite.tint
-    this._instanceColor[index * 4 + 0] = tint.r
-    this._instanceColor[index * 4 + 1] = tint.g
-    this._instanceColor[index * 4 + 2] = tint.b
-    this._instanceColor[index * 4 + 3] = sprite.alpha
-
-    // Flip
-    this._instanceFlip[index * 2 + 0] = sprite.flipX ? -1 : 1
-    this._instanceFlip[index * 2 + 1] = sprite.flipY ? -1 : 1
-
-    // Custom attributes
-    const instanceValues = sprite.getInstanceValues()
-    for (const [name, { buffer, size }] of this._customAttributes) {
-      const value = instanceValues.get(name)
-      const config = this.spriteMaterial.getInstanceAttribute(name)
-
-      if (value !== undefined) {
-        if (typeof value === 'number') {
-          buffer[index * size] = value
-        } else {
-          for (let i = 0; i < value.length && i < size; i++) {
-            buffer[index * size + i] = value[i] ?? 0
-          }
-        }
-      } else if (config) {
-        // Use default from material
-        const defaultValue = config.defaultValue
-        if (typeof defaultValue === 'number') {
-          buffer[index * size] = defaultValue
-        } else {
-          for (let i = 0; i < defaultValue.length; i++) {
-            buffer[index * size + i] = defaultValue[i] ?? 0
-          }
-        }
-      }
-    }
+  invalidateTransforms(): void {
+    this._transformsDirty = true
   }
 
   /**
    * Upload buffer data to GPU.
-   * Call after adding/modifying sprites and before rendering.
+   * Only transforms are re-read from sprites (safest with Three.js).
+   * Other attributes are written directly by sprites.
    */
   upload(): void {
-    if (!this._dirty) return
-
-    // Update instance count
-    this.count = this._count
-
-    // Mark instance matrix for upload
-    this.instanceMatrix.needsUpdate = true
-
-    // Mark core attributes for upload
-    const geo = this.geometry
-    const uvAttr = geo.getAttribute('instanceUV') as InstancedBufferAttribute
-    const colorAttr = geo.getAttribute('instanceColor') as InstancedBufferAttribute
-    const flipAttr = geo.getAttribute('instanceFlip') as InstancedBufferAttribute
-
-    uvAttr.needsUpdate = true
-    colorAttr.needsUpdate = true
-    flipAttr.needsUpdate = true
-
-    // Mark custom attributes for upload
-    for (const name of this._customAttributes.keys()) {
-      const attr = geo.getAttribute(name) as InstancedBufferAttribute
-      if (attr) {
-        attr.needsUpdate = true
+    // Update transforms from sprites if dirty
+    if (this._transformsDirty) {
+      for (let i = 0; i < this._sprites.length; i++) {
+        const sprite = this._sprites[i]
+        if (sprite) {
+          sprite.updateMatrix()
+          this.setMatrixAt(i, sprite.matrix)
+        }
       }
+      this.instanceMatrix.needsUpdate = true
+      this._transformsDirty = false
     }
 
-    this._dirty = false
+    // Update instance count to include all allocated slots
+    // (free slots have alpha=0 so they're invisible)
+    this.count = this._nextIndex
   }
 
   /**
    * Get sprites in this batch.
    */
-  getSprites(): readonly Sprite2D[] {
-    return this._sprites.slice(0, this._count)
+  getSprites(): readonly (Sprite2D | null)[] {
+    return this._sprites
+  }
+
+  /**
+   * Get active (non-null) sprites in this batch.
+   */
+  getActiveSprites(): Sprite2D[] {
+    return this._sprites.filter((s): s is Sprite2D => s !== null)
   }
 
   /**
    * Dispose of resources.
    */
   override dispose(): this {
+    // Detach all sprites first
+    this.clearSprites()
+
     this.geometry.dispose()
-    // Dispose the cloned material (this.material is the cloned one used for rendering)
-    const mat = this.material
-    if (mat && !Array.isArray(mat) && mat !== this.spriteMaterial) {
-      mat.dispose()
-    }
-    this._sprites.length = 0
+    // Don't dispose the material - it may be shared between batches
+    // The material owner (user code) is responsible for disposing it
     this._customAttributes.clear()
     return this
   }

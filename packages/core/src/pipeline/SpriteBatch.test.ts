@@ -10,7 +10,6 @@ describe('SpriteBatch', () => {
 
   beforeEach(() => {
     texture = new Texture()
-    // @ts-expect-error - mocking image for tests
     texture.image = { width: 100, height: 100 }
     material = new Sprite2DMaterial({ map: texture })
   })
@@ -38,6 +37,19 @@ describe('SpriteBatch', () => {
     expect(batch.isEmpty).toBe(false)
   })
 
+  it('should attach sprite to batch when added', () => {
+    const batch = new SpriteBatch(material)
+    const sprite = new Sprite2D({ material })
+
+    expect(sprite._batchTarget).toBe(null)
+    expect(sprite._batchIndex).toBe(-1)
+
+    batch.addSprite(sprite)
+
+    expect(sprite._batchTarget).toBe(batch)
+    expect(sprite._batchIndex).toBe(0)
+  })
+
   it('should return -1 when batch is full', () => {
     const batch = new SpriteBatch(material, 2) // Small batch for testing
     const sprite1 = new Sprite2D({ material })
@@ -63,6 +75,9 @@ describe('SpriteBatch', () => {
 
     expect(batch.spriteCount).toBe(0)
     expect(batch.isEmpty).toBe(true)
+    // Sprites should be detached
+    expect(sprite1._batchTarget).toBe(null)
+    expect(sprite2._batchTarget).toBe(null)
   })
 
   it('should upload batch data', () => {
@@ -71,9 +86,9 @@ describe('SpriteBatch', () => {
     sprite.position.set(100, 200, 0)
 
     batch.addSprite(sprite)
+    batch.invalidateTransforms()
     batch.upload()
 
-    expect(batch.isDirty).toBe(false)
     expect(batch.count).toBe(1)
   })
 
@@ -105,18 +120,55 @@ describe('SpriteBatch', () => {
     expect(sprites).toContain(sprite2)
   })
 
-  it('should rebuild batch after modifications', () => {
+  it('should write sprite properties directly to batch buffers', () => {
     const batch = new SpriteBatch(material)
     const sprite = new Sprite2D({ material })
-    sprite.position.set(100, 200, 0)
 
     batch.addSprite(sprite)
-    batch.upload()
 
-    // Modify sprite
-    sprite.position.set(200, 300, 0)
-    batch.rebuild()
+    // Change tint - should write directly to batch buffer
+    sprite.tint = [1, 0, 0]
 
-    expect(batch.isDirty).toBe(true)
+    // Verify color was written to batch's buffer by checking the buffer values
+    const colorBuffer = batch.getCustomBuffer('instanceColor')
+    // getCustomBuffer returns undefined for core attributes, use direct access
+    // The sprite is at index 0, so check buffer[0..3]
+    const colorAttr = batch.getColorAttribute()
+    const array = colorAttr.array as Float32Array
+    expect(array[0]).toBeCloseTo(1) // r
+    expect(array[1]).toBeCloseTo(0) // g
+    expect(array[2]).toBeCloseTo(0) // b
+  })
+
+  it('should remove sprite and reuse slot', () => {
+    const batch = new SpriteBatch(material)
+    const sprite1 = new Sprite2D({ material })
+    const sprite2 = new Sprite2D({ material })
+    const sprite3 = new Sprite2D({ material })
+
+    batch.addSprite(sprite1) // index 0
+    batch.addSprite(sprite2) // index 1
+
+    // Remove sprite1
+    batch.removeSprite(sprite1)
+    expect(batch.spriteCount).toBe(1)
+    expect(sprite1._batchTarget).toBe(null)
+
+    // Add sprite3 - should reuse freed slot
+    const index3 = batch.addSprite(sprite3)
+    expect(index3).toBe(0) // Reused slot 0
+    expect(batch.spriteCount).toBe(2)
+  })
+
+  it('should detach sprite when removed', () => {
+    const batch = new SpriteBatch(material)
+    const sprite = new Sprite2D({ material })
+
+    batch.addSprite(sprite)
+    expect(sprite._batchTarget).toBe(batch)
+
+    batch.removeSprite(sprite)
+    expect(sprite._batchTarget).toBe(null)
+    expect(sprite._batchIndex).toBe(-1)
   })
 })

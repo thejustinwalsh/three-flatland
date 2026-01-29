@@ -213,7 +213,7 @@ export class Sprite2DMaterial extends MeshBasicNodeMaterial {
 
   /**
    * Clone this material.
-   * Ensures the cloned material has the texture and nodes set up properly.
+   * Ensures the cloned material has the texture, nodes, and custom colorNode preserved.
    */
   override clone(): this {
     const cloned = new Sprite2DMaterial({
@@ -225,6 +225,14 @@ export class Sprite2DMaterial extends MeshBasicNodeMaterial {
     // Copy instance attributes
     for (const [name, config] of this._instanceAttributes) {
       ;(cloned as Sprite2DMaterial)._instanceAttributes.set(name, { ...config })
+    }
+
+    // Preserve custom colorNode if it was set externally (e.g., for effects)
+    // This is important because setupNodes() sets a default colorNode,
+    // but users may override it with custom TSL effects
+    if (this.colorNode) {
+      cloned.colorNode = this.colorNode
+      cloned.needsUpdate = true
     }
 
     return cloned

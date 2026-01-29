@@ -68,6 +68,11 @@ export interface Renderer2DOptions {
   autoSort?: boolean
   /** Enable frustum culling (default: true) */
   frustumCulling?: boolean
+  /** Automatically invalidate transforms every frame (default: true).
+   *  Enable for games where sprites move frequently.
+   *  Disable for static UIs and call invalidateTransforms() manually.
+   *  Note: Property changes (tint, alpha, etc.) don't need this - they write directly to buffers. */
+  autoInvalidateTransforms?: boolean
 }
 
 /**

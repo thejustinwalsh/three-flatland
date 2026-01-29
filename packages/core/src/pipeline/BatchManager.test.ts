@@ -180,7 +180,8 @@ describe('BatchManager', () => {
     manager.upload()
 
     const batches = manager.getBatches()
-    expect(batches[0].isDirty).toBe(false)
+    // After upload, batch should have correct instance count
+    expect(batches[0]!.count).toBeGreaterThan(0)
   })
 
   it('should provide render stats', () => {

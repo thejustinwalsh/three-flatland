@@ -9,6 +9,7 @@ import {
 } from 'three'
 import { Sprite2DMaterial } from '../materials/Sprite2DMaterial'
 import type { Sprite2DOptions, SpriteFrame } from './types'
+import type { BatchTarget } from '../pipeline/BatchTarget'
 
 /**
  * A 2D sprite for use with three-flatland's render pipeline.
@@ -65,6 +66,22 @@ export class Sprite2D extends Mesh {
 
   /** Pixel-perfect mode */
   pixelPerfect: boolean = false
+
+  // ============================================
+  // BATCH TARGET STATE (for shared buffer architecture)
+  // ============================================
+
+  /**
+   * The batch this sprite is attached to (null = standalone rendering).
+   * @internal
+   */
+  _batchTarget: BatchTarget | null = null
+
+  /**
+   * Index of this sprite in the batch's buffers.
+   * @internal
+   */
+  _batchIndex: number = -1
 
   /** Custom geometry for anchor offset */
   private _geometry: PlaneGeometry | null = null
@@ -297,11 +314,13 @@ export class Sprite2D extends Mesh {
   }
 
   /**
-   * Set tint color.
+   * Set tint color. Accepts Color, hex string, hex number, or [r, g, b] array (0-1).
    */
-  set tint(value: Color | string | number) {
+  set tint(value: Color | string | number | [number, number, number]) {
     if (value instanceof Color) {
       this._tint.copy(value)
+    } else if (Array.isArray(value)) {
+      this._tint.setRGB(value[0], value[1], value[2])
     } else if (typeof value === 'string') {
       this._tint.set(value)
     } else {
@@ -411,21 +430,27 @@ export class Sprite2D extends Mesh {
   }
 
   /**
-   * Update flip flags in instance attribute (all 4 vertices).
+   * Update flip flags in instance attribute.
+   * Writes to batch buffer if attached, otherwise own buffer.
    */
   private updateFlip() {
     const flipX = this._flipX ? -1 : 1
     const flipY = this._flipY ? -1 : 1
 
-    // Write to all 4 vertices
-    for (let i = 0; i < 4; i++) {
-      this._instanceFlipBuffer[i * 2 + 0] = flipX
-      this._instanceFlipBuffer[i * 2 + 1] = flipY
-    }
-
-    const flipAttr = this.geometry.getAttribute('instanceFlip') as BufferAttribute
-    if (flipAttr) {
-      flipAttr.needsUpdate = true
+    if (this._batchTarget && this._batchIndex >= 0) {
+      // Write directly to batch buffer (single instance)
+      this._batchTarget.writeFlip(this._batchIndex, flipX, flipY)
+      this._batchTarget.getFlipAttribute().needsUpdate = true
+    } else {
+      // Write to own buffer (4 vertices, same value)
+      for (let i = 0; i < 4; i++) {
+        this._instanceFlipBuffer[i * 2 + 0] = flipX
+        this._instanceFlipBuffer[i * 2 + 1] = flipY
+      }
+      const flipAttr = this.geometry.getAttribute('instanceFlip') as BufferAttribute
+      if (flipAttr) {
+        flipAttr.needsUpdate = true
+      }
     }
   }
 
@@ -450,7 +475,8 @@ export class Sprite2D extends Mesh {
   }
 
   /**
-   * Update the instanceUV attribute from current frame (all 4 vertices).
+   * Update the instanceUV attribute from current frame.
+   * Writes to batch buffer if attached, otherwise own buffer.
    */
   private _updateInstanceUV() {
     let x: number, y: number, w: number, h: number
@@ -468,22 +494,28 @@ export class Sprite2D extends Mesh {
       h = 1
     }
 
-    // Write to all 4 vertices
-    for (let i = 0; i < 4; i++) {
-      this._instanceUVBuffer[i * 4 + 0] = x
-      this._instanceUVBuffer[i * 4 + 1] = y
-      this._instanceUVBuffer[i * 4 + 2] = w
-      this._instanceUVBuffer[i * 4 + 3] = h
-    }
-
-    const uvAttr = this.geometry.getAttribute('instanceUV') as BufferAttribute
-    if (uvAttr) {
-      uvAttr.needsUpdate = true
+    if (this._batchTarget && this._batchIndex >= 0) {
+      // Write directly to batch buffer (single instance)
+      this._batchTarget.writeUV(this._batchIndex, x, y, w, h)
+      this._batchTarget.getUVAttribute().needsUpdate = true
+    } else {
+      // Write to own buffer (4 vertices, same value)
+      for (let i = 0; i < 4; i++) {
+        this._instanceUVBuffer[i * 4 + 0] = x
+        this._instanceUVBuffer[i * 4 + 1] = y
+        this._instanceUVBuffer[i * 4 + 2] = w
+        this._instanceUVBuffer[i * 4 + 3] = h
+      }
+      const uvAttr = this.geometry.getAttribute('instanceUV') as BufferAttribute
+      if (uvAttr) {
+        uvAttr.needsUpdate = true
+      }
     }
   }
 
   /**
-   * Update the instanceColor attribute from current tint and alpha (all 4 vertices).
+   * Update the instanceColor attribute from current tint and alpha.
+   * Writes to batch buffer if attached, otherwise own buffer.
    */
   private _updateInstanceColor() {
     const r = this._tint.r
@@ -491,17 +523,22 @@ export class Sprite2D extends Mesh {
     const b = this._tint.b
     const a = this._alpha
 
-    // Write to all 4 vertices
-    for (let i = 0; i < 4; i++) {
-      this._instanceColorBuffer[i * 4 + 0] = r
-      this._instanceColorBuffer[i * 4 + 1] = g
-      this._instanceColorBuffer[i * 4 + 2] = b
-      this._instanceColorBuffer[i * 4 + 3] = a
-    }
-
-    const colorAttr = this.geometry.getAttribute('instanceColor') as BufferAttribute
-    if (colorAttr) {
-      colorAttr.needsUpdate = true
+    if (this._batchTarget && this._batchIndex >= 0) {
+      // Write directly to batch buffer (single instance)
+      this._batchTarget.writeColor(this._batchIndex, r, g, b, a)
+      this._batchTarget.getColorAttribute().needsUpdate = true
+    } else {
+      // Write to own buffer (4 vertices, same value)
+      for (let i = 0; i < 4; i++) {
+        this._instanceColorBuffer[i * 4 + 0] = r
+        this._instanceColorBuffer[i * 4 + 1] = g
+        this._instanceColorBuffer[i * 4 + 2] = b
+        this._instanceColorBuffer[i * 4 + 3] = a
+      }
+      const colorAttr = this.geometry.getAttribute('instanceColor') as BufferAttribute
+      if (colorAttr) {
+        colorAttr.needsUpdate = true
+      }
     }
   }
 
@@ -521,6 +558,7 @@ export class Sprite2D extends Mesh {
   /**
    * Set a per-instance attribute value.
    * The attribute must be defined on the material via addInstanceFloat(), etc.
+   * Writes to batch buffer if attached, value is also stored locally.
    *
    * @example
    * ```typescript
@@ -533,6 +571,16 @@ export class Sprite2D extends Mesh {
    */
   setInstanceValue(name: string, value: number | number[]): this {
     this.instanceValues.set(name, value)
+
+    // Write to batch if attached
+    if (this._batchTarget && this._batchIndex >= 0) {
+      this._batchTarget.writeCustom(this._batchIndex, name, value)
+      const attr = this._batchTarget.getCustomAttribute(name)
+      if (attr) {
+        attr.needsUpdate = true
+      }
+    }
+
     return this
   }
 
@@ -577,6 +625,93 @@ export class Sprite2D extends Mesh {
 
     // Restore original Z position (so user's position.z is preserved)
     this.position.z = originalZ
+  }
+
+  // ============================================
+  // BATCH ATTACHMENT (internal API for SpriteBatch)
+  // ============================================
+
+  /**
+   * Attach this sprite to a batch at the given index.
+   * After attachment, property changes write directly to batch buffers.
+   * @internal Called by SpriteBatch.addSprite()
+   */
+  _attachToBatch(target: BatchTarget, index: number): void {
+    this._batchTarget = target
+    this._batchIndex = index
+
+    // Sync current state to batch buffers
+    this._syncToBatch()
+  }
+
+  /**
+   * Detach this sprite from its batch.
+   * After detachment, property changes write to own buffers.
+   * @internal Called by SpriteBatch.removeSprite()
+   */
+  _detachFromBatch(): void {
+    this._batchTarget = null
+    this._batchIndex = -1
+
+    // Sync current state back to own buffers
+    this._syncToOwnBuffers()
+  }
+
+  /**
+   * Sync all current state to the batch buffers.
+   * Called when sprite is first attached to a batch.
+   * @internal
+   */
+  _syncToBatch(): void {
+    if (!this._batchTarget || this._batchIndex < 0) return
+
+    const target = this._batchTarget
+    const index = this._batchIndex
+
+    // Color (tint + alpha)
+    target.writeColor(index, this._tint.r, this._tint.g, this._tint.b, this._alpha)
+
+    // UV frame
+    if (this._frame) {
+      target.writeUV(index, this._frame.x, this._frame.y, this._frame.width, this._frame.height)
+    } else {
+      target.writeUV(index, 0, 0, 1, 1)
+    }
+
+    // Flip
+    target.writeFlip(index, this._flipX ? -1 : 1, this._flipY ? -1 : 1)
+
+    // Transform matrix
+    this.updateMatrix()
+    target.writeMatrix(index, this.matrix)
+
+    // Custom attributes - write defaults from material schema first,
+    // then override with sprite's instance values.
+    // This ensures reused slots get reset to defaults.
+    const schema = this.material.getInstanceAttributeSchema()
+    for (const [name, config] of schema) {
+      // Use sprite's value if set, otherwise use default from schema
+      const value = this.instanceValues.get(name) ?? config.defaultValue
+      target.writeCustom(index, name, value)
+      // Mark attribute as needing upload
+      const attr = target.getCustomAttribute(name)
+      if (attr) {
+        attr.needsUpdate = true
+      }
+    }
+  }
+
+  /**
+   * Sync current state back to own buffers after detaching from batch.
+   * @internal
+   */
+  private _syncToOwnBuffers(): void {
+    // Update all own buffers with current state
+    this._updateInstanceColor()
+    this._updateInstanceUV()
+    this.updateFlip()
+    // Note: Own buffer custom attributes would need similar handling
+    // if standalone rendering supported them
   }
 
   /**
