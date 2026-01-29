@@ -1,0 +1,120 @@
+---
+title: Post-Processing
+description: Apply retro display effects using TSL post-processing nodes.
+---
+
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+import ExamplePreview from '../../../components/ExamplePreview';
+import StackBlitzEmbed from '../../../components/StackBlitzEmbed';
+import ExampleTabs from '../../../components/ExampleTabs.astro';
+import { loadExample } from '../../../utils/loadExample';
+
+export const vanillaFiles = loadExample('vanilla', 'post-processing');
+export const reactFiles = loadExample('react', 'post-processing');
+
+<ExampleTabs>
+<Tabs>
+  <TabItem label="Preview" icon="rocket">
+    <ExamplePreview client:load type="vanilla" name="post-processing" />
+  </TabItem>
+  <TabItem label="Three.js" icon="seti:javascript">
+    <StackBlitzEmbed
+      client:load
+      title="Post-Processing - Three.js"
+      files={vanillaFiles}
+      openFile="main.ts"
+      height={600}
+    />
+  </TabItem>
+  <TabItem label="React" icon="seti:react">
+    <StackBlitzEmbed
+      client:load
+      title="Post-Processing - React"
+      files={reactFiles}
+      openFile="App.tsx"
+      height={600}
+    />
+  </TabItem>
+</Tabs>
+</ExampleTabs>
+
+## Retro Display Gallery
+
+This example demonstrates various retro display effects that can be cycled through:
+
+| Key | Effect | Description |
+|-----|--------|-------------|
+| 1 | None | No post-processing |
+| 2 | CRT TV | Curved screen, scanlines, phosphor glow |
+| 3 | Game Boy | 4-color green palette with dot matrix |
+| 4 | Game Boy Color | LCD subpixel simulation |
+| 5 | VHS Tape | Tracking distortion, noise, chromatic aberration |
+| 6 | LCD Monitor | Pixel grid overlay |
+| 7 | Arcade CRT | Phosphor mask with scanlines |
+| 8 | Film | Grain and vignette |
+
+## Effect Composition
+
+Each effect is created by composing TSL nodes:
+
+```typescript
+import {
+  crtComplete,
+  dmgPalette,
+  dotMatrix,
+  lcdGBC,
+  vhsDistortion,
+  staticNoise,
+  chromaticAberration,
+  lcdGrid,
+  phosphorMask,
+  scanlines,
+  filmGrain,
+  vignette,
+} from '@three-flatland/core';
+
+// CRT TV effect
+const crt = crtComplete(scenePass, uv(), {
+  curvature: 0.15,
+  scanlineIntensity: 0.15,
+});
+
+// Game Boy DMG effect
+const gameboy = dotMatrix(dmgPalette(scenePass), uv(), {
+  gridSize: 3,
+  dotSize: 0.7,
+});
+
+// VHS tape effect
+let output = vhsDistortion(scenePass, uv(), time, {
+  trackingNoise: 0.02,
+  jitter: 0.001,
+});
+output = staticNoise(output, uv(), time, { intensity: 0.08 });
+output = chromaticAberration(output, uv(), {
+  offsetR: [0.003, 0],
+  offsetB: [-0.003, 0],
+});
+```
+
+## Switching Effects
+
+Effects can be switched at runtime by updating the `outputNode`:
+
+```typescript
+const effects = {
+  none: () => scenePass,
+  crt: () => crtComplete(scenePass, uv(), { curvature: 0.15 }),
+  gameboy: () => dotMatrix(dmgPalette(scenePass), uv(), { gridSize: 3 }),
+};
+
+function setEffect(name: string) {
+  postProcessing.outputNode = effects[name]();
+}
+```
+
+## Next Steps
+
+- [Post-Processing Guide](/guides/post-processing) - Complete reference
+- [2D Lighting](/examples/lighting) - Dynamic sprite lighting
+- [TSL Nodes](/examples/tsl-nodes) - Per-sprite effects

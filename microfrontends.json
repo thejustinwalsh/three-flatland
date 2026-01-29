@@ -140,6 +140,58 @@
           "paths": ["/react/tilemap", "/react/tilemap/:path*"]
         }
       ]
+    },
+    "example-vanilla-post-processing": {
+      "development": {
+        "local": {
+          "port": 4011
+        }
+      },
+      "routing": [
+        {
+          "group": "vanilla-examples",
+          "paths": ["/vanilla/post-processing", "/vanilla/post-processing/:path*"]
+        }
+      ]
+    },
+    "example-react-post-processing": {
+      "development": {
+        "local": {
+          "port": 4012
+        }
+      },
+      "routing": [
+        {
+          "group": "react-examples",
+          "paths": ["/react/post-processing", "/react/post-processing/:path*"]
+        }
+      ]
+    },
+    "example-vanilla-lighting": {
+      "development": {
+        "local": {
+          "port": 4013
+        }
+      },
+      "routing": [
+        {
+          "group": "vanilla-examples",
+          "paths": ["/vanilla/lighting", "/vanilla/lighting/:path*"]
+        }
+      ]
+    },
+    "example-react-lighting": {
+      "development": {
+        "local": {
+          "port": 4014
+        }
+      },
+      "routing": [
+        {
+          "group": "react-examples",
+          "paths": ["/react/lighting", "/react/lighting/:path*"]
+        }
+      ]
     }
   }
 }

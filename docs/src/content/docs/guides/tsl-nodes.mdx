@@ -289,9 +289,113 @@ material.colorNode = Fn(() => {
 })();
 ```
 
+## Display Effect Nodes
+
+For full-screen post-processing effects, see the [Post-Processing Guide](/guides/post-processing). Here's a quick reference of available display nodes:
+
+### CRT Effects
+
+```typescript
+import {
+  crtComplete,        // All-in-one CRT effect
+  crtCurvature,       // Screen curvature
+  crtVignette,        // Edge darkening
+  crtBloom,           // Phosphor glow
+  scanlines,          // Horizontal scan lines
+  phosphorMask,       // RGB subpixel pattern
+} from '@three-flatland/core';
+```
+
+### LCD Effects
+
+```typescript
+import {
+  lcdGrid,            // Pixel grid overlay
+  lcdGBC,             // Game Boy Color LCD
+  dotMatrix,          // Dot matrix display
+} from '@three-flatland/core';
+```
+
+### Console Palettes
+
+```typescript
+import {
+  dmgPalette,         // Game Boy (4 greens)
+  gbcPalette,         // Game Boy Color
+  snesPalette,        // SNES (15-bit)
+  cgaPalette,         // CGA (4 colors)
+  c64Palette,         // Commodore 64
+} from '@three-flatland/core';
+```
+
+### Analog Video Effects
+
+```typescript
+import {
+  vhsDistortion,      // VHS tracking distortion
+  staticNoise,        // TV static
+  chromaticAberration, // RGB channel separation
+  filmGrain,          // Film noise
+  vignette,           // Edge darkening
+} from '@three-flatland/core';
+```
+
+## Lighting Nodes
+
+For dynamic sprite lighting, see the [2D Lighting Guide](/guides/lighting). Here's a quick reference:
+
+### Light Calculations
+
+```typescript
+import {
+  pointLight2D,       // Point/radial light
+  spotLight2D,        // Cone light
+  directionalLight2D, // Parallel rays (sun)
+  ambientLight2D,     // Uniform illumination
+} from '@three-flatland/core';
+
+// Returns { direction, color, attenuation }
+const light = pointLight2D(surfacePos, lightPos, lightColor, intensity, radius);
+```
+
+### Lighting Functions
+
+```typescript
+import {
+  litDiffuse,         // Lambertian shading
+  litSpecular,        // Specular highlights
+  litRim,             // Fresnel edge glow
+  litCelShaded,       // Toon shading
+  litSprite,          // Combined sprite lighting
+} from '@three-flatland/core';
+```
+
+### Normal Generation
+
+```typescript
+import {
+  normalFromSprite,   // Normals from alpha edges
+  normalFromSpriteRounded, // Convex appearance
+  normalFromHeight,   // From height map
+} from '@three-flatland/core';
+```
+
+### Shadows
+
+```typescript
+import {
+  shadowDrop,         // Hard drop shadow
+  shadowDropSoft,     // Blurred drop shadow
+  shadow2D,           // Ray-traced shadow
+  shadowSoft2D,       // Soft ray-traced shadow
+} from '@three-flatland/core';
+```
+
 ## Performance Tips
 
 - Complex node graphs increase shader compile time
 - Use `uniform()` for values that change frequently
 - Cache compiled materials when reusing effects
 - Avoid dynamic branching in hot paths
+- Post-processing effects add GPU overhead - use sparingly on mobile
+- Limit dynamic lights to 2-4 per scene for best performance

@@ -8,3 +8,16 @@ export {
 } from './bayerDither'
 export { colorReplace, colorReplaceHard, colorReplaceMultiple } from './colorReplace'
 export { palettize, palettizeDithered, palettizeNearest } from './palettize'
+
+// Console-specific palettes
+export {
+  dmgPalette,
+  pocketPalette,
+  ppuPalette,
+  md9bitPalette,
+  vbPalette,
+  gbcPalette,
+  snesPalette,
+  cgaPalette,
+  c64Palette,
+} from './consolePalettes'

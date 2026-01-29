@@ -259,6 +259,86 @@ importers:
         specifier: 'catalog:'
         version: 6.4.1(@types/node@22.19.7)(jiti@1.21.7)(yaml@2.8.2)
 
+  examples/react/lighting:
+    dependencies:
+      '@react-three/fiber':
+        specifier: 'catalog:'
+        version: 10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.182.0)
+      '@three-flatland/core':
+        specifier: workspace:*
+        version: link:../../../packages/core
+      '@three-flatland/react':
+        specifier: workspace:*
+        version: link:../../../packages/react
+      react:
+        specifier: 'catalog:'
+        version: 19.2.3
+      react-dom:
+        specifier: 'catalog:'
+        version: 19.2.3(react@19.2.3)
+      three:
+        specifier: 'catalog:'
+        version: 0.182.0
+    devDependencies:
+      '@types/react':
+        specifier: 'catalog:'
+        version: 19.2.9
+      '@types/react-dom':
+        specifier: 'catalog:'
+        version: 19.2.3(@types/react@19.2.9)
+      '@types/three':
+        specifier: 'catalog:'
+        version: 0.182.0
+      '@vitejs/plugin-react':
+        specifier: 'catalog:'
+        version: 4.7.0(vite@6.4.1(@types/node@22.19.7)(jiti@1.21.7)(yaml@2.8.2))
+      typescript:
+        specifier: 'catalog:'
+        version: 5.9.3
+      vite:
+        specifier: 'catalog:'
+        version: 6.4.1(@types/node@22.19.7)(jiti@1.21.7)(yaml@2.8.2)
+
+  examples/react/post-processing:
+    dependencies:
+      '@react-three/fiber':
+        specifier: 'catalog:'
+        version: 10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.182.0)
+      '@three-flatland/core':
+        specifier: workspace:*
+        version: link:../../../packages/core
+      '@three-flatland/react':
+        specifier: workspace:*
+        version: link:../../../packages/react
+      react:
+        specifier: 'catalog:'
+        version: 19.2.3
+      react-dom:
+        specifier: 'catalog:'
+        version: 19.2.3(react@19.2.3)
+      three:
+        specifier: 'catalog:'
+        version: 0.182.0
+    devDependencies:
+      '@types/react':
+        specifier: 'catalog:'
+        version: 19.2.9
+      '@types/react-dom':
+        specifier: 'catalog:'
+        version: 19.2.3(@types/react@19.2.9)
+      '@types/three':
+        specifier: 'catalog:'
+        version: 0.182.0
+      '@vitejs/plugin-react':
+        specifier: 'catalog:'
+        version: 4.7.0(vite@6.4.1(@types/node@22.19.7)(jiti@1.21.7)(yaml@2.8.2))
+      typescript:
+        specifier: 'catalog:'
+        version: 5.9.3
+      vite:
+        specifier: 'catalog:'
+        version: 6.4.1(@types/node@22.19.7)(jiti@1.21.7)(yaml@2.8.2)
+
   examples/react/tilemap:
     dependencies:
       '@react-three/fiber':
@@ -381,6 +461,44 @@ importers:
         version: 6.4.1(@types/node@22.19.7)(jiti@1.21.7)(yaml@2.8.2)
 
   examples/vanilla/batch-demo:
+    dependencies:
+      '@three-flatland/core':
+        specifier: workspace:*
+        version: link:../../../packages/core
+      three:
+        specifier: 'catalog:'
+        version: 0.182.0
+    devDependencies:
+      '@types/three':
+        specifier: 'catalog:'
+        version: 0.182.0
+      typescript:
+        specifier: 'catalog:'
+        version: 5.9.3
+      vite:
+        specifier: 'catalog:'
+        version: 6.4.1(@types/node@22.19.7)(jiti@1.21.7)(yaml@2.8.2)
+
+  examples/vanilla/lighting:
+    dependencies:
+      '@three-flatland/core':
+        specifier: workspace:*
+        version: link:../../../packages/core
+      three:
+        specifier: 'catalog:'
+        version: 0.182.0
+    devDependencies:
+      '@types/three':
+        specifier: 'catalog:'
+        version: 0.182.0
+      typescript:
+        specifier: 'catalog:'
+        version: 5.9.3
+      vite:
+        specifier: 'catalog:'
+        version: 6.4.1(@types/node@22.19.7)(jiti@1.21.7)(yaml@2.8.2)
+
+  examples/vanilla/post-processing:
     dependencies:
       '@three-flatland/core':
         specifier: workspace:*

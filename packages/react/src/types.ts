@@ -7,6 +7,9 @@ import type {
   AnimatedSprite2D,
   AnimatedSprite2DOptions,
   Renderer2D,
+  SpriteGroup,
+  Flatland,
+  Light2D,
   TileMap2D,
   TileLayer,
   TileChunk,
@@ -14,7 +17,7 @@ import type {
 } from '@three-flatland/core'
 
 /**
- * Props for the Flatland root component
+ * Props for the Flatland root component in R3F
  */
 export interface FlatlandProps {
   /** Child components */
@@ -77,6 +80,9 @@ declare module '@react-three/fiber' {
     sprite2DMaterial: ThreeElement<typeof Sprite2DMaterial>
     animatedSprite2D: ThreeElement<typeof AnimatedSprite2D>
     renderer2D: ThreeElement<typeof Renderer2D>
+    spriteGroup: ThreeElement<typeof SpriteGroup>
+    flatland: ThreeElement<typeof Flatland>
+    light2D: ThreeElement<typeof Light2D>
     tileMap2D: ThreeElement<typeof TileMap2D>
     tileLayer: ThreeElement<typeof TileLayer>
     tileChunk: ThreeElement<typeof TileChunk>

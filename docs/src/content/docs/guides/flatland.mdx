@@ -1,0 +1,316 @@
+---
+title: Flatland
+description: Unified 2D rendering pipeline for Three.js WebGPU.
+---
+
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
+`Flatland` is the primary high-level API for 2D rendering in three-flatland. It combines sprite batching, post-processing, render targets, and 2D lighting into a single unified class.
+
+## When to Use Flatland
+
+Use `Flatland` when you need:
+- Post-processing effects (CRT, VHS, etc.)
+- 2D lighting with `Light2D`
+- Render-to-texture for 3D/2D compositing
+- A managed orthographic camera
+- Simplified scene setup
+
+For simple sprite rendering without these features, you can use `SpriteGroup` directly with a standard Three.js scene.
+
+## Basic Usage
+
+<Tabs syncKey="framework">
+  <TabItem label="Three.js" icon="seti:javascript">
+    ```typescript
+    import { WebGPURenderer } from 'three/webgpu';
+    import { Flatland, Sprite2D, Light2D, TextureLoader } from '@three-flatland/core';
+
+    async function main() {
+      // Create renderer
+      const renderer = new WebGPURenderer({ antialias: false });
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      document.body.appendChild(renderer.domElement);
+      await renderer.init();
+
+      // Create Flatland instance
+      const flatland = new Flatland({
+        viewSize: 400,
+        aspect: window.innerWidth / window.innerHeight,
+        clearColor: 0x1a1a2e,
+      });
+
+      // Load texture and create sprite
+      const texture = await TextureLoader.load('/sprite.png');
+      const sprite = new Sprite2D({ texture });
+      sprite.scale.set(64, 64, 1);
+      flatland.add(sprite);
+
+      // Add lighting
+      const light = new Light2D({
+        type: 'point',
+        position: [100, 100],
+        color: 0xff6600,
+        intensity: 1.2,
+        radius: 200,
+      });
+      flatland.add(light);
+
+      // Render loop
+      function animate() {
+        flatland.spriteGroup.update();
+        renderer.render(flatland.scene, flatland.camera);
+        requestAnimationFrame(animate);
+      }
+      animate();
+
+      // Handle resize
+      window.addEventListener('resize', () => {
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        flatland.resize(window.innerWidth, window.innerHeight);
+      });
+    }
+
+    main();
+    ```
+  </TabItem>
+  <TabItem label="React" icon="seti:react">
+    ```tsx
+    import { Suspense, useRef, useEffect } from 'react';
+    import { Canvas, extend, useFrame, useThree, useLoader } from '@react-three/fiber/webgpu';
+    import { Flatland, Sprite2D, Light2D, TextureLoader } from '@three-flatland/react';
+
+    // Register with R3F's scene graph
+    extend({ Flatland, Sprite2D, Light2D });
+
+    function Scene() {
+      const texture = useLoader(TextureLoader, '/sprite.png');
+      const flatlandRef = useRef<Flatland>(null);
+      const { gl, size } = useThree();
+
+      // Handle resize
+      useEffect(() => {
+        flatlandRef.current?.resize(size.width, size.height);
+      }, [size.width, size.height]);
+
+      // Render Flatland with its own camera
+      useFrame(() => {
+        const flatland = flatlandRef.current;
+        if (!flatland) return;
+
+        flatland.spriteGroup.update();
+        gl.render(flatland.scene, flatland.camera);
+      });
+
+      return (
+        <flatland ref={flatlandRef} viewSize={400} clearColor={0x1a1a2e}>
+          <sprite2D texture={texture} scale={[64, 64, 1]} />
+          <light2D
+            type="point"
+            position={[100, 100]}
+            color={0xff6600}
+            intensity={1.2}
+            radius={200}
+          />
+        </flatland>
+      );
+    }
+
+    export default function App() {
+      return (
+        <Canvas gl={{ antialias: false }}>
+          <Suspense fallback={null}>
+            <Scene />
+          </Suspense>
+        </Canvas>
+      );
+    }
+    ```
+  </TabItem>
+</Tabs>
+
+## Constructor Options
+
+```typescript
+interface FlatlandOptions {
+  /** Render target (null = render to viewport) */
+  renderTarget?: WebGLRenderTarget | null;
+
+  /** Camera to use (null = use internal orthographic camera) */
+  camera?: OrthographicCamera | null;
+
+  /** Orthographic view size in pixels (default: 400) */
+  viewSize?: number;
+
+  /** Initial aspect ratio (default: 1) */
+  aspect?: number;
+
+  /** 3D lights to convert to 2D (opt-in) */
+  sceneLights?: Array<PointLight | DirectionalLight | AmbientLight | SpotLight>;
+
+  /** Clear before render (default: true) */
+  autoClear?: boolean;
+
+  /** Background color */
+  clearColor?: ColorRepresentation;
+
+  /** Background alpha (default: 1) */
+  clearAlpha?: number;
+}
+```
+
+## Adding Content
+
+Use `add()` to add sprites and lights:
+
+```typescript
+// Add sprites
+const sprite = new Sprite2D({ texture });
+flatland.add(sprite);
+
+// Add lights
+const light = new Light2D({ type: 'point', position: [0, 0] });
+flatland.add(light);
+
+// Add multiple at once
+flatland.addAll(sprite1, sprite2, light1);
+
+// Remove
+flatland.remove(sprite);
+
+// Clear all
+flatland.clear();
+```
+
+## Post-Processing
+
+Add retro display effects using Three.js `PostProcessing`:
+
+```typescript
+import { PostProcessing } from 'three/webgpu';
+import { pass, uv } from 'three/tsl';
+import { crtComplete } from '@three-flatland/core';
+
+// Create post-processing
+const postProcessing = new PostProcessing(renderer);
+const scenePass = pass(flatland.scene, flatland.camera);
+
+// Apply CRT effect
+postProcessing.outputNode = crtComplete(scenePass, uv(), {
+  curvature: 0.15,
+  scanlineIntensity: 0.15,
+});
+
+// Connect to Flatland
+flatland.setPostProcessing(postProcessing, scenePass);
+
+// Render (uses post-processing automatically)
+flatland.render(renderer);
+```
+
+Switch effects at runtime:
+
+```typescript
+import { lcdGrid, vhsDistortion, dmgPalette } from '@three-flatland/core';
+
+// Change to LCD effect
+postProcessing.outputNode = lcdGrid(scenePass, uv(), { gridSize: 3 });
+
+// Or VHS effect
+postProcessing.outputNode = vhsDistortion(scenePass, uv(), timeUniform, {
+  trackingNoise: 0.02,
+});
+
+// Clear post-processing
+flatland.clearPostProcessing();
+```
+
+## Render to Texture
+
+Render Flatland to a texture for use on 3D objects:
+
+```typescript
+import { WebGLRenderTarget, MeshBasicMaterial, PlaneGeometry, Mesh } from 'three';
+
+// Create render target
+const target = new WebGLRenderTarget(512, 512);
+
+// Create Flatland with render target
+const flatland = new Flatland({
+  renderTarget: target,
+  viewSize: 200,
+});
+
+// Add sprites to Flatland
+flatland.add(sprite);
+
+// Use texture on 3D mesh
+const material = new MeshBasicMaterial({ map: flatland.texture });
+const card = new Mesh(new PlaneGeometry(2, 3), material);
+scene3D.add(card);
+
+// Render loop
+function animate() {
+  flatland.render(renderer);     // Renders to texture
+  renderer.render(scene3D, camera3D);  // Renders 3D scene
+  requestAnimationFrame(animate);
+}
+```
+
+## Properties
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `scene` | `Scene` | Internal scene containing sprites and lights |
+| `spriteGroup` | `SpriteGroup` | Sprite batching group |
+| `camera` | `OrthographicCamera` | Camera for 2D rendering |
+| `viewSize` | `number` | Orthographic view size |
+| `renderTarget` | `WebGLRenderTarget \| null` | Render target (null = viewport) |
+| `texture` | `Texture \| null` | Render target texture |
+| `lights` | `Light2D[]` | Collected Light2D instances |
+| `stats` | `RenderStats` | Render statistics |
+| `autoClear` | `boolean` | Clear before render |
+| `clearColor` | `Color` | Background color |
+| `clearAlpha` | `number` | Background alpha |
+
+## Methods
+
+| Method | Description |
+|--------|-------------|
+| `add(child)` | Add a Sprite2D or Light2D |
+| `remove(child)` | Remove a Sprite2D or Light2D |
+| `addAll(...children)` | Add multiple children |
+| `clear()` | Remove all sprites and lights |
+| `render(renderer)` | Render the scene |
+| `resize(width, height)` | Update aspect ratio and camera |
+| `setPostProcessing(pp, pass)` | Enable post-processing |
+| `clearPostProcessing()` | Disable post-processing |
+| `dispose()` | Clean up resources |
+
+## Flatland vs SpriteGroup
+
+| Feature | Flatland | SpriteGroup |
+|---------|----------|-------------|
+| Sprite batching | Yes (via internal SpriteGroup) | Yes |
+| Managed camera | Yes | No |
+| Post-processing | Yes | No |
+| 2D Lighting | Yes (Light2D collection) | No |
+| Render to texture | Yes | Manual |
+| Scene management | Yes | No |
+
+Use `SpriteGroup` directly when:
+- You have an existing Three.js scene setup
+- You don't need post-processing or lighting
+- You want full control over the camera
+
+Use `Flatland` when:
+- Starting a new 2D project
+- You need post-processing effects
+- You want 2D lighting support
+- You need render-to-texture
+
+## Next Steps
+
+- [2D Lighting](/guides/lighting) - Add dynamic lights
+- [Post-Processing](/guides/post-processing) - Retro display effects
+- [Batch Rendering](/guides/batch-rendering) - Optimize performance
