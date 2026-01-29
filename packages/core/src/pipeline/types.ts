@@ -59,9 +59,9 @@ export interface RenderStats {
 }
 
 /**
- * Options for Renderer2D.
+ * Options for SpriteGroup.
  */
-export interface Renderer2DOptions {
+export interface SpriteGroupOptions {
   /** Maximum sprites per batch (default: 10000) */
   maxBatchSize?: number
   /** Enable automatic sorting (default: true) */
@@ -69,6 +69,11 @@ export interface Renderer2DOptions {
   /** Enable frustum culling (default: true) */
   frustumCulling?: boolean
 }
+
+/**
+ * @deprecated Use SpriteGroupOptions instead.
+ */
+export type Renderer2DOptions = SpriteGroupOptions
 
 /**
  * Sorting function for custom sort mode.

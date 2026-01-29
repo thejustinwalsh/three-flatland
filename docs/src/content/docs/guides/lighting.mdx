@@ -1,0 +1,447 @@
+---
+title: 2D Lighting
+description: Add dynamic lighting to sprites using Light2D and TSL lighting nodes.
+---
+
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
+three-flatland provides a complete 2D lighting system with the `Light2D` class for scene graph lights and TSL nodes for custom shader-based lighting calculations.
+
+## Basic Setup
+
+Add lights to your Flatland scene using `Light2D`:
+
+<Tabs syncKey="framework">
+  <TabItem label="Three.js" icon="seti:javascript">
+    ```typescript
+    import { WebGPURenderer } from 'three/webgpu';
+    import { Flatland, Light2D, Sprite2D } from '@three-flatland/core';
+
+    // Create Flatland instance
+    const flatland = new Flatland({
+      viewSize: 300,
+      clearColor: 0x0a0a12,
+    });
+
+    // Create a point light (torch effect)
+    const torch = new Light2D({
+      type: 'point',
+      position: [100, 50],
+      color: 0xff6600,
+      intensity: 1.2,
+      radius: 150,
+      falloff: 2,
+    });
+    flatland.add(torch);
+
+    // Create ambient light (base illumination)
+    const ambient = new Light2D({
+      type: 'ambient',
+      color: 0x111122,
+      intensity: 0.15,
+    });
+    flatland.add(ambient);
+
+    // Render loop
+    function animate() {
+      flatland.spriteGroup.update();
+      renderer.render(flatland.scene, flatland.camera);
+      requestAnimationFrame(animate);
+    }
+    ```
+  </TabItem>
+  <TabItem label="React" icon="seti:react">
+    ```tsx
+    import { Canvas } from '@react-three/fiber/webgpu';
+    import { Flatland, Light2D, Sprite2D } from '@three-flatland/react';
+
+    function LitScene() {
+      return (
+        <Flatland viewSize={300}>
+          {/* Point light (torch) */}
+          <Light2D
+            type="point"
+            position={[100, 50]}
+            color={0xff6600}
+            intensity={1.2}
+            radius={150}
+          />
+
+          {/* Ambient light */}
+          <Light2D
+            type="ambient"
+            color={0x111122}
+            intensity={0.15}
+          />
+
+          {/* Sprites receive lighting */}
+          <Sprite2D texture={knightTexture} position={[0, 0]} />
+        </Flatland>
+      );
+    }
+    ```
+  </TabItem>
+</Tabs>
+
+## Light2D Types
+
+### Point Light
+
+Radiates light from a position with distance-based falloff:
+
+```typescript
+const torch = new Light2D({
+  type: 'point',
+  position: [100, 100],      // World position
+  color: 'orange',           // Any ColorRepresentation
+  intensity: 1.5,            // Brightness multiplier
+  radius: 200,               // Maximum light distance
+  falloff: 2,                // Attenuation exponent (2 = quadratic)
+});
+```
+
+### Directional Light
+
+Parallel rays from a direction (like sunlight):
+
+```typescript
+const sun = new Light2D({
+  type: 'directional',
+  direction: [1, -1],        // Light direction (normalized)
+  color: 0xffffcc,
+  intensity: 0.8,
+});
+```
+
+### Spot Light
+
+Cone of light from a position in a direction:
+
+```typescript
+const spotlight = new Light2D({
+  type: 'spot',
+  position: [0, 100],
+  direction: [0, -1],        // Points downward
+  color: 0xffffff,
+  intensity: 2.0,
+  radius: 300,
+  angle: Math.PI / 6,        // 30-degree cone
+  penumbra: 0.2,             // Soft edge (0-1)
+});
+```
+
+### Ambient Light
+
+Uniform illumination from all directions:
+
+```typescript
+const ambient = new Light2D({
+  type: 'ambient',
+  color: 0x222233,
+  intensity: 0.3,
+});
+```
+
+## TSL Lighting Nodes
+
+For custom shader-based lighting, use the TSL lighting nodes:
+
+### Light Calculation Nodes
+
+```typescript
+import {
+  pointLight2D,
+  spotLight2D,
+  directionalLight2D,
+  ambientLight2D,
+} from '@three-flatland/core';
+import { uniform, vec2 } from 'three/tsl';
+
+// Point light with uniforms for animation
+const lightPos = uniform(new Vector2(100, 100));
+const light = pointLight2D(
+  fragPos,              // Surface position (vec2)
+  lightPos,             // Light position
+  [1, 0.6, 0.2],        // Light color (RGB 0-1)
+  1.5,                  // Intensity
+  200,                  // Radius
+  2                     // Falloff exponent
+);
+
+// Returns: { direction, color, attenuation }
+```
+
+### Lighting Functions
+
+Apply lighting to surface colors:
+
+```typescript
+import {
+  litDiffuse,
+  litSpecular,
+  litRim,
+  litCelShaded,
+  litSprite,
+} from '@three-flatland/core';
+
+// Basic diffuse lighting
+const diffuse = litDiffuse(
+  normal,              // Surface normal
+  light.direction,     // Light direction
+  surfaceColor,        // Base color (vec4)
+  light.color,         // Light color
+  light.attenuation    // Distance attenuation
+);
+
+// Add specular highlights (Blinn-Phong)
+const specular = litSpecular(
+  normal,
+  light.direction,
+  viewDir,             // Camera direction
+  light.color,
+  light.attenuation,
+  32,                  // Shininess
+  0.5                  // Specular strength
+);
+
+// Rim/fresnel lighting (edge glow)
+const rim = litRim(
+  normal,
+  viewDir,
+  [0.5, 0.8, 1],       // Rim color
+  2,                   // Rim power
+  1                    // Rim strength
+);
+
+// Cel-shaded (toon) lighting
+const toon = litCelShaded(
+  normal,
+  light.direction,
+  surfaceColor,
+  light.color,
+  light.attenuation,
+  3                    // Number of bands
+);
+```
+
+### Combined Sprite Lighting
+
+Use `litSprite` for complete lighting in one call:
+
+```typescript
+import { litSprite } from '@three-flatland/core';
+
+const lit = litSprite(normal, surfaceColor, light, ambient, {
+  specular: true,
+  shininess: 32,
+  specularStrength: 0.5,
+  rim: true,
+  rimColor: [0.5, 0.8, 1],
+  rimPower: 2,
+  rimStrength: 1,
+});
+```
+
+## Normal Generation
+
+Generate normals from sprites for 3D-like lighting effects:
+
+```typescript
+import {
+  normalFromSprite,
+  normalFromSpriteRounded,
+  normalFromHeight,
+} from '@three-flatland/core';
+
+// Generate normals from alpha channel edges
+const normal = normalFromSprite(
+  spriteTexture,
+  uv,
+  1.0                  // Strength
+);
+
+// Rounded/convex appearance
+const roundedNormal = normalFromSpriteRounded(
+  spriteTexture,
+  uv,
+  1.0,                 // Strength
+  0.5                  // Curvature
+);
+
+// From height/depth map
+const heightNormal = normalFromHeight(
+  heightTexture,
+  uv,
+  1.0                  // Strength
+);
+```
+
+## Drop Shadows
+
+Create simple drop shadows:
+
+```typescript
+import { shadowDrop, shadowDropSoft } from '@three-flatland/core';
+
+// Hard drop shadow
+const shadow = shadowDrop(
+  spriteTexture,
+  uv,
+  [0.02, -0.02],       // Shadow offset in UV space
+  [0, 0, 0],           // Shadow color
+  0.5                  // Shadow opacity
+);
+
+// Soft drop shadow (blurred)
+const softShadow = shadowDropSoft(
+  spriteTexture,
+  uv,
+  [0.02, -0.02],
+  [0, 0, 0],
+  0.5,
+  0.01,                // Softness (blur amount)
+  4                    // Number of samples
+);
+```
+
+## Custom Lit Material
+
+Create a fully custom lit material using TSL:
+
+```typescript
+import { MeshBasicNodeMaterial } from 'three/webgpu';
+import { uniform, vec4, Fn, add } from 'three/tsl';
+import {
+  sampleSprite,
+  pointLight2D,
+  ambientLight2D,
+} from '@three-flatland/core';
+
+// Light uniforms
+const lightPos = uniform(new Vector2(100, 100));
+const lightColor = uniform(new Color(0xff6600));
+const lightIntensity = uniform(1.2);
+const lightRadius = uniform(150);
+
+const ambientColor = uniform(new Color(0x111122));
+const ambientIntensity = uniform(0.15);
+
+// Create material
+const material = new MeshBasicNodeMaterial();
+material.transparent = true;
+
+material.colorNode = Fn(() => {
+  // Sample sprite
+  const spriteColor = sampleSprite(texture, frameUniform, { alphaTest: 0.01 });
+
+  // Calculate point light
+  const surfacePos = spritePosition; // World position of this pixel
+  const toLight = lightPos.sub(surfacePos);
+  const dist = toLight.length();
+  const attenuation = float(1).sub(dist.div(lightRadius)).clamp(0, 1).pow(2);
+  const lightContribution = lightColor.mul(attenuation).mul(lightIntensity);
+
+  // Add ambient
+  const ambient = ambientColor.mul(ambientIntensity);
+  const totalLight = add(lightContribution, ambient);
+
+  // Apply to sprite
+  return vec4(spriteColor.rgb.mul(totalLight), spriteColor.a);
+})();
+```
+
+## Animating Lights
+
+Create dynamic lighting effects:
+
+```typescript
+// Flickering torch effect
+let flickerTimer = 0;
+
+function animate(delta: number) {
+  flickerTimer += delta;
+
+  // Combine sine waves for organic flicker
+  const flicker = 1 +
+    Math.sin(flickerTimer * 15) * 0.1 +
+    Math.sin(flickerTimer * 23) * 0.05;
+
+  torch.intensity = baseIntensity * flicker;
+
+  // Slight position wobble
+  torch.position2D = new Vector2(
+    baseX + Math.sin(flickerTimer * 7) * 2,
+    baseY + Math.sin(flickerTimer * 11) * 1
+  );
+}
+```
+
+## Draggable Lights
+
+Make lights interactive:
+
+```typescript
+let draggingLight: Light2D | null = null;
+
+canvas.addEventListener('mousedown', (e) => {
+  const worldPos = screenToWorld(e.clientX, e.clientY);
+
+  // Check if clicking on a light
+  for (const light of flatland.lights) {
+    if (light.position2D.distanceTo(worldPos) < 20) {
+      draggingLight = light;
+      break;
+    }
+  }
+});
+
+canvas.addEventListener('mousemove', (e) => {
+  if (draggingLight) {
+    draggingLight.position2D = screenToWorld(e.clientX, e.clientY);
+  }
+});
+
+canvas.addEventListener('mouseup', () => {
+  draggingLight = null;
+});
+```
+
+## Multiple Lights
+
+Combine multiple lights in your shader:
+
+```typescript
+material.colorNode = Fn(() => {
+  const spriteColor = sampleSprite(texture, frame);
+
+  // Calculate each light
+  const light1 = pointLight2D(surfacePos, light1Pos, light1Color, ...);
+  const light2 = pointLight2D(surfacePos, light2Pos, light2Color, ...);
+  const ambient = ambientLight2D(ambientColor, ambientIntensity);
+
+  // Sum contributions
+  const totalLight = add(
+    add(
+      light1.color.mul(light1.attenuation),
+      light2.color.mul(light2.attenuation)
+    ),
+    ambient.color
+  );
+
+  return vec4(spriteColor.rgb.mul(totalLight), spriteColor.a);
+})();
+```
+
+## Performance Tips
+
+- Limit the number of dynamic lights (2-4 point lights is reasonable)
+- Use ambient light for base illumination instead of many dim lights
+- Consider baking static lighting into textures
+- Use `enabled` property to toggle lights without removing from scene
+- Batch sprites with similar lighting requirements
+
+## Next Steps
+
+- [Post-Processing](/guides/post-processing) - Apply display effects like CRT and VHS
+- [TSL Nodes](/guides/tsl-nodes) - Per-sprite shader effects
+- [Lighting Example](/examples/lighting) - Interactive demo

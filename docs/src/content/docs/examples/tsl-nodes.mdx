@@ -38,43 +38,80 @@ export const reactFiles = loadExample('react', 'tsl-nodes');
 </Tabs>
 </ExampleTabs>
 
+## Effect Showcase
+
+This example demonstrates several sprite effects using TSL nodes. Press keys 1-8 or click buttons to switch:
+
+| Key | Effect | Description |
+|-----|--------|-------------|
+| 1 | Normal | No effect |
+| 2 | Damage Flash | White additive flash that decays |
+| 3 | Dissolve | Pixelated dissolve using noise texture |
+| 4 | Power-Up | Animated rainbow hue shift |
+| 5 | Petrify | Grayscale (desaturate to 0) |
+| 6 | Selection | Green outline using 8-direction sampling |
+| 7 | Shadow | Dark blue tint with reduced alpha |
+| 8 | Pixelate | Teleport effect (pixelate in/out) |
+
 ## Applying Effects
 
-Use the `@three-flatland/nodes` package for pre-built effects:
+Use TSL nodes from `@three-flatland/core`:
 
 ```typescript
-import { outlineNode, glowNode } from '@three-flatland/nodes';
+import { MeshBasicNodeMaterial } from 'three/webgpu';
+import { Fn } from 'three/tsl';
+import {
+  sampleSprite,
+  tint,
+  tintAdditive,
+  hueShift,
+  saturate,
+  outline8,
+  pixelate,
+  dissolvePixelated,
+} from '@three-flatland/core';
 
-sprite.material.colorNode = outlineNode({
-  color: 0xff0000,
-  width: 2,
-});
+const material = new MeshBasicNodeMaterial();
+material.transparent = true;
+
+// Example: Damage flash effect
+material.colorNode = Fn(() => {
+  const color = sampleSprite(texture, frameUniform, { alphaTest: 0.01 });
+  return tintAdditive(color, [1, 1, 1], flashIntensity);
+})();
 ```
 
 ## Available Nodes
 
 | Node | Description |
 |------|-------------|
-| `outlineNode` | Solid colored outline |
-| `glowNode` | Soft glow effect |
-| `pixelateNode` | Retro pixelation |
-| `colorReplaceNode` | Swap colors |
+| `tint` | Multiplicative color tint |
+| `tintAdditive` | Additive flash effect |
+| `hueShift` | Rotate hue (rainbow effect) |
+| `saturate` | Adjust color saturation |
+| `grayscale` | Convert to grayscale |
+| `outline8` | 8-direction outline |
+| `pixelate` | Reduce resolution |
+| `dissolvePixelated` | Noise-based dissolve |
 
-## Custom Nodes
+## Custom Effects
 
-Create custom effects using Three.js TSL functions:
+Combine nodes with Three.js TSL for custom effects:
 
 ```typescript
-import { tslFn, vec4, uv, texture } from 'three/tsl';
+import { Fn, vec4, float } from 'three/tsl';
+import { sampleSprite, tint, tintAdditive } from '@three-flatland/core';
 
-const customEffect = tslFn(({ tex }) => {
-  const color = texture(tex, uv());
-  // Invert colors
-  return vec4(1.0 - color.r, 1.0 - color.g, 1.0 - color.b, color.a);
-});
+// Shadow form: dark blue tint with transparency
+material.colorNode = Fn(() => {
+  const color = sampleSprite(texture, frameUniform, { alphaTest: 0.01 });
+  const darkened = tint(tintAdditive(color, [0, 0, 0.2], 0.3), [0.2, 0.2, 0.4]);
+  return vec4(darkened.rgb, color.a.mul(float(0.6)));
+})();
 ```
 
 ## Next Steps
 
-- [Tilemap](/examples/tilemap) - Tile-based map rendering
-- [TSL Nodes Guide](/guides/tsl-nodes) - Detailed node documentation
+- [TSL Nodes Guide](/guides/tsl-nodes) - Complete node reference
+- [Post-Processing](/examples/post-processing) - Display effects
+- [2D Lighting](/examples/lighting) - Dynamic sprite lighting

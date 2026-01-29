@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Post-Processing - three-flatland</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        overflow: hidden;
+        background: #000;
+        font-family:
+          -apple-system,
+          BlinkMacSystemFont,
+          'Segoe UI',
+          Roboto,
+          sans-serif;
+      }
+      canvas {
+        display: block;
+      }
+      #ui {
+        position: fixed;
+        top: 20px;
+        left: 20px;
+        color: white;
+        z-index: 100;
+        user-select: none;
+      }
+      #current-effect {
+        font-size: 24px;
+        font-weight: bold;
+        margin-bottom: 16px;
+        text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+      }
+      .buttons {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        max-width: 400px;
+      }
+      button {
+        background: rgba(255, 255, 255, 0.1);
+        border: 1px solid rgba(255, 255, 255, 0.3);
+        color: white;
+        padding: 8px 16px;
+        font-size: 14px;
+        cursor: pointer;
+        border-radius: 4px;
+        transition: all 0.2s;
+      }
+      button:hover {
+        background: rgba(255, 255, 255, 0.2);
+      }
+      button.active {
+        background: rgba(100, 200, 255, 0.3);
+        border-color: rgba(100, 200, 255, 0.8);
+      }
+      .hint {
+        margin-top: 16px;
+        font-size: 12px;
+        color: rgba(255, 255, 255, 0.6);
+      }
+    </style>
+  </head>
+  <body>
+    <div id="ui">
+      <div id="current-effect">None</div>
+      <div class="buttons">
+        <button id="btn-none" class="active">1: None</button>
+        <button id="btn-crt">2: CRT TV</button>
+        <button id="btn-dmg">3: Game Boy</button>
+        <button id="btn-gbc">4: Game Boy Color</button>
+        <button id="btn-vhs">5: VHS Tape</button>
+        <button id="btn-lcd">6: LCD Monitor</button>
+        <button id="btn-arcade">7: Arcade CRT</button>
+        <button id="btn-film">8: Film</button>
+      </div>
+      <div class="hint">Press 1-8 to change effects</div>
+    </div>
+    <script type="module" src="/main.ts"></script>
+  </body>
+</html>

@@ -3,6 +3,13 @@
 
 export const VERSION = '0.4.0'
 
+// Main API
+export { Flatland, convertLight3DTo2D } from './Flatland'
+export type { FlatlandOptions } from './Flatland'
+
+// 2D Lights
+export * from './lights'
+
 // Sprites
 export * from './sprites'
 

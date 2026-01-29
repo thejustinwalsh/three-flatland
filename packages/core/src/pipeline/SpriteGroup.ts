@@ -1,30 +1,33 @@
 import { Group, type Object3D } from 'three'
 import type { Sprite2D } from '../sprites/Sprite2D'
 import { BatchManager } from './BatchManager'
-import type { Renderer2DOptions, RenderStats } from './types'
+import type { SpriteGroupOptions, RenderStats } from './types'
 import { DEFAULT_BATCH_SIZE } from './SpriteBatch'
 
 /**
- * 2D render pipeline with automatic batching and sorting.
+ * 2D sprite group with automatic batching and sorting.
  *
- * Add Renderer2D to your scene and add sprites to it.
+ * Add SpriteGroup to your scene and add sprites to it.
  * Sprites are automatically batched by material and sorted by layer/zIndex.
+ *
+ * For a higher-level API with post-processing, lighting, and camera management,
+ * use the Flatland class instead.
  *
  * @example
  * ```typescript
- * const renderer2D = new Renderer2D()
- * scene.add(renderer2D)
+ * const spriteGroup = new SpriteGroup()
+ * scene.add(spriteGroup)
  *
  * const sprite = new Sprite2D({ texture })
  * sprite.layer = Layers.ENTITIES
- * renderer2D.addSprite(sprite)
+ * spriteGroup.add(sprite)
  *
  * // In render loop
- * renderer2D.update()
+ * spriteGroup.update()
  * renderer.render(scene, camera)
  * ```
  */
-export class Renderer2D extends Group {
+export class SpriteGroup extends Group {
   /**
    * Internal batch manager.
    */
@@ -40,10 +43,10 @@ export class Renderer2D extends Group {
    */
   autoSort: boolean
 
-  constructor(options: Renderer2DOptions = {}) {
+  constructor(options: SpriteGroupOptions = {}) {
     super()
 
-    this.name = 'Renderer2D'
+    this.name = 'SpriteGroup'
     this.frustumCulled = false
 
     const maxBatchSize = options.maxBatchSize ?? DEFAULT_BATCH_SIZE
@@ -221,3 +224,9 @@ export class Renderer2D extends Group {
     this._batchManager.dispose()
   }
 }
+
+/**
+ * @deprecated Use SpriteGroup instead. Renderer2D is an alias for backwards compatibility.
+ */
+export const Renderer2D = SpriteGroup
+export type Renderer2D = SpriteGroup

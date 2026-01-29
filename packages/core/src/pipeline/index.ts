@@ -1,5 +1,5 @@
 // Pipeline exports
-export { Renderer2D } from './Renderer2D'
+export { SpriteGroup, Renderer2D } from './SpriteGroup'
 export { BatchManager } from './BatchManager'
 export { SpriteBatch, DEFAULT_BATCH_SIZE } from './SpriteBatch'
 export { LayerManager, Layer } from './LayerManager'
@@ -12,6 +12,7 @@ export type {
   InstanceAttributeConfig,
   LayerConfig,
   RenderStats,
+  SpriteGroupOptions,
   Renderer2DOptions,
   SpriteSortFunction,
   BatchKey,

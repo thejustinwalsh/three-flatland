@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>2D Lighting - three-flatland</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        overflow: hidden;
+        background: #000;
+        font-family:
+          -apple-system,
+          BlinkMacSystemFont,
+          'Segoe UI',
+          Roboto,
+          sans-serif;
+      }
+      canvas {
+        display: block;
+      }
+      #ui {
+        position: fixed;
+        top: 20px;
+        left: 20px;
+        color: white;
+        z-index: 100;
+        user-select: none;
+      }
+      #info {
+        font-size: 14px;
+        font-weight: bold;
+        margin-bottom: 12px;
+        text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+      }
+      .controls {
+        font-size: 12px;
+        color: rgba(255, 255, 255, 0.7);
+        line-height: 1.6;
+      }
+      .controls kbd {
+        background: rgba(255, 255, 255, 0.15);
+        padding: 2px 6px;
+        border-radius: 3px;
+        font-family: monospace;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="ui">
+      <div id="info">Dungeon Torchlight</div>
+      <div class="controls">
+        <kbd>Click + Drag</kbd> Move torches<br />
+        <kbd>1</kbd> Toggle Torch 1<br />
+        <kbd>2</kbd> Toggle Torch 2<br />
+        <kbd>Up/Down</kbd> Adjust ambient
+      </div>
+    </div>
+    <script type="module" src="/main.ts"></script>
+  </body>
+</html>
