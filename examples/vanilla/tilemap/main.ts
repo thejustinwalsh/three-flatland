@@ -13,6 +13,7 @@ import {
   Vector3,
 } from 'three'
 import { TileMap2D, type TileMapData, type TilesetData, type TileLayerData } from '@three-flatland/core'
+import { createGui } from '@three-flatland/debug/gui'
 
 // Tile IDs for our procedural tileset
 const TILES = {
@@ -104,6 +105,14 @@ function createProceduralTileset(tileSize: number, columns: number, rows: number
   return texture
 }
 
+// Density presets for BSP dungeon generation
+const DENSITY_PRESETS: Record<string, { minPartition: number; roomPadding: number; minRoom: number }> = {
+  sparse: { minPartition: 28, roomPadding: 4, minRoom: 10 },
+  normal: { minPartition: 20, roomPadding: 3, minRoom: 8 },
+  dense: { minPartition: 14, roomPadding: 2, minRoom: 6 },
+  packed: { minPartition: 10, roomPadding: 1, minRoom: 4 },
+}
+
 /**
  * BSP Node for dungeon generation
  */
@@ -119,9 +128,8 @@ interface BSPNode {
 
 /**
  * Generate a procedural dungeon using BSP (Binary Space Partitioning).
- * Creates a more structured, interconnected dungeon layout.
  */
-function generateDungeon(width: number, height: number): {
+function generateDungeon(width: number, height: number, density: string): {
   ground: Uint32Array
   walls: Uint32Array
   decor: Uint32Array
@@ -130,9 +138,10 @@ function generateDungeon(width: number, height: number): {
   const walls = new Uint32Array(width * height)
   const decor = new Uint32Array(width * height)
 
-  const MIN_PARTITION_SIZE = 20
-  const MIN_ROOM_SIZE = 8
-  const ROOM_PADDING = 3
+  const preset = DENSITY_PRESETS[density] ?? DENSITY_PRESETS['normal']!
+  const MIN_PARTITION_SIZE = preset.minPartition
+  const MIN_ROOM_SIZE = preset.minRoom
+  const ROOM_PADDING = preset.roomPadding
   const CORRIDOR_WIDTH = 2
 
   // BSP split function
@@ -406,10 +415,19 @@ function createTileMapData(
   }
 }
 
+// Debug panel
+const gui = createGui('Tilemap', {
+  mapSize: { value: 512, options: { Small: 128, Medium: 512, Large: 1024, Mega: 2048 } },
+  chunkSize: { value: 256, options: [256, 512, 1024, 2048] },
+  density: { value: 'normal', options: { Sparse: 'sparse', Normal: 'normal', Dense: 'dense', Packed: 'packed' } },
+  seed: { value: 42, min: 0, max: 999999, step: 1 },
+  showGround: true,
+  showWalls: true,
+  showDecor: true,
+  regenerate: { type: 'button' },
+})
+
 async function main() {
-  // Configuration
-  const MAP_WIDTH = 256
-  const MAP_HEIGHT = 256
   const TILE_SIZE = 16
   const TILESET_COLUMNS = 4
   const TILESET_ROWS = 4
@@ -418,7 +436,7 @@ async function main() {
   const scene = new Scene()
   scene.background = new Color(0x0a0a12)
 
-  // Orthographic camera - larger frustum for big maps
+  // Orthographic camera
   const frustumSize = 800
   const aspect = window.innerWidth / window.innerHeight
   const camera = new OrthographicCamera(
@@ -430,9 +448,6 @@ async function main() {
     1000
   )
   camera.position.z = 100
-  // Center camera on map
-  camera.position.x = (MAP_WIDTH * TILE_SIZE) / 2
-  camera.position.y = (MAP_HEIGHT * TILE_SIZE) / 2
 
   // WebGPU Renderer
   const renderer = new WebGPURenderer({ antialias: false })
@@ -458,61 +473,72 @@ async function main() {
     texture: tilesetTexture,
   }
 
-  // Generate dungeon
-  let dungeonLayers = generateDungeon(MAP_WIDTH, MAP_HEIGHT)
-  let mapData = createTileMapData(MAP_WIDTH, MAP_HEIGHT, TILE_SIZE, tilesetData, dungeonLayers)
+  // Build tilemap from current gui state
+  function buildTilemap(): TileMap2D {
+    const mapSize = gui.get('mapSize')
+    const density = gui.get('density')
+    const dungeonLayers = generateDungeon(mapSize, mapSize, density)
+    const chunkSize = gui.get('chunkSize')
+    const mapData = createTileMapData(mapSize, mapSize, TILE_SIZE, tilesetData, dungeonLayers)
+    const tm = new TileMap2D({ data: mapData, chunkSize })
 
-  // Create tilemap
-  let tilemap = new TileMap2D({ data: mapData, chunkSize: 16 })
+    // Apply current layer visibility
+    const groundLayer = tm.getLayerAt(0)
+    const wallsLayer = tm.getLayerAt(1)
+    const decorLayer = tm.getLayerAt(2)
+    if (groundLayer) groundLayer.visible = gui.get('showGround')
+    if (wallsLayer) wallsLayer.visible = gui.get('showWalls')
+    if (decorLayer) decorLayer.visible = gui.get('showDecor')
+
+    return tm
+  }
+
+  // Initial build
+  let tilemap = buildTilemap()
   scene.add(tilemap)
 
-  // UI elements
-  const mapSizeEl = document.getElementById('map-size')!
-  const tileCountEl = document.getElementById('tile-count')!
-  const chunkCountEl = document.getElementById('chunk-count')!
-  const layerCountEl = document.getElementById('layer-count')!
-  const fpsEl = document.getElementById('fps')!
+  // Center camera on map
+  const initialSize = gui.get('mapSize')
+  camera.position.x = (initialSize * TILE_SIZE) / 2
+  camera.position.y = (initialSize * TILE_SIZE) / 2
 
-  // Layer toggle buttons
-  const layerButtons = [
-    document.getElementById('btn-layer-0')!,
-    document.getElementById('btn-layer-1')!,
-    document.getElementById('btn-layer-2')!,
-  ]
-
-  layerButtons.forEach((btn, i) => {
-    btn.addEventListener('click', () => {
-      const layer = tilemap.getLayerAt(i)
-      if (layer) {
-        layer.visible = !layer.visible
-        btn.classList.toggle('active', layer.visible)
-      }
-    })
-  })
-
-  // Regenerate button
-  const regenBtn = document.getElementById('btn-regen')!
-  regenBtn.addEventListener('click', () => {
+  // Rebuild tilemap (on map size, density, or seed change)
+  function rebuildTilemap() {
     scene.remove(tilemap)
     tilemap.dispose()
-
-    dungeonLayers = generateDungeon(MAP_WIDTH, MAP_HEIGHT)
-    mapData = createTileMapData(MAP_WIDTH, MAP_HEIGHT, TILE_SIZE, tilesetData, dungeonLayers)
-    tilemap = new TileMap2D({ data: mapData, chunkSize: 16 })
+    tilemap = buildTilemap()
     scene.add(tilemap)
 
-    // Reset layer button states
-    layerButtons.forEach((btn) => btn.classList.add('active'))
+    // Re-center camera
+    const mapSize = gui.get('mapSize')
+    camera.position.x = (mapSize * TILE_SIZE) / 2
+    camera.position.y = (mapSize * TILE_SIZE) / 2
+
+    updateStats()
+  }
+
+  // Subscribe to gui changes
+  gui.on('mapSize', () => rebuildTilemap())
+  gui.on('chunkSize', () => rebuildTilemap())
+  gui.on('density', () => rebuildTilemap())
+  gui.on('seed', () => rebuildTilemap())
+
+  gui.on('showGround', (visible) => {
+    const layer = tilemap.getLayerAt(0)
+    if (layer) layer.visible = visible
+  })
+  gui.on('showWalls', (visible) => {
+    const layer = tilemap.getLayerAt(1)
+    if (layer) layer.visible = visible
+  })
+  gui.on('showDecor', (visible) => {
+    const layer = tilemap.getLayerAt(2)
+    if (layer) layer.visible = visible
   })
 
-  // Update stats
-  function updateStats() {
-    mapSizeEl.textContent = `${MAP_WIDTH}x${MAP_HEIGHT}`
-    tileCountEl.textContent = String(tilemap.totalTileCount)
-    chunkCountEl.textContent = String(tilemap.totalChunkCount)
-    layerCountEl.textContent = String(tilemap.layerCount)
-  }
-  updateStats()
+  gui.on('regenerate', () => {
+    gui.store.setState({ seed: Math.floor(Math.random() * 999999) })
+  })
 
   // Camera controls
   const keys = new Set<string>()
@@ -547,12 +573,10 @@ async function main() {
     const dy = e.clientY - dragStart.y
     dragDistance = Math.sqrt(dx * dx + dy * dy)
 
-    // Show move cursor once we start dragging
     if (dragDistance > 3) {
       renderer.domElement.style.cursor = 'move'
     }
 
-    // Convert screen pixels to world units based on zoom
     const worldPerPixel = (frustumSize * zoom) / window.innerHeight
     camera.position.x = cameraStart.x - dx * worldPerPixel
     camera.position.y = cameraStart.y + dy * worldPerPixel
@@ -570,7 +594,6 @@ async function main() {
   const intersection = new Vector3()
 
   renderer.domElement.addEventListener('click', (e) => {
-    // Ignore clicks that were actually drags
     if (dragDistance > 5) return
 
     mouse.x = (e.clientX / window.innerWidth) * 2 - 1
@@ -579,16 +602,13 @@ async function main() {
     raycaster.setFromCamera(mouse, camera)
     raycaster.ray.intersectPlane(plane, intersection)
 
-    // Convert to tile coordinates
     const tilePos = tilemap.worldToTile(intersection.x, intersection.y)
 
-    // Toggle decoration layer tile
     const decorLayer = tilemap.getLayerAt(2)
     if (decorLayer) {
       const currentTile = decorLayer.getTileAt(tilePos.x, tilePos.y)
       const newTile = currentTile === 0 ? TILES.TORCH : 0
       decorLayer.setTileAt(tilePos.x, tilePos.y, newTile)
-      updateStats()
     }
   })
 
@@ -602,6 +622,19 @@ async function main() {
     camera.updateProjectionMatrix()
     renderer.setSize(window.innerWidth, window.innerHeight)
   })
+
+  // Stats elements
+  const fpsEl = document.getElementById('fps')!
+  const tileCountEl = document.getElementById('tile-count')!
+  const chunkCountEl = document.getElementById('chunk-count')!
+  const layerCountEl = document.getElementById('layer-count')!
+
+  function updateStats() {
+    tileCountEl.textContent = String(tilemap.totalTileCount)
+    chunkCountEl.textContent = String(tilemap.totalChunkCount)
+    layerCountEl.textContent = String(tilemap.layerCount)
+  }
+  updateStats()
 
   // Animation loop
   let lastTime = performance.now()

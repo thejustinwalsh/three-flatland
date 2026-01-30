@@ -1,6 +1,7 @@
 import { Group, Box3, Vector3 } from 'three'
 import { Tileset } from './Tileset'
 import { TileLayer } from './TileLayer'
+import type { Sprite2DMaterial } from '../materials/Sprite2DMaterial'
 import type {
   TileMapData,
   TileMap2DOptions,
@@ -60,8 +61,8 @@ export class TileMap2D extends Group {
   private _widthInPixels: number = 0
   private _heightInPixels: number = 0
 
-  /** Chunk size */
-  private _chunkSize: number = 16
+  /** Chunk size in tiles (default: 512) */
+  private _chunkSize: number = 512
 
   /** Enable collision extraction */
   private _enableCollision: boolean = true
@@ -124,7 +125,9 @@ export class TileMap2D extends Group {
   }
 
   /**
-   * Get/set chunk size.
+   * Get/set chunk size in tiles (default: 512).
+   * Each layer is split into chunks of chunkSize×chunkSize tiles for frustum culling.
+   * Maps smaller than chunkSize naturally use a single chunk per layer.
    */
   get chunkSize(): number {
     return this._chunkSize
@@ -518,7 +521,7 @@ export class TileMap2D extends Group {
   }
 
   /**
-   * Get total chunk count across all layers.
+   * Get total chunk count across all layers (equals total draw calls for tiles).
    */
   get totalChunkCount(): number {
     return this.tileLayers.reduce((sum, layer) => sum + layer.chunkCount, 0)
@@ -529,6 +532,22 @@ export class TileMap2D extends Group {
    */
   get totalTileCount(): number {
     return this.tileLayers.reduce((sum, layer) => sum + layer.tileCount, 0)
+  }
+
+  /**
+   * Get the Sprite2DMaterial for a tile layer by name.
+   * Use this to apply TSL effects or lighting to specific layers.
+   */
+  getLayerMaterial(name: string): Sprite2DMaterial | undefined {
+    return this.tileLayers.find((l) => l.name === name)?.material
+  }
+
+  /**
+   * Get the Sprite2DMaterial for a tile layer by index.
+   * Use this to apply TSL effects or lighting to specific layers.
+   */
+  getLayerMaterialAt(index: number): Sprite2DMaterial | undefined {
+    return this.tileLayers[index]?.material
   }
 
   /**

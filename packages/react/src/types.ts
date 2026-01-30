@@ -9,8 +9,6 @@ import type {
   Renderer2D,
   TileMap2D,
   TileLayer,
-  TileChunk,
-  TileChunkMaterial,
 } from '@three-flatland/core'
 
 /**
@@ -79,7 +77,5 @@ declare module '@react-three/fiber' {
     renderer2D: ThreeElement<typeof Renderer2D>
     tileMap2D: ThreeElement<typeof TileMap2D>
     tileLayer: ThreeElement<typeof TileLayer>
-    tileChunk: ThreeElement<typeof TileChunk>
-    tileChunkMaterial: ThreeElement<typeof TileChunkMaterial>
   }
 }

@@ -11,7 +11,10 @@
   "dependencies": {
     "@react-three/fiber": "catalog:",
     "@three-flatland/core": "workspace:*",
+    "@three-flatland/debug": "workspace:*",
     "@three-flatland/react": "workspace:*",
+    "lil-gui": "catalog:",
+    "zustand": "catalog:",
     "react": "catalog:",
     "react-dom": "catalog:",
     "three": "catalog:"

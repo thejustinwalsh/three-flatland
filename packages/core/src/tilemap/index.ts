@@ -1,8 +1,6 @@
 export { TileMap2D } from './TileMap2D'
 export { Tileset } from './Tileset'
 export { TileLayer } from './TileLayer'
-export { TileChunk } from './TileChunk'
-export { TileChunkMaterial } from './TileChunkMaterial'
 export { TiledLoader } from './TiledLoader'
 export type { TiledLoaderOptions } from './TiledLoader'
 export { LDtkLoader } from './LDtkLoader'
@@ -20,5 +18,4 @@ export type {
   CollisionShape,
   ChunkCoord,
   TileInstance,
-  TileChunkOptions,
 } from './types'

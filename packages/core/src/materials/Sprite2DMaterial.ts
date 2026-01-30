@@ -1,12 +1,28 @@
 import { MeshBasicNodeMaterial } from 'three/webgpu'
 import { attribute, texture, uv, vec2, vec4, float, Fn, If, Discard, select } from 'three/tsl'
-import { type Texture, FrontSide, NormalBlending } from 'three'
+import {
+  type Texture,
+  FrontSide,
+  NormalBlending,
+  CustomBlending,
+  OneFactor,
+  OneMinusSrcAlphaFactor,
+} from 'three'
 import type { InstanceAttributeConfig, InstanceAttributeType } from '../pipeline/types'
 
 export interface Sprite2DMaterialOptions {
   map?: Texture
   transparent?: boolean
   alphaTest?: number
+  /**
+   * Use premultiplied alpha blending.
+   * When true, the shader outputs `vec4(rgb * alpha, alpha)` and uses
+   * `CustomBlending` with `OneFactor` / `OneMinusSrcAlphaFactor`.
+   * This eliminates `Discard()` calls, improving performance on WebGL
+   * by preserving early-z optimization. Depth writes are disabled since
+   * transparent pixels produce (0,0,0,0) which blends to nothing.
+   */
+  premultipliedAlpha?: boolean
 }
 
 // Global material ID counter for batching
@@ -33,6 +49,7 @@ export class Sprite2DMaterial extends MeshBasicNodeMaterial {
   readonly batchId: number
 
   private _spriteTexture: Texture | null = null
+  private _premultipliedAlpha: boolean = false
 
   /**
    * Custom instance attribute schema.
@@ -45,13 +62,22 @@ export class Sprite2DMaterial extends MeshBasicNodeMaterial {
 
     this.batchId = nextMaterialId++
 
+    this._premultipliedAlpha = options.premultipliedAlpha ?? false
     this.transparent = options.transparent ?? true
-    // Enable depth write by default for proper zIndex sorting within batches
-    // The batch system automatically sets Z position based on layer/zIndex
-    this.depthWrite = true
     this.depthTest = true
     this.side = FrontSide
-    this.blending = NormalBlending
+
+    if (this._premultipliedAlpha) {
+      // Premultiplied alpha: transparent pixels produce (0,0,0,0) which blends to nothing
+      this.blending = CustomBlending
+      this.blendSrc = OneFactor
+      this.blendDst = OneMinusSrcAlphaFactor
+      this.depthWrite = false
+    } else {
+      // Standard blending with depth write for proper zIndex sorting within batches
+      this.blending = NormalBlending
+      this.depthWrite = true
+    }
 
     if (options.map) {
       this.setTexture(options.map)
@@ -87,16 +113,22 @@ export class Sprite2DMaterial extends MeshBasicNodeMaterial {
       // Sample texture
       const texColor = texture(mapTexture, atlasUV)
 
-      // Alpha test - discard fully transparent pixels
+      // Apply instance color (tint) and alpha
+      const finalAlpha = texColor.a.mul(instanceColor.a)
+
+      if (this._premultipliedAlpha) {
+        // Premultiplied alpha: RGB is pre-multiplied by alpha
+        // Transparent pixels produce (0,0,0,0) which blends to nothing
+        // No Discard() needed — preserves early-z on WebGL
+        return vec4(texColor.rgb.mul(instanceColor.rgb).mul(finalAlpha), finalAlpha)
+      }
+
+      // Standard path: discard fully transparent pixels
       If(texColor.a.lessThan(float(0.01)), () => {
         Discard()
       })
 
-      // Apply instance color (tint) and alpha
-      return vec4(
-        texColor.rgb.mul(instanceColor.rgb),
-        texColor.a.mul(instanceColor.a)
-      )
+      return vec4(texColor.rgb.mul(instanceColor.rgb), finalAlpha)
     })()
   }
 
@@ -220,6 +252,7 @@ export class Sprite2DMaterial extends MeshBasicNodeMaterial {
       map: this._spriteTexture ?? undefined,
       transparent: this.transparent,
       alphaTest: this.alphaTest,
+      premultipliedAlpha: this._premultipliedAlpha,
     }) as this
 
     // Copy instance attributes

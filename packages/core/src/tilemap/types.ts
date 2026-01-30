@@ -1,5 +1,4 @@
 import type { Texture } from 'three'
-import type { Tileset } from './Tileset'
 
 /**
  * A single tile definition in a tileset.
@@ -180,7 +179,7 @@ export interface TileMapData {
 export interface TileMap2DOptions {
   /** Tilemap data */
   data?: TileMapData
-  /** Chunk size in tiles (default: 16) */
+  /** Chunk size in tiles for frustum culling (default: 256) */
   chunkSize?: number
   /** Enable collision data extraction (default: true) */
   enableCollision?: boolean
@@ -215,33 +214,13 @@ export interface TileInstance {
 }
 
 /**
- * TileChunk options.
- */
-export interface TileChunkOptions {
-  /** Chunk coordinates */
-  coord: ChunkCoord
-  /** Chunk size in tiles */
-  size: number
-  /** Tile width in pixels */
-  tileWidth: number
-  /** Tile height in pixels */
-  tileHeight: number
-  /** Tileset for this chunk */
-  tileset: Tileset
-}
-
-/**
  * TileLayer options.
  */
 export interface TileLayerOptions {
   /** Layer data */
   data: TileLayerData
-  /** Tileset for this layer */
-  tileset: Tileset
   /** Tile width in pixels */
   tileWidth: number
   /** Tile height in pixels */
   tileHeight: number
-  /** Chunk size in tiles (default: 16) */
-  chunkSize?: number
 }

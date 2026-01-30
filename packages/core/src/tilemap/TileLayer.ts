@@ -1,13 +1,31 @@
-import { Group } from 'three'
-import { TileChunk } from './TileChunk'
+import {
+  Group,
+  InstancedMesh,
+  PlaneGeometry,
+  InstancedBufferAttribute,
+  DynamicDrawUsage,
+  Matrix4,
+  Vector3,
+} from 'three'
+import { Sprite2DMaterial } from '../materials/Sprite2DMaterial'
 import type { Tileset } from './Tileset'
-import type { TileLayerData, TileInstance, ChunkCoord } from './types'
+import type { TileLayerData } from './types'
+
+/** Internal per-chunk data */
+interface ChunkData {
+  mesh: InstancedMesh
+  instanceUV: Float32Array
+  instanceColor: Float32Array
+  instanceFlip: Float32Array
+  instanceCount: number
+}
 
 /**
  * A layer of tiles in a tilemap.
  *
- * Manages chunked rendering and animated tiles. Each layer is a Three.js Group
- * containing TileChunk meshes for efficient rendering.
+ * Splits tiles into regional chunks for frustum culling, each rendered as a
+ * single InstancedMesh with Sprite2DMaterial. Maps up to chunkSize×chunkSize
+ * tiles naturally collapse into one chunk (one draw call).
  *
  * @example
  * ```typescript
@@ -16,35 +34,49 @@ import type { TileLayerData, TileInstance, ChunkCoord } from './types'
  *   tileset,
  *   16, // tileWidth
  *   16, // tileHeight
- *   16  // chunkSize
  * )
  *
  * scene.add(layer)
  *
  * // In update loop
  * layer.update(deltaMs)
+ *
+ * // Access material for effects
+ * layer.material.colorNode = myCustomEffect
  * ```
  */
 export class TileLayer extends Group {
   /** Layer data */
   readonly data: TileLayerData
 
-  /** Chunk size in tiles */
-  readonly chunkSize: number
-
   /** Tile dimensions */
   readonly tileWidth: number
   readonly tileHeight: number
 
-  /** Chunks (keyed by "x,y") */
-  private chunks: Map<string, TileChunk> = new Map()
+  /** Chunk size in tiles (e.g., 256 means 256×256 tiles per chunk) */
+  readonly chunkSize: number
+
+  /** The Sprite2DMaterial used for rendering (apply effects here) */
+  readonly material: Sprite2DMaterial
 
   /** Tileset reference */
   private tileset: Tileset
 
+  /** Chunks keyed by "cx,cy" */
+  private chunks: Map<string, ChunkData> = new Map()
+
+  /** Total instance count across all chunks */
+  private _totalInstanceCount: number = 0
+
+  /**
+   * Maps data array index -> { chunkKey, instanceIndex }.
+   * Only non-empty tiles have entries.
+   */
+  private tileIndexMap: Map<number, { chunkKey: string; instanceIndex: number }> = new Map()
+
   /**
    * Animated tile tracking.
-   * Maps tile array index to animation data.
+   * Maps tile data array index to animation data.
    */
   private animatedTilePositions: Map<
     number,
@@ -52,19 +84,23 @@ export class TileLayer extends Group {
       gid: number
       baseGid: number
       chunkKey: string
-      index: number
+      instanceIndex: number
     }
   > = new Map()
 
   /** Animation state (keyed by base GID) */
   private animationTimers: Map<number, { elapsed: number; frameIndex: number }> = new Map()
 
+  /** Reusable matrix for transforms */
+  private static tempMatrix = new Matrix4()
+  private static tempScale = new Vector3()
+
   constructor(
     data: TileLayerData,
     tileset: Tileset,
     tileWidth: number,
     tileHeight: number,
-    chunkSize: number = 16
+    chunkSize: number = 256
   ) {
     super()
 
@@ -81,104 +117,191 @@ export class TileLayer extends Group {
       this.position.set(data.offset.x, data.offset.y, 0)
     }
 
-    if (data.opacity !== undefined) {
-      // Opacity would need to be applied to material
-      // For now, we don't support per-layer opacity
-    }
+    // Create material with premultiplied alpha (no Discard needed)
+    this.material = new Sprite2DMaterial({
+      map: tileset.texture ?? undefined,
+      premultipliedAlpha: true,
+    })
 
-    // Build chunks from tile data
-    this.buildChunks()
+    // Build chunked instanced meshes from tile data
+    this.buildInstances()
   }
 
   /**
-   * Build chunks from tile data.
+   * Build chunked instanced meshes from tile data.
    */
-  private buildChunks(): void {
+  private buildInstances(): void {
+    // Dispose existing chunks
+    for (const chunk of this.chunks.values()) {
+      this.remove(chunk.mesh)
+      chunk.mesh.geometry.dispose()
+    }
+    this.chunks.clear()
+    this.tileIndexMap.clear()
+    this.animatedTilePositions.clear()
+    this.animationTimers.clear()
+    this._totalInstanceCount = 0
+
     const { width, height, data } = this.data
 
     // Group tiles by chunk
-    const chunkTiles = new Map<string, TileInstance[]>()
+    const chunkTiles = new Map<
+      string,
+      Array<{
+        dataIndex: number
+        x: number
+        y: number
+        gid: number
+        flipH: boolean
+        flipV: boolean
+        flipD: boolean
+      }>
+    >()
 
     for (let y = 0; y < height; y++) {
       for (let x = 0; x < width; x++) {
         const index = y * width + x
         const rawGid = data[index]!
-
-        // Skip empty tiles
         if (rawGid === 0) continue
 
-        // Extract flip flags (stored in high bits per Tiled format)
         const flipH = (rawGid & 0x80000000) !== 0
         const flipV = (rawGid & 0x40000000) !== 0
         const flipD = (rawGid & 0x20000000) !== 0
         const gid = rawGid & 0x1fffffff
 
-        // Calculate chunk coordinates
-        const chunkX = Math.floor(x / this.chunkSize)
-        const chunkY = Math.floor(y / this.chunkSize)
-        const chunkKey = `${chunkX},${chunkY}`
-
-        // Calculate world position (Y-up, so we flip Y from Tiled's Y-down)
+        // World position (Y-up, Tiled is Y-down)
         const worldX = x * this.tileWidth
         const worldY = (height - 1 - y) * this.tileHeight
 
-        const tile: TileInstance = {
+        const cx = Math.floor(x / this.chunkSize)
+        const cy = Math.floor(y / this.chunkSize)
+        const chunkKey = `${cx},${cy}`
+
+        if (!chunkTiles.has(chunkKey)) {
+          chunkTiles.set(chunkKey, [])
+        }
+        chunkTiles.get(chunkKey)!.push({
+          dataIndex: index,
           x: worldX,
           y: worldY,
           gid,
           flipH,
           flipV,
           flipD,
-        }
-
-        if (!chunkTiles.has(chunkKey)) {
-          chunkTiles.set(chunkKey, [])
-        }
-        chunkTiles.get(chunkKey)!.push(tile)
-
-        // Track animated tiles
-        if (this.tileset.isAnimated(gid)) {
-          const animation = this.tileset.getAnimation(gid)!
-          const tileIndex = chunkTiles.get(chunkKey)!.length - 1
-
-          this.animatedTilePositions.set(index, {
-            gid: animation[0]!.tileId + this.tileset.firstGid,
-            baseGid: gid,
-            chunkKey,
-            index: tileIndex,
-          })
-
-          // Initialize animation timer
-          if (!this.animationTimers.has(gid)) {
-            this.animationTimers.set(gid, { elapsed: 0, frameIndex: 0 })
-          }
-        }
+        })
       }
     }
 
-    // Create chunks (adjust Y for Y-up coordinate system)
-    for (const [key, tiles] of chunkTiles) {
-      const [cx, cy] = key.split(',').map(Number) as [number, number]
+    // Create an InstancedMesh per chunk
+    for (const [chunkKey, tiles] of chunkTiles) {
+      const count = tiles.length
 
-      // Convert chunk Y to world space (flip)
-      const maxChunkY = Math.ceil(this.data.height / this.chunkSize) - 1
-      const worldChunkY = maxChunkY - cy
+      // Allocate buffers
+      const instanceUV = new Float32Array(count * 4)
+      const instanceColor = new Float32Array(count * 4)
+      const instanceFlip = new Float32Array(count * 2)
 
-      const coord: ChunkCoord = { x: cx, y: worldChunkY }
+      // Create geometry with instance attributes
+      const geometry = new PlaneGeometry(1, 1)
 
-      const chunk = new TileChunk(
-        coord,
-        this.chunkSize,
-        this.tileWidth,
-        this.tileHeight,
-        this.tileset
-      )
+      const uvAttr = new InstancedBufferAttribute(instanceUV, 4)
+      uvAttr.setUsage(DynamicDrawUsage)
+      geometry.setAttribute('instanceUV', uvAttr)
 
-      chunk.setTiles(tiles, this.tileset)
-      chunk.upload()
+      const colorAttr = new InstancedBufferAttribute(instanceColor, 4)
+      colorAttr.setUsage(DynamicDrawUsage)
+      geometry.setAttribute('instanceColor', colorAttr)
 
-      this.chunks.set(key, chunk)
-      this.add(chunk.mesh)
+      const flipAttr = new InstancedBufferAttribute(instanceFlip, 2)
+      flipAttr.setUsage(DynamicDrawUsage)
+      geometry.setAttribute('instanceFlip', flipAttr)
+
+      // Track bounds for frustum culling
+      let minX = Infinity
+      let minY = Infinity
+      let maxX = -Infinity
+      let maxY = -Infinity
+
+      // Populate buffers
+      for (let i = 0; i < count; i++) {
+        const tile = tiles[i]!
+
+        // Map data index -> chunk location
+        this.tileIndexMap.set(tile.dataIndex, { chunkKey, instanceIndex: i })
+
+        // UV with Y-correction: Tiled Y-down -> Three.js Y-up
+        const uv = this.tileset.getUV(tile.gid)
+        instanceUV[i * 4 + 0] = uv.x
+        instanceUV[i * 4 + 1] = uv.y + uv.height // bottom of tile in atlas
+        instanceUV[i * 4 + 2] = uv.width
+        instanceUV[i * 4 + 3] = -uv.height // negative = Y-flip correction
+
+        // Color: white, fully opaque
+        instanceColor[i * 4 + 0] = 1
+        instanceColor[i * 4 + 1] = 1
+        instanceColor[i * 4 + 2] = 1
+        instanceColor[i * 4 + 3] = 1
+
+        // Flip via instanceFlip attribute
+        instanceFlip[i * 2 + 0] = tile.flipH ? -1 : 1
+        instanceFlip[i * 2 + 1] = tile.flipV ? -1 : 1
+
+        // Expand bounds
+        minX = Math.min(minX, tile.x)
+        minY = Math.min(minY, tile.y)
+        maxX = Math.max(maxX, tile.x + this.tileWidth)
+        maxY = Math.max(maxY, tile.y + this.tileHeight)
+
+        // Track animated tiles
+        if (this.tileset.isAnimated(tile.gid)) {
+          const animation = this.tileset.getAnimation(tile.gid)!
+          this.animatedTilePositions.set(tile.dataIndex, {
+            gid: animation[0]!.tileId + this.tileset.firstGid,
+            baseGid: tile.gid,
+            chunkKey,
+            instanceIndex: i,
+          })
+
+          if (!this.animationTimers.has(tile.gid)) {
+            this.animationTimers.set(tile.gid, { elapsed: 0, frameIndex: 0 })
+          }
+        }
+      }
+
+      // Create instanced mesh
+      const mesh = new InstancedMesh(geometry, this.material, count)
+      mesh.frustumCulled = true
+      mesh.count = count
+
+      // Set instance matrices
+      for (let i = 0; i < count; i++) {
+        const tile = tiles[i]!
+        TileLayer.tempMatrix.identity()
+        TileLayer.tempMatrix.makeTranslation(
+          tile.x + this.tileWidth / 2,
+          tile.y + this.tileHeight / 2,
+          0
+        )
+        TileLayer.tempScale.set(this.tileWidth, this.tileHeight, 1)
+        TileLayer.tempMatrix.scale(TileLayer.tempScale)
+        mesh.setMatrixAt(i, TileLayer.tempMatrix)
+      }
+      mesh.instanceMatrix.needsUpdate = true
+
+      // Compute bounding sphere from instance matrices for frustum culling.
+      // Must be set on the mesh (not geometry) — InstancedMesh.boundingSphere
+      // takes priority over geometry.boundingSphere in Frustum.intersectsObject().
+      mesh.computeBoundingSphere()
+
+      this.chunks.set(chunkKey, {
+        mesh,
+        instanceUV,
+        instanceColor,
+        instanceFlip,
+        instanceCount: count,
+      })
+      this.add(mesh)
+      this._totalInstanceCount += count
     }
   }
 
@@ -207,8 +330,8 @@ export class TileLayer extends Group {
 
     if (changedGids.size === 0) return
 
-    // Group updates by chunk
-    const chunkUpdates = new Map<string, Map<number, { gid: number; index: number }>>()
+    // Track which chunks need UV update
+    const dirtyChunks = new Set<string>()
 
     for (const [, data] of this.animatedTilePositions) {
       if (!changedGids.has(data.baseGid)) continue
@@ -217,23 +340,25 @@ export class TileLayer extends Group {
       const animation = this.tileset.getAnimation(data.baseGid)!
       const newGid = animation[timer.frameIndex]!.tileId + this.tileset.firstGid
 
-      if (!chunkUpdates.has(data.chunkKey)) {
-        chunkUpdates.set(data.chunkKey, new Map())
-      }
-      chunkUpdates.get(data.chunkKey)!.set(data.index, {
-        gid: newGid,
-        index: data.index,
-      })
+      const chunk = this.chunks.get(data.chunkKey)
+      if (!chunk) continue
+
+      const i = data.instanceIndex
+      const uv = this.tileset.getUV(newGid)
+      chunk.instanceUV[i * 4 + 0] = uv.x
+      chunk.instanceUV[i * 4 + 1] = uv.y + uv.height
+      chunk.instanceUV[i * 4 + 2] = uv.width
+      chunk.instanceUV[i * 4 + 3] = -uv.height
 
       data.gid = newGid
+      dirtyChunks.add(data.chunkKey)
     }
 
-    // Apply updates to chunks
-    for (const [chunkKey, updates] of chunkUpdates) {
+    for (const chunkKey of dirtyChunks) {
       const chunk = this.chunks.get(chunkKey)
       if (chunk) {
-        chunk.updateAnimatedTiles(updates, this.tileset)
-        chunk.upload()
+        const uvAttr = chunk.mesh.geometry.getAttribute('instanceUV') as InstancedBufferAttribute
+        uvAttr.needsUpdate = true
       }
     }
   }
@@ -252,6 +377,8 @@ export class TileLayer extends Group {
 
   /**
    * Set tile GID at position (in tiles).
+   * For changes between non-zero values, updates in-place.
+   * For add/remove (0 <-> non-zero), rebuilds the entire layer.
    */
   setTileAt(tileX: number, tileY: number, gid: number): void {
     const { width, height, data } = this.data
@@ -260,83 +387,37 @@ export class TileLayer extends Group {
     }
 
     const index = tileY * width + tileX
+    const oldRawGid = data[index] ?? 0
+    const oldGid = oldRawGid & 0x1fffffff
+
+    // Update the data array
     data[index] = gid
 
-    // Rebuild affected chunk
-    const chunkX = Math.floor(tileX / this.chunkSize)
-    const chunkY = Math.floor(tileY / this.chunkSize)
-    this.rebuildChunk(chunkX, chunkY)
-  }
+    const mapping = this.tileIndexMap.get(index)
 
-  /**
-   * Rebuild a specific chunk.
-   */
-  private rebuildChunk(chunkX: number, chunkY: number): void {
-    const chunkKey = `${chunkX},${chunkY}`
-    const { width, height, data } = this.data
+    if (oldGid !== 0 && gid !== 0 && mapping) {
+      // Non-zero -> non-zero: update UV in-place within the chunk
+      const chunk = this.chunks.get(mapping.chunkKey)
+      if (!chunk) return
 
-    // Gather tiles for this chunk
-    const tiles: TileInstance[] = []
-    const startX = chunkX * this.chunkSize
-    const startY = chunkY * this.chunkSize
-    const endX = Math.min(startX + this.chunkSize, width)
-    const endY = Math.min(startY + this.chunkSize, height)
+      const i = mapping.instanceIndex
+      const uv = this.tileset.getUV(gid)
+      chunk.instanceUV[i * 4 + 0] = uv.x
+      chunk.instanceUV[i * 4 + 1] = uv.y + uv.height
+      chunk.instanceUV[i * 4 + 2] = uv.width
+      chunk.instanceUV[i * 4 + 3] = -uv.height
 
-    for (let y = startY; y < endY; y++) {
-      for (let x = startX; x < endX; x++) {
-        const index = y * width + x
-        const rawGid = data[index]!
+      // Reset flip for newly set tiles
+      chunk.instanceFlip[i * 2 + 0] = 1
+      chunk.instanceFlip[i * 2 + 1] = 1
 
-        if (rawGid === 0) continue
-
-        const flipH = (rawGid & 0x80000000) !== 0
-        const flipV = (rawGid & 0x40000000) !== 0
-        const flipD = (rawGid & 0x20000000) !== 0
-        const gid = rawGid & 0x1fffffff
-
-        // Convert to world space (Y-up)
-        const worldX = x * this.tileWidth
-        const worldY = (height - 1 - y) * this.tileHeight
-
-        tiles.push({
-          x: worldX,
-          y: worldY,
-          gid,
-          flipH,
-          flipV,
-          flipD,
-        })
-      }
-    }
-
-    // Update or create chunk
-    let chunk = this.chunks.get(chunkKey)
-
-    if (!chunk && tiles.length > 0) {
-      const maxChunkY = Math.ceil(height / this.chunkSize) - 1
-      const worldChunkY = maxChunkY - chunkY
-
-      chunk = new TileChunk(
-        { x: chunkX, y: worldChunkY },
-        this.chunkSize,
-        this.tileWidth,
-        this.tileHeight,
-        this.tileset
-      )
-      this.chunks.set(chunkKey, chunk)
-      this.add(chunk.mesh)
-    }
-
-    if (chunk) {
-      if (tiles.length > 0) {
-        chunk.setTiles(tiles, this.tileset)
-        chunk.upload()
-      } else {
-        // Remove empty chunk
-        this.remove(chunk.mesh)
-        chunk.dispose()
-        this.chunks.delete(chunkKey)
-      }
+      const uvAttr = chunk.mesh.geometry.getAttribute('instanceUV') as InstancedBufferAttribute
+      uvAttr.needsUpdate = true
+      const flipAttr = chunk.mesh.geometry.getAttribute('instanceFlip') as InstancedBufferAttribute
+      flipAttr.needsUpdate = true
+    } else {
+      // Tile added or removed — rebuild the entire layer
+      this.buildInstances()
     }
   }
 
@@ -351,11 +432,7 @@ export class TileLayer extends Group {
    * Get total tile count across all chunks.
    */
   get tileCount(): number {
-    let count = 0
-    for (const chunk of this.chunks.values()) {
-      count += chunk.tileCount
-    }
-    return count
+    return this._totalInstanceCount
   }
 
   /**
@@ -363,9 +440,11 @@ export class TileLayer extends Group {
    */
   dispose(): void {
     for (const chunk of this.chunks.values()) {
-      chunk.dispose()
+      chunk.mesh.geometry.dispose()
     }
     this.chunks.clear()
+    this.material.dispose()
+    this.tileIndexMap.clear()
     this.animatedTilePositions.clear()
     this.animationTimers.clear()
   }

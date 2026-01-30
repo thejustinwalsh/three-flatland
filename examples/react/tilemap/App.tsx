@@ -1,12 +1,10 @@
-import { Suspense, useRef, useState, useMemo, useCallback, useEffect } from 'react'
+import { Suspense, useRef, useMemo, useEffect, useState, useCallback } from 'react'
 import { Canvas, extend, useFrame, useThree } from '@react-three/fiber/webgpu'
 import {
   DataTexture,
   RGBAFormat,
   NearestFilter,
   SRGBColorSpace,
-  Vector3,
-  Plane,
 } from 'three'
 import {
   TileMap2D,
@@ -14,6 +12,7 @@ import {
   type TilesetData,
   type TileLayerData,
 } from '@three-flatland/react'
+import { createGui, useGuiStore, useGuiCallback } from '@three-flatland/debug/gui/react'
 
 // Register TileMap2D with R3F
 extend({ TileMap2D })
@@ -60,8 +59,6 @@ const TILE_COLORS: Record<number, [number, number, number, number]> = {
   [TILES.BONES]: [180, 180, 170, 255],
 }
 
-const MAP_WIDTH = 256
-const MAP_HEIGHT = 256
 const TILE_SIZE = 16
 const TILESET_COLUMNS = 4
 const TILESET_ROWS = 4
@@ -102,9 +99,14 @@ function createProceduralTileset(): DataTexture {
   return texture
 }
 
-/**
- * BSP Node for dungeon generation
- */
+// Density presets for BSP dungeon generation
+const DENSITY_PRESETS: Record<string, { minPartition: number; roomPadding: number; minRoom: number }> = {
+  sparse: { minPartition: 28, roomPadding: 4, minRoom: 10 },
+  normal: { minPartition: 20, roomPadding: 3, minRoom: 8 },
+  dense: { minPartition: 14, roomPadding: 2, minRoom: 6 },
+  packed: { minPartition: 10, roomPadding: 1, minRoom: 4 },
+}
+
 interface BSPNode {
   x: number
   y: number
@@ -115,23 +117,19 @@ interface BSPNode {
   room?: { x: number; y: number; w: number; h: number }
 }
 
-/**
- * Generate a procedural dungeon using BSP (Binary Space Partitioning).
- */
-function generateDungeon(): {
+function generateDungeon(width: number, height: number, density: string): {
   ground: Uint32Array
   walls: Uint32Array
   decor: Uint32Array
 } {
-  const width = MAP_WIDTH
-  const height = MAP_HEIGHT
   const ground = new Uint32Array(width * height)
   const walls = new Uint32Array(width * height)
   const decor = new Uint32Array(width * height)
 
-  const MIN_PARTITION_SIZE = 20
-  const MIN_ROOM_SIZE = 8
-  const ROOM_PADDING = 3
+  const preset = DENSITY_PRESETS[density] ?? DENSITY_PRESETS['normal']!
+  const MIN_PARTITION_SIZE = preset.minPartition
+  const MIN_ROOM_SIZE = preset.minRoom
+  const ROOM_PADDING = preset.roomPadding
   const CORRIDOR_WIDTH = 2
 
   function splitNode(node: BSPNode, depth: number): void {
@@ -204,7 +202,6 @@ function generateDungeon(): {
     const by = roomB.y + Math.floor(roomB.h / 2)
     const midX = Math.random() > 0.5 ? ax : bx
 
-    // Horizontal from ax to midX at ay
     for (let x = Math.min(ax, midX); x <= Math.max(ax, midX); x++) {
       for (let dy = -Math.floor(CORRIDOR_WIDTH / 2); dy <= Math.floor(CORRIDOR_WIDTH / 2); dy++) {
         const ty = ay + dy
@@ -214,7 +211,6 @@ function generateDungeon(): {
       }
     }
 
-    // Vertical from ay to by at midX
     for (let y = Math.min(ay, by); y <= Math.max(ay, by); y++) {
       for (let dx = -Math.floor(CORRIDOR_WIDTH / 2); dx <= Math.floor(CORRIDOR_WIDTH / 2); dx++) {
         const tx = midX + dx
@@ -224,7 +220,6 @@ function generateDungeon(): {
       }
     }
 
-    // Horizontal from midX to bx at by
     for (let x = Math.min(midX, bx); x <= Math.max(midX, bx); x++) {
       for (let dy = -Math.floor(CORRIDOR_WIDTH / 2); dy <= Math.floor(CORRIDOR_WIDTH / 2); dy++) {
         const ty = by + dy
@@ -241,13 +236,11 @@ function generateDungeon(): {
     if (node.right) collectRooms(node.right, rooms)
   }
 
-  // Build BSP tree
   const root: BSPNode = { x: 1, y: 1, w: width - 2, h: height - 2 }
   const depth = Math.floor(Math.log2(Math.min(width, height) / MIN_PARTITION_SIZE)) + 1
   splitNode(root, depth)
   createRooms(root)
 
-  // Draw rooms
   const rooms: Array<{ x: number; y: number; w: number; h: number }> = []
   collectRooms(root, rooms)
 
@@ -263,7 +256,6 @@ function generateDungeon(): {
 
   connectNodes(root)
 
-  // Add walls
   for (let y = 1; y < height - 1; y++) {
     for (let x = 1; x < width - 1; x++) {
       const idx = y * width + x
@@ -286,7 +278,6 @@ function generateDungeon(): {
     }
   }
 
-  // Add decorations
   for (const room of rooms) {
     const corners = [
       { x: room.x + 1, y: room.y + 1 },
@@ -320,18 +311,20 @@ function generateDungeon(): {
 }
 
 function createTileMapData(
+  width: number,
+  height: number,
   tileset: TilesetData,
   layers: { ground: Uint32Array; walls: Uint32Array; decor: Uint32Array }
 ): TileMapData {
   const tileLayers: TileLayerData[] = [
-    { name: 'Ground', id: 0, width: MAP_WIDTH, height: MAP_HEIGHT, data: layers.ground, visible: true },
-    { name: 'Walls', id: 1, width: MAP_WIDTH, height: MAP_HEIGHT, data: layers.walls, visible: true },
-    { name: 'Decor', id: 2, width: MAP_WIDTH, height: MAP_HEIGHT, data: layers.decor, visible: true },
+    { name: 'Ground', id: 0, width, height, data: layers.ground, visible: true },
+    { name: 'Walls', id: 1, width, height, data: layers.walls, visible: true },
+    { name: 'Decor', id: 2, width, height, data: layers.decor, visible: true },
   ]
 
   return {
-    width: MAP_WIDTH,
-    height: MAP_HEIGHT,
+    width,
+    height,
     tileWidth: TILE_SIZE,
     tileHeight: TILE_SIZE,
     orientation: 'orthogonal',
@@ -343,39 +336,52 @@ function createTileMapData(
   }
 }
 
+// Debug panel (created at module scope, outside React)
+const gui = createGui('Tilemap', {
+  mapSize: { value: 256, options: { Small: 128, Medium: 256, Large: 512, Mega: 1024 } },
+  chunkSize: { value: 256, options: [256, 512, 1024, 2048] },
+  density: { value: 'normal', options: { Sparse: 'sparse', Normal: 'normal', Dense: 'dense', Packed: 'packed' } },
+  seed: { value: 42, min: 0, max: 999999, step: 1 },
+  showGround: true,
+  showWalls: true,
+  showDecor: true,
+  regenerate: { type: 'button' },
+})
+
 interface TilemapSceneProps {
   mapData: TileMapData
-  layerVisibility: boolean[]
-  onStats: (stats: { tiles: number; chunks: number; layers: number }) => void
+  chunkSize: number
+  onStats?: (tiles: number, chunks: number, layers: number) => void
 }
 
-function TilemapScene({ mapData, layerVisibility, onStats }: TilemapSceneProps) {
+function TilemapScene({ mapData, chunkSize, onStats }: TilemapSceneProps) {
   const tilemapRef = useRef<TileMap2D>(null)
-  const { camera } = useThree()
+  const showGround = useGuiStore(gui, 'showGround')
+  const showWalls = useGuiStore(gui, 'showWalls')
+  const showDecor = useGuiStore(gui, 'showDecor')
+
+  // Report stats when tilemap data or chunk size changes
+  useEffect(() => {
+    if (!tilemapRef.current || !onStats) return
+    onStats(
+      tilemapRef.current.totalTileCount,
+      tilemapRef.current.totalChunkCount,
+      tilemapRef.current.layerCount,
+    )
+  }, [mapData, chunkSize, onStats])
 
   // Update layer visibility
   useEffect(() => {
-    if (tilemapRef.current) {
-      layerVisibility.forEach((visible, i) => {
-        const layer = tilemapRef.current!.getLayerAt(i)
-        if (layer) layer.visible = visible
-      })
-    }
-  }, [layerVisibility])
+    if (!tilemapRef.current) return
+    const ground = tilemapRef.current.getLayerAt(0)
+    const walls = tilemapRef.current.getLayerAt(1)
+    const decor = tilemapRef.current.getLayerAt(2)
+    if (ground) ground.visible = showGround
+    if (walls) walls.visible = showWalls
+    if (decor) decor.visible = showDecor
+  }, [showGround, showWalls, showDecor])
 
-  // Report stats
-  useEffect(() => {
-    if (tilemapRef.current) {
-      onStats({
-        tiles: tilemapRef.current.totalTileCount,
-        chunks: tilemapRef.current.totalChunkCount,
-        layers: tilemapRef.current.layerCount,
-      })
-    }
-  }, [mapData, onStats])
-
-  // Camera controls
-  useFrame((state, delta) => {
+  useFrame((_, delta) => {
     tilemapRef.current?.update(delta * 1000)
   })
 
@@ -383,13 +389,30 @@ function TilemapScene({ mapData, layerVisibility, onStats }: TilemapSceneProps) 
     <tileMap2D
       ref={tilemapRef}
       data={mapData}
-      chunkSize={16}
+      chunkSize={chunkSize}
       position={[0, 0, 0]}
     />
   )
 }
 
-function CameraController() {
+function FpsCounter({ onFps }: { onFps: (fps: number) => void }) {
+  const frameCount = useRef(0)
+  const elapsed = useRef(0)
+
+  useFrame((_, delta) => {
+    frameCount.current++
+    elapsed.current += delta
+    if (elapsed.current >= 1) {
+      onFps(Math.round(frameCount.current / elapsed.current))
+      frameCount.current = 0
+      elapsed.current = 0
+    }
+  })
+
+  return null
+}
+
+function CameraController({ mapSize }: { mapSize: number }) {
   const { camera, gl } = useThree()
   const keys = useRef(new Set<string>())
   const zoom = useRef(1)
@@ -398,10 +421,11 @@ function CameraController() {
   const cameraStart = useRef({ x: 0, y: 0 })
 
   useEffect(() => {
-    // Center camera on map
-    camera.position.x = (MAP_WIDTH * TILE_SIZE) / 2
-    camera.position.y = (MAP_HEIGHT * TILE_SIZE) / 2
+    camera.position.x = (mapSize * TILE_SIZE) / 2
+    camera.position.y = (mapSize * TILE_SIZE) / 2
+  }, [camera, mapSize])
 
+  useEffect(() => {
     const canvas = gl.domElement
 
     const handleKeyDown = (e: KeyboardEvent) => keys.current.add(e.key.toLowerCase())
@@ -424,12 +448,10 @@ function CameraController() {
       const dy = e.clientY - dragStart.current.y
       const dragDistance = Math.sqrt(dx * dx + dy * dy)
 
-      // Show move cursor once we start dragging
       if (dragDistance > 3) {
         document.body.style.cursor = 'move'
       }
 
-      // Convert screen pixels to world units using camera frustum
       // @ts-expect-error - ortho camera has top/bottom
       const visibleHeight = camera.top - camera.bottom
       const worldPerPixel = visibleHeight / window.innerHeight
@@ -466,7 +488,6 @@ function CameraController() {
     if (keys.current.has('a') || keys.current.has('arrowleft')) camera.position.x -= speed
     if (keys.current.has('d') || keys.current.has('arrowright')) camera.position.x += speed
 
-    // @ts-expect-error - ortho camera zoom
     camera.zoom = 2 / zoom.current
     camera.updateProjectionMatrix()
   })
@@ -475,9 +496,16 @@ function CameraController() {
 }
 
 export default function App() {
-  const [layerVisibility, setLayerVisibility] = useState([true, true, true])
-  const [stats, setStats] = useState({ tiles: 0, chunks: 0, layers: 0 })
-  const [seed, setSeed] = useState(0)
+  const { mapSize, chunkSize, density, seed } = useGuiStore(gui, ['mapSize', 'chunkSize', 'density', 'seed'])
+  const [fps, setFps] = useState(0)
+  const [tileStats, setTileStats] = useState({ tiles: 0, chunks: 0, layers: 0 })
+
+  const handleFps = useCallback((value: number) => setFps(value), [])
+  const handleStats = useCallback((tiles: number, chunks: number, layers: number) => setTileStats({ tiles, chunks, layers }), [])
+
+  useGuiCallback(gui, 'regenerate', () => {
+    gui.store.setState({ seed: Math.floor(Math.random() * 999999) })
+  })
 
   // Create tileset (memoized, never changes)
   const tileset = useMemo<TilesetData>(() => ({
@@ -493,55 +521,35 @@ export default function App() {
     texture: createProceduralTileset(),
   }), [])
 
-  // Generate map data (regenerates when seed changes)
+  // Generate map data (regenerates when mapSize, density, or seed changes)
   const mapData = useMemo(() => {
-    const layers = generateDungeon()
-    return createTileMapData(tileset, layers)
-  }, [tileset, seed])
-
-  const toggleLayer = useCallback((index: number) => {
-    setLayerVisibility(prev => {
-      const next = [...prev]
-      next[index] = !next[index]
-      return next
-    })
-  }, [])
-
-  const regenerate = useCallback(() => {
-    setSeed(s => s + 1)
-  }, [])
-
-  const handleStats = useCallback((newStats: typeof stats) => {
-    setStats(newStats)
-  }, [])
-
-  const layerNames = ['Ground', 'Walls', 'Decor']
+    const layers = generateDungeon(mapSize, mapSize, density)
+    return createTileMapData(mapSize, mapSize, tileset, layers)
+  }, [tileset, mapSize, density, seed])
 
   return (
     <>
-      {/* Info Panel */}
+      {/* Stats */}
       <div style={{
         position: 'fixed',
-        top: 20,
+        bottom: 20,
         left: 20,
         color: '#4a9eff',
-        fontSize: 12,
+        fontSize: 11,
         fontFamily: 'monospace',
+        lineHeight: 1.6,
         zIndex: 100,
-        background: 'rgba(0,0,0,0.5)',
-        padding: 10,
-        borderRadius: 4,
       }}>
-        <div>Map: {MAP_WIDTH}x{MAP_HEIGHT}</div>
-        <div>Tiles: {stats.tiles}</div>
-        <div>Chunks: {stats.chunks}</div>
-        <div>Layers: {stats.layers}</div>
+        <div>FPS: {fps}</div>
+        <div>Tiles: {tileStats.tiles}</div>
+        <div>Chunks: {tileStats.chunks}</div>
+        <div>Layers: {tileStats.layers}</div>
       </div>
 
       {/* Legend */}
       <div style={{
         position: 'fixed',
-        bottom: 80,
+        bottom: 20,
         left: '50%',
         transform: 'translateX(-50%)',
         color: '#888',
@@ -553,51 +561,6 @@ export default function App() {
         Drag: Pan | WASD/Arrows: Pan | Scroll: Zoom
       </div>
 
-      {/* Controls */}
-      <div style={{
-        position: 'fixed',
-        bottom: 20,
-        left: '50%',
-        transform: 'translateX(-50%)',
-        display: 'flex',
-        gap: 10,
-        zIndex: 100,
-      }}>
-        {layerNames.map((name, i) => (
-          <button
-            key={name}
-            onClick={() => toggleLayer(i)}
-            style={{
-              padding: '10px 20px',
-              fontSize: 14,
-              fontFamily: 'monospace',
-              border: '2px solid #4a9eff',
-              background: layerVisibility[i] ? '#4a9eff' : 'rgba(74, 158, 255, 0.1)',
-              color: layerVisibility[i] ? '#1a1a2e' : '#4a9eff',
-              cursor: 'pointer',
-              borderRadius: 4,
-            }}
-          >
-            {name}
-          </button>
-        ))}
-        <button
-          onClick={regenerate}
-          style={{
-            padding: '10px 20px',
-            fontSize: 14,
-            fontFamily: 'monospace',
-            border: '2px solid #4a9eff',
-            background: 'rgba(74, 158, 255, 0.1)',
-            color: '#4a9eff',
-            cursor: 'pointer',
-            borderRadius: 4,
-          }}
-        >
-          Regenerate
-        </button>
-      </div>
-
       {/* Canvas */}
       <Canvas
         orthographic
@@ -605,13 +568,10 @@ export default function App() {
         renderer={{ antialias: false }}
       >
         <color attach="background" args={['#0a0a12']} />
-        <CameraController />
+        <FpsCounter onFps={handleFps} />
+        <CameraController mapSize={mapSize} />
         <Suspense fallback={null}>
-          <TilemapScene
-            mapData={mapData}
-            layerVisibility={layerVisibility}
-            onStats={handleStats}
-          />
+          <TilemapScene mapData={mapData} chunkSize={chunkSize} onStats={handleStats} />
         </Suspense>
       </Canvas>
     </>
