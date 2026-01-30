@@ -18,7 +18,7 @@
       "cache": false
     },
     "docs#build": {
-      "dependsOn": ["^build", "@three-flatland/core#build", "@three-flatland/nodes#build", "@three-flatland/react#build", "@three-flatland/presets#build"],
+      "dependsOn": ["^build", "@three-flatland/core#build", "@three-flatland/nodes#build", "@three-flatland/react#build", "@three-flatland/presets#build", "@three-flatland/mini-breakout#build"],
       "outputs": ["dist/**"],
       "inputs": [
         "src/**",

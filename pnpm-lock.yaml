@@ -21,6 +21,12 @@ catalogs:
     '@vitejs/plugin-react':
       specifier: ^4.3.4
       version: 4.7.0
+    koota:
+      specifier: ^0.1.0
+      version: 0.1.12
+    lil-gui:
+      specifier: ^0.21.0
+      version: 0.21.0
     react:
       specifier: ^19.0.0
       version: 19.2.3
@@ -36,6 +42,9 @@ catalogs:
     vite:
       specifier: ^6.0.7
       version: 6.4.1
+    zustand:
+      specifier: ^5.0.0
+      version: 5.0.10
 
 importers:
 
@@ -95,12 +104,21 @@ importers:
       '@fontsource/silkscreen':
         specifier: ^5.2.8
         version: 5.2.8
+      '@react-three/fiber':
+        specifier: 'catalog:'
+        version: 10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.182.0)
       '@stackblitz/sdk':
         specifier: ^1.11.0
         version: 1.11.0
+      '@three-flatland/mini-breakout':
+        specifier: workspace:*
+        version: link:../minis/breakout
       astro:
         specifier: ^5.2.3
         version: 5.16.15(@types/node@22.19.7)(jiti@1.21.7)(rollup@4.56.0)(typescript@5.9.3)(yaml@2.8.2)
+      koota:
+        specifier: 'catalog:'
+        version: 0.1.12(@react-three/fiber@10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.182.0))(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.182.0)
       pixelarticons:
         specifier: ^1.8.1
         version: 1.8.1
@@ -116,6 +134,9 @@ importers:
       starlight-typedoc:
         specifier: ^0.21.5
         version: 0.21.5(@astrojs/starlight@0.33.2(astro@5.16.15(@types/node@22.19.7)(jiti@1.21.7)(rollup@4.56.0)(typescript@5.9.3)(yaml@2.8.2)))(typedoc-plugin-markdown@4.9.0(typedoc@0.28.16(typescript@5.9.3)))(typedoc@0.28.16(typescript@5.9.3))
+      three:
+        specifier: 'catalog:'
+        version: 0.182.0
       typedoc:
         specifier: ^0.28.0
         version: 0.28.16(typescript@5.9.3)
@@ -267,9 +288,15 @@ importers:
       '@three-flatland/core':
         specifier: workspace:*
         version: link:../../../packages/core
+      '@three-flatland/debug':
+        specifier: workspace:*
+        version: link:../../../packages/debug
       '@three-flatland/react':
         specifier: workspace:*
         version: link:../../../packages/react
+      lil-gui:
+        specifier: 'catalog:'
+        version: 0.21.0
       react:
         specifier: 'catalog:'
         version: 19.2.3
@@ -279,6 +306,9 @@ importers:
       three:
         specifier: 'catalog:'
         version: 0.182.0
+      zustand:
+        specifier: 'catalog:'
+        version: 5.0.10(@types/react@19.2.9)(react@19.2.3)(use-sync-external-store@1.6.0(react@19.2.3))
     devDependencies:
       '@types/react':
         specifier: 'catalog:'
@@ -404,9 +434,18 @@ importers:
       '@three-flatland/core':
         specifier: workspace:*
         version: link:../../../packages/core
+      '@three-flatland/debug':
+        specifier: workspace:*
+        version: link:../../../packages/debug
+      lil-gui:
+        specifier: 'catalog:'
+        version: 0.21.0
       three:
         specifier: 'catalog:'
         version: 0.182.0
+      zustand:
+        specifier: 'catalog:'
+        version: 5.0.10(@types/react@19.2.9)(react@19.2.3)(use-sync-external-store@1.6.0(react@19.2.3))
     devDependencies:
       '@types/three':
         specifier: 'catalog:'
@@ -437,6 +476,49 @@ importers:
         specifier: 'catalog:'
         version: 6.4.1(@types/node@22.19.7)(jiti@1.21.7)(yaml@2.8.2)
 
+  minis/breakout:
+    dependencies:
+      '@three-flatland/react':
+        specifier: workspace:*
+        version: link:../../packages/react
+      koota:
+        specifier: 'catalog:'
+        version: 0.1.12(@react-three/fiber@10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.182.0))(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.182.0)
+    devDependencies:
+      '@react-three/fiber':
+        specifier: 'catalog:'
+        version: 10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.182.0)
+      '@types/react':
+        specifier: 'catalog:'
+        version: 19.2.9
+      '@types/react-dom':
+        specifier: 'catalog:'
+        version: 19.2.3(@types/react@19.2.9)
+      '@types/three':
+        specifier: 'catalog:'
+        version: 0.182.0
+      '@vitejs/plugin-react':
+        specifier: 'catalog:'
+        version: 4.7.0(vite@6.4.1(@types/node@22.19.7)(jiti@1.21.7)(yaml@2.8.2))
+      react:
+        specifier: 'catalog:'
+        version: 19.2.3
+      react-dom:
+        specifier: 'catalog:'
+        version: 19.2.3(react@19.2.3)
+      three:
+        specifier: 'catalog:'
+        version: 0.182.0
+      tsup:
+        specifier: ^8.0.0
+        version: 8.5.1(jiti@1.21.7)(postcss@8.5.6)(typescript@5.9.3)(yaml@2.8.2)
+      typescript:
+        specifier: 'catalog:'
+        version: 5.9.3
+      vite:
+        specifier: 'catalog:'
+        version: 6.4.1(@types/node@22.19.7)(jiti@1.21.7)(yaml@2.8.2)
+
   packages/core:
     devDependencies:
       '@types/three':
@@ -445,6 +527,21 @@ importers:
       three:
         specifier: 'catalog:'
         version: 0.182.0
+
+  packages/debug:
+    devDependencies:
+      '@types/react':
+        specifier: 'catalog:'
+        version: 19.2.9
+      lil-gui:
+        specifier: 'catalog:'
+        version: 0.21.0
+      react:
+        specifier: 'catalog:'
+        version: 19.2.3
+      zustand:
+        specifier: 'catalog:'
+        version: 5.0.10(@types/react@19.2.9)(react@19.2.3)(use-sync-external-store@1.6.0(react@19.2.3))
 
   packages/nodes:
     devDependencies:
@@ -2869,9 +2966,27 @@ packages:
     resolution: {integrity: sha512-dhG34DXATL5hSxJbIexCft8FChFXtmskoZYnoPWjXQuebWYCNkVeV3KkGegCK9CP1oswI/vQibS2GY7Em/sJJA==}
     engines: {node: '>= 8'}
 
+  koota@0.1.12:
+    resolution: {integrity: sha512-szsxHTQmi7DP6WDdrmPUDPOsk0GSU7UgUK7i0hB355D9jJ9BYhG0GDeTTpgKn8oRjfNUag1Dff8s45pbBLCWBw==}
+    peerDependencies:
+      '@react-three/fiber': ^8.17.10
+      react: ^18.3.1
+      react-dom: ^18.3.1
+      three: '>=0.159'
+    peerDependenciesMeta:
+      '@react-three/fiber':
+        optional: true
+      react-dom:
+        optional: true
+      three:
+        optional: true
+
   levn@0.4.1:
     resolution: {integrity: sha512-+bT2uH4E5LGE7h/n3evcS/sQlJXCpIp6ym8OWJ5eV6+67Dsql/LaaT7qJBAt2rzfoa/5QBGBhxDix1dMt2kQKQ==}
     engines: {node: '>= 0.8.0'}
+
+  lil-gui@0.21.0:
+    resolution: {integrity: sha512-tpvxN7v1GvE/Tv+GRopfOp0W7fVEjF4PltkuX8vOCIfim22rD1ztvfkoEMcv9lzQeuNUSeIrUmUjBwmlW/oUew==}
 
   lilconfig@3.1.3:
     resolution: {integrity: sha512-/vlFKAoH5Cgt3Ie+JLhRbwOsCQePABiU3tJ1egGvyQ+33R/vcwM2Zl2QR/LzjsBeItPt3oSVXapn+m4nQDvpzw==}
@@ -6932,10 +7047,20 @@ snapshots:
 
   klona@2.0.6: {}
 
+  koota@0.1.12(@react-three/fiber@10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.182.0))(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.182.0):
+    dependencies:
+      react: 19.2.3
+    optionalDependencies:
+      '@react-three/fiber': 10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.182.0)
+      react-dom: 19.2.3(react@19.2.3)
+      three: 0.182.0
+
   levn@0.4.1:
     dependencies:
       prelude-ls: 1.2.1
       type-check: 0.4.0
+
+  lil-gui@0.21.0: {}
 
   lilconfig@3.1.3: {}
 

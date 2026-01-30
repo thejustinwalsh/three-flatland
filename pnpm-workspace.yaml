@@ -1,6 +1,7 @@
 packages:
   - "packages/*"
   - "examples/**"
+  - "minis/*"
   - "docs"
 
 catalog:
@@ -19,3 +20,10 @@ catalog:
   vite: ^6.0.7
   "@vitejs/plugin-react": ^4.3.4
   typescript: ^5.7.3
+
+  # Debug tools
+  lil-gui: ^0.21.0
+  zustand: ^5.0.0
+
+  # Mini-games
+  koota: ^0.1.0

@@ -1,0 +1,59 @@
+{
+  "name": "@three-flatland/debug",
+  "version": "0.0.0",
+  "description": "Debug utilities for three-flatland",
+  "type": "module",
+  "exports": {
+    "./gui": {
+      "import": {
+        "types": "./dist/gui.d.ts",
+        "default": "./dist/gui.js"
+      },
+      "require": {
+        "types": "./dist/gui.d.cts",
+        "default": "./dist/gui.cjs"
+      }
+    },
+    "./gui/react": {
+      "import": {
+        "types": "./dist/gui-react.d.ts",
+        "default": "./dist/gui-react.js"
+      },
+      "require": {
+        "types": "./dist/gui-react.d.cts",
+        "default": "./dist/gui-react.cjs"
+      }
+    }
+  },
+  "files": ["dist"],
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "peerDependencies": {
+    "lil-gui": "catalog:",
+    "zustand": "catalog:",
+    "react": "catalog:"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "lil-gui": "catalog:",
+    "zustand": "catalog:",
+    "react": "catalog:",
+    "@types/react": "catalog:"
+  },
+  "keywords": ["three.js", "debug", "gui", "lil-gui"],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/thejustinwalsh/three-flatland.git",
+    "directory": "packages/debug"
+  }
+}
