@@ -423,8 +423,16 @@ function createTileMapData(
   }
 }
 
+// Map size presets (in tiles)
+const MAP_SIZE_PRESETS: Record<string, number> = {
+  sm: 64,
+  md: 128,
+  lg: 256,
+  xl: 512,
+}
+
 // GUI state
-let mapSize = 512
+let mapSize = MAP_SIZE_PRESETS['md']!
 let chunkSize = 256
 let density = 'normal'
 let seed = 42
@@ -519,7 +527,13 @@ async function main() {
 
   // Wire up Shoelace controls
   document.getElementById('map-size')!.addEventListener('sl-change', (e) => {
-    mapSize = Number((e.target as any).value)
+    const preset = (e.target as any).value as string
+    mapSize = MAP_SIZE_PRESETS[preset] ?? 128
+    rebuildTilemap()
+  })
+
+  document.getElementById('chunk-size')!.addEventListener('sl-change', (e) => {
+    chunkSize = Number((e.target as any).value)
     rebuildTilemap()
   })
 

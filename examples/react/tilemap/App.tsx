@@ -493,8 +493,18 @@ function CameraController({ mapSize }: { mapSize: number }) {
   return null
 }
 
+// Map size presets (in tiles)
+const MAP_SIZE_PRESETS: Record<string, number> = {
+  sm: 64,
+  md: 128,
+  lg: 256,
+  xl: 512,
+}
+
 export default function App() {
-  const [mapSize, setMapSize] = useState(256)
+  const [mapSizePreset, setMapSizePreset] = useState('md')
+  const mapSize = MAP_SIZE_PRESETS[mapSizePreset] ?? 128
+  const [chunkSize, setChunkSize] = useState(256)
   const [density, setDensity] = useState('normal')
   const [seed, setSeed] = useState(42)
   const [showGround, setShowGround] = useState(true)
@@ -535,18 +545,30 @@ export default function App() {
   return (
     <>
       {/* Generation settings — top-left column */}
-      <div style={{
+      <style>{`
+        .tilemap-settings sl-radio-group::part(form-control-label) {
+          font-size: 9px;
+          color: #8890a0;
+          font-family: monospace;
+        }
+      `}</style>
+      <div className="tilemap-settings" style={{
         position: 'fixed', top: 12, left: 12, zIndex: 100, pointerEvents: 'auto',
         display: 'flex', flexDirection: 'column', gap: 6,
         padding: '8px 10px', background: 'rgba(0, 2, 28, 0.7)', borderRadius: 6,
         '--sl-input-height-small': '1.5rem', '--sl-font-size-small': '0.688rem',
         '--sl-toggle-size-small': '0.875rem',
       } as React.CSSProperties}>
-        <SlRadioGroup label="Map Size" size="small" value={String(mapSize)} onSlChange={(e) => setMapSize(Number((e.target as any).value))}>
+        <SlRadioGroup label="Map Size" size="small" value={mapSizePreset} onSlChange={(e) => setMapSizePreset((e.target as any).value)}>
+          <SlRadioButton value="sm" size="small">SM</SlRadioButton>
+          <SlRadioButton value="md" size="small">MD</SlRadioButton>
+          <SlRadioButton value="lg" size="small">LG</SlRadioButton>
+          <SlRadioButton value="xl" size="small">XL</SlRadioButton>
+        </SlRadioGroup>
+        <SlRadioGroup label="Chunk Size" size="small" value={String(chunkSize)} onSlChange={(e) => setChunkSize(Number((e.target as any).value))}>
           <SlRadioButton value="128" size="small">128</SlRadioButton>
           <SlRadioButton value="256" size="small">256</SlRadioButton>
           <SlRadioButton value="512" size="small">512</SlRadioButton>
-          <SlRadioButton value="1024" size="small">1024</SlRadioButton>
         </SlRadioGroup>
         <SlRadioGroup label="Density" size="small" value={density} onSlChange={(e) => setDensity((e.target as any).value)}>
           <SlRadioButton value="sparse" size="small">Sparse</SlRadioButton>
@@ -554,40 +576,42 @@ export default function App() {
           <SlRadioButton value="dense" size="small">Dense</SlRadioButton>
           <SlRadioButton value="packed" size="small">Packed</SlRadioButton>
         </SlRadioGroup>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-          <label style={{ color: '#8890a0', fontSize: 9, fontFamily: 'monospace', whiteSpace: 'nowrap' }}>Seed</label>
-          <input
-            type="number"
-            value={seed}
-            onChange={(e) => setSeed(Number(e.target.value))}
-            style={{
-              width: 64,
-              background: 'rgba(255, 255, 255, 0.08)',
-              border: '1px solid rgba(255, 255, 255, 0.12)',
-              borderRadius: 4,
-              color: '#ccc',
-              fontSize: 10,
-              fontFamily: 'monospace',
-              padding: '3px 6px',
-              outline: 'none',
-            }}
-          />
-          <button
-            onClick={handleRegenerate}
-            title="Random seed"
-            style={{
-              background: 'rgba(255, 255, 255, 0.1)',
-              border: '1px solid rgba(255, 255, 255, 0.15)',
-              borderRadius: 4,
-              color: '#ccc',
-              fontSize: 12,
-              padding: '2px 6px',
-              cursor: 'pointer',
-              lineHeight: 1,
-            }}
-          >
-            &#x21bb;
-          </button>
+        <div>
+          <div style={{ fontSize: 9, color: '#8890a0', fontFamily: 'monospace', marginBottom: 2 }}>Seed</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <input
+              type="number"
+              value={seed}
+              onChange={(e) => setSeed(Number(e.target.value))}
+              style={{
+                width: 64,
+                background: 'rgba(255, 255, 255, 0.08)',
+                border: '1px solid rgba(255, 255, 255, 0.12)',
+                borderRadius: 4,
+                color: '#ccc',
+                fontSize: 10,
+                fontFamily: 'monospace',
+                padding: '3px 6px',
+                outline: 'none',
+              }}
+            />
+            <button
+              onClick={handleRegenerate}
+              title="Random seed"
+              style={{
+                background: 'rgba(255, 255, 255, 0.1)',
+                border: '1px solid rgba(255, 255, 255, 0.15)',
+                borderRadius: 4,
+                color: '#ccc',
+                fontSize: 12,
+                padding: '2px 6px',
+                cursor: 'pointer',
+                lineHeight: 1,
+              }}
+            >
+              &#x21bb;
+            </button>
+          </div>
         </div>
       </div>
 
@@ -661,7 +685,7 @@ export default function App() {
         <Suspense fallback={null}>
           <TilemapScene
             mapData={mapData}
-            chunkSize={256}
+            chunkSize={chunkSize}
             showGround={showGround}
             showWalls={showWalls}
             showDecor={showDecor}

@@ -21,8 +21,9 @@
 
       #ui {
         position: fixed;
-        bottom: 12px;
-        right: 12px;
+        bottom: 32px;
+        left: 50%;
+        transform: translateX(-50%);
         display: flex;
         gap: 6px;
         padding: 8px;
@@ -79,9 +80,11 @@
       #credits {
         position: fixed;
         bottom: 8px;
-        left: 12px;
+        left: 50%;
+        transform: translateX(-50%);
         color: rgba(0, 0, 0, 0.5);
         font-size: 9px;
+        white-space: nowrap;
         z-index: 100;
       }
       #credits a {
@@ -103,7 +106,6 @@
     </style>
   </head>
   <body>
-    <div id="hint">Click to place objects</div>
     <div id="stats">FPS: -<br>Draws: -<br>Sprites: -<br>Batches: -</div>
 
     <div id="ui">

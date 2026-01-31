@@ -372,8 +372,9 @@ function VillageScene({ entities, selectedBuilding, onPlaceBuilding, onStats }: 
 const styles = {
   ui: {
     position: 'fixed',
-    bottom: 12,
-    right: 12,
+    bottom: 32,
+    left: '50%',
+    transform: 'translateX(-50%)',
     display: 'flex',
     gap: 6,
     padding: 8,
@@ -425,9 +426,11 @@ const styles = {
   credits: {
     position: 'fixed',
     bottom: 8,
-    left: 12,
+    left: '50%',
+    transform: 'translateX(-50%)',
     color: 'rgba(0, 0, 0, 0.5)',
     fontSize: 9,
+    whiteSpace: 'nowrap',
     zIndex: 100,
   } as React.CSSProperties,
 }
@@ -493,7 +496,6 @@ export default function App() {
         />
       </Canvas>
 
-      <div style={styles.hint}>Click to place objects</div>
       <div style={styles.stats}>
         FPS: {perfStats.fps}<br />
         Draws: {perfStats.draws}<br />

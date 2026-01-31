@@ -33,6 +33,17 @@
         --sl-font-size-small: 0.688rem;
         --sl-toggle-size-small: 0.875rem;
       }
+      #settings sl-radio-group::part(form-control-label) {
+        font-size: 9px;
+        color: #8890a0;
+        font-family: monospace;
+      }
+      .setting-label {
+        font-size: 9px;
+        color: #8890a0;
+        font-family: monospace;
+        margin-bottom: 2px;
+      }
       #stats {
         position: fixed;
         top: 12px;
@@ -102,11 +113,16 @@
   </head>
   <body>
     <div id="settings">
-      <sl-radio-group id="map-size" label="Map Size" value="512" size="small">
+      <sl-radio-group id="map-size" label="Map Size" value="md" size="small">
+        <sl-radio-button value="sm" size="small">SM</sl-radio-button>
+        <sl-radio-button value="md" size="small">MD</sl-radio-button>
+        <sl-radio-button value="lg" size="small">LG</sl-radio-button>
+        <sl-radio-button value="xl" size="small">XL</sl-radio-button>
+      </sl-radio-group>
+      <sl-radio-group id="chunk-size" label="Chunk Size" value="256" size="small">
         <sl-radio-button value="128" size="small">128</sl-radio-button>
+        <sl-radio-button value="256" size="small">256</sl-radio-button>
         <sl-radio-button value="512" size="small">512</sl-radio-button>
-        <sl-radio-button value="1024" size="small">1024</sl-radio-button>
-        <sl-radio-button value="2048" size="small">2048</sl-radio-button>
       </sl-radio-group>
       <sl-radio-group id="density" label="Density" value="normal" size="small">
         <sl-radio-button value="sparse" size="small">Sparse</sl-radio-button>
@@ -114,10 +130,12 @@
         <sl-radio-button value="dense" size="small">Dense</sl-radio-button>
         <sl-radio-button value="packed" size="small">Packed</sl-radio-button>
       </sl-radio-group>
-      <div class="seed-row">
-        <label class="seed-label">Seed</label>
-        <input type="number" id="seed" value="42" min="0" max="999999" />
-        <button id="regen-btn" title="Random seed">&#x21bb;</button>
+      <div>
+        <div class="setting-label">Seed</div>
+        <div class="seed-row">
+          <input type="number" id="seed" value="42" min="0" max="999999" />
+          <button id="regen-btn" title="Random seed">&#x21bb;</button>
+        </div>
       </div>
     </div>
     <div id="stats">

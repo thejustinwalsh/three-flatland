@@ -140,6 +140,32 @@
           "paths": ["/react/tilemap", "/react/tilemap/:path*"]
         }
       ]
+    },
+    "example-vanilla-template": {
+      "development": {
+        "local": {
+          "port": 4011
+        }
+      },
+      "routing": [
+        {
+          "group": "vanilla-examples",
+          "paths": ["/vanilla/template", "/vanilla/template/:path*"]
+        }
+      ]
+    },
+    "example-react-template": {
+      "development": {
+        "local": {
+          "port": 4012
+        }
+      },
+      "routing": [
+        {
+          "group": "react-examples",
+          "paths": ["/react/template", "/react/template/:path*"]
+        }
+      ]
     }
   }
 }

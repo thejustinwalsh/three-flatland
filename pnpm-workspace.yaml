@@ -21,9 +21,9 @@ catalog:
   "@vitejs/plugin-react": ^4.3.4
   typescript: ^5.7.3
 
-  # Debug tools
-  lil-gui: ^0.21.0
-  zustand: ^5.0.0
+  # UI Components
+  "@shoelace-style/shoelace": ^2.20.1
+
 
   # Mini-games
   koota: ^0.1.0
