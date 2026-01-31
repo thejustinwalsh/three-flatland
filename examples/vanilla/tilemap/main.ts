@@ -21,6 +21,9 @@ import '@shoelace-style/shoelace/dist/components/radio-group/radio-group.js'
 import '@shoelace-style/shoelace/dist/components/radio-button/radio-button.js'
 import '@shoelace-style/shoelace/dist/components/button-group/button-group.js'
 import '@shoelace-style/shoelace/dist/components/button/button.js'
+import '@shoelace-style/shoelace/dist/components/select/select.js'
+import '@shoelace-style/shoelace/dist/components/option/option.js'
+import '@shoelace-style/shoelace/dist/components/input/input.js'
 setBasePath('https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.20.1/cdn/')
 
 // Tile IDs for our procedural tileset
@@ -433,7 +436,7 @@ const MAP_SIZE_PRESETS: Record<string, number> = {
 
 // GUI state
 let mapSize = MAP_SIZE_PRESETS['md']!
-let chunkSize = 256
+let chunkSize = 512
 let density = 'normal'
 let seed = 42
 let showGround = true
@@ -542,8 +545,8 @@ async function main() {
     rebuildTilemap()
   })
 
-  const seedInput = document.getElementById('seed') as HTMLInputElement
-  seedInput.addEventListener('change', () => {
+  const seedInput = document.getElementById('seed') as any
+  seedInput.addEventListener('sl-change', () => {
     seed = Number(seedInput.value)
     rebuildTilemap()
   })
@@ -583,6 +586,14 @@ async function main() {
     seed = Math.floor(Math.random() * 999999)
     seedInput.value = String(seed)
     rebuildTilemap()
+  })
+
+  // Settings panel toggle (mobile)
+  const settingsToggle = document.getElementById('settings-toggle')!
+  const settingsPanel = document.getElementById('settings')!
+  settingsToggle.addEventListener('click', () => {
+    settingsPanel.classList.toggle('open')
+    settingsToggle.textContent = settingsPanel.classList.contains('open') ? '\u2715' : '\u2630'
   })
 
   // Camera controls

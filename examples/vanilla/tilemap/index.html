@@ -32,17 +32,31 @@
         --sl-input-height-small: 1.5rem;
         --sl-font-size-small: 0.688rem;
         --sl-toggle-size-small: 0.875rem;
+        --sl-color-neutral-0: rgb(0, 2, 28);
       }
       #settings sl-radio-group::part(form-control-label) {
-        font-size: 9px;
+        font-size: 11px;
         color: #8890a0;
         font-family: monospace;
       }
       .setting-label {
-        font-size: 9px;
+        font-size: 11px;
         color: #8890a0;
         font-family: monospace;
         margin-bottom: 2px;
+      }
+      .map-chunk-row {
+        display: flex;
+        gap: 8px;
+        align-items: flex-start;
+      }
+      .map-chunk-col {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+      }
+      #chunk-size {
+        width: 86px;
       }
       #stats {
         position: fixed;
@@ -80,50 +94,53 @@
         align-items: center;
         gap: 4px;
       }
-      .seed-label {
+      #settings-toggle {
+        display: none;
+        position: fixed;
+        top: 12px;
+        left: 12px;
+        z-index: 101;
+        width: 28px;
+        height: 28px;
+        background: rgba(0, 2, 28, 0.7);
+        border: none;
+        border-radius: 6px;
         color: #8890a0;
-        font-size: 9px;
-        white-space: nowrap;
-      }
-      #seed {
-        width: 64px;
-        background: rgba(255, 255, 255, 0.08);
-        border: 1px solid rgba(255, 255, 255, 0.12);
-        border-radius: 4px;
-        color: #ccc;
-        font-size: 10px;
-        font-family: monospace;
-        padding: 3px 6px;
-        outline: none;
-      }
-      #regen-btn {
-        background: rgba(255, 255, 255, 0.1);
-        border: 1px solid rgba(255, 255, 255, 0.15);
-        border-radius: 4px;
-        color: #ccc;
-        font-size: 12px;
-        padding: 2px 6px;
+        font-size: 16px;
         cursor: pointer;
-        line-height: 1;
+        align-items: center;
+        justify-content: center;
       }
-      #regen-btn:hover {
-        background: rgba(255, 255, 255, 0.18);
+      @media (max-width: 480px) {
+        #settings-toggle { display: flex; }
+        #settings { display: none; }
+        #settings.open { display: flex; top: 48px; }
       }
     </style>
   </head>
   <body>
+    <button id="settings-toggle" title="Settings">&#x2630;</button>
     <div id="settings">
-      <sl-radio-group id="map-size" label="Map Size" value="md" size="small">
-        <sl-radio-button value="sm" size="small">SM</sl-radio-button>
-        <sl-radio-button value="md" size="small">MD</sl-radio-button>
-        <sl-radio-button value="lg" size="small">LG</sl-radio-button>
-        <sl-radio-button value="xl" size="small">XL</sl-radio-button>
-      </sl-radio-group>
-      <sl-radio-group id="chunk-size" label="Chunk Size" value="256" size="small">
-        <sl-radio-button value="128" size="small">128</sl-radio-button>
-        <sl-radio-button value="256" size="small">256</sl-radio-button>
-        <sl-radio-button value="512" size="small">512</sl-radio-button>
-      </sl-radio-group>
+      <div class="map-chunk-row">
+        <div class="map-chunk-col">
+          <span class="setting-label">Map Size</span>
+          <sl-radio-group id="map-size" value="md" size="small">
+            <sl-radio-button value="sm" size="small">SM</sl-radio-button>
+            <sl-radio-button value="md" size="small">MD</sl-radio-button>
+            <sl-radio-button value="lg" size="small">LG</sl-radio-button>
+            <sl-radio-button value="xl" size="small">XL</sl-radio-button>
+          </sl-radio-group>
+        </div>
+        <div class="map-chunk-col">
+          <span class="setting-label">Chunks</span>
+          <sl-select id="chunk-size" value="512" size="small" hoist>
+            <sl-option value="256">256</sl-option>
+            <sl-option value="512">512</sl-option>
+            <sl-option value="1024">1024</sl-option>
+            <sl-option value="2048">2048</sl-option>
+          </sl-select>
+        </div>
+      </div>
       <sl-radio-group id="density" label="Density" value="normal" size="small">
         <sl-radio-button value="sparse" size="small">Sparse</sl-radio-button>
         <sl-radio-button value="normal" size="small">Normal</sl-radio-button>
@@ -133,8 +150,8 @@
       <div>
         <div class="setting-label">Seed</div>
         <div class="seed-row">
-          <input type="number" id="seed" value="42" min="0" max="999999" />
-          <button id="regen-btn" title="Random seed">&#x21bb;</button>
+          <sl-input id="seed" type="number" value="42" size="small" no-spin-buttons style="width: 120px;"></sl-input>
+          <sl-button id="regen-btn" size="small" title="Random seed">&#x21bb;</sl-button>
         </div>
       </div>
     </div>

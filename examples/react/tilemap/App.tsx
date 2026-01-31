@@ -19,6 +19,9 @@ import SlRadioGroup from '@shoelace-style/shoelace/dist/react/radio-group/index.
 import SlRadioButton from '@shoelace-style/shoelace/dist/react/radio-button/index.js'
 import SlButtonGroup from '@shoelace-style/shoelace/dist/react/button-group/index.js'
 import SlButton from '@shoelace-style/shoelace/dist/react/button/index.js'
+import SlSelect from '@shoelace-style/shoelace/dist/react/select/index.js'
+import SlOption from '@shoelace-style/shoelace/dist/react/option/index.js'
+import SlInput from '@shoelace-style/shoelace/dist/react/input/index.js'
 setBasePath('https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.20.1/cdn/')
 
 // Register TileMap2D with R3F
@@ -504,9 +507,10 @@ const MAP_SIZE_PRESETS: Record<string, number> = {
 export default function App() {
   const [mapSizePreset, setMapSizePreset] = useState('md')
   const mapSize = MAP_SIZE_PRESETS[mapSizePreset] ?? 128
-  const [chunkSize, setChunkSize] = useState(256)
+  const [chunkSize, setChunkSize] = useState(512)
   const [density, setDensity] = useState('normal')
   const [seed, setSeed] = useState(42)
+  const [settingsOpen, setSettingsOpen] = useState(false)
   const [showGround, setShowGround] = useState(true)
   const [showWalls, setShowWalls] = useState(true)
   const [showDecor, setShowDecor] = useState(true)
@@ -547,29 +551,68 @@ export default function App() {
       {/* Generation settings — top-left column */}
       <style>{`
         .tilemap-settings sl-radio-group::part(form-control-label) {
-          font-size: 9px;
+          font-size: 11px;
           color: #8890a0;
           font-family: monospace;
         }
+        .tilemap-settings-toggle {
+          display: none;
+          position: fixed;
+          top: 12px;
+          left: 12px;
+          z-index: 101;
+          width: 28px;
+          height: 28px;
+          background: rgba(0, 2, 28, 0.7);
+          border: none;
+          border-radius: 6px;
+          color: #8890a0;
+          font-size: 16px;
+          cursor: pointer;
+          align-items: center;
+          justify-content: center;
+        }
+        @media (max-width: 480px) {
+          .tilemap-settings-toggle { display: flex; }
+          .tilemap-settings { display: none !important; }
+          .tilemap-settings.open { display: flex !important; top: 48px !important; }
+        }
       `}</style>
-      <div className="tilemap-settings" style={{
+      <button
+        className="tilemap-settings-toggle"
+        title="Settings"
+        onClick={() => setSettingsOpen(v => !v)}
+      >
+        {settingsOpen ? '\u2715' : '\u2630'}
+      </button>
+      <div className={`tilemap-settings${settingsOpen ? ' open' : ''}`} style={{
         position: 'fixed', top: 12, left: 12, zIndex: 100, pointerEvents: 'auto',
         display: 'flex', flexDirection: 'column', gap: 6,
         padding: '8px 10px', background: 'rgba(0, 2, 28, 0.7)', borderRadius: 6,
         '--sl-input-height-small': '1.5rem', '--sl-font-size-small': '0.688rem',
         '--sl-toggle-size-small': '0.875rem',
+        '--sl-color-neutral-0': 'rgb(0, 2, 28)',
       } as React.CSSProperties}>
-        <SlRadioGroup label="Map Size" size="small" value={mapSizePreset} onSlChange={(e) => setMapSizePreset((e.target as any).value)}>
-          <SlRadioButton value="sm" size="small">SM</SlRadioButton>
-          <SlRadioButton value="md" size="small">MD</SlRadioButton>
-          <SlRadioButton value="lg" size="small">LG</SlRadioButton>
-          <SlRadioButton value="xl" size="small">XL</SlRadioButton>
-        </SlRadioGroup>
-        <SlRadioGroup label="Chunk Size" size="small" value={String(chunkSize)} onSlChange={(e) => setChunkSize(Number((e.target as any).value))}>
-          <SlRadioButton value="128" size="small">128</SlRadioButton>
-          <SlRadioButton value="256" size="small">256</SlRadioButton>
-          <SlRadioButton value="512" size="small">512</SlRadioButton>
-        </SlRadioGroup>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <span style={{ fontSize: 11, color: '#8890a0', fontFamily: 'monospace' }}>Map Size</span>
+            <SlRadioGroup size="small" value={mapSizePreset} onSlChange={(e) => setMapSizePreset((e.target as any).value)}>
+              <SlRadioButton value="sm" size="small">SM</SlRadioButton>
+              <SlRadioButton value="md" size="small">MD</SlRadioButton>
+              <SlRadioButton value="lg" size="small">LG</SlRadioButton>
+              <SlRadioButton value="xl" size="small">XL</SlRadioButton>
+            </SlRadioGroup>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <span style={{ fontSize: 11, color: '#8890a0', fontFamily: 'monospace' }}>Chunks</span>
+            <SlSelect value={String(chunkSize)} size="small" hoist onSlChange={(e) => setChunkSize(Number((e.target as any).value))} style={{ width: 86 }}>
+              <SlOption value="256">256</SlOption>
+              <SlOption value="512">512</SlOption>
+              <SlOption value="1024">1024</SlOption>
+              <SlOption value="2048">2048</SlOption>
+            </SlSelect>
+          </div>
+        </div>
         <SlRadioGroup label="Density" size="small" value={density} onSlChange={(e) => setDensity((e.target as any).value)}>
           <SlRadioButton value="sparse" size="small">Sparse</SlRadioButton>
           <SlRadioButton value="normal" size="small">Normal</SlRadioButton>
@@ -577,40 +620,19 @@ export default function App() {
           <SlRadioButton value="packed" size="small">Packed</SlRadioButton>
         </SlRadioGroup>
         <div>
-          <div style={{ fontSize: 9, color: '#8890a0', fontFamily: 'monospace', marginBottom: 2 }}>Seed</div>
+          <div style={{ fontSize: 11, color: '#8890a0', fontFamily: 'monospace', marginBottom: 2 }}>Seed</div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-            <input
+            <SlInput
               type="number"
-              value={seed}
-              onChange={(e) => setSeed(Number(e.target.value))}
-              style={{
-                width: 64,
-                background: 'rgba(255, 255, 255, 0.08)',
-                border: '1px solid rgba(255, 255, 255, 0.12)',
-                borderRadius: 4,
-                color: '#ccc',
-                fontSize: 10,
-                fontFamily: 'monospace',
-                padding: '3px 6px',
-                outline: 'none',
-              }}
+              value={String(seed)}
+              size="small"
+              noSpinButtons
+              style={{ width: 120 }}
+              onSlChange={(e: any) => setSeed(Number(e.target.value))}
             />
-            <button
-              onClick={handleRegenerate}
-              title="Random seed"
-              style={{
-                background: 'rgba(255, 255, 255, 0.1)',
-                border: '1px solid rgba(255, 255, 255, 0.15)',
-                borderRadius: 4,
-                color: '#ccc',
-                fontSize: 12,
-                padding: '2px 6px',
-                cursor: 'pointer',
-                lineHeight: 1,
-              }}
-            >
+            <SlButton size="small" onClick={handleRegenerate} title="Random seed">
               &#x21bb;
-            </button>
+            </SlButton>
           </div>
         </div>
       </div>
