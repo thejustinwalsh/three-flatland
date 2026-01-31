@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="sl-theme-dark">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -18,78 +18,76 @@
       canvas {
         display: block;
       }
-      #info {
+      #stats {
         position: fixed;
-        top: 20px;
-        left: 20px;
+        top: 12px;
+        right: 12px;
+        padding: 5px 10px;
+        background: rgba(0, 2, 28, 0.7);
+        border-radius: 6px;
         color: #4a9eff;
-        font-size: 12px;
-        z-index: 100;
-      }
-      #controls {
-        position: fixed;
-        bottom: 20px;
-        left: 50%;
-        transform: translateX(-50%);
-        display: flex;
-        gap: 8px;
-        flex-wrap: wrap;
-        justify-content: center;
-        max-width: 90vw;
-        z-index: 100;
-      }
-      button {
-        padding: 10px 16px;
-        font-size: 12px;
         font-family: monospace;
-        border: 2px solid #4a9eff;
-        background: rgba(74, 158, 255, 0.1);
-        color: #4a9eff;
-        cursor: pointer;
-        border-radius: 4px;
-        transition: all 0.15s;
+        font-size: 10px;
+        line-height: 1.5;
+        z-index: 100;
+        white-space: pre;
       }
-      button:hover {
-        background: rgba(74, 158, 255, 0.2);
-      }
-      button.active {
-        background: #4a9eff;
-        color: #1a1a2e;
+      #stats .hint {
+        color: #555;
       }
       #attribution {
         position: fixed;
-        bottom: 120px;
+        bottom: 8px;
         left: 50%;
         transform: translateX(-50%);
-        color: #666;
-        font-size: 10px;
-        text-align: center;
+        color: #555;
+        font-size: 9px;
+        white-space: nowrap;
         z-index: 100;
       }
       #attribution a {
-        color: #888;
+        color: #777;
+      }
+      #controls {
+        position: fixed;
+        bottom: 32px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 100;
+        --sl-input-height-small: 1.5rem;
+        --sl-font-size-small: 0.688rem;
+      }
+      /* Hide the radio group label — game UI doesn't need it */
+      #controls sl-radio-group::part(form-control-label) {
+        display: none;
+      }
+      #controls sl-radio-group::part(form-control) {
+        margin: 0;
+        border: 0;
+        padding: 0;
       }
     </style>
   </head>
   <body>
-    <div id="info">
-      Effect: <span id="current-effect">Normal</span><br />
-      Press 1-8 or click buttons
-    </div>
-    <div id="controls">
-      <button id="btn-normal" class="active">1: Normal</button>
-      <button id="btn-damage">2: Damage</button>
-      <button id="btn-dissolve">3: Dissolve</button>
-      <button id="btn-powerup">4: Power-Up</button>
-      <button id="btn-petrify">5: Petrify</button>
-      <button id="btn-select">6: Select</button>
-      <button id="btn-shadow">7: Shadow</button>
-      <button id="btn-pixelate">8: Pixelate</button>
-    </div>
+    <div id="stats">FPS: -
+Draws: -
+<span class="hint">1–8</span></div>
     <div id="attribution">
       Knight sprite by
       <a href="https://analogstudios.itch.io/camelot" target="_blank">analogStudios_</a>
       (CC0)
+    </div>
+    <div id="controls">
+      <sl-radio-group label="Effect" value="normal" size="small">
+        <sl-radio-button value="normal" size="small" pill>Normal</sl-radio-button>
+        <sl-radio-button value="damage" size="small" pill>Damage</sl-radio-button>
+        <sl-radio-button value="dissolve" size="small" pill>Dissolve</sl-radio-button>
+        <sl-radio-button value="powerup" size="small" pill>Rainbow</sl-radio-button>
+        <sl-radio-button value="petrify" size="small" pill>Stone</sl-radio-button>
+        <sl-radio-button value="select" size="small" pill>Outline</sl-radio-button>
+        <sl-radio-button value="shadow" size="small" pill>Shadow</sl-radio-button>
+        <sl-radio-button value="pixelate" size="small" pill>Pixelate</sl-radio-button>
+      </sl-radio-group>
     </div>
     <script type="module" src="./main.ts"></script>
   </body>

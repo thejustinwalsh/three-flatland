@@ -1,6 +1,12 @@
 import { WebGPURenderer } from 'three/webgpu'
 import { Scene, OrthographicCamera, Color, NearestFilter } from 'three'
 import { AnimatedSprite2D, SpriteSheetLoader, Layers } from '@three-flatland/core'
+import '@shoelace-style/shoelace/dist/themes/dark.css'
+import { setBasePath } from '@shoelace-style/shoelace/dist/utilities/base-path.js'
+import '@shoelace-style/shoelace/dist/components/radio-group/radio-group.js'
+import '@shoelace-style/shoelace/dist/components/radio-button/radio-button.js'
+
+setBasePath('https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.20.1/cdn/')
 
 async function main() {
   // Scene setup
@@ -110,51 +116,33 @@ async function main() {
   knight.position.set(0, 0, 0)
   scene.add(knight)
 
-  // UI elements
-  const currentAnimEl = document.getElementById('current-anim')!
-  const currentFrameEl = document.getElementById('current-frame')!
-  const currentSpeedEl = document.getElementById('current-speed')!
-  const speedBtn = document.getElementById('btn-speed')!
-
-  // Animation buttons
-  const animations = ['idle', 'run', 'roll', 'hit', 'death']
-  const buttons = animations.map((name) => document.getElementById(`btn-${name}`)!)
-
-  function setActiveButton(animName: string) {
-    buttons.forEach((btn, i) => {
-      btn.classList.toggle('active', animations[i] === animName)
-    })
-  }
-
   function playAnimation(name: string) {
     knight.play(name, {
-      onFrame: (frameIndex) => {
-        currentFrameEl.textContent = String(frameIndex)
-      },
       onComplete: () => {
         // Return to idle after non-looping animations
         if (name === 'hit' || name === 'death') {
+          const radioGroup = document.querySelector('sl-radio-group')! as any
+          radioGroup.value = 'idle'
           playAnimation('idle')
         }
       },
     })
-    currentAnimEl.textContent = name
-    setActiveButton(name)
   }
 
-  // Button event listeners
-  buttons.forEach((btn, i) => {
-    btn.addEventListener('click', () => playAnimation(animations[i]!))
+  const radioGroup = document.querySelector('sl-radio-group')!
+  radioGroup.addEventListener('sl-change', (e) => {
+    const value = (e.target as any).value
+    playAnimation(value)
   })
 
-  // Speed control
-  const speeds = [0.5, 1, 2, 3]
+  // Speed cycle button
+  const speeds = [0.5, 1, 1.5, 2, 3]
   let speedIndex = 1
+  const speedBtn = document.getElementById('speed-btn')!
   speedBtn.addEventListener('click', () => {
     speedIndex = (speedIndex + 1) % speeds.length
     knight.speed = speeds[speedIndex]!
-    speedBtn.textContent = `Speed: ${speeds[speedIndex]}x`
-    currentSpeedEl.textContent = `${speeds[speedIndex]}x`
+    speedBtn.textContent = `${speeds[speedIndex]}x`
   })
 
   // Handle resize
@@ -167,6 +155,12 @@ async function main() {
     camera.updateProjectionMatrix()
     renderer.setSize(window.innerWidth, window.innerHeight)
   })
+
+  // Stats
+  const statsEl = document.getElementById('stats')!
+  let frameCount = 0
+  let fpsTime = 0
+  let currentFps = 0
 
   // Animation loop
   let lastTime = performance.now()
@@ -181,10 +175,17 @@ async function main() {
     // Update sprite animation
     knight.update(deltaMs)
 
-    // Update frame display
-    currentFrameEl.textContent = String(knight.controller.getState().frameIndex)
-
     renderer.render(scene, camera)
+
+    // Update stats (~once per second)
+    frameCount++
+    fpsTime += deltaMs
+    if (fpsTime >= 1000) {
+      currentFps = Math.round(frameCount * 1000 / fpsTime)
+      frameCount = 0
+      fpsTime = 0
+      statsEl.textContent = `FPS: ${currentFps}\nDraws: ${renderer.info.render.drawCalls}`
+    }
   }
 
   animate()

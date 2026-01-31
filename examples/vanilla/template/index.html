@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en" class="sl-theme-dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Template - Vanilla Three.js</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background: #00021c;
+      }
+      canvas {
+        display: block;
+      }
+      #ui {
+        position: fixed;
+        bottom: 12px;
+        right: 12px;
+        z-index: 100;
+        pointer-events: auto;
+        padding: 10px;
+        background: rgba(0, 2, 28, 0.85);
+        border-radius: 8px;
+        --sl-input-height-small: 1.5rem;
+        --sl-font-size-small: 0.688rem;
+        --sl-font-size-medium: 0.75rem;
+        --sl-input-label-font-size-medium: 0.75rem;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="ui">
+      <sl-radio-group label="Tint" value="white" size="small">
+        <sl-radio-button value="white" size="small">White</sl-radio-button>
+        <sl-radio-button value="cyan" size="small">Cyan</sl-radio-button>
+        <sl-radio-button value="pink" size="small">Pink</sl-radio-button>
+      </sl-radio-group>
+    </div>
+    <script type="module" src="/main.ts"></script>
+  </body>
+</html>

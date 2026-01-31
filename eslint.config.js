@@ -12,7 +12,9 @@ export default tseslint.config(
         ...globals.node,
       },
       parserOptions: {
-        projectService: true,
+        projectService: {
+          allowDefaultProject: ['/scripts/*.ts', '/eslint.config.js'],
+        },
         tsconfigRootDir: import.meta.dirname,
       },
     },

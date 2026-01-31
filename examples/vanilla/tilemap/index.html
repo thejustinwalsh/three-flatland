@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" class="sl-theme-dark">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -12,39 +12,136 @@
       }
       body {
         overflow: hidden;
-        background: #1a1a2e;
+        background: #0a0a12;
         font-family: monospace;
       }
       canvas {
         display: block;
       }
-      #legend {
+      #settings {
         position: fixed;
-        bottom: 20px;
-        left: 50%;
-        transform: translateX(-50%);
-        color: #888;
-        font-size: 11px;
-        text-align: center;
+        top: 12px;
+        left: 12px;
         z-index: 100;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        padding: 8px 10px;
+        background: rgba(0, 2, 28, 0.7);
+        border-radius: 6px;
+        --sl-input-height-small: 1.5rem;
+        --sl-font-size-small: 0.688rem;
+        --sl-toggle-size-small: 0.875rem;
       }
       #stats {
         position: fixed;
-        bottom: 20px;
-        left: 20px;
+        top: 12px;
+        right: 12px;
+        padding: 5px 10px;
+        background: rgba(0, 2, 28, 0.7);
+        border-radius: 6px;
         color: #4a9eff;
-        font-size: 11px;
-        line-height: 1.6;
+        font-size: 10px;
+        line-height: 1.5;
         z-index: 100;
+      }
+      #layers {
+        position: fixed;
+        bottom: 32px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 100;
+        --sl-input-height-small: 1.5rem;
+        --sl-font-size-small: 0.688rem;
+      }
+      #legend {
+        position: fixed;
+        bottom: 8px;
+        left: 50%;
+        transform: translateX(-50%);
+        color: #555;
+        font-size: 9px;
+        white-space: nowrap;
+        z-index: 100;
+      }
+      .seed-row {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+      }
+      .seed-label {
+        color: #8890a0;
+        font-size: 9px;
+        white-space: nowrap;
+      }
+      #seed {
+        width: 64px;
+        background: rgba(255, 255, 255, 0.08);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 4px;
+        color: #ccc;
+        font-size: 10px;
+        font-family: monospace;
+        padding: 3px 6px;
+        outline: none;
+      }
+      #regen-btn {
+        background: rgba(255, 255, 255, 0.1);
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        border-radius: 4px;
+        color: #ccc;
+        font-size: 12px;
+        padding: 2px 6px;
+        cursor: pointer;
+        line-height: 1;
+      }
+      #regen-btn:hover {
+        background: rgba(255, 255, 255, 0.18);
       }
     </style>
   </head>
   <body>
+    <div id="settings">
+      <sl-radio-group id="map-size" label="Map Size" value="512" size="small">
+        <sl-radio-button value="128" size="small">128</sl-radio-button>
+        <sl-radio-button value="512" size="small">512</sl-radio-button>
+        <sl-radio-button value="1024" size="small">1024</sl-radio-button>
+        <sl-radio-button value="2048" size="small">2048</sl-radio-button>
+      </sl-radio-group>
+      <sl-radio-group id="density" label="Density" value="normal" size="small">
+        <sl-radio-button value="sparse" size="small">Sparse</sl-radio-button>
+        <sl-radio-button value="normal" size="small">Normal</sl-radio-button>
+        <sl-radio-button value="dense" size="small">Dense</sl-radio-button>
+        <sl-radio-button value="packed" size="small">Packed</sl-radio-button>
+      </sl-radio-group>
+      <div class="seed-row">
+        <label class="seed-label">Seed</label>
+        <input type="number" id="seed" value="42" min="0" max="999999" />
+        <button id="regen-btn" title="Random seed">&#x21bb;</button>
+      </div>
+    </div>
     <div id="stats">
       <div>FPS: <span id="fps">-</span></div>
+      <div>Draws: <span id="draw-calls">-</span></div>
       <div>Tiles: <span id="tile-count">-</span></div>
       <div>Chunks: <span id="chunk-count">-</span></div>
       <div>Layers: <span id="layer-count">-</span></div>
+    </div>
+    <div id="layers">
+      <sl-button-group>
+        <sl-button id="show-ground" size="small" variant="primary">
+          <span slot="prefix" class="check">&#x2713;</span>
+          Ground
+        </sl-button>
+        <sl-button id="show-walls" size="small" variant="primary">
+          <span slot="prefix" class="check">&#x2713;</span>
+          Walls
+        </sl-button>
+        <sl-button id="show-decor" size="small" variant="primary">
+          <span slot="prefix" class="check">&#x2713;</span>
+          Decor
+        </sl-button>
+      </sl-button-group>
     </div>
     <div id="legend">
       Drag: Pan | WASD/Arrows: Pan | Scroll: Zoom | Click: Toggle tile

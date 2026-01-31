@@ -113,6 +113,12 @@ async function main() {
   // Current tint (lerped each frame)
   const currentTint = new Color(1, 1, 1)
 
+  // Stats
+  const statsEl = document.getElementById('stats')!
+  let frameCount = 0
+  let fpsTime = 0
+  let currentFps = 0
+
   // Animation loop
   let lastTime = performance.now()
 
@@ -120,7 +126,8 @@ async function main() {
     requestAnimationFrame(animate)
 
     const now = performance.now()
-    const delta = (now - lastTime) / 1000
+    const deltaMs = now - lastTime
+    const delta = deltaMs / 1000
     lastTime = now
 
     // Determine target scale and tint
@@ -142,6 +149,16 @@ async function main() {
     sprite.rotation.z += 0.2 * delta
 
     renderer.render(scene, camera)
+
+    // Update stats (~once per second)
+    frameCount++
+    fpsTime += deltaMs
+    if (fpsTime >= 1000) {
+      currentFps = Math.round(frameCount * 1000 / fpsTime)
+      frameCount = 0
+      fpsTime = 0
+      statsEl.textContent = `FPS: ${currentFps}\nDraws: ${renderer.info.render.drawCalls}`
+    }
   }
 
   animate()

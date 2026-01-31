@@ -36,6 +36,12 @@ import {
   dissolvePixelated,
 } from '@three-flatland/core'
 
+import '@shoelace-style/shoelace/dist/themes/dark.css'
+import { setBasePath } from '@shoelace-style/shoelace/dist/utilities/base-path.js'
+import '@shoelace-style/shoelace/dist/components/radio-group/radio-group.js'
+import '@shoelace-style/shoelace/dist/components/radio-button/radio-button.js'
+setBasePath('https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.20.1/cdn/')
+
 // Effect types
 type EffectType =
   | 'normal'
@@ -296,41 +302,14 @@ async function main() {
     setFrame(anim.frames[0]!)
   }
 
-  // UI elements
-  const currentEffectEl = document.getElementById('current-effect')!
-  const buttons = {
-    normal: document.getElementById('btn-normal')!,
-    damage: document.getElementById('btn-damage')!,
-    dissolve: document.getElementById('btn-dissolve')!,
-    powerup: document.getElementById('btn-powerup')!,
-    petrify: document.getElementById('btn-petrify')!,
-    select: document.getElementById('btn-select')!,
-    shadow: document.getElementById('btn-shadow')!,
-    pixelate: document.getElementById('btn-pixelate')!,
-  }
-
-  const effectLabels: Record<EffectType, string> = {
-    normal: 'Normal',
-    damage: 'Damage Flash',
-    dissolve: 'Dissolve',
-    powerup: 'Power-Up (Rainbow)',
-    petrify: 'Petrified (Grayscale)',
-    select: 'Selection (Outline)',
-    shadow: 'Shadow Form',
-    pixelate: 'Pixelate (Teleport)',
-  }
+  // Shoelace radio group
+  const radioGroup = document.querySelector('sl-radio-group')!
 
   let currentEffect: EffectType = 'normal'
 
   function setEffect(effect: EffectType) {
     currentEffect = effect
     sprite.material = materials[effect]
-    currentEffectEl.textContent = effectLabels[effect]
-
-    // Update button states
-    Object.entries(buttons).forEach(([key, btn]) => {
-      btn.classList.toggle('active', key === effect)
-    })
 
     // Reset effect-specific uniforms and start time
     effectStartTime.value = timeUniform.value
@@ -352,9 +331,8 @@ async function main() {
     playAnimation(animName, frozen, noLoop)
   }
 
-  // Button event listeners
-  Object.entries(buttons).forEach(([key, btn]) => {
-    btn.addEventListener('click', () => setEffect(key as EffectType))
+  radioGroup.addEventListener('sl-change', (e) => {
+    setEffect((e.target as any).value as EffectType)
   })
 
   // Keyboard controls
@@ -370,7 +348,9 @@ async function main() {
       '8': 'pixelate',
     }
     if (keyMap[e.key]) {
-      setEffect(keyMap[e.key])
+      setEffect(keyMap[e.key]!)
+      const radioGroup = document.querySelector('sl-radio-group')! as any
+      radioGroup.value = keyMap[e.key]!
     }
   })
 
@@ -387,6 +367,12 @@ async function main() {
 
   // Initialize with idle animation
   playAnimation('idle')
+
+  // Stats
+  const statsEl = document.getElementById('stats')!
+  let frameCount = 0
+  let fpsTime = 0
+  let currentFps = 0
 
   // Animation loop
   let lastTime = performance.now()
@@ -447,6 +433,16 @@ async function main() {
     }
 
     renderer.render(scene, camera)
+
+    // Update stats (~once per second)
+    frameCount++
+    fpsTime += deltaMs
+    if (fpsTime >= 1000) {
+      currentFps = Math.round(frameCount * 1000 / fpsTime)
+      frameCount = 0
+      fpsTime = 0
+      statsEl.innerHTML = `FPS: ${currentFps}\nDraws: ${renderer.info.render.drawCalls}\n`
+    }
   }
 
   animate()

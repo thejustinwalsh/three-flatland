@@ -1,4 +1,4 @@
-import { Canvas, extend, useFrame, useLoader } from '@react-three/fiber/webgpu'
+import { Canvas, extend, useFrame, useLoader, useThree } from '@react-three/fiber/webgpu'
 import { useRef, useState, useCallback } from 'react'
 import { Color } from 'three'
 import { Sprite2D, TextureLoader } from '@three-flatland/react'
@@ -79,15 +79,57 @@ function InteractiveSprite() {
   )
 }
 
+function StatsTracker({ onStats }: { onStats: (fps: number, draws: number) => void }) {
+  const gl = useThree((s) => s.gl)
+  const frameCount = useRef(0)
+  const elapsed = useRef(0)
+  useFrame((_, delta) => {
+    frameCount.current++
+    elapsed.current += delta
+    if (elapsed.current >= 1) {
+      // Cast: R3F types gl as WebGLRenderer, but we use WebGPURenderer which has drawCalls
+      const draws = (gl.info.render as any).drawCalls as number
+      onStats(Math.round(frameCount.current / elapsed.current), draws)
+      frameCount.current = 0
+      elapsed.current = 0
+    }
+  })
+  return null
+}
+
 export default function App() {
+  const [stats, setStats] = useState({ fps: '-' as string | number, draws: '-' as string | number })
+  const handleStats = useCallback((fps: number, draws: number) => setStats({ fps, draws }), [])
+
   return (
-    <Canvas
-      orthographic
-      camera={{ zoom: 5, position: [0, 0, 100] }}
-      renderer={{ antialias: true }}
-    >
-      <color attach="background" args={['#1a1a2e']} />
-      <InteractiveSprite />
-    </Canvas>
+    <>
+      <div
+        style={{
+          position: 'fixed',
+          top: 12,
+          right: 12,
+          padding: '5px 10px',
+          background: 'rgba(0, 2, 28, 0.7)',
+          borderRadius: 6,
+          color: '#4a9eff',
+          fontFamily: 'monospace',
+          fontSize: 10,
+          lineHeight: 1.5,
+          zIndex: 100,
+          whiteSpace: 'pre',
+        }}
+      >
+        {`FPS: ${stats.fps}\nDraws: ${stats.draws}`}
+      </div>
+      <Canvas
+        orthographic
+        camera={{ zoom: 5, position: [0, 0, 100] }}
+        renderer={{ antialias: true }}
+      >
+        <color attach="background" args={['#1a1a2e']} />
+        <StatsTracker onStats={handleStats} />
+        <InteractiveSprite />
+      </Canvas>
+    </>
   )
 }

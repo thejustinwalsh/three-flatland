@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" class="sl-theme-dark">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -17,74 +17,80 @@
       canvas {
         display: block;
       }
-      #controls {
+      #stats {
         position: fixed;
-        bottom: 20px;
-        left: 50%;
-        transform: translateX(-50%);
-        display: flex;
-        gap: 10px;
-        z-index: 100;
-      }
-      button {
-        padding: 10px 20px;
-        font-size: 14px;
-        font-family: monospace;
-        border: 2px solid #4a9eff;
-        background: rgba(74, 158, 255, 0.1);
+        top: 12px;
+        right: 12px;
+        padding: 5px 10px;
+        background: rgba(0, 2, 28, 0.7);
+        border-radius: 6px;
         color: #4a9eff;
-        cursor: pointer;
-        border-radius: 4px;
-        transition: all 0.2s;
-      }
-      button:hover {
-        background: rgba(74, 158, 255, 0.3);
-      }
-      button.active {
-        background: #4a9eff;
-        color: #1a1a2e;
-      }
-      #info {
-        position: fixed;
-        top: 20px;
-        left: 20px;
         font-family: monospace;
-        color: #4a9eff;
-        font-size: 12px;
+        font-size: 10px;
+        line-height: 1.5;
         z-index: 100;
+        white-space: pre;
       }
       #credits {
         position: fixed;
-        bottom: 100px;
+        bottom: 8px;
         left: 50%;
         transform: translateX(-50%);
         font-family: monospace;
-        color: #666;
-        font-size: 10px;
-        text-align: center;
+        color: #555;
+        font-size: 9px;
+        white-space: nowrap;
         z-index: 100;
       }
       #credits a {
-        color: #888;
+        color: #777;
+      }
+      #controls {
+        position: fixed;
+        bottom: 32px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 100;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        --sl-input-height-small: 1.5rem;
+        --sl-font-size-small: 0.688rem;
+      }
+      /* Hide radio group label */
+      #controls sl-radio-group::part(form-control-label) { display: none; }
+      #controls sl-radio-group::part(form-control) { margin: 0; border: 0; padding: 0; }
+      #speed-btn {
+        background: rgba(255, 255, 255, 0.1);
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        border-radius: 12px;
+        color: #ccc;
+        font-size: 10px;
+        font-family: monospace;
+        padding: 4px 8px;
+        cursor: pointer;
+        white-space: nowrap;
+      }
+      #speed-btn:hover {
+        background: rgba(255, 255, 255, 0.18);
       }
     </style>
   </head>
   <body>
-    <div id="info">
-      Animation: <span id="current-anim">idle</span><br />
-      Frame: <span id="current-frame">0</span><br />
-      Speed: <span id="current-speed">1x</span>
-    </div>
+    <div id="stats">FPS: -
+Draws: -</div>
     <div id="credits">
       Knight sprite by <a href="https://analogstudios.itch.io/camelot" target="_blank">analogStudios_</a> (CC0)
     </div>
     <div id="controls">
-      <button id="btn-idle" class="active">Idle</button>
-      <button id="btn-run">Run</button>
-      <button id="btn-roll">Roll</button>
-      <button id="btn-hit">Hit</button>
-      <button id="btn-death">Death</button>
-      <button id="btn-speed">Speed: 1x</button>
+      <sl-radio-group label="Animation" value="idle" size="small">
+        <sl-radio-button value="idle" size="small" pill>Idle</sl-radio-button>
+        <sl-radio-button value="run" size="small" pill>Run</sl-radio-button>
+        <sl-radio-button value="roll" size="small" pill>Roll</sl-radio-button>
+        <sl-radio-button value="hit" size="small" pill>Hit</sl-radio-button>
+        <sl-radio-button value="death" size="small" pill>Death</sl-radio-button>
+      </sl-radio-group>
+      <button id="speed-btn">1x</button>
     </div>
     <script type="module" src="./main.ts"></script>
   </body>

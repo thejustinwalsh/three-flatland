@@ -21,13 +21,22 @@
     "clean": "turbo run clean && rm -rf node_modules",
     "changeset": "changeset",
     "version-packages": "changeset version",
-    "release": "turbo run build && changeset publish"
+    "release": "turbo run build && changeset publish",
+    "syncpack": "tsx scripts/sync-pack.ts",
+    "syncpack:examples": "tsx scripts/sync-pack.ts examples",
+    "syncpack:minis": "tsx scripts/sync-pack.ts minis"
   },
   "pnpm": {
     "onlyBuiltDependencies": [
       "esbuild",
       "sharp"
-    ]
+    ],
+    "overrides": {
+      "@three-flatland/core": "workspace:*",
+      "@three-flatland/react": "workspace:*",
+      "@three-flatland/nodes": "workspace:*",
+      "@three-flatland/presets": "workspace:*"
+    }
   },
   "devDependencies": {
     "@changesets/cli": "^2.27.10",
@@ -39,6 +48,7 @@
     "tsup": "^8.3.5",
     "turbo": "^2.7.5",
     "typescript": "^5.7.3",
+    "tsx": "^4.19.2",
     "typescript-eslint": "^8.19.1",
     "vitest": "^2.1.8"
   }

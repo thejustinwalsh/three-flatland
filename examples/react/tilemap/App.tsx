@@ -12,7 +12,14 @@ import {
   type TilesetData,
   type TileLayerData,
 } from '@three-flatland/react'
-import { createGui, useGuiStore, useGuiCallback } from '@three-flatland/debug/gui/react'
+
+import '@shoelace-style/shoelace/dist/themes/dark.css'
+import { setBasePath } from '@shoelace-style/shoelace/dist/utilities/base-path.js'
+import SlRadioGroup from '@shoelace-style/shoelace/dist/react/radio-group/index.js'
+import SlRadioButton from '@shoelace-style/shoelace/dist/react/radio-button/index.js'
+import SlButtonGroup from '@shoelace-style/shoelace/dist/react/button-group/index.js'
+import SlButton from '@shoelace-style/shoelace/dist/react/button/index.js'
+setBasePath('https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.20.1/cdn/')
 
 // Register TileMap2D with R3F
 extend({ TileMap2D })
@@ -336,29 +343,17 @@ function createTileMapData(
   }
 }
 
-// Debug panel (created at module scope, outside React)
-const gui = createGui('Tilemap', {
-  mapSize: { value: 256, options: { Small: 128, Medium: 256, Large: 512, Mega: 1024 } },
-  chunkSize: { value: 256, options: [256, 512, 1024, 2048] },
-  density: { value: 'normal', options: { Sparse: 'sparse', Normal: 'normal', Dense: 'dense', Packed: 'packed' } },
-  seed: { value: 42, min: 0, max: 999999, step: 1 },
-  showGround: true,
-  showWalls: true,
-  showDecor: true,
-  regenerate: { type: 'button' },
-})
-
 interface TilemapSceneProps {
   mapData: TileMapData
   chunkSize: number
+  showGround: boolean
+  showWalls: boolean
+  showDecor: boolean
   onStats?: (tiles: number, chunks: number, layers: number) => void
 }
 
-function TilemapScene({ mapData, chunkSize, onStats }: TilemapSceneProps) {
+function TilemapScene({ mapData, chunkSize, showGround, showWalls, showDecor, onStats }: TilemapSceneProps) {
   const tilemapRef = useRef<TileMap2D>(null)
-  const showGround = useGuiStore(gui, 'showGround')
-  const showWalls = useGuiStore(gui, 'showWalls')
-  const showDecor = useGuiStore(gui, 'showDecor')
 
   // Report stats when tilemap data or chunk size changes
   useEffect(() => {
@@ -395,7 +390,8 @@ function TilemapScene({ mapData, chunkSize, onStats }: TilemapSceneProps) {
   )
 }
 
-function FpsCounter({ onFps }: { onFps: (fps: number) => void }) {
+function StatsTracker({ onStats }: { onStats: (fps: number, draws: number) => void }) {
+  const gl = useThree((s) => s.gl)
   const frameCount = useRef(0)
   const elapsed = useRef(0)
 
@@ -403,7 +399,9 @@ function FpsCounter({ onFps }: { onFps: (fps: number) => void }) {
     frameCount.current++
     elapsed.current += delta
     if (elapsed.current >= 1) {
-      onFps(Math.round(frameCount.current / elapsed.current))
+      // Cast: R3F types gl as WebGLRenderer, but we use WebGPURenderer which has drawCalls
+      const draws = (gl.info.render as any).drawCalls as number
+      onStats(Math.round(frameCount.current / elapsed.current), draws)
       frameCount.current = 0
       elapsed.current = 0
     }
@@ -496,16 +494,23 @@ function CameraController({ mapSize }: { mapSize: number }) {
 }
 
 export default function App() {
-  const { mapSize, chunkSize, density, seed } = useGuiStore(gui, ['mapSize', 'chunkSize', 'density', 'seed'])
-  const [fps, setFps] = useState(0)
+  const [mapSize, setMapSize] = useState(256)
+  const [density, setDensity] = useState('normal')
+  const [seed, setSeed] = useState(42)
+  const [showGround, setShowGround] = useState(true)
+  const [showWalls, setShowWalls] = useState(true)
+  const [showDecor, setShowDecor] = useState(true)
+  const [fps, setFps] = useState<string | number>('-')
+  const [draws, setDraws] = useState<string | number>('-')
   const [tileStats, setTileStats] = useState({ tiles: 0, chunks: 0, layers: 0 })
 
-  const handleFps = useCallback((value: number) => setFps(value), [])
+  const handlePerfStats = useCallback((fpsVal: number, drawsVal: number) => {
+    setFps(fpsVal)
+    setDraws(drawsVal)
+  }, [])
   const handleStats = useCallback((tiles: number, chunks: number, layers: number) => setTileStats({ tiles, chunks, layers }), [])
 
-  useGuiCallback(gui, 'regenerate', () => {
-    gui.store.setState({ seed: Math.floor(Math.random() * 999999) })
-  })
+  const handleRegenerate = () => setSeed(Math.floor(Math.random() * 999999))
 
   // Create tileset (memoized, never changes)
   const tileset = useMemo<TilesetData>(() => ({
@@ -529,34 +534,117 @@ export default function App() {
 
   return (
     <>
-      {/* Stats */}
+      {/* Generation settings — top-left column */}
+      <div style={{
+        position: 'fixed', top: 12, left: 12, zIndex: 100, pointerEvents: 'auto',
+        display: 'flex', flexDirection: 'column', gap: 6,
+        padding: '8px 10px', background: 'rgba(0, 2, 28, 0.7)', borderRadius: 6,
+        '--sl-input-height-small': '1.5rem', '--sl-font-size-small': '0.688rem',
+        '--sl-toggle-size-small': '0.875rem',
+      } as React.CSSProperties}>
+        <SlRadioGroup label="Map Size" size="small" value={String(mapSize)} onSlChange={(e) => setMapSize(Number((e.target as any).value))}>
+          <SlRadioButton value="128" size="small">128</SlRadioButton>
+          <SlRadioButton value="256" size="small">256</SlRadioButton>
+          <SlRadioButton value="512" size="small">512</SlRadioButton>
+          <SlRadioButton value="1024" size="small">1024</SlRadioButton>
+        </SlRadioGroup>
+        <SlRadioGroup label="Density" size="small" value={density} onSlChange={(e) => setDensity((e.target as any).value)}>
+          <SlRadioButton value="sparse" size="small">Sparse</SlRadioButton>
+          <SlRadioButton value="normal" size="small">Normal</SlRadioButton>
+          <SlRadioButton value="dense" size="small">Dense</SlRadioButton>
+          <SlRadioButton value="packed" size="small">Packed</SlRadioButton>
+        </SlRadioGroup>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <label style={{ color: '#8890a0', fontSize: 9, fontFamily: 'monospace', whiteSpace: 'nowrap' }}>Seed</label>
+          <input
+            type="number"
+            value={seed}
+            onChange={(e) => setSeed(Number(e.target.value))}
+            style={{
+              width: 64,
+              background: 'rgba(255, 255, 255, 0.08)',
+              border: '1px solid rgba(255, 255, 255, 0.12)',
+              borderRadius: 4,
+              color: '#ccc',
+              fontSize: 10,
+              fontFamily: 'monospace',
+              padding: '3px 6px',
+              outline: 'none',
+            }}
+          />
+          <button
+            onClick={handleRegenerate}
+            title="Random seed"
+            style={{
+              background: 'rgba(255, 255, 255, 0.1)',
+              border: '1px solid rgba(255, 255, 255, 0.15)',
+              borderRadius: 4,
+              color: '#ccc',
+              fontSize: 12,
+              padding: '2px 6px',
+              cursor: 'pointer',
+              lineHeight: 1,
+            }}
+          >
+            &#x21bb;
+          </button>
+        </div>
+      </div>
+
+      {/* Stats — top-right */}
       <div style={{
         position: 'fixed',
-        bottom: 20,
-        left: 20,
+        top: 12,
+        right: 12,
+        padding: '5px 10px',
+        background: 'rgba(0, 2, 28, 0.7)',
+        borderRadius: 6,
         color: '#4a9eff',
-        fontSize: 11,
+        fontSize: 10,
         fontFamily: 'monospace',
-        lineHeight: 1.6,
+        lineHeight: 1.5,
         zIndex: 100,
       }}>
         <div>FPS: {fps}</div>
+        <div>Draws: {draws}</div>
         <div>Tiles: {tileStats.tiles}</div>
         <div>Chunks: {tileStats.chunks}</div>
         <div>Layers: {tileStats.layers}</div>
       </div>
 
-      {/* Legend */}
+      {/* Layer toggles — bottom-center */}
+      <div style={{
+        position: 'fixed', bottom: 32, left: '50%', transform: 'translateX(-50%)',
+        zIndex: 100, pointerEvents: 'auto',
+        '--sl-input-height-small': '1.5rem', '--sl-font-size-small': '0.688rem',
+      } as React.CSSProperties}>
+        <SlButtonGroup>
+          <SlButton size="small" variant={showGround ? 'primary' : 'default'} onClick={() => setShowGround(v => !v)}>
+            <span slot="prefix">{showGround ? '\u2713' : '\u2715'}</span>
+            Ground
+          </SlButton>
+          <SlButton size="small" variant={showWalls ? 'primary' : 'default'} onClick={() => setShowWalls(v => !v)}>
+            <span slot="prefix">{showWalls ? '\u2713' : '\u2715'}</span>
+            Walls
+          </SlButton>
+          <SlButton size="small" variant={showDecor ? 'primary' : 'default'} onClick={() => setShowDecor(v => !v)}>
+            <span slot="prefix">{showDecor ? '\u2713' : '\u2715'}</span>
+            Decor
+          </SlButton>
+        </SlButtonGroup>
+      </div>
+
+      {/* Legend — bottom-center */}
       <div style={{
         position: 'fixed',
-        bottom: 20,
+        bottom: 8,
         left: '50%',
         transform: 'translateX(-50%)',
-        color: '#888',
-        fontSize: 11,
+        color: '#555',
+        fontSize: 9,
         fontFamily: 'monospace',
-        textAlign: 'center',
         zIndex: 100,
+        whiteSpace: 'nowrap',
       }}>
         Drag: Pan | WASD/Arrows: Pan | Scroll: Zoom
       </div>
@@ -568,10 +656,17 @@ export default function App() {
         renderer={{ antialias: false }}
       >
         <color attach="background" args={['#0a0a12']} />
-        <FpsCounter onFps={handleFps} />
+        <StatsTracker onStats={handlePerfStats} />
         <CameraController mapSize={mapSize} />
         <Suspense fallback={null}>
-          <TilemapScene mapData={mapData} chunkSize={chunkSize} onStats={handleStats} />
+          <TilemapScene
+            mapData={mapData}
+            chunkSize={256}
+            showGround={showGround}
+            showWalls={showWalls}
+            showDecor={showDecor}
+            onStats={handleStats}
+          />
         </Suspense>
       </Canvas>
     </>

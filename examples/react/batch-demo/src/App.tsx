@@ -10,7 +10,6 @@ import {
   type SpriteFrame,
   type RenderStats,
 } from '@three-flatland/react'
-
 // Extend R3F with our custom classes
 extend({ Renderer2D, Sprite2D, Sprite2DMaterial })
 
@@ -199,6 +198,24 @@ function HoverPreview({ visible, position, material, building }: HoverPreviewPro
 // MAIN SCENE
 // ============================================
 
+function StatsTracker({ onStats }: { onStats: (fps: number, draws: number) => void }) {
+  const gl = useThree((s) => s.gl)
+  const frameCount = useRef(0)
+  const elapsed = useRef(0)
+  useFrame((_, delta) => {
+    frameCount.current++
+    elapsed.current += delta
+    if (elapsed.current >= 1) {
+      // Cast: R3F types gl as WebGLRenderer, but we use WebGPURenderer which has drawCalls
+      const draws = (gl.info.render as any).drawCalls as number
+      onStats(Math.round(frameCount.current / elapsed.current), draws)
+      frameCount.current = 0
+      elapsed.current = 0
+    }
+  })
+  return null
+}
+
 interface VillageSceneProps {
   entities: PlacedEntity[]
   selectedBuilding: number
@@ -355,78 +372,62 @@ function VillageScene({ entities, selectedBuilding, onPlaceBuilding, onStats }: 
 const styles = {
   ui: {
     position: 'fixed',
-    bottom: 20,
-    left: '50%',
-    transform: 'translateX(-50%)',
+    bottom: 12,
+    right: 12,
     display: 'flex',
-    gap: 8,
-    padding: 12,
+    gap: 6,
+    padding: 8,
     background: 'rgba(0, 0, 0, 0.7)',
-    borderRadius: 12,
+    borderRadius: 10,
     zIndex: 100,
   } as React.CSSProperties,
 
-  button: (selected: boolean, isTree: boolean) =>
+  button: (selected: boolean) =>
     ({
-      width: 64,
-      height: 64,
-      border: `3px solid ${selected ? '#4a9eff' : 'transparent'}`,
-      borderRadius: 8,
-      backgroundSize: isTree ? '400% 300%' : 'contain',
-      backgroundPosition: isTree ? '0% 0%' : 'center',
-      backgroundRepeat: 'no-repeat',
+      width: 40,
+      height: 40,
+      border: `2px solid ${selected ? '#4a9eff' : 'transparent'}`,
+      borderRadius: 6,
       backgroundColor: selected ? 'rgba(74, 158, 255, 0.2)' : 'rgba(255, 255, 255, 0.1)',
       cursor: 'pointer',
       transition: 'all 0.15s ease',
+      overflow: 'hidden',
+      position: 'relative',
     }) as React.CSSProperties,
 
   stats: {
     position: 'fixed',
-    top: 20,
-    left: 20,
-    padding: '10px 16px',
+    top: 12,
+    right: 12,
+    padding: '5px 10px',
     background: 'rgba(0, 0, 0, 0.7)',
+    borderRadius: 6,
     color: '#4a9eff',
     fontFamily: 'monospace',
-    fontSize: 13,
-    borderRadius: 8,
-    zIndex: 100,
-  } as React.CSSProperties,
-
-  title: {
-    position: 'fixed',
-    top: 20,
-    left: '50%',
-    transform: 'translateX(-50%)',
-    padding: '10px 20px',
-    background: 'rgba(0, 0, 0, 0.7)',
-    color: 'white',
-    fontSize: 18,
-    fontWeight: 600,
-    borderRadius: 8,
+    fontSize: 10,
+    lineHeight: 1.5,
     zIndex: 100,
   } as React.CSSProperties,
 
   hint: {
     position: 'fixed',
-    top: 70,
+    top: 12,
     left: '50%',
     transform: 'translateX(-50%)',
-    padding: '8px 16px',
+    padding: '4px 12px',
     background: 'rgba(0, 0, 0, 0.5)',
-    color: 'rgba(255, 255, 255, 0.8)',
-    fontSize: 13,
-    borderRadius: 6,
+    color: 'rgba(255, 255, 255, 0.7)',
+    fontSize: 11,
+    borderRadius: 4,
     zIndex: 100,
   } as React.CSSProperties,
 
   credits: {
     position: 'fixed',
-    bottom: 115,
-    left: '50%',
-    transform: 'translateX(-50%)',
+    bottom: 8,
+    left: 12,
     color: 'rgba(0, 0, 0, 0.5)',
-    fontSize: 11,
+    fontSize: 9,
     zIndex: 100,
   } as React.CSSProperties,
 }
@@ -449,6 +450,8 @@ export default function App() {
   const [entities, setEntities] = useState<PlacedEntity[]>(INITIAL_ENTITIES)
   const [selectedBuilding, setSelectedBuilding] = useState(0)
   const [stats, setStats] = useState<RenderStats>({ spriteCount: 0, batchCount: 0, drawCalls: 0, visibleSprites: 0 })
+  const [perfStats, setPerfStats] = useState({ fps: '-' as string | number, draws: '-' as string | number })
+  const handlePerfStats = useCallback((fps: number, draws: number) => setPerfStats({ fps, draws }), [])
 
   const viewWidth = TILE_SIZE * (GRID_WIDTH + 2)
   const viewHeight = TILE_SIZE * (GRID_HEIGHT + 4)
@@ -481,6 +484,7 @@ export default function App() {
         }}
         style={{ background: '#87ceeb' }}
       >
+        <StatsTracker onStats={handlePerfStats} />
         <VillageScene
           entities={entities}
           selectedBuilding={selectedBuilding}
@@ -489,24 +493,35 @@ export default function App() {
         />
       </Canvas>
 
-      <div style={styles.title}>Village Builder</div>
-      <div style={styles.hint}>Click to place buildings</div>
+      <div style={styles.hint}>Click to place objects</div>
       <div style={styles.stats}>
-        Sprites: {stats.spriteCount} | Batches: {stats.batchCount} | Draw Calls: {stats.drawCalls}
+        FPS: {perfStats.fps}<br />
+        Draws: {perfStats.draws}<br />
+        Sprites: {stats.spriteCount}<br />
+        Batches: {stats.batchCount}
       </div>
 
       <div style={styles.ui}>
-        {BUILDINGS.map((building, index) => (
-          <button
-            key={building.name}
-            style={{
-              ...styles.button(index === selectedBuilding, building.name === 'tree'),
-              backgroundImage: `url(${ASSET_BASE}${building.texture})`,
-            }}
-            onClick={() => setSelectedBuilding(index)}
-            title={building.name}
-          />
-        ))}
+        {BUILDINGS.map((building, index) => {
+          const isTree = building.name === 'tree'
+          return (
+            <button
+              key={building.name}
+              style={styles.button(index === selectedBuilding)}
+              onClick={() => setSelectedBuilding(index)}
+              title={building.name}
+            >
+              <img
+                src={`${ASSET_BASE}${building.texture}`}
+                alt={building.name}
+                style={isTree
+                  ? { position: 'absolute', inset: 0, width: '400%', height: '300%', maxWidth: 'none', objectFit: 'cover', objectPosition: '0 0', pointerEvents: 'none' }
+                  : { position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', pointerEvents: 'none' }
+                }
+              />
+            </button>
+          )
+        })}
       </div>
 
       <div style={styles.credits}>

@@ -317,6 +317,9 @@ async function main() {
 
   // Stats display
   const statsEl = document.getElementById('stats')!
+  let frameCount = 0
+  let fpsTime = 0
+  let currentFps = 0
 
   // Handle resize
   function handleResize() {
@@ -344,16 +347,30 @@ async function main() {
   handleResize()
 
   // Animation loop
+  let lastTime = performance.now()
+
   function animate() {
     requestAnimationFrame(animate)
 
+    const now = performance.now()
+    const deltaMs = now - lastTime
+    lastTime = now
+
     renderer2D.update()
 
-    // Update stats
-    const stats = renderer2D.stats
-    statsEl.textContent = `Sprites: ${stats.spriteCount} | Batches: ${stats.batchCount} | Draw Calls: ${stats.drawCalls}`
-
     renderer.render(scene, camera)
+
+    // Update stats (~once per second)
+    frameCount++
+    fpsTime += deltaMs
+    if (fpsTime >= 1000) {
+      currentFps = Math.round(frameCount * 1000 / fpsTime)
+      frameCount = 0
+      fpsTime = 0
+
+      const stats = renderer2D.stats
+      statsEl.innerHTML = `FPS: ${currentFps}<br>Draws: ${renderer.info.render.drawCalls}<br>Sprites: ${stats.spriteCount}<br>Batches: ${stats.batchCount}`
+    }
   }
 
   animate()

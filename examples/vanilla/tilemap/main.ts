@@ -13,7 +13,15 @@ import {
   Vector3,
 } from 'three'
 import { TileMap2D, type TileMapData, type TilesetData, type TileLayerData } from '@three-flatland/core'
-import { createGui } from '@three-flatland/debug/gui'
+
+// Shoelace web components
+import '@shoelace-style/shoelace/dist/themes/dark.css'
+import { setBasePath } from '@shoelace-style/shoelace/dist/utilities/base-path.js'
+import '@shoelace-style/shoelace/dist/components/radio-group/radio-group.js'
+import '@shoelace-style/shoelace/dist/components/radio-button/radio-button.js'
+import '@shoelace-style/shoelace/dist/components/button-group/button-group.js'
+import '@shoelace-style/shoelace/dist/components/button/button.js'
+setBasePath('https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.20.1/cdn/')
 
 // Tile IDs for our procedural tileset
 const TILES = {
@@ -415,17 +423,14 @@ function createTileMapData(
   }
 }
 
-// Debug panel
-const gui = createGui('Tilemap', {
-  mapSize: { value: 512, options: { Small: 128, Medium: 512, Large: 1024, Mega: 2048 } },
-  chunkSize: { value: 256, options: [256, 512, 1024, 2048] },
-  density: { value: 'normal', options: { Sparse: 'sparse', Normal: 'normal', Dense: 'dense', Packed: 'packed' } },
-  seed: { value: 42, min: 0, max: 999999, step: 1 },
-  showGround: true,
-  showWalls: true,
-  showDecor: true,
-  regenerate: { type: 'button' },
-})
+// GUI state
+let mapSize = 512
+let chunkSize = 256
+let density = 'normal'
+let seed = 42
+let showGround = true
+let showWalls = true
+let showDecor = true
 
 async function main() {
   const TILE_SIZE = 16
@@ -473,12 +478,9 @@ async function main() {
     texture: tilesetTexture,
   }
 
-  // Build tilemap from current gui state
+  // Build tilemap from current state
   function buildTilemap(): TileMap2D {
-    const mapSize = gui.get('mapSize')
-    const density = gui.get('density')
     const dungeonLayers = generateDungeon(mapSize, mapSize, density)
-    const chunkSize = gui.get('chunkSize')
     const mapData = createTileMapData(mapSize, mapSize, TILE_SIZE, tilesetData, dungeonLayers)
     const tm = new TileMap2D({ data: mapData, chunkSize })
 
@@ -486,9 +488,9 @@ async function main() {
     const groundLayer = tm.getLayerAt(0)
     const wallsLayer = tm.getLayerAt(1)
     const decorLayer = tm.getLayerAt(2)
-    if (groundLayer) groundLayer.visible = gui.get('showGround')
-    if (wallsLayer) wallsLayer.visible = gui.get('showWalls')
-    if (decorLayer) decorLayer.visible = gui.get('showDecor')
+    if (groundLayer) groundLayer.visible = showGround
+    if (wallsLayer) wallsLayer.visible = showWalls
+    if (decorLayer) decorLayer.visible = showDecor
 
     return tm
   }
@@ -498,9 +500,8 @@ async function main() {
   scene.add(tilemap)
 
   // Center camera on map
-  const initialSize = gui.get('mapSize')
-  camera.position.x = (initialSize * TILE_SIZE) / 2
-  camera.position.y = (initialSize * TILE_SIZE) / 2
+  camera.position.x = (mapSize * TILE_SIZE) / 2
+  camera.position.y = (mapSize * TILE_SIZE) / 2
 
   // Rebuild tilemap (on map size, density, or seed change)
   function rebuildTilemap() {
@@ -510,34 +511,64 @@ async function main() {
     scene.add(tilemap)
 
     // Re-center camera
-    const mapSize = gui.get('mapSize')
     camera.position.x = (mapSize * TILE_SIZE) / 2
     camera.position.y = (mapSize * TILE_SIZE) / 2
 
     updateStats()
   }
 
-  // Subscribe to gui changes
-  gui.on('mapSize', () => rebuildTilemap())
-  gui.on('chunkSize', () => rebuildTilemap())
-  gui.on('density', () => rebuildTilemap())
-  gui.on('seed', () => rebuildTilemap())
+  // Wire up Shoelace controls
+  document.getElementById('map-size')!.addEventListener('sl-change', (e) => {
+    mapSize = Number((e.target as any).value)
+    rebuildTilemap()
+  })
 
-  gui.on('showGround', (visible) => {
+  document.getElementById('density')!.addEventListener('sl-change', (e) => {
+    density = (e.target as any).value
+    rebuildTilemap()
+  })
+
+  const seedInput = document.getElementById('seed') as HTMLInputElement
+  seedInput.addEventListener('change', () => {
+    seed = Number(seedInput.value)
+    rebuildTilemap()
+  })
+
+  const groundBtn = document.getElementById('show-ground')! as any
+  const wallsBtn = document.getElementById('show-walls')! as any
+  const decorBtn = document.getElementById('show-decor')! as any
+
+  function updateLayerButton(btn: HTMLElement, active: boolean) {
+    ;(btn as any).variant = active ? 'primary' : 'default'
+    const icon = btn.querySelector('[slot="prefix"]')
+    if (icon) icon.textContent = active ? '\u2713' : '\u2715'
+  }
+
+  groundBtn.addEventListener('click', () => {
+    showGround = !showGround
+    updateLayerButton(groundBtn, showGround)
     const layer = tilemap.getLayerAt(0)
-    if (layer) layer.visible = visible
-  })
-  gui.on('showWalls', (visible) => {
-    const layer = tilemap.getLayerAt(1)
-    if (layer) layer.visible = visible
-  })
-  gui.on('showDecor', (visible) => {
-    const layer = tilemap.getLayerAt(2)
-    if (layer) layer.visible = visible
+    if (layer) layer.visible = showGround
   })
 
-  gui.on('regenerate', () => {
-    gui.store.setState({ seed: Math.floor(Math.random() * 999999) })
+  wallsBtn.addEventListener('click', () => {
+    showWalls = !showWalls
+    updateLayerButton(wallsBtn, showWalls)
+    const layer = tilemap.getLayerAt(1)
+    if (layer) layer.visible = showWalls
+  })
+
+  decorBtn.addEventListener('click', () => {
+    showDecor = !showDecor
+    updateLayerButton(decorBtn, showDecor)
+    const layer = tilemap.getLayerAt(2)
+    if (layer) layer.visible = showDecor
+  })
+
+  document.getElementById('regen-btn')!.addEventListener('click', () => {
+    seed = Math.floor(Math.random() * 999999)
+    seedInput.value = String(seed)
+    rebuildTilemap()
   })
 
   // Camera controls
@@ -625,6 +656,7 @@ async function main() {
 
   // Stats elements
   const fpsEl = document.getElementById('fps')!
+  const drawCallsEl = document.getElementById('draw-calls')!
   const tileCountEl = document.getElementById('tile-count')!
   const chunkCountEl = document.getElementById('chunk-count')!
   const layerCountEl = document.getElementById('layer-count')!
@@ -648,15 +680,6 @@ async function main() {
     const deltaMs = now - lastTime
     lastTime = now
 
-    // FPS counter
-    frameCount++
-    fpsTime += deltaMs
-    if (fpsTime >= 1000) {
-      fpsEl.textContent = String(Math.round(frameCount * 1000 / fpsTime))
-      frameCount = 0
-      fpsTime = 0
-    }
-
     // Camera movement
     const speed = 200 * (deltaMs / 1000) * zoom
     if (keys.has('w') || keys.has('arrowup')) camera.position.y += speed
@@ -675,6 +698,16 @@ async function main() {
     tilemap.update(deltaMs)
 
     renderer.render(scene, camera)
+
+    // FPS counter (read draw calls AFTER render)
+    frameCount++
+    fpsTime += deltaMs
+    if (fpsTime >= 1000) {
+      fpsEl.textContent = String(Math.round(frameCount * 1000 / fpsTime))
+      drawCallsEl.textContent = String(renderer.info.render.drawCalls)
+      frameCount = 0
+      fpsTime = 0
+    }
   }
 
   animate()

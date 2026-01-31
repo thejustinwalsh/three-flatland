@@ -6,16 +6,17 @@
   "scripts": {
     "dev": "vite dev --port ${TURBO_MFE_PORT:-5179}",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@three-flatland/core": "workspace:*",
-    "@three-flatland/nodes": "workspace:*",
-    "three": "catalog:"
+    "@three-flatland/core": "^0.0.0",
+    "@three-flatland/nodes": "^0.0.0",
+    "three": "^0.182.0"
   },
   "devDependencies": {
-    "@types/three": "catalog:",
-    "typescript": "catalog:",
-    "vite": "catalog:"
+    "@types/three": "^0.182.0",
+    "typescript": "^5.7.3",
+    "vite": "^6.0.7"
   }
 }

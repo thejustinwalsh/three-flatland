@@ -1,5 +1,5 @@
-import { Suspense, useRef, useState, use } from 'react'
-import { Canvas, extend, useFrame } from '@react-three/fiber/webgpu'
+import { Suspense, useRef, useState, use, useCallback } from 'react'
+import { Canvas, extend, useFrame, useThree } from '@react-three/fiber/webgpu'
 import { NearestFilter } from 'three'
 import {
   AnimatedSprite2D,
@@ -7,6 +7,14 @@ import {
   Layers,
   type AnimationSetDefinition,
 } from '@three-flatland/react'
+
+import '@shoelace-style/shoelace/dist/themes/dark.css'
+import { setBasePath } from '@shoelace-style/shoelace/dist/utilities/base-path.js'
+import SlRadioGroup from '@shoelace-style/shoelace/dist/react/radio-group/index.js'
+import SlRadioButton from '@shoelace-style/shoelace/dist/react/radio-button/index.js'
+setBasePath('https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.20.1/cdn/')
+
+const SPEEDS = [0.5, 1, 1.5, 2, 3]
 
 // Register AnimatedSprite2D with R3F (tree-shakeable)
 extend({ AnimatedSprite2D })
@@ -87,7 +95,7 @@ const animationSet: AnimationSetDefinition = {
 interface KnightProps {
   animation: string
   speed: number
-  onAnimationComplete?: () => void
+  onAnimationComplete: () => void
 }
 
 function Knight({ animation, speed, onAnimationComplete }: KnightProps) {
@@ -98,7 +106,12 @@ function Knight({ animation, speed, onAnimationComplete }: KnightProps) {
   // Update animation when it changes
   if (ref.current && lastAnimation.current !== animation) {
     ref.current.play(animation, {
-      onComplete: onAnimationComplete,
+      onComplete: () => {
+        // Return to idle after non-looping animations
+        if (animation === 'hit' || animation === 'death') {
+          onAnimationComplete()
+        }
+      },
     })
     lastAnimation.current = animation
   }
@@ -126,109 +139,135 @@ function Knight({ animation, speed, onAnimationComplete }: KnightProps) {
   )
 }
 
-const animations = ['idle', 'run', 'roll', 'hit', 'death'] as const
-const animationLabels = ['Idle', 'Run', 'Roll', 'Hit', 'Death'] as const
-const speeds = [0.5, 1, 2, 3] as const
+function StatsTracker({ onStats }: { onStats: (fps: number, draws: number) => void }) {
+  const gl = useThree((s) => s.gl)
+  const frameCount = useRef(0)
+  const elapsed = useRef(0)
+  useFrame((_, delta) => {
+    frameCount.current++
+    elapsed.current += delta
+    if (elapsed.current >= 1) {
+      // Cast: R3F types gl as WebGLRenderer, but we use WebGPURenderer which has drawCalls
+      const draws = (gl.info.render as any).drawCalls as number
+      onStats(Math.round(frameCount.current / elapsed.current), draws)
+      frameCount.current = 0
+      elapsed.current = 0
+    }
+  })
+  return null
+}
 
 export default function App() {
-  const [currentAnim, setCurrentAnim] = useState<string>('idle')
+  const [animation, setAnimation] = useState('idle')
   const [speedIndex, setSpeedIndex] = useState(1)
+  const speed = SPEEDS[speedIndex]!
+  const [stats, setStats] = useState({ fps: '-' as string | number, draws: '-' as string | number })
+  const handleStats = useCallback((fps: number, draws: number) => setStats({ fps, draws }), [])
 
-  const handleAnimationComplete = () => {
-    // Return to idle after non-looping animations
-    if (currentAnim === 'hit' || currentAnim === 'death') {
-      setCurrentAnim('idle')
-    }
-  }
+  const handleAnimationComplete = useCallback(() => {
+    setAnimation('idle')
+  }, [])
 
   return (
     <>
-      {/* UI Controls */}
-      <div
-        style={{
-          position: 'fixed',
-          top: 20,
-          left: 20,
-          color: '#4a9eff',
-          fontSize: 12,
-          fontFamily: 'monospace',
-          zIndex: 100,
-        }}
-      >
-        Animation: {currentAnim}
-        <br />
-        Speed: {speeds[speedIndex]}x
-      </div>
+      {/* Hide radio group label */}
+      <style>{`
+        .anim-bar sl-radio-group::part(form-control-label) { display: none; }
+        .anim-bar sl-radio-group::part(form-control) { margin: 0; border: 0; padding: 0; }
+      `}</style>
 
+      {/* Controls — centered bottom bar */}
       <div
+        className="anim-bar"
         style={{
           position: 'fixed',
-          bottom: 100,
+          bottom: 32,
           left: '50%',
           transform: 'translateX(-50%)',
-          color: '#666',
-          fontSize: 10,
-          fontFamily: 'monospace',
-          textAlign: 'center',
           zIndex: 100,
+          pointerEvents: 'auto',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 6,
+          '--sl-input-height-small': '1.5rem',
+          '--sl-font-size-small': '0.688rem',
+        } as React.CSSProperties}
+      >
+        <SlRadioGroup
+          label="Animation"
+          size="small"
+          value={animation}
+          onSlChange={(e: Event) =>
+            setAnimation((e.target as HTMLInputElement).value)
+          }
+        >
+          <SlRadioButton size="small" pill value="idle">Idle</SlRadioButton>
+          <SlRadioButton size="small" pill value="run">Run</SlRadioButton>
+          <SlRadioButton size="small" pill value="roll">Roll</SlRadioButton>
+          <SlRadioButton size="small" pill value="hit">Hit</SlRadioButton>
+          <SlRadioButton size="small" pill value="death">Death</SlRadioButton>
+        </SlRadioGroup>
+        <button
+          onClick={() => setSpeedIndex((i) => (i + 1) % SPEEDS.length)}
+          style={{
+            background: 'rgba(255, 255, 255, 0.1)',
+            border: '1px solid rgba(255, 255, 255, 0.15)',
+            borderRadius: 12,
+            color: '#ccc',
+            fontSize: 10,
+            fontFamily: 'monospace',
+            padding: '4px 8px',
+            cursor: 'pointer',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {speed}x
+        </button>
+      </div>
+
+      {/* Attribution — centered bottom */}
+      <div
+        style={{
+          position: 'fixed',
+          bottom: 8,
+          left: '50%',
+          transform: 'translateX(-50%)',
+          color: '#555',
+          fontSize: 9,
+          fontFamily: 'monospace',
+          zIndex: 100,
+          whiteSpace: 'nowrap',
         }}
       >
         Knight sprite by{' '}
         <a
           href="https://analogstudios.itch.io/camelot"
           target="_blank"
-          style={{ color: '#888' }}
+          style={{ color: '#777' }}
         >
           analogStudios_
         </a>{' '}
         (CC0)
       </div>
 
+      {/* Stats overlay */}
       <div
         style={{
           position: 'fixed',
-          bottom: 20,
-          left: '50%',
-          transform: 'translateX(-50%)',
-          display: 'flex',
-          gap: 10,
+          top: 12,
+          right: 12,
+          padding: '5px 10px',
+          background: 'rgba(0, 2, 28, 0.7)',
+          borderRadius: 6,
+          color: '#4a9eff',
+          fontFamily: 'monospace',
+          fontSize: 10,
+          lineHeight: 1.5,
           zIndex: 100,
+          whiteSpace: 'pre',
         }}
       >
-        {animations.map((anim, i) => (
-          <button
-            key={anim}
-            onClick={() => setCurrentAnim(anim)}
-            style={{
-              padding: '10px 20px',
-              fontSize: 14,
-              fontFamily: 'monospace',
-              border: '2px solid #4a9eff',
-              background:
-                currentAnim === anim ? '#4a9eff' : 'rgba(74, 158, 255, 0.1)',
-              color: currentAnim === anim ? '#1a1a2e' : '#4a9eff',
-              cursor: 'pointer',
-              borderRadius: 4,
-            }}
-          >
-            {animationLabels[i]}
-          </button>
-        ))}
-        <button
-          onClick={() => setSpeedIndex((i) => (i + 1) % speeds.length)}
-          style={{
-            padding: '10px 20px',
-            fontSize: 14,
-            fontFamily: 'monospace',
-            border: '2px solid #4a9eff',
-            background: 'rgba(74, 158, 255, 0.1)',
-            color: '#4a9eff',
-            cursor: 'pointer',
-            borderRadius: 4,
-          }}
-        >
-          Speed: {speeds[speedIndex]}x
-        </button>
+        {`FPS: ${stats.fps}\nDraws: ${stats.draws}`}
       </div>
 
       {/* Three.js Canvas */}
@@ -238,10 +277,11 @@ export default function App() {
         renderer={{ antialias: false }}
       >
         <color attach="background" args={['#1a1a2e']} />
+        <StatsTracker onStats={handleStats} />
         <Suspense fallback={null}>
           <Knight
-            animation={currentAnim}
-            speed={speeds[speedIndex]}
+            animation={animation}
+            speed={speed}
             onAnimationComplete={handleAnimationComplete}
           />
         </Suspense>

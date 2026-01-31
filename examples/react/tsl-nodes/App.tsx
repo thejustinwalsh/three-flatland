@@ -1,5 +1,5 @@
-import { Suspense, useMemo, useState, use, useRef, useImperativeHandle, forwardRef, useEffect } from 'react'
-import { Canvas, useFrame } from '@react-three/fiber/webgpu'
+import { Suspense, useMemo, use, useRef, useImperativeHandle, forwardRef, useEffect, useState, useCallback } from 'react'
+import { Canvas, useFrame, useThree } from '@react-three/fiber/webgpu'
 import { MeshBasicNodeMaterial } from 'three/webgpu'
 import {
   texture as sampleTexture,
@@ -33,6 +33,12 @@ import {
   type SpriteSheet,
 } from '@three-flatland/react'
 
+import '@shoelace-style/shoelace/dist/themes/dark.css'
+import { setBasePath } from '@shoelace-style/shoelace/dist/utilities/base-path.js'
+import SlRadioGroup from '@shoelace-style/shoelace/dist/react/radio-group/index.js'
+import SlRadioButton from '@shoelace-style/shoelace/dist/react/radio-button/index.js'
+setBasePath('https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.20.1/cdn/')
+
 // Effect types
 type EffectType =
   | 'normal'
@@ -46,13 +52,13 @@ type EffectType =
 
 const effectLabels: Record<EffectType, string> = {
   normal: 'Normal',
-  damage: 'Damage Flash',
+  damage: 'Damage',
   dissolve: 'Dissolve',
-  powerup: 'Power-Up (Rainbow)',
-  petrify: 'Petrified (Grayscale)',
-  select: 'Selection (Outline)',
-  shadow: 'Shadow Form',
-  pixelate: 'Pixelate (Teleport)',
+  powerup: 'Rainbow',
+  petrify: 'Stone',
+  select: 'Outline',
+  shadow: 'Shadow',
+  pixelate: 'Pixelate',
 }
 
 // Animation definitions
@@ -380,26 +386,38 @@ const EffectSprite = forwardRef<EffectSpriteHandle, EffectSpriteProps>(
   }
 )
 
-const effects: EffectType[] = [
-  'normal',
-  'damage',
-  'dissolve',
-  'powerup',
-  'petrify',
-  'select',
-  'shadow',
-  'pixelate',
-]
+function StatsTracker({ onStats }: { onStats: (fps: number, draws: number) => void }) {
+  const gl = useThree((s) => s.gl)
+  const frameCount = useRef(0)
+  const elapsed = useRef(0)
+  useFrame((_, delta) => {
+    frameCount.current++
+    elapsed.current += delta
+    if (elapsed.current >= 1) {
+      // Cast: R3F types gl as WebGLRenderer, but we use WebGPURenderer which has drawCalls
+      const draws = (gl.info.render as any).drawCalls as number
+      onStats(Math.round(frameCount.current / elapsed.current), draws)
+      frameCount.current = 0
+      elapsed.current = 0
+    }
+  })
+  return null
+}
 
 export default function App() {
-  const [currentEffect, setCurrentEffect] = useState<EffectType>('normal')
+  const [effect, setEffect] = useState<EffectType>('normal')
   const spriteRef = useRef<EffectSpriteHandle>(null)
+  const prevEffectRef = useRef(effect)
+  const [stats, setStats] = useState({ fps: '-' as string | number, draws: '-' as string | number })
+  const handleStats = useCallback((fps: number, draws: number) => setStats({ fps, draws }), [])
 
-  // Trigger effect (re-triggers even if same effect)
-  const triggerEffect = (effect: EffectType) => {
-    setCurrentEffect(effect)
-    spriteRef.current?.play(effect)
-  }
+  // Trigger play when effect changes (including re-trigger via store)
+  useEffect(() => {
+    if (prevEffectRef.current !== effect) {
+      spriteRef.current?.play(effect)
+      prevEffectRef.current = effect
+    }
+  }, [effect])
 
   // Keyboard controls
   useEffect(() => {
@@ -415,7 +433,7 @@ export default function App() {
         '8': 'pixelate',
       }
       if (keyMap[e.key]) {
-        triggerEffect(keyMap[e.key])
+        setEffect(keyMap[e.key]!)
       }
     }
     window.addEventListener('keydown', handleKeyDown)
@@ -424,82 +442,76 @@ export default function App() {
 
   return (
     <>
-      {/* UI Controls */}
+      {/* Hide radio group label via shadow DOM part */}
+      <style>{`
+        .effect-bar sl-radio-group::part(form-control-label) { display: none; }
+        .effect-bar sl-radio-group::part(form-control) { margin: 0; border: 0; padding: 0; }
+      `}</style>
+
+      {/* Stats overlay with keyboard hint */}
       <div
         style={{
           position: 'fixed',
-          top: 20,
-          left: 20,
+          top: 12,
+          right: 12,
+          padding: '5px 10px',
+          background: 'rgba(0, 2, 28, 0.7)',
+          borderRadius: 6,
           color: '#4a9eff',
-          fontSize: 12,
           fontFamily: 'monospace',
+          fontSize: 10,
+          lineHeight: 1.5,
           zIndex: 100,
+          whiteSpace: 'pre',
         }}
       >
-        Effect: {effectLabels[currentEffect]}
-        <br />
-        Press 1-8 or click buttons
+        {`FPS: ${stats.fps}\nDraws: ${stats.draws}\n`}<span style={{ color: '#555' }}>1–8</span>
       </div>
 
+      {/* Effect picker — centered, floating, game-like */}
+      <div
+        className="effect-bar"
+        style={{
+          position: 'fixed',
+          bottom: 32,
+          left: '50%',
+          transform: 'translateX(-50%)',
+          zIndex: 100,
+          pointerEvents: 'auto',
+          '--sl-input-height-small': '1.5rem',
+          '--sl-font-size-small': '0.688rem',
+        } as React.CSSProperties}
+      >
+        <SlRadioGroup label="Effect" size="small" value={effect} onSlChange={(e: Event) => setEffect((e.target as HTMLInputElement).value as EffectType)}>
+          {(Object.entries(effectLabels) as [EffectType, string][]).map(([value, label]) => (
+            <SlRadioButton key={value} value={value} size="small" pill>{label}</SlRadioButton>
+          ))}
+        </SlRadioGroup>
+      </div>
+
+      {/* Attribution — centered bottom */}
       <div
         style={{
           position: 'fixed',
-          bottom: 120,
+          bottom: 8,
           left: '50%',
           transform: 'translateX(-50%)',
-          color: '#666',
-          fontSize: 10,
+          color: '#555',
+          fontSize: 9,
           fontFamily: 'monospace',
-          textAlign: 'center',
           zIndex: 100,
+          whiteSpace: 'nowrap',
         }}
       >
         Knight sprite by{' '}
         <a
           href="https://analogstudios.itch.io/camelot"
           target="_blank"
-          style={{ color: '#888' }}
+          style={{ color: '#777' }}
         >
           analogStudios_
         </a>{' '}
         (CC0)
-      </div>
-
-      <div
-        style={{
-          position: 'fixed',
-          bottom: 20,
-          left: '50%',
-          transform: 'translateX(-50%)',
-          display: 'flex',
-          gap: 8,
-          flexWrap: 'wrap',
-          justifyContent: 'center',
-          maxWidth: '90vw',
-          zIndex: 100,
-        }}
-      >
-        {effects.map((effect, i) => (
-          <button
-            key={effect}
-            onClick={() => triggerEffect(effect)}
-            style={{
-              padding: '10px 16px',
-              fontSize: 12,
-              fontFamily: 'monospace',
-              border: '2px solid #4a9eff',
-              background:
-                currentEffect === effect
-                  ? '#4a9eff'
-                  : 'rgba(74, 158, 255, 0.1)',
-              color: currentEffect === effect ? '#1a1a2e' : '#4a9eff',
-              cursor: 'pointer',
-              borderRadius: 4,
-            }}
-          >
-            {i + 1}: {effectLabels[effect].split(' ')[0]}
-          </button>
-        ))}
       </div>
 
       {/* Three.js Canvas */}
@@ -509,8 +521,9 @@ export default function App() {
         renderer={{ antialias: false }}
       >
         <color attach="background" args={['#1a1a2e']} />
+        <StatsTracker onStats={handleStats} />
         <Suspense fallback={null}>
-          <EffectSprite ref={spriteRef} effect={currentEffect} />
+          <EffectSprite ref={spriteRef} effect={effect} />
         </Suspense>
       </Canvas>
     </>

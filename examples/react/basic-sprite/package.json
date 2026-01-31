@@ -6,22 +6,23 @@
   "scripts": {
     "dev": "vite dev --port ${TURBO_MFE_PORT:-5179}",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@react-three/fiber": "catalog:",
-    "@three-flatland/core": "workspace:*",
-    "@three-flatland/react": "workspace:*",
-    "react": "catalog:",
-    "react-dom": "catalog:",
-    "three": "catalog:"
+    "@react-three/fiber": "^10.0.0-alpha.2",
+    "@three-flatland/core": "^0.0.0",
+    "@three-flatland/react": "^0.0.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "three": "^0.182.0"
   },
   "devDependencies": {
-    "@types/react": "catalog:",
-    "@types/react-dom": "catalog:",
-    "@types/three": "catalog:",
-    "@vitejs/plugin-react": "catalog:",
-    "typescript": "catalog:",
-    "vite": "catalog:"
+    "@types/react": "^19.0.2",
+    "@types/react-dom": "^19.0.2",
+    "@types/three": "^0.182.0",
+    "@vitejs/plugin-react": "^4.3.4",
+    "typescript": "^5.7.3",
+    "vite": "^6.0.7"
   }
 }
