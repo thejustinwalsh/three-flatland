@@ -1,329 +1,149 @@
-# three-flatland
+# CLAUDE.md
 
-High-performance 2D sprite and effects library for Three.js using WebGPU and TSL (Three Shader Language).
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## What Is This?
+
+High-performance 2D sprite and effects library for Three.js using WebGPU and TSL (Three Shader Language). Monorepo with library packages, example apps, mini-games, and a documentation site.
+
+## Development Commands
+
+```bash
+pnpm install                        # Install all dependencies
+pnpm build                          # Build all packages
+pnpm dev                            # Start docs + examples at http://localhost:5173
+pnpm typecheck                      # TypeScript type checking
+pnpm lint                           # ESLint (packages only)
+pnpm lint:fix                       # Fix ESLint issues
+pnpm format                         # Prettier
+pnpm test                           # Vitest
+pnpm test:watch                     # Vitest watch mode
+pnpm clean                          # Clean all build artifacts
+```
+
+### Filtered Commands
+
+```bash
+pnpm --filter=@three-flatland/core build        # Build single package
+pnpm --filter=example-vanilla-tilemap dev        # Run single example
+pnpm --filter=@three-flatland/mini-breakout dev  # Watch-build a mini-game library
+```
+
+### Syncpack (Version Synchronization)
+
+Examples and minis use real npm version strings (not `workspace:*` or `catalog:`), but `pnpm.overrides` in root `package.json` maps `@three-flatland/*` to workspace packages during development. After changing catalog versions in `pnpm-workspace.yaml`:
+
+```bash
+pnpm syncpack:examples    # Sync example package.json versions
+pnpm syncpack:minis       # Sync mini-game package.json versions
+```
 
 ## Project Structure
 
 ```
 three-flatland/
-├── packages/
-│   ├── core/          # Core sprite system and pipeline
-│   ├── nodes/         # TSL shader nodes
-│   ├── react/         # React Three Fiber integration
-│   └── presets/       # Pre-configured effect presets
-├── examples/
-│   ├── vanilla/       # Plain Three.js examples
-│   └── react/         # R3F examples
-└── .github/workflows/ # CI/CD configuration
+├── packages/           # Library packages (npm-published)
+│   ├── core/           # Sprite2D, Renderer2D, materials, loaders, tilemap
+│   ├── nodes/          # TSL shader nodes (placeholder)
+│   ├── react/          # R3F integration — re-exports core + type augmentation
+│   └── presets/        # Effect presets (placeholder)
+├── examples/           # Standalone Vite apps (both vanilla/ and react/ variants)
+│   ├── vanilla/        # Plain Three.js examples
+│   └── react/          # React Three Fiber examples
+├── minis/              # Mini-game library packages (tsup-built, importable)
+│   └── breakout/       # Breakout game — used in docs hero section
+├── docs/               # Astro/Starlight documentation site
+├── scripts/            # sync-pack.ts (version sync), make-icon.py
+└── .claude/skills/     # AI skill definitions (see Skills section)
 ```
 
-## Development Commands
+## Architecture
 
-```bash
-pnpm install           # Install all dependencies
-pnpm build             # Build all packages
-pnpm dev               # Start dev server at http://localhost:5173
-pnpm typecheck         # Run TypeScript type checking
-pnpm lint              # Run ESLint
-pnpm lint:fix          # Fix ESLint issues
-pnpm format            # Format code with Prettier
-pnpm test              # Run tests
-pnpm test:watch        # Run tests in watch mode
-pnpm clean             # Clean all build artifacts
+### Package Dependency Graph
+
+```
+@three-flatland/react  →  @three-flatland/core
+@three-flatland/presets →  @three-flatland/core + @three-flatland/nodes
 ```
 
-## Package Dependencies
+### Import Pattern: React vs Vanilla
 
-The packages have internal dependencies:
-- `@three-flatland/react` depends on `@three-flatland/core`
-- `@three-flatland/presets` depends on `@three-flatland/core` and `@three-flatland/nodes`
+R3F users import from `@three-flatland/react` (re-exports all of core + JSX type augmentation). Vanilla users import from `@three-flatland/core`. The react package's `index.ts` has a side-effect import of `./types` that augments R3F's `ThreeElements` interface.
 
-## Peer Dependencies
+### R3F-Compatible Constructor Pattern
 
-- **three**: >=0.182.0 (required for TSL/WebGPU support)
-- **react**: >=19.0.0 (for react package, required for `use()` hook)
-- **@react-three/fiber**: >=10.0.0-alpha.0 (for react package, required for WebGPU support)
+All Three.js objects used as R3F JSX elements must have:
+1. **Optional constructor parameters** — R3F calls `new Object()` with no args, then sets properties
+2. **Property setters** — all props settable after construction
+3. **Array-compatible setters** — R3F passes `[x, y]` arrays, not `Vector2` instances
 
-## Key Technologies
+### Build Pipeline
 
-- **pnpm workspaces**: Monorepo package management
-- **pnpm catalog**: Centralized dependency versions in `pnpm-workspace.yaml`
-- **Turbo**: Build orchestration with caching
-- **tsup**: TypeScript bundling (ESM + CJS + types)
-- **Vitest**: Testing framework
-- **Changesets**: Version management and changelogs
+- **Library packages** (`packages/*`, `minis/*`): Built with tsup → ESM + CJS + `.d.ts`
+- **Examples** (`examples/**`): Standalone Vite apps, not built for npm
+- **Docs**: Astro/Starlight with TypeDoc auto-generating API reference from source JSDoc
 
-## Microfrontends (Examples)
+### Dependency Management
 
-Examples use Turborepo's microfrontends feature (requires Turbo 2.6+) for a unified dev server with automatic routing.
+Shared versions live in `pnpm-workspace.yaml` catalog section. Packages reference them with `"catalog:"`. Examples use real version strings (synced via `pnpm syncpack:examples`). Root `pnpm.overrides` maps all `@three-flatland/*` to `workspace:*` for local dev.
 
-### Configuration Files
+### Microfrontends (Dev Server)
 
-**`microfrontends.json`** (root) - Defines applications, ports, and routing:
+`pnpm dev` starts docs (port 4000) and all examples via Turbo microfrontends proxy on port 5173. Each example gets a unique port in `microfrontends.json` (4001–4012+). Examples are also embedded in docs via StackBlitz.
 
-```json
-{
-  "$schema": "https://turborepo.dev/microfrontends/schema.json",
-  "options": {
-    "localProxyPort": 5173
-  },
-  "applications": {
-    "example-react-basic-sprite": {
-      "development": {
-        "local": {
-          "port": 4001
-        }
-      },
-      "routing": [
-        {
-          "group": "react-examples",
-          "paths": ["/react/basic-sprite", "/react/basic-sprite/:path*"]
-        }
-      ]
-    }
-  }
-}
-```
+## Examples
 
-### Adding a New Example
+Examples always exist in **pairs** — a vanilla variant and a React variant. Template examples (`examples/vanilla/template/` and `examples/react/template/`) are the starting point for new examples.
 
-1. **Create the example package** with naming convention `example-{type}-{name}`:
+### Creating a New Example
 
-```json
-// examples/{type}/{name}/package.json
-{
-  "name": "example-{type}-{name}",
-  "scripts": {
-    "dev": "vite dev --port $TURBO_MFE_PORT"
-  }
-}
-```
+1. Copy both template directories to `examples/vanilla/{name}/` and `examples/react/{name}/`
+2. Update `name` in each `package.json` to `example-{type}-{name}`
+3. Update `base` in each `vite.config.ts` to `/{type}/{name}/`
+4. Register both in `microfrontends.json` with next sequential ports
+5. Run `pnpm install && pnpm syncpack:examples`
+6. Test: `pnpm --filter=example-vanilla-{name} dev`
 
-2. **Create vite.config.ts** with static base path:
+### UI Components
 
-```typescript
-import { defineConfig } from 'vite'
+Examples use **Web Awesome** (`@awesome.me/webawesome`) with `wa-dark` theme class on `<html>`. Vanilla examples import component JS directly; React examples import from the React subdirectory.
 
-export default defineConfig({
-  base: '/{type}/{name}',
-  server: {
-    strictPort: true,
-  },
-})
-```
+## Minis (Mini-Games)
 
-3. **Register in microfrontends.json** - Add entry with unique port (4005+) and routing:
+Mini-games are library packages in `minis/` that export React components. They differ from examples:
+- Built with tsup as importable npm packages (dual ESM/CJS)
+- Imported by docs site (e.g., hero section loads `@three-flatland/mini-breakout`)
+- Use Koota ECS for game state, inline textures as base64 data URLs
+- Have both `dev` (tsup watch) and `dev:app` (standalone Vite server) scripts
 
-```json
-"example-{type}-{name}": {
-  "development": {
-    "local": {
-      "port": 4005
-    }
-  },
-  "routing": [
-    {
-      "group": "{type}-examples",
-      "paths": ["/{type}/{name}", "/{type}/{name}/:path*"]
-    }
-  ]
-}
-```
+## Skills (`.claude/skills/`)
 
-### Port Assignments
+Skills provide specialized instructions for specific tasks. Key skills:
 
-| Port | Application |
-|------|-------------|
-| 5173 | Turbo proxy (user-facing URL) |
-| 4000 | docs (Starlight documentation site) |
-
-### Default Application
-
-The `docs` site (Starlight) serves as the default application and includes all examples as embedded StackBlitz demos.
-
-### How It Works
-
-- `pnpm dev` starts the docs site on port 5173
-- Examples are embedded in the docs site via StackBlitz
-- To run individual examples directly, use `pnpm --filter=example-vanilla-basic-sprite dev`
-
-## Dependency Management
-
-Shared dependencies are defined in the catalog section of `pnpm-workspace.yaml`:
-
-```yaml
-catalog:
-  three: ^0.182.0
-  "@types/three": ^0.182.0
-  react: ^19.0.0
-  "@react-three/fiber": ^10.0.0-alpha.2
-  # ... etc
-```
-
-Packages reference catalog versions with `"catalog:"` in their package.json (works for both dependencies and peerDependencies):
-
-```json
-{
-  "peerDependencies": {
-    "three": "catalog:"
-  },
-  "devDependencies": {
-    "three": "catalog:",
-    "@types/three": "catalog:"
-  }
-}
-```
-
-To update a shared dependency version, change it in `pnpm-workspace.yaml` and run `pnpm install`.
-
-## Architecture Notes
-
-### Core Package
-- Sprite pooling for efficient memory management
-- Batch rendering for performance
-- Pipeline abstraction for post-processing effects
-
-### Nodes Package
-- TSL (Three Shader Language) nodes for WebGPU
-- Custom sprite shaders
-- Billboard transformations
-
-### React Package
-- Re-exports everything from `@three-flatland/core` plus React-specific utilities
-- Type augmentation via `ThreeElements` interface for TypeScript JSX support
-- React 19 resource utilities for Suspense
-
-#### Import Pattern: React vs Vanilla
-
-**R3F users** import from `@three-flatland/react` - this provides all core classes plus automatic JSX type augmentation:
-
-```tsx
-import { Canvas, extend } from '@react-three/fiber/webgpu'
-import { Sprite2D, Renderer2D, Layers } from '@three-flatland/react'
-
-extend({ Sprite2D, Renderer2D })
-
-function App() {
-  return (
-    <Canvas>
-      <renderer2D>
-        <sprite2D texture={myTexture} />
-      </renderer2D>
-    </Canvas>
-  )
-}
-```
-
-**Vanilla users** import from `@three-flatland/core` - no React dependencies:
-
-```typescript
-import { Sprite2D, Renderer2D, Layers } from '@three-flatland/core'
-
-const sprite = new Sprite2D({ texture: myTexture })
-renderer2D.add(sprite)
-```
-
-This pattern mirrors how `@react-three/drei` works - users import from the React package which re-exports core functionality plus React-specific features and type augmentation.
-
-#### R3F Integration Details
-
-**WebGPU Renderer**: R3F v10+ is required for proper WebGPU support. Import from `@react-three/fiber/webgpu` for TSL/WebGPU features.
-
-Type augmentation in `packages/react/src/types.ts` uses the standard R3F pattern:
-
-```typescript
-import type { ThreeElement } from '@react-three/fiber'
-import type { Sprite2D, Sprite2DMaterial, Renderer2D } from '@three-flatland/core'
-
-declare module '@react-three/fiber' {
-  interface ThreeElements {
-    sprite2D: ThreeElement<typeof Sprite2D>
-    sprite2DMaterial: ThreeElement<typeof Sprite2DMaterial>
-    renderer2D: ThreeElement<typeof Renderer2D>
-  }
-}
-```
-
-The augmentation is automatically included when users import from `@three-flatland/react` because `index.ts` includes a side-effect import of the types file.
-
-Reference: https://r3f.docs.pmnd.rs/api/typescript#extending-threeelements
-
-### Presets Package
-- Pre-configured effect combinations
-- Pixel art, neon, particle, UI presets
-
-## Release Process
-
-1. Create changes with `pnpm changeset`
-2. Commit the changeset files
-3. Push to main - GitHub Actions will create a release PR
-4. Merge the release PR to publish to npm
+| Skill | Trigger |
+|-------|---------|
+| `example` | Creating new examples |
+| `mini-game` | Building mini-games for docs |
+| `docs-audit` | Verifying docs match source code |
+| `frontend-design` | UI/UX design decisions |
+| `types` | TypeScript patterns and toolchain |
 
 ## Coding Standards
 
 - Strict TypeScript with `verbatimModuleSyntax`
 - ESM-first with CJS compatibility
+- Consistent `type` keyword for type-only imports (enforced by ESLint `consistent-type-imports`)
 - Tree-shakeable exports
-- Consistent type imports with `type` keyword
+- Flat ESLint 9 config with `typescript-eslint` type-checked rules
+- Examples directory excluded from root ESLint — each is self-contained
+
+## Release Process
+
+1. `pnpm changeset` — describe changes
+2. Commit changeset files
+3. Push to main — GitHub Actions creates a release PR
+4. Merge release PR to publish to npm
 
 ## README Maintenance
 
-Keep `README.md` up to date as milestones are completed:
-
-1. **Roadmap Checklist** - When completing a milestone, update the roadmap checkboxes from `[ ]` to `[x]`
-2. **Feature Examples** - When adding major features, ensure the Quick Start examples remain accurate
-3. **Package Table** - When adding new packages, update the packages table
-4. **Requirements** - When changing peer dependency versions, update the Requirements section
-
-The README should remain concise and focused on getting users started quickly. Detailed documentation belongs in the docs site (`/docs` folder, built with Starlight/Astro).
-
-### R3F-Compatible Constructor Pattern
-
-All Three.js objects that will be used as R3F JSX elements must follow this pattern:
-
-1. **Optional constructor parameters** - R3F creates objects with `new Object()` then sets properties via the reconciler
-2. **Property setters** - All props must be settable after construction
-3. **Array-compatible setters** - R3F passes arrays for vector props, not Vector2/Vector3
-
-```typescript
-export class MyObject extends Mesh {
-  private _texture: Texture | null = null
-  private _anchor: Vector2 = new Vector2(0.5, 0.5)
-
-  // Optional constructor - R3F calls with no args
-  constructor(options?: MyObjectOptions) {
-    super(sharedGeometry, new MyMaterial())
-
-    // Early return if no options (R3F path)
-    if (!options) return
-
-    // Apply options if provided (direct usage path)
-    if (options.texture) this.texture = options.texture
-    // ...
-  }
-
-  // Setter for R3F reconciler
-  set texture(value: Texture | null) {
-    this._texture = value
-    if (value) this.material.setTexture(value)
-  }
-
-  // Accept arrays for vector props (R3F passes arrays)
-  set anchor(value: Vector2 | [number, number]) {
-    if (Array.isArray(value)) {
-      this._anchor.set(value[0], value[1])
-    } else {
-      this._anchor.copy(value)
-    }
-  }
-}
-```
-
-This enables both direct usage and R3F JSX:
-```typescript
-// Direct
-const sprite = new Sprite2D({ texture: tex, anchor: [0.5, 0.5] })
-
-// R3F JSX
-<sprite2D texture={tex} anchor={[0.5, 0.5]} />
-```
+When completing roadmap milestones, update `README.md` checkboxes from `[ ]` to `[x]`. Keep Quick Start examples accurate and update the packages table when adding new packages.
