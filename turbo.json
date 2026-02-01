@@ -4,6 +4,22 @@
   "concurrency": "20",
   "tasks": {
     "build": {
+      "dependsOn": ["^build", "@three-flatland/core#build", "@three-flatland/nodes#build", "@three-flatland/react#build", "@three-flatland/presets#build"],
+      "outputs": ["dist/**"]
+    },
+    "@three-flatland/core#build": {
+      "dependsOn": ["^build"],
+      "outputs": ["dist/**"]
+    },
+    "@three-flatland/nodes#build": {
+      "dependsOn": ["^build"],
+      "outputs": ["dist/**"]
+    },
+    "@three-flatland/react#build": {
+      "dependsOn": ["^build"],
+      "outputs": ["dist/**"]
+    },
+    "@three-flatland/presets#build": {
       "dependsOn": ["^build"],
       "outputs": ["dist/**"]
     },
