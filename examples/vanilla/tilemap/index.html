@@ -1,16 +1,30 @@
 <!doctype html>
-<html lang="en" class="sl-theme-dark">
+<html lang="en" class="wa-dark">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Tilemap Example - three-flatland</title>
     <style>
-      * {
-        margin: 0;
-        padding: 0;
-        box-sizing: border-box;
+      /* Web Awesome theme overrides — compact dark theme */
+      :root.wa-dark {
+        --wa-font-size-scale: 0.85;
+        --wa-form-control-padding-block: 0.5em;
+        --wa-form-control-padding-inline: 0.75em;
+        --wa-form-control-toggle-size: round(1em, 1px);
+        --wa-color-surface-default: rgb(0, 2, 28);
+        --wa-color-surface-raised: rgb(28, 40, 77);
+        --wa-color-surface-lowered: rgb(0, 2, 28);
+        --wa-color-brand-fill-loud: #0b8be6;
+        --wa-color-text-normal: #f0edd8;
+        --wa-color-text-quiet: #8890a0;
+        --wa-border-radius-m: 6px;
+        --wa-color-brand-fill-quiet: var(--wa-color-brand-fill-loud);
+        --wa-color-brand-on-quiet: var(--wa-color-brand-on-loud);
+        --wa-color-neutral-fill-loud: var(--wa-color-surface-raised);
+        --wa-color-neutral-on-loud: var(--wa-color-text-normal);
       }
       body {
+        margin: 0;
         overflow: hidden;
         background: #0a0a12;
         font-family: monospace;
@@ -29,15 +43,34 @@
         padding: 8px 10px;
         background: rgba(0, 2, 28, 0.7);
         border-radius: 6px;
-        --sl-input-height-small: 1.5rem;
-        --sl-font-size-small: 0.688rem;
-        --sl-toggle-size-small: 0.875rem;
-        --sl-color-neutral-0: rgb(0, 2, 28);
       }
-      #settings sl-radio-group::part(form-control-label) {
+      #settings wa-radio-group::part(form-control-label) {
         font-size: 11px;
         color: #8890a0;
         font-family: monospace;
+      }
+      #settings wa-radio-group::part(form-control-input) {
+        row-gap: 4px;
+        justify-content: center;
+      }
+      /* Per-line pill rounding for wrapped radio groups */
+      wa-radio[data-line-pos="first"] {
+        border-start-start-radius: var(--wa-border-radius-m);
+        border-end-start-radius: var(--wa-border-radius-m);
+        border-start-end-radius: 0;
+        border-end-end-radius: 0;
+      }
+      wa-radio[data-line-pos="inner"] {
+        border-radius: 0;
+      }
+      wa-radio[data-line-pos="last"] {
+        border-start-end-radius: var(--wa-border-radius-m);
+        border-end-end-radius: var(--wa-border-radius-m);
+        border-start-start-radius: 0;
+        border-end-start-radius: 0;
+      }
+      wa-radio[data-line-pos="solo"] {
+        border-radius: var(--wa-border-radius-m);
       }
       .setting-label {
         font-size: 11px;
@@ -76,8 +109,36 @@
         left: 50%;
         transform: translateX(-50%);
         z-index: 100;
-        --sl-input-height-small: 1.5rem;
-        --sl-font-size-small: 0.688rem;
+        max-width: calc(100vw - 24px);
+      }
+      #layers wa-button-group::part(base) {
+        justify-content: center;
+        row-gap: 4px;
+      }
+      #layers wa-button::part(base) {
+        border-color: var(--wa-color-neutral-border-loud);
+      }
+      #layers wa-button + wa-button {
+        margin-inline-start: -2px;
+      }
+      /* Per-line pill rounding for wrapped button groups */
+      #layers wa-button[data-line-pos="first"]::part(base) {
+        border-start-start-radius: var(--wa-border-radius-m);
+        border-end-start-radius: var(--wa-border-radius-m);
+        border-start-end-radius: 0;
+        border-end-end-radius: 0;
+      }
+      #layers wa-button[data-line-pos="inner"]::part(base) {
+        border-radius: 0;
+      }
+      #layers wa-button[data-line-pos="last"]::part(base) {
+        border-start-end-radius: var(--wa-border-radius-m);
+        border-end-end-radius: var(--wa-border-radius-m);
+        border-start-start-radius: 0;
+        border-end-start-radius: 0;
+      }
+      #layers wa-button[data-line-pos="solo"]::part(base) {
+        border-radius: var(--wa-border-radius-m);
       }
       #legend {
         position: fixed;
@@ -114,7 +175,7 @@
       @media (max-width: 480px) {
         #settings-toggle { display: flex; }
         #settings { display: none; }
-        #settings.open { display: flex; top: 48px; }
+        #settings.open { display: flex; top: 48px; z-index: 102; }
       }
     </style>
   </head>
@@ -124,34 +185,34 @@
       <div class="map-chunk-row">
         <div class="map-chunk-col">
           <span class="setting-label">Map Size</span>
-          <sl-radio-group id="map-size" value="md" size="small">
-            <sl-radio-button value="sm" size="small">SM</sl-radio-button>
-            <sl-radio-button value="md" size="small">MD</sl-radio-button>
-            <sl-radio-button value="lg" size="small">LG</sl-radio-button>
-            <sl-radio-button value="xl" size="small">XL</sl-radio-button>
-          </sl-radio-group>
+          <wa-radio-group id="map-size" value="md" size="small" orientation="horizontal">
+            <wa-radio value="sm" size="small" appearance="button">SM</wa-radio>
+            <wa-radio value="md" size="small" appearance="button">MD</wa-radio>
+            <wa-radio value="lg" size="small" appearance="button">LG</wa-radio>
+            <wa-radio value="xl" size="small" appearance="button">XL</wa-radio>
+          </wa-radio-group>
         </div>
         <div class="map-chunk-col">
           <span class="setting-label">Chunks</span>
-          <sl-select id="chunk-size" value="512" size="small" hoist>
-            <sl-option value="256">256</sl-option>
-            <sl-option value="512">512</sl-option>
-            <sl-option value="1024">1024</sl-option>
-            <sl-option value="2048">2048</sl-option>
-          </sl-select>
+          <wa-select id="chunk-size" value="512" size="small">
+            <wa-option value="256">256</wa-option>
+            <wa-option value="512">512</wa-option>
+            <wa-option value="1024">1024</wa-option>
+            <wa-option value="2048">2048</wa-option>
+          </wa-select>
         </div>
       </div>
-      <sl-radio-group id="density" label="Density" value="normal" size="small">
-        <sl-radio-button value="sparse" size="small">Sparse</sl-radio-button>
-        <sl-radio-button value="normal" size="small">Normal</sl-radio-button>
-        <sl-radio-button value="dense" size="small">Dense</sl-radio-button>
-        <sl-radio-button value="packed" size="small">Packed</sl-radio-button>
-      </sl-radio-group>
+      <wa-radio-group id="density" label="Density" value="normal" size="small" orientation="horizontal">
+        <wa-radio value="sparse" size="small" appearance="button">Sparse</wa-radio>
+        <wa-radio value="normal" size="small" appearance="button">Normal</wa-radio>
+        <wa-radio value="dense" size="small" appearance="button">Dense</wa-radio>
+        <wa-radio value="packed" size="small" appearance="button">Packed</wa-radio>
+      </wa-radio-group>
       <div>
         <div class="setting-label">Seed</div>
         <div class="seed-row">
-          <sl-input id="seed" type="number" value="42" size="small" no-spin-buttons style="width: 120px;"></sl-input>
-          <sl-button id="regen-btn" size="small" title="Random seed">&#x21bb;</sl-button>
+          <wa-input id="seed" type="number" value="42" size="small" without-spin-buttons style="width: 120px;"></wa-input>
+          <wa-button id="regen-btn" size="small" title="Random seed">&#x21bb;</wa-button>
         </div>
       </div>
     </div>
@@ -163,20 +224,20 @@
       <div>Layers: <span id="layer-count">-</span></div>
     </div>
     <div id="layers">
-      <sl-button-group>
-        <sl-button id="show-ground" size="small" variant="primary">
-          <span slot="prefix" class="check">&#x2713;</span>
+      <wa-button-group>
+        <wa-button id="show-ground" size="small" variant="brand">
+          <span slot="start" class="check">&#x2713;</span>
           Ground
-        </sl-button>
-        <sl-button id="show-walls" size="small" variant="primary">
-          <span slot="prefix" class="check">&#x2713;</span>
+        </wa-button>
+        <wa-button id="show-walls" size="small" variant="brand">
+          <span slot="start" class="check">&#x2713;</span>
           Walls
-        </sl-button>
-        <sl-button id="show-decor" size="small" variant="primary">
-          <span slot="prefix" class="check">&#x2713;</span>
+        </wa-button>
+        <wa-button id="show-decor" size="small" variant="brand">
+          <span slot="start" class="check">&#x2713;</span>
           Decor
-        </sl-button>
-      </sl-button-group>
+        </wa-button>
+      </wa-button-group>
     </div>
     <div id="legend">
       Drag: Pan | WASD/Arrows: Pan | Scroll: Zoom | Click: Toggle tile

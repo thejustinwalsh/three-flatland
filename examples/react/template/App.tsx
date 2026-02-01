@@ -1,13 +1,10 @@
 import { Canvas, extend, useLoader } from '@react-three/fiber/webgpu'
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { Sprite2D, TextureLoader } from '@three-flatland/react'
 
-import '@shoelace-style/shoelace/dist/themes/dark.css'
-import { setBasePath } from '@shoelace-style/shoelace/dist/utilities/base-path.js'
-import SlRadioGroup from '@shoelace-style/shoelace/dist/react/radio-group/index.js'
-import SlRadioButton from '@shoelace-style/shoelace/dist/react/radio-button/index.js'
-
-setBasePath('https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.20.1/cdn/')
+import '@awesome.me/webawesome/dist/styles/themes/default.css'
+import WaRadioGroup from '@awesome.me/webawesome/dist/react/radio-group/index.js'
+import WaRadio from '@awesome.me/webawesome/dist/react/radio/index.js'
 
 extend({ Sprite2D })
 
@@ -34,6 +31,43 @@ function SpriteScene({ tint }: { tint: string }) {
 
 export default function App() {
   const [tint, setTint] = useState('white')
+  const uiRef = useRef<HTMLDivElement>(null)
+
+  // Per-line pill rounding for wrapped radio groups
+  useEffect(() => {
+    const group = uiRef.current?.querySelector('wa-radio-group')
+    if (!group) return
+    const update = () => {
+      const radios = [...group.querySelectorAll('wa-radio')]
+      if (!radios.length) return
+      const lines: Element[][] = []
+      let lastTop = -Infinity
+      let line: Element[] = []
+      for (const radio of radios) {
+        const top = radio.getBoundingClientRect().top
+        if (Math.abs(top - lastTop) > 2) {
+          if (line.length) lines.push(line)
+          line = []
+          lastTop = top
+        }
+        line.push(radio)
+      }
+      if (line.length) lines.push(line)
+      for (const ln of lines) {
+        for (let i = 0; i < ln.length; i++) {
+          const pos =
+            ln.length === 1 ? 'solo' :
+            i === 0 ? 'first' :
+            i === ln.length - 1 ? 'last' : 'inner'
+          ln[i]!.setAttribute('data-line-pos', pos)
+        }
+      }
+    }
+    const ro = new ResizeObserver(update)
+    ro.observe(group)
+    update()
+    return () => ro.disconnect()
+  }, [])
 
   return (
     <>
@@ -48,6 +82,7 @@ export default function App() {
 
       {/* UI Overlay */}
       <div
+        ref={uiRef}
         style={{
           position: 'fixed',
           bottom: 12,
@@ -57,26 +92,24 @@ export default function App() {
           padding: 10,
           background: 'rgba(0, 2, 28, 0.85)',
           borderRadius: 8,
-          '--sl-input-height-small': '1.5rem',
-          '--sl-font-size-small': '0.688rem',
-          '--sl-font-size-medium': '0.75rem',
-          '--sl-input-label-font-size-medium': '0.75rem',
-        } as React.CSSProperties}
+          maxWidth: 'calc(100vw - 24px)',
+        }}
       >
-        <SlRadioGroup
+        <WaRadioGroup
           label="Tint"
           size="small"
+          orientation="horizontal"
           value={tint}
-          onSlChange={(e: Event) =>
+          onChange={(e: any) =>
             setTint((e.target as HTMLInputElement).value)
           }
         >
           {TINT_OPTIONS.map((opt) => (
-            <SlRadioButton key={opt.value} value={opt.value} size="small">
+            <WaRadio key={opt.value} value={opt.value} size="small" appearance="button">
               {opt.label}
-            </SlRadioButton>
+            </WaRadio>
           ))}
-        </SlRadioGroup>
+        </WaRadioGroup>
       </div>
     </>
   )

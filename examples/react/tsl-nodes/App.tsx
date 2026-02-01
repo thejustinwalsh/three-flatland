@@ -33,11 +33,9 @@ import {
   type SpriteSheet,
 } from '@three-flatland/react'
 
-import '@shoelace-style/shoelace/dist/themes/dark.css'
-import { setBasePath } from '@shoelace-style/shoelace/dist/utilities/base-path.js'
-import SlRadioGroup from '@shoelace-style/shoelace/dist/react/radio-group/index.js'
-import SlRadioButton from '@shoelace-style/shoelace/dist/react/radio-button/index.js'
-setBasePath('https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.20.1/cdn/')
+import '@awesome.me/webawesome/dist/styles/themes/default.css'
+import WaRadioGroup from '@awesome.me/webawesome/dist/react/radio-group/index.js'
+import WaRadio from '@awesome.me/webawesome/dist/react/radio/index.js'
 
 // Effect types
 type EffectType =
@@ -408,6 +406,7 @@ export default function App() {
   const [effect, setEffect] = useState<EffectType>('normal')
   const spriteRef = useRef<EffectSpriteHandle>(null)
   const prevEffectRef = useRef(effect)
+  const controlsRef = useRef<HTMLDivElement>(null)
   const [stats, setStats] = useState({ fps: '-' as string | number, draws: '-' as string | number })
   const handleStats = useCallback((fps: number, draws: number) => setStats({ fps, draws }), [])
 
@@ -418,6 +417,42 @@ export default function App() {
       prevEffectRef.current = effect
     }
   }, [effect])
+
+  // Per-line pill rounding for wrapped radio groups
+  useEffect(() => {
+    const group = controlsRef.current?.querySelector('wa-radio-group')
+    if (!group) return
+    const update = () => {
+      const radios = [...group.querySelectorAll('wa-radio')]
+      if (!radios.length) return
+      const lines: Element[][] = []
+      let lastTop = -Infinity
+      let line: Element[] = []
+      for (const radio of radios) {
+        const top = radio.getBoundingClientRect().top
+        if (Math.abs(top - lastTop) > 2) {
+          if (line.length) lines.push(line)
+          line = []
+          lastTop = top
+        }
+        line.push(radio)
+      }
+      if (line.length) lines.push(line)
+      for (const ln of lines) {
+        for (let i = 0; i < ln.length; i++) {
+          const pos =
+            ln.length === 1 ? 'solo' :
+            i === 0 ? 'first' :
+            i === ln.length - 1 ? 'last' : 'inner'
+          ln[i]!.setAttribute('data-line-pos', pos)
+        }
+      }
+    }
+    const ro = new ResizeObserver(update)
+    ro.observe(group)
+    update()
+    return () => ro.disconnect()
+  }, [])
 
   // Keyboard controls
   useEffect(() => {
@@ -444,8 +479,23 @@ export default function App() {
     <>
       {/* Hide radio group label via shadow DOM part */}
       <style>{`
-        .effect-bar sl-radio-group::part(form-control-label) { display: none; }
-        .effect-bar sl-radio-group::part(form-control) { margin: 0; border: 0; padding: 0; }
+        .effect-bar wa-radio-group::part(form-control-label) { display: none; }
+        .effect-bar wa-radio-group::part(form-control) { margin: 0; border: 0; padding: 0; }
+        .effect-bar wa-radio-group::part(form-control-input) { row-gap: 4px; justify-content: center; }
+        wa-radio[data-line-pos="first"] {
+          border-start-start-radius: var(--wa-border-radius-m);
+          border-end-start-radius: var(--wa-border-radius-m);
+          border-start-end-radius: 0;
+          border-end-end-radius: 0;
+        }
+        wa-radio[data-line-pos="inner"] { border-radius: 0; }
+        wa-radio[data-line-pos="last"] {
+          border-start-end-radius: var(--wa-border-radius-m);
+          border-end-end-radius: var(--wa-border-radius-m);
+          border-start-start-radius: 0;
+          border-end-start-radius: 0;
+        }
+        wa-radio[data-line-pos="solo"] { border-radius: var(--wa-border-radius-m); }
       `}</style>
 
       {/* Stats overlay with keyboard hint */}
@@ -470,6 +520,7 @@ export default function App() {
 
       {/* Effect picker — centered, floating, game-like */}
       <div
+        ref={controlsRef}
         className="effect-bar"
         style={{
           position: 'fixed',
@@ -478,15 +529,14 @@ export default function App() {
           transform: 'translateX(-50%)',
           zIndex: 100,
           pointerEvents: 'auto',
-          '--sl-input-height-small': '1.5rem',
-          '--sl-font-size-small': '0.688rem',
-        } as React.CSSProperties}
+          maxWidth: 'calc(100vw - 24px)',
+        }}
       >
-        <SlRadioGroup label="Effect" size="small" value={effect} onSlChange={(e: Event) => setEffect((e.target as HTMLInputElement).value as EffectType)}>
+        <WaRadioGroup label="Effect" size="small" orientation="horizontal" value={effect} onChange={(e: any) => setEffect((e.target as HTMLInputElement).value as EffectType)}>
           {(Object.entries(effectLabels) as [EffectType, string][]).map(([value, label]) => (
-            <SlRadioButton key={value} value={value} size="small" pill>{label}</SlRadioButton>
+            <WaRadio key={value} value={value} size="small" appearance="button">{label}</WaRadio>
           ))}
-        </SlRadioGroup>
+        </WaRadioGroup>
       </div>
 
       {/* Attribution — centered bottom */}

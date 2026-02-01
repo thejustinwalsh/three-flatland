@@ -1,12 +1,43 @@
 import { WebGPURenderer } from 'three/webgpu'
 import { Scene, OrthographicCamera, Color, NearestFilter } from 'three'
 import { AnimatedSprite2D, SpriteSheetLoader, Layers } from '@three-flatland/core'
-import '@shoelace-style/shoelace/dist/themes/dark.css'
-import { setBasePath } from '@shoelace-style/shoelace/dist/utilities/base-path.js'
-import '@shoelace-style/shoelace/dist/components/radio-group/radio-group.js'
-import '@shoelace-style/shoelace/dist/components/radio-button/radio-button.js'
+import '@awesome.me/webawesome/dist/styles/themes/default.css'
+import '@awesome.me/webawesome/dist/components/radio-group/radio-group.js'
+import '@awesome.me/webawesome/dist/components/radio/radio.js'
 
-setBasePath('https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.20.1/cdn/')
+/** Re-apply per-line first/last pill rounding when wa-radio-group wraps */
+function setupWrappingRadioGroup(group: Element) {
+  const update = () => {
+    const radios = [...group.querySelectorAll('wa-radio')]
+    if (!radios.length) return
+    const lines: Element[][] = []
+    let lastTop = -Infinity
+    let line: Element[] = []
+    for (const radio of radios) {
+      const top = radio.getBoundingClientRect().top
+      if (Math.abs(top - lastTop) > 2) {
+        if (line.length) lines.push(line)
+        line = []
+        lastTop = top
+      }
+      line.push(radio)
+    }
+    if (line.length) lines.push(line)
+    for (const ln of lines) {
+      for (let i = 0; i < ln.length; i++) {
+        const pos =
+          ln.length === 1 ? 'solo' :
+          i === 0 ? 'first' :
+          i === ln.length - 1 ? 'last' : 'inner'
+        ln[i]!.setAttribute('data-line-pos', pos)
+      }
+    }
+  }
+  const ro = new ResizeObserver(update)
+  ro.observe(group)
+  update()
+  return () => ro.disconnect()
+}
 
 async function main() {
   // Scene setup
@@ -121,7 +152,7 @@ async function main() {
       onComplete: () => {
         // Return to idle after non-looping animations
         if (name === 'hit' || name === 'death') {
-          const radioGroup = document.querySelector('sl-radio-group')! as any
+          const radioGroup = document.querySelector('wa-radio-group')! as any
           radioGroup.value = 'idle'
           playAnimation('idle')
         }
@@ -129,8 +160,10 @@ async function main() {
     })
   }
 
-  const radioGroup = document.querySelector('sl-radio-group')!
-  radioGroup.addEventListener('sl-change', (e) => {
+  const radioGroup = document.querySelector('wa-radio-group')!
+  setupWrappingRadioGroup(radioGroup)
+
+  radioGroup.addEventListener('change', (e) => {
     const value = (e.target as any).value
     playAnimation(value)
   })

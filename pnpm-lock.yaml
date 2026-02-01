@@ -24,9 +24,6 @@ catalogs:
     koota:
       specifier: ^0.1.0
       version: 0.1.12
-    lil-gui:
-      specifier: ^0.21.0
-      version: 0.21.0
     react:
       specifier: ^19.0.0
       version: 19.2.3
@@ -42,9 +39,12 @@ catalogs:
     vite:
       specifier: ^6.0.7
       version: 6.4.1
-    zustand:
-      specifier: ^5.0.0
-      version: 5.0.10
+
+overrides:
+  '@three-flatland/core': workspace:*
+  '@three-flatland/react': workspace:*
+  '@three-flatland/nodes': workspace:*
+  '@three-flatland/presets': workspace:*
 
 importers:
 
@@ -70,7 +70,10 @@ importers:
         version: 3.8.1
       tsup:
         specifier: ^8.3.5
-        version: 8.5.1(jiti@1.21.7)(postcss@8.5.6)(typescript@5.9.3)(yaml@2.8.2)
+        version: 8.5.1(jiti@1.21.7)(postcss@8.5.6)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.2)
+      tsx:
+        specifier: ^4.19.2
+        version: 4.21.0
       turbo:
         specifier: ^2.7.5
         version: 2.7.5
@@ -91,10 +94,10 @@ importers:
         version: 0.9.6(prettier@3.8.1)(typescript@5.9.3)
       '@astrojs/react':
         specifier: ^4.2.1
-        version: 4.4.2(@types/node@22.19.7)(@types/react-dom@19.2.3(@types/react@19.2.9))(@types/react@19.2.9)(jiti@1.21.7)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(yaml@2.8.2)
+        version: 4.4.2(@types/node@22.19.7)(@types/react-dom@19.2.3(@types/react@19.2.9))(@types/react@19.2.9)(jiti@1.21.7)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(tsx@4.21.0)(yaml@2.8.2)
       '@astrojs/starlight':
         specifier: ^0.33.0
-        version: 0.33.2(astro@5.16.15(@types/node@22.19.7)(jiti@1.21.7)(rollup@4.56.0)(typescript@5.9.3)(yaml@2.8.2))
+        version: 0.33.2(astro@5.16.15(@types/node@22.19.7)(jiti@1.21.7)(rollup@4.56.0)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.2))
       '@fontsource/ibm-plex-mono':
         specifier: ^5.2.7
         version: 5.2.7
@@ -115,7 +118,7 @@ importers:
         version: link:../minis/breakout
       astro:
         specifier: ^5.2.3
-        version: 5.16.15(@types/node@22.19.7)(jiti@1.21.7)(rollup@4.56.0)(typescript@5.9.3)(yaml@2.8.2)
+        version: 5.16.15(@types/node@22.19.7)(jiti@1.21.7)(rollup@4.56.0)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.2)
       koota:
         specifier: 'catalog:'
         version: 0.1.12(@react-three/fiber@10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.182.0))(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.182.0)
@@ -133,7 +136,7 @@ importers:
         version: 0.33.5
       starlight-typedoc:
         specifier: ^0.21.5
-        version: 0.21.5(@astrojs/starlight@0.33.2(astro@5.16.15(@types/node@22.19.7)(jiti@1.21.7)(rollup@4.56.0)(typescript@5.9.3)(yaml@2.8.2)))(typedoc-plugin-markdown@4.9.0(typedoc@0.28.16(typescript@5.9.3)))(typedoc@0.28.16(typescript@5.9.3))
+        version: 0.21.5(@astrojs/starlight@0.33.2(astro@5.16.15(@types/node@22.19.7)(jiti@1.21.7)(rollup@4.56.0)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.2)))(typedoc-plugin-markdown@4.9.0(typedoc@0.28.16(typescript@5.9.3)))(typedoc@0.28.16(typescript@5.9.3))
       three:
         specifier: 'catalog:'
         version: 0.182.0
@@ -162,8 +165,11 @@ importers:
 
   examples/react/animation:
     dependencies:
+      '@awesome.me/webawesome':
+        specifier: ^3.0.0
+        version: 3.1.0(@floating-ui/utils@0.2.10)(@types/react@19.2.9)
       '@react-three/fiber':
-        specifier: 'catalog:'
+        specifier: ^10.0.0-alpha.2
         version: 10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.182.0)
       '@three-flatland/core':
         specifier: workspace:*
@@ -172,38 +178,38 @@ importers:
         specifier: workspace:*
         version: link:../../../packages/react
       react:
-        specifier: 'catalog:'
+        specifier: ^19.0.0
         version: 19.2.3
       react-dom:
-        specifier: 'catalog:'
+        specifier: ^19.0.0
         version: 19.2.3(react@19.2.3)
       three:
-        specifier: 'catalog:'
+        specifier: ^0.182.0
         version: 0.182.0
     devDependencies:
       '@types/react':
-        specifier: 'catalog:'
+        specifier: ^19.0.2
         version: 19.2.9
       '@types/react-dom':
-        specifier: 'catalog:'
+        specifier: ^19.0.2
         version: 19.2.3(@types/react@19.2.9)
       '@types/three':
-        specifier: 'catalog:'
+        specifier: ^0.182.0
         version: 0.182.0
       '@vitejs/plugin-react':
-        specifier: 'catalog:'
-        version: 4.7.0(vite@6.4.1(@types/node@22.19.7)(jiti@1.21.7)(yaml@2.8.2))
+        specifier: ^4.3.4
+        version: 4.7.0(vite@6.4.1(@types/node@22.19.7)(jiti@1.21.7)(tsx@4.21.0)(yaml@2.8.2))
       typescript:
-        specifier: 'catalog:'
+        specifier: ^5.7.3
         version: 5.9.3
       vite:
-        specifier: 'catalog:'
-        version: 6.4.1(@types/node@22.19.7)(jiti@1.21.7)(yaml@2.8.2)
+        specifier: ^6.0.7
+        version: 6.4.1(@types/node@22.19.7)(jiti@1.21.7)(tsx@4.21.0)(yaml@2.8.2)
 
   examples/react/basic-sprite:
     dependencies:
       '@react-three/fiber':
-        specifier: 'catalog:'
+        specifier: ^10.0.0-alpha.2
         version: 10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.182.0)
       '@three-flatland/core':
         specifier: workspace:*
@@ -212,38 +218,41 @@ importers:
         specifier: workspace:*
         version: link:../../../packages/react
       react:
-        specifier: 'catalog:'
+        specifier: ^19.0.0
         version: 19.2.3
       react-dom:
-        specifier: 'catalog:'
+        specifier: ^19.0.0
         version: 19.2.3(react@19.2.3)
       three:
-        specifier: 'catalog:'
+        specifier: ^0.182.0
         version: 0.182.0
     devDependencies:
       '@types/react':
-        specifier: 'catalog:'
+        specifier: ^19.0.2
         version: 19.2.9
       '@types/react-dom':
-        specifier: 'catalog:'
+        specifier: ^19.0.2
         version: 19.2.3(@types/react@19.2.9)
       '@types/three':
-        specifier: 'catalog:'
+        specifier: ^0.182.0
         version: 0.182.0
       '@vitejs/plugin-react':
-        specifier: 'catalog:'
-        version: 4.7.0(vite@6.4.1(@types/node@22.19.7)(jiti@1.21.7)(yaml@2.8.2))
+        specifier: ^4.3.4
+        version: 4.7.0(vite@6.4.1(@types/node@22.19.7)(jiti@1.21.7)(tsx@4.21.0)(yaml@2.8.2))
       typescript:
-        specifier: 'catalog:'
+        specifier: ^5.7.3
         version: 5.9.3
       vite:
-        specifier: 'catalog:'
-        version: 6.4.1(@types/node@22.19.7)(jiti@1.21.7)(yaml@2.8.2)
+        specifier: ^6.0.7
+        version: 6.4.1(@types/node@22.19.7)(jiti@1.21.7)(tsx@4.21.0)(yaml@2.8.2)
 
   examples/react/batch-demo:
     dependencies:
+      '@awesome.me/webawesome':
+        specifier: ^3.0.0
+        version: 3.1.0(@floating-ui/utils@0.2.10)(@types/react@19.2.9)
       '@react-three/fiber':
-        specifier: 'catalog:'
+        specifier: ^10.0.0-alpha.2
         version: 10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.182.0)
       '@three-flatland/core':
         specifier: workspace:*
@@ -252,87 +261,127 @@ importers:
         specifier: workspace:*
         version: link:../../../packages/react
       react:
-        specifier: 'catalog:'
+        specifier: ^19.0.0
         version: 19.2.3
       react-dom:
-        specifier: 'catalog:'
+        specifier: ^19.0.0
         version: 19.2.3(react@19.2.3)
       three:
-        specifier: 'catalog:'
+        specifier: ^0.182.0
         version: 0.182.0
     devDependencies:
       '@types/react':
-        specifier: 'catalog:'
+        specifier: ^19.0.2
         version: 19.2.9
       '@types/react-dom':
-        specifier: 'catalog:'
+        specifier: ^19.0.2
         version: 19.2.3(@types/react@19.2.9)
       '@types/three':
-        specifier: 'catalog:'
+        specifier: ^0.182.0
         version: 0.182.0
       '@vitejs/plugin-react':
-        specifier: 'catalog:'
-        version: 4.7.0(vite@6.4.1(@types/node@22.19.7)(jiti@1.21.7)(yaml@2.8.2))
+        specifier: ^4.3.4
+        version: 4.7.0(vite@6.4.1(@types/node@22.19.7)(jiti@1.21.7)(tsx@4.21.0)(yaml@2.8.2))
       typescript:
-        specifier: 'catalog:'
+        specifier: ^5.7.3
         version: 5.9.3
       vite:
-        specifier: 'catalog:'
-        version: 6.4.1(@types/node@22.19.7)(jiti@1.21.7)(yaml@2.8.2)
+        specifier: ^6.0.7
+        version: 6.4.1(@types/node@22.19.7)(jiti@1.21.7)(tsx@4.21.0)(yaml@2.8.2)
+
+  examples/react/template:
+    dependencies:
+      '@awesome.me/webawesome':
+        specifier: ^3.0.0
+        version: 3.1.0(@floating-ui/utils@0.2.10)(@types/react@19.2.9)
+      '@react-three/fiber':
+        specifier: ^10.0.0-alpha.2
+        version: 10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.182.0)
+      '@three-flatland/core':
+        specifier: workspace:*
+        version: link:../../../packages/core
+      '@three-flatland/react':
+        specifier: workspace:*
+        version: link:../../../packages/react
+      react:
+        specifier: ^19.0.0
+        version: 19.2.3
+      react-dom:
+        specifier: ^19.0.0
+        version: 19.2.3(react@19.2.3)
+      three:
+        specifier: ^0.182.0
+        version: 0.182.0
+    devDependencies:
+      '@types/react':
+        specifier: ^19.0.2
+        version: 19.2.9
+      '@types/react-dom':
+        specifier: ^19.0.2
+        version: 19.2.3(@types/react@19.2.9)
+      '@types/three':
+        specifier: ^0.182.0
+        version: 0.182.0
+      '@vitejs/plugin-react':
+        specifier: ^4.3.4
+        version: 4.7.0(vite@6.4.1(@types/node@22.19.7)(jiti@1.21.7)(tsx@4.21.0)(yaml@2.8.2))
+      typescript:
+        specifier: ^5.7.3
+        version: 5.9.3
+      vite:
+        specifier: ^6.0.7
+        version: 6.4.1(@types/node@22.19.7)(jiti@1.21.7)(tsx@4.21.0)(yaml@2.8.2)
 
   examples/react/tilemap:
     dependencies:
+      '@awesome.me/webawesome':
+        specifier: ^3.0.0
+        version: 3.1.0(@floating-ui/utils@0.2.10)(@types/react@19.2.9)
       '@react-three/fiber':
-        specifier: 'catalog:'
+        specifier: ^10.0.0-alpha.2
         version: 10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.182.0)
       '@three-flatland/core':
         specifier: workspace:*
         version: link:../../../packages/core
-      '@three-flatland/debug':
-        specifier: workspace:*
-        version: link:../../../packages/debug
       '@three-flatland/react':
         specifier: workspace:*
         version: link:../../../packages/react
-      lil-gui:
-        specifier: 'catalog:'
-        version: 0.21.0
       react:
-        specifier: 'catalog:'
+        specifier: ^19.0.0
         version: 19.2.3
       react-dom:
-        specifier: 'catalog:'
+        specifier: ^19.0.0
         version: 19.2.3(react@19.2.3)
       three:
-        specifier: 'catalog:'
+        specifier: ^0.182.0
         version: 0.182.0
-      zustand:
-        specifier: 'catalog:'
-        version: 5.0.10(@types/react@19.2.9)(react@19.2.3)(use-sync-external-store@1.6.0(react@19.2.3))
     devDependencies:
       '@types/react':
-        specifier: 'catalog:'
+        specifier: ^19.0.2
         version: 19.2.9
       '@types/react-dom':
-        specifier: 'catalog:'
+        specifier: ^19.0.2
         version: 19.2.3(@types/react@19.2.9)
       '@types/three':
-        specifier: 'catalog:'
+        specifier: ^0.182.0
         version: 0.182.0
       '@vitejs/plugin-react':
-        specifier: 'catalog:'
-        version: 4.7.0(vite@6.4.1(@types/node@22.19.7)(jiti@1.21.7)(yaml@2.8.2))
+        specifier: ^4.3.4
+        version: 4.7.0(vite@6.4.1(@types/node@22.19.7)(jiti@1.21.7)(tsx@4.21.0)(yaml@2.8.2))
       typescript:
-        specifier: 'catalog:'
+        specifier: ^5.7.3
         version: 5.9.3
       vite:
-        specifier: 'catalog:'
-        version: 6.4.1(@types/node@22.19.7)(jiti@1.21.7)(yaml@2.8.2)
+        specifier: ^6.0.7
+        version: 6.4.1(@types/node@22.19.7)(jiti@1.21.7)(tsx@4.21.0)(yaml@2.8.2)
 
   examples/react/tsl-nodes:
     dependencies:
+      '@awesome.me/webawesome':
+        specifier: ^3.0.0
+        version: 3.1.0(@floating-ui/utils@0.2.10)(@types/react@19.2.9)
       '@react-three/fiber':
-        specifier: 'catalog:'
+        specifier: ^10.0.0-alpha.2
         version: 10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.182.0)
       '@three-flatland/core':
         specifier: workspace:*
@@ -341,52 +390,55 @@ importers:
         specifier: workspace:*
         version: link:../../../packages/react
       react:
-        specifier: 'catalog:'
+        specifier: ^19.0.0
         version: 19.2.3
       react-dom:
-        specifier: 'catalog:'
+        specifier: ^19.0.0
         version: 19.2.3(react@19.2.3)
       three:
-        specifier: 'catalog:'
+        specifier: ^0.182.0
         version: 0.182.0
     devDependencies:
       '@types/react':
-        specifier: 'catalog:'
+        specifier: ^19.0.2
         version: 19.2.9
       '@types/react-dom':
-        specifier: 'catalog:'
+        specifier: ^19.0.2
         version: 19.2.3(@types/react@19.2.9)
       '@types/three':
-        specifier: 'catalog:'
+        specifier: ^0.182.0
         version: 0.182.0
       '@vitejs/plugin-react':
-        specifier: 'catalog:'
-        version: 4.7.0(vite@6.4.1(@types/node@22.19.7)(jiti@1.21.7)(yaml@2.8.2))
+        specifier: ^4.3.4
+        version: 4.7.0(vite@6.4.1(@types/node@22.19.7)(jiti@1.21.7)(tsx@4.21.0)(yaml@2.8.2))
       typescript:
-        specifier: 'catalog:'
+        specifier: ^5.7.3
         version: 5.9.3
       vite:
-        specifier: 'catalog:'
-        version: 6.4.1(@types/node@22.19.7)(jiti@1.21.7)(yaml@2.8.2)
+        specifier: ^6.0.7
+        version: 6.4.1(@types/node@22.19.7)(jiti@1.21.7)(tsx@4.21.0)(yaml@2.8.2)
 
   examples/vanilla/animation:
     dependencies:
+      '@awesome.me/webawesome':
+        specifier: ^3.0.0
+        version: 3.1.0(@floating-ui/utils@0.2.10)(@types/react@19.2.9)
       '@three-flatland/core':
         specifier: workspace:*
         version: link:../../../packages/core
       three:
-        specifier: 'catalog:'
+        specifier: ^0.182.0
         version: 0.182.0
     devDependencies:
       '@types/three':
-        specifier: 'catalog:'
+        specifier: ^0.182.0
         version: 0.182.0
       typescript:
-        specifier: 'catalog:'
+        specifier: ^5.7.3
         version: 5.9.3
       vite:
-        specifier: 'catalog:'
-        version: 6.4.1(@types/node@22.19.7)(jiti@1.21.7)(yaml@2.8.2)
+        specifier: ^6.0.7
+        version: 6.4.1(@types/node@22.19.7)(jiti@1.21.7)(tsx@4.21.0)(yaml@2.8.2)
 
   examples/vanilla/basic-sprite:
     dependencies:
@@ -397,84 +449,106 @@ importers:
         specifier: workspace:*
         version: link:../../../packages/nodes
       three:
-        specifier: 'catalog:'
+        specifier: ^0.182.0
         version: 0.182.0
     devDependencies:
       '@types/three':
-        specifier: 'catalog:'
+        specifier: ^0.182.0
         version: 0.182.0
       typescript:
-        specifier: 'catalog:'
+        specifier: ^5.7.3
         version: 5.9.3
       vite:
-        specifier: 'catalog:'
-        version: 6.4.1(@types/node@22.19.7)(jiti@1.21.7)(yaml@2.8.2)
+        specifier: ^6.0.7
+        version: 6.4.1(@types/node@22.19.7)(jiti@1.21.7)(tsx@4.21.0)(yaml@2.8.2)
 
   examples/vanilla/batch-demo:
     dependencies:
+      '@awesome.me/webawesome':
+        specifier: ^3.0.0
+        version: 3.1.0(@floating-ui/utils@0.2.10)(@types/react@19.2.9)
       '@three-flatland/core':
         specifier: workspace:*
         version: link:../../../packages/core
       three:
-        specifier: 'catalog:'
+        specifier: ^0.182.0
         version: 0.182.0
     devDependencies:
       '@types/three':
-        specifier: 'catalog:'
+        specifier: ^0.182.0
         version: 0.182.0
       typescript:
-        specifier: 'catalog:'
+        specifier: ^5.7.3
         version: 5.9.3
       vite:
-        specifier: 'catalog:'
-        version: 6.4.1(@types/node@22.19.7)(jiti@1.21.7)(yaml@2.8.2)
+        specifier: ^6.0.7
+        version: 6.4.1(@types/node@22.19.7)(jiti@1.21.7)(tsx@4.21.0)(yaml@2.8.2)
+
+  examples/vanilla/template:
+    dependencies:
+      '@awesome.me/webawesome':
+        specifier: ^3.0.0
+        version: 3.1.0(@floating-ui/utils@0.2.10)(@types/react@19.2.9)
+      '@three-flatland/core':
+        specifier: workspace:*
+        version: link:../../../packages/core
+      three:
+        specifier: ^0.182.0
+        version: 0.182.0
+    devDependencies:
+      '@types/three':
+        specifier: ^0.182.0
+        version: 0.182.0
+      typescript:
+        specifier: ^5.7.3
+        version: 5.9.3
+      vite:
+        specifier: ^6.0.7
+        version: 6.4.1(@types/node@22.19.7)(jiti@1.21.7)(tsx@4.21.0)(yaml@2.8.2)
 
   examples/vanilla/tilemap:
     dependencies:
+      '@awesome.me/webawesome':
+        specifier: ^3.0.0
+        version: 3.1.0(@floating-ui/utils@0.2.10)(@types/react@19.2.9)
       '@three-flatland/core':
         specifier: workspace:*
         version: link:../../../packages/core
-      '@three-flatland/debug':
-        specifier: workspace:*
-        version: link:../../../packages/debug
-      lil-gui:
-        specifier: 'catalog:'
-        version: 0.21.0
       three:
-        specifier: 'catalog:'
+        specifier: ^0.182.0
         version: 0.182.0
-      zustand:
-        specifier: 'catalog:'
-        version: 5.0.10(@types/react@19.2.9)(react@19.2.3)(use-sync-external-store@1.6.0(react@19.2.3))
     devDependencies:
       '@types/three':
-        specifier: 'catalog:'
+        specifier: ^0.182.0
         version: 0.182.0
       typescript:
-        specifier: 'catalog:'
+        specifier: ^5.7.3
         version: 5.9.3
       vite:
-        specifier: 'catalog:'
-        version: 6.4.1(@types/node@22.19.7)(jiti@1.21.7)(yaml@2.8.2)
+        specifier: ^6.0.7
+        version: 6.4.1(@types/node@22.19.7)(jiti@1.21.7)(tsx@4.21.0)(yaml@2.8.2)
 
   examples/vanilla/tsl-nodes:
     dependencies:
+      '@awesome.me/webawesome':
+        specifier: ^3.0.0
+        version: 3.1.0(@floating-ui/utils@0.2.10)(@types/react@19.2.9)
       '@three-flatland/core':
         specifier: workspace:*
         version: link:../../../packages/core
       three:
-        specifier: 'catalog:'
+        specifier: ^0.182.0
         version: 0.182.0
     devDependencies:
       '@types/three':
-        specifier: 'catalog:'
+        specifier: ^0.182.0
         version: 0.182.0
       typescript:
-        specifier: 'catalog:'
+        specifier: ^5.7.3
         version: 5.9.3
       vite:
-        specifier: 'catalog:'
-        version: 6.4.1(@types/node@22.19.7)(jiti@1.21.7)(yaml@2.8.2)
+        specifier: ^6.0.7
+        version: 6.4.1(@types/node@22.19.7)(jiti@1.21.7)(tsx@4.21.0)(yaml@2.8.2)
 
   minis/breakout:
     dependencies:
@@ -499,7 +573,7 @@ importers:
         version: 0.182.0
       '@vitejs/plugin-react':
         specifier: 'catalog:'
-        version: 4.7.0(vite@6.4.1(@types/node@22.19.7)(jiti@1.21.7)(yaml@2.8.2))
+        version: 4.7.0(vite@6.4.1(@types/node@22.19.7)(jiti@1.21.7)(tsx@4.21.0)(yaml@2.8.2))
       react:
         specifier: 'catalog:'
         version: 19.2.3
@@ -511,13 +585,13 @@ importers:
         version: 0.182.0
       tsup:
         specifier: ^8.0.0
-        version: 8.5.1(jiti@1.21.7)(postcss@8.5.6)(typescript@5.9.3)(yaml@2.8.2)
+        version: 8.5.1(jiti@1.21.7)(postcss@8.5.6)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.2)
       typescript:
         specifier: 'catalog:'
         version: 5.9.3
       vite:
         specifier: 'catalog:'
-        version: 6.4.1(@types/node@22.19.7)(jiti@1.21.7)(yaml@2.8.2)
+        version: 6.4.1(@types/node@22.19.7)(jiti@1.21.7)(tsx@4.21.0)(yaml@2.8.2)
 
   packages/core:
     devDependencies:
@@ -527,21 +601,6 @@ importers:
       three:
         specifier: 'catalog:'
         version: 0.182.0
-
-  packages/debug:
-    devDependencies:
-      '@types/react':
-        specifier: 'catalog:'
-        version: 19.2.9
-      lil-gui:
-        specifier: 'catalog:'
-        version: 0.21.0
-      react:
-        specifier: 'catalog:'
-        version: 19.2.3
-      zustand:
-        specifier: 'catalog:'
-        version: 5.0.10(@types/react@19.2.9)(react@19.2.3)(use-sync-external-store@1.6.0(react@19.2.3))
 
   packages/nodes:
     devDependencies:
@@ -652,6 +711,10 @@ packages:
 
   '@astrojs/yaml2ts@0.2.2':
     resolution: {integrity: sha512-GOfvSr5Nqy2z5XiwqTouBBpy5FyI6DEe+/g/Mk5am9SjILN1S5fOEvYK0GuWHg98yS/dobP4m8qyqw/URW35fQ==}
+
+  '@awesome.me/webawesome@3.1.0':
+    resolution: {integrity: sha512-9XgTxL/6/8Ynb4KvQBjK33RjnsRyqIJO8zYQODu8MDbS/2ecjah+cUOek6DkK0opg1DC6N7X6GStjcrjAuMMyQ==}
+    engines: {node: '>=14.17.0'}
 
   '@babel/code-frame@7.28.6':
     resolution: {integrity: sha512-JYgintcMjRiCvS8mMECzaEn+m3PfoQiyqukOMCCVQtoJGYJw8j/8LBJEiqkHLkfwCcs74E3pbAUFNg7d9VNJ+Q==}
@@ -798,6 +861,10 @@ packages:
 
   '@changesets/write@0.4.0':
     resolution: {integrity: sha512-CdTLvIOPiCNuH71pyDu3rA+Q0n65cmAbXnwWH84rKGiFumFzkmHNT8KHTMEchcxN+Kl8I54xGUhJ7l3E7X396Q==}
+
+  '@ctrl/tinycolor@4.1.0':
+    resolution: {integrity: sha512-WyOx8cJQ+FQus4Mm4uPIZA64gbk3Wxh0so5Lcii0aJifqwoVOlfFtorjLE0Hen4OYyHZMXDWqMmaQemBhgxFRQ==}
+    engines: {node: '>=14'}
 
   '@ctrl/tinycolor@4.2.0':
     resolution: {integrity: sha512-kzyuwOAQnXJNLS9PSyrk0CWk35nWJW/zl/6KvnTBMFK65gm7U1/Z5BqjxeapjZCIhQcM/DsrEmcbRwDyXyXK4A==}
@@ -1330,6 +1397,15 @@ packages:
   '@expressive-code/plugin-text-markers@0.41.6':
     resolution: {integrity: sha512-PBFa1wGyYzRExMDzBmAWC6/kdfG1oLn4pLpBeTfIRrALPjcGA/59HP3e7q9J0Smk4pC7U+lWkA2LHR8FYV8U7Q==}
 
+  '@floating-ui/core@1.7.4':
+    resolution: {integrity: sha512-C3HlIdsBxszvm5McXlB8PeOEWfBhcGBTZGkGlWc2U0KFY5IwG5OQEuQ8rq52DZmcHDlPLd+YFBK+cZcytwIFWg==}
+
+  '@floating-ui/dom@1.7.5':
+    resolution: {integrity: sha512-N0bD2kIPInNHUHehXhMke1rBGs1dwqvC9O9KYMyyjK7iXt7GAhnro7UlcuYcGdS/yYOlq0MAVgrow8IbWJwyqg==}
+
+  '@floating-ui/utils@0.2.10':
+    resolution: {integrity: sha512-aGTxbpbg8/b5JfU1HXSrbH3wXZuLPJcNEcZQFMxLs3oSzgtVu6nFPkbbGGUvBcUjKV2YyB9Wxxabo+HEH9tcRQ==}
+
   '@fontsource/ibm-plex-mono@5.2.7':
     resolution: {integrity: sha512-MKAb8qV+CaiMQn2B0dIi1OV3565NYzp3WN5b4oT6LTkk+F0jR6j0ZN+5BKJiIhffDC3rtBULsYZE65+0018z9w==}
 
@@ -1625,6 +1701,17 @@ packages:
   '@jridgewell/trace-mapping@0.3.31':
     resolution: {integrity: sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw==}
 
+  '@lit-labs/ssr-dom-shim@1.5.1':
+    resolution: {integrity: sha512-Aou5UdlSpr5whQe8AA/bZG0jMj96CoJIWbGfZ91qieWu5AWUMKw8VR/pAkQkJYvBNhmCcWnZlyyk5oze8JIqYA==}
+
+  '@lit/react@1.0.8':
+    resolution: {integrity: sha512-p2+YcF+JE67SRX3mMlJ1TKCSTsgyOVdAwd/nxp3NuV1+Cb6MWALbN6nT7Ld4tpmYofcE5kcaSY1YBB9erY+6fw==}
+    peerDependencies:
+      '@types/react': 17 || 18 || 19
+
+  '@lit/reactive-element@2.1.2':
+    resolution: {integrity: sha512-pbCDiVMnne1lYUIaYNN5wrwQXDtHaYtg7YEFPeW+hws6U47WeFvISGUWekPGKWOP1ygrs0ef0o1VJMk1exos5A==}
+
   '@manypkg/find-root@1.1.0':
     resolution: {integrity: sha512-mki5uBvhHzO8kYYix/WRy2WX8S3B5wdVSc9D6KcU5lQNglP2yt58/VfLuAK49glRXChosY8ap2oJ1qgma3GUVA==}
 
@@ -1850,6 +1937,12 @@ packages:
   '@shikijs/vscode-textmate@10.0.2':
     resolution: {integrity: sha512-83yeghZ2xxin3Nj8z1NMd/NCuca+gsYXswywDy5bHvwlWL8tpTQmzGeUuHd9FC3E/SBEMvzJRwWEOz5gGes9Qg==}
 
+  '@shoelace-style/animations@1.2.0':
+    resolution: {integrity: sha512-avvo1xxkLbv2dgtabdewBbqcJfV0e0zCwFqkPMnHFGbJbBHorRFfMAHh1NG9ymmXn0jW95ibUVH03E1NYXD6Gw==}
+
+  '@shoelace-style/localize@3.2.1':
+    resolution: {integrity: sha512-r4C9C/5kSfMBIr0D9imvpRdCNXtUNgyYThc4YlS6K5Hchv1UyxNQ9mxwj+BTRH2i1Neits260sR3OjKMnplsFA==}
+
   '@stackblitz/sdk@1.11.0':
     resolution: {integrity: sha512-DFQGANNkEZRzFk1/rDP6TcFdM82ycHE+zfl9C/M/jXlH68jiqHWHFMQURLELoD8koxvu/eW5uhg94NSAZlYrUQ==}
 
@@ -1928,6 +2021,9 @@ packages:
 
   '@types/three@0.182.0':
     resolution: {integrity: sha512-WByN9V3Sbwbe2OkWuSGyoqQO8Du6yhYaXtXLoA5FkKTUJorZ+yOHBZ35zUUPQXlAKABZmbYp5oAqpA4RBjtJ/Q==}
+
+  '@types/trusted-types@2.0.7':
+    resolution: {integrity: sha512-ScaPdn1dQczgbl0QFTeTOmVHFULt394XJgOQNoyVhZ6r2vLnMLJfBPd53SB52T/3G36VI1/g2MZaX0cwDuXsfw==}
 
   '@types/unist@2.0.11':
     resolution: {integrity: sha512-CmBKiL6NNo/OqgmMn95Fk9Whlp2mtvIv+KNpQKN2F4SjvrEesubTRWGYSg+BnWZOnlCaSTU1sMpsBOzgbYhnsA==}
@@ -2319,6 +2415,11 @@ packages:
   common-ancestor-path@1.0.1:
     resolution: {integrity: sha512-L3sHRo1pXXEqX8VU28kfgUY+YGsk09hPqZiZmLacNib6XNTCM8ubYeT7ryXQw8asB1sKgcU5lkB7ONug08aB8w==}
 
+  composed-offset-position@0.0.6:
+    resolution: {integrity: sha512-Q7dLompI6lUwd7LWyIcP66r4WcS9u7AL2h8HaeipiRfCRPLMWqRx8fYsjb4OHi6UQFifO7XtNC2IlEJ1ozIFxw==}
+    peerDependencies:
+      '@floating-ui/utils': ^0.2.5
+
   concat-map@0.0.1:
     resolution: {integrity: sha512-/Srv4dswyQNBfohGpz9o6Yb3Gz3SrUDqBH5rTuhGR7ahtlbYKnVxw2bCFMRljaA7EXHaXZ8wsHdodFvbkhKmqg==}
 
@@ -2695,6 +2796,9 @@ packages:
     resolution: {integrity: sha512-QZjmEOC+IT1uk6Rx0sX22V6uHWVwbdbxf1faPqJ1QhLdGgsRGCZoyaQBm/piRdJy/D2um6hM1UP7ZEeQ4EkP+Q==}
     engines: {node: '>=18'}
 
+  get-tsconfig@4.13.1:
+    resolution: {integrity: sha512-EoY1N2xCn44xU6750Sx7OjOIT59FkmstNc3X6y5xpz7D5cBtZRe/3pSlTkDJgqsOk3WwZPkWfonhhUJfttQo3w==}
+
   github-slugger@2.0.0:
     resolution: {integrity: sha512-IaOQ9puYtjrkq7Y0Ygl9KDZnrf/aiUJYUpVf89y8kyaxbRG7Y1SrX/jaumrv81vc61+kiMempujsM3Yw7w5qcw==}
 
@@ -2985,9 +3089,6 @@ packages:
     resolution: {integrity: sha512-+bT2uH4E5LGE7h/n3evcS/sQlJXCpIp6ym8OWJ5eV6+67Dsql/LaaT7qJBAt2rzfoa/5QBGBhxDix1dMt2kQKQ==}
     engines: {node: '>= 0.8.0'}
 
-  lil-gui@0.21.0:
-    resolution: {integrity: sha512-tpvxN7v1GvE/Tv+GRopfOp0W7fVEjF4PltkuX8vOCIfim22rD1ztvfkoEMcv9lzQeuNUSeIrUmUjBwmlW/oUew==}
-
   lilconfig@3.1.3:
     resolution: {integrity: sha512-/vlFKAoH5Cgt3Ie+JLhRbwOsCQePABiU3tJ1egGvyQ+33R/vcwM2Zl2QR/LzjsBeItPt3oSVXapn+m4nQDvpzw==}
     engines: {node: '>=14'}
@@ -2997,6 +3098,15 @@ packages:
 
   linkify-it@5.0.0:
     resolution: {integrity: sha512-5aHCbzQRADcdP+ATqnDuhhJ/MRIqDkZX5pyjFHRRysS8vZ5AbqGEoFIb6pYHPZ+L/OC2Lc+xT8uHVVR5CAK/wQ==}
+
+  lit-element@4.2.2:
+    resolution: {integrity: sha512-aFKhNToWxoyhkNDmWZwEva2SlQia+jfG0fjIWV//YeTaWrVnOxD89dPKfigCUspXFmjzOEUQpOkejH5Ly6sG0w==}
+
+  lit-html@3.3.2:
+    resolution: {integrity: sha512-Qy9hU88zcmaxBXcc10ZpdK7cOLXvXpRoBxERdtqV9QOrfpMZZ6pSYP91LhpPtap3sFMUiL7Tw2RImbe0Al2/kw==}
+
+  lit@3.3.2:
+    resolution: {integrity: sha512-NF9zbsP79l4ao2SNrH3NkfmFgN/hBYSQo90saIVI1o5GpjAdCPVstVzO1MrLOakHoEhYkrtRjPK6Ob521aoYWQ==}
 
   load-tsconfig@0.2.5:
     resolution: {integrity: sha512-IXO6OCs9yg8tMKzfPZ1YmheJbZCiEsnBdcB03l0OcfK9prKnJb96siuHCr5Fl37/yo9DnKU+TLpxzTUspw9shg==}
@@ -3266,6 +3376,11 @@ packages:
     engines: {node: ^10 || ^12 || ^13.7 || ^14 || >=15.0.1}
     hasBin: true
 
+  nanoid@5.1.6:
+    resolution: {integrity: sha512-c7+7RQ+dMB5dPwwCp4ee1/iV/q2P6aK1mTZcfr1BTuVlyW9hJYiMPybJCcnBlQtuSmTIWNeazm/zqNoZSSElBg==}
+    engines: {node: ^18 || >=20}
+    hasBin: true
+
   natural-compare@1.4.0:
     resolution: {integrity: sha512-OWND8ei3VtNC9h7V60qff3SVobHr996CTwgxubgyQYEpg290h9J0buyECNNJexkFm5sOajh5G116RYA1c8ZMSw==}
 
@@ -3496,6 +3611,9 @@ packages:
     resolution: {integrity: sha512-vYt7UD1U9Wg6138shLtLOvdAu+8DsC/ilFtEVHcH+wydcSpNE20AfSOduf6MkRFahL5FY7X1oU7nKVZFtfq8Fg==}
     engines: {node: '>=6'}
 
+  qr-creator@1.0.0:
+    resolution: {integrity: sha512-C0cqfbS1P5hfqN4NhsYsUXePlk9BO+a45bAQ3xLYjBL3bOIFzoVEjs79Fado9u9BPBD3buHi3+vY+C8tHh4qMQ==}
+
   quansync@0.2.11:
     resolution: {integrity: sha512-AifT7QEbW9Nri4tAwR5M/uzpBuqfZf+zwaEM/QkzEjj7NBuFD2rBuy0K3dE+8wltbezDV7JMA0WfnCPYRSYbXA==}
 
@@ -3626,6 +3744,9 @@ packages:
   resolve-from@5.0.0:
     resolution: {integrity: sha512-qYg9KP24dD5qka9J47d0aVky0N+b4fTU89LN9iDnjB5waksiC49rvMB0PrUJQGoTmH50XPiqOvAjDfaijGxYZw==}
     engines: {node: '>=8'}
+
+  resolve-pkg-maps@1.0.0:
+    resolution: {integrity: sha512-seS2Tj26TBVOC2NIc2rOe2y2ZO7efxITtLZcGSOnHHNOQ7CkiUBfw0Iw2ck6xkIhPwLhKNLS8BO+hEpngQlqzw==}
 
   retext-latin@4.0.0:
     resolution: {integrity: sha512-hv9woG7Fy0M9IlRQloq/N6atV82NxLGveq+3H2WOi79dtIYWN8OaxogDm77f8YnVXJL2VD3bbqowu5E3EMhBYA==}
@@ -3898,6 +4019,11 @@ packages:
         optional: true
       typescript:
         optional: true
+
+  tsx@4.21.0:
+    resolution: {integrity: sha512-5C1sg4USs1lfG0GFb2RLXsdpXqBSEhAaA/0kPL01wxzpMqLILNxIxIOKiILz+cdg/pLnOUxFYOR5yhHU666wbw==}
+    engines: {node: '>=18.0.0'}
+    hasBin: true
 
   turbo-darwin-64@2.7.5:
     resolution: {integrity: sha512-nN3wfLLj4OES/7awYyyM7fkU8U8sAFxsXau2bYJwAWi6T09jd87DgHD8N31zXaJ7LcpyppHWPRI2Ov9MuZEwnQ==}
@@ -4500,12 +4626,12 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@astrojs/mdx@4.3.13(astro@5.16.15(@types/node@22.19.7)(jiti@1.21.7)(rollup@4.56.0)(typescript@5.9.3)(yaml@2.8.2))':
+  '@astrojs/mdx@4.3.13(astro@5.16.15(@types/node@22.19.7)(jiti@1.21.7)(rollup@4.56.0)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.2))':
     dependencies:
       '@astrojs/markdown-remark': 6.3.10
       '@mdx-js/mdx': 3.1.1
       acorn: 8.15.0
-      astro: 5.16.15(@types/node@22.19.7)(jiti@1.21.7)(rollup@4.56.0)(typescript@5.9.3)(yaml@2.8.2)
+      astro: 5.16.15(@types/node@22.19.7)(jiti@1.21.7)(rollup@4.56.0)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.2)
       es-module-lexer: 1.7.0
       estree-util-visit: 2.0.0
       hast-util-to-html: 9.0.5
@@ -4523,15 +4649,15 @@ snapshots:
     dependencies:
       prismjs: 1.30.0
 
-  '@astrojs/react@4.4.2(@types/node@22.19.7)(@types/react-dom@19.2.3(@types/react@19.2.9))(@types/react@19.2.9)(jiti@1.21.7)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(yaml@2.8.2)':
+  '@astrojs/react@4.4.2(@types/node@22.19.7)(@types/react-dom@19.2.3(@types/react@19.2.9))(@types/react@19.2.9)(jiti@1.21.7)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(tsx@4.21.0)(yaml@2.8.2)':
     dependencies:
       '@types/react': 19.2.9
       '@types/react-dom': 19.2.3(@types/react@19.2.9)
-      '@vitejs/plugin-react': 4.7.0(vite@6.4.1(@types/node@22.19.7)(jiti@1.21.7)(yaml@2.8.2))
+      '@vitejs/plugin-react': 4.7.0(vite@6.4.1(@types/node@22.19.7)(jiti@1.21.7)(tsx@4.21.0)(yaml@2.8.2))
       react: 19.2.3
       react-dom: 19.2.3(react@19.2.3)
       ultrahtml: 1.6.0
-      vite: 6.4.1(@types/node@22.19.7)(jiti@1.21.7)(yaml@2.8.2)
+      vite: 6.4.1(@types/node@22.19.7)(jiti@1.21.7)(tsx@4.21.0)(yaml@2.8.2)
     transitivePeerDependencies:
       - '@types/node'
       - jiti
@@ -4552,16 +4678,16 @@ snapshots:
       stream-replace-string: 2.0.0
       zod: 3.25.76
 
-  '@astrojs/starlight@0.33.2(astro@5.16.15(@types/node@22.19.7)(jiti@1.21.7)(rollup@4.56.0)(typescript@5.9.3)(yaml@2.8.2))':
+  '@astrojs/starlight@0.33.2(astro@5.16.15(@types/node@22.19.7)(jiti@1.21.7)(rollup@4.56.0)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.2))':
     dependencies:
-      '@astrojs/mdx': 4.3.13(astro@5.16.15(@types/node@22.19.7)(jiti@1.21.7)(rollup@4.56.0)(typescript@5.9.3)(yaml@2.8.2))
+      '@astrojs/mdx': 4.3.13(astro@5.16.15(@types/node@22.19.7)(jiti@1.21.7)(rollup@4.56.0)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.2))
       '@astrojs/sitemap': 3.7.0
       '@pagefind/default-ui': 1.4.0
       '@types/hast': 3.0.4
       '@types/js-yaml': 4.0.9
       '@types/mdast': 4.0.4
-      astro: 5.16.15(@types/node@22.19.7)(jiti@1.21.7)(rollup@4.56.0)(typescript@5.9.3)(yaml@2.8.2)
-      astro-expressive-code: 0.41.6(astro@5.16.15(@types/node@22.19.7)(jiti@1.21.7)(rollup@4.56.0)(typescript@5.9.3)(yaml@2.8.2))
+      astro: 5.16.15(@types/node@22.19.7)(jiti@1.21.7)(rollup@4.56.0)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.2)
+      astro-expressive-code: 0.41.6(astro@5.16.15(@types/node@22.19.7)(jiti@1.21.7)(rollup@4.56.0)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.2))
       bcp-47: 2.1.0
       hast-util-from-html: 2.0.3
       hast-util-select: 6.0.4
@@ -4598,6 +4724,21 @@ snapshots:
   '@astrojs/yaml2ts@0.2.2':
     dependencies:
       yaml: 2.8.2
+
+  '@awesome.me/webawesome@3.1.0(@floating-ui/utils@0.2.10)(@types/react@19.2.9)':
+    dependencies:
+      '@ctrl/tinycolor': 4.1.0
+      '@floating-ui/dom': 1.7.5
+      '@lit/react': 1.0.8(@types/react@19.2.9)
+      '@shoelace-style/animations': 1.2.0
+      '@shoelace-style/localize': 3.2.1
+      composed-offset-position: 0.0.6(@floating-ui/utils@0.2.10)
+      lit: 3.3.2
+      nanoid: 5.1.6
+      qr-creator: 1.0.0
+    transitivePeerDependencies:
+      - '@floating-ui/utils'
+      - '@types/react'
 
   '@babel/code-frame@7.28.6':
     dependencies:
@@ -4860,6 +5001,8 @@ snapshots:
       fs-extra: 7.0.1
       human-id: 4.1.3
       prettier: 2.8.8
+
+  '@ctrl/tinycolor@4.1.0': {}
 
   '@ctrl/tinycolor@4.2.0': {}
 
@@ -5189,6 +5332,17 @@ snapshots:
     dependencies:
       '@expressive-code/core': 0.41.6
 
+  '@floating-ui/core@1.7.4':
+    dependencies:
+      '@floating-ui/utils': 0.2.10
+
+  '@floating-ui/dom@1.7.5':
+    dependencies:
+      '@floating-ui/core': 1.7.4
+      '@floating-ui/utils': 0.2.10
+
+  '@floating-ui/utils@0.2.10': {}
+
   '@fontsource/ibm-plex-mono@5.2.7': {}
 
   '@fontsource/ibm-plex-sans@5.2.8': {}
@@ -5412,6 +5566,16 @@ snapshots:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.5.5
 
+  '@lit-labs/ssr-dom-shim@1.5.1': {}
+
+  '@lit/react@1.0.8(@types/react@19.2.9)':
+    dependencies:
+      '@types/react': 19.2.9
+
+  '@lit/reactive-element@2.1.2':
+    dependencies:
+      '@lit-labs/ssr-dom-shim': 1.5.1
+
   '@manypkg/find-root@1.1.0':
     dependencies:
       '@babel/runtime': 7.28.6
@@ -5628,6 +5792,10 @@ snapshots:
 
   '@shikijs/vscode-textmate@10.0.2': {}
 
+  '@shoelace-style/animations@1.2.0': {}
+
+  '@shoelace-style/localize@3.2.1': {}
+
   '@stackblitz/sdk@1.11.0': {}
 
   '@tweenjs/tween.js@23.1.3': {}
@@ -5718,6 +5886,8 @@ snapshots:
       '@webgpu/types': 0.1.69
       fflate: 0.8.2
       meshoptimizer: 0.22.0
+
+  '@types/trusted-types@2.0.7': {}
 
   '@types/unist@2.0.11': {}
 
@@ -5818,7 +5988,7 @@ snapshots:
 
   '@ungap/structured-clone@1.3.0': {}
 
-  '@vitejs/plugin-react@4.7.0(vite@6.4.1(@types/node@22.19.7)(jiti@1.21.7)(yaml@2.8.2))':
+  '@vitejs/plugin-react@4.7.0(vite@6.4.1(@types/node@22.19.7)(jiti@1.21.7)(tsx@4.21.0)(yaml@2.8.2))':
     dependencies:
       '@babel/core': 7.28.6
       '@babel/plugin-transform-react-jsx-self': 7.27.1(@babel/core@7.28.6)
@@ -5826,7 +5996,7 @@ snapshots:
       '@rolldown/pluginutils': 1.0.0-beta.27
       '@types/babel__core': 7.20.5
       react-refresh: 0.17.0
-      vite: 6.4.1(@types/node@22.19.7)(jiti@1.21.7)(yaml@2.8.2)
+      vite: 6.4.1(@types/node@22.19.7)(jiti@1.21.7)(tsx@4.21.0)(yaml@2.8.2)
     transitivePeerDependencies:
       - supports-color
 
@@ -5987,12 +6157,12 @@ snapshots:
 
   astring@1.9.0: {}
 
-  astro-expressive-code@0.41.6(astro@5.16.15(@types/node@22.19.7)(jiti@1.21.7)(rollup@4.56.0)(typescript@5.9.3)(yaml@2.8.2)):
+  astro-expressive-code@0.41.6(astro@5.16.15(@types/node@22.19.7)(jiti@1.21.7)(rollup@4.56.0)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.2)):
     dependencies:
-      astro: 5.16.15(@types/node@22.19.7)(jiti@1.21.7)(rollup@4.56.0)(typescript@5.9.3)(yaml@2.8.2)
+      astro: 5.16.15(@types/node@22.19.7)(jiti@1.21.7)(rollup@4.56.0)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.2)
       rehype-expressive-code: 0.41.6
 
-  astro@5.16.15(@types/node@22.19.7)(jiti@1.21.7)(rollup@4.56.0)(typescript@5.9.3)(yaml@2.8.2):
+  astro@5.16.15(@types/node@22.19.7)(jiti@1.21.7)(rollup@4.56.0)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.2):
     dependencies:
       '@astrojs/compiler': 2.13.0
       '@astrojs/internal-helpers': 0.7.5
@@ -6049,8 +6219,8 @@ snapshots:
       unist-util-visit: 5.1.0
       unstorage: 1.17.4
       vfile: 6.0.3
-      vite: 6.4.1(@types/node@22.19.7)(jiti@1.21.7)(yaml@2.8.2)
-      vitefu: 1.1.1(vite@6.4.1(@types/node@22.19.7)(jiti@1.21.7)(yaml@2.8.2))
+      vite: 6.4.1(@types/node@22.19.7)(jiti@1.21.7)(tsx@4.21.0)(yaml@2.8.2)
+      vitefu: 1.1.1(vite@6.4.1(@types/node@22.19.7)(jiti@1.21.7)(tsx@4.21.0)(yaml@2.8.2))
       xxhash-wasm: 1.1.0
       yargs-parser: 21.1.1
       yocto-spinner: 0.2.3
@@ -6239,6 +6409,10 @@ snapshots:
   commander@4.1.1: {}
 
   common-ancestor-path@1.0.1: {}
+
+  composed-offset-position@0.0.6(@floating-ui/utils@0.2.10):
+    dependencies:
+      '@floating-ui/utils': 0.2.10
 
   concat-map@0.0.1: {}
 
@@ -6688,6 +6862,10 @@ snapshots:
 
   get-east-asian-width@1.4.0: {}
 
+  get-tsconfig@4.13.1:
+    dependencies:
+      resolve-pkg-maps: 1.0.0
+
   github-slugger@2.0.0: {}
 
   glob-parent@5.1.2:
@@ -7060,8 +7238,6 @@ snapshots:
       prelude-ls: 1.2.1
       type-check: 0.4.0
 
-  lil-gui@0.21.0: {}
-
   lilconfig@3.1.3: {}
 
   lines-and-columns@1.2.4: {}
@@ -7069,6 +7245,22 @@ snapshots:
   linkify-it@5.0.0:
     dependencies:
       uc.micro: 2.1.0
+
+  lit-element@4.2.2:
+    dependencies:
+      '@lit-labs/ssr-dom-shim': 1.5.1
+      '@lit/reactive-element': 2.1.2
+      lit-html: 3.3.2
+
+  lit-html@3.3.2:
+    dependencies:
+      '@types/trusted-types': 2.0.7
+
+  lit@3.3.2:
+    dependencies:
+      '@lit/reactive-element': 2.1.2
+      lit-element: 4.2.2
+      lit-html: 3.3.2
 
   load-tsconfig@0.2.5: {}
 
@@ -7624,6 +7816,8 @@ snapshots:
 
   nanoid@3.3.11: {}
 
+  nanoid@5.1.6: {}
+
   natural-compare@1.4.0: {}
 
   neotraverse@0.6.18: {}
@@ -7784,12 +7978,13 @@ snapshots:
       mlly: 1.8.0
       pathe: 2.0.3
 
-  postcss-load-config@6.0.1(jiti@1.21.7)(postcss@8.5.6)(yaml@2.8.2):
+  postcss-load-config@6.0.1(jiti@1.21.7)(postcss@8.5.6)(tsx@4.21.0)(yaml@2.8.2):
     dependencies:
       lilconfig: 3.1.3
     optionalDependencies:
       jiti: 1.21.7
       postcss: 8.5.6
+      tsx: 4.21.0
       yaml: 2.8.2
 
   postcss-nested@6.2.0(postcss@8.5.6):
@@ -7826,6 +8021,8 @@ snapshots:
   punycode.js@2.3.1: {}
 
   punycode@2.3.1: {}
+
+  qr-creator@1.0.0: {}
 
   quansync@0.2.11: {}
 
@@ -8008,6 +8205,8 @@ snapshots:
   resolve-from@4.0.0: {}
 
   resolve-from@5.0.0: {}
+
+  resolve-pkg-maps@1.0.0: {}
 
   retext-latin@4.0.0:
     dependencies:
@@ -8192,9 +8391,9 @@ snapshots:
 
   stackback@0.0.2: {}
 
-  starlight-typedoc@0.21.5(@astrojs/starlight@0.33.2(astro@5.16.15(@types/node@22.19.7)(jiti@1.21.7)(rollup@4.56.0)(typescript@5.9.3)(yaml@2.8.2)))(typedoc-plugin-markdown@4.9.0(typedoc@0.28.16(typescript@5.9.3)))(typedoc@0.28.16(typescript@5.9.3)):
+  starlight-typedoc@0.21.5(@astrojs/starlight@0.33.2(astro@5.16.15(@types/node@22.19.7)(jiti@1.21.7)(rollup@4.56.0)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.2)))(typedoc-plugin-markdown@4.9.0(typedoc@0.28.16(typescript@5.9.3)))(typedoc@0.28.16(typescript@5.9.3)):
     dependencies:
-      '@astrojs/starlight': 0.33.2(astro@5.16.15(@types/node@22.19.7)(jiti@1.21.7)(rollup@4.56.0)(typescript@5.9.3)(yaml@2.8.2))
+      '@astrojs/starlight': 0.33.2(astro@5.16.15(@types/node@22.19.7)(jiti@1.21.7)(rollup@4.56.0)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.2))
       github-slugger: 2.0.0
       typedoc: 0.28.16(typescript@5.9.3)
       typedoc-plugin-markdown: 4.9.0(typedoc@0.28.16(typescript@5.9.3))
@@ -8322,7 +8521,7 @@ snapshots:
   tslib@2.8.1:
     optional: true
 
-  tsup@8.5.1(jiti@1.21.7)(postcss@8.5.6)(typescript@5.9.3)(yaml@2.8.2):
+  tsup@8.5.1(jiti@1.21.7)(postcss@8.5.6)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.2):
     dependencies:
       bundle-require: 5.1.0(esbuild@0.27.2)
       cac: 6.7.14
@@ -8333,7 +8532,7 @@ snapshots:
       fix-dts-default-cjs-exports: 1.0.1
       joycon: 3.1.1
       picocolors: 1.1.1
-      postcss-load-config: 6.0.1(jiti@1.21.7)(postcss@8.5.6)(yaml@2.8.2)
+      postcss-load-config: 6.0.1(jiti@1.21.7)(postcss@8.5.6)(tsx@4.21.0)(yaml@2.8.2)
       resolve-from: 5.0.0
       rollup: 4.56.0
       source-map: 0.7.6
@@ -8349,6 +8548,13 @@ snapshots:
       - supports-color
       - tsx
       - yaml
+
+  tsx@4.21.0:
+    dependencies:
+      esbuild: 0.27.2
+      get-tsconfig: 4.13.1
+    optionalDependencies:
+      fsevents: 2.3.3
 
   turbo-darwin-64@2.7.5:
     optional: true
@@ -8558,7 +8764,7 @@ snapshots:
       '@types/node': 22.19.7
       fsevents: 2.3.3
 
-  vite@6.4.1(@types/node@22.19.7)(jiti@1.21.7)(yaml@2.8.2):
+  vite@6.4.1(@types/node@22.19.7)(jiti@1.21.7)(tsx@4.21.0)(yaml@2.8.2):
     dependencies:
       esbuild: 0.25.12
       fdir: 6.5.0(picomatch@4.0.3)
@@ -8570,11 +8776,12 @@ snapshots:
       '@types/node': 22.19.7
       fsevents: 2.3.3
       jiti: 1.21.7
+      tsx: 4.21.0
       yaml: 2.8.2
 
-  vitefu@1.1.1(vite@6.4.1(@types/node@22.19.7)(jiti@1.21.7)(yaml@2.8.2)):
+  vitefu@1.1.1(vite@6.4.1(@types/node@22.19.7)(jiti@1.21.7)(tsx@4.21.0)(yaml@2.8.2)):
     optionalDependencies:
-      vite: 6.4.1(@types/node@22.19.7)(jiti@1.21.7)(yaml@2.8.2)
+      vite: 6.4.1(@types/node@22.19.7)(jiti@1.21.7)(tsx@4.21.0)(yaml@2.8.2)
 
   vitest@2.1.9(@types/node@22.19.7):
     dependencies:

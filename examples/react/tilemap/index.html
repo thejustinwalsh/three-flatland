@@ -1,19 +1,61 @@
 <!doctype html>
-<html lang="en" class="sl-theme-dark">
+<html lang="en" class="wa-dark">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Tilemap Example (React) - three-flatland</title>
     <style>
-      * {
-        margin: 0;
-        padding: 0;
-        box-sizing: border-box;
+      :root.wa-dark {
+        --wa-font-size-scale: 0.85;
+        --wa-form-control-padding-block: 0.5em;
+        --wa-form-control-padding-inline: 0.75em;
+        --wa-form-control-toggle-size: round(1em, 1px);
+        --wa-color-surface-default: rgb(0, 2, 28);
+        --wa-color-surface-raised: rgb(28, 40, 77);
+        --wa-color-surface-lowered: rgb(0, 2, 28);
+        --wa-color-brand-fill-loud: #0b8be6;
+        --wa-color-text-normal: #f0edd8;
+        --wa-color-text-quiet: #8890a0;
+        --wa-border-radius-m: 6px;
+        --wa-color-brand-fill-quiet: var(--wa-color-brand-fill-loud);
+        --wa-color-brand-on-quiet: var(--wa-color-brand-on-loud);
+        --wa-color-neutral-fill-loud: var(--wa-color-surface-raised);
+        --wa-color-neutral-on-loud: var(--wa-color-text-normal);
       }
       body {
+        margin: 0;
         overflow: hidden;
         background: #0a0a12;
         font-family: monospace;
+      }
+      .layer-toggles wa-button-group::part(base) {
+        justify-content: center;
+        row-gap: 4px;
+      }
+      .layer-toggles wa-button::part(base) {
+        border-color: var(--wa-color-neutral-border-loud);
+      }
+      .layer-toggles wa-button + wa-button {
+        margin-inline-start: -2px;
+      }
+      /* Per-line pill rounding for wrapped button groups */
+      .layer-toggles wa-button[data-line-pos="first"]::part(base) {
+        border-start-start-radius: var(--wa-border-radius-m);
+        border-end-start-radius: var(--wa-border-radius-m);
+        border-start-end-radius: 0;
+        border-end-end-radius: 0;
+      }
+      .layer-toggles wa-button[data-line-pos="inner"]::part(base) {
+        border-radius: 0;
+      }
+      .layer-toggles wa-button[data-line-pos="last"]::part(base) {
+        border-start-end-radius: var(--wa-border-radius-m);
+        border-end-end-radius: var(--wa-border-radius-m);
+        border-start-start-radius: 0;
+        border-end-start-radius: 0;
+      }
+      .layer-toggles wa-button[data-line-pos="solo"]::part(base) {
+        border-radius: var(--wa-border-radius-m);
       }
       #root {
         width: 100vw;

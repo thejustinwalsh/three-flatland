@@ -1,4 +1,4 @@
-import { Suspense, useRef, useState, use, useCallback } from 'react'
+import { Suspense, useRef, useState, use, useCallback, useEffect } from 'react'
 import { Canvas, extend, useFrame, useThree } from '@react-three/fiber/webgpu'
 import { NearestFilter } from 'three'
 import {
@@ -8,11 +8,9 @@ import {
   type AnimationSetDefinition,
 } from '@three-flatland/react'
 
-import '@shoelace-style/shoelace/dist/themes/dark.css'
-import { setBasePath } from '@shoelace-style/shoelace/dist/utilities/base-path.js'
-import SlRadioGroup from '@shoelace-style/shoelace/dist/react/radio-group/index.js'
-import SlRadioButton from '@shoelace-style/shoelace/dist/react/radio-button/index.js'
-setBasePath('https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.20.1/cdn/')
+import '@awesome.me/webawesome/dist/styles/themes/default.css'
+import WaRadioGroup from '@awesome.me/webawesome/dist/react/radio-group/index.js'
+import WaRadio from '@awesome.me/webawesome/dist/react/radio/index.js'
 
 const SPEEDS = [0.5, 1, 1.5, 2, 3]
 
@@ -161,6 +159,7 @@ export default function App() {
   const [animation, setAnimation] = useState('idle')
   const [speedIndex, setSpeedIndex] = useState(1)
   const speed = SPEEDS[speedIndex]!
+  const controlsRef = useRef<HTMLDivElement>(null)
   const [stats, setStats] = useState({ fps: '-' as string | number, draws: '-' as string | number })
   const handleStats = useCallback((fps: number, draws: number) => setStats({ fps, draws }), [])
 
@@ -168,16 +167,68 @@ export default function App() {
     setAnimation('idle')
   }, [])
 
+  // Per-line pill rounding for wrapped radio groups
+  useEffect(() => {
+    const group = controlsRef.current?.querySelector('wa-radio-group')
+    if (!group) return
+    const update = () => {
+      const radios = [...group.querySelectorAll('wa-radio')]
+      if (!radios.length) return
+      const lines: Element[][] = []
+      let lastTop = -Infinity
+      let line: Element[] = []
+      for (const radio of radios) {
+        const top = radio.getBoundingClientRect().top
+        if (Math.abs(top - lastTop) > 2) {
+          if (line.length) lines.push(line)
+          line = []
+          lastTop = top
+        }
+        line.push(radio)
+      }
+      if (line.length) lines.push(line)
+      for (const ln of lines) {
+        for (let i = 0; i < ln.length; i++) {
+          const pos =
+            ln.length === 1 ? 'solo' :
+            i === 0 ? 'first' :
+            i === ln.length - 1 ? 'last' : 'inner'
+          ln[i]!.setAttribute('data-line-pos', pos)
+        }
+      }
+    }
+    const ro = new ResizeObserver(update)
+    ro.observe(group)
+    update()
+    return () => ro.disconnect()
+  }, [])
+
   return (
     <>
       {/* Hide radio group label */}
       <style>{`
-        .anim-bar sl-radio-group::part(form-control-label) { display: none; }
-        .anim-bar sl-radio-group::part(form-control) { margin: 0; border: 0; padding: 0; }
+        .anim-bar wa-radio-group::part(form-control-label) { display: none; }
+        .anim-bar wa-radio-group::part(form-control) { margin: 0; border: 0; padding: 0; }
+        .anim-bar wa-radio-group::part(form-control-input) { row-gap: 4px; justify-content: center; }
+        wa-radio[data-line-pos="first"] {
+          border-start-start-radius: var(--wa-border-radius-m);
+          border-end-start-radius: var(--wa-border-radius-m);
+          border-start-end-radius: 0;
+          border-end-end-radius: 0;
+        }
+        wa-radio[data-line-pos="inner"] { border-radius: 0; }
+        wa-radio[data-line-pos="last"] {
+          border-start-end-radius: var(--wa-border-radius-m);
+          border-end-end-radius: var(--wa-border-radius-m);
+          border-start-start-radius: 0;
+          border-end-start-radius: 0;
+        }
+        wa-radio[data-line-pos="solo"] { border-radius: var(--wa-border-radius-m); }
       `}</style>
 
       {/* Controls — centered bottom bar */}
       <div
+        ref={controlsRef}
         className="anim-bar"
         style={{
           position: 'fixed',
@@ -189,24 +240,24 @@ export default function App() {
           display: 'flex',
           alignItems: 'center',
           gap: 6,
-          '--sl-input-height-small': '1.5rem',
-          '--sl-font-size-small': '0.688rem',
-        } as React.CSSProperties}
+          maxWidth: 'calc(100vw - 24px)',
+        }}
       >
-        <SlRadioGroup
+        <WaRadioGroup
           label="Animation"
           size="small"
+          orientation="horizontal"
           value={animation}
-          onSlChange={(e: Event) =>
+          onChange={(e: any) =>
             setAnimation((e.target as HTMLInputElement).value)
           }
         >
-          <SlRadioButton size="small" pill value="idle">Idle</SlRadioButton>
-          <SlRadioButton size="small" pill value="run">Run</SlRadioButton>
-          <SlRadioButton size="small" pill value="roll">Roll</SlRadioButton>
-          <SlRadioButton size="small" pill value="hit">Hit</SlRadioButton>
-          <SlRadioButton size="small" pill value="death">Death</SlRadioButton>
-        </SlRadioGroup>
+          <WaRadio size="small" appearance="button" value="idle">Idle</WaRadio>
+          <WaRadio size="small" appearance="button" value="run">Run</WaRadio>
+          <WaRadio size="small" appearance="button" value="roll">Roll</WaRadio>
+          <WaRadio size="small" appearance="button" value="hit">Hit</WaRadio>
+          <WaRadio size="small" appearance="button" value="death">Death</WaRadio>
+        </WaRadioGroup>
         <button
           onClick={() => setSpeedIndex((i) => (i + 1) % SPEEDS.length)}
           style={{

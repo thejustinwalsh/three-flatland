@@ -14,17 +14,49 @@ import {
 } from 'three'
 import { TileMap2D, type TileMapData, type TilesetData, type TileLayerData } from '@three-flatland/core'
 
-// Shoelace web components
-import '@shoelace-style/shoelace/dist/themes/dark.css'
-import { setBasePath } from '@shoelace-style/shoelace/dist/utilities/base-path.js'
-import '@shoelace-style/shoelace/dist/components/radio-group/radio-group.js'
-import '@shoelace-style/shoelace/dist/components/radio-button/radio-button.js'
-import '@shoelace-style/shoelace/dist/components/button-group/button-group.js'
-import '@shoelace-style/shoelace/dist/components/button/button.js'
-import '@shoelace-style/shoelace/dist/components/select/select.js'
-import '@shoelace-style/shoelace/dist/components/option/option.js'
-import '@shoelace-style/shoelace/dist/components/input/input.js'
-setBasePath('https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.20.1/cdn/')
+// Web Awesome web components
+import '@awesome.me/webawesome/dist/styles/themes/default.css'
+import '@awesome.me/webawesome/dist/components/radio-group/radio-group.js'
+import '@awesome.me/webawesome/dist/components/radio/radio.js'
+import '@awesome.me/webawesome/dist/components/button-group/button-group.js'
+import '@awesome.me/webawesome/dist/components/button/button.js'
+import '@awesome.me/webawesome/dist/components/select/select.js'
+import '@awesome.me/webawesome/dist/components/option/option.js'
+import '@awesome.me/webawesome/dist/components/input/input.js'
+
+/** Re-apply per-line first/last pill rounding when a flex container wraps */
+function setupWrappingGroup(container: Element, childSelector: string) {
+  const update = () => {
+    const children = [...container.querySelectorAll(childSelector)]
+    if (!children.length) return
+    const lines: Element[][] = []
+    let lastTop = -Infinity
+    let line: Element[] = []
+    for (const child of children) {
+      const top = child.getBoundingClientRect().top
+      if (Math.abs(top - lastTop) > 2) {
+        if (line.length) lines.push(line)
+        line = []
+        lastTop = top
+      }
+      line.push(child)
+    }
+    if (line.length) lines.push(line)
+    for (const ln of lines) {
+      for (let i = 0; i < ln.length; i++) {
+        const pos =
+          ln.length === 1 ? 'solo' :
+          i === 0 ? 'first' :
+          i === ln.length - 1 ? 'last' : 'inner'
+        ln[i]!.setAttribute('data-line-pos', pos)
+      }
+    }
+  }
+  const ro = new ResizeObserver(update)
+  ro.observe(container)
+  update()
+  return () => ro.disconnect()
+}
 
 // Tile IDs for our procedural tileset
 const TILES = {
@@ -528,25 +560,25 @@ async function main() {
     updateStats()
   }
 
-  // Wire up Shoelace controls
-  document.getElementById('map-size')!.addEventListener('sl-change', (e) => {
+  // Wire up Web Awesome controls
+  document.getElementById('map-size')!.addEventListener('change', (e) => {
     const preset = (e.target as any).value as string
     mapSize = MAP_SIZE_PRESETS[preset] ?? 128
     rebuildTilemap()
   })
 
-  document.getElementById('chunk-size')!.addEventListener('sl-change', (e) => {
+  document.getElementById('chunk-size')!.addEventListener('change', (e) => {
     chunkSize = Number((e.target as any).value)
     rebuildTilemap()
   })
 
-  document.getElementById('density')!.addEventListener('sl-change', (e) => {
+  document.getElementById('density')!.addEventListener('change', (e) => {
     density = (e.target as any).value
     rebuildTilemap()
   })
 
   const seedInput = document.getElementById('seed') as any
-  seedInput.addEventListener('sl-change', () => {
+  seedInput.addEventListener('change', () => {
     seed = Number(seedInput.value)
     rebuildTilemap()
   })
@@ -556,8 +588,8 @@ async function main() {
   const decorBtn = document.getElementById('show-decor')! as any
 
   function updateLayerButton(btn: HTMLElement, active: boolean) {
-    ;(btn as any).variant = active ? 'primary' : 'default'
-    const icon = btn.querySelector('[slot="prefix"]')
+    ;(btn as any).variant = active ? 'brand' : 'neutral'
+    const icon = btn.querySelector('[slot="start"]')
     if (icon) icon.textContent = active ? '\u2713' : '\u2715'
   }
 
@@ -581,6 +613,13 @@ async function main() {
     const layer = tilemap.getLayerAt(2)
     if (layer) layer.visible = showDecor
   })
+
+  // Set up per-line pill rounding for all wrapping groups
+  const buttonGroup = document.querySelector('#layers wa-button-group')!
+  setupWrappingGroup(buttonGroup, 'wa-button')
+  for (const rg of document.querySelectorAll('#settings wa-radio-group')) {
+    setupWrappingGroup(rg, 'wa-radio')
+  }
 
   document.getElementById('regen-btn')!.addEventListener('click', () => {
     seed = Math.floor(Math.random() * 999999)

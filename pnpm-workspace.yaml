@@ -22,7 +22,7 @@ catalog:
   typescript: ^5.7.3
 
   # UI Components
-  "@shoelace-style/shoelace": ^2.20.1
+  "@awesome.me/webawesome": ^3.0.0
 
 
   # Mini-games

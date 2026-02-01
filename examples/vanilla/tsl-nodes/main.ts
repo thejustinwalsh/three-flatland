@@ -36,11 +36,43 @@ import {
   dissolvePixelated,
 } from '@three-flatland/core'
 
-import '@shoelace-style/shoelace/dist/themes/dark.css'
-import { setBasePath } from '@shoelace-style/shoelace/dist/utilities/base-path.js'
-import '@shoelace-style/shoelace/dist/components/radio-group/radio-group.js'
-import '@shoelace-style/shoelace/dist/components/radio-button/radio-button.js'
-setBasePath('https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.20.1/cdn/')
+import '@awesome.me/webawesome/dist/styles/themes/default.css'
+import '@awesome.me/webawesome/dist/components/radio-group/radio-group.js'
+import '@awesome.me/webawesome/dist/components/radio/radio.js'
+
+/** Re-apply per-line first/last pill rounding when wa-radio-group wraps */
+function setupWrappingRadioGroup(group: Element) {
+  const update = () => {
+    const radios = [...group.querySelectorAll('wa-radio')]
+    if (!radios.length) return
+    const lines: Element[][] = []
+    let lastTop = -Infinity
+    let line: Element[] = []
+    for (const radio of radios) {
+      const top = radio.getBoundingClientRect().top
+      if (Math.abs(top - lastTop) > 2) {
+        if (line.length) lines.push(line)
+        line = []
+        lastTop = top
+      }
+      line.push(radio)
+    }
+    if (line.length) lines.push(line)
+    for (const ln of lines) {
+      for (let i = 0; i < ln.length; i++) {
+        const pos =
+          ln.length === 1 ? 'solo' :
+          i === 0 ? 'first' :
+          i === ln.length - 1 ? 'last' : 'inner'
+        ln[i]!.setAttribute('data-line-pos', pos)
+      }
+    }
+  }
+  const ro = new ResizeObserver(update)
+  ro.observe(group)
+  update()
+  return () => ro.disconnect()
+}
 
 // Effect types
 type EffectType =
@@ -302,8 +334,10 @@ async function main() {
     setFrame(anim.frames[0]!)
   }
 
-  // Shoelace radio group
-  const radioGroup = document.querySelector('sl-radio-group')!
+  // Web Awesome radio group — wait for custom element definition
+  await customElements.whenDefined('wa-radio-group')
+  const radioGroup = document.querySelector('wa-radio-group')!
+  setupWrappingRadioGroup(radioGroup)
 
   let currentEffect: EffectType = 'normal'
 
@@ -331,7 +365,7 @@ async function main() {
     playAnimation(animName, frozen, noLoop)
   }
 
-  radioGroup.addEventListener('sl-change', (e) => {
+  radioGroup.addEventListener('change', (e) => {
     setEffect((e.target as any).value as EffectType)
   })
 
@@ -349,7 +383,7 @@ async function main() {
     }
     if (keyMap[e.key]) {
       setEffect(keyMap[e.key]!)
-      const radioGroup = document.querySelector('sl-radio-group')! as any
+      const radioGroup = document.querySelector('wa-radio-group')! as any
       radioGroup.value = keyMap[e.key]!
     }
   })

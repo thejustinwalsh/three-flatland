@@ -13,16 +13,14 @@ import {
   type TileLayerData,
 } from '@three-flatland/react'
 
-import '@shoelace-style/shoelace/dist/themes/dark.css'
-import { setBasePath } from '@shoelace-style/shoelace/dist/utilities/base-path.js'
-import SlRadioGroup from '@shoelace-style/shoelace/dist/react/radio-group/index.js'
-import SlRadioButton from '@shoelace-style/shoelace/dist/react/radio-button/index.js'
-import SlButtonGroup from '@shoelace-style/shoelace/dist/react/button-group/index.js'
-import SlButton from '@shoelace-style/shoelace/dist/react/button/index.js'
-import SlSelect from '@shoelace-style/shoelace/dist/react/select/index.js'
-import SlOption from '@shoelace-style/shoelace/dist/react/option/index.js'
-import SlInput from '@shoelace-style/shoelace/dist/react/input/index.js'
-setBasePath('https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.20.1/cdn/')
+import '@awesome.me/webawesome/dist/styles/themes/default.css'
+import WaRadioGroup from '@awesome.me/webawesome/dist/react/radio-group/index.js'
+import WaRadio from '@awesome.me/webawesome/dist/react/radio/index.js'
+import WaButtonGroup from '@awesome.me/webawesome/dist/react/button-group/index.js'
+import WaButton from '@awesome.me/webawesome/dist/react/button/index.js'
+import WaSelect from '@awesome.me/webawesome/dist/react/select/index.js'
+import WaOption from '@awesome.me/webawesome/dist/react/option/index.js'
+import WaInput from '@awesome.me/webawesome/dist/react/input/index.js'
 
 // Register TileMap2D with R3F
 extend({ TileMap2D })
@@ -518,6 +516,9 @@ export default function App() {
   const [draws, setDraws] = useState<string | number>('-')
   const [tileStats, setTileStats] = useState({ tiles: 0, chunks: 0, layers: 0 })
 
+  const layerTogglesRef = useRef<HTMLDivElement>(null)
+  const settingsRef = useRef<HTMLDivElement>(null)
+
   const handlePerfStats = useCallback((fpsVal: number, drawsVal: number) => {
     setFps(fpsVal)
     setDraws(drawsVal)
@@ -525,6 +526,52 @@ export default function App() {
   const handleStats = useCallback((tiles: number, chunks: number, layers: number) => setTileStats({ tiles, chunks, layers }), [])
 
   const handleRegenerate = () => setSeed(Math.floor(Math.random() * 999999))
+
+  // Per-line pill rounding for all wrapping groups (radio + button)
+  useEffect(() => {
+    const cleanups: (() => void)[] = []
+    function observeGroup(container: Element, childSelector: string) {
+      const update = () => {
+        const children = [...container.querySelectorAll(childSelector)]
+        if (!children.length) return
+        const lines: Element[][] = []
+        let lastTop = -Infinity
+        let line: Element[] = []
+        for (const child of children) {
+          const top = child.getBoundingClientRect().top
+          if (Math.abs(top - lastTop) > 2) {
+            if (line.length) lines.push(line)
+            line = []
+            lastTop = top
+          }
+          line.push(child)
+        }
+        if (line.length) lines.push(line)
+        for (const ln of lines) {
+          for (let i = 0; i < ln.length; i++) {
+            const pos =
+              ln.length === 1 ? 'solo' :
+              i === 0 ? 'first' :
+              i === ln.length - 1 ? 'last' : 'inner'
+            ln[i]!.setAttribute('data-line-pos', pos)
+          }
+        }
+      }
+      const ro = new ResizeObserver(update)
+      ro.observe(container)
+      update()
+      cleanups.push(() => ro.disconnect())
+    }
+    // Layer toggle buttons
+    const btnGroup = layerTogglesRef.current?.querySelector('wa-button-group')
+    if (btnGroup) observeGroup(btnGroup, 'wa-button')
+    // Settings panel radio groups
+    const radioGroups = settingsRef.current?.querySelectorAll('wa-radio-group')
+    if (radioGroups) {
+      for (const rg of radioGroups) observeGroup(rg, 'wa-radio')
+    }
+    return () => cleanups.forEach(fn => fn())
+  }, [])
 
   // Create tileset (memoized, never changes)
   const tileset = useMemo<TilesetData>(() => ({
@@ -550,11 +597,29 @@ export default function App() {
     <>
       {/* Generation settings — top-left column */}
       <style>{`
-        .tilemap-settings sl-radio-group::part(form-control-label) {
+        .tilemap-settings wa-radio-group::part(form-control-label) {
           font-size: 11px;
           color: #8890a0;
           font-family: monospace;
         }
+        .tilemap-settings wa-radio-group::part(form-control-input) {
+          row-gap: 4px;
+          justify-content: center;
+        }
+        wa-radio[data-line-pos="first"] {
+          border-start-start-radius: var(--wa-border-radius-m);
+          border-end-start-radius: var(--wa-border-radius-m);
+          border-start-end-radius: 0;
+          border-end-end-radius: 0;
+        }
+        wa-radio[data-line-pos="inner"] { border-radius: 0; }
+        wa-radio[data-line-pos="last"] {
+          border-start-end-radius: var(--wa-border-radius-m);
+          border-end-end-radius: var(--wa-border-radius-m);
+          border-start-start-radius: 0;
+          border-end-start-radius: 0;
+        }
+        wa-radio[data-line-pos="solo"] { border-radius: var(--wa-border-radius-m); }
         .tilemap-settings-toggle {
           display: none;
           position: fixed;
@@ -575,7 +640,7 @@ export default function App() {
         @media (max-width: 480px) {
           .tilemap-settings-toggle { display: flex; }
           .tilemap-settings { display: none !important; }
-          .tilemap-settings.open { display: flex !important; top: 48px !important; }
+          .tilemap-settings.open { display: flex !important; top: 48px !important; z-index: 102 !important; }
         }
       `}</style>
       <button
@@ -585,54 +650,51 @@ export default function App() {
       >
         {settingsOpen ? '\u2715' : '\u2630'}
       </button>
-      <div className={`tilemap-settings${settingsOpen ? ' open' : ''}`} style={{
+      <div ref={settingsRef} className={`tilemap-settings${settingsOpen ? ' open' : ''}`} style={{
         position: 'fixed', top: 12, left: 12, zIndex: 100, pointerEvents: 'auto',
         display: 'flex', flexDirection: 'column', gap: 6,
         padding: '8px 10px', background: 'rgba(0, 2, 28, 0.7)', borderRadius: 6,
-        '--sl-input-height-small': '1.5rem', '--sl-font-size-small': '0.688rem',
-        '--sl-toggle-size-small': '0.875rem',
-        '--sl-color-neutral-0': 'rgb(0, 2, 28)',
-      } as React.CSSProperties}>
+      }}>
         <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
             <span style={{ fontSize: 11, color: '#8890a0', fontFamily: 'monospace' }}>Map Size</span>
-            <SlRadioGroup size="small" value={mapSizePreset} onSlChange={(e) => setMapSizePreset((e.target as any).value)}>
-              <SlRadioButton value="sm" size="small">SM</SlRadioButton>
-              <SlRadioButton value="md" size="small">MD</SlRadioButton>
-              <SlRadioButton value="lg" size="small">LG</SlRadioButton>
-              <SlRadioButton value="xl" size="small">XL</SlRadioButton>
-            </SlRadioGroup>
+            <WaRadioGroup size="small" orientation="horizontal" value={mapSizePreset} onChange={(e: any) => setMapSizePreset((e.target as any).value)}>
+              <WaRadio value="sm" size="small" appearance="button">SM</WaRadio>
+              <WaRadio value="md" size="small" appearance="button">MD</WaRadio>
+              <WaRadio value="lg" size="small" appearance="button">LG</WaRadio>
+              <WaRadio value="xl" size="small" appearance="button">XL</WaRadio>
+            </WaRadioGroup>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
             <span style={{ fontSize: 11, color: '#8890a0', fontFamily: 'monospace' }}>Chunks</span>
-            <SlSelect value={String(chunkSize)} size="small" hoist onSlChange={(e) => setChunkSize(Number((e.target as any).value))} style={{ width: 86 }}>
-              <SlOption value="256">256</SlOption>
-              <SlOption value="512">512</SlOption>
-              <SlOption value="1024">1024</SlOption>
-              <SlOption value="2048">2048</SlOption>
-            </SlSelect>
+            <WaSelect value={String(chunkSize)} size="small" onChange={(e: any) => setChunkSize(Number((e.target as any).value))} style={{ width: 86 }}>
+              <WaOption value="256">256</WaOption>
+              <WaOption value="512">512</WaOption>
+              <WaOption value="1024">1024</WaOption>
+              <WaOption value="2048">2048</WaOption>
+            </WaSelect>
           </div>
         </div>
-        <SlRadioGroup label="Density" size="small" value={density} onSlChange={(e) => setDensity((e.target as any).value)}>
-          <SlRadioButton value="sparse" size="small">Sparse</SlRadioButton>
-          <SlRadioButton value="normal" size="small">Normal</SlRadioButton>
-          <SlRadioButton value="dense" size="small">Dense</SlRadioButton>
-          <SlRadioButton value="packed" size="small">Packed</SlRadioButton>
-        </SlRadioGroup>
+        <WaRadioGroup label="Density" size="small" orientation="horizontal" value={density} onChange={(e: any) => setDensity((e.target as any).value)}>
+          <WaRadio value="sparse" size="small" appearance="button">Sparse</WaRadio>
+          <WaRadio value="normal" size="small" appearance="button">Normal</WaRadio>
+          <WaRadio value="dense" size="small" appearance="button">Dense</WaRadio>
+          <WaRadio value="packed" size="small" appearance="button">Packed</WaRadio>
+        </WaRadioGroup>
         <div>
           <div style={{ fontSize: 11, color: '#8890a0', fontFamily: 'monospace', marginBottom: 2 }}>Seed</div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-            <SlInput
+            <WaInput
               type="number"
               value={String(seed)}
               size="small"
-              noSpinButtons
+              withoutSpinButtons
               style={{ width: 120 }}
-              onSlChange={(e: any) => setSeed(Number(e.target.value))}
+              onChange={(e: any) => setSeed(Number(e.target.value))}
             />
-            <SlButton size="small" onClick={handleRegenerate} title="Random seed">
+            <WaButton size="small" onClick={handleRegenerate} title="Random seed">
               &#x21bb;
-            </SlButton>
+            </WaButton>
           </div>
         </div>
       </div>
@@ -659,25 +721,24 @@ export default function App() {
       </div>
 
       {/* Layer toggles — bottom-center */}
-      <div style={{
+      <div ref={layerTogglesRef} className="layer-toggles" style={{
         position: 'fixed', bottom: 32, left: '50%', transform: 'translateX(-50%)',
-        zIndex: 100, pointerEvents: 'auto',
-        '--sl-input-height-small': '1.5rem', '--sl-font-size-small': '0.688rem',
-      } as React.CSSProperties}>
-        <SlButtonGroup>
-          <SlButton size="small" variant={showGround ? 'primary' : 'default'} onClick={() => setShowGround(v => !v)}>
-            <span slot="prefix">{showGround ? '\u2713' : '\u2715'}</span>
+        zIndex: 100, pointerEvents: 'auto', maxWidth: 'calc(100vw - 24px)',
+      }}>
+        <WaButtonGroup>
+          <WaButton size="small" variant={showGround ? 'brand' : 'neutral'} onClick={() => setShowGround(v => !v)}>
+            <span slot="start">{showGround ? '\u2713' : '\u2715'}</span>
             Ground
-          </SlButton>
-          <SlButton size="small" variant={showWalls ? 'primary' : 'default'} onClick={() => setShowWalls(v => !v)}>
-            <span slot="prefix">{showWalls ? '\u2713' : '\u2715'}</span>
+          </WaButton>
+          <WaButton size="small" variant={showWalls ? 'brand' : 'neutral'} onClick={() => setShowWalls(v => !v)}>
+            <span slot="start">{showWalls ? '\u2713' : '\u2715'}</span>
             Walls
-          </SlButton>
-          <SlButton size="small" variant={showDecor ? 'primary' : 'default'} onClick={() => setShowDecor(v => !v)}>
-            <span slot="prefix">{showDecor ? '\u2713' : '\u2715'}</span>
+          </WaButton>
+          <WaButton size="small" variant={showDecor ? 'brand' : 'neutral'} onClick={() => setShowDecor(v => !v)}>
+            <span slot="start">{showDecor ? '\u2713' : '\u2715'}</span>
             Decor
-          </SlButton>
-        </SlButtonGroup>
+          </WaButton>
+        </WaButtonGroup>
       </div>
 
       {/* Legend — bottom-center */}

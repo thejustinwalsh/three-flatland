@@ -10,7 +10,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@shoelace-style/shoelace": "^2.20.1",
+    "@awesome.me/webawesome": "^3.0.0",
     "@three-flatland/core": "^0.0.0",
     "three": "^0.182.0"
   },
