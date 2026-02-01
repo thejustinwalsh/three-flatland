@@ -3,6 +3,7 @@ import starlight from '@astrojs/starlight';
 import starlightTypeDoc, { typeDocSidebarGroup } from 'starlight-typedoc';
 import react from '@astrojs/react';
 import { watchExamples } from './vite-plugins/watch-examples.js';
+import { copyExamples } from './vite-plugins/copy-examples.js';
 import { rehypeExternalLinks } from './rehype-plugins/external-links.js';
 
 const isProd = process.env.NODE_ENV === 'production';
@@ -114,7 +115,6 @@ export default defineConfig({
       ],
       components: {
         SiteTitle: './src/components/SiteTitle.astro',
-        Icon: './src/components/Icon.astro',
         SocialIcons: './src/components/SocialIcons.astro',
         Hero: './src/components/Hero.astro',
         PageFrame: './src/components/PageFrame.astro',
@@ -180,7 +180,7 @@ export default defineConfig({
     rehypePlugins: [rehypeExternalLinks],
   },
   vite: {
-    plugins: [watchExamples()],
+    plugins: [watchExamples(), copyExamples()],
     server: {
       headers: {
         'Cross-Origin-Embedder-Policy': 'require-corp',

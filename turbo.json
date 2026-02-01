@@ -40,11 +40,7 @@
         "src/**",
         "public/**",
         "astro.config.mjs",
-        "tsconfig.json",
-        "../examples/**/*.ts",
-        "../examples/**/*.tsx",
-        "../examples/**/*.json",
-        "../examples/**/*.html"
+        "tsconfig.json"
       ]
     },
     "docs#dev": {

@@ -24,7 +24,7 @@ export function watchExamples() {
             server.moduleGraph.invalidateModule(mod);
           }
           // Trigger full page reload for MDX files using this example
-          server.ws.send({ type: 'full-reload' });
+          server.hot.send({ type: 'full-reload' });
         }
       });
     },

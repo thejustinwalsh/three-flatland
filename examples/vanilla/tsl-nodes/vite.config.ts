@@ -1,8 +1,8 @@
 import { defineConfig } from 'vite'
 
-export default defineConfig({
-  base: '/vanilla/tsl-nodes/',
+export default defineConfig(({ command }) => ({
+  base: command === 'serve' ? '/vanilla/tsl-nodes/' : './',
   server: {
     strictPort: true,
   },
-})
+}))

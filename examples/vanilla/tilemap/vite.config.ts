@@ -1,8 +1,8 @@
 import { defineConfig } from 'vite'
 
-export default defineConfig({
-  base: '/vanilla/tilemap/',
+export default defineConfig(({ command }) => ({
+  base: command === 'serve' ? '/vanilla/tilemap/' : './',
   server: {
     strictPort: true,
   },
-})
+}))

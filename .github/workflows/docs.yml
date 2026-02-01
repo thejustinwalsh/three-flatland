@@ -34,8 +34,8 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      - name: Build packages
-        run: pnpm build --filter=@three-flatland/*
+      - name: Build packages and examples
+        run: pnpm build --filter='./packages/*' --filter='./examples/**'
 
       - name: Build docs
         working-directory: docs

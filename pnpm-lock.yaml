@@ -30,6 +30,9 @@ catalogs:
     typescript:
       specifier: ^5.7.3
       version: 5.9.3
+    vite:
+      specifier: ^6.4.1
+      version: 6.4.1
 
 overrides:
   '@three-flatland/core': workspace:*
@@ -138,9 +141,42 @@ importers:
       '@types/react-dom':
         specifier: 'catalog:'
         version: 19.2.3(@types/react@19.2.9)
+      example-react-animation:
+        specifier: workspace:*
+        version: link:../examples/react/animation
+      example-react-basic-sprite:
+        specifier: workspace:*
+        version: link:../examples/react/basic-sprite
+      example-react-batch-demo:
+        specifier: workspace:*
+        version: link:../examples/react/batch-demo
+      example-react-tilemap:
+        specifier: workspace:*
+        version: link:../examples/react/tilemap
+      example-react-tsl-nodes:
+        specifier: workspace:*
+        version: link:../examples/react/tsl-nodes
+      example-vanilla-animation:
+        specifier: workspace:*
+        version: link:../examples/vanilla/animation
+      example-vanilla-basic-sprite:
+        specifier: workspace:*
+        version: link:../examples/vanilla/basic-sprite
+      example-vanilla-batch-demo:
+        specifier: workspace:*
+        version: link:../examples/vanilla/batch-demo
+      example-vanilla-tilemap:
+        specifier: workspace:*
+        version: link:../examples/vanilla/tilemap
+      example-vanilla-tsl-nodes:
+        specifier: workspace:*
+        version: link:../examples/vanilla/tsl-nodes
       typescript:
         specifier: 'catalog:'
         version: 5.9.3
+      vite:
+        specifier: 'catalog:'
+        version: 6.4.1(@types/node@22.19.7)(jiti@1.21.7)(tsx@4.21.0)(yaml@2.8.2)
 
   examples/react/animation:
     dependencies:

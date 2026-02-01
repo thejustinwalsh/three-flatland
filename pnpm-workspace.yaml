@@ -1,29 +1,19 @@
 packages:
-  - "packages/*"
-  - "examples/**"
-  - "minis/*"
-  - "docs"
+  - packages/*
+  - examples/**
+  - minis/*
+  - docs
 
 catalog:
-  # Three.js ecosystem
-  three: ^0.182.0
-  "@types/three": ^0.182.0
-
-  # React ecosystem
+  '@awesome.me/webawesome': ^3.0.0
+  '@react-three/fiber': ^10.0.0-alpha.2
+  '@types/react': ^19.0.2
+  '@types/react-dom': ^19.0.2
+  '@types/three': ^0.182.0
+  '@vitejs/plugin-react': ^4.3.4
+  koota: ^0.1.0
   react: ^19.0.0
   react-dom: ^19.0.0
-  "@types/react": ^19.0.2
-  "@types/react-dom": ^19.0.2
-  "@react-three/fiber": ^10.0.0-alpha.2
-
-  # Build tools
-  vite: ^6.0.7
-  "@vitejs/plugin-react": ^4.3.4
+  three: ^0.182.0
   typescript: ^5.7.3
-
-  # UI Components
-  "@awesome.me/webawesome": ^3.0.0
-
-
-  # Mini-games
-  koota: ^0.1.0
+  vite: ^6.4.1

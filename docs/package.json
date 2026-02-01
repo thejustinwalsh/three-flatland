@@ -5,7 +5,6 @@
   "private": true,
   "scripts": {
     "dev": "astro dev --port $TURBO_MFE_PORT",
-    "prebuild": "node scripts/build-examples.js",
     "build": "astro check && astro build",
     "preview": "astro preview"
   },
@@ -31,6 +30,17 @@
   "devDependencies": {
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
-    "typescript": "catalog:"
+    "example-react-animation": "workspace:*",
+    "example-react-basic-sprite": "workspace:*",
+    "example-react-batch-demo": "workspace:*",
+    "example-react-tilemap": "workspace:*",
+    "example-react-tsl-nodes": "workspace:*",
+    "example-vanilla-animation": "workspace:*",
+    "example-vanilla-basic-sprite": "workspace:*",
+    "example-vanilla-batch-demo": "workspace:*",
+    "example-vanilla-tilemap": "workspace:*",
+    "example-vanilla-tsl-nodes": "workspace:*",
+    "typescript": "catalog:",
+    "vite": "catalog:"
   }
 }
