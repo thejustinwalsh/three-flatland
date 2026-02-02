@@ -31,6 +31,7 @@
       }
       canvas {
         display: block;
+        touch-action: none;
       }
       #settings {
         position: fixed;
@@ -110,6 +111,24 @@
         transform: translateX(-50%);
         z-index: 100;
         max-width: calc(100vw - 24px);
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+      }
+      .zoom-control {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .zoom-control .zoom-icon {
+        font-size: 16px;
+        color: #f0edd8;
+        flex-shrink: 0;
+      }
+      .zoom-control wa-slider {
+        width: 90px;
       }
       #layers wa-button-group::part(base) {
         justify-content: center;
@@ -238,9 +257,13 @@
           Decor
         </wa-button>
       </wa-button-group>
+      <div class="zoom-control">
+        <wa-icon class="zoom-icon" name="magnifying-glass" label="Zoom"></wa-icon>
+        <wa-slider id="zoom-slider" size="small" min="0" max="100" value="50"></wa-slider>
+      </div>
     </div>
     <div id="legend">
-      Drag: Pan | WASD/Arrows: Pan | Scroll: Zoom | Click: Toggle tile
+      Drag: Pan | WASD/Arrows: Pan | Slider: Zoom | Click: Toggle tile
     </div>
     <script type="module" src="./main.ts"></script>
   </body>

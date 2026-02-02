@@ -21,6 +21,8 @@ import WaButton from '@awesome.me/webawesome/dist/react/button/index.js'
 import WaSelect from '@awesome.me/webawesome/dist/react/select/index.js'
 import WaOption from '@awesome.me/webawesome/dist/react/option/index.js'
 import WaInput from '@awesome.me/webawesome/dist/react/input/index.js'
+import WaSlider from '@awesome.me/webawesome/dist/react/slider/index.js'
+import WaIcon from '@awesome.me/webawesome/dist/react/icon/index.js'
 
 // Register TileMap2D with R3F
 extend({ TileMap2D })
@@ -396,28 +398,37 @@ function StatsTracker({ onStats }: { onStats: (fps: number, draws: number) => vo
   const frameCount = useRef(0)
   const elapsed = useRef(0)
 
+  // Disable auto-reset so we can read draw calls from the previous frame
+  // before manually resetting. The WebGPU Animation loop resets info at
+  // the start of each frame — before useFrame runs — which would zero
+  // out the counters before we can read them.
+  useEffect(() => {
+    gl.info.autoReset = false
+    return () => { gl.info.autoReset = true }
+  }, [gl])
+
   useFrame((_, delta) => {
     frameCount.current++
     elapsed.current += delta
     if (elapsed.current >= 1) {
-      // Cast: R3F types gl as WebGLRenderer, but we use WebGPURenderer which has drawCalls
       const draws = (gl.info.render as any).drawCalls as number
       onStats(Math.round(frameCount.current / elapsed.current), draws)
       frameCount.current = 0
       elapsed.current = 0
     }
+    gl.info.reset()
   })
 
   return null
 }
 
-function CameraController({ mapSize }: { mapSize: number }) {
+function CameraController({ mapSize, zoomRef }: { mapSize: number; zoomRef: React.RefObject<number> }) {
   const { camera, gl } = useThree()
   const keys = useRef(new Set<string>())
-  const zoom = useRef(1)
   const isDragging = useRef(false)
   const dragStart = useRef({ x: 0, y: 0 })
   const cameraStart = useRef({ x: 0, y: 0 })
+  const activePointers = useRef(new Map<number, PointerEvent>())
 
   useEffect(() => {
     camera.position.x = (mapSize * TILE_SIZE) / 2
@@ -427,21 +438,36 @@ function CameraController({ mapSize }: { mapSize: number }) {
   useEffect(() => {
     const canvas = gl.domElement
 
-    const handleKeyDown = (e: KeyboardEvent) => keys.current.add(e.key.toLowerCase())
-    const handleKeyUp = (e: KeyboardEvent) => keys.current.delete(e.key.toLowerCase())
-    const handleWheel = (e: WheelEvent) => {
-      e.preventDefault()
-      zoom.current *= e.deltaY > 0 ? 1.1 : 0.9
-      zoom.current = Math.max(0.2, Math.min(5, zoom.current))
+    const panKeys = new Set(['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'])
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const key = e.key.toLowerCase()
+      if (panKeys.has(key)) e.preventDefault()
+      keys.current.add(key)
     }
+    const handleKeyUp = (e: KeyboardEvent) => keys.current.delete(e.key.toLowerCase())
 
     const handlePointerDown = (e: PointerEvent) => {
-      isDragging.current = true
-      dragStart.current = { x: e.clientX, y: e.clientY }
-      cameraStart.current = { x: camera.position.x, y: camera.position.y }
+      activePointers.current.set(e.pointerId, e)
+
+      // Mouse or pen: start drag immediately
+      // Touch: only start drag when two fingers are down
+      if (e.pointerType !== 'touch' || activePointers.current.size >= 2) {
+        isDragging.current = true
+        dragStart.current = { x: e.clientX, y: e.clientY }
+        cameraStart.current = { x: camera.position.x, y: camera.position.y }
+      }
     }
 
     const handlePointerMove = (e: PointerEvent) => {
+      activePointers.current.set(e.pointerId, e)
+
+      // Start dragging if second finger arrived
+      if (e.pointerType === 'touch' && activePointers.current.size >= 2 && !isDragging.current) {
+        isDragging.current = true
+        dragStart.current = { x: e.clientX, y: e.clientY }
+        cameraStart.current = { x: camera.position.x, y: camera.position.y }
+      }
+
       if (!isDragging.current) return
       const dx = e.clientX - dragStart.current.x
       const dy = e.clientY - dragStart.current.y
@@ -458,36 +484,48 @@ function CameraController({ mapSize }: { mapSize: number }) {
       camera.position.y = cameraStart.current.y + dy * worldPerPixel
     }
 
-    const handlePointerUp = () => {
-      isDragging.current = false
-      document.body.style.cursor = ''
+    const handlePointerUp = (e: PointerEvent) => {
+      activePointers.current.delete(e.pointerId)
+      if (activePointers.current.size < 2) {
+        isDragging.current = false
+        document.body.style.cursor = ''
+      }
+    }
+
+    const handlePointerCancel = (e: PointerEvent) => {
+      activePointers.current.delete(e.pointerId)
+      if (activePointers.current.size < 2) {
+        isDragging.current = false
+        document.body.style.cursor = ''
+      }
     }
 
     window.addEventListener('keydown', handleKeyDown)
     window.addEventListener('keyup', handleKeyUp)
-    window.addEventListener('wheel', handleWheel, { passive: false })
     canvas.addEventListener('pointerdown', handlePointerDown)
     window.addEventListener('pointermove', handlePointerMove)
     window.addEventListener('pointerup', handlePointerUp)
+    window.addEventListener('pointercancel', handlePointerCancel)
 
     return () => {
       window.removeEventListener('keydown', handleKeyDown)
       window.removeEventListener('keyup', handleKeyUp)
-      window.removeEventListener('wheel', handleWheel)
       canvas.removeEventListener('pointerdown', handlePointerDown)
       window.removeEventListener('pointermove', handlePointerMove)
       window.removeEventListener('pointerup', handlePointerUp)
+      window.removeEventListener('pointercancel', handlePointerCancel)
     }
   }, [camera, gl])
 
   useFrame((_, delta) => {
-    const speed = 200 * delta * zoom.current
+    const z = zoomRef.current
+    const speed = 200 * delta * z
     if (keys.current.has('w') || keys.current.has('arrowup')) camera.position.y += speed
     if (keys.current.has('s') || keys.current.has('arrowdown')) camera.position.y -= speed
     if (keys.current.has('a') || keys.current.has('arrowleft')) camera.position.x -= speed
     if (keys.current.has('d') || keys.current.has('arrowright')) camera.position.x += speed
 
-    camera.zoom = 2 / zoom.current
+    camera.zoom = 2 / z
     camera.updateProjectionMatrix()
   })
 
@@ -515,6 +553,21 @@ export default function App() {
   const [fps, setFps] = useState<string | number>('-')
   const [draws, setDraws] = useState<string | number>('-')
   const [tileStats, setTileStats] = useState({ tiles: 0, chunks: 0, layers: 0 })
+  const [zoomSlider, setZoomSlider] = useState(50)
+
+  // Compute zoom range from map extent
+  // zoom is a frustum multiplier: larger = more world visible = zoomed out
+  // R3F camera.zoom is the inverse (camera.zoom = 2 / zoom), handled in CameraController
+  const mapExtent = mapSize * TILE_SIZE
+  const zoomOut = mapExtent / 800 // fit whole map in ~800 frustum height
+  const zoomIn = 0.1 // close-up
+  const zoomRef = useRef(zoomOut * Math.pow(zoomIn / zoomOut, 0.5))
+
+  // Update zoom ref when slider or map extent changes
+  useEffect(() => {
+    const t = zoomSlider / 100
+    zoomRef.current = zoomOut * Math.pow(zoomIn / zoomOut, t)
+  }, [zoomSlider, zoomOut, zoomIn])
 
   const layerTogglesRef = useRef<HTMLDivElement>(null)
   const settingsRef = useRef<HTMLDivElement>(null)
@@ -720,10 +773,11 @@ export default function App() {
         <div>Layers: {tileStats.layers}</div>
       </div>
 
-      {/* Layer toggles — bottom-center */}
+      {/* Layer toggles + zoom slider — bottom-center */}
       <div ref={layerTogglesRef} className="layer-toggles" style={{
         position: 'fixed', bottom: 32, left: '50%', transform: 'translateX(-50%)',
         zIndex: 100, pointerEvents: 'auto', maxWidth: 'calc(100vw - 24px)',
+        display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'center', gap: 8,
       }}>
         <WaButtonGroup>
           <WaButton size="small" variant={showGround ? 'brand' : 'neutral'} onClick={() => setShowGround(v => !v)}>
@@ -739,6 +793,17 @@ export default function App() {
             Decor
           </WaButton>
         </WaButtonGroup>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <WaIcon name="magnifying-glass" label="Zoom" style={{ fontSize: 16, color: '#f0edd8', flexShrink: 0 }} />
+          <WaSlider
+            size="small"
+            min={0}
+            max={100}
+            value={zoomSlider}
+            style={{ width: 90 }}
+            onInput={(e: any) => setZoomSlider(Number((e.target as any).value))}
+          />
+        </div>
       </div>
 
       {/* Legend — bottom-center */}
@@ -753,7 +818,7 @@ export default function App() {
         zIndex: 100,
         whiteSpace: 'nowrap',
       }}>
-        Drag: Pan | WASD/Arrows: Pan | Scroll: Zoom
+        Drag: Pan | WASD/Arrows: Pan | Slider: Zoom
       </div>
 
       {/* Canvas */}
@@ -761,10 +826,11 @@ export default function App() {
         orthographic
         camera={{ zoom: 2, position: [0, 0, 100] }}
         renderer={{ antialias: false }}
+        style={{ touchAction: 'none' }}
       >
         <color attach="background" args={['#0a0a12']} />
         <StatsTracker onStats={handlePerfStats} />
-        <CameraController mapSize={mapSize} />
+        <CameraController mapSize={mapSize} zoomRef={zoomRef} />
         <Suspense fallback={null}>
           <TilemapScene
             mapData={mapData}

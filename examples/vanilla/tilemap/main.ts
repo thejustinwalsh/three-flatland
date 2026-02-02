@@ -23,6 +23,8 @@ import '@awesome.me/webawesome/dist/components/button/button.js'
 import '@awesome.me/webawesome/dist/components/select/select.js'
 import '@awesome.me/webawesome/dist/components/option/option.js'
 import '@awesome.me/webawesome/dist/components/input/input.js'
+import '@awesome.me/webawesome/dist/components/slider/slider.js'
+import '@awesome.me/webawesome/dist/components/icon/icon.js'
 
 /** Re-apply per-line first/last pill rounding when a flex container wraps */
 function setupWrappingGroup(container: Element, childSelector: string) {
@@ -546,6 +548,16 @@ async function main() {
   camera.position.x = (mapSize * TILE_SIZE) / 2
   camera.position.y = (mapSize * TILE_SIZE) / 2
 
+  // Zoom range computed from map extent
+  // zoom is a frustum multiplier: larger = more world visible = zoomed out
+  let mapExtent = mapSize * TILE_SIZE
+  let zoomOut = mapExtent / (frustumSize * Math.min(1, aspect)) // fit whole map
+  let zoomIn = 0.1 // close-up (shows ~80 world units = ~5 tiles)
+  let zoom = zoomOut * Math.pow(zoomIn / zoomOut, 0.5) // start at slider midpoint (exponential)
+
+  // Zoom slider
+  const zoomSlider = document.getElementById('zoom-slider') as any
+
   // Rebuild tilemap (on map size, density, or seed change)
   function rebuildTilemap() {
     scene.remove(tilemap)
@@ -556,6 +568,13 @@ async function main() {
     // Re-center camera
     camera.position.x = (mapSize * TILE_SIZE) / 2
     camera.position.y = (mapSize * TILE_SIZE) / 2
+
+    // Recalculate zoom range and recompute zoom from current slider position
+    mapExtent = mapSize * TILE_SIZE
+    zoomOut = mapExtent / (frustumSize * Math.min(1, aspect))
+    zoomIn = 0.1
+    const t = Number(zoomSlider.value) / 100
+    zoom = zoomOut * Math.pow(zoomIn / zoomOut, t)
 
     updateStats()
   }
@@ -637,31 +656,51 @@ async function main() {
 
   // Camera controls
   const keys = new Set<string>()
-  let zoom = 1
 
-  window.addEventListener('keydown', (e) => keys.add(e.key.toLowerCase()))
+  const PAN_KEYS = new Set(['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'])
+  window.addEventListener('keydown', (e) => {
+    const key = e.key.toLowerCase()
+    if (PAN_KEYS.has(key)) e.preventDefault()
+    keys.add(key)
+  })
   window.addEventListener('keyup', (e) => keys.delete(e.key.toLowerCase()))
 
-  window.addEventListener('wheel', (e) => {
-    e.preventDefault()
-    zoom *= e.deltaY > 0 ? 1.1 : 0.9
-    zoom = Math.max(0.2, Math.min(5, zoom))
-  }, { passive: false })
+  zoomSlider.addEventListener('input', () => {
+    const t = Number(zoomSlider.value) / 100
+    zoom = zoomOut * Math.pow(zoomIn / zoomOut, t)
+  })
 
-  // Drag to pan
+  // Drag to pan (pointer events, with two-finger touch support)
   let isDragging = false
   let dragStart = { x: 0, y: 0 }
   let cameraStart = { x: 0, y: 0 }
   let dragDistance = 0
+  const activePointers = new Map<number, PointerEvent>()
 
-  renderer.domElement.addEventListener('mousedown', (e) => {
-    isDragging = true
-    dragStart = { x: e.clientX, y: e.clientY }
-    cameraStart = { x: camera.position.x, y: camera.position.y }
-    dragDistance = 0
+  renderer.domElement.addEventListener('pointerdown', (e) => {
+    activePointers.set(e.pointerId, e)
+
+    // Mouse or pen: start drag immediately
+    // Touch: only start drag when two fingers are down
+    if (e.pointerType !== 'touch' || activePointers.size >= 2) {
+      isDragging = true
+      dragStart = { x: e.clientX, y: e.clientY }
+      cameraStart = { x: camera.position.x, y: camera.position.y }
+      dragDistance = 0
+    }
   })
 
-  window.addEventListener('mousemove', (e) => {
+  window.addEventListener('pointermove', (e) => {
+    activePointers.set(e.pointerId, e)
+
+    // Start dragging if second finger arrived
+    if (e.pointerType === 'touch' && activePointers.size >= 2 && !isDragging) {
+      isDragging = true
+      dragStart = { x: e.clientX, y: e.clientY }
+      cameraStart = { x: camera.position.x, y: camera.position.y }
+      dragDistance = 0
+    }
+
     if (!isDragging) return
 
     const dx = e.clientX - dragStart.x
@@ -677,9 +716,20 @@ async function main() {
     camera.position.y = cameraStart.y + dy * worldPerPixel
   })
 
-  window.addEventListener('mouseup', () => {
-    isDragging = false
-    renderer.domElement.style.cursor = ''
+  window.addEventListener('pointerup', (e) => {
+    activePointers.delete(e.pointerId)
+    if (activePointers.size < 2) {
+      isDragging = false
+      renderer.domElement.style.cursor = ''
+    }
+  })
+
+  window.addEventListener('pointercancel', (e) => {
+    activePointers.delete(e.pointerId)
+    if (activePointers.size < 2) {
+      isDragging = false
+      renderer.domElement.style.cursor = ''
+    }
   })
 
   // Click to toggle tile (only if not dragging)

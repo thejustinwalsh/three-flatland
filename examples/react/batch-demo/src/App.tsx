@@ -202,16 +202,26 @@ function StatsTracker({ onStats }: { onStats: (fps: number, draws: number) => vo
   const gl = useThree((s) => s.gl)
   const frameCount = useRef(0)
   const elapsed = useRef(0)
+
+  // Disable auto-reset so we can read draw calls from the previous frame
+  // before manually resetting. The WebGPU Animation loop resets info at
+  // the start of each frame — before useFrame runs — which would zero
+  // out the counters before we can read them.
+  useEffect(() => {
+    gl.info.autoReset = false
+    return () => { gl.info.autoReset = true }
+  }, [gl])
+
   useFrame((_, delta) => {
     frameCount.current++
     elapsed.current += delta
     if (elapsed.current >= 1) {
-      // Cast: R3F types gl as WebGLRenderer, but we use WebGPURenderer which has drawCalls
       const draws = (gl.info.render as any).drawCalls as number
       onStats(Math.round(frameCount.current / elapsed.current), draws)
       frameCount.current = 0
       elapsed.current = 0
     }
+    gl.info.reset()
   })
   return null
 }
