@@ -1,5 +1,4 @@
-import { vec2, vec3, vec4, float, texture as sampleTexture, sin, cos } from 'three/tsl'
-import type { Texture } from 'three'
+import { vec2, vec3, vec4, float, sin, cos } from 'three/tsl'
 import type { TSLNode, FloatInput, Vec2Input, Vec3Input } from '../types'
 
 /**
@@ -94,7 +93,7 @@ export function crtVignette(
  * @returns Color with phosphor bloom
  */
 export function crtBloom(
-  tex: Texture,
+  tex: TSLNode,
   uv: TSLNode,
   intensity: FloatInput = 0.3,
   spread: FloatInput = 0.002
@@ -102,7 +101,7 @@ export function crtBloom(
   const intensityNode = typeof intensity === 'number' ? float(intensity) : intensity
   const spreadNode = typeof spread === 'number' ? float(spread) : spread
 
-  const center = sampleTexture(tex, uv)
+  const center = tex.sample(uv)
 
   // Sample neighbors for bloom
   const offsets = [
@@ -115,7 +114,7 @@ export function crtBloom(
   let bloom: TSLNode = vec3(0, 0, 0)
   for (const [ox, oy] of offsets) {
     const offset = vec2(ox, oy).mul(spreadNode)
-    bloom = bloom.add(sampleTexture(tex, uv.add(offset)).rgb)
+    bloom = bloom.add(tex.sample(uv.add(offset)).rgb)
   }
   bloom = bloom.div(4).mul(intensityNode)
 
@@ -132,17 +131,17 @@ export function crtBloom(
  * @returns Color with bleeding effect
  */
 export function crtColorBleed(
-  tex: Texture,
+  tex: TSLNode,
   uv: TSLNode,
   amount: FloatInput = 0.002
 ): TSLNode {
   const amountNode = typeof amount === 'number' ? float(amount) : amount
 
   // Sample with horizontal offset for each channel
-  const r = sampleTexture(tex, uv.sub(vec2(amountNode, 0))).r
-  const g = sampleTexture(tex, uv).g
-  const b = sampleTexture(tex, uv.add(vec2(amountNode, 0))).b
-  const a = sampleTexture(tex, uv).a
+  const r = tex.sample(uv.sub(vec2(amountNode, 0))).r
+  const g = tex.sample(uv).g
+  const b = tex.sample(uv.add(vec2(amountNode, 0))).b
+  const a = tex.sample(uv).a
 
   return vec4(r, g, b, a)
 }
@@ -170,7 +169,7 @@ export interface CRTOptions {
   colorBleed?: FloatInput
 }
 
-export function crtComplete(tex: Texture, uv: TSLNode, options: CRTOptions = {}): TSLNode {
+export function crtComplete(tex: TSLNode, uv: TSLNode, options: CRTOptions = {}): TSLNode {
   const {
     curvature = 0.1,
     scanlineIntensity = 0.2,
@@ -220,7 +219,7 @@ export function crtComplete(tex: Texture, uv: TSLNode, options: CRTOptions = {})
  * @returns Color with convergence error
  */
 export function crtConvergence(
-  tex: Texture,
+  tex: TSLNode,
   uv: TSLNode,
   redOffset: Vec2Input = [0.001, 0],
   blueOffset: Vec2Input = [-0.001, 0]
@@ -228,10 +227,10 @@ export function crtConvergence(
   const redVec = Array.isArray(redOffset) ? vec2(...redOffset) : redOffset
   const blueVec = Array.isArray(blueOffset) ? vec2(...blueOffset) : blueOffset
 
-  const r = sampleTexture(tex, uv.add(redVec)).r
-  const g = sampleTexture(tex, uv).g
-  const b = sampleTexture(tex, uv.add(blueVec)).b
-  const a = sampleTexture(tex, uv).a
+  const r = tex.sample(uv.add(redVec)).r
+  const g = tex.sample(uv).g
+  const b = tex.sample(uv.add(blueVec)).b
+  const a = tex.sample(uv).a
 
   return vec4(r, g, b, a)
 }

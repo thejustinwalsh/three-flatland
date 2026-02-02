@@ -1,6 +1,6 @@
 import { WebGPURenderer, PostProcessing } from 'three/webgpu'
 import { pass } from 'three/tsl'
-import { uv, uniform } from 'three/tsl'
+import { uv, uniform, convertToTexture, float, floor, vec2 } from 'three/tsl'
 import { NearestFilter } from 'three'
 import {
   Flatland,
@@ -17,7 +17,6 @@ import {
   // Analog effects
   vhsDistortion,
   staticNoise,
-  chromaticAberration,
   // Blur/post effects
   vignette,
   filmGrain,
@@ -93,6 +92,8 @@ async function main() {
   // Post-processing setup
   const postProcessing = new PostProcessing(renderer)
   const scenePass = pass(flatland.scene, flatland.camera)
+  // Convert PassNode to TextureNode so effects can .sample() at custom UVs
+  const sceneTexture = convertToTexture(scenePass)
 
   // Effect functions that create TSL nodes
   const effectNodes: Record<EffectType, () => ReturnType<typeof pass>> = {
@@ -100,84 +101,66 @@ async function main() {
 
     crt: () => {
       // CRT TV effect with curvature, scanlines, phosphor mask
-      return crtComplete(scenePass, uv(), {
+      return crtComplete(sceneTexture, uv(), {
         curvature: 0.15,
-        vignetteStrength: 0.3,
+        vignetteIntensity: 0.3,
         scanlineIntensity: 0.15,
-        scanlineCount: 240,
+        scanlineRes: 240,
       })
     },
 
     dmg: () => {
-      // Game Boy DMG - 4-color green palette + dot matrix
-      const palette = dmgPalette(scenePass)
-      return dotMatrix(palette, uv(), {
-        gridSize: 3,
-        dotSize: 0.7,
-        dotColor: [0.6, 0.7, 0.5, 1],
-        bgColor: [0.5, 0.6, 0.4, 1],
-      })
+      // Game Boy DMG - pixelate, ghosting, 4-color green palette + square pixel grid
+      const res = float(160)
+      const pixelSize = float(1).div(res)
+      const pixelatedUV = floor(uv().mul(res)).add(0.5).div(res)
+
+      // Sample center and neighbors — simulates slow LCD response / ghosting
+      const center = sceneTexture.sample(pixelatedUV)
+      const left = sceneTexture.sample(pixelatedUV.sub(vec2(pixelSize, 0)))
+      const right = sceneTexture.sample(pixelatedUV.add(vec2(pixelSize, 0)))
+      const up = sceneTexture.sample(pixelatedUV.add(vec2(0, pixelSize)))
+      const down = sceneTexture.sample(pixelatedUV.sub(vec2(0, pixelSize)))
+
+      const ghost = float(0.08)
+      const ghosted = center.mul(float(1).sub(ghost.mul(4)))
+        .add(left.mul(ghost))
+        .add(right.mul(ghost))
+        .add(up.mul(ghost))
+        .add(down.mul(ghost))
+
+      // Apply DMG 4-color green palette
+      const palette = dmgPalette(ghosted)
+      // Square pixel grid on green LCD background
+      return dotMatrix(palette, uv(), 160, 0.85, [0.61, 0.73, 0.06])
     },
 
     gbc: () => {
       // Game Boy Color LCD simulation
-      return lcdGBC(scenePass, uv(), {
-        gridSize: 3,
-        subpixelBlend: 0.5,
-        brightness: 1.1,
-      })
+      return lcdGBC(scenePass, uv(), 160, 0.2)
     },
 
     vhs: () => {
-      // VHS tape - distortion, noise, chromatic aberration
-      const distorted = vhsDistortion(scenePass, uv(), timeUniform, {
-        trackingNoise: 0.02,
-        jitter: 0.001,
-        waveSpeed: 2.0,
-      })
-      const noisy = staticNoise(distorted, uv(), timeUniform, {
-        intensity: 0.08,
-        flickerSpeed: 15,
-      })
-      return chromaticAberration(noisy, uv(), {
-        offsetR: [0.003, 0],
-        offsetB: [-0.003, 0],
-      })
+      // VHS tape - distortion (includes color separation) + static noise
+      const distorted = vhsDistortion(sceneTexture, uv(), timeUniform, 0.02, 0.1)
+      return staticNoise(distorted, uv(), timeUniform, 0.08)
     },
 
     lcd: () => {
       // LCD monitor grid pattern
-      return lcdGrid(scenePass, uv(), {
-        gridSize: 3,
-        lineWidth: 0.2,
-        lineColor: [0, 0, 0, 0.3],
-      })
+      return lcdGrid(scenePass, uv(), 240, 0.15, 0.1)
     },
 
     arcade: () => {
       // Arcade CRT - phosphor mask + scanlines
-      const withPhosphor = phosphorMask(scenePass, uv(), {
-        type: 'aperture-grille',
-        scale: 3,
-        intensity: 0.15,
-      })
-      return scanlines(withPhosphor, uv(), {
-        count: 240,
-        intensity: 0.2,
-        offset: timeUniform.mul(0.5),
-      })
+      const withPhosphor = phosphorMask(scenePass, uv(), 'aperture', 640, 0.15)
+      return scanlines(withPhosphor, uv(), 240, 0.2, timeUniform.mul(0.5))
     },
 
     film: () => {
       // Film look - grain + vignette
-      const grained = filmGrain(scenePass, uv(), timeUniform, {
-        intensity: 0.15,
-        luminanceThreshold: 0.3,
-      })
-      return vignette(grained, uv(), {
-        offset: 0.5,
-        darkness: 0.6,
-      })
+      const grained = filmGrain(scenePass, uv(), timeUniform, 0.15, 0.3)
+      return vignette(grained, uv(), 0.6, 0.5)
     },
   }
 
@@ -187,6 +170,7 @@ async function main() {
   function setEffect(effect: EffectType) {
     currentEffect = effect
     postProcessing.outputNode = effectNodes[effect]()
+    postProcessing.needsUpdate = true
 
     // Update UI
     const currentEffectEl = document.getElementById('current-effect')!
@@ -283,8 +267,8 @@ async function main() {
       sprite.position.y = Math.sin(timeUniform.value * 2 + i * 0.7) * 10
     }
 
-    // Render with post-processing
-    postProcessing.render()
+    // Render — flatland.render() updates batches, syncs lights, then uses post-processing
+    flatland.render(renderer)
   }
 
   animate()

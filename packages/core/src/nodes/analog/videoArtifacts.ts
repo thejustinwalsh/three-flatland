@@ -1,5 +1,4 @@
-import { vec2, vec3, vec4, float, floor, fract, sin, cos, texture as sampleTexture } from 'three/tsl'
-import type { Texture } from 'three'
+import { vec2, vec3, vec4, float, floor, fract, sin, cos } from 'three/tsl'
 import type { TSLNode, FloatInput, Vec2Input, Vec3Input } from '../types'
 
 /**
@@ -13,18 +12,18 @@ import type { TSLNode, FloatInput, Vec2Input, Vec3Input } from '../types'
  * @returns Color with bleeding effect
  */
 export function colorBleeding(
-  tex: Texture,
+  tex: TSLNode,
   uv: TSLNode,
   amount: FloatInput = 0.003,
   samples: number = 4
 ): TSLNode {
   const amountNode = typeof amount === 'number' ? float(amount) : amount
 
-  let colorSum = sampleTexture(tex, uv).rgb
+  let colorSum = tex.sample(uv).rgb
 
   for (let i = 1; i <= samples; i++) {
     const offset = vec2(amountNode.mul(float(i)), 0)
-    colorSum = colorSum.add(sampleTexture(tex, uv.sub(offset)).rgb.mul(float(1 / (i + 1))))
+    colorSum = colorSum.add(tex.sample(uv.sub(offset)).rgb.mul(float(1 / (i + 1))))
   }
 
   // Normalize
@@ -33,7 +32,7 @@ export function colorBleeding(
     totalWeight = totalWeight.add(float(1 / (i + 1)))
   }
 
-  return vec4(colorSum.div(totalWeight), sampleTexture(tex, uv).a)
+  return vec4(colorSum.div(totalWeight), tex.sample(uv).a)
 }
 
 /**
@@ -77,7 +76,7 @@ export function interlacing(
  * @returns Color with NTSC artifacts
  */
 export function ntscComposite(
-  tex: Texture,
+  tex: TSLNode,
   uv: TSLNode,
   artifactIntensity: FloatInput = 0.3,
   bleedAmount: FloatInput = 0.002
@@ -86,10 +85,10 @@ export function ntscComposite(
   const bleedNode = typeof bleedAmount === 'number' ? float(bleedAmount) : bleedAmount
 
   // Base color with horizontal color bleeding
-  const r = sampleTexture(tex, uv.sub(vec2(bleedNode, 0))).r
-  const g = sampleTexture(tex, uv).g
-  const b = sampleTexture(tex, uv.add(vec2(bleedNode, 0))).b
-  const a = sampleTexture(tex, uv).a
+  const r = tex.sample(uv.sub(vec2(bleedNode, 0))).r
+  const g = tex.sample(uv).g
+  const b = tex.sample(uv.add(vec2(bleedNode, 0))).b
+  const a = tex.sample(uv).a
 
   // NTSC artifact pattern (dot crawl approximation)
   const scanline = floor(uv.y.mul(240))
@@ -114,7 +113,7 @@ export function ntscComposite(
  * @returns Color with VHS distortion
  */
 export function vhsDistortion(
-  tex: Texture,
+  tex: TSLNode,
   uv: TSLNode,
   time: TSLNode | FloatInput,
   intensity: FloatInput = 0.02,
@@ -137,9 +136,9 @@ export function vhsDistortion(
   const distortedUV = vec2(uv.x.add(waveOffset).add(glitchOffset), uv.y)
 
   // Sample with color separation
-  const r = sampleTexture(tex, distortedUV.add(vec2(0.002, 0))).r
-  const g = sampleTexture(tex, distortedUV).g
-  const b = sampleTexture(tex, distortedUV.sub(vec2(0.002, 0))).b
+  const r = tex.sample(distortedUV.add(vec2(0.002, 0))).r
+  const g = tex.sample(distortedUV).g
+  const b = tex.sample(distortedUV.sub(vec2(0.002, 0))).b
 
   // Add noise
   const noise = sin(uv.y.mul(1000).add(timeNode.mul(100))).mul(noiseNode)
@@ -187,7 +186,7 @@ export function staticNoise(
  * @returns Color with analog glitch
  */
 export function analogGlitch(
-  tex: Texture,
+  tex: TSLNode,
   uv: TSLNode,
   time: TSLNode | FloatInput,
   intensity: FloatInput = 0.03,
@@ -204,9 +203,9 @@ export function analogGlitch(
   const distortedX = uv.x.add(wave1).add(wave2)
 
   // Color channel separation
-  const r = sampleTexture(tex, vec2(distortedX.add(intensityNode.mul(0.5)), uv.y)).r
-  const g = sampleTexture(tex, vec2(distortedX, uv.y)).g
-  const b = sampleTexture(tex, vec2(distortedX.sub(intensityNode.mul(0.5)), uv.y)).b
+  const r = tex.sample(vec2(distortedX.add(intensityNode.mul(0.5)), uv.y)).r
+  const g = tex.sample(vec2(distortedX, uv.y)).g
+  const b = tex.sample(vec2(distortedX.sub(intensityNode.mul(0.5)), uv.y)).b
 
   return vec4(r, g, b, float(1))
 }

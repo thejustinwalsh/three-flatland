@@ -10,29 +10,27 @@ The `Sprite2D` class is the foundation for 2D rendering in three-flatland.
 <Tabs syncKey="framework">
   <TabItem label="Three.js" icon="seti:javascript">
     ```typescript
-    import { Sprite2D, Renderer2D } from '@three-flatland/core';
+    import { Sprite2D } from '@three-flatland/core';
 
     const sprite = new Sprite2D({
       texture: myTexture,
       anchor: [0.5, 0.5],  // Center anchor
     });
 
-    renderer2D.add(sprite);
+    scene.add(sprite);
     ```
   </TabItem>
   <TabItem label="React" icon="seti:react">
     ```tsx
     import { extend } from '@react-three/fiber/webgpu';
-    import { Sprite2D, Renderer2D } from '@three-flatland/react';
+    import { Sprite2D } from '@three-flatland/react';
 
     // Register with R3F (required once)
-    extend({ Sprite2D, Renderer2D });
+    extend({ Sprite2D });
 
     function Scene() {
       return (
-        <renderer2D>
-          <sprite2D texture={myTexture} anchor={[0.5, 0.5]} />
-        </renderer2D>
+        <sprite2D texture={myTexture} anchor={[0.5, 0.5]} />
       );
     }
     ```
@@ -78,52 +76,52 @@ const sprite = new Sprite2D({
 });
 ```
 
-## Renderer2D
+## SpriteGroup
 
-For batched rendering with many sprites, use `Renderer2D`:
+For batched rendering with many sprites, use `SpriteGroup`:
 
 <Tabs syncKey="framework">
   <TabItem label="Three.js" icon="seti:javascript">
     ```typescript
-    import { Renderer2D } from '@three-flatland/core';
+    import { SpriteGroup } from '@three-flatland/core';
 
-    const renderer2D = new Renderer2D();
-    scene.add(renderer2D);
+    const spriteGroup = new SpriteGroup();
+    scene.add(spriteGroup);
 
-    renderer2D.add(sprite1);
-    renderer2D.add(sprite2);
+    spriteGroup.add(sprite1);
+    spriteGroup.add(sprite2);
 
     // In animation loop
-    renderer2D.update();
+    spriteGroup.update();
     ```
   </TabItem>
   <TabItem label="React" icon="seti:react">
     ```tsx
     import { useRef } from 'react';
     import { extend, useFrame } from '@react-three/fiber/webgpu';
-    import { Sprite2D, Renderer2D } from '@three-flatland/react';
+    import { Sprite2D, SpriteGroup } from '@three-flatland/react';
 
-    extend({ Sprite2D, Renderer2D });
+    extend({ Sprite2D, SpriteGroup });
 
     function Scene() {
-      const rendererRef = useRef<Renderer2D>(null);
+      const groupRef = useRef<SpriteGroup>(null);
 
       useFrame(() => {
-        rendererRef.current?.update();
+        groupRef.current?.update();
       });
 
       return (
-        <renderer2D ref={rendererRef}>
+        <spriteGroup ref={groupRef}>
           <sprite2D texture={texture1} />
           <sprite2D texture={texture2} />
-        </renderer2D>
+        </spriteGroup>
       );
     }
     ```
   </TabItem>
 </Tabs>
 
-For simple cases with few sprites, you can add them directly to the scene without `Renderer2D`.
+For simple cases with few sprites, you can add them directly to the scene without `SpriteGroup`.
 
 ## Layers
 

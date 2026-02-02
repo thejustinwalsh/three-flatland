@@ -295,7 +295,10 @@ function VillageScene({ entities, selectedBuilding, onPlaceBuilding, onStats }: 
   useFrame(() => {
     if (renderer2DRef.current) {
       renderer2DRef.current.update()
-      onStats(renderer2DRef.current.stats)
+      // Draw calls come from renderer.info (previous frame), not our own counting
+      const stats = renderer2DRef.current.stats
+      stats.drawCalls = gl.info.render.calls
+      onStats(stats)
     }
   })
 

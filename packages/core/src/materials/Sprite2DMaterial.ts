@@ -1,16 +1,56 @@
 import { MeshBasicNodeMaterial } from 'three/webgpu'
-import { attribute, texture, uv, vec2, vec4, float, Fn, If, Discard, select } from 'three/tsl'
+import { attribute, texture, uv, vec2, vec4, float, Fn, If, Discard, select, positionWorld } from 'three/tsl'
 import { type Texture, FrontSide, NormalBlending } from 'three'
 import type { InstanceAttributeConfig, InstanceAttributeType } from '../pipeline/types'
+import type { TSLNode } from '../nodes/types'
+import type { GlobalUniforms } from '../GlobalUniforms'
+
+/**
+ * Context passed to colorTransform callbacks.
+ */
+export interface ColorTransformContext {
+  /** Base sampled + tinted color (vec4) */
+  color: TSLNode
+  /** UV after flip + atlas remap */
+  atlasUV: TSLNode
+  /** World position XY (works with instancing via positionWorld) */
+  worldPosition: TSLNode
+}
+
+/**
+ * A function that transforms the base sprite color.
+ * Receives the base color and context, returns modified color (vec4).
+ */
+export type ColorTransformFn = (ctx: ColorTransformContext) => TSLNode
 
 export interface Sprite2DMaterialOptions {
   map?: Texture
   transparent?: boolean
   alphaTest?: number
+  /** Color transform function for custom effects (e.g., lighting) */
+  colorTransform?: ColorTransformFn
+  /** Whether this material should be lit by Flatland's lights */
+  lit?: boolean
+  /** Global uniforms for auto-applying tint, time, etc. */
+  globalUniforms?: GlobalUniforms
 }
 
 // Global material ID counter for batching
 let nextMaterialId = 0
+
+// WeakMap to assign stable numeric IDs to colorTransform functions
+const colorTransformIds = new WeakMap<ColorTransformFn, number>()
+let nextColorTransformId = 0
+
+function getColorTransformId(fn: ColorTransformFn | undefined): number {
+  if (!fn) return -1
+  let id = colorTransformIds.get(fn)
+  if (id === undefined) {
+    id = nextColorTransformId++
+    colorTransformIds.set(fn, id)
+  }
+  return id
+}
 
 /**
  * TSL-based material for 2D sprites.
@@ -28,11 +68,53 @@ let nextMaterialId = 0
  */
 export class Sprite2DMaterial extends MeshBasicNodeMaterial {
   /**
+   * Cache of shared material instances, keyed by configuration.
+   * Used by `getShared()` so sprites with identical config reuse the same material.
+   */
+  private static _cache = new Map<string, Sprite2DMaterial>()
+
+  /**
+   * Get a shared material instance for the given options.
+   * Materials with identical configuration (texture, transparent, lit, colorTransform)
+   * return the same instance, enabling automatic batching.
+   */
+  static getShared(options: Sprite2DMaterialOptions = {}): Sprite2DMaterial {
+    const textureId = options.map?.id ?? -1
+    const transparent = options.transparent ?? true
+    const lit = options.lit ?? false
+    const ctId = getColorTransformId(options.colorTransform)
+
+    const key = `${textureId}:${transparent}:${lit}:${ctId}`
+
+    let material = Sprite2DMaterial._cache.get(key)
+    if (!material) {
+      material = new Sprite2DMaterial(options)
+      Sprite2DMaterial._cache.set(key, material)
+    }
+    return material
+  }
+
+  /**
    * Unique batch ID for this material instance (used for batching).
    */
   readonly batchId: number
 
   private _spriteTexture: Texture | null = null
+
+  /**
+   * Color transform function for custom effects (e.g., lighting).
+   */
+  private _colorTransform: ColorTransformFn | null = null
+
+  /**
+   * Whether this material should be auto-lit by Flatland.
+   */
+  private _lit: boolean = false
+
+  /**
+   * Global uniforms reference (shared by all materials via same node objects).
+   */
+  private _globalUniforms: GlobalUniforms | null = null
 
   /**
    * Custom instance attribute schema.
@@ -53,8 +135,64 @@ export class Sprite2DMaterial extends MeshBasicNodeMaterial {
     this.side = FrontSide
     this.blending = NormalBlending
 
+    this._lit = options.lit ?? false
+    this._globalUniforms = options.globalUniforms ?? null
+
+    if (options.colorTransform) {
+      this._colorTransform = options.colorTransform
+    }
+
     if (options.map) {
       this.setTexture(options.map)
+    }
+  }
+
+  /**
+   * Get the color transform function.
+   */
+  get colorTransform(): ColorTransformFn | null {
+    return this._colorTransform
+  }
+
+  /**
+   * Set the color transform function.
+   * Triggers shader recompilation.
+   */
+  set colorTransform(value: ColorTransformFn | null) {
+    this._colorTransform = value
+    if (this._spriteTexture) {
+      this.setupNodes()
+      this.needsUpdate = true
+    }
+  }
+
+  /**
+   * Whether this material should be auto-lit by Flatland.
+   */
+  get lit(): boolean {
+    return this._lit
+  }
+
+  set lit(value: boolean) {
+    this._lit = value
+  }
+
+  /**
+   * Get the global uniforms reference.
+   */
+  get globalUniforms(): GlobalUniforms | null {
+    return this._globalUniforms
+  }
+
+  /**
+   * Set the global uniforms reference.
+   * Triggers shader recompilation to include global tint.
+   */
+  set globalUniforms(value: GlobalUniforms | null) {
+    this._globalUniforms = value
+    if (this._spriteTexture) {
+      this.setupNodes()
+      this.needsUpdate = true
     }
   }
 
@@ -62,6 +200,8 @@ export class Sprite2DMaterial extends MeshBasicNodeMaterial {
     if (!this._spriteTexture) return
 
     const mapTexture = this._spriteTexture
+    const colorTransform = this._colorTransform
+    const globalUniforms = this._globalUniforms
 
     // Read from instance attributes (works for both single sprites and batched)
     const instanceUV = attribute('instanceUV', 'vec4')
@@ -93,10 +233,28 @@ export class Sprite2DMaterial extends MeshBasicNodeMaterial {
       })
 
       // Apply instance color (tint) and alpha
-      return vec4(
-        texColor.rgb.mul(instanceColor.rgb),
+      let tintedRGB = texColor.rgb.mul(instanceColor.rgb)
+
+      // Apply global tint if globalUniforms are wired
+      if (globalUniforms) {
+        tintedRGB = tintedRGB.mul(globalUniforms.globalTintNode)
+      }
+
+      const baseColor = vec4(
+        tintedRGB,
         texColor.a.mul(instanceColor.a)
       )
+
+      // Apply color transform if set (e.g., lighting)
+      if (colorTransform) {
+        return colorTransform({
+          color: baseColor,
+          atlasUV,
+          worldPosition: positionWorld.xy,
+        })
+      }
+
+      return baseColor
     })()
   }
 
@@ -220,6 +378,9 @@ export class Sprite2DMaterial extends MeshBasicNodeMaterial {
       map: this._spriteTexture ?? undefined,
       transparent: this.transparent,
       alphaTest: this.alphaTest,
+      colorTransform: this._colorTransform ?? undefined,
+      lit: this._lit,
+      globalUniforms: this._globalUniforms ?? undefined,
     }) as this
 
     // Copy instance attributes

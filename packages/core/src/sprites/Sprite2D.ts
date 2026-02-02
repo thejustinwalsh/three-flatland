@@ -83,6 +83,9 @@ export class Sprite2D extends Mesh {
    */
   _batchIndex: number = -1
 
+  /** Whether this sprite owns its material (and should dispose it) */
+  private _ownsMaterial: boolean = false
+
   /** Custom geometry for anchor offset */
   private _geometry: PlaneGeometry | null = null
 
@@ -117,13 +120,27 @@ export class Sprite2D extends Mesh {
    * Can be called with no arguments for R3F compatibility - set texture via property.
    */
   constructor(options?: Sprite2DOptions) {
-    // Create material (texture can be set later)
-    const material =
-      options?.material ??
-      new Sprite2DMaterial({
-        map: options?.texture,
+    // Create or reuse material:
+    // - User-provided material: use as-is (user owns it)
+    // - Texture provided: use shared cache (cache owns it)
+    // - No texture (R3F path): create unique material (sprite owns it)
+    let material: Sprite2DMaterial
+    let ownsMaterial: boolean
+
+    if (options?.material) {
+      material = options.material
+      ownsMaterial = false
+    } else if (options?.texture) {
+      material = Sprite2DMaterial.getShared({
+        map: options.texture,
         transparent: true,
+        lit: options.lit,
       })
+      ownsMaterial = false
+    } else {
+      material = new Sprite2DMaterial({ transparent: true })
+      ownsMaterial = true
+    }
 
     // Create geometry with instance attributes for single-sprite rendering
     // (Cannot use shared geometry because each sprite needs its own attribute buffers)
@@ -132,6 +149,7 @@ export class Sprite2D extends Mesh {
 
     // Store reference so we can dispose it
     this._geometry = geometry
+    this._ownsMaterial = ownsMaterial
 
     // Set up instance attributes on the geometry
     this._setupInstanceAttributes()
@@ -722,8 +740,10 @@ export class Sprite2D extends Mesh {
     if (this._geometry) {
       this._geometry.dispose()
     }
-    // Only dispose material if we created it
-    this.material.dispose()
+    // Only dispose material if this sprite owns it (not shared or user-provided)
+    if (this._ownsMaterial) {
+      this.material.dispose()
+    }
   }
 
   /**

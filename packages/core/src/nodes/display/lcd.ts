@@ -1,5 +1,4 @@
-import { vec2, vec3, vec4, float, floor, mod, texture as sampleTexture } from 'three/tsl'
-import type { Texture } from 'three'
+import { vec2, vec3, vec4, float, floor, mod } from 'three/tsl'
 import type { TSLNode, FloatInput, Vec3Input } from '../types'
 
 /**
@@ -58,40 +57,60 @@ export function lcdGrid(
 
 /**
  * Game Boy DMG-style dot matrix display.
- * Simulates the distinctive LCD look of the original Game Boy.
+ * Simulates the distinctive square-pixel LCD look of the original Game Boy.
  *
- * @param inputColor - Input color (should be greenish)
+ * When input is a TextureNode (has .sample()), it pixelates by snapping UVs
+ * to pixel centers. When input is a computed color, applies pixel grid only.
+ *
+ * Pixel edges are slightly soft to simulate the slow LCD crystal response
+ * time characteristic of Game Boy hardware.
+ *
+ * @param input - Input color (TSLNode) or texture node (for pixelated sampling)
  * @param uv - UV coordinates
  * @param resolution - Pixel resolution (default: 160 for GB)
- * @param dotSize - Size of each dot relative to pixel (default: 0.7)
- * @param backgroundColor - Color of LCD background
+ * @param pixelFill - Fill ratio of pixel within cell (default: 0.85)
+ * @param backgroundColor - Color of LCD background between pixels
  * @returns Color with dot matrix effect
  */
 export function dotMatrix(
-  inputColor: TSLNode,
+  input: TSLNode,
   uv: TSLNode,
   resolution: FloatInput = 160,
-  dotSize: FloatInput = 0.7,
+  pixelFill: FloatInput = 0.85,
   backgroundColor: Vec3Input = [0.6, 0.7, 0.4]
 ): TSLNode {
   const resNode = typeof resolution === 'number' ? float(resolution) : resolution
-  const dotNode = typeof dotSize === 'number' ? float(dotSize) : dotSize
+  const fillNode = typeof pixelFill === 'number' ? float(pixelFill) : pixelFill
   const bgVec = Array.isArray(backgroundColor) ? vec3(...backgroundColor) : backgroundColor
 
-  // Position within each pixel
-  const pixelPos = uv.mul(resNode).fract().sub(0.5)
+  // Pixelate: snap UV to nearest pixel center for blocky look
+  const pixelatedUV = floor(uv.mul(resNode)).add(0.5).div(resNode)
 
-  // Distance from pixel center
-  const dist = pixelPos.length()
+  // Get the input color — if input supports .sample(), pixelate by snapping UVs
+  const inputColor = typeof input.sample === 'function'
+    ? input.sample(pixelatedUV)
+    : input
 
-  // Dot shape (circular, smooth edges)
-  const dotRadius = dotNode.mul(0.5)
-  const inDot = float(1).sub(dist.div(dotRadius).clamp(0, 1).smoothstep(float(0.8), float(1)))
+  // Position within each pixel cell (0 to 1)
+  const pixelPos = uv.mul(resNode).fract()
 
-  // Mix between background and dot color
-  const dotColor = bgVec.mix(inputColor.rgb, inDot)
+  // Square pixel with gap between cells
+  // fillNode controls how much of the cell the pixel occupies (0.85 = 85%)
+  const halfGap = float(1).sub(fillNode).mul(0.5)
+  const upperEdge = float(1).sub(halfGap)
 
-  return vec4(dotColor, inputColor.a)
+  // Soft edges simulate slow LCD crystal response time
+  const soft = float(0.06)
+  const maskX = pixelPos.x.smoothstep(halfGap.sub(soft), halfGap.add(soft))
+    .mul(float(1).sub(pixelPos.x.smoothstep(upperEdge.sub(soft), upperEdge.add(soft))))
+  const maskY = pixelPos.y.smoothstep(halfGap.sub(soft), halfGap.add(soft))
+    .mul(float(1).sub(pixelPos.y.smoothstep(upperEdge.sub(soft), upperEdge.add(soft))))
+  const inPixel = maskX.mul(maskY)
+
+  // Mix between background and pixel color
+  const pixelColor = bgVec.mix(inputColor.rgb, inPixel)
+
+  return vec4(pixelColor, inputColor.a)
 }
 
 /**
@@ -105,15 +124,15 @@ export function dotMatrix(
  * @returns Color with ghosting effect
  */
 export function lcdGhosting(
-  currentTex: Texture,
-  previousTex: Texture,
+  currentTex: TSLNode,
+  previousTex: TSLNode,
   uv: TSLNode,
   persistence: FloatInput = 0.6
 ): TSLNode {
   const persistNode = typeof persistence === 'number' ? float(persistence) : persistence
 
-  const current = sampleTexture(currentTex, uv)
-  const previous = sampleTexture(previousTex, uv)
+  const current = currentTex.sample(uv)
+  const previous = previousTex.sample(uv)
 
   // Asymmetric response: faster rise than fall
   const diff = current.rgb.sub(previous.rgb)
@@ -140,15 +159,15 @@ export function lcdGhosting(
  * @returns Color with motion ghosting
  */
 export function lcdMotionGhost(
-  tex: Texture,
+  tex: TSLNode,
   uv: TSLNode,
   velocity: TSLNode,
   persistence: FloatInput = 0.4
 ): TSLNode {
   const persistNode = typeof persistence === 'number' ? float(persistence) : persistence
 
-  const current = sampleTexture(tex, uv)
-  const ghost = sampleTexture(tex, uv.sub(velocity.mul(0.02)))
+  const current = tex.sample(uv)
+  const ghost = tex.sample(uv.sub(velocity.mul(0.02)))
 
   return vec4(current.rgb.add(ghost.rgb.mul(persistNode)), current.a)
 }

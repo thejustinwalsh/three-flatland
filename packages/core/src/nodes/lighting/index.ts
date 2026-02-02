@@ -7,7 +7,7 @@ export { pointLight2D, spotLight2D, directionalLight2D, ambientLight2D } from '.
 export type { Light2DResult } from './lights'
 
 // Lighting calculations
-export { litDiffuse, litSpecular, litRim, litCelShaded, litSprite } from './lit'
+export { litDiffuse, litSpecular, litRim, litCelShaded, litSprite, litSpriteMulti } from './lit'
 export type { LitSpriteOptions } from './lit'
 
 // Shadows

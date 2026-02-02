@@ -174,6 +174,7 @@ export default defineConfig({
             { label: '2D Lighting', slug: 'examples/lighting' },
             { label: 'Post-Processing', slug: 'examples/post-processing' },
             { label: 'Tilemap', slug: 'examples/tilemap' },
+            { label: 'Knightmark', slug: 'examples/knightmark' },
           ],
         },
         typeDocSidebarGroup,

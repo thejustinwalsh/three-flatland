@@ -99,35 +99,35 @@ import { Tabs, TabItem, Aside } from '@astrojs/starlight/components';
 <Tabs>
   <TabItem label="Three.js" icon="seti:javascript">
 ```typescript
-import { Sprite2D, Renderer2D } from '@three-flatland/core'
+import { Sprite2D, SpriteGroup } from '@three-flatland/core'
 
-// Create a 2D renderer and add to your scene
-const renderer2D = new Renderer2D()
-scene.add(renderer2D)
+// Create a sprite group for batching and add to your scene
+const spriteGroup = new SpriteGroup()
+scene.add(spriteGroup)
 
 // Create sprites with textures
 const player = new Sprite2D({ texture: playerTexture })
 const enemy = new Sprite2D({ texture: enemyTexture })
 enemy.position.set(2, 0, 0)
 
-// Add sprites to the renderer
-renderer2D.add(player, enemy)
+// Add sprites to the group
+spriteGroup.add(player, enemy)
 ```
   </TabItem>
   <TabItem label="React" icon="seti:react">
 ```tsx
 import { Canvas, extend } from '@react-three/fiber/webgpu'
-import { Sprite2D, Renderer2D } from '@three-flatland/react'
+import { Sprite2D, SpriteGroup } from '@three-flatland/react'
 
-extend({ Sprite2D, Renderer2D })
+extend({ Sprite2D, SpriteGroup })
 
 function Game() {
   return (
     <Canvas>
-      <renderer2D>
+      <spriteGroup>
         <sprite2D texture={playerTexture} position={[0, 0, 0]} />
         <sprite2D texture={enemyTexture} position={[2, 0, 0]} />
-      </renderer2D>
+      </spriteGroup>
     </Canvas>
   )
 }

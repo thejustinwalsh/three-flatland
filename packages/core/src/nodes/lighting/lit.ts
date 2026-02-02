@@ -156,6 +156,91 @@ export function litCelShaded(
 }
 
 /**
+ * Combined sprite lighting with multiple lights.
+ * Accumulates diffuse (and optionally specular) contributions from all lights,
+ * adds ambient, and optionally applies rim lighting.
+ *
+ * @param normal - Surface normal (normalized vec3)
+ * @param surfaceColor - Base surface color (vec4)
+ * @param lights - Array of Light2DResult from point/spot/directional lights
+ * @param ambient - Optional ambient Light2DResult
+ * @param options - Additional lighting options
+ * @returns Fully lit color (vec4)
+ *
+ * @example
+ * const result = litSpriteMulti(normal, baseColor, [torch1, torch2], ambient, {
+ *   specular: true,
+ *   shininess: 32,
+ * })
+ */
+export function litSpriteMulti(
+  normal: TSLNode,
+  surfaceColor: TSLNode,
+  lights: Light2DResult[],
+  ambient?: Light2DResult,
+  options: LitSpriteOptions = {}
+): TSLNode {
+  const {
+    specular = false,
+    shininess = 32,
+    specularStrength = 0.5,
+    rim = false,
+    rimColor = [1, 1, 1],
+    rimPower = 2,
+    rimStrength = 1,
+    viewDir = [0, 0, 1],
+  } = options
+
+  const viewVec = Array.isArray(viewDir) ? vec3(...viewDir) : viewDir
+
+  // Start accumulating light contributions
+  let totalDiffuse: TSLNode = vec3(0, 0, 0)
+  let totalSpecular: TSLNode | null = null
+
+  for (const light of lights) {
+    // N·L diffuse
+    const NdotL = normal.dot(light.direction).clamp(0, 1)
+    const diffuseContrib = light.color.mul(NdotL).mul(light.attenuation)
+    totalDiffuse = totalDiffuse.add(diffuseContrib)
+
+    // Per-light specular
+    if (specular) {
+      const spec = litSpecular(
+        normal,
+        light.direction,
+        viewVec,
+        light.color,
+        light.attenuation,
+        shininess,
+        specularStrength
+      )
+      totalSpecular = totalSpecular ? totalSpecular.add(spec) : spec
+    }
+  }
+
+  // Add ambient
+  if (ambient) {
+    totalDiffuse = totalDiffuse.add(ambient.color)
+  }
+
+  // Apply lighting to surface color
+  let result = vec4(surfaceColor.rgb.mul(totalDiffuse), surfaceColor.a)
+
+  // Add specular
+  if (totalSpecular) {
+    result = vec4(result.rgb.add(totalSpecular), surfaceColor.a)
+  }
+
+  // Add rim if enabled
+  if (rim) {
+    const rimLight = litRim(normal, viewVec, rimColor, rimPower, rimStrength)
+    result = vec4(result.rgb.add(rimLight), surfaceColor.a)
+  }
+
+  return result
+}
+
+/**
  * Combined sprite lighting with diffuse, specular, and optional rim.
  * Convenience function that combines common lighting components.
  *

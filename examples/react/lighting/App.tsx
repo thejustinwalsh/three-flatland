@@ -1,28 +1,19 @@
-import { Suspense, useMemo, useState, use, useRef, useEffect, useCallback } from 'react'
-import { Canvas, extend, useFrame, useThree } from '@react-three/fiber/webgpu'
+import { Suspense, useMemo, useState, useRef, useEffect, useCallback } from 'react'
+import { Canvas, extend, useFrame, useThree, useLoader } from '@react-three/fiber/webgpu'
 import { MeshBasicNodeMaterial } from 'three/webgpu'
-import { uniform, vec4, float, length, max, add, Fn } from 'three/tsl'
-import { NearestFilter, PlaneGeometry, Color, Vector2, Vector4 } from 'three'
+import { vec4 } from 'three/tsl'
+import { PlaneGeometry, Color, Vector2 } from 'three'
 import {
   Flatland,
   Light2D,
   Sprite2D,
+  Sprite2DMaterial,
   SpriteSheetLoader,
-  sampleSprite,
   type SpriteSheet,
 } from '@three-flatland/react'
 
 // Register with R3F
 extend({ Flatland, Sprite2D, Light2D })
-
-// Load sprite sheet
-const spriteSheetPromise = SpriteSheetLoader.load('./sprites/knight.json').then(
-  (sheet) => {
-    sheet.texture.minFilter = NearestFilter
-    sheet.texture.magFilter = NearestFilter
-    return sheet
-  }
-)
 
 // Shared geometry for light indicators
 const indicatorGeometry = new PlaneGeometry(1, 1)
@@ -57,10 +48,10 @@ function LightIndicator({ position, color, enabled, onDrag }: LightIndicatorProp
   const material = useMemo(() => {
     const mat = new MeshBasicNodeMaterial()
     mat.transparent = true
-    mat.colorNode = vec4(
-      uniform(color).mul(uniform(enabled ? 1 : 0.3)),
-      float(enabled ? 0.8 : 0.3)
-    )
+    const r = color.r
+    const g = color.g
+    const b = color.b
+    mat.colorNode = vec4(r, g, b, enabled ? 0.8 : 0.3)
     return mat
   }, [color, enabled])
 
@@ -115,65 +106,23 @@ function LightIndicator({ position, color, enabled, onDrag }: LightIndicatorProp
 interface LitSpriteProps {
   spriteSheet: SpriteSheet
   position: [number, number]
-  lightUniforms: ReturnType<typeof createLightUniforms>
-  animationIndex: number
+  material: Sprite2DMaterial
 }
 
-function createLightUniforms() {
-  return {
-    light1Pos: uniform(new Vector2(-80, 50)),
-    light1Color: uniform(new Color(0xff6600)),
-    light1Intensity: uniform(1.2),
-    light1Radius: uniform(150),
-    light1Enabled: uniform(1),
-    light2Pos: uniform(new Vector2(80, 50)),
-    light2Color: uniform(new Color(0xffaa00)),
-    light2Intensity: uniform(1.0),
-    light2Radius: uniform(150),
-    light2Enabled: uniform(1),
-    ambientColor: uniform(new Color(0x111122)),
-    ambientIntensity: uniform(0.15),
-  }
-}
-
-function LitSprite({ spriteSheet, position, lightUniforms, animationIndex }: LitSpriteProps) {
+function LitSprite({ spriteSheet, position, material: litMaterial }: LitSpriteProps) {
   const spriteRef = useRef<Sprite2D>(null)
   const animStateRef = useRef({
     frameIndex: 0,
     timer: 0,
   })
 
-  // Create lit material once
-  const litMaterial = useMemo(() => {
-    const mat = new MeshBasicNodeMaterial()
-    mat.transparent = true
-
-    mat.colorNode = Fn(() => {
-      const frameUniform = uniform(new Vector4(0, 0, 0.125, 0.125))
-      const spriteColor = sampleSprite(spriteSheet.texture, frameUniform, { alphaTest: 0.01 })
-
-      // Point light 1
-      const toLight1 = lightUniforms.light1Pos.sub(new Vector2(position[0], position[1]))
-      const dist1 = length(toLight1)
-      const attenuation1 = max(float(0), float(1).sub(dist1.div(lightUniforms.light1Radius))).pow(float(2))
-      const light1 = lightUniforms.light1Color.mul(attenuation1).mul(lightUniforms.light1Intensity).mul(lightUniforms.light1Enabled)
-
-      // Point light 2
-      const toLight2 = lightUniforms.light2Pos.sub(new Vector2(position[0], position[1]))
-      const dist2 = length(toLight2)
-      const attenuation2 = max(float(0), float(1).sub(dist2.div(lightUniforms.light2Radius))).pow(float(2))
-      const light2 = lightUniforms.light2Color.mul(attenuation2).mul(lightUniforms.light2Intensity).mul(lightUniforms.light2Enabled)
-
-      // Ambient
-      const ambient = lightUniforms.ambientColor.mul(lightUniforms.ambientIntensity)
-
-      // Combine
-      const totalLight = add(add(light1, light2), ambient)
-      return vec4(spriteColor.rgb.mul(totalLight), spriteColor.a)
-    })()
-
-    return mat
-  }, [spriteSheet, lightUniforms, position])
+  // Apply the lit material
+  useEffect(() => {
+    const sprite = spriteRef.current
+    if (sprite) {
+      sprite.material = litMaterial
+    }
+  }, [litMaterial])
 
   // Animate sprite
   useFrame((_, delta) => {
@@ -194,14 +143,6 @@ function LitSprite({ spriteSheet, position, lightUniforms, animationIndex }: Lit
     sprite.setFrame(spriteSheet.getFrame(anim.frames[state.frameIndex]))
   })
 
-  // Apply custom material
-  useEffect(() => {
-    const sprite = spriteRef.current
-    if (sprite) {
-      ;(sprite as any).material = litMaterial
-    }
-  }, [litMaterial])
-
   return (
     <sprite2D
       ref={spriteRef}
@@ -214,7 +155,7 @@ function LitSprite({ spriteSheet, position, lightUniforms, animationIndex }: Lit
 }
 
 function FlatlandScene() {
-  const spriteSheet = use(spriteSheetPromise) as SpriteSheet
+  const spriteSheet = useLoader(SpriteSheetLoader, './sprites/knight.json')
   const { gl, size } = useThree()
   const flatlandRef = useRef<Flatland>(null)
 
@@ -228,29 +169,18 @@ function FlatlandScene() {
   // Flicker timer
   const flickerTimer = useRef(0)
 
-  // Light uniforms (need to be created once and updated)
-  const lightUniforms = useMemo(() => createLightUniforms(), [])
+  // Light2D refs for direct property access
+  const torch1Ref = useRef<Light2D>(null)
+  const torch2Ref = useRef<Light2D>(null)
+  const ambientRef = useRef<Light2D>(null)
 
-  // Update light uniforms when state changes
-  useEffect(() => {
-    lightUniforms.light1Pos.value.copy(light1Pos)
-  }, [light1Pos, lightUniforms])
-
-  useEffect(() => {
-    lightUniforms.light2Pos.value.copy(light2Pos)
-  }, [light2Pos, lightUniforms])
-
-  useEffect(() => {
-    lightUniforms.light1Enabled.value = light1Enabled ? 1 : 0
-  }, [light1Enabled, lightUniforms])
-
-  useEffect(() => {
-    lightUniforms.light2Enabled.value = light2Enabled ? 1 : 0
-  }, [light2Enabled, lightUniforms])
-
-  useEffect(() => {
-    lightUniforms.ambientIntensity.value = ambientLevel
-  }, [ambientLevel, lightUniforms])
+  // Create lit material — uses lit: true for deferred auto-lighting by Flatland
+  const litMaterial = useMemo(() => {
+    return new Sprite2DMaterial({
+      map: spriteSheet.texture,
+      lit: true,
+    })
+  }, [spriteSheet])
 
   // Handle resize
   useEffect(() => {
@@ -269,25 +199,37 @@ function FlatlandScene() {
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [])
 
-  // Animation and render loop
+  // Sync React state to Light2D properties + render
   useFrame((_, delta) => {
     const flatland = flatlandRef.current
     if (!flatland) return
 
-    // Update flicker
+    // Update light positions from React state
+    if (torch1Ref.current) {
+      torch1Ref.current.position.set(light1Pos.x, light1Pos.y, 0)
+      torch1Ref.current.enabled = light1Enabled
+    }
+    if (torch2Ref.current) {
+      torch2Ref.current.position.set(light2Pos.x, light2Pos.y, 0)
+      torch2Ref.current.enabled = light2Enabled
+    }
+    if (ambientRef.current) {
+      ambientRef.current.intensity = ambientLevel
+    }
+
+    // Update flicker — just set Light2D properties directly
     flickerTimer.current += delta
     const t = flickerTimer.current
 
-    if (light1Enabled) {
-      lightUniforms.light1Intensity.value = 1.2 * (1 + Math.sin(t * 15) * 0.1 + Math.sin(t * 23) * 0.05)
+    if (light1Enabled && torch1Ref.current) {
+      torch1Ref.current.intensity = 1.2 * (1 + Math.sin(t * 15) * 0.1 + Math.sin(t * 23) * 0.05)
     }
-    if (light2Enabled) {
-      lightUniforms.light2Intensity.value = 1.0 * (1 + Math.sin(t * 17 + 1) * 0.1 + Math.sin(t * 19 + 2) * 0.05)
+    if (light2Enabled && torch2Ref.current) {
+      torch2Ref.current.intensity = 1.0 * (1 + Math.sin(t * 17 + 1) * 0.1 + Math.sin(t * 19 + 2) * 0.05)
     }
 
-    // Update batches and render
-    flatland.spriteGroup.update()
-    gl.render(flatland.scene, flatland.camera)
+    // Render — Flatland syncs light uniforms and updates batches
+    flatland.render(gl)
   })
 
   return (
@@ -297,34 +239,41 @@ function FlatlandScene() {
         viewSize={300}
         clearColor={0x0a0a12}
       >
-        {/* Lit sprites */}
+        {/* Lights — Light2D instances managed by Flatland */}
+        <light2D
+          ref={torch1Ref}
+          lightType="point"
+          position={[light1Pos.x, light1Pos.y, 0]}
+          color={0xff6600}
+          intensity={1.2}
+          radius={150}
+          falloff={2}
+        />
+        <light2D
+          ref={torch2Ref}
+          lightType="point"
+          position={[light2Pos.x, light2Pos.y, 0]}
+          color={0xffaa00}
+          intensity={1.0}
+          radius={150}
+          falloff={2}
+        />
+        <light2D
+          ref={ambientRef}
+          lightType="ambient"
+          color={0x111122}
+          intensity={ambientLevel}
+        />
+
+        {/* Lit sprites — lit: true on material, Flatland auto-configures */}
         {spritePositions.map((pos, i) => (
           <LitSprite
             key={i}
             spriteSheet={spriteSheet}
             position={pos}
-            lightUniforms={lightUniforms}
-            animationIndex={i}
+            material={litMaterial}
           />
         ))}
-
-        {/* Light2D instances (for potential future use with built-in lighting) */}
-        <light2D
-          type="point"
-          position={[light1Pos.x, light1Pos.y]}
-          color={0xff6600}
-          intensity={light1Enabled ? 1.2 : 0}
-          radius={150}
-          falloff={2}
-        />
-        <light2D
-          type="point"
-          position={[light2Pos.x, light2Pos.y]}
-          color={0xffaa00}
-          intensity={light2Enabled ? 1.0 : 0}
-          radius={150}
-          falloff={2}
-        />
       </flatland>
 
       {/* Light indicators (draggable UI overlays) */}

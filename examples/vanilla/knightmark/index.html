@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Knightmark - three-flatland</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        overflow: hidden;
+        background: #000;
+        font-family: monospace;
+      }
+      canvas {
+        display: block;
+      }
+      #stats {
+        position: fixed;
+        top: 12px;
+        left: 12px;
+        color: #4a9eff;
+        font-size: 13px;
+        line-height: 1.6;
+        z-index: 100;
+        user-select: none;
+        text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+      }
+      #controls {
+        position: fixed;
+        bottom: 16px;
+        left: 50%;
+        transform: translateX(-50%);
+        display: flex;
+        gap: 10px;
+        z-index: 100;
+      }
+      #controls button {
+        padding: 10px 24px;
+        font-size: 14px;
+        font-family: monospace;
+        border: 2px solid #4a9eff;
+        background: rgba(74, 158, 255, 0.1);
+        color: #4a9eff;
+        cursor: pointer;
+        border-radius: 4px;
+        transition: background 0.15s;
+      }
+      #controls button:hover {
+        background: rgba(74, 158, 255, 0.25);
+      }
+      #controls button:active {
+        background: #4a9eff;
+        color: #1a1a2e;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="stats">Loading...</div>
+    <div id="controls">
+      <button id="btn-add">+ 100 Knights</button>
+    </div>
+    <script type="module" src="/main.ts"></script>
+  </body>
+</html>

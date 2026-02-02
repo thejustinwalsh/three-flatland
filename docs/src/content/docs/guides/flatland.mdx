@@ -58,8 +58,7 @@ For simple sprite rendering without these features, you can use `SpriteGroup` di
 
       // Render loop
       function animate() {
-        flatland.spriteGroup.update();
-        renderer.render(flatland.scene, flatland.camera);
+        flatland.render(renderer);
         requestAnimationFrame(animate);
       }
       animate();
@@ -93,21 +92,17 @@ For simple sprite rendering without these features, you can use `SpriteGroup` di
         flatlandRef.current?.resize(size.width, size.height);
       }, [size.width, size.height]);
 
-      // Render Flatland with its own camera
+      // Render Flatland each frame
       useFrame(() => {
-        const flatland = flatlandRef.current;
-        if (!flatland) return;
-
-        flatland.spriteGroup.update();
-        gl.render(flatland.scene, flatland.camera);
+        flatlandRef.current?.render(gl);
       });
 
       return (
         <flatland ref={flatlandRef} viewSize={400} clearColor={0x1a1a2e}>
           <sprite2D texture={texture} scale={[64, 64, 1]} />
           <light2D
-            type="point"
-            position={[100, 100]}
+            lightType="point"
+            position={[100, 100, 0]}
             color={0xff6600}
             intensity={1.2}
             radius={200}
@@ -156,6 +151,9 @@ interface FlatlandOptions {
 
   /** Background alpha (default: 1) */
   clearAlpha?: number;
+
+  /** Enable post-processing pipeline (default: false) */
+  postProcessing?: boolean;
 }
 ```
 
@@ -173,7 +171,7 @@ const light = new Light2D({ type: 'point', position: [0, 0] });
 flatland.add(light);
 
 // Add multiple at once
-flatland.addAll(sprite1, sprite2, light1);
+flatland.add(sprite1, sprite2, light1);
 
 // Remove
 flatland.remove(sprite);
@@ -225,6 +223,27 @@ postProcessing.outputNode = vhsDistortion(scenePass, uv(), timeUniform, {
 flatland.clearPostProcessing();
 ```
 
+### Effect Chain API
+
+For simpler cases, use `addEffect()` to build a post-processing chain without manual `PostProcessing` setup. Flatland auto-initializes post-processing when the first effect is added:
+
+```typescript
+import { crtComplete, vignette } from '@three-flatland/core';
+
+// Add effects — post-processing auto-initialized on first render
+flatland
+  .addEffect((input, uv) => crtComplete(input, uv, { curvature: 0.15 }))
+  .addEffect((input, uv) => vignette(input, uv, { offset: 0.5 }));
+
+// Remove a specific effect
+flatland.removeEffect(myEffect);
+
+// Clear all effects (disables auto post-processing)
+flatland.clearEffects();
+```
+
+Each `EffectFn` receives the current color node and UV coordinates, and returns a transformed color node. Effects are chained in order.
+
 ## Render to Texture
 
 Render Flatland to a texture for use on 3D objects:
@@ -267,7 +286,13 @@ function animate() {
 | `viewSize` | `number` | Orthographic view size |
 | `renderTarget` | `WebGLRenderTarget \| null` | Render target (null = viewport) |
 | `texture` | `Texture \| null` | Render target texture |
-| `lights` | `Light2D[]` | Collected Light2D instances |
+| `lighting` | `LightingSystem` | Fixed-slot lighting system |
+| `globals` | `GlobalUniforms` | Shared global uniforms (time, tint, viewport) |
+| `lights` | `readonly Light2D[]` | Collected Light2D instances |
+| `effects` | `readonly EffectFn[]` | Current effect chain |
+| `postProcessing` | `PostProcessing \| null` | Post-processing instance |
+| `passNode` | `TSLNode` | Scene pass node for composing effects |
+| `outputNode` | `TSLNode` | Output node for post-processing |
 | `stats` | `RenderStats` | Render statistics |
 | `autoClear` | `boolean` | Clear before render |
 | `clearColor` | `Color` | Background color |
@@ -277,13 +302,16 @@ function animate() {
 
 | Method | Description |
 |--------|-------------|
-| `add(child)` | Add a Sprite2D or Light2D |
-| `remove(child)` | Remove a Sprite2D or Light2D |
-| `addAll(...children)` | Add multiple children |
+| `add(...children)` | Add Sprite2D, Light2D, or other objects |
+| `remove(...children)` | Remove objects |
 | `clear()` | Remove all sprites and lights |
-| `render(renderer)` | Render the scene |
+| `render(renderer)` | Render the scene (updates batches, syncs lights, renders) |
 | `resize(width, height)` | Update aspect ratio and camera |
-| `setPostProcessing(pp, pass)` | Enable post-processing |
+| `createLitColorTransform()` | Create a ColorTransformFn for lit materials |
+| `addEffect(fn)` | Add an effect to the post-processing chain |
+| `removeEffect(fn)` | Remove an effect from the chain |
+| `clearEffects()` | Remove all effects |
+| `setPostProcessing(pp, pass)` | Manually set post-processing instance |
 | `clearPostProcessing()` | Disable post-processing |
 | `dispose()` | Clean up resources |
 

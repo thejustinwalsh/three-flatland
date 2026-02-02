@@ -1,24 +1,12 @@
 import { WebGPURenderer, MeshBasicNodeMaterial } from 'three/webgpu'
-import { uniform, vec3, vec4, float, length, max, smoothstep, mix, Fn, add } from 'three/tsl'
-import {
-  Scene,
-  OrthographicCamera,
-  Color,
-  NearestFilter,
-  PlaneGeometry,
-  Mesh,
-  Vector2,
-  Vector4,
-} from 'three'
+import { vec4 } from 'three/tsl'
+import { NearestFilter, Vector2, PlaneGeometry, Mesh } from 'three'
 import {
   Flatland,
   Light2D,
-  SpriteSheetLoader,
-  sampleSprite,
-  pointLight2D,
-  ambientLight2D,
-  litSprite,
   Sprite2D,
+  Sprite2DMaterial,
+  SpriteSheetLoader,
 } from '@three-flatland/core'
 
 async function main() {
@@ -60,94 +48,59 @@ async function main() {
     falloff: 2,
   })
 
-  // Add lights to flatland
+  const ambient = new Light2D({
+    type: 'ambient',
+    color: 0x111122,
+    intensity: 0.15,
+  })
+
+  // Add lights to flatland (must be added before createLitColorTransform)
   flatland.add(torch1)
   flatland.add(torch2)
+  flatland.add(ambient)
 
-  // Lighting uniforms (updated from Light2D objects)
-  const light1Pos = uniform(new Vector2(-80, 50))
-  const light1Color = uniform(new Color(0xff6600))
-  const light1Intensity = uniform(1.2)
-  const light1Radius = uniform(150)
-  const light1Enabled = uniform(1)
+  // Create lit material using the framework's colorTransform
+  const litMaterial = new Sprite2DMaterial({
+    map: spriteSheet.texture,
+    colorTransform: flatland.createLitColorTransform(),
+  })
 
-  const light2Pos = uniform(new Vector2(80, 50))
-  const light2Color = uniform(new Color(0xffaa00))
-  const light2Intensity = uniform(1.0)
-  const light2Radius = uniform(150)
-  const light2Enabled = uniform(1)
-
-  const ambientColor = uniform(new Color(0x111122))
-  const ambientIntensity = uniform(0.15)
-
-  // Frame uniform for sprites
-  const frameUniform = uniform(new Vector4(0, 0, 0.125, 0.125))
-
-  // Create lit sprite material using TSL
-  const litMaterial = new MeshBasicNodeMaterial()
-  litMaterial.transparent = true
-
-  // Custom lighting calculation for sprites
-  litMaterial.colorNode = Fn(() => {
-    // Sample sprite
-    const spriteColor = sampleSprite(spriteSheet.texture, frameUniform, { alphaTest: 0.01 })
-
-    // Calculate lighting contributions
-    // Point light 1
-    const toLight1 = light1Pos.sub(vec3(0, 0, 0).xy)
-    const dist1 = length(toLight1)
-    const attenuation1 = max(float(0), float(1).sub(dist1.div(light1Radius))).pow(float(2))
-    const light1Contribution = light1Color.mul(attenuation1).mul(light1Intensity).mul(light1Enabled)
-
-    // Point light 2
-    const toLight2 = light2Pos.sub(vec3(0, 0, 0).xy)
-    const dist2 = length(toLight2)
-    const attenuation2 = max(float(0), float(1).sub(dist2.div(light2Radius))).pow(float(2))
-    const light2Contribution = light2Color.mul(attenuation2).mul(light2Intensity).mul(light2Enabled)
-
-    // Ambient light
-    const ambient = ambientColor.mul(ambientIntensity)
-
-    // Combine lighting
-    const totalLight = add(add(light1Contribution, light2Contribution), ambient)
-
-    // Apply lighting to sprite color
-    const lit = vec4(spriteColor.rgb.mul(totalLight), spriteColor.a)
-    return lit
-  })()
-
-  // Create sprites
-  const geometry = new PlaneGeometry(1, 1)
-  const positions = [
+  // Create sprites using Sprite2D + lit material
+  const spritePositions: [number, number][] = [
     [-60, -20],
     [0, -20],
     [60, -20],
   ]
 
-  const sprites: Mesh[] = []
-  for (const pos of positions) {
-    const mesh = new Mesh(geometry, litMaterial)
-    mesh.scale.set(64, 64, 1)
-    mesh.position.set(pos[0], pos[1], 0)
-    flatland.scene.add(mesh)
-    sprites.push(mesh)
+  const sprites: Sprite2D[] = []
+  for (const pos of spritePositions) {
+    const sprite = new Sprite2D({
+      texture: spriteSheet.texture,
+      frame: spriteSheet.getFrame('idle_0'),
+      material: litMaterial,
+    })
+    sprite.position.set(pos[0], pos[1], 0)
+    flatland.add(sprite)
+    sprites.push(sprite)
   }
 
-  // Create light indicator meshes (small circles)
+  // Create light indicator meshes (small colored squares)
   const indicatorGeometry = new PlaneGeometry(1, 1)
 
   const indicator1Mat = new MeshBasicNodeMaterial()
   indicator1Mat.transparent = true
-  indicator1Mat.colorNode = vec4(light1Color.mul(light1Enabled), float(0.8).mul(light1Enabled))
+  indicator1Mat.colorNode = vec4(0.9, 0.4, 0, 0.8)
   const indicator1 = new Mesh(indicatorGeometry, indicator1Mat)
   indicator1.scale.set(20, 20, 1)
+  indicator1.position.set(torch1.position.x, torch1.position.y, 1)
   flatland.scene.add(indicator1)
 
   const indicator2Mat = new MeshBasicNodeMaterial()
   indicator2Mat.transparent = true
-  indicator2Mat.colorNode = vec4(light2Color.mul(light2Enabled), float(0.8).mul(light2Enabled))
+  indicator2Mat.colorNode = vec4(0.9, 0.6, 0, 0.8)
   const indicator2 = new Mesh(indicatorGeometry, indicator2Mat)
   indicator2.scale.set(20, 20, 1)
+  indicator2.position.set(torch2.position.x, torch2.position.y, 1)
   flatland.scene.add(indicator2)
 
   // Animation state
@@ -162,7 +115,7 @@ async function main() {
 
   // Drag state
   let draggingLight: Light2D | null = null
-  let dragOffset = new Vector2()
+  const dragOffset = new Vector2()
 
   // Convert screen to world coordinates
   function screenToWorld(screenX: number, screenY: number): Vector2 {
@@ -182,7 +135,6 @@ async function main() {
   renderer.domElement.addEventListener('mousedown', (e) => {
     const worldPos = screenToWorld(e.clientX, e.clientY)
 
-    // Check if clicking on a light indicator
     const dist1 = worldPos.distanceTo(torch1.position2D)
     const dist2 = worldPos.distanceTo(torch2.position2D)
 
@@ -206,16 +158,13 @@ async function main() {
       const newPos = worldPos.clone().add(dragOffset)
       draggingLight.position2D = newPos
 
-      // Update corresponding uniform
+      // Update indicator position
       if (draggingLight === torch1) {
-        light1Pos.value.copy(newPos)
         indicator1.position.set(newPos.x, newPos.y, 1)
       } else {
-        light2Pos.value.copy(newPos)
         indicator2.position.set(newPos.x, newPos.y, 1)
       }
     } else {
-      // Check for hover
       const dist1 = worldPos.distanceTo(torch1.position2D)
       const dist2 = worldPos.distanceTo(torch2.position2D)
       if (dist1 < 15 || dist2 < 15) {
@@ -240,17 +189,15 @@ async function main() {
   window.addEventListener('keydown', (e) => {
     if (e.key === '1') {
       torch1.enabled = !torch1.enabled
-      light1Enabled.value = torch1.enabled ? 1 : 0
     }
     if (e.key === '2') {
       torch2.enabled = !torch2.enabled
-      light2Enabled.value = torch2.enabled ? 1 : 0
     }
     if (e.key === 'ArrowUp') {
-      ambientIntensity.value = Math.min(1, ambientIntensity.value + 0.05)
+      ambient.intensity = Math.min(1, ambient.intensity + 0.05)
     }
     if (e.key === 'ArrowDown') {
-      ambientIntensity.value = Math.max(0, ambientIntensity.value - 0.05)
+      ambient.intensity = Math.max(0, ambient.intensity - 0.05)
     }
   })
 
@@ -259,10 +206,6 @@ async function main() {
     renderer.setSize(window.innerWidth, window.innerHeight)
     flatland.resize(window.innerWidth, window.innerHeight)
   })
-
-  // Initialize light indicator positions
-  indicator1.position.set(torch1.position.x, torch1.position.y, 1)
-  indicator2.position.set(torch2.position.x, torch2.position.y, 1)
 
   // Flickering effect
   let flickerTimer = 0
@@ -289,23 +232,25 @@ async function main() {
 
     const frameName = anim.frames[frameIndex]
     const frame = spriteSheet.getFrame(frameName)
-    frameUniform.value.set(frame.x, frame.y, frame.width, frame.height)
+    for (const sprite of sprites) {
+      sprite.setFrame(frame)
+    }
 
-    // Flicker effect for torches
+    // Flicker effect for torches — just set properties, Flatland syncs uniforms
     flickerTimer += delta
     const flicker1 = 1 + Math.sin(flickerTimer * 15) * 0.1 + Math.sin(flickerTimer * 23) * 0.05
-    const flicker2 = 1 + Math.sin(flickerTimer * 17 + 1) * 0.1 + Math.sin(flickerTimer * 19 + 2) * 0.05
+    const flicker2 =
+      1 + Math.sin(flickerTimer * 17 + 1) * 0.1 + Math.sin(flickerTimer * 19 + 2) * 0.05
 
     if (torch1.enabled) {
-      light1Intensity.value = 1.2 * flicker1
+      torch1.intensity = 1.2 * flicker1
     }
     if (torch2.enabled) {
-      light2Intensity.value = 1.0 * flicker2
+      torch2.intensity = 1.0 * flicker2
     }
 
-    // Update batches and render
-    flatland.spriteGroup.update()
-    renderer.render(flatland.scene, flatland.camera)
+    // Render — Flatland syncs light uniforms and updates batches automatically
+    flatland.render(renderer)
   }
 
   animate()

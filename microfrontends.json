@@ -192,6 +192,19 @@
           "paths": ["/react/lighting", "/react/lighting/:path*"]
         }
       ]
+    },
+    "example-vanilla-knightmark": {
+      "development": {
+        "local": {
+          "port": 4015
+        }
+      },
+      "routing": [
+        {
+          "group": "vanilla-examples",
+          "paths": ["/vanilla/knightmark", "/vanilla/knightmark/:path*"]
+        }
+      ]
     }
   }
 }

@@ -40,17 +40,17 @@ export const reactFiles = loadExample('react', 'batch-demo');
 
 ## Automatic Batching
 
-`Renderer2D` automatically batches sprites that share the same material, minimizing draw calls:
+`SpriteGroup` automatically batches sprites that share the same material, minimizing draw calls:
 
 ```typescript
-const renderer2D = new Renderer2D();
-scene.add(renderer2D);
+const spriteGroup = new SpriteGroup();
+scene.add(spriteGroup);
 
 // All sprites with the same material are batched together
 for (let i = 0; i < 1000; i++) {
   const sprite = new Sprite2D({ material: sharedMaterial });
   sprite.position.set(x, y, 0);
-  renderer2D.add(sprite);
+  spriteGroup.add(sprite);
 }
 ```
 
@@ -70,9 +70,9 @@ sprite.zIndex = -Math.floor(sprite.position.y); // Y-sort
 Monitor batching performance with the stats object:
 
 ```typescript
-renderer2D.update();
+spriteGroup.update();
 
-const { spriteCount, batchCount, drawCalls } = renderer2D.stats;
+const { spriteCount, batchCount, drawCalls } = spriteGroup.stats;
 console.log(`Sprites: ${spriteCount}, Batches: ${batchCount}, Draw Calls: ${drawCalls}`);
 ```
 

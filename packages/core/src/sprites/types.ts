@@ -53,6 +53,8 @@ export interface Sprite2DOptions {
   zIndex?: number
   /** Pixel-perfect rendering (snap to pixels) */
   pixelPerfect?: boolean
+  /** Whether this sprite should be lit by Flatland's lighting system */
+  lit?: boolean
   /** Custom material (sprites with same material instance batch together) */
   material?: Sprite2DMaterial
 }

@@ -349,11 +349,13 @@ async function main() {
 
     renderer2D.update()
 
-    // Update stats
-    const stats = renderer2D.stats
-    statsEl.textContent = `Sprites: ${stats.spriteCount} | Batches: ${stats.batchCount} | Draw Calls: ${stats.drawCalls}`
-
+    const callsBefore = renderer.info.render.calls
     renderer.render(scene, camera)
+    const drawCalls = renderer.info.render.calls - callsBefore
+
+    // Update stats (draw calls from renderer.info, the rest from our batch system)
+    const stats = renderer2D.stats
+    statsEl.textContent = `Sprites: ${stats.spriteCount} | Batches: ${stats.batchCount} | Draw Calls: ${drawCalls}`
   }
 
   animate()

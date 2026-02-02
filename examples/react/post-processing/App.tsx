@@ -1,8 +1,6 @@
-import { Suspense, useRef, useEffect, useState, useMemo, use } from 'react'
+import { Suspense, useRef, useEffect, useState } from 'react'
 import { Canvas, extend, useFrame, useThree, useLoader } from '@react-three/fiber/webgpu'
-import { PostProcessing } from 'three/webgpu'
-import { pass, uv, uniform } from 'three/tsl'
-import { NearestFilter, Vector4 } from 'three'
+import { uniform, float, floor, vec2 } from 'three/tsl'
 import {
   Flatland,
   Sprite2D,
@@ -19,11 +17,11 @@ import {
   // Analog effects
   vhsDistortion,
   staticNoise,
-  chromaticAberration,
   // Blur/post effects
   vignette,
   filmGrain,
   type SpriteSheet,
+  type EffectFn,
 } from '@three-flatland/react'
 
 // Register Flatland and Sprite2D with R3F
@@ -56,15 +54,6 @@ const animations = {
     fps: 16,
   },
 }
-
-// Load sprite sheet (React 19 resource pattern)
-const spriteSheetPromise = SpriteSheetLoader.load('./sprites/knight.json').then(
-  (sheet) => {
-    sheet.texture.minFilter = NearestFilter
-    sheet.texture.magFilter = NearestFilter
-    return sheet
-  }
-)
 
 // Time uniform shared across components
 const timeUniform = uniform(0)
@@ -126,111 +115,98 @@ interface FlatlandSceneProps {
   effect: EffectType
 }
 
+/**
+ * Build an EffectFn for the given effect type, or null for 'none'.
+ * Each EffectFn receives (input, uv) from Flatland's effect chain.
+ */
+function buildEffectFn(
+  effect: EffectType,
+  time: ReturnType<typeof uniform>
+): EffectFn | null {
+  switch (effect) {
+    case 'crt':
+      return (input, uvCoord) => crtComplete(input, uvCoord, {
+        curvature: 0.15,
+        vignetteIntensity: 0.3,
+        scanlineIntensity: 0.15,
+        scanlineRes: 240,
+      })
+
+    case 'dmg':
+      return (input, uvCoord) => {
+        // Pixelate by snapping UVs to 160-wide pixel grid
+        const res = float(160)
+        const pixelSize = float(1).div(res)
+        const pixelatedUV = floor(uvCoord.mul(res)).add(0.5).div(res)
+
+        // Sample center and neighbors — simulates slow LCD response / ghosting
+        const center = input.sample(pixelatedUV)
+        const left = input.sample(pixelatedUV.sub(vec2(pixelSize, 0)))
+        const right = input.sample(pixelatedUV.add(vec2(pixelSize, 0)))
+        const up = input.sample(pixelatedUV.add(vec2(0, pixelSize)))
+        const down = input.sample(pixelatedUV.sub(vec2(0, pixelSize)))
+
+        const ghost = float(0.08)
+        const ghosted = center.mul(float(1).sub(ghost.mul(4)))
+          .add(left.mul(ghost))
+          .add(right.mul(ghost))
+          .add(up.mul(ghost))
+          .add(down.mul(ghost))
+
+        // Apply DMG 4-color green palette
+        const palette = dmgPalette(ghosted)
+        // Square pixel grid on green LCD background
+        return dotMatrix(palette, uvCoord, 160, 0.85, [0.61, 0.73, 0.06])
+      }
+
+    case 'gbc':
+      return (input, uvCoord) => lcdGBC(input, uvCoord, 160, 0.2)
+
+    case 'vhs':
+      return (input, uvCoord) => {
+        // vhsDistortion includes built-in color channel separation
+        const distorted = vhsDistortion(input, uvCoord, time, 0.02, 0.1)
+        return staticNoise(distorted, uvCoord, time, 0.08)
+      }
+
+    case 'lcd':
+      return (input, uvCoord) => lcdGrid(input, uvCoord, 240, 0.15, 0.1)
+
+    case 'arcade':
+      return (input, uvCoord) => {
+        const withPhosphor = phosphorMask(input, uvCoord, 'aperture', 640, 0.15)
+        return scanlines(withPhosphor, uvCoord, 240, 0.2, time.mul(0.5))
+      }
+
+    case 'film':
+      return (input, uvCoord) => {
+        const grained = filmGrain(input, uvCoord, time, 0.15, 0.3)
+        return vignette(grained, uvCoord, 0.6, 0.5)
+      }
+
+    case 'none':
+    default:
+      return null
+  }
+}
+
 function FlatlandScene({ effect }: FlatlandSceneProps) {
-  const spriteSheet = use(spriteSheetPromise) as SpriteSheet
+  const spriteSheet = useLoader(SpriteSheetLoader, './sprites/knight.json')
   const { gl, size } = useThree()
   const flatlandRef = useRef<Flatland>(null)
-  const postProcessingRef = useRef<PostProcessing | null>(null)
 
-  // Create post-processing and connect to Flatland
+  // Update effect chain when effect changes
+  // Flatland auto-creates PostProcessing during render() when effects are present
   useEffect(() => {
     const flatland = flatlandRef.current
     if (!flatland) return
 
-    const postProcessing = new PostProcessing(gl)
-    const scenePass = pass(flatland.scene, flatland.camera)
+    flatland.clearEffects()
 
-    postProcessingRef.current = postProcessing
-    flatland.setPostProcessing(postProcessing, scenePass)
-
-    return () => {
-      postProcessing.dispose?.()
+    const effectFn = buildEffectFn(effect, timeUniform)
+    if (effectFn) {
+      flatland.addEffect(effectFn)
     }
-  }, [gl])
-
-  // Update effect when it changes
-  useEffect(() => {
-    const flatland = flatlandRef.current
-    const postProcessing = postProcessingRef.current
-    if (!flatland || !postProcessing) return
-
-    const scenePass = pass(flatland.scene, flatland.camera)
-
-    // Effect functions that create TSL nodes
-    const effectNodes: Record<EffectType, () => ReturnType<typeof pass>> = {
-      none: () => scenePass,
-
-      crt: () => crtComplete(scenePass, uv(), {
-        curvature: 0.15,
-        vignetteStrength: 0.3,
-        scanlineIntensity: 0.15,
-        scanlineCount: 240,
-      }),
-
-      dmg: () => {
-        const palette = dmgPalette(scenePass)
-        return dotMatrix(palette, uv(), {
-          gridSize: 3,
-          dotSize: 0.7,
-          dotColor: [0.6, 0.7, 0.5, 1],
-          bgColor: [0.5, 0.6, 0.4, 1],
-        })
-      },
-
-      gbc: () => lcdGBC(scenePass, uv(), {
-        gridSize: 3,
-        subpixelBlend: 0.5,
-        brightness: 1.1,
-      }),
-
-      vhs: () => {
-        const distorted = vhsDistortion(scenePass, uv(), timeUniform, {
-          trackingNoise: 0.02,
-          jitter: 0.001,
-          waveSpeed: 2.0,
-        })
-        const noisy = staticNoise(distorted, uv(), timeUniform, {
-          intensity: 0.08,
-          flickerSpeed: 15,
-        })
-        return chromaticAberration(noisy, uv(), {
-          offsetR: [0.003, 0],
-          offsetB: [-0.003, 0],
-        })
-      },
-
-      lcd: () => lcdGrid(scenePass, uv(), {
-        gridSize: 3,
-        lineWidth: 0.2,
-        lineColor: [0, 0, 0, 0.3],
-      }),
-
-      arcade: () => {
-        const withPhosphor = phosphorMask(scenePass, uv(), {
-          type: 'aperture-grille',
-          scale: 3,
-          intensity: 0.15,
-        })
-        return scanlines(withPhosphor, uv(), {
-          count: 240,
-          intensity: 0.2,
-          offset: timeUniform.mul(0.5),
-        })
-      },
-
-      film: () => {
-        const grained = filmGrain(scenePass, uv(), timeUniform, {
-          intensity: 0.15,
-          luminanceThreshold: 0.3,
-        })
-        return vignette(grained, uv(), {
-          offset: 0.5,
-          darkness: 0.6,
-        })
-      },
-    }
-
-    postProcessing.outputNode = effectNodes[effect]()
   }, [effect])
 
   // Handle resize
@@ -238,20 +214,14 @@ function FlatlandScene({ effect }: FlatlandSceneProps) {
     flatlandRef.current?.resize(size.width, size.height)
   }, [size.width, size.height])
 
-  // Render loop
+  // Render loop — Flatland.render() handles batch updates + post-processing
   useFrame((_, delta) => {
     const flatland = flatlandRef.current
     if (!flatland) return
 
-    // Update time uniform
     timeUniform.value += delta
-
-    // Update sprite batches
-    flatland.spriteGroup.update()
-
-    // Render with post-processing
-    postProcessingRef.current?.render()
-  }, 1) // Priority 1 to render after scene updates
+    flatland.render(gl)
+  }, 1) // Priority 1 to take over rendering from R3F
 
   return (
     <flatland

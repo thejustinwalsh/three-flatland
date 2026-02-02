@@ -275,7 +275,8 @@ export class BatchManager {
   private _updateStats(): void {
     this._stats.spriteCount = this._sprites.size
     this._stats.batchCount = this._activeBatches.length
-    this._stats.drawCalls = this._activeBatches.filter((b) => !b.isEmpty).length
+    // drawCalls is NOT set here — it must come from renderer.info.render.calls
+    // after the actual Three.js render pass. See Flatland.stats for the real value.
     this._stats.visibleSprites = this._activeBatches.reduce((sum, b) => sum + b.spriteCount, 0)
   }
 

@@ -44,39 +44,62 @@ Add lights to your Flatland scene using `Light2D`:
 
     // Render loop
     function animate() {
-      flatland.spriteGroup.update();
-      renderer.render(flatland.scene, flatland.camera);
+      flatland.render(renderer);
       requestAnimationFrame(animate);
     }
     ```
   </TabItem>
   <TabItem label="React" icon="seti:react">
     ```tsx
-    import { Canvas } from '@react-three/fiber/webgpu';
+    import { Suspense, useRef, useEffect } from 'react';
+    import { Canvas, extend, useFrame, useThree } from '@react-three/fiber/webgpu';
     import { Flatland, Light2D, Sprite2D } from '@three-flatland/react';
 
+    extend({ Flatland, Sprite2D, Light2D });
+
     function LitScene() {
+      const flatlandRef = useRef<Flatland>(null);
+      const { gl, size } = useThree();
+
+      useEffect(() => {
+        flatlandRef.current?.resize(size.width, size.height);
+      }, [size.width, size.height]);
+
+      useFrame(() => {
+        flatlandRef.current?.render(gl);
+      });
+
       return (
-        <Flatland viewSize={300}>
+        <flatland ref={flatlandRef} viewSize={300} clearColor={0x0a0a12}>
           {/* Point light (torch) */}
-          <Light2D
-            type="point"
-            position={[100, 50]}
+          <light2D
+            lightType="point"
+            position={[100, 50, 0]}
             color={0xff6600}
             intensity={1.2}
             radius={150}
           />
 
           {/* Ambient light */}
-          <Light2D
-            type="ambient"
+          <light2D
+            lightType="ambient"
             color={0x111122}
             intensity={0.15}
           />
 
-          {/* Sprites receive lighting */}
-          <Sprite2D texture={knightTexture} position={[0, 0]} />
-        </Flatland>
+          {/* Sprites with lit material receive lighting */}
+          <sprite2D texture={knightTexture} position={[0, 0, 0]} />
+        </flatland>
+      );
+    }
+
+    export default function App() {
+      return (
+        <Canvas gl={{ antialias: false }}>
+          <Suspense fallback={null}>
+            <LitScene />
+          </Suspense>
+        </Canvas>
       );
     }
     ```

@@ -197,7 +197,8 @@ describe('BatchManager', () => {
 
     expect(stats.spriteCount).toBe(2)
     expect(stats.batchCount).toBe(2)
-    expect(stats.drawCalls).toBe(2)
+    // drawCalls is derived from renderer.info.render.calls after an actual render pass,
+    // not computed by BatchManager
     expect(stats.visibleSprites).toBe(2)
   })
 

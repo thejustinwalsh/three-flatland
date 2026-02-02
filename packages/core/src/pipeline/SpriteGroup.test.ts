@@ -128,7 +128,8 @@ describe('SpriteGroup', () => {
 
     expect(stats.spriteCount).toBe(2)
     expect(stats.batchCount).toBe(1)
-    expect(stats.drawCalls).toBe(1)
+    // drawCalls is derived from renderer.info.render.calls after an actual render pass,
+    // not computed by SpriteGroup
     expect(stats.visibleSprites).toBe(2)
   })
 

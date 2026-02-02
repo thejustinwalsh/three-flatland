@@ -5,19 +5,19 @@ description: How automatic batching works and tips for optimal performance.
 
 import { Tabs, TabItem } from '@astrojs/starlight/components';
 
-Renderer2D automatically batches sprites that share the same material into single draw calls. You don't need to do anything special—just add sprites and the batching happens behind the scenes.
+SpriteGroup automatically batches sprites that share the same material into single draw calls. You don't need to do anything special—just add sprites and the batching happens behind the scenes.
 
 ## How It Works
 
-When you add sprites to a `Renderer2D`, they're grouped by material:
+When you add sprites to a `SpriteGroup`, they're grouped by material:
 
 <Tabs syncKey="framework">
   <TabItem label="Three.js" icon="seti:javascript">
     ```typescript
-    import { Sprite2D, Renderer2D, Sprite2DMaterial } from '@three-flatland/core';
+    import { Sprite2D, SpriteGroup, Sprite2DMaterial } from '@three-flatland/core';
 
-    const renderer2D = new Renderer2D();
-    scene.add(renderer2D);
+    const spriteGroup = new SpriteGroup();
+    scene.add(spriteGroup);
 
     // These sprites share a material, so they batch together
     const material = new Sprite2DMaterial({ map: spriteSheet });
@@ -25,12 +25,12 @@ When you add sprites to a `Renderer2D`, they're grouped by material:
     for (let i = 0; i < 1000; i++) {
       const sprite = new Sprite2D({ material });
       sprite.position.set(Math.random() * 100, Math.random() * 100, 0);
-      renderer2D.add(sprite);
+      spriteGroup.add(sprite);
     }
 
     // In your render loop
     function animate() {
-      renderer2D.update();  // Rebuilds batches and uploads to GPU
+      spriteGroup.update();  // Rebuilds batches and uploads to GPU
       renderer.render(scene, camera);
       requestAnimationFrame(animate);
     }
@@ -40,12 +40,12 @@ When you add sprites to a `Renderer2D`, they're grouped by material:
     ```tsx
     import { useRef, useMemo } from 'react';
     import { extend, useFrame } from '@react-three/fiber/webgpu';
-    import { Sprite2D, Renderer2D, Sprite2DMaterial } from '@three-flatland/react';
+    import { Sprite2D, SpriteGroup, Sprite2DMaterial } from '@three-flatland/react';
 
-    extend({ Sprite2D, Renderer2D, Sprite2DMaterial });
+    extend({ Sprite2D, SpriteGroup, Sprite2DMaterial });
 
     function Particles({ count = 1000, spriteSheet }) {
-      const rendererRef = useRef<Renderer2D>(null);
+      const groupRef = useRef<SpriteGroup>(null);
 
       // Create shared material
       const material = useMemo(() => new Sprite2DMaterial({ map: spriteSheet }), [spriteSheet]);
@@ -57,28 +57,28 @@ When you add sprites to a `Renderer2D`, they're grouped by material:
       );
 
       useFrame(() => {
-        rendererRef.current?.update();
+        groupRef.current?.update();
       });
 
       return (
-        <renderer2D ref={rendererRef}>
+        <spriteGroup ref={groupRef}>
           {positions.map((pos, i) => (
             <sprite2D key={i} material={material} position={pos} />
           ))}
-        </renderer2D>
+        </spriteGroup>
       );
     }
     ```
   </TabItem>
 </Tabs>
 
-## Renderer Options
+## Setup
 
-The `Renderer2D` constructor accepts optional batch configuration:
+Create a `SpriteGroup` and add it to your scene:
 
 ```typescript
-const renderer2D = new Renderer2D();
-scene.add(renderer2D);
+const spriteGroup = new SpriteGroup();
+scene.add(spriteGroup);
 ```
 
 ## Performance Monitoring
@@ -86,7 +86,7 @@ scene.add(renderer2D);
 Check batch efficiency with the `stats` property:
 
 ```typescript
-const stats = renderer2D.stats;
+const stats = spriteGroup.stats;
 
 console.log(`Sprites: ${stats.spriteCount}`);
 console.log(`Batches: ${stats.batchCount}`);
@@ -119,13 +119,13 @@ Combine textures into a single atlas. All sprites using the atlas can share one 
 
 ```typescript
 // Load a sprite sheet with frame data
-const { texture, frames } = await SpriteSheetLoader.load('/sprites/atlas.json');
+const sheet = await SpriteSheetLoader.load('/sprites/atlas.json');
 
-const material = new Sprite2DMaterial({ map: texture });
+const material = new Sprite2DMaterial({ map: sheet.texture });
 
 // Different frames, same material = same batch
-const player = new Sprite2D({ material, frame: frames.get('player') });
-const enemy = new Sprite2D({ material, frame: frames.get('enemy') });
+const player = new Sprite2D({ material, frame: sheet.getFrame('player') });
+const enemy = new Sprite2D({ material, frame: sheet.getFrame('enemy') });
 ```
 
 ### Organize by Layer
@@ -149,8 +149,8 @@ When sprites change, mark them for update:
 ```typescript
 // Single sprite changed
 sprite.position.x += 10;
-renderer2D.invalidate(sprite);
+spriteGroup.invalidate(sprite);
 
 // Many sprites changed
-renderer2D.invalidateAll();
+spriteGroup.invalidateAll();
 ```

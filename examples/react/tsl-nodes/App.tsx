@@ -1,5 +1,5 @@
-import { Suspense, useMemo, useState, use, useRef, useImperativeHandle, forwardRef, useEffect } from 'react'
-import { Canvas, useFrame } from '@react-three/fiber/webgpu'
+import { Suspense, useMemo, useState, useRef, useImperativeHandle, forwardRef, useEffect } from 'react'
+import { Canvas, useFrame, useLoader } from '@react-three/fiber/webgpu'
 import { MeshBasicNodeMaterial } from 'three/webgpu'
 import {
   texture as sampleTexture,
@@ -13,7 +13,6 @@ import {
   Fn,
 } from 'three/tsl'
 import {
-  NearestFilter,
   PlaneGeometry,
   CanvasTexture,
   RepeatWrapping,
@@ -21,6 +20,7 @@ import {
 } from 'three'
 import {
   SpriteSheetLoader,
+  applyTextureOptions,
   sampleSprite,
   spriteUV,
   tint,
@@ -30,7 +30,6 @@ import {
   outline8,
   pixelate,
   dissolvePixelated,
-  type SpriteSheet,
 } from '@three-flatland/react'
 
 // Effect types
@@ -126,15 +125,6 @@ function createNoiseTexture(size = 256): CanvasTexture {
   return texture
 }
 
-// Load sprite sheet (React 19 resource pattern)
-const spriteSheetPromise = SpriteSheetLoader.load('./sprites/knight.json').then(
-  (sheet) => {
-    sheet.texture.minFilter = NearestFilter
-    sheet.texture.magFilter = NearestFilter
-    return sheet
-  }
-)
-
 // Create shared geometry
 const sharedGeometry = new PlaneGeometry(1, 1)
 
@@ -157,7 +147,7 @@ interface EffectSpriteHandle {
 
 const EffectSprite = forwardRef<EffectSpriteHandle, EffectSpriteProps>(
   function EffectSprite({ effect }, ref) {
-    const spriteSheet = use(spriteSheetPromise) as SpriteSheet
+    const spriteSheet = useLoader(SpriteSheetLoader, './sprites/knight.json')
 
     // Animation state
     const animState = useRef({
@@ -175,8 +165,7 @@ const EffectSprite = forwardRef<EffectSpriteHandle, EffectSpriteProps>(
     // Create noise texture (memoized)
     const noiseTexture = useMemo(() => {
       const tex = createNoiseTexture()
-      tex.minFilter = NearestFilter
-      tex.magFilter = NearestFilter
+      applyTextureOptions(tex, 'pixel-art')
       return tex
     }, [])
 

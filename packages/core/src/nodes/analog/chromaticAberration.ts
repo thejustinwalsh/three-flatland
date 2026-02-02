@@ -1,5 +1,4 @@
-import { vec2, vec4, float, texture as sampleTexture } from 'three/tsl'
-import type { Texture } from 'three'
+import { vec2, vec4, float } from 'three/tsl'
 import type { TSLNode, FloatInput, Vec2Input } from '../types'
 
 /**
@@ -16,7 +15,7 @@ import type { TSLNode, FloatInput, Vec2Input } from '../types'
  * const aberrated = chromaticAberration(texture, uv, 0.005)
  */
 export function chromaticAberration(
-  tex: Texture,
+  tex: TSLNode,
   uv: TSLNode,
   amount: FloatInput = 0.005,
   angle: FloatInput = 0
@@ -28,10 +27,10 @@ export function chromaticAberration(
   const dir = vec2(angleNode.cos(), angleNode.sin())
 
   // Sample each channel at different offsets
-  const r = sampleTexture(tex, uv.add(dir.mul(amountNode))).r
-  const g = sampleTexture(tex, uv).g
-  const b = sampleTexture(tex, uv.sub(dir.mul(amountNode))).b
-  const a = sampleTexture(tex, uv).a
+  const r = tex.sample(uv.add(dir.mul(amountNode))).r
+  const g = tex.sample(uv).g
+  const b = tex.sample(uv.sub(dir.mul(amountNode))).b
+  const a = tex.sample(uv).a
 
   return vec4(r, g, b, a)
 }
@@ -47,7 +46,7 @@ export function chromaticAberration(
  * @returns Color with radial chromatic aberration
  */
 export function chromaticAberrationRadial(
-  tex: Texture,
+  tex: TSLNode,
   uv: TSLNode,
   amount: FloatInput = 0.01,
   center: Vec2Input = [0.5, 0.5]
@@ -65,10 +64,10 @@ export function chromaticAberrationRadial(
   // Direction is radial (from center)
   const dir = toCenter.normalize()
 
-  const r = sampleTexture(tex, uv.add(dir.mul(scaledAmount))).r
-  const g = sampleTexture(tex, uv).g
-  const b = sampleTexture(tex, uv.sub(dir.mul(scaledAmount))).b
-  const a = sampleTexture(tex, uv).a
+  const r = tex.sample(uv.add(dir.mul(scaledAmount))).r
+  const g = tex.sample(uv).g
+  const b = tex.sample(uv.sub(dir.mul(scaledAmount))).b
+  const a = tex.sample(uv).a
 
   return vec4(r, g, b, a)
 }
@@ -83,7 +82,7 @@ export function chromaticAberrationRadial(
  * @returns Color with custom chromatic aberration
  */
 export function chromaticAberrationCustom(
-  tex: Texture,
+  tex: TSLNode,
   uv: TSLNode,
   redOffset: Vec2Input = [0.003, 0],
   blueOffset: Vec2Input = [-0.003, 0]
@@ -91,10 +90,10 @@ export function chromaticAberrationCustom(
   const redVec = Array.isArray(redOffset) ? vec2(...redOffset) : redOffset
   const blueVec = Array.isArray(blueOffset) ? vec2(...blueOffset) : blueOffset
 
-  const r = sampleTexture(tex, uv.add(redVec)).r
-  const g = sampleTexture(tex, uv).g
-  const b = sampleTexture(tex, uv.add(blueVec)).b
-  const a = sampleTexture(tex, uv).a
+  const r = tex.sample(uv.add(redVec)).r
+  const g = tex.sample(uv).g
+  const b = tex.sample(uv.add(blueVec)).b
+  const a = tex.sample(uv).a
 
   return vec4(r, g, b, a)
 }
@@ -111,7 +110,7 @@ export function chromaticAberrationCustom(
  * @returns Animated chromatic aberration
  */
 export function chromaticAberrationPulse(
-  tex: Texture,
+  tex: TSLNode,
   uv: TSLNode,
   time: TSLNode | FloatInput,
   baseAmount: FloatInput = 0.002,

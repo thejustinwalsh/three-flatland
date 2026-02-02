@@ -1,6 +1,5 @@
-import { Suspense, useRef, useState, use } from 'react'
-import { Canvas, extend, useFrame } from '@react-three/fiber/webgpu'
-import { NearestFilter } from 'three'
+import { Suspense, useRef, useState } from 'react'
+import { Canvas, extend, useFrame, useLoader } from '@react-three/fiber/webgpu'
 import {
   AnimatedSprite2D,
   SpriteSheetLoader,
@@ -10,16 +9,6 @@ import {
 
 // Register AnimatedSprite2D with R3F (tree-shakeable)
 extend({ AnimatedSprite2D })
-
-// Load the knight spritesheet (React 19 resource pattern)
-const knightSheetPromise = SpriteSheetLoader.load('./sprites/knight.json').then(
-  (sheet) => {
-    // Use nearest neighbor filtering for pixel art
-    sheet.texture.minFilter = NearestFilter
-    sheet.texture.magFilter = NearestFilter
-    return sheet
-  }
-)
 
 // Animation definitions
 const animationSet: AnimationSetDefinition = {
@@ -92,7 +81,7 @@ interface KnightProps {
 
 function Knight({ animation, speed, onAnimationComplete }: KnightProps) {
   const ref = useRef<AnimatedSprite2D>(null)
-  const sheet = use(knightSheetPromise)
+  const sheet = useLoader(SpriteSheetLoader, './sprites/knight.json')
   const lastAnimation = useRef(animation)
 
   // Update animation when it changes

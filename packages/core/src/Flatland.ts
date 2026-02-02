@@ -2,9 +2,9 @@ import {
   Scene,
   OrthographicCamera,
   Color,
-  WebGLRenderTarget,
+  type WebGLRenderTarget,
   Group,
-  Object3D,
+  type Object3D,
   type ColorRepresentation,
   type Texture,
   type PointLight,
@@ -14,15 +14,36 @@ import {
   Vector2,
   Vector3,
 } from 'three'
-import type { WebGPURenderer, PostProcessing } from 'three/webgpu'
+import { PostProcessing, type WebGPURenderer } from 'three/webgpu'
+import { pass, uv as uvNode, convertToTexture } from 'three/tsl'
 import { SpriteGroup } from './pipeline/SpriteGroup'
 import { Light2D } from './lights/Light2D'
+import { LightingSystem } from './lights/LightingSystem'
+import { GlobalUniforms } from './GlobalUniforms'
 import type { RenderStats } from './pipeline/types'
 import { Sprite2D } from './sprites/Sprite2D'
+import type { ColorTransformFn } from './materials/Sprite2DMaterial'
 
 // TSL node types are complex - use generic type for flexibility
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type TSLNode = any
+
+/**
+ * An effect function for the post-processing pipeline.
+ * Receives the current scene color node and UV coordinates, returns transformed color.
+ *
+ * @example
+ * ```typescript
+ * import { crtComplete, vignette } from '@three-flatland/core'
+ *
+ * const crtEffect: EffectFn = (input, uv) => crtComplete(input, uv, { curvature: 0.15 })
+ * const vignetteEffect: EffectFn = (input, uv) => vignette(input, uv, 0.5)
+ *
+ * flatland.addEffect(crtEffect)
+ * flatland.addEffect(vignetteEffect)
+ * ```
+ */
+export type EffectFn = (input: TSLNode, uv: TSLNode) => TSLNode
 
 /**
  * Options for creating a Flatland instance.
@@ -159,6 +180,39 @@ export class Flatland extends Group {
 
   /** Cached renderer reference */
   private _renderer: WeakRef<WebGPURenderer> | null = null
+
+  /** Last render timestamp for delta time calculation (ms) */
+  private _lastRenderTime = -1
+
+  /** Fixed-slot lighting system (compile once, update per-frame) */
+  readonly lighting: LightingSystem = new LightingSystem()
+
+  /** Global uniforms shared across all sprite materials */
+  readonly globals: GlobalUniforms = new GlobalUniforms()
+
+  /** Cached lit color transform (flat lighting, no auto-normals) */
+  private _litColorTransform: ColorTransformFn | null = null
+
+  /** Per-texture lit color transforms (auto-normals mode) */
+  private _litColorTransformsByTexture: Map<number, ColorTransformFn> = new Map()
+
+  /** Sprites with lit: true that need auto-lighting setup */
+  private _pendingLitSprites: Set<Sprite2D> = new Set()
+
+  /** Synthetic Light2D instances created from 3D scene lights */
+  private _sceneLightProxies: Light2D[] = []
+
+  /** Effect chain for auto-managed post-processing */
+  private _effects: EffectFn[] = []
+
+  /** Whether auto post-processing needs rebuilding */
+  private _effectsDirty = false
+
+  /** Whether post-processing was auto-initialized (vs. manual setPostProcessing) */
+  private _autoPostProcessing = false
+
+  /** Draw calls captured from renderer.info after last render */
+  private _drawCalls = 0
 
   constructor(options: FlatlandOptions = {}) {
     super()
@@ -338,6 +392,25 @@ export class Flatland extends Group {
   }
 
   /**
+   * Create a ColorTransformFn that applies lighting from the fixed-slot LightingSystem.
+   * The returned function compiles once into a shader with a loop over 0-8 lights.
+   * Adding/removing lights never triggers shader recompilation.
+   *
+   * @returns ColorTransformFn for use with Sprite2DMaterial
+   *
+   * @example
+   * ```typescript
+   * const litMaterial = new Sprite2DMaterial({
+   *   map: spriteSheet.texture,
+   *   colorTransform: flatland.createLitColorTransform(),
+   * })
+   * ```
+   */
+  createLitColorTransform(): ColorTransformFn {
+    return this.lighting.createColorTransform()
+  }
+
+  /**
    * Add objects to Flatland.
    * Sprites are routed to the internal SpriteGroup for batching.
    * Lights are collected and added to the internal scene.
@@ -352,7 +425,15 @@ export class Flatland extends Group {
         this._lights.push(child)
         this.scene.add(child)
       } else if (child instanceof Sprite2D) {
+        // Wire global uniforms to the material (shared by reference)
+        if (!child.material.globalUniforms) {
+          child.material.globalUniforms = this.globals
+        }
         this.spriteGroup.add(child)
+        // If sprite has lit: true and no colorTransform, queue for auto-setup
+        if (child.material.lit && !child.material.colorTransform) {
+          this._pendingLitSprites.add(child)
+        }
       } else {
         // Add other objects directly to the internal scene
         this.scene.add(child)
@@ -375,6 +456,7 @@ export class Flatland extends Group {
         this.scene.remove(child)
       } else if (child instanceof Sprite2D) {
         this.spriteGroup.remove(child)
+        this._pendingLitSprites.delete(child)
       } else {
         this.scene.remove(child)
       }
@@ -438,25 +520,101 @@ export class Flatland extends Group {
     this._passNode = null
     this._outputNode = null
     this._postProcessingEnabled = false
+    this._autoPostProcessing = false
+  }
+
+  /**
+   * Add an effect to the post-processing chain.
+   * Effects are applied in order. Automatically enables post-processing.
+   *
+   * @param effect - Effect function that transforms scene color
+   * @returns this (for chaining)
+   *
+   * @example
+   * ```typescript
+   * import { crtComplete, vignette } from '@three-flatland/core'
+   *
+   * flatland
+   *   .addEffect((input, uv) => crtComplete(input, uv, { curvature: 0.15 }))
+   *   .addEffect((input, uv) => vignette(input, uv, 0.5))
+   * ```
+   */
+  addEffect(effect: EffectFn): this {
+    this._effects.push(effect)
+    this._effectsDirty = true
+    this._postProcessingEnabled = true
+    return this
+  }
+
+  /**
+   * Remove an effect from the post-processing chain.
+   *
+   * @param effect - The same function reference passed to addEffect()
+   * @returns this (for chaining)
+   */
+  removeEffect(effect: EffectFn): this {
+    const idx = this._effects.indexOf(effect)
+    if (idx !== -1) {
+      this._effects.splice(idx, 1)
+      this._effectsDirty = true
+    }
+    return this
+  }
+
+  /**
+   * Remove all effects from the post-processing chain.
+   * Disables post-processing if it was auto-initialized.
+   *
+   * @returns this (for chaining)
+   */
+  clearEffects(): this {
+    this._effects.length = 0
+    this._effectsDirty = true
+    if (this._autoPostProcessing) {
+      this._postProcessingEnabled = false
+    }
+    return this
+  }
+
+  /**
+   * Get the current effect chain.
+   */
+  get effects(): readonly EffectFn[] {
+    return this._effects
   }
 
   /**
    * Render Flatland.
    */
   render(renderer: WebGPURenderer): void {
+    // Auto-sync global uniforms from renderer
+    this._syncGlobals(renderer)
+
+    // Process pending lit sprites (deferred auto-lighting)
+    this._processPendingLitSprites()
+
+    // Convert 3D lights to 2D proxies (before sync so they're included)
+    this._update3DLights()
+
+    // Sync light uniforms (position, color, intensity, etc.)
+    this._syncLightUniforms()
+
     // Update sprite batches
     this.spriteGroup.update()
-
-    // Convert 3D lights to 2D (if any)
-    this._update3DLights()
 
     // Store renderer reference
     if (!this._renderer || this._renderer.deref() !== renderer) {
       this._renderer = new WeakRef(renderer)
     }
 
+    // Auto-initialize or rebuild post-processing if needed
+    this._ensurePostProcessing(renderer)
+
     // Save current render target
     const currentRenderTarget = renderer.getRenderTarget()
+
+    // Snapshot draw calls before render so we can compute the delta
+    const callsBefore = renderer.info.render.calls
 
     if (this._postProcessing && this._postProcessingEnabled) {
       // Post-processing handles its own render target
@@ -479,14 +637,175 @@ export class Flatland extends Group {
         renderer.setRenderTarget(currentRenderTarget)
       }
     }
+
+    // Capture real draw calls from renderer.info (delta = only our render pass)
+    this._drawCalls = renderer.info.render.calls - callsBefore
   }
 
   /**
-   * Update 2D light uniforms from 3D scene lights.
+   * Sync global uniforms from renderer state.
+   * Called once per frame before rendering.
+   */
+  private _syncGlobals(renderer: WebGPURenderer): void {
+    // Time — accumulate delta for auto mode
+    const now = performance.now()
+    if (this._lastRenderTime >= 0) {
+      const delta = (now - this._lastRenderTime) / 1000 // ms → seconds
+      this.globals.updateTime(delta)
+    }
+    this._lastRenderTime = now
+
+    // Viewport size from renderer
+    const size = renderer.getSize(new Vector2())
+    this.globals.viewportSize = size
+
+    // Pixel ratio from renderer
+    this.globals.pixelRatio = renderer.getPixelRatio()
+  }
+
+  /**
+   * Sync all Light2D properties into the LightingSystem's uniform arrays.
+   * Includes both user Light2D instances and synthetic proxies from 3D lights.
+   * Called once per frame — no shader recompilation.
+   */
+  private _syncLightUniforms(): void {
+    if (this._sceneLightProxies.length === 0) {
+      this.lighting.sync(this._lights)
+    } else {
+      // Combine user lights + 3D light proxies
+      const allLights = this._lights.concat(this._sceneLightProxies)
+      this.lighting.sync(allLights)
+    }
+  }
+
+  /**
+   * Process sprites that have lit: true but no colorTransform yet.
+   * When autoNormals is off: shared flat lighting transform for all sprites.
+   * When autoNormals is on: per-texture transforms (normals sample the texture).
+   */
+  private _processPendingLitSprites(): void {
+    if (this._pendingLitSprites.size === 0) return
+
+    if (!this.lighting.autoNormals) {
+      // Flat lighting — one shared transform for all sprites
+      if (!this._litColorTransform) {
+        this._litColorTransform = this.createLitColorTransform()
+      }
+      for (const sprite of this._pendingLitSprites) {
+        sprite.material.colorTransform = this._litColorTransform
+      }
+    } else {
+      // Auto-normals — group by texture, one transform per unique texture
+      for (const sprite of this._pendingLitSprites) {
+        const tex = sprite.material.getTexture()
+        if (!tex) {
+          // No texture yet — use flat lighting fallback
+          if (!this._litColorTransform) {
+            this._litColorTransform = this.createLitColorTransform()
+          }
+          sprite.material.colorTransform = this._litColorTransform
+          continue
+        }
+
+        let transform = this._litColorTransformsByTexture.get(tex.id)
+        if (!transform) {
+          transform = this.lighting.createColorTransform({
+            texture: tex,
+            autoNormals: true,
+            rimEnabled: this.lighting.rimEnabled,
+          })
+          this._litColorTransformsByTexture.set(tex.id, transform)
+        }
+        sprite.material.colorTransform = transform
+      }
+    }
+
+    this._pendingLitSprites.clear()
+  }
+
+  /**
+   * Update 2D light proxies from 3D scene lights.
+   * Converts Three.js PointLight, DirectionalLight, SpotLight, AmbientLight
+   * into Light2D proxies by projecting onto the XY plane.
+   *
+   * Proxies are re-used across frames to avoid allocations.
    */
   private _update3DLights(): void {
-    // TODO: Convert 3D lights to 2D light uniforms
-    // This will be implemented when Light2D has uniform injection
+    if (this._sceneLights.length === 0) {
+      this._sceneLightProxies.length = 0
+      return
+    }
+
+    // Grow or shrink the proxy array to match scene lights
+    while (this._sceneLightProxies.length < this._sceneLights.length) {
+      this._sceneLightProxies.push(new Light2D())
+    }
+    this._sceneLightProxies.length = this._sceneLights.length
+
+    for (let i = 0; i < this._sceneLights.length; i++) {
+      const light3D = this._sceneLights[i]!
+      const converted = convertLight3DTo2D(light3D)
+      const proxy = this._sceneLightProxies[i]!
+
+      proxy.lightType = converted.type
+      proxy.color = converted.color
+      proxy.intensity = converted.intensity
+      proxy.enabled = light3D.visible !== false
+
+      if (converted.position) {
+        proxy.position.set(converted.position.x, converted.position.y, 0)
+      }
+      if (converted.direction) {
+        proxy.direction = converted.direction
+      }
+      if (converted.radius !== undefined) {
+        proxy.radius = converted.radius
+      }
+      if (converted.angle !== undefined) {
+        proxy.angle = converted.angle
+      }
+    }
+  }
+
+  /**
+   * Auto-initialize post-processing on first render if enabled,
+   * and rebuild the effect chain when effects are added/removed.
+   */
+  private _ensurePostProcessing(renderer: WebGPURenderer): void {
+    // Nothing to do if post-processing disabled and no effects
+    if (!this._postProcessingEnabled && this._effects.length === 0) return
+
+    // Auto-initialize PostProcessing if we have effects but no instance yet
+    if (!this._postProcessing && this._effects.length > 0) {
+      const pp = new PostProcessing(renderer)
+      const scenePass = pass(this.scene, this._camera)
+      this._postProcessing = pp
+      this._passNode = scenePass
+      this._autoPostProcessing = true
+      this._postProcessingEnabled = true
+      this._effectsDirty = true // Force rebuild on init
+    }
+
+    // Rebuild effect chain if dirty
+    if (this._effectsDirty && this._postProcessing && this._passNode) {
+      this._effectsDirty = false
+
+      if (this._effects.length === 0) {
+        // No effects — pass through scene directly
+        this._outputNode = this._passNode
+      } else {
+        // Convert PassNode to TextureNode so effects can .sample() at custom UVs
+        const uvCoord = uvNode()
+        let node = convertToTexture(this._passNode) as TSLNode
+        for (const effect of this._effects) {
+          node = effect(node, uvCoord)
+        }
+        this._outputNode = node
+      }
+
+      this._postProcessing.outputNode = this._outputNode
+      this._postProcessing.needsUpdate = true
+    }
   }
 
   /**
@@ -504,9 +823,12 @@ export class Flatland extends Group {
 
   /**
    * Get render statistics.
+   * Draw calls are derived from Three.js renderer.info, not estimated internally.
    */
   get stats(): RenderStats {
-    return this.spriteGroup.stats
+    const s = this.spriteGroup.stats
+    s.drawCalls = this._drawCalls
+    return s
   }
 
   /**
@@ -524,12 +846,17 @@ export class Flatland extends Group {
       light.dispose?.()
     }
     this._lights = []
+    this._sceneLightProxies = []
+    this._sceneLights = []
 
     // Dispose post-processing
     if (this._postProcessing) {
       this._postProcessing.dispose?.()
       this._postProcessing = null
     }
+    this._effects.length = 0
+    this._effectsDirty = false
+    this._autoPostProcessing = false
   }
 }
 

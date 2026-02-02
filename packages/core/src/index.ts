@@ -5,7 +5,10 @@ export const VERSION = '0.4.0'
 
 // Main API
 export { Flatland, convertLight3DTo2D } from './Flatland'
-export type { FlatlandOptions } from './Flatland'
+export type { FlatlandOptions, EffectFn } from './Flatland'
+
+// Global Uniforms
+export { GlobalUniforms } from './GlobalUniforms'
 
 // 2D Lights
 export * from './lights'

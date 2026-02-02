@@ -34,6 +34,8 @@ export interface AnimatedSprite2DOptions {
   zIndex?: number
   /** Pixel-perfect rendering (snap to pixels) */
   pixelPerfect?: boolean
+  /** Whether this sprite should be lit by Flatland's lighting system */
+  lit?: boolean
 }
 
 /**
@@ -85,6 +87,7 @@ export class AnimatedSprite2D extends Sprite2D {
       layer: options?.layer,
       zIndex: options?.zIndex,
       pixelPerfect: options?.pixelPerfect,
+      lit: options?.lit,
     })
 
     this.controller = new AnimationController()

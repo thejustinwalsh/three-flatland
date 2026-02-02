@@ -35,10 +35,12 @@ Post-processing requires setting up a `PostProcessing` instance and a scene pass
       scanlineIntensity: 0.15,
     });
 
-    // In render loop
+    // Connect to Flatland
+    flatland.setPostProcessing(postProcessing, scenePass);
+
+    // In render loop — flatland.render() updates batches + renders via post-processing
     function animate() {
-      flatland.spriteGroup.update();
-      postProcessing.render();
+      flatland.render(renderer);
       requestAnimationFrame(animate);
     }
     ```
@@ -46,33 +48,37 @@ Post-processing requires setting up a `PostProcessing` instance and a scene pass
   <TabItem label="React" icon="seti:react">
     ```tsx
     import { useEffect, useRef } from 'react';
-    import { useThree, useFrame } from '@react-three/fiber/webgpu';
-    import { PostProcessing } from 'three/webgpu';
-    import { pass, uv } from 'three/tsl';
-    import { crtComplete } from '@three-flatland/react';
+    import { extend, useThree, useFrame } from '@react-three/fiber/webgpu';
+    import { Flatland, Sprite2D, crtComplete } from '@three-flatland/react';
 
-    function PostProcessingEffects() {
-      const { gl, scene, camera } = useThree();
-      const postProcessingRef = useRef<PostProcessing | null>(null);
+    extend({ Flatland, Sprite2D });
+
+    function FlatlandScene() {
+      const { gl, size } = useThree();
+      const flatlandRef = useRef<Flatland>(null);
+
+      // Add CRT effect — Flatland auto-creates PostProcessing on first render
+      useEffect(() => {
+        flatlandRef.current?.addEffect((input, uv) =>
+          crtComplete(input, uv, { curvature: 0.15, scanlineIntensity: 0.15 })
+        );
+        return () => { flatlandRef.current?.clearEffects(); };
+      }, []);
 
       useEffect(() => {
-        const postProcessing = new PostProcessing(gl);
-        const scenePass = pass(scene, camera);
+        flatlandRef.current?.resize(size.width, size.height);
+      }, [size.width, size.height]);
 
-        postProcessing.outputNode = crtComplete(scenePass, uv(), {
-          curvature: 0.15,
-          scanlineIntensity: 0.15,
-        });
-
-        postProcessingRef.current = postProcessing;
-        return () => postProcessing.dispose?.();
-      }, [gl, scene, camera]);
-
+      // flatland.render() handles batch updates + post-processing
       useFrame(() => {
-        postProcessingRef.current?.render();
+        flatlandRef.current?.render(gl);
       }, 1);
 
-      return null;
+      return (
+        <flatland ref={flatlandRef} viewSize={300} clearColor={0x1a1a2e}>
+          {/* sprites go here */}
+        </flatland>
+      );
     }
     ```
   </TabItem>
@@ -94,25 +100,22 @@ import {
   phosphorMask,
 } from '@three-flatland/core';
 
-// All-in-one CRT effect
+// All-in-one CRT effect (options object)
 const crt = crtComplete(scenePass, uv(), {
   curvature: 0.15,           // Screen curvature amount
-  vignetteStrength: 0.3,     // Edge darkening
+  vignetteIntensity: 0.3,    // Edge darkening
   scanlineIntensity: 0.15,   // Scanline visibility
-  scanlineCount: 240,        // Number of scanlines
+  scanlineRes: 240,          // Scanline resolution
 });
 
-// Or compose individual effects
-const curved = crtCurvature(scenePass, uv(), { amount: 0.15 });
-const withScanlines = scanlines(curved, uv(), {
-  count: 240,
-  intensity: 0.2,
-});
+// Or compose individual effects (positional parameters)
+const curvedUV = crtCurvature(uv(), 0.15);
+const withScanlines = scanlines(scenePass, uv(), 240, 0.2);
 ```
 
 ### LCD Effects
 
-Simulate LCD and handheld displays:
+Simulate LCD and handheld displays. All LCD functions use positional parameters:
 
 ```typescript
 import {
@@ -122,27 +125,16 @@ import {
   dmgPalette,
 } from '@three-flatland/core';
 
-// LCD pixel grid
-const lcd = lcdGrid(scenePass, uv(), {
-  gridSize: 3,
-  lineWidth: 0.2,
-  lineColor: [0, 0, 0, 0.3],
-});
+// LCD pixel grid: (inputColor, uv, resolution?, gridIntensity?, subpixelIntensity?)
+const lcd = lcdGrid(scenePass, uv(), 240, 0.15, 0.1);
 
-// Game Boy Color LCD
-const gbc = lcdGBC(scenePass, uv(), {
-  gridSize: 3,
-  subpixelBlend: 0.5,
-  brightness: 1.1,
-});
+// Game Boy Color LCD: (inputColor, uv, resolution?, gridIntensity?)
+const gbc = lcdGBC(scenePass, uv(), 160, 0.2);
 
 // Game Boy DMG (4-color green palette + dot matrix)
-const dmg = dotMatrix(dmgPalette(scenePass), uv(), {
-  gridSize: 3,
-  dotSize: 0.7,
-  dotColor: [0.6, 0.7, 0.5, 1],
-  bgColor: [0.5, 0.6, 0.4, 1],
-});
+// dmgPalette: (inputColor, contrast?)
+// dotMatrix: (inputColor, uv, resolution?, dotSize?, backgroundColor?)
+const dmg = dotMatrix(dmgPalette(scenePass), uv(), 160, 0.7, [0.5, 0.6, 0.4]);
 ```
 
 ### Phosphor Masks
@@ -152,11 +144,9 @@ Add RGB subpixel patterns:
 ```typescript
 import { phosphorMask } from '@three-flatland/core';
 
-const withPhosphor = phosphorMask(scenePass, uv(), {
-  type: 'aperture-grille',  // 'aperture-grille' | 'slot-mask' | 'shadow-mask'
-  scale: 3,
-  intensity: 0.15,
-});
+// phosphorMask(inputColor, uv, maskType?, resolution?, intensity?)
+// maskType: 'aperture' | 'slot' | 'shadow' (default: 'aperture')
+const withPhosphor = phosphorMask(scenePass, uv(), 'aperture', 640, 0.15);
 ```
 
 ## Analog Video Effects
@@ -173,24 +163,14 @@ import { uniform } from 'three/tsl';
 
 const timeUniform = uniform(0);
 
-// VHS tracking distortion
-const distorted = vhsDistortion(scenePass, uv(), timeUniform, {
-  trackingNoise: 0.02,
-  jitter: 0.001,
-  waveSpeed: 2.0,
-});
+// VHS tracking distortion: (tex, uv, time, intensity?, noiseAmount?)
+const distorted = vhsDistortion(scenePass, uv(), timeUniform, 0.02, 0.1);
 
-// Static noise overlay
-const noisy = staticNoise(distorted, uv(), timeUniform, {
-  intensity: 0.08,
-  flickerSpeed: 15,
-});
+// Static noise overlay: (inputColor, uv, time, intensity?)
+const noisy = staticNoise(distorted, uv(), timeUniform, 0.08);
 
-// RGB channel separation
-const final = chromaticAberration(noisy, uv(), {
-  offsetR: [0.003, 0],
-  offsetB: [-0.003, 0],
-});
+// RGB channel separation: (tex, uv, amount?, angle?)
+const final = chromaticAberration(noisy, uv(), 0.003);
 
 // In animation loop, update time
 timeUniform.value += delta;
@@ -201,17 +181,11 @@ timeUniform.value += delta;
 ```typescript
 import { filmGrain, vignette } from '@three-flatland/core';
 
-// Film grain
-const grained = filmGrain(scenePass, uv(), timeUniform, {
-  intensity: 0.15,
-  luminanceThreshold: 0.3,
-});
+// Film grain: (inputColor, uv, time, intensity?, luminanceInfluence?)
+const grained = filmGrain(scenePass, uv(), timeUniform, 0.15, 0.3);
 
-// Vignette (edge darkening)
-const final = vignette(grained, uv(), {
-  offset: 0.5,
-  darkness: 0.6,
-});
+// Vignette (edge darkening): (inputColor, uv, intensity?, softness?, roundness?)
+const final = vignette(grained, uv(), 0.6, 0.5);
 ```
 
 ## Console Palettes
@@ -227,11 +201,11 @@ import {
   c64Palette,     // Commodore 64
 } from '@three-flatland/core';
 
-// Apply Game Boy palette
+// Apply Game Boy palette: (inputColor, contrast?)
 const gameboy = dmgPalette(scenePass);
 
 // Combine with dot matrix for authentic look
-const authentic = dotMatrix(gameboy, uv(), { gridSize: 3 });
+const authentic = dotMatrix(gameboy, uv(), 160, 0.7);
 ```
 
 ## Combining Effects
@@ -241,7 +215,6 @@ Chain multiple effects together for complex looks:
 ```typescript
 import { uniform } from 'three/tsl';
 import {
-  crtCurvature,
   scanlines,
   phosphorMask,
   vignette,
@@ -253,37 +226,24 @@ const timeUniform = uniform(0);
 // Build effect chain
 let output = scenePass;
 
-// Apply curvature
-output = crtCurvature(output, uv(), { amount: 0.1 });
+// Add phosphor mask: (inputColor, uv, maskType?, resolution?, intensity?)
+output = phosphorMask(output, uv(), 'aperture', 640, 0.1);
 
-// Add phosphor mask
-output = phosphorMask(output, uv(), {
-  type: 'aperture-grille',
-  intensity: 0.1,
-});
+// Add scanlines: (inputColor, uv, resolution?, intensity?, offset?)
+output = scanlines(output, uv(), 240, 0.15, timeUniform.mul(0.5));
 
-// Add scanlines
-output = scanlines(output, uv(), {
-  count: 240,
-  intensity: 0.15,
-  offset: timeUniform.mul(0.5), // Animated roll
-});
+// Add grain: (inputColor, uv, time, intensity?, luminanceInfluence?)
+output = filmGrain(output, uv(), timeUniform, 0.05);
 
-// Add grain
-output = filmGrain(output, uv(), timeUniform, {
-  intensity: 0.05,
-});
-
-// Final vignette
-output = vignette(output, uv(), {
-  offset: 0.4,
-  darkness: 0.5,
-});
+// Final vignette: (inputColor, uv, intensity?, softness?, roundness?)
+output = vignette(output, uv(), 0.4, 0.5);
 
 postProcessing.outputNode = output;
 ```
 
 ## Switching Effects at Runtime
+
+When changing `outputNode` at runtime, you must set `needsUpdate = true` to trigger shader recompilation:
 
 ```typescript
 type EffectType = 'none' | 'crt' | 'vhs' | 'lcd';
@@ -291,12 +251,13 @@ type EffectType = 'none' | 'crt' | 'vhs' | 'lcd';
 const effects: Record<EffectType, () => TSLNode> = {
   none: () => scenePass,
   crt: () => crtComplete(scenePass, uv(), { curvature: 0.15 }),
-  vhs: () => vhsDistortion(scenePass, uv(), timeUniform, {}),
-  lcd: () => lcdGrid(scenePass, uv(), { gridSize: 3 }),
+  vhs: () => vhsDistortion(scenePass, uv(), timeUniform, 0.02, 0.1),
+  lcd: () => lcdGrid(scenePass, uv(), 240, 0.15, 0.1),
 };
 
 function setEffect(effect: EffectType) {
   postProcessing.outputNode = effects[effect]();
+  postProcessing.needsUpdate = true; // Required for shader recompilation
 }
 
 // Switch effects

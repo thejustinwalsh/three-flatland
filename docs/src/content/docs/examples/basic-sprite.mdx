@@ -38,15 +38,17 @@ export const reactFiles = loadExample('react', 'basic-sprite');
 </Tabs>
 </ExampleTabs>
 
-## Renderer2D
+## SpriteGroup
 
-The `Renderer2D` class manages 2D sprite rendering. All sprites must be added to a `Renderer2D` instance:
+For batched rendering with many sprites, use `SpriteGroup`. Sprites added to a group are automatically batched by material:
 
 ```typescript
-const renderer2D = new Renderer2D();
-scene.add(renderer2D);
-renderer2D.add(sprite);
+const spriteGroup = new SpriteGroup();
+scene.add(spriteGroup);
+spriteGroup.add(sprite);
 ```
+
+For simple cases with few sprites, you can add them directly to the scene.
 
 ## Sprite2D
 
