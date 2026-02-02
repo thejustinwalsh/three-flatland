@@ -453,6 +453,11 @@ async function main() {
   flatland.lighting.glowRadius = 2.5
   flatland.lighting.glowIntensity = 0.15
 
+  // --- Shadows ---
+  flatland.lighting.shadows = true
+  flatland.lighting.shadowStrength = 0.6
+  flatland.lighting.shadowSoftness = 0.3
+
   // --- Auto-normals + rim lighting for 3D-like diffuse shading ---
   flatland.lighting.autoNormals = true
   flatland.lighting.normalStrength = 1.0
@@ -497,6 +502,7 @@ async function main() {
       layer: Layers.ENTITIES,
       anchor: [0.5, 0.5],
       lit: true,
+      castShadow: true,
     })
     sprite.scale.set(KNIGHT_SCALE, KNIGHT_SCALE, 1)
 

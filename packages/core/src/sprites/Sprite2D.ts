@@ -67,6 +67,9 @@ export class Sprite2D extends Mesh {
   /** Pixel-perfect mode */
   pixelPerfect: boolean = false
 
+  /** Whether this sprite casts shadows */
+  castShadow: boolean = false
+
   // ============================================
   // BATCH TARGET STATE (for shared buffer architecture)
   // ============================================
@@ -225,6 +228,10 @@ export class Sprite2D extends Mesh {
 
     if (options.pixelPerfect !== undefined) {
       this.pixelPerfect = options.pixelPerfect
+    }
+
+    if (options.castShadow !== undefined) {
+      this.castShadow = options.castShadow
     }
 
     this.updateFlip()

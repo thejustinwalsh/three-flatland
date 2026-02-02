@@ -36,6 +36,8 @@ export interface AnimatedSprite2DOptions {
   pixelPerfect?: boolean
   /** Whether this sprite should be lit by Flatland's lighting system */
   lit?: boolean
+  /** Whether this sprite casts shadows onto other lit sprites */
+  castShadow?: boolean
 }
 
 /**
@@ -88,6 +90,7 @@ export class AnimatedSprite2D extends Sprite2D {
       zIndex: options?.zIndex,
       pixelPerfect: options?.pixelPerfect,
       lit: options?.lit,
+      castShadow: options?.castShadow,
     })
 
     this.controller = new AnimationController()

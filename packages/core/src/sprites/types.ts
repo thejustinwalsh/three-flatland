@@ -55,6 +55,8 @@ export interface Sprite2DOptions {
   pixelPerfect?: boolean
   /** Whether this sprite should be lit by Flatland's lighting system */
   lit?: boolean
+  /** Whether this sprite casts shadows onto other lit sprites */
+  castShadow?: boolean
   /** Custom material (sprites with same material instance batch together) */
   material?: Sprite2DMaterial
 }

@@ -2,7 +2,7 @@ import {
   Scene,
   OrthographicCamera,
   Color,
-  type WebGLRenderTarget,
+  WebGLRenderTarget,
   Group,
   type Object3D,
   type ColorRepresentation,
@@ -13,12 +13,16 @@ import {
   type SpotLight,
   Vector2,
   Vector3,
+  PlaneGeometry,
+  Mesh,
+  MeshBasicMaterial,
+  NearestFilter,
 } from 'three'
 import { PostProcessing, type WebGPURenderer } from 'three/webgpu'
 import { pass, uv as uvNode, convertToTexture } from 'three/tsl'
 import { SpriteGroup } from './pipeline/SpriteGroup'
 import { Light2D } from './lights/Light2D'
-import { LightingSystem } from './lights/LightingSystem'
+import { LightingSystem, MAX_SHADOW_CASTERS } from './lights/LightingSystem'
 import { GlobalUniforms } from './GlobalUniforms'
 import type { RenderStats } from './pipeline/types'
 import { Sprite2D } from './sprites/Sprite2D'
@@ -213,6 +217,34 @@ export class Flatland extends Group {
 
   /** Draw calls captured from renderer.info after last render */
   private _drawCalls = 0
+
+  // ============================================
+  // SHADOW PIPELINE STATE
+  // ============================================
+
+  /** All sprites with castShadow=true */
+  private _shadowCasters: Set<Sprite2D> = new Set()
+
+  /** Shadow occlusion render target */
+  private _occlusionRT: WebGLRenderTarget | null = null
+
+  /** Separate scene for rendering shadow quads */
+  private _occlusionScene: Scene | null = null
+
+  /** Camera for the occlusion pass (matches main camera frustum) */
+  private _occlusionCamera: OrthographicCamera | null = null
+
+  /** Pool of 16 reusable quads for shadow casters */
+  private _shadowMeshPool: Mesh[] = []
+
+  /** Per-mesh materials for shadow quads (encode y-position for self-shadow avoidance) */
+  private _shadowMaterials: MeshBasicMaterial[] = []
+
+  /** Shared geometry for shadow quads */
+  private _shadowGeometry: PlaneGeometry | null = null
+
+  /** Sort buffer for culling shadow casters (avoids allocations) */
+  private _casterSortBuffer: { sprite: Sprite2D; score: number }[] = []
 
   constructor(options: FlatlandOptions = {}) {
     super()
@@ -434,6 +466,10 @@ export class Flatland extends Group {
         if (child.material.lit && !child.material.colorTransform) {
           this._pendingLitSprites.add(child)
         }
+        // Track shadow casters
+        if (child.castShadow) {
+          this._shadowCasters.add(child)
+        }
       } else {
         // Add other objects directly to the internal scene
         this.scene.add(child)
@@ -457,6 +493,7 @@ export class Flatland extends Group {
       } else if (child instanceof Sprite2D) {
         this.spriteGroup.remove(child)
         this._pendingLitSprites.delete(child)
+        this._shadowCasters.delete(child)
       } else {
         this.scene.remove(child)
       }
@@ -474,6 +511,7 @@ export class Flatland extends Group {
       this.scene.remove(light)
     }
     this._lights = []
+    this._shadowCasters.clear()
 
     // Clear any other objects from the scene (except spriteGroup)
     const toRemove: Object3D[] = []
@@ -590,11 +628,14 @@ export class Flatland extends Group {
     // Auto-sync global uniforms from renderer
     this._syncGlobals(renderer)
 
-    // Process pending lit sprites (deferred auto-lighting)
-    this._processPendingLitSprites()
-
     // Convert 3D lights to 2D proxies (before sync so they're included)
     this._update3DLights()
+
+    // Render shadow occlusion pass (before lit sprite processing so RT texture exists)
+    this._syncAndRenderOcclusion(renderer)
+
+    // Process pending lit sprites (deferred auto-lighting)
+    this._processPendingLitSprites()
 
     // Sync light uniforms (position, color, intensity, etc.)
     this._syncLightUniforms()
@@ -679,6 +720,146 @@ export class Flatland extends Group {
   }
 
   /**
+   * Initialize the shadow occlusion pipeline.
+   * Creates the occlusion render target, scene, camera, and mesh pool.
+   * Called lazily on first render with shadows enabled.
+   */
+  private _initShadowPipeline(): void {
+    const pixelSize = Math.max(this.lighting.pixelSize, 1)
+    const cameraWidth = this._camera.right - this._camera.left
+    const cameraHeight = this._camera.top - this._camera.bottom
+    const rtWidth = Math.ceil(cameraWidth / pixelSize)
+    const rtHeight = Math.ceil(cameraHeight / pixelSize)
+
+    this._occlusionRT = new WebGLRenderTarget(rtWidth, rtHeight)
+    this._occlusionRT.texture.minFilter = NearestFilter
+    this._occlusionRT.texture.magFilter = NearestFilter
+
+    this._occlusionScene = new Scene()
+    this._occlusionCamera = new OrthographicCamera(
+      this._camera.left,
+      this._camera.right,
+      this._camera.top,
+      this._camera.bottom,
+      0.1,
+      1000
+    )
+    this._occlusionCamera.position.z = 100
+
+    // Create pool of MAX_SHADOW_CASTERS reusable quads.
+    // Each mesh gets its own material so we can encode the sprite's y-position
+    // and half-height into the RGB channels for self-shadow avoidance.
+    this._shadowGeometry = new PlaneGeometry(1, 1)
+    this._shadowMaterials = []
+    this._shadowMeshPool = []
+    for (let i = 0; i < MAX_SHADOW_CASTERS; i++) {
+      const material = new MeshBasicMaterial({ color: 0xffffff })
+      this._shadowMaterials.push(material)
+      const mesh = new Mesh(this._shadowGeometry, material)
+      mesh.visible = false
+      this._occlusionScene.add(mesh)
+      this._shadowMeshPool.push(mesh)
+    }
+
+    // Register occlusion texture with the lighting system
+    const worldSize = new Vector2(cameraWidth, cameraHeight)
+    const worldOffset = new Vector2(this._camera.left, this._camera.bottom)
+    this.lighting.setOcclusionTexture(this._occlusionRT.texture, worldSize, worldOffset)
+  }
+
+  /**
+   * Sync shadow casters and render the occlusion pass.
+   * Collects visible shadow casters, culls to top 16 by proximity to lights,
+   * and renders their quads to the occlusion render target.
+   */
+  private _syncAndRenderOcclusion(renderer: WebGPURenderer): void {
+    if (!this.lighting.shadows) return
+
+    // Lazily init shadow pipeline
+    if (!this._occlusionRT) {
+      this._initShadowPipeline()
+    }
+
+    // Collect visible casters, score by proximity to nearest point/spot light
+    this._casterSortBuffer.length = 0
+    for (const sprite of this._shadowCasters) {
+      if (!sprite.visible) continue
+
+      // Score: squared distance to nearest active point/spot light
+      let minDist = Infinity
+      for (const light of this._lights) {
+        if (!light.enabled) continue
+        if (light.lightType !== 'point' && light.lightType !== 'spot') continue
+        const dx = sprite.position.x - light.position.x
+        const dy = sprite.position.y - light.position.y
+        const dist = dx * dx + dy * dy
+        if (dist < minDist) minDist = dist
+      }
+      // Also check scene light proxies
+      for (const proxy of this._sceneLightProxies) {
+        if (!proxy.enabled) continue
+        if (proxy.lightType !== 'point' && proxy.lightType !== 'spot') continue
+        const dx = sprite.position.x - proxy.position.x
+        const dy = sprite.position.y - proxy.position.y
+        const dist = dx * dx + dy * dy
+        if (dist < minDist) minDist = dist
+      }
+
+      this._casterSortBuffer.push({ sprite, score: minDist })
+    }
+
+    // Sort by score (nearest to light first) and take top MAX_SHADOW_CASTERS
+    this._casterSortBuffer.sort((a, b) => a.score - b.score)
+    const count = Math.min(this._casterSortBuffer.length, MAX_SHADOW_CASTERS)
+
+    // Update pool meshes from culled casters.
+    // Each material's color encodes the sprite's y-position (R) and half-height (G)
+    // normalized to the camera's y-range, for self-shadow detection in the shader.
+    const camBottom = this._camera.bottom
+    const camHeight = this._camera.top - this._camera.bottom
+
+    for (let i = 0; i < count; i++) {
+      const caster = this._casterSortBuffer[i]!.sprite
+      const mesh = this._shadowMeshPool[i]!
+      mesh.position.set(caster.position.x, caster.position.y, 0)
+      mesh.scale.set(caster.scale.x, caster.scale.y, 1)
+      mesh.visible = true
+
+      // Encode y-position and half-height into material color for self-shadow avoidance
+      const normalizedY = Math.max(0, Math.min(1, (caster.position.y - camBottom) / camHeight))
+      const normalizedHalfH = Math.max(0, Math.min(1, (caster.scale.y * 0.5) / camHeight))
+      this._shadowMaterials[i]!.color.setRGB(normalizedY, normalizedHalfH, 0)
+    }
+
+    // Disable remaining pool meshes
+    for (let i = count; i < MAX_SHADOW_CASTERS; i++) {
+      this._shadowMeshPool[i]!.visible = false
+    }
+
+    // Update occlusion camera to match main camera
+    this._occlusionCamera!.left = this._camera.left
+    this._occlusionCamera!.right = this._camera.right
+    this._occlusionCamera!.top = this._camera.top
+    this._occlusionCamera!.bottom = this._camera.bottom
+    this._occlusionCamera!.updateProjectionMatrix()
+
+    // Update occlusion bounds uniforms (camera may have moved or resized)
+    this.lighting.setOcclusionTexture(
+      this._occlusionRT!.texture,
+      new Vector2(this._camera.right - this._camera.left, this._camera.top - this._camera.bottom),
+      new Vector2(this._camera.left, this._camera.bottom)
+    )
+
+    // Render occlusion scene to occlusion RT
+    const prevRT = renderer.getRenderTarget()
+    renderer.setRenderTarget(this._occlusionRT)
+    renderer.setClearColor(0x000000, 0)
+    renderer.clear()
+    renderer.render(this._occlusionScene!, this._occlusionCamera!)
+    renderer.setRenderTarget(prevRT)
+  }
+
+  /**
    * Process sprites that have lit: true but no colorTransform yet.
    * When autoNormals is off: shared flat lighting transform for all sprites.
    * When autoNormals is on: per-texture transforms (normals sample the texture).
@@ -686,10 +867,14 @@ export class Flatland extends Group {
   private _processPendingLitSprites(): void {
     if (this._pendingLitSprites.size === 0) return
 
+    const shadowsEnabled = this.lighting.shadows
+
     if (!this.lighting.autoNormals) {
       // Flat lighting — one shared transform for all sprites
       if (!this._litColorTransform) {
-        this._litColorTransform = this.createLitColorTransform()
+        this._litColorTransform = this.lighting.createColorTransform({
+          shadows: shadowsEnabled,
+        })
       }
       for (const sprite of this._pendingLitSprites) {
         sprite.material.colorTransform = this._litColorTransform
@@ -701,7 +886,9 @@ export class Flatland extends Group {
         if (!tex) {
           // No texture yet — use flat lighting fallback
           if (!this._litColorTransform) {
-            this._litColorTransform = this.createLitColorTransform()
+            this._litColorTransform = this.lighting.createColorTransform({
+              shadows: shadowsEnabled,
+            })
           }
           sprite.material.colorTransform = this._litColorTransform
           continue
@@ -713,6 +900,7 @@ export class Flatland extends Group {
             texture: tex,
             autoNormals: true,
             rimEnabled: this.lighting.rimEnabled,
+            shadows: shadowsEnabled,
           })
           this._litColorTransformsByTexture.set(tex.id, transform)
         }
@@ -819,6 +1007,21 @@ export class Flatland extends Group {
     if (this._renderTarget) {
       this._renderTarget.setSize(width, height)
     }
+
+    // Resize occlusion RT if shadow pipeline is initialized
+    if (this._occlusionRT) {
+      const pixelSize = Math.max(this.lighting.pixelSize, 1)
+      const cameraWidth = this._camera.right - this._camera.left
+      const cameraHeight = this._camera.top - this._camera.bottom
+      const rtWidth = Math.ceil(cameraWidth / pixelSize)
+      const rtHeight = Math.ceil(cameraHeight / pixelSize)
+      this._occlusionRT.setSize(rtWidth, rtHeight)
+      this.lighting.setOcclusionTexture(
+        this._occlusionRT.texture,
+        new Vector2(cameraWidth, cameraHeight),
+        new Vector2(this._camera.left, this._camera.bottom)
+      )
+    }
   }
 
   /**
@@ -857,6 +1060,25 @@ export class Flatland extends Group {
     this._effects.length = 0
     this._effectsDirty = false
     this._autoPostProcessing = false
+
+    // Dispose shadow pipeline
+    this._shadowCasters.clear()
+    if (this._occlusionRT) {
+      this._occlusionRT.dispose()
+      this._occlusionRT = null
+    }
+    if (this._shadowGeometry) {
+      this._shadowGeometry.dispose()
+      this._shadowGeometry = null
+    }
+    for (const mat of this._shadowMaterials) {
+      mat.dispose()
+    }
+    this._shadowMaterials = []
+    this._shadowMeshPool = []
+    this._occlusionScene = null
+    this._occlusionCamera = null
+    this._casterSortBuffer.length = 0
   }
 }
 

@@ -1,4 +1,4 @@
-import { Vector2, Color, type Texture } from 'three'
+import { Vector2, Color, DataTexture, type Texture } from 'three'
 import { uniformArray, uniform, vec2, vec3, vec4, float, int, Fn, Loop, texture as sampleTexture } from 'three/tsl'
 import type { TSLNode } from '../nodes/types'
 import type { Light2D } from './Light2D'
@@ -8,6 +8,11 @@ import type { Light2D } from './Light2D'
  * Pre-allocated uniform arrays — unused slots have enabled=0.
  */
 export const MAX_LIGHTS = 8
+
+/**
+ * Maximum number of shadow casters rendered to the occlusion map.
+ */
+export const MAX_SHADOW_CASTERS = 16
 
 /**
  * Light type encoding for the shader.
@@ -71,11 +76,21 @@ export class LightingSystem {
   private _rimPowerNode: TSLNode
   private _rimStrengthNode: TSLNode
 
+  // Shadow uniforms
+  private _occlusionTexture: Texture
+  private _occlusionSizeNode: TSLNode
+  private _occlusionOffsetNode: TSLNode
+  private _shadowStrengthNode: TSLNode
+  private _shadowSoftnessNode: TSLNode
+
   /** Compile-time flag: generate normals from sprite alpha for N·L diffuse. Set before adding sprites. */
   autoNormals: boolean = false
 
   /** Compile-time flag: add rim lighting on sprite edges. Requires autoNormals. Set before adding sprites. */
   rimEnabled: boolean = false
+
+  /** Compile-time flag: enable shadow casting via occlusion map. Set before adding sprites. */
+  shadows: boolean = false
 
   constructor() {
     // Initialize backing arrays with defaults
@@ -110,6 +125,15 @@ export class LightingSystem {
     this._lightHeightNode = uniform(1)
     this._rimPowerNode = uniform(2)
     this._rimStrengthNode = uniform(0.5)
+
+    // Shadow: placeholder 1×1 transparent texture (replaced by Flatland with RT texture)
+    const placeholderData = new Uint8Array([0, 0, 0, 0])
+    this._occlusionTexture = new DataTexture(placeholderData, 1, 1)
+    this._occlusionTexture.needsUpdate = true
+    this._occlusionSizeNode = uniform(new Vector2(1, 1))
+    this._occlusionOffsetNode = uniform(new Vector2(0, 0))
+    this._shadowStrengthNode = uniform(0.6)
+    this._shadowSoftnessNode = uniform(0.3)
   }
 
   /**
@@ -216,6 +240,44 @@ export class LightingSystem {
   }
 
   /**
+   * Shadow strength (0 = invisible, 1 = pitch black).
+   * Runtime uniform — tunable per-frame.
+   */
+  get shadowStrength(): number {
+    return this._shadowStrengthNode.value
+  }
+
+  set shadowStrength(value: number) {
+    this._shadowStrengthNode.value = value
+  }
+
+  /**
+   * Shadow softness (ray-march blur radius for soft edges).
+   * Runtime uniform — tunable per-frame.
+   */
+  get shadowSoftness(): number {
+    return this._shadowSoftnessNode.value
+  }
+
+  set shadowSoftness(value: number) {
+    this._shadowSoftnessNode.value = value
+  }
+
+  /**
+   * Update the occlusion texture and world bounds covered by the map.
+   * Called by Flatland when the shadow pipeline is initialized or resized.
+   *
+   * @param texture - The occlusion render target texture
+   * @param worldSize - Camera frustum size in world units (width, height)
+   * @param worldOffset - Camera frustum lower-left corner in world units (camera.left, camera.bottom)
+   */
+  setOcclusionTexture(texture: Texture, worldSize: Vector2, worldOffset: Vector2): void {
+    this._occlusionTexture = texture
+    this._occlusionSizeNode.value.copy(worldSize)
+    this._occlusionOffsetNode.value.copy(worldOffset)
+  }
+
+  /**
    * Sync Light2D array into uniform arrays.
    * Call once per frame. Copies current Light2D properties into the
    * pre-allocated uniform slots. No shader recompilation.
@@ -284,6 +346,7 @@ export class LightingSystem {
     texture?: Texture
     autoNormals?: boolean
     rimEnabled?: boolean
+    shadows?: boolean
   }): (ctx: { color: TSLNode; atlasUV: TSLNode; worldPosition: TSLNode }) => TSLNode {
     const positions = this._positionArray
     const colors = this._colorArray
@@ -307,6 +370,13 @@ export class LightingSystem {
     const lightHeight = this._lightHeightNode
     const rimPower = this._rimPowerNode
     const rimStrength = this._rimStrengthNode
+
+    // Shadow ray march (compile-time flag)
+    const useShadows = options?.shadows ?? false
+    const occTexture = this._occlusionTexture
+    const occSize = this._occlusionSizeNode
+    const occOffset = this._occlusionOffsetNode
+    const shadowStr = this._shadowStrengthNode
 
     // Pre-compute texel size as float constants from texture dimensions
     let texelW: number | undefined
@@ -416,6 +486,46 @@ export class LightingSystem {
             )
           } else {
             finalContribution = contribution.mul(atten)
+          }
+
+          // Shadow ray march: 8 fixed steps from surface toward light.
+          // Samples the occlusion texture to detect occluders between surface and light.
+          // Only applied to point/spot lights (type < 1.5).
+          //
+          // Self-shadow avoidance via y-position encoding:
+          // The occlusion texture's R channel encodes each occluder's normalized center
+          // y-position, and the G channel encodes its normalized half-height. If the
+          // surface fragment's y is within the occluder's y ± half-height, it's the
+          // same sprite (self-shadow) and we skip the shadow contribution.
+          // This naturally matches y-sorted 2D games: sprites at the same depth
+          // don't shadow each other.
+          //
+          // UV formula uses explicit camera bounds (occOffset = camera lower-left)
+          // instead of assuming a symmetric camera centered at origin.
+          if (useShadows) {
+            // Normalize surface y to [0,1] within camera bounds
+            const surfaceNormY = surfacePos.y.sub(occOffset.y).div(occSize.y)
+
+            const shadow = float(1).toVar('shadow')
+            for (let step = 1; step <= 8; step++) {
+              const t = step / 8
+              const sampleWorldPos = vec2(surfacePos).add(toLight.mul(float(t)))
+              const sampleUV = sampleWorldPos.sub(occOffset).div(occSize)
+              const occSample = sampleTexture(occTexture, sampleUV)
+              const occAlpha = occSample.a
+              // R = occluder normalized y, G = occluder normalized half-height
+              const occY = occSample.r
+              const occHalfH = occSample.g
+              const yDiff = occY.sub(surfaceNormY).abs()
+              // 1.2× margin accounts for anchor offsets and pixel-snap
+              const isSelf = yDiff.lessThan(occHalfH.mul(float(1.2)))
+              const effectiveOcc = occAlpha.mul(isSelf.select(float(0), float(1)))
+              shadow.mulAssign(float(1).sub(effectiveOcc.mul(shadowStr)))
+            }
+            const isPositionalForShadow = lightType.lessThan(float(1.5))
+            finalContribution = finalContribution.mul(
+              isPositionalForShadow.select(shadow, float(1))
+            )
           }
 
           totalLight.addAssign(finalContribution)
