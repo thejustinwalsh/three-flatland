@@ -1,8 +1,17 @@
 import { Group, type Object3D } from 'three'
+import { createWorld, type World } from 'koota'
 import type { Sprite2D } from '../sprites/Sprite2D'
 import { BatchManager } from './BatchManager'
 import type { Renderer2DOptions, RenderStats } from './types'
 import { DEFAULT_BATCH_SIZE } from './SpriteBatch'
+import { assignWorld, type WorldProvider } from '../ecs/world'
+import {
+  batchPrepareSystem,
+  bufferSyncColorSystem,
+  bufferSyncUVSystem,
+  bufferSyncFlipSystem,
+  bufferSyncEffectSystem,
+} from '../ecs/systems'
 
 /**
  * 2D render pipeline with automatic batching and sorting.
@@ -10,10 +19,8 @@ import { DEFAULT_BATCH_SIZE } from './SpriteBatch'
  * Add Renderer2D to your scene and add sprites to it.
  * Sprites are automatically batched by material and sorted by layer/zIndex.
  *
- * With the shared buffer architecture:
- * - Sprite property changes (tint, alpha, UV, flip) write directly to batch buffers
- * - Only transforms need explicit invalidation (or use autoInvalidateTransforms)
- * - No rebuild needed for property changes - zero-copy updates
+ * ECS systems run automatically in `updateMatrixWorld()`, which Three.js
+ * calls during `renderer.render(scene, camera)`. No explicit `update()` needed.
  *
  * @example
  * ```typescript
@@ -24,17 +31,21 @@ import { DEFAULT_BATCH_SIZE } from './SpriteBatch'
  * sprite.layer = Layers.ENTITIES
  * renderer2D.add(sprite)
  *
- * // In render loop - sprites move, so invalidate transforms
- * renderer2D.invalidateTransforms()
- * renderer2D.update()
+ * // In render loop — no update() call needed
  * renderer.render(scene, camera)
  * ```
  */
-export class Renderer2D extends Group {
+export class Renderer2D extends Group implements WorldProvider {
   /**
    * Internal batch manager.
    */
   private _batchManager: BatchManager
+
+  /**
+   * ECS world for this renderer.
+   * Lazily created on first access.
+   */
+  private _world: World | null = null
 
   /**
    * Whether frustum culling is enabled.
@@ -53,6 +64,12 @@ export class Renderer2D extends Group {
    */
   autoInvalidateTransforms: boolean
 
+  /**
+   * Dedup guard: prevents systems from running twice if user calls
+   * update() AND renderer.render() in the same frame.
+   */
+  private _systemsRanThisFrame: boolean = false
+
   constructor(options: Renderer2DOptions = {}) {
     super()
 
@@ -68,6 +85,15 @@ export class Renderer2D extends Group {
   }
 
   /**
+   * The ECS world managed by this renderer.
+   * Sprites added to this renderer are enrolled in this world.
+   */
+  get world(): World {
+    if (!this._world) this._world = createWorld()
+    return this._world
+  }
+
+  /**
    * Add a sprite to the renderer.
    * Note: Named addSprite to avoid conflict with Group.add()
    */
@@ -78,8 +104,11 @@ export class Renderer2D extends Group {
     if (rest.length > 0) {
       return super.add(spriteOrObject, ...rest)
     }
-    // Check if it's a Sprite2D (has layer property)
-    if ('layer' in spriteOrObject && 'zIndex' in spriteOrObject) {
+    // Check if it's a Sprite2D (has _enrollInWorld — duck typing)
+    if ('_enrollInWorld' in spriteOrObject && '_flatlandWorld' in spriteOrObject) {
+      // Assign ECS world and enroll entity
+      assignWorld(spriteOrObject, this.world)
+      spriteOrObject._enrollInWorld(this.world)
       this._batchManager.add(spriteOrObject)
     } else {
       super.add(spriteOrObject)
@@ -92,6 +121,8 @@ export class Renderer2D extends Group {
    */
   addSprites(...sprites: Sprite2D[]): this {
     for (const sprite of sprites) {
+      assignWorld(sprite, this.world)
+      sprite._enrollInWorld(this.world)
       this._batchManager.add(sprite)
     }
     return this
@@ -108,8 +139,9 @@ export class Renderer2D extends Group {
       return super.remove(spriteOrObject, ...rest)
     }
     // Check if it's a Sprite2D
-    if ('layer' in spriteOrObject && 'zIndex' in spriteOrObject) {
+    if ('_unenrollFromWorld' in spriteOrObject && '_flatlandWorld' in spriteOrObject) {
       this._batchManager.remove(spriteOrObject)
+      spriteOrObject._unenrollFromWorld()
     } else {
       super.remove(spriteOrObject)
     }
@@ -122,6 +154,7 @@ export class Renderer2D extends Group {
   removeSprites(...sprites: Sprite2D[]): this {
     for (const sprite of sprites) {
       this._batchManager.remove(sprite)
+      sprite._unenrollFromWorld()
     }
     return this
   }
@@ -153,17 +186,70 @@ export class Renderer2D extends Group {
   }
 
   /**
+   * Three.js render hook — runs ECS systems and syncs buffers.
+   *
+   * Called automatically by Three.js during `renderer.render(scene, camera)`
+   * before drawing children. This is the main integration point — no manual
+   * `update()` call is needed.
+   *
+   * Per-frame flow:
+   * 1. batchPrepareSystem — detects added/removed entities, layer/material changes
+   * 2. BatchManager.prepare — sort, rebuild if needed, full sync on assignment
+   * 3. bufferSyncColorSystem — Changed(SpriteColor) + IsBatched -> batch buffer write
+   * 4. bufferSyncUVSystem — Changed(SpriteUV) + IsBatched -> batch buffer write
+   * 5. bufferSyncFlipSystem — Changed(SpriteFlip) + IsBatched -> batch buffer write
+   * 6. bufferSyncEffectSystem — Changed(effectTrait) + IsBatched -> packed buffer write
+   * 7. BatchManager.upload — sync transforms to instance matrices
+   * 8. _syncBatches — scene graph child management
+   * 9. super.updateMatrixWorld() — continue Three.js traversal
+   */
+  override updateMatrixWorld(force?: boolean): void {
+    if (!this._systemsRanThisFrame) {
+      this._runSystems()
+    }
+    this._systemsRanThisFrame = false
+
+    super.updateMatrixWorld(force)
+  }
+
+  /**
    * Update batches for rendering.
-   * Call once per frame before rendering.
+   * @deprecated Use Three.js `renderer.render()` instead — systems run
+   * automatically in `updateMatrixWorld()`. Kept for backwards compatibility.
    */
   update(): void {
+    this._runSystems()
+    this._systemsRanThisFrame = true
+  }
+
+  /**
+   * Run all ECS systems and sync batches.
+   */
+  private _runSystems(): void {
+    // Check ECS for batch-relevant changes (entity add/remove, layer/material changes)
+    if (this._world && batchPrepareSystem(this._world)) {
+      this._batchManager.markSortDirty()
+    }
+
     // Auto-invalidate transforms if enabled
     if (this.autoInvalidateTransforms) {
       this._batchManager.invalidateTransforms()
     }
 
-    // Prepare batches (sort if needed)
+    // Prepare batches (sort if needed, also checks for material tier changes)
     this._batchManager.prepare()
+
+    // ECS-driven buffer sync
+    if (this._world) {
+      bufferSyncColorSystem(this._world)
+      bufferSyncUVSystem(this._world)
+      bufferSyncFlipSystem(this._world)
+
+      const effectTraits = this._batchManager.getEffectTraits()
+      if (effectTraits.size > 0) {
+        bufferSyncEffectSystem(this._world, effectTraits)
+      }
+    }
 
     // Upload batch data to GPU
     this._batchManager.upload()
@@ -249,5 +335,9 @@ export class Renderer2D extends Group {
    */
   dispose(): void {
     this._batchManager.dispose()
+    if (this._world) {
+      this._world.destroy()
+      this._world = null
+    }
   }
 }

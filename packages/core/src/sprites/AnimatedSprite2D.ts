@@ -382,9 +382,19 @@ export class AnimatedSprite2D extends Sprite2D {
     cloned.rotation.copy(this.rotation)
     cloned.scale.copy(this.scale)
 
-    // Clone instance values
-    for (const [name, value] of this.getInstanceValues()) {
-      cloned.setInstanceValue(name, Array.isArray(value) ? [...value] : value)
+    // Clone effect instances from parent
+    for (const effect of this._effects) {
+      const EffectClass = (effect as any).constructor as { new (): any; _fields: any[]; effectName: string }
+      const clonedEffect = new EffectClass()
+      for (const field of EffectClass._fields) {
+        const value = (effect as any)._defaults[field.name]
+        if (typeof value === 'number') {
+          clonedEffect._defaults[field.name] = value
+        } else {
+          clonedEffect._defaults[field.name] = [...value]
+        }
+      }
+      cloned.addEffect(clonedEffect)
     }
 
     return cloned as this

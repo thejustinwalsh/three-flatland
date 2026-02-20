@@ -3,6 +3,7 @@ import { Texture } from 'three'
 import { SpriteBatch } from './SpriteBatch'
 import { Sprite2D } from '../sprites/Sprite2D'
 import { Sprite2DMaterial } from '../materials/Sprite2DMaterial'
+import { createMaterialEffect } from '../materials/MaterialEffect'
 
 describe('SpriteBatch', () => {
   let texture: Texture
@@ -92,12 +93,20 @@ describe('SpriteBatch', () => {
     expect(batch.count).toBe(1)
   })
 
-  it('should handle custom instance attributes', () => {
-    material.addInstanceFloat('dissolve', 0.5)
+  it('should handle effect data in packed buffers', () => {
+    const Dissolve = createMaterialEffect({
+      name: 'dissolve',
+      schema: { progress: 0 },
+      node: ({ inputColor }) => inputColor,
+    })
+
+    material.registerEffect(Dissolve)
     const batch = new SpriteBatch(material)
 
     const sprite = new Sprite2D({ material })
-    sprite.setInstanceValue('dissolve', 0.8)
+    const dissolve = new Dissolve()
+    dissolve.progress = 0.8
+    sprite.addEffect(dissolve)
 
     batch.addSprite(sprite)
     batch.upload()
@@ -120,19 +129,16 @@ describe('SpriteBatch', () => {
     expect(sprites).toContain(sprite2)
   })
 
-  it('should write sprite properties directly to batch buffers', () => {
+  it('should sync sprite properties to batch buffers on attachment', () => {
     const batch = new SpriteBatch(material)
     const sprite = new Sprite2D({ material })
 
-    batch.addSprite(sprite)
-
-    // Change tint - should write directly to batch buffer
+    // Set tint BEFORE adding to batch — _syncToBatch picks it up
     sprite.tint = [1, 0, 0]
 
-    // Verify color was written to batch's buffer by checking the buffer values
-    const colorBuffer = batch.getCustomBuffer('instanceColor')
-    // getCustomBuffer returns undefined for core attributes, use direct access
-    // The sprite is at index 0, so check buffer[0..3]
+    batch.addSprite(sprite)
+
+    // Verify color was synced to batch buffer during _attachToBatch → _syncToBatch
     const colorAttr = batch.getColorAttribute()
     const array = colorAttr.array as Float32Array
     expect(array[0]).toBeCloseTo(1) // r

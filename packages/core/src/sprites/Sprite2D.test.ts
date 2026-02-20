@@ -1,6 +1,9 @@
-import { describe, it, expect, beforeEach } from 'vitest'
-import { Texture } from 'three'
+import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { Texture, BufferAttribute } from 'three'
+import { createWorld, universe } from 'koota'
 import { Sprite2D } from './Sprite2D'
+import { Sprite2DMaterial } from '../materials/Sprite2DMaterial'
+import { SpriteColor, SpriteFlip, SpriteUV, IsBatched } from '../ecs/traits'
 
 describe('Sprite2D', () => {
   let texture: Texture
@@ -82,19 +85,6 @@ describe('Sprite2D', () => {
     expect(sprite.zIndex).toBe(100)
   })
 
-  it('should handle instance values', () => {
-    const sprite = new Sprite2D({ texture })
-
-    sprite.setInstanceValue('dissolve', 0.5)
-    sprite.setInstanceValue('outline', [1, 0, 0])
-
-    expect(sprite.getInstanceValue('dissolve')).toBe(0.5)
-    expect(sprite.getInstanceValue('outline')).toEqual([1, 0, 0])
-
-    sprite.clearInstanceValues()
-    expect(sprite.getInstanceValue('dissolve')).toBeUndefined()
-  })
-
   it('should clone correctly', () => {
     const sprite = new Sprite2D({
       texture,
@@ -104,7 +94,6 @@ describe('Sprite2D', () => {
       zIndex: 10,
     })
     sprite.position.set(100, 200, 0)
-    sprite.setInstanceValue('test', 42)
 
     const cloned = sprite.clone()
 
@@ -113,7 +102,6 @@ describe('Sprite2D', () => {
     expect(cloned.layer).toBe(sprite.layer)
     expect(cloned.zIndex).toBe(sprite.zIndex)
     expect(cloned.position.equals(sprite.position)).toBe(true)
-    expect(cloned.getInstanceValue('test')).toBe(42)
   })
 
   it('should get world position 2D', () => {
@@ -124,5 +112,193 @@ describe('Sprite2D', () => {
 
     expect(pos2D.x).toBe(100)
     expect(pos2D.y).toBe(200)
+  })
+})
+
+// ============================================
+// Standalone vs Enrolled buffer behavior
+// ============================================
+
+describe('Sprite2D standalone vs enrolled', () => {
+  let texture: Texture
+  let material: Sprite2DMaterial
+
+  beforeEach(() => {
+    texture = new Texture()
+    // @ts-expect-error - mocking image for tests
+    texture.image = { width: 100, height: 100 }
+    material = new Sprite2DMaterial({ map: texture })
+  })
+
+  afterEach(() => {
+    universe.reset()
+  })
+
+  it('standalone: tint writes to own geometry buffer immediately', () => {
+    const sprite = new Sprite2D({ texture, material })
+
+    sprite.tint = [1, 0, 0]
+
+    const colorAttr = sprite.geometry.getAttribute('instanceColor') as BufferAttribute
+    const array = colorAttr.array as Float32Array
+    expect(array[0]).toBeCloseTo(1) // r
+    expect(array[1]).toBeCloseTo(0) // g
+    expect(array[2]).toBeCloseTo(0) // b
+    expect(array[3]).toBeCloseTo(1) // a
+  })
+
+  it('standalone: alpha writes to own geometry buffer immediately', () => {
+    const sprite = new Sprite2D({ texture, material })
+
+    sprite.alpha = 0.5
+
+    const colorAttr = sprite.geometry.getAttribute('instanceColor') as BufferAttribute
+    const array = colorAttr.array as Float32Array
+    // All 4 vertices should have alpha = 0.5
+    expect(array[3]).toBeCloseTo(0.5)
+    expect(array[7]).toBeCloseTo(0.5)
+  })
+
+  it('standalone: flip writes to own geometry buffer immediately', () => {
+    const sprite = new Sprite2D({ texture, material })
+
+    sprite.flipX = true
+
+    const flipAttr = sprite.geometry.getAttribute('instanceFlip') as BufferAttribute
+    const array = flipAttr.array as Float32Array
+    expect(array[0]).toBe(-1) // x flipped
+    expect(array[1]).toBe(1)  // y normal
+  })
+
+  it('standalone: setFrame writes to own UV buffer immediately', () => {
+    const sprite = new Sprite2D({ texture, material })
+    sprite.setFrame({
+      name: 'test',
+      x: 0.25,
+      y: 0.5,
+      width: 0.25,
+      height: 0.25,
+      sourceWidth: 25,
+      sourceHeight: 25,
+    })
+
+    const uvAttr = sprite.geometry.getAttribute('instanceUV') as BufferAttribute
+    const array = uvAttr.array as Float32Array
+    expect(array[0]).toBeCloseTo(0.25) // x
+    expect(array[1]).toBeCloseTo(0.5)  // y
+    expect(array[2]).toBeCloseTo(0.25) // w
+    expect(array[3]).toBeCloseTo(0.25) // h
+  })
+
+  it('enrolled: tint writes to trait only, own buffer unchanged', () => {
+    const sprite = new Sprite2D({ texture, material })
+    const world = createWorld()
+    sprite._enrollInWorld(world)
+
+    // Read initial own buffer color (should be white from construction)
+    const colorAttr = sprite.geometry.getAttribute('instanceColor') as BufferAttribute
+    const array = colorAttr.array as Float32Array
+    const initialG = array[1] // green component
+
+    // Change tint — writes to entity trait, NOT to own buffer
+    sprite.tint = [1, 0, 0]
+
+    // Own buffer should NOT have changed
+    expect(array[1]).toBe(initialG)
+
+    // But the trait should have the new value
+    expect(sprite._entity).not.toBeNull()
+    const color = sprite._entity!.get(SpriteColor)
+    expect(color.r).toBe(1)
+    expect(color.g).toBe(0)
+    expect(color.b).toBe(0)
+  })
+
+  it('enrolled: flip writes to trait only', () => {
+    const sprite = new Sprite2D({ texture, material })
+    const world = createWorld()
+    sprite._enrollInWorld(world)
+
+    sprite.flipX = true
+
+    // Trait should have the new value
+    const flip = sprite._entity!.get(SpriteFlip)
+    expect(flip.x).toBe(-1)
+    expect(flip.y).toBe(1)
+  })
+
+  it('enrolled: setFrame writes to trait only', () => {
+    const sprite = new Sprite2D({ texture, material })
+    const world = createWorld()
+    sprite._enrollInWorld(world)
+
+    sprite.setFrame({
+      name: 'test',
+      x: 0.25,
+      y: 0.5,
+      width: 0.25,
+      height: 0.25,
+      sourceWidth: 25,
+      sourceHeight: 25,
+    })
+
+    const uv = sprite._entity!.get(SpriteUV)
+    expect(uv.x).toBeCloseTo(0.25)
+    expect(uv.y).toBeCloseTo(0.5)
+    expect(uv.w).toBeCloseTo(0.25)
+    expect(uv.h).toBeCloseTo(0.25)
+  })
+
+  it('_attachToBatch adds IsBatched to entity', () => {
+    const sprite = new Sprite2D({ texture, material })
+    const world = createWorld()
+    sprite._enrollInWorld(world)
+
+    expect(sprite._entity!.has(IsBatched)).toBe(false)
+
+    // Create a minimal mock batch target
+    const mockTarget = {
+      writeColor: () => {},
+      writeUV: () => {},
+      writeFlip: () => {},
+      writeMatrix: () => {},
+      writeCustom: () => {},
+      writeEffectSlot: () => {},
+      getCustomBuffer: () => undefined,
+      getColorAttribute: () => ({ needsUpdate: false }),
+      getUVAttribute: () => ({ needsUpdate: false }),
+      getFlipAttribute: () => ({ needsUpdate: false }),
+      getCustomAttribute: () => undefined,
+    }
+
+    sprite._attachToBatch(mockTarget as any, 0)
+
+    expect(sprite._entity!.has(IsBatched)).toBe(true)
+  })
+
+  it('_detachFromBatch removes IsBatched from entity', () => {
+    const sprite = new Sprite2D({ texture, material })
+    const world = createWorld()
+    sprite._enrollInWorld(world)
+
+    const mockTarget = {
+      writeColor: () => {},
+      writeUV: () => {},
+      writeFlip: () => {},
+      writeMatrix: () => {},
+      writeCustom: () => {},
+      writeEffectSlot: () => {},
+      getCustomBuffer: () => undefined,
+      getColorAttribute: () => ({ needsUpdate: false }),
+      getUVAttribute: () => ({ needsUpdate: false }),
+      getFlipAttribute: () => ({ needsUpdate: false }),
+      getCustomAttribute: () => undefined,
+    }
+
+    sprite._attachToBatch(mockTarget as any, 0)
+    expect(sprite._entity!.has(IsBatched)).toBe(true)
+
+    sprite._detachFromBatch()
+    expect(sprite._entity!.has(IsBatched)).toBe(false)
   })
 })

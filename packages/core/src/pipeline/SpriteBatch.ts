@@ -235,6 +235,13 @@ export class SpriteBatch extends InstancedMesh implements BatchTarget {
     return this._customAttributes.get(name)?.attribute
   }
 
+  writeEffectSlot(index: number, bufferIndex: number, component: number, value: number): void {
+    const attrName = `effectBuf${bufferIndex}`
+    const custom = this._customAttributes.get(attrName)
+    if (!custom) return
+    custom.buffer[index * 4 + component] = value
+  }
+
   // ============================================
   // Sprite management
   // ============================================

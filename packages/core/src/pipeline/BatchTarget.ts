@@ -33,6 +33,17 @@ export interface BatchTarget {
   writeCustom(index: number, name: string, value: number | number[]): void
 
   /**
+   * Write a single float to a specific component of a packed effect buffer.
+   * Used for per-slot writes to effectBuf0, effectBuf1, etc.
+   *
+   * @param index - Sprite index in the batch
+   * @param bufferIndex - Which effect buffer (0, 1, 2, ...)
+   * @param component - Which vec4 component (0=x, 1=y, 2=z, 3=w)
+   * @param value - Float value to write
+   */
+  writeEffectSlot(index: number, bufferIndex: number, component: number, value: number): void
+
+  /**
    * Get a custom attribute buffer by name (for sprites that need direct access).
    */
   getCustomBuffer(name: string): { buffer: Float32Array; size: number } | undefined

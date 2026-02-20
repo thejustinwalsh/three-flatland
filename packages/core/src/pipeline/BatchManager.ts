@@ -1,5 +1,7 @@
+import type { Trait } from 'koota'
 import type { Sprite2D } from '../sprites/Sprite2D'
 import type { Sprite2DMaterial } from '../materials/Sprite2DMaterial'
+import type { MaterialEffect } from '../materials/MaterialEffect'
 import { SpriteBatch, DEFAULT_BATCH_SIZE } from './SpriteBatch'
 import { encodeSortKey } from './layers'
 import type { SpriteEntry, RenderStats } from './types'
@@ -48,6 +50,12 @@ export class BatchManager {
   private _transformsDirty: boolean = false
 
   /**
+   * Material references for version tracking.
+   * Used to detect tier changes that require batch rebuild.
+   */
+  private _materialRefs: Map<number, { material: Sprite2DMaterial; version: number }> = new Map()
+
+  /**
    * Maximum sprites per batch.
    */
   private _maxBatchSize: number
@@ -80,6 +88,13 @@ export class BatchManager {
 
     this._sprites.set(sprite, entry)
     this._sortDirty = true
+
+    // Track material for version detection
+    const mat = sprite.material
+    this._materialRefs.set(mat.batchId, {
+      material: mat,
+      version: mat._effectSchemaVersion,
+    })
   }
 
   /**
@@ -146,10 +161,29 @@ export class BatchManager {
   }
 
   /**
+   * Mark sort as dirty, forcing a batch rebuild on next prepare().
+   * Used when external changes (tier upgrades, ECS events) require resorting.
+   */
+  markSortDirty(): void {
+    this._sortDirty = true
+  }
+
+  /**
    * Prepare batches for rendering.
-   * Sorts sprites and rebuilds batches if sort order changed.
+   * Checks for material schema changes, sorts sprites, and rebuilds batches if needed.
    */
   prepare(): void {
+    // Check for material schema changes (tier upgrades from effect registration)
+    if (!this._sortDirty) {
+      for (const [batchId, ref] of this._materialRefs) {
+        if (ref.material._effectSchemaVersion !== ref.version) {
+          ref.version = ref.material._effectSchemaVersion
+          this._sortDirty = true
+          break
+        }
+      }
+    }
+
     if (this._sortDirty) {
       this._rebuildBatches()
       this._sortDirty = false
@@ -313,9 +347,24 @@ export class BatchManager {
     }
     this._batchPool.length = 0
 
+    this._materialRefs.clear()
     this._sortDirty = false
     this._transformsDirty = false
     this._updateStats()
+  }
+
+  /**
+   * Get all effect traits across all registered materials.
+   * Used by Renderer2D to determine which effect traits to query for buffer sync.
+   */
+  getEffectTraits(): Map<Trait, typeof MaterialEffect> {
+    const traits = new Map<Trait, typeof MaterialEffect>()
+    for (const { material } of this._materialRefs.values()) {
+      for (const effectClass of material.getEffects()) {
+        traits.set(effectClass._trait, effectClass)
+      }
+    }
+    return traits
   }
 
   /**

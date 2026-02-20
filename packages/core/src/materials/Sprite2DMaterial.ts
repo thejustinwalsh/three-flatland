@@ -1,4 +1,3 @@
-import { MeshBasicNodeMaterial } from 'three/webgpu'
 import { attribute, texture, uv, vec2, vec4, float, Fn, If, Discard, select } from 'three/tsl'
 import {
   type Texture,
@@ -8,7 +7,8 @@ import {
   OneFactor,
   OneMinusSrcAlphaFactor,
 } from 'three'
-import type { InstanceAttributeConfig, InstanceAttributeType } from '../pipeline/types'
+import { EffectMaterial } from './EffectMaterial'
+import type { TSLNode } from '../nodes/types'
 
 export interface Sprite2DMaterialOptions {
   map?: Texture
@@ -23,6 +23,13 @@ export interface Sprite2DMaterialOptions {
    * transparent pixels produce (0,0,0,0) which blends to nothing.
    */
   premultipliedAlpha?: boolean
+  /**
+   * Effect buffer tier size in floats.
+   * Buffers are allocated in tiers: 0, 4, 8, 16.
+   * Default is 8 (2 vec4 buffers), covering most effect combinations.
+   * Set to 0 for fully effect-free materials (no effect buffer overhead).
+   */
+  effectTier?: number
 }
 
 // Global material ID counter for batching
@@ -40,9 +47,10 @@ let nextMaterialId = 0
  * - instanceColor (vec4): tint color and alpha (r, g, b, a)
  * - instanceFlip (vec2): flip flags (x, y) where 1 = normal, -1 = flipped
  *
- * Custom instance attributes can be added via addInstanceFloat(), etc.
+ * Effects are composed via `registerEffect()`, which packs effect data into
+ * fixed-size vec4 buffers with per-sprite enable flags.
  */
-export class Sprite2DMaterial extends MeshBasicNodeMaterial {
+export class Sprite2DMaterial extends EffectMaterial {
   /**
    * Unique batch ID for this material instance (used for batching).
    */
@@ -51,14 +59,8 @@ export class Sprite2DMaterial extends MeshBasicNodeMaterial {
   private _spriteTexture: Texture | null = null
   private _premultipliedAlpha: boolean = false
 
-  /**
-   * Custom instance attribute schema.
-   * Defines additional per-sprite attributes for effects.
-   */
-  private _instanceAttributes: Map<string, InstanceAttributeConfig> = new Map()
-
   constructor(options: Sprite2DMaterialOptions = {}) {
-    super()
+    super({ effectTier: options.effectTier })
 
     this.batchId = nextMaterialId++
 
@@ -68,13 +70,11 @@ export class Sprite2DMaterial extends MeshBasicNodeMaterial {
     this.side = FrontSide
 
     if (this._premultipliedAlpha) {
-      // Premultiplied alpha: transparent pixels produce (0,0,0,0) which blends to nothing
       this.blending = CustomBlending
       this.blendSrc = OneFactor
       this.blendDst = OneMinusSrcAlphaFactor
       this.depthWrite = false
     } else {
-      // Standard blending with depth write for proper zIndex sorting within batches
       this.blending = NormalBlending
       this.depthWrite = true
     }
@@ -84,52 +84,58 @@ export class Sprite2DMaterial extends MeshBasicNodeMaterial {
     }
   }
 
-  private setupNodes() {
-    if (!this._spriteTexture) return
+  /**
+   * Gate _rebuildColorNode() — skip if no texture is set yet.
+   * @internal
+   */
+  protected override _canBuildColor(): boolean {
+    return this._spriteTexture !== null
+  }
 
-    const mapTexture = this._spriteTexture
+  /**
+   * Build the base color node for sprites.
+   * Handles UV flip, atlas remapping, texture sampling, tint, and alpha test.
+   * Called inside Fn() context by EffectMaterial._rebuildColorNode().
+   * @internal
+   */
+  protected override _buildBaseColor(): { color: TSLNode; uv: TSLNode } | null {
+    const mapTexture = this._spriteTexture!
 
-    // Read from instance attributes (works for both single sprites and batched)
+
+    // Read from core instance attributes
     const instanceUV = attribute('instanceUV', 'vec4')
     const instanceColor = attribute('instanceColor', 'vec4')
     const instanceFlip = attribute('instanceFlip', 'vec2')
 
-    // Color node: sample texture with instance UV, apply instance color
-    this.colorNode = Fn(() => {
-      // Get base UV
-      const baseUV = uv()
+    // Apply flip
+    const baseUV = uv()
+    const flippedUV = vec2(
+      select(instanceFlip.x.greaterThan(float(0)), baseUV.x, float(1).sub(baseUV.x)),
+      select(instanceFlip.y.greaterThan(float(0)), baseUV.y, float(1).sub(baseUV.y))
+    )
 
-      // Apply flip using instance attribute
-      const flippedUV = vec2(
-        select(instanceFlip.x.greaterThan(float(0)), baseUV.x, float(1).sub(baseUV.x)),
-        select(instanceFlip.y.greaterThan(float(0)), baseUV.y, float(1).sub(baseUV.y))
-      )
+    // Remap to frame in atlas
+    const atlasUV = flippedUV
+      .mul(vec2(instanceUV.z, instanceUV.w))
+      .add(vec2(instanceUV.x, instanceUV.y))
 
-      // Remap to frame in atlas using instance UV
-      const atlasUV = flippedUV
-        .mul(vec2(instanceUV.z, instanceUV.w))
-        .add(vec2(instanceUV.x, instanceUV.y))
+    // Sample texture
+    const texColor = texture(mapTexture, atlasUV)
 
-      // Sample texture
-      const texColor = texture(mapTexture, atlasUV)
+    // Apply instance color (tint) and alpha
+    const finalAlpha = texColor.a.mul(instanceColor.a)
 
-      // Apply instance color (tint) and alpha
-      const finalAlpha = texColor.a.mul(instanceColor.a)
-
-      if (this._premultipliedAlpha) {
-        // Premultiplied alpha: RGB is pre-multiplied by alpha
-        // Transparent pixels produce (0,0,0,0) which blends to nothing
-        // No Discard() needed — preserves early-z on WebGL
-        return vec4(texColor.rgb.mul(instanceColor.rgb).mul(finalAlpha), finalAlpha)
-      }
-
-      // Standard path: discard fully transparent pixels
+    let color: TSLNode
+    if (this._premultipliedAlpha) {
+      color = vec4(texColor.rgb.mul(instanceColor.rgb).mul(finalAlpha), finalAlpha)
+    } else {
       If(texColor.a.lessThan(float(0.01)), () => {
         Discard()
       })
+      color = vec4(texColor.rgb.mul(instanceColor.rgb), finalAlpha)
+    }
 
-      return vec4(texColor.rgb.mul(instanceColor.rgb), finalAlpha)
-    })()
+    return { color, uv: atlasUV }
   }
 
   /**
@@ -145,107 +151,13 @@ export class Sprite2DMaterial extends MeshBasicNodeMaterial {
   setTexture(value: Texture | null) {
     this._spriteTexture = value
     if (value) {
-      this.setupNodes()
+      this._rebuildColorNode()
       this.needsUpdate = true
     }
   }
 
-  // ============================================
-  // INSTANCE ATTRIBUTE SYSTEM
-  // ============================================
-
-  /**
-   * Add a float instance attribute.
-   */
-  addInstanceFloat(name: string, defaultValue: number = 0): this {
-    this._instanceAttributes.set(name, {
-      name,
-      type: 'float',
-      defaultValue,
-    })
-    return this
-  }
-
-  /**
-   * Add a vec2 instance attribute.
-   */
-  addInstanceVec2(name: string, defaultValue: [number, number] = [0, 0]): this {
-    this._instanceAttributes.set(name, {
-      name,
-      type: 'vec2',
-      defaultValue,
-    })
-    return this
-  }
-
-  /**
-   * Add a vec3 instance attribute.
-   */
-  addInstanceVec3(name: string, defaultValue: [number, number, number] = [0, 0, 0]): this {
-    this._instanceAttributes.set(name, {
-      name,
-      type: 'vec3',
-      defaultValue,
-    })
-    return this
-  }
-
-  /**
-   * Add a vec4 instance attribute.
-   */
-  addInstanceVec4(name: string, defaultValue: [number, number, number, number] = [0, 0, 0, 0]): this {
-    this._instanceAttributes.set(name, {
-      name,
-      type: 'vec4',
-      defaultValue,
-    })
-    return this
-  }
-
-  /**
-   * Remove an instance attribute.
-   */
-  removeInstanceAttribute(name: string): this {
-    this._instanceAttributes.delete(name)
-    return this
-  }
-
-  /**
-   * Check if an instance attribute exists.
-   */
-  hasInstanceAttribute(name: string): boolean {
-    return this._instanceAttributes.has(name)
-  }
-
-  /**
-   * Get an instance attribute configuration.
-   */
-  getInstanceAttribute(name: string): InstanceAttributeConfig | undefined {
-    return this._instanceAttributes.get(name)
-  }
-
-  /**
-   * Get all instance attribute configurations.
-   * Used by SpriteBatch to create InstancedBufferAttributes.
-   */
-  getInstanceAttributeSchema(): Map<string, InstanceAttributeConfig> {
-    return this._instanceAttributes
-  }
-
-  /**
-   * Get the number of floats needed per instance for custom attributes.
-   */
-  getInstanceAttributeStride(): number {
-    let stride = 0
-    for (const config of this._instanceAttributes.values()) {
-      stride += getTypeSize(config.type)
-    }
-    return stride
-  }
-
   /**
    * Clone this material.
-   * Ensures the cloned material has the texture, nodes, and custom colorNode preserved.
    */
   override clone(): this {
     const cloned = new Sprite2DMaterial({
@@ -253,19 +165,12 @@ export class Sprite2DMaterial extends MeshBasicNodeMaterial {
       transparent: this.transparent,
       alphaTest: this.alphaTest,
       premultipliedAlpha: this._premultipliedAlpha,
+      effectTier: this._defaultEffectTier,
     }) as this
 
-    // Copy instance attributes
-    for (const [name, config] of this._instanceAttributes) {
-      ;(cloned as Sprite2DMaterial)._instanceAttributes.set(name, { ...config })
-    }
-
-    // Preserve custom colorNode if it was set externally (e.g., for effects)
-    // This is important because setupNodes() sets a default colorNode,
-    // but users may override it with custom TSL effects
-    if (this.colorNode) {
-      cloned.colorNode = this.colorNode
-      cloned.needsUpdate = true
+    // Copy effects (registers their packed slots and rebuilds colorNode)
+    for (const effectClass of this._effects) {
+      ;(cloned as Sprite2DMaterial).registerEffect(effectClass)
     }
 
     return cloned
@@ -273,22 +178,9 @@ export class Sprite2DMaterial extends MeshBasicNodeMaterial {
 
   dispose() {
     super.dispose()
+    this._effects.length = 0
     this._instanceAttributes.clear()
-  }
-}
-
-/**
- * Get the number of floats for an attribute type.
- */
-function getTypeSize(type: InstanceAttributeType): number {
-  switch (type) {
-    case 'float':
-      return 1
-    case 'vec2':
-      return 2
-    case 'vec3':
-      return 3
-    case 'vec4':
-      return 4
+    this._effectSlots.clear()
+    this._effectBitIndex.clear()
   }
 }

@@ -321,7 +321,6 @@ function VillageScene({ entities, selectedBuilding, onPlaceBuilding, onStats }: 
 
   useFrame(() => {
     if (renderer2DRef.current) {
-      renderer2DRef.current.update()
       onStats(renderer2DRef.current.stats)
     }
   })

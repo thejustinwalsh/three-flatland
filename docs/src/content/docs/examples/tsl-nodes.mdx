@@ -38,43 +38,104 @@ export const reactFiles = loadExample('react', 'tsl-nodes');
 </Tabs>
 </ExampleTabs>
 
-## Applying Effects
+## What This Example Shows
 
-Use the `@three-flatland/nodes` package for pre-built effects:
+This example demonstrates the **Material Effect** system — the recommended way to create per-sprite shader effects. It showcases 8 visual modes on an animated sprite:
 
-```typescript
-import { outlineNode, glowNode } from '@three-flatland/nodes';
+| Effect | Description |
+|--------|-------------|
+| Normal | No effect — base sprite rendering |
+| Damage Flash | Additive white flash that fades out |
+| Dissolve | Pixelated noise-based dissolve |
+| Powerup | Continuous hue rotation (rainbow) |
+| Petrify | Desaturation to grayscale |
+| Select | Green outline around sprite |
+| Shadow | Dark blue tint with reduced alpha |
+| Pixelate | Resolution reduction and restoration |
 
-sprite.material.colorNode = outlineNode({
-  color: 0xff0000,
-  width: 2,
-});
-```
+## Defining Effects
 
-## Available Nodes
+Effects are defined with `createMaterialEffect`, which takes a schema for per-sprite data and a TSL node builder:
 
-| Node | Description |
-|------|-------------|
-| `outlineNode` | Solid colored outline |
-| `glowNode` | Soft glow effect |
-| `pixelateNode` | Retro pixelation |
-| `colorReplaceNode` | Swap colors |
+<Tabs syncKey="framework">
+  <TabItem label="Three.js" icon="seti:javascript">
+    ```typescript
+    import { createMaterialEffect, tintAdditive, hueShift } from '@three-flatland/core'
+    import { vec4 } from 'three/tsl'
 
-## Custom Nodes
+    const DamageFlash = createMaterialEffect({
+      name: 'damageFlash',
+      schema: { intensity: 1 } as const,
+      node: ({ inputColor, attrs }) => {
+        const flashed = tintAdditive(inputColor, [1, 1, 1], attrs.intensity)
+        return vec4(flashed.rgb.mul(inputColor.a), inputColor.a)
+      },
+    })
 
-Create custom effects using Three.js TSL functions:
+    const Powerup = createMaterialEffect({
+      name: 'powerup',
+      schema: { angle: 0 } as const,
+      node: ({ inputColor, attrs }) => hueShift(inputColor, attrs.angle),
+    })
+    ```
+  </TabItem>
+  <TabItem label="React" icon="seti:react">
+    ```tsx
+    import { createMaterialEffect, tintAdditive, hueShift } from '@three-flatland/react'
+    import { vec4 } from 'three/tsl'
 
-```typescript
-import { tslFn, vec4, uv, texture } from 'three/tsl';
+    const DamageFlash = createMaterialEffect({
+      name: 'damageFlash',
+      schema: { intensity: 1 } as const,
+      node: ({ inputColor, attrs }) => {
+        const flashed = tintAdditive(inputColor, [1, 1, 1], attrs.intensity)
+        return vec4(flashed.rgb.mul(inputColor.a), inputColor.a)
+      },
+    })
 
-const customEffect = tslFn(({ tex }) => {
-  const color = texture(tex, uv());
-  // Invert colors
-  return vec4(1.0 - color.r, 1.0 - color.g, 1.0 - color.b, color.a);
-});
-```
+    const Powerup = createMaterialEffect({
+      name: 'powerup',
+      schema: { angle: 0 } as const,
+      node: ({ inputColor, attrs }) => hueShift(inputColor, attrs.angle),
+    })
+    ```
+  </TabItem>
+</Tabs>
+
+## Applying Effects at Runtime
+
+Instantiate an effect, add it to a sprite, and animate its properties:
+
+<Tabs syncKey="framework">
+  <TabItem label="Three.js" icon="seti:javascript">
+    ```typescript
+    const flash = new DamageFlash()
+    sprite.addEffect(flash)
+
+    // Animate in render loop
+    flash.intensity = Math.max(0, 1 - elapsed / 0.3)
+
+    // Switch effects
+    sprite.removeEffect(flash)
+    ```
+  </TabItem>
+  <TabItem label="React" icon="seti:react">
+    ```tsx
+    const flash = useMemo(() => new DamageFlash(), [])
+
+    useEffect(() => {
+      sprite.addEffect(flash)
+      return () => sprite.removeEffect(flash)
+    }, [sprite, flash])
+
+    useFrame((_, delta) => {
+      flash.intensity = Math.max(0, flash.intensity - delta / 0.3)
+    })
+    ```
+  </TabItem>
+</Tabs>
 
 ## Next Steps
 
+- [TSL Nodes Guide](/guides/tsl-nodes) - Full node reference and Material Effect documentation
 - [Tilemap](/examples/tilemap) - Tile-based map rendering
-- [TSL Nodes Guide](/guides/tsl-nodes) - Detailed node documentation
