@@ -1,5 +1,5 @@
 import { MeshBasicNodeMaterial } from 'three/webgpu'
-import { attribute, vec2, vec3, vec4, float, Fn, select, mix, floor, mod } from 'three/tsl'
+import { attribute, vec2, vec3, vec4, float, Fn, mix, floor, mod } from 'three/tsl'
 import type { InstanceAttributeConfig, InstanceAttributeType } from '../pipeline/types'
 import type { MaterialEffect } from './MaterialEffect'
 import type { TSLNode } from '../nodes/types'
@@ -122,7 +122,7 @@ export class EffectMaterial extends MeshBasicNodeMaterial {
 
   /**
    * Version counter for effect schema changes (tier upgrades).
-   * Incremented when the tier changes, used by BatchManager to detect
+   * Incremented when the tier changes, used by Renderer2D to detect
    * when batches need rebuilding.
    * @internal
    */
@@ -271,8 +271,8 @@ export class EffectMaterial extends MeshBasicNodeMaterial {
   _rebuildColorNode(): void {
     if (!this._canBuildColor()) return
 
-    // Capture references for use inside Fn closure
-    const self = this
+    // Bind method for use inside Fn closure (avoids no-this-alias)
+    const buildBaseColor = this._buildBaseColor.bind(this)
 
     // Pre-build packed buffer TSL nodes for effects (can be outside Fn)
     const numVec4s = this._effectTier / 4
@@ -324,7 +324,7 @@ export class EffectMaterial extends MeshBasicNodeMaterial {
 
     // Build color node: base color + effect chain (all inside Fn for TSL context)
     this.colorNode = Fn(() => {
-      const baseResult = self._buildBaseColor()
+      const baseResult = buildBaseColor()
       if (!baseResult) return vec4(0, 0, 0, 0)
 
       let { color } = baseResult

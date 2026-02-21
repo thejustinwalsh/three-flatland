@@ -8,21 +8,20 @@ import {
   type Texture,
 } from 'three'
 import type { Entity, World } from 'koota'
-import { MaterialEffect } from '../materials/MaterialEffect'
+import type { MaterialEffect } from '../materials/MaterialEffect'
 import { Sprite2DMaterial } from '../materials/Sprite2DMaterial'
 import type { Sprite2DOptions, SpriteFrame } from './types'
-import type { BatchTarget } from '../pipeline/BatchTarget'
 import {
   SpriteUV,
   SpriteColor,
   SpriteFlip,
   SpriteLayer,
+  SpriteZIndex,
   SpriteMaterialRef,
   IsRenderable,
-  IsBatched,
   ThreeRef,
 } from '../ecs/traits'
-import { readTrait, writeTrait } from '../ecs/snapshot'
+import { readField, readTrait, writeTrait } from '../ecs/snapshot'
 import { getGlobalWorld } from '../ecs/world'
 
 /** Pre-enrollment snapshot for Sprite2D visual state. Types match trait schemas. */
@@ -30,7 +29,8 @@ interface SpriteSnapshot {
   color: { r: number; g: number; b: number; a: number }
   uv: { x: number; y: number; w: number; h: number }
   flip: { x: number; y: number }
-  layer: { layer: number; zIndex: number }
+  layer: { layer: number }
+  zIndex: { zIndex: number }
 }
 
 /** Module-level scratch Color for parsing tint values without allocation. */
@@ -66,6 +66,13 @@ const ATTR_TYPE_SIZES: Record<string, number> = { float: 1, vec2: 2, vec3: 3, ve
 export class Sprite2D extends Mesh {
   declare geometry: PlaneGeometry
   declare material: Sprite2DMaterial
+
+  /**
+   * Shared material cache keyed by texture. Sprites created with just a texture
+   * (no explicit material) reuse the same Sprite2DMaterial, which means they share
+   * the same batchId and are automatically batched together by Renderer2D.
+   */
+  private static _sharedMaterials = new WeakMap<Texture, Sprite2DMaterial>()
 
   /**
    * Own-geometry buffers for custom attributes (unbatched rendering).
@@ -117,7 +124,8 @@ export class Sprite2D extends Mesh {
     color: { r: 1, g: 1, b: 1, a: 1 },
     uv: { x: 0, y: 0, w: 1, h: 1 },
     flip: { x: 1, y: 1 },
-    layer: { layer: 0, zIndex: 0 },
+    layer: { layer: 0 },
+    zIndex: { zIndex: 0 },
   }
 
   /**
@@ -131,22 +139,6 @@ export class Sprite2D extends Mesh {
    * @internal
    */
   _flatlandWorld: World | null = null
-
-  // ============================================
-  // BATCH TARGET STATE (for shared buffer architecture)
-  // ============================================
-
-  /**
-   * The batch this sprite is attached to (null = standalone rendering).
-   * @internal
-   */
-  _batchTarget: BatchTarget | null = null
-
-  /**
-   * Index of this sprite in the batch's buffers.
-   * @internal
-   */
-  _batchIndex: number = -1
 
   /** Custom geometry for anchor offset */
   private _geometry: PlaneGeometry | null = null
@@ -182,13 +174,20 @@ export class Sprite2D extends Mesh {
    * Can be called with no arguments for R3F compatibility - set texture via property.
    */
   constructor(options?: Sprite2DOptions) {
-    // Create material (texture can be set later)
-    const material =
-      options?.material ??
-      new Sprite2DMaterial({
-        map: options?.texture,
-        transparent: true,
-      })
+    // Resolve material: explicit > shared-by-texture > new private
+    let material: Sprite2DMaterial
+    if (options?.material) {
+      material = options.material
+    } else if (options?.texture) {
+      let shared = Sprite2D._sharedMaterials.get(options.texture)
+      if (!shared) {
+        shared = new Sprite2DMaterial({ map: options.texture, transparent: true })
+        Sprite2D._sharedMaterials.set(options.texture, shared)
+      }
+      material = shared
+    } else {
+      material = new Sprite2DMaterial({ transparent: true })
+    }
 
     // Create geometry with instance attributes for single-sprite rendering
     // (Cannot use shared geometry because each sprite needs its own attribute buffers)
@@ -333,12 +332,14 @@ export class Sprite2D extends Mesh {
   setFrame(frame: SpriteFrame): this {
     const isFirstFrame = this._frame === null
     this._frame = frame
+    // Silent write — UV is synced unconditionally in transformSyncSystem,
+    // no Changed(SpriteUV) observer needed.
     writeTrait(this._entity, SpriteUV, this._snapshot.uv, {
       x: frame.x,
       y: frame.y,
       w: frame.width,
       h: frame.height,
-    })
+    }, false)
     if (!this._entity) this._updateOwnUV()
     // Only auto-size on first frame set (not during animation)
     if (isFirstFrame) {
@@ -408,7 +409,7 @@ export class Sprite2D extends Mesh {
    * Get alpha/opacity.
    */
   get alpha(): number {
-    return readTrait(this._entity, SpriteColor, this._snapshot.color).a
+    return readField(this._entity, SpriteColor, 'a', this._snapshot.color.a)
   }
 
   /**
@@ -423,14 +424,16 @@ export class Sprite2D extends Mesh {
    * Get flipX state.
    */
   get flipX(): boolean {
-    return readTrait(this._entity, SpriteFlip, this._snapshot.flip).x === -1
+    return readField(this._entity, SpriteFlip, 'x', this._snapshot.flip.x) === -1
   }
 
   /**
    * Set flipX state.
    */
   set flipX(value: boolean) {
-    writeTrait(this._entity, SpriteFlip, this._snapshot.flip, { x: value ? -1 : 1 })
+    const numVal = value ? -1 : 1
+    if (readField(this._entity, SpriteFlip, 'x', this._snapshot.flip.x) === numVal) return
+    writeTrait(this._entity, SpriteFlip, this._snapshot.flip, { x: numVal })
     if (!this._entity) this._updateOwnFlip()
   }
 
@@ -438,14 +441,16 @@ export class Sprite2D extends Mesh {
    * Get flipY state.
    */
   get flipY(): boolean {
-    return readTrait(this._entity, SpriteFlip, this._snapshot.flip).y === -1
+    return readField(this._entity, SpriteFlip, 'y', this._snapshot.flip.y) === -1
   }
 
   /**
    * Set flipY state.
    */
   set flipY(value: boolean) {
-    writeTrait(this._entity, SpriteFlip, this._snapshot.flip, { y: value ? -1 : 1 })
+    const numVal = value ? -1 : 1
+    if (readField(this._entity, SpriteFlip, 'y', this._snapshot.flip.y) === numVal) return
+    writeTrait(this._entity, SpriteFlip, this._snapshot.flip, { y: numVal })
     if (!this._entity) this._updateOwnFlip()
   }
 
@@ -465,7 +470,7 @@ export class Sprite2D extends Mesh {
    * Get render layer (primary sort key).
    */
   get layer(): number {
-    return readTrait(this._entity, SpriteLayer, this._snapshot.layer).layer
+    return readField(this._entity, SpriteLayer, 'layer', this._snapshot.layer.layer)
   }
 
   /**
@@ -479,14 +484,14 @@ export class Sprite2D extends Mesh {
    * Get z-index within layer (secondary sort key).
    */
   get zIndex(): number {
-    return readTrait(this._entity, SpriteLayer, this._snapshot.layer).zIndex
+    return readField(this._entity, SpriteZIndex, 'zIndex', this._snapshot.zIndex.zIndex)
   }
 
   /**
    * Set z-index within layer (secondary sort key).
    */
   set zIndex(value: number) {
-    writeTrait(this._entity, SpriteLayer, this._snapshot.layer, { zIndex: value })
+    writeTrait(this._entity, SpriteZIndex, this._snapshot.zIndex, { zIndex: value }, false)
   }
 
   /**
@@ -687,16 +692,11 @@ export class Sprite2D extends Mesh {
     // 5. Store effect
     this._effects.push(effect)
 
-    // 6. Write packed data to buffers
+    // 6. Write packed data to own geometry buffers (standalone mode only).
+    //    For batched sprites, batchAssignSystem/bufferSyncEffectSystem handles sync.
     if (!this._entity) {
-      // Standalone: write to own geometry buffers immediately
       this._writeEffectDataOwn()
-    } else if (this._batchTarget && this._batchIndex >= 0) {
-      // Enrolled + batched: write to batch buffers immediately
-      // (trait was just Added, Changed() won't catch it)
-      this._writeEffectDataToBatch()
     }
-    // Enrolled but not yet batched: _syncToBatch() handles it on batch assignment
 
     return this
   }
@@ -728,11 +728,10 @@ export class Sprite2D extends Mesh {
     effect._detach()
     this._effects.splice(effectIndex, 1)
 
-    // 4. Write updated packed data to buffers
+    // 4. Write updated packed data to own geometry buffers (standalone only).
+    //    For batched sprites, bufferSyncEffectSystem handles sync.
     if (!this._entity) {
       this._writeEffectDataOwn()
-    } else if (this._batchTarget && this._batchIndex >= 0) {
-      this._writeEffectDataToBatch()
     }
 
     return this
@@ -783,8 +782,8 @@ export class Sprite2D extends Mesh {
         if (typeof value === 'number') {
           this._writePackedSlotOwn(slotInfo.offset, value)
         } else {
-          for (let i = 0; i < (value as number[]).length; i++) {
-            this._writePackedSlotOwn(slotInfo.offset + i, (value as number[])[i]!)
+          for (let i = 0; i < value.length; i++) {
+            this._writePackedSlotOwn(slotInfo.offset + i, value[i]!)
           }
         }
       }
@@ -806,56 +805,6 @@ export class Sprite2D extends Mesh {
     }
   }
 
-  /**
-   * Write all packed effect data to batch buffers (ECS system use).
-   * Called by bufferSyncEffectSystem when effect traits change,
-   * and by addEffect/removeEffect for immediate sync on batched sprites.
-   * @internal
-   */
-  _writeEffectDataToBatch(): void {
-    if (!this._batchTarget || this._batchIndex < 0) return
-
-    const material = this.material
-    const tier = material._effectTier
-    if (tier === 0) return
-
-    // Write flags to slot 0
-    this._writePackedSlotBatch(0, this._effectFlags)
-
-    // Write effect field values to their packed positions
-    for (const effect of this._effects) {
-      const EffectClass = effect.constructor as typeof MaterialEffect
-      for (const field of EffectClass._fields) {
-        const slotKey = `${EffectClass.effectName}_${field.name}`
-        const slotInfo = material._effectSlots.get(slotKey)
-        if (!slotInfo) continue
-
-        const value = effect._getField(field.name)
-        if (typeof value === 'number') {
-          this._writePackedSlotBatch(slotInfo.offset, value)
-        } else {
-          for (let i = 0; i < (value as number[]).length; i++) {
-            this._writePackedSlotBatch(slotInfo.offset + i, (value as number[])[i]!)
-          }
-        }
-      }
-    }
-
-    // Zero out slots for effects registered on material but not active on this sprite
-    for (const effectClass of material._effects) {
-      const isActive = this._effects.some(e => (e.constructor as typeof MaterialEffect).effectName === effectClass.effectName)
-      if (!isActive) {
-        for (const field of effectClass._fields) {
-          const slotKey = `${effectClass.effectName}_${field.name}`
-          const slotInfo = material._effectSlots.get(slotKey)
-          if (!slotInfo) continue
-          for (let i = 0; i < field.size; i++) {
-            this._writePackedSlotBatch(slotInfo.offset + i, field.default[i]!)
-          }
-        }
-      }
-    }
-  }
 
   /**
    * Write a single float to a packed effect buffer slot in own geometry buffer.
@@ -876,40 +825,41 @@ export class Sprite2D extends Mesh {
     }
   }
 
-  /**
-   * Write a single float to a packed effect buffer slot in batch buffer.
-   * @internal
-   */
-  private _writePackedSlotBatch(absoluteOffset: number, value: number): void {
-    if (!this._batchTarget) return
-    const bufIndex = Math.floor(absoluteOffset / 4)
-    const component = absoluteOffset % 4
-    const attrName = `effectBuf${bufIndex}`
-
-    this._batchTarget.writeEffectSlot(this._batchIndex, bufIndex, component, value)
-    const attr = this._batchTarget.getCustomAttribute(attrName)
-    if (attr) attr.needsUpdate = true
-  }
 
   /**
-   * Update the matrix with automatic Z offset for depth-based layer/zIndex sorting.
-   * This ensures proper rendering order whether the sprite is standalone or batched.
+   * Fast 2D matrix update — bypasses Three.js quaternion-based compose().
    *
-   * Z offset formula: layer * 10 + zIndex * 0.001
-   * Higher layer/zIndex = higher Z = closer to camera = renders in front
+   * Three.js Object3D.updateMatrix() calls matrix.compose(position, quaternion, scale)
+   * which does full 3D quaternion→matrix math (~20 multiplies). For 2D sprites we only
+   * need position, scale, and optional Z-axis rotation — written directly to the matrix
+   * elements.
+   *
+   * Also bakes in the layer/zIndex Z offset without save/restore of position.z.
    */
   override updateMatrix(): void {
-    // Store original Z position
-    const originalZ = this.position.z
+    const te = this.matrix.elements
+    const px = this.position.x
+    const py = this.position.y
+    const pz = this.position.z + this.layer * 10 + this.zIndex * 0.001
+    const sx = this.scale.x
+    const sy = this.scale.y
 
-    // Apply Z offset based on layer and zIndex for depth sorting
-    this.position.z += this.layer * 10 + this.zIndex * 0.001
+    const rz = this.rotation.z
+    if (rz !== 0) {
+      // 2D rotation around Z axis
+      const c = Math.cos(rz)
+      const s = Math.sin(rz)
+      te[0] = c * sx;  te[4] = -s * sy; te[8]  = 0; te[12] = px
+      te[1] = s * sx;  te[5] =  c * sy; te[9]  = 0; te[13] = py
+    } else {
+      // No rotation — most common path
+      te[0] = sx; te[4] = 0;  te[8]  = 0; te[12] = px
+      te[1] = 0;  te[5] = sy; te[9]  = 0; te[13] = py
+    }
+    te[2] = 0; te[6] = 0; te[10] = 1; te[14] = pz
+    te[3] = 0; te[7] = 0; te[11] = 0; te[15] = 1
 
-    // Compute matrix with offset
-    super.updateMatrix()
-
-    // Restore original Z position (so user's position.z is preserved)
-    this.position.z = originalZ
+    this.matrixWorldNeedsUpdate = true
   }
 
   // ============================================
@@ -935,7 +885,8 @@ export class Sprite2D extends Mesh {
       SpriteUV({ x: s.uv.x, y: s.uv.y, w: s.uv.w, h: s.uv.h }),
       SpriteColor({ r: s.color.r, g: s.color.g, b: s.color.b, a: s.color.a }),
       SpriteFlip({ x: s.flip.x, y: s.flip.y }),
-      SpriteLayer({ layer: s.layer.layer, zIndex: s.layer.zIndex }),
+      SpriteLayer({ layer: s.layer.layer }),
+      SpriteZIndex({ zIndex: s.zIndex.zIndex }),
       SpriteMaterialRef({
         materialId: this.material.batchId,
       }),
@@ -970,19 +921,21 @@ export class Sprite2D extends Mesh {
     if (flip) Object.assign(this._snapshot.flip, flip)
     const layer = this._entity.get(SpriteLayer)
     if (layer) Object.assign(this._snapshot.layer, layer)
+    const zIdx = this._entity.get(SpriteZIndex)
+    if (zIdx) Object.assign(this._snapshot.zIndex, zIdx)
 
     // Serialize effect trait values back to effect snapshots
     for (const effect of this._effects) {
       const EffectClass = effect.constructor as typeof MaterialEffect
       if (this._entity.has(EffectClass._trait)) {
-        const traitData = this._entity.get(EffectClass._trait)
+        const traitData = this._entity.get(EffectClass._trait) as Record<string, number>
         for (const field of EffectClass._fields) {
           if (field.size === 1) {
-            effect._defaults[field.name] = traitData[field.name] as number
+            effect._defaults[field.name] = traitData[field.name]!
           } else {
             const arr: number[] = []
             for (let i = 0; i < field.size; i++) {
-              arr.push(traitData[`${field.name}_${i}`] as number)
+              arr.push(traitData[`${field.name}_${i}`]!)
             }
             effect._defaults[field.name] = arr
           }
@@ -1003,116 +956,6 @@ export class Sprite2D extends Mesh {
     return this._entity
   }
 
-  // ============================================
-  // BATCH ATTACHMENT (internal API for SpriteBatch)
-  // ============================================
-
-  /**
-   * Attach this sprite to a batch at the given index.
-   * After attachment, property changes are synced by ECS systems.
-   * @internal Called by SpriteBatch.addSprite()
-   */
-  _attachToBatch(target: BatchTarget, index: number): void {
-    this._batchTarget = target
-    this._batchIndex = index
-
-    // Add IsBatched tag to entity
-    if (this._entity && !this._entity.has(IsBatched)) {
-      this._entity.add(IsBatched)
-    }
-
-    // One-time full sync of current state to batch buffers
-    this._syncToBatch()
-  }
-
-  /**
-   * Detach this sprite from its batch.
-   * After detachment, sprite is no longer synced to any batch.
-   * @internal Called by SpriteBatch.removeSprite()
-   */
-  _detachFromBatch(): void {
-    this._batchTarget = null
-    this._batchIndex = -1
-
-    // Remove IsBatched tag from entity
-    if (this._entity && this._entity.has(IsBatched)) {
-      this._entity.remove(IsBatched)
-    }
-  }
-
-  /**
-   * Sync all current state to the batch buffers.
-   * Called when sprite is first attached to a batch (one-time full sync).
-   * Reads from traits (if enrolled) or snapshot (if standalone).
-   * @internal
-   */
-  _syncToBatch(): void {
-    if (!this._batchTarget || this._batchIndex < 0) return
-
-    const target = this._batchTarget
-    const index = this._batchIndex
-
-    // Color (tint + alpha)
-    const c = readTrait(this._entity, SpriteColor, this._snapshot.color)
-    target.writeColor(index, c.r, c.g, c.b, c.a)
-
-    // UV frame — read from trait/snapshot for consistency
-    const uv = readTrait(this._entity, SpriteUV, this._snapshot.uv)
-    target.writeUV(index, uv.x, uv.y, uv.w, uv.h)
-
-    // Flip
-    const f = readTrait(this._entity, SpriteFlip, this._snapshot.flip)
-    target.writeFlip(index, f.x, f.y)
-
-    // Transform matrix
-    this.updateMatrix()
-    target.writeMatrix(index, this.matrix)
-
-    // Packed effect data
-    const material = this.material
-    const tier = material._effectTier
-    if (tier > 0) {
-      const numVec4s = tier / 4
-
-      // Build packed data array
-      const packed = new Float32Array(tier)
-
-      // Slot 0: flags
-      packed[0] = this._effectFlags
-
-      // Effect field data from effect instances
-      for (const effect of this._effects) {
-        const EffectClass = effect.constructor as typeof MaterialEffect
-        for (const field of EffectClass._fields) {
-          const slotKey = `${EffectClass.effectName}_${field.name}`
-          const slotInfo = material._effectSlots.get(slotKey)
-          if (!slotInfo) continue
-
-          const value = effect._getField(field.name)
-          if (typeof value === 'number') {
-            packed[slotInfo.offset] = value
-          } else {
-            for (let i = 0; i < (value as number[]).length; i++) {
-              packed[slotInfo.offset + i] = (value as number[])[i]!
-            }
-          }
-        }
-      }
-
-      // Write packed data to batch buffers as vec4 chunks
-      for (let buf = 0; buf < numVec4s; buf++) {
-        const attrName = `effectBuf${buf}`
-        target.writeCustom(index, attrName, [
-          packed[buf * 4]!,
-          packed[buf * 4 + 1]!,
-          packed[buf * 4 + 2]!,
-          packed[buf * 4 + 3]!,
-        ])
-        const attr = target.getCustomAttribute(attrName)
-        if (attr) attr.needsUpdate = true
-      }
-    }
-  }
 
   /**
    * Dispose of resources.

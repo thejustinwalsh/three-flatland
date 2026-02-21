@@ -8,6 +8,7 @@ import {
   SpriteColor,
   SpriteFlip,
   SpriteLayer,
+  SpriteZIndex,
   SpriteMaterialRef,
   IsRenderable,
   ThreeRef,
@@ -25,7 +26,6 @@ describe('ECS traits — sprite enrollment lifecycle', () => {
   function setup() {
     world = createWorld()
     texture = new Texture()
-    // @ts-expect-error - mocking image for tests
     texture.image = { width: 100, height: 100 }
     material = new Sprite2DMaterial({ map: texture })
   }
@@ -61,7 +61,10 @@ describe('ECS traits — sprite enrollment lifecycle', () => {
     const layer = entity.get(SpriteLayer)
     expect(layer).toBeDefined()
     expect(layer!.layer).toBe(3)
-    expect(layer!.zIndex).toBe(42)
+
+    const zIdx = entity.get(SpriteZIndex)
+    expect(zIdx).toBeDefined()
+    expect(zIdx!.zIndex).toBe(42)
   })
 
   it('should set UV trait from frame data', () => {
@@ -171,7 +174,6 @@ describe('ECS traits — property sync', () => {
   function setup() {
     world = createWorld()
     texture = new Texture()
-    // @ts-expect-error - mocking image for tests
     texture.image = { width: 100, height: 100 }
     material = new Sprite2DMaterial({ map: texture })
   }
@@ -208,14 +210,14 @@ describe('ECS traits — property sync', () => {
     expect(layer!.layer).toBe(5)
   })
 
-  it('should sync zIndex changes to SpriteLayer trait', () => {
+  it('should sync zIndex changes to SpriteZIndex trait', () => {
     setup()
     const sprite = new Sprite2D({ material })
     sprite._enrollInWorld(world)
 
     sprite.zIndex = 99
-    const layer = sprite._entity!.get(SpriteLayer)
-    expect(layer!.zIndex).toBe(99)
+    const zIdx = sprite._entity!.get(SpriteZIndex)
+    expect(zIdx!.zIndex).toBe(99)
   })
 
   it('should sync flipX changes to SpriteFlip trait', () => {
@@ -306,7 +308,6 @@ describe('ECS traits — snapshot lifecycle', () => {
   function setup() {
     world = createWorld()
     const texture = new Texture()
-    // @ts-expect-error - mocking image for tests
     texture.image = { width: 100, height: 100 }
     material = new Sprite2DMaterial({ map: texture })
   }
@@ -327,7 +328,7 @@ describe('ECS traits — snapshot lifecycle', () => {
     expect(sprite._snapshot.color.b).toBeCloseTo(0)
     expect(sprite._snapshot.color.a).toBe(0.5)
     expect(sprite._snapshot.layer.layer).toBe(3)
-    expect(sprite._snapshot.layer.zIndex).toBe(42)
+    expect(sprite._snapshot.zIndex.zIndex).toBe(42)
     expect(sprite._snapshot.flip.x).toBe(-1)
   })
 
@@ -349,7 +350,9 @@ describe('ECS traits — snapshot lifecycle', () => {
 
     const layer = sprite._entity!.get(SpriteLayer)
     expect(layer!.layer).toBe(5)
-    expect(layer!.zIndex).toBe(99)
+
+    const zIdx = sprite._entity!.get(SpriteZIndex)
+    expect(zIdx!.zIndex).toBe(99)
   })
 
   it('should preserve values in snapshot on unenrollment', () => {
@@ -376,7 +379,7 @@ describe('ECS traits — snapshot lifecycle', () => {
     expect(sprite._snapshot.color.b).toBeCloseTo(0)
     expect(sprite._snapshot.color.a).toBe(0.8)
     expect(sprite._snapshot.layer.layer).toBe(7)
-    expect(sprite._snapshot.layer.zIndex).toBe(55)
+    expect(sprite._snapshot.zIndex.zIndex).toBe(55)
   })
 
   it('should re-enroll from snapshot after unenrollment', () => {

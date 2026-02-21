@@ -6,12 +6,18 @@ export {
   SpriteColor,
   SpriteFlip,
   SpriteLayer,
+  SpriteZIndex,
   SpriteMaterialRef,
   IsRenderable,
   IsBatched,
   IsStandalone,
   ThreeRef,
+  BatchSlot,
   InBatch,
+  BatchMesh,
+  BatchMeta,
+  BatchRegistry,
+  type BatchRun,
 } from './traits'
 
 // World management
@@ -23,13 +29,31 @@ export {
 } from './world'
 
 // Snapshot utilities
-export { readTrait, writeTrait } from './snapshot'
+export { readField, readTrait, writeTrait } from './snapshot'
+
+// Batch utilities
+export {
+  computeRunKey,
+  binarySearch,
+  sortedInsert,
+  sortedRemove,
+  getOrCreateRun,
+  findOrCreateBatch,
+  recycleBatchIfEmpty,
+  rebuildBatchOrder,
+  allocateBatchIdx,
+  freeBatchIdx,
+} from './batchUtils'
 
 // Systems
 export {
-  batchPrepareSystem,
+  batchAssignSystem,
+  batchReassignSystem,
+  batchRemoveSystem,
   bufferSyncColorSystem,
   bufferSyncUVSystem,
   bufferSyncFlipSystem,
+  bufferSyncEffectSystem,
   transformSyncSystem,
+  sceneGraphSyncSystem,
 } from './systems'

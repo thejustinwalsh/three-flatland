@@ -82,7 +82,7 @@ export interface AnimatedSprite2DProps extends Partial<AnimatedSprite2DOptions> 
  * </sprite2D>
  * ```
  */
-export const effectAttach = (parent: any, self: MaterialEffect): (() => void) => {
+export const effectAttach = (parent: Sprite2D, self: MaterialEffect): (() => void) => {
   parent.addEffect(self)
   return () => parent.removeEffect(self)
 }

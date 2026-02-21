@@ -91,9 +91,34 @@ export class TileLayer extends Group {
   /** Animation state (keyed by base GID) */
   private animationTimers: Map<number, { elapsed: number; frameIndex: number }> = new Map()
 
+  /** Whether the tileset texture uses flipY (loaded images vs DataTextures) */
+  private readonly texFlipY: boolean
+
   /** Reusable matrix for transforms */
   private static tempMatrix = new Matrix4()
   private static tempScale = new Vector3()
+
+  /**
+   * Write UV data for a tile into the instanceUV buffer.
+   * Handles the flipY difference between loaded images (flipY=true) and DataTextures (flipY=false).
+   *
+   * With flipY=true: UV y=0 is image bottom, y=1 is image top. Tileset row 0 is at the visual top,
+   * so we remap y to (1 - y - height) and use positive height (PlaneGeometry UV direction matches).
+   *
+   * With flipY=false: UV y=0 is first pixel row (image top). We offset y by +height and negate
+   * height so the shader traverses UV space in the correct direction.
+   */
+  private writeUV(buffer: Float32Array, offset: number, uv: { x: number; y: number; width: number; height: number }): void {
+    buffer[offset] = uv.x
+    buffer[offset + 2] = uv.width
+    if (this.texFlipY) {
+      buffer[offset + 1] = 1.0 - uv.y - uv.height
+      buffer[offset + 3] = uv.height
+    } else {
+      buffer[offset + 1] = uv.y + uv.height
+      buffer[offset + 3] = -uv.height
+    }
+  }
 
   constructor(
     data: TileLayerData,
@@ -116,6 +141,9 @@ export class TileLayer extends Group {
     if (data.offset) {
       this.position.set(data.offset.x, data.offset.y, 0)
     }
+
+    // Detect whether the texture uses flipY (loaded images = true, DataTextures = false)
+    this.texFlipY = tileset.texture?.flipY ?? false
 
     // Create material with premultiplied alpha (no Discard needed)
     this.material = new Sprite2DMaterial({
@@ -229,12 +257,9 @@ export class TileLayer extends Group {
         // Map data index -> chunk location
         this.tileIndexMap.set(tile.dataIndex, { chunkKey, instanceIndex: i })
 
-        // UV with Y-correction: Tiled Y-down -> Three.js Y-up
+        // UV — handles flipY difference between loaded images and DataTextures
         const uv = this.tileset.getUV(tile.gid)
-        instanceUV[i * 4 + 0] = uv.x
-        instanceUV[i * 4 + 1] = uv.y + uv.height // bottom of tile in atlas
-        instanceUV[i * 4 + 2] = uv.width
-        instanceUV[i * 4 + 3] = -uv.height // negative = Y-flip correction
+        this.writeUV(instanceUV, i * 4, uv)
 
         // Color: white, fully opaque
         instanceColor[i * 4 + 0] = 1
@@ -345,10 +370,7 @@ export class TileLayer extends Group {
 
       const i = data.instanceIndex
       const uv = this.tileset.getUV(newGid)
-      chunk.instanceUV[i * 4 + 0] = uv.x
-      chunk.instanceUV[i * 4 + 1] = uv.y + uv.height
-      chunk.instanceUV[i * 4 + 2] = uv.width
-      chunk.instanceUV[i * 4 + 3] = -uv.height
+      this.writeUV(chunk.instanceUV, i * 4, uv)
 
       data.gid = newGid
       dirtyChunks.add(data.chunkKey)
@@ -402,10 +424,7 @@ export class TileLayer extends Group {
 
       const i = mapping.instanceIndex
       const uv = this.tileset.getUV(gid)
-      chunk.instanceUV[i * 4 + 0] = uv.x
-      chunk.instanceUV[i * 4 + 1] = uv.y + uv.height
-      chunk.instanceUV[i * 4 + 2] = uv.width
-      chunk.instanceUV[i * 4 + 3] = -uv.height
+      this.writeUV(chunk.instanceUV, i * 4, uv)
 
       // Reset flip for newly set tiles
       chunk.instanceFlip[i * 2 + 0] = 1

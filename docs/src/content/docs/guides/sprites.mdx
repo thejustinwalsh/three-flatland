@@ -93,27 +93,20 @@ For batched rendering with many sprites, use `Renderer2D`:
     renderer2D.add(sprite1);
     renderer2D.add(sprite2);
 
-    // In animation loop
-    renderer2D.update();
+    // In animation loop — no update() call needed
+    renderer.render(scene, camera);
     ```
   </TabItem>
   <TabItem label="React" icon="seti:react">
     ```tsx
-    import { useRef } from 'react';
-    import { extend, useFrame } from '@react-three/fiber/webgpu';
+    import { extend } from '@react-three/fiber/webgpu';
     import { Sprite2D, Renderer2D } from '@three-flatland/react';
 
     extend({ Sprite2D, Renderer2D });
 
     function Scene() {
-      const rendererRef = useRef<Renderer2D>(null);
-
-      useFrame(() => {
-        rendererRef.current?.update();
-      });
-
       return (
-        <renderer2D ref={rendererRef}>
+        <renderer2D>
           <sprite2D texture={texture1} />
           <sprite2D texture={texture2} />
         </renderer2D>

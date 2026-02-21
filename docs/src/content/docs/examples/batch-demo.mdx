@@ -70,8 +70,6 @@ sprite.zIndex = -Math.floor(sprite.position.y); // Y-sort
 Monitor batching performance with the stats object:
 
 ```typescript
-renderer2D.update();
-
 const { spriteCount, batchCount, drawCalls } = renderer2D.stats;
 console.log(`Sprites: ${spriteCount}, Batches: ${batchCount}, Draw Calls: ${drawCalls}`);
 ```

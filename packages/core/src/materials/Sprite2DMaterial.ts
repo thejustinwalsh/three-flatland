@@ -1,4 +1,4 @@
-import { attribute, texture, uv, vec2, vec4, float, Fn, If, Discard, select } from 'three/tsl'
+import { attribute, texture, uv, vec2, vec4, float, If, Discard, select } from 'three/tsl'
 import {
   type Texture,
   FrontSide,

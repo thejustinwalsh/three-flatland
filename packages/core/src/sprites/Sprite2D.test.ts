@@ -3,7 +3,7 @@ import { Texture, BufferAttribute } from 'three'
 import { createWorld, universe } from 'koota'
 import { Sprite2D } from './Sprite2D'
 import { Sprite2DMaterial } from '../materials/Sprite2DMaterial'
-import { SpriteColor, SpriteFlip, SpriteUV, IsBatched } from '../ecs/traits'
+import { SpriteColor, SpriteFlip, SpriteUV } from '../ecs/traits'
 
 describe('Sprite2D', () => {
   let texture: Texture
@@ -249,56 +249,17 @@ describe('Sprite2D standalone vs enrolled', () => {
     expect(uv.h).toBeCloseTo(0.25)
   })
 
-  it('_attachToBatch adds IsBatched to entity', () => {
+  it('enrolled sprite entity exists after enrollment', () => {
     const sprite = new Sprite2D({ texture, material })
     const world = createWorld()
     sprite._enrollInWorld(world)
 
-    expect(sprite._entity!.has(IsBatched)).toBe(false)
-
-    // Create a minimal mock batch target
-    const mockTarget = {
-      writeColor: () => {},
-      writeUV: () => {},
-      writeFlip: () => {},
-      writeMatrix: () => {},
-      writeCustom: () => {},
-      writeEffectSlot: () => {},
-      getCustomBuffer: () => undefined,
-      getColorAttribute: () => ({ needsUpdate: false }),
-      getUVAttribute: () => ({ needsUpdate: false }),
-      getFlipAttribute: () => ({ needsUpdate: false }),
-      getCustomAttribute: () => undefined,
-    }
-
-    sprite._attachToBatch(mockTarget as any, 0)
-
-    expect(sprite._entity!.has(IsBatched)).toBe(true)
-  })
-
-  it('_detachFromBatch removes IsBatched from entity', () => {
-    const sprite = new Sprite2D({ texture, material })
-    const world = createWorld()
-    sprite._enrollInWorld(world)
-
-    const mockTarget = {
-      writeColor: () => {},
-      writeUV: () => {},
-      writeFlip: () => {},
-      writeMatrix: () => {},
-      writeCustom: () => {},
-      writeEffectSlot: () => {},
-      getCustomBuffer: () => undefined,
-      getColorAttribute: () => ({ needsUpdate: false }),
-      getUVAttribute: () => ({ needsUpdate: false }),
-      getFlipAttribute: () => ({ needsUpdate: false }),
-      getCustomAttribute: () => undefined,
-    }
-
-    sprite._attachToBatch(mockTarget as any, 0)
-    expect(sprite._entity!.has(IsBatched)).toBe(true)
-
-    sprite._detachFromBatch()
-    expect(sprite._entity!.has(IsBatched)).toBe(false)
+    expect(sprite._entity).not.toBeNull()
+    // Entity should have trait data matching sprite properties
+    const color = sprite._entity!.get(SpriteColor)
+    expect(color.r).toBe(1)
+    expect(color.g).toBe(1)
+    expect(color.b).toBe(1)
+    expect(color.a).toBe(1)
   })
 })

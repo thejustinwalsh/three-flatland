@@ -1,4 +1,3 @@
-import type { Sprite2D } from '../sprites/Sprite2D'
 import type { Sprite2DMaterial } from '../materials/Sprite2DMaterial'
 
 /**
@@ -78,7 +77,7 @@ export interface Renderer2DOptions {
 /**
  * Sorting function for custom sort mode.
  */
-export type SpriteSortFunction = (a: Sprite2D, b: Sprite2D) => number
+export type SpriteSortFunction = (a: { layer: number; zIndex: number }, b: { layer: number; zIndex: number }) => number
 
 /**
  * Batch key for grouping sprites by material.
@@ -88,16 +87,4 @@ export interface BatchKey {
   material: Sprite2DMaterial
   /** Material batch ID for fast comparison */
   batchId: number
-}
-
-/**
- * Internal sprite entry for batch management.
- */
-export interface SpriteEntry {
-  /** The sprite instance */
-  sprite: Sprite2D
-  /** Computed sort key: (layer << 24) | (batchId << 12) | zIndex */
-  sortKey: number
-  /** Whether the sprite needs re-upload */
-  dirty: boolean
 }

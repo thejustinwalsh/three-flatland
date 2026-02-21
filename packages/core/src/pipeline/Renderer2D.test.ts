@@ -6,7 +6,7 @@ import { Sprite2D } from '../sprites/Sprite2D'
 import { Sprite2DMaterial } from '../materials/Sprite2DMaterial'
 import { createMaterialEffect } from '../materials/MaterialEffect'
 import { Layers } from './layers'
-import { SpriteColor } from '../ecs/traits'
+import { SpriteColor, InBatch, BatchMesh } from '../ecs/traits'
 
 // Create effect class at module level so the Koota trait survives universe.reset()
 const DissolveRenderer = createMaterialEffect({
@@ -196,15 +196,24 @@ describe('Renderer2D', () => {
     renderer.add(sprite)
     renderer.updateMatrixWorld()
 
-    // Now sprite is enrolled + batched
-    expect(sprite._batchTarget).not.toBeNull()
-    const batchTarget = sprite._batchTarget!
+    // Now sprite is enrolled + batched via InBatch relation
+    const entity = sprite._entity!
+    const batchEntity = entity.targetFor(InBatch)
+    expect(batchEntity).not.toBeUndefined()
+
+    const batchMeshData = batchEntity!.get(BatchMesh)
+    const mesh = batchMeshData?.mesh
+    expect(mesh).not.toBeNull()
+
+    const relationData = entity.get(InBatch(batchEntity!)) as { slot: number } | undefined
+    expect(relationData).toBeDefined()
+    const slot = relationData!.slot
 
     // Change tint — writes to trait only (no immediate batch write)
     sprite.tint = [1, 0, 0]
 
     // Trait should have new value
-    const color = sprite._entity!.get(SpriteColor)
+    const color = entity.get(SpriteColor)
     expect(color.r).toBe(1)
     expect(color.g).toBe(0)
 
@@ -212,12 +221,11 @@ describe('Renderer2D', () => {
     renderer.updateMatrixWorld()
 
     // Verify batch buffer was updated
-    const colorAttr = batchTarget.getColorAttribute()
+    const colorAttr = mesh!.getColorAttribute()
     const array = colorAttr.array as Float32Array
-    const idx = sprite._batchIndex
-    expect(array[idx * 4 + 0]).toBeCloseTo(1) // r
-    expect(array[idx * 4 + 1]).toBeCloseTo(0) // g
-    expect(array[idx * 4 + 2]).toBeCloseTo(0) // b
+    expect(array[slot * 4 + 0]).toBeCloseTo(1) // r
+    expect(array[slot * 4 + 1]).toBeCloseTo(0) // g
+    expect(array[slot * 4 + 2]).toBeCloseTo(0) // b
   })
 
   it('update() and updateMatrixWorld() should not run systems twice', () => {
@@ -243,8 +251,9 @@ describe('Renderer2D', () => {
     renderer.add(sprite)
     renderer.updateMatrixWorld()
 
-    // Sprite should be batched with effect data synced
-    expect(sprite._batchTarget).not.toBeNull()
+    // Sprite should be batched via InBatch relation
+    const entity = sprite._entity!
+    expect(entity.targetFor(InBatch)).not.toBeUndefined()
 
     // Change effect property — writes to trait only
     dissolve.progress = 0.8

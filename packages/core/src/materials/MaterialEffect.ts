@@ -262,13 +262,13 @@ export abstract class MaterialEffect {
     if (this._entity && this._entity.has(ctor._trait)) {
       // Read from trait
       const field = ctor._fields.find(f => f.name === name)!
+      const data = this._entity.get(ctor._trait) as Record<string, number>
       if (field.size === 1) {
-        return this._entity.get(ctor._trait)[name] as number
+        return data[name]!
       } else {
-        const data = this._entity.get(ctor._trait)
         const result: number[] = []
         for (let i = 0; i < field.size; i++) {
-          result.push(data[`${name}_${i}`] as number)
+          result.push(data[`${name}_${i}`]!)
         }
         return result
       }

@@ -1,6 +1,6 @@
 # ECS Render Graph - Implementation Phases
 
-## Phase 1: ECS Foundation
+## Phase 1: ECS Foundation ✅ COMPLETE
 
 **Goal**: Wire Koota into the core pipeline. Traits become the source of truth. Sprite2D and Renderer2D work exactly as before from the user's perspective.
 
@@ -16,7 +16,6 @@
    - Spawn entity lazily on first trait-relevant mutation or when added to a Renderer2D.
    - Property setters (`tint`, `alpha`, `frame`, `flipX`, `flipY`, `layer`, `zIndex`) write to traits instead of (or in addition to) private fields.
    - Keep private fields as local cache for getters (avoids ECS read on hot paths like animation).
-   - `_attachToBatch` / `_detachFromBatch` add/remove `IsBatched` tag and `InBatch` relation.
 5. **Wire Renderer2D**:
    - Create a world in constructor (or inherit from parent).
    - `add(sprite)` calls `assignWorld(sprite, this._flatlandWorld)` then registers with BatchManager.
@@ -43,94 +42,92 @@
 
 ---
 
-## Phase 2: defineEffect() System
+## Phase 2: Effect System ✅ COMPLETE
 
-**Goal**: Implement the `defineEffect()` registration API and wire it into `Sprite2DMaterial`.
+**Goal**: Implement effect registration via `createMaterialEffect()` and wire it into `Sprite2DMaterial`.
 
-### Steps
+### What Was Implemented
 
-1. **Create `defineEffect()`** function:
-   - Accepts `EffectDescriptor` config.
-   - Creates a Koota trait from the `trait` schema.
-   - Returns `{ Trait, descriptor }`.
-2. **Extend Sprite2DMaterial**:
-   - Add `addEffect(descriptor)` method.
-   - Auto-register instance attributes from effect declarations.
-   - Rebuild `colorNode` chain when effects are added.
-   - Extract base color node construction into `_buildBaseColorNode()`.
-3. **Create built-in effect descriptors** (optional, can be done incrementally):
-   - Dissolve effect as a `defineEffect()` wrapper around existing `dissolve()` node.
+1. **`createMaterialEffect()`** class factory:
+   - Accepts name, schema, and TSL node factory.
+   - Creates a Koota trait from the schema.
+   - Returns an `MaterialEffect` class with typed property accessors.
+2. **`Sprite2DMaterial` integration**:
+   - `registerEffect(effectClass)` registers attributes and rebuilds shader.
+   - Packed vec4 effect buffers with tiered scaling (1 effect = 1 buffer, 5+ effects = 2 buffers, etc.).
+   - Effect chain composes: texture sample → tint/alpha → effect[0] → effect[1] → final.
+3. **`Sprite2D` integration**:
+   - `addEffect(instance)` / `removeEffect(instance)` manage per-sprite effect instances.
+   - Effect data written to ECS traits (enrolled) or own buffers (standalone).
 
-### File Changes
+### Files
 
-| File | Change |
+| File | Status |
 |------|--------|
-| `packages/core/src/ecs/defineEffect.ts` | **New** -- `defineEffect()` function |
-| `packages/core/src/ecs/types.ts` | **New** -- `EffectDescriptor`, `EffectNodeContext`, `InstanceAttrDeclaration` |
-| `packages/core/src/ecs/index.ts` | Re-export `defineEffect` |
-| `packages/core/src/materials/Sprite2DMaterial.ts` | Add `addEffect()`, `_rebuildColorNode()`, `_buildBaseColorNode()` |
-| `packages/core/src/effects/dissolve.ts` | **New** (optional) -- `DissolveEffect` using `defineEffect()` |
-
-### Validation
-
-- `defineEffect()` returns a valid Koota trait.
-- `material.addEffect(descriptor)` registers attributes visible in `getInstanceAttributeSchema()`.
-- Effect chain composes correctly: base color -> effect[0] -> effect[1].
-- Existing manual `addInstanceFloat()` + custom `colorNode` workflow still works.
+| `packages/core/src/materials/MaterialEffect.ts` | Implemented |
+| `packages/core/src/materials/Sprite2DMaterial.ts` | Updated with effect registration |
+| `packages/core/src/sprites/Sprite2D.ts` | Updated with addEffect/removeEffect |
 
 ---
 
-## Phase 3: ECS-Driven Batching
+## Phase 3: ECS-Driven Batching ✅ COMPLETE
 
-**Goal**: Replace BatchManager internals with ECS systems. The BatchManager class may become a thin facade or be replaced entirely.
+**Goal**: Replace BatchManager with pure ECS systems. Batch entities, InBatch relations, incremental insert-time sorting.
 
-### Steps
+### What Was Implemented
 
-1. **Implement `batchPrepareSystem`**:
-   - Query `Changed(SpriteLayer)`, `Changed(SpriteMaterialRef)`, `Added(IsRenderable)`, `Removed(IsRenderable)`.
-   - Recompute sort keys, rebuild batch assignments.
-   - Update `InBatch` relations, `IsBatched` / `IsStandalone` tags.
-   - Manages SpriteBatch pool (reuse or create).
-2. **Implement `bufferSyncSystem`**:
-   - Query `Changed(SpriteUV)` with `IsBatched` -> copy to batch UV buffer.
-   - Query `Changed(SpriteColor)` with `IsBatched` -> copy to batch color buffer.
-   - Query `Changed(SpriteFlip)` with `IsBatched` -> copy to batch flip buffer.
-   - For each effect trait: query `Changed(EffectTrait)` with `IsBatched` -> copy to custom attribute buffer.
-   - Mark `InstancedBufferAttribute.needsUpdate` only for buffers that were written.
-3. **Implement `transformSyncSystem`**:
-   - Query `IsBatched`, `ThreeRef`.
-   - For each: `sprite.updateMatrix()`, `batch.setMatrixAt(slot, sprite.matrix)`.
-   - Mark `instanceMatrix.needsUpdate`.
-4. **Wire systems into Renderer2D.update()**:
-   - Replace `batchManager.prepare()` + `batchManager.upload()` with system calls.
-   - Keep `_syncBatches()` for scene graph child management.
-5. **Remove direct buffer writes from Sprite2D**:
-   - Remove `_batchTarget` / `_batchIndex` fields.
-   - Remove `_updateInstanceColor()`, `_updateInstanceUV()`, `updateFlip()` batch paths.
-   - Remove `_syncToBatch()`, `_syncToOwnBuffers()`.
-   - Property setters now only write traits.
+The original plan called for a single `batchPrepareSystem` and `bufferSyncSystem`. The implementation split these into finer-grained systems for better separation of concerns:
 
-### File Changes
+1. **Batch lifecycle systems** (replaced `batchPrepareSystem`):
+   - `batchAssignSystem` — handles `Added(IsRenderable)`, computes run key, finds/creates batch, allocates slot, performs initial buffer sync
+   - `batchReassignSystem` — handles `Changed(SpriteLayer)` or `Changed(SpriteMaterialRef)` on batched sprites, moves between batches when run key changes
+   - `batchRemoveSystem` — handles `Removed(IsRenderable)`, frees slot, removes relation, recycles empty batches
+
+2. **Buffer sync systems** (replaced single `bufferSyncSystem`):
+   - `bufferSyncColorSystem` — `Changed(SpriteColor) + IsBatched` → batch color buffer
+   - `bufferSyncUVSystem` — `Changed(SpriteUV) + IsBatched` → batch UV buffer
+   - `bufferSyncFlipSystem` — `Changed(SpriteFlip) + IsBatched` → batch flip buffer
+   - `bufferSyncEffectSystem` — `Changed(effectTrait) + IsBatched` → packed effect buffers
+
+3. **`transformSyncSystem`** — syncs Three.js transforms to GPU instance matrices
+
+4. **`sceneGraphSyncSystem`** — rebuilds Renderer2D children from sorted batch entities (not in original plan, but necessary for integration)
+
+5. **`InBatch` relation with store data** — `relation({ exclusive: true, store: { slot: 0 } })` holds the GPU buffer slot index directly on the relation, avoiding extra traits or lookups
+
+6. **Incremental sort via run keys** — `computeRunKey(layer, materialId)` with binary search on `sortedRunKeys` array for O(log R) insert
+
+### Files Changed
 
 | File | Change |
 |------|--------|
-| `packages/core/src/ecs/systems/batchPrepareSystem.ts` | **New** |
-| `packages/core/src/ecs/systems/bufferSyncSystem.ts` | **New** |
+| `packages/core/src/ecs/traits.ts` | Added `BatchMesh`, `BatchMeta`, `BatchRegistry`, updated `InBatch` with store data |
+| `packages/core/src/ecs/batchUtils.ts` | **New** — run key computation, binary search, batch lifecycle helpers |
+| `packages/core/src/ecs/systems/batchAssignSystem.ts` | **New** |
+| `packages/core/src/ecs/systems/batchReassignSystem.ts` | **New** |
+| `packages/core/src/ecs/systems/batchRemoveSystem.ts` | **New** |
+| `packages/core/src/ecs/systems/bufferSyncSystem.ts` | **New** — color, UV, flip, effect sync functions |
 | `packages/core/src/ecs/systems/transformSyncSystem.ts` | **New** |
-| `packages/core/src/ecs/systems/index.ts` | **New** -- re-exports |
-| `packages/core/src/sprites/Sprite2D.ts` | Remove batch write paths, simplify setters |
-| `packages/core/src/pipeline/Renderer2D.ts` | Replace BatchManager calls with system execution |
-| `packages/core/src/pipeline/BatchManager.ts` | Reduce to facade or remove |
-| `packages/core/src/pipeline/SpriteBatch.ts` | Remove `addSprite/removeSprite` (system manages slots directly) |
-| `packages/core/src/pipeline/BatchTarget.ts` | May be removed (systems write buffers directly) |
+| `packages/core/src/ecs/systems/sceneGraphSyncSystem.ts` | **New** |
+| `packages/core/src/ecs/systems/index.ts` | **New** — re-exports all systems |
+| `packages/core/src/sprites/Sprite2D.ts` | Removed `_batchTarget`, `_batchIndex`, `_attachToBatch`, `_detachFromBatch`, `_syncToBatch` |
+| `packages/core/src/pipeline/Renderer2D.ts` | Rewritten to use ECS systems instead of BatchManager |
+| `packages/core/src/pipeline/SpriteBatch.ts` | Removed `addSprite`/`removeSprite`/`clearSprites`; added `allocateSlot()`/`freeSlot()`/`resetSlots()`/`syncCount()` |
+
+### Files Removed
+
+| File | Reason |
+|------|--------|
+| `packages/core/src/pipeline/BatchManager.ts` | Replaced by ECS systems |
+| `packages/core/src/pipeline/BatchTarget.ts` | Replaced by InBatch relation — systems call SpriteBatch methods directly |
 
 ### Validation
 
-- Identical visual output to pre-ECS rendering.
-- Performance benchmark: frame time for 10,000 sprites should be equal or better.
-- `Changed()` queries process only mutated entities (verify with counters).
-- Batch rebuild only triggers when sort-relevant data changes.
-- Hot property changes (tint animation) only trigger `bufferSyncSystem`, not sort rebuild.
+- `pnpm typecheck` — all packages pass
+- `pnpm test` — 294 tests pass, 5 skipped (pre-existing)
+- `pnpm build` — all packages and examples build successfully
+- `invalidate()`, `invalidateAll()`, `invalidateTransforms()` are now no-ops (ECS detects changes automatically)
+- `update()` still works but is deprecated in favor of automatic `updateMatrixWorld()` hook
 
 ---
 

@@ -166,6 +166,32 @@
           "paths": ["/react/template", "/react/template/:path*"]
         }
       ]
+    },
+    "example-vanilla-knightmark": {
+      "development": {
+        "local": {
+          "port": 4013
+        }
+      },
+      "routing": [
+        {
+          "group": "vanilla-examples",
+          "paths": ["/vanilla/knightmark", "/vanilla/knightmark/:path*"]
+        }
+      ]
+    },
+    "example-react-knightmark": {
+      "development": {
+        "local": {
+          "port": 4014
+        }
+      },
+      "routing": [
+        {
+          "group": "react-examples",
+          "paths": ["/react/knightmark", "/react/knightmark/:path*"]
+        }
+      ]
     }
   }
 }
