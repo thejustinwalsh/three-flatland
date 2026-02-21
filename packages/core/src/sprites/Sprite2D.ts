@@ -7,15 +7,48 @@ import {
   BufferAttribute,
   type Texture,
 } from 'three'
+import type { Entity, World } from 'koota'
+import type { MaterialEffect } from '../materials/MaterialEffect'
 import { Sprite2DMaterial } from '../materials/Sprite2DMaterial'
 import type { Sprite2DOptions, SpriteFrame } from './types'
-import type { BatchTarget } from '../pipeline/BatchTarget'
+import {
+  SpriteUV,
+  SpriteColor,
+  SpriteFlip,
+  SpriteLayer,
+  SpriteZIndex,
+  SpriteMaterialRef,
+  IsRenderable,
+  ThreeRef,
+} from '../ecs/traits'
+import { readField, readTrait, writeTrait } from '../ecs/snapshot'
+import { getGlobalWorld } from '../ecs/world'
+
+/** Pre-enrollment snapshot for Sprite2D visual state. Types match trait schemas. */
+interface SpriteSnapshot {
+  color: { r: number; g: number; b: number; a: number }
+  uv: { x: number; y: number; w: number; h: number }
+  flip: { x: number; y: number }
+  layer: { layer: number }
+  zIndex: { zIndex: number }
+}
+
+/** Module-level scratch Color for parsing tint values without allocation. */
+const _tempColor = new Color()
+
+/** Size in floats for each attribute type. */
+const ATTR_TYPE_SIZES: Record<string, number> = { float: 1, vec2: 2, vec3: 3, vec4: 4 }
 
 /**
  * A 2D sprite for use with three-flatland's render pipeline.
  *
  * Extends THREE.Mesh, so it works with standard Three.js scene graph
  * but designed for batched 2D rendering with explicit z-ordering.
+ *
+ * **Two rendering modes:**
+ * - **Standalone** (not enrolled): Setters write to snapshot + own geometry buffers immediately.
+ * - **Batched** (enrolled in Renderer2D): Setters write to ECS traits only.
+ *   Systems sync traits to batch buffers in `updateMatrixWorld()`.
  *
  * @example
  * ```typescript
@@ -33,17 +66,20 @@ import type { BatchTarget } from '../pipeline/BatchTarget'
 export class Sprite2D extends Mesh {
   declare geometry: PlaneGeometry
   declare material: Sprite2DMaterial
-  /** Render layer (primary sort key for Renderer2D) */
-  layer: number = 0
-
-  /** Z-index within layer (secondary sort key) */
-  zIndex: number = 0
 
   /**
-   * Per-instance attribute values for TSL-native batching.
-   * These are defined by the material and read during batch rendering.
+   * Shared material cache keyed by texture. Sprites created with just a texture
+   * (no explicit material) reuse the same Sprite2DMaterial, which means they share
+   * the same batchId and are automatically batched together by Renderer2D.
    */
-  private instanceValues: Map<string, number | number[]> = new Map()
+  private static _sharedMaterials = new WeakMap<Texture, Sprite2DMaterial>()
+
+  /**
+   * Own-geometry buffers for custom attributes (unbatched rendering).
+   * Each entry maps an attribute name to its Float32Array (4 vertices) and component size.
+   * @internal
+   */
+  private _customBuffers: Map<string, { buffer: Float32Array; size: number }> = new Map()
 
   /** Anchor point (0-1), affects positioning */
   private _anchor: Vector2 = new Vector2(0.5, 0.5)
@@ -54,34 +90,55 @@ export class Sprite2D extends Mesh {
   /** Source texture */
   private _texture: Texture | null = null
 
-  /** Tint color */
-  private _tint: Color = new Color(1, 1, 1)
-
-  /** Alpha/opacity (0-1) */
-  private _alpha: number = 1
-
-  /** Flip state */
-  private _flipX: boolean = false
-  private _flipY: boolean = false
-
   /** Pixel-perfect mode */
   pixelPerfect: boolean = false
 
   // ============================================
-  // BATCH TARGET STATE (for shared buffer architecture)
+  // EFFECT STATE
   // ============================================
 
   /**
-   * The batch this sprite is attached to (null = standalone rendering).
+   * Enable flags bitmask for packed effects.
+   * Bit N = 1 means effect at index N is enabled for this sprite.
    * @internal
    */
-  _batchTarget: BatchTarget | null = null
+  _effectFlags: number = 0
 
   /**
-   * Index of this sprite in the batch's buffers.
+   * Active MaterialEffect instances on this sprite.
    * @internal
    */
-  _batchIndex: number = -1
+  _effects: MaterialEffect[] = []
+
+  // ============================================
+  // ECS STATE
+  // ============================================
+
+  /**
+   * Pre-enrollment snapshot — staging for trait values before entity enrollment.
+   * When enrolled, values are read/written via entity traits; snapshot stays
+   * allocated but stale (only refreshed on unenrollment).
+   * @internal
+   */
+  _snapshot: SpriteSnapshot = {
+    color: { r: 1, g: 1, b: 1, a: 1 },
+    uv: { x: 0, y: 0, w: 1, h: 1 },
+    flip: { x: 1, y: 1 },
+    layer: { layer: 0 },
+    zIndex: { zIndex: 0 },
+  }
+
+  /**
+   * The ECS entity for this sprite (null until enrolled in a world).
+   * @internal
+   */
+  _entity: Entity | null = null
+
+  /**
+   * The ECS world this sprite belongs to (set by Renderer2D or Flatland).
+   * @internal
+   */
+  _flatlandWorld: World | null = null
 
   /** Custom geometry for anchor offset */
   private _geometry: PlaneGeometry | null = null
@@ -90,21 +147,21 @@ export class Sprite2D extends Mesh {
    * Instance attribute buffers for single-sprite rendering.
    * PlaneGeometry has 4 vertices, so we need 4 copies of each value.
    */
-  // instanceUV: 4 vertices × vec4 = 16 floats
+  // instanceUV: 4 vertices x vec4 = 16 floats
   private _instanceUVBuffer: Float32Array = new Float32Array([
     0, 0, 1, 1, // vertex 0
     0, 0, 1, 1, // vertex 1
     0, 0, 1, 1, // vertex 2
     0, 0, 1, 1, // vertex 3
   ])
-  // instanceColor: 4 vertices × vec4 = 16 floats
+  // instanceColor: 4 vertices x vec4 = 16 floats
   private _instanceColorBuffer: Float32Array = new Float32Array([
     1, 1, 1, 1, // vertex 0
     1, 1, 1, 1, // vertex 1
     1, 1, 1, 1, // vertex 2
     1, 1, 1, 1, // vertex 3
   ])
-  // instanceFlip: 4 vertices × vec2 = 8 floats
+  // instanceFlip: 4 vertices x vec2 = 8 floats
   private _instanceFlipBuffer: Float32Array = new Float32Array([
     1, 1, // vertex 0
     1, 1, // vertex 1
@@ -117,13 +174,20 @@ export class Sprite2D extends Mesh {
    * Can be called with no arguments for R3F compatibility - set texture via property.
    */
   constructor(options?: Sprite2DOptions) {
-    // Create material (texture can be set later)
-    const material =
-      options?.material ??
-      new Sprite2DMaterial({
-        map: options?.texture,
-        transparent: true,
-      })
+    // Resolve material: explicit > shared-by-texture > new private
+    let material: Sprite2DMaterial
+    if (options?.material) {
+      material = options.material
+    } else if (options?.texture) {
+      let shared = Sprite2D._sharedMaterials.get(options.texture)
+      if (!shared) {
+        shared = new Sprite2DMaterial({ map: options.texture, transparent: true })
+        Sprite2D._sharedMaterials.set(options.texture, shared)
+      }
+      material = shared
+    } else {
+      material = new Sprite2DMaterial({ transparent: true })
+    }
 
     // Create geometry with instance attributes for single-sprite rendering
     // (Cannot use shared geometry because each sprite needs its own attribute buffers)
@@ -169,7 +233,7 @@ export class Sprite2D extends Mesh {
         sourceWidth: (options.texture.image as HTMLImageElement | undefined)?.width ?? 1,
         sourceHeight: (options.texture.image as HTMLImageElement | undefined)?.height ?? 1,
       }
-      this._updateInstanceUV()
+      this._updateOwnUV()
       this.updateSize()
       this.visible = true
     }
@@ -190,11 +254,11 @@ export class Sprite2D extends Mesh {
     }
 
     if (options.flipX !== undefined) {
-      this._flipX = options.flipX
+      this.flipX = options.flipX
     }
 
     if (options.flipY !== undefined) {
-      this._flipY = options.flipY
+      this.flipY = options.flipY
     }
 
     if (options.layer !== undefined) {
@@ -209,7 +273,7 @@ export class Sprite2D extends Mesh {
       this.pixelPerfect = options.pixelPerfect
     }
 
-    this.updateFlip()
+    this._updateOwnFlip()
   }
 
   /**
@@ -237,7 +301,7 @@ export class Sprite2D extends Mesh {
           sourceWidth: (value.image as HTMLImageElement | undefined)?.width ?? 1,
           sourceHeight: (value.image as HTMLImageElement | undefined)?.height ?? 1,
         }
-        this._updateInstanceUV()
+        if (!this._entity) this._updateOwnUV()
         this.updateSize()
       }
       // Show sprite once texture is set
@@ -268,7 +332,15 @@ export class Sprite2D extends Mesh {
   setFrame(frame: SpriteFrame): this {
     const isFirstFrame = this._frame === null
     this._frame = frame
-    this._updateInstanceUV()
+    // Silent write — UV is synced unconditionally in transformSyncSystem,
+    // no Changed(SpriteUV) observer needed.
+    writeTrait(this._entity, SpriteUV, this._snapshot.uv, {
+      x: frame.x,
+      y: frame.y,
+      w: frame.width,
+      h: frame.height,
+    }, false)
+    if (!this._entity) this._updateOwnUV()
     // Only auto-size on first frame set (not during animation)
     if (isFirstFrame) {
       this.updateSize()
@@ -310,78 +382,116 @@ export class Sprite2D extends Mesh {
    * Get tint color.
    */
   get tint(): Color {
-    return this._tint.clone()
+    const c = readTrait(this._entity, SpriteColor, this._snapshot.color)
+    return new Color(c.r, c.g, c.b)
   }
 
   /**
    * Set tint color. Accepts Color, hex string, hex number, or [r, g, b] array (0-1).
    */
   set tint(value: Color | string | number | [number, number, number]) {
-    if (value instanceof Color) {
-      this._tint.copy(value)
-    } else if (Array.isArray(value)) {
-      this._tint.setRGB(value[0], value[1], value[2])
-    } else if (typeof value === 'string') {
-      this._tint.set(value)
+    if (Array.isArray(value)) {
+      _tempColor.setRGB(value[0], value[1], value[2])
+    } else if (value instanceof Color) {
+      _tempColor.copy(value)
     } else {
-      this._tint.set(value)
+      _tempColor.set(value)
     }
-    this._updateInstanceColor()
+    writeTrait(this._entity, SpriteColor, this._snapshot.color, {
+      r: _tempColor.r,
+      g: _tempColor.g,
+      b: _tempColor.b,
+    })
+    if (!this._entity) this._updateOwnColor()
   }
 
   /**
    * Get alpha/opacity.
    */
   get alpha(): number {
-    return this._alpha
+    return readField(this._entity, SpriteColor, 'a', this._snapshot.color.a)
   }
 
   /**
    * Set alpha/opacity (0-1).
    */
   set alpha(value: number) {
-    this._alpha = value
-    this._updateInstanceColor()
+    writeTrait(this._entity, SpriteColor, this._snapshot.color, { a: value })
+    if (!this._entity) this._updateOwnColor()
   }
 
   /**
    * Get flipX state.
    */
   get flipX(): boolean {
-    return this._flipX
+    return readField(this._entity, SpriteFlip, 'x', this._snapshot.flip.x) === -1
   }
 
   /**
    * Set flipX state.
    */
   set flipX(value: boolean) {
-    this._flipX = value
-    this.updateFlip()
+    const numVal = value ? -1 : 1
+    if (readField(this._entity, SpriteFlip, 'x', this._snapshot.flip.x) === numVal) return
+    writeTrait(this._entity, SpriteFlip, this._snapshot.flip, { x: numVal })
+    if (!this._entity) this._updateOwnFlip()
   }
 
   /**
    * Get flipY state.
    */
   get flipY(): boolean {
-    return this._flipY
+    return readField(this._entity, SpriteFlip, 'y', this._snapshot.flip.y) === -1
   }
 
   /**
    * Set flipY state.
    */
   set flipY(value: boolean) {
-    this._flipY = value
-    this.updateFlip()
+    const numVal = value ? -1 : 1
+    if (readField(this._entity, SpriteFlip, 'y', this._snapshot.flip.y) === numVal) return
+    writeTrait(this._entity, SpriteFlip, this._snapshot.flip, { y: numVal })
+    if (!this._entity) this._updateOwnFlip()
   }
 
   /**
    * Flip the sprite.
    */
   flip(horizontal: boolean, vertical: boolean): this {
-    this._flipX = horizontal
-    this._flipY = vertical
-    this.updateFlip()
+    writeTrait(this._entity, SpriteFlip, this._snapshot.flip, {
+      x: horizontal ? -1 : 1,
+      y: vertical ? -1 : 1,
+    })
+    if (!this._entity) this._updateOwnFlip()
     return this
+  }
+
+  /**
+   * Get render layer (primary sort key).
+   */
+  get layer(): number {
+    return readField(this._entity, SpriteLayer, 'layer', this._snapshot.layer.layer)
+  }
+
+  /**
+   * Set render layer (primary sort key).
+   */
+  set layer(value: number) {
+    writeTrait(this._entity, SpriteLayer, this._snapshot.layer, { layer: value })
+  }
+
+  /**
+   * Get z-index within layer (secondary sort key).
+   */
+  get zIndex(): number {
+    return readField(this._entity, SpriteZIndex, 'zIndex', this._snapshot.zIndex.zIndex)
+  }
+
+  /**
+   * Set z-index within layer (secondary sort key).
+   */
+  set zIndex(value: number) {
+    writeTrait(this._entity, SpriteZIndex, this._snapshot.zIndex, { zIndex: value }, false)
   }
 
   /**
@@ -430,55 +540,59 @@ export class Sprite2D extends Mesh {
   }
 
   /**
-   * Update flip flags in instance attribute.
-   * Writes to batch buffer if attached, otherwise own buffer.
+   * Update flip flags in own geometry buffer (standalone mode).
    */
-  private updateFlip() {
-    const flipX = this._flipX ? -1 : 1
-    const flipY = this._flipY ? -1 : 1
-
-    if (this._batchTarget && this._batchIndex >= 0) {
-      // Write directly to batch buffer (single instance)
-      this._batchTarget.writeFlip(this._batchIndex, flipX, flipY)
-      this._batchTarget.getFlipAttribute().needsUpdate = true
-    } else {
-      // Write to own buffer (4 vertices, same value)
-      for (let i = 0; i < 4; i++) {
-        this._instanceFlipBuffer[i * 2 + 0] = flipX
-        this._instanceFlipBuffer[i * 2 + 1] = flipY
-      }
-      const flipAttr = this.geometry.getAttribute('instanceFlip') as BufferAttribute
-      if (flipAttr) {
-        flipAttr.needsUpdate = true
-      }
+  private _updateOwnFlip() {
+    const f = readTrait(this._entity, SpriteFlip, this._snapshot.flip)
+    for (let i = 0; i < 4; i++) {
+      this._instanceFlipBuffer[i * 2 + 0] = f.x
+      this._instanceFlipBuffer[i * 2 + 1] = f.y
+    }
+    const flipAttr = this.geometry.getAttribute('instanceFlip') as BufferAttribute
+    if (flipAttr) {
+      flipAttr.needsUpdate = true
     }
   }
 
   /**
    * Set up instance attributes on the geometry for single-sprite rendering.
    * These are the same attributes used by SpriteBatch for batched rendering.
+   * Also allocates buffers for custom attributes from the material's schema
+   * (including effectBuf0, effectBuf1, ... for packed effect data).
    */
-  private _setupInstanceAttributes() {
+  _setupInstanceAttributes() {
     const geo = this.geometry
 
-    // instanceUV: vec4 (x, y, width, height) - frame in atlas
-    const uvAttr = new BufferAttribute(this._instanceUVBuffer, 4)
-    geo.setAttribute('instanceUV', uvAttr)
+    // Core instance attributes (persistent buffers)
+    geo.setAttribute('instanceUV', new BufferAttribute(this._instanceUVBuffer, 4))
+    geo.setAttribute('instanceColor', new BufferAttribute(this._instanceColorBuffer, 4))
+    geo.setAttribute('instanceFlip', new BufferAttribute(this._instanceFlipBuffer, 2))
 
-    // instanceColor: vec4 (r, g, b, a) - tint color and alpha
-    const colorAttr = new BufferAttribute(this._instanceColorBuffer, 4)
-    geo.setAttribute('instanceColor', colorAttr)
+    // Custom attributes from material schema (effects add these)
+    this._customBuffers.clear()
+    const schema = this.material.getInstanceAttributeSchema()
+    for (const [name, config] of schema) {
+      const size = ATTR_TYPE_SIZES[config.type] ?? 1
+      const buffer = new Float32Array(4 * size)
 
-    // instanceFlip: vec2 (x, y) - flip flags (1 = normal, -1 = flipped)
-    const flipAttr = new BufferAttribute(this._instanceFlipBuffer, 2)
-    geo.setAttribute('instanceFlip', flipAttr)
+      // Fill with defaults from schema
+      const values = Array.isArray(config.defaultValue) ? config.defaultValue : [config.defaultValue]
+      for (let v = 0; v < 4; v++) {
+        for (let c = 0; c < size; c++) {
+          buffer[v * size + c] = values[c] ?? 0
+        }
+      }
+
+      this._customBuffers.set(name, { buffer, size })
+      geo.setAttribute(name, new BufferAttribute(buffer, size))
+    }
   }
 
   /**
    * Update the instanceUV attribute from current frame.
-   * Writes to batch buffer if attached, otherwise own buffer.
+   * Writes to own geometry buffer only (standalone mode).
    */
-  private _updateInstanceUV() {
+  private _updateOwnUV() {
     let x: number, y: number, w: number, h: number
 
     if (this._frame) {
@@ -494,51 +608,34 @@ export class Sprite2D extends Mesh {
       h = 1
     }
 
-    if (this._batchTarget && this._batchIndex >= 0) {
-      // Write directly to batch buffer (single instance)
-      this._batchTarget.writeUV(this._batchIndex, x, y, w, h)
-      this._batchTarget.getUVAttribute().needsUpdate = true
-    } else {
-      // Write to own buffer (4 vertices, same value)
-      for (let i = 0; i < 4; i++) {
-        this._instanceUVBuffer[i * 4 + 0] = x
-        this._instanceUVBuffer[i * 4 + 1] = y
-        this._instanceUVBuffer[i * 4 + 2] = w
-        this._instanceUVBuffer[i * 4 + 3] = h
-      }
-      const uvAttr = this.geometry.getAttribute('instanceUV') as BufferAttribute
-      if (uvAttr) {
-        uvAttr.needsUpdate = true
-      }
+    for (let i = 0; i < 4; i++) {
+      this._instanceUVBuffer[i * 4 + 0] = x
+      this._instanceUVBuffer[i * 4 + 1] = y
+      this._instanceUVBuffer[i * 4 + 2] = w
+      this._instanceUVBuffer[i * 4 + 3] = h
+    }
+    const uvAttr = this.geometry.getAttribute('instanceUV') as BufferAttribute
+    if (uvAttr) {
+      uvAttr.needsUpdate = true
     }
   }
 
   /**
    * Update the instanceColor attribute from current tint and alpha.
-   * Writes to batch buffer if attached, otherwise own buffer.
+   * Writes to own geometry buffer only (standalone mode).
    */
-  private _updateInstanceColor() {
-    const r = this._tint.r
-    const g = this._tint.g
-    const b = this._tint.b
-    const a = this._alpha
+  private _updateOwnColor() {
+    const c = readTrait(this._entity, SpriteColor, this._snapshot.color)
 
-    if (this._batchTarget && this._batchIndex >= 0) {
-      // Write directly to batch buffer (single instance)
-      this._batchTarget.writeColor(this._batchIndex, r, g, b, a)
-      this._batchTarget.getColorAttribute().needsUpdate = true
-    } else {
-      // Write to own buffer (4 vertices, same value)
-      for (let i = 0; i < 4; i++) {
-        this._instanceColorBuffer[i * 4 + 0] = r
-        this._instanceColorBuffer[i * 4 + 1] = g
-        this._instanceColorBuffer[i * 4 + 2] = b
-        this._instanceColorBuffer[i * 4 + 3] = a
-      }
-      const colorAttr = this.geometry.getAttribute('instanceColor') as BufferAttribute
-      if (colorAttr) {
-        colorAttr.needsUpdate = true
-      }
+    for (let i = 0; i < 4; i++) {
+      this._instanceColorBuffer[i * 4 + 0] = c.r
+      this._instanceColorBuffer[i * 4 + 1] = c.g
+      this._instanceColorBuffer[i * 4 + 2] = c.b
+      this._instanceColorBuffer[i * 4 + 3] = c.a
+    }
+    const colorAttr = this.geometry.getAttribute('instanceColor') as BufferAttribute
+    if (colorAttr) {
+      colorAttr.needsUpdate = true
     }
   }
 
@@ -552,172 +649,327 @@ export class Sprite2D extends Mesh {
   }
 
   // ============================================
-  // TSL-NATIVE INSTANCE ATTRIBUTE SYSTEM
+  // INSTANCE-BASED EFFECT SYSTEM
   // ============================================
 
   /**
-   * Set a per-instance attribute value.
-   * The attribute must be defined on the material via addInstanceFloat(), etc.
-   * Writes to batch buffer if attached, value is also stored locally.
+   * Add an effect instance to this sprite.
+   * Auto-registers the effect type on the material if not already registered.
+   * Sets the enable bit and writes effect data to packed buffers.
    *
    * @example
    * ```typescript
-   * // Material defines the attribute
-   * material.addInstanceFloat('dissolve', 0);
-   *
-   * // Sprite sets its value
-   * sprite.setInstanceValue('dissolve', 0.5);
+   * const dissolve = new DissolveEffect()
+   * dissolve.progress = 0.5
+   * sprite.addEffect(dissolve)
    * ```
    */
-  setInstanceValue(name: string, value: number | number[]): this {
-    this.instanceValues.set(name, value)
+  addEffect(effect: MaterialEffect): this {
+    const material = this.material
+    const EffectClass = effect.constructor as typeof MaterialEffect
 
-    // Write to batch if attached
-    if (this._batchTarget && this._batchIndex >= 0) {
-      this._batchTarget.writeCustom(this._batchIndex, name, value)
-      const attr = this._batchTarget.getCustomAttribute(name)
-      if (attr) {
-        attr.needsUpdate = true
+    // 1. Auto-register on material if not already registered
+    if (!material.hasEffect(EffectClass)) {
+      const tierChanged = material.registerEffect(EffectClass)
+      if (tierChanged) {
+        // Tier changed — recreate own geometry buffers for new attributes
+        this._setupInstanceAttributes()
       }
+    }
+
+    // 2. Link effect to this sprite's entity
+    effect._attach(this)
+
+    // 3. Set enable bit in flags bitmask
+    const bitIndex = material._effectBitIndex.get(EffectClass.effectName)!
+    this._effectFlags |= (1 << bitIndex)
+
+    // 4. Add trait to entity (if enrolled)
+    if (this._entity) {
+      this._entity.add(EffectClass._trait(this._buildTraitData(effect)))
+    }
+
+    // 5. Store effect
+    this._effects.push(effect)
+
+    // 6. Write packed data to own geometry buffers (standalone mode only).
+    //    For batched sprites, batchAssignSystem/bufferSyncEffectSystem handles sync.
+    if (!this._entity) {
+      this._writeEffectDataOwn()
     }
 
     return this
   }
 
   /**
-   * Get a per-instance attribute value.
+   * Remove an effect instance from this sprite.
+   * Clears the enable bit and resets effect data to defaults.
+   * The effect type remains registered on the material (no shader change).
    */
-  getInstanceValue(name: string): number | number[] | undefined {
-    return this.instanceValues.get(name)
-  }
+  removeEffect(effect: MaterialEffect): this {
+    const material = this.material
+    const EffectClass = effect.constructor as typeof MaterialEffect
 
-  /**
-   * Get all instance values (for SpriteBatch).
-   */
-  getInstanceValues(): Map<string, number | number[]> {
-    return this.instanceValues
-  }
+    if (!material.hasEffect(EffectClass)) return this
 
-  /**
-   * Clear all instance values (reset to material defaults).
-   */
-  clearInstanceValues(): this {
-    this.instanceValues.clear()
+    const effectIndex = this._effects.indexOf(effect)
+    if (effectIndex === -1) return this
+
+    // 1. Clear enable bit in flags bitmask
+    const bitIndex = material._effectBitIndex.get(EffectClass.effectName)!
+    this._effectFlags &= ~(1 << bitIndex)
+
+    // 2. Remove trait from entity (if enrolled)
+    if (this._entity && this._entity.has(EffectClass._trait)) {
+      this._entity.remove(EffectClass._trait)
+    }
+
+    // 3. Detach effect and remove from list
+    effect._detach()
+    this._effects.splice(effectIndex, 1)
+
+    // 4. Write updated packed data to own geometry buffers (standalone only).
+    //    For batched sprites, bufferSyncEffectSystem handles sync.
+    if (!this._entity) {
+      this._writeEffectDataOwn()
+    }
+
     return this
   }
 
   /**
-   * Update the matrix with automatic Z offset for depth-based layer/zIndex sorting.
-   * This ensures proper rendering order whether the sprite is standalone or batched.
+   * Build trait initialization data from an effect's current snapshot defaults.
+   * @internal
+   */
+  private _buildTraitData(effect: MaterialEffect): Record<string, number> {
+    const ctor = effect.constructor as typeof MaterialEffect
+    const data: Record<string, number> = {}
+    for (const field of ctor._fields) {
+      const value = effect._defaults[field.name]
+      if (field.size === 1) {
+        data[field.name] = value as number
+      } else {
+        const arr = value as number[]
+        for (let i = 0; i < field.size; i++) {
+          data[`${field.name}_${i}`] = arr[i]!
+        }
+      }
+    }
+    return data
+  }
+
+  /**
+   * Write all packed effect data to own geometry buffers (standalone mode).
+   * @internal
+   */
+  _writeEffectDataOwn(): void {
+    const material = this.material
+    const tier = material._effectTier
+    if (tier === 0) return
+
+    // Write flags to slot 0
+    this._writePackedSlotOwn(0, this._effectFlags)
+
+    // Write effect field values to their packed positions
+    for (const effect of this._effects) {
+      const EffectClass = effect.constructor as typeof MaterialEffect
+      for (const field of EffectClass._fields) {
+        const slotKey = `${EffectClass.effectName}_${field.name}`
+        const slotInfo = material._effectSlots.get(slotKey)
+        if (!slotInfo) continue
+
+        const value = effect._getField(field.name)
+        if (typeof value === 'number') {
+          this._writePackedSlotOwn(slotInfo.offset, value)
+        } else {
+          for (let i = 0; i < value.length; i++) {
+            this._writePackedSlotOwn(slotInfo.offset + i, value[i]!)
+          }
+        }
+      }
+    }
+
+    // Zero out slots for effects registered on material but not active on this sprite
+    for (const effectClass of material._effects) {
+      const isActive = this._effects.some(e => (e.constructor as typeof MaterialEffect).effectName === effectClass.effectName)
+      if (!isActive) {
+        for (const field of effectClass._fields) {
+          const slotKey = `${effectClass.effectName}_${field.name}`
+          const slotInfo = material._effectSlots.get(slotKey)
+          if (!slotInfo) continue
+          for (let i = 0; i < field.size; i++) {
+            this._writePackedSlotOwn(slotInfo.offset + i, field.default[i]!)
+          }
+        }
+      }
+    }
+  }
+
+
+  /**
+   * Write a single float to a packed effect buffer slot in own geometry buffer.
+   * @internal
+   */
+  private _writePackedSlotOwn(absoluteOffset: number, value: number): void {
+    const bufIndex = Math.floor(absoluteOffset / 4)
+    const component = absoluteOffset % 4
+    const attrName = `effectBuf${bufIndex}`
+
+    const custom = this._customBuffers.get(attrName)
+    if (custom) {
+      for (let v = 0; v < 4; v++) {
+        custom.buffer[v * 4 + component] = value
+      }
+      const bufferAttr = this.geometry.getAttribute(attrName) as BufferAttribute
+      if (bufferAttr) bufferAttr.needsUpdate = true
+    }
+  }
+
+
+  /**
+   * Fast 2D matrix update — bypasses Three.js quaternion-based compose().
    *
-   * Z offset formula: layer * 10 + zIndex * 0.001
-   * Higher layer/zIndex = higher Z = closer to camera = renders in front
+   * Three.js Object3D.updateMatrix() calls matrix.compose(position, quaternion, scale)
+   * which does full 3D quaternion→matrix math (~20 multiplies). For 2D sprites we only
+   * need position, scale, and optional Z-axis rotation — written directly to the matrix
+   * elements.
+   *
+   * Also bakes in the layer/zIndex Z offset without save/restore of position.z.
    */
   override updateMatrix(): void {
-    // Store original Z position
-    const originalZ = this.position.z
+    const te = this.matrix.elements
+    const px = this.position.x
+    const py = this.position.y
+    const pz = this.position.z + this.layer * 10 + this.zIndex * 0.001
+    const sx = this.scale.x
+    const sy = this.scale.y
 
-    // Apply Z offset based on layer and zIndex for depth sorting
-    this.position.z += this.layer * 10 + this.zIndex * 0.001
-
-    // Compute matrix with offset
-    super.updateMatrix()
-
-    // Restore original Z position (so user's position.z is preserved)
-    this.position.z = originalZ
-  }
-
-  // ============================================
-  // BATCH ATTACHMENT (internal API for SpriteBatch)
-  // ============================================
-
-  /**
-   * Attach this sprite to a batch at the given index.
-   * After attachment, property changes write directly to batch buffers.
-   * @internal Called by SpriteBatch.addSprite()
-   */
-  _attachToBatch(target: BatchTarget, index: number): void {
-    this._batchTarget = target
-    this._batchIndex = index
-
-    // Sync current state to batch buffers
-    this._syncToBatch()
-  }
-
-  /**
-   * Detach this sprite from its batch.
-   * After detachment, property changes write to own buffers.
-   * @internal Called by SpriteBatch.removeSprite()
-   */
-  _detachFromBatch(): void {
-    this._batchTarget = null
-    this._batchIndex = -1
-
-    // Sync current state back to own buffers
-    this._syncToOwnBuffers()
-  }
-
-  /**
-   * Sync all current state to the batch buffers.
-   * Called when sprite is first attached to a batch.
-   * @internal
-   */
-  _syncToBatch(): void {
-    if (!this._batchTarget || this._batchIndex < 0) return
-
-    const target = this._batchTarget
-    const index = this._batchIndex
-
-    // Color (tint + alpha)
-    target.writeColor(index, this._tint.r, this._tint.g, this._tint.b, this._alpha)
-
-    // UV frame
-    if (this._frame) {
-      target.writeUV(index, this._frame.x, this._frame.y, this._frame.width, this._frame.height)
+    const rz = this.rotation.z
+    if (rz !== 0) {
+      // 2D rotation around Z axis
+      const c = Math.cos(rz)
+      const s = Math.sin(rz)
+      te[0] = c * sx;  te[4] = -s * sy; te[8]  = 0; te[12] = px
+      te[1] = s * sx;  te[5] =  c * sy; te[9]  = 0; te[13] = py
     } else {
-      target.writeUV(index, 0, 0, 1, 1)
+      // No rotation — most common path
+      te[0] = sx; te[4] = 0;  te[8]  = 0; te[12] = px
+      te[1] = 0;  te[5] = sy; te[9]  = 0; te[13] = py
     }
+    te[2] = 0; te[6] = 0; te[10] = 1; te[14] = pz
+    te[3] = 0; te[7] = 0; te[11] = 0; te[15] = 1
 
-    // Flip
-    target.writeFlip(index, this._flipX ? -1 : 1, this._flipY ? -1 : 1)
+    this.matrixWorldNeedsUpdate = true
+  }
 
-    // Transform matrix
-    this.updateMatrix()
-    target.writeMatrix(index, this.matrix)
+  // ============================================
+  // ECS ENROLLMENT
+  // ============================================
 
-    // Custom attributes - write defaults from material schema first,
-    // then override with sprite's instance values.
-    // This ensures reused slots get reset to defaults.
-    const schema = this.material.getInstanceAttributeSchema()
-    for (const [name, config] of schema) {
-      // Use sprite's value if set, otherwise use default from schema
-      const value = this.instanceValues.get(name) ?? config.defaultValue
-      target.writeCustom(index, name, value)
-      // Mark attribute as needing upload
-      const attr = target.getCustomAttribute(name)
-      if (attr) {
-        attr.needsUpdate = true
-      }
+  /**
+   * Enroll this sprite in an ECS world.
+   * Creates an entity with initial trait values from snapshot.
+   * Called automatically by Renderer2D when adding a sprite.
+   *
+   * @param world - The ECS world to enroll in (defaults to global world)
+   * @internal
+   */
+  _enrollInWorld(world?: World): void {
+    if (this._entity) return // Already enrolled
+
+    const w = world ?? this._flatlandWorld ?? getGlobalWorld()
+    this._flatlandWorld = w
+
+    const s = this._snapshot
+    this._entity = w.spawn(
+      SpriteUV({ x: s.uv.x, y: s.uv.y, w: s.uv.w, h: s.uv.h }),
+      SpriteColor({ r: s.color.r, g: s.color.g, b: s.color.b, a: s.color.a }),
+      SpriteFlip({ x: s.flip.x, y: s.flip.y }),
+      SpriteLayer({ layer: s.layer.layer }),
+      SpriteZIndex({ zIndex: s.zIndex.zIndex }),
+      SpriteMaterialRef({
+        materialId: this.material.batchId,
+      }),
+      IsRenderable,
+      ThreeRef({ object: this }),
+    )
+
+    // Add effect traits for active effects
+    for (const effect of this._effects) {
+      const EffectClass = effect.constructor as typeof MaterialEffect
+      this._entity.add(EffectClass._trait(this._buildTraitData(effect)))
+      // Update entity reference on effect instance
+      effect._entity = this._entity
     }
   }
 
   /**
-   * Sync current state back to own buffers after detaching from batch.
+   * Unenroll this sprite from its ECS world.
+   * Serializes trait values back to snapshot, then destroys the entity.
+   * Called automatically when sprite is removed from Renderer2D or disposed.
    * @internal
    */
-  private _syncToOwnBuffers(): void {
-    // Update all own buffers with current state
-    this._updateInstanceColor()
-    this._updateInstanceUV()
-    this.updateFlip()
-    // Note: Own buffer custom attributes would need similar handling
-    // if standalone rendering supported them
+  _unenrollFromWorld(): void {
+    if (!this._entity) return
+
+    // Serialize trait values back to snapshot before destroying entity
+    const color = this._entity.get(SpriteColor)
+    if (color) Object.assign(this._snapshot.color, color)
+    const uvVal = this._entity.get(SpriteUV)
+    if (uvVal) Object.assign(this._snapshot.uv, uvVal)
+    const flip = this._entity.get(SpriteFlip)
+    if (flip) Object.assign(this._snapshot.flip, flip)
+    const layer = this._entity.get(SpriteLayer)
+    if (layer) Object.assign(this._snapshot.layer, layer)
+    const zIdx = this._entity.get(SpriteZIndex)
+    if (zIdx) Object.assign(this._snapshot.zIndex, zIdx)
+
+    // Serialize effect trait values back to effect snapshots
+    for (const effect of this._effects) {
+      const EffectClass = effect.constructor as typeof MaterialEffect
+      if (this._entity.has(EffectClass._trait)) {
+        const traitData = this._entity.get(EffectClass._trait) as Record<string, number>
+        for (const field of EffectClass._fields) {
+          if (field.size === 1) {
+            effect._defaults[field.name] = traitData[field.name]!
+          } else {
+            const arr: number[] = []
+            for (let i = 0; i < field.size; i++) {
+              arr.push(traitData[`${field.name}_${i}`]!)
+            }
+            effect._defaults[field.name] = arr
+          }
+        }
+      }
+      effect._entity = null
+    }
+
+    this._entity.destroy()
+    this._entity = null
   }
+
+  /**
+   * Get the ECS entity for this sprite (null if not enrolled).
+   * @internal
+   */
+  get entity(): Entity | null {
+    return this._entity
+  }
+
 
   /**
    * Dispose of resources.
    */
   dispose() {
+    // Unenroll from ECS world
+    this._unenrollFromWorld()
+
+    // Detach effects
+    for (const effect of this._effects) {
+      effect._detach()
+    }
+    this._effects.length = 0
+
     // Dispose custom geometry if exists
     if (this._geometry) {
       this._geometry.dispose()
@@ -740,18 +992,31 @@ export class Sprite2D extends Mesh {
             anchor: this._anchor,
             tint: this.tint,
             alpha: this.alpha,
-            flipX: this._flipX,
-            flipY: this._flipY,
+            flipX: this.flipX,
+            flipY: this.flipY,
             layer: this.layer,
             zIndex: this.zIndex,
             pixelPerfect: this.pixelPerfect,
           }
         : undefined
     )
-    // Clone instance values
-    for (const [name, value] of this.instanceValues) {
-      cloned.setInstanceValue(name, Array.isArray(value) ? [...value] : value)
+
+    // Clone effect instances
+    for (const effect of this._effects) {
+      const EffectClass = effect.constructor as { new (): MaterialEffect; _fields: typeof MaterialEffect._fields }
+      const clonedEffect = new EffectClass()
+      // Copy snapshot defaults
+      for (const field of EffectClass._fields) {
+        const value = effect._defaults[field.name]
+        if (typeof value === 'number') {
+          clonedEffect._defaults[field.name] = value
+        } else {
+          clonedEffect._defaults[field.name] = [...(value as number[])]
+        }
+      }
+      cloned.addEffect(clonedEffect)
     }
+
     cloned.position.copy(this.position)
     cloned.rotation.copy(this.rotation)
     cloned.scale.copy(this.scale)

@@ -1,6 +1,8 @@
 import type { Color, Vector2 } from 'three'
 import { Sprite2D } from './Sprite2D'
 import { AnimationController } from '../animation/AnimationController'
+import type { Sprite2DMaterial } from '../materials/Sprite2DMaterial'
+import type { MaterialEffect } from '../materials/MaterialEffect'
 import type { SpriteSheet } from './types'
 import type { Animation, AnimationSetDefinition, PlayOptions } from '../animation/types'
 
@@ -10,6 +12,8 @@ import type { Animation, AnimationSetDefinition, PlayOptions } from '../animatio
 export interface AnimatedSprite2DOptions {
   /** SpriteSheet containing animation frames */
   spriteSheet: SpriteSheet
+  /** Custom material (sprites with same material instance batch together) */
+  material?: Sprite2DMaterial
   /** Animation definitions */
   animations?: Animation[]
   /** Animation set definition (alternative to animations array) */
@@ -76,6 +80,7 @@ export class AnimatedSprite2D extends Sprite2D {
 
     super({
       texture: options?.spriteSheet?.texture,
+      material: options?.material,
       frame: firstFrame,
       anchor: options?.anchor,
       tint: options?.tint,
@@ -382,9 +387,19 @@ export class AnimatedSprite2D extends Sprite2D {
     cloned.rotation.copy(this.rotation)
     cloned.scale.copy(this.scale)
 
-    // Clone instance values
-    for (const [name, value] of this.getInstanceValues()) {
-      cloned.setInstanceValue(name, Array.isArray(value) ? [...value] : value)
+    // Clone effect instances from parent
+    for (const effect of this._effects) {
+      const EffectClass = effect.constructor as { new (): MaterialEffect; _fields: typeof MaterialEffect._fields }
+      const clonedEffect = new EffectClass()
+      for (const field of EffectClass._fields) {
+        const value = effect._defaults[field.name]!
+        if (typeof value === 'number') {
+          clonedEffect._defaults[field.name] = value
+        } else {
+          clonedEffect._defaults[field.name] = [...value]
+        }
+      }
+      cloned.addEffect(clonedEffect)
     }
 
     return cloned as this

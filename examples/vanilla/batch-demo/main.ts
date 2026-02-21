@@ -356,8 +356,6 @@ async function main() {
     const deltaMs = now - lastTime
     lastTime = now
 
-    renderer2D.update()
-
     renderer.render(scene, camera)
 
     // Update stats (~once per second)

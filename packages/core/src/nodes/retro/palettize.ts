@@ -169,8 +169,8 @@ export function palettizeNearest(
 
     // Update best if this is closer
     const isBetter = dist.lessThan(bestDist)
-    bestColor = isBetter.select(sampleColor, bestColor) as TSLNode
-    bestDist = isBetter.select(dist, bestDist) as TSLNode
+    bestColor = isBetter.select(sampleColor, bestColor)
+    bestDist = isBetter.select(dist, bestDist)
   }
 
   return vec4(bestColor.rgb, inputColor.a)

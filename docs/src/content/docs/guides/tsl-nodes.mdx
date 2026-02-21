@@ -7,69 +7,126 @@ import { Tabs, TabItem } from '@astrojs/starlight/components';
 
 TSL (Three Shader Language) is a node-based shader system in Three.js that enables custom GPU effects without writing raw WGSL/GLSL code.
 
-three-flatland provides pre-built TSL nodes for common 2D sprite effects. All nodes are exported from `@three-flatland/core`.
+three-flatland provides two ways to use TSL:
 
-## Using Built-in Nodes
+1. **Material Effects** (recommended) — define reusable, per-sprite effects with `createMaterialEffect` and apply them via `addEffect()` / `removeEffect()`
+2. **Raw TSL nodes** — compose low-level node functions directly for full shader control
+
+All TSL nodes and the effect system are exported from `@three-flatland/core`.
+
+## Material Effects
+
+The Material Effect system lets you define shader effects as reusable classes with typed, animatable properties. Effects are composed into the sprite's shader pipeline automatically.
+
+### Defining an Effect
+
+Use `createMaterialEffect` with a schema (per-sprite data) and a TSL node builder:
+
+```typescript
+import { createMaterialEffect, tintAdditive, hueShift } from '@three-flatland/core';
+import { vec4 } from 'three/tsl';
+
+// Damage flash — additive white tint that fades
+const DamageFlash = createMaterialEffect({
+  name: 'damageFlash',
+  schema: { intensity: 1 } as const,
+  node: ({ inputColor, attrs }) => {
+    const flashed = tintAdditive(inputColor, [1, 1, 1], attrs.intensity);
+    return vec4(flashed.rgb.mul(inputColor.a), inputColor.a);
+  },
+});
+
+// Hue rotation — continuous rainbow effect
+const Powerup = createMaterialEffect({
+  name: 'powerup',
+  schema: { angle: 0 } as const,
+  node: ({ inputColor, attrs }) => hueShift(inputColor, attrs.angle),
+});
+```
+
+The `node` callback receives:
+- `inputColor` — the previous color in the effect chain (TSL vec4 node)
+- `inputUV` — atlas UV coordinates (TSL vec2 node)
+- `attrs` — TSL nodes for each schema field, automatically packed into GPU buffers
+
+### Using Effects
 
 <Tabs syncKey="framework">
   <TabItem label="Three.js" icon="seti:javascript">
     ```typescript
-    import { MeshBasicNodeMaterial } from 'three/webgpu';
-    import { texture as sampleTexture, uv, Fn } from 'three/tsl';
-    import {
-      SpriteSheetLoader,
-      sampleSprite,
-      spriteUV,
-      tint,
-      outline8,
-      hueShift,
-      dissolvePixelated,
-    } from '@three-flatland/core';
+    // Create instance and add to sprite
+    const flash = new DamageFlash();
+    sprite.addEffect(flash);
 
-    // Load spritesheet
-    const spriteSheet = await SpriteSheetLoader.load('/sprites/character.json');
+    // Animate properties in your render loop
+    flash.intensity = Math.max(0, 1 - elapsed / 0.3);
 
-    // Create material with TSL nodes
-    const material = new MeshBasicNodeMaterial();
-    material.transparent = true;
-
-    // Frame uniform for animation
-    const frameUniform = uniform(new Vector4(0, 0, 0.125, 0.125));
-
-    // Apply outline effect
-    material.colorNode = Fn(() => {
-      const frameUV = spriteUV(frameUniform);
-      const color = sampleTexture(spriteSheet.texture, frameUV);
-      return outline8(color, frameUV, spriteSheet.texture, {
-        color: [1, 0, 0, 1],  // Red outline
-        thickness: 0.003,
-      });
-    })();
+    // Remove when done
+    sprite.removeEffect(flash);
     ```
   </TabItem>
   <TabItem label="React" icon="seti:react">
     ```tsx
-    import { useMemo } from 'react';
-    import { MeshBasicNodeMaterial } from 'three/webgpu';
-    import { Fn } from 'three/tsl';
-    import { sampleSprite, tint } from '@three-flatland/core';
+    import { useMemo, useEffect } from 'react';
+    import { useFrame } from '@react-three/fiber/webgpu';
 
-    function TintedSprite({ texture, frameUniform }) {
-      const material = useMemo(() => {
-        const mat = new MeshBasicNodeMaterial();
-        mat.transparent = true;
-        mat.colorNode = Fn(() => {
-          const color = sampleSprite(texture, frameUniform);
-          return tint(color, [1.0, 0.5, 0.5]); // Pink tint
-        })();
-        return mat;
-      }, [texture, frameUniform]);
+    function FlashingSprite({ spriteRef }) {
+      const flash = useMemo(() => new DamageFlash(), []);
 
-      return <mesh material={material}>...</mesh>;
+      useEffect(() => {
+        const sprite = spriteRef.current;
+        sprite.addEffect(flash);
+        return () => sprite.removeEffect(flash);
+      }, [spriteRef, flash]);
+
+      useFrame((_, delta) => {
+        flash.intensity = Math.max(0, flash.intensity - delta / 0.3);
+      });
     }
     ```
   </TabItem>
 </Tabs>
+
+### Closure-Captured Textures
+
+Effects that need texture references can capture them via closures. The `node` callback runs once during shader compilation:
+
+```typescript
+const noiseTexture = createNoiseTexture();
+
+const Dissolve = createMaterialEffect({
+  name: 'dissolve',
+  schema: { progress: 0 } as const,
+  node: ({ inputColor, attrs }) =>
+    dissolvePixelated(inputColor, uv(), attrs.progress, noiseTexture, 16),
+});
+```
+
+See the [TSL Nodes example](/examples/tsl-nodes) for all 8 effects in action.
+
+## Low-Level TSL Usage
+
+For full shader control, you can compose TSL nodes directly on a `MeshBasicNodeMaterial`. This is useful for custom materials outside the sprite pipeline:
+
+```typescript
+import { MeshBasicNodeMaterial } from 'three/webgpu';
+import { texture as sampleTexture, uv, Fn } from 'three/tsl';
+import { outline8, spriteUV, SpriteSheetLoader } from '@three-flatland/core';
+
+const spriteSheet = await SpriteSheetLoader.load('/sprites/character.json');
+
+const material = new MeshBasicNodeMaterial();
+material.transparent = true;
+
+material.colorNode = Fn(() => {
+  const frameUV = spriteUV(frameUniform);
+  const color = sampleTexture(spriteSheet.texture, frameUV);
+  return outline8(color, frameUV, spriteSheet.texture, {
+    color: [1, 0, 0, 1],
+    thickness: 0.003,
+  });
+})();
+```
 
 ## Sprite Sampling Nodes
 
@@ -265,26 +322,28 @@ const posterized = posterize(color, 4);
 
 ## Combining Effects
 
-Chain multiple effects together:
+With Material Effects, multiple effects can be active simultaneously. Each effect chains through the previous color:
 
 ```typescript
-import { Fn } from 'three/tsl';
-import { sampleSprite, tint, outline8, hueShift } from '@three-flatland/core';
+const flash = new DamageFlash();
+const outline = new SelectOutline();
 
+sprite.addEffect(flash);
+sprite.addEffect(outline);
+
+// Both effects are active — outline runs after flash in the shader
+```
+
+For low-level TSL, chain node functions directly:
+
+```typescript
 material.colorNode = Fn(() => {
-  // Sample sprite
   const color = sampleSprite(texture, frameUniform, { alphaTest: 0.01 });
-
-  // Apply hue shift
   const shifted = hueShift(color, timeUniform);
-
-  // Add outline
-  const frameUV = spriteUV(frameUniform);
-  const outlined = outline8(shifted, frameUV, texture, {
+  const outlined = outline8(shifted, spriteUV(frameUniform), texture, {
     color: [1, 1, 0, 1],
     thickness: 0.002,
   });
-
   return outlined;
 })();
 ```
@@ -295,3 +354,4 @@ material.colorNode = Fn(() => {
 - Use `uniform()` for values that change frequently
 - Cache compiled materials when reusing effects
 - Avoid dynamic branching in hot paths
+- Material Effects pack per-sprite data into fixed-size GPU buffers, avoiding per-effect draw calls

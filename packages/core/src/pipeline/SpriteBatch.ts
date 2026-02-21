@@ -5,15 +5,13 @@ import {
   DynamicDrawUsage,
   type Matrix4,
 } from 'three'
-import type { Sprite2D } from '../sprites/Sprite2D'
 import type { Sprite2DMaterial } from '../materials/Sprite2DMaterial'
 import type { InstanceAttributeType } from './types'
-import type { BatchTarget } from './BatchTarget'
 
 /**
  * Default maximum sprites per batch.
  */
-export const DEFAULT_BATCH_SIZE = 10000
+export const DEFAULT_BATCH_SIZE = 8192
 
 /**
  * A batch of sprites rendered with a single draw call.
@@ -25,9 +23,9 @@ export const DEFAULT_BATCH_SIZE = 10000
  * - Flip (instanceFlip)
  * - Custom attributes from material schema
  *
- * Implements BatchTarget interface for zero-copy direct writes from sprites.
+ * Systems write to batch buffers directly via write methods.
  */
-export class SpriteBatch extends InstancedMesh implements BatchTarget {
+export class SpriteBatch extends InstancedMesh {
   /**
    * The material used by all sprites in this batch.
    */
@@ -39,14 +37,9 @@ export class SpriteBatch extends InstancedMesh implements BatchTarget {
   readonly maxSize: number
 
   /**
-   * Current number of active sprites in the batch.
+   * Current number of active slots in the batch.
    */
   private _activeCount: number = 0
-
-  /**
-   * Sprites currently in this batch (null = free slot).
-   */
-  private _sprites: (Sprite2D | null)[] = []
 
   /**
    * Free slot indices for reuse (pooling).
@@ -174,7 +167,7 @@ export class SpriteBatch extends InstancedMesh implements BatchTarget {
   }
 
   // ============================================
-  // BatchTarget interface implementation
+  // Buffer write methods (called by ECS systems)
   // ============================================
 
   writeColor(index: number, r: number, g: number, b: number, a: number): void {
@@ -235,14 +228,21 @@ export class SpriteBatch extends InstancedMesh implements BatchTarget {
     return this._customAttributes.get(name)?.attribute
   }
 
+  writeEffectSlot(index: number, bufferIndex: number, component: number, value: number): void {
+    const attrName = `effectBuf${bufferIndex}`
+    const custom = this._customAttributes.get(attrName)
+    if (!custom) return
+    custom.buffer[index * 4 + component] = value
+  }
+
   // ============================================
-  // Sprite management
+  // Slot management (used by ECS systems)
   // ============================================
 
   /**
-   * Get current sprite count.
+   * Get current active slot count.
    */
-  get spriteCount(): number {
+  get activeCount(): number {
     return this._activeCount
   }
 
@@ -261,72 +261,50 @@ export class SpriteBatch extends InstancedMesh implements BatchTarget {
   }
 
   /**
-   * Add a sprite to the batch.
-   * The sprite will write directly to this batch's buffers.
+   * Allocate a slot in this batch.
+   * Reuses a free slot if available, otherwise allocates the next sequential one.
    *
-   * @returns The index of the sprite in the batch, or -1 if batch is full
+   * @returns The slot index, or -1 if batch is full
    */
-  addSprite(sprite: Sprite2D): number {
+  allocateSlot(): number {
     let index: number
 
-    // Reuse free slot if available
     if (this._freeList.length > 0) {
       index = this._freeList.pop()!
     } else {
-      // Allocate new slot
       if (this._nextIndex >= this.maxSize) {
         return -1 // Batch is full
       }
       index = this._nextIndex++
     }
 
-    this._sprites[index] = sprite
     this._activeCount++
-
-    // Attach sprite to this batch - it will sync its current state
-    sprite._attachToBatch(this, index)
-
-    // Mark transforms dirty for upload
-    this._transformsDirty = true
-
     return index
   }
 
   /**
-   * Remove a sprite from the batch.
-   * The sprite will revert to using its own buffers.
+   * Free a slot in this batch.
+   * Sets alpha to 0 (invisible) and adds the slot to the free list.
+   *
+   * @param index - Slot index to free
    */
-  removeSprite(sprite: Sprite2D): void {
-    const index = sprite._batchIndex
-    if (index < 0 || this._sprites[index] !== sprite) return
+  freeSlot(index: number): void {
+    if (index < 0 || index >= this._nextIndex) return
 
     // Make slot invisible (alpha = 0) so it doesn't render
     this._instanceColor[index * 4 + 3] = 0
     this._colorAttribute.needsUpdate = true
 
-    // Clear the slot and add to free list
-    this._sprites[index] = null
     this._freeList.push(index)
     this._activeCount--
-
-    // Detach sprite from batch - it will sync to its own buffers
-    sprite._detachFromBatch()
   }
 
   /**
-   * Clear all sprites from the batch.
+   * Reset all slots without disposing GPU resources.
+   * Used when recycling a batch from the pool.
    */
-  clearSprites(): void {
-    // Detach all sprites
-    for (let i = 0; i < this._sprites.length; i++) {
-      const sprite = this._sprites[i]
-      if (sprite) {
-        sprite._detachFromBatch()
-      }
-    }
-
+  resetSlots(): void {
     this._activeCount = 0
-    this._sprites.length = 0
     this._freeList.length = 0
     this._nextIndex = 0
     this.count = 0
@@ -341,50 +319,18 @@ export class SpriteBatch extends InstancedMesh implements BatchTarget {
   }
 
   /**
-   * Upload buffer data to GPU.
-   * Only transforms are re-read from sprites (safest with Three.js).
-   * Other attributes are written directly by sprites.
+   * Sync the instance count to include all allocated slots.
+   * Free slots have alpha=0 so they're invisible.
    */
-  upload(): void {
-    // Update transforms from sprites if dirty
-    if (this._transformsDirty) {
-      for (let i = 0; i < this._sprites.length; i++) {
-        const sprite = this._sprites[i]
-        if (sprite) {
-          sprite.updateMatrix()
-          this.setMatrixAt(i, sprite.matrix)
-        }
-      }
-      this.instanceMatrix.needsUpdate = true
-      this._transformsDirty = false
-    }
-
-    // Update instance count to include all allocated slots
-    // (free slots have alpha=0 so they're invisible)
+  syncCount(): void {
     this.count = this._nextIndex
-  }
-
-  /**
-   * Get sprites in this batch.
-   */
-  getSprites(): readonly (Sprite2D | null)[] {
-    return this._sprites
-  }
-
-  /**
-   * Get active (non-null) sprites in this batch.
-   */
-  getActiveSprites(): Sprite2D[] {
-    return this._sprites.filter((s): s is Sprite2D => s !== null)
   }
 
   /**
    * Dispose of resources.
    */
   override dispose(): this {
-    // Detach all sprites first
-    this.clearSprites()
-
+    this.resetSlots()
     this.geometry.dispose()
     // Don't dispose the material - it may be shared between batches
     // The material owner (user code) is responsible for disposing it

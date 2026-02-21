@@ -1,0 +1,94 @@
+---
+title: Knightmark
+description: Sprite benchmark with animated knights, collisions, and spatial hashing.
+---
+
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+import ExamplePreview from '../../../components/ExamplePreview';
+import StackBlitzEmbed from '../../../components/StackBlitzEmbed';
+import ExampleTabs from '../../../components/ExampleTabs.astro';
+import { loadExample } from '../../../utils/loadExample';
+
+export const vanillaFiles = loadExample('vanilla', 'knightmark');
+export const reactFiles = loadExample('react', 'knightmark');
+
+<ExampleTabs>
+<Tabs>
+  <TabItem label="Preview" icon="rocket">
+    <ExamplePreview client:load type="vanilla" name="knightmark" />
+  </TabItem>
+  <TabItem label="Three.js" icon="seti:javascript">
+    <StackBlitzEmbed
+      client:load
+      title="Knightmark - Three.js"
+      files={vanillaFiles}
+      openFile="main.ts"
+      height={600}
+    />
+  </TabItem>
+  <TabItem label="React" icon="seti:react">
+    <StackBlitzEmbed
+      client:load
+      title="Knightmark - React"
+      files={reactFiles}
+      openFile="App.tsx"
+      height={600}
+    />
+  </TabItem>
+</Tabs>
+</ExampleTabs>
+
+## What It Demonstrates
+
+Knightmark is a sprite stress test inspired by classic benchmarks like Bunnymark. It showcases:
+
+- **Batch rendering** — thousands of animated sprites in minimal draw calls
+- **AnimatedSprite2D** — frame-based sprite animation with multiple states
+- **Spatial hashing** — efficient collision detection between sprites
+- **Y-sorting** — depth-correct rendering via `zIndex`
+
+## Key Patterns
+
+### Animated Sprites with State Machines
+
+Each knight has a state machine (walk, roll, trip, idle) driving its animation:
+
+```typescript
+const sprite = new AnimatedSprite2D({
+  spriteSheet: knightSheet,
+  animationSet: knightAnimations,
+  animation: 'idle',
+  layer: Layers.ENTITIES,
+});
+
+sprite.play('run');
+sprite.play('death', {
+  onComplete: () => sprite.play('idle'),
+});
+```
+
+### Y-Sort Depth Ordering
+
+Knights render in correct depth order by setting `zIndex` from their Y position:
+
+```typescript
+sprite.zIndex = -Math.floor(sprite.position.y);
+```
+
+### Spatial Hash for Collisions
+
+A simple spatial hash grid enables O(n) collision checks instead of O(n^2):
+
+```typescript
+spatialHash.clear();
+for (const knight of knights) spatialHash.insert(knight);
+
+spatialHash.forEachNeighbor(knight, (other) => {
+  // Check distance and resolve collision
+});
+```
+
+## Next Steps
+
+- [Batch Rendering](/examples/batch-demo) - Learn more about batching
+- [Animation](/examples/animation) - Sprite animation basics

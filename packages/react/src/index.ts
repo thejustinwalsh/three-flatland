@@ -5,6 +5,7 @@
 import './types'
 
 export type { FlatlandProps, Sprite2DProps } from './types'
+export { effectAttach } from './types'
 
 // Resource utilities
 export { createResource, createCachedResource, spriteSheet, texture } from './resource'

@@ -1,43 +1,43 @@
-import { Suspense, useMemo, use, useRef, useImperativeHandle, forwardRef, useEffect, useState, useCallback } from 'react'
+import { Suspense, useMemo, use, useRef, useEffect, useState, useCallback } from 'react'
 import { Canvas, useFrame, useThree } from '@react-three/fiber/webgpu'
-import { MeshBasicNodeMaterial } from 'three/webgpu'
 import {
   texture as sampleTexture,
   uv,
-  uniform,
+  attribute,
   vec2,
   vec4,
   float,
-  If,
-  Discard,
-  Fn,
 } from 'three/tsl'
 import {
   NearestFilter,
-  PlaneGeometry,
   CanvasTexture,
   RepeatWrapping,
-  Vector4,
 } from 'three'
 import {
+  AnimatedSprite2D,
+  Sprite2DMaterial,
   SpriteSheetLoader,
-  sampleSprite,
-  spriteUV,
-  tint,
+  createMaterialEffect,
   tintAdditive,
   hueShift,
   saturate,
   outline8,
   pixelate,
   dissolvePixelated,
+  tint,
   type SpriteSheet,
+  type MaterialEffect,
+  type AnimationSetDefinition,
 } from '@three-flatland/react'
 
 import '@awesome.me/webawesome/dist/styles/themes/default.css'
 import WaRadioGroup from '@awesome.me/webawesome/dist/react/radio-group/index.js'
 import WaRadio from '@awesome.me/webawesome/dist/react/radio/index.js'
 
-// Effect types
+// ========================================
+// Types
+// ========================================
+
 type EffectType =
   | 'normal'
   | 'damage'
@@ -59,39 +59,29 @@ const effectLabels: Record<EffectType, string> = {
   pixelate: 'Pixelate',
 }
 
-// Animation definitions
-interface Animation {
-  frames: string[]
-  fps: number
-  loop: boolean
-}
-
-const animations: Record<string, Animation> = {
-  idle: {
-    frames: ['idle_0', 'idle_1', 'idle_2', 'idle_3'],
-    fps: 8,
-    loop: true,
-  },
-  run: {
-    frames: ['run_0', 'run_1', 'run_2', 'run_3', 'run_4', 'run_5', 'run_6', 'run_7',
-             'run_8', 'run_9', 'run_10', 'run_11', 'run_12', 'run_13', 'run_14', 'run_15'],
-    fps: 16,
-    loop: true,
-  },
-  roll: {
-    frames: ['roll_0', 'roll_1', 'roll_2', 'roll_3', 'roll_4', 'roll_5', 'roll_6', 'roll_7'],
-    fps: 12,
-    loop: true,
-  },
-  hit: {
-    frames: ['hit_0', 'hit_1', 'hit_2', 'hit_3'],
-    fps: 12,
-    loop: false,
-  },
-  death: {
-    frames: ['death_0', 'death_1', 'death_2', 'death_3'],
-    fps: 6,
-    loop: false,
+// Animation set
+const animationSet: AnimationSetDefinition = {
+  animations: {
+    idle: { frames: ['idle_0', 'idle_1', 'idle_2', 'idle_3'], fps: 8 },
+    run: {
+      frames: ['run_0', 'run_1', 'run_2', 'run_3', 'run_4', 'run_5', 'run_6', 'run_7',
+               'run_8', 'run_9', 'run_10', 'run_11', 'run_12', 'run_13', 'run_14', 'run_15'],
+      fps: 16,
+    },
+    roll: {
+      frames: ['roll_0', 'roll_1', 'roll_2', 'roll_3', 'roll_4', 'roll_5', 'roll_6', 'roll_7'],
+      fps: 12,
+    },
+    hit: {
+      frames: ['hit_0', 'hit_1', 'hit_2', 'hit_3'],
+      fps: 12,
+      loop: false,
+    },
+    death: {
+      frames: ['death_0', 'death_1', 'death_2', 'death_3'],
+      fps: 6,
+      loop: false,
+    },
   },
 }
 
@@ -107,7 +97,49 @@ const effectAnimations: Record<EffectType, string> = {
   pixelate: 'roll',
 }
 
-// Generate a noise texture for dissolve effect
+// ========================================
+// Effect Definitions (no texture closures)
+// ========================================
+
+const DamageFlash = createMaterialEffect({
+  name: 'damageFlash',
+  schema: { intensity: 1 } as const,
+  node: ({ inputColor, attrs }) => {
+    const flashed = tintAdditive(inputColor, [1, 1, 1], attrs.intensity)
+    // Mask to sprite silhouette: premultiplied alpha means RGB must be scaled by alpha
+    return vec4(flashed.rgb.mul(inputColor.a), inputColor.a)
+  },
+})
+
+const Powerup = createMaterialEffect({
+  name: 'powerup',
+  schema: { angle: 0 } as const,
+  node: ({ inputColor, attrs }) =>
+    hueShift(inputColor, attrs.angle),
+})
+
+const Petrify = createMaterialEffect({
+  name: 'petrify',
+  schema: { amount: 0 } as const,
+  node: ({ inputColor, attrs }) =>
+    saturate(inputColor, attrs.amount),
+})
+
+const ShadowEffect = createMaterialEffect({
+  name: 'shadow',
+  schema: { alpha: 0.6 } as const,
+  node: ({ inputColor, attrs }) => {
+    const darkened = tint(tintAdditive(inputColor, [0, 0, 0.2], 0.3), [0.2, 0.2, 0.4])
+    const finalAlpha = inputColor.a.mul(attrs.alpha)
+    // Mask to sprite silhouette: premultiplied alpha means RGB must be scaled by finalAlpha
+    return vec4(darkened.rgb.mul(finalAlpha), finalAlpha)
+  },
+})
+
+// ========================================
+// Noise texture helper
+// ========================================
+
 function createNoiseTexture(size = 256): CanvasTexture {
   const canvas = document.createElement('canvas')
   canvas.width = size
@@ -130,7 +162,10 @@ function createNoiseTexture(size = 256): CanvasTexture {
   return texture
 }
 
+// ========================================
 // Load sprite sheet (React 19 resource pattern)
+// ========================================
+
 const spriteSheetPromise = SpriteSheetLoader.load('./sprites/knight.json').then(
   (sheet) => {
     sheet.texture.minFilter = NearestFilter
@@ -139,250 +174,202 @@ const spriteSheetPromise = SpriteSheetLoader.load('./sprites/knight.json').then(
   }
 )
 
-// Create shared geometry
-const sharedGeometry = new PlaneGeometry(1, 1)
-
-// Helper to create base material
-function createBaseMaterial(): MeshBasicNodeMaterial {
-  const mat = new MeshBasicNodeMaterial()
-  mat.transparent = true
-  mat.depthWrite = true
-  mat.depthTest = true
-  return mat
-}
+// ========================================
+// EffectSprite component
+// ========================================
 
 interface EffectSpriteProps {
   effect: EffectType
 }
 
-interface EffectSpriteHandle {
-  play: (effect: EffectType) => void
-}
+function EffectSprite({ effect }: EffectSpriteProps) {
+  const spriteSheet = use(spriteSheetPromise) as SpriteSheet
+  const spriteRef = useRef<AnimatedSprite2D>(null)
 
-const EffectSprite = forwardRef<EffectSpriteHandle, EffectSpriteProps>(
-  function EffectSprite({ effect }, ref) {
-    const spriteSheet = use(spriteSheetPromise) as SpriteSheet
-
-    // Animation state
-    const animState = useRef({
-      currentAnimation: 'idle',
-      currentFrameIndex: 0,
-      frameTimer: 0,
-      frozen: false,
-      forceNoLoop: false,
-    })
-
-    // Track current effect for animation loop
-    const currentEffectRef = useRef<EffectType>(effect)
-    currentEffectRef.current = effect
-
-    // Create noise texture (memoized)
-    const noiseTexture = useMemo(() => {
-      const tex = createNoiseTexture()
-      tex.minFilter = NearestFilter
-      tex.magFilter = NearestFilter
-      return tex
-    }, [])
-
-    // Create uniforms (memoized)
-    const uniforms = useMemo(
-      () => ({
-        time: uniform(0),
-        dissolveProgress: uniform(0),
-        damageFlash: uniform(0),
-        pixelateProgress: uniform(0),
-        frame: uniform(new Vector4(0, 0, 0.125, 0.125)),
+  // Create premultiplied material (outline/pixelate need transparent pixels)
+  const material = useMemo(
+    () =>
+      new Sprite2DMaterial({
+        map: spriteSheet.texture,
+        transparent: true,
+        premultipliedAlpha: true,
       }),
-      []
-    )
+    [spriteSheet]
+  )
 
-    // Track effect start time
-    const effectStartTime = useRef(0)
+  // Create noise texture (memoized)
+  const noiseTexture = useMemo(() => {
+    const tex = createNoiseTexture()
+    tex.minFilter = NearestFilter
+    tex.magFilter = NearestFilter
+    return tex
+  }, [])
 
-    // Helper to set frame
-    const setFrame = (frameName: string) => {
-      const frame = spriteSheet.getFrame(frameName)
-      uniforms.frame.value.set(frame.x, frame.y, frame.width, frame.height)
+  // Create closure-based effect classes (need spriteSheet/noiseTexture)
+  const closureEffects = useMemo(
+    () => ({
+      Dissolve: createMaterialEffect({
+        name: 'dissolve',
+        schema: { progress: 0 } as const,
+        node: ({ inputColor, attrs }) =>
+          dissolvePixelated(inputColor, uv(), attrs.progress, noiseTexture, 16),
+      }),
+      Select: createMaterialEffect({
+        name: 'select',
+        schema: { thickness: 0.003 } as const,
+        node: ({ inputColor, inputUV, attrs }) =>
+          outline8(inputColor, inputUV, spriteSheet.texture, {
+            color: [0.3, 1, 0.3, 1],
+            thickness: attrs.thickness,
+          }),
+      }),
+      Pixelate: createMaterialEffect({
+        name: 'pixelate',
+        schema: { progress: 0 } as const,
+        node: ({ attrs }) => {
+          const instanceUV = attribute('instanceUV', 'vec4')
+          const localUV = uv()
+
+          const pixelAmount = float(1).sub(
+            attrs.progress.mul(float(2)).sub(float(1)).abs()
+          )
+          const pixelCount = float(32).sub(pixelAmount.mul(float(28)))
+
+          const pixelatedUV = pixelate(localUV, vec2(pixelCount, pixelCount))
+          const frameOffset = vec2(instanceUV.x, instanceUV.y)
+          const frameSize = vec2(instanceUV.z, instanceUV.w)
+          const frameUV = pixelatedUV.mul(frameSize).add(frameOffset)
+
+          const color = sampleTexture(spriteSheet.texture, frameUV)
+          return vec4(color.rgb.mul(color.a), color.a)
+        },
+      }),
+    }),
+    [spriteSheet, noiseTexture]
+  )
+
+  // Create effect instances (stable references)
+  const effects = useMemo(
+    () =>
+      ({
+        normal: null,
+        damage: new DamageFlash(),
+        dissolve: new closureEffects.Dissolve(),
+        powerup: new Powerup(),
+        petrify: new Petrify(),
+        select: new closureEffects.Select(),
+        shadow: new ShadowEffect(),
+        pixelate: new closureEffects.Pixelate(),
+      }) as Record<EffectType, MaterialEffect | null>,
+    [closureEffects]
+  )
+
+  // Track effect state
+  const stateRef = useRef({
+    effect: 'normal' as EffectType,
+    instance: null as MaterialEffect | null,
+    startTime: 0,
+    elapsed: 0,
+  })
+
+  // Switch effects when prop changes
+  useEffect(() => {
+    const sprite = spriteRef.current
+    if (!sprite) return
+
+    // Remove previous effect
+    if (stateRef.current.instance) {
+      sprite.removeEffect(stateRef.current.instance)
     }
 
-    // Play effect (can be called multiple times)
-    const playEffect = (eff: EffectType) => {
-      const animName = effectAnimations[eff]
-      const anim = animations[animName]!
+    const newInstance = effects[effect]
 
-      animState.current.currentAnimation = animName
-      animState.current.currentFrameIndex = 0
-      animState.current.frameTimer = 0
-      animState.current.frozen = eff === 'petrify'
-      animState.current.forceNoLoop = eff === 'pixelate'
+    stateRef.current.effect = effect
+    stateRef.current.instance = newInstance
+    stateRef.current.startTime = stateRef.current.elapsed
 
-      setFrame(anim.frames[0]!)
-
-      // Reset effect-specific uniforms
-      effectStartTime.current = uniforms.time.value
-
-      if (eff === 'dissolve') {
-        uniforms.dissolveProgress.value = 0
-      }
-      if (eff === 'damage') {
-        uniforms.damageFlash.value = 1
-      }
-      if (eff === 'pixelate') {
-        uniforms.pixelateProgress.value = 0
-      }
+    // Add new effect
+    if (newInstance) {
+      sprite.addEffect(newInstance)
     }
 
-    // Expose play method via ref
-    useImperativeHandle(ref, () => ({
-      play: playEffect,
-    }))
+    // Reset effect-specific properties
+    if (effect === 'dissolve') {
+      ;(newInstance as InstanceType<typeof closureEffects.Dissolve>).progress = 0
+    }
+    if (effect === 'damage') {
+      ;(newInstance as InstanceType<typeof DamageFlash>).intensity = 1
+    }
+    if (effect === 'pixelate') {
+      ;(newInstance as InstanceType<typeof closureEffects.Pixelate>).progress = 0
+    }
 
-  // Create all materials (memoized)
-  const materials = useMemo(() => {
-    // Shorthand for sampling sprite with alpha test
-    const sample = () => sampleSprite(spriteSheet.texture, uniforms.frame, { alphaTest: 0.01 })
-
-    // Normal
-    const normal = createBaseMaterial()
-    normal.colorNode = sample()
-
-    // Damage - one-shot white flash
-    const damage = createBaseMaterial()
-    damage.colorNode = Fn(() => {
-      const color = sample()
-      return tintAdditive(color, [1, 1, 1], uniforms.damageFlash)
-    })()
-
-    // Dissolve - pixelated dissolve
-    const dissolve = createBaseMaterial()
-    dissolve.colorNode = Fn(() => {
-      const color = sample()
-      return dissolvePixelated(color, uv(), uniforms.dissolveProgress, noiseTexture, 16)
-    })()
-
-    // Power-up - rainbow hue shift
-    const powerup = createBaseMaterial()
-    powerup.colorNode = Fn(() => {
-      const color = sample()
-      return hueShift(color, uniforms.time.mul(float(3)))
-    })()
-
-    // Petrify - grayscale
-    const petrify = createBaseMaterial()
-    petrify.colorNode = Fn(() => {
-      const color = sample()
-      return saturate(color, 0)
-    })()
-
-    // Select - outline (needs UV for neighbor sampling)
-    const select = createBaseMaterial()
-    select.colorNode = Fn(() => {
-      const frameUV = spriteUV(uniforms.frame)
-      const color = sampleTexture(spriteSheet.texture, frameUV)
-      return outline8(color, frameUV, spriteSheet.texture, {
-        color: [0.3, 1, 0.3, 1],
-        thickness: 0.003,
+    // Play matching animation
+    const animName = effectAnimations[effect]
+    if (effect === 'petrify') {
+      sprite.play(animName)
+      sprite.pause()
+      sprite.gotoFrame(0)
+    } else if (effect === 'damage') {
+      sprite.play(animName, {
+        onComplete: () => sprite.play('idle'),
       })
-    })()
-
-    // Shadow - dark blue tint
-    const shadow = createBaseMaterial()
-    shadow.colorNode = Fn(() => {
-      const color = sample()
-      const darkened = tint(
-        tintAdditive(color, [0, 0, 0.2], 0.3),
-        [0.2, 0.2, 0.4]
-      )
-      return vec4(darkened.rgb, color.a.mul(float(0.6)))
-    })()
-
-    // Pixelate - one-shot teleport effect
-    const pixelateMat = createBaseMaterial()
-    pixelateMat.colorNode = Fn(() => {
-      const pixelAmount = float(1).sub(uniforms.pixelateProgress.mul(float(2)).sub(float(1)).abs())
-      const pixelCount = float(32).sub(pixelAmount.mul(float(28)))
-
-      const pixelatedUV = pixelate(uv(), vec2(pixelCount, pixelCount))
-      const frameOffset = vec2(uniforms.frame.x, uniforms.frame.y)
-      const frameSize = vec2(uniforms.frame.z, uniforms.frame.w)
-      const frameUV = pixelatedUV.mul(frameSize).add(frameOffset)
-      const color = sampleTexture(spriteSheet.texture, frameUV)
-      If(color.a.lessThan(float(0.01)), () => {
-        Discard()
+    } else if (effect === 'pixelate') {
+      sprite.play(animName, {
+        loop: false,
+        onComplete: () => sprite.play('idle'),
       })
-      return color
-    })()
-
-    return {
-      normal,
-      damage,
-      dissolve,
-      powerup,
-      petrify,
-      select,
-      shadow,
-      pixelate: pixelateMat,
-    } as Record<EffectType, MeshBasicNodeMaterial>
-  }, [spriteSheet, noiseTexture, uniforms])
+    } else {
+      sprite.play(animName)
+    }
+  }, [effect, effects, closureEffects])
 
   // Animation loop
   useFrame((_, delta) => {
-    uniforms.time.value += delta
+    const sprite = spriteRef.current
+    if (!sprite) return
 
-    // Update sprite animation (unless frozen)
-    if (!animState.current.frozen) {
-      const anim = animations[animState.current.currentAnimation]!
-      animState.current.frameTimer += delta * 1000
+    stateRef.current.elapsed += delta
+    sprite.update(delta * 1000)
 
-      const frameDuration = 1000 / anim.fps
-      if (animState.current.frameTimer >= frameDuration) {
-        animState.current.frameTimer -= frameDuration
-        animState.current.currentFrameIndex++
+    const { effect: currentEffect, instance, startTime } = stateRef.current
+    const effectElapsed = stateRef.current.elapsed - startTime
 
-        if (animState.current.currentFrameIndex >= anim.frames.length) {
-          if (anim.loop && !animState.current.forceNoLoop) {
-            animState.current.currentFrameIndex = 0
-          } else {
-            animState.current.currentFrameIndex = anim.frames.length - 1
-            // Return to idle after one-shot animations
-            if (currentEffectRef.current === 'damage' || currentEffectRef.current === 'pixelate') {
-              animState.current.currentAnimation = 'idle'
-              animState.current.currentFrameIndex = 0
-              animState.current.forceNoLoop = false
-            }
-          }
-        }
-
-        setFrame(anim.frames[animState.current.currentFrameIndex]!)
-      }
+    if (currentEffect === 'damage' && instance) {
+      ;(instance as InstanceType<typeof DamageFlash>).intensity =
+        Math.max(0, 1 - effectElapsed / 0.3)
     }
 
-    // Animate one-shot effects
-    const effectElapsed = uniforms.time.value - effectStartTime.current
-    const eff = currentEffectRef.current
-
-    if (eff === 'damage') {
-      uniforms.damageFlash.value = Math.max(0, 1 - effectElapsed / 0.3)
+    if (currentEffect === 'dissolve' && instance) {
+      ;(instance as InstanceType<typeof closureEffects.Dissolve>).progress =
+        Math.min(1, effectElapsed / 1.5)
     }
 
-    if (eff === 'dissolve') {
-      uniforms.dissolveProgress.value = Math.min(1, effectElapsed / 1.5)
+    if (currentEffect === 'powerup' && instance) {
+      ;(instance as InstanceType<typeof Powerup>).angle = stateRef.current.elapsed * 3
     }
 
-    if (eff === 'pixelate') {
-      uniforms.pixelateProgress.value = Math.min(1, effectElapsed / 1.0)
+    if (currentEffect === 'pixelate' && instance) {
+      ;(instance as InstanceType<typeof closureEffects.Pixelate>).progress =
+        Math.min(1, effectElapsed / 1.0)
     }
   })
 
-    return (
-      <mesh
-        geometry={sharedGeometry}
-        material={materials[effect]}
-        scale={[128, 128, 1]}
-      />
-    )
-  }
-)
+  return (
+    <animatedSprite2D
+      ref={spriteRef}
+      material={material}
+      spriteSheet={spriteSheet}
+      animationSet={animationSet}
+      animation="idle"
+      scale={[128, 128, 1]}
+    />
+  )
+}
+
+// ========================================
+// Stats tracker
+// ========================================
 
 function StatsTracker({ onStats }: { onStats: (fps: number, draws: number) => void }) {
   const gl = useThree((s) => s.gl)
@@ -402,21 +389,15 @@ function StatsTracker({ onStats }: { onStats: (fps: number, draws: number) => vo
   return null
 }
 
+// ========================================
+// App component
+// ========================================
+
 export default function App() {
   const [effect, setEffect] = useState<EffectType>('normal')
-  const spriteRef = useRef<EffectSpriteHandle>(null)
-  const prevEffectRef = useRef(effect)
   const controlsRef = useRef<HTMLDivElement>(null)
   const [stats, setStats] = useState({ fps: '-' as string | number, draws: '-' as string | number })
   const handleStats = useCallback((fps: number, draws: number) => setStats({ fps, draws }), [])
-
-  // Trigger play when effect changes (including re-trigger via store)
-  useEffect(() => {
-    if (prevEffectRef.current !== effect) {
-      spriteRef.current?.play(effect)
-      prevEffectRef.current = effect
-    }
-  }, [effect])
 
   // Per-line pill rounding for wrapped radio groups
   useEffect(() => {
@@ -573,7 +554,7 @@ export default function App() {
         <color attach="background" args={['#1a1a2e']} />
         <StatsTracker onStats={handleStats} />
         <Suspense fallback={null}>
-          <EffectSprite ref={spriteRef} effect={effect} />
+          <EffectSprite effect={effect} />
         </Suspense>
       </Canvas>
     </>

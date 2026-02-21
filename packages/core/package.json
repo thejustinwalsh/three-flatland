@@ -26,6 +26,9 @@
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist"
   },
+  "dependencies": {
+    "koota": "catalog:"
+  },
   "peerDependencies": {
     "three": "catalog:"
   },

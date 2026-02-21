@@ -86,6 +86,7 @@ const isDev = import.meta.env.DEV;
 (function() {
   function enhanceTables() {
     // Find all tables in markdown content
+    /** @type {NodeListOf<HTMLTableElement>} */
     const tables = document.querySelectorAll('.sl-markdown-content table');
 
     tables.forEach(table => {
@@ -107,7 +108,7 @@ const isDev = import.meta.env.DEV;
       indicator.setAttribute('aria-hidden', 'true');
 
       // Build structure: container > (wrapper > table) + indicator
-      table.parentNode.insertBefore(container, table);
+      if (table.parentNode) table.parentNode.insertBefore(container, table);
       wrapper.appendChild(table);
       container.appendChild(wrapper);
       container.appendChild(indicator);

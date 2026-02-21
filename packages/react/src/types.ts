@@ -9,6 +9,7 @@ import type {
   Renderer2D,
   TileMap2D,
   TileLayer,
+  MaterialEffect,
 } from '@three-flatland/core'
 
 /**
@@ -69,6 +70,23 @@ export interface AnimatedSprite2DProps extends Partial<AnimatedSprite2DOptions> 
  * // or extend({ Sprite2D, Sprite2DMaterial, AnimatedSprite2D })
  * ```
  */
+/**
+ * R3F attach utility for MaterialEffect instances.
+ *
+ * Use as the `attach` prop when adding effects as children of a sprite2D:
+ *
+ * @example
+ * ```tsx
+ * <sprite2D texture={tex}>
+ *   <dissolveEffect attach={effectAttach} progress={0.5} />
+ * </sprite2D>
+ * ```
+ */
+export const effectAttach = (parent: Sprite2D, self: MaterialEffect): (() => void) => {
+  parent.addEffect(self)
+  return () => parent.removeEffect(self)
+}
+
 declare module '@react-three/fiber' {
   interface ThreeElements {
     sprite2D: ThreeElement<typeof Sprite2D>

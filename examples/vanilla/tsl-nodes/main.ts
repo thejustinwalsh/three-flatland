@@ -1,40 +1,34 @@
-import { WebGPURenderer, MeshBasicNodeMaterial } from 'three/webgpu'
+import { WebGPURenderer } from 'three/webgpu'
 import {
   texture as sampleTexture,
   uv,
-  uniform,
+  attribute,
   vec2,
   vec4,
   float,
-  If,
-  Discard,
-  Fn,
 } from 'three/tsl'
-// Note: sampleSprite handles most of the boilerplate - we only need raw TSL
-// for special cases like pixelate (pre-transform UV) and outline (need UV for neighbors)
 import {
   Scene,
   OrthographicCamera,
   Color,
   NearestFilter,
-  PlaneGeometry,
-  Mesh,
   CanvasTexture,
   RepeatWrapping,
-  Vector4,
 } from 'three'
 import {
+  AnimatedSprite2D,
+  Sprite2DMaterial,
   SpriteSheetLoader,
-  sampleSprite,
-  spriteUV,
-  tint,
+  createMaterialEffect,
   tintAdditive,
   hueShift,
   saturate,
   outline8,
   pixelate,
   dissolvePixelated,
+  tint,
 } from '@three-flatland/core'
+import type { MaterialEffect, AnimationSetDefinition } from '@three-flatland/core'
 
 import '@awesome.me/webawesome/dist/styles/themes/default.css'
 import '@awesome.me/webawesome/dist/components/radio-group/radio-group.js'
@@ -74,7 +68,10 @@ function setupWrappingRadioGroup(group: Element) {
   return () => ro.disconnect()
 }
 
-// Effect types
+// ========================================
+// Types
+// ========================================
+
 type EffectType =
   | 'normal'
   | 'damage'
@@ -85,39 +82,29 @@ type EffectType =
   | 'shadow'
   | 'pixelate'
 
-// Animation definitions
-interface Animation {
-  frames: string[]
-  fps: number
-  loop: boolean
-}
-
-const animations: Record<string, Animation> = {
-  idle: {
-    frames: ['idle_0', 'idle_1', 'idle_2', 'idle_3'],
-    fps: 8,
-    loop: true,
-  },
-  run: {
-    frames: ['run_0', 'run_1', 'run_2', 'run_3', 'run_4', 'run_5', 'run_6', 'run_7',
-             'run_8', 'run_9', 'run_10', 'run_11', 'run_12', 'run_13', 'run_14', 'run_15'],
-    fps: 16,
-    loop: true,
-  },
-  roll: {
-    frames: ['roll_0', 'roll_1', 'roll_2', 'roll_3', 'roll_4', 'roll_5', 'roll_6', 'roll_7'],
-    fps: 12,
-    loop: true,
-  },
-  hit: {
-    frames: ['hit_0', 'hit_1', 'hit_2', 'hit_3'],
-    fps: 12,
-    loop: false,
-  },
-  death: {
-    frames: ['death_0', 'death_1', 'death_2', 'death_3'],
-    fps: 6,
-    loop: false,
+// Animation set
+const animationSet: AnimationSetDefinition = {
+  animations: {
+    idle: { frames: ['idle_0', 'idle_1', 'idle_2', 'idle_3'], fps: 8 },
+    run: {
+      frames: ['run_0', 'run_1', 'run_2', 'run_3', 'run_4', 'run_5', 'run_6', 'run_7',
+               'run_8', 'run_9', 'run_10', 'run_11', 'run_12', 'run_13', 'run_14', 'run_15'],
+      fps: 16,
+    },
+    roll: {
+      frames: ['roll_0', 'roll_1', 'roll_2', 'roll_3', 'roll_4', 'roll_5', 'roll_6', 'roll_7'],
+      fps: 12,
+    },
+    hit: {
+      frames: ['hit_0', 'hit_1', 'hit_2', 'hit_3'],
+      fps: 12,
+      loop: false,
+    },
+    death: {
+      frames: ['death_0', 'death_1', 'death_2', 'death_3'],
+      fps: 6,
+      loop: false,
+    },
   },
 }
 
@@ -127,13 +114,55 @@ const effectAnimations: Record<EffectType, string> = {
   damage: 'hit',
   dissolve: 'death',
   powerup: 'run',
-  petrify: 'idle', // Will freeze on frame 0
+  petrify: 'idle',
   select: 'idle',
   shadow: 'roll',
   pixelate: 'roll',
 }
 
-// Generate a noise texture for dissolve effect
+// ========================================
+// Effect Definitions (no texture closures)
+// ========================================
+
+const DamageFlash = createMaterialEffect({
+  name: 'damageFlash',
+  schema: { intensity: 1 } as const,
+  node: ({ inputColor, attrs }) => {
+    const flashed = tintAdditive(inputColor, [1, 1, 1], attrs.intensity)
+    // Mask to sprite silhouette: premultiplied alpha means RGB must be scaled by alpha
+    return vec4(flashed.rgb.mul(inputColor.a), inputColor.a)
+  },
+})
+
+const Powerup = createMaterialEffect({
+  name: 'powerup',
+  schema: { angle: 0 } as const,
+  node: ({ inputColor, attrs }) =>
+    hueShift(inputColor, attrs.angle),
+})
+
+const Petrify = createMaterialEffect({
+  name: 'petrify',
+  schema: { amount: 0 } as const,
+  node: ({ inputColor, attrs }) =>
+    saturate(inputColor, attrs.amount),
+})
+
+const ShadowEffect = createMaterialEffect({
+  name: 'shadow',
+  schema: { alpha: 0.6 } as const,
+  node: ({ inputColor, attrs }) => {
+    const darkened = tint(tintAdditive(inputColor, [0, 0, 0.2], 0.3), [0.2, 0.2, 0.4])
+    const finalAlpha = inputColor.a.mul(attrs.alpha)
+    // Mask to sprite silhouette: premultiplied alpha means RGB must be scaled by finalAlpha
+    return vec4(darkened.rgb.mul(finalAlpha), finalAlpha)
+  },
+})
+
+// ========================================
+// Noise texture helper
+// ========================================
+
 function createNoiseTexture(size = 256): CanvasTexture {
   const canvas = document.createElement('canvas')
   canvas.width = size
@@ -185,8 +214,6 @@ async function main() {
 
   // Load the knight spritesheet
   const spriteSheet = await SpriteSheetLoader.load('./sprites/knight.json')
-
-  // Use nearest neighbor filtering for pixel art
   spriteSheet.texture.minFilter = NearestFilter
   spriteSheet.texture.magFilter = NearestFilter
 
@@ -195,175 +222,152 @@ async function main() {
   noiseTexture.minFilter = NearestFilter
   noiseTexture.magFilter = NearestFilter
 
-  // Shared geometry
-  const geometry = new PlaneGeometry(1, 1)
-
-  // Animated uniforms
-  const timeUniform = uniform(0)
-  const dissolveProgressUniform = uniform(0)
-  const damageFlashUniform = uniform(0) // Decays from 1 to 0
-  const pixelateProgressUniform = uniform(0) // 0 = normal, 1 = fully pixelated
-  const effectStartTime = { value: 0 } // Track when effect started
-
-  // Frame uniform - vec4(x, y, width, height) in UV space
-  const frameUniform = uniform(new Vector4(0, 0, 0.125, 0.125))
-
-  // Helper to create base material
-  const createBaseMaterial = () => {
-    const mat = new MeshBasicNodeMaterial()
-    mat.transparent = true
-    mat.depthWrite = true
-    mat.depthTest = true
-    return mat
-  }
-
-  // Shorthand for sampling sprite with alpha test
-  const sample = () => sampleSprite(spriteSheet.texture, frameUniform, { alphaTest: 0.01 })
-
   // ========================================
-  // Create materials for each effect
+  // Effect Definitions (texture closures)
   // ========================================
 
-  // Normal - just sample the sprite
-  const normalMaterial = createBaseMaterial()
-  normalMaterial.colorNode = sample()
+  const Dissolve = createMaterialEffect({
+    name: 'dissolve',
+    schema: { progress: 0 } as const,
+    node: ({ inputColor, attrs }) =>
+      dissolvePixelated(inputColor, uv(), attrs.progress, noiseTexture, 16),
+  })
 
-  // Damage - one-shot white flash that decays
-  const damageMaterial = createBaseMaterial()
-  damageMaterial.colorNode = Fn(() => {
-    const color = sample()
-    return tintAdditive(color, [1, 1, 1], damageFlashUniform)
-  })()
+  const Select = createMaterialEffect({
+    name: 'select',
+    schema: { thickness: 0.003 } as const,
+    node: ({ inputColor, inputUV, attrs }) =>
+      outline8(inputColor, inputUV, spriteSheet.texture, {
+        color: [0.3, 1, 0.3, 1],
+        thickness: attrs.thickness,
+      }),
+  })
 
-  // Dissolve - pixelated dissolve effect
-  const dissolveMaterial = createBaseMaterial()
-  dissolveMaterial.colorNode = Fn(() => {
-    const color = sample()
-    return dissolvePixelated(color, uv(), dissolveProgressUniform, noiseTexture, 16)
-  })()
+  const PixelateEffect = createMaterialEffect({
+    name: 'pixelate',
+    schema: { progress: 0 } as const,
+    node: ({ attrs }) => {
+      // Re-sample at pixelated UV — must read instanceUV and uv() directly
+      const instanceUV = attribute('instanceUV', 'vec4')
+      const localUV = uv()
 
-  // Power-up - animated rainbow hue shift
-  const powerupMaterial = createBaseMaterial()
-  powerupMaterial.colorNode = Fn(() => {
-    const color = sample()
-    return hueShift(color, timeUniform.mul(float(3)))
-  })()
+      // Pixel count: 32 (normal) → 4 (pixelated) → 32 (normal)
+      const pixelAmount = float(1).sub(
+        attrs.progress.mul(float(2)).sub(float(1)).abs()
+      )
+      const pixelCount = float(32).sub(pixelAmount.mul(float(28)))
 
-  // Petrify - grayscale
-  const petrifyMaterial = createBaseMaterial()
-  petrifyMaterial.colorNode = Fn(() => {
-    const color = sample()
-    return saturate(color, 0)
-  })()
+      // Pixelate local UV then remap to atlas frame
+      const pixelatedUV = pixelate(localUV, vec2(pixelCount, pixelCount))
+      const frameOffset = vec2(instanceUV.x, instanceUV.y)
+      const frameSize = vec2(instanceUV.z, instanceUV.w)
+      const frameUV = pixelatedUV.mul(frameSize).add(frameOffset)
 
-  // Select - glowing outline (needs UV for neighbor sampling)
-  const selectMaterial = createBaseMaterial()
-  selectMaterial.colorNode = Fn(() => {
-    const frameUV = spriteUV(frameUniform)
-    const color = sampleTexture(spriteSheet.texture, frameUV)
-    return outline8(color, frameUV, spriteSheet.texture, {
-      color: [0.3, 1, 0.3, 1],
-      thickness: 0.003,
-    })
-  })()
+      // Sample texture at pixelated UV (premultiplied output)
+      const color = sampleTexture(spriteSheet.texture, frameUV)
+      return vec4(color.rgb.mul(color.a), color.a)
+    },
+  })
 
-  // Shadow - dark blue tint with reduced alpha
-  const shadowMaterial = createBaseMaterial()
-  shadowMaterial.colorNode = Fn(() => {
-    const color = sample()
-    const darkened = tint(tintAdditive(color, [0, 0, 0.2], 0.3), [0.2, 0.2, 0.4])
-    return vec4(darkened.rgb, color.a.mul(float(0.6)))
-  })()
+  // ========================================
+  // Create animated sprite
+  // ========================================
 
-  // Pixelate - one-shot teleport effect
-  const pixelateMaterial = createBaseMaterial()
-  pixelateMaterial.colorNode = Fn(() => {
-    // Pixel count: 32 (normal) -> 4 (pixelated) -> 32 (normal)
-    const pixelAmount = float(1).sub(pixelateProgressUniform.mul(float(2)).sub(float(1)).abs())
-    const pixelCount = float(32).sub(pixelAmount.mul(float(28)))
+  const sprite = new AnimatedSprite2D({
+    spriteSheet,
+    animationSet,
+    animation: 'idle',
+  })
 
-    // Pixelate UV then sample
-    const pixelatedUV = pixelate(uv(), vec2(pixelCount, pixelCount))
-    const frameOffset = vec2(frameUniform.x, frameUniform.y)
-    const frameSize = vec2(frameUniform.z, frameUniform.w)
-    const frameUV = pixelatedUV.mul(frameSize).add(frameOffset)
-    const color = sampleTexture(spriteSheet.texture, frameUV)
+  // Replace material with premultiplied alpha so outline/pixelate effects
+  // can operate on transparent pixels (no Discard in base color)
+  sprite.material = new Sprite2DMaterial({
+    map: spriteSheet.texture,
+    transparent: true,
+    premultipliedAlpha: true,
+  })
 
-    If(color.a.lessThan(float(0.01)), () => {
-      Discard()
-    })
-    return color
-  })()
-
-  // Map effect types to materials
-  const materials: Record<EffectType, MeshBasicNodeMaterial> = {
-    normal: normalMaterial,
-    damage: damageMaterial,
-    dissolve: dissolveMaterial,
-    powerup: powerupMaterial,
-    petrify: petrifyMaterial,
-    select: selectMaterial,
-    shadow: shadowMaterial,
-    pixelate: pixelateMaterial,
-  }
-
-  // Create sprite mesh
-  const sprite = new Mesh(geometry, normalMaterial)
   sprite.scale.set(128, 128, 1)
   scene.add(sprite)
 
-  // Animation state
-  let currentAnimation = 'idle'
-  let currentFrameIndex = 0
-  let frameTimer = 0
-  let animationFrozen = false
-  let forceNoLoop = false // Override loop for one-shot effects
+  // ========================================
+  // Create effect instances
+  // ========================================
 
-  function setFrame(frameName: string) {
-    const frame = spriteSheet.getFrame(frameName)
-    frameUniform.value.set(frame.x, frame.y, frame.width, frame.height)
+  const effectInstances: Record<EffectType, MaterialEffect | null> = {
+    normal: null,
+    damage: new DamageFlash(),
+    dissolve: new Dissolve(),
+    powerup: new Powerup(),
+    petrify: new Petrify(),
+    select: new Select(),
+    shadow: new ShadowEffect(),
+    pixelate: new PixelateEffect(),
   }
 
-  function playAnimation(animName: string, frozen = false, noLoop = false) {
-    currentAnimation = animName
-    currentFrameIndex = 0
-    frameTimer = 0
-    animationFrozen = frozen
-    forceNoLoop = noLoop
-    const anim = animations[animName]!
-    setFrame(anim.frames[0]!)
-  }
-
-  // Web Awesome radio group — wait for custom element definition
-  await customElements.whenDefined('wa-radio-group')
-  const radioGroup = document.querySelector('wa-radio-group')!
-  setupWrappingRadioGroup(radioGroup)
+  // ========================================
+  // Effect switching
+  // ========================================
 
   let currentEffect: EffectType = 'normal'
+  let currentInstance: MaterialEffect | null = null
+  let effectStartTime = 0
+  let elapsedTime = 0
 
   function setEffect(effect: EffectType) {
-    currentEffect = effect
-    sprite.material = materials[effect]
+    // Remove current effect
+    if (currentInstance) {
+      sprite.removeEffect(currentInstance)
+    }
 
-    // Reset effect-specific uniforms and start time
-    effectStartTime.value = timeUniform.value
+    currentEffect = effect
+    currentInstance = effectInstances[effect]
+
+    // Add new effect
+    if (currentInstance) {
+      sprite.addEffect(currentInstance)
+    }
+
+    // Reset effect-specific properties and start time
+    effectStartTime = elapsedTime
 
     if (effect === 'dissolve') {
-      dissolveProgressUniform.value = 0
+      ;(currentInstance as InstanceType<typeof Dissolve>).progress = 0
     }
     if (effect === 'damage') {
-      damageFlashUniform.value = 1 // Start at full flash
+      ;(currentInstance as InstanceType<typeof DamageFlash>).intensity = 1
     }
     if (effect === 'pixelate') {
-      pixelateProgressUniform.value = 0
+      ;(currentInstance as InstanceType<typeof PixelateEffect>).progress = 0
     }
 
     // Play matching animation
     const animName = effectAnimations[effect]
-    const frozen = effect === 'petrify' // Petrify freezes on frame 0
-    const noLoop = effect === 'pixelate' // Pixelate plays roll once
-    playAnimation(animName, frozen, noLoop)
+    if (effect === 'petrify') {
+      sprite.play(animName)
+      sprite.pause()
+      sprite.gotoFrame(0)
+    } else if (effect === 'damage') {
+      sprite.play(animName, {
+        onComplete: () => sprite.play('idle'),
+      })
+    } else if (effect === 'pixelate') {
+      sprite.play(animName, {
+        loop: false,
+        onComplete: () => sprite.play('idle'),
+      })
+    } else {
+      sprite.play(animName)
+    }
   }
+
+  // ========================================
+  // UI controls
+  // ========================================
+
+  await customElements.whenDefined('wa-radio-group')
+  const radioGroup = document.querySelector('wa-radio-group')!
+  setupWrappingRadioGroup(radioGroup)
 
   radioGroup.addEventListener('change', (e) => {
     setEffect((e.target as any).value as EffectType)
@@ -399,16 +403,15 @@ async function main() {
     renderer.setSize(window.innerWidth, window.innerHeight)
   })
 
-  // Initialize with idle animation
-  playAnimation('idle')
+  // ========================================
+  // Animation loop
+  // ========================================
 
-  // Stats
   const statsEl = document.getElementById('stats')!
   let frameCount = 0
   let fpsTime = 0
   let currentFps = 0
 
-  // Animation loop
   let lastTime = performance.now()
 
   function animate() {
@@ -419,51 +422,31 @@ async function main() {
     lastTime = now
     const deltaSec = deltaMs / 1000
 
-    timeUniform.value += deltaSec
+    elapsedTime += deltaSec
 
-    // Update sprite animation (unless frozen)
-    if (!animationFrozen) {
-      const anim = animations[currentAnimation]!
-      frameTimer += deltaMs
-
-      const frameDuration = 1000 / anim.fps
-      if (frameTimer >= frameDuration) {
-        frameTimer -= frameDuration
-        currentFrameIndex++
-
-        if (currentFrameIndex >= anim.frames.length) {
-          if (anim.loop && !forceNoLoop) {
-            currentFrameIndex = 0
-          } else {
-            // Non-looping animation finished - return to idle
-            currentFrameIndex = anim.frames.length - 1
-            if (currentEffect === 'damage' || currentEffect === 'pixelate') {
-              playAnimation('idle')
-            }
-          }
-        }
-
-        setFrame(anim.frames[currentFrameIndex]!)
-      }
-    }
+    // Update sprite animation
+    sprite.update(deltaMs)
 
     // Animate one-shot effects
-    const effectElapsed = timeUniform.value - effectStartTime.value
+    const effectElapsed = elapsedTime - effectStartTime
 
-    if (currentEffect === 'damage') {
-      // Flash decays quickly (0.3 seconds)
-      damageFlashUniform.value = Math.max(0, 1 - effectElapsed / 0.3)
+    if (currentEffect === 'damage' && currentInstance) {
+      ;(currentInstance as InstanceType<typeof DamageFlash>).intensity =
+        Math.max(0, 1 - effectElapsed / 0.3)
     }
 
-    if (currentEffect === 'dissolve') {
-      // Dissolve over 1.5 seconds, then stay dissolved
-      dissolveProgressUniform.value = Math.min(1, effectElapsed / 1.5)
+    if (currentEffect === 'dissolve' && currentInstance) {
+      ;(currentInstance as InstanceType<typeof Dissolve>).progress =
+        Math.min(1, effectElapsed / 1.5)
     }
 
-    if (currentEffect === 'pixelate') {
-      // Pixelate in and out over 1 second
-      const progress = Math.min(1, effectElapsed / 1.0)
-      pixelateProgressUniform.value = progress
+    if (currentEffect === 'powerup' && currentInstance) {
+      ;(currentInstance as InstanceType<typeof Powerup>).angle = elapsedTime * 3
+    }
+
+    if (currentEffect === 'pixelate' && currentInstance) {
+      ;(currentInstance as InstanceType<typeof PixelateEffect>).progress =
+        Math.min(1, effectElapsed / 1.0)
     }
 
     renderer.render(scene, camera)

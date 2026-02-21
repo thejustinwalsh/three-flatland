@@ -169,6 +169,7 @@ export default defineConfig({
             { label: 'Batches', slug: 'examples/batch-demo' },
             { label: 'TSL Nodes', slug: 'examples/tsl-nodes' },
             { label: 'Tilemap', slug: 'examples/tilemap' },
+            { label: 'Knightmark', slug: 'examples/knightmark' },
           ],
         },
         typeDocSidebarGroup,

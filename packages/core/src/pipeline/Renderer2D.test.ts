@@ -1,13 +1,24 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { universe } from 'koota'
 import { Texture } from 'three'
 import { Renderer2D } from './Renderer2D'
 import { Sprite2D } from '../sprites/Sprite2D'
 import { Sprite2DMaterial } from '../materials/Sprite2DMaterial'
+import { createMaterialEffect } from '../materials/MaterialEffect'
 import { Layers } from './layers'
+import { SpriteColor, InBatch, BatchMesh } from '../ecs/traits'
+
+// Create effect class at module level so the Koota trait survives universe.reset()
+const DissolveRenderer = createMaterialEffect({
+  name: 'dissolve_renderer',
+  schema: { progress: 0 },
+  node: ({ inputColor }) => inputColor,
+})
 
 describe('Renderer2D', () => {
   let texture: Texture
   let material: Sprite2DMaterial
+  let renderer: Renderer2D | null = null
 
   beforeEach(() => {
     texture = new Texture()
@@ -16,8 +27,14 @@ describe('Renderer2D', () => {
     material = new Sprite2DMaterial({ map: texture })
   })
 
+  afterEach(() => {
+    renderer?.dispose()
+    renderer = null
+    universe.reset()
+  })
+
   it('should create a renderer with default options', () => {
-    const renderer = new Renderer2D()
+    renderer = new Renderer2D()
 
     expect(renderer.name).toBe('Renderer2D')
     expect(renderer.isEmpty).toBe(true)
@@ -26,7 +43,7 @@ describe('Renderer2D', () => {
   })
 
   it('should create a renderer with custom options', () => {
-    const renderer = new Renderer2D({
+    renderer = new Renderer2D({
       maxBatchSize: 5000,
       autoSort: false,
       frustumCulling: false,
@@ -37,7 +54,7 @@ describe('Renderer2D', () => {
   })
 
   it('should add sprites', () => {
-    const renderer = new Renderer2D()
+    renderer = new Renderer2D()
     const sprite = new Sprite2D({ material })
 
     renderer.add(sprite)
@@ -47,7 +64,7 @@ describe('Renderer2D', () => {
   })
 
   it('should add multiple sprites', () => {
-    const renderer = new Renderer2D()
+    renderer = new Renderer2D()
     const sprite1 = new Sprite2D({ material })
     const sprite2 = new Sprite2D({ material })
 
@@ -57,7 +74,7 @@ describe('Renderer2D', () => {
   })
 
   it('should remove sprites', () => {
-    const renderer = new Renderer2D()
+    renderer = new Renderer2D()
     const sprite = new Sprite2D({ material })
 
     renderer.add(sprite)
@@ -67,7 +84,7 @@ describe('Renderer2D', () => {
   })
 
   it('should remove multiple sprites', () => {
-    const renderer = new Renderer2D()
+    renderer = new Renderer2D()
     const sprite1 = new Sprite2D({ material })
     const sprite2 = new Sprite2D({ material })
 
@@ -78,7 +95,7 @@ describe('Renderer2D', () => {
   })
 
   it('should update batches', () => {
-    const renderer = new Renderer2D()
+    renderer = new Renderer2D()
     const sprite = new Sprite2D({ material })
     sprite.position.set(100, 200, 0)
 
@@ -89,7 +106,7 @@ describe('Renderer2D', () => {
   })
 
   it('should invalidate sprites', () => {
-    const renderer = new Renderer2D()
+    renderer = new Renderer2D()
     const sprite = new Sprite2D({ material })
 
     renderer.add(sprite)
@@ -103,7 +120,7 @@ describe('Renderer2D', () => {
   })
 
   it('should invalidate all sprites', () => {
-    const renderer = new Renderer2D()
+    renderer = new Renderer2D()
     const sprite1 = new Sprite2D({ material })
     const sprite2 = new Sprite2D({ material })
 
@@ -117,7 +134,7 @@ describe('Renderer2D', () => {
   })
 
   it('should provide render stats', () => {
-    const renderer = new Renderer2D()
+    renderer = new Renderer2D()
     const sprite1 = new Sprite2D({ material })
     const sprite2 = new Sprite2D({ material })
 
@@ -133,7 +150,7 @@ describe('Renderer2D', () => {
   })
 
   it('should clear all sprites', () => {
-    const renderer = new Renderer2D()
+    renderer = new Renderer2D()
     const sprite = new Sprite2D({ material })
 
     renderer.add(sprite)
@@ -146,12 +163,105 @@ describe('Renderer2D', () => {
   })
 
   it('should add batch objects to scene graph', () => {
-    const renderer = new Renderer2D()
+    renderer = new Renderer2D()
     const sprite = new Sprite2D({ material })
 
     renderer.add(sprite)
     renderer.update()
 
     expect(renderer.children.length).toBe(1)
+  })
+
+  // ============================================
+  // updateMatrixWorld integration
+  // ============================================
+
+  it('updateMatrixWorld should run systems and sync buffers', () => {
+    renderer = new Renderer2D()
+    const sprite = new Sprite2D({ material })
+    sprite.position.set(100, 200, 0)
+
+    renderer.add(sprite)
+    // Use updateMatrixWorld instead of update()
+    renderer.updateMatrixWorld()
+
+    expect(renderer.batchCount).toBe(1)
+    expect(renderer.children.length).toBe(1)
+  })
+
+  it('updateMatrixWorld should sync changed sprite properties', () => {
+    renderer = new Renderer2D()
+    const sprite = new Sprite2D({ material })
+
+    renderer.add(sprite)
+    renderer.updateMatrixWorld()
+
+    // Now sprite is enrolled + batched via InBatch relation
+    const entity = sprite._entity!
+    const batchEntity = entity.targetFor(InBatch)
+    expect(batchEntity).not.toBeUndefined()
+
+    const batchMeshData = batchEntity!.get(BatchMesh)
+    const mesh = batchMeshData?.mesh
+    expect(mesh).not.toBeNull()
+
+    const relationData = entity.get(InBatch(batchEntity!)) as { slot: number } | undefined
+    expect(relationData).toBeDefined()
+    const slot = relationData!.slot
+
+    // Change tint — writes to trait only (no immediate batch write)
+    sprite.tint = [1, 0, 0]
+
+    // Trait should have new value
+    const color = entity.get(SpriteColor)
+    expect(color.r).toBe(1)
+    expect(color.g).toBe(0)
+
+    // Run systems via updateMatrixWorld — should sync trait to batch buffer
+    renderer.updateMatrixWorld()
+
+    // Verify batch buffer was updated
+    const colorAttr = mesh!.getColorAttribute()
+    const array = colorAttr.array as Float32Array
+    expect(array[slot * 4 + 0]).toBeCloseTo(1) // r
+    expect(array[slot * 4 + 1]).toBeCloseTo(0) // g
+    expect(array[slot * 4 + 2]).toBeCloseTo(0) // b
+  })
+
+  it('update() and updateMatrixWorld() should not run systems twice', () => {
+    renderer = new Renderer2D()
+    const sprite = new Sprite2D({ material })
+
+    renderer.add(sprite)
+    // Old pattern: user calls update() then render triggers updateMatrixWorld()
+    renderer.update()
+    renderer.updateMatrixWorld()
+
+    // Should still work correctly — no double processing
+    expect(renderer.batchCount).toBe(1)
+    expect(renderer.children.length).toBe(1)
+  })
+
+  it('should sync effect data through updateMatrixWorld', () => {
+    renderer = new Renderer2D()
+    const sprite = new Sprite2D({ material })
+    const dissolve = new DissolveRenderer()
+    sprite.addEffect(dissolve)
+
+    renderer.add(sprite)
+    renderer.updateMatrixWorld()
+
+    // Sprite should be batched via InBatch relation
+    const entity = sprite._entity!
+    expect(entity.targetFor(InBatch)).not.toBeUndefined()
+
+    // Change effect property — writes to trait only
+    dissolve.progress = 0.8
+
+    // Run systems
+    renderer.updateMatrixWorld()
+
+    // Effect trait should be updated (verifying the ECS path works)
+    expect(dissolve.progress).toBeCloseTo(0.8)
   })
 })
