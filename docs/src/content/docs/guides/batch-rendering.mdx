@@ -71,7 +71,7 @@ The `Renderer2D` constructor accepts optional batch configuration:
 
 ```typescript
 const renderer2D = new Renderer2D({
-  maxBatchSize: 10000,       // Max sprites per batch (default: 10000)
+  maxBatchSize: 8192,        // Max sprites per batch (default: 8192)
   autoSort: true,            // Enable automatic sorting (default: true)
   frustumCulling: true,      // Enable frustum culling (default: true)
   autoInvalidateTransforms: true, // Auto-sync transforms every frame (default: true)
