@@ -107,7 +107,7 @@ const isDev = import.meta.env.DEV;
       indicator.setAttribute('aria-hidden', 'true');
 
       // Build structure: container > (wrapper > table) + indicator
-      table.parentNode.insertBefore(container, table);
+      table.parentNode!.insertBefore(container, table);
       wrapper.appendChild(table);
       container.appendChild(wrapper);
       container.appendChild(indicator);
@@ -121,7 +121,7 @@ const isDev = import.meta.env.DEV;
 
         // Calculate scrollbar height (wrapper height - table height)
         if (showIndicator) {
-          const scrollbarHeight = wrapper.offsetHeight - table.offsetHeight;
+          const scrollbarHeight = (wrapper as HTMLElement).offsetHeight - (table as HTMLElement).offsetHeight;
           const borderWidth = 2; // table border
           indicator.style.top = borderWidth + 'px';
           indicator.style.bottom = (scrollbarHeight + borderWidth) + 'px';
