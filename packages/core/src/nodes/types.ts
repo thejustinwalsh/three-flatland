@@ -1,42 +1,26 @@
 import type Node from 'three/src/nodes/core/Node.js'
 
 /**
- * TSL Node type — the base type for all Three.js shader nodes.
- *
- * Three.js augments the `Node` class with method chaining (`.rgb`, `.mul()`,
- * `.a`, etc.) via module augmentation in `@types/three`. This type alias
- * ensures all our TSL functions use the augmented `Node` type directly,
- * so they compose naturally with Three.js TSL functions without casts.
+ * Input that can be either a literal number or a float Node.
  */
-export type TSLNode = Node
+export type FloatInput = number | Node<'float'>
 
 /**
- * Input that can be either a literal value or a TSL node (uniform).
- * Allows functions to accept both static values and dynamic uniforms.
+ * Vec2 input type - accepts tuple or vec2 Node
  */
-export type TSLInput<T> = T | Node
+export type Vec2Input = [number, number] | Node<'vec2'>
 
 /**
- * Vec2 input type - accepts tuple or TSL node
+ * Vec3 input type - accepts tuple or vec3 Node
  */
-export type Vec2Input = [number, number] | Node
+export type Vec3Input = [number, number, number] | Node<'vec3'>
 
 /**
- * Vec3 input type - accepts tuple or TSL node
+ * Vec4 input type - accepts tuple or vec4 Node
  */
-export type Vec3Input = [number, number, number] | Node
+export type Vec4Input = [number, number, number, number] | Node<'vec4'>
 
 /**
- * Vec4 input type - accepts tuple or TSL node
+ * Color input type - accepts hex, RGB tuple, or color/vec3 Node
  */
-export type Vec4Input = [number, number, number, number] | Node
-
-/**
- * Float input type - accepts number or TSL node
- */
-export type FloatInput = number | Node
-
-/**
- * Color input type - accepts hex, RGB tuple, or TSL node
- */
-export type ColorInput = number | [number, number, number] | Node
+export type ColorInput = number | [number, number, number] | Node<'color'> | Node<'vec3'>

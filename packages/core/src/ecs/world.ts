@@ -1,12 +1,12 @@
 import { createWorld, type World } from 'koota'
 
-/** Global fallback world for standalone sprites (no Renderer2D parent) */
+/** Global fallback world for standalone sprites (no SpriteGroup parent) */
 let _globalWorld: World | null = null
 
 /**
  * Get the global fallback world.
  * Created lazily on first access. Used by sprites that aren't
- * inside a Renderer2D or Flatland context.
+ * inside a SpriteGroup or Flatland context.
  */
 export function getGlobalWorld(): World {
   if (!_globalWorld) _globalWorld = createWorld()
@@ -26,7 +26,7 @@ export function resetGlobalWorld(): void {
 
 /**
  * Interface for Three.js objects that provide ECS world context to children.
- * Implemented by Renderer2D and Flatland.
+ * Implemented by SpriteGroup and Flatland.
  */
 export interface WorldProvider {
   readonly world: World

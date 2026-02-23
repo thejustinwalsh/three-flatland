@@ -58,9 +58,9 @@ export interface RenderStats {
 }
 
 /**
- * Options for Renderer2D.
+ * Options for SpriteGroup.
  */
-export interface Renderer2DOptions {
+export interface SpriteGroupOptions {
   /** Maximum sprites per batch (default: 10000) */
   maxBatchSize?: number
   /** Enable automatic sorting (default: true) */

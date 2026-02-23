@@ -18,6 +18,8 @@ export {
   BatchMeta,
   BatchRegistry,
   type BatchRun,
+  PostPassTrait,
+  PostPassRegistry,
 } from './traits'
 
 // World management
@@ -56,4 +58,5 @@ export {
   bufferSyncEffectSystem,
   transformSyncSystem,
   sceneGraphSyncSystem,
+  postPassSystem,
 } from './systems'

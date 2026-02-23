@@ -1,5 +1,6 @@
 import { vec4, float, floor } from 'three/tsl'
-import type { TSLNode, FloatInput } from '../types'
+import type Node from 'three/src/nodes/core/Node.js'
+import type { FloatInput } from '../types'
 
 /**
  * Quantize color to discrete levels per channel.
@@ -21,7 +22,7 @@ import type { TSLNode, FloatInput } from '../types'
  * // Using a uniform for dynamic control
  * quantize(color, levelsUniform)
  */
-export function quantize(inputColor: TSLNode, levels: FloatInput): TSLNode {
+export function quantize(inputColor: Node<'vec4'>, levels: FloatInput): Node<'vec4'> {
   const levelsNode = typeof levels === 'number' ? float(levels) : levels
 
   // Quantize formula: floor(color * levels) / (levels - 1)
@@ -51,11 +52,11 @@ export function quantize(inputColor: TSLNode, levels: FloatInput): TSLNode {
  * quantizeRGB(color, 32, 64, 32)
  */
 export function quantizeRGB(
-  inputColor: TSLNode,
+  inputColor: Node<'vec4'>,
   rLevels: FloatInput,
   gLevels: FloatInput,
   bLevels: FloatInput
-): TSLNode {
+): Node<'vec4'> {
   const rNode = typeof rLevels === 'number' ? float(rLevels) : rLevels
   const gNode = typeof gLevels === 'number' ? float(gLevels) : gLevels
   const bNode = typeof bLevels === 'number' ? float(bLevels) : bLevels

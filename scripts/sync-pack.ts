@@ -3,8 +3,8 @@
  * instead of `catalog:` and `workspace:*`. This makes packages copy-paste-able
  * outside the monorepo.
  *
- * Usage: pnpm sync-pack <dir> [<dir> ...]
- *   e.g. pnpm sync-pack examples minis
+ * Usage: pnpm syncpack <dir> [<dir> ...]
+ *   e.g. pnpm syncpack examples minis
  */
 
 import { readFileSync, writeFileSync, readdirSync, statSync, existsSync } from 'node:fs'
@@ -28,11 +28,11 @@ function parseCatalog(): Record<string, string> {
     }
     if (!inCatalog) continue
 
-    // Match: "  package-name: ^version" or '  "@scoped/name": ^version'
-    const match = line.match(/^\s+(?:"([^"]+)"|(\S+)):\s*(.+)$/)
+    // Match: "  package-name: ^version" or '  "@scoped/name": ^version' or "  '@scoped/name': ^version"
+    const match = line.match(/^\s+(?:"([^"]+)"|'([^']+)'|(\S+)):\s*(.+)$/)
     if (match) {
-      const name = match[1] || match[2]
-      const version = match[3].trim()
+      const name = match[1] || match[2] || match[3]
+      const version = match[4].trim()
       if (!version.startsWith('#') && name) {
         catalog[name] = version
       }

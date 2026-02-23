@@ -1,6 +1,7 @@
-import { vec3, vec4, float, texture as sampleTexture } from 'three/tsl'
+import { vec3, vec4, float, mix, texture as sampleTexture } from 'three/tsl'
 import type { Texture } from 'three'
-import type { TSLNode, FloatInput } from '../types'
+import type Node from 'three/src/nodes/core/Node.js'
+import type { FloatInput } from '../types'
 
 // Standard luminance weights (Rec. 709)
 const LUMA_R = 0.2126
@@ -25,10 +26,10 @@ const LUMA_B = 0.0722
  * colorRemap(texture(tex, uv()), gradientTex, strengthUniform)
  */
 export function colorRemap(
-  inputColor: TSLNode,
+  inputColor: Node<'vec4'>,
   gradientTex: Texture,
   strength: FloatInput = 1
-): TSLNode {
+): Node<'vec4'> {
   const strengthNode = typeof strength === 'number' ? float(strength) : strength
 
   // Calculate luminance
@@ -40,7 +41,7 @@ export function colorRemap(
   const remappedColor = sampleTexture(gradientTex, gradientUV.xy)
 
   // Mix original with remapped based on strength
-  const mixedRGB = inputColor.rgb.mix(remappedColor.rgb, strengthNode)
+  const mixedRGB = mix(inputColor.rgb, remappedColor.rgb, strengthNode)
 
   return vec4(mixedRGB, inputColor.a)
 }
@@ -59,11 +60,11 @@ export function colorRemap(
  * colorRemapCustom(texture(tex, uv()), gradientTex, inputColor.r)
  */
 export function colorRemapCustom(
-  inputColor: TSLNode,
+  inputColor: Node<'vec4'>,
   gradientTex: Texture,
   lookupValue: FloatInput,
   strength: FloatInput = 1
-): TSLNode {
+): Node<'vec4'> {
   const lookupNode = typeof lookupValue === 'number' ? float(lookupValue) : lookupValue
   const strengthNode = typeof strength === 'number' ? float(strength) : strength
 
@@ -72,7 +73,7 @@ export function colorRemapCustom(
   const remappedColor = sampleTexture(gradientTex, gradientUV.xy)
 
   // Mix original with remapped based on strength
-  const mixedRGB = inputColor.rgb.mix(remappedColor.rgb, strengthNode)
+  const mixedRGB = mix(inputColor.rgb, remappedColor.rgb, strengthNode)
 
   return vec4(mixedRGB, inputColor.a)
 }

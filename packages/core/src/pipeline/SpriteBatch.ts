@@ -319,11 +319,47 @@ export class SpriteBatch extends InstancedMesh {
   }
 
   /**
-   * Sync the instance count to include all allocated slots.
+   * Sync the instance count to include all allocated slots
+   * and apply GPU update ranges.
    * Free slots have alpha=0 so they're invisible.
    */
   syncCount(): void {
     this.count = this._nextIndex
+    this.applyUpdateRanges()
+  }
+
+  /**
+   * Limit GPU buffer uploads to only the used portion of each attribute.
+   *
+   * Without this, the renderer uploads the entire buffer (e.g., 8192 slots
+   * = ~524KB for matrices alone) via `bufferSubData`, which causes implicit
+   * GPU pipeline synchronization when the buffer is still in use by the
+   * previous frame's draw call. With 100 active sprites this reduces uploads
+   * from ~1MB to ~7KB.
+   *
+   * Call this once per frame after all buffer writes are complete (typically
+   * after transform and buffer sync systems have run).
+   */
+  applyUpdateRanges(): void {
+    const used = this._nextIndex
+    if (used === 0) return
+
+    this.instanceMatrix.clearUpdateRanges()
+    this.instanceMatrix.addUpdateRange(0, used * 16)
+
+    this._uvAttribute.clearUpdateRanges()
+    this._uvAttribute.addUpdateRange(0, used * 4)
+
+    this._colorAttribute.clearUpdateRanges()
+    this._colorAttribute.addUpdateRange(0, used * 4)
+
+    this._flipAttribute.clearUpdateRanges()
+    this._flipAttribute.addUpdateRange(0, used * 2)
+
+    for (const [, custom] of this._customAttributes) {
+      custom.attribute.clearUpdateRanges()
+      custom.attribute.addUpdateRange(0, used * custom.size)
+    }
   }
 
   /**

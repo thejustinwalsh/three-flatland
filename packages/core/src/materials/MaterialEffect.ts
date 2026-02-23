@@ -1,7 +1,7 @@
 import { trait } from 'koota'
 import type { Entity, Trait } from 'koota'
+import type Node from 'three/src/nodes/core/Node.js'
 import type { Sprite2D } from '../sprites/Sprite2D'
-import type { TSLNode } from '../nodes/types'
 
 // ============================================
 // Schema Types
@@ -48,14 +48,22 @@ export interface EffectField {
 // Node Context
 // ============================================
 
+/** Map a schema value type to the corresponding parameterized Node type. */
+export type SchemaToNodeType<V extends EffectSchemaValue> =
+  V extends number ? Node<'float'>
+  : V extends readonly [number, number, number, number] ? Node<'vec4'>
+  : V extends readonly [number, number, number] ? Node<'vec3'>
+  : V extends readonly [number, number] ? Node<'vec2'>
+  : Node<'float'> | Node<'vec2'> | Node<'vec3'> | Node<'vec4'>
+
 /** Context passed to an effect's TSL node builder. */
 export interface EffectNodeContext<S extends EffectSchema = EffectSchema> {
-  /** The previous color in the effect chain (vec4 TSL node). */
-  inputColor: TSLNode
-  /** Atlas UV coordinates (vec2 TSL node). */
-  inputUV: TSLNode
+  /** The previous color in the effect chain (vec4 node). */
+  inputColor: Node<'vec4'>
+  /** Atlas UV coordinates (vec2 node). */
+  inputUV: Node<'vec2'>
   /** TSL attribute nodes for each schema field, keyed by unprefixed name. */
-  attrs: { [K in keyof S]: TSLNode }
+  attrs: { [K in keyof S]: SchemaToNodeType<S[K]> }
 }
 
 // ============================================
@@ -116,7 +124,7 @@ export abstract class MaterialEffect {
   /** @internal Total float slots needed for this effect's data (excluding flags). */
   static _totalFloats: number
   /** @internal TSL node builder function. */
-  static _node: (context: EffectNodeContext) => TSLNode
+  static _node: (context: EffectNodeContext) => Node<'vec4'>
   /** @internal Whether static initialization has been performed. */
   static _initialized: boolean = false
 
@@ -124,7 +132,7 @@ export abstract class MaterialEffect {
    * TSL node builder. Must be overridden by subclass (class-based path).
    * The factory path sets this via static assignment.
    */
-  static buildNode(_context: EffectNodeContext): TSLNode {
+  static buildNode(_context: EffectNodeContext): Node<'vec4'> {
     throw new Error(`MaterialEffect.buildNode() not implemented for ${this.effectName}`)
   }
 
@@ -176,7 +184,7 @@ export abstract class MaterialEffect {
     this._trait = trait(traitSchema)
 
     // Use buildNode as the node function
-    this._node = this.buildNode.bind(this) as (context: EffectNodeContext) => TSLNode
+    this._node = this.buildNode.bind(this) as (context: EffectNodeContext) => Node<'vec4'>
   }
 
   // ============================================
@@ -326,7 +334,7 @@ interface MaterialEffectConfig<S extends EffectSchema> {
   /** Per-sprite data schema — default values define types and initial values. */
   schema: S
   /** TSL node builder: receives input color, UV, and per-field attribute nodes. */
-  node: (context: EffectNodeContext<S>) => TSLNode
+  node: (context: EffectNodeContext<S>) => Node<'vec4'>
 }
 
 /**
@@ -340,10 +348,10 @@ export type MaterialEffectClass<S extends EffectSchema> = {
   readonly _trait: Trait
   readonly _fields: EffectField[]
   readonly _totalFloats: number
-  readonly _node: (context: EffectNodeContext) => TSLNode
+  readonly _node: (context: EffectNodeContext) => Node<'vec4'>
   readonly _initialized: boolean
   _initialize(): void
-  buildNode(context: EffectNodeContext<S>): TSLNode
+  buildNode(context: EffectNodeContext<S>): Node<'vec4'>
 }
 
 /**
@@ -379,7 +387,7 @@ export function createMaterialEffect<const S extends EffectSchema>(
     static readonly effectSchema = schema as EffectSchema
     static override _initialized: boolean = false
 
-    static override buildNode(context: EffectNodeContext): TSLNode {
+    static override buildNode(context: EffectNodeContext): Node<'vec4'> {
       return node(context as EffectNodeContext<S>)
     }
   }

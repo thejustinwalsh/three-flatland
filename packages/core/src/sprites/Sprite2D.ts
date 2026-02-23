@@ -47,7 +47,7 @@ const ATTR_TYPE_SIZES: Record<string, number> = { float: 1, vec2: 2, vec3: 3, ve
  *
  * **Two rendering modes:**
  * - **Standalone** (not enrolled): Setters write to snapshot + own geometry buffers immediately.
- * - **Batched** (enrolled in Renderer2D): Setters write to ECS traits only.
+ * - **Batched** (enrolled in SpriteGroup): Setters write to ECS traits only.
  *   Systems sync traits to batch buffers in `updateMatrixWorld()`.
  *
  * @example
@@ -70,7 +70,7 @@ export class Sprite2D extends Mesh {
   /**
    * Shared material cache keyed by texture. Sprites created with just a texture
    * (no explicit material) reuse the same Sprite2DMaterial, which means they share
-   * the same batchId and are automatically batched together by Renderer2D.
+   * the same batchId and are automatically batched together by SpriteGroup.
    */
   private static _sharedMaterials = new WeakMap<Texture, Sprite2DMaterial>()
 
@@ -135,7 +135,7 @@ export class Sprite2D extends Mesh {
   _entity: Entity | null = null
 
   /**
-   * The ECS world this sprite belongs to (set by Renderer2D or Flatland).
+   * The ECS world this sprite belongs to (set by SpriteGroup or Flatland).
    * @internal
    */
   _flatlandWorld: World | null = null
@@ -869,7 +869,7 @@ export class Sprite2D extends Mesh {
   /**
    * Enroll this sprite in an ECS world.
    * Creates an entity with initial trait values from snapshot.
-   * Called automatically by Renderer2D when adding a sprite.
+   * Called automatically by SpriteGroup when adding a sprite.
    *
    * @param world - The ECS world to enroll in (defaults to global world)
    * @internal
@@ -906,7 +906,7 @@ export class Sprite2D extends Mesh {
   /**
    * Unenroll this sprite from its ECS world.
    * Serializes trait values back to snapshot, then destroys the entity.
-   * Called automatically when sprite is removed from Renderer2D or disposed.
+   * Called automatically when sprite is removed from SpriteGroup or disposed.
    * @internal
    */
   _unenrollFromWorld(): void {

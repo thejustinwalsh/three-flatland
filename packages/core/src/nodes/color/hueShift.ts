@@ -1,5 +1,6 @@
 import { vec4, float, cos, sin, mat3 } from 'three/tsl'
-import type { TSLNode, FloatInput } from '../types'
+import type Node from 'three/src/nodes/core/Node.js'
+import type { FloatInput } from '../types'
 
 /**
  * Shift the hue of a color using a rotation matrix in RGB space.
@@ -17,7 +18,7 @@ import type { TSLNode, FloatInput } from '../types'
  * // Animate rainbow effect
  * hueShift(texture(tex, uv()), timeUniform)
  */
-export function hueShift(inputColor: TSLNode, angle: FloatInput): TSLNode {
+export function hueShift(inputColor: Node<'vec4'>, angle: FloatInput): Node<'vec4'> {
   const angleNode = typeof angle === 'number' ? float(angle) : angle
 
   // Rodrigues' rotation formula for rotating around the (1,1,1) axis
@@ -59,7 +60,7 @@ export function hueShift(inputColor: TSLNode, angle: FloatInput): TSLNode {
  * // Shift hue by 25%
  * hueShiftNormalized(texture(tex, uv()), 0.25)
  */
-export function hueShiftNormalized(inputColor: TSLNode, amount: FloatInput): TSLNode {
+export function hueShiftNormalized(inputColor: Node<'vec4'>, amount: FloatInput): Node<'vec4'> {
   const amountNode = typeof amount === 'number' ? float(amount) : amount
   const angle = amountNode.mul(float(Math.PI * 2))
   return hueShift(inputColor, angle)

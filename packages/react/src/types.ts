@@ -6,7 +6,8 @@ import type {
   Sprite2DOptions,
   AnimatedSprite2D,
   AnimatedSprite2DOptions,
-  Renderer2D,
+  SpriteGroup,
+  Flatland,
   TileMap2D,
   TileLayer,
   MaterialEffect,
@@ -92,7 +93,8 @@ declare module '@react-three/fiber' {
     sprite2D: ThreeElement<typeof Sprite2D>
     sprite2DMaterial: ThreeElement<typeof Sprite2DMaterial>
     animatedSprite2D: ThreeElement<typeof AnimatedSprite2D>
-    renderer2D: ThreeElement<typeof Renderer2D>
+    spriteGroup: ThreeElement<typeof SpriteGroup>
+    flatland: ThreeElement<typeof Flatland>
     tileMap2D: ThreeElement<typeof TileMap2D>
     tileLayer: ThreeElement<typeof TileLayer>
   }

@@ -18,7 +18,9 @@
       }
     }
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "sideEffects": false,
   "scripts": {
     "build": "tsup",
@@ -36,7 +38,13 @@
     "@types/three": "catalog:",
     "three": "catalog:"
   },
-  "keywords": ["three.js", "sprites", "2d", "webgpu", "tsl"],
+  "keywords": [
+    "three.js",
+    "sprites",
+    "2d",
+    "webgpu",
+    "tsl"
+  ],
   "license": "MIT",
   "repository": {
     "type": "git",

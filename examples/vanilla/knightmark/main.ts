@@ -2,7 +2,7 @@ import { WebGPURenderer } from 'three/webgpu'
 import { Scene, OrthographicCamera, Color, NearestFilter } from 'three'
 import {
   AnimatedSprite2D,
-  Renderer2D,
+  SpriteGroup,
   SpriteSheetLoader,
   TextureLoader,
   TileMap2D,
@@ -167,9 +167,9 @@ async function main() {
   const camera = new OrthographicCamera(-halfW, halfW, halfH, -halfH, 0.1, 1000)
   camera.position.z = 100
 
-  // Renderer2D for batching
-  const renderer2D = new Renderer2D()
-  scene.add(renderer2D)
+  // SpriteGroup for batching
+  const spriteGroup = new SpriteGroup()
+  scene.add(spriteGroup)
 
   // Load assets
   const asset = (path: string) => import.meta.env.BASE_URL + path
@@ -279,7 +279,7 @@ async function main() {
     const animName = speed < SPEED_THRESHOLD ? 'idle' : 'run'
     sprite.play(animName)
     sprite.flipX = baseVx < 0
-    renderer2D.add(sprite)
+    spriteGroup.add(sprite)
     return {
       sprite, state: 'WALK', baseVx, baseVy, speed,
       vx: baseVx, vy: baseVy, idleTimer: 0,
@@ -428,12 +428,14 @@ async function main() {
     }
 
     // Render — systems run automatically in updateMatrixWorld
+    const callsBefore = renderer.info.render.calls
     renderer.render(scene, camera)
+    const drawCalls = renderer.info.render.calls - callsBefore
 
     // Update stats
-    const s = renderer2D.stats
+    const s = spriteGroup.stats
     statsEl.textContent =
-      `FPS: ${fpsDisplay}  Knights: ${knights.length}  Batches: ${s.batchCount}  Draw calls: ${s.drawCalls}`
+      `FPS: ${fpsDisplay}  Knights: ${knights.length}  Batches: ${s.batchCount}  Draw calls: ${drawCalls}`
   }
   animate()
 }

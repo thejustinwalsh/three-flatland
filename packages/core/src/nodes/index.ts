@@ -1,7 +1,5 @@
 // Types
 export type {
-  TSLNode,
-  TSLInput,
   Vec2Input,
   Vec3Input,
   Vec4Input,
@@ -20,3 +18,21 @@ export * from './alpha'
 
 // Retro effect nodes
 export * from './retro'
+
+// Distortion nodes
+export * from './distortion'
+
+// VFX nodes
+export * from './vfx'
+
+// Blur nodes
+export * from './blur'
+
+// Display effect nodes
+export * from './display'
+
+// Analog effect nodes
+export * from './analog'
+
+// Upscale nodes
+export * from './upscale'

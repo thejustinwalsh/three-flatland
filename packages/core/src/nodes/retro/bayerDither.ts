@@ -1,12 +1,13 @@
 import { vec4, float, floor, mod, int, select, positionLocal } from 'three/tsl'
-import type { TSLNode, FloatInput } from '../types'
+import type Node from 'three/src/nodes/core/Node.js'
+import type { FloatInput } from '../types'
 
 /**
  * 2x2 Bayer matrix normalized to 0-1 range.
  * Pattern: [0, 2]
  *          [3, 1] / 4
  */
-function getBayer2x2(x: TSLNode, y: TSLNode): TSLNode {
+function getBayer2x2(x: Node<'int'>, y: Node<'int'>): Node<'float'> {
   const ix = mod(x, int(2))
   const iy = mod(y, int(2))
 
@@ -28,7 +29,7 @@ function getBayer2x2(x: TSLNode, y: TSLNode): TSLNode {
 /**
  * 4x4 Bayer matrix normalized to 0-1 range.
  */
-function getBayer4x4(x: TSLNode, y: TSLNode): TSLNode {
+function getBayer4x4(x: Node<'int'>, y: Node<'int'>): Node<'float'> {
   const ix = mod(x, int(4))
   const iy = mod(y, int(4))
 
@@ -60,7 +61,7 @@ function getBayer4x4(x: TSLNode, y: TSLNode): TSLNode {
   ]
 
   // Build nested select chain for lookup
-  let result: TSLNode = float(values[15])
+  let result: Node<'float'> = float(values[15])
   for (let i = 14; i >= 0; i--) {
     result = select(index.equal(int(i)), float(values[i]), result)
   }
@@ -71,7 +72,7 @@ function getBayer4x4(x: TSLNode, y: TSLNode): TSLNode {
 /**
  * 8x8 Bayer matrix normalized to 0-1 range.
  */
-function getBayer8x8(x: TSLNode, y: TSLNode): TSLNode {
+function getBayer8x8(x: Node<'int'>, y: Node<'int'>): Node<'float'> {
   const ix = mod(x, int(8))
   const iy = mod(y, int(8))
 
@@ -147,7 +148,7 @@ function getBayer8x8(x: TSLNode, y: TSLNode): TSLNode {
   ]
 
   // Build nested select chain for lookup
-  let result: TSLNode = float(values[63])
+  let result: Node<'float'> = float(values[63])
   for (let i = 62; i >= 0; i--) {
     result = select(index.equal(int(i)), float(values[i]), result)
   }
@@ -170,17 +171,17 @@ function getBayer8x8(x: TSLNode, y: TSLNode): TSLNode {
  * bayerDither2x2(color, 2, 1, uv().mul(textureSize))
  */
 export function bayerDither2x2(
-  inputColor: TSLNode,
+  inputColor: Node<'vec4'>,
   levels: FloatInput = 2,
   scale: FloatInput = 1,
-  screenCoord?: TSLNode
-): TSLNode {
+  screenCoord?: Node<'vec2'>
+): Node<'vec4'> {
   const levelsNode = typeof levels === 'number' ? float(levels) : levels
   const scaleNode = typeof scale === 'number' ? float(scale) : scale
 
   // Default to positionLocal.xy if no coord provided
-  const coord: TSLNode = screenCoord ?? positionLocal.xy
-  const scaledCoord: TSLNode = coord.div(scaleNode)
+  const coord = screenCoord ?? positionLocal.xy
+  const scaledCoord = coord.div(scaleNode)
 
   const x = floor(scaledCoord.x).toInt()
   const y = floor(scaledCoord.y).toInt()
@@ -211,17 +212,17 @@ export function bayerDither2x2(
  * bayerDither4x4(color, 4, 1, uv().mul(textureSize))
  */
 export function bayerDither4x4(
-  inputColor: TSLNode,
+  inputColor: Node<'vec4'>,
   levels: FloatInput = 2,
   scale: FloatInput = 1,
-  screenCoord?: TSLNode
-): TSLNode {
+  screenCoord?: Node<'vec2'>
+): Node<'vec4'> {
   const levelsNode = typeof levels === 'number' ? float(levels) : levels
   const scaleNode = typeof scale === 'number' ? float(scale) : scale
 
   // Default to positionLocal.xy if no coord provided
-  const coord: TSLNode = screenCoord ?? positionLocal.xy
-  const scaledCoord: TSLNode = coord.div(scaleNode)
+  const coord = screenCoord ?? positionLocal.xy
+  const scaledCoord = coord.div(scaleNode)
 
   const x = floor(scaledCoord.x).toInt()
   const y = floor(scaledCoord.y).toInt()
@@ -251,17 +252,17 @@ export function bayerDither4x4(
  * bayerDither8x8(color, 8, 1, uv().mul(textureSize))
  */
 export function bayerDither8x8(
-  inputColor: TSLNode,
+  inputColor: Node<'vec4'>,
   levels: FloatInput = 2,
   scale: FloatInput = 1,
-  screenCoord?: TSLNode
-): TSLNode {
+  screenCoord?: Node<'vec2'>
+): Node<'vec4'> {
   const levelsNode = typeof levels === 'number' ? float(levels) : levels
   const scaleNode = typeof scale === 'number' ? float(scale) : scale
 
   // Default to positionLocal.xy if no coord provided
-  const coord: TSLNode = screenCoord ?? positionLocal.xy
-  const scaledCoord: TSLNode = coord.div(scaleNode)
+  const coord = screenCoord ?? positionLocal.xy
+  const scaledCoord = coord.div(scaleNode)
 
   const x = floor(scaledCoord.x).toInt()
   const y = floor(scaledCoord.y).toInt()
@@ -295,10 +296,10 @@ export function bayerDither8x8(
  * bayerDither(color, 4)
  */
 export function bayerDither(
-  inputColor: TSLNode,
+  inputColor: Node<'vec4'>,
   levels: FloatInput = 2,
   scale: FloatInput = 1,
-  screenCoord?: TSLNode
-): TSLNode {
+  screenCoord?: Node<'vec2'>
+): Node<'vec4'> {
   return bayerDither4x4(inputColor, levels, scale, screenCoord)
 }

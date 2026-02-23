@@ -8,3 +8,4 @@ export {
 } from './bayerDither'
 export { colorReplace, colorReplaceHard, colorReplaceMultiple } from './colorReplace'
 export { palettize, palettizeDithered, palettizeNearest } from './palettize'
+export * from './consolePalettes'

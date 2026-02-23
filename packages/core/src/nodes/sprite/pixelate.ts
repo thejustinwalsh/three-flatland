@@ -1,11 +1,12 @@
 import { vec2, float, floor } from 'three/tsl'
-import type { TSLNode, Vec2Input, FloatInput } from '../types'
+import type Node from 'three/src/nodes/core/Node.js'
+import type { Vec2Input, FloatInput } from '../types'
 
 /**
  * Pixelate UV coordinates by snapping to a pixel grid.
  *
  * @param inputUV - The UV coordinates to transform
- * @param resolution - Pixel grid resolution as [width, height] or TSL node
+ * @param resolution - Pixel grid resolution as [width, height] or vec2 node
  * @param pivot - Center point for pixelation (default: [0.5, 0.5] = center)
  * @returns Pixelated UV coordinates (snapped to grid centers)
  *
@@ -21,7 +22,7 @@ import type { TSLNode, Vec2Input, FloatInput } from '../types'
  * // Pixelate from top-left corner
  * pixelate(uv(), [16, 16], [0, 1])
  */
-export function pixelate(inputUV: TSLNode, resolution: Vec2Input, pivot: Vec2Input = [0.5, 0.5]): TSLNode {
+export function pixelate(inputUV: Node<'vec2'>, resolution: Vec2Input, pivot: Vec2Input = [0.5, 0.5]): Node<'vec2'> {
   const resVec = Array.isArray(resolution) ? vec2(...resolution) : resolution
   const pivotVec = Array.isArray(pivot) ? vec2(...pivot) : pivot
 
@@ -44,7 +45,7 @@ export function pixelate(inputUV: TSLNode, resolution: Vec2Input, pivot: Vec2Inp
  * // Pixelate with 8 pixel size
  * pixelateBySize(uv(), 8)
  */
-export function pixelateBySize(inputUV: TSLNode, pixelSize: FloatInput): TSLNode {
+export function pixelateBySize(inputUV: Node<'vec2'>, pixelSize: FloatInput): Node<'vec2'> {
   const size = typeof pixelSize === 'number' ? float(pixelSize) : pixelSize
 
   // Convert pixel size to resolution (inverse relationship)

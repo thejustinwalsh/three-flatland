@@ -1,5 +1,7 @@
 // Pipeline exports
-export { Renderer2D } from './Renderer2D'
+export { PassEffect, createPassEffect } from './PassEffect'
+export type { PassEffectClass, PassEffectContext, PassEffectFn } from './PassEffect'
+export { SpriteGroup } from './SpriteGroup'
 export { SpriteBatch, DEFAULT_BATCH_SIZE } from './SpriteBatch'
 export { LayerManager, Layer } from './LayerManager'
 export { Layers, encodeSortKey, decodeSortKey } from './layers'
@@ -11,7 +13,7 @@ export type {
   InstanceAttributeConfig,
   LayerConfig,
   RenderStats,
-  Renderer2DOptions,
+  SpriteGroupOptions,
   SpriteSortFunction,
   BatchKey,
 } from './types'

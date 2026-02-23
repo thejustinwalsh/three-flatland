@@ -1,6 +1,7 @@
-import { vec2, vec3, vec4, float, floor, texture as sampleTexture, If, Discard, smoothstep } from 'three/tsl'
+import { vec2, vec3, vec4, float, floor, mix, texture as sampleTexture, If, Discard, smoothstep } from 'three/tsl'
 import type { Texture } from 'three'
-import type { TSLNode, FloatInput, Vec3Input } from '../types'
+import type Node from 'three/src/nodes/core/Node.js'
+import type { FloatInput, Vec3Input } from '../types'
 
 export interface DissolveOptions {
   /** Dissolve progress (0 = fully visible, 1 = fully dissolved) */
@@ -41,10 +42,10 @@ export interface DissolveOptions {
  * })
  */
 export function dissolve(
-  inputColor: TSLNode,
-  inputUV: TSLNode,
+  inputColor: Node<'vec4'>,
+  inputUV: Node<'vec2'>,
   options: DissolveOptions
-): TSLNode {
+): Node<'vec4'> {
   const {
     progress,
     noiseTex,
@@ -79,7 +80,7 @@ export function dissolve(
   const edgeIntensity = float(1).sub(smoothstep(edgeStart, edgeEnd, noiseValue))
 
   // Mix edge color with original
-  const finalRGB = inputColor.rgb.mix(edgeColorVec, edgeIntensity.mul(inputColor.a))
+  const finalRGB = mix(inputColor.rgb, edgeColorVec, edgeIntensity.mul(inputColor.a))
 
   return vec4(finalRGB, inputColor.a)
 }
@@ -95,11 +96,11 @@ export function dissolve(
  * @returns Color with simple dissolve effect
  */
 export function dissolveSimple(
-  inputColor: TSLNode,
-  inputUV: TSLNode,
+  inputColor: Node<'vec4'>,
+  inputUV: Node<'vec2'>,
   progress: FloatInput,
   noiseTex: Texture
-): TSLNode {
+): Node<'vec4'> {
   const progressNode = typeof progress === 'number' ? float(progress) : progress
 
   // Sample noise texture
@@ -133,12 +134,12 @@ export function dissolveSimple(
  * dissolvePixelated(color, uv(), dissolveProgress, noiseTexture, 8)
  */
 export function dissolvePixelated(
-  inputColor: TSLNode,
-  inputUV: TSLNode,
+  inputColor: Node<'vec4'>,
+  inputUV: Node<'vec2'>,
   progress: FloatInput,
   noiseTex: Texture,
   pixelCount: FloatInput = 16
-): TSLNode {
+): Node<'vec4'> {
   const progressNode = typeof progress === 'number' ? float(progress) : progress
   const pixelCountNode = typeof pixelCount === 'number' ? float(pixelCount) : pixelCount
 
@@ -170,13 +171,13 @@ export function dissolvePixelated(
  * @returns Color with directional dissolve effect
  */
 export function dissolveDirectional(
-  inputColor: TSLNode,
-  inputUV: TSLNode,
+  inputColor: Node<'vec4'>,
+  inputUV: Node<'vec2'>,
   progress: FloatInput,
   noiseTex: Texture,
   direction: 'left' | 'right' | 'up' | 'down' = 'right',
   noiseStrength: FloatInput = 0.3
-): TSLNode {
+): Node<'vec4'> {
   const progressNode = typeof progress === 'number' ? float(progress) : progress
   const noiseStrengthNode = typeof noiseStrength === 'number' ? float(noiseStrength) : noiseStrength
 
@@ -184,7 +185,7 @@ export function dissolveDirectional(
   const noiseValue = sampleTexture(noiseTex, inputUV).r
 
   // Calculate directional gradient
-  let gradient: TSLNode
+  let gradient: Node<'float'>
   switch (direction) {
     case 'left':
       gradient = float(1).sub(inputUV.x)

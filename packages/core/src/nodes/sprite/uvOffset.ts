@@ -1,11 +1,12 @@
 import { vec2 } from 'three/tsl'
-import type { TSLNode, Vec2Input } from '../types'
+import type Node from 'three/src/nodes/core/Node.js'
+import type { Vec2Input } from '../types'
 
 /**
  * Offset UV coordinates by a given amount.
  *
  * @param inputUV - The UV coordinates to transform
- * @param offset - Offset amount as [x, y] or TSL node
+ * @param offset - Offset amount as [x, y] or vec2 node
  * @returns Offset UV coordinates
  *
  * @example
@@ -16,7 +17,7 @@ import type { TSLNode, Vec2Input } from '../types'
  * // Animate UV offset with uniform
  * uvOffset(uv(), offsetUniform)
  */
-export function uvOffset(inputUV: TSLNode, offset: Vec2Input): TSLNode {
+export function uvOffset(inputUV: Node<'vec2'>, offset: Vec2Input): Node<'vec2'> {
   const offsetVec = Array.isArray(offset) ? vec2(...offset) : offset
 
   return inputUV.add(offsetVec)

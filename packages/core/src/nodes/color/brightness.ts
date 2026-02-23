@@ -1,5 +1,6 @@
 import { vec3, vec4, float, clamp } from 'three/tsl'
-import type { TSLNode, FloatInput } from '../types'
+import type Node from 'three/src/nodes/core/Node.js'
+import type { FloatInput } from '../types'
 
 /**
  * Adjust brightness by adding a value to all color channels.
@@ -16,7 +17,7 @@ import type { TSLNode, FloatInput } from '../types'
  * // Darken
  * brightness(texture(tex, uv()), -0.3)
  */
-export function brightness(inputColor: TSLNode, amount: FloatInput): TSLNode {
+export function brightness(inputColor: Node<'vec4'>, amount: FloatInput): Node<'vec4'> {
   const amountNode = typeof amount === 'number' ? float(amount) : amount
 
   // Add brightness value to all channels
@@ -36,7 +37,7 @@ export function brightness(inputColor: TSLNode, amount: FloatInput): TSLNode {
  * // Double brightness
  * brightnessMultiply(texture(tex, uv()), 2)
  */
-export function brightnessMultiply(inputColor: TSLNode, factor: FloatInput): TSLNode {
+export function brightnessMultiply(inputColor: Node<'vec4'>, factor: FloatInput): Node<'vec4'> {
   const factorNode = typeof factor === 'number' ? float(factor) : factor
 
   return vec4(inputColor.rgb.mul(factorNode), inputColor.a)
@@ -49,7 +50,7 @@ export function brightnessMultiply(inputColor: TSLNode, factor: FloatInput): TSL
  * @param amount - Brightness adjustment (-1 to 1)
  * @returns Color with adjusted brightness, clamped to 0-1
  */
-export function brightnessClamped(inputColor: TSLNode, amount: FloatInput): TSLNode {
+export function brightnessClamped(inputColor: Node<'vec4'>, amount: FloatInput): Node<'vec4'> {
   const amountNode = typeof amount === 'number' ? float(amount) : amount
 
   const adjustedRGB = clamp(

@@ -1,7 +1,7 @@
 import { Group, type Object3D } from 'three'
 import { createWorld, type World, type Trait } from 'koota'
 import type { Sprite2D } from '../sprites/Sprite2D'
-import type { Renderer2DOptions, RenderStats } from './types'
+import type { SpriteGroupOptions, RenderStats } from './types'
 import { DEFAULT_BATCH_SIZE } from './SpriteBatch'
 import { assignWorld, type WorldProvider } from '../ecs/world'
 import { BatchRegistry, BatchMesh } from '../ecs/traits'
@@ -22,7 +22,7 @@ import { measure } from '../util/measure'
 /**
  * 2D render pipeline with automatic batching and sorting.
  *
- * Add Renderer2D to your scene and add sprites to it.
+ * Add SpriteGroup to your scene and add sprites to it.
  * Sprites are automatically batched by material and sorted by layer/zIndex.
  *
  * ECS systems run automatically in `updateMatrixWorld()`, which Three.js
@@ -35,18 +35,18 @@ import { measure } from '../util/measure'
  *
  * @example
  * ```typescript
- * const renderer2D = new Renderer2D()
- * scene.add(renderer2D)
+ * const spriteGroup = new SpriteGroup()
+ * scene.add(spriteGroup)
  *
  * const sprite = new Sprite2D({ texture })
  * sprite.layer = Layers.ENTITIES
- * renderer2D.add(sprite)
+ * spriteGroup.add(sprite)
  *
  * // In render loop — no update() call needed
  * renderer.render(scene, camera)
  * ```
  */
-export class Renderer2D extends Group implements WorldProvider {
+export class SpriteGroup extends Group implements WorldProvider {
   /**
    * ECS world for this renderer.
    * Lazily created on first access.
@@ -92,12 +92,12 @@ export class Renderer2D extends Group implements WorldProvider {
   private _systemsRanThisFrame: boolean = false
 
   /**
-   * Bound Group.prototype.add for bypassing Renderer2D override in scene graph sync.
+   * Bound Group.prototype.add for bypassing SpriteGroup override in scene graph sync.
    */
   private _parentAdd = Group.prototype.add.bind(this)
 
   /**
-   * Bound Group.prototype.remove for bypassing Renderer2D override in scene graph sync.
+   * Bound Group.prototype.remove for bypassing SpriteGroup override in scene graph sync.
    */
   private _parentRemove = Group.prototype.remove.bind(this)
 
@@ -106,10 +106,10 @@ export class Renderer2D extends Group implements WorldProvider {
    */
   private _spriteCount: number = 0
 
-  constructor(options: Renderer2DOptions = {}) {
+  constructor(options: SpriteGroupOptions = {}) {
     super()
 
-    this.name = 'Renderer2D'
+    this.name = 'SpriteGroup'
     this.frustumCulled = false
 
     this._maxBatchSize = options.maxBatchSize ?? DEFAULT_BATCH_SIZE
@@ -253,7 +253,7 @@ export class Renderer2D extends Group implements WorldProvider {
    * 6. bufferSyncFlipSystem — Changed(SpriteFlip) + IsBatched -> batch buffer write
    * 7. bufferSyncEffectSystem — Changed(effectTrait) + IsBatched -> packed buffer write
    * 8. transformSyncSystem — sync all transforms to batch instance matrices
-   * 9. sceneGraphSyncSystem — rebuild Renderer2D children from sorted batch entities
+   * 9. sceneGraphSyncSystem — rebuild SpriteGroup children from sorted batch entities
    * 10. super.updateMatrixWorld() — continue Three.js traversal
    */
   override updateMatrixWorld(force?: boolean): void {
@@ -389,6 +389,15 @@ export class Renderer2D extends Group implements WorldProvider {
 
   /**
    * Get render statistics.
+   *
+   * Note: `drawCalls` is NOT computed here — it must come from
+   * `renderer.info.render.calls` after the actual Three.js render pass.
+   * See Flatland.stats for the real value, or capture the delta yourself:
+   * ```ts
+   * const before = renderer.info.render.calls
+   * renderer.render(scene, camera)
+   * const drawCalls = renderer.info.render.calls - before
+   * ```
    */
   get stats(): RenderStats {
     const registry = this._getRegistry()
@@ -405,10 +414,7 @@ export class Renderer2D extends Group implements WorldProvider {
     return {
       spriteCount: this._spriteCount,
       batchCount,
-      drawCalls: activeBatches.filter((b) => {
-        const bm = b.get(BatchMesh)
-        return bm?.mesh && !bm.mesh.isEmpty
-      }).length,
+      drawCalls: 0,
       visibleSprites,
     }
   }

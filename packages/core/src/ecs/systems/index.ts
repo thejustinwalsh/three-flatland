@@ -9,3 +9,4 @@ export {
 } from './bufferSyncSystem'
 export { transformSyncSystem } from './transformSyncSystem'
 export { sceneGraphSyncSystem } from './sceneGraphSyncSystem'
+export { postPassSystem } from './postPassSystem'

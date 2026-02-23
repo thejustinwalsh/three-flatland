@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { universe } from 'koota'
 import { Texture } from 'three'
-import { Renderer2D } from './Renderer2D'
+import { SpriteGroup } from './SpriteGroup'
 import { Sprite2D } from '../sprites/Sprite2D'
 import { Sprite2DMaterial } from '../materials/Sprite2DMaterial'
 import { createMaterialEffect } from '../materials/MaterialEffect'
@@ -15,10 +15,10 @@ const DissolveRenderer = createMaterialEffect({
   node: ({ inputColor }) => inputColor,
 })
 
-describe('Renderer2D', () => {
+describe('SpriteGroup', () => {
   let texture: Texture
   let material: Sprite2DMaterial
-  let renderer: Renderer2D | null = null
+  let renderer: SpriteGroup | null = null
 
   beforeEach(() => {
     texture = new Texture()
@@ -34,16 +34,16 @@ describe('Renderer2D', () => {
   })
 
   it('should create a renderer with default options', () => {
-    renderer = new Renderer2D()
+    renderer = new SpriteGroup()
 
-    expect(renderer.name).toBe('Renderer2D')
+    expect(renderer.name).toBe('SpriteGroup')
     expect(renderer.isEmpty).toBe(true)
     expect(renderer.autoSort).toBe(true)
     expect(renderer.frustumCulling).toBe(true)
   })
 
   it('should create a renderer with custom options', () => {
-    renderer = new Renderer2D({
+    renderer = new SpriteGroup({
       maxBatchSize: 5000,
       autoSort: false,
       frustumCulling: false,
@@ -54,7 +54,7 @@ describe('Renderer2D', () => {
   })
 
   it('should add sprites', () => {
-    renderer = new Renderer2D()
+    renderer = new SpriteGroup()
     const sprite = new Sprite2D({ material })
 
     renderer.add(sprite)
@@ -64,7 +64,7 @@ describe('Renderer2D', () => {
   })
 
   it('should add multiple sprites', () => {
-    renderer = new Renderer2D()
+    renderer = new SpriteGroup()
     const sprite1 = new Sprite2D({ material })
     const sprite2 = new Sprite2D({ material })
 
@@ -74,7 +74,7 @@ describe('Renderer2D', () => {
   })
 
   it('should remove sprites', () => {
-    renderer = new Renderer2D()
+    renderer = new SpriteGroup()
     const sprite = new Sprite2D({ material })
 
     renderer.add(sprite)
@@ -84,7 +84,7 @@ describe('Renderer2D', () => {
   })
 
   it('should remove multiple sprites', () => {
-    renderer = new Renderer2D()
+    renderer = new SpriteGroup()
     const sprite1 = new Sprite2D({ material })
     const sprite2 = new Sprite2D({ material })
 
@@ -95,7 +95,7 @@ describe('Renderer2D', () => {
   })
 
   it('should update batches', () => {
-    renderer = new Renderer2D()
+    renderer = new SpriteGroup()
     const sprite = new Sprite2D({ material })
     sprite.position.set(100, 200, 0)
 
@@ -106,7 +106,7 @@ describe('Renderer2D', () => {
   })
 
   it('should invalidate sprites', () => {
-    renderer = new Renderer2D()
+    renderer = new SpriteGroup()
     const sprite = new Sprite2D({ material })
 
     renderer.add(sprite)
@@ -120,7 +120,7 @@ describe('Renderer2D', () => {
   })
 
   it('should invalidate all sprites', () => {
-    renderer = new Renderer2D()
+    renderer = new SpriteGroup()
     const sprite1 = new Sprite2D({ material })
     const sprite2 = new Sprite2D({ material })
 
@@ -134,7 +134,7 @@ describe('Renderer2D', () => {
   })
 
   it('should provide render stats', () => {
-    renderer = new Renderer2D()
+    renderer = new SpriteGroup()
     const sprite1 = new Sprite2D({ material })
     const sprite2 = new Sprite2D({ material })
 
@@ -145,12 +145,12 @@ describe('Renderer2D', () => {
 
     expect(stats.spriteCount).toBe(2)
     expect(stats.batchCount).toBe(1)
-    expect(stats.drawCalls).toBe(1)
+    expect(stats.drawCalls).toBe(0) // drawCalls comes from renderer.info, not SpriteGroup
     expect(stats.visibleSprites).toBe(2)
   })
 
   it('should clear all sprites', () => {
-    renderer = new Renderer2D()
+    renderer = new SpriteGroup()
     const sprite = new Sprite2D({ material })
 
     renderer.add(sprite)
@@ -163,7 +163,7 @@ describe('Renderer2D', () => {
   })
 
   it('should add batch objects to scene graph', () => {
-    renderer = new Renderer2D()
+    renderer = new SpriteGroup()
     const sprite = new Sprite2D({ material })
 
     renderer.add(sprite)
@@ -177,7 +177,7 @@ describe('Renderer2D', () => {
   // ============================================
 
   it('updateMatrixWorld should run systems and sync buffers', () => {
-    renderer = new Renderer2D()
+    renderer = new SpriteGroup()
     const sprite = new Sprite2D({ material })
     sprite.position.set(100, 200, 0)
 
@@ -190,7 +190,7 @@ describe('Renderer2D', () => {
   })
 
   it('updateMatrixWorld should sync changed sprite properties', () => {
-    renderer = new Renderer2D()
+    renderer = new SpriteGroup()
     const sprite = new Sprite2D({ material })
 
     renderer.add(sprite)
@@ -229,7 +229,7 @@ describe('Renderer2D', () => {
   })
 
   it('update() and updateMatrixWorld() should not run systems twice', () => {
-    renderer = new Renderer2D()
+    renderer = new SpriteGroup()
     const sprite = new Sprite2D({ material })
 
     renderer.add(sprite)
@@ -243,7 +243,7 @@ describe('Renderer2D', () => {
   })
 
   it('should sync effect data through updateMatrixWorld', () => {
-    renderer = new Renderer2D()
+    renderer = new SpriteGroup()
     const sprite = new Sprite2D({ material })
     const dissolve = new DissolveRenderer()
     sprite.addEffect(dissolve)

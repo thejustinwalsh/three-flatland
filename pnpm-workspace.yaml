@@ -9,11 +9,11 @@ catalog:
   '@react-three/fiber': ^10.0.0-alpha.2
   '@types/react': ^19.0.2
   '@types/react-dom': ^19.0.2
-  '@types/three': ^0.182.0
+  '@types/three': ^0.183.1
   '@vitejs/plugin-react': ^4.3.4
   koota: ^0.1.0
   react: ^19.0.0
   react-dom: ^19.0.0
-  three: ^0.182.0
+  three: ^0.183.1
   typescript: ^5.7.3
   vite: ^6.4.1

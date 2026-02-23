@@ -1,5 +1,6 @@
-import { vec4, float, floor } from 'three/tsl'
-import type { TSLNode, FloatInput } from '../types'
+import { vec3, vec4, float, floor } from 'three/tsl'
+import type Node from 'three/src/nodes/core/Node.js'
+import type { FloatInput } from '../types'
 
 /**
  * Posterize color to create flat, comic-book style bands.
@@ -21,7 +22,7 @@ import type { TSLNode, FloatInput } from '../types'
  * // Dynamic posterization with uniform
  * posterize(color, bandsUniform)
  */
-export function posterize(inputColor: TSLNode, bands: FloatInput): TSLNode {
+export function posterize(inputColor: Node<'vec4'>, bands: FloatInput): Node<'vec4'> {
   const bandsNode = typeof bands === 'number' ? float(bands) : bands
 
   // Same formula as quantize: floor(color * bands) / (bands - 1)
@@ -49,15 +50,15 @@ export function posterize(inputColor: TSLNode, bands: FloatInput): TSLNode {
  * posterizeGamma(color, 4, 1.8)
  */
 export function posterizeGamma(
-  inputColor: TSLNode,
+  inputColor: Node<'vec4'>,
   bands: FloatInput,
   gamma: FloatInput = 2.2
-): TSLNode {
+): Node<'vec4'> {
   const bandsNode = typeof bands === 'number' ? float(bands) : bands
   const gammaNode = typeof gamma === 'number' ? float(gamma) : gamma
 
   // Convert to linear space
-  const linearRGB = inputColor.rgb.pow(gammaNode)
+  const linearRGB = inputColor.rgb.pow(vec3(gammaNode))
 
   // Posterize in linear space
   const bandsMinusOne = bandsNode.sub(float(1))
@@ -65,7 +66,7 @@ export function posterizeGamma(
 
   // Convert back to gamma space
   const inverseGamma = float(1).div(gammaNode)
-  const finalRGB = posterizedRGB.pow(inverseGamma)
+  const finalRGB = posterizedRGB.pow(vec3(inverseGamma))
 
   return vec4(finalRGB, inputColor.a)
 }

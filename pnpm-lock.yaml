@@ -16,8 +16,11 @@ catalogs:
       specifier: ^19.0.2
       version: 19.2.3
     '@types/three':
-      specifier: ^0.182.0
-      version: 0.182.0
+      specifier: ^0.183.1
+      version: 0.183.1
+    '@vitejs/plugin-react':
+      specifier: ^4.3.4
+      version: 4.7.0
     koota:
       specifier: ^0.1.0
       version: 0.1.12
@@ -28,8 +31,8 @@ catalogs:
       specifier: ^19.0.0
       version: 19.2.3
     three:
-      specifier: ^0.182.0
-      version: 0.182.0
+      specifier: ^0.183.1
+      version: 0.183.1
     typescript:
       specifier: ^5.7.3
       version: 5.9.3
@@ -104,12 +107,21 @@ importers:
       '@fontsource/silkscreen':
         specifier: ^5.2.8
         version: 5.2.8
+      '@react-three/fiber':
+        specifier: 'catalog:'
+        version: 10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.183.1)
       '@stackblitz/sdk':
         specifier: ^1.11.0
         version: 1.11.0
+      '@three-flatland/mini-breakout':
+        specifier: workspace:*
+        version: link:../minis/breakout
       astro:
         specifier: ^5.2.3
         version: 5.16.15(@types/node@22.19.7)(jiti@1.21.7)(rollup@4.56.0)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.2)
+      koota:
+        specifier: 'catalog:'
+        version: 0.1.12(@react-three/fiber@10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.183.1))(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.183.1)
       pixelarticons:
         specifier: ^1.8.1
         version: 1.8.1
@@ -125,6 +137,9 @@ importers:
       starlight-typedoc:
         specifier: ^0.21.5
         version: 0.21.5(@astrojs/starlight@0.33.2(astro@5.16.15(@types/node@22.19.7)(jiti@1.21.7)(rollup@4.56.0)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.2)))(typedoc-plugin-markdown@4.9.0(typedoc@0.28.16(typescript@5.9.3)))(typedoc@0.28.16(typescript@5.9.3))
+      three:
+        specifier: 'catalog:'
+        version: 0.183.1
       typedoc:
         specifier: ^0.28.0
         version: 0.28.16(typescript@5.9.3)
@@ -188,7 +203,7 @@ importers:
         version: 3.1.0(@floating-ui/utils@0.2.10)(@types/react@19.2.9)
       '@react-three/fiber':
         specifier: ^10.0.0-alpha.2
-        version: 10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.182.0)
+        version: 10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.183.1)
       '@three-flatland/core':
         specifier: workspace:*
         version: link:../../../packages/core
@@ -202,8 +217,8 @@ importers:
         specifier: ^19.0.0
         version: 19.2.3(react@19.2.3)
       three:
-        specifier: ^0.182.0
-        version: 0.182.0
+        specifier: ^0.183.1
+        version: 0.183.1
     devDependencies:
       '@types/react':
         specifier: ^19.0.2
@@ -212,8 +227,8 @@ importers:
         specifier: ^19.0.2
         version: 19.2.3(@types/react@19.2.9)
       '@types/three':
-        specifier: ^0.182.0
-        version: 0.182.0
+        specifier: ^0.183.1
+        version: 0.183.1
       '@vitejs/plugin-react':
         specifier: ^4.3.4
         version: 4.7.0(vite@6.4.1(@types/node@22.19.7)(jiti@1.21.7)(tsx@4.21.0)(yaml@2.8.2))
@@ -228,7 +243,7 @@ importers:
     dependencies:
       '@react-three/fiber':
         specifier: ^10.0.0-alpha.2
-        version: 10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.182.0)
+        version: 10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.183.1)
       '@three-flatland/core':
         specifier: workspace:*
         version: link:../../../packages/core
@@ -242,8 +257,8 @@ importers:
         specifier: ^19.0.0
         version: 19.2.3(react@19.2.3)
       three:
-        specifier: ^0.182.0
-        version: 0.182.0
+        specifier: ^0.183.1
+        version: 0.183.1
     devDependencies:
       '@types/react':
         specifier: ^19.0.2
@@ -252,8 +267,8 @@ importers:
         specifier: ^19.0.2
         version: 19.2.3(@types/react@19.2.9)
       '@types/three':
-        specifier: ^0.182.0
-        version: 0.182.0
+        specifier: ^0.183.1
+        version: 0.183.1
       '@vitejs/plugin-react':
         specifier: ^4.3.4
         version: 4.7.0(vite@6.4.1(@types/node@22.19.7)(jiti@1.21.7)(tsx@4.21.0)(yaml@2.8.2))
@@ -271,7 +286,7 @@ importers:
         version: 3.1.0(@floating-ui/utils@0.2.10)(@types/react@19.2.9)
       '@react-three/fiber':
         specifier: ^10.0.0-alpha.2
-        version: 10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.182.0)
+        version: 10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.183.1)
       '@three-flatland/core':
         specifier: workspace:*
         version: link:../../../packages/core
@@ -285,8 +300,8 @@ importers:
         specifier: ^19.0.0
         version: 19.2.3(react@19.2.3)
       three:
-        specifier: ^0.182.0
-        version: 0.182.0
+        specifier: ^0.183.1
+        version: 0.183.1
     devDependencies:
       '@types/react':
         specifier: ^19.0.2
@@ -295,8 +310,8 @@ importers:
         specifier: ^19.0.2
         version: 19.2.3(@types/react@19.2.9)
       '@types/three':
-        specifier: ^0.182.0
-        version: 0.182.0
+        specifier: ^0.183.1
+        version: 0.183.1
       '@vitejs/plugin-react':
         specifier: ^4.3.4
         version: 4.7.0(vite@6.4.1(@types/node@22.19.7)(jiti@1.21.7)(tsx@4.21.0)(yaml@2.8.2))
@@ -311,7 +326,7 @@ importers:
     dependencies:
       '@react-three/fiber':
         specifier: ^10.0.0-alpha.2
-        version: 10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.182.0)
+        version: 10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.183.1)
       '@three-flatland/core':
         specifier: workspace:*
         version: link:../../../packages/core
@@ -325,8 +340,8 @@ importers:
         specifier: ^19.0.0
         version: 19.2.3(react@19.2.3)
       three:
-        specifier: ^0.182.0
-        version: 0.182.0
+        specifier: ^0.183.1
+        version: 0.183.1
     devDependencies:
       '@types/react':
         specifier: ^19.0.2
@@ -335,8 +350,8 @@ importers:
         specifier: ^19.0.2
         version: 19.2.3(@types/react@19.2.9)
       '@types/three':
-        specifier: ^0.182.0
-        version: 0.182.0
+        specifier: ^0.183.1
+        version: 0.183.1
       '@vitejs/plugin-react':
         specifier: ^4.3.4
         version: 4.7.0(vite@6.4.1(@types/node@22.19.7)(jiti@1.21.7)(tsx@4.21.0)(yaml@2.8.2))
@@ -354,7 +369,7 @@ importers:
         version: 3.1.0(@floating-ui/utils@0.2.10)(@types/react@19.2.9)
       '@react-three/fiber':
         specifier: ^10.0.0-alpha.2
-        version: 10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.182.0)
+        version: 10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.183.1)
       '@three-flatland/core':
         specifier: workspace:*
         version: link:../../../packages/core
@@ -368,8 +383,8 @@ importers:
         specifier: ^19.0.0
         version: 19.2.3(react@19.2.3)
       three:
-        specifier: ^0.182.0
-        version: 0.182.0
+        specifier: ^0.183.1
+        version: 0.183.1
     devDependencies:
       '@types/react':
         specifier: ^19.0.2
@@ -378,8 +393,8 @@ importers:
         specifier: ^19.0.2
         version: 19.2.3(@types/react@19.2.9)
       '@types/three':
-        specifier: ^0.182.0
-        version: 0.182.0
+        specifier: ^0.183.1
+        version: 0.183.1
       '@vitejs/plugin-react':
         specifier: ^4.3.4
         version: 4.7.0(vite@6.4.1(@types/node@22.19.7)(jiti@1.21.7)(tsx@4.21.0)(yaml@2.8.2))
@@ -397,7 +412,7 @@ importers:
         version: 3.1.0(@floating-ui/utils@0.2.10)(@types/react@19.2.9)
       '@react-three/fiber':
         specifier: ^10.0.0-alpha.2
-        version: 10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.182.0)
+        version: 10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.183.1)
       '@three-flatland/core':
         specifier: workspace:*
         version: link:../../../packages/core
@@ -411,8 +426,8 @@ importers:
         specifier: ^19.0.0
         version: 19.2.3(react@19.2.3)
       three:
-        specifier: ^0.182.0
-        version: 0.182.0
+        specifier: ^0.183.1
+        version: 0.183.1
     devDependencies:
       '@types/react':
         specifier: ^19.0.2
@@ -421,8 +436,8 @@ importers:
         specifier: ^19.0.2
         version: 19.2.3(@types/react@19.2.9)
       '@types/three':
-        specifier: ^0.182.0
-        version: 0.182.0
+        specifier: ^0.183.1
+        version: 0.183.1
       '@vitejs/plugin-react':
         specifier: ^4.3.4
         version: 4.7.0(vite@6.4.1(@types/node@22.19.7)(jiti@1.21.7)(tsx@4.21.0)(yaml@2.8.2))
@@ -440,7 +455,7 @@ importers:
         version: 3.1.0(@floating-ui/utils@0.2.10)(@types/react@19.2.9)
       '@react-three/fiber':
         specifier: ^10.0.0-alpha.2
-        version: 10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.182.0)
+        version: 10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.183.1)
       '@three-flatland/core':
         specifier: workspace:*
         version: link:../../../packages/core
@@ -454,8 +469,8 @@ importers:
         specifier: ^19.0.0
         version: 19.2.3(react@19.2.3)
       three:
-        specifier: ^0.182.0
-        version: 0.182.0
+        specifier: ^0.183.1
+        version: 0.183.1
     devDependencies:
       '@types/react':
         specifier: ^19.0.2
@@ -464,8 +479,8 @@ importers:
         specifier: ^19.0.2
         version: 19.2.3(@types/react@19.2.9)
       '@types/three':
-        specifier: ^0.182.0
-        version: 0.182.0
+        specifier: ^0.183.1
+        version: 0.183.1
       '@vitejs/plugin-react':
         specifier: ^4.3.4
         version: 4.7.0(vite@6.4.1(@types/node@22.19.7)(jiti@1.21.7)(tsx@4.21.0)(yaml@2.8.2))
@@ -485,12 +500,12 @@ importers:
         specifier: workspace:*
         version: link:../../../packages/core
       three:
-        specifier: ^0.182.0
-        version: 0.182.0
+        specifier: ^0.183.1
+        version: 0.183.1
     devDependencies:
       '@types/three':
-        specifier: ^0.182.0
-        version: 0.182.0
+        specifier: ^0.183.1
+        version: 0.183.1
       typescript:
         specifier: ^5.7.3
         version: 5.9.3
@@ -507,12 +522,12 @@ importers:
         specifier: workspace:*
         version: link:../../../packages/nodes
       three:
-        specifier: ^0.182.0
-        version: 0.182.0
+        specifier: ^0.183.1
+        version: 0.183.1
     devDependencies:
       '@types/three':
-        specifier: ^0.182.0
-        version: 0.182.0
+        specifier: ^0.183.1
+        version: 0.183.1
       typescript:
         specifier: ^5.7.3
         version: 5.9.3
@@ -529,12 +544,12 @@ importers:
         specifier: workspace:*
         version: link:../../../packages/core
       three:
-        specifier: ^0.182.0
-        version: 0.182.0
+        specifier: ^0.183.1
+        version: 0.183.1
     devDependencies:
       '@types/three':
-        specifier: ^0.182.0
-        version: 0.182.0
+        specifier: ^0.183.1
+        version: 0.183.1
       typescript:
         specifier: ^5.7.3
         version: 5.9.3
@@ -548,12 +563,12 @@ importers:
         specifier: workspace:*
         version: link:../../../packages/core
       three:
-        specifier: ^0.182.0
-        version: 0.182.0
+        specifier: ^0.183.1
+        version: 0.183.1
     devDependencies:
       '@types/three':
-        specifier: ^0.182.0
-        version: 0.182.0
+        specifier: ^0.183.1
+        version: 0.183.1
       typescript:
         specifier: ^5.7.3
         version: 5.9.3
@@ -570,12 +585,12 @@ importers:
         specifier: workspace:*
         version: link:../../../packages/core
       three:
-        specifier: ^0.182.0
-        version: 0.182.0
+        specifier: ^0.183.1
+        version: 0.183.1
     devDependencies:
       '@types/three':
-        specifier: ^0.182.0
-        version: 0.182.0
+        specifier: ^0.183.1
+        version: 0.183.1
       typescript:
         specifier: ^5.7.3
         version: 5.9.3
@@ -592,12 +607,12 @@ importers:
         specifier: workspace:*
         version: link:../../../packages/core
       three:
-        specifier: ^0.182.0
-        version: 0.182.0
+        specifier: ^0.183.1
+        version: 0.183.1
     devDependencies:
       '@types/three':
-        specifier: ^0.182.0
-        version: 0.182.0
+        specifier: ^0.183.1
+        version: 0.183.1
       typescript:
         specifier: ^5.7.3
         version: 5.9.3
@@ -614,12 +629,12 @@ importers:
         specifier: workspace:*
         version: link:../../../packages/core
       three:
-        specifier: ^0.182.0
-        version: 0.182.0
+        specifier: ^0.183.1
+        version: 0.183.1
     devDependencies:
       '@types/three':
-        specifier: ^0.182.0
-        version: 0.182.0
+        specifier: ^0.183.1
+        version: 0.183.1
       typescript:
         specifier: ^5.7.3
         version: 5.9.3
@@ -627,27 +642,70 @@ importers:
         specifier: ^6.0.7
         version: 6.4.1(@types/node@22.19.7)(jiti@1.21.7)(tsx@4.21.0)(yaml@2.8.2)
 
+  minis/breakout:
+    dependencies:
+      '@three-flatland/react':
+        specifier: workspace:*
+        version: link:../../packages/react
+      koota:
+        specifier: 'catalog:'
+        version: 0.1.12(@react-three/fiber@10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.183.1))(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.183.1)
+    devDependencies:
+      '@react-three/fiber':
+        specifier: 'catalog:'
+        version: 10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.183.1)
+      '@types/react':
+        specifier: 'catalog:'
+        version: 19.2.9
+      '@types/react-dom':
+        specifier: 'catalog:'
+        version: 19.2.3(@types/react@19.2.9)
+      '@types/three':
+        specifier: 'catalog:'
+        version: 0.183.1
+      '@vitejs/plugin-react':
+        specifier: 'catalog:'
+        version: 4.7.0(vite@6.4.1(@types/node@22.19.7)(jiti@1.21.7)(tsx@4.21.0)(yaml@2.8.2))
+      react:
+        specifier: 'catalog:'
+        version: 19.2.3
+      react-dom:
+        specifier: 'catalog:'
+        version: 19.2.3(react@19.2.3)
+      three:
+        specifier: 'catalog:'
+        version: 0.183.1
+      tsup:
+        specifier: ^8.0.0
+        version: 8.5.1(jiti@1.21.7)(postcss@8.5.6)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.2)
+      typescript:
+        specifier: 'catalog:'
+        version: 5.9.3
+      vite:
+        specifier: 'catalog:'
+        version: 6.4.1(@types/node@22.19.7)(jiti@1.21.7)(tsx@4.21.0)(yaml@2.8.2)
+
   packages/core:
     dependencies:
       koota:
         specifier: 'catalog:'
-        version: 0.1.12(react@19.2.3)(three@0.182.0)
+        version: 0.1.12(@react-three/fiber@10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.183.1))(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.183.1)
     devDependencies:
       '@types/three':
         specifier: 'catalog:'
-        version: 0.182.0
+        version: 0.183.1
       three:
         specifier: 'catalog:'
-        version: 0.182.0
+        version: 0.183.1
 
   packages/nodes:
     devDependencies:
       '@types/three':
         specifier: 'catalog:'
-        version: 0.182.0
+        version: 0.183.1
       three:
         specifier: 'catalog:'
-        version: 0.182.0
+        version: 0.183.1
 
   packages/presets:
     dependencies:
@@ -660,10 +718,10 @@ importers:
     devDependencies:
       '@types/three':
         specifier: 'catalog:'
-        version: 0.182.0
+        version: 0.183.1
       three:
         specifier: 'catalog:'
-        version: 0.182.0
+        version: 0.183.1
 
   packages/react:
     dependencies:
@@ -673,19 +731,19 @@ importers:
     devDependencies:
       '@react-three/fiber':
         specifier: 'catalog:'
-        version: 10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.182.0)
+        version: 10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.183.1)
       '@types/react':
         specifier: 'catalog:'
         version: 19.2.9
       '@types/three':
         specifier: 'catalog:'
-        version: 0.182.0
+        version: 0.183.1
       react:
         specifier: 'catalog:'
         version: 19.2.3
       three:
         specifier: 'catalog:'
-        version: 0.182.0
+        version: 0.183.1
 
 packages:
 
@@ -2057,8 +2115,8 @@ packages:
   '@types/stats.js@0.17.4':
     resolution: {integrity: sha512-jIBvWWShCvlBqBNIZt0KAshWpvSjhkwkEu4ZUcASoAvhmrgAUI2t1dXrjSL4xXVLB4FznPrIsX3nKXFl/Dt4vA==}
 
-  '@types/three@0.182.0':
-    resolution: {integrity: sha512-WByN9V3Sbwbe2OkWuSGyoqQO8Du6yhYaXtXLoA5FkKTUJorZ+yOHBZ35zUUPQXlAKABZmbYp5oAqpA4RBjtJ/Q==}
+  '@types/three@0.183.1':
+    resolution: {integrity: sha512-f2Pu5Hrepfgavttdye3PsH5RWyY/AvdZQwIVhrc4uNtvF7nOWJacQKcoVJn0S4f0yYbmAE6AR+ve7xDcuYtMGw==}
 
   '@types/trusted-types@2.0.7':
     resolution: {integrity: sha512-ScaPdn1dQczgbl0QFTeTOmVHFULt394XJgOQNoyVhZ6r2vLnMLJfBPd53SB52T/3G36VI1/g2MZaX0cwDuXsfw==}
@@ -3267,8 +3325,8 @@ packages:
     resolution: {integrity: sha512-8q7VEgMJW4J8tcfVPy8g09NcQwZdbwFEqhe/WZkoIzjn/3TGDwtOCYtXGxA3O8tPzpczCCDgv+P2P5y00ZJOOg==}
     engines: {node: '>= 8'}
 
-  meshoptimizer@0.22.0:
-    resolution: {integrity: sha512-IebiK79sqIy+E4EgOr+CAw+Ke8hAspXKzBd0JdgEmPHiAwmvEj2S4h1rfvo+o/BnfEYd/jAOg5IeeIjzlzSnDg==}
+  meshoptimizer@1.0.1:
+    resolution: {integrity: sha512-Vix+QlA1YYT3FwmBBZ+49cE5y/b+pRrcXKqGpS5ouh33d3lSp2PoTpCw19E0cKDFWalembrHnIaZetf27a+W2g==}
 
   micromark-core-commonmark@2.0.3:
     resolution: {integrity: sha512-RDBrHEMSxVFLg6xvnXmb1Ayr2WzLAWjeSATAoxwKYJV94TeNavgoIdA0a9ytzDSVzBy2YKFK+emCPOEibLeCrg==}
@@ -3971,8 +4029,8 @@ packages:
   thenify@3.3.1:
     resolution: {integrity: sha512-RVZSIV5IG10Hk3enotrhvz0T9em6cyHBLkH/YAZuKqd8hRkKhSfCGIcP2KUY0EPxndzANBmNllzWPwak+bheSw==}
 
-  three@0.182.0:
-    resolution: {integrity: sha512-GbHabT+Irv+ihI1/f5kIIsZ+Ef9Sl5A1Y7imvS5RQjWgtTPfPnZ43JmlYI7NtCRDK9zir20lQpfg8/9Yd02OvQ==}
+  three@0.183.1:
+    resolution: {integrity: sha512-Psv6bbd3d/M/01MT2zZ+VmD0Vj2dbWTNhfe4CuSg7w5TuW96M3NOyCVuh9SZQ05CpGmD7NEcJhZw4GVjhCYxfQ==}
 
   tiny-inflate@1.0.3:
     resolution: {integrity: sha512-pkY1fj1cKHb2seWDy0B16HeWyczlJA9/WW3u3c4z/NiWDsO3DOU5D7nhTLE9CF0yXv/QZFY7sEJmj24dK+Rrqw==}
@@ -5694,7 +5752,7 @@ snapshots:
   '@pagefind/windows-x64@1.4.0':
     optional: true
 
-  '@react-three/fiber@10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.182.0)':
+  '@react-three/fiber@10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.183.1)':
     dependencies:
       '@babel/runtime': 7.28.6
       dequal: 2.0.3
@@ -5703,7 +5761,7 @@ snapshots:
       react-use-measure: 2.1.7(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
       scheduler: 0.27.0
       suspend-react: 0.1.3(react@19.2.3)
-      three: 0.182.0
+      three: 0.183.1
       use-sync-external-store: 1.6.0(react@19.2.3)
       zustand: 5.0.10(@types/react@19.2.9)(react@19.2.3)(use-sync-external-store@1.6.0(react@19.2.3))
     optionalDependencies:
@@ -5915,7 +5973,7 @@ snapshots:
 
   '@types/stats.js@0.17.4': {}
 
-  '@types/three@0.182.0':
+  '@types/three@0.183.1':
     dependencies:
       '@dimforge/rapier3d-compat': 0.12.0
       '@tweenjs/tween.js': 23.1.3
@@ -5923,7 +5981,7 @@ snapshots:
       '@types/webxr': 0.5.24
       '@webgpu/types': 0.1.69
       fflate: 0.8.2
-      meshoptimizer: 0.22.0
+      meshoptimizer: 1.0.1
 
   '@types/trusted-types@2.0.7': {}
 
@@ -7263,11 +7321,13 @@ snapshots:
 
   klona@2.0.6: {}
 
-  koota@0.1.12(react@19.2.3)(three@0.182.0):
+  koota@0.1.12(@react-three/fiber@10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.183.1))(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.183.1):
     dependencies:
       react: 19.2.3
     optionalDependencies:
-      three: 0.182.0
+      '@react-three/fiber': 10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.183.1)
+      react-dom: 19.2.3(react@19.2.3)
+      three: 0.183.1
 
   levn@0.4.1:
     dependencies:
@@ -7540,7 +7600,7 @@ snapshots:
 
   merge2@1.4.1: {}
 
-  meshoptimizer@0.22.0: {}
+  meshoptimizer@1.0.1: {}
 
   micromark-core-commonmark@2.0.3:
     dependencies:
@@ -8513,7 +8573,7 @@ snapshots:
     dependencies:
       any-promise: 1.3.0
 
-  three@0.182.0: {}
+  three@0.183.1: {}
 
   tiny-inflate@1.0.3: {}
 

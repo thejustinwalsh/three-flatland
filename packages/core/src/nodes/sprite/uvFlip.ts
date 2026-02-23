@@ -1,5 +1,6 @@
 import { vec2, float, select } from 'three/tsl'
-import type { TSLNode, FloatInput } from '../types'
+import type Node from 'three/src/nodes/core/Node.js'
+import type { FloatInput } from '../types'
 
 /**
  * Flip UV coordinates horizontally and/or vertically.
@@ -18,10 +19,10 @@ import type { TSLNode, FloatInput } from '../types'
  * uvFlip(uv(), flipXUniform, flipYUniform)
  */
 export function uvFlip(
-  inputUV: TSLNode,
+  inputUV: Node<'vec2'>,
   flipX: boolean | FloatInput = false,
   flipY: boolean | FloatInput = false
-): TSLNode {
+): Node<'vec2'> {
   // Convert boolean to number for TSL
   const flipXNode =
     typeof flipX === 'boolean' ? float(flipX ? 1 : 0) : typeof flipX === 'number' ? float(flipX) : flipX

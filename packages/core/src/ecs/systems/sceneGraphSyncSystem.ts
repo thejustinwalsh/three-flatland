@@ -7,13 +7,13 @@ import { rebuildBatchOrder } from '../batchUtils'
 /**
  * Sync batch entities with the Three.js scene graph.
  *
- * Rebuilds the Renderer2D's children from the sorted batch entity list.
+ * Rebuilds the SpriteGroup's children from the sorted batch entity list.
  * Only runs when renderOrderDirty is set (batches added/removed).
  *
  * @param world - ECS world to query BatchRegistry
- * @param parent - The Renderer2D Group to sync children on
- * @param parentAdd - Bound Group.prototype.add from the parent (bypasses Renderer2D override)
- * @param parentRemove - Bound Group.prototype.remove from the parent (bypasses Renderer2D override)
+ * @param parent - The SpriteGroup Group to sync children on
+ * @param parentAdd - Bound Group.prototype.add from the parent (bypasses SpriteGroup override)
+ * @param parentRemove - Bound Group.prototype.remove from the parent (bypasses SpriteGroup override)
  */
 export function sceneGraphSyncSystem(
   world: World,

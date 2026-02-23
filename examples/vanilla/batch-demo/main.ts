@@ -1,6 +1,6 @@
 import { WebGPURenderer } from 'three/webgpu'
 import { Scene, OrthographicCamera, Color, Vector2, Raycaster, Plane, Vector3 } from 'three'
-import { Sprite2D, Sprite2DMaterial, Renderer2D, Layers, TextureLoader } from '@three-flatland/core'
+import { Sprite2D, Sprite2DMaterial, SpriteGroup, Layers, TextureLoader } from '@three-flatland/core'
 
 // Configuration
 const TILE_SIZE = 64
@@ -78,8 +78,8 @@ async function main() {
   const buildingMaterials = buildingTextures.map((tex) => new Sprite2DMaterial({ map: tex }))
 
   // Create the 2D renderer
-  const renderer2D = new Renderer2D()
-  scene.add(renderer2D)
+  const spriteGroup = new SpriteGroup()
+  scene.add(spriteGroup)
 
   // Grid offset to center the grid
   const gridOffsetX = (-GRID_WIDTH * TILE_SIZE) / 2 + TILE_SIZE / 2
@@ -132,7 +132,7 @@ async function main() {
       tile.layer = Layers.GROUND
       tile.zIndex = 0
 
-      renderer2D.add(tile)
+      spriteGroup.add(tile)
     }
   }
 
@@ -144,7 +144,7 @@ async function main() {
   let selectedBuilding = 0
 
   // Hover indicator (preview sprite for placing buildings)
-  // Added directly to scene (not Renderer2D) so it's not batched with other sprites
+  // Added directly to scene (not SpriteGroup) so it's not batched with other sprites
   // renderOrder set high to ensure it renders above all batched sprites
   const hoverSprite = new Sprite2D({ material: buildingMaterials[selectedBuilding]! })
   hoverSprite.alpha = 0.5
@@ -200,7 +200,7 @@ async function main() {
     shadow.layer = Layers.SHADOWS
     shadow.zIndex = 0
     shadow.alpha = 0.5
-    renderer2D.add(shadow)
+    spriteGroup.add(shadow)
 
     // Create building sprite
     const sprite = new Sprite2D({ material })
@@ -226,7 +226,7 @@ async function main() {
     // Y-sort: use zIndex for depth sorting (lower Y = higher zIndex = renders in front)
     sprite.zIndex = -Math.floor(pos.y)
 
-    renderer2D.add(sprite)
+    spriteGroup.add(sprite)
 
     entities.push({ sprite, shadow, gridX, gridY })
     occupiedCells.add(key)
@@ -366,7 +366,7 @@ async function main() {
       frameCount = 0
       fpsTime = 0
 
-      const stats = renderer2D.stats
+      const stats = spriteGroup.stats
       statsEl.innerHTML = `FPS: ${currentFps}<br>Draws: ${renderer.info.render.drawCalls}<br>Sprites: ${stats.spriteCount}<br>Batches: ${stats.batchCount}`
     }
   }
