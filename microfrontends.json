@@ -192,6 +192,32 @@
           "paths": ["/react/knightmark", "/react/knightmark/:path*"]
         }
       ]
+    },
+    "example-vanilla-pass-effects": {
+      "development": {
+        "local": {
+          "port": 4015
+        }
+      },
+      "routing": [
+        {
+          "group": "vanilla-examples",
+          "paths": ["/vanilla/pass-effects", "/vanilla/pass-effects/:path*"]
+        }
+      ]
+    },
+    "example-react-pass-effects": {
+      "development": {
+        "local": {
+          "port": 4016
+        }
+      },
+      "routing": [
+        {
+          "group": "react-examples",
+          "paths": ["/react/pass-effects", "/react/pass-effects/:path*"]
+        }
+      ]
     }
   }
 }

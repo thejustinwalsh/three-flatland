@@ -5,19 +5,19 @@ description: How automatic batching works and tips for optimal performance.
 
 import { Tabs, TabItem } from '@astrojs/starlight/components';
 
-Renderer2D automatically batches sprites that share the same material into single draw calls. You don't need to do anything special—just add sprites and the batching happens behind the scenes.
+SpriteGroup automatically batches sprites that share the same material into single draw calls. You don't need to do anything special—just add sprites and the batching happens behind the scenes.
 
 ## How It Works
 
-When you add sprites to a `Renderer2D`, they're grouped by material and layer into efficient GPU batches. Systems run automatically during Three.js rendering — no manual `update()` call needed.
+When you add sprites to a `SpriteGroup`, they're grouped by material and layer into efficient GPU batches. Systems run automatically during Three.js rendering — no manual `update()` call needed.
 
 <Tabs syncKey="framework">
   <TabItem label="Three.js" icon="seti:javascript">
     ```typescript
-    import { Sprite2D, Renderer2D, Sprite2DMaterial } from '@three-flatland/core';
+    import { Sprite2D, SpriteGroup, Sprite2DMaterial } from '@three-flatland/core';
 
-    const renderer2D = new Renderer2D();
-    scene.add(renderer2D);
+    const spriteGroup = new SpriteGroup();
+    scene.add(spriteGroup);
 
     // These sprites share a material, so they batch together
     const material = new Sprite2DMaterial({ map: spriteSheet });
@@ -25,7 +25,7 @@ When you add sprites to a `Renderer2D`, they're grouped by material and layer in
     for (let i = 0; i < 1000; i++) {
       const sprite = new Sprite2D({ material });
       sprite.position.set(Math.random() * 100, Math.random() * 100, 0);
-      renderer2D.add(sprite);
+      spriteGroup.add(sprite);
     }
 
     // In your render loop — no update() call needed
@@ -39,9 +39,9 @@ When you add sprites to a `Renderer2D`, they're grouped by material and layer in
     ```tsx
     import { useMemo } from 'react';
     import { extend } from '@react-three/fiber/webgpu';
-    import { Sprite2D, Renderer2D, Sprite2DMaterial } from '@three-flatland/react';
+    import { Sprite2D, SpriteGroup, Sprite2DMaterial } from '@three-flatland/react';
 
-    extend({ Sprite2D, Renderer2D, Sprite2DMaterial });
+    extend({ Sprite2D, SpriteGroup, Sprite2DMaterial });
 
     function Particles({ count = 1000, spriteSheet }) {
       // Create shared material
@@ -54,11 +54,11 @@ When you add sprites to a `Renderer2D`, they're grouped by material and layer in
       );
 
       return (
-        <renderer2D>
+        <spriteGroup>
           {positions.map((pos, i) => (
             <sprite2D key={i} material={material} position={pos} />
           ))}
-        </renderer2D>
+        </spriteGroup>
       );
     }
     ```
@@ -67,16 +67,16 @@ When you add sprites to a `Renderer2D`, they're grouped by material and layer in
 
 ## Renderer Options
 
-The `Renderer2D` constructor accepts optional batch configuration:
+The `SpriteGroup` constructor accepts optional batch configuration:
 
 ```typescript
-const renderer2D = new Renderer2D({
+const spriteGroup = new SpriteGroup({
   maxBatchSize: 8192,        // Max sprites per batch (default: 8192)
   autoSort: true,            // Enable automatic sorting (default: true)
   frustumCulling: true,      // Enable frustum culling (default: true)
   autoInvalidateTransforms: true, // Auto-sync transforms every frame (default: true)
 });
-scene.add(renderer2D);
+scene.add(spriteGroup);
 ```
 
 ## Automatic Change Detection
@@ -96,7 +96,7 @@ sprite.position.x += 10;
 Check batch efficiency with the `stats` property:
 
 ```typescript
-const stats = renderer2D.stats;
+const stats = spriteGroup.stats;
 
 console.log(`Sprites: ${stats.spriteCount}`);
 console.log(`Batches: ${stats.batchCount}`);

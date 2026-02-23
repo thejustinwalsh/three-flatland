@@ -1,0 +1,164 @@
+---
+title: Pass Effects
+description: Dynamic post-processing with composable PassEffects.
+---
+
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+import ExamplePreview from '../../../components/ExamplePreview';
+import StackBlitzEmbed from '../../../components/StackBlitzEmbed';
+import ExampleTabs from '../../../components/ExampleTabs.astro';
+import { loadExample } from '../../../utils/loadExample';
+
+export const vanillaFiles = loadExample('vanilla', 'pass-effects');
+export const reactFiles = loadExample('react', 'pass-effects');
+
+<ExampleTabs>
+<Tabs>
+  <TabItem label="Preview" icon="rocket">
+    <ExamplePreview client:load type="vanilla" name="pass-effects" />
+  </TabItem>
+  <TabItem label="Three.js" icon="seti:javascript">
+    <StackBlitzEmbed
+      client:load
+      title="Pass Effects - Three.js"
+      files={vanillaFiles}
+      openFile="main.ts"
+      height={600}
+    />
+  </TabItem>
+  <TabItem label="React" icon="seti:react">
+    <StackBlitzEmbed
+      client:load
+      title="Pass Effects - React"
+      files={reactFiles}
+      openFile="App.tsx"
+      height={600}
+    />
+  </TabItem>
+</Tabs>
+</ExampleTabs>
+
+## What This Example Shows
+
+This example demonstrates the **Pass Effect** system for full-screen post-processing. Switch between 5 presets to see different effect chains applied to a sprite scene:
+
+| Preset | Passes | Description |
+|--------|--------|-------------|
+| Clean | 0 | No post-processing |
+| CRT Arcade | 1 | Full CRT composite — curvature, scanlines, bloom, vignette, and color bleed |
+| Handheld | 4 | Posterize + LCD grid + backlight bleed + vignette |
+| VHS Tape | 3 | VHS distortion + static noise + chromatic aberration |
+| Retro PC | 3 | Color quantize + scanlines + vignette |
+
+## Defining Pass Effects
+
+Use `createPassEffect` with a schema for parameters and a TSL node builder:
+
+<Tabs syncKey="framework">
+  <TabItem label="Three.js" icon="seti:javascript">
+    ```typescript
+    import { createPassEffect, crtComplete } from '@three-flatland/core'
+    import { convertToTexture } from 'three/tsl'
+
+    const CRTPass = createPassEffect({
+      name: 'crt',
+      schema: {
+        curvature: 0.08,
+        scanlineIntensity: 0.18,
+        vignetteIntensity: 0.3,
+        bloomIntensity: 0.15,
+        colorBleed: 0.0012,
+      },
+      pass: ({ uniforms }) => (input, uv) => {
+        const tex = convertToTexture(input)
+        return crtComplete(tex, uv, {
+          curvature: uniforms.curvature,
+          scanlineIntensity: uniforms.scanlineIntensity,
+          vignetteIntensity: uniforms.vignetteIntensity,
+          bloomIntensity: uniforms.bloomIntensity,
+          colorBleed: uniforms.colorBleed,
+        })
+      },
+    })
+    ```
+  </TabItem>
+  <TabItem label="React" icon="seti:react">
+    ```tsx
+    import { createPassEffect, crtComplete } from '@three-flatland/react'
+    import { convertToTexture } from 'three/tsl'
+
+    const CRTPass = createPassEffect({
+      name: 'crt',
+      schema: {
+        curvature: 0.08,
+        scanlineIntensity: 0.18,
+        vignetteIntensity: 0.3,
+        bloomIntensity: 0.15,
+        colorBleed: 0.0012,
+      },
+      pass: ({ uniforms }) => (input, uv) => {
+        const tex = convertToTexture(input)
+        return crtComplete(tex, uv, {
+          curvature: uniforms.curvature,
+          scanlineIntensity: uniforms.scanlineIntensity,
+          vignetteIntensity: uniforms.vignetteIntensity,
+          bloomIntensity: uniforms.bloomIntensity,
+          colorBleed: uniforms.colorBleed,
+        })
+      },
+    })
+    ```
+  </TabItem>
+</Tabs>
+
+## Adding Passes at Runtime
+
+Instantiate a pass and add it to Flatland. Passes chain in order — each receives the previous output:
+
+<Tabs syncKey="framework">
+  <TabItem label="Three.js" icon="seti:javascript">
+    ```typescript
+    const crt = new CRTPass()
+    flatland.addPass(crt)
+
+    // Animate parameters in the render loop
+    crt.curvature = 0.12
+
+    // Swap presets by clearing and adding new passes
+    flatland.clearPasses()
+    flatland.addPass(new PosterizePass()).addPass(new VignettePass())
+    ```
+  </TabItem>
+  <TabItem label="React" icon="seti:react">
+    ```tsx
+    import { useEffect, useRef } from 'react'
+    import { useFrame } from '@react-three/fiber/webgpu'
+
+    function FlatlandScene({ preset }) {
+      const flatlandRef = useRef(null)
+
+      useEffect(() => {
+        const flatland = flatlandRef.current
+        flatland.clearPasses()
+        const active = createPreset(preset)
+        for (const p of active.passes) flatland.addPass(p)
+      }, [preset])
+
+      useFrame((_, delta) => {
+        flatlandRef.current?.render(gl)
+      })
+
+      return (
+        <flatland ref={flatlandRef} viewSize={80} clearColor={0x1a1a2e}>
+          {/* sprites */}
+        </flatland>
+      )
+    }
+    ```
+  </TabItem>
+</Tabs>
+
+## Next Steps
+
+- [Pass Effects Guide](../guides/pass-effects) — Full API reference and pass chain architecture
+- [TSL Nodes](../examples/tsl-nodes) — Per-sprite material effects

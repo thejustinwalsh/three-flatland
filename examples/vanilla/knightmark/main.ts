@@ -435,7 +435,7 @@ async function main() {
     // Update stats
     const s = spriteGroup.stats
     statsEl.textContent =
-      `FPS: ${fpsDisplay}  Knights: ${knights.length}  Batches: ${s.batchCount}  Draw calls: ${drawCalls}`
+      `FPS: ${fpsDisplay}\nKnights: ${knights.length}\nBatches: ${s.batchCount}\nDraws: ${drawCalls}`
   }
   animate()
 }

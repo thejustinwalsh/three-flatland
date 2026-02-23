@@ -416,7 +416,7 @@ function KnightmarkScene({ statsRef, addKnightsRef }: KnightmarkSceneProps) {
     if (statsRef.current && spriteGroupRef.current) {
       const s = spriteGroupRef.current.stats
       statsRef.current.textContent =
-        `FPS: ${fpsRef.current.display}  Knights: ${knights.length}  Batches: ${s.batchCount}  Draw calls: ${s.drawCalls}`
+        `FPS: ${fpsRef.current.display}\nKnights: ${knights.length}\nBatches: ${s.batchCount}\nDraws: ${s.drawCalls}`
     }
   })
 
@@ -473,18 +473,19 @@ export default function App() {
         style={{
           position: 'fixed',
           top: 12,
-          left: 12,
+          right: 12,
+          padding: '5px 10px',
+          background: 'rgba(0, 2, 28, 0.7)',
+          borderRadius: 6,
           color: '#4a9eff',
-          fontSize: 13,
-          lineHeight: 1.6,
-          whiteSpace: 'pre',
-          zIndex: 100,
-          userSelect: 'none',
-          textShadow: '0 1px 3px rgba(0,0,0,0.8)',
           fontFamily: 'monospace',
+          fontSize: 10,
+          lineHeight: 1.5,
+          zIndex: 100,
+          whiteSpace: 'pre',
         }}
       >
-        Loading...
+        {`FPS: -\nKnights: -\nBatches: -\nDraws: -`}
       </div>
 
       {/* Controls */}
