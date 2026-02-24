@@ -32,7 +32,6 @@ function runSystems(group: SpriteGroup): void {
 
 function makeTexture(): Texture {
   const texture = new Texture()
-  // @ts-expect-error - mocking image for tests
   texture.image = { width: 100, height: 100 }
   return texture
 }

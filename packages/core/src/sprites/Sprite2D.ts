@@ -8,7 +8,7 @@ import {
   type Texture,
 } from 'three'
 import type { Entity, World } from 'koota'
-import { MaterialEffect } from '../materials/MaterialEffect'
+import type { MaterialEffect } from '../materials/MaterialEffect'
 import { Sprite2DMaterial } from '../materials/Sprite2DMaterial'
 import type { Sprite2DOptions, SpriteFrame } from './types'
 import {
@@ -42,15 +42,15 @@ interface SpriteSnapshot {
 function observed<T extends object>(target: T, cb: () => void): T {
   const proxy: T = new Proxy(target, {
     set(obj, prop, value) {
-      (obj as any)[prop] = value
+      ;(obj as Record<string | symbol, unknown>)[prop] = value
       cb()
       return true
     },
     get(obj, prop, receiver) {
       const value = Reflect.get(obj, prop, receiver)
       if (typeof value !== 'function') return value
-      return function (this: any, ...args: any[]) {
-        const result = value.apply(obj, args)
+      return function (this: unknown, ...args: unknown[]) {
+        const result = (value as (...a: unknown[]) => unknown).apply(obj, args)
         cb()
         return result === obj ? proxy : result
       }
@@ -432,7 +432,7 @@ export class Sprite2D extends Mesh {
     } else if (value instanceof Color) {
       this._tintColor.copy(value)
     } else {
-      this._tintColor.set(value as any)
+      this._tintColor.set(value)
     }
     // onChange callback handles ECS sync
   }

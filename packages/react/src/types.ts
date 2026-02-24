@@ -34,8 +34,8 @@ import type {
  * <dissolveEffect attach={attachEffect} progress={0.5} />
  * ```
  */
-export type EffectElement<T extends MaterialEffectClass<any>> =
-  ThreeElement<T> & (T extends MaterialEffectClass<infer S extends EffectSchema> ? Partial<EffectValues<S>> : {})
+export type EffectElement<T extends MaterialEffectClass<EffectSchema>> =
+  ThreeElement<T> & (T extends MaterialEffectClass<infer S extends EffectSchema> ? Partial<EffectValues<S>> : Record<string, never>)
 
 /**
  * Props for the Flatland root component

@@ -167,7 +167,7 @@ export class SpriteGroup extends Group implements WorldProvider {
     // Check if it's a Sprite2D (has _enrollInWorld — duck typing)
     if ('_enrollInWorld' in spriteOrObject && '_flatlandWorld' in spriteOrObject) {
       // Skip if already enrolled (R3F insertBefore re-adds during reconciliation)
-      if ((spriteOrObject as Sprite2D).entity) return this
+      if (spriteOrObject.entity) return this
       // Assign ECS world and enroll entity
       assignWorld(spriteOrObject, this.world)
       spriteOrObject._enrollInWorld(this.world)
