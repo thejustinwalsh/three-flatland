@@ -41,6 +41,8 @@ export interface MiniGameProps {
   isVisible?: boolean
   /** Custom class name for styling */
   className?: string
+  /** Show FPS / sprite / batch stats overlay */
+  showStats?: boolean
 }
 
 /**

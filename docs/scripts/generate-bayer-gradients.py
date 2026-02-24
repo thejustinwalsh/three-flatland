@@ -179,6 +179,66 @@ def generate_tiled_gradient_pattern(
     )
 
 
+def generate_horizontal_aside_gradient_svg(
+    color: str,
+    width: int = 1260,
+    height: int = 16,
+    solid_width: int = 300,
+    pixel_size: int = 4
+) -> str:
+    """
+    Generate a horizontal Bayer dithered gradient for aside/callout backgrounds.
+
+    Solid color on the left, fading to transparent on the right via Bayer dither.
+
+    Args:
+        color: The accent color (hex)
+        width: Total SVG width in pixels
+        height: SVG height in pixels
+        solid_width: Width of solid color section on the left
+        pixel_size: Size of each "pixel" in the dither pattern
+    """
+    cols = width // pixel_size
+    rows = height // pixel_size
+    solid_cols = solid_width // pixel_size
+    fade_cols = cols - solid_cols
+
+    rects = []
+
+    for row in range(rows):
+        for col in range(cols):
+            # Solid section on the left
+            if col < solid_cols:
+                x = col * pixel_size
+                y = row * pixel_size
+                rects.append(f'<rect x="{x}" y="{y}" width="{pixel_size}" height="{pixel_size}" fill="{color}"/>')
+            else:
+                # Fade section - gradient from solid to transparent
+                fade_col = col - solid_cols
+                t = fade_col / max(fade_cols - 1, 1)
+
+                # Invert t so we go from solid (t=0) to transparent (t=1)
+                # Convert to 0-15 range for Bayer comparison
+                gradient_level = t * 15
+
+                # Get Bayer threshold for this position
+                bayer_x = col % 4
+                bayer_y = row % 4
+                threshold = BAYER_4x4[bayer_y][bayer_x]
+
+                # Draw pixel only if below threshold (fading out)
+                if gradient_level < threshold:
+                    x = col * pixel_size
+                    y = row * pixel_size
+                    rects.append(f'<rect x="{x}" y="{y}" width="{pixel_size}" height="{pixel_size}" fill="{color}"/>')
+
+    svg = f'''<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" shape-rendering="crispEdges">
+{chr(10).join(rects)}
+</svg>'''
+
+    return svg
+
+
 def svg_to_data_uri(svg: str) -> str:
     """Convert SVG to data URI for CSS."""
     import urllib.parse
@@ -322,6 +382,48 @@ def main():
         print(f"  --gradient-{name}-dither: {data_uri};")
 
     print("}")
+
+    # =========================================================================
+    # HORIZONTAL ASIDE GRADIENTS - For callouts/asides
+    # Solid color on left, Bayer dither fade to transparent on right
+    # =========================================================================
+    aside_css_file = Path(__file__).parent.parent / 'src' / 'styles' / 'aside-gradients.css'
+
+    aside_colors = {
+        'cyan': COLORS['cyan'],
+        'blue': COLORS['blue'],
+        'orange': COLORS['orange'],
+        'pink': COLORS['pink'],
+        'purple': COLORS['purple'],
+        'yellow': COLORS['yellow'],
+    }
+
+    aside_css_lines = ["/* Auto-generated horizontal Bayer gradients for asides/callouts */"]
+    aside_css_lines.append("/* Run: python docs/scripts/generate-bayer-gradients.py */")
+    aside_css_lines.append(":root {")
+
+    # Generate with 300px solid fill + 960px fade = 1260px total
+    for name, color in aside_colors.items():
+        svg = generate_horizontal_aside_gradient_svg(
+            color=color,
+            width=1260,
+            height=16,
+            solid_width=300,
+            pixel_size=4
+        )
+
+        # Save SVG file to public/patterns/
+        svg_file = output_dir / f'aside-{name}.svg'
+        svg_file.write_text(svg)
+        print(f"Generated: {svg_file.relative_to(output_dir.parent.parent)}")
+
+        # Use file reference in CSS
+        aside_css_lines.append(f"  --gradient-bayer-{name}: url('/patterns/aside-{name}.svg');")
+
+    aside_css_lines.append("}")
+
+    aside_css_file.write_text('\n'.join(aside_css_lines))
+    print(f"Generated: {aside_css_file.relative_to(output_dir.parent.parent)}")
 
 
 if __name__ == '__main__':

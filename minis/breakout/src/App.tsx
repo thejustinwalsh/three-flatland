@@ -130,7 +130,7 @@ export default function App() {
 
   return (
     <div style={{ width: '100%', height: '100%' }}>
-      <MiniBreakout zzfx={zzfx} isVisible={true} />
+      <MiniBreakout zzfx={zzfx} isVisible={true} showStats />
     </div>
   )
 }

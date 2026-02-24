@@ -169,8 +169,23 @@ export function createWallTexture(): CanvasTexture {
 }
 
 /**
- * Create background texture
+ * Create background texture (semi-transparent so page gradient shows through)
  */
 export function createBackgroundTexture(): CanvasTexture {
-  return createSolidTexture('#0a0a23')
+  const size = 4
+  const canvas = document.createElement('canvas')
+  canvas.width = size
+  canvas.height = size
+  const ctx = canvas.getContext('2d')!
+
+  ctx.clearRect(0, 0, size, size)
+  ctx.fillStyle = 'rgba(10, 10, 35, 0.65)'
+  ctx.fillRect(0, 0, size, size)
+
+  const texture = new CanvasTexture(canvas)
+  texture.minFilter = NearestFilter
+  texture.magFilter = NearestFilter
+  texture.colorSpace = SRGBColorSpace
+  texture.generateMipmaps = false
+  return texture
 }

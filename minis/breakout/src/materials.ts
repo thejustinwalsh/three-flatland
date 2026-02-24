@@ -18,7 +18,6 @@ import {
   createBlockTexture,
   createNoiseTexture,
   createWallTexture,
-  createBackgroundTexture,
 } from './textures'
 import {
   BLOCK_WIDTH,
@@ -134,8 +133,6 @@ export function useGameMaterials() {
     const paddleTex = createPaddleTexture()
     const blockTex = createBlockTexture()
     const wallTex = createWallTexture()
-    const bgTex = createBackgroundTexture()
-
     return {
       ball: createBallMaterial(ballTex),
       paddle: new Sprite2DMaterial({
@@ -144,7 +141,6 @@ export function useGameMaterials() {
       }),
       blocks: [createBlockMaterial(blockTex)],
       wall: new Sprite2DMaterial({ map: wallTex }),
-      background: new Sprite2DMaterial({ map: bgTex }),
     }
   }, [])
 

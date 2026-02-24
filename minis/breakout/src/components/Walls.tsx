@@ -13,21 +13,11 @@ const WALL_THICKNESS = 0.06
 
 interface WallsRendererProps {
   wallMaterial: Sprite2DMaterial
-  bgMaterial: Sprite2DMaterial
 }
 
-export function WallsRenderer({ wallMaterial, bgMaterial }: WallsRendererProps) {
+export function WallsRenderer({ wallMaterial }: WallsRendererProps) {
   return (
     <>
-      {/* Background */}
-      <sprite2D
-        material={bgMaterial}
-        position={[0, 0, -0.1]}
-        scale={[WORLD_WIDTH, WORLD_HEIGHT, 1]}
-        layer={Layers.GROUND}
-        zIndex={0}
-      />
-
       {/* Left wall */}
       <sprite2D
         material={wallMaterial}

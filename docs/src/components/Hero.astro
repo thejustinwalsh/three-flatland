@@ -1,14 +1,44 @@
 ---
 /**
  * Custom Hero component - transparent, lets page gradient show through.
- * No separate hero gradient needed.
+ * Mini-game replaces the image slot.
  */
-import type { Props } from '@astrojs/starlight/props';
-import Default from '@astrojs/starlight/components/Hero.astro';
+import LinkButton from './LinkButton.astro';
+import HeroGame from './HeroGame';
+
+// Starlight's internal constant for the page title anchor
+const PAGE_TITLE_ID = '_top';
+
+const { data } = Astro.locals.starlightRoute.entry;
+const { title = data.title, tagline, actions = [] } = data.hero || {};
 ---
 
 <div class="retro-hero-wrapper">
-  <Default {...Astro.props}><slot /></Default>
+	<div class="hero">
+		<div class="hero-game">
+			<HeroGame client:load />
+		</div>
+		<div class="sl-flex stack">
+			<div class="sl-flex copy">
+				<h1 id={PAGE_TITLE_ID} data-page-title set:html={title} />
+				{tagline && <div class="tagline" set:html={tagline} />}
+			</div>
+			{
+				actions.length > 0 && (
+					<div class="sl-flex actions">
+						{actions.map(
+							({ attrs: { class: className, ...attrs } = {}, icon, link: href, text, variant }: any) => (
+								<LinkButton {href} {variant} icon={icon?.name} class:list={[className]} {...attrs}>
+									{text}
+									{icon?.html && <Fragment set:html={icon.html} />}
+								</LinkButton>
+							)
+						)}
+					</div>
+				)
+			}
+		</div>
+	</div>
 </div>
 
 <style>
@@ -17,22 +47,50 @@ import Default from '@astrojs/starlight/components/Hero.astro';
   }
 
   /* Transparent hero - page gradient shows through */
-  .retro-hero-wrapper :global(.hero) {
+  .retro-hero-wrapper .hero {
+    display: grid;
+    align-items: center;
+    gap: 1rem;
+    padding-bottom: 1rem;
     position: relative;
     z-index: 10;
     background: transparent !important;
   }
 
   /* Remove any default hero backgrounds/overlays */
-  .retro-hero-wrapper :global(.hero)::before,
-  .retro-hero-wrapper :global(.hero)::after,
-  .retro-hero-wrapper :global(.hero .hero-html)::before,
-  .retro-hero-wrapper :global(.hero .hero-html)::after {
+  .retro-hero-wrapper .hero::before,
+  .retro-hero-wrapper .hero::after {
     display: none !important;
   }
 
+  .hero-game {
+    width: min(70%, 20rem);
+    aspect-ratio: 3 / 2;
+    margin-inline: auto;
+    overflow: hidden;
+  }
+
+  .stack {
+    flex-direction: column;
+    gap: clamp(1.5rem, calc(1.5rem + 1vw), 2rem);
+    text-align: center;
+  }
+
+  .copy {
+    flex-direction: column;
+    gap: 1rem;
+    align-items: center;
+  }
+
+  .copy > * {
+    max-width: 50ch;
+  }
+
   /* Title with dark outline for contrast */
-  .retro-hero-wrapper :global(.hero h1) {
+  .retro-hero-wrapper .hero h1 {
+    font-size: clamp(var(--sl-text-3xl), calc(0.25rem + 5vw), var(--sl-text-6xl));
+    line-height: var(--sl-line-height-headings);
+    font-weight: 600;
     color: var(--retro-white) !important;
     text-shadow:
       -2px -2px 0 var(--retro-navy),
@@ -44,7 +102,8 @@ import Default from '@astrojs/starlight/components/Hero.astro';
   }
 
   /* Tagline with dark outline */
-  .retro-hero-wrapper :global(.hero .tagline) {
+  .retro-hero-wrapper .hero .tagline {
+    font-size: clamp(var(--sl-text-base), calc(0.0625rem + 2vw), var(--sl-text-xl));
     color: var(--retro-white);
     text-shadow:
       -1px -1px 0 var(--retro-navy),
@@ -53,11 +112,46 @@ import Default from '@astrojs/starlight/components/Hero.astro';
       1px 1px 0 var(--retro-navy);
   }
 
+  .actions {
+    gap: 1rem 2rem;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  /* ==========================================================================
+     DESKTOP
+     ========================================================================== */
+
+  @media (min-width: 50rem) {
+    .retro-hero-wrapper .hero {
+      grid-template-columns: 7fr 4fr;
+      gap: 3%;
+      padding-block: clamp(2.5rem, calc(1rem + 10vmin), 10rem);
+    }
+
+    .hero-game {
+      order: 2;
+      width: min(100%, 25rem);
+    }
+
+    .stack {
+      text-align: start;
+    }
+
+    .copy {
+      align-items: flex-start;
+    }
+
+    .actions {
+      justify-content: flex-start;
+    }
+  }
+
   /* ==========================================================================
      LIGHT MODE
      ========================================================================== */
 
-  :global([data-theme='light']) .retro-hero-wrapper :global(.hero) {
+  :global([data-theme='light']) .retro-hero-wrapper .hero {
     background: linear-gradient(
       to bottom,
       #e8e5d0 0%,
@@ -65,12 +159,12 @@ import Default from '@astrojs/starlight/components/Hero.astro';
     ) !important;
   }
 
-  :global([data-theme='light']) .retro-hero-wrapper :global(.hero h1) {
+  :global([data-theme='light']) .retro-hero-wrapper .hero h1 {
     color: var(--retro-black) !important;
     text-shadow: none !important;
   }
 
-  :global([data-theme='light']) .retro-hero-wrapper :global(.hero .tagline) {
+  :global([data-theme='light']) .retro-hero-wrapper .hero .tagline {
     color: var(--retro-black);
     text-shadow: none;
   }
@@ -80,7 +174,7 @@ import Default from '@astrojs/starlight/components/Hero.astro';
      ========================================================================== */
 
   @media (max-width: 768px) {
-    .retro-hero-wrapper :global(.hero h1) {
+    .retro-hero-wrapper .hero h1 {
       text-shadow:
         -1px -1px 0 var(--retro-navy),
         1px -1px 0 var(--retro-navy),

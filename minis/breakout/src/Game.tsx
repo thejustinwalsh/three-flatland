@@ -103,16 +103,14 @@ function GameScene({ soundsRef, isVisible, onStateChange }: GameSceneProps) {
     // Cap delta to prevent large jumps
     const dt = Math.min(delta, 0.05)
 
-    // Track FPS in dev mode
-    if (import.meta.env.DEV) {
-      const fps = fpsRef.current
-      fps.frames++
-      fps.time += delta
-      if (fps.time >= 0.5) {
-        fps.current = Math.round(fps.frames / fps.time)
-        fps.frames = 0
-        fps.time = 0
-      }
+    // Track FPS
+    const fps = fpsRef.current
+    fps.frames++
+    fps.time += delta
+    if (fps.time >= 0.5) {
+      fps.current = Math.round(fps.frames / fps.time)
+      fps.frames = 0
+      fps.time = 0
     }
 
     if (!world.has(GameStateTrait)) return
@@ -122,7 +120,8 @@ function GameScene({ soundsRef, isVisible, onStateChange }: GameSceneProps) {
     // Update React state for UI — only when values actually change
     const stats = flatlandRef.current?.stats
     const prev = prevStateRef.current
-    if (
+    const currentFps = fpsRef.current.current
+    const gameChanged =
       !prev ||
       prev.mode !== state.mode ||
       prev.score !== state.score ||
@@ -131,7 +130,14 @@ function GameScene({ soundsRef, isVisible, onStateChange }: GameSceneProps) {
       prev.level !== state.level ||
       prev.lives !== state.lives ||
       prev.multiplier !== state.multiplier
-    ) {
+    const statsChanged = stats && (
+      !prev?.batchStats ||
+      prev.batchStats.spriteCount !== stats.spriteCount ||
+      prev.batchStats.batchCount !== stats.batchCount ||
+      prev.batchStats.drawCalls !== stats.drawCalls ||
+      prev.batchStats.fps !== currentFps
+    )
+    if (gameChanged || statsChanged) {
       const next: GameDisplayState = {
         mode: state.mode,
         score: state.score,
@@ -144,7 +150,7 @@ function GameScene({ soundsRef, isVisible, onStateChange }: GameSceneProps) {
           spriteCount: stats.spriteCount,
           batchCount: stats.batchCount,
           drawCalls: stats.drawCalls,
-          fps: fpsRef.current.current,
+          fps: currentFps,
         } : undefined,
       }
       prevStateRef.current = next
@@ -238,11 +244,8 @@ function GameScene({ soundsRef, isVisible, onStateChange }: GameSceneProps) {
   return (
     <>
       {/* All sprites batched via Flatland */}
-      <flatland ref={flatlandRef} viewSize={5} clearColor={0x0a0a23}>
-        <WallsRenderer
-          wallMaterial={materials.wall}
-          bgMaterial={materials.background}
-        />
+      <flatland ref={flatlandRef} viewSize={5} clearColor={0x0a0a23} clearAlpha={0}>
+        <WallsRenderer wallMaterial={materials.wall} />
         <BlocksRenderer material={materials.blocks[0]!} />
         <BallRenderer material={materials.ball} />
         <PaddleRenderer material={materials.paddle} />
@@ -255,6 +258,7 @@ export default function MiniBreakout({
   zzfx = noopZzfx,
   isVisible = true,
   className,
+  showStats = false,
   onInteraction,
 }: MiniGameProps & { onInteraction?: () => void }) {
   const soundsRef = useRef<SoundPlayer | null>(null)
@@ -378,7 +382,7 @@ export default function MiniBreakout({
       {world && (
         <WorldProvider world={world}>
           <Canvas
-            renderer={{ antialias: false }}
+            renderer={{ antialias: false, alpha: true }}
           >
             <GameScene
               soundsRef={soundsRef}
@@ -395,17 +399,19 @@ export default function MiniBreakout({
             lives={gameState.lives}
             multiplier={gameState.multiplier}
           />
-          {/* Dev stats overlay */}
-          {import.meta.env.DEV && gameState.batchStats && (
+          {/* Stats overlay — controlled via showStats prop */}
+          {showStats && gameState.batchStats && (
             <div
               style={{
                 position: 'absolute',
                 bottom: 4,
-                left: 4,
+                left: '50%',
+                transform: 'translateX(-50%)',
                 fontSize: 10,
                 fontFamily: 'monospace',
                 color: 'rgba(255, 255, 255, 0.5)',
                 pointerEvents: 'none',
+                whiteSpace: 'nowrap',
               }}
             >
               {gameState.batchStats.fps} fps • {gameState.batchStats.spriteCount} sprites • {gameState.batchStats.batchCount} batches • {gameState.batchStats.drawCalls} draws

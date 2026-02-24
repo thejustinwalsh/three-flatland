@@ -591,6 +591,191 @@ function setupViewTransitionSupport() {
   });
 }
 
+// Type for ZzFX-compatible sound function (used by mini-games)
+export type PlaySoundFn = (...params: ZzFXParams) => void;
+
+/**
+ * Creates a ZzFX-compatible function for mini-games.
+ * Caches generated audio buffers by parameter hash for performance.
+ * Respects the docs site volume settings.
+ */
+function createZzfxProxy(): PlaySoundFn {
+  const cache = new Map<string, Float32Array>();
+
+  return (...params: ZzFXParams) => {
+    if (!isSoundEnabled() || !zzfxX) return;
+
+    const key = JSON.stringify(params);
+
+    // Check cache first
+    let data: Float32Array | undefined = cache.get(key);
+    if (!data) {
+      // Generate using the same logic as zzfx
+      const generated = generateZzfxBuffer(params);
+      if (generated) {
+        data = generated;
+        cache.set(key, data);
+      }
+    }
+
+    if (data) {
+      playBuffer(data);
+    }
+  };
+}
+
+/**
+ * Generate ZzFX audio buffer data from parameters
+ */
+function generateZzfxBuffer(params: ZzFXParams): Float32Array | null {
+  if (!zzfxX) return null;
+
+  const [
+    volume = 1,
+    randomness = 0.05,
+    frequency = 220,
+    attack = 0,
+    sustain = 0,
+    release = 0.1,
+    shape = 0,
+    shapeCurve = 1,
+    slide = 0,
+    deltaSlide = 0,
+    pitchJump = 0,
+    pitchJumpTime = 0,
+    repeatTime = 0,
+    noise = 0,
+    modulation = 0,
+    bitCrush = 0,
+    delay = 0,
+    sustainVolume = 1,
+    decay = 0,
+    tremolo = 0,
+    filter = 0,
+  ] = params;
+
+  const sampleRate = zzfxX.sampleRate;
+  const PI2 = Math.PI * 2;
+
+  const startFrequency = frequency * (1 + randomness * 2 * (Math.random() - 0.5));
+  const startSlide = slide * (1 + randomness * 2 * (Math.random() - 0.5));
+
+  const duration = attack + sustain + release + delay;
+  const length = (duration * sampleRate) | 0;
+
+  if (length <= 0) return null;
+
+  const data = new Float32Array(length);
+
+  let f = startFrequency;
+  let t = 0;
+  let tm = 0;
+  let j = 1;
+  let r = 0;
+  let c = 0;
+  let s = 0;
+  let d = 1;
+  const attackTime = attack * sampleRate;
+  const sustainTime = (attack + sustain) * sampleRate;
+  const releaseTime = (attack + sustain + release) * sampleRate;
+  const decayTime = decay * sampleRate;
+
+  for (let i = 0; i < length; i++) {
+    if (i < attackTime) {
+      d = i / attackTime;
+    } else if (i < decayTime + attackTime) {
+      d = 1 - (1 - sustainVolume) * ((i - attackTime) / decayTime);
+    } else if (i < sustainTime) {
+      d = sustainVolume;
+    } else if (i < releaseTime) {
+      d = sustainVolume * (1 - (i - sustainTime) / (release * sampleRate));
+    } else {
+      d = 0;
+    }
+
+    f += startSlide + deltaSlide;
+
+    if (pitchJump && ++j > pitchJumpTime * sampleRate) {
+      f += pitchJump;
+      j = 0;
+    }
+
+    if (repeatTime && ++r > repeatTime * sampleRate) {
+      f = startFrequency;
+      r = 0;
+    }
+
+    t += f * PI2 / sampleRate;
+    tm += (f + modulation * noise) * PI2 / sampleRate;
+
+    let sample = 0;
+    if (shape === 0) {
+      sample = Math.sin(t);
+    } else if (shape === 1) {
+      sample = Math.sin(t) > 0 ? 1 : -1;
+    } else if (shape === 2) {
+      sample = (t / PI2) % 1 * 2 - 1;
+    } else if (shape === 3) {
+      sample = 1 - Math.abs((t / PI2) % 1 * 2 - 1) * 2;
+    } else if (shape === 4) {
+      sample = Math.random() * 2 - 1;
+    }
+
+    if (shapeCurve !== 1) {
+      sample = Math.sign(sample) * Math.pow(Math.abs(sample), shapeCurve);
+    }
+
+    if (noise) {
+      sample += noise * (Math.random() * 2 - 1);
+    }
+
+    if (tremolo) {
+      sample *= 1 - tremolo * (0.5 + 0.5 * Math.sin(PI2 * i / sampleRate / 0.02));
+    }
+
+    if (bitCrush) {
+      const bits = Math.pow(2, bitCrush);
+      sample = Math.round(sample * bits) / bits;
+    }
+
+    if (filter) {
+      c += (sample - s) * filter;
+      s += c;
+      c *= 0.99 - filter * 0.4;
+      sample = s;
+    }
+
+    if (i < delay * sampleRate) {
+      sample = 0;
+    }
+
+    data[i] = sample * d * volume;
+  }
+
+  return data;
+}
+
+/**
+ * Play a pre-generated audio buffer
+ */
+function playBuffer(data: Float32Array): void {
+  if (!zzfxX) return;
+
+  const buffer = zzfxX.createBuffer(1, data.length, zzfxX.sampleRate);
+  const channelData = buffer.getChannelData(0);
+
+  // Apply current volume level
+  const vol = getZzfxV();
+  for (let i = 0; i < data.length; i++) {
+    channelData[i] = data[i] * vol;
+  }
+
+  const source = zzfxX.createBufferSource();
+  source.buffer = buffer;
+  source.connect(zzfxX.destination);
+  source.start();
+}
+
 // Export for use in components
 export {
   initAudio,
@@ -614,4 +799,6 @@ export {
   playWarp,
   setupSoundEvents,
   setupViewTransitionSupport,
+  createZzfxProxy,
+  type ZzFXParams,
 };
