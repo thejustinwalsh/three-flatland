@@ -19,8 +19,6 @@ const Flash = createMaterialEffect({
   node: ({ inputColor }) => inputColor,
 })
 
-const flush = () => new Promise<void>((r) => queueMicrotask(r))
-
 describe('attachEffect', () => {
   let texture: Texture
   let material: Sprite2DMaterial
@@ -28,7 +26,6 @@ describe('attachEffect', () => {
 
   beforeEach(() => {
     texture = new Texture()
-    // @ts-expect-error - mocking image for tests
     texture.image = { width: 100, height: 100 }
     material = new Sprite2DMaterial({ map: texture })
     sprite = new Sprite2D({ texture, material })
@@ -68,29 +65,16 @@ describe('attachEffect', () => {
     expect((sprite._effects[0] as any).progress).toBeCloseTo(0.7)
   })
 
-  it('defers removal to microtask', async () => {
+  it('removes effect synchronously on cleanup', () => {
     const d = new Dissolve()
     const cleanup = attachEffect(sprite, d)
 
     cleanup()
-    expect(sprite._effects).toHaveLength(1) // still there
-
-    await flush()
-    expect(sprite._effects).toHaveLength(0) // now removed
-  })
-
-  it('real unmount removes correctly', async () => {
-    const d = new Dissolve()
-    const cleanup = attachEffect(sprite, d)
-
-    cleanup()
-    await flush()
-
     expect(sprite._effects).toHaveLength(0)
     expect(sprite._effectFlags).toBe(0)
   })
 
-  it('does not interfere with different effect types', async () => {
+  it('does not interfere with different effect types', () => {
     const d = new Dissolve()
     const f = new Flash()
 
@@ -100,19 +84,16 @@ describe('attachEffect', () => {
     expect(sprite._effects).toHaveLength(2)
 
     cleanupD()
-    await flush()
 
     expect(sprite._effects).toHaveLength(1)
     expect(sprite._effects[0]!.name).toBe('flash_attach_test')
   })
 
-  it('allows re-adding after real removal', async () => {
+  it('allows re-adding after removal', () => {
     const d1 = new Dissolve()
     const cleanup = attachEffect(sprite, d1)
 
-    // Real unmount
     cleanup()
-    await flush()
     expect(sprite._effects).toHaveLength(0)
 
     // Re-mount
