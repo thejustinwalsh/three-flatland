@@ -1,5 +1,25 @@
 import type { GameMode } from '../types'
 
+let stylesInjected = false
+function injectStyles() {
+  if (stylesInjected) return
+  stylesInjected = true
+
+  const link = document.createElement('link')
+  link.rel = 'stylesheet'
+  link.href = 'https://fonts.googleapis.com/css2?family=Silkscreen&display=swap'
+  document.head.appendChild(link)
+
+  const style = document.createElement('style')
+  style.textContent = `
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+  `
+  document.head.appendChild(style)
+}
+
 interface UIProps {
   mode: GameMode
   score: number
@@ -11,6 +31,7 @@ interface UIProps {
 }
 
 export function GameUI({ mode, score, highScore, highScoreLevel, level, lives, multiplier }: UIProps) {
+  injectStyles()
   const displayScore = Math.floor(score)
   const displayHigh = Math.floor(highScore)
   const showHud = mode === 'ready' || mode === 'playing'
@@ -115,14 +136,6 @@ export function GameUI({ mode, score, highScore, highScoreLevel, level, lives, m
         </div>
       )}
 
-      {/* Load pixel font + CSS animation */}
-      <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Silkscreen&display=swap');
-        @keyframes pulse {
-          0%, 100% { opacity: 1; }
-          50% { opacity: 0.5; }
-        }
-      `}</style>
     </div>
   )
 }

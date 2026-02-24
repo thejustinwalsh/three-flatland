@@ -4,13 +4,8 @@
 import type { Sprite2D, MaterialEffect } from '@three-flatland/core'
 
 /**
- * R3F attach helper that prevents unnecessary effect churn.
- *
- * R3F calls attach for ALL children on every re-render, creating new
- * instances each time. This helper skips the add if the sprite already
- * has an effect of the same type, and defers removal to a microtask
- * so that a detach followed by an immediate re-attach is a no-op.
- *
+ * R3F attach helper for MaterialEffect instances.
+ * Use as the `attach` prop when adding effects as children of a sprite2D:
  * @example
  * ```tsx
  * import { attachEffect } from '@three-flatland/react'
@@ -20,19 +15,7 @@ import type { Sprite2D, MaterialEffect } from '@three-flatland/core'
  * </sprite2D>
  * ```
  */
-export function attachEffect(parent: object, self: MaterialEffect): () => void {
-  const sprite = parent as Sprite2D
-
-  const alreadyAttached = sprite._effects.includes(self)
-  if (!alreadyAttached) {
-    sprite.addEffect(self)
-  }
-
-  return () => {
-    queueMicrotask(() => {
-      if (sprite._effects.includes(self)) {
-        sprite.removeEffect(self)
-      }
-    })
-  }
+export function attachEffect<T extends MaterialEffect>(parent: Sprite2D, self: T): () => void {
+  parent.addEffect(self)
+  return () => parent.removeEffect(self)
 }

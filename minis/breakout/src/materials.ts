@@ -148,13 +148,5 @@ export function useGameMaterials() {
     }
   }, [])
 
-  // Uniforms for time-based effects (can add more later)
-  const uniforms = useMemo(
-    () => ({
-      time: { value: 0 },
-    }),
-    []
-  )
-
-  return { uniforms, materials }
+  return { materials }
 }

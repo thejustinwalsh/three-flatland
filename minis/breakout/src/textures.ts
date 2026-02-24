@@ -142,17 +142,15 @@ export function createNoiseTexture(size: number = 64): CanvasTexture {
 }
 
 /**
- * Create a simple wall/background tile
+ * Create a solid-color texture tile
  */
-export function createWallTexture(): CanvasTexture {
-  const size = 4
+function createSolidTexture(color: string, size = 4): CanvasTexture {
   const canvas = document.createElement('canvas')
   canvas.width = size
   canvas.height = size
   const ctx = canvas.getContext('2d')!
 
-  // Solid dark color
-  ctx.fillStyle = '#1a1a3e'
+  ctx.fillStyle = color
   ctx.fillRect(0, 0, size, size)
 
   const texture = new CanvasTexture(canvas)
@@ -164,23 +162,15 @@ export function createWallTexture(): CanvasTexture {
 }
 
 /**
+ * Create a simple wall/background tile
+ */
+export function createWallTexture(): CanvasTexture {
+  return createSolidTexture('#1a1a3e')
+}
+
+/**
  * Create background texture
  */
 export function createBackgroundTexture(): CanvasTexture {
-  const size = 4
-  const canvas = document.createElement('canvas')
-  canvas.width = size
-  canvas.height = size
-  const ctx = canvas.getContext('2d')!
-
-  // Solid very dark color
-  ctx.fillStyle = '#0a0a23'
-  ctx.fillRect(0, 0, size, size)
-
-  const texture = new CanvasTexture(canvas)
-  texture.minFilter = NearestFilter
-  texture.magFilter = NearestFilter
-  texture.colorSpace = SRGBColorSpace
-  texture.generateMipmaps = false
-  return texture
+  return createSolidTexture('#0a0a23')
 }

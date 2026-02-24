@@ -5,6 +5,7 @@ import {
   WORLD_RIGHT,
   WORLD_TOP,
   BALL_SPEED_INCREASE,
+  BALL_LOST_Y,
   POINTS_PER_BLOCK,
   STREAK_INTERVAL,
 } from './constants'
@@ -130,10 +131,8 @@ export function wallCollision(world: World, sounds: SoundPlayer | null) {
  * Handle ball collision with paddle
  */
 export function paddleCollision(world: World, sounds: SoundPlayer | null) {
-  const paddles = [...world.query(Paddle, Position, Bounds, PaddleState)]
-  if (paddles.length === 0) return
-
-  const paddle = paddles[0]!
+  const paddle = world.query(Paddle, Position, Bounds, PaddleState)[0]
+  if (!paddle) return
   const paddlePos = paddle.get(Position)!
   const paddleBounds = paddle.get(Bounds)!
 
@@ -162,7 +161,6 @@ export function paddleCollision(world: World, sounds: SoundPlayer | null) {
     if (hit) {
       // Contact point along the sweep
       const contactX = startX + (ballPos.x - startX) * hit.t
-      const contactY = startY + (ballPos.y - startY) * hit.t
 
       // Calculate bounce angle based on where ball hit paddle
       const hitOffset = (contactX - paddlePos.x) / (paddleBounds.width / 2)
@@ -202,7 +200,7 @@ export function blockCollision(
   onBlockDestroyed: () => void,
 ) {
   // Only collide with blocks that aren't already dissolving
-  const blocks = [...world.query(Block, Position, Bounds, Not(Dissolving))]
+  const blocks = world.query(Block, Position, Bounds, Not(Dissolving))
 
   for (const ball of world.query(Ball, Position, Velocity, Bounds)) {
     const ballPos = ball.get(Position)!
@@ -277,7 +275,6 @@ export function blockCollision(
           const s = newStreak / (STREAK_INTERVAL / 2)
           const newMultiplier = 1 + Math.floor((-1 + Math.sqrt(1 + 4 * s)) / 2)
           world.set(GameState, {
-            ...state,
             score: state.score + POINTS_PER_BLOCK * newMultiplier,
             streak: newStreak,
             multiplier: newMultiplier,
@@ -311,7 +308,7 @@ export function updateDissolving(world: World, dt: number) {
       // the dissolve shader handles hiding via discard, entity cleanup is deferred.
       block.destroy()
     } else {
-      block.set(Dissolving, { ...dissolving, progress: newProgress })
+      block.set(Dissolving, { progress: newProgress })
     }
   }
 }
@@ -328,7 +325,7 @@ export function updateBallFlash(world: World, dt: number) {
       // Flash complete - remove trait
       ball.remove(BallFlash)
     } else {
-      ball.set(BallFlash, { ...flash, amount: newAmount })
+      ball.set(BallFlash, { amount: newAmount })
     }
   }
 }
@@ -342,7 +339,7 @@ export function checkBallLost(world: World): boolean {
     const bounds = ball.get(Bounds)!
 
     // Ball is lost if it's below the bottom of the screen
-    if (pos.y + bounds.height / 2 < -2.5) {
+    if (pos.y + bounds.height / 2 < BALL_LOST_Y) {
       return true
     }
   }

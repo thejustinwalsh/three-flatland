@@ -32,6 +32,9 @@ export const GAME_OVER_DURATION = 2.5 // Seconds before returning to attract
 export const READY_DURATION = 2.0 // Seconds for 3-2-1 countdown before ball launch
 export const ATTRACT_BALL_SPEED = 2.5 // Slower in attract mode
 
+// Ball lost threshold (below this Y the ball is considered lost)
+export const BALL_LOST_Y = WORLD_BOTTOM - 0.5
+
 // Scoring
 export const POINTS_PER_BLOCK = 10
 export const STREAK_INTERVAL = 8 // Blocks between multiplier bumps

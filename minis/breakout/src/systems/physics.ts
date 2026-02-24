@@ -1,5 +1,5 @@
 import { Not, type World } from 'koota'
-import { Position, PrevPosition, Velocity, Ball, Paddle, Block, PaddleState, GameState, Input, Bounds, Dissolving } from '../traits'
+import { Position, PrevPosition, Velocity, Ball, Paddle, Block, PaddleState, GameState, Input, Dissolving, AttractAI } from '../traits'
 import {
   PADDLE_BUMP_FORCE,
   PADDLE_BUMP_DECAY,
@@ -43,10 +43,8 @@ export function moveBall(world: World, delta: number) {
  * Used by both player (real mouse) and AI (virtual mouse).
  */
 export function updatePaddle(world: World, delta: number, sounds: SoundPlayer | null) {
-  const paddles = [...world.query(Paddle, Position, PaddleState)]
-  if (paddles.length === 0) return
-
-  const paddle = paddles[0]!
+  const paddle = world.query(Paddle, Position, PaddleState)[0]
+  if (!paddle) return
 
   if (!world.has(Input) || !world.has(GameState)) return
 
@@ -62,7 +60,6 @@ export function updatePaddle(world: World, delta: number, sounds: SoundPlayer | 
       velocityX: paddleState.velocityX,
     })
     world.set(Input, {
-      ...input,
       doubleTap: false,
     })
     sounds?.paddleHit()
@@ -119,28 +116,9 @@ export function updatePaddle(world: World, delta: number, sounds: SoundPlayer | 
 
 // --- Attract mode AI ---
 // Three layers of smoothing, just like a human:
-// 1. aiGoalX: the AI's mental model of where the ball will land (lerps toward prediction)
-// 2. aiMouseX: where the virtual mouse is (lerps toward aiGoalX, like a hand moving a mouse)
+// 1. goalX: the AI's mental model of where the ball will land (lerps toward prediction)
+// 2. mouseX: where the virtual mouse is (lerps toward goalX, like a hand moving a mouse)
 // 3. updatePaddle: the paddle lerps toward the mouse (same as player)
-
-let aiGoalX = 0 // Smoothed prediction target — the AI's "intent"
-let aiMouseX = 0 // Virtual mouse position — what gets written to Input
-
-// Slow-drifting bias for subtle imperfection
-let aiOffset = 0
-let aiOffsetTarget = 0
-let aiOffsetTimer = 0
-
-/**
- * Reset AI state (call when entering attract mode)
- */
-export function resetAttractAI() {
-  aiGoalX = 0
-  aiMouseX = 0
-  aiOffset = 0
-  aiOffsetTarget = 0
-  aiOffsetTimer = 0
-}
 
 /**
  * Predict where the ball will intersect the paddle Y plane,
@@ -224,9 +202,9 @@ const AI_MOUSE_LERP = 5.0
  * Writes to Input trait so updatePaddle handles actual paddle movement.
  */
 export function updateAttractAI(world: World, delta: number) {
-  if (!world.has(Input)) return
+  if (!world.has(Input) || !world.has(AttractAI)) return
 
-  const input = world.get(Input)!
+  const ai = world.get(AttractAI)!
 
   // Find ball state
   let ballX = 0, ballY = 0, velX = 0, velY = 0
@@ -246,34 +224,37 @@ export function updateAttractAI(world: World, delta: number) {
   // Raw prediction of where ball will land
   let rawTarget = predictBallLanding(ballX, ballY, velX, velY)
 
-  // Bias toward nearest block column
-  const nearestBlockX = findNearestBlockX(world, rawTarget)
-  if (nearestBlockX !== null) {
-    const blockDir = nearestBlockX - rawTarget
-    rawTarget -= blockDir * 0.15
+  // Occasionally bias toward nearest block column (~20% of the time, stronger effect)
+  if (Math.random() < 0.2) {
+    const nearestBlockX = findNearestBlockX(world, rawTarget)
+    if (nearestBlockX !== null) {
+      const blockDir = nearestBlockX - rawTarget
+      rawTarget += blockDir * 0.5
+    }
   }
 
   // Slow-drifting imperfection bias
-  aiOffsetTimer -= delta
-  if (aiOffsetTimer <= 0) {
-    aiOffsetTarget = (Math.random() - 0.5) * 0.4
-    aiOffsetTimer = 4.0 + Math.random() * 4.0
+  let { offset, offsetTarget, offsetTimer } = ai
+  offsetTimer -= delta
+  if (offsetTimer <= 0) {
+    offsetTarget = (Math.random() - 0.5) * 0.4
+    offsetTimer = 4.0 + Math.random() * 4.0
   }
-  aiOffset += (aiOffsetTarget - aiOffset) * 0.3 * delta
-  rawTarget += aiOffset
+  offset += (offsetTarget - offset) * 0.3 * delta
+  rawTarget += offset
 
   // Layer 1: Smoothly update the AI's goal (mental model of where to be)
-  // This prevents the target from jumping when the prediction changes
-  aiGoalX += (rawTarget - aiGoalX) * Math.min(1, AI_GOAL_LERP * delta)
+  const goalX = ai.goalX + (rawTarget - ai.goalX) * Math.min(1, AI_GOAL_LERP * delta)
 
   // Layer 2: Smoothly move the virtual mouse toward the goal
-  // This simulates the physical speed of moving a mouse
-  aiMouseX += (aiGoalX - aiMouseX) * Math.min(1, AI_MOUSE_LERP * delta)
+  const mouseX = ai.mouseX + (goalX - ai.mouseX) * Math.min(1, AI_MOUSE_LERP * delta)
+
+  // Write AI state back to trait
+  world.set(AttractAI, { goalX, mouseX, offset, offsetTarget, offsetTimer })
 
   // Write virtual mouse to Input trait — updatePaddle handles the rest (layer 3)
   world.set(Input, {
-    ...input,
-    pointerX: aiMouseX,
+    pointerX: mouseX,
     mouseActive: true,
   })
 }

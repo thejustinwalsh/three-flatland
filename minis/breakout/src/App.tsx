@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import MiniBreakout from './Game'
 import type { PlaySoundFn, ZzFXParams } from './types'
 
@@ -110,15 +110,13 @@ function createZzfx(): PlaySoundFn {
 
 export default function App() {
   const [zzfx, setZzfx] = useState<PlaySoundFn>(() => () => {})
-  const [initialized, setInitialized] = useState(false)
+  const initRef = useRef(false)
 
   useEffect(() => {
-    // Initialize audio on first click
     const init = () => {
-      if (!initialized) {
-        setZzfx(() => createZzfx())
-        setInitialized(true)
-      }
+      if (initRef.current) return
+      initRef.current = true
+      setZzfx(() => createZzfx())
     }
 
     window.addEventListener('click', init, { once: true })
@@ -128,7 +126,7 @@ export default function App() {
       window.removeEventListener('click', init)
       window.removeEventListener('touchstart', init)
     }
-  }, [initialized])
+  }, [])
 
   return (
     <div style={{ width: '100%', height: '100%' }}>

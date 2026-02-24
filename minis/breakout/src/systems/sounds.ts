@@ -33,26 +33,26 @@ export const COUNTDOWN_TICK: ZzFXParams = [0.15, 0, 500, 0, 0.015, 0.03, 0]
  * Create a sound player bound to a zzfx function
  */
 export function createSoundPlayer(zzfx: PlaySoundFn) {
-  let lastSoundTime = 0
+  const lastSoundTimes = new Map<string, number>()
   const MIN_INTERVAL = 30 // ms debounce
 
-  const play = (params: ZzFXParams) => {
+  const play = (name: string, params: ZzFXParams) => {
     const now = Date.now()
-    if (now - lastSoundTime < MIN_INTERVAL) return
-    lastSoundTime = now
+    if (now - (lastSoundTimes.get(name) ?? 0) < MIN_INTERVAL) return
+    lastSoundTimes.set(name, now)
     zzfx(...params)
   }
 
   return {
-    paddleHit: () => play(PADDLE_HIT),
-    wallHit: () => play(WALL_HIT),
-    blockBreak: () => play(BLOCK_BREAK),
-    ballLaunch: () => play(BALL_LAUNCH),
-    gameOver: () => play(GAME_OVER),
-    levelClear: () => play(LEVEL_CLEAR),
-    miss: () => play(MISS),
-    gameStart: () => play(GAME_START),
-    countdownTick: () => play(COUNTDOWN_TICK),
+    paddleHit: () => play('paddleHit', PADDLE_HIT),
+    wallHit: () => play('wallHit', WALL_HIT),
+    blockBreak: () => play('blockBreak', BLOCK_BREAK),
+    ballLaunch: () => play('ballLaunch', BALL_LAUNCH),
+    gameOver: () => play('gameOver', GAME_OVER),
+    levelClear: () => play('levelClear', LEVEL_CLEAR),
+    miss: () => play('miss', MISS),
+    gameStart: () => play('gameStart', GAME_START),
+    countdownTick: () => play('countdownTick', COUNTDOWN_TICK),
   }
 }
 

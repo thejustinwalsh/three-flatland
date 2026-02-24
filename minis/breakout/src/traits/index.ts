@@ -22,6 +22,7 @@ export const GameState = trait({
   countdown: 0, // Seconds remaining in ready phase (3-2-1 before launch)
   streak: 0, // Consecutive blocks hit this ball (resets on ball loss)
   multiplier: 1, // Score multiplier — increases every STREAK_INTERVAL blocks on a curve
+  carriedBallSpeed: 0, // Ball speed carried across level clears (reset on ball loss)
 })
 
 // Input state - world trait singleton
@@ -48,7 +49,7 @@ export const PaddleState = trait({
 export const BlockState = trait({
   row: 0,
   col: 0,
-  color: [1, 1, 1] as [number, number, number], // RGB tint color (0-1)
+  color: () => [1, 1, 1] as [number, number, number], // RGB tint color (0-1)
 })
 
 // Block dissolving state (added when hit, removed when fully dissolved)
@@ -64,4 +65,13 @@ export const PrevPosition = trait({ x: 0, y: 0 })
 export const BallFlash = trait({
   amount: 0, // 0 = no flash, 1 = full white flash
   decaySpeed: 8.0, // How fast the flash fades (per second)
+})
+
+// Attract mode AI state — world trait singleton
+export const AttractAI = trait({
+  goalX: 0, // Smoothed prediction target — the AI's "intent"
+  mouseX: 0, // Virtual mouse position — what gets written to Input
+  offset: 0, // Slow-drifting bias for subtle imperfection
+  offsetTarget: 0,
+  offsetTimer: 0,
 })

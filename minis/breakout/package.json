@@ -3,19 +3,13 @@
   "version": "0.0.0",
   "description": "Flatland Breakout mini-game for docs hero",
   "type": "module",
-  "main": "./dist/index.cjs",
+  "main": "./dist/index.js",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
-      "import": {
-        "types": "./dist/index.d.ts",
-        "default": "./dist/index.js"
-      },
-      "require": {
-        "types": "./dist/index.d.cts",
-        "default": "./dist/index.cjs"
-      }
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
     }
   },
   "files": [
@@ -23,11 +17,13 @@
   ],
   "sideEffects": false,
   "scripts": {
-    "dev": "tsup src/index.ts --format esm,cjs --dts --external react --external three --external @react-three/fiber --external koota --watch",
+    "dev": "tsup src/index.ts --format esm --dts --external react --external three --external @react-three/fiber --external koota --watch",
     "dev:app": "vite dev --port ${TURBO_MFE_PORT:-5200}",
-    "build": "tsup src/index.ts --format esm,cjs --dts --external react --external three --external @react-three/fiber --external koota",
+    "build": "tsup src/index.ts --format esm --dts --external react --external three --external @react-three/fiber --external koota",
     "build:app": "vite build",
     "typecheck": "tsc --noEmit",
+    "lint": "eslint src",
+    "lint:fix": "eslint src --fix",
     "clean": "rm -rf dist"
   },
   "dependencies": {
@@ -45,6 +41,7 @@
     "@types/react-dom": "^19.0.2",
     "@types/three": "^0.183.1",
     "@vitejs/plugin-react": "^4.3.4",
+    "babel-plugin-react-compiler": "^1.0.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "three": "^0.183.1",

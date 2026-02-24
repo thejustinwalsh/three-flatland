@@ -33,7 +33,6 @@ import { GameUI } from './components/UI'
 import { createSoundPlayer, type SoundPlayer } from './systems/sounds'
 import { useGameMaterials } from './materials'
 import {
-  initWorld,
   handleMouseEnter,
   handleMouseMove,
   handleMouseClick,
@@ -49,6 +48,7 @@ import {
   loseLife,
   attractResetBall,
   attractLevelClear,
+  syncHighScore,
 } from './systems/game'
 import { moveBall, updatePaddle, updateAttractAI } from './systems/physics'
 import { wallCollision, paddleCollision, blockCollision, checkBallLost, updateDissolving, updateBallFlash } from './systems/collision'
@@ -65,7 +65,7 @@ interface BatchStats {
   fps: number
 }
 
-interface GameState {
+interface GameDisplayState {
   mode: GameMode
   score: number
   highScore: number
@@ -76,69 +76,80 @@ interface GameState {
   batchStats?: BatchStats
 }
 
-// FPS tracking (only in dev)
-let fpsFrames = 0
-let fpsTime = 0
-let currentFps = 60
-
 interface GameSceneProps {
-  sounds: SoundPlayer | null
+  soundsRef: React.RefObject<SoundPlayer | null>
   isVisible: boolean
-  onStateChange: (state: GameState) => void
+  onStateChange: (state: GameDisplayState) => void
 }
 
-function GameScene({ sounds, isVisible, onStateChange }: GameSceneProps) {
+function GameScene({ soundsRef, isVisible, onStateChange }: GameSceneProps) {
   const world = useWorld()
   const flatlandRef = useRef<FlatlandType>(null)
   const gl = useThree((s) => s.gl)
   const size = useThree((s) => s.size)
+  const prevStateRef = useRef<GameDisplayState | null>(null)
+  const fpsRef = useRef({ frames: 0, time: 0, current: 60 })
 
   // Create materials with TSL effects
-  const { uniforms, materials } = useGameMaterials()
+  const { materials } = useGameMaterials()
 
   // Game logic runs in 'update' phase (default) — same as child useFrames (Ball, Blocks)
   // which sync effect values from ECS traits to MaterialEffect instances.
   useFrame((_, delta) => {
     if (!isVisible) return
 
+    const sounds = soundsRef.current
+
     // Cap delta to prevent large jumps
     const dt = Math.min(delta, 0.05)
 
     // Track FPS in dev mode
     if (import.meta.env.DEV) {
-      fpsFrames++
-      fpsTime += delta
-      if (fpsTime >= 0.5) {
-        currentFps = Math.round(fpsFrames / fpsTime)
-        fpsFrames = 0
-        fpsTime = 0
+      const fps = fpsRef.current
+      fps.frames++
+      fps.time += delta
+      if (fps.time >= 0.5) {
+        fps.current = Math.round(fps.frames / fps.time)
+        fps.frames = 0
+        fps.time = 0
       }
     }
-
-    // Update effect uniforms
-    uniforms.time.value += dt
 
     if (!world.has(GameStateTrait)) return
 
     const state = world.get(GameStateTrait)!
 
-    // Update React state for UI
+    // Update React state for UI — only when values actually change
     const stats = flatlandRef.current?.stats
-    onStateChange({
-      mode: state.mode,
-      score: state.score,
-      highScore: state.highScore,
-      highScoreLevel: state.highScoreLevel,
-      level: state.level,
-      lives: state.lives,
-      multiplier: state.multiplier,
-      batchStats: stats ? {
-        spriteCount: stats.spriteCount,
-        batchCount: stats.batchCount,
-        drawCalls: stats.drawCalls,
-        fps: currentFps,
-      } : undefined,
-    })
+    const prev = prevStateRef.current
+    if (
+      !prev ||
+      prev.mode !== state.mode ||
+      prev.score !== state.score ||
+      prev.highScore !== state.highScore ||
+      prev.highScoreLevel !== state.highScoreLevel ||
+      prev.level !== state.level ||
+      prev.lives !== state.lives ||
+      prev.multiplier !== state.multiplier
+    ) {
+      const next: GameDisplayState = {
+        mode: state.mode,
+        score: state.score,
+        highScore: state.highScore,
+        highScoreLevel: state.highScoreLevel,
+        level: state.level,
+        lives: state.lives,
+        multiplier: state.multiplier,
+        batchStats: stats ? {
+          spriteCount: stats.spriteCount,
+          batchCount: stats.batchCount,
+          drawCalls: stats.drawCalls,
+          fps: fpsRef.current.current,
+        } : undefined,
+      }
+      prevStateRef.current = next
+      onStateChange(next)
+    }
 
     // Update elapsed time
     updateElapsed(world, dt)
@@ -190,6 +201,9 @@ function GameScene({ sounds, isVisible, onStateChange }: GameSceneProps) {
         // Update visual effects
         updateDissolving(world, dt)
         updateBallFlash(world, dt)
+
+        // Sync high score after collisions may have updated score
+        syncHighScore(world)
 
         // Check for ball lost
         if (checkBallLost(world)) {
@@ -245,7 +259,7 @@ export default function MiniBreakout({
 }: MiniGameProps & { onInteraction?: () => void }) {
   const soundsRef = useRef<SoundPlayer | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
-  const [gameState, setGameState] = useState<GameState>({
+  const [gameState, setGameState] = useState<GameDisplayState>({
     mode: 'attract',
     score: 0,
     highScore: 0,
@@ -255,8 +269,8 @@ export default function MiniBreakout({
     multiplier: 1,
   })
 
-  // Get world lazily on client only
-  const world = typeof window !== 'undefined' ? getWorld() : null
+  // Get world lazily on client only (useState initializer runs once)
+  const [world] = useState(() => typeof window !== 'undefined' ? getWorld() : null)
 
   // Update sound player when zzfx changes
   useEffect(() => {
@@ -290,7 +304,7 @@ export default function MiniBreakout({
       handleMouseEnter(world)
       trackingMouse.current = true
     }
-  }, [])
+  }, [world])
 
   const onMouseClick = useCallback(
     (clientX: number) => {
@@ -300,7 +314,7 @@ export default function MiniBreakout({
         handleMouseClick(world, screenToWorldX(clientX), soundsRef.current)
       }
     },
-    [onInteraction, screenToWorldX]
+    [world, onInteraction, screenToWorldX]
   )
 
   // Touch handlers - drag to move paddle
@@ -311,7 +325,7 @@ export default function MiniBreakout({
         handleTouchStart(world, screenToWorldX(clientX), soundsRef.current)
       }
     },
-    [onInteraction, screenToWorldX]
+    [world, onInteraction, screenToWorldX]
   )
 
   const onTouchMove = useCallback(
@@ -320,14 +334,14 @@ export default function MiniBreakout({
         handleTouchMove(world, screenToWorldX(clientX))
       }
     },
-    [screenToWorldX]
+    [world, screenToWorldX]
   )
 
   const onTouchEnd = useCallback(() => {
     if (world) {
       handleTouchEnd(world)
     }
-  }, [])
+  }, [world])
 
   return (
     <div
@@ -367,7 +381,7 @@ export default function MiniBreakout({
             renderer={{ antialias: false }}
           >
             <GameScene
-              sounds={soundsRef.current}
+              soundsRef={soundsRef}
               isVisible={isVisible}
               onStateChange={setGameState}
             />

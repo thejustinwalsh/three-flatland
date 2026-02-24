@@ -1,10 +1,9 @@
 import { createWorld, type World } from 'koota'
-import { initWorld, getBlockCount, subscribeHighScore } from './systems/game'
+import { initWorld, getBlockCount } from './systems/game'
 import { GameState } from './traits'
 
 // Use global to survive HMR, only on client
 declare global {
-  // eslint-disable-next-line no-var
   var __breakoutWorld: World | undefined
 }
 
@@ -23,7 +22,6 @@ export function getWorld(): World {
   // Create new world
   const world = createWorld()
   initWorld(world)
-  subscribeHighScore(world)
   globalThis.__breakoutWorld = world
 
   console.log('World created, blocks:', getBlockCount(world))

@@ -1,6 +1,7 @@
 import eslint from '@eslint/js'
 import tseslint from 'typescript-eslint'
 import globals from 'globals'
+import reactHooks from 'eslint-plugin-react-hooks'
 
 export default tseslint.config(
   eslint.configs.recommended,
@@ -31,6 +32,12 @@ export default tseslint.config(
       ],
       '@typescript-eslint/no-import-type-side-effects': 'error',
     },
+  },
+  // React hooks rules (includes React Compiler lint rules)
+  {
+    files: ['**/*.tsx'],
+    plugins: { 'react-hooks': reactHooks },
+    rules: reactHooks.configs.recommended.rules,
   },
   {
     ignores: [

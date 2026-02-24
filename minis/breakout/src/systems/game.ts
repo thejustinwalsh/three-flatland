@@ -12,6 +12,7 @@ import {
   BlockState,
   Dissolving,
   BallFlash,
+  AttractAI,
 } from '../traits'
 import {
   PADDLE_WIDTH,
@@ -30,7 +31,6 @@ import {
   GAME_OVER_DURATION,
   READY_DURATION,
 } from './constants'
-import { resetAttractAI } from './physics'
 import type { SoundPlayer } from './sounds'
 
 const STORAGE_KEY = 'mini-breakout-highscore'
@@ -39,7 +39,7 @@ function loadHighScore(): { highScore: number; highScoreLevel: number } {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
     if (raw) {
-      const data = JSON.parse(raw)
+      const data = JSON.parse(raw) as { score?: number; level?: number }
       return { highScore: data.score ?? 0, highScoreLevel: data.level ?? 0 }
     }
   } catch { /* localStorage unavailable or corrupt */ }
@@ -56,9 +56,6 @@ export function saveHighScore(score: number, level: number) {
  * Initialize game world with world traits and entities
  */
 export function initWorld(world: World) {
-  // Reset AI state for attract mode
-  resetAttractAI()
-
   // Load persisted high score
   const saved = loadHighScore()
 
@@ -84,6 +81,8 @@ export function initWorld(world: World) {
     doubleTap: false,
   }))
 
+  world.add(AttractAI)
+
   // Create paddle entity
   world.spawn(
     Paddle,
@@ -106,11 +105,13 @@ export function initWorld(world: World) {
  */
 export function spawnBall(world: World, attractMode: boolean) {
   if (attractMode) {
+    // Spawn just above the paddle so the ball has to travel up to reach blocks
+    const ballY = PADDLE_Y + PADDLE_HEIGHT / 2 + BALL_SIZE / 2
     const speed = ATTRACT_BALL_SPEED
     const angle = (Math.random() * 0.67 + 0.17) * Math.PI
     world.spawn(
       Ball,
-      Position({ x: 0, y: 0 }),
+      Position({ x: 0, y: ballY }),
       Velocity({ x: Math.cos(angle) * speed, y: Math.sin(angle) * speed }),
       Bounds({ width: BALL_SIZE, height: BALL_SIZE }),
     )
@@ -125,9 +126,6 @@ export function spawnBall(world: World, attractMode: boolean) {
     )
   }
 }
-
-// Ball speed carried across level clears (reset to base on ball loss)
-let carriedBallSpeed = 0
 
 // Launch cone half-width in radians (~15 degrees each side of center)
 const LAUNCH_CONE_HALF = Math.PI / 12
@@ -150,8 +148,12 @@ function launchBall(world: World) {
   }
 
   // Use carried speed from level clear, or base speed for new ball
-  const speed = carriedBallSpeed > 0 ? carriedBallSpeed : BALL_SPEED
-  carriedBallSpeed = 0
+  const state = world.has(GameState) ? world.get(GameState)! : null
+  const carried = state?.carriedBallSpeed ?? 0
+  const speed = carried > 0 ? carried : BALL_SPEED
+  if (carried > 0) {
+    world.set(GameState, { carriedBallSpeed: 0 })
+  }
 
   // Base angle is straight up (π/2), tilted by paddle velocity
   const tilt = -paddleVelX * LAUNCH_ENGLISH
@@ -209,11 +211,8 @@ export function spawnBlocks(world: World) {
 export function startGame(world: World, sounds: SoundPlayer | null) {
   if (!world.has(GameState)) return
 
-  const state = world.get(GameState)!
-
   // Enter ready mode with countdown before ball launches
   world.set(GameState, {
-    ...state,
     mode: 'ready',
     score: 0,
     lives: 3,
@@ -254,7 +253,6 @@ export function gameOver(world: World, sounds: SoundPlayer | null) {
   const state = world.get(GameState)!
 
   world.set(GameState, {
-    ...state,
     mode: 'gameover',
     elapsed: 0,
     score: Math.floor(state.score),
@@ -269,16 +267,13 @@ export function gameOver(world: World, sounds: SoundPlayer | null) {
 export function returnToAttract(world: World) {
   if (!world.has(GameState)) return
 
-  const state = world.get(GameState)!
-
   world.set(GameState, {
-    ...state,
     mode: 'attract',
     elapsed: 0,
   })
 
   // Reset AI tracking state
-  resetAttractAI()
+  world.set(AttractAI, { goalX: 0, mouseX: 0, offset: 0, offsetTarget: 0, offsetTimer: 0 })
 
   // Reset paddle
   for (const paddle of world.query(Paddle, Position, PaddleState)) {
@@ -302,19 +297,17 @@ export function returnToAttract(world: World) {
 /**
  * Reset ball after losing a life
  */
-export function resetBall(world: World, sounds: SoundPlayer | null) {
+export function resetBall(world: World, _sounds: SoundPlayer | null) {
   if (!world.has(GameState)) return
-
-  const state = world.get(GameState)!
 
   // Enter ready mode — streak/multiplier/speed reset on ball loss
   world.set(GameState, {
-    ...state,
     mode: 'ready',
     elapsed: 0,
     countdown: READY_DURATION,
     streak: 0,
     multiplier: 1,
+    carriedBallSpeed: 0,
   })
 
   // Destroy existing ball
@@ -349,7 +342,6 @@ export function levelClear(world: World, sounds: SoundPlayer | null) {
 
   // Enter ready mode — preserve streak/multiplier across levels, bump level
   world.set(GameState, {
-    ...state,
     mode: 'ready',
     elapsed: 0,
     countdown: READY_DURATION,
@@ -369,28 +361,27 @@ export function levelClear(world: World, sounds: SoundPlayer | null) {
   spawnBall(world, false)
 
   // Store the carried speed so launchBall can use it
-  carriedBallSpeed = ballSpeed
+  world.set(GameState, { carriedBallSpeed: ballSpeed })
 
   sounds?.levelClear()
 }
 
 /**
- * Subscribe to GameState changes and sync high score when score exceeds it.
- * Uses Koota's onChange for world traits — only fires when GameState is set.
+ * Sync high score when current score exceeds it.
+ * Called from the game loop during 'playing' mode.
  */
-export function subscribeHighScore(world: World) {
-  return world.onChange(GameState, () => {
-    const state = world.get(GameState)!
-    if (state.mode !== 'attract' && state.score > state.highScore) {
-      const newHigh = Math.floor(state.score)
-      saveHighScore(newHigh, state.level)
-      world.set(GameState, {
-        ...state,
-        highScore: newHigh,
-        highScoreLevel: state.level,
-      })
-    }
-  })
+export function syncHighScore(world: World) {
+  if (!world.has(GameState)) return
+
+  const state = world.get(GameState)!
+  if (state.mode !== 'attract' && state.score > state.highScore) {
+    const newHigh = Math.floor(state.score)
+    saveHighScore(newHigh, state.level)
+    world.set(GameState, {
+      highScore: newHigh,
+      highScoreLevel: state.level,
+    })
+  }
 }
 
 /**
@@ -401,7 +392,6 @@ export function updateElapsed(world: World, delta: number) {
 
   const state = world.get(GameState)!
   world.set(GameState, {
-    ...state,
     elapsed: state.elapsed + delta,
   })
 }
@@ -453,7 +443,6 @@ export function updateReady(world: World, dt: number, sounds: SoundPlayer | null
   if (newTick >= READY_TICKS) {
     // 3rd tick — launch!
     world.set(GameState, {
-      ...state,
       mode: 'playing',
       elapsed: 0,
       countdown: 0,
@@ -461,7 +450,6 @@ export function updateReady(world: World, dt: number, sounds: SoundPlayer | null
     launchBall(world)
   } else {
     world.set(GameState, {
-      ...state,
       countdown: newCountdown,
     })
   }
@@ -483,9 +471,7 @@ export function shouldReturnToAttract(world: World): boolean {
 export function handleMouseEnter(world: World) {
   if (!world.has(Input)) return
 
-  const input = world.get(Input)!
   world.set(Input, {
-    ...input,
     mouseActive: true,
   })
 }
@@ -496,9 +482,7 @@ export function handleMouseEnter(world: World) {
 export function handleMouseLeave(world: World) {
   if (!world.has(Input)) return
 
-  const input = world.get(Input)!
   world.set(Input, {
-    ...input,
     mouseActive: false,
   })
 }
@@ -511,10 +495,7 @@ export function handleMouseMove(world: World, pointerX: number) {
 
   const input = world.get(Input)!
   if (input.mouseActive) {
-    world.set(Input, {
-      ...input,
-      pointerX,
-    })
+    world.set(Input, { pointerX })
   }
 }
 
@@ -536,7 +517,6 @@ export function handleMouseClick(world: World, pointerX: number, sounds: SoundPl
   }
 
   world.set(Input, {
-    ...input,
     pointerX,
     lastTapTime: now,
     doubleTap: isDoubleClick && state.mode === 'playing',
@@ -561,7 +541,6 @@ export function handleTouchStart(world: World, pointerX: number, sounds: SoundPl
   }
 
   world.set(Input, {
-    ...input,
     pointerX,
     touchActive: true,
     lastTapTime: now,
@@ -577,10 +556,7 @@ export function handleTouchMove(world: World, pointerX: number) {
 
   const input = world.get(Input)!
   if (input.touchActive) {
-    world.set(Input, {
-      ...input,
-      pointerX,
-    })
+    world.set(Input, { pointerX })
   }
 }
 
@@ -590,9 +566,7 @@ export function handleTouchMove(world: World, pointerX: number) {
 export function handleTouchEnd(world: World) {
   if (!world.has(Input)) return
 
-  const input = world.get(Input)!
   world.set(Input, {
-    ...input,
     touchActive: false,
   })
 }
@@ -601,7 +575,7 @@ export function handleTouchEnd(world: World) {
  * Get remaining block count (non-dissolving blocks only)
  */
 export function getBlockCount(world: World): number {
-  return [...world.query(Block, Not(Dissolving))].length
+  return world.query(Block, Not(Dissolving)).length
 }
 
 /**
@@ -616,7 +590,6 @@ export function loseLife(world: World, sounds: SoundPlayer | null) {
     gameOver(world, sounds)
   } else {
     world.set(GameState, {
-      ...state,
       lives: state.lives - 1,
     })
     sounds?.miss()
