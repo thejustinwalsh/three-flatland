@@ -10,17 +10,15 @@ import {
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 /**
- * Load an example from examples/{type}/{name} and transform for StackBlitz
+ * Load a mini-game from minis/{name} and transform for StackBlitz.
+ * Minis are React-only (no type param needed).
  */
-export function loadExample(
-  type: 'vanilla' | 'react',
-  name: string
-): Record<string, string> {
-  const exampleDir = path.resolve(__dirname, `../../../examples/${type}/${name}`);
+export function loadMini(name: string): Record<string, string> {
+  const miniDir = path.resolve(__dirname, `../../../minis/${name}`);
   const files: Record<string, string> = {};
 
   // Transform package.json
-  const pkgJsonPath = path.join(exampleDir, 'package.json');
+  const pkgJsonPath = path.join(miniDir, 'package.json');
   if (fs.existsSync(pkgJsonPath)) {
     const pkgJson = JSON.parse(fs.readFileSync(pkgJsonPath, 'utf-8'));
     files['package.json'] = JSON.stringify(transformPackageJson(pkgJson), null, 2);
@@ -38,43 +36,41 @@ export function loadExample(
         esModuleInterop: true,
         skipLibCheck: true,
       },
-      include: ['*.ts', '*.tsx'],
+      include: ['src/**/*.ts', 'src/**/*.tsx', '*.ts', '*.tsx'],
     },
     null,
     2
   );
 
-  // Transform vite.config.ts (change base path to '/')
-  const viteConfigPath = path.join(exampleDir, 'vite.config.ts');
+  // Transform vite.config.ts — strip babel-plugin-react-compiler (unavailable in StackBlitz)
+  const viteConfigPath = path.join(miniDir, 'vite.config.ts');
   if (fs.existsSync(viteConfigPath)) {
-    const viteConfig = fs.readFileSync(viteConfigPath, 'utf-8');
-    files['vite.config.ts'] = viteConfig.replace(/base:\s*['"][^'"]+['"]/, "base: '/'");
+    let viteConfig = fs.readFileSync(viteConfigPath, 'utf-8');
+    // Remove react-compiler babel plugin configuration
+    viteConfig = viteConfig.replace(
+      /react\(\{[\s\S]*?babel:\s*\{[\s\S]*?plugins:\s*\[['"]babel-plugin-react-compiler['"]\][,\s]*\}[,\s]*\}\)/,
+      'react()'
+    );
+    files['vite.config.ts'] = viteConfig;
   }
 
-  // Copy source files
-  const sourceFiles = [
-    'index.html',
-    'main.ts',
-    'main.tsx',
-    'App.tsx',
-    'style.css',
-    'styles.css',
-  ];
-  for (const file of sourceFiles) {
-    const filePath = path.join(exampleDir, file);
+  // Copy root source files
+  const rootFiles = ['index.html', 'main.tsx', 'App.tsx'];
+  for (const file of rootFiles) {
+    const filePath = path.join(miniDir, file);
     if (fs.existsSync(filePath)) {
       files[file] = fs.readFileSync(filePath, 'utf-8');
     }
   }
 
-  // Copy src/ directory if it exists
-  const srcDir = path.join(exampleDir, 'src');
+  // Copy src/ directory recursively
+  const srcDir = path.join(miniDir, 'src');
   if (fs.existsSync(srcDir)) {
     loadDirectoryFiles(srcDir, 'src', files);
   }
 
-  // Copy public/ directory (sprites, maps, etc.)
-  const publicDir = path.join(exampleDir, 'public');
+  // Copy public/ directory (SVGs, assets)
+  const publicDir = path.join(miniDir, 'public');
   if (fs.existsSync(publicDir)) {
     loadPublicFiles(publicDir, 'public', files);
   }

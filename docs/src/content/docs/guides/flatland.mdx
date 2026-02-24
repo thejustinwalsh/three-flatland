@@ -1,0 +1,266 @@
+---
+title: Flatland
+description: Self-contained 2D rendering pipeline with camera, post-processing, and global uniforms.
+---
+
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
+`Flatland` is the high-level entry point for three-flatland. It wraps a `SpriteGroup` with an orthographic camera, global uniforms, post-processing pipeline, and render target support into a single object.
+
+## When to Use Flatland vs SpriteGroup
+
+| | Flatland | SpriteGroup |
+|---|---------|-------------|
+| **Use case** | Self-contained 2D pipeline | Embed sprites into your own scene |
+| **Camera** | Internal orthographic camera | You provide the camera |
+| **Post-processing** | Built-in pass effect pipeline | Not included |
+| **Global uniforms** | Automatic time, viewport, tint | Not included |
+| **Render call** | `flatland.render(...)` | `renderer.render(...)` |
+
+Use `Flatland` when you want a complete 2D rendering setup. Use `SpriteGroup` when you need to mix sprites into an existing 3D scene with your own camera and render loop.
+
+## Basic Setup
+
+<Tabs syncKey="framework">
+  <TabItem label="Three.js" icon="seti:javascript">
+    ```typescript
+    import WebGPURenderer from 'three/addons/renderers/webgpu/WebGPURenderer.js'
+    import { Flatland, Sprite2D, TextureLoader } from '@three-flatland/core'
+
+    const renderer = new WebGPURenderer()
+    await renderer.init()
+    document.body.appendChild(renderer.domElement)
+
+    const flatland = new Flatland({ viewSize: 400, clearColor: 0x1a1a2e })
+    const texture = await new TextureLoader().loadAsync('/sprites/hero.png')
+
+    flatland.add(new Sprite2D({ texture }))
+
+    function animate() {
+      flatland.resize(window.innerWidth, window.innerHeight)
+      flatland.render(renderer)
+      requestAnimationFrame(animate)
+    }
+    animate()
+    ```
+  </TabItem>
+  <TabItem label="React" icon="seti:react">
+    ```tsx
+    import { useRef } from 'react'
+    import { Canvas, extend, useFrame, useThree } from '@react-three/fiber/webgpu'
+    import { Flatland, Sprite2D, Sprite2DMaterial } from '@three-flatland/react'
+    import type { Flatland as FlatlandType } from '@three-flatland/react'
+    import type { WebGPURenderer } from 'three/webgpu'
+
+    extend({ Flatland, Sprite2D, Sprite2DMaterial })
+
+    function Scene() {
+      const flatlandRef = useRef<FlatlandType>(null)
+      const gl = useThree((s) => s.gl)
+      const size = useThree((s) => s.size)
+
+      // Render in the 'render' phase so R3F skips its own render
+      useFrame(() => {
+        const flatland = flatlandRef.current
+        if (!flatland) return
+        flatland.resize(size.width, size.height)
+        flatland.render(gl as unknown as WebGPURenderer)
+      }, { phase: 'render' })
+
+      return (
+        <flatland ref={flatlandRef} viewSize={400} clearColor={0x1a1a2e}>
+          <sprite2D texture={texture} />
+        </flatland>
+      )
+    }
+
+    export default function App() {
+      return (
+        <Canvas renderer={{ antialias: false }}>
+          <Scene />
+        </Canvas>
+      )
+    }
+    ```
+  </TabItem>
+</Tabs>
+
+:::caution[R3F render phase]
+In React Three Fiber, register `flatland.render()` in the **render phase** (`{ phase: 'render' }`). This tells R3F to skip its default render and lets Flatland control rendering. Game logic and ECS updates should run in the default update phase.
+:::
+
+## Constructor Options
+
+```typescript
+const flatland = new Flatland({
+  viewSize: 400,         // Orthographic view height in world units
+  clearColor: 0x1a1a2e,  // Background color
+  clearAlpha: 1,          // Background alpha (< 1 for transparent)
+  autoClear: true,        // Clear before each render
+  postProcessing: false,  // Enable post-processing pipeline
+  aspect: 1,              // Initial aspect ratio (use resize() to update)
+  camera: null,           // Custom OrthographicCamera (null = internal)
+  renderTarget: null,     // WebGLRenderTarget (null = render to viewport)
+})
+```
+
+See the [FlatlandOptions API reference](/api/interfaces/flatlandoptions/) for full type details.
+
+## Adding Sprites
+
+`flatland.add()` routes objects automatically:
+
+- **Sprite2D** instances go to the internal `SpriteGroup` for batched rendering
+- **Other Object3D** instances are added directly to the internal scene
+
+```typescript
+// Sprite2D → batched via SpriteGroup
+const sprite = new Sprite2D({ texture, anchor: [0.5, 0.5] })
+flatland.add(sprite)
+
+// Other Three.js objects → added to internal scene
+const mesh = new Mesh(geometry, material)
+flatland.add(mesh)
+```
+
+Global uniforms are automatically wired to each sprite's material on `add()`.
+
+## Render Loop
+
+Each frame, call `resize()` to sync the aspect ratio, then `render()` to draw:
+
+```typescript
+function animate() {
+  flatland.resize(canvas.width, canvas.height)
+  flatland.render(renderer)
+  requestAnimationFrame(animate)
+}
+```
+
+`resize()` updates the internal camera frustum and render target dimensions. `render()` syncs global uniforms (time, viewport), updates sprite batches, and draws everything.
+
+## Global Uniforms
+
+Every Flatland instance exposes a `globals` object with shared uniforms. These update once per frame and are available to all sprite materials via TSL nodes.
+
+| Uniform | Description |
+|---------|-------------|
+| `time` | Elapsed seconds (`undefined` = auto) |
+| `globalTint` | Color tint for all sprites |
+| `viewportSize` | Viewport size in pixels |
+| `pixelRatio` | Device pixel ratio |
+| `wind` | Wind direction and strength |
+| `fogColor` | Fog color |
+| `fogRange` | Fog near/far range |
+
+### Auto vs Manual Time
+
+By default, `time` is `undefined` and Flatland accumulates elapsed time automatically. Set it to a number for manual control:
+
+```typescript
+// Auto mode (default) — time accumulates each frame
+flatland.globals.time = undefined
+
+// Manual mode — set exact value
+flatland.globals.time = performance.now() / 1000
+```
+
+### Using Uniforms in TSL
+
+Access the TSL node directly for custom material effects:
+
+```typescript
+import { Sprite2DMaterial } from '@three-flatland/core'
+
+const material = new Sprite2DMaterial({
+  colorTransform: (ctx) => {
+    // Use the global tint node in a custom effect
+    const tinted = ctx.color.rgb.mul(flatland.globals.globalTintNode)
+    return tinted.toVec4(ctx.color.a)
+  }
+})
+```
+
+Each global has a corresponding TSL node: `timeNode`, `globalTintNode`, `viewportSizeNode`, `pixelRatioNode`, `windNode`, `fogColorNode`, `fogRangeNode`.
+
+## Statistics
+
+Monitor rendering performance with `flatland.stats`:
+
+```typescript
+const stats = flatland.stats
+
+console.log(`Sprites: ${stats.spriteCount}`)
+console.log(`Batches: ${stats.batchCount}`)
+console.log(`Draw calls: ${stats.drawCalls}`)
+console.log(`Visible: ${stats.visibleSprites}`)
+```
+
+Draw calls are derived from `renderer.info` — they reflect actual GPU work, not estimates.
+
+## Post-Processing
+
+Add full-screen pass effects with `addPass()`:
+
+```typescript
+import { Flatland, createPassEffect, posterize } from '@three-flatland/core'
+
+const PosterizePass = createPassEffect({
+  name: 'posterize',
+  schema: { bands: 6 },
+  pass: ({ uniforms }) => (input, uv) => posterize(input, uniforms.bands),
+})
+
+const flatland = new Flatland({ viewSize: 400 })
+const post = new PosterizePass()
+flatland.addPass(post)
+
+// Zero-cost parameter updates
+post.bands = 10
+```
+
+The render pipeline auto-initializes on the first `addPass()` call. Passes chain in insertion order — each receives the previous pass's output.
+
+| Method | Description |
+|--------|-------------|
+| `addPass(pass, order?)` | Add a pass effect |
+| `removePass(pass)` | Remove a specific pass |
+| `clearPasses()` | Remove all passes |
+| `passes` | Read-only array of current passes |
+
+See the [Pass Effects guide](../guides/pass-effects) for creating custom effects and the full node library.
+
+## Render to Texture
+
+Render Flatland output to a texture for use in 3D scenes:
+
+```typescript
+import { WebGLRenderTarget } from 'three'
+
+const target = new WebGLRenderTarget(512, 512)
+const flatland = new Flatland({ renderTarget: target })
+
+// Use the texture on a 3D mesh
+mesh.material.map = flatland.texture
+
+// Each frame: render 2D first, then 3D
+flatland.render(renderer)
+renderer.render(scene3D, camera3D)
+```
+
+## Disposal
+
+Clean up all resources when done:
+
+```typescript
+flatland.dispose()
+```
+
+This destroys the ECS world, sprite batches, render pipeline, and all pass effect entities.
+
+## Next Steps
+
+- [Pass Effects](../guides/pass-effects) — Full-screen post-processing effects
+- [Batch Rendering](../guides/batch-rendering) — How sprite batching works under the hood
+- [TSL Nodes](../guides/tsl-nodes) — Per-sprite material effects and low-level TSL usage
+- [Breakout Showcase](../showcases/breakout) — A complete game built with Flatland
