@@ -47,7 +47,7 @@ export interface Sprite2DOptions {
   flipX?: boolean
   /** Flip vertically */
   flipY?: boolean
-  /** Render layer (for Renderer2D) */
+  /** Render layer (for SpriteGroup) */
   layer?: number
   /** Z-index within layer */
   zIndex?: number

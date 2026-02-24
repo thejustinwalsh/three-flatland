@@ -38,7 +38,9 @@
       }
     }
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "sideEffects": false,
   "scripts": {
     "build": "tsup",
@@ -61,7 +63,13 @@
     "react": "catalog:",
     "three": "catalog:"
   },
-  "keywords": ["react", "three.js", "r3f", "react-three-fiber", "sprites"],
+  "keywords": [
+    "react",
+    "three.js",
+    "r3f",
+    "react-three-fiber",
+    "sprites"
+  ],
   "license": "MIT",
   "repository": {
     "type": "git",

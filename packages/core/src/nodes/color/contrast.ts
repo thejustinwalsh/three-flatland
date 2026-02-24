@@ -1,5 +1,6 @@
-import { vec3, vec4, float } from 'three/tsl'
-import type { TSLNode, FloatInput } from '../types'
+import { vec3, vec4, float, mix } from 'three/tsl'
+import type Node from 'three/src/nodes/core/Node.js'
+import type { FloatInput } from '../types'
 
 /**
  * Adjust contrast by scaling color values around a midpoint.
@@ -18,10 +19,10 @@ import type { TSLNode, FloatInput } from '../types'
  * contrast(texture(tex, uv()), 0.5)
  */
 export function contrast(
-  inputColor: TSLNode,
+  inputColor: Node<'vec4'>,
   amount: FloatInput,
   midpoint: FloatInput = 0.5
-): TSLNode {
+): Node<'vec4'> {
   const amountNode = typeof amount === 'number' ? float(amount) : amount
   const midpointNode = typeof midpoint === 'number' ? float(midpoint) : midpoint
 
@@ -40,13 +41,13 @@ export function contrast(
  * @param amount - Contrast intensity (0 = no change, 1 = maximum)
  * @returns Color with S-curve contrast
  */
-export function contrastSCurve(inputColor: TSLNode, amount: FloatInput): TSLNode {
+export function contrastSCurve(inputColor: Node<'vec4'>, amount: FloatInput): Node<'vec4'> {
   const amountNode = typeof amount === 'number' ? float(amount) : amount
 
   // Compute S-curve: 3x^2 - 2x^3 (smoothstep formula)
   // Then mix with original based on amount
   const smoothed = inputColor.rgb.mul(inputColor.rgb).mul(float(3).sub(inputColor.rgb.mul(float(2))))
-  const adjustedRGB = inputColor.rgb.mix(smoothed, amountNode)
+  const adjustedRGB = mix(inputColor.rgb, smoothed, amountNode)
 
   return vec4(adjustedRGB, inputColor.a)
 }

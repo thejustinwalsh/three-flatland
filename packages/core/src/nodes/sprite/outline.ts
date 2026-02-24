@@ -1,14 +1,15 @@
 import { vec2, vec4, float, max, texture as sampleTexture } from 'three/tsl'
 import type { Texture } from 'three'
-import type { TSLNode, FloatInput, Vec4Input } from '../types'
+import type Node from 'three/src/nodes/core/Node.js'
+import type { FloatInput, Vec4Input } from '../types'
 
 export interface OutlineOptions {
-  /** Outline color as [r, g, b, a] (0-1 range) or TSL node */
+  /** Outline color as [r, g, b, a] (0-1 range) or vec4 node */
   color?: Vec4Input
   /** Outline thickness in UV space (default: 0.01) */
   thickness?: FloatInput
   /** Texture size for proper UV offset calculation as [width, height] */
-  textureSize?: [number, number] | TSLNode
+  textureSize?: [number, number] | Node<'vec2'>
 }
 
 /**
@@ -34,11 +35,11 @@ export interface OutlineOptions {
  * })
  */
 export function outline(
-  inputColor: TSLNode,
-  inputUV: TSLNode,
+  inputColor: Node<'vec4'>,
+  inputUV: Node<'vec2'>,
   tex: Texture,
   options: OutlineOptions = {}
-): TSLNode {
+): Node<'vec4'> {
   const {
     color = [1, 1, 1, 1],
     thickness = 0.01,
@@ -49,7 +50,7 @@ export function outline(
   const thicknessNode = typeof thickness === 'number' ? float(thickness) : thickness
 
   // Calculate UV offset based on texture size or use raw thickness
-  let offset: TSLNode
+  let offset: Node<'vec2'>
   if (textureSize) {
     const size = Array.isArray(textureSize) ? vec2(...textureSize) : textureSize
     offset = thicknessNode.div(size)
@@ -87,11 +88,11 @@ export function outline(
  * @returns Color with outline applied
  */
 export function outline8(
-  inputColor: TSLNode,
-  inputUV: TSLNode,
+  inputColor: Node<'vec4'>,
+  inputUV: Node<'vec2'>,
   tex: Texture,
   options: OutlineOptions = {}
-): TSLNode {
+): Node<'vec4'> {
   const {
     color = [1, 1, 1, 1],
     thickness = 0.01,
@@ -102,8 +103,8 @@ export function outline8(
   const thicknessNode = typeof thickness === 'number' ? float(thickness) : thickness
 
   // Calculate UV offset
-  let offsetX: TSLNode
-  let offsetY: TSLNode
+  let offsetX: Node<'float'>
+  let offsetY: Node<'float'>
   if (textureSize) {
     const size = Array.isArray(textureSize) ? vec2(...textureSize) : textureSize
     offsetX = thicknessNode.div(size.x)

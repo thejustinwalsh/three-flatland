@@ -66,6 +66,7 @@ export function bufferSyncColorSystem(world: World): void {
 
   for (const mesh of dirtyMeshes) {
     mesh.getColorAttribute().needsUpdate = true
+    mesh.applyUpdateRanges()
   }
 }
 
@@ -93,6 +94,7 @@ export function bufferSyncUVSystem(world: World): void {
 
   for (const mesh of dirtyMeshes) {
     mesh.getUVAttribute().needsUpdate = true
+    mesh.applyUpdateRanges()
   }
 }
 
@@ -120,6 +122,7 @@ export function bufferSyncFlipSystem(world: World): void {
 
   for (const mesh of dirtyMeshes) {
     mesh.getFlipAttribute().needsUpdate = true
+    mesh.applyUpdateRanges()
   }
 }
 
@@ -137,6 +140,7 @@ export function bufferSyncEffectSystem(
   if (!batchSlots) return
 
   const processed = new Set<Entity>()
+  const dirtyMeshes = new Set<SpriteBatch>()
 
   for (const [effectTrait] of effectTraits) {
     const entities = world.query(Changed(effectTrait), IsBatched, ThreeRef, BatchSlot)
@@ -152,7 +156,12 @@ export function bufferSyncEffectSystem(
       if (!resolved) continue
 
       writePackedEffects(resolved.slot, resolved.mesh, sprite)
+      dirtyMeshes.add(resolved.mesh)
     }
+  }
+
+  for (const mesh of dirtyMeshes) {
+    mesh.applyUpdateRanges()
   }
 }
 

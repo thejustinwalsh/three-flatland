@@ -34,6 +34,18 @@ const isDev = import.meta.env.DEV;
 })();
 </script>
 
+<!-- GPU / WebGL feature detection — sets window.__gpuSupported for client components -->
+<script is:inline>
+(function() {
+  try {
+    var c = document.createElement('canvas');
+    window.__gpuSupported = !!(c.getContext('webgpu') || c.getContext('webgl2'));
+  } catch(e) {
+    window.__gpuSupported = false;
+  }
+})();
+</script>
+
 <!-- Reinitialize Pagefind search after view transitions -->
 <script is:inline>
 (function() {

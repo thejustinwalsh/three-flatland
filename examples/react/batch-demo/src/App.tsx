@@ -4,14 +4,14 @@ import { Vector2, Raycaster, Plane, Vector3, type Texture } from 'three'
 import {
   Sprite2D,
   Sprite2DMaterial,
-  Renderer2D,
+  SpriteGroup,
   Layers,
   TextureLoader,
   type SpriteFrame,
   type RenderStats,
 } from '@three-flatland/react'
 // Extend R3F with our custom classes
-extend({ Renderer2D, Sprite2D, Sprite2DMaterial })
+extend({ SpriteGroup, Sprite2D, Sprite2DMaterial })
 
 // Configuration
 const TILE_SIZE = 64
@@ -316,12 +316,12 @@ function VillageScene({ entities, selectedBuilding, onPlaceBuilding, onStats }: 
     }
   }, [gl, screenToGrid, occupiedCells, onPlaceBuilding])
 
-  // Renderer2D ref for stats
-  const renderer2DRef = useRef<Renderer2D>(null)
+  // SpriteGroup ref for stats
+  const spriteGroupRef = useRef<SpriteGroup>(null)
 
   useFrame(() => {
-    if (renderer2DRef.current) {
-      onStats(renderer2DRef.current.stats)
+    if (spriteGroupRef.current) {
+      onStats(spriteGroupRef.current.stats)
     }
   })
 
@@ -337,7 +337,7 @@ function VillageScene({ entities, selectedBuilding, onPlaceBuilding, onStats }: 
   return (
     <>
       {/* Batched sprites */}
-      <renderer2D ref={renderer2DRef}>
+      <spriteGroup ref={spriteGroupRef}>
         {/* Ground tiles */}
         {GROUND_POSITIONS.map(({ x, y }) => (
           <GroundTile
@@ -361,7 +361,7 @@ function VillageScene({ entities, selectedBuilding, onPlaceBuilding, onStats }: 
             gridOffsetY={gridOffsetY}
           />
         ))}
-      </renderer2D>
+      </spriteGroup>
 
       {/* Hover preview - NOT batched, renders separately with high renderOrder */}
       <HoverPreview

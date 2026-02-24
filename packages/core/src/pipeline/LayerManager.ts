@@ -127,7 +127,7 @@ export class Layer {
  * Manages render layers for 2D scenes.
  *
  * Provides a higher-level API for organizing sprites into layers.
- * Use with Renderer2D for automatic batching and sorting.
+ * Use with SpriteGroup for automatic batching and sorting.
  *
  * @example
  * ```typescript

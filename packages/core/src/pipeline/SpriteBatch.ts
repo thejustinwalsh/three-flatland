@@ -164,6 +164,7 @@ export class SpriteBatch extends InstancedMesh {
 
     // Set initial count to 0 (no sprites yet)
     this.count = 0
+    this.name = 'SpriteBatch'
   }
 
   // ============================================
@@ -319,11 +320,76 @@ export class SpriteBatch extends InstancedMesh {
   }
 
   /**
-   * Sync the instance count to include all allocated slots.
+   * Sync the instance count to include all allocated slots
+   * and apply GPU update ranges.
    * Free slots have alpha=0 so they're invisible.
    */
   syncCount(): void {
     this.count = this._nextIndex
+    this.applyUpdateRanges()
+    // Update bounding sphere for devtools highlight and frustum visualization
+    if (this.count > 0) {
+      this.computeBoundingSphere()
+    }
+  }
+
+  /**
+   * Limit GPU buffer uploads to only the used portion of each attribute.
+   *
+   * Without this, the renderer uploads the entire buffer (e.g., 8192 slots
+   * = ~524KB for matrices alone) via `bufferSubData`, which causes implicit
+   * GPU pipeline synchronization when the buffer is still in use by the
+   * previous frame's draw call. With 100 active sprites this reduces uploads
+   * from ~1MB to ~7KB.
+   *
+   * Call this once per frame after all buffer writes are complete (typically
+   * after transform and buffer sync systems have run).
+   */
+  applyUpdateRanges(): void {
+    const used = this._nextIndex
+    if (used === 0) return
+
+    this.instanceMatrix.clearUpdateRanges()
+    this.instanceMatrix.addUpdateRange(0, used * 16)
+
+    this._uvAttribute.clearUpdateRanges()
+    this._uvAttribute.addUpdateRange(0, used * 4)
+
+    this._colorAttribute.clearUpdateRanges()
+    this._colorAttribute.addUpdateRange(0, used * 4)
+
+    this._flipAttribute.clearUpdateRanges()
+    this._flipAttribute.addUpdateRange(0, used * 2)
+
+    for (const [, custom] of this._customAttributes) {
+      custom.attribute.clearUpdateRanges()
+      custom.attribute.addUpdateRange(0, used * custom.size)
+    }
+  }
+
+  /**
+   * Clone for devtools/serialization compatibility.
+   * SpriteBatch requires material in its constructor, so the default
+   * Object3D.clone() (`new this.constructor()`) would crash.
+   * Returns a plain InstancedMesh with matching geometry and transforms.
+   */
+  override clone(_recursive?: boolean): this {
+    const cloned = new InstancedMesh(
+      this.geometry.clone(),
+      this.material,
+      this.count
+    )
+    cloned.instanceMatrix.copy(this.instanceMatrix)
+    cloned.count = this.count
+    cloned.frustumCulled = this.frustumCulled
+    cloned.name = this.name
+    cloned.position.copy(this.position)
+    cloned.rotation.copy(this.rotation)
+    cloned.scale.copy(this.scale)
+    if (this.count > 0) {
+      cloned.computeBoundingSphere()
+    }
+    return cloned as unknown as this
   }
 
   /**

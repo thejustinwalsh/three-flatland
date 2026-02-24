@@ -1,0 +1,151 @@
+---
+title: Breakout
+description: A complete Breakout arcade game built with three-flatland and Koota ECS.
+---
+
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+import ShowcaseGame from '../../../components/ShowcaseGame';
+import StackBlitzEmbed from '../../../components/StackBlitzEmbed';
+import ExampleTabs from '../../../components/ExampleTabs.astro';
+import { loadMini } from '../../../utils/loadMini';
+
+export const breakoutFiles = loadMini('breakout');
+
+<ExampleTabs>
+<Tabs>
+  <TabItem label="Preview" icon="rocket">
+    <ShowcaseGame client:load />
+  </TabItem>
+  <TabItem label="React" icon="seti:react">
+    <StackBlitzEmbed
+      client:load
+      title="Breakout - three-flatland"
+      files={breakoutFiles}
+      openFile="src/Game.tsx"
+      height={600}
+    />
+  </TabItem>
+</Tabs>
+</ExampleTabs>
+
+## Architecture
+
+The breakout mini-game is built on three-flatland and [Koota ECS](https://github.com/pmndrs/koota). All game state lives in ECS traits, all logic runs in pure-function systems, and all rendering flows through a single Flatland instance.
+
+### Game Loop
+
+A 4-state machine drives the top-level loop. Each state runs a different subset of systems per frame:
+
+| State | Systems | Behavior |
+|-------|---------|----------|
+| **attract** | AI input, physics, collision, effects | AI plays indefinitely — predicts ball landing with wall-bounce simulation, smoothed through three layers of lerp (goal → mouse → paddle) |
+| **ready** | paddle movement, countdown, effects | 3-2-1 countdown with flash pulses on each tick. Ball sits on the paddle and tracks its X position so the player can aim before launch |
+| **playing** | input, physics, collision, scoring, effects | Full game. Ball speeds up on each block hit (`+0.1 units/sec`). Streak counter tracks consecutive hits — multiplier grows on an inverse curve (`x2` at 8, `x3` at 24, `x4` at 48...) |
+| **gameover** | effects only | Score displayed, dissolving blocks finish animating, auto-returns to attract after 2.5s |
+
+State transitions are explicit — `startGame`, `levelClear`, `loseLife`, `gameOver`, `returnToAttract` — each one resets the appropriate entities and spawns new ones.
+
+### Collision Detection
+
+The game uses swept line-segment vs AABB testing (slab method) to prevent tunneling at high ball speeds:
+
+1. Before integration, `moveBall` stores the ball's current position in a `PrevPosition` trait
+2. After integration, collision systems test the line segment from `PrevPosition` to `Position` against Minkowski-expanded AABBs (block AABB inflated by ball half-extents, reducing the ball to a point)
+3. The slab method finds the earliest intersection time `t ∈ [0,1]` and which axis was hit
+4. For blocks, all candidates are tested and the closest `t` wins — the ball is placed at the contact point and velocity is reflected on the hit axis
+
+Paddle collision adds angle control: the horizontal offset from paddle center maps to a launch angle (up to 60 degrees), and paddle velocity at the moment of contact applies english to the ball's trajectory.
+
+### Rendering Pipeline
+
+All sprites render through a single `<flatland>` element:
+
+```tsx
+<flatland ref={flatlandRef} viewSize={5} clearColor={0x0a0a23} clearAlpha={0}>
+  <WallsRenderer wallMaterial={materials.wall} />
+  <BlocksRenderer material={materials.blocks[0]!} />
+  <BallRenderer material={materials.ball} />
+  <PaddleRenderer material={materials.paddle} />
+</flatland>
+```
+
+Game logic runs in R3F's default update phase. Flatland renders in the **render phase** (`{ phase: 'render' }`), which tells R3F to skip its own render pass. This separation ensures all ECS trait values are synced to `MaterialEffect` instances before the draw call.
+
+### Material Effects
+
+Two custom effects built with `createMaterialEffect` provide visual feedback without shader recompilation:
+
+**FlashEffect** — Mixes sprite color toward white based on an `amount` uniform. The `BallFlash` trait is added on collision with an initial intensity (1.0 for blocks, 0.7 for paddle, 0.5 for walls) and a `decaySpeed` that fades it each frame. When `amount` reaches zero the trait is removed.
+
+**BlockDissolveEffect** — Uses `dissolvePixelated` (a TSL node that samples a shared 32x32 noise texture at quantized UVs) to progressively discard pixels. The `Dissolving` trait drives `progress` from 0 → 1.2 — the entity is destroyed after the shader has fully discarded all fragments, avoiding a visual pop.
+
+Both effects are registered on their materials at creation time. Each component's `useFrame` reads the ECS trait value and writes it to the effect instance ref — a one-line sync per entity per frame.
+
+### Dithered Shading
+
+All sprite materials use a `colorTransform` that applies Bayer 4x4 ordered dithering with a diagonal self-shadow. The dither grid is scaled by sprite world-size so cells are square regardless of aspect ratio. UVs are quantized to cell centers, then a diagonal gradient (upper-left = light, lower-right = shadow) modulates brightness through the dither pattern. The result is a retro shading style with no textures needed beyond the base sprite.
+
+### ECS Trait Design
+
+Traits fall into four categories:
+
+- **Data traits** — `Position`, `Velocity`, `Bounds`, `BlockState`, `PaddleState` — plain structs with numeric fields
+- **Tag traits** — `Ball`, `Paddle`, `Block` — zero-field markers used in queries (`world.query(Ball, Position, Velocity)`)
+- **Temporary traits** — `Dissolving`, `BallFlash`, `PrevPosition` — added on events, removed when their purpose completes. `PrevPosition` is added on the first `moveBall` call and persists; `Dissolving` is added on block hit and triggers entity destruction; `BallFlash` is added on any collision and removed when fully decayed
+- **Singleton traits** — `GameState`, `Input`, `AttractAI` — added to the world itself (not entities), accessed via `world.get(GameState)`
+
+The `GameState` singleton carries score, lives, level, countdown timer, streak counter, multiplier, carried ball speed across levels, and high score (persisted to `localStorage`).
+
+### Attract Mode AI
+
+The AI uses three layers of smoothing to mimic human play:
+
+1. **Goal** — raw prediction of where the ball will land (accounts for wall bounces via modular fold), lerped at 3.0/sec toward the latest prediction. Occasionally biased toward the nearest remaining block column
+2. **Virtual mouse** — lerps at 5.0/sec toward the goal, like a hand moving a physical mouse
+3. **Paddle** — the same `updatePaddle` function used by the player lerps the paddle toward the virtual mouse at 12 units/sec
+
+A slow-drifting offset (re-randomized every 4-8 seconds) adds subtle imperfection so the AI doesn't look robotic.
+
+### Project Structure
+
+```
+minis/breakout/
+├── src/
+│   ├── index.ts          # Library entry point
+│   ├── Game.tsx           # Main game component + R3F Canvas
+│   ├── materials.ts       # FlashEffect, BlockDissolveEffect, dither transform
+│   ├── textures.ts        # Canvas-generated textures
+│   ├── world.ts           # Koota world factory
+│   ├── types.ts           # MiniGameProps, PlaySoundFn, GameMode
+│   ├── traits/
+│   │   └── index.ts       # All ECS traits
+│   ├── components/
+│   │   ├── Ball.tsx        # Ball renderer + flash sync
+│   │   ├── Blocks.tsx      # Block grid renderer + dissolve sync
+│   │   ├── Paddle.tsx      # Paddle renderer
+│   │   ├── UI.tsx          # Score/lives HTML overlay
+│   │   └── Walls.tsx       # Wall sprites
+│   └── systems/
+│       ├── collision.ts    # Swept AABB collision (wall, paddle, block)
+│       ├── constants.ts    # World dimensions, speeds, scoring
+│       ├── game.ts         # State machine, spawning, high score
+│       ├── physics.ts      # Ball integration, paddle lerp, AI
+│       └── sounds.ts       # Sound player factory
+└── public/assets/          # SVG sprites (ball, block, paddle)
+```
+
+:::note[Portability]
+The mini-game is designed to be importable by the docs site as a library package. This drove two design choices: all textures are generated at runtime via `CanvasTexture` (zero network requests), and sound is injected as a `zzfx` prop function so the host controls audio context and volume.
+:::
+
+### External Dependencies
+
+- [Koota](https://github.com/pmndrs/koota) — Entity Component System
+- [React Three Fiber](https://r3f.docs.pmnd.rs/) — React renderer for Three.js
+- [ZzFX](https://github.com/KilledByAPixel/ZzFX) — Tiny sound generator
+
+## Next Steps
+
+- [Flatland Guide](../guides/flatland) — Deep dive into the Flatland API used by this game
+- [TSL Nodes Guide](../guides/tsl-nodes) — Custom material effects like the flash and dissolve
+- [Pass Effects Guide](../guides/pass-effects) — Full-screen post-processing

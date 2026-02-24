@@ -18,7 +18,9 @@
       }
     }
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "sideEffects": false,
   "scripts": {
     "build": "tsup",
@@ -37,7 +39,12 @@
     "@types/three": "catalog:",
     "three": "catalog:"
   },
-  "keywords": ["three.js", "sprites", "presets", "effects"],
+  "keywords": [
+    "three.js",
+    "sprites",
+    "presets",
+    "effects"
+  ],
   "license": "MIT",
   "repository": {
     "type": "git",

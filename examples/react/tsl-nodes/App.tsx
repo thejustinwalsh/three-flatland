@@ -1,5 +1,5 @@
-import { Suspense, useMemo, use, useRef, useEffect, useState, useCallback } from 'react'
-import { Canvas, useFrame, useThree } from '@react-three/fiber/webgpu'
+import { Suspense, useMemo, useRef, useEffect, useState, useCallback } from 'react'
+import { Canvas, useFrame, useThree, useLoader } from '@react-three/fiber/webgpu'
 import {
   texture as sampleTexture,
   uv,
@@ -9,7 +9,6 @@ import {
   float,
 } from 'three/tsl'
 import {
-  NearestFilter,
   CanvasTexture,
   RepeatWrapping,
 } from 'three'
@@ -17,6 +16,7 @@ import {
   AnimatedSprite2D,
   Sprite2DMaterial,
   SpriteSheetLoader,
+  applyTextureOptions,
   createMaterialEffect,
   tintAdditive,
   hueShift,
@@ -162,17 +162,7 @@ function createNoiseTexture(size = 256): CanvasTexture {
   return texture
 }
 
-// ========================================
-// Load sprite sheet (React 19 resource pattern)
-// ========================================
-
-const spriteSheetPromise = SpriteSheetLoader.load('./sprites/knight.json').then(
-  (sheet) => {
-    sheet.texture.minFilter = NearestFilter
-    sheet.texture.magFilter = NearestFilter
-    return sheet
-  }
-)
+// Pixel-art preset applied by SpriteSheetLoader (configured via TextureConfig or loader.preset)
 
 // ========================================
 // EffectSprite component
@@ -183,7 +173,7 @@ interface EffectSpriteProps {
 }
 
 function EffectSprite({ effect }: EffectSpriteProps) {
-  const spriteSheet = use(spriteSheetPromise) as SpriteSheet
+  const spriteSheet = useLoader(SpriteSheetLoader, './sprites/knight.json') as SpriteSheet
   const spriteRef = useRef<AnimatedSprite2D>(null)
 
   // Create premultiplied material (outline/pixelate need transparent pixels)
@@ -200,8 +190,7 @@ function EffectSprite({ effect }: EffectSpriteProps) {
   // Create noise texture (memoized)
   const noiseTexture = useMemo(() => {
     const tex = createNoiseTexture()
-    tex.minFilter = NearestFilter
-    tex.magFilter = NearestFilter
+    applyTextureOptions(tex, 'pixel-art')
     return tex
   }, [])
 
@@ -227,7 +216,7 @@ function EffectSprite({ effect }: EffectSpriteProps) {
         name: 'pixelate',
         schema: { progress: 0 } as const,
         node: ({ attrs }) => {
-          const instanceUV = attribute('instanceUV', 'vec4')
+          const instanceUV = attribute<'vec4'>('instanceUV', 'vec4')
           const localUV = uv()
 
           const pixelAmount = float(1).sub(

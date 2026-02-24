@@ -34,14 +34,14 @@ const Added = createAdded()
 export function batchAssignSystem(
   world: World,
   effectTraits: ReadonlyMap<Trait, typeof MaterialEffect>
-): void {
+): boolean {
   const added = world.query(Added(IsRenderable), ThreeRef)
-  if (added.length === 0) return
+  if (added.length === 0) return false
 
   const registryEntities = world.query(BatchRegistry)
-  if (registryEntities.length === 0) return
+  if (registryEntities.length === 0) return false
   const registry = registryEntities[0]!.get(BatchRegistry) as RegistryData | undefined
-  if (!registry) return
+  if (!registry) return false
 
   for (const entity of added) {
     const ref = entity.get(ThreeRef)
@@ -94,6 +94,8 @@ export function batchAssignSystem(
     // One-time full buffer sync from current trait state
     syncAllBuffers(entity, slot, batchMesh.mesh, sprite, effectTraits)
   }
+
+  return true
 }
 
 /**

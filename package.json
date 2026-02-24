@@ -12,10 +12,10 @@
     "build": "turbo run build",
     "dev": "echo '\\n  ➜  Dev server: http://localhost:5173\\n' && turbo run dev --filter=docs --filter='example-*'",
     "typecheck": "turbo run typecheck",
-    "lint": "eslint packages/*/src",
-    "lint:fix": "eslint packages/*/src --fix",
-    "format": "prettier --write \"packages/*/src/**/*.{ts,tsx}\"",
-    "format:check": "prettier --check \"packages/*/src/**/*.{ts,tsx}\"",
+    "lint": "eslint packages/*/src minis/*/src",
+    "lint:fix": "eslint packages/*/src minis/*/src --fix",
+    "format": "prettier --write \"packages/*/src/**/*.{ts,tsx}\" \"minis/*/src/**/*.{ts,tsx}\"",
+    "format:check": "prettier --check \"packages/*/src/**/*.{ts,tsx}\" \"minis/*/src/**/*.{ts,tsx}\"",
     "test": "vitest run",
     "test:watch": "vitest",
     "clean": "turbo run clean && rm -rf node_modules/.vite",
@@ -24,7 +24,15 @@
     "release": "turbo run build && changeset publish",
     "syncpack": "tsx scripts/sync-pack.ts",
     "syncpack:examples": "tsx scripts/sync-pack.ts examples",
-    "syncpack:minis": "tsx scripts/sync-pack.ts minis"
+    "syncpack:minis": "tsx scripts/sync-pack.ts minis",
+    "prepare": "simple-git-hooks"
+  },
+  "simple-git-hooks": {
+    "pre-commit": "pnpm lint-staged"
+  },
+  "lint-staged": {
+    "examples/**/package.json": "tsx scripts/sync-pack.ts --files",
+    "minis/**/package.json": "tsx scripts/sync-pack.ts --files"
   },
   "pnpm": {
     "onlyBuiltDependencies": [
@@ -43,12 +51,15 @@
     "@eslint/js": "^9.18.0",
     "@types/node": "^22.10.5",
     "eslint": "^9.18.0",
+    "eslint-plugin-react-hooks": "^7.0.1",
     "globals": "^15.14.0",
+    "lint-staged": "^16.2.7",
     "prettier": "^3.4.2",
+    "simple-git-hooks": "^2.13.1",
     "tsup": "^8.3.5",
+    "tsx": "^4.19.2",
     "turbo": "^2.7.5",
     "typescript": "^5.7.3",
-    "tsx": "^4.19.2",
     "typescript-eslint": "^8.19.1",
     "vitest": "^2.1.8"
   }

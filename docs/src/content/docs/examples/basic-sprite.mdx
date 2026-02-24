@@ -38,14 +38,14 @@ export const reactFiles = loadExample('react', 'basic-sprite');
 </Tabs>
 </ExampleTabs>
 
-## Renderer2D
+## SpriteGroup
 
-The `Renderer2D` class manages 2D sprite rendering. All sprites must be added to a `Renderer2D` instance:
+The `SpriteGroup` class manages 2D sprite rendering. All sprites must be added to a `SpriteGroup` instance:
 
 ```typescript
-const renderer2D = new Renderer2D();
-scene.add(renderer2D);
-renderer2D.add(sprite);
+const spriteGroup = new SpriteGroup();
+scene.add(spriteGroup);
+spriteGroup.add(sprite);
 ```
 
 ## Sprite2D

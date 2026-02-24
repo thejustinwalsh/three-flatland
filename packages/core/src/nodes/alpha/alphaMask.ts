@@ -1,6 +1,7 @@
 import { vec4, float, texture as sampleTexture } from 'three/tsl'
 import type { Texture } from 'three'
-import type { TSLNode, FloatInput } from '../types'
+import type Node from 'three/src/nodes/core/Node.js'
+import type { FloatInput } from '../types'
 
 /**
  * Multiply alpha by a mask texture's value.
@@ -21,11 +22,11 @@ import type { TSLNode, FloatInput } from '../types'
  * alphaMask(texture(tex, uv()), maskTexture, uv(), 0.5)
  */
 export function alphaMask(
-  inputColor: TSLNode,
+  inputColor: Node<'vec4'>,
   maskTex: Texture,
-  maskUV: TSLNode,
+  maskUV: Node<'vec2'>,
   strength: FloatInput = 1
-): TSLNode {
+): Node<'vec4'> {
   const strengthNode = typeof strength === 'number' ? float(strength) : strength
 
   // Sample mask texture (use red channel)
@@ -49,7 +50,7 @@ export function alphaMask(
  * // Fade sprite by 50%
  * alphaMaskValue(texture(tex, uv()), 0.5)
  */
-export function alphaMaskValue(inputColor: TSLNode, mask: FloatInput): TSLNode {
+export function alphaMaskValue(inputColor: Node<'vec4'>, mask: FloatInput): Node<'vec4'> {
   const maskNode = typeof mask === 'number' ? float(mask) : mask
 
   return vec4(inputColor.rgb, inputColor.a.mul(maskNode))
@@ -65,11 +66,11 @@ export function alphaMaskValue(inputColor: TSLNode, mask: FloatInput): TSLNode {
  * @returns Color with inverted mask applied to alpha
  */
 export function alphaMaskInvert(
-  inputColor: TSLNode,
+  inputColor: Node<'vec4'>,
   maskTex: Texture,
-  maskUV: TSLNode,
+  maskUV: Node<'vec2'>,
   strength: FloatInput = 1
-): TSLNode {
+): Node<'vec4'> {
   const strengthNode = typeof strength === 'number' ? float(strength) : strength
 
   // Sample mask texture and invert

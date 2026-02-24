@@ -1,8 +1,8 @@
 import { MeshBasicNodeMaterial } from 'three/webgpu'
 import { attribute, vec2, vec3, vec4, float, Fn, mix, floor, mod } from 'three/tsl'
+import type Node from 'three/src/nodes/core/Node.js'
 import type { InstanceAttributeConfig, InstanceAttributeType } from '../pipeline/types'
-import type { MaterialEffect } from './MaterialEffect'
-import type { TSLNode } from '../nodes/types'
+import type { MaterialEffect, EffectSchemaValue, SchemaToNodeType } from './MaterialEffect'
 
 /**
  * Compute the buffer tier for a given float count.
@@ -20,7 +20,7 @@ export function computeTier(neededFloats: number): number {
  * Get a TSL component accessor from a packed vec4 buffer array.
  * Maps an absolute float offset to the correct bufNode[n].xyzw component.
  */
-export function getPackedComponent(bufNodes: TSLNode[], absoluteOffset: number): TSLNode {
+export function getPackedComponent(bufNodes: Node<'vec4'>[], absoluteOffset: number): Node<'float'> {
   const bufIdx = Math.floor(absoluteOffset / 4)
   const comp = absoluteOffset % 4
   const node = bufNodes[bufIdx]!
@@ -122,7 +122,7 @@ export class EffectMaterial extends MeshBasicNodeMaterial {
 
   /**
    * Version counter for effect schema changes (tier upgrades).
-   * Incremented when the tier changes, used by Renderer2D to detect
+   * Incremented when the tier changes, used by SpriteGroup to detect
    * when batches need rebuilding.
    * @internal
    */
@@ -247,7 +247,7 @@ export class EffectMaterial extends MeshBasicNodeMaterial {
    * Default returns null (no base color — effects cannot be applied).
    * @internal
    */
-  protected _buildBaseColor(): { color: TSLNode; uv: TSLNode } | null {
+  protected _buildBaseColor(): { color: Node<'vec4'>; uv: Node<'vec2'> } | null {
     return null
   }
 
@@ -276,21 +276,24 @@ export class EffectMaterial extends MeshBasicNodeMaterial {
 
     // Pre-build packed buffer TSL nodes for effects (can be outside Fn)
     const numVec4s = this._effectTier / 4
-    const bufNodes: TSLNode[] = []
+    const bufNodes: Node<'vec4'>[] = []
     for (let i = 0; i < numVec4s; i++) {
-      bufNodes.push(attribute(`effectBuf${i}`, 'vec4'))
+      bufNodes.push(attribute<'vec4'>(`effectBuf${i}`, 'vec4'))
     }
+
+    // Attr value type: any typed node from packed buffer reconstruction
+    type AttrNode = SchemaToNodeType<EffectSchemaValue>
 
     // Pre-build per-effect data: bit index and reconstructed attrs (can be outside Fn)
     const effectData: Array<{
       effectClass: typeof MaterialEffect
       bitIndex: number
-      attrs: Record<string, TSLNode>
+      attrs: Record<string, AttrNode>
     }> = []
 
     for (const effectClass of this._effects) {
       const bitIndex = this._effectBitIndex.get(effectClass.effectName)!
-      const attrs: Record<string, TSLNode> = {}
+      const attrs: Record<string, AttrNode> = {}
 
       for (const field of effectClass._fields) {
         const slotKey = `${effectClass.effectName}_${field.name}`
@@ -327,8 +330,8 @@ export class EffectMaterial extends MeshBasicNodeMaterial {
       const baseResult = buildBaseColor()
       if (!baseResult) return vec4(0, 0, 0, 0)
 
-      let { color } = baseResult
-      const { uv: atlasUV } = baseResult
+      let color: Node<'vec4'> = baseResult.color
+      const atlasUV = baseResult.uv
 
       // Chain effects with branchless enable/disable via packed bitmask
       if (effectData.length > 0) {
@@ -352,7 +355,7 @@ export class EffectMaterial extends MeshBasicNodeMaterial {
       }
 
       return color
-    })()
+    })() as typeof this.colorNode
   }
 
   // ============================================

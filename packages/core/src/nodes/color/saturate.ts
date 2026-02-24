@@ -1,5 +1,6 @@
-import { vec3, vec4, float } from 'three/tsl'
-import type { TSLNode, FloatInput } from '../types'
+import { vec3, vec4, float, mix } from 'three/tsl'
+import type Node from 'three/src/nodes/core/Node.js'
+import type { FloatInput } from '../types'
 
 // Standard luminance weights (Rec. 709)
 const LUMA_R = 0.2126
@@ -21,7 +22,7 @@ const LUMA_B = 0.0722
  * // Boost saturation
  * saturate(texture(tex, uv()), 1.5)
  */
-export function saturate(inputColor: TSLNode, amount: FloatInput): TSLNode {
+export function saturate(inputColor: Node<'vec4'>, amount: FloatInput): Node<'vec4'> {
   const amountNode = typeof amount === 'number' ? float(amount) : amount
 
   // Calculate luminance
@@ -30,7 +31,7 @@ export function saturate(inputColor: TSLNode, amount: FloatInput): TSLNode {
   const grayscale = vec3(luminance, luminance, luminance)
 
   // Mix between grayscale and original color
-  const saturatedRGB = grayscale.mix(inputColor.rgb, amountNode)
+  const saturatedRGB = mix(grayscale, inputColor.rgb, amountNode)
 
   return vec4(saturatedRGB, inputColor.a)
 }
@@ -45,6 +46,6 @@ export function saturate(inputColor: TSLNode, amount: FloatInput): TSLNode {
  * @example
  * grayscale(texture(tex, uv()))
  */
-export function grayscale(inputColor: TSLNode): TSLNode {
+export function grayscale(inputColor: Node<'vec4'>): Node<'vec4'> {
   return saturate(inputColor, 0)
 }

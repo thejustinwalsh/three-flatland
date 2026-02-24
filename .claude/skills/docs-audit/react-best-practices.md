@@ -294,10 +294,10 @@ function Game() {
 
 ```tsx
 import { extend } from '@react-three/fiber/webgpu';
-import { Sprite2D, Renderer2D, AnimatedSprite2D, TileMap2D } from '@three-flatland/react';
+import { Sprite2D, SpriteGroup, AnimatedSprite2D, TileMap2D } from '@three-flatland/react';
 
 // Register once at module level
-extend({ Sprite2D, Renderer2D, AnimatedSprite2D, TileMap2D });
+extend({ Sprite2D, SpriteGroup, AnimatedSprite2D, TileMap2D });
 ```
 
 ### Use refs for imperative updates

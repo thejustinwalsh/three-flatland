@@ -1,5 +1,6 @@
 import { vec4, float, If, Discard } from 'three/tsl'
-import type { TSLNode, FloatInput } from '../types'
+import type Node from 'three/src/nodes/core/Node.js'
+import type { FloatInput } from '../types'
 
 /**
  * Discard pixels with alpha below a threshold.
@@ -17,7 +18,7 @@ import type { TSLNode, FloatInput } from '../types'
  * // Animated alpha cutoff
  * alphaTest(texture(tex, uv()), thresholdUniform)
  */
-export function alphaTest(inputColor: TSLNode, threshold: FloatInput): TSLNode {
+export function alphaTest(inputColor: Node<'vec4'>, threshold: FloatInput): Node<'vec4'> {
   const thresholdNode = typeof threshold === 'number' ? float(threshold) : threshold
 
   If(inputColor.a.lessThan(thresholdNode), () => {
@@ -35,7 +36,7 @@ export function alphaTest(inputColor: TSLNode, threshold: FloatInput): TSLNode {
  * @param threshold - Alpha threshold
  * @returns Opaque color if above threshold, discarded otherwise
  */
-export function alphaTestOpaque(inputColor: TSLNode, threshold: FloatInput): TSLNode {
+export function alphaTestOpaque(inputColor: Node<'vec4'>, threshold: FloatInput): Node<'vec4'> {
   const thresholdNode = typeof threshold === 'number' ? float(threshold) : threshold
 
   If(inputColor.a.lessThan(thresholdNode), () => {

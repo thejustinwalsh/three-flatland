@@ -165,6 +165,9 @@ export function findOrCreateBatch(
     )
   }
 
+  // Set descriptive name for devtools scene tree
+  mesh.name = `SpriteBatch[layer=${run.layer}, mat=${run.materialId}]`
+
   run.batches.push(batchEntity)
   registry.activeBatches.push(batchEntity)
   registry.renderOrderDirty = true

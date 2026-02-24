@@ -248,7 +248,7 @@ async function main() {
     schema: { progress: 0 } as const,
     node: ({ attrs }) => {
       // Re-sample at pixelated UV — must read instanceUV and uv() directly
-      const instanceUV = attribute('instanceUV', 'vec4')
+      const instanceUV = attribute<'vec4'>('instanceUV', 'vec4')
       const localUV = uv()
 
       // Pixel count: 32 (normal) → 4 (pixelated) → 32 (normal)

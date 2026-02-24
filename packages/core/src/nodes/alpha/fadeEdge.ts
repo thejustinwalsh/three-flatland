@@ -1,5 +1,6 @@
 import { vec4, float, min, smoothstep } from 'three/tsl'
-import type { TSLNode, FloatInput } from '../types'
+import type Node from 'three/src/nodes/core/Node.js'
+import type { FloatInput } from '../types'
 
 /**
  * Fade alpha towards the edges of UV space using smoothstep.
@@ -18,10 +19,10 @@ import type { TSLNode, FloatInput } from '../types'
  * fadeEdge(texture(tex, uv()), uv(), 0.3)
  */
 export function fadeEdge(
-  inputColor: TSLNode,
-  inputUV: TSLNode,
+  inputColor: Node<'vec4'>,
+  inputUV: Node<'vec2'>,
   edgeWidth: FloatInput = 0.1
-): TSLNode {
+): Node<'vec4'> {
   const widthNode = typeof edgeWidth === 'number' ? float(edgeWidth) : edgeWidth
 
   // Calculate fade from each edge
@@ -54,11 +55,11 @@ export function fadeEdge(
  * fadeEdgeRadial(texture(tex, uv()), uv(), 0.3, 0.5)
  */
 export function fadeEdgeRadial(
-  inputColor: TSLNode,
-  inputUV: TSLNode,
+  inputColor: Node<'vec4'>,
+  inputUV: Node<'vec2'>,
   innerRadius: FloatInput = 0.3,
   outerRadius: FloatInput = 0.5
-): TSLNode {
+): Node<'vec4'> {
   const innerNode = typeof innerRadius === 'number' ? float(innerRadius) : innerRadius
   const outerNode = typeof outerRadius === 'number' ? float(outerRadius) : outerRadius
 
@@ -81,10 +82,10 @@ export function fadeEdgeRadial(
  * @returns Color with horizontally faded alpha
  */
 export function fadeEdgeHorizontal(
-  inputColor: TSLNode,
-  inputUV: TSLNode,
+  inputColor: Node<'vec4'>,
+  inputUV: Node<'vec2'>,
   edgeWidth: FloatInput = 0.1
-): TSLNode {
+): Node<'vec4'> {
   const widthNode = typeof edgeWidth === 'number' ? float(edgeWidth) : edgeWidth
 
   const fadeLeft = smoothstep(float(0), widthNode, inputUV.x)
@@ -103,10 +104,10 @@ export function fadeEdgeHorizontal(
  * @returns Color with vertically faded alpha
  */
 export function fadeEdgeVertical(
-  inputColor: TSLNode,
-  inputUV: TSLNode,
+  inputColor: Node<'vec4'>,
+  inputUV: Node<'vec2'>,
   edgeWidth: FloatInput = 0.1
-): TSLNode {
+): Node<'vec4'> {
   const widthNode = typeof edgeWidth === 'number' ? float(edgeWidth) : edgeWidth
 
   const fadeBottom = smoothstep(float(0), widthNode, inputUV.y)

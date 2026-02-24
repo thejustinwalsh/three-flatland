@@ -1,11 +1,12 @@
 import { vec2, float, cos, sin } from 'three/tsl'
-import type { TSLNode, Vec2Input, FloatInput } from '../types'
+import type Node from 'three/src/nodes/core/Node.js'
+import type { Vec2Input, FloatInput } from '../types'
 
 /**
  * Rotate UV coordinates around a pivot point.
  *
  * @param inputUV - The UV coordinates to transform
- * @param angle - Rotation angle in radians (or TSL node)
+ * @param angle - Rotation angle in radians (or float node)
  * @param pivot - Pivot point for rotation (default: [0.5, 0.5] = center)
  * @returns Rotated UV coordinates
  *
@@ -18,10 +19,10 @@ import type { TSLNode, Vec2Input, FloatInput } from '../types'
  * uvRotate(uv(), angleUniform, [0.5, 0.5])
  */
 export function uvRotate(
-  inputUV: TSLNode,
+  inputUV: Node<'vec2'>,
   angle: FloatInput,
   pivot: Vec2Input = [0.5, 0.5]
-): TSLNode {
+): Node<'vec2'> {
   const angleNode = typeof angle === 'number' ? float(angle) : angle
   const pivotVec = Array.isArray(pivot) ? vec2(...pivot) : pivot
 

@@ -4,8 +4,10 @@
 // Side-effect import for ThreeElements module augmentation
 import './types'
 
-export type { FlatlandProps, Sprite2DProps } from './types'
-export { effectAttach } from './types'
+export type { FlatlandProps, Sprite2DProps, EffectElement } from './types'
+
+// Attach helpers
+export { attachEffect } from './attach'
 
 // Resource utilities
 export { createResource, createCachedResource, spriteSheet, texture } from './resource'

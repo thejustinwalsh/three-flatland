@@ -6,11 +6,36 @@ import type {
   Sprite2DOptions,
   AnimatedSprite2D,
   AnimatedSprite2DOptions,
-  Renderer2D,
+  SpriteGroup,
+  Flatland,
   TileMap2D,
   TileLayer,
-  MaterialEffect,
+  MaterialEffectClass,
+  EffectSchema,
+  EffectValues,
 } from '@three-flatland/core'
+
+/**
+ * JSX element type for a MaterialEffect with schema-derived props.
+ *
+ * `ThreeElement<T>` can't always resolve dynamic properties defined via
+ * `Object.defineProperty` in `createMaterialEffect`. This helper explicitly
+ * surfaces the schema fields so they appear in VS Code autocomplete.
+ *
+ * @example
+ * ```tsx
+ * declare module '@react-three/fiber' {
+ *   interface ThreeElements {
+ *     dissolveEffect: EffectElement<typeof DissolveEffect>
+ *   }
+ * }
+ *
+ * // Now `progress` shows up as a valid prop:
+ * <dissolveEffect attach={attachEffect} progress={0.5} />
+ * ```
+ */
+export type EffectElement<T extends MaterialEffectClass<EffectSchema>> =
+  ThreeElement<T> & (T extends MaterialEffectClass<infer S extends EffectSchema> ? Partial<EffectValues<S>> : Record<string, never>)
 
 /**
  * Props for the Flatland root component
@@ -70,29 +95,13 @@ export interface AnimatedSprite2DProps extends Partial<AnimatedSprite2DOptions> 
  * // or extend({ Sprite2D, Sprite2DMaterial, AnimatedSprite2D })
  * ```
  */
-/**
- * R3F attach utility for MaterialEffect instances.
- *
- * Use as the `attach` prop when adding effects as children of a sprite2D:
- *
- * @example
- * ```tsx
- * <sprite2D texture={tex}>
- *   <dissolveEffect attach={effectAttach} progress={0.5} />
- * </sprite2D>
- * ```
- */
-export const effectAttach = (parent: Sprite2D, self: MaterialEffect): (() => void) => {
-  parent.addEffect(self)
-  return () => parent.removeEffect(self)
-}
-
 declare module '@react-three/fiber' {
   interface ThreeElements {
     sprite2D: ThreeElement<typeof Sprite2D>
     sprite2DMaterial: ThreeElement<typeof Sprite2DMaterial>
     animatedSprite2D: ThreeElement<typeof AnimatedSprite2D>
-    renderer2D: ThreeElement<typeof Renderer2D>
+    spriteGroup: ThreeElement<typeof SpriteGroup>
+    flatland: ThreeElement<typeof Flatland>
     tileMap2D: ThreeElement<typeof TileMap2D>
     tileLayer: ThreeElement<typeof TileLayer>
   }

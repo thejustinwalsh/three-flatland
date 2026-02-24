@@ -43,7 +43,7 @@ packages/core/src/**/*.ts (for API verification)
 | `quick-start.mdx` | `examples/vanilla/basic-sprite/main.ts`, `examples/react/basic-sprite/App.tsx` | Basic usage pattern |
 | `guides/sprites.mdx` | `examples/*/basic-sprite/*` | Sprite2D API |
 | `guides/animation.mdx` | `examples/*/animation/*` | AnimatedSprite2D API |
-| `guides/batch-rendering.mdx` | `examples/*/batch-demo/*` | Renderer2D, Sprite2DMaterial API |
+| `guides/batch-rendering.mdx` | `examples/*/batch-demo/*` | SpriteGroup, Sprite2DMaterial API |
 | `guides/tilemaps.mdx` | `examples/*/tilemap/*` | TileMap2D, loaders API |
 | `guides/tsl-nodes.mdx` | `examples/*/tsl-nodes/*` | TSL node functions |
 
@@ -137,7 +137,7 @@ grep -r "^export.*function" packages/core/src/nodes/
 ### @three-flatland/react
 
 - Re-exports everything from `@three-flatland/core`
-- Type augmentation for R3F (`sprite2D`, `renderer2D`, etc.)
+- Type augmentation for R3F (`sprite2D`, `spriteGroup`, etc.)
 
 ### @three-flatland/nodes
 

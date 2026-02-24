@@ -108,5 +108,6 @@ export function transformSyncSystem(world: World): void {
   for (const mesh of dirtyMeshes) {
     mesh.instanceMatrix.needsUpdate = true
     mesh.getUVAttribute().needsUpdate = true
+    mesh.applyUpdateRanges()
   }
 }

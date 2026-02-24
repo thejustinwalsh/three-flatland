@@ -1,6 +1,7 @@
-import { vec3, vec4, float, floor, mod, int, select, texture as sampleTexture } from 'three/tsl'
+import { vec2, vec3, vec4, float, floor, mod, int, select, mix, texture as sampleTexture } from 'three/tsl'
 import type { Texture } from 'three'
-import type { TSLNode, FloatInput } from '../types'
+import type Node from 'three/src/nodes/core/Node.js'
+import type { FloatInput } from '../types'
 
 // Standard luminance weights (Rec. 709)
 const LUMA_R = 0.2126
@@ -28,10 +29,10 @@ const LUMA_B = 0.0722
  * palettize(color, retroPalette, 0.5)
  */
 export function palettize(
-  inputColor: TSLNode,
+  inputColor: Node<'vec4'>,
   paletteTex: Texture,
   strength: FloatInput = 1
-): TSLNode {
+): Node<'vec4'> {
   const strengthNode = typeof strength === 'number' ? float(strength) : strength
 
   // Calculate luminance
@@ -43,7 +44,7 @@ export function palettize(
   const paletteColor = sampleTexture(paletteTex, paletteUV.xy)
 
   // Mix original with palettized based on strength
-  const mixedRGB = inputColor.rgb.mix(paletteColor.rgb, strengthNode)
+  const mixedRGB = mix(inputColor.rgb, paletteColor.rgb, strengthNode)
 
   return vec4(mixedRGB, inputColor.a)
 }
@@ -51,7 +52,7 @@ export function palettize(
 /**
  * Get 4x4 Bayer threshold for dithering (internal helper).
  */
-function getBayer4x4(x: TSLNode, y: TSLNode): TSLNode {
+function getBayer4x4(x: Node<'int'>, y: Node<'int'>): Node<'float'> {
   const ix = mod(x, int(4))
   const iy = mod(y, int(4))
   const index = iy.mul(int(4)).add(ix)
@@ -75,7 +76,7 @@ function getBayer4x4(x: TSLNode, y: TSLNode): TSLNode {
     5 / 16,
   ]
 
-  let result: TSLNode = float(values[15])
+  let result: Node<'float'> = float(values[15])
   for (let i = 14; i >= 0; i--) {
     result = select(index.equal(int(i)), float(values[i]), result)
   }
@@ -103,12 +104,12 @@ function getBayer4x4(x: TSLNode, y: TSLNode): TSLNode {
  * palettizeDithered(color, c64Palette, 16, 0.8, screenCoord)
  */
 export function palettizeDithered(
-  inputColor: TSLNode,
+  inputColor: Node<'vec4'>,
   paletteTex: Texture,
   paletteSize: FloatInput,
   dither: FloatInput = 0.5,
-  screenCoord?: TSLNode
-): TSLNode {
+  screenCoord?: Node<'vec2'>
+): Node<'vec4'> {
   const paletteSizeNode = typeof paletteSize === 'number' ? float(paletteSize) : paletteSize
   const ditherNode = typeof dither === 'number' ? float(dither) : dither
 
@@ -117,9 +118,9 @@ export function palettizeDithered(
   const luminance = inputColor.rgb.dot(lumaWeights)
 
   // Get dither threshold
-  const coord = screenCoord ?? float(0)
-  const x = floor(coord.x ?? coord).toInt()
-  const y = floor(coord.y ?? float(0)).toInt()
+  const coord = screenCoord ?? vec2(0, 0)
+  const x = floor(coord.x).toInt()
+  const y = floor(coord.y).toInt()
   const threshold = getBayer4x4(x, y)
 
   // Add dither offset to luminance (scaled by palette step size)
@@ -148,17 +149,17 @@ export function palettizeDithered(
  * palettizeNearest(color, palette8, 8)
  */
 export function palettizeNearest(
-  inputColor: TSLNode,
+  inputColor: Node<'vec4'>,
   paletteTex: Texture,
   paletteSize: number
-): TSLNode {
+): Node<'vec4'> {
   // Limit to reasonable palette size to avoid massive shader
   const size = Math.min(paletteSize, 16)
 
   // Sample first palette color as initial best match
-  let bestColor: TSLNode = sampleTexture(paletteTex, vec3(float(0.5 / size), float(0.5), float(0)).xy)
+  let bestColor: Node<'vec4'> = sampleTexture(paletteTex, vec3(float(0.5 / size), float(0.5), float(0)).xy)
   const bestDiff = inputColor.rgb.sub(bestColor.rgb)
-  let bestDist: TSLNode = bestDiff.dot(bestDiff)
+  let bestDist: Node<'float'> = bestDiff.dot(bestDiff)
 
   // Check each palette color
   for (let i = 1; i < size; i++) {

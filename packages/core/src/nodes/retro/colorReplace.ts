@@ -1,5 +1,6 @@
-import { vec3, vec4, float } from 'three/tsl'
-import type { TSLNode, FloatInput, Vec3Input } from '../types'
+import { vec3, vec4, float, mix } from 'three/tsl'
+import type Node from 'three/src/nodes/core/Node.js'
+import type { FloatInput, Vec3Input } from '../types'
 
 /**
  * Replace a target color with a new color.
@@ -20,11 +21,11 @@ import type { TSLNode, FloatInput, Vec3Input } from '../types'
  * colorReplace(color, baseColor, teamColorUniform, 0.15)
  */
 export function colorReplace(
-  inputColor: TSLNode,
+  inputColor: Node<'vec4'>,
   targetColor: Vec3Input,
   replaceColor: Vec3Input,
   tolerance: FloatInput = 0.1
-): TSLNode {
+): Node<'vec4'> {
   const targetNode = Array.isArray(targetColor)
     ? vec3(targetColor[0], targetColor[1], targetColor[2])
     : targetColor
@@ -41,7 +42,7 @@ export function colorReplace(
   const factor = float(1).sub(distance.div(toleranceNode)).clamp(0, 1)
 
   // Mix between original and replacement based on factor
-  const mixedRGB = inputColor.rgb.mix(replaceNode, factor)
+  const mixedRGB = mix(inputColor.rgb, replaceNode, factor)
 
   return vec4(mixedRGB, inputColor.a)
 }
@@ -61,11 +62,11 @@ export function colorReplace(
  * colorReplaceHard(color, [1, 0, 0], [0, 0, 1], 0.01)
  */
 export function colorReplaceHard(
-  inputColor: TSLNode,
+  inputColor: Node<'vec4'>,
   targetColor: Vec3Input,
   replaceColor: Vec3Input,
   tolerance: FloatInput = 0.01
-): TSLNode {
+): Node<'vec4'> {
   const targetNode = Array.isArray(targetColor)
     ? vec3(targetColor[0], targetColor[1], targetColor[2])
     : targetColor
@@ -107,11 +108,11 @@ export function colorReplaceHard(
  * )
  */
 export function colorReplaceMultiple(
-  inputColor: TSLNode,
+  inputColor: Node<'vec4'>,
   sourceColors: [number, number, number][],
   targetColors: [number, number, number][],
   tolerance: FloatInput = 0.1
-): TSLNode {
+): Node<'vec4'> {
   if (sourceColors.length !== targetColors.length) {
     throw new Error('colorReplaceMultiple: sourceColors and targetColors must have same length')
   }
@@ -119,7 +120,7 @@ export function colorReplaceMultiple(
   const toleranceNode = typeof tolerance === 'number' ? float(tolerance) : tolerance
 
   // Start with original color
-  let resultRGB: TSLNode = inputColor.rgb
+  let resultRGB: Node<'vec3'> = inputColor.rgb
 
   // Apply each replacement in sequence
   for (let i = 0; i < sourceColors.length; i++) {
@@ -136,7 +137,7 @@ export function colorReplaceMultiple(
     const factor = float(1).sub(distance.div(toleranceNode)).clamp(0, 1)
 
     // Mix with replacement
-    resultRGB = resultRGB.mix(targetNode, factor)
+    resultRGB = mix(resultRGB, targetNode, factor)
   }
 
   return vec4(resultRGB, inputColor.a)

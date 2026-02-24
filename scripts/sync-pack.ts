@@ -3,8 +3,8 @@
  * instead of `catalog:` and `workspace:*`. This makes packages copy-paste-able
  * outside the monorepo.
  *
- * Usage: pnpm sync-pack <dir> [<dir> ...]
- *   e.g. pnpm sync-pack examples minis
+ * Usage: pnpm syncpack <dir> [<dir> ...]
+ *   e.g. pnpm syncpack examples minis
  */
 
 import { readFileSync, writeFileSync, readdirSync, statSync, existsSync } from 'node:fs'
@@ -28,11 +28,11 @@ function parseCatalog(): Record<string, string> {
     }
     if (!inCatalog) continue
 
-    // Match: "  package-name: ^version" or '  "@scoped/name": ^version'
-    const match = line.match(/^\s+(?:"([^"]+)"|(\S+)):\s*(.+)$/)
+    // Match: "  package-name: ^version" or '  "@scoped/name": ^version' or "  '@scoped/name': ^version"
+    const match = line.match(/^\s+(?:"([^"]+)"|'([^']+)'|(\S+)):\s*(.+)$/)
     if (match) {
-      const name = match[1] || match[2]
-      const version = match[3].trim()
+      const name = match[1] || match[2] || match[3]
+      const version = match[4].trim()
       if (!version.startsWith('#') && name) {
         catalog[name] = version
       }
@@ -87,6 +87,8 @@ function syncDeps(
   deps: Record<string, string> | undefined,
   catalog: Record<string, string>,
   internal: Record<string, string>,
+  strict = false,
+  filePath = '',
 ): boolean {
   if (!deps) return false
   let changed = false
@@ -96,6 +98,12 @@ function syncDeps(
       if (catalog[name]) {
         deps[name] = catalog[name]
         changed = true
+      } else if (strict) {
+        console.error(
+          `Error: No catalog entry for "${name}" in pnpm-workspace.yaml\n` +
+            `Fix the catalog or update the version in: ${filePath}`,
+        )
+        process.exit(1)
       } else {
         console.warn(`  ⚠ No catalog entry for "${name}"`)
       }
@@ -103,6 +111,12 @@ function syncDeps(
       if (internal[name]) {
         deps[name] = `^${internal[name]}`
         changed = true
+      } else if (strict) {
+        console.error(
+          `Error: No internal package for "${name}"\n` +
+            `Add the package to packages/ or update the version in: ${filePath}`,
+        )
+        process.exit(1)
       } else {
         console.warn(`  ⚠ No internal package for "${name}"`)
       }
@@ -113,49 +127,81 @@ function syncDeps(
 }
 
 // Main
-const dirs = process.argv.slice(2)
+const args = process.argv.slice(2)
+const fileMode = args[0] === '--files'
 
-if (dirs.length === 0) {
-  console.error('Usage: pnpm sync-pack <dir> [<dir> ...]')
+if (args.length === 0) {
+  console.error('Usage: pnpm syncpack <dir> [<dir> ...]\n       pnpm syncpack --files <file> [<file> ...]')
   process.exit(1)
 }
 
 const catalog = parseCatalog()
 const internal = getInternalVersions()
 
-console.log('Catalog versions:', catalog)
-console.log('Internal versions:', internal)
-console.log()
+if (fileMode) {
+  // File mode: process individual package.json files (used by lint-staged)
+  const files = args.slice(1)
+  let totalChanged = 0
 
-let totalChanged = 0
+  for (const file of files) {
+    const absPath = resolve(ROOT, file)
+    if (!existsSync(absPath)) {
+      console.error(`Error: File not found: ${file}`)
+      process.exit(1)
+    }
 
-for (const dir of dirs) {
-  const absDir = resolve(ROOT, dir)
-
-  if (!existsSync(absDir)) {
-    console.warn(`⚠ Directory not found: ${dir}`)
-    continue
-  }
-
-  console.log(`Scanning ${dir}/`)
-  const packages = findPackages(absDir)
-
-  for (const pkgPath of packages) {
-    const content = readFileSync(pkgPath, 'utf-8')
+    const content = readFileSync(absPath, 'utf-8')
     const pkg = JSON.parse(content)
-    const relative = pkgPath.replace(ROOT + '/', '')
+    const relative = absPath.replace(ROOT + '/', '')
 
-    const depsChanged = syncDeps(pkg.dependencies, catalog, internal)
-    const devDepsChanged = syncDeps(pkg.devDependencies, catalog, internal)
+    const depsChanged = syncDeps(pkg.dependencies, catalog, internal, true, relative)
+    const devDepsChanged = syncDeps(pkg.devDependencies, catalog, internal, true, relative)
 
     if (depsChanged || devDepsChanged) {
-      writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n')
-      console.log(`  ✓ Updated ${relative}`)
+      writeFileSync(absPath, JSON.stringify(pkg, null, 2) + '\n')
       totalChanged++
-    } else {
-      console.log(`    (no changes) ${relative}`)
     }
   }
-}
 
-console.log(`\nDone. Updated ${totalChanged} package.json files.`)
+  if (totalChanged > 0) {
+    console.error(`Synced ${totalChanged} package.json file(s)`)
+  }
+} else {
+  // Directory mode: walk directories (existing behavior)
+  console.log('Catalog versions:', catalog)
+  console.log('Internal versions:', internal)
+  console.log()
+
+  let totalChanged = 0
+
+  for (const dir of args) {
+    const absDir = resolve(ROOT, dir)
+
+    if (!existsSync(absDir)) {
+      console.warn(`⚠ Directory not found: ${dir}`)
+      continue
+    }
+
+    console.log(`Scanning ${dir}/`)
+    const packages = findPackages(absDir)
+
+    for (const pkgPath of packages) {
+      const content = readFileSync(pkgPath, 'utf-8')
+      const pkg = JSON.parse(content)
+      const relative = pkgPath.replace(ROOT + '/', '')
+
+      const depsChanged = syncDeps(pkg.dependencies, catalog, internal)
+      const devDepsChanged = syncDeps(pkg.devDependencies, catalog, internal)
+
+      if (depsChanged || devDepsChanged) {
+        writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n')
+        console.log(`  ✓ Updated ${relative}`)
+        totalChanged++
+      } else {
+        console.log(`    (no changes) ${relative}`)
+      }
+    }
+  }
+
+  console.log(`\nDone. Updated ${totalChanged} package.json files.`)
+}

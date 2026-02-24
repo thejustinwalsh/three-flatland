@@ -1,6 +1,8 @@
 import { vec2, float, texture as sampleTexture, uv, If, Discard, Fn } from 'three/tsl'
 import type { Texture } from 'three'
-import type { TSLNode, Vec4Input, FloatInput } from '../types'
+import type Node from 'three/src/nodes/core/Node.js'
+import type TextureNode from 'three/src/nodes/accessors/TextureNode.js'
+import type { Vec4Input, FloatInput } from '../types'
 
 /**
  * Sample a sprite from a texture with frame-based UV mapping.
@@ -33,14 +35,14 @@ export function sampleSprite(
   tex: Texture,
   frame: Vec4Input,
   options: { alphaTest?: FloatInput } = {}
-): TSLNode {
+): TextureNode<'vec4'> | Node<'vec4'> {
   const { alphaTest } = options
 
   // Handle frame as array or uniform
-  let frameX: TSLNode
-  let frameY: TSLNode
-  let frameW: TSLNode
-  let frameH: TSLNode
+  let frameX: Node<'float'>
+  let frameY: Node<'float'>
+  let frameW: Node<'float'>
+  let frameH: Node<'float'>
 
   if (Array.isArray(frame)) {
     frameX = float(frame[0])
@@ -86,11 +88,11 @@ export function sampleSprite(
  * const color = texture(tex, frameUV)
  * return outline8(color, frameUV, tex, { color: [0, 1, 0, 1] })
  */
-export function spriteUV(frame: Vec4Input): TSLNode {
-  let frameX: TSLNode
-  let frameY: TSLNode
-  let frameW: TSLNode
-  let frameH: TSLNode
+export function spriteUV(frame: Vec4Input): Node<'vec2'> {
+  let frameX: Node<'float'>
+  let frameY: Node<'float'>
+  let frameW: Node<'float'>
+  let frameH: Node<'float'>
 
   if (Array.isArray(frame)) {
     frameX = float(frame[0])

@@ -455,6 +455,27 @@ export class TileLayer extends Group {
   }
 
   /**
+   * Clone for devtools/serialization compatibility.
+   * TileLayer requires data/tileset in its constructor, so the default
+   * Object3D.clone() (`new this.constructor()`) would crash.
+   * Returns a Group containing cloned child meshes.
+   */
+  override clone(recursive?: boolean): this {
+    const cloned = new Group()
+    cloned.name = this.name
+    cloned.visible = this.visible
+    cloned.position.copy(this.position)
+    cloned.rotation.copy(this.rotation)
+    cloned.scale.copy(this.scale)
+    if (recursive !== false) {
+      for (const child of this.children) {
+        cloned.add(child.clone(true))
+      }
+    }
+    return cloned as unknown as this
+  }
+
+  /**
    * Dispose of all resources.
    */
   dispose(): void {
@@ -462,7 +483,8 @@ export class TileLayer extends Group {
       chunk.mesh.geometry.dispose()
     }
     this.chunks.clear()
-    this.material.dispose()
+    // Material is NOT disposed here — materials are shared resources.
+    // Users/frameworks manage material lifecycle separately.
     this.tileIndexMap.clear()
     this.animatedTilePositions.clear()
     this.animationTimers.clear()

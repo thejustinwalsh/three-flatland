@@ -9,9 +9,10 @@
       body { overflow: hidden; background: #000; font-family: monospace; }
       canvas { display: block; }
       #stats {
-        position: fixed; top: 12px; left: 12px; color: #4a9eff;
-        font-size: 13px; line-height: 1.6; white-space: pre; z-index: 100;
-        user-select: none; text-shadow: 0 1px 3px rgba(0,0,0,0.8);
+        position: fixed; top: 12px; right: 12px;
+        padding: 5px 10px; background: rgba(0, 2, 28, 0.7); border-radius: 6px;
+        color: #4a9eff; font-family: monospace; font-size: 10px;
+        line-height: 1.5; z-index: 100; white-space: pre;
       }
       #controls {
         position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%);
@@ -28,7 +29,10 @@
     </style>
   </head>
   <body>
-    <div id="stats">Loading...</div>
+    <div id="stats">FPS: -
+Knights: -
+Batches: -
+Draws: -</div>
     <div id="controls">
       <button id="btn-add">+ 100 Knights (Space)</button>
     </div>

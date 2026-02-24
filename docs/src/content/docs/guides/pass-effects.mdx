@@ -1,0 +1,253 @@
+---
+title: Pass Effects
+description: Full-screen post-processing with composable pass effects.
+---
+
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
+Pass Effects are full-screen post-processing effects applied after sprite rendering. They transform the entire scene output — CRT curvature, scanlines, color quantization, VHS distortion, and more. Pass effects require a [Flatland](../guides/flatland) instance.
+
+:::note[Pass Effects vs Material Effects]
+**Material Effects** (`createMaterialEffect`) run per-sprite in the fragment shader — damage flash, outlines, dissolve. See the [TSL Nodes guide](../guides/tsl-nodes).
+
+**Pass Effects** (`createPassEffect`) run on the full rendered scene as post-processing — CRT monitors, LCD grids, chromatic aberration.
+:::
+
+## Creating a Pass Effect
+
+Use `createPassEffect` with a name, a schema defining parameters, and a pass builder function:
+
+```typescript
+import { createPassEffect, posterize } from '@three-flatland/core'
+
+const PosterizePass = createPassEffect({
+  name: 'posterize',
+  schema: { bands: 6 },
+  pass: ({ uniforms }) => (input, uv) => {
+    return posterize(input, uniforms.bands)
+  },
+})
+```
+
+The `pass` callback receives a context with TSL uniform nodes for each schema field and returns a `PassEffectFn`:
+
+```typescript
+type PassEffectFn = (input: Node<'vec4'>, uv: Node<'vec2'>) => Node<'vec4'>
+```
+
+- `input` — the scene color (or previous pass output)
+- `uv` — screen-space UV coordinates
+
+Schema fields become typed properties on instances with zero-cost uniform updates — changing a value updates the GPU uniform directly without rebuilding the shader graph.
+
+## Using Pass Effects
+
+<Tabs syncKey="framework">
+  <TabItem label="Three.js" icon="seti:javascript">
+    ```typescript
+    import { Flatland, createPassEffect, posterize, crtVignette } from '@three-flatland/core'
+
+    const PosterizePass = createPassEffect({
+      name: 'posterize',
+      schema: { bands: 6 },
+      pass: ({ uniforms }) => (input, uv) => posterize(input, uniforms.bands),
+    })
+
+    const VignettePass = createPassEffect({
+      name: 'vignette',
+      schema: { intensity: 0.4, curvature: 2 },
+      pass: ({ uniforms }) => (input, uv) =>
+        crtVignette(input, uv, uniforms.intensity, uniforms.curvature),
+    })
+
+    const flatland = new Flatland({ viewSize: 400, clearColor: 0x1a1a2e })
+
+    // Add passes — they chain in insertion order
+    const post = new PosterizePass()
+    const vig = new VignettePass()
+    flatland.addPass(post).addPass(vig)
+
+    // Zero-cost parameter updates
+    post.bands = 10
+    vig.intensity = 0.25
+    ```
+  </TabItem>
+  <TabItem label="React" icon="seti:react">
+    ```tsx
+    import { useEffect, useRef } from 'react'
+    import { extend, useFrame, useThree } from '@react-three/fiber/webgpu'
+    import {
+      Flatland, createPassEffect, posterize, crtVignette,
+    } from '@three-flatland/react'
+    import type { WebGPURenderer } from 'three/webgpu'
+
+    extend({ Flatland })
+
+    const PosterizePass = createPassEffect({
+      name: 'posterize',
+      schema: { bands: 6 },
+      pass: ({ uniforms }) => (input, uv) => posterize(input, uniforms.bands),
+    })
+
+    const VignettePass = createPassEffect({
+      name: 'vignette',
+      schema: { intensity: 0.4, curvature: 2 },
+      pass: ({ uniforms }) => (input, uv) =>
+        crtVignette(input, uv, uniforms.intensity, uniforms.curvature),
+    })
+
+    function Scene() {
+      const flatlandRef = useRef(null)
+      const gl = useThree((s) => s.gl)
+
+      useEffect(() => {
+        const flatland = flatlandRef.current
+        const post = new PosterizePass()
+        post.bands = 10
+        const vig = new VignettePass()
+        vig.intensity = 0.25
+        flatland.addPass(post).addPass(vig)
+        return () => flatland.clearPasses()
+      }, [])
+
+      useFrame(() => {
+        flatlandRef.current?.render(gl as unknown as WebGPURenderer)
+      })
+
+      return (
+        <flatland ref={flatlandRef} viewSize={80} clearColor={0x1a1a2e}>
+          {/* sprites */}
+        </flatland>
+      )
+    }
+    ```
+  </TabItem>
+</Tabs>
+
+## Pass Chaining
+
+Multiple passes compose into a single pipeline. Each pass receives the previous pass's output:
+
+```typescript
+flatland.addPass(posterize)   // 1. Reduce color bands
+flatland.addPass(lcdGrid)     // 2. Apply LCD pixel grid
+flatland.addPass(backlight)   // 3. Add backlight bleed
+flatland.addPass(vignette)    // 4. Darken edges
+```
+
+Passes that only do color math (posterize, quantize, scanlines, vignette) merge into a single shader — TSL compiles the chain into one GPU program. Passes that call `convertToTexture(input)` internally (CRT curvature, VHS distortion, chromatic aberration) introduce an intermediate texture sample because they need to read at different UVs.
+
+### Dynamic Switching
+
+Swap pass chains at runtime:
+
+```typescript
+flatland.clearPasses()
+
+// Apply a new preset
+const crt = new CRTPass()
+flatland.addPass(crt)
+```
+
+### Pass Management API
+
+| Method | Description |
+|--------|-------------|
+| `flatland.addPass(pass, order?)` | Add a pass (optional explicit order) |
+| `flatland.removePass(pass)` | Remove a specific pass |
+| `flatland.clearPasses()` | Remove all passes |
+| `flatland.passes` | Read-only array of current passes |
+| `pass.enabled` | Toggle a pass without removing it |
+
+## Effects That Need Texture Sampling
+
+Some effects distort UVs — they read pixels at offset positions. These require `convertToTexture(input)` to create a sampable texture from the node graph:
+
+```typescript
+import { convertToTexture } from 'three/tsl'
+import { createPassEffect, vhsDistortion } from '@three-flatland/core'
+
+const VHSPass = createPassEffect({
+  name: 'vhs',
+  schema: { time: 0, intensity: 0.012, noiseAmount: 0.05 },
+  pass: ({ uniforms }) => (input, uv) => {
+    const tex = convertToTexture(input)
+    return vhsDistortion(tex, uv, uniforms.time, uniforms.intensity, uniforms.noiseAmount)
+  },
+})
+```
+
+Effects that need `convertToTexture`: `crtComplete`, `crtCurvature`, `vhsDistortion`, `chromaticAberration`.
+
+Effects that work directly on the color node: `posterize`, `quantize`, `scanlines`, `lcdGrid`, `crtVignette`, `lcdBacklightBleed`, `staticNoise`.
+
+## Animating Parameters
+
+Schema properties update the GPU uniform directly — no shader recompilation:
+
+```typescript
+const vhs = new VHSPass()
+flatland.addPass(vhs)
+
+// In the render loop
+vhs.time = elapsed        // Drive distortion animation
+vhs.intensity = 0.02      // Adjust strength
+```
+
+## Available TSL Nodes
+
+All post-processing nodes are exported from `@three-flatland/core`:
+
+### CRT Display
+
+| Node | Description |
+|------|-------------|
+| `crtComplete` | Full CRT simulation (curvature + scanlines + bloom + vignette + color bleed) |
+| `crtCurvature` | Barrel distortion for curved screen |
+| `crtVignette` | Edge darkening |
+| `crtBloom` | Glow from bright pixels |
+| `crtColorBleed` | RGB channel offset |
+| `crtConvergence` | RGB convergence offset |
+
+### Scanlines
+
+| Node | Description |
+|------|-------------|
+| `scanlinesSmooth` | Sine-wave scanline overlay |
+| `scanlines` | Hard scanline pattern |
+| `scanlinesGlow` | Bright scanline edges |
+| `scanlinesInterlaced` | Alternating-field interlace |
+
+### LCD Display
+
+| Node | Description |
+|------|-------------|
+| `lcdGrid` | Visible pixel grid (handheld console) |
+| `lcdBacklightBleed` | Uneven backlight glow |
+| `dotMatrix` | Dot matrix display pattern |
+| `lcdPocket` | Game Boy-style LCD |
+| `lcdGBC` | Game Boy Color LCD |
+
+### Retro Color
+
+| Node | Description |
+|------|-------------|
+| `posterize` | Reduce color bands |
+| `quantize` | 8-bit color reduction |
+| `bayerDither4x4` | Ordered dithering |
+| `palettize` | Map to a color palette |
+
+### Analog Video
+
+| Node | Description |
+|------|-------------|
+| `vhsDistortion` | VHS tracking errors and wave distortion |
+| `staticNoise` | Analog TV snow |
+| `chromaticAberration` | RGB channel separation |
+| `ntscComposite` | NTSC signal artifacts |
+| `analogGlitch` | Random glitch bands |
+
+## Next Steps
+
+- [Pass Effects Example](../examples/pass-effects) — Interactive demo with 5 presets
+- [TSL Nodes Guide](../guides/tsl-nodes) — Per-sprite material effects and low-level TSL usage

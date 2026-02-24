@@ -1,5 +1,6 @@
-import { vec3, vec4, float } from 'three/tsl'
-import type { TSLNode, Vec3Input, FloatInput } from '../types'
+import { vec3, vec4, float, mix } from 'three/tsl'
+import type Node from 'three/src/nodes/core/Node.js'
+import type { Vec3Input, FloatInput } from '../types'
 
 /**
  * Apply a color tint by multiplying with the input color.
@@ -18,16 +19,16 @@ import type { TSLNode, Vec3Input, FloatInput } from '../types'
  * tint(texture(tex, uv()), tintColorUniform, 0.5)
  */
 export function tint(
-  inputColor: TSLNode,
+  inputColor: Node<'vec4'>,
   tintColor: Vec3Input,
   strength: FloatInput = 1
-): TSLNode {
+): Node<'vec4'> {
   const tintVec = Array.isArray(tintColor) ? vec3(...tintColor) : tintColor
   const strengthNode = typeof strength === 'number' ? float(strength) : strength
 
   // Mix original RGB with tinted RGB based on strength
   const tintedRGB = inputColor.rgb.mul(tintVec)
-  const mixedRGB = inputColor.rgb.mix(tintedRGB, strengthNode)
+  const mixedRGB = mix(inputColor.rgb, tintedRGB, strengthNode)
 
   return vec4(mixedRGB, inputColor.a)
 }
@@ -46,10 +47,10 @@ export function tint(
  * tintAdditive(texture(tex, uv()), [1, 1, 1], hitFlashUniform)
  */
 export function tintAdditive(
-  inputColor: TSLNode,
+  inputColor: Node<'vec4'>,
   addColor: Vec3Input,
   strength: FloatInput = 1
-): TSLNode {
+): Node<'vec4'> {
   const addVec = Array.isArray(addColor) ? vec3(...addColor) : addColor
   const strengthNode = typeof strength === 'number' ? float(strength) : strength
 

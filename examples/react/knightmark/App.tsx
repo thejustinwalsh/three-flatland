@@ -3,7 +3,7 @@ import { Canvas, extend, useFrame, useThree, useLoader } from '@react-three/fibe
 import type { OrthographicCamera as OrthoCamera } from 'three'
 import {
   AnimatedSprite2D,
-  Renderer2D,
+  SpriteGroup,
   SpriteSheetLoader,
   TextureLoader,
   TileMap2D,
@@ -15,7 +15,7 @@ import {
   type TileLayerData,
 } from '@three-flatland/react'
 
-extend({ Renderer2D, TileMap2D })
+extend({ SpriteGroup, TileMap2D })
 
 // ============================================
 // CONSTANTS
@@ -179,7 +179,7 @@ function triggerRoll(knight: Knight) {
 
 function spawnKnight(
   sheet: SpriteSheet,
-  renderer2D: Renderer2D,
+  spriteGroup: SpriteGroup,
   bounds: { left: number; right: number; top: number; bottom: number },
 ): Knight {
   const margin = KNIGHT_SCALE / 2
@@ -201,7 +201,7 @@ function spawnKnight(
   const animName = speed < SPEED_THRESHOLD ? 'idle' : 'run'
   sprite.play(animName)
   sprite.flipX = baseVx < 0
-  renderer2D.add(sprite)
+  spriteGroup.add(sprite)
   return {
     sprite, state: 'WALK', baseVx, baseVy, speed,
     vx: baseVx, vy: baseVy, idleTimer: 0,
@@ -225,7 +225,7 @@ function KnightmarkScene({ statsRef, addKnightsRef }: KnightmarkSceneProps) {
   const knightSheet = useLoader(SpriteSheetLoader, import.meta.env.BASE_URL + 'sprites/knight.json')
   const tilesetTex = useLoader(TextureLoader, import.meta.env.BASE_URL + 'sprites/Dungeon_Tileset.png')
 
-  const renderer2DRef = useRef<Renderer2D>(null)
+  const spriteGroupRef = useRef<SpriteGroup>(null)
   const knightsRef = useRef<Knight[]>([])
   const spatialHashRef = useRef(new SpatialHash(CELL_SIZE))
   const boundsRef = useRef({ left: 0, right: 0, top: 0, bottom: 0 })
@@ -312,7 +312,7 @@ function KnightmarkScene({ statsRef, addKnightsRef }: KnightmarkSceneProps) {
 
   // Spawn batch of knights
   const spawnBatch = useCallback((count: number) => {
-    const r2d = renderer2DRef.current
+    const r2d = spriteGroupRef.current
     if (!r2d) return
     const bounds = boundsRef.current
     for (let i = 0; i < count; i++) {
@@ -413,10 +413,10 @@ function KnightmarkScene({ statsRef, addKnightsRef }: KnightmarkSceneProps) {
     }
 
     // Update stats DOM directly (bypasses React rendering for perf)
-    if (statsRef.current && renderer2DRef.current) {
-      const s = renderer2DRef.current.stats
+    if (statsRef.current && spriteGroupRef.current) {
+      const s = spriteGroupRef.current.stats
       statsRef.current.textContent =
-        `FPS: ${fpsRef.current.display}  Knights: ${knights.length}  Batches: ${s.batchCount}  Draw calls: ${s.drawCalls}`
+        `FPS: ${fpsRef.current.display}\nKnights: ${knights.length}\nBatches: ${s.batchCount}\nDraws: ${s.drawCalls}`
     }
   })
 
@@ -428,7 +428,7 @@ function KnightmarkScene({ statsRef, addKnightsRef }: KnightmarkSceneProps) {
         scale={[TILE_SCALE, TILE_SCALE, 1]}
         position={[-mapWorldW / 2, -mapWorldH / 2, -1]}
       />
-      <renderer2D ref={renderer2DRef} />
+      <spriteGroup ref={spriteGroupRef} />
     </>
   )
 }
@@ -473,18 +473,19 @@ export default function App() {
         style={{
           position: 'fixed',
           top: 12,
-          left: 12,
+          right: 12,
+          padding: '5px 10px',
+          background: 'rgba(0, 2, 28, 0.7)',
+          borderRadius: 6,
           color: '#4a9eff',
-          fontSize: 13,
-          lineHeight: 1.6,
-          whiteSpace: 'pre',
-          zIndex: 100,
-          userSelect: 'none',
-          textShadow: '0 1px 3px rgba(0,0,0,0.8)',
           fontFamily: 'monospace',
+          fontSize: 10,
+          lineHeight: 1.5,
+          zIndex: 100,
+          whiteSpace: 'pre',
         }}
       >
-        Loading...
+        {`FPS: -\nKnights: -\nBatches: -\nDraws: -`}
       </div>
 
       {/* Controls */}

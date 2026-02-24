@@ -3,6 +3,7 @@ import type { Entity } from 'koota'
 import type { Object3D } from 'three'
 import type { SpriteBatch } from '../pipeline/SpriteBatch'
 import type { Sprite2DMaterial } from '../materials/Sprite2DMaterial'
+import type Node from 'three/src/nodes/core/Node.js'
 
 // ============================================
 // GPU instance data (SoA — maps to interleaved GPU buffers)
@@ -113,7 +114,7 @@ export interface BatchRun {
 
 /**
  * World-level singleton holding batch management state.
- * Spawned once by Renderer2D; systems query for it.
+ * Spawned once by SpriteGroup; systems query for it.
  */
 export const BatchRegistry = trait(() => ({
   /** Runs indexed by run key — groups batches by (layer, materialId). */
@@ -134,4 +135,20 @@ export const BatchRegistry = trait(() => ({
   batchSlots: [] as (SpriteBatch | null)[],
   /** Free indices in batchSlots for reuse. */
   batchSlotFreeList: [] as number[],
+}))
+
+// ============================================
+// Post-processing pass traits
+// ============================================
+
+/** AoS — holds a post-processing pass function, order, and enabled state. */
+export const PostPassTrait = trait(() => ({
+  fn: null as ((input: Node<'vec4'>, uv: Node<'vec2'>) => Node<'vec4'>) | null,
+  order: 0,
+  enabled: true,
+}))
+
+/** World-level singleton for post-processing pass dirty tracking. */
+export const PostPassRegistry = trait(() => ({
+  dirty: false as boolean,
 }))
