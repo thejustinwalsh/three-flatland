@@ -122,6 +122,7 @@ export class Sprite2DMaterial extends EffectMaterial {
    */
   readonly batchId: number
 
+
   private _spriteTexture: Texture | null = null
   private _premultipliedAlpha: boolean = false
   private _colorTransform: ColorTransformFn | null = null
@@ -148,7 +149,7 @@ export class Sprite2DMaterial extends EffectMaterial {
       this.depthWrite = false
     } else {
       this.blending = NormalBlending
-      this.depthWrite = true
+      this.depthWrite = false
     }
 
     if (options.map) {
@@ -321,10 +322,10 @@ export class Sprite2DMaterial extends EffectMaterial {
   }
 
   dispose() {
-    super.dispose()
     this._effects.length = 0
     this._instanceAttributes.clear()
     this._effectSlots.clear()
     this._effectBitIndex.clear()
+    super.dispose()
   }
 }

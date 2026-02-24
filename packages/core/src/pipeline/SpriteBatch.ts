@@ -164,6 +164,7 @@ export class SpriteBatch extends InstancedMesh {
 
     // Set initial count to 0 (no sprites yet)
     this.count = 0
+    this.name = 'SpriteBatch'
   }
 
   // ============================================
@@ -326,6 +327,10 @@ export class SpriteBatch extends InstancedMesh {
   syncCount(): void {
     this.count = this._nextIndex
     this.applyUpdateRanges()
+    // Update bounding sphere for devtools highlight and frustum visualization
+    if (this.count > 0) {
+      this.computeBoundingSphere()
+    }
   }
 
   /**
@@ -360,6 +365,31 @@ export class SpriteBatch extends InstancedMesh {
       custom.attribute.clearUpdateRanges()
       custom.attribute.addUpdateRange(0, used * custom.size)
     }
+  }
+
+  /**
+   * Clone for devtools/serialization compatibility.
+   * SpriteBatch requires material in its constructor, so the default
+   * Object3D.clone() (`new this.constructor()`) would crash.
+   * Returns a plain InstancedMesh with matching geometry and transforms.
+   */
+  override clone(_recursive?: boolean): this {
+    const cloned = new InstancedMesh(
+      this.geometry.clone(),
+      this.material,
+      this.count
+    )
+    cloned.instanceMatrix.copy(this.instanceMatrix)
+    cloned.count = this.count
+    cloned.frustumCulled = this.frustumCulled
+    cloned.name = this.name
+    cloned.position.copy(this.position)
+    cloned.rotation.copy(this.rotation)
+    cloned.scale.copy(this.scale)
+    if (this.count > 0) {
+      cloned.computeBoundingSphere()
+    }
+    return cloned as unknown as this
   }
 
   /**

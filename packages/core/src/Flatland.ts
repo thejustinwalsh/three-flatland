@@ -182,6 +182,8 @@ export class Flatland extends Group implements WorldProvider {
   constructor(options: FlatlandOptions = {}) {
     super()
 
+    this.name = 'Flatland'
+
     // Create internal scene (separate from this Group for proper camera/rendering)
     this.scene = new Scene()
 
@@ -699,6 +701,26 @@ export class Flatland extends Group implements WorldProvider {
     const s = this.spriteGroup.stats
     s.drawCalls = this._drawCalls
     return s
+  }
+
+  /**
+   * Clone for devtools/serialization compatibility.
+   * Flatland manages internal scene, camera, and render pipeline that
+   * cannot be meaningfully cloned. Returns a Group with cloned children.
+   */
+  override clone(recursive?: boolean): this {
+    const cloned = new Group()
+    cloned.name = this.name || 'Flatland'
+    cloned.visible = this.visible
+    cloned.position.copy(this.position)
+    cloned.rotation.copy(this.rotation)
+    cloned.scale.copy(this.scale)
+    if (recursive !== false) {
+      for (const child of this.children) {
+        cloned.add(child.clone(true))
+      }
+    }
+    return cloned as unknown as this
   }
 
   /**

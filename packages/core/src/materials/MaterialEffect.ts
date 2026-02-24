@@ -191,6 +191,12 @@ export abstract class MaterialEffect {
   // Instance fields
   // ============================================
 
+  /** Auto-incrementing unique ID for debugging. */
+  static _nextId: number = 0
+
+  /** Unique instance ID (like Three.js object ids). */
+  readonly id: number
+
   /** Effect name (from static). */
   readonly name: string
 
@@ -209,6 +215,7 @@ export abstract class MaterialEffect {
     // Lazy initialize static metadata
     ctor._initialize()
 
+    this.id = MaterialEffect._nextId++
     this.name = ctor.effectName
 
     // Build defaults snapshot from schema
@@ -297,14 +304,22 @@ export abstract class MaterialEffect {
     if (this._entity && this._entity.has(ctor._trait)) {
       // Write to trait — systems will sync to batch buffers
       const field = ctor._fields.find(f => f.name === name)!
+      const data = this._entity.get(ctor._trait) as Record<string, number>
+
       if (field.size === 1) {
+        // Skip if value unchanged — avoids unnecessary Changed triggers
+        if (data[name] === value) return
         this._entity.set(ctor._trait, { [name]: value as number })
       } else {
         const arr = value as number[]
         const traitUpdate: Record<string, number> = {}
+        let changed = false
         for (let i = 0; i < field.size; i++) {
-          traitUpdate[`${name}_${i}`] = arr[i]!
+          const key = `${name}_${i}`
+          traitUpdate[key] = arr[i]!
+          if (data[key] !== arr[i]) changed = true
         }
+        if (!changed) return
         this._entity.set(ctor._trait, traitUpdate)
       }
     } else {
@@ -350,6 +365,7 @@ export type MaterialEffectClass<S extends EffectSchema> = {
   readonly _totalFloats: number
   readonly _node: (context: EffectNodeContext) => Node<'vec4'>
   readonly _initialized: boolean
+  _nextId: number
   _initialize(): void
   buildNode(context: EffectNodeContext<S>): Node<'vec4'>
 }

@@ -874,6 +874,314 @@ describe('_setField ECS integration', () => {
 // Clone
 // ============================================
 
+// ============================================
+// R3F declarative attach: effect setter
+// ============================================
+
+// ============================================
+// addEffect for already-enrolled sprites (Changed trigger)
+// ============================================
+
+describe('addEffect triggers Changed for enrolled sprites', () => {
+  const DissolveChanged = createMaterialEffect({
+    name: 'dissolve_changed',
+    schema: { progress: 0 },
+    node: ({ inputColor }) => inputColor,
+  })
+
+  let texture: Texture
+
+  beforeEach(() => {
+    texture = new Texture()
+    // @ts-expect-error - mocking image for tests
+    texture.image = { width: 100, height: 100 }
+  })
+
+  it('should trigger Changed when adding effect to enrolled sprite', () => {
+    const material = new Sprite2DMaterial({ map: texture })
+    const sprite = new Sprite2D({ texture, material })
+
+    // Enroll first, then add effect (simulates conditional rendering)
+    const world = createWorld()
+    sprite._enrollInWorld(world)
+
+    const dissolve = new DissolveChanged()
+    dissolve.progress = 0.6
+    sprite.addEffect(dissolve)
+
+    // Trait should exist with correct value
+    expect(sprite.entity!.has(DissolveChanged._trait)).toBe(true)
+    const traitData = sprite.entity!.get(DissolveChanged._trait) as Record<string, number>
+    expect(traitData['progress']).toBeCloseTo(0.6)
+
+    world.destroy()
+  })
+
+  it('should preserve defaults when adding to enrolled sprite', () => {
+    const material = new Sprite2DMaterial({ map: texture })
+    const sprite = new Sprite2D({ texture, material })
+
+    // Enroll first
+    const world = createWorld()
+    sprite._enrollInWorld(world)
+
+    // Create effect, set props, then add (simulates R3F applyProps before attach)
+    const dissolve = new DissolveChanged()
+    dissolve.progress = 0.42
+
+    sprite.addEffect(dissolve)
+
+    // Trait should have value from _defaults (set before attachment)
+    const traitData = sprite.entity!.get(DissolveChanged._trait) as Record<string, number>
+    expect(traitData['progress']).toBeCloseTo(0.42)
+
+    world.destroy()
+  })
+})
+
+// ============================================
+// addEffect / removeEffect / addEffect cycle
+// (R3F detach→reattach pattern)
+// ============================================
+
+describe('Effect remove + add cycle', () => {
+  const DissolveRA = createMaterialEffect({
+    name: 'dissolve_ra',
+    schema: { progress: 0 },
+    node: ({ inputColor }) => inputColor,
+  })
+
+  let texture: Texture
+
+  beforeEach(() => {
+    texture = new Texture()
+    // @ts-expect-error - mocking image for tests
+    texture.image = { width: 100, height: 100 }
+  })
+
+  afterEach(() => {
+    universe.reset()
+  })
+
+  it('standalone: removeEffect + addEffect cycle preserves functionality', () => {
+    const material = new Sprite2DMaterial({ map: texture })
+    const sprite = new Sprite2D({ texture, material })
+
+    const d1 = new DissolveRA()
+    d1.progress = 0.5
+    sprite.addEffect(d1)
+
+    // Remove effect
+    sprite.removeEffect(d1)
+
+    // Re-add new instance of same type
+    const d2 = new DissolveRA()
+    d2.progress = 0.8
+    sprite.addEffect(d2)
+
+    // New effect should be functional
+    expect(sprite._effects).toHaveLength(1)
+    expect(sprite._effects[0]).toBe(d2)
+    expect(sprite._effectFlags).toBe(1)
+
+    // Property updates should write to own buffer
+    d2.progress = 0.9
+    const buf0 = sprite.geometry.getAttribute('effectBuf0')
+    const array = (buf0 as unknown as { array: Float32Array }).array
+    expect(array[1]).toBeCloseTo(0.9)
+  })
+
+  it('enrolled: removeEffect + addEffect cycle preserves trait functionality', () => {
+    const material = new Sprite2DMaterial({ map: texture })
+    const sprite = new Sprite2D({ texture, material })
+
+    const d1 = new DissolveRA()
+    d1.progress = 0.3
+    sprite.addEffect(d1)
+
+    // Enroll
+    const world = createWorld()
+    sprite._enrollInWorld(world)
+
+    // Verify initial state
+    expect(sprite.entity!.has(DissolveRA._trait)).toBe(true)
+
+    // Simulate R3F detach
+    sprite.removeEffect(d1)
+
+    expect(sprite.entity!.has(DissolveRA._trait)).toBe(false)
+    expect(d1._entity).toBeNull()
+    expect(d1._sprite).toBeNull()
+
+    // Simulate R3F attach with new instance
+    const d2 = new DissolveRA()
+    d2.progress = 0.8
+    sprite.addEffect(d2)
+
+    // New effect should be attached with correct entity
+    expect(d2._sprite).toBe(sprite)
+    expect(d2._entity).toBe(sprite.entity)
+    expect(sprite.entity!.has(DissolveRA._trait)).toBe(true)
+
+    // Property updates should write to trait (enrolled path)
+    d2.progress = 0.95
+    const traitData = sprite.entity!.get(DissolveRA._trait) as Record<string, number>
+    expect(traitData['progress']).toBeCloseTo(0.95)
+
+    world.destroy()
+  })
+
+  it('enrolled: property updates work after removeEffect + addEffect cycle', () => {
+    const material = new Sprite2DMaterial({ map: texture })
+    const sprite = new Sprite2D({ texture, material })
+
+    const d1 = new DissolveRA()
+    d1.progress = 0.3
+    sprite.addEffect(d1)
+
+    // Enroll (simulates spriteGroup.add)
+    const world = createWorld()
+    sprite._enrollInWorld(world)
+
+    // Verify enrolled state
+    expect(sprite.entity!.has(DissolveRA._trait)).toBe(true)
+
+    // Remove and re-add
+    sprite.removeEffect(d1)
+    const d2 = new DissolveRA()
+    d2.progress = 0.7
+    sprite.addEffect(d2)
+
+    // The critical test: can we update progress on the new instance?
+    d2.progress = 0.85
+    const traitData = sprite.entity!.get(DissolveRA._trait) as Record<string, number>
+    expect(traitData['progress']).toBeCloseTo(0.85)
+
+    // And does _effects contain the new instance?
+    expect(sprite._effects.find(e => e.name === 'dissolve_ra')).toBe(d2)
+
+    world.destroy()
+  })
+
+  it('enrolled: effect ref functional after multiple cycles', () => {
+    const material = new Sprite2DMaterial({ map: texture })
+    const sprite = new Sprite2D({ texture, material })
+
+    // Enroll first, then add effect (like conditional rendering)
+    const world = createWorld()
+    sprite._enrollInWorld(world)
+
+    // Cycle 1
+    const d1 = new DissolveRA()
+    d1.progress = 0.1
+    sprite.addEffect(d1)
+    expect(sprite._effects.find(e => e.name === 'dissolve_ra')).toBe(d1)
+
+    sprite.removeEffect(d1)
+    expect(sprite._effects.find(e => e.name === 'dissolve_ra')).toBeUndefined()
+
+    // Cycle 2
+    const d2 = new DissolveRA()
+    d2.progress = 0.5
+    sprite.addEffect(d2)
+    expect(sprite._effects.find(e => e.name === 'dissolve_ra')).toBe(d2)
+
+    // Update directly on effect ref — the actual game pattern
+    d2.progress = 0.75
+    const traitData = sprite.entity!.get(DissolveRA._trait) as Record<string, number>
+    expect(traitData['progress']).toBeCloseTo(0.75)
+
+    world.destroy()
+  })
+
+  it('enrolled: effect flags correct after remove + add cycle', () => {
+    const material = new Sprite2DMaterial({ map: texture })
+    const sprite = new Sprite2D({ texture, material })
+
+    const world = createWorld()
+    sprite._enrollInWorld(world)
+
+    const d1 = new DissolveRA()
+    sprite.addEffect(d1)
+    expect(sprite._effectFlags).toBe(1)
+
+    sprite.removeEffect(d1)
+    expect(sprite._effectFlags).toBe(0)
+
+    const d2 = new DissolveRA()
+    sprite.addEffect(d2)
+    expect(sprite._effectFlags).toBe(1)
+
+    world.destroy()
+  })
+})
+
+describe('Sprite2D.dispose does not dispose shared material', () => {
+  let texture: Texture
+
+  beforeEach(() => {
+    texture = new Texture()
+    // @ts-expect-error - mocking image for tests
+    texture.image = { width: 100, height: 100 }
+  })
+
+  it('sprite dispose does not clear material effects', () => {
+    const Dissolve = createMaterialEffect({
+      name: 'dissolve_disp',
+      schema: { progress: 0 },
+      node: ({ inputColor }) => inputColor,
+    })
+
+    const material = new Sprite2DMaterial({ map: texture })
+    material.registerEffect(Dissolve)
+
+    const s1 = new Sprite2D({ texture, material })
+    const s2 = new Sprite2D({ texture, material })
+
+    // Dispose one sprite — material must remain intact
+    s1.dispose()
+    expect(material.getEffects()).toHaveLength(1)
+    expect(material.getEffects()[0]!.effectName).toBe('dissolve_disp')
+
+    // Dispose second sprite — material still intact
+    s2.dispose()
+    expect(material.getEffects()).toHaveLength(1)
+  })
+
+  it('explicit material.dispose() clears effects', () => {
+    const Dissolve = createMaterialEffect({
+      name: 'dissolve_disp2',
+      schema: { progress: 0 },
+      node: ({ inputColor }) => inputColor,
+    })
+
+    const material = new Sprite2DMaterial({ map: texture })
+    material.registerEffect(Dissolve)
+    expect(material.getEffects()).toHaveLength(1)
+
+    material.dispose()
+    expect(material.getEffects()).toHaveLength(0)
+  })
+
+  it('sprite dispose cleans up own geometry and effects', () => {
+    const Dissolve = createMaterialEffect({
+      name: 'dissolve_disp3',
+      schema: { progress: 0 },
+      node: ({ inputColor }) => inputColor,
+    })
+
+    const material = new Sprite2DMaterial({ map: texture })
+    const sprite = new Sprite2D({ texture, material })
+    const dissolve = new Dissolve()
+    sprite.addEffect(dissolve)
+
+    expect(sprite._effects).toHaveLength(1)
+    sprite.dispose()
+    expect(sprite._effects).toHaveLength(0)
+    expect(dissolve._sprite).toBeNull()
+  })
+})
+
 describe('Sprite2D clone with effects', () => {
   it('should clone effect instances', () => {
     const texture = new Texture()

@@ -4,8 +4,18 @@ import type { Sprite2D } from '../sprites/Sprite2D'
 import type { SpriteGroupOptions, RenderStats } from './types'
 import { DEFAULT_BATCH_SIZE } from './SpriteBatch'
 import { assignWorld, type WorldProvider } from '../ecs/world'
-import { BatchRegistry, BatchMesh } from '../ecs/traits'
+import {
+  BatchRegistry,
+  BatchMesh,
+  BatchMeta,
+  IsRenderable,
+  IsBatched,
+  InBatch,
+  BatchSlot,
+  SpriteMaterialRef,
+} from '../ecs/traits'
 import type { RegistryData } from '../ecs/batchUtils'
+import { computeRunKey, recycleBatchIfEmpty } from '../ecs/batchUtils'
 import type { MaterialEffect } from '../materials/MaterialEffect'
 import {
   batchAssignSystem,
@@ -156,6 +166,8 @@ export class SpriteGroup extends Group implements WorldProvider {
     }
     // Check if it's a Sprite2D (has _enrollInWorld — duck typing)
     if ('_enrollInWorld' in spriteOrObject && '_flatlandWorld' in spriteOrObject) {
+      // Skip if already enrolled (R3F insertBefore re-adds during reconciliation)
+      if ((spriteOrObject as Sprite2D).entity) return this
       // Assign ECS world and enroll entity
       assignWorld(spriteOrObject, this.world)
       spriteOrObject._enrollInWorld(this.world)
@@ -247,14 +259,13 @@ export class SpriteGroup extends Group implements WorldProvider {
    * Per-frame flow:
    * 1. batchAssignSystem — assign new sprites to batches via InBatch relation
    * 2. batchReassignSystem — handle layer/material changes (cross-run movement)
-   * 3. batchRemoveSystem — free slots for removed sprites, recycle empty batches
-   * 4. bufferSyncColorSystem — Changed(SpriteColor) + IsBatched -> batch buffer write
-   * 5. bufferSyncUVSystem — Changed(SpriteUV) + IsBatched -> batch buffer write
-   * 6. bufferSyncFlipSystem — Changed(SpriteFlip) + IsBatched -> batch buffer write
-   * 7. bufferSyncEffectSystem — Changed(effectTrait) + IsBatched -> packed buffer write
-   * 8. transformSyncSystem — sync all transforms to batch instance matrices
-   * 9. sceneGraphSyncSystem — rebuild SpriteGroup children from sorted batch entities
-   * 10. super.updateMatrixWorld() — continue Three.js traversal
+   * 3. bufferSyncColorSystem — Changed(SpriteColor) + IsBatched -> batch buffer write
+   * 4. bufferSyncFlipSystem — Changed(SpriteFlip) + IsBatched -> batch buffer write
+   * 5. bufferSyncEffectSystem — Changed(effectTrait) + IsBatched -> packed buffer write
+   * 6. transformSyncSystem — sync all transforms to batch instance matrices
+   * 7. sceneGraphSyncSystem — rebuild SpriteGroup children from sorted batch entities
+   * 8. batchRemoveSystem — free slots, recycle empty batches, destroy entities (LAST)
+   * 9. super.updateMatrixWorld() — continue Three.js traversal
    */
   override updateMatrixWorld(force?: boolean): void {
     if (!this._systemsRanThisFrame) {
@@ -296,10 +307,6 @@ export class SpriteGroup extends Group implements WorldProvider {
     batchReassignSystem(this._world, this._effectTraits)
     end()
 
-    end = measure(batchRemoveSystem)
-    batchRemoveSystem(this._world)
-    end()
-
     // Buffer sync systems (Changed-driven — color and flip change rarely)
     end = measure(bufferSyncColorSystem)
     bufferSyncColorSystem(this._world)
@@ -328,6 +335,26 @@ export class SpriteGroup extends Group implements WorldProvider {
     end = measure(sceneGraphSyncSystem)
     sceneGraphSyncSystem(this._world, this, this._parentAdd, this._parentRemove)
     end()
+
+    // Batch removal — runs LAST so entity.destroy() cascading trait removals
+    // don't corrupt upstream systems that already ran this frame.
+    end = measure(batchRemoveSystem)
+    batchRemoveSystem(this._world)
+    end()
+
+    // Late assignment pass: catches entities enrolled after the primary
+    // batchAssignSystem pass (e.g., sprite re-added after removal in the
+    // same frame, or enrolled between render calls in R3F reconciliation).
+    // The Added(IsRenderable) tracker was consumed by the first pass, so
+    // this only processes entities added since then — a no-op in the
+    // common case.
+    const lateAssigned = batchAssignSystem(this._world, this._effectTraits)
+    if (lateAssigned) {
+      if (this.autoInvalidateTransforms) {
+        transformSyncSystem(this._world)
+      }
+      sceneGraphSyncSystem(this._world, this, this._parentAdd, this._parentRemove)
+    }
   }
 
   /**
@@ -348,7 +375,9 @@ export class SpriteGroup extends Group implements WorldProvider {
 
   /**
    * Check for material schema version changes (tier upgrades from effect registration).
-   * When detected, triggers a full batch rebuild by removing and re-adding affected sprites.
+   * When detected, evicts sprites from old batches (wrong buffer layout) and
+   * re-triggers IsRenderable so batchAssignSystem creates new batches with
+   * the correct effect buffer tier.
    */
   private _checkMaterialVersions(): void {
     if (!this._world) return
@@ -357,16 +386,70 @@ export class SpriteGroup extends Group implements WorldProvider {
     const registry = registryEntities[0]!.get(BatchRegistry) as RegistryData | undefined
     if (!registry) return
 
-    for (const [, ref] of registry.materialRefs) {
+    for (const [materialId, ref] of registry.materialRefs) {
       if (ref.material._effectSchemaVersion !== ref.version) {
         ref.version = ref.material._effectSchemaVersion
-        // Tier changed — batches for this material need rebuilding.
-        // The batchAssignSystem and batchReassignSystem handle this
-        // through the normal Changed() flow when sprites are re-enrolled.
-        // For now, mark renderOrder dirty so scene graph syncs.
-        registry.renderOrderDirty = true
+        this._rebuildBatchesForMaterial(registry, materialId)
       }
     }
+  }
+
+  /**
+   * Force-rebuild batches for a material by evicting sprite entities from
+   * old batches and re-triggering IsRenderable for batchAssignSystem.
+   * Called when a material's effect tier changes (e.g., new effect registered
+   * that requires larger GPU buffers).
+   */
+  private _rebuildBatchesForMaterial(registry: RegistryData, materialId: number): void {
+    if (!this._world) return
+
+    // Find all batched entities using this material
+    const batched = this._world.query(IsBatched, SpriteMaterialRef, BatchSlot)
+    for (const entity of batched) {
+      const matRef = entity.get(SpriteMaterialRef)
+      if (!matRef || matRef.materialId !== materialId) continue
+
+      // Find and free the batch slot
+      const batchEntity = entity.targetFor(InBatch)
+      if (batchEntity) {
+        const relationData = entity.get(InBatch(batchEntity)) as { slot: number } | undefined
+        const batchMesh = batchEntity.get(BatchMesh)
+        if (relationData && batchMesh?.mesh) {
+          batchMesh.mesh.freeSlot(relationData.slot)
+          batchMesh.mesh.syncCount()
+        }
+
+        // Remove batch relationship
+        entity.remove(InBatch(batchEntity))
+
+        // Recycle batch if empty
+        if (batchMesh?.mesh?.isEmpty) {
+          const meta = batchEntity.get(BatchMeta)
+          if (meta) {
+            const key = computeRunKey(meta.layer, meta.materialId)
+            const run = registry.runs.get(key)
+            if (run) {
+              recycleBatchIfEmpty(registry, batchEntity, run)
+            }
+          }
+        }
+      }
+
+      // Remove batch tracking traits
+      if (entity.has(BatchSlot)) {
+        entity.set(BatchSlot, { batchIdx: -1, slot: -1 }, false)
+      }
+      if (entity.has(IsBatched)) {
+        entity.remove(IsBatched)
+      }
+
+      // Re-trigger IsRenderable so batchAssignSystem picks it up
+      // and creates a new batch with the correct buffer layout
+      entity.remove(IsRenderable)
+      entity.add(IsRenderable)
+    }
+
+    registry.renderOrderDirty = true
   }
 
   /**
@@ -492,6 +575,27 @@ export class SpriteGroup extends Group implements WorldProvider {
     const registryEntities = this._world.query(BatchRegistry)
     if (registryEntities.length === 0) return null
     return registryEntities[0]!.get(BatchRegistry) as RegistryData | undefined ?? null
+  }
+
+  /**
+   * Clone for devtools/serialization compatibility.
+   * SpriteGroup manages an ECS world that cannot be meaningfully cloned.
+   * Returns a Group containing cloned child meshes (the SpriteBatch instances).
+   */
+  override clone(recursive?: boolean): this {
+    const cloned = new Group()
+    cloned.name = this.name
+    cloned.visible = this.visible
+    cloned.frustumCulled = this.frustumCulled
+    cloned.position.copy(this.position)
+    cloned.rotation.copy(this.rotation)
+    cloned.scale.copy(this.scale)
+    if (recursive !== false) {
+      for (const child of this.children) {
+        cloned.add(child.clone(true))
+      }
+    }
+    return cloned as unknown as this
   }
 
   /**

@@ -8,7 +8,7 @@ import {
   type Texture,
 } from 'three'
 import type { Entity, World } from 'koota'
-import type { MaterialEffect } from '../materials/MaterialEffect'
+import { MaterialEffect } from '../materials/MaterialEffect'
 import { Sprite2DMaterial } from '../materials/Sprite2DMaterial'
 import type { Sprite2DOptions, SpriteFrame } from './types'
 import {
@@ -33,8 +33,31 @@ interface SpriteSnapshot {
   zIndex: { zIndex: number }
 }
 
-/** Module-level scratch Color for parsing tint values without allocation. */
-const _tempColor = new Color()
+/**
+ * Wrap a Three.js object so any property write or method call triggers a callback.
+ * Works with Color, Vector2, Vector3, etc. — no per-type subclass needed.
+ * Follows the spirit of Three.js's Euler._onChangeCallback pattern.
+ * @internal
+ */
+function observed<T extends object>(target: T, cb: () => void): T {
+  const proxy: T = new Proxy(target, {
+    set(obj, prop, value) {
+      (obj as any)[prop] = value
+      cb()
+      return true
+    },
+    get(obj, prop, receiver) {
+      const value = Reflect.get(obj, prop, receiver)
+      if (typeof value !== 'function') return value
+      return function (this: any, ...args: any[]) {
+        const result = value.apply(obj, args)
+        cb()
+        return result === obj ? proxy : result
+      }
+    },
+  })
+  return proxy
+}
 
 /** Size in floats for each attribute type. */
 const ATTR_TYPE_SIZES: Record<string, number> = { float: 1, vec2: 2, vec3: 3, vec4: 4 }
@@ -81,7 +104,10 @@ export class Sprite2D extends Mesh {
    */
   private _customBuffers: Map<string, { buffer: Float32Array; size: number }> = new Map()
 
-  /** Anchor point (0-1), affects positioning */
+  /** Stored tint color — observable proxy for R3F compat. */
+  private _tintColor: Color = new Color()
+
+  /** Anchor point (0-1) — observable proxy for R3F compat. */
   private _anchor: Vector2 = new Vector2(0.5, 0.5)
 
   /** Current frame */
@@ -196,6 +222,17 @@ export class Sprite2D extends Mesh {
 
     // Store reference so we can dispose it
     this._geometry = geometry
+
+    // Wrap stored objects with observable proxies for R3F compat
+    this._tintColor = observed(this._tintColor, () => {
+      writeTrait(this._entity, SpriteColor, this._snapshot.color, {
+        r: this._tintColor.r,
+        g: this._tintColor.g,
+        b: this._tintColor.b,
+      })
+      if (!this._entity) this._updateOwnColor()
+    })
+    this._anchor = observed(this._anchor, () => this.updateAnchor())
 
     // Set up instance attributes on the geometry
     this._setupInstanceAttributes()
@@ -351,10 +388,10 @@ export class Sprite2D extends Mesh {
   }
 
   /**
-   * Get the anchor point.
+   * Get the anchor point. Returns the stored Vector2 (like Object3D.position).
    */
   get anchor(): Vector2 {
-    return this._anchor.clone()
+    return this._anchor
   }
 
   /**
@@ -379,11 +416,11 @@ export class Sprite2D extends Mesh {
   }
 
   /**
-   * Get tint color.
+   * Get tint color. Returns a stored Color reference (like Material.color).
+   * Mutating the returned Color triggers ECS sync via onChange callback.
    */
   get tint(): Color {
-    const c = readTrait(this._entity, SpriteColor, this._snapshot.color)
-    return new Color(c.r, c.g, c.b)
+    return this._tintColor
   }
 
   /**
@@ -391,18 +428,13 @@ export class Sprite2D extends Mesh {
    */
   set tint(value: Color | string | number | [number, number, number]) {
     if (Array.isArray(value)) {
-      _tempColor.setRGB(value[0], value[1], value[2])
+      this._tintColor.setRGB(value[0], value[1], value[2])
     } else if (value instanceof Color) {
-      _tempColor.copy(value)
+      this._tintColor.copy(value)
     } else {
-      _tempColor.set(value)
+      this._tintColor.set(value as any)
     }
-    writeTrait(this._entity, SpriteColor, this._snapshot.color, {
-      r: _tempColor.r,
-      g: _tempColor.g,
-      b: _tempColor.b,
-    })
-    if (!this._entity) this._updateOwnColor()
+    // onChange callback handles ECS sync
   }
 
   /**
@@ -652,6 +684,7 @@ export class Sprite2D extends Mesh {
   // INSTANCE-BASED EFFECT SYSTEM
   // ============================================
 
+
   /**
    * Add an effect instance to this sprite.
    * Auto-registers the effect type on the material if not already registered.
@@ -665,6 +698,9 @@ export class Sprite2D extends Mesh {
    * ```
    */
   addEffect(effect: MaterialEffect): this {
+    // Same instance already attached — no-op (R3F stable children)
+    if (this._effects.includes(effect)) return this
+
     const material = this.material
     const EffectClass = effect.constructor as typeof MaterialEffect
 
@@ -686,7 +722,12 @@ export class Sprite2D extends Mesh {
 
     // 4. Add trait to entity (if enrolled)
     if (this._entity) {
-      this._entity.add(EffectClass._trait(this._buildTraitData(effect)))
+      const traitData = this._buildTraitData(effect)
+      // Koota's .add() does NOT trigger Changed(), but bufferSyncEffectSystem
+      // only queries Changed(effectTrait). Follow .add() with .set() so that
+      // already-batched sprites get their effect data synced to GPU buffers.
+      this._entity.add(EffectClass._trait(traitData))
+      this._entity.set(EffectClass._trait, traitData)
     }
 
     // 5. Store effect
@@ -944,7 +985,11 @@ export class Sprite2D extends Mesh {
       effect._entity = null
     }
 
-    this._entity.destroy()
+    // Remove IsRenderable instead of destroying — this triggers Removed(IsRenderable)
+    // for batchRemoveSystem, which needs the InBatch relation and BatchSlot data
+    // to still be present to find and free the batch slot. The system destroys
+    // the entity after cleanup.
+    this._entity.remove(IsRenderable)
     this._entity = null
   }
 
@@ -970,12 +1015,12 @@ export class Sprite2D extends Mesh {
     }
     this._effects.length = 0
 
-    // Dispose custom geometry if exists
+    // Dispose owned geometry (each sprite has its own)
     if (this._geometry) {
       this._geometry.dispose()
     }
-    // Only dispose material if we created it
-    this.material.dispose()
+    // Material is NOT disposed here — materials are shared resources.
+    // Users/frameworks manage material lifecycle separately.
   }
 
   /**

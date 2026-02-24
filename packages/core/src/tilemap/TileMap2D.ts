@@ -503,7 +503,7 @@ export class TileMap2D extends Group {
    * Get map bounds.
    */
   get bounds(): Box3 {
-    return this._bounds.clone()
+    return this._bounds
   }
 
   /**
@@ -548,6 +548,25 @@ export class TileMap2D extends Group {
    */
   getLayerMaterialAt(index: number): Sprite2DMaterial | undefined {
     return this.tileLayers[index]?.material
+  }
+
+  /**
+   * Clone for devtools/serialization compatibility.
+   * Returns a Group containing cloned child layers for visual inspection.
+   */
+  override clone(recursive?: boolean): this {
+    const cloned = new Group()
+    cloned.name = this.name
+    cloned.visible = this.visible
+    cloned.position.copy(this.position)
+    cloned.rotation.copy(this.rotation)
+    cloned.scale.copy(this.scale)
+    if (recursive !== false) {
+      for (const child of this.children) {
+        cloned.add(child.clone(true))
+      }
+    }
+    return cloned as unknown as this
   }
 
   /**

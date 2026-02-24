@@ -19,7 +19,9 @@ const Removed = createRemoved()
  *
  * Triggered by Removed(IsRenderable). Reads the InBatch relation to find
  * the batch entity and slot, frees the slot, removes the relation,
- * and recycles the batch if empty.
+ * and recycles the batch if empty. Destroys the entity after cleanup.
+ * Must run LAST in the pipeline so entity.destroy() cascading trait
+ * removals don't corrupt upstream systems.
  */
 export function batchRemoveSystem(world: World): void {
   const removed = world.query(Removed(IsRenderable))
@@ -65,5 +67,8 @@ export function batchRemoveSystem(world: World): void {
         }
       }
     }
+
+    // Destroy entity — safe because batchRemoveSystem runs last in the pipeline
+    entity.destroy()
   }
 }
