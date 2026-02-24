@@ -107,7 +107,7 @@ function HeroGameInner() {
   const noopZzfx: PlaySoundFn = () => {}
 
   const handleInteraction = useCallback(() => {
-    initAudio()
+    initAudio().catch(() => {})
   }, [])
 
   return (
