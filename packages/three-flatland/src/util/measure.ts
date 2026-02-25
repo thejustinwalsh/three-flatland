@@ -47,8 +47,10 @@ const DEFAULTS: Required<Pick<MeasureOptions, 'track' | 'trackGroup' | 'color'>>
  *
  * @internal
  */
+const IS_PROD = typeof process !== 'undefined' && process.env?.NODE_ENV === 'production'
+
 export const measure: MeasureStart =
-  process.env.NODE_ENV === 'production'
+  IS_PROD
     ? () => noop
     : (fn, options) => {
         if (typeof performance === 'undefined') {
