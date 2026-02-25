@@ -2,21 +2,35 @@
 "three-flatland": major
 ---
 
-- Merged `packages/core` and `packages/react` into single `packages/three-flatland` package
-- TSL shader nodes migrated from `packages/core` to `packages/nodes`
-- React/R3F integration now at `three-flatland/react` subpath (previously a separate `packages/react` package)
-- React subpaths reorganized into category subdirectories (`react/animation`, `react/loaders`, `react/materials`, `react/pipeline`, `react/sprites`, `react/tilemap`)
-- Removed `resource.ts` from React subpath
-- Added `source` export condition to all packages for monorepo dev without build step
-- Added README and LICENSE to all packages
-- Added CI workflows: changeset automation, bundle size checks (`.size-limit.json`)
-- Fixed production environment detection in `measure.ts`
-- Cleaned up tsconfig files across packages and examples
-
 ## BREAKING CHANGES
 
-- `packages/core` and `packages/react` no longer exist; all imports must migrate to `three-flatland` and `three-flatland/react`
-- React resource utilities (`resource.ts`) removed from the `three-flatland/react` subpath
-- React subpath structure reorganized — category-specific imports (e.g., `three-flatland/react/sprites`) now resolve to subdirectory index files
+- Package renamed from `@three-flatland/core` to `three-flatland` — update all imports
+- `@three-flatland/react` package removed; R3F integration is now the `three-flatland/react` subpath — update imports from `@three-flatland/react` to `three-flatland/react`
+- `three-flatland/react` re-exports all of core, so R3F users only need one import
 
-Major alpha release consolidating the two core packages (`core`, `react`) into a single unified `three-flatland` package, with shader nodes promoted to their own standalone `@three-flatland/nodes` package.
+## Package restructure
+
+- New package `three-flatland` (v0.1.0-alpha.0) replaces the internal `@three-flatland/core` package
+- R3F integration merged into `three-flatland/react` subpath (was a separate `@three-flatland/react` package)
+- Added dedicated subpath exports for the React integration: `three-flatland/react/animation`, `three-flatland/react/loaders`, `three-flatland/react/materials`, `three-flatland/react/pipeline`, `three-flatland/react/sprites`, `three-flatland/react/tilemap`
+- Added `source` export condition to all subpaths for build-free monorepo development
+- Added wildcard subpath exports (`./react/*`) for deep imports
+
+## React Three Fiber
+
+- `ThreeElements` augmentation for `sprite2D`, `sprite2DMaterial`, `animatedSprite2D`, `spriteGroup`, `flatland`, `tileMap2D`, `tileLayer` JSX elements
+- New `EffectElement<T>` helper type surfaces schema-derived effect props in JSX autocomplete
+- `attachEffect`, `createResource`, `createCachedResource`, `spriteSheet`, `texture` exported from `three-flatland/react`
+
+## Fixes
+
+- Fixed `process.env` access in `measure` utility to guard against undefined `process` (browser environments)
+- Removed unused `types/env.d.ts` ambient declaration
+- Cleaned up `tsconfig.json` includes
+
+## Documentation
+
+- Added LICENSE and README to `three-flatland` package with updated feature list and installation instructions (alpha tags)
+- Docs installation page updated to reflect alpha release status
+
+This is the initial alpha release of `three-flatland`, consolidating the core and React packages into a single unified package with deep subpath exports for tree-shaking.
