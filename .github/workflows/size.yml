@@ -22,8 +22,17 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      - uses: andresz1/size-limit-action@v1
+      - name: Cache Turbo
+        uses: actions/cache@v4
+        with:
+          path: .turbo
+          key: ${{ runner.os }}-turbo-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-turbo-
+
+      - uses: andresz1/size-limit-action@v1.8.0
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           build_script: build
           skip_step: install
+          package_manager: pnpm
