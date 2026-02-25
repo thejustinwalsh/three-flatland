@@ -1,4 +1,4 @@
-import { useRef, useEffect, useCallback, useState } from 'react'
+import { useRef, useEffect, useCallback, useState, type Dispatch, type SetStateAction } from 'react'
 import { Canvas, useFrame, extend, useThree } from '@react-three/fiber/webgpu'
 import {
   Sprite2D,
@@ -53,19 +53,13 @@ import {
 import { moveBall, updatePaddle, updateAttractAI } from './systems/physics'
 import { wallCollision, paddleCollision, blockCollision, checkBallLost, updateDissolving, updateBallFlash } from './systems/collision'
 import { WORLD_WIDTH, WORLD_LEFT } from './systems/constants'
+import { shallow } from './shallow'
 
 
 // Default zzfx for standalone mode - no-op until loaded
 const noopZzfx: PlaySoundFn = () => {}
 
-interface BatchStats {
-  spriteCount: number
-  batchCount: number
-  drawCalls: number
-  fps: number
-}
-
-interface GameDisplayState {
+interface GameState {
   mode: GameMode
   score: number
   highScore: number
@@ -73,21 +67,27 @@ interface GameDisplayState {
   level: number
   lives: number
   multiplier: number
-  batchStats?: BatchStats
+}
+
+interface Stats {
+  spriteCount: number
+  batchCount: number
+  drawCalls: number
+  fps: number
 }
 
 interface GameSceneProps {
   soundsRef: React.RefObject<SoundPlayer | null>
   isVisible: boolean
-  onStateChange: (state: GameDisplayState) => void
+  onGameStateChange: Dispatch<SetStateAction<GameState>>
+  onStatsChange: Dispatch<SetStateAction<Stats | null>>
 }
 
-function GameScene({ soundsRef, isVisible, onStateChange }: GameSceneProps) {
+function GameScene({ soundsRef, isVisible, onGameStateChange, onStatsChange }: GameSceneProps) {
   const world = useWorld()
   const flatlandRef = useRef<FlatlandType>(null)
   const gl = useThree((s) => s.gl)
   const size = useThree((s) => s.size)
-  const prevStateRef = useRef<GameDisplayState | null>(null)
   const fpsRef = useRef({ frames: 0, time: 0, current: 60 })
 
   // Create materials with TSL effects
@@ -117,44 +117,26 @@ function GameScene({ soundsRef, isVisible, onStateChange }: GameSceneProps) {
 
     const state = world.get(GameStateTrait)!
 
-    // Update React state for UI — only when values actually change
-    const stats = flatlandRef.current?.stats
-    const prev = prevStateRef.current
-    const currentFps = fpsRef.current.current
-    const gameChanged =
-      !prev ||
-      prev.mode !== state.mode ||
-      prev.score !== state.score ||
-      prev.highScore !== state.highScore ||
-      prev.highScoreLevel !== state.highScoreLevel ||
-      prev.level !== state.level ||
-      prev.lives !== state.lives ||
-      prev.multiplier !== state.multiplier
-    const statsChanged = stats && (
-      !prev?.batchStats ||
-      prev.batchStats.spriteCount !== stats.spriteCount ||
-      prev.batchStats.batchCount !== stats.batchCount ||
-      prev.batchStats.drawCalls !== stats.drawCalls ||
-      prev.batchStats.fps !== currentFps
-    )
-    if (gameChanged || statsChanged) {
-      const next: GameDisplayState = {
-        mode: state.mode,
-        score: state.score,
-        highScore: state.highScore,
-        highScoreLevel: state.highScoreLevel,
-        level: state.level,
-        lives: state.lives,
-        multiplier: state.multiplier,
-        batchStats: stats ? {
-          spriteCount: stats.spriteCount,
-          batchCount: stats.batchCount,
-          drawCalls: stats.drawCalls,
-          fps: currentFps,
-        } : undefined,
+    const gameState: GameState = {
+      mode: state.mode,
+      score: state.score,
+      highScore: state.highScore,
+      highScoreLevel: state.highScoreLevel,
+      level: state.level,
+      lives: state.lives,
+      multiplier: state.multiplier,
+    }
+    onGameStateChange(prev => shallow(prev, gameState) ? prev : gameState)
+
+    const rendererStats = flatlandRef.current?.stats
+    if (rendererStats) {
+      const stats: Stats = {
+        spriteCount: rendererStats.spriteCount,
+        batchCount: rendererStats.batchCount,
+        drawCalls: rendererStats.drawCalls,
+        fps: fpsRef.current.current,
       }
-      prevStateRef.current = next
-      onStateChange(next)
+      onStatsChange(prev => prev && shallow(prev, stats) ? prev : stats)
     }
 
     // Update elapsed time
@@ -263,7 +245,7 @@ export default function MiniBreakout({
 }: MiniGameProps & { onInteraction?: () => void }) {
   const soundsRef = useRef<SoundPlayer | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
-  const [gameState, setGameState] = useState<GameDisplayState>({
+  const [gameState, setGameState] = useState<GameState>(() => ({
     mode: 'attract',
     score: 0,
     highScore: 0,
@@ -271,7 +253,8 @@ export default function MiniBreakout({
     level: 1,
     lives: 3,
     multiplier: 1,
-  })
+  }))
+  const [stats, setStats] = useState<Stats | null>(null)
 
   // Get world lazily on client only (useState initializer runs once)
   const [world] = useState(() => typeof window !== 'undefined' ? getWorld() : null)
@@ -387,20 +370,13 @@ export default function MiniBreakout({
             <GameScene
               soundsRef={soundsRef}
               isVisible={isVisible}
-              onStateChange={setGameState}
+              onGameStateChange={setGameState}
+              onStatsChange={setStats}
             />
           </Canvas>
-          <GameUI
-            mode={gameState.mode}
-            score={gameState.score}
-            highScore={gameState.highScore}
-            highScoreLevel={gameState.highScoreLevel}
-            level={gameState.level}
-            lives={gameState.lives}
-            multiplier={gameState.multiplier}
-          />
+          <GameUI {...gameState} />
           {/* Stats overlay — controlled via showStats prop */}
-          {showStats && gameState.batchStats && (
+          {showStats && stats && (
             <div
               style={{
                 position: 'absolute',
@@ -414,7 +390,7 @@ export default function MiniBreakout({
                 whiteSpace: 'nowrap',
               }}
             >
-              {gameState.batchStats.fps} fps • {gameState.batchStats.spriteCount} sprites • {gameState.batchStats.batchCount} batches • {gameState.batchStats.drawCalls} draws
+              {stats.fps} fps • {stats.spriteCount} sprites • {stats.batchCount} batches • {stats.drawCalls} draws
             </div>
           )}
         </WorldProvider>
