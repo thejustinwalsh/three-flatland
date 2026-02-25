@@ -18,7 +18,6 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.ref }}
           fetch-depth: 0
-          token: ${{ secrets.COPILOT_PAT }}
 
       - name: Install pnpm
         uses: pnpm/action-setup@v4
