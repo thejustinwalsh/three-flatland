@@ -12,7 +12,7 @@ import {
   Plane,
   Vector3,
 } from 'three'
-import { TileMap2D, type TileMapData, type TilesetData, type TileLayerData } from '@three-flatland/core'
+import { TileMap2D, type TileMapData, type TilesetData, type TileLayerData } from 'three-flatland'
 
 // Web Awesome web components
 import '@awesome.me/webawesome/dist/styles/themes/default.css'

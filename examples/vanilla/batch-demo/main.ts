@@ -1,6 +1,6 @@
 import { WebGPURenderer } from 'three/webgpu'
 import { Scene, OrthographicCamera, Color, Vector2, Raycaster, Plane, Vector3 } from 'three'
-import { Sprite2D, Sprite2DMaterial, SpriteGroup, Layers, TextureLoader } from '@three-flatland/core'
+import { Sprite2D, Sprite2DMaterial, SpriteGroup, Layers, TextureLoader } from 'three-flatland'
 
 // Configuration
 const TILE_SIZE = 64

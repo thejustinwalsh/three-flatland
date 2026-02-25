@@ -44,7 +44,7 @@ jobs:
         uses: changesets/action@v1
         with:
           publish: pnpm release
-          version: pnpm version-packages
+          version: pnpm changeset:version
           title: 'chore: release packages'
           commit: 'chore: release packages'
         env:

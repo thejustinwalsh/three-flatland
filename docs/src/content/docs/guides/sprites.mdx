@@ -10,7 +10,7 @@ The `Sprite2D` class is the foundation for 2D rendering in three-flatland.
 <Tabs syncKey="framework">
   <TabItem label="Three.js" icon="seti:javascript">
     ```typescript
-    import { Sprite2D, SpriteGroup } from '@three-flatland/core';
+    import { Sprite2D, SpriteGroup } from 'three-flatland';
 
     const sprite = new Sprite2D({
       texture: myTexture,
@@ -23,7 +23,7 @@ The `Sprite2D` class is the foundation for 2D rendering in three-flatland.
   <TabItem label="React" icon="seti:react">
     ```tsx
     import { extend } from '@react-three/fiber/webgpu';
-    import { Sprite2D, SpriteGroup } from '@three-flatland/react';
+    import { Sprite2D, SpriteGroup } from 'three-flatland/react';
 
     // Register with R3F (required once)
     extend({ Sprite2D, SpriteGroup });
@@ -40,7 +40,7 @@ The `Sprite2D` class is the foundation for 2D rendering in three-flatland.
 </Tabs>
 
 :::tip[Loading Textures]
-Use `TextureLoader` from `@three-flatland/core` (or `@three-flatland/react`) to load textures with automatic preset configuration. For spritesheets, use `SpriteSheetLoader`. See the [Loaders guide](../guides/loaders) for details.
+Use `TextureLoader` from `three-flatland` (or `three-flatland/react`) to load textures with automatic preset configuration. For spritesheets, use `SpriteSheetLoader`. See the [Loaders guide](../guides/loaders) for details.
 :::
 
 ## Properties
@@ -85,7 +85,7 @@ For batched rendering with many sprites, use `SpriteGroup`:
 <Tabs syncKey="framework">
   <TabItem label="Three.js" icon="seti:javascript">
     ```typescript
-    import { SpriteGroup } from '@three-flatland/core';
+    import { SpriteGroup } from 'three-flatland';
 
     const spriteGroup = new SpriteGroup();
     scene.add(spriteGroup);
@@ -100,7 +100,7 @@ For batched rendering with many sprites, use `SpriteGroup`:
   <TabItem label="React" icon="seti:react">
     ```tsx
     import { extend } from '@react-three/fiber/webgpu';
-    import { Sprite2D, SpriteGroup } from '@three-flatland/react';
+    import { Sprite2D, SpriteGroup } from 'three-flatland/react';
 
     extend({ Sprite2D, SpriteGroup });
 
@@ -127,7 +127,7 @@ For a complete 2D pipeline with camera, post-processing, and global uniforms, us
 Use the `Layers` enum to control render order:
 
 ```typescript
-import { Layers } from '@three-flatland/core';
+import { Layers } from 'three-flatland';
 
 sprite.layer = Layers.BACKGROUND;  // Renders behind other sprites
 sprite.layer = Layers.ENTITIES;    // Normal render order for game entities

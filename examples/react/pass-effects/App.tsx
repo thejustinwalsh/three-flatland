@@ -8,6 +8,9 @@ import {
   Sprite2D,
   TextureLoader,
   createPassEffect,
+} from 'three-flatland/react'
+import type { PassEffect } from 'three-flatland/react'
+import {
   crtComplete,
   crtVignette,
   scanlinesSmooth,
@@ -18,8 +21,7 @@ import {
   vhsDistortion,
   staticNoise,
   chromaticAberration,
-} from '@three-flatland/react'
-import type { PassEffect } from '@three-flatland/react'
+} from '@three-flatland/nodes'
 
 import '@awesome.me/webawesome/dist/styles/themes/default.css'
 import WaRadioGroup from '@awesome.me/webawesome/dist/react/radio-group/index.js'

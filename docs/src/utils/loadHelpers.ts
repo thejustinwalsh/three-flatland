@@ -20,9 +20,8 @@ function getPackageVersion(packageName: string): string {
 }
 
 export const packageVersions: Record<string, string> = {
-  '@three-flatland/core': getPackageVersion('core'),
+  'three-flatland': getPackageVersion('three-flatland'),
   '@three-flatland/nodes': getPackageVersion('nodes'),
-  '@three-flatland/react': getPackageVersion('react'),
   '@three-flatland/presets': getPackageVersion('presets'),
 };
 

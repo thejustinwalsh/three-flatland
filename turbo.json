@@ -4,18 +4,14 @@
   "concurrency": "20",
   "tasks": {
     "build": {
-      "dependsOn": ["^build", "@three-flatland/core#build", "@three-flatland/nodes#build", "@three-flatland/react#build", "@three-flatland/presets#build"],
+      "dependsOn": ["^build", "three-flatland#build", "@three-flatland/nodes#build", "@three-flatland/presets#build"],
       "outputs": ["dist/**"]
     },
-    "@three-flatland/core#build": {
+    "three-flatland#build": {
       "dependsOn": ["^build"],
       "outputs": ["dist/**"]
     },
     "@three-flatland/nodes#build": {
-      "dependsOn": ["^build"],
-      "outputs": ["dist/**"]
-    },
-    "@three-flatland/react#build": {
       "dependsOn": ["^build"],
       "outputs": ["dist/**"]
     },
@@ -34,7 +30,7 @@
       "cache": false
     },
     "docs#build": {
-      "dependsOn": ["^build", "@three-flatland/core#build", "@three-flatland/nodes#build", "@three-flatland/react#build", "@three-flatland/presets#build", "@three-flatland/mini-breakout#build"],
+      "dependsOn": ["^build", "three-flatland#build", "@three-flatland/nodes#build", "@three-flatland/presets#build", "@three-flatland/mini-breakout#build"],
       "outputs": ["dist/**"],
       "inputs": [
         "src/**",

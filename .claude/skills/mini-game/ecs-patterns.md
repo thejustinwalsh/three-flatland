@@ -149,7 +149,7 @@ export const Wall = trait()
 For connecting Koota entities to Three.js objects:
 
 ```typescript
-import type { Sprite2D } from '@three-flatland/react'
+import type { Sprite2D } from 'three-flatland/react'
 import type { RefObject } from 'react'
 
 // Store a ref callback to sync position

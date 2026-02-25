@@ -25,7 +25,7 @@ Use `Flatland` when you want a complete 2D rendering setup. Use `SpriteGroup` wh
   <TabItem label="Three.js" icon="seti:javascript">
     ```typescript
     import WebGPURenderer from 'three/addons/renderers/webgpu/WebGPURenderer.js'
-    import { Flatland, Sprite2D, TextureLoader } from '@three-flatland/core'
+    import { Flatland, Sprite2D, TextureLoader } from 'three-flatland'
 
     const renderer = new WebGPURenderer()
     await renderer.init()
@@ -48,8 +48,8 @@ Use `Flatland` when you want a complete 2D rendering setup. Use `SpriteGroup` wh
     ```tsx
     import { useRef } from 'react'
     import { Canvas, extend, useFrame, useThree } from '@react-three/fiber/webgpu'
-    import { Flatland, Sprite2D, Sprite2DMaterial } from '@three-flatland/react'
-    import type { Flatland as FlatlandType } from '@three-flatland/react'
+    import { Flatland, Sprite2D, Sprite2DMaterial } from 'three-flatland/react'
+    import type { Flatland as FlatlandType } from 'three-flatland/react'
     import type { WebGPURenderer } from 'three/webgpu'
 
     extend({ Flatland, Sprite2D, Sprite2DMaterial })
@@ -170,7 +170,7 @@ flatland.globals.time = performance.now() / 1000
 Access the TSL node directly for custom material effects:
 
 ```typescript
-import { Sprite2DMaterial } from '@three-flatland/core'
+import { Sprite2DMaterial } from 'three-flatland'
 
 const material = new Sprite2DMaterial({
   colorTransform: (ctx) => {
@@ -203,7 +203,8 @@ Draw calls are derived from `renderer.info` — they reflect actual GPU work, no
 Add full-screen pass effects with `addPass()`:
 
 ```typescript
-import { Flatland, createPassEffect, posterize } from '@three-flatland/core'
+import { Flatland, createPassEffect } from 'three-flatland'
+import { posterize } from '@three-flatland/nodes'
 
 const PosterizePass = createPassEffect({
   name: 'posterize',

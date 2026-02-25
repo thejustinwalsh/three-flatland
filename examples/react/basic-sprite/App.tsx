@@ -1,7 +1,7 @@
 import { Canvas, extend, useFrame, useLoader, useThree } from '@react-three/fiber/webgpu'
 import { useRef, useState, useCallback, useEffect } from 'react'
 import { Color } from 'three'
-import { Sprite2D, TextureLoader } from '@three-flatland/react'
+import { Sprite2D, TextureLoader } from 'three-flatland/react'
 
 // Register Sprite2D with R3F (tree-shakeable)
 extend({ Sprite2D })

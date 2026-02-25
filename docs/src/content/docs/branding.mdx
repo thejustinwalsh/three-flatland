@@ -1,0 +1,52 @@
+---
+title: Branding Assets
+description: Marketing assets and branding guidelines for three-flatland. Generated live using site styles.
+template: doc
+---
+
+import BrandAsset from '../../components/BrandAsset.astro';
+import CaptureModal from '../../components/CaptureModal.astro';
+
+This page provides live-rendered versions of the `three-flatland` marketing assets.
+
+<p><strong>Click an asset below</strong> to open it in a full-resolution capture modal. Once in the modal, right-click the asset, select <strong>Inspect</strong>, and use <strong>Capture node screenshot</strong>.</p>
+
+## Official Icon
+
+<div className="asset-preview-link" data-type="icon-only">
+  <BrandAsset id="preview-icon-only" type="icon-only" />
+</div>
+
+## Repository Banner (1280x640)
+
+<div className="asset-preview-link" data-type="banner">
+  <BrandAsset id="preview-banner" type="banner" />
+</div>
+
+## Social Preview Card (1200x630)
+
+<div className="asset-preview-link" data-type="og">
+  <BrandAsset id="preview-og" type="og" />
+</div>
+
+## Bluesky Banner (3000x1000)
+
+<div className="asset-preview-link" data-type="wide">
+  <BrandAsset id="preview-wide" type="wide" />
+</div>
+
+## X Card Preview (1200x628)
+
+<div className="asset-preview-link" data-type="social-x">
+  <BrandAsset id="preview-social-x" type="social-x" />
+</div>
+
+<div className="hidden-capture-targets">
+  <BrandAsset id="capture-icon-only" type="icon-only" isCapture={true} />
+  <BrandAsset id="capture-banner" type="banner" isCapture={true} />
+  <BrandAsset id="capture-og" type="og" isCapture={true} />
+  <BrandAsset id="capture-wide" type="wide" isCapture={true} />
+  <BrandAsset id="capture-social-x" type="social-x" isCapture={true} />
+</div>
+
+<CaptureModal />

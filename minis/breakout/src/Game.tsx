@@ -6,7 +6,7 @@ import {
   Flatland,
   type Flatland as FlatlandType,
   type EffectElement,
-} from '@three-flatland/react'
+} from 'three-flatland/react'
 import type { WebGPURenderer } from 'three/webgpu'
 
 import { FlashEffect, BlockDissolveEffect } from './materials'

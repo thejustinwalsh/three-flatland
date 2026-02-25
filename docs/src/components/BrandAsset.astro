@@ -1,0 +1,488 @@
+---
+import BrandIcon from './BrandIcon.astro';
+import Icon from './Icon.astro';
+
+interface Props {
+  id: string;
+  type: 'banner' | 'og' | 'wide' | 'social-x' | 'icon-only';
+  title?: string;
+  tagline?: string;
+  info?: boolean;
+  isCapture?: boolean;
+}
+
+const { 
+  id, 
+  type, 
+  title = "THREE FLATLAND", 
+  tagline = "TSL-Native 2D Rendering for three.js",
+  info = true,
+  isCapture = false
+} = Astro.props;
+
+interface Dimensions {
+  w: number;
+  h: number;
+}
+
+const dimensions: Record<string, Dimensions> = {
+  'banner': { w: 1280, h: 640 },
+  'og': { w: 1200, h: 630 },
+  'wide': { w: 3000, h: 1000 },
+  'social-x': { w: 1200, h: 628 },
+  'icon-only': { w: 512, h: 512 }
+};
+
+const width = dimensions[type]?.w || 1200;
+const height = dimensions[type]?.h || 630;
+
+const showInfo = info && (type === 'og' || type === 'wide' || type === 'social-x' || type === 'banner');
+---
+
+<div 
+  class:list={["brand-asset-root", "not-content", type, { 'capture-mode': isCapture }]}
+  id={id}
+  style={`--asset-width: ${width}; --asset-height: ${height};`}
+>
+  {/* BACKGROUNDS & DECORATIONS */}
+  {type === 'banner' && (
+    <>
+      <div class="perspective-floor"></div>
+      <div class="decorative-boxes">
+        <div class="box yellow" style="top: 12.5%; right: 11.7%; transform: rotate(15deg) scale(1.2);"></div>
+        <div class="box orange" style="top: 21.8%; right: 7.8%; transform: rotate(-10deg);"></div>
+        <div class="box pink" style="top: 50%; right: 15.6%; transform: rotate(45deg) scale(0.8);"></div>
+        <div class="box cyan" style="top: 67.1%; right: 23.4%; transform: rotate(-20deg) scale(0.6);"></div>
+        <div class="box blue" style="top: 31.2%; left: 7.8%; transform: rotate(30deg) scale(1.1);"></div>
+        <div class="box yellow" style="bottom: 12.5%; left: 11.7%; transform: rotate(-15deg) scale(0.9);"></div>
+      </div>
+    </>
+  )}
+
+  {type === 'og' && (
+    <>
+      <div class="bg-grid"></div>
+      <div class="large-geometric-a"></div>
+      <div class="large-geometric-b"></div>
+      <div class="decorative-boxes">
+        <div class="box yellow" style="top: 15.8%; left: 8.3%; transform: rotate(10deg) scale(1.5);"></div>
+        <div class="box pink" style="top: 28.5%; left: 12.5%; transform: rotate(-5deg) scale(1.2);"></div>
+        <div class="box blue" style="bottom: 15.8%; right: 12.5%; transform: rotate(25deg) scale(1.8);"></div>
+        <div class="box orange" style="top: 23.8%; right: 12.5%; transform: rotate(-15deg) scale(1.3);"></div>
+        <div class="box cyan" style="top: 7.9%; right: 33.3%; transform: rotate(40deg) scale(0.8);"></div>
+      </div>
+    </>
+  )}
+
+  {type === 'wide' && (
+    <>
+      <div class="perspective-floor wide-floor"></div>
+      <div class="wide-glow"></div>
+      <div class="wide-dots"></div>
+    </>
+  )}
+
+  {type === 'social-x' && (
+    <>
+      <div class="bg-grid scanning-grid"></div>
+      <div class="x-gradient-glow"></div>
+      <div class="decorative-boxes">
+        <div class="box pink" style="top: 15%; left: 10%; transform: rotate(15deg) scale(1.4);"></div>
+        <div class="box cyan" style="bottom: 15%; right: 10%; transform: rotate(-15deg) scale(1.2);"></div>
+        <div class="box yellow" style="top: 40%; right: 15%; transform: rotate(45deg) scale(0.6);"></div>
+        <div class="box orange" style="bottom: 30%; left: 20%; transform: rotate(-30deg) scale(0.8);"></div>
+      </div>
+      <div class="x-decoration x-a"></div>
+      <div class="x-decoration x-b"></div>
+    </>
+  )}
+
+  {/* INFO LAYER */}
+  {showInfo && type !== 'wide' && (
+    <div class:list={["info-row", type === 'banner' ? 'bottom' : 'top']}>
+      <div class="info-block github">
+        <Icon name="github" size="2.4cqi" color="var(--retro-pink)" />
+        <span>thejustinwalsh/three-flatland</span>
+      </div>
+      <div class="info-block npm">
+        <span># npm i three-flatland@alpha</span>
+      </div>
+    </div>
+  )}
+
+
+  {/* CONTENT LAYER */}
+  <div class="branding-content">
+    {type === 'icon-only' ? (
+      <BrandIcon size="70%" />
+    ) : (
+      <>
+        <div class="text-wrapper">
+          <h1 class="logo" set:html={title.replace(" ", (type === 'og' || type === 'social-x') ? "<br/>" : " ")}></h1>
+          <div class="tagline-container">
+            {type === 'banner' || type === 'wide' ? (
+              <>
+                <div class="tagline-bar"></div>
+                <p class="tagline">{tagline}</p>
+                {type === 'wide' && showInfo && (
+                  <div class="info-blocks-integrated">
+                    <div class="info-block github">
+                      <Icon name="github" size="1.4cqi" color="var(--retro-pink)" />
+                      <span>thejustinwalsh/three-flatland</span>
+                    </div>
+                    <div class="info-block npm">
+                      <span># npm i three-flatland@alpha</span>
+                    </div>
+                  </div>
+                )}
+              </>
+            ) : (
+              <div class="tagline-box">
+                <p class="tagline">{tagline}</p>
+              </div>
+            )}
+          </div>
+        </div>
+      </>
+    )}
+  </div>
+
+  <div class="scanlines"></div>
+</div>
+
+<style>
+  .brand-asset-root {
+    --retro-cyan: #47cca9;
+    --retro-pink: #d94c87;
+    --retro-purple: #732866;
+    --retro-yellow: #f7c93e;
+    --retro-orange: #f09c60;
+    --retro-blue: #2469b3;
+    --retro-midnight: #00021c;
+    --retro-white: #f0edd8;
+    --retro-dark-purple: #1c284d;
+
+    background: var(--retro-midnight);
+    color: var(--retro-white);
+    position: relative;
+    overflow: hidden;
+    image-rendering: pixelated;
+    font-family: 'IBM Plex Sans', sans-serif;
+    container-type: inline-size;
+    
+    width: calc(var(--asset-width) * 1px);
+    height: calc(var(--asset-height) * 1px);
+    aspect-ratio: var(--asset-width) / var(--asset-height);
+  }
+
+  :not(.capture-mode).brand-asset-root {
+    width: 100%;
+    height: auto;
+  }
+
+  .branding-content {
+    position: relative;
+    z-index: 10;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+    padding: 5cqi;
+    box-sizing: border-box;
+  }
+
+  /* UNIQUE LAYOUTS */
+  .wide .branding-content {
+    align-items: flex-start;
+    text-align: left;
+    padding-left: 10cqi;
+  }
+
+  /* INFO LAYER */
+  .info-row {
+    position: absolute;
+    left: 3.5cqi;
+    right: 3.5cqi;
+    display: flex;
+    justify-content: space-between;
+    align-items: center; /* Fix for vertical offset */
+    z-index: 200; /* Above everything including scanlines */
+    pointer-events: none;
+  }
+
+  .info-row.top {
+    top: 1.25cqi;
+  }
+
+  .info-row.bottom {
+    bottom: 1.25cqi;
+  }
+
+  .info-block {
+    display: flex;
+    align-items: center;
+    gap: 1cqi;
+    padding: 0;
+    background: transparent;
+    border: none;
+    font-size: 1.4cqi; /* Restored balanced scale */
+    font-family: 'IBM Plex Mono', monospace !important;
+    font-weight: 700;
+  }
+
+  .info-block.github {
+    color: var(--retro-pink);
+    text-shadow: 0 0 1cqi rgba(217, 76, 135, 0.3);
+  }
+
+  .info-block.npm {
+    color: var(--retro-yellow);
+    text-shadow: 0 0 1cqi rgba(247, 201, 62, 0.3);
+  }
+
+  /* INTEGRATED INFO (Wide) */
+  .info-blocks-integrated {
+    display: flex;
+    flex-direction: row;
+    gap: 4.0cqi;
+    margin-top: 1.0cqi;
+    align-items: flex-start;
+  }
+
+  .info-blocks-integrated .info-block {
+    font-size: 0.8cqi;
+    gap: 0.5cqi;
+    opacity: 0.8;
+  }
+
+  .info-blocks-integrated .info-block :global(.pixel-icon) {
+    width: 1.4cqi !important;
+    height: 1.4cqi !important;
+  }
+
+  /* TEXT STYLES */
+  .text-wrapper {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .wide .text-wrapper {
+    align-items: flex-start;
+  }
+
+  .logo {
+    font-family: 'Silkscreen', cursive !important;
+    font-size: clamp(24px, 8.5cqi, 110px) !important;
+    font-weight: 700 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    color: var(--retro-white) !important;
+    text-shadow: 0.3cqi 0.3cqi 0 var(--retro-pink), 0.6cqi 0.6cqi 0 var(--retro-purple);
+    letter-spacing: -0.15cqi;
+    line-height: 0.9;
+  }
+
+  .banner .logo, .wide .logo {
+    font-size: clamp(24px, 6.25cqi, 80px) !important;
+    line-height: 1;
+  }
+
+  .tagline-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    margin-top: 2.5cqi;
+  }
+
+  .tagline-box {
+    position: relative;
+    overflow: hidden;
+    border: 0.3cqi solid var(--retro-cyan);
+    padding: 2.5cqi 5cqi;
+    background: var(--retro-midnight);
+    margin-top: 5cqi;
+  }
+
+  .tagline-box::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-image: var(--dither-cyan-25);
+    background-size: 1.3cqi 1.3cqi;
+    background-repeat: repeat;
+    image-rendering: pixelated;
+    opacity: 0.15;
+    pointer-events: none;
+  }
+
+  .wide .tagline-container {
+    align-items: flex-start;
+  }
+
+  .tagline {
+    font-family: 'IBM Plex Mono', monospace !important;
+    font-weight: 700 !important;
+    font-size: clamp(10px, 1.8cqi, 28px) !important;
+    color: var(--retro-cyan) !important;
+    letter-spacing: 0.4cqi;
+    text-transform: uppercase;
+    margin: 0 !important;
+    text-align: center;
+  }
+
+  .wide .tagline {
+    text-align: left;
+  }
+
+  .banner .tagline, .wide .tagline {
+    font-size: clamp(10px, 1.4cqi, 18px) !important;
+  }
+
+  .tagline-bar {
+    width: 35cqi;
+    height: 0.3cqi;
+    background: var(--retro-cyan);
+    margin-bottom: 0.8cqi;
+    opacity: 0.6;
+  }
+
+  /* DECORATIONS */
+  .box {
+    position: absolute;
+    width: 4.6cqi;
+    height: 4.6cqi;
+    border: 0.5cqi solid var(--retro-dark-purple);
+    box-shadow: 0.3cqi 0.3cqi 0 var(--retro-dark-purple);
+    z-index: 1;
+  }
+
+  .box.yellow { background: var(--retro-yellow); }
+  .box.pink { background: var(--retro-pink); }
+  .box.cyan { background: var(--retro-cyan); }
+  .box.orange { background: var(--retro-orange); }
+  .box.blue { background: var(--retro-blue); }
+
+  .perspective-floor {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 100%;
+    background-image: 
+      linear-gradient(var(--retro-purple) 1px, transparent 1px),
+      linear-gradient(90deg, var(--retro-purple) 1px, transparent 1px);
+    background-size: 4.6cqi 4.6cqi;
+    background-position: center bottom;
+    transform: perspective(23cqi) rotateX(60deg) scale(2);
+    transform-origin: bottom;
+    opacity: 0.2;
+  }
+
+  .wide-floor {
+    background-image: 
+      linear-gradient(var(--retro-blue) 1px, transparent 1px),
+      linear-gradient(90deg, var(--retro-blue) 1px, transparent 1px);
+    opacity: 0.15;
+    transform: perspective(40cqi) rotateX(70deg) scale(3);
+  }
+
+  .wide-glow {
+    position: absolute;
+    top: 50%;
+    left: 10cqi;
+    width: 40cqi;
+    height: 40cqi;
+    background: radial-gradient(circle, var(--retro-cyan) 0%, transparent 70%);
+    filter: blur(5cqi);
+    opacity: 0.1;
+    z-index: 0;
+  }
+
+  .bg-grid {
+    position: absolute;
+    inset: 0;
+    background-image: 
+      linear-gradient(var(--retro-blue) 1px, transparent 1px),
+      linear-gradient(90deg, var(--retro-blue) 1px, transparent 1px);
+    background-size: 3.3cqi 3.3cqi;
+    opacity: 0.05;
+  }
+
+  .bg-grid.dense {
+    background-size: 1.5cqi 1.5cqi;
+    opacity: 0.08;
+  }
+
+  .large-geometric-a {
+    position: absolute;
+    top: -15cqi;
+    left: -15cqi;
+    width: 50cqi;
+    height: 50cqi;
+    background: var(--retro-purple);
+    opacity: 0.1;
+    transform: rotate(45deg);
+  }
+
+  .large-geometric-b {
+    position: absolute;
+    bottom: -25cqi;
+    right: -25cqi;
+    width: 41cqi;
+    height: 41cqi;
+    background: var(--retro-pink);
+    opacity: 0.05;
+    transform: rotate(-15deg);
+  }
+
+  /* SOCIAL-X SPECIFIC STYLE */
+  .social-x {
+    background: linear-gradient(135deg, var(--retro-midnight) 0%, #050724 100%);
+  }
+
+  .x-gradient-glow {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 100%;
+    height: 100%;
+    background: radial-gradient(circle, var(--retro-purple) 0%, transparent 80%);
+    opacity: 0.08;
+    z-index: 0;
+  }
+
+  .scanning-grid {
+    animation: scan 10s linear infinite;
+  }
+
+  @keyframes scan {
+    from { background-position: 0 0; }
+    to { background-position: 0 3.3cqi; }
+  }
+
+  .x-decoration {
+    position: absolute;
+    width: 20cqi;
+    height: 3cqi;
+    background: var(--retro-cyan);
+    opacity: 0.1;
+    box-shadow: 0 0 1cqi var(--retro-cyan);
+  }
+
+  .x-a { top: 10cqi; left: -5cqi; transform: rotate(15deg); }
+  .x-b { bottom: 10cqi; right: -5cqi; transform: rotate(-15deg); }
+
+  .scanlines {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
+    background-size: 100% 0.3cqi, 0.2cqi 100%;
+    pointer-events: none;
+    opacity: 0.3;
+    z-index: 20;
+  }
+</style>

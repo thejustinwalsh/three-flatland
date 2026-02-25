@@ -1,6 +1,6 @@
 import { WebGPURenderer } from 'three/webgpu'
 import { Scene, OrthographicCamera, Color } from 'three'
-import { Sprite2D, TextureLoader } from '@three-flatland/core'
+import { Sprite2D, TextureLoader } from 'three-flatland'
 
 async function main() {
   // Scene setup

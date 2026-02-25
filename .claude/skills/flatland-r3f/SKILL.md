@@ -29,7 +29,7 @@ All classes in Flatland extend three.js base classes, so they can be registered 
 
 ```tsx
 import { Canvas, extend, useFrame, useThree } from '@react-three/fiber/webgpu'
-import { Flatland, Sprite2D } from '@three-flatland/react'
+import { Flatland, Sprite2D } from 'three-flatland/react'
 
 // Register Flatland and its children with R3F
 extend({ Flatland, Sprite2D })
@@ -69,7 +69,7 @@ function Scene() {
 ```tsx
 import { Suspense, useRef, useEffect } from 'react'
 import { Canvas, extend, useFrame, useThree } from '@react-three/fiber/webgpu'
-import { Flatland, Sprite2D, TextureLoader } from '@three-flatland/react'
+import { Flatland, Sprite2D, TextureLoader } from 'three-flatland/react'
 
 // Register with R3F
 extend({ Flatland, Sprite2D })
@@ -141,7 +141,7 @@ This means:
 For post-processing effects, use `addEffect()`:
 
 ```tsx
-import { crtComplete, vignette } from '@three-flatland/react'
+import { crtComplete, vignette } from 'three-flatland/react'
 
 function PostProcessingScene() {
   const { gl, size } = useThree()
@@ -285,7 +285,7 @@ This is similar to how render targets work in R3F - you render to them manually.
 
 ## Extending JSX Types
 
-The `@three-flatland/react` package includes type augmentation:
+The `three-flatland/react` package includes type augmentation:
 
 ```typescript
 // packages/react/src/types.ts

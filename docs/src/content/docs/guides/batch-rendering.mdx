@@ -14,7 +14,7 @@ When you add sprites to a `SpriteGroup`, they're grouped by material and layer i
 <Tabs syncKey="framework">
   <TabItem label="Three.js" icon="seti:javascript">
     ```typescript
-    import { Sprite2D, SpriteGroup, Sprite2DMaterial } from '@three-flatland/core';
+    import { Sprite2D, SpriteGroup, Sprite2DMaterial } from 'three-flatland';
 
     const spriteGroup = new SpriteGroup();
     scene.add(spriteGroup);
@@ -39,7 +39,7 @@ When you add sprites to a `SpriteGroup`, they're grouped by material and layer i
     ```tsx
     import { useMemo } from 'react';
     import { extend } from '@react-three/fiber/webgpu';
-    import { Sprite2D, SpriteGroup, Sprite2DMaterial } from '@three-flatland/react';
+    import { Sprite2D, SpriteGroup, Sprite2DMaterial } from 'three-flatland/react';
 
     extend({ Sprite2D, SpriteGroup, Sprite2DMaterial });
 
@@ -143,7 +143,7 @@ const enemy = new Sprite2D({ material, frame: frames.get('enemy') });
 Sprites are sorted by layer before batching. Keep related sprites on the same layer:
 
 ```typescript
-import { Layers } from '@three-flatland/core';
+import { Layers } from 'three-flatland';
 
 // Background sprites batch together
 backgrounds.forEach(s => s.layer = Layers.BACKGROUND);

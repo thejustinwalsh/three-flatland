@@ -6,6 +6,6 @@ export default defineConfig({
   dts: true,
   sourcemap: true,
   clean: true,
-  treeshake: true,
-  external: ['three', '@three-flatland/core', '@three-flatland/nodes'],
+  bundle: false,
+  external: ['three', 'three-flatland', '@three-flatland/nodes'],
 })

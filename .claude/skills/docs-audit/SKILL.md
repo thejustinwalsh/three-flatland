@@ -51,7 +51,7 @@ packages/core/src/**/*.ts (for API verification)
 
 For each code sample, verify:
 
-- [ ] **Import paths** - Correct package names (`@three-flatland/core` vs `@three-flatland/react`)
+- [ ] **Import paths** - Correct package names (`three-flatland` vs `three-flatland/react`)
 - [ ] **Class names** - Match actual exports (e.g., `TileMap2D` not `Tilemap`)
 - [ ] **Constructor signatures** - Options match actual implementation
 - [ ] **Method names** - Exact method names (e.g., `play()` not `playAnimation()`)
@@ -70,7 +70,7 @@ For each code sample, verify:
 | Properties | `sprite.layers` vs `sprite.layer` | Check class definition |
 | Methods | Missing or renamed | Check class definition |
 | Options | Different option names | Check constructor/factory signature |
-| TSL nodes | Wrong package/names | Nodes are in `@three-flatland/core`, not `@three-flatland/nodes` |
+| TSL nodes | Wrong package/names | Nodes are in `three-flatland`, not `@three-flatland/nodes` |
 | R3F extend() | Missing `extend()` call | React examples MUST include `extend({ ClassName })` for custom elements |
 | R3F imports | Missing `extend` import | Import from `@react-three/fiber/webgpu` |
 | React async | `useEffect` + `useState` for loading | Use `use()` + Suspense pattern instead |
@@ -129,20 +129,20 @@ grep -r "^export.*function" packages/core/src/nodes/
 
 ## Package Export Summary
 
-### @three-flatland/core
+### three-flatland
 
 - Core API exposing 2D classes for three.js, TSL nodes, and utilities
 - Includes dependencies from three.js
 
-### @three-flatland/react
+### three-flatland/react
 
-- Re-exports everything from `@three-flatland/core`
+- Re-exports everything from `three-flatland`
 - Type augmentation for R3F (`sprite2D`, `spriteGroup`, etc.)
 
 ### @three-flatland/nodes
 
 - Currently placeholder only (VERSION export)
-- All TSL nodes are in `@three-flatland/core`
+- All TSL nodes are in `three-flatland`
 
 ---
 

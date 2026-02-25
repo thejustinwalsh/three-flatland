@@ -1,0 +1,12 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true
+  },
+  "include": [
+    "../packages/three-flatland/src/**/*",
+    "../packages/nodes/src/**/*",
+    "../packages/presets/src/**/*"
+  ],
+  "exclude": ["**/node_modules", "**/dist", "../packages/**/*.test.ts"]
+}

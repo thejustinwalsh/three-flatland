@@ -4,10 +4,29 @@
   "commit": false,
   "fixed": [],
   "linked": [
-    ["@three-flatland/core", "@three-flatland/nodes", "@three-flatland/react", "@three-flatland/presets"]
+    ["three-flatland", "@three-flatland/nodes", "@three-flatland/presets"]
   ],
   "access": "public",
   "baseBranch": "main",
   "updateInternalDependencies": "patch",
-  "ignore": []
+  "ignore": [
+    "docs",
+    "@three-flatland/mini-breakout",
+    "example-react-animation",
+    "example-react-basic-sprite",
+    "example-react-batch-demo",
+    "example-react-knightmark",
+    "example-react-pass-effects",
+    "example-react-template",
+    "example-react-tilemap",
+    "example-react-tsl-nodes",
+    "example-vanilla-animation",
+    "example-vanilla-basic-sprite",
+    "example-vanilla-batch-demo",
+    "example-vanilla-knightmark",
+    "example-vanilla-pass-effects",
+    "example-vanilla-template",
+    "example-vanilla-tilemap",
+    "example-vanilla-tsl-nodes"
+  ]
 }

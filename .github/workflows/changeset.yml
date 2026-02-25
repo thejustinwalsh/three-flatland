@@ -1,0 +1,91 @@
+name: Generate Changeset
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize]
+
+jobs:
+  generate-changeset:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout PR branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate template changesets
+        run: pnpm changeset:generate --base origin/main
+
+      - name: Install Copilot CLI
+        run: npm install -g @github/copilot
+
+      - name: Enhance changesets with Copilot
+        continue-on-error: true
+        env:
+          COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_PAT }}
+        run: |
+          shopt -s nullglob
+          files=(.changeset/auto-*.md)
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "No auto-generated changesets to enhance"
+            exit 0
+          fi
+
+          FILE_LIST=""
+          for file in "${files[@]}"; do
+            FILE_LIST+=$'\n'"  - ${file}"
+          done
+
+          copilot --yolo -p "You are enhancing auto-generated changeset files for a monorepo npm release.
+
+          Each file listed below contains:
+          1. A frontmatter block (between --- delimiters) — DO NOT modify the frontmatter
+          2. A body with per-commit details: each commit has a ### <sha> header, message, changed files, and diff stats
+
+          Your task — update ALL files in a single pass:
+          1. Read each changeset file to get the commit details
+          2. For each commit SHA, run git show <sha> to review the actual diff
+          3. Read source files referenced in the commits for additional context
+          4. Replace the body (everything after the closing ---) with an enhanced changelog
+
+          Changelog format:
+          - Concise bullet points of user-facing changes (terse, skip grammar for brevity)
+          - Group related changes together
+          - Add a BREAKING CHANGES section if any commits have breaking changes
+          - End with a 1-2 sentence summary
+          - Simple markdown, no emojis
+
+          Files to update:${FILE_LIST}
+
+          IMPORTANT: Preserve each file's frontmatter block exactly as-is. Only write to the files listed above."
+
+      - name: Commit and push changesets
+        run: |
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.name "github-actions[bot]"
+          git add .changeset/auto-*.md 2>/dev/null || true
+          if ! git diff-index --quiet HEAD 2>/dev/null; then
+            git commit -m "ci: generate changesets [skip ci]"
+            git push
+            echo "Changesets committed and pushed"
+          else
+            echo "No changeset changes to commit"
+          fi

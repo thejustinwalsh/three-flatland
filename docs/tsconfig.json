@@ -3,7 +3,8 @@
   "compilerOptions": {
     "jsx": "react-jsx",
     "jsxImportSource": "react",
-    "checkJs": true
+    "checkJs": true,
+    "customConditions": ["source"]
   },
   "include": ["src/**/*", "vite-plugins/**/*", "*.mjs"],
   "exclude": ["node_modules", "dist"]

@@ -1,6 +1,6 @@
 import { Canvas, extend, useLoader } from '@react-three/fiber/webgpu'
 import { useState, useRef, useEffect } from 'react'
-import { Sprite2D, TextureLoader } from '@three-flatland/react'
+import { Sprite2D, TextureLoader } from 'three-flatland/react'
 
 import '@awesome.me/webawesome/dist/styles/themes/default.css'
 import WaRadioGroup from '@awesome.me/webawesome/dist/react/radio-group/index.js'

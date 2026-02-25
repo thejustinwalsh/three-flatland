@@ -5,7 +5,7 @@ import {
   SpriteSheetLoader,
   Layers,
   type AnimationSetDefinition,
-} from '@three-flatland/react'
+} from 'three-flatland/react'
 
 import '@awesome.me/webawesome/dist/styles/themes/default.css'
 import WaRadioGroup from '@awesome.me/webawesome/dist/react/radio-group/index.js'

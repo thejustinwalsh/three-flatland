@@ -15,7 +15,7 @@ All three-flatland loaders extend Three.js's `Loader` class and work with R3F's 
 
 ```tsx
 import { useLoader } from '@react-three/fiber/webgpu';
-import { TextureLoader } from '@three-flatland/react';
+import { TextureLoader } from 'three-flatland/react';
 
 function Sprite() {
   // Presets automatically applied (pixel-art by default)
@@ -36,7 +36,7 @@ function Buildings() {
 
 ```tsx
 import { useLoader } from '@react-three/fiber/webgpu';
-import { SpriteSheetLoader, AnimatedSprite2D } from '@three-flatland/react';
+import { SpriteSheetLoader, AnimatedSprite2D } from 'three-flatland/react';
 
 function Player() {
   const sheet = useLoader(SpriteSheetLoader, '/sprites/player.json');
@@ -61,7 +61,7 @@ const hdSheet = useLoader(SpriteSheetLoader, '/sprites/hd-ui.json', (loader) => 
 
 ```tsx
 import { useLoader } from '@react-three/fiber/webgpu';
-import { TiledLoader, TileMap2D } from '@three-flatland/react';
+import { TiledLoader, TileMap2D } from 'three-flatland/react';
 
 function Level() {
   const mapData = useLoader(TiledLoader, '/maps/level1.json');
@@ -86,7 +86,7 @@ const hdMap = useLoader(TiledLoader, '/maps/hd-level.json', (loader) => {
 
 ```tsx
 import { useLoader } from '@react-three/fiber/webgpu';
-import { LDtkLoader, TileMap2D } from '@three-flatland/react';
+import { LDtkLoader, TileMap2D } from 'three-flatland/react';
 
 function Level() {
   // Loads first level by default
@@ -294,7 +294,7 @@ function Game() {
 
 ```tsx
 import { extend } from '@react-three/fiber/webgpu';
-import { Sprite2D, SpriteGroup, AnimatedSprite2D, TileMap2D } from '@three-flatland/react';
+import { Sprite2D, SpriteGroup, AnimatedSprite2D, TileMap2D } from 'three-flatland/react';
 
 // Register once at module level
 extend({ Sprite2D, SpriteGroup, AnimatedSprite2D, TileMap2D });
@@ -321,7 +321,7 @@ function AnimatedCharacter({ spriteSheet }) {
 ```tsx
 import { Suspense, useRef, useState, use } from 'react';
 import { Canvas, extend, useFrame } from '@react-three/fiber/webgpu';
-import { AnimatedSprite2D, SpriteSheetLoader, Layers } from '@three-flatland/react';
+import { AnimatedSprite2D, SpriteSheetLoader, Layers } from 'three-flatland/react';
 
 // Register with R3F
 extend({ AnimatedSprite2D });
@@ -393,5 +393,5 @@ export default function App() {
 | Creating promises inside render | `useLoader()` or `useState` initializer |
 | Multiple `useState` for loading/error/data | `useLoader()` + Suspense + ErrorBoundary |
 | Manual `texture.minFilter = NearestFilter` | Use our loaders (presets applied automatically) |
-| Three.js `TextureLoader` for textures | `@three-flatland/react` `TextureLoader` with `useLoader` |
+| Three.js `TextureLoader` for textures | `three-flatland/react` `TextureLoader` with `useLoader` |
 | `useState` + `use()` for static URLs | `useLoader()` (simpler, same result) |

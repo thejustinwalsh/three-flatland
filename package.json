@@ -20,17 +20,22 @@
     "test:watch": "vitest",
     "clean": "turbo run clean && rm -rf node_modules/.vite",
     "changeset": "changeset",
-    "version-packages": "changeset version",
+    "changeset:generate": "tsx scripts/generate-changesets.ts",
+    "changeset:version": "changeset version",
     "release": "turbo run build && changeset publish",
-    "syncpack": "tsx scripts/sync-pack.ts",
-    "syncpack:examples": "tsx scripts/sync-pack.ts examples",
-    "syncpack:minis": "tsx scripts/sync-pack.ts minis",
+    "sync:pack": "tsx scripts/sync-pack.ts",
+    "sync:pack:verify": "tsx scripts/sync-pack.ts --verify",
+    "sync:react": "tsx scripts/sync-react-subpaths.ts",
+    "sync:react:verify": "tsx scripts/sync-react-subpaths.ts --verify",
+    "size": "size-limit",
     "prepare": "simple-git-hooks"
   },
   "simple-git-hooks": {
     "pre-commit": "pnpm lint-staged"
   },
   "lint-staged": {
+    "packages/three-flatland/src/index.ts": "tsx scripts/sync-react-subpaths.ts",
+    "packages/three-flatland/src/*/index.ts": "tsx scripts/sync-react-subpaths.ts",
     "examples/**/package.json": "tsx scripts/sync-pack.ts --files",
     "minis/**/package.json": "tsx scripts/sync-pack.ts --files"
   },
@@ -40,8 +45,7 @@
       "sharp"
     ],
     "overrides": {
-      "@three-flatland/core": "workspace:*",
-      "@three-flatland/react": "workspace:*",
+      "three-flatland": "workspace:*",
       "@three-flatland/nodes": "workspace:*",
       "@three-flatland/presets": "workspace:*"
     }
@@ -49,6 +53,7 @@
   "devDependencies": {
     "@changesets/cli": "^2.27.10",
     "@eslint/js": "^9.18.0",
+    "@size-limit/preset-small-lib": "^12.0.0",
     "@types/node": "^22.10.5",
     "eslint": "^9.18.0",
     "eslint-plugin-react-hooks": "^7.0.1",
@@ -56,6 +61,7 @@
     "lint-staged": "^16.2.7",
     "prettier": "^3.4.2",
     "simple-git-hooks": "^2.13.1",
+    "size-limit": "^12.0.0",
     "tsup": "^8.3.5",
     "tsx": "^4.19.2",
     "turbo": "^2.7.5",
