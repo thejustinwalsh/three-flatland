@@ -28,8 +28,8 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "three-flatland": "^0.1.0-alpha.0",
-    "@three-flatland/nodes": "^0.1.0-alpha.0",
+    "three-flatland": "^0.1.0-alpha.1",
+    "@three-flatland/nodes": "^0.1.0-alpha.1",
     "koota": "^0.1.0"
   },
   "peerDependencies": {

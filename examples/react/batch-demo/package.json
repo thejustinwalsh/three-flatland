@@ -12,7 +12,7 @@
   "dependencies": {
     "@awesome.me/webawesome": "^3.0.0",
     "@react-three/fiber": "^10.0.0-alpha.2",
-    "three-flatland": "^0.1.0-alpha.0",
+    "three-flatland": "^0.1.0-alpha.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "three": "^0.183.1"

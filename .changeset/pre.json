@@ -4,9 +4,30 @@
   "initialVersions": {
     "@three-flatland/nodes": "0.0.0",
     "@three-flatland/presets": "0.0.0",
-    "three-flatland": "0.0.0"
+    "three-flatland": "0.0.0",
+    "docs": "0.0.1-alpha.0",
+    "example-react-animation": "0.0.1-alpha.0",
+    "example-react-basic-sprite": "0.0.1-alpha.0",
+    "example-react-batch-demo": "0.0.1-alpha.0",
+    "example-react-knightmark": "0.0.1-alpha.0",
+    "example-react-pass-effects": "0.0.1-alpha.0",
+    "example-react-template": "0.0.1-alpha.0",
+    "example-react-tilemap": "0.0.1-alpha.0",
+    "example-react-tsl-nodes": "0.0.1-alpha.0",
+    "example-vanilla-animation": "0.0.1-alpha.0",
+    "example-vanilla-basic-sprite": "0.0.1-alpha.0",
+    "example-vanilla-batch-demo": "0.0.1-alpha.0",
+    "example-vanilla-knightmark": "0.0.1-alpha.0",
+    "example-vanilla-pass-effects": "0.0.1-alpha.0",
+    "example-vanilla-template": "0.0.1-alpha.0",
+    "example-vanilla-tilemap": "0.0.1-alpha.0",
+    "example-vanilla-tsl-nodes": "0.0.1-alpha.0",
+    "@three-flatland/mini-breakout": "0.0.1-alpha.0"
   },
   "changesets": [
-    "alpha-release"
+    "alpha-release",
+    "auto-three-flatland-nodes",
+    "auto-three-flatland-presets",
+    "auto-three-flatland"
   ]
 }
