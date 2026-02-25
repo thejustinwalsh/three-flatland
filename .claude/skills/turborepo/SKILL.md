@@ -1,13 +1,7 @@
 ---
 name: turborepo
-description: |
-  Turborepo monorepo build system guidance. Triggers on: turbo.json, task pipelines,
-  dependsOn, caching, remote cache, the "turbo" CLI, --filter, --affected, CI optimization, environment
-  variables, internal packages, monorepo structure/best practices, and boundaries.
+description: Turborepo monorepo build system guidance. Triggers on turbo.json, task pipelines, dependsOn, caching, remote cache, the "turbo" CLI, --filter, --affected, CI optimization, environment variables, internal packages, monorepo structure/best practices, and boundaries. Use when user configures tasks/workflows/pipelines, creates packages, sets up monorepo, shares code between apps, runs changed/affected packages, debugs cache, or has apps/packages directories.
 
-  Use when user: configures tasks/workflows/pipelines, creates packages, sets up
-  monorepo, shares code between apps, runs changed/affected packages, debugs cache,
-  or has apps/packages directories.
 metadata:
   version: 2.7.6-canary.3
 ---
@@ -841,7 +835,6 @@ The `transit` task creates dependency relationships without matching any actual 
 
 | File                                                                            | Purpose                                                  |
 | ------------------------------------------------------------------------------- | -------------------------------------------------------- |
-| [configuration/README.md](./references/configuration/README.md)                 | turbo.json overview, Package Configurations              |
 | [configuration/tasks.md](./references/configuration/tasks.md)                   | dependsOn, outputs, inputs, env, cache, persistent       |
 | [configuration/global-options.md](./references/configuration/global-options.md) | globalEnv, globalDependencies, cacheDir, daemon, envMode |
 | [configuration/gotchas.md](./references/configuration/gotchas.md)               | Common configuration mistakes                            |
@@ -850,7 +843,6 @@ The `transit` task creates dependency relationships without matching any actual 
 
 | File                                                            | Purpose                                      |
 | --------------------------------------------------------------- | -------------------------------------------- |
-| [caching/README.md](./references/caching/README.md)             | How caching works, hash inputs               |
 | [caching/remote-cache.md](./references/caching/remote-cache.md) | Vercel Remote Cache, self-hosted, login/link |
 | [caching/gotchas.md](./references/caching/gotchas.md)           | Debugging cache misses, --summarize, --dry   |
 
@@ -858,7 +850,6 @@ The `transit` task creates dependency relationships without matching any actual 
 
 | File                                                          | Purpose                                   |
 | ------------------------------------------------------------- | ----------------------------------------- |
-| [environment/README.md](./references/environment/README.md)   | env, globalEnv, passThroughEnv            |
 | [environment/modes.md](./references/environment/modes.md)     | Strict vs Loose mode, framework inference |
 | [environment/gotchas.md](./references/environment/gotchas.md) | .env files, CI issues                     |
 
@@ -866,14 +857,12 @@ The `transit` task creates dependency relationships without matching any actual 
 
 | File                                                        | Purpose                  |
 | ----------------------------------------------------------- | ------------------------ |
-| [filtering/README.md](./references/filtering/README.md)     | --filter syntax overview |
 | [filtering/patterns.md](./references/filtering/patterns.md) | Common filter patterns   |
 
 ### CI/CD
 
 | File                                                      | Purpose                         |
 | --------------------------------------------------------- | ------------------------------- |
-| [ci/README.md](./references/ci/README.md)                 | General CI principles           |
 | [ci/github-actions.md](./references/ci/github-actions.md) | Complete GitHub Actions setup   |
 | [ci/vercel.md](./references/ci/vercel.md)                 | Vercel deployment, turbo-ignore |
 | [ci/patterns.md](./references/ci/patterns.md)             | --affected, caching strategies  |
@@ -882,29 +871,15 @@ The `transit` task creates dependency relationships without matching any actual 
 
 | File                                            | Purpose                                       |
 | ----------------------------------------------- | --------------------------------------------- |
-| [cli/README.md](./references/cli/README.md)     | turbo run basics                              |
 | [cli/commands.md](./references/cli/commands.md) | turbo run flags, turbo-ignore, other commands |
 
 ### Best Practices
 
 | File                                                                          | Purpose                                                         |
 | ----------------------------------------------------------------------------- | --------------------------------------------------------------- |
-| [best-practices/README.md](./references/best-practices/README.md)             | Monorepo best practices overview                                |
 | [best-practices/structure.md](./references/best-practices/structure.md)       | Repository structure, workspace config, TypeScript/ESLint setup |
 | [best-practices/packages.md](./references/best-practices/packages.md)         | Creating internal packages, JIT vs Compiled, exports            |
 | [best-practices/dependencies.md](./references/best-practices/dependencies.md) | Dependency management, installing, version sync                 |
-
-### Watch Mode
-
-| File                                            | Purpose                                         |
-| ----------------------------------------------- | ----------------------------------------------- |
-| [watch/README.md](./references/watch/README.md) | turbo watch, interruptible tasks, dev workflows |
-
-### Boundaries (Experimental)
-
-| File                                                      | Purpose                                               |
-| --------------------------------------------------------- | ----------------------------------------------------- |
-| [boundaries/README.md](./references/boundaries/README.md) | Enforce package isolation, tag-based dependency rules |
 
 ## Source Documentation
 

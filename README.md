@@ -204,7 +204,7 @@ material.colorNode = hueShift(
 
 ## Requirements
 
-- **three.js** >= 0.182.0 (TSL/WebGPU support)
+- **three.js** >= 0.183.1 (TSL/WebGPU support)
 - **React** >= 19.0.0 (for `@three-flatland/react`, uses `use()` hook)
 - **@react-three/fiber** >= 10.0.0-alpha.0 (for React, WebGPU support)
 
@@ -215,9 +215,9 @@ material.colorNode = hueShift(
 - [x] Animation system (AnimatedSprite2D, AnimationController)
 - [x] 2D render pipeline with batching
 - [x] TSL effect nodes
-- [ ] Tilemap support (Tiled, LDtk)
+- [x] Tilemap support (Tiled, LDtk)
 - [ ] Text rendering (SDF, MSDF, bitmap)
-- [ ] React Three Fiber integration
+- [x] React Three Fiber integration
 - [ ] Render targets for 2D-on-3D
 - [ ] Effect presets
 
