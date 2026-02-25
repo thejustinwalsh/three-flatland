@@ -4,34 +4,33 @@
 
 # three-flatland
 
-A TSL-native 2D rendering library for Three.js. High-performance sprites, tilemaps, text, and effects using WebGPU and the Three.js Shading Language.
+High-performance 2D sprites, tilemaps, and effects for Three.js — built for WebGPU with composable TSL shaders.
 
 > [!IMPORTANT]
 > **Early Alpha** — three-flatland is in active development. We're exploring performant, maintainable, and extensible patterns for GPU-driven 2D rendering with WebGPU. The API will evolve as we refine these systems. Your feedback shapes what we build.
 
 ## Features
 
-- **TSL-Native Shaders** - All effects built with Three.js Shading Language, works on WebGL and WebGPU
-- **Automatic Batching** - Sprites with the same material batch into single draw calls automatically
-- **Decoupled Scene Graph** - Transform hierarchy and render order are independent (layer + zIndex)
-- **Composable Effects** - Build custom effects by composing TSL nodes
-- **Tree-Shakeable** - Import only what you use
-- **React Three Fiber Support** - First-class R3F integration with Suspense resources
+- **WebGPU Native** — all shaders built with TSL (Three Shader Language), works on WebGPU and WebGL
+- **Automatic Batching** — sprites sharing a material batch into single draw calls
+- **Decoupled Scene Graph** — transform hierarchy and render order are independent (layer + zIndex)
+- **Composable Effects** — 50+ TSL shader nodes for tint, outline, dissolve, CRT, palette swap, and more
+- **Animation System** — spritesheet-driven with frame-perfect timing and callbacks
+- **Tilemap Support** — Tiled and LDtk editor formats with animated tiles
+- **Tree-Shakeable** — import only what you use, deep imports for maximum control
+- **React Three Fiber** — first-class R3F integration via `three-flatland/react`
 
 ## Installation
 
 ```bash
 # Core library (vanilla Three.js)
-npm install three-flatland three
+npm install three-flatland@alpha
 
-# For React Three Fiber (includes core)
-npm install three-flatland @react-three/fiber react
+# For React Three Fiber
+npm install three-flatland@alpha @react-three/fiber@alpha
 
-# Optional: TSL effect nodes
-npm install @three-flatland/nodes
-
-# Optional: Pre-configured effect presets
-npm install @three-flatland/presets
+# TSL shader nodes
+npm install @three-flatland/nodes@alpha
 ```
 
 ## Quick Start
@@ -39,25 +38,27 @@ npm install @three-flatland/presets
 ### Vanilla Three.js
 
 ```typescript
-import * as THREE from 'three/webgpu'
-import { Sprite2D, SpriteSheetLoader, Layers } from 'three-flatland'
+import { WebGPURenderer } from 'three/webgpu'
+import { Scene, OrthographicCamera } from 'three'
+import { Sprite2D, SpriteGroup, TextureLoader } from 'three-flatland'
 
-const renderer = new THREE.WebGPURenderer()
-const scene = new THREE.Scene()
-const camera = new THREE.OrthographicCamera(0, 800, 600, 0, -1000, 1000)
+const scene = new Scene()
+const camera = new OrthographicCamera(-400, 400, 300, -300, 0.1, 1000)
+camera.position.z = 100
 
-// Load a spritesheet
-const sheet = await SpriteSheetLoader.load('/sprites/player.json')
+const renderer = new WebGPURenderer()
+renderer.setSize(800, 600)
+document.body.appendChild(renderer.domElement)
+await renderer.init()
 
-// Create a sprite
-const player = new Sprite2D({
-  texture: sheet.texture,
-  frame: sheet.getFrame('idle_0'),
-  anchor: [0.5, 1], // Bottom center
-})
-player.position.set(400, 300, 0)
-player.layer = Layers.ENTITIES
-scene.add(player)
+const texture = await TextureLoader.load('/sprite.png')
+
+// SpriteGroup handles automatic batching
+const group = new SpriteGroup()
+scene.add(group)
+
+const sprite = new Sprite2D({ texture, anchor: [0.5, 0.5] })
+group.add(sprite)
 
 function animate() {
   requestAnimationFrame(animate)
@@ -69,33 +70,26 @@ animate()
 ### React Three Fiber
 
 ```tsx
-import { Canvas, extend } from '@react-three/fiber/webgpu'
+import { Canvas, extend, useLoader } from '@react-three/fiber/webgpu'
 import { Suspense } from 'react'
-import { Sprite2D, SpriteSheetLoader, Layers } from 'three-flatland/react'
+import { Sprite2D, SpriteGroup, TextureLoader } from 'three-flatland/react'
 
-extend({ Sprite2D })
+extend({ Sprite2D, SpriteGroup })
 
-const sheet = SpriteSheetLoader.load('/sprites/player.json')
-
-function Player() {
-  const spriteSheet = use(sheet)
-
+function Sprite() {
+  const texture = useLoader(TextureLoader, '/sprite.png')
   return (
-    <sprite2D
-      texture={spriteSheet.texture}
-      frame={spriteSheet.getFrame('idle_0')}
-      anchor={[0.5, 1]}
-      layer={Layers.ENTITIES}
-      position={[400, 300, 0]}
-    />
+    <spriteGroup>
+      <sprite2D texture={texture} anchor={[0.5, 0.5]} />
+    </spriteGroup>
   )
 }
 
-function App() {
+export default function App() {
   return (
-    <Canvas orthographic camera={{ position: [400, 300, 100] }}>
-      <Suspense fallback={null}>
-        <Player />
+    <Canvas orthographic camera={{ zoom: 1, position: [0, 0, 100] }}>
+      <Suspense>
+        <Sprite />
       </Suspense>
     </Canvas>
   )
@@ -109,6 +103,8 @@ function App() {
 Unlike traditional 3D engines, three-flatland separates transform hierarchy from render order:
 
 ```typescript
+import { Sprite2D, Layers } from 'three-flatland'
+
 // Scene graph controls position inheritance
 const player = new THREE.Group()
 const shadow = new Sprite2D({ texture: shadowTex })
@@ -116,39 +112,14 @@ const body = new Sprite2D({ texture: bodyTex })
 player.add(shadow, body)
 
 // Render order is explicit and independent
-shadow.layer = Layers.SHADOWS  // Renders first
-body.layer = Layers.ENTITIES   // Renders on top
+shadow.layer = Layers.SHADOWS   // Renders first
+body.layer = Layers.ENTITIES    // Renders on top
 
-// Shadow moves with player but renders below
+// Shadow moves with player but always renders below
 player.position.x += 10
 ```
 
-### Material-Based Batching
-
-Sprites automatically batch when sharing the same material:
-
-```typescript
-const material = new Sprite2DMaterial({ texture })
-
-// These all batch into one draw call
-const sprites = Array.from({ length: 1000 }, () =>
-  new Sprite2D({ material })
-)
-```
-
-For per-sprite effect variations, use instance attributes:
-
-```typescript
-const material = new Sprite2DMaterial({ texture })
-material.addInstanceFloat('dissolve', 0)
-
-const sprite = new Sprite2D({ material })
-sprite.setInstanceValue('dissolve', 0.5)
-```
-
 ### Animation
-
-Create animated sprites with frame-based animations:
 
 ```typescript
 import { AnimatedSprite2D, SpriteSheetLoader } from 'three-flatland'
@@ -167,71 +138,68 @@ const player = new AnimatedSprite2D({
   animation: 'idle',
 })
 
-// In update loop
 player.update(deltaMs)
-
-// Change animation
 player.play('run')
-
-// Play with callbacks
-player.play('attack', {
-  onComplete: () => player.play('idle'),
-})
+player.play('attack', { onComplete: () => player.play('idle') })
 ```
 
-### TSL Effects
-
-Build effects using Three.js Shading Language:
+### Composable TSL Effects
 
 ```typescript
-import { hueShift, dissolve, outline } from '@three-flatland/nodes'
-import { texture, uv, uniform } from 'three/tsl'
+import { createMaterialEffect } from 'three-flatland'
+import { tintAdditive, hueShift } from '@three-flatland/nodes'
+import { vec4 } from 'three/tsl'
 
-const material = new Sprite2DMaterial({ texture: tex })
-material.colorNode = hueShift(
-  texture(tex, uv()),
-  { amount: uniform(0.5) }
-)
+const DamageFlash = createMaterialEffect({
+  name: 'damageFlash',
+  schema: { intensity: 1 } as const,
+  node: ({ inputColor, attrs }) => {
+    const flashed = tintAdditive(inputColor, [1, 1, 1], attrs.intensity)
+    return vec4(flashed.rgb.mul(inputColor.a), inputColor.a)
+  },
+})
+
+const flash = new DamageFlash()
+sprite.addEffect(flash)
+flash.intensity = 0.8 // Animate per frame
 ```
 
 ## Packages
 
 | Package | Description |
 |---------|-------------|
-| `three-flatland` | Core library — sprites, materials, loaders, render pipeline |
-| `three-flatland/react` | React Three Fiber subpath — re-exports core + JSX type augmentation |
-| `@three-flatland/nodes` | TSL shader nodes for effects (per-category subpaths) |
-| `@three-flatland/presets` | Pre-configured effect combinations |
+| [`three-flatland`](https://www.npmjs.com/package/three-flatland) | Core library — sprites, materials, animation, loaders, tilemaps, render pipeline |
+| [`three-flatland/react`](https://www.npmjs.com/package/three-flatland) | React Three Fiber subpath — re-exports core + JSX type augmentation |
+| [`@three-flatland/nodes`](https://www.npmjs.com/package/@three-flatland/nodes) | 50+ TSL shader nodes for effects (per-category subpaths) |
+| [`@three-flatland/presets`](https://www.npmjs.com/package/@three-flatland/presets) | Pre-configured effect combinations (coming soon) |
 
 ## Requirements
 
 - **three.js** >= 0.183.1 (TSL/WebGPU support)
+- **koota** >= 0.1.0 (ECS for batch rendering)
 - **React** >= 19.0.0 (for `three-flatland/react`, uses `use()` hook)
-- **@react-three/fiber** >= 10.0.0-alpha.0 (for React, WebGPU support)
+- **@react-three/fiber** >= 10.0.0-alpha.2 (for React, WebGPU support)
+
+## Documentation
+
+Full docs, interactive examples, and API reference at **[thejustinwalsh.com/three-flatland](https://thejustinwalsh.com/three-flatland/)**
 
 ## Roadmap
 
-- [x] Project setup and monorepo structure
 - [x] Core sprite system (Sprite2D, materials, loaders)
 - [x] Animation system (AnimatedSprite2D, AnimationController)
-- [x] 2D render pipeline with batching
-- [x] TSL effect nodes
+- [x] 2D render pipeline with automatic batching
+- [x] TSL effect nodes (50+ composable shader nodes)
 - [x] Tilemap support (Tiled, LDtk)
-- [ ] Text rendering (SDF, MSDF, bitmap)
 - [x] React Three Fiber integration
+- [ ] Text rendering (SDF, MSDF, bitmap)
 - [ ] Render targets for 2D-on-3D
 - [ ] Effect presets
 
-## Design Philosophy
-
-three-flatland brings classic 2D game engine workflows to Three.js:
-
-1. **Three.js-First** - Everything is vanilla Three.js, usable without React
-2. **Proper 2D Pipeline** - Batched rendering with explicit z-ordering
-3. **Scene Graph ≠ Render Order** - Transforms and draw order are decoupled
-4. **TSL-Native** - Shaders written in TSL, not GLSL strings
-5. **Tree-Shakeable** - Import only what you use
-
 ## License
 
-MIT
+[MIT](./LICENSE)
+
+---
+
+<sub>This documentation was created with AI assistance. AI can make mistakes — please verify claims and test code examples. Submit corrections [here](https://github.com/thejustinwalsh/three-flatland/issues).</sub>
