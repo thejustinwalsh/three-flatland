@@ -30,7 +30,29 @@
       "cache": false
     },
     "docs#build": {
-      "dependsOn": ["^build", "three-flatland#build", "@three-flatland/nodes#build", "@three-flatland/presets#build", "@three-flatland/mini-breakout#build"],
+      "dependsOn": [
+        "^build",
+        "three-flatland#build",
+        "@three-flatland/nodes#build",
+        "@three-flatland/presets#build",
+        "@three-flatland/mini-breakout#build",
+        "example-vanilla-animation#build",
+        "example-vanilla-basic-sprite#build",
+        "example-vanilla-batch-demo#build",
+        "example-vanilla-knightmark#build",
+        "example-vanilla-lighting#build",
+        "example-vanilla-pass-effects#build",
+        "example-vanilla-tilemap#build",
+        "example-vanilla-tsl-nodes#build",
+        "example-react-animation#build",
+        "example-react-basic-sprite#build",
+        "example-react-batch-demo#build",
+        "example-react-knightmark#build",
+        "example-react-lighting#build",
+        "example-react-pass-effects#build",
+        "example-react-tilemap#build",
+        "example-react-tsl-nodes#build"
+      ],
       "outputs": ["dist/**"],
       "inputs": [
         "src/**",
