@@ -99,7 +99,7 @@ import { Tabs, TabItem, Aside } from '@astrojs/starlight/components';
 <Tabs>
   <TabItem label="Three.js" icon="seti:javascript">
 ```typescript
-import { Sprite2D, SpriteGroup } from '@three-flatland/core'
+import { Sprite2D, SpriteGroup } from 'three-flatland'
 
 // Create a sprite group and add to your scene
 const spriteGroup = new SpriteGroup()
@@ -117,7 +117,7 @@ spriteGroup.add(player, enemy)
   <TabItem label="React" icon="seti:react">
 ```tsx
 import { Canvas, extend } from '@react-three/fiber/webgpu'
-import { Sprite2D, SpriteGroup } from '@three-flatland/react'
+import { Sprite2D, SpriteGroup } from 'three-flatland/react'
 
 extend({ Sprite2D, SpriteGroup })
 

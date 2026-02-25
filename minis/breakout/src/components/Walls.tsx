@@ -1,5 +1,5 @@
-import type { Sprite2DMaterial } from '@three-flatland/react'
-import { Layers } from '@three-flatland/react'
+import type { Sprite2DMaterial } from 'three-flatland/react'
+import { Layers } from 'three-flatland/react'
 import {
   WORLD_LEFT,
   WORLD_RIGHT,

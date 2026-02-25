@@ -1,4 +1,4 @@
-![three-flatland banner](./assets/icon.svg)
+![three-flatland banner](./assets/banner.svg)
 
 # three-flatland
 
@@ -19,11 +19,11 @@ A TSL-native 2D rendering library for Three.js. High-performance sprites, tilema
 ## Installation
 
 ```bash
-# Core library
-npm install @three-flatland/core three
+# Core library (vanilla Three.js)
+npm install three-flatland three
 
-# For React Three Fiber
-npm install @three-flatland/react @react-three/fiber react
+# For React Three Fiber (includes core)
+npm install three-flatland @react-three/fiber react
 
 # Optional: TSL effect nodes
 npm install @three-flatland/nodes
@@ -38,7 +38,7 @@ npm install @three-flatland/presets
 
 ```typescript
 import * as THREE from 'three/webgpu'
-import { Sprite2D, SpriteSheetLoader, Layers } from '@three-flatland/core'
+import { Sprite2D, SpriteSheetLoader, Layers } from 'three-flatland'
 
 const renderer = new THREE.WebGPURenderer()
 const scene = new THREE.Scene()
@@ -69,8 +69,7 @@ animate()
 ```tsx
 import { Canvas, extend } from '@react-three/fiber/webgpu'
 import { Suspense } from 'react'
-import { Sprite2D, SpriteSheetLoader, Layers } from '@three-flatland/core'
-import type {} from '@three-flatland/react'
+import { Sprite2D, SpriteSheetLoader, Layers } from 'three-flatland/react'
 
 extend({ Sprite2D })
 
@@ -150,7 +149,7 @@ sprite.setInstanceValue('dissolve', 0.5)
 Create animated sprites with frame-based animations:
 
 ```typescript
-import { AnimatedSprite2D, SpriteSheetLoader } from '@three-flatland/core'
+import { AnimatedSprite2D, SpriteSheetLoader } from 'three-flatland'
 
 const sheet = await SpriteSheetLoader.load('/sprites/player.json')
 
@@ -197,15 +196,15 @@ material.colorNode = hueShift(
 
 | Package | Description |
 |---------|-------------|
-| `@three-flatland/core` | Sprites, materials, loaders, render pipeline |
-| `@three-flatland/nodes` | TSL shader nodes for effects |
-| `@three-flatland/react` | React Three Fiber types and utilities |
+| `three-flatland` | Core library — sprites, materials, loaders, render pipeline |
+| `three-flatland/react` | React Three Fiber subpath — re-exports core + JSX type augmentation |
+| `@three-flatland/nodes` | TSL shader nodes for effects (per-category subpaths) |
 | `@three-flatland/presets` | Pre-configured effect combinations |
 
 ## Requirements
 
 - **three.js** >= 0.183.1 (TSL/WebGPU support)
-- **React** >= 19.0.0 (for `@three-flatland/react`, uses `use()` hook)
+- **React** >= 19.0.0 (for `three-flatland/react`, uses `use()` hook)
 - **@react-three/fiber** >= 10.0.0-alpha.0 (for React, WebGPU support)
 
 ## Roadmap

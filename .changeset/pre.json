@@ -1,0 +1,12 @@
+{
+  "mode": "pre",
+  "tag": "alpha",
+  "initialVersions": {
+    "@three-flatland/nodes": "0.0.0",
+    "@three-flatland/presets": "0.0.0",
+    "three-flatland": "0.0.0"
+  },
+  "changesets": [
+    "alpha-release"
+  ]
+}

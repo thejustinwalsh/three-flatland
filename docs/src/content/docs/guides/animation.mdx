@@ -10,7 +10,7 @@ three-flatland supports frame-based animation using spritesheets. The `AnimatedS
 <Tabs syncKey="framework">
   <TabItem label="Three.js" icon="seti:javascript">
     ```typescript
-    import { AnimatedSprite2D, SpriteSheetLoader, Layers } from '@three-flatland/core';
+    import { AnimatedSprite2D, SpriteSheetLoader, Layers } from 'three-flatland';
 
     // Load spritesheet (texture presets automatically applied)
     const spriteSheet = await SpriteSheetLoader.load('/sprites/character.json');
@@ -57,7 +57,7 @@ three-flatland supports frame-based animation using spritesheets. The `AnimatedS
     ```tsx
     import { Suspense, useRef } from 'react';
     import { extend, useFrame, useLoader } from '@react-three/fiber/webgpu';
-    import { AnimatedSprite2D, SpriteSheetLoader, Layers } from '@three-flatland/react';
+    import { AnimatedSprite2D, SpriteSheetLoader, Layers } from 'three-flatland/react';
 
     extend({ AnimatedSprite2D });
 
@@ -171,7 +171,7 @@ sprite.play('attack', {
 The `SpriteSheetLoader` supports Aseprite JSON format. Texture presets (like `NearestFilter` for pixel art) are automatically applied:
 
 ```typescript
-import { SpriteSheetLoader } from '@three-flatland/core';
+import { SpriteSheetLoader } from 'three-flatland';
 
 // Load spritesheet (presets automatically applied)
 const spriteSheet = await SpriteSheetLoader.load('/sprites/character.json');

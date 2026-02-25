@@ -14,7 +14,7 @@ This guide shows you how to create your first sprite using three-flatland.
     ```typescript
     import { WebGPURenderer } from 'three/webgpu';
     import { Scene, OrthographicCamera } from 'three';
-    import { Sprite2D, TextureLoader } from '@three-flatland/core';
+    import { Sprite2D, TextureLoader } from 'three-flatland';
 
     async function main() {
       // Create scene and camera
@@ -51,7 +51,7 @@ This guide shows you how to create your first sprite using three-flatland.
   <TabItem label="React" icon="seti:react">
     ```tsx
     import { Canvas, extend, useLoader } from '@react-three/fiber/webgpu';
-    import { Sprite2D, TextureLoader } from '@three-flatland/react';
+    import { Sprite2D, TextureLoader } from 'three-flatland/react';
 
     extend({ Sprite2D });
 

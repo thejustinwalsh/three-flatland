@@ -2,8 +2,8 @@ import { useRef } from 'react'
 import { useFrame } from '@react-three/fiber/webgpu'
 import { useQuery } from 'koota/react'
 import type { Entity } from 'koota'
-import type { Sprite2DMaterial, Sprite2D as Sprite2DType } from '@three-flatland/react'
-import { Layers } from '@three-flatland/react'
+import type { Sprite2DMaterial, Sprite2D as Sprite2DType } from 'three-flatland/react'
+import { Layers } from 'three-flatland/react'
 import { Paddle as PaddleTrait, Position, Bounds } from '../traits'
 
 interface PaddleRendererProps {

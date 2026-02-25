@@ -23,7 +23,7 @@ Load textures with automatic preset application. Works seamlessly with R3F's `us
 <Tabs syncKey="framework">
   <TabItem label="Three.js" icon="seti:javascript">
     ```typescript
-    import { TextureLoader, Sprite2D } from '@three-flatland/core';
+    import { TextureLoader, Sprite2D } from 'three-flatland';
 
     // Load texture (presets automatically applied)
     const texture = await TextureLoader.load('/sprites/player.png');
@@ -34,7 +34,7 @@ Load textures with automatic preset application. Works seamlessly with R3F's `us
   <TabItem label="React" icon="seti:react">
     ```tsx
     import { useLoader } from '@react-three/fiber/webgpu';
-    import { TextureLoader, Sprite2D } from '@three-flatland/react';
+    import { TextureLoader, Sprite2D } from 'three-flatland/react';
     import { extend } from '@react-three/fiber/webgpu';
 
     extend({ Sprite2D });
@@ -54,7 +54,7 @@ Load textures with automatic preset application. Works seamlessly with R3F's `us
 <Tabs syncKey="framework">
   <TabItem label="Three.js" icon="seti:javascript">
     ```typescript
-    import { TextureLoader } from '@three-flatland/core';
+    import { TextureLoader } from 'three-flatland';
 
     // Preload multiple textures
     const textures = await TextureLoader.preload([
@@ -67,7 +67,7 @@ Load textures with automatic preset application. Works seamlessly with R3F's `us
   <TabItem label="React" icon="seti:react">
     ```tsx
     import { useLoader } from '@react-three/fiber/webgpu';
-    import { TextureLoader } from '@three-flatland/react';
+    import { TextureLoader } from 'three-flatland/react';
 
     // Define URLs at module level for stable references
     const TEXTURE_URLS = ['/sprites/player.png', '/sprites/enemy.png', '/sprites/items.png'];
@@ -109,7 +109,7 @@ Load spritesheets exported from [TexturePacker](https://www.codeandweb.com/textu
 <Tabs syncKey="framework">
   <TabItem label="Three.js" icon="seti:javascript">
     ```typescript
-    import { SpriteSheetLoader, Sprite2D } from '@three-flatland/core';
+    import { SpriteSheetLoader, Sprite2D } from 'three-flatland';
 
     const sheet = await SpriteSheetLoader.load('/sprites/player.json');
 
@@ -126,7 +126,7 @@ Load spritesheets exported from [TexturePacker](https://www.codeandweb.com/textu
     ```tsx
     import { Suspense } from 'react';
     import { useLoader } from '@react-three/fiber/webgpu';
-    import { SpriteSheetLoader, Sprite2D } from '@three-flatland/react';
+    import { SpriteSheetLoader, Sprite2D } from 'three-flatland/react';
     import { extend } from '@react-three/fiber/webgpu';
 
     extend({ Sprite2D });
@@ -183,7 +183,7 @@ Load maps from [Tiled Map Editor](https://www.mapeditor.org/). See the [Tilemaps
 <Tabs syncKey="framework">
   <TabItem label="Three.js" icon="seti:javascript">
     ```typescript
-    import { TiledLoader, TileMap2D } from '@three-flatland/core';
+    import { TiledLoader, TileMap2D } from 'three-flatland';
 
     const mapData = await TiledLoader.load('/maps/level1.json');
     const tilemap = new TileMap2D({ data: mapData });
@@ -193,7 +193,7 @@ Load maps from [Tiled Map Editor](https://www.mapeditor.org/). See the [Tilemaps
     ```tsx
     import { Suspense } from 'react';
     import { useLoader } from '@react-three/fiber/webgpu';
-    import { TiledLoader, TileMap2D } from '@three-flatland/react';
+    import { TiledLoader, TileMap2D } from 'three-flatland/react';
     import { extend } from '@react-three/fiber/webgpu';
 
     extend({ TileMap2D });
@@ -226,7 +226,7 @@ Load projects from [LDtk](https://ldtk.io/). See the [Tilemaps guide](../guides/
 <Tabs syncKey="framework">
   <TabItem label="Three.js" icon="seti:javascript">
     ```typescript
-    import { LDtkLoader, TileMap2D } from '@three-flatland/core';
+    import { LDtkLoader, TileMap2D } from 'three-flatland';
 
     // Load a specific level
     const mapData = await LDtkLoader.load('/maps/world.ldtk', 'Level_0');
@@ -240,7 +240,7 @@ Load projects from [LDtk](https://ldtk.io/). See the [Tilemaps guide](../guides/
     ```tsx
     import { Suspense } from 'react';
     import { useLoader } from '@react-three/fiber/webgpu';
-    import { LDtkLoader, TileMap2D } from '@three-flatland/react';
+    import { LDtkLoader, TileMap2D } from 'three-flatland/react';
     import { extend } from '@react-three/fiber/webgpu';
 
     extend({ TileMap2D });
@@ -312,7 +312,7 @@ Each level overrides the ones below it. If nothing is set, `'pixel-art'` is used
 Set a system-wide default for all loaders:
 
 ```typescript
-import { TextureConfig } from '@three-flatland/core';
+import { TextureConfig } from 'three-flatland';
 
 // Change global default
 TextureConfig.options = 'smooth';
@@ -330,7 +330,7 @@ TextureConfig.reset();  // Back to 'pixel-art'
 Override the default for a specific loader type:
 
 ```typescript
-import { TextureLoader, SpriteSheetLoader, TiledLoader } from '@three-flatland/core';
+import { TextureLoader, SpriteSheetLoader, TiledLoader } from 'three-flatland';
 
 // HD textures with smooth filtering
 TextureLoader.options = 'smooth';

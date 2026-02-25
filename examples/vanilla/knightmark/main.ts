@@ -12,7 +12,7 @@ import {
   type TileMapData,
   type TilesetData,
   type TileLayerData,
-} from '@three-flatland/core'
+} from 'three-flatland'
 
 // ============================================
 // CONSTANTS

@@ -9,7 +9,7 @@ import {
   TextureLoader,
   type SpriteFrame,
   type RenderStats,
-} from '@three-flatland/react'
+} from 'three-flatland/react'
 // Extend R3F with our custom classes
 extend({ SpriteGroup, Sprite2D, Sprite2DMaterial })
 

@@ -6,11 +6,10 @@ import { useMemo } from 'react'
 import type { Texture } from 'three'
 import {
   Sprite2DMaterial,
-  bayerDither4x4,
-  dissolvePixelated,
   createMaterialEffect,
   type ColorTransformFn,
-} from '@three-flatland/react'
+} from 'three-flatland/react'
+import { bayerDither4x4, dissolvePixelated } from '@three-flatland/nodes'
 import { uv, vec2, vec3, vec4, mix, float } from 'three/tsl'
 import {
   createBallTexture,

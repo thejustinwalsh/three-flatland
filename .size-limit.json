@@ -1,0 +1,38 @@
+[
+  {
+    "name": "three-flatland (full)",
+    "path": "packages/three-flatland/dist/index.js",
+    "import": "*",
+    "ignore": ["three", "react", "@react-three/fiber", "koota"]
+  },
+  {
+    "name": "three-flatland/react (full)",
+    "path": "packages/three-flatland/dist/react.js",
+    "import": "*",
+    "ignore": ["three", "react", "@react-three/fiber", "koota"]
+  },
+  {
+    "name": "Flatland (tree-shaken)",
+    "path": "packages/three-flatland/dist/index.js",
+    "import": "{ Flatland }",
+    "ignore": ["three", "react", "@react-three/fiber", "koota"]
+  },
+  {
+    "name": "AnimatedSprite2D (tree-shaken)",
+    "path": "packages/three-flatland/dist/index.js",
+    "import": "{ AnimatedSprite2D }",
+    "ignore": ["three", "react", "@react-three/fiber", "koota"]
+  },
+  {
+    "name": "Sprite2D (tree-shaken)",
+    "path": "packages/three-flatland/dist/index.js",
+    "import": "{ Sprite2D }",
+    "ignore": ["three", "react", "@react-three/fiber", "koota"]
+  },
+  {
+    "name": "TileMap2D (tree-shaken)",
+    "path": "packages/three-flatland/dist/index.js",
+    "import": "{ TileMap2D }",
+    "ignore": ["three", "react", "@react-three/fiber", "koota"]
+  }
+]

@@ -1,6 +1,6 @@
 {
   "name": "@three-flatland/mini-breakout",
-  "version": "0.0.0",
+  "version": "0.0.1-alpha.0",
   "description": "Flatland Breakout mini-game for docs hero",
   "type": "module",
   "main": "./dist/index.js",
@@ -17,9 +17,9 @@
   ],
   "sideEffects": false,
   "scripts": {
-    "dev": "tsup src/index.ts --format esm --dts --external react --external three --external @react-three/fiber --external koota --watch",
+    "dev": "tsup src/index.ts --format esm --dts --external react --external three --external @react-three/fiber --external koota --external three-flatland --external @three-flatland/nodes --watch",
     "dev:app": "vite dev --port ${TURBO_MFE_PORT:-5200}",
-    "build": "tsup src/index.ts --format esm --dts --external react --external three --external @react-three/fiber --external koota",
+    "build": "tsup src/index.ts --format esm --dts --external react --external three --external @react-three/fiber --external koota --external three-flatland --external @three-flatland/nodes",
     "build:app": "vite build",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src",
@@ -27,7 +27,8 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@three-flatland/react": "^0.0.0",
+    "three-flatland": "^0.1.0-alpha.0",
+    "@three-flatland/nodes": "^0.1.0-alpha.0",
     "koota": "^0.1.0"
   },
   "peerDependencies": {
@@ -58,7 +59,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/your-org/three-flatland.git",
+    "url": "https://github.com/thejustinwalsh/three-flatland.git",
     "directory": "minis/breakout"
   }
 }

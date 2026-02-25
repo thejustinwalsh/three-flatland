@@ -20,6 +20,9 @@ import {
   Sprite2DMaterial,
   SpriteSheetLoader,
   createMaterialEffect,
+} from 'three-flatland'
+import type { MaterialEffect, AnimationSetDefinition } from 'three-flatland'
+import {
   tintAdditive,
   hueShift,
   saturate,
@@ -27,8 +30,7 @@ import {
   pixelate,
   dissolvePixelated,
   tint,
-} from '@three-flatland/core'
-import type { MaterialEffect, AnimationSetDefinition } from '@three-flatland/core'
+} from '@three-flatland/nodes'
 
 import '@awesome.me/webawesome/dist/styles/themes/default.css'
 import '@awesome.me/webawesome/dist/components/radio-group/radio-group.js'

@@ -18,6 +18,11 @@ import {
   SpriteSheetLoader,
   applyTextureOptions,
   createMaterialEffect,
+  type SpriteSheet,
+  type MaterialEffect,
+  type AnimationSetDefinition,
+} from 'three-flatland/react'
+import {
   tintAdditive,
   hueShift,
   saturate,
@@ -25,10 +30,7 @@ import {
   pixelate,
   dissolvePixelated,
   tint,
-  type SpriteSheet,
-  type MaterialEffect,
-  type AnimationSetDefinition,
-} from '@three-flatland/react'
+} from '@three-flatland/nodes'
 
 import '@awesome.me/webawesome/dist/styles/themes/default.css'
 import WaRadioGroup from '@awesome.me/webawesome/dist/react/radio-group/index.js'

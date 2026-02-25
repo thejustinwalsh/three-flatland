@@ -21,12 +21,12 @@ export default defineConfig({
       plugins: [
         starlightTypeDoc({
           entryPoints: [
-            '../packages/core/src/index.ts',
+            '../packages/three-flatland/src/index.ts',
             '../packages/nodes/src/index.ts',
-            '../packages/react/src/index.ts',
+            '../packages/three-flatland/src/react.ts',
             '../packages/presets/src/index.ts',
           ],
-          tsconfig: '../packages/core/tsconfig.json',
+          tsconfig: '../packages/three-flatland/tsconfig.json',
           sidebar: {
             label: 'API Reference',
             collapsed: false,

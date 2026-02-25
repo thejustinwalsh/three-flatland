@@ -1,7 +1,7 @@
 # Mini-Game Development Skill
 
 > **Philosophy:** Ambient arcade experiences that **showcase three-flatland's APIs and features** while entertaining visitors.
-> **Core Stack:** React + React Three Fiber + **@three-flatland/react** + Koota ECS
+> **Core Stack:** React + React Three Fiber + **three-flatland/react** + Koota ECS
 
 ---
 
@@ -17,7 +17,7 @@ import { Mesh, PlaneGeometry, MeshBasicMaterial } from 'three'
 const mesh = new Mesh(new PlaneGeometry(1, 1), new MeshBasicMaterial())
 
 // ✅ CORRECT - Using three-flatland
-import { Sprite2D, Sprite2DMaterial, Renderer2D } from '@three-flatland/react'
+import { Sprite2D, Sprite2DMaterial, Renderer2D } from 'three-flatland/react'
 <sprite2D material={material} position={[x, y, 0]} />
 ```
 
@@ -205,7 +205,7 @@ ATTRACT → (tap) → PLAYING → (lose) → GAME_OVER → (timeout) → ATTRACT
 
 ### Setup
 1. [ ] Create package in `minis/{name}/`
-2. [ ] Add `@three-flatland/react` dependency
+2. [ ] Add `three-flatland/react` dependency
 3. [ ] Extend R3F with `Sprite2D`, `Sprite2DMaterial`, `Renderer2D`
 4. [ ] Create `world.ts` with static world creation (HMR-safe)
 
@@ -240,7 +240,7 @@ import {
   Sprite2DMaterial,
   Renderer2D,
   Layers,
-} from '@three-flatland/react'
+} from 'three-flatland/react'
 
 // Extend R3F with three-flatland classes
 extend({ Sprite2D, Sprite2DMaterial, Renderer2D })

@@ -18,7 +18,8 @@ Pass Effects are full-screen post-processing effects applied after sprite render
 Use `createPassEffect` with a name, a schema defining parameters, and a pass builder function:
 
 ```typescript
-import { createPassEffect, posterize } from '@three-flatland/core'
+import { createPassEffect } from 'three-flatland'
+import { posterize } from '@three-flatland/nodes'
 
 const PosterizePass = createPassEffect({
   name: 'posterize',
@@ -45,7 +46,8 @@ Schema fields become typed properties on instances with zero-cost uniform update
 <Tabs syncKey="framework">
   <TabItem label="Three.js" icon="seti:javascript">
     ```typescript
-    import { Flatland, createPassEffect, posterize, crtVignette } from '@three-flatland/core'
+    import { Flatland, createPassEffect } from 'three-flatland'
+    import { posterize, crtVignette } from '@three-flatland/nodes'
 
     const PosterizePass = createPassEffect({
       name: 'posterize',
@@ -76,9 +78,8 @@ Schema fields become typed properties on instances with zero-cost uniform update
     ```tsx
     import { useEffect, useRef } from 'react'
     import { extend, useFrame, useThree } from '@react-three/fiber/webgpu'
-    import {
-      Flatland, createPassEffect, posterize, crtVignette,
-    } from '@three-flatland/react'
+    import { Flatland, createPassEffect } from 'three-flatland/react'
+    import { posterize, crtVignette } from '@three-flatland/nodes'
     import type { WebGPURenderer } from 'three/webgpu'
 
     extend({ Flatland })
@@ -165,7 +166,8 @@ Some effects distort UVs — they read pixels at offset positions. These require
 
 ```typescript
 import { convertToTexture } from 'three/tsl'
-import { createPassEffect, vhsDistortion } from '@three-flatland/core'
+import { createPassEffect } from 'three-flatland'
+import { vhsDistortion } from '@three-flatland/nodes'
 
 const VHSPass = createPassEffect({
   name: 'vhs',
@@ -196,7 +198,7 @@ vhs.intensity = 0.02      // Adjust strength
 
 ## Available TSL Nodes
 
-All post-processing nodes are exported from `@three-flatland/core`:
+All post-processing nodes are exported from `@three-flatland/nodes`:
 
 ### CRT Display
 

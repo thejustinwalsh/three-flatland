@@ -1,6 +1,6 @@
 {
   "name": "@three-flatland/presets",
-  "version": "0.0.0",
+  "version": "0.1.0-alpha.0",
   "description": "Pre-configured setups for three-flatland",
   "type": "module",
   "main": "./dist/index.cjs",
@@ -32,7 +32,7 @@
     "three": ">=0.170.0"
   },
   "dependencies": {
-    "@three-flatland/core": "workspace:*",
+    "three-flatland": "workspace:*",
     "@three-flatland/nodes": "workspace:*"
   },
   "devDependencies": {
@@ -48,7 +48,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/your-org/three-flatland.git",
+    "url": "https://github.com/thejustinwalsh/three-flatland.git",
     "directory": "packages/presets"
   }
 }

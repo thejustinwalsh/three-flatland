@@ -1,6 +1,6 @@
 import { WebGPURenderer } from 'three/webgpu'
 import { Scene, OrthographicCamera, Color } from 'three'
-import { Sprite2D, TextureLoader } from '@three-flatland/core'
+import { Sprite2D, TextureLoader } from 'three-flatland'
 
 import '@awesome.me/webawesome/dist/styles/themes/default.css'
 import '@awesome.me/webawesome/dist/components/radio-group/radio-group.js'

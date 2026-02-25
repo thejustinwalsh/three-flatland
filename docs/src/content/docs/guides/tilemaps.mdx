@@ -12,7 +12,7 @@ Tilemaps allow you to render large tile-based environments efficiently using chu
 <Tabs syncKey="framework">
   <TabItem label="Three.js" icon="seti:javascript">
     ```typescript
-    import { TileMap2D, TiledLoader } from '@three-flatland/core';
+    import { TileMap2D, TiledLoader } from 'three-flatland';
 
     // Load a Tiled map
     const mapData = await TiledLoader.load('/maps/level1.json');
@@ -36,7 +36,7 @@ Tilemaps allow you to render large tile-based environments efficiently using chu
     ```tsx
     import { Suspense, useRef } from 'react';
     import { extend, useFrame, useLoader } from '@react-three/fiber/webgpu';
-    import { TileMap2D, TiledLoader } from '@three-flatland/react';
+    import { TileMap2D, TiledLoader } from 'three-flatland/react';
 
     extend({ TileMap2D });
 
@@ -93,7 +93,7 @@ Load maps created with the [Tiled Map Editor](https://www.mapeditor.org/):
 <Tabs syncKey="framework">
   <TabItem label="Three.js" icon="seti:javascript">
     ```typescript
-    import { TileMap2D, TiledLoader } from '@three-flatland/core';
+    import { TileMap2D, TiledLoader } from 'three-flatland';
 
     const mapData = await TiledLoader.load('/maps/level1.json');
     const tilemap = new TileMap2D({ data: mapData });
@@ -104,7 +104,7 @@ Load maps created with the [Tiled Map Editor](https://www.mapeditor.org/):
     ```tsx
     import { Suspense } from 'react';
     import { extend, useLoader } from '@react-three/fiber/webgpu';
-    import { TileMap2D, TiledLoader } from '@three-flatland/react';
+    import { TileMap2D, TiledLoader } from 'three-flatland/react';
 
     extend({ TileMap2D });
 
@@ -128,7 +128,7 @@ Load maps created with [LDtk](https://ldtk.io/):
 <Tabs syncKey="framework">
   <TabItem label="Three.js" icon="seti:javascript">
     ```typescript
-    import { TileMap2D, LDtkLoader } from '@three-flatland/core';
+    import { TileMap2D, LDtkLoader } from 'three-flatland';
 
     // Load a specific level by name
     const mapData = await LDtkLoader.load('/maps/world.ldtk', 'Level_0');
@@ -143,7 +143,7 @@ Load maps created with [LDtk](https://ldtk.io/):
     ```tsx
     import { Suspense } from 'react';
     import { extend, useLoader } from '@react-three/fiber/webgpu';
-    import { TileMap2D, LDtkLoader } from '@three-flatland/react';
+    import { TileMap2D, LDtkLoader } from 'three-flatland/react';
 
     extend({ TileMap2D });
 

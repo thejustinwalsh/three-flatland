@@ -13,7 +13,7 @@ import {
   type TileMapData,
   type TilesetData,
   type TileLayerData,
-} from '@three-flatland/react'
+} from 'three-flatland/react'
 
 extend({ SpriteGroup, TileMap2D })
 

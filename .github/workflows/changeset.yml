@@ -1,0 +1,116 @@
+name: Generate Changeset
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize]
+
+jobs:
+  generate-changeset:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout PR branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+          token: ${{ secrets.COPILOT_PAT }}
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate template changesets
+        run: pnpm changeset:generate --base origin/main
+
+      - name: Install Copilot CLI
+        run: npm install -g @github/copilot
+
+      - name: Enhance changesets with Copilot
+        continue-on-error: true
+        env:
+          COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_PAT }}
+        run: |
+          shopt -s nullglob
+          files=(.changeset/auto-*.md)
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "No auto-generated changesets to enhance"
+            exit 0
+          fi
+
+          for file in "${files[@]}"; do
+            echo "Enhancing: $file"
+
+            # Extract frontmatter (lines between --- markers)
+            FRONTMATTER=$(sed -n '/^---$/,/^---$/p' "$file")
+
+            # Extract commit SHAs from HTML comment
+            COMMITS=$(grep -oP '(?<=<!-- commits: ).*(?= -->)' "$file" || echo "")
+            if [ -z "$COMMITS" ]; then
+              echo "  No commit SHAs found, skipping"
+              continue
+            fi
+
+            # Extract package name and bump type from frontmatter
+            PACKAGE=$(echo "$FRONTMATTER" | grep -oP '"[^"]+"' | head -1 | tr -d '"')
+            BUMP=$(echo "$FRONTMATTER" | grep -oP ':\s*\K\w+' | head -1)
+
+            # Build context: commit messages + diff stats for each SHA
+            CONTEXT=""
+            for sha in $COMMITS; do
+              MSG=$(git log --format="%s%n%n%b" -1 "$sha" | head -20)
+              DIFF=$(git diff "$sha^" "$sha" --stat 2>/dev/null || echo "initial commit")
+              CONTEXT="${CONTEXT}
+          Commit ${sha:0:7}: ${MSG}
+          Files changed:
+          ${DIFF}
+          ---"
+            done
+
+            # Generate enhanced summary with Copilot CLI
+            SUMMARY=$(copilot -p "You are writing a changelog entry for the npm package \"${PACKAGE}\" (${BUMP} version bump).
+
+          Analyze these commits and their actual code changes to write an accurate, detailed summary.
+
+          ${CONTEXT}
+
+          Write a changelog entry following this exact format:
+          - Start with concise bullet points of key changes (terse language, skip grammar for brevity)
+          - If any commits have breaking changes, add a BREAKING CHANGES section with bullet points
+          - End with 1-2 sentence summary of the overall change
+          - No emojis
+          - Prefer concise language at the expense of grammar for the key change callouts
+          - Output only the changelog content, no markdown fences or extra formatting")
+
+            if [ -n "$SUMMARY" ]; then
+              printf '%s\n\n%s\n' "$FRONTMATTER" "$SUMMARY" > "$file"
+              echo "  Enhanced successfully"
+            else
+              echo "  Copilot returned empty response, keeping template"
+            fi
+          done
+
+      - name: Commit and push changesets
+        run: |
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.name "github-actions[bot]"
+          git add .changeset/auto-*.md 2>/dev/null || true
+          if ! git diff-index --quiet HEAD 2>/dev/null; then
+            git commit -m "ci: generate changesets [skip ci]"
+            git push
+            echo "Changesets committed and pushed"
+          else
+            echo "No changeset changes to commit"
+          fi

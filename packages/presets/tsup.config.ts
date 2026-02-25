@@ -7,5 +7,5 @@ export default defineConfig({
   sourcemap: true,
   clean: true,
   treeshake: true,
-  external: ['three', '@three-flatland/core', '@three-flatland/nodes'],
+  external: ['three', 'three-flatland', '@three-flatland/nodes'],
 })

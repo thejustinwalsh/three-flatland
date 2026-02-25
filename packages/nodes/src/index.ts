@@ -1,14 +1,38 @@
-// @three-flatland/nodes
-// TSL (Three Shader Language) nodes for sprite rendering and effects
+// Types
+export type {
+  Vec2Input,
+  Vec3Input,
+  Vec4Input,
+  FloatInput,
+  ColorInput,
+} from './types'
 
-// TODO: Export TSL node functions
-// export { spriteNode } from './sprite-node'
-// export { billboardNode } from './billboard-node'
-// export { instancedSpriteNode } from './instanced-sprite-node'
-// export { bloomNode } from './bloom-node'
+// Sprite/UV nodes
+export * from './sprite'
 
-/**
- * Placeholder export for package validation
- * TODO: Remove when actual nodes are implemented
- */
-export const VERSION = '0.0.0'
+// Color nodes
+export * from './color'
+
+// Alpha nodes
+export * from './alpha'
+
+// Retro effect nodes
+export * from './retro'
+
+// Distortion nodes
+export * from './distortion'
+
+// VFX nodes
+export * from './vfx'
+
+// Blur nodes
+export * from './blur'
+
+// Display effect nodes
+export * from './display'
+
+// Analog effect nodes
+export * from './analog'
+
+// Upscale nodes
+export * from './upscale'

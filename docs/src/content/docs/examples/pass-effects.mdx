@@ -57,7 +57,8 @@ Use `createPassEffect` with a schema for parameters and a TSL node builder:
 <Tabs syncKey="framework">
   <TabItem label="Three.js" icon="seti:javascript">
     ```typescript
-    import { createPassEffect, crtComplete } from '@three-flatland/core'
+    import { createPassEffect } from 'three-flatland'
+    import { crtComplete } from '@three-flatland/nodes'
     import { convertToTexture } from 'three/tsl'
 
     const CRTPass = createPassEffect({
@@ -84,7 +85,8 @@ Use `createPassEffect` with a schema for parameters and a TSL node builder:
   </TabItem>
   <TabItem label="React" icon="seti:react">
     ```tsx
-    import { createPassEffect, crtComplete } from '@three-flatland/react'
+    import { createPassEffect } from 'three-flatland/react'
+    import { crtComplete } from '@three-flatland/nodes'
     import { convertToTexture } from 'three/tsl'
 
     const CRTPass = createPassEffect({

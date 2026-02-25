@@ -46,13 +46,13 @@ examples/
 {
   "dependencies": {
     "@awesome.me/webawesome": "^3.0.0",
-    "@three-flatland/core": "^0.0.0",
+    "three-flatland": "^0.0.0",
     "three": "^0.182.0"
   }
 }
 ```
 
-React examples add `@react-three/fiber`, `@three-flatland/react`, `react`, `react-dom`.
+React examples add `@react-three/fiber`, `three-flatland/react`, `react`, `react-dom`.
 
 ## Web Awesome Setup
 

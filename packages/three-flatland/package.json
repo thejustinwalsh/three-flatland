@@ -1,0 +1,149 @@
+{
+  "name": "three-flatland",
+  "version": "0.1.0-alpha.0",
+  "description": "High-performance 2D sprites, tilemaps, and effects for Three.js — built for WebGPU with composable TSL shaders",
+  "type": "module",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    },
+    "./react": {
+      "import": {
+        "types": "./dist/react.d.ts",
+        "default": "./dist/react.js"
+      },
+      "require": {
+        "types": "./dist/react.d.cts",
+        "default": "./dist/react.cjs"
+      }
+    },
+    "./sprites": {
+      "import": {
+        "types": "./dist/sprites/index.d.ts",
+        "default": "./dist/sprites/index.js"
+      },
+      "require": {
+        "types": "./dist/sprites/index.d.cts",
+        "default": "./dist/sprites/index.cjs"
+      }
+    },
+    "./animation": {
+      "import": {
+        "types": "./dist/animation/index.d.ts",
+        "default": "./dist/animation/index.js"
+      },
+      "require": {
+        "types": "./dist/animation/index.d.cts",
+        "default": "./dist/animation/index.cjs"
+      }
+    },
+    "./materials": {
+      "import": {
+        "types": "./dist/materials/index.d.ts",
+        "default": "./dist/materials/index.js"
+      },
+      "require": {
+        "types": "./dist/materials/index.d.cts",
+        "default": "./dist/materials/index.cjs"
+      }
+    },
+    "./loaders": {
+      "import": {
+        "types": "./dist/loaders/index.d.ts",
+        "default": "./dist/loaders/index.js"
+      },
+      "require": {
+        "types": "./dist/loaders/index.d.cts",
+        "default": "./dist/loaders/index.cjs"
+      }
+    },
+    "./pipeline": {
+      "import": {
+        "types": "./dist/pipeline/index.d.ts",
+        "default": "./dist/pipeline/index.js"
+      },
+      "require": {
+        "types": "./dist/pipeline/index.d.cts",
+        "default": "./dist/pipeline/index.cjs"
+      }
+    },
+    "./tilemap": {
+      "import": {
+        "types": "./dist/tilemap/index.d.ts",
+        "default": "./dist/tilemap/index.js"
+      },
+      "require": {
+        "types": "./dist/tilemap/index.d.cts",
+        "default": "./dist/tilemap/index.cjs"
+      }
+    },
+    "./react/*": {
+      "import": {
+        "types": "./dist/react/*.d.ts",
+        "default": "./dist/react/*.js"
+      },
+      "require": {
+        "types": "./dist/react/*.d.cts",
+        "default": "./dist/react/*.cjs"
+      }
+    }
+  },
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "sideEffects": [
+    "./dist/react/types.js",
+    "./dist/react/types.cjs"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "peerDependencies": {
+    "koota": "catalog:",
+    "three": "catalog:"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    },
+    "@react-three/fiber": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@react-three/fiber": "catalog:",
+    "@types/react": "catalog:",
+    "@types/three": "catalog:",
+    "react": "catalog:",
+    "three": "catalog:"
+  },
+  "keywords": [
+    "three.js",
+    "sprites",
+    "2d",
+    "webgpu",
+    "tsl",
+    "react",
+    "r3f",
+    "react-three-fiber"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/thejustinwalsh/three-flatland.git",
+    "directory": "packages/three-flatland"
+  }
+}

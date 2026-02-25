@@ -3,8 +3,12 @@
  * instead of `catalog:` and `workspace:*`. This makes packages copy-paste-able
  * outside the monorepo.
  *
- * Usage: pnpm syncpack <dir> [<dir> ...]
- *   e.g. pnpm syncpack examples minis
+ * Usage: pnpm sync:pack <dir> [<dir> ...]
+ *   e.g. pnpm sync:pack examples minis
+ *
+ * Flags:
+ *   --files <file> ...   Process individual files (used by lint-staged)
+ *   --verify             CI check, exit 1 if any files are out of sync
  */
 
 import { readFileSync, writeFileSync, readdirSync, statSync, existsSync } from 'node:fs'
@@ -82,7 +86,7 @@ function findPackages(dir: string): string[] {
   return results
 }
 
-// Replace version strings in a deps object
+// Replace version strings in a deps object (mutates deps)
 function syncDeps(
   deps: Record<string, string> | undefined,
   catalog: Record<string, string>,
@@ -126,19 +130,85 @@ function syncDeps(
   return changed
 }
 
+// Check if deps contain unresolved catalog:/workspace:* references (read-only)
+function checkDeps(deps: Record<string, string> | undefined): string[] {
+  if (!deps) return []
+  const issues: string[] = []
+
+  for (const [name, version] of Object.entries(deps)) {
+    if (version === 'catalog:' || version === 'workspace:*') {
+      issues.push(`  "${name}": "${version}"`)
+    }
+  }
+
+  return issues
+}
+
 // Main
 const args = process.argv.slice(2)
 const fileMode = args[0] === '--files'
+const verifyMode = args[0] === '--verify'
 
 if (args.length === 0) {
-  console.error('Usage: pnpm syncpack <dir> [<dir> ...]\n       pnpm syncpack --files <file> [<file> ...]')
+  console.error(
+    'Usage: pnpm sync:pack <dir> [<dir> ...]\n' +
+      '       pnpm sync:pack --files <file> [<file> ...]\n' +
+      '       pnpm sync:pack --verify <dir> [<dir> ...]',
+  )
   process.exit(1)
 }
 
 const catalog = parseCatalog()
 const internal = getInternalVersions()
 
-if (fileMode) {
+if (verifyMode) {
+  // Verify mode: check for unresolved catalog:/workspace:* refs (used by CI)
+  const dirs = args.slice(1)
+  if (dirs.length === 0) {
+    console.error('Usage: pnpm sync:pack --verify <dir> [<dir> ...]')
+    process.exit(1)
+  }
+
+  let totalOutOfSync = 0
+
+  for (const dir of dirs) {
+    const absDir = resolve(ROOT, dir)
+    if (!existsSync(absDir)) {
+      console.warn(`⚠ Directory not found: ${dir}`)
+      continue
+    }
+
+    const packages = findPackages(absDir)
+
+    for (const pkgPath of packages) {
+      const content = readFileSync(pkgPath, 'utf-8')
+      const pkg = JSON.parse(content)
+      const relative = pkgPath.replace(ROOT + '/', '')
+
+      const depsIssues = checkDeps(pkg.dependencies)
+      const devDepsIssues = checkDeps(pkg.devDependencies)
+      const allIssues = [...depsIssues, ...devDepsIssues]
+
+      if (allIssues.length > 0) {
+        console.error(`${relative}:`)
+        for (const issue of allIssues) {
+          console.error(issue)
+        }
+        totalOutOfSync++
+      }
+    }
+  }
+
+  if (totalOutOfSync > 0) {
+    console.error(
+      `\n${totalOutOfSync} package(s) have unresolved versions.` +
+        `\nRun 'pnpm sync:pack ${dirs.join(' ')}' locally or install git hooks with 'pnpm prepare'.`,
+    )
+    process.exit(1)
+  }
+
+  console.log('Package versions are in sync.')
+} else if (fileMode) {
   // File mode: process individual package.json files (used by lint-staged)
   const files = args.slice(1)
   let totalChanged = 0

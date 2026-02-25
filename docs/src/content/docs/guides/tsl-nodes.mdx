@@ -12,7 +12,7 @@ three-flatland provides two ways to use TSL:
 1. **Material Effects** (recommended) — define reusable, per-sprite effects with `createMaterialEffect` and apply them via `addEffect()` / `removeEffect()`
 2. **Raw TSL nodes** — compose low-level node functions directly for full shader control
 
-All TSL nodes and the effect system are exported from `@three-flatland/core`.
+TSL node functions (tint, hueShift, outline, dissolve, etc.) are exported from `@three-flatland/nodes`. The effect system (`createMaterialEffect`, `createPassEffect`) and core classes are exported from `three-flatland`.
 
 ## Material Effects
 
@@ -23,7 +23,8 @@ The Material Effect system lets you define shader effects as reusable classes wi
 Use `createMaterialEffect` with a schema (per-sprite data) and a TSL node builder:
 
 ```typescript
-import { createMaterialEffect, tintAdditive, hueShift } from '@three-flatland/core';
+import { createMaterialEffect } from 'three-flatland';
+import { tintAdditive, hueShift } from '@three-flatland/nodes';
 import { vec4 } from 'three/tsl';
 
 // Damage flash — additive white tint that fades
@@ -111,7 +112,8 @@ For full shader control, you can compose TSL nodes directly on a `MeshBasicNodeM
 ```typescript
 import { MeshBasicNodeMaterial } from 'three/webgpu';
 import { texture as sampleTexture, uv, Fn } from 'three/tsl';
-import { outline8, spriteUV, SpriteSheetLoader } from '@three-flatland/core';
+import { SpriteSheetLoader } from 'three-flatland';
+import { outline8, spriteUV } from '@three-flatland/nodes';
 
 const spriteSheet = await SpriteSheetLoader.load('/sprites/character.json');
 
@@ -135,7 +137,7 @@ material.colorNode = Fn(() => {
 Sample a texture with frame coordinates and optional alpha test:
 
 ```typescript
-import { sampleSprite } from '@three-flatland/core';
+import { sampleSprite } from '@three-flatland/nodes';
 
 // Sample with alpha test (discard transparent pixels)
 const color = sampleSprite(texture, frameUniform, { alphaTest: 0.01 });
@@ -149,7 +151,7 @@ const color = sampleSprite(texture, frameUniform);
 Convert frame uniform to UV coordinates:
 
 ```typescript
-import { spriteUV } from '@three-flatland/core';
+import { spriteUV } from '@three-flatland/nodes';
 
 const frameUV = spriteUV(frameUniform);
 // Use frameUV for texture sampling or effects
@@ -162,7 +164,7 @@ const frameUV = spriteUV(frameUniform);
 Apply color tint to a sprite:
 
 ```typescript
-import { tint, tintAdditive } from '@three-flatland/core';
+import { tint, tintAdditive } from '@three-flatland/nodes';
 
 // Multiplicative tint (darkens)
 const tinted = tint(color, [1.0, 0.5, 0.5]); // Pink
@@ -176,7 +178,7 @@ const flashed = tintAdditive(color, [1, 1, 1], flashStrength);
 Rotate hue (rainbow effect):
 
 ```typescript
-import { hueShift } from '@three-flatland/core';
+import { hueShift } from '@three-flatland/nodes';
 
 // Shift by radians (animate timeUniform for rainbow)
 const shifted = hueShift(color, timeUniform.mul(3.0));
@@ -187,7 +189,7 @@ const shifted = hueShift(color, timeUniform.mul(3.0));
 Adjust saturation:
 
 ```typescript
-import { saturate, grayscale } from '@three-flatland/core';
+import { saturate, grayscale } from '@three-flatland/nodes';
 
 // Full grayscale (petrified effect)
 const gray = saturate(color, 0);
@@ -204,7 +206,7 @@ const gray = grayscale(color);
 Adjust brightness and contrast:
 
 ```typescript
-import { brightness, contrast } from '@three-flatland/core';
+import { brightness, contrast } from '@three-flatland/nodes';
 
 // Brighten
 const bright = brightness(color, 0.2);
@@ -220,7 +222,7 @@ const contrasty = contrast(color, 1.5);
 Add outline around sprite (8-direction sampling):
 
 ```typescript
-import { outline8 } from '@three-flatland/core';
+import { outline8 } from '@three-flatland/nodes';
 
 const outlined = outline8(color, uv, texture, {
   color: [0.3, 1, 0.3, 1],  // Green outline
@@ -233,7 +235,7 @@ const outlined = outline8(color, uv, texture, {
 Apply pixelation effect:
 
 ```typescript
-import { pixelate, pixelateBySize } from '@three-flatland/core';
+import { pixelate, pixelateBySize } from '@three-flatland/nodes';
 
 // By pixel count
 const pixelatedUV = pixelate(uv, vec2(32, 32));
@@ -247,7 +249,7 @@ const pixelatedUV = pixelateBySize(uv, vec2(0.03125));
 Dissolve effect with noise texture:
 
 ```typescript
-import { dissolve, dissolvePixelated, dissolveDirectional } from '@three-flatland/core';
+import { dissolve, dissolvePixelated, dissolveDirectional } from '@three-flatland/nodes';
 
 // Basic dissolve
 const dissolved = dissolve(color, uv, progress, noiseTexture);
@@ -266,7 +268,7 @@ const dissolved = dissolveDirectional(color, uv, progress, direction);
 Replace one color with another:
 
 ```typescript
-import { colorReplace, colorReplaceHard, colorReplaceMultiple } from '@three-flatland/core';
+import { colorReplace, colorReplaceHard, colorReplaceMultiple } from '@three-flatland/nodes';
 
 // Soft replacement with tolerance
 const replaced = colorReplace(color, oldColor, newColor, 0.1);
@@ -283,7 +285,7 @@ const replaced = colorReplaceMultiple(color, colorPairs, 0.1);
 Ordered dithering (retro style):
 
 ```typescript
-import { bayerDither2x2, bayerDither4x4, bayerDither8x8 } from '@three-flatland/core';
+import { bayerDither2x2, bayerDither4x4, bayerDither8x8 } from '@three-flatland/nodes';
 
 // 2x2 matrix dithering
 const dithered = bayerDither2x2(color, levels, scale);
@@ -300,7 +302,7 @@ const dithered = bayerDither8x8(color, levels, scale);
 Map colors to a palette:
 
 ```typescript
-import { palettize, palettizeDithered, palettizeNearest } from '@three-flatland/core';
+import { palettize, palettizeDithered, palettizeNearest } from '@three-flatland/nodes';
 
 // With dithering (smooth gradients)
 const paletted = palettizeDithered(color, paletteTexture);
@@ -314,7 +316,7 @@ const paletted = palettizeNearest(color, paletteTexture);
 Reduce color levels:
 
 ```typescript
-import { posterize } from '@three-flatland/core';
+import { posterize } from '@three-flatland/nodes';
 
 // Reduce to 4 levels per channel
 const posterized = posterize(color, 4);

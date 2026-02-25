@@ -24,7 +24,7 @@ pnpm clean                          # Clean all build artifacts
 ### Filtered Commands
 
 ```bash
-pnpm --filter=@three-flatland/core build        # Build single package
+pnpm --filter=three-flatland build               # Build single package
 pnpm --filter=example-vanilla-tilemap dev        # Run single example
 pnpm --filter=@three-flatland/mini-breakout dev  # Watch-build a mini-game library
 ```
@@ -43,9 +43,8 @@ pnpm syncpack:minis       # Sync mini-game package.json versions
 ```
 three-flatland/
 ├── packages/           # Library packages (npm-published)
-│   ├── core/           # Sprite2D, Renderer2D, materials, loaders, tilemap
-│   ├── nodes/          # TSL shader nodes (placeholder)
-│   ├── react/          # R3F integration — re-exports core + type augmentation
+│   ├── three-flatland/ # Core + React — sprites, materials, loaders, tilemap, R3F integration
+│   ├── nodes/          # TSL shader nodes with per-category subpaths
 │   └── presets/        # Effect presets (placeholder)
 ├── examples/           # Standalone Vite apps (both vanilla/ and react/ variants)
 │   ├── vanilla/        # Plain Three.js examples
@@ -62,13 +61,13 @@ three-flatland/
 ### Package Dependency Graph
 
 ```
-@three-flatland/react  →  @three-flatland/core
-@three-flatland/presets →  @three-flatland/core + @three-flatland/nodes
+three-flatland/react   →  three-flatland (subpath, re-exports core + JSX types)
+@three-flatland/presets →  three-flatland + @three-flatland/nodes
 ```
 
 ### Import Pattern: React vs Vanilla
 
-R3F users import from `@three-flatland/react` (re-exports all of core + JSX type augmentation). Vanilla users import from `@three-flatland/core`. The react package's `index.ts` has a side-effect import of `./types` that augments R3F's `ThreeElements` interface.
+R3F users import from `three-flatland/react` (re-exports all of core + JSX type augmentation). Vanilla users import from `three-flatland`. The react entry point (`src/react.ts`) has a side-effect import of `./react/types` that augments R3F's `ThreeElements` interface.
 
 ### R3F-Compatible Constructor Pattern
 
@@ -85,7 +84,7 @@ All Three.js objects used as R3F JSX elements must have:
 
 ### Dependency Management
 
-Shared versions live in `pnpm-workspace.yaml` catalog section. Packages reference them with `"catalog:"`. Examples use real version strings (synced via `pnpm syncpack:examples`). Root `pnpm.overrides` maps all `@three-flatland/*` to `workspace:*` for local dev.
+Shared versions live in `pnpm-workspace.yaml` catalog section. Packages reference them with `"catalog:"`. Examples use real version strings (synced via `pnpm syncpack:examples`). Root `pnpm.overrides` maps `three-flatland`, `@three-flatland/nodes`, and `@three-flatland/presets` to `workspace:*` for local dev.
 
 ### Microfrontends (Dev Server)
 
