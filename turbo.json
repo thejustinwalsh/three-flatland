@@ -40,7 +40,6 @@
         "example-vanilla-basic-sprite#build",
         "example-vanilla-batch-demo#build",
         "example-vanilla-knightmark#build",
-        "example-vanilla-lighting#build",
         "example-vanilla-pass-effects#build",
         "example-vanilla-tilemap#build",
         "example-vanilla-tsl-nodes#build",
@@ -48,7 +47,6 @@
         "example-react-basic-sprite#build",
         "example-react-batch-demo#build",
         "example-react-knightmark#build",
-        "example-react-lighting#build",
         "example-react-pass-effects#build",
         "example-react-tilemap#build",
         "example-react-tsl-nodes#build"
