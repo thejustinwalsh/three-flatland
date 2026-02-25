@@ -1,5 +1,6 @@
 {
   "name": "@three-flatland/mini-breakout",
+  "private": true,
   "version": "0.0.1-alpha.0",
   "description": "Flatland Breakout mini-game for docs hero",
   "type": "module",
