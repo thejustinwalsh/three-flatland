@@ -1,5 +1,5 @@
 ---
-"@three-flatland/nodes": major
+"@three-flatland/nodes": minor
 ---
 
 ## Initial alpha release of `@three-flatland/nodes`

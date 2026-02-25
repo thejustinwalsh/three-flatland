@@ -17,6 +17,8 @@ import { join, resolve } from 'node:path'
 const ROOT = resolve(import.meta.dirname, '..')
 const CHANGESET_DIR = join(ROOT, '.changeset')
 
+let capMajor = false
+
 // --- Types ---
 
 type BumpType = 'major' | 'minor' | 'patch'
@@ -148,7 +150,8 @@ function parseConventionalCommit(
   const breakingInBody = body.includes('BREAKING CHANGE')
   const breaking = !!bang || breakingInBody
 
-  const bump: BumpType | null = breaking ? 'major' : (BUMP_MAP[type] ?? null)
+  const rawBump: BumpType | null = breaking ? 'major' : (BUMP_MAP[type] ?? null)
+  const bump: BumpType | null = rawBump && capMajor && rawBump === 'major' ? 'minor' : rawBump
 
   // Skip types that don't produce changesets
   if (!bump && SKIP_TYPES.has(type)) return null
@@ -263,24 +266,28 @@ function writeChangeset(changeset: PackageChangeset): void {
 
 // --- Main ---
 
-function parseArgs(): { base: string } {
+function parseArgs(): { base: string; capMajor: boolean } {
   const args = process.argv.slice(2)
   let base = 'origin/main'
+  let capMajor = false
 
   for (let i = 0; i < args.length; i++) {
     if (args[i] === '--base' && args[i + 1]) {
       base = args[i + 1]
       i++
+    } else if (args[i] === '--cap-major') {
+      capMajor = true
     }
   }
 
-  return { base }
+  return { base, capMajor }
 }
 
 function main() {
-  const { base } = parseArgs()
+  const args = parseArgs()
+  capMajor = args.capMajor
 
-  console.log(`Scanning conventional commits: ${base}..HEAD\n`)
+  console.log(`Scanning conventional commits: ${args.base}..HEAD\n`)
 
   const packageMap = discoverPackages()
   if (packageMap.size === 0) {
@@ -294,7 +301,7 @@ function main() {
     '\n',
   )
 
-  const shas = getCommitRange(base)
+  const shas = getCommitRange(args.base)
   if (shas.length === 0) {
     console.log('No commits found in range.')
     cleanAutoChangesets()

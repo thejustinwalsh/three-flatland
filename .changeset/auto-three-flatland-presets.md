@@ -1,5 +1,5 @@
 ---
-"@three-flatland/presets": major
+"@three-flatland/presets": minor
 ---
 
 ## Initial alpha release of `@three-flatland/presets`

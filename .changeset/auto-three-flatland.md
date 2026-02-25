@@ -1,5 +1,5 @@
 ---
-"three-flatland": major
+"three-flatland": minor
 ---
 
 ## Initial alpha release of `three-flatland`
