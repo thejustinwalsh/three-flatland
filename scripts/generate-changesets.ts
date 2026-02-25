@@ -30,6 +30,7 @@ interface ParsedCommit {
   body: string
   bump: BumpType | null
   files: string[]
+  shortstat: string
   packages: string[]
 }
 
@@ -120,6 +121,17 @@ function getChangedFiles(sha: string): string[] {
   }
 }
 
+function getShortStat(sha: string): string {
+  try {
+    return execSync(`git diff-tree --no-commit-id --shortstat -r ${sha}`, {
+      cwd: ROOT,
+      encoding: 'utf-8',
+    }).trim()
+  } catch {
+    return ''
+  }
+}
+
 // --- Conventional commit parsing ---
 
 const CONVENTIONAL_RE = /^(\w+)(?:\(([^)]*)\))?(!)?:\s*(.+)/
@@ -147,6 +159,8 @@ function parseConventionalCommit(
   // Skip commits that don't affect any publishable package
   if (packages.length === 0) return null
 
+  const shortstat = getShortStat(sha)
+
   return {
     sha,
     type,
@@ -156,6 +170,7 @@ function parseConventionalCommit(
     body,
     bump,
     files,
+    shortstat,
     packages,
   }
 }
@@ -213,48 +228,18 @@ function sanitizeName(name: string): string {
 function generateChangesetContent(changeset: PackageChangeset): string {
   const { name, bump, commits } = changeset
 
-  // Frontmatter
   const frontmatter = `---\n"${name}": ${bump}\n---`
 
-  // Commit SHAs for CI workflow to extract
-  const shas = commits.map((c) => c.sha).join(' ')
-  const shaComment = `<!-- commits: ${shas} -->`
+  // Per-commit details with SHAs for AI-assisted changelog enhancement
+  const entries = commits.map((c) => {
+    const lines = [`### ${c.sha}`, `${c.type}: ${c.description}`]
+    if (c.body) lines.push(c.body)
+    lines.push(`Files: ${c.files.join(', ')}`)
+    if (c.shortstat) lines.push(`Stats: ${c.shortstat}`)
+    return lines.join('\n')
+  })
 
-  // Group commits by type for readable template
-  const breaking: string[] = []
-  const features: string[] = []
-  const fixes: string[] = []
-
-  for (const commit of commits) {
-    const line = `${commit.type}: ${commit.description}`
-    if (commit.breaking) {
-      breaking.push(commit.description)
-    }
-    if (commit.type === 'feat') {
-      features.push(line)
-    } else {
-      fixes.push(line)
-    }
-  }
-
-  const lines: string[] = []
-
-  if (features.length > 0) {
-    for (const f of features) lines.push(`- ${f}`)
-  }
-  if (fixes.length > 0) {
-    for (const f of fixes) lines.push(`- ${f}`)
-  }
-
-  if (breaking.length > 0) {
-    lines.push('')
-    lines.push('BREAKING CHANGES:')
-    for (const b of breaking) lines.push(`- ${b}`)
-  }
-
-  const body = lines.join('\n')
-
-  return `${frontmatter}\n\n${shaComment}\n\n${body}\n`
+  return `${frontmatter}\n\n${entries.join('\n\n')}\n`
 }
 
 function cleanAutoChangesets(): void {
