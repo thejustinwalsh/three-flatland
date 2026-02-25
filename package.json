@@ -28,7 +28,6 @@
     "sync:react": "tsx scripts/sync-react-subpaths.ts",
     "sync:react:verify": "tsx scripts/sync-react-subpaths.ts --verify",
     "size": "size-limit",
-    "size:json": "size-limit --json",
     "prepare": "simple-git-hooks"
   },
   "simple-git-hooks": {

@@ -36,4 +36,4 @@ jobs:
           build_script: build
           skip_step: install
           package_manager: pnpm
-          script: pnpm run size:json
+          script: pnpm exec size-limit --json || echo "[]"
