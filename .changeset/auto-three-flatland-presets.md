@@ -2,19 +2,16 @@
 "@three-flatland/presets": major
 ---
 
+Initial alpha release of `@three-flatland/presets` — pre-configured effect setups built on top of `three-flatland` and `@three-flatland/nodes`.
+
+**Package / build:**
+- Dependency updated from `@three-flatland/core` (internal) to the public `three-flatland` package
+- `source` export condition added for monorepo dev without building
+- Build switched from `treeshake: true` to `bundle: false` (unbundled ESM/CJS output)
+- README and LICENSE added
+
 ## BREAKING CHANGES
 
-- Package version bumped to `0.1.0-alpha.0`; this is the initial public alpha release
-- Peer dependency on `@three-flatland/core` replaced with `three-flatland` — update your dependencies
+- Previously depended on the internal `@three-flatland/core` package, which no longer exists; the runtime dependency is now `three-flatland`
 
-## Package changes
-
-- `dependencies`: `@three-flatland/core` replaced with `three-flatland` to match the renamed core package
-- Added `source` export condition to subpaths for build-free monorepo development
-- Updated repository URL in `package.json`
-
-## Documentation
-
-- Added LICENSE (MIT) and README to the package
-
-Initial alpha release of `@three-flatland/presets`; the package now depends on the renamed `three-flatland` core package.
+This is the initial alpha release, wiring up the presets package to the consolidated `three-flatland` core and publishing for the first time.

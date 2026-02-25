@@ -2,35 +2,44 @@
 "three-flatland": major
 ---
 
+Initial alpha release of `three-flatland` — the consolidated core + React package for high-performance 2D sprites, tilemaps, and effects on Three.js WebGPU.
+
+**Core rendering pipeline:**
+- `Sprite2D` and `AnimatedSprite2D` — GPU-instanced 2D sprites with anchor, layer, and zIndex support
+- `SpriteGroup` and `SpriteBatch` — automatic batching of sprites sharing the same material into single draw calls
+- `LayerManager` — decoupled render order (layer + zIndex) independent from scene graph hierarchy
+- `PassEffect` — composable post-processing pass effects
+- `Sprite2DMaterial` and `EffectMaterial` — TSL-based materials with per-instance attribute support
+
+**Animation system:**
+- `AnimationController` — spritesheet-driven frame animation with timing, callbacks, and state machine support
+
+**Loaders:**
+- `TextureLoader` — WebGPU-compatible texture loading
+- `SpriteSheetLoader` — JSON spritesheet format loading with frame lookup
+
+**Tilemap support:**
+- `TileMap2D`, `TileLayer`, `Tileset` — tilemap rendering with animated tile support
+- `TiledLoader` — Tiled editor JSON format
+- `LDtkLoader` — LDtk editor format
+
+**React Three Fiber integration (`three-flatland/react`):**
+- First-class R3F integration with full JSX type augmentation for `ThreeElements`
+- Suspense-compatible resource loading hooks
+- React subpath wrappers restructured to directory layout (`src/react/{name}/index.ts`) for cleaner deep imports like `three-flatland/react/sprites`
+- `sideEffects: false` — types augmentation is now explicitly imported, not side-effectful
+
+**Package / build:**
+- `source` export condition on all subpaths for monorepo dev without building
+- Wildcard deep subpath exports for all categories (`./sprites/*`, `./animation/*`, etc.)
+- Build switched from `treeshake: true` to `bundle: false` (unbundled output)
+- `process.env.NODE_ENV` check in `measure` utility made safe for environments without `process` (browser/worker-friendly)
+- README and LICENSE added
+
 ## BREAKING CHANGES
 
-- Package renamed from `@three-flatland/core` to `three-flatland` — update all imports
-- `@three-flatland/react` package removed; R3F integration is now the `three-flatland/react` subpath — update imports from `@three-flatland/react` to `three-flatland/react`
-- `three-flatland/react` re-exports all of core, so R3F users only need one import
+- Package renamed from internal `@three-flatland/core` (+ separate `packages/react`) to the single public package `three-flatland`; all imports must be updated
+- `sideEffects` removed from package exports — `three-flatland/react/types` augmentation no longer auto-applies; import `three-flatland/react` (or the react entry) explicitly
+- React subpath wrappers moved from flat files to directories; `three-flatland/react/sprites` etc. now resolve to `dist/react/sprites/index.js`
 
-## Package restructure
-
-- New package `three-flatland` (v0.1.0-alpha.0) replaces the internal `@three-flatland/core` package
-- R3F integration merged into `three-flatland/react` subpath (was a separate `@three-flatland/react` package)
-- Added dedicated subpath exports for the React integration: `three-flatland/react/animation`, `three-flatland/react/loaders`, `three-flatland/react/materials`, `three-flatland/react/pipeline`, `three-flatland/react/sprites`, `three-flatland/react/tilemap`
-- Added `source` export condition to all subpaths for build-free monorepo development
-- Added wildcard subpath exports (`./react/*`) for deep imports
-
-## React Three Fiber
-
-- `ThreeElements` augmentation for `sprite2D`, `sprite2DMaterial`, `animatedSprite2D`, `spriteGroup`, `flatland`, `tileMap2D`, `tileLayer` JSX elements
-- New `EffectElement<T>` helper type surfaces schema-derived effect props in JSX autocomplete
-- `attachEffect`, `createResource`, `createCachedResource`, `spriteSheet`, `texture` exported from `three-flatland/react`
-
-## Fixes
-
-- Fixed `process.env` access in `measure` utility to guard against undefined `process` (browser environments)
-- Removed unused `types/env.d.ts` ambient declaration
-- Cleaned up `tsconfig.json` includes
-
-## Documentation
-
-- Added LICENSE and README to `three-flatland` package with updated feature list and installation instructions (alpha tags)
-- Docs installation page updated to reflect alpha release status
-
-This is the initial alpha release of `three-flatland`, consolidating the core and React packages into a single unified package with deep subpath exports for tree-shaking.
+This is the first public alpha of `three-flatland`, consolidating the previously internal `core` and `react` packages into a single tree-shakeable package with full WebGPU support.
