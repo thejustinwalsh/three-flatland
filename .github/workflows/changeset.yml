@@ -79,7 +79,7 @@ jobs:
             done
 
             # Generate enhanced summary with Copilot CLI
-            SUMMARY=$(copilot -p "You are writing a changelog entry for the npm package \"${PACKAGE}\" (${BUMP} version bump).
+            RAW=$(copilot -p "You are writing a changelog entry for the npm package \"${PACKAGE}\" (${BUMP} version bump).
 
           Analyze these commits and their actual code changes to write an accurate, detailed summary.
 
@@ -89,9 +89,12 @@ jobs:
           - Start with concise bullet points of key changes (terse language, skip grammar for brevity)
           - If any commits have breaking changes, add a BREAKING CHANGES section with bullet points
           - End with 1-2 sentence summary of the overall change
-          - No emojis
           - Prefer concise language at the expense of grammar for the key change callouts
-          - Output only the changelog content, no markdown fences or extra formatting")
+          - Output only the changelog content, simple markdown formatting is fine, no emojis
+          - You MUST output the delimiter %%%CHANGELOG_START%%% on its own line immediately before the changelog content")
+
+            # Extract everything after the delimiter
+            SUMMARY=$(echo "$RAW" | sed -n '/^%%%CHANGELOG_START%%%$/,$ { /^%%%CHANGELOG_START%%%$/d; p; }')
 
             if [ -n "$SUMMARY" ]; then
               printf '%s\n\n%s\n' "$FRONTMATTER" "$SUMMARY" > "$file"
