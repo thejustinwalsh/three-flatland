@@ -1,0 +1,142 @@
+<dialog id="capture-modal">
+  <div class="modal-ui">
+    <button id="close-modal" aria-label="Close Preview">×</button>
+    <div id="modal-content"></div>
+  </div>
+</dialog>
+
+<script is:inline>
+  // Wire up asset preview links to open capture modal
+  document.querySelectorAll('.asset-preview-link').forEach(link => {
+    link.addEventListener('click', () => {
+      const type = link.getAttribute('data-type');
+      const targetId = `capture-${type}`;
+      const asset = document.getElementById(targetId);
+      const modalContent = document.getElementById('modal-content');
+
+      if (!asset) return;
+
+      modalContent.innerHTML = '';
+      const clone = asset.cloneNode(true);
+      clone.style.display = 'block';
+      modalContent.appendChild(clone);
+
+      window.dispatchEvent(new CustomEvent('open-capture-modal', {
+        detail: { type }
+      }));
+    });
+  });
+
+  const modal = document.getElementById('capture-modal');
+  const modalContent = document.getElementById('modal-content');
+  const closeBtn = document.getElementById('close-modal');
+
+  window.addEventListener('open-capture-modal', (e) => {
+    modal.showModal();
+    document.body.style.overflow = 'hidden';
+  });
+
+  closeBtn.addEventListener('click', () => {
+    modal.close();
+  });
+
+  modal.addEventListener('close', () => {
+    modalContent.innerHTML = '';
+    document.body.style.overflow = '';
+  });
+
+  // Close on backdrop click
+  modal.addEventListener('click', (e) => {
+    if (e.target === modal) modal.close();
+  });
+</script>
+
+<style>
+  #capture-modal {
+    padding: 0;
+    border: none;
+    background: #000; /* Solid black for clean capture background */
+    width: 100vw;
+    height: 100vh;
+    max-width: none;
+    max-height: none;
+    color: #f0edd8;
+    overflow: hidden;
+  }
+
+  #capture-modal::backdrop {
+    background: rgba(0, 0, 0, 0.95);
+  }
+
+  .modal-ui {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    padding: 100px; /* Space for node highlighting in devtools */
+    position: relative;
+  }
+
+  #close-modal {
+    position: fixed;
+    top: 2rem;
+    right: 2rem;
+    width: 3.5rem;
+    height: 3.5rem;
+    border-radius: 50%;
+    background: #d94c87;
+    color: white;
+    border: none;
+    font-size: 2.5rem;
+    line-height: 1;
+    cursor: pointer;
+    z-index: 10001;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: transform 0.1s, opacity 0.2s;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.8);
+    font-family: 'Silkscreen', cursive;
+  }
+
+  #close-modal:hover {
+    transform: scale(1.1);
+    background: #e16da1;
+  }
+
+  #modal-content {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+  }
+
+  #modal-content :global(.brand-asset-root) {
+    box-shadow: 0 40px 100px rgba(0,0,0,1);
+    flex-shrink: 0;
+  }
+
+  :global(.asset-preview-link) {
+    display: block;
+    margin: 2rem 0;
+    cursor: pointer;
+    border: 2px solid var(--sl-color-gray-5);
+    background: #00021c;
+    border-radius: 0.5rem;
+    transition: border-color 0.2s, transform 0.1s;
+    overflow-x: auto;
+    overflow-y: hidden;
+    container-type: inline-size;
+    width: 100%;
+    max-width: 100%;
+  }
+
+  :global(.asset-preview-link:hover) {
+    border-color: #47cca9;
+    transform: translateY(-2px);
+  }
+
+  :global(.hidden-capture-targets) {
+    display: none;
+  }
+</style>

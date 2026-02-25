@@ -1,4 +1,6 @@
-![three-flatland banner](./assets/banner.svg)
+<p align="center">
+  <img src="./assets/repo-banner.png" alt="three-flatland banner" width="100%" />
+</p>
 
 # three-flatland
 

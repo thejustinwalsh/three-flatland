@@ -18,6 +18,59 @@ export default defineConfig({
         src: './src/assets/icon.svg',
       },
       favicon: '/favicon.svg',
+      head: [
+        // Open Graph
+        {
+          tag: 'meta',
+          attrs: {
+            property: 'og:type',
+            content: 'website',
+          },
+        },
+        {
+          tag: 'meta',
+          attrs: {
+            property: 'og:site_name',
+            content: 'three-flatland',
+          },
+        },
+        {
+          tag: 'meta',
+          attrs: {
+            property: 'og:image',
+            content: 'https://thejustinwalsh.com/three-flatland/social/og-image.png',
+          },
+        },
+        {
+          tag: 'meta',
+          attrs: {
+            property: 'og:image:width',
+            content: '1200',
+          },
+        },
+        {
+          tag: 'meta',
+          attrs: {
+            property: 'og:image:height',
+            content: '630',
+          },
+        },
+        // Twitter / X
+        {
+          tag: 'meta',
+          attrs: {
+            name: 'twitter:card',
+            content: 'summary_large_image',
+          },
+        },
+        {
+          tag: 'meta',
+          attrs: {
+            name: 'twitter:image',
+            content: 'https://thejustinwalsh.com/three-flatland/social/x-card-image.png',
+          },
+        },
+      ],
       plugins: [
         starlightTypeDoc({
           entryPoints: [
@@ -179,6 +232,12 @@ export default defineConfig({
           label: 'Showcases',
           items: [
             { label: 'Breakout', slug: 'showcases/breakout' },
+          ],
+        },
+        {
+          label: 'Project',
+          items: [
+            { label: 'Branding', slug: 'branding' },
           ],
         },
         typeDocSidebarGroup,
