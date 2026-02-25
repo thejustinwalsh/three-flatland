@@ -2,54 +2,21 @@
 "three-flatland": major
 ---
 
-✗ Check package details from big refactor commit
-  $ cd /home/runner/work/three-flatland/three-flatland && git --no-pager show 8bfc4ce --stat |
-  head -20 && echo "---" && git --no-pager show 8bfc4ce:packages/three-flatland/src/index.ts
-  2>/dev/null | head -30 && echo "---" && git --no-pager show
-  8bfc4ce:packages/three-flatland/package.json 2>/dev/null | python3 -c "import sys,json;
-  d=json.load(sys.stdin); print('name:', d.get('name')); print('version:', d.get('version')); ...
-  Permission denied and could not request permission from user
+- Merged `packages/core` and `packages/react` into single `packages/three-flatland` package
+- TSL shader nodes migrated from `packages/core` to `packages/nodes`
+- React/R3F integration now at `three-flatland/react` subpath (previously a separate `packages/react` package)
+- React subpaths reorganized into category subdirectories (`react/animation`, `react/loaders`, `react/materials`, `react/pipeline`, `react/sprites`, `react/tilemap`)
+- Removed `resource.ts` from React subpath
+- Added `source` export condition to all packages for monorepo dev without build step
+- Added README and LICENSE to all packages
+- Added CI workflows: changeset automation, bundle size checks (`.size-limit.json`)
+- Fixed production environment detection in `measure.ts`
+- Cleaned up tsconfig files across packages and examples
 
-✗ Check current package details
-  $ cat /home/runner/work/three-flatland/three-flatland/packages/three-flatland/package.json |
-  python3 -c "import sys,json; d=json.load(sys.stdin); print('name:', d.get('name'));
-  print('version:', d.get('version')); [print('export:', k) for k in
-  list(d.get('exports',{}).keys())]" 2>/dev/null; echo "---"; cat
-  /home/runner/work/three-flatland/three-flatland/packages/three-flatland/src/index.ts ...
-  Permission denied and could not request permission from user
+## BREAKING CHANGES
 
-● Read packages/three-flatland/package.json lines 1-50
-  └ 50 lines read
+- `packages/core` and `packages/react` no longer exist; all imports must migrate to `three-flatland` and `three-flatland/react`
+- React resource utilities (`resource.ts`) removed from the `three-flatland/react` subpath
+- React subpath structure reorganized — category-specific imports (e.g., `three-flatland/react/sprites`) now resolve to subdirectory index files
 
-● Read packages/three-flatland/src/index.ts
-  └ 28 lines read
-
-● Read packages/nodes/package.json lines 1-30
-  └ 30 lines read
-
-● Read packages/three-flatland/src/react.ts
-  └ 11 lines read
-
-Based on the commit analysis, here is the changelog entry:
-
----
-
-- Merged `packages/core` and `packages/react` into single `three-flatland` package; old package names are gone
-- Moved all TSL shader nodes from `@three-flatland/core` into standalone `@three-flatland/nodes` package
-- Deleted `packages/core` and `packages/react`; source now lives in `packages/three-flatland`
-- Added `source` condition to all package exports for direct TypeScript resolution in monorepo dev (no build required)
-- Restructured React subpath — `three-flatland/react` now re-exports all of core; R3F users need only one import
-- Organized React integration into per-category subpath modules (`/react/sprites`, `/react/animation`, etc.)
-- Added `source` export condition to `@three-flatland/nodes` and `@three-flatland/presets` as well
-- Added `LICENSE` and `README.md` to all three published packages
-- Added GitHub Actions workflows: changeset automation, CI, and bundle size checks with size-limit
-- Fixed environment detection in `measure.ts` to use correct production check
-- Entered alpha prerelease; all packages publish as `0.1.0-alpha.0`
-
-**BREAKING CHANGES**
-
-- Package `@three-flatland/core` no longer exists; replace all imports with `three-flatland`
-- Package `@three-flatland/react` no longer exists; replace with `three-flatland/react`
-- TSL nodes previously in `@three-flatland/core` are now in `@three-flatland/nodes`
-
-Initial alpha release consolidating the core and React packages into a single `three-flatland` package, with TSL shader nodes extracted into the dedicated `@three-flatland/nodes` package. All packages enter alpha prerelease versioning.
+Major alpha release consolidating the two core packages (`core`, `react`) into a single unified `three-flatland` package, with shader nodes promoted to their own standalone `@three-flatland/nodes` package.
