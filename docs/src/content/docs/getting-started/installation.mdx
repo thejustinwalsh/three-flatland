@@ -5,8 +5,8 @@ description: Install three-flatland in your project.
 
 import { Tabs, TabItem, Aside } from '@astrojs/starlight/components';
 
-<Aside type="caution" title="Coming Soon">
-  three-flatland is not yet published to npm. We're preparing the initial alpha release. Star the repo to get notified when it's ready!
+<Aside type="caution" title="Alpha Release">
+  three-flatland is in alpha. Expect breaking changes between releases. Consider pinning the exact version in your `package.json` until you're ready to migrate.
 </Aside>
 
 ## Package Manager
@@ -14,58 +14,59 @@ import { Tabs, TabItem, Aside } from '@astrojs/starlight/components';
 <Tabs syncKey="pkg">
   <TabItem label="npm">
     ```bash
-    npm install three-flatland@alpha three
+    npm install three-flatland@alpha
     ```
   </TabItem>
   <TabItem label="pnpm">
     ```bash
-    pnpm add three-flatland@alpha three
+    pnpm add three-flatland@alpha
     ```
   </TabItem>
   <TabItem label="yarn">
     ```bash
-    yarn add three-flatland@alpha three
+    yarn add three-flatland@alpha three koota
     ```
   </TabItem>
   <TabItem label="bun">
     ```bash
-    bun add three-flatland@alpha three
+    bun add three-flatland@alpha
     ```
   </TabItem>
 </Tabs>
 
-### React Three Fiber
+### React Three Fiber (Optional)
 
-For React projects using React Three Fiber:
+React is not required. If you're using React Three Fiber, add the additional dependencies:
 
 <Tabs syncKey="pkg">
   <TabItem label="npm">
     ```bash
-    npm install three-flatland@alpha @react-three/fiber@alpha three react react-dom
+    npm install three-flatland@alpha @react-three/fiber@alpha
     ```
   </TabItem>
   <TabItem label="pnpm">
     ```bash
-    pnpm add three-flatland@alpha @react-three/fiber@alpha three react react-dom
+    pnpm add three-flatland@alpha @react-three/fiber@alpha
     ```
   </TabItem>
   <TabItem label="yarn">
     ```bash
-    yarn add three-flatland@alpha @react-three/fiber@alpha three react react-dom
+    yarn add three-flatland@alpha @react-three/fiber@alpha three koota react react-dom
     ```
   </TabItem>
   <TabItem label="bun">
     ```bash
-    bun add three-flatland@alpha @react-three/fiber@alpha three react react-dom
+    bun add three-flatland@alpha @react-three/fiber@alpha
     ```
   </TabItem>
 </Tabs>
 
 ## Requirements
 
-- **Three.js**: >= 0.182.0 (required for TSL/WebGPU support)
+- **Three.js**: >= 0.183.1 (required for TSL/WebGPU support)
+- **koota**: >= 0.1.0 (ECS for batch rendering)
 - **React**: >= 19.0.0 (for `three-flatland/react`)
-- **@react-three/fiber**: >= 10.0.0-alpha.0 (for `three-flatland/react`)
+- **@react-three/fiber**: >= 10.0.0-alpha.2 (for `three-flatland/react`)
 - **Node.js**: >= 22 (LTS)
 
 ## TypeScript

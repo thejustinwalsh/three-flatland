@@ -79,7 +79,7 @@ export default defineConfig({
             '../packages/three-flatland/src/react.ts',
             '../packages/presets/src/index.ts',
           ],
-          tsconfig: '../packages/three-flatland/tsconfig.json',
+          tsconfig: './tsconfig.typedoc.json',
           sidebar: {
             label: 'API Reference',
             collapsed: false,

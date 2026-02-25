@@ -50,6 +50,7 @@ This guide shows you how to create your first sprite using three-flatland.
   </TabItem>
   <TabItem label="React" icon="seti:react">
     ```tsx
+    import { Suspense } from 'react';
     import { Canvas, extend, useLoader } from '@react-three/fiber/webgpu';
     import { Sprite2D, TextureLoader } from 'three-flatland/react';
 
@@ -67,7 +68,9 @@ This guide shows you how to create your first sprite using three-flatland.
     export default function App() {
       return (
         <Canvas orthographic camera={{ zoom: 5, position: [0, 0, 100] }}>
-          <Sprite />
+          <Suspense>
+            <Sprite />
+          </Suspense>
         </Canvas>
       );
     }

@@ -14,10 +14,10 @@
       const asset = document.getElementById(targetId);
       const modalContent = document.getElementById('modal-content');
 
-      if (!asset) return;
+      if (!asset || !modalContent) return;
 
       modalContent.innerHTML = '';
-      const clone = asset.cloneNode(true);
+      const clone = /** @type {HTMLElement} */ (asset.cloneNode(true));
       clone.style.display = 'block';
       modalContent.appendChild(clone);
 
@@ -27,28 +27,30 @@
     });
   });
 
-  const modal = document.getElementById('capture-modal');
+  const modal = /** @type {HTMLDialogElement | null} */ (document.getElementById('capture-modal'));
   const modalContent = document.getElementById('modal-content');
   const closeBtn = document.getElementById('close-modal');
 
-  window.addEventListener('open-capture-modal', (e) => {
-    modal.showModal();
-    document.body.style.overflow = 'hidden';
-  });
+  if (modal && modalContent && closeBtn) {
+    window.addEventListener('open-capture-modal', () => {
+      modal.showModal();
+      document.body.style.overflow = 'hidden';
+    });
 
-  closeBtn.addEventListener('click', () => {
-    modal.close();
-  });
+    closeBtn.addEventListener('click', () => {
+      modal.close();
+    });
 
-  modal.addEventListener('close', () => {
-    modalContent.innerHTML = '';
-    document.body.style.overflow = '';
-  });
+    modal.addEventListener('close', () => {
+      modalContent.innerHTML = '';
+      document.body.style.overflow = '';
+    });
 
-  // Close on backdrop click
-  modal.addEventListener('click', (e) => {
-    if (e.target === modal) modal.close();
-  });
+    // Close on backdrop click
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) modal.close();
+    });
+  }
 </script>
 
 <style>
