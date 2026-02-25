@@ -2,28 +2,34 @@
 "@three-flatland/nodes": major
 ---
 
-Initial alpha release of `@three-flatland/nodes` — a full library of composable TSL shader nodes extracted from the monorepo core.
+## Initial alpha release of `@three-flatland/nodes`
 
-**Node categories (all available as deep subpath imports):**
-- `@three-flatland/nodes/sprite` — UV transform (flip, offset, rotate, scale), pixelate, outline, sprite sampling
-- `@three-flatland/nodes/color` — tint, brightness, contrast, saturation, hue shift, color remap
-- `@three-flatland/nodes/alpha` — alpha mask, alpha test, dissolve, fade edge
-- `@three-flatland/nodes/retro` — Bayer dither, palettize, posterize, quantize, color replace, console palettes
-- `@three-flatland/nodes/distortion` — distort, noise distortion, wave
-- `@three-flatland/nodes/vfx` — afterimage, flash, pulse, shimmer, sparkle, trail
-- `@three-flatland/nodes/blur` — box, Gaussian, Kawase, motion, radial blur, bloom
-- `@three-flatland/nodes/display` — scanlines, phosphor mask, LCD, CRT effects
-- `@three-flatland/nodes/analog` — chromatic aberration, video artifacts
-- `@three-flatland/nodes/upscale` — Scale2x, Eagle, HQ2x
-- Wildcard deep imports supported (`@three-flatland/nodes/color/*`)
+### Package structure
 
-**Package / build:**
-- `source` export condition added to all subpaths for monorepo dev without building
-- Build switched from `treeshake: true` to `bundle: false` (unbundled ESM/CJS output)
-- README and LICENSE added
+- First real implementation — replaces the empty placeholder package
+- Full set of TSL (Three Shader Language) shader node functions now exported from the package root and per-category subpaths (`alpha`, `analog`, `blur`, `color`, `display`, `distortion`, `retro`, `sprite`, `upscale`, `vfx`, and individual node wildcard paths)
+- Added `source` condition to all export entries for build-free monorepo development
 
-## BREAKING CHANGES
+### Node categories
 
-- Package was previously a stub with only a `VERSION` export; all prior imports will need to be updated to the new per-category subpaths
+- **Sprite/UV**: `sampleSprite`, `uvFlip`, `uvOffset`, `uvRotate`, `uvScale`, `pixelate`, `outline`
+- **Color**: `brightness`, `contrast`, `saturate`, `tint`, `hueShift`, `colorRemap`
+- **Alpha**: `alphaMask`, `alphaTest`, `dissolve`, `fadeEdge`
+- **Retro**: `bayerDither`, `colorReplace`, `palettize`, `posterize`, `quantize`, `consolePalettes`
+- **Distortion**: `distort`, `distortNoise`, `wave`
+- **VFX**: `afterimage`, `flash`, `pulse`, `shimmer`, `sparkle`, `trail`
+- **Blur**: `bloom`, `blurBox`, `blurGaussian`, `blurKawase`, `blurMotion`, `blurRadial`
+- **Display**: `crtEffects`, `lcd`, `phosphorMask`, `scanlines`
+- **Analog**: `chromaticAberration`, `videoArtifacts`
+- **Upscale**: `eagle`, `hq2x`, `scale2x`
 
-This is the initial alpha release, extracting TSL shader nodes from the internal `packages/core` into a standalone, tree-shakeable package.
+### Documentation
+
+- Added `packages/nodes/README.md` and `packages/nodes/LICENSE` (MIT)
+- Repository URL corrected to `https://github.com/thejustinwalsh/three-flatland.git`
+
+### BREAKING CHANGES
+
+- Package was previously a placeholder with no exported nodes; all imports will need to be updated to use the new per-category subpath exports (e.g. `@three-flatland/nodes/color`, `@three-flatland/nodes/blur`)
+
+This is the first functional release of `@three-flatland/nodes`, delivering a complete library of TSL shader nodes for sprite rendering, color grading, retro effects, and post-processing.
