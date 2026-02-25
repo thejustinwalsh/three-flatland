@@ -5,114 +5,109 @@
   "type": "module",
   "exports": {
     ".": {
-      "import": {
-        "types": "./dist/index.d.ts",
-        "default": "./dist/index.js"
-      },
-      "require": {
-        "types": "./dist/index.d.cts",
-        "default": "./dist/index.cjs"
-      }
+      "source": "./src/index.ts",
+      "import": { "types": "./dist/index.d.ts", "default": "./dist/index.js" },
+      "require": { "types": "./dist/index.d.cts", "default": "./dist/index.cjs" }
     },
     "./alpha": {
-      "import": {
-        "types": "./dist/alpha/index.d.ts",
-        "default": "./dist/alpha/index.js"
-      },
-      "require": {
-        "types": "./dist/alpha/index.d.cts",
-        "default": "./dist/alpha/index.cjs"
-      }
+      "source": "./src/alpha/index.ts",
+      "import": { "types": "./dist/alpha/index.d.ts", "default": "./dist/alpha/index.js" },
+      "require": { "types": "./dist/alpha/index.d.cts", "default": "./dist/alpha/index.cjs" }
+    },
+    "./alpha/*": {
+      "source": "./src/alpha/*.ts",
+      "import": { "types": "./dist/alpha/*.d.ts", "default": "./dist/alpha/*.js" },
+      "require": { "types": "./dist/alpha/*.d.cts", "default": "./dist/alpha/*.cjs" }
     },
     "./analog": {
-      "import": {
-        "types": "./dist/analog/index.d.ts",
-        "default": "./dist/analog/index.js"
-      },
-      "require": {
-        "types": "./dist/analog/index.d.cts",
-        "default": "./dist/analog/index.cjs"
-      }
+      "source": "./src/analog/index.ts",
+      "import": { "types": "./dist/analog/index.d.ts", "default": "./dist/analog/index.js" },
+      "require": { "types": "./dist/analog/index.d.cts", "default": "./dist/analog/index.cjs" }
+    },
+    "./analog/*": {
+      "source": "./src/analog/*.ts",
+      "import": { "types": "./dist/analog/*.d.ts", "default": "./dist/analog/*.js" },
+      "require": { "types": "./dist/analog/*.d.cts", "default": "./dist/analog/*.cjs" }
     },
     "./blur": {
-      "import": {
-        "types": "./dist/blur/index.d.ts",
-        "default": "./dist/blur/index.js"
-      },
-      "require": {
-        "types": "./dist/blur/index.d.cts",
-        "default": "./dist/blur/index.cjs"
-      }
+      "source": "./src/blur/index.ts",
+      "import": { "types": "./dist/blur/index.d.ts", "default": "./dist/blur/index.js" },
+      "require": { "types": "./dist/blur/index.d.cts", "default": "./dist/blur/index.cjs" }
+    },
+    "./blur/*": {
+      "source": "./src/blur/*.ts",
+      "import": { "types": "./dist/blur/*.d.ts", "default": "./dist/blur/*.js" },
+      "require": { "types": "./dist/blur/*.d.cts", "default": "./dist/blur/*.cjs" }
     },
     "./color": {
-      "import": {
-        "types": "./dist/color/index.d.ts",
-        "default": "./dist/color/index.js"
-      },
-      "require": {
-        "types": "./dist/color/index.d.cts",
-        "default": "./dist/color/index.cjs"
-      }
+      "source": "./src/color/index.ts",
+      "import": { "types": "./dist/color/index.d.ts", "default": "./dist/color/index.js" },
+      "require": { "types": "./dist/color/index.d.cts", "default": "./dist/color/index.cjs" }
+    },
+    "./color/*": {
+      "source": "./src/color/*.ts",
+      "import": { "types": "./dist/color/*.d.ts", "default": "./dist/color/*.js" },
+      "require": { "types": "./dist/color/*.d.cts", "default": "./dist/color/*.cjs" }
     },
     "./display": {
-      "import": {
-        "types": "./dist/display/index.d.ts",
-        "default": "./dist/display/index.js"
-      },
-      "require": {
-        "types": "./dist/display/index.d.cts",
-        "default": "./dist/display/index.cjs"
-      }
+      "source": "./src/display/index.ts",
+      "import": { "types": "./dist/display/index.d.ts", "default": "./dist/display/index.js" },
+      "require": { "types": "./dist/display/index.d.cts", "default": "./dist/display/index.cjs" }
+    },
+    "./display/*": {
+      "source": "./src/display/*.ts",
+      "import": { "types": "./dist/display/*.d.ts", "default": "./dist/display/*.js" },
+      "require": { "types": "./dist/display/*.d.cts", "default": "./dist/display/*.cjs" }
     },
     "./distortion": {
-      "import": {
-        "types": "./dist/distortion/index.d.ts",
-        "default": "./dist/distortion/index.js"
-      },
-      "require": {
-        "types": "./dist/distortion/index.d.cts",
-        "default": "./dist/distortion/index.cjs"
-      }
+      "source": "./src/distortion/index.ts",
+      "import": { "types": "./dist/distortion/index.d.ts", "default": "./dist/distortion/index.js" },
+      "require": { "types": "./dist/distortion/index.d.cts", "default": "./dist/distortion/index.cjs" }
+    },
+    "./distortion/*": {
+      "source": "./src/distortion/*.ts",
+      "import": { "types": "./dist/distortion/*.d.ts", "default": "./dist/distortion/*.js" },
+      "require": { "types": "./dist/distortion/*.d.cts", "default": "./dist/distortion/*.cjs" }
     },
     "./retro": {
-      "import": {
-        "types": "./dist/retro/index.d.ts",
-        "default": "./dist/retro/index.js"
-      },
-      "require": {
-        "types": "./dist/retro/index.d.cts",
-        "default": "./dist/retro/index.cjs"
-      }
+      "source": "./src/retro/index.ts",
+      "import": { "types": "./dist/retro/index.d.ts", "default": "./dist/retro/index.js" },
+      "require": { "types": "./dist/retro/index.d.cts", "default": "./dist/retro/index.cjs" }
+    },
+    "./retro/*": {
+      "source": "./src/retro/*.ts",
+      "import": { "types": "./dist/retro/*.d.ts", "default": "./dist/retro/*.js" },
+      "require": { "types": "./dist/retro/*.d.cts", "default": "./dist/retro/*.cjs" }
     },
     "./sprite": {
-      "import": {
-        "types": "./dist/sprite/index.d.ts",
-        "default": "./dist/sprite/index.js"
-      },
-      "require": {
-        "types": "./dist/sprite/index.d.cts",
-        "default": "./dist/sprite/index.cjs"
-      }
+      "source": "./src/sprite/index.ts",
+      "import": { "types": "./dist/sprite/index.d.ts", "default": "./dist/sprite/index.js" },
+      "require": { "types": "./dist/sprite/index.d.cts", "default": "./dist/sprite/index.cjs" }
+    },
+    "./sprite/*": {
+      "source": "./src/sprite/*.ts",
+      "import": { "types": "./dist/sprite/*.d.ts", "default": "./dist/sprite/*.js" },
+      "require": { "types": "./dist/sprite/*.d.cts", "default": "./dist/sprite/*.cjs" }
     },
     "./upscale": {
-      "import": {
-        "types": "./dist/upscale/index.d.ts",
-        "default": "./dist/upscale/index.js"
-      },
-      "require": {
-        "types": "./dist/upscale/index.d.cts",
-        "default": "./dist/upscale/index.cjs"
-      }
+      "source": "./src/upscale/index.ts",
+      "import": { "types": "./dist/upscale/index.d.ts", "default": "./dist/upscale/index.js" },
+      "require": { "types": "./dist/upscale/index.d.cts", "default": "./dist/upscale/index.cjs" }
+    },
+    "./upscale/*": {
+      "source": "./src/upscale/*.ts",
+      "import": { "types": "./dist/upscale/*.d.ts", "default": "./dist/upscale/*.js" },
+      "require": { "types": "./dist/upscale/*.d.cts", "default": "./dist/upscale/*.cjs" }
     },
     "./vfx": {
-      "import": {
-        "types": "./dist/vfx/index.d.ts",
-        "default": "./dist/vfx/index.js"
-      },
-      "require": {
-        "types": "./dist/vfx/index.d.cts",
-        "default": "./dist/vfx/index.cjs"
-      }
+      "source": "./src/vfx/index.ts",
+      "import": { "types": "./dist/vfx/index.d.ts", "default": "./dist/vfx/index.js" },
+      "require": { "types": "./dist/vfx/index.d.cts", "default": "./dist/vfx/index.cjs" }
+    },
+    "./vfx/*": {
+      "source": "./src/vfx/*.ts",
+      "import": { "types": "./dist/vfx/*.d.ts", "default": "./dist/vfx/*.js" },
+      "require": { "types": "./dist/vfx/*.d.cts", "default": "./dist/vfx/*.cjs" }
     }
   },
   "main": "./dist/index.cjs",

@@ -1,9 +1,7 @@
-import type { ReactNode } from 'react'
 import type { ThreeElement } from '@react-three/fiber'
 import type { Sprite2D } from '../sprites/Sprite2D'
 import type { Sprite2DMaterial } from '../materials/Sprite2DMaterial'
-import type { Sprite2DOptions } from '../sprites/types'
-import type { AnimatedSprite2D, AnimatedSprite2DOptions } from '../sprites/AnimatedSprite2D'
+import type { AnimatedSprite2D } from '../sprites/AnimatedSprite2D'
 import type { SpriteGroup } from '../pipeline/SpriteGroup'
 import type { Flatland } from '../Flatland'
 import type { TileMap2D } from '../tilemap/TileMap2D'
@@ -31,44 +29,6 @@ import type { MaterialEffectClass, EffectSchema, EffectValues } from '../materia
  */
 export type EffectElement<T extends MaterialEffectClass<EffectSchema>> =
   ThreeElement<T> & (T extends MaterialEffectClass<infer S extends EffectSchema> ? Partial<EffectValues<S>> : Record<string, never>)
-
-/**
- * Props for the Flatland root component
- */
-export interface FlatlandProps {
-  /** Child components */
-  children?: ReactNode
-  /** Enable debug mode */
-  debug?: boolean
-}
-
-/**
- * Props for a Sprite2D component in R3F
- */
-export interface Sprite2DProps extends Partial<Sprite2DOptions> {
-  /** Child components */
-  children?: ReactNode
-  /** Event handler for click */
-  onClick?: () => void
-  /** Event handler for pointer over */
-  onPointerOver?: () => void
-  /** Event handler for pointer out */
-  onPointerOut?: () => void
-}
-
-/**
- * Props for an AnimatedSprite2D component in R3F
- */
-export interface AnimatedSprite2DProps extends Partial<AnimatedSprite2DOptions> {
-  /** Child components */
-  children?: ReactNode
-  /** Event handler for click */
-  onClick?: () => void
-  /** Event handler for pointer over */
-  onPointerOver?: () => void
-  /** Event handler for pointer out */
-  onPointerOut?: () => void
-}
 
 /**
  * R3F ThreeElements type augmentation for three-flatland objects.

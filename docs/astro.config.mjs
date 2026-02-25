@@ -75,8 +75,8 @@ export default defineConfig({
         starlightTypeDoc({
           entryPoints: [
             '../packages/three-flatland/src/index.ts',
+            '../packages/three-flatland/src/react/index.ts',
             '../packages/nodes/src/index.ts',
-            '../packages/three-flatland/src/react.ts',
             '../packages/presets/src/index.ts',
           ],
           tsconfig: './tsconfig.typedoc.json',
@@ -249,6 +249,9 @@ export default defineConfig({
     rehypePlugins: [rehypeExternalLinks],
   },
   vite: {
+    resolve: {
+      conditions: ['source'],
+    },
     plugins: [watchExamples(), copyExamples()],
     server: {
       headers: {
