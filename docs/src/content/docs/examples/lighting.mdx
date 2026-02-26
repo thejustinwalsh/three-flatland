@@ -1,0 +1,136 @@
+---
+title: 2D Lighting
+description: Dynamic sprite lighting with draggable torch lights.
+---
+
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+import ExamplePreview from '../../../components/ExamplePreview';
+import StackBlitzEmbed from '../../../components/StackBlitzEmbed';
+import ExampleTabs from '../../../components/ExampleTabs.astro';
+import { loadExample } from '../../../utils/loadExample';
+
+export const vanillaFiles = loadExample('vanilla', 'lighting');
+export const reactFiles = loadExample('react', 'lighting');
+
+<ExampleTabs>
+<Tabs>
+  <TabItem label="Preview" icon="rocket">
+    <ExamplePreview client:load type="vanilla" name="lighting" />
+  </TabItem>
+  <TabItem label="Three.js" icon="seti:javascript">
+    <StackBlitzEmbed
+      client:load
+      title="2D Lighting - Three.js"
+      files={vanillaFiles}
+      openFile="main.ts"
+      height={600}
+    />
+  </TabItem>
+  <TabItem label="React" icon="seti:react">
+    <StackBlitzEmbed
+      client:load
+      title="2D Lighting - React"
+      files={reactFiles}
+      openFile="App.tsx"
+      height={600}
+    />
+  </TabItem>
+</Tabs>
+</ExampleTabs>
+
+## Dungeon Torchlight
+
+This example demonstrates dynamic 2D lighting with interactive controls:
+
+| Control | Action |
+|---------|--------|
+| **Drag** | Move torch lights |
+| **1** | Toggle Torch 1 |
+| **2** | Toggle Torch 2 |
+| **Up/Down** | Adjust ambient light |
+
+## Light Setup
+
+The scene uses two point lights with flickering animation:
+
+```typescript
+import { Light2D } from '@three-flatland/core';
+
+// Orange torch light
+const torch1 = new Light2D({
+  type: 'point',
+  position: [-80, 50],
+  color: 0xff6600,
+  intensity: 1.2,
+  radius: 150,
+  falloff: 2,
+});
+
+// Yellow-orange torch light
+const torch2 = new Light2D({
+  type: 'point',
+  position: [80, 50],
+  color: 0xffaa00,
+  intensity: 1.0,
+  radius: 150,
+  falloff: 2,
+});
+
+flatland.add(torch1);
+flatland.add(torch2);
+```
+
+## Flickering Effect
+
+Natural torch flicker is created by combining sine waves:
+
+```typescript
+let flickerTimer = 0;
+
+function animate(delta: number) {
+  flickerTimer += delta;
+
+  // Combine multiple frequencies for organic flicker
+  const flicker1 = 1 +
+    Math.sin(flickerTimer * 15) * 0.1 +
+    Math.sin(flickerTimer * 23) * 0.05;
+
+  const flicker2 = 1 +
+    Math.sin(flickerTimer * 17 + 1) * 0.1 +
+    Math.sin(flickerTimer * 19 + 2) * 0.05;
+
+  torch1.intensity = 1.2 * flicker1;
+  torch2.intensity = 1.0 * flicker2;
+}
+```
+
+## Custom Lit Material
+
+Sprites are lit using a custom TSL material:
+
+```typescript
+import { MeshBasicNodeMaterial } from 'three/webgpu';
+import { uniform, vec4, float, length, max, add, Fn } from 'three/tsl';
+
+material.colorNode = Fn(() => {
+  const spriteColor = sampleSprite(texture, frame, { alphaTest: 0.01 });
+
+  // Calculate point light attenuation
+  const toLight = lightPos.sub(spritePosition);
+  const dist = length(toLight);
+  const attenuation = max(float(0), float(1).sub(dist.div(lightRadius))).pow(2);
+  const lightContribution = lightColor.mul(attenuation).mul(lightIntensity);
+
+  // Add ambient
+  const ambient = ambientColor.mul(ambientIntensity);
+  const totalLight = add(lightContribution, ambient);
+
+  return vec4(spriteColor.rgb.mul(totalLight), spriteColor.a);
+})();
+```
+
+## Next Steps
+
+- [2D Lighting Guide](/guides/lighting) - Complete reference
+- [Post-Processing](/examples/post-processing) - Display effects
+- [TSL Nodes](/examples/tsl-nodes) - Per-sprite effects
