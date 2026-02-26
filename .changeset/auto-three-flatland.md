@@ -2,30 +2,21 @@
 "three-flatland": minor
 ---
 
-## Performance improvements and koota v0.6.5 upgrade
+## Performance: ECS entity access overhaul
 
-### ECS entity access — zero-allocation hot paths
+- Updated koota to v0.6.5; updated `snapshot.ts` to use `getStore` public API instead of `$internal`
+- Replaced `ThreeRef` ECS trait with a flat `spriteArr` on `RegistryData` — entity-to-`Sprite2D` lookup is now a plain array index (`eid & ENTITY_ID_MASK`) with no hash overhead
+- Removed `ThreeRef` from all ECS queries; queries are simpler and no longer affected by a koota 0.6 bug with multi-trait `Added` queries after remove+re-add cycles
+- Replaced `SpriteSnapshot` object and `readField`/`readTrait`/`writeTrait` helpers with `resolveStore(world, trait)` — returns stable SoA array references, eliminating per-call allocation for pre-enrollment property reads/writes
+- `Sprite2D` now holds direct references to SoA backing arrays; getters/setters read from and write to those arrays at an entity index rather than through a snapshot object
+- Batch `needsUpdate` / `syncCount` calls are now deferred and issued once per mesh per frame instead of once per entity
+- `measure()` now accepts a string label in addition to a function reference
 
-- Replaced `ThreeRef` ECS trait with a flat `spriteArr` array indexed by entity SoA index for O(1) sprite lookups with no hash overhead
-- Removed `Map<Entity, Sprite2D>` (`spriteRefs`) in favor of direct array indexing, matching the SoA pattern used by all other koota stores
-- Exported `ENTITY_ID_MASK` constant from `snapshot.ts` for use across ECS systems
-- Replaced `readField` / `readTrait` / `writeTrait` snapshot utilities with `resolveStore`, which returns stable SoA backing arrays for the lifetime of the world — callers cache the arrays rather than calling per-entity helpers each frame
-- Sprite2D pre-enrolls with `IsBatched` and `BatchSlot` at spawn time, eliminating archetype transitions on first batch assignment
+## BREAKING CHANGES
 
-### Batch system optimizations
+- `ThreeRef` is no longer exported from `three-flatland/ecs`
+- `readField`, `readTrait`, and `writeTrait` are no longer exported from `three-flatland/ecs`; use `resolveStore(world, trait)` to obtain raw SoA array references
+- `Sprite2D._snapshot` has been removed; pre-enrollment state is stored in per-field local arrays (`_colorR`, `_colorG`, etc.)
+- `RegistryData.spriteRefs` (Map) has been replaced by `RegistryData.spriteArr` (flat array)
 
-- `batchAssignSystem`: deferred `needsUpdate` flags — a single `syncCount()` call per dirty mesh replaces per-entity attribute updates; GPU dirty ranges consolidated to one upload per attribute per frame via `flushDirtyRanges()`
-- `SpriteGroup._runSystems` now calls `flushDirtyRanges()` once at end of frame across all active batches
-- `measure()` utility now accepts a string label in addition to a `Function`, enabling stable names from `fn.name` without capturing function references
-
-### koota upgrade
-
-- Updated koota from `^0.1.0` to `^0.6.5` across workspace catalog, `packages/three-flatland`, and `minis/breakout`
-- Adapted internal API calls from `$internal.stores` to `getStore(world, trait)` to match the new public koota API
-
-### BREAKING CHANGES
-
-- `ThreeRef` ECS trait removed from public exports — consumers who referenced `ThreeRef` from `three-flatland` must migrate to the `spriteArr` registry pattern or direct `Sprite2D` references
-- `readField`, `readTrait`, `writeTrait` removed from `three-flatland/ecs` exports; replaced by `resolveStore`
-
-Upgrades koota to v0.6.5 and restructures ECS entity access throughout the batch pipeline for lower per-frame allocation overhead and consolidated GPU buffer updates.
+This release replaces the internal entity-to-object lookup mechanism with a flat SoA array pattern for consistent O(1) access, removes the `ThreeRef` trait entirely, and drops the snapshot helper utilities in favour of direct store references.
