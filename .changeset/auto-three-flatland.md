@@ -1,16 +1,31 @@
 ---
-"three-flatland": patch
+"three-flatland": minor
 ---
 
-- Updated koota peer dependency from `^0.1.0` to `^0.6.5`
-- Replaced internal `$internal` koota API with public `getStore`/`universe` in snapshot reads
-- Workaround for koota 0.6 bug: multi-trait `Added` queries no longer detect new entities after a remove+re-add cycle on the same archetype; `batchAssignSystem` now queries `Added(IsRenderable)` alone and guards with `entity.has(ThreeRef)`
-- `IsBatched` and `BatchSlot` pre-allocated at sprite spawn time in `Sprite2D`, eliminating archetype transitions during batch assignment
-- Removed per-entity/per-attribute `needsUpdate = true` calls from assign, reassign, and buffer-sync systems; GPU uploads are now consolidated into a single `flushDirtyRanges()` call per mesh at end of frame by `SpriteGroup`
-- `syncCount()` now called once per mesh instead of once per entity in `batchAssignSystem`
-- Entity destruction deferred to top of next frame via new `deferredDestroySystem`; removes cascading trait-removal cost from the hot render path
-- `batchRemoveSystem` signature changed to accept a `pendingDestroy: Entity[]` array; callers must pass `SpriteGroup._pendingDestroy`
-- `deferredDestroySystem` exported from `batchRemoveSystem.ts` and wired into `SpriteGroup.update()` and `SpriteGroup.dispose()`
-- Added `traces/` to `.gitignore`
+## Performance improvements and koota v0.6.5 upgrade
 
-Updated koota to v0.6.5 with targeted fixes for a multi-trait `Added` query regression, and restructured GPU dirty-tracking to consolidate all attribute uploads into a single end-of-frame `flushDirtyRanges()` pass for improved render performance.
+### ECS entity access — zero-allocation hot paths
+
+- Replaced `ThreeRef` ECS trait with a flat `spriteArr` array indexed by entity SoA index for O(1) sprite lookups with no hash overhead
+- Removed `Map<Entity, Sprite2D>` (`spriteRefs`) in favor of direct array indexing, matching the SoA pattern used by all other koota stores
+- Exported `ENTITY_ID_MASK` constant from `snapshot.ts` for use across ECS systems
+- Replaced `readField` / `readTrait` / `writeTrait` snapshot utilities with `resolveStore`, which returns stable SoA backing arrays for the lifetime of the world — callers cache the arrays rather than calling per-entity helpers each frame
+- Sprite2D pre-enrolls with `IsBatched` and `BatchSlot` at spawn time, eliminating archetype transitions on first batch assignment
+
+### Batch system optimizations
+
+- `batchAssignSystem`: deferred `needsUpdate` flags — a single `syncCount()` call per dirty mesh replaces per-entity attribute updates; GPU dirty ranges consolidated to one upload per attribute per frame via `flushDirtyRanges()`
+- `SpriteGroup._runSystems` now calls `flushDirtyRanges()` once at end of frame across all active batches
+- `measure()` utility now accepts a string label in addition to a `Function`, enabling stable names from `fn.name` without capturing function references
+
+### koota upgrade
+
+- Updated koota from `^0.1.0` to `^0.6.5` across workspace catalog, `packages/three-flatland`, and `minis/breakout`
+- Adapted internal API calls from `$internal.stores` to `getStore(world, trait)` to match the new public koota API
+
+### BREAKING CHANGES
+
+- `ThreeRef` ECS trait removed from public exports — consumers who referenced `ThreeRef` from `three-flatland` must migrate to the `spriteArr` registry pattern or direct `Sprite2D` references
+- `readField`, `readTrait`, `writeTrait` removed from `three-flatland/ecs` exports; replaced by `resolveStore`
+
+Upgrades koota to v0.6.5 and restructures ECS entity access throughout the batch pipeline for lower per-frame allocation overhead and consolidated GPU buffer updates.
