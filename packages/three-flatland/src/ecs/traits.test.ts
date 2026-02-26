@@ -11,8 +11,9 @@ import {
   SpriteZIndex,
   SpriteMaterialRef,
   IsRenderable,
-  ThreeRef,
+  BatchRegistry,
 } from './traits'
+import type { RegistryData } from './batchUtils'
 
 describe('ECS traits — sprite enrollment lifecycle', () => {
   let world: ReturnType<typeof createWorld>
@@ -113,15 +114,16 @@ describe('ECS traits — sprite enrollment lifecycle', () => {
     expect(matRef!.materialId).toBe(material.batchId)
   })
 
-  it('should set ThreeRef to the sprite object', () => {
+  it('should register in spriteRefs map when BatchRegistry exists', () => {
     setup()
+    // Spawn a registry entity so spriteRefs map is available
+    const registryEntity = world.spawn(BatchRegistry())
+    const registry = registryEntity.get(BatchRegistry) as RegistryData | undefined
+
     const sprite = new Sprite2D({ material })
     sprite._enrollInWorld(world)
 
-    const entity = sprite._entity!
-    const ref = entity.get(ThreeRef)
-    expect(ref).toBeDefined()
-    expect(ref!.object).toBe(sprite)
+    expect(registry!.spriteRefs.get(sprite._entity!)).toBe(sprite)
   })
 
   it('should have IsRenderable tag', () => {
@@ -449,3 +451,4 @@ describe('ECS traits — snapshot lifecycle', () => {
     expect(sprite.flipY).toBe(true)
   })
 })
+

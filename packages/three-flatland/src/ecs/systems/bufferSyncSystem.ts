@@ -5,7 +5,6 @@ import {
   SpriteUV,
   SpriteFlip,
   IsBatched,
-  ThreeRef,
   BatchSlot,
   BatchRegistry,
 } from '../traits'
@@ -112,20 +111,22 @@ export function bufferSyncEffectSystem(
   world: World,
   effectTraits: ReadonlyMap<Trait, typeof MaterialEffect>
 ): void {
-  const batchSlots = getBatchSlots(world)
-  if (!batchSlots) return
+  const registryEntities = world.query(BatchRegistry)
+  if (registryEntities.length === 0) return
+  const registry = registryEntities[0]!.get(BatchRegistry) as RegistryData | undefined
+  if (!registry) return
+  const batchSlots = registry.batchSlots
 
   const processed = new Set<Entity>()
 
   for (const [effectTrait] of effectTraits) {
-    const entities = world.query(Changed(effectTrait), IsBatched, ThreeRef, BatchSlot)
+    const entities = world.query(Changed(effectTrait), IsBatched, BatchSlot)
     for (const entity of entities) {
       if (processed.has(entity)) continue
       processed.add(entity)
 
-      const ref = entity.get(ThreeRef)
-      if (!ref?.object) continue
-      const sprite = ref.object as Sprite2D
+      const sprite = registry.spriteRefs.get(entity)
+      if (!sprite) continue
 
       const resolved = resolveBatchSlot(entity, batchSlots)
       if (!resolved) continue

@@ -7,7 +7,6 @@ import {
   SpriteFlip,
   SpriteLayer,
   SpriteMaterialRef,
-  ThreeRef,
   InBatch,
   BatchSlot,
   BatchMesh,
@@ -18,6 +17,7 @@ import type { MaterialEffect } from '../../materials/MaterialEffect'
 import type { Sprite2D } from '../../sprites/Sprite2D'
 import type { SpriteBatch } from '../../pipeline/SpriteBatch'
 import type { RegistryData } from '../batchUtils'
+
 import {
   computeRunKey,
   getOrCreateRun,
@@ -41,8 +41,8 @@ export function batchReassignSystem(
   world: World,
   effectTraits: ReadonlyMap<Trait, typeof MaterialEffect>
 ): void {
-  const layerChanged = world.query(Changed(SpriteLayer), IsBatched, ThreeRef)
-  const matChanged = world.query(Changed(SpriteMaterialRef), IsBatched, ThreeRef)
+  const layerChanged = world.query(Changed(SpriteLayer), IsBatched)
+  const matChanged = world.query(Changed(SpriteMaterialRef), IsBatched)
 
   // Deduplicate entities that appear in both queries
   const toReassign = new Set([...layerChanged, ...matChanged])
@@ -54,9 +54,8 @@ export function batchReassignSystem(
   if (!registry) return
 
   for (const entity of toReassign) {
-    const ref = entity.get(ThreeRef)
-    if (!ref?.object) continue
-    const sprite = ref.object as Sprite2D
+    const sprite = registry.spriteRefs.get(entity)
+    if (!sprite) continue
 
     const newLayer = entity.get(SpriteLayer)
     const newMatRef = entity.get(SpriteMaterialRef)
@@ -143,6 +142,7 @@ function syncAllBuffers(
     mesh.writeFlip(slot, f.x, f.y)
   }
 
+  // Transform — use Sprite2D's updateMatrix for full 3D support
   sprite.updateMatrix()
   mesh.writeMatrix(slot, sprite.matrix)
 

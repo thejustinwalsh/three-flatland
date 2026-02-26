@@ -1,6 +1,6 @@
 import { trait, relation } from 'koota'
 import type { Entity } from 'koota'
-import type { Object3D } from 'three'
+import type { Sprite2D } from '../sprites/Sprite2D'
 import type { SpriteBatch } from '../pipeline/SpriteBatch'
 import type { Sprite2DMaterial } from '../materials/Sprite2DMaterial'
 import type Node from 'three/src/nodes/core/Node.js'
@@ -43,13 +43,6 @@ export const IsBatched = trait()
 
 /** Tag: entity is rendering standalone (not in a batch) */
 export const IsStandalone = trait()
-
-// ============================================
-// Reference traits (AoS — complex objects)
-// ============================================
-
-/** Reference back to the Three.js object (Sprite2D mesh) */
-export const ThreeRef = trait(() => ({ object: null as Object3D | null }))
 
 // ============================================
 // Batch slot cache (SoA — fast-path for hot systems)
@@ -135,6 +128,8 @@ export const BatchRegistry = trait(() => ({
   batchSlots: [] as (SpriteBatch | null)[],
   /** Free indices in batchSlots for reuse. */
   batchSlotFreeList: [] as number[],
+  /** Entity ID → Sprite2D for O(1) hot-path lookup without koota entity.get(). */
+  spriteRefs: new Map<Entity, Sprite2D>(),
 }))
 
 // ============================================

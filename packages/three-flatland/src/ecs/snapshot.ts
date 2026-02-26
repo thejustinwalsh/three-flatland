@@ -1,7 +1,7 @@
 import { getStore, universe, type Entity, type Trait } from 'koota'
 
 // Koota entity bit-packing constants (stable across versions)
-const ENTITY_ID_MASK = (1 << 20) - 1
+export const ENTITY_ID_MASK = (1 << 20) - 1
 const WORLD_ID_SHIFT = 28
 
 /** Read trait data — from entity if enrolled, snapshot fallback otherwise. */

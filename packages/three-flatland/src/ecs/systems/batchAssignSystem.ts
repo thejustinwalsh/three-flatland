@@ -7,7 +7,6 @@ import {
   SpriteFlip,
   SpriteLayer,
   SpriteMaterialRef,
-  ThreeRef,
   InBatch,
   BatchSlot,
   BatchMesh,
@@ -34,9 +33,6 @@ export function batchAssignSystem(
   world: World,
   effectTraits: ReadonlyMap<Trait, typeof MaterialEffect>
 ): boolean {
-  // Query Added(IsRenderable) WITHOUT ThreeRef to avoid a koota 0.6 bug where
-  // multi-trait Added queries fail to detect new entities after a remove+re-add
-  // cycle on the same archetype combination.
   const added = world.query(Added(IsRenderable))
   if (added.length === 0) return false
 
@@ -49,10 +45,8 @@ export function batchAssignSystem(
   const dirtyMeshes = new Set<SpriteBatch>()
 
   for (const entity of added) {
-    if (!entity.has(ThreeRef)) continue
-    const ref = entity.get(ThreeRef)
-    if (!ref?.object) continue
-    const sprite = ref.object as Sprite2D
+    const sprite = registry.spriteRefs.get(entity)
+    if (!sprite) continue
 
     const layerData = entity.get(SpriteLayer)
     const matRef = entity.get(SpriteMaterialRef)
@@ -136,7 +130,7 @@ function syncSlotBuffers(
     mesh.writeFlip(slot, f.x, f.y)
   }
 
-  // Transform
+  // Transform — use Sprite2D's updateMatrix for full 3D support
   sprite.updateMatrix()
   mesh.writeMatrix(slot, sprite.matrix)
 

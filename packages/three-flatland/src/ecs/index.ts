@@ -11,7 +11,6 @@ export {
   IsRenderable,
   IsBatched,
   IsStandalone,
-  ThreeRef,
   BatchSlot,
   InBatch,
   BatchMesh,

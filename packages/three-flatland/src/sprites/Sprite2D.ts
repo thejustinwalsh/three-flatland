@@ -21,8 +21,9 @@ import {
   IsRenderable,
   IsBatched,
   BatchSlot,
-  ThreeRef,
+  BatchRegistry,
 } from '../ecs/traits'
+import type { RegistryData } from '../ecs/batchUtils'
 import { readField, readTrait, writeTrait } from '../ecs/snapshot'
 import { getGlobalWorld } from '../ecs/world'
 
@@ -35,30 +36,64 @@ interface SpriteSnapshot {
   zIndex: { zIndex: number }
 }
 
-/**
- * Wrap a Three.js object so any property write or method call triggers a callback.
- * Works with Color, Vector2, Vector3, etc. — no per-type subclass needed.
- * Follows the spirit of Three.js's Euler._onChangeCallback pattern.
- * @internal
- */
-function observed<T extends object>(target: T, cb: () => void): T {
-  const proxy: T = new Proxy(target, {
-    set(obj, prop, value) {
-      ;(obj as Record<string | symbol, unknown>)[prop] = value
-      cb()
-      return true
-    },
-    get(obj, prop, receiver) {
-      const value = Reflect.get(obj, prop, receiver)
-      if (typeof value !== 'function') return value
-      return function (this: unknown, ...args: unknown[]) {
-        const result = (value as (...a: unknown[]) => unknown).apply(obj, args)
-        cb()
-        return result === obj ? proxy : result
-      }
-    },
-  })
-  return proxy
+// ============================================
+// Observable property helpers
+// ============================================
+//
+// Convert data properties (x/y/z, r/g/b) on Three.js objects to accessor
+// properties that fire a callback on write. Replaces the generic Proxy approach
+// with zero per-instance function allocations — descriptors are shared at
+// module level and reuse `this._cb` on the instance.
+//
+// Works because ALL Three.js Vector3/Color/Vector2 methods mutate via
+// `this.x = ...` etc., so the accessor setters catch every mutation path.
+
+/** @internal */
+interface Observable { _cb: () => void }
+
+const _vec2Desc: PropertyDescriptorMap = {
+  x: {
+    get(this: Observable & { _ox: number }) { return this._ox },
+    set(this: Observable & { _ox: number }, v: number) { this._ox = v; this._cb() },
+    configurable: true, enumerable: true,
+  },
+  y: {
+    get(this: Observable & { _oy: number }) { return this._oy },
+    set(this: Observable & { _oy: number }, v: number) { this._oy = v; this._cb() },
+    configurable: true, enumerable: true,
+  },
+}
+
+const _colorDesc: PropertyDescriptorMap = {
+  r: {
+    get(this: Observable & { _or: number }) { return this._or },
+    set(this: Observable & { _or: number }, v: number) { this._or = v; this._cb() },
+    configurable: true, enumerable: true,
+  },
+  g: {
+    get(this: Observable & { _og: number }) { return this._og },
+    set(this: Observable & { _og: number }, v: number) { this._og = v; this._cb() },
+    configurable: true, enumerable: true,
+  },
+  b: {
+    get(this: Observable & { _ob: number }) { return this._ob },
+    set(this: Observable & { _ob: number }, v: number) { this._ob = v; this._cb() },
+    configurable: true, enumerable: true,
+  },
+}
+
+/** Convert a Vector2's x/y data properties to callback-firing accessors in place. */
+function observeVector2(v: Vector2, cb: () => void): void {
+  const a = v as unknown as Record<string, unknown>
+  a._ox = v.x; a._oy = v.y; a._cb = cb
+  Object.defineProperties(v, _vec2Desc)
+}
+
+/** Convert a Color's r/g/b data properties to callback-firing accessors in place. */
+function observeColor(c: Color, cb: () => void): void {
+  const a = c as unknown as Record<string, unknown>
+  a._or = c.r; a._og = c.g; a._ob = c.b; a._cb = cb
+  Object.defineProperties(c, _colorDesc)
 }
 
 /** Size in floats for each attribute type. */
@@ -225,8 +260,11 @@ export class Sprite2D extends Mesh {
     // Store reference so we can dispose it
     this._geometry = geometry
 
-    // Wrap stored objects with observable proxies for R3F compat
-    this._tintColor = observed(this._tintColor, () => {
+    // Convert stored Color/Vector2 to observable accessors.
+    // Position/rotation/scale are NOT observed — accessor overhead on these
+    // hot properties (read/written millions of times per frame in game loops)
+    // costs more than it saves. transformSyncSystem reads directly from Object3D.
+    observeColor(this._tintColor, () => {
       writeTrait(this._entity, SpriteColor, this._snapshot.color, {
         r: this._tintColor.r,
         g: this._tintColor.g,
@@ -234,7 +272,7 @@ export class Sprite2D extends Mesh {
       })
       if (!this._entity) this._updateOwnColor()
     })
-    this._anchor = observed(this._anchor, () => this.updateAnchor())
+    observeVector2(this._anchor, () => this.updateAnchor())
 
     // Set up instance attributes on the geometry
     this._setupInstanceAttributes()
@@ -936,8 +974,18 @@ export class Sprite2D extends Mesh {
       IsRenderable,
       IsBatched,
       BatchSlot({ batchIdx: -1, slot: -1 }),
-      ThreeRef({ object: this }),
     )
+
+    // Register in the spriteRefs map for O(1) lookup by entity ID.
+    // This replaces the ThreeRef ECS trait — avoids per-frame allocation
+    // overhead from entity.get() in the hot transform sync loop.
+    const registryEntities = w.query(BatchRegistry)
+    if (registryEntities.length > 0) {
+      const registry = registryEntities[0]!.get(BatchRegistry) as RegistryData | undefined
+      if (registry) {
+        registry.spriteRefs.set(this._entity, this)
+      }
+    }
 
     // Add effect traits for active effects
     for (const effect of this._effects) {
@@ -987,6 +1035,17 @@ export class Sprite2D extends Mesh {
         }
       }
       effect._entity = null
+    }
+
+    // Remove from spriteRefs map
+    if (this._flatlandWorld) {
+      const registryEntities = this._flatlandWorld.query(BatchRegistry)
+      if (registryEntities.length > 0) {
+        const registry = registryEntities[0]!.get(BatchRegistry) as RegistryData | undefined
+        if (registry) {
+          registry.spriteRefs.delete(this._entity)
+        }
+      }
     }
 
     // Remove IsRenderable instead of destroying — this triggers Removed(IsRenderable)
