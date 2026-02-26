@@ -1,9 +1,11 @@
 name: Release
 
 on:
-  push:
-    branches:
-      - main
+  workflow_dispatch:
+  workflow_run:
+    workflows: [CI]
+    branches: [main]
+    types: [completed]
 
 permissions:
   contents: write
@@ -16,6 +18,7 @@ jobs:
   release:
     name: Release
     runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     environment: release
 
     steps:
@@ -58,3 +61,16 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NPM_CONFIG_PROVENANCE: true
           NPM_CONFIG_ACCESS: public
+
+      - name: Sync alpha dist-tag to latest
+        if: steps.changesets.outputs.published == 'true'
+        run: |
+          for pkg in three-flatland @three-flatland/nodes @three-flatland/presets; do
+            version=$(npm view "$pkg" version 2>/dev/null)
+            if [ -n "$version" ] && echo "$version" | grep -q "alpha"; then
+              echo "Tagging $pkg@$version as alpha"
+              npm dist-tag add "$pkg@$version" alpha
+            fi
+          done
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

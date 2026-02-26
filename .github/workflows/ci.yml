@@ -3,11 +3,76 @@ name: CI
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - '.changeset/**'
+      - '.claude/**'
+      - 'docs/**'
+      - 'scripts/**'
+      - '**/*.md'
+      - 'LICENSE'
   pull_request:
     branches: [main]
 
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      should_build: ${{ steps.decide.outputs.should_build }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Check if latest commit has build-relevant changes
+        id: latest-commit
+        if: github.event_name == 'pull_request' && github.event.action == 'synchronize'
+        run: |
+          changed=$(git diff --name-only HEAD~1 HEAD)
+          echo "Changed files in latest commit:"
+          echo "$changed"
+          if echo "$changed" | grep -qvE '^(\.changeset/|\.claude/|docs/|scripts/|.*\.md$|LICENSE$)'; then
+            echo "has_code=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_code=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Check previous commit CI status
+        id: prev-ci
+        if: github.event_name == 'pull_request' && github.event.action == 'synchronize' && steps.latest-commit.outputs.has_code == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          prev_sha=$(git rev-parse HEAD~1)
+          conclusions=$(gh api "repos/${{ github.repository }}/commits/$prev_sha/check-runs" \
+            --jq '[.check_runs[] | select(.name | startswith("build (")) | .conclusion] | unique | join(",")' 2>/dev/null || echo "")
+          echo "Previous commit build checks: $conclusions"
+          if [[ "$conclusions" == "success" ]]; then
+            echo "prev_passed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "prev_passed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Decide whether to build
+        id: decide
+        run: |
+          if [[ "${{ github.event_name }}" == "pull_request" && \
+                "${{ github.event.action }}" == "synchronize" && \
+                "${{ steps.latest-commit.outputs.has_code }}" == "false" && \
+                "${{ steps.prev-ci.outputs.prev_passed }}" == "true" ]]; then
+            echo "should_build=false" >> "$GITHUB_OUTPUT"
+            echo "Skipping build — latest commit has no code changes and previous CI passed"
+          else
+            echo "should_build=true" >> "$GITHUB_OUTPUT"
+            echo "Build required"
+          fi
+
   build:
+    needs: changes
+    if: needs.changes.outputs.should_build == 'true'
     runs-on: ubuntu-latest
 
     strategy:

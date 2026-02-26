@@ -3,6 +3,13 @@ name: Deploy Docs
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - '.changeset/**'
+      - '.claude/**'
+      - 'scripts/**'
+      - 'LICENSE'
+      - '*.md'
+      - '**/CHANGELOG.md'
   workflow_dispatch:
 
 permissions:

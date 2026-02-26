@@ -3,6 +3,13 @@ name: Size
 on:
   pull_request:
     branches: [main]
+    paths-ignore:
+      - '.changeset/**'
+      - '.claude/**'
+      - 'docs/**'
+      - 'scripts/**'
+      - '**/*.md'
+      - 'LICENSE'
 
 permissions:
   pull-requests: write
