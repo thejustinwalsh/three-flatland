@@ -30,7 +30,7 @@ export {
 } from './world'
 
 // Snapshot utilities
-export { readField, readTrait, writeTrait } from './snapshot'
+export { resolveStore } from './snapshot'
 
 // Batch utilities
 export {
