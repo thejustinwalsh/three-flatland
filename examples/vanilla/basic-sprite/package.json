@@ -10,7 +10,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "three-flatland": "^0.1.0-alpha.1",
+    "three-flatland": "^0.1.0-alpha.2",
     "three": "^0.183.1"
   },
   "devDependencies": {

@@ -1,6 +1,6 @@
 {
   "name": "three-flatland",
-  "version": "0.1.0-alpha.1",
+  "version": "0.1.0-alpha.2",
   "description": "High-performance 2D sprites, tilemaps, and effects for Three.js — built for WebGPU with composable TSL shaders",
   "type": "module",
   "exports": {
