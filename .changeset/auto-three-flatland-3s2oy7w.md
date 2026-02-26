@@ -1,6 +1,12 @@
 ---
 "three-flatland": minor
 ---
+
+> Branch: jw/ecs-update-and-perf
+> PR: https://github.com/thejustinwalsh/three-flatland/pull/6
+
+## Performance: ECS entity access overhaul
+
 - Updated koota dependency to v0.6.5
 - `measure()` utility now accepts a string as the first argument (in addition to a function), enabling named measurements without a function reference
 - Removed `ThreeRef` ECS trait; sprite-to-entity mapping is now handled internally via a flat array indexed by entity SoA ID

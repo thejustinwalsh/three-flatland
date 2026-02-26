@@ -17,48 +17,65 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.ref }}
-          fetch-depth: 0
+          fetch-depth: 2
+
+      - name: Skip if last commit was from this workflow
+        id: check
+        run: |
+          msg=$(git log -1 --format="%s")
+          if [ "$msg" = "ci: generate changesets" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Fetch full history
+        if: steps.check.outputs.skip != 'true'
+        run: git fetch --unshallow || true
 
       - name: Install pnpm
+        if: steps.check.outputs.skip != 'true'
         uses: pnpm/action-setup@v4
 
       - name: Setup Node.js
+        if: steps.check.outputs.skip != 'true'
         uses: actions/setup-node@v4
         with:
           node-version: lts/*
           cache: 'pnpm'
 
       - name: Install dependencies
+        if: steps.check.outputs.skip != 'true'
         run: pnpm install --frozen-lockfile
 
-      - name: Clean consumed changesets
-        run: |
-          if [ -f .changeset/pre.json ]; then
-            for name in $(node -e "
-              const pre = require('./.changeset/pre.json');
-              for (const cs of pre.changesets) console.log(cs);
-            "); do
-              file=".changeset/${name}.md"
-              if [ -f "$file" ]; then
-                echo "Removing consumed changeset: $file"
-                rm "$file"
-              fi
-            done
-          fi
-
       - name: Generate template changesets
-        run: pnpm changeset:generate --base origin/main --cap-major
+        if: steps.check.outputs.skip != 'true'
+        run: >-
+          pnpm changeset:generate
+          --branch ${{ github.event.pull_request.head.ref }}
+          --repo ${{ github.repository }}
+          --pr ${{ github.event.pull_request.number }}
+          --base origin/main
+          --cap-major
+
+      - name: Compute branch id
+        if: steps.check.outputs.skip != 'true'
+        id: bid
+        run: |
+          ts=$(git log --format="%ct" --reverse origin/main..HEAD | head -1)
+          value=$(node -e "console.log((9999999999 - ${ts:-0}).toString(36).padStart(7, '0'))")
+          echo "value=$value" >> "$GITHUB_OUTPUT"
 
       - name: Install Copilot CLI
+        if: steps.check.outputs.skip != 'true'
         run: npm install -g @github/copilot
 
       - name: Enhance changesets with Copilot
+        if: steps.check.outputs.skip != 'true'
         continue-on-error: true
         env:
           COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_PAT }}
         run: |
           shopt -s nullglob
-          files=(.changeset/auto-*.md)
+          files=(.changeset/auto-*-${{ steps.bid.outputs.value }}.md)
           if [ ${#files[@]} -eq 0 ]; then
             echo "No auto-generated changesets to enhance"
             exit 0
@@ -73,13 +90,14 @@ jobs:
 
           Each file listed below contains:
           1. A frontmatter block (between --- delimiters) — DO NOT modify the frontmatter
-          2. A body with per-commit details: each commit has a ### <sha> header, message, changed files, and diff stats
+          2. A metadata block (lines starting with >) with branch and PR info — DO NOT modify the metadata
+          3. A body with per-commit details: each commit has a ### <sha> header, message, changed files, and diff stats
 
           Your task — update ALL files in a single pass:
           1. Read each changeset file to get the commit details
           2. For each commit SHA, run git show <sha> to review the actual diff
           3. Read source files referenced in the commits for additional context
-          4. Replace the body (everything after the closing ---) with an enhanced changelog
+          4. Replace only the commit details (everything after the metadata block) with an enhanced changelog
 
           Changelog format:
           - Concise bullet points of user-facing changes (terse, skip grammar for brevity)
@@ -93,12 +111,13 @@ jobs:
           IMPORTANT: Preserve each file's frontmatter block exactly as-is. Only write to the files listed above."
 
       - name: Commit and push changesets
+        if: steps.check.outputs.skip != 'true'
         run: |
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git config user.name "github-actions[bot]"
-          git add .changeset/*.md .changeset/pre.json 2>/dev/null || true
+          git add .changeset/auto-*-${{ steps.bid.outputs.value }}.md 2>/dev/null || true
           if ! git diff-index --quiet HEAD 2>/dev/null; then
-            git commit -m "ci: generate changesets [skip ci]"
+            git commit -m "ci: generate changesets"
             git push
             echo "Changesets committed and pushed"
           else

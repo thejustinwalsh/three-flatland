@@ -1,13 +1,16 @@
 /**
- * Generates changesets from conventional commits.
+ * Generates changesets from conventional commits on a PR branch.
  *
  * Parses commits between a base branch and HEAD, maps changed files to
  * publishable packages, determines semver bump types, and writes
- * `.changeset/auto-*.md` files.
+ * `.changeset/auto-<package>-<id>.md` files (one per package).
+ *
+ * The id is a 7-char base36 inverted timestamp of the branch's first commit,
+ * so files are deterministic per branch and sort most-recent-first.
  *
  * Usage:
- *   pnpm changeset:generate              # Compare against origin/main
- *   pnpm changeset:generate --base main  # Custom base ref
+ *   pnpm changeset:generate --branch jw/my-feature
+ *   pnpm changeset:generate --branch jw/my-feature --base origin/main
  */
 
 import { execSync } from 'node:child_process'
@@ -16,6 +19,8 @@ import { join, resolve } from 'node:path'
 
 const ROOT = resolve(import.meta.dirname, '..')
 const CHANGESET_DIR = join(ROOT, '.changeset')
+
+const MAX_TS = 9999999999
 
 let capMajor = false
 
@@ -53,6 +58,23 @@ const BUMP_MAP: Record<string, BumpType> = {
 
 // Types that don't generate changesets
 const SKIP_TYPES = new Set(['docs', 'test', 'ci', 'chore', 'style', 'build'])
+
+// --- Branch ID ---
+
+function branchId(base: string): string {
+  try {
+    const output = execSync(`git log --format="%ct" --reverse ${base}..HEAD`, {
+      cwd: ROOT,
+      encoding: 'utf-8',
+    }).trim()
+    const firstLine = output.split('\n')[0]
+    if (!firstLine) return (MAX_TS).toString(36).padStart(7, '0')
+    const ts = parseInt(firstLine, 10)
+    return (MAX_TS - ts).toString(36).padStart(7, '0')
+  } catch {
+    return (MAX_TS).toString(36).padStart(7, '0')
+  }
+}
 
 // --- Package discovery ---
 
@@ -228,10 +250,23 @@ function sanitizeName(name: string): string {
   return name.replace(/[@/]/g, '-').replace(/^-+/, '')
 }
 
-function generateChangesetContent(changeset: PackageChangeset): string {
+interface Metadata {
+  branch: string
+  repo?: string
+  pr?: number
+}
+
+function generateChangesetContent(changeset: PackageChangeset, meta: Metadata): string {
   const { name, bump, commits } = changeset
 
   const frontmatter = `---\n"${name}": ${bump}\n---`
+
+  // Metadata block
+  const metaLines = [`> Branch: ${meta.branch}`]
+  if (meta.repo && meta.pr) {
+    metaLines.push(`> PR: https://github.com/${meta.repo}/pull/${meta.pr}`)
+  }
+  const metaBlock = metaLines.join('\n')
 
   // Per-commit details with SHAs for AI-assisted changelog enhancement
   const entries = commits.map((c) => {
@@ -242,23 +277,24 @@ function generateChangesetContent(changeset: PackageChangeset): string {
     return lines.join('\n')
   })
 
-  return `${frontmatter}\n\n${entries.join('\n\n')}\n`
+  return `${frontmatter}\n\n${metaBlock}\n\n${entries.join('\n\n')}\n`
 }
 
-function cleanAutoChangesets(): void {
+function cleanBranchChangesets(id: string): void {
   if (!existsSync(CHANGESET_DIR)) return
 
+  const suffix = `-${id}.md`
   for (const file of readdirSync(CHANGESET_DIR)) {
-    if (file.startsWith('auto-') && file.endsWith('.md')) {
+    if (file.startsWith('auto-') && file.endsWith(suffix)) {
       rmSync(join(CHANGESET_DIR, file))
     }
   }
 }
 
-function writeChangeset(changeset: PackageChangeset): void {
-  const filename = `auto-${sanitizeName(changeset.name)}.md`
+function writeChangeset(id: string, changeset: PackageChangeset, meta: Metadata): void {
+  const filename = `auto-${sanitizeName(changeset.name)}-${id}.md`
   const filepath = join(CHANGESET_DIR, filename)
-  const content = generateChangesetContent(changeset)
+  const content = generateChangesetContent(changeset, meta)
 
   writeFileSync(filepath, content)
   console.log(`  ${changeset.bump} ${changeset.name} → .changeset/${filename}`)
@@ -266,28 +302,46 @@ function writeChangeset(changeset: PackageChangeset): void {
 
 // --- Main ---
 
-function parseArgs(): { base: string; capMajor: boolean } {
+function parseArgs(): { base: string; branch: string | null; repo: string | null; pr: number | null; capMajor: boolean } {
   const args = process.argv.slice(2)
   let base = 'origin/main'
+  let branch: string | null = null
+  let repo: string | null = null
+  let pr: number | null = null
   let capMajor = false
 
   for (let i = 0; i < args.length; i++) {
     if (args[i] === '--base' && args[i + 1]) {
       base = args[i + 1]
       i++
+    } else if (args[i] === '--branch' && args[i + 1]) {
+      branch = args[i + 1]
+      i++
+    } else if (args[i] === '--repo' && args[i + 1]) {
+      repo = args[i + 1]
+      i++
+    } else if (args[i] === '--pr' && args[i + 1]) {
+      pr = parseInt(args[i + 1], 10)
+      i++
     } else if (args[i] === '--cap-major') {
       capMajor = true
     }
   }
 
-  return { base, capMajor }
+  return { base, branch, repo, pr, capMajor }
 }
 
 function main() {
   const args = parseArgs()
   capMajor = args.capMajor
 
-  console.log(`Scanning conventional commits: ${args.base}..HEAD\n`)
+  if (!args.branch) {
+    console.error('Error: --branch <name> is required')
+    process.exit(1)
+  }
+
+  const id = branchId(args.base)
+  console.log(`Scanning conventional commits: ${args.base}..HEAD (branch: ${args.branch}, id: ${id})\n`)
 
   const packageMap = discoverPackages()
   if (packageMap.size === 0) {
@@ -304,7 +358,7 @@ function main() {
   const shas = getCommitRange(args.base)
   if (shas.length === 0) {
     console.log('No commits found in range.')
-    cleanAutoChangesets()
+    cleanBranchChangesets(id)
     return
   }
 
@@ -318,18 +372,23 @@ function main() {
 
   if (commits.length === 0) {
     console.log('No conventional commits that affect publishable packages.')
-    cleanAutoChangesets()
+    cleanBranchChangesets(id)
     return
   }
 
   const changesets = aggregateByPackage(commits)
+  const meta: Metadata = {
+    branch: args.branch,
+    repo: args.repo ?? undefined,
+    pr: args.pr ?? undefined,
+  }
 
-  // Clean stale auto-changesets and write new ones
-  cleanAutoChangesets()
+  // Clean this branch's old changesets and write fresh ones
+  cleanBranchChangesets(id)
 
   console.log(`Generating ${changesets.length} changeset(s):\n`)
   for (const cs of changesets) {
-    writeChangeset(cs)
+    writeChangeset(id, cs, meta)
   }
 
   console.log('\nDone.')
