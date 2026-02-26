@@ -21,9 +21,8 @@ function getNumericStore(world: World, trait: Trait): Record<string, number[]> {
  * Sync transforms and UVs to GPU instance buffers.
  *
  * Position, rotation, and scale are read directly from the Object3D via
- * spriteRefs (one Map lookup per entity). These properties are too hot to
- * observe — accessor overhead on game-loop reads/writes costs more than the
- * Map lookup saves.
+ * spriteArr (flat array indexed by entity SoA index). Same O(1) array
+ * access pattern as all other SoA stores — zero hash overhead.
  *
  * UV, layer, zIndex, and batch slot are read from SoA stores (flat arrays
  * indexed by entity ID) — zero allocation, zero object dereference.
@@ -36,7 +35,7 @@ export function transformSyncSystem(world: World): void {
   const registry = registryEntities[0]!.get(BatchRegistry) as RegistryData | undefined
   if (!registry) return
   const meshSlots = registry.batchSlots
-  const spriteRefs = registry.spriteRefs
+  const spriteArr = registry.spriteArr
 
   // Pre-resolve SoA stores once — reused for every entity in the loop.
   const firstEntity = entities[0]
@@ -65,7 +64,7 @@ export function transformSyncSystem(world: World): void {
     const mesh = meshSlots[batchIdx] as SpriteBatch | undefined
     if (!mesh) continue
 
-    const sprite = spriteRefs.get(entity)
+    const sprite = spriteArr[eid]
     if (!sprite) continue
 
     const layer = layerArr[eid]!

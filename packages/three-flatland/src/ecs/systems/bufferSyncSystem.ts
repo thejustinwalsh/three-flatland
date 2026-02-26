@@ -12,6 +12,7 @@ import type { MaterialEffect } from '../../materials/MaterialEffect'
 import type { Sprite2D } from '../../sprites/Sprite2D'
 import type { SpriteBatch } from '../../pipeline/SpriteBatch'
 import type { RegistryData } from '../batchUtils'
+import { ENTITY_ID_MASK } from '../snapshot'
 
 const Changed = createChanged()
 
@@ -125,7 +126,7 @@ export function bufferSyncEffectSystem(
       if (processed.has(entity)) continue
       processed.add(entity)
 
-      const sprite = registry.spriteRefs.get(entity)
+      const sprite = registry.spriteArr[(entity as unknown as number) & ENTITY_ID_MASK]
       if (!sprite) continue
 
       const resolved = resolveBatchSlot(entity, batchSlots)

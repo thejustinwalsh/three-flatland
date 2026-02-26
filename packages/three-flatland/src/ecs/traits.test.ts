@@ -114,16 +114,17 @@ describe('ECS traits — sprite enrollment lifecycle', () => {
     expect(matRef!.materialId).toBe(material.batchId)
   })
 
-  it('should register in spriteRefs map when BatchRegistry exists', () => {
+  it('should register in spriteArr when BatchRegistry exists', () => {
     setup()
-    // Spawn a registry entity so spriteRefs map is available
+    // Spawn a registry entity so spriteArr is available
     const registryEntity = world.spawn(BatchRegistry())
     const registry = registryEntity.get(BatchRegistry) as RegistryData | undefined
 
     const sprite = new Sprite2D({ material })
     sprite._enrollInWorld(world)
 
-    expect(registry!.spriteRefs.get(sprite._entity!)).toBe(sprite)
+    const eid = (sprite._entity! as unknown as number) & ((1 << 20) - 1)
+    expect(registry!.spriteArr[eid]).toBe(sprite)
   })
 
   it('should have IsRenderable tag', () => {

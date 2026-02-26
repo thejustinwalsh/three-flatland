@@ -24,7 +24,7 @@ import {
   BatchRegistry,
 } from '../ecs/traits'
 import type { RegistryData } from '../ecs/batchUtils'
-import { readField, readTrait, writeTrait } from '../ecs/snapshot'
+import { ENTITY_ID_MASK, readField, readTrait, writeTrait } from '../ecs/snapshot'
 import { getGlobalWorld } from '../ecs/world'
 
 /** Pre-enrollment snapshot for Sprite2D visual state. Types match trait schemas. */
@@ -976,14 +976,14 @@ export class Sprite2D extends Mesh {
       BatchSlot({ batchIdx: -1, slot: -1 }),
     )
 
-    // Register in the spriteRefs map for O(1) lookup by entity ID.
-    // This replaces the ThreeRef ECS trait — avoids per-frame allocation
-    // overhead from entity.get() in the hot transform sync loop.
+    // Register in the spriteArr for O(1) lookup by entity SoA index.
+    // Pure array indexing — same pattern as other SoA stores.
     const registryEntities = w.query(BatchRegistry)
     if (registryEntities.length > 0) {
       const registry = registryEntities[0]!.get(BatchRegistry) as RegistryData | undefined
       if (registry) {
-        registry.spriteRefs.set(this._entity, this)
+        const eid = (this._entity as unknown as number) & ENTITY_ID_MASK
+        registry.spriteArr[eid] = this
       }
     }
 
@@ -1037,13 +1037,14 @@ export class Sprite2D extends Mesh {
       effect._entity = null
     }
 
-    // Remove from spriteRefs map
+    // Remove from spriteArr
     if (this._flatlandWorld) {
       const registryEntities = this._flatlandWorld.query(BatchRegistry)
       if (registryEntities.length > 0) {
         const registry = registryEntities[0]!.get(BatchRegistry) as RegistryData | undefined
         if (registry) {
-          registry.spriteRefs.delete(this._entity)
+          const eid = (this._entity as unknown as number) & ENTITY_ID_MASK
+          registry.spriteArr[eid] = null
         }
       }
     }

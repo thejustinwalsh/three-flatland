@@ -155,7 +155,7 @@ export class SpriteGroup extends Group implements WorldProvider {
           materialRefs: new Map(),
           batchSlots: [],
           batchSlotFreeList: [],
-          spriteRefs: new Map(),
+          spriteArr: [],
         })
       )
     }
@@ -597,7 +597,7 @@ export class SpriteGroup extends Group implements WorldProvider {
       registry.renderOrderDirty = false
       registry.batchSlots.length = 0
       registry.batchSlotFreeList.length = 0
-      registry.spriteRefs.clear()
+      registry.spriteArr.length = 0
     }
 
     // Flush deferred destroys so zombies don't outlive the group

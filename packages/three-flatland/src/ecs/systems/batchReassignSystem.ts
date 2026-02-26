@@ -24,6 +24,7 @@ import {
   findOrCreateBatch,
   recycleBatchIfEmpty,
 } from '../batchUtils'
+import { ENTITY_ID_MASK } from '../snapshot'
 
 const Changed = createChanged()
 
@@ -54,7 +55,7 @@ export function batchReassignSystem(
   if (!registry) return
 
   for (const entity of toReassign) {
-    const sprite = registry.spriteRefs.get(entity)
+    const sprite = registry.spriteArr[(entity as unknown as number) & ENTITY_ID_MASK]
     if (!sprite) continue
 
     const newLayer = entity.get(SpriteLayer)

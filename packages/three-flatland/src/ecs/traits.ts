@@ -128,8 +128,9 @@ export const BatchRegistry = trait(() => ({
   batchSlots: [] as (SpriteBatch | null)[],
   /** Free indices in batchSlots for reuse. */
   batchSlotFreeList: [] as number[],
-  /** Entity ID → Sprite2D for O(1) hot-path lookup without koota entity.get(). */
-  spriteRefs: new Map<Entity, Sprite2D>(),
+  /** Flat array of Sprite2D refs indexed by entity SoA index (eid).
+   *  Pure array indexing — same O(1) pattern as other SoA stores. */
+  spriteArr: [] as (Sprite2D | null)[],
 }))
 
 // ============================================

@@ -15,9 +15,9 @@ export interface RegistryData {
   materialRefs: Map<number, { material: Sprite2DMaterial; version: number }>
   batchSlots: (SpriteBatch | null)[]
   batchSlotFreeList: number[]
-  /** Entity → Sprite2D mapping. Replaces the ThreeRef ECS trait for O(1)
-   *  access without per-frame allocation overhead from entity.get(). */
-  spriteRefs: Map<Entity, Sprite2D>
+  /** Flat array of Sprite2D refs indexed by entity SoA index (eid).
+   *  Pure array indexing — same O(1) pattern as other SoA stores. */
+  spriteArr: (Sprite2D | null)[]
 }
 
 /**
