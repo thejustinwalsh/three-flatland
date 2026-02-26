@@ -300,7 +300,7 @@ export class SpriteGroup extends Group implements WorldProvider {
   private _runSystems(): void {
     if (!this._world) return
 
-    const endTotal = measure(this._runSystems)
+    const endTotal = measure(this._runSystems.name)
 
     // Deferred destroy — flush zombie entities from previous frame's
     // batchRemoveSystem. Pushes koota's cascading trait removal cost
@@ -310,12 +310,12 @@ export class SpriteGroup extends Group implements WorldProvider {
     end()
 
     // Check for material schema changes (tier upgrades)
-    end = measure(this._checkMaterialVersions)
+    end = measure(this._checkMaterialVersions.name)
     this._checkMaterialVersions()
     end()
 
     // Collect effect traits
-    end = measure(this._rebuildEffectTraits)
+    end = measure(this._rebuildEffectTraits.name)
     this._rebuildEffectTraits()
     end()
 
@@ -366,7 +366,7 @@ export class SpriteGroup extends Group implements WorldProvider {
     // Late assignment pass: catches entities enrolled after the primary
     // batchAssignSystem pass (e.g., enrolled between render calls in
     // R3F reconciliation). A no-op in the common case.
-    end = measure(this._lateAssignPass)
+    end = measure(this._lateAssignPass.name)
     const lateAssigned = batchAssignSystem(this._world, this._effectTraits)
     if (lateAssigned) {
       if (this.autoInvalidateTransforms) {
@@ -379,7 +379,7 @@ export class SpriteGroup extends Group implements WorldProvider {
     // Flush dirty ranges — single consolidated GPU upload per attribute.
     // All write methods track min/max slot indices; this converts them to
     // addUpdateRange calls so only the changed portion is uploaded.
-    end = measure(this._flushDirtyRanges)
+    end = measure(this._flushDirtyRanges.name)
     const registry = this._getRegistry()
     if (registry) {
       for (const batchEntity of registry.activeBatches) {

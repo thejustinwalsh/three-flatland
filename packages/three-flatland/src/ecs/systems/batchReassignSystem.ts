@@ -159,7 +159,6 @@ function syncAllBuffers(
 
 function writePackedEffects(slot: number, mesh: SpriteBatch, sprite: Sprite2D): void {
   const material = sprite.material
-  const tier = material._effectTier
 
   mesh.writeEffectSlot(slot, 0, 0, sprite._effectFlags)
 
