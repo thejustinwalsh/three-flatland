@@ -1,5 +1,5 @@
 import { Group, type Object3D } from 'three'
-import { createWorld, type World, type Trait } from 'koota'
+import { createWorld, type World, type Trait, type Entity } from 'koota'
 import type { Sprite2D } from '../sprites/Sprite2D'
 import type { SpriteGroupOptions, RenderStats } from './types'
 import { DEFAULT_BATCH_SIZE } from './SpriteBatch'
@@ -21,6 +21,7 @@ import {
   batchAssignSystem,
   batchReassignSystem,
   batchRemoveSystem,
+  deferredDestroySystem,
   bufferSyncColorSystem,
   bufferSyncFlipSystem,
   bufferSyncEffectSystem,
@@ -100,6 +101,12 @@ export class SpriteGroup extends Group implements WorldProvider {
    * update() AND renderer.render() in the same frame.
    */
   private _systemsRanThisFrame: boolean = false
+
+  /**
+   * Entities whose destruction is deferred to the top of the next frame.
+   * Populated by batchRemoveSystem, drained by deferredDestroySystem.
+   */
+  private _pendingDestroy: Entity[] = []
 
   /**
    * Bound Group.prototype.add for bypassing SpriteGroup override in scene graph sync.
@@ -292,14 +299,27 @@ export class SpriteGroup extends Group implements WorldProvider {
   private _runSystems(): void {
     if (!this._world) return
 
+    const endTotal = measure(this._runSystems)
+
+    // Deferred destroy — flush zombie entities from previous frame's
+    // batchRemoveSystem. Pushes koota's cascading trait removal cost
+    // out of the hot render path.
+    let end = measure(deferredDestroySystem)
+    deferredDestroySystem(this._pendingDestroy)
+    end()
+
     // Check for material schema changes (tier upgrades)
+    end = measure(this._checkMaterialVersions)
     this._checkMaterialVersions()
+    end()
 
     // Collect effect traits
+    end = measure(this._rebuildEffectTraits)
     this._rebuildEffectTraits()
+    end()
 
     // Batch lifecycle systems
-    let end = measure(batchAssignSystem)
+    end = measure(batchAssignSystem)
     batchAssignSystem(this._world, this._effectTraits)
     end()
 
@@ -336,18 +356,16 @@ export class SpriteGroup extends Group implements WorldProvider {
     sceneGraphSyncSystem(this._world, this, this._parentAdd, this._parentRemove)
     end()
 
-    // Batch removal — runs LAST so entity.destroy() cascading trait removals
-    // don't corrupt upstream systems that already ran this frame.
+    // Batch removal — frees slots, strips batch traits, defers entity.destroy()
+    // to top of next frame via _pendingDestroy.
     end = measure(batchRemoveSystem)
-    batchRemoveSystem(this._world)
+    batchRemoveSystem(this._world, this._pendingDestroy)
     end()
 
     // Late assignment pass: catches entities enrolled after the primary
-    // batchAssignSystem pass (e.g., sprite re-added after removal in the
-    // same frame, or enrolled between render calls in R3F reconciliation).
-    // The Added(IsRenderable) tracker was consumed by the first pass, so
-    // this only processes entities added since then — a no-op in the
-    // common case.
+    // batchAssignSystem pass (e.g., enrolled between render calls in
+    // R3F reconciliation). A no-op in the common case.
+    end = measure(this._lateAssignPass)
     const lateAssigned = batchAssignSystem(this._world, this._effectTraits)
     if (lateAssigned) {
       if (this.autoInvalidateTransforms) {
@@ -355,7 +373,31 @@ export class SpriteGroup extends Group implements WorldProvider {
       }
       sceneGraphSyncSystem(this._world, this, this._parentAdd, this._parentRemove)
     }
+    end()
+
+    // Flush dirty ranges — single consolidated GPU upload per attribute.
+    // All write methods track min/max slot indices; this converts them to
+    // addUpdateRange calls so only the changed portion is uploaded.
+    end = measure(this._flushDirtyRanges)
+    const registry = this._getRegistry()
+    if (registry) {
+      for (const batchEntity of registry.activeBatches) {
+        const batchMesh = batchEntity.get(BatchMesh)
+        if (batchMesh?.mesh) {
+          batchMesh.mesh.flushDirtyRanges()
+        }
+      }
+    }
+    end()
+
+    endTotal()
   }
+
+  /** Named function target for measure() labeling of the late assignment pass. */
+  private _lateAssignPass(): void { /* measured wrapper only */ }
+
+  /** Named function target for measure() labeling of the dirty range flush. */
+  private _flushDirtyRanges(): void { /* measured wrapper only */ }
 
   /**
    * Track a material for schema version detection.
@@ -435,13 +477,8 @@ export class SpriteGroup extends Group implements WorldProvider {
         }
       }
 
-      // Remove batch tracking traits
-      if (entity.has(BatchSlot)) {
-        entity.set(BatchSlot, { batchIdx: -1, slot: -1 }, false)
-      }
-      if (entity.has(IsBatched)) {
-        entity.remove(IsBatched)
-      }
+      // Reset batch tracking (IsBatched and BatchSlot persist — no archetype change)
+      entity.set(BatchSlot, { batchIdx: -1, slot: -1 }, false)
 
       // Re-trigger IsRenderable so batchAssignSystem picks it up
       // and creates a new batch with the correct buffer layout
@@ -560,6 +597,9 @@ export class SpriteGroup extends Group implements WorldProvider {
       registry.batchSlots.length = 0
       registry.batchSlotFreeList.length = 0
     }
+
+    // Flush deferred destroys so zombies don't outlive the group
+    deferredDestroySystem(this._pendingDestroy)
 
     this._spriteCount = 0
     this._effectTraits.clear()

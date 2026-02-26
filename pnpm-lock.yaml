@@ -19,8 +19,8 @@ catalogs:
       specifier: ^0.183.1
       version: 0.183.1
     koota:
-      specifier: ^0.1.0
-      version: 0.1.12
+      specifier: ^0.6.5
+      version: 0.6.5
     react:
       specifier: ^19.0.0
       version: 19.2.3
@@ -132,7 +132,7 @@ importers:
         version: 5.17.3(@types/node@22.19.7)(jiti@1.21.7)(rollup@4.56.0)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.2)
       koota:
         specifier: 'catalog:'
-        version: 0.1.12(@react-three/fiber@10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.183.1))(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.183.1)
+        version: 0.6.5(@types/react@19.2.9)(react@19.2.3)
       pixelarticons:
         specifier: ^1.8.1
         version: 1.8.1
@@ -709,8 +709,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/nodes
       koota:
-        specifier: ^0.1.0
-        version: 0.1.12(@react-three/fiber@10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.183.1))(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.183.1)
+        specifier: ^0.6.5
+        version: 0.6.5(@types/react@19.2.9)(react@19.2.3)
       three-flatland:
         specifier: workspace:*
         version: link:../../packages/three-flatland
@@ -781,7 +781,7 @@ importers:
     dependencies:
       koota:
         specifier: 'catalog:'
-        version: 0.1.12(@react-three/fiber@10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.183.1))(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.183.1)
+        version: 0.6.5(@types/react@19.2.9)(react@19.2.3)
     devDependencies:
       '@react-three/fiber':
         specifier: 'catalog:'
@@ -3448,19 +3448,15 @@ packages:
     resolution: {integrity: sha512-dhG34DXATL5hSxJbIexCft8FChFXtmskoZYnoPWjXQuebWYCNkVeV3KkGegCK9CP1oswI/vQibS2GY7Em/sJJA==}
     engines: {node: '>= 8'}
 
-  koota@0.1.12:
-    resolution: {integrity: sha512-szsxHTQmi7DP6WDdrmPUDPOsk0GSU7UgUK7i0hB355D9jJ9BYhG0GDeTTpgKn8oRjfNUag1Dff8s45pbBLCWBw==}
+  koota@0.6.5:
+    resolution: {integrity: sha512-FW4UVvYq0KP9/vv4K4Q0beHlDy6LLD2BMLgEqfM+0hcKhfJ5/TNqf1TbwdQxxL1+oNmALd168VltDdO7g/7cgA==}
     peerDependencies:
-      '@react-three/fiber': ^8.17.10
-      react: ^18.3.1
-      react-dom: ^18.3.1
-      three: '>=0.159'
+      '@types/react': '>=18.0.0'
+      react: '>=18.0.0'
     peerDependenciesMeta:
-      '@react-three/fiber':
+      '@types/react':
         optional: true
-      react-dom:
-        optional: true
-      three:
+      react:
         optional: true
 
   levn@0.4.1:
@@ -7844,13 +7840,10 @@ snapshots:
 
   klona@2.0.6: {}
 
-  koota@0.1.12(@react-three/fiber@10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.183.1))(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.183.1):
-    dependencies:
-      react: 19.2.3
+  koota@0.6.5(@types/react@19.2.9)(react@19.2.3):
     optionalDependencies:
-      '@react-three/fiber': 10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.183.1)
-      react-dom: 19.2.3(react@19.2.3)
-      three: 0.183.1
+      '@types/react': 19.2.9
+      react: 19.2.3
 
   levn@0.4.1:
     dependencies:

@@ -52,8 +52,6 @@ export function bufferSyncColorSystem(world: World): void {
   const batchSlots = getBatchSlots(world)
   if (!batchSlots) return
 
-  const dirtyMeshes = new Set<SpriteBatch>()
-
   for (const entity of entities) {
     const color = entity.get(SpriteColor)
     if (!color) continue
@@ -61,12 +59,6 @@ export function bufferSyncColorSystem(world: World): void {
     if (!resolved) continue
 
     resolved.mesh.writeColor(resolved.slot, color.r, color.g, color.b, color.a)
-    dirtyMeshes.add(resolved.mesh)
-  }
-
-  for (const mesh of dirtyMeshes) {
-    mesh.getColorAttribute().needsUpdate = true
-    mesh.applyUpdateRanges()
   }
 }
 
@@ -80,8 +72,6 @@ export function bufferSyncUVSystem(world: World): void {
   const batchSlots = getBatchSlots(world)
   if (!batchSlots) return
 
-  const dirtyMeshes = new Set<SpriteBatch>()
-
   for (const entity of entities) {
     const uv = entity.get(SpriteUV)
     if (!uv) continue
@@ -89,12 +79,6 @@ export function bufferSyncUVSystem(world: World): void {
     if (!resolved) continue
 
     resolved.mesh.writeUV(resolved.slot, uv.x, uv.y, uv.w, uv.h)
-    dirtyMeshes.add(resolved.mesh)
-  }
-
-  for (const mesh of dirtyMeshes) {
-    mesh.getUVAttribute().needsUpdate = true
-    mesh.applyUpdateRanges()
   }
 }
 
@@ -108,8 +92,6 @@ export function bufferSyncFlipSystem(world: World): void {
   const batchSlots = getBatchSlots(world)
   if (!batchSlots) return
 
-  const dirtyMeshes = new Set<SpriteBatch>()
-
   for (const entity of entities) {
     const flip = entity.get(SpriteFlip)
     if (!flip) continue
@@ -117,12 +99,6 @@ export function bufferSyncFlipSystem(world: World): void {
     if (!resolved) continue
 
     resolved.mesh.writeFlip(resolved.slot, flip.x, flip.y)
-    dirtyMeshes.add(resolved.mesh)
-  }
-
-  for (const mesh of dirtyMeshes) {
-    mesh.getFlipAttribute().needsUpdate = true
-    mesh.applyUpdateRanges()
   }
 }
 
@@ -140,7 +116,6 @@ export function bufferSyncEffectSystem(
   if (!batchSlots) return
 
   const processed = new Set<Entity>()
-  const dirtyMeshes = new Set<SpriteBatch>()
 
   for (const [effectTrait] of effectTraits) {
     const entities = world.query(Changed(effectTrait), IsBatched, ThreeRef, BatchSlot)
@@ -156,12 +131,7 @@ export function bufferSyncEffectSystem(
       if (!resolved) continue
 
       writePackedEffects(resolved.slot, resolved.mesh, sprite)
-      dirtyMeshes.add(resolved.mesh)
     }
-  }
-
-  for (const mesh of dirtyMeshes) {
-    mesh.applyUpdateRanges()
   }
 }
 
@@ -211,12 +181,5 @@ function writePackedEffects(slot: number, mesh: SpriteBatch, sprite: Sprite2D): 
         }
       }
     }
-  }
-
-  // Mark dirty
-  const numVec4s = tier / 4
-  for (let i = 0; i < numVec4s; i++) {
-    const attr = mesh.getCustomAttribute(`effectBuf${i}`)
-    if (attr) attr.needsUpdate = true
   }
 }

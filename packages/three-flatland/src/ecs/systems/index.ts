@@ -1,6 +1,6 @@
 export { batchAssignSystem } from './batchAssignSystem'
 export { batchReassignSystem } from './batchReassignSystem'
-export { batchRemoveSystem } from './batchRemoveSystem'
+export { batchRemoveSystem, deferredDestroySystem } from './batchRemoveSystem'
 export {
   bufferSyncColorSystem,
   bufferSyncUVSystem,

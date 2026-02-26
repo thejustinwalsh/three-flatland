@@ -1,4 +1,4 @@
-import { $internal, type Entity, type Trait } from 'koota'
+import { getStore, universe, type Entity, type Trait } from 'koota'
 
 // Koota entity bit-packing constants (stable across versions)
 const ENTITY_ID_MASK = (1 << 20) - 1
@@ -22,9 +22,9 @@ export function readField(
   fallback: number
 ): number {
   if (entity) {
-    const store = trait[$internal].stores[(entity as number) >>> WORLD_ID_SHIFT] as
-      Record<string, number[]> | undefined
-    return store![field]![(entity as number) & ENTITY_ID_MASK]!
+    const world = universe.worlds[(entity as number) >>> WORLD_ID_SHIFT]!
+    const store = getStore(world, trait) as Record<string, number[]>
+    return store[field]![(entity as number) & ENTITY_ID_MASK]!
   }
   return fallback
 }

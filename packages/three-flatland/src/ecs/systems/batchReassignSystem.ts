@@ -131,24 +131,20 @@ function syncAllBuffers(
   const c = entity.get(SpriteColor)
   if (c) {
     mesh.writeColor(slot, c.r, c.g, c.b, c.a)
-    mesh.getColorAttribute().needsUpdate = true
   }
 
   const uv = entity.get(SpriteUV)
   if (uv) {
     mesh.writeUV(slot, uv.x, uv.y, uv.w, uv.h)
-    mesh.getUVAttribute().needsUpdate = true
   }
 
   const f = entity.get(SpriteFlip)
   if (f) {
     mesh.writeFlip(slot, f.x, f.y)
-    mesh.getFlipAttribute().needsUpdate = true
   }
 
   sprite.updateMatrix()
   mesh.writeMatrix(slot, sprite.matrix)
-  mesh.instanceMatrix.needsUpdate = true
 
   // Sync effects
   const material = sprite.material
@@ -186,9 +182,4 @@ function writePackedEffects(slot: number, mesh: SpriteBatch, sprite: Sprite2D): 
     }
   }
 
-  const numVec4s = tier / 4
-  for (let i = 0; i < numVec4s; i++) {
-    const attr = mesh.getCustomAttribute(`effectBuf${i}`)
-    if (attr) attr.needsUpdate = true
-  }
 }

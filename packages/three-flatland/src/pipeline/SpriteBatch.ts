@@ -68,12 +68,24 @@ export class SpriteBatch extends InstancedMesh {
   /**
    * Custom attribute buffers (from material schema).
    */
-  private _customAttributes: Map<string, { buffer: Float32Array; size: number; attribute: InstancedBufferAttribute }> = new Map()
+  private _customAttributes: Map<string, { buffer: Float32Array; size: number; attribute: InstancedBufferAttribute; dirtyMin: number; dirtyMax: number }> = new Map()
 
   /**
    * Whether transforms need to be re-read from sprites during upload.
    */
   private _transformsDirty: boolean = false
+
+  // Per-attribute dirty slot ranges (min/max slot index).
+  // Infinity/−1 sentinel means "clean". Write methods expand the range;
+  // flushDirtyRanges() converts to addUpdateRange + needsUpdate once per frame.
+  private _matrixDirtyMin = Infinity
+  private _matrixDirtyMax = -1
+  private _uvDirtyMin = Infinity
+  private _uvDirtyMax = -1
+  private _colorDirtyMin = Infinity
+  private _colorDirtyMax = -1
+  private _flipDirtyMin = Infinity
+  private _flipDirtyMax = -1
 
   constructor(material: Sprite2DMaterial, maxSize: number = DEFAULT_BATCH_SIZE) {
     // Allocate core attribute buffers BEFORE creating InstancedMesh
@@ -118,7 +130,7 @@ export class SpriteBatch extends InstancedMesh {
     // Create custom attributes from material schema BEFORE super()
     // This is critical - the shader may compile in super() or on first render,
     // and all attributes must be present on the geometry at that time
-    const customAttributes = new Map<string, { buffer: Float32Array; size: number; attribute: InstancedBufferAttribute }>()
+    const customAttributes = new Map<string, { buffer: Float32Array; size: number; attribute: InstancedBufferAttribute; dirtyMin: number; dirtyMax: number }>()
     const schema = material.getInstanceAttributeSchema()
     for (const [name, config] of schema) {
       const size = getTypeSize(config.type)
@@ -139,7 +151,7 @@ export class SpriteBatch extends InstancedMesh {
       const attr = new InstancedBufferAttribute(buffer, size)
       attr.setUsage(DynamicDrawUsage)
       geometry.setAttribute(name, attr)
-      customAttributes.set(name, { buffer, size, attribute: attr })
+      customAttributes.set(name, { buffer, size, attribute: attr, dirtyMin: Infinity, dirtyMax: -1 })
     }
 
     // Use the material directly - it's already set up for instanced rendering
@@ -176,6 +188,8 @@ export class SpriteBatch extends InstancedMesh {
     this._instanceColor[index * 4 + 1] = g
     this._instanceColor[index * 4 + 2] = b
     this._instanceColor[index * 4 + 3] = a
+    if (index < this._colorDirtyMin) this._colorDirtyMin = index
+    if (index > this._colorDirtyMax) this._colorDirtyMax = index
   }
 
   writeUV(index: number, x: number, y: number, w: number, h: number): void {
@@ -183,15 +197,30 @@ export class SpriteBatch extends InstancedMesh {
     this._instanceUV[index * 4 + 1] = y
     this._instanceUV[index * 4 + 2] = w
     this._instanceUV[index * 4 + 3] = h
+    if (index < this._uvDirtyMin) this._uvDirtyMin = index
+    if (index > this._uvDirtyMax) this._uvDirtyMax = index
   }
 
   writeFlip(index: number, flipX: number, flipY: number): void {
     this._instanceFlip[index * 2 + 0] = flipX
     this._instanceFlip[index * 2 + 1] = flipY
+    if (index < this._flipDirtyMin) this._flipDirtyMin = index
+    if (index > this._flipDirtyMax) this._flipDirtyMax = index
   }
 
   writeMatrix(index: number, matrix: Matrix4): void {
     this.setMatrixAt(index, matrix)
+    if (index < this._matrixDirtyMin) this._matrixDirtyMin = index
+    if (index > this._matrixDirtyMax) this._matrixDirtyMax = index
+  }
+
+  /**
+   * Expand the matrix dirty range for a slot.
+   * Used by transformSyncSystem which writes the instanceMatrix buffer directly.
+   */
+  markMatrixDirty(slot: number): void {
+    if (slot < this._matrixDirtyMin) this._matrixDirtyMin = slot
+    if (slot > this._matrixDirtyMax) this._matrixDirtyMax = slot
   }
 
   writeCustom(index: number, name: string, value: number | number[]): void {
@@ -206,6 +235,8 @@ export class SpriteBatch extends InstancedMesh {
         buffer[index * size + i] = value[i] ?? 0
       }
     }
+    if (index < custom.dirtyMin) custom.dirtyMin = index
+    if (index > custom.dirtyMax) custom.dirtyMax = index
   }
 
   getCustomBuffer(name: string): { buffer: Float32Array; size: number } | undefined {
@@ -234,6 +265,8 @@ export class SpriteBatch extends InstancedMesh {
     const custom = this._customAttributes.get(attrName)
     if (!custom) return
     custom.buffer[index * 4 + component] = value
+    if (index < custom.dirtyMin) custom.dirtyMin = index
+    if (index > custom.dirtyMax) custom.dirtyMax = index
   }
 
   // ============================================
@@ -294,7 +327,8 @@ export class SpriteBatch extends InstancedMesh {
 
     // Make slot invisible (alpha = 0) so it doesn't render
     this._instanceColor[index * 4 + 3] = 0
-    this._colorAttribute.needsUpdate = true
+    if (index < this._colorDirtyMin) this._colorDirtyMin = index
+    if (index > this._colorDirtyMax) this._colorDirtyMax = index
 
     this._freeList.push(index)
     this._activeCount--
@@ -320,13 +354,11 @@ export class SpriteBatch extends InstancedMesh {
   }
 
   /**
-   * Sync the instance count to include all allocated slots
-   * and apply GPU update ranges.
+   * Sync the instance count to include all allocated slots.
    * Free slots have alpha=0 so they're invisible.
    */
   syncCount(): void {
     this.count = this._nextIndex
-    this.applyUpdateRanges()
     // Update bounding sphere for devtools highlight and frustum visualization
     if (this.count > 0) {
       this.computeBoundingSphere()
@@ -334,36 +366,58 @@ export class SpriteBatch extends InstancedMesh {
   }
 
   /**
-   * Limit GPU buffer uploads to only the used portion of each attribute.
+   * Flush per-attribute dirty ranges to GPU upload ranges.
    *
-   * Without this, the renderer uploads the entire buffer (e.g., 8192 slots
-   * = ~524KB for matrices alone) via `bufferSubData`, which causes implicit
-   * GPU pipeline synchronization when the buffer is still in use by the
-   * previous frame's draw call. With 100 active sprites this reduces uploads
-   * from ~1MB to ~7KB.
+   * Each write method (writeColor, writeUV, etc.) tracks the min/max slot
+   * that was touched. This method converts those slot ranges into
+   * `addUpdateRange` calls so the renderer uploads only the changed portion
+   * of each buffer via `bufferSubData`.
    *
-   * Call this once per frame after all buffer writes are complete (typically
-   * after transform and buffer sync systems have run).
+   * Call once per frame after all systems have run — replaces the old
+   * `applyUpdateRanges()` which always uploaded [0, _nextIndex] for every
+   * attribute regardless of what actually changed.
    */
-  applyUpdateRanges(): void {
-    const used = this._nextIndex
-    if (used === 0) return
+  flushDirtyRanges(): void {
+    if (this._matrixDirtyMax >= 0) {
+      this.instanceMatrix.clearUpdateRanges()
+      this.instanceMatrix.addUpdateRange(this._matrixDirtyMin * 16, (this._matrixDirtyMax - this._matrixDirtyMin + 1) * 16)
+      this.instanceMatrix.needsUpdate = true
+      this._matrixDirtyMin = Infinity
+      this._matrixDirtyMax = -1
+    }
 
-    this.instanceMatrix.clearUpdateRanges()
-    this.instanceMatrix.addUpdateRange(0, used * 16)
+    if (this._uvDirtyMax >= 0) {
+      this._uvAttribute.clearUpdateRanges()
+      this._uvAttribute.addUpdateRange(this._uvDirtyMin * 4, (this._uvDirtyMax - this._uvDirtyMin + 1) * 4)
+      this._uvAttribute.needsUpdate = true
+      this._uvDirtyMin = Infinity
+      this._uvDirtyMax = -1
+    }
 
-    this._uvAttribute.clearUpdateRanges()
-    this._uvAttribute.addUpdateRange(0, used * 4)
+    if (this._colorDirtyMax >= 0) {
+      this._colorAttribute.clearUpdateRanges()
+      this._colorAttribute.addUpdateRange(this._colorDirtyMin * 4, (this._colorDirtyMax - this._colorDirtyMin + 1) * 4)
+      this._colorAttribute.needsUpdate = true
+      this._colorDirtyMin = Infinity
+      this._colorDirtyMax = -1
+    }
 
-    this._colorAttribute.clearUpdateRanges()
-    this._colorAttribute.addUpdateRange(0, used * 4)
-
-    this._flipAttribute.clearUpdateRanges()
-    this._flipAttribute.addUpdateRange(0, used * 2)
+    if (this._flipDirtyMax >= 0) {
+      this._flipAttribute.clearUpdateRanges()
+      this._flipAttribute.addUpdateRange(this._flipDirtyMin * 2, (this._flipDirtyMax - this._flipDirtyMin + 1) * 2)
+      this._flipAttribute.needsUpdate = true
+      this._flipDirtyMin = Infinity
+      this._flipDirtyMax = -1
+    }
 
     for (const [, custom] of this._customAttributes) {
-      custom.attribute.clearUpdateRanges()
-      custom.attribute.addUpdateRange(0, used * custom.size)
+      if (custom.dirtyMax >= 0) {
+        custom.attribute.clearUpdateRanges()
+        custom.attribute.addUpdateRange(custom.dirtyMin * custom.size, (custom.dirtyMax - custom.dirtyMin + 1) * custom.size)
+        custom.attribute.needsUpdate = true
+        custom.dirtyMin = Infinity
+        custom.dirtyMax = -1
+      }
     }
   }
 

@@ -30,7 +30,7 @@
   "dependencies": {
     "three-flatland": "^0.1.0-alpha.1",
     "@three-flatland/nodes": "^0.1.0-alpha.1",
-    "koota": "^0.1.0"
+    "koota": "^0.6.5"
   },
   "peerDependencies": {
     "@react-three/fiber": "catalog:",

@@ -2,7 +2,6 @@ import { createAdded } from 'koota'
 import type { World, Entity, Trait } from 'koota'
 import {
   IsRenderable,
-  IsBatched,
   SpriteColor,
   SpriteUV,
   SpriteFlip,
@@ -35,7 +34,10 @@ export function batchAssignSystem(
   world: World,
   effectTraits: ReadonlyMap<Trait, typeof MaterialEffect>
 ): boolean {
-  const added = world.query(Added(IsRenderable), ThreeRef)
+  // Query Added(IsRenderable) WITHOUT ThreeRef to avoid a koota 0.6 bug where
+  // multi-trait Added queries fail to detect new entities after a remove+re-add
+  // cycle on the same archetype combination.
+  const added = world.query(Added(IsRenderable))
   if (added.length === 0) return false
 
   const registryEntities = world.query(BatchRegistry)
@@ -43,7 +45,11 @@ export function batchAssignSystem(
   const registry = registryEntities[0]!.get(BatchRegistry) as RegistryData | undefined
   if (!registry) return false
 
+  // Track meshes that received new sprites — set needsUpdate once after the loop
+  const dirtyMeshes = new Set<SpriteBatch>()
+
   for (const entity of added) {
+    if (!entity.has(ThreeRef)) continue
     const ref = entity.get(ThreeRef)
     if (!ref?.object) continue
     const sprite = ref.object as Sprite2D
@@ -68,41 +74,44 @@ export function batchAssignSystem(
     const batchEntity = findOrCreateBatch(world, registry, run)
     const batchMesh = batchEntity.get(BatchMesh)
     if (!batchMesh?.mesh) continue
+    const mesh = batchMesh.mesh
 
     // Allocate a slot
-    const slot = batchMesh.mesh.allocateSlot()
+    const slot = mesh.allocateSlot()
     if (slot < 0) continue
 
-    // Set InBatch relation with slot data (no Changed observers — skip change detection)
-    entity.add(InBatch(batchEntity))
-    entity.set(InBatch(batchEntity), { slot }, false)
+    // Set InBatch relation with slot data — cache the relation pair
+    const relation = InBatch(batchEntity)
+    entity.add(relation)
+    entity.set(relation, { slot }, false)
 
-    // Set BatchSlot SoA cache for O(1) hot-path reads (no Changed observers)
+    // Set BatchSlot SoA cache for O(1) hot-path reads.
+    // BatchSlot is pre-added at spawn time — always use set, no archetype transition.
     const meta = batchEntity.get(BatchMeta)
     const batchIdx = meta?.batchIdx ?? -1
-    if (entity.has(BatchSlot)) {
-      entity.set(BatchSlot, { batchIdx, slot }, false)
-    } else {
-      entity.add(BatchSlot({ batchIdx, slot }))
-    }
+    entity.set(BatchSlot, { batchIdx, slot }, false)
 
-    // Add IsBatched tag
-    if (!entity.has(IsBatched)) {
-      entity.add(IsBatched)
-    }
+    // One-time full buffer sync from current trait state (no needsUpdate — deferred)
+    syncSlotBuffers(entity, slot, mesh, sprite, effectTraits)
+    dirtyMeshes.add(mesh)
+  }
 
-    // One-time full buffer sync from current trait state
-    syncAllBuffers(entity, slot, batchMesh.mesh, sprite, effectTraits)
+  // Flush syncCount once per mesh, not per entity.
+  // needsUpdate and dirty ranges are tracked by SpriteBatch write methods;
+  // flushDirtyRanges() is called once at end of frame by SpriteGroup.
+  for (const mesh of dirtyMeshes) {
+    mesh.syncCount()
   }
 
   return true
 }
 
 /**
- * Full sync of all sprite data to batch buffers.
+ * Sync all sprite data to batch buffers for a single slot.
  * Called once on batch assignment to initialize the slot.
+ * Does NOT set needsUpdate — caller batches that across all entities.
  */
-function syncAllBuffers(
+function syncSlotBuffers(
   entity: Entity,
   slot: number,
   mesh: SpriteBatch,
@@ -113,33 +122,26 @@ function syncAllBuffers(
   const c = entity.get(SpriteColor)
   if (c) {
     mesh.writeColor(slot, c.r, c.g, c.b, c.a)
-    mesh.getColorAttribute().needsUpdate = true
   }
 
   // UV
   const uv = entity.get(SpriteUV)
   if (uv) {
     mesh.writeUV(slot, uv.x, uv.y, uv.w, uv.h)
-    mesh.getUVAttribute().needsUpdate = true
   }
 
   // Flip
   const f = entity.get(SpriteFlip)
   if (f) {
     mesh.writeFlip(slot, f.x, f.y)
-    mesh.getFlipAttribute().needsUpdate = true
   }
 
   // Transform
   sprite.updateMatrix()
   mesh.writeMatrix(slot, sprite.matrix)
-  mesh.instanceMatrix.needsUpdate = true
 
   // Effect data
   syncEffectBuffers(slot, mesh, sprite, effectTraits)
-
-  // Sync instance count
-  mesh.syncCount()
 }
 
 function syncEffectBuffers(
@@ -195,10 +197,4 @@ function syncEffectBuffers(
     }
   }
 
-  // Mark effect buffer attributes as dirty
-  const numVec4s = tier / 4
-  for (let i = 0; i < numVec4s; i++) {
-    const attr = mesh.getCustomAttribute(`effectBuf${i}`)
-    if (attr) attr.needsUpdate = true
-  }
 }

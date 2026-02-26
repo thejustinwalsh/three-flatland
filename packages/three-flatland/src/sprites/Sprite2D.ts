@@ -19,6 +19,8 @@ import {
   SpriteZIndex,
   SpriteMaterialRef,
   IsRenderable,
+  IsBatched,
+  BatchSlot,
   ThreeRef,
 } from '../ecs/traits'
 import { readField, readTrait, writeTrait } from '../ecs/snapshot'
@@ -932,6 +934,8 @@ export class Sprite2D extends Mesh {
         materialId: this.material.batchId,
       }),
       IsRenderable,
+      IsBatched,
+      BatchSlot({ batchIdx: -1, slot: -1 }),
       ThreeRef({ object: this }),
     )
 
