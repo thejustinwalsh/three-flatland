@@ -21,7 +21,7 @@ interface MeasureOptions {
 
 type MeasureEnd = () => void
 // eslint-disable-next-line @typescript-eslint/no-unsafe-function-type
-type MeasureStart = (fn: Function, options?: MeasureOptions) => MeasureEnd
+type MeasureStart = (fn: Function | string, options?: MeasureOptions) => MeasureEnd
 
 const noop = () => {}
 
@@ -63,7 +63,7 @@ export const measure: MeasureStart =
         return () => {
           const end = performance.now()
           const duration = end - start
-          const name = fn.name || 'anonymous'
+          const name = typeof fn === 'string' ? fn : (fn.name || 'anonymous')
           const track = options?.track ?? DEFAULTS.track
           const trackGroup = options?.trackGroup ?? DEFAULTS.trackGroup
           const color = options?.color ?? DEFAULTS.color

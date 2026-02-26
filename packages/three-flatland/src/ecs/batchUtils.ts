@@ -1,5 +1,6 @@
 import type { Entity, World } from 'koota'
 import type { Sprite2DMaterial } from '../materials/Sprite2DMaterial'
+import type { Sprite2D } from '../sprites/Sprite2D'
 import { SpriteBatch } from '../pipeline/SpriteBatch'
 import { BatchMesh, BatchMeta, type BatchRun } from './traits'
 
@@ -14,6 +15,9 @@ export interface RegistryData {
   materialRefs: Map<number, { material: Sprite2DMaterial; version: number }>
   batchSlots: (SpriteBatch | null)[]
   batchSlotFreeList: number[]
+  /** Flat array of Sprite2D refs indexed by entity SoA index (eid).
+   *  Pure array indexing — same O(1) pattern as other SoA stores. */
+  spriteArr: (Sprite2D | null)[]
 }
 
 /**

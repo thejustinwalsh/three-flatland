@@ -7,7 +7,6 @@ import {
   SpriteFlip,
   SpriteLayer,
   SpriteMaterialRef,
-  ThreeRef,
   InBatch,
   BatchSlot,
   BatchMesh,
@@ -18,12 +17,14 @@ import type { MaterialEffect } from '../../materials/MaterialEffect'
 import type { Sprite2D } from '../../sprites/Sprite2D'
 import type { SpriteBatch } from '../../pipeline/SpriteBatch'
 import type { RegistryData } from '../batchUtils'
+
 import {
   computeRunKey,
   getOrCreateRun,
   findOrCreateBatch,
   recycleBatchIfEmpty,
 } from '../batchUtils'
+import { ENTITY_ID_MASK } from '../snapshot'
 
 const Changed = createChanged()
 
@@ -41,8 +42,8 @@ export function batchReassignSystem(
   world: World,
   effectTraits: ReadonlyMap<Trait, typeof MaterialEffect>
 ): void {
-  const layerChanged = world.query(Changed(SpriteLayer), IsBatched, ThreeRef)
-  const matChanged = world.query(Changed(SpriteMaterialRef), IsBatched, ThreeRef)
+  const layerChanged = world.query(Changed(SpriteLayer), IsBatched)
+  const matChanged = world.query(Changed(SpriteMaterialRef), IsBatched)
 
   // Deduplicate entities that appear in both queries
   const toReassign = new Set([...layerChanged, ...matChanged])
@@ -54,9 +55,8 @@ export function batchReassignSystem(
   if (!registry) return
 
   for (const entity of toReassign) {
-    const ref = entity.get(ThreeRef)
-    if (!ref?.object) continue
-    const sprite = ref.object as Sprite2D
+    const sprite = registry.spriteArr[(entity as unknown as number) & ENTITY_ID_MASK]
+    if (!sprite) continue
 
     const newLayer = entity.get(SpriteLayer)
     const newMatRef = entity.get(SpriteMaterialRef)
@@ -131,24 +131,21 @@ function syncAllBuffers(
   const c = entity.get(SpriteColor)
   if (c) {
     mesh.writeColor(slot, c.r, c.g, c.b, c.a)
-    mesh.getColorAttribute().needsUpdate = true
   }
 
   const uv = entity.get(SpriteUV)
   if (uv) {
     mesh.writeUV(slot, uv.x, uv.y, uv.w, uv.h)
-    mesh.getUVAttribute().needsUpdate = true
   }
 
   const f = entity.get(SpriteFlip)
   if (f) {
     mesh.writeFlip(slot, f.x, f.y)
-    mesh.getFlipAttribute().needsUpdate = true
   }
 
+  // Transform — use Sprite2D's updateMatrix for full 3D support
   sprite.updateMatrix()
   mesh.writeMatrix(slot, sprite.matrix)
-  mesh.instanceMatrix.needsUpdate = true
 
   // Sync effects
   const material = sprite.material
@@ -162,7 +159,6 @@ function syncAllBuffers(
 
 function writePackedEffects(slot: number, mesh: SpriteBatch, sprite: Sprite2D): void {
   const material = sprite.material
-  const tier = material._effectTier
 
   mesh.writeEffectSlot(slot, 0, 0, sprite._effectFlags)
 
@@ -186,9 +182,4 @@ function writePackedEffects(slot: number, mesh: SpriteBatch, sprite: Sprite2D): 
     }
   }
 
-  const numVec4s = tier / 4
-  for (let i = 0; i < numVec4s; i++) {
-    const attr = mesh.getCustomAttribute(`effectBuf${i}`)
-    if (attr) attr.needsUpdate = true
-  }
 }

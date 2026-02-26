@@ -25,9 +25,6 @@
     "@three-flatland/mini-breakout": "0.0.1-alpha.0"
   },
   "changesets": [
-    "alpha-release",
-    "auto-three-flatland-nodes",
-    "auto-three-flatland-presets",
     "auto-three-flatland"
   ]
 }

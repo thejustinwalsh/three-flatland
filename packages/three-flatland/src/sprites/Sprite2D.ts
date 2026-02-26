@@ -19,44 +19,72 @@ import {
   SpriteZIndex,
   SpriteMaterialRef,
   IsRenderable,
-  ThreeRef,
+  IsBatched,
+  BatchSlot,
+  BatchRegistry,
 } from '../ecs/traits'
-import { readField, readTrait, writeTrait } from '../ecs/snapshot'
+import type { RegistryData } from '../ecs/batchUtils'
+import { ENTITY_ID_MASK, resolveStore } from '../ecs/snapshot'
 import { getGlobalWorld } from '../ecs/world'
 
-/** Pre-enrollment snapshot for Sprite2D visual state. Types match trait schemas. */
-interface SpriteSnapshot {
-  color: { r: number; g: number; b: number; a: number }
-  uv: { x: number; y: number; w: number; h: number }
-  flip: { x: number; y: number }
-  layer: { layer: number }
-  zIndex: { zIndex: number }
+// ============================================
+// Observable property helpers
+// ============================================
+//
+// Convert data properties (x/y/z, r/g/b) on Three.js objects to accessor
+// properties that fire a callback on write. Replaces the generic Proxy approach
+// with zero per-instance function allocations — descriptors are shared at
+// module level and reuse `this._cb` on the instance.
+//
+// Works because ALL Three.js Vector3/Color/Vector2 methods mutate via
+// `this.x = ...` etc., so the accessor setters catch every mutation path.
+
+/** @internal */
+interface Observable { _cb: () => void }
+
+const _vec2Desc: PropertyDescriptorMap = {
+  x: {
+    get(this: Observable & { _ox: number }) { return this._ox },
+    set(this: Observable & { _ox: number }, v: number) { this._ox = v; this._cb() },
+    configurable: true, enumerable: true,
+  },
+  y: {
+    get(this: Observable & { _oy: number }) { return this._oy },
+    set(this: Observable & { _oy: number }, v: number) { this._oy = v; this._cb() },
+    configurable: true, enumerable: true,
+  },
 }
 
-/**
- * Wrap a Three.js object so any property write or method call triggers a callback.
- * Works with Color, Vector2, Vector3, etc. — no per-type subclass needed.
- * Follows the spirit of Three.js's Euler._onChangeCallback pattern.
- * @internal
- */
-function observed<T extends object>(target: T, cb: () => void): T {
-  const proxy: T = new Proxy(target, {
-    set(obj, prop, value) {
-      ;(obj as Record<string | symbol, unknown>)[prop] = value
-      cb()
-      return true
-    },
-    get(obj, prop, receiver) {
-      const value = Reflect.get(obj, prop, receiver)
-      if (typeof value !== 'function') return value
-      return function (this: unknown, ...args: unknown[]) {
-        const result = (value as (...a: unknown[]) => unknown).apply(obj, args)
-        cb()
-        return result === obj ? proxy : result
-      }
-    },
-  })
-  return proxy
+const _colorDesc: PropertyDescriptorMap = {
+  r: {
+    get(this: Observable & { _or: number }) { return this._or },
+    set(this: Observable & { _or: number }, v: number) { this._or = v; this._cb() },
+    configurable: true, enumerable: true,
+  },
+  g: {
+    get(this: Observable & { _og: number }) { return this._og },
+    set(this: Observable & { _og: number }, v: number) { this._og = v; this._cb() },
+    configurable: true, enumerable: true,
+  },
+  b: {
+    get(this: Observable & { _ob: number }) { return this._ob },
+    set(this: Observable & { _ob: number }, v: number) { this._ob = v; this._cb() },
+    configurable: true, enumerable: true,
+  },
+}
+
+/** Convert a Vector2's x/y data properties to callback-firing accessors in place. */
+function observeVector2(v: Vector2, cb: () => void): void {
+  const a = v as unknown as Record<string, unknown>
+  a._ox = v.x; a._oy = v.y; a._cb = cb
+  Object.defineProperties(v, _vec2Desc)
+}
+
+/** Convert a Color's r/g/b data properties to callback-firing accessors in place. */
+function observeColor(c: Color, cb: () => void): void {
+  const a = c as unknown as Record<string, unknown>
+  a._or = c.r; a._og = c.g; a._ob = c.b; a._cb = cb
+  Object.defineProperties(c, _colorDesc)
 }
 
 /** Size in floats for each attribute type. */
@@ -137,22 +165,38 @@ export class Sprite2D extends Mesh {
   _effects: MaterialEffect[] = []
 
   // ============================================
-  // ECS STATE
+  // ECS STATE — Array-ref swap pattern
   // ============================================
+  //
+  // Each numeric trait field has a backing array ref + index.
+  // Standalone: refs point to local arrays (length >= 1), _idx = 0.
+  // Enrolled: refs point to world SoA store arrays, _idx = eid.
+  // Enrollment swaps refs + copies values. Zero branching in setters.
 
-  /**
-   * Pre-enrollment snapshot — staging for trait values before entity enrollment.
-   * When enrolled, values are read/written via entity traits; snapshot stays
-   * allocated but stale (only refreshed on unenrollment).
-   * @internal
-   */
-  _snapshot: SpriteSnapshot = {
-    color: { r: 1, g: 1, b: 1, a: 1 },
-    uv: { x: 0, y: 0, w: 1, h: 1 },
-    flip: { x: 1, y: 1 },
-    layer: { layer: 0 },
-    zIndex: { zIndex: 0 },
-  }
+  /** Index into the backing arrays (0 when standalone, eid when enrolled). */
+  _idx = 0
+
+  // UV (SpriteUV) — raw array writes, no Changed() needed
+  /** @internal */ _uvX: number[] = [0]
+  /** @internal */ _uvY: number[] = [0]
+  /** @internal */ _uvW: number[] = [1]
+  /** @internal */ _uvH: number[] = [1]
+
+  // Color (SpriteColor) — needs entity.set() for Changed() on write
+  /** @internal */ _colorR: number[] = [1]
+  /** @internal */ _colorG: number[] = [1]
+  /** @internal */ _colorB: number[] = [1]
+  /** @internal */ _colorA: number[] = [1]
+
+  // Flip (SpriteFlip) — needs entity.set() for Changed() on write
+  /** @internal */ _flipXArr: number[] = [1]
+  /** @internal */ _flipYArr: number[] = [1]
+
+  // Layer (SpriteLayer) — needs entity.set() for Changed() on write
+  /** @internal */ _layerArr: number[] = [0]
+
+  // ZIndex (SpriteZIndex) — raw array writes, no Changed() needed
+  /** @internal */ _zIndexArr: number[] = [0]
 
   /**
    * The ECS entity for this sprite (null until enrolled in a world).
@@ -223,16 +267,26 @@ export class Sprite2D extends Mesh {
     // Store reference so we can dispose it
     this._geometry = geometry
 
-    // Wrap stored objects with observable proxies for R3F compat
-    this._tintColor = observed(this._tintColor, () => {
-      writeTrait(this._entity, SpriteColor, this._snapshot.color, {
-        r: this._tintColor.r,
-        g: this._tintColor.g,
-        b: this._tintColor.b,
-      })
-      if (!this._entity) this._updateOwnColor()
+    // Convert stored Color/Vector2 to observable accessors.
+    // Position/rotation/scale are NOT observed — accessor overhead on these
+    // hot properties (read/written millions of times per frame in game loops)
+    // costs more than it saves. transformSyncSystem reads directly from Object3D.
+    observeColor(this._tintColor, () => {
+      const i = this._idx
+      this._colorR[i] = this._tintColor.r
+      this._colorG[i] = this._tintColor.g
+      this._colorB[i] = this._tintColor.b
+      if (this._entity) {
+        this._entity.set(SpriteColor, {
+          r: this._tintColor.r,
+          g: this._tintColor.g,
+          b: this._tintColor.b,
+        })
+      } else {
+        this._updateOwnColor()
+      }
     })
-    this._anchor = observed(this._anchor, () => this.updateAnchor())
+    observeVector2(this._anchor, () => this.updateAnchor())
 
     // Set up instance attributes on the geometry
     this._setupInstanceAttributes()
@@ -369,14 +423,13 @@ export class Sprite2D extends Mesh {
   setFrame(frame: SpriteFrame): this {
     const isFirstFrame = this._frame === null
     this._frame = frame
-    // Silent write — UV is synced unconditionally in transformSyncSystem,
-    // no Changed(SpriteUV) observer needed.
-    writeTrait(this._entity, SpriteUV, this._snapshot.uv, {
-      x: frame.x,
-      y: frame.y,
-      w: frame.width,
-      h: frame.height,
-    }, false)
+    // Raw array writes — zero function calls, zero getStore, zero branching.
+    // UV is synced unconditionally in transformSyncSystem, no Changed() needed.
+    const i = this._idx
+    this._uvX[i] = frame.x
+    this._uvY[i] = frame.y
+    this._uvW[i] = frame.width
+    this._uvH[i] = frame.height
     if (!this._entity) this._updateOwnUV()
     // Only auto-size on first frame set (not during animation)
     if (isFirstFrame) {
@@ -441,22 +494,26 @@ export class Sprite2D extends Mesh {
    * Get alpha/opacity.
    */
   get alpha(): number {
-    return readField(this._entity, SpriteColor, 'a', this._snapshot.color.a)
+    return this._colorA[this._idx]!
   }
 
   /**
    * Set alpha/opacity (0-1).
    */
   set alpha(value: number) {
-    writeTrait(this._entity, SpriteColor, this._snapshot.color, { a: value })
-    if (!this._entity) this._updateOwnColor()
+    this._colorA[this._idx] = value
+    if (this._entity) {
+      this._entity.set(SpriteColor, { a: value })
+    } else {
+      this._updateOwnColor()
+    }
   }
 
   /**
    * Get flipX state.
    */
   get flipX(): boolean {
-    return readField(this._entity, SpriteFlip, 'x', this._snapshot.flip.x) === -1
+    return this._flipXArr[this._idx]! === -1
   }
 
   /**
@@ -464,16 +521,20 @@ export class Sprite2D extends Mesh {
    */
   set flipX(value: boolean) {
     const numVal = value ? -1 : 1
-    if (readField(this._entity, SpriteFlip, 'x', this._snapshot.flip.x) === numVal) return
-    writeTrait(this._entity, SpriteFlip, this._snapshot.flip, { x: numVal })
-    if (!this._entity) this._updateOwnFlip()
+    if (this._flipXArr[this._idx]! === numVal) return
+    this._flipXArr[this._idx] = numVal
+    if (this._entity) {
+      this._entity.set(SpriteFlip, { x: numVal })
+    } else {
+      this._updateOwnFlip()
+    }
   }
 
   /**
    * Get flipY state.
    */
   get flipY(): boolean {
-    return readField(this._entity, SpriteFlip, 'y', this._snapshot.flip.y) === -1
+    return this._flipYArr[this._idx]! === -1
   }
 
   /**
@@ -481,20 +542,30 @@ export class Sprite2D extends Mesh {
    */
   set flipY(value: boolean) {
     const numVal = value ? -1 : 1
-    if (readField(this._entity, SpriteFlip, 'y', this._snapshot.flip.y) === numVal) return
-    writeTrait(this._entity, SpriteFlip, this._snapshot.flip, { y: numVal })
-    if (!this._entity) this._updateOwnFlip()
+    if (this._flipYArr[this._idx]! === numVal) return
+    this._flipYArr[this._idx] = numVal
+    if (this._entity) {
+      this._entity.set(SpriteFlip, { y: numVal })
+    } else {
+      this._updateOwnFlip()
+    }
   }
 
   /**
    * Flip the sprite.
    */
   flip(horizontal: boolean, vertical: boolean): this {
-    writeTrait(this._entity, SpriteFlip, this._snapshot.flip, {
-      x: horizontal ? -1 : 1,
-      y: vertical ? -1 : 1,
-    })
-    if (!this._entity) this._updateOwnFlip()
+    const i = this._idx
+    this._flipXArr[i] = horizontal ? -1 : 1
+    this._flipYArr[i] = vertical ? -1 : 1
+    if (this._entity) {
+      this._entity.set(SpriteFlip, {
+        x: horizontal ? -1 : 1,
+        y: vertical ? -1 : 1,
+      })
+    } else {
+      this._updateOwnFlip()
+    }
     return this
   }
 
@@ -502,28 +573,31 @@ export class Sprite2D extends Mesh {
    * Get render layer (primary sort key).
    */
   get layer(): number {
-    return readField(this._entity, SpriteLayer, 'layer', this._snapshot.layer.layer)
+    return this._layerArr[this._idx]!
   }
 
   /**
    * Set render layer (primary sort key).
    */
   set layer(value: number) {
-    writeTrait(this._entity, SpriteLayer, this._snapshot.layer, { layer: value })
+    this._layerArr[this._idx] = value
+    if (this._entity) {
+      this._entity.set(SpriteLayer, { layer: value })
+    }
   }
 
   /**
    * Get z-index within layer (secondary sort key).
    */
   get zIndex(): number {
-    return readField(this._entity, SpriteZIndex, 'zIndex', this._snapshot.zIndex.zIndex)
+    return this._zIndexArr[this._idx]!
   }
 
   /**
    * Set z-index within layer (secondary sort key).
    */
   set zIndex(value: number) {
-    writeTrait(this._entity, SpriteZIndex, this._snapshot.zIndex, { zIndex: value }, false)
+    this._zIndexArr[this._idx] = value
   }
 
   /**
@@ -575,10 +649,12 @@ export class Sprite2D extends Mesh {
    * Update flip flags in own geometry buffer (standalone mode).
    */
   private _updateOwnFlip() {
-    const f = readTrait(this._entity, SpriteFlip, this._snapshot.flip)
+    const idx = this._idx
+    const fx = this._flipXArr[idx]!
+    const fy = this._flipYArr[idx]!
     for (let i = 0; i < 4; i++) {
-      this._instanceFlipBuffer[i * 2 + 0] = f.x
-      this._instanceFlipBuffer[i * 2 + 1] = f.y
+      this._instanceFlipBuffer[i * 2 + 0] = fx
+      this._instanceFlipBuffer[i * 2 + 1] = fy
     }
     const flipAttr = this.geometry.getAttribute('instanceFlip') as BufferAttribute
     if (flipAttr) {
@@ -625,21 +701,11 @@ export class Sprite2D extends Mesh {
    * Writes to own geometry buffer only (standalone mode).
    */
   private _updateOwnUV() {
-    let x: number, y: number, w: number, h: number
-
-    if (this._frame) {
-      x = this._frame.x
-      y = this._frame.y
-      w = this._frame.width
-      h = this._frame.height
-    } else {
-      // Default: full texture
-      x = 0
-      y = 0
-      w = 1
-      h = 1
-    }
-
+    const idx = this._idx
+    const x = this._uvX[idx]!
+    const y = this._uvY[idx]!
+    const w = this._uvW[idx]!
+    const h = this._uvH[idx]!
     for (let i = 0; i < 4; i++) {
       this._instanceUVBuffer[i * 4 + 0] = x
       this._instanceUVBuffer[i * 4 + 1] = y
@@ -657,13 +723,16 @@ export class Sprite2D extends Mesh {
    * Writes to own geometry buffer only (standalone mode).
    */
   private _updateOwnColor() {
-    const c = readTrait(this._entity, SpriteColor, this._snapshot.color)
-
+    const idx = this._idx
+    const r = this._colorR[idx]!
+    const g = this._colorG[idx]!
+    const b = this._colorB[idx]!
+    const a = this._colorA[idx]!
     for (let i = 0; i < 4; i++) {
-      this._instanceColorBuffer[i * 4 + 0] = c.r
-      this._instanceColorBuffer[i * 4 + 1] = c.g
-      this._instanceColorBuffer[i * 4 + 2] = c.b
-      this._instanceColorBuffer[i * 4 + 3] = c.a
+      this._instanceColorBuffer[i * 4 + 0] = r
+      this._instanceColorBuffer[i * 4 + 1] = g
+      this._instanceColorBuffer[i * 4 + 2] = b
+      this._instanceColorBuffer[i * 4 + 3] = a
     }
     const colorAttr = this.geometry.getAttribute('instanceColor') as BufferAttribute
     if (colorAttr) {
@@ -921,19 +990,58 @@ export class Sprite2D extends Mesh {
     const w = world ?? this._flatlandWorld ?? getGlobalWorld()
     this._flatlandWorld = w
 
-    const s = this._snapshot
+    // Read current values from local arrays before swapping refs
+    const uvX = this._uvX[0]!, uvY = this._uvY[0]!, uvW = this._uvW[0]!, uvH = this._uvH[0]!
+    const cR = this._colorR[0]!, cG = this._colorG[0]!, cB = this._colorB[0]!, cA = this._colorA[0]!
+    const fX = this._flipXArr[0]!, fY = this._flipYArr[0]!
+    const lay = this._layerArr[0]!
+    const zIdx = this._zIndexArr[0]!
+
     this._entity = w.spawn(
-      SpriteUV({ x: s.uv.x, y: s.uv.y, w: s.uv.w, h: s.uv.h }),
-      SpriteColor({ r: s.color.r, g: s.color.g, b: s.color.b, a: s.color.a }),
-      SpriteFlip({ x: s.flip.x, y: s.flip.y }),
-      SpriteLayer({ layer: s.layer.layer }),
-      SpriteZIndex({ zIndex: s.zIndex.zIndex }),
+      SpriteUV({ x: uvX, y: uvY, w: uvW, h: uvH }),
+      SpriteColor({ r: cR, g: cG, b: cB, a: cA }),
+      SpriteFlip({ x: fX, y: fY }),
+      SpriteLayer({ layer: lay }),
+      SpriteZIndex({ zIndex: zIdx }),
       SpriteMaterialRef({
         materialId: this.material.batchId,
       }),
       IsRenderable,
-      ThreeRef({ object: this }),
+      IsBatched,
+      BatchSlot({ batchIdx: -1, slot: -1 }),
     )
+
+    const eid = (this._entity as unknown as number) & ENTITY_ID_MASK
+    this._idx = eid
+
+    // Swap array refs from local to world SoA stores
+    const uvStore = resolveStore(w, SpriteUV)
+    this._uvX = uvStore['x']!
+    this._uvY = uvStore['y']!
+    this._uvW = uvStore['w']!
+    this._uvH = uvStore['h']!
+
+    const colorStore = resolveStore(w, SpriteColor)
+    this._colorR = colorStore['r']!
+    this._colorG = colorStore['g']!
+    this._colorB = colorStore['b']!
+    this._colorA = colorStore['a']!
+
+    const flipStore = resolveStore(w, SpriteFlip)
+    this._flipXArr = flipStore['x']!
+    this._flipYArr = flipStore['y']!
+
+    this._layerArr = resolveStore(w, SpriteLayer)['layer']!
+    this._zIndexArr = resolveStore(w, SpriteZIndex)['zIndex']!
+
+    // Register in the spriteArr for O(1) lookup by entity SoA index.
+    const registryEntities = w.query(BatchRegistry)
+    if (registryEntities.length > 0) {
+      const registry = registryEntities[0]!.get(BatchRegistry) as RegistryData | undefined
+      if (registry) {
+        registry.spriteArr[eid] = this
+      }
+    }
 
     // Add effect traits for active effects
     for (const effect of this._effects) {
@@ -953,17 +1061,21 @@ export class Sprite2D extends Mesh {
   _unenrollFromWorld(): void {
     if (!this._entity) return
 
-    // Serialize trait values back to snapshot before destroying entity
-    const color = this._entity.get(SpriteColor)
-    if (color) Object.assign(this._snapshot.color, color)
-    const uvVal = this._entity.get(SpriteUV)
-    if (uvVal) Object.assign(this._snapshot.uv, uvVal)
-    const flip = this._entity.get(SpriteFlip)
-    if (flip) Object.assign(this._snapshot.flip, flip)
-    const layer = this._entity.get(SpriteLayer)
-    if (layer) Object.assign(this._snapshot.layer, layer)
-    const zIdx = this._entity.get(SpriteZIndex)
-    if (zIdx) Object.assign(this._snapshot.zIndex, zIdx)
+    // Read current values from SoA arrays before swapping refs back
+    const eid = this._idx
+    const uvX = this._uvX[eid]!, uvY = this._uvY[eid]!, uvW = this._uvW[eid]!, uvH = this._uvH[eid]!
+    const cR = this._colorR[eid]!, cG = this._colorG[eid]!, cB = this._colorB[eid]!, cA = this._colorA[eid]!
+    const fX = this._flipXArr[eid]!, fY = this._flipYArr[eid]!
+    const lay = this._layerArr[eid]!
+    const zIdx = this._zIndexArr[eid]!
+
+    // Swap refs back to local arrays and store values
+    this._uvX = [uvX]; this._uvY = [uvY]; this._uvW = [uvW]; this._uvH = [uvH]
+    this._colorR = [cR]; this._colorG = [cG]; this._colorB = [cB]; this._colorA = [cA]
+    this._flipXArr = [fX]; this._flipYArr = [fY]
+    this._layerArr = [lay]
+    this._zIndexArr = [zIdx]
+    this._idx = 0
 
     // Serialize effect trait values back to effect snapshots
     for (const effect of this._effects) {
@@ -983,6 +1095,17 @@ export class Sprite2D extends Mesh {
         }
       }
       effect._entity = null
+    }
+
+    // Remove from spriteArr
+    if (this._flatlandWorld) {
+      const registryEntities = this._flatlandWorld.query(BatchRegistry)
+      if (registryEntities.length > 0) {
+        const registry = registryEntities[0]!.get(BatchRegistry) as RegistryData | undefined
+        if (registry) {
+          registry.spriteArr[eid] = null
+        }
+      }
     }
 
     // Remove IsRenderable instead of destroying — this triggers Removed(IsRenderable)

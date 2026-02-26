@@ -5,7 +5,6 @@ import {
   SpriteUV,
   SpriteFlip,
   IsBatched,
-  ThreeRef,
   BatchSlot,
   BatchRegistry,
 } from '../traits'
@@ -13,6 +12,7 @@ import type { MaterialEffect } from '../../materials/MaterialEffect'
 import type { Sprite2D } from '../../sprites/Sprite2D'
 import type { SpriteBatch } from '../../pipeline/SpriteBatch'
 import type { RegistryData } from '../batchUtils'
+import { ENTITY_ID_MASK } from '../snapshot'
 
 const Changed = createChanged()
 
@@ -52,8 +52,6 @@ export function bufferSyncColorSystem(world: World): void {
   const batchSlots = getBatchSlots(world)
   if (!batchSlots) return
 
-  const dirtyMeshes = new Set<SpriteBatch>()
-
   for (const entity of entities) {
     const color = entity.get(SpriteColor)
     if (!color) continue
@@ -61,12 +59,6 @@ export function bufferSyncColorSystem(world: World): void {
     if (!resolved) continue
 
     resolved.mesh.writeColor(resolved.slot, color.r, color.g, color.b, color.a)
-    dirtyMeshes.add(resolved.mesh)
-  }
-
-  for (const mesh of dirtyMeshes) {
-    mesh.getColorAttribute().needsUpdate = true
-    mesh.applyUpdateRanges()
   }
 }
 
@@ -80,8 +72,6 @@ export function bufferSyncUVSystem(world: World): void {
   const batchSlots = getBatchSlots(world)
   if (!batchSlots) return
 
-  const dirtyMeshes = new Set<SpriteBatch>()
-
   for (const entity of entities) {
     const uv = entity.get(SpriteUV)
     if (!uv) continue
@@ -89,12 +79,6 @@ export function bufferSyncUVSystem(world: World): void {
     if (!resolved) continue
 
     resolved.mesh.writeUV(resolved.slot, uv.x, uv.y, uv.w, uv.h)
-    dirtyMeshes.add(resolved.mesh)
-  }
-
-  for (const mesh of dirtyMeshes) {
-    mesh.getUVAttribute().needsUpdate = true
-    mesh.applyUpdateRanges()
   }
 }
 
@@ -108,8 +92,6 @@ export function bufferSyncFlipSystem(world: World): void {
   const batchSlots = getBatchSlots(world)
   if (!batchSlots) return
 
-  const dirtyMeshes = new Set<SpriteBatch>()
-
   for (const entity of entities) {
     const flip = entity.get(SpriteFlip)
     if (!flip) continue
@@ -117,12 +99,6 @@ export function bufferSyncFlipSystem(world: World): void {
     if (!resolved) continue
 
     resolved.mesh.writeFlip(resolved.slot, flip.x, flip.y)
-    dirtyMeshes.add(resolved.mesh)
-  }
-
-  for (const mesh of dirtyMeshes) {
-    mesh.getFlipAttribute().needsUpdate = true
-    mesh.applyUpdateRanges()
   }
 }
 
@@ -136,32 +112,28 @@ export function bufferSyncEffectSystem(
   world: World,
   effectTraits: ReadonlyMap<Trait, typeof MaterialEffect>
 ): void {
-  const batchSlots = getBatchSlots(world)
-  if (!batchSlots) return
+  const registryEntities = world.query(BatchRegistry)
+  if (registryEntities.length === 0) return
+  const registry = registryEntities[0]!.get(BatchRegistry) as RegistryData | undefined
+  if (!registry) return
+  const batchSlots = registry.batchSlots
 
   const processed = new Set<Entity>()
-  const dirtyMeshes = new Set<SpriteBatch>()
 
   for (const [effectTrait] of effectTraits) {
-    const entities = world.query(Changed(effectTrait), IsBatched, ThreeRef, BatchSlot)
+    const entities = world.query(Changed(effectTrait), IsBatched, BatchSlot)
     for (const entity of entities) {
       if (processed.has(entity)) continue
       processed.add(entity)
 
-      const ref = entity.get(ThreeRef)
-      if (!ref?.object) continue
-      const sprite = ref.object as Sprite2D
+      const sprite = registry.spriteArr[(entity as unknown as number) & ENTITY_ID_MASK]
+      if (!sprite) continue
 
       const resolved = resolveBatchSlot(entity, batchSlots)
       if (!resolved) continue
 
       writePackedEffects(resolved.slot, resolved.mesh, sprite)
-      dirtyMeshes.add(resolved.mesh)
     }
-  }
-
-  for (const mesh of dirtyMeshes) {
-    mesh.applyUpdateRanges()
   }
 }
 
@@ -211,12 +183,5 @@ function writePackedEffects(slot: number, mesh: SpriteBatch, sprite: Sprite2D): 
         }
       }
     }
-  }
-
-  // Mark dirty
-  const numVec4s = tier / 4
-  for (let i = 0; i < numVec4s; i++) {
-    const attr = mesh.getCustomAttribute(`effectBuf${i}`)
-    if (attr) attr.needsUpdate = true
   }
 }

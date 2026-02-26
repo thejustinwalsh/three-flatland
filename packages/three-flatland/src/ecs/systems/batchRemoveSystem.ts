@@ -1,8 +1,7 @@
 import { createRemoved } from 'koota'
-import type { World } from 'koota'
+import type { World, Entity } from 'koota'
 import {
   IsRenderable,
-  IsBatched,
   InBatch,
   BatchSlot,
   BatchMesh,
@@ -19,11 +18,14 @@ const Removed = createRemoved()
  *
  * Triggered by Removed(IsRenderable). Reads the InBatch relation to find
  * the batch entity and slot, frees the slot, removes the relation,
- * and recycles the batch if empty. Destroys the entity after cleanup.
- * Must run LAST in the pipeline so entity.destroy() cascading trait
- * removals don't corrupt upstream systems.
+ * and recycles the batch if empty.
+ *
+ * Entity destruction is deferred — zombie entities are returned to the
+ * caller and destroyed at the top of the next frame by
+ * `deferredDestroySystem`. This pushes koota's cascading trait removal
+ * cost out of the hot render frame.
  */
-export function batchRemoveSystem(world: World): void {
+export function batchRemoveSystem(world: World, pendingDestroy: Entity[]): void {
   const removed = world.query(Removed(IsRenderable))
   if (removed.length === 0) return
 
@@ -47,14 +49,9 @@ export function batchRemoveSystem(world: World): void {
       batchMesh.mesh.syncCount()
     }
 
-    // Remove relation and IsBatched tag
+    // Remove relation and reset BatchSlot
     entity.remove(InBatch(batchEntity))
-    if (entity.has(BatchSlot)) {
-      entity.set(BatchSlot, { batchIdx: -1, slot: -1 }, false)
-    }
-    if (entity.has(IsBatched)) {
-      entity.remove(IsBatched)
-    }
+    entity.set(BatchSlot, { batchIdx: -1, slot: -1 }, false)
 
     // Recycle batch if empty
     if (batchMesh?.mesh?.isEmpty) {
@@ -68,7 +65,23 @@ export function batchRemoveSystem(world: World): void {
       }
     }
 
-    // Destroy entity — safe because batchRemoveSystem runs last in the pipeline
+    // Defer entity destruction to top of next frame
+    pendingDestroy.push(entity)
+  }
+}
+
+/**
+ * Destroy entities deferred from the previous frame's batchRemoveSystem.
+ *
+ * Runs at the top of the frame before any other system, so koota's
+ * cascading trait removal cost is paid outside the hot render path.
+ * The zombie entities are invisible to all systems (no IsRenderable,
+ * no IsBatched) so the one-frame delay is safe.
+ */
+export function deferredDestroySystem(pendingDestroy: Entity[]): void {
+  if (pendingDestroy.length === 0) return
+  for (const entity of pendingDestroy) {
     entity.destroy()
   }
+  pendingDestroy.length = 0
 }

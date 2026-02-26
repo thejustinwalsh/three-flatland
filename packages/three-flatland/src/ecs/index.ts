@@ -11,7 +11,6 @@ export {
   IsRenderable,
   IsBatched,
   IsStandalone,
-  ThreeRef,
   BatchSlot,
   InBatch,
   BatchMesh,
@@ -31,7 +30,7 @@ export {
 } from './world'
 
 // Snapshot utilities
-export { readField, readTrait, writeTrait } from './snapshot'
+export { resolveStore } from './snapshot'
 
 // Batch utilities
 export {

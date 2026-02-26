@@ -31,6 +31,21 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Clean consumed changesets
+        run: |
+          if [ -f .changeset/pre.json ]; then
+            for name in $(node -e "
+              const pre = require('./.changeset/pre.json');
+              for (const cs of pre.changesets) console.log(cs);
+            "); do
+              file=".changeset/${name}.md"
+              if [ -f "$file" ]; then
+                echo "Removing consumed changeset: $file"
+                rm "$file"
+              fi
+            done
+          fi
+
       - name: Generate template changesets
         run: pnpm changeset:generate --base origin/main --cap-major
 
@@ -81,7 +96,7 @@ jobs:
         run: |
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git config user.name "github-actions[bot]"
-          git add .changeset/auto-*.md 2>/dev/null || true
+          git add .changeset/*.md .changeset/pre.json 2>/dev/null || true
           if ! git diff-index --quiet HEAD 2>/dev/null; then
             git commit -m "ci: generate changesets [skip ci]"
             git push

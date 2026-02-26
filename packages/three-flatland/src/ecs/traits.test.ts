@@ -11,8 +11,9 @@ import {
   SpriteZIndex,
   SpriteMaterialRef,
   IsRenderable,
-  ThreeRef,
+  BatchRegistry,
 } from './traits'
+import type { RegistryData } from './batchUtils'
 
 describe('ECS traits — sprite enrollment lifecycle', () => {
   let world: ReturnType<typeof createWorld>
@@ -113,15 +114,17 @@ describe('ECS traits — sprite enrollment lifecycle', () => {
     expect(matRef!.materialId).toBe(material.batchId)
   })
 
-  it('should set ThreeRef to the sprite object', () => {
+  it('should register in spriteArr when BatchRegistry exists', () => {
     setup()
+    // Spawn a registry entity so spriteArr is available
+    const registryEntity = world.spawn(BatchRegistry())
+    const registry = registryEntity.get(BatchRegistry) as RegistryData | undefined
+
     const sprite = new Sprite2D({ material })
     sprite._enrollInWorld(world)
 
-    const entity = sprite._entity!
-    const ref = entity.get(ThreeRef)
-    expect(ref).toBeDefined()
-    expect(ref!.object).toBe(sprite)
+    const eid = (sprite._entity! as unknown as number) & ((1 << 20) - 1)
+    expect(registry!.spriteArr[eid]).toBe(sprite)
   })
 
   it('should have IsRenderable tag', () => {
@@ -312,7 +315,7 @@ describe('ECS traits — snapshot lifecycle', () => {
     material = new Sprite2DMaterial({ map: texture })
   }
 
-  it('should store pre-enrollment property changes in snapshot', () => {
+  it('should store pre-enrollment property changes in local arrays', () => {
     setup()
     const sprite = new Sprite2D({ material })
 
@@ -323,13 +326,13 @@ describe('ECS traits — snapshot lifecycle', () => {
     sprite.flipX = true
 
     expect(sprite._entity).toBeNull()
-    expect(sprite._snapshot.color.r).toBeCloseTo(1)
-    expect(sprite._snapshot.color.g).toBeCloseTo(0)
-    expect(sprite._snapshot.color.b).toBeCloseTo(0)
-    expect(sprite._snapshot.color.a).toBe(0.5)
-    expect(sprite._snapshot.layer.layer).toBe(3)
-    expect(sprite._snapshot.zIndex.zIndex).toBe(42)
-    expect(sprite._snapshot.flip.x).toBe(-1)
+    expect(sprite._colorR[0]).toBeCloseTo(1)
+    expect(sprite._colorG[0]).toBeCloseTo(0)
+    expect(sprite._colorB[0]).toBeCloseTo(0)
+    expect(sprite._colorA[0]).toBe(0.5)
+    expect(sprite._layerArr[0]).toBe(3)
+    expect(sprite._zIndexArr[0]).toBe(42)
+    expect(sprite._flipXArr[0]).toBe(-1)
   })
 
   it('should write to entity traits after enrollment', () => {
@@ -355,7 +358,7 @@ describe('ECS traits — snapshot lifecycle', () => {
     expect(zIdx!.zIndex).toBe(99)
   })
 
-  it('should preserve values in snapshot on unenrollment', () => {
+  it('should preserve values in local arrays on unenrollment', () => {
     setup()
     const sprite = new Sprite2D({ material })
     sprite.tint = 0xff0000
@@ -364,22 +367,23 @@ describe('ECS traits — snapshot lifecycle', () => {
     sprite.zIndex = 42
     sprite._enrollInWorld(world)
 
-    // Change values while enrolled (writes to entity)
+    // Change values while enrolled (writes to SoA arrays)
     sprite.tint = 0x00ff00
     sprite.alpha = 0.8
     sprite.layer = 7
     sprite.zIndex = 55
 
-    // Unenroll — should serialize entity values back to snapshot
+    // Unenroll — should copy SoA values back to local arrays
     sprite._unenrollFromWorld()
     expect(sprite._entity).toBeNull()
 
-    expect(sprite._snapshot.color.r).toBeCloseTo(0)
-    expect(sprite._snapshot.color.g).toBeCloseTo(1)
-    expect(sprite._snapshot.color.b).toBeCloseTo(0)
-    expect(sprite._snapshot.color.a).toBe(0.8)
-    expect(sprite._snapshot.layer.layer).toBe(7)
-    expect(sprite._snapshot.zIndex.zIndex).toBe(55)
+    // After unenrollment, getters read from local arrays at idx 0
+    expect(sprite.tint.r).toBeCloseTo(0)
+    expect(sprite.tint.g).toBeCloseTo(1)
+    expect(sprite.tint.b).toBeCloseTo(0)
+    expect(sprite.alpha).toBe(0.8)
+    expect(sprite.layer).toBe(7)
+    expect(sprite.zIndex).toBe(55)
   })
 
   it('should re-enroll from snapshot after unenrollment', () => {
@@ -449,3 +453,4 @@ describe('ECS traits — snapshot lifecycle', () => {
     expect(sprite.flipY).toBe(true)
   })
 })
+

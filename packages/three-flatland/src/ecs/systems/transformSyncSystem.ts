@@ -1,8 +1,7 @@
-import { $internal, type World, type Trait } from 'koota'
+import { getStore as kootaGetStore, type World, type Trait } from 'koota'
 import {
   IsRenderable,
   IsBatched,
-  ThreeRef,
   SpriteUV,
   SpriteLayer,
   SpriteZIndex,
@@ -11,79 +10,75 @@ import {
 } from '../traits'
 import type { RegistryData } from '../batchUtils'
 import type { SpriteBatch } from '../../pipeline/SpriteBatch'
+import { ENTITY_ID_MASK } from '../snapshot'
 
-// Koota entity bit-packing constants
-const ENTITY_ID_MASK = (1 << 20) - 1
-const WORLD_ID_SHIFT = 28
-
-/** Read a single SoA field directly — zero allocation, no Map lookup. */
-function readStore(store: Record<string, number[]>, eid: number, field: string): number {
-  return store[field]![eid]!
-}
-
-/** Resolve SoA store for a trait + world once, reuse across all entities. */
-function getStore(trait: Trait, worldId: number): Record<string, number[]> {
-  return trait[$internal].stores[worldId] as Record<string, number[]>
+/** Resolve SoA store for a numeric trait — one lookup, reused for all entities. */
+function getNumericStore(world: World, trait: Trait): Record<string, number[]> {
+  return kootaGetStore(world, trait) as Record<string, number[]>
 }
 
 /**
- * Sync transforms and UVs from sprite Object3D properties directly to GPU
- * instance buffers.
+ * Sync transforms and UVs to GPU instance buffers.
  *
- * Bypasses both Three.js updateMatrix() (quaternion→matrix compose) and
- * Matrix4.toArray() (16-float copy) by writing the 2D transform straight
- * into the instanceMatrix Float32Array. For 20k sprites this eliminates
- * 640k redundant float writes per frame (20k × 32 → 20k × 16).
+ * Position, rotation, and scale are read directly from the Object3D via
+ * spriteArr (flat array indexed by entity SoA index). Same O(1) array
+ * access pattern as all other SoA stores — zero hash overhead.
  *
- * UV is folded in here because in a 2D game, UV manipulation (sprite frame
- * changes from animation) is part of the visual transform. Writing UVs
- * unconditionally avoids koota's change detection overhead.
+ * UV, layer, zIndex, and batch slot are read from SoA stores (flat arrays
+ * indexed by entity ID) — zero allocation, zero object dereference.
  */
 export function transformSyncSystem(world: World): void {
-  const entities = world.query(IsRenderable, IsBatched, ThreeRef, BatchSlot)
+  const entities = world.query(IsRenderable, IsBatched, BatchSlot)
 
   const registryEntities = world.query(BatchRegistry)
   if (registryEntities.length === 0) return
   const registry = registryEntities[0]!.get(BatchRegistry) as RegistryData | undefined
   if (!registry) return
-  const batchSlots = registry.batchSlots
+  const meshSlots = registry.batchSlots
+  const spriteArr = registry.spriteArr
 
-  // Pre-resolve SoA stores for layer/zIndex — one Map lookup each, reused for all entities
+  // Pre-resolve SoA stores once — reused for every entity in the loop.
   const firstEntity = entities[0]
   if (!firstEntity) return
-  const worldId = (firstEntity as unknown as number) >>> WORLD_ID_SHIFT
-  const layerStore = getStore(SpriteLayer, worldId)
-  const zIndexStore = getStore(SpriteZIndex, worldId)
 
-  const dirtyMeshes = new Set<SpriteBatch>()
+  const bsStore = getNumericStore(world, BatchSlot)
+  const batchIdxArr = bsStore['batchIdx']!
+  const slotArr = bsStore['slot']!
+
+  const layerArr = getNumericStore(world, SpriteLayer)['layer']!
+  const zIndexArr = getNumericStore(world, SpriteZIndex)['zIndex']!
+
+  const uvStore = getNumericStore(world, SpriteUV)
+  const uvXArr = uvStore['x']!
+  const uvYArr = uvStore['y']!
+  const uvWArr = uvStore['w']!
+  const uvHArr = uvStore['h']!
 
   for (const entity of entities) {
-    const bs = entity.get(BatchSlot)
-    if (!bs || bs.batchIdx < 0) continue
-
-    const mesh = batchSlots[bs.batchIdx]
-    if (!mesh) continue
-
-    const ref = entity.get(ThreeRef)
-    if (!ref?.object) continue
-
-    const obj = ref.object
     const eid = (entity as unknown as number) & ENTITY_ID_MASK
 
-    // Read layer + zIndex directly from SoA stores (zero allocation)
-    const layer = readStore(layerStore, eid, 'layer')
-    const zIdx = readStore(zIndexStore, eid, 'zIndex')
+    const batchIdx = batchIdxArr[eid]!
+    if (batchIdx < 0) continue
+    const slot = slotArr[eid]!
 
-    // Write 2D transform directly to instance buffer — no intermediate Matrix4
+    const mesh = meshSlots[batchIdx] as SpriteBatch | undefined
+    if (!mesh) continue
+
+    const sprite = spriteArr[eid]
+    if (!sprite) continue
+
+    const layer = layerArr[eid]!
+    const zIdx = zIndexArr[eid]!
+
+    const px = sprite.position.x
+    const py = sprite.position.y
+    const pz = sprite.position.z + layer * 10 + zIdx * 0.001
+    const sx = sprite.scale.x
+    const sy = sprite.scale.y
+    const rz = sprite.rotation.z
+
     const buf = mesh.instanceMatrix.array as Float32Array
-    const o = bs.slot * 16
-    const px = obj.position.x
-    const py = obj.position.y
-    const pz = obj.position.z + layer * 10 + zIdx * 0.001
-    const sx = obj.scale.x
-    const sy = obj.scale.y
-
-    const rz = obj.rotation.z
+    const o = slot * 16
     if (rz !== 0) {
       const c = Math.cos(rz)
       const s = Math.sin(rz)
@@ -96,18 +91,7 @@ export function transformSyncSystem(world: World): void {
     buf[o + 2]  = 0; buf[o + 6] = 0; buf[o + 10] = 1; buf[o + 14] = pz
     buf[o + 3]  = 0; buf[o + 7] = 0; buf[o + 11] = 0; buf[o + 15] = 1
 
-    // UV — always (brute-force; cheaper than change detection for animated sprites)
-    const uv = entity.get(SpriteUV)
-    if (uv) {
-      mesh.writeUV(bs.slot, uv.x, uv.y, uv.w, uv.h)
-    }
-
-    dirtyMeshes.add(mesh)
-  }
-
-  for (const mesh of dirtyMeshes) {
-    mesh.instanceMatrix.needsUpdate = true
-    mesh.getUVAttribute().needsUpdate = true
-    mesh.applyUpdateRanges()
+    mesh.markMatrixDirty(slot)
+    mesh.writeUV(slot, uvXArr[eid]!, uvYArr[eid]!, uvWArr[eid]!, uvHArr[eid]!)
   }
 }

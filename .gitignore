@@ -49,3 +49,6 @@ settings.local.json
 
 # Vendor Library for examples to pull from
 vendor/
+
+# Profile traces
+traces/

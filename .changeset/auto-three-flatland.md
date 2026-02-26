@@ -1,34 +1,19 @@
 ---
 "three-flatland": minor
 ---
+- Updated koota dependency to v0.6.5
+- `measure()` utility now accepts a string as the first argument (in addition to a function), enabling named measurements without a function reference
+- Removed `ThreeRef` ECS trait; sprite-to-entity mapping is now handled internally via a flat array indexed by entity SoA ID
+- Replaced `readField`, `readTrait`, and `writeTrait` snapshot utilities with `resolveStore`, which returns stable SoA store arrays for a trait in a world
+- `Sprite2D` internal state refactored from a `_snapshot` object to per-field backing arrays using an array-ref swap pattern; standalone sprites use local arrays at index 0, enrolled sprites swap refs to world SoA arrays at entity index — zero branching in property setters
+- `RegistryData.spriteRefs` (Map) replaced by `RegistryData.spriteArr` (flat array indexed by entity SoA ID) for uniform O(1) array-index access across all ECS hot paths
+- Batch assign system defers `needsUpdate` and `syncCount` calls to a single flush after all entities are processed, reducing per-entity overhead
 
-## Initial alpha release of `three-flatland`
+## BREAKING CHANGES
 
-### New package
+- `ThreeRef` is no longer exported from the ECS module
+- `readField`, `readTrait`, and `writeTrait` are no longer exported; use `resolveStore` to access SoA store arrays directly
+- `RegistryData.spriteRefs` (Map) replaced by `RegistryData.spriteArr` (array); any code indexing the registry by entity must switch to array access with `entity & ENTITY_ID_MASK`
+- `Sprite2D._snapshot` removed; pre-enrollment state is now stored in per-field `_colorR`, `_colorG`, `_colorB`, `_colorA`, `_uvX`/`Y`/`W`/`H`, `_flipXArr`/`_flipYArr`, `_layerArr`, `_zIndexArr` arrays (all `@internal`)
 
-- Core library source consolidated from `@three-flatland/core` into the new `three-flatland` package (renamed for simpler install)
-- Exports sprites, animation, materials, loaders, pipeline, tilemaps, and global uniforms from the package root
-- React Three Fiber integration available via `three-flatland/react` subpath — re-exports all core APIs plus R3F helpers and `ThreeElements` type augmentation
-- Per-domain subpaths: `three-flatland/sprites`, `/animation`, `/materials`, `/loaders`, `/pipeline`, `/tilemap`, `/react/sprites`, `/react/animation`, `/react/materials`, `/react/pipeline`, `/react/loaders`, `/react/tilemap`
-- Added `source` export condition on all entries for build-free monorepo development
-- R3F helpers: `attachEffect`, `createResource`, `createCachedResource`, `spriteSheet`, `texture`
-- Exports `FlatlandProps`, `Sprite2DProps`, `EffectElement` types from `three-flatland/react`
-
-### Build & tooling
-
-- `tsup` dual ESM/CJS build with `.d.ts` and `.d.cts` declarations
-- Production environment check in `measure.ts` uses `import.meta.env?.PROD` with correct fallback
-- `tsconfig.json` cleaned up; stale ambient type declaration removed from `types/env.d.ts`
-- `sync-react-subpaths.ts` script generates per-category React re-export index files with `ThreeElements` side-effect import
-
-### Documentation
-
-- Added `packages/three-flatland/README.md` (quick-start, R3F guide, package table) and `packages/three-flatland/LICENSE` (MIT)
-- Repository URL set to `https://github.com/thejustinwalsh/three-flatland.git`
-
-### BREAKING CHANGES
-
-- Package renamed from `@three-flatland/core` to `three-flatland`; update all imports: `import { ... } from 'three-flatland'` and `import { ... } from 'three-flatland/react'`
-- R3F users should import from `three-flatland/react` instead of a separate `@three-flatland/react` package
-
-This is the initial alpha release of `three-flatland`, delivering the complete WebGPU 2D sprite, tilemap, and effects library with full React Three Fiber integration.
+Performance-focused release replacing snapshot-based entity state with a zero-allocation array-ref swap pattern and upgrading the koota ECS library to v0.6.5.

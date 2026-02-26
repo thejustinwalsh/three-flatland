@@ -238,9 +238,9 @@ describe('Entity Lifecycle: Remove/Re-Add Single Frame', () => {
 
     group.remove(sprite)
 
-    // Snapshot should have serialized values
-    expect(sprite._snapshot.color.a).toBeCloseTo(0.3)
-    expect(sprite._snapshot.layer.layer).toBe(5)
+    // Local arrays should have serialized values
+    expect(sprite.alpha).toBeCloseTo(0.3)
+    expect(sprite.layer).toBe(5)
 
     group.add(sprite)
     runSystems(group)
