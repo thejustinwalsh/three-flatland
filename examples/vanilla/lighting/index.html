@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Lighting Lab - three-flatland</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        overflow: hidden;
+        background: #000;
+        font-family: monospace;
+      }
+      canvas {
+        display: block;
+      }
+      #ui {
+        position: fixed;
+        top: 12px;
+        left: 12px;
+        color: #4a9eff;
+        font-size: 13px;
+        line-height: 1.6;
+        white-space: pre;
+        z-index: 100;
+        user-select: none;
+        text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+      }
+    </style>
+  </head>
+  <body>
+    <div id="ui">Loading...</div>
+    <script type="module" src="/main.ts"></script>
+  </body>
+</html>

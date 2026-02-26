@@ -218,6 +218,32 @@
           "paths": ["/react/pass-effects", "/react/pass-effects/:path*"]
         }
       ]
+    },
+    "example-vanilla-lighting": {
+      "development": {
+        "local": {
+          "port": 4017
+        }
+      },
+      "routing": [
+        {
+          "group": "vanilla-examples",
+          "paths": ["/vanilla/lighting", "/vanilla/lighting/:path*"]
+        }
+      ]
+    },
+    "example-react-lighting": {
+      "development": {
+        "local": {
+          "port": 4018
+        }
+      },
+      "routing": [
+        {
+          "group": "react-examples",
+          "paths": ["/react/lighting", "/react/lighting/:path*"]
+        }
+      ]
     }
   }
 }

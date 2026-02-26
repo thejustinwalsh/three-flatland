@@ -136,6 +136,28 @@
         "default": "./dist/pipeline/*.cjs"
       }
     },
+    "./lights": {
+      "source": "./src/lights/index.ts",
+      "import": {
+        "types": "./dist/lights/index.d.ts",
+        "default": "./dist/lights/index.js"
+      },
+      "require": {
+        "types": "./dist/lights/index.d.cts",
+        "default": "./dist/lights/index.cjs"
+      }
+    },
+    "./lights/*": {
+      "source": "./src/lights/*.ts",
+      "import": {
+        "types": "./dist/lights/*.d.ts",
+        "default": "./dist/lights/*.js"
+      },
+      "require": {
+        "types": "./dist/lights/*.d.cts",
+        "default": "./dist/lights/*.cjs"
+      }
+    },
     "./tilemap": {
       "source": "./src/tilemap/index.ts",
       "import": {
