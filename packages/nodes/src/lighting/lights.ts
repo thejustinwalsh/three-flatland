@@ -1,5 +1,6 @@
 import { vec2, vec3, float } from 'three/tsl'
-import type { TSLNode, Vec2Input, Vec3Input, FloatInput } from '../types'
+import type Node from 'three/src/nodes/core/Node.js'
+import type { Vec2Input, Vec3Input, FloatInput } from '../types'
 
 /**
  * Light data structure returned by light calculation nodes.
@@ -7,11 +8,11 @@ import type { TSLNode, Vec2Input, Vec3Input, FloatInput } from '../types'
  */
 export interface Light2DResult {
   /** Direction from surface to light (normalized vec3) */
-  direction: TSLNode
+  direction: Node<'vec3'>
   /** Light color multiplied by intensity */
-  color: TSLNode
+  color: Node<'vec3'>
   /** Distance attenuation factor (0-1) */
-  attenuation: TSLNode
+  attenuation: Node<'float'>
 }
 
 /**
@@ -31,7 +32,7 @@ export interface Light2DResult {
  * const diffuse = litDiffuse(normal, light.direction, inputColor, light.color, light.attenuation)
  */
 export function pointLight2D(
-  surfacePos: TSLNode | Vec2Input,
+  surfacePos: Node<'vec2'> | Vec2Input,
   lightPos: Vec2Input,
   lightColor: Vec3Input = [1, 1, 1],
   intensity: FloatInput = 1,
@@ -80,7 +81,7 @@ export function pointLight2D(
  * const spot = spotLight2D(fragPos, [100, 100], [0, -1], [1, 1, 0.9], 1.5, 150, 0.3, 0.6)
  */
 export function spotLight2D(
-  surfacePos: TSLNode | Vec2Input,
+  surfacePos: Node<'vec2'> | Vec2Input,
   lightPos: Vec2Input,
   lightDir: Vec2Input,
   lightColor: Vec3Input = [1, 1, 1],

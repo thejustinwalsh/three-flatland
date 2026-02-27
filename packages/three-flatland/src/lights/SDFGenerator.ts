@@ -12,6 +12,7 @@ import {
 import { MeshBasicNodeMaterial } from 'three/webgpu'
 import type { WebGPURenderer } from 'three/webgpu'
 import { uniform, uv, vec2, vec4, float, Fn, texture as sampleTexture } from 'three/tsl'
+import type Node from 'three/src/nodes/core/Node.js'
 
 /**
  * Jump Flood Algorithm (JFA) SDF Generator.
@@ -199,7 +200,7 @@ export class SDFGenerator {
       const seedUV = hasOccluder.select(fragUV, vec2(FAR, FAR))
 
       return vec4(seedUV.x, seedUV.y, float(0), float(1))
-    })()
+    })() as Node<'vec4'>
   }
 
   /**
@@ -222,8 +223,7 @@ export class SDFGenerator {
    * For each fragment, check 9 neighbors at offset * jumpSize.
    * Keep the seed UV that is closest to this fragment.
    */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private _jfaColorNode(sourceTex: Texture, jumpSize: any): any {
+  private _jfaColorNode(sourceTex: Texture, jumpSize: ReturnType<typeof uniform>): Node<'vec4'> {
     return Fn(() => {
       const fragUV = uv()
 
@@ -240,7 +240,7 @@ export class SDFGenerator {
         for (let dx = -1; dx <= 1; dx++) {
           if (dx === 0 && dy === 0) continue // Skip center (already processed)
 
-          const offset = vec2(float(dx), float(dy)).mul(jumpSize)
+          const offset = vec2(float(dx), float(dy)).mul(float(jumpSize))
           const neighborUV = fragUV.add(offset)
           const neighborData = sampleTexture(sourceTex, neighborUV)
           const neighborSeedUV = vec2(neighborData.r, neighborData.g)
@@ -256,7 +256,7 @@ export class SDFGenerator {
       }
 
       return vec4(bestSeed.x, bestSeed.y, float(0), float(1))
-    })()
+    })() as Node<'vec4'>
   }
 
   /**
@@ -280,8 +280,7 @@ export class SDFGenerator {
    * G = vector X to nearest occluder
    * B = vector Y to nearest occluder
    */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private _finalColorNode(sourceTex: Texture): any {
+  private _finalColorNode(sourceTex: Texture): Node<'vec4'> {
     return Fn(() => {
       const fragUV = uv()
       const data = sampleTexture(sourceTex, fragUV)
@@ -289,6 +288,6 @@ export class SDFGenerator {
       const diff = fragUV.sub(seedUV)
       const dist = diff.length()
       return vec4(dist, diff.x, diff.y, float(1))
-    })()
+    })() as Node<'vec4'>
   }
 }

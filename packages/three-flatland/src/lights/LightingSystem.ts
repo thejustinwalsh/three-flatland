@@ -1,6 +1,5 @@
 import {
   Vector2,
-  Color,
   DataTexture,
   FloatType,
   RGBAFormat,
@@ -18,11 +17,11 @@ import {
   Fn,
   Loop,
   If,
-  mix,
   texture as sampleTexture,
   textureLoad,
 } from 'three/tsl'
-import type { TSLNode } from '../nodes/types'
+import type Node from 'three/src/nodes/core/Node.js'
+import type UniformNode from 'three/src/nodes/core/UniformNode.js'
 import type { Light2D } from './Light2D'
 
 /**
@@ -33,7 +32,7 @@ import type { Light2D } from './Light2D'
  * @param slotIndex - TSL node for the slot within the tile (0..MAX_LIGHTS_PER_TILE-1)
  * @returns TSL int node containing the 1-based light index (0 = empty)
  */
-export type TileLookupFn = (tileIndex: TSLNode, slotIndex: TSLNode) => TSLNode
+export type TileLookupFn = (tileIndex: Node<'int'>, slotIndex: Node<'int'>) => Node<'int'>
 
 /**
  * Light type encoding for the shader.
@@ -80,26 +79,26 @@ export class LightingSystem {
   // DataTexture light storage
   private _lightsData: Float32Array
   private _lightsTexture: DataTexture
-  private _lightsTextureNode: TSLNode
+  private _lightsTextureNode: Node<'vec4'>
 
   // Scalar uniforms (non-per-light)
-  private _countNode: TSLNode
-  private _bandsNode: TSLNode
-  private _pixelSizeNode: TSLNode
-  private _glowRadiusNode: TSLNode
-  private _glowIntensityNode: TSLNode
-  private _normalStrengthNode: TSLNode
-  private _lightHeightNode: TSLNode
-  private _rimPowerNode: TSLNode
-  private _rimStrengthNode: TSLNode
+  private _countNode: UniformNode<'float', number>
+  private _bandsNode: UniformNode<'float', number>
+  private _pixelSizeNode: UniformNode<'float', number>
+  private _glowRadiusNode: UniformNode<'float', number>
+  private _glowIntensityNode: UniformNode<'float', number>
+  private _normalStrengthNode: UniformNode<'float', number>
+  private _lightHeightNode: UniformNode<'float', number>
+  private _rimPowerNode: UniformNode<'float', number>
+  private _rimStrengthNode: UniformNode<'float', number>
 
   // Shadow uniforms
   private _occlusionTexture: Texture
-  private _occlusionSizeNode: TSLNode
-  private _occlusionOffsetNode: TSLNode
-  private _shadowStrengthNode: TSLNode
-  private _shadowSoftnessNode: TSLNode
-  private _shadowBiasNode: TSLNode
+  private _occlusionSizeNode: UniformNode<'vec2', Vector2>
+  private _occlusionOffsetNode: UniformNode<'vec2', Vector2>
+  private _shadowStrengthNode: UniformNode<'float', number>
+  private _shadowSoftnessNode: UniformNode<'float', number>
+  private _shadowBiasNode: UniformNode<'float', number>
 
   // SDF texture from SDFGenerator (replaces raw occlusion sampling for shadows)
   private _sdfTexture: Texture | null = null
@@ -107,7 +106,7 @@ export class LightingSystem {
   // Radiance textures for indirect GI
   private _radianceTexture: Texture | null = null
   private _radianceFarTexture: Texture | null = null
-  private _radianceIntensityNode: TSLNode
+  private _radianceIntensityNode: UniformNode<'float', number>
 
   /** Compile-time flag: generate normals from sprite alpha for N·L diffuse. Set before adding sprites. */
   autoNormals: boolean = false
@@ -138,7 +137,7 @@ export class LightingSystem {
     // Stable TSL node reference for the lights DataTexture
     this._lightsTextureNode = sampleTexture(this._lightsTexture)
 
-    this._countNode = uniform(0, 'int')
+    this._countNode = uniform(0)
     this._bandsNode = uniform(0)
     this._pixelSizeNode = uniform(0)
     this._glowRadiusNode = uniform(0)
@@ -168,22 +167,22 @@ export class LightingSystem {
   }
 
   /** Get the TSL node for the lights DataTexture */
-  get lightsTextureNode(): TSLNode {
+  get lightsTextureNode(): Node<'vec4'> {
     return this._lightsTextureNode
   }
 
   /** Get the current light count uniform node (for TiledLightCuller) */
-  get countNode(): TSLNode {
+  get countNode(): UniformNode<'float', number> {
     return this._countNode
   }
 
   /** Get the occlusion size uniform node (for TiledLightCuller SDF culling) */
-  get occlusionSizeNode(): TSLNode {
+  get occlusionSizeNode(): UniformNode<'vec2', Vector2> {
     return this._occlusionSizeNode
   }
 
   /** Get the occlusion offset uniform node (for TiledLightCuller SDF culling) */
-  get occlusionOffsetNode(): TSLNode {
+  get occlusionOffsetNode(): UniformNode<'vec2', Vector2> {
     return this._occlusionOffsetNode
   }
 
@@ -462,17 +461,17 @@ export class LightingSystem {
    * Read light data from the DataTexture in TSL.
    * Returns row0..row3 vec4 values for a given light index.
    */
-  private _readLightData(lightIndex: TSLNode): {
-    row0: TSLNode
-    row1: TSLNode
-    row2: TSLNode
-    row3: TSLNode
+  private _readLightData(lightIndex: Node<'float'> | Node<'int'>): {
+    row0: Node<'vec4'>
+    row1: Node<'vec4'>
+    row2: Node<'vec4'>
+    row3: Node<'vec4'>
   } {
     const i = int(lightIndex)
-    const row0 = textureLoad(this._lightsTexture, ivec2(i, 0))
-    const row1 = textureLoad(this._lightsTexture, ivec2(i, 1))
-    const row2 = textureLoad(this._lightsTexture, ivec2(i, 2))
-    const row3 = textureLoad(this._lightsTexture, ivec2(i, 3))
+    const row0 = textureLoad(this._lightsTexture, ivec2(i, int(0)))
+    const row1 = textureLoad(this._lightsTexture, ivec2(i, int(1)))
+    const row2 = textureLoad(this._lightsTexture, ivec2(i, int(2)))
+    const row3 = textureLoad(this._lightsTexture, ivec2(i, int(3)))
     return { row0, row1, row2, row3 }
   }
 
@@ -482,26 +481,26 @@ export class LightingSystem {
    * the light contribution to add to totalLight.
    */
   private _buildLightContribution(
-    row0: TSLNode,
-    row1: TSLNode,
-    row2: TSLNode,
-    row3: TSLNode,
-    surfacePos: TSLNode,
-    normal: TSLNode | undefined,
+    row0: Node<'vec4'>,
+    row1: Node<'vec4'>,
+    row2: Node<'vec4'>,
+    row3: Node<'vec4'>,
+    surfacePos: Node<'vec2'>,
+    normal: Node<'vec3'>,
     options: {
       useShadows: boolean
       useAutoNormals: boolean
-      glowRadius: TSLNode
-      glowIntensity: TSLNode
-      lightHeight: TSLNode
-      occSize: TSLNode
-      occOffset: TSLNode
-      shadowStr: TSLNode
-      shadowSoftness: TSLNode
-      shadowBias: TSLNode
+      glowRadius: Node<'float'>,
+      glowIntensity: Node<'float'>,
+      lightHeight: Node<'float'>,
+      occSize: Node<'vec2'>,
+      occOffset: Node<'vec2'>,
+      shadowStr: Node<'float'>,
+      shadowSoftness: Node<'float'>,
+      shadowBias: Node<'float'>,
       sdfTexGetter: () => Texture | null
     }
-  ): TSLNode {
+  ): Node<'vec3'> {
     // Unpack light data from DataTexture rows
     const lightPos = vec2(row0.r, row0.g)
     const lightColor = vec3(row0.b, row0.a, row1.r)
@@ -547,7 +546,7 @@ export class LightingSystem {
     const atten = isPoint.select(pointAtten, isSpot.select(pointAtten.mul(coneAtten), float(1)))
 
     // Apply N·L diffuse for non-ambient lights when auto-normals enabled
-    let finalContribution: TSLNode
+    let finalContribution: Node<'vec3'>
     if (normal) {
       const isPositional = lightType.lessThan(float(1.5))
       const toLightDir = toLight.div(dist.max(float(0.001)))
@@ -619,7 +618,7 @@ export class LightingSystem {
     rimEnabled?: boolean
     shadows?: boolean
     radiance?: boolean
-  }): (ctx: { color: TSLNode; atlasUV: TSLNode; worldPosition: TSLNode }) => TSLNode {
+  }): (ctx: { color: Node<'vec4'>; atlasUV: Node<'vec2'>; worldPosition: Node<'vec2'> }) => Node<'vec4'> {
     const count = this._countNode
     const bands = this._bandsNode
     const pixelSize = this._pixelSizeNode
@@ -642,7 +641,7 @@ export class LightingSystem {
     const shadowBias = this._shadowBiasNode
     const sdfTexGetter = () => this._sdfTexture
     const radianceTexGetter = () => this._radianceTexture
-    const radianceFarTexGetter = () => this._radianceFarTexture
+    const _radianceFarTexGetter = () => this._radianceFarTexture
     const radianceIntensity = this._radianceIntensityNode
 
     let texelW: number | undefined
@@ -663,7 +662,7 @@ export class LightingSystem {
         const totalLight = vec3(0, 0, 0).toVar('totalLight')
 
         // Auto-generate surface normal from sprite alpha gradient
-        let normal: TSLNode | undefined
+        let normal: Node<'vec3'> = vec3(0, 0, 1)
         if (useAutoNormals && tex && texelW !== undefined && texelH !== undefined) {
           const tw = float(texelW)
           const th = float(texelH)
@@ -683,8 +682,8 @@ export class LightingSystem {
         // Direct light loop: skip when RC is the primary illumination source
         if (!useRadiance) {
           Loop(
-            { start: int(0), end: count, type: 'int', condition: '<' },
-            ({ i }: { i: TSLNode }) => {
+            { start: 0, end: count, type: 'float', condition: '<' },
+            ({ i }: { i: Node<'float'> }) => {
               const { row0, row1, row2, row3 } = this._readLightData(i)
 
               const finalContribution = this._buildLightContribution(
@@ -735,14 +734,14 @@ export class LightingSystem {
         // Quantize to discrete bands
         const useBands = bands.greaterThan(float(0))
         const raw = vec3(totalLight)
-        const quantized = raw.mul(bands).round().div(bands)
+        const quantized = raw.mul(bands).add(float(0.5)).floor().div(bands)
         return useBands.select(quantized, raw)
-      })()
+      })() as Node<'vec3'>
 
       return Fn(() => {
         const litColor = ctx.color.rgb.mul(lit)
         return vec4(litColor, ctx.color.a)
-      })()
+      })() as Node<'vec4'>
     }
   }
 
@@ -759,8 +758,8 @@ export class LightingSystem {
    */
   createTiledColorTransform(
     tileLookup: TileLookupFn,
-    tileCountX: TSLNode,
-    screenSize: TSLNode,
+    tileCountX: Node<'float'>,
+    screenSize: Node<'vec2'>,
     tileSize: number,
     options?: {
       texture?: Texture
@@ -769,7 +768,7 @@ export class LightingSystem {
       shadows?: boolean
       radiance?: boolean
     }
-  ): (ctx: { color: TSLNode; atlasUV: TSLNode; worldPosition: TSLNode }) => TSLNode {
+  ): (ctx: { color: Node<'vec4'>; atlasUV: Node<'vec2'>; worldPosition: Node<'vec2'> }) => Node<'vec4'> {
     const bands = this._bandsNode
     const pixelSize = this._pixelSizeNode
     const glowRadius = this._glowRadiusNode
@@ -791,7 +790,7 @@ export class LightingSystem {
     const shadowBias = this._shadowBiasNode
     const sdfTexGetter = () => this._sdfTexture
     const radianceTexGetter = () => this._radianceTexture
-    const radianceFarTexGetter = () => this._radianceFarTexture
+    const _radianceFarTexGetter = () => this._radianceFarTexture
     const radianceIntensity = this._radianceIntensityNode
     const lightCount = this._countNode
 
@@ -815,7 +814,7 @@ export class LightingSystem {
         const totalLight = vec3(0, 0, 0).toVar('totalLight')
 
         // Auto-generate surface normal
-        let normal: TSLNode | undefined
+        let normal: Node<'vec3'> = vec3(0, 0, 1)
         if (useAutoNormals && tex && texelW !== undefined && texelH !== undefined) {
           const tw = float(texelW)
           const th = float(texelH)
@@ -834,8 +833,8 @@ export class LightingSystem {
 
         // Global ambient pass: ambient lights aren't in tiles, add them directly
         Loop(
-          { start: int(0), end: lightCount, type: 'int', condition: '<' },
-          ({ i }: { i: TSLNode }) => {
+          { start: 0, end: lightCount, type: 'float', condition: '<' },
+          ({ i }: { i: Node<'float'> }) => {
             const { row0, row1, row3 } = this._readLightData(i)
             const lightType = row3.r
             const lightEnabled = row3.g
@@ -850,11 +849,11 @@ export class LightingSystem {
 
         const fragUV = vec2(surfacePos).sub(occOffset).div(occSize)
         const tileXY = fragUV.mul(screenSize).div(float(tileSize)).floor()
-        const tileIndex = int(tileXY.y).mul(tileCountX).add(int(tileXY.x))
+        const tileIndex = int(tileXY.y).mul(int(tileCountX)).add(int(tileXY.x))
 
         // Loop over positional lights in this tile (skip when RC handles primary illumination)
         if (!useRadiance) {
-          Loop(MAX_LIGHTS_PER_TILE, ({ i }: { i: TSLNode }) => {
+          Loop(MAX_LIGHTS_PER_TILE, ({ i }: { i: Node<'int'> }) => {
             const lightIndex = tileLookup(tileIndex, i)
 
             // 0 = empty sentinel → skip (If guard avoids GPU work for empty slots)
@@ -913,14 +912,14 @@ export class LightingSystem {
         // Quantize to discrete bands
         const useBands = bands.greaterThan(float(0))
         const raw = vec3(totalLight)
-        const quantized = raw.mul(bands).round().div(bands)
+        const quantized = raw.mul(bands).add(float(0.5)).floor().div(bands)
         return useBands.select(quantized, raw)
-      })()
+      })() as Node<'vec3'>
 
       return Fn(() => {
         const litColor = ctx.color.rgb.mul(lit)
         return vec4(litColor, ctx.color.a)
-      })()
+      })() as Node<'vec4'>
     }
   }
 }

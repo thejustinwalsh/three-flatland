@@ -1,5 +1,6 @@
-import { vec3, vec4, float } from 'three/tsl'
-import type { TSLNode, Vec3Input, FloatInput } from '../types'
+import { vec3, vec4, float, mix } from 'three/tsl'
+import type Node from 'three/src/nodes/core/Node.js'
+import type { Vec3Input, FloatInput } from '../types'
 import type { Light2DResult } from './lights'
 
 /**
@@ -17,12 +18,12 @@ import type { Light2DResult } from './lights'
  * const lit = litDiffuse(normal, light.direction, inputColor, light.color, light.attenuation)
  */
 export function litDiffuse(
-  normal: TSLNode,
-  lightDir: TSLNode,
-  surfaceColor: TSLNode,
-  lightColor: TSLNode | Vec3Input,
-  attenuation: TSLNode | FloatInput = 1
-): TSLNode {
+  normal: Node<'vec3'>,
+  lightDir: Node<'vec3'>,
+  surfaceColor: Node<'vec4'>,
+  lightColor: Node<'vec3'> | Vec3Input,
+  attenuation: Node<'float'> | FloatInput = 1
+): Node<'vec4'> {
   const lightVec = Array.isArray(lightColor) ? vec3(...lightColor) : lightColor
   const attNode = typeof attenuation === 'number' ? float(attenuation) : attenuation
 
@@ -51,14 +52,14 @@ export function litDiffuse(
  * const spec = litSpecular(normal, light.direction, viewDir, light.color, light.attenuation, 32, 0.5)
  */
 export function litSpecular(
-  normal: TSLNode,
-  lightDir: TSLNode,
-  viewDir: TSLNode | Vec3Input = [0, 0, 1],
-  lightColor: TSLNode | Vec3Input = [1, 1, 1],
-  attenuation: TSLNode | FloatInput = 1,
+  normal: Node<'vec3'>,
+  lightDir: Node<'vec3'>,
+  viewDir: Node<'vec3'> | Vec3Input = [0, 0, 1],
+  lightColor: Node<'vec3'> | Vec3Input = [1, 1, 1],
+  attenuation: Node<'float'> | FloatInput = 1,
   shininess: FloatInput = 32,
   specularStrength: FloatInput = 0.5
-): TSLNode {
+): Node<'vec3'> {
   const viewVec = Array.isArray(viewDir) ? vec3(...viewDir) : viewDir
   const lightVec = Array.isArray(lightColor) ? vec3(...lightColor) : lightColor
   const attNode = typeof attenuation === 'number' ? float(attenuation) : attenuation
@@ -91,12 +92,12 @@ export function litSpecular(
  * const rim = litRim(normal, [0, 0, 1], [0.5, 0.8, 1], 3, 1)
  */
 export function litRim(
-  normal: TSLNode,
-  viewDir: TSLNode | Vec3Input = [0, 0, 1],
+  normal: Node<'vec3'>,
+  viewDir: Node<'vec3'> | Vec3Input = [0, 0, 1],
   rimColor: Vec3Input = [1, 1, 1],
   rimPower: FloatInput = 2,
   rimStrength: FloatInput = 1
-): TSLNode {
+): Node<'vec3'> {
   const viewVec = Array.isArray(viewDir) ? vec3(...viewDir) : viewDir
   const rimVec = Array.isArray(rimColor) ? vec3(...rimColor) : rimColor
   const powerNode = typeof rimPower === 'number' ? float(rimPower) : rimPower
@@ -125,14 +126,14 @@ export function litRim(
  * const toon = litCelShaded(normal, light.direction, inputColor, light.color, light.attenuation, 3)
  */
 export function litCelShaded(
-  normal: TSLNode,
-  lightDir: TSLNode,
-  surfaceColor: TSLNode,
-  lightColor: TSLNode | Vec3Input = [1, 1, 1],
-  attenuation: TSLNode | FloatInput = 1,
+  normal: Node<'vec3'>,
+  lightDir: Node<'vec3'>,
+  surfaceColor: Node<'vec4'>,
+  lightColor: Node<'vec3'> | Vec3Input = [1, 1, 1],
+  attenuation: Node<'float'> | FloatInput = 1,
   bands: FloatInput = 3,
-  shadowColor?: Vec3Input | TSLNode
-): TSLNode {
+  shadowColor?: Vec3Input | Node<'vec3'>
+): Node<'vec4'> {
   const lightVec = Array.isArray(lightColor) ? vec3(...lightColor) : lightColor
   const attNode = typeof attenuation === 'number' ? float(attenuation) : attenuation
   const bandsNode = typeof bands === 'number' ? float(bands) : bands
@@ -144,13 +145,13 @@ export function litCelShaded(
   const quantized = NdotL.mul(bandsNode).floor().div(bandsNode)
 
   // Apply banded lighting
-  const shadow = shadowColor
+  const shadowVec: Node<'vec3'> = shadowColor
     ? Array.isArray(shadowColor)
       ? vec3(...shadowColor)
       : shadowColor
-    : surfaceColor.rgb.mul(0.3)
+    : vec3(surfaceColor.rgb.mul(0.3))
 
-  const litRGB = shadow.mix(surfaceColor.rgb.mul(lightVec), quantized)
+  const litRGB = mix(shadowVec, surfaceColor.rgb.mul(lightVec), quantized)
 
   return vec4(litRGB, surfaceColor.a)
 }
@@ -174,12 +175,12 @@ export function litCelShaded(
  * })
  */
 export function litSpriteMulti(
-  normal: TSLNode,
-  surfaceColor: TSLNode,
+  normal: Node<'vec3'>,
+  surfaceColor: Node<'vec4'>,
   lights: Light2DResult[],
   ambient?: Light2DResult,
   options: LitSpriteOptions = {}
-): TSLNode {
+): Node<'vec4'> {
   const {
     specular = false,
     shininess = 32,
@@ -194,8 +195,8 @@ export function litSpriteMulti(
   const viewVec = Array.isArray(viewDir) ? vec3(...viewDir) : viewDir
 
   // Start accumulating light contributions
-  let totalDiffuse: TSLNode = vec3(0, 0, 0)
-  let totalSpecular: TSLNode | null = null
+  let totalDiffuse: Node<'vec3'> = vec3(0, 0, 0)
+  let totalSpecular: Node<'vec3'> | null = null
 
   for (const light of lights) {
     // N·L diffuse
@@ -224,7 +225,7 @@ export function litSpriteMulti(
   }
 
   // Apply lighting to surface color
-  let result = vec4(surfaceColor.rgb.mul(totalDiffuse), surfaceColor.a)
+  let result: Node<'vec4'> = vec4(surfaceColor.rgb.mul(totalDiffuse), surfaceColor.a)
 
   // Add specular
   if (totalSpecular) {
@@ -275,16 +276,16 @@ export interface LitSpriteOptions {
   /** Rim strength (default: 1) */
   rimStrength?: FloatInput
   /** View direction for specular/rim (default: [0, 0, 1]) */
-  viewDir?: Vec3Input | TSLNode
+  viewDir?: Vec3Input | Node<'vec3'>
 }
 
 export function litSprite(
-  normal: TSLNode,
-  surfaceColor: TSLNode,
+  normal: Node<'vec3'>,
+  surfaceColor: Node<'vec4'>,
   light: Light2DResult,
   ambient?: Light2DResult,
   options: LitSpriteOptions = {}
-): TSLNode {
+): Node<'vec4'> {
   const {
     specular = false,
     shininess = 32,
@@ -299,7 +300,7 @@ export function litSprite(
   const viewVec = Array.isArray(viewDir) ? vec3(...viewDir) : viewDir
 
   // Start with diffuse lighting
-  let result = litDiffuse(normal, light.direction, surfaceColor, light.color, light.attenuation)
+  let result: Node<'vec4'> = litDiffuse(normal, light.direction, surfaceColor, light.color, light.attenuation)
 
   // Add ambient if provided
   if (ambient) {
