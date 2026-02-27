@@ -3,7 +3,7 @@
 // The consumer-facing entry point (src/react.ts) re-exports core + this.
 
 // Types
-export type { EffectElement } from './types'
+export type { EffectElement, LightEffectElement } from './types'
 
 // Attach helpers
-export { attachEffect } from './attach'
+export { attachEffect, attachLighting } from './attach'

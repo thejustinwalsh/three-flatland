@@ -8,7 +8,7 @@ import {
   LinearFilter,
   ClampToEdgeWrapping,
   Vector2,
-  DataTexture,
+  type DataTexture,
   type Texture,
 } from 'three'
 import { MeshBasicNodeMaterial } from 'three/webgpu'
@@ -35,9 +35,7 @@ import {
   max,
 } from 'three/tsl'
 import { worldToUV, uvToWorld } from './coordUtils'
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type TSLNode = any
+import type Node from 'three/src/nodes/core/Node.js'
 
 const TAU = Math.PI * 2
 const EPS = 0.001
@@ -92,7 +90,7 @@ export class RadianceCascades {
 
   private _sdfTexture: Texture | null = null
   private _lightsTexture: DataTexture | null = null
-  private _lightCountNode: TSLNode = null
+  private _lightCountNode: Node<'float'> = uniform(0)
 
   /** Effective base interval (auto-calculated if config.baseInterval is 0) */
   private _effectiveBaseInterval: number = 16
@@ -142,7 +140,7 @@ export class RadianceCascades {
     worldWidth: number,
     worldHeight: number,
     lightsTexture: DataTexture,
-    lightCountNode: TSLNode
+    lightCountNode: Node<'float'>
   ): void {
     this._worldSize.set(worldWidth, worldHeight)
     this._worldSizeNode.value.set(worldWidth, worldHeight)
@@ -311,11 +309,11 @@ export class RadianceCascades {
       const totalRadiance = vec3(0, 0, 0).toVar()
 
       Loop(
-        { start: int(0), end: lightCount, type: 'int', condition: '<' },
-        ({ i }: { i: TSLNode }) => {
-          const row0 = textureLoad(lightsTexture, ivec2(i, 0))
-          const row1 = textureLoad(lightsTexture, ivec2(i, 1))
-          const row3 = textureLoad(lightsTexture, ivec2(i, 3))
+        { start: 0, end: lightCount, type: 'float', condition: '<' },
+        ({ i }: { i: Node<'float'> }) => {
+          const row0 = textureLoad(lightsTexture, ivec2(int(i), int(0)))
+          const row1 = textureLoad(lightsTexture, ivec2(int(i), int(1)))
+          const row3 = textureLoad(lightsTexture, ivec2(int(i), int(3)))
 
           const lightPos = vec2(row0.r, row0.g)
           const lightColor = vec3(row0.b, row0.a, row1.r)
@@ -351,7 +349,7 @@ export class RadianceCascades {
 
       // Store in linear space — no gamma conversion
       return vec4(totalRadiance, float(1))
-    })()
+    })() as Node<'vec4'>
   }
 
   // ============================================
@@ -531,7 +529,7 @@ export class RadianceCascades {
             // render targets in WebGPU — no Y-flip needed.
             const texelPos = rayN1XY.mul(float(probeGroupSizeN1)).add(probeN1)
             const mergeUV = texelPos.div(float(res))
-            const mergedSample = sampleTexture(prevCascadeTexture!, mergeUV)
+            const mergedSample = sampleTexture(prevCascadeTexture, mergeUV)
             mergeAccum.addAssign(mergedSample.rgb)
           }
 
@@ -540,7 +538,7 @@ export class RadianceCascades {
       }
 
       return vec4(merged, float(1).sub(visibility))
-    })()
+    })() as Node<'vec4'>
 
     return material
   }
@@ -607,7 +605,7 @@ export class RadianceCascades {
       irradiance.divAssign(float(angularSq))
 
       return vec4(irradiance, float(1))
-    })()
+    })() as Node<'vec4'>
   }
 
   // ============================================

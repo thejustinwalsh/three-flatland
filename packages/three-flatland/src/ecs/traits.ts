@@ -148,3 +148,20 @@ export const PostPassTrait = trait(() => ({
 export const PostPassRegistry = trait(() => ({
   dirty: false as boolean,
 }))
+
+// ============================================
+// Lighting effect traits
+// ============================================
+
+/** AoS — holds a lighting ColorTransformFn and enabled state. */
+export const LightEffectTrait = trait(() => ({
+  fn: null as
+    | ((ctx: { color: Node<'vec4'>; atlasUV: Node<'vec2'>; worldPosition: Node<'vec2'> }) => Node<'vec4'>)
+    | null,
+  enabled: true,
+}))
+
+/** World-level singleton for lighting dirty tracking. */
+export const LightEffectRegistry = trait(() => ({
+  dirty: false as boolean,
+}))

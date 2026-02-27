@@ -1,8 +1,10 @@
 // three-flatland/react/attach
-// Attach helper for R3F effect lifecycle
+// Attach helpers for R3F effect lifecycle
 
 import type { Sprite2D } from '../sprites/Sprite2D'
 import type { MaterialEffect } from '../materials/MaterialEffect'
+import type { Flatland } from '../Flatland'
+import type { LightEffect } from '../lights/LightEffect'
 
 /**
  * R3F attach helper for MaterialEffect instances.
@@ -19,4 +21,22 @@ import type { MaterialEffect } from '../materials/MaterialEffect'
 export function attachEffect<T extends MaterialEffect>(parent: Sprite2D, self: T): () => void {
   parent.addEffect(self)
   return () => parent.removeEffect(self)
+}
+
+/**
+ * R3F attach helper for LightEffect instances.
+ * Use as the `attach` prop when adding a light effect as a child of a flatland:
+ * @example
+ * ```tsx
+ * import { attachLighting } from 'three-flatland/react'
+ *
+ * <flatland ref={flatlandRef} viewSize={400}>
+ *   <simpleLightEffect attach={attachLighting} ambientIntensity={0.3} />
+ *   <light2D lightType="point" position={[50, 50, 0]} color="orange" />
+ * </flatland>
+ * ```
+ */
+export function attachLighting<T extends LightEffect>(parent: Flatland, self: T): () => void {
+  parent.setLighting(self)
+  return () => parent.setLighting(null)
 }

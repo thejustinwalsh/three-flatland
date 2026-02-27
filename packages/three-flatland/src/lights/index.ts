@@ -2,7 +2,21 @@
 export { Light2D, isLight2D } from './Light2D'
 export type { Light2DOptions, Light2DType, Light2DUniforms } from './Light2D'
 
-// Lighting system
+// LightEffect base class + factory
+export {
+  LightEffect,
+  createLightEffect,
+} from './LightEffect'
+export type {
+  LightEffectContext,
+  LightEffectClass,
+  EffectSchema,
+  EffectSchemaValue,
+  EffectField,
+  EffectValues,
+} from './LightEffect'
+
+// Lighting system (internal infrastructure — used by LightEffect subclasses)
 export { LightingSystem } from './LightingSystem'
 export type { TileLookupFn } from './LightingSystem'
 
@@ -23,7 +37,7 @@ export {
 // Shared coordinate utilities
 export { worldToUV, uvToWorld } from './coordUtils'
 
-// Lighting strategies
+// Lighting strategies (internal — wrapped by LightEffect subclasses)
 export {
   SimpleLightingStrategy,
   DirectLightingStrategy,

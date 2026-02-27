@@ -78,8 +78,8 @@ export class ForwardPlusLighting {
     const lightCounts = new Uint8Array(this._tileCount)
     const screenW = this._screenSize.x
     const screenH = this._screenSize.y
-    const worldToScreenX = screenW / this._worldSize.x
-    const worldToScreenY = screenH / this._worldSize.y
+    const _worldToScreenX = screenW / this._worldSize.x
+    const _worldToScreenY = screenH / this._worldSize.y
 
     // BRUTE FORCE: assign every non-ambient light to every tile
     for (let lightIdx = 0; lightIdx < lights.length; lightIdx++) {
@@ -94,7 +94,7 @@ export class ForwardPlusLighting {
         const blockIdx = Math.floor(count / 4)
         const elementIdx = count % 4
         const texelIdx = (tileIdx * 4 + blockIdx) * 4 + elementIdx
-        this._tileData![texelIdx] = lightIdx + 1
+        this._tileData[texelIdx] = lightIdx + 1
         lightCounts[tileIdx] = count + 1
       }
     }

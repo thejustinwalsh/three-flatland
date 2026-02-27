@@ -1,6 +1,7 @@
 import { vec3, float, texture as sampleTexture } from 'three/tsl'
 import type { Texture } from 'three'
-import type { TSLNode, FloatInput, Vec2Input } from '../types'
+import type Node from 'three/src/nodes/core/Node.js'
+import type { FloatInput, Vec2Input } from '../types'
 
 /**
  * Generate a normal map from a heightmap texture.
@@ -18,10 +19,10 @@ import type { TSLNode, FloatInput, Vec2Input } from '../types'
  */
 export function normalFromHeight(
   heightTex: Texture,
-  uv: TSLNode,
+  uv: Node<'vec2'>,
   strength: FloatInput = 1,
   texelSize?: Vec2Input
-): TSLNode {
+): Node<'vec3'> {
   const strengthNode = typeof strength === 'number' ? float(strength) : strength
 
   // Default texel size based on common sprite sizes (1/256)
@@ -62,10 +63,10 @@ export function normalFromHeight(
  */
 export function normalFromHeightSmooth(
   heightTex: Texture,
-  uv: TSLNode,
+  uv: Node<'vec2'>,
   strength: FloatInput = 1,
   scale: FloatInput = 2
-): TSLNode {
+): Node<'vec3'> {
   const strengthNode = typeof strength === 'number' ? float(strength) : strength
   const scaleNode = typeof scale === 'number' ? float(scale) : scale
 
