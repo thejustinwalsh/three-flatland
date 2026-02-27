@@ -1,6 +1,7 @@
 import { vec3, float, texture as sampleTexture } from 'three/tsl'
 import type { Texture } from 'three'
-import type { TSLNode, FloatInput } from '../types'
+import type Node from 'three/src/nodes/core/Node.js'
+import type { FloatInput } from '../types'
 
 /**
  * Generate normals from a sprite's alpha channel, treating alpha as depth.
@@ -18,9 +19,9 @@ import type { TSLNode, FloatInput } from '../types'
  */
 export function normalFromSprite(
   spriteTex: Texture,
-  uv: TSLNode,
+  uv: Node<'vec2'>,
   strength: FloatInput = 1
-): TSLNode {
+): Node<'vec3'> {
   const strengthNode = typeof strength === 'number' ? float(strength) : strength
 
   const texelSize = float(1.0 / 256.0)
@@ -50,10 +51,10 @@ export function normalFromSprite(
  */
 export function normalFromSpriteRounded(
   spriteTex: Texture,
-  uv: TSLNode,
+  uv: Node<'vec2'>,
   strength: FloatInput = 1,
   curvature: FloatInput = 0.5
-): TSLNode {
+): Node<'vec3'> {
   const strengthNode = typeof strength === 'number' ? float(strength) : strength
   const curvatureNode = typeof curvature === 'number' ? float(curvature) : curvature
 

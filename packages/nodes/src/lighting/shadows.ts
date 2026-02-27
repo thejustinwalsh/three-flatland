@@ -1,6 +1,7 @@
 import { vec2, vec3, vec4, float, texture as sampleTexture } from 'three/tsl'
 import type { Texture } from 'three'
-import type { TSLNode, Vec2Input, Vec3Input, FloatInput } from '../types'
+import type Node from 'three/src/nodes/core/Node.js'
+import type { Vec2Input, Vec3Input, FloatInput } from '../types'
 
 /**
  * Create a drop shadow effect.
@@ -20,11 +21,11 @@ import type { TSLNode, Vec2Input, Vec3Input, FloatInput } from '../types'
  */
 export function shadowDrop(
   spriteTex: Texture,
-  uv: TSLNode,
+  uv: Node<'vec2'>,
   shadowOffset: Vec2Input = [0.02, -0.02],
   shadowColor: Vec3Input = [0, 0, 0],
   shadowAlpha: FloatInput = 0.5
-): TSLNode {
+): Node<'vec4'> {
   const offsetVec = Array.isArray(shadowOffset) ? vec2(...shadowOffset) : shadowOffset
   const colorVec = Array.isArray(shadowColor) ? vec3(...shadowColor) : shadowColor
   const alphaNode = typeof shadowAlpha === 'number' ? float(shadowAlpha) : shadowAlpha
@@ -54,13 +55,13 @@ export function shadowDrop(
  */
 export function shadowDropSoft(
   spriteTex: Texture,
-  uv: TSLNode,
+  uv: Node<'vec2'>,
   shadowOffset: Vec2Input = [0.02, -0.02],
   shadowColor: Vec3Input = [0, 0, 0],
   shadowAlpha: FloatInput = 0.5,
   softness: FloatInput = 0.01,
   samples: number = 4
-): TSLNode {
+): Node<'vec4'> {
   const offsetVec = Array.isArray(shadowOffset) ? vec2(...shadowOffset) : shadowOffset
   const colorVec = Array.isArray(shadowColor) ? vec3(...shadowColor) : shadowColor
   const alphaNode = typeof shadowAlpha === 'number' ? float(shadowAlpha) : shadowAlpha
@@ -83,7 +84,7 @@ export function shadowDropSoft(
 
   // Take requested number of samples
   const actualSamples = Math.min(samples, offsets.length)
-  let totalAlpha: TSLNode = float(0)
+  let totalAlpha: Node<'float'> = float(0)
 
   for (let i = 0; i < actualSamples; i++) {
     const [ox, oy] = offsets[i]!
@@ -112,24 +113,23 @@ export function shadowDropSoft(
  * finalColor = finalColor.mul(shadow)
  */
 export function shadow2D(
-  position: TSLNode | Vec2Input,
+  position: Node<'vec2'> | Vec2Input,
   lightPos: Vec2Input,
   occluderTex: Texture,
   occluderSize: Vec2Input,
   shadowStrength: FloatInput = 0.7
-): TSLNode {
+): Node<'float'> {
   const posVec = Array.isArray(position) ? vec2(...position) : position
   const lightVec = Array.isArray(lightPos) ? vec2(...lightPos) : lightPos
   const sizeVec = Array.isArray(occluderSize) ? vec2(...occluderSize) : occluderSize
   const strengthNode = typeof shadowStrength === 'number' ? float(shadowStrength) : shadowStrength
 
-  // Direction and distance to light
+  // Direction to light
   const toLight = lightVec.sub(posVec)
-  const dist = toLight.length()
 
   // Sample along ray to light for occlusion
   const steps = 8
-  let shadow: TSLNode = float(1)
+  let shadow: Node<'float'> = float(1)
 
   for (let i = 1; i <= steps; i++) {
     const t = float(i / steps)
@@ -155,13 +155,13 @@ export function shadow2D(
  * @returns Soft shadow factor
  */
 export function shadowSoft2D(
-  position: TSLNode | Vec2Input,
+  position: Node<'vec2'> | Vec2Input,
   lightPos: Vec2Input,
   occluderTex: Texture,
   occluderSize: Vec2Input,
   lightRadius: FloatInput = 10,
   shadowStrength: FloatInput = 0.7
-): TSLNode {
+): Node<'float'> {
   const posVec = Array.isArray(position) ? vec2(...position) : position
   const lightVec = Array.isArray(lightPos) ? vec2(...lightPos) : lightPos
   const sizeVec = Array.isArray(occluderSize) ? vec2(...occluderSize) : occluderSize
@@ -177,13 +177,13 @@ export function shadowSoft2D(
     [0, -1],
   ]
 
-  let totalShadow: TSLNode = float(0)
+  let totalShadow: Node<'float'> = float(0)
 
   for (const [ox, oy] of lightOffsets) {
     const offsetLight = lightVec.add(vec2(ox, oy).mul(radiusNode))
     const toLight = offsetLight.sub(posVec)
 
-    let shadow: TSLNode = float(1)
+    let shadow: Node<'float'> = float(1)
     const steps = 4
 
     for (let i = 1; i <= steps; i++) {
