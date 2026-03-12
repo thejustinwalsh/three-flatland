@@ -1,0 +1,310 @@
+# three-flatland
+
+> 2D sprites, tilemaps, and effects for Three.js — TSL shaders, WebGPU, automatic batching.
+
+**Status**: Early alpha. Install with `@alpha` tag.
+**Repository**: https://github.com/thejustinwalsh/three-flatland
+**Docs**: https://thejustinwalsh.com/three-flatland/
+
+## Requirements
+
+- three.js >= 0.183.1 (TSL/WebGPU support)
+- React >= 19.0.0 (for `three-flatland/react`)
+- @react-three/fiber >= 10.0.0-alpha.2 (for React, WebGPU support)
+
+## Installation
+
+```bash
+npm install three-flatland@alpha              # vanilla Three.js
+npm install three-flatland@alpha @react-three/fiber@alpha  # React Three Fiber
+npm install @three-flatland/nodes@alpha        # TSL effect nodes (optional)
+```
+
+## Imports
+
+Vanilla: `import { ... } from 'three-flatland'`
+React: `import { ... } from 'three-flatland/react'` (re-exports core + JSX types)
+Nodes: `import { ... } from '@three-flatland/nodes'` or `'@three-flatland/nodes/color'`
+
+Always use `WebGPURenderer` from `'three/webgpu'`, never `WebGLRenderer`.
+
+---
+
+## Sprite2D
+
+2D sprite mesh. Extends `THREE.Mesh`.
+
+```typescript
+const sprite = new Sprite2D({
+  texture,                         // Texture
+  frame,                           // SpriteFrame (UV rect from spritesheet)
+  anchor: [0.5, 0.5],             // Pivot point 0-1
+  tint: 0xffffff,                  // Color | string | number
+  alpha: 1,                        // Opacity 0-1
+  flipX: false,
+  flipY: false,
+  layer: Layers.ENTITIES,          // Render layer (0-6)
+  zIndex: 0,                       // Sort within layer
+  pixelPerfect: false,
+})
+```
+
+Properties: `texture`, `frame`, `anchor`, `tint`, `alpha`, `flipX`, `flipY`, `layer`, `zIndex`, `pixelPerfect`, `width` (read-only), `height` (read-only).
+Methods: `setFrame()`, `setAnchor(x, y)`, `flip(h, v)`, `addEffect(effect)`, `removeEffect(effect)`, `clone()`, `dispose()`.
+
+## AnimatedSprite2D
+
+Extends `Sprite2D` with spritesheet animation.
+
+```typescript
+const player = new AnimatedSprite2D({
+  spriteSheet: sheet,              // SpriteSheet from SpriteSheetLoader
+  animationSet: {
+    animations: {
+      idle: { frames: ['idle_0', 'idle_1', 'idle_2'], fps: 8 },
+      run: { frames: ['run_0', 'run_1', 'run_2', 'run_3'], fps: 12 },
+      attack: { frames: ['attack_0', 'attack_1'], fps: 15, loop: false },
+    },
+  },
+  animation: 'idle',               // Initial animation
+})
+
+player.update(deltaMs)              // Call each frame
+player.play('attack', {
+  onComplete: () => player.play('idle'),
+  onEvent: (event, frame) => { /* per-frame events */ },
+})
+```
+
+Methods: `play(name, options?)`, `pause()`, `resume()`, `stop()`, `gotoFrame(i)`, `update(deltaMs)`, `isPlaying()`.
+
+## Flatland
+
+Unified 2D rendering pipeline. Extends `THREE.Group`. Manages batching, camera, post-processing.
+
+```typescript
+const flatland = new Flatland({
+  viewSize: 400,                   // Camera frustum half-height
+  clearColor: 0x1a1a2e,
+  aspect: window.innerWidth / window.innerHeight,
+  postProcessing: false,           // Enable for PassEffects
+})
+
+flatland.add(sprite)               // Sprites route to internal SpriteGroup
+flatland.render(renderer)          // Call each frame
+
+window.addEventListener('resize', () => {
+  renderer.setSize(window.innerWidth, window.innerHeight)
+  flatland.resize(window.innerWidth, window.innerHeight)
+})
+```
+
+Properties: `camera`, `viewSize`, `clearColor`, `autoClear`, `stats`.
+Methods: `add()`, `remove()`, `render(renderer)`, `resize(w, h)`, `addPass(passEffect)`, `removePass(passEffect)`, `dispose()`.
+
+## SpriteGroup
+
+Automatic batching container. Sprites sharing a material batch into single draw calls.
+
+```typescript
+const group = new SpriteGroup()
+scene.add(group)
+group.add(sprite1)
+group.add(sprite2)  // Same texture = 1 draw call
+```
+
+## Loaders
+
+```typescript
+// Textures — 'pixel-art' preset by default (NearestFilter, no mipmaps)
+const texture = await TextureLoader.load('/sprite.png')
+const smooth = await TextureLoader.load('/ui.png', { texture: 'smooth' })
+
+// Spritesheets — TexturePacker JSON Hash or Array format
+const sheet = await SpriteSheetLoader.load('/sprites/player.json')
+sheet.getFrame('idle_0')           // SpriteFrame
+sheet.getFrameNames()              // string[]
+
+// R3F — both loaders work with useLoader()
+const texture = useLoader(TextureLoader, '/sprite.png')
+```
+
+## Layers
+
+Render order is decoupled from the scene graph. Use layers for category ordering, zIndex for sorting within a layer.
+
+```typescript
+import { Layers } from 'three-flatland'
+
+Layers.BACKGROUND  // 0
+Layers.GROUND      // 1
+Layers.SHADOWS     // 2
+Layers.ENTITIES    // 3
+Layers.EFFECTS     // 4
+Layers.FOREGROUND  // 5
+Layers.UI          // 6
+
+sprite.layer = Layers.ENTITIES
+sprite.zIndex = -sprite.position.y  // Y-sort: lower sprites render on top
+```
+
+---
+
+## Effects
+
+There are two effect systems:
+
+### MaterialEffect — per-sprite shader variations
+
+Uses GPU instance attributes. Each sprite can have different parameter values while sharing one draw call.
+
+```typescript
+import { createMaterialEffect } from 'three-flatland'
+import { mix, vec4 } from 'three/tsl'
+
+const DissolveEffect = createMaterialEffect({
+  name: 'dissolve',
+  schema: { progress: 0 } as const,
+  node({ inputColor, attrs }) {
+    return mix(inputColor, vec4(0, 0, 0, 0), attrs.progress)
+  },
+})
+
+const dissolve = new DissolveEffect()
+sprite.addEffect(dissolve)
+dissolve.progress = 0.5  // Per-sprite value
+```
+
+The `node` function receives `{ inputColor, inputUV, attrs }` where attrs contains TSL nodes for each schema field.
+
+### PassEffect — full-screen post-processing
+
+Uses TSL uniforms. Zero-cost parameter updates (no shader rebuild).
+
+```typescript
+import { createPassEffect } from 'three-flatland'
+import { crtComplete } from '@three-flatland/nodes'
+
+const CRTEffect = createPassEffect({
+  name: 'crt',
+  schema: { curvature: 0.1, scanlineIntensity: 0.2 } as const,
+  pass: ({ uniforms }) => (input, uv) =>
+    crtComplete(input, uv, {
+      curvature: uniforms.curvature,
+      scanlineIntensity: uniforms.scanlineIntensity,
+    }),
+})
+
+const crt = new CRTEffect()
+flatland.addPass(crt)
+crt.curvature = 0.2  // Updates uniform directly
+```
+
+The `pass` function receives `{ uniforms }` and returns `(input, uv) => color`.
+
+---
+
+## TSL Effect Nodes
+
+Import from `@three-flatland/nodes` or per-category subpaths. All functions accept and return TSL nodes.
+
+**sprite** (`@three-flatland/nodes/sprite`): `outline`, `pixelate`, `sampleSprite`, `uvFlip`, `uvOffset`, `uvRotate`, `uvScale`
+
+**color** (`@three-flatland/nodes/color`): `brightness`, `contrast`, `saturate`, `hueShift`, `tintMultiply`, `tintAdditive`, `tintOverlay`, `colorRemap`
+
+**alpha** (`@three-flatland/nodes/alpha`): `alphaMask`, `alphaTest`, `dissolve`, `fadeEdge`
+
+**retro** (`@three-flatland/nodes/retro`): `bayerDither`, `posterize`, `quantize`, `palettize`, `colorReplace`
+
+**distortion** (`@three-flatland/nodes/distortion`): `wave`, `distort`, `distortNoise`
+
+**vfx** (`@three-flatland/nodes/vfx`): `flash`, `pulse`, `shimmer`, `sparkle`, `trail`, `afterimage`
+
+**blur** (`@three-flatland/nodes/blur`): `blurBox`, `blurGaussian`, `blurKawase`, `blurMotion`, `blurRadial`, `bloom`
+
+**display** (`@three-flatland/nodes/display`): `crtComplete`, `scanlines`, `lcd`, `phosphorMask`
+
+**analog** (`@three-flatland/nodes/analog`): `chromaticAberration`, `videoArtifacts`
+
+**upscale** (`@three-flatland/nodes/upscale`): `scale2x`, `eagle`, `hq2x`
+
+All node functions follow the pattern: `fn(color_or_input, uv?, options?)` returning a TSL `Node<'vec4'>` (or `Node<'vec2'>` for UV transforms).
+
+---
+
+## Tilemaps
+
+```typescript
+import { TiledLoader } from 'three-flatland'  // or LDtkLoader
+
+const tilemap = await TiledLoader.load('/maps/level1.json')
+scene.add(tilemap)
+tilemap.update(deltaMs)  // For animated tiles
+```
+
+---
+
+## Canonical Examples
+
+### Vanilla — minimal sprite
+
+```typescript
+import { WebGPURenderer } from 'three/webgpu'
+import { Scene, OrthographicCamera, Color } from 'three'
+import { Sprite2D, TextureLoader, Layers } from 'three-flatland'
+
+const scene = new Scene()
+scene.background = new Color(0x1a1a2e)
+const camera = new OrthographicCamera(-400, 400, 300, -300, 0.1, 1000)
+camera.position.z = 100
+
+const renderer = new WebGPURenderer({ antialias: true })
+renderer.setSize(800, 600)
+document.body.appendChild(renderer.domElement)
+await renderer.init()
+
+const texture = await TextureLoader.load('/sprite.png')
+const sprite = new Sprite2D({ texture, anchor: [0.5, 0.5] })
+sprite.layer = Layers.ENTITIES
+scene.add(sprite)
+
+function animate() {
+  requestAnimationFrame(animate)
+  renderer.render(scene, camera)
+}
+animate()
+```
+
+### React Three Fiber — minimal sprite
+
+```tsx
+import { Canvas, extend, useLoader } from '@react-three/fiber/webgpu'
+import { Suspense } from 'react'
+import { Sprite2D, TextureLoader } from 'three-flatland/react'
+
+extend({ Sprite2D })
+
+function MySprite() {
+  const texture = useLoader(TextureLoader, '/sprite.png')
+  return <sprite2D texture={texture} anchor={[0.5, 0.5]} />
+}
+
+export default function App() {
+  return (
+    <Canvas orthographic camera={{ zoom: 1, position: [0, 0, 100] }}>
+      <color attach="background" args={['#1a1a2e']} />
+      <Suspense><MySprite /></Suspense>
+    </Canvas>
+  )
+}
+```
+
+### R3F — registering components
+
+```tsx
+import { extend } from '@react-three/fiber/webgpu'
+import { Sprite2D, AnimatedSprite2D, SpriteGroup, Flatland } from 'three-flatland/react'
+
+extend({ Sprite2D, AnimatedSprite2D, SpriteGroup, Flatland })
+// JSX: <sprite2D>, <animatedSprite2D>, <spriteGroup>, <flatland>
+```

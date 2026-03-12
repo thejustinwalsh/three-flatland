@@ -32,6 +32,24 @@ import { Tabs, TabItem, Aside } from '@astrojs/starlight/components';
     bun add three-flatland@alpha
     ```
   </TabItem>
+  <TabItem label="AI" icon="document">
+    Paste this into your AI assistant to set up a new project:
+    ~~~
+    Set up a new project with three-flatland, a 2D sprite and effects library
+    for Three.js using WebGPU and TSL (Three Shader Language).
+
+    Read the API reference: https://thejustinwalsh.com/three-flatland/llms-full.txt
+
+    Install: npm install three-flatland@alpha
+    Requires: three.js >= 0.183.1, WebGPURenderer from "three/webgpu"
+    Import from: "three-flatland"
+
+    Create a minimal project with a Sprite2D on screen. Include:
+    - WebGPU renderer setup with await renderer.init()
+    - Orthographic camera
+    - A sprite loaded with TextureLoader
+    ~~~
+  </TabItem>
 </Tabs>
 
 ### React Three Fiber (Optional)
@@ -59,6 +77,26 @@ React is not required. If you're using React Three Fiber, add the additional dep
     bun add three-flatland@alpha @react-three/fiber@alpha
     ```
   </TabItem>
+  <TabItem label="AI" icon="document">
+    Paste this into your AI assistant to set up a new R3F project:
+    ~~~
+    Set up a new React Three Fiber project with three-flatland, a 2D sprite
+    and effects library for Three.js using WebGPU and TSL.
+
+    Read the API reference: https://thejustinwalsh.com/three-flatland/llms-full.txt
+
+    Install: npm install three-flatland@alpha @react-three/fiber@alpha
+    Requires: React >= 19, R3F >= 10.0.0-alpha.2
+    Import from: "three-flatland/react"
+    Canvas import: import { Canvas } from "@react-three/fiber/webgpu"
+
+    Create a minimal R3F app with a Sprite2D. Include:
+    - Canvas with WebGPU (import from @react-three/fiber/webgpu)
+    - extend() call to register Sprite2D as JSX
+    - A sprite loaded with useLoader(TextureLoader, url)
+    - Suspense boundary around the sprite component
+    ~~~
+  </TabItem>
 </Tabs>
 
 ## Requirements
@@ -72,3 +110,5 @@ React is not required. If you're using React Three Fiber, add the additional dep
 ## TypeScript
 
 three-flatland is written in TypeScript and ships with full type definitions. No additional `@types` packages are required.
+
+See the [LLMs page](/llm-prompts/) for more prompts and machine-readable documentation.

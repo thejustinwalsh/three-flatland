@@ -1,0 +1,46 @@
+# three-flatland
+
+> High-performance 2D sprites, tilemaps, and effects for Three.js -- built for WebGPU with composable TSL shaders.
+
+three-flatland is a library for rendering 2D sprites, animated spritesheets, tilemaps, and post-processing effects in Three.js using TSL (Three Shader Language). It features automatic material-based batching, a layer/zIndex render ordering system decoupled from the scene graph, and first-class React Three Fiber support. Currently in early alpha.
+
+## Documentation
+
+- [Introduction](https://thejustinwalsh.com/three-flatland/getting-started/introduction/): Overview of three-flatland and its core concepts
+- [Installation](https://thejustinwalsh.com/three-flatland/getting-started/installation/): How to install and set up three-flatland
+- [Quick Start](https://thejustinwalsh.com/three-flatland/getting-started/quick-start/): Get a sprite on screen in minutes
+
+## Guides
+
+- [Flatland](https://thejustinwalsh.com/three-flatland/guides/flatland/): Unified 2D rendering pipeline with batching, post-processing, and camera management
+- [Sprites](https://thejustinwalsh.com/three-flatland/guides/sprites/): Sprite2D, textures, frames, anchors, tint, alpha, flip
+- [Animation](https://thejustinwalsh.com/three-flatland/guides/animation/): AnimatedSprite2D, spritesheet-driven animation with frame events
+- [Batch Rendering](https://thejustinwalsh.com/three-flatland/guides/batch-rendering/): Automatic batching via SpriteGroup and ECS-driven pipeline
+- [TSL Nodes](https://thejustinwalsh.com/three-flatland/guides/tsl-nodes/): 50+ composable shader effect functions for sprites and post-processing
+- [Loaders](https://thejustinwalsh.com/three-flatland/guides/loaders/): TextureLoader and SpriteSheetLoader with preset support
+- [Tilemaps](https://thejustinwalsh.com/three-flatland/guides/tilemaps/): Tiled and LDtk format tilemap rendering
+- [Pass Effects](https://thejustinwalsh.com/three-flatland/guides/pass-effects/): Full-screen post-processing pass effects
+
+## Examples
+
+- [Basic Sprite](https://thejustinwalsh.com/three-flatland/examples/basic-sprite/): Simple sprite rendering
+- [Animation](https://thejustinwalsh.com/three-flatland/examples/animation/): Spritesheet animation playback
+- [Batch Demo](https://thejustinwalsh.com/three-flatland/examples/batch-demo/): Thousands of batched sprites
+- [TSL Nodes](https://thejustinwalsh.com/three-flatland/examples/tsl-nodes/): Composable shader effects
+- [Pass Effects](https://thejustinwalsh.com/three-flatland/examples/pass-effects/): Post-processing effects
+- [Tilemap](https://thejustinwalsh.com/three-flatland/examples/tilemap/): Tiled/LDtk tilemap rendering
+- [KnightMark](https://thejustinwalsh.com/three-flatland/examples/knightmark/): Sprite benchmark
+
+## Packages
+
+- `three-flatland`: Core library -- sprites, materials, animation, loaders, tilemaps, render pipeline
+- `three-flatland/react`: React Three Fiber subpath -- re-exports core + JSX type augmentation
+- `@three-flatland/nodes`: 50+ TSL shader nodes for effects (per-category subpaths)
+- `@three-flatland/presets`: Pre-configured effect combinations (coming soon)
+
+## Optional
+
+- [API Reference](https://thejustinwalsh.com/three-flatland/api/): Auto-generated TypeDoc API documentation
+- [LLM Prompts](https://thejustinwalsh.com/three-flatland/llm-prompts/): Copy-paste prompts for AI coding assistants
+- [llms-full.txt](https://thejustinwalsh.com/three-flatland/llms-full.txt): Comprehensive API reference for LLMs
+- [GitHub Repository](https://github.com/thejustinwalsh/three-flatland): Source code, issues, and contributions
