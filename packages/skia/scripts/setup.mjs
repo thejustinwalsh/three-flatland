@@ -464,7 +464,7 @@ async function main() {
     `${C.bold}${C.magenta}  ╔══════════════════════════════════════════╗${C.reset}`,
   );
   console.log(
-    `${C.bold}${C.magenta}  ║   @three-flatland/skia — WASM Setup     ║${C.reset}`,
+    `${C.bold}${C.magenta}  ║    @three-flatland/skia — WASM Setup     ║${C.reset}`,
   );
   console.log(
     `${C.bold}${C.magenta}  ╚══════════════════════════════════════════╝${C.reset}`,

@@ -184,7 +184,6 @@ run_gn() {
     skia_enable_pdf=false
     skia_enable_skottie=false
     skia_enable_skparagraph=false
-    skia_enable_sktext=false
     skia_use_icu=false
     skia_use_client_icu=false
     skia_use_libpng=false
@@ -241,12 +240,6 @@ export_compile_commands
 generate_sources_zig
 
 echo ""
-ok "Setup complete!"
-echo ""
+ok "Skia source setup complete"
 echo "  Generated: packages/skia/src/zig/generated/skia_sources.zig"
-echo ""
-echo "  Next steps:"
-echo "    1. Review the generated source lists"
-echo "    2. Install Zig >= 0.13: https://ziglang.org/download/"
-echo "    3. Build: cd packages/skia && zig build -Doptimize=ReleaseSmall"
 echo ""

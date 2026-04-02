@@ -38,9 +38,9 @@
   ],
   "sideEffects": false,
   "scripts": {
-    "setup": "node scripts/setup.mjs",
-    "setup:check": "node scripts/setup.mjs --check",
-    "setup:tools": "node scripts/setup.mjs --tools",
+    "skia:setup": "node scripts/setup.mjs",
+    "skia:check": "node scripts/setup.mjs --check",
+    "skia:tools": "node scripts/setup.mjs --tools",
     "build": "node scripts/build-wasm.mjs --gl-only --skip-if-fresh && tsup",
     "build:wasm": "node scripts/build-wasm.mjs --gl-only",
     "dev": "tsup --watch",
