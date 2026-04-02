@@ -30,6 +30,28 @@ pub fn build(b: *std.Build) void {
     // Allow GL imports to be unresolved at link time — JS provides them
     gl_variant.import_symbols = true;
 
+    // Skia C API wrapper (C++ → C bridge)
+    const skia_cpp_flags: []const []const u8 = &.{
+        "-std=c++20",
+        "-fno-exceptions",
+        "-fno-rtti",
+        "-DSK_BUILD_FOR_WASM",
+        "-DSKVX_DISABLE_SIMD",
+        "-DSK_FORCE_8_BYTE_ALIGNMENT",
+        "-DSK_ASSUME_WEBGL=1",
+        "-DSK_GL",
+        "-DSK_GANESH",
+        "-DNDEBUG",
+        "-DSKIA_IMPLEMENTATION=1",
+    };
+    gl_variant.addCSourceFile(.{
+        .file = b.path("src/zig/skia_c_api.cpp"),
+        .flags = skia_cpp_flags,
+    });
+    gl_variant.addIncludePath(skia_root);
+    gl_variant.addIncludePath(b.path("src/zig"));
+    gl_variant.linkLibCpp();
+
     // wit-bindgen generated C glue: canonical ABI wrappers + WIT component type
     gl_variant.addCSourceFile(.{
         .file = b.path("src/zig/bindings/generated/skia_gl.c"),

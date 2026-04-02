@@ -45,9 +45,7 @@ def classify_source(filepath: str) -> str | None:
     # POSIX-specific file ops with mmap (not available on WASI)
     if "SkOSFile_posix" in fp:
         return None
-    # WebGL native interface (needs GLES3 headers we don't have)
-    if "MakeNativeInterface_webgl" in fp:
-        return None
+    # WebGL native interface — now handled by our GL shim headers
     # Platform-specific ports we don't use on WASM
     if "/ports/" in fp and not ("FreeType" in fp or "freetype" in fp):
         # Keep FreeType ports, skip everything else (Mac, Win, Linux-specific)

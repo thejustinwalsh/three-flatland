@@ -512,6 +512,7 @@ pub const gl_files: []const []const u8 = &.{
     "src/gpu/ganesh/gl/GrGLVertexArray.cpp",
     "src/gpu/ganesh/gl/builders/GrGLProgramBuilder.cpp",
     "src/gpu/ganesh/gl/builders/GrGLShaderStringBuilder.cpp",
+    "src/gpu/ganesh/gl/webgl/GrGLMakeNativeInterface_webgl.cpp",
     "src/gpu/ganesh/glsl/GrGLSLBlend.cpp",
     "src/gpu/ganesh/glsl/GrGLSLFragmentShaderBuilder.cpp",
     "src/gpu/ganesh/glsl/GrGLSLProgramBuilder.cpp",

@@ -170,21 +170,14 @@ for (const variant of variants) {
     run(`wasm-opt -Oz --strip-debug -o ${wasmOpt} ${wasmRaw}`);
   }
 
-  // Step 4: Wrap as WIT component (with WASI preview1 adapter)
-  const wasiAdapter = resolve(PKG_ROOT, "lib/wasi_snapshot_preview1.wasm");
-  if (!existsSync(wasiAdapter)) {
-    console.log("\n  Downloading WASI adapter...");
-    mkdirSync(resolve(PKG_ROOT, "lib"), { recursive: true });
-    run(
-      `curl -sL https://github.com/bytecodealliance/wasmtime/releases/latest/download/wasi_snapshot_preview1.reactor.wasm -o ${wasiAdapter}`
-    );
-  }
-  run(
-    `wasm-tools component new ${wasmInput} --adapt ${wasiAdapter} -o ${wasmComponent}`
-  );
-
-  // Step 5: JCO transpile to JS + .d.ts + .core.wasm
-  run(`${jco} transpile ${wasmComponent} -o ${outDir} --no-namespaced-exports`);
+  // Step 4: Copy WASM to dist
+  // We skip wasm-tools component new + jco transpile because the GL variant
+  // uses raw WASM imports (import_module("gl")) that the component model
+  // can't handle. Instead, we ship the raw .wasm with a hand-written JS loader.
+  // TypeScript types are still generated from WIT (see above).
+  const { copyFileSync } = await import("node:fs");
+  copyFileSync(wasmInput, resolve(outDir, `${name}.wasm`));
+  console.log(`\n  Copied ${name}.wasm to ${outDir}/`);
 }
 
 console.log("\nWASM build complete.");

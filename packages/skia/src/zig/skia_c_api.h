@@ -1,0 +1,93 @@
+// C API wrapper around Skia C++ classes.
+// This is the bridge between Zig (which calls C) and Skia (which is C++).
+//
+// All Skia objects are opaque pointers. Lifetime is managed by the caller.
+
+#pragma once
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+#include <stdint.h>
+#include <stddef.h>
+
+// ── Opaque handles ──
+typedef void* sk_context_t;
+typedef void* sk_surface_t;
+typedef void* sk_canvas_t;
+typedef void* sk_paint_t;
+typedef void* sk_path_t;
+typedef void* sk_font_t;
+typedef void* sk_typeface_t;
+typedef void* sk_svg_dom_t;
+
+// ── Context (GrDirectContext) ──
+
+// Create a GrDirectContext using the WebGL GrGLInterface.
+// The GL functions must already be available as WASM imports.
+sk_context_t sk_context_create_gl(void);
+void sk_context_destroy(sk_context_t ctx);
+void sk_context_flush(sk_context_t ctx);
+void sk_context_reset_gl_state(sk_context_t ctx);
+
+// ── Surface ──
+
+// Wrap an existing GL framebuffer as a Skia surface.
+// fbo_id: the WebGL framebuffer object ID (0 = default framebuffer)
+sk_surface_t sk_surface_create_from_fbo(sk_context_t ctx, uint32_t fbo_id, int32_t width, int32_t height);
+void sk_surface_destroy(sk_surface_t surface);
+sk_canvas_t sk_surface_get_canvas(sk_surface_t surface);
+void sk_surface_flush(sk_surface_t surface);
+
+// ── Paint ──
+
+sk_paint_t sk_paint_create(void);
+void sk_paint_destroy(sk_paint_t paint);
+void sk_paint_set_color(sk_paint_t paint, float r, float g, float b, float a);
+void sk_paint_set_fill(sk_paint_t paint);
+void sk_paint_set_stroke(sk_paint_t paint, float width);
+void sk_paint_set_stroke_cap(sk_paint_t paint, uint8_t cap);
+void sk_paint_set_stroke_join(sk_paint_t paint, uint8_t join);
+void sk_paint_set_stroke_miter(sk_paint_t paint, float limit);
+void sk_paint_set_anti_alias(sk_paint_t paint, int aa);
+void sk_paint_set_blend_mode(sk_paint_t paint, uint8_t mode);
+void sk_paint_set_alpha(sk_paint_t paint, float alpha);
+
+// ── Path ──
+
+sk_path_t sk_path_create(void);
+void sk_path_destroy(sk_path_t path);
+void sk_path_move_to(sk_path_t path, float x, float y);
+void sk_path_line_to(sk_path_t path, float x, float y);
+void sk_path_quad_to(sk_path_t path, float cx, float cy, float x, float y);
+void sk_path_cubic_to(sk_path_t path, float c1x, float c1y, float c2x, float c2y, float x, float y);
+void sk_path_close(sk_path_t path);
+void sk_path_reset(sk_path_t path);
+
+// ── Canvas drawing ──
+
+void sk_canvas_clear(sk_canvas_t canvas, float r, float g, float b, float a);
+void sk_canvas_draw_rect(sk_canvas_t canvas, float x, float y, float w, float h, sk_paint_t paint);
+void sk_canvas_draw_round_rect(sk_canvas_t canvas, float x, float y, float w, float h, float rx, float ry, sk_paint_t paint);
+void sk_canvas_draw_circle(sk_canvas_t canvas, float cx, float cy, float r, sk_paint_t paint);
+void sk_canvas_draw_oval(sk_canvas_t canvas, float x, float y, float w, float h, sk_paint_t paint);
+void sk_canvas_draw_line(sk_canvas_t canvas, float x0, float y0, float x1, float y1, sk_paint_t paint);
+void sk_canvas_draw_path(sk_canvas_t canvas, sk_path_t path, sk_paint_t paint);
+
+// ── Canvas transform ──
+
+void sk_canvas_save(sk_canvas_t canvas);
+void sk_canvas_restore(sk_canvas_t canvas);
+void sk_canvas_translate(sk_canvas_t canvas, float x, float y);
+void sk_canvas_rotate(sk_canvas_t canvas, float degrees);
+void sk_canvas_scale(sk_canvas_t canvas, float sx, float sy);
+
+// ── Canvas clipping ──
+
+void sk_canvas_clip_rect(sk_canvas_t canvas, float x, float y, float w, float h);
+void sk_canvas_clip_path(sk_canvas_t canvas, sk_path_t path);
+
+#ifdef __cplusplus
+}
+#endif
