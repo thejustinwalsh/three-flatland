@@ -2,7 +2,7 @@ import {
   Scene,
   OrthographicCamera,
   Color,
-  type WebGLRenderTarget,
+  type RenderTarget,
   Group,
   type Object3D,
   type ColorRepresentation,
@@ -21,22 +21,47 @@ import { SpriteGroup } from './pipeline/SpriteGroup'
 import { GlobalUniforms } from './GlobalUniforms'
 import type { RenderStats } from './pipeline/types'
 import { Sprite2D } from './sprites/Sprite2D'
+import type { Sprite2DMaterial } from './materials/Sprite2DMaterial'
 import type Node from 'three/src/nodes/core/Node.js'
 import type PassNode from 'three/src/nodes/display/PassNode.js'
 import type { WorldProvider } from './ecs/world'
-import { PostPassTrait, PostPassRegistry, LightEffectTrait, LightEffectRegistry } from './ecs/traits'
+import { PostPassTrait, PostPassRegistry, LightEffectTrait, LightingContext, BatchRegistry } from './ecs/traits'
 import { postPassSystem } from './ecs/systems/postPassSystem'
+import { lightSyncSystem } from './ecs/systems/lightSyncSystem'
+import { lightEffectSystem } from './ecs/systems/lightEffectSystem'
+import { lightMaterialAssignSystem } from './ecs/systems/lightMaterialAssignSystem'
 import type { PassEffect } from './pipeline/PassEffect'
 import { Light2D } from './lights/Light2D'
-import { LightingSystem } from './lights/LightingSystem'
-import type { LightEffect } from './lights/LightEffect'
+import { LightStore } from './lights/LightStore'
+import { LightEffect } from './lights/LightEffect'
+import { wrapWithLightFlags } from './lights/wrapWithLightFlags'
+import type { ChannelName } from './materials/channels'
+import type { SDFGenerator } from './lights/SDFGenerator'
+import type { RegistryData } from './ecs/batchUtils'
+
+/** Shape of the LightingContext trait data. */
+interface LightingContextData {
+  effect: LightEffect | null
+  lightStore: LightStore | null
+  lights: Light2D[]
+  wrappedLightFn: import('./materials/Sprite2DMaterial').ColorTransformFn | null
+  requiredChannels: ReadonlySet<ChannelName>
+  materials: Set<Sprite2DMaterial>
+  dirty: boolean
+  initialized: boolean
+  sdfGenerator: SDFGenerator | null
+  renderer: WebGPURenderer | null
+  camera: OrthographicCamera | null
+  worldSize: Vector2 | null
+  worldOffset: Vector2 | null
+}
 
 /**
  * Options for creating a Flatland instance.
  */
 export interface FlatlandOptions {
   /** Render target (null = render to viewport) */
-  renderTarget?: WebGLRenderTarget | null
+  renderTarget?: RenderTarget | null
   /** Camera to use (null = use internal orthographic camera) */
   camera?: OrthographicCamera | null
   /** Orthographic view size in pixels (default: 400) */
@@ -76,7 +101,7 @@ export interface FlatlandOptions {
  * @example
  * ```typescript
  * // Render to texture
- * const target = new WebGLRenderTarget(512, 512)
+ * const target = new RenderTarget(512, 512)
  * const flatland = new Flatland({ renderTarget: target })
  * flatland.add(sprite)
  *
@@ -135,7 +160,7 @@ export class Flatland extends Group implements WorldProvider {
   private _ownsCamera: boolean
 
   /** Render target (null = viewport) */
-  private _renderTarget: WebGLRenderTarget | null = null
+  private _renderTarget: RenderTarget | null = null
 
   /** Render pipeline instance for post-processing */
   private _renderPipeline: RenderPipeline | null = null
@@ -185,17 +210,23 @@ export class Flatland extends Group implements WorldProvider {
   /** Active Light2D objects */
   private _lights: Light2D[] = []
 
-  /** Lighting system (lazy — created when first LightEffect is attached) */
-  private _lightingSystem: LightingSystem | null = null
+  /** Light data storage (lazy — created when first LightEffect is attached) */
+  private _lightStore: LightStore | null = null
+
+  /** SDF generator (lazy — created when LightEffect.needsShadows is true) */
+  private _sdfGenerator: SDFGenerator | null = null
 
   /** Active LightEffect instance */
   private _lightEffect: LightEffect | null = null
 
-  /** ECS: lighting registry singleton entity */
-  private _lightEffectRegistryEntity: Entity | null = null
+  /** ECS: LightingContext singleton entity */
+  private _lightingContextEntity: Entity | null = null
 
-  /** Whether the lighting colorTransform needs reassigning to lit sprites */
-  private _lightingDirty = false
+  /** All sprite materials tracked for colorTransform assignment */
+  private _spriteMaterials = new Set<Sprite2DMaterial>()
+
+  /** Whether lighting systems are registered on the schedule */
+  private _lightingSystemsRegistered = false
 
   constructor(options: FlatlandOptions = {}) {
     super()
@@ -306,14 +337,14 @@ export class Flatland extends Group implements WorldProvider {
   /**
    * Get the render target (null = viewport).
    */
-  get renderTarget(): WebGLRenderTarget | null {
+  get renderTarget(): RenderTarget | null {
     return this._renderTarget
   }
 
   /**
    * Set the render target.
    */
-  set renderTarget(value: WebGLRenderTarget | null) {
+  set renderTarget(value: RenderTarget | null) {
     this._renderTarget = value
   }
 
@@ -368,11 +399,28 @@ export class Flatland extends Group implements WorldProvider {
         if (!child.material.globalUniforms) {
           child.material.globalUniforms = this.globals
         }
+        // Track all sprite materials
+        this._spriteMaterials.add(child.material)
+        // Apply wrapped lighting transform + channels from LightingContext
+        const lctx = this._getLightingContext()
+        if (lctx?.wrappedLightFn) {
+          child.material.requiredChannels = lctx.requiredChannels
+          child.material.colorTransform = lctx.wrappedLightFn
+        }
+        // Update LightingContext materials set
+        if (lctx) {
+          lctx.materials.add(child.material)
+        }
         this.spriteGroup.add(child)
       } else if (child instanceof Light2D) {
         // Track lights separately for the lighting system
         if (!this._lights.includes(child)) {
           this._lights.push(child)
+        }
+        // Update LightingContext lights array
+        const lctx = this._getLightingContext()
+        if (lctx) {
+          lctx.lights = this._lights
         }
         this.scene.add(child)
       } else {
@@ -390,10 +438,21 @@ export class Flatland extends Group implements WorldProvider {
   remove(...objects: Object3D[]): this {
     for (const child of objects) {
       if (child instanceof Sprite2D) {
+        this._spriteMaterials.delete(child.material)
+        // Update LightingContext materials set
+        const lctx = this._getLightingContext()
+        if (lctx) {
+          lctx.materials.delete(child.material)
+        }
         this.spriteGroup.remove(child)
       } else if (child instanceof Light2D) {
         const idx = this._lights.indexOf(child)
         if (idx !== -1) this._lights.splice(idx, 1)
+        // Update LightingContext lights array
+        const lctx = this._getLightingContext()
+        if (lctx) {
+          lctx.lights = this._lights
+        }
         this.scene.remove(child)
       } else {
         this.scene.remove(child)
@@ -620,9 +679,9 @@ export class Flatland extends Group implements WorldProvider {
    *
    * @example
    * ```typescript
-   * import { SimpleLightEffect } from 'three-flatland'
+   * import { DefaultLightEffect } from '@three-flatland/presets'
    *
-   * const lighting = new SimpleLightEffect()
+   * const lighting = new DefaultLightEffect()
    * flatland.setLighting(lighting)
    * lighting.ambientIntensity = 0.4  // zero-cost uniform update
    * ```
@@ -639,22 +698,25 @@ export class Flatland extends Group implements WorldProvider {
     this._lightEffect = lightEffect
 
     if (lightEffect) {
-      // Lazy-init LightingSystem
-      if (!this._lightingSystem) {
-        this._lightingSystem = new LightingSystem()
+      // Lazy-init LightStore
+      if (!this._lightStore) {
+        this._lightStore = new LightStore()
       }
 
-      // Ensure registry entity
-      this._ensureLightEffectRegistry()
+      // Attach effect with dirty callback
+      lightEffect._attach(this, () => {
+        this._markLightingDirty()
+      })
 
-      // Attach effect
-      lightEffect._attach(this)
+      // Build the colorTransform and wrap with per-instance lit-bit check
+      const fn = lightEffect._buildLightFn(this._lightStore)
+      const wrappedLightFn = wrapWithLightFlags(fn)
 
-      // Build the colorTransform (calls static buildLightFn once, caches)
-      const fn = lightEffect._buildLightFn(this._lightingSystem)
-
-      // Spawn ECS entity
+      // Store required channels from the effect class
       const ctor = lightEffect.constructor as typeof LightEffect
+      const requiredChannels: ReadonlySet<ChannelName> = new Set(ctor.requires ?? [])
+
+      // Spawn ECS entity for the effect
       const entity = this.world.spawn(
         LightEffectTrait({ fn, enabled: lightEffect.enabled })
       )
@@ -676,7 +738,50 @@ export class Flatland extends Group implements WorldProvider {
       }
 
       lightEffect._entity = entity
-      this._lightingDirty = true
+
+      // Spawn or update LightingContext singleton
+      this._ensureLightingContext()
+      const lctxEntity = this._lightingContextEntity!
+      // Get existing context to preserve runtime fields
+      const existingCtx = lctxEntity.get(LightingContext) as LightingContextData | undefined
+      lctxEntity.set(LightingContext, {
+        effect: lightEffect,
+        lightStore: this._lightStore,
+        lights: this._lights,
+        wrappedLightFn,
+        requiredChannels,
+        materials: this._spriteMaterials,
+        dirty: true,
+        initialized: false,
+        sdfGenerator: this._sdfGenerator,
+        renderer: existingCtx?.renderer ?? null,
+        camera: existingCtx?.camera ?? null,
+        worldSize: existingCtx?.worldSize ?? null,
+        worldOffset: existingCtx?.worldOffset ?? null,
+      })
+
+      // Register lighting systems on the schedule (before sprite systems)
+      this._ensureLightingSystems()
+    } else {
+      // Clearing lighting
+      if (this._lightingContextEntity) {
+        const existingCtx = this._lightingContextEntity.get(LightingContext) as LightingContextData | undefined
+        this._lightingContextEntity.set(LightingContext, {
+          effect: null,
+          lightStore: existingCtx?.lightStore ?? null,
+          lights: existingCtx?.lights ?? [],
+          wrappedLightFn: null,
+          requiredChannels: new Set<ChannelName>(),
+          materials: existingCtx?.materials ?? new Set(),
+          dirty: true,
+          initialized: false,
+          sdfGenerator: existingCtx?.sdfGenerator ?? null,
+          renderer: existingCtx?.renderer ?? null,
+          camera: existingCtx?.camera ?? null,
+          worldSize: existingCtx?.worldSize ?? null,
+          worldOffset: existingCtx?.worldOffset ?? null,
+        })
+      }
     }
 
     return this
@@ -684,22 +789,76 @@ export class Flatland extends Group implements WorldProvider {
 
   /**
    * Mark lighting as structurally dirty (effect enabled/disabled).
-   * @internal Called by LightEffect.enabled setter.
+   * @internal Called by LightEffect.enabled setter and _onDirty callback.
    */
   _markLightingDirty(): void {
-    this._lightingDirty = true
-    if (this._lightEffectRegistryEntity) {
-      this._lightEffectRegistryEntity.set(LightEffectRegistry, { dirty: true })
+    if (this._lightingContextEntity) {
+      const lctx = this._lightingContextEntity.get(LightingContext)
+      if (lctx) {
+        lctx.dirty = true
+      }
     }
   }
 
   /**
-   * Ensure the LightEffectRegistry singleton entity exists.
+   * Ensure the LightingContext singleton entity exists.
    */
-  private _ensureLightEffectRegistry(): void {
-    if (!this._lightEffectRegistryEntity) {
-      this._lightEffectRegistryEntity = this.world.spawn(LightEffectRegistry({ dirty: false }))
+  private _ensureLightingContext(): void {
+    if (!this._lightingContextEntity) {
+      this._lightingContextEntity = this.world.spawn(
+        LightingContext({
+          effect: null,
+          lightStore: null,
+          lights: [],
+          wrappedLightFn: null,
+          requiredChannels: new Set(),
+          materials: new Set(),
+          dirty: false,
+          initialized: false,
+          sdfGenerator: null,
+          renderer: null,
+          camera: null,
+          worldSize: null,
+          worldOffset: null,
+        })
+      )
     }
+  }
+
+  /**
+   * Register lighting systems on the world's SystemSchedule.
+   * Adds a `prepend()` to insert them before existing sprite systems.
+   */
+  private _ensureLightingSystems(): void {
+    if (this._lightingSystemsRegistered) return
+    this._lightingSystemsRegistered = true
+
+    // Get the schedule from BatchRegistry
+    const registry = this._getRegistry()
+    if (!registry?.schedule) return
+
+    // Prepend lighting systems before sprite systems
+    registry.schedule
+      .prepend(lightMaterialAssignSystem)
+      .prepend(lightEffectSystem)
+      .prepend(lightSyncSystem)
+  }
+
+  /**
+   * Get the LightingContext data from the world singleton.
+   */
+  private _getLightingContext() {
+    if (!this._lightingContextEntity) return null
+    return this._lightingContextEntity.get(LightingContext) as LightingContextData | undefined ?? null
+  }
+
+  /**
+   * Get the BatchRegistry data from the world singleton.
+   */
+  private _getRegistry(): RegistryData | null {
+    const registryEntities = this.world.query(BatchRegistry)
+    if (registryEntities.length === 0) return null
+    return registryEntities[0]!.get(BatchRegistry) as RegistryData | undefined ?? null
   }
 
   /**
@@ -709,12 +868,24 @@ export class Flatland extends Group implements WorldProvider {
     // Auto-sync global uniforms from renderer
     this._syncGlobals(renderer)
 
-    // Sync light data to DataTextures (before sprite update)
-    if (this._lightingSystem && this._lightEffect?.enabled) {
-      this._lightingSystem.sync(this._lights)
+    // Update LightingContext runtime fields before systems run
+    const lctx = this._getLightingContext()
+    if (lctx) {
+      lctx.renderer = renderer
+      lctx.camera = this._camera
+      // Reuse or create Vector2s for world bounds
+      if (!lctx.worldSize) lctx.worldSize = new Vector2()
+      if (!lctx.worldOffset) lctx.worldOffset = new Vector2()
     }
 
-    // Update sprite batches (ECS systems run in updateMatrixWorld)
+    // Run all systems via the schedule (lighting + sprite phases)
+    const registry = this._getRegistry()
+    if (registry?.schedule) {
+      registry.schedule.nextFrame()
+      registry.schedule.run(this.world)
+    }
+
+    // Update sprite batches (idempotent — schedule already ran)
     this.spriteGroup.update()
 
     // Store renderer reference
@@ -838,6 +1009,11 @@ export class Flatland extends Group implements WorldProvider {
     if (this._renderTarget) {
       this._renderTarget.setSize(width, height)
     }
+
+    // Forward resize to LightEffect (Forward+, RadianceCascades, etc.)
+    if (this._lightEffect?.enabled) {
+      this._lightEffect.resize(width, height)
+    }
   }
 
   /**
@@ -883,18 +1059,24 @@ export class Flatland extends Group implements WorldProvider {
 
     // Clear lighting
     if (this._lightEffect) {
+      this._lightEffect.dispose()
       if (this._lightEffect._entity) {
         this._lightEffect._entity.destroy()
       }
       this._lightEffect._detach()
       this._lightEffect = null
     }
-    if (this._lightEffectRegistryEntity) {
-      this._lightEffectRegistryEntity.destroy()
-      this._lightEffectRegistryEntity = null
+    if (this._lightingContextEntity) {
+      this._lightingContextEntity.destroy()
+      this._lightingContextEntity = null
     }
-    this._lightingSystem = null
+    this._lightStore?.dispose()
+    this._lightStore = null
+    this._sdfGenerator?.dispose()
+    this._sdfGenerator = null
     this._lights.length = 0
+    this._spriteMaterials.clear()
+    this._lightingSystemsRegistered = false
 
     this.spriteGroup.dispose()
 

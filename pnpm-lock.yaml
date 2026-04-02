@@ -6,6 +6,9 @@ settings:
 
 catalogs:
   default:
+    '@awesome.me/webawesome':
+      specifier: ^3.0.0
+      version: 3.1.0
     '@react-three/fiber':
       specifier: ^10.0.0-alpha.2
       version: 10.0.0-alpha.2
@@ -18,6 +21,9 @@ catalogs:
     '@types/three':
       specifier: ^0.183.1
       version: 0.183.1
+    '@vitejs/plugin-react':
+      specifier: ^4.3.4
+      version: 4.7.0
     koota:
       specifier: ^0.6.5
       version: 0.6.5
@@ -361,6 +367,49 @@ importers:
         specifier: ^6.0.7
         version: 6.4.1(@types/node@22.19.7)(jiti@1.21.7)(tsx@4.21.0)(yaml@2.8.2)
 
+  examples/react/lighting:
+    dependencies:
+      '@awesome.me/webawesome':
+        specifier: 'catalog:'
+        version: 3.1.0(@floating-ui/utils@0.2.10)(@types/react@19.2.9)
+      '@react-three/fiber':
+        specifier: 'catalog:'
+        version: 10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.183.1)
+      '@three-flatland/presets':
+        specifier: workspace:*
+        version: link:../../../packages/presets
+      react:
+        specifier: 'catalog:'
+        version: 19.2.3
+      react-dom:
+        specifier: 'catalog:'
+        version: 19.2.3(react@19.2.3)
+      three:
+        specifier: 'catalog:'
+        version: 0.183.1
+      three-flatland:
+        specifier: workspace:*
+        version: link:../../../packages/three-flatland
+    devDependencies:
+      '@types/react':
+        specifier: 'catalog:'
+        version: 19.2.9
+      '@types/react-dom':
+        specifier: 'catalog:'
+        version: 19.2.3(@types/react@19.2.9)
+      '@types/three':
+        specifier: 'catalog:'
+        version: 0.183.1
+      '@vitejs/plugin-react':
+        specifier: 'catalog:'
+        version: 4.7.0(vite@6.4.1(@types/node@22.19.7)(jiti@1.21.7)(tsx@4.21.0)(yaml@2.8.2))
+      typescript:
+        specifier: 'catalog:'
+        version: 5.9.3
+      vite:
+        specifier: 'catalog:'
+        version: 6.4.1(@types/node@22.19.7)(jiti@1.21.7)(tsx@4.21.0)(yaml@2.8.2)
+
   examples/react/pass-effects:
     dependencies:
       '@awesome.me/webawesome':
@@ -609,6 +658,31 @@ importers:
         specifier: ^6.0.7
         version: 6.4.1(@types/node@22.19.7)(jiti@1.21.7)(tsx@4.21.0)(yaml@2.8.2)
 
+  examples/vanilla/lighting:
+    dependencies:
+      '@awesome.me/webawesome':
+        specifier: 'catalog:'
+        version: 3.1.0(@floating-ui/utils@0.2.10)(@types/react@19.2.9)
+      '@three-flatland/presets':
+        specifier: workspace:*
+        version: link:../../../packages/presets
+      three:
+        specifier: 'catalog:'
+        version: 0.183.1
+      three-flatland:
+        specifier: workspace:*
+        version: link:../../../packages/three-flatland
+    devDependencies:
+      '@types/three':
+        specifier: 'catalog:'
+        version: 0.183.1
+      typescript:
+        specifier: 'catalog:'
+        version: 5.9.3
+      vite:
+        specifier: 'catalog:'
+        version: 6.4.1(@types/node@22.19.7)(jiti@1.21.7)(tsx@4.21.0)(yaml@2.8.2)
+
   examples/vanilla/pass-effects:
     dependencies:
       '@awesome.me/webawesome':
@@ -770,9 +844,18 @@ importers:
         specifier: workspace:*
         version: link:../three-flatland
     devDependencies:
+      '@react-three/fiber':
+        specifier: 'catalog:'
+        version: 10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.183.1)
+      '@types/react':
+        specifier: 'catalog:'
+        version: 19.2.9
       '@types/three':
         specifier: 'catalog:'
         version: 0.183.1
+      react:
+        specifier: 'catalog:'
+        version: 19.2.3
       three:
         specifier: 'catalog:'
         version: 0.183.1

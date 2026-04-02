@@ -87,6 +87,28 @@ function observeColor(c: Color, cb: () => void): void {
   Object.defineProperties(c, _colorDesc)
 }
 
+/**
+ * System flags occupy the lowest bits of `_effectFlags`.
+ * MaterialEffect enable bits start at EFFECT_BIT_OFFSET.
+ * This keeps all flag values small enough for Float32 precision (≤ 2^24).
+ */
+
+/** Bit 0 of _effectFlags reserved for the per-sprite lit flag. */
+const LIT_FLAG_BIT = 0
+/** Bitmask for the per-sprite lit flag (bit 0). */
+export const LIT_FLAG_MASK = 1 << LIT_FLAG_BIT
+
+/** Bit 1 of _effectFlags reserved for the per-sprite receiveShadows flag. */
+const RECEIVE_SHADOWS_BIT = 1
+/** Bitmask for the per-sprite receiveShadows flag (bit 1). */
+export const RECEIVE_SHADOWS_MASK = 1 << RECEIVE_SHADOWS_BIT
+
+/**
+ * Number of low bits reserved for system flags (lit, receiveShadows).
+ * EffectMaterial assigns effect enable bits starting at this offset.
+ */
+export const EFFECT_BIT_OFFSET = 2
+
 /** Size in floats for each attribute type. */
 const ATTR_TYPE_SIZES: Record<string, number> = { float: 1, vec2: 2, vec3: 3, vec4: 4 }
 
@@ -118,12 +140,6 @@ export class Sprite2D extends Mesh {
   declare geometry: PlaneGeometry
   declare material: Sprite2DMaterial
 
-  /**
-   * Shared material cache keyed by texture. Sprites created with just a texture
-   * (no explicit material) reuse the same Sprite2DMaterial, which means they share
-   * the same batchId and are automatically batched together by SpriteGroup.
-   */
-  private static _sharedMaterials = new WeakMap<Texture, Sprite2DMaterial>()
 
   /**
    * Own-geometry buffers for custom attributes (unbatched rendering).
@@ -144,8 +160,64 @@ export class Sprite2D extends Mesh {
   /** Source texture */
   private _texture: Texture | null = null
 
+
   /** Pixel-perfect mode */
   pixelPerfect: boolean = false
+
+  /**
+   * Whether this sprite receives lighting from Flatland's LightEffect.
+   * Stored as bit 0 of `_effectFlags` so lit/unlit sprites with the same
+   * texture share the same material and batch together.
+   * Default: `true` — set `lit = false` to opt out.
+   */
+  get lit(): boolean {
+    return (this._effectFlags & LIT_FLAG_MASK) !== 0
+  }
+
+  set lit(value: boolean) {
+    const was = (this._effectFlags & LIT_FLAG_MASK) !== 0
+    if (was === value) return
+
+    if (value) {
+      this._effectFlags |= LIT_FLAG_MASK
+    } else {
+      this._effectFlags &= ~LIT_FLAG_MASK
+    }
+
+    // Sync to GPU buffers
+    if (this._entity) {
+      this._syncEffectFlagsToBatch()
+    } else {
+      this._writeEffectDataOwn()
+    }
+  }
+
+  /**
+   * Whether this sprite receives shadows from the SDF shadow pipeline.
+   * Stored as bit 1 of `_effectFlags`.
+   * Default: `true` — set `receiveShadows = false` to opt out.
+   */
+  get receiveShadows(): boolean {
+    return (this._effectFlags & RECEIVE_SHADOWS_MASK) !== 0
+  }
+
+  set receiveShadows(value: boolean) {
+    const was = (this._effectFlags & RECEIVE_SHADOWS_MASK) !== 0
+    if (was === value) return
+
+    if (value) {
+      this._effectFlags |= RECEIVE_SHADOWS_MASK
+    } else {
+      this._effectFlags &= ~RECEIVE_SHADOWS_MASK
+    }
+
+    // Sync to GPU buffers
+    if (this._entity) {
+      this._syncEffectFlagsToBatch()
+    } else {
+      this._writeEffectDataOwn()
+    }
+  }
 
   // ============================================
   // EFFECT STATE
@@ -153,10 +225,12 @@ export class Sprite2D extends Mesh {
 
   /**
    * Enable flags bitmask for packed effects.
-   * Bit N = 1 means effect at index N is enabled for this sprite.
+   * Bits 0-1 are reserved system flags (lit, receiveShadows), defaulting on.
+   * Bits 2+ are MaterialEffect enable flags (bit N+2 = effect at index N is enabled).
+   * All values stay within Float32's 24-bit mantissa range.
    * @internal
    */
-  _effectFlags: number = 0
+  _effectFlags: number = LIT_FLAG_MASK | RECEIVE_SHADOWS_MASK
 
   /**
    * Active MaterialEffect instances on this sprite.
@@ -249,12 +323,10 @@ export class Sprite2D extends Mesh {
     if (options?.material) {
       material = options.material
     } else if (options?.texture) {
-      let shared = Sprite2D._sharedMaterials.get(options.texture)
-      if (!shared) {
-        shared = new Sprite2DMaterial({ map: options.texture, transparent: true })
-        Sprite2D._sharedMaterials.set(options.texture, shared)
-      }
-      material = shared
+      material = Sprite2DMaterial.getShared({
+        map: options.texture,
+        transparent: true,
+      })
     } else {
       material = new Sprite2DMaterial({ transparent: true })
     }
@@ -364,6 +436,14 @@ export class Sprite2D extends Mesh {
       this.pixelPerfect = options.pixelPerfect
     }
 
+    if (options.lit === false) {
+      this._effectFlags &= ~LIT_FLAG_MASK
+    }
+
+    if (options.receiveShadows === false) {
+      this._effectFlags &= ~RECEIVE_SHADOWS_MASK
+    }
+
     this._updateOwnFlip()
   }
 
@@ -397,6 +477,59 @@ export class Sprite2D extends Mesh {
       }
       // Show sprite once texture is set
       this.visible = true
+    }
+  }
+
+  /**
+   * Build a stable cache key fragment from effect constants.
+   * Uses texture ID for Textures, String() for primitives.
+   * @internal
+   */
+  private _constantsKey(constants: Record<string, unknown>): string {
+    const parts: string[] = []
+    for (const [key, value] of Object.entries(constants)) {
+      if (value && typeof value === 'object' && 'id' in value) {
+        parts.push(`${key}=${(value as { id: number }).id}`)
+      } else if (value == null) {
+        parts.push(`${key}=null`)
+      } else {
+        parts.push(`${key}=${typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean' ? String(value) : 'ref'}`)
+      }
+    }
+    return parts.join(',')
+  }
+
+  /**
+   * Switch to a different shared material, carrying over all state.
+   * @internal
+   */
+  private _switchToMaterial(newMaterial: Sprite2DMaterial): void {
+    const current = this.material
+    this.material = newMaterial
+
+    // Carry over global uniforms
+    if (current.globalUniforms) {
+      newMaterial.globalUniforms = current.globalUniforms
+    }
+    // Carry over required channels and color transform
+    newMaterial.requiredChannels = current.requiredChannels
+    newMaterial.colorTransform = current.colorTransform
+
+    // Re-register all effects on the new material
+    for (const effect of this._effects) {
+      const EffectClass = effect.constructor as typeof MaterialEffect
+      if (!newMaterial.hasEffect(EffectClass)) {
+        newMaterial.registerEffect(EffectClass, effect._constants)
+      }
+    }
+
+    // Update SpriteMaterialRef for batch reassignment
+    if (this._entity) {
+      this._entity.set(SpriteMaterialRef, { materialId: newMaterial.batchId })
+    }
+    this._setupInstanceAttributes()
+    if (!this._entity) {
+      this._writeEffectDataOwn()
     }
   }
 
@@ -770,8 +903,63 @@ export class Sprite2D extends Mesh {
     // Same instance already attached — no-op (R3F stable children)
     if (this._effects.includes(effect)) return this
 
-    const material = this.material
     const EffectClass = effect.constructor as typeof MaterialEffect
+    const hasConstants = Object.keys(EffectClass._constantFactories).length > 0
+
+    // Provider effects with constants may need a different material
+    if (hasConstants) {
+      // Link and store the effect first (needed for _switchToMaterial)
+      effect._attach(this)
+      this._effects.push(effect)
+
+      // Build effects key for all effects with constants
+      const effectsKey = this._effects
+        .filter(e => Object.keys((e.constructor as typeof MaterialEffect)._constantFactories).length > 0)
+        .map(e => {
+          const EC = e.constructor as typeof MaterialEffect
+          return `${EC.effectName}:${this._constantsKey(e._constants)}`
+        })
+        .join(';')
+
+      const newMaterial = Sprite2DMaterial.getShared({
+        map: this._texture ?? undefined,
+        transparent: this.material.transparent,
+        colorTransform: this.material.colorTransform ?? undefined,
+        effectsKey,
+      })
+
+      if (newMaterial !== this.material) {
+        this._switchToMaterial(newMaterial)
+      } else {
+        // Same material — just register the effect
+        if (!this.material.hasEffect(EffectClass)) {
+          const tierChanged = this.material.registerEffect(EffectClass, effect._constants)
+          if (tierChanged) {
+            this._setupInstanceAttributes()
+          }
+        }
+      }
+
+      // Set enable bit
+      const bitIndex = this.material._effectBitIndex.get(EffectClass.effectName)!
+      this._effectFlags |= (1 << bitIndex)
+
+      // Add trait to entity (if enrolled)
+      if (this._entity) {
+        const traitData = this._buildTraitData(effect)
+        this._entity.add(EffectClass._trait(traitData))
+        this._entity.set(EffectClass._trait, traitData)
+      }
+
+      if (!this._entity) {
+        this._writeEffectDataOwn()
+      }
+
+      return this
+    }
+
+    // Standard (non-provider) effect flow
+    const material = this.material
 
     // 1. Auto-register on material if not already registered
     if (!material.hasEffect(EffectClass)) {
@@ -935,6 +1123,23 @@ export class Sprite2D extends Mesh {
     }
   }
 
+
+  /**
+   * Sync `_effectFlags` directly to the batch buffer for already-batched sprites.
+   * Writes flags to effectBuf0.x (slot 0, component 0) bypassing ECS change detection.
+   * @internal
+   */
+  _syncEffectFlagsToBatch(): void {
+    if (!this._entity || !this._flatlandWorld) return
+    const bs = this._entity.get(BatchSlot) as { batchIdx: number; slot: number } | undefined
+    if (!bs || bs.batchIdx < 0) return
+    const registryEntities = this._flatlandWorld.query(BatchRegistry)
+    if (registryEntities.length === 0) return
+    const registry = registryEntities[0]!.get(BatchRegistry) as RegistryData | undefined
+    if (!registry) return
+    const batch = registry.batchSlots[bs.batchIdx]
+    if (batch) batch.writeEffectSlot(bs.slot, 0, 0, this._effectFlags)
+  }
 
   /**
    * Fast 2D matrix update — bypasses Three.js quaternion-based compose().
@@ -1165,6 +1370,7 @@ export class Sprite2D extends Mesh {
             layer: this.layer,
             zIndex: this.zIndex,
             pixelPerfect: this.pixelPerfect,
+            lit: this.lit,
           }
         : undefined
     )

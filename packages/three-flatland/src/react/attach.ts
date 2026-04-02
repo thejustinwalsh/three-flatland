@@ -31,7 +31,7 @@ export function attachEffect<T extends MaterialEffect>(parent: Sprite2D, self: T
  * import { attachLighting } from 'three-flatland/react'
  *
  * <flatland ref={flatlandRef} viewSize={400}>
- *   <simpleLightEffect attach={attachLighting} ambientIntensity={0.3} />
+ *   <defaultLightEffect attach={attachLighting} />
  *   <light2D lightType="point" position={[50, 50, 0]} color="orange" />
  * </flatland>
  * ```

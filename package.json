@@ -36,6 +36,7 @@
   "lint-staged": {
     "packages/three-flatland/src/index.ts": "tsx scripts/sync-react-subpaths.ts",
     "packages/three-flatland/src/*/index.ts": "tsx scripts/sync-react-subpaths.ts",
+    "packages/presets/src/index.ts": "tsx scripts/sync-react-subpaths.ts",
     "examples/**/package.json": "tsx scripts/sync-pack.ts --files",
     "minis/**/package.json": "tsx scripts/sync-pack.ts --files"
   },

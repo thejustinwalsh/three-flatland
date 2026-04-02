@@ -1,4 +1,4 @@
-import type { Group, Object3D } from 'three'
+import type { Object3D } from 'three'
 import type { World } from 'koota'
 import { BatchRegistry, BatchMesh } from '../traits'
 import type { RegistryData } from '../batchUtils'
@@ -10,21 +10,19 @@ import { rebuildBatchOrder } from '../batchUtils'
  * Rebuilds the SpriteGroup's children from the sorted batch entity list.
  * Only runs when renderOrderDirty is set (batches added/removed).
  *
- * @param world - ECS world to query BatchRegistry
- * @param parent - The SpriteGroup Group to sync children on
- * @param parentAdd - Bound Group.prototype.add from the parent (bypasses SpriteGroup override)
- * @param parentRemove - Bound Group.prototype.remove from the parent (bypasses SpriteGroup override)
+ * Reads parentGroup, parentAdd, parentRemove from BatchRegistry.
+ * Self-gating: no-ops if no BatchRegistry or no parentGroup.
  */
-export function sceneGraphSyncSystem(
-  world: World,
-  parent: Group,
-  parentAdd: (...objects: Object3D[]) => Group,
-  parentRemove: (...objects: Object3D[]) => Group
-): void {
+export function sceneGraphSyncSystem(world: World): void {
   const registryEntities = world.query(BatchRegistry)
   if (registryEntities.length === 0) return
   const registry = registryEntities[0]!.get(BatchRegistry) as RegistryData | undefined
   if (!registry) return
+
+  const parent = registry.parentGroup
+  const parentAdd = registry.parentAdd
+  const parentRemove = registry.parentRemove
+  if (!parent || !parentAdd || !parentRemove) return
 
   // Rebuild sorted order if needed
   rebuildBatchOrder(registry)

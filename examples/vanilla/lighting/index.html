@@ -1,39 +1,104 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" class="wa-dark">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Lighting Lab - three-flatland</title>
+    <title>2D Lighting - Vanilla Three.js</title>
     <style>
-      * {
-        margin: 0;
-        padding: 0;
-        box-sizing: border-box;
+      /* Web Awesome theme overrides — compact dark theme */
+      :root.wa-dark {
+        --wa-font-size-scale: 0.85;
+        --wa-form-control-padding-block: 0.5em;
+        --wa-form-control-padding-inline: 0.75em;
+        --wa-form-control-toggle-size: round(1em, 1px);
+        --wa-color-surface-default: rgb(0, 2, 28);
+        --wa-color-surface-raised: rgb(28, 40, 77);
+        --wa-color-surface-lowered: rgb(0, 2, 28);
+        --wa-color-brand-fill-loud: #0b8be6;
+        --wa-color-text-normal: #f0edd8;
+        --wa-color-text-quiet: #8890a0;
+        --wa-border-radius-m: 6px;
+        --wa-color-brand-fill-quiet: var(--wa-color-brand-fill-loud);
+        --wa-color-brand-on-quiet: var(--wa-color-brand-on-loud);
+        --wa-color-neutral-fill-loud: var(--wa-color-surface-raised);
+        --wa-color-neutral-on-loud: var(--wa-color-text-normal);
       }
       body {
+        margin: 0;
         overflow: hidden;
-        background: #000;
-        font-family: monospace;
+        background: #0a0a12;
       }
       canvas {
         display: block;
       }
-      #ui {
+      #stats {
         position: fixed;
         top: 12px;
-        left: 12px;
+        right: 12px;
+        padding: 5px 10px;
+        background: rgba(0, 2, 28, 0.7);
+        border-radius: 6px;
         color: #4a9eff;
-        font-size: 13px;
-        line-height: 1.6;
-        white-space: pre;
+        font-family: monospace;
+        font-size: 10px;
+        line-height: 1.5;
         z-index: 100;
-        user-select: none;
-        text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+        white-space: pre;
+      }
+      #controls {
+        position: fixed;
+        bottom: 32px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 100;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        max-width: calc(100vw - 24px);
+      }
+      /* Hide radio group label */
+      #controls wa-radio-group::part(form-control-label) { display: none; }
+      #controls wa-radio-group::part(form-control) { margin: 0; border: 0; padding: 0; }
+      #controls wa-radio-group::part(form-control-input) { row-gap: 4px; justify-content: center; }
+      /* Per-line pill rounding for wrapped radio groups */
+      wa-radio[data-line-pos="first"] {
+        border-start-start-radius: var(--wa-border-radius-m);
+        border-end-start-radius: var(--wa-border-radius-m);
+        border-start-end-radius: 0;
+        border-end-end-radius: 0;
+      }
+      wa-radio[data-line-pos="inner"] { border-radius: 0; }
+      wa-radio[data-line-pos="last"] {
+        border-start-end-radius: var(--wa-border-radius-m);
+        border-end-end-radius: var(--wa-border-radius-m);
+        border-start-start-radius: 0;
+        border-end-start-radius: 0;
+      }
+      wa-radio[data-line-pos="solo"] { border-radius: var(--wa-border-radius-m); }
+      /* Torch switches */
+      .torch-controls {
+        display: flex;
+        gap: 12px;
+        align-items: center;
       }
     </style>
   </head>
   <body>
-    <div id="ui">Loading...</div>
+    <div id="stats">FPS: -
+Draws: -
+Lights: 3
+Mode: Default</div>
+    <div id="controls">
+      <wa-radio-group label="Lighting Mode" value="default" size="small" orientation="horizontal">
+        <wa-radio value="default" size="small" appearance="button">Default</wa-radio>
+        <wa-radio value="direct" size="small" appearance="button">Direct</wa-radio>
+        <wa-radio value="simple" size="small" appearance="button">Simple</wa-radio>
+      </wa-radio-group>
+      <div class="torch-controls">
+        <wa-switch id="torch1-switch" size="small" checked>Torch 1</wa-switch>
+        <wa-switch id="torch2-switch" size="small" checked>Torch 2</wa-switch>
+      </div>
+    </div>
     <script type="module" src="/main.ts"></script>
   </body>
 </html>

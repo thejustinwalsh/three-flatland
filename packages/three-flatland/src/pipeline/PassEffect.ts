@@ -8,11 +8,13 @@ import type {
   EffectSchemaValue,
   EffectField,
   EffectValues,
+  EffectConstants,
+  UniformKeys,
   SchemaToNodeType,
 } from '../materials/MaterialEffect'
 
 // Re-export schema types for PassEffect consumers
-export type { EffectSchema, EffectSchemaValue, EffectField, EffectValues }
+export type { EffectSchema, EffectSchemaValue, EffectField, EffectValues, EffectConstants, UniformKeys }
 
 // ============================================
 // PassEffect Types
@@ -23,8 +25,10 @@ export type PassEffectFn = (input: Node<'vec4'>, uv: Node<'vec2'>) => Node<'vec4
 
 /** Context passed to a PassEffect's static buildPass method. */
 export interface PassEffectContext<S extends EffectSchema = EffectSchema> {
-  /** TSL uniform nodes for each schema field, keyed by field name. */
-  uniforms: { [K in keyof S]: SchemaToNodeType<S[K]> }
+  /** TSL uniform nodes for each uniform schema field, keyed by field name. */
+  uniforms: { [K in UniformKeys<S>]: SchemaToNodeType<S[K]> }
+  /** Read-only constants from factory function fields. */
+  constants: EffectConstants<S>
 }
 
 // Forward-declare Flatland to avoid circular import
@@ -105,6 +109,9 @@ export abstract class PassEffect {
     throw new Error(`PassEffect.buildPass() not implemented for ${this.passName}`)
   }
 
+  /** @internal Factory functions for constant fields (keyed by field name). */
+  static _constantFactories: Record<string, () => unknown>
+
   /**
    * Initialize static metadata from the schema (called once per subclass, lazily).
    * @internal
@@ -118,11 +125,14 @@ export abstract class PassEffect {
       throw new Error(`PassEffect: ${this.name} is missing passSchema`)
     }
 
-    // Compute field metadata from schema defaults
+    // Compute field metadata from schema defaults (uniform fields only)
     const fields: EffectField[] = []
+    const constantFactories: Record<string, () => unknown> = {}
     let totalFloats = 0
     for (const [fieldName, value] of Object.entries(schema)) {
-      if (typeof value === 'number') {
+      if (typeof value === 'function') {
+        constantFactories[fieldName] = value as () => unknown
+      } else if (typeof value === 'number') {
         fields.push({ name: fieldName, size: 1, default: [value] })
         totalFloats += 1
       } else {
@@ -134,8 +144,9 @@ export abstract class PassEffect {
 
     this._fields = fields
     this._totalFloats = totalFloats
+    this._constantFactories = constantFactories
 
-    // Build flattened trait schema for Koota:
+    // Build flattened trait schema for Koota (uniform fields only):
     // - float fields → { fieldName: default }
     // - vecN fields  → { fieldName_0: v[0], fieldName_1: v[1], ... }
     const traitSchema: Record<string, number> = {}
@@ -168,7 +179,10 @@ export abstract class PassEffect {
   /** @internal Snapshot defaults for pre-enrollment staging. */
   _defaults: Record<string, number | number[]>
 
-  /** @internal TSL uniform nodes — one per schema field. */
+  /** @internal Per-instance constant values (from factory function schema fields). */
+  _constants: Record<string, unknown> = {}
+
+  /** @internal TSL uniform nodes — one per uniform schema field. */
   _uniforms: Record<string, UniformNodeValue>
 
   /** @internal Cached result of buildPass(). */
@@ -188,7 +202,7 @@ export abstract class PassEffect {
 
     this.name = ctor.passName
 
-    // Build defaults snapshot from schema
+    // Build defaults snapshot from schema (uniform fields only)
     this._defaults = {}
     for (const field of ctor._fields) {
       if (field.size === 1) {
@@ -198,7 +212,7 @@ export abstract class PassEffect {
       }
     }
 
-    // Create uniform nodes per schema field
+    // Create uniform nodes per uniform schema field
     this._uniforms = {}
     for (const field of ctor._fields) {
       const d = field.default
@@ -213,7 +227,7 @@ export abstract class PassEffect {
       }
     }
 
-    // Set up property accessors for each schema field
+    // Set up property accessors for uniform schema fields
     for (const field of ctor._fields) {
       if (field.size === 1) {
         Object.defineProperty(this, field.name, {
@@ -230,6 +244,17 @@ export abstract class PassEffect {
           configurable: true,
         })
       }
+    }
+
+    // Initialize constant fields — call factory, store value, define read-only property
+    for (const [name, factory] of Object.entries(ctor._constantFactories)) {
+      const value = factory()
+      this._constants[name] = value
+      Object.defineProperty(this, name, {
+        get: () => this._constants[name],
+        enumerable: true,
+        configurable: true,
+      })
     }
   }
 
@@ -267,13 +292,13 @@ export abstract class PassEffect {
 
   /**
    * Build and cache the pass function by calling the static buildPass() once.
-   * The returned function closes over uniform nodes.
+   * The returned function closes over uniform nodes and constants.
    * @internal
    */
   _buildPassFn(): PassEffectFn {
     if (!this._passFn) {
       const ctor = this.constructor as typeof PassEffect
-      this._passFn = ctor.buildPass({ uniforms: this._uniforms })
+      this._passFn = ctor.buildPass({ uniforms: this._uniforms, constants: this._constants })
     }
     return this._passFn
   }
@@ -373,12 +398,13 @@ interface PassEffectConfig<S extends EffectSchema> {
  * Instances have typed properties matching the schema.
  */
 export type PassEffectClass<S extends EffectSchema> = {
-  new (): PassEffect & EffectValues<S>
+  new (): PassEffect & EffectValues<S> & EffectConstants<S>
   readonly passName: string
   readonly passSchema: S
   readonly _trait: Trait
   readonly _fields: EffectField[]
   readonly _totalFloats: number
+  readonly _constantFactories: Record<string, () => unknown>
   readonly _initialized: boolean
   _initialize(): void
   buildPass(context: PassEffectContext<S>): PassEffectFn

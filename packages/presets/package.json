@@ -17,6 +17,50 @@
         "types": "./dist/index.d.cts",
         "default": "./dist/index.cjs"
       }
+    },
+    "./react": {
+      "source": "./src/react.ts",
+      "import": {
+        "types": "./dist/react.d.ts",
+        "default": "./dist/react.js"
+      },
+      "require": {
+        "types": "./dist/react.d.cts",
+        "default": "./dist/react.cjs"
+      }
+    },
+    "./lighting": {
+      "source": "./src/lighting/index.ts",
+      "import": {
+        "types": "./dist/lighting/index.d.ts",
+        "default": "./dist/lighting/index.js"
+      },
+      "require": {
+        "types": "./dist/lighting/index.d.cts",
+        "default": "./dist/lighting/index.cjs"
+      }
+    },
+    "./lighting/*": {
+      "source": "./src/lighting/*.ts",
+      "import": {
+        "types": "./dist/lighting/*.d.ts",
+        "default": "./dist/lighting/*.js"
+      },
+      "require": {
+        "types": "./dist/lighting/*.d.cts",
+        "default": "./dist/lighting/*.cjs"
+      }
+    },
+    "./react/*": {
+      "source": "./src/react/*.ts",
+      "import": {
+        "types": "./dist/react/*.d.ts",
+        "default": "./dist/react/*.js"
+      },
+      "require": {
+        "types": "./dist/react/*.d.cts",
+        "default": "./dist/react/*.cjs"
+      }
     }
   },
   "files": [
@@ -30,14 +74,23 @@
     "clean": "rm -rf dist"
   },
   "peerDependencies": {
-    "three": ">=0.170.0"
+    "three": ">=0.170.0",
+    "@react-three/fiber": ">=9.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@react-three/fiber": {
+      "optional": true
+    }
   },
   "dependencies": {
     "three-flatland": "workspace:*",
     "@three-flatland/nodes": "workspace:*"
   },
   "devDependencies": {
+    "@react-three/fiber": "catalog:",
+    "@types/react": "catalog:",
     "@types/three": "catalog:",
+    "react": "catalog:",
     "three": "catalog:"
   },
   "keywords": [

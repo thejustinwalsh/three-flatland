@@ -269,7 +269,7 @@ function StatsTracker({ passCount, onStats }: { passCount: number; onStats: (fps
 
 function FlatlandScene({ preset, onPassCount }: { preset: PresetName; onPassCount: (n: number) => void }) {
   const flatlandRef = useRef<Flatland>(null)
-  const gl = useThree((s) => s.gl)
+  const { renderer } = useThree()
   const presetRef = useRef<ActivePreset>({ passes: [], timeDriven: [] })
   const elapsedRef = useRef(0)
 
@@ -288,20 +288,18 @@ function FlatlandScene({ preset, onPassCount }: { preset: PresetName; onPassCoun
     onPassCount(active.passes.length)
   }, [preset, onPassCount])
 
+  // Update time-driven passes (runs in default update phase)
   useFrame((_state, delta) => {
-    const flatland = flatlandRef.current
-    if (!flatland) return
-
     elapsedRef.current += delta
-
-    // Update time-driven passes
     for (const { pass } of presetRef.current.timeDriven) {
       pass.time = elapsedRef.current
     }
-
-    // Cast: R3F types gl as WebGLRenderer, but Canvas from fiber/webgpu provides WebGPURenderer
-    flatland.render(gl as unknown as WebGPURenderer)
   })
+
+  // Render in render phase so R3F skips its own render
+  useFrame(() => {
+    flatlandRef.current?.render(renderer as unknown as WebGPURenderer)
+  }, { phase: 'render' })
 
   return (
     <flatland ref={flatlandRef} viewSize={80} clearColor={0x1a1a2e}>

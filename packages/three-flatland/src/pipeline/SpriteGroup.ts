@@ -1,5 +1,5 @@
 import { Group, type Object3D } from 'three'
-import { createWorld, type World, type Trait, type Entity } from 'koota'
+import { createWorld, type World } from 'koota'
 import type { Sprite2D } from '../sprites/Sprite2D'
 import type { SpriteGroupOptions, RenderStats } from './types'
 import { DEFAULT_BATCH_SIZE } from './SpriteBatch'
@@ -16,19 +16,22 @@ import {
 } from '../ecs/traits'
 import type { RegistryData } from '../ecs/batchUtils'
 import { computeRunKey, recycleBatchIfEmpty } from '../ecs/batchUtils'
-import type { MaterialEffect } from '../materials/MaterialEffect'
+import { SystemSchedule } from '../ecs/SystemSchedule'
 import {
+  deferredDestroySystem,
   batchAssignSystem,
   batchReassignSystem,
-  batchRemoveSystem,
-  deferredDestroySystem,
   bufferSyncColorSystem,
   bufferSyncFlipSystem,
   bufferSyncEffectSystem,
-  transformSyncSystem,
   sceneGraphSyncSystem,
+  batchRemoveSystem,
 } from '../ecs/systems'
-import { measure } from '../util/measure'
+import { materialVersionSystem } from '../ecs/systems/materialVersionSystem'
+import { effectTraitsSystem } from '../ecs/systems/effectTraitsSystem'
+import { conditionalTransformSyncSystem } from '../ecs/systems/conditionalTransformSyncSystem'
+import { lateAssignSystem } from '../ecs/systems/lateAssignSystem'
+import { flushDirtyRangesSystem } from '../ecs/systems/flushDirtyRangesSystem'
 
 /**
  * 2D render pipeline with automatic batching and sorting.
@@ -75,11 +78,6 @@ export class SpriteGroup extends Group implements WorldProvider {
   private _maxBatchSize: number
 
   /**
-   * Cached effect traits across all materials (rebuilt lazily).
-   */
-  private _effectTraits: Map<Trait, typeof MaterialEffect> = new Map()
-
-  /**
    * Whether frustum culling is enabled.
    */
   frustumCulling: boolean
@@ -95,28 +93,6 @@ export class SpriteGroup extends Group implements WorldProvider {
    * Disable for static UIs and call invalidateTransforms() manually.
    */
   autoInvalidateTransforms: boolean
-
-  /**
-   * Dedup guard: prevents systems from running twice if user calls
-   * update() AND renderer.render() in the same frame.
-   */
-  private _systemsRanThisFrame: boolean = false
-
-  /**
-   * Entities whose destruction is deferred to the top of the next frame.
-   * Populated by batchRemoveSystem, drained by deferredDestroySystem.
-   */
-  private _pendingDestroy: Entity[] = []
-
-  /**
-   * Bound Group.prototype.add for bypassing SpriteGroup override in scene graph sync.
-   */
-  private _parentAdd = Group.prototype.add.bind(this)
-
-  /**
-   * Bound Group.prototype.remove for bypassing SpriteGroup override in scene graph sync.
-   */
-  private _parentRemove = Group.prototype.remove.bind(this)
 
   /**
    * Sprite count for stats.
@@ -143,7 +119,26 @@ export class SpriteGroup extends Group implements WorldProvider {
   get world(): World {
     if (!this._world) {
       this._world = createWorld()
-      // Spawn the batch registry singleton
+
+      // Build the SystemSchedule with all sprite systems in order
+      const schedule = new SystemSchedule()
+      // Systems are registered in execution order per the plan
+      schedule
+        .add(deferredDestroySystem)
+        .add(materialVersionSystem)
+        .add(effectTraitsSystem)
+        .add(batchAssignSystem as (world: World) => void)
+        .add(batchReassignSystem)
+        .add(bufferSyncColorSystem)
+        .add(bufferSyncFlipSystem)
+        .add(bufferSyncEffectSystem)
+        .add(conditionalTransformSyncSystem)
+        .add(sceneGraphSyncSystem)
+        .add(batchRemoveSystem)
+        .add(lateAssignSystem)
+        .add(flushDirtyRangesSystem)
+
+      // Spawn the batch registry singleton with all system context
       this._registryEntity = this._world.spawn(
         BatchRegistry({
           runs: new Map(),
@@ -156,6 +151,13 @@ export class SpriteGroup extends Group implements WorldProvider {
           batchSlots: [],
           batchSlotFreeList: [],
           spriteArr: [],
+          effectTraits: new Map(),
+          pendingDestroy: [],
+          parentGroup: this,
+          parentAdd: Group.prototype.add.bind(this),
+          parentRemove: Group.prototype.remove.bind(this),
+          autoInvalidateTransforms: this.autoInvalidateTransforms,
+          schedule,
         })
       )
     }
@@ -263,142 +265,38 @@ export class SpriteGroup extends Group implements WorldProvider {
    * Called automatically by Three.js during `renderer.render(scene, camera)`
    * before drawing children. This is the main integration point — no manual
    * `update()` call is needed.
-   *
-   * Per-frame flow:
-   * 1. batchAssignSystem — assign new sprites to batches via InBatch relation
-   * 2. batchReassignSystem — handle layer/material changes (cross-run movement)
-   * 3. bufferSyncColorSystem — Changed(SpriteColor) + IsBatched -> batch buffer write
-   * 4. bufferSyncFlipSystem — Changed(SpriteFlip) + IsBatched -> batch buffer write
-   * 5. bufferSyncEffectSystem — Changed(effectTrait) + IsBatched -> packed buffer write
-   * 6. transformSyncSystem — sync all transforms to batch instance matrices
-   * 7. sceneGraphSyncSystem — rebuild SpriteGroup children from sorted batch entities
-   * 8. batchRemoveSystem — free slots, recycle empty batches, destroy entities (LAST)
-   * 9. super.updateMatrixWorld() — continue Three.js traversal
    */
   override updateMatrixWorld(force?: boolean): void {
-    if (!this._systemsRanThisFrame) {
-      this._runSystems()
+    if (this._world) {
+      const registry = this._getRegistry()
+      if (registry?.schedule) {
+        // Keep autoInvalidateTransforms in sync
+        registry.autoInvalidateTransforms = this.autoInvalidateTransforms
+        // nextFrame + run — idempotent if update() already ran this frame
+        registry.schedule.nextFrame()
+        registry.schedule.run(this._world)
+      }
     }
-    this._systemsRanThisFrame = false
 
     super.updateMatrixWorld(force)
   }
 
   /**
-   * Update batches for rendering.
+   * Explicitly run all ECS systems for a new frame.
    * @deprecated Use Three.js `renderer.render()` instead — systems run
    * automatically in `updateMatrixWorld()`. Kept for backwards compatibility.
    */
   update(): void {
-    this._runSystems()
-    this._systemsRanThisFrame = true
-  }
-
-  /**
-   * Run all ECS systems.
-   */
-  private _runSystems(): void {
     if (!this._world) return
-
-    const endTotal = measure(this._runSystems.name)
-
-    // Deferred destroy — flush zombie entities from previous frame's
-    // batchRemoveSystem. Pushes koota's cascading trait removal cost
-    // out of the hot render path.
-    let end = measure(deferredDestroySystem)
-    deferredDestroySystem(this._pendingDestroy)
-    end()
-
-    // Check for material schema changes (tier upgrades)
-    end = measure(this._checkMaterialVersions.name)
-    this._checkMaterialVersions()
-    end()
-
-    // Collect effect traits
-    end = measure(this._rebuildEffectTraits.name)
-    this._rebuildEffectTraits()
-    end()
-
-    // Batch lifecycle systems
-    end = measure(batchAssignSystem)
-    batchAssignSystem(this._world, this._effectTraits)
-    end()
-
-    end = measure(batchReassignSystem)
-    batchReassignSystem(this._world, this._effectTraits)
-    end()
-
-    // Buffer sync systems (Changed-driven — color and flip change rarely)
-    end = measure(bufferSyncColorSystem)
-    bufferSyncColorSystem(this._world)
-    end()
-
-    // UV sync is folded into transformSyncSystem (unconditional, no change detection)
-
-    end = measure(bufferSyncFlipSystem)
-    bufferSyncFlipSystem(this._world)
-    end()
-
-    if (this._effectTraits.size > 0) {
-      end = measure(bufferSyncEffectSystem)
-      bufferSyncEffectSystem(this._world, this._effectTraits)
-      end()
-    }
-
-    // Transform sync (every frame when autoInvalidateTransforms is on)
-    if (this.autoInvalidateTransforms) {
-      end = measure(transformSyncSystem)
-      transformSyncSystem(this._world)
-      end()
-    }
-
-    // Scene graph sync
-    end = measure(sceneGraphSyncSystem)
-    sceneGraphSyncSystem(this._world, this, this._parentAdd, this._parentRemove)
-    end()
-
-    // Batch removal — frees slots, strips batch traits, defers entity.destroy()
-    // to top of next frame via _pendingDestroy.
-    end = measure(batchRemoveSystem)
-    batchRemoveSystem(this._world, this._pendingDestroy)
-    end()
-
-    // Late assignment pass: catches entities enrolled after the primary
-    // batchAssignSystem pass (e.g., enrolled between render calls in
-    // R3F reconciliation). A no-op in the common case.
-    end = measure(this._lateAssignPass.name)
-    const lateAssigned = batchAssignSystem(this._world, this._effectTraits)
-    if (lateAssigned) {
-      if (this.autoInvalidateTransforms) {
-        transformSyncSystem(this._world)
-      }
-      sceneGraphSyncSystem(this._world, this, this._parentAdd, this._parentRemove)
-    }
-    end()
-
-    // Flush dirty ranges — single consolidated GPU upload per attribute.
-    // All write methods track min/max slot indices; this converts them to
-    // addUpdateRange calls so only the changed portion is uploaded.
-    end = measure(this._flushDirtyRanges.name)
     const registry = this._getRegistry()
-    if (registry) {
-      for (const batchEntity of registry.activeBatches) {
-        const batchMesh = batchEntity.get(BatchMesh)
-        if (batchMesh?.mesh) {
-          batchMesh.mesh.flushDirtyRanges()
-        }
-      }
+    if (registry?.schedule) {
+      // Keep autoInvalidateTransforms in sync
+      registry.autoInvalidateTransforms = this.autoInvalidateTransforms
+      // Always advance + run — explicit call always means "new frame"
+      registry.schedule.nextFrame()
+      registry.schedule.run(this._world)
     }
-    end()
-
-    endTotal()
   }
-
-  /** Named function target for measure() labeling of the late assignment pass. */
-  private _lateAssignPass(): void { /* measured wrapper only */ }
-
-  /** Named function target for measure() labeling of the dirty range flush. */
-  private _flushDirtyRanges(): void { /* measured wrapper only */ }
 
   /**
    * Track a material for schema version detection.
@@ -406,106 +304,12 @@ export class SpriteGroup extends Group implements WorldProvider {
   private _trackMaterial(sprite: Sprite2D): void {
     const mat = sprite.material
     if (!this._world) return
-    const registryEntities = this._world.query(BatchRegistry)
-    if (registryEntities.length === 0) return
-    const registry = registryEntities[0]!.get(BatchRegistry) as RegistryData | undefined
+    const registry = this._getRegistry()
     if (!registry) return
     registry.materialRefs.set(mat.batchId, {
       material: mat,
       version: mat._effectSchemaVersion,
     })
-  }
-
-  /**
-   * Check for material schema version changes (tier upgrades from effect registration).
-   * When detected, evicts sprites from old batches (wrong buffer layout) and
-   * re-triggers IsRenderable so batchAssignSystem creates new batches with
-   * the correct effect buffer tier.
-   */
-  private _checkMaterialVersions(): void {
-    if (!this._world) return
-    const registryEntities = this._world.query(BatchRegistry)
-    if (registryEntities.length === 0) return
-    const registry = registryEntities[0]!.get(BatchRegistry) as RegistryData | undefined
-    if (!registry) return
-
-    for (const [materialId, ref] of registry.materialRefs) {
-      if (ref.material._effectSchemaVersion !== ref.version) {
-        ref.version = ref.material._effectSchemaVersion
-        this._rebuildBatchesForMaterial(registry, materialId)
-      }
-    }
-  }
-
-  /**
-   * Force-rebuild batches for a material by evicting sprite entities from
-   * old batches and re-triggering IsRenderable for batchAssignSystem.
-   * Called when a material's effect tier changes (e.g., new effect registered
-   * that requires larger GPU buffers).
-   */
-  private _rebuildBatchesForMaterial(registry: RegistryData, materialId: number): void {
-    if (!this._world) return
-
-    // Find all batched entities using this material
-    const batched = this._world.query(IsBatched, SpriteMaterialRef, BatchSlot)
-    for (const entity of batched) {
-      const matRef = entity.get(SpriteMaterialRef)
-      if (!matRef || matRef.materialId !== materialId) continue
-
-      // Find and free the batch slot
-      const batchEntity = entity.targetFor(InBatch)
-      if (batchEntity) {
-        const relationData = entity.get(InBatch(batchEntity)) as { slot: number } | undefined
-        const batchMesh = batchEntity.get(BatchMesh)
-        if (relationData && batchMesh?.mesh) {
-          batchMesh.mesh.freeSlot(relationData.slot)
-          batchMesh.mesh.syncCount()
-        }
-
-        // Remove batch relationship
-        entity.remove(InBatch(batchEntity))
-
-        // Recycle batch if empty
-        if (batchMesh?.mesh?.isEmpty) {
-          const meta = batchEntity.get(BatchMeta)
-          if (meta) {
-            const key = computeRunKey(meta.layer, meta.materialId)
-            const run = registry.runs.get(key)
-            if (run) {
-              recycleBatchIfEmpty(registry, batchEntity, run)
-            }
-          }
-        }
-      }
-
-      // Reset batch tracking (IsBatched and BatchSlot persist — no archetype change)
-      entity.set(BatchSlot, { batchIdx: -1, slot: -1 }, false)
-
-      // Re-trigger IsRenderable so batchAssignSystem picks it up
-      // and creates a new batch with the correct buffer layout
-      entity.remove(IsRenderable)
-      entity.add(IsRenderable)
-    }
-
-    registry.renderOrderDirty = true
-  }
-
-  /**
-   * Rebuild the effect traits map from tracked materials.
-   */
-  private _rebuildEffectTraits(): void {
-    if (!this._world) return
-    const registryEntities = this._world.query(BatchRegistry)
-    if (registryEntities.length === 0) return
-    const registry = registryEntities[0]!.get(BatchRegistry) as RegistryData | undefined
-    if (!registry) return
-
-    this._effectTraits.clear()
-    for (const { material } of registry.materialRefs.values()) {
-      for (const effectClass of material.getEffects()) {
-        this._effectTraits.set(effectClass._trait, effectClass)
-      }
-    }
   }
 
   /**
@@ -598,13 +402,16 @@ export class SpriteGroup extends Group implements WorldProvider {
       registry.batchSlots.length = 0
       registry.batchSlotFreeList.length = 0
       registry.spriteArr.length = 0
+      registry.effectTraits.clear()
+
+      // Flush deferred destroys so zombies don't outlive the group
+      for (const entity of registry.pendingDestroy) {
+        entity.destroy()
+      }
+      registry.pendingDestroy.length = 0
     }
 
-    // Flush deferred destroys so zombies don't outlive the group
-    deferredDestroySystem(this._pendingDestroy)
-
     this._spriteCount = 0
-    this._effectTraits.clear()
 
     return this
   }

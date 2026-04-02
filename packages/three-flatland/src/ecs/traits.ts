@@ -1,8 +1,17 @@
 import { trait, relation } from 'koota'
-import type { Entity } from 'koota'
+import type { Entity, Trait } from 'koota'
+import type { Group, Object3D, OrthographicCamera, Vector2 } from 'three'
+import type { WebGPURenderer } from 'three/webgpu'
 import type { Sprite2D } from '../sprites/Sprite2D'
 import type { SpriteBatch } from '../pipeline/SpriteBatch'
-import type { Sprite2DMaterial } from '../materials/Sprite2DMaterial'
+import type { Sprite2DMaterial, ColorTransformFn } from '../materials/Sprite2DMaterial'
+import type { MaterialEffect } from '../materials/MaterialEffect'
+import type { LightEffect, LightEffectRuntimeContext } from '../lights/LightEffect'
+import type { LightStore } from '../lights/LightStore'
+import type { Light2D } from '../lights/Light2D'
+import type { SDFGenerator } from '../lights/SDFGenerator'
+import type { ChannelName } from '../materials/channels'
+import type { SystemSchedule } from './SystemSchedule'
 import type Node from 'three/src/nodes/core/Node.js'
 
 // ============================================
@@ -131,6 +140,20 @@ export const BatchRegistry = trait(() => ({
   /** Flat array of Sprite2D refs indexed by entity SoA index (eid).
    *  Pure array indexing — same O(1) pattern as other SoA stores. */
   spriteArr: [] as (Sprite2D | null)[],
+  /** Cached effect traits across all materials. Populated by materialVersionSystem. */
+  effectTraits: new Map() as Map<Trait, typeof MaterialEffect>,
+  /** Entities whose destruction is deferred to the top of the next frame. */
+  pendingDestroy: [] as Entity[],
+  /** The SpriteGroup (parent Group) for scene graph sync. */
+  parentGroup: null as Group | null,
+  /** Bound Group.prototype.add bypassing SpriteGroup override. */
+  parentAdd: null as ((...objects: Object3D[]) => Group) | null,
+  /** Bound Group.prototype.remove bypassing SpriteGroup override. */
+  parentRemove: null as ((...objects: Object3D[]) => Group) | null,
+  /** Whether auto-invalidate transforms is enabled. */
+  autoInvalidateTransforms: true as boolean,
+  /** The SystemSchedule for this world. */
+  schedule: null as SystemSchedule | null,
 }))
 
 // ============================================
@@ -161,7 +184,37 @@ export const LightEffectTrait = trait(() => ({
   enabled: true,
 }))
 
-/** World-level singleton for lighting dirty tracking. */
-export const LightEffectRegistry = trait(() => ({
+/**
+ * World-level singleton holding all lighting state.
+ * Spawned by Flatland.setLighting(); lighting ECS systems read from this.
+ * Replaces the scattered private fields on Flatland.
+ */
+export const LightingContext = trait(() => ({
+  /** Active LightEffect instance. */
+  effect: null as LightEffect | null,
+  /** LightStore providing light data textures. */
+  lightStore: null as LightStore | null,
+  /** Active Light2D objects. */
+  lights: [] as Light2D[],
+  /** Wrapped light fn with per-instance lit-bit check (for batched sprites). */
+  wrappedLightFn: null as ColorTransformFn | null,
+  /** Per-fragment channels required by the active LightEffect. */
+  requiredChannels: new Set() as ReadonlySet<ChannelName>,
+  /** All tracked sprite materials for colorTransform assignment. */
+  materials: new Set() as Set<Sprite2DMaterial>,
+  /** Whether the lighting colorTransform needs reassigning to materials. */
   dirty: false as boolean,
+  /** Whether the effect has been initialized (init() called). */
+  initialized: false as boolean,
+  /** SDF generator (lazy — created when LightEffect.needsShadows is true). */
+  sdfGenerator: null as SDFGenerator | null,
+  // Runtime context (set each frame before systems run)
+  /** Renderer reference for GPU passes. */
+  renderer: null as WebGPURenderer | null,
+  /** Camera for world bounds computation. */
+  camera: null as OrthographicCamera | null,
+  /** World size in units (computed from camera frustum). */
+  worldSize: null as Vector2 | null,
+  /** World offset (camera left/bottom). */
+  worldOffset: null as Vector2 | null,
 }))

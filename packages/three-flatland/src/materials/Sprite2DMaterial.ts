@@ -1,4 +1,4 @@
-import { attribute, texture, uv, vec2, vec4, float, If, Discard, select, positionWorld } from 'three/tsl'
+import { attribute, texture, uv, vec2, vec4, float, If, Discard, select } from 'three/tsl'
 import {
   type Texture,
   FrontSide,
@@ -11,23 +11,9 @@ import type Node from 'three/src/nodes/core/Node.js'
 import { EffectMaterial } from './EffectMaterial'
 import type { GlobalUniforms } from '../GlobalUniforms'
 
-/**
- * Context passed to colorTransform callbacks.
- */
-export interface ColorTransformContext {
-  /** Base sampled + tinted color (vec4) */
-  color: Node<'vec4'>
-  /** UV after flip + atlas remap */
-  atlasUV: Node<'vec2'>
-  /** World position XY (works with instancing via positionWorld) */
-  worldPosition: Node<'vec2'>
-}
-
-/**
- * A function that transforms the base sprite color.
- * Receives the base color and context, returns modified color (vec4).
- */
-export type ColorTransformFn = (ctx: ColorTransformContext) => Node<'vec4'>
+// Re-export types that moved to EffectMaterial for backwards compatibility
+export type { ColorTransformContext, ColorTransformFn } from './EffectMaterial'
+import type { ColorTransformFn } from './EffectMaterial'
 
 export interface Sprite2DMaterialOptions {
   map?: Texture
@@ -51,10 +37,10 @@ export interface Sprite2DMaterialOptions {
   effectTier?: number
   /** Color transform function for custom effects (e.g., lighting) */
   colorTransform?: ColorTransformFn
-  /** Whether this material should be lit by Flatland's lights */
-  lit?: boolean
   /** Global uniforms for auto-applying tint, time, etc. */
   globalUniforms?: GlobalUniforms
+  /** Effect configuration key for material caching/batching */
+  effectsKey?: string
 }
 
 // Global material ID counter for batching
@@ -104,10 +90,10 @@ export class Sprite2DMaterial extends EffectMaterial {
   static getShared(options: Sprite2DMaterialOptions = {}): Sprite2DMaterial {
     const textureId = options.map?.id ?? -1
     const transparent = options.transparent ?? true
-    const lit = options.lit ?? false
     const ctId = getColorTransformId(options.colorTransform)
+    const effectsKey = options.effectsKey ?? ''
 
-    const key = `${textureId}:${transparent}:${lit}:${ctId}`
+    const key = `${textureId}:${transparent}:${ctId}:${effectsKey}`
 
     let material = Sprite2DMaterial._cache.get(key)
     if (!material) {
@@ -125,8 +111,6 @@ export class Sprite2DMaterial extends EffectMaterial {
 
   private _spriteTexture: Texture | null = null
   private _premultipliedAlpha: boolean = false
-  private _colorTransform: ColorTransformFn | null = null
-  private _lit: boolean = false
   private _globalUniforms: GlobalUniforms | null = null
 
   constructor(options: Sprite2DMaterialOptions = {}) {
@@ -135,7 +119,6 @@ export class Sprite2DMaterial extends EffectMaterial {
     this.batchId = nextMaterialId++
 
     this._premultipliedAlpha = options.premultipliedAlpha ?? false
-    this._lit = options.lit ?? false
     this._globalUniforms = options.globalUniforms ?? null
     this._colorTransform = options.colorTransform ?? null
     this.transparent = options.transparent ?? true
@@ -155,37 +138,6 @@ export class Sprite2DMaterial extends EffectMaterial {
     if (options.map) {
       this.setTexture(options.map)
     }
-  }
-
-  /**
-   * Get the color transform function.
-   */
-  get colorTransform(): ColorTransformFn | null {
-    return this._colorTransform
-  }
-
-  /**
-   * Set the color transform function.
-   * Triggers shader rebuild.
-   */
-  set colorTransform(value: ColorTransformFn | null) {
-    if (this._colorTransform === value) return
-    this._colorTransform = value
-    if (this._spriteTexture) {
-      this._rebuildColorNode()
-      this.needsUpdate = true
-    }
-  }
-
-  /**
-   * Whether this material should be auto-lit by Flatland.
-   */
-  get lit(): boolean {
-    return this._lit
-  }
-
-  set lit(value: boolean) {
-    this._lit = value
   }
 
   /**
@@ -225,7 +177,6 @@ export class Sprite2DMaterial extends EffectMaterial {
   protected override _buildBaseColor(): { color: Node<'vec4'>; uv: Node<'vec2'> } | null {
     const mapTexture = this._spriteTexture!
     const globalUniforms = this._globalUniforms
-    const colorTransform = this._colorTransform
 
     // Read from core instance attributes
     // Explicit type params needed for @types/three ≥0.183 generic AttributeNode
@@ -268,16 +219,15 @@ export class Sprite2DMaterial extends EffectMaterial {
       color = vec4(tintedRGB, finalAlpha)
     }
 
-    // Apply color transform if set (e.g., lighting)
-    if (colorTransform) {
-      color = colorTransform({
-        color,
-        atlasUV,
-        worldPosition: positionWorld.xy,
-      })
-    }
-
     return { color, uv: atlasUV }
+  }
+
+  /**
+   * Get the base sprite texture for channel providers.
+   * @internal
+   */
+  protected override _getBaseTexture(): Texture | null {
+    return this._spriteTexture
   }
 
   /**
@@ -309,13 +259,15 @@ export class Sprite2DMaterial extends EffectMaterial {
       premultipliedAlpha: this._premultipliedAlpha,
       effectTier: this._defaultEffectTier,
       colorTransform: this._colorTransform ?? undefined,
-      lit: this._lit,
       globalUniforms: this._globalUniforms ?? undefined,
     }) as this
 
+    cloned._requiredChannels = this._requiredChannels
+
     // Copy effects (registers their packed slots and rebuilds colorNode)
     for (const effectClass of this._effects) {
-      ;(cloned as Sprite2DMaterial).registerEffect(effectClass)
+      const constants = this._effectConstants.get(effectClass.effectName)
+      ;(cloned as Sprite2DMaterial).registerEffect(effectClass, constants)
     }
 
     return cloned

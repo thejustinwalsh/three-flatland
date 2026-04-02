@@ -1,39 +1,118 @@
-import { WebGPURenderer, MeshBasicNodeMaterial } from 'three/webgpu'
+import { WebGPURenderer } from 'three/webgpu'
 import {
   DataTexture,
-  Mesh,
-  MeshBasicMaterial,
   NearestFilter,
-  NoBlending,
-  PlaneGeometry,
   RGBAFormat,
   UnsignedByteType,
   Vector2,
-  type OrthographicCamera,
-  type Texture,
 } from 'three'
-import { Fn, uv, vec4, float, texture as sampleTexture } from 'three/tsl'
 import {
   Flatland,
   Light2D,
   Sprite2D,
   SpriteSheetLoader,
   Layers,
-  RadianceLightingStrategy,
 } from 'three-flatland'
+import { DefaultLightEffect, DirectLightEffect, SimpleLightEffect, AutoNormalProvider } from '@three-flatland/presets'
 
-// ============================================
-// CONSTANTS
-// ============================================
+import '@awesome.me/webawesome/dist/styles/themes/default.css'
+import '@awesome.me/webawesome/dist/components/radio-group/radio-group.js'
+import '@awesome.me/webawesome/dist/components/radio/radio.js'
+import '@awesome.me/webawesome/dist/components/switch/switch.js'
 
-const VIEW_SIZE = 400
+// ─── Constants ───────────────────────────────────────────────────────────────
 
-// Simple box occluder size
-const BOX_SIZE = 48
+const VIEW_SIZE = 300
+const INDICATOR_SIZE = 24
 
-// ============================================
-// MAIN
-// ============================================
+const spritePositions: [number, number][] = [
+  [-60, -20],
+  [0, -20],
+  [60, -20],
+]
+
+const animFrames = ['idle_0', 'idle_1', 'idle_2', 'idle_3']
+const ANIM_FPS = 8
+
+// ─── Circle DataTexture for light indicators ─────────────────────────────────
+
+function createCircleTexture(r: number, g: number, b: number, size = 32): DataTexture {
+  const data = new Uint8Array(size * size * 4)
+  const center = size / 2
+  const radius = size / 2 - 1
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const dx = x - center + 0.5
+      const dy = y - center + 0.5
+      const dist = Math.sqrt(dx * dx + dy * dy)
+      const i = (y * size + x) * 4
+      data[i] = r
+      data[i + 1] = g
+      data[i + 2] = b
+      // Soft edge
+      const alpha = dist < radius - 1 ? 255 : dist < radius ? Math.round((radius - dist) * 255) : 0
+      data[i + 3] = alpha
+    }
+  }
+  const tex = new DataTexture(data, size, size, RGBAFormat, UnsignedByteType)
+  tex.minFilter = NearestFilter
+  tex.magFilter = NearestFilter
+  tex.needsUpdate = true
+  return tex
+}
+
+// ─── Screen-to-world conversion ──────────────────────────────────────────────
+
+function screenToWorld(
+  sx: number,
+  sy: number,
+  canvas: HTMLCanvasElement,
+): Vector2 {
+  const rect = canvas.getBoundingClientRect()
+  const nx = ((sx - rect.left) / rect.width) * 2 - 1
+  const ny = -((sy - rect.top) / rect.height) * 2 + 1
+  const aspect = rect.width / rect.height
+  return new Vector2(
+    (nx * VIEW_SIZE * aspect) / 2,
+    (ny * VIEW_SIZE) / 2,
+  )
+}
+
+// ─── Wrapping Group Helper ──────────────────────────────────────────────────
+
+function setupWrappingGroup(container: Element, childSelector: string) {
+  const update = () => {
+    const children = [...container.querySelectorAll(childSelector)]
+    if (!children.length) return
+    const lines: Element[][] = []
+    let lastTop = -Infinity
+    let line: Element[] = []
+    for (const child of children) {
+      const top = child.getBoundingClientRect().top
+      if (Math.abs(top - lastTop) > 2) {
+        if (line.length) lines.push(line)
+        line = []
+        lastTop = top
+      }
+      line.push(child)
+    }
+    if (line.length) lines.push(line)
+    for (const ln of lines) {
+      for (let i = 0; i < ln.length; i++) {
+        const pos =
+          ln.length === 1 ? 'solo' :
+          i === 0 ? 'first' :
+          i === ln.length - 1 ? 'last' : 'inner'
+        ln[i]!.setAttribute('data-line-pos', pos)
+      }
+    }
+  }
+  const ro = new ResizeObserver(update)
+  ro.observe(container)
+  update()
+}
+
+// ─── Main ────────────────────────────────────────────────────────────────────
 
 async function main() {
   const renderer = new WebGPURenderer({ antialias: false })
@@ -45,269 +124,124 @@ async function main() {
   const flatland = new Flatland({
     viewSize: VIEW_SIZE,
     aspect: window.innerWidth / window.innerHeight,
-    clearColor: 0x050508,
-    tiling: false,
-    lightingStrategy: new RadianceLightingStrategy(),
+    clearColor: 0x0a0a12,
   })
-  // Debug: expose flatland for console
-  ;(window as unknown as Record<string, unknown>).__flatland = flatland
+  const defaultEffect = new DefaultLightEffect()
+  const directEffect = new DirectLightEffect()
+  const simpleEffect = new SimpleLightEffect()
+  type LightingMode = 'default' | 'direct' | 'simple'
+  let mode: LightingMode = 'default'
+  flatland.setLighting(defaultEffect)
 
-  // --- Load knight sprite for occluder ---
+  // ─── Load knight sprite sheet ────────────────────────────────────────────
+
   const asset = (path: string) => new URL(path, import.meta.url).href
   const knightSheet = await SpriteSheetLoader.load(asset('./sprites/knight.json'))
   knightSheet.texture.minFilter = NearestFilter
   knightSheet.texture.magFilter = NearestFilter
 
-  // --- Lit background floor (white surface to receive light) ---
-  const whiteTex = new DataTexture(new Uint8Array([255, 255, 255, 255]), 1, 1, RGBAFormat, UnsignedByteType)
-  whiteTex.needsUpdate = true
+  // ─── Lit knight sprites ──────────────────────────────────────────────────
 
-  const aspect = window.innerWidth / window.innerHeight
-  const floorW = VIEW_SIZE * aspect + 20
-  const floorH = VIEW_SIZE + 20
-  const floorTex = new DataTexture(new Uint8Array([180, 180, 190, 255]), 1, 1, RGBAFormat, UnsignedByteType)
-  floorTex.needsUpdate = true
-  const floor = new Sprite2D({
-    texture: floorTex,
-    layer: Layers.BACKGROUND,
-    anchor: [0.5, 0.5],
-    lit: true,
+  const knights: Sprite2D[] = []
+  for (const pos of spritePositions) {
+    const knight = new Sprite2D({
+      texture: knightSheet.texture,
+      frame: knightSheet.getFrame('idle_0'),
+      anchor: [0.5, 0.5],
+    })
+    knight.addEffect(new AutoNormalProvider())
+    knight.scale.set(64, 64, 1)
+    knight.position.set(pos[0], pos[1], 0)
+    flatland.add(knight)
+    knights.push(knight)
+  }
+
+  // ─── Lights ──────────────────────────────────────────────────────────────
+
+  const torch1 = new Light2D({
+    type: 'point',
+    position: [-80, 50],
+    color: 0xff6600,
+    intensity: 1.2,
+    distance: 150,
+    decay: 2,
   })
-  floor.scale.set(floorW, floorH, 1)
-  floor.position.set(0, 0, 0)
-  flatland.add(floor)
-
-  // --- Create 3 colored point lights ---
-  // Positioned to interact with walls — one on each side, one behind walls
-  const lights: { light: Light2D; label: string }[] = [
-    {
-      light: new Light2D({
-        type: 'point',
-        position: [-120, 30],
-        color: 0xff4422,
-        intensity: 2.0,
-        distance: 250,
-        decay: 2,
-      }),
-      label: 'Red',
-    },
-    {
-      light: new Light2D({
-        type: 'point',
-        position: [120, 40],
-        color: 0x2288ff,
-        intensity: 2.0,
-        distance: 250,
-        decay: 2,
-      }),
-      label: 'Blue',
-    },
-    {
-      light: new Light2D({
-        type: 'point',
-        position: [0, -120],
-        color: 0x44ff44,
-        intensity: 2.0,
-        distance: 250,
-        decay: 2,
-      }),
-      label: 'Green',
-    },
-  ]
-
-  // Dim ambient so lights don't fall off into pure black
+  const torch2 = new Light2D({
+    type: 'point',
+    position: [80, 50],
+    color: 0xffaa00,
+    intensity: 1.0,
+    distance: 150,
+    decay: 2,
+  })
   const ambient = new Light2D({
     type: 'ambient',
-    color: 0x181828,
-    intensity: 0.3,
+    color: 0x111122,
+    intensity: 0.15,
   })
 
+  flatland.add(torch1)
+  flatland.add(torch2)
   flatland.add(ambient)
-  for (const l of lights) flatland.add(l.light)
 
-  // --- Wall occluders (gray blocks that cast shadows) ---
-  // Distinct from white floor so they're visible.
-  const wallTex = new DataTexture(new Uint8Array([140, 140, 160, 255]), 1, 1, RGBAFormat, UnsignedByteType)
-  wallTex.needsUpdate = true
+  const torches = [torch1, torch2]
 
-  function addWall(x: number, y: number, w: number, h: number) {
-    const wall = new Sprite2D({
-      texture: wallTex,
-      layer: Layers.ENTITIES,
-      anchor: [0.5, 0.5],
-      lit: true,
-      castShadow: true,
-    })
-    wall.scale.set(w, h, 1)
-    wall.position.set(x, y, 0)
-    flatland.add(wall)
-    return wall
-  }
+  // ─── Light indicator sprites ─────────────────────────────────────────────
 
-  // L-shaped wall arrangement to show shadows + indirect bounce
-  addWall(-60, 0, 16, 120)   // Vertical wall left of center
-  addWall(-60, 60, 80, 16)   // Horizontal wall top-left
-  addWall(60, -20, 16, 80)   // Vertical wall right of center
-  addWall(20, -60, 80, 16)   // Horizontal wall bottom
+  const indicator1 = new Sprite2D({
+    texture: createCircleTexture(255, 102, 0), // 0xff6600
+    anchor: [0.5, 0.5],
+    alpha: 0.8,
+    layer: Layers.FOREGROUND,
+    lit: false,
+  })
+  indicator1.scale.set(INDICATOR_SIZE, INDICATOR_SIZE, 1)
+  indicator1.position.set(-80, 50, 0)
+  flatland.add(indicator1)
 
-  // Small pillar to show point shadow
-  addWall(0, 0, 24, 24)
+  const indicator2 = new Sprite2D({
+    texture: createCircleTexture(255, 170, 0), // 0xffaa00
+    anchor: [0.5, 0.5],
+    alpha: 0.8,
+    layer: Layers.FOREGROUND,
+    lit: false,
+  })
+  indicator2.scale.set(INDICATOR_SIZE, INDICATOR_SIZE, 1)
+  indicator2.position.set(80, 50, 0)
+  flatland.add(indicator2)
 
-  // Shadow/radiance config (strategy already set to RadianceLightingStrategy in constructor)
-  flatland.lighting.shadows = true
-  flatland.lighting.shadowStrength = 0.9
-  flatland.lighting.shadowSoftness = 5.0
-  flatland.lighting.shadowBias = 0.005
-  flatland.lighting.radianceIntensity = 1.0
+  const indicators = [indicator1, indicator2]
 
-  // --- Debug buffer visualization ---
-  let debugVisible = false
-  let debugMeshes: Mesh[] = []
-  let debugDirty = true
+  // ─── Pointer drag (touch + mouse) ──────────────────────────────────────
 
-  function rebuildDebugMeshes() {
-    for (const m of debugMeshes) {
-      flatland.remove(m)
-      m.geometry.dispose()
-      ;(m.material as MeshBasicMaterial).dispose()
-    }
-    debugMeshes = []
-
-    const sdfGen = (flatland as unknown as Record<string, unknown>)._sdfGenerator as {
-      sdfTexture: Texture
-    } | null
-    const occRT = (flatland as unknown as Record<string, unknown>)._occlusionRT as {
-      texture: Texture
-    } | null
-
-    if (!sdfGen || !occRT) return
-
-    const cam = (flatland as unknown as Record<string, unknown>)._camera as OrthographicCamera
-    const viewW = cam.right - cam.left
-    const miniW = viewW * 0.12
-    const miniH = miniW
-    const margin = 8
-    const gap = 4
-
-    const buffers: [Texture, string][] = [
-      [occRT.texture, 'Occlusion'],
-      [sdfGen.sdfTexture, 'SDF'],
-    ]
-
-    // Add radiance textures if available
-    const strategy = flatland.lightingStrategy
-    if (strategy instanceof RadianceLightingStrategy) {
-      const rc = strategy.radianceCascades
-      if (rc?.sceneRadianceTexture) {
-        buffers.push([rc.sceneRadianceTexture, 'Scene Rad'])
-      }
-      const cascadeTextures = rc?.cascadeTextures ?? []
-      for (let i = 0; i < cascadeTextures.length; i++) {
-        const ct = cascadeTextures[i]
-        if (ct) buffers.push([ct, `Cascade ${i}`])
-      }
-      if (rc?.finalRadianceTexture) {
-        buffers.push([rc.finalRadianceTexture, 'GI Output'])
-      }
-    }
-
-    const cols = Math.min(buffers.length, 4)
-    for (let idx = 0; idx < buffers.length; idx++) {
-      const [tex] = buffers[idx]
-      const col = idx % cols
-      const row = Math.floor(idx / cols)
-      const cx = cam.right - margin - miniW / 2 - col * (miniW + gap)
-      const cy = cam.top - margin - miniH / 2 - row * (miniH + gap)
-
-      const geo = new PlaneGeometry(miniW, miniH)
-      const mat = new MeshBasicMaterial({
-        map: tex,
-        transparent: true,
-        blending: NoBlending,
-        depthTest: false,
-        depthWrite: false,
-      })
-      const mesh = new Mesh(geo, mat)
-      mesh.renderOrder = 9999
-      mesh.position.set(cx, cy, 0)
-      mesh.visible = debugVisible
-      flatland.add(mesh)
-      debugMeshes.push(mesh)
-    }
-  }
-
-  // --- Fullscreen SDF overlay ---
-  let sdfOverlayMesh: Mesh | null = null
-  let sdfOverlayVisible = false
-
-  function toggleSdfOverlay() {
-    sdfOverlayVisible = !sdfOverlayVisible
-    const fl = flatland as unknown as Record<string, unknown>
-    const sdfGen = fl._sdfGenerator as { sdfTexture: Texture } | null
-    const cam = fl._camera as OrthographicCamera
-
-    if (sdfOverlayVisible && sdfGen) {
-      if (sdfOverlayMesh) {
-        flatland.remove(sdfOverlayMesh)
-        sdfOverlayMesh.geometry.dispose()
-        ;(sdfOverlayMesh.material as MeshBasicNodeMaterial).dispose()
-      }
-      const viewW = cam.right - cam.left
-      const viewH = cam.top - cam.bottom
-      const geo = new PlaneGeometry(viewW, viewH)
-      const mat = new MeshBasicNodeMaterial()
-      mat.transparent = true
-      mat.depthTest = false
-      mat.depthWrite = false
-      mat.colorNode = Fn(() => {
-        const sdfSample = sampleTexture(sdfGen.sdfTexture, uv())
-        const dist = sdfSample.r.mul(float(10)).clamp(0, 1)
-        return vec4(dist, dist, dist, float(0.8))
-      })()
-      sdfOverlayMesh = new Mesh(geo, mat)
-      sdfOverlayMesh.renderOrder = 10000
-      sdfOverlayMesh.position.set((cam.left + cam.right) / 2, (cam.bottom + cam.top) / 2, 0)
-      flatland.add(sdfOverlayMesh)
-    } else if (sdfOverlayMesh) {
-      flatland.remove(sdfOverlayMesh)
-      sdfOverlayMesh.geometry.dispose()
-      ;(sdfOverlayMesh.material as MeshBasicNodeMaterial).dispose()
-      sdfOverlayMesh = null
-    }
-  }
-
-  // --- Drag lights with mouse ---
-  let draggingLight: Light2D | null = null
+  let draggingIndex = -1
   const dragOffset = new Vector2()
 
-  function screenToWorld(sx: number, sy: number): Vector2 {
-    const rect = renderer.domElement.getBoundingClientRect()
-    const nx = ((sx - rect.left) / rect.width) * 2 - 1
-    const ny = -((sy - rect.top) / rect.height) * 2 + 1
-    const aspect = window.innerWidth / window.innerHeight
-    return new Vector2((nx * VIEW_SIZE * aspect) / 2, (ny * VIEW_SIZE) / 2)
-  }
+  renderer.domElement.style.touchAction = 'none'
 
-  renderer.domElement.addEventListener('mousedown', (e) => {
-    const wp = screenToWorld(e.clientX, e.clientY)
-    for (const l of lights) {
-      if (wp.distanceTo(l.light.position2D) < 20) {
-        draggingLight = l.light
-        dragOffset.copy(l.light.position2D).sub(wp)
+  renderer.domElement.addEventListener('pointerdown', (e) => {
+    const wp = screenToWorld(e.clientX, e.clientY, renderer.domElement)
+    for (let i = 0; i < torches.length; i++) {
+      if (wp.distanceTo(torches[i].position2D) < INDICATOR_SIZE) {
+        draggingIndex = i
+        dragOffset.copy(torches[i].position2D).sub(wp)
         renderer.domElement.style.cursor = 'grabbing'
+        renderer.domElement.setPointerCapture(e.pointerId)
         return
       }
     }
   })
 
-  renderer.domElement.addEventListener('mousemove', (e) => {
-    const wp = screenToWorld(e.clientX, e.clientY)
-    if (draggingLight) {
-      draggingLight.position2D = wp.clone().add(dragOffset)
+  renderer.domElement.addEventListener('pointermove', (e) => {
+    const wp = screenToWorld(e.clientX, e.clientY, renderer.domElement)
+    if (draggingIndex >= 0) {
+      const newPos = wp.clone().add(dragOffset)
+      torches[draggingIndex].position2D = newPos
+      indicators[draggingIndex].position.set(newPos.x, newPos.y, 0)
     } else {
       let hovering = false
-      for (const l of lights) {
-        if (wp.distanceTo(l.light.position2D) < 20) {
+      for (const torch of torches) {
+        if (wp.distanceTo(torch.position2D) < INDICATOR_SIZE) {
           hovering = true
           break
         }
@@ -316,97 +250,138 @@ async function main() {
     }
   })
 
-  renderer.domElement.addEventListener('mouseup', () => {
-    draggingLight = null
-    renderer.domElement.style.cursor = 'default'
+  renderer.domElement.addEventListener('pointerup', (e) => {
+    if (draggingIndex >= 0) {
+      draggingIndex = -1
+      renderer.domElement.style.cursor = 'default'
+      renderer.domElement.releasePointerCapture(e.pointerId)
+    }
   })
 
-  // --- Keyboard controls ---
+  // ─── UI Controls ─────────────────────────────────────────────────────────
+
+  const radioGroup = document.querySelector('wa-radio-group')!
+  setupWrappingGroup(radioGroup, 'wa-radio')
+
+  function applyMode(newMode: LightingMode) {
+    mode = newMode
+    const effects = { default: defaultEffect, direct: directEffect, simple: simpleEffect }
+    flatland.setLighting(effects[mode])
+  }
+
+  radioGroup.addEventListener('change', () => {
+    applyMode((radioGroup as HTMLInputElement).value as LightingMode)
+  })
+
+  const torch1Switch = document.getElementById('torch1-switch') as HTMLInputElement
+  const torch2Switch = document.getElementById('torch2-switch') as HTMLInputElement
+
+  torch1Switch.addEventListener('change', () => {
+    torch1.enabled = torch1Switch.checked
+  })
+  torch2Switch.addEventListener('change', () => {
+    torch2.enabled = torch2Switch.checked
+  })
+
+  // ─── Keyboard shortcuts ──────────────────────────────────────────────────
+
   window.addEventListener('keydown', (e) => {
-    // 1-3: Toggle individual lights
-    if (e.code >= 'Digit1' && e.code <= 'Digit3') {
-      const idx = parseInt(e.code.charAt(5)) - 1
-      if (idx < lights.length) {
-        lights[idx].light.enabled = !lights[idx].light.enabled
-      }
+    if (e.key === '1') {
+      torch1.enabled = !torch1.enabled
+      torch1Switch.checked = torch1.enabled
     }
-    // 0: Toggle all lights
-    if (e.code === 'Digit0') {
-      const anyEnabled = lights.some((l) => l.light.enabled) || ambient.enabled
-      ambient.enabled = !anyEnabled
-      for (const l of lights) l.light.enabled = !anyEnabled
+    if (e.key === '2') {
+      torch2.enabled = !torch2.enabled
+      torch2Switch.checked = torch2.enabled
     }
-    // R: Toggle radiance mode
-    if (e.code === 'KeyR') {
-      if (flatland.radiance) {
-        flatland.radiance = false
-      } else {
-        flatland.lighting.shadows = true
-        flatland.radiance = true
-        flatland.lighting.radianceIntensity = 1.0
-      }
-      debugDirty = true
-    }
-    // D: Toggle debug buffers
-    if (e.code === 'KeyD') {
-      debugVisible = !debugVisible
-      for (const m of debugMeshes) m.visible = debugVisible
-    }
-    // S: Toggle SDF overlay
-    if (e.code === 'KeyS') {
-      toggleSdfOverlay()
+    if (e.key === 't' || e.key === 'T') {
+      const modes: LightingMode[] = ['default', 'direct', 'simple']
+      const next = modes[(modes.indexOf(mode) + 1) % modes.length]
+      applyMode(next)
+      ;(radioGroup as HTMLInputElement).value = next
     }
   })
 
-  // --- Resize ---
+  // ─── Resize ──────────────────────────────────────────────────────────────
+
   window.addEventListener('resize', () => {
     renderer.setSize(window.innerWidth, window.innerHeight)
     flatland.resize(window.innerWidth, window.innerHeight)
   })
 
-  // --- FPS tracking ---
-  let fpsFrames = 0
-  let fpsTime = 0
-  let fpsDisplay = 0
+  // ─── Animation loop ─────────────────────────────────────────────────────
 
-  const uiEl = document.getElementById('ui')!
+  const statsEl = document.getElementById('stats')!
+  let animFrame = 0
+  let animTimer = 0
+  let flickerTimer = 0
+  let lastTime = performance.now()
+  let frameCount = 0
+  let fpsElapsed = 0
+  let displayFps: string | number = '-'
+  let displayDraws: string | number = '-'
 
-  // --- Animation loop ---
   function animate() {
     requestAnimationFrame(animate)
 
     const now = performance.now()
-    const deltaMs = now - (animate as unknown as { lastTime: number }).lastTime
-    ;(animate as unknown as { lastTime: number }).lastTime = now
+    const deltaMs = now - lastTime
+    lastTime = now
+    const delta = deltaMs / 1000
 
-    // FPS
-    fpsFrames++
-    fpsTime += deltaMs
-    if (fpsTime >= 500) {
-      fpsDisplay = Math.round((fpsFrames / fpsTime) * 1000)
-      fpsFrames = 0
-      fpsTime = 0
+    // Animate knight sprites
+    animTimer += deltaMs
+    const frameDuration = 1000 / ANIM_FPS
+    if (animTimer >= frameDuration) {
+      animTimer -= frameDuration
+      animFrame = (animFrame + 1) % animFrames.length
+      for (const knight of knights) {
+        knight.setFrame(knightSheet.getFrame(animFrames[animFrame]))
+      }
+    }
+
+    // Flicker — light intensity + indicator tint pulse
+    flickerTimer += delta
+    const t = flickerTimer
+
+    if (torch1.enabled) {
+      const f1 = 1 + Math.sin(t * 15) * 0.1 + Math.sin(t * 23) * 0.05
+      torch1.intensity = 1.2 * f1
+      indicator1.tint = [f1, f1, f1]
+      indicator1.alpha = 0.8
+    } else {
+      indicator1.alpha = 0.3
+    }
+
+    if (torch2.enabled) {
+      const f2 = 1 + Math.sin(t * 17 + 1) * 0.1 + Math.sin(t * 19 + 2) * 0.05
+      torch2.intensity = 1.0 * f2
+      indicator2.tint = [f2, f2, f2]
+      indicator2.alpha = 0.8
+    } else {
+      indicator2.alpha = 0.3
     }
 
     // Render
     flatland.render(renderer)
 
-    // Rebuild debug meshes if needed
-    if (debugDirty) {
-      rebuildDebugMeshes()
-      debugDirty = false
+    // Stats (update once per second)
+    frameCount++
+    fpsElapsed += delta
+    if (fpsElapsed >= 1) {
+      displayFps = Math.round(frameCount / fpsElapsed)
+      displayDraws = flatland.stats.drawCalls
+      frameCount = 0
+      fpsElapsed = 0
     }
-
-    // Update UI
-    const lightStatus = lights
-      .map((l, i) => `${i + 1}:${l.light.enabled ? l.label : '--'}`)
-      .join(' ')
-    uiEl.textContent =
-      `FPS: ${fpsDisplay}  Radiance [R]: ${flatland.radiance ? 'ON' : 'OFF'}  Debug [D]: ${debugVisible ? 'ON' : 'OFF'}  SDF [S]: ${sdfOverlayVisible ? 'ON' : 'OFF'}\n` +
-      `Lights [1-3,0]: ${lightStatus}  Ambient: ${ambient.enabled ? 'ON' : '--'}\n` +
-      `Drag lights with mouse`
+    const activeLights = [torch1, torch2].filter(t => t.enabled).length + 1
+    const modeLabels = { default: 'Default', direct: 'Direct', simple: 'Simple' }
+    statsEl.textContent =
+      `FPS: ${displayFps}\n` +
+      `Draws: ${displayDraws}\n` +
+      `Lights: ${activeLights}\n` +
+      `Mode: ${modeLabels[mode]}`
   }
-  ;(animate as unknown as { lastTime: number }).lastTime = performance.now()
   animate()
 }
 
