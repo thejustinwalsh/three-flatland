@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Skia WASM GL Test</title>
+  <style>
+    body { margin: 0; background: #1a1a2e; color: #eee; font-family: monospace; display: flex; flex-direction: column; align-items: center; padding: 20px; }
+    canvas { border: 1px solid #444; margin: 10px; }
+    #log { white-space: pre-wrap; font-size: 12px; max-width: 800px; color: #aaa; }
+    .ok { color: #4ade80; }
+    .err { color: #f87171; }
+    .info { color: #60a5fa; }
+    h1 { font-size: 18px; color: #e2e8f0; }
+  </style>
+</head>
+<body>
+  <h1>Skia WASM GL — Browser Test</h1>
+  <canvas id="canvas" width="512" height="512"></canvas>
+  <div id="log"></div>
+
+<script type="module">
+const log = document.getElementById('log');
+const L = (cls, msg) => { log.innerHTML += `<span class="${cls}">${msg}</span>\n`; };
+const ok = (msg) => L('ok', `[ok]  ${msg}`);
+const err = (msg) => L('err', `[err] ${msg}`);
+const info = (msg) => L('info', `[..] ${msg}`);
+
+async function run() {
+  info('Setting up WebGL2 context...');
+
+  const canvas = document.getElementById('canvas');
+  const gl = canvas.getContext('webgl2', { antialias: true, stencil: true });
+  if (!gl) { err('WebGL2 not supported'); return; }
+  ok(`WebGL2: ${gl.getParameter(gl.RENDERER)}`);
+
+  // ── GL handle tables (integer <-> WebGL object) ──
+  const tables = {
+    textures: new Map(), buffers: new Map(), framebuffers: new Map(),
+    renderbuffers: new Map(), programs: new Map(), shaders: new Map(),
+    vaos: new Map(), queries: new Map(), samplers: new Map(),
+    syncs: new Map(), uniforms: new Map(),
+  };
+  let nextId = 1;
+  const allocId = () => nextId++;
+  let memory; // set after instantiation
+
+  const view = () => new DataView(memory.buffer);
+  const writeU32 = (ptr, val) => view().setUint32(ptr, val, true);
+  const readU32 = (ptr) => view().getUint32(ptr, true);
+  const readStr = (ptr) => {
+    const bytes = new Uint8Array(memory.buffer);
+    let end = ptr;
+    while (bytes[end] !== 0) end++;
+    return new TextDecoder().decode(bytes.slice(ptr, end));
+  };
+  const writeStr = (ptr, max, str) => {
+    const bytes = new TextEncoder().encode(str);
+    const len = Math.min(bytes.length, max - 1);
+    new Uint8Array(memory.buffer).set(bytes.subarray(0, len), ptr);
+    new Uint8Array(memory.buffer)[ptr + len] = 0;
+    return len;
+  };
+
+  // ── GL imports ──
+  const glImports = {
+    emscripten_glGetString(name) {
+      // Skia calls this during GrGLInterface assembly
+      // We can't easily return a WASM pointer to a JS string here.
+      // Return 0 and let Skia handle it — MakeWebGL may fall back.
+      return 0;
+    },
+    emscripten_glActiveTexture(t) { gl.activeTexture(t); },
+    emscripten_glAttachShader(p, s) { gl.attachShader(tables.programs.get(p), tables.shaders.get(s)); },
+    emscripten_glBindBuffer(t, b) { gl.bindBuffer(t, b ? tables.buffers.get(b) : null); },
+    emscripten_glBindFramebuffer(t, f) { gl.bindFramebuffer(t, f ? tables.framebuffers.get(f) : null); },
+    emscripten_glBindRenderbuffer(t, r) { gl.bindRenderbuffer(t, r ? tables.renderbuffers.get(r) : null); },
+    emscripten_glBindTexture(t, tex) { gl.bindTexture(t, tex ? tables.textures.get(tex) : null); },
+    emscripten_glBindVertexArray(a) { gl.bindVertexArray(a ? tables.vaos.get(a) : null); },
+    emscripten_glBlendColor(r, g, b, a) { gl.blendColor(r, g, b, a); },
+    emscripten_glBlendEquation(m) { gl.blendEquation(m); },
+    emscripten_glBlendFunc(s, d) { gl.blendFunc(s, d); },
+    emscripten_glBufferData(t, sz, data, usage) {
+      if (data) { gl.bufferData(t, new Uint8Array(memory.buffer, data, sz), usage); }
+      else { gl.bufferData(t, sz, usage); }
+    },
+    emscripten_glBufferSubData(t, off, sz, data) {
+      gl.bufferSubData(t, off, new Uint8Array(memory.buffer, data, sz));
+    },
+    emscripten_glCheckFramebufferStatus(t) { return gl.checkFramebufferStatus(t); },
+    emscripten_glClear(m) { gl.clear(m); },
+    emscripten_glClearColor(r, g, b, a) { gl.clearColor(r, g, b, a); },
+    emscripten_glClearStencil(s) { gl.clearStencil(s); },
+    emscripten_glColorMask(r, g, b, a) { gl.colorMask(!!r, !!g, !!b, !!a); },
+    emscripten_glCompileShader(s) { gl.compileShader(tables.shaders.get(s)); },
+    emscripten_glCreateProgram() { const id = allocId(); tables.programs.set(id, gl.createProgram()); return id; },
+    emscripten_glCreateShader(t) { const id = allocId(); tables.shaders.set(id, gl.createShader(t)); return id; },
+    emscripten_glCullFace(m) { gl.cullFace(m); },
+    emscripten_glDeleteBuffers(n, p) { for (let i = 0; i < n; i++) { const id = readU32(p+i*4); gl.deleteBuffer(tables.buffers.get(id)); tables.buffers.delete(id); } },
+    emscripten_glDeleteFramebuffers(n, p) { for (let i = 0; i < n; i++) { const id = readU32(p+i*4); gl.deleteFramebuffer(tables.framebuffers.get(id)); tables.framebuffers.delete(id); } },
+    emscripten_glDeleteProgram(p) { gl.deleteProgram(tables.programs.get(p)); tables.programs.delete(p); },
+    emscripten_glDeleteRenderbuffers(n, p) { for (let i = 0; i < n; i++) { const id = readU32(p+i*4); gl.deleteRenderbuffer(tables.renderbuffers.get(id)); tables.renderbuffers.delete(id); } },
+    emscripten_glDeleteShader(s) { gl.deleteShader(tables.shaders.get(s)); tables.shaders.delete(s); },
+    emscripten_glDeleteTextures(n, p) { for (let i = 0; i < n; i++) { const id = readU32(p+i*4); gl.deleteTexture(tables.textures.get(id)); tables.textures.delete(id); } },
+    emscripten_glDeleteVertexArrays(n, p) { for (let i = 0; i < n; i++) { const id = readU32(p+i*4); gl.deleteVertexArray(tables.vaos.get(id)); tables.vaos.delete(id); } },
+    emscripten_glDepthMask(f) { gl.depthMask(!!f); },
+    emscripten_glDisable(c) { gl.disable(c); },
+    emscripten_glDisableVertexAttribArray(i) { gl.disableVertexAttribArray(i); },
+    emscripten_glDrawArrays(m, f, c) { gl.drawArrays(m, f, c); },
+    emscripten_glDrawElements(m, c, t, o) { gl.drawElements(m, c, t, o); },
+    emscripten_glEnable(c) { gl.enable(c); },
+    emscripten_glEnableVertexAttribArray(i) { gl.enableVertexAttribArray(i); },
+    emscripten_glFinish() { gl.finish(); },
+    emscripten_glFlush() { gl.flush(); },
+    emscripten_glFramebufferRenderbuffer(t, a, rt, r) { gl.framebufferRenderbuffer(t, a, rt, tables.renderbuffers.get(r)); },
+    emscripten_glFramebufferTexture2D(t, a, tt, tex, l) { gl.framebufferTexture2D(t, a, tt, tables.textures.get(tex), l); },
+    emscripten_glFrontFace(m) { gl.frontFace(m); },
+    emscripten_glGenBuffers(n, p) { for (let i = 0; i < n; i++) { const id = allocId(); tables.buffers.set(id, gl.createBuffer()); writeU32(p+i*4, id); } },
+    emscripten_glGenFramebuffers(n, p) { for (let i = 0; i < n; i++) { const id = allocId(); tables.framebuffers.set(id, gl.createFramebuffer()); writeU32(p+i*4, id); } },
+    emscripten_glGenRenderbuffers(n, p) { for (let i = 0; i < n; i++) { const id = allocId(); tables.renderbuffers.set(id, gl.createRenderbuffer()); writeU32(p+i*4, id); } },
+    emscripten_glGenTextures(n, p) { for (let i = 0; i < n; i++) { const id = allocId(); tables.textures.set(id, gl.createTexture()); writeU32(p+i*4, id); } },
+    emscripten_glGenVertexArrays(n, p) { for (let i = 0; i < n; i++) { const id = allocId(); tables.vaos.set(id, gl.createVertexArray()); writeU32(p+i*4, id); } },
+    emscripten_glGenerateMipmap(t) { gl.generateMipmap(t); },
+    emscripten_glGetError() { return gl.getError(); },
+    emscripten_glGetFloatv(p, ptr) {
+      const v = gl.getParameter(p);
+      if (typeof v === 'number') view().setFloat32(ptr, v, true);
+      else if (v instanceof Float32Array) new Float32Array(memory.buffer, ptr, v.length).set(v);
+    },
+    emscripten_glGetIntegerv(p, ptr) {
+      const v = gl.getParameter(p);
+      if (typeof v === 'number') writeU32(ptr, v);
+      else if (typeof v === 'boolean') writeU32(ptr, v ? 1 : 0);
+      else if (v instanceof Int32Array) new Int32Array(memory.buffer, ptr, v.length).set(v);
+    },
+    emscripten_glGetProgramiv(p, n, ptr) {
+      const v = gl.getProgramParameter(tables.programs.get(p), n);
+      writeU32(ptr, typeof v === 'boolean' ? (v ? 1 : 0) : v);
+    },
+    emscripten_glGetShaderiv(s, n, ptr) {
+      const v = gl.getShaderParameter(tables.shaders.get(s), n);
+      writeU32(ptr, typeof v === 'boolean' ? (v ? 1 : 0) : v);
+    },
+    emscripten_glGetUniformLocation(p, namePtr) {
+      const loc = gl.getUniformLocation(tables.programs.get(p), readStr(namePtr));
+      if (!loc) return -1;
+      const id = allocId(); tables.uniforms.set(id, loc); return id;
+    },
+    emscripten_glIsTexture(t) { return gl.isTexture(tables.textures.get(t)) ? 1 : 0; },
+    emscripten_glLineWidth(w) { gl.lineWidth(w); },
+    emscripten_glLinkProgram(p) { gl.linkProgram(tables.programs.get(p)); },
+    emscripten_glPixelStorei(p, v) { gl.pixelStorei(p, v); },
+    emscripten_glReadPixels(x, y, w, h, fmt, t, ptr) {
+      gl.readPixels(x, y, w, h, fmt, t, new Uint8Array(memory.buffer, ptr, w*h*4));
+    },
+    emscripten_glRenderbufferStorage(t, f, w, h) { gl.renderbufferStorage(t, f, w, h); },
+    emscripten_glScissor(x, y, w, h) { gl.scissor(x, y, w, h); },
+    emscripten_glShaderSource(s, count, stringsPtr, lengthsPtr) {
+      let src = '';
+      for (let i = 0; i < count; i++) {
+        const strPtr = readU32(stringsPtr + i * 4);
+        if (lengthsPtr) {
+          const len = view().getInt32(lengthsPtr + i * 4, true);
+          if (len >= 0) src += new TextDecoder().decode(new Uint8Array(memory.buffer, strPtr, len));
+          else src += readStr(strPtr);
+        } else src += readStr(strPtr);
+      }
+      gl.shaderSource(tables.shaders.get(s), src);
+    },
+    emscripten_glStencilFunc(f, r, m) { gl.stencilFunc(f, r, m); },
+    emscripten_glStencilFuncSeparate(face, f, r, m) { gl.stencilFuncSeparate(face, f, r, m); },
+    emscripten_glStencilMask(m) { gl.stencilMask(m); },
+    emscripten_glStencilMaskSeparate(f, m) { gl.stencilMaskSeparate(f, m); },
+    emscripten_glStencilOp(f, z, p) { gl.stencilOp(f, z, p); },
+    emscripten_glStencilOpSeparate(face, sf, dp, dpp) { gl.stencilOpSeparate(face, sf, dp, dpp); },
+    emscripten_glTexImage2D(t, l, inf, w, h, b, fmt, typ, ptr) {
+      if (ptr) gl.texImage2D(t, l, inf, w, h, b, fmt, typ, new Uint8Array(memory.buffer, ptr, w*h*4));
+      else gl.texImage2D(t, l, inf, w, h, b, fmt, typ, null);
+    },
+    emscripten_glTexParameterf(t, p, v) { gl.texParameterf(t, p, v); },
+    emscripten_glTexParameteri(t, p, v) { gl.texParameteri(t, p, v); },
+    emscripten_glTexSubImage2D(t, l, x, y, w, h, fmt, typ, ptr) {
+      gl.texSubImage2D(t, l, x, y, w, h, fmt, typ, new Uint8Array(memory.buffer, ptr, w*h*4));
+    },
+    emscripten_glUniform1f(l, v) { gl.uniform1f(tables.uniforms.get(l), v); },
+    emscripten_glUniform1i(l, v) { gl.uniform1i(tables.uniforms.get(l), v); },
+    emscripten_glUniform2f(l, a, b) { gl.uniform2f(tables.uniforms.get(l), a, b); },
+    emscripten_glUniform3f(l, a, b, c) { gl.uniform3f(tables.uniforms.get(l), a, b, c); },
+    emscripten_glUniform4f(l, a, b, c, d) { gl.uniform4f(tables.uniforms.get(l), a, b, c, d); },
+    emscripten_glUniform1fv(l, n, p) { gl.uniform1fv(tables.uniforms.get(l), new Float32Array(memory.buffer, p, n)); },
+    emscripten_glUniform2fv(l, n, p) { gl.uniform2fv(tables.uniforms.get(l), new Float32Array(memory.buffer, p, n*2)); },
+    emscripten_glUniform3fv(l, n, p) { gl.uniform3fv(tables.uniforms.get(l), new Float32Array(memory.buffer, p, n*3)); },
+    emscripten_glUniform4fv(l, n, p) { gl.uniform4fv(tables.uniforms.get(l), new Float32Array(memory.buffer, p, n*4)); },
+    emscripten_glUniformMatrix2fv(l, n, t, p) { gl.uniformMatrix2fv(tables.uniforms.get(l), !!t, new Float32Array(memory.buffer, p, n*4)); },
+    emscripten_glUniformMatrix3fv(l, n, t, p) { gl.uniformMatrix3fv(tables.uniforms.get(l), !!t, new Float32Array(memory.buffer, p, n*9)); },
+    emscripten_glUniformMatrix4fv(l, n, t, p) { gl.uniformMatrix4fv(tables.uniforms.get(l), !!t, new Float32Array(memory.buffer, p, n*16)); },
+    emscripten_glUseProgram(p) { gl.useProgram(p ? tables.programs.get(p) : null); },
+    emscripten_glVertexAttrib1f(i, x) { gl.vertexAttrib1f(i, x); },
+    emscripten_glVertexAttrib2fv(i, p) { gl.vertexAttrib2fv(i, new Float32Array(memory.buffer, p, 2)); },
+    emscripten_glVertexAttrib3fv(i, p) { gl.vertexAttrib3fv(i, new Float32Array(memory.buffer, p, 3)); },
+    emscripten_glVertexAttrib4fv(i, p) { gl.vertexAttrib4fv(i, new Float32Array(memory.buffer, p, 4)); },
+    emscripten_glVertexAttribPointer(i, s, t, n, st, o) { gl.vertexAttribPointer(i, s, t, !!n, st, o); },
+    emscripten_glViewport(x, y, w, h) { gl.viewport(x, y, w, h); },
+
+    // ── Stubs for less-common functions ──
+    emscripten_glBindAttribLocation(p, i, n) { gl.bindAttribLocation(tables.programs.get(p), i, readStr(n)); },
+    emscripten_glBindSampler(u, s) { gl.bindSampler(u, s ? tables.samplers.get(s) : null); },
+    emscripten_glBlitFramebuffer(...a) { gl.blitFramebuffer(...a); },
+    emscripten_glClientWaitSync() { return 0; },
+    emscripten_glCompressedTexImage2D() {},
+    emscripten_glCompressedTexSubImage2D() {},
+    emscripten_glCopyBufferSubData(r, w, ro, wo, s) { gl.copyBufferSubData(r, w, ro, wo, s); },
+    emscripten_glCopyTexSubImage2D(t, l, xo, yo, x, y, w, h) { gl.copyTexSubImage2D(t, l, xo, yo, x, y, w, h); },
+    emscripten_glDeleteQueries(n, p) { for (let i = 0; i < n; i++) { const id = readU32(p+i*4); gl.deleteQuery(tables.queries.get(id)); tables.queries.delete(id); } },
+    emscripten_glDeleteSamplers(n, p) { for (let i = 0; i < n; i++) { const id = readU32(p+i*4); gl.deleteSampler(tables.samplers.get(id)); tables.samplers.delete(id); } },
+    emscripten_glDeleteSync() {},
+    emscripten_glDrawArraysInstanced(m, f, c, inst) { gl.drawArraysInstanced(m, f, c, inst); },
+    emscripten_glDrawBuffers(n, p) { const b = []; for (let i = 0; i < n; i++) b.push(readU32(p+i*4)); gl.drawBuffers(b); },
+    emscripten_glDrawElementsInstanced(m, c, t, o, inst) { gl.drawElementsInstanced(m, c, t, o, inst); },
+    emscripten_glDrawRangeElements(m, _s, _e, c, t, o) { gl.drawElements(m, c, t, o); },
+    emscripten_glGenQueries(n, p) { for (let i = 0; i < n; i++) { const id = allocId(); tables.queries.set(id, gl.createQuery()); writeU32(p+i*4, id); } },
+    emscripten_glGenSamplers(n, p) { for (let i = 0; i < n; i++) { const id = allocId(); tables.samplers.set(id, gl.createSampler()); writeU32(p+i*4, id); } },
+    emscripten_glGetBufferParameteriv(t, p, ptr) { writeU32(ptr, gl.getBufferParameter(t, p)); },
+    emscripten_glGetFramebufferAttachmentParameteriv(t, a, p, ptr) { writeU32(ptr, gl.getFramebufferAttachmentParameter(t, a, p)); },
+    emscripten_glGetProgramInfoLog(p, sz, lp, ip) { const s = gl.getProgramInfoLog(tables.programs.get(p)) ?? ''; const w = writeStr(ip, sz, s); if (lp) writeU32(lp, w); },
+    emscripten_glGetRenderbufferParameteriv(t, p, ptr) { writeU32(ptr, gl.getRenderbufferParameter(t, p)); },
+    emscripten_glGetShaderInfoLog(s, sz, lp, ip) { const log = gl.getShaderInfoLog(tables.shaders.get(s)) ?? ''; const w = writeStr(ip, sz, log); if (lp) writeU32(lp, w); },
+    emscripten_glGetShaderPrecisionFormat(st, pt, rp, pp) { const f = gl.getShaderPrecisionFormat(st, pt); if (f) { writeU32(rp, f.rangeMin); writeU32(rp+4, f.rangeMax); writeU32(pp, f.precision); } },
+    emscripten_glGetStringi() { return 0; },
+    emscripten_glTexParameterfv() {},
+    emscripten_glTexParameteriv() {},
+    emscripten_glTexStorage2D(t, l, f, w, h) { gl.texStorage2D(t, l, f, w, h); },
+    emscripten_glUniform1iv(l, n, p) { gl.uniform1iv(tables.uniforms.get(l), new Int32Array(memory.buffer, p, n)); },
+    emscripten_glUniform2i(l, a, b) { gl.uniform2i(tables.uniforms.get(l), a, b); },
+    emscripten_glUniform2iv(l, n, p) { gl.uniform2iv(tables.uniforms.get(l), new Int32Array(memory.buffer, p, n*2)); },
+    emscripten_glUniform3i(l, a, b, c) { gl.uniform3i(tables.uniforms.get(l), a, b, c); },
+    emscripten_glUniform3iv(l, n, p) { gl.uniform3iv(tables.uniforms.get(l), new Int32Array(memory.buffer, p, n*3)); },
+    emscripten_glUniform4i(l, a, b, c, d) { gl.uniform4i(tables.uniforms.get(l), a, b, c, d); },
+    emscripten_glUniform4iv(l, n, p) { gl.uniform4iv(tables.uniforms.get(l), new Int32Array(memory.buffer, p, n*4)); },
+    emscripten_glVertexAttribDivisor(i, d) { gl.vertexAttribDivisor(i, d); },
+    emscripten_glVertexAttribIPointer(i, s, t, st, o) { gl.vertexAttribIPointer(i, s, t, st, o); },
+    emscripten_glSamplerParameterf(s, p, v) { gl.samplerParameterf(tables.samplers.get(s), p, v); },
+    emscripten_glSamplerParameteri(s, p, v) { gl.samplerParameteri(tables.samplers.get(s), p, v); },
+    emscripten_glSamplerParameteriv() {},
+    emscripten_glBeginQuery(t, id) { gl.beginQuery(t, tables.queries.get(id)); },
+    emscripten_glEndQuery(t) { gl.endQuery(t); },
+    emscripten_glGetQueryObjectuiv() {},
+    emscripten_glGetQueryiv() {},
+    emscripten_glFenceSync() { return 0; },
+    emscripten_glIsSync() { return 0; },
+    emscripten_glWaitSync() {},
+    emscripten_glInvalidateFramebuffer() {},
+    emscripten_glInvalidateSubFramebuffer() {},
+    emscripten_glReadBuffer(s) { gl.readBuffer(s); },
+    emscripten_glRenderbufferStorageMultisample(t, s, f, w, h) { gl.renderbufferStorageMultisample(t, s, f, w, h); },
+    emscripten_glDrawArraysInstancedBaseInstance() {},
+    emscripten_glDrawElementsInstancedBaseVertexBaseInstance() {},
+    emscripten_glMultiDrawArraysInstancedBaseInstance() {},
+    emscripten_glMultiDrawElementsInstancedBaseVertexBaseInstance() {},
+    emscripten_glGetQueryObjecti64v() {},
+    emscripten_glGetQueryObjectui64v() {},
+    emscripten_glQueryCounter() {},
+  };
+
+  // ── Load WASM ──
+  info('Loading skia-gl.wasm...');
+
+  const wasmUrl = '../dist/skia-gl/skia-gl.opt.wasm';
+  let wasm;
+  try {
+    const response = await fetch(wasmUrl);
+    if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    const bytes = await response.arrayBuffer();
+    info(`WASM loaded: ${(bytes.byteLength / 1024).toFixed(0)} KB`);
+
+    wasm = await WebAssembly.instantiate(bytes, {
+      gl: glImports,
+      env: {
+        _Z11SkLogVAList13SkLogPriorityPKcPv() {},
+        _ZN13SkFlattenable18PrivateInitializer11InitEffectsEv() {},
+        _ZN13SkFlattenable18PrivateInitializer16InitImageFiltersEv() {},
+        sem_init() { return 0; },
+        sem_destroy() { return 0; },
+        sem_post() { return 0; },
+        sem_wait() { return 0; },
+      },
+      wasi_snapshot_preview1: {
+        args_get() { return 0; },
+        args_sizes_get() { return 0; },
+        clock_time_get() { return 0; },
+        environ_get() { return 0; },
+        environ_sizes_get() { return 0; },
+        fd_close() { return 0; },
+        fd_prestat_get() { return 8; },
+        fd_prestat_dir_name() { return 8; },
+        fd_seek() { return 0; },
+        fd_write() { return 0; },
+        proc_exit() {},
+      },
+    });
+    ok('WASM instantiated');
+  } catch (e) {
+    err(`WASM load failed: ${e.message}`);
+    console.error(e);
+    return;
+  }
+
+  memory = wasm.instance.exports.memory;
+  const exports = wasm.instance.exports;
+
+  // ── Test: Initialize Skia GL context ──
+  info('Calling exports_skia_gl_init...');
+  try {
+    // init takes a list<u8> pointer — we pass a dummy
+    exports.exports_skia_gl_init(0);
+    ok('Skia GL initialized');
+  } catch (e) {
+    err(`init failed: ${e.message}`);
+    console.error(e);
+    return;
+  }
+
+  // ── Test: Begin drawing to FBO 0 (canvas framebuffer) ──
+  info('Calling begin_drawing(fbo=0, 512, 512)...');
+  try {
+    // begin_drawing returns bool and writes canvas handle to ret ptr
+    // We need to allocate a small buffer for the return value
+    // Use a fixed address in WASM memory (after the data segment)
+    const retPtr = 1024 * 1024; // 1MB offset — should be safe
+    const result = exports.exports_skia_gl_begin_drawing(0, 512, 512, retPtr);
+    if (result) {
+      ok('begin_drawing succeeded');
+    } else {
+      err('begin_drawing returned false — GrDirectContext creation may have failed');
+      info('This is expected if glGetString returns 0. Skia needs it for GL version detection.');
+      return;
+    }
+  } catch (e) {
+    err(`begin_drawing failed: ${e.message}`);
+    console.error(e);
+    return;
+  }
+
+  // ── Test: Clear canvas ──
+  info('Clearing canvas to dark blue...');
+  exports.exports_skia_gl_canvas_clear(0.1, 0.1, 0.2, 1.0);
+  ok('canvas_clear called');
+
+  // ── Test: End drawing ──
+  exports.exports_skia_gl_end_drawing();
+  exports.exports_skia_gl_flush();
+  ok('end_drawing + flush called');
+
+  // ── Test: Destroy ──
+  exports.exports_skia_gl_destroy();
+  ok('destroy called');
+
+  info('');
+  info('If the canvas above is dark blue, Skia is rendering via WebGL!');
+  info('If it\'s black, the GL context or surface creation failed.');
+}
+
+run().catch(e => err(`Unhandled: ${e.message}`));
+</script>
+</body>
+</html>
