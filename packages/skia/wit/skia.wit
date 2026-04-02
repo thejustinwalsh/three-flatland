@@ -1,0 +1,109 @@
+package three-flatland:skia;
+
+world skia {
+    // ── Context & Surface lifecycle ──
+
+    /// Initialize Skia with backend-specific GPU context.
+    /// config-data contains GL proc table or WebGPU device reference as bytes.
+    export init: func(config-data: list<u8>);
+    export destroy: func();
+
+    /// Begin a draw pass targeting a framebuffer/texture handle.
+    /// Returns an opaque canvas handle, or none on failure.
+    export begin-drawing: func(target-handle: u32, width: s32, height: s32) -> option<u32>;
+    export end-drawing: func();
+    export flush: func();
+
+    // ── Path API ──
+
+    resource path {
+        constructor();
+        move-to: func(x: f32, y: f32);
+        line-to: func(x: f32, y: f32);
+        quad-to: func(cx: f32, cy: f32, x: f32, y: f32);
+        cubic-to: func(c1x: f32, c1y: f32, c2x: f32, c2y: f32, x: f32, y: f32);
+        arc-to: func(rx: f32, ry: f32, rotation: f32, large: bool, sweep: bool, x: f32, y: f32);
+        close: func();
+        reset: func();
+    }
+
+    export path-from-svg-string: func(d: string) -> option<path>;
+    export path-to-svg-string: func(p: borrow<path>) -> string;
+
+    // ── Paint API ──
+
+    resource paint {
+        constructor();
+        set-color: func(r: f32, g: f32, b: f32, a: f32);
+        set-fill: func();
+        set-stroke: func(width: f32);
+        set-stroke-cap: func(cap: u8);
+        set-stroke-join: func(join: u8);
+        set-stroke-miter: func(limit: f32);
+        set-anti-alias: func(aa: bool);
+        set-blend-mode: func(mode: u8);
+        set-alpha: func(alpha: f32);
+        set-dash: func(intervals: list<f32>, phase: f32);
+        clear-dash: func();
+        set-blur: func(sigma: f32);
+        clear-blur: func();
+        set-linear-gradient: func(x0: f32, y0: f32, x1: f32, y1: f32, colors: list<u32>, stops: list<f32>);
+        set-radial-gradient: func(cx: f32, cy: f32, r: f32, colors: list<u32>, stops: list<f32>);
+        set-sweep-gradient: func(cx: f32, cy: f32, colors: list<u32>, stops: list<f32>);
+        clear-shader: func();
+    }
+
+    // ── Font & Text ──
+
+    resource font {
+        constructor(data: list<u8>, size: f32);
+        set-size: func(size: f32);
+        measure-text: func(text: string) -> f32;
+    }
+
+    // ── SVG ──
+
+    resource svg-dom {
+        constructor(data: string);
+        get-size: func() -> tuple<f32, f32>;
+        set-size: func(w: f32, h: f32);
+    }
+
+    // ── Canvas drawing (operates on active canvas from begin-drawing) ──
+
+    export canvas-clear: func(r: f32, g: f32, b: f32, a: f32);
+    export canvas-draw-rect: func(x: f32, y: f32, w: f32, h: f32, p: borrow<paint>);
+    export canvas-draw-round-rect: func(x: f32, y: f32, w: f32, h: f32, rx: f32, ry: f32, p: borrow<paint>);
+    export canvas-draw-circle: func(cx: f32, cy: f32, r: f32, p: borrow<paint>);
+    export canvas-draw-oval: func(x: f32, y: f32, w: f32, h: f32, p: borrow<paint>);
+    export canvas-draw-line: func(x0: f32, y0: f32, x1: f32, y1: f32, p: borrow<paint>);
+    export canvas-draw-path: func(path: borrow<path>, p: borrow<paint>);
+    export canvas-draw-text: func(text: string, x: f32, y: f32, f: borrow<font>, p: borrow<paint>);
+    export canvas-draw-svg: func(svg: borrow<svg-dom>);
+
+    // Transform stack
+    export canvas-save: func();
+    export canvas-restore: func();
+    export canvas-translate: func(x: f32, y: f32);
+    export canvas-rotate: func(degrees: f32);
+    export canvas-scale: func(sx: f32, sy: f32);
+    export canvas-concat-matrix: func(m: list<f32>);
+
+    // Clipping
+    export canvas-clip-rect: func(x: f32, y: f32, w: f32, h: f32);
+    export canvas-clip-round-rect: func(x: f32, y: f32, w: f32, h: f32, rx: f32, ry: f32);
+    export canvas-clip-path: func(path: borrow<path>);
+
+    // ── PathOps (bundled) ──
+
+    enum path-op {
+        difference,
+        intersect,
+        %union,
+        xor,
+        reverse-difference,
+    }
+
+    export path-op-apply: func(a: borrow<path>, b: borrow<path>, op: path-op) -> option<path>;
+    export path-simplify: func(p: borrow<path>) -> option<path>;
+}

@@ -45,6 +45,8 @@
     "three": ">=0.170.0"
   },
   "devDependencies": {
+    "@bytecodealliance/componentize-js": "^0.19.3",
+    "@bytecodealliance/jco": "^1.17.6",
     "@types/three": "catalog:",
     "three": "catalog:"
   },

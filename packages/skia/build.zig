@@ -27,9 +27,17 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     gl_variant.rdynamic = true;
-    gl_variant.entry = .disabled;
-    // WASI libc crt references main — allow undefined symbols at link time
-    gl_variant.import_symbols = true;
+
+    // wit-bindgen generated C glue: canonical ABI wrappers + WIT component type
+    gl_variant.addCSourceFile(.{
+        .file = b.path("src/zig/bindings/generated/skia.c"),
+        .flags = &.{},
+    });
+    gl_variant.addObjectFile(b.path("src/zig/bindings/generated/skia_component_type.o"));
+    // Include path for both the C glue and Zig's @cImport("skia.h")
+    gl_variant.addIncludePath(b.path("src/zig/bindings/generated"));
+    gl_variant.linkLibC();
+
     gl_variant.linkLibrary(skia_core);
     gl_variant.linkLibrary(skia_gpu);
     gl_variant.linkLibrary(skia_gl);
