@@ -59,6 +59,10 @@ export fn exports_skia_gl_init(_: *c.skia_gl_list_u8_t) void {
     g_ctx = c.sk_context_create_gl();
 }
 
+export fn sk_debug_init_error() i32 {
+    return c.sk_context_get_init_error();
+}
+
 export fn exports_skia_gl_destroy() void {
     if (g_surface != null) {
         c.sk_surface_destroy(g_surface);

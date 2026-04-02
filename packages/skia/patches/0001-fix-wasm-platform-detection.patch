@@ -1,5 +1,5 @@
 diff --git a/include/private/base/SkFeatures.h b/include/private/base/SkFeatures.h
-index 9ea8063a6..0d5c2d36e 100644
+index 9ea8063..0d5c2d3 100644
 --- a/include/private/base/SkFeatures.h
 +++ b/include/private/base/SkFeatures.h
 @@ -9,7 +9,7 @@

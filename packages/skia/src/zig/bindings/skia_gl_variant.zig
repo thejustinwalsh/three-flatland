@@ -4,10 +4,11 @@
 //! It imports the shared core bindings and adds GL-specific initialization
 //! (GrGLInterface population, GL function pointer table from JS host).
 
-const core = @import("core.zig");
+pub const core = @import("core.zig");
 
-// Re-export all core bindings so they appear as WASM exports
-pub usingnamespace core;
+// Re-export main for WASI entry point (required since usingnamespace
+// was removed in Zig 0.15 — the root module must provide main directly)
+pub const main = core.main;
 
 // ── GL-specific initialization ──
 

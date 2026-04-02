@@ -79,13 +79,19 @@ static SkColor4f color_from_u32(uint32_t c) {
 // Context
 // ════════════════════════════════════════════════════════
 
+// Debug: returns 0=ok, 1=MakeWebGL failed, 2=MakeGL failed
+static int g_gl_init_error = 0;
+
 sk_context_t sk_context_create_gl(void) {
     sk_sp<const GrGLInterface> interface = GrGLInterfaces::MakeWebGL();
-    if (!interface) return nullptr;
+    if (!interface) { g_gl_init_error = 1; return nullptr; }
     sk_sp<GrDirectContext> ctx = GrDirectContexts::MakeGL(interface);
-    if (!ctx) return nullptr;
+    if (!ctx) { g_gl_init_error = 2; return nullptr; }
+    g_gl_init_error = 0;
     return reinterpret_cast<sk_context_t>(ctx.release());
 }
+
+int sk_context_get_init_error(void) { return g_gl_init_error; }
 
 void sk_context_destroy(sk_context_t ctx) {
     if (ctx) {

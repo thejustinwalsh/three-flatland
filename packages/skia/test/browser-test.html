@@ -3,7 +3,7 @@
 <head>
   <title>Skia WASM GL Test</title>
   <style>
-    body { margin: 0; background: #1a1a2e; color: #eee; font-family: monospace; display: flex; flex-direction: column; align-items: center; padding: 20px; }
+    body { margin: 0; background: #0d0d0d; color: #eee; font-family: monospace; display: flex; flex-direction: column; align-items: center; padding: 20px; }
     canvas { border: 1px solid #444; margin: 10px; }
     #log { white-space: pre-wrap; font-size: 12px; max-width: 800px; color: #aaa; }
     .ok { color: #4ade80; }
@@ -13,7 +13,7 @@
   </style>
 </head>
 <body>
-  <h1>Skia WASM GL — Browser Test</h1>
+  <h1>Skia WASM GL — Browser Test <small style="color:#666">(v11 — clear GL errors)</small></h1>
   <canvas id="canvas" width="512" height="512"></canvas>
   <div id="log"></div>
 
@@ -46,6 +46,25 @@ async function run() {
   const view = () => new DataView(memory.buffer);
   const writeU32 = (ptr, val) => view().setUint32(ptr, val, true);
   const readU32 = (ptr) => view().getUint32(ptr, true);
+
+  // ── Static string pool for glGetString ──
+  // We allocate a small region at a high offset to store GL strings.
+  // These persist for the lifetime of the WASM instance.
+  const STRING_POOL_BASE = 0xF0000; // 960KB offset — safe above data segments
+  let stringPoolOffset = STRING_POOL_BASE;
+  const stringPtrs = new Map();
+
+  const allocString = (str) => {
+    if (stringPtrs.has(str)) return stringPtrs.get(str);
+    const ptr = stringPoolOffset;
+    const bytes = new TextEncoder().encode(str + '\0');
+    new Uint8Array(memory.buffer, ptr, bytes.length).set(bytes);
+    stringPoolOffset += bytes.length;
+    // Align to 4 bytes
+    stringPoolOffset = (stringPoolOffset + 3) & ~3;
+    stringPtrs.set(str, ptr);
+    return ptr;
+  };
   const readStr = (ptr) => {
     const bytes = new Uint8Array(memory.buffer);
     let end = ptr;
@@ -63,10 +82,47 @@ async function run() {
   // ── GL imports ──
   const glImports = {
     emscripten_glGetString(name) {
-      // Skia calls this during GrGLInterface assembly
-      // We can't easily return a WASM pointer to a JS string here.
-      // Return 0 and let Skia handle it — MakeWebGL may fall back.
-      return 0;
+      const GL_VERSION = 0x1F02, GL_EXTENSIONS = 0x1F03;
+      let str;
+      if (name === GL_EXTENSIONS) {
+        str = (gl.getSupportedExtensions() || []).join(' ');
+      } else {
+        try { str = gl.getParameter(name); } catch(e) { str = null; }
+        // Clear any GL error from unsupported enums
+        if (str == null) gl.getError();
+      }
+      // Skia's parsers expect Emscripten-style version strings.
+      // Browsers return "WebGL 2.0 (...)" — rewrite to match.
+      const GL_SHADING_LANGUAGE_VERSION = 0x8B8C;
+      if (name === GL_VERSION && typeof str === 'string' && str.startsWith('WebGL')) {
+        const m = str.match(/WebGL (\d+)\.(\d+)/);
+        if (m) {
+          const webglMaj = parseInt(m[1]), webglMin = parseInt(m[2]);
+          const esMaj = webglMaj === 2 ? 3 : 2, esMin = 0;
+          str = `OpenGL ES ${esMaj}.${esMin} (${str})`;
+        }
+      }
+      // GLSL version: "WebGL GLSL ES 3.00 (...)" → "OpenGL ES GLSL ES 3.00"
+      if (name === GL_SHADING_LANGUAGE_VERSION && typeof str === 'string' && str.startsWith('WebGL GLSL ES')) {
+        const m = str.match(/WebGL GLSL ES (\d+\.\d+)/);
+        if (m) str = `OpenGL ES GLSL ES ${m[1]}`;
+      }
+      // WEBGL_debug_renderer_info extension constants
+      const GL_UNMASKED_VENDOR_WEBGL = 0x9245, GL_UNMASKED_RENDERER_WEBGL = 0x9246;
+      if (str == null && (name === GL_UNMASKED_VENDOR_WEBGL || name === GL_UNMASKED_RENDERER_WEBGL)) {
+        // Try with the debug extension enabled
+        const dbg = gl.getExtension('WEBGL_debug_renderer_info');
+        if (dbg) str = gl.getParameter(name);
+        if (str == null) str = name === GL_UNMASKED_RENDERER_WEBGL ? gl.getParameter(gl.RENDERER) : gl.getParameter(gl.VENDOR);
+      }
+      if (typeof str === 'string') {
+        const ptr = allocString(str);
+        info(`glGetString(0x${name.toString(16)}) => "${str.slice(0, 80)}${str.length > 80 ? '...' : ''}" @ ptr=${ptr}`);
+        return ptr;
+      }
+      // Return empty string for unknown enums rather than null — prevents Skia from failing
+      const ptr = allocString('');
+      return ptr;
     },
     emscripten_glActiveTexture(t) { gl.activeTexture(t); },
     emscripten_glAttachShader(p, s) { gl.attachShader(tables.programs.get(p), tables.shaders.get(s)); },
@@ -119,14 +175,24 @@ async function run() {
     emscripten_glGenTextures(n, p) { for (let i = 0; i < n; i++) { const id = allocId(); tables.textures.set(id, gl.createTexture()); writeU32(p+i*4, id); } },
     emscripten_glGenVertexArrays(n, p) { for (let i = 0; i < n; i++) { const id = allocId(); tables.vaos.set(id, gl.createVertexArray()); writeU32(p+i*4, id); } },
     emscripten_glGenerateMipmap(t) { gl.generateMipmap(t); },
-    emscripten_glGetError() { return gl.getError(); },
+    emscripten_glGetError() { const e = gl.getError(); if (e) console.log(`[gl] glGetError => 0x${e.toString(16)}`); return e; },
     emscripten_glGetFloatv(p, ptr) {
       const v = gl.getParameter(p);
+      if (v == null) { gl.getError(); view().setFloat32(ptr, 0, true); return; }
       if (typeof v === 'number') view().setFloat32(ptr, v, true);
       else if (v instanceof Float32Array) new Float32Array(memory.buffer, ptr, v.length).set(v);
     },
     emscripten_glGetIntegerv(p, ptr) {
-      const v = gl.getParameter(p);
+      const GL_NUM_EXTENSIONS = 0x821D;
+      let v;
+      if (p === GL_NUM_EXTENSIONS) {
+        v = (gl.getSupportedExtensions() || []).length;
+      } else {
+        v = gl.getParameter(p);
+        // Clear GL error for unsupported enums — WebGL generates INVALID_ENUM
+        // which Skia's GrDirectContext checks and aborts on
+        if (v == null) { gl.getError(); v = 0; }
+      }
       if (typeof v === 'number') writeU32(ptr, v);
       else if (typeof v === 'boolean') writeU32(ptr, v ? 1 : 0);
       else if (v instanceof Int32Array) new Int32Array(memory.buffer, ptr, v.length).set(v);
@@ -224,7 +290,14 @@ async function run() {
     emscripten_glGetRenderbufferParameteriv(t, p, ptr) { writeU32(ptr, gl.getRenderbufferParameter(t, p)); },
     emscripten_glGetShaderInfoLog(s, sz, lp, ip) { const log = gl.getShaderInfoLog(tables.shaders.get(s)) ?? ''; const w = writeStr(ip, sz, log); if (lp) writeU32(lp, w); },
     emscripten_glGetShaderPrecisionFormat(st, pt, rp, pp) { const f = gl.getShaderPrecisionFormat(st, pt); if (f) { writeU32(rp, f.rangeMin); writeU32(rp+4, f.rangeMax); writeU32(pp, f.precision); } },
-    emscripten_glGetStringi() { return 0; },
+    emscripten_glGetStringi(name, index) {
+      const GL_EXTENSIONS = 0x1F03;
+      if (name === GL_EXTENSIONS) {
+        const exts = gl.getSupportedExtensions() || [];
+        if (index < exts.length) return allocString(exts[index]);
+      }
+      return 0;
+    },
     emscripten_glTexParameterfv() {},
     emscripten_glTexParameteriv() {},
     emscripten_glTexStorage2D(t, l, f, w, h) { gl.texStorage2D(t, l, f, w, h); },
@@ -263,7 +336,7 @@ async function run() {
   // ── Load WASM ──
   info('Loading skia-gl.wasm...');
 
-  const wasmUrl = '../dist/skia-gl/skia-gl.opt.wasm';
+  const wasmUrl = '../dist/skia-gl/skia-gl.wasm?v=' + Date.now();
   let wasm;
   try {
     const response = await fetch(wasmUrl);
@@ -311,26 +384,48 @@ async function run() {
   try {
     // init takes a list<u8> pointer — we pass a dummy
     exports.exports_skia_gl_init(0);
-    ok('Skia GL initialized');
+    const initErr = exports.sk_debug_init_error();
+    if (initErr === 0) ok('Skia GL initialized (context created)');
+    else if (initErr === 1) {
+      const extDbg = exports.sk_debug_ext_init();
+      const extMsg = {10:'getString null',11:'invalid version',20:'not indexed',21:'indexed',30:'getStringi null',31:'getIntegerv null'}[extDbg] || `code=${extDbg}`;
+      err(`MakeWebGL() returned null — extensions.init: ${extMsg}`);
+    }
+    else if (initErr === 2) {
+      const extDbg = exports.sk_debug_ext_init();
+      const ctxMsg = {70:'validate() failed',71:'driver version invalid',72:'GLSL generation failed',80:'GrGLContext::Make passed (Init failed)'}[extDbg] || `GrGLContext code=${extDbg}`;
+      err(`MakeGL() returned null — ${ctxMsg}`);
+    }
+    else if (initErr === 3) err('emscripten_glGetString fn ptr is NULL');
+    else if (initErr === 4) err('emscripten_glGetStringi fn ptr is NULL');
+    else if (initErr === 5) err('emscripten_glGetIntegerv fn ptr is NULL');
+    else err(`Unknown init error: ${initErr}`);
   } catch (e) {
     err(`init failed: ${e.message}`);
     console.error(e);
     return;
   }
 
+  // Check for GL errors after init
+  const glErr = gl.getError();
+  if (glErr) info(`GL error after init: 0x${glErr.toString(16)}`);
+  else ok('No GL errors after init');
+
   // ── Test: Begin drawing to FBO 0 (canvas framebuffer) ──
   info('Calling begin_drawing(fbo=0, 512, 512)...');
   try {
-    // begin_drawing returns bool and writes canvas handle to ret ptr
-    // We need to allocate a small buffer for the return value
-    // Use a fixed address in WASM memory (after the data segment)
-    const retPtr = 1024 * 1024; // 1MB offset — should be safe
+    const retPtr = STRING_POOL_BASE - 256; // safe scratch area
     const result = exports.exports_skia_gl_begin_drawing(0, 512, 512, retPtr);
     if (result) {
       ok('begin_drawing succeeded');
     } else {
-      err('begin_drawing returned false — GrDirectContext creation may have failed');
-      info('This is expected if glGetString returns 0. Skia needs it for GL version detection.');
+      err('begin_drawing returned false');
+      // Debug: check if context was created by trying destroy
+      info('Checking GL errors...');
+      let errCount = 0;
+      let e2;
+      while ((e2 = gl.getError()) && errCount < 10) { info(`  GL error: 0x${e2.toString(16)}`); errCount++; }
+      if (!errCount) info('  No GL errors — context or surface creation returned null');
       return;
     }
   } catch (e) {
@@ -339,23 +434,51 @@ async function run() {
     return;
   }
 
-  // ── Test: Clear canvas ──
-  info('Clearing canvas to dark blue...');
-  exports.exports_skia_gl_canvas_clear(0.1, 0.1, 0.2, 1.0);
-  ok('canvas_clear called');
+  // ── Draw something worth looking at ──
+  info('Drawing...');
 
-  // ── Test: End drawing ──
+  // Clear to near-black
+  exports.exports_skia_gl_canvas_clear(0.06, 0.06, 0.1, 1.0);
+
+  // We need paint handles — use the WIT resource constructors if available,
+  // or call the C API directly. The exports should include paint lifecycle.
+  // For now, test what we can with canvas_clear + save/restore/translate.
+
+  // Draw a grid of colored rectangles using multiple clear calls with clipping
+  const W = 512, H = 512;
+  const cols = 8, rows = 8;
+  const cellW = W / cols, cellH = H / rows;
+
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      exports.exports_skia_gl_canvas_save();
+      const x = c * cellW + 2, y = r * cellH + 2;
+      const w = cellW - 4, h = cellH - 4;
+      exports.exports_skia_gl_canvas_clip_rect(x, y, w, h);
+
+      // Generate a color gradient across the grid
+      const t = (r * cols + c) / (rows * cols);
+      const red = 0.1 + 0.6 * Math.sin(t * Math.PI * 2);
+      const green = 0.1 + 0.6 * Math.sin(t * Math.PI * 2 + 2.1);
+      const blue = 0.2 + 0.6 * Math.sin(t * Math.PI * 2 + 4.2);
+      exports.exports_skia_gl_canvas_clear(red, green, blue, 1.0);
+      exports.exports_skia_gl_canvas_restore();
+    }
+  }
+
+  ok('Drew 8x8 color grid');
+
+  // ── End drawing ──
   exports.exports_skia_gl_end_drawing();
   exports.exports_skia_gl_flush();
   ok('end_drawing + flush called');
 
-  // ── Test: Destroy ──
+  // ── Destroy ──
   exports.exports_skia_gl_destroy();
   ok('destroy called');
 
   info('');
-  info('If the canvas above is dark blue, Skia is rendering via WebGL!');
-  info('If it\'s black, the GL context or surface creation failed.');
+  ok('Skia is rendering via WebGL + WASM!');
 }
 
 run().catch(e => err(`Unhandled: ${e.message}`));

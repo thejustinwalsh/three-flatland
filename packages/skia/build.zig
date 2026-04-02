@@ -18,13 +18,20 @@ pub fn build(b: *std.Build) void {
     const skia_gpu = buildSkiaLib(b, "skia-gpu", skia_sources.gpu_core_files, skia_root, wasm_target, optimize);
     const skia_gl = buildSkiaLib(b, "skia-gl", skia_sources.gl_files, skia_root, wasm_target, optimize);
     const skia_pathops = buildSkiaLib(b, "skia-pathops", skia_sources.pathops_files, skia_root, wasm_target, optimize);
+    const skia_svg = buildSkiaLib(b, "skia-svg", skia_sources.svg_files, skia_root, wasm_target, optimize);
+    const skia_skshaper = buildSkiaLib(b, "skia-skshaper", skia_sources.skshaper_files, skia_root, wasm_target, optimize);
+    // text_files requires FreeType which uses setjmp — blocked by WASM exception handling
+    // TODO: Enable once Zig's WASM target supports setjmp/longjmp
+    // const skia_text = buildSkiaLib(b, "skia-text", skia_sources.text_files, skia_root, wasm_target, optimize);
 
     // ── Variant 1: WebGL (core + gpu + gl + pathops + Zig bindings) ──
     const gl_variant = b.addExecutable(.{
         .name = "skia-gl",
-        .root_source_file = b.path("src/zig/bindings/skia_gl_variant.zig"),
-        .target = wasm_target,
-        .optimize = optimize,
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/zig/bindings/skia_gl_variant.zig"),
+            .target = wasm_target,
+            .optimize = optimize,
+        }),
     });
     gl_variant.rdynamic = true;
     // Allow GL imports to be unresolved at link time — JS provides them
@@ -52,6 +59,14 @@ pub fn build(b: *std.Build) void {
     gl_variant.addIncludePath(b.path("src/zig"));
     gl_variant.linkLibCpp();
 
+    // GL function wrappers: non-inline C wrappers around WASM imports
+    // (imported functions can't have their address taken in WASM)
+    gl_variant.addCSourceFile(.{
+        .file = b.path("src/zig/gl_shim/emscripten_gl_shim.c"),
+        .flags = &.{},
+    });
+    gl_variant.addIncludePath(b.path("src/zig/gl_shim"));
+
     // wit-bindgen generated C glue: canonical ABI wrappers + WIT component type
     gl_variant.addCSourceFile(.{
         .file = b.path("src/zig/bindings/generated/skia_gl.c"),
@@ -68,6 +83,8 @@ pub fn build(b: *std.Build) void {
     gl_variant.linkLibrary(skia_gpu);
     gl_variant.linkLibrary(skia_gl);
     gl_variant.linkLibrary(skia_pathops);
+    gl_variant.linkLibrary(skia_svg);
+    gl_variant.linkLibrary(skia_skshaper);
     b.installArtifact(gl_variant);
 }
 
@@ -79,10 +96,12 @@ fn buildSkiaLib(
     target: std.Build.ResolvedTarget,
     optimize: std.builtin.OptimizeMode,
 ) *std.Build.Step.Compile {
-    const lib = b.addStaticLibrary(.{
+    const lib = b.addLibrary(.{
         .name = name,
-        .target = target,
-        .optimize = optimize,
+        .root_module = b.createModule(.{
+            .target = target,
+            .optimize = optimize,
+        }),
     });
 
     const cpp_flags: []const []const u8 = &.{

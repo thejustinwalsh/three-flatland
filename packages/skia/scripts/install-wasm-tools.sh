@@ -99,13 +99,18 @@ install_wasm_opt() {
   fi
 
   info "Fetching latest wasm-opt (binaryen) release..."
+  # Binaryen uses "arm64" instead of "aarch64" in release names
+  local binaryen_arch="$ARCH_SLUG"
+  if [ "$binaryen_arch" = "aarch64" ]; then
+    binaryen_arch="arm64"
+  fi
   local url
   url=$(curl -sL "https://api.github.com/repos/WebAssembly/binaryen/releases/latest" | python3 -c "
 import json, sys
 data = json.load(sys.stdin)
 for asset in data['assets']:
     name = asset['name']
-    if '${ARCH_SLUG}-${PLATFORM}' in name and name.endswith('.tar.gz'):
+    if '${binaryen_arch}-${PLATFORM}' in name and name.endswith('.tar.gz') and not name.endswith('.sha256'):
         print(asset['browser_download_url'])
         break
 ")
@@ -130,6 +135,16 @@ for asset in data['assets']:
 
   cp "$bin_path" "$INSTALL_DIR/wasm-opt"
   chmod +x "$INSTALL_DIR/wasm-opt"
+
+  # Binaryen ships a shared lib that wasm-opt needs at @rpath/../lib/
+  local lib_dir
+  lib_dir="$(find "$tmp_dir" -name "libbinaryen*" -type f -print -quit 2>/dev/null | xargs dirname 2>/dev/null)"
+  if [ -n "$lib_dir" ] && [ -d "$lib_dir" ]; then
+    local target_lib="$(dirname "$INSTALL_DIR")/lib"
+    mkdir -p "$target_lib"
+    cp "$lib_dir"/libbinaryen* "$target_lib/"
+  fi
+
   rm -rf "$tmp_dir"
 
   ok "wasm-opt installed: $("$INSTALL_DIR/wasm-opt" --version 2>&1)"
