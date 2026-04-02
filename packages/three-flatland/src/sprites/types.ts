@@ -53,6 +53,10 @@ export interface Sprite2DOptions {
   zIndex?: number
   /** Pixel-perfect rendering (snap to pixels) */
   pixelPerfect?: boolean
+  /** Whether this sprite receives lighting from Flatland's LightEffect (default: true) */
+  lit?: boolean
+  /** Whether this sprite receives shadows from the SDF shadow pipeline (default: true) */
+  receiveShadows?: boolean
   /** Custom material (sprites with same material instance batch together) */
   material?: Sprite2DMaterial
 }

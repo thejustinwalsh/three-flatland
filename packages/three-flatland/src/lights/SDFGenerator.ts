@@ -1,5 +1,5 @@
 import {
-  WebGLRenderTarget,
+  RenderTarget,
   Scene,
   OrthographicCamera,
   PlaneGeometry,
@@ -36,9 +36,9 @@ export class SDFGenerator {
   }
 
   // Render targets: ping-pong for JFA, final SDF output
-  private _pingRT: WebGLRenderTarget | null = null
-  private _pongRT: WebGLRenderTarget | null = null
-  private _sdfRT: WebGLRenderTarget | null = null
+  private _pingRT: RenderTarget | null = null
+  private _pongRT: RenderTarget | null = null
+  private _sdfRT: RenderTarget | null = null
 
   // Fullscreen quad rendering setup
   private _scene: Scene
@@ -90,9 +90,9 @@ export class SDFGenerator {
       stencilBuffer: false,
     }
 
-    this._pingRT = new WebGLRenderTarget(width, height, jfaOptions)
-    this._pongRT = new WebGLRenderTarget(width, height, jfaOptions)
-    this._sdfRT = new WebGLRenderTarget(width, height, sdfOptions)
+    this._pingRT = new RenderTarget(width, height, jfaOptions)
+    this._pongRT = new RenderTarget(width, height, jfaOptions)
+    this._sdfRT = new RenderTarget(width, height, sdfOptions)
 
     // Create JFA and final materials now (they reference stable RT textures)
     this._createJFAMaterials()
@@ -115,7 +115,7 @@ export class SDFGenerator {
    * @param renderer - WebGPU renderer
    * @param occlusionRT - Occlusion render target (alpha = occluder mask)
    */
-  generate(renderer: WebGPURenderer, occlusionRT: WebGLRenderTarget): void {
+  generate(renderer: WebGPURenderer, occlusionRT: RenderTarget): void {
     // Ensure seed material exists and matches the input texture
     this._ensureSeedMaterial(occlusionRT.texture)
 

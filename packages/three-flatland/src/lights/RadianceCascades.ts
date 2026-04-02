@@ -1,5 +1,5 @@
 import {
-  WebGLRenderTarget,
+  RenderTarget,
   Scene,
   OrthographicCamera,
   PlaneGeometry,
@@ -71,9 +71,9 @@ const DEFAULT_CONFIG: RadianceCascadesConfig = {
  */
 export class RadianceCascades {
   private _config: RadianceCascadesConfig
-  private _cascadeRTs: WebGLRenderTarget[] = []
-  private _sceneRadianceRT: WebGLRenderTarget | null = null
-  private _finalRadianceRT: WebGLRenderTarget | null = null
+  private _cascadeRTs: RenderTarget[] = []
+  private _sceneRadianceRT: RenderTarget | null = null
+  private _finalRadianceRT: RenderTarget
   private _scene: Scene
   private _camera: OrthographicCamera
   private _quad: Mesh
@@ -103,6 +103,25 @@ export class RadianceCascades {
     this._geometry = new PlaneGeometry(2, 2)
     this._quad = new Mesh(this._geometry)
     this._scene.add(this._quad)
+
+    // Eagerly allocate the final radiance RT so .finalRadianceTexture is non-null
+    // from construction. The .texture reference stays stable across setSize() calls,
+    // allowing TSL sampleTexture() to capture it at node-build time.
+    // If cascadeResolution is explicit, use the correct size immediately;
+    // otherwise use a reasonable default that init() will resize.
+    const baseAngular = Math.sqrt(this._config.baseRayCount)
+    const res = this._config.cascadeResolution > 0 ? this._config.cascadeResolution : 128
+    const probeCount = res / baseAngular
+
+    this._finalRadianceRT = new RenderTarget(probeCount, probeCount, {
+      type: HalfFloatType,
+      minFilter: LinearFilter,
+      magFilter: LinearFilter,
+      wrapS: ClampToEdgeWrapping,
+      wrapT: ClampToEdgeWrapping,
+      depthBuffer: false,
+      stencilBuffer: false,
+    })
   }
 
   get config(): RadianceCascadesConfig {
@@ -132,8 +151,8 @@ export class RadianceCascades {
     return this._cascadeRTs.map((rt) => rt?.texture ?? null)
   }
 
-  get finalRadianceTexture(): Texture | null {
-    return this._finalRadianceRT?.texture ?? null
+  get finalRadianceTexture(): Texture {
+    return this._finalRadianceRT.texture
   }
 
   init(
@@ -171,7 +190,7 @@ export class RadianceCascades {
     const res = this._config.cascadeResolution
     const probeCount = res / baseAngular
 
-    this._sceneRadianceRT = new WebGLRenderTarget(res, res, {
+    this._sceneRadianceRT = new RenderTarget(res, res, {
       type: HalfFloatType,
       minFilter: LinearFilter,
       magFilter: LinearFilter,
@@ -181,15 +200,9 @@ export class RadianceCascades {
       stencilBuffer: false,
     })
 
-    this._finalRadianceRT = new WebGLRenderTarget(probeCount, probeCount, {
-      type: HalfFloatType,
-      minFilter: LinearFilter,
-      magFilter: LinearFilter,
-      wrapS: ClampToEdgeWrapping,
-      wrapT: ClampToEdgeWrapping,
-      depthBuffer: false,
-      stencilBuffer: false,
-    })
+    // Resize the eagerly-allocated final RT to match computed probe dimensions.
+    // The .texture reference stays stable — TSL nodes that captured it remain valid.
+    this._finalRadianceRT.setSize(probeCount, probeCount)
 
     this._rebuildCascadeRTs()
   }
@@ -211,7 +224,7 @@ export class RadianceCascades {
 
     const res = this._config.cascadeResolution
     for (let i = 0; i < this._config.cascadeCount; i++) {
-      const rt = new WebGLRenderTarget(res, res, {
+      const rt = new RenderTarget(res, res, {
         type: HalfFloatType,
         minFilter: LinearFilter,
         magFilter: LinearFilter,
@@ -548,7 +561,7 @@ export class RadianceCascades {
   // ============================================
 
   private _renderFinalRadiance(renderer: WebGPURenderer): void {
-    if (!this._finalRadianceRT || !this._cascadeRTs[0]) return
+    if (!this._cascadeRTs[0]) return
 
     this._ensureFinalRadianceMaterial()
     if (!this._finalRadianceMaterial) return
@@ -621,8 +634,7 @@ export class RadianceCascades {
     this._sceneRadianceRT?.dispose()
     this._sceneRadianceRT = null
 
-    this._finalRadianceRT?.dispose()
-    this._finalRadianceRT = null
+    this._finalRadianceRT.dispose()
 
     for (const mat of this._cascadeMaterials) {
       mat.dispose()

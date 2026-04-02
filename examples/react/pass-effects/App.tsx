@@ -1,5 +1,5 @@
 import { Canvas, extend, useLoader, useFrame, useThree } from '@react-three/fiber/webgpu'
-import { useRef, useEffect, useState } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { convertToTexture } from 'three/tsl'
 import type { WebGPURenderer } from 'three/webgpu'
 import type TextureNode from 'three/src/nodes/accessors/TextureNode.js'
@@ -22,12 +22,14 @@ import {
   staticNoise,
   chromaticAberration,
 } from '@three-flatland/nodes'
-import { usePane, useStatsMonitor } from '@three-flatland/tweakpane/react'
-import type { StatsHandle } from '@three-flatland/tweakpane/react'
+
+import '@awesome.me/webawesome/dist/styles/themes/default.css'
+import WaRadioGroup from '@awesome.me/webawesome/dist/react/radio-group/index.js'
+import WaRadio from '@awesome.me/webawesome/dist/react/radio/index.js'
 
 extend({ Flatland, Sprite2D })
 
-// ─── PassEffect Definitions (from original — uses `pass:` API) ──────────────
+// ─── PassEffect Definitions ─────────────────────────────────────────────────
 
 const CRTPass = createPassEffect({
   name: 'crt',
@@ -52,33 +54,50 @@ const CRTPass = createPassEffect({
 
 const LCDGridPass = createPassEffect({
   name: 'lcdGrid',
-  schema: { resolution: 200, gridIntensity: 0.18, subpixelIntensity: 0.12 },
-  pass: ({ uniforms }) => (input, uv) =>
-    lcdGrid(input, uv, uniforms.resolution, uniforms.gridIntensity, uniforms.subpixelIntensity),
+  schema: {
+    resolution: 200,
+    gridIntensity: 0.18,
+    subpixelIntensity: 0.12,
+  },
+  pass: ({ uniforms }) => (input, uv) => {
+    return lcdGrid(input, uv, uniforms.resolution, uniforms.gridIntensity, uniforms.subpixelIntensity)
+  },
 })
 
 const PosterizePass = createPassEffect({
   name: 'posterize',
   schema: { bands: 6 },
-  pass: ({ uniforms }) => (input) => posterize(input, uniforms.bands),
+  pass: ({ uniforms }) => (input, _uv) => {
+    return posterize(input, uniforms.bands)
+  },
 })
 
 const QuantizePass = createPassEffect({
   name: 'quantize',
   schema: { levels: 8 },
-  pass: ({ uniforms }) => (input) => quantize(input, uniforms.levels),
+  pass: ({ uniforms }) => (input, _uv) => {
+    return quantize(input, uniforms.levels)
+  },
 })
 
 const ScanlinesPass = createPassEffect({
   name: 'scanlines',
-  schema: { resolution: 300, intensity: 0.2 },
-  pass: ({ uniforms }) => (input, uv) =>
-    scanlinesSmooth(input, uv, uniforms.resolution, uniforms.intensity),
+  schema: {
+    resolution: 300,
+    intensity: 0.2,
+  },
+  pass: ({ uniforms }) => (input, uv) => {
+    return scanlinesSmooth(input, uv, uniforms.resolution, uniforms.intensity)
+  },
 })
 
 const VHSPass = createPassEffect({
   name: 'vhs',
-  schema: { time: 0, intensity: 0.012, noiseAmount: 0.05 },
+  schema: {
+    time: 0,
+    intensity: 0.012,
+    noiseAmount: 0.05,
+  },
   pass: ({ uniforms }) => (input, uv) => {
     const tex = convertToTexture(input) as TextureNode<'vec4'>
     return vhsDistortion(tex, uv, uniforms.time, uniforms.intensity, uniforms.noiseAmount)
@@ -87,9 +106,13 @@ const VHSPass = createPassEffect({
 
 const StaticPass = createPassEffect({
   name: 'static',
-  schema: { time: 0, intensity: 0.04 },
-  pass: ({ uniforms }) => (input, uv) =>
-    staticNoise(input, uv, uniforms.time, uniforms.intensity),
+  schema: {
+    time: 0,
+    intensity: 0.04,
+  },
+  pass: ({ uniforms }) => (input, uv) => {
+    return staticNoise(input, uv, uniforms.time, uniforms.intensity)
+  },
 })
 
 const AberrationPass = createPassEffect({
@@ -103,16 +126,21 @@ const AberrationPass = createPassEffect({
 
 const VignettePass = createPassEffect({
   name: 'vignette',
-  schema: { intensity: 0.4, curvature: 2 },
-  pass: ({ uniforms }) => (input, uv) =>
-    crtVignette(input, uv, uniforms.intensity, uniforms.curvature),
+  schema: {
+    intensity: 0.4,
+    curvature: 2,
+  },
+  pass: ({ uniforms }) => (input, uv) => {
+    return crtVignette(input, uv, uniforms.intensity, uniforms.curvature)
+  },
 })
 
 const BacklightPass = createPassEffect({
   name: 'backlight',
   schema: { intensity: 0.12 },
-  pass: ({ uniforms }) => (input, uv) =>
-    lcdBacklightBleed(input, uv, uniforms.intensity),
+  pass: ({ uniforms }) => (input, uv) => {
+    return lcdBacklightBleed(input, uv, uniforms.intensity)
+  },
 })
 
 // ─── Preset Types ───────────────────────────────────────────────────────────
@@ -128,8 +156,12 @@ function createPreset(name: PresetName): ActivePreset {
   switch (name) {
     case 'clean':
       return { passes: [], timeDriven: [] }
-    case 'crt':
-      return { passes: [new CRTPass()], timeDriven: [] }
+
+    case 'crt': {
+      const crt = new CRTPass()
+      return { passes: [crt], timeDriven: [] }
+    }
+
     case 'lcd': {
       const post = new PosterizePass()
       ;(post as PassEffect & { bands: number }).bands = 10
@@ -139,6 +171,7 @@ function createPreset(name: PresetName): ActivePreset {
       ;(vig as PassEffect & { intensity: number }).intensity = 0.25
       return { passes: [post, grid, bleed, vig], timeDriven: [] }
     }
+
     case 'vhs': {
       const vhs = new VHSPass()
       const noise = new StaticPass()
@@ -151,6 +184,7 @@ function createPreset(name: PresetName): ActivePreset {
         ],
       }
     }
+
     case 'retro': {
       const quant = new QuantizePass()
       const scan = new ScanlinesPass()
@@ -164,17 +198,19 @@ function createPreset(name: PresetName): ActivePreset {
 // ─── Sprite Layout ──────────────────────────────────────────────────────────
 
 const SPRITE_LAYOUT = [
-  { x: 0, y: 0, scale: 120, tint: '#ffffff' },
-  { x: -100, y: 60, scale: 60, tint: '#ff6b9d' },
-  { x: 100, y: 60, scale: 60, tint: '#47cca9' },
-  { x: -100, y: -60, scale: 60, tint: '#ffd166' },
-  { x: 100, y: -60, scale: 60, tint: '#6b9dff' },
-  { x: 0, y: 120, scale: 40, tint: '#bb86fc' },
-  { x: 0, y: -120, scale: 40, tint: '#ff8a65' },
+  { x: 0, y: 0, scale: 24, tint: '#ffffff' },
+  { x: -20, y: 12, scale: 12, tint: '#ff6b9d' },
+  { x: 20, y: 12, scale: 12, tint: '#47cca9' },
+  { x: -20, y: -12, scale: 12, tint: '#ffd166' },
+  { x: 20, y: -12, scale: 12, tint: '#6b9dff' },
+  { x: 0, y: 24, scale: 8, tint: '#bb86fc' },
+  { x: 0, y: -24, scale: 8, tint: '#ff8a65' },
 ] as const
 
+// ─── Scene Component ────────────────────────────────────────────────────────
+
 function SpriteScene() {
-  const texture = useLoader(TextureLoader, './icon.svg')
+  const texture = useLoader(TextureLoader, import.meta.env.BASE_URL + 'icon.svg')
   const spritesRef = useRef<Sprite2D[]>([])
   const timeRef = useRef(0)
 
@@ -209,28 +245,50 @@ function SpriteScene() {
   )
 }
 
-// ─── FlatlandScene (receives preset as prop, matches original architecture) ─
+// ─── Stats Tracker ──────────────────────────────────────────────────────────
 
-function FlatlandScene({ preset, stats }: { preset: PresetName; stats: StatsHandle }) {
-  const flatlandRef = useRef<Flatland>(null)
+function StatsTracker({ passCount, onStats }: { passCount: number; onStats: (fps: number, draws: number) => void }) {
   const gl = useThree((s) => s.gl)
+  const frameCount = useRef(0)
+  const elapsed = useRef(0)
+  useFrame((_, delta) => {
+    frameCount.current++
+    elapsed.current += delta
+    if (elapsed.current >= 1) {
+      // Cast: R3F types gl as WebGLRenderer, but we use WebGPURenderer which has drawCalls
+      const draws = (gl.info.render as any).drawCalls as number
+      onStats(Math.round(frameCount.current / elapsed.current), draws)
+      frameCount.current = 0
+      elapsed.current = 0
+    }
+  })
+  return null
+}
+
+// ─── Flatland + Effects Component ───────────────────────────────────────────
+
+function FlatlandScene({ preset, onPassCount }: { preset: PresetName; onPassCount: (n: number) => void }) {
+  const flatlandRef = useRef<Flatland>(null)
+  const { renderer } = useThree()
   const presetRef = useRef<ActivePreset>({ passes: [], timeDriven: [] })
   const elapsedRef = useRef(0)
-  const statsRef = useRef(stats)
-  statsRef.current = stats
 
-  // Apply preset when it changes (effect fires after mount, flatlandRef is ready)
+  // Apply preset when it changes
   useEffect(() => {
     const flatland = flatlandRef.current
     if (!flatland) return
 
     flatland.clearPasses()
     const active = createPreset(preset)
-    for (const p of active.passes) flatland.addPass(p)
+    for (const p of active.passes) {
+      flatland.addPass(p)
+    }
     presetRef.current = active
     elapsedRef.current = 0
-  }, [preset])
+    onPassCount(active.passes.length)
+  }, [preset, onPassCount])
 
+  // Update time-driven passes (runs in default update phase)
   useFrame((_state, delta) => {
     elapsedRef.current += delta
     for (const { pass } of presetRef.current.timeDriven) {
@@ -238,80 +296,161 @@ function FlatlandScene({ preset, stats }: { preset: PresetName; stats: StatsHand
     }
   })
 
-  // Render in the 'render' phase so R3F skips its own render.
-  // Since we take over rendering, useStatsMonitor's scene.onAfterRender
-  // hook never fires (R3F's state.scene isn't rendered) — read the draw
-  // counts directly from renderer.info.render immediately after our render
-  // call, while the values are still valid and before three.js's next
-  // autoReset.
-  const size = useThree((s) => s.size)
+  // Render in render phase so R3F skips its own render
   useFrame(() => {
-    const flatland = flatlandRef.current
-    if (!flatland) return
-    flatland.resize(size.width, size.height)
-    flatland.render(gl as unknown as WebGPURenderer)
-    const render = gl.info.render as unknown as { drawCalls: number; triangles: number; lines: number; points: number }
-    const memory = gl.info.memory as unknown as { geometries: number; textures: number }
-    statsRef.current.update({
-      drawCalls: render.drawCalls,
-      triangles: render.triangles,
-      lines: render.lines,
-      points: render.points,
-      geometries: memory.geometries,
-      textures: memory.textures,
-    })
+    flatlandRef.current?.render(renderer as unknown as WebGPURenderer)
   }, { phase: 'render' })
 
   return (
-    <flatland ref={flatlandRef} viewSize={400} clearColor={0x1a1a2e}>
+    <flatland ref={flatlandRef} viewSize={80} clearColor={0x1a1a2e}>
       <SpriteScene />
     </flatland>
   )
 }
 
-// ─── StatsTracker (inside Canvas for useFrame access) ───────────────────────
+// ─── Preset Options ─────────────────────────────────────────────────────────
 
-function StatsTracker({ stats }: { stats: StatsHandle }) {
-  useStatsMonitor(stats)
-  return null
-}
+const PRESET_OPTIONS = [
+  { value: 'clean', label: 'Clean' },
+  { value: 'crt', label: 'CRT Arcade' },
+  { value: 'lcd', label: 'Handheld' },
+  { value: 'vhs', label: 'VHS Tape' },
+  { value: 'retro', label: 'Retro PC' },
+] as const
 
 // ─── App ────────────────────────────────────────────────────────────────────
 
 export default function App() {
-  const { pane, stats } = usePane()
   const [preset, setPreset] = useState<PresetName>('clean')
+  const [passCount, setPassCount] = useState(0)
+  const [stats, setStats] = useState({ fps: '-' as string | number, draws: '-' as string | number })
+  const controlsRef = useRef<HTMLDivElement>(null)
 
-  // Preset selector (synchronous init, no effect)
-  const initRef = useRef(false)
-  if (!initRef.current) {
-    initRef.current = true
-    pane.addBinding({ preset: 'clean' as string }, 'preset', {
-      label: 'Preset',
-      options: {
-        Clean: 'clean',
-        'CRT Arcade': 'crt',
-        Handheld: 'lcd',
-        'VHS Tape': 'vhs',
-        'Retro PC': 'retro',
-      },
-    }).on('change', (ev) => {
-      setPreset(ev.value as PresetName)
-    })
-  }
+  const handleStats = useCallback((fps: number, draws: number) => setStats({ fps, draws }), [])
+  const handlePassCount = useCallback((n: number) => setPassCount(n), [])
+
+  // Per-line pill rounding for wrapped radio groups
+  useEffect(() => {
+    const group = controlsRef.current?.querySelector('wa-radio-group')
+    if (!group) return
+    const update = () => {
+      const radios = [...group.querySelectorAll('wa-radio')]
+      if (!radios.length) return
+      const lines: Element[][] = []
+      let lastTop = -Infinity
+      let line: Element[] = []
+      for (const radio of radios) {
+        const top = radio.getBoundingClientRect().top
+        if (Math.abs(top - lastTop) > 2) {
+          if (line.length) lines.push(line)
+          line = []
+          lastTop = top
+        }
+        line.push(radio)
+      }
+      if (line.length) lines.push(line)
+      for (const ln of lines) {
+        for (let i = 0; i < ln.length; i++) {
+          const pos =
+            ln.length === 1 ? 'solo' :
+            i === 0 ? 'first' :
+            i === ln.length - 1 ? 'last' : 'inner'
+          ln[i]!.setAttribute('data-line-pos', pos)
+        }
+      }
+    }
+    const ro = new ResizeObserver(update)
+    ro.observe(group)
+    update()
+    return () => ro.disconnect()
+  }, [])
 
   return (
-    <Canvas
-      orthographic
-      dpr={1}
-      camera={{ zoom: 5, position: [0, 0, 100] }}
-      renderer={{ antialias: false, trackTimestamp: true }}
-      onCreated={({ gl }) => {
-        gl.domElement.style.imageRendering = 'pixelated'
-      }}
-    >
-      <StatsTracker stats={stats} />
-      <FlatlandScene preset={preset} stats={stats} />
-    </Canvas>
+    <>
+      {/* Hide radio group label */}
+      <style>{`
+        .filter-bar wa-radio-group::part(form-control-label) { display: none; }
+        .filter-bar wa-radio-group::part(form-control) { margin: 0; border: 0; padding: 0; }
+        .filter-bar wa-radio-group::part(form-control-input) { row-gap: 4px; justify-content: center; }
+        wa-radio[data-line-pos="first"] {
+          border-start-start-radius: var(--wa-border-radius-m);
+          border-end-start-radius: var(--wa-border-radius-m);
+          border-start-end-radius: 0;
+          border-end-end-radius: 0;
+        }
+        wa-radio[data-line-pos="inner"] { border-radius: 0; }
+        wa-radio[data-line-pos="last"] {
+          border-start-end-radius: var(--wa-border-radius-m);
+          border-end-end-radius: var(--wa-border-radius-m);
+          border-start-start-radius: 0;
+          border-end-start-radius: 0;
+        }
+        wa-radio[data-line-pos="solo"] { border-radius: var(--wa-border-radius-m); }
+      `}</style>
+
+      {/* Controls — centered bottom bar */}
+      <div
+        ref={controlsRef}
+        className="filter-bar"
+        style={{
+          position: 'fixed',
+          bottom: 32,
+          left: '50%',
+          transform: 'translateX(-50%)',
+          zIndex: 100,
+          pointerEvents: 'auto',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 6,
+          maxWidth: 'calc(100vw - 24px)',
+        }}
+      >
+        <WaRadioGroup
+          label="Display Filter"
+          size="small"
+          orientation="horizontal"
+          value={preset}
+          onChange={(e: any) =>
+            setPreset((e.target as HTMLInputElement).value as PresetName)
+          }
+        >
+          {PRESET_OPTIONS.map((opt) => (
+            <WaRadio key={opt.value} value={opt.value} size="small" appearance="button">
+              {opt.label}
+            </WaRadio>
+          ))}
+        </WaRadioGroup>
+      </div>
+
+      {/* Stats overlay */}
+      <div
+        style={{
+          position: 'fixed',
+          top: 12,
+          right: 12,
+          padding: '5px 10px',
+          background: 'rgba(0, 2, 28, 0.7)',
+          borderRadius: 6,
+          color: '#4a9eff',
+          fontFamily: 'monospace',
+          fontSize: 10,
+          lineHeight: 1.5,
+          zIndex: 100,
+          whiteSpace: 'pre',
+        }}
+      >
+        {`FPS: ${stats.fps}\nDraws: ${stats.draws}\nPasses: ${passCount}`}
+      </div>
+
+      {/* Three.js Canvas */}
+      <Canvas
+        orthographic
+        camera={{ zoom: 5, position: [0, 0, 100] }}
+        renderer={{ antialias: true }}
+      >
+        <StatsTracker passCount={passCount} onStats={handleStats} />
+        <FlatlandScene preset={preset} onPassCount={handlePassCount} />
+      </Canvas>
+    </>
   )
 }

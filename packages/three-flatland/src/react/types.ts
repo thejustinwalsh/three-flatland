@@ -8,7 +8,7 @@ import type { TileMap2D } from '../tilemap/TileMap2D'
 import type { TileLayer } from '../tilemap/TileLayer'
 import type { Light2D } from '../lights/Light2D'
 import type { MaterialEffectClass, EffectSchema, EffectValues } from '../materials/MaterialEffect'
-import type { LightEffectClass, EffectSchema as LightSchema } from '../lights/LightEffect'
+import type { LightEffectClass } from '../lights/LightEffect'
 
 /**
  * JSX element type for a MaterialEffect with schema-derived props.
@@ -29,14 +29,17 @@ import type { LightEffectClass, EffectSchema as LightSchema } from '../lights/Li
  * <dissolveEffect attach={attachEffect} progress={0.5} />
  * ```
  */
-export type EffectElement<T extends MaterialEffectClass<EffectSchema>> =
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type EffectElement<T extends MaterialEffectClass<any>> =
   ThreeElement<T> & (T extends MaterialEffectClass<infer S extends EffectSchema> ? Partial<EffectValues<S>> : Record<string, never>)
 
 /**
  * JSX element type for a LightEffect with schema-derived props.
+ * Surfaces uniform (settable) schema fields as JSX props.
  */
-export type LightEffectElement<T extends LightEffectClass<LightSchema>> =
-  ThreeElement<T> & (T extends LightEffectClass<infer S extends LightSchema> ? Partial<EffectValues<S>> : Record<string, never>)
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type LightEffectElement<T extends LightEffectClass<any>> =
+  ThreeElement<T> & (T extends LightEffectClass<infer S extends EffectSchema> ? Partial<EffectValues<S>> : Record<string, never>)
 
 /**
  * R3F ThreeElements type augmentation for three-flatland objects.
