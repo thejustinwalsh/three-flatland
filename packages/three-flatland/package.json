@@ -158,6 +158,28 @@
         "default": "./dist/tilemap/*.cjs"
       }
     },
+    "./color": {
+      "source": "./src/color/index.ts",
+      "import": {
+        "types": "./dist/color/index.d.ts",
+        "default": "./dist/color/index.js"
+      },
+      "require": {
+        "types": "./dist/color/index.d.cts",
+        "default": "./dist/color/index.cjs"
+      }
+    },
+    "./color/*": {
+      "source": "./src/color/*.ts",
+      "import": {
+        "types": "./dist/color/*.d.ts",
+        "default": "./dist/color/*.js"
+      },
+      "require": {
+        "types": "./dist/color/*.d.cts",
+        "default": "./dist/color/*.cjs"
+      }
+    },
     "./react/*": {
       "source": "./src/react/*.ts",
       "import": {
