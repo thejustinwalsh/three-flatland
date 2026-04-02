@@ -24,8 +24,17 @@ const HandleTable = struct {
         return struct {
             items: [MAX_HANDLES]T = [_]T{null} ** MAX_HANDLES,
             next: i32 = 1,
+            free_head: i32 = 0, // singly-linked free list (0 = empty)
+            free_list: [MAX_HANDLES]i32 = [_]i32{0} ** MAX_HANDLES,
 
             fn alloc(self: *@This(), ptr: T) i32 {
+                // Try free list first
+                if (self.free_head > 0) {
+                    const h = self.free_head;
+                    self.free_head = self.free_list[@intCast(h)];
+                    self.items[@intCast(h)] = ptr;
+                    return h;
+                }
                 if (self.next >= MAX_HANDLES) return 0;
                 const h = self.next;
                 self.items[@intCast(h)] = ptr;
@@ -41,6 +50,8 @@ const HandleTable = struct {
             fn free(self: *@This(), h: i32) void {
                 if (h > 0 and h < MAX_HANDLES) {
                     self.items[@intCast(h)] = null;
+                    self.free_list[@intCast(h)] = self.free_head;
+                    self.free_head = h;
                 }
             }
         };

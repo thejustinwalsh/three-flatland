@@ -447,11 +447,13 @@ async function run() {
 
   // ── Draw ──
   info('Drawing...');
-  exports.exports_skia_gl_canvas_clear(0.06, 0.06, 0.1, 1.0);
 
-  // Create paints
+  // Create paints (kept alive for animation loop)
   const fillPaint = exports.sk_paint_new();
   const strokePaint = exports.sk_paint_new();
+
+  const drawStaticScene = () => {
+  exports.exports_skia_gl_canvas_clear(0.06, 0.06, 0.1, 1.0);
   exports.sk_paint_set_fill_style(fillPaint);
   exports.sk_paint_set_stroke_style(strokePaint, 2.0);
 
@@ -485,9 +487,9 @@ async function run() {
   }
 
   // Draw gradient bars
-  const gradPaint = exports.sk_paint_new();
+  var gradPaint = exports.sk_paint_new();
   exports.sk_paint_set_fill_style(gradPaint);
-  const gradColors = [
+  var gradColors = [
     [0xFFFF4444, 0xFF4444FF],
     [0xFF44FF44, 0xFFFF44FF],
     [0xFFFFAA00, 0xFF00AAFF],
@@ -500,7 +502,52 @@ async function run() {
   }
   exports.sk_paint_delete(gradPaint);
 
-  // Draw text (load a font first)
+  // PathOps demo (impossible in Canvas API)
+  function makeCircle(cx, cy, r) {
+    var p = exports.skia_path_new();
+    for (var i = 0; i <= 64; i++) {
+      var a = (i / 64) * Math.PI * 2;
+      var x = cx + Math.cos(a) * r, y = cy + Math.sin(a) * r;
+      if (i === 0) exports.skia_path_move(p, x, y);
+      else exports.skia_path_line(p, x, y);
+    }
+    exports.skia_path_close(p);
+    return p;
+  }
+  var pathOps = [
+    { op: 0, color: [0.9, 0.3, 0.3] },
+    { op: 1, color: [0.3, 0.9, 0.4] },
+    { op: 2, color: [0.3, 0.5, 0.9] },
+    { op: 3, color: [0.9, 0.7, 0.2] },
+  ];
+  for (var pi = 0; pi < pathOps.length; pi++) {
+    var cx = 75 + pi * 120;
+    var pa = makeCircle(cx - 12, 400, 26);
+    var pb = makeCircle(cx + 12, 400, 26);
+    var result = exports.skia_path_op_combine(pa, pb, pathOps[pi].op);
+    if (result) {
+      exports.sk_paint_color(fillPaint, pathOps[pi].color[0], pathOps[pi].color[1], pathOps[pi].color[2], 0.9);
+      exports.skia_draw_path(result, fillPaint);
+      exports.skia_path_delete(result);
+    }
+    exports.sk_paint_color(strokePaint, 1.0, 1.0, 1.0, 0.15);
+    exports.skia_draw_path(pa, strokePaint);
+    exports.skia_draw_path(pb, strokePaint);
+    exports.skia_path_delete(pa);
+    exports.skia_path_delete(pb);
+  }
+
+  }; // end drawStaticScene
+
+  // Draw first static frame
+  drawStaticScene();
+  ok('Drew static scene');
+
+  // End first frame (before font load which takes time)
+  exports.exports_skia_gl_end_drawing();
+  exports.exports_skia_gl_flush();
+
+  // Load font and start animation
   info('Loading font...');
   try {
     // Inter variable font (TTF)
@@ -517,10 +564,12 @@ async function run() {
       ok(`Font loaded (typeface handle: ${typefaceH})`);
 
       const fontH = exports.sk_font_new(typefaceH, 32);
-      // Title — clean white
+      // Separate paints — gradient shader on one doesn't affect the other
+      const titlePaint = exports.sk_paint_new();
+      exports.sk_paint_set_fill_style(titlePaint);
+      exports.sk_paint_color(titlePaint, 1.0, 1.0, 1.0, 1.0);
       const textPaint = exports.sk_paint_new();
       exports.sk_paint_set_fill_style(textPaint);
-      exports.sk_paint_color(textPaint, 1.0, 1.0, 1.0, 1.0);
 
       const drawCentered = (str, y, font, paint) => {
         const bytes = new TextEncoder().encode(str);
@@ -530,18 +579,70 @@ async function run() {
         exports.sk_draw_text(ptr, bytes.length, (512 - w) / 2, y, font, paint);
       };
 
-      drawCentered('@three-flatland/skia', 466, fontH, textPaint);
+      exports.sk_paint_color(textPaint, 1.0, 1.0, 1.0, 1.0);
+      drawCentered('@three-flatland/skia', 466, fontH, titlePaint);
 
-      // Subtitle — gradient fill (impossible with Canvas API)
+      // Subtitle — animated gradient fill (impossible with Canvas API)
       const font2 = exports.sk_font_new(typefaceH, 14);
-      exports.sk_paint_set_linear_gradient_2(textPaint, 80, 0, 440, 0, 0xFF44AAFF, 0xFFFF44AA);
-      drawCentered('GPU-accelerated vector graphics in the browser', 490, font2, textPaint);
-      exports.sk_paint_delete(textPaint);
+      const subStr = 'GPU-accelerated vector graphics in the browser';
+      const subBytes = new TextEncoder().encode(subStr);
+      const subPtr = wasmAlloc(subBytes.length);
+      new Uint8Array(memory.buffer, subPtr, subBytes.length).set(subBytes);
+      const subW = exports.sk_measure_text(subPtr, subBytes.length, font2);
+      const subX = (512 - subW) / 2;
 
-      exports.sk_font_delete(font2);
-      exports.sk_font_delete(fontH);
-      exports.sk_typeface_delete(typefaceH);
+      // First frame
+      exports.sk_paint_set_linear_gradient_2(textPaint, 80, 0, 440, 0, 0xFF44AAFF, 0xFFFF44AA);
+      exports.sk_draw_text(subPtr, subBytes.length, subX, 490, font2, textPaint);
+
       ok('Drew text with Inter font');
+
+      // End first frame
+      exports.exports_skia_gl_end_drawing();
+      exports.exports_skia_gl_flush();
+
+      // ── Animation loop — animate gradient on subtitle ──
+      const hslToArgb = (h, s, l) => {
+        const c = (1 - Math.abs(2 * l - 1)) * s;
+        const x = c * (1 - Math.abs((h / 60) % 2 - 1));
+        const m = l - c / 2;
+        let r, g, b;
+        if (h < 60) { r = c; g = x; b = 0; }
+        else if (h < 120) { r = x; g = c; b = 0; }
+        else if (h < 180) { r = 0; g = c; b = x; }
+        else if (h < 240) { r = 0; g = x; b = c; }
+        else if (h < 300) { r = x; g = 0; b = c; }
+        else { r = c; g = 0; b = x; }
+        const ri = Math.round((r + m) * 255), gi = Math.round((g + m) * 255), bi = Math.round((b + m) * 255);
+        return 0xFF000000 | (ri << 16) | (gi << 8) | bi;
+      };
+
+      const retPtr2 = wasmAlloc(32);
+      const animate = (t) => {
+        if (!exports.exports_skia_gl_begin_drawing(0, 512, 512, retPtr2)) return;
+
+        // Redraw full scene each frame (handle table now recycles)
+        drawStaticScene();
+
+        // Title (always white — uses separate paint from gradient)
+        drawCentered('@three-flatland/skia', 466, fontH, titlePaint);
+
+        // Animated gradient subtitle
+        const hue1 = (t * 0.05) % 360;
+        const hue2 = (hue1 + 120) % 360;
+        exports.sk_paint_set_linear_gradient_2(textPaint, subX, 0, subX + subW, 0, hslToArgb(hue1, 0.8, 0.6), hslToArgb(hue2, 0.8, 0.6));
+        exports.sk_draw_text(subPtr, subBytes.length, subX, 490, font2, textPaint);
+
+        exports.exports_skia_gl_end_drawing();
+        exports.exports_skia_gl_flush();
+        requestAnimationFrame(animate);
+      };
+      requestAnimationFrame(animate);
+
+      // Don't destroy — keep alive for animation
+      ok('Animation started');
+      // Skip cleanup — resources kept alive for render loop
+      return;
     } else {
       const dbg = exports.sk_debug_font?.() ?? -1;
       const msg = {1:'entered',2:'bad data',3:'font mgr null',4:'mgr ok',5:'copy failed',6:'data copied',7:'makeFromData returned null'}[dbg] || `code=${dbg}`;
@@ -552,65 +653,17 @@ async function run() {
     if (e.stack) info(e.stack.split('\n').slice(0, 5).join('\n'));
   }
 
-  // ── PathOps demo (impossible in Canvas API) ──
-  // Two overlapping circle paths → boolean operations
-  const makeCirclePath = (cx, cy, r, steps = 64) => {
-    const p = exports.skia_path_new();
-    for (let i = 0; i <= steps; i++) {
-      const a = (i / steps) * Math.PI * 2;
-      const x = cx + Math.cos(a) * r, y = cy + Math.sin(a) * r;
-      if (i === 0) exports.skia_path_move(p, x, y);
-      else exports.skia_path_line(p, x, y);
-    }
-    exports.skia_path_close(p);
-    return p;
-  };
-
-  const ops = [
-    { op: 0, label: 'Difference', color: [0.9, 0.3, 0.3] },
-    { op: 1, label: 'Intersect',  color: [0.3, 0.9, 0.4] },
-    { op: 2, label: 'Union',      color: [0.3, 0.5, 0.9] },
-    { op: 3, label: 'XOR',        color: [0.9, 0.7, 0.2] },
-  ];
-
-  for (let i = 0; i < ops.length; i++) {
-    const cx = 75 + i * 120;
-    const a = makeCirclePath(cx - 12, 400, 26);
-    const b = makeCirclePath(cx + 12, 400, 26);
-    const result = exports.skia_path_op_combine(a, b, ops[i].op);
-    if (result) {
-      exports.sk_paint_color(fillPaint, ...ops[i].color, 0.9);
-      exports.skia_draw_path(result, fillPaint);
-      exports.skia_path_delete(result);
-    }
-    // Draw ghost outlines of original circles
-    exports.sk_paint_color(strokePaint, 1.0, 1.0, 1.0, 0.15);
-    exports.skia_draw_path(a, strokePaint);
-    exports.skia_draw_path(b, strokePaint);
-    exports.skia_path_delete(a);
-    exports.skia_path_delete(b);
-  }
-  ok('Drew PathOps (Difference, Intersect, Union, XOR)');
-
-  // Clean up paints
-  exports.sk_paint_delete(fillPaint);
-  exports.sk_paint_delete(strokePaint);
-  ok('Drawing complete');
-
-  // ── End drawing ──
+  // ── Fallback: end drawing if font/animation didn't take over ──
   exports.exports_skia_gl_end_drawing();
   exports.exports_skia_gl_flush();
-  ok('end_drawing + flush called');
-
-  // ── Destroy ──
-  exports.exports_skia_gl_destroy();
-  ok('destroy called');
+  ok('Drawing complete (no animation)');
 
   info('');
   ok('Skia is rendering via WebGL + WASM!');
 }
 
 run().catch(e => err(`Unhandled: ${e.message}`));
+
 </script>
 </body>
 </html>
