@@ -343,6 +343,14 @@ export fn sk_draw_line(x0: f32, y0: f32, x1: f32, y1: f32, paint_h: i32) void {
     if (g_canvas != null and paint != null) c.sk_canvas_draw_line(g_canvas, x0, y0, x1, y1, paint);
 }
 
+// Multi-stop linear gradient: colors and stops are arrays in WASM memory
+export fn sk_paint_set_linear_gradient_n(paint_h: i32, x0: f32, y0: f32, x1: f32, y1: f32, colors_ptr: [*]const u32, stops_ptr: [*]const f32, count: i32) void {
+    const p = paints.get(paint_h);
+    if (p != null and count > 0) {
+        c.sk_paint_set_linear_gradient(p, x0, y0, x1, y1, colors_ptr, stops_ptr, count);
+    }
+}
+
 export fn sk_paint_set_linear_gradient_2(paint_h: i32, x0: f32, y0: f32, x1: f32, y1: f32, c0: u32, c1: u32) void {
     const p = paints.get(paint_h);
     if (p != null) {

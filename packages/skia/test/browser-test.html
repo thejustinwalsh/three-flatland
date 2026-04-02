@@ -34,12 +34,22 @@ const warn = (msg) => L('err', `[!!] ${msg}`);
 const info = (msg) => L('info', `[..] ${msg}`);
 
 async function run() {
+var wasmSizeKB = '?', wasmGzipKB = '...';
   info('Setting up WebGL2 context...');
 
   const canvas = document.getElementById('canvas');
   const gl = canvas.getContext('webgl2', { antialias: true, stencil: true });
   if (!gl) { err('WebGL2 not supported'); return; }
   ok(`WebGL2: ${gl.getParameter(gl.RENDERER)}`);
+
+  // ── Enable all available extensions ──
+  // WebGL2 requires explicit activation before Skia can query extension parameters.
+  // Emscripten does this automatically; we need to do it ourselves.
+  const enabledExts = [];
+  for (const ext of gl.getSupportedExtensions() || []) {
+    if (gl.getExtension(ext)) enabledExts.push(ext);
+  }
+  ok(`${enabledExts.length} GL extensions enabled`);
 
   // ── GL handle tables (integer <-> WebGL object) ──
   const tables = {
@@ -84,6 +94,22 @@ async function run() {
     new Uint8Array(memory.buffer).set(bytes.subarray(0, len), ptr);
     new Uint8Array(memory.buffer)[ptr + len] = 0;
     return len;
+  };
+
+  // ── GL helpers ──
+  const texBytesPerPixel = (fmt, typ) => {
+    // Channel count from format
+    const channels = { 0x1906: 1, 0x1909: 1, 0x190A: 2, 0x1907: 3, 0x1908: 4, 0x8227: 1, 0x8228: 2 }; // ALPHA, LUMINANCE, LUM_ALPHA, RGB, RGBA, RG, RG
+    const ch = channels[fmt] || 4;
+    // Bytes per channel from type
+    if (typ === 0x1401) return ch;      // UNSIGNED_BYTE
+    if (typ === 0x8363 || typ === 0x8033) return 2; // UNSIGNED_SHORT_5_6_5, UNSIGNED_SHORT_4_4_4_4
+    if (typ === 0x8034) return 2;       // UNSIGNED_SHORT_5_5_5_1
+    if (typ === 0x1403) return ch * 2;  // UNSIGNED_SHORT
+    if (typ === 0x1405) return ch * 4;  // UNSIGNED_INT
+    if (typ === 0x1406) return ch * 4;  // FLOAT
+    if (typ === 0x140B) return ch * 2;  // HALF_FLOAT
+    return ch; // default: 1 byte per channel
   };
 
   // ── GL imports ──
@@ -245,13 +271,16 @@ async function run() {
     emscripten_glStencilOp(f, z, p) { gl.stencilOp(f, z, p); },
     emscripten_glStencilOpSeparate(face, sf, dp, dpp) { gl.stencilOpSeparate(face, sf, dp, dpp); },
     emscripten_glTexImage2D(t, l, inf, w, h, b, fmt, typ, ptr) {
-      if (ptr) gl.texImage2D(t, l, inf, w, h, b, fmt, typ, new Uint8Array(memory.buffer, ptr, w*h*4));
-      else gl.texImage2D(t, l, inf, w, h, b, fmt, typ, null);
+      if (ptr) {
+        gl.texImage2D(t, l, inf, w, h, b, fmt, typ, new Uint8Array(memory.buffer, ptr));
+      } else {
+        gl.texImage2D(t, l, inf, w, h, b, fmt, typ, null);
+      }
     },
     emscripten_glTexParameterf(t, p, v) { gl.texParameterf(t, p, v); },
     emscripten_glTexParameteri(t, p, v) { gl.texParameteri(t, p, v); },
     emscripten_glTexSubImage2D(t, l, x, y, w, h, fmt, typ, ptr) {
-      gl.texSubImage2D(t, l, x, y, w, h, fmt, typ, new Uint8Array(memory.buffer, ptr, w*h*4));
+      gl.texSubImage2D(t, l, x, y, w, h, fmt, typ, new Uint8Array(memory.buffer, ptr));
     },
     emscripten_glUniform1f(l, v) { gl.uniform1f(tables.uniforms.get(l), v); },
     emscripten_glUniform1i(l, v) { gl.uniform1i(tables.uniforms.get(l), v); },
@@ -349,7 +378,11 @@ async function run() {
     const response = await fetch(wasmUrl);
     if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
     const bytes = await response.arrayBuffer();
-    info(`WASM loaded: ${(bytes.byteLength / 1024).toFixed(0)} KB`);
+    wasmSizeKB = (bytes.byteLength / 1024).toFixed(0);
+    info(`WASM loaded: ${wasmSizeKB} KB`);
+    // Compute gzipped size via CompressionStream
+    new Response(new Blob([bytes]).stream().pipeThrough(new CompressionStream('gzip')))
+      .arrayBuffer().then(gz => { wasmGzipKB = (gz.byteLength / 1024).toFixed(0); });
 
     wasm = await WebAssembly.instantiate(bytes, {
       gl: glImports,
@@ -452,26 +485,51 @@ async function run() {
   const fillPaint = exports.sk_paint_new();
   const strokePaint = exports.sk_paint_new();
 
+  var animTime = 0; // set by animation loop
+
+  // Square swap animation state
+  var sqCols = [
+    [0.9, 0.3, 0.3], [0.3, 0.9, 0.4], [0.3, 0.5, 0.9],
+    [0.9, 0.7, 0.2], [0.7, 0.3, 0.9], [0.2, 0.8, 0.8],
+  ];
+  var sqSwapA = 0, sqSwapB = 1, sqSwapStart = 0;
+  var sqFromA = [...sqCols[0]], sqFromB = [...sqCols[1]];
+  var sqToA = [...sqCols[1]], sqToB = [...sqCols[0]];
+  var gradBufC = null, gradBufS = null; // allocated on first use
+  var hudBuf = null;
+
   const drawStaticScene = () => {
   exports.exports_skia_gl_canvas_clear(0.06, 0.06, 0.1, 1.0);
   exports.sk_paint_set_fill_style(fillPaint);
   exports.sk_paint_set_stroke_style(strokePaint, 2.0);
 
-  // Draw colored rectangles
-  const colors = [
-    [0.9, 0.3, 0.3], [0.3, 0.9, 0.4], [0.3, 0.5, 0.9],
-    [0.9, 0.7, 0.2], [0.7, 0.3, 0.9], [0.2, 0.8, 0.8],
-  ];
-  for (let i = 0; i < colors.length; i++) {
-    const [r, g, b] = colors[i];
-    exports.sk_paint_color(fillPaint, r, g, b, 1.0);
+  // Draw colored rectangles — two swap and lerp every 3 seconds
+  var sqDur = 3000;
+  var sqT = Math.min((animTime - sqSwapStart) / sqDur, 1.0);
+  sqT = sqT * sqT * (3 - 2 * sqT); // smoothstep
+  if (sqT >= 1.0 && animTime > 0) {
+    // Commit swap and pick new pair
+    sqCols[sqSwapA] = [...sqToA];
+    sqCols[sqSwapB] = [...sqToB];
+    var a = Math.floor(Math.random() * 6);
+    var b2 = (a + 1 + Math.floor(Math.random() * 5)) % 6;
+    sqSwapA = a; sqSwapB = b2; sqSwapStart = animTime;
+    sqFromA = [...sqCols[a]]; sqFromB = [...sqCols[b2]];
+    sqToA = [...sqCols[b2]]; sqToB = [...sqCols[a]];
+    sqT = 0;
+  }
+  for (var i = 0; i < sqCols.length; i++) {
+    var c = sqCols[i];
+    if (i === sqSwapA) c = sqFromA.map((v, j) => v + (sqToA[j] - v) * sqT);
+    else if (i === sqSwapB) c = sqFromB.map((v, j) => v + (sqToB[j] - v) * sqT);
+    exports.sk_paint_color(fillPaint, c[0], c[1], c[2], 1.0);
     exports.sk_draw_round_rect(30 + i * 78, 30, 68, 68, 10, 10, fillPaint);
   }
 
-  // Draw circles
+  // Draw circles — muted colors cycling slowly
   for (let i = 0; i < 8; i++) {
-    const t = i / 8;
-    exports.sk_paint_color(fillPaint, 0.2 + 0.6 * t, 0.4, 0.9 - 0.6 * t, 0.8);
+    const t = ((i / 8) + animTime * 0.0002) % 1.0;
+    exports.sk_paint_color(fillPaint, 0.15 + 0.35 * t, 0.2 + 0.25 * (1 - t), 0.3 + 0.4 * Math.sin(t * Math.PI * 2 + 4), 0.7);
     exports.sk_draw_circle(64 + i * 56, 140, 18, fillPaint);
   }
 
@@ -480,8 +538,10 @@ async function run() {
   exports.sk_draw_rect(20, 170, 472, 100, strokePaint);
   exports.sk_draw_round_rect(28, 176, 456, 88, 10, 10, strokePaint);
 
+  // Lines — color shifts at ~12hz for a retro scanner effect
+  var linePhase = Math.floor(animTime / 83) % 9; // 83ms ≈ 12hz
   for (let i = 0; i < 9; i++) {
-    const t = i / 9;
+    const t = ((i + linePhase) % 9) / 9;
     exports.sk_paint_color(strokePaint, 0.5 + 0.5 * t, 0.8 - 0.3 * t, 0.3 + 0.5 * t, 0.6);
     exports.sk_draw_line(36, 184 + i * 9, 472, 184 + i * 9, strokePaint);
   }
@@ -495,10 +555,29 @@ async function run() {
     [0xFFFFAA00, 0xFF00AAFF],
     [0xFF4488FF, 0xFFFF8844],
   ];
+  // Gradient bars — perfect wrapping loop
+  // Pattern: A→B→A pinned at ends (so 0 and 1 always match).
+  // The midpoint slides back and forth, creating the illusion of motion.
+  // Two bars stacked with opposite phases complete the wrap.
+  var barW = 452, barX = 30;
+  if (!gradBufC) { gradBufC = wasmAlloc(12); gradBufS = wasmAlloc(12); }
   for (let i = 0; i < gradColors.length; i++) {
     const y = 284 + i * 22;
-    exports.sk_paint_set_linear_gradient_2(gradPaint, 30, y, 482, y, gradColors[i][0], gradColors[i][1]);
-    exports.sk_draw_round_rect(30, y, 452, 16, 4, 4, gradPaint);
+    const dir = (i % 2 === 0) ? 1 : -1;
+    const speed = 0.15 + i * 0.03;
+    // mid oscillates 0.1→0.9 as a sine wave — perfect loop
+    const mid = 0.5 + 0.4 * Math.sin(animTime * speed * 0.001 * dir);
+    const cA = gradColors[i][0], cB = gradColors[i][1];
+    const dv = new DataView(memory.buffer);
+    // 3 stops: A at 0, B at mid, A at 1
+    dv.setUint32(gradBufC + 0, cA, true);
+    dv.setUint32(gradBufC + 4, cB, true);
+    dv.setUint32(gradBufC + 8, cA, true);
+    dv.setFloat32(gradBufS + 0, 0.0, true);
+    dv.setFloat32(gradBufS + 4, mid, true);
+    dv.setFloat32(gradBufS + 8, 1.0, true);
+    exports.sk_paint_set_linear_gradient_n(gradPaint, barX, y, barX + barW, y, gradBufC, gradBufS, 3);
+    exports.sk_draw_round_rect(barX, y, barW, 16, 4, 4, gradPaint);
   }
   exports.sk_paint_delete(gradPaint);
 
@@ -522,8 +601,9 @@ async function run() {
   ];
   for (var pi = 0; pi < pathOps.length; pi++) {
     var cx = 75 + pi * 120;
-    var pa = makeCircle(cx - 12, 400, 26);
-    var pb = makeCircle(cx + 12, 400, 26);
+    var spread = 12 + 6 * Math.sin(animTime * 0.002 + pi);
+    var pa = makeCircle(cx - spread, 404, 26);
+    var pb = makeCircle(cx + spread, 404, 26);
     var result = exports.skia_path_op_combine(pa, pb, pathOps[pi].op);
     if (result) {
       exports.sk_paint_color(fillPaint, pathOps[pi].color[0], pathOps[pi].color[1], pathOps[pi].color[2], 0.9);
@@ -617,11 +697,19 @@ async function run() {
         return 0xFF000000 | (ri << 16) | (gi << 8) | bi;
       };
 
+      // FPS counter — rendered by Skia in the canvas
+      const fpsFont = exports.sk_font_new(typefaceH, 11);
+      const fpsPaint = exports.sk_paint_new();
+      exports.sk_paint_set_fill_style(fpsPaint);
+      let lastTime = 0, frameCount = 0, fps = 0;
+      const fpsStr = wasmAlloc(16);
+
       const retPtr2 = wasmAlloc(32);
       const animate = (t) => {
         if (!exports.exports_skia_gl_begin_drawing(0, 512, 512, retPtr2)) return;
 
         // Redraw full scene each frame (handle table now recycles)
+        animTime = t;
         drawStaticScene();
 
         // Title (always white — uses separate paint from gradient)
@@ -632,6 +720,27 @@ async function run() {
         const hue2 = (hue1 + 120) % 360;
         exports.sk_paint_set_linear_gradient_2(textPaint, subX, 0, subX + subW, 0, hslToArgb(hue1, 0.8, 0.6), hslToArgb(hue2, 0.8, 0.6));
         exports.sk_draw_text(subPtr, subBytes.length, subX, 490, font2, textPaint);
+
+        // HUD: sizes (top-left) + FPS (top-right)
+        frameCount++;
+        if (t - lastTime >= 1000) { fps = frameCount; frameCount = 0; lastTime = t; }
+        exports.sk_paint_color(fpsPaint, 1.0, 1.0, 1.0, 0.35);
+
+        // Sizes
+        const sizeText = `${wasmSizeKB} KB / ${wasmGzipKB} KB gzip`;
+        const sizeBytes = new TextEncoder().encode(sizeText);
+        new Uint8Array(memory.buffer, fpsStr, Math.min(sizeBytes.length, 15)).set(sizeBytes.subarray(0, 15));
+        // Need a bigger buffer for size string
+        var hudBuf = hudBuf || wasmAlloc(64);
+        new Uint8Array(memory.buffer, hudBuf, sizeBytes.length).set(sizeBytes);
+        exports.sk_draw_text(hudBuf, sizeBytes.length, 10, 18, fpsFont, fpsPaint);
+
+        // FPS
+        const fpsText = `${fps} fps`;
+        const fpsBytes = new TextEncoder().encode(fpsText);
+        new Uint8Array(memory.buffer, fpsStr, fpsBytes.length).set(fpsBytes);
+        const fpsW = exports.sk_measure_text(fpsStr, fpsBytes.length, fpsFont);
+        exports.sk_draw_text(fpsStr, fpsBytes.length, 500 - fpsW, 18, fpsFont, fpsPaint);
 
         exports.exports_skia_gl_end_drawing();
         exports.exports_skia_gl_flush();
