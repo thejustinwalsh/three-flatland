@@ -83,11 +83,59 @@ for asset in data['assets']:
 }
 
 echo ""
-echo "=== Installing WASM Component Model tools ==="
+echo "=== Installing WASM build tools ==="
 echo ""
 
 install_from_github "bytecodealliance/wasm-tools" "wasm-tools"
 install_from_github "bytecodealliance/wit-bindgen" "wit-bindgen"
+
+# wasm-opt (binaryen) — different release naming convention
+install_wasm_opt() {
+  local bin_name="wasm-opt"
+
+  if command -v "$bin_name" &>/dev/null; then
+    ok "$bin_name already installed: $($bin_name --version 2>&1)"
+    return
+  fi
+
+  info "Fetching latest wasm-opt (binaryen) release..."
+  local url
+  url=$(curl -sL "https://api.github.com/repos/WebAssembly/binaryen/releases/latest" | python3 -c "
+import json, sys
+data = json.load(sys.stdin)
+for asset in data['assets']:
+    name = asset['name']
+    if '${ARCH_SLUG}-${PLATFORM}' in name and name.endswith('.tar.gz'):
+        print(asset['browser_download_url'])
+        break
+")
+
+  if [ -z "$url" ]; then
+    error "Could not find wasm-opt release for $PLATFORM-$ARCH_SLUG"
+    return 1
+  fi
+
+  local tmp_dir
+  tmp_dir="$(mktemp -d)"
+  info "Downloading $url..."
+  curl -sL "$url" | tar -xz -C "$tmp_dir"
+
+  local bin_path
+  bin_path="$(find "$tmp_dir" -name "wasm-opt" -type f | head -1)"
+  if [ -z "$bin_path" ]; then
+    error "wasm-opt not found in archive"
+    rm -rf "$tmp_dir"
+    return 1
+  fi
+
+  cp "$bin_path" "$INSTALL_DIR/wasm-opt"
+  chmod +x "$INSTALL_DIR/wasm-opt"
+  rm -rf "$tmp_dir"
+
+  ok "wasm-opt installed: $("$INSTALL_DIR/wasm-opt" --version 2>&1)"
+}
+
+install_wasm_opt
 
 echo ""
 
