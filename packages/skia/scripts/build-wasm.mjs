@@ -80,7 +80,7 @@ function generateWitBindings() {
   // Generate C headers for Zig @cImport
   if (hasCommand("wit-bindgen")) {
     console.log("\n=== Generating C bindings from WIT ===");
-    run(`wit-bindgen c ${witFile} --out-dir src/zig/bindings/generated/`);
+    run(`wit-bindgen c ${witFile} --world skia-gl --out-dir src/zig/bindings/generated/`);
   } else {
     console.log("wit-bindgen not in PATH — using committed C headers.");
   }

@@ -1,15 +1,13 @@
-package three-flatland:skia;
+package skia:gpu;
 
-world skia {
+/// WebGL variant — imports GL functions, exports the Skia drawing API.
+world skia-gl {
+    import gl;
+
     // ── Context & Surface lifecycle ──
 
-    /// Initialize Skia with backend-specific GPU context.
-    /// config-data contains GL proc table or WebGPU device reference as bytes.
     export init: func(config-data: list<u8>);
     export destroy: func();
-
-    /// Begin a draw pass targeting a framebuffer/texture handle.
-    /// Returns an opaque canvas handle, or none on failure.
     export begin-drawing: func(target-handle: u32, width: s32, height: s32) -> option<u32>;
     export end-drawing: func();
     export flush: func();
@@ -69,7 +67,7 @@ world skia {
         set-size: func(w: f32, h: f32);
     }
 
-    // ── Canvas drawing (operates on active canvas from begin-drawing) ──
+    // ── Canvas drawing ──
 
     export canvas-clear: func(r: f32, g: f32, b: f32, a: f32);
     export canvas-draw-rect: func(x: f32, y: f32, w: f32, h: f32, p: borrow<paint>);
@@ -94,7 +92,7 @@ world skia {
     export canvas-clip-round-rect: func(x: f32, y: f32, w: f32, h: f32, rx: f32, ry: f32);
     export canvas-clip-path: func(path: borrow<path>);
 
-    // ── PathOps (bundled) ──
+    // ── PathOps ──
 
     enum path-op {
         difference,

@@ -30,10 +30,10 @@ pub fn build(b: *std.Build) void {
 
     // wit-bindgen generated C glue: canonical ABI wrappers + WIT component type
     gl_variant.addCSourceFile(.{
-        .file = b.path("src/zig/bindings/generated/skia.c"),
+        .file = b.path("src/zig/bindings/generated/skia_gl.c"),
         .flags = &.{},
     });
-    gl_variant.addObjectFile(b.path("src/zig/bindings/generated/skia_component_type.o"));
+    gl_variant.addObjectFile(b.path("src/zig/bindings/generated/skia_gl_component_type.o"));
     // Include path for both the C glue and Zig's @cImport("skia.h")
     gl_variant.addIncludePath(b.path("src/zig/bindings/generated"));
     gl_variant.linkLibC();

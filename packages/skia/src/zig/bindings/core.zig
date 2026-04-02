@@ -3,7 +3,7 @@
 //!
 //! Uses @cImport to match the exact C type signatures from generated/skia.h.
 
-const c = @cImport(@cInclude("skia.h"));
+const c = @cImport(@cInclude("skia_gl.h"));
 
 // WASI requires a main entry point.
 pub fn main() void {}
