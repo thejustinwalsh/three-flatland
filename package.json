@@ -47,7 +47,8 @@
     "overrides": {
       "three-flatland": "workspace:*",
       "@three-flatland/nodes": "workspace:*",
-      "@three-flatland/presets": "workspace:*"
+      "@three-flatland/presets": "workspace:*",
+      "@three-flatland/skia": "workspace:*"
     }
   },
   "devDependencies": {

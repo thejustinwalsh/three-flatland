@@ -1,0 +1,69 @@
+{
+  "name": "@three-flatland/skia",
+  "version": "0.1.0-alpha.1",
+  "description": "Skia-powered 2D vector graphics, text, and SVG as Three.js texture sources via WebAssembly",
+  "type": "module",
+  "exports": {
+    ".": {
+      "source": "./src/ts/index.ts",
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    },
+    "./react": {
+      "source": "./src/ts/react/index.ts",
+      "import": {
+        "types": "./dist/react/index.d.ts",
+        "default": "./dist/react/index.js"
+      },
+      "require": {
+        "types": "./dist/react/index.d.cts",
+        "default": "./dist/react/index.cjs"
+      }
+    }
+  },
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsup",
+    "build:wasm": "node scripts/build-wasm.mjs",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "peerDependencies": {
+    "three": ">=0.170.0"
+  },
+  "devDependencies": {
+    "@types/three": "catalog:",
+    "three": "catalog:"
+  },
+  "keywords": [
+    "three.js",
+    "skia",
+    "2d",
+    "vector",
+    "text",
+    "svg",
+    "webassembly",
+    "wasm",
+    "webgpu",
+    "webgl"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/thejustinwalsh/three-flatland.git",
+    "directory": "packages/skia"
+  }
+}

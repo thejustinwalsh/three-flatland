@@ -1,0 +1,13 @@
+diff --git a/include/private/base/SkFeatures.h b/include/private/base/SkFeatures.h
+index 9ea8063a6..0d5c2d36e 100644
+--- a/include/private/base/SkFeatures.h
++++ b/include/private/base/SkFeatures.h
+@@ -9,7 +9,7 @@
+ #define SkFeatures_DEFINED
+ 
+ #if !defined(SK_BUILD_FOR_ANDROID) && !defined(SK_BUILD_FOR_IOS) && !defined(SK_BUILD_FOR_WIN) && \
+-    !defined(SK_BUILD_FOR_UNIX) && !defined(SK_BUILD_FOR_MAC)
++    !defined(SK_BUILD_FOR_UNIX) && !defined(SK_BUILD_FOR_MAC) && !defined(SK_BUILD_FOR_WASM)
+ 
+     #ifdef __APPLE__
+         #include <TargetConditionals.h>

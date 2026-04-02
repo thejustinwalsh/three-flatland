@@ -1,0 +1,10 @@
+# Zig build artifacts
+zig-out/
+zig-cache/
+.zig-cache/
+
+# WASM intermediate artifacts
+*.opt.wasm
+*.component.wasm
+
+# dist/ is gitignored at root level

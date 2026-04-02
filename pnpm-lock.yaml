@@ -41,6 +41,7 @@ overrides:
   three-flatland: workspace:*
   '@three-flatland/nodes': workspace:*
   '@three-flatland/presets': workspace:*
+  '@three-flatland/skia': workspace:*
 
 importers:
 
@@ -769,6 +770,15 @@ importers:
       three-flatland:
         specifier: workspace:*
         version: link:../three-flatland
+    devDependencies:
+      '@types/three':
+        specifier: 'catalog:'
+        version: 0.183.1
+      three:
+        specifier: 'catalog:'
+        version: 0.183.1
+
+  packages/skia:
     devDependencies:
       '@types/three':
         specifier: 'catalog:'

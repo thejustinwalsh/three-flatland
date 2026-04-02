@@ -1,0 +1,12 @@
+.{
+    .fingerprint = 0x420f9b39eaf793a3,
+    .name = .three_flatland_skia,
+    .version = "0.1.0",
+    .minimum_zig_version = "0.14.0",
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "src/zig",
+        "wit",
+    },
+}
