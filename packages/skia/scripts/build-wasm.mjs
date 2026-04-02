@@ -45,16 +45,20 @@ const glOnly = args.includes("--gl-only");
 const skipIfFresh = args.includes("--skip-if-fresh");
 const witOnly = args.includes("--wit-only");
 
+// Augment PATH with local .tools/bin for pinned tool versions
+const TOOLS_BIN = resolve(PKG_ROOT, ".tools/bin");
+const augmentedEnv = { ...process.env, PATH: `${TOOLS_BIN}:${process.env.PATH}` };
+
 /** Run a command, printing it first. */
 function run(cmd, opts = {}) {
   console.log(`\n> ${cmd}`);
-  execSync(cmd, { stdio: "inherit", cwd: PKG_ROOT, ...opts });
+  execSync(cmd, { stdio: "inherit", cwd: PKG_ROOT, env: augmentedEnv, ...opts });
 }
 
-/** Check if a binary is available in PATH. */
+/** Check if a binary is available in PATH (including .tools/bin). */
 function hasCommand(name) {
   try {
-    execSync(`which ${name}`, { stdio: "ignore" });
+    execSync(`which ${name}`, { stdio: "ignore", env: augmentedEnv });
     return true;
   } catch {
     return false;

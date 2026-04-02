@@ -3,8 +3,11 @@ zig-out/
 zig-cache/
 .zig-cache/
 
-# WASM intermediate artifacts
-*.opt.wasm
+# Local tool installs (managed by scripts/setup.mjs)
+.tools/
+
+# WASM intermediate artifacts (skia-gl.wasm is the final output)
+**/skia-gl.opt.wasm
 *.component.wasm
 
 # dist/ is gitignored at root level

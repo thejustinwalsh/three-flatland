@@ -86,6 +86,15 @@ pub fn build(b: *std.Build) void {
     gl_variant.linkLibrary(skia_svg);
     gl_variant.linkLibrary(skia_skshaper);
     b.installArtifact(gl_variant);
+
+    // ── Variant 2: WebGPU (TODO) ──
+    // When Skia's Dawn/WebGPU backend is ready for WASM:
+    //   1. Add skia_sources.dawn_files (or equivalent) to buildSkiaLib
+    //   2. Create skia_webgpu_variant.zig root source (similar to skia_gl_variant.zig)
+    //   3. Replace GL-specific defines (-DSK_GL, -DSK_GANESH) with Dawn equivalents
+    //   4. Create a WebGPU shim header (like emscripten_gl_shim.h but for navigator.gpu)
+    //   5. Add webgpu variant executable here, link against dawn libs instead of skia_gl
+    //   6. Remove --gl-only default from build-wasm.mjs and setup.mjs
 }
 
 fn buildSkiaLib(

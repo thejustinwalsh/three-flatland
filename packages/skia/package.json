@@ -1,7 +1,7 @@
 {
   "name": "@three-flatland/skia",
   "version": "0.1.0-alpha.1",
-  "description": "Skia-powered 2D vector graphics, text, and SVG as Three.js texture sources via WebAssembly",
+  "description": "Lightweight CanvasKit alternative — Skia's core GPU rendering in ~1 MB (gzipped) of WASM, built with Zig",
   "type": "module",
   "exports": {
     ".": {
@@ -25,21 +25,27 @@
         "types": "./dist/react/index.d.cts",
         "default": "./dist/react/index.cjs"
       }
-    }
+    },
+    "./wasm": "./dist/skia-gl/skia-gl.wasm",
+    "./wasm/gl": "./dist/skia-gl/skia-gl.wasm"
   },
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "files": [
-    "dist"
+    "dist",
+    "LICENSE"
   ],
   "sideEffects": false,
   "scripts": {
-    "build": "tsup",
-    "build:wasm": "node scripts/build-wasm.mjs",
+    "setup": "node scripts/setup.mjs",
+    "setup:check": "node scripts/setup.mjs --check",
+    "setup:tools": "node scripts/setup.mjs --tools",
+    "build": "node scripts/build-wasm.mjs --gl-only --skip-if-fresh && tsup",
+    "build:wasm": "node scripts/build-wasm.mjs --gl-only",
     "dev": "tsup --watch",
     "typecheck": "tsc --noEmit",
-    "clean": "rm -rf dist"
+    "clean": "rm -rf dist .tools"
   },
   "peerDependencies": {
     "three": ">=0.170.0"
@@ -49,6 +55,45 @@
     "@bytecodealliance/jco": "^1.17.6",
     "@types/three": "catalog:",
     "three": "catalog:"
+  },
+  "skiaDependencies": {
+    "skia": {
+      "branch": "chrome/m147",
+      "commit": "4502f88af90279ad2685528bd3cf7e90ab140f19"
+    },
+    "zig": "0.15.1",
+    "tools": {
+      "wasm-tools": {
+        "version": "1.246.1",
+        "repo": "bytecodealliance/wasm-tools",
+        "sha256": {
+          "aarch64-macos": "62f08a654cbba6c4d40dd2df08ecdf1d4e1f3ab926c77dcb13ecb1d02ce49f06",
+          "x86_64-macos": "aee9a6ba67d6f3190d20c20cefc5d220801bbb11bf1a7996847000b27b1ef16a",
+          "aarch64-linux": "80b26cf8893657cc45d6d5a471ab7615d50e60d51929a096ac5464c3994d8033",
+          "x86_64-linux": "b134a86561f006e6772dc2d7798f266bd079a1a178113ac2580f54e51fe5e516"
+        }
+      },
+      "wit-bindgen": {
+        "version": "0.54.0",
+        "repo": "bytecodealliance/wit-bindgen",
+        "sha256": {
+          "aarch64-macos": "5fa855483d3f81d86915d2a1fc82987d7b1eabc040a54d8f5b5f92b41c949380",
+          "x86_64-macos": "243c1a46a0f4ea438551568c057f8d7a8995fa05c09fa582ea8aed6254ea4c28",
+          "aarch64-linux": "b62a68fee5f68d15875988832cc26a61f0a3fdff32a3338c21caf8e61ad70808",
+          "x86_64-linux": "cbb6cc85f27c4fda892b2dbc39793228371180b02a9301953d42f4a74ed5e0ba"
+        }
+      },
+      "binaryen": {
+        "version": "129",
+        "repo": "WebAssembly/binaryen",
+        "sha256": {
+          "arm64-macos": "d1bb014775ca3002506712b81b4406d126ff6845e8b2f343bc2696a1a88b7117",
+          "x86_64-macos": "cc38897d3d93c968f24819fae210e04afd0146d0e2467e307207ea7e798a59b9",
+          "aarch64-linux": "81d46b86b10876ab615eec67e09fcc5615115a7b189cfe3d466725ee36c46ac2",
+          "x86_64-linux": "50b9fa62b9abea752da92ec57e0c555fee578760cd237c40107957715d2976ba"
+        }
+      }
+    }
   },
   "keywords": [
     "three.js",

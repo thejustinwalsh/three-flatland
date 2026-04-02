@@ -37,7 +37,8 @@
     "packages/three-flatland/src/index.ts": "tsx scripts/sync-react-subpaths.ts",
     "packages/three-flatland/src/*/index.ts": "tsx scripts/sync-react-subpaths.ts",
     "examples/**/package.json": "tsx scripts/sync-pack.ts --files",
-    "minis/**/package.json": "tsx scripts/sync-pack.ts --files"
+    "minis/**/package.json": "tsx scripts/sync-pack.ts --files",
+    "packages/skia/third_party/skia": "tsx scripts/check-skia-pin.ts"
   },
   "pnpm": {
     "onlyBuiltDependencies": [
