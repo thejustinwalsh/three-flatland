@@ -167,7 +167,9 @@ for (const variant of variants) {
   // Step 3: wasm-opt size optimization (optional)
   const wasmInput = hasWasmOpt ? wasmOpt : wasmRaw;
   if (hasWasmOpt) {
-    run(`wasm-opt -Oz --strip-debug -o ${wasmOpt} ${wasmRaw}`);
+    // Enable WASM features that Zig/Skia use: tail-call (raster pipeline),
+    // bulk-memory (memcpy/memset), nontrapping-float-to-int, sign-ext, mutable-globals
+    run(`wasm-opt -Oz --strip-debug --enable-tail-call --enable-bulk-memory --enable-nontrapping-float-to-int --enable-sign-ext --enable-mutable-globals --enable-multivalue --enable-extended-const -o ${wasmOpt} ${wasmRaw}`);
   }
 
   // Step 4: Copy WASM to dist

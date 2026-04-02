@@ -24,8 +24,6 @@ typedef void* sk_svg_dom_t;
 
 // ── Context (GrDirectContext) ──
 
-// Create a GrDirectContext using the WebGL GrGLInterface.
-// The GL functions must already be available as WASM imports.
 sk_context_t sk_context_create_gl(void);
 void sk_context_destroy(sk_context_t ctx);
 void sk_context_flush(sk_context_t ctx);
@@ -33,8 +31,6 @@ void sk_context_reset_gl_state(sk_context_t ctx);
 
 // ── Surface ──
 
-// Wrap an existing GL framebuffer as a Skia surface.
-// fbo_id: the WebGL framebuffer object ID (0 = default framebuffer)
 sk_surface_t sk_surface_create_from_fbo(sk_context_t ctx, uint32_t fbo_id, int32_t width, int32_t height);
 void sk_surface_destroy(sk_surface_t surface);
 sk_canvas_t sk_surface_get_canvas(sk_surface_t surface);
@@ -53,6 +49,17 @@ void sk_paint_set_stroke_miter(sk_paint_t paint, float limit);
 void sk_paint_set_anti_alias(sk_paint_t paint, int aa);
 void sk_paint_set_blend_mode(sk_paint_t paint, uint8_t mode);
 void sk_paint_set_alpha(sk_paint_t paint, float alpha);
+void sk_paint_set_dash(sk_paint_t paint, const float* intervals, int count, float phase);
+void sk_paint_clear_dash(sk_paint_t paint);
+void sk_paint_set_blur(sk_paint_t paint, float sigma);
+void sk_paint_clear_blur(sk_paint_t paint);
+void sk_paint_set_linear_gradient(sk_paint_t paint, float x0, float y0, float x1, float y1,
+                                   const uint32_t* colors, const float* stops, int count);
+void sk_paint_set_radial_gradient(sk_paint_t paint, float cx, float cy, float r,
+                                   const uint32_t* colors, const float* stops, int count);
+void sk_paint_set_sweep_gradient(sk_paint_t paint, float cx, float cy,
+                                  const uint32_t* colors, const float* stops, int count);
+void sk_paint_clear_shader(sk_paint_t paint);
 
 // ── Path ──
 
@@ -62,8 +69,37 @@ void sk_path_move_to(sk_path_t path, float x, float y);
 void sk_path_line_to(sk_path_t path, float x, float y);
 void sk_path_quad_to(sk_path_t path, float cx, float cy, float x, float y);
 void sk_path_cubic_to(sk_path_t path, float c1x, float c1y, float c2x, float c2y, float x, float y);
+void sk_path_arc_to(sk_path_t path, float rx, float ry, float rotation, int large_arc, int sweep, float x, float y);
 void sk_path_close(sk_path_t path);
 void sk_path_reset(sk_path_t path);
+// Returns a new path from an SVG path string, or NULL on failure.
+sk_path_t sk_path_from_svg_string(const char* svg, int len);
+// Writes SVG path string to buf, returns bytes written (excluding null). If buf is NULL, returns required size.
+int sk_path_to_svg_string(sk_path_t path, char* buf, int buf_len);
+
+// ── PathOps ──
+
+// op: 0=difference, 1=intersect, 2=union, 3=xor, 4=reverse_difference
+sk_path_t sk_path_op(sk_path_t a, sk_path_t b, int op);
+sk_path_t sk_path_simplify(sk_path_t path);
+
+// ── Font & Text ──
+
+sk_typeface_t sk_typeface_from_data(const uint8_t* data, int len);
+void sk_typeface_destroy(sk_typeface_t typeface);
+
+sk_font_t sk_font_create(sk_typeface_t typeface, float size);
+void sk_font_destroy(sk_font_t font);
+void sk_font_set_size(sk_font_t font, float size);
+float sk_font_measure_text(sk_font_t font, const char* text, int len);
+
+// ── SVG ──
+
+sk_svg_dom_t sk_svg_dom_from_string(const char* data, int len);
+void sk_svg_dom_destroy(sk_svg_dom_t svg);
+void sk_svg_dom_get_size(sk_svg_dom_t svg, float* w, float* h);
+void sk_svg_dom_set_size(sk_svg_dom_t svg, float w, float h);
+void sk_svg_dom_render(sk_svg_dom_t svg, sk_canvas_t canvas);
 
 // ── Canvas drawing ──
 
@@ -74,6 +110,7 @@ void sk_canvas_draw_circle(sk_canvas_t canvas, float cx, float cy, float r, sk_p
 void sk_canvas_draw_oval(sk_canvas_t canvas, float x, float y, float w, float h, sk_paint_t paint);
 void sk_canvas_draw_line(sk_canvas_t canvas, float x0, float y0, float x1, float y1, sk_paint_t paint);
 void sk_canvas_draw_path(sk_canvas_t canvas, sk_path_t path, sk_paint_t paint);
+void sk_canvas_draw_text(sk_canvas_t canvas, const char* text, int len, float x, float y, sk_font_t font, sk_paint_t paint);
 
 // ── Canvas transform ──
 
@@ -82,10 +119,12 @@ void sk_canvas_restore(sk_canvas_t canvas);
 void sk_canvas_translate(sk_canvas_t canvas, float x, float y);
 void sk_canvas_rotate(sk_canvas_t canvas, float degrees);
 void sk_canvas_scale(sk_canvas_t canvas, float sx, float sy);
+void sk_canvas_concat_matrix(sk_canvas_t canvas, const float* m, int count);
 
 // ── Canvas clipping ──
 
 void sk_canvas_clip_rect(sk_canvas_t canvas, float x, float y, float w, float h);
+void sk_canvas_clip_round_rect(sk_canvas_t canvas, float x, float y, float w, float h, float rx, float ry);
 void sk_canvas_clip_path(sk_canvas_t canvas, sk_path_t path);
 
 #ifdef __cplusplus
