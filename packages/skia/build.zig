@@ -27,6 +27,8 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     gl_variant.rdynamic = true;
+    // Allow GL imports to be unresolved at link time — JS provides them
+    gl_variant.import_symbols = true;
 
     // wit-bindgen generated C glue: canonical ABI wrappers + WIT component type
     gl_variant.addCSourceFile(.{
@@ -34,8 +36,10 @@ pub fn build(b: *std.Build) void {
         .flags = &.{},
     });
     gl_variant.addObjectFile(b.path("src/zig/bindings/generated/skia_gl_component_type.o"));
-    // Include path for both the C glue and Zig's @cImport("skia.h")
+
+    // Include paths for C glue, Zig @cImport, and GL shim headers
     gl_variant.addIncludePath(b.path("src/zig/bindings/generated"));
+    gl_variant.addIncludePath(b.path("src/zig/gl_shim"));
     gl_variant.linkLibC();
 
     gl_variant.linkLibrary(skia_core);
@@ -106,6 +110,9 @@ fn buildSkiaLib(
     lib.addIncludePath(skia_root.path(b, "third_party/externals/expat/expat/lib"));
     lib.addIncludePath(skia_root.path(b, "third_party/externals/freetype/include"));
     lib.addIncludePath(skia_root.path(b, "third_party/externals/harfbuzz/src"));
+
+    // GL shim: stub Emscripten WebGL headers (#include <webgl/webgl1.h> etc.)
+    lib.addIncludePath(b.path("src/zig/gl_shim"));
 
     return lib;
 }

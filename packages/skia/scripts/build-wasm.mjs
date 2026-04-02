@@ -80,7 +80,8 @@ function generateWitBindings() {
   // Generate C headers for Zig @cImport
   if (hasCommand("wit-bindgen")) {
     console.log("\n=== Generating C bindings from WIT ===");
-    run(`wit-bindgen c ${witFile} --world skia-gl --out-dir src/zig/bindings/generated/`);
+    const witDir = resolve(PKG_ROOT, "wit");
+    run(`wit-bindgen c ${witDir} --world skia-gl --out-dir src/zig/bindings/generated/`);
   } else {
     console.log("wit-bindgen not in PATH — using committed C headers.");
   }
@@ -89,7 +90,8 @@ function generateWitBindings() {
   if (jco) {
     console.log("\n=== Generating TypeScript types from WIT ===");
     mkdirSync(resolve(DIST, "types"), { recursive: true });
-    run(`${jco} types ${witFile} -o ${resolve(DIST, "types")}`);
+    const witDir2 = resolve(PKG_ROOT, "wit");
+    run(`${jco} types ${witDir2} --world-name skia-gl -o ${resolve(DIST, "types")}`);
   }
 }
 
