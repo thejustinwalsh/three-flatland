@@ -238,7 +238,11 @@ typedef void* GLsync;
     # Declare all emscripten_gl* as direct WASM imports from "gl" module.
     # No .c shim needed — the import_module attribute makes each declaration
     # a direct WASM import that the JS host satisfies.
-    header_content += '#define GL_IMPORT __attribute__((import_module("gl")))\n\n'
+    header_content += """#ifdef __cplusplus
+extern "C" {
+#endif
+
+"""
 
     for fn in procs:
         if fn not in GL_SIGS:
@@ -249,9 +253,14 @@ typedef void* GLsync;
             param_str = ", ".join(f"{t} {n}" for t, n in params)
         else:
             param_str = "void"
-        header_content += f'GL_IMPORT {ret} emscripten_gl{fn}({param_str});\n'
+        # import_module sets the WASM module name, import_name sets the function name
+        header_content += f'__attribute__((import_module("gl"), import_name("emscripten_gl{fn}"))) {ret} emscripten_gl{fn}({param_str});\n'
 
-    header_content += "\n#undef GL_IMPORT\n"
+    header_content += """
+#ifdef __cplusplus
+}
+#endif
+"""
 
     # Write all 4 stub headers pointing to the same declarations
     for h in ["webgl1.h", "webgl1_ext.h", "webgl2.h", "webgl2_ext.h"]:
