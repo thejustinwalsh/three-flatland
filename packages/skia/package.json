@@ -34,7 +34,8 @@
   "types": "./dist/index.d.ts",
   "files": [
     "dist",
-    "LICENSE"
+    "LICENSE",
+    "THIRD_PARTY_LICENSES"
   ],
   "sideEffects": false,
   "scripts": {
