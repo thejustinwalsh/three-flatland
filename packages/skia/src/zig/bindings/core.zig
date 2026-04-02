@@ -70,11 +70,11 @@ export fn exports_skia_gl_init(_: *c.skia_gl_list_u8_t) void {
     g_ctx = c.sk_context_create_gl();
 }
 
-export fn sk_debug_init_error() i32 {
+export fn skia_debug_init_error() i32 {
     return c.sk_context_get_init_error();
 }
 
-export fn sk_debug_font() i32 {
+export fn skia_debug_font() i32 {
     return c.sk_font_debug();
 }
 
@@ -261,46 +261,46 @@ export fn exports_skia_gl_path_simplify(ph: c.skia_gl_borrow_path_t, ret: *c.ski
 
 // ── Direct paint/font API (bypasses WIT resource model) ──
 
-export fn sk_paint_new() i32 {
+export fn skia_paint_new() i32 {
     const p = c.sk_paint_create();
     if (p == null) return 0;
     return paints.alloc(p);
 }
 
-export fn sk_paint_delete(h: i32) void {
+export fn skia_paint_delete(h: i32) void {
     const p = paints.get(h);
     if (p != null) c.sk_paint_destroy(p);
     paints.free(h);
 }
 
-export fn sk_paint_color(h: i32, r: f32, g: f32, b: f32, a: f32) void {
+export fn skia_paint_color(h: i32, r: f32, g: f32, b: f32, a: f32) void {
     const p = paints.get(h);
     if (p != null) c.sk_paint_set_color(p, r, g, b, a);
 }
 
-export fn sk_paint_set_fill_style(h: i32) void {
+export fn skia_paint_set_fill_style(h: i32) void {
     const p = paints.get(h);
     if (p != null) c.sk_paint_set_fill(p);
 }
 
-export fn sk_paint_set_stroke_style(h: i32, width: f32) void {
+export fn skia_paint_set_stroke_style(h: i32, width: f32) void {
     const p = paints.get(h);
     if (p != null) c.sk_paint_set_stroke(p, width);
 }
 
-export fn sk_typeface_load(data_ptr: [*]const u8, data_len: i32) i32 {
+export fn skia_typeface_load(data_ptr: [*]const u8, data_len: i32) i32 {
     const tf = c.sk_typeface_from_data(data_ptr, data_len);
     if (tf == null) return 0;
     return typefaces.alloc(tf);
 }
 
-export fn sk_typeface_delete(h: i32) void {
+export fn skia_typeface_delete(h: i32) void {
     const tf = typefaces.get(h);
     if (tf != null) c.sk_typeface_destroy(tf);
     typefaces.free(h);
 }
 
-export fn sk_font_new(typeface_h: i32, size: f32) i32 {
+export fn skia_font_new(typeface_h: i32, size: f32) i32 {
     const tf = typefaces.get(typeface_h);
     if (tf == null) return 0;
     const f = c.sk_font_create(tf, size);
@@ -308,19 +308,19 @@ export fn sk_font_new(typeface_h: i32, size: f32) i32 {
     return fonts.alloc(f);
 }
 
-export fn sk_font_delete(h: i32) void {
+export fn skia_font_delete(h: i32) void {
     const f = fonts.get(h);
     if (f != null) c.sk_font_destroy(f);
     fonts.free(h);
 }
 
-export fn sk_measure_text(text_ptr: [*]const u8, text_len: i32, font_h: i32) f32 {
+export fn skia_measure_text(text_ptr: [*]const u8, text_len: i32, font_h: i32) f32 {
     const font = fonts.get(font_h);
     if (font == null) return 0;
     return c.sk_font_measure_text(font, @ptrCast(text_ptr), text_len);
 }
 
-export fn sk_draw_text(text_ptr: [*]const u8, text_len: i32, x: f32, y: f32, font_h: i32, paint_h: i32) void {
+export fn skia_draw_text(text_ptr: [*]const u8, text_len: i32, x: f32, y: f32, font_h: i32, paint_h: i32) void {
     const font = fonts.get(font_h);
     const paint = paints.get(paint_h);
     if (g_canvas != null and font != null and paint != null) {
@@ -328,30 +328,30 @@ export fn sk_draw_text(text_ptr: [*]const u8, text_len: i32, x: f32, y: f32, fon
     }
 }
 
-export fn sk_draw_rect(x: f32, y: f32, w: f32, h: f32, paint_h: i32) void {
+export fn skia_draw_rect(x: f32, y: f32, w: f32, h: f32, paint_h: i32) void {
     const paint = paints.get(paint_h);
     if (g_canvas != null and paint != null) c.sk_canvas_draw_rect(g_canvas, x, y, w, h, paint);
 }
 
-export fn sk_draw_circle(cx: f32, cy: f32, r: f32, paint_h: i32) void {
+export fn skia_draw_circle(cx: f32, cy: f32, r: f32, paint_h: i32) void {
     const paint = paints.get(paint_h);
     if (g_canvas != null and paint != null) c.sk_canvas_draw_circle(g_canvas, cx, cy, r, paint);
 }
 
-export fn sk_draw_line(x0: f32, y0: f32, x1: f32, y1: f32, paint_h: i32) void {
+export fn skia_draw_line(x0: f32, y0: f32, x1: f32, y1: f32, paint_h: i32) void {
     const paint = paints.get(paint_h);
     if (g_canvas != null and paint != null) c.sk_canvas_draw_line(g_canvas, x0, y0, x1, y1, paint);
 }
 
 // Multi-stop linear gradient: colors and stops are arrays in WASM memory
-export fn sk_paint_set_linear_gradient_n(paint_h: i32, x0: f32, y0: f32, x1: f32, y1: f32, colors_ptr: [*]const u32, stops_ptr: [*]const f32, count: i32) void {
+export fn skia_paint_set_linear_gradient_n(paint_h: i32, x0: f32, y0: f32, x1: f32, y1: f32, colors_ptr: [*]const u32, stops_ptr: [*]const f32, count: i32) void {
     const p = paints.get(paint_h);
     if (p != null and count > 0) {
         c.sk_paint_set_linear_gradient(p, x0, y0, x1, y1, colors_ptr, stops_ptr, count);
     }
 }
 
-export fn sk_paint_set_linear_gradient_2(paint_h: i32, x0: f32, y0: f32, x1: f32, y1: f32, c0: u32, c1: u32) void {
+export fn skia_paint_set_linear_gradient_2(paint_h: i32, x0: f32, y0: f32, x1: f32, y1: f32, c0: u32, c1: u32) void {
     const p = paints.get(paint_h);
     if (p != null) {
         const colors = [2]u32{ c0, c1 };
@@ -411,7 +411,200 @@ export fn skia_path_op_combine(a_h: i32, b_h: i32, op: i32) i32 {
     return paths.alloc(result);
 }
 
-export fn sk_draw_round_rect(x: f32, y: f32, w: f32, h: f32, rx: f32, ry: f32, paint_h: i32) void {
+export fn skia_draw_round_rect(x: f32, y: f32, w: f32, h: f32, rx: f32, ry: f32, paint_h: i32) void {
     const paint = paints.get(paint_h);
     if (g_canvas != null and paint != null) c.sk_canvas_draw_round_rect(g_canvas, x, y, w, h, rx, ry, paint);
 }
+
+export fn skia_draw_oval(x: f32, y: f32, w: f32, h: f32, paint_h: i32) void {
+    const paint = paints.get(paint_h);
+    if (g_canvas != null and paint != null) c.sk_canvas_draw_oval(g_canvas, x, y, w, h, paint);
+}
+
+export fn skia_draw_svg(svg_h: i32) void {
+    const s = svgs.get(svg_h);
+    if (s != null and g_canvas != null) c.sk_svg_dom_render(s, g_canvas);
+}
+
+// ── Missing paint properties ──
+
+export fn skia_paint_set_stroke_cap(h: i32, cap: u8) void {
+    const p = paints.get(h);
+    if (p != null) c.sk_paint_set_stroke_cap(p, cap);
+}
+
+export fn skia_paint_set_stroke_join(h: i32, join: u8) void {
+    const p = paints.get(h);
+    if (p != null) c.sk_paint_set_stroke_join(p, join);
+}
+
+export fn skia_paint_set_stroke_miter(h: i32, limit: f32) void {
+    const p = paints.get(h);
+    if (p != null) c.sk_paint_set_stroke_miter(p, limit);
+}
+
+export fn skia_paint_set_anti_alias(h: i32, aa: i32) void {
+    const p = paints.get(h);
+    if (p != null) c.sk_paint_set_anti_alias(p, aa);
+}
+
+export fn skia_paint_set_blend_mode(h: i32, mode: u8) void {
+    const p = paints.get(h);
+    if (p != null) c.sk_paint_set_blend_mode(p, mode);
+}
+
+export fn skia_paint_set_alpha(h: i32, alpha: f32) void {
+    const p = paints.get(h);
+    if (p != null) c.sk_paint_set_alpha(p, alpha);
+}
+
+export fn skia_paint_set_dash(h: i32, intervals_ptr: [*]const f32, count: i32, phase: f32) void {
+    const p = paints.get(h);
+    if (p != null) c.sk_paint_set_dash(p, intervals_ptr, count, phase);
+}
+
+export fn skia_paint_clear_dash(h: i32) void {
+    const p = paints.get(h);
+    if (p != null) c.sk_paint_clear_dash(p);
+}
+
+export fn skia_paint_set_blur(h: i32, sigma: f32) void {
+    const p = paints.get(h);
+    if (p != null) c.sk_paint_set_blur(p, sigma);
+}
+
+export fn skia_paint_clear_blur(h: i32) void {
+    const p = paints.get(h);
+    if (p != null) c.sk_paint_clear_blur(p);
+}
+
+export fn skia_paint_set_radial_gradient(h: i32, cx: f32, cy: f32, r: f32, colors_ptr: [*]const u32, stops_ptr: [*]const f32, count: i32) void {
+    const p = paints.get(h);
+    if (p != null) c.sk_paint_set_radial_gradient(p, cx, cy, r, colors_ptr, stops_ptr, count);
+}
+
+export fn skia_paint_set_sweep_gradient(h: i32, cx: f32, cy: f32, colors_ptr: [*]const u32, stops_ptr: [*]const f32, count: i32) void {
+    const p = paints.get(h);
+    if (p != null) c.sk_paint_set_sweep_gradient(p, cx, cy, colors_ptr, stops_ptr, count);
+}
+
+export fn skia_paint_clear_shader(h: i32) void {
+    const p = paints.get(h);
+    if (p != null) c.sk_paint_clear_shader(p);
+}
+
+// ── Missing path operations ──
+
+export fn skia_path_quad(h: i32, cx: f32, cy: f32, x: f32, y: f32) void {
+    const p = paths.get(h);
+    if (p != null) c.sk_path_quad_to(p, cx, cy, x, y);
+}
+
+export fn skia_path_arc(h: i32, rx: f32, ry: f32, rotation: f32, large: i32, sweep: i32, x: f32, y: f32) void {
+    const p = paths.get(h);
+    if (p != null) c.sk_path_arc_to(p, rx, ry, rotation, large, sweep, x, y);
+}
+
+export fn skia_path_reset(h: i32) void {
+    const p = paths.get(h);
+    if (p != null) c.sk_path_reset(p);
+}
+
+export fn skia_path_from_svg(svg_ptr: [*]const u8, svg_len: i32) i32 {
+    const p = c.sk_path_from_svg_string(@ptrCast(svg_ptr), svg_len);
+    return paths.alloc(p);
+}
+
+export fn skia_path_to_svg(h: i32, buf_ptr: [*]u8, buf_len: i32) i32 {
+    const p = paths.get(h);
+    if (p == null) return 0;
+    return c.sk_path_to_svg_string(p, @ptrCast(buf_ptr), buf_len);
+}
+
+export fn skia_path_simplify(h: i32) i32 {
+    const p = paths.get(h);
+    if (p == null) return 0;
+    return paths.alloc(c.sk_path_simplify(p));
+}
+
+// ── Missing font operations ──
+
+export fn skia_font_set_size(h: i32, size: f32) void {
+    const f = fonts.get(h);
+    if (f != null) c.sk_font_set_size(f, size);
+}
+
+// ── SVG resource management ──
+
+export fn skia_svg_from_string(data_ptr: [*]const u8, data_len: i32) i32 {
+    const s = c.sk_svg_dom_from_string(@ptrCast(data_ptr), data_len);
+    return svgs.alloc(s);
+}
+
+export fn skia_svg_delete(h: i32) void {
+    const s = svgs.get(h);
+    if (s != null) c.sk_svg_dom_destroy(s);
+    svgs.free(h);
+}
+
+export fn skia_svg_get_width(h: i32) f32 {
+    const s = svgs.get(h);
+    if (s == null) return 0;
+    var w: f32 = 0;
+    var _h: f32 = 0;
+    c.sk_svg_dom_get_size(s, &w, &_h);
+    return w;
+}
+
+export fn skia_svg_get_height(h: i32) f32 {
+    const s = svgs.get(h);
+    if (s == null) return 0;
+    var _w: f32 = 0;
+    var height: f32 = 0;
+    c.sk_svg_dom_get_size(s, &_w, &height);
+    return height;
+}
+
+export fn skia_svg_set_size(h: i32, w: f32, height: f32) void {
+    const s = svgs.get(h);
+    if (s != null) c.sk_svg_dom_set_size(s, w, height);
+}
+
+// ── Canvas transform (direct exports) ──
+
+export fn skia_canvas_save() void { if (g_canvas != null) c.sk_canvas_save(g_canvas); }
+export fn skia_canvas_restore() void { if (g_canvas != null) c.sk_canvas_restore(g_canvas); }
+export fn skia_canvas_translate(x: f32, y: f32) void { if (g_canvas != null) c.sk_canvas_translate(g_canvas, x, y); }
+export fn skia_canvas_rotate(degrees: f32) void { if (g_canvas != null) c.sk_canvas_rotate(g_canvas, degrees); }
+export fn skia_canvas_scale(sx: f32, sy: f32) void { if (g_canvas != null) c.sk_canvas_scale(g_canvas, sx, sy); }
+export fn skia_canvas_concat_matrix(m_ptr: [*]const f32, count: i32) void { if (g_canvas != null) c.sk_canvas_concat_matrix(g_canvas, m_ptr, count); }
+
+// ── Canvas clipping (direct exports) ──
+
+export fn skia_canvas_clip_rect(x: f32, y: f32, w: f32, h: f32) void { if (g_canvas != null) c.sk_canvas_clip_rect(g_canvas, x, y, w, h); }
+export fn skia_canvas_clip_round_rect(x: f32, y: f32, w: f32, h: f32, rx: f32, ry: f32) void { if (g_canvas != null) c.sk_canvas_clip_round_rect(g_canvas, x, y, w, h, rx, ry); }
+export fn skia_canvas_clip_path(path_h: i32) void {
+    const path = paths.get(path_h);
+    if (g_canvas != null and path != null) c.sk_canvas_clip_path(g_canvas, path);
+}
+
+// ── Canvas clear (direct export) ──
+
+export fn skia_canvas_clear(r: f32, g: f32, b: f32, a: f32) void { if (g_canvas != null) c.sk_canvas_clear(g_canvas, r, g, b, a); }
+
+// ── Context init/destroy (direct exports matching WIT but simpler signatures) ──
+
+export fn skia_init() void { g_ctx = c.sk_context_create_gl(); }
+export fn skia_destroy() void { exports_skia_gl_destroy(); }
+export fn skia_begin_drawing(fbo_id: u32, width: i32, height: i32) i32 {
+    if (g_ctx == null) return 0;
+    if (g_surface != null) c.sk_surface_destroy(g_surface);
+    g_surface = c.sk_surface_create_from_fbo(g_ctx, fbo_id, width, height);
+    if (g_surface == null) return 0;
+    g_canvas = c.sk_surface_get_canvas(g_surface);
+    if (g_canvas == null) return 0;
+    return 1;
+}
+export fn skia_end_drawing() void { if (g_surface != null) c.sk_surface_flush(g_surface); }
+export fn skia_flush() void { if (g_ctx != null) c.sk_context_flush(g_ctx); }
+export fn skia_reset_gl_state() void { if (g_ctx != null) c.sk_context_reset_gl_state(g_ctx); }

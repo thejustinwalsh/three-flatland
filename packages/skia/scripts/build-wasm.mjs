@@ -47,7 +47,15 @@ const witOnly = args.includes("--wit-only");
 
 // Augment PATH with local .tools/bin for pinned tool versions
 const TOOLS_BIN = resolve(PKG_ROOT, ".tools/bin");
-const augmentedEnv = { ...process.env, PATH: `${TOOLS_BIN}:${process.env.PATH}` };
+const augmentedEnv = {
+  ...process.env,
+  PATH: `${TOOLS_BIN}:${process.env.PATH}`,
+  // WSL2: Zig's cache needs atomic renames which fail on NTFS (/mnt/).
+  // Redirect to a native Linux tmpdir if we detect WSL.
+  ...(process.env.WSL_DISTRO_NAME && !process.env.ZIG_LOCAL_CACHE_DIR
+    ? { ZIG_LOCAL_CACHE_DIR: `/tmp/skia-zig-cache` }
+    : {}),
+};
 
 /** Run a command, printing it first. */
 function run(cmd, opts = {}) {
