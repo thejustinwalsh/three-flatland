@@ -6,8 +6,8 @@ pub fn build(b: *std.Build) void {
         .cpu_arch = .wasm32,
         .os_tag = .wasi,
     };
-    // Enable tail-call — required by Skia's raster pipeline (skcms, SkRasterPipeline_opts)
-    wasm_query.cpu_features_add = std.Target.wasm.featureSet(&.{.tail_call});
+    // Enable tail-call (Skia raster pipeline) + exception-handling (FreeType setjmp/longjmp)
+    wasm_query.cpu_features_add = std.Target.wasm.featureSet(&.{ .tail_call, .exception_handling });
     const wasm_target = b.resolveTargetQuery(wasm_query);
 
     const optimize = b.standardOptimizeOption(.{});
@@ -20,9 +20,63 @@ pub fn build(b: *std.Build) void {
     const skia_pathops = buildSkiaLib(b, "skia-pathops", skia_sources.pathops_files, skia_root, wasm_target, optimize);
     const skia_svg = buildSkiaLib(b, "skia-svg", skia_sources.svg_files, skia_root, wasm_target, optimize);
     const skia_skshaper = buildSkiaLib(b, "skia-skshaper", skia_sources.skshaper_files, skia_root, wasm_target, optimize);
-    // text_files requires FreeType which uses setjmp — blocked by WASM exception handling
-    // TODO: Enable once Zig's WASM target supports setjmp/longjmp
-    // const skia_text = buildSkiaLib(b, "skia-text", skia_sources.text_files, skia_root, wasm_target, optimize);
+    const skia_text = buildSkiaLib(b, "skia-text", skia_sources.text_files, skia_root, wasm_target, optimize);
+
+    // FreeType — C library, needs separate flags (no -std=c++20, no -fno-rtti)
+    const skia_freetype = b.addLibrary(.{
+        .name = "freetype2",
+        .root_module = b.createModule(.{
+            .target = wasm_target,
+            .optimize = optimize,
+        }),
+    });
+    skia_freetype.addCSourceFiles(.{
+        .root = skia_root,
+        .files = &.{
+            "third_party/externals/freetype/src/autofit/autofit.c",
+            "third_party/externals/freetype/src/base/ftbase.c",
+            "third_party/externals/freetype/src/base/ftbbox.c",
+            "third_party/externals/freetype/src/base/ftbitmap.c",
+            "third_party/externals/freetype/src/base/ftdebug.c",
+            "third_party/externals/freetype/src/base/ftfstype.c",
+            "third_party/externals/freetype/src/base/ftgasp.c",
+            "third_party/externals/freetype/src/base/ftglyph.c",
+            "third_party/externals/freetype/src/base/ftinit.c",
+            "third_party/externals/freetype/src/base/ftmm.c",
+            "third_party/externals/freetype/src/base/ftpatent.c",
+            "third_party/externals/freetype/src/base/ftstroke.c",
+            "third_party/externals/freetype/src/base/ftsynth.c",
+            "third_party/externals/freetype/src/base/ftsystem.c",
+            "third_party/externals/freetype/src/base/fttype1.c",
+            "third_party/externals/freetype/src/base/ftwinfnt.c",
+            "third_party/externals/freetype/src/cff/cff.c",
+            "third_party/externals/freetype/src/cid/type1cid.c",
+            "third_party/externals/freetype/src/gzip/ftgzip.c",
+            "third_party/externals/freetype/src/psaux/psaux.c",
+            "third_party/externals/freetype/src/pshinter/pshinter.c",
+            "third_party/externals/freetype/src/psnames/psnames.c",
+            "third_party/externals/freetype/src/raster/raster.c",
+            "third_party/externals/freetype/src/sfnt/sfnt.c",
+            "third_party/externals/freetype/src/smooth/smooth.c",
+            "third_party/externals/freetype/src/svg/svg.c",
+            "third_party/externals/freetype/src/truetype/truetype.c",
+            "third_party/externals/freetype/src/type1/type1.c",
+        },
+        .flags = &.{
+            "-DFT2_BUILD_LIBRARY",
+            "-DNDEBUG",
+            "-DSK_FREETYPE_MINIMUM_RUNTIME_VERSION_IS_BUILD_VERSION=1",
+            "-DFT_CONFIG_MODULES_H=<freetype-no-type1/freetype/config/ftmodule.h>",
+            // Use default ftoption.h (no PNG/brotli deps) — Skia's custom one enables features we don't need
+            "-mexception-handling",
+            "-mllvm",
+            "-wasm-enable-sjlj",
+        },
+    });
+    skia_freetype.linkLibC();
+    skia_freetype.addIncludePath(skia_root.path(b, "third_party/externals/freetype/include"));
+    skia_freetype.addIncludePath(skia_root.path(b, "third_party/freetype2/include")); // custom ftmodule.h
+    skia_freetype.addIncludePath(skia_root);
 
     // ── Variant 1: WebGL (core + gpu + gl + pathops + Zig bindings) ──
     const gl_variant = b.addExecutable(.{
@@ -36,6 +90,15 @@ pub fn build(b: *std.Build) void {
     gl_variant.rdynamic = true;
     // Allow GL imports to be unresolved at link time — JS provides them
     gl_variant.import_symbols = true;
+    // FreeType allocates ~16 MB on init; ensure enough initial heap
+    gl_variant.initial_memory = 64 * 1024 * 1024; // 64 MB
+    gl_variant.max_memory = 256 * 1024 * 1024; // 256 MB max
+
+    // WASM setjmp/longjmp runtime (needed by FreeType via exception handling)
+    gl_variant.addCSourceFile(.{
+        .file = b.path("src/zig/wasm_sjlj_rt.c"),
+        .flags = &.{ "-mexception-handling" },
+    });
 
     // Skia C API wrapper (C++ → C bridge)
     const skia_cpp_flags: []const []const u8 = &.{
@@ -53,6 +116,12 @@ pub fn build(b: *std.Build) void {
     };
     gl_variant.addCSourceFile(.{
         .file = b.path("src/zig/skia_c_api.cpp"),
+        .flags = skia_cpp_flags,
+    });
+    // Custom font manager — creates typefaces from raw font data
+    gl_variant.addCSourceFiles(.{
+        .root = skia_root,
+        .files = &.{ "src/ports/SkFontMgr_custom.cpp", "src/ports/SkFontMgr_custom_embedded.cpp" },
         .flags = skia_cpp_flags,
     });
     gl_variant.addIncludePath(skia_root);
@@ -85,6 +154,8 @@ pub fn build(b: *std.Build) void {
     gl_variant.linkLibrary(skia_pathops);
     gl_variant.linkLibrary(skia_svg);
     gl_variant.linkLibrary(skia_skshaper);
+    gl_variant.linkLibrary(skia_text);
+    gl_variant.linkLibrary(skia_freetype);
     b.installArtifact(gl_variant);
 
     // ── Variant 2: WebGPU (TODO) ──
@@ -119,6 +190,10 @@ fn buildSkiaLib(
         "-fno-rtti",
         // WASM features needed by Skia's raster pipeline
         "-mtail-call",
+        // Exception handling — required for FreeType's setjmp/longjmp usage
+        "-mexception-handling",
+        "-mllvm",
+        "-wasm-enable-sjlj",
         // Platform: tell Skia we're targeting WASM (not Unix/Mac/Win)
         "-DSK_BUILD_FOR_WASM",
         // WASM-specific (from GN is_wasm config)

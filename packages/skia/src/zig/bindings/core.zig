@@ -63,6 +63,10 @@ export fn sk_debug_init_error() i32 {
     return c.sk_context_get_init_error();
 }
 
+export fn sk_debug_font() i32 {
+    return c.sk_font_debug();
+}
+
 export fn exports_skia_gl_destroy() void {
     if (g_surface != null) {
         c.sk_surface_destroy(g_surface);
@@ -242,4 +246,153 @@ export fn exports_skia_gl_path_simplify(ph: c.skia_gl_borrow_path_t, ret: *c.ski
     if (result == null) return false;
     ret.__handle = paths.alloc(result);
     return ret.__handle != 0;
+}
+
+// ── Direct paint/font API (bypasses WIT resource model) ──
+
+export fn sk_paint_new() i32 {
+    const p = c.sk_paint_create();
+    if (p == null) return 0;
+    return paints.alloc(p);
+}
+
+export fn sk_paint_delete(h: i32) void {
+    const p = paints.get(h);
+    if (p != null) c.sk_paint_destroy(p);
+    paints.free(h);
+}
+
+export fn sk_paint_color(h: i32, r: f32, g: f32, b: f32, a: f32) void {
+    const p = paints.get(h);
+    if (p != null) c.sk_paint_set_color(p, r, g, b, a);
+}
+
+export fn sk_paint_set_fill_style(h: i32) void {
+    const p = paints.get(h);
+    if (p != null) c.sk_paint_set_fill(p);
+}
+
+export fn sk_paint_set_stroke_style(h: i32, width: f32) void {
+    const p = paints.get(h);
+    if (p != null) c.sk_paint_set_stroke(p, width);
+}
+
+export fn sk_typeface_load(data_ptr: [*]const u8, data_len: i32) i32 {
+    const tf = c.sk_typeface_from_data(data_ptr, data_len);
+    if (tf == null) return 0;
+    return typefaces.alloc(tf);
+}
+
+export fn sk_typeface_delete(h: i32) void {
+    const tf = typefaces.get(h);
+    if (tf != null) c.sk_typeface_destroy(tf);
+    typefaces.free(h);
+}
+
+export fn sk_font_new(typeface_h: i32, size: f32) i32 {
+    const tf = typefaces.get(typeface_h);
+    if (tf == null) return 0;
+    const f = c.sk_font_create(tf, size);
+    if (f == null) return 0;
+    return fonts.alloc(f);
+}
+
+export fn sk_font_delete(h: i32) void {
+    const f = fonts.get(h);
+    if (f != null) c.sk_font_destroy(f);
+    fonts.free(h);
+}
+
+export fn sk_measure_text(text_ptr: [*]const u8, text_len: i32, font_h: i32) f32 {
+    const font = fonts.get(font_h);
+    if (font == null) return 0;
+    return c.sk_font_measure_text(font, @ptrCast(text_ptr), text_len);
+}
+
+export fn sk_draw_text(text_ptr: [*]const u8, text_len: i32, x: f32, y: f32, font_h: i32, paint_h: i32) void {
+    const font = fonts.get(font_h);
+    const paint = paints.get(paint_h);
+    if (g_canvas != null and font != null and paint != null) {
+        c.sk_canvas_draw_text(g_canvas, @ptrCast(text_ptr), text_len, x, y, font, paint);
+    }
+}
+
+export fn sk_draw_rect(x: f32, y: f32, w: f32, h: f32, paint_h: i32) void {
+    const paint = paints.get(paint_h);
+    if (g_canvas != null and paint != null) c.sk_canvas_draw_rect(g_canvas, x, y, w, h, paint);
+}
+
+export fn sk_draw_circle(cx: f32, cy: f32, r: f32, paint_h: i32) void {
+    const paint = paints.get(paint_h);
+    if (g_canvas != null and paint != null) c.sk_canvas_draw_circle(g_canvas, cx, cy, r, paint);
+}
+
+export fn sk_draw_line(x0: f32, y0: f32, x1: f32, y1: f32, paint_h: i32) void {
+    const paint = paints.get(paint_h);
+    if (g_canvas != null and paint != null) c.sk_canvas_draw_line(g_canvas, x0, y0, x1, y1, paint);
+}
+
+export fn sk_paint_set_linear_gradient_2(paint_h: i32, x0: f32, y0: f32, x1: f32, y1: f32, c0: u32, c1: u32) void {
+    const p = paints.get(paint_h);
+    if (p != null) {
+        const colors = [2]u32{ c0, c1 };
+        const stops = [2]f32{ 0.0, 1.0 };
+        c.sk_paint_set_linear_gradient(p, x0, y0, x1, y1, &colors, &stops, 2);
+    }
+}
+
+// ── Path API ──
+
+export fn skia_path_new() i32 {
+    const p = c.sk_path_create();
+    if (p == null) return 0;
+    return paths.alloc(p);
+}
+
+export fn skia_path_delete(h: i32) void {
+    const p = paths.get(h);
+    if (p != null) c.sk_path_destroy(p);
+    paths.free(h);
+}
+
+export fn skia_path_move(h: i32, x: f32, y: f32) void {
+    const p = paths.get(h);
+    if (p != null) c.sk_path_move_to(p, x, y);
+}
+
+export fn skia_path_line(h: i32, x: f32, y: f32) void {
+    const p = paths.get(h);
+    if (p != null) c.sk_path_line_to(p, x, y);
+}
+
+export fn skia_path_cubic(h: i32, c1x: f32, c1y: f32, c2x: f32, c2y: f32, x: f32, y: f32) void {
+    const p = paths.get(h);
+    if (p != null) c.sk_path_cubic_to(p, c1x, c1y, c2x, c2y, x, y);
+}
+
+export fn skia_path_close(h: i32) void {
+    const p = paths.get(h);
+    if (p != null) c.sk_path_close(p);
+}
+
+export fn skia_draw_path(path_h: i32, paint_h: i32) void {
+    const path = paths.get(path_h);
+    const paint = paints.get(paint_h);
+    if (g_canvas != null and path != null and paint != null) c.sk_canvas_draw_path(g_canvas, path, paint);
+}
+
+// PathOps — boolean operations (union, intersect, difference, xor)
+// op: 0=difference, 1=intersect, 2=union, 3=xor, 4=reverse_difference
+export fn skia_path_op_combine(a_h: i32, b_h: i32, op: i32) i32 {
+    const a = paths.get(a_h);
+    const b = paths.get(b_h);
+    if (a == null or b == null) return 0;
+    const result = c.sk_path_op(a, b, op);
+    if (result == null) return 0;
+    return paths.alloc(result);
+}
+
+export fn sk_draw_round_rect(x: f32, y: f32, w: f32, h: f32, rx: f32, ry: f32, paint_h: i32) void {
+    const paint = paints.get(paint_h);
+    if (g_canvas != null and paint != null) c.sk_canvas_draw_round_rect(g_canvas, x, y, w, h, rx, ry, paint);
 }

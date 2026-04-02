@@ -355,21 +355,31 @@ static sk_sp<SkFontMgr> g_font_mgr;
 
 static SkFontMgr* get_font_mgr() {
     if (!g_font_mgr) {
-#if HAS_FONTMGR_DATA
+        // Custom data font manager — creates typefaces from raw font data (TTF/OTF)
+        // No system font enumeration, suitable for WASM
         g_font_mgr = SkFontMgr_New_Custom_Data(SkSpan<sk_sp<SkData>>());
-#else
-        g_font_mgr = SkFontMgr::RefEmpty();
-#endif
     }
     return g_font_mgr.get();
 }
 
+static int g_font_debug = 0;
+
 sk_typeface_t sk_typeface_from_data(const uint8_t* data, int len) {
+    g_font_debug = 1; // entered
+    if (!data || len <= 0) { g_font_debug = 2; return nullptr; }
+    auto* mgr = get_font_mgr();
+    if (!mgr) { g_font_debug = 3; return nullptr; } // font mgr null
+    g_font_debug = 4; // mgr ok
     auto skdata = SkData::MakeWithCopy(data, len);
-    sk_sp<SkTypeface> tf = get_font_mgr()->makeFromData(skdata);
-    if (!tf) return nullptr;
+    if (!skdata) { g_font_debug = 5; return nullptr; }
+    g_font_debug = 6; // data copied
+    sk_sp<SkTypeface> tf = mgr->makeFromData(skdata);
+    if (!tf) { g_font_debug = 7; return nullptr; } // makeFromData failed
+    g_font_debug = 8; // success
     return reinterpret_cast<sk_typeface_t>(tf.release());
 }
+
+int sk_font_debug(void) { return g_font_debug; }
 
 void sk_typeface_destroy(sk_typeface_t typeface) {
     if (typeface) as_typeface(typeface)->unref();

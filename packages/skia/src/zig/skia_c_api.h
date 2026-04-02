@@ -26,6 +26,7 @@ typedef void* sk_svg_dom_t;
 
 sk_context_t sk_context_create_gl(void);
 int sk_context_get_init_error(void);  // 0=ok, 1=MakeWebGL failed, 2=MakeGL failed
+int sk_font_debug(void);
 void sk_context_destroy(sk_context_t ctx);
 void sk_context_flush(sk_context_t ctx);
 void sk_context_reset_gl_state(sk_context_t ctx);

@@ -30,6 +30,7 @@ const log = document.getElementById('log');
 const L = (cls, msg) => { log.innerHTML += `<span class="${cls}">${msg}</span>\n`; log.scrollTop = log.scrollHeight; };
 const ok = (msg) => L('ok', `[ok]  ${msg}`);
 const err = (msg) => L('err', `[err] ${msg}`);
+const warn = (msg) => L('err', `[!!] ${msg}`);
 const info = (msg) => L('info', `[..] ${msg}`);
 
 async function run() {
@@ -55,21 +56,19 @@ async function run() {
   const writeU32 = (ptr, val) => view().setUint32(ptr, val, true);
   const readU32 = (ptr) => view().getUint32(ptr, true);
 
-  // ── Static string pool for glGetString ──
-  // We allocate a small region at a high offset to store GL strings.
-  // These persist for the lifetime of the WASM instance.
-  const STRING_POOL_BASE = 0xF0000; // 960KB offset — safe above data segments
-  let stringPoolOffset = STRING_POOL_BASE;
+  // ── String/data allocation via WASM's own allocator ──
   const stringPtrs = new Map();
+
+  // Use cabi_realloc (WIT canonical ABI allocator) once WASM is instantiated
+  const wasmAlloc = (size) => {
+    return wasm.instance.exports.cabi_realloc(0, 0, 1, size);
+  };
 
   const allocString = (str) => {
     if (stringPtrs.has(str)) return stringPtrs.get(str);
-    const ptr = stringPoolOffset;
     const bytes = new TextEncoder().encode(str + '\0');
+    const ptr = wasmAlloc(bytes.length);
     new Uint8Array(memory.buffer, ptr, bytes.length).set(bytes);
-    stringPoolOffset += bytes.length;
-    // Align to 4 bytes
-    stringPoolOffset = (stringPoolOffset + 3) & ~3;
     stringPtrs.set(str, ptr);
     return ptr;
   };
@@ -354,28 +353,32 @@ async function run() {
 
     wasm = await WebAssembly.instantiate(bytes, {
       gl: glImports,
-      env: {
-        _Z11SkLogVAList13SkLogPriorityPKcPv() {},
-        _ZN13SkFlattenable18PrivateInitializer11InitEffectsEv() {},
-        _ZN13SkFlattenable18PrivateInitializer16InitImageFiltersEv() {},
-        sem_init() { return 0; },
-        sem_destroy() { return 0; },
-        sem_post() { return 0; },
-        sem_wait() { return 0; },
-      },
-      wasi_snapshot_preview1: {
-        args_get() { return 0; },
-        args_sizes_get() { return 0; },
-        clock_time_get() { return 0; },
-        environ_get() { return 0; },
-        environ_sizes_get() { return 0; },
-        fd_close() { return 0; },
-        fd_prestat_get() { return 8; },
-        fd_prestat_dir_name() { return 8; },
-        fd_seek() { return 0; },
-        fd_write() { return 0; },
-        proc_exit() {},
-      },
+      env: new Proxy({}, { get: (_, name) => {
+        // All env imports are stubs — Skia's file I/O, logging, threading, etc.
+        // Return 0/null for everything. Specific overrides can be added as needed.
+        return (...args) => 0;
+      }}),
+      wasi_snapshot_preview1: new Proxy({}, { get: (_, name) => {
+        // WASI stubs — most return 0 (success), fd ops return EBADF/ENOENT
+        const fdStubs = { fd_prestat_get: 8, fd_prestat_dir_name: 8, fd_fdstat_get: 8, fd_filestat_get: 8, path_open: 44, path_filestat_get: 44 };
+        if (name in fdStubs) return () => fdStubs[name];
+        if (name === 'proc_exit') return () => { throw new Error('WASI proc_exit called'); };
+        // environ_sizes_get(count_ptr, size_ptr) — must write 0 to both pointers
+        if (name === 'environ_sizes_get') return (countPtr, sizePtr) => {
+          const v = () => new DataView(memory.buffer);
+          v().setUint32(countPtr, 0, true);
+          v().setUint32(sizePtr, 0, true);
+          return 0;
+        };
+        // args_sizes_get(argc_ptr, argv_buf_size_ptr)
+        if (name === 'args_sizes_get') return (argcPtr, sizePtr) => {
+          const v = () => new DataView(memory.buffer);
+          v().setUint32(argcPtr, 0, true);
+          v().setUint32(sizePtr, 0, true);
+          return 0;
+        };
+        return (...args) => 0;
+      }}),
     });
     ok('WASM instantiated');
   } catch (e) {
@@ -422,7 +425,7 @@ async function run() {
   // ── Test: Begin drawing to FBO 0 (canvas framebuffer) ──
   info('Calling begin_drawing(fbo=0, 512, 512)...');
   try {
-    const retPtr = STRING_POOL_BASE - 256; // safe scratch area
+    const retPtr = wasmAlloc(32); // scratch area for return values
     const result = exports.exports_skia_gl_begin_drawing(0, 512, 512, retPtr);
     if (result) {
       ok('begin_drawing succeeded');
@@ -442,39 +445,157 @@ async function run() {
     return;
   }
 
-  // ── Draw something worth looking at ──
+  // ── Draw ──
   info('Drawing...');
-
-  // Clear to near-black
   exports.exports_skia_gl_canvas_clear(0.06, 0.06, 0.1, 1.0);
 
-  // We need paint handles — use the WIT resource constructors if available,
-  // or call the C API directly. The exports should include paint lifecycle.
-  // For now, test what we can with canvas_clear + save/restore/translate.
+  // Create paints
+  const fillPaint = exports.sk_paint_new();
+  const strokePaint = exports.sk_paint_new();
+  exports.sk_paint_set_fill_style(fillPaint);
+  exports.sk_paint_set_stroke_style(strokePaint, 2.0);
 
-  // Draw a grid of colored rectangles using multiple clear calls with clipping
-  const W = 512, H = 512;
-  const cols = 8, rows = 8;
-  const cellW = W / cols, cellH = H / rows;
-
-  for (let r = 0; r < rows; r++) {
-    for (let c = 0; c < cols; c++) {
-      exports.exports_skia_gl_canvas_save();
-      const x = c * cellW + 2, y = r * cellH + 2;
-      const w = cellW - 4, h = cellH - 4;
-      exports.exports_skia_gl_canvas_clip_rect(x, y, w, h);
-
-      // Generate a color gradient across the grid
-      const t = (r * cols + c) / (rows * cols);
-      const red = 0.1 + 0.6 * Math.sin(t * Math.PI * 2);
-      const green = 0.1 + 0.6 * Math.sin(t * Math.PI * 2 + 2.1);
-      const blue = 0.2 + 0.6 * Math.sin(t * Math.PI * 2 + 4.2);
-      exports.exports_skia_gl_canvas_clear(red, green, blue, 1.0);
-      exports.exports_skia_gl_canvas_restore();
-    }
+  // Draw colored rectangles
+  const colors = [
+    [0.9, 0.3, 0.3], [0.3, 0.9, 0.4], [0.3, 0.5, 0.9],
+    [0.9, 0.7, 0.2], [0.7, 0.3, 0.9], [0.2, 0.8, 0.8],
+  ];
+  for (let i = 0; i < colors.length; i++) {
+    const [r, g, b] = colors[i];
+    exports.sk_paint_color(fillPaint, r, g, b, 1.0);
+    exports.sk_draw_round_rect(30 + i * 78, 30, 68, 68, 10, 10, fillPaint);
   }
 
-  ok('Drew 8x8 color grid');
+  // Draw circles
+  for (let i = 0; i < 8; i++) {
+    const t = i / 8;
+    exports.sk_paint_color(fillPaint, 0.2 + 0.6 * t, 0.4, 0.9 - 0.6 * t, 0.8);
+    exports.sk_draw_circle(64 + i * 56, 140, 18, fillPaint);
+  }
+
+  // Draw stroked frame with lines
+  exports.sk_paint_color(strokePaint, 1.0, 1.0, 1.0, 0.3);
+  exports.sk_draw_rect(20, 170, 472, 100, strokePaint);
+  exports.sk_draw_round_rect(28, 176, 456, 88, 10, 10, strokePaint);
+
+  for (let i = 0; i < 9; i++) {
+    const t = i / 9;
+    exports.sk_paint_color(strokePaint, 0.5 + 0.5 * t, 0.8 - 0.3 * t, 0.3 + 0.5 * t, 0.6);
+    exports.sk_draw_line(36, 184 + i * 9, 472, 184 + i * 9, strokePaint);
+  }
+
+  // Draw gradient bars
+  const gradPaint = exports.sk_paint_new();
+  exports.sk_paint_set_fill_style(gradPaint);
+  const gradColors = [
+    [0xFFFF4444, 0xFF4444FF],
+    [0xFF44FF44, 0xFFFF44FF],
+    [0xFFFFAA00, 0xFF00AAFF],
+    [0xFF4488FF, 0xFFFF8844],
+  ];
+  for (let i = 0; i < gradColors.length; i++) {
+    const y = 284 + i * 22;
+    exports.sk_paint_set_linear_gradient_2(gradPaint, 30, y, 482, y, gradColors[i][0], gradColors[i][1]);
+    exports.sk_draw_round_rect(30, y, 452, 16, 4, 4, gradPaint);
+  }
+  exports.sk_paint_delete(gradPaint);
+
+  // Draw text (load a font first)
+  info('Loading font...');
+  try {
+    // Inter variable font (TTF)
+    const fontUrl = 'https://cdn.jsdelivr.net/gh/rsms/inter@v4.1/docs/font-files/InterVariable.ttf';
+    const fontResp = await fetch(fontUrl);
+    const fontData = new Uint8Array(await fontResp.arrayBuffer());
+
+    const fontPtr = wasmAlloc(fontData.length);
+    new Uint8Array(memory.buffer, fontPtr, fontData.length).set(fontData);
+
+    info(`Font data: ${fontData.length} bytes, ptr=${fontPtr}, memory=${memory.buffer.byteLength}`);
+    const typefaceH = exports.sk_typeface_load(fontPtr, fontData.length);
+    if (typefaceH) {
+      ok(`Font loaded (typeface handle: ${typefaceH})`);
+
+      const fontH = exports.sk_font_new(typefaceH, 32);
+      // Title — clean white
+      const textPaint = exports.sk_paint_new();
+      exports.sk_paint_set_fill_style(textPaint);
+      exports.sk_paint_color(textPaint, 1.0, 1.0, 1.0, 1.0);
+
+      const drawCentered = (str, y, font, paint) => {
+        const bytes = new TextEncoder().encode(str);
+        const ptr = wasmAlloc(bytes.length);
+        new Uint8Array(memory.buffer, ptr, bytes.length).set(bytes);
+        const w = exports.sk_measure_text(ptr, bytes.length, font);
+        exports.sk_draw_text(ptr, bytes.length, (512 - w) / 2, y, font, paint);
+      };
+
+      drawCentered('@three-flatland/skia', 466, fontH, textPaint);
+
+      // Subtitle — gradient fill (impossible with Canvas API)
+      const font2 = exports.sk_font_new(typefaceH, 14);
+      exports.sk_paint_set_linear_gradient_2(textPaint, 80, 0, 440, 0, 0xFF44AAFF, 0xFFFF44AA);
+      drawCentered('GPU-accelerated vector graphics in the browser', 490, font2, textPaint);
+      exports.sk_paint_delete(textPaint);
+
+      exports.sk_font_delete(font2);
+      exports.sk_font_delete(fontH);
+      exports.sk_typeface_delete(typefaceH);
+      ok('Drew text with Inter font');
+    } else {
+      const dbg = exports.sk_debug_font?.() ?? -1;
+      const msg = {1:'entered',2:'bad data',3:'font mgr null',4:'mgr ok',5:'copy failed',6:'data copied',7:'makeFromData returned null'}[dbg] || `code=${dbg}`;
+      warn(`Typeface creation failed: ${msg}`);
+    }
+  } catch (e) {
+    warn(`Font loading failed: ${e.message}`);
+    if (e.stack) info(e.stack.split('\n').slice(0, 5).join('\n'));
+  }
+
+  // ── PathOps demo (impossible in Canvas API) ──
+  // Two overlapping circle paths → boolean operations
+  const makeCirclePath = (cx, cy, r, steps = 64) => {
+    const p = exports.skia_path_new();
+    for (let i = 0; i <= steps; i++) {
+      const a = (i / steps) * Math.PI * 2;
+      const x = cx + Math.cos(a) * r, y = cy + Math.sin(a) * r;
+      if (i === 0) exports.skia_path_move(p, x, y);
+      else exports.skia_path_line(p, x, y);
+    }
+    exports.skia_path_close(p);
+    return p;
+  };
+
+  const ops = [
+    { op: 0, label: 'Difference', color: [0.9, 0.3, 0.3] },
+    { op: 1, label: 'Intersect',  color: [0.3, 0.9, 0.4] },
+    { op: 2, label: 'Union',      color: [0.3, 0.5, 0.9] },
+    { op: 3, label: 'XOR',        color: [0.9, 0.7, 0.2] },
+  ];
+
+  for (let i = 0; i < ops.length; i++) {
+    const cx = 75 + i * 120;
+    const a = makeCirclePath(cx - 12, 400, 26);
+    const b = makeCirclePath(cx + 12, 400, 26);
+    const result = exports.skia_path_op_combine(a, b, ops[i].op);
+    if (result) {
+      exports.sk_paint_color(fillPaint, ...ops[i].color, 0.9);
+      exports.skia_draw_path(result, fillPaint);
+      exports.skia_path_delete(result);
+    }
+    // Draw ghost outlines of original circles
+    exports.sk_paint_color(strokePaint, 1.0, 1.0, 1.0, 0.15);
+    exports.skia_draw_path(a, strokePaint);
+    exports.skia_draw_path(b, strokePaint);
+    exports.skia_path_delete(a);
+    exports.skia_path_delete(b);
+  }
+  ok('Drew PathOps (Difference, Intersect, Union, XOR)');
+
+  // Clean up paints
+  exports.sk_paint_delete(fillPaint);
+  exports.sk_paint_delete(strokePaint);
+  ok('Drawing complete');
 
   // ── End drawing ──
   exports.exports_skia_gl_end_drawing();
