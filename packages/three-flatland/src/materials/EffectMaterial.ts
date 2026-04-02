@@ -1,8 +1,39 @@
 import { MeshBasicNodeMaterial } from 'three/webgpu'
-import { attribute, vec2, vec3, vec4, float, Fn, mix, floor, mod } from 'three/tsl'
+import { attribute, vec2, vec3, vec4, float, Fn, mix, floor, mod, positionWorld } from 'three/tsl'
 import type Node from 'three/src/nodes/core/Node.js'
+import type { Texture } from 'three'
 import type { InstanceAttributeConfig, InstanceAttributeType } from '../pipeline/types'
-import type { MaterialEffect, EffectSchemaValue, SchemaToNodeType } from './MaterialEffect'
+import type { MaterialEffect, EffectSchemaValue, SchemaToNodeType, ChannelNodeContext } from './MaterialEffect'
+import { channelDefaults } from './channels'
+
+/**
+ * System flags (lit, receiveShadows) occupy the lowest bits of the effect flags bitmask.
+ * MaterialEffect enable bits start at this offset to avoid collision.
+ * Must match EFFECT_BIT_OFFSET in Sprite2D.ts.
+ */
+const EFFECT_BIT_OFFSET = 2
+
+// ============================================
+// Color Transform Types
+// ============================================
+
+/**
+ * Context passed to colorTransform callbacks.
+ */
+export interface ColorTransformContext {
+  /** Base sampled + tinted color (vec4) */
+  color: Node<'vec4'>
+  /** UV after flip + atlas remap */
+  atlasUV: Node<'vec2'>
+  /** World position XY (works with instancing via positionWorld) */
+  worldPosition: Node<'vec2'>
+}
+
+/**
+ * A function that transforms the base sprite color.
+ * Receives the base color and context, returns modified color (vec4).
+ */
+export type ColorTransformFn = (ctx: ColorTransformContext) => Node<'vec4'>
 
 /**
  * Compute the buffer tier for a given float count.
@@ -82,6 +113,13 @@ export class EffectMaterial extends MeshBasicNodeMaterial {
    */
   _effects: (typeof MaterialEffect)[] = []
 
+  /**
+   * Stored constants per effect (keyed by effect name).
+   * Used by _rebuildColorNode to pass constants to channelNode and _node.
+   * @internal
+   */
+  _effectConstants: Map<string, Record<string, unknown>> = new Map()
+
   // ============================================
   // PACKED EFFECT BUFFER STATE
   // ============================================
@@ -128,6 +166,18 @@ export class EffectMaterial extends MeshBasicNodeMaterial {
    */
   _effectSchemaVersion: number = 0
 
+  /**
+   * Color transform function (e.g., lighting).
+   * @internal
+   */
+  protected _colorTransform: ColorTransformFn | null = null
+
+  /**
+   * Set of per-fragment channel names required by the active colorTransform.
+   * @internal
+   */
+  protected _requiredChannels: ReadonlySet<string> = new Set()
+
   constructor(options: EffectMaterialOptions = {}) {
     super()
 
@@ -137,6 +187,46 @@ export class EffectMaterial extends MeshBasicNodeMaterial {
 
     // Allocate effect buffer attributes for the initial tier
     this._rebuildEffectBufferAttributes()
+  }
+
+  /**
+   * Get the color transform function.
+   */
+  get colorTransform(): ColorTransformFn | null {
+    return this._colorTransform
+  }
+
+  /**
+   * Set the color transform function.
+   * Triggers shader rebuild.
+   */
+  set colorTransform(value: ColorTransformFn | null) {
+    if (this._colorTransform === value) return
+    this._colorTransform = value
+    if (this._canBuildColor()) {
+      this._rebuildColorNode()
+      this.needsUpdate = true
+    }
+  }
+
+  /**
+   * Get the required channels set.
+   */
+  get requiredChannels(): ReadonlySet<string> {
+    return this._requiredChannels
+  }
+
+  /**
+   * Set the required channels.
+   * Triggers shader rebuild when channels change.
+   */
+  set requiredChannels(value: ReadonlySet<string>) {
+    if (this._requiredChannels === value) return
+    this._requiredChannels = value
+    if (this._canBuildColor()) {
+      this._rebuildColorNode()
+      this.needsUpdate = true
+    }
   }
 
   // ============================================
@@ -149,18 +239,24 @@ export class EffectMaterial extends MeshBasicNodeMaterial {
    * If the effect is already registered, this is a no-op.
    *
    * @param effectClass - The MaterialEffect subclass to register
+   * @param constants - Optional constants from the effect instance (for provider effects)
    * @returns Whether the buffer tier changed (requiring batch rebuild).
    */
-  registerEffect(effectClass: typeof MaterialEffect): boolean {
+  registerEffect(effectClass: typeof MaterialEffect, constants?: Record<string, unknown>): boolean {
     // Ensure static initialization
     effectClass._initialize()
 
     // Skip if already registered
     if (this._effectBitIndex.has(effectClass.effectName)) return false
 
-    // 1. Push effect class and assign bit index
+    // Store constants if provided
+    if (constants && Object.keys(constants).length > 0) {
+      this._effectConstants.set(effectClass.effectName, constants)
+    }
+
+    // 1. Push effect class and assign bit index (offset past system flag bits)
     this._effects.push(effectClass)
-    const bitIndex = this._effects.length - 1
+    const bitIndex = this._effects.length - 1 + EFFECT_BIT_OFFSET
     this._effectBitIndex.set(effectClass.effectName, bitIndex)
 
     // 2. Assign sequential float offsets for each field (after flags at slot 0)
@@ -261,18 +357,70 @@ export class EffectMaterial extends MeshBasicNodeMaterial {
   }
 
   /**
-   * Rebuild the colorNode from scratch: base color + effect chain.
-   * Called when texture is set or effects are registered.
+   * Get the base texture for channel providers (e.g., auto-normal from diffuse alpha).
+   * Returns null by default. Sprite2DMaterial overrides to return the sprite texture.
+   * @internal
+   */
+  protected _getBaseTexture(): Texture | null {
+    return null
+  }
+
+  /**
+   * Build TSL attribute nodes for an effect from packed buffer data.
+   * @internal
+   */
+  protected _buildEffectAttrs(
+    effectClass: typeof MaterialEffect,
+    bufNodes: Node<'vec4'>[]
+  ): Record<string, SchemaToNodeType<EffectSchemaValue>> {
+    const attrs: Record<string, SchemaToNodeType<EffectSchemaValue>> = {}
+    for (const field of effectClass._fields) {
+      const slotKey = `${effectClass.effectName}_${field.name}`
+      const slotInfo = this._effectSlots.get(slotKey)!
+      if (field.size === 1) {
+        attrs[field.name] = getPackedComponent(bufNodes, slotInfo.offset)
+      } else if (field.size === 2) {
+        attrs[field.name] = vec2(
+          getPackedComponent(bufNodes, slotInfo.offset),
+          getPackedComponent(bufNodes, slotInfo.offset + 1)
+        )
+      } else if (field.size === 3) {
+        attrs[field.name] = vec3(
+          getPackedComponent(bufNodes, slotInfo.offset),
+          getPackedComponent(bufNodes, slotInfo.offset + 1),
+          getPackedComponent(bufNodes, slotInfo.offset + 2)
+        )
+      } else {
+        attrs[field.name] = vec4(
+          getPackedComponent(bufNodes, slotInfo.offset),
+          getPackedComponent(bufNodes, slotInfo.offset + 1),
+          getPackedComponent(bufNodes, slotInfo.offset + 2),
+          getPackedComponent(bufNodes, slotInfo.offset + 3)
+        )
+      }
+    }
+    return attrs
+  }
+
+  /**
+   * Rebuild the colorNode from scratch using the 4-phase pipeline:
    *
-   * The _buildBaseColor() hook is called inside the Fn() context so that
-   * TSL statements like If/Discard work correctly.
+   * Phase 0: Base color via _buildBaseColor() (no lighting)
+   * Phase 1: Resolve channels from provider effects
+   * Phase 2: Apply colorTransform (lighting) — only if all required channels resolved
+   * Phase 3: Chain color-transforming MaterialEffects (non-providers)
+   *
+   * Called when texture is set, effects are registered, or colorTransform/channels change.
    * @internal
    */
   _rebuildColorNode(): void {
     if (!this._canBuildColor()) return
 
-    // Bind method for use inside Fn closure (avoids no-this-alias)
+    // Bind methods for use inside Fn closure (avoids no-this-alias)
     const buildBaseColor = this._buildBaseColor.bind(this)
+    const colorTransformFn = this._colorTransform
+    const requiredChannels = this._requiredChannels
+    const baseTexture = this._getBaseTexture()
 
     // Pre-build packed buffer TSL nodes for effects (can be outside Fn)
     const numVec4s = this._effectTier / 4
@@ -281,63 +429,79 @@ export class EffectMaterial extends MeshBasicNodeMaterial {
       bufNodes.push(attribute<'vec4'>(`effectBuf${i}`, 'vec4'))
     }
 
-    // Attr value type: any typed node from packed buffer reconstruction
-    type AttrNode = SchemaToNodeType<EffectSchemaValue>
-
-    // Pre-build per-effect data: bit index and reconstructed attrs (can be outside Fn)
+    // Pre-build per-effect data: bit index, attrs, constants
     const effectData: Array<{
       effectClass: typeof MaterialEffect
       bitIndex: number
-      attrs: Record<string, AttrNode>
+      attrs: Record<string, SchemaToNodeType<EffectSchemaValue>>
+      constants: Record<string, unknown>
+      isProvider: boolean
     }> = []
 
     for (const effectClass of this._effects) {
       const bitIndex = this._effectBitIndex.get(effectClass.effectName)!
-      const attrs: Record<string, AttrNode> = {}
+      const attrs = this._buildEffectAttrs(effectClass, bufNodes)
+      const constants = this._effectConstants.get(effectClass.effectName) ?? {}
+      const isProvider = effectClass.provides.length > 0
 
-      for (const field of effectClass._fields) {
-        const slotKey = `${effectClass.effectName}_${field.name}`
-        const slotInfo = this._effectSlots.get(slotKey)!
-
-        if (field.size === 1) {
-          attrs[field.name] = getPackedComponent(bufNodes, slotInfo.offset)
-        } else if (field.size === 2) {
-          attrs[field.name] = vec2(
-            getPackedComponent(bufNodes, slotInfo.offset),
-            getPackedComponent(bufNodes, slotInfo.offset + 1)
-          )
-        } else if (field.size === 3) {
-          attrs[field.name] = vec3(
-            getPackedComponent(bufNodes, slotInfo.offset),
-            getPackedComponent(bufNodes, slotInfo.offset + 1),
-            getPackedComponent(bufNodes, slotInfo.offset + 2)
-          )
-        } else {
-          attrs[field.name] = vec4(
-            getPackedComponent(bufNodes, slotInfo.offset),
-            getPackedComponent(bufNodes, slotInfo.offset + 1),
-            getPackedComponent(bufNodes, slotInfo.offset + 2),
-            getPackedComponent(bufNodes, slotInfo.offset + 3)
-          )
-        }
-      }
-
-      effectData.push({ effectClass, bitIndex, attrs })
+      effectData.push({ effectClass, bitIndex, attrs, constants, isProvider })
     }
 
-    // Build color node: base color + effect chain (all inside Fn for TSL context)
+    // Build color node: 4-phase pipeline (all inside Fn for TSL context)
     this.colorNode = Fn(() => {
+      // ─── Phase 0: Base color ──────────────────────────────────────────
       const baseResult = buildBaseColor()
       if (!baseResult) return vec4(0, 0, 0, 0)
 
       let color: Node<'vec4'> = baseResult.color
       const atlasUV = baseResult.uv
 
-      // Chain effects with branchless enable/disable via packed bitmask
+      // ─── Phase 1: Resolve channels from provider effects ─────────────
+      const resolvedChannels: Record<string, Node> = {}
+
+      if (requiredChannels.size > 0) {
+        for (const { effectClass, attrs, constants, isProvider } of effectData) {
+          if (!isProvider) continue
+          for (const ch of effectClass.provides) {
+            if (!requiredChannels.has(ch)) continue
+            if (resolvedChannels[ch]) continue // first provider wins
+            if (effectClass.channelNode) {
+              resolvedChannels[ch] = effectClass.channelNode(ch, {
+                atlasUV,
+                constants,
+                attrs,
+                baseTexture,
+              } as ChannelNodeContext)
+            }
+          }
+        }
+        // Fill any remaining required channels from channelDefaults
+        for (const ch of requiredChannels) {
+          if (!resolvedChannels[ch] && channelDefaults[ch]) {
+            resolvedChannels[ch] = channelDefaults[ch]()
+          }
+        }
+      }
+
+      // ─── Phase 2: Apply colorTransform (lighting) ────────────────────
+      if (colorTransformFn) {
+        const ctx = {
+          color,
+          atlasUV,
+          worldPosition: positionWorld.xy,
+          ...resolvedChannels,
+        } as ColorTransformContext
+        color = colorTransformFn(ctx)
+      }
+
+      // ─── Phase 3: Chain color-transforming MaterialEffects ───────────
       if (effectData.length > 0) {
         const flags = getPackedComponent(bufNodes, 0)
 
-        for (const { effectClass, bitIndex, attrs } of effectData) {
+        for (const { effectClass, bitIndex, attrs, constants, isProvider } of effectData) {
+          // Skip provider-only effects (they only produce channel data)
+          if (isProvider) continue
+
           // Extract enable bit: floor(mod(flags / 2^bitIndex, 2))
           const divisor = float(1 << bitIndex)
           const shifted = floor(flags.div(divisor))
@@ -347,6 +511,7 @@ export class EffectMaterial extends MeshBasicNodeMaterial {
             inputColor: color,
             inputUV: atlasUV,
             attrs,
+            constants,
           })
 
           // Branchless: mix(original, effectResult, enabled)

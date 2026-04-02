@@ -1,7 +1,9 @@
 import { trait } from 'koota'
 import type { Entity, Trait } from 'koota'
 import type Node from 'three/src/nodes/core/Node.js'
+import type { Texture } from 'three'
 import type { Sprite2D } from '../sprites/Sprite2D'
+import type { ChannelName } from './channels'
 
 // ============================================
 // Schema Types
@@ -13,13 +15,24 @@ export type EffectSchemaValue =
   | readonly [number, number]
   | readonly [number, number, number]
   | readonly [number, number, number, number]
+  | (() => unknown)
 
 /** An effect schema — maps field names to their default values. */
 export type EffectSchema = Record<string, EffectSchemaValue>
 
-/** Derive JS value types from an effect schema (used by property setters). */
+/** Keys whose schema value is a plain number or tuple (→ TSL uniform, settable at runtime). */
+export type UniformKeys<S extends EffectSchema> = {
+  [K in keyof S]: S[K] extends (...args: never[]) => unknown ? never : K
+}[keyof S]
+
+/** Keys whose schema value is a factory function (→ typed constant, read-only reference). */
+export type ConstantKeys<S extends EffectSchema> = {
+  [K in keyof S]: S[K] extends (...args: never[]) => unknown ? K : never
+}[keyof S]
+
+/** Derive JS value types from an effect schema (uniform fields only, used by property setters). */
 export type EffectValues<S extends EffectSchema> = {
-  -readonly [K in keyof S]: S[K] extends number
+  -readonly [K in UniformKeys<S>]: S[K] extends number
     ? number
     : S[K] extends readonly [number, number, number, number]
       ? [number, number, number, number]
@@ -28,6 +41,16 @@ export type EffectValues<S extends EffectSchema> = {
         : S[K] extends readonly [number, number]
           ? [number, number]
           : never
+}
+
+/**
+ * Read-only constants from factory function fields.
+ * The reference is frozen at construction time and cannot be reassigned, but the
+ * object's internals are freely mutable and mutations take effect immediately
+ * (e.g. `this.forwardPlus.resize(w, h)` works live — no remove/re-add needed).
+ */
+export type EffectConstants<S extends EffectSchema> = {
+  readonly [K in ConstantKeys<S>]: S[K] extends () => infer R ? R : never
 }
 
 // ============================================
@@ -48,9 +71,10 @@ export interface EffectField {
 // Node Context
 // ============================================
 
-/** Map a schema value type to the corresponding parameterized Node type. */
+/** Map a uniform schema value type to the corresponding parameterized Node type. */
 export type SchemaToNodeType<V extends EffectSchemaValue> =
-  V extends number ? Node<'float'>
+  V extends (...args: never[]) => unknown ? never
+  : V extends number ? Node<'float'>
   : V extends readonly [number, number, number, number] ? Node<'vec4'>
   : V extends readonly [number, number, number] ? Node<'vec3'>
   : V extends readonly [number, number] ? Node<'vec2'>
@@ -62,8 +86,22 @@ export interface EffectNodeContext<S extends EffectSchema = EffectSchema> {
   inputColor: Node<'vec4'>
   /** Atlas UV coordinates (vec2 node). */
   inputUV: Node<'vec2'>
-  /** TSL attribute nodes for each schema field, keyed by unprefixed name. */
-  attrs: { [K in keyof S]: SchemaToNodeType<S[K]> }
+  /** TSL attribute nodes for each uniform schema field, keyed by unprefixed name. */
+  attrs: { [K in UniformKeys<S>]: SchemaToNodeType<S[K]> }
+  /** Read-only constants from factory function fields. */
+  constants: EffectConstants<S>
+}
+
+/** Context passed to a provider effect's channel node builder. */
+export interface ChannelNodeContext<S extends EffectSchema = EffectSchema> {
+  /** Atlas UV coordinates (vec2 node). */
+  atlasUV: Node<'vec2'>
+  /** Read-only constants from factory function fields. */
+  constants: EffectConstants<S>
+  /** TSL attribute nodes for each uniform schema field, keyed by unprefixed name. */
+  attrs: { [K in UniformKeys<S>]: SchemaToNodeType<S[K]> }
+  /** Base sprite texture (for auto-normal generation, etc.). Null if unavailable. */
+  baseTexture: Texture | null
 }
 
 // ============================================
@@ -116,6 +154,10 @@ export abstract class MaterialEffect {
   static readonly effectName: string
   /** Per-sprite data schema with default values. Must be overridden by subclass. */
   static readonly effectSchema: EffectSchema
+  /** Per-fragment channels this effect provides (e.g., ['normal']). */
+  static readonly provides: readonly ChannelName[] = []
+  /** Channel node builder — produces TSL nodes for declared channels. */
+  static channelNode: ((channelName: string, context: ChannelNodeContext) => Node) | null = null
 
   /** @internal Auto-generated Koota trait from schema. */
   static _trait: Trait
@@ -136,6 +178,9 @@ export abstract class MaterialEffect {
     throw new Error(`MaterialEffect.buildNode() not implemented for ${this.effectName}`)
   }
 
+  /** @internal Factory functions for constant fields (keyed by field name). */
+  static _constantFactories: Record<string, () => unknown>
+
   /**
    * Initialize static metadata from the schema (called once per subclass, lazily).
    * Computes field metadata, creates Koota trait, and sets up the node function.
@@ -150,11 +195,15 @@ export abstract class MaterialEffect {
       throw new Error(`MaterialEffect: ${this.name} is missing effectSchema`)
     }
 
-    // Compute field metadata from schema defaults
+    // Compute field metadata from schema defaults (uniform fields only)
     const fields: EffectField[] = []
+    const constantFactories: Record<string, () => unknown> = {}
     let totalFloats = 0
     for (const [fieldName, value] of Object.entries(schema)) {
-      if (typeof value === 'number') {
+      if (typeof value === 'function') {
+        // Constant field — factory function, not a uniform
+        constantFactories[fieldName] = value as () => unknown
+      } else if (typeof value === 'number') {
         fields.push({ name: fieldName, size: 1, default: [value] })
         totalFloats += 1
       } else {
@@ -166,8 +215,9 @@ export abstract class MaterialEffect {
 
     this._fields = fields
     this._totalFloats = totalFloats
+    this._constantFactories = constantFactories
 
-    // Build flattened trait schema for Koota:
+    // Build flattened trait schema for Koota (uniform fields only):
     // - float fields → { fieldName: default }
     // - vecN fields  → { fieldName_0: v[0], fieldName_1: v[1], ... }
     const traitSchema: Record<string, number> = {}
@@ -209,6 +259,14 @@ export abstract class MaterialEffect {
   /** @internal Snapshot defaults for pre-enrollment staging. Keyed by field name. */
   _defaults: Record<string, number | number[]>
 
+  /**
+   * Per-instance constant values (from factory function schema fields).
+   * References are frozen at construction time and cannot be reassigned.
+   * Internal state is freely mutable and mutations apply immediately.
+   * @internal
+   */
+  _constants: Record<string, unknown> = {}
+
   constructor() {
     const ctor = this.constructor as typeof MaterialEffect
 
@@ -218,7 +276,7 @@ export abstract class MaterialEffect {
     this.id = MaterialEffect._nextId++
     this.name = ctor.effectName
 
-    // Build defaults snapshot from schema
+    // Build defaults snapshot from schema (uniform fields only)
     this._defaults = {}
     for (const field of ctor._fields) {
       if (field.size === 1) {
@@ -228,7 +286,7 @@ export abstract class MaterialEffect {
       }
     }
 
-    // Set up property accessors for each schema field
+    // Set up property accessors for uniform schema fields
     for (const field of ctor._fields) {
       if (field.size === 1) {
         Object.defineProperty(this, field.name, {
@@ -245,6 +303,17 @@ export abstract class MaterialEffect {
           configurable: true,
         })
       }
+    }
+
+    // Initialize constant fields — call factory, store value, define read-only property
+    for (const [name, factory] of Object.entries(ctor._constantFactories)) {
+      const value = factory()
+      this._constants[name] = value
+      Object.defineProperty(this, name, {
+        get: () => this._constants[name],
+        enumerable: true,
+        configurable: true,
+      })
     }
   }
 
@@ -348,8 +417,12 @@ interface MaterialEffectConfig<S extends EffectSchema> {
   name: string
   /** Per-sprite data schema — default values define types and initial values. */
   schema: S
-  /** TSL node builder: receives input color, UV, and per-field attribute nodes. */
-  node: (context: EffectNodeContext<S>) => Node<'vec4'>
+  /** TSL node builder: receives input color, UV, and per-field attribute nodes. Optional for provider-only effects. */
+  node?: (context: EffectNodeContext<S>) => Node<'vec4'>
+  /** Per-fragment channels this effect provides (e.g., ['normal']). */
+  provides?: readonly ChannelName[]
+  /** Channel node builder — produces TSL nodes for declared channels. */
+  channelNode?: (channelName: string, context: ChannelNodeContext<S>) => Node
 }
 
 /**
@@ -357,12 +430,15 @@ interface MaterialEffectConfig<S extends EffectSchema> {
  * Instances have typed properties matching the schema.
  */
 export type MaterialEffectClass<S extends EffectSchema> = {
-  new (): MaterialEffect & EffectValues<S>
+  new (): MaterialEffect & EffectValues<S> & EffectConstants<S>
   readonly effectName: string
   readonly effectSchema: S
+  readonly provides: readonly ChannelName[]
+  readonly channelNode: ((channelName: string, context: ChannelNodeContext) => Node) | null
   readonly _trait: Trait
   readonly _fields: EffectField[]
   readonly _totalFloats: number
+  readonly _constantFactories: Record<string, () => unknown>
   readonly _node: (context: EffectNodeContext) => Node<'vec4'>
   readonly _initialized: boolean
   _nextId: number
@@ -395,16 +471,21 @@ export type MaterialEffectClass<S extends EffectSchema> = {
 export function createMaterialEffect<const S extends EffectSchema>(
   config: MaterialEffectConfig<S>
 ): MaterialEffectClass<S> {
-  const { name, schema, node } = config
+  const { name, schema, node, provides: channelProvides, channelNode: channelNodeFn } = config
 
   // Create anonymous subclass with static fields
   const EffectClass = class extends MaterialEffect {
     static readonly effectName = name
     static readonly effectSchema = schema as EffectSchema
+    static readonly provides: readonly ChannelName[] = channelProvides ?? []
+    static channelNode: ((ch: string, ctx: ChannelNodeContext) => Node) | null = channelNodeFn
+      ? (ch: string, ctx: ChannelNodeContext) => channelNodeFn(ch, ctx as ChannelNodeContext<S>)
+      : null
     static override _initialized: boolean = false
 
     static override buildNode(context: EffectNodeContext): Node<'vec4'> {
-      return node(context as EffectNodeContext<S>)
+      if (node) return node(context as EffectNodeContext<S>)
+      return context.inputColor
     }
   }
 

@@ -1,110 +1,130 @@
 ---
 title: 2D Lighting
-description: Add dynamic lighting to sprites using Light2D and TSL lighting nodes.
+description: Dynamic lighting with Light2D, LightEffect presets, and the Flatland pipeline.
 ---
 
 import { Tabs, TabItem } from '@astrojs/starlight/components';
 
-three-flatland provides a complete 2D lighting system with the `Light2D` class for scene graph lights and TSL nodes for custom shader-based lighting calculations.
+three-flatland provides a complete 2D lighting system. Add `Light2D` instances as light sources, choose a `LightEffect` preset to control how lights affect sprites, and all sprites receive lighting by default.
+
+## How It Works
+
+1. **Light2D** — scene graph objects that define light sources (point, spot, directional, ambient)
+2. **LightEffect** — a shader pipeline that reads all lights and produces per-fragment lighting
+3. **Sprites** — all sprites receive lighting by default when a LightEffect is active (set `lit: false` to opt out)
+
+Flatland manages the lifecycle: it collects lights, syncs them to a GPU texture each frame, and applies the active LightEffect to all lit sprites.
 
 ## Basic Setup
-
-Add lights to your Flatland scene using `Light2D`:
 
 <Tabs syncKey="framework">
   <TabItem label="Three.js" icon="seti:javascript">
     ```typescript
-    import { WebGPURenderer } from 'three/webgpu';
-    import { Flatland, Light2D, Sprite2D } from '@three-flatland/core';
+    import { WebGPURenderer } from 'three/webgpu'
+    import { Flatland, Light2D, Sprite2D } from 'three-flatland'
+    import { DefaultLightEffect } from '@three-flatland/presets'
 
-    // Create Flatland instance
-    const flatland = new Flatland({
-      viewSize: 300,
-      clearColor: 0x0a0a12,
-    });
+    const renderer = new WebGPURenderer({ antialias: false })
+    await renderer.init()
+    document.body.appendChild(renderer.domElement)
 
-    // Create a point light (torch effect)
+    const flatland = new Flatland({ viewSize: 400, clearColor: 0x050508 })
+
+    // Activate lighting — choose a preset
+    flatland.setLighting(new DefaultLightEffect())
+
+    // Add a point light
     const torch = new Light2D({
       type: 'point',
-      position: [100, 50],
+      position: [0, 50],
       color: 0xff6600,
-      intensity: 1.2,
-      radius: 150,
-      falloff: 2,
-    });
-    flatland.add(torch);
+      intensity: 2.0,
+      distance: 250,
+      decay: 2,
+    })
+    flatland.add(torch)
 
-    // Create ambient light (base illumination)
-    const ambient = new Light2D({
+    // Add ambient light for base illumination
+    flatland.add(new Light2D({
       type: 'ambient',
-      color: 0x111122,
-      intensity: 0.15,
-    });
-    flatland.add(ambient);
+      color: 0x181828,
+      intensity: 0.3,
+    }))
 
-    // Render loop
+    // Sprites receive lighting by default
+    const sprite = new Sprite2D({ texture })
+    flatland.add(sprite)
+
     function animate() {
-      flatland.render(renderer);
-      requestAnimationFrame(animate);
+      flatland.render(renderer)
+      requestAnimationFrame(animate)
     }
+    animate()
     ```
   </TabItem>
   <TabItem label="React" icon="seti:react">
     ```tsx
-    import { Suspense, useRef, useEffect } from 'react';
-    import { Canvas, extend, useFrame, useThree } from '@react-three/fiber/webgpu';
-    import { Flatland, Light2D, Sprite2D } from '@three-flatland/react';
+    import { Suspense, useRef, useEffect } from 'react'
+    import { Canvas, extend, useFrame, useThree } from '@react-three/fiber/webgpu'
+    import type { WebGPURenderer } from 'three/webgpu'
+    import {
+      Flatland, Light2D, Sprite2D, attachLighting,
+    } from 'three-flatland/react'
+    import { DefaultLightEffect } from '@three-flatland/presets'
+    import '@three-flatland/presets/react'
 
-    extend({ Flatland, Sprite2D, Light2D });
+    extend({ Flatland, Sprite2D, Light2D, DefaultLightEffect })
 
-    function LitScene() {
-      const flatlandRef = useRef<Flatland>(null);
-      const { gl, size } = useThree();
+    function Scene() {
+      const flatlandRef = useRef<Flatland>(null)
+      const { renderer, size } = useThree()
 
       useEffect(() => {
-        flatlandRef.current?.resize(size.width, size.height);
-      }, [size.width, size.height]);
+        flatlandRef.current?.resize(size.width, size.height)
+      }, [size.width, size.height])
 
       useFrame(() => {
-        flatlandRef.current?.render(gl);
-      });
+        flatlandRef.current?.render(renderer as unknown as WebGPURenderer)
+      }, { phase: 'render' })
 
       return (
-        <flatland ref={flatlandRef} viewSize={300} clearColor={0x0a0a12}>
-          {/* Point light (torch) */}
+        <flatland ref={flatlandRef} viewSize={400} clearColor={0x050508}>
+          {/* Attach lighting effect to Flatland */}
+          <defaultLightEffect attach={attachLighting} />
+
+          {/* Light sources */}
           <light2D
             lightType="point"
-            position={[100, 50, 0]}
+            position={[0, 50, 0]}
             color={0xff6600}
-            intensity={1.2}
-            radius={150}
+            intensity={2.0}
+            distance={250}
+            decay={2}
           />
+          <light2D lightType="ambient" color={0x181828} intensity={0.3} />
 
-          {/* Ambient light */}
-          <light2D
-            lightType="ambient"
-            color={0x111122}
-            intensity={0.15}
-          />
-
-          {/* Sprites with lit material receive lighting */}
-          <sprite2D texture={knightTexture} position={[0, 0, 0]} />
+          {/* Sprites receive lighting by default */}
+          <sprite2D texture={texture} />
         </flatland>
-      );
+      )
     }
 
     export default function App() {
       return (
-        <Canvas gl={{ antialias: false }}>
+        <Canvas renderer={{ antialias: false }}>
           <Suspense fallback={null}>
-            <LitScene />
+            <Scene />
           </Suspense>
         </Canvas>
-      );
+      )
     }
     ```
   </TabItem>
 </Tabs>
+
+:::tip[Lighting is opt-out]
+All sprites receive lighting by default when a `LightEffect` is active. Set `lit: false` on sprites that should render at full brightness (e.g., UI elements, light indicators).
+:::
 
 ## Light2D Types
 
@@ -115,12 +135,12 @@ Radiates light from a position with distance-based falloff:
 ```typescript
 const torch = new Light2D({
   type: 'point',
-  position: [100, 100],      // World position
-  color: 'orange',           // Any ColorRepresentation
+  position: [100, 100],      // World position [x, y]
+  color: 'orange',           // Any Three.js ColorRepresentation
   intensity: 1.5,            // Brightness multiplier
-  radius: 200,               // Maximum light distance
-  falloff: 2,                // Attenuation exponent (2 = quadratic)
-});
+  distance: 200,             // Max light distance (0 = no cutoff)
+  decay: 2,                  // Attenuation exponent (2 = quadratic)
+})
 ```
 
 ### Directional Light
@@ -130,10 +150,10 @@ Parallel rays from a direction (like sunlight):
 ```typescript
 const sun = new Light2D({
   type: 'directional',
-  direction: [1, -1],        // Light direction (normalized)
+  direction: [1, -1],        // Light direction (normalized automatically)
   color: 0xffffcc,
   intensity: 0.8,
-});
+})
 ```
 
 ### Spot Light
@@ -147,324 +167,257 @@ const spotlight = new Light2D({
   direction: [0, -1],        // Points downward
   color: 0xffffff,
   intensity: 2.0,
-  radius: 300,
+  distance: 300,
   angle: Math.PI / 6,        // 30-degree cone
   penumbra: 0.2,             // Soft edge (0-1)
-});
+})
 ```
 
 ### Ambient Light
 
-Uniform illumination from all directions:
+Uniform illumination — affects all lit sprites equally:
 
 ```typescript
 const ambient = new Light2D({
   type: 'ambient',
   color: 0x222233,
   intensity: 0.3,
-});
+})
 ```
 
-## TSL Lighting Nodes
+## LightEffect Presets
 
-For custom shader-based lighting, use the TSL lighting nodes:
+`@three-flatland/presets` ships four lighting presets with different cost/feature trade-offs:
 
-### Light Calculation Nodes
+| Preset | Tiled | Shadows | GI | Best For |
+|--------|-------|---------|-----|----------|
+| `DefaultLightEffect` | Yes | SDF (WIP) | No | Recommended — scales well |
+| `DirectLightEffect` | No | SDF (WIP) | No | Few lights, simpler code |
+| `SimpleLightEffect` | Yes | No | No | High-performance, no frills |
+| `RadianceLightEffect` | No | SDF | Yes | Full global illumination |
+
+All presets support normal-based diffuse shading when a normal channel is provided (see [Normal Providers](#normal-providers) below).
+
+### DefaultLightEffect
+
+Forward+ tiled lighting — the recommended preset. Uses per-tile light culling for O(lights per tile) per fragment. Full feature set: bands, pixel-snapping, glow, rim lighting, and shadow support.
 
 ```typescript
-import {
-  pointLight2D,
-  spotLight2D,
-  directionalLight2D,
-  ambientLight2D,
-} from '@three-flatland/core';
-import { uniform, vec2 } from 'three/tsl';
+import { DefaultLightEffect } from '@three-flatland/presets'
 
-// Point light with uniforms for animation
-const lightPos = uniform(new Vector2(100, 100));
-const light = pointLight2D(
-  fragPos,              // Surface position (vec2)
-  lightPos,             // Light position
-  [1, 0.6, 0.2],        // Light color (RGB 0-1)
-  1.5,                  // Intensity
-  200,                  // Radius
-  2                     // Falloff exponent
-);
+const lighting = new DefaultLightEffect()
+flatland.setLighting(lighting)
 
-// Returns: { direction, color, attenuation }
+// Optional stylization (zero-cost uniform updates)
+lighting.bands = 4           // Cel-shading bands (0 = smooth)
+lighting.pixelSize = 4       // Pixel-snap light sampling
+lighting.glowRadius = 2      // Broad secondary falloff
+lighting.glowIntensity = 0.3
+lighting.lightHeight = 0.75  // Simulated Z-height for diffuse (0-1)
+lighting.rimIntensity = 0.3  // Edge highlights from light direction
+lighting.rimPower = 2        // Rim sharpness
+
+// Shadow parameters (SDF pipeline in progress)
+lighting.shadowStrength = 0.6
+lighting.shadowSoftness = 8.0
+lighting.shadowBias = 0.04
 ```
 
-### Lighting Functions
+### DirectLightEffect
 
-Apply lighting to surface colors:
+Per-fragment light loop — same feature set as `DefaultLightEffect` but iterates all lights per fragment (no tiling). Simpler code path, fine for scenes with few lights, scales as O(total lights).
 
 ```typescript
-import {
-  litDiffuse,
-  litSpecular,
-  litRim,
-  litCelShaded,
-  litSprite,
-} from '@three-flatland/core';
+import { DirectLightEffect } from '@three-flatland/presets'
 
-// Basic diffuse lighting
-const diffuse = litDiffuse(
-  normal,              // Surface normal
-  light.direction,     // Light direction
-  surfaceColor,        // Base color (vec4)
-  light.color,         // Light color
-  light.attenuation    // Distance attenuation
-);
+const lighting = new DirectLightEffect()
+flatland.setLighting(lighting)
 
-// Add specular highlights (Blinn-Phong)
-const specular = litSpecular(
-  normal,
-  light.direction,
-  viewDir,             // Camera direction
-  light.color,
-  light.attenuation,
-  32,                  // Shininess
-  0.5                  // Specular strength
-);
-
-// Rim/fresnel lighting (edge glow)
-const rim = litRim(
-  normal,
-  viewDir,
-  [0.5, 0.8, 1],       // Rim color
-  2,                   // Rim power
-  1                    // Rim strength
-);
-
-// Cel-shaded (toon) lighting
-const toon = litCelShaded(
-  normal,
-  light.direction,
-  surfaceColor,
-  light.color,
-  light.attenuation,
-  3                    // Number of bands
-);
+// Same parameters as DefaultLightEffect
+lighting.bands = 4
+lighting.rimIntensity = 0.3
 ```
 
-### Combined Sprite Lighting
+### SimpleLightEffect
 
-Use `litSprite` for complete lighting in one call:
+Tiled lighting with minimal features — just light attenuation and normal-based diffuse. No banding, pixel-snapping, glow, rim, or shadows. Use when you want fast lighting without extras.
 
 ```typescript
-import { litSprite } from '@three-flatland/core';
+import { SimpleLightEffect } from '@three-flatland/presets'
 
-const lit = litSprite(normal, surfaceColor, light, ambient, {
-  specular: true,
-  shininess: 32,
-  specularStrength: 0.5,
-  rim: true,
-  rimColor: [0.5, 0.8, 1],
-  rimPower: 2,
-  rimStrength: 1,
-});
+const lighting = new SimpleLightEffect()
+flatland.setLighting(lighting)
+
+// Only has lightHeight
+lighting.lightHeight = 0.75
 ```
 
-## Normal Generation
+### RadianceLightEffect
 
-Generate normals from sprites for 3D-like lighting effects:
-
-```typescript
-import {
-  normalFromSprite,
-  normalFromSpriteRounded,
-  normalFromHeight,
-} from '@three-flatland/core';
-
-// Generate normals from alpha channel edges
-const normal = normalFromSprite(
-  spriteTexture,
-  uv,
-  1.0                  // Strength
-);
-
-// Rounded/convex appearance
-const roundedNormal = normalFromSpriteRounded(
-  spriteTexture,
-  uv,
-  1.0,                 // Strength
-  0.5                  // Curvature
-);
-
-// From height/depth map
-const heightNormal = normalFromHeight(
-  heightTexture,
-  uv,
-  1.0                  // Strength
-);
-```
-
-## Drop Shadows
-
-Create simple drop shadows:
+Radiance Cascades global illumination — SDF-based hierarchical cascade merging for indirect lighting. Light bounces off surfaces and fills the scene with soft ambient color.
 
 ```typescript
-import { shadowDrop, shadowDropSoft } from '@three-flatland/core';
+import { RadianceLightEffect } from '@three-flatland/presets'
 
-// Hard drop shadow
-const shadow = shadowDrop(
-  spriteTexture,
-  uv,
-  [0.02, -0.02],       // Shadow offset in UV space
-  [0, 0, 0],           // Shadow color
-  0.5                  // Shadow opacity
-);
+const lighting = new RadianceLightEffect()
+flatland.setLighting(lighting)
 
-// Soft drop shadow (blurred)
-const softShadow = shadowDropSoft(
-  spriteTexture,
-  uv,
-  [0.02, -0.02],
-  [0, 0, 0],
-  0.5,
-  0.01,                // Softness (blur amount)
-  4                    // Number of samples
-);
-```
-
-## Custom Lit Material
-
-Create a fully custom lit material using TSL:
-
-```typescript
-import { MeshBasicNodeMaterial } from 'three/webgpu';
-import { uniform, vec4, Fn, add } from 'three/tsl';
-import {
-  sampleSprite,
-  pointLight2D,
-  ambientLight2D,
-} from '@three-flatland/core';
-
-// Light uniforms
-const lightPos = uniform(new Vector2(100, 100));
-const lightColor = uniform(new Color(0xff6600));
-const lightIntensity = uniform(1.2);
-const lightRadius = uniform(150);
-
-const ambientColor = uniform(new Color(0x111122));
-const ambientIntensity = uniform(0.15);
-
-// Create material
-const material = new MeshBasicNodeMaterial();
-material.transparent = true;
-
-material.colorNode = Fn(() => {
-  // Sample sprite
-  const spriteColor = sampleSprite(texture, frameUniform, { alphaTest: 0.01 });
-
-  // Calculate point light
-  const surfacePos = spritePosition; // World position of this pixel
-  const toLight = lightPos.sub(surfacePos);
-  const dist = toLight.length();
-  const attenuation = float(1).sub(dist.div(lightRadius)).clamp(0, 1).pow(2);
-  const lightContribution = lightColor.mul(attenuation).mul(lightIntensity);
-
-  // Add ambient
-  const ambient = ambientColor.mul(ambientIntensity);
-  const totalLight = add(lightContribution, ambient);
-
-  // Apply to sprite
-  return vec4(spriteColor.rgb.mul(totalLight), spriteColor.a);
-})();
+lighting.radianceIntensity = 0.5  // GI strength
 ```
 
 ## Animating Lights
 
-Create dynamic lighting effects:
+Update Light2D properties at any time — they sync to the GPU automatically each frame:
 
 ```typescript
-// Flickering torch effect
-let flickerTimer = 0;
+let flickerTimer = 0
 
 function animate(delta: number) {
-  flickerTimer += delta;
+  flickerTimer += delta
 
   // Combine sine waves for organic flicker
   const flicker = 1 +
     Math.sin(flickerTimer * 15) * 0.1 +
-    Math.sin(flickerTimer * 23) * 0.05;
+    Math.sin(flickerTimer * 23) * 0.05
 
-  torch.intensity = baseIntensity * flicker;
+  torch.intensity = 1.2 * flicker
 
   // Slight position wobble
-  torch.position2D = new Vector2(
+  torch.position.set(
     baseX + Math.sin(flickerTimer * 7) * 2,
-    baseY + Math.sin(flickerTimer * 11) * 1
-  );
+    baseY + Math.sin(flickerTimer * 11) * 1,
+    0
+  )
 }
 ```
 
 ## Draggable Lights
 
-Make lights interactive:
+Make lights interactive by converting screen coordinates to world space:
 
 ```typescript
-let draggingLight: Light2D | null = null;
+let draggingLight: Light2D | null = null
 
 canvas.addEventListener('mousedown', (e) => {
-  const worldPos = screenToWorld(e.clientX, e.clientY);
-
-  // Check if clicking on a light
+  const worldPos = screenToWorld(e.clientX, e.clientY)
   for (const light of flatland.lights) {
     if (light.position2D.distanceTo(worldPos) < 20) {
-      draggingLight = light;
-      break;
+      draggingLight = light
+      break
     }
   }
-});
+})
 
 canvas.addEventListener('mousemove', (e) => {
   if (draggingLight) {
-    draggingLight.position2D = screenToWorld(e.clientX, e.clientY);
+    draggingLight.position2D = screenToWorld(e.clientX, e.clientY)
   }
-});
+})
 
 canvas.addEventListener('mouseup', () => {
-  draggingLight = null;
-});
+  draggingLight = null
+})
 ```
 
-## Multiple Lights
+## Light2D Properties
 
-Combine multiple lights in your shader:
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `lightType` | `'point' \| 'directional' \| 'spot' \| 'ambient'` | `'point'` | Light type |
+| `color` | `ColorRepresentation` | `0xffffff` | Light color |
+| `intensity` | `number` | `1` | Brightness multiplier |
+| `distance` | `number` | `0` | Max range (0 = no cutoff) |
+| `decay` | `number` | `2` | Attenuation exponent |
+| `direction` | `Vector2 \| [number, number]` | `[0, -1]` | Direction (spot/directional) |
+| `angle` | `number` | `Math.PI/4` | Cone angle in radians (spot) |
+| `penumbra` | `number` | `0` | Soft edge 0-1 (spot) |
+| `enabled` | `boolean` | `true` | Toggle without removing |
+| `position2D` | `Vector2` | `(0, 0)` | 2D position helper |
+
+## Normal Providers
+
+All lighting presets support normal-based directional diffuse shading. To enable it, add a normal provider effect to your sprites. `@three-flatland/presets` ships two providers:
+
+### AutoNormalProvider
+
+Computes normals from the sprite's diffuse alpha channel — zero configuration, works with any sprite:
+
+<Tabs syncKey="framework">
+  <TabItem label="Three.js" icon="seti:javascript">
+    ```typescript
+    import { AutoNormalProvider } from '@three-flatland/presets'
+
+    const sprite = new Sprite2D({ texture })
+    sprite.addEffect(new AutoNormalProvider())
+    flatland.add(sprite)
+    ```
+  </TabItem>
+  <TabItem label="React" icon="seti:react">
+    ```tsx
+    import { attachEffect } from 'three-flatland/react'
+    import { AutoNormalProvider } from '@three-flatland/presets'
+    import '@three-flatland/presets/react'
+
+    extend({ AutoNormalProvider })
+
+    <sprite2D texture={texture}>
+      <autoNormalProvider attach={attachEffect} />
+    </sprite2D>
+    ```
+  </TabItem>
+</Tabs>
+
+### NormalMapProvider
+
+Uses a pre-baked normal map texture for higher-quality normals:
 
 ```typescript
-material.colorNode = Fn(() => {
-  const spriteColor = sampleSprite(texture, frame);
+import { NormalMapProvider } from '@three-flatland/presets'
 
-  // Calculate each light
-  const light1 = pointLight2D(surfacePos, light1Pos, light1Color, ...);
-  const light2 = pointLight2D(surfacePos, light2Pos, light2Color, ...);
-  const ambient = ambientLight2D(ambientColor, ambientIntensity);
-
-  // Sum contributions
-  const totalLight = add(
-    add(
-      light1.color.mul(light1.attenuation),
-      light2.color.mul(light2.attenuation)
-    ),
-    ambient.color
-  );
-
-  return vec4(spriteColor.rgb.mul(totalLight), spriteColor.a);
-})();
+const provider = new NormalMapProvider()
+provider.normalMap = myNormalMapTexture
+sprite.addEffect(provider)
 ```
+
+Without a normal provider, lighting still works — surfaces are treated as flat (facing the camera).
 
 ## Performance Tips
 
-- Limit the number of dynamic lights (2-4 point lights is reasonable)
+- Use `DefaultLightEffect` for most scenes — tiled culling scales well
+- Switch to `SimpleLightEffect` for maximum performance with no stylization
+- Use `DirectLightEffect` only with a small number of lights
+- Limit dynamic lights to 2-4 point lights for best performance
 - Use ambient light for base illumination instead of many dim lights
-- Consider baking static lighting into textures
-- Use `enabled` property to toggle lights without removing from scene
-- Batch sprites with similar lighting requirements
+- Toggle `light.enabled` instead of adding/removing lights
+- Set `lit: false` on UI sprites that don't need lighting
+
+## Custom LightEffect
+
+Create your own lighting pipeline with `createLightEffect`:
+
+```typescript
+import { createLightEffect } from 'three-flatland'
+
+const MyLighting = createLightEffect({
+  name: 'myLighting',
+  schema: {
+    ambient: 0.1,      // Uniform: runtime-settable
+  },
+  light: ({ uniforms, lightStore }) => {
+    // Build TSL shader graph once — uniforms close over nodes
+    return (ctx) => {
+      // ctx.color, ctx.worldPosition, ctx.atlasUV available
+      // lightStore.readLightData(i) reads per-light data
+      // Return Node<'vec4'> with final lit color
+    }
+  },
+})
+```
+
+See the [preset source code](https://github.com/thejustinwalsh/three-flatland/tree/main/packages/presets/src/lighting) for complete examples.
 
 ## Next Steps
 
-- [Post-Processing](/guides/post-processing) - Apply display effects like CRT and VHS
-- [TSL Nodes](/guides/tsl-nodes) - Per-sprite shader effects
-- [Lighting Example](/examples/lighting) - Interactive demo
+- [Lighting Example](../examples/lighting) — Interactive demo with draggable lights
+- [Pass Effects](../guides/pass-effects) — Post-processing after lighting
+- [TSL Nodes](../guides/tsl-nodes) — Per-sprite shader effects

@@ -2,7 +2,10 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import { Texture } from 'three'
 import { createMaterialEffect } from '../materials/MaterialEffect'
 import { Sprite2DMaterial } from '../materials/Sprite2DMaterial'
-import { Sprite2D } from '../sprites/Sprite2D'
+import { Sprite2D, LIT_FLAG_MASK, RECEIVE_SHADOWS_MASK } from '../sprites/Sprite2D'
+
+// Default low bits (lit + receiveShadows) that are always set on new Sprite2D instances
+const DEFAULT_FLAGS = LIT_FLAG_MASK | RECEIVE_SHADOWS_MASK
 import { attachEffect } from './attach'
 
 const Dissolve = createMaterialEffect({
@@ -69,7 +72,7 @@ describe('attachEffect', () => {
 
     cleanup()
     expect(sprite._effects).toHaveLength(0)
-    expect(sprite._effectFlags).toBe(0)
+    expect(sprite._effectFlags).toBe(DEFAULT_FLAGS)
   })
 
   it('does not interfere with different effect types', () => {

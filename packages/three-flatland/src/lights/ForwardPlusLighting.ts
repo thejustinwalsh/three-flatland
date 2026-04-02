@@ -10,8 +10,8 @@ export class ForwardPlusLighting {
   private _tileCountY = 0
   private _tileCount = 0
 
-  private _tileData: Float32Array | null = null
-  private _tileTexture: DataTexture | null = null
+  private _tileData: Float32Array
+  private _tileTexture: DataTexture
 
   private _screenSize = new Vector2()
   private _worldSize = new Vector2()
@@ -19,8 +19,27 @@ export class ForwardPlusLighting {
 
   readonly tileCountXNode = uniform(1)
   readonly screenSizeNode = uniform(new Vector2(1, 1))
+  readonly worldSizeNode = uniform(new Vector2(1, 1))
+  readonly worldOffsetNode = uniform(new Vector2(0, 0))
 
-  get tileTexture(): DataTexture | null {
+  constructor() {
+    // Eagerly allocate a 1-tile placeholder so createTileLookup() can
+    // capture a stable texture reference at node-build time.
+    const blocksPerTile = MAX_LIGHTS_PER_TILE / 4
+    this._tileData = new Float32Array(blocksPerTile * 4)
+    this._tileTexture = new DataTexture(
+      this._tileData,
+      blocksPerTile,
+      1,
+      RGBAFormat,
+      FloatType
+    )
+    this._tileTexture.minFilter = NearestFilter
+    this._tileTexture.magFilter = NearestFilter
+    this._tileTexture.needsUpdate = true
+  }
+
+  get tileTexture(): DataTexture {
     return this._tileTexture
   }
 
@@ -40,19 +59,12 @@ export class ForwardPlusLighting {
     const blocksPerTile = MAX_LIGHTS_PER_TILE / 4
     this._tileData = new Float32Array(this._tileCount * blocksPerTile * 4)
 
-    if (this._tileTexture) {
-      this._tileTexture.dispose()
+    // Resize existing texture — stable reference for TSL textureLoad
+    this._tileTexture.image = {
+      data: this._tileData,
+      width: blocksPerTile,
+      height: this._tileCount,
     }
-
-    this._tileTexture = new DataTexture(
-      this._tileData,
-      blocksPerTile,
-      this._tileCount,
-      RGBAFormat,
-      FloatType
-    )
-    this._tileTexture.minFilter = NearestFilter
-    this._tileTexture.magFilter = NearestFilter
     this._tileTexture.needsUpdate = true
   }
 
@@ -68,10 +80,12 @@ export class ForwardPlusLighting {
   setWorldBounds(worldSize: Vector2, worldOffset: Vector2): void {
     this._worldSize.copy(worldSize)
     this._worldOffset.copy(worldOffset)
+    this.worldSizeNode.value.copy(worldSize)
+    this.worldOffsetNode.value.copy(worldOffset)
   }
 
   update(lights: Light2D[]): void {
-    if (!this._tileData || !this._tileTexture) return
+    if (this._tileCount === 0) return
 
     this._tileData.fill(0)
 
@@ -103,7 +117,7 @@ export class ForwardPlusLighting {
   }
 
   createTileLookup() {
-    const tileTexture = this._tileTexture!
+    const tileTexture = this._tileTexture
     return (tileIndex: ReturnType<typeof int>, slotIndex: ReturnType<typeof int>) => {
       const blockOffset = slotIndex.div(int(4))
       const elementOffset = slotIndex.mod(int(4))
@@ -112,10 +126,6 @@ export class ForwardPlusLighting {
   }
 
   dispose(): void {
-    if (this._tileTexture) {
-      this._tileTexture.dispose()
-      this._tileTexture = null
-    }
-    this._tileData = null
+    this._tileTexture.dispose()
   }
 }

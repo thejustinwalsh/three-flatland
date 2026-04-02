@@ -1,5 +1,5 @@
 import { createChanged } from 'koota'
-import type { World, Entity, Trait } from 'koota'
+import type { World, Entity } from 'koota'
 import {
   SpriteColor,
   SpriteUV,
@@ -106,17 +106,16 @@ export function bufferSyncFlipSystem(world: World): void {
  * Sync changed effect data to batch GPU buffers.
  *
  * Each entity is processed at most once per frame, even if multiple
- * effect traits changed.
+ * effect traits changed. Reads effectTraits from BatchRegistry.
  */
-export function bufferSyncEffectSystem(
-  world: World,
-  effectTraits: ReadonlyMap<Trait, typeof MaterialEffect>
-): void {
+export function bufferSyncEffectSystem(world: World): void {
   const registryEntities = world.query(BatchRegistry)
   if (registryEntities.length === 0) return
   const registry = registryEntities[0]!.get(BatchRegistry) as RegistryData | undefined
   if (!registry) return
   const batchSlots = registry.batchSlots
+  const effectTraits = registry.effectTraits
+  if (effectTraits.size === 0) return
 
   const processed = new Set<Entity>()
 

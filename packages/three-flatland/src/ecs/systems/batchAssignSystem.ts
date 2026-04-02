@@ -29,11 +29,10 @@ const Added = createAdded()
  * (layer, materialId), finds or creates a batch in that run,
  * allocates a slot, and sets the InBatch relation with slot data.
  * Also performs a one-time full buffer sync from trait state.
+ *
+ * Reads effectTraits from BatchRegistry. Takes only (world).
  */
-export function batchAssignSystem(
-  world: World,
-  effectTraits: ReadonlyMap<Trait, typeof MaterialEffect>
-): boolean {
+export function batchAssignSystem(world: World): boolean {
   const added = world.query(Added(IsRenderable))
   if (added.length === 0) return false
 
@@ -41,6 +40,8 @@ export function batchAssignSystem(
   if (registryEntities.length === 0) return false
   const registry = registryEntities[0]!.get(BatchRegistry) as RegistryData | undefined
   if (!registry) return false
+
+  const effectTraits = registry.effectTraits
 
   // Track meshes that received new sprites — set needsUpdate once after the loop
   const dirtyMeshes = new Set<SpriteBatch>()

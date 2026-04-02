@@ -1,6 +1,6 @@
 ---
 title: 2D Lighting
-description: Dynamic sprite lighting with draggable torch lights.
+description: Dynamic sprite lighting with draggable point lights and toggleable presets.
 ---
 
 import { Tabs, TabItem } from '@astrojs/starlight/components';
@@ -38,99 +38,114 @@ export const reactFiles = loadExample('react', 'lighting');
 </Tabs>
 </ExampleTabs>
 
-## Dungeon Torchlight
+## Interactive Lighting Demo
 
-This example demonstrates dynamic 2D lighting with interactive controls:
+This example demonstrates dynamic 2D lighting with toggleable `DefaultLightEffect` / `DirectLightEffect` / `SimpleLightEffect` presets, two flickering point lights with draggable indicators, and animated knight sprites:
 
 | Control | Action |
 |---------|--------|
-| **Drag** | Move torch lights |
-| **1** | Toggle Torch 1 |
-| **2** | Toggle Torch 2 |
-| **Up/Down** | Adjust ambient light |
+| **Default / Direct / Simple** | Switch lighting preset |
+| **Torch 1 / 2** | Toggle point lights on/off |
+| **Drag** | Move point lights (touch or mouse) |
 
-## Light Setup
+## Lighting Setup
 
-The scene uses two point lights with flickering animation:
+The scene starts with `DefaultLightEffect` (Forward+ tiled culling) and can toggle to `DirectLightEffect` (per-fragment loop) or `SimpleLightEffect` (tiled, minimal features) at runtime via the UI:
 
 ```typescript
-import { Light2D } from '@three-flatland/core';
+import { Flatland, Light2D, Sprite2D } from 'three-flatland'
+import { DefaultLightEffect, DirectLightEffect, SimpleLightEffect } from '@three-flatland/presets'
 
-// Orange torch light
+const defaultEffect = new DefaultLightEffect()
+const directEffect = new DirectLightEffect()
+const simpleEffect = new SimpleLightEffect()
+
+const flatland = new Flatland({ viewSize: 300, clearColor: 0x0a0a12 })
+flatland.setLighting(defaultEffect)
+
+// Toggle at runtime
+// flatland.setLighting(directEffect)
+// flatland.setLighting(simpleEffect)
+
+// Two colored torches
 const torch1 = new Light2D({
   type: 'point',
   position: [-80, 50],
   color: 0xff6600,
   intensity: 1.2,
-  radius: 150,
-  falloff: 2,
-});
+  distance: 150,
+  decay: 2,
+})
 
-// Yellow-orange torch light
 const torch2 = new Light2D({
   type: 'point',
   position: [80, 50],
   color: 0xffaa00,
   intensity: 1.0,
-  radius: 150,
-  falloff: 2,
-});
+  distance: 150,
+  decay: 2,
+})
 
-flatland.add(torch1);
-flatland.add(torch2);
+flatland.add(torch1)
+flatland.add(torch2)
+
+// Dim ambient so unlighted areas aren't pure black
+flatland.add(new Light2D({
+  type: 'ambient',
+  color: 0x111122,
+  intensity: 0.15,
+}))
 ```
 
-## Flickering Effect
+## Sprites
 
-Natural torch flicker is created by combining sine waves:
+All sprites receive lighting by default when a LightEffect is active. Set `lit: false` to opt out (e.g., for UI elements):
 
 ```typescript
-let flickerTimer = 0;
+const knight = new Sprite2D({
+  texture: knightSheet.texture,
+  frame: knightSheet.getFrame('idle_0'),
+})
+flatland.add(knight)
 
-function animate(delta: number) {
-  flickerTimer += delta;
-
-  // Combine multiple frequencies for organic flicker
-  const flicker1 = 1 +
-    Math.sin(flickerTimer * 15) * 0.1 +
-    Math.sin(flickerTimer * 23) * 0.05;
-
-  const flicker2 = 1 +
-    Math.sin(flickerTimer * 17 + 1) * 0.1 +
-    Math.sin(flickerTimer * 19 + 2) * 0.05;
-
-  torch1.intensity = 1.2 * flicker1;
-  torch2.intensity = 1.0 * flicker2;
-}
+// UI indicator — always full brightness
+const indicator = new Sprite2D({ texture: circleTexture, lit: false })
 ```
 
-## Custom Lit Material
+## React: Declarative Lighting
 
-Sprites are lit using a custom TSL material:
+In React, use `attachLighting` to wire the LightEffect to Flatland, `attachEffect` for normal providers, and `light2D` JSX elements for lights:
 
-```typescript
-import { MeshBasicNodeMaterial } from 'three/webgpu';
-import { uniform, vec4, float, length, max, add, Fn } from 'three/tsl';
+```tsx
+import { extend } from '@react-three/fiber/webgpu'
+import {
+  Flatland, Light2D, Sprite2D, attachLighting, attachEffect,
+} from 'three-flatland/react'
+import {
+  DefaultLightEffect, DirectLightEffect, SimpleLightEffect, AutoNormalProvider,
+} from '@three-flatland/presets'
+import '@three-flatland/presets/react'
 
-material.colorNode = Fn(() => {
-  const spriteColor = sampleSprite(texture, frame, { alphaTest: 0.01 });
+extend({ Flatland, Sprite2D, Light2D, DefaultLightEffect, DirectLightEffect, SimpleLightEffect, AutoNormalProvider })
 
-  // Calculate point light attenuation
-  const toLight = lightPos.sub(spritePosition);
-  const dist = length(toLight);
-  const attenuation = max(float(0), float(1).sub(dist.div(lightRadius))).pow(2);
-  const lightContribution = lightColor.mul(attenuation).mul(lightIntensity);
+<flatland ref={flatlandRef} viewSize={300} clearColor={0x0a0a12}>
+  {/* Toggle between presets — R3F handles attach/detach lifecycle */}
+  <defaultLightEffect attach={attachLighting} />
 
-  // Add ambient
-  const ambient = ambientColor.mul(ambientIntensity);
-  const totalLight = add(lightContribution, ambient);
+  <light2D lightType="point" position={[-80, 50, 0]}
+    color={0xff6600} intensity={1.2} distance={150} decay={2} />
+  <light2D lightType="point" position={[80, 50, 0]}
+    color={0xffaa00} intensity={1.0} distance={150} decay={2} />
+  <light2D lightType="ambient" color={0x111122} intensity={0.15} />
 
-  return vec4(spriteColor.rgb.mul(totalLight), spriteColor.a);
-})();
+  <sprite2D texture={tex}>
+    <autoNormalProvider attach={attachEffect} />
+  </sprite2D>
+</flatland>
 ```
 
 ## Next Steps
 
-- [2D Lighting Guide](/guides/lighting) - Complete reference
-- [Post-Processing](/examples/post-processing) - Display effects
-- [TSL Nodes](/examples/tsl-nodes) - Per-sprite effects
+- [2D Lighting Guide](../guides/lighting) — Full reference with all presets
+- [Pass Effects](../examples/pass-effects) — Post-processing after lighting
+- [TSL Nodes](../examples/tsl-nodes) — Per-sprite shader effects
