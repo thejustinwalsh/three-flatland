@@ -174,4 +174,62 @@ export interface SkiaExports {
   skia_paint_clear_image_filter(paintH: number): void
   skia_paint_set_color_filter(paintH: number, filterH: number): void
   skia_paint_clear_color_filter(paintH: number): void
+
+  // Path effects
+  skia_patheffect_dash(intervalsPtr: number, count: number, phase: number): number
+  skia_patheffect_corner(radius: number): number
+  skia_patheffect_discrete(segLength: number, deviation: number, seed: number): number
+  skia_patheffect_trim(start: number, stop: number, inverted: number): number
+  skia_patheffect_path1d(pathH: number, advance: number, phase: number, style: number): number
+  skia_patheffect_compose(outerH: number, innerH: number): number
+  skia_patheffect_sum(firstH: number, secondH: number): number
+  skia_patheffect_destroy(h: number): void
+  skia_paint_set_path_effect(paintH: number, effectH: number): void
+  skia_paint_clear_path_effect(paintH: number): void
+
+  // Shaders (general)
+  skia_shader_fractal_noise(freqX: number, freqY: number, octaves: number, seed: number): number
+  skia_shader_turbulence(freqX: number, freqY: number, octaves: number, seed: number): number
+  skia_shader_image(imageH: number, tileX: number, tileY: number): number
+  skia_shader_destroy(h: number): void
+  skia_paint_set_shader_obj(paintH: number, shaderH: number): void
+
+  // TwoPointConical gradient
+  skia_paint_set_two_point_conical_gradient(paintH: number, startX: number, startY: number, startR: number, endX: number, endY: number, endR: number, colorsPtr: number, stopsPtr: number, count: number): void
+
+  // Canvas: skew
+  skia_canvas_skew(sx: number, sy: number): void
+
+  // Path: fill type
+  skia_path_set_fill_type(pathH: number, fillType: number): void
+  skia_path_get_fill_type(pathH: number): number
+
+  // Displacement map filter
+  skia_imagefilter_displacement_map(xChannel: number, yChannel: number, scale: number, displacementH: number, colorH: number): number
+
+  // Backdrop layer
+  skia_canvas_save_layer_with_backdrop(boundsPtr: number, paintH: number, backdropH: number): void
+
+  // Path measure
+  skia_path_measure_create(pathH: number, forceClosed: number): number
+  skia_path_measure_destroy(h: number): void
+  skia_path_measure_length(h: number): number
+  skia_path_measure_get_pos_tan(h: number, distance: number, posPtr: number, tanPtr: number): number
+
+  // Text blob
+  skia_text_blob_from_text(textPtr: number, textLen: number, fontH: number): number
+  skia_text_blob_from_pos_text(textPtr: number, textLen: number, posPtr: number, fontH: number): number
+  skia_text_blob_destroy(h: number): void
+  skia_canvas_draw_text_blob(blobH: number, x: number, y: number, paintH: number): void
+
+  // Picture recording
+  skia_picture_recorder_create(): number
+  skia_picture_recorder_destroy(h: number): void
+  skia_picture_recorder_begin(h: number, x: number, y: number, w: number, h2: number): number
+  skia_picture_recorder_finish(h: number): number
+  skia_picture_destroy(h: number): void
+  skia_canvas_draw_picture(picH: number): void
+
+  // Atlas
+  skia_canvas_draw_atlas(atlasH: number, xformsPtr: number, rectsPtr: number, colorsPtr: number, count: number, blendMode: number, paintH: number): void
 }

@@ -4,7 +4,8 @@ import type { SkiaPath } from './path'
 import type { SkiaFont } from './font'
 import type { SkiaSVG } from './svg'
 import type { SkiaImage } from './image'
-import { type BlendMode, BLEND_MODE } from './types'
+import type { SkiaTextBlob } from './text-blob'
+import type { SkiaPicture } from './picture'
 
 /**
  * Drawing context — provides all canvas operations during a draw pass.
@@ -106,6 +107,11 @@ export class SkiaDrawingContext {
     this._ctx._exports.skia_canvas_scale(sx, sy ?? sx)
   }
 
+  skew(sx: number, sy: number): void {
+    this._check()
+    this._ctx._exports.skia_canvas_skew(sx, sy)
+  }
+
   /** Concatenate a 3x3 (9 floats) or 4x4 (16 floats) matrix */
   concat(matrix: Float32Array | number[]): void {
     this._check()
@@ -147,36 +153,6 @@ export class SkiaDrawingContext {
     this._ctx._exports.skia_canvas_save_layer_alpha(boundsPtr, alpha)
   }
 
-  // ── Points & Vertices ──
-
-  /** Draw an array of points, lines, or a polygon outline */
-  drawPoints(mode: 'points' | 'lines' | 'polygon', points: number[], paint: SkiaPaint): void {
-    this._check()
-    const modeInt = mode === 'points' ? 0 : mode === 'lines' ? 1 : 2
-    const ptr = this._ctx._writeF32(points)
-    this._ctx._exports.skia_canvas_draw_points(modeInt, ptr, points.length, paint._handle)
-  }
-
-  /** Draw a triangle mesh */
-  drawVertices(positions: number[], colors: number[] | null, texCoords: number[] | null,
-               indices: number[] | null, blendMode: BlendMode, paint: SkiaPaint,
-               vertexMode: 'triangles' | 'triangle-strip' | 'triangle-fan' = 'triangles'): void {
-    this._check()
-    const modeInt = vertexMode === 'triangles' ? 0 : vertexMode === 'triangle-strip' ? 1 : 2
-    const vertexCount = positions.length / 2
-    const posPtr = this._ctx._writeF32(positions)
-    const colorsPtr = colors ? this._ctx._writeU32(colors) : 0
-    const texPtr = texCoords ? this._ctx._writeF32(texCoords) : 0
-    const indicesPtr = indices ? this._ctx._writeF32(indices) : 0 // TODO: should be u16
-    const indexCount = indices?.length ?? 0
-
-    const vertH = this._ctx._exports.skia_vertices_create(modeInt, posPtr, colorsPtr, texPtr, vertexCount, indicesPtr, indexCount)
-    if (vertH) {
-      this._ctx._exports.skia_canvas_draw_vertices(vertH, BLEND_MODE[blendMode], paint._handle)
-      this._ctx._exports.skia_vertices_destroy(vertH)
-    }
-  }
-
   // ── Images ──
 
   drawImage(image: SkiaImage, x: number, y: number, paint?: SkiaPaint): void {
@@ -188,6 +164,30 @@ export class SkiaDrawingContext {
     this._check()
     this._ctx._exports.skia_canvas_draw_image_rect(
       image._handle, src[0], src[1], src[2], src[3], dst[0], dst[1], dst[2], dst[3], paint?._handle ?? 0)
+  }
+
+  // ── Text Blob ──
+
+  drawTextBlob(blob: SkiaTextBlob, x: number, y: number, paint: SkiaPaint): void {
+    this._check()
+    this._ctx._exports.skia_canvas_draw_text_blob(blob._handle, x, y, paint._handle)
+  }
+
+  // ── Picture ──
+
+  drawPicture(picture: SkiaPicture): void {
+    this._check()
+    this._ctx._exports.skia_canvas_draw_picture(picture._handle)
+  }
+
+  // ── Backdrop Layer ──
+
+  saveLayerWithBackdrop(bounds: [number, number, number, number] | undefined, paint: SkiaPaint | undefined,
+                        backdropFilter: import('./image-filter').SkiaImageFilter): void {
+    this._check()
+    const boundsPtr = bounds ? this._ctx._writeF32(bounds) : 0
+    this._ctx._exports.skia_canvas_save_layer_with_backdrop(
+      boundsPtr, paint?._handle ?? 0, backdropFilter._handle)
   }
 
   /** @internal Called by SkiaContext.endDrawing() */

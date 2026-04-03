@@ -8,9 +8,8 @@ import type { SkiaLine } from '../three/SkiaLine'
 import type { SkiaPathNode } from '../three/SkiaPathNode'
 import type { SkiaTextNode } from '../three/SkiaTextNode'
 import type { SkiaSVGNode } from '../three/SkiaSVGNode'
-import type { SkiaPointsNode } from '../three/SkiaPointsNode'
-import type { SkiaVerticesNode } from '../three/SkiaVerticesNode'
 import type { SkiaImageNode } from '../three/SkiaImageNode'
+import type { SkiaTextPathNode } from '../three/SkiaTextPathNode'
 
 declare module '@react-three/fiber' {
   interface ThreeElements {
@@ -23,8 +22,7 @@ declare module '@react-three/fiber' {
     skiaPathNode: ThreeElement<typeof SkiaPathNode>
     skiaTextNode: ThreeElement<typeof SkiaTextNode>
     skiaSVGNode: ThreeElement<typeof SkiaSVGNode>
-    skiaPointsNode: ThreeElement<typeof SkiaPointsNode>
-    skiaVerticesNode: ThreeElement<typeof SkiaVerticesNode>
     skiaImageNode: ThreeElement<typeof SkiaImageNode>
+    skiaTextPathNode: ThreeElement<typeof SkiaTextPathNode>
   }
 }

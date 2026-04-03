@@ -25,6 +25,12 @@ typedef void* sk_image_filter_t;
 typedef void* sk_color_filter_t;
 typedef void* sk_image_t;
 typedef void* sk_vertices_t;
+typedef void* sk_path_effect_t;
+typedef void* sk_shader_t;
+typedef void* sk_path_measure_t;
+typedef void* sk_text_blob_t;
+typedef void* sk_picture_recorder_t;
+typedef void* sk_picture_t;
 
 // ── Context (GrDirectContext) ──
 
@@ -189,6 +195,82 @@ void sk_paint_set_image_filter(sk_paint_t paint, sk_image_filter_t filter);
 void sk_paint_clear_image_filter(sk_paint_t paint);
 void sk_paint_set_color_filter(sk_paint_t paint, sk_color_filter_t filter);
 void sk_paint_clear_color_filter(sk_paint_t paint);
+
+// ── Path Effects ──
+
+sk_path_effect_t sk_patheffect_dash(const float* intervals, int count, float phase);
+sk_path_effect_t sk_patheffect_corner(float radius);
+sk_path_effect_t sk_patheffect_discrete(float segLength, float deviation, uint32_t seed);
+sk_path_effect_t sk_patheffect_trim(float start, float stop, int inverted);
+sk_path_effect_t sk_patheffect_path1d(sk_path_t stampPath, float advance, float phase, int style);
+sk_path_effect_t sk_patheffect_compose(sk_path_effect_t outer, sk_path_effect_t inner);
+sk_path_effect_t sk_patheffect_sum(sk_path_effect_t first, sk_path_effect_t second);
+void sk_patheffect_destroy(sk_path_effect_t effect);
+void sk_paint_set_path_effect(sk_paint_t paint, sk_path_effect_t effect);
+void sk_paint_clear_path_effect(sk_paint_t paint);
+
+// ── Shaders (general) ──
+
+sk_shader_t sk_shader_fractal_noise(float freqX, float freqY, int octaves, float seed);
+sk_shader_t sk_shader_turbulence(float freqX, float freqY, int octaves, float seed);
+sk_shader_t sk_shader_image(sk_image_t image, int tileX, int tileY);
+void sk_shader_destroy(sk_shader_t shader);
+void sk_paint_set_shader_obj(sk_paint_t paint, sk_shader_t shader);
+
+// ── Gradients (additional) ──
+
+void sk_paint_set_two_point_conical_gradient(sk_paint_t paint,
+    float startX, float startY, float startR,
+    float endX, float endY, float endR,
+    const uint32_t* colors, const float* stops, int count);
+
+// ── Canvas: skew ──
+
+void sk_canvas_skew(sk_canvas_t canvas, float sx, float sy);
+
+// ── Path: fill type ──
+
+void sk_path_set_fill_type(sk_path_t path, int fillType);
+int sk_path_get_fill_type(sk_path_t path);
+
+// ── Image Filters (additional) ──
+
+sk_image_filter_t sk_imagefilter_displacement_map(int xChannel, int yChannel, float scale,
+    sk_image_filter_t displacement, sk_image_filter_t color);
+
+// ── Canvas: backdrop layer ──
+
+void sk_canvas_save_layer_with_backdrop(sk_canvas_t canvas, const float* bounds,
+    sk_paint_t paint, sk_image_filter_t backdrop);
+
+// ── Path Measure ──
+
+sk_path_measure_t sk_path_measure_create(sk_path_t path, int forceClosed);
+void sk_path_measure_destroy(sk_path_measure_t pm);
+float sk_path_measure_length(sk_path_measure_t pm);
+int sk_path_measure_get_pos_tan(sk_path_measure_t pm, float distance, float* posOut, float* tanOut);
+
+// ── Text Blob ──
+
+sk_text_blob_t sk_text_blob_from_text(const char* text, int len, sk_font_t font);
+sk_text_blob_t sk_text_blob_from_pos_text(const char* text, int len, const float* positions, sk_font_t font);
+void sk_text_blob_destroy(sk_text_blob_t blob);
+void sk_canvas_draw_text_blob(sk_canvas_t canvas, sk_text_blob_t blob, float x, float y, sk_paint_t paint);
+
+// ── Picture Recording ──
+
+sk_picture_recorder_t sk_picture_recorder_create(void);
+void sk_picture_recorder_destroy(sk_picture_recorder_t rec);
+sk_canvas_t sk_picture_recorder_begin(sk_picture_recorder_t rec, float x, float y, float w, float h);
+sk_picture_t sk_picture_recorder_finish(sk_picture_recorder_t rec);
+void sk_picture_destroy(sk_picture_t pic);
+void sk_canvas_draw_picture(sk_canvas_t canvas, sk_picture_t pic);
+
+// ── Atlas (sprite batch) ──
+
+void sk_canvas_draw_atlas(sk_canvas_t canvas, sk_image_t atlas,
+    const float* xforms, const float* rects, const uint32_t* colors,
+    int count, uint8_t blendMode, sk_paint_t paint);
 
 #ifdef __cplusplus
 }

@@ -66,6 +66,16 @@ export class SkiaImageFilter {
     return h ? new SkiaImageFilter(context, h) : null
   }
 
+  static displacementMap(context: SkiaContext, xChannel: 'alpha' | 'red' | 'green' | 'blue',
+                         yChannel: 'alpha' | 'red' | 'green' | 'blue', scale: number,
+                         displacement: SkiaImageFilter, color?: SkiaImageFilter): SkiaImageFilter | null {
+    const channelMap = { alpha: 1, red: 2, green: 3, blue: 4 }
+    const h = context._exports.skia_imagefilter_displacement_map(
+      channelMap[xChannel], channelMap[yChannel], scale,
+      displacement._handle, color?._handle ?? 0)
+    return h ? new SkiaImageFilter(context, h) : null
+  }
+
   static erode(context: SkiaContext, radiusX: number, radiusY: number, input?: SkiaImageFilter): SkiaImageFilter | null {
     const h = context._exports.skia_imagefilter_erode(radiusX, radiusY, input?._handle ?? 0)
     return h ? new SkiaImageFilter(context, h) : null

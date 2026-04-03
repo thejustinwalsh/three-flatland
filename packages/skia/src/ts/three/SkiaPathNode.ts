@@ -11,6 +11,8 @@ export class SkiaPathNode extends SkiaNode {
   d?: string
   /** Explicit SkiaPath reference (overrides `d`) */
   path?: SkiaPath
+  /** Path fill type: winding (default) or evenOdd */
+  fillType?: 'winding' | 'evenOdd'
 
   private _cachedPath: SkiaPath | null = null
   private _cachedD?: string
@@ -18,6 +20,7 @@ export class SkiaPathNode extends SkiaNode {
   _draw(ctx: SkiaDrawingContext, skia: SkiaContext): void {
     const path = this._getPath(skia)
     if (!path) return
+    if (this.fillType) path.setFillType(this.fillType)
     ctx.drawPath(path, this._resolvePaint(skia))
   }
 

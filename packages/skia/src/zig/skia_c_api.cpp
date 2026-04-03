@@ -766,3 +766,272 @@ void sk_paint_set_color_filter(sk_paint_t paint, sk_color_filter_t filter) {
 void sk_paint_clear_color_filter(sk_paint_t paint) {
     as_paint(paint)->setColorFilter(nullptr);
 }
+
+// ════════════════════════════════════════════════════════
+// Path Effects
+// ════════════════════════════════════════════════════════
+
+#include "include/effects/SkCornerPathEffect.h"
+#include "include/effects/SkDiscretePathEffect.h"
+#include "include/effects/Sk1DPathEffect.h"
+#include "include/effects/SkTrimPathEffect.h"
+
+sk_path_effect_t sk_patheffect_dash(const float* intervals, int count, float phase) {
+    auto pe = SkDashPathEffect::Make(SkSpan<const SkScalar>(intervals, count), phase);
+    return pe ? reinterpret_cast<sk_path_effect_t>(pe.release()) : nullptr;
+}
+
+sk_path_effect_t sk_patheffect_corner(float radius) {
+    auto pe = SkCornerPathEffect::Make(radius);
+    return pe ? reinterpret_cast<sk_path_effect_t>(pe.release()) : nullptr;
+}
+
+sk_path_effect_t sk_patheffect_discrete(float segLength, float deviation, uint32_t seed) {
+    auto pe = SkDiscretePathEffect::Make(segLength, deviation, seed);
+    return pe ? reinterpret_cast<sk_path_effect_t>(pe.release()) : nullptr;
+}
+
+sk_path_effect_t sk_patheffect_trim(float start, float stop, int inverted) {
+    auto pe = SkTrimPathEffect::Make(start, stop,
+        inverted ? SkTrimPathEffect::Mode::kInverted : SkTrimPathEffect::Mode::kNormal);
+    return pe ? reinterpret_cast<sk_path_effect_t>(pe.release()) : nullptr;
+}
+
+sk_path_effect_t sk_patheffect_path1d(sk_path_t stampPath, float advance, float phase, int style) {
+    auto pe = SkPath1DPathEffect::Make(
+        as_pathbuilder(stampPath)->snapshot(), advance, phase,
+        static_cast<SkPath1DPathEffect::Style>(style));
+    return pe ? reinterpret_cast<sk_path_effect_t>(pe.release()) : nullptr;
+}
+
+sk_path_effect_t sk_patheffect_compose(sk_path_effect_t outer, sk_path_effect_t inner) {
+    auto pe = SkPathEffect::MakeCompose(
+        sk_ref_sp(reinterpret_cast<SkPathEffect*>(outer)),
+        sk_ref_sp(reinterpret_cast<SkPathEffect*>(inner)));
+    return pe ? reinterpret_cast<sk_path_effect_t>(pe.release()) : nullptr;
+}
+
+sk_path_effect_t sk_patheffect_sum(sk_path_effect_t first, sk_path_effect_t second) {
+    auto pe = SkPathEffect::MakeSum(
+        sk_ref_sp(reinterpret_cast<SkPathEffect*>(first)),
+        sk_ref_sp(reinterpret_cast<SkPathEffect*>(second)));
+    return pe ? reinterpret_cast<sk_path_effect_t>(pe.release()) : nullptr;
+}
+
+void sk_patheffect_destroy(sk_path_effect_t effect) {
+    if (effect) reinterpret_cast<SkPathEffect*>(effect)->unref();
+}
+
+void sk_paint_set_path_effect(sk_paint_t paint, sk_path_effect_t effect) {
+    as_paint(paint)->setPathEffect(
+        effect ? sk_ref_sp(reinterpret_cast<SkPathEffect*>(effect)) : nullptr);
+}
+
+void sk_paint_clear_path_effect(sk_paint_t paint) {
+    as_paint(paint)->setPathEffect(nullptr);
+}
+
+// ════════════════════════════════════════════════════════
+// Shaders (general)
+// ════════════════════════════════════════════════════════
+
+#include "include/effects/SkPerlinNoiseShader.h"
+
+sk_shader_t sk_shader_fractal_noise(float freqX, float freqY, int octaves, float seed) {
+    auto shader = SkShaders::MakeFractalNoise(freqX, freqY, octaves, seed);
+    return shader ? reinterpret_cast<sk_shader_t>(shader.release()) : nullptr;
+}
+
+sk_shader_t sk_shader_turbulence(float freqX, float freqY, int octaves, float seed) {
+    auto shader = SkShaders::MakeTurbulence(freqX, freqY, octaves, seed);
+    return shader ? reinterpret_cast<sk_shader_t>(shader.release()) : nullptr;
+}
+
+sk_shader_t sk_shader_image(sk_image_t image, int tileX, int tileY) {
+    auto* img = reinterpret_cast<SkImage*>(image);
+    auto shader = img->makeShader(
+        static_cast<SkTileMode>(tileX), static_cast<SkTileMode>(tileY), SkSamplingOptions());
+    return shader ? reinterpret_cast<sk_shader_t>(shader.release()) : nullptr;
+}
+
+void sk_shader_destroy(sk_shader_t shader) {
+    if (shader) reinterpret_cast<SkShader*>(shader)->unref();
+}
+
+void sk_paint_set_shader_obj(sk_paint_t paint, sk_shader_t shader) {
+    as_paint(paint)->setShader(
+        shader ? sk_ref_sp(reinterpret_cast<SkShader*>(shader)) : nullptr);
+}
+
+// ════════════════════════════════════════════════════════
+// TwoPointConical Gradient
+// ════════════════════════════════════════════════════════
+
+void sk_paint_set_two_point_conical_gradient(sk_paint_t paint,
+    float startX, float startY, float startR,
+    float endX, float endY, float endR,
+    const uint32_t* colors, const float* stops, int count) {
+    SkColor4f* sk_colors = reinterpret_cast<SkColor4f*>(alloca(count * sizeof(SkColor4f)));
+    for (int i = 0; i < count; i++) sk_colors[i] = color_from_u32(colors[i]);
+
+    SkGradient::Colors grad_colors(
+        {sk_colors, static_cast<size_t>(count)},
+        {stops, static_cast<size_t>(count)},
+        SkTileMode::kClamp);
+    SkGradient grad(grad_colors, {});
+
+    as_paint(paint)->setShader(SkShaders::TwoPointConicalGradient(
+        {startX, startY}, startR, {endX, endY}, endR, grad));
+}
+
+// ════════════════════════════════════════════════════════
+// Canvas: skew + path fill type
+// ════════════════════════════════════════════════════════
+
+void sk_canvas_skew(sk_canvas_t canvas, float sx, float sy) {
+    as_canvas(canvas)->skew(sx, sy);
+}
+
+void sk_path_set_fill_type(sk_path_t path, int fillType) {
+    as_pathbuilder(path)->setFillType(static_cast<SkPathFillType>(fillType));
+}
+
+int sk_path_get_fill_type(sk_path_t path) {
+    return static_cast<int>(as_pathbuilder(path)->fillType());
+}
+
+// ════════════════════════════════════════════════════════
+// DisplacementMap + Backdrop filters
+// ════════════════════════════════════════════════════════
+
+sk_image_filter_t sk_imagefilter_displacement_map(int xChannel, int yChannel, float scale,
+    sk_image_filter_t displacement, sk_image_filter_t color) {
+    auto filter = SkImageFilters::DisplacementMap(
+        static_cast<SkColorChannel>(xChannel), static_cast<SkColorChannel>(yChannel),
+        scale, to_filter(displacement), to_filter(color));
+    return filter ? reinterpret_cast<sk_image_filter_t>(filter.release()) : nullptr;
+}
+
+void sk_canvas_save_layer_with_backdrop(sk_canvas_t canvas, const float* bounds,
+    sk_paint_t paint, sk_image_filter_t backdrop) {
+    SkRect* boundsRect = nullptr;
+    SkRect rect;
+    if (bounds) {
+        rect = SkRect::MakeXYWH(bounds[0], bounds[1], bounds[2], bounds[3]);
+        boundsRect = &rect;
+    }
+    SkCanvas::SaveLayerRec rec(
+        boundsRect,
+        paint ? as_paint(paint) : nullptr,
+        backdrop ? reinterpret_cast<SkImageFilter*>(backdrop) : nullptr,
+        0);
+    as_canvas(canvas)->saveLayer(rec);
+}
+
+// ════════════════════════════════════════════════════════
+// Path Measure
+// ════════════════════════════════════════════════════════
+
+#include "include/core/SkPathMeasure.h"
+
+sk_path_measure_t sk_path_measure_create(sk_path_t path, int forceClosed) {
+    auto* pm = new SkPathMeasure(as_pathbuilder(path)->snapshot(), forceClosed != 0);
+    return reinterpret_cast<sk_path_measure_t>(pm);
+}
+
+void sk_path_measure_destroy(sk_path_measure_t pm) {
+    delete reinterpret_cast<SkPathMeasure*>(pm);
+}
+
+float sk_path_measure_length(sk_path_measure_t pm) {
+    return reinterpret_cast<SkPathMeasure*>(pm)->getLength();
+}
+
+int sk_path_measure_get_pos_tan(sk_path_measure_t pm, float distance, float* posOut, float* tanOut) {
+    SkPoint pos;
+    SkVector tan;
+    bool ok = reinterpret_cast<SkPathMeasure*>(pm)->getPosTan(distance, &pos, &tan);
+    if (ok) {
+        posOut[0] = pos.x(); posOut[1] = pos.y();
+        tanOut[0] = tan.x(); tanOut[1] = tan.y();
+    }
+    return ok ? 1 : 0;
+}
+
+// ════════════════════════════════════════════════════════
+// Text Blob
+// ════════════════════════════════════════════════════════
+
+sk_text_blob_t sk_text_blob_from_text(const char* text, int len, sk_font_t font) {
+    auto blob = SkTextBlob::MakeFromText(text, len, *as_font(font), SkTextEncoding::kUTF8);
+    return blob ? reinterpret_cast<sk_text_blob_t>(blob.release()) : nullptr;
+}
+
+sk_text_blob_t sk_text_blob_from_pos_text(const char* text, int len, const float* positions, sk_font_t font) {
+    int glyphCount = len; // UTF-8 approximation — each byte may be a glyph
+    auto blob = SkTextBlob::MakeFromPosText(text, len,
+        SkSpan<const SkPoint>(reinterpret_cast<const SkPoint*>(positions), glyphCount),
+        *as_font(font), SkTextEncoding::kUTF8);
+    return blob ? reinterpret_cast<sk_text_blob_t>(blob.release()) : nullptr;
+}
+
+void sk_text_blob_destroy(sk_text_blob_t blob) {
+    if (blob) reinterpret_cast<SkTextBlob*>(blob)->unref();
+}
+
+void sk_canvas_draw_text_blob(sk_canvas_t canvas, sk_text_blob_t blob, float x, float y, sk_paint_t paint) {
+    as_canvas(canvas)->drawTextBlob(
+        sk_ref_sp(reinterpret_cast<SkTextBlob*>(blob)), x, y, *as_paint(paint));
+}
+
+// ════════════════════════════════════════════════════════
+// Picture Recording
+// ════════════════════════════════════════════════════════
+
+#include "include/core/SkPictureRecorder.h"
+
+sk_picture_recorder_t sk_picture_recorder_create(void) {
+    return reinterpret_cast<sk_picture_recorder_t>(new SkPictureRecorder());
+}
+
+void sk_picture_recorder_destroy(sk_picture_recorder_t rec) {
+    delete reinterpret_cast<SkPictureRecorder*>(rec);
+}
+
+sk_canvas_t sk_picture_recorder_begin(sk_picture_recorder_t rec, float x, float y, float w, float h) {
+    auto* canvas = reinterpret_cast<SkPictureRecorder*>(rec)->beginRecording(
+        SkRect::MakeXYWH(x, y, w, h));
+    return reinterpret_cast<sk_canvas_t>(canvas);
+}
+
+sk_picture_t sk_picture_recorder_finish(sk_picture_recorder_t rec) {
+    auto pic = reinterpret_cast<SkPictureRecorder*>(rec)->finishRecordingAsPicture();
+    return pic ? reinterpret_cast<sk_picture_t>(pic.release()) : nullptr;
+}
+
+void sk_picture_destroy(sk_picture_t pic) {
+    if (pic) reinterpret_cast<SkPicture*>(pic)->unref();
+}
+
+void sk_canvas_draw_picture(sk_canvas_t canvas, sk_picture_t pic) {
+    as_canvas(canvas)->drawPicture(
+        sk_ref_sp(reinterpret_cast<SkPicture*>(pic)));
+}
+
+// ════════════════════════════════════════════════════════
+// Atlas (sprite batch)
+// ════════════════════════════════════════════════════════
+
+void sk_canvas_draw_atlas(sk_canvas_t canvas, sk_image_t atlas,
+    const float* xforms, const float* rects, const uint32_t* colors,
+    int count, uint8_t blendMode, sk_paint_t paint) {
+    as_canvas(canvas)->drawAtlas(
+        reinterpret_cast<SkImage*>(atlas),
+        SkSpan<const SkRSXform>(reinterpret_cast<const SkRSXform*>(xforms), count),
+        SkSpan<const SkRect>(reinterpret_cast<const SkRect*>(rects), count),
+        colors ? SkSpan<const SkColor>(reinterpret_cast<const SkColor*>(colors), count) : SkSpan<const SkColor>(),
+        static_cast<SkBlendMode>(blendMode),
+        SkSamplingOptions(),
+        nullptr,
+        paint ? as_paint(paint) : nullptr);
+}

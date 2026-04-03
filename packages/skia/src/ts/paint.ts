@@ -149,6 +149,40 @@ export class SkiaPaint {
     return this
   }
 
+  // ── Path Effect ──
+
+  setPathEffect(effect: import('./path-effect').SkiaPathEffect): this {
+    this._ctx._exports.skia_paint_set_path_effect(this._handle, effect._handle)
+    return this
+  }
+
+  clearPathEffect(): this {
+    this._ctx._exports.skia_paint_clear_path_effect(this._handle)
+    return this
+  }
+
+  // ── General Shader ──
+
+  setShader(shader: import('./shader').SkiaShader): this {
+    this._ctx._exports.skia_paint_set_shader_obj(this._handle, shader._handle)
+    return this
+  }
+
+  // ── TwoPointConical Gradient ──
+
+  setTwoPointConicalGradient(
+    startX: number, startY: number, startR: number,
+    endX: number, endY: number, endR: number,
+    colors: number[], stops: number[],
+  ): this {
+    const colorsPtr = this._ctx._writeU32(colors)
+    const stopsPtr = this._ctx._writeF32(stops)
+    this._ctx._exports.skia_paint_set_two_point_conical_gradient(
+      this._handle, startX, startY, startR, endX, endY, endR, colorsPtr, stopsPtr, colors.length,
+    )
+    return this
+  }
+
   // ── Filters ──
 
   setImageFilter(filter: import('./image-filter').SkiaImageFilter): this {

@@ -4,6 +4,7 @@ import { SkiaContext } from '../context'
 import { Skia } from '../init'
 import type { SkiaDrawingContext } from '../drawing-context'
 import { SkiaNode } from './SkiaNode'
+import { SkiaGroup } from './SkiaGroup'
 import { getFBOId } from './utils'
 
 export interface SkiaCanvasOptions {
@@ -125,7 +126,9 @@ export class SkiaCanvas extends Object3D {
   private _drawChildren(ctx: SkiaDrawingContext, parent: Object3D): void {
     for (const child of parent.children) {
       if (!child.visible) continue
-      if (child instanceof SkiaNode) {
+      if (child instanceof SkiaGroup) {
+        child._draw(ctx, this._skiaContext!)
+      } else if (child instanceof SkiaNode) {
         child._draw(ctx, this._skiaContext!)
       } else if (child instanceof Object3D && child.children.length > 0) {
         this._drawChildren(ctx, child)

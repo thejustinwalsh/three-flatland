@@ -2,59 +2,106 @@ import type { SkiaContext } from '../context'
 import type { SkiaDrawingContext } from '../drawing-context'
 import type { SkiaPath } from '../path'
 import type { SkiaPaint } from '../paint'
-import type { SkiaImageFilter } from '../image-filter'
-import type { SkiaColorFilter } from '../color-filter'
 import { SkiaPaint as SkiaPaintClass } from '../paint'
+import { Object3D } from 'three'
+import type { BlendMode } from '../types'
+import { SkiaImageFilter } from '../image-filter'
+import { SkiaColorFilter } from '../color-filter'
 import { SkiaNode } from './SkiaNode'
 
+/** Drop shadow configuration */
+export interface SkiaShadowProps {
+  dx: number
+  dy: number
+  blur: number
+  color: number // 0xAARRGGBB
+  /** If true, only the shadow is drawn (no content) */
+  shadowOnly?: boolean
+}
+
 /**
- * Skia group — transform, clip, opacity, and filter container.
+ * Skia group — transform, clip, and effects container.
  *
- * Children are drawn within this group's context. If `imageFilter`, `colorFilter`,
- * `layer`, or `opacity < 1` is set, children are rendered into an offscreen layer
- * (via `saveLayer`) and the filter/opacity is applied when compositing back.
- *
- * This matches react-native-skia's `<Group layer={paint}>` pattern.
+ * Semantic props for common effects — no Skia internals needed:
  *
  * ```tsx
- * <skiaGroup imageFilter={SkiaImageFilter.blur(skia, 4, 4)}>
- *   <skiaRect fill={[1,0,0,1]} />  // blurred
- *   <skiaCircle fill={[0,1,0,1]} /> // also blurred
+ * <skiaGroup tx={50} ty={50} blur={4} opacity={0.8}>
+ *   <skiaRect fill={[1,0,0,1]} />
+ * </skiaGroup>
+ *
+ * <skiaGroup shadow={{ dx: 4, dy: 4, blur: 3, color: 0x80000000 }}>
+ *   <skiaRect fill={[1,1,1,1]} cornerRadius={8} />
+ * </skiaGroup>
+ *
+ * <skiaGroup backdropBlur={10} clipRect={[0,0,200,100]}>
+ *   // frosted glass effect
  * </skiaGroup>
  * ```
  */
-export class SkiaGroup extends SkiaNode {
+export class SkiaGroup extends Object3D {
+  // ── Transform ──
   tx = 0
   ty = 0
   skiaRotate = 0
   scaleSkiaX = 1
   scaleSkiaY = 1
+  skewX = 0
+  skewY = 0
+
+  // ── Clip ──
   clipRect: [number, number, number, number] | null = null
   clipRoundRect: { x: number; y: number; w: number; h: number; rx: number; ry: number } | null = null
   clipPath: SkiaPath | null = null
 
-  /** Explicit layer paint — full control over saveLayer behavior */
+  // ── Semantic effects (trigger saveLayer internally) ──
+
+  /** Opacity of the group as a whole (0-1) */
+  opacity = 1
+  /** Blend mode for layer compositing */
+  blendMode: BlendMode | null = null
+  /** Gaussian blur sigma applied to all children as a group */
+  blur = 0
+  /** Drop shadow on the group's composite shape */
+  shadow: SkiaShadowProps | null = null
+  /** 4x5 color matrix (20 floats) — grayscale, sepia, hue shift, etc. */
+  colorMatrix: number[] | null = null
+  /** Gaussian blur of the content BEHIND this group (frosted glass) */
+  backdropBlur = 0
+
+  // ── Escape hatch ──
+
+  /** Explicit layer paint — overrides all semantic effect props */
   layer: SkiaPaint | null = null
-  /** Convenience: image filter applied to children via saveLayer */
-  imageFilter: SkiaImageFilter | null = null
-  /** Convenience: color filter applied to children via saveLayer */
-  colorFilter: SkiaColorFilter | null = null
 
   private _layerPaint: SkiaPaint | null = null
+  private _blurFilter: SkiaImageFilter | null = null
+  private _shadowFilter: SkiaImageFilter | null = null
+  private _colorFilter: SkiaColorFilter | null = null
+  private _backdropFilter: SkiaImageFilter | null = null
 
   _draw(ctx: SkiaDrawingContext, skia: SkiaContext): void {
-    const needsLayer = this.layer || this.imageFilter || this.colorFilter || this.opacity < 1
+    const needsLayer = this.layer || this.blur > 0 || this.shadow || this.colorMatrix ||
+                       this.blendMode || this.opacity < 1
+    const needsBackdrop = this.backdropBlur > 0
 
-    if (needsLayer) {
-      const layerPaint = this._resolveLayerPaint(skia)
+    if (needsBackdrop) {
+      this._ensureBackdropFilter(skia)
+      const layerPaint = needsLayer ? this._buildLayerPaint(skia) : undefined
+      ctx.saveLayerWithBackdrop(undefined, layerPaint, this._backdropFilter!)
+    } else if (needsLayer) {
+      const layerPaint = this._buildLayerPaint(skia)
       ctx.saveLayer(undefined, layerPaint)
     } else {
       ctx.save()
     }
 
+    // Apply transforms
     if (this.tx !== 0 || this.ty !== 0) ctx.translate(this.tx, this.ty)
     if (this.skiaRotate) ctx.rotate(this.skiaRotate)
     if (this.scaleSkiaX !== 1 || this.scaleSkiaY !== 1) ctx.scale(this.scaleSkiaX, this.scaleSkiaY)
+    if (this.skewX !== 0 || this.skewY !== 0) ctx.skew(this.skewX, this.skewY)
+
+    // Apply clips
     if (this.clipRect) ctx.clipRect(...this.clipRect)
     if (this.clipRoundRect) {
       const cr = this.clipRoundRect
@@ -62,6 +109,7 @@ export class SkiaGroup extends SkiaNode {
     }
     if (this.clipPath) ctx.clipPath(this.clipPath)
 
+    // Walk children
     for (const child of this.children) {
       if (!child.visible) continue
       if ('_draw' in child) {
@@ -72,24 +120,60 @@ export class SkiaGroup extends SkiaNode {
     ctx.restore()
   }
 
-  private _resolveLayerPaint(skia: SkiaContext): SkiaPaint {
+  private _buildLayerPaint(skia: SkiaContext): SkiaPaint {
     if (this.layer) return this.layer
 
-    if (!this._layerPaint) {
-      this._layerPaint = new SkiaPaintClass(skia)
+    if (!this._layerPaint) this._layerPaint = new SkiaPaintClass(skia)
+    const p = this._layerPaint
+
+    // Opacity
+    if (this.opacity < 1) p.setAlpha(this.opacity)
+
+    // Blur
+    if (this.blur > 0) {
+      this._blurFilter?.dispose()
+      this._blurFilter = SkiaImageFilter.blur(skia, this.blur, this.blur)
+      if (this._blurFilter) p.setImageFilter(this._blurFilter)
     }
 
-    const p = this._layerPaint
-    if (this.opacity < 1) p.setAlpha(this.opacity)
-    if (this.imageFilter) p.setImageFilter(this.imageFilter)
-    if (this.colorFilter) p.setColorFilter(this.colorFilter)
+    // Shadow (compose with blur if both exist)
+    if (this.shadow) {
+      const s = this.shadow
+      this._shadowFilter?.dispose()
+      const factory = s.shadowOnly ? SkiaImageFilter.dropShadowOnly : SkiaImageFilter.dropShadow
+      this._shadowFilter = factory(skia, s.dx, s.dy, s.blur, s.blur, s.color,
+        this._blurFilter ?? undefined)
+      if (this._shadowFilter) p.setImageFilter(this._shadowFilter)
+    }
+
+    // Color matrix
+    if (this.colorMatrix && this.colorMatrix.length === 20) {
+      this._colorFilter?.dispose()
+      this._colorFilter = SkiaColorFilter.matrix(skia, this.colorMatrix)
+      if (this._colorFilter) p.setColorFilter(this._colorFilter)
+    }
+
+    // Blend mode (inherited from SkiaNode)
+    if (this.blendMode) p.setBlendMode(this.blendMode)
 
     return p
   }
 
+  private _ensureBackdropFilter(skia: SkiaContext): void {
+    if (this._backdropFilter) return
+    this._backdropFilter = SkiaImageFilter.blur(skia, this.backdropBlur, this.backdropBlur)
+  }
+
   dispose(): void {
-    super.dispose()
     this._layerPaint?.dispose()
+    this._blurFilter?.dispose()
+    this._shadowFilter?.dispose()
+    this._colorFilter?.dispose()
+    this._backdropFilter?.dispose()
     this._layerPaint = null
+    this._blurFilter = null
+    this._shadowFilter = null
+    this._colorFilter = null
+    this._backdropFilter = null
   }
 }

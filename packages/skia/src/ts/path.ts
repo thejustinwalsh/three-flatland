@@ -77,6 +77,17 @@ export class SkiaPath {
     return this
   }
 
+  // ── Fill type ──
+
+  setFillType(type: 'winding' | 'evenOdd'): this {
+    this._ctx._exports.skia_path_set_fill_type(this._handle, type === 'evenOdd' ? 1 : 0)
+    return this
+  }
+
+  getFillType(): 'winding' | 'evenOdd' {
+    return this._ctx._exports.skia_path_get_fill_type(this._handle) === 1 ? 'evenOdd' : 'winding'
+  }
+
   close(): this {
     this._ctx._exports.skia_path_close(this._handle)
     return this
