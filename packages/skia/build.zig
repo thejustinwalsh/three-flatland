@@ -105,6 +105,10 @@ pub fn build(b: *std.Build) void {
         "-std=c++20",
         "-fno-exceptions",
         "-fno-rtti",
+        "-fno-math-errno",
+        "-fno-signed-zeros",
+        "-ffp-contract=fast",
+        // "-flto=thin", // TODO: experiment with LTO
         "-DSK_BUILD_FOR_WASM",
         "-DSK_FORCE_8_BYTE_ALIGNMENT",
         "-DSK_ASSUME_WEBGL=1",
@@ -187,6 +191,10 @@ fn buildSkiaLib(
         "-std=c++20",
         "-fno-exceptions",
         "-fno-rtti",
+        "-fno-math-errno",
+        "-fno-signed-zeros",
+        "-ffp-contract=fast",
+        // "-flto=thin", // TODO: experiment with LTO
         // WASM features needed by Skia's raster pipeline
         "-mtail-call",
         // Exception handling — required for FreeType's setjmp/longjmp usage
