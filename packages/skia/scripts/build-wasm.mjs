@@ -173,7 +173,7 @@ for (const variant of variants) {
   if (hasWasmOpt) {
     // Enable WASM features that Zig/Skia use: tail-call (raster pipeline),
     // bulk-memory (memcpy/memset), exception-handling (FreeType setjmp/longjmp)
-    run(`wasm-opt -Oz --strip-debug --enable-tail-call --enable-bulk-memory --enable-nontrapping-float-to-int --enable-sign-ext --enable-mutable-globals --enable-multivalue --enable-extended-const --enable-exception-handling -o ${wasmOpt} ${wasmRaw}`);
+    run(`wasm-opt -Oz --strip-debug --enable-tail-call --enable-bulk-memory --enable-nontrapping-float-to-int --enable-sign-ext --enable-mutable-globals --enable-multivalue --enable-extended-const --enable-exception-handling --enable-simd -o ${wasmOpt} ${wasmRaw}`);
   }
 
   // Step 4: Copy WASM to dist

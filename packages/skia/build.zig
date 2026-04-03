@@ -6,8 +6,8 @@ pub fn build(b: *std.Build) void {
         .cpu_arch = .wasm32,
         .os_tag = .wasi,
     };
-    // Enable tail-call (Skia raster pipeline) + exception-handling (FreeType setjmp/longjmp)
-    wasm_query.cpu_features_add = std.Target.wasm.featureSet(&.{ .tail_call, .exception_handling });
+    // Enable tail-call (Skia raster pipeline) + exception-handling (FreeType setjmp/longjmp) + SIMD (SkVx vectorization)
+    wasm_query.cpu_features_add = std.Target.wasm.featureSet(&.{ .tail_call, .exception_handling, .simd128 });
     const wasm_target = b.resolveTargetQuery(wasm_query);
 
     const optimize = b.standardOptimizeOption(.{});
@@ -106,7 +106,6 @@ pub fn build(b: *std.Build) void {
         "-fno-exceptions",
         "-fno-rtti",
         "-DSK_BUILD_FOR_WASM",
-        "-DSKVX_DISABLE_SIMD",
         "-DSK_FORCE_8_BYTE_ALIGNMENT",
         "-DSK_ASSUME_WEBGL=1",
         "-DSK_GL",
@@ -197,7 +196,6 @@ fn buildSkiaLib(
         // Platform: tell Skia we're targeting WASM (not Unix/Mac/Win)
         "-DSK_BUILD_FOR_WASM",
         // WASM-specific (from GN is_wasm config)
-        "-DSKVX_DISABLE_SIMD",
         "-DSK_FORCE_8_BYTE_ALIGNMENT",
         "-DSK_ASSUME_WEBGL=1",
         // GPU config
