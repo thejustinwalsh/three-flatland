@@ -8,6 +8,9 @@ export interface SkiaContextOptions {
   wasmUrl?: string | URL
 }
 
+/** Module-level singleton — one SkiaContext per application */
+let _instance: SkiaContext | null = null
+
 /**
  * Main entry point for the Skia WASM API.
  *
@@ -43,7 +46,17 @@ export class SkiaContext {
   }
 
   /**
-   * Create a new Skia context bound to a WebGL2 rendering context.
+   * The singleton SkiaContext instance. Set by `create()`.
+   * Use this to access the context from loaders and helpers without passing it around.
+   */
+  static get instance(): SkiaContext | null {
+    return _instance
+  }
+
+  /**
+   * Create a Skia context bound to a WebGL2 rendering context.
+   * The first context created becomes the default singleton (accessible via `SkiaContext.instance`).
+   * Loaders and helpers use the singleton automatically — override per-loader if you have multiple canvases.
    *
    * @param gl - A WebGL2RenderingContext (user-provided, we don't create one)
    * @param options - Optional configuration
@@ -56,6 +69,8 @@ export class SkiaContext {
     const wasm = await loadSkiaGL(wasmUrl, gl)
     const ctx = new SkiaContext(gl, wasm)
     ctx._exports.skia_init()
+    // First context becomes the default singleton
+    if (!_instance || _instance._destroyed) _instance = ctx
     return ctx
   }
 

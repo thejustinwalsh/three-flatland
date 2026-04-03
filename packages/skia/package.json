@@ -15,6 +15,17 @@
         "default": "./dist/index.cjs"
       }
     },
+    "./three": {
+      "source": "./src/ts/three/index.ts",
+      "import": {
+        "types": "./dist/three/index.d.ts",
+        "default": "./dist/three/index.js"
+      },
+      "require": {
+        "types": "./dist/three/index.d.cts",
+        "default": "./dist/three/index.cjs"
+      }
+    },
     "./react": {
       "source": "./src/ts/react/index.ts",
       "import": {
@@ -49,12 +60,22 @@
     "clean": "rm -rf dist .tools"
   },
   "peerDependencies": {
-    "three": ">=0.170.0"
+    "three": ">=0.170.0",
+    "@react-three/fiber": ">=8.0.0",
+    "react": ">=18.0.0"
+  },
+  "peerDependenciesMeta": {
+    "three": { "optional": true },
+    "@react-three/fiber": { "optional": true },
+    "react": { "optional": true }
   },
   "devDependencies": {
     "@bytecodealliance/componentize-js": "^0.19.3",
     "@bytecodealliance/jco": "^1.17.6",
+    "@react-three/fiber": "catalog:",
+    "@types/react": "catalog:",
     "@types/three": "catalog:",
+    "react": "catalog:",
     "three": "catalog:"
   },
   "skiaDependencies": {

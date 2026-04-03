@@ -131,4 +131,47 @@ export interface SkiaExports {
   skia_canvas_clip_rect(x: number, y: number, w: number, h: number): void
   skia_canvas_clip_round_rect(x: number, y: number, w: number, h: number, rx: number, ry: number): void
   skia_canvas_clip_path(pathH: number): void
+
+  // Canvas layers
+  skia_canvas_save_layer(boundsPtr: number, paintH: number): void
+  skia_canvas_save_layer_alpha(boundsPtr: number, alpha: number): void
+
+  // Canvas drawing: points & vertices
+  skia_canvas_draw_points(mode: number, ptsPtr: number, count: number, paintH: number): void
+  skia_vertices_create(mode: number, posPtr: number, colorsPtr: number, texPtr: number, vertexCount: number, indicesPtr: number, indexCount: number): number
+  skia_vertices_destroy(h: number): void
+  skia_canvas_draw_vertices(verticesH: number, blendMode: number, paintH: number): void
+
+  // Canvas drawing: images
+  skia_image_from_pixels(pixelsPtr: number, width: number, height: number): number
+  skia_image_destroy(h: number): void
+  skia_image_width(h: number): number
+  skia_image_height(h: number): number
+  skia_canvas_draw_image(imageH: number, x: number, y: number, paintH: number): void
+  skia_canvas_draw_image_rect(imageH: number, sx: number, sy: number, sw: number, sh: number, dx: number, dy: number, dw: number, dh: number, paintH: number): void
+
+  // Image filters
+  skia_imagefilter_blur(sigmaX: number, sigmaY: number, inputH: number): number
+  skia_imagefilter_drop_shadow(dx: number, dy: number, sigmaX: number, sigmaY: number, color: number, inputH: number): number
+  skia_imagefilter_drop_shadow_only(dx: number, dy: number, sigmaX: number, sigmaY: number, color: number, inputH: number): number
+  skia_imagefilter_offset(dx: number, dy: number, inputH: number): number
+  skia_imagefilter_color_filter(cfH: number, inputH: number): number
+  skia_imagefilter_compose(outerH: number, innerH: number): number
+  skia_imagefilter_dilate(radiusX: number, radiusY: number, inputH: number): number
+  skia_imagefilter_erode(radiusX: number, radiusY: number, inputH: number): number
+  skia_imagefilter_destroy(h: number): void
+
+  // Color filters
+  skia_colorfilter_blend(color: number, blendMode: number): number
+  skia_colorfilter_matrix(matrixPtr: number): number
+  skia_colorfilter_compose(outerH: number, innerH: number): number
+  skia_colorfilter_linear_to_srgb(): number
+  skia_colorfilter_srgb_to_linear(): number
+  skia_colorfilter_destroy(h: number): void
+
+  // Paint: filters
+  skia_paint_set_image_filter(paintH: number, filterH: number): void
+  skia_paint_clear_image_filter(paintH: number): void
+  skia_paint_set_color_filter(paintH: number, filterH: number): void
+  skia_paint_clear_color_filter(paintH: number): void
 }

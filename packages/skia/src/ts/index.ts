@@ -6,10 +6,10 @@
  *
  * @example
  * ```ts
- * import { SkiaContext, SkiaPaint } from '@three-flatland/skia'
+ * import { Skia, SkiaPaint } from '@three-flatland/skia'
  *
- * const gl = canvas.getContext('webgl2')
- * const skia = await SkiaContext.create(gl)
+ * // Initialize with a GL context or Three.js renderer
+ * const skia = await Skia.init(renderer)
  *
  * skia.drawToFBO(0, canvas.width, canvas.height, (ctx) => {
  *   ctx.clear(0.1, 0.1, 0.2, 1)
@@ -24,6 +24,7 @@
  * @packageDocumentation
  */
 
+export { Skia } from './init'
 export { SkiaContext } from './context'
 export type { SkiaContextOptions } from './context'
 export { SkiaPaint } from './paint'
@@ -31,5 +32,8 @@ export { SkiaPath } from './path'
 export { SkiaFont } from './font'
 export { SkiaSVG } from './svg'
 export { SkiaDrawingContext } from './drawing-context'
+export { SkiaImageFilter } from './image-filter'
+export { SkiaColorFilter } from './color-filter'
+export { SkiaImage } from './image'
 export { preloadSkia } from './preload'
 export type { StrokeCap, StrokeJoin, BlendMode, PathOp } from './types'

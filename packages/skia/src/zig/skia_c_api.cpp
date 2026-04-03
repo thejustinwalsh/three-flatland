@@ -21,6 +21,7 @@
 #include "include/core/SkStream.h"
 #include "include/core/SkString.h"
 #include "include/core/SkSurface.h"
+#include "include/core/SkVertices.h"
 #include "include/core/SkTextBlob.h"
 #include "include/core/SkTypeface.h"
 #include "include/effects/SkDashPathEffect.h"
@@ -540,4 +541,228 @@ void sk_canvas_clip_round_rect(sk_canvas_t canvas, float x, float y, float w, fl
 
 void sk_canvas_clip_path(sk_canvas_t canvas, sk_path_t path) {
     as_canvas(canvas)->clipPath(as_pathbuilder(path)->snapshot());
+}
+
+// ════════════════════════════════════════════════════════
+// Canvas layers
+// ════════════════════════════════════════════════════════
+
+void sk_canvas_save_layer(sk_canvas_t canvas, const float* bounds, sk_paint_t paint) {
+    SkRect* boundsRect = nullptr;
+    SkRect rect;
+    if (bounds) {
+        rect = SkRect::MakeXYWH(bounds[0], bounds[1], bounds[2], bounds[3]);
+        boundsRect = &rect;
+    }
+    as_canvas(canvas)->saveLayer(boundsRect, paint ? as_paint(paint) : nullptr);
+}
+
+void sk_canvas_save_layer_alpha(sk_canvas_t canvas, const float* bounds, float alpha) {
+    SkRect* boundsRect = nullptr;
+    SkRect rect;
+    if (bounds) {
+        rect = SkRect::MakeXYWH(bounds[0], bounds[1], bounds[2], bounds[3]);
+        boundsRect = &rect;
+    }
+    as_canvas(canvas)->saveLayerAlphaf(boundsRect, alpha);
+}
+
+// ════════════════════════════════════════════════════════
+// Canvas drawing: points & vertices
+// ════════════════════════════════════════════════════════
+
+void sk_canvas_draw_points(sk_canvas_t canvas, int mode, const float* pts, int count, sk_paint_t paint) {
+    // count = number of floats, so point count = count / 2
+    as_canvas(canvas)->drawPoints(
+        static_cast<SkCanvas::PointMode>(mode),
+        SkSpan<const SkPoint>(reinterpret_cast<const SkPoint*>(pts), count / 2),
+        *as_paint(paint));
+}
+
+sk_vertices_t sk_vertices_create(int mode, const float* positions, const uint32_t* colors,
+                                  const float* texCoords, int vertexCount,
+                                  const uint16_t* indices, int indexCount) {
+    sk_sp<SkVertices> verts = SkVertices::MakeCopy(
+        static_cast<SkVertices::VertexMode>(mode),
+        vertexCount,
+        reinterpret_cast<const SkPoint*>(positions),
+        texCoords ? reinterpret_cast<const SkPoint*>(texCoords) : nullptr,
+        reinterpret_cast<const SkColor*>(colors),
+        indexCount,
+        indices);
+    if (!verts) return nullptr;
+    return reinterpret_cast<sk_vertices_t>(verts.release());
+}
+
+void sk_vertices_destroy(sk_vertices_t verts) {
+    if (verts) reinterpret_cast<SkVertices*>(verts)->unref();
+}
+
+void sk_canvas_draw_vertices(sk_canvas_t canvas, sk_vertices_t verts, uint8_t blendMode, sk_paint_t paint) {
+    as_canvas(canvas)->drawVertices(
+        sk_ref_sp(reinterpret_cast<SkVertices*>(verts)),
+        static_cast<SkBlendMode>(blendMode),
+        *as_paint(paint));
+}
+
+// ════════════════════════════════════════════════════════
+// Canvas drawing: images
+// ════════════════════════════════════════════════════════
+
+#include "include/core/SkImage.h"
+#include "include/core/SkPixmap.h"
+
+sk_image_t sk_image_from_pixels(const uint8_t* pixels, int width, int height) {
+    SkImageInfo info = SkImageInfo::MakeN32Premul(width, height);
+    sk_sp<SkData> data = SkData::MakeWithCopy(pixels, width * height * 4);
+    sk_sp<SkImage> image = SkImages::RasterFromData(info, data, width * 4);
+    if (!image) return nullptr;
+    return reinterpret_cast<sk_image_t>(image.release());
+}
+
+void sk_image_destroy(sk_image_t image) {
+    if (image) reinterpret_cast<SkImage*>(image)->unref();
+}
+
+int sk_image_width(sk_image_t image) {
+    return image ? reinterpret_cast<SkImage*>(image)->width() : 0;
+}
+
+int sk_image_height(sk_image_t image) {
+    return image ? reinterpret_cast<SkImage*>(image)->height() : 0;
+}
+
+void sk_canvas_draw_image(sk_canvas_t canvas, sk_image_t image, float x, float y, sk_paint_t paint) {
+    auto* img = reinterpret_cast<SkImage*>(image);
+    as_canvas(canvas)->drawImage(img, x, y, SkSamplingOptions(), paint ? as_paint(paint) : nullptr);
+}
+
+void sk_canvas_draw_image_rect(sk_canvas_t canvas, sk_image_t image,
+                                float sx, float sy, float sw, float sh,
+                                float dx, float dy, float dw, float dh, sk_paint_t paint) {
+    auto* img = reinterpret_cast<SkImage*>(image);
+    SkRect src = SkRect::MakeXYWH(sx, sy, sw, sh);
+    SkRect dst = SkRect::MakeXYWH(dx, dy, dw, dh);
+    as_canvas(canvas)->drawImageRect(img, src, dst, SkSamplingOptions(),
+                                      paint ? as_paint(paint) : nullptr,
+                                      SkCanvas::kStrict_SrcRectConstraint);
+}
+
+// ════════════════════════════════════════════════════════
+// Image Filters
+// ════════════════════════════════════════════════════════
+
+#include "include/effects/SkImageFilters.h"
+
+static inline sk_sp<SkImageFilter> to_filter(sk_image_filter_t f) {
+    return f ? sk_ref_sp(reinterpret_cast<SkImageFilter*>(f)) : nullptr;
+}
+
+sk_image_filter_t sk_imagefilter_blur(float sigmaX, float sigmaY, sk_image_filter_t input) {
+    auto filter = SkImageFilters::Blur(sigmaX, sigmaY, to_filter(input));
+    return filter ? reinterpret_cast<sk_image_filter_t>(filter.release()) : nullptr;
+}
+
+sk_image_filter_t sk_imagefilter_drop_shadow(float dx, float dy, float sigmaX, float sigmaY,
+                                              uint32_t color, sk_image_filter_t input) {
+    auto filter = SkImageFilters::DropShadow(dx, dy, sigmaX, sigmaY,
+                                              static_cast<SkColor>(color), to_filter(input));
+    return filter ? reinterpret_cast<sk_image_filter_t>(filter.release()) : nullptr;
+}
+
+sk_image_filter_t sk_imagefilter_drop_shadow_only(float dx, float dy, float sigmaX, float sigmaY,
+                                                   uint32_t color, sk_image_filter_t input) {
+    auto filter = SkImageFilters::DropShadowOnly(dx, dy, sigmaX, sigmaY,
+                                                   static_cast<SkColor>(color), to_filter(input));
+    return filter ? reinterpret_cast<sk_image_filter_t>(filter.release()) : nullptr;
+}
+
+sk_image_filter_t sk_imagefilter_offset(float dx, float dy, sk_image_filter_t input) {
+    auto filter = SkImageFilters::Offset(dx, dy, to_filter(input));
+    return filter ? reinterpret_cast<sk_image_filter_t>(filter.release()) : nullptr;
+}
+
+sk_image_filter_t sk_imagefilter_color_filter(sk_color_filter_t cf, sk_image_filter_t input) {
+    auto filter = SkImageFilters::ColorFilter(
+        sk_ref_sp(reinterpret_cast<SkColorFilter*>(cf)), to_filter(input));
+    return filter ? reinterpret_cast<sk_image_filter_t>(filter.release()) : nullptr;
+}
+
+sk_image_filter_t sk_imagefilter_compose(sk_image_filter_t outer, sk_image_filter_t inner) {
+    auto filter = SkImageFilters::Compose(to_filter(outer), to_filter(inner));
+    return filter ? reinterpret_cast<sk_image_filter_t>(filter.release()) : nullptr;
+}
+
+sk_image_filter_t sk_imagefilter_dilate(float radiusX, float radiusY, sk_image_filter_t input) {
+    auto filter = SkImageFilters::Dilate(radiusX, radiusY, to_filter(input));
+    return filter ? reinterpret_cast<sk_image_filter_t>(filter.release()) : nullptr;
+}
+
+sk_image_filter_t sk_imagefilter_erode(float radiusX, float radiusY, sk_image_filter_t input) {
+    auto filter = SkImageFilters::Erode(radiusX, radiusY, to_filter(input));
+    return filter ? reinterpret_cast<sk_image_filter_t>(filter.release()) : nullptr;
+}
+
+void sk_imagefilter_destroy(sk_image_filter_t filter) {
+    if (filter) reinterpret_cast<SkImageFilter*>(filter)->unref();
+}
+
+// ════════════════════════════════════════════════════════
+// Color Filters
+// ════════════════════════════════════════════════════════
+
+#include "include/effects/SkColorMatrixFilter.h"
+
+sk_color_filter_t sk_colorfilter_blend(uint32_t color, uint8_t blendMode) {
+    auto filter = SkColorFilters::Blend(static_cast<SkColor>(color),
+                                         static_cast<SkBlendMode>(blendMode));
+    return filter ? reinterpret_cast<sk_color_filter_t>(filter.release()) : nullptr;
+}
+
+sk_color_filter_t sk_colorfilter_matrix(const float matrix[20]) {
+    auto filter = SkColorFilters::Matrix(matrix);
+    return filter ? reinterpret_cast<sk_color_filter_t>(filter.release()) : nullptr;
+}
+
+sk_color_filter_t sk_colorfilter_compose(sk_color_filter_t outer, sk_color_filter_t inner) {
+    auto filter = SkColorFilters::Compose(
+        sk_ref_sp(reinterpret_cast<SkColorFilter*>(outer)),
+        sk_ref_sp(reinterpret_cast<SkColorFilter*>(inner)));
+    return filter ? reinterpret_cast<sk_color_filter_t>(filter.release()) : nullptr;
+}
+
+sk_color_filter_t sk_colorfilter_linear_to_srgb(void) {
+    auto filter = SkColorFilters::LinearToSRGBGamma();
+    return filter ? reinterpret_cast<sk_color_filter_t>(filter.release()) : nullptr;
+}
+
+sk_color_filter_t sk_colorfilter_srgb_to_linear(void) {
+    auto filter = SkColorFilters::SRGBToLinearGamma();
+    return filter ? reinterpret_cast<sk_color_filter_t>(filter.release()) : nullptr;
+}
+
+void sk_colorfilter_destroy(sk_color_filter_t filter) {
+    if (filter) reinterpret_cast<SkColorFilter*>(filter)->unref();
+}
+
+// ════════════════════════════════════════════════════════
+// Paint: filter setters
+// ════════════════════════════════════════════════════════
+
+void sk_paint_set_image_filter(sk_paint_t paint, sk_image_filter_t filter) {
+    as_paint(paint)->setImageFilter(
+        filter ? sk_ref_sp(reinterpret_cast<SkImageFilter*>(filter)) : nullptr);
+}
+
+void sk_paint_clear_image_filter(sk_paint_t paint) {
+    as_paint(paint)->setImageFilter(nullptr);
+}
+
+void sk_paint_set_color_filter(sk_paint_t paint, sk_color_filter_t filter) {
+    as_paint(paint)->setColorFilter(
+        filter ? sk_ref_sp(reinterpret_cast<SkColorFilter*>(filter)) : nullptr);
+}
+
+void sk_paint_clear_color_filter(sk_paint_t paint) {
+    as_paint(paint)->setColorFilter(nullptr);
 }

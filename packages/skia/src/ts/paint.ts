@@ -149,6 +149,28 @@ export class SkiaPaint {
     return this
   }
 
+  // ── Filters ──
+
+  setImageFilter(filter: import('./image-filter').SkiaImageFilter): this {
+    this._ctx._exports.skia_paint_set_image_filter(this._handle, filter._handle)
+    return this
+  }
+
+  clearImageFilter(): this {
+    this._ctx._exports.skia_paint_clear_image_filter(this._handle)
+    return this
+  }
+
+  setColorFilter(filter: import('./color-filter').SkiaColorFilter): this {
+    this._ctx._exports.skia_paint_set_color_filter(this._handle, filter._handle)
+    return this
+  }
+
+  clearColorFilter(): this {
+    this._ctx._exports.skia_paint_clear_color_filter(this._handle)
+    return this
+  }
+
   /** Explicitly release the paint handle */
   dispose(): void {
     if (this._handle !== 0) {

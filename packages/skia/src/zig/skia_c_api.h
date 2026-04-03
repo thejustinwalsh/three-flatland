@@ -21,6 +21,10 @@ typedef void* sk_path_t;
 typedef void* sk_font_t;
 typedef void* sk_typeface_t;
 typedef void* sk_svg_dom_t;
+typedef void* sk_image_filter_t;
+typedef void* sk_color_filter_t;
+typedef void* sk_image_t;
+typedef void* sk_vertices_t;
 
 // ── Context (GrDirectContext) ──
 
@@ -128,6 +132,63 @@ void sk_canvas_concat_matrix(sk_canvas_t canvas, const float* m, int count);
 void sk_canvas_clip_rect(sk_canvas_t canvas, float x, float y, float w, float h);
 void sk_canvas_clip_round_rect(sk_canvas_t canvas, float x, float y, float w, float h, float rx, float ry);
 void sk_canvas_clip_path(sk_canvas_t canvas, sk_path_t path);
+
+// ── Canvas layers (for group-level effects) ──
+
+void sk_canvas_save_layer(sk_canvas_t canvas, const float* bounds, sk_paint_t paint);
+void sk_canvas_save_layer_alpha(sk_canvas_t canvas, const float* bounds, float alpha);
+
+// ── Canvas drawing: points & vertices ──
+
+// mode: 0=points, 1=lines, 2=polygon
+void sk_canvas_draw_points(sk_canvas_t canvas, int mode, const float* pts, int count, sk_paint_t paint);
+
+sk_vertices_t sk_vertices_create(int mode, const float* positions, const uint32_t* colors,
+                                  const float* texCoords, int vertexCount,
+                                  const uint16_t* indices, int indexCount);
+void sk_vertices_destroy(sk_vertices_t verts);
+void sk_canvas_draw_vertices(sk_canvas_t canvas, sk_vertices_t verts, uint8_t blendMode, sk_paint_t paint);
+
+// ── Canvas drawing: images ──
+
+sk_image_t sk_image_from_pixels(const uint8_t* pixels, int width, int height);
+void sk_image_destroy(sk_image_t image);
+int sk_image_width(sk_image_t image);
+int sk_image_height(sk_image_t image);
+void sk_canvas_draw_image(sk_canvas_t canvas, sk_image_t image, float x, float y, sk_paint_t paint);
+void sk_canvas_draw_image_rect(sk_canvas_t canvas, sk_image_t image,
+                                float sx, float sy, float sw, float sh,
+                                float dx, float dy, float dw, float dh, sk_paint_t paint);
+
+// ── Image Filters ──
+
+sk_image_filter_t sk_imagefilter_blur(float sigmaX, float sigmaY, sk_image_filter_t input);
+sk_image_filter_t sk_imagefilter_drop_shadow(float dx, float dy, float sigmaX, float sigmaY,
+                                              uint32_t color, sk_image_filter_t input);
+sk_image_filter_t sk_imagefilter_drop_shadow_only(float dx, float dy, float sigmaX, float sigmaY,
+                                                   uint32_t color, sk_image_filter_t input);
+sk_image_filter_t sk_imagefilter_offset(float dx, float dy, sk_image_filter_t input);
+sk_image_filter_t sk_imagefilter_color_filter(sk_color_filter_t cf, sk_image_filter_t input);
+sk_image_filter_t sk_imagefilter_compose(sk_image_filter_t outer, sk_image_filter_t inner);
+sk_image_filter_t sk_imagefilter_dilate(float radiusX, float radiusY, sk_image_filter_t input);
+sk_image_filter_t sk_imagefilter_erode(float radiusX, float radiusY, sk_image_filter_t input);
+void sk_imagefilter_destroy(sk_image_filter_t filter);
+
+// ── Color Filters ──
+
+sk_color_filter_t sk_colorfilter_blend(uint32_t color, uint8_t blendMode);
+sk_color_filter_t sk_colorfilter_matrix(const float matrix[20]);
+sk_color_filter_t sk_colorfilter_compose(sk_color_filter_t outer, sk_color_filter_t inner);
+sk_color_filter_t sk_colorfilter_linear_to_srgb(void);
+sk_color_filter_t sk_colorfilter_srgb_to_linear(void);
+void sk_colorfilter_destroy(sk_color_filter_t filter);
+
+// ── Paint: filter setters ──
+
+void sk_paint_set_image_filter(sk_paint_t paint, sk_image_filter_t filter);
+void sk_paint_clear_image_filter(sk_paint_t paint);
+void sk_paint_set_color_filter(sk_paint_t paint, sk_color_filter_t filter);
+void sk_paint_clear_color_filter(sk_paint_t paint);
 
 #ifdef __cplusplus
 }
