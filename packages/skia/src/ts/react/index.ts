@@ -1,14 +1,11 @@
 /**
  * @three-flatland/skia/react
  *
- * React Three Fiber integration — type augmentation and hooks.
- * Import this to get `<skiaCanvas>`, `<skiaRect>`, etc. in R3F JSX.
+ * React Three Fiber integration — type augmentation, hooks, and full API.
+ * R3F users should always import from this subpath to get JSX types.
  *
- * For loading resources, use `useLoader` with Skia loaders from `/three`:
  * ```tsx
- * import { useLoader } from '@react-three/fiber'
- * import { SkiaFontLoader } from '@three-flatland/skia/three'
- * const font = useLoader(SkiaFontLoader, '/fonts/Inter.ttf')
+ * import { SkiaCanvas, SkiaRect, SkiaFontLoader, useSkiaContext } from '@three-flatland/skia/react'
  * ```
  *
  * @packageDocumentation
@@ -17,4 +14,8 @@
 // Side-effect: augment ThreeElements with Skia types
 import './types'
 
+// React-specific hooks
 export { useSkiaContext, useSkiaDraw } from './hooks'
+
+// Re-export Three.js scene graph so R3F users only need one import
+export * from '../three/index'

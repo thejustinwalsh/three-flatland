@@ -26,6 +26,17 @@
         "default": "./dist/three/index.cjs"
       }
     },
+    "./three/*": {
+      "source": "./src/ts/three/*.ts",
+      "import": {
+        "types": "./dist/three/*.d.ts",
+        "default": "./dist/three/*.js"
+      },
+      "require": {
+        "types": "./dist/three/*.d.cts",
+        "default": "./dist/three/*.cjs"
+      }
+    },
     "./react": {
       "source": "./src/ts/react/index.ts",
       "import": {
@@ -35,6 +46,17 @@
       "require": {
         "types": "./dist/react/index.d.cts",
         "default": "./dist/react/index.cjs"
+      }
+    },
+    "./react/*": {
+      "source": "./src/ts/react/*.ts",
+      "import": {
+        "types": "./dist/react/*.d.ts",
+        "default": "./dist/react/*.js"
+      },
+      "require": {
+        "types": "./dist/react/*.d.cts",
+        "default": "./dist/react/*.cjs"
       }
     },
     "./wasm": "./dist/skia-gl/skia-gl.wasm",
@@ -56,6 +78,8 @@
     "build": "node scripts/build-wasm.mjs --gl-only --skip-if-fresh && tsup",
     "build:wasm": "node scripts/build-wasm.mjs --gl-only",
     "dev": "tsup --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist .tools"
   },

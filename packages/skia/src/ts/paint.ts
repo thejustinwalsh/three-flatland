@@ -1,5 +1,5 @@
 import type { SkiaContext } from './context'
-import { type StrokeCap, type StrokeJoin, type BlendMode, STROKE_CAP, STROKE_JOIN, BLEND_MODE } from './types'
+import { type StrokeCap, type StrokeJoin, type BlendMode, type BlurStyle, STROKE_CAP, STROKE_JOIN, BLEND_MODE, BLUR_STYLE, BLEND_MODE_REVERSE, STROKE_CAP_REVERSE, STROKE_JOIN_REVERSE } from './types'
 
 const paintRegistry = new FinalizationRegistry<{ handle: number; drop: (h: number) => void }>(
   ({ handle, drop }) => drop(handle),
@@ -91,8 +91,14 @@ export class SkiaPaint {
     return this
   }
 
-  setBlur(sigma: number): this {
-    this._ctx._exports.skia_paint_set_blur(this._handle, sigma)
+  /**
+   * Set blur mask filter.
+   * @param sigma - Blur radius
+   * @param style - 'normal' (default), 'solid' (solid inside, fuzzy outside),
+   *                'outer' (nothing inside, fuzzy outside), 'inner' (fuzzy inside, nothing outside)
+   */
+  setBlur(sigma: number, style: BlurStyle = 'normal'): this {
+    this._ctx._exports.skia_paint_set_blur_style(this._handle, sigma, BLUR_STYLE[style])
     return this
   }
 
@@ -203,6 +209,53 @@ export class SkiaPaint {
   clearColorFilter(): this {
     this._ctx._exports.skia_paint_clear_color_filter(this._handle)
     return this
+  }
+
+  // ── Getters ──
+
+  getColor(): { r: number; g: number; b: number; a: number } {
+    const ptr = this._ctx._writeF32([0, 0, 0, 0])
+    this._ctx._exports.skia_paint_get_color(this._handle, ptr)
+    const dv = new DataView(this._ctx._memory.buffer)
+    return { r: dv.getFloat32(ptr, true), g: dv.getFloat32(ptr + 4, true), b: dv.getFloat32(ptr + 8, true), a: dv.getFloat32(ptr + 12, true) }
+  }
+
+  getAlpha(): number {
+    return this._ctx._exports.skia_paint_get_alpha(this._handle)
+  }
+
+  getBlendMode(): BlendMode {
+    return BLEND_MODE_REVERSE[this._ctx._exports.skia_paint_get_blend_mode(this._handle)] ?? 'srcOver'
+  }
+
+  getStrokeCap(): StrokeCap {
+    return STROKE_CAP_REVERSE[this._ctx._exports.skia_paint_get_stroke_cap(this._handle)] ?? 'butt'
+  }
+
+  getStrokeJoin(): StrokeJoin {
+    return STROKE_JOIN_REVERSE[this._ctx._exports.skia_paint_get_stroke_join(this._handle)] ?? 'miter'
+  }
+
+  getStrokeWidth(): number {
+    return this._ctx._exports.skia_paint_get_stroke_width(this._handle)
+  }
+
+  getStrokeMiter(): number {
+    return this._ctx._exports.skia_paint_get_stroke_miter(this._handle)
+  }
+
+  getStyle(): 'fill' | 'stroke' | 'strokeAndFill' {
+    const v = this._ctx._exports.skia_paint_get_style(this._handle)
+    return v === 1 ? 'stroke' : v === 2 ? 'strokeAndFill' : 'fill'
+  }
+
+  copy(): SkiaPaint {
+    const newHandle = this._ctx._exports.skia_paint_copy(this._handle)
+    const paint = Object.create(SkiaPaint.prototype) as SkiaPaint
+    ;(paint as unknown as { _ctx: SkiaContext })._ctx = this._ctx
+    paint._handle = newHandle
+    paintRegistry.register(paint, { handle: newHandle, drop: this._ctx._exports.skia_paint_delete }, paint)
+    return paint
   }
 
   /** Explicitly release the paint handle */

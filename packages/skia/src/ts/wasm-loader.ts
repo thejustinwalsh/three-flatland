@@ -90,27 +90,8 @@ function writeString(state: GLState, ptr: number, maxLen: number, str: string): 
 function createGLImports(state: GLState): Record<string, WebAssembly.ImportValue> {
   const { gl } = state
 
-  // String storage for glGetString — allocate in WASM memory
-  // glGetString returns a pointer to a null-terminated string in WASM memory.
-  // We pre-allocate a region and cache the strings.
-  let stringBufPtr = 0
-  const STRING_BUF_SIZE = 4096
-
-  function allocateStringBuf() {
-    // This gets called after memory is available
-    // We'll use the first 4KB of memory as a string buffer
-    // In practice, Skia's allocator manages memory — we need a proper malloc.
-    // For now, use a fixed offset past the data segment end.
-  }
-
   return {
     emscripten_glGetString(name: number): number {
-      const GL_VENDOR = 0x1F00
-      const GL_RENDERER = 0x1F01
-      const GL_VERSION = 0x1F02
-      const GL_SHADING_LANGUAGE_VERSION = 0x8B8C
-      const GL_EXTENSIONS = 0x1F03
-
       // Return cached pointer if available
       if (state.stringCache.has(name)) {
         // Already written to memory, return the same pointer

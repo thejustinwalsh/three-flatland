@@ -2,7 +2,7 @@ import { Object3D } from 'three'
 import type { SkiaContext } from '../context'
 import type { SkiaDrawingContext } from '../drawing-context'
 import type { SkiaPaint } from '../paint'
-import { PaintCache, type SkiaColor, type SkiaPaintProps } from './SkiaPaintProps'
+import { PaintCache, type SkiaColor } from './SkiaPaintProps'
 import type { StrokeCap, StrokeJoin, BlendMode } from '../types'
 
 /**
@@ -39,6 +39,9 @@ export abstract class SkiaNode extends Object3D {
 
   get strokeJoin(): StrokeJoin | undefined { return this._paintCache.strokeJoin }
   set strokeJoin(v: StrokeJoin | undefined) { this._paintCache.strokeJoin = v; this._paintCache.markDirty() }
+
+  get strokeMiter(): number | undefined { return this._paintCache.strokeMiter }
+  set strokeMiter(v: number | undefined) { this._paintCache.strokeMiter = v; this._paintCache.markDirty() }
 
   get opacity(): number { return this._paintCache.opacity ?? 1 }
   set opacity(v: number) { this._paintCache.opacity = v; this._paintCache.markDirty() }

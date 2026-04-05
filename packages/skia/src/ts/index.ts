@@ -1,7 +1,7 @@
 /**
  * @three-flatland/skia
  *
- * Pure Skia WASM wrapper — GPU-accelerated 2D vector graphics, text, and SVG.
+ * Pure Skia WASM wrapper — GPU-accelerated 2D vector graphics and text.
  * Works with any WebGL2RenderingContext. No Three.js dependency.
  *
  * @example
@@ -30,7 +30,6 @@ export type { SkiaContextOptions } from './context'
 export { SkiaPaint } from './paint'
 export { SkiaPath } from './path'
 export { SkiaFont } from './font'
-export { SkiaSVG } from './svg'
 export { SkiaDrawingContext } from './drawing-context'
 export { SkiaImageFilter } from './image-filter'
 export { SkiaColorFilter } from './color-filter'
@@ -43,4 +42,4 @@ export { SkiaPathMeasure } from './path-measure'
 export { SkiaTextBlob } from './text-blob'
 export { SkiaPicture, SkiaPictureRecorder } from './picture'
 export { preloadSkia } from './preload'
-export type { StrokeCap, StrokeJoin, BlendMode, PathOp } from './types'
+export type { StrokeCap, StrokeJoin, BlendMode, BlurStyle, PathOp } from './types'

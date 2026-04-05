@@ -65,6 +65,15 @@ export class SkiaImage {
     return SkiaImage.fromPixels(context, new Uint8Array(imageData.data.buffer), bitmap.width, bitmap.height)
   }
 
+  /** Read the image pixels as RGBA data. Returns null on failure. */
+  readPixels(): Uint8Array | null {
+    const size = this.width * this.height * 4
+    const outPtr = this._ctx._exports.cabi_realloc(0, 0, 1, size)
+    const ok = this._ctx._exports.skia_image_read_pixels(this._handle, outPtr, this.width, this.height)
+    if (!ok) return null
+    return new Uint8Array(this._ctx._memory.buffer.slice(outPtr, outPtr + size))
+  }
+
   dispose(): void {
     if (this._handle !== 0) {
       registry.unregister(this)

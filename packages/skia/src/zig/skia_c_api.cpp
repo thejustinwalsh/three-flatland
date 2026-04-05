@@ -36,22 +36,13 @@
 #include "include/gpu/ganesh/gl/GrGLTypes.h"
 #include "include/pathops/SkPathOps.h"
 #include "include/utils/SkParsePath.h"
+#include "include/effects/SkLumaColorFilter.h"
+#include "include/effects/Sk2DPathEffect.h"
 
-// Conditionally include SVG if available
-#if __has_include("modules/svg/include/SkSVGDOM.h")
-#include "modules/svg/include/SkSVGDOM.h"
-#define HAS_SVG 1
-#else
-#define HAS_SVG 0
-#endif
 
-// Conditionally include FreeType font manager
-#if __has_include("include/ports/SkFontMgr_data.h")
+// FreeType font manager — always included in our build
 #include "include/ports/SkFontMgr_data.h"
 #define HAS_FONTMGR_DATA 1
-#else
-#define HAS_FONTMGR_DATA 0
-#endif
 
 // ── Helpers ──
 
@@ -62,9 +53,6 @@ static inline GrDirectContext* as_context(sk_context_t c) { return reinterpret_c
 static inline SkSurface* as_surface(sk_surface_t s) { return reinterpret_cast<SkSurface*>(s); }
 static inline SkFont* as_font(sk_font_t f) { return reinterpret_cast<SkFont*>(f); }
 static inline SkTypeface* as_typeface(sk_typeface_t t) { return reinterpret_cast<SkTypeface*>(t); }
-#if HAS_SVG
-static inline SkSVGDOM* as_svgdom(sk_svg_dom_t s) { return reinterpret_cast<SkSVGDOM*>(s); }
-#endif
 
 // Convert uint32_t (0xAARRGGBB) to SkColor4f
 static SkColor4f color_from_u32(uint32_t c) {
@@ -82,6 +70,12 @@ static SkColor4f color_from_u32(uint32_t c) {
 
 // Debug: returns 0=ok, 1=MakeWebGL failed, 2=MakeGL failed
 static int g_gl_init_error = 0;
+
+sk_context_t sk_context_create_mock(void) {
+    auto ctx = GrDirectContext::MakeMock(nullptr);
+    if (!ctx) return nullptr;
+    return reinterpret_cast<sk_context_t>(ctx.release());
+}
 
 sk_context_t sk_context_create_gl(void) {
     sk_sp<const GrGLInterface> interface = GrGLInterfaces::MakeWebGL();
@@ -126,6 +120,13 @@ sk_surface_t sk_surface_create_from_fbo(sk_context_t ctx, uint32_t fbo_id, int32
         as_context(ctx), backend_rt, kBottomLeft_GrSurfaceOrigin,
         kRGBA_8888_SkColorType, SkColorSpace::MakeSRGB(), nullptr);
 
+    if (!surface) return nullptr;
+    return reinterpret_cast<sk_surface_t>(surface.release());
+}
+
+sk_surface_t sk_surface_create_raster(int32_t width, int32_t height) {
+    if (width <= 0 || height <= 0) return nullptr;
+    auto surface = SkSurfaces::Raster(SkImageInfo::MakeN32Premul(width, height));
     if (!surface) return nullptr;
     return reinterpret_cast<sk_surface_t>(surface.release());
 }
@@ -209,6 +210,12 @@ void sk_paint_set_blur(sk_paint_t paint, float sigma) {
     }
 }
 
+void sk_paint_set_blur_style(sk_paint_t paint, float sigma, int style) {
+    if (sigma > 0) {
+        as_paint(paint)->setMaskFilter(SkMaskFilter::MakeBlur(static_cast<SkBlurStyle>(style), sigma));
+    }
+}
+
 void sk_paint_clear_blur(sk_paint_t paint) {
     as_paint(paint)->setMaskFilter(nullptr);
 }
@@ -265,6 +272,47 @@ void sk_paint_set_sweep_gradient(sk_paint_t paint, float cx, float cy,
 
 void sk_paint_clear_shader(sk_paint_t paint) {
     as_paint(paint)->setShader(nullptr);
+}
+
+// ════════════════════════════════════════════════════════
+// Paint getters
+// ════════════════════════════════════════════════════════
+
+void sk_paint_get_color(sk_paint_t paint, float* r, float* g, float* b, float* a) {
+    SkColor4f c = as_paint(paint)->getColor4f();
+    *r = c.fR; *g = c.fG; *b = c.fB; *a = c.fA;
+}
+
+float sk_paint_get_alpha(sk_paint_t paint) {
+    return as_paint(paint)->getAlphaf();
+}
+
+uint8_t sk_paint_get_blend_mode(sk_paint_t paint) {
+    return static_cast<uint8_t>(as_paint(paint)->getBlendMode_or(SkBlendMode::kSrcOver));
+}
+
+uint8_t sk_paint_get_stroke_cap(sk_paint_t paint) {
+    return static_cast<uint8_t>(as_paint(paint)->getStrokeCap());
+}
+
+uint8_t sk_paint_get_stroke_join(sk_paint_t paint) {
+    return static_cast<uint8_t>(as_paint(paint)->getStrokeJoin());
+}
+
+float sk_paint_get_stroke_width(sk_paint_t paint) {
+    return as_paint(paint)->getStrokeWidth();
+}
+
+float sk_paint_get_stroke_miter(sk_paint_t paint) {
+    return as_paint(paint)->getStrokeMiter();
+}
+
+int sk_paint_get_style(sk_paint_t paint) {
+    return static_cast<int>(as_paint(paint)->getStyle());
+}
+
+sk_paint_t sk_paint_copy(sk_paint_t paint) {
+    return reinterpret_cast<sk_paint_t>(new SkPaint(*as_paint(paint)));
 }
 
 // ════════════════════════════════════════════════════════
@@ -326,6 +374,112 @@ int sk_path_to_svg_string(sk_path_t path, char* buf, int buf_len) {
     memcpy(buf, str.c_str(), copy_len);
     buf[copy_len] = '\0';
     return copy_len;
+}
+
+// ════════════════════════════════════════════════════════
+// Path: convenience shape additions
+// ════════════════════════════════════════════════════════
+
+void sk_path_add_rect(sk_path_t path, float x, float y, float w, float h) {
+    as_pathbuilder(path)->addRect(SkRect::MakeXYWH(x, y, w, h));
+}
+
+void sk_path_add_circle(sk_path_t path, float cx, float cy, float r) {
+    as_pathbuilder(path)->addOval(SkRect::MakeXYWH(cx - r, cy - r, r * 2, r * 2));
+}
+
+void sk_path_add_oval(sk_path_t path, float x, float y, float w, float h) {
+    as_pathbuilder(path)->addOval(SkRect::MakeXYWH(x, y, w, h));
+}
+
+void sk_path_add_rrect(sk_path_t path, float x, float y, float w, float h, float rx, float ry) {
+    SkRRect rrect;
+    rrect.setRectXY(SkRect::MakeXYWH(x, y, w, h), rx, ry);
+    as_pathbuilder(path)->addRRect(rrect);
+}
+
+void sk_path_add_arc(sk_path_t path, float x, float y, float w, float h, float startAngle, float sweepAngle) {
+    as_pathbuilder(path)->addArc(SkRect::MakeXYWH(x, y, w, h), startAngle, sweepAngle);
+}
+
+void sk_path_add_path(sk_path_t dst, sk_path_t src) {
+    SkPath srcPath = as_pathbuilder(src)->snapshot();
+    as_pathbuilder(dst)->addPath(srcPath);
+}
+
+void sk_path_get_bounds(sk_path_t path, float* out4) {
+    SkPath p = as_pathbuilder(path)->snapshot();
+    SkRect r = p.getBounds();
+    out4[0] = r.x(); out4[1] = r.y(); out4[2] = r.width(); out4[3] = r.height();
+}
+
+void sk_path_compute_tight_bounds(sk_path_t path, float* out4) {
+    SkPath p = as_pathbuilder(path)->snapshot();
+    SkRect r = p.computeTightBounds();
+    out4[0] = r.x(); out4[1] = r.y(); out4[2] = r.width(); out4[3] = r.height();
+}
+
+int sk_path_contains(sk_path_t path, float x, float y) {
+    SkPath p = as_pathbuilder(path)->snapshot();
+    return p.contains(x, y) ? 1 : 0;
+}
+
+void sk_path_conic_to(sk_path_t path, float cx, float cy, float x, float y, float w) {
+    as_pathbuilder(path)->conicTo(cx, cy, x, y, w);
+}
+
+sk_path_t sk_path_transform(sk_path_t path, const float* matrix9) {
+    SkPath p = as_pathbuilder(path)->snapshot();
+    SkMatrix m;
+    m.set9(matrix9);
+    SkPath result = p.makeTransform(m);
+    return reinterpret_cast<sk_path_t>(new SkPathBuilder(result));
+}
+
+sk_path_t sk_path_copy(sk_path_t path) {
+    SkPath p = as_pathbuilder(path)->snapshot();
+    return reinterpret_cast<sk_path_t>(new SkPathBuilder(p));
+}
+
+int sk_path_is_empty(sk_path_t path) {
+    return as_pathbuilder(path)->snapshot().isEmpty() ? 1 : 0;
+}
+
+void sk_path_r_move_to(sk_path_t path, float dx, float dy) {
+    as_pathbuilder(path)->rMoveTo(dx, dy);
+}
+
+void sk_path_r_line_to(sk_path_t path, float dx, float dy) {
+    as_pathbuilder(path)->rLineTo(dx, dy);
+}
+
+void sk_path_r_quad_to(sk_path_t path, float dcx, float dcy, float dx, float dy) {
+    as_pathbuilder(path)->rQuadTo(dcx, dcy, dx, dy);
+}
+
+void sk_path_r_cubic_to(sk_path_t path, float dc1x, float dc1y, float dc2x, float dc2y, float dx, float dy) {
+    as_pathbuilder(path)->rCubicTo(dc1x, dc1y, dc2x, dc2y, dx, dy);
+}
+
+void sk_path_r_conic_to(sk_path_t path, float dcx, float dcy, float dx, float dy, float w) {
+    as_pathbuilder(path)->rConicTo(dcx, dcy, dx, dy, w);
+}
+
+void sk_path_offset(sk_path_t path, float dx, float dy) {
+    SkPath p = as_pathbuilder(path)->snapshot();
+    SkPath result = p.makeOffset(dx, dy);
+    as_pathbuilder(path)->reset();
+    as_pathbuilder(path)->addPath(result);
+}
+
+int sk_path_count_points(sk_path_t path) {
+    return as_pathbuilder(path)->snapshot().countPoints();
+}
+
+void sk_path_get_point(sk_path_t path, int index, float* x, float* y) {
+    SkPath p = as_pathbuilder(path)->snapshot();
+    SkPoint pt = p.getPoint(index);
+    *x = pt.x(); *y = pt.y();
 }
 
 // ════════════════════════════════════════════════════════
@@ -406,58 +560,29 @@ float sk_font_measure_text(sk_font_t font, const char* text, int len) {
 }
 
 // ════════════════════════════════════════════════════════
-// SVG
+// Font: metrics and glyph info
 // ════════════════════════════════════════════════════════
 
-sk_svg_dom_t sk_svg_dom_from_string(const char* data, int len) {
-#if HAS_SVG
-    SkMemoryStream stream(data, len);
-    auto dom = SkSVGDOM::MakeFromStream(stream);
-    if (!dom) return nullptr;
-    return reinterpret_cast<sk_svg_dom_t>(dom.release());
-#else
-    (void)data; (void)len;
-    return nullptr;
-#endif
+#include "include/core/SkFontMetrics.h"
+
+void sk_font_get_metrics(sk_font_t font, float* ascent, float* descent, float* leading) {
+    SkFontMetrics metrics;
+    as_font(font)->getMetrics(&metrics);
+    *ascent = metrics.fAscent;
+    *descent = metrics.fDescent;
+    *leading = metrics.fLeading;
 }
 
-void sk_svg_dom_destroy(sk_svg_dom_t svg) {
-#if HAS_SVG
-    if (svg) as_svgdom(svg)->unref();
-#else
-    (void)svg;
-#endif
+float sk_font_get_size(sk_font_t font) {
+    return as_font(font)->getSize();
 }
 
-void sk_svg_dom_get_size(sk_svg_dom_t svg, float* w, float* h) {
-#if HAS_SVG
-    if (svg) {
-        SkSize size = as_svgdom(svg)->containerSize();
-        *w = size.width();
-        *h = size.height();
-    } else {
-        *w = 0; *h = 0;
-    }
-#else
-    *w = 0; *h = 0;
-    (void)svg;
-#endif
+int sk_font_get_glyph_ids(sk_font_t font, const char* text, int len, uint16_t* glyphs, int maxGlyphs) {
+    return as_font(font)->textToGlyphs(text, len, SkTextEncoding::kUTF8, {glyphs, static_cast<size_t>(maxGlyphs)});
 }
 
-void sk_svg_dom_set_size(sk_svg_dom_t svg, float w, float h) {
-#if HAS_SVG
-    if (svg) as_svgdom(svg)->setContainerSize(SkSize::Make(w, h));
-#else
-    (void)svg; (void)w; (void)h;
-#endif
-}
-
-void sk_svg_dom_render(sk_svg_dom_t svg, sk_canvas_t canvas) {
-#if HAS_SVG
-    if (svg && canvas) as_svgdom(svg)->render(as_canvas(canvas));
-#else
-    (void)svg; (void)canvas;
-#endif
+void sk_font_get_glyph_widths(sk_font_t font, const uint16_t* glyphs, int count, float* widths) {
+    as_font(font)->getWidths({glyphs, static_cast<size_t>(count)}, {widths, static_cast<size_t>(count)});
 }
 
 // ════════════════════════════════════════════════════════
@@ -568,44 +693,6 @@ void sk_canvas_save_layer_alpha(sk_canvas_t canvas, const float* bounds, float a
 }
 
 // ════════════════════════════════════════════════════════
-// Canvas drawing: points & vertices
-// ════════════════════════════════════════════════════════
-
-void sk_canvas_draw_points(sk_canvas_t canvas, int mode, const float* pts, int count, sk_paint_t paint) {
-    // count = number of floats, so point count = count / 2
-    as_canvas(canvas)->drawPoints(
-        static_cast<SkCanvas::PointMode>(mode),
-        SkSpan<const SkPoint>(reinterpret_cast<const SkPoint*>(pts), count / 2),
-        *as_paint(paint));
-}
-
-sk_vertices_t sk_vertices_create(int mode, const float* positions, const uint32_t* colors,
-                                  const float* texCoords, int vertexCount,
-                                  const uint16_t* indices, int indexCount) {
-    sk_sp<SkVertices> verts = SkVertices::MakeCopy(
-        static_cast<SkVertices::VertexMode>(mode),
-        vertexCount,
-        reinterpret_cast<const SkPoint*>(positions),
-        texCoords ? reinterpret_cast<const SkPoint*>(texCoords) : nullptr,
-        reinterpret_cast<const SkColor*>(colors),
-        indexCount,
-        indices);
-    if (!verts) return nullptr;
-    return reinterpret_cast<sk_vertices_t>(verts.release());
-}
-
-void sk_vertices_destroy(sk_vertices_t verts) {
-    if (verts) reinterpret_cast<SkVertices*>(verts)->unref();
-}
-
-void sk_canvas_draw_vertices(sk_canvas_t canvas, sk_vertices_t verts, uint8_t blendMode, sk_paint_t paint) {
-    as_canvas(canvas)->drawVertices(
-        sk_ref_sp(reinterpret_cast<SkVertices*>(verts)),
-        static_cast<SkBlendMode>(blendMode),
-        *as_paint(paint));
-}
-
-// ════════════════════════════════════════════════════════
 // Canvas drawing: images
 // ════════════════════════════════════════════════════════
 
@@ -646,6 +733,63 @@ void sk_canvas_draw_image_rect(sk_canvas_t canvas, sk_image_t image,
     as_canvas(canvas)->drawImageRect(img, src, dst, SkSamplingOptions(),
                                       paint ? as_paint(paint) : nullptr,
                                       SkCanvas::kStrict_SrcRectConstraint);
+}
+
+// ════════════════════════════════════════════════════════
+// Canvas: additional drawing
+// ════════════════════════════════════════════════════════
+
+void sk_canvas_draw_arc(sk_canvas_t canvas, float x, float y, float w, float h,
+                         float startAngle, float sweepAngle, int useCenter, sk_paint_t paint) {
+    as_canvas(canvas)->drawArc(SkRect::MakeXYWH(x, y, w, h), startAngle, sweepAngle,
+                                useCenter != 0, *as_paint(paint));
+}
+
+void sk_canvas_draw_drrect(sk_canvas_t canvas,
+                            float ox, float oy, float ow, float oh, float orx, float ory,
+                            float ix, float iy, float iw, float ih, float irx, float iry,
+                            sk_paint_t paint) {
+    SkRRect outer, inner;
+    outer.setRectXY(SkRect::MakeXYWH(ox, oy, ow, oh), orx, ory);
+    inner.setRectXY(SkRect::MakeXYWH(ix, iy, iw, ih), irx, iry);
+    as_canvas(canvas)->drawDRRect(outer, inner, *as_paint(paint));
+}
+
+void sk_canvas_draw_paint(sk_canvas_t canvas, sk_paint_t paint) {
+    as_canvas(canvas)->drawPaint(*as_paint(paint));
+}
+
+void sk_canvas_draw_color(sk_canvas_t canvas, float r, float g, float b, float a) {
+    as_canvas(canvas)->drawColor(SkColor4f{r, g, b, a});
+}
+
+int sk_canvas_get_save_count(sk_canvas_t canvas) {
+    return as_canvas(canvas)->getSaveCount();
+}
+
+void sk_canvas_restore_to_count(sk_canvas_t canvas, int count) {
+    as_canvas(canvas)->restoreToCount(count);
+}
+
+void sk_canvas_get_total_matrix(sk_canvas_t canvas, float* out9) {
+    SkMatrix m = as_canvas(canvas)->getTotalMatrix();
+    m.get9(out9);
+}
+
+int sk_canvas_read_pixels(sk_canvas_t canvas, int x, int y, int width, int height, uint8_t* pixels) {
+    SkImageInfo info = SkImageInfo::MakeN32Premul(width, height);
+    return as_canvas(canvas)->readPixels(info, pixels, width * 4, x, y) ? 1 : 0;
+}
+
+// ════════════════════════════════════════════════════════
+// Image: read pixels
+// ════════════════════════════════════════════════════════
+
+int sk_image_read_pixels(sk_image_t image, uint8_t* pixels, int width, int height) {
+    if (!image) return 0;
+    SkImageInfo info = SkImageInfo::MakeN32Premul(width, height);
+    return reinterpret_cast<SkImage*>(image)->readPixels(
+        nullptr, info, pixels, width * 4, 0, 0) ? 1 : 0;
 }
 
 // ════════════════════════════════════════════════════════
@@ -703,6 +847,26 @@ sk_image_filter_t sk_imagefilter_erode(float radiusX, float radiusY, sk_image_fi
     return filter ? reinterpret_cast<sk_image_filter_t>(filter.release()) : nullptr;
 }
 
+sk_image_filter_t sk_imagefilter_blend(uint8_t blendMode, sk_image_filter_t bg, sk_image_filter_t fg) {
+    auto filter = SkImageFilters::Blend(static_cast<SkBlendMode>(blendMode),
+                                         to_filter(bg), to_filter(fg));
+    return filter ? reinterpret_cast<sk_image_filter_t>(filter.release()) : nullptr;
+}
+
+sk_image_filter_t sk_imagefilter_matrix_transform(const float* matrix9, int sampling, sk_image_filter_t input) {
+    SkMatrix m;
+    m.set9(matrix9);
+    SkSamplingOptions samp;
+    if (sampling == 1) {
+        samp = SkSamplingOptions(SkFilterMode::kLinear);
+    } else if (sampling == 2) {
+        samp = SkSamplingOptions(SkFilterMode::kLinear, SkMipmapMode::kLinear);
+    }
+    // sampling == 0 is nearest (default)
+    auto filter = SkImageFilters::MatrixTransform(m, samp, to_filter(input));
+    return filter ? reinterpret_cast<sk_image_filter_t>(filter.release()) : nullptr;
+}
+
 void sk_imagefilter_destroy(sk_image_filter_t filter) {
     if (filter) reinterpret_cast<SkImageFilter*>(filter)->unref();
 }
@@ -731,6 +895,23 @@ sk_color_filter_t sk_colorfilter_compose(sk_color_filter_t outer, sk_color_filte
     return filter ? reinterpret_cast<sk_color_filter_t>(filter.release()) : nullptr;
 }
 
+sk_color_filter_t sk_colorfilter_lerp(float t, sk_color_filter_t dst, sk_color_filter_t src) {
+    auto filter = SkColorFilters::Lerp(t,
+        sk_ref_sp(reinterpret_cast<SkColorFilter*>(dst)),
+        sk_ref_sp(reinterpret_cast<SkColorFilter*>(src)));
+    return filter ? reinterpret_cast<sk_color_filter_t>(filter.release()) : nullptr;
+}
+
+sk_color_filter_t sk_colorfilter_table(const uint8_t table[256]) {
+    auto filter = SkColorFilters::Table(table);
+    return filter ? reinterpret_cast<sk_color_filter_t>(filter.release()) : nullptr;
+}
+
+sk_color_filter_t sk_colorfilter_table_argb(const uint8_t a[256], const uint8_t r[256], const uint8_t g[256], const uint8_t b[256]) {
+    auto filter = SkColorFilters::TableARGB(a, r, g, b);
+    return filter ? reinterpret_cast<sk_color_filter_t>(filter.release()) : nullptr;
+}
+
 sk_color_filter_t sk_colorfilter_linear_to_srgb(void) {
     auto filter = SkColorFilters::LinearToSRGBGamma();
     return filter ? reinterpret_cast<sk_color_filter_t>(filter.release()) : nullptr;
@@ -738,6 +919,11 @@ sk_color_filter_t sk_colorfilter_linear_to_srgb(void) {
 
 sk_color_filter_t sk_colorfilter_srgb_to_linear(void) {
     auto filter = SkColorFilters::SRGBToLinearGamma();
+    return filter ? reinterpret_cast<sk_color_filter_t>(filter.release()) : nullptr;
+}
+
+sk_color_filter_t sk_colorfilter_luma(void) {
+    auto filter = SkLumaColorFilter::Make();
     return filter ? reinterpret_cast<sk_color_filter_t>(filter.release()) : nullptr;
 }
 
@@ -818,6 +1004,14 @@ sk_path_effect_t sk_patheffect_sum(sk_path_effect_t first, sk_path_effect_t seco
     return pe ? reinterpret_cast<sk_path_effect_t>(pe.release()) : nullptr;
 }
 
+sk_path_effect_t sk_patheffect_path2d(const float* matrix9, sk_path_t path) {
+    SkMatrix m;
+    m.set9(matrix9);
+    SkPath p = as_pathbuilder(path)->snapshot();
+    auto pe = SkPath2DPathEffect::Make(m, p);
+    return pe ? reinterpret_cast<sk_path_effect_t>(pe.release()) : nullptr;
+}
+
 void sk_patheffect_destroy(sk_path_effect_t effect) {
     if (effect) reinterpret_cast<SkPathEffect*>(effect)->unref();
 }
@@ -851,6 +1045,82 @@ sk_shader_t sk_shader_image(sk_image_t image, int tileX, int tileY) {
     auto* img = reinterpret_cast<SkImage*>(image);
     auto shader = img->makeShader(
         static_cast<SkTileMode>(tileX), static_cast<SkTileMode>(tileY), SkSamplingOptions());
+    return shader ? reinterpret_cast<sk_shader_t>(shader.release()) : nullptr;
+}
+
+sk_shader_t sk_shader_color(float r, float g, float b, float a) {
+    auto shader = SkShaders::Color(SkColor4f{r, g, b, a}, nullptr);
+    return shader ? reinterpret_cast<sk_shader_t>(shader.release()) : nullptr;
+}
+
+sk_shader_t sk_shader_blend(uint8_t blendMode, sk_shader_t dst, sk_shader_t src) {
+    auto shader = SkShaders::Blend(
+        static_cast<SkBlendMode>(blendMode),
+        sk_ref_sp(reinterpret_cast<SkShader*>(dst)),
+        sk_ref_sp(reinterpret_cast<SkShader*>(src)));
+    return shader ? reinterpret_cast<sk_shader_t>(shader.release()) : nullptr;
+}
+
+sk_shader_t sk_shader_linear_gradient(float x0, float y0, float x1, float y1,
+                                       const uint32_t* colors, const float* stops, int count) {
+    SkPoint pts[2] = {{x0, y0}, {x1, y1}};
+    SkColor4f* sk_colors = reinterpret_cast<SkColor4f*>(alloca(count * sizeof(SkColor4f)));
+    for (int i = 0; i < count; i++) sk_colors[i] = color_from_u32(colors[i]);
+
+    SkGradient::Colors grad_colors(
+        {sk_colors, static_cast<size_t>(count)},
+        {stops, static_cast<size_t>(count)},
+        SkTileMode::kClamp);
+    SkGradient grad(grad_colors, {});
+
+    auto shader = SkShaders::LinearGradient(pts, grad);
+    return shader ? reinterpret_cast<sk_shader_t>(shader.release()) : nullptr;
+}
+
+sk_shader_t sk_shader_radial_gradient(float cx, float cy, float r,
+                                       const uint32_t* colors, const float* stops, int count) {
+    SkColor4f* sk_colors = reinterpret_cast<SkColor4f*>(alloca(count * sizeof(SkColor4f)));
+    for (int i = 0; i < count; i++) sk_colors[i] = color_from_u32(colors[i]);
+
+    SkGradient::Colors grad_colors(
+        {sk_colors, static_cast<size_t>(count)},
+        {stops, static_cast<size_t>(count)},
+        SkTileMode::kClamp);
+    SkGradient grad(grad_colors, {});
+
+    auto shader = SkShaders::RadialGradient({cx, cy}, r, grad);
+    return shader ? reinterpret_cast<sk_shader_t>(shader.release()) : nullptr;
+}
+
+sk_shader_t sk_shader_sweep_gradient(float cx, float cy,
+                                      const uint32_t* colors, const float* stops, int count) {
+    SkColor4f* sk_colors = reinterpret_cast<SkColor4f*>(alloca(count * sizeof(SkColor4f)));
+    for (int i = 0; i < count; i++) sk_colors[i] = color_from_u32(colors[i]);
+
+    SkGradient::Colors grad_colors(
+        {sk_colors, static_cast<size_t>(count)},
+        {stops, static_cast<size_t>(count)},
+        SkTileMode::kClamp);
+    SkGradient grad(grad_colors, {});
+
+    auto shader = SkShaders::SweepGradient({cx, cy}, grad);
+    return shader ? reinterpret_cast<sk_shader_t>(shader.release()) : nullptr;
+}
+
+sk_shader_t sk_shader_two_point_conical_gradient(float startX, float startY, float startR,
+                                                  float endX, float endY, float endR,
+                                                  const uint32_t* colors, const float* stops, int count) {
+    SkColor4f* sk_colors = reinterpret_cast<SkColor4f*>(alloca(count * sizeof(SkColor4f)));
+    for (int i = 0; i < count; i++) sk_colors[i] = color_from_u32(colors[i]);
+
+    SkGradient::Colors grad_colors(
+        {sk_colors, static_cast<size_t>(count)},
+        {stops, static_cast<size_t>(count)},
+        SkTileMode::kClamp);
+    SkGradient grad(grad_colors, {});
+
+    auto shader = SkShaders::TwoPointConicalGradient(
+        {startX, startY}, startR, {endX, endY}, endR, grad);
     return shader ? reinterpret_cast<sk_shader_t>(shader.release()) : nullptr;
 }
 
@@ -1022,16 +1292,3 @@ void sk_canvas_draw_picture(sk_canvas_t canvas, sk_picture_t pic) {
 // Atlas (sprite batch)
 // ════════════════════════════════════════════════════════
 
-void sk_canvas_draw_atlas(sk_canvas_t canvas, sk_image_t atlas,
-    const float* xforms, const float* rects, const uint32_t* colors,
-    int count, uint8_t blendMode, sk_paint_t paint) {
-    as_canvas(canvas)->drawAtlas(
-        reinterpret_cast<SkImage*>(atlas),
-        SkSpan<const SkRSXform>(reinterpret_cast<const SkRSXform*>(xforms), count),
-        SkSpan<const SkRect>(reinterpret_cast<const SkRect*>(rects), count),
-        colors ? SkSpan<const SkColor>(reinterpret_cast<const SkColor*>(colors), count) : SkSpan<const SkColor>(),
-        static_cast<SkBlendMode>(blendMode),
-        SkSamplingOptions(),
-        nullptr,
-        paint ? as_paint(paint) : nullptr);
-}

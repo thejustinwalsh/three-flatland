@@ -2,7 +2,6 @@ import type { SkiaContext } from './context'
 import type { SkiaPaint } from './paint'
 import type { SkiaPath } from './path'
 import type { SkiaFont } from './font'
-import type { SkiaSVG } from './svg'
 import type { SkiaImage } from './image'
 import type { SkiaTextBlob } from './text-blob'
 import type { SkiaPicture } from './picture'
@@ -65,6 +64,26 @@ export class SkiaDrawingContext {
     this._ctx._exports.skia_draw_path(path._handle, paint._handle)
   }
 
+  drawArc(x: number, y: number, w: number, h: number, startAngle: number, sweepAngle: number, useCenter: boolean, paint: SkiaPaint): void {
+    this._check()
+    this._ctx._exports.skia_canvas_draw_arc(x, y, w, h, startAngle, sweepAngle, useCenter ? 1 : 0, paint._handle)
+  }
+
+  drawDRRect(outer: { x: number; y: number; w: number; h: number; rx: number; ry: number }, inner: { x: number; y: number; w: number; h: number; rx: number; ry: number }, paint: SkiaPaint): void {
+    this._check()
+    this._ctx._exports.skia_canvas_draw_drrect(outer.x, outer.y, outer.w, outer.h, outer.rx, outer.ry, inner.x, inner.y, inner.w, inner.h, inner.rx, inner.ry, paint._handle)
+  }
+
+  drawPaint(paint: SkiaPaint): void {
+    this._check()
+    this._ctx._exports.skia_canvas_draw_paint(paint._handle)
+  }
+
+  drawColor(r: number, g: number, b: number, a = 1): void {
+    this._check()
+    this._ctx._exports.skia_canvas_draw_color(r, g, b, a)
+  }
+
   // ── Text ──
 
   drawText(text: string, x: number, y: number, font: SkiaFont, paint: SkiaPaint): void {
@@ -73,12 +92,6 @@ export class SkiaDrawingContext {
     this._ctx._exports.skia_draw_text(ptr, len, x, y, font._handle, paint._handle)
   }
 
-  // ── SVG ──
-
-  drawSVG(svg: SkiaSVG): void {
-    this._check()
-    this._ctx._exports.skia_draw_svg(svg._handle)
-  }
 
   // ── Transform stack ──
 
@@ -110,6 +123,34 @@ export class SkiaDrawingContext {
   skew(sx: number, sy: number): void {
     this._check()
     this._ctx._exports.skia_canvas_skew(sx, sy)
+  }
+
+  getSaveCount(): number {
+    this._check()
+    return this._ctx._exports.skia_canvas_get_save_count()
+  }
+
+  restoreToCount(count: number): void {
+    this._check()
+    this._ctx._exports.skia_canvas_restore_to_count(count)
+  }
+
+  /** Returns the current 3x3 total transformation matrix (9 floats) */
+  getTotalMatrix(): Float32Array {
+    this._check()
+    const ptr = this._ctx._writeF32([0, 0, 0, 0, 0, 0, 0, 0, 0])
+    this._ctx._exports.skia_canvas_get_total_matrix(ptr)
+    return new Float32Array(this._ctx._memory.buffer.slice(ptr, ptr + 36))
+  }
+
+  /** Read RGBA pixels from the canvas. Returns null on failure. */
+  readPixels(x: number, y: number, w: number, h: number): Uint8Array | null {
+    this._check()
+    const size = w * h * 4
+    const ptr = this._ctx._exports.cabi_realloc(0, 0, 1, size)
+    const ok = this._ctx._exports.skia_canvas_read_pixels(x, y, w, h, ptr)
+    if (!ok) return null
+    return new Uint8Array(this._ctx._memory.buffer.slice(ptr, ptr + size))
   }
 
   /** Concatenate a 3x3 (9 floats) or 4x4 (16 floats) matrix */

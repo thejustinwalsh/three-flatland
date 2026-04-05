@@ -48,6 +48,38 @@ export class SkiaFont {
     return this._ctx._exports.skia_measure_text(ptr, len, this._handle)
   }
 
+  /** Get font metrics: ascent, descent, leading */
+  getMetrics(): { ascent: number; descent: number; leading: number } {
+    const ptr = this._ctx._writeF32([0, 0, 0])
+    this._ctx._exports.skia_font_get_metrics(this._handle, ptr)
+    const dv = new DataView(this._ctx._memory.buffer)
+    return { ascent: dv.getFloat32(ptr, true), descent: dv.getFloat32(ptr + 4, true), leading: dv.getFloat32(ptr + 8, true) }
+  }
+
+  /** Get the current font size */
+  getSize(): number {
+    return this._ctx._exports.skia_font_get_size(this._handle)
+  }
+
+  /** Convert a text string to an array of glyph IDs */
+  getGlyphIDs(text: string): Uint16Array {
+    const [textPtr, textLen] = this._ctx._writeString(text)
+    // Allocate output buffer for max possible glyphs (one per code point)
+    const maxGlyphs = text.length
+    const outPtr = this._ctx._exports.cabi_realloc(0, 0, 2, maxGlyphs * 2)
+    const count = this._ctx._exports.skia_font_get_glyph_ids(this._handle, textPtr, textLen, outPtr, maxGlyphs)
+    return new Uint16Array(this._ctx._memory.buffer.slice(outPtr, outPtr + count * 2))
+  }
+
+  /** Get advance widths for an array of glyph IDs */
+  getGlyphWidths(glyphIDs: Uint16Array): Float32Array {
+    const glyphsPtr = this._ctx._exports.cabi_realloc(0, 0, 2, glyphIDs.byteLength)
+    new Uint16Array(this._ctx._memory.buffer, glyphsPtr, glyphIDs.length).set(glyphIDs)
+    const outPtr = this._ctx._writeF32(new Array(glyphIDs.length).fill(0))
+    this._ctx._exports.skia_font_get_glyph_widths(this._handle, glyphsPtr, glyphIDs.length, outPtr)
+    return new Float32Array(this._ctx._memory.buffer.slice(outPtr, outPtr + glyphIDs.length * 4))
+  }
+
   dispose(): void {
     if (this._handle !== 0) {
       fontRegistry.unregister(this)

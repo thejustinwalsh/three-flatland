@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Skia TS API Test</title>
+  <style>
+    html, body { margin: 0; height: 100%; }
+    body { background: #0d0d0d; color: #eee; font-family: monospace; display: flex; flex-direction: column; align-items: center; }
+    canvas { border: 1px solid #444; flex-shrink: 0; }
+    h1 { flex-shrink: 0; margin: 12px 0 8px; font-size: 18px; color: #e2e8f0; }
+    main { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; width: 100%; }
+    #log { white-space: pre-wrap; font-size: 12px; color: #aaa; height: 200px; overflow-y: auto; padding: 12px; background: rgba(255,255,255,0.04); border-radius: 6px; }
+    .ok { color: #4ade80; }
+    .err { color: #f87171; }
+    .info { color: #60a5fa; }
+  </style>
+  <script type="importmap">
+  {
+    "imports": {
+      "@three-flatland/skia": "../dist/index.js",
+      "@three-flatland/skia/": "../dist/"
+    },
+    "scopes": {
+      "../dist/": {
+        "./color-filter": "../dist/color-filter.js",
+        "./context": "../dist/context.js",
+        "./drawing-context": "../dist/drawing-context.js",
+        "./font": "../dist/font.js",
+        "./image": "../dist/image.js",
+        "./image-filter": "../dist/image-filter.js",
+        "./init": "../dist/init.js",
+        "./paint": "../dist/paint.js",
+        "./path": "../dist/path.js",
+        "./path-effect": "../dist/path-effect.js",
+        "./path-measure": "../dist/path-measure.js",
+        "./picture": "../dist/picture.js",
+        "./preload": "../dist/preload.js",
+        "./shader": "../dist/shader.js",
+        "./svg": "../dist/svg.js",
+        "./text-blob": "../dist/text-blob.js",
+        "./types": "../dist/types.js",
+        "./wasm-loader": "../dist/wasm-loader.js"
+      }
+    }
+  }
+  </script>
+</head>
+<body>
+  <h1>Skia TS API — Browser Test</h1>
+  <main>
+    <canvas id="canvas" width="512" height="512"></canvas>
+  </main>
+  <div style="max-width:800px;width:800px;flex-shrink:0;margin-bottom:20px;">
+    <div style="font-size:11px;color:#555;margin-bottom:4px;padding-left:4px;">TS API Log</div>
+    <div id="log"></div>
+  </div>
+
+<script type="module">
+import { SkiaContext, SkiaPaint, SkiaPath, SkiaFont } from '@three-flatland/skia'
+
+const log = document.getElementById('log')
+const L = (cls, msg) => { log.innerHTML += `<span class="${cls}">${msg}</span>\n`; log.scrollTop = log.scrollHeight }
+const ok = (msg) => L('ok', `[ok]  ${msg}`)
+const err = (msg) => L('err', `[err] ${msg}`)
+const info = (msg) => L('info', `[..] ${msg}`)
+
+async function run() {
+  info('Setting up WebGL2 context...')
+
+  const canvas = document.getElementById('canvas')
+  const gl = canvas.getContext('webgl2', { antialias: true, stencil: true })
+  if (!gl) { err('WebGL2 not supported'); return }
+  ok(`WebGL2: ${gl.getParameter(gl.RENDERER)}`)
+
+  // Enable all GL extensions (required before Skia queries them)
+  const enabledExts = []
+  for (const ext of gl.getSupportedExtensions() || []) {
+    if (gl.getExtension(ext)) enabledExts.push(ext)
+  }
+  ok(`${enabledExts.length} GL extensions enabled`)
+
+  // ── Initialize Skia via TS API ──
+  info('Creating SkiaContext...')
+  let skia
+  try {
+    skia = await SkiaContext.create(gl)
+    ok('SkiaContext created')
+  } catch (e) {
+    err(`SkiaContext.create failed: ${e.message}`)
+    console.error(e)
+    return
+  }
+
+  // ── Animation state ──
+  let animTime = 0
+  const sqCols = [
+    [0.9, 0.3, 0.3], [0.3, 0.9, 0.4], [0.3, 0.5, 0.9],
+    [0.9, 0.7, 0.2], [0.7, 0.3, 0.9], [0.2, 0.8, 0.8],
+  ]
+  let sqSwapA = 0, sqSwapB = 1, sqSwapStart = 0
+  let sqFromA = [...sqCols[0]], sqFromB = [...sqCols[1]]
+  let sqToA = [...sqCols[1]], sqToB = [...sqCols[0]]
+
+  // ── Persistent paints ──
+  const fillPaint = new SkiaPaint(skia).setFill()
+  const strokePaint = new SkiaPaint(skia).setStroke(2.0)
+
+  // ── Helper: make circle path ──
+  function makeCirclePath(cx, cy, r) {
+    const path = new SkiaPath(skia)
+    for (let i = 0; i <= 64; i++) {
+      const a = (i / 64) * Math.PI * 2
+      const x = cx + Math.cos(a) * r, y = cy + Math.sin(a) * r
+      if (i === 0) path.moveTo(x, y)
+      else path.lineTo(x, y)
+    }
+    path.close()
+    return path
+  }
+
+  // ── Draw the static/animated scene ──
+  function drawScene(ctx) {
+    ctx.clear(0.06, 0.06, 0.1, 1.0)
+
+    // Colored rectangles — two swap and lerp every 3 seconds
+    const sqDur = 3000
+    let sqT = Math.min((animTime - sqSwapStart) / sqDur, 1.0)
+    sqT = sqT * sqT * (3 - 2 * sqT) // smoothstep
+    if (sqT >= 1.0 && animTime > 0) {
+      sqCols[sqSwapA] = [...sqToA]
+      sqCols[sqSwapB] = [...sqToB]
+      const a = Math.floor(Math.random() * 6)
+      const b = (a + 1 + Math.floor(Math.random() * 5)) % 6
+      sqSwapA = a; sqSwapB = b; sqSwapStart = animTime
+      sqFromA = [...sqCols[a]]; sqFromB = [...sqCols[b]]
+      sqToA = [...sqCols[b]]; sqToB = [...sqCols[a]]
+      sqT = 0
+    }
+    for (let i = 0; i < sqCols.length; i++) {
+      let c = sqCols[i]
+      if (i === sqSwapA) c = sqFromA.map((v, j) => v + (sqToA[j] - v) * sqT)
+      else if (i === sqSwapB) c = sqFromB.map((v, j) => v + (sqToB[j] - v) * sqT)
+      fillPaint.setColor(c[0], c[1], c[2], 1.0)
+      ctx.drawRoundRect(30 + i * 78, 30, 68, 68, 10, 10, fillPaint)
+    }
+
+    // Circles — muted colors cycling slowly
+    for (let i = 0; i < 8; i++) {
+      const t = ((i / 8) + animTime * 0.0002) % 1.0
+      fillPaint.setColor(
+        0.15 + 0.35 * t,
+        0.2 + 0.25 * (1 - t),
+        0.3 + 0.4 * Math.sin(t * Math.PI * 2 + 4),
+        0.7,
+      )
+      ctx.drawCircle(64 + i * 56, 140, 18, fillPaint)
+    }
+
+    // Stroked frame with lines
+    strokePaint.setColor(1.0, 1.0, 1.0, 0.3)
+    ctx.drawRect(20, 170, 472, 100, strokePaint)
+    ctx.drawRoundRect(28, 176, 456, 88, 10, 10, strokePaint)
+
+    // Lines — color shifts at ~12hz
+    const linePhase = Math.floor(animTime / 83) % 9
+    for (let i = 0; i < 9; i++) {
+      const t = ((i + linePhase) % 9) / 9
+      strokePaint.setColor(0.5 + 0.5 * t, 0.8 - 0.3 * t, 0.3 + 0.5 * t, 0.6)
+      ctx.drawLine(36, 184 + i * 9, 472, 184 + i * 9, strokePaint)
+    }
+
+    // Gradient bars
+    const gradPaint = new SkiaPaint(skia).setFill()
+    const gradColors = [
+      [0xFFFF4444, 0xFF4444FF],
+      [0xFF44FF44, 0xFFFF44FF],
+      [0xFFFFAA00, 0xFF00AAFF],
+      [0xFF4488FF, 0xFFFF8844],
+    ]
+    const barW = 452, barX = 30
+    for (let i = 0; i < gradColors.length; i++) {
+      const y = 284 + i * 22
+      const dir = (i % 2 === 0) ? 1 : -1
+      const speed = 0.15 + i * 0.03
+      const mid = 0.5 + 0.4 * Math.sin(animTime * speed * 0.001 * dir)
+      const cA = gradColors[i][0], cB = gradColors[i][1]
+      gradPaint.setLinearGradient(barX, y, barX + barW, y, [cA, cB, cA], [0.0, mid, 1.0])
+      ctx.drawRoundRect(barX, y, barW, 16, 4, 4, gradPaint)
+    }
+    gradPaint.dispose()
+
+    // PathOps demo
+    const pathOps = [
+      { op: 'difference', color: [0.9, 0.3, 0.3] },
+      { op: 'intersect', color: [0.3, 0.9, 0.4] },
+      { op: 'union', color: [0.3, 0.5, 0.9] },
+      { op: 'xor', color: [0.9, 0.7, 0.2] },
+    ]
+    for (let pi = 0; pi < pathOps.length; pi++) {
+      const cx = 75 + pi * 120
+      const spread = 12 + 6 * Math.sin(animTime * 0.002 + pi)
+      const pa = makeCirclePath(cx - spread, 404, 26)
+      const pb = makeCirclePath(cx + spread, 404, 26)
+      const result = pa.op(pb, pathOps[pi].op)
+      if (result) {
+        fillPaint.setColor(pathOps[pi].color[0], pathOps[pi].color[1], pathOps[pi].color[2], 0.9)
+        ctx.drawPath(result, fillPaint)
+        result.dispose()
+      }
+      strokePaint.setColor(1.0, 1.0, 1.0, 0.15)
+      ctx.drawPath(pa, strokePaint)
+      ctx.drawPath(pb, strokePaint)
+      pa.dispose()
+      pb.dispose()
+    }
+  }
+
+  // ── First frame ──
+  info('Drawing first frame...')
+  const success = skia.drawToFBO(0, 512, 512, (ctx) => drawScene(ctx))
+  if (success) ok('Drew static scene')
+  else { err('drawToFBO failed'); return }
+
+  // ── Load font ──
+  info('Loading font...')
+  let font, font2
+  try {
+    const fontUrl = 'https://cdn.jsdelivr.net/gh/rsms/inter@v4.1/docs/font-files/InterVariable.ttf'
+    const fontData = new Uint8Array(await (await fetch(fontUrl)).arrayBuffer())
+    font = new SkiaFont(skia, fontData, 32)
+    font2 = new SkiaFont(skia, fontData, 14)
+    ok('Font loaded')
+  } catch (e) {
+    err(`Font loading failed: ${e.message}`)
+    ok('Animation running without text')
+  }
+
+  // ── Text helpers ──
+  const titlePaint = new SkiaPaint(skia).setFill().setColor(1, 1, 1, 1)
+  const textPaint = new SkiaPaint(skia).setFill()
+  const fpsPaint = new SkiaPaint(skia).setFill().setColor(1, 1, 1, 0.35)
+
+  const drawCentered = (ctx, str, y, f, p) => {
+    const w = f.measureText(str)
+    ctx.drawText(str, (512 - w) / 2, y, f, p)
+  }
+
+  // Subtitle
+  const subStr = 'GPU-accelerated vector graphics in the browser'
+  let subW = 0, subX = 0
+  if (font2) {
+    subW = font2.measureText(subStr)
+    subX = (512 - subW) / 2
+  }
+
+  const hslToArgb = (h, s, l) => {
+    const c = (1 - Math.abs(2 * l - 1)) * s
+    const x = c * (1 - Math.abs((h / 60) % 2 - 1))
+    const m = l - c / 2
+    let r, g, b
+    if (h < 60) { r = c; g = x; b = 0 }
+    else if (h < 120) { r = x; g = c; b = 0 }
+    else if (h < 180) { r = 0; g = c; b = x }
+    else if (h < 240) { r = 0; g = x; b = c }
+    else if (h < 300) { r = x; g = 0; b = c }
+    else { r = c; g = 0; b = x }
+    const ri = Math.round((r + m) * 255), gi = Math.round((g + m) * 255), bi = Math.round((b + m) * 255)
+    return 0xFF000000 | (ri << 16) | (gi << 8) | bi
+  }
+
+  // ── FPS tracking ──
+  let lastTime = 0, frameCount = 0, fps = 0
+  let fpsFont
+  if (font) {
+    // Clone font data for small size — reuse the SkiaFont API
+    fpsFont = font // we'll just use setSize before drawing fps, then restore
+  }
+
+  // ── Animation loop ──
+  const animate = (t) => {
+    animTime = t
+
+    skia.drawToFBO(0, 512, 512, (ctx) => {
+      drawScene(ctx)
+
+      if (font) {
+        // Title
+        drawCentered(ctx, '@three-flatland/skia', 466, font, titlePaint)
+
+        // Animated gradient subtitle
+        if (font2) {
+          const hue1 = (t * 0.05) % 360
+          const hue2 = (hue1 + 120) % 360
+          textPaint.setLinearGradient(subX, 0, subX + subW, 0,
+            [hslToArgb(hue1, 0.8, 0.6), hslToArgb(hue2, 0.8, 0.6)],
+            [0.0, 1.0])
+          ctx.drawText(subStr, subX, 490, font2, textPaint)
+        }
+      }
+
+      // FPS counter
+      frameCount++
+      if (t - lastTime >= 1000) { fps = frameCount; frameCount = 0; lastTime = t }
+      if (font2) {
+        const fpsText = `${fps} fps`
+        const fpsW = font2.measureText(fpsText)
+        fpsPaint.setColor(1, 1, 1, 0.35)
+        ctx.drawText(fpsText, 500 - fpsW, 18, font2, fpsPaint)
+      }
+    })
+
+    requestAnimationFrame(animate)
+  }
+
+  requestAnimationFrame(animate)
+  ok('Animation started')
+}
+
+run().catch(e => err(`Unhandled: ${e.message}`))
+</script>
+</body>
+</html>

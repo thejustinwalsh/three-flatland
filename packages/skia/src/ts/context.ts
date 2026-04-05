@@ -1,6 +1,5 @@
 import { type SkiaExports } from './types'
 import { type SkiaWasmInstance, loadSkiaGL } from './wasm-loader'
-import { getPreloadedModule } from './preload'
 import { SkiaDrawingContext } from './drawing-context'
 
 export interface SkiaContextOptions {
@@ -38,6 +37,7 @@ export class SkiaContext {
 
   private _destroyed = false
   private _drawing = false
+  private _currentDrawCtx: SkiaDrawingContext | null = null
 
   private constructor(gl: WebGL2RenderingContext, wasm: SkiaWasmInstance) {
     this.gl = gl
@@ -90,7 +90,8 @@ export class SkiaContext {
     if (!result) return null
 
     this._drawing = true
-    return new SkiaDrawingContext(this)
+    this._currentDrawCtx = new SkiaDrawingContext(this)
+    return this._currentDrawCtx
   }
 
   /**
@@ -99,6 +100,8 @@ export class SkiaContext {
   endDrawing(): void {
     if (!this._drawing) return
     this._exports.skia_end_drawing()
+    this._currentDrawCtx?._invalidate()
+    this._currentDrawCtx = null
     this._drawing = false
   }
 

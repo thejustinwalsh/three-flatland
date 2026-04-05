@@ -36,6 +36,7 @@
   "lint-staged": {
     "packages/three-flatland/src/index.ts": "tsx scripts/sync-react-subpaths.ts",
     "packages/three-flatland/src/*/index.ts": "tsx scripts/sync-react-subpaths.ts",
+    "packages/skia/src/ts/three/index.ts": "tsx scripts/sync-react-subpaths.ts",
     "examples/**/package.json": "tsx scripts/sync-pack.ts --files",
     "minis/**/package.json": "tsx scripts/sync-pack.ts --files",
     "packages/skia/third_party/skia": "tsx scripts/check-skia-pin.ts"
@@ -57,6 +58,7 @@
     "@eslint/js": "^9.18.0",
     "@size-limit/preset-small-lib": "^12.0.0",
     "@types/node": "^22.10.5",
+    "@vitest/coverage-v8": "^2.1.9",
     "eslint": "^9.18.0",
     "eslint-plugin-react-hooks": "^7.0.1",
     "globals": "^15.14.0",

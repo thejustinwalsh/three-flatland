@@ -51,6 +51,30 @@ export class SkiaColorFilter {
     return h ? new SkiaColorFilter(context, h) : null
   }
 
+  /** Interpolate between two color filters (t=0 → dst, t=1 → src) */
+  static lerp(context: SkiaContext, t: number, dst: SkiaColorFilter, src: SkiaColorFilter): SkiaColorFilter | null {
+    const h = context._exports.skia_colorfilter_lerp(t, dst._handle, src._handle)
+    return h ? new SkiaColorFilter(context, h) : null
+  }
+
+  /** Per-channel lookup table (256 entries, applied to all RGBA channels) */
+  static table(context: SkiaContext, table: Uint8Array): SkiaColorFilter | null {
+    if (table.length !== 256) throw new Error('Color table must have 256 entries')
+    const [ptr] = context._writeBytes(table)
+    const h = context._exports.skia_colorfilter_table(ptr)
+    return h ? new SkiaColorFilter(context, h) : null
+  }
+
+  /** Per-channel lookup tables (256 entries each for A, R, G, B) */
+  static tableARGB(context: SkiaContext, a: Uint8Array, r: Uint8Array, g: Uint8Array, b: Uint8Array): SkiaColorFilter | null {
+    const [aPtr] = context._writeBytes(a)
+    const [rPtr] = context._writeBytes(r)
+    const [gPtr] = context._writeBytes(g)
+    const [bPtr] = context._writeBytes(b)
+    const h = context._exports.skia_colorfilter_table_argb(aPtr, rPtr, gPtr, bPtr)
+    return h ? new SkiaColorFilter(context, h) : null
+  }
+
   /** Convert from linear to sRGB gamma */
   static linearToSRGB(context: SkiaContext): SkiaColorFilter | null {
     const h = context._exports.skia_colorfilter_linear_to_srgb()
@@ -60,6 +84,12 @@ export class SkiaColorFilter {
   /** Convert from sRGB to linear gamma */
   static srgbToLinear(context: SkiaContext): SkiaColorFilter | null {
     const h = context._exports.skia_colorfilter_srgb_to_linear()
+    return h ? new SkiaColorFilter(context, h) : null
+  }
+
+  /** Luminance-to-alpha color filter */
+  static luma(context: SkiaContext): SkiaColorFilter | null {
+    const h = context._exports.skia_colorfilter_luma()
     return h ? new SkiaColorFilter(context, h) : null
   }
 

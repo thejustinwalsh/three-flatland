@@ -72,6 +72,14 @@ export class SkiaPathEffect {
     return h ? new SkiaPathEffect(context, h) : null
   }
 
+  /** Stamp a path in a 2D pattern using a matrix transform */
+  static path2D(context: SkiaContext, matrix: Float32Array | number[], stampPath: SkiaPath): SkiaPathEffect | null {
+    const arr = matrix instanceof Float32Array ? matrix : new Float32Array(matrix)
+    const ptr = context._writeF32(arr)
+    const h = context._exports.skia_patheffect_path2d(ptr, stampPath._handle)
+    return h ? new SkiaPathEffect(context, h) : null
+  }
+
   /** Apply both effects and combine the results */
   static sum(context: SkiaContext, first: SkiaPathEffect, second: SkiaPathEffect): SkiaPathEffect | null {
     const h = context._exports.skia_patheffect_sum(first._handle, second._handle)

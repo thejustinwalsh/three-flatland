@@ -12,6 +12,7 @@ export interface SkiaPaintProps {
   strokeWidth?: number
   strokeCap?: StrokeCap
   strokeJoin?: StrokeJoin
+  strokeMiter?: number
   opacity?: number
   blur?: number
   dash?: { intervals: number[]; phase?: number }
@@ -46,6 +47,7 @@ export class PaintCache {
   strokeWidth?: number
   strokeCap?: StrokeCap
   strokeJoin?: StrokeJoin
+  strokeMiter?: number
   opacity?: number
   blur?: number
   dash?: { intervals: number[]; phase?: number }
@@ -81,6 +83,7 @@ export class PaintCache {
 
     if (this.strokeCap) p.setStrokeCap(this.strokeCap)
     if (this.strokeJoin) p.setStrokeJoin(this.strokeJoin)
+    if (this.strokeMiter !== undefined) p.setStrokeMiter(this.strokeMiter)
     if (this.opacity !== undefined) p.setAlpha(this.opacity)
     if (this.blur !== undefined && this.blur > 0) p.setBlur(this.blur)
     else p.clearBlur()

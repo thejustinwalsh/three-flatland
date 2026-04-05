@@ -77,6 +77,36 @@ export class SkiaPath {
     return this
   }
 
+  conicTo(cx: number, cy: number, x: number, y: number, weight: number): this {
+    this._ctx._exports.skia_path_conic(this._handle, cx, cy, x, y, weight)
+    return this
+  }
+
+  rMoveTo(dx: number, dy: number): this {
+    this._ctx._exports.skia_path_r_move(this._handle, dx, dy)
+    return this
+  }
+
+  rLineTo(dx: number, dy: number): this {
+    this._ctx._exports.skia_path_r_line(this._handle, dx, dy)
+    return this
+  }
+
+  rQuadTo(dcx: number, dcy: number, dx: number, dy: number): this {
+    this._ctx._exports.skia_path_r_quad(this._handle, dcx, dcy, dx, dy)
+    return this
+  }
+
+  rCubicTo(dc1x: number, dc1y: number, dc2x: number, dc2y: number, dx: number, dy: number): this {
+    this._ctx._exports.skia_path_r_cubic(this._handle, dc1x, dc1y, dc2x, dc2y, dx, dy)
+    return this
+  }
+
+  rConicTo(dcx: number, dcy: number, dx: number, dy: number, weight: number): this {
+    this._ctx._exports.skia_path_r_conic(this._handle, dcx, dcy, dx, dy, weight)
+    return this
+  }
+
   // ── Fill type ──
 
   setFillType(type: 'winding' | 'evenOdd'): this {
@@ -95,6 +125,97 @@ export class SkiaPath {
 
   reset(): this {
     this._ctx._exports.skia_path_reset(this._handle)
+    return this
+  }
+
+  // ── Shape additions ──
+
+  addRect(x: number, y: number, w: number, h: number): this {
+    this._ctx._exports.skia_path_add_rect(this._handle, x, y, w, h)
+    return this
+  }
+
+  addCircle(cx: number, cy: number, r: number): this {
+    this._ctx._exports.skia_path_add_circle(this._handle, cx, cy, r)
+    return this
+  }
+
+  addOval(x: number, y: number, w: number, h: number): this {
+    this._ctx._exports.skia_path_add_oval(this._handle, x, y, w, h)
+    return this
+  }
+
+  addRoundRect(x: number, y: number, w: number, h: number, rx: number, ry: number): this {
+    this._ctx._exports.skia_path_add_rrect(this._handle, x, y, w, h, rx, ry)
+    return this
+  }
+
+  addArc(x: number, y: number, w: number, h: number, startAngle: number, sweepAngle: number): this {
+    this._ctx._exports.skia_path_add_arc(this._handle, x, y, w, h, startAngle, sweepAngle)
+    return this
+  }
+
+  addPath(other: SkiaPath): this {
+    this._ctx._exports.skia_path_add_path(this._handle, other._handle)
+    return this
+  }
+
+  // ── Queries ──
+
+  getBounds(): { x: number; y: number; width: number; height: number } {
+    const ptr = this._ctx._writeF32([0, 0, 0, 0])
+    this._ctx._exports.skia_path_get_bounds(this._handle, ptr)
+    const dv = new DataView(this._ctx._memory.buffer)
+    return { x: dv.getFloat32(ptr, true), y: dv.getFloat32(ptr + 4, true), width: dv.getFloat32(ptr + 8, true), height: dv.getFloat32(ptr + 12, true) }
+  }
+
+  computeTightBounds(): { x: number; y: number; width: number; height: number } {
+    const ptr = this._ctx._writeF32([0, 0, 0, 0])
+    this._ctx._exports.skia_path_compute_tight_bounds(this._handle, ptr)
+    const dv = new DataView(this._ctx._memory.buffer)
+    return { x: dv.getFloat32(ptr, true), y: dv.getFloat32(ptr + 4, true), width: dv.getFloat32(ptr + 8, true), height: dv.getFloat32(ptr + 12, true) }
+  }
+
+  contains(x: number, y: number): boolean {
+    return this._ctx._exports.skia_path_contains(this._handle, x, y) !== 0
+  }
+
+  isEmpty(): boolean {
+    return this._ctx._exports.skia_path_is_empty(this._handle) !== 0
+  }
+
+  countPoints(): number {
+    return this._ctx._exports.skia_path_count_points(this._handle)
+  }
+
+  getPoint(index: number): { x: number; y: number } {
+    const ptr = this._ctx._writeF32([0, 0])
+    this._ctx._exports.skia_path_get_point(this._handle, index, ptr)
+    const dv = new DataView(this._ctx._memory.buffer)
+    return { x: dv.getFloat32(ptr, true), y: dv.getFloat32(ptr + 4, true) }
+  }
+
+  // ── Transform & copy ──
+
+  /** Apply a 3x3 matrix transform. Returns a NEW transformed path. */
+  transform(matrix: Float32Array | number[]): SkiaPath | null {
+    const arr = matrix instanceof Float32Array ? matrix : new Float32Array(matrix)
+    const ptr = this._ctx._writeF32(arr)
+    const handle = this._ctx._exports.skia_path_transform(this._handle, ptr)
+    if (!handle) return null
+    return SkiaPath._fromHandle(this._ctx, handle)
+  }
+
+  /** Create a deep copy of this path */
+  copy(): SkiaPath | null {
+    const handle = this._ctx._exports.skia_path_copy(this._handle)
+    if (!handle) return null
+    return SkiaPath._fromHandle(this._ctx, handle)
+  }
+
+  /** Offset all points in this path by (dx, dy). Modifies in place. */
+  offset(dx: number, dy: number): this {
+    this._ctx._exports.skia_path_offset(this._handle, dx, dy)
     return this
   }
 
