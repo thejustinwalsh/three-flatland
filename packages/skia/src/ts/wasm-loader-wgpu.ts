@@ -90,12 +90,22 @@ function writeU32(state: WGPUState, ptr: number, value: number): void {
 }
 
 function readStringView(state: WGPUState, ptr: number): string {
-  // WGPUStringView: { const char* data; size_t length; }
+  // WGPUStringView: { const char* data (u32); size_t length (u32) }
   const dataPtr = readU32(state, ptr)
+  if (dataPtr === 0) return ''
   const length = readU32(state, ptr + 4)
-  if (dataPtr === 0 || length === 0) return ''
-  const bytes = new Uint8Array(state.memory.buffer, dataPtr, length)
-  return new TextDecoder().decode(bytes)
+
+  // WGPU_STRLEN = SIZE_MAX (0xFFFFFFFF on wasm32) means null-terminated
+  if (length === 0xFFFFFFFF) {
+    const mem = new Uint8Array(state.memory.buffer)
+    let end = dataPtr
+    while (mem[end] !== 0) end++
+    if (end === dataPtr) return ''
+    return new TextDecoder().decode(mem.subarray(dataPtr, end))
+  }
+
+  if (length === 0) return ''
+  return new TextDecoder().decode(new Uint8Array(state.memory.buffer, dataPtr, length))
 }
 
 // ── WebGPU imports ──
