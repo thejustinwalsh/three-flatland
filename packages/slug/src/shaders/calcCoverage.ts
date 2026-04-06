@@ -17,7 +17,7 @@ export function calcCoverage(
   evenOdd: Node<'bool'>,
   weightBoost: Node<'bool'>,
 ) {
-  const epsilon = float(1e-10)
+  const epsilon = float(1.0 / 65536.0)
 
   const weighted = abs(
     xcov.mul(xwgt).add(ycov.mul(ywgt)),

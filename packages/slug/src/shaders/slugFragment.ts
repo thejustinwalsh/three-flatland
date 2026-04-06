@@ -4,6 +4,7 @@ import {
   int,
   uint,
   Loop,
+  Break,
   textureLoad,
   ivec2,
   fwidth,
@@ -12,6 +13,7 @@ import {
   saturate,
   clamp,
   select,
+  If,
 } from 'three/tsl'
 import type Node from 'three/src/nodes/core/Node.js'
 import { calcRootCode } from './calcRootCode.js'
@@ -22,6 +24,21 @@ import type { DataTexture } from 'three'
 
 /** Maximum curves per band to iterate in the shader. */
 const MAX_CURVES_PER_BAND = 64
+
+/** log2(TEXTURE_WIDTH) for row-wrapping bit ops. */
+const LOG_TEXTURE_WIDTH = 12 // 2^12 = 4096
+const TEXTURE_WIDTH_MASK = (1 << LOG_TEXTURE_WIDTH) - 1 // 4095
+
+/**
+ * Wrap a linear texel offset into (x, y) coordinates for a 4096-wide texture.
+ * Handles offsets that cross row boundaries.
+ */
+function wrapTexCoord(baseX: Node<'int'>, baseY: Node<'int'>, offset: Node<'int'>) {
+  const linearX = baseX.add(offset)
+  const wrappedY = baseY.add(linearX.shiftRight(LOG_TEXTURE_WIDTH))
+  const wrappedX = linearX.bitAnd(TEXTURE_WIDTH_MASK)
+  return ivec2(wrappedX, wrappedY)
+}
 
 /**
  * Evaluate the Slug algorithm for a single fragment.
@@ -46,8 +63,8 @@ export function slugRender(
 ) {
   // Compute pixel footprint in em-space for coverage scaling
   const emsPerPixel = fwidth(renderCoord)
-  const pixelsPerEmX = float(1.0).div(max(emsPerPixel.x, 1e-10))
-  const pixelsPerEmY = float(1.0).div(max(emsPerPixel.y, 1e-10))
+  const pixelsPerEmX = float(1.0).div(max(emsPerPixel.x, 1.0 / 65536.0))
+  const pixelsPerEmY = float(1.0).div(max(emsPerPixel.y, 1.0 / 65536.0))
 
   // Determine band indices from band transform
   const bandIdxX = clamp(
@@ -71,65 +88,74 @@ export function slugRender(
   const ywgt = float(0.0).toVar()
 
   // --- Horizontal band pass ---
-  const hBandHeader = textureLoad(bandTexture, ivec2(glyphLocXi.add(int(bandIdxY)), glyphLocYi))
+  // Band header at (glyphLoc + bandIdxY)
+  const hBandCoord = wrapTexCoord(glyphLocXi, glyphLocYi, int(bandIdxY))
+  const hBandHeader = textureLoad(bandTexture, hBandCoord)
   const hCurveCount = int(hBandHeader.x)
   const hCurveListOffset = int(hBandHeader.y)
 
   Loop(MAX_CURVES_PER_BAND, ({ i }) => {
-    const inBounds = i.lessThan(hCurveCount)
+    // Early exit when past curve count
+    If(i.greaterThanEqual(hCurveCount), () => { Break() })
 
-    const refData = textureLoad(
-      bandTexture,
-      ivec2(glyphLocXi.add(hCurveListOffset).add(i), glyphLocYi),
-    )
+    // Read curve reference with row wrapping
+    const refCoord = wrapTexCoord(glyphLocXi, glyphLocYi, hCurveListOffset.add(i))
+    const refData = textureLoad(bandTexture, refCoord)
     const curveTexX = int(refData.x)
     const curveTexY = int(refData.y)
 
+    // Load 3 control points from curve texture (2 consecutive texels)
     const texel0 = textureLoad(curveTexture, ivec2(curveTexX, curveTexY))
     const texel1 = textureLoad(curveTexture, ivec2(curveTexX.add(1), curveTexY))
 
+    // Control points relative to pixel position
     const p0 = vec2(texel0.x, texel0.y).sub(renderCoord)
     const p1 = vec2(texel0.z, texel0.w).sub(renderCoord)
     const p2 = vec2(texel1.x, texel1.y).sub(renderCoord)
 
+    // Early exit on sorted max-X: curves are sorted descending by max X,
+    // so if this curve's max X is left of pixel, all remaining are too
+    const maxX = max(max(p0.x, p1.x), p2.x).mul(pixelsPerEmX)
+    If(maxX.lessThan(-0.5), () => { Break() })
+
+    // Root eligibility
     const rootCode = calcRootCode(p0.y, p1.y, p2.y)
 
+    // Solve intersection
     const r = solveHorizPoly(p0, p1, p2)
     const rpxX = r.x.mul(pixelsPerEmX)
     const rpxY = r.y.mul(pixelsPerEmX)
 
+    // Coverage from first root (bit 0)
     const hasRoot1 = rootCode.bitAnd(uint(1)).greaterThan(uint(0))
-    const active1 = inBounds.and(hasRoot1)
-    xcov.addAssign(select(active1, saturate(rpxX.add(0.5)), 0.0))
+    xcov.addAssign(select(hasRoot1, saturate(rpxX.add(0.5)), 0.0))
 
+    // Coverage from second root (bit 8)
     const hasRoot2 = rootCode.bitAnd(uint(0x100)).greaterThan(uint(0))
-    const active2 = inBounds.and(hasRoot2)
-    xcov.subAssign(select(active2, saturate(rpxY.add(0.5)), 0.0))
+    xcov.subAssign(select(hasRoot2, saturate(rpxY.add(0.5)), 0.0))
 
+    // Weight: proximity to pixel center
     const w1 = saturate(float(1.0).sub(abs(rpxX).mul(2.0)))
     const w2 = saturate(float(1.0).sub(abs(rpxY).mul(2.0)))
     const curveWgt = max(
-      select(active1, w1, 0.0),
-      select(active2, w2, 0.0),
+      select(hasRoot1, w1, 0.0),
+      select(hasRoot2, w2, 0.0),
     )
     xwgt.assign(max(xwgt, curveWgt))
   })
 
   // --- Vertical band pass ---
-  const vBandHeader = textureLoad(
-    bandTexture,
-    ivec2(glyphLocXi.add(int(numHBands)).add(int(bandIdxX)), glyphLocYi),
-  )
+  // Band header at (glyphLoc + numHBands + bandIdxX)
+  const vBandCoord = wrapTexCoord(glyphLocXi, glyphLocYi, int(numHBands).add(int(bandIdxX)))
+  const vBandHeader = textureLoad(bandTexture, vBandCoord)
   const vCurveCount = int(vBandHeader.x)
   const vCurveListOffset = int(vBandHeader.y)
 
   Loop(MAX_CURVES_PER_BAND, ({ i }) => {
-    const inBounds = i.lessThan(vCurveCount)
+    If(i.greaterThanEqual(vCurveCount), () => { Break() })
 
-    const refData = textureLoad(
-      bandTexture,
-      ivec2(glyphLocXi.add(vCurveListOffset).add(i), glyphLocYi),
-    )
+    const refCoord = wrapTexCoord(glyphLocXi, glyphLocYi, vCurveListOffset.add(i))
+    const refData = textureLoad(bandTexture, refCoord)
     const curveTexX = int(refData.x)
     const curveTexY = int(refData.y)
 
@@ -139,25 +165,28 @@ export function slugRender(
     const p0 = vec2(texel0.x, texel0.y).sub(renderCoord)
     const p1 = vec2(texel0.z, texel0.w).sub(renderCoord)
     const p2 = vec2(texel1.x, texel1.y).sub(renderCoord)
+
+    // Early exit on sorted max-Y
+    const maxY = max(max(p0.y, p1.y), p2.y).mul(pixelsPerEmY)
+    If(maxY.lessThan(-0.5), () => { Break() })
 
     const rootCode = calcRootCode(p0.x, p1.x, p2.x)
     const r = solveVertPoly(p0, p1, p2)
     const rpyX = r.x.mul(pixelsPerEmY)
     const rpyY = r.y.mul(pixelsPerEmY)
 
+    // Vertical band: signs INVERTED vs horizontal per Lengyel's convention
     const hasRoot1 = rootCode.bitAnd(uint(1)).greaterThan(uint(0))
-    const active1 = inBounds.and(hasRoot1)
-    ycov.addAssign(select(active1, saturate(rpyX.add(0.5)), 0.0))
+    ycov.subAssign(select(hasRoot1, saturate(rpyX.add(0.5)), 0.0))
 
     const hasRoot2 = rootCode.bitAnd(uint(0x100)).greaterThan(uint(0))
-    const active2 = inBounds.and(hasRoot2)
-    ycov.subAssign(select(active2, saturate(rpyY.add(0.5)), 0.0))
+    ycov.addAssign(select(hasRoot2, saturate(rpyY.add(0.5)), 0.0))
 
     const w1 = saturate(float(1.0).sub(abs(rpyX).mul(2.0)))
     const w2 = saturate(float(1.0).sub(abs(rpyY).mul(2.0)))
     const curveWgt = max(
-      select(active1, w1, 0.0),
-      select(active2, w2, 0.0),
+      select(hasRoot1, w1, 0.0),
+      select(hasRoot2, w2, 0.0),
     )
     ywgt.assign(max(ywgt, curveWgt))
   })

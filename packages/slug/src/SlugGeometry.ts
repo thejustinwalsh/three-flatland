@@ -148,17 +148,20 @@ export class SlugGeometry extends BufferGeometry {
     this._glyphTex[i4 + 2] = bandLocation.x
     this._glyphTex[i4 + 3] = bandLocation.y
 
-    // glyphJac: inverse Jacobian (maps object-space → em-space)
-    // For uniform scaling: J = [[1/scale, 0], [0, 1/scale]]
-    const invScale = 1 / scale
-    this._glyphJac[i4] = invScale
-    this._glyphJac[i4 + 1] = 0
-    this._glyphJac[i4 + 2] = 0
-    this._glyphJac[i4 + 3] = invScale
-
-    // glyphBand: transform from em-space to band index
+    // Band counts needed by both Jacobian and band transform
     const numHBands = bands.hBands.length
     const numVBands = bands.vBands.length
+
+    // glyphJac: inverse Jacobian scale (xy) + band counts (zw)
+    // For uniform scaling the inverse Jacobian is just a scalar.
+    // z/w carry per-glyph band counts so the shader doesn't hardcode them.
+    const invScale = 1 / scale
+    this._glyphJac[i4] = invScale
+    this._glyphJac[i4 + 1] = invScale
+    this._glyphJac[i4 + 2] = numHBands
+    this._glyphJac[i4 + 3] = numVBands
+
+    // glyphBand: transform from em-space to band index
     const emWidth = bounds.xMax - bounds.xMin
     const emHeight = bounds.yMax - bounds.yMin
 

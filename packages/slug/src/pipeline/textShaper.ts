@@ -1,14 +1,12 @@
+import type { Font } from 'opentype.js'
 import type { PositionedGlyph } from '../types.js'
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type OpentypeFont = any
 
 /**
  * Shape a text string into positioned glyphs using an opentype.js Font.
  * Handles kerning and basic horizontal layout.
  */
 export function shapeText(
-  font: OpentypeFont,
+  font: Font,
   text: string,
   fontSize: number,
   options: {

@@ -41,8 +41,15 @@ export function packTextures(glyphs: Map<number, SlugGlyphData>): SlugTextureDat
   let totalBandTexels = 0
 
   for (const glyph of glyphs.values()) {
-    // Each curve needs 2 texels (no endpoint sharing across glyphs for simplicity)
-    totalCurveTexels += glyph.curves.length * 2
+    // Endpoint sharing: each contour of N curves needs N+1 texels.
+    // Add +1 per curve for worst-case row-boundary padding.
+    const starts = glyph.contourStarts
+    for (let c = 0; c < starts.length; c++) {
+      const contourStart = starts[c]!
+      const contourEnd = c + 1 < starts.length ? starts[c + 1]! : glyph.curves.length
+      const contourCurves = contourEnd - contourStart
+      totalCurveTexels += contourCurves * 2 + 1 // worst case: every curve needs a pad
+    }
 
     // Band headers + curve reference lists
     const numHBands = glyph.bands.hBands.length
@@ -83,21 +90,49 @@ export function packTextures(glyphs: Map<number, SlugGlyphData>): SlugTextureDat
       y: Math.floor(bandOffset / TEXTURE_WIDTH),
     }
 
-    // Pack curves into curve texture
-    const curveBaseOffset = curveOffset
-    for (const curve of glyph.curves) {
+    // Pack curves with endpoint sharing.
+    // Within a contour, curve i's texel is [p0x, p0y, p1x, p1y] and
+    // curve i+1's first channel pair is [p2x, p2y] = the shared endpoint.
+    // The shader reads texel[i] and texel[i+1] — works identically.
+    //
+    // curveTexelMap[curveIndex] = texel offset of that curve's first texel
+    const curveTexelMap: number[] = new Array(glyph.curves.length)
+    const starts = glyph.contourStarts
+
+    for (let c = 0; c < starts.length; c++) {
+      const contourStart = starts[c]!
+      const contourEnd = c + 1 < starts.length ? starts[c + 1]! : glyph.curves.length
+
+      for (let ci = contourStart; ci < contourEnd; ci++) {
+        const curve = glyph.curves[ci]!
+
+        // Ensure the texel pair [offset, offset+1] doesn't cross a row boundary.
+        // If we're at the last column, skip to the start of the next row.
+        if (curveOffset % TEXTURE_WIDTH === TEXTURE_WIDTH - 1) {
+          curveOffset++ // skip padding texel
+        }
+
+        curveTexelMap[ci] = curveOffset
+
+        const idx = curveOffset * 4
+        curveData[idx] = curve.p0x
+        curveData[idx + 1] = curve.p0y
+        curveData[idx + 2] = curve.p1x
+        curveData[idx + 3] = curve.p1y
+        curveOffset++
+      }
+
+      // Final endpoint texel — also must not land at x=4095 if it would
+      // be read as part of the last curve's pair (it always is).
+      // The check above already ensures the last curve's texel is at x < 4095,
+      // so curveOffset here is at most x=4095 which is fine (endpoint is the +1 read).
+      const lastCurve = glyph.curves[contourEnd - 1]!
       const idx = curveOffset * 4
-      // Texel 0: p0x, p0y, p1x, p1y
-      curveData[idx] = curve.p0x
-      curveData[idx + 1] = curve.p0y
-      curveData[idx + 2] = curve.p1x
-      curveData[idx + 3] = curve.p1y
-      // Texel 1: p2x, p2y, 0, 0
-      curveData[idx + 4] = curve.p2x
-      curveData[idx + 5] = curve.p2y
-      curveData[idx + 6] = 0
-      curveData[idx + 7] = 0
-      curveOffset += 2
+      curveData[idx] = lastCurve.p2x
+      curveData[idx + 1] = lastCurve.p2y
+      curveData[idx + 2] = 0
+      curveData[idx + 3] = 0
+      curveOffset++
     }
 
     // Pack band data
@@ -111,37 +146,42 @@ export function packTextures(glyphs: Map<number, SlugGlyphData>): SlugTextureDat
     const vHeaderStart = bandOffset
     bandOffset += numVBands
 
-    // Pack horizontal band curve references and write headers
-    for (let b = 0; b < numHBands; b++) {
-      const band = glyph.bands.hBands[b]!
-      const headerIdx = (hHeaderStart + b) * 2
-      bandData[headerIdx] = band.curveIndices.length
-      bandData[headerIdx + 1] = bandOffset - glyphBandStart
+    // Pack band curve reference lists with deduplication.
+    // Adjacent bands with identical curve index lists share data.
+    function packBandGroup(bands: typeof glyph.bands.hBands, headerStart: number) {
+      let prevIndicesKey = ''
+      let prevListOffset = 0
 
-      for (const curveIdx of band.curveIndices) {
-        const curveTexelOffset = curveBaseOffset + curveIdx * 2
-        const bidx = bandOffset * 2
-        bandData[bidx] = curveTexelOffset % TEXTURE_WIDTH
-        bandData[bidx + 1] = Math.floor(curveTexelOffset / TEXTURE_WIDTH)
-        bandOffset++
+      for (let b = 0; b < bands.length; b++) {
+        const band = bands[b]!
+        const headerIdx = (headerStart + b) * 2
+        bandData[headerIdx] = band.curveIndices.length
+
+        // Check if this band's curve list matches the previous band's
+        const indicesKey = band.curveIndices.join(',')
+        if (b > 0 && indicesKey === prevIndicesKey) {
+          // Reuse previous band's data offset
+          bandData[headerIdx + 1] = prevListOffset
+        } else {
+          // Write new curve reference list
+          const listOffset = bandOffset - glyphBandStart
+          bandData[headerIdx + 1] = listOffset
+          prevListOffset = listOffset
+
+          for (const curveIdx of band.curveIndices) {
+            const curveTexelOffset = curveTexelMap[curveIdx]!
+            const bidx = bandOffset * 2
+            bandData[bidx] = curveTexelOffset % TEXTURE_WIDTH
+            bandData[bidx + 1] = Math.floor(curveTexelOffset / TEXTURE_WIDTH)
+            bandOffset++
+          }
+        }
+        prevIndicesKey = indicesKey
       }
     }
 
-    // Pack vertical band curve references and write headers
-    for (let b = 0; b < numVBands; b++) {
-      const band = glyph.bands.vBands[b]!
-      const headerIdx = (vHeaderStart + b) * 2
-      bandData[headerIdx] = band.curveIndices.length
-      bandData[headerIdx + 1] = bandOffset - glyphBandStart
-
-      for (const curveIdx of band.curveIndices) {
-        const curveTexelOffset = curveBaseOffset + curveIdx * 2
-        const bidx = bandOffset * 2
-        bandData[bidx] = curveTexelOffset % TEXTURE_WIDTH
-        bandData[bidx + 1] = Math.floor(curveTexelOffset / TEXTURE_WIDTH)
-        bandOffset++
-      }
-    }
+    packBandGroup(glyph.bands.hBands, hHeaderStart)
+    packBandGroup(glyph.bands.vBands, vHeaderStart)
   }
 
   // Create DataTextures

@@ -1,4 +1,5 @@
 import { InstancedMesh, Color } from 'three'
+import type { Camera } from 'three'
 import { SlugFont } from './SlugFont.js'
 import { SlugMaterial } from './SlugMaterial.js'
 import { SlugGeometry } from './SlugGeometry.js'
@@ -157,12 +158,18 @@ export class SlugText extends InstancedMesh {
 
   /**
    * Rebuild geometry if any properties changed since last call.
-   * Call once per frame.
+   * Also updates the MVP matrix uniforms for vertex dilation.
+   * Call once per frame, passing the active camera.
    */
-  update(): void {
+  update(camera?: Camera): void {
     if (this._dirty) {
       this._rebuild()
       this._dirty = false
+    }
+
+    // Update MVP for dilation every frame (camera/object may have moved)
+    if (camera && this._slugMaterial) {
+      this._slugMaterial.updateMVP(this, camera)
     }
   }
 

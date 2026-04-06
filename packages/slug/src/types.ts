@@ -39,6 +39,8 @@ export interface SlugGlyphData {
   glyphId: number
   /** Quadratic Bezier curves defining the outline */
   curves: QuadCurve[]
+  /** Start index of each contour in the curves array (for endpoint sharing) */
+  contourStarts: number[]
   /** Spatial band acceleration structure */
   bands: GlyphBands
   /** Bounding box in em-space (normalized to unitsPerEm) */

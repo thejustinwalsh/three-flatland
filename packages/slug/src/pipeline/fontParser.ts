@@ -32,7 +32,7 @@ export function parseFont(buffer: ArrayBuffer): {
     const glyph = font.glyphs.get(i)
     if (!glyph || !glyph.path || glyph.path.commands.length === 0) continue
 
-    const curves = extractCurves(glyph.path.commands, unitsPerEm)
+    const { curves, contourStarts } = extractCurves(glyph.path.commands, unitsPerEm)
     if (curves.length === 0) continue
 
     const bounds = computeBounds(curves)
@@ -41,6 +41,7 @@ export function parseFont(buffer: ArrayBuffer): {
     glyphs.set(glyph.index, {
       glyphId: glyph.index,
       curves,
+      contourStarts,
       bands,
       bounds,
       advanceWidth: (glyph.advanceWidth ?? 0) / unitsPerEm,
@@ -61,9 +62,10 @@ export async function loadFont(url: string): Promise<ReturnType<typeof parseFont
   return parseFont(buffer)
 }
 
-/** Extract quadratic Bezier curves from an opentype.js path. */
-function extractCurves(commands: PathCommand[], unitsPerEm: number): QuadCurve[] {
+/** Extract quadratic Bezier curves from an opentype.js path, tracking contour boundaries. */
+function extractCurves(commands: PathCommand[], unitsPerEm: number): { curves: QuadCurve[]; contourStarts: number[] } {
   const curves: QuadCurve[] = []
+  const contourStarts: number[] = []
   let cx = 0
   let cy = 0
   let startX = 0
@@ -74,6 +76,7 @@ function extractCurves(commands: PathCommand[], unitsPerEm: number): QuadCurve[]
   for (const cmd of commands) {
     switch (cmd.type) {
       case 'M':
+        contourStarts.push(curves.length)
         cx = (cmd.x ?? 0) * scale
         cy = (cmd.y ?? 0) * scale
         startX = cx
@@ -127,7 +130,7 @@ function extractCurves(commands: PathCommand[], unitsPerEm: number): QuadCurve[]
     }
   }
 
-  return curves
+  return { curves, contourStarts }
 }
 
 /**
@@ -153,10 +156,12 @@ function lineToQuadratic(
     return { p0x: x0, p0y: y0, p1x: mx, p1y: my, p2x: x1, p2y: y1 }
   }
 
-  // Perpendicular direction, scaled by epsilon
+  // Perpendicular bowing to prevent scanline dropout in CalcRootCode.
+  // Magnitude must be large enough to perturb sign bits reliably.
   const len = Math.sqrt(dx * dx + dy * dy)
-  const nx = -dy / len * LINE_EPSILON / 1024
-  const ny = dx / len * LINE_EPSILON / 1024
+  const invLen = LINE_EPSILON / len
+  const nx = -dy * invLen
+  const ny = dx * invLen
 
   return {
     p0x: x0,
@@ -197,24 +202,24 @@ function cubicToQuadratics(
   const midx = (m012x + m123x) * 0.5
   const midy = (m012y + m123y) * 0.5
 
-  // For each half-cubic, approximate the quadratic control point:
-  // The quadratic control point is at 2*midpoint_of_cubic_half - 0.5*(start + end)
-  // Equivalently, for the first half [x0,c1,c2,x3] split at 0.5:
-  //   quadratic CP ≈ average of the two inner De Casteljau points
+  // Each half-cubic's quadratic control point is the second-level De Casteljau midpoint:
+  //   first half:  (p0, m01, mid)  — control point is m012 (NOT m01)
+  //   second half: (mid, m123, p3) — control point is m123 (NOT m23)
+  // Using the second-level points preserves the cubic's tangent at the split.
   return [
     {
       p0x: x0,
       p0y: y0,
-      p1x: m01x, // Approximation: use the first-level midpoint as control
-      p1y: m01y,
+      p1x: m012x,
+      p1y: m012y,
       p2x: midx,
       p2y: midy,
     },
     {
       p0x: midx,
       p0y: midy,
-      p1x: m23x, // Approximation: use the first-level midpoint as control
-      p1y: m23y,
+      p1x: m123x,
+      p1y: m123y,
       p2x: x3,
       p2y: y3,
     },
