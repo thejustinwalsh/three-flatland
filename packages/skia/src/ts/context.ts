@@ -93,16 +93,7 @@ export class SkiaContext {
         wasm.exports.memory as WebAssembly.Memory,
         gl,
       )
-      // Use the WIT component init (exports_skia_gl_init) which properly
-      // sets up the GL context. The bare skia_init() passes 0,0 which
-      // creates no context.
-      const glInit = (wasm.exports as Record<string, Function>).exports_skia_gl_init
-      if (glInit) {
-        glInit(0)
-      } else {
-        // Fallback for non-WIT builds
-        ctx._exports.skia_init()
-      }
+      ctx._exports.skia_init()
       if (!_instance || _instance._destroyed) _instance = ctx
       return ctx
     } else {
@@ -195,11 +186,7 @@ export class SkiaContext {
 
   /** Reset GPU state cache — call after Skia draws if sharing the GL context (no-op for wgpu) */
   resetState(): void {
-    if (!this._destroyed) {
-      // The GL WASM binary exports skia_reset_gl_state, not skia_reset_state
-      const fn = this._exports.skia_reset_gl_state ?? this._exports.skia_reset_state
-      fn?.()
-    }
+    if (!this._destroyed) this._exports.skia_reset_state()
   }
 
   /** Destroy the Skia context and release all GPU resources */

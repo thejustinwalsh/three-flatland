@@ -26,35 +26,15 @@ interface SavedGLState {
   depthMask: boolean
   cullFace: boolean
   stencilTest: boolean
-  // Per-attribute state
-  attribs: Array<{
-    enabled: boolean
-    isInt: boolean
-    size: number
-    type: number
-    normalized: boolean
-    stride: number
-    offset: number
-    buffer: WebGLBuffer | null
-    divisor: number
-  }>
+  attribs: Array<{ enabled: boolean }>
 }
 
 function saveGLState(gl: WebGL2RenderingContext): SavedGLState {
   const maxAttrs = gl.getParameter(gl.MAX_VERTEX_ATTRIBS) as number
   const attribs: SavedGLState['attribs'] = []
-
   for (let i = 0; i < maxAttrs; i++) {
     attribs.push({
       enabled: gl.getVertexAttrib(i, gl.VERTEX_ATTRIB_ARRAY_ENABLED) as boolean,
-      isInt: gl.getVertexAttrib(i, gl.VERTEX_ATTRIB_ARRAY_INTEGER) as boolean,
-      size: gl.getVertexAttrib(i, gl.VERTEX_ATTRIB_ARRAY_SIZE) as number,
-      type: gl.getVertexAttrib(i, gl.VERTEX_ATTRIB_ARRAY_TYPE) as number,
-      normalized: gl.getVertexAttrib(i, gl.VERTEX_ATTRIB_ARRAY_NORMALIZED) as boolean,
-      stride: gl.getVertexAttrib(i, gl.VERTEX_ATTRIB_ARRAY_STRIDE) as number,
-      offset: gl.getVertexAttribOffset(i, gl.VERTEX_ATTRIB_ARRAY_POINTER),
-      buffer: gl.getVertexAttrib(i, gl.VERTEX_ATTRIB_ARRAY_BUFFER_BINDING) as WebGLBuffer | null,
-      divisor: gl.getVertexAttrib(i, gl.VERTEX_ATTRIB_ARRAY_DIVISOR) as number,
     })
   }
 
@@ -80,20 +60,13 @@ function saveGLState(gl: WebGL2RenderingContext): SavedGLState {
 }
 
 function restoreGLState(gl: WebGL2RenderingContext, s: SavedGLState): void {
-  // Restore VAO first (VAO encapsulates per-attribute state)
   gl.bindVertexArray(s.vao)
 
-  // Restore per-attribute state on the current VAO
   for (let i = 0; i < s.attribs.length; i++) {
-    const a = s.attribs[i]!
-    if (a.enabled) {
-      gl.enableVertexAttribArray(i)
-    } else {
-      gl.disableVertexAttribArray(i)
-    }
+    if (s.attribs[i]!.enabled) gl.enableVertexAttribArray(i)
+    else gl.disableVertexAttribArray(i)
   }
 
-  // Restore bindings
   gl.useProgram(s.program)
   gl.bindBuffer(gl.ARRAY_BUFFER, s.arrayBuffer)
   gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, s.elementArrayBuffer)
@@ -102,11 +75,9 @@ function restoreGLState(gl: WebGL2RenderingContext, s: SavedGLState): void {
   gl.bindFramebuffer(gl.FRAMEBUFFER, s.framebuffer)
   gl.bindRenderbuffer(gl.RENDERBUFFER, s.renderbuffer)
 
-  // Restore viewport/scissor
   gl.viewport(s.viewport[0]!, s.viewport[1]!, s.viewport[2]!, s.viewport[3]!)
   gl.scissor(s.scissorBox[0]!, s.scissorBox[1]!, s.scissorBox[2]!, s.scissorBox[3]!)
 
-  // Restore enable/disable flags
   if (s.scissorTest) gl.enable(gl.SCISSOR_TEST); else gl.disable(gl.SCISSOR_TEST)
   if (s.blend) gl.enable(gl.BLEND); else gl.disable(gl.BLEND)
   if (s.depthTest) gl.enable(gl.DEPTH_TEST); else gl.disable(gl.DEPTH_TEST)
@@ -170,19 +141,18 @@ export class SkiaCanvas extends Object3D {
   private _readyPromise: Promise<SkiaContext> | null = null
   private _readyResolve: ((ctx: SkiaContext) => void) | null = null
 
+
   constructor(options?: SkiaCanvasOptions) {
     super()
     if (options) {
-      // Batch-set without triggering init per setter — set backing fields directly
       if (options.width != null) this._width = options.width
       if (options.height != null) this._height = options.height
       if (options.overlay != null) this._overlay = options.overlay
-      // Renderer triggers init, so set it last after other fields are ready
       if (options.renderer) this.renderer = options.renderer
     }
   }
 
-  // ── Public property: renderer ──
+  // ── Public properties ──
 
   get renderer(): AnyRenderer | null { return this._renderer }
   set renderer(v: AnyRenderer | null) {
@@ -191,16 +161,12 @@ export class SkiaCanvas extends Object3D {
     if (v) this._initSkia(v)
   }
 
-  // ── Public property: width ──
-
   get width(): number { return this._width }
   set width(v: number) {
     if (v === this._width) return
     this._width = v
     this._syncRenderTarget()
   }
-
-  // ── Public property: height ──
 
   get height(): number { return this._height }
   set height(v: number) {
@@ -209,8 +175,6 @@ export class SkiaCanvas extends Object3D {
     this._syncRenderTarget()
   }
 
-  // ── Public property: overlay ──
-
   get overlay(): boolean { return this._overlay }
   set overlay(v: boolean) {
     if (v === this._overlay) return
@@ -218,10 +182,91 @@ export class SkiaCanvas extends Object3D {
     this._syncRenderTarget()
   }
 
-  // ── Skia context init (starts WASM fetch immediately) ──
+  /** The SkiaContext (null until ready) */
+  get skiaContext(): SkiaContext | null {
+    return this._skiaContext
+  }
+
+  /** The output texture (render target mode). Null in overlay mode. */
+  get texture(): Texture | null {
+    return this._renderTarget?.texture ?? null
+  }
+
+  /** Resolves when the Skia context is ready */
+  get ready(): Promise<SkiaContext> {
+    if (this._skiaContext) return Promise.resolve(this._skiaContext)
+    if (!this._readyPromise) {
+      this._readyPromise = new Promise<SkiaContext>((resolve) => {
+        this._readyResolve = resolve
+      })
+    }
+    return this._readyPromise
+  }
+
+  /** Mark as needing redraw */
+  invalidate(): void {
+    this._needsRedraw = true
+  }
+
+  /**
+   * Render the Skia scene graph to the framebuffer.
+   * No-op if the Skia context isn't ready yet.
+   *
+   * When sharing a WebGL context with Three.js, saves the GL state,
+   * resets to a clean baseline for Skia, draws, then restores the
+   * previous state so Three.js can continue without disruption.
+   */
+  render(renderer: AnyRenderer): void {
+    if (!this._skiaContext) return
+    if (!this._needsRedraw && !this._overlay) return
+
+    const targetHandle = this._getTargetHandle(renderer)
+    const gl = this._skiaContext.backend === 'webgl' ? this._skiaContext.gl : null
+    const saved = gl ? saveGLState(gl) : null
+
+    // Reset to clean GL baseline before Skia draws
+    if (gl) {
+      gl.bindVertexArray(null)
+      gl.useProgram(null)
+      gl.bindBuffer(gl.ARRAY_BUFFER, null)
+      gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null)
+      const maxAttrs = gl.getParameter(gl.MAX_VERTEX_ATTRIBS) as number
+      for (let i = 0; i < maxAttrs; i++) gl.disableVertexAttribArray(i)
+    }
+    this._skiaContext.resetState()
+
+    const ctx = this._skiaContext.beginDrawing(targetHandle, this._width, this._height)
+    if (!ctx) {
+      if (saved && gl) restoreGLState(gl, saved)
+      return
+    }
+
+    try {
+      this._drawChildren(ctx, this)
+    } finally {
+      this._skiaContext.endDrawing()
+      this._skiaContext.flush()
+      this._skiaContext.resetState()
+      if (saved && gl) restoreGLState(gl, saved)
+    }
+
+    this._needsRedraw = false
+  }
+
+  setSize(width: number, height: number): void {
+    this._width = width
+    this._height = height
+    this._syncRenderTarget()
+  }
+
+  dispose(): void {
+    this._renderTarget?.dispose()
+    this._renderTarget = null
+  }
+
+  // ── Private: Skia context init ──
 
   private _initSkia(renderer: AnyRenderer): void {
-    // Reuse existing context if available
     if (SkiaContext.instance && !SkiaContext.instance.isDestroyed) {
       this._skiaContext = SkiaContext.instance
       this._resolveReady(this._skiaContext)
@@ -243,22 +288,10 @@ export class SkiaCanvas extends Object3D {
     }
   }
 
-  /** Resolves when the Skia context is ready */
-  get ready(): Promise<SkiaContext> {
-    if (this._skiaContext) return Promise.resolve(this._skiaContext)
-    if (!this._readyPromise) {
-      this._readyPromise = new Promise<SkiaContext>((resolve) => {
-        this._readyResolve = resolve
-      })
-    }
-    return this._readyPromise
-  }
-
-  // ── Render target management ──
+  // ── Private: render target management ──
 
   private _syncRenderTarget(): void {
     if (this._overlay || this._width <= 0 || this._height <= 0) {
-      // Overlay mode or no size yet — no render target needed
       if (this._renderTarget) {
         this._renderTarget.dispose()
         this._renderTarget = null
@@ -280,94 +313,8 @@ export class SkiaCanvas extends Object3D {
     this._needsRedraw = true
   }
 
-  // ── Public API ──
+  // ── Private: target handle resolution ──
 
-  /** The SkiaContext (null until ready) */
-  get skiaContext(): SkiaContext | null {
-    return this._skiaContext
-  }
-
-  /** The output texture (render target mode). Null in overlay mode. */
-  get texture(): Texture | null {
-    return this._renderTarget?.texture ?? null
-  }
-
-  /** Mark as needing redraw */
-  invalidate(): void {
-    this._needsRedraw = true
-  }
-
-  /**
-   * Render the Skia scene graph to the framebuffer.
-   * No-op if the Skia context isn't ready yet.
-   *
-   * Supports all renderer types:
-   *   - WebGLRenderer → extracts FBO ID
-   *   - WebGPURenderer (native) → extracts GPUTexture handle
-   *   - WebGPURenderer (WebGL fallback) → extracts FBO ID (same as WebGLRenderer)
-   */
-  render(renderer: AnyRenderer): void {
-    if (!this._skiaContext) return
-    if (!this._needsRedraw && !this._overlay) return
-
-    const targetHandle = this._getTargetHandle(renderer)
-
-    // Save/restore GL state around Skia draws when sharing a WebGL context
-    const gl = this._skiaContext.backend === 'webgl' ? this._skiaContext.gl : null
-    const saved = gl ? saveGLState(gl) : null
-
-    if (gl) {
-      // Reset to clean GL state so Skia starts from a known baseline
-      gl.bindVertexArray(null)
-      gl.useProgram(null)
-      gl.bindBuffer(gl.ARRAY_BUFFER, null)
-      gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null)
-      const maxAttrs = gl.getParameter(gl.MAX_VERTEX_ATTRIBS) as number
-      for (let i = 0; i < maxAttrs; i++) {
-        gl.disableVertexAttribArray(i)
-      }
-    }
-
-    // Tell Skia its cached GL state is stale
-    this._skiaContext.resetState()
-
-    const ctx = this._skiaContext.beginDrawing(targetHandle, this._width, this._height)
-    if (!ctx) {
-      if (saved && gl) restoreGLState(gl, saved)
-      return
-    }
-
-    try {
-      this._drawChildren(ctx, this)
-    } finally {
-      this._skiaContext.endDrawing()
-      this._skiaContext.flush()
-      // Reset Skia's state cache so it doesn't assume stale state next frame
-      this._skiaContext.resetState()
-      // Restore Three.js's GL state
-      if (saved && gl) restoreGLState(gl, saved)
-    }
-
-    this._needsRedraw = false
-  }
-
-  setSize(width: number, height: number): void {
-    this._width = width
-    this._height = height
-    this._syncRenderTarget()
-  }
-
-  dispose(): void {
-    this._renderTarget?.dispose()
-    this._renderTarget = null
-  }
-
-  // ── Private helpers ──
-
-  /**
-   * Get the target handle for the current backend.
-   * Handles all three renderer scenarios.
-   */
   private _getTargetHandle(renderer: AnyRenderer): number {
     if (this._overlay) return 0
 
@@ -378,11 +325,6 @@ export class SkiaCanvas extends Object3D {
     return this._getGLTargetHandle(renderer)
   }
 
-  /**
-   * Extract FBO ID for the WebGL backend.
-   * Works with WebGLRenderer directly, and also with WebGPURenderer
-   * in WebGL fallback mode (which uses WebGLBackend internally).
-   */
   private _getGLTargetHandle(renderer: AnyRenderer): number {
     // WebGLRenderer path — has `properties` object
     if (renderer.properties) {
@@ -411,6 +353,8 @@ export class SkiaCanvas extends Object3D {
 
     return 0
   }
+
+  // ── Private: scene graph walk ──
 
   private _drawChildren(ctx: SkiaDrawingContext, parent: Object3D): void {
     for (const child of parent.children) {

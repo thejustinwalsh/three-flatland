@@ -69,8 +69,7 @@ export interface SkiaExports {
   skia_begin_drawing(fboId: number, width: number, height: number): number
   skia_end_drawing(): void
   skia_flush(): void
-  skia_reset_state?: () => void
-  skia_reset_gl_state?: () => void
+  skia_reset_state(): void
   skia_debug_init_error(): number
 
   // Paint

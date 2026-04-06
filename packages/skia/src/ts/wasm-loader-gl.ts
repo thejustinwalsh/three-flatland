@@ -89,44 +89,6 @@ function writeString(state: GLState, ptr: number, maxLen: number, str: string): 
   return len
 }
 
-// ── Texture data size calculation ──
-
-/** Calculate byte size for a texture upload based on format and type. */
-function texDataSize(w: number, h: number, format: number, type: number): number {
-  // Channel count from format
-  const channels: Record<number, number> = {
-    0x1906: 1, // ALPHA
-    0x1909: 1, // LUMINANCE
-    0x190A: 2, // LUMINANCE_ALPHA
-    0x1907: 3, // RGB
-    0x1908: 4, // RGBA
-    0x8227: 1, // RED (WebGL2 R8)
-    0x8228: 2, // RG
-    0x1903: 1, // RED
-    0x8D94: 1, // RED_INTEGER
-    0x8230: 2, // RG_INTEGER
-    0x8D98: 3, // RGB_INTEGER
-    0x8D99: 4, // RGBA_INTEGER
-  }
-  const ch = channels[format] ?? 4
-
-  // Bytes per pixel from type
-  switch (type) {
-    case 0x1401: return w * h * ch      // UNSIGNED_BYTE
-    case 0x1403: return w * h * ch * 2  // UNSIGNED_SHORT
-    case 0x1405: return w * h * ch * 4  // UNSIGNED_INT
-    case 0x140B: return w * h * ch * 2  // HALF_FLOAT
-    case 0x1406: return w * h * ch * 4  // FLOAT
-    case 0x8363: return w * h * 2       // UNSIGNED_SHORT_5_6_5
-    case 0x8033: return w * h * 2       // UNSIGNED_SHORT_4_4_4_4
-    case 0x8034: return w * h * 2       // UNSIGNED_SHORT_5_5_5_1
-    case 0x8368: return w * h * 4       // UNSIGNED_INT_2_10_10_10_REV
-    case 0x84FA: return w * h * 4       // UNSIGNED_INT_24_8
-    case 0x8C3B: return w * h * 4       // UNSIGNED_INT_5_9_9_9_REV
-    default:     return w * h * ch      // fallback: assume 1 byte per channel
-  }
-}
-
 // ── String allocation into WASM memory ──
 
 /** Allocate a null-terminated string in WASM memory via cabi_realloc. Cached. */
@@ -438,9 +400,8 @@ function createGLImports(state: GLState): Record<string, WebAssembly.ImportValue
     emscripten_glTexParameterf(target: number, pname: number, param: number) { gl.texParameterf(target, pname, param) },
     emscripten_glTexParameteri(target: number, pname: number, param: number) { gl.texParameteri(target, pname, param) },
     emscripten_glTexSubImage2D(target: number, level: number, x: number, y: number, w: number, h: number, format: number, type: number, ptr: number) {
-      // WebGL2 offset form: pass the full memory buffer + byte offset.
-      // WebGL calculates the read size using pixel store state (UNPACK_ROW_LENGTH, etc.).
-      // TODO: Move buffer size calculation to C/Zig layer for efficiency.
+      // WebGL2 offset form — WebGL reads the correct byte count using
+      // pixel store state (UNPACK_ROW_LENGTH, UNPACK_ALIGNMENT, etc.)
       gl.texSubImage2D(target, level, x, y, w, h, format, type, new Uint8Array(state.memory.buffer), ptr)
     },
     emscripten_glUniform1f(loc: number, v0: number) { gl.uniform1f(state.uniforms.get(loc)!, v0) },
