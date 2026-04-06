@@ -135,6 +135,11 @@ void sk_path_get_point(sk_path_t path, int index, float* x, float* y);
 sk_path_t sk_path_op(sk_path_t a, sk_path_t b, int op);
 sk_path_t sk_path_simplify(sk_path_t path);
 
+// In-place variants — write result into existing path (no allocation)
+int sk_path_op_into(sk_path_t a, sk_path_t b, int op, sk_path_t result);
+int sk_path_simplify_into(sk_path_t path, sk_path_t result);
+int sk_path_transform_into(sk_path_t path, const float* matrix9, sk_path_t result);
+
 // ── Font & Text ──
 
 sk_typeface_t sk_typeface_from_data(const uint8_t* data, int len);

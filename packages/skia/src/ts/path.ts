@@ -258,6 +258,36 @@ export class SkiaPath {
     return SkiaPath._fromHandle(this._ctx, handle)
   }
 
+  // ── In-place operations (reuse existing handle, no allocation) ──
+
+  /**
+   * Boolean op that writes the result into `target`, reusing its handle.
+   * Returns true on success. The target path is reset before writing.
+   */
+  opInto(other: SkiaPath, operation: PathOp, target: SkiaPath): boolean {
+    return this._ctx._exports.skia_path_op_into(
+      this._handle, other._handle, PATH_OP[operation], target._handle,
+    ) !== 0
+  }
+
+  /**
+   * Simplify and write the result into `target`, reusing its handle.
+   * Returns true on success.
+   */
+  simplifyInto(target: SkiaPath): boolean {
+    return this._ctx._exports.skia_path_simplify_into(this._handle, target._handle) !== 0
+  }
+
+  /**
+   * Transform and write the result into `target`, reusing its handle.
+   * Returns true on success.
+   */
+  transformInto(matrix: Float32Array | number[], target: SkiaPath): boolean {
+    const arr = matrix instanceof Float32Array ? matrix : new Float32Array(matrix)
+    const ptr = this._ctx._writeF32(arr)
+    return this._ctx._exports.skia_path_transform_into(this._handle, ptr, target._handle) !== 0
+  }
+
   dispose(): void {
     if (this._handle !== 0) {
       pathRegistry.unregister(this)

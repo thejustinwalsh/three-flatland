@@ -126,42 +126,45 @@ export class SkiaGroup extends Object3D {
     if (!this._layerPaint) this._layerPaint = new SkiaPaintClass(skia)
     const p = this._layerPaint
 
-    // Opacity
     if (this.opacity < 1) p.setAlpha(this.opacity)
 
-    // Blur
+    // Blur — factory handles change detection via `existing` param
     if (this.blur > 0) {
-      this._blurFilter?.dispose()
-      this._blurFilter = SkiaImageFilter.blur(skia, this.blur, this.blur)
+      this._blurFilter = SkiaImageFilter.blur(skia, this.blur, this.blur, undefined, this._blurFilter)
       if (this._blurFilter) p.setImageFilter(this._blurFilter)
+    } else if (this._blurFilter) {
+      this._blurFilter.dispose()
+      this._blurFilter = null
     }
 
-    // Shadow (compose with blur if both exist)
+    // Shadow
     if (this.shadow) {
       const s = this.shadow
-      this._shadowFilter?.dispose()
       const factory = s.shadowOnly ? SkiaImageFilter.dropShadowOnly : SkiaImageFilter.dropShadow
       this._shadowFilter = factory(skia, s.dx, s.dy, s.blur, s.blur, s.color,
-        this._blurFilter ?? undefined)
+        this._blurFilter ?? undefined, this._shadowFilter)
       if (this._shadowFilter) p.setImageFilter(this._shadowFilter)
+    } else if (this._shadowFilter) {
+      this._shadowFilter.dispose()
+      this._shadowFilter = null
     }
 
-    // Color matrix
+    // Color matrix — factory handles change detection via `existing` param
     if (this.colorMatrix && this.colorMatrix.length === 20) {
-      this._colorFilter?.dispose()
-      this._colorFilter = SkiaColorFilter.matrix(skia, this.colorMatrix)
+      this._colorFilter = SkiaColorFilter.matrix(skia, this.colorMatrix, this._colorFilter)
       if (this._colorFilter) p.setColorFilter(this._colorFilter)
+    } else if (this._colorFilter) {
+      this._colorFilter.dispose()
+      this._colorFilter = null
     }
 
-    // Blend mode (inherited from SkiaNode)
     if (this.blendMode) p.setBlendMode(this.blendMode)
 
     return p
   }
 
   private _ensureBackdropFilter(skia: SkiaContext): void {
-    if (this._backdropFilter) return
-    this._backdropFilter = SkiaImageFilter.blur(skia, this.backdropBlur, this.backdropBlur)
+    this._backdropFilter = SkiaImageFilter.blur(skia, this.backdropBlur, this.backdropBlur, undefined, this._backdropFilter)
   }
 
   dispose(): void {

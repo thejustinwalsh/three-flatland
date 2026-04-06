@@ -355,6 +355,33 @@ sk_path_t sk_path_simplify(sk_path_t path) {
     return reinterpret_cast<sk_path_t>(new SkPathBuilder(result));
 }
 
+// In-place variants — write result into existing SkPathBuilder, no allocation
+
+int sk_path_op_into(sk_path_t a, sk_path_t b, int op, sk_path_t out) {
+    SkPath pa = as_pathbuilder(a)->snapshot();
+    SkPath pb = as_pathbuilder(b)->snapshot();
+    SkPath result;
+    if (!Op(pa, pb, static_cast<SkPathOp>(op), &result)) return 0;
+    *as_pathbuilder(out) = SkPathBuilder(result);
+    return 1;
+}
+
+int sk_path_simplify_into(sk_path_t path, sk_path_t out) {
+    SkPath p = as_pathbuilder(path)->snapshot();
+    SkPath result;
+    if (!Simplify(p, &result)) return 0;
+    *as_pathbuilder(out) = SkPathBuilder(result);
+    return 1;
+}
+
+int sk_path_transform_into(sk_path_t path, const float* matrix9, sk_path_t out) {
+    SkPath p = as_pathbuilder(path)->snapshot();
+    SkMatrix m;
+    m.set9(matrix9);
+    *as_pathbuilder(out) = SkPathBuilder(p.makeTransform(m));
+    return 1;
+}
+
 // ════════════════════════════════════════════════════════
 // Font & Text
 // ════════════════════════════════════════════════════════

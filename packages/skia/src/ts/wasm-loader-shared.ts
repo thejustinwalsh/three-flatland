@@ -14,14 +14,32 @@
 
 // ── Env imports (Skia runtime) ──
 
+// Handle table names — must match TABLE_* constants in core.zig
+const TABLE_NAMES = [
+  'paints', 'paths', 'fonts', 'typefaces', 'imagefilters',
+  'colorfilters', 'patheffects', 'shaders', 'images',
+  'path_measures', 'text_blobs', 'picture_recorders', 'pictures',
+]
+
 /**
  * Create a Proxy-based env import object that stubs all Skia runtime
  * imports (logging, flattenable init, POSIX semaphores, etc.).
  * Returns 0 for everything by default.
+ *
+ * Intercepts `console_warn_handle_growth` to log handle pool growth
+ * warnings with human-readable table names.
  */
 export function createEnvImports(): Record<string, WebAssembly.ImportValue> {
   return new Proxy({} as Record<string, WebAssembly.ImportValue>, {
-    get: (_target, _name) => {
+    get: (_target, name) => {
+      if (name === 'console_warn_handle_growth') {
+        return (tableId: number, oldCap: number, newCap: number) => {
+          console.warn(
+            `[Skia] Handle pool "${TABLE_NAMES[tableId] ?? tableId}" grew: ${oldCap} → ${newCap}. ` +
+            `Consider disposing unused resources.`,
+          )
+        }
+      }
       return (..._args: unknown[]) => 0
     },
   })

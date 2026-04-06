@@ -26,25 +26,52 @@ export class SkiaImageFilter {
   _handle: number
   private readonly _ctx: SkiaContext
 
-  private constructor(context: SkiaContext, handle: number) {
+  /** @internal Creation params for change detection */
+  _params: unknown[] = []
+
+  private constructor(context: SkiaContext, handle: number, params: unknown[] = []) {
     this._ctx = context
     this._handle = handle
+    this._params = params
     registry.register(this, { handle, drop: context._exports.skia_imagefilter_destroy }, this)
   }
 
-  static blur(context: SkiaContext, sigmaX: number, sigmaY: number, input?: SkiaImageFilter): SkiaImageFilter | null {
+  /** Check if this filter was created with the given params (avoids unnecessary recreation) */
+  private static _matches(existing: SkiaImageFilter | null | undefined, params: unknown[]): boolean {
+    if (!existing || existing._handle === 0) return false
+    if (existing._params.length !== params.length) return false
+    for (let i = 0; i < params.length; i++) {
+      if (existing._params[i] !== params[i]) return false
+    }
+    return true
+  }
+
+  /**
+   * Create a blur filter, or return `existing` if it was created with the same params.
+   * Disposes `existing` if params changed. Pass `existing` from your cached field.
+   */
+  static blur(context: SkiaContext, sigmaX: number, sigmaY: number, input?: SkiaImageFilter, existing?: SkiaImageFilter | null): SkiaImageFilter | null {
+    const params = ['blur', sigmaX, sigmaY, input?._handle ?? 0]
+    if (this._matches(existing, params)) return existing!
+    existing?.dispose()
     const h = context._exports.skia_imagefilter_blur(sigmaX, sigmaY, input?._handle ?? 0)
-    return h ? new SkiaImageFilter(context, h) : null
+    return h ? new SkiaImageFilter(context, h, params) : null
   }
 
-  static dropShadow(context: SkiaContext, dx: number, dy: number, sigmaX: number, sigmaY: number, color: number, input?: SkiaImageFilter): SkiaImageFilter | null {
+  static dropShadow(context: SkiaContext, dx: number, dy: number, sigmaX: number, sigmaY: number, color: number, input?: SkiaImageFilter, existing?: SkiaImageFilter | null): SkiaImageFilter | null {
+    const params = ['dropShadow', dx, dy, sigmaX, sigmaY, color, input?._handle ?? 0]
+    if (this._matches(existing, params)) return existing!
+    existing?.dispose()
     const h = context._exports.skia_imagefilter_drop_shadow(dx, dy, sigmaX, sigmaY, color, input?._handle ?? 0)
-    return h ? new SkiaImageFilter(context, h) : null
+    return h ? new SkiaImageFilter(context, h, params) : null
   }
 
-  static dropShadowOnly(context: SkiaContext, dx: number, dy: number, sigmaX: number, sigmaY: number, color: number, input?: SkiaImageFilter): SkiaImageFilter | null {
+  static dropShadowOnly(context: SkiaContext, dx: number, dy: number, sigmaX: number, sigmaY: number, color: number, input?: SkiaImageFilter, existing?: SkiaImageFilter | null): SkiaImageFilter | null {
+    const params = ['dropShadowOnly', dx, dy, sigmaX, sigmaY, color, input?._handle ?? 0]
+    if (this._matches(existing, params)) return existing!
+    existing?.dispose()
     const h = context._exports.skia_imagefilter_drop_shadow_only(dx, dy, sigmaX, sigmaY, color, input?._handle ?? 0)
-    return h ? new SkiaImageFilter(context, h) : null
+    return h ? new SkiaImageFilter(context, h, params) : null
   }
 
   static offset(context: SkiaContext, dx: number, dy: number, input?: SkiaImageFilter): SkiaImageFilter | null {

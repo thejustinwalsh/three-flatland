@@ -1,6 +1,7 @@
 //! Core Skia binding layer — implements the WIT exports by calling
 //! the Skia C API wrapper (skia_c_api.h).
 
+const std = @import("std");
 const c = @cImport({
     @cInclude("skia_gl.h"); // WIT-generated types
     @cInclude("skia_c_api.h"); // Skia C wrapper
@@ -15,53 +16,127 @@ var g_ctx: c.sk_context_t = null;
 var g_surface: c.sk_surface_t = null;
 var g_canvas: c.sk_canvas_t = null;
 
-// ── Handle table for WIT resources ──
+// ── Growable handle table ──
+//
+// Maps integer handles (i32) to C pointers. Each resource type gets its own
+// table with an independent ID space. Tables start small (INITIAL_CAP) and
+// grow by 2x when exhausted. Growth triggers a console warning via env import
+// so users know to dispose unused resources.
 
-const MAX_HANDLES = 4096;
+const INITIAL_CAP = 256;
+
+// Env import for growth warnings — provided by JS via wasm-loader-shared.ts
+extern "env" fn console_warn_handle_growth(table_id: i32, old_cap: i32, new_cap: i32) void;
+
+const alloc = std.heap.wasm_allocator;
 
 const HandleTable = struct {
-    fn Table(comptime T: type) type {
+    fn Table(comptime T: type, comptime table_id: i32) type {
         return struct {
-            items: [MAX_HANDLES]T = [_]T{null} ** MAX_HANDLES,
+            items: []T = &.{},
+            free_list: []i32 = &.{},
             next: i32 = 1,
-            free_head: i32 = 0, // singly-linked free list (0 = empty)
-            free_list: [MAX_HANDLES]i32 = [_]i32{0} ** MAX_HANDLES,
+            free_head: i32 = 0,
+            capacity: i32 = 0,
 
-            fn alloc(self: *@This(), ptr: T) i32 {
-                // Try free list first
+            const Self = @This();
+
+            /// Lazy init — allocate on first use (can't allocate at comptime)
+            fn ensureCapacity(self: *Self) void {
+                if (self.capacity > 0) return;
+                const items = alloc.alloc(T, INITIAL_CAP) catch @panic("HandleTable: OOM on init");
+                const flist = alloc.alloc(i32, INITIAL_CAP) catch @panic("HandleTable: OOM on init");
+                @memset(items, null);
+                @memset(flist, 0);
+                self.items = items;
+                self.free_list = flist;
+                self.capacity = INITIAL_CAP;
+            }
+
+            fn grow(self: *Self) void {
+                const old_cap = self.capacity;
+                const new_cap = old_cap * 2;
+                console_warn_handle_growth(table_id, old_cap, new_cap);
+
+                const new_items = alloc.alloc(T, @intCast(new_cap)) catch @panic("HandleTable: OOM on grow");
+                const new_flist = alloc.alloc(i32, @intCast(new_cap)) catch @panic("HandleTable: OOM on grow");
+
+                @memcpy(new_items[0..@intCast(old_cap)], self.items);
+                @memcpy(new_flist[0..@intCast(old_cap)], self.free_list);
+                @memset(new_items[@intCast(old_cap)..], null);
+                @memset(new_flist[@intCast(old_cap)..], 0);
+
+                alloc.free(self.items);
+                alloc.free(self.free_list);
+
+                self.items = new_items;
+                self.free_list = new_flist;
+                self.capacity = new_cap;
+            }
+
+            fn handleAlloc(self: *Self, ptr: T) i32 {
+                self.ensureCapacity();
+                // Try free list first (reuse freed handles)
                 if (self.free_head > 0) {
                     const h = self.free_head;
                     self.free_head = self.free_list[@intCast(h)];
                     self.items[@intCast(h)] = ptr;
                     return h;
                 }
-                if (self.next >= MAX_HANDLES) return 0;
+                // Grow if at capacity
+                if (self.next >= self.capacity) self.grow();
                 const h = self.next;
                 self.items[@intCast(h)] = ptr;
                 self.next += 1;
                 return h;
             }
 
-            fn get(self: *const @This(), h: i32) T {
-                if (h <= 0 or h >= MAX_HANDLES) return null;
+            fn get(self: *const Self, h: i32) T {
+                if (h <= 0 or h >= self.capacity) return null;
                 return self.items[@intCast(h)];
             }
 
-            fn free(self: *@This(), h: i32) void {
-                if (h > 0 and h < MAX_HANDLES) {
+            fn handleFree(self: *Self, h: i32) void {
+                if (h > 0 and h < self.capacity) {
                     self.items[@intCast(h)] = null;
                     self.free_list[@intCast(h)] = self.free_head;
                     self.free_head = h;
                 }
             }
+
+            fn liveCount(self: *const Self) i32 {
+                if (self.capacity == 0) return 0;
+                var free_count: i32 = 0;
+                var node = self.free_head;
+                while (node > 0) {
+                    free_count += 1;
+                    node = self.free_list[@intCast(node)];
+                }
+                return (self.next - 1) - free_count;
+            }
         };
     }
 };
 
-var paints = HandleTable.Table(c.sk_paint_t){};
-var paths = HandleTable.Table(c.sk_path_t){};
-var fonts = HandleTable.Table(c.sk_font_t){};
-var typefaces = HandleTable.Table(c.sk_typeface_t){};
+// Table IDs — must match TABLE_NAMES order in wasm-loader-shared.ts
+const TABLE_PAINTS: i32 = 0;
+const TABLE_PATHS: i32 = 1;
+const TABLE_FONTS: i32 = 2;
+const TABLE_TYPEFACES: i32 = 3;
+const TABLE_IMAGEFILTERS: i32 = 4;
+const TABLE_COLORFILTERS: i32 = 5;
+const TABLE_PATHEFFECTS: i32 = 6;
+const TABLE_SHADERS: i32 = 7;
+const TABLE_IMAGES: i32 = 8;
+const TABLE_PATH_MEASURES: i32 = 9;
+const TABLE_TEXT_BLOBS: i32 = 10;
+const TABLE_PICTURE_RECORDERS: i32 = 11;
+const TABLE_PICTURES: i32 = 12;
+
+var paints = HandleTable.Table(c.sk_paint_t, TABLE_PAINTS){};
+var paths = HandleTable.Table(c.sk_path_t, TABLE_PATHS){};
+var fonts = HandleTable.Table(c.sk_font_t, TABLE_FONTS){};
+var typefaces = HandleTable.Table(c.sk_typeface_t, TABLE_TYPEFACES){};
 
 // ── Context & Surface lifecycle ──
 
@@ -84,6 +159,26 @@ export fn skia_debug_init_error() i32 {
 
 export fn skia_debug_font() i32 {
     return c.sk_font_debug();
+}
+
+/// Returns the number of live handles for a given table (by TABLE_* id).
+export fn skia_handle_stats(table_id: i32) i32 {
+    return switch (table_id) {
+        TABLE_PAINTS => paints.liveCount(),
+        TABLE_PATHS => paths.liveCount(),
+        TABLE_FONTS => fonts.liveCount(),
+        TABLE_TYPEFACES => typefaces.liveCount(),
+        TABLE_IMAGEFILTERS => imagefilters.liveCount(),
+        TABLE_COLORFILTERS => colorfilters.liveCount(),
+        TABLE_PATHEFFECTS => patheffects.liveCount(),
+        TABLE_SHADERS => shaders.liveCount(),
+        TABLE_IMAGES => images.liveCount(),
+        TABLE_PATH_MEASURES => path_measures.liveCount(),
+        TABLE_TEXT_BLOBS => text_blobs.liveCount(),
+        TABLE_PICTURE_RECORDERS => picture_recorders.liveCount(),
+        TABLE_PICTURES => pictures.liveCount(),
+        else => -1,
+    };
 }
 
 export fn exports_skia_gl_destroy() void {
@@ -130,7 +225,7 @@ export fn exports_skia_gl_path_from_svg_string(d: *c.skia_gl_string_t, ret: *c.s
     if (d.ptr == null or d.len == 0) return false;
     const p = c.sk_path_from_svg_string(@ptrCast(d.ptr), @intCast(d.len));
     if (p == null) return false;
-    ret.__handle = paths.alloc(p);
+    ret.__handle = paths.handleAlloc(p);
     return ret.__handle != 0;
 }
 
@@ -249,7 +344,7 @@ export fn exports_skia_gl_path_op_apply(ah: c.skia_gl_borrow_path_t, bh: c.skia_
     if (a == null or b == null) return false;
     const result = c.sk_path_op(a, b, @intCast(op));
     if (result == null) return false;
-    ret.__handle = paths.alloc(result);
+    ret.__handle = paths.handleAlloc(result);
     return ret.__handle != 0;
 }
 
@@ -258,7 +353,7 @@ export fn exports_skia_gl_path_simplify(ph: c.skia_gl_borrow_path_t, ret: *c.ski
     if (p == null) return false;
     const result = c.sk_path_simplify(p);
     if (result == null) return false;
-    ret.__handle = paths.alloc(result);
+    ret.__handle = paths.handleAlloc(result);
     return ret.__handle != 0;
 }
 
@@ -267,13 +362,13 @@ export fn exports_skia_gl_path_simplify(ph: c.skia_gl_borrow_path_t, ret: *c.ski
 export fn skia_paint_new() i32 {
     const p = c.sk_paint_create();
     if (p == null) return 0;
-    return paints.alloc(p);
+    return paints.handleAlloc(p);
 }
 
 export fn skia_paint_delete(h: i32) void {
     const p = paints.get(h);
     if (p != null) c.sk_paint_destroy(p);
-    paints.free(h);
+    paints.handleFree(h);
 }
 
 export fn skia_paint_color(h: i32, r: f32, g: f32, b: f32, a: f32) void {
@@ -294,13 +389,13 @@ export fn skia_paint_set_stroke_style(h: i32, width: f32) void {
 export fn skia_typeface_load(data_ptr: [*]const u8, data_len: i32) i32 {
     const tf = c.sk_typeface_from_data(data_ptr, data_len);
     if (tf == null) return 0;
-    return typefaces.alloc(tf);
+    return typefaces.handleAlloc(tf);
 }
 
 export fn skia_typeface_delete(h: i32) void {
     const tf = typefaces.get(h);
     if (tf != null) c.sk_typeface_destroy(tf);
-    typefaces.free(h);
+    typefaces.handleFree(h);
 }
 
 export fn skia_font_new(typeface_h: i32, size: f32) i32 {
@@ -308,13 +403,13 @@ export fn skia_font_new(typeface_h: i32, size: f32) i32 {
     if (tf == null) return 0;
     const f = c.sk_font_create(tf, size);
     if (f == null) return 0;
-    return fonts.alloc(f);
+    return fonts.handleAlloc(f);
 }
 
 export fn skia_font_delete(h: i32) void {
     const f = fonts.get(h);
     if (f != null) c.sk_font_destroy(f);
-    fonts.free(h);
+    fonts.handleFree(h);
 }
 
 export fn skia_measure_text(text_ptr: [*]const u8, text_len: i32, font_h: i32) f32 {
@@ -368,13 +463,13 @@ export fn skia_paint_set_linear_gradient_2(paint_h: i32, x0: f32, y0: f32, x1: f
 export fn skia_path_new() i32 {
     const p = c.sk_path_create();
     if (p == null) return 0;
-    return paths.alloc(p);
+    return paths.handleAlloc(p);
 }
 
 export fn skia_path_delete(h: i32) void {
     const p = paths.get(h);
     if (p != null) c.sk_path_destroy(p);
-    paths.free(h);
+    paths.handleFree(h);
 }
 
 export fn skia_path_move(h: i32, x: f32, y: f32) void {
@@ -411,7 +506,16 @@ export fn skia_path_op_combine(a_h: i32, b_h: i32, op: i32) i32 {
     if (a == null or b == null) return 0;
     const result = c.sk_path_op(a, b, op);
     if (result == null) return 0;
-    return paths.alloc(result);
+    return paths.handleAlloc(result);
+}
+
+/// In-place boolean op — writes result into an existing path handle (no allocation).
+export fn skia_path_op_into(a_h: i32, b_h: i32, op: i32, result_h: i32) i32 {
+    const a = paths.get(a_h);
+    const b = paths.get(b_h);
+    const out = paths.get(result_h);
+    if (a == null or b == null or out == null) return 0;
+    return c.sk_path_op_into(a, b, op, out);
 }
 
 export fn skia_draw_round_rect(x: f32, y: f32, w: f32, h: f32, rx: f32, ry: f32, paint_h: i32) void {
@@ -516,7 +620,7 @@ export fn skia_path_reset(h: i32) void {
 
 export fn skia_path_from_svg(svg_ptr: [*]const u8, svg_len: i32) i32 {
     const p = c.sk_path_from_svg_string(@ptrCast(svg_ptr), svg_len);
-    return paths.alloc(p);
+    return paths.handleAlloc(p);
 }
 
 export fn skia_path_to_svg(h: i32, buf_ptr: [*]u8, buf_len: i32) i32 {
@@ -528,7 +632,15 @@ export fn skia_path_to_svg(h: i32, buf_ptr: [*]u8, buf_len: i32) i32 {
 export fn skia_path_simplify(h: i32) i32 {
     const p = paths.get(h);
     if (p == null) return 0;
-    return paths.alloc(c.sk_path_simplify(p));
+    return paths.handleAlloc(c.sk_path_simplify(p));
+}
+
+/// In-place simplify — writes result into existing path handle.
+export fn skia_path_simplify_into(src_h: i32, result_h: i32) i32 {
+    const src = paths.get(src_h);
+    const out = paths.get(result_h);
+    if (src == null or out == null) return 0;
+    return c.sk_path_simplify_into(src, out);
 }
 
 // ── Missing font operations ──
@@ -628,75 +740,75 @@ export fn skia_canvas_draw_picture(pic_h: i32) void {
 // Image filter handle table + exports
 // ════════════════════════════════════════════════════════
 
-var imagefilters = HandleTable.Table(c.sk_image_filter_t){};
+var imagefilters = HandleTable.Table(c.sk_image_filter_t, TABLE_IMAGEFILTERS){};
 
 export fn skia_imagefilter_blur(sigma_x: f32, sigma_y: f32, input_h: i32) i32 {
-    return imagefilters.alloc(c.sk_imagefilter_blur(sigma_x, sigma_y, imagefilters.get(input_h)));
+    return imagefilters.handleAlloc(c.sk_imagefilter_blur(sigma_x, sigma_y, imagefilters.get(input_h)));
 }
 export fn skia_imagefilter_drop_shadow(dx: f32, dy: f32, sigma_x: f32, sigma_y: f32, color: u32, input_h: i32) i32 {
-    return imagefilters.alloc(c.sk_imagefilter_drop_shadow(dx, dy, sigma_x, sigma_y, color, imagefilters.get(input_h)));
+    return imagefilters.handleAlloc(c.sk_imagefilter_drop_shadow(dx, dy, sigma_x, sigma_y, color, imagefilters.get(input_h)));
 }
 export fn skia_imagefilter_drop_shadow_only(dx: f32, dy: f32, sigma_x: f32, sigma_y: f32, color: u32, input_h: i32) i32 {
-    return imagefilters.alloc(c.sk_imagefilter_drop_shadow_only(dx, dy, sigma_x, sigma_y, color, imagefilters.get(input_h)));
+    return imagefilters.handleAlloc(c.sk_imagefilter_drop_shadow_only(dx, dy, sigma_x, sigma_y, color, imagefilters.get(input_h)));
 }
 export fn skia_imagefilter_offset(dx: f32, dy: f32, input_h: i32) i32 {
-    return imagefilters.alloc(c.sk_imagefilter_offset(dx, dy, imagefilters.get(input_h)));
+    return imagefilters.handleAlloc(c.sk_imagefilter_offset(dx, dy, imagefilters.get(input_h)));
 }
 export fn skia_imagefilter_color_filter(cf_h: i32, input_h: i32) i32 {
-    return imagefilters.alloc(c.sk_imagefilter_color_filter(colorfilters.get(cf_h), imagefilters.get(input_h)));
+    return imagefilters.handleAlloc(c.sk_imagefilter_color_filter(colorfilters.get(cf_h), imagefilters.get(input_h)));
 }
 export fn skia_imagefilter_compose(outer_h: i32, inner_h: i32) i32 {
-    return imagefilters.alloc(c.sk_imagefilter_compose(imagefilters.get(outer_h), imagefilters.get(inner_h)));
+    return imagefilters.handleAlloc(c.sk_imagefilter_compose(imagefilters.get(outer_h), imagefilters.get(inner_h)));
 }
 export fn skia_imagefilter_dilate(rx: f32, ry: f32, input_h: i32) i32 {
-    return imagefilters.alloc(c.sk_imagefilter_dilate(rx, ry, imagefilters.get(input_h)));
+    return imagefilters.handleAlloc(c.sk_imagefilter_dilate(rx, ry, imagefilters.get(input_h)));
 }
 export fn skia_imagefilter_erode(rx: f32, ry: f32, input_h: i32) i32 {
-    return imagefilters.alloc(c.sk_imagefilter_erode(rx, ry, imagefilters.get(input_h)));
+    return imagefilters.handleAlloc(c.sk_imagefilter_erode(rx, ry, imagefilters.get(input_h)));
 }
 export fn skia_imagefilter_displacement_map(x_ch: i32, y_ch: i32, scale: f32, disp_h: i32, color_h: i32) i32 {
-    return imagefilters.alloc(c.sk_imagefilter_displacement_map(x_ch, y_ch, scale, imagefilters.get(disp_h), imagefilters.get(color_h)));
+    return imagefilters.handleAlloc(c.sk_imagefilter_displacement_map(x_ch, y_ch, scale, imagefilters.get(disp_h), imagefilters.get(color_h)));
 }
 export fn skia_imagefilter_destroy(h: i32) void {
     const f = imagefilters.get(h);
     if (f != null) c.sk_imagefilter_destroy(f);
-    imagefilters.free(h);
+    imagefilters.handleFree(h);
 }
 
 // ════════════════════════════════════════════════════════
 // Color filter handle table + exports
 // ════════════════════════════════════════════════════════
 
-var colorfilters = HandleTable.Table(c.sk_color_filter_t){};
+var colorfilters = HandleTable.Table(c.sk_color_filter_t, TABLE_COLORFILTERS){};
 
 export fn skia_colorfilter_blend(color: u32, blend_mode: u8) i32 {
-    return colorfilters.alloc(c.sk_colorfilter_blend(color, blend_mode));
+    return colorfilters.handleAlloc(c.sk_colorfilter_blend(color, blend_mode));
 }
 export fn skia_colorfilter_matrix(matrix_ptr: u32) i32 {
-    return colorfilters.alloc(c.sk_colorfilter_matrix(@ptrFromInt(matrix_ptr)));
+    return colorfilters.handleAlloc(c.sk_colorfilter_matrix(@ptrFromInt(matrix_ptr)));
 }
 export fn skia_colorfilter_compose(outer_h: i32, inner_h: i32) i32 {
-    return colorfilters.alloc(c.sk_colorfilter_compose(colorfilters.get(outer_h), colorfilters.get(inner_h)));
+    return colorfilters.handleAlloc(c.sk_colorfilter_compose(colorfilters.get(outer_h), colorfilters.get(inner_h)));
 }
 export fn skia_colorfilter_lerp(t: f32, dst_h: i32, src_h: i32) i32 {
-    return colorfilters.alloc(c.sk_colorfilter_lerp(t, colorfilters.get(dst_h), colorfilters.get(src_h)));
+    return colorfilters.handleAlloc(c.sk_colorfilter_lerp(t, colorfilters.get(dst_h), colorfilters.get(src_h)));
 }
 export fn skia_colorfilter_table(table_ptr: u32) i32 {
-    return colorfilters.alloc(c.sk_colorfilter_table(@ptrFromInt(table_ptr)));
+    return colorfilters.handleAlloc(c.sk_colorfilter_table(@ptrFromInt(table_ptr)));
 }
 export fn skia_colorfilter_table_argb(a_ptr: u32, r_ptr: u32, g_ptr: u32, b_ptr: u32) i32 {
-    return colorfilters.alloc(c.sk_colorfilter_table_argb(@ptrFromInt(a_ptr), @ptrFromInt(r_ptr), @ptrFromInt(g_ptr), @ptrFromInt(b_ptr)));
+    return colorfilters.handleAlloc(c.sk_colorfilter_table_argb(@ptrFromInt(a_ptr), @ptrFromInt(r_ptr), @ptrFromInt(g_ptr), @ptrFromInt(b_ptr)));
 }
 export fn skia_colorfilter_linear_to_srgb() i32 {
-    return colorfilters.alloc(c.sk_colorfilter_linear_to_srgb());
+    return colorfilters.handleAlloc(c.sk_colorfilter_linear_to_srgb());
 }
 export fn skia_colorfilter_srgb_to_linear() i32 {
-    return colorfilters.alloc(c.sk_colorfilter_srgb_to_linear());
+    return colorfilters.handleAlloc(c.sk_colorfilter_srgb_to_linear());
 }
 export fn skia_colorfilter_destroy(h: i32) void {
     const f = colorfilters.get(h);
     if (f != null) c.sk_colorfilter_destroy(f);
-    colorfilters.free(h);
+    colorfilters.handleFree(h);
 }
 
 // ════════════════════════════════════════════════════════
@@ -740,69 +852,69 @@ export fn skia_paint_set_two_point_conical_gradient(paint_h: i32, sx: f32, sy: f
 // Path effect handle table + exports
 // ════════════════════════════════════════════════════════
 
-var patheffects = HandleTable.Table(c.sk_path_effect_t){};
+var patheffects = HandleTable.Table(c.sk_path_effect_t, TABLE_PATHEFFECTS){};
 
 export fn skia_patheffect_dash(intervals_ptr: u32, count: i32, phase: f32) i32 {
-    return patheffects.alloc(c.sk_patheffect_dash(@ptrFromInt(intervals_ptr), count, phase));
+    return patheffects.handleAlloc(c.sk_patheffect_dash(@ptrFromInt(intervals_ptr), count, phase));
 }
 export fn skia_patheffect_corner(radius: f32) i32 {
-    return patheffects.alloc(c.sk_patheffect_corner(radius));
+    return patheffects.handleAlloc(c.sk_patheffect_corner(radius));
 }
 export fn skia_patheffect_discrete(seg_len: f32, dev: f32, seed: u32) i32 {
-    return patheffects.alloc(c.sk_patheffect_discrete(seg_len, dev, seed));
+    return patheffects.handleAlloc(c.sk_patheffect_discrete(seg_len, dev, seed));
 }
 export fn skia_patheffect_trim(start: f32, stop: f32, inverted: i32) i32 {
-    return patheffects.alloc(c.sk_patheffect_trim(start, stop, inverted));
+    return patheffects.handleAlloc(c.sk_patheffect_trim(start, stop, inverted));
 }
 export fn skia_patheffect_path1d(path_h: i32, advance: f32, phase: f32, style: i32) i32 {
-    return patheffects.alloc(c.sk_patheffect_path1d(paths.get(path_h), advance, phase, style));
+    return patheffects.handleAlloc(c.sk_patheffect_path1d(paths.get(path_h), advance, phase, style));
 }
 export fn skia_patheffect_compose(outer_h: i32, inner_h: i32) i32 {
-    return patheffects.alloc(c.sk_patheffect_compose(patheffects.get(outer_h), patheffects.get(inner_h)));
+    return patheffects.handleAlloc(c.sk_patheffect_compose(patheffects.get(outer_h), patheffects.get(inner_h)));
 }
 export fn skia_patheffect_sum(first_h: i32, second_h: i32) i32 {
-    return patheffects.alloc(c.sk_patheffect_sum(patheffects.get(first_h), patheffects.get(second_h)));
+    return patheffects.handleAlloc(c.sk_patheffect_sum(patheffects.get(first_h), patheffects.get(second_h)));
 }
 export fn skia_patheffect_destroy(h: i32) void {
     const f = patheffects.get(h);
     if (f != null) c.sk_patheffect_destroy(f);
-    patheffects.free(h);
+    patheffects.handleFree(h);
 }
 
 // ════════════════════════════════════════════════════════
 // Shader handle table + exports
 // ════════════════════════════════════════════════════════
 
-var shaders = HandleTable.Table(c.sk_shader_t){};
+var shaders = HandleTable.Table(c.sk_shader_t, TABLE_SHADERS){};
 
 export fn skia_shader_fractal_noise(freq_x: f32, freq_y: f32, octaves: i32, seed: f32) i32 {
-    return shaders.alloc(c.sk_shader_fractal_noise(freq_x, freq_y, octaves, seed));
+    return shaders.handleAlloc(c.sk_shader_fractal_noise(freq_x, freq_y, octaves, seed));
 }
 export fn skia_shader_turbulence(freq_x: f32, freq_y: f32, octaves: i32, seed: f32) i32 {
-    return shaders.alloc(c.sk_shader_turbulence(freq_x, freq_y, octaves, seed));
+    return shaders.handleAlloc(c.sk_shader_turbulence(freq_x, freq_y, octaves, seed));
 }
 export fn skia_shader_image(image_h: i32, tile_x: i32, tile_y: i32) i32 {
-    return shaders.alloc(c.sk_shader_image(images.get(image_h), tile_x, tile_y));
+    return shaders.handleAlloc(c.sk_shader_image(images.get(image_h), tile_x, tile_y));
 }
 export fn skia_shader_destroy(h: i32) void {
     const s = shaders.get(h);
     if (s != null) c.sk_shader_destroy(s);
-    shaders.free(h);
+    shaders.handleFree(h);
 }
 
 // ════════════════════════════════════════════════════════
 // Image handle table + exports
 // ════════════════════════════════════════════════════════
 
-var images = HandleTable.Table(c.sk_image_t){};
+var images = HandleTable.Table(c.sk_image_t, TABLE_IMAGES){};
 
 export fn skia_image_from_pixels(pixels_ptr: [*]const u8, width: i32, height: i32) i32 {
-    return images.alloc(c.sk_image_from_pixels(pixels_ptr, width, height));
+    return images.handleAlloc(c.sk_image_from_pixels(pixels_ptr, width, height));
 }
 export fn skia_image_destroy(h: i32) void {
     const img = images.get(h);
     if (img != null) c.sk_image_destroy(img);
-    images.free(h);
+    images.handleFree(h);
 }
 export fn skia_image_width(h: i32) i32 { return c.sk_image_width(images.get(h)); }
 export fn skia_image_height(h: i32) i32 { return c.sk_image_height(images.get(h)); }
@@ -825,15 +937,15 @@ export fn skia_path_get_fill_type(h: i32) i32 {
 // Path measure handle table + exports
 // ════════════════════════════════════════════════════════
 
-var path_measures = HandleTable.Table(c.sk_path_measure_t){};
+var path_measures = HandleTable.Table(c.sk_path_measure_t, TABLE_PATH_MEASURES){};
 
 export fn skia_path_measure_create(path_h: i32, force_closed: i32) i32 {
-    return path_measures.alloc(c.sk_path_measure_create(paths.get(path_h), force_closed));
+    return path_measures.handleAlloc(c.sk_path_measure_create(paths.get(path_h), force_closed));
 }
 export fn skia_path_measure_destroy(h: i32) void {
     const pm = path_measures.get(h);
     if (pm != null) c.sk_path_measure_destroy(pm);
-    path_measures.free(h);
+    path_measures.handleFree(h);
 }
 export fn skia_path_measure_length(h: i32) f32 {
     const pm = path_measures.get(h);
@@ -850,34 +962,34 @@ export fn skia_path_measure_get_pos_tan(h: i32, distance: f32, pos_ptr: u32, tan
 // Text blob handle table + exports
 // ════════════════════════════════════════════════════════
 
-var text_blobs = HandleTable.Table(c.sk_text_blob_t){};
+var text_blobs = HandleTable.Table(c.sk_text_blob_t, TABLE_TEXT_BLOBS){};
 
 export fn skia_text_blob_from_text(text_ptr: [*]const u8, text_len: i32, font_h: i32) i32 {
-    return text_blobs.alloc(c.sk_text_blob_from_text(@ptrCast(text_ptr), text_len, fonts.get(font_h)));
+    return text_blobs.handleAlloc(c.sk_text_blob_from_text(@ptrCast(text_ptr), text_len, fonts.get(font_h)));
 }
 export fn skia_text_blob_from_pos_text(text_ptr: [*]const u8, text_len: i32, pos_ptr: u32, font_h: i32) i32 {
-    return text_blobs.alloc(c.sk_text_blob_from_pos_text(@ptrCast(text_ptr), text_len, @ptrFromInt(pos_ptr), fonts.get(font_h)));
+    return text_blobs.handleAlloc(c.sk_text_blob_from_pos_text(@ptrCast(text_ptr), text_len, @ptrFromInt(pos_ptr), fonts.get(font_h)));
 }
 export fn skia_text_blob_destroy(h: i32) void {
     const b = text_blobs.get(h);
     if (b != null) c.sk_text_blob_destroy(b);
-    text_blobs.free(h);
+    text_blobs.handleFree(h);
 }
 
 // ════════════════════════════════════════════════════════
 // Picture + recorder handle tables + exports
 // ════════════════════════════════════════════════════════
 
-var picture_recorders = HandleTable.Table(c.sk_picture_recorder_t){};
-var pictures = HandleTable.Table(c.sk_picture_t){};
+var picture_recorders = HandleTable.Table(c.sk_picture_recorder_t, TABLE_PICTURE_RECORDERS){};
+var pictures = HandleTable.Table(c.sk_picture_t, TABLE_PICTURES){};
 
 export fn skia_picture_recorder_create() i32 {
-    return picture_recorders.alloc(c.sk_picture_recorder_create());
+    return picture_recorders.handleAlloc(c.sk_picture_recorder_create());
 }
 export fn skia_picture_recorder_destroy(h: i32) void {
     const r = picture_recorders.get(h);
     if (r != null) c.sk_picture_recorder_destroy(r);
-    picture_recorders.free(h);
+    picture_recorders.handleFree(h);
 }
 export fn skia_picture_recorder_begin(h: i32, x: f32, y: f32, w: f32, hh: f32) i32 {
     const r = picture_recorders.get(h);
@@ -889,12 +1001,12 @@ export fn skia_picture_recorder_begin(h: i32, x: f32, y: f32, w: f32, hh: f32) i
 export fn skia_picture_recorder_finish(h: i32) i32 {
     const r = picture_recorders.get(h);
     if (r == null) return 0;
-    return pictures.alloc(c.sk_picture_recorder_finish(r));
+    return pictures.handleAlloc(c.sk_picture_recorder_finish(r));
 }
 export fn skia_picture_destroy(h: i32) void {
     const p = pictures.get(h);
     if (p != null) c.sk_picture_destroy(p);
-    pictures.free(h);
+    pictures.handleFree(h);
 }
 
 // ════════════════════════════════════════════════════════
@@ -947,7 +1059,7 @@ export fn skia_paint_copy(h: i32) i32 {
     if (p == null) return 0;
     const copy = c.sk_paint_copy(p);
     if (copy == null) return 0;
-    return paints.alloc(copy);
+    return paints.handleAlloc(copy);
 }
 
 // ════════════════════════════════════════════════════════
@@ -1041,14 +1153,22 @@ export fn skia_path_transform(h: i32, matrix_ptr: u32) i32 {
     if (p == null) return 0;
     const result = c.sk_path_transform(p, @as([*]const f32, @ptrFromInt(matrix_ptr)));
     if (result == null) return 0;
-    return paths.alloc(result);
+    return paths.handleAlloc(result);
+}
+
+/// In-place transform — writes result into existing path handle.
+export fn skia_path_transform_into(src_h: i32, matrix_ptr: u32, result_h: i32) i32 {
+    const src = paths.get(src_h);
+    const out = paths.get(result_h);
+    if (src == null or out == null) return 0;
+    return c.sk_path_transform_into(src, @as([*]const f32, @ptrFromInt(matrix_ptr)), out);
 }
 export fn skia_path_copy(h: i32) i32 {
     const p = paths.get(h);
     if (p == null) return 0;
     const copy = c.sk_path_copy(p);
     if (copy == null) return 0;
-    return paths.alloc(copy);
+    return paths.handleAlloc(copy);
 }
 export fn skia_path_is_empty(h: i32) i32 {
     const p = paths.get(h);
@@ -1132,7 +1252,7 @@ export fn skia_image_read_pixels(h: i32, out_ptr: u32, w: i32, ih: i32) i32 {
 // ════════════════════════════════════════════════════════
 
 export fn skia_colorfilter_luma() i32 {
-    return colorfilters.alloc(c.sk_colorfilter_luma());
+    return colorfilters.handleAlloc(c.sk_colorfilter_luma());
 }
 
 // ════════════════════════════════════════════════════════
@@ -1140,22 +1260,22 @@ export fn skia_colorfilter_luma() i32 {
 // ════════════════════════════════════════════════════════
 
 export fn skia_shader_color(r: f32, g: f32, b: f32, a: f32) i32 {
-    return shaders.alloc(c.sk_shader_color(r, g, b, a));
+    return shaders.handleAlloc(c.sk_shader_color(r, g, b, a));
 }
 export fn skia_shader_blend(blend_mode: u8, dst_h: i32, src_h: i32) i32 {
-    return shaders.alloc(c.sk_shader_blend(blend_mode, shaders.get(dst_h), shaders.get(src_h)));
+    return shaders.handleAlloc(c.sk_shader_blend(blend_mode, shaders.get(dst_h), shaders.get(src_h)));
 }
 export fn skia_shader_linear_gradient(x0: f32, y0: f32, x1: f32, y1: f32, colors_ptr: u32, stops_ptr: u32, count: i32) i32 {
-    return shaders.alloc(c.sk_shader_linear_gradient(x0, y0, x1, y1, @ptrFromInt(colors_ptr), @ptrFromInt(stops_ptr), count));
+    return shaders.handleAlloc(c.sk_shader_linear_gradient(x0, y0, x1, y1, @ptrFromInt(colors_ptr), @ptrFromInt(stops_ptr), count));
 }
 export fn skia_shader_radial_gradient(cx: f32, cy: f32, r: f32, colors_ptr: u32, stops_ptr: u32, count: i32) i32 {
-    return shaders.alloc(c.sk_shader_radial_gradient(cx, cy, r, @ptrFromInt(colors_ptr), @ptrFromInt(stops_ptr), count));
+    return shaders.handleAlloc(c.sk_shader_radial_gradient(cx, cy, r, @ptrFromInt(colors_ptr), @ptrFromInt(stops_ptr), count));
 }
 export fn skia_shader_sweep_gradient(cx: f32, cy: f32, colors_ptr: u32, stops_ptr: u32, count: i32) i32 {
-    return shaders.alloc(c.sk_shader_sweep_gradient(cx, cy, @ptrFromInt(colors_ptr), @ptrFromInt(stops_ptr), count));
+    return shaders.handleAlloc(c.sk_shader_sweep_gradient(cx, cy, @ptrFromInt(colors_ptr), @ptrFromInt(stops_ptr), count));
 }
 export fn skia_shader_two_point_conical_gradient(sx: f32, sy: f32, sr: f32, ex: f32, ey: f32, er: f32, colors_ptr: u32, stops_ptr: u32, count: i32) i32 {
-    return shaders.alloc(c.sk_shader_two_point_conical_gradient(sx, sy, sr, ex, ey, er, @ptrFromInt(colors_ptr), @ptrFromInt(stops_ptr), count));
+    return shaders.handleAlloc(c.sk_shader_two_point_conical_gradient(sx, sy, sr, ex, ey, er, @ptrFromInt(colors_ptr), @ptrFromInt(stops_ptr), count));
 }
 
 // ════════════════════════════════════════════════════════
@@ -1163,10 +1283,10 @@ export fn skia_shader_two_point_conical_gradient(sx: f32, sy: f32, sr: f32, ex: 
 // ════════════════════════════════════════════════════════
 
 export fn skia_imagefilter_blend(blend_mode: u8, bg_h: i32, fg_h: i32) i32 {
-    return imagefilters.alloc(c.sk_imagefilter_blend(blend_mode, imagefilters.get(bg_h), imagefilters.get(fg_h)));
+    return imagefilters.handleAlloc(c.sk_imagefilter_blend(blend_mode, imagefilters.get(bg_h), imagefilters.get(fg_h)));
 }
 export fn skia_imagefilter_matrix_transform(matrix_ptr: u32, sampling: i32, input_h: i32) i32 {
-    return imagefilters.alloc(c.sk_imagefilter_matrix_transform(@ptrFromInt(matrix_ptr), sampling, imagefilters.get(input_h)));
+    return imagefilters.handleAlloc(c.sk_imagefilter_matrix_transform(@ptrFromInt(matrix_ptr), sampling, imagefilters.get(input_h)));
 }
 
 // ════════════════════════════════════════════════════════
@@ -1174,5 +1294,5 @@ export fn skia_imagefilter_matrix_transform(matrix_ptr: u32, sampling: i32, inpu
 // ════════════════════════════════════════════════════════
 
 export fn skia_patheffect_path2d(matrix_ptr: u32, path_h: i32) i32 {
-    return patheffects.alloc(c.sk_patheffect_path2d(@ptrFromInt(matrix_ptr), paths.get(path_h)));
+    return patheffects.handleAlloc(c.sk_patheffect_path2d(@ptrFromInt(matrix_ptr), paths.get(path_h)));
 }

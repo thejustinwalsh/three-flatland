@@ -25,24 +25,48 @@ export class SkiaColorFilter {
   _handle: number
   private readonly _ctx: SkiaContext
 
-  private constructor(context: SkiaContext, handle: number) {
+  /** @internal Creation params for change detection */
+  _params: unknown[] = []
+
+  private constructor(context: SkiaContext, handle: number, params: unknown[] = []) {
     this._ctx = context
     this._handle = handle
+    this._params = params
     registry.register(this, { handle, drop: context._exports.skia_colorfilter_destroy }, this)
   }
 
-  /** Blend a solid color using a blend mode */
-  static blend(context: SkiaContext, color: number, blendMode: BlendMode): SkiaColorFilter | null {
-    const h = context._exports.skia_colorfilter_blend(color, BLEND_MODE[blendMode])
-    return h ? new SkiaColorFilter(context, h) : null
+  /** @internal Check if existing filter was created with the given params */
+  private static _matches(existing: SkiaColorFilter | null | undefined, params: unknown[]): boolean {
+    if (!existing || existing._handle === 0) return false
+    if (existing._params.length !== params.length) return false
+    for (let i = 0; i < params.length; i++) {
+      if (existing._params[i] !== params[i]) return false
+    }
+    return true
   }
 
-  /** Apply a 4x5 color matrix (20 floats, row-major) */
-  static matrix(context: SkiaContext, matrix: number[]): SkiaColorFilter | null {
+  /** Blend a solid color using a blend mode */
+  static blend(context: SkiaContext, color: number, blendMode: BlendMode, existing?: SkiaColorFilter | null): SkiaColorFilter | null {
+    const params = ['blend', color, blendMode]
+    if (this._matches(existing, params)) return existing!
+    existing?.dispose()
+    const h = context._exports.skia_colorfilter_blend(color, BLEND_MODE[blendMode])
+    return h ? new SkiaColorFilter(context, h, params) : null
+  }
+
+  /**
+   * Apply a 4x5 color matrix (20 floats, row-major).
+   * Pass `existing` to reuse the handle if the matrix hasn't changed.
+   */
+  static matrix(context: SkiaContext, matrix: number[], existing?: SkiaColorFilter | null): SkiaColorFilter | null {
     if (matrix.length !== 20) throw new Error('Color matrix must have 20 elements')
+    // For matrix comparison, embed all 20 values in the params
+    const params: unknown[] = ['matrix', ...matrix]
+    if (this._matches(existing, params)) return existing!
+    existing?.dispose()
     const ptr = context._writeF32(matrix)
     const h = context._exports.skia_colorfilter_matrix(ptr)
-    return h ? new SkiaColorFilter(context, h) : null
+    return h ? new SkiaColorFilter(context, h, params) : null
   }
 
   /** Compose two color filters: result = outer(inner(color)) */

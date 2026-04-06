@@ -139,6 +139,14 @@ export interface SkiaExports {
   skia_path_op_combine(a: number, b: number, op: number): number
   skia_path_simplify(h: number): number
 
+  // In-place path operations (write result into existing handle, no allocation)
+  skia_path_op_into(a: number, b: number, op: number, result: number): number
+  skia_path_simplify_into(src: number, result: number): number
+  skia_path_transform_into(src: number, matrixPtr: number, result: number): number
+
+  // Debug: live handle count per table (table_id 0-12)
+  skia_handle_stats(tableId: number): number
+
   // Font
   skia_typeface_load(dataPtr: number, dataLen: number): number
   skia_typeface_delete(h: number): void
