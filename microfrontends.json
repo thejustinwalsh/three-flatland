@@ -23,6 +23,19 @@
           "paths": ["/three/:path*", "/react/:path*"]
         }
       ]
+    },
+    "example-vanilla-slug-text": {
+      "development": {
+        "local": {
+          "port": 4017
+        }
+      },
+      "routing": [
+        {
+          "group": "vanilla-examples",
+          "paths": ["/vanilla/slug-text", "/vanilla/slug-text/:path*"]
+        }
+      ]
     }
   }
 }
