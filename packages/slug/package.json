@@ -1,0 +1,140 @@
+{
+  "name": "@three-flatland/slug",
+  "version": "0.1.0-alpha.1",
+  "description": "GPU-accelerated resolution-independent font rendering for Three.js via the Slug algorithm",
+  "type": "module",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    },
+    "./react": {
+      "source": "./src/react.ts",
+      "import": {
+        "types": "./dist/react.d.ts",
+        "default": "./dist/react.js"
+      },
+      "require": {
+        "types": "./dist/react.d.cts",
+        "default": "./dist/react.cjs"
+      }
+    },
+    "./react/*": {
+      "source": "./src/react/*.ts",
+      "import": {
+        "types": "./dist/react/*.d.ts",
+        "default": "./dist/react/*.js"
+      },
+      "require": {
+        "types": "./dist/react/*.d.cts",
+        "default": "./dist/react/*.cjs"
+      }
+    },
+    "./pipeline": {
+      "source": "./src/pipeline/index.ts",
+      "import": {
+        "types": "./dist/pipeline/index.d.ts",
+        "default": "./dist/pipeline/index.js"
+      },
+      "require": {
+        "types": "./dist/pipeline/index.d.cts",
+        "default": "./dist/pipeline/index.cjs"
+      }
+    },
+    "./pipeline/*": {
+      "source": "./src/pipeline/*.ts",
+      "import": {
+        "types": "./dist/pipeline/*.d.ts",
+        "default": "./dist/pipeline/*.js"
+      },
+      "require": {
+        "types": "./dist/pipeline/*.d.cts",
+        "default": "./dist/pipeline/*.cjs"
+      }
+    },
+    "./shaders": {
+      "source": "./src/shaders/index.ts",
+      "import": {
+        "types": "./dist/shaders/index.d.ts",
+        "default": "./dist/shaders/index.js"
+      },
+      "require": {
+        "types": "./dist/shaders/index.d.cts",
+        "default": "./dist/shaders/index.cjs"
+      }
+    },
+    "./shaders/*": {
+      "source": "./src/shaders/*.ts",
+      "import": {
+        "types": "./dist/shaders/*.d.ts",
+        "default": "./dist/shaders/*.js"
+      },
+      "require": {
+        "types": "./dist/shaders/*.d.cts",
+        "default": "./dist/shaders/*.cjs"
+      }
+    }
+  },
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "docs",
+    "LICENSE",
+    "THIRD_PARTY_LICENSES",
+    "README.md"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "peerDependencies": {
+    "three": ">=0.170.0"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    },
+    "@react-three/fiber": {
+      "optional": true
+    }
+  },
+  "dependencies": {
+    "opentype.js": "^1.3.4"
+  },
+  "devDependencies": {
+    "@react-three/fiber": "catalog:",
+    "@types/opentype.js": "^1.3.9",
+    "@types/react": "catalog:",
+    "@types/three": "catalog:",
+    "react": "catalog:",
+    "three": "catalog:"
+  },
+  "keywords": [
+    "three.js",
+    "tsl",
+    "font",
+    "text",
+    "slug",
+    "webgpu",
+    "bezier",
+    "gpu-rendering"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/thejustinwalsh/three-flatland.git",
+    "directory": "packages/slug"
+  }
+}

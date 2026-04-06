@@ -1,0 +1,5 @@
+export { calcRootCode } from './calcRootCode.js'
+export { solveHorizPoly, solveVertPoly } from './solveQuadratic.js'
+export { calcCoverage } from './calcCoverage.js'
+export { slugRender } from './slugFragment.js'
+export { buildSlugVertexNodes } from './slugVertex.js'

@@ -1,0 +1,221 @@
+import {
+  BufferGeometry,
+  Float32BufferAttribute,
+  InstancedBufferAttribute,
+  Uint16BufferAttribute,
+} from 'three'
+import type { SlugFont } from './SlugFont.js'
+import type { PositionedGlyph, SlugGlyphData } from './types.js'
+
+/** Default initial capacity for glyph instances. */
+const DEFAULT_CAPACITY = 256
+
+/**
+ * Instanced quad geometry for Slug text rendering.
+ *
+ * Base geometry: 4 vertices forming a unit quad.
+ * Instance attributes (5x vec4 per glyph):
+ *   glyphPos  — object-space position (xy) + outward normal (zw)
+ *   glyphTex  — em-space coord (xy) + glyph band location X (z) + band location Y (w)
+ *   glyphJac  — inverse Jacobian 2x2 matrix
+ *   glyphBand — band transform: scale(xy) + offset(zw)
+ *   glyphColor — RGBA per-glyph color
+ */
+export class SlugGeometry extends BufferGeometry {
+  private _capacity: number
+  private _count = 0
+
+  private _glyphPos: Float32Array
+  private _glyphTex: Float32Array
+  private _glyphJac: Float32Array
+  private _glyphBand: Float32Array
+  private _glyphColor: Float32Array
+
+  private _glyphPosAttr: InstancedBufferAttribute
+  private _glyphTexAttr: InstancedBufferAttribute
+  private _glyphJacAttr: InstancedBufferAttribute
+  private _glyphBandAttr: InstancedBufferAttribute
+  private _glyphColorAttr: InstancedBufferAttribute
+
+  constructor(capacity: number = DEFAULT_CAPACITY) {
+    super()
+    this._capacity = capacity
+
+    // Base quad geometry (unit square centered at origin)
+    // Vertices: 4 corners of [-0.5, 0.5] quad
+    const positions = new Float32Array([
+      -0.5, -0.5, 0, // bottom-left
+      0.5, -0.5, 0, // bottom-right
+      0.5, 0.5, 0, // top-right
+      -0.5, 0.5, 0, // top-left
+    ])
+    const uvs = new Float32Array([
+      0, 0,
+      1, 0,
+      1, 1,
+      0, 1,
+    ])
+    const indices = new Uint16Array([0, 1, 2, 0, 2, 3])
+
+    this.setAttribute('position', new Float32BufferAttribute(positions, 3))
+    this.setAttribute('uv', new Float32BufferAttribute(uvs, 2))
+    this.setIndex(new Uint16BufferAttribute(indices, 1))
+
+    // Allocate instance attribute buffers
+    this._glyphPos = new Float32Array(capacity * 4)
+    this._glyphTex = new Float32Array(capacity * 4)
+    this._glyphJac = new Float32Array(capacity * 4)
+    this._glyphBand = new Float32Array(capacity * 4)
+    this._glyphColor = new Float32Array(capacity * 4)
+
+    // Create instanced buffer attributes
+    this._glyphPosAttr = new InstancedBufferAttribute(this._glyphPos, 4)
+    this._glyphTexAttr = new InstancedBufferAttribute(this._glyphTex, 4)
+    this._glyphJacAttr = new InstancedBufferAttribute(this._glyphJac, 4)
+    this._glyphBandAttr = new InstancedBufferAttribute(this._glyphBand, 4)
+    this._glyphColorAttr = new InstancedBufferAttribute(this._glyphColor, 4)
+
+    this.setAttribute('glyphPos', this._glyphPosAttr)
+    this.setAttribute('glyphTex', this._glyphTexAttr)
+    this.setAttribute('glyphJac', this._glyphJacAttr)
+    this.setAttribute('glyphBand', this._glyphBandAttr)
+    this.setAttribute('glyphColor', this._glyphColorAttr)
+  }
+
+  /**
+   * Set glyph instances from positioned glyphs.
+   *
+   * Each positioned glyph becomes one instanced quad with appropriate
+   * position, em-space coordinates, band metadata, and Jacobian.
+   */
+  setGlyphs(
+    glyphs: PositionedGlyph[],
+    font: SlugFont,
+    color: { r: number; g: number; b: number; a: number } = { r: 1, g: 1, b: 1, a: 1 },
+  ): void {
+    // Grow buffers if needed
+    if (glyphs.length > this._capacity) {
+      this._grow(glyphs.length)
+    }
+
+    this._count = glyphs.length
+
+    for (let i = 0; i < glyphs.length; i++) {
+      const pg = glyphs[i]!
+      const glyphData = font.glyphs.get(pg.glyphId)
+      if (!glyphData) continue
+
+      this._writeGlyphInstance(i, pg, glyphData, font, color)
+    }
+
+    // Mark attributes for upload
+    this._glyphPosAttr.needsUpdate = true
+    this._glyphTexAttr.needsUpdate = true
+    this._glyphJacAttr.needsUpdate = true
+    this._glyphBandAttr.needsUpdate = true
+    this._glyphColorAttr.needsUpdate = true
+  }
+
+  private _writeGlyphInstance(
+    index: number,
+    pg: PositionedGlyph,
+    glyph: SlugGlyphData,
+    font: SlugFont,
+    color: { r: number; g: number; b: number; a: number },
+  ): void {
+    const { bounds, bandLocation, bands } = glyph
+    const scale = pg.scale
+
+    // Glyph quad dimensions in object space
+    const width = (bounds.xMax - bounds.xMin) * scale
+    const height = (bounds.yMax - bounds.yMin) * scale
+    const cx = pg.x + (bounds.xMin + bounds.xMax) * 0.5 * scale
+    const cy = pg.y + (bounds.yMin + bounds.yMax) * 0.5 * scale
+
+    // glyphPos: center position (xy) + outward normal scale (zw)
+    // The normal is used for dilation — encode quad half-size as the normal magnitude
+    const i4 = index * 4
+    this._glyphPos[i4] = cx
+    this._glyphPos[i4 + 1] = cy
+    this._glyphPos[i4 + 2] = width * 0.5 // normal x (half-width for dilation)
+    this._glyphPos[i4 + 3] = height * 0.5 // normal y (half-height for dilation)
+
+    // glyphTex: em-space center (xy) + band texture location (zw)
+    const emCenterX = (bounds.xMin + bounds.xMax) * 0.5
+    const emCenterY = (bounds.yMin + bounds.yMax) * 0.5
+    this._glyphTex[i4] = emCenterX
+    this._glyphTex[i4 + 1] = emCenterY
+    this._glyphTex[i4 + 2] = bandLocation.x
+    this._glyphTex[i4 + 3] = bandLocation.y
+
+    // glyphJac: inverse Jacobian (maps object-space → em-space)
+    // For uniform scaling: J = [[1/scale, 0], [0, 1/scale]]
+    const invScale = 1 / scale
+    this._glyphJac[i4] = invScale
+    this._glyphJac[i4 + 1] = 0
+    this._glyphJac[i4 + 2] = 0
+    this._glyphJac[i4 + 3] = invScale
+
+    // glyphBand: transform from em-space to band index
+    const numHBands = bands.hBands.length
+    const numVBands = bands.vBands.length
+    const emWidth = bounds.xMax - bounds.xMin
+    const emHeight = bounds.yMax - bounds.yMin
+
+    const bandScaleX = emWidth > 0 ? numVBands / emWidth : 0
+    const bandScaleY = emHeight > 0 ? numHBands / emHeight : 0
+    const bandOffsetX = -bounds.xMin * bandScaleX
+    const bandOffsetY = -bounds.yMin * bandScaleY
+
+    this._glyphBand[i4] = bandScaleX
+    this._glyphBand[i4 + 1] = bandScaleY
+    this._glyphBand[i4 + 2] = bandOffsetX
+    this._glyphBand[i4 + 3] = bandOffsetY
+
+    // glyphColor: RGBA
+    this._glyphColor[i4] = color.r
+    this._glyphColor[i4 + 1] = color.g
+    this._glyphColor[i4 + 2] = color.b
+    this._glyphColor[i4 + 3] = color.a
+  }
+
+  private _grow(minCapacity: number): void {
+    const newCapacity = Math.max(minCapacity, this._capacity * 2)
+
+    const newGlyphPos = new Float32Array(newCapacity * 4)
+    const newGlyphTex = new Float32Array(newCapacity * 4)
+    const newGlyphJac = new Float32Array(newCapacity * 4)
+    const newGlyphBand = new Float32Array(newCapacity * 4)
+    const newGlyphColor = new Float32Array(newCapacity * 4)
+
+    newGlyphPos.set(this._glyphPos)
+    newGlyphTex.set(this._glyphTex)
+    newGlyphJac.set(this._glyphJac)
+    newGlyphBand.set(this._glyphBand)
+    newGlyphColor.set(this._glyphColor)
+
+    this._glyphPos = newGlyphPos
+    this._glyphTex = newGlyphTex
+    this._glyphJac = newGlyphJac
+    this._glyphBand = newGlyphBand
+    this._glyphColor = newGlyphColor
+
+    this._glyphPosAttr = new InstancedBufferAttribute(this._glyphPos, 4)
+    this._glyphTexAttr = new InstancedBufferAttribute(this._glyphTex, 4)
+    this._glyphJacAttr = new InstancedBufferAttribute(this._glyphJac, 4)
+    this._glyphBandAttr = new InstancedBufferAttribute(this._glyphBand, 4)
+    this._glyphColorAttr = new InstancedBufferAttribute(this._glyphColor, 4)
+
+    this.setAttribute('glyphPos', this._glyphPosAttr)
+    this.setAttribute('glyphTex', this._glyphTexAttr)
+    this.setAttribute('glyphJac', this._glyphJacAttr)
+    this.setAttribute('glyphBand', this._glyphBandAttr)
+    this.setAttribute('glyphColor', this._glyphColorAttr)
+
+    this._capacity = newCapacity
+  }
+
+  get glyphCount(): number {
+    return this._count
+  }
+}
