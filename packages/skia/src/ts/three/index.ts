@@ -9,7 +9,7 @@
  */
 
 export { SkiaCanvas } from './SkiaCanvas'
-export type { SkiaCanvasOptions } from './SkiaCanvas'
+export type { SkiaCanvasOptions, AnyRenderer } from './SkiaCanvas'
 export { SkiaNode } from './SkiaNode'
 export { SkiaGroup } from './SkiaGroup'
 export { SkiaRect } from './SkiaRect'

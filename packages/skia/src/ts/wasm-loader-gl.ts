@@ -9,7 +9,7 @@
  * @internal
  */
 
-import { createEnvImports, createWasiImports } from './wasm-loader-shared'
+import { createEnvImports, createWasiImports, instantiateWasm } from './wasm-loader-shared'
 
 // ── GL object handle tables ──
 // WebGL uses JS objects, WASM uses integer handles.
@@ -18,6 +18,7 @@ import { createEnvImports, createWasiImports } from './wasm-loader-shared'
 interface GLState {
   gl: WebGL2RenderingContext
   memory: WebAssembly.Memory
+  exports: WebAssembly.Exports | null
   textures: Map<number, WebGLTexture | null>
   buffers: Map<number, WebGLBuffer | null>
   framebuffers: Map<number, WebGLFramebuffer | null>
@@ -30,14 +31,15 @@ interface GLState {
   syncs: Map<number, WebGLSync | null>
   uniforms: Map<number, WebGLUniformLocation | null>
   nextId: number
-  // Cached strings for glGetString
-  stringCache: Map<number, string>
+  // Cached string pointers for glGetString (string → WASM ptr)
+  stringPtrs: Map<string, number>
 }
 
 function createGLState(gl: WebGL2RenderingContext): GLState {
   return {
     gl,
     memory: null!,
+    exports: null,
     textures: new Map(),
     buffers: new Map(),
     framebuffers: new Map(),
@@ -50,7 +52,7 @@ function createGLState(gl: WebGL2RenderingContext): GLState {
     syncs: new Map(),
     uniforms: new Map(),
     nextId: 1,
-    stringCache: new Map(),
+    stringPtrs: new Map(),
   }
 }
 
@@ -87,27 +89,109 @@ function writeString(state: GLState, ptr: number, maxLen: number, str: string): 
   return len
 }
 
+// ── Texture data size calculation ──
+
+/** Calculate byte size for a texture upload based on format and type. */
+function texDataSize(w: number, h: number, format: number, type: number): number {
+  // Channel count from format
+  const channels: Record<number, number> = {
+    0x1906: 1, // ALPHA
+    0x1909: 1, // LUMINANCE
+    0x190A: 2, // LUMINANCE_ALPHA
+    0x1907: 3, // RGB
+    0x1908: 4, // RGBA
+    0x8227: 1, // RED (WebGL2 R8)
+    0x8228: 2, // RG
+    0x1903: 1, // RED
+    0x8D94: 1, // RED_INTEGER
+    0x8230: 2, // RG_INTEGER
+    0x8D98: 3, // RGB_INTEGER
+    0x8D99: 4, // RGBA_INTEGER
+  }
+  const ch = channels[format] ?? 4
+
+  // Bytes per pixel from type
+  switch (type) {
+    case 0x1401: return w * h * ch      // UNSIGNED_BYTE
+    case 0x1403: return w * h * ch * 2  // UNSIGNED_SHORT
+    case 0x1405: return w * h * ch * 4  // UNSIGNED_INT
+    case 0x140B: return w * h * ch * 2  // HALF_FLOAT
+    case 0x1406: return w * h * ch * 4  // FLOAT
+    case 0x8363: return w * h * 2       // UNSIGNED_SHORT_5_6_5
+    case 0x8033: return w * h * 2       // UNSIGNED_SHORT_4_4_4_4
+    case 0x8034: return w * h * 2       // UNSIGNED_SHORT_5_5_5_1
+    case 0x8368: return w * h * 4       // UNSIGNED_INT_2_10_10_10_REV
+    case 0x84FA: return w * h * 4       // UNSIGNED_INT_24_8
+    case 0x8C3B: return w * h * 4       // UNSIGNED_INT_5_9_9_9_REV
+    default:     return w * h * ch      // fallback: assume 1 byte per channel
+  }
+}
+
+// ── String allocation into WASM memory ──
+
+/** Allocate a null-terminated string in WASM memory via cabi_realloc. Cached. */
+function allocString(state: GLState, str: string): number {
+  const cached = state.stringPtrs.get(str)
+  if (cached !== undefined) return cached
+  const bytes = new TextEncoder().encode(str + '\0')
+  const alloc = state.exports!.cabi_realloc as (oldPtr: number, oldSize: number, align: number, newSize: number) => number
+  const ptr = alloc(0, 0, 1, bytes.length)
+  new Uint8Array(state.memory.buffer, ptr, bytes.length).set(bytes)
+  state.stringPtrs.set(str, ptr)
+  return ptr
+}
+
 // ── GL imports ──
 
 function createGLImports(state: GLState): Record<string, WebAssembly.ImportValue> {
   const { gl } = state
 
+  const GL_VERSION = 0x1F02
+  const GL_EXTENSIONS = 0x1F03
+  const GL_SHADING_LANGUAGE_VERSION = 0x8B8C
+  const GL_NUM_EXTENSIONS = 0x821D
+  const GL_UNMASKED_VENDOR_WEBGL = 0x9245
+  const GL_UNMASKED_RENDERER_WEBGL = 0x9246
+
   return {
     emscripten_glGetString(name: number): number {
-      // Return cached pointer if available
-      if (state.stringCache.has(name)) {
-        // Already written to memory, return the same pointer
-        // TODO: proper string allocation in WASM memory
-        return 0
+      let str: string | null = null
+
+      if (name === GL_EXTENSIONS) {
+        str = (gl.getSupportedExtensions() || []).join(' ')
+      } else {
+        try { str = gl.getParameter(name) as string } catch { str = null }
+        if (str == null) { gl.getError(); } // clear error from unsupported enum
       }
 
-      const str = gl.getParameter(name) as string
-      if (!str) return 0
+      // Skia's MakeWebGL parser expects Emscripten-style version strings.
+      // Browsers return "WebGL 2.0 (...)" — rewrite to OpenGL ES format.
+      if (name === GL_VERSION && typeof str === 'string' && str.startsWith('WebGL')) {
+        const m = str.match(/WebGL (\d+)\.(\d+)/)
+        if (m) {
+          const webglMaj = parseInt(m[1]!)
+          const esMaj = webglMaj === 2 ? 3 : 2
+          str = `OpenGL ES ${esMaj}.0 (${str})`
+        }
+      }
 
-      state.stringCache.set(name, str)
-      // TODO: Write string to WASM memory and return pointer
-      // This requires coordination with Skia's memory allocator
-      return 0
+      // GLSL version: "WebGL GLSL ES 3.00 (...)" → "OpenGL ES GLSL ES 3.00"
+      if (name === GL_SHADING_LANGUAGE_VERSION && typeof str === 'string' && str.startsWith('WebGL GLSL ES')) {
+        const m = str.match(/WebGL GLSL ES (\d+\.\d+)/)
+        if (m) str = `OpenGL ES GLSL ES ${m[1]}`
+      }
+
+      // WEBGL_debug_renderer_info extension constants
+      if (str == null && (name === GL_UNMASKED_VENDOR_WEBGL || name === GL_UNMASKED_RENDERER_WEBGL)) {
+        const dbg = gl.getExtension('WEBGL_debug_renderer_info')
+        if (dbg) str = gl.getParameter(name) as string
+        if (str == null) str = gl.getParameter(name === GL_UNMASKED_RENDERER_WEBGL ? gl.RENDERER : gl.VENDOR) as string
+      }
+
+      // Return empty string for unknown enums rather than null
+      if (typeof str !== 'string') str = ''
+
+      return allocString(state, str)
     },
 
     emscripten_glActiveTexture(texture: number) { gl.activeTexture(texture) },
@@ -127,7 +211,8 @@ function createGLImports(state: GLState): Record<string, WebAssembly.ImportValue
       gl.bindTexture(target, texture ? state.textures.get(texture)! : null)
     },
     emscripten_glBindVertexArray(array: number) {
-      gl.bindVertexArray(array ? state.vaos.get(array)! : null)
+      const vao = array ? state.vaos.get(array)! : null
+      gl.bindVertexArray(vao)
     },
     emscripten_glBlendColor(r: number, g: number, b: number, a: number) { gl.blendColor(r, g, b, a) },
     emscripten_glBlendEquation(mode: number) { gl.blendEquation(mode) },
@@ -268,7 +353,14 @@ function createGLImports(state: GLState): Record<string, WebAssembly.ImportValue
       }
     },
     emscripten_glGetIntegerv(pname: number, ptr: number) {
-      const val = gl.getParameter(pname)
+      let val: unknown
+      if (pname === GL_NUM_EXTENSIONS) {
+        val = (gl.getSupportedExtensions() || []).length
+      } else {
+        val = gl.getParameter(pname)
+        // Clear GL error for unsupported enums
+        if (val == null) { gl.getError(); val = 0 }
+      }
       if (typeof val === 'number') {
         writeU32(state, ptr, val)
       } else if (typeof val === 'boolean') {
@@ -336,8 +428,9 @@ function createGLImports(state: GLState): Record<string, WebAssembly.ImportValue
     },
     emscripten_glTexImage2D(target: number, level: number, internalformat: number, w: number, h: number, border: number, format: number, type: number, ptr: number) {
       if (ptr) {
-        const size = w * h * 4 // approximate
-        gl.texImage2D(target, level, internalformat, w, h, border, format, type, new Uint8Array(state.memory.buffer, ptr, size))
+        // Use offset form so WebGL respects pixel store state (UNPACK_ROW_LENGTH, etc.)
+        const view = new Uint8Array(state.memory.buffer)
+        gl.texImage2D(target, level, internalformat, w, h, border, format, type, view, ptr)
       } else {
         gl.texImage2D(target, level, internalformat, w, h, border, format, type, null)
       }
@@ -345,8 +438,10 @@ function createGLImports(state: GLState): Record<string, WebAssembly.ImportValue
     emscripten_glTexParameterf(target: number, pname: number, param: number) { gl.texParameterf(target, pname, param) },
     emscripten_glTexParameteri(target: number, pname: number, param: number) { gl.texParameteri(target, pname, param) },
     emscripten_glTexSubImage2D(target: number, level: number, x: number, y: number, w: number, h: number, format: number, type: number, ptr: number) {
-      const size = w * h * 4
-      gl.texSubImage2D(target, level, x, y, w, h, format, type, new Uint8Array(state.memory.buffer, ptr, size))
+      // WebGL2 offset form: pass the full memory buffer + byte offset.
+      // WebGL calculates the read size using pixel store state (UNPACK_ROW_LENGTH, etc.).
+      // TODO: Move buffer size calculation to C/Zig layer for efficiency.
+      gl.texSubImage2D(target, level, x, y, w, h, format, type, new Uint8Array(state.memory.buffer), ptr)
     },
     emscripten_glUniform1f(loc: number, v0: number) { gl.uniform1f(state.uniforms.get(loc)!, v0) },
     emscripten_glUniform1i(loc: number, v0: number) { gl.uniform1i(state.uniforms.get(loc)!, v0) },
@@ -480,7 +575,13 @@ function createGLImports(state: GLState): Record<string, WebAssembly.ImportValue
         writeU32(state, precisionPtr, format.precision)
       }
     },
-    emscripten_glGetStringi() { return 0 },
+    emscripten_glGetStringi(name: number, index: number): number {
+      if (name === GL_EXTENSIONS) {
+        const exts = gl.getSupportedExtensions() || []
+        if (index < exts.length) return allocString(state, exts[index]!)
+      }
+      return 0
+    },
     emscripten_glTexParameterfv() { /* stub */ },
     emscripten_glTexParameteriv() { /* stub */ },
     emscripten_glTexStorage2D(target: number, levels: number, format: number, w: number, h: number) {
@@ -558,19 +659,27 @@ export async function loadSkiaGL(
   gl: WebGL2RenderingContext,
   preloadedResponse?: Promise<Response>,
 ): Promise<SkiaWasmInstance> {
+  // Enable all available WebGL extensions before Skia init.
+  // WebGL2 requires explicit activation — Emscripten does this automatically,
+  // we need to do it ourselves so Skia can query extension parameters.
+  for (const ext of gl.getSupportedExtensions() || []) {
+    gl.getExtension(ext)
+  }
+
   const state = createGLState(gl)
 
   const importObject: WebAssembly.Imports = {
     gl: createGLImports(state),
     env: createEnvImports(),
-    wasi_snapshot_preview1: createWasiImports(),
+    wasi_snapshot_preview1: createWasiImports(() => state.memory),
   }
 
-  const response = preloadedResponse ? await preloadedResponse : await fetch(wasmUrl)
-  const { instance } = await WebAssembly.instantiateStreaming(response, importObject)
+  const response = preloadedResponse ?? fetch(wasmUrl)
+  const { instance } = await instantiateWasm(response, importObject)
 
-  // Wire up memory reference so GL imports can read/write WASM memory
+  // Wire up memory + exports so GL/WASI imports can read/write WASM memory
   state.memory = instance.exports.memory as WebAssembly.Memory
+  state.exports = instance.exports
 
   return {
     exports: instance.exports as SkiaWasmInstance['exports'],

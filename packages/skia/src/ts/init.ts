@@ -112,8 +112,8 @@ function resolvePreloadBackend(backend: SkiaBackend): 'webgl' | 'wgpu' | null {
 
 function getWasmUrl(backend: 'webgl' | 'wgpu'): URL {
   return backend === 'webgl'
-    ? new URL('../dist/skia-gl/skia-gl.wasm', import.meta.url)
-    : new URL('../dist/skia-wgpu/skia-wgpu.wasm', import.meta.url)
+    ? new URL('../../dist/skia-gl/skia-gl.wasm', import.meta.url)
+    : new URL('../../dist/skia-wgpu/skia-wgpu.wasm', import.meta.url)
 }
 
 /**

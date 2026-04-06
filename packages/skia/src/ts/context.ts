@@ -85,7 +85,7 @@ export class SkiaContext {
     if (options.backend === 'webgl') {
       const { loadSkiaGL } = await import('./wasm-loader-gl')
       const gl = options.gl!
-      const wasmUrl = options.wasmUrl ?? new URL('../dist/skia-gl/skia-gl.wasm', import.meta.url)
+      const wasmUrl = options.wasmUrl ?? new URL('../../dist/skia-gl/skia-gl.wasm', import.meta.url)
       const wasm = await loadSkiaGL(wasmUrl, gl, options.preloadedResponse)
       const ctx = new SkiaContext(
         'webgl',
@@ -93,13 +93,22 @@ export class SkiaContext {
         wasm.exports.memory as WebAssembly.Memory,
         gl,
       )
-      ctx._exports.skia_init()
+      // Use the WIT component init (exports_skia_gl_init) which properly
+      // sets up the GL context. The bare skia_init() passes 0,0 which
+      // creates no context.
+      const glInit = (wasm.exports as Record<string, Function>).exports_skia_gl_init
+      if (glInit) {
+        glInit(0)
+      } else {
+        // Fallback for non-WIT builds
+        ctx._exports.skia_init()
+      }
       if (!_instance || _instance._destroyed) _instance = ctx
       return ctx
     } else {
       const { loadSkiaWGPU } = await import('./wasm-loader-wgpu')
       const device = options.device!
-      const wasmUrl = options.wasmUrl ?? new URL('../dist/skia-wgpu/skia-wgpu.wasm', import.meta.url)
+      const wasmUrl = options.wasmUrl ?? new URL('../../dist/skia-wgpu/skia-wgpu.wasm', import.meta.url)
       const wasm = await loadSkiaWGPU(wasmUrl, device, options.preloadedResponse)
       const ctx = new SkiaContext(
         'wgpu',
@@ -110,10 +119,8 @@ export class SkiaContext {
         wasm.wgpuState,
       )
       // Initialize Dawn context with device/queue handles
-      ;(wasm.exports as Record<string, Function>).skia_init_with_handles(
-        wasm.wgpuState.deviceHandle,
-        wasm.wgpuState.queueHandle,
-      )
+      const initWithHandles = (wasm.exports as Record<string, Function>).skia_init_with_handles
+      initWithHandles!(wasm.wgpuState.deviceHandle, wasm.wgpuState.queueHandle)
       if (!_instance || _instance._destroyed) _instance = ctx
       return ctx
     }
@@ -189,7 +196,9 @@ export class SkiaContext {
   /** Reset GPU state cache — call after Skia draws if sharing the GL context (no-op for wgpu) */
   resetState(): void {
     if (!this._destroyed) {
-      this._exports.skia_reset_state()
+      // The GL WASM binary exports skia_reset_gl_state, not skia_reset_state
+      const fn = this._exports.skia_reset_gl_state ?? this._exports.skia_reset_state
+      fn?.()
     }
   }
 

@@ -13,7 +13,7 @@
  * @internal
  */
 
-import { createEnvImports, createWasiImports } from './wasm-loader-shared'
+import { createEnvImports, createWasiImports, instantiateWasm } from './wasm-loader-shared'
 
 // ── WebGPU object handle tables ──
 // WebGPU uses JS objects, WASM uses integer handles (opaque pointers).
@@ -74,15 +74,15 @@ function releaseObject(state: WGPUState, handle: number): void {
 // ── Memory helpers ──
 
 function readU32(state: WGPUState, ptr: number): number {
-  return new Uint32Array(state.memory.buffer, ptr, 1)[0]
+  return new Uint32Array(state.memory.buffer, ptr, 1)[0]!
 }
 
 function readU64(state: WGPUState, ptr: number): bigint {
-  return new BigUint64Array(state.memory.buffer, ptr, 1)[0]
+  return new BigUint64Array(state.memory.buffer, ptr, 1)[0]!
 }
 
 function readF32(state: WGPUState, ptr: number): number {
-  return new Float32Array(state.memory.buffer, ptr, 1)[0]
+  return new Float32Array(state.memory.buffer, ptr, 1)[0]!
 }
 
 function writeU32(state: WGPUState, ptr: number, value: number): void {
@@ -105,33 +105,30 @@ function readStringView(state: WGPUState, ptr: number): string {
 function createWGPUImports(state: WGPUState): Record<string, WebAssembly.ImportValue> {
   const { device, queue } = state
 
-  // Helper to create a default stub that logs unimplemented calls in dev
-  const stub = (name: string) => (..._args: unknown[]) => {
-    if (typeof console !== 'undefined' && (globalThis as Record<string, unknown>).__SKIA_WGPU_DEBUG) {
-      console.warn(`[skia-wgpu] unimplemented: ${name}`)
-    }
-    return 0
-  }
+  const noop = (..._args: unknown[]) => 0
 
-  return {
+  // Implemented functions — anything not in this object falls through to the
+  // Proxy handler which returns a no-op stub (returns 0). This ensures new
+  // Dawn/WebGPU C API functions added across Skia versions don't break loading.
+  const impl: Record<string, WebAssembly.ImportValue> = {
     // ── Instance ──
-    wgpuCreateInstance: stub('wgpuCreateInstance'),
-    wgpuGetInstanceFeatures: stub('wgpuGetInstanceFeatures'),
-    wgpuGetInstanceLimits: stub('wgpuGetInstanceLimits'),
-    wgpuHasInstanceFeature: stub('wgpuHasInstanceFeature'),
-    wgpuGetProcAddress: stub('wgpuGetProcAddress'),
+    wgpuCreateInstance: noop,
+    wgpuGetInstanceFeatures: noop,
+    wgpuGetInstanceLimits: noop,
+    wgpuHasInstanceFeature: noop,
+    wgpuGetProcAddress: noop,
 
     // ── Adapter ──
-    wgpuAdapterCreateDevice: stub('wgpuAdapterCreateDevice'),
-    wgpuAdapterGetFeatures: stub('wgpuAdapterGetFeatures'),
-    wgpuAdapterGetFormatCapabilities: stub('wgpuAdapterGetFormatCapabilities'),
-    wgpuAdapterGetInfo: stub('wgpuAdapterGetInfo'),
-    wgpuAdapterGetInstance: stub('wgpuAdapterGetInstance'),
-    wgpuAdapterGetLimits: stub('wgpuAdapterGetLimits'),
-    wgpuAdapterHasFeature: stub('wgpuAdapterHasFeature'),
-    wgpuAdapterRequestDevice: stub('wgpuAdapterRequestDevice'),
-    wgpuAdapterAddRef: stub('wgpuAdapterAddRef'),
-    wgpuAdapterRelease: stub('wgpuAdapterRelease'),
+    wgpuAdapterCreateDevice: noop,
+    wgpuAdapterGetFeatures: noop,
+    wgpuAdapterGetFormatCapabilities: noop,
+    wgpuAdapterGetInfo: noop,
+    wgpuAdapterGetInstance: noop,
+    wgpuAdapterGetLimits: noop,
+    wgpuAdapterHasFeature: noop,
+    wgpuAdapterRequestDevice: noop,
+    wgpuAdapterAddRef: noop,
+    wgpuAdapterRelease: noop,
 
     // ── Device ──
     wgpuDeviceCreateBuffer(deviceHandle: number, descriptorPtr: number): number {
@@ -156,15 +153,16 @@ function createWGPUImports(state: WGPUState): Record<string, WebAssembly.ImportV
       const depthOrArrayLayers = readU32(state, descriptorPtr + 32)
       const mipLevelCount = readU32(state, descriptorPtr + 36)
       const sampleCount = readU32(state, descriptorPtr + 40)
-      const format = readU32(state, descriptorPtr + 44) as GPUTextureFormat
-      // TODO: proper format enum mapping
+      const formatEnum = readU32(state, descriptorPtr + 44)
+      // TODO: proper format enum mapping (Dawn enum → WebGPU string)
+      const format = formatEnum as unknown as GPUTextureFormat
       const texture = dev.createTexture({
         usage,
         dimension: (['1d', '2d', '3d'] as const)[dimension] ?? '2d',
         size: { width, height, depthOrArrayLayers },
         mipLevelCount,
         sampleCount,
-        format: format as unknown as GPUTextureFormat,
+        format,
       })
       return registerObject(state, texture)
     },
@@ -183,14 +181,14 @@ function createWGPUImports(state: WGPUState): Record<string, WebAssembly.ImportV
       return registerObject(state, module)
     },
 
-    wgpuDeviceCreateBindGroupLayout: stub('wgpuDeviceCreateBindGroupLayout'),
-    wgpuDeviceCreateBindGroup: stub('wgpuDeviceCreateBindGroup'),
-    wgpuDeviceCreatePipelineLayout: stub('wgpuDeviceCreatePipelineLayout'),
-    wgpuDeviceCreateRenderPipeline: stub('wgpuDeviceCreateRenderPipeline'),
-    wgpuDeviceCreateRenderPipelineAsync: stub('wgpuDeviceCreateRenderPipelineAsync'),
-    wgpuDeviceCreateComputePipeline: stub('wgpuDeviceCreateComputePipeline'),
-    wgpuDeviceCreateSampler: stub('wgpuDeviceCreateSampler'),
-    wgpuDeviceCreateQuerySet: stub('wgpuDeviceCreateQuerySet'),
+    wgpuDeviceCreateBindGroupLayout: noop,
+    wgpuDeviceCreateBindGroup: noop,
+    wgpuDeviceCreatePipelineLayout: noop,
+    wgpuDeviceCreateRenderPipeline: noop,
+    wgpuDeviceCreateRenderPipelineAsync: noop,
+    wgpuDeviceCreateComputePipeline: noop,
+    wgpuDeviceCreateSampler: noop,
+    wgpuDeviceCreateQuerySet: noop,
 
     wgpuDeviceCreateCommandEncoder(deviceHandle: number, _descriptorPtr: number): number {
       const dev = getObject<GPUDevice>(state, deviceHandle)
@@ -199,21 +197,21 @@ function createWGPUImports(state: WGPUState): Record<string, WebAssembly.ImportV
       return registerObject(state, encoder)
     },
 
-    wgpuDeviceGetLimits: stub('wgpuDeviceGetLimits'),
-    wgpuDeviceHasFeature: stub('wgpuDeviceHasFeature'),
-    wgpuDeviceGetFeatures: stub('wgpuDeviceGetFeatures'),
-    wgpuDeviceGetAdapter: stub('wgpuDeviceGetAdapter'),
+    wgpuDeviceGetLimits: noop,
+    wgpuDeviceHasFeature: noop,
+    wgpuDeviceGetFeatures: noop,
+    wgpuDeviceGetAdapter: noop,
     wgpuDeviceGetQueue(deviceHandle: number): number {
       return state.queueHandle
     },
-    wgpuDeviceTick: stub('wgpuDeviceTick'),
-    wgpuDeviceAddRef: stub('wgpuDeviceAddRef'),
-    wgpuDeviceRelease: stub('wgpuDeviceRelease'),
-    wgpuDeviceSetUncapturedErrorCallback: stub('wgpuDeviceSetUncapturedErrorCallback'),
-    wgpuDeviceSetDeviceLostCallback: stub('wgpuDeviceSetDeviceLostCallback'),
-    wgpuDevicePopErrorScope: stub('wgpuDevicePopErrorScope'),
-    wgpuDevicePushErrorScope: stub('wgpuDevicePushErrorScope'),
-    wgpuDeviceDestroy: stub('wgpuDeviceDestroy'),
+    wgpuDeviceTick: noop,
+    wgpuDeviceAddRef: noop,
+    wgpuDeviceRelease: noop,
+    wgpuDeviceSetUncapturedErrorCallback: noop,
+    wgpuDeviceSetDeviceLostCallback: noop,
+    wgpuDevicePopErrorScope: noop,
+    wgpuDevicePushErrorScope: noop,
+    wgpuDeviceDestroy: noop,
 
     // ── Queue ──
     wgpuQueueSubmit(queueHandle: number, commandCount: number, commandsPtr: number): void {
@@ -227,21 +225,21 @@ function createWGPUImports(state: WGPUState): Record<string, WebAssembly.ImportV
       }
       q.submit(buffers)
     },
-    wgpuQueueWriteBuffer: stub('wgpuQueueWriteBuffer'),
-    wgpuQueueWriteTexture: stub('wgpuQueueWriteTexture'),
-    wgpuQueueAddRef: stub('wgpuQueueAddRef'),
-    wgpuQueueRelease: stub('wgpuQueueRelease'),
-    wgpuQueueOnSubmittedWorkDone: stub('wgpuQueueOnSubmittedWorkDone'),
+    wgpuQueueWriteBuffer: noop,
+    wgpuQueueWriteTexture: noop,
+    wgpuQueueAddRef: noop,
+    wgpuQueueRelease: noop,
+    wgpuQueueOnSubmittedWorkDone: noop,
 
     // ── Buffer ──
-    wgpuBufferMapAsync: stub('wgpuBufferMapAsync'),
-    wgpuBufferGetMappedRange: stub('wgpuBufferGetMappedRange'),
-    wgpuBufferGetConstMappedRange: stub('wgpuBufferGetConstMappedRange'),
-    wgpuBufferUnmap: stub('wgpuBufferUnmap'),
-    wgpuBufferGetMapState: stub('wgpuBufferGetMapState'),
-    wgpuBufferGetUsage: stub('wgpuBufferGetUsage'),
-    wgpuBufferGetSize: stub('wgpuBufferGetSize'),
-    wgpuBufferAddRef: stub('wgpuBufferAddRef'),
+    wgpuBufferMapAsync: noop,
+    wgpuBufferGetMappedRange: noop,
+    wgpuBufferGetConstMappedRange: noop,
+    wgpuBufferUnmap: noop,
+    wgpuBufferGetMapState: noop,
+    wgpuBufferGetUsage: noop,
+    wgpuBufferGetSize: noop,
+    wgpuBufferAddRef: noop,
     wgpuBufferRelease(handle: number) { releaseObject(state, handle) },
     wgpuBufferDestroy(handle: number) {
       const buf = getObject<GPUBuffer>(state, handle)
@@ -275,7 +273,7 @@ function createWGPUImports(state: WGPUState): Record<string, WebAssembly.ImportV
     wgpuTextureGetSampleCount(texHandle: number): number {
       return getObject<GPUTexture>(state, texHandle)?.sampleCount ?? 1
     },
-    wgpuTextureAddRef: stub('wgpuTextureAddRef'),
+    wgpuTextureAddRef: noop,
     wgpuTextureRelease(handle: number) { releaseObject(state, handle) },
     wgpuTextureDestroy(handle: number) {
       const tex = getObject<GPUTexture>(state, handle)
@@ -284,129 +282,139 @@ function createWGPUImports(state: WGPUState): Record<string, WebAssembly.ImportV
     },
 
     // ── TextureView ──
-    wgpuTextureViewAddRef: stub('wgpuTextureViewAddRef'),
+    wgpuTextureViewAddRef: noop,
     wgpuTextureViewRelease(handle: number) { releaseObject(state, handle) },
 
     // ── CommandEncoder ──
-    wgpuCommandEncoderBeginRenderPass: stub('wgpuCommandEncoderBeginRenderPass'),
-    wgpuCommandEncoderBeginComputePass: stub('wgpuCommandEncoderBeginComputePass'),
-    wgpuCommandEncoderCopyBufferToBuffer: stub('wgpuCommandEncoderCopyBufferToBuffer'),
-    wgpuCommandEncoderCopyBufferToTexture: stub('wgpuCommandEncoderCopyBufferToTexture'),
-    wgpuCommandEncoderCopyTextureToBuffer: stub('wgpuCommandEncoderCopyTextureToBuffer'),
-    wgpuCommandEncoderCopyTextureToTexture: stub('wgpuCommandEncoderCopyTextureToTexture'),
-    wgpuCommandEncoderClearBuffer: stub('wgpuCommandEncoderClearBuffer'),
+    wgpuCommandEncoderBeginRenderPass: noop,
+    wgpuCommandEncoderBeginComputePass: noop,
+    wgpuCommandEncoderCopyBufferToBuffer: noop,
+    wgpuCommandEncoderCopyBufferToTexture: noop,
+    wgpuCommandEncoderCopyTextureToBuffer: noop,
+    wgpuCommandEncoderCopyTextureToTexture: noop,
+    wgpuCommandEncoderClearBuffer: noop,
     wgpuCommandEncoderFinish(encoderHandle: number, _descriptorPtr: number): number {
       const encoder = getObject<GPUCommandEncoder>(state, encoderHandle)
       if (!encoder) return 0
       const cmdBuffer = encoder.finish()
       return registerObject(state, cmdBuffer)
     },
-    wgpuCommandEncoderAddRef: stub('wgpuCommandEncoderAddRef'),
+    wgpuCommandEncoderAddRef: noop,
     wgpuCommandEncoderRelease(handle: number) { releaseObject(state, handle) },
 
     // ── RenderPassEncoder ──
-    wgpuRenderPassEncoderSetPipeline: stub('wgpuRenderPassEncoderSetPipeline'),
-    wgpuRenderPassEncoderSetBindGroup: stub('wgpuRenderPassEncoderSetBindGroup'),
-    wgpuRenderPassEncoderSetVertexBuffer: stub('wgpuRenderPassEncoderSetVertexBuffer'),
-    wgpuRenderPassEncoderSetIndexBuffer: stub('wgpuRenderPassEncoderSetIndexBuffer'),
-    wgpuRenderPassEncoderSetViewport: stub('wgpuRenderPassEncoderSetViewport'),
-    wgpuRenderPassEncoderSetScissorRect: stub('wgpuRenderPassEncoderSetScissorRect'),
-    wgpuRenderPassEncoderSetBlendConstant: stub('wgpuRenderPassEncoderSetBlendConstant'),
-    wgpuRenderPassEncoderDraw: stub('wgpuRenderPassEncoderDraw'),
-    wgpuRenderPassEncoderDrawIndexed: stub('wgpuRenderPassEncoderDrawIndexed'),
-    wgpuRenderPassEncoderDrawIndirect: stub('wgpuRenderPassEncoderDrawIndirect'),
-    wgpuRenderPassEncoderDrawIndexedIndirect: stub('wgpuRenderPassEncoderDrawIndexedIndirect'),
-    wgpuRenderPassEncoderEnd: stub('wgpuRenderPassEncoderEnd'),
-    wgpuRenderPassEncoderAddRef: stub('wgpuRenderPassEncoderAddRef'),
-    wgpuRenderPassEncoderRelease: stub('wgpuRenderPassEncoderRelease'),
+    wgpuRenderPassEncoderSetPipeline: noop,
+    wgpuRenderPassEncoderSetBindGroup: noop,
+    wgpuRenderPassEncoderSetVertexBuffer: noop,
+    wgpuRenderPassEncoderSetIndexBuffer: noop,
+    wgpuRenderPassEncoderSetViewport: noop,
+    wgpuRenderPassEncoderSetScissorRect: noop,
+    wgpuRenderPassEncoderSetBlendConstant: noop,
+    wgpuRenderPassEncoderDraw: noop,
+    wgpuRenderPassEncoderDrawIndexed: noop,
+    wgpuRenderPassEncoderDrawIndirect: noop,
+    wgpuRenderPassEncoderDrawIndexedIndirect: noop,
+    wgpuRenderPassEncoderEnd: noop,
+    wgpuRenderPassEncoderAddRef: noop,
+    wgpuRenderPassEncoderRelease: noop,
 
     // ── ComputePassEncoder ──
-    wgpuComputePassEncoderSetPipeline: stub('wgpuComputePassEncoderSetPipeline'),
-    wgpuComputePassEncoderSetBindGroup: stub('wgpuComputePassEncoderSetBindGroup'),
-    wgpuComputePassEncoderDispatchWorkgroups: stub('wgpuComputePassEncoderDispatchWorkgroups'),
-    wgpuComputePassEncoderDispatchWorkgroupsIndirect: stub('wgpuComputePassEncoderDispatchWorkgroupsIndirect'),
-    wgpuComputePassEncoderEnd: stub('wgpuComputePassEncoderEnd'),
-    wgpuComputePassEncoderAddRef: stub('wgpuComputePassEncoderAddRef'),
-    wgpuComputePassEncoderRelease: stub('wgpuComputePassEncoderRelease'),
+    wgpuComputePassEncoderSetPipeline: noop,
+    wgpuComputePassEncoderSetBindGroup: noop,
+    wgpuComputePassEncoderDispatchWorkgroups: noop,
+    wgpuComputePassEncoderDispatchWorkgroupsIndirect: noop,
+    wgpuComputePassEncoderEnd: noop,
+    wgpuComputePassEncoderAddRef: noop,
+    wgpuComputePassEncoderRelease: noop,
 
     // ── CommandBuffer ──
-    wgpuCommandBufferAddRef: stub('wgpuCommandBufferAddRef'),
+    wgpuCommandBufferAddRef: noop,
     wgpuCommandBufferRelease(handle: number) { releaseObject(state, handle) },
 
     // ── RenderPipeline ──
-    wgpuRenderPipelineAddRef: stub('wgpuRenderPipelineAddRef'),
+    wgpuRenderPipelineAddRef: noop,
     wgpuRenderPipelineRelease(handle: number) { releaseObject(state, handle) },
-    wgpuRenderPipelineGetBindGroupLayout: stub('wgpuRenderPipelineGetBindGroupLayout'),
+    wgpuRenderPipelineGetBindGroupLayout: noop,
 
     // ── ComputePipeline ──
-    wgpuComputePipelineAddRef: stub('wgpuComputePipelineAddRef'),
+    wgpuComputePipelineAddRef: noop,
     wgpuComputePipelineRelease(handle: number) { releaseObject(state, handle) },
-    wgpuComputePipelineGetBindGroupLayout: stub('wgpuComputePipelineGetBindGroupLayout'),
+    wgpuComputePipelineGetBindGroupLayout: noop,
 
     // ── Sampler ──
-    wgpuSamplerAddRef: stub('wgpuSamplerAddRef'),
+    wgpuSamplerAddRef: noop,
     wgpuSamplerRelease(handle: number) { releaseObject(state, handle) },
 
     // ── ShaderModule ──
-    wgpuShaderModuleAddRef: stub('wgpuShaderModuleAddRef'),
+    wgpuShaderModuleAddRef: noop,
     wgpuShaderModuleRelease(handle: number) { releaseObject(state, handle) },
-    wgpuShaderModuleGetCompilationInfo: stub('wgpuShaderModuleGetCompilationInfo'),
+    wgpuShaderModuleGetCompilationInfo: noop,
 
     // ── BindGroup / BindGroupLayout ──
-    wgpuBindGroupAddRef: stub('wgpuBindGroupAddRef'),
+    wgpuBindGroupAddRef: noop,
     wgpuBindGroupRelease(handle: number) { releaseObject(state, handle) },
-    wgpuBindGroupLayoutAddRef: stub('wgpuBindGroupLayoutAddRef'),
+    wgpuBindGroupLayoutAddRef: noop,
     wgpuBindGroupLayoutRelease(handle: number) { releaseObject(state, handle) },
 
     // ── PipelineLayout ──
-    wgpuPipelineLayoutAddRef: stub('wgpuPipelineLayoutAddRef'),
+    wgpuPipelineLayoutAddRef: noop,
     wgpuPipelineLayoutRelease(handle: number) { releaseObject(state, handle) },
 
     // ── QuerySet ──
-    wgpuQuerySetAddRef: stub('wgpuQuerySetAddRef'),
+    wgpuQuerySetAddRef: noop,
     wgpuQuerySetRelease(handle: number) { releaseObject(state, handle) },
     wgpuQuerySetDestroy(handle: number) { releaseObject(state, handle) },
 
     // ── Surface (not used — Three.js manages surfaces) ──
-    wgpuSurfaceAddRef: stub('wgpuSurfaceAddRef'),
-    wgpuSurfaceRelease: stub('wgpuSurfaceRelease'),
+    wgpuSurfaceAddRef: noop,
+    wgpuSurfaceRelease: noop,
 
     // ── Instance lifecycle ──
-    wgpuInstanceAddRef: stub('wgpuInstanceAddRef'),
-    wgpuInstanceRelease: stub('wgpuInstanceRelease'),
-    wgpuInstanceProcessEvents: stub('wgpuInstanceProcessEvents'),
-    wgpuInstanceRequestAdapter: stub('wgpuInstanceRequestAdapter'),
-    wgpuInstanceCreateSurface: stub('wgpuInstanceCreateSurface'),
-    wgpuInstanceWaitAny: stub('wgpuInstanceWaitAny'),
+    wgpuInstanceAddRef: noop,
+    wgpuInstanceRelease: noop,
+    wgpuInstanceProcessEvents: noop,
+    wgpuInstanceRequestAdapter: noop,
+    wgpuInstanceCreateSurface: noop,
+    wgpuInstanceWaitAny: noop,
 
     // ── Memory management ──
-    wgpuAdapterInfoFreeMembers: stub('wgpuAdapterInfoFreeMembers'),
-    wgpuAdapterPropertiesMemoryHeapsFreeMembers: stub('wgpuAdapterPropertiesMemoryHeapsFreeMembers'),
-    wgpuSupportedFeaturesFreeMembers: stub('wgpuSupportedFeaturesFreeMembers'),
-    wgpuSupportedWGSLLanguageFeaturesFreeMembers: stub('wgpuSupportedWGSLLanguageFeaturesFreeMembers'),
-    wgpuSurfaceCapabilitiesFreeMembers: stub('wgpuSurfaceCapabilitiesFreeMembers'),
+    wgpuAdapterInfoFreeMembers: noop,
+    wgpuAdapterPropertiesMemoryHeapsFreeMembers: noop,
+    wgpuSupportedFeaturesFreeMembers: noop,
+    wgpuSupportedWGSLLanguageFeaturesFreeMembers: noop,
+    wgpuSurfaceCapabilitiesFreeMembers: noop,
 
     // ── Render bundles ──
-    wgpuRenderBundleAddRef: stub('wgpuRenderBundleAddRef'),
-    wgpuRenderBundleRelease: stub('wgpuRenderBundleRelease'),
-    wgpuRenderBundleEncoderFinish: stub('wgpuRenderBundleEncoderFinish'),
-    wgpuRenderBundleEncoderAddRef: stub('wgpuRenderBundleEncoderAddRef'),
-    wgpuRenderBundleEncoderRelease: stub('wgpuRenderBundleEncoderRelease'),
-    wgpuDeviceCreateRenderBundleEncoder: stub('wgpuDeviceCreateRenderBundleEncoder'),
+    wgpuRenderBundleAddRef: noop,
+    wgpuRenderBundleRelease: noop,
+    wgpuRenderBundleEncoderFinish: noop,
+    wgpuRenderBundleEncoderAddRef: noop,
+    wgpuRenderBundleEncoderRelease: noop,
+    wgpuDeviceCreateRenderBundleEncoder: noop,
 
     // ── External textures (Dawn extensions) ──
-    wgpuExternalTextureAddRef: stub('wgpuExternalTextureAddRef'),
-    wgpuExternalTextureRelease: stub('wgpuExternalTextureRelease'),
-    wgpuDeviceCreateExternalTexture: stub('wgpuDeviceCreateExternalTexture'),
+    wgpuExternalTextureAddRef: noop,
+    wgpuExternalTextureRelease: noop,
+    wgpuDeviceCreateExternalTexture: noop,
 
     // ── Shared resources (Dawn extensions) ──
-    wgpuSharedBufferMemoryAddRef: stub('wgpuSharedBufferMemoryAddRef'),
-    wgpuSharedBufferMemoryRelease: stub('wgpuSharedBufferMemoryRelease'),
-    wgpuSharedTextureMemoryAddRef: stub('wgpuSharedTextureMemoryAddRef'),
-    wgpuSharedTextureMemoryRelease: stub('wgpuSharedTextureMemoryRelease'),
-    wgpuSharedFenceAddRef: stub('wgpuSharedFenceAddRef'),
-    wgpuSharedFenceRelease: stub('wgpuSharedFenceRelease'),
+    wgpuSharedBufferMemoryAddRef: noop,
+    wgpuSharedBufferMemoryRelease: noop,
+    wgpuSharedTextureMemoryAddRef: noop,
+    wgpuSharedTextureMemoryRelease: noop,
+    wgpuSharedFenceAddRef: noop,
+    wgpuSharedFenceRelease: noop,
   }
+
+  // Wrap in a Proxy so any unimplemented wgpu function returns a no-op stub
+  // instead of causing a "function import requires a callable" error.
+  return new Proxy(impl, {
+    get: (target, name) => {
+      if (typeof name !== 'string') return undefined
+      if (name in target) return target[name]
+      return (..._args: unknown[]) => 0
+    },
+  })
 }
 
 // ── Public API ──
@@ -433,13 +441,13 @@ export async function loadSkiaWGPU(
   const importObject: WebAssembly.Imports = {
     wgpu: createWGPUImports(state),
     env: createEnvImports(),
-    wasi_snapshot_preview1: createWasiImports(),
+    wasi_snapshot_preview1: createWasiImports(() => state.memory),
   }
 
-  const response = preloadedResponse ? await preloadedResponse : await fetch(wasmUrl)
-  const { instance } = await WebAssembly.instantiateStreaming(response, importObject)
+  const response = preloadedResponse ?? fetch(wasmUrl)
+  const { instance } = await instantiateWasm(response, importObject)
 
-  // Wire up memory reference so wgpu imports can read/write WASM memory
+  // Wire up memory reference so wgpu/WASI imports can read/write WASM memory
   state.memory = instance.exports.memory as WebAssembly.Memory
 
   return {

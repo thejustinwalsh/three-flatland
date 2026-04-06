@@ -1,5 +1,8 @@
-import type { WebGLRenderer, WebGLRenderTarget } from 'three'
+import type { WebGLRenderTarget } from 'three'
 import type { SkiaContext } from '../context'
+
+// Re-use the AnyRenderer type from SkiaCanvas
+import type { AnyRenderer } from './SkiaCanvas'
 
 /**
  * Extract the WebGL framebuffer ID from a Three.js WebGLRenderTarget.
@@ -7,15 +10,18 @@ import type { SkiaContext } from '../context'
  * Accesses Three.js internal properties (`__webglFramebuffer`).
  * The pattern is standard — used by EffectComposer, postprocessing, etc.
  *
- * @param renderer - Three.js WebGL renderer (WebGLRenderer or WebGLBackend-based)
+ * @param renderer - Three.js renderer with `properties` (WebGLRenderer)
  * @param renderTarget - The render target to extract the FBO from
  * @returns The WebGL framebuffer object ID, or 0 if extraction fails
  */
-export function getFBOId(renderer: WebGLRenderer, renderTarget: WebGLRenderTarget): number {
-  const properties = renderer.properties.get(renderTarget) as Record<string, unknown> | undefined
+export function getFBOId(renderer: AnyRenderer, renderTarget: WebGLRenderTarget): number {
+  const properties = (renderer as { properties?: { get(t: unknown): Record<string, unknown> | undefined } }).properties
   if (!properties) return 0
 
-  const fbo = properties.__webglFramebuffer
+  const data = properties.get(renderTarget)
+  if (!data) return 0
+
+  const fbo = data.__webglFramebuffer
   if (typeof fbo === 'number') return fbo
   if (fbo instanceof WebGLFramebuffer) {
     // Three.js stores the raw WebGLFramebuffer object in some versions.
@@ -42,31 +48,25 @@ export function getFBOId(renderer: WebGLRenderer, renderTarget: WebGLRenderTarge
  */
 export function getWGPUTextureHandle(
   skiaContext: SkiaContext,
-  renderer: unknown,
+  renderer: AnyRenderer,
   renderTarget: unknown,
 ): number {
   // Access the renderer's backend to get the GPU texture for this render target.
   // Three.js WebGPURenderer exposes: renderer.backend.get(renderTarget) → { texture: GPUTexture }
-  const r = renderer as {
-    backend?: {
-      get?: (target: unknown) => { texture?: GPUTexture } | undefined
-      device?: GPUDevice
-    }
-  }
+  const backend = renderer.backend as {
+    get?: (target: unknown) => { texture?: GPUTexture } | undefined
+    device?: GPUDevice
+  } | undefined
 
   // Validate this is actually a WebGPU backend with a real device
-  if (!r.backend?.device || !r.backend.get) return 0
+  if (!backend?.device || !backend.get) return 0
 
   // Ensure render target resources are initialized
-  const setRT = (renderer as { setRenderTarget?(t: unknown): void }).setRenderTarget
-  const getRT = (renderer as { getRenderTarget?(): unknown }).getRenderTarget
-  if (setRT && getRT) {
-    const current = getRT.call(renderer)
-    setRT.call(renderer, renderTarget)
-    setRT.call(renderer, current)
-  }
+  const current = renderer.getRenderTarget()
+  renderer.setRenderTarget(renderTarget)
+  renderer.setRenderTarget(current)
 
-  const props = r.backend.get(renderTarget)
+  const props = backend.get(renderTarget)
   if (!props?.texture) return 0
 
   return skiaContext.registerTexture(props.texture)
