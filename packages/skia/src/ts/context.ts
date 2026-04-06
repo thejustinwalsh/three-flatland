@@ -1,10 +1,22 @@
-import { type SkiaExports } from './types'
-import { type SkiaWasmInstance, loadSkiaGL } from './wasm-loader'
+import type { SkiaExports } from './types'
 import { SkiaDrawingContext } from './drawing-context'
 
+export type SkiaBackend = 'webgl' | 'wgpu' | 'auto'
+
 export interface SkiaContextOptions {
-  /** URL to the skia-gl.wasm file */
+  /** Override URL to the WASM file */
   wasmUrl?: string | URL
+  /** Backend preference: 'webgl', 'wgpu', or 'auto' (default) */
+  backend?: SkiaBackend
+}
+
+/** @internal Options passed from init.ts after backend resolution */
+export interface InternalCreateOptions extends SkiaContextOptions {
+  backend: 'webgl' | 'wgpu'
+  gl?: WebGL2RenderingContext
+  device?: GPUDevice
+  /** Pre-fetched Response from Skia.preload() — avoids a second fetch */
+  preloadedResponse?: Promise<Response>
 }
 
 /** Module-level singleton — one SkiaContext per application */
@@ -13,21 +25,21 @@ let _instance: SkiaContext | null = null
 /**
  * Main entry point for the Skia WASM API.
  *
- * Owns the WASM instance and GL context binding. Create resources
+ * Owns the WASM instance and GPU context binding. Create resources
  * (SkiaPaint, SkiaPath, etc.) from this context.
  *
- * ```ts
- * const skia = await SkiaContext.create(gl)
- * skia.drawToFBO(0, 512, 512, (ctx) => {
- *   ctx.clear(0.1, 0.1, 0.2, 1)
- *   // ... draw
- * })
- * skia.destroy()
- * ```
+ * Supports both WebGL (Ganesh) and WebGPU (Graphite/Dawn) backends.
+ * The backend is determined at init time and cannot be changed.
  */
 export class SkiaContext {
-  /** The WebGL2 context this Skia instance targets */
-  readonly gl: WebGL2RenderingContext
+  /** Which GPU backend this context uses */
+  readonly backend: 'webgl' | 'wgpu'
+
+  /** The WebGL2 context (only set for webgl backend) */
+  readonly gl?: WebGL2RenderingContext
+
+  /** The GPUDevice (only set for wgpu backend) */
+  readonly device?: GPUDevice
 
   /** @internal Raw WASM exports — used by resource classes */
   readonly _exports: SkiaExports
@@ -39,54 +51,100 @@ export class SkiaContext {
   private _drawing = false
   private _currentDrawCtx: SkiaDrawingContext | null = null
 
-  private constructor(gl: WebGL2RenderingContext, wasm: SkiaWasmInstance) {
+  /** @internal wgpu handle state for registerTexture */
+  private _wgpuState?: { objects: Map<number, unknown>; nextHandle: number }
+
+  private constructor(
+    backend: 'webgl' | 'wgpu',
+    exports: SkiaExports,
+    memory: WebAssembly.Memory,
+    gl?: WebGL2RenderingContext,
+    device?: GPUDevice,
+    wgpuState?: { objects: Map<number, unknown>; nextHandle: number },
+  ) {
+    this.backend = backend
     this.gl = gl
-    this._exports = wasm.exports as unknown as SkiaExports
-    this._memory = wasm.exports.memory as WebAssembly.Memory
+    this.device = device
+    this._exports = exports
+    this._memory = memory
+    this._wgpuState = wgpuState
   }
 
-  /**
-   * The singleton SkiaContext instance. Set by `create()`.
-   * Use this to access the context from loaders and helpers without passing it around.
-   */
+  /** The singleton SkiaContext instance. Set by `create()`. */
   static get instance(): SkiaContext | null {
     return _instance
   }
 
   /**
-   * Create a Skia context bound to a WebGL2 rendering context.
-   * The first context created becomes the default singleton (accessible via `SkiaContext.instance`).
-   * Loaders and helpers use the singleton automatically — override per-loader if you have multiple canvases.
+   * Create a Skia context. Called by Skia.init() after backend resolution.
    *
-   * @param gl - A WebGL2RenderingContext (user-provided, we don't create one)
-   * @param options - Optional configuration
+   * Uses dynamic import() so that the unused loader is never loaded.
+   * If you only ever init with WebGL, wasm-loader-wgpu.ts is never fetched.
    */
-  static async create(
-    gl: WebGL2RenderingContext,
-    options?: SkiaContextOptions,
-  ): Promise<SkiaContext> {
-    const wasmUrl = options?.wasmUrl ?? new URL('../dist/skia-gl/skia-gl.opt.wasm', import.meta.url)
-    const wasm = await loadSkiaGL(wasmUrl, gl)
-    const ctx = new SkiaContext(gl, wasm)
-    ctx._exports.skia_init()
-    // First context becomes the default singleton
-    if (!_instance || _instance._destroyed) _instance = ctx
-    return ctx
+  static async create(options: InternalCreateOptions): Promise<SkiaContext> {
+    if (options.backend === 'webgl') {
+      const { loadSkiaGL } = await import('./wasm-loader-gl')
+      const gl = options.gl!
+      const wasmUrl = options.wasmUrl ?? new URL('../dist/skia-gl/skia-gl.wasm', import.meta.url)
+      const wasm = await loadSkiaGL(wasmUrl, gl, options.preloadedResponse)
+      const ctx = new SkiaContext(
+        'webgl',
+        wasm.exports as unknown as SkiaExports,
+        wasm.exports.memory as WebAssembly.Memory,
+        gl,
+      )
+      ctx._exports.skia_init()
+      if (!_instance || _instance._destroyed) _instance = ctx
+      return ctx
+    } else {
+      const { loadSkiaWGPU } = await import('./wasm-loader-wgpu')
+      const device = options.device!
+      const wasmUrl = options.wasmUrl ?? new URL('../dist/skia-wgpu/skia-wgpu.wasm', import.meta.url)
+      const wasm = await loadSkiaWGPU(wasmUrl, device, options.preloadedResponse)
+      const ctx = new SkiaContext(
+        'wgpu',
+        wasm.exports as unknown as SkiaExports,
+        wasm.exports.memory as WebAssembly.Memory,
+        undefined,
+        device,
+        wasm.wgpuState,
+      )
+      // Initialize Dawn context with device/queue handles
+      ;(wasm.exports as Record<string, Function>).skia_init_with_handles(
+        wasm.wgpuState.deviceHandle,
+        wasm.wgpuState.queueHandle,
+      )
+      if (!_instance || _instance._destroyed) _instance = ctx
+      return ctx
+    }
   }
 
   /**
-   * Begin a draw pass targeting a specific framebuffer.
+   * Register a GPUTexture and get a handle for use with beginDrawing().
+   * Only available on the wgpu backend.
+   */
+  registerTexture(texture: GPUTexture): number {
+    if (this.backend !== 'wgpu' || !this._wgpuState) {
+      throw new Error('registerTexture() is only available on the wgpu backend')
+    }
+    const handle = this._wgpuState.nextHandle++
+    this._wgpuState.objects.set(handle, texture)
+    return handle
+  }
+
+  /**
+   * Begin a draw pass targeting a specific framebuffer (GL) or texture (wgpu).
    *
-   * @param fboId - WebGL framebuffer object ID (0 = default canvas FBO)
+   * @param targetHandle - WebGL FBO ID (webgl) or registered texture handle (wgpu)
    * @param width - Surface width in pixels
    * @param height - Surface height in pixels
    * @returns A SkiaDrawingContext, or null if surface creation failed
    */
-  beginDrawing(fboId: number, width: number, height: number): SkiaDrawingContext | null {
+  beginDrawing(targetHandle: number, width: number, height: number): SkiaDrawingContext | null {
     if (this._destroyed) throw new Error('SkiaContext is destroyed')
     if (this._drawing) throw new Error('Already in a draw pass — call endDrawing() first')
 
-    const result = this._exports.skia_begin_drawing(fboId, width, height)
+    const result = this._exports.skia_begin_drawing(targetHandle, width, height)
     if (!result) return null
 
     this._drawing = true
@@ -94,9 +152,7 @@ export class SkiaContext {
     return this._currentDrawCtx
   }
 
-  /**
-   * End the current draw pass and flush to the framebuffer.
-   */
+  /** End the current draw pass and flush to the framebuffer/texture. */
   endDrawing(): void {
     if (!this._drawing) return
     this._exports.skia_end_drawing()
@@ -106,22 +162,16 @@ export class SkiaContext {
   }
 
   /**
-   * Draw to a framebuffer within a callback.
+   * Draw to a target within a callback.
    * Automatically handles beginDrawing/endDrawing with try/finally.
-   *
-   * @param fboId - WebGL framebuffer object ID (0 = default canvas FBO)
-   * @param width - Surface width in pixels
-   * @param height - Surface height in pixels
-   * @param callback - Drawing function receiving a SkiaDrawingContext
-   * @returns true if drawing succeeded, false if surface creation failed
    */
   drawToFBO(
-    fboId: number,
+    targetHandle: number,
     width: number,
     height: number,
     callback: (ctx: SkiaDrawingContext) => void,
   ): boolean {
-    const ctx = this.beginDrawing(fboId, width, height)
+    const ctx = this.beginDrawing(targetHandle, width, height)
     if (!ctx) return false
     try {
       callback(ctx)
@@ -136,9 +186,11 @@ export class SkiaContext {
     if (!this._destroyed) this._exports.skia_flush()
   }
 
-  /** Reset the GL state cache — call after Skia draws if sharing GL context */
-  resetGLState(): void {
-    if (!this._destroyed) this._exports.skia_reset_gl_state()
+  /** Reset GPU state cache — call after Skia draws if sharing the GL context (no-op for wgpu) */
+  resetState(): void {
+    if (!this._destroyed) {
+      this._exports.skia_reset_state()
+    }
   }
 
   /** Destroy the Skia context and release all GPU resources */

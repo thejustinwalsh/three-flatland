@@ -60,7 +60,8 @@
       }
     },
     "./wasm": "./dist/skia-gl/skia-gl.wasm",
-    "./wasm/gl": "./dist/skia-gl/skia-gl.wasm"
+    "./wasm/gl": "./dist/skia-gl/skia-gl.wasm",
+    "./wasm/wgpu": "./dist/skia-wgpu/skia-wgpu.wasm"
   },
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
@@ -75,10 +76,14 @@
     "skia:setup": "node scripts/setup.mjs",
     "skia:check": "node scripts/setup.mjs --check",
     "skia:tools": "node scripts/setup.mjs --tools",
-    "build": "node scripts/build-wasm.mjs --gl-only --skip-if-fresh && tsup",
-    "build:wasm": "node scripts/build-wasm.mjs --gl-only",
+    "build": "node scripts/build-wasm.mjs --skip-if-fresh && tsup",
+    "build:wasm": "node scripts/build-wasm.mjs",
+    "build:wasm:gl": "node scripts/build-wasm.mjs --gl-only",
+    "build:wasm:wgpu": "node scripts/build-wasm.mjs --wgpu-only",
     "dev": "tsup --watch",
     "test": "vitest run",
+    "test:gl": "vitest run --project gl",
+    "test:wgpu": "vitest run --project wgpu",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist .tools"

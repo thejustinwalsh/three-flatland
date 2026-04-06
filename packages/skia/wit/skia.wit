@@ -105,3 +105,7 @@ world skia-gl {
     export path-op-apply: func(a: borrow<path>, b: borrow<path>, op: path-op) -> option<path>;
     export path-simplify: func(p: borrow<path>) -> option<path>;
 }
+
+// Note: Both GL and WebGPU variants use the skia-gl world above.
+// The export API is identical — backend differences are in the C API layer.
+// WebGPU functions are raw WASM imports (via wgpu_shim), not WIT imports.

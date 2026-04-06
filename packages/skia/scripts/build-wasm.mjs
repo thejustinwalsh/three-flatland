@@ -42,6 +42,7 @@ const DIST = resolve(PKG_ROOT, "dist");
 
 const args = process.argv.slice(2);
 const glOnly = args.includes("--gl-only");
+const wgpuOnly = args.includes("--wgpu-only");
 const skipIfFresh = args.includes("--skip-if-fresh");
 const witOnly = args.includes("--wit-only");
 
@@ -51,9 +52,12 @@ const augmentedEnv = {
   ...process.env,
   PATH: `${TOOLS_BIN}:${process.env.PATH}`,
   // WSL2: Zig's cache needs atomic renames which fail on NTFS (/mnt/).
-  // Redirect to a native Linux tmpdir if we detect WSL.
+  // Redirect both caches to a native Linux tmpdir if we detect WSL.
   ...(process.env.WSL_DISTRO_NAME && !process.env.ZIG_LOCAL_CACHE_DIR
-    ? { ZIG_LOCAL_CACHE_DIR: `/tmp/skia-zig-cache` }
+    ? {
+        ZIG_LOCAL_CACHE_DIR: `/tmp/skia-zig-cache`,
+        ZIG_GLOBAL_CACHE_DIR: `/tmp/skia-zig-global-cache`,
+      }
     : {}),
 };
 
@@ -89,16 +93,21 @@ function generateWitBindings() {
     return;
   }
 
-  // Generate C headers for Zig @cImport
+  // Generate C headers for Zig @cImport — both GL and WebGPU worlds
   if (hasCommand("wit-bindgen")) {
     console.log("\n=== Generating C bindings from WIT ===");
     const witDir = resolve(PKG_ROOT, "wit");
+    // Both variants use the same skia-gl WIT world — exports are identical,
+    // backend differences are in the C API layer, not the WIT interface.
     run(`wit-bindgen c ${witDir} --world skia-gl --out-dir src/zig/bindings/generated/`);
   } else {
     console.log("wit-bindgen not in PATH — using committed C headers.");
   }
 
-  // Generate standalone TypeScript types
+  // Both variants share core.zig — no code generation needed.
+  // Backend differences are handled entirely in the C API layer.
+
+  // Generate standalone TypeScript types (same API for both worlds)
   if (jco) {
     console.log("\n=== Generating TypeScript types from WIT ===");
     mkdirSync(resolve(DIST, "types"), { recursive: true });
@@ -139,11 +148,14 @@ if (!hasWasmOpt) {
 
 // ── Skip check ──
 
+// ── Determine which variants to build ──
+
+const variants = glOnly ? ["gl"] : wgpuOnly ? ["wgpu"] : ["gl", "wgpu"];
+
 if (skipIfFresh) {
-  const glFresh = existsSync(resolve(DIST, "skia-gl/skia-gl.core.wasm"));
-  const webgpuFresh =
-    glOnly || existsSync(resolve(DIST, "skia-webgpu/skia-webgpu.core.wasm"));
-  if (glFresh && webgpuFresh) {
+  const glFresh = !variants.includes("gl") || existsSync(resolve(DIST, "skia-gl/skia-gl.wasm"));
+  const wgpuFresh = !variants.includes("wgpu") || existsSync(resolve(DIST, "skia-wgpu/skia-wgpu.wasm"));
+  if (glFresh && wgpuFresh) {
     console.log("WASM artifacts are fresh, skipping build.");
     process.exit(0);
   }
@@ -151,25 +163,24 @@ if (skipIfFresh) {
 
 // ── Ensure dist directories ──
 
-for (const dir of ["skia-gl", "skia-webgpu"]) {
-  mkdirSync(resolve(DIST, dir), { recursive: true });
+for (const v of variants) {
+  mkdirSync(resolve(DIST, `skia-${v}`), { recursive: true });
 }
 
-// ── Build variants ──
-
-const variants = glOnly ? ["gl"] : ["gl", "webgpu"];
+// Step 2: Zig build — single invocation with skip flags
+{
+  const zigFlags = ["-Doptimize=ReleaseSmall"];
+  if (!variants.includes("gl")) zigFlags.push("-Dskip-gl=true");
+  if (!variants.includes("wgpu")) zigFlags.push("-Dskip-wgpu=true");
+  console.log(`\n=== Zig build (variants: ${variants.join(", ")}) ===`);
+  run(`zig build ${zigFlags.join(" ")}`);
+}
 
 for (const variant of variants) {
   const name = `skia-${variant}`;
   const wasmRaw = resolve(PKG_ROOT, `zig-out/bin/${name}.wasm`);
   const wasmOpt = resolve(DIST, `${name}/${name}.opt.wasm`);
-  const wasmComponent = resolve(DIST, `${name}/${name}.component.wasm`);
   const outDir = resolve(DIST, `${name}`);
-
-  console.log(`\n=== Building ${name} ===`);
-
-  // Step 2: Zig build
-  run(`zig build -Doptimize=ReleaseSmall`);
 
   if (!existsSync(wasmRaw)) {
     console.error(`Expected ${wasmRaw} but not found. Zig build may have failed.`);
@@ -185,10 +196,6 @@ for (const variant of variants) {
   }
 
   // Step 4: Copy WASM to dist
-  // We skip wasm-tools component new + jco transpile because the GL variant
-  // uses raw WASM imports (import_module("gl")) that the component model
-  // can't handle. Instead, we ship the raw .wasm with a hand-written JS loader.
-  // TypeScript types are still generated from WIT (see above).
   const { copyFileSync } = await import("node:fs");
   copyFileSync(wasmInput, resolve(outDir, `${name}.wasm`));
   console.log(`\n  Copied ${name}.wasm to ${outDir}/`);

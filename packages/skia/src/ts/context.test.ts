@@ -57,8 +57,8 @@ describe('SkiaContext', () => {
     expect(() => skia.flush()).not.toThrow()
   })
 
-  it('resetGLState does not throw', () => {
-    expect(() => skia.resetGLState()).not.toThrow()
+  it('resetState does not throw', () => {
+    expect(() => skia.resetState()).not.toThrow()
   })
 
   it('writeString allocates in WASM memory', () => {

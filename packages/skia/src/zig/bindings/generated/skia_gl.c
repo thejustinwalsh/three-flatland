@@ -11,8 +11,11 @@ extern void __wasm_import_skia_gpu_gl_active_texture(int32_t);
 __attribute__((__import_module__("skia:gpu/gl"), __import_name__("attach-shader")))
 extern void __wasm_import_skia_gpu_gl_attach_shader(int32_t, int32_t);
 
+__attribute__((__import_module__("skia:gpu/gl"), __import_name__("begin-query")))
+extern void __wasm_import_skia_gpu_gl_begin_query(int32_t, int32_t);
+
 __attribute__((__import_module__("skia:gpu/gl"), __import_name__("bind-attrib-location")))
-extern void __wasm_import_skia_gpu_gl_bind_attrib_location(int32_t, int32_t, uint8_t *, size_t);
+extern void __wasm_import_skia_gpu_gl_bind_attrib_location(int32_t, int32_t, int32_t);
 
 __attribute__((__import_module__("skia:gpu/gl"), __import_name__("bind-buffer")))
 extern void __wasm_import_skia_gpu_gl_bind_buffer(int32_t, int32_t);
@@ -23,8 +26,14 @@ extern void __wasm_import_skia_gpu_gl_bind_framebuffer(int32_t, int32_t);
 __attribute__((__import_module__("skia:gpu/gl"), __import_name__("bind-renderbuffer")))
 extern void __wasm_import_skia_gpu_gl_bind_renderbuffer(int32_t, int32_t);
 
+__attribute__((__import_module__("skia:gpu/gl"), __import_name__("bind-sampler")))
+extern void __wasm_import_skia_gpu_gl_bind_sampler(int32_t, int32_t);
+
 __attribute__((__import_module__("skia:gpu/gl"), __import_name__("bind-texture")))
 extern void __wasm_import_skia_gpu_gl_bind_texture(int32_t, int32_t);
+
+__attribute__((__import_module__("skia:gpu/gl"), __import_name__("bind-vertex-array")))
+extern void __wasm_import_skia_gpu_gl_bind_vertex_array(int32_t);
 
 __attribute__((__import_module__("skia:gpu/gl"), __import_name__("blend-color")))
 extern void __wasm_import_skia_gpu_gl_blend_color(float, float, float, float);
@@ -34,6 +43,9 @@ extern void __wasm_import_skia_gpu_gl_blend_equation(int32_t);
 
 __attribute__((__import_module__("skia:gpu/gl"), __import_name__("blend-func")))
 extern void __wasm_import_skia_gpu_gl_blend_func(int32_t, int32_t);
+
+__attribute__((__import_module__("skia:gpu/gl"), __import_name__("blit-framebuffer")))
+extern void __wasm_import_skia_gpu_gl_blit_framebuffer(int32_t, int32_t, int32_t, int32_t, int32_t, int32_t, int32_t, int32_t, int32_t, int32_t);
 
 __attribute__((__import_module__("skia:gpu/gl"), __import_name__("buffer-data")))
 extern void __wasm_import_skia_gpu_gl_buffer_data(int32_t, int32_t, int32_t, int32_t);
@@ -53,6 +65,9 @@ extern void __wasm_import_skia_gpu_gl_clear_color(float, float, float, float);
 __attribute__((__import_module__("skia:gpu/gl"), __import_name__("clear-stencil")))
 extern void __wasm_import_skia_gpu_gl_clear_stencil(int32_t);
 
+__attribute__((__import_module__("skia:gpu/gl"), __import_name__("client-wait-sync")))
+extern int32_t __wasm_import_skia_gpu_gl_client_wait_sync(int32_t, int32_t, int64_t);
+
 __attribute__((__import_module__("skia:gpu/gl"), __import_name__("color-mask")))
 extern void __wasm_import_skia_gpu_gl_color_mask(int32_t, int32_t, int32_t, int32_t);
 
@@ -64,6 +79,9 @@ extern void __wasm_import_skia_gpu_gl_compressed_tex_image2_d(int32_t, int32_t, 
 
 __attribute__((__import_module__("skia:gpu/gl"), __import_name__("compressed-tex-sub-image2-d")))
 extern void __wasm_import_skia_gpu_gl_compressed_tex_sub_image2_d(int32_t, int32_t, int32_t, int32_t, int32_t, int32_t, int32_t, int32_t, int32_t);
+
+__attribute__((__import_module__("skia:gpu/gl"), __import_name__("copy-buffer-sub-data")))
+extern void __wasm_import_skia_gpu_gl_copy_buffer_sub_data(int32_t, int32_t, int32_t, int32_t, int32_t);
 
 __attribute__((__import_module__("skia:gpu/gl"), __import_name__("copy-tex-sub-image2-d")))
 extern void __wasm_import_skia_gpu_gl_copy_tex_sub_image2_d(int32_t, int32_t, int32_t, int32_t, int32_t, int32_t, int32_t, int32_t);
@@ -78,22 +96,34 @@ __attribute__((__import_module__("skia:gpu/gl"), __import_name__("cull-face")))
 extern void __wasm_import_skia_gpu_gl_cull_face(int32_t);
 
 __attribute__((__import_module__("skia:gpu/gl"), __import_name__("delete-buffers")))
-extern void __wasm_import_skia_gpu_gl_delete_buffers(uint8_t *, size_t);
+extern void __wasm_import_skia_gpu_gl_delete_buffers(int32_t, int32_t);
 
 __attribute__((__import_module__("skia:gpu/gl"), __import_name__("delete-framebuffers")))
-extern void __wasm_import_skia_gpu_gl_delete_framebuffers(uint8_t *, size_t);
+extern void __wasm_import_skia_gpu_gl_delete_framebuffers(int32_t, int32_t);
 
 __attribute__((__import_module__("skia:gpu/gl"), __import_name__("delete-program")))
 extern void __wasm_import_skia_gpu_gl_delete_program(int32_t);
 
+__attribute__((__import_module__("skia:gpu/gl"), __import_name__("delete-queries")))
+extern void __wasm_import_skia_gpu_gl_delete_queries(int32_t, int32_t);
+
 __attribute__((__import_module__("skia:gpu/gl"), __import_name__("delete-renderbuffers")))
-extern void __wasm_import_skia_gpu_gl_delete_renderbuffers(uint8_t *, size_t);
+extern void __wasm_import_skia_gpu_gl_delete_renderbuffers(int32_t, int32_t);
+
+__attribute__((__import_module__("skia:gpu/gl"), __import_name__("delete-samplers")))
+extern void __wasm_import_skia_gpu_gl_delete_samplers(int32_t, int32_t);
 
 __attribute__((__import_module__("skia:gpu/gl"), __import_name__("delete-shader")))
 extern void __wasm_import_skia_gpu_gl_delete_shader(int32_t);
 
+__attribute__((__import_module__("skia:gpu/gl"), __import_name__("delete-sync")))
+extern void __wasm_import_skia_gpu_gl_delete_sync(int32_t);
+
 __attribute__((__import_module__("skia:gpu/gl"), __import_name__("delete-textures")))
-extern void __wasm_import_skia_gpu_gl_delete_textures(uint8_t *, size_t);
+extern void __wasm_import_skia_gpu_gl_delete_textures(int32_t, int32_t);
+
+__attribute__((__import_module__("skia:gpu/gl"), __import_name__("delete-vertex-arrays")))
+extern void __wasm_import_skia_gpu_gl_delete_vertex_arrays(int32_t, int32_t);
 
 __attribute__((__import_module__("skia:gpu/gl"), __import_name__("depth-mask")))
 extern void __wasm_import_skia_gpu_gl_depth_mask(int32_t);
@@ -107,14 +137,38 @@ extern void __wasm_import_skia_gpu_gl_disable_vertex_attrib_array(int32_t);
 __attribute__((__import_module__("skia:gpu/gl"), __import_name__("draw-arrays")))
 extern void __wasm_import_skia_gpu_gl_draw_arrays(int32_t, int32_t, int32_t);
 
+__attribute__((__import_module__("skia:gpu/gl"), __import_name__("draw-arrays-instanced")))
+extern void __wasm_import_skia_gpu_gl_draw_arrays_instanced(int32_t, int32_t, int32_t, int32_t);
+
+__attribute__((__import_module__("skia:gpu/gl"), __import_name__("draw-arrays-instanced-base-instance")))
+extern void __wasm_import_skia_gpu_gl_draw_arrays_instanced_base_instance(int32_t, int32_t, int32_t, int32_t, int32_t);
+
+__attribute__((__import_module__("skia:gpu/gl"), __import_name__("draw-buffers")))
+extern void __wasm_import_skia_gpu_gl_draw_buffers(int32_t, int32_t);
+
 __attribute__((__import_module__("skia:gpu/gl"), __import_name__("draw-elements")))
 extern void __wasm_import_skia_gpu_gl_draw_elements(int32_t, int32_t, int32_t, int32_t);
+
+__attribute__((__import_module__("skia:gpu/gl"), __import_name__("draw-elements-instanced")))
+extern void __wasm_import_skia_gpu_gl_draw_elements_instanced(int32_t, int32_t, int32_t, int32_t, int32_t);
+
+__attribute__((__import_module__("skia:gpu/gl"), __import_name__("draw-elements-instanced-base-vertex-base-instance")))
+extern void __wasm_import_skia_gpu_gl_draw_elements_instanced_base_vertex_base_instance(int32_t, int32_t, int32_t, int32_t, int32_t, int32_t, int32_t);
+
+__attribute__((__import_module__("skia:gpu/gl"), __import_name__("draw-range-elements")))
+extern void __wasm_import_skia_gpu_gl_draw_range_elements(int32_t, int32_t, int32_t, int32_t, int32_t, int32_t);
 
 __attribute__((__import_module__("skia:gpu/gl"), __import_name__("enable")))
 extern void __wasm_import_skia_gpu_gl_enable(int32_t);
 
 __attribute__((__import_module__("skia:gpu/gl"), __import_name__("enable-vertex-attrib-array")))
 extern void __wasm_import_skia_gpu_gl_enable_vertex_attrib_array(int32_t);
+
+__attribute__((__import_module__("skia:gpu/gl"), __import_name__("end-query")))
+extern void __wasm_import_skia_gpu_gl_end_query(int32_t);
+
+__attribute__((__import_module__("skia:gpu/gl"), __import_name__("fence-sync")))
+extern int32_t __wasm_import_skia_gpu_gl_fence_sync(int32_t, int32_t);
 
 __attribute__((__import_module__("skia:gpu/gl"), __import_name__("finish")))
 extern void __wasm_import_skia_gpu_gl_finish(void);
@@ -137,11 +191,20 @@ extern void __wasm_import_skia_gpu_gl_gen_buffers(int32_t, int32_t);
 __attribute__((__import_module__("skia:gpu/gl"), __import_name__("gen-framebuffers")))
 extern void __wasm_import_skia_gpu_gl_gen_framebuffers(int32_t, int32_t);
 
+__attribute__((__import_module__("skia:gpu/gl"), __import_name__("gen-queries")))
+extern void __wasm_import_skia_gpu_gl_gen_queries(int32_t, int32_t);
+
 __attribute__((__import_module__("skia:gpu/gl"), __import_name__("gen-renderbuffers")))
 extern void __wasm_import_skia_gpu_gl_gen_renderbuffers(int32_t, int32_t);
 
+__attribute__((__import_module__("skia:gpu/gl"), __import_name__("gen-samplers")))
+extern void __wasm_import_skia_gpu_gl_gen_samplers(int32_t, int32_t);
+
 __attribute__((__import_module__("skia:gpu/gl"), __import_name__("gen-textures")))
 extern void __wasm_import_skia_gpu_gl_gen_textures(int32_t, int32_t);
+
+__attribute__((__import_module__("skia:gpu/gl"), __import_name__("gen-vertex-arrays")))
+extern void __wasm_import_skia_gpu_gl_gen_vertex_arrays(int32_t, int32_t);
 
 __attribute__((__import_module__("skia:gpu/gl"), __import_name__("generate-mipmap")))
 extern void __wasm_import_skia_gpu_gl_generate_mipmap(int32_t);
@@ -167,6 +230,18 @@ extern void __wasm_import_skia_gpu_gl_get_program_info_log(int32_t, int32_t, int
 __attribute__((__import_module__("skia:gpu/gl"), __import_name__("get-programiv")))
 extern void __wasm_import_skia_gpu_gl_get_programiv(int32_t, int32_t, int32_t);
 
+__attribute__((__import_module__("skia:gpu/gl"), __import_name__("get-query-objecti64v")))
+extern void __wasm_import_skia_gpu_gl_get_query_objecti64v(int32_t, int32_t, int32_t);
+
+__attribute__((__import_module__("skia:gpu/gl"), __import_name__("get-query-objectui64v")))
+extern void __wasm_import_skia_gpu_gl_get_query_objectui64v(int32_t, int32_t, int32_t);
+
+__attribute__((__import_module__("skia:gpu/gl"), __import_name__("get-query-objectuiv")))
+extern void __wasm_import_skia_gpu_gl_get_query_objectuiv(int32_t, int32_t, int32_t);
+
+__attribute__((__import_module__("skia:gpu/gl"), __import_name__("get-queryiv")))
+extern void __wasm_import_skia_gpu_gl_get_queryiv(int32_t, int32_t, int32_t);
+
 __attribute__((__import_module__("skia:gpu/gl"), __import_name__("get-renderbuffer-parameteriv")))
 extern void __wasm_import_skia_gpu_gl_get_renderbuffer_parameteriv(int32_t, int32_t, int32_t);
 
@@ -182,8 +257,20 @@ extern void __wasm_import_skia_gpu_gl_get_shaderiv(int32_t, int32_t, int32_t);
 __attribute__((__import_module__("skia:gpu/gl"), __import_name__("get-string")))
 extern int32_t __wasm_import_skia_gpu_gl_get_string(int32_t);
 
+__attribute__((__import_module__("skia:gpu/gl"), __import_name__("get-stringi")))
+extern int32_t __wasm_import_skia_gpu_gl_get_stringi(int32_t, int32_t);
+
 __attribute__((__import_module__("skia:gpu/gl"), __import_name__("get-uniform-location")))
-extern int32_t __wasm_import_skia_gpu_gl_get_uniform_location(int32_t, uint8_t *, size_t);
+extern int32_t __wasm_import_skia_gpu_gl_get_uniform_location(int32_t, int32_t);
+
+__attribute__((__import_module__("skia:gpu/gl"), __import_name__("invalidate-framebuffer")))
+extern void __wasm_import_skia_gpu_gl_invalidate_framebuffer(int32_t, int32_t, int32_t);
+
+__attribute__((__import_module__("skia:gpu/gl"), __import_name__("invalidate-sub-framebuffer")))
+extern void __wasm_import_skia_gpu_gl_invalidate_sub_framebuffer(int32_t, int32_t, int32_t, int32_t, int32_t, int32_t, int32_t);
+
+__attribute__((__import_module__("skia:gpu/gl"), __import_name__("is-sync")))
+extern int32_t __wasm_import_skia_gpu_gl_is_sync(int32_t);
 
 __attribute__((__import_module__("skia:gpu/gl"), __import_name__("is-texture")))
 extern int32_t __wasm_import_skia_gpu_gl_is_texture(int32_t);
@@ -194,14 +281,38 @@ extern void __wasm_import_skia_gpu_gl_line_width(float);
 __attribute__((__import_module__("skia:gpu/gl"), __import_name__("link-program")))
 extern void __wasm_import_skia_gpu_gl_link_program(int32_t);
 
+__attribute__((__import_module__("skia:gpu/gl"), __import_name__("multi-draw-arrays-instanced-base-instance")))
+extern void __wasm_import_skia_gpu_gl_multi_draw_arrays_instanced_base_instance(int32_t, int32_t, int32_t, int32_t, int32_t, int32_t);
+
+__attribute__((__import_module__("skia:gpu/gl"), __import_name__("multi-draw-elements-instanced-base-vertex-base-instance")))
+extern void __wasm_import_skia_gpu_gl_multi_draw_elements_instanced_base_vertex_base_instance(int32_t, int32_t, int32_t, int32_t, int32_t, int32_t, int32_t, int32_t);
+
 __attribute__((__import_module__("skia:gpu/gl"), __import_name__("pixel-storei")))
 extern void __wasm_import_skia_gpu_gl_pixel_storei(int32_t, int32_t);
+
+__attribute__((__import_module__("skia:gpu/gl"), __import_name__("query-counter")))
+extern void __wasm_import_skia_gpu_gl_query_counter(int32_t, int32_t);
+
+__attribute__((__import_module__("skia:gpu/gl"), __import_name__("read-buffer")))
+extern void __wasm_import_skia_gpu_gl_read_buffer(int32_t);
 
 __attribute__((__import_module__("skia:gpu/gl"), __import_name__("read-pixels")))
 extern void __wasm_import_skia_gpu_gl_read_pixels(int32_t, int32_t, int32_t, int32_t, int32_t, int32_t, int32_t);
 
 __attribute__((__import_module__("skia:gpu/gl"), __import_name__("renderbuffer-storage")))
 extern void __wasm_import_skia_gpu_gl_renderbuffer_storage(int32_t, int32_t, int32_t, int32_t);
+
+__attribute__((__import_module__("skia:gpu/gl"), __import_name__("renderbuffer-storage-multisample")))
+extern void __wasm_import_skia_gpu_gl_renderbuffer_storage_multisample(int32_t, int32_t, int32_t, int32_t, int32_t);
+
+__attribute__((__import_module__("skia:gpu/gl"), __import_name__("sampler-parameterf")))
+extern void __wasm_import_skia_gpu_gl_sampler_parameterf(int32_t, int32_t, float);
+
+__attribute__((__import_module__("skia:gpu/gl"), __import_name__("sampler-parameteri")))
+extern void __wasm_import_skia_gpu_gl_sampler_parameteri(int32_t, int32_t, int32_t);
+
+__attribute__((__import_module__("skia:gpu/gl"), __import_name__("sampler-parameteriv")))
+extern void __wasm_import_skia_gpu_gl_sampler_parameteriv(int32_t, int32_t, int32_t);
 
 __attribute__((__import_module__("skia:gpu/gl"), __import_name__("scissor")))
 extern void __wasm_import_skia_gpu_gl_scissor(int32_t, int32_t, int32_t, int32_t);
@@ -241,6 +352,9 @@ extern void __wasm_import_skia_gpu_gl_tex_parameteri(int32_t, int32_t, int32_t);
 
 __attribute__((__import_module__("skia:gpu/gl"), __import_name__("tex-parameteriv")))
 extern void __wasm_import_skia_gpu_gl_tex_parameteriv(int32_t, int32_t, int32_t);
+
+__attribute__((__import_module__("skia:gpu/gl"), __import_name__("tex-storage2-d")))
+extern void __wasm_import_skia_gpu_gl_tex_storage2_d(int32_t, int32_t, int32_t, int32_t, int32_t);
 
 __attribute__((__import_module__("skia:gpu/gl"), __import_name__("tex-sub-image2-d")))
 extern void __wasm_import_skia_gpu_gl_tex_sub_image2_d(int32_t, int32_t, int32_t, int32_t, int32_t, int32_t, int32_t, int32_t, int32_t);
@@ -317,131 +431,17 @@ extern void __wasm_import_skia_gpu_gl_vertex_attrib3fv(int32_t, int32_t);
 __attribute__((__import_module__("skia:gpu/gl"), __import_name__("vertex-attrib4fv")))
 extern void __wasm_import_skia_gpu_gl_vertex_attrib4fv(int32_t, int32_t);
 
-__attribute__((__import_module__("skia:gpu/gl"), __import_name__("vertex-attrib-pointer")))
-extern void __wasm_import_skia_gpu_gl_vertex_attrib_pointer(int32_t, int32_t, int32_t, int32_t, int32_t, int32_t);
-
-__attribute__((__import_module__("skia:gpu/gl"), __import_name__("viewport")))
-extern void __wasm_import_skia_gpu_gl_viewport(int32_t, int32_t, int32_t, int32_t);
-
-__attribute__((__import_module__("skia:gpu/gl"), __import_name__("begin-query")))
-extern void __wasm_import_skia_gpu_gl_begin_query(int32_t, int32_t);
-
-__attribute__((__import_module__("skia:gpu/gl"), __import_name__("bind-sampler")))
-extern void __wasm_import_skia_gpu_gl_bind_sampler(int32_t, int32_t);
-
-__attribute__((__import_module__("skia:gpu/gl"), __import_name__("bind-vertex-array")))
-extern void __wasm_import_skia_gpu_gl_bind_vertex_array(int32_t);
-
-__attribute__((__import_module__("skia:gpu/gl"), __import_name__("blit-framebuffer")))
-extern void __wasm_import_skia_gpu_gl_blit_framebuffer(int32_t, int32_t, int32_t, int32_t, int32_t, int32_t, int32_t, int32_t, int32_t, int32_t);
-
-__attribute__((__import_module__("skia:gpu/gl"), __import_name__("client-wait-sync")))
-extern int32_t __wasm_import_skia_gpu_gl_client_wait_sync(int32_t, int32_t, int64_t);
-
-__attribute__((__import_module__("skia:gpu/gl"), __import_name__("copy-buffer-sub-data")))
-extern void __wasm_import_skia_gpu_gl_copy_buffer_sub_data(int32_t, int32_t, int32_t, int32_t, int32_t);
-
-__attribute__((__import_module__("skia:gpu/gl"), __import_name__("delete-queries")))
-extern void __wasm_import_skia_gpu_gl_delete_queries(uint8_t *, size_t);
-
-__attribute__((__import_module__("skia:gpu/gl"), __import_name__("delete-samplers")))
-extern void __wasm_import_skia_gpu_gl_delete_samplers(uint8_t *, size_t);
-
-__attribute__((__import_module__("skia:gpu/gl"), __import_name__("delete-sync")))
-extern void __wasm_import_skia_gpu_gl_delete_sync(int32_t);
-
-__attribute__((__import_module__("skia:gpu/gl"), __import_name__("delete-vertex-arrays")))
-extern void __wasm_import_skia_gpu_gl_delete_vertex_arrays(uint8_t *, size_t);
-
-__attribute__((__import_module__("skia:gpu/gl"), __import_name__("draw-arrays-instanced")))
-extern void __wasm_import_skia_gpu_gl_draw_arrays_instanced(int32_t, int32_t, int32_t, int32_t);
-
-__attribute__((__import_module__("skia:gpu/gl"), __import_name__("draw-arrays-instanced-base-instance")))
-extern void __wasm_import_skia_gpu_gl_draw_arrays_instanced_base_instance(int32_t, int32_t, int32_t, int32_t, int32_t);
-
-__attribute__((__import_module__("skia:gpu/gl"), __import_name__("draw-buffers")))
-extern void __wasm_import_skia_gpu_gl_draw_buffers(int32_t, int32_t);
-
-__attribute__((__import_module__("skia:gpu/gl"), __import_name__("draw-elements-instanced")))
-extern void __wasm_import_skia_gpu_gl_draw_elements_instanced(int32_t, int32_t, int32_t, int32_t, int32_t);
-
-__attribute__((__import_module__("skia:gpu/gl"), __import_name__("draw-elements-instanced-base-vertex-base-instance")))
-extern void __wasm_import_skia_gpu_gl_draw_elements_instanced_base_vertex_base_instance(int32_t, int32_t, int32_t, int32_t, int32_t, int32_t, int32_t);
-
-__attribute__((__import_module__("skia:gpu/gl"), __import_name__("draw-range-elements")))
-extern void __wasm_import_skia_gpu_gl_draw_range_elements(int32_t, int32_t, int32_t, int32_t, int32_t, int32_t);
-
-__attribute__((__import_module__("skia:gpu/gl"), __import_name__("end-query")))
-extern void __wasm_import_skia_gpu_gl_end_query(int32_t);
-
-__attribute__((__import_module__("skia:gpu/gl"), __import_name__("fence-sync")))
-extern int32_t __wasm_import_skia_gpu_gl_fence_sync(int32_t, int32_t);
-
-__attribute__((__import_module__("skia:gpu/gl"), __import_name__("gen-queries")))
-extern void __wasm_import_skia_gpu_gl_gen_queries(int32_t, int32_t);
-
-__attribute__((__import_module__("skia:gpu/gl"), __import_name__("gen-samplers")))
-extern void __wasm_import_skia_gpu_gl_gen_samplers(int32_t, int32_t);
-
-__attribute__((__import_module__("skia:gpu/gl"), __import_name__("gen-vertex-arrays")))
-extern void __wasm_import_skia_gpu_gl_gen_vertex_arrays(int32_t, int32_t);
-
-__attribute__((__import_module__("skia:gpu/gl"), __import_name__("get-query-objecti64v")))
-extern void __wasm_import_skia_gpu_gl_get_query_objecti64v(int32_t, int32_t, int32_t);
-
-__attribute__((__import_module__("skia:gpu/gl"), __import_name__("get-query-objectui64v")))
-extern void __wasm_import_skia_gpu_gl_get_query_objectui64v(int32_t, int32_t, int32_t);
-
-__attribute__((__import_module__("skia:gpu/gl"), __import_name__("get-query-objectuiv")))
-extern void __wasm_import_skia_gpu_gl_get_query_objectuiv(int32_t, int32_t, int32_t);
-
-__attribute__((__import_module__("skia:gpu/gl"), __import_name__("get-queryiv")))
-extern void __wasm_import_skia_gpu_gl_get_queryiv(int32_t, int32_t, int32_t);
-
-__attribute__((__import_module__("skia:gpu/gl"), __import_name__("get-stringi")))
-extern int32_t __wasm_import_skia_gpu_gl_get_stringi(int32_t, int32_t);
-
-__attribute__((__import_module__("skia:gpu/gl"), __import_name__("invalidate-framebuffer")))
-extern void __wasm_import_skia_gpu_gl_invalidate_framebuffer(int32_t, int32_t, int32_t);
-
-__attribute__((__import_module__("skia:gpu/gl"), __import_name__("invalidate-sub-framebuffer")))
-extern void __wasm_import_skia_gpu_gl_invalidate_sub_framebuffer(int32_t, int32_t, int32_t, int32_t, int32_t, int32_t, int32_t);
-
-__attribute__((__import_module__("skia:gpu/gl"), __import_name__("is-sync")))
-extern int32_t __wasm_import_skia_gpu_gl_is_sync(int32_t);
-
-__attribute__((__import_module__("skia:gpu/gl"), __import_name__("multi-draw-arrays-instanced-base-instance")))
-extern void __wasm_import_skia_gpu_gl_multi_draw_arrays_instanced_base_instance(int32_t, int32_t, int32_t, int32_t, int32_t, int32_t);
-
-__attribute__((__import_module__("skia:gpu/gl"), __import_name__("multi-draw-elements-instanced-base-vertex-base-instance")))
-extern void __wasm_import_skia_gpu_gl_multi_draw_elements_instanced_base_vertex_base_instance(int32_t, int32_t, int32_t, int32_t, int32_t, int32_t, int32_t, int32_t);
-
-__attribute__((__import_module__("skia:gpu/gl"), __import_name__("query-counter")))
-extern void __wasm_import_skia_gpu_gl_query_counter(int32_t, int32_t);
-
-__attribute__((__import_module__("skia:gpu/gl"), __import_name__("read-buffer")))
-extern void __wasm_import_skia_gpu_gl_read_buffer(int32_t);
-
-__attribute__((__import_module__("skia:gpu/gl"), __import_name__("renderbuffer-storage-multisample")))
-extern void __wasm_import_skia_gpu_gl_renderbuffer_storage_multisample(int32_t, int32_t, int32_t, int32_t, int32_t);
-
-__attribute__((__import_module__("skia:gpu/gl"), __import_name__("sampler-parameterf")))
-extern void __wasm_import_skia_gpu_gl_sampler_parameterf(int32_t, int32_t, float);
-
-__attribute__((__import_module__("skia:gpu/gl"), __import_name__("sampler-parameteri")))
-extern void __wasm_import_skia_gpu_gl_sampler_parameteri(int32_t, int32_t, int32_t);
-
-__attribute__((__import_module__("skia:gpu/gl"), __import_name__("sampler-parameteriv")))
-extern void __wasm_import_skia_gpu_gl_sampler_parameteriv(int32_t, int32_t, int32_t);
-
-__attribute__((__import_module__("skia:gpu/gl"), __import_name__("tex-storage2-d")))
-extern void __wasm_import_skia_gpu_gl_tex_storage2_d(int32_t, int32_t, int32_t, int32_t, int32_t);
-
 __attribute__((__import_module__("skia:gpu/gl"), __import_name__("vertex-attrib-divisor")))
 extern void __wasm_import_skia_gpu_gl_vertex_attrib_divisor(int32_t, int32_t);
 
 __attribute__((__import_module__("skia:gpu/gl"), __import_name__("vertex-attrib-i-pointer")))
 extern void __wasm_import_skia_gpu_gl_vertex_attrib_i_pointer(int32_t, int32_t, int32_t, int32_t, int32_t);
+
+__attribute__((__import_module__("skia:gpu/gl"), __import_name__("vertex-attrib-pointer")))
+extern void __wasm_import_skia_gpu_gl_vertex_attrib_pointer(int32_t, int32_t, int32_t, int32_t, int32_t, int32_t);
+
+__attribute__((__import_module__("skia:gpu/gl"), __import_name__("viewport")))
+extern void __wasm_import_skia_gpu_gl_viewport(int32_t, int32_t, int32_t, int32_t);
 
 __attribute__((__import_module__("skia:gpu/gl"), __import_name__("wait-sync")))
 extern void __wasm_import_skia_gpu_gl_wait_sync(int32_t, int32_t, int64_t);
@@ -595,16 +595,6 @@ static uint8_t RET_AREA[(2*sizeof(void*))];
 
 // Helper Functions
 
-void skia_gl_list_u32_free(skia_gl_list_u32_t *ptr) {
-  size_t list_len = ptr->len;
-  if (list_len > 0) {
-    uint32_t *list_ptr = ptr->ptr;
-    for (size_t i = 0; i < list_len; i++) {
-    }
-    free(list_ptr);
-  }
-}
-
 __attribute__((__import_module__("$root"), __import_name__("[resource-drop]path")))
 extern void __wasm_import_skia_gl_path_drop(int32_t handle);
 
@@ -675,6 +665,16 @@ void skia_gl_list_f32_free(skia_gl_list_f32_t *ptr) {
   }
 }
 
+void skia_gl_list_u32_free(skia_gl_list_u32_t *ptr) {
+  size_t list_len = ptr->len;
+  if (list_len > 0) {
+    uint32_t *list_ptr = ptr->ptr;
+    for (size_t i = 0; i < list_len; i++) {
+    }
+    free(list_ptr);
+  }
+}
+
 void skia_gl_list_u8_free(skia_gl_list_u8_t *ptr) {
   size_t list_len = ptr->len;
   if (list_len > 0) {
@@ -730,8 +730,12 @@ void skia_gpu_gl_attach_shader(uint32_t program, uint32_t shader) {
   __wasm_import_skia_gpu_gl_attach_shader((int32_t) (program), (int32_t) (shader));
 }
 
-void skia_gpu_gl_bind_attrib_location(uint32_t program, uint32_t index, skia_gl_string_t *name) {
-  __wasm_import_skia_gpu_gl_bind_attrib_location((int32_t) (program), (int32_t) (index), (uint8_t *) (*name).ptr, (*name).len);
+void skia_gpu_gl_begin_query(uint32_t target, uint32_t id) {
+  __wasm_import_skia_gpu_gl_begin_query((int32_t) (target), (int32_t) (id));
+}
+
+void skia_gpu_gl_bind_attrib_location(uint32_t program, uint32_t index, uint32_t name) {
+  __wasm_import_skia_gpu_gl_bind_attrib_location((int32_t) (program), (int32_t) (index), (int32_t) (name));
 }
 
 void skia_gpu_gl_bind_buffer(uint32_t target, uint32_t buffer) {
@@ -746,8 +750,16 @@ void skia_gpu_gl_bind_renderbuffer(uint32_t target, uint32_t renderbuffer) {
   __wasm_import_skia_gpu_gl_bind_renderbuffer((int32_t) (target), (int32_t) (renderbuffer));
 }
 
+void skia_gpu_gl_bind_sampler(uint32_t unit, uint32_t sampler) {
+  __wasm_import_skia_gpu_gl_bind_sampler((int32_t) (unit), (int32_t) (sampler));
+}
+
 void skia_gpu_gl_bind_texture(uint32_t target, uint32_t texture) {
   __wasm_import_skia_gpu_gl_bind_texture((int32_t) (target), (int32_t) (texture));
+}
+
+void skia_gpu_gl_bind_vertex_array(uint32_t array) {
+  __wasm_import_skia_gpu_gl_bind_vertex_array((int32_t) (array));
 }
 
 void skia_gpu_gl_blend_color(float red, float green, float blue, float alpha) {
@@ -760,6 +772,10 @@ void skia_gpu_gl_blend_equation(uint32_t mode) {
 
 void skia_gpu_gl_blend_func(uint32_t sfactor, uint32_t dfactor) {
   __wasm_import_skia_gpu_gl_blend_func((int32_t) (sfactor), (int32_t) (dfactor));
+}
+
+void skia_gpu_gl_blit_framebuffer(int32_t src_x0, int32_t src_y0, int32_t src_x1, int32_t src_y1, int32_t dst_x0, int32_t dst_y0, int32_t dst_x1, int32_t dst_y1, uint32_t mask, uint32_t filter) {
+  __wasm_import_skia_gpu_gl_blit_framebuffer(src_x0, src_y0, src_x1, src_y1, dst_x0, dst_y0, dst_x1, dst_y1, (int32_t) (mask), (int32_t) (filter));
 }
 
 void skia_gpu_gl_buffer_data(uint32_t target, uint32_t size, uint32_t data, uint32_t usage) {
@@ -787,20 +803,29 @@ void skia_gpu_gl_clear_stencil(int32_t s) {
   __wasm_import_skia_gpu_gl_clear_stencil(s);
 }
 
-void skia_gpu_gl_color_mask(bool red, bool green, bool blue, bool alpha) {
-  __wasm_import_skia_gpu_gl_color_mask(red, green, blue, alpha);
+uint32_t skia_gpu_gl_client_wait_sync(uint32_t sync, uint32_t flags, uint64_t timeout) {
+  int32_t ret = __wasm_import_skia_gpu_gl_client_wait_sync((int32_t) (sync), (int32_t) (flags), (int64_t) (timeout));
+  return (uint32_t) (ret);
+}
+
+void skia_gpu_gl_color_mask(uint32_t red, uint32_t green, uint32_t blue, uint32_t alpha) {
+  __wasm_import_skia_gpu_gl_color_mask((int32_t) (red), (int32_t) (green), (int32_t) (blue), (int32_t) (alpha));
 }
 
 void skia_gpu_gl_compile_shader(uint32_t shader) {
   __wasm_import_skia_gpu_gl_compile_shader((int32_t) (shader));
 }
 
-void skia_gpu_gl_compressed_tex_image2_d(uint32_t target, int32_t level, uint32_t internal_format, int32_t width, int32_t height, int32_t border, int32_t image_size, uint32_t data) {
-  __wasm_import_skia_gpu_gl_compressed_tex_image2_d((int32_t) (target), level, (int32_t) (internal_format), width, height, border, image_size, (int32_t) (data));
+void skia_gpu_gl_compressed_tex_image2_d(uint32_t target, int32_t level, uint32_t internalformat, int32_t width, int32_t height, int32_t border, int32_t image_size, uint32_t data) {
+  __wasm_import_skia_gpu_gl_compressed_tex_image2_d((int32_t) (target), level, (int32_t) (internalformat), width, height, border, image_size, (int32_t) (data));
 }
 
 void skia_gpu_gl_compressed_tex_sub_image2_d(uint32_t target, int32_t level, int32_t xoffset, int32_t yoffset, int32_t width, int32_t height, uint32_t format, int32_t image_size, uint32_t data) {
   __wasm_import_skia_gpu_gl_compressed_tex_sub_image2_d((int32_t) (target), level, xoffset, yoffset, width, height, (int32_t) (format), image_size, (int32_t) (data));
+}
+
+void skia_gpu_gl_copy_buffer_sub_data(uint32_t read_target, uint32_t write_target, uint32_t read_offset, uint32_t write_offset, uint32_t size) {
+  __wasm_import_skia_gpu_gl_copy_buffer_sub_data((int32_t) (read_target), (int32_t) (write_target), (int32_t) (read_offset), (int32_t) (write_offset), (int32_t) (size));
 }
 
 void skia_gpu_gl_copy_tex_sub_image2_d(uint32_t target, int32_t level, int32_t xoffset, int32_t yoffset, int32_t x, int32_t y, int32_t width, int32_t height) {
@@ -812,8 +837,8 @@ uint32_t skia_gpu_gl_create_program(void) {
   return (uint32_t) (ret);
 }
 
-uint32_t skia_gpu_gl_create_shader(uint32_t gl_type) {
-  int32_t ret = __wasm_import_skia_gpu_gl_create_shader((int32_t) (gl_type));
+uint32_t skia_gpu_gl_create_shader(uint32_t type) {
+  int32_t ret = __wasm_import_skia_gpu_gl_create_shader((int32_t) (type));
   return (uint32_t) (ret);
 }
 
@@ -821,32 +846,48 @@ void skia_gpu_gl_cull_face(uint32_t mode) {
   __wasm_import_skia_gpu_gl_cull_face((int32_t) (mode));
 }
 
-void skia_gpu_gl_delete_buffers(skia_gl_list_u32_t *buffers) {
-  __wasm_import_skia_gpu_gl_delete_buffers((uint8_t *) (*buffers).ptr, (*buffers).len);
+void skia_gpu_gl_delete_buffers(int32_t n, uint32_t buffers) {
+  __wasm_import_skia_gpu_gl_delete_buffers(n, (int32_t) (buffers));
 }
 
-void skia_gpu_gl_delete_framebuffers(skia_gl_list_u32_t *framebuffers) {
-  __wasm_import_skia_gpu_gl_delete_framebuffers((uint8_t *) (*framebuffers).ptr, (*framebuffers).len);
+void skia_gpu_gl_delete_framebuffers(int32_t n, uint32_t framebuffers) {
+  __wasm_import_skia_gpu_gl_delete_framebuffers(n, (int32_t) (framebuffers));
 }
 
 void skia_gpu_gl_delete_program(uint32_t program) {
   __wasm_import_skia_gpu_gl_delete_program((int32_t) (program));
 }
 
-void skia_gpu_gl_delete_renderbuffers(skia_gl_list_u32_t *renderbuffers) {
-  __wasm_import_skia_gpu_gl_delete_renderbuffers((uint8_t *) (*renderbuffers).ptr, (*renderbuffers).len);
+void skia_gpu_gl_delete_queries(int32_t n, uint32_t ids) {
+  __wasm_import_skia_gpu_gl_delete_queries(n, (int32_t) (ids));
+}
+
+void skia_gpu_gl_delete_renderbuffers(int32_t n, uint32_t renderbuffers) {
+  __wasm_import_skia_gpu_gl_delete_renderbuffers(n, (int32_t) (renderbuffers));
+}
+
+void skia_gpu_gl_delete_samplers(int32_t n, uint32_t samplers) {
+  __wasm_import_skia_gpu_gl_delete_samplers(n, (int32_t) (samplers));
 }
 
 void skia_gpu_gl_delete_shader(uint32_t shader) {
   __wasm_import_skia_gpu_gl_delete_shader((int32_t) (shader));
 }
 
-void skia_gpu_gl_delete_textures(skia_gl_list_u32_t *textures) {
-  __wasm_import_skia_gpu_gl_delete_textures((uint8_t *) (*textures).ptr, (*textures).len);
+void skia_gpu_gl_delete_sync(uint32_t sync) {
+  __wasm_import_skia_gpu_gl_delete_sync((int32_t) (sync));
 }
 
-void skia_gpu_gl_depth_mask(bool flag) {
-  __wasm_import_skia_gpu_gl_depth_mask(flag);
+void skia_gpu_gl_delete_textures(int32_t n, uint32_t textures) {
+  __wasm_import_skia_gpu_gl_delete_textures(n, (int32_t) (textures));
+}
+
+void skia_gpu_gl_delete_vertex_arrays(int32_t n, uint32_t arrays) {
+  __wasm_import_skia_gpu_gl_delete_vertex_arrays(n, (int32_t) (arrays));
+}
+
+void skia_gpu_gl_depth_mask(uint32_t flag) {
+  __wasm_import_skia_gpu_gl_depth_mask((int32_t) (flag));
 }
 
 void skia_gpu_gl_disable(uint32_t cap) {
@@ -861,8 +902,32 @@ void skia_gpu_gl_draw_arrays(uint32_t mode, int32_t first, int32_t count) {
   __wasm_import_skia_gpu_gl_draw_arrays((int32_t) (mode), first, count);
 }
 
-void skia_gpu_gl_draw_elements(uint32_t mode, int32_t count, uint32_t gl_type, uint32_t offset) {
-  __wasm_import_skia_gpu_gl_draw_elements((int32_t) (mode), count, (int32_t) (gl_type), (int32_t) (offset));
+void skia_gpu_gl_draw_arrays_instanced(uint32_t mode, int32_t first, int32_t count, int32_t instancecount) {
+  __wasm_import_skia_gpu_gl_draw_arrays_instanced((int32_t) (mode), first, count, instancecount);
+}
+
+void skia_gpu_gl_draw_arrays_instanced_base_instance(uint32_t mode, int32_t first, int32_t count, int32_t instancecount, uint32_t baseinstance) {
+  __wasm_import_skia_gpu_gl_draw_arrays_instanced_base_instance((int32_t) (mode), first, count, instancecount, (int32_t) (baseinstance));
+}
+
+void skia_gpu_gl_draw_buffers(int32_t n, uint32_t bufs) {
+  __wasm_import_skia_gpu_gl_draw_buffers(n, (int32_t) (bufs));
+}
+
+void skia_gpu_gl_draw_elements(uint32_t mode, int32_t count, uint32_t type, uint32_t indices) {
+  __wasm_import_skia_gpu_gl_draw_elements((int32_t) (mode), count, (int32_t) (type), (int32_t) (indices));
+}
+
+void skia_gpu_gl_draw_elements_instanced(uint32_t mode, int32_t count, uint32_t type, uint32_t indices, int32_t instancecount) {
+  __wasm_import_skia_gpu_gl_draw_elements_instanced((int32_t) (mode), count, (int32_t) (type), (int32_t) (indices), instancecount);
+}
+
+void skia_gpu_gl_draw_elements_instanced_base_vertex_base_instance(uint32_t mode, int32_t count, uint32_t type, uint32_t indices, int32_t instancecount, int32_t basevertex, uint32_t baseinstance) {
+  __wasm_import_skia_gpu_gl_draw_elements_instanced_base_vertex_base_instance((int32_t) (mode), count, (int32_t) (type), (int32_t) (indices), instancecount, basevertex, (int32_t) (baseinstance));
+}
+
+void skia_gpu_gl_draw_range_elements(uint32_t mode, uint32_t start, uint32_t end, int32_t count, uint32_t type, uint32_t indices) {
+  __wasm_import_skia_gpu_gl_draw_range_elements((int32_t) (mode), (int32_t) (start), (int32_t) (end), count, (int32_t) (type), (int32_t) (indices));
 }
 
 void skia_gpu_gl_enable(uint32_t cap) {
@@ -873,6 +938,15 @@ void skia_gpu_gl_enable_vertex_attrib_array(uint32_t index) {
   __wasm_import_skia_gpu_gl_enable_vertex_attrib_array((int32_t) (index));
 }
 
+void skia_gpu_gl_end_query(uint32_t target) {
+  __wasm_import_skia_gpu_gl_end_query((int32_t) (target));
+}
+
+uint32_t skia_gpu_gl_fence_sync(uint32_t condition, uint32_t flags) {
+  int32_t ret = __wasm_import_skia_gpu_gl_fence_sync((int32_t) (condition), (int32_t) (flags));
+  return (uint32_t) (ret);
+}
+
 void skia_gpu_gl_finish(void) {
   __wasm_import_skia_gpu_gl_finish();
 }
@@ -881,40 +955,52 @@ void skia_gpu_gl_flush(void) {
   __wasm_import_skia_gpu_gl_flush();
 }
 
-void skia_gpu_gl_framebuffer_renderbuffer(uint32_t target, uint32_t attachment, uint32_t renderbuffer_target, uint32_t renderbuffer) {
-  __wasm_import_skia_gpu_gl_framebuffer_renderbuffer((int32_t) (target), (int32_t) (attachment), (int32_t) (renderbuffer_target), (int32_t) (renderbuffer));
+void skia_gpu_gl_framebuffer_renderbuffer(uint32_t target, uint32_t attachment, uint32_t renderbuffertarget, uint32_t renderbuffer) {
+  __wasm_import_skia_gpu_gl_framebuffer_renderbuffer((int32_t) (target), (int32_t) (attachment), (int32_t) (renderbuffertarget), (int32_t) (renderbuffer));
 }
 
-void skia_gpu_gl_framebuffer_texture2_d(uint32_t target, uint32_t attachment, uint32_t tex_target, uint32_t texture, int32_t level) {
-  __wasm_import_skia_gpu_gl_framebuffer_texture2_d((int32_t) (target), (int32_t) (attachment), (int32_t) (tex_target), (int32_t) (texture), level);
+void skia_gpu_gl_framebuffer_texture2_d(uint32_t target, uint32_t attachment, uint32_t textarget, uint32_t texture, int32_t level) {
+  __wasm_import_skia_gpu_gl_framebuffer_texture2_d((int32_t) (target), (int32_t) (attachment), (int32_t) (textarget), (int32_t) (texture), level);
 }
 
 void skia_gpu_gl_front_face(uint32_t mode) {
   __wasm_import_skia_gpu_gl_front_face((int32_t) (mode));
 }
 
-void skia_gpu_gl_gen_buffers(int32_t n, uint32_t buffers_out) {
-  __wasm_import_skia_gpu_gl_gen_buffers(n, (int32_t) (buffers_out));
+void skia_gpu_gl_gen_buffers(int32_t n, uint32_t buffers) {
+  __wasm_import_skia_gpu_gl_gen_buffers(n, (int32_t) (buffers));
 }
 
-void skia_gpu_gl_gen_framebuffers(int32_t n, uint32_t framebuffers_out) {
-  __wasm_import_skia_gpu_gl_gen_framebuffers(n, (int32_t) (framebuffers_out));
+void skia_gpu_gl_gen_framebuffers(int32_t n, uint32_t framebuffers) {
+  __wasm_import_skia_gpu_gl_gen_framebuffers(n, (int32_t) (framebuffers));
 }
 
-void skia_gpu_gl_gen_renderbuffers(int32_t n, uint32_t renderbuffers_out) {
-  __wasm_import_skia_gpu_gl_gen_renderbuffers(n, (int32_t) (renderbuffers_out));
+void skia_gpu_gl_gen_queries(int32_t n, uint32_t ids) {
+  __wasm_import_skia_gpu_gl_gen_queries(n, (int32_t) (ids));
 }
 
-void skia_gpu_gl_gen_textures(int32_t n, uint32_t textures_out) {
-  __wasm_import_skia_gpu_gl_gen_textures(n, (int32_t) (textures_out));
+void skia_gpu_gl_gen_renderbuffers(int32_t n, uint32_t renderbuffers) {
+  __wasm_import_skia_gpu_gl_gen_renderbuffers(n, (int32_t) (renderbuffers));
+}
+
+void skia_gpu_gl_gen_samplers(int32_t n, uint32_t samplers) {
+  __wasm_import_skia_gpu_gl_gen_samplers(n, (int32_t) (samplers));
+}
+
+void skia_gpu_gl_gen_textures(int32_t n, uint32_t textures) {
+  __wasm_import_skia_gpu_gl_gen_textures(n, (int32_t) (textures));
+}
+
+void skia_gpu_gl_gen_vertex_arrays(int32_t n, uint32_t arrays) {
+  __wasm_import_skia_gpu_gl_gen_vertex_arrays(n, (int32_t) (arrays));
 }
 
 void skia_gpu_gl_generate_mipmap(uint32_t target) {
   __wasm_import_skia_gpu_gl_generate_mipmap((int32_t) (target));
 }
 
-void skia_gpu_gl_get_buffer_parameteriv(uint32_t target, uint32_t pname, uint32_t params_out) {
-  __wasm_import_skia_gpu_gl_get_buffer_parameteriv((int32_t) (target), (int32_t) (pname), (int32_t) (params_out));
+void skia_gpu_gl_get_buffer_parameteriv(uint32_t target, uint32_t pname, uint32_t params) {
+  __wasm_import_skia_gpu_gl_get_buffer_parameteriv((int32_t) (target), (int32_t) (pname), (int32_t) (params));
 }
 
 uint32_t skia_gpu_gl_get_error(void) {
@@ -922,40 +1008,56 @@ uint32_t skia_gpu_gl_get_error(void) {
   return (uint32_t) (ret);
 }
 
-void skia_gpu_gl_get_floatv(uint32_t pname, uint32_t data_out) {
-  __wasm_import_skia_gpu_gl_get_floatv((int32_t) (pname), (int32_t) (data_out));
+void skia_gpu_gl_get_floatv(uint32_t pname, uint32_t data) {
+  __wasm_import_skia_gpu_gl_get_floatv((int32_t) (pname), (int32_t) (data));
 }
 
-void skia_gpu_gl_get_framebuffer_attachment_parameteriv(uint32_t target, uint32_t attachment, uint32_t pname, uint32_t params_out) {
-  __wasm_import_skia_gpu_gl_get_framebuffer_attachment_parameteriv((int32_t) (target), (int32_t) (attachment), (int32_t) (pname), (int32_t) (params_out));
+void skia_gpu_gl_get_framebuffer_attachment_parameteriv(uint32_t target, uint32_t attachment, uint32_t pname, uint32_t params) {
+  __wasm_import_skia_gpu_gl_get_framebuffer_attachment_parameteriv((int32_t) (target), (int32_t) (attachment), (int32_t) (pname), (int32_t) (params));
 }
 
-void skia_gpu_gl_get_integerv(uint32_t pname, uint32_t data_out) {
-  __wasm_import_skia_gpu_gl_get_integerv((int32_t) (pname), (int32_t) (data_out));
+void skia_gpu_gl_get_integerv(uint32_t pname, uint32_t data) {
+  __wasm_import_skia_gpu_gl_get_integerv((int32_t) (pname), (int32_t) (data));
 }
 
-void skia_gpu_gl_get_program_info_log(uint32_t program, int32_t buf_size, uint32_t length_out, uint32_t info_log_out) {
-  __wasm_import_skia_gpu_gl_get_program_info_log((int32_t) (program), buf_size, (int32_t) (length_out), (int32_t) (info_log_out));
+void skia_gpu_gl_get_program_info_log(uint32_t program, int32_t buf_size, uint32_t length, uint32_t info_log) {
+  __wasm_import_skia_gpu_gl_get_program_info_log((int32_t) (program), buf_size, (int32_t) (length), (int32_t) (info_log));
 }
 
-void skia_gpu_gl_get_programiv(uint32_t program, uint32_t pname, uint32_t params_out) {
-  __wasm_import_skia_gpu_gl_get_programiv((int32_t) (program), (int32_t) (pname), (int32_t) (params_out));
+void skia_gpu_gl_get_programiv(uint32_t program, uint32_t pname, uint32_t params) {
+  __wasm_import_skia_gpu_gl_get_programiv((int32_t) (program), (int32_t) (pname), (int32_t) (params));
 }
 
-void skia_gpu_gl_get_renderbuffer_parameteriv(uint32_t target, uint32_t pname, uint32_t params_out) {
-  __wasm_import_skia_gpu_gl_get_renderbuffer_parameteriv((int32_t) (target), (int32_t) (pname), (int32_t) (params_out));
+void skia_gpu_gl_get_query_objecti64v(uint32_t id, uint32_t pname, uint32_t params) {
+  __wasm_import_skia_gpu_gl_get_query_objecti64v((int32_t) (id), (int32_t) (pname), (int32_t) (params));
 }
 
-void skia_gpu_gl_get_shader_info_log(uint32_t shader, int32_t buf_size, uint32_t length_out, uint32_t info_log_out) {
-  __wasm_import_skia_gpu_gl_get_shader_info_log((int32_t) (shader), buf_size, (int32_t) (length_out), (int32_t) (info_log_out));
+void skia_gpu_gl_get_query_objectui64v(uint32_t id, uint32_t pname, uint32_t params) {
+  __wasm_import_skia_gpu_gl_get_query_objectui64v((int32_t) (id), (int32_t) (pname), (int32_t) (params));
 }
 
-void skia_gpu_gl_get_shader_precision_format(uint32_t shader_type, uint32_t precision_type, uint32_t range_out, uint32_t precision_out) {
-  __wasm_import_skia_gpu_gl_get_shader_precision_format((int32_t) (shader_type), (int32_t) (precision_type), (int32_t) (range_out), (int32_t) (precision_out));
+void skia_gpu_gl_get_query_objectuiv(uint32_t id, uint32_t pname, uint32_t params) {
+  __wasm_import_skia_gpu_gl_get_query_objectuiv((int32_t) (id), (int32_t) (pname), (int32_t) (params));
 }
 
-void skia_gpu_gl_get_shaderiv(uint32_t shader, uint32_t pname, uint32_t params_out) {
-  __wasm_import_skia_gpu_gl_get_shaderiv((int32_t) (shader), (int32_t) (pname), (int32_t) (params_out));
+void skia_gpu_gl_get_queryiv(uint32_t target, uint32_t pname, uint32_t params) {
+  __wasm_import_skia_gpu_gl_get_queryiv((int32_t) (target), (int32_t) (pname), (int32_t) (params));
+}
+
+void skia_gpu_gl_get_renderbuffer_parameteriv(uint32_t target, uint32_t pname, uint32_t params) {
+  __wasm_import_skia_gpu_gl_get_renderbuffer_parameteriv((int32_t) (target), (int32_t) (pname), (int32_t) (params));
+}
+
+void skia_gpu_gl_get_shader_info_log(uint32_t shader, int32_t buf_size, uint32_t length, uint32_t info_log) {
+  __wasm_import_skia_gpu_gl_get_shader_info_log((int32_t) (shader), buf_size, (int32_t) (length), (int32_t) (info_log));
+}
+
+void skia_gpu_gl_get_shader_precision_format(uint32_t shadertype, uint32_t precisiontype, uint32_t range, uint32_t precision) {
+  __wasm_import_skia_gpu_gl_get_shader_precision_format((int32_t) (shadertype), (int32_t) (precisiontype), (int32_t) (range), (int32_t) (precision));
+}
+
+void skia_gpu_gl_get_shaderiv(uint32_t shader, uint32_t pname, uint32_t params) {
+  __wasm_import_skia_gpu_gl_get_shaderiv((int32_t) (shader), (int32_t) (pname), (int32_t) (params));
 }
 
 uint32_t skia_gpu_gl_get_string(uint32_t name) {
@@ -963,14 +1065,32 @@ uint32_t skia_gpu_gl_get_string(uint32_t name) {
   return (uint32_t) (ret);
 }
 
-int32_t skia_gpu_gl_get_uniform_location(uint32_t program, skia_gl_string_t *name) {
-  int32_t ret = __wasm_import_skia_gpu_gl_get_uniform_location((int32_t) (program), (uint8_t *) (*name).ptr, (*name).len);
+uint32_t skia_gpu_gl_get_stringi(uint32_t name, uint32_t index) {
+  int32_t ret = __wasm_import_skia_gpu_gl_get_stringi((int32_t) (name), (int32_t) (index));
+  return (uint32_t) (ret);
+}
+
+int32_t skia_gpu_gl_get_uniform_location(uint32_t program, uint32_t name) {
+  int32_t ret = __wasm_import_skia_gpu_gl_get_uniform_location((int32_t) (program), (int32_t) (name));
   return ret;
 }
 
-bool skia_gpu_gl_is_texture(uint32_t texture) {
+void skia_gpu_gl_invalidate_framebuffer(uint32_t target, int32_t num_attachments, uint32_t attachments) {
+  __wasm_import_skia_gpu_gl_invalidate_framebuffer((int32_t) (target), num_attachments, (int32_t) (attachments));
+}
+
+void skia_gpu_gl_invalidate_sub_framebuffer(uint32_t target, int32_t num_attachments, uint32_t attachments, int32_t x, int32_t y, int32_t width, int32_t height) {
+  __wasm_import_skia_gpu_gl_invalidate_sub_framebuffer((int32_t) (target), num_attachments, (int32_t) (attachments), x, y, width, height);
+}
+
+uint32_t skia_gpu_gl_is_sync(uint32_t sync) {
+  int32_t ret = __wasm_import_skia_gpu_gl_is_sync((int32_t) (sync));
+  return (uint32_t) (ret);
+}
+
+uint32_t skia_gpu_gl_is_texture(uint32_t texture) {
   int32_t ret = __wasm_import_skia_gpu_gl_is_texture((int32_t) (texture));
-  return ret;
+  return (uint32_t) (ret);
 }
 
 void skia_gpu_gl_line_width(float width) {
@@ -981,32 +1101,64 @@ void skia_gpu_gl_link_program(uint32_t program) {
   __wasm_import_skia_gpu_gl_link_program((int32_t) (program));
 }
 
+void skia_gpu_gl_multi_draw_arrays_instanced_base_instance(uint32_t mode, uint32_t firsts, uint32_t counts, uint32_t instance_counts, uint32_t base_instances, int32_t drawcount) {
+  __wasm_import_skia_gpu_gl_multi_draw_arrays_instanced_base_instance((int32_t) (mode), (int32_t) (firsts), (int32_t) (counts), (int32_t) (instance_counts), (int32_t) (base_instances), drawcount);
+}
+
+void skia_gpu_gl_multi_draw_elements_instanced_base_vertex_base_instance(uint32_t mode, uint32_t counts, uint32_t type, uint32_t offsets, uint32_t instance_counts, uint32_t base_vertices, uint32_t base_instances, int32_t drawcount) {
+  __wasm_import_skia_gpu_gl_multi_draw_elements_instanced_base_vertex_base_instance((int32_t) (mode), (int32_t) (counts), (int32_t) (type), (int32_t) (offsets), (int32_t) (instance_counts), (int32_t) (base_vertices), (int32_t) (base_instances), drawcount);
+}
+
 void skia_gpu_gl_pixel_storei(uint32_t pname, int32_t param) {
   __wasm_import_skia_gpu_gl_pixel_storei((int32_t) (pname), param);
 }
 
-void skia_gpu_gl_read_pixels(int32_t x, int32_t y, int32_t width, int32_t height, uint32_t format, uint32_t gl_type, uint32_t pixels) {
-  __wasm_import_skia_gpu_gl_read_pixels(x, y, width, height, (int32_t) (format), (int32_t) (gl_type), (int32_t) (pixels));
+void skia_gpu_gl_query_counter(uint32_t id, uint32_t target) {
+  __wasm_import_skia_gpu_gl_query_counter((int32_t) (id), (int32_t) (target));
 }
 
-void skia_gpu_gl_renderbuffer_storage(uint32_t target, uint32_t internal_format, int32_t width, int32_t height) {
-  __wasm_import_skia_gpu_gl_renderbuffer_storage((int32_t) (target), (int32_t) (internal_format), width, height);
+void skia_gpu_gl_read_buffer(uint32_t src) {
+  __wasm_import_skia_gpu_gl_read_buffer((int32_t) (src));
+}
+
+void skia_gpu_gl_read_pixels(int32_t x, int32_t y, int32_t width, int32_t height, uint32_t format, uint32_t type, uint32_t pixels) {
+  __wasm_import_skia_gpu_gl_read_pixels(x, y, width, height, (int32_t) (format), (int32_t) (type), (int32_t) (pixels));
+}
+
+void skia_gpu_gl_renderbuffer_storage(uint32_t target, uint32_t internalformat, int32_t width, int32_t height) {
+  __wasm_import_skia_gpu_gl_renderbuffer_storage((int32_t) (target), (int32_t) (internalformat), width, height);
+}
+
+void skia_gpu_gl_renderbuffer_storage_multisample(uint32_t target, int32_t samples, uint32_t internalformat, int32_t width, int32_t height) {
+  __wasm_import_skia_gpu_gl_renderbuffer_storage_multisample((int32_t) (target), samples, (int32_t) (internalformat), width, height);
+}
+
+void skia_gpu_gl_sampler_parameterf(uint32_t sampler, uint32_t pname, float param) {
+  __wasm_import_skia_gpu_gl_sampler_parameterf((int32_t) (sampler), (int32_t) (pname), param);
+}
+
+void skia_gpu_gl_sampler_parameteri(uint32_t sampler, uint32_t pname, int32_t param) {
+  __wasm_import_skia_gpu_gl_sampler_parameteri((int32_t) (sampler), (int32_t) (pname), param);
+}
+
+void skia_gpu_gl_sampler_parameteriv(uint32_t sampler, uint32_t pname, uint32_t param) {
+  __wasm_import_skia_gpu_gl_sampler_parameteriv((int32_t) (sampler), (int32_t) (pname), (int32_t) (param));
 }
 
 void skia_gpu_gl_scissor(int32_t x, int32_t y, int32_t width, int32_t height) {
   __wasm_import_skia_gpu_gl_scissor(x, y, width, height);
 }
 
-void skia_gpu_gl_shader_source(uint32_t shader, int32_t count, uint32_t strings, uint32_t lengths) {
-  __wasm_import_skia_gpu_gl_shader_source((int32_t) (shader), count, (int32_t) (strings), (int32_t) (lengths));
+void skia_gpu_gl_shader_source(uint32_t shader, int32_t count, uint32_t string, uint32_t length) {
+  __wasm_import_skia_gpu_gl_shader_source((int32_t) (shader), count, (int32_t) (string), (int32_t) (length));
 }
 
-void skia_gpu_gl_stencil_func(uint32_t gl_func, int32_t ref, uint32_t mask) {
-  __wasm_import_skia_gpu_gl_stencil_func((int32_t) (gl_func), ref, (int32_t) (mask));
+void skia_gpu_gl_stencil_func(uint32_t func, int32_t ref, uint32_t mask) {
+  __wasm_import_skia_gpu_gl_stencil_func((int32_t) (func), ref, (int32_t) (mask));
 }
 
-void skia_gpu_gl_stencil_func_separate(uint32_t face, uint32_t gl_func, int32_t ref, uint32_t mask) {
-  __wasm_import_skia_gpu_gl_stencil_func_separate((int32_t) (face), (int32_t) (gl_func), ref, (int32_t) (mask));
+void skia_gpu_gl_stencil_func_separate(uint32_t face, uint32_t func, int32_t ref, uint32_t mask) {
+  __wasm_import_skia_gpu_gl_stencil_func_separate((int32_t) (face), (int32_t) (func), ref, (int32_t) (mask));
 }
 
 void skia_gpu_gl_stencil_mask(uint32_t mask) {
@@ -1025,8 +1177,8 @@ void skia_gpu_gl_stencil_op_separate(uint32_t face, uint32_t sfail, uint32_t dpf
   __wasm_import_skia_gpu_gl_stencil_op_separate((int32_t) (face), (int32_t) (sfail), (int32_t) (dpfail), (int32_t) (dppass));
 }
 
-void skia_gpu_gl_tex_image2_d(uint32_t target, int32_t level, int32_t internal_format, int32_t width, int32_t height, int32_t border, uint32_t format, uint32_t gl_type, uint32_t pixels) {
-  __wasm_import_skia_gpu_gl_tex_image2_d((int32_t) (target), level, internal_format, width, height, border, (int32_t) (format), (int32_t) (gl_type), (int32_t) (pixels));
+void skia_gpu_gl_tex_image2_d(uint32_t target, int32_t level, int32_t internalformat, int32_t width, int32_t height, int32_t border, uint32_t format, uint32_t type, uint32_t pixels) {
+  __wasm_import_skia_gpu_gl_tex_image2_d((int32_t) (target), level, internalformat, width, height, border, (int32_t) (format), (int32_t) (type), (int32_t) (pixels));
 }
 
 void skia_gpu_gl_tex_parameterf(uint32_t target, uint32_t pname, float param) {
@@ -1045,8 +1197,12 @@ void skia_gpu_gl_tex_parameteriv(uint32_t target, uint32_t pname, uint32_t param
   __wasm_import_skia_gpu_gl_tex_parameteriv((int32_t) (target), (int32_t) (pname), (int32_t) (params));
 }
 
-void skia_gpu_gl_tex_sub_image2_d(uint32_t target, int32_t level, int32_t xoffset, int32_t yoffset, int32_t width, int32_t height, uint32_t format, uint32_t gl_type, uint32_t pixels) {
-  __wasm_import_skia_gpu_gl_tex_sub_image2_d((int32_t) (target), level, xoffset, yoffset, width, height, (int32_t) (format), (int32_t) (gl_type), (int32_t) (pixels));
+void skia_gpu_gl_tex_storage2_d(uint32_t target, int32_t levels, uint32_t internalformat, int32_t width, int32_t height) {
+  __wasm_import_skia_gpu_gl_tex_storage2_d((int32_t) (target), levels, (int32_t) (internalformat), width, height);
+}
+
+void skia_gpu_gl_tex_sub_image2_d(uint32_t target, int32_t level, int32_t xoffset, int32_t yoffset, int32_t width, int32_t height, uint32_t format, uint32_t type, uint32_t pixels) {
+  __wasm_import_skia_gpu_gl_tex_sub_image2_d((int32_t) (target), level, xoffset, yoffset, width, height, (int32_t) (format), (int32_t) (type), (int32_t) (pixels));
 }
 
 void skia_gpu_gl_uniform1f(int32_t location, float v0) {
@@ -1113,16 +1269,16 @@ void skia_gpu_gl_uniform4iv(int32_t location, int32_t count, uint32_t value) {
   __wasm_import_skia_gpu_gl_uniform4iv(location, count, (int32_t) (value));
 }
 
-void skia_gpu_gl_uniform_matrix2fv(int32_t location, int32_t count, bool transpose, uint32_t value) {
-  __wasm_import_skia_gpu_gl_uniform_matrix2fv(location, count, transpose, (int32_t) (value));
+void skia_gpu_gl_uniform_matrix2fv(int32_t location, int32_t count, uint32_t transpose, uint32_t value) {
+  __wasm_import_skia_gpu_gl_uniform_matrix2fv(location, count, (int32_t) (transpose), (int32_t) (value));
 }
 
-void skia_gpu_gl_uniform_matrix3fv(int32_t location, int32_t count, bool transpose, uint32_t value) {
-  __wasm_import_skia_gpu_gl_uniform_matrix3fv(location, count, transpose, (int32_t) (value));
+void skia_gpu_gl_uniform_matrix3fv(int32_t location, int32_t count, uint32_t transpose, uint32_t value) {
+  __wasm_import_skia_gpu_gl_uniform_matrix3fv(location, count, (int32_t) (transpose), (int32_t) (value));
 }
 
-void skia_gpu_gl_uniform_matrix4fv(int32_t location, int32_t count, bool transpose, uint32_t value) {
-  __wasm_import_skia_gpu_gl_uniform_matrix4fv(location, count, transpose, (int32_t) (value));
+void skia_gpu_gl_uniform_matrix4fv(int32_t location, int32_t count, uint32_t transpose, uint32_t value) {
+  __wasm_import_skia_gpu_gl_uniform_matrix4fv(location, count, (int32_t) (transpose), (int32_t) (value));
 }
 
 void skia_gpu_gl_use_program(uint32_t program) {
@@ -1145,180 +1301,24 @@ void skia_gpu_gl_vertex_attrib4fv(uint32_t index, uint32_t v) {
   __wasm_import_skia_gpu_gl_vertex_attrib4fv((int32_t) (index), (int32_t) (v));
 }
 
-void skia_gpu_gl_vertex_attrib_pointer(uint32_t index, int32_t size, uint32_t gl_type, bool normalized, int32_t stride, uint32_t offset) {
-  __wasm_import_skia_gpu_gl_vertex_attrib_pointer((int32_t) (index), size, (int32_t) (gl_type), normalized, stride, (int32_t) (offset));
+void skia_gpu_gl_vertex_attrib_divisor(uint32_t index, uint32_t divisor) {
+  __wasm_import_skia_gpu_gl_vertex_attrib_divisor((int32_t) (index), (int32_t) (divisor));
+}
+
+void skia_gpu_gl_vertex_attrib_i_pointer(uint32_t index, int32_t size, uint32_t type, int32_t stride, uint32_t pointer) {
+  __wasm_import_skia_gpu_gl_vertex_attrib_i_pointer((int32_t) (index), size, (int32_t) (type), stride, (int32_t) (pointer));
+}
+
+void skia_gpu_gl_vertex_attrib_pointer(uint32_t index, int32_t size, uint32_t type, uint32_t normalized, int32_t stride, uint32_t pointer) {
+  __wasm_import_skia_gpu_gl_vertex_attrib_pointer((int32_t) (index), size, (int32_t) (type), (int32_t) (normalized), stride, (int32_t) (pointer));
 }
 
 void skia_gpu_gl_viewport(int32_t x, int32_t y, int32_t width, int32_t height) {
   __wasm_import_skia_gpu_gl_viewport(x, y, width, height);
 }
 
-void skia_gpu_gl_begin_query(uint32_t target, uint32_t id) {
-  __wasm_import_skia_gpu_gl_begin_query((int32_t) (target), (int32_t) (id));
-}
-
-void skia_gpu_gl_bind_sampler(uint32_t unit, uint32_t sampler) {
-  __wasm_import_skia_gpu_gl_bind_sampler((int32_t) (unit), (int32_t) (sampler));
-}
-
-void skia_gpu_gl_bind_vertex_array(uint32_t array) {
-  __wasm_import_skia_gpu_gl_bind_vertex_array((int32_t) (array));
-}
-
-void skia_gpu_gl_blit_framebuffer(int32_t src_x0, int32_t src_y0, int32_t src_x1, int32_t src_y1, int32_t dst_x0, int32_t dst_y0, int32_t dst_x1, int32_t dst_y1, uint32_t mask, uint32_t filter) {
-  __wasm_import_skia_gpu_gl_blit_framebuffer(src_x0, src_y0, src_x1, src_y1, dst_x0, dst_y0, dst_x1, dst_y1, (int32_t) (mask), (int32_t) (filter));
-}
-
-uint32_t skia_gpu_gl_client_wait_sync(uint32_t sync, uint32_t gl_flags, uint64_t timeout) {
-  int32_t ret = __wasm_import_skia_gpu_gl_client_wait_sync((int32_t) (sync), (int32_t) (gl_flags), (int64_t) (timeout));
-  return (uint32_t) (ret);
-}
-
-void skia_gpu_gl_copy_buffer_sub_data(uint32_t read_target, uint32_t write_target, uint32_t read_offset, uint32_t write_offset, uint32_t size) {
-  __wasm_import_skia_gpu_gl_copy_buffer_sub_data((int32_t) (read_target), (int32_t) (write_target), (int32_t) (read_offset), (int32_t) (write_offset), (int32_t) (size));
-}
-
-void skia_gpu_gl_delete_queries(skia_gl_list_u32_t *queries) {
-  __wasm_import_skia_gpu_gl_delete_queries((uint8_t *) (*queries).ptr, (*queries).len);
-}
-
-void skia_gpu_gl_delete_samplers(skia_gl_list_u32_t *samplers) {
-  __wasm_import_skia_gpu_gl_delete_samplers((uint8_t *) (*samplers).ptr, (*samplers).len);
-}
-
-void skia_gpu_gl_delete_sync(uint32_t sync) {
-  __wasm_import_skia_gpu_gl_delete_sync((int32_t) (sync));
-}
-
-void skia_gpu_gl_delete_vertex_arrays(skia_gl_list_u32_t *arrays) {
-  __wasm_import_skia_gpu_gl_delete_vertex_arrays((uint8_t *) (*arrays).ptr, (*arrays).len);
-}
-
-void skia_gpu_gl_draw_arrays_instanced(uint32_t mode, int32_t first, int32_t count, int32_t instance_count) {
-  __wasm_import_skia_gpu_gl_draw_arrays_instanced((int32_t) (mode), first, count, instance_count);
-}
-
-void skia_gpu_gl_draw_arrays_instanced_base_instance(uint32_t mode, int32_t first, int32_t count, int32_t instance_count, uint32_t base_instance) {
-  __wasm_import_skia_gpu_gl_draw_arrays_instanced_base_instance((int32_t) (mode), first, count, instance_count, (int32_t) (base_instance));
-}
-
-void skia_gpu_gl_draw_buffers(int32_t n, uint32_t bufs) {
-  __wasm_import_skia_gpu_gl_draw_buffers(n, (int32_t) (bufs));
-}
-
-void skia_gpu_gl_draw_elements_instanced(uint32_t mode, int32_t count, uint32_t gl_type, uint32_t offset, int32_t instance_count) {
-  __wasm_import_skia_gpu_gl_draw_elements_instanced((int32_t) (mode), count, (int32_t) (gl_type), (int32_t) (offset), instance_count);
-}
-
-void skia_gpu_gl_draw_elements_instanced_base_vertex_base_instance(uint32_t mode, int32_t count, uint32_t gl_type, uint32_t offset, int32_t instance_count, int32_t base_vertex, uint32_t base_instance) {
-  __wasm_import_skia_gpu_gl_draw_elements_instanced_base_vertex_base_instance((int32_t) (mode), count, (int32_t) (gl_type), (int32_t) (offset), instance_count, base_vertex, (int32_t) (base_instance));
-}
-
-void skia_gpu_gl_draw_range_elements(uint32_t mode, uint32_t start, uint32_t end, int32_t count, uint32_t gl_type, uint32_t offset) {
-  __wasm_import_skia_gpu_gl_draw_range_elements((int32_t) (mode), (int32_t) (start), (int32_t) (end), count, (int32_t) (gl_type), (int32_t) (offset));
-}
-
-void skia_gpu_gl_end_query(uint32_t target) {
-  __wasm_import_skia_gpu_gl_end_query((int32_t) (target));
-}
-
-uint32_t skia_gpu_gl_fence_sync(uint32_t condition, uint32_t gl_flags) {
-  int32_t ret = __wasm_import_skia_gpu_gl_fence_sync((int32_t) (condition), (int32_t) (gl_flags));
-  return (uint32_t) (ret);
-}
-
-void skia_gpu_gl_gen_queries(int32_t n, uint32_t ids_out) {
-  __wasm_import_skia_gpu_gl_gen_queries(n, (int32_t) (ids_out));
-}
-
-void skia_gpu_gl_gen_samplers(int32_t n, uint32_t samplers_out) {
-  __wasm_import_skia_gpu_gl_gen_samplers(n, (int32_t) (samplers_out));
-}
-
-void skia_gpu_gl_gen_vertex_arrays(int32_t n, uint32_t arrays_out) {
-  __wasm_import_skia_gpu_gl_gen_vertex_arrays(n, (int32_t) (arrays_out));
-}
-
-void skia_gpu_gl_get_query_objecti64v(uint32_t id, uint32_t pname, uint32_t params_out) {
-  __wasm_import_skia_gpu_gl_get_query_objecti64v((int32_t) (id), (int32_t) (pname), (int32_t) (params_out));
-}
-
-void skia_gpu_gl_get_query_objectui64v(uint32_t id, uint32_t pname, uint32_t params_out) {
-  __wasm_import_skia_gpu_gl_get_query_objectui64v((int32_t) (id), (int32_t) (pname), (int32_t) (params_out));
-}
-
-void skia_gpu_gl_get_query_objectuiv(uint32_t id, uint32_t pname, uint32_t params_out) {
-  __wasm_import_skia_gpu_gl_get_query_objectuiv((int32_t) (id), (int32_t) (pname), (int32_t) (params_out));
-}
-
-void skia_gpu_gl_get_queryiv(uint32_t target, uint32_t pname, uint32_t params_out) {
-  __wasm_import_skia_gpu_gl_get_queryiv((int32_t) (target), (int32_t) (pname), (int32_t) (params_out));
-}
-
-uint32_t skia_gpu_gl_get_stringi(uint32_t name, uint32_t index) {
-  int32_t ret = __wasm_import_skia_gpu_gl_get_stringi((int32_t) (name), (int32_t) (index));
-  return (uint32_t) (ret);
-}
-
-void skia_gpu_gl_invalidate_framebuffer(uint32_t target, int32_t num_attachments, uint32_t attachments) {
-  __wasm_import_skia_gpu_gl_invalidate_framebuffer((int32_t) (target), num_attachments, (int32_t) (attachments));
-}
-
-void skia_gpu_gl_invalidate_sub_framebuffer(uint32_t target, int32_t num_attachments, uint32_t attachments, int32_t x, int32_t y, int32_t width, int32_t height) {
-  __wasm_import_skia_gpu_gl_invalidate_sub_framebuffer((int32_t) (target), num_attachments, (int32_t) (attachments), x, y, width, height);
-}
-
-bool skia_gpu_gl_is_sync(uint32_t sync) {
-  int32_t ret = __wasm_import_skia_gpu_gl_is_sync((int32_t) (sync));
-  return ret;
-}
-
-void skia_gpu_gl_multi_draw_arrays_instanced_base_instance(uint32_t mode, uint32_t firsts, uint32_t counts, uint32_t instance_counts, uint32_t base_instances, int32_t drawcount) {
-  __wasm_import_skia_gpu_gl_multi_draw_arrays_instanced_base_instance((int32_t) (mode), (int32_t) (firsts), (int32_t) (counts), (int32_t) (instance_counts), (int32_t) (base_instances), drawcount);
-}
-
-void skia_gpu_gl_multi_draw_elements_instanced_base_vertex_base_instance(uint32_t mode, uint32_t counts, uint32_t gl_type, uint32_t offsets, uint32_t instance_counts, uint32_t base_vertices, uint32_t base_instances, int32_t drawcount) {
-  __wasm_import_skia_gpu_gl_multi_draw_elements_instanced_base_vertex_base_instance((int32_t) (mode), (int32_t) (counts), (int32_t) (gl_type), (int32_t) (offsets), (int32_t) (instance_counts), (int32_t) (base_vertices), (int32_t) (base_instances), drawcount);
-}
-
-void skia_gpu_gl_query_counter(uint32_t id, uint32_t target) {
-  __wasm_import_skia_gpu_gl_query_counter((int32_t) (id), (int32_t) (target));
-}
-
-void skia_gpu_gl_read_buffer(uint32_t src) {
-  __wasm_import_skia_gpu_gl_read_buffer((int32_t) (src));
-}
-
-void skia_gpu_gl_renderbuffer_storage_multisample(uint32_t target, int32_t samples, uint32_t internal_format, int32_t width, int32_t height) {
-  __wasm_import_skia_gpu_gl_renderbuffer_storage_multisample((int32_t) (target), samples, (int32_t) (internal_format), width, height);
-}
-
-void skia_gpu_gl_sampler_parameterf(uint32_t sampler, uint32_t pname, float param) {
-  __wasm_import_skia_gpu_gl_sampler_parameterf((int32_t) (sampler), (int32_t) (pname), param);
-}
-
-void skia_gpu_gl_sampler_parameteri(uint32_t sampler, uint32_t pname, int32_t param) {
-  __wasm_import_skia_gpu_gl_sampler_parameteri((int32_t) (sampler), (int32_t) (pname), param);
-}
-
-void skia_gpu_gl_sampler_parameteriv(uint32_t sampler, uint32_t pname, uint32_t params) {
-  __wasm_import_skia_gpu_gl_sampler_parameteriv((int32_t) (sampler), (int32_t) (pname), (int32_t) (params));
-}
-
-void skia_gpu_gl_tex_storage2_d(uint32_t target, int32_t levels, uint32_t internal_format, int32_t width, int32_t height) {
-  __wasm_import_skia_gpu_gl_tex_storage2_d((int32_t) (target), levels, (int32_t) (internal_format), width, height);
-}
-
-void skia_gpu_gl_vertex_attrib_divisor(uint32_t index, uint32_t divisor) {
-  __wasm_import_skia_gpu_gl_vertex_attrib_divisor((int32_t) (index), (int32_t) (divisor));
-}
-
-void skia_gpu_gl_vertex_attrib_i_pointer(uint32_t index, int32_t size, uint32_t gl_type, int32_t stride, uint32_t offset) {
-  __wasm_import_skia_gpu_gl_vertex_attrib_i_pointer((int32_t) (index), size, (int32_t) (gl_type), stride, (int32_t) (offset));
-}
-
-void skia_gpu_gl_wait_sync(uint32_t sync, uint32_t gl_flags, uint64_t timeout) {
-  __wasm_import_skia_gpu_gl_wait_sync((int32_t) (sync), (int32_t) (gl_flags), (int64_t) (timeout));
+void skia_gpu_gl_wait_sync(uint32_t sync, uint32_t flags, uint64_t timeout) {
+  __wasm_import_skia_gpu_gl_wait_sync((int32_t) (sync), (int32_t) (flags), (int64_t) (timeout));
 }
 
 skia_gl_own_path_t skia_gl_constructor_path(void) {

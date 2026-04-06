@@ -65,8 +65,17 @@ var typefaces = HandleTable.Table(c.sk_typeface_t){};
 
 // ── Context & Surface lifecycle ──
 
-export fn exports_skia_gl_init(_: *c.skia_gl_list_u8_t) void {
-    g_ctx = c.sk_context_create_gl();
+export fn exports_skia_gl_init(config: *c.skia_gl_list_u8_t) void {
+    // Config data layout: [arg1: u32, arg2: u32] (8 bytes LE)
+    // GL: args unused. Dawn: arg1=device_handle, arg2=queue_handle.
+    var arg1: u32 = 0;
+    var arg2: u32 = 0;
+    if (config.len >= 8) {
+        const d: [*]const u8 = config.ptr;
+        arg1 = @as(u32, d[0]) | (@as(u32, d[1]) << 8) | (@as(u32, d[2]) << 16) | (@as(u32, d[3]) << 24);
+        arg2 = @as(u32, d[4]) | (@as(u32, d[5]) << 8) | (@as(u32, d[6]) << 16) | (@as(u32, d[7]) << 24);
+    }
+    g_ctx = c.sk_context_create(arg1, arg2);
 }
 
 export fn skia_debug_init_error() i32 {
@@ -93,7 +102,7 @@ export fn exports_skia_gl_begin_drawing(fbo_id: u32, width: i32, height: i32, re
     if (g_ctx == null) return false;
     if (g_surface != null) c.sk_surface_destroy(g_surface);
 
-    g_surface = c.sk_surface_create_from_fbo(g_ctx, fbo_id, width, height);
+    g_surface = c.sk_surface_create_for_target(g_ctx, fbo_id, width, height);
     if (g_surface == null) return false;
 
     g_canvas = c.sk_surface_get_canvas(g_surface);
@@ -553,7 +562,8 @@ export fn skia_canvas_clear(r: f32, g: f32, b: f32, a: f32) void { if (g_canvas 
 
 // ── Context init/destroy (direct exports matching WIT but simpler signatures) ──
 
-export fn skia_init() void { g_ctx = c.sk_context_create_gl(); }
+export fn skia_init() void { g_ctx = c.sk_context_create(0, 0); }
+export fn skia_init_with_handles(arg1: u32, arg2: u32) void { g_ctx = c.sk_context_create(arg1, arg2); }
 export fn skia_init_mock() void {
     g_ctx = c.sk_context_create_mock();
     g_mock = true;
@@ -564,7 +574,7 @@ export fn skia_destroy() void { exports_skia_gl_destroy(); }
 export fn skia_begin_drawing(fbo_id: u32, width: i32, height: i32) i32 {
     if (g_ctx == null) return 0;
     if (g_surface != null) c.sk_surface_destroy(g_surface);
-    g_surface = if (g_mock) c.sk_surface_create_raster(width, height) else c.sk_surface_create_from_fbo(g_ctx, fbo_id, width, height);
+    g_surface = if (g_mock) c.sk_surface_create_raster(width, height) else c.sk_surface_create_for_target(g_ctx, fbo_id, width, height);
     if (g_surface == null) return 0;
     g_canvas = c.sk_surface_get_canvas(g_surface);
     if (g_canvas == null) return 0;
@@ -572,7 +582,7 @@ export fn skia_begin_drawing(fbo_id: u32, width: i32, height: i32) i32 {
 }
 export fn skia_end_drawing() void { if (g_surface != null) c.sk_surface_flush(g_surface); }
 export fn skia_flush() void { if (g_ctx != null) c.sk_context_flush(g_ctx); }
-export fn skia_reset_gl_state() void { if (g_ctx != null) c.sk_context_reset_gl_state(g_ctx); }
+export fn skia_reset_state() void { if (g_ctx != null) c.sk_context_reset_state(g_ctx); }
 
 // ════════════════════════════════════════════════════════
 // Canvas: layers, skew, image, text blob, picture, atlas

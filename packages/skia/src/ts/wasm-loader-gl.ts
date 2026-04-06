@@ -9,6 +9,8 @@
  * @internal
  */
 
+import { createEnvImports, createWasiImports } from './wasm-loader-shared'
+
 // ── GL object handle tables ──
 // WebGL uses JS objects, WASM uses integer handles.
 // We maintain bidirectional mappings.
@@ -535,41 +537,6 @@ function createGLImports(state: GLState): Record<string, WebAssembly.ImportValue
   }
 }
 
-// ── Env imports (Skia runtime) ──
-
-function createEnvImports(): Record<string, WebAssembly.ImportValue> {
-  return {
-    // Skia logging — no-op in WASM
-    _Z11SkLogVAList13SkLogPriorityPKcPv() {},
-    // Flattenable init — no-op (we don't serialize/deserialize)
-    _ZN13SkFlattenable18PrivateInitializer11InitEffectsEv() {},
-    _ZN13SkFlattenable18PrivateInitializer16InitImageFiltersEv() {},
-    // POSIX semaphores — no-op (single-threaded WASM)
-    sem_init() { return 0 },
-    sem_destroy() { return 0 },
-    sem_post() { return 0 },
-    sem_wait() { return 0 },
-  }
-}
-
-// ── WASI stubs ──
-
-function createWasiImports(): Record<string, WebAssembly.ImportValue> {
-  return {
-    args_get() { return 0 },
-    args_sizes_get(_argc_ptr: number, _argv_buf_size_ptr: number) { return 0 },
-    clock_time_get(_id: number, _precision: bigint, _time_ptr: number) { return 0 },
-    environ_get() { return 0 },
-    environ_sizes_get(_count_ptr: number, _buf_size_ptr: number) { return 0 },
-    fd_close() { return 0 },
-    fd_prestat_get() { return 8 }, // EBADF
-    fd_prestat_dir_name() { return 8 },
-    fd_seek() { return 0 },
-    fd_write(_fd: number, _iovs: number, _iovs_len: number, _nwritten: number) { return 0 },
-    proc_exit() {},
-  }
-}
-
 // ── Public API ──
 
 export interface SkiaWasmInstance {
@@ -588,7 +555,8 @@ export interface SkiaWasmInstance {
 
 export async function loadSkiaGL(
   wasmUrl: string | URL,
-  gl: WebGL2RenderingContext
+  gl: WebGL2RenderingContext,
+  preloadedResponse?: Promise<Response>,
 ): Promise<SkiaWasmInstance> {
   const state = createGLState(gl)
 
@@ -598,7 +566,7 @@ export async function loadSkiaGL(
     wasi_snapshot_preview1: createWasiImports(),
   }
 
-  const response = await fetch(wasmUrl)
+  const response = preloadedResponse ? await preloadedResponse : await fetch(wasmUrl)
   const { instance } = await WebAssembly.instantiateStreaming(response, importObject)
 
   // Wire up memory reference so GL imports can read/write WASM memory

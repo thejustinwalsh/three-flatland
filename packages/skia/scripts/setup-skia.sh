@@ -151,11 +151,10 @@ sync_skia_deps() {
 }
 
 # ── Step 3: Run GN to generate build configuration ──
-run_gn() {
-  info "Running GN to generate build files..."
 
-  # Ensure stub emscripten tools exist (GN needs them for WASM toolchain
-  # detection, but we compile with Zig, not Emscripten)
+# Ensure stub emscripten tools exist (GN needs them for WASM toolchain
+# detection, but we compile with Zig, not Emscripten)
+ensure_emscripten_stubs() {
   local emsdk_bin="$SKIA_DIR/third_party/externals/emsdk/upstream/emscripten"
   mkdir -p "$emsdk_bin/cache/sysroot/include"
   for tool in emcc em++ emar; do
@@ -164,15 +163,13 @@ run_gn() {
       chmod +x "$emsdk_bin/$tool"
     fi
   done
+}
 
-  (cd "$SKIA_DIR" && "$GN_BIN" gen out/wasm --args='
+# Shared GN args for both variants
+GN_SHARED_ARGS='
     is_official_build=true
     is_debug=false
     target_cpu="wasm"
-    skia_enable_ganesh=true
-    skia_use_gl=true
-    skia_use_webgl=true
-    skia_gl_standard="webgl"
     skia_use_freetype=true
     skia_use_system_freetype=false
     skia_use_harfbuzz=true
@@ -191,29 +188,64 @@ run_gn() {
     skia_use_libwebp=false
     skia_use_libavif=false
     skia_use_zlib=false
-  ')
+'
 
-  ok "GN build files generated at out/wasm/"
+run_gn() {
+  info "Running GN to generate build files..."
+
+  ensure_emscripten_stubs
+
+  # ── Variant 1: WebGL (Ganesh) ──
+  (cd "$SKIA_DIR" && "$GN_BIN" gen out/wasm --args="
+    $GN_SHARED_ARGS
+    skia_enable_ganesh=true
+    skia_enable_graphite=false
+    skia_use_gl=true
+    skia_use_webgl=true
+    skia_gl_standard=\"webgl\"
+    skia_use_dawn=false
+  ")
+  ok "GN build files generated at out/wasm/ (GL variant)"
+
+  # ── Variant 2: WebGPU (Graphite + Dawn) ──
+  (cd "$SKIA_DIR" && "$GN_BIN" gen out/wasm-webgpu --args="
+    $GN_SHARED_ARGS
+    skia_enable_ganesh=false
+    skia_enable_graphite=true
+    skia_use_gl=false
+    skia_use_webgl=false
+    skia_use_dawn=true
+    skia_use_webgpu=true
+  ")
+  ok "GN build files generated at out/wasm-webgpu/ (WebGPU variant)"
 }
 
 # ── Step 4: Export compile_commands.json ──
 export_compile_commands() {
-  info "Exporting compilation database..."
+  info "Exporting compilation databases..."
 
+  # GL variant
   (cd "$SKIA_DIR" && "$NINJA_BIN" -C out/wasm -t compdb > compile_commands.json)
+  local count_gl
+  count_gl=$(python3 -c "import json; print(len(json.load(open('$SKIA_DIR/compile_commands.json'))))")
+  ok "compile_commands.json exported ($count_gl entries, GL variant)"
 
-  local count
-  count=$(python3 -c "import json; print(len(json.load(open('$SKIA_DIR/compile_commands.json'))))")
-  ok "compile_commands.json exported ($count compilation entries)"
+  # WebGPU variant
+  (cd "$SKIA_DIR" && "$NINJA_BIN" -C out/wasm-webgpu -t compdb > compile_commands_webgpu.json)
+  local count_wgpu
+  count_wgpu=$(python3 -c "import json; print(len(json.load(open('$SKIA_DIR/compile_commands_webgpu.json'))))")
+  ok "compile_commands_webgpu.json exported ($count_wgpu entries, WebGPU variant)"
 }
 
 # ── Step 5: Generate skia_sources.zig ──
 generate_sources_zig() {
-  info "Generating skia_sources.zig from compile_commands.json..."
+  info "Generating skia_sources.zig from both compile_commands..."
 
-  python3 "$PKG_ROOT/scripts/parse_compile_commands.py" "$SKIA_DIR/compile_commands.json"
+  python3 "$PKG_ROOT/scripts/parse_compile_commands.py" \
+    --gl "$SKIA_DIR/compile_commands.json" \
+    --wgpu "$SKIA_DIR/compile_commands_webgpu.json"
 
-  ok "skia_sources.zig generated"
+  ok "skia_sources.zig generated (shared + GL + WebGPU)"
 }
 
 # ── Run ──
@@ -227,6 +259,12 @@ fi
 # Apply patches (always — idempotent)
 info "Applying Skia patches..."
 "$SCRIPT_DIR/patch-skia.sh"
+
+# Generate WebGPU shim headers and WIT from Dawn's code generator
+info "Generating WebGPU shim headers..."
+python3 "$SCRIPT_DIR/generate-wgpu-shim.py"
+info "Generating WebGPU WIT interface..."
+python3 "$SCRIPT_DIR/generate-wgpu-wit.py"
 
 if [ "$DEPS_ONLY" = true ]; then
   echo ""

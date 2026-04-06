@@ -30,19 +30,22 @@ typedef void* sk_text_blob_t;
 typedef void* sk_picture_recorder_t;
 typedef void* sk_picture_t;
 
-// ── Context (GrDirectContext) ──
+// ── Context ──
+// Unified API — same signatures for both GL and Dawn variants.
+// Each variant's .cpp provides the implementation.
 
-sk_context_t sk_context_create_gl(void);
+sk_context_t sk_context_create(uint32_t arg1, uint32_t arg2);
 sk_context_t sk_context_create_mock(void);
-int sk_context_get_init_error(void);  // 0=ok, 1=MakeWebGL failed, 2=MakeGL failed
+int sk_context_get_init_error(void);
 int sk_font_debug(void);
 void sk_context_destroy(sk_context_t ctx);
 void sk_context_flush(sk_context_t ctx);
-void sk_context_reset_gl_state(sk_context_t ctx);
+void sk_context_reset_state(sk_context_t ctx);
 
 // ── Surface ──
 
-sk_surface_t sk_surface_create_from_fbo(sk_context_t ctx, uint32_t fbo_id, int32_t width, int32_t height);
+// target_handle = FBO ID (GL) or texture handle (wgpu)
+sk_surface_t sk_surface_create_for_target(sk_context_t ctx, uint32_t target_handle, int32_t width, int32_t height);
 sk_surface_t sk_surface_create_raster(int32_t width, int32_t height);
 void sk_surface_destroy(sk_surface_t surface);
 sk_canvas_t sk_surface_get_canvas(sk_surface_t surface);

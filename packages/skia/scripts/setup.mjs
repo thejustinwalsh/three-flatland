@@ -12,7 +12,8 @@
  *   node scripts/setup.mjs --check      # Check prerequisites only
  *   node scripts/setup.mjs --tools      # Install/update tools only
  *   node scripts/setup.mjs --build      # Build only (skip setup)
- *   node scripts/setup.mjs --gl-only    # Build GL variant only (default, webgpu not yet implemented)
+ *   node scripts/setup.mjs --gl-only    # Build GL variant only
+ *   node scripts/setup.mjs --wgpu-only  # Build WebGPU variant only
  */
 
 import { execSync, execFileSync } from "node:child_process";
@@ -429,19 +430,22 @@ function setupSkia(config) {
 
 // ── Build ──
 
-function buildWasm(glOnly = true) {
+function buildWasm(glOnly = false, wgpuOnly = false) {
   heading("WASM Build");
 
-  const flags = glOnly ? "--gl-only" : "";
-  info(`Building Skia WASM${glOnly ? " (GL only)" : ""}...`);
+  const flags = glOnly ? "--gl-only" : wgpuOnly ? "--wgpu-only" : "";
+  const label = glOnly ? " (GL only)" : wgpuOnly ? " (WebGPU only)" : " (GL + WebGPU)";
+  info(`Building Skia WASM${label}...`);
   console.log("");
   run(`node scripts/build-wasm.mjs ${flags}`, { cwd: PKG_ROOT });
 
   // Report output
-  const wasmPath = resolve(PKG_ROOT, "dist/skia-gl/skia-gl.wasm");
-  if (existsSync(wasmPath)) {
-    const size = (readFileSync(wasmPath).byteLength / 1024).toFixed(0);
-    ok(`dist/skia-gl/skia-gl.wasm (${size} KB)`);
+  for (const variant of glOnly ? ["gl"] : wgpuOnly ? ["wgpu"] : ["gl", "wgpu"]) {
+    const wasmPath = resolve(PKG_ROOT, `dist/skia-${variant}/skia-${variant}.wasm`);
+    if (existsSync(wasmPath)) {
+      const size = (readFileSync(wasmPath).byteLength / 1024).toFixed(0);
+      ok(`dist/skia-${variant}/skia-${variant}.wasm (${size} KB)`);
+    }
   }
 
   return true;
@@ -457,7 +461,8 @@ async function main() {
   const checkOnly = args.includes("--check");
   const toolsOnly = args.includes("--tools");
   const buildOnly = args.includes("--build");
-  const glOnly = !args.includes("--all"); // default to GL-only
+  const glOnly = args.includes("--gl-only");
+  const wgpuOnly = args.includes("--wgpu-only");
 
   console.log("");
   console.log(
@@ -507,7 +512,7 @@ async function main() {
   }
 
   // 4. Build
-  buildWasm(glOnly);
+  buildWasm(glOnly, wgpuOnly);
 
   // Done
   heading("Done");

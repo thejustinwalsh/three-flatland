@@ -14,11 +14,6 @@ typedef struct skia_gl_string_t {
   size_t len;
 } skia_gl_string_t;
 
-typedef struct {
-  uint32_t *ptr;
-  size_t len;
-} skia_gl_list_u32_t;
-
 typedef struct skia_gl_own_path_t {
   int32_t __handle;
 } skia_gl_own_path_t;
@@ -66,6 +61,11 @@ typedef struct {
 } skia_gl_list_f32_t;
 
 typedef struct {
+  uint32_t *ptr;
+  size_t len;
+} skia_gl_list_u32_t;
+
+typedef struct {
   uint8_t *ptr;
   size_t len;
 } skia_gl_list_u8_t;
@@ -86,87 +86,124 @@ typedef struct {
 } skia_gl_option_own_path_t;
 
 // Imported Functions from `skia:gpu/gl`
-// ── Required (107 functions, always used) ──
 extern void skia_gpu_gl_active_texture(uint32_t texture);
 extern void skia_gpu_gl_attach_shader(uint32_t program, uint32_t shader);
-extern void skia_gpu_gl_bind_attrib_location(uint32_t program, uint32_t index, skia_gl_string_t *name);
+extern void skia_gpu_gl_begin_query(uint32_t target, uint32_t id);
+extern void skia_gpu_gl_bind_attrib_location(uint32_t program, uint32_t index, uint32_t name);
 extern void skia_gpu_gl_bind_buffer(uint32_t target, uint32_t buffer);
 extern void skia_gpu_gl_bind_framebuffer(uint32_t target, uint32_t framebuffer);
 extern void skia_gpu_gl_bind_renderbuffer(uint32_t target, uint32_t renderbuffer);
+extern void skia_gpu_gl_bind_sampler(uint32_t unit, uint32_t sampler);
 extern void skia_gpu_gl_bind_texture(uint32_t target, uint32_t texture);
+extern void skia_gpu_gl_bind_vertex_array(uint32_t array);
 extern void skia_gpu_gl_blend_color(float red, float green, float blue, float alpha);
 extern void skia_gpu_gl_blend_equation(uint32_t mode);
 extern void skia_gpu_gl_blend_func(uint32_t sfactor, uint32_t dfactor);
+extern void skia_gpu_gl_blit_framebuffer(int32_t src_x0, int32_t src_y0, int32_t src_x1, int32_t src_y1, int32_t dst_x0, int32_t dst_y0, int32_t dst_x1, int32_t dst_y1, uint32_t mask, uint32_t filter);
 extern void skia_gpu_gl_buffer_data(uint32_t target, uint32_t size, uint32_t data, uint32_t usage);
 extern void skia_gpu_gl_buffer_sub_data(uint32_t target, uint32_t offset, uint32_t size, uint32_t data);
 extern uint32_t skia_gpu_gl_check_framebuffer_status(uint32_t target);
 extern void skia_gpu_gl_clear(uint32_t mask);
 extern void skia_gpu_gl_clear_color(float red, float green, float blue, float alpha);
 extern void skia_gpu_gl_clear_stencil(int32_t s);
-extern void skia_gpu_gl_color_mask(bool red, bool green, bool blue, bool alpha);
+extern uint32_t skia_gpu_gl_client_wait_sync(uint32_t sync, uint32_t flags, uint64_t timeout);
+extern void skia_gpu_gl_color_mask(uint32_t red, uint32_t green, uint32_t blue, uint32_t alpha);
 extern void skia_gpu_gl_compile_shader(uint32_t shader);
-extern void skia_gpu_gl_compressed_tex_image2_d(uint32_t target, int32_t level, uint32_t internal_format, int32_t width, int32_t height, int32_t border, int32_t image_size, uint32_t data);
+extern void skia_gpu_gl_compressed_tex_image2_d(uint32_t target, int32_t level, uint32_t internalformat, int32_t width, int32_t height, int32_t border, int32_t image_size, uint32_t data);
 extern void skia_gpu_gl_compressed_tex_sub_image2_d(uint32_t target, int32_t level, int32_t xoffset, int32_t yoffset, int32_t width, int32_t height, uint32_t format, int32_t image_size, uint32_t data);
+extern void skia_gpu_gl_copy_buffer_sub_data(uint32_t read_target, uint32_t write_target, uint32_t read_offset, uint32_t write_offset, uint32_t size);
 extern void skia_gpu_gl_copy_tex_sub_image2_d(uint32_t target, int32_t level, int32_t xoffset, int32_t yoffset, int32_t x, int32_t y, int32_t width, int32_t height);
 extern uint32_t skia_gpu_gl_create_program(void);
-extern uint32_t skia_gpu_gl_create_shader(uint32_t gl_type);
+extern uint32_t skia_gpu_gl_create_shader(uint32_t type);
 extern void skia_gpu_gl_cull_face(uint32_t mode);
-extern void skia_gpu_gl_delete_buffers(skia_gl_list_u32_t *buffers);
-extern void skia_gpu_gl_delete_framebuffers(skia_gl_list_u32_t *framebuffers);
+extern void skia_gpu_gl_delete_buffers(int32_t n, uint32_t buffers);
+extern void skia_gpu_gl_delete_framebuffers(int32_t n, uint32_t framebuffers);
 extern void skia_gpu_gl_delete_program(uint32_t program);
-extern void skia_gpu_gl_delete_renderbuffers(skia_gl_list_u32_t *renderbuffers);
+extern void skia_gpu_gl_delete_queries(int32_t n, uint32_t ids);
+extern void skia_gpu_gl_delete_renderbuffers(int32_t n, uint32_t renderbuffers);
+extern void skia_gpu_gl_delete_samplers(int32_t n, uint32_t samplers);
 extern void skia_gpu_gl_delete_shader(uint32_t shader);
-extern void skia_gpu_gl_delete_textures(skia_gl_list_u32_t *textures);
-extern void skia_gpu_gl_depth_mask(bool flag);
+extern void skia_gpu_gl_delete_sync(uint32_t sync);
+extern void skia_gpu_gl_delete_textures(int32_t n, uint32_t textures);
+extern void skia_gpu_gl_delete_vertex_arrays(int32_t n, uint32_t arrays);
+extern void skia_gpu_gl_depth_mask(uint32_t flag);
 extern void skia_gpu_gl_disable(uint32_t cap);
 extern void skia_gpu_gl_disable_vertex_attrib_array(uint32_t index);
 extern void skia_gpu_gl_draw_arrays(uint32_t mode, int32_t first, int32_t count);
-extern void skia_gpu_gl_draw_elements(uint32_t mode, int32_t count, uint32_t gl_type, uint32_t offset);
+extern void skia_gpu_gl_draw_arrays_instanced(uint32_t mode, int32_t first, int32_t count, int32_t instancecount);
+extern void skia_gpu_gl_draw_arrays_instanced_base_instance(uint32_t mode, int32_t first, int32_t count, int32_t instancecount, uint32_t baseinstance);
+extern void skia_gpu_gl_draw_buffers(int32_t n, uint32_t bufs);
+extern void skia_gpu_gl_draw_elements(uint32_t mode, int32_t count, uint32_t type, uint32_t indices);
+extern void skia_gpu_gl_draw_elements_instanced(uint32_t mode, int32_t count, uint32_t type, uint32_t indices, int32_t instancecount);
+extern void skia_gpu_gl_draw_elements_instanced_base_vertex_base_instance(uint32_t mode, int32_t count, uint32_t type, uint32_t indices, int32_t instancecount, int32_t basevertex, uint32_t baseinstance);
+extern void skia_gpu_gl_draw_range_elements(uint32_t mode, uint32_t start, uint32_t end, int32_t count, uint32_t type, uint32_t indices);
 extern void skia_gpu_gl_enable(uint32_t cap);
 extern void skia_gpu_gl_enable_vertex_attrib_array(uint32_t index);
+extern void skia_gpu_gl_end_query(uint32_t target);
+extern uint32_t skia_gpu_gl_fence_sync(uint32_t condition, uint32_t flags);
 extern void skia_gpu_gl_finish(void);
 extern void skia_gpu_gl_flush(void);
-extern void skia_gpu_gl_framebuffer_renderbuffer(uint32_t target, uint32_t attachment, uint32_t renderbuffer_target, uint32_t renderbuffer);
-extern void skia_gpu_gl_framebuffer_texture2_d(uint32_t target, uint32_t attachment, uint32_t tex_target, uint32_t texture, int32_t level);
+extern void skia_gpu_gl_framebuffer_renderbuffer(uint32_t target, uint32_t attachment, uint32_t renderbuffertarget, uint32_t renderbuffer);
+extern void skia_gpu_gl_framebuffer_texture2_d(uint32_t target, uint32_t attachment, uint32_t textarget, uint32_t texture, int32_t level);
 extern void skia_gpu_gl_front_face(uint32_t mode);
-extern void skia_gpu_gl_gen_buffers(int32_t n, uint32_t buffers_out);
-extern void skia_gpu_gl_gen_framebuffers(int32_t n, uint32_t framebuffers_out);
-extern void skia_gpu_gl_gen_renderbuffers(int32_t n, uint32_t renderbuffers_out);
-extern void skia_gpu_gl_gen_textures(int32_t n, uint32_t textures_out);
+extern void skia_gpu_gl_gen_buffers(int32_t n, uint32_t buffers);
+extern void skia_gpu_gl_gen_framebuffers(int32_t n, uint32_t framebuffers);
+extern void skia_gpu_gl_gen_queries(int32_t n, uint32_t ids);
+extern void skia_gpu_gl_gen_renderbuffers(int32_t n, uint32_t renderbuffers);
+extern void skia_gpu_gl_gen_samplers(int32_t n, uint32_t samplers);
+extern void skia_gpu_gl_gen_textures(int32_t n, uint32_t textures);
+extern void skia_gpu_gl_gen_vertex_arrays(int32_t n, uint32_t arrays);
 extern void skia_gpu_gl_generate_mipmap(uint32_t target);
-extern void skia_gpu_gl_get_buffer_parameteriv(uint32_t target, uint32_t pname, uint32_t params_out);
+extern void skia_gpu_gl_get_buffer_parameteriv(uint32_t target, uint32_t pname, uint32_t params);
 extern uint32_t skia_gpu_gl_get_error(void);
-extern void skia_gpu_gl_get_floatv(uint32_t pname, uint32_t data_out);
-extern void skia_gpu_gl_get_framebuffer_attachment_parameteriv(uint32_t target, uint32_t attachment, uint32_t pname, uint32_t params_out);
-extern void skia_gpu_gl_get_integerv(uint32_t pname, uint32_t data_out);
-extern void skia_gpu_gl_get_program_info_log(uint32_t program, int32_t buf_size, uint32_t length_out, uint32_t info_log_out);
-extern void skia_gpu_gl_get_programiv(uint32_t program, uint32_t pname, uint32_t params_out);
-extern void skia_gpu_gl_get_renderbuffer_parameteriv(uint32_t target, uint32_t pname, uint32_t params_out);
-extern void skia_gpu_gl_get_shader_info_log(uint32_t shader, int32_t buf_size, uint32_t length_out, uint32_t info_log_out);
-extern void skia_gpu_gl_get_shader_precision_format(uint32_t shader_type, uint32_t precision_type, uint32_t range_out, uint32_t precision_out);
-extern void skia_gpu_gl_get_shaderiv(uint32_t shader, uint32_t pname, uint32_t params_out);
+extern void skia_gpu_gl_get_floatv(uint32_t pname, uint32_t data);
+extern void skia_gpu_gl_get_framebuffer_attachment_parameteriv(uint32_t target, uint32_t attachment, uint32_t pname, uint32_t params);
+extern void skia_gpu_gl_get_integerv(uint32_t pname, uint32_t data);
+extern void skia_gpu_gl_get_program_info_log(uint32_t program, int32_t buf_size, uint32_t length, uint32_t info_log);
+extern void skia_gpu_gl_get_programiv(uint32_t program, uint32_t pname, uint32_t params);
+extern void skia_gpu_gl_get_query_objecti64v(uint32_t id, uint32_t pname, uint32_t params);
+extern void skia_gpu_gl_get_query_objectui64v(uint32_t id, uint32_t pname, uint32_t params);
+extern void skia_gpu_gl_get_query_objectuiv(uint32_t id, uint32_t pname, uint32_t params);
+extern void skia_gpu_gl_get_queryiv(uint32_t target, uint32_t pname, uint32_t params);
+extern void skia_gpu_gl_get_renderbuffer_parameteriv(uint32_t target, uint32_t pname, uint32_t params);
+extern void skia_gpu_gl_get_shader_info_log(uint32_t shader, int32_t buf_size, uint32_t length, uint32_t info_log);
+extern void skia_gpu_gl_get_shader_precision_format(uint32_t shadertype, uint32_t precisiontype, uint32_t range, uint32_t precision);
+extern void skia_gpu_gl_get_shaderiv(uint32_t shader, uint32_t pname, uint32_t params);
 extern uint32_t skia_gpu_gl_get_string(uint32_t name);
-extern int32_t skia_gpu_gl_get_uniform_location(uint32_t program, skia_gl_string_t *name);
-extern bool skia_gpu_gl_is_texture(uint32_t texture);
+extern uint32_t skia_gpu_gl_get_stringi(uint32_t name, uint32_t index);
+extern int32_t skia_gpu_gl_get_uniform_location(uint32_t program, uint32_t name);
+extern void skia_gpu_gl_invalidate_framebuffer(uint32_t target, int32_t num_attachments, uint32_t attachments);
+extern void skia_gpu_gl_invalidate_sub_framebuffer(uint32_t target, int32_t num_attachments, uint32_t attachments, int32_t x, int32_t y, int32_t width, int32_t height);
+extern uint32_t skia_gpu_gl_is_sync(uint32_t sync);
+extern uint32_t skia_gpu_gl_is_texture(uint32_t texture);
 extern void skia_gpu_gl_line_width(float width);
 extern void skia_gpu_gl_link_program(uint32_t program);
+extern void skia_gpu_gl_multi_draw_arrays_instanced_base_instance(uint32_t mode, uint32_t firsts, uint32_t counts, uint32_t instance_counts, uint32_t base_instances, int32_t drawcount);
+extern void skia_gpu_gl_multi_draw_elements_instanced_base_vertex_base_instance(uint32_t mode, uint32_t counts, uint32_t type, uint32_t offsets, uint32_t instance_counts, uint32_t base_vertices, uint32_t base_instances, int32_t drawcount);
 extern void skia_gpu_gl_pixel_storei(uint32_t pname, int32_t param);
-extern void skia_gpu_gl_read_pixels(int32_t x, int32_t y, int32_t width, int32_t height, uint32_t format, uint32_t gl_type, uint32_t pixels);
-extern void skia_gpu_gl_renderbuffer_storage(uint32_t target, uint32_t internal_format, int32_t width, int32_t height);
+extern void skia_gpu_gl_query_counter(uint32_t id, uint32_t target);
+extern void skia_gpu_gl_read_buffer(uint32_t src);
+extern void skia_gpu_gl_read_pixels(int32_t x, int32_t y, int32_t width, int32_t height, uint32_t format, uint32_t type, uint32_t pixels);
+extern void skia_gpu_gl_renderbuffer_storage(uint32_t target, uint32_t internalformat, int32_t width, int32_t height);
+extern void skia_gpu_gl_renderbuffer_storage_multisample(uint32_t target, int32_t samples, uint32_t internalformat, int32_t width, int32_t height);
+extern void skia_gpu_gl_sampler_parameterf(uint32_t sampler, uint32_t pname, float param);
+extern void skia_gpu_gl_sampler_parameteri(uint32_t sampler, uint32_t pname, int32_t param);
+extern void skia_gpu_gl_sampler_parameteriv(uint32_t sampler, uint32_t pname, uint32_t param);
 extern void skia_gpu_gl_scissor(int32_t x, int32_t y, int32_t width, int32_t height);
-extern void skia_gpu_gl_shader_source(uint32_t shader, int32_t count, uint32_t strings, uint32_t lengths);
-extern void skia_gpu_gl_stencil_func(uint32_t gl_func, int32_t ref, uint32_t mask);
-extern void skia_gpu_gl_stencil_func_separate(uint32_t face, uint32_t gl_func, int32_t ref, uint32_t mask);
+extern void skia_gpu_gl_shader_source(uint32_t shader, int32_t count, uint32_t string, uint32_t length);
+extern void skia_gpu_gl_stencil_func(uint32_t func, int32_t ref, uint32_t mask);
+extern void skia_gpu_gl_stencil_func_separate(uint32_t face, uint32_t func, int32_t ref, uint32_t mask);
 extern void skia_gpu_gl_stencil_mask(uint32_t mask);
 extern void skia_gpu_gl_stencil_mask_separate(uint32_t face, uint32_t mask);
 extern void skia_gpu_gl_stencil_op(uint32_t fail, uint32_t zfail, uint32_t zpass);
 extern void skia_gpu_gl_stencil_op_separate(uint32_t face, uint32_t sfail, uint32_t dpfail, uint32_t dppass);
-extern void skia_gpu_gl_tex_image2_d(uint32_t target, int32_t level, int32_t internal_format, int32_t width, int32_t height, int32_t border, uint32_t format, uint32_t gl_type, uint32_t pixels);
+extern void skia_gpu_gl_tex_image2_d(uint32_t target, int32_t level, int32_t internalformat, int32_t width, int32_t height, int32_t border, uint32_t format, uint32_t type, uint32_t pixels);
 extern void skia_gpu_gl_tex_parameterf(uint32_t target, uint32_t pname, float param);
 extern void skia_gpu_gl_tex_parameterfv(uint32_t target, uint32_t pname, uint32_t params);
 extern void skia_gpu_gl_tex_parameteri(uint32_t target, uint32_t pname, int32_t param);
 extern void skia_gpu_gl_tex_parameteriv(uint32_t target, uint32_t pname, uint32_t params);
-extern void skia_gpu_gl_tex_sub_image2_d(uint32_t target, int32_t level, int32_t xoffset, int32_t yoffset, int32_t width, int32_t height, uint32_t format, uint32_t gl_type, uint32_t pixels);
+extern void skia_gpu_gl_tex_storage2_d(uint32_t target, int32_t levels, uint32_t internalformat, int32_t width, int32_t height);
+extern void skia_gpu_gl_tex_sub_image2_d(uint32_t target, int32_t level, int32_t xoffset, int32_t yoffset, int32_t width, int32_t height, uint32_t format, uint32_t type, uint32_t pixels);
 extern void skia_gpu_gl_uniform1f(int32_t location, float v0);
 extern void skia_gpu_gl_uniform1fv(int32_t location, int32_t count, uint32_t value);
 extern void skia_gpu_gl_uniform1i(int32_t location, int32_t v0);
@@ -183,58 +220,19 @@ extern void skia_gpu_gl_uniform4f(int32_t location, float v0, float v1, float v2
 extern void skia_gpu_gl_uniform4fv(int32_t location, int32_t count, uint32_t value);
 extern void skia_gpu_gl_uniform4i(int32_t location, int32_t v0, int32_t v1, int32_t v2, int32_t v3);
 extern void skia_gpu_gl_uniform4iv(int32_t location, int32_t count, uint32_t value);
-extern void skia_gpu_gl_uniform_matrix2fv(int32_t location, int32_t count, bool transpose, uint32_t value);
-extern void skia_gpu_gl_uniform_matrix3fv(int32_t location, int32_t count, bool transpose, uint32_t value);
-extern void skia_gpu_gl_uniform_matrix4fv(int32_t location, int32_t count, bool transpose, uint32_t value);
+extern void skia_gpu_gl_uniform_matrix2fv(int32_t location, int32_t count, uint32_t transpose, uint32_t value);
+extern void skia_gpu_gl_uniform_matrix3fv(int32_t location, int32_t count, uint32_t transpose, uint32_t value);
+extern void skia_gpu_gl_uniform_matrix4fv(int32_t location, int32_t count, uint32_t transpose, uint32_t value);
 extern void skia_gpu_gl_use_program(uint32_t program);
 extern void skia_gpu_gl_vertex_attrib1f(uint32_t index, float x);
 extern void skia_gpu_gl_vertex_attrib2fv(uint32_t index, uint32_t v);
 extern void skia_gpu_gl_vertex_attrib3fv(uint32_t index, uint32_t v);
 extern void skia_gpu_gl_vertex_attrib4fv(uint32_t index, uint32_t v);
-extern void skia_gpu_gl_vertex_attrib_pointer(uint32_t index, int32_t size, uint32_t gl_type, bool normalized, int32_t stride, uint32_t offset);
-extern void skia_gpu_gl_viewport(int32_t x, int32_t y, int32_t width, int32_t height);
-// ── Optional (41 functions, extension-gated) ──
-extern void skia_gpu_gl_begin_query(uint32_t target, uint32_t id);
-extern void skia_gpu_gl_bind_sampler(uint32_t unit, uint32_t sampler);
-extern void skia_gpu_gl_bind_vertex_array(uint32_t array);
-extern void skia_gpu_gl_blit_framebuffer(int32_t src_x0, int32_t src_y0, int32_t src_x1, int32_t src_y1, int32_t dst_x0, int32_t dst_y0, int32_t dst_x1, int32_t dst_y1, uint32_t mask, uint32_t filter);
-extern uint32_t skia_gpu_gl_client_wait_sync(uint32_t sync, uint32_t gl_flags, uint64_t timeout);
-extern void skia_gpu_gl_copy_buffer_sub_data(uint32_t read_target, uint32_t write_target, uint32_t read_offset, uint32_t write_offset, uint32_t size);
-extern void skia_gpu_gl_delete_queries(skia_gl_list_u32_t *queries);
-extern void skia_gpu_gl_delete_samplers(skia_gl_list_u32_t *samplers);
-extern void skia_gpu_gl_delete_sync(uint32_t sync);
-extern void skia_gpu_gl_delete_vertex_arrays(skia_gl_list_u32_t *arrays);
-extern void skia_gpu_gl_draw_arrays_instanced(uint32_t mode, int32_t first, int32_t count, int32_t instance_count);
-extern void skia_gpu_gl_draw_arrays_instanced_base_instance(uint32_t mode, int32_t first, int32_t count, int32_t instance_count, uint32_t base_instance);
-extern void skia_gpu_gl_draw_buffers(int32_t n, uint32_t bufs);
-extern void skia_gpu_gl_draw_elements_instanced(uint32_t mode, int32_t count, uint32_t gl_type, uint32_t offset, int32_t instance_count);
-extern void skia_gpu_gl_draw_elements_instanced_base_vertex_base_instance(uint32_t mode, int32_t count, uint32_t gl_type, uint32_t offset, int32_t instance_count, int32_t base_vertex, uint32_t base_instance);
-extern void skia_gpu_gl_draw_range_elements(uint32_t mode, uint32_t start, uint32_t end, int32_t count, uint32_t gl_type, uint32_t offset);
-extern void skia_gpu_gl_end_query(uint32_t target);
-extern uint32_t skia_gpu_gl_fence_sync(uint32_t condition, uint32_t gl_flags);
-extern void skia_gpu_gl_gen_queries(int32_t n, uint32_t ids_out);
-extern void skia_gpu_gl_gen_samplers(int32_t n, uint32_t samplers_out);
-extern void skia_gpu_gl_gen_vertex_arrays(int32_t n, uint32_t arrays_out);
-extern void skia_gpu_gl_get_query_objecti64v(uint32_t id, uint32_t pname, uint32_t params_out);
-extern void skia_gpu_gl_get_query_objectui64v(uint32_t id, uint32_t pname, uint32_t params_out);
-extern void skia_gpu_gl_get_query_objectuiv(uint32_t id, uint32_t pname, uint32_t params_out);
-extern void skia_gpu_gl_get_queryiv(uint32_t target, uint32_t pname, uint32_t params_out);
-extern uint32_t skia_gpu_gl_get_stringi(uint32_t name, uint32_t index);
-extern void skia_gpu_gl_invalidate_framebuffer(uint32_t target, int32_t num_attachments, uint32_t attachments);
-extern void skia_gpu_gl_invalidate_sub_framebuffer(uint32_t target, int32_t num_attachments, uint32_t attachments, int32_t x, int32_t y, int32_t width, int32_t height);
-extern bool skia_gpu_gl_is_sync(uint32_t sync);
-extern void skia_gpu_gl_multi_draw_arrays_instanced_base_instance(uint32_t mode, uint32_t firsts, uint32_t counts, uint32_t instance_counts, uint32_t base_instances, int32_t drawcount);
-extern void skia_gpu_gl_multi_draw_elements_instanced_base_vertex_base_instance(uint32_t mode, uint32_t counts, uint32_t gl_type, uint32_t offsets, uint32_t instance_counts, uint32_t base_vertices, uint32_t base_instances, int32_t drawcount);
-extern void skia_gpu_gl_query_counter(uint32_t id, uint32_t target);
-extern void skia_gpu_gl_read_buffer(uint32_t src);
-extern void skia_gpu_gl_renderbuffer_storage_multisample(uint32_t target, int32_t samples, uint32_t internal_format, int32_t width, int32_t height);
-extern void skia_gpu_gl_sampler_parameterf(uint32_t sampler, uint32_t pname, float param);
-extern void skia_gpu_gl_sampler_parameteri(uint32_t sampler, uint32_t pname, int32_t param);
-extern void skia_gpu_gl_sampler_parameteriv(uint32_t sampler, uint32_t pname, uint32_t params);
-extern void skia_gpu_gl_tex_storage2_d(uint32_t target, int32_t levels, uint32_t internal_format, int32_t width, int32_t height);
 extern void skia_gpu_gl_vertex_attrib_divisor(uint32_t index, uint32_t divisor);
-extern void skia_gpu_gl_vertex_attrib_i_pointer(uint32_t index, int32_t size, uint32_t gl_type, int32_t stride, uint32_t offset);
-extern void skia_gpu_gl_wait_sync(uint32_t sync, uint32_t gl_flags, uint64_t timeout);
+extern void skia_gpu_gl_vertex_attrib_i_pointer(uint32_t index, int32_t size, uint32_t type, int32_t stride, uint32_t pointer);
+extern void skia_gpu_gl_vertex_attrib_pointer(uint32_t index, int32_t size, uint32_t type, uint32_t normalized, int32_t stride, uint32_t pointer);
+extern void skia_gpu_gl_viewport(int32_t x, int32_t y, int32_t width, int32_t height);
+extern void skia_gpu_gl_wait_sync(uint32_t sync, uint32_t flags, uint64_t timeout);
 
 // Imported Functions from `skia-gl`
 extern skia_gl_own_path_t skia_gl_constructor_path(void);
@@ -301,8 +299,6 @@ bool exports_skia_gl_path_simplify(skia_gl_borrow_path_t p, skia_gl_own_path_t *
 
 // Helper Functions
 
-void skia_gl_list_u32_free(skia_gl_list_u32_t *ptr);
-
 extern void skia_gl_path_drop_own(skia_gl_own_path_t handle);
 
 extern void skia_gl_path_drop_borrow(skia_gl_borrow_path_t handle);
@@ -328,6 +324,8 @@ extern void skia_gl_svg_dom_drop_borrow(skia_gl_borrow_svg_dom_t handle);
 extern skia_gl_borrow_svg_dom_t skia_gl_borrow_svg_dom(skia_gl_own_svg_dom_t handle);
 
 void skia_gl_list_f32_free(skia_gl_list_f32_t *ptr);
+
+void skia_gl_list_u32_free(skia_gl_list_u32_t *ptr);
 
 void skia_gl_list_u8_free(skia_gl_list_u8_t *ptr);
 

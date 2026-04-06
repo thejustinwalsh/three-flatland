@@ -2,7 +2,13 @@
  * Vitest setup for @three-flatland/skia
  *
  * Mocks SkiaContext.create() to use Skia's mock GPU backend.
- * All tests get a real SkiaContext without needing WebGL.
+ * All tests get a real SkiaContext without needing WebGL or WebGPU.
+ *
+ * The SKIA_TEST_BACKEND env var selects which WASM variant to load:
+ *   - 'gl'   (default) → zig-out/bin/skia-gl.wasm   (imports from "gl" module)
+ *   - 'wgpu'           → zig-out/bin/skia-wgpu.wasm  (imports from "wgpu" module)
+ *
+ * Both variants have skia_init_mock() which uses a mock GPU backend.
  */
 
 import { vi } from 'vitest'
@@ -10,7 +16,8 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { SkiaContext } from '../src/ts/context'
 import type { SkiaExports } from '../src/ts/types'
-import type { SkiaWasmInstance } from '../src/ts/wasm-loader'
+
+const BACKEND = (process.env.SKIA_TEST_BACKEND ?? 'gl') as 'gl' | 'wgpu'
 
 /** Parse WASM binary for import declarations */
 function getWasmImports(data: Buffer): Array<{ module: string; name: string }> {
@@ -49,21 +56,22 @@ let cachedCtx: SkiaContext | null = null
 async function createMockContext(): Promise<SkiaContext> {
   if (cachedCtx) return cachedCtx
 
-  const wasmPath = resolve(__dirname, '../zig-out/bin/skia-gl.wasm')
+  const wasmFile = BACKEND === 'wgpu' ? 'skia-wgpu.wasm' : 'skia-gl.wasm'
+  const wasmPath = resolve(__dirname, `../zig-out/bin/${wasmFile}`)
   const wasmBytes = readFileSync(wasmPath)
   const wasmImports = getWasmImports(wasmBytes)
 
-  const importObject: WebAssembly.Imports = {
-    gl: Object.fromEntries(wasmImports.filter(i => i.module === 'gl').map(i => [i.name, () => 0])),
-    env: Object.fromEntries(wasmImports.filter(i => i.module === 'env').map(i => [i.name, () => 0])),
-    wasi_snapshot_preview1: Object.fromEntries(
-      wasmImports.filter(i => i.module === 'wasi_snapshot_preview1').map(i => [i.name, () => 0]),
-    ),
+  // Group imports by module and stub them all
+  const modules = new Map<string, Record<string, () => number>>()
+  for (const { module, name } of wasmImports) {
+    if (!modules.has(module)) modules.set(module, {})
+    modules.get(module)![name] = () => 0
   }
 
+  const importObject: WebAssembly.Imports = Object.fromEntries(modules)
   const { instance } = await WebAssembly.instantiate(wasmBytes, importObject)
 
-  // Call mock init instead of real GL init
+  // Call mock init instead of real GPU init
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   ;(instance.exports as any).skia_init_mock()
 
@@ -73,11 +81,14 @@ async function createMockContext(): Promise<SkiaContext> {
 
   const ctx = Object.create(SkiaContext.prototype) as SkiaContext
   Object.defineProperties(ctx, {
+    backend: { value: BACKEND === 'wgpu' ? 'wgpu' : 'webgl', writable: false },
     gl: { value: null, writable: false },
+    device: { value: null, writable: false },
     _exports: { value: exports, writable: false },
     _memory: { value: memory, writable: false },
     _destroyed: { value: false, writable: true },
     _drawing: { value: false, writable: true },
+    _currentDrawCtx: { value: null, writable: true },
   })
 
   cachedCtx = ctx
@@ -86,3 +97,6 @@ async function createMockContext(): Promise<SkiaContext> {
 
 // Mock SkiaContext.create — all tests get the mock backend
 vi.spyOn(SkiaContext, 'create').mockImplementation(createMockContext)
+
+// Log which backend is being tested
+console.log(`\n  Testing with ${BACKEND.toUpperCase()} backend (${BACKEND === 'wgpu' ? 'skia-wgpu.wasm' : 'skia-gl.wasm'})\n`)
