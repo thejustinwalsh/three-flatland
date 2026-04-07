@@ -5,49 +5,68 @@
 > Branch: feat-skia
 > PR: https://github.com/thejustinwalsh/three-flatland/pull/19
 
-## New package: `@three-flatland/skia`
+## New Package: `@three-flatland/skia`
 
-Lightweight Skia GPU rendering library for Three.js — Skia's core 2D engine compiled to ~1 MB WASM via Zig, targeting both WebGL2 and WebGPU backends.
+Introduces `@three-flatland/skia` — a Skia graphics library for Three.js and React Three Fiber, compiled from [Skia](https://skia.org/) (chrome/m147) to WebAssembly via Zig. Supports both WebGL and WebGPU (Dawn/Graphite) rendering backends.
 
-### Core API (`@three-flatland/skia`)
+### Core Skia API
 
-- `Skia.init(renderer)` — initialize from a Three.js renderer (WebGL or WebGPU)
-- `SkiaPaint` — fill/stroke paint with color, gradients, image filters, color filters, and path effects
-- `SkiaPath` — vector path construction with boolean ops (union, intersect, difference, xor), simplification, and transformation; in-place mutation variants for all ops
-- `SkiaFont` — font loading and metrics
-- `SkiaImage` — image loading and sampling
-- `SkiaDrawingContext` — imperative draw calls (rect, oval, circle, line, path, image, text, vertices)
-- `SkiaShader` — SKSL runtime shaders and linear/radial gradient constructors
-- `SkiaTextBlob` — shaped text blobs for efficient repeated rendering
-- `SkiaImageFilter` — blur, color-matrix, drop-shadow, and compose filters
-- `SkiaColorFilter` — color matrix, blend, and compose filters
-- `SkiaPathEffect` — dash, corner, and 1D path effects
-- Multi-stop linear gradient support in paint
+- `SkiaFont` — load and use fonts for text rendering
+- `SkiaPaint` — stroke/fill style with color, alpha, stroke width, blend mode, anti-alias; multi-stop linear gradients
+- `SkiaPath` — vector path construction (move, line, arc, cubic/quadratic bezier, rect, oval, round rect); boolean ops (`op`, `opInto`), simplification (`simplify`, `simplifyInto`), transformation (`transform`, `transformInto`)
+- `SkiaImage` — decode and draw raster images
+- `SkiaSVG` — parse and render SVG documents
+- `SkiaShader` — procedural shaders: fractal noise, turbulence, image tiling
+- `SkiaTextBlob` — pre-shaped immutable text for efficient repeated drawing; supports explicit glyph positions
+- `SkiaPathEffect` — dash, discrete, corner, compose, and sum path effects
+- `SkiaColorFilter` — blend, matrix, compose, and linear-to-sRGB color filters
+- `SkiaImageFilter` — blur, drop shadow, dilate, erode, compose, and color-filtered image filters
+- `SkiaPicture` — record and replay drawing commands
+- `SkiaPathMeasure` — measure path length and sample points/tangents along a path
 
-### Three.js Scene Graph (`@three-flatland/skia/three`)
+### Three.js Scene Graph Nodes
 
-- `SkiaCanvas` — Three.js `Object3D` that owns a Skia surface and composites into the Three.js scene; supports alpha rendering and off-screen texture targets
-- `SkiaBlitPipeline` — WebGPU compute/blit pipeline for zero-copy Skia→Three.js texture compositing
-- `SkiaGroup` — grouping node for Skia draw calls
-- Drawing nodes: `SkiaCircle`, `SkiaImageNode`, `SkiaLine`, `SkiaOval`, `SkiaPathNode`, `SkiaRect`, `SkiaSVGNode`, `SkiaTextNode`, `SkiaTextPathNode`
-- Loaders: `SkiaFontLoader`, `SkiaImageLoader`, `SkiaSVGLoader`
-- `SkiaNode` base class for custom draw nodes
+All nodes extend `SkiaNode` and share paint props (color, alpha, strokeWidth, style, blendMode):
 
-### React / R3F (`@three-flatland/skia/react`)
+- `SkiaCanvas` — renders Skia drawing into a Three.js texture (WebGL or WebGPU backend)
+- `SkiaGroup` — container node; applies transforms and clips to children
+- `SkiaCircle`, `SkiaLine`, `SkiaOval`, `SkiaRect` — primitive shape nodes
+- `SkiaPathNode` — renders a `SkiaPath` object
+- `SkiaImageNode` — renders a `SkiaImage`
+- `SkiaSVGNode` — renders a `SkiaSVG` document
+- `SkiaTextNode` — renders a text string with a `SkiaFont`
+- `SkiaTextPathNode` — renders text along a path
+- `SkiaFontLoader`, `SkiaImageLoader`, `SkiaSVGLoader` — Three.js-compatible loaders usable with `useLoader()`
 
-- JSX type augmentation and hooks for use with React Three Fiber
+### React Three Fiber Integration
+
+- `<SkiaCanvas>` — R3F wrapper for `<skiaCanvas>` that provides `SkiaContext` to children via React context; accepts an `onContextCreate` callback
+- `SkiaReactContext` — React context for the nearest `SkiaContext`; can be consumed with `useSkiaContext()`
+- `useSkiaContext()` — hook returning the nearest `SkiaContext` (from parent `<SkiaCanvas>` or global singleton)
+
+### WebGPU Backend
+
+- `SkiaBlitPipeline` — vertex-less WebGPU blit pipeline; composites Skia textures onto a destination with optional premultiplied alpha blending and automatic format conversion (RGBA→BGRA)
+- Auto-generated WGPU struct and enum definitions bridging the WebGPU C API to WASM32
+- Dawn/Graphite backend compiled for Emscripten compatibility
+
+### WebGL Backend
+
+- GL texture support in `SkiaCanvas` and `SkiaContext` for direct texture rendering
+- Simplified GL context initialization and state management
 
 ### WASM / Build
 
-- Skia compiled from source (chrome/m147) via Zig build system targeting WASM32
-- Dual backends: WebGL2 (GL shim bridging WASM→browser WebGL) and WebGPU (Dawn, Emscripten-compatible)
-- Auto-generated WGPU struct/enum bindings for correct WASM32 memory layout
-- SIMD enabled; wasm-opt post-processing for size reduction
-- Handle table with free-list for efficient WASM-side object lifecycle management
-- Custom font manager and WASM exception handling (sjlj runtime)
+- Skia compiled via Zig build system targeting WASM32; Skia submodule pinned to chrome/m147
+- SIMD enabled; compiler optimizations and `wasm-opt` post-processing
+- Custom `sjlj`-based exception handling runtime for WASM
+- Custom font manager integrated into WASM build
+- `HandleTable` with free-list for efficient handle reuse and memory management; `FinalizationRegistry`-based GC for all Skia objects
+- Setup scripts: `setup.mjs`, `setup-skia.sh` (patch, sync deps, build WASM, install tools)
 
 ### Examples & Docs
 
-- Vanilla and React Skia examples added to the monorepo and docs site
+- Vanilla Three.js and React Three Fiber Skia examples added to the monorepo dev server
+- Skia guide and examples page added to the docs site
 
-This release introduces `@three-flatland/skia` as a new package — a CanvasKit alternative offering Skia's GPU-accelerated 2D rendering at a fraction of the WASM size, integrated directly into the Three.js scene graph with first-class WebGPU support.
+This release introduces the complete `@three-flatland/skia` package from initial WASM build through full Three.js/R3F scene graph integration with both WebGL and WebGPU rendering backends.
