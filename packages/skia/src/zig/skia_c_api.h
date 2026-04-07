@@ -46,6 +46,7 @@ void sk_context_reset_state(sk_context_t ctx);
 
 // target_handle = FBO ID (GL) or texture handle (wgpu)
 sk_surface_t sk_surface_create_for_target(sk_context_t ctx, uint32_t target_handle, int32_t width, int32_t height);
+sk_surface_t sk_surface_create_for_gl_texture(sk_context_t ctx, uint32_t texture_id, int32_t width, int32_t height);
 sk_surface_t sk_surface_create_raster(int32_t width, int32_t height);
 void sk_surface_destroy(sk_surface_t surface);
 sk_canvas_t sk_surface_get_canvas(sk_surface_t surface);

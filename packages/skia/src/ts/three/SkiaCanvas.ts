@@ -141,6 +141,10 @@ export class SkiaCanvas extends Object3D {
   private _skiaContext: SkiaContext | null = null
   private _renderTarget: WebGLRenderTarget | null = null
   private _needsRedraw = true
+  // WebGL texture mode: we create our own FBO since we can't extract Three.js's FBO ID
+  private _glFBO: WebGLFramebuffer | null = null
+  private _glTex: WebGLTexture | null = null
+  private _glFBOSize: [number, number] = [0, 0]
 
   private _readyPromise: Promise<SkiaContext> | null = null
   private _readyResolve: ((ctx: SkiaContext) => void) | null = null
@@ -239,13 +243,25 @@ export class SkiaCanvas extends Object3D {
     }
     this._skiaContext.resetState()
 
-    const ctx = this._skiaContext.beginDrawing(targetHandle, this._width, this._height)
+    // WebGL texture mode: wrap Three.js's GL texture directly
+    let ctx: SkiaDrawingContext | null = null
+    if (targetHandle === -1 && this._skiaContext.backend === 'webgl') {
+      const texId = this._getOrRegisterGLTexture(renderer)
+      if (texId > 0) {
+        ctx = this._skiaContext.beginDrawingGLTexture(texId, this._width, this._height)
+      }
+    }
+    if (!ctx && targetHandle !== -1) {
+      ctx = this._skiaContext.beginDrawing(targetHandle, this._width, this._height)
+    }
     if (!ctx) {
       if (saved && gl) restoreGLState(gl, saved)
       return
     }
 
     try {
+      // Texture mode: clear the surface (WrapBackendTexture doesn't clear between frames)
+      if (!this._overlay) ctx.clear(0, 0, 0, 0)
       this._drawChildren(ctx, this)
     } finally {
       this._skiaContext.endDrawing()
@@ -313,6 +329,7 @@ export class SkiaCanvas extends Object3D {
         }
       }
     }
+
 
     this._needsRedraw = false
   }
@@ -382,16 +399,78 @@ export class SkiaCanvas extends Object3D {
 
   // ── Private: target handle resolution ──
 
+  // Cached GL texture ID for texture mode
+  private _glTexId = 0
+
   private _getTargetHandle(renderer: AnyRenderer): number {
-    // WebGPU: Skia always owns its own texture (handle=0), we copy to canvas after
+    // WebGPU: Skia always owns its texture, we blit to destination after
     if (this._skiaContext!.backend === 'wgpu') return 0
 
+    // WebGL overlay: render to default framebuffer (FBO 0)
     if (this._overlay) return 0
-    return this._getGLTargetHandle(renderer)
+
+    // WebGL texture mode: try to get FBO handle from render target
+    const fbo = this._getGLTargetHandle(renderer)
+    if (fbo !== 0) return fbo
+
+    // Fallback: use GL texture wrapping (see _beginDrawingToTexture)
+    return -1 // sentinel: use texture mode
+  }
+
+  // Cache: GL objects → integer IDs in Skia's GL handle table
+  private _glFBOHandles = new WeakMap<WebGLFramebuffer, number>()
+  private _glTexHandles = new WeakMap<WebGLTexture, number>()
+
+  /** Get Three.js's render target GL texture and register it in Skia's handle table */
+  private _getOrRegisterGLTexture(renderer: AnyRenderer): number {
+    if (this._glTexId > 0) return this._glTexId
+
+    const gl = this._skiaContext?.gl
+    const glState = this._skiaContext?._glState as { textures?: Map<number, WebGLTexture | null>; nextId: number } | undefined
+    if (!gl || !glState?.textures || !this._renderTarget) return 0
+
+    // Force Three.js to init the render target
+    const currentRT = renderer.getRenderTarget()
+    renderer.setRenderTarget(this._renderTarget)
+    renderer.setRenderTarget(currentRT)
+
+    // Extract the WebGLTexture from Three.js's backend
+    const backend = renderer.backend as { get?: (t: unknown) => Record<string, unknown> | undefined } | undefined
+    if (!backend?.get) return 0
+
+    const rt = this._renderTarget as unknown as Record<string, unknown>
+    const tex = rt.texture ?? (rt.textures as unknown[])?.[0]
+    const src = (tex as Record<string, unknown> | undefined)?.source
+    let glTexture: WebGLTexture | undefined
+    for (const key of [src, tex, this._renderTarget].filter(Boolean)) {
+      const data = backend.get(key!)
+      if (data) {
+        // Three.js WebGL backend stores the GL texture — check various key names
+        for (const prop of Object.keys(data)) {
+          if ((data as Record<string, unknown>)[prop] instanceof WebGLTexture) {
+            glTexture = (data as Record<string, unknown>)[prop] as WebGLTexture
+            break
+          }
+        }
+        if (glTexture) break
+      }
+    }
+    if (!glTexture) return 0
+
+    // Check cache
+    const cached = this._glTexHandles.get(glTexture)
+    if (cached) { this._glTexId = cached; return cached }
+
+    // Register in Skia's GL handle table
+    const id = glState.nextId++
+    glState.textures.set(id, glTexture)
+    this._glTexHandles.set(glTexture, id)
+    this._glTexId = id
+    return id
   }
 
   private _getGLTargetHandle(renderer: AnyRenderer): number {
-    // WebGLRenderer path — has `properties` object
+    // WebGLRenderer path — has `properties` object with numeric FBO IDs
     if (renderer.properties) {
       const currentTarget = renderer.getRenderTarget()
       renderer.setRenderTarget(this._renderTarget)
@@ -399,24 +478,30 @@ export class SkiaCanvas extends Object3D {
       return getFBOId(renderer, this._renderTarget!)
     }
 
-    // WebGPURenderer in WebGL fallback mode — uses backend.get()
-    const backend = renderer.backend as {
-      get?: (target: unknown) => Record<string, unknown> | undefined
-    } | undefined
+    // WebGPURenderer in WebGL fallback: get the actual WebGLFramebuffer object
+    // by asking Three.js to bind it, then register it in Skia's GL handle table
+    const gl = this._skiaContext?.gl
+    const glState = this._skiaContext?._glState
+    if (!gl || !glState) return 0
 
-    if (backend?.get) {
-      const currentTarget = renderer.getRenderTarget()
-      renderer.setRenderTarget(this._renderTarget)
-      renderer.setRenderTarget(currentTarget)
+    const currentTarget = renderer.getRenderTarget()
+    renderer.setRenderTarget(this._renderTarget)
+    const fbo = gl.getParameter(gl.FRAMEBUFFER_BINDING) as WebGLFramebuffer | null
+    renderer.setRenderTarget(currentTarget)
 
-      const data = backend.get(this._renderTarget)
-      if (data) {
-        const fb = data.framebuffer ?? data.__webglFramebuffer
-        if (typeof fb === 'number') return fb
-      }
+    if (!fbo) {
+      return 0
     }
 
-    return 0
+    // Check cache first
+    let id = this._glFBOHandles.get(fbo)
+    if (id !== undefined) return id
+
+    // Register Three.js's FBO in Skia's GL handle table so it can use the integer ID
+    id = glState.nextId++
+    glState.framebuffers.set(id, fbo)
+    this._glFBOHandles.set(fbo, id)
+    return id
   }
 
   // ── Private: scene graph walk ──

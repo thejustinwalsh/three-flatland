@@ -620,11 +620,12 @@ export async function loadSkiaGL(
   gl: WebGL2RenderingContext,
   preloadedResponse?: Promise<Response>,
 ): Promise<SkiaWasmInstance> {
-  // Enable all available WebGL extensions before Skia init.
-  // WebGL2 requires explicit activation — Emscripten does this automatically,
-  // we need to do it ourselves so Skia can query extension parameters.
+  // Enable WebGL extensions before Skia init.
+  // WebGL2 requires explicit activation — Emscripten does this automatically.
+  // Skip non-portable/debug extensions that trigger browser warnings.
+  const skipExts = new Set(['WEBGL_polygon_mode', 'WEBGL_debug_shaders'])
   for (const ext of gl.getSupportedExtensions() || []) {
-    gl.getExtension(ext)
+    if (!skipExts.has(ext)) gl.getExtension(ext)
   }
 
   const state = createGLState(gl)

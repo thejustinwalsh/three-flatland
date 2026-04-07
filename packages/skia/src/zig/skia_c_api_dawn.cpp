@@ -107,6 +107,10 @@ sk_surface_t sk_surface_create_for_target(sk_context_t ctx, uint32_t target_hand
     return reinterpret_cast<sk_surface_t>(surface.release());
 }
 
+sk_surface_t sk_surface_create_for_gl_texture(sk_context_t, uint32_t, int32_t, int32_t) {
+    return nullptr; // GL texture wrapping not available on Dawn/WebGPU backend
+}
+
 sk_surface_t sk_surface_create_raster(int32_t width, int32_t height) {
     if (width <= 0 || height <= 0) return nullptr;
     auto surface = SkSurfaces::Raster(SkImageInfo::MakeN32Premul(width, height));

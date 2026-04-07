@@ -53,6 +53,7 @@ export class SkiaContext {
 
   /** @internal wgpu handle state for registerTexture and compositing */
   _wgpuState?: { objects: Map<number, unknown>; nextHandle: number; lastRenderTargetTexture?: GPUTexture | null }
+  _glState?: { framebuffers: Map<number, WebGLFramebuffer | null>; nextId: number }
 
   private constructor(
     backend: 'webgl' | 'wgpu',
@@ -93,6 +94,7 @@ export class SkiaContext {
         wasm.exports.memory as WebAssembly.Memory,
         gl,
       )
+      ctx._glState = wasm.glState as unknown as typeof ctx._glState
       ctx._exports.skia_init()
       if (!_instance || _instance._destroyed) _instance = ctx
       return ctx
@@ -143,6 +145,22 @@ export class SkiaContext {
     if (this._drawing) throw new Error('Already in a draw pass — call endDrawing() first')
 
     const result = this._exports.skia_begin_drawing(targetHandle, width, height)
+    if (!result) return null
+
+    this._drawing = true
+    this._currentDrawCtx = new SkiaDrawingContext(this)
+    return this._currentDrawCtx
+  }
+
+  /** Begin drawing to a GL texture (WebGL texture mode). */
+  beginDrawingGLTexture(textureId: number, width: number, height: number): SkiaDrawingContext | null {
+    if (this._destroyed) throw new Error('SkiaContext is destroyed')
+    if (this._drawing) throw new Error('Already in a draw pass — call endDrawing() first')
+
+    const fn = (this._exports as unknown as Record<string, unknown>).skia_begin_drawing_gl_texture as
+      ((texId: number, w: number, h: number) => number) | undefined
+    if (!fn) return null
+    const result = fn(textureId, width, height)
     if (!result) return null
 
     this._drawing = true

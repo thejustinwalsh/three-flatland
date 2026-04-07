@@ -692,6 +692,15 @@ export fn skia_begin_drawing(fbo_id: u32, width: i32, height: i32) i32 {
     if (g_canvas == null) return 0;
     return 1;
 }
+export fn skia_begin_drawing_gl_texture(texture_id: u32, width: i32, height: i32) i32 {
+    if (g_ctx == null) return 0;
+    if (g_surface != null) c.sk_surface_destroy(g_surface);
+    g_surface = c.sk_surface_create_for_gl_texture(g_ctx, texture_id, width, height);
+    if (g_surface == null) return 0;
+    g_canvas = c.sk_surface_get_canvas(g_surface);
+    if (g_canvas == null) return 0;
+    return 1;
+}
 export fn skia_end_drawing() void { if (g_surface != null) c.sk_surface_flush(g_surface); }
 export fn skia_flush() void { if (g_ctx != null) c.sk_context_flush(g_ctx); }
 export fn skia_reset_state() void { if (g_ctx != null) c.sk_context_reset_state(g_ctx); }

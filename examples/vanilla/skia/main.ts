@@ -249,18 +249,19 @@ async function main() {
     color: 0xffffff,
     side: DoubleSide,
     transparent: true,
+    premultipliedAlpha: true,
   })
   const panelCenter = new Mesh(panelGeo, panelMat)
   panelCenter.position.set(0, 1.2, -0.4)
   scene.add(panelCenter)
 
-  const panelMatL = new MeshBasicMaterial({ color: 0xffffff, side: DoubleSide, transparent: true })
+  const panelMatL = new MeshBasicMaterial({ color: 0xffffff, side: DoubleSide, transparent: true, premultipliedAlpha: true })
   const panelLeft = new Mesh(panelGeo, panelMatL)
   panelLeft.position.set(-2.6, 1.2, 0.3)
   panelLeft.rotation.y = 0.35
   scene.add(panelLeft)
 
-  const panelMatR = new MeshBasicMaterial({ color: 0xffffff, side: DoubleSide, transparent: true })
+  const panelMatR = new MeshBasicMaterial({ color: 0xffffff, side: DoubleSide, transparent: true, premultipliedAlpha: true })
   const panelRight = new Mesh(panelGeo, panelMatR)
   panelRight.position.set(2.6, 1.2, 0.3)
   panelRight.rotation.y = -0.35

@@ -60,9 +60,9 @@ void sk_context_reset_state(sk_context_t ctx) {
 // ════════════════════════════════════════════════════════
 
 sk_surface_t sk_surface_create_for_target(sk_context_t ctx, uint32_t target_handle, int32_t width, int32_t height) {
-    // GL variant: target_handle = FBO ID
     if (!ctx || width <= 0 || height <= 0) return nullptr;
 
+    // GL variant: target_handle = FBO ID (0 = default framebuffer / screen)
     GrGLFramebufferInfo fbo_info;
     fbo_info.fFBOID = target_handle;
     fbo_info.fFormat = 0x8058; // GL_RGBA8
@@ -72,6 +72,26 @@ sk_surface_t sk_surface_create_for_target(sk_context_t ctx, uint32_t target_hand
     sk_sp<SkSurface> surface = SkSurfaces::WrapBackendRenderTarget(
         as_context(ctx), backend_rt, kBottomLeft_GrSurfaceOrigin,
         kRGBA_8888_SkColorType, SkColorSpace::MakeSRGB(), nullptr);
+
+    if (!surface) return nullptr;
+    return reinterpret_cast<sk_surface_t>(surface.release());
+}
+
+sk_surface_t sk_surface_create_for_gl_texture(sk_context_t ctx, uint32_t texture_id, int32_t width, int32_t height) {
+    // Wrap an existing GL texture as a Skia render target surface.
+    // texture_id is the GL texture name (from Skia's GL handle table).
+    if (!ctx || width <= 0 || height <= 0 || texture_id == 0) return nullptr;
+
+    GrGLTextureInfo texInfo;
+    texInfo.fID = texture_id;
+    texInfo.fTarget = 0x0DE1; // GL_TEXTURE_2D
+    texInfo.fFormat = 0x8058; // GL_RGBA8
+
+    auto backendTex = GrBackendTextures::MakeGL(width, height, skgpu::Mipmapped::kNo, texInfo);
+
+    sk_sp<SkSurface> surface = SkSurfaces::WrapBackendTexture(
+        as_context(ctx), backendTex, kTopLeft_GrSurfaceOrigin,
+        0, kRGBA_8888_SkColorType, SkColorSpace::MakeSRGB(), nullptr);
 
     if (!surface) return nullptr;
     return reinterpret_cast<sk_surface_t>(surface.release());
