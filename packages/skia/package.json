@@ -71,6 +71,10 @@
   },
   "files": [
     "dist",
+    "!dist/**/*-debug.wasm",
+    "!dist/**/*-ReleaseFast.wasm",
+    "!dist/**/*-ReleaseSmall.wasm",
+    "!dist/**/*.opt.wasm",
     "bin",
     "LICENSE",
     "THIRD_PARTY_LICENSES"

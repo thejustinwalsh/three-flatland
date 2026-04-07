@@ -384,7 +384,7 @@ async function installTools(config) {
 
 // ── Skia submodule + setup ──
 
-function setupSkia(config, skipIfReady = false) {
+function setupSkia(config) {
   heading("Skia Source");
 
   // Check submodule
@@ -421,14 +421,8 @@ function setupSkia(config, skipIfReady = false) {
     ok("Skia submodule present");
   }
 
-  // Skip if source extraction is already done (idempotent fast path)
-  const sourcesZig = resolve(PKG_ROOT, "src/zig/generated/skia_sources.zig");
-  if (skipIfReady && existsSync(sourcesZig)) {
-    ok("Skia sources already extracted (skia_sources.zig exists)");
-    return true;
-  }
-
   // Run setup-skia.sh (deps, patches, GN, source extraction)
+  // The script is idempotent — it checks for existing deps/patches/GN output internally.
   info("Running Skia setup (deps, patches, GN, source extraction)...");
   console.log("");
   run("bash scripts/setup-skia.sh", { cwd: PKG_ROOT });
@@ -535,7 +529,7 @@ async function main() {
 
   // 3. Skia setup (submodule + deps + GN + source extraction)
   if (!buildOnly) {
-    const skiaOk = setupSkia(config, ensure);
+    const skiaOk = setupSkia(config);
     if (!skiaOk) {
       process.exit(1);
     }
