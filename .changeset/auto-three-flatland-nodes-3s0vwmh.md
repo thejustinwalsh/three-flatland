@@ -5,6 +5,6 @@
 > Branch: feat-skia
 > PR: https://github.com/thejustinwalsh/three-flatland/pull/19
 
-- Update `three` peer dependency from `>=0.170.0` to `catalog:` to align with workspace version catalog
+- `three` peer dependency aligned to workspace catalog version (was `>=0.170.0`)
 
-Peer dependency version constraint for `three` is now managed via the workspace catalog.
+Housekeeping change to align peer dependency version management with the monorepo catalog, matching the pattern used across all other packages.
