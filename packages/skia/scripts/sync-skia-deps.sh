@@ -1,114 +1,184 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Targeted sync of only the Skia third-party deps we actually need.
-# Much faster and more reliable than `python3 tools/git-sync-deps` which
-# tries to clone all 45+ externals (many we don't use).
+# Vendor Skia's third-party deps into packages/skia/vendor/.
 #
-# Usage: ./scripts/sync-skia-deps.sh
+# Clones from GitHub (not Google's rate-limited mirrors), extracts only
+# the source/headers we compile, and checks the result into git.
+#
+# CI never runs this — vendor/ is checked in. Run locally when:
+#   - Updating the Skia pin (new chrome/m* branch)
+#   - Changing which deps/files are needed
+#
+# Usage:
+#   ./scripts/sync-skia-deps.sh           # Vendor deps (skip if already present)
+#   ./scripts/sync-skia-deps.sh --force   # Re-vendor even if already present
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PKG_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 SKIA_DIR="$PKG_ROOT/third_party/skia"
-EXTERNALS="$SKIA_DIR/third_party/externals"
+VENDOR_DIR="$PKG_ROOT/vendor"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m'
 
 info()  { echo -e "${BLUE}[info]${NC}  $*"; }
 ok()    { echo -e "${GREEN}[ok]${NC}    $*"; }
+warn()  { echo -e "${YELLOW}[warn]${NC}  $*"; }
 error() { echo -e "${RED}[error]${NC} $*" >&2; }
 
-# ── Deps we need and their source URLs ──
-# Extracted from Skia's DEPS file. Update these when pinning a new Skia version.
-#
-# Core deps (always needed):
-#   freetype  — font rasterization
-#   harfbuzz  — text shaping
-#   expat     — XML parser for SVG
-#   abseil-cpp — Skia core dependency
-#
-# These are the only externals required for our WebGL WASM build with
-# text + SVG support. GPU backend sources (GL, Dawn) are part of Skia core.
+FORCE=false
+for arg in "$@"; do
+  case "$arg" in
+    --force) FORCE=true ;;
+  esac
+done
 
-declare -A DEPS=(
-  ["abseil-cpp"]="https://skia.googlesource.com/external/github.com/abseil/abseil-cpp.git"
-  ["freetype"]="https://chromium.googlesource.com/chromium/src/third_party/freetype2.git"
-  ["harfbuzz"]="https://chromium.googlesource.com/external/github.com/harfbuzz/harfbuzz.git"
-  ["expat"]="https://chromium.googlesource.com/external/github.com/libexpat/libexpat.git"
-)
+# ── Check if vendor dir already has what we need ──
+if [ "$FORCE" = false ] && \
+   [ -f "$VENDOR_DIR/freetype/src/autofit/autofit.c" ] && \
+   [ -d "$VENDOR_DIR/harfbuzz/src" ] && \
+   [ -d "$VENDOR_DIR/expat/lib" ]; then
+  ok "vendor/ already present (use --force to re-sync)"
+  exit 0
+fi
 
-# ── Extract pinned revisions from DEPS ──
+# ── GitHub source repos ──
+# We use upstream repos, not Chromium forks. The source files are identical
+# for the subset we compile. Pinned versions come from Skia's DEPS file.
+
+FREETYPE_REPO="https://github.com/freetype/freetype.git"
+HARFBUZZ_REPO="https://github.com/harfbuzz/harfbuzz.git"
+EXPAT_REPO="https://github.com/libexpat/libexpat.git"
+
+# ── Extract pinned revisions from Skia DEPS ──
 get_pinned_rev() {
   local name="$1"
   python3 -c "
 import re, sys
 with open('$SKIA_DIR/DEPS') as f:
     content = f.read()
-# Look for: 'third_party/externals/$name' : '<url>@<rev>'
 pattern = r'\"third_party/externals/$name\"\s*:\s*\"[^\"]+@([a-f0-9]+)\"'
 m = re.search(pattern, content)
 if m:
     print(m.group(1))
 else:
     print('HEAD')
-" 2>/dev/null
+" 2>/dev/null || echo "HEAD"
 }
 
-# ── Clone or update a single dep ──
-sync_dep() {
+# ── Clone a repo to a temp dir, checkout pinned rev ──
+clone_at_rev() {
   local name="$1"
-  local url="$2"
-  local dest="$EXTERNALS/$name"
+  local repo="$2"
+  local dest="$3"
   local rev
 
   rev=$(get_pinned_rev "$name")
+  info "$name: cloning from $repo" >&2
 
-  if [ -d "$dest/.git" ] || [ -f "$dest/.git" ]; then
-    info "$name: updating..."
-    # Clean up any stale lock files from interrupted runs
-    rm -f "$dest/.git/index.lock" 2>/dev/null || true
+  local tmpdir
+  tmpdir=$(mktemp -d)
+  git clone --depth 1 "$repo" "$tmpdir/$name" --quiet 2>/dev/null || {
+    error "$name: clone failed"
+    rm -rf "$tmpdir"
+    return 1
+  }
 
-    (cd "$dest" && git fetch --depth 1 origin "$rev" 2>/dev/null && git checkout FETCH_HEAD --quiet 2>/dev/null) || {
-      warn "$name: fetch failed, re-cloning..."
-      rm -rf "$dest"
-      git clone --depth 1 "$url" "$dest" --quiet
-      if [ "$rev" != "HEAD" ]; then
-        (cd "$dest" && git fetch --depth 1 origin "$rev" && git checkout FETCH_HEAD --quiet) 2>/dev/null || true
-      fi
+  # Try to fetch the exact pinned rev (may fail for Chromium-fork-specific commits)
+  if [ "$rev" != "HEAD" ]; then
+    (cd "$tmpdir/$name" && git fetch --depth 1 origin "$rev" 2>/dev/null && git checkout FETCH_HEAD --quiet 2>/dev/null) || {
+      warn "$name: pinned rev $rev not found on GitHub, using HEAD" >&2
     }
-  else
-    info "$name: cloning..."
-    mkdir -p "$EXTERNALS"
-    git clone --depth 1 "$url" "$dest" --quiet 2>/dev/null || {
-      error "$name: clone failed from $url"
-      return 1
-    }
-    if [ "$rev" != "HEAD" ]; then
-      (cd "$dest" && git fetch --depth 1 origin "$rev" && git checkout FETCH_HEAD --quiet) 2>/dev/null || true
-    fi
   fi
 
-  ok "$name → $(cd "$dest" && git rev-parse --short HEAD)"
+  echo "$tmpdir/$name"
+}
+
+# ── Vendor freetype ──
+# We compile ~28 .c files and need include/ headers.
+vendor_freetype() {
+  local src
+  src=$(clone_at_rev "freetype" "$FREETYPE_REPO" "$VENDOR_DIR/freetype") || return 1
+  local rev
+  rev=$(cd "$src" && git rev-parse --short HEAD)
+
+  rm -rf "$VENDOR_DIR/freetype"
+  mkdir -p "$VENDOR_DIR/freetype"
+
+  # Copy source files we compile (from build.zig)
+  cp -r "$src/src" "$VENDOR_DIR/freetype/src"
+  # Copy all headers
+  cp -r "$src/include" "$VENDOR_DIR/freetype/include"
+  # License
+  cp "$src/LICENSE.TXT" "$VENDOR_DIR/freetype/"
+
+  rm -rf "$(dirname "$src")"
+  ok "freetype @ $rev"
+}
+
+# ── Vendor harfbuzz ──
+# Headers only — Skia compiles its own harfbuzz wrapper.
+vendor_harfbuzz() {
+  local src
+  src=$(clone_at_rev "harfbuzz" "$HARFBUZZ_REPO" "$VENDOR_DIR/harfbuzz") || return 1
+  local rev
+  rev=$(cd "$src" && git rev-parse --short HEAD)
+
+  rm -rf "$VENDOR_DIR/harfbuzz"
+  mkdir -p "$VENDOR_DIR/harfbuzz/src"
+
+  # Copy headers from src/ (hb-*.h, hb-*.hh)
+  cp "$src"/src/hb.h "$src"/src/hb-*.h "$src"/src/hb-*.hh "$VENDOR_DIR/harfbuzz/src/" 2>/dev/null || true
+  # License
+  cp "$src/COPYING" "$VENDOR_DIR/harfbuzz/"
+
+  rm -rf "$(dirname "$src")"
+  ok "harfbuzz @ $rev"
+}
+
+# ── Vendor expat ──
+# Headers only — Skia compiles its own expat wrapper.
+vendor_expat() {
+  local src
+  src=$(clone_at_rev "expat" "$EXPAT_REPO" "$VENDOR_DIR/expat") || return 1
+  local rev
+  rev=$(cd "$src" && git rev-parse --short HEAD)
+
+  rm -rf "$VENDOR_DIR/expat"
+  mkdir -p "$VENDOR_DIR/expat/lib"
+
+  # Copy headers from expat/lib/
+  cp "$src"/expat/lib/*.h "$VENDOR_DIR/expat/lib/"
+  # License
+  cp "$src/expat/COPYING" "$VENDOR_DIR/expat/"
+
+  rm -rf "$(dirname "$src")"
+  ok "expat @ $rev"
 }
 
 # ── Main ──
 
 echo ""
-echo "=== Syncing required Skia third-party deps ==="
+echo "=== Vendoring Skia third-party deps ==="
 echo ""
 
+mkdir -p "$VENDOR_DIR"
+
 failed=0
-for name in "${!DEPS[@]}"; do
-  sync_dep "$name" "${DEPS[$name]}" || ((failed++))
-done
+vendor_freetype || ((failed++))
+vendor_harfbuzz  || ((failed++))
+vendor_expat     || ((failed++))
 
 echo ""
 if [ "$failed" -gt 0 ]; then
-  error "$failed dep(s) failed to sync. Retry or check network connectivity."
+  error "$failed dep(s) failed. Check network connectivity."
   exit 1
 fi
 
-ok "All deps synced (${#DEPS[@]} packages)"
+ok "All deps vendored to vendor/"
+echo "  Run 'git add vendor/' to check them in."
+echo ""

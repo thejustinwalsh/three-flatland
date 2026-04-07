@@ -11,3 +11,6 @@ zig-cache/
 *.component.wasm
 
 # dist/ is gitignored at root level
+
+# Override root vendor/ ignore — skia vendors freetype/harfbuzz/expat source
+!vendor/

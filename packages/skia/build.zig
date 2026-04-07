@@ -204,9 +204,9 @@ fn buildSkiaLib(
         lib.addIncludePath(skia_root.path(b, inc));
     }
     lib.addIncludePath(skia_root);
-    lib.addIncludePath(skia_root.path(b, "third_party/externals/expat/expat/lib"));
-    lib.addIncludePath(skia_root.path(b, "third_party/externals/freetype/include"));
-    lib.addIncludePath(skia_root.path(b, "third_party/externals/harfbuzz/src"));
+    lib.addIncludePath(b.path("vendor/expat/lib"));
+    lib.addIncludePath(b.path("vendor/freetype/include"));
+    lib.addIncludePath(b.path("vendor/harfbuzz/src"));
     lib.addIncludePath(b.path(shim_dir));
 
     return lib;
@@ -225,36 +225,36 @@ fn buildFreeType(
         .root_module = b.createModule(.{ .target = target, .optimize = optimize }),
     });
     lib.addCSourceFiles(.{
-        .root = skia_root,
+        .root = b.path("vendor/freetype"),
         .files = &.{
-            "third_party/externals/freetype/src/autofit/autofit.c",
-            "third_party/externals/freetype/src/base/ftbase.c",
-            "third_party/externals/freetype/src/base/ftbbox.c",
-            "third_party/externals/freetype/src/base/ftbitmap.c",
-            "third_party/externals/freetype/src/base/ftdebug.c",
-            "third_party/externals/freetype/src/base/ftfstype.c",
-            "third_party/externals/freetype/src/base/ftgasp.c",
-            "third_party/externals/freetype/src/base/ftglyph.c",
-            "third_party/externals/freetype/src/base/ftinit.c",
-            "third_party/externals/freetype/src/base/ftmm.c",
-            "third_party/externals/freetype/src/base/ftpatent.c",
-            "third_party/externals/freetype/src/base/ftstroke.c",
-            "third_party/externals/freetype/src/base/ftsynth.c",
-            "third_party/externals/freetype/src/base/ftsystem.c",
-            "third_party/externals/freetype/src/base/fttype1.c",
-            "third_party/externals/freetype/src/base/ftwinfnt.c",
-            "third_party/externals/freetype/src/cff/cff.c",
-            "third_party/externals/freetype/src/cid/type1cid.c",
-            "third_party/externals/freetype/src/gzip/ftgzip.c",
-            "third_party/externals/freetype/src/psaux/psaux.c",
-            "third_party/externals/freetype/src/pshinter/pshinter.c",
-            "third_party/externals/freetype/src/psnames/psnames.c",
-            "third_party/externals/freetype/src/raster/raster.c",
-            "third_party/externals/freetype/src/sfnt/sfnt.c",
-            "third_party/externals/freetype/src/smooth/smooth.c",
-            "third_party/externals/freetype/src/svg/svg.c",
-            "third_party/externals/freetype/src/truetype/truetype.c",
-            "third_party/externals/freetype/src/type1/type1.c",
+            "src/autofit/autofit.c",
+            "src/base/ftbase.c",
+            "src/base/ftbbox.c",
+            "src/base/ftbitmap.c",
+            "src/base/ftdebug.c",
+            "src/base/ftfstype.c",
+            "src/base/ftgasp.c",
+            "src/base/ftglyph.c",
+            "src/base/ftinit.c",
+            "src/base/ftmm.c",
+            "src/base/ftpatent.c",
+            "src/base/ftstroke.c",
+            "src/base/ftsynth.c",
+            "src/base/ftsystem.c",
+            "src/base/fttype1.c",
+            "src/base/ftwinfnt.c",
+            "src/cff/cff.c",
+            "src/cid/type1cid.c",
+            "src/gzip/ftgzip.c",
+            "src/psaux/psaux.c",
+            "src/pshinter/pshinter.c",
+            "src/psnames/psnames.c",
+            "src/raster/raster.c",
+            "src/sfnt/sfnt.c",
+            "src/smooth/smooth.c",
+            "src/svg/svg.c",
+            "src/truetype/truetype.c",
+            "src/type1/type1.c",
         },
         .flags = &.{
             "-DFT2_BUILD_LIBRARY",            "-DNDEBUG",
@@ -264,7 +264,7 @@ fn buildFreeType(
         },
     });
     lib.linkLibC();
-    lib.addIncludePath(skia_root.path(b, "third_party/externals/freetype/include"));
+    lib.addIncludePath(b.path("vendor/freetype/include"));
     lib.addIncludePath(skia_root.path(b, "third_party/freetype2/include"));
     lib.addIncludePath(skia_root);
     return lib;

@@ -141,13 +141,10 @@ fetch_build_tools() {
   export NINJA_BIN="$ninja_bin"
 }
 
-# ── Step 2: Sync Skia's vendored third-party deps ──
-sync_skia_deps() {
-  info "Syncing Skia third-party dependencies..."
-  info "Using targeted sync (only freetype, harfbuzz, expat, abseil-cpp)"
-  echo ""
-
-  "$SCRIPT_DIR/sync-skia-deps.sh"
+# ── Step 2: Vendor third-party deps ──
+# vendor/ is checked into git — this only runs when --force or vendor/ is missing.
+vendor_deps() {
+  "$SCRIPT_DIR/sync-skia-deps.sh" "$@"
 }
 
 # ── Step 3: Run GN to generate build configuration ──
@@ -253,7 +250,7 @@ generate_sources_zig() {
 fetch_build_tools
 
 if [ "$EXTRACT_ONLY" = false ]; then
-  sync_skia_deps
+  vendor_deps
 fi
 
 # Apply patches (always — idempotent)
