@@ -24,6 +24,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          submodules: true
 
       - name: Install pnpm
         uses: pnpm/action-setup@v4
@@ -35,6 +37,11 @@ jobs:
           cache: 'pnpm'
           registry-url: 'https://registry.npmjs.org'
 
+      - name: Setup Zig
+        uses: mlugg/setup-zig@v2
+        with:
+          version: 0.15.1
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
@@ -45,6 +52,14 @@ jobs:
           key: ${{ runner.os }}-turbo-${{ github.sha }}
           restore-keys: |
             ${{ runner.os }}-turbo-
+
+      - name: Cache Skia WASM tools
+        uses: actions/cache@v4
+        with:
+          path: packages/skia/.tools
+          key: ${{ runner.os }}-skia-tools-${{ hashFiles('packages/skia/package.json') }}
+          restore-keys: |
+            ${{ runner.os }}-skia-tools-
 
       - name: Build
         run: pnpm build
@@ -65,7 +80,7 @@ jobs:
       - name: Sync alpha dist-tag to latest
         if: steps.changesets.outputs.published == 'true'
         run: |
-          for pkg in three-flatland @three-flatland/nodes @three-flatland/presets; do
+          for pkg in three-flatland @three-flatland/nodes @three-flatland/presets @three-flatland/skia; do
             version=$(npm view "$pkg" version 2>/dev/null)
             if [ -n "$version" ] && echo "$version" | grep -q "alpha"; then
               echo "Tagging $pkg@$version as alpha"

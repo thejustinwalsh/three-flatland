@@ -40,20 +40,20 @@ function saveGLState(gl: WebGL2RenderingContext): SavedGLState {
   }
 
   return {
-    program: gl.getParameter(gl.CURRENT_PROGRAM),
-    vao: gl.getParameter(gl.VERTEX_ARRAY_BINDING),
-    arrayBuffer: gl.getParameter(gl.ARRAY_BUFFER_BINDING),
-    elementArrayBuffer: gl.getParameter(gl.ELEMENT_ARRAY_BUFFER_BINDING),
-    activeTexture: gl.getParameter(gl.ACTIVE_TEXTURE),
-    texture2D: gl.getParameter(gl.TEXTURE_BINDING_2D),
-    framebuffer: gl.getParameter(gl.FRAMEBUFFER_BINDING),
-    renderbuffer: gl.getParameter(gl.RENDERBUFFER_BINDING),
-    viewport: gl.getParameter(gl.VIEWPORT),
-    scissorBox: gl.getParameter(gl.SCISSOR_BOX),
+    program: gl.getParameter(gl.CURRENT_PROGRAM) as WebGLProgram | null,
+    vao: gl.getParameter(gl.VERTEX_ARRAY_BINDING) as WebGLVertexArrayObject | null,
+    arrayBuffer: gl.getParameter(gl.ARRAY_BUFFER_BINDING) as WebGLBuffer | null,
+    elementArrayBuffer: gl.getParameter(gl.ELEMENT_ARRAY_BUFFER_BINDING) as WebGLBuffer | null,
+    activeTexture: gl.getParameter(gl.ACTIVE_TEXTURE) as number,
+    texture2D: gl.getParameter(gl.TEXTURE_BINDING_2D) as WebGLTexture | null,
+    framebuffer: gl.getParameter(gl.FRAMEBUFFER_BINDING) as WebGLFramebuffer | null,
+    renderbuffer: gl.getParameter(gl.RENDERBUFFER_BINDING) as WebGLRenderbuffer | null,
+    viewport: gl.getParameter(gl.VIEWPORT) as Int32Array,
+    scissorBox: gl.getParameter(gl.SCISSOR_BOX) as Int32Array,
     scissorTest: gl.isEnabled(gl.SCISSOR_TEST),
     blend: gl.isEnabled(gl.BLEND),
     depthTest: gl.isEnabled(gl.DEPTH_TEST),
-    depthMask: gl.getParameter(gl.DEPTH_WRITEMASK),
+    depthMask: gl.getParameter(gl.DEPTH_WRITEMASK) as boolean,
     cullFace: gl.isEnabled(gl.CULL_FACE),
     stencilTest: gl.isEnabled(gl.STENCIL_TEST),
     attribs,
@@ -91,8 +91,7 @@ function restoreGLState(gl: WebGL2RenderingContext, s: SavedGLState): void {
  * Renderer type — any Three.js renderer (WebGLRenderer, WebGPURenderer, etc.).
  * Uses a minimal structural type so we don't depend on WebGPURenderer at the type level.
  */
- 
-export interface AnyRenderer extends Record<string, any> {
+export interface AnyRenderer extends Record<string, any> { // eslint-disable-line @typescript-eslint/no-explicit-any
   getContext(): unknown
   getRenderTarget(): unknown
   setRenderTarget(target: unknown): void
@@ -148,10 +147,6 @@ export class SkiaCanvas extends Object3D {
   private _skiaContext: SkiaContext | null = null
   private _renderTarget: WebGLRenderTarget | null = null
   private _needsRedraw = true
-  // WebGL texture mode: we create our own FBO since we can't extract Three.js's FBO ID
-  private _glFBO: WebGLFramebuffer | null = null
-  private _glTex: WebGLTexture | null = null
-  private _glFBOSize: [number, number] = [0, 0]
 
   private _readyPromise: Promise<SkiaContext> | null = null
   private _readyResolve: ((ctx: SkiaContext) => void) | null = null
@@ -221,24 +216,33 @@ export class SkiaCanvas extends Object3D {
     return this._readyPromise
   }
 
-  /** Mark as needing redraw */
+  /** Mark as needing redraw on the next `render()` call. */
   invalidate(): void {
     this._needsRedraw = true
   }
 
   /**
    * Render the Skia scene graph to the framebuffer.
-   * No-op if the Skia context isn't ready yet.
+   * Skips the draw if the canvas hasn't been invalidated (texture mode only).
+   * Pass `force = true` to draw unconditionally.
    *
-   * When sharing a WebGL context with Three.js, saves the GL state,
-   * resets to a clean baseline for Skia, draws, then restores the
-   * previous state so Three.js can continue without disruption.
+   * ```ts
+   * // Pattern 1: mark dirty separately (e.g. when a property changes)
+   * canvas.invalidate()
+   * // ...later...
+   * canvas.render()
+   *
+   * // Pattern 2: invalidate and draw in one call
+   * canvas.render(true)
+   * ```
    */
-  render(renderer: AnyRenderer): void {
-    if (!this._skiaContext) return
+  render(invalidate?: boolean): void {
+    const r = this._renderer
+    if (!this._skiaContext || !r) return
+    if (invalidate) this._needsRedraw = true
     if (!this._needsRedraw && !this._overlay) return
 
-    const targetHandle = this._getTargetHandle(renderer)
+    const targetHandle = this._getTargetHandle(r)
     const gl = this._skiaContext.backend === 'webgl' ? this._skiaContext.gl : null
     const saved = gl ? saveGLState(gl) : null
 
@@ -256,7 +260,7 @@ export class SkiaCanvas extends Object3D {
     // WebGL texture mode: wrap Three.js's GL texture directly
     let ctx: SkiaDrawingContext | null = null
     if (targetHandle === -1 && this._skiaContext.backend === 'webgl') {
-      const texId = this._getOrRegisterGLTexture(renderer)
+      const texId = this._getOrRegisterGLTexture(r)
       if (texId > 0) {
         ctx = this._skiaContext.beginDrawingGLTexture(texId, this._width, this._height)
       }
@@ -285,14 +289,14 @@ export class SkiaCanvas extends Object3D {
       const wgpuState = this._skiaContext._wgpuState
       const skiaTex = wgpuState?.lastRenderTargetTexture
       if (skiaTex) {
-        const dev = getWGPUDevice(renderer)
+        const dev = getWGPUDevice(r)
         if (dev) {
           if (this._overlay) {
             // Overlay mode: blit to canvas with premultiplied alpha blending
             // (copyTextureToTexture can't blend — it would overwrite the 3D scene)
             if (!_canvasConfigured) {
               _canvasConfigured = true
-              const ctx = (renderer.backend as { context?: GPUCanvasContext } | undefined)?.context
+              const ctx = (r.backend as { context?: GPUCanvasContext } | undefined)?.context
               if (ctx) {
                 ctx.configure({
                   device: dev,
@@ -302,7 +306,7 @@ export class SkiaCanvas extends Object3D {
                 })
               }
             }
-            const canvasTex = getCanvasTexture(renderer)
+            const canvasTex = getCanvasTexture(r)
             if (canvasTex) {
               if (!_blitPipeline) _blitPipeline = new SkiaBlitPipeline(dev)
               _blitPipeline.blit(skiaTex, canvasTex, true /* alpha blend */)
@@ -310,12 +314,12 @@ export class SkiaCanvas extends Object3D {
           } else if (this._renderTarget) {
             // Texture mode: blit Skia's output into the render target's texture
             // Use blit pipeline for format conversion (Skia=BGRA, RT=RGBA)
-            const backend = renderer.backend as { get?: (t: unknown) => { texture?: GPUTexture } | undefined } | undefined
+            const backend = r.backend as { get?: (t: unknown) => { texture?: GPUTexture } | undefined } | undefined
             if (backend?.get) {
               // Force Three.js to init the render target GPU resources
-              const currentRT = renderer.getRenderTarget()
-              renderer.setRenderTarget(this._renderTarget)
-              renderer.setRenderTarget(currentRT)
+              const currentRT = r.getRenderTarget()
+              r.setRenderTarget(this._renderTarget)
+              r.setRenderTarget(currentRT)
 
               // Find the render target's GPUTexture
               const rt = this._renderTarget as unknown as Record<string, unknown>

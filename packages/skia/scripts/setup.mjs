@@ -12,6 +12,7 @@
  *   node scripts/setup.mjs --check      # Check prerequisites only
  *   node scripts/setup.mjs --tools      # Install/update tools only
  *   node scripts/setup.mjs --build      # Build only (skip setup)
+ *   node scripts/setup.mjs --ensure     # Idempotent: setup + build, skip steps already done
  *   node scripts/setup.mjs --gl-only    # Build GL variant only
  *   node scripts/setup.mjs --wgpu-only  # Build WebGPU variant only
  */
@@ -383,7 +384,7 @@ async function installTools(config) {
 
 // ── Skia submodule + setup ──
 
-function setupSkia(config) {
+function setupSkia(config, skipIfReady = false) {
   heading("Skia Source");
 
   // Check submodule
@@ -420,6 +421,13 @@ function setupSkia(config) {
     ok("Skia submodule present");
   }
 
+  // Skip if source extraction is already done (idempotent fast path)
+  const sourcesZig = resolve(PKG_ROOT, "src/zig/generated/skia_sources.zig");
+  if (skipIfReady && existsSync(sourcesZig)) {
+    ok("Skia sources already extracted (skia_sources.zig exists)");
+    return true;
+  }
+
   // Run setup-skia.sh (deps, patches, GN, source extraction)
   info("Running Skia setup (deps, patches, GN, source extraction)...");
   console.log("");
@@ -430,10 +438,14 @@ function setupSkia(config) {
 
 // ── Build ──
 
-function buildWasm(glOnly = false, wgpuOnly = false) {
+function buildWasm(glOnly = false, wgpuOnly = false, skipIfFresh = false) {
   heading("WASM Build");
 
-  const flags = glOnly ? "--gl-only" : wgpuOnly ? "--wgpu-only" : "";
+  const flagParts = [];
+  if (glOnly) flagParts.push("--gl-only");
+  if (wgpuOnly) flagParts.push("--wgpu-only");
+  if (skipIfFresh) flagParts.push("--skip-if-fresh");
+  const flags = flagParts.join(" ");
   const label = glOnly ? " (GL only)" : wgpuOnly ? " (WebGPU only)" : " (GL + WebGPU)";
   info(`Building Skia WASM${label}...`);
   console.log("");
@@ -461,8 +473,28 @@ async function main() {
   const checkOnly = args.includes("--check");
   const toolsOnly = args.includes("--tools");
   const buildOnly = args.includes("--build");
+  const ensure = args.includes("--ensure");
   const glOnly = args.includes("--gl-only");
   const wgpuOnly = args.includes("--wgpu-only");
+
+  const config = loadConfig();
+
+  // --ensure: quick check if everything is already built, exit early if so
+  if (ensure) {
+    const variants = glOnly ? ["gl"] : wgpuOnly ? ["wgpu"] : ["gl", "wgpu"];
+    const allFresh = variants.every((v) =>
+      existsSync(resolve(PKG_ROOT, `dist/skia-${v}/skia-${v}.wasm`)),
+    );
+    if (allFresh) {
+      // WASM exists — just verify tools + submodule are present (fast path)
+      const hasZig = !!which("zig");
+      const hasSubmodule = existsSync(resolve(SKIA_DIR, "include"));
+      const hasTools = existsSync(resolve(TOOLS_BIN, "wasm-tools"));
+      if (hasZig && hasSubmodule && hasTools) {
+        return; // Everything is in place, nothing to do
+      }
+    }
+  }
 
   console.log("");
   console.log(
@@ -474,8 +506,6 @@ async function main() {
   console.log(
     `${C.bold}${C.magenta}  ╚══════════════════════════════════════════╝${C.reset}`,
   );
-
-  const config = loadConfig();
 
   // 1. Prerequisites
   const prereqOk = checkPrerequisites(config);
@@ -503,16 +533,16 @@ async function main() {
     process.exit(0);
   }
 
-  // 3. Skia setup
+  // 3. Skia setup (submodule + deps + GN + source extraction)
   if (!buildOnly) {
-    const skiaOk = setupSkia(config);
+    const skiaOk = setupSkia(config, ensure);
     if (!skiaOk) {
       process.exit(1);
     }
   }
 
-  // 4. Build
-  buildWasm(glOnly, wgpuOnly);
+  // 4. Build WASM
+  buildWasm(glOnly, wgpuOnly, ensure);
 
   // Done
   heading("Done");

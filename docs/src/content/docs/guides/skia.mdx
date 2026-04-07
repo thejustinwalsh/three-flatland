@@ -5,15 +5,100 @@ description: GPU-accelerated 2D vector graphics with Skia WASM — shapes, text,
 
 import { Tabs, TabItem } from '@astrojs/starlight/components';
 
-`@three-flatland/skia` brings Skia's GPU-accelerated vector rendering to Three.js via a ~1 MB WASM module built with Zig. It auto-detects WebGPU or WebGL from your renderer and supports both vanilla Three.js and React Three Fiber.
+`@three-flatland/skia` brings Skia's GPU-accelerated vector rendering to Three.js via WASM, built with Zig. It auto-detects WebGPU or WebGL from your renderer and supports both vanilla Three.js and React Three Fiber.
+
+Includes a native WebGPU backend (Graphite/Dawn) — CanvasKit's npm package ships WebGL only. At **857 KB** (WebGPU) / **1 MB** (WebGL) brotli vs CanvasKit's 2.2 MB.
 
 ## Installation
 
+<Tabs syncKey="pkg">
+  <TabItem label="npm">
+    ```bash
+    npm install @three-flatland/skia@alpha
+    ```
+  </TabItem>
+  <TabItem label="pnpm">
+    ```bash
+    pnpm add @three-flatland/skia@alpha
+    ```
+  </TabItem>
+  <TabItem label="yarn">
+    ```bash
+    yarn add @three-flatland/skia@alpha three
+    ```
+  </TabItem>
+  <TabItem label="bun">
+    ```bash
+    bun add @three-flatland/skia@alpha
+    ```
+  </TabItem>
+  <TabItem label="agents">
+    Paste this into your agent to add Skia drawing support:
+    ~~~
+    Add @three-flatland/skia to the project for GPU-accelerated 2D vector
+    graphics (shapes, text, gradients, path ops) rendered via Skia WASM.
+
+    Read the API reference: https://thejustinwalsh.com/three-flatland/llms-full.txt
+
+    Install: npm install @three-flatland/skia@alpha
+    Requires: three >= 0.183.1, auto-detects WebGPU or WebGL from renderer
+    Import from: "@three-flatland/skia" (core), "@three-flatland/skia/three" (scene nodes), "@three-flatland/skia/react" (R3F integration)
+
+    Key APIs:
+    - Skia.init(renderer) — initialize WASM, returns SkiaContext
+    - SkiaCanvas — root render target (texture mode or overlay mode)
+    - Drawing nodes: SkiaRect, SkiaCircle, SkiaLine, SkiaPathNode, SkiaTextNode, SkiaGroup
+    - SkiaPaint — custom gradients, shaders, effects (assign to node.paint)
+    - SkiaPath — programmatic paths, boolean ops (difference, intersect, union, xor)
+    - SkiaFontLoader — loads SkiaTypeface (useLoader compatible, cached by URL)
+    - SkiaTypeface.atSize(n) — derive sized SkiaFont from a loaded typeface
+
+    React patterns:
+    - <SkiaCanvas> wrapper provides context to children via useSkiaContext()
+    - useLoader(SkiaFontLoader, url) returns SkiaTypeface, call .atSize(n) for sized fonts
+    - attachSkiaTexture — R3F attach helper for texture-on-material
+    - useState(() => new SkiaPaint(skia)) for WASM objects (survives strict mode)
+    - useFrame with { before: 'render' } / { after: 'render' } for render pipeline
+
+    WASM setup: works zero-config with Vite dev server.
+    For production, copy WASM to public: npx skia-wasm public/skia
+    Override URL: Skia.init(renderer, { wasmUrl: '/skia/skia-gl.wasm' })
+    ~~~
+  </TabItem>
+</Tabs>
+
+Peer dependencies: `three >= 0.183.1`. For React: `@react-three/fiber >= 10.0.0-alpha.2` and `react >= 19.0.0`.
+
+### WASM Setup
+
+Skia ships ~1 MB WASM binaries (one for WebGL, one for WebGPU). **Vite handles this automatically** in dev — no config needed. For production builds or other bundlers, copy the WASM to your public directory:
+
 ```bash
-pnpm add @three-flatland/skia
+npx skia-wasm public/skia
 ```
 
-Peer dependencies: `three >= 0.170.0`. For React: `@react-three/fiber >= 8.0.0` and `react >= 18.0.0`.
+This copies `skia-gl.wasm` and `skia-wgpu.wasm` to `public/skia/`. Then tell Skia where to find them:
+
+```typescript
+// Option 1: pass the URL directly
+const skia = await Skia.init(renderer, { wasmUrl: '/skia/skia-gl.wasm' })
+
+// Option 2: set env vars (replaced at build time by your bundler)
+// webpack.config.js
+const { DefinePlugin } = require('webpack')
+module.exports = {
+  plugins: [
+    new DefinePlugin({
+      'process.env.SKIA_WASM_URL_GL': JSON.stringify('/skia/skia-gl.wasm'),
+      'process.env.SKIA_WASM_URL_WGPU': JSON.stringify('/skia/skia-wgpu.wasm'),
+    }),
+  ],
+}
+```
+
+:::tip[Zero Config with Vite]
+During development, Vite resolves `import.meta.url` correctly so the WASM loads from `node_modules` with no extra setup. You only need the copy step for production builds or non-Vite bundlers.
+:::
 
 ## Initialization
 
@@ -36,12 +121,13 @@ Peer dependencies: `three >= 0.170.0`. For React: `@react-three/fiber >= 8.0.0` 
   </TabItem>
   <TabItem label="React" icon="seti:react">
     ```tsx
+    import { useThree } from '@react-three/fiber/webgpu'
     import { SkiaCanvas, SkiaRect, useSkiaContext } from '@three-flatland/skia/react'
 
-    // SkiaCanvas initializes Skia automatically and provides context to children.
+    // SkiaCanvas initializes Skia and provides context to children.
     // Child components access it via useSkiaContext().
     function MyScene() {
-      const renderer = useThree((s) => s.renderer)
+      const renderer = useThree((s) => s.gl)
       return (
         <SkiaCanvas renderer={renderer} width={512} height={512}>
           <skiaRect x={10} y={10} width={100} height={50} fill={[1, 0, 0, 1]} />
@@ -102,15 +188,14 @@ The root node that owns the render target and walks children to draw. Two modes:
 
 ### Render Pipeline
 
-SkiaCanvas does not auto-render. Call `invalidate()` then `render(renderer)` each frame:
+SkiaCanvas does not auto-render. Call `render()` each frame — it automatically marks the canvas dirty and draws:
 
 <Tabs syncKey="framework">
   <TabItem label="Three.js" icon="seti:javascript">
     ```typescript
     function animate() {
-      // 1. Update Skia shapes
-      shapesCanvas.invalidate()
-      shapesCanvas.render(renderer)
+      // 1. Render Skia shapes to texture
+      shapesCanvas.render()
 
       // 2. Apply texture to mesh
       material.map = shapesCanvas.texture
@@ -119,8 +204,7 @@ SkiaCanvas does not auto-render. Call `invalidate()` then `render(renderer)` eac
       renderer.render(scene, camera)
 
       // 4. Overlay on top
-      overlay.invalidate()
-      overlay.render(renderer)
+      overlay.render()
     }
     ```
   </TabItem>
@@ -128,14 +212,12 @@ SkiaCanvas does not auto-render. Call `invalidate()` then `render(renderer)` eac
     ```tsx
     // Shapes texture — render before Three.js scene
     useFrame(() => {
-      canvasRef.current?.invalidate()
-      canvasRef.current?.render(renderer)
+      canvasRef.current?.render()
     }, { before: 'render' })
 
     // Overlay — render after Three.js scene
     useFrame(() => {
-      overlayRef.current?.invalidate()
-      overlayRef.current?.render(renderer)
+      overlayRef.current?.render()
     }, { after: 'render' })
     ```
   </TabItem>
@@ -202,17 +284,20 @@ Requires a `SkiaFont` loaded via `SkiaFontLoader`:
 Groups apply 2D transforms, clipping, and layer effects to all children:
 
 ```tsx
-<skiaGroup tx={100} ty={50} scaleSkiaX={2} scaleSkiaY={2}>
+<skiaGroup position={[100, 50, 0]} scale={[2, 2, 1]}>
   <skiaRect fill={[1, 0, 0, 1]} width={50} height={50} />
 </skiaGroup>
 ```
 
+Uses standard Object3D `position`, `scale`, and `rotation.z` (radians). The `degrees` prop is a convenience shorthand.
+
 | Prop | Description |
 |------|-------------|
-| `tx`, `ty` | Translation |
-| `skiaRotate` | Rotation in degrees |
-| `scaleSkiaX`, `scaleSkiaY` | Scale |
-| `skewX`, `skewY` | Skew |
+| `position` | Translation (Object3D — `[x, y, z]`) |
+| `rotation` | Rotation (Object3D — `rotation.z` in radians) |
+| `degrees` | Rotation in degrees (convenience, overrides `rotation.z`) |
+| `scale` | Scale (Object3D — `[x, y, z]`) |
+| `skewX`, `skewY` | Skew (Skia-specific, no Object3D equivalent) |
 | `opacity` | Layer opacity |
 | `blur` | Gaussian blur on group |
 | `shadow` | Drop shadow (`{ dx, dy, blur, color }`) |
@@ -221,38 +306,40 @@ Groups apply 2D transforms, clipping, and layer effects to all children:
 
 ## Font Loading
 
+`SkiaFontLoader` loads a `SkiaTypeface` — the font data independent of size. Call `.atSize(n)` to get a sized `SkiaFont`. The typeface is cached by URL, and sized fonts are cached internally — so multiple `.atSize()` calls are cheap.
+
 <Tabs syncKey="framework">
   <TabItem label="Three.js" icon="seti:javascript">
     ```typescript
     import { SkiaFontLoader } from '@three-flatland/skia/three'
 
-    const font = await SkiaFontLoader.load('/fonts/Inter.ttf', {
-      context: skia,
-      size: 24,
-    })
-    textNode.font = font
+    const typeface = await SkiaFontLoader.load('/fonts/Inter.ttf')
+    const titleFont = typeface.atSize(32)
+    const bodyFont = typeface.atSize(14)
+    textNode.font = titleFont
     ```
   </TabItem>
   <TabItem label="React" icon="seti:react">
     ```tsx
+    import { useLoader } from '@react-three/fiber/webgpu'
     import { SkiaFontLoader } from '@three-flatland/skia/react'
 
-    // SkiaFontLoader.load() caches by url:size.
-    // Awaits the in-flight Skia.init() if context isn't ready yet.
-    const [fonts, setFonts] = useState<SkiaFont[] | null>(null)
-    useEffect(() => {
-      Promise.all([
-        SkiaFontLoader.load(url, { size: 32 }),
-        SkiaFontLoader.load(url, { size: 14 }),
-      ]).then(([title, body]) => setFonts([title, body]))
-    }, [])
+    function TextComponent() {
+      // useLoader caches the typeface by URL — one fetch, multiple sizes
+      const typeface = useLoader(SkiaFontLoader, '/fonts/Inter.ttf')
+      const titleFont = typeface.atSize(32)
+      const bodyFont = typeface.atSize(14)
+
+      return <>
+        <skiaTextNode text="Title" font={titleFont} fill={[1, 1, 1, 1]} />
+        <skiaTextNode text="Body" font={bodyFont} fill={[0.8, 0.8, 0.8, 1]} />
+      </>
+    }
     ```
   </TabItem>
 </Tabs>
 
-:::caution[useLoader and Font Sizes]
-R3F's `useLoader` caches by URL only — it cannot differentiate the same font at different sizes. Use `SkiaFontLoader.load()` directly when you need multiple sizes from the same font file.
-:::
+The typeface resolves the `SkiaContext` lazily — if no context is available when `atSize()` is called, it falls back to the global `SkiaContext.instance` singleton. Inside a `<SkiaCanvas>` subtree, this is always available.
 
 ## Custom Paints
 
@@ -294,7 +381,7 @@ const a = new SkiaPath(skia).addCircle(100, 100, 40)
 const b = new SkiaPath(skia).addCircle(130, 100, 40)
 const result = new SkiaPath(skia)
 
-a.opInto(b, 'intersection', result) // 'difference' | 'intersect' | 'union' | 'xor'
+a.opInto(b, 'intersect', result) // 'difference' | 'intersect' | 'union' | 'xor'
 pathNode.path = result
 ```
 

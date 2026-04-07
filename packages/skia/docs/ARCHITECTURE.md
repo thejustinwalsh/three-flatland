@@ -6,26 +6,26 @@ How GPU-accelerated 2D rendering gets from Skia C++ to the browser.
 
 ```
                         ┌──────────────────┐
-                        │   WIT Definitions │
-                        │  wit/skia.wit     │  Defines the component interface
-                        │  wit/gl.wit       │  GL function imports (147 fns)
-                        │  wit/wgpu.wit     │  WebGPU function imports (276 fns)
+                        │  WIT Definitions │
+                        │  wit/skia.wit    │  Defines the component interface
+                        │  wit/gl.wit      │  GL function imports (147 fns)
+                        │  wit/wgpu.wit    │  WebGPU function imports (276 fns)
                         └────────┬─────────┘
                                  │
                     wit-bindgen c │  (Step 1: generate C glue)
                                  ▼
                 ┌────────────────────────────────┐
-                │  src/zig/bindings/generated/    │
-                │    skia_gl.h    — C types       │
-                │    skia_gl.c    — C glue code   │
-                │    skia_gl_component_type.o     │
+                │  src/zig/bindings/generated/   │
+                │    skia_gl.h    — C types      │
+                │    skia_gl.c    — C glue code  │
+                │    skia_gl_component_type.o    │
                 └────────────────┬───────────────┘
                                  │
                     zig build    │  (Step 2: compile to WASM)
                                  ▼
            ┌─────────────────────────────────────────┐
-           │  zig-out/bin/skia-gl.wasm                │
-           │  zig-out/bin/skia-wgpu.wasm              │
+           │  zig-out/bin/skia-gl.wasm               │
+           │  zig-out/bin/skia-wgpu.wasm             │
            └────────────────┬────────────────────────┘
                             │
                wasm-opt -Oz │  (Step 3: size optimize)
@@ -33,14 +33,14 @@ How GPU-accelerated 2D rendering gets from Skia C++ to the browser.
                copy to dist │  (Step 4)
                             ▼
            ┌─────────────────────────────────────────┐
-           │  dist/skia-gl/skia-gl.wasm    (~3.4 MB) │
-           │  dist/skia-wgpu/skia-wgpu.wasm (~2.8 MB)│
+           │  dist/skia-gl/skia-gl.wasm    (3.2 MB)  │
+           │  dist/skia-wgpu/skia-wgpu.wasm (2.6 MB) │
            └─────────────────────────────────────────┘
 ```
 
 Run: `node scripts/build-wasm.mjs` (or `--gl-only`, `--wgpu-only`)
 
-Prerequisites: `pnpm run skia:setup` installs Zig, wasm-tools, wit-bindgen, binaryen.
+Prerequisites: Zig 0.15.1 (user-installed). `pnpm run skia:setup` downloads wasm-tools, wit-bindgen, and binaryen to `.tools/`.
 
 ## WASM Module Structure
 
@@ -57,7 +57,7 @@ Each variant (GL, WGPU) is a single `.wasm` file with three import modules and o
 │  WGPU: wgpuDeviceCreateBuffer, etc. (276 fns)        │
 │                                                      │
 │  These are the GPU API calls that Skia makes.        │
-│  JavaScript must provide real implementations.        │
+│  JavaScript must provide real implementations.       │
 ├──────────────────────────────────────────────────────┤
 │  Import Module: "env"                                │
 │                                                      │
@@ -67,7 +67,7 @@ Each variant (GL, WGPU) is a single `.wasm` file with three import modules and o
 │  Import Module: "wasi_snapshot_preview1"             │
 │                                                      │
 │  Minimal WASI: fd_*, args_*, environ_*, proc_exit.   │
-│  Stubs — no real filesystem.                          │
+│  Stubs — no real filesystem.                         │
 └──────────────────────────────────────────────────────┘
 ```
 
@@ -94,45 +94,45 @@ The TypeScript API uses the **direct exports** (`skia_*`).
 │  Browser                                                        │
 │                                                                 │
 │  ┌──────────────────┐     ┌──────────────────────────────────┐  │
-│  │  TypeScript API   │     │  wasm-loader-gl.ts               │  │
-│  │                   │     │                                  │  │
-│  │  Skia.init(r)     │────▶│  createGLImports(state)          │  │
-│  │  SkiaContext       │     │    maps emscripten_gl* names     │  │
-│  │  SkiaDrawingCtx    │     │    to WebGL2RenderingContext     │  │
-│  │  SkiaPaint, etc.   │     │    calls via handle tables       │  │
+│  │  TypeScript API  │     │  wasm-loader-gl.ts               │  │
+│  │                  │     │                                  │  │
+│  │  Skia.init(r)    │────▶│  createGLImports(state)          │  │
+│  │  SkiaContext     │     │    maps emscripten_gl* names     │  │
+│  │  SkiaDrawingCtx  │     │    to WebGL2RenderingContext     │  │
+│  │  SkiaPaint, etc. │     │    calls via handle tables       │  │
 │  └────────┬─────────┘     └──────────────┬───────────────────┘  │
-│           │                              │                       │
-│           │ calls skia_* exports         │ provides gl imports   │
-│           ▼                              ▼                       │
-│  ┌────────────────────────────────────────────────────────────┐  │
-│  │  skia-gl.wasm                                              │  │
-│  │                                                            │  │
+│           │                              │                      │
+│           │ calls skia_* exports         │ provides gl imports  │
+│           ▼                              ▼                      │
+│  ┌───────────────────────────────────────────────────────────┐  │
+│  │  skia-gl.wasm                                             │  │
+│  │                                                           │  │
 │  │  ┌──────────────┐   ┌──────────────┐   ┌───────────────┐  │  │
-│  │  │  core.zig     │   │ skia_c_api   │   │ Skia C++      │  │  │
-│  │  │  (exports)    │──▶│  _gl.cpp     │──▶│ Ganesh/GL     │  │  │
+│  │  │  core.zig    │   │ skia_c_api   │   │ Skia C++      │  │  │
+│  │  │  (exports)   │──▶│  _gl.cpp     │──▶│ Ganesh/GL     │  │  │
 │  │  │              │   │              │   │               │  │  │
 │  │  │  skia_init() │   │ MakeWebGL()  │   │ GrGLInterface │  │  │
 │  │  │  → sk_       │   │ MakeGL()     │   │ GrDirectCtx   │  │  │
 │  │  │  context_    │   │              │   │               │  │  │
 │  │  │  create()    │   │              │   │               │  │  │
 │  │  └──────────────┘   └──────┬───────┘   └───────────────┘  │  │
-│  │                            │                               │  │
-│  │                            │ calls emscripten_gl*          │  │
-│  │                            ▼                               │  │
-│  │  ┌──────────────────────────────────────────────────────┐  │  │
-│  │  │  emscripten_gl_shim.c                                │  │  │
-│  │  │                                                      │  │  │
-│  │  │  emscripten_glActiveTexture(t)                       │  │  │
-│  │  │    → __wasm_import_gl_ActiveTexture(t)               │  │  │
-│  │  │       (WASM import: module="gl",                     │  │  │
-│  │  │        name="emscripten_glActiveTexture")            │  │  │
-│  │  └──────────────────────────────────────────────────────┘  │  │
-│  └────────────────────────────────────────────────────────────┘  │
+│  │                            │                              │  │
+│  │                            │ calls emscripten_gl*         │  │
+│  │                            ▼                              │  │
+│  │  ┌─────────────────────────────────────────────────────┐  │  │
+│  │  │  emscripten_gl_shim.c                               │  │  │
+│  │  │                                                     │  │  │
+│  │  │  emscripten_glActiveTexture(t)                      │  │  │
+│  │  │    → __wasm_import_gl_ActiveTexture(t)              │  │  │
+│  │  │       (WASM import: module="gl",                    │  │  │
+│  │  │        name="emscripten_glActiveTexture")           │  │  │
+│  │  └─────────────────────────────────────────────────────┘  │  │
+│  └───────────────────────────────────────────────────────────┘  │
 │                                                                 │
 │           │ WASM import calls                                   │
 │           ▼                                                     │
 │  ┌──────────────────────────────────────────────────────────┐   │
-│  │  WebGL2RenderingContext (browser native)                  │   │
+│  │  WebGL2RenderingContext (browser native)                 │   │
 │  └──────────────────────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -196,9 +196,8 @@ Same architecture, different GPU module:
   GPUDevice / GPUQueue / etc. (browser native)
 ```
 
-The WGPU bridge must implement the full Dawn C API surface that Skia's
-Graphite backend calls. Unlike GL (which is well-tested), many WGPU
-functions are currently stubs and need real implementations.
+The WGPU bridge implements the Dawn C API surface that Skia's
+Graphite backend calls, mapping them to browser-native WebGPU objects.
 
 ## WIT (WebAssembly Interface Types)
 
@@ -318,7 +317,9 @@ packages/skia/
 │   ├── wasm-loader-wgpu.ts       WGPU bridge (wgpu* → browser WebGPU)
 │   ├── wasm-loader-shared.ts     Shared: env stubs, WASI stubs, WASM loader
 │   ├── drawing-context.ts        SkiaDrawingContext (canvas operations)
-│   ├── paint.ts, path.ts, ...    Resource wrappers
+│   ├── paint.ts                  SkiaPaint (ref-counted)
+│   ├── path.ts                  SkiaPath
+│   ├── font.ts                  SkiaFont + SkiaTypeface (ref-counted typeface handles)
 │   ├── types.ts                  SkiaExports interface
 │   │
 │   ├── three/                    Three.js scene graph integration
@@ -327,13 +328,19 @@ packages/skia/
 │   │   └── utils.ts              FBO extraction helpers
 │   │
 │   └── react/                    R3F integration
-│       ├── types.ts              ThreeElements augmentation
-│       └── hooks.ts              useSkiaContext, useSkiaDraw
+│       ├── SkiaCanvas.tsx        React wrapper (context provider)
+│       ├── context.ts            SkiaReactContext (React.createContext)
+│       ├── hooks.ts              useSkiaContext (suspends via use())
+│       ├── attach.ts             attachSkiaTexture (R3F attach helper)
+│       └── types.ts              ThreeElements augmentation
+│
+├── bin/
+│   └── copy-wasm.mjs             CLI: copy WASM to public dir (npx skia-wasm)
 │
 ├── build.zig                     Zig build config (both variants)
 ├── scripts/
-│   ├── build-wasm.mjs            Build orchestration
-│   └── setup.mjs                 Tool installation (Zig, wasm-tools, etc.)
+│   ├── setup.mjs                 Orchestrator: prereqs, tools, submodule, build
+│   └── build-wasm.mjs            WASM build: wit-bindgen, zig, wasm-opt
 │
 ├── test/
 │   ├── browser-test.html         Standalone GL test (raw WASM, no TS)

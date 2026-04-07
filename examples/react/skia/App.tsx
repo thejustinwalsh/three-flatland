@@ -1,8 +1,7 @@
-import { Canvas, extend, useFrame, useThree } from '@react-three/fiber/webgpu'
-import { use, useRef, useEffect, useMemo, useState, Suspense } from 'react'
+import { Canvas, extend, useFrame, useThree, useLoader } from '@react-three/fiber/webgpu'
+import { useRef, useEffect, useMemo, useState, Suspense } from 'react'
 import {
   SkiaCanvas,
-  type SkiaCanvasRef,
   SkiaRect,
   SkiaCircle,
   SkiaLine,
@@ -14,7 +13,7 @@ import {
   attachSkiaTexture,
 } from '@three-flatland/skia/react'
 import { SkiaPaint, SkiaPath } from '@three-flatland/skia'
-import type { SkiaFont } from '@three-flatland/skia'
+import type { SkiaCanvas as SkiaCanvasInstance } from '@three-flatland/skia/three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import {
   reflector, color as tslColor, positionWorld, float as tslFloat,
@@ -236,19 +235,24 @@ function PathOpGroup({ index }: { index: number }) {
 
 // ── Overlay Text ──
 
-function OverlayText({ fonts }: { fonts: { title: SkiaFont; sub: SkiaFont; fps: SkiaFont } }) {
-  const skia = useSkiaContext()!
+function OverlayText() {
+  const skia = useSkiaContext()
+  const typeface = useLoader(SkiaFontLoader, FONT_URL)
   const size = useThree((s) => s.size)
   const dpr = Math.min(devicePixelRatio, 2)
   const pw = size.width * dpr
   const ph = size.height * dpr
 
+  const titleFont = typeface.atSize(Math.round(32 * dpr))
+  const subFont = typeface.atSize(Math.round(14 * dpr))
+  const fpsFont = typeface.atSize(Math.round(11 * dpr))
+
   const subtitleRef = useRef<SkiaTextNode>(null)
   const fpsRef = useRef<SkiaTextNode>(null)
   const [subtitlePaint] = useState(() => new SkiaPaint(skia).setFill())
 
-  const titleX = (pw - fonts.title.measureText('@three-flatland/skia')) / 2
-  const subtitleX = (pw - fonts.sub.measureText('GPU-accelerated vector graphics in the browser')) / 2
+  const titleX = (pw - titleFont.measureText('@three-flatland/skia')) / 2
+  const subtitleX = (pw - subFont.measureText('GPU-accelerated vector graphics in the browser')) / 2
 
   const fpsState = useRef({ count: 0, lastTime: performance.now(), fps: 0 })
 
@@ -270,7 +274,7 @@ function OverlayText({ fonts }: { fonts: { title: SkiaFont; sub: SkiaFont; fps: 
       const t = elapsed * 1000
       const hue1 = (t * 0.05) % 360
       const hue2 = (hue1 + 120) % 360
-      const subW = fonts.sub.measureText(sub.text)
+      const subW = subFont.measureText(sub.text)
       subtitlePaint.setLinearGradient(
         sub.x, 0, sub.x + subW, 0,
         [hslToArgb(hue1, 0.8, 0.6), hslToArgb(hue2, 0.8, 0.6)], [0, 1],
@@ -279,13 +283,13 @@ function OverlayText({ fonts }: { fonts: { title: SkiaFont; sub: SkiaFont; fps: 
   })
 
   return <>
-    <skiaTextNode text="@three-flatland/skia" font={fonts.title}
+    <skiaTextNode text="@three-flatland/skia" font={titleFont}
       fill={[1, 1, 1, 1]} x={titleX} y={ph - 90} />
     <skiaTextNode ref={subtitleRef} text="GPU-accelerated vector graphics in the browser"
-      font={fonts.sub} paint={subtitlePaint} x={subtitleX} y={ph - 40} />
-    <skiaTextNode ref={fpsRef} text="FPS: 0" font={fonts.fps}
+      font={subFont} paint={subtitlePaint} x={subtitleX} y={ph - 40} />
+    <skiaTextNode ref={fpsRef} text="FPS: 0" font={fpsFont}
       fill={[0.2, 0.9, 0.4, 1]} x={pw - 160} y={30} />
-    <skiaTextNode text={`Backend: ${skia.backend.toUpperCase()}`} font={fonts.fps}
+    <skiaTextNode text={`Backend: ${skia.backend.toUpperCase()}`} font={fpsFont}
       fill={[0.6, 0.6, 0.8, 0.6]} x={20} y={30} />
   </>
 }
@@ -352,7 +356,7 @@ function Panels() {
   const rightMatRef = useRef<MeshBasicMaterial>(null)
   const renderer = useThree((s) => s.renderer)
 
-  const canvasRef = useRef<SkiaCanvasRef>(null)
+  const canvasRef = useRef<SkiaCanvasInstance>(null)
 
   useFrame(({ elapsed }) => {
     // Hover animation
@@ -374,19 +378,16 @@ function Panels() {
   })
 
   useFrame(() => {
-    if (canvasRef.current) {
-      canvasRef.current?.invalidate();
-      canvasRef.current.render(renderer);
-    }
+    canvasRef.current?.render(true)
   }, { before: 'render' })
 
   return <>
     <mesh ref={centerRef} position={[0, 1.2, -0.4]}>
       <planeGeometry args={[panelW, panelH]} />
       <meshBasicMaterial color={0xffffff} side={DoubleSide} transparent premultipliedAlpha>
-        <SkiaCanvas ref={canvasRef} attach={attachSkiaTexture} renderer={renderer} width={TEX_W} height={TEX_H}>
+        <SkiaCanvas ref={canvasRef as any} attach={attachSkiaTexture} renderer={renderer} width={TEX_W} height={TEX_H}>
           <skiaRect x={0} y={0} width={TEX_W} height={TEX_H} fill={[0.06, 0.06, 0.1, 0] as [number, number, number, number]} />
-          <skiaGroup scaleSkiaX={SCALE} scaleSkiaY={SCALE}>
+          <skiaGroup scale={[SCALE, SCALE, 1]}>
             <Squares />
             <Circles />
             <Frames />
@@ -421,25 +422,11 @@ function SkiaDemo() {
   const pw = size.width * dpr
   const ph = size.height * dpr
 
-  // Font loading
-  const [fonts, setFonts] = useState<{ title: SkiaFont; sub: SkiaFont; fps: SkiaFont } | null>(null)
-  useEffect(() => {
-    if (!skia) return
-    Promise.all([
-      SkiaFontLoader.load(FONT_URL, { size: Math.round(32 * dpr) }),
-      SkiaFontLoader.load(FONT_URL, { size: Math.round(14 * dpr) }),
-      SkiaFontLoader.load(FONT_URL, { size: Math.round(11 * dpr) }),
-    ]).then(([title, sub, fps]) => setFonts({ title, sub, fps }))
-  }, [skia])
-
-  const overlayRef = useRef<SkiaCanvasRef>(null)
+  const overlayRef = useRef<SkiaCanvasInstance>(null)
 
   // Render overlay after Three.js render
   useFrame(() => {
-    if (overlayRef.current) {
-      overlayRef.current.invalidate()
-      overlayRef.current.render(renderer)
-    }
+    overlayRef.current?.render(true)
   }, { after: 'render' })
 
   if (!skia) return null
@@ -451,8 +438,10 @@ function SkiaDemo() {
     <Panels />
     <ReflectiveGround />
 
-    <SkiaCanvas ref={overlayRef} renderer={renderer} width={pw} height={ph} overlay>
-      {fonts && <OverlayText fonts={fonts} />}
+    <SkiaCanvas ref={overlayRef as any} renderer={renderer} width={pw} height={ph} overlay>
+      <Suspense fallback={null}>
+        <OverlayText />
+      </Suspense>
     </SkiaCanvas>
   </>
 }

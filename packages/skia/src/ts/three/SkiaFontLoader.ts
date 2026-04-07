@@ -1,73 +1,64 @@
 import { Loader } from 'three'
 import { SkiaContext } from '../context'
-import { SkiaFont } from '../font'
-
-export interface SkiaFontLoaderOptions {
-  /** Font size in points */
-  size?: number
-  /** SkiaContext to use — required. Set via loader.context or SkiaFontLoader.context */
-  context?: SkiaContext
-}
+import { Skia } from '../init'
+import { SkiaTypeface } from '../font'
 
 /**
- * Three.js Loader for Skia fonts. Compatible with R3F's `useLoader`.
+ * Three.js Loader for Skia typefaces. Compatible with R3F's `useLoader`.
+ *
+ * Returns a `SkiaTypeface` — call `.atSize(n)` to get a sized `SkiaFont`.
  *
  * ```tsx
  * // R3F
- * const font = useLoader(SkiaFontLoader, '/fonts/Inter.ttf', (loader) => {
- *   loader.context = skiaContext
- *   loader.size = 16
- * })
+ * const typeface = useLoader(SkiaFontLoader, '/fonts/Inter.ttf')
+ * const titleFont = typeface.atSize(32)
+ * const bodyFont = typeface.atSize(14)
  *
  * // Vanilla
- * const font = await SkiaFontLoader.load('/fonts/Inter.ttf', { context: skia, size: 16 })
+ * const typeface = await SkiaFontLoader.load('/fonts/Inter.ttf')
+ * const font = typeface.atSize(16)
  * ```
  */
-export class SkiaFontLoader extends Loader<SkiaFont> {
-  /** Shared SkiaContext — set before loading */
+export class SkiaFontLoader extends Loader<SkiaTypeface> {
+  /** SkiaContext to bind to the typeface — falls back to singleton */
   context: SkiaContext | null = null
-  /** Default font size */
-  size = 16
 
-  /** Static defaults */
+  /** Static default context */
   static context: SkiaContext | null = null
-  static defaultSize = 16
 
-  private static cache = new Map<string, Promise<SkiaFont>>()
+  private static cache = new Map<string, Promise<SkiaTypeface>>()
 
-  loadAsync(url: string): Promise<SkiaFont> {
-    const size = this.size ?? SkiaFontLoader.defaultSize
-    return SkiaFontLoader.load(url, { context: this.context ?? undefined, size })
+  loadAsync(url: string): Promise<SkiaTypeface> {
+    return SkiaFontLoader.load(url, this.context ?? undefined)
   }
 
-  static load(url: string, options?: SkiaFontLoaderOptions): Promise<SkiaFont> {
-    const size = options?.size ?? this.defaultSize
-    const key = `${url}:${size}`
-    const cached = this.cache.get(key)
+  /** Load a typeface (cached by URL). Context resolved lazily if not provided. */
+  static load(url: string, context?: SkiaContext): Promise<SkiaTypeface> {
+    const cached = this.cache.get(url)
     if (cached) return cached
 
-    const promise = this._loadUncached(url, options)
-    this.cache.set(key, promise)
+    const promise = this._loadUncached(url, context)
+    this.cache.set(url, promise)
     return promise
   }
 
-  private static async _loadUncached(url: string, options?: SkiaFontLoaderOptions): Promise<SkiaFont> {
-    let ctx = options?.context ?? this.context ?? SkiaContext.instance
-    if (!ctx) {
-      // Await in-flight Skia.init() — allows useLoader to work without explicit context
-      const { Skia } = await import('../init')
-      if (Skia.pending) ctx = await Skia.pending
-    }
-    if (!ctx) throw new Error('SkiaFontLoader: no SkiaContext available. Call Skia.init(renderer) first.')
-    const size = options?.size ?? this.defaultSize
-
+  private static async _loadUncached(url: string, context?: SkiaContext): Promise<SkiaTypeface> {
+    // Fetch bytes (no context needed)
     const response = await fetch(url)
     const data = new Uint8Array(await response.arrayBuffer())
-    return new SkiaFont(ctx, data, size)
+
+    // Resolve context — explicit > static default > singleton > pending init
+    let ctx: SkiaContext | null = context ?? this.context ?? SkiaContext.instance
+    if (!ctx && Skia.pending) {
+      ctx = await Skia.pending
+    }
+
+    // Context can be null — SkiaTypeface defers handle creation to atSize()
+    return new SkiaTypeface(ctx, data)
   }
 
-  static preload(urls: string[], options?: SkiaFontLoaderOptions): Promise<SkiaFont[]> {
-    return Promise.all(urls.map((url) => this.load(url, options)))
+  static preload(urls: string[]): Promise<SkiaTypeface[]> {
+    return Promise.all(urls.map((url) => this.load(url)))
   }
 
   static clearCache(): void {

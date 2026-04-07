@@ -1,31 +1,34 @@
 # CanvasKit vs @three-flatland/skia
 
-Both ship Skia compiled to WebAssembly. CanvasKit is Google's official build via Emscripten. We compile with Zig, targeting a smaller binary with only the features needed for 2D vector graphics.
+Both ship Skia compiled to WebAssembly. CanvasKit is Google's official build via Emscripten. We compile with Zig, targeting a smaller binary focused on the core 2D drawing API.
 
-## What CanvasKit Has That We Don't
+## What We Include
 
-| Feature | Why Excluded |
-|---|---|
-| **WebGPU (Graphite)** | Planned |
-| **CPU Fallback** | GPU-only; WebGL2 is universal |
-| **SVG Rendering** | Only SVG Paths; full SVG excluded |
-| **Brotli (WOFF2)** | ~50 KB gz; use TTF/OTF instead |
-| **Text Shaping (HarfBuzz)** | ~100 KB gz; complex script shaping (Arabic, Devanagari) not in scope |
-| **Paragraph Layout (skparagraph)** | ~150 KB gz; use browser layout for paragraph text |
-| **Internationalization (ICU)** | ~400 KB gz; Unicode tables |
-| **Lottie Animations (Skottie)** | ~200 KB gz; use a dedicated Lottie player |
-| **Image Codecs (PNG/JPEG/WebP)** | ~150 KB gz; browser decodes natively |
-| **Canvas: drawPoints** | Use paths for point rendering |
-| **Canvas: drawVertices** | Use Three.js for geometry |
-| **Canvas: drawAtlas** | Use Three.js for sprite batching |
-| **Canvas: drawPatch (Coons)** | Niche; not in scope |
-| **Shader: SkSL runtime effects** | Custom shader runtime; not in scope |
-| **ImageFilter: runtime shader** | Depends on SkSL |
+The core Skia drawing API: paths, fills, strokes, gradients, image filters, color filters, path effects, shaders, text (FreeType + HarfBuzz), path boolean operations, SVG paths, and picture recording.
+
+## What We Exclude
+
+| Feature | Size Impact | Why Excluded |
+|---|---|---|
+| **CPU Fallback** | — | GPU-only; WebGL2 is universal |
+| **Full SVG Rendering** | — | Only SVG paths; full SVG DOM excluded |
+| **Brotli (WOFF2)** | ~50 KB gz | Use TTF/OTF instead |
+| **Paragraph Layout (skparagraph)** | ~150 KB gz | Use browser layout for paragraph text |
+| **Internationalization (ICU)** | ~400 KB gz | Unicode tables; biggest single saving |
+| **Lottie Animations (Skottie)** | ~200 KB gz | Use a dedicated Lottie player |
+| **Image Codecs (PNG/JPEG/WebP)** | ~150 KB gz | Browser decodes natively |
+| **Canvas: drawPoints** | — | Use paths for point rendering |
+| **Canvas: drawVertices** | — | Use Three.js for geometry |
+| **Canvas: drawAtlas** | — | Use Three.js for sprite batching |
+| **Canvas: drawPatch (Coons)** | — | Niche; not in scope |
+| **Shader: SkSL runtime effects** | — | Custom shader runtime; not in scope |
+| **ImageFilter: runtime shader** | — | Depends on SkSL |
 
 ## What We Add
 
 | Feature | Why |
 |---|---|
+| **WebGPU Backend (Graphite/Dawn)** | CanvasKit's npm package ships WebGL only |
 | **WASM SIMD** | 96% browser support; CanvasKit disables it. Accelerates path tessellation and color math |
 | **Native WASM exceptions** | Smaller than Emscripten's JS-based setjmp shim |
 | **wasm-opt post-processing** | Whole-program dead code elimination + size optimization |
@@ -37,9 +40,14 @@ Measured from `canvaskit-wasm@0.41.0` on npm vs our build output.
 
 | | Unpacked | Gzipped | Brotli |
 |---|---|---|---|
-| **CanvasKit** | 6.8 MB | 2,834 KB | 2,195 KB |
-| **@three-flatland/skia** | 3.2 MB | 1,271 KB | 1,020 KB |
-| **Savings** | 53% smaller | 55% smaller | 54% smaller |
+| **CanvasKit** | 6.8 MB | 2,828 KB | 2,192 KB |
+| **skia (WebGL)** | 3.2 MB | 1,277 KB | 1,024 KB |
+| **skia (WebGPU)** | 2.6 MB | 1,065 KB | 857 KB |
+
+| | vs CanvasKit |
+|---|---|
+| **WebGL** | 53% smaller (brotli) |
+| **WebGPU** | 61% smaller (brotli) |
 
 ## Compiler
 

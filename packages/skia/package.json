@@ -1,6 +1,6 @@
 {
   "name": "@three-flatland/skia",
-  "version": "0.1.0-alpha.1",
+  "version": "0.0.1-alpha.0",
   "description": "Lightweight CanvasKit alternative — Skia's core GPU rendering in ~1 MB of WASM, built with Zig",
   "type": "module",
   "exports": {
@@ -66,8 +66,12 @@
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "bin": {
+    "skia-wasm": "./bin/copy-wasm.mjs"
+  },
   "files": [
     "dist",
+    "bin",
     "LICENSE",
     "THIRD_PARTY_LICENSES"
   ],
@@ -76,7 +80,7 @@
     "skia:setup": "node scripts/setup.mjs",
     "skia:check": "node scripts/setup.mjs --check",
     "skia:tools": "node scripts/setup.mjs --tools",
-    "build": "node scripts/build-wasm.mjs --skip-if-fresh && tsup",
+    "build": "node scripts/setup.mjs --ensure && tsup",
     "build:wasm": "node scripts/build-wasm.mjs",
     "build:wasm:gl": "node scripts/build-wasm.mjs --gl-only",
     "build:wasm:wgpu": "node scripts/build-wasm.mjs --wgpu-only",
@@ -86,12 +90,13 @@
     "test:wgpu": "vitest run --project wgpu",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
+    "prepack": "node scripts/prepack.mjs",
     "clean": "rm -rf dist .tools"
   },
   "peerDependencies": {
-    "three": ">=0.170.0",
-    "@react-three/fiber": ">=8.0.0",
-    "react": ">=18.0.0"
+    "three": "catalog:",
+    "@react-three/fiber": "catalog:",
+    "react": "catalog:"
   },
   "peerDependenciesMeta": {
     "three": { "optional": true },

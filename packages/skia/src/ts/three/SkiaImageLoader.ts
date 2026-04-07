@@ -1,5 +1,6 @@
 import { Loader } from 'three'
 import { SkiaContext } from '../context'
+import { Skia } from '../init'
 import { SkiaImage } from '../image'
 
 export interface SkiaImageLoaderOptions {
@@ -37,10 +38,8 @@ export class SkiaImageLoader extends Loader<SkiaImage> {
 
   private static async _loadUncached(url: string, options?: SkiaImageLoaderOptions): Promise<SkiaImage> {
     let ctx = options?.context ?? this.context ?? SkiaContext.instance
-    if (!ctx) {
-      // Await in-flight Skia.init() — allows useLoader to work without explicit context
-      const { Skia } = await import('../init')
-      if (Skia.pending) ctx = await Skia.pending
+    if (!ctx && Skia.pending) {
+      ctx = await Skia.pending
     }
     if (!ctx) throw new Error('SkiaImageLoader: no SkiaContext available. Call Skia.init(renderer) first.')
 

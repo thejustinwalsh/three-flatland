@@ -112,6 +112,16 @@ function resolvePreloadBackend(backend: SkiaBackend): 'webgl' | 'wgpu' | null {
 }
 
 function getWasmUrl(backend: 'webgl' | 'wgpu'): URL {
+  // Allow env var override: SKIA_WASM_URL_GL / SKIA_WASM_URL_WGPU
+  // These are replaced at build time by bundlers (Vite define, webpack DefinePlugin)
+  const envUrl = backend === 'webgl'
+    ? (typeof process !== 'undefined' && (process.env as Record<string, string | undefined>).SKIA_WASM_URL_GL)
+      || (import.meta as any).env?.SKIA_WASM_URL_GL
+    : (typeof process !== 'undefined' && (process.env as Record<string, string | undefined>).SKIA_WASM_URL_WGPU)
+      || (import.meta as any).env?.SKIA_WASM_URL_WGPU
+
+  if (envUrl) return new URL(envUrl, globalThis.location?.href ?? import.meta.url)
+
   return backend === 'webgl'
     ? new URL('../../dist/skia-gl/skia-gl.wasm', import.meta.url)
     : new URL('../../dist/skia-wgpu/skia-wgpu.wasm', import.meta.url)

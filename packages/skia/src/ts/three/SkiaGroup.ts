@@ -22,10 +22,11 @@ export interface SkiaShadowProps {
 /**
  * Skia group — transform, clip, and effects container.
  *
- * Semantic props for common effects — no Skia internals needed:
+ * Uses standard Object3D `position`, `scale`, and `rotation.z` for transforms.
+ * The `degrees` prop is a convenience for setting rotation in degrees directly.
  *
  * ```tsx
- * <skiaGroup tx={50} ty={50} blur={4} opacity={0.8}>
+ * <skiaGroup position={[50, 50, 0]} blur={4} opacity={0.8}>
  *   <skiaRect fill={[1,0,0,1]} />
  * </skiaGroup>
  *
@@ -33,18 +34,17 @@ export interface SkiaShadowProps {
  *   <skiaRect fill={[1,1,1,1]} cornerRadius={8} />
  * </skiaGroup>
  *
- * <skiaGroup backdropBlur={10} clipRect={[0,0,200,100]}>
- *   // frosted glass effect
+ * <skiaGroup degrees={45} scale={[2, 2, 1]}>
+ *   <skiaRect fill={[0,1,0,1]} width={50} height={50} />
  * </skiaGroup>
  * ```
  */
+const RAD2DEG = 180 / Math.PI
+
 export class SkiaGroup extends Object3D {
   // ── Transform ──
-  tx = 0
-  ty = 0
-  skiaRotate = 0
-  scaleSkiaX = 1
-  scaleSkiaY = 1
+  /** Rotation in degrees (convenience — overrides rotation.z if non-zero) */
+  degrees = 0
   skewX = 0
   skewY = 0
 
@@ -95,10 +95,13 @@ export class SkiaGroup extends Object3D {
       ctx.save()
     }
 
-    // Apply transforms
-    if (this.tx !== 0 || this.ty !== 0) ctx.translate(this.tx, this.ty)
-    if (this.skiaRotate) ctx.rotate(this.skiaRotate)
-    if (this.scaleSkiaX !== 1 || this.scaleSkiaY !== 1) ctx.scale(this.scaleSkiaX, this.scaleSkiaY)
+    // Apply transforms — position/scale from Object3D, rotation via degrees or rotation.z
+    const px = this.position.x, py = this.position.y
+    if (px !== 0 || py !== 0) ctx.translate(px, py)
+    const deg = this.degrees || (this.rotation.z * RAD2DEG)
+    if (deg) ctx.rotate(deg)
+    const sx = this.scale.x, sy = this.scale.y
+    if (sx !== 1 || sy !== 1) ctx.scale(sx, sy)
     if (this.skewX !== 0 || this.skewY !== 0) ctx.skew(this.skewX, this.skewY)
 
     // Apply clips

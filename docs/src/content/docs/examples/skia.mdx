@@ -38,15 +38,15 @@ export const reactFiles = loadExample('react', 'skia');
 </Tabs>
 </ExampleTabs>
 
-This example demonstrates the full `@three-flatland/skia` pipeline: Skia WASM renders vector shapes to a texture, Three.js displays it on 3D panels with a reflective TSL ground, and a screen-space overlay draws title text and FPS.
+## What It Demonstrates
 
-## What's Shown
-
-- **Animated shapes** rendered to an off-screen Skia texture (rectangles, circles, scanner lines, gradient bars, path boolean operations)
-- **Texture compositing** — Skia output applied to 3D mesh materials
-- **Screen overlay** — title, subtitle with animated rainbow gradient, FPS counter
-- **TSL ground** — reflector with gaussian blur and distance fade
-- **Font loading** — Inter font loaded at multiple sizes via `SkiaFontLoader`
+- **SkiaCanvas** — off-screen texture rendering and screen-space overlay modes
+- **Drawing nodes** — `SkiaRect`, `SkiaCircle`, `SkiaLine`, `SkiaPathNode`, `SkiaTextNode`, `SkiaGroup`
+- **SkiaPaint** — custom gradient shaders applied to drawing nodes
+- **SkiaPath** — programmatic paths with boolean operations (difference, intersect, union, xor)
+- **SkiaTypeface / SkiaFontLoader** — font loading with `useLoader`, sized fonts via `atSize()`
+- **attachSkiaTexture** — R3F attach helper for compositing Skia output onto 3D mesh materials
+- **useFrame phases** — `{ before: 'render' }` and `{ after: 'render' }` for render pipeline control
 
 ## Key Patterns
 
@@ -65,8 +65,7 @@ Render Skia shapes to a texture and apply it to a 3D mesh:
     canvas.add(new SkiaRect()) // add shapes
 
     // In animation loop:
-    canvas.invalidate()
-    canvas.render(renderer)
+    canvas.render()
     material.map = canvas.texture
     ```
   </TabItem>
@@ -103,8 +102,7 @@ Draw directly on top of the 3D scene (HUD, debug text):
 
     // Render AFTER the 3D scene:
     renderer.render(scene, camera)
-    overlay.invalidate()
-    overlay.render(renderer)
+    overlay.render()
     ```
   </TabItem>
   <TabItem label="React" icon="seti:react">
@@ -114,8 +112,7 @@ Draw directly on top of the 3D scene (HUD, debug text):
     const overlayRef = useRef<SkiaCanvasRef>(null)
 
     useFrame(() => {
-      overlayRef.current?.invalidate()
-      overlayRef.current?.render(renderer)
+      overlayRef.current?.render()
     }, { after: 'render' })
 
     <SkiaCanvas ref={overlayRef} renderer={renderer}

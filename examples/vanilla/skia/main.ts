@@ -102,7 +102,7 @@ async function main() {
   shapesCanvas.add(bg)
 
   const shapeGroup = new SkiaGroup()
-  shapeGroup.scaleSkiaX = scale; shapeGroup.scaleSkiaY = scale
+  shapeGroup.scale.set(scale, scale, 1)
   shapesCanvas.add(shapeGroup)
 
   // Colored rectangles
@@ -221,11 +221,11 @@ async function main() {
 
   // ── Load fonts ──
   const FONT_URL = 'https://cdn.jsdelivr.net/gh/rsms/inter@v4.1/docs/font-files/InterVariable.ttf'
-  Promise.all([
-    SkiaFontLoader.load(FONT_URL, { context: skia, size: 32 * dpr }),
-    SkiaFontLoader.load(FONT_URL, { context: skia, size: 14 * dpr }),
-    SkiaFontLoader.load(FONT_URL, { context: skia, size: 11 * dpr }),
-  ]).then(([titleF, subF, fpsF]) => {
+  SkiaFontLoader.load(FONT_URL, skia).then((typeface) => {
+    const titleF = typeface.atSize(32 * dpr)
+    const subF = typeface.atSize(14 * dpr)
+    const fpsF = typeface.atSize(11 * dpr)
+
     titleText.font = titleF
     titleText.x = (pw - titleF.measureText(titleText.text)) / 2
 
@@ -390,8 +390,7 @@ async function main() {
 
     // ── Render pipeline ──
     // 1. Skia shapes → texture
-    shapesCanvas.invalidate()
-    shapesCanvas.render(renderer)
+    shapesCanvas.render(true)
 
     // 2. Apply Skia texture to 3D meshes (once available)
     const skiaTex = shapesCanvas.texture
@@ -405,8 +404,7 @@ async function main() {
     renderer.render(scene, camera)
 
     // 4. Skia overlay (title/FPS) on top of 3D
-    overlayCanvas.invalidate()
-    overlayCanvas.render(renderer)
+    overlayCanvas.render(true)
 
     requestAnimationFrame(animate)
   }
