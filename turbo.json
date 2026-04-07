@@ -54,7 +54,9 @@
         "example-react-knightmark#build",
         "example-react-pass-effects#build",
         "example-react-tilemap#build",
-        "example-react-tsl-nodes#build"
+        "example-react-tsl-nodes#build",
+        "example-vanilla-skia#build",
+        "example-react-skia#build"
       ],
       "outputs": ["dist/**"],
       "inputs": [

@@ -218,6 +218,32 @@
           "paths": ["/react/pass-effects", "/react/pass-effects/:path*"]
         }
       ]
+    },
+    "example-vanilla-skia": {
+      "development": {
+        "local": {
+          "port": 4017
+        }
+      },
+      "routing": [
+        {
+          "group": "vanilla-examples",
+          "paths": ["/vanilla/skia", "/vanilla/skia/:path*"]
+        }
+      ]
+    },
+    "example-react-skia": {
+      "development": {
+        "local": {
+          "port": 4018
+        }
+      },
+      "routing": [
+        {
+          "group": "react-examples",
+          "paths": ["/react/skia", "/react/skia/:path*"]
+        }
+      ]
     }
   }
 }

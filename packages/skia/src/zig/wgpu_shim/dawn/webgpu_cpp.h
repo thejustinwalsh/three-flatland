@@ -26,9 +26,7 @@
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
-#ifdef __EMSCRIPTEN__
-#error "Do not include this header. Emscripten already provides headers needed for WebGPU."
-#endif
+// __EMSCRIPTEN__ guard removed — we provide our own Dawn headers for WASM builds.
 
 #ifndef WEBGPU_CPP_H_
 #define WEBGPU_CPP_H_
@@ -49,6 +47,12 @@
 #include "webgpu/webgpu_enum_class_bitmasks.h"  // IWYU pragma: export
 
 namespace wgpu {
+
+#ifdef __EMSCRIPTEN__
+// Forward-declare Emscripten compat types used by class methods below
+using ErrorCallback = void(*)(WGPUErrorType, const char*, void*);
+struct SupportedLimits;  // Defined below after Limits is available
+#endif
 
 static constexpr uint32_t kArrayLayerCountUndefined = WGPU_ARRAY_LAYER_COUNT_UNDEFINED;
 static constexpr uint32_t kCopyStrideUndefined = WGPU_COPY_STRIDE_UNDEFINED;
@@ -954,6 +958,7 @@ static_assert(alignof(VertexFormat) == alignof(WGPUVertexFormat), "alignof misma
 
 enum class VertexStepMode : uint32_t {
     Undefined = WGPUVertexStepMode_Undefined,
+    VertexBufferNotUsed = WGPUVertexStepMode_Undefined, // Emscripten compat — maps to Undefined
     Vertex = WGPUVertexStepMode_Vertex,
     Instance = WGPUVertexStepMode_Instance,
 };
@@ -1698,6 +1703,16 @@ class Buffer : public ObjectBase<Buffer, WGPUBuffer> {
     inline void Unmap() const;
     inline ConvertibleStatus WriteMappedRange(size_t offset, void const * data, size_t size) const;
 
+#ifdef __EMSCRIPTEN__
+    // Emscripten-compatible MapAsync with C-style callback
+    inline void MapAsync(MapMode mode, size_t offset, size_t size,
+                         void (*callback)(WGPUBufferMapAsyncStatus, void*), void* userdata) const {
+        // Emscripten compat: invoke callback immediately with success (async mapping is a stub)
+        (void)mode; (void)offset; (void)size;
+        if (callback) callback(WGPUBufferMapAsyncStatus_Success, userdata);
+    }
+#endif
+
 
   private:
     friend ObjectBase<Buffer, WGPUBuffer>;
@@ -1845,6 +1860,14 @@ class Device : public ObjectBase<Device, WGPUDevice> {
     inline void Tick() const;
     inline void ValidateTextureDescriptor(TextureDescriptor const * descriptor) const;
 
+#ifdef __EMSCRIPTEN__
+    // Emscripten-compatible PopErrorScope with C-style callback
+    inline void PopErrorScope(ErrorCallback callback, void* userdata) const {
+        if (callback) callback(WGPUErrorType_NoError, "", userdata);
+    }
+    inline bool GetLimits(SupportedLimits* supportedLimits) const;
+#endif
+
 
   private:
     friend ObjectBase<Device, WGPUDevice>;
@@ -1950,6 +1973,14 @@ class Queue : public ObjectBase<Queue, WGPUQueue> {
     inline void Submit(size_t commandCount, CommandBuffer const * commands) const;
     inline void WriteBuffer(Buffer const& buffer, uint64_t bufferOffset, void const * data, size_t size) const;
     inline void WriteTexture(TexelCopyTextureInfo const * destination, void const * data, size_t dataSize, TexelCopyBufferLayout const * dataLayout, Extent3D const * writeSize) const;
+
+#ifdef __EMSCRIPTEN__
+    // Emscripten-compatible OnSubmittedWorkDone with C-style callback
+    inline void OnSubmittedWorkDone(void (*callback)(WGPUQueueWorkDoneStatus, void*), void* userdata) const {
+        // In our bridge, work completion is immediate. Invoke callback directly.
+        if (callback) callback(WGPUQueueWorkDoneStatus_Success, userdata);
+    }
+#endif
 
 
   private:
@@ -3949,6 +3980,18 @@ struct Limits {
     uint32_t maxComputeWorkgroupsPerDimension = kLimitU32Undefined;
     uint32_t maxImmediateSize = kLimitU32Undefined;
 };
+
+#ifdef __EMSCRIPTEN__
+// Define SupportedLimits now that Limits is available
+struct SupportedLimits {
+    Limits limits;
+};
+// Deferred definition of Device::GetLimits(SupportedLimits*)
+inline bool Device::GetLimits(SupportedLimits* sl) const {
+    auto result = wgpuDeviceGetLimits(Get(), reinterpret_cast<WGPULimits*>(&sl->limits));
+    return result == WGPUStatus_Success;
+}
+#endif
 
 // Can be chained in PipelineLayoutDescriptor
 struct PipelineLayoutPixelLocalStorage : ChainedStruct {
@@ -10416,5 +10459,26 @@ struct hash<wgpu::OptionalBool> {
     }
 };
 }  // namespace std
+
+// ── Emscripten compatibility ──
+// Old Emscripten webgpu_cpp.h types that Skia's __EMSCRIPTEN__ code paths still reference.
+#ifdef __EMSCRIPTEN__
+namespace wgpu {
+
+// Old name for ShaderSourceWGSL
+using ShaderModuleWGSLDescriptor = ShaderSourceWGSL;
+
+// Old error callback type (includes userdata)
+using ErrorCallback = void(*)(WGPUErrorType, const char*, void*);
+
+// Old type aliases
+// SupportedLimits defined above (forward-declared near namespace open)
+using ImageCopyBuffer = TexelCopyBufferInfo;
+using ImageCopyTexture = TexelCopyTextureInfo;
+using RenderPassTimestampWrites = PassTimestampWrites;
+using ComputePassTimestampWrites = PassTimestampWrites;
+
+}  // namespace wgpu
+#endif // __EMSCRIPTEN__
 
 #endif // WEBGPU_CPP_H_

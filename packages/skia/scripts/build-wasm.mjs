@@ -167,7 +167,37 @@ for (const v of variants) {
   mkdirSync(resolve(DIST, `skia-${v}`), { recursive: true });
 }
 
-// Step 2: Zig build — single invocation with skip flags
+// Step 2a: Generate struct layouts from Dawn header (Zig comptime → JSON)
+if (hasCommand("wasmtime")) {
+  console.log("\n=== Generating WGPU struct layouts (Zig comptime) ===");
+  const emitSrc = resolve(PKG_ROOT, "src/zig/emit_wgpu_layouts.zig");
+  const emitWasm = resolve(PKG_ROOT, "emit_wgpu_layouts.wasm");
+  const layoutsJson = resolve(PKG_ROOT, "src/ts/wgpu-layouts.json");
+  if (existsSync(emitSrc)) {
+    run(
+      `zig build-exe ${emitSrc} -I src/zig/wgpu_shim -I src/zig/wgpu_shim/dawn -target wasm32-wasi -lc --name emit_wgpu_layouts`
+    );
+    const { execSync: exec } = await import("node:child_process");
+    const json = exec(`wasmtime ${emitWasm}`, { env: augmentedEnv, cwd: PKG_ROOT });
+    const { writeFileSync, unlinkSync } = await import("node:fs");
+    writeFileSync(layoutsJson, json);
+    unlinkSync(emitWasm);
+    console.log(`  Generated ${layoutsJson}`);
+  }
+} else {
+  console.log("wasmtime not found — using committed wgpu-layouts.json.");
+}
+
+// Step 2b: Generate enum maps from Dawn header (Python)
+if (hasCommand("python3")) {
+  const genScript = resolve(PKG_ROOT, "scripts/generate-wgpu-bridge.py");
+  if (existsSync(genScript)) {
+    console.log("\n=== Generating WGPU enum maps (Python) ===");
+    run(`python3 ${genScript}`);
+  }
+}
+
+// Step 2c: Zig build — single invocation with skip flags
 {
   const zigFlags = ["-Doptimize=ReleaseSmall"];
   if (!variants.includes("gl")) zigFlags.push("-Dskip-gl=true");

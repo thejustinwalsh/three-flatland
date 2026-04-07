@@ -27,9 +27,8 @@
 // CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
 // OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-#ifdef __EMSCRIPTEN__
-#error "Do not include this header. Emscripten already provides headers needed for WebGPU."
-#endif
+// __EMSCRIPTEN__ guard removed — we provide our own Dawn headers for WASM builds
+// that use __EMSCRIPTEN__ to select browser-compatible Skia code paths.
 
 #ifndef WEBGPU_H_
 #define WEBGPU_H_
@@ -4986,6 +4985,36 @@ WGPU_EXPORT void wgpuTextureViewAddRef(WGPUTextureView textureView) WGPU_FUNCTIO
 WGPU_EXPORT void wgpuTextureViewRelease(WGPUTextureView textureView) WGPU_FUNCTION_ATTRIBUTE;
 
 #endif  // !defined(WGPU_SKIP_DECLARATIONS)
+
+// ── Emscripten compatibility ──
+// Old Emscripten webgpu.h types that Skia's __EMSCRIPTEN__ code paths still reference.
+// These map old names to the current Dawn equivalents.
+
+#ifdef __EMSCRIPTEN__
+
+// Emscripten-era buffer map async status (not in current Dawn, used by Skia's __EMSCRIPTEN__ paths)
+typedef enum WGPUBufferMapAsyncStatus {
+    WGPUBufferMapAsyncStatus_Success = 0,
+    WGPUBufferMapAsyncStatus_ValidationError = 1,
+    WGPUBufferMapAsyncStatus_Unknown = 2,
+    WGPUBufferMapAsyncStatus_DeviceLost = 3,
+    WGPUBufferMapAsyncStatus_DestroyedBeforeCallback = 4,
+    WGPUBufferMapAsyncStatus_UnmappedBeforeCallback = 5,
+    WGPUBufferMapAsyncStatus_MappingAlreadyPending = 6,
+    WGPUBufferMapAsyncStatus_OffsetOutOfRange = 7,
+    WGPUBufferMapAsyncStatus_SizeOutOfRange = 8,
+    WGPUBufferMapAsyncStatus_Force32 = 0x7FFFFFFF,
+} WGPUBufferMapAsyncStatus;
+
+// Emscripten-era type aliases for old copy API names
+typedef WGPUTexelCopyBufferInfo WGPUImageCopyBuffer;
+typedef WGPUTexelCopyTextureInfo WGPUImageCopyTexture;
+
+// Emscripten-era timestamp writes (aliases to current Dawn types)
+typedef WGPUPassTimestampWrites WGPURenderPassTimestampWrites;
+typedef WGPUPassTimestampWrites WGPUComputePassTimestampWrites;
+
+#endif // __EMSCRIPTEN__
 
 #ifdef __cplusplus
 } // extern "C"

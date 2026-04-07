@@ -226,6 +226,7 @@ export default defineConfig({
             { label: 'Tilemap', slug: 'examples/tilemap' },
             { label: 'Pass Effects', slug: 'examples/pass-effects' },
             { label: 'Knightmark', slug: 'examples/knightmark' },
+            { label: 'Skia', slug: 'examples/skia' },
           ],
         },
         {

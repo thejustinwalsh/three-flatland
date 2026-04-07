@@ -72,17 +72,17 @@ export const WGPUCullMode: Record<number, string> = {
 export const WGPUFeatureName: Record<number, string> = {
   0x00000001: 'core-features-and-limits',
   0x00000002: 'depth-clip-control',
-  0x00000003: 'depth32-float-stencil8',
+  0x00000003: 'depth32float-stencil8',
   0x00000004: 'texture-compression-bc',
-  0x00000005: 'texture-compression-bc-sliced3-d',
+  0x00000005: 'texture-compression-bc-sliced-3d',
   0x00000006: 'texture-compression-etc2',
   0x00000007: 'texture-compression-astc',
-  0x00000008: 'texture-compression-astc-sliced3-d',
+  0x00000008: 'texture-compression-astc-sliced-3d',
   0x00000009: 'timestamp-query',
   0x0000000A: 'indirect-first-instance',
   0x0000000B: 'shader-f16',
-  0x0000000C: 'rg11-b10-ufloat-renderable',
-  0x0000000D: 'bgra8-unorm-storage',
+  0x0000000C: 'rg11b10ufloat-renderable',
+  0x0000000D: 'bgra8unorm-storage',
   0x0000000E: 'float32-filterable',
   0x0000000F: 'float32-blendable',
   0x00000010: 'clip-distances',
@@ -254,9 +254,9 @@ export const WGPUTextureAspect: Record<number, string> = {
 
 /** WGPUTextureDimension → GPUTextureDimension */
 export const WGPUTextureDimension: Record<number, string> = {
-  0x00000001: '1-d',
-  0x00000002: '2-d',
-  0x00000003: '3-d',
+  0x00000001: '1d',
+  0x00000002: '2d',
+  0x00000003: '3d',
 }
 
 /** WGPUTextureFormat → GPUTextureFormat */
@@ -385,12 +385,12 @@ export const WGPUTextureSampleType: Record<number, string> = {
 
 /** WGPUTextureViewDimension → GPUTextureViewDimension */
 export const WGPUTextureViewDimension: Record<number, string> = {
-  0x00000001: '1-d',
-  0x00000002: '2-d',
-  0x00000003: '2-d-array',
+  0x00000001: '1d',
+  0x00000002: '2d',
+  0x00000003: '2d-array',
   0x00000004: 'cube',
   0x00000005: 'cube-array',
-  0x00000006: '3-d',
+  0x00000006: '3d',
 }
 
 /** WGPUVertexFormat → GPUVertexFormat */

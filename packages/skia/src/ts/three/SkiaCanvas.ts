@@ -5,7 +5,7 @@ import { Skia } from '../init'
 import type { SkiaDrawingContext } from '../drawing-context'
 import { SkiaNode } from './SkiaNode'
 import { SkiaGroup } from './SkiaGroup'
-import { getFBOId, getWGPUTextureHandle } from './utils'
+import { getFBOId, getCanvasTexture, getWGPUDevice } from './utils'
 
 // ── GL state save/restore for shared context usage ──
 
@@ -128,6 +128,9 @@ export interface SkiaCanvasOptions {
  * <skiaCanvas renderer={gl} width={512} height={512} overlay />
  * ```
  */
+let _canvasConfigured = false
+let _copyDiagBudget = 3
+
 export class SkiaCanvas extends Object3D {
   private _width = 0
   private _height = 0
@@ -250,6 +253,47 @@ export class SkiaCanvas extends Object3D {
       if (saved && gl) restoreGLState(gl, saved)
     }
 
+    // WebGPU overlay: copy Skia's internal texture directly to the canvas
+    if (this._skiaContext?.backend === 'wgpu') {
+      // Reconfigure canvas context on first WGPU render to add COPY_DST usage
+      if (!_canvasConfigured) {
+        _canvasConfigured = true
+        const dev = getWGPUDevice(renderer)
+        const ctx = (renderer.backend as { context?: GPUCanvasContext } | undefined)?.context
+        if (dev && ctx) {
+          ctx.configure({
+            device: dev,
+            format: navigator.gpu.getPreferredCanvasFormat(),
+            alphaMode: 'premultiplied',
+            usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC | GPUTextureUsage.COPY_DST,
+          })
+        }
+      }
+
+      const wgpuState = this._skiaContext._wgpuState
+      const skiaTex = wgpuState?.lastRenderTargetTexture
+      const canvasTex = getCanvasTexture(renderer)
+      // One-time diagnostic to verify format matching
+      if (_copyDiagBudget > 0) {
+        _copyDiagBudget--
+        console.log('[skia:copy]', {
+          skiaTex: skiaTex ? `${skiaTex.format} ${skiaTex.width}x${skiaTex.height}` : 'null',
+          canvasTex: canvasTex ? `${canvasTex.format} ${canvasTex.width}x${canvasTex.height}` : 'null',
+          match: skiaTex && canvasTex ? skiaTex.format === canvasTex.format : false,
+        })
+      }
+      if (skiaTex && canvasTex && canvasTex.format === skiaTex.format) {
+        const dev = getWGPUDevice(renderer)
+        if (dev) {
+          const w = Math.min(skiaTex.width, canvasTex.width)
+          const h = Math.min(skiaTex.height, canvasTex.height)
+          const enc = dev.createCommandEncoder()
+          enc.copyTextureToTexture({ texture: skiaTex }, { texture: canvasTex }, { width: w, height: h })
+          dev.queue.submit([enc.finish()])
+        }
+      }
+    }
+
     this._needsRedraw = false
   }
 
@@ -316,12 +360,10 @@ export class SkiaCanvas extends Object3D {
   // ── Private: target handle resolution ──
 
   private _getTargetHandle(renderer: AnyRenderer): number {
+    // WebGPU: Skia always owns its own texture (handle=0), we copy to canvas after
+    if (this._skiaContext!.backend === 'wgpu') return 0
+
     if (this._overlay) return 0
-
-    if (this._skiaContext!.backend === 'wgpu') {
-      return getWGPUTextureHandle(this._skiaContext!, renderer, this._renderTarget!)
-    }
-
     return this._getGLTargetHandle(renderer)
   }
 

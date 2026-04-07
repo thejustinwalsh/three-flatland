@@ -61,7 +61,10 @@ pub fn build(b: *std.Build) void {
     // ══════════════════════════════════════════════════════════
 
     if (!skip_wgpu) {
-        const wgpu_flags: []const []const u8 = &.{ "-DSK_GRAPHITE", "-DSK_DAWN", "-DSK_USE_WEBGPU" };
+        // __EMSCRIPTEN__ selects browser-compatible WebGPU code paths in Skia's Graphite Dawn backend.
+        // Critical for: depth format selection, buffer mapping, pipeline features.
+        // Our shim headers provide the missing Emscripten-era API types.
+        const wgpu_flags: []const []const u8 = &.{ "-DSK_GRAPHITE", "-DSK_DAWN", "-DSK_USE_WEBGPU", "-D__EMSCRIPTEN__" };
 
         const wgpu_core = buildSkiaLib(b, "skia-core-wgpu", skia_sources.core_files, skia_root, wasm_target, optimize, wgpu_flags, "src/zig/wgpu_shim");
         const wgpu_pathops = buildSkiaLib(b, "skia-pathops-wgpu", skia_sources.pathops_files, skia_root, wasm_target, optimize, wgpu_flags, "src/zig/wgpu_shim");
@@ -121,6 +124,7 @@ fn buildVariant(b: *std.Build, cfg: VariantConfig) *std.Build.Step.Compile {
     });
     exe.rdynamic = true;
     exe.import_symbols = true;
+    exe.export_table = true;
     exe.initial_memory = 64 * 1024 * 1024;
     exe.max_memory = 256 * 1024 * 1024;
 

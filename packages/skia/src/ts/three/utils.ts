@@ -1,5 +1,4 @@
 import type { WebGLRenderTarget } from 'three'
-import type { SkiaContext } from '../context'
 
 // Re-use the AnyRenderer type from SkiaCanvas
 import type { AnyRenderer } from './SkiaCanvas'
@@ -34,40 +33,23 @@ export function getFBOId(renderer: AnyRenderer, renderTarget: WebGLRenderTarget)
 }
 
 /**
- * Extract a WebGPU texture handle from a Three.js render target for use with Skia.
+ * Get the current canvas GPUTexture from a WebGPU renderer.
  *
- * For the native WebGPU backend, we need to register the GPUTexture from Three.js's
- * render target into Skia's handle table so it can be passed to beginDrawing().
- *
- * Only called when Skia is using the wgpu backend AND Three.js has a real WebGPUBackend.
- *
- * @param skiaContext - The Skia context (must be wgpu backend)
- * @param renderer - Three.js WebGPURenderer with native WebGPU backend
- * @param renderTarget - The render target to extract the texture from
- * @returns A handle for use with beginDrawing(), or 0 on failure
+ * @param renderer - Three.js WebGPURenderer
+ * @returns The current canvas texture, or null if unavailable
  */
-export function getWGPUTextureHandle(
-  skiaContext: SkiaContext,
-  renderer: AnyRenderer,
-  renderTarget: unknown,
-): number {
-  // Access the renderer's backend to get the GPU texture for this render target.
-  // Three.js WebGPURenderer exposes: renderer.backend.get(renderTarget) → { texture: GPUTexture }
-  const backend = renderer.backend as {
-    get?: (target: unknown) => { texture?: GPUTexture } | undefined
-    device?: GPUDevice
-  } | undefined
+export function getCanvasTexture(renderer: AnyRenderer): GPUTexture | null {
+  const backend = renderer.backend as { context?: GPUCanvasContext; getContext?: () => GPUCanvasContext } | undefined
+  const ctx = backend?.context ?? backend?.getContext?.()
+  return ctx?.getCurrentTexture() ?? null
+}
 
-  // Validate this is actually a WebGPU backend with a real device
-  if (!backend?.device || !backend.get) return 0
-
-  // Ensure render target resources are initialized
-  const current = renderer.getRenderTarget()
-  renderer.setRenderTarget(renderTarget)
-  renderer.setRenderTarget(current)
-
-  const props = backend.get(renderTarget)
-  if (!props?.texture) return 0
-
-  return skiaContext.registerTexture(props.texture)
+/**
+ * Get the GPUDevice from a WebGPU renderer.
+ *
+ * @param renderer - Three.js WebGPURenderer
+ * @returns The GPUDevice, or null if unavailable
+ */
+export function getWGPUDevice(renderer: AnyRenderer): GPUDevice | null {
+  return (renderer.backend as { device?: GPUDevice } | undefined)?.device ?? null
 }

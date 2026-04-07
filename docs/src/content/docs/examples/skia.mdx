@@ -1,0 +1,88 @@
+---
+title: Skia
+description: GPU-accelerated 2D vector graphics via Skia WASM with WebGPU.
+---
+
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+import ExamplePreview from '../../../components/ExamplePreview';
+import StackBlitzEmbed from '../../../components/StackBlitzEmbed';
+import ExampleTabs from '../../../components/ExampleTabs.astro';
+import { loadExample } from '../../../utils/loadExample';
+
+export const vanillaFiles = loadExample('vanilla', 'skia');
+export const reactFiles = loadExample('react', 'skia');
+
+<ExampleTabs>
+<Tabs>
+  <TabItem label="Preview" icon="rocket">
+    <ExamplePreview client:load type="vanilla" name="skia" />
+  </TabItem>
+  <TabItem label="Three.js" icon="seti:javascript">
+    <StackBlitzEmbed
+      client:load
+      title="Skia - Three.js"
+      files={vanillaFiles}
+      openFile="main.ts"
+      height={600}
+    />
+  </TabItem>
+  <TabItem label="React" icon="seti:react">
+    <StackBlitzEmbed
+      client:load
+      title="Skia - React"
+      files={reactFiles}
+      openFile="App.tsx"
+      height={600}
+    />
+  </TabItem>
+</Tabs>
+</ExampleTabs>
+
+## SkiaCanvas
+
+`SkiaCanvas` is the root node for Skia rendering. It initializes the Skia WASM context from your Three.js renderer and manages the draw pass. In overlay mode, Skia draws directly to the canvas framebuffer.
+
+```typescript
+const skiaCanvas = new SkiaCanvas({
+  renderer,
+  width: window.innerWidth * devicePixelRatio,
+  height: window.innerHeight * devicePixelRatio,
+  overlay: true,
+})
+scene.add(skiaCanvas)
+```
+
+In R3F, props are set declaratively — the Skia context starts loading as soon as `renderer` is assigned:
+
+```tsx
+<skiaCanvas renderer={gl} width={pw} height={ph} overlay>
+  <skiaRect x={10} y={10} width={200} height={100} fill={[1, 0, 0, 1]} />
+</skiaCanvas>
+```
+
+## Drawing Nodes
+
+All drawing nodes (`SkiaRect`, `SkiaCircle`, `SkiaLine`, `SkiaPathNode`, `SkiaTextNode`, etc.) extend `SkiaNode` and accept inline paint props: `fill`, `stroke`, `strokeWidth`, `opacity`, `blur`, `dash`, `blendMode`.
+
+```tsx
+{/* SVG path data string */}
+<skiaPathNode d="M0 -60 L23 -19 L57 -19 L29 7 L38 48 L0 24 L-38 48 L-29 7 L-57 -19 L-23 -19 Z" fill={[1, 1, 1, 1]} />
+
+{/* Stroked oval */}
+<skiaOval x={300} y={220} width={200} height={120} stroke={[1, 0.8, 0.2, 1]} strokeWidth={3} />
+```
+
+## SkiaGroup
+
+Groups apply transforms, clipping, and layer effects to all children:
+
+```tsx
+<skiaGroup tx={100} ty={50} skiaRotate={45} opacity={0.8}>
+  <skiaRect fill={[1, 0, 0, 1]} width={100} height={100} />
+</skiaGroup>
+```
+
+## Next Steps
+
+- [Basic Sprite](../examples/basic-sprite) - Three-flatland sprites
+- [TSL Nodes](../examples/tsl-nodes) - Shader nodes

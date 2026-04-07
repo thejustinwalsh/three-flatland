@@ -51,8 +51,8 @@ export class SkiaContext {
   private _drawing = false
   private _currentDrawCtx: SkiaDrawingContext | null = null
 
-  /** @internal wgpu handle state for registerTexture */
-  private _wgpuState?: { objects: Map<number, unknown>; nextHandle: number }
+  /** @internal wgpu handle state for registerTexture and compositing */
+  _wgpuState?: { objects: Map<number, unknown>; nextHandle: number; lastRenderTargetTexture?: GPUTexture | null }
 
   private constructor(
     backend: 'webgl' | 'wgpu',

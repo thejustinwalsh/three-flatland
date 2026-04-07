@@ -14,7 +14,9 @@
 #include "include/gpu/graphite/Recorder.h"
 #include "include/gpu/graphite/Recording.h"
 #include "include/gpu/graphite/Surface.h"
+#include "include/gpu/graphite/BackendTexture.h"
 #include "include/gpu/graphite/dawn/DawnBackendContext.h"
+#include "include/gpu/graphite/dawn/DawnGraphiteTypes.h"
 
 #include "webgpu/webgpu_cpp.h"
 
@@ -84,7 +86,7 @@ void sk_context_reset_state(sk_context_t ctx) {
 // ════════════════════════════════════════════════════════
 
 sk_surface_t sk_surface_create_for_target(sk_context_t ctx, uint32_t target_handle, int32_t width, int32_t height) {
-    // Dawn variant: target_handle = registered WebGPU texture handle
+    // Dawn variant: target_handle = registered WebGPU texture handle (opaque pointer)
     if (!g_graphite_ctx || width <= 0 || height <= 0) return nullptr;
 
     if (!g_recorder) {
@@ -92,10 +94,14 @@ sk_surface_t sk_surface_create_for_target(sk_context_t ctx, uint32_t target_hand
         if (!g_recorder) return nullptr;
     }
 
-    SkImageInfo imageInfo = SkImageInfo::Make(width, height, kRGBA_8888_SkColorType,
+    // Always create a standalone Graphite render target. The host (JS) handles
+    // compositing from Skia's internal texture to the display.
+    // WrapBackendTexture doesn't produce the required blit from Graphite's
+    // intermediate atlas to the wrapped target, so we let Skia own its texture
+    // and do the copy ourselves in the bridge/TS layer.
+    // Use BGRA to match the browser's preferred canvas format (bgra8unorm)
+    SkImageInfo imageInfo = SkImageInfo::Make(width, height, kBGRA_8888_SkColorType,
                                               kPremul_SkAlphaType, SkColorSpace::MakeSRGB());
-
-    // TODO: wrap the WebGPU texture directly via BackendTexture::MakeDawn()
     sk_sp<SkSurface> surface = SkSurfaces::RenderTarget(g_recorder.get(), imageInfo);
     if (!surface) return nullptr;
     return reinterpret_cast<sk_surface_t>(surface.release());
