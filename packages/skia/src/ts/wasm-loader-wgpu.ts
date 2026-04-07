@@ -539,15 +539,12 @@ function createWGPUImports(state: WGPUState): Record<string, WebAssembly.ImportV
         const dsFormat = enumStr<GPUTextureFormat>(WGPUTextureFormat, field(state, dsPtr, L.dsState.format))
         let stencilFront = readStencilFace(dsPtr + L.dsState.stencilFront.offset)
         let stencilBack = readStencilFace(dsPtr + L.dsState.stencilBack.offset)
-        // Graphite uses compare='never' to mean "don't use stencil." On native Dawn with
-        // depth-only formats this is fine (no stencil aspect). But browser WebGPU may use
-        // depth24plus-stencil8 which HAS stencil — 'never' rejects all fragments.
-        // Override to 'always' (passthrough) so depth works without stencil interference.
-        if (dsFormat.includes('stencil')) {
-          const pass: GPUStencilFaceState = { compare: 'always', failOp: 'keep', depthFailOp: 'keep', passOp: 'keep' }
-          if (stencilFront.compare === 'never') stencilFront = pass
-          if (stencilBack.compare === 'never') stencilBack = pass
-        }
+        // Graphite uses compare='never' to mean "don't use stencil." Browser WebGPU
+        // rejects 'never' on both stencil-bearing formats (rejects all fragments) and
+        // stencil-less formats (validation error). Override to 'always' (passthrough).
+        const pass: GPUStencilFaceState = { compare: 'always', failOp: 'keep', depthFailOp: 'keep', passOp: 'keep' }
+        if (stencilFront.compare === 'never') stencilFront = pass
+        if (stencilBack.compare === 'never') stencilBack = pass
         depthStencil = {
           format: dsFormat,
           depthWriteEnabled: field(state, dsPtr, L.dsState.depthWriteEnabled) === 1,

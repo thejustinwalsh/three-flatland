@@ -6,6 +6,7 @@ import type { SkiaDrawingContext } from '../drawing-context'
 import { SkiaNode } from './SkiaNode'
 import { SkiaGroup } from './SkiaGroup'
 import { getFBOId, getCanvasTexture, getWGPUDevice } from './utils'
+import { SkiaBlitPipeline } from './SkiaBlitPipeline'
 
 // ── GL state save/restore for shared context usage ──
 
@@ -129,6 +130,7 @@ export interface SkiaCanvasOptions {
  * ```
  */
 let _canvasConfigured = false
+let _blitPipeline: SkiaBlitPipeline | null = null
 
 export class SkiaCanvas extends Object3D {
   private _width = 0
@@ -139,6 +141,9 @@ export class SkiaCanvas extends Object3D {
   private _skiaContext: SkiaContext | null = null
   private _renderTarget: WebGLRenderTarget | null = null
   private _needsRedraw = true
+  // WebGPU texture mode: BGRA GPUTexture injected into the render target
+  private _wgpuTexOverride: GPUTexture | null = null
+  private _wgpuTexInjected = false
 
   private _readyPromise: Promise<SkiaContext> | null = null
   private _readyResolve: ((ctx: SkiaContext) => void) | null = null
@@ -252,34 +257,70 @@ export class SkiaCanvas extends Object3D {
       if (saved && gl) restoreGLState(gl, saved)
     }
 
-    // WebGPU overlay: copy Skia's internal texture directly to the canvas
+    // WebGPU compositing: copy Skia's internal texture to the destination
     if (this._skiaContext?.backend === 'wgpu') {
-      // Reconfigure canvas context on first WGPU render to add COPY_DST usage
-      if (!_canvasConfigured) {
-        _canvasConfigured = true
-        const dev = getWGPUDevice(renderer)
-        const ctx = (renderer.backend as { context?: GPUCanvasContext } | undefined)?.context
-        if (dev && ctx) {
-          ctx.configure({
-            device: dev,
-            format: navigator.gpu.getPreferredCanvasFormat(),
-            alphaMode: 'premultiplied',
-            usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC | GPUTextureUsage.COPY_DST,
-          })
-        }
-      }
-
       const wgpuState = this._skiaContext._wgpuState
       const skiaTex = wgpuState?.lastRenderTargetTexture
-      const canvasTex = getCanvasTexture(renderer)
-      if (skiaTex && canvasTex && canvasTex.format === skiaTex.format) {
+      if (skiaTex) {
         const dev = getWGPUDevice(renderer)
         if (dev) {
-          const w = Math.min(skiaTex.width, canvasTex.width)
-          const h = Math.min(skiaTex.height, canvasTex.height)
-          const enc = dev.createCommandEncoder()
-          enc.copyTextureToTexture({ texture: skiaTex }, { texture: canvasTex }, { width: w, height: h })
-          dev.queue.submit([enc.finish()])
+          if (this._overlay) {
+            // Overlay mode: blit to canvas with premultiplied alpha blending
+            // (copyTextureToTexture can't blend — it would overwrite the 3D scene)
+            if (!_canvasConfigured) {
+              _canvasConfigured = true
+              const ctx = (renderer.backend as { context?: GPUCanvasContext } | undefined)?.context
+              if (ctx) {
+                ctx.configure({
+                  device: dev,
+                  format: navigator.gpu.getPreferredCanvasFormat(),
+                  alphaMode: 'premultiplied',
+                  usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC | GPUTextureUsage.COPY_DST,
+                })
+              }
+            }
+            const canvasTex = getCanvasTexture(renderer)
+            if (canvasTex) {
+              if (!_blitPipeline) _blitPipeline = new SkiaBlitPipeline(dev)
+              _blitPipeline.blit(skiaTex, canvasTex, true /* alpha blend */)
+            }
+          } else if (this._renderTarget) {
+            // Texture mode: copy Skia's BGRA output into the render target
+            if (!this._wgpuTexInjected) {
+              this._wgpuTexInjected = true
+              // Create a BGRA GPUTexture matching Skia's format
+              this._wgpuTexOverride = dev.createTexture({
+                format: skiaTex.format as GPUTextureFormat,
+                size: { width: this._width, height: this._height },
+                usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT,
+              })
+              // Force Three.js to init the render target, then inject our texture
+              const currentRT = renderer.getRenderTarget()
+              renderer.setRenderTarget(this._renderTarget)
+              renderer.setRenderTarget(currentRT)
+              const backend = renderer.backend as { get?: (t: unknown) => Record<string, unknown> | undefined } | undefined
+              if (backend?.get) {
+                const rt = this._renderTarget as unknown as Record<string, unknown>
+                const tex = rt.texture ?? (rt.textures as unknown[])?.[0]
+                const src = (tex as Record<string, unknown> | undefined)?.source
+                for (const key of [src, tex, this._renderTarget].filter(Boolean)) {
+                  const data = backend.get(key!)
+                  if (data && 'texture' in data) {
+                    data.texture = this._wgpuTexOverride
+                    data.initialized = true
+                    break
+                  }
+                }
+              }
+            }
+            if (this._wgpuTexOverride) {
+              const w = Math.min(skiaTex.width, this._wgpuTexOverride.width)
+              const h = Math.min(skiaTex.height, this._wgpuTexOverride.height)
+              const enc = dev.createCommandEncoder()
+              enc.copyTextureToTexture({ texture: skiaTex }, { texture: this._wgpuTexOverride }, { width: w, height: h })
+              dev.queue.submit([enc.finish()])
+            }
+          }
         }
       }
     }
@@ -296,6 +337,9 @@ export class SkiaCanvas extends Object3D {
   dispose(): void {
     this._renderTarget?.dispose()
     this._renderTarget = null
+    this._wgpuTexOverride?.destroy()
+    this._wgpuTexOverride = null
+    this._wgpuTexInjected = false
   }
 
   // ── Private: Skia context init ──
