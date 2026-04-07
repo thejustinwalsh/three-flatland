@@ -1,0 +1,17 @@
+diff --git a/src/gpu/graphite/dawn/DawnCaps.cpp b/src/gpu/graphite/dawn/DawnCaps.cpp
+index 4723d7c1..7113cafd 100644
+--- a/src/gpu/graphite/dawn/DawnCaps.cpp
++++ b/src/gpu/graphite/dawn/DawnCaps.cpp
+@@ -942,7 +942,11 @@ void DawnCaps::initFormatTable(const wgpu::Device& device) {
+     // Format: Depth16UNorm
+     {
+         info = &fFormatTable[GetFormatIndex(wgpu::TextureFormat::Depth16Unorm)];
+-        info->fFlags = FormatInfo::kMSAA_Flag | FormatInfo::kRenderable_Flag;
++        // Browser WebGPU's depth16unorm has no stencil aspect, but Graphite's pipeline
++        // code sets stencil compare='never' for depth-only, which causes all fragments
++        // to fail the stencil test when paired with depth24plus-stencil8. Disable depth16unorm
++        // so Graphite picks depth24plus-stencil8 natively with correct stencil state.
++        info->fFlags = 0; // was: kMSAA_Flag | kRenderable_Flag
+         info->fColorTypeInfoCount = 0;
+     }
+ 
