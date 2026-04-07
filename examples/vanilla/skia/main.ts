@@ -175,7 +175,7 @@ async function main() {
   const titleText = new SkiaTextNode()
   titleText.text = '@three-flatland/skia'
   titleText.fill = [1, 1, 1, 1]
-  titleText.y = ph - 80
+  titleText.y = ph - 90
   skiaCanvas.add(titleText)
 
   const subtitleText = new SkiaTextNode()
