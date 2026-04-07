@@ -129,7 +129,6 @@ export interface SkiaCanvasOptions {
  * ```
  */
 let _canvasConfigured = false
-let _copyDiagBudget = 3
 
 export class SkiaCanvas extends Object3D {
   private _width = 0
@@ -273,15 +272,6 @@ export class SkiaCanvas extends Object3D {
       const wgpuState = this._skiaContext._wgpuState
       const skiaTex = wgpuState?.lastRenderTargetTexture
       const canvasTex = getCanvasTexture(renderer)
-      // One-time diagnostic to verify format matching
-      if (_copyDiagBudget > 0) {
-        _copyDiagBudget--
-        console.log('[skia:copy]', {
-          skiaTex: skiaTex ? `${skiaTex.format} ${skiaTex.width}x${skiaTex.height}` : 'null',
-          canvasTex: canvasTex ? `${canvasTex.format} ${canvasTex.width}x${canvasTex.height}` : 'null',
-          match: skiaTex && canvasTex ? skiaTex.format === canvasTex.format : false,
-        })
-      }
       if (skiaTex && canvasTex && canvasTex.format === skiaTex.format) {
         const dev = getWGPUDevice(renderer)
         if (dev) {

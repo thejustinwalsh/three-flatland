@@ -177,7 +177,6 @@ function writeU64(state: WGPUState, ptr: number, value: bigint): void {
 
 // WGPU_WHOLE_SIZE = UINT64_MAX — means "use the whole buffer"
 const WGPU_WHOLE_SIZE = 0xFFFFFFFFFFFFFFFFn
-let _pipelineDiag = 10
 // Dawn uses UINT32_MAX as "undefined" sentinel for counts and strides
 const u32OrUndef = (v: number) => v === 0xFFFFFFFF ? undefined : v
 
@@ -310,11 +309,6 @@ function createWGPUImports(state: WGPUState): Record<string, WebAssembly.ImportV
       let format = enumStr<GPUTextureFormat>(WGPUTextureFormat, field(state, ptr, L.tex.format))
       const mipLevelCount = field(state, ptr, L.tex.mipLevelCount)
       const sampleCount = field(state, ptr, L.tex.sampleCount)
-      // Browser WebGPU's depth16unorm has no stencil aspect, but Graphite's
-      // format table includes it. Upgrade to depth24plus-stencil8 which has stencil.
-      if (format === ('depth16unorm' as GPUTextureFormat)) {
-        format = 'depth24plus-stencil8' as GPUTextureFormat
-      }
       // Ensure all textures have COPY_SRC | COPY_DST for compositing
       const actualUsage = usage | GPUTextureUsage.COPY_SRC | GPUTextureUsage.COPY_DST
       return registerObject(state, dev.createTexture({
@@ -542,25 +536,26 @@ function createWGPUImports(state: WGPUState): Record<string, WebAssembly.ImportV
           depthFailOp: enumStr(WGPUStencilOperation, field(state, base, L.stencilFace.depthFailOp)),
           passOp: enumStr(WGPUStencilOperation, field(state, base, L.stencilFace.passOp)),
         })
-        let dsFormat = enumStr<GPUTextureFormat>(WGPUTextureFormat, field(state, dsPtr, L.dsState.format))
-        if (dsFormat === ('depth16unorm' as GPUTextureFormat)) dsFormat = 'depth24plus-stencil8'
-        const hasStencil = dsFormat.includes('stencil')
+        const dsFormat = enumStr<GPUTextureFormat>(WGPUTextureFormat, field(state, dsPtr, L.dsState.format))
         let stencilFront = readStencilFace(dsPtr + L.dsState.stencilFront.offset)
         let stencilBack = readStencilFace(dsPtr + L.dsState.stencilBack.offset)
-        // Graphite sets stencil compare='never' when targeting depth-only formats.
-        // But our depth16unorm→depth24plus-stencil8 upgrade adds a stencil aspect.
-        // 'never' = all fragments FAIL stencil = nothing renders. Fix to 'always' (passthrough).
-        const passthrough: GPUStencilFaceState = { compare: 'always', failOp: 'keep', depthFailOp: 'keep', passOp: 'keep' }
-        if (hasStencil && stencilFront.compare === 'never') stencilFront = passthrough
-        if (hasStencil && stencilBack.compare === 'never') stencilBack = passthrough
+        // Graphite uses compare='never' to mean "don't use stencil." On native Dawn with
+        // depth-only formats this is fine (no stencil aspect). But browser WebGPU may use
+        // depth24plus-stencil8 which HAS stencil — 'never' rejects all fragments.
+        // Override to 'always' (passthrough) so depth works without stencil interference.
+        if (dsFormat.includes('stencil')) {
+          const pass: GPUStencilFaceState = { compare: 'always', failOp: 'keep', depthFailOp: 'keep', passOp: 'keep' }
+          if (stencilFront.compare === 'never') stencilFront = pass
+          if (stencilBack.compare === 'never') stencilBack = pass
+        }
         depthStencil = {
           format: dsFormat,
           depthWriteEnabled: field(state, dsPtr, L.dsState.depthWriteEnabled) === 1,
           depthCompare: enumStr(WGPUCompareFunction, field(state, dsPtr, L.dsState.depthCompare)),
           stencilFront,
           stencilBack,
-          stencilReadMask: hasStencil && stencilFront === passthrough ? 0 : field(state, dsPtr, L.dsState.stencilReadMask),
-          stencilWriteMask: hasStencil && stencilFront === passthrough ? 0 : field(state, dsPtr, L.dsState.stencilWriteMask),
+          stencilReadMask: field(state, dsPtr, L.dsState.stencilReadMask),
+          stencilWriteMask: field(state, dsPtr, L.dsState.stencilWriteMask),
           depthBias: field(state, dsPtr, L.dsState.depthBias),
           depthBiasSlopeScale: field(state, dsPtr, L.dsState.depthBiasSlopeScale),
           depthBiasClamp: field(state, dsPtr, L.dsState.depthBiasClamp),
@@ -624,24 +619,6 @@ function createWGPUImports(state: WGPUState): Record<string, WebAssembly.ImportV
         depthStencil,
         multisample,
         fragment,
-      }
-      if (_pipelineDiag > 0) {
-        _pipelineDiag--
-        const ds = desc.depthStencil
-        const frag = desc.fragment
-        console.log('[skia:pipeline]', {
-          vtxBuffers: desc.vertex.buffers.map((b: GPUVertexBufferLayout | null) =>
-            b ? { stride: b.arrayStride, step: b.stepMode, attrs: b.attributes.length } : null),
-          primitive: desc.primitive?.topology,
-          ds: ds ? { fmt: ds.format, depthCmp: ds.depthCompare, stencilFront: ds.stencilFront?.compare } : null,
-          blend: frag?.targets?.[0]?.blend ? {
-            colorSrc: (frag.targets[0] as GPUColorTargetState).blend!.color.srcFactor,
-            colorDst: (frag.targets[0] as GPUColorTargetState).blend!.color.dstFactor,
-            alphaSrc: (frag.targets[0] as GPUColorTargetState).blend!.alpha.srcFactor,
-            alphaDst: (frag.targets[0] as GPUColorTargetState).blend!.alpha.dstFactor,
-          } : 'none',
-          writeMask: frag?.targets?.[0]?.writeMask,
-        })
       }
       const pipeline = dev.createRenderPipeline(desc)
       return registerObject(state, pipeline)
@@ -1007,21 +984,14 @@ function createWGPUImports(state: WGPUState): Record<string, WebAssembly.ImportV
         const dsView = getObject<GPUTextureView>(state, field(state, dsAttachPtr, L.rpDepth.view))
         if (dsView) {
           const depthLoadOpVal = field(state, dsAttachPtr, L.rpDepth.depthLoadOp)
-          const stencilLoadOpVal = field(state, dsAttachPtr, L.rpDepth.stencilLoadOp)
-          const stencilStoreOpVal = field(state, dsAttachPtr, L.rpDepth.stencilStoreOp)
-          // Check if the actual texture has a stencil aspect (we may have upgraded depth16unorm → depth24plus-stencil8)
-          const dsViewHandle = field(state, dsAttachPtr, L.rpDepth.view)
-          const dsParentTex = state.viewToTexture.get(dsViewHandle)
-          const hasStencilAspect = dsParentTex?.format?.includes('stencil') ?? false
           depthStencilAttachment = {
             view: dsView,
-            depthLoadOp: depthLoadOpVal ? enumStr(WGPULoadOp, depthLoadOpVal) : undefined,
+            depthLoadOp: field(state, dsAttachPtr, L.rpDepth.depthLoadOp) ? enumStr(WGPULoadOp, field(state, dsAttachPtr, L.rpDepth.depthLoadOp)) : undefined,
             depthStoreOp: field(state, dsAttachPtr, L.rpDepth.depthStoreOp) ? enumStr(WGPUStoreOp, field(state, dsAttachPtr, L.rpDepth.depthStoreOp)) : undefined,
             depthClearValue: readF32(state, dsAttachPtr + L.rpDepth.depthClearValue.offset),
             depthReadOnly: field(state, dsAttachPtr, L.rpDepth.depthReadOnly) !== 0,
-            // If texture has stencil but ops are undefined (upgraded from depth-only format), default them
-            stencilLoadOp: stencilLoadOpVal ? enumStr(WGPULoadOp, stencilLoadOpVal) : (hasStencilAspect ? 'clear' : undefined),
-            stencilStoreOp: stencilStoreOpVal ? enumStr(WGPUStoreOp, stencilStoreOpVal) : (hasStencilAspect ? 'store' : undefined),
+            stencilLoadOp: field(state, dsAttachPtr, L.rpDepth.stencilLoadOp) ? enumStr(WGPULoadOp, field(state, dsAttachPtr, L.rpDepth.stencilLoadOp)) : undefined,
+            stencilStoreOp: field(state, dsAttachPtr, L.rpDepth.stencilStoreOp) ? enumStr(WGPUStoreOp, field(state, dsAttachPtr, L.rpDepth.stencilStoreOp)) : undefined,
             stencilClearValue: field(state, dsAttachPtr, L.rpDepth.stencilClearValue),
             stencilReadOnly: field(state, dsAttachPtr, L.rpDepth.stencilReadOnly) !== 0,
           }
