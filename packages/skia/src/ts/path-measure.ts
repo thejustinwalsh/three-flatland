@@ -23,7 +23,7 @@ export class SkiaPathMeasure {
   constructor(context: SkiaContext, path: SkiaPath, forceClosed = false) {
     this._ctx = context
     this._handle = context._exports.skia_path_measure_create(path._handle, forceClosed ? 1 : 0)
-    registry.register(this, { handle: this._handle, drop: context._exports.skia_path_measure_destroy }, this)
+    registry.register(this, { handle: this._handle, drop: (h: number) => context._exports.skia_path_measure_destroy(h) }, this)
   }
 
   /** Total arc length of the path */

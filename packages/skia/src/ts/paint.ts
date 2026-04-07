@@ -1,4 +1,8 @@
 import type { SkiaContext } from './context'
+import type { SkiaPathEffect } from './path-effect'
+import type { SkiaShader } from './shader'
+import type { SkiaImageFilter } from './image-filter'
+import type { SkiaColorFilter } from './color-filter'
 import { type StrokeCap, type StrokeJoin, type BlendMode, type BlurStyle, STROKE_CAP, STROKE_JOIN, BLEND_MODE, BLUR_STYLE, BLEND_MODE_REVERSE, STROKE_CAP_REVERSE, STROKE_JOIN_REVERSE } from './types'
 
 const paintRegistry = new FinalizationRegistry<{ handle: number; drop: (h: number) => void }>(
@@ -26,7 +30,7 @@ export class SkiaPaint {
   constructor(context: SkiaContext) {
     this._ctx = context
     this._handle = context._exports.skia_paint_new()
-    paintRegistry.register(this, { handle: this._handle, drop: context._exports.skia_paint_delete }, this)
+    paintRegistry.register(this, { handle: this._handle, drop: (h: number) => context._exports.skia_paint_delete(h) }, this)
   }
 
   // ── Color ──
@@ -157,7 +161,7 @@ export class SkiaPaint {
 
   // ── Path Effect ──
 
-  setPathEffect(effect: import('./path-effect').SkiaPathEffect): this {
+  setPathEffect(effect: SkiaPathEffect): this {
     this._ctx._exports.skia_paint_set_path_effect(this._handle, effect._handle)
     return this
   }
@@ -169,7 +173,7 @@ export class SkiaPaint {
 
   // ── General Shader ──
 
-  setShader(shader: import('./shader').SkiaShader): this {
+  setShader(shader: SkiaShader): this {
     this._ctx._exports.skia_paint_set_shader_obj(this._handle, shader._handle)
     return this
   }
@@ -191,7 +195,7 @@ export class SkiaPaint {
 
   // ── Filters ──
 
-  setImageFilter(filter: import('./image-filter').SkiaImageFilter): this {
+  setImageFilter(filter: SkiaImageFilter): this {
     this._ctx._exports.skia_paint_set_image_filter(this._handle, filter._handle)
     return this
   }
@@ -201,7 +205,7 @@ export class SkiaPaint {
     return this
   }
 
-  setColorFilter(filter: import('./color-filter').SkiaColorFilter): this {
+  setColorFilter(filter: SkiaColorFilter): this {
     this._ctx._exports.skia_paint_set_color_filter(this._handle, filter._handle)
     return this
   }
@@ -254,7 +258,7 @@ export class SkiaPaint {
     const paint = Object.create(SkiaPaint.prototype) as SkiaPaint
     ;(paint as unknown as { _ctx: SkiaContext })._ctx = this._ctx
     paint._handle = newHandle
-    paintRegistry.register(paint, { handle: newHandle, drop: this._ctx._exports.skia_paint_delete }, paint)
+    paintRegistry.register(paint, { handle: newHandle, drop: (h: number) => this._ctx._exports.skia_paint_delete(h) }, paint)
     return paint
   }
 

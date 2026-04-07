@@ -27,7 +27,7 @@ export class SkiaPath {
   constructor(context: SkiaContext) {
     this._ctx = context
     this._handle = context._exports.skia_path_new()
-    pathRegistry.register(this, { handle: this._handle, drop: context._exports.skia_path_delete }, this)
+    pathRegistry.register(this, { handle: this._handle, drop: (h: number) => context._exports.skia_path_delete(h) }, this)
   }
 
   /** @internal Create a path from an existing handle (e.g., from PathOps result) */
@@ -35,7 +35,7 @@ export class SkiaPath {
     const path = Object.create(SkiaPath.prototype) as SkiaPath
     ;(path as unknown as { _ctx: SkiaContext })._ctx = context
     path._handle = handle
-    pathRegistry.register(path, { handle, drop: context._exports.skia_path_delete }, path)
+    pathRegistry.register(path, { handle, drop: (h: number) => context._exports.skia_path_delete(h) }, path)
     return path
   }
 

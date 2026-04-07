@@ -27,7 +27,7 @@ export class SkiaShader {
   private constructor(context: SkiaContext, handle: number) {
     this._ctx = context
     this._handle = handle
-    registry.register(this, { handle, drop: context._exports.skia_shader_destroy }, this)
+    registry.register(this, { handle, drop: (h: number) => context._exports.skia_shader_destroy(h) }, this)
   }
 
   /** Procedural fractal noise pattern */

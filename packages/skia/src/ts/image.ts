@@ -30,7 +30,7 @@ export class SkiaImage {
     this._handle = handle
     this.width = width
     this.height = height
-    registry.register(this, { handle, drop: context._exports.skia_image_destroy }, this)
+    registry.register(this, { handle, drop: (h: number) => context._exports.skia_image_destroy(h) }, this)
   }
 
   /**

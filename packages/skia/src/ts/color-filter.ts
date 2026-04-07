@@ -32,7 +32,7 @@ export class SkiaColorFilter {
     this._ctx = context
     this._handle = handle
     this._params = params
-    registry.register(this, { handle, drop: context._exports.skia_colorfilter_destroy }, this)
+    registry.register(this, { handle, drop: (h: number) => context._exports.skia_colorfilter_destroy(h) }, this)
   }
 
   /** @internal Check if existing filter was created with the given params */

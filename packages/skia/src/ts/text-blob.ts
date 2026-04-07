@@ -21,7 +21,7 @@ export class SkiaTextBlob {
   private constructor(context: SkiaContext, handle: number) {
     this._ctx = context
     this._handle = handle
-    registry.register(this, { handle, drop: context._exports.skia_text_blob_destroy }, this)
+    registry.register(this, { handle, drop: (h: number) => context._exports.skia_text_blob_destroy(h) }, this)
   }
 
   /** Create a text blob from a string */

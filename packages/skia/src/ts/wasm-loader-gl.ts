@@ -307,7 +307,7 @@ function createGLImports(state: GLState): Record<string, WebAssembly.ImportValue
     emscripten_glGenerateMipmap(target: number) { gl.generateMipmap(target) },
     emscripten_glGetError(): number { return gl.getError() },
     emscripten_glGetFloatv(pname: number, ptr: number) {
-      const val = gl.getParameter(pname)
+      const val: unknown = gl.getParameter(pname)
       if (typeof val === 'number') {
         getMemoryView(state).setFloat32(ptr, val, true)
       } else if (val instanceof Float32Array) {
@@ -332,12 +332,12 @@ function createGLImports(state: GLState): Record<string, WebAssembly.ImportValue
       }
     },
     emscripten_glGetProgramiv(program: number, pname: number, ptr: number) {
-      const val = gl.getProgramParameter(state.programs.get(program)!, pname)
-      writeU32(state, ptr, typeof val === 'boolean' ? (val ? 1 : 0) : val)
+      const val: unknown = gl.getProgramParameter(state.programs.get(program)!, pname)
+      writeU32(state, ptr, typeof val === 'boolean' ? (val ? 1 : 0) : val as number)
     },
     emscripten_glGetShaderiv(shader: number, pname: number, ptr: number) {
-      const val = gl.getShaderParameter(state.shaders.get(shader)!, pname)
-      writeU32(state, ptr, typeof val === 'boolean' ? (val ? 1 : 0) : val)
+      const val: unknown = gl.getShaderParameter(state.shaders.get(shader)!, pname)
+      writeU32(state, ptr, typeof val === 'boolean' ? (val ? 1 : 0) : val as number)
     },
     emscripten_glGetUniformLocation(program: number, namePtr: number): number {
       const name = readString(state, namePtr)
@@ -510,10 +510,10 @@ function createGLImports(state: GLState): Record<string, WebAssembly.ImportValue
       }
     },
     emscripten_glGetBufferParameteriv(target: number, pname: number, ptr: number) {
-      writeU32(state, ptr, gl.getBufferParameter(target, pname))
+      writeU32(state, ptr, gl.getBufferParameter(target, pname) as number)
     },
     emscripten_glGetFramebufferAttachmentParameteriv(target: number, att: number, pname: number, ptr: number) {
-      writeU32(state, ptr, gl.getFramebufferAttachmentParameter(target, att, pname))
+      writeU32(state, ptr, gl.getFramebufferAttachmentParameter(target, att, pname) as number)
     },
     emscripten_glGetProgramInfoLog(program: number, bufSize: number, lengthPtr: number, infoLogPtr: number) {
       const log = gl.getProgramInfoLog(state.programs.get(program)!) ?? ''
@@ -521,7 +521,7 @@ function createGLImports(state: GLState): Record<string, WebAssembly.ImportValue
       if (lengthPtr) writeU32(state, lengthPtr, written)
     },
     emscripten_glGetRenderbufferParameteriv(target: number, pname: number, ptr: number) {
-      writeU32(state, ptr, gl.getRenderbufferParameter(target, pname))
+      writeU32(state, ptr, gl.getRenderbufferParameter(target, pname) as number)
     },
     emscripten_glGetShaderInfoLog(shader: number, bufSize: number, lengthPtr: number, infoLogPtr: number) {
       const log = gl.getShaderInfoLog(state.shaders.get(shader)!) ?? ''

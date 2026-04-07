@@ -27,7 +27,7 @@ export function attachSkiaTexture(parent: Record<string, unknown>, self: SkiaCan
   if (self.texture) {
     apply()
   } else {
-    self.ready.then(apply)
+    void self.ready.then(apply)
   }
 
   return () => {

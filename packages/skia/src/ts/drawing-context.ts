@@ -5,6 +5,7 @@ import type { SkiaFont } from './font'
 import type { SkiaImage } from './image'
 import type { SkiaTextBlob } from './text-blob'
 import type { SkiaPicture } from './picture'
+import type { SkiaImageFilter } from './image-filter'
 
 /**
  * Drawing context — provides all canvas operations during a draw pass.
@@ -224,7 +225,7 @@ export class SkiaDrawingContext {
   // ── Backdrop Layer ──
 
   saveLayerWithBackdrop(bounds: [number, number, number, number] | undefined, paint: SkiaPaint | undefined,
-                        backdropFilter: import('./image-filter').SkiaImageFilter): void {
+                        backdropFilter: SkiaImageFilter): void {
     this._check()
     const boundsPtr = bounds ? this._ctx._writeF32(bounds) : 0
     this._ctx._exports.skia_canvas_save_layer_with_backdrop(

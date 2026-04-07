@@ -11,7 +11,7 @@ class TypefaceRef {
   constructor(ctx: SkiaContext, handle: number) {
     this._ctx = ctx
     this.handle = handle
-    typefaceGCRegistry.register(this, { handle, drop: ctx._exports.skia_typeface_delete }, this)
+    typefaceGCRegistry.register(this, { handle, drop: (h: number) => ctx._exports.skia_typeface_delete(h) }, this)
   }
 
   retain(): void { this._refs++ }
@@ -20,7 +20,7 @@ class TypefaceRef {
     if (--this._refs <= 0 && this.handle !== 0) {
       typefaceGCRegistry.unregister(this)
       this._ctx._exports.skia_typeface_delete(this.handle)
-      ;(this as any).handle = 0
+      ;(this as { handle: number }).handle = 0
 
       // Remove from dedup cache
       const cache = typefaceCache.get(this._ctx)
@@ -187,7 +187,7 @@ export class SkiaFont {
       throw new Error('Failed to create font')
     }
 
-    fontGCRegistry.register(this, { handle: this._handle, drop: context._exports.skia_font_delete }, this)
+    fontGCRegistry.register(this, { handle: this._handle, drop: (h: number) => context._exports.skia_font_delete(h) }, this)
   }
 
   /** Create a font from raw TTF/OTF data. Convenience for standalone use. */

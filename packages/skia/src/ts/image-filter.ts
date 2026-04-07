@@ -33,7 +33,7 @@ export class SkiaImageFilter {
     this._ctx = context
     this._handle = handle
     this._params = params
-    registry.register(this, { handle, drop: context._exports.skia_imagefilter_destroy }, this)
+    registry.register(this, { handle, drop: (h: number) => context._exports.skia_imagefilter_destroy(h) }, this)
   }
 
   /** Check if this filter was created with the given params (avoids unnecessary recreation) */

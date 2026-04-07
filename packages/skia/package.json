@@ -1,6 +1,6 @@
 {
   "name": "@three-flatland/skia",
-  "version": "0.0.1-alpha.0",
+  "version": "0.0.1-alpha.1",
   "description": "Lightweight CanvasKit alternative — Skia's core GPU rendering in ~1 MB of WASM, built with Zig",
   "type": "module",
   "exports": {

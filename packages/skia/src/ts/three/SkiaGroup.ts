@@ -5,9 +5,9 @@ import type { SkiaPaint } from '../paint'
 import { SkiaPaint as SkiaPaintClass } from '../paint'
 import { Object3D } from 'three'
 import type { BlendMode } from '../types'
-import { SkiaImageFilter } from '../image-filter'
-import { SkiaColorFilter } from '../color-filter'
-import { SkiaNode } from './SkiaNode'
+import type { SkiaImageFilter } from '../image-filter'
+import type { SkiaColorFilter } from '../color-filter'
+import type { SkiaNode } from './SkiaNode'
 
 /** Drop shadow configuration */
 export interface SkiaShadowProps {
@@ -143,9 +143,9 @@ export class SkiaGroup extends Object3D {
     // Shadow
     if (this.shadow) {
       const s = this.shadow
-      const factory = s.shadowOnly ? SkiaImageFilter.dropShadowOnly : SkiaImageFilter.dropShadow
-      this._shadowFilter = factory(skia, s.dx, s.dy, s.blur, s.blur, s.color,
-        this._blurFilter ?? undefined, this._shadowFilter)
+      this._shadowFilter = s.shadowOnly
+        ? SkiaImageFilter.dropShadowOnly(skia, s.dx, s.dy, s.blur, s.blur, s.color, this._blurFilter ?? undefined, this._shadowFilter)
+        : SkiaImageFilter.dropShadow(skia, s.dx, s.dy, s.blur, s.blur, s.color, this._blurFilter ?? undefined, this._shadowFilter)
       if (this._shadowFilter) p.setImageFilter(this._shadowFilter)
     } else if (this._shadowFilter) {
       this._shadowFilter.dispose()

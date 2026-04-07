@@ -226,7 +226,7 @@ function enumStr<T>(map: Record<number, string>, value: number): T {
 // ── WebGPU imports ──
 
 function createWGPUImports(state: WGPUState): Record<string, WebAssembly.ImportValue> {
-  const { device, queue } = state
+  const { device, queue: _queue } = state
   const noop = (..._args: unknown[]) => 0
 
   // Layout aliases for frequently used structs
@@ -306,7 +306,7 @@ function createWGPUImports(state: WGPUState): Record<string, WebAssembly.ImportV
       const width = readU32(state, sizeBase)
       const height = readU32(state, sizeBase + 4)
       const depthOrArrayLayers = readU32(state, sizeBase + 8)
-      let format = enumStr<GPUTextureFormat>(WGPUTextureFormat, field(state, ptr, L.tex.format))
+      const format = enumStr<GPUTextureFormat>(WGPUTextureFormat, field(state, ptr, L.tex.format))
       const mipLevelCount = field(state, ptr, L.tex.mipLevelCount)
       const sampleCount = field(state, ptr, L.tex.sampleCount)
       // Ensure all textures have COPY_SRC | COPY_DST for compositing
@@ -646,7 +646,7 @@ function createWGPUImports(state: WGPUState): Record<string, WebAssembly.ImportV
       const dev = getObject<GPUDevice>(state, deviceHandle)
       if (!dev) return 0
       return registerObject(state, dev.createQuerySet({
-        type: enumStr(WGPUTextureFormat, field(state, ptr, L.queryDesc.type)) as GPUQueryType,
+        type: enumStr(WGPUTextureFormat, field(state, ptr, L.queryDesc.type)),
         count: field(state, ptr, L.queryDesc.count),
       }))
     },
@@ -980,7 +980,7 @@ function createWGPUImports(state: WGPUState): Record<string, WebAssembly.ImportV
       if (dsAttachPtr) {
         const dsView = getObject<GPUTextureView>(state, field(state, dsAttachPtr, L.rpDepth.view))
         if (dsView) {
-          const depthLoadOpVal = field(state, dsAttachPtr, L.rpDepth.depthLoadOp)
+          const _depthLoadOpVal = field(state, dsAttachPtr, L.rpDepth.depthLoadOp)
           depthStencilAttachment = {
             view: dsView,
             depthLoadOp: field(state, dsAttachPtr, L.rpDepth.depthLoadOp) ? enumStr(WGPULoadOp, field(state, dsAttachPtr, L.rpDepth.depthLoadOp)) : undefined,
