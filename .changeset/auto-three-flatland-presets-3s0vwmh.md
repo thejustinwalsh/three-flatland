@@ -5,6 +5,7 @@
 > Branch: feat-skia
 > PR: https://github.com/thejustinwalsh/three-flatland/pull/19
 
-- Version bump to align with `@three-flatland/skia` release
+- Bump package version in preparation for coordinated release with `@three-flatland/skia`
+- Add `prepack` script to ensure build artifacts are up to date before publishing
 
-Patch version bump to stay in sync with the monorepo release of the new `@three-flatland/skia` package.
+Package version updated; no API changes.
