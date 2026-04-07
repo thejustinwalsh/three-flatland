@@ -257,11 +257,17 @@ fi
 info "Applying Skia patches..."
 "$SCRIPT_DIR/patch-skia.sh"
 
-# Generate WebGPU shim headers and WIT from Dawn's code generator
-info "Generating WebGPU shim headers..."
-python3 "$SCRIPT_DIR/generate-wgpu-shim.py"
-info "Generating WebGPU WIT interface..."
-python3 "$SCRIPT_DIR/generate-wgpu-wit.py"
+# Generate WebGPU shim headers and WIT from Dawn's code generator.
+# These are checked in — only re-generate if Dawn source is available (dev workflow).
+DAWN_GEN="$SKIA_DIR/third_party/externals/dawn/generator/dawn_json_generator.py"
+if [ -f "$DAWN_GEN" ]; then
+  info "Generating WebGPU shim headers..."
+  python3 "$SCRIPT_DIR/generate-wgpu-shim.py"
+  info "Generating WebGPU WIT interface..."
+  python3 "$SCRIPT_DIR/generate-wgpu-wit.py"
+else
+  ok "Using checked-in WebGPU shim headers (Dawn generator not present)"
+fi
 
 if [ "$DEPS_ONLY" = true ]; then
   echo ""

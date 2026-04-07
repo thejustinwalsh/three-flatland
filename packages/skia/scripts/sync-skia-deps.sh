@@ -11,8 +11,14 @@ set -euo pipefail
 #   - Changing which deps/files are needed
 #
 # Usage:
-#   ./scripts/sync-skia-deps.sh           # Vendor deps (skip if already present)
-#   ./scripts/sync-skia-deps.sh --force   # Re-vendor even if already present
+#   ./scripts/sync-skia-deps.sh                 # Vendor deps (skip if already present)
+#   ./scripts/sync-skia-deps.sh --force          # Re-vendor even if already present
+#   ./scripts/sync-skia-deps.sh --with-dawn      # Also clone Dawn (for regenerating WGPU shim/WIT)
+#
+# When updating the Skia pin to a new chrome/m* branch:
+#   1. ./scripts/sync-skia-deps.sh --force --with-dawn
+#   2. ./scripts/setup-skia.sh  (regenerates shim headers, GN, skia_sources.zig)
+#   3. git add vendor/ src/zig/ wit/
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PKG_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
@@ -31,9 +37,11 @@ warn()  { echo -e "${YELLOW}[warn]${NC}  $*"; }
 error() { echo -e "${RED}[error]${NC} $*" >&2; }
 
 FORCE=false
+WITH_DAWN=false
 for arg in "$@"; do
   case "$arg" in
     --force) FORCE=true ;;
+    --with-dawn) WITH_DAWN=true ;;
   esac
 done
 
@@ -177,6 +185,32 @@ echo ""
 if [ "$failed" -gt 0 ]; then
   error "$failed dep(s) failed. Check network connectivity."
   exit 1
+fi
+
+# ── Optional: Dawn (needed to regenerate WGPU shim/WIT when updating Skia pin) ──
+if [ "$WITH_DAWN" = true ]; then
+  DAWN_REPO="https://github.com/nicebyte/nicedawn.git"
+  DAWN_DEST="$PKG_ROOT/third_party/skia/third_party/externals/dawn"
+  if [ -d "$DAWN_DEST/.git" ]; then
+    ok "dawn already present"
+  else
+    info "dawn: cloning (for WGPU shim generation)..."
+    # Use Dawn's official GitHub mirror
+    git clone --depth 1 https://dawn.googlesource.com/dawn.git "$DAWN_DEST" --quiet 2>/dev/null || \
+    git clone --depth 1 https://github.com/nicebyte/nicedawn.git "$DAWN_DEST" --quiet 2>/dev/null || {
+      error "dawn: clone failed — try manually: git clone https://dawn.googlesource.com/dawn.git $DAWN_DEST"
+      ((failed++))
+    }
+    if [ -d "$DAWN_DEST/.git" ]; then
+      local rev
+      rev=$(get_pinned_rev "dawn")
+      if [ "$rev" != "HEAD" ]; then
+        (cd "$DAWN_DEST" && git fetch --depth 1 origin "$rev" 2>/dev/null && git checkout FETCH_HEAD --quiet 2>/dev/null) || \
+          warn "dawn: pinned rev not found, using HEAD" >&2
+      fi
+      ok "dawn @ $(cd "$DAWN_DEST" && git rev-parse --short HEAD)"
+    fi
+  fi
 fi
 
 ok "All deps vendored to vendor/"
