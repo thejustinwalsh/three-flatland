@@ -91,12 +91,17 @@ function restoreGLState(gl: WebGL2RenderingContext, s: SavedGLState): void {
  * Renderer type — any Three.js renderer (WebGLRenderer, WebGPURenderer, etc.).
  * Uses a minimal structural type so we don't depend on WebGPURenderer at the type level.
  */
-// eslint-disable-next-line @typescript-eslint/no-empty-object-type
+ 
 export interface AnyRenderer extends Record<string, any> {
   getContext(): unknown
   getRenderTarget(): unknown
   setRenderTarget(target: unknown): void
 }
+
+/** SkiaContext narrowed by backend — guarantees the matching GPU handle is present. */
+export type SkiaContextReady =
+  | (SkiaContext & { backend: 'webgl'; gl: WebGL2RenderingContext })
+  | (SkiaContext & { backend: 'wgpu'; device: GPUDevice })
 
 export interface SkiaCanvasOptions {
   /** Three.js renderer (WebGLRenderer or WebGPURenderer) */
@@ -107,6 +112,8 @@ export interface SkiaCanvasOptions {
   height?: number
   /** If true, draw to the default framebuffer (HUD/overlay mode) instead of a render target */
   overlay?: boolean
+  /** Called once the SkiaContext is ready */
+  onContextCreate?: (ctx: SkiaContextReady) => void
 }
 
 /**
@@ -149,6 +156,8 @@ export class SkiaCanvas extends Object3D {
   private _readyPromise: Promise<SkiaContext> | null = null
   private _readyResolve: ((ctx: SkiaContext) => void) | null = null
 
+  /** Called once the SkiaContext is ready. Settable via options or as a property (R3F). */
+  onContextCreate: ((ctx: SkiaContextReady) => void) | null = null
 
   constructor(options?: SkiaCanvasOptions) {
     super()
@@ -156,6 +165,7 @@ export class SkiaCanvas extends Object3D {
       if (options.width != null) this._width = options.width
       if (options.height != null) this._height = options.height
       if (options.overlay != null) this._overlay = options.overlay
+      if (options.onContextCreate) this.onContextCreate = options.onContextCreate
       if (options.renderer) this.renderer = options.renderer
     }
   }
@@ -313,7 +323,7 @@ export class SkiaCanvas extends Object3D {
               const src = (tex as Record<string, unknown> | undefined)?.source
               let rtTex: GPUTexture | undefined
               for (const key of [src, tex, this._renderTarget].filter(Boolean)) {
-                const props = backend.get(key!)
+                const props = backend.get(key)
                 if (props?.texture instanceof GPUTexture) {
                   rtTex = props.texture
                   break
@@ -359,7 +369,7 @@ export class SkiaCanvas extends Object3D {
       this._skiaContext = ctx
       this._resolveReady(ctx)
       this._syncRenderTarget()
-    })
+    }).catch((err) => { throw new Error(`Failed to initialize Skia context: ${err instanceof Error ? err.message : String(err)}`) })
   }
 
   private _resolveReady(ctx: SkiaContext): void {
@@ -367,6 +377,7 @@ export class SkiaCanvas extends Object3D {
       this._readyResolve(ctx)
       this._readyResolve = null
     }
+    this.onContextCreate?.(ctx as SkiaContextReady)
   }
 
   // ── Private: render target management ──
@@ -443,12 +454,12 @@ export class SkiaCanvas extends Object3D {
     const src = (tex as Record<string, unknown> | undefined)?.source
     let glTexture: WebGLTexture | undefined
     for (const key of [src, tex, this._renderTarget].filter(Boolean)) {
-      const data = backend.get(key!)
+      const data = backend.get(key)
       if (data) {
         // Three.js WebGL backend stores the GL texture — check various key names
         for (const prop of Object.keys(data)) {
-          if ((data as Record<string, unknown>)[prop] instanceof WebGLTexture) {
-            glTexture = (data as Record<string, unknown>)[prop] as WebGLTexture
+          if ((data)[prop] instanceof WebGLTexture) {
+            glTexture = (data)[prop]
             break
           }
         }

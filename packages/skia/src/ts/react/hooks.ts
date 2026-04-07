@@ -1,25 +1,31 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useContext } from 'react'
 import { useThree } from '@react-three/fiber'
 import { SkiaContext } from '../context'
+import { SkiaReactContext } from './context'
 import { Skia } from '../init'
-import type { SkiaDrawingContext } from '../drawing-context'
 
 /**
- * Initialize Skia from the current R3F renderer.
- * Returns the SkiaContext once WASM is loaded, or null while loading.
+ * Get the nearest SkiaContext — from a parent `<skiaCanvas>` via React context,
+ * or from the global singleton (initialized from the R3F renderer).
  *
- * Call this once in your app — or let `<skiaCanvas>` handle it automatically.
- * Loaders (`useLoader(SkiaFontLoader, ...)`) work as soon as context is ready.
+ * Returns the SkiaContext once WASM is loaded, or null while loading.
  *
  * ```tsx
  * const skia = useSkiaContext()
  * ```
  */
 export function useSkiaContext(): SkiaContext | null {
+  const nearest = useContext(SkiaReactContext)
   const gl = useThree((s) => s.gl)
-  const [ctx, setCtx] = useState<SkiaContext | null>(() => SkiaContext.instance)
+  const [ctx, setCtx] = useState<SkiaContext | null>(() => nearest ?? SkiaContext.instance)
 
   useEffect(() => {
+    // Prefer the nearest context from a parent SkiaCanvas
+    if (nearest) {
+      setCtx(nearest)
+      return
+    }
+
     if (SkiaContext.instance && !SkiaContext.instance.isDestroyed) {
       setCtx(SkiaContext.instance)
       return
@@ -30,19 +36,7 @@ export function useSkiaContext(): SkiaContext | null {
       if (!disposed) setCtx(c)
     })
     return () => { disposed = true }
-  }, [gl])
+  }, [gl, nearest])
 
-  return ctx
-}
-
-/**
- * Register an imperative draw callback on the nearest parent SkiaCanvas.
- */
-export function useSkiaDraw(
-  callback: (ctx: SkiaDrawingContext) => void,
-  _deps: unknown[],
-): void {
-  const callbackRef = useRef(callback)
-  callbackRef.current = callback
-  // TODO: Hook into parent SkiaCanvas's draw pass via context or custom event.
+  return nearest ?? ctx
 }

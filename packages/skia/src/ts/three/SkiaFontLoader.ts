@@ -52,8 +52,13 @@ export class SkiaFontLoader extends Loader<SkiaFont> {
   }
 
   private static async _loadUncached(url: string, options?: SkiaFontLoaderOptions): Promise<SkiaFont> {
-    const ctx = options?.context ?? this.context ?? SkiaContext.instance
-    if (!ctx) throw new Error('SkiaFontLoader: no SkiaContext available. Call SkiaContext.create(gl) first.')
+    let ctx = options?.context ?? this.context ?? SkiaContext.instance
+    if (!ctx) {
+      // Await in-flight Skia.init() — allows useLoader to work without explicit context
+      const { Skia } = await import('../init')
+      if (Skia.pending) ctx = await Skia.pending
+    }
+    if (!ctx) throw new Error('SkiaFontLoader: no SkiaContext available. Call Skia.init(renderer) first.')
     const size = options?.size ?? this.defaultSize
 
     const response = await fetch(url)

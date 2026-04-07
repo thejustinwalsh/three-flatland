@@ -36,8 +36,13 @@ export class SkiaImageLoader extends Loader<SkiaImage> {
   }
 
   private static async _loadUncached(url: string, options?: SkiaImageLoaderOptions): Promise<SkiaImage> {
-    const ctx = options?.context ?? this.context ?? SkiaContext.instance
-    if (!ctx) throw new Error('SkiaImageLoader: no SkiaContext available. Call SkiaContext.create(gl) first.')
+    let ctx = options?.context ?? this.context ?? SkiaContext.instance
+    if (!ctx) {
+      // Await in-flight Skia.init() — allows useLoader to work without explicit context
+      const { Skia } = await import('../init')
+      if (Skia.pending) ctx = await Skia.pending
+    }
+    if (!ctx) throw new Error('SkiaImageLoader: no SkiaContext available. Call Skia.init(renderer) first.')
 
     const image = await SkiaImage.fromURL(ctx, url)
     if (!image) throw new Error(`SkiaImageLoader: failed to load ${url}`)

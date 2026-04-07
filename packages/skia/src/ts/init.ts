@@ -92,8 +92,9 @@ function resolveBackend(input: unknown, preference: SkiaBackend = 'auto'): Resol
   )
 }
 
-// ── Preload state ──
+// ── Init / preload state ──
 
+let _initPromise: Promise<SkiaContext> | null = null
 let _preloadBackend: 'webgl' | 'wgpu' | null = null
 let _preloadResponse: Promise<Response> | null = null
 
@@ -146,19 +147,26 @@ async function init(
     return SkiaContext.instance
   }
 
-  const resolved = resolveBackend(input, options?.backend)
+  // Deduplicate concurrent init calls — return the same promise
+  if (_initPromise) return _initPromise
 
-  // If preload started the right fetch, pass it through to avoid a second fetch
-  const preloadedResponse =
-    _preloadResponse && _preloadBackend === resolved.backend
-      ? _preloadResponse
-      : undefined
+  _initPromise = (async () => {
+    const resolved = resolveBackend(input, options?.backend)
 
-  if (resolved.backend === 'webgl') {
-    return SkiaContext.create({ ...options, backend: 'webgl', gl: resolved.gl!, preloadedResponse })
-  } else {
-    return SkiaContext.create({ ...options, backend: 'wgpu', device: resolved.device!, preloadedResponse })
-  }
+    // If preload started the right fetch, pass it through to avoid a second fetch
+    const preloadedResponse =
+      _preloadResponse && _preloadBackend === resolved.backend
+        ? _preloadResponse
+        : undefined
+
+    if (resolved.backend === 'webgl') {
+      return SkiaContext.create({ ...options, backend: 'webgl', gl: resolved.gl!, preloadedResponse })
+    } else {
+      return SkiaContext.create({ ...options, backend: 'wgpu', device: resolved.device!, preloadedResponse })
+    }
+  })()
+
+  return _initPromise
 }
 
 /**
@@ -199,5 +207,10 @@ export const Skia = {
   /** The current SkiaContext singleton, or null if not yet initialized */
   get context(): SkiaContext | null {
     return SkiaContext.instance
+  },
+
+  /** Promise that resolves when init completes. Null if init hasn't been called yet. */
+  get pending(): Promise<SkiaContext> | null {
+    return _initPromise
   },
 } as const

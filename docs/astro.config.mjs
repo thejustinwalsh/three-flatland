@@ -214,6 +214,7 @@ export default defineConfig({
             { label: 'TSL Nodes', slug: 'guides/tsl-nodes' },
             { label: 'Pass Effects', slug: 'guides/pass-effects' },
             { label: 'Tilemaps', slug: 'guides/tilemaps' },
+            { label: 'Skia', slug: 'guides/skia' },
           ],
         },
         {
