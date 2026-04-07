@@ -1,10 +1,13 @@
 import { WebGPURenderer } from 'three/webgpu'
 import {
-  Scene, PerspectiveCamera, OrthographicCamera,
-  Mesh, PlaneGeometry, MeshBasicMaterial, MeshPhysicalMaterial,
-  AmbientLight, DirectionalLight, Color, DoubleSide, FrontSide,
+  Scene, PerspectiveCamera, OrthographicCamera, Fog,
+  Mesh, PlaneGeometry, MeshBasicMaterial,
+  AmbientLight, DirectionalLight, Color, DoubleSide,
 } from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
+import { reflector, color as tslColor, positionWorld, cameraPosition, uv, vec2, hash, float as tslFloat, mx_worley_noise_float } from 'three/tsl'
+import { gaussianBlur } from 'three/addons/tsl/display/GaussianBlurNode.js'
+import { MeshStandardNodeMaterial } from 'three/webgpu'
 import { Skia, SkiaPaint, SkiaPath } from '@three-flatland/skia'
 import {
   SkiaCanvas,
@@ -47,20 +50,22 @@ async function main() {
   const renderer = new WebGPURenderer({ antialias: true })
   renderer.setSize(window.innerWidth, window.innerHeight)
   renderer.setPixelRatio(dpr)
-  renderer.setClearColor(new Color(0x0a0a14))
+  renderer.setClearColor(new Color(0x191920))
   document.body.appendChild(renderer.domElement)
   await renderer.init()
 
   const scene = new Scene()
-  const camera = new PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100)
-  camera.position.set(0, 1.5, 4.5)
-  camera.lookAt(0, 0.3, 0)
+  scene.background = new Color(0x191920)
+  scene.fog = new Fog(0x191920, 0, 15)
+  const camera = new PerspectiveCamera(40, window.innerWidth / window.innerHeight, 0.1, 100)
+  camera.position.set(0, 0.9, 4.5)
+  camera.lookAt(0, 0.9, 0)
 
   // Orbit controls
   const controls = new OrbitControls(camera, renderer.domElement)
   controls.enableDamping = true
   controls.dampingFactor = 0.05
-  controls.target.set(0, 0.3, 0)
+  controls.target.set(0, 0.9, 0)
   controls.minDistance = 2
   controls.maxDistance = 10
   controls.maxPolarAngle = Math.PI * 0.85
@@ -78,7 +83,7 @@ async function main() {
 
   // ── Skia texture canvas (shapes → texture for 3D mesh) ──
   const TEX_W = 1024
-  const TEX_H = 1024
+  const TEX_H = 880
   const shapesCanvas = new SkiaCanvas({ renderer, width: TEX_W, height: TEX_H })
   // Don't add to scene — it's not a visible 3D object, just produces a texture
 
@@ -93,7 +98,7 @@ async function main() {
 
   const bg = new SkiaRect()
   bg.x = 0; bg.y = 0; bg.width = TEX_W; bg.height = TEX_H
-  bg.fill = [0.06, 0.06, 0.1, 1]
+  bg.fill = [0.06, 0.06, 0.1, 0]
   shapesCanvas.add(bg)
 
   const shapeGroup = new SkiaGroup()
@@ -235,44 +240,56 @@ async function main() {
   }).catch(e => console.warn('Font load failed:', e))
 
   // ── 3D scene: floating panel with Skia texture ──
-  const panelW = 3.2
-  const panelH = 3.2
+  const panelW = 2.8
+  const panelH = 2.8 * (880 / 1024) // match texture aspect ratio
   const panelGeo = new PlaneGeometry(panelW, panelH)
 
-  // Main panel — shows Skia texture
+  // Panels — center + two flanking, rotated inward
   const panelMat = new MeshBasicMaterial({
     color: 0xffffff,
-    side: FrontSide,
-  })
-  const panel = new Mesh(panelGeo, panelMat)
-  panel.position.set(0, 1.0, 0)
-  panel.rotation.y = -0.15
-  scene.add(panel)
-
-  // Reflection panel — faded mirror below
-  const reflMat = new MeshBasicMaterial({
-    color: 0xffffff,
-    side: FrontSide,
-    transparent: true,
-    opacity: 0.15,
-  })
-  const reflection = new Mesh(panelGeo, reflMat)
-  reflection.position.set(0, -1.0, 0)
-  reflection.rotation.y = -0.15
-  reflection.scale.y = -1 // flip vertically
-  scene.add(reflection)
-
-  // Ground plane
-  const groundGeo = new PlaneGeometry(20, 20)
-  const groundMat = new MeshPhysicalMaterial({
-    color: 0x111122,
-    roughness: 0.3,
-    metalness: 0.5,
     side: DoubleSide,
+    transparent: true,
   })
-  const ground = new Mesh(groundGeo, groundMat)
+  const panelCenter = new Mesh(panelGeo, panelMat)
+  panelCenter.position.set(0, 1.2, -0.4)
+  scene.add(panelCenter)
+
+  const panelMatL = new MeshBasicMaterial({ color: 0xffffff, side: DoubleSide, transparent: true })
+  const panelLeft = new Mesh(panelGeo, panelMatL)
+  panelLeft.position.set(-2.6, 1.2, 0.3)
+  panelLeft.rotation.y = 0.35
+  scene.add(panelLeft)
+
+  const panelMatR = new MeshBasicMaterial({ color: 0xffffff, side: DoubleSide, transparent: true })
+  const panelRight = new Mesh(panelGeo, panelMatR)
+  panelRight.position.set(2.6, 1.2, 0.3)
+  panelRight.rotation.y = -0.35
+  scene.add(panelRight)
+
+
+  // Reflective ground (TSL reflector + blur + distance fade)
+  const groundMat = new MeshStandardNodeMaterial()
+  const groundReflector = reflector({ resolutionScale: 1.0 })
+
+  // Blur the reflection
+  const blurredReflection = gaussianBlur(groundReflector, null, 6)
+
+  // Fade based on distance from panel (xz plane), not from camera
+  // Strongest directly under the panel, fades outward
+  const dist = positionWorld.xz.length() // distance from origin on ground
+  const fadeFactor = dist.div(3.0).clamp(0.0, 1.0).oneMinus()
+  const fadeSharp = fadeFactor.mul(fadeFactor).mul(fadeFactor) // cubic
+
+  groundMat.colorNode = tslColor(new Color(0x050505))
+    .add((blurredReflection as any).rgb.mul(fadeSharp).mul(0.5))
+  // Roughness: sharper under panel, rougher outward
+  groundMat.roughnessNode = tslFloat(0.5)
+    .add(dist.div(5.0).clamp(0.0, 0.5))
+  groundMat.metalness = 0.5
+  const ground = new Mesh(new PlaneGeometry(50, 50), groundMat)
   ground.rotation.x = -Math.PI / 2
   ground.position.y = -0.01
+  ground.add(groundReflector.target)
   scene.add(ground)
 
   // ── Animation loop ──
@@ -359,8 +376,10 @@ async function main() {
     }
 
     // ── Gentle panel hover ──
-    panel.position.y = 1.0 + Math.sin(t * 0.001) * 0.05
-    reflection.position.y = -1.0 - Math.sin(t * 0.001) * 0.05
+    const hover = Math.sin(t * 0.001) * 0.05
+    panelCenter.position.y = 1.2 + hover
+    panelLeft.position.y = 1.2 + hover
+    panelRight.position.y = 1.2 + hover
 
     // ── FPS ──
     fpsText.text = `FPS: ${fps}`
@@ -376,10 +395,9 @@ async function main() {
     // 2. Apply Skia texture to 3D meshes (once available)
     const skiaTex = shapesCanvas.texture
     if (skiaTex && panelMat.map !== skiaTex) {
-      panelMat.map = skiaTex
-      panelMat.needsUpdate = true
-      reflMat.map = skiaTex
-      reflMat.needsUpdate = true
+      panelMat.map = skiaTex; panelMat.needsUpdate = true
+      panelMatL.map = skiaTex; panelMatL.needsUpdate = true
+      panelMatR.map = skiaTex; panelMatR.needsUpdate = true
     }
 
     // 3. Three.js renders 3D scene (panel with Skia texture + reflection + ground)

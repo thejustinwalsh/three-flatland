@@ -1,4 +1,4 @@
-import { Object3D, WebGLRenderTarget, LinearFilter, RGBAFormat, UnsignedByteType } from 'three'
+import { Object3D, WebGLRenderTarget, LinearFilter, RGBAFormat, UnsignedByteType, SRGBColorSpace } from 'three'
 import type { Texture } from 'three'
 import { SkiaContext } from '../context'
 import { Skia } from '../init'
@@ -141,9 +141,6 @@ export class SkiaCanvas extends Object3D {
   private _skiaContext: SkiaContext | null = null
   private _renderTarget: WebGLRenderTarget | null = null
   private _needsRedraw = true
-  // WebGPU texture mode: BGRA GPUTexture injected into the render target
-  private _wgpuTexOverride: GPUTexture | null = null
-  private _wgpuTexInjected = false
 
   private _readyPromise: Promise<SkiaContext> | null = null
   private _readyResolve: ((ctx: SkiaContext) => void) | null = null
@@ -285,40 +282,32 @@ export class SkiaCanvas extends Object3D {
               _blitPipeline.blit(skiaTex, canvasTex, true /* alpha blend */)
             }
           } else if (this._renderTarget) {
-            // Texture mode: copy Skia's BGRA output into the render target
-            if (!this._wgpuTexInjected) {
-              this._wgpuTexInjected = true
-              // Create a BGRA GPUTexture matching Skia's format
-              this._wgpuTexOverride = dev.createTexture({
-                format: skiaTex.format as GPUTextureFormat,
-                size: { width: this._width, height: this._height },
-                usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT,
-              })
-              // Force Three.js to init the render target, then inject our texture
+            // Texture mode: blit Skia's output into the render target's texture
+            // Use blit pipeline for format conversion (Skia=BGRA, RT=RGBA)
+            const backend = renderer.backend as { get?: (t: unknown) => { texture?: GPUTexture } | undefined } | undefined
+            if (backend?.get) {
+              // Force Three.js to init the render target GPU resources
               const currentRT = renderer.getRenderTarget()
               renderer.setRenderTarget(this._renderTarget)
               renderer.setRenderTarget(currentRT)
-              const backend = renderer.backend as { get?: (t: unknown) => Record<string, unknown> | undefined } | undefined
-              if (backend?.get) {
-                const rt = this._renderTarget as unknown as Record<string, unknown>
-                const tex = rt.texture ?? (rt.textures as unknown[])?.[0]
-                const src = (tex as Record<string, unknown> | undefined)?.source
-                for (const key of [src, tex, this._renderTarget].filter(Boolean)) {
-                  const data = backend.get(key!)
-                  if (data && 'texture' in data) {
-                    data.texture = this._wgpuTexOverride
-                    data.initialized = true
-                    break
-                  }
+
+              // Find the render target's GPUTexture
+              const rt = this._renderTarget as unknown as Record<string, unknown>
+              const tex = rt.texture ?? (rt.textures as unknown[])?.[0]
+              const src = (tex as Record<string, unknown> | undefined)?.source
+              let rtTex: GPUTexture | undefined
+              for (const key of [src, tex, this._renderTarget].filter(Boolean)) {
+                const props = backend.get(key!)
+                if (props?.texture instanceof GPUTexture) {
+                  rtTex = props.texture
+                  break
                 }
               }
-            }
-            if (this._wgpuTexOverride) {
-              const w = Math.min(skiaTex.width, this._wgpuTexOverride.width)
-              const h = Math.min(skiaTex.height, this._wgpuTexOverride.height)
-              const enc = dev.createCommandEncoder()
-              enc.copyTextureToTexture({ texture: skiaTex }, { texture: this._wgpuTexOverride }, { width: w, height: h })
-              dev.queue.submit([enc.finish()])
+              if (rtTex) {
+                // Use blit pipeline — handles BGRA→RGBA format conversion
+                if (!_blitPipeline) _blitPipeline = new SkiaBlitPipeline(dev)
+                _blitPipeline.blit(skiaTex, rtTex, false /* opaque */, false /* no Y-flip for render targets */)
+              }
             }
           }
         }
@@ -337,9 +326,6 @@ export class SkiaCanvas extends Object3D {
   dispose(): void {
     this._renderTarget?.dispose()
     this._renderTarget = null
-    this._wgpuTexOverride?.destroy()
-    this._wgpuTexOverride = null
-    this._wgpuTexInjected = false
   }
 
   // ── Private: Skia context init ──
@@ -387,6 +373,9 @@ export class SkiaCanvas extends Object3D {
         type: UnsignedByteType,
         stencilBuffer: true,
       })
+      // Skia outputs sRGB premultiplied alpha — tell Three.js so it doesn't double-gamma
+      this._renderTarget.texture.colorSpace = SRGBColorSpace
+      this._renderTarget.texture.premultiplyAlpha = true
     }
     this._needsRedraw = true
   }

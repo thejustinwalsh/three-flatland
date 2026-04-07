@@ -16,10 +16,14 @@ struct VOut {
   @location(0) uv: vec2f,
 };
 
-@vertex fn vs(@builtin(vertex_index) i: u32) -> VOut {
-  // Fullscreen triangle from vertex_index 0, 1, 2
+@vertex fn vsFlip(@builtin(vertex_index) i: u32) -> VOut {
   let uv = vec2f(f32((i << 1u) & 2u), f32(i & 2u));
   return VOut(vec4f(uv * 2.0 - 1.0, 0.0, 1.0), vec2f(uv.x, 1.0 - uv.y));
+}
+
+@vertex fn vsNoFlip(@builtin(vertex_index) i: u32) -> VOut {
+  let uv = vec2f(f32((i << 1u) & 2u), f32(i & 2u));
+  return VOut(vec4f(uv * 2.0 - 1.0, 0.0, 1.0), uv);
 }
 
 @group(0) @binding(0) var tex: texture_2d<f32>;
@@ -50,14 +54,14 @@ export class SkiaBlitPipeline {
     })
   }
 
-  private getPipeline(destFormat: GPUTextureFormat, blend: boolean): GPURenderPipeline {
-    const key = `${destFormat}:${blend}`
+  private getPipeline(destFormat: GPUTextureFormat, blend: boolean, flipY: boolean): GPURenderPipeline {
+    const key = `${destFormat}:${blend}:${flipY}`
     let pipeline = this.pipelines.get(key)
     if (pipeline) return pipeline
 
     pipeline = this.device.createRenderPipeline({
       layout: this.device.createPipelineLayout({ bindGroupLayouts: [this.bindGroupLayout] }),
-      vertex: { module: this.shaderModule, entryPoint: 'vs' },
+      vertex: { module: this.shaderModule, entryPoint: flipY ? 'vsFlip' : 'vsNoFlip' },
       fragment: {
         module: this.shaderModule,
         entryPoint: 'fs',
@@ -78,19 +82,21 @@ export class SkiaBlitPipeline {
     return pipeline
   }
 
-  private getBindGroup(source: GPUTexture): GPUBindGroup {
-    let bg = this.bindGroups.get(source)
-    if (bg) return bg
+  private lastSource: GPUTexture | null = null
+  private lastBindGroup: GPUBindGroup | null = null
 
-    bg = this.device.createBindGroup({
+  private getBindGroup(source: GPUTexture): GPUBindGroup {
+    if (source === this.lastSource && this.lastBindGroup) return this.lastBindGroup
+
+    this.lastSource = source
+    this.lastBindGroup = this.device.createBindGroup({
       layout: this.bindGroupLayout,
       entries: [
         { binding: 0, resource: source.createView() },
         { binding: 1, resource: this.sampler },
       ],
     })
-    this.bindGroups.set(source, bg)
-    return bg
+    return this.lastBindGroup
   }
 
   /**
@@ -98,9 +104,10 @@ export class SkiaBlitPipeline {
    * @param source - Source texture (any format, must have TEXTURE_BINDING)
    * @param dest - Destination texture (must have RENDER_ATTACHMENT)
    * @param blend - If true, uses premultiplied alpha blending (for overlay)
+   * @param flipY - If true, flip Y (needed for canvas targets, not for render targets)
    */
-  blit(source: GPUTexture, dest: GPUTexture, blend: boolean): void {
-    const pipeline = this.getPipeline(dest.format, blend)
+  blit(source: GPUTexture, dest: GPUTexture, blend: boolean, flipY = true): void {
+    const pipeline = this.getPipeline(dest.format, blend, flipY)
     const bindGroup = this.getBindGroup(source)
 
     const encoder = this.device.createCommandEncoder()
