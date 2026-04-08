@@ -100,12 +100,6 @@ async function main() {
 
   log(`Rendering: ${slugText.count} glyph instances`)
 
-  // Debug: log glyph data
-  console.log('SlugFont glyphs:', font.glyphs)
-  console.log('SlugText instance count:', slugText.count)
-  console.log('Curve texture:', font.curveTexture)
-  console.log('Band texture:', font.bandTexture)
-
   // Wire up font size radio
   const radioGroup = document.querySelector('wa-radio-group')!
   setupWrappingGroup(radioGroup, 'wa-radio')

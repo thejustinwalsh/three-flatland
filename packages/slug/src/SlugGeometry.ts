@@ -124,13 +124,15 @@ export class SlugGeometry extends BufferGeometry {
     color: { r: number; g: number; b: number; a: number },
   ): void {
     const { bounds, bandLocation, bands } = glyph
-    const scale = pg.scale
 
-    // Glyph quad dimensions in object space
-    const width = (bounds.xMax - bounds.xMin) * scale
-    const height = (bounds.yMax - bounds.yMin) * scale
-    const cx = pg.x + (bounds.xMin + bounds.xMax) * 0.5 * scale
-    const cy = pg.y + (bounds.yMin + bounds.yMax) * 0.5 * scale
+    // Bounds are in normalized em-space (divided by unitsPerEm in font parser).
+    // To get object-space size we need fontSize, not scale (= fontSize/unitsPerEm).
+    // Using scale would double-normalize.
+    const fontSize = pg.scale * font.unitsPerEm
+    const width = (bounds.xMax - bounds.xMin) * fontSize
+    const height = (bounds.yMax - bounds.yMin) * fontSize
+    const cx = pg.x + (bounds.xMin + bounds.xMax) * 0.5 * fontSize
+    const cy = pg.y + (bounds.yMin + bounds.yMax) * 0.5 * fontSize
 
     // glyphPos: center position (xy) + outward normal scale (zw)
     // The normal is used for dilation — encode quad half-size as the normal magnitude
@@ -153,9 +155,8 @@ export class SlugGeometry extends BufferGeometry {
     const numVBands = bands.vBands.length
 
     // glyphJac: inverse Jacobian scale (xy) + band counts (zw)
-    // For uniform scaling the inverse Jacobian is just a scalar.
-    // z/w carry per-glyph band counts so the shader doesn't hardcode them.
-    const invScale = 1 / scale
+    // Maps object-space displacement back to em-space: 1/fontSize.
+    const invScale = 1 / fontSize
     this._glyphJac[i4] = invScale
     this._glyphJac[i4 + 1] = invScale
     this._glyphJac[i4 + 2] = numHBands
@@ -220,5 +221,9 @@ export class SlugGeometry extends BufferGeometry {
 
   get glyphCount(): number {
     return this._count
+  }
+
+  get capacity(): number {
+    return this._capacity
   }
 }

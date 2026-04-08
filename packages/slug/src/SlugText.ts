@@ -1,4 +1,4 @@
-import { InstancedMesh, Color } from 'three'
+import { InstancedMesh, InstancedBufferAttribute, Color } from 'three'
 import type { Camera } from 'three'
 import { SlugFont } from './SlugFont.js'
 import { SlugMaterial } from './SlugMaterial.js'
@@ -197,7 +197,23 @@ export class SlugText extends InstancedMesh {
       a: 1,
     })
 
-    this.count = positionedGlyphs.length
+    // Ensure instanceMatrix is large enough with identity matrices.
+    // InstancedMesh multiplies each vertex by instanceMatrix — zeros = invisible.
+    const needed = positionedGlyphs.length
+    if (this.instanceMatrix.count < needed) {
+      const capacity = Math.max(needed, this._slugGeometry.capacity)
+      const buf = new Float32Array(capacity * 16)
+      // Fill with identity matrices (1 on diagonal)
+      for (let i = 0; i < capacity; i++) {
+        const o = i * 16
+        buf[o] = 1       // m[0][0]
+        buf[o + 5] = 1   // m[1][1]
+        buf[o + 10] = 1  // m[2][2]
+        buf[o + 15] = 1  // m[3][3]
+      }
+      this.instanceMatrix = new InstancedBufferAttribute(buf, 16)
+    }
+    this.count = needed
   }
 
   /** Update viewport size for dilation calculations. */
