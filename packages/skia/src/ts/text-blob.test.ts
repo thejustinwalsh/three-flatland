@@ -12,7 +12,7 @@ let font: SkiaFont
 beforeAll(async () => {
   skia = await SkiaContext.create(null as unknown as WebGL2RenderingContext)
   const fontData = new Uint8Array(readFileSync(resolve(__dirname, '../../third_party/skia/resources/fonts/abc/abc.ttf')))
-  font = new SkiaFont(skia, fontData, 16)
+  font = SkiaFont.fromData(skia, fontData, 16)
 })
 
 describe('SkiaTextBlob', () => {

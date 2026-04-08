@@ -14,30 +14,30 @@ beforeAll(async () => {
 
 describe('SkiaFont', () => {
   it('creates from font data', () => {
-    const font = new SkiaFont(skia, fontData, 16)
+    const font = SkiaFont.fromData(skia, fontData, 16)
     expect(font._handle).toBeGreaterThan(0)
     font.dispose()
   })
 
   it('throws on invalid data', () => {
-    expect(() => new SkiaFont(skia, new Uint8Array([0, 1, 2, 3]), 16)).toThrow()
+    expect(() => SkiaFont.fromData(skia, new Uint8Array([0, 1, 2, 3]), 16)).toThrow()
   })
 
   it('setSize', () => {
-    const font = new SkiaFont(skia, fontData, 16)
+    const font = SkiaFont.fromData(skia, fontData, 16)
     font.setSize(24)
     font.dispose()
   })
 
   it('measureText returns width', () => {
-    const font = new SkiaFont(skia, fontData, 16)
+    const font = SkiaFont.fromData(skia, fontData, 16)
     const w = font.measureText('abc')
     expect(w).toBeGreaterThan(0)
     font.dispose()
   })
 
   it('draws text in a drawing context', async () => {
-    const font = new SkiaFont(skia, fontData, 16)
+    const font = SkiaFont.fromData(skia, fontData, 16)
     const { SkiaPaint } = await import('./paint')
     const paint = new SkiaPaint(skia).setColor(1, 1, 1, 1)
 
@@ -50,7 +50,7 @@ describe('SkiaFont', () => {
   })
 
   it('getMetrics returns ascent, descent, leading', () => {
-    const font = new SkiaFont(skia, fontData, 16)
+    const font = SkiaFont.fromData(skia, fontData, 16)
     const metrics = font.getMetrics()
     expect(metrics.ascent).toBeLessThan(0) // negative = above baseline
     expect(metrics.descent).toBeGreaterThan(0)
@@ -59,7 +59,7 @@ describe('SkiaFont', () => {
   })
 
   it('getSize returns current size', () => {
-    const font = new SkiaFont(skia, fontData, 16)
+    const font = SkiaFont.fromData(skia, fontData, 16)
     expect(font.getSize()).toBeCloseTo(16, 1)
     font.setSize(24)
     expect(font.getSize()).toBeCloseTo(24, 1)
@@ -67,14 +67,14 @@ describe('SkiaFont', () => {
   })
 
   it('getGlyphIDs returns glyph IDs', () => {
-    const font = new SkiaFont(skia, fontData, 16)
+    const font = SkiaFont.fromData(skia, fontData, 16)
     const glyphs = font.getGlyphIDs('abc')
     expect(glyphs.length).toBeGreaterThanOrEqual(3)
     font.dispose()
   })
 
   it('getGlyphWidths returns widths', () => {
-    const font = new SkiaFont(skia, fontData, 16)
+    const font = SkiaFont.fromData(skia, fontData, 16)
     const glyphs = font.getGlyphIDs('abc')
     const widths = font.getGlyphWidths(glyphs)
     expect(widths.length).toBe(glyphs.length)
