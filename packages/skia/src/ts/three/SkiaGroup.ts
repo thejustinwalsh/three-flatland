@@ -5,8 +5,8 @@ import type { SkiaPaint } from '../paint'
 import { SkiaPaint as SkiaPaintClass } from '../paint'
 import { Object3D } from 'three'
 import type { BlendMode } from '../types'
-import type { SkiaImageFilter } from '../image-filter'
-import type { SkiaColorFilter } from '../color-filter'
+import { SkiaImageFilter } from '../image-filter'
+import { SkiaColorFilter } from '../color-filter'
 import type { SkiaNode } from './SkiaNode'
 
 /** Drop shadow configuration */

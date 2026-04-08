@@ -90,11 +90,11 @@ export class SkiaContext {
       const wasm = await loadSkiaGL(wasmUrl, gl, options.preloadedResponse)
       const ctx = new SkiaContext(
         'webgl',
-        wasm.exports,
+        wasm.exports as unknown as SkiaExports,
         wasm.exports.memory,
         gl,
       )
-      ctx._glState = wasm.glState
+      ctx._glState = wasm.glState as unknown as typeof ctx._glState
       ctx._exports.skia_init()
       if (!_instance || _instance._destroyed) _instance = ctx
       return ctx
@@ -105,15 +105,15 @@ export class SkiaContext {
       const wasm = await loadSkiaWGPU(wasmUrl, device, options.preloadedResponse)
       const ctx = new SkiaContext(
         'wgpu',
-        wasm.exports,
+        wasm.exports as unknown as SkiaExports,
         wasm.exports.memory,
         undefined,
         device,
         wasm.wgpuState,
       )
       // Initialize Dawn context with device/queue handles
-      const initWithHandles = (wasm.exports as Record<string, (d: number, q: number) => void>).skia_init_with_handles
-      initWithHandles(wasm.wgpuState.deviceHandle, wasm.wgpuState.queueHandle)
+      const initWithHandles = (wasm.exports as unknown as Record<string, (d: number, q: number) => void>).skia_init_with_handles
+      initWithHandles!(wasm.wgpuState.deviceHandle, wasm.wgpuState.queueHandle)
       if (!_instance || _instance._destroyed) _instance = ctx
       return ctx
     }
