@@ -164,6 +164,56 @@ describe('calcCoverage', () => {
   })
 })
 
+describe('stemDarken', () => {
+  it('has no effect when stemDarken is 0', () => {
+    const base = refCalcCoverage(0.5, 1.0, 0.5, 1.0)
+    const darkened = refCalcCoverage(0.5, 1.0, 0.5, 1.0, false, false, 0, 12)
+    expect(darkened).toBeCloseTo(base, 5)
+  })
+
+  it('boosts mid-coverage at small ppem', () => {
+    const base = refCalcCoverage(0.5, 1.0, 0.5, 1.0, false, false, 0)
+    const darkened = refCalcCoverage(0.5, 1.0, 0.5, 1.0, false, false, 0.4, 8)
+    expect(darkened).toBeGreaterThan(base)
+  })
+
+  it('does not affect fully opaque pixels (coverage = 1)', () => {
+    const darkened = refCalcCoverage(1.0, 1.0, 1.0, 1.0, false, false, 0.4, 8)
+    expect(darkened).toBeCloseTo(1.0, 5)
+  })
+
+  it('does not affect fully transparent pixels (coverage = 0)', () => {
+    const darkened = refCalcCoverage(0.0, 0.0, 0.0, 0.0, false, false, 0.4, 8)
+    expect(darkened).toBeCloseTo(0.0, 5)
+  })
+
+  it('has stronger effect at lower ppem', () => {
+    const at16 = refCalcCoverage(0.4, 1.0, 0.4, 1.0, false, false, 0.4, 16)
+    const at8 = refCalcCoverage(0.4, 1.0, 0.4, 1.0, false, false, 0.4, 8)
+    expect(at8).toBeGreaterThan(at16)
+  })
+
+  it('has minimal effect at large ppem', () => {
+    const base = refCalcCoverage(0.5, 1.0, 0.5, 1.0)
+    const darkened = refCalcCoverage(0.5, 1.0, 0.5, 1.0, false, false, 0.4, 96)
+    // At 96ppem, darken = 0.4/96 ≈ 0.004 — negligible
+    expect(Math.abs(darkened - base)).toBeLessThan(0.01)
+  })
+
+  it('peaks at coverage = 0.5 (maximum boost)', () => {
+    // darken * cov * (1-cov) is maximized at cov = 0.5
+    const at25 = refCalcCoverage(0.25, 1.0, 0.25, 1.0, false, false, 0.5, 8)
+    const at50 = refCalcCoverage(0.5, 1.0, 0.5, 1.0, false, false, 0.5, 8)
+    const at75 = refCalcCoverage(0.75, 1.0, 0.75, 1.0, false, false, 0.5, 8)
+
+    const boost25 = at25 - 0.25
+    const boost50 = at50 - 0.5
+    const boost75 = at75 - 0.75
+    expect(boost50).toBeGreaterThan(boost25)
+    expect(boost50).toBeGreaterThan(boost75)
+  })
+})
+
 describe('slugDilate', () => {
   it('expands outward along normal direction', () => {
     // Simple orthographic-like MVP (identity-ish)

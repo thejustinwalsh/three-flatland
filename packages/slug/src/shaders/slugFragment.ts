@@ -60,11 +60,24 @@ export function slugRender(
   bandTransform: Node<'vec4'>,
   evenOdd: Node<'bool'>,
   weightBoost: Node<'bool'>,
+  stemDarken?: Node<'float'>,
+  thicken?: Node<'float'>,
 ) {
   // Compute pixel footprint in em-space for coverage scaling
   const emsPerPixel = fwidth(renderCoord)
   const pixelsPerEmX = float(1.0).div(max(emsPerPixel.x, 1.0 / 65536.0))
   const pixelsPerEmY = float(1.0).div(max(emsPerPixel.y, 1.0 / 65536.0))
+
+  // Pixels-per-em (isotropic average) for stem darkening and thickening
+  const ppem = pixelsPerEmX.add(pixelsPerEmY).mul(0.5)
+
+  // Thickening: widen coverage window at small ppem to prevent thin-stroke dropout.
+  // Factor ramps from 1+thicken at ppem=0 down to 1.0 at ppem>=thickenPpem (24).
+  // At 8px with thicken=1.0: factor = 1 + 1.0 * max(0, 1 - 8/24) = 1.67
+  const thickenPpem = float(24.0)
+  const thickenFactor = thicken
+    ? float(1.0).add(thicken.mul(max(float(0.0), float(1.0).sub(ppem.div(thickenPpem)))))
+    : float(1.0)
 
   // Determine band indices from band transform
   const bandIdxX = clamp(
@@ -128,11 +141,11 @@ export function slugRender(
 
     // Coverage from first root (bit 0)
     const hasRoot1 = rootCode.bitAnd(uint(1)).greaterThan(uint(0))
-    xcov.addAssign(select(hasRoot1, saturate(rpxX.add(0.5)), 0.0))
+    xcov.addAssign(select(hasRoot1, saturate(rpxX.mul(thickenFactor).add(0.5)), 0.0))
 
     // Coverage from second root (bit 8)
     const hasRoot2 = rootCode.bitAnd(uint(0x100)).greaterThan(uint(0))
-    xcov.subAssign(select(hasRoot2, saturate(rpxY.add(0.5)), 0.0))
+    xcov.subAssign(select(hasRoot2, saturate(rpxY.mul(thickenFactor).add(0.5)), 0.0))
 
     // Weight: proximity to pixel center
     const w1 = saturate(float(1.0).sub(abs(rpxX).mul(2.0)))
@@ -177,10 +190,10 @@ export function slugRender(
 
     // Vertical band: signs INVERTED vs horizontal per Lengyel's convention
     const hasRoot1 = rootCode.bitAnd(uint(1)).greaterThan(uint(0))
-    ycov.subAssign(select(hasRoot1, saturate(rpyX.add(0.5)), 0.0))
+    ycov.subAssign(select(hasRoot1, saturate(rpyX.mul(thickenFactor).add(0.5)), 0.0))
 
     const hasRoot2 = rootCode.bitAnd(uint(0x100)).greaterThan(uint(0))
-    ycov.addAssign(select(hasRoot2, saturate(rpyY.add(0.5)), 0.0))
+    ycov.addAssign(select(hasRoot2, saturate(rpyY.mul(thickenFactor).add(0.5)), 0.0))
 
     const w1 = saturate(float(1.0).sub(abs(rpyX).mul(2.0)))
     const w2 = saturate(float(1.0).sub(abs(rpyY).mul(2.0)))
@@ -191,5 +204,5 @@ export function slugRender(
     ywgt.assign(max(ywgt, curveWgt))
   })
 
-  return calcCoverage(xcov, xwgt, ycov, ywgt, evenOdd, weightBoost)
+  return calcCoverage(xcov, xwgt, ycov, ywgt, evenOdd, weightBoost, stemDarken, ppem)
 }

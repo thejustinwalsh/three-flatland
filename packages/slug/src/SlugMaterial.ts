@@ -17,6 +17,10 @@ import {
   attribute,
   uniform,
   bool,
+  round,
+  dot,
+  select,
+  fwidth,
   varyingProperty,
 } from 'three/tsl'
 import type Node from 'three/src/nodes/core/Node.js'
@@ -30,6 +34,14 @@ export interface SlugMaterialOptions {
   evenOdd?: boolean
   weightBoost?: boolean
   transparent?: boolean
+  /** Stem darkening strength. 0 = off, ~0.4 = subtle, ~1.0 = strong. Default 0. */
+  stemDarken?: number
+  /** Thickening strength for small text. 0 = off, ~1.5 = default. Widens coverage at low ppem. */
+  thicken?: number
+  /** Enable 2x2 supersampling for smoother edges (expensive). Default false. */
+  supersample?: boolean
+  /** Snap glyph positions to pixel grid for crisp small text. Default true. */
+  pixelSnap?: boolean
 }
 
 const _mvp = new Matrix4()
@@ -49,8 +61,12 @@ export class SlugMaterial extends MeshBasicNodeMaterial {
   private _mvpRow0Uniform
   private _mvpRow1Uniform
   private _mvpRow3Uniform
+  private _stemDarkenUniform
+  private _thickenUniform
   private _evenOdd: boolean
   private _weightBoost: boolean
+  private _supersample: boolean
+  private _pixelSnap: boolean
 
   constructor(font: SlugFont, options: SlugMaterialOptions = {}) {
     super()
@@ -58,6 +74,8 @@ export class SlugMaterial extends MeshBasicNodeMaterial {
     this._font = font
     this._evenOdd = options.evenOdd ?? false
     this._weightBoost = options.weightBoost ?? false
+    this._supersample = options.supersample ?? false
+    this._pixelSnap = options.pixelSnap ?? true
 
     const color = options.color instanceof Color
       ? options.color
@@ -69,6 +87,8 @@ export class SlugMaterial extends MeshBasicNodeMaterial {
     this._mvpRow0Uniform = uniform(new Vector4(1, 0, 0, 0))
     this._mvpRow1Uniform = uniform(new Vector4(0, 1, 0, 0))
     this._mvpRow3Uniform = uniform(new Vector4(0, 0, 0, 1))
+    this._stemDarkenUniform = uniform(options.stemDarken ?? 0)
+    this._thickenUniform = uniform(options.thicken ?? 0)
 
     this.transparent = options.transparent ?? true
     this.side = FrontSide
@@ -108,6 +128,8 @@ export class SlugMaterial extends MeshBasicNodeMaterial {
     const mvpRow0 = this._mvpRow0Uniform
     const mvpRow1 = this._mvpRow1Uniform
     const mvpRow3 = this._mvpRow3Uniform
+    const stemDarkenUniform = this._stemDarkenUniform
+    const thickenUniform = this._thickenUniform
 
     // --- Vertex shader ---
     this.positionNode = Fn(() => {
@@ -142,8 +164,38 @@ export class SlugMaterial extends MeshBasicNodeMaterial {
         mvpRow0, mvpRow1, mvpRow3, viewportUniform,
       )
 
-      // Write dilated em-space coordinate to varying for fragment shader
-      vRenderCoord.assign(dilated.texcoord)
+      let finalPos = dilated.vpos
+      let finalTex = dilated.texcoord
+
+      // Pixel-grid snapping: snap glyph center to nearest pixel boundary.
+      // Only applied to the center vertex offset (basePos = 0,0 doesn't exist,
+      // but all 4 corners shift by the same amount since we snap the center).
+      if (this._pixelSnap) {
+        // Compute clip-space position using our MVP uniforms
+        const clipX = dot(mvpRow0, vec4(finalPos.x, finalPos.y, float(0), float(1)))
+        const clipY = dot(mvpRow1, vec4(finalPos.x, finalPos.y, float(0), float(1)))
+        const clipW = dot(mvpRow3, vec4(finalPos.x, finalPos.y, float(0), float(1)))
+
+        // NDC → pixel position
+        const halfVP = viewportUniform.mul(0.5)
+        const pixelX = clipX.div(clipW).mul(halfVP.x)
+        const pixelY = clipY.div(clipW).mul(halfVP.y)
+
+        // Snap to pixel grid and compute delta in pixel space
+        const snapDeltaX = round(pixelX).sub(pixelX)
+        const snapDeltaY = round(pixelY).sub(pixelY)
+
+        // Convert pixel delta back to object space: delta_obj = delta_px / (mvp_scale * halfVP)
+        // For ortho, mvp_scale is mvpRow0.x (X) and mvpRow1.y (Y)
+        const objDeltaX = snapDeltaX.div(halfVP.x).mul(clipW).div(mvpRow0.x)
+        const objDeltaY = snapDeltaY.div(halfVP.y).mul(clipW).div(mvpRow1.y)
+
+        finalPos = vec2(finalPos.x.add(objDeltaX), finalPos.y.add(objDeltaY))
+        finalTex = vec2(finalTex.x.add(objDeltaX.mul(invScale)), finalTex.y.add(objDeltaY.mul(invScale)))
+      }
+
+      // Write em-space coordinate to varying for fragment shader
+      vRenderCoord.assign(finalTex)
 
       // Pass per-glyph metadata through varyings
       vGlyphLocX.assign(glyphTex.z)
@@ -151,33 +203,49 @@ export class SlugMaterial extends MeshBasicNodeMaterial {
       vNumHBands.assign(glyphJac.z)
       vNumVBands.assign(glyphJac.w)
 
-      return vec3(dilated.vpos.x, dilated.vpos.y, float(0.0))
+      return vec3(finalPos.x, finalPos.y, float(0.0))
     })()
 
     // --- Fragment shader ---
-    this.colorNode = Fn(() => {
-      // Read dilated em-space coordinate from varying (interpolated from vertex)
-      const renderCoord = vRenderCoord
 
-      // Read per-glyph metadata from varyings
-      const glyphLocX = vGlyphLocX
-      const glyphLocY = vGlyphLocY
-      const numHBands = vNumHBands
-      const numVBands = vNumVBands
-
-      // Compute coverage via Slug algorithm
-      const coverage = slugRender(
+    // Helper: evaluate slug coverage at a given em-space coordinate.
+    // Captures all the texture/varying/uniform references from the closure.
+    function evalCoverage(coord: Node<'vec2'>) {
+      return slugRender(
         curveTexture,
         bandTexture,
-        renderCoord,
-        glyphLocX,
-        glyphLocY,
-        numHBands,
-        numVBands,
+        coord,
+        vGlyphLocX,
+        vGlyphLocY,
+        vNumHBands,
+        vNumVBands,
         glyphBand,
         evenOddNode,
         weightBoostNode,
+        stemDarkenUniform,
+        thickenUniform,
       )
+    }
+
+    const supersampleNode = bool(this._supersample)
+
+    this.colorNode = Fn(() => {
+      const renderCoord = vRenderCoord
+
+      // Single-sample coverage (default path)
+      const single = evalCoverage(renderCoord)
+
+      // 2x2 supersampled coverage: evaluate at quarter-pixel offsets and average.
+      // fwidth gives the em-space size of one pixel; mul(0.25) → quarter-pixel jitter.
+      const hp = fwidth(renderCoord).mul(0.25)
+      const ss = evalCoverage(renderCoord.add(hp.mul(vec2(-1, -1))))
+        .add(evalCoverage(renderCoord.add(hp.mul(vec2(1, -1)))))
+        .add(evalCoverage(renderCoord.add(hp.mul(vec2(-1, 1)))))
+        .add(evalCoverage(renderCoord.add(hp.mul(vec2(1, 1)))))
+        .mul(0.25)
+
+      // Compile-time bool: dead-code eliminates the unused path
+      const coverage = select(supersampleNode, ss, single)
 
       // Final color: glyph color * material color * coverage
       return vec4(
@@ -214,6 +282,14 @@ export class SlugMaterial extends MeshBasicNodeMaterial {
 
   setOpacity(value: number): void {
     this._opacityUniform.value = value
+  }
+
+  setStemDarken(value: number): void {
+    this._stemDarkenUniform.value = value
+  }
+
+  setThicken(value: number): void {
+    this._thickenUniform.value = value
   }
 
   get font(): SlugFont {

@@ -26,23 +26,47 @@ export function shapeText(
   let currentLine = lines[0]!
   let cursorX = 0
 
+  // Track the last word boundary for wrap-back
+  let lastSpaceIdx = -1       // index into openGlyphs where last space was
+  let lastSpaceGlyphCount = 0 // currentLine.length at last space
+  let lastSpaceCursorX = 0    // cursorX right after the space
+
   for (let i = 0; i < openGlyphs.length; i++) {
     const glyph = openGlyphs[i]!
     const advanceWidth = (glyph.advanceWidth ?? 0) * scale
 
-    // Check for line break
+    // Check for explicit line break
     if (text[i] === '\n') {
       lines.push([])
       currentLine = lines[lines.length - 1]!
       cursorX = 0
+      lastSpaceIdx = -1
       continue
     }
 
-    // Word wrap
+    // Track word boundaries (spaces)
+    if (text[i] === ' ') {
+      lastSpaceIdx = i
+      lastSpaceGlyphCount = currentLine.length
+      lastSpaceCursorX = cursorX + advanceWidth
+    }
+
+    // Word wrap: if this glyph exceeds maxWidth, break at last space
     if (maxWidth !== undefined && cursorX + advanceWidth > maxWidth && cursorX > 0) {
-      lines.push([])
-      currentLine = lines[lines.length - 1]!
-      cursorX = 0
+      if (lastSpaceIdx >= 0 && lastSpaceGlyphCount > 0) {
+        // Rewind: move glyphs after the space to a new line
+        const overflow = currentLine.splice(lastSpaceGlyphCount)
+        const baseX = lastSpaceCursorX
+        lines.push(overflow.map(g => ({ ...g, x: g.x - baseX })))
+        currentLine = lines[lines.length - 1]!
+        cursorX = cursorX - baseX
+      } else {
+        // No space found — hard break at current position
+        lines.push([])
+        currentLine = lines[lines.length - 1]!
+        cursorX = 0
+      }
+      lastSpaceIdx = -1
     }
 
     // Apply kerning with next glyph
@@ -65,10 +89,14 @@ export function shapeText(
     cursorX += advanceWidth + kerning
   }
 
-  // Apply alignment and compute Y positions
+  // Apply alignment and compute Y positions.
+  // Vertically center the text block around y=0.
+  const totalBlockHeight = (lines.length - 1) * lineHeightPx
+  const yOffset = totalBlockHeight / 2
+
   for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
     const line = lines[lineIdx]!
-    const y = -lineIdx * lineHeightPx
+    const y = yOffset - lineIdx * lineHeightPx
 
     // Calculate line width for alignment
     let lineWidth = 0

@@ -7,6 +7,10 @@ import type Node from 'three/src/nodes/core/Node.js'
  * Uses the weighted blend with fallback from Lengyel's algorithm:
  *   coverage = max(|xcov*xwgt + ycov*ywgt| / max(xwgt+ywgt, e), min(|xcov|, |ycov|))
  *
+ * Optional stem darkening boosts thin strokes at small ppem (FreeType-style):
+ *   darken = clamp(stemDarken / ppem, 0, 0.5)
+ *   coverage += darken * coverage * (1 - coverage)
+ *
  * Must be called inside a Fn() TSL context.
  */
 export function calcCoverage(
@@ -16,6 +20,8 @@ export function calcCoverage(
   ywgt: Node<'float'>,
   evenOdd: Node<'bool'>,
   weightBoost: Node<'bool'>,
+  stemDarken?: Node<'float'>,
+  ppem?: Node<'float'>,
 ) {
   const epsilon = float(1.0 / 65536.0)
 
@@ -31,6 +37,18 @@ export function calcCoverage(
     abs(float(1.0).sub(rawCoverage.mul(0.5).fract().mul(2.0))),
   )
 
-  const filledCov = select(evenOdd, evenOddCov, nonzeroCov)
-  return select(weightBoost, sqrt(filledCov), filledCov)
+  let filledCov = select(evenOdd, evenOddCov, nonzeroCov)
+  filledCov = select(weightBoost, sqrt(filledCov), filledCov)
+
+  // Stem darkening: boost semi-transparent pixels at small ppem.
+  // Ramps from full strength at ppem=0 down to zero at ppem>=24.
+  // darken * cov * (1 - cov) peaks at cov=0.5 and is zero at 0 or 1,
+  // so fully opaque/transparent pixels are unaffected.
+  if (stemDarken && ppem) {
+    const darkenPpem = float(24.0)
+    const darken = stemDarken.mul(max(float(0.0), float(1.0).sub(ppem.div(darkenPpem))))
+    filledCov = min(filledCov.add(darken.mul(filledCov).mul(float(1.0).sub(filledCov))), float(1.0))
+  }
+
+  return filledCov
 }

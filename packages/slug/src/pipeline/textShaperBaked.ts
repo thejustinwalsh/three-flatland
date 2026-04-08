@@ -39,6 +39,11 @@ export function shapeTextBaked(
   // Notdef glyph (ID 0) is used as fallback for missing/filtered glyphs
   const notdefGlyph = glyphs.get(0)
 
+  // Track word boundaries for wrap-back
+  let lastSpaceIdx = -1
+  let lastSpaceGlyphCount = 0
+  let lastSpaceCursorX = 0
+
   for (let i = 0; i < glyphIds.length; i++) {
     let glyphId = glyphIds[i]!
     let glyphData = glyphs.get(glyphId)
@@ -51,19 +56,36 @@ export function shapeTextBaked(
 
     const advanceWidth = (glyphData?.advanceWidth ?? 0) * unitsPerEm * scale
 
-    // Check for line break
-    if (text.charCodeAt(i) === 10) { // '\n'
+    // Explicit line break
+    if (text.charCodeAt(i) === 10) {
       lines.push([])
       currentLine = lines[lines.length - 1]!
       cursorX = 0
+      lastSpaceIdx = -1
       continue
     }
 
-    // Word wrap
+    // Track word boundaries
+    if (text.charCodeAt(i) === 32) {
+      lastSpaceIdx = i
+      lastSpaceGlyphCount = currentLine.length
+      lastSpaceCursorX = cursorX + advanceWidth
+    }
+
+    // Word wrap: break at last space
     if (maxWidth !== undefined && cursorX + advanceWidth > maxWidth && cursorX > 0) {
-      lines.push([])
-      currentLine = lines[lines.length - 1]!
-      cursorX = 0
+      if (lastSpaceIdx >= 0 && lastSpaceGlyphCount > 0) {
+        const overflow = currentLine.splice(lastSpaceGlyphCount)
+        const baseX = lastSpaceCursorX
+        lines.push(overflow.map(g => ({ ...g, x: g.x - baseX })))
+        currentLine = lines[lines.length - 1]!
+        cursorX = cursorX - baseX
+      } else {
+        lines.push([])
+        currentLine = lines[lines.length - 1]!
+        cursorX = 0
+      }
+      lastSpaceIdx = -1
     }
 
     // Apply kerning with next glyph
@@ -85,11 +107,15 @@ export function shapeTextBaked(
     cursorX += advanceWidth + kerning
   }
 
-  // Apply alignment and compute Y positions
+  // Apply alignment and compute Y positions.
+  // Vertically center the text block around y=0.
+  const totalBlockHeight = (lines.length - 1) * lineHeightPx
+  const yOffset = totalBlockHeight / 2
+
   const positioned: PositionedGlyph[] = []
   for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
     const line = lines[lineIdx]!
-    const y = -lineIdx * lineHeightPx
+    const y = yOffset - lineIdx * lineHeightPx
 
     let lineWidth = 0
     if (line.length > 0) {

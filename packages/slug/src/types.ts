@@ -88,4 +88,12 @@ export interface SlugTextOptions {
   maxWidth?: number
   evenOdd?: boolean
   weightBoost?: boolean
+  /** Stem darkening strength. 0 = off, ~0.4 = subtle. Boosts thin strokes at small sizes. */
+  stemDarken?: number
+  /** Thickening strength. 0 = off, ~1.5 = default. Widens coverage at low ppem. */
+  thicken?: number
+  /** Enable 2x2 supersampling (expensive). */
+  supersample?: boolean
+  /** Snap glyph positions to pixel grid. Default true. */
+  pixelSnap?: boolean
 }

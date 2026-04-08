@@ -28,6 +28,10 @@ export class SlugText extends InstancedMesh {
   private _maxWidth: number | undefined
   private _evenOdd = false
   private _weightBoost = false
+  private _stemDarken = 0
+  private _thicken = 0
+  private _supersample = false
+  private _pixelSnap = true
   private _dirty = true
 
   private _slugMaterial: SlugMaterial | null = null
@@ -52,6 +56,10 @@ export class SlugText extends InstancedMesh {
     if (options.maxWidth !== undefined) this._maxWidth = options.maxWidth
     if (options.evenOdd !== undefined) this._evenOdd = options.evenOdd
     if (options.weightBoost !== undefined) this._weightBoost = options.weightBoost
+    if (options.stemDarken !== undefined) this._stemDarken = options.stemDarken
+    if (options.thicken !== undefined) this._thicken = options.thicken
+    if (options.supersample !== undefined) this._supersample = options.supersample
+    if (options.pixelSnap !== undefined) this._pixelSnap = options.pixelSnap
     if (options.text !== undefined) this._text = options.text
     if (options.font !== undefined) this._setFont(options.font)
   }
@@ -68,6 +76,9 @@ export class SlugText extends InstancedMesh {
     }
   }
 
+  private _viewportWidth = 1
+  private _viewportHeight = 1
+
   private _setFont(value: SlugFont | null): void {
     this._font = value
 
@@ -76,8 +87,14 @@ export class SlugText extends InstancedMesh {
         color: this._color,
         evenOdd: this._evenOdd,
         weightBoost: this._weightBoost,
+        stemDarken: this._stemDarken,
+        thicken: this._thicken,
+        supersample: this._supersample,
+        pixelSnap: this._pixelSnap,
         transparent: true,
       })
+      // Restore viewport size on the new material
+      this._slugMaterial.setViewportSize(this._viewportWidth, this._viewportHeight)
       this.material = this._slugMaterial
       this.visible = true
       this._dirty = true
@@ -171,6 +188,32 @@ export class SlugText extends InstancedMesh {
     }
   }
 
+  // -- Stem darkening (runtime uniform) --
+
+  get stemDarken(): number {
+    return this._stemDarken
+  }
+
+  set stemDarken(value: number) {
+    if (this._stemDarken !== value) {
+      this._stemDarken = value
+      this._slugMaterial?.setStemDarken(value)
+    }
+  }
+
+  // -- Thickening (runtime uniform) --
+
+  get thicken(): number {
+    return this._thicken
+  }
+
+  set thicken(value: number) {
+    if (this._thicken !== value) {
+      this._thicken = value
+      this._slugMaterial?.setThicken(value)
+    }
+  }
+
   /**
    * Rebuild geometry if any properties changed since last call.
    * Also updates the MVP matrix uniforms for vertex dilation.
@@ -233,6 +276,8 @@ export class SlugText extends InstancedMesh {
 
   /** Update viewport size for dilation calculations. */
   setViewportSize(width: number, height: number): void {
+    this._viewportWidth = width
+    this._viewportHeight = height
     this._slugMaterial?.setViewportSize(width, height)
   }
 

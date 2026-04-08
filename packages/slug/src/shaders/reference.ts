@@ -100,6 +100,8 @@ export function refCalcCoverage(
   ywgt: number,
   evenOdd: boolean = false,
   weightBoost: boolean = false,
+  stemDarken: number = 0,
+  ppem: number = Infinity,
 ): number {
   const epsilon = 1.0 / 65536.0
 
@@ -117,6 +119,13 @@ export function refCalcCoverage(
 
   if (weightBoost) {
     coverage = Math.sqrt(coverage)
+  }
+
+  // Stem darkening: ramps from full strength at ppem=0 to zero at ppem>=24
+  if (stemDarken > 0 && ppem < Infinity) {
+    const darkenPpem = 24
+    const darken = stemDarken * Math.max(0, 1 - ppem / darkenPpem)
+    coverage = Math.min(coverage + darken * coverage * (1 - coverage), 1)
   }
 
   return coverage
