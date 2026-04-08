@@ -51,16 +51,10 @@ async function main() {
   const scene = new Scene()
   scene.background = new Color(0x00021c)
 
-  const frustumSize = 400
-  const aspect = window.innerWidth / window.innerHeight
-  const camera = new OrthographicCamera(
-    (-frustumSize * aspect) / 2,
-    (frustumSize * aspect) / 2,
-    frustumSize / 2,
-    -frustumSize / 2,
-    0.1,
-    1000,
-  )
+  // 1 unit = 1 pixel so fontSize matches CSS px
+  const w = window.innerWidth
+  const h = window.innerHeight
+  const camera = new OrthographicCamera(-w / 2, w / 2, h / 2, -h / 2, 0.1, 1000)
   camera.position.z = 100
 
   const renderer = new WebGPURenderer({ antialias: true })
@@ -100,6 +94,32 @@ async function main() {
 
   log(`Rendering: ${slugText.count} glyph instances`)
 
+  // Position HTML overlay so its baseline matches slug baseline at y=0 (screen center).
+  // With line-height:0 the font's content area (ascender+|descender|) is centered
+  // at the element's top. The baseline sits (ascender+descender)/2 * fontSize below
+  // center, so we shift up by that amount.
+  const htmlCompare = document.getElementById('html-compare')!
+  function syncHtmlPosition(fs: number) {
+    const baselineOffset = (font.ascender + font.descender) * 0.5 * fs
+    htmlCompare.style.fontSize = `${fs}px`
+    htmlCompare.style.top = `calc(50% - ${baselineOffset}px)`
+  }
+  syncHtmlPosition(fontSize)
+
+  // Toggle HTML overlay with checkbox or 'h' key
+  const overlayCheck = document.getElementById('overlay-check') as HTMLInputElement
+  function toggleOverlay() {
+    const visible = overlayCheck.checked
+    htmlCompare.style.display = visible ? '' : 'none'
+  }
+  overlayCheck.addEventListener('change', toggleOverlay)
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'h') {
+      overlayCheck.checked = !overlayCheck.checked
+      toggleOverlay()
+    }
+  })
+
   // Wire up font size radio
   const radioGroup = document.querySelector('wa-radio-group')!
   setupWrappingGroup(radioGroup, 'wa-radio')
@@ -108,19 +128,21 @@ async function main() {
     fontSize = parseInt(value, 10)
     slugText.fontSize = fontSize
     slugText.update()
+    syncHtmlPosition(fontSize)
     log(`Font size: ${fontSize}px, ${slugText.count} glyphs`)
   })
 
   // Resize
   window.addEventListener('resize', () => {
-    const aspect = window.innerWidth / window.innerHeight
-    camera.left = (-frustumSize * aspect) / 2
-    camera.right = (frustumSize * aspect) / 2
-    camera.top = frustumSize / 2
-    camera.bottom = -frustumSize / 2
+    const rw = window.innerWidth
+    const rh = window.innerHeight
+    camera.left = -rw / 2
+    camera.right = rw / 2
+    camera.top = rh / 2
+    camera.bottom = -rh / 2
     camera.updateProjectionMatrix()
-    renderer.setSize(window.innerWidth, window.innerHeight)
-    slugText.setViewportSize(window.innerWidth, window.innerHeight)
+    renderer.setSize(rw, rh)
+    slugText.setViewportSize(rw, rh)
   })
 
   // Render loop

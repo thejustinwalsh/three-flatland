@@ -6,8 +6,9 @@ import { buildBands } from './bandBuilder.js'
 /**
  * Epsilon for converting straight lines to degenerate quadratics.
  * Small bowing prevents scanline dropout in the root eligibility check.
+ * Value is in raw font units — scaled by 1/unitsPerEm at use site.
  */
-const LINE_EPSILON = 0.125
+const LINE_EPSILON_FONT_UNITS = 0.125
 
 /** Parse a font from an ArrayBuffer into glyph data suitable for Slug rendering. */
 export function parseFont(buffer: ArrayBuffer): {
@@ -86,7 +87,7 @@ function extractCurves(commands: PathCommand[], unitsPerEm: number): { curves: Q
       case 'L': {
         const ex = (cmd.x ?? 0) * scale
         const ey = (cmd.y ?? 0) * scale
-        curves.push(lineToQuadratic(cx, cy, ex, ey))
+        curves.push(lineToQuadratic(cx, cy, ex, ey, scale))
         cx = ex
         cy = ey
         break
@@ -104,7 +105,7 @@ function extractCurves(commands: PathCommand[], unitsPerEm: number): { curves: Q
       }
 
       case 'C': {
-        // Cubic Bezier → split into 2 quadratics at t=0.5 via De Casteljau
+        // Cubic Bezier → split into 4 quadratics via De Casteljau
         const c1x = (cmd.x1 ?? 0) * scale
         const c1y = (cmd.y1 ?? 0) * scale
         const c2x = (cmd.x2 ?? 0) * scale
@@ -121,7 +122,7 @@ function extractCurves(commands: PathCommand[], unitsPerEm: number): { curves: Q
       case 'Z': {
         // Close path — emit closing line if needed
         if (cx !== startX || cy !== startY) {
-          curves.push(lineToQuadratic(cx, cy, startX, startY))
+          curves.push(lineToQuadratic(cx, cy, startX, startY, scale))
         }
         cx = startX
         cy = startY
@@ -143,6 +144,7 @@ function lineToQuadratic(
   y0: number,
   x1: number,
   y1: number,
+  emScale: number,
 ): QuadCurve {
   const mx = (x0 + x1) * 0.5
   const my = (y0 + y1) * 0.5
@@ -157,9 +159,11 @@ function lineToQuadratic(
   }
 
   // Perpendicular bowing to prevent scanline dropout in CalcRootCode.
-  // Magnitude must be large enough to perturb sign bits reliably.
+  // LINE_EPSILON_FONT_UNITS is in raw font units; emScale (1/unitsPerEm)
+  // converts it to the same normalized em-space as the coordinates.
+  const epsilon = LINE_EPSILON_FONT_UNITS * emScale
   const len = Math.sqrt(dx * dx + dy * dy)
-  const invLen = LINE_EPSILON / len
+  const invLen = epsilon / len
   const nx = -dy * invLen
   const ny = dx * invLen
 
@@ -174,9 +178,9 @@ function lineToQuadratic(
 }
 
 /**
- * Split a cubic Bezier at t=0.5 into two quadratic Beziers using De Casteljau.
- * This is an approximation — each half's quadratic control point is derived
- * from the cubic's tangent at the split point.
+ * Split a cubic Bezier at t=0.5 into two sub-cubics via De Casteljau,
+ * then approximate each as a quadratic using the best-fit control point:
+ * q = (-a + 3b + 3c - d) / 4 for cubic (a, b, c, d).
  */
 function cubicToQuadratics(
   x0: number,
@@ -202,24 +206,23 @@ function cubicToQuadratics(
   const midx = (m012x + m123x) * 0.5
   const midy = (m012y + m123y) * 0.5
 
-  // Each half-cubic's quadratic control point is the second-level De Casteljau midpoint:
-  //   first half:  (p0, m01, mid)  — control point is m012 (NOT m01)
-  //   second half: (mid, m123, p3) — control point is m123 (NOT m23)
-  // Using the second-level points preserves the cubic's tangent at the split.
+  // First half cubic: (x0, m01, m012, mid)
+  // Second half cubic: (mid, m123, m23, x3)
+  // Best-fit quadratic control point: q = (-a + 3b + 3c - d) / 4
   return [
     {
       p0x: x0,
       p0y: y0,
-      p1x: m012x,
-      p1y: m012y,
+      p1x: (-x0 + 3 * m01x + 3 * m012x - midx) * 0.25,
+      p1y: (-y0 + 3 * m01y + 3 * m012y - midy) * 0.25,
       p2x: midx,
       p2y: midy,
     },
     {
       p0x: midx,
       p0y: midy,
-      p1x: m123x,
-      p1y: m123y,
+      p1x: (-midx + 3 * m123x + 3 * m23x - x3) * 0.25,
+      p1y: (-midy + 3 * m123y + 3 * m23y - y3) * 0.25,
       p2x: x3,
       p2y: y3,
     },
