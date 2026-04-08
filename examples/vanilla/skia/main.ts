@@ -19,6 +19,7 @@ import {
   SkiaGroup,
   SkiaFontLoader,
 } from '@three-flatland/skia/three'
+import { createPane } from '@three-flatland/tweakpane'
 
 function setStatus(msg: string, _ok: boolean) {
   console.log(`[skia] ${msg}`)
@@ -209,11 +210,6 @@ async function main() {
   overlayCanvas.add(subtitleText)
   let subtitlePaint: SkiaPaint | null = null
 
-  const fpsText = new SkiaTextNode()
-  fpsText.x = pw - 160; fpsText.y = 30
-  fpsText.fill = [0.2, 0.9, 0.4, 1]
-  overlayCanvas.add(fpsText)
-
   const backendText = new SkiaTextNode()
   backendText.x = 20; backendText.y = 30
   backendText.fill = [0.6, 0.6, 0.8, 0.6]
@@ -234,7 +230,6 @@ async function main() {
     subtitlePaint = new SkiaPaint(skia).setFill()
     subtitleText.paint = subtitlePaint
 
-    fpsText.font = fpsF
     backendText.font = fpsF
     backendText.text = `Backend: ${skia.backend.toUpperCase()}`
   }).catch(e => console.warn('Font load failed:', e))
@@ -293,19 +288,27 @@ async function main() {
   ground.add(groundReflector.target)
   scene.add(ground)
 
+  // ── TweakPane debug controls ──
+  const { pane, fpsGraph } = createPane()
+
+  const cam = { dampingFactor: controls.dampingFactor, minDistance: controls.minDistance, maxDistance: controls.maxDistance }
+  const camFolder = pane.addFolder({ title: 'Camera' })
+  camFolder.addBinding(cam, 'dampingFactor', { min: 0.01, max: 0.2, step: 0.01, label: 'damping' })
+    .on('change', (ev) => { controls.dampingFactor = ev.value })
+  camFolder.addBinding(cam, 'minDistance', { min: 1, max: 5, step: 0.5, label: 'min dist' })
+    .on('change', (ev) => { controls.minDistance = ev.value })
+  camFolder.addBinding(cam, 'maxDistance', { min: 5, max: 20, step: 1, label: 'max dist' })
+    .on('change', (ev) => { controls.maxDistance = ev.value })
+
+  const canvas = { textureWidth: TEX_W, textureHeight: TEX_H }
+  const canvasFolder = pane.addFolder({ title: 'Canvas' })
+  canvasFolder.addBinding(canvas, 'textureWidth', { readonly: true, label: 'tex width' })
+  canvasFolder.addBinding(canvas, 'textureHeight', { readonly: true, label: 'tex height' })
+
   // ── Animation loop ──
-  let frameCount = 0
-  let lastFpsTime = performance.now()
-  let fps = 0
 
   function animate(t: number) {
-    frameCount++
-    const now = performance.now()
-    if (now - lastFpsTime >= 1000) {
-      fps = Math.round(frameCount * 1000 / (now - lastFpsTime))
-      frameCount = 0
-      lastFpsTime = now
-    }
+    fpsGraph?.begin()
 
     // ── Animate squares ──
     const sqDur = 3000
@@ -382,9 +385,6 @@ async function main() {
     panelLeft.position.y = 1.2 + hover
     panelRight.position.y = 1.2 + hover
 
-    // ── FPS ──
-    fpsText.text = `FPS: ${fps}`
-
     // ── Update controls ──
     controls.update()
 
@@ -403,9 +403,10 @@ async function main() {
     // 3. Three.js renders 3D scene (panel with Skia texture + reflection + ground)
     renderer.render(scene, camera)
 
-    // 4. Skia overlay (title/FPS) on top of 3D
+    // 4. Skia overlay on top of 3D
     overlayCanvas.render(true)
 
+    fpsGraph?.end()
     requestAnimationFrame(animate)
   }
   requestAnimationFrame(animate)
@@ -422,7 +423,6 @@ async function main() {
     overlayCanvas.setSize(npw, nph)
     titleText.y = nph - 90
     subtitleText.y = nph - 40
-    fpsText.x = npw - 160
   })
 }
 

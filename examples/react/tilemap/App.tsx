@@ -1,4 +1,4 @@
-import { Suspense, useRef, useMemo, useEffect, useState, useCallback } from 'react'
+import { Suspense, useRef, useMemo, useEffect, useCallback } from 'react'
 import { Canvas, extend, useFrame, useThree } from '@react-three/fiber/webgpu'
 import {
   DataTexture,
@@ -12,17 +12,7 @@ import {
   type TilesetData,
   type TileLayerData,
 } from 'three-flatland/react'
-
-import '@awesome.me/webawesome/dist/styles/themes/default.css'
-import WaRadioGroup from '@awesome.me/webawesome/dist/react/radio-group/index.js'
-import WaRadio from '@awesome.me/webawesome/dist/react/radio/index.js'
-import WaButtonGroup from '@awesome.me/webawesome/dist/react/button-group/index.js'
-import WaButton from '@awesome.me/webawesome/dist/react/button/index.js'
-import WaSelect from '@awesome.me/webawesome/dist/react/select/index.js'
-import WaOption from '@awesome.me/webawesome/dist/react/option/index.js'
-import WaInput from '@awesome.me/webawesome/dist/react/input/index.js'
-import WaSlider from '@awesome.me/webawesome/dist/react/slider/index.js'
-import WaIcon from '@awesome.me/webawesome/dist/react/icon/index.js'
+import { usePane, usePaneFolder, usePaneInput, usePaneButton } from '@three-flatland/tweakpane/react'
 
 // Register TileMap2D with R3F
 extend({ TileMap2D })
@@ -346,6 +336,14 @@ function createTileMapData(
   }
 }
 
+// Map size presets (in tiles)
+const MAP_SIZE_PRESETS: Record<string, number> = {
+  sm: 64,
+  md: 128,
+  lg: 256,
+  xl: 512,
+}
+
 interface TilemapSceneProps {
   mapData: TileMapData
   chunkSize: number
@@ -393,27 +391,20 @@ function TilemapScene({ mapData, chunkSize, showGround, showWalls, showDecor, on
   )
 }
 
-function StatsTracker({ onStats }: { onStats: (fps: number, draws: number) => void }) {
+function StatsTracker({ onDrawCalls }: { onDrawCalls: (draws: number) => void }) {
   const gl = useThree((s) => s.gl)
-  const frameCount = useRef(0)
   const elapsed = useRef(0)
 
-  // Disable auto-reset so we can read draw calls from the previous frame
-  // before manually resetting. The WebGPU Animation loop resets info at
-  // the start of each frame — before useFrame runs — which would zero
-  // out the counters before we can read them.
   useEffect(() => {
     gl.info.autoReset = false
     return () => { gl.info.autoReset = true }
   }, [gl])
 
   useFrame((_, delta) => {
-    frameCount.current++
     elapsed.current += delta
     if (elapsed.current >= 1) {
       const draws = (gl.info.render as any).drawCalls as number
-      onStats(Math.round(frameCount.current / elapsed.current), draws)
-      frameCount.current = 0
+      onDrawCalls(draws)
       elapsed.current = 0
     }
     gl.info.reset()
@@ -449,8 +440,6 @@ function CameraController({ mapSize, zoomRef }: { mapSize: number; zoomRef: Reac
     const handlePointerDown = (e: PointerEvent) => {
       activePointers.current.set(e.pointerId, e)
 
-      // Mouse or pen: start drag immediately
-      // Touch: only start drag when two fingers are down
       if (e.pointerType !== 'touch' || activePointers.current.size >= 2) {
         isDragging.current = true
         dragStart.current = { x: e.clientX, y: e.clientY }
@@ -461,7 +450,6 @@ function CameraController({ mapSize, zoomRef }: { mapSize: number; zoomRef: Reac
     const handlePointerMove = (e: PointerEvent) => {
       activePointers.current.set(e.pointerId, e)
 
-      // Start dragging if second finger arrived
       if (e.pointerType === 'touch' && activePointers.current.size >= 2 && !isDragging.current) {
         isDragging.current = true
         dragStart.current = { x: e.clientX, y: e.clientY }
@@ -532,35 +520,77 @@ function CameraController({ mapSize, zoomRef }: { mapSize: number; zoomRef: Reac
   return null
 }
 
-// Map size presets (in tiles)
-const MAP_SIZE_PRESETS: Record<string, number> = {
-  sm: 64,
-  md: 128,
-  lg: 256,
-  xl: 512,
+function FpsTracker({ fpsGraph }: { fpsGraph: { begin(): void; end(): void } | null }) {
+  useFrame(() => {
+    fpsGraph?.begin()
+  }, -Infinity)
+
+  useFrame(() => {
+    fpsGraph?.end()
+  }, Infinity)
+
+  return null
 }
 
 export default function App() {
-  const [mapSizePreset, setMapSizePreset] = useState('md')
+  // Tweakpane
+  const { pane, fpsGraph } = usePane()
+
+  // Generation folder
+  const genFolder = usePaneFolder(pane, 'Generation')
+  const [mapSizePreset] = usePaneInput<string>(genFolder, 'mapSize', 'md', {
+    options: { SM: 'sm', MD: 'md', LG: 'lg', XL: 'xl' },
+    label: 'map size',
+  })
+  const [chunkSize] = usePaneInput<number>(genFolder, 'chunkSize', 512, {
+    options: { '256': 256, '512': 512, '1024': 1024, '2048': 2048 },
+    label: 'chunk',
+  })
+  const [density] = usePaneInput<string>(genFolder, 'density', 'normal', {
+    options: { Sparse: 'sparse', Normal: 'normal', Dense: 'dense', Packed: 'packed' },
+  })
+  const [seed, setSeed] = usePaneInput<number>(genFolder, 'seed', 42, {
+    min: 0, max: 999999, step: 1,
+  })
+  usePaneButton(genFolder, 'Regenerate', () => {
+    setSeed(Math.floor(Math.random() * 1000000))
+  })
+
+  // Layers folder
+  const layerFolder = usePaneFolder(pane, 'Layers')
+  const [showGround] = usePaneInput<boolean>(layerFolder, 'showGround', true, { label: 'ground' })
+  const [showWalls] = usePaneInput<boolean>(layerFolder, 'showWalls', true, { label: 'walls' })
+  const [showDecor] = usePaneInput<boolean>(layerFolder, 'showDecor', true, { label: 'decor' })
+
+  // Camera folder
+  const camFolder = usePaneFolder(pane, 'Camera')
+  const [zoomSlider] = usePaneInput<number>(camFolder, 'zoom', 50, { min: 0, max: 100, step: 1 })
+
+  // Stats folder (readonly monitors)
+  const statsFolder = usePaneFolder(pane, 'Stats')
+  const statsRef = useRef({ tiles: 0, chunks: 0, layers: 0, drawCalls: 0 })
+
+  // Add readonly bindings directly to the pane
+  useEffect(() => {
+    if (!statsFolder) return
+    const b1 = statsFolder.addBinding(statsRef.current, 'tiles', { readonly: true })
+    const b2 = statsFolder.addBinding(statsRef.current, 'chunks', { readonly: true })
+    const b3 = statsFolder.addBinding(statsRef.current, 'layers', { readonly: true })
+    const b4 = statsFolder.addBinding(statsRef.current, 'drawCalls', { readonly: true, label: 'draw calls' })
+    return () => {
+      b1.dispose()
+      b2.dispose()
+      b3.dispose()
+      b4.dispose()
+    }
+  }, [statsFolder])
+
   const mapSize = MAP_SIZE_PRESETS[mapSizePreset] ?? 128
-  const [chunkSize, setChunkSize] = useState(512)
-  const [density, setDensity] = useState('normal')
-  const [seed, setSeed] = useState(42)
-  const [settingsOpen, setSettingsOpen] = useState(false)
-  const [showGround, setShowGround] = useState(true)
-  const [showWalls, setShowWalls] = useState(true)
-  const [showDecor, setShowDecor] = useState(true)
-  const [fps, setFps] = useState<string | number>('-')
-  const [draws, setDraws] = useState<string | number>('-')
-  const [tileStats, setTileStats] = useState({ tiles: 0, chunks: 0, layers: 0 })
-  const [zoomSlider, setZoomSlider] = useState(50)
 
   // Compute zoom range from map extent
-  // zoom is a frustum multiplier: larger = more world visible = zoomed out
-  // R3F camera.zoom is the inverse (camera.zoom = 2 / zoom), handled in CameraController
   const mapExtent = mapSize * TILE_SIZE
-  const zoomOut = mapExtent / 800 // fit whole map in ~800 frustum height
-  const zoomIn = 0.1 // close-up
+  const zoomOut = mapExtent / 800
+  const zoomIn = 0.1
   const zoomRef = useRef(zoomOut * Math.pow(zoomIn / zoomOut, 0.5))
 
   // Update zoom ref when slider or map extent changes
@@ -569,62 +599,17 @@ export default function App() {
     zoomRef.current = zoomOut * Math.pow(zoomIn / zoomOut, t)
   }, [zoomSlider, zoomOut, zoomIn])
 
-  const layerTogglesRef = useRef<HTMLDivElement>(null)
-  const settingsRef = useRef<HTMLDivElement>(null)
+  const handleDrawCalls = useCallback((draws: number) => {
+    statsRef.current.drawCalls = draws
+    pane.refresh()
+  }, [pane])
 
-  const handlePerfStats = useCallback((fpsVal: number, drawsVal: number) => {
-    setFps(fpsVal)
-    setDraws(drawsVal)
-  }, [])
-  const handleStats = useCallback((tiles: number, chunks: number, layers: number) => setTileStats({ tiles, chunks, layers }), [])
-
-  const handleRegenerate = () => setSeed(Math.floor(Math.random() * 999999))
-
-  // Per-line pill rounding for all wrapping groups (radio + button)
-  useEffect(() => {
-    const cleanups: (() => void)[] = []
-    function observeGroup(container: Element, childSelector: string) {
-      const update = () => {
-        const children = [...container.querySelectorAll(childSelector)]
-        if (!children.length) return
-        const lines: Element[][] = []
-        let lastTop = -Infinity
-        let line: Element[] = []
-        for (const child of children) {
-          const top = child.getBoundingClientRect().top
-          if (Math.abs(top - lastTop) > 2) {
-            if (line.length) lines.push(line)
-            line = []
-            lastTop = top
-          }
-          line.push(child)
-        }
-        if (line.length) lines.push(line)
-        for (const ln of lines) {
-          for (let i = 0; i < ln.length; i++) {
-            const pos =
-              ln.length === 1 ? 'solo' :
-              i === 0 ? 'first' :
-              i === ln.length - 1 ? 'last' : 'inner'
-            ln[i]!.setAttribute('data-line-pos', pos)
-          }
-        }
-      }
-      const ro = new ResizeObserver(update)
-      ro.observe(container)
-      update()
-      cleanups.push(() => ro.disconnect())
-    }
-    // Layer toggle buttons
-    const btnGroup = layerTogglesRef.current?.querySelector('wa-button-group')
-    if (btnGroup) observeGroup(btnGroup, 'wa-button')
-    // Settings panel radio groups
-    const radioGroups = settingsRef.current?.querySelectorAll('wa-radio-group')
-    if (radioGroups) {
-      for (const rg of radioGroups) observeGroup(rg, 'wa-radio')
-    }
-    return () => cleanups.forEach(fn => fn())
-  }, [])
+  const handleStats = useCallback((tiles: number, chunks: number, layers: number) => {
+    statsRef.current.tiles = tiles
+    statsRef.current.chunks = chunks
+    statsRef.current.layers = layers
+    pane.refresh()
+  }, [pane])
 
   // Create tileset (memoized, never changes)
   const tileset = useMemo<TilesetData>(() => ({
@@ -647,201 +632,26 @@ export default function App() {
   }, [tileset, mapSize, density, seed])
 
   return (
-    <>
-      {/* Generation settings — top-left column */}
-      <style>{`
-        .tilemap-settings wa-radio-group::part(form-control-label) {
-          font-size: 11px;
-          color: #8890a0;
-          font-family: monospace;
-        }
-        .tilemap-settings wa-radio-group::part(form-control-input) {
-          row-gap: 4px;
-          justify-content: center;
-        }
-        wa-radio[data-line-pos="first"] {
-          border-start-start-radius: var(--wa-border-radius-m);
-          border-end-start-radius: var(--wa-border-radius-m);
-          border-start-end-radius: 0;
-          border-end-end-radius: 0;
-        }
-        wa-radio[data-line-pos="inner"] { border-radius: 0; }
-        wa-radio[data-line-pos="last"] {
-          border-start-end-radius: var(--wa-border-radius-m);
-          border-end-end-radius: var(--wa-border-radius-m);
-          border-start-start-radius: 0;
-          border-end-start-radius: 0;
-        }
-        wa-radio[data-line-pos="solo"] { border-radius: var(--wa-border-radius-m); }
-        .tilemap-settings-toggle {
-          display: none;
-          position: fixed;
-          top: 12px;
-          left: 12px;
-          z-index: 101;
-          width: 28px;
-          height: 28px;
-          background: rgba(0, 2, 28, 0.7);
-          border: none;
-          border-radius: 6px;
-          color: #8890a0;
-          font-size: 16px;
-          cursor: pointer;
-          align-items: center;
-          justify-content: center;
-        }
-        @media (max-width: 480px) {
-          .tilemap-settings-toggle { display: flex; }
-          .tilemap-settings { display: none !important; }
-          .tilemap-settings.open { display: flex !important; top: 48px !important; z-index: 102 !important; }
-        }
-      `}</style>
-      <button
-        className="tilemap-settings-toggle"
-        title="Settings"
-        onClick={() => setSettingsOpen(v => !v)}
-      >
-        {settingsOpen ? '\u2715' : '\u2630'}
-      </button>
-      <div ref={settingsRef} className={`tilemap-settings${settingsOpen ? ' open' : ''}`} style={{
-        position: 'fixed', top: 12, left: 12, zIndex: 100, pointerEvents: 'auto',
-        display: 'flex', flexDirection: 'column', gap: 6,
-        padding: '8px 10px', background: 'rgba(0, 2, 28, 0.7)', borderRadius: 6,
-      }}>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-            <span style={{ fontSize: 11, color: '#8890a0', fontFamily: 'monospace' }}>Map Size</span>
-            <WaRadioGroup size="small" orientation="horizontal" value={mapSizePreset} onChange={(e: any) => setMapSizePreset((e.target as any).value)}>
-              <WaRadio value="sm" size="small" appearance="button">SM</WaRadio>
-              <WaRadio value="md" size="small" appearance="button">MD</WaRadio>
-              <WaRadio value="lg" size="small" appearance="button">LG</WaRadio>
-              <WaRadio value="xl" size="small" appearance="button">XL</WaRadio>
-            </WaRadioGroup>
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-            <span style={{ fontSize: 11, color: '#8890a0', fontFamily: 'monospace' }}>Chunks</span>
-            <WaSelect value={String(chunkSize)} size="small" onChange={(e: any) => setChunkSize(Number((e.target as any).value))} style={{ width: 86 }}>
-              <WaOption value="256">256</WaOption>
-              <WaOption value="512">512</WaOption>
-              <WaOption value="1024">1024</WaOption>
-              <WaOption value="2048">2048</WaOption>
-            </WaSelect>
-          </div>
-        </div>
-        <WaRadioGroup label="Density" size="small" orientation="horizontal" value={density} onChange={(e: any) => setDensity((e.target as any).value)}>
-          <WaRadio value="sparse" size="small" appearance="button">Sparse</WaRadio>
-          <WaRadio value="normal" size="small" appearance="button">Normal</WaRadio>
-          <WaRadio value="dense" size="small" appearance="button">Dense</WaRadio>
-          <WaRadio value="packed" size="small" appearance="button">Packed</WaRadio>
-        </WaRadioGroup>
-        <div>
-          <div style={{ fontSize: 11, color: '#8890a0', fontFamily: 'monospace', marginBottom: 2 }}>Seed</div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-            <WaInput
-              type="number"
-              value={String(seed)}
-              size="small"
-              withoutSpinButtons
-              style={{ width: 120 }}
-              onChange={(e: any) => setSeed(Number(e.target.value))}
-            />
-            <WaButton size="small" onClick={handleRegenerate} title="Random seed">
-              &#x21bb;
-            </WaButton>
-          </div>
-        </div>
-      </div>
-
-      {/* Stats — top-right */}
-      <div style={{
-        position: 'fixed',
-        top: 12,
-        right: 12,
-        padding: '5px 10px',
-        background: 'rgba(0, 2, 28, 0.7)',
-        borderRadius: 6,
-        color: '#4a9eff',
-        fontSize: 10,
-        fontFamily: 'monospace',
-        lineHeight: 1.5,
-        zIndex: 100,
-      }}>
-        <div>FPS: {fps}</div>
-        <div>Draws: {draws}</div>
-        <div>Tiles: {tileStats.tiles}</div>
-        <div>Chunks: {tileStats.chunks}</div>
-        <div>Layers: {tileStats.layers}</div>
-      </div>
-
-      {/* Layer toggles + zoom slider — bottom-center */}
-      <div ref={layerTogglesRef} className="layer-toggles" style={{
-        position: 'fixed', bottom: 32, left: '50%', transform: 'translateX(-50%)',
-        zIndex: 100, pointerEvents: 'auto', maxWidth: 'calc(100vw - 24px)',
-        display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'center', gap: 8,
-      }}>
-        <WaButtonGroup>
-          <WaButton size="small" variant={showGround ? 'brand' : 'neutral'} onClick={() => setShowGround(v => !v)}>
-            <span slot="start">{showGround ? '\u2713' : '\u2715'}</span>
-            Ground
-          </WaButton>
-          <WaButton size="small" variant={showWalls ? 'brand' : 'neutral'} onClick={() => setShowWalls(v => !v)}>
-            <span slot="start">{showWalls ? '\u2713' : '\u2715'}</span>
-            Walls
-          </WaButton>
-          <WaButton size="small" variant={showDecor ? 'brand' : 'neutral'} onClick={() => setShowDecor(v => !v)}>
-            <span slot="start">{showDecor ? '\u2713' : '\u2715'}</span>
-            Decor
-          </WaButton>
-        </WaButtonGroup>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <WaIcon name="magnifying-glass" label="Zoom" style={{ fontSize: 16, color: '#f0edd8', flexShrink: 0 }} />
-          <WaSlider
-            size="small"
-            min={0}
-            max={100}
-            value={zoomSlider}
-            style={{ width: 90 }}
-            onInput={(e: any) => setZoomSlider(Number((e.target as any).value))}
-          />
-        </div>
-      </div>
-
-      {/* Legend — bottom-center */}
-      <div style={{
-        position: 'fixed',
-        bottom: 8,
-        left: '50%',
-        transform: 'translateX(-50%)',
-        color: '#555',
-        fontSize: 9,
-        fontFamily: 'monospace',
-        zIndex: 100,
-        whiteSpace: 'nowrap',
-      }}>
-        Drag: Pan | WASD/Arrows: Pan | Slider: Zoom
-      </div>
-
-      {/* Canvas */}
-      <Canvas
-        orthographic
-        camera={{ zoom: 2, position: [0, 0, 100] }}
-        renderer={{ antialias: false }}
-        style={{ touchAction: 'none' }}
-      >
-        <color attach="background" args={['#0a0a12']} />
-        <StatsTracker onStats={handlePerfStats} />
-        <CameraController mapSize={mapSize} zoomRef={zoomRef} />
-        <Suspense fallback={null}>
-          <TilemapScene
-            mapData={mapData}
-            chunkSize={chunkSize}
-            showGround={showGround}
-            showWalls={showWalls}
-            showDecor={showDecor}
-            onStats={handleStats}
-          />
-        </Suspense>
-      </Canvas>
-    </>
+    <Canvas
+      orthographic
+      camera={{ zoom: 2, position: [0, 0, 100] }}
+      renderer={{ antialias: false }}
+      style={{ touchAction: 'none' }}
+    >
+      <color attach="background" args={['#0a0a12']} />
+      <FpsTracker fpsGraph={fpsGraph} />
+      <StatsTracker onDrawCalls={handleDrawCalls} />
+      <CameraController mapSize={mapSize} zoomRef={zoomRef} />
+      <Suspense fallback={null}>
+        <TilemapScene
+          mapData={mapData}
+          chunkSize={chunkSize}
+          showGround={showGround}
+          showWalls={showWalls}
+          showDecor={showDecor}
+          onStats={handleStats}
+        />
+      </Suspense>
+    </Canvas>
   )
 }

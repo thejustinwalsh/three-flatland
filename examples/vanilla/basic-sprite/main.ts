@@ -1,6 +1,7 @@
 import { WebGPURenderer } from 'three/webgpu'
 import { Scene, OrthographicCamera, Color } from 'three'
 import { Sprite2D, TextureLoader } from 'three-flatland'
+import { createPane } from '@three-flatland/tweakpane'
 
 async function main() {
   // Scene setup
@@ -33,27 +34,52 @@ async function main() {
   const texture = await TextureLoader.load(import.meta.env.BASE_URL + 'icon.svg')
 
   // Create sprite with explicit size (SVGs may not have proper dimensions)
-  const spriteSize = 150
   const sprite = new Sprite2D({
     texture,
     anchor: [0.5, 0.5],
   })
   sprite.position.set(0, 0, 0)
-  sprite.scale.set(spriteSize, spriteSize, 1)
   scene.add(sprite)
+
+  // Tweakpane UI
+  const { pane, fpsGraph } = createPane()
+
+  const params = {
+    baseScale: 150,
+    hoverScale: 165,
+    pressedScale: 135,
+    rotationSpeed: 0.2,
+    lerpSpeed: 10,
+    hoverTint: '#99d9ef',
+  }
+
+  const spriteFolder = pane.addFolder({ title: 'Sprite' })
+  spriteFolder.addBinding(params, 'baseScale', { min: 10, max: 300 })
+  spriteFolder.addBinding(params, 'hoverScale', { min: 10, max: 300 })
+  spriteFolder.addBinding(params, 'pressedScale', { min: 10, max: 300 })
+
+  const animFolder = pane.addFolder({ title: 'Animation' })
+  animFolder.addBinding(params, 'rotationSpeed', { min: 0, max: 2, step: 0.1 })
+  animFolder.addBinding(params, 'lerpSpeed', { min: 1, max: 20, step: 1 })
+
+  const colorFolder = pane.addFolder({ title: 'Color' })
+  colorFolder.addBinding(params, 'hoverTint')
+
+  sprite.scale.set(params.baseScale, params.baseScale, 1)
 
   // Interaction state
   let isHovered = false
   let isPressed = false
-  let currentScale = spriteSize
-  const baseScale = spriteSize
-  const hoverScale = spriteSize * 1.1
-  const pressedScale = spriteSize * 0.9
-  const lerpSpeed = 10
+  let currentScale = params.baseScale
 
   // Colors for tint (only hover effect)
   const normalTint = new Color(1, 1, 1)
-  const hoverTint = new Color(0.6, 0.85, 1.0) // Soft cyan highlight
+  const hoverTint = new Color(params.hoverTint)
+
+  // Update hoverTint when tweakpane changes it
+  colorFolder.on('change', () => {
+    hoverTint.set(params.hoverTint)
+  })
 
   // Helper to check if mouse is over sprite
   function isMouseOverSprite(mouseX: number, mouseY: number): boolean {
@@ -113,17 +139,12 @@ async function main() {
   // Current tint (lerped each frame)
   const currentTint = new Color(1, 1, 1)
 
-  // Stats
-  const statsEl = document.getElementById('stats')!
-  let frameCount = 0
-  let fpsTime = 0
-  let currentFps = 0
-
   // Animation loop
   let lastTime = performance.now()
 
   function animate() {
     requestAnimationFrame(animate)
+    fpsGraph?.begin()
 
     const now = performance.now()
     const deltaMs = now - lastTime
@@ -131,11 +152,15 @@ async function main() {
     lastTime = now
 
     // Determine target scale and tint
-    const targetScale = isPressed ? pressedScale : isHovered ? hoverScale : baseScale
+    const targetScale = isPressed
+      ? params.pressedScale
+      : isHovered
+        ? params.hoverScale
+        : params.baseScale
     const targetTint = isHovered ? hoverTint : normalTint
 
     // Lerp scale
-    const lerpFactor = Math.min(lerpSpeed * delta, 1)
+    const lerpFactor = Math.min(params.lerpSpeed * delta, 1)
     currentScale = currentScale + (targetScale - currentScale) * lerpFactor
     sprite.scale.set(currentScale, currentScale, 1)
 
@@ -146,19 +171,10 @@ async function main() {
     sprite.tint = currentTint
 
     // Slow rotation
-    sprite.rotation.z += 0.2 * delta
+    sprite.rotation.z += params.rotationSpeed * delta
 
     renderer.render(scene, camera)
-
-    // Update stats (~once per second)
-    frameCount++
-    fpsTime += deltaMs
-    if (fpsTime >= 1000) {
-      currentFps = Math.round(frameCount * 1000 / fpsTime)
-      frameCount = 0
-      fpsTime = 0
-      statsEl.textContent = `FPS: ${currentFps}\nDraws: ${renderer.info.render.drawCalls}`
-    }
+    fpsGraph?.end()
   }
 
   animate()

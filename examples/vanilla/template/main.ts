@@ -1,50 +1,7 @@
 import { WebGPURenderer } from 'three/webgpu'
 import { Scene, OrthographicCamera, Color } from 'three'
 import { Sprite2D, TextureLoader } from 'three-flatland'
-
-import '@awesome.me/webawesome/dist/styles/themes/default.css'
-import '@awesome.me/webawesome/dist/components/radio-group/radio-group.js'
-import '@awesome.me/webawesome/dist/components/radio/radio.js'
-
-/** Re-apply per-line first/last pill rounding when a flex container wraps */
-function setupWrappingGroup(container: Element, childSelector: string) {
-  const update = () => {
-    const children = [...container.querySelectorAll(childSelector)]
-    if (!children.length) return
-    const lines: Element[][] = []
-    let lastTop = -Infinity
-    let line: Element[] = []
-    for (const child of children) {
-      const top = child.getBoundingClientRect().top
-      if (Math.abs(top - lastTop) > 2) {
-        if (line.length) lines.push(line)
-        line = []
-        lastTop = top
-      }
-      line.push(child)
-    }
-    if (line.length) lines.push(line)
-    for (const ln of lines) {
-      for (let i = 0; i < ln.length; i++) {
-        const pos =
-          ln.length === 1 ? 'solo' :
-          i === 0 ? 'first' :
-          i === ln.length - 1 ? 'last' : 'inner'
-        ln[i]!.setAttribute('data-line-pos', pos)
-      }
-    }
-  }
-  const ro = new ResizeObserver(update)
-  ro.observe(container)
-  update()
-  return () => ro.disconnect()
-}
-
-const TINT_COLORS: Record<string, number> = {
-  white: 0xffffff,
-  cyan: 0x47cca9,
-  pink: 0xff6b9d,
-}
+import { createPane } from '@three-flatland/tweakpane'
 
 async function main() {
   const scene = new Scene()
@@ -78,12 +35,14 @@ async function main() {
   sprite.scale.set(150, 150, 1)
   scene.add(sprite)
 
-  // Wire up Web Awesome UI
-  const radioGroup = document.querySelector('wa-radio-group')!
-  setupWrappingGroup(radioGroup, 'wa-radio')
-  radioGroup.addEventListener('change', (e) => {
-    const value = (e.target as HTMLInputElement).value
-    sprite.tint = new Color(TINT_COLORS[value] ?? 0xffffff)
+  // Tweakpane UI
+  const { pane, fpsGraph } = createPane()
+  const params = { tint: '#ffffff' }
+  pane.addBinding(params, 'tint', {
+    label: 'tint',
+    options: { White: '#ffffff', Cyan: '#47cca9', Pink: '#ff6b9d' },
+  }).on('change', (ev) => {
+    sprite.tint.set(ev.value)
   })
 
   // Resize
@@ -100,7 +59,9 @@ async function main() {
   // Render loop
   function animate() {
     requestAnimationFrame(animate)
+    fpsGraph?.begin()
     renderer.render(scene, camera)
+    fpsGraph?.end()
   }
 
   animate()

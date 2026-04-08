@@ -13,52 +13,7 @@ import {
   Vector3,
 } from 'three'
 import { TileMap2D, type TileMapData, type TilesetData, type TileLayerData } from 'three-flatland'
-
-// Web Awesome web components
-import '@awesome.me/webawesome/dist/styles/themes/default.css'
-import '@awesome.me/webawesome/dist/components/radio-group/radio-group.js'
-import '@awesome.me/webawesome/dist/components/radio/radio.js'
-import '@awesome.me/webawesome/dist/components/button-group/button-group.js'
-import '@awesome.me/webawesome/dist/components/button/button.js'
-import '@awesome.me/webawesome/dist/components/select/select.js'
-import '@awesome.me/webawesome/dist/components/option/option.js'
-import '@awesome.me/webawesome/dist/components/input/input.js'
-import '@awesome.me/webawesome/dist/components/slider/slider.js'
-import '@awesome.me/webawesome/dist/components/icon/icon.js'
-
-/** Re-apply per-line first/last pill rounding when a flex container wraps */
-function setupWrappingGroup(container: Element, childSelector: string) {
-  const update = () => {
-    const children = [...container.querySelectorAll(childSelector)]
-    if (!children.length) return
-    const lines: Element[][] = []
-    let lastTop = -Infinity
-    let line: Element[] = []
-    for (const child of children) {
-      const top = child.getBoundingClientRect().top
-      if (Math.abs(top - lastTop) > 2) {
-        if (line.length) lines.push(line)
-        line = []
-        lastTop = top
-      }
-      line.push(child)
-    }
-    if (line.length) lines.push(line)
-    for (const ln of lines) {
-      for (let i = 0; i < ln.length; i++) {
-        const pos =
-          ln.length === 1 ? 'solo' :
-          i === 0 ? 'first' :
-          i === ln.length - 1 ? 'last' : 'inner'
-        ln[i]!.setAttribute('data-line-pos', pos)
-      }
-    }
-  }
-  const ro = new ResizeObserver(update)
-  ro.observe(container)
-  update()
-  return () => ro.disconnect()
-}
+import { createPane } from '@three-flatland/tweakpane'
 
 // Tile IDs for our procedural tileset
 const TILES = {
@@ -468,15 +423,6 @@ const MAP_SIZE_PRESETS: Record<string, number> = {
   xl: 512,
 }
 
-// GUI state
-let mapSize = MAP_SIZE_PRESETS['md']!
-let chunkSize = 512
-let density = 'normal'
-let seed = 42
-let showGround = true
-let showWalls = true
-let showDecor = true
-
 async function main() {
   const TILE_SIZE = 16
   const TILESET_COLUMNS = 4
@@ -523,19 +469,32 @@ async function main() {
     texture: tilesetTexture,
   }
 
+  // GUI state
+  const gen = { mapSize: 'md' as string, chunkSize: 512, density: 'normal' as string, seed: 42 }
+  const layers = { showGround: true, showWalls: true, showDecor: true }
+  const cam = { zoom: 50 }
+  const stats = { tiles: 0, chunks: 0, layers: 0, drawCalls: 0 }
+
+  // Zoom range computed from map extent
+  let mapSize = MAP_SIZE_PRESETS[gen.mapSize]!
+  let mapExtent = mapSize * TILE_SIZE
+  let zoomOut = mapExtent / (frustumSize * Math.min(1, aspect))
+  let zoomIn = 0.1
+  let zoom = zoomOut * Math.pow(zoomIn / zoomOut, 0.5)
+
   // Build tilemap from current state
   function buildTilemap(): TileMap2D {
-    const dungeonLayers = generateDungeon(mapSize, mapSize, density)
+    const dungeonLayers = generateDungeon(mapSize, mapSize, gen.density)
     const mapData = createTileMapData(mapSize, mapSize, TILE_SIZE, tilesetData, dungeonLayers)
-    const tm = new TileMap2D({ data: mapData, chunkSize })
+    const tm = new TileMap2D({ data: mapData, chunkSize: gen.chunkSize })
 
     // Apply current layer visibility
     const groundLayer = tm.getLayerAt(0)
     const wallsLayer = tm.getLayerAt(1)
     const decorLayer = tm.getLayerAt(2)
-    if (groundLayer) groundLayer.visible = showGround
-    if (wallsLayer) wallsLayer.visible = showWalls
-    if (decorLayer) decorLayer.visible = showDecor
+    if (groundLayer) groundLayer.visible = layers.showGround
+    if (wallsLayer) wallsLayer.visible = layers.showWalls
+    if (decorLayer) decorLayer.visible = layers.showDecor
 
     return tm
   }
@@ -548,20 +507,19 @@ async function main() {
   camera.position.x = (mapSize * TILE_SIZE) / 2
   camera.position.y = (mapSize * TILE_SIZE) / 2
 
-  // Zoom range computed from map extent
-  // zoom is a frustum multiplier: larger = more world visible = zoomed out
-  let mapExtent = mapSize * TILE_SIZE
-  let zoomOut = mapExtent / (frustumSize * Math.min(1, aspect)) // fit whole map
-  let zoomIn = 0.1 // close-up (shows ~80 world units = ~5 tiles)
-  let zoom = zoomOut * Math.pow(zoomIn / zoomOut, 0.5) // start at slider midpoint (exponential)
-
-  // Zoom slider
-  const zoomSlider = document.getElementById('zoom-slider') as any
+  function updateStats() {
+    stats.tiles = tilemap.totalTileCount
+    stats.chunks = tilemap.totalChunkCount
+    stats.layers = tilemap.layerCount
+  }
+  updateStats()
 
   // Rebuild tilemap (on map size, density, or seed change)
   function rebuildTilemap() {
     scene.remove(tilemap)
     tilemap.dispose()
+
+    mapSize = MAP_SIZE_PRESETS[gen.mapSize] ?? 128
     tilemap = buildTilemap()
     scene.add(tilemap)
 
@@ -573,86 +531,69 @@ async function main() {
     mapExtent = mapSize * TILE_SIZE
     zoomOut = mapExtent / (frustumSize * Math.min(1, aspect))
     zoomIn = 0.1
-    const t = Number(zoomSlider.value) / 100
+    const t = cam.zoom / 100
     zoom = zoomOut * Math.pow(zoomIn / zoomOut, t)
 
     updateStats()
+    pane.refresh()
   }
 
-  // Wire up Web Awesome controls
-  document.getElementById('map-size')!.addEventListener('change', (e) => {
-    const preset = (e.target as any).value as string
-    mapSize = MAP_SIZE_PRESETS[preset] ?? 128
+  // Tweakpane UI
+  const { pane, fpsGraph } = createPane()
+
+  // Generation folder
+  const genFolder = pane.addFolder({ title: 'Generation' })
+  genFolder.addBinding(gen, 'mapSize', {
+    options: { SM: 'sm', MD: 'md', LG: 'lg', XL: 'xl' },
+    label: 'map size',
+  }).on('change', () => rebuildTilemap())
+  genFolder.addBinding(gen, 'chunkSize', {
+    options: { '256': 256, '512': 512, '1024': 1024, '2048': 2048 },
+    label: 'chunk',
+  }).on('change', () => rebuildTilemap())
+  genFolder.addBinding(gen, 'density', {
+    options: { Sparse: 'sparse', Normal: 'normal', Dense: 'dense', Packed: 'packed' },
+  }).on('change', () => rebuildTilemap())
+  genFolder.addBinding(gen, 'seed', { min: 0, max: 999999, step: 1 })
+    .on('change', () => rebuildTilemap())
+  genFolder.addButton({ title: 'Regenerate' }).on('click', () => {
+    gen.seed = Math.floor(Math.random() * 1000000)
+    pane.refresh()
     rebuildTilemap()
   })
 
-  document.getElementById('chunk-size')!.addEventListener('change', (e) => {
-    chunkSize = Number((e.target as any).value)
-    rebuildTilemap()
-  })
+  // Layers folder
+  const layerFolder = pane.addFolder({ title: 'Layers' })
+  layerFolder.addBinding(layers, 'showGround', { label: 'ground' })
+    .on('change', (ev) => {
+      const layer = tilemap.getLayerAt(0)
+      if (layer) layer.visible = ev.value
+    })
+  layerFolder.addBinding(layers, 'showWalls', { label: 'walls' })
+    .on('change', (ev) => {
+      const layer = tilemap.getLayerAt(1)
+      if (layer) layer.visible = ev.value
+    })
+  layerFolder.addBinding(layers, 'showDecor', { label: 'decor' })
+    .on('change', (ev) => {
+      const layer = tilemap.getLayerAt(2)
+      if (layer) layer.visible = ev.value
+    })
 
-  document.getElementById('density')!.addEventListener('change', (e) => {
-    density = (e.target as any).value
-    rebuildTilemap()
-  })
+  // Camera folder
+  const camFolder = pane.addFolder({ title: 'Camera' })
+  camFolder.addBinding(cam, 'zoom', { min: 0, max: 100, step: 1 })
+    .on('change', (ev) => {
+      const t = ev.value / 100
+      zoom = zoomOut * Math.pow(zoomIn / zoomOut, t)
+    })
 
-  const seedInput = document.getElementById('seed') as any
-  seedInput.addEventListener('change', () => {
-    seed = Number(seedInput.value)
-    rebuildTilemap()
-  })
-
-  const groundBtn = document.getElementById('show-ground')! as any
-  const wallsBtn = document.getElementById('show-walls')! as any
-  const decorBtn = document.getElementById('show-decor')! as any
-
-  function updateLayerButton(btn: HTMLElement, active: boolean) {
-    ;(btn as any).variant = active ? 'brand' : 'neutral'
-    const icon = btn.querySelector('[slot="start"]')
-    if (icon) icon.textContent = active ? '\u2713' : '\u2715'
-  }
-
-  groundBtn.addEventListener('click', () => {
-    showGround = !showGround
-    updateLayerButton(groundBtn, showGround)
-    const layer = tilemap.getLayerAt(0)
-    if (layer) layer.visible = showGround
-  })
-
-  wallsBtn.addEventListener('click', () => {
-    showWalls = !showWalls
-    updateLayerButton(wallsBtn, showWalls)
-    const layer = tilemap.getLayerAt(1)
-    if (layer) layer.visible = showWalls
-  })
-
-  decorBtn.addEventListener('click', () => {
-    showDecor = !showDecor
-    updateLayerButton(decorBtn, showDecor)
-    const layer = tilemap.getLayerAt(2)
-    if (layer) layer.visible = showDecor
-  })
-
-  // Set up per-line pill rounding for all wrapping groups
-  const buttonGroup = document.querySelector('#layers wa-button-group')!
-  setupWrappingGroup(buttonGroup, 'wa-button')
-  for (const rg of document.querySelectorAll('#settings wa-radio-group')) {
-    setupWrappingGroup(rg, 'wa-radio')
-  }
-
-  document.getElementById('regen-btn')!.addEventListener('click', () => {
-    seed = Math.floor(Math.random() * 999999)
-    seedInput.value = String(seed)
-    rebuildTilemap()
-  })
-
-  // Settings panel toggle (mobile)
-  const settingsToggle = document.getElementById('settings-toggle')!
-  const settingsPanel = document.getElementById('settings')!
-  settingsToggle.addEventListener('click', () => {
-    settingsPanel.classList.toggle('open')
-    settingsToggle.textContent = settingsPanel.classList.contains('open') ? '\u2715' : '\u2630'
-  })
+  // Stats folder (monitors)
+  const statsFolder = pane.addFolder({ title: 'Stats' })
+  statsFolder.addBinding(stats, 'tiles', { readonly: true })
+  statsFolder.addBinding(stats, 'chunks', { readonly: true })
+  statsFolder.addBinding(stats, 'layers', { readonly: true })
+  statsFolder.addBinding(stats, 'drawCalls', { readonly: true, label: 'draw calls' })
 
   // Camera controls
   const keys = new Set<string>()
@@ -664,11 +605,6 @@ async function main() {
     keys.add(key)
   })
   window.addEventListener('keyup', (e) => keys.delete(e.key.toLowerCase()))
-
-  zoomSlider.addEventListener('input', () => {
-    const t = Number(zoomSlider.value) / 100
-    zoom = zoomOut * Math.pow(zoomIn / zoomOut, t)
-  })
 
   // Drag to pan (pointer events, with two-finger touch support)
   let isDragging = false
@@ -768,24 +704,9 @@ async function main() {
     renderer.setSize(window.innerWidth, window.innerHeight)
   })
 
-  // Stats elements
-  const fpsEl = document.getElementById('fps')!
-  const drawCallsEl = document.getElementById('draw-calls')!
-  const tileCountEl = document.getElementById('tile-count')!
-  const chunkCountEl = document.getElementById('chunk-count')!
-  const layerCountEl = document.getElementById('layer-count')!
-
-  function updateStats() {
-    tileCountEl.textContent = String(tilemap.totalTileCount)
-    chunkCountEl.textContent = String(tilemap.totalChunkCount)
-    layerCountEl.textContent = String(tilemap.layerCount)
-  }
-  updateStats()
-
   // Animation loop
   let lastTime = performance.now()
-  let frameCount = 0
-  let fpsTime = 0
+  let statsTime = 0
 
   function animate() {
     requestAnimationFrame(animate)
@@ -793,6 +714,9 @@ async function main() {
     const now = performance.now()
     const deltaMs = now - lastTime
     lastTime = now
+
+    // FPS graph
+    fpsGraph?.begin()
 
     // Camera movement
     const speed = 200 * (deltaMs / 1000) * zoom
@@ -813,14 +737,14 @@ async function main() {
 
     renderer.render(scene, camera)
 
-    // FPS counter (read draw calls AFTER render)
-    frameCount++
-    fpsTime += deltaMs
-    if (fpsTime >= 1000) {
-      fpsEl.textContent = String(Math.round(frameCount * 1000 / fpsTime))
-      drawCallsEl.textContent = String(renderer.info.render.drawCalls)
-      frameCount = 0
-      fpsTime = 0
+    fpsGraph?.end()
+
+    // Update stats monitors periodically
+    statsTime += deltaMs
+    if (statsTime >= 1000) {
+      stats.drawCalls = renderer.info.render.drawCalls
+      pane.refresh()
+      statsTime = 0
     }
   }
 

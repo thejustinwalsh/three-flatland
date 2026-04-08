@@ -1,5 +1,5 @@
 import { Canvas, extend, useLoader, useFrame, useThree } from '@react-three/fiber/webgpu'
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useRef, useEffect, useCallback } from 'react'
 import { convertToTexture } from 'three/tsl'
 import type { WebGPURenderer } from 'three/webgpu'
 import type TextureNode from 'three/src/nodes/accessors/TextureNode.js'
@@ -22,10 +22,8 @@ import {
   staticNoise,
   chromaticAberration,
 } from '@three-flatland/nodes'
-
-import '@awesome.me/webawesome/dist/styles/themes/default.css'
-import WaRadioGroup from '@awesome.me/webawesome/dist/react/radio-group/index.js'
-import WaRadio from '@awesome.me/webawesome/dist/react/radio/index.js'
+import { usePane } from '@three-flatland/tweakpane/react'
+import type { FolderApi } from 'tweakpane'
 
 extend({ Flatland, Sprite2D })
 
@@ -195,6 +193,35 @@ function createPreset(name: PresetName): ActivePreset {
   }
 }
 
+// ─── Default Slider Values per Preset ──────────────────────────────────────
+
+const CRT_DEFAULTS = {
+  curvature: 0.08,
+  scanlineIntensity: 0.18,
+  vignetteIntensity: 0.3,
+  bloomIntensity: 0.15,
+  colorBleed: 0.0012,
+}
+
+const LCD_DEFAULTS = {
+  resolution: 200,
+  gridIntensity: 0.18,
+  subpixelIntensity: 0.12,
+  bands: 10,
+}
+
+const VHS_DEFAULTS = {
+  intensity: 0.012,
+  noiseAmount: 0.05,
+  aberration: 0.003,
+}
+
+const RETRO_DEFAULTS = {
+  levels: 8,
+  scanResolution: 300,
+  scanIntensity: 0.2,
+}
+
 // ─── Sprite Layout ──────────────────────────────────────────────────────────
 
 const SPRITE_LAYOUT = [
@@ -245,48 +272,160 @@ function SpriteScene() {
   )
 }
 
-// ─── Stats Tracker ──────────────────────────────────────────────────────────
-
-function StatsTracker({ passCount, onStats }: { passCount: number; onStats: (fps: number, draws: number) => void }) {
-  const gl = useThree((s) => s.gl)
-  const frameCount = useRef(0)
-  const elapsed = useRef(0)
-  useFrame((_, delta) => {
-    frameCount.current++
-    elapsed.current += delta
-    if (elapsed.current >= 1) {
-      // Cast: R3F types gl as WebGLRenderer, but we use WebGPURenderer which has drawCalls
-      const draws = (gl.info.render as any).drawCalls as number
-      onStats(Math.round(frameCount.current / elapsed.current), draws)
-      frameCount.current = 0
-      elapsed.current = 0
-    }
-  })
-  return null
-}
-
 // ─── Flatland + Effects Component ───────────────────────────────────────────
 
-function FlatlandScene({ preset, onPassCount }: { preset: PresetName; onPassCount: (n: number) => void }) {
+function FlatlandScene() {
   const flatlandRef = useRef<Flatland>(null)
   const gl = useThree((s) => s.gl)
   const presetRef = useRef<ActivePreset>({ passes: [], timeDriven: [] })
   const elapsedRef = useRef(0)
 
-  // Apply preset when it changes
-  useEffect(() => {
+  // Tweakpane — created once, imperatively managed
+  const { pane, fpsGraph } = usePane()
+  const fpsRef = useRef(fpsGraph)
+  fpsRef.current = fpsGraph
+
+  // Refs for folder visibility management
+  const foldersRef = useRef<Record<string, FolderApi>>({})
+  const paramsRef = useRef({
+    crt: { ...CRT_DEFAULTS },
+    lcd: { ...LCD_DEFAULTS },
+    vhs: { ...VHS_DEFAULTS },
+    retro: { ...RETRO_DEFAULTS },
+  })
+  const monitorsRef = useRef({ drawCalls: 0, passCount: 0 })
+  const refreshTimerRef = useRef(0)
+
+  const applyPreset = useCallback((name: PresetName) => {
     const flatland = flatlandRef.current
     if (!flatland) return
 
     flatland.clearPasses()
-    const active = createPreset(preset)
+
+    // Reset params to defaults
+    Object.assign(paramsRef.current.crt, CRT_DEFAULTS)
+    Object.assign(paramsRef.current.lcd, LCD_DEFAULTS)
+    Object.assign(paramsRef.current.vhs, VHS_DEFAULTS)
+    Object.assign(paramsRef.current.retro, RETRO_DEFAULTS)
+
+    const active = createPreset(name)
     for (const p of active.passes) {
       flatland.addPass(p)
     }
     presetRef.current = active
     elapsedRef.current = 0
-    onPassCount(active.passes.length)
-  }, [preset, onPassCount])
+  }, [])
+
+  // Build all tweakpane folders imperatively
+  useEffect(() => {
+    const presetParams = { preset: 'clean' as string }
+    const presetBinding = pane.addBinding(presetParams, 'preset', {
+      label: 'Preset',
+      options: {
+        Clean: 'clean',
+        'CRT Arcade': 'crt',
+        Handheld: 'lcd',
+        'VHS Tape': 'vhs',
+        'Retro PC': 'retro',
+      },
+    })
+
+    // CRT folder
+    const crtFolder = pane.addFolder({ title: 'CRT', hidden: true })
+    crtFolder.addBinding(paramsRef.current.crt, 'curvature', { min: 0, max: 0.2, step: 0.01 })
+    crtFolder.addBinding(paramsRef.current.crt, 'scanlineIntensity', { min: 0, max: 0.5, step: 0.01 })
+    crtFolder.addBinding(paramsRef.current.crt, 'vignetteIntensity', { min: 0, max: 1, step: 0.01 })
+    crtFolder.addBinding(paramsRef.current.crt, 'bloomIntensity', { min: 0, max: 0.5, step: 0.01 })
+    crtFolder.addBinding(paramsRef.current.crt, 'colorBleed', { min: 0, max: 0.005, step: 0.0001 })
+    crtFolder.on('change', () => {
+      const crt = presetRef.current.passes[0]
+      if (!crt) return
+      const c = crt as PassEffect & typeof CRT_DEFAULTS
+      c.curvature = paramsRef.current.crt.curvature
+      c.scanlineIntensity = paramsRef.current.crt.scanlineIntensity
+      c.vignetteIntensity = paramsRef.current.crt.vignetteIntensity
+      c.bloomIntensity = paramsRef.current.crt.bloomIntensity
+      c.colorBleed = paramsRef.current.crt.colorBleed
+    })
+
+    // LCD folder
+    const lcdFolder = pane.addFolder({ title: 'LCD', hidden: true })
+    lcdFolder.addBinding(paramsRef.current.lcd, 'resolution', { min: 50, max: 500, step: 10 })
+    lcdFolder.addBinding(paramsRef.current.lcd, 'gridIntensity', { min: 0, max: 0.5, step: 0.01 })
+    lcdFolder.addBinding(paramsRef.current.lcd, 'subpixelIntensity', { min: 0, max: 0.3, step: 0.01 })
+    lcdFolder.addBinding(paramsRef.current.lcd, 'bands', { min: 2, max: 16, step: 1 })
+    lcdFolder.on('change', () => {
+      const post = presetRef.current.passes[0] as PassEffect & { bands: number } | undefined
+      const grid = presetRef.current.passes[1] as PassEffect & { resolution: number; gridIntensity: number; subpixelIntensity: number } | undefined
+      if (post) post.bands = paramsRef.current.lcd.bands
+      if (grid) {
+        grid.resolution = paramsRef.current.lcd.resolution
+        grid.gridIntensity = paramsRef.current.lcd.gridIntensity
+        grid.subpixelIntensity = paramsRef.current.lcd.subpixelIntensity
+      }
+    })
+
+    // VHS folder
+    const vhsFolder = pane.addFolder({ title: 'VHS', hidden: true })
+    vhsFolder.addBinding(paramsRef.current.vhs, 'intensity', { min: 0, max: 0.05, step: 0.001 })
+    vhsFolder.addBinding(paramsRef.current.vhs, 'noiseAmount', { min: 0, max: 0.2, step: 0.005 })
+    vhsFolder.addBinding(paramsRef.current.vhs, 'aberration', { min: 0, max: 0.01, step: 0.001 })
+    vhsFolder.on('change', () => {
+      const vhs = presetRef.current.passes[0] as PassEffect & { intensity: number; noiseAmount: number } | undefined
+      const aber = presetRef.current.passes[2] as PassEffect & { amount: number } | undefined
+      if (vhs) {
+        vhs.intensity = paramsRef.current.vhs.intensity
+        vhs.noiseAmount = paramsRef.current.vhs.noiseAmount
+      }
+      if (aber) aber.amount = paramsRef.current.vhs.aberration
+    })
+
+    // Retro folder
+    const retroFolder = pane.addFolder({ title: 'Retro', hidden: true })
+    retroFolder.addBinding(paramsRef.current.retro, 'levels', { min: 2, max: 16, step: 1 })
+    retroFolder.addBinding(paramsRef.current.retro, 'scanResolution', { min: 100, max: 500, step: 10 })
+    retroFolder.addBinding(paramsRef.current.retro, 'scanIntensity', { min: 0, max: 0.5, step: 0.01 })
+    retroFolder.on('change', () => {
+      const quant = presetRef.current.passes[0] as PassEffect & { levels: number } | undefined
+      const scan = presetRef.current.passes[1] as PassEffect & { resolution: number; intensity: number } | undefined
+      if (quant) quant.levels = paramsRef.current.retro.levels
+      if (scan) {
+        scan.resolution = paramsRef.current.retro.scanResolution
+        scan.intensity = paramsRef.current.retro.scanIntensity
+      }
+    })
+
+    // Monitors folder
+    const monitorFolder = pane.addFolder({ title: 'Monitors' })
+    monitorFolder.addBinding(monitorsRef.current, 'drawCalls', { readonly: true })
+    monitorFolder.addBinding(monitorsRef.current, 'passCount', { readonly: true })
+
+    foldersRef.current = { crt: crtFolder, lcd: lcdFolder, vhs: vhsFolder, retro: retroFolder }
+
+    // Preset change handler
+    presetBinding.on('change', (ev) => {
+      const value = ev.value as PresetName
+      for (const [key, folder] of Object.entries(foldersRef.current)) {
+        folder.hidden = key !== value
+      }
+      applyPreset(value)
+      pane.refresh()
+    })
+
+    return () => {
+      presetBinding.dispose()
+      crtFolder.dispose()
+      lcdFolder.dispose()
+      vhsFolder.dispose()
+      retroFolder.dispose()
+      monitorFolder.dispose()
+    }
+  }, [pane, applyPreset])
+
+  // FPS graph + render loop
+  useFrame(() => {
+    fpsRef.current?.begin()
+  }, -Infinity)
 
   useFrame((_state, delta) => {
     const flatland = flatlandRef.current
@@ -301,7 +440,20 @@ function FlatlandScene({ preset, onPassCount }: { preset: PresetName; onPassCoun
 
     // Cast: R3F types gl as WebGLRenderer, but Canvas from fiber/webgpu provides WebGPURenderer
     flatland.render(gl as unknown as WebGPURenderer)
+
+    // Update monitors periodically
+    refreshTimerRef.current += delta
+    if (refreshTimerRef.current >= 0.5) {
+      monitorsRef.current.drawCalls = flatland.stats.drawCalls
+      monitorsRef.current.passCount = presetRef.current.passes.length
+      pane.refresh()
+      refreshTimerRef.current = 0
+    }
   })
+
+  useFrame(() => {
+    fpsRef.current?.end()
+  }, Infinity)
 
   return (
     <flatland ref={flatlandRef} viewSize={80} clearColor={0x1a1a2e}>
@@ -310,149 +462,16 @@ function FlatlandScene({ preset, onPassCount }: { preset: PresetName; onPassCoun
   )
 }
 
-// ─── Preset Options ─────────────────────────────────────────────────────────
-
-const PRESET_OPTIONS = [
-  { value: 'clean', label: 'Clean' },
-  { value: 'crt', label: 'CRT Arcade' },
-  { value: 'lcd', label: 'Handheld' },
-  { value: 'vhs', label: 'VHS Tape' },
-  { value: 'retro', label: 'Retro PC' },
-] as const
-
 // ─── App ────────────────────────────────────────────────────────────────────
 
 export default function App() {
-  const [preset, setPreset] = useState<PresetName>('clean')
-  const [passCount, setPassCount] = useState(0)
-  const [stats, setStats] = useState({ fps: '-' as string | number, draws: '-' as string | number })
-  const controlsRef = useRef<HTMLDivElement>(null)
-
-  const handleStats = useCallback((fps: number, draws: number) => setStats({ fps, draws }), [])
-  const handlePassCount = useCallback((n: number) => setPassCount(n), [])
-
-  // Per-line pill rounding for wrapped radio groups
-  useEffect(() => {
-    const group = controlsRef.current?.querySelector('wa-radio-group')
-    if (!group) return
-    const update = () => {
-      const radios = [...group.querySelectorAll('wa-radio')]
-      if (!radios.length) return
-      const lines: Element[][] = []
-      let lastTop = -Infinity
-      let line: Element[] = []
-      for (const radio of radios) {
-        const top = radio.getBoundingClientRect().top
-        if (Math.abs(top - lastTop) > 2) {
-          if (line.length) lines.push(line)
-          line = []
-          lastTop = top
-        }
-        line.push(radio)
-      }
-      if (line.length) lines.push(line)
-      for (const ln of lines) {
-        for (let i = 0; i < ln.length; i++) {
-          const pos =
-            ln.length === 1 ? 'solo' :
-            i === 0 ? 'first' :
-            i === ln.length - 1 ? 'last' : 'inner'
-          ln[i]!.setAttribute('data-line-pos', pos)
-        }
-      }
-    }
-    const ro = new ResizeObserver(update)
-    ro.observe(group)
-    update()
-    return () => ro.disconnect()
-  }, [])
-
   return (
-    <>
-      {/* Hide radio group label */}
-      <style>{`
-        .filter-bar wa-radio-group::part(form-control-label) { display: none; }
-        .filter-bar wa-radio-group::part(form-control) { margin: 0; border: 0; padding: 0; }
-        .filter-bar wa-radio-group::part(form-control-input) { row-gap: 4px; justify-content: center; }
-        wa-radio[data-line-pos="first"] {
-          border-start-start-radius: var(--wa-border-radius-m);
-          border-end-start-radius: var(--wa-border-radius-m);
-          border-start-end-radius: 0;
-          border-end-end-radius: 0;
-        }
-        wa-radio[data-line-pos="inner"] { border-radius: 0; }
-        wa-radio[data-line-pos="last"] {
-          border-start-end-radius: var(--wa-border-radius-m);
-          border-end-end-radius: var(--wa-border-radius-m);
-          border-start-start-radius: 0;
-          border-end-start-radius: 0;
-        }
-        wa-radio[data-line-pos="solo"] { border-radius: var(--wa-border-radius-m); }
-      `}</style>
-
-      {/* Controls — centered bottom bar */}
-      <div
-        ref={controlsRef}
-        className="filter-bar"
-        style={{
-          position: 'fixed',
-          bottom: 32,
-          left: '50%',
-          transform: 'translateX(-50%)',
-          zIndex: 100,
-          pointerEvents: 'auto',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 6,
-          maxWidth: 'calc(100vw - 24px)',
-        }}
-      >
-        <WaRadioGroup
-          label="Display Filter"
-          size="small"
-          orientation="horizontal"
-          value={preset}
-          onChange={(e: any) =>
-            setPreset((e.target as HTMLInputElement).value as PresetName)
-          }
-        >
-          {PRESET_OPTIONS.map((opt) => (
-            <WaRadio key={opt.value} value={opt.value} size="small" appearance="button">
-              {opt.label}
-            </WaRadio>
-          ))}
-        </WaRadioGroup>
-      </div>
-
-      {/* Stats overlay */}
-      <div
-        style={{
-          position: 'fixed',
-          top: 12,
-          right: 12,
-          padding: '5px 10px',
-          background: 'rgba(0, 2, 28, 0.7)',
-          borderRadius: 6,
-          color: '#4a9eff',
-          fontFamily: 'monospace',
-          fontSize: 10,
-          lineHeight: 1.5,
-          zIndex: 100,
-          whiteSpace: 'pre',
-        }}
-      >
-        {`FPS: ${stats.fps}\nDraws: ${stats.draws}\nPasses: ${passCount}`}
-      </div>
-
-      {/* Three.js Canvas */}
-      <Canvas
-        orthographic
-        camera={{ zoom: 5, position: [0, 0, 100] }}
-        renderer={{ antialias: true }}
-      >
-        <StatsTracker passCount={passCount} onStats={handleStats} />
-        <FlatlandScene preset={preset} onPassCount={handlePassCount} />
-      </Canvas>
-    </>
+    <Canvas
+      orthographic
+      camera={{ zoom: 5, position: [0, 0, 100] }}
+      renderer={{ antialias: true }}
+    >
+      <FlatlandScene />
+    </Canvas>
   )
 }

@@ -11,7 +11,10 @@
   },
   "dependencies": {
     "@three-flatland/skia": "^0.1.0-alpha.2",
-    "three": "^0.183.1"
+    "@three-flatland/tweakpane": "^0.1.0-alpha.1",
+    "@tweakpane/plugin-essentials": "^0.2.1",
+    "three": "^0.183.1",
+    "tweakpane": "^4.0.5"
   },
   "devDependencies": {
     "@types/three": "^0.183.1",

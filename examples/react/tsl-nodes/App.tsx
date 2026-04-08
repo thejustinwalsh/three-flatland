@@ -1,4 +1,4 @@
-import { Suspense, useMemo, useRef, useEffect, useState, useCallback } from 'react'
+import { Suspense, useMemo, useRef, useEffect, useCallback } from 'react'
 import { Canvas, useFrame, useThree, useLoader } from '@react-three/fiber/webgpu'
 import {
   texture as sampleTexture,
@@ -31,10 +31,7 @@ import {
   dissolvePixelated,
   tint,
 } from '@three-flatland/nodes'
-
-import '@awesome.me/webawesome/dist/styles/themes/default.css'
-import WaRadioGroup from '@awesome.me/webawesome/dist/react/radio-group/index.js'
-import WaRadio from '@awesome.me/webawesome/dist/react/radio/index.js'
+import { usePane, usePaneInput } from '@three-flatland/tweakpane/react'
 
 // ========================================
 // Types
@@ -49,17 +46,6 @@ type EffectType =
   | 'select'
   | 'shadow'
   | 'pixelate'
-
-const effectLabels: Record<EffectType, string> = {
-  normal: 'Normal',
-  damage: 'Damage',
-  dissolve: 'Dissolve',
-  powerup: 'Rainbow',
-  petrify: 'Stone',
-  select: 'Outline',
-  shadow: 'Shadow',
-  pixelate: 'Pixelate',
-}
 
 // Animation set
 const animationSet: AnimationSetDefinition = {
@@ -359,25 +345,79 @@ function EffectSprite({ effect }: EffectSpriteProps) {
 }
 
 // ========================================
-// Stats tracker
+// Scene component (Tweakpane lives here, inside Canvas)
 // ========================================
 
-function StatsTracker({ onStats }: { onStats: (fps: number, draws: number) => void }) {
-  const gl = useThree((s) => s.gl)
-  const frameCount = useRef(0)
-  const elapsed = useRef(0)
-  useFrame((_, delta) => {
-    frameCount.current++
-    elapsed.current += delta
-    if (elapsed.current >= 1) {
-      // Cast: R3F types gl as WebGLRenderer, but we use WebGPURenderer which has drawCalls
-      const draws = (gl.info.render as any).drawCalls as number
-      onStats(Math.round(frameCount.current / elapsed.current), draws)
-      frameCount.current = 0
-      elapsed.current = 0
-    }
+function Scene() {
+  const { pane, fpsGraph } = usePane()
+
+  const [effect, setEffect] = usePaneInput<string>(pane, 'effect', 'normal', {
+    options: {
+      Normal: 'normal',
+      Damage: 'damage',
+      Dissolve: 'dissolve',
+      Rainbow: 'powerup',
+      Stone: 'petrify',
+      Outline: 'select',
+      Shadow: 'shadow',
+      Pixelate: 'pixelate',
+    },
   })
-  return null
+
+  // Draw calls monitor
+  const gl = useThree((s) => s.gl)
+  const drawCallsParams = useRef({ drawCalls: 0 })
+  const drawBindingRef = useRef<{ refresh(): void; dispose(): void } | null>(null)
+
+  useEffect(() => {
+    if (!pane) return
+    const binding = pane.addBinding(drawCallsParams.current, 'drawCalls', {
+      readonly: true,
+      label: 'draws',
+    })
+    drawBindingRef.current = binding as unknown as { refresh(): void; dispose(): void }
+    return () => {
+      binding.dispose()
+      drawBindingRef.current = null
+    }
+  }, [pane])
+
+  // Keyboard controls
+  useEffect(() => {
+    const effects: EffectType[] = ['normal', 'damage', 'dissolve', 'powerup', 'petrify', 'select', 'shadow', 'pixelate']
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const idx = parseInt(e.key) - 1
+      if (idx >= 0 && idx < effects.length) {
+        setEffect(effects[idx]!)
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [setEffect])
+
+  // FPS graph begin/end
+  const fpsRef = useRef(fpsGraph)
+  fpsRef.current = fpsGraph
+
+  useFrame(() => {
+    fpsRef.current?.begin()
+  }, -Infinity)
+
+  useFrame(() => {
+    fpsRef.current?.end()
+    // Update draw calls
+    drawCallsParams.current.drawCalls = (gl.info.render as any).drawCalls as number
+    drawBindingRef.current?.refresh()
+  }, Infinity)
+
+  return (
+    <>
+      <color attach="background" args={['#1a1a2e']} />
+      <Suspense fallback={null}>
+        <EffectSprite effect={effect as EffectType} />
+      </Suspense>
+    </>
+  )
 }
 
 // ========================================
@@ -385,133 +425,9 @@ function StatsTracker({ onStats }: { onStats: (fps: number, draws: number) => vo
 // ========================================
 
 export default function App() {
-  const [effect, setEffect] = useState<EffectType>('normal')
-  const controlsRef = useRef<HTMLDivElement>(null)
-  const [stats, setStats] = useState({ fps: '-' as string | number, draws: '-' as string | number })
-  const handleStats = useCallback((fps: number, draws: number) => setStats({ fps, draws }), [])
-
-  // Per-line pill rounding for wrapped radio groups
-  useEffect(() => {
-    const group = controlsRef.current?.querySelector('wa-radio-group')
-    if (!group) return
-    const update = () => {
-      const radios = [...group.querySelectorAll('wa-radio')]
-      if (!radios.length) return
-      const lines: Element[][] = []
-      let lastTop = -Infinity
-      let line: Element[] = []
-      for (const radio of radios) {
-        const top = radio.getBoundingClientRect().top
-        if (Math.abs(top - lastTop) > 2) {
-          if (line.length) lines.push(line)
-          line = []
-          lastTop = top
-        }
-        line.push(radio)
-      }
-      if (line.length) lines.push(line)
-      for (const ln of lines) {
-        for (let i = 0; i < ln.length; i++) {
-          const pos =
-            ln.length === 1 ? 'solo' :
-            i === 0 ? 'first' :
-            i === ln.length - 1 ? 'last' : 'inner'
-          ln[i]!.setAttribute('data-line-pos', pos)
-        }
-      }
-    }
-    const ro = new ResizeObserver(update)
-    ro.observe(group)
-    update()
-    return () => ro.disconnect()
-  }, [])
-
-  // Keyboard controls
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      const keyMap: Record<string, EffectType> = {
-        '1': 'normal',
-        '2': 'damage',
-        '3': 'dissolve',
-        '4': 'powerup',
-        '5': 'petrify',
-        '6': 'select',
-        '7': 'shadow',
-        '8': 'pixelate',
-      }
-      if (keyMap[e.key]) {
-        setEffect(keyMap[e.key]!)
-      }
-    }
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [])
-
   return (
     <>
-      {/* Hide radio group label via shadow DOM part */}
-      <style>{`
-        .effect-bar wa-radio-group::part(form-control-label) { display: none; }
-        .effect-bar wa-radio-group::part(form-control) { margin: 0; border: 0; padding: 0; }
-        .effect-bar wa-radio-group::part(form-control-input) { row-gap: 4px; justify-content: center; }
-        wa-radio[data-line-pos="first"] {
-          border-start-start-radius: var(--wa-border-radius-m);
-          border-end-start-radius: var(--wa-border-radius-m);
-          border-start-end-radius: 0;
-          border-end-end-radius: 0;
-        }
-        wa-radio[data-line-pos="inner"] { border-radius: 0; }
-        wa-radio[data-line-pos="last"] {
-          border-start-end-radius: var(--wa-border-radius-m);
-          border-end-end-radius: var(--wa-border-radius-m);
-          border-start-start-radius: 0;
-          border-end-start-radius: 0;
-        }
-        wa-radio[data-line-pos="solo"] { border-radius: var(--wa-border-radius-m); }
-      `}</style>
-
-      {/* Stats overlay with keyboard hint */}
-      <div
-        style={{
-          position: 'fixed',
-          top: 12,
-          right: 12,
-          padding: '5px 10px',
-          background: 'rgba(0, 2, 28, 0.7)',
-          borderRadius: 6,
-          color: '#4a9eff',
-          fontFamily: 'monospace',
-          fontSize: 10,
-          lineHeight: 1.5,
-          zIndex: 100,
-          whiteSpace: 'pre',
-        }}
-      >
-        {`FPS: ${stats.fps}\nDraws: ${stats.draws}\n`}<span style={{ color: '#555' }}>1–8</span>
-      </div>
-
-      {/* Effect picker — centered, floating, game-like */}
-      <div
-        ref={controlsRef}
-        className="effect-bar"
-        style={{
-          position: 'fixed',
-          bottom: 32,
-          left: '50%',
-          transform: 'translateX(-50%)',
-          zIndex: 100,
-          pointerEvents: 'auto',
-          maxWidth: 'calc(100vw - 24px)',
-        }}
-      >
-        <WaRadioGroup label="Effect" size="small" orientation="horizontal" value={effect} onChange={(e: any) => setEffect((e.target as HTMLInputElement).value as EffectType)}>
-          {(Object.entries(effectLabels) as [EffectType, string][]).map(([value, label]) => (
-            <WaRadio key={value} value={value} size="small" appearance="button">{label}</WaRadio>
-          ))}
-        </WaRadioGroup>
-      </div>
-
-      {/* Attribution — centered bottom */}
+      {/* Attribution -- centered bottom */}
       <div
         style={{
           position: 'fixed',
@@ -542,11 +458,7 @@ export default function App() {
         camera={{ zoom: 5, position: [0, 0, 100] }}
         renderer={{ antialias: false }}
       >
-        <color attach="background" args={['#1a1a2e']} />
-        <StatsTracker onStats={handleStats} />
-        <Suspense fallback={null}>
-          <EffectSprite effect={effect} />
-        </Suspense>
+        <Scene />
       </Canvas>
     </>
   )

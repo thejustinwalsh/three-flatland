@@ -1,6 +1,7 @@
 import { WebGPURenderer } from 'three/webgpu'
 import { Scene, OrthographicCamera, Color, Vector2, Raycaster, Plane, Vector3 } from 'three'
 import { Sprite2D, Sprite2DMaterial, SpriteGroup, Layers, TextureLoader } from 'three-flatland'
+import { createPane } from '@three-flatland/tweakpane'
 
 // Configuration
 const TILE_SIZE = 64
@@ -315,11 +316,13 @@ async function main() {
   selectedBuilding = 0 // Back to house
   updateHoverSprite()
 
-  // Stats display
-  const statsEl = document.getElementById('stats')!
-  let frameCount = 0
-  let fpsTime = 0
-  let currentFps = 0
+  // Tweakpane debug UI
+  const { pane, fpsGraph } = createPane()
+  const stats = { sprites: 0, batches: 0, drawCalls: 0 }
+  const statsFolder = pane.addFolder({ title: 'Stats' })
+  statsFolder.addBinding(stats, 'sprites', { readonly: true })
+  statsFolder.addBinding(stats, 'batches', { readonly: true })
+  statsFolder.addBinding(stats, 'drawCalls', { readonly: true, label: 'draws' })
 
   // Handle resize
   function handleResize() {
@@ -347,28 +350,19 @@ async function main() {
   handleResize()
 
   // Animation loop
-  let lastTime = performance.now()
-
   function animate() {
     requestAnimationFrame(animate)
 
-    const now = performance.now()
-    const deltaMs = now - lastTime
-    lastTime = now
-
+    fpsGraph?.begin()
     renderer.render(scene, camera)
+    fpsGraph?.end()
 
-    // Update stats (~once per second)
-    frameCount++
-    fpsTime += deltaMs
-    if (fpsTime >= 1000) {
-      currentFps = Math.round(frameCount * 1000 / fpsTime)
-      frameCount = 0
-      fpsTime = 0
-
-      const stats = spriteGroup.stats
-      statsEl.innerHTML = `FPS: ${currentFps}<br>Draws: ${renderer.info.render.drawCalls}<br>Sprites: ${stats.spriteCount}<br>Batches: ${stats.batchCount}`
-    }
+    // Update stats monitors
+    const groupStats = spriteGroup.stats
+    stats.sprites = groupStats.spriteCount
+    stats.batches = groupStats.batchCount
+    stats.drawCalls = renderer.info.render.drawCalls
+    pane.refresh()
   }
 
   animate()

@@ -26,10 +26,8 @@ import {
   staticNoise,
   chromaticAberration,
 } from '@three-flatland/nodes'
-
-import '@awesome.me/webawesome/dist/styles/themes/default.css'
-import '@awesome.me/webawesome/dist/components/radio-group/radio-group.js'
-import '@awesome.me/webawesome/dist/components/radio/radio.js'
+import { createPane } from '@three-flatland/tweakpane'
+import type { FolderApi } from 'tweakpane'
 
 // ─── PassEffect Definitions ─────────────────────────────────────────────────
 
@@ -232,39 +230,33 @@ function createPreset(name: PresetName): ActivePreset {
   }
 }
 
-// ─── Wrapping Group Helper ──────────────────────────────────────────────────
+// ─── Default Slider Values per Preset ──────────────────────────────────────
 
-function setupWrappingGroup(container: Element, childSelector: string) {
-  const update = () => {
-    const children = [...container.querySelectorAll(childSelector)]
-    if (!children.length) return
-    const lines: Element[][] = []
-    let lastTop = -Infinity
-    let line: Element[] = []
-    for (const child of children) {
-      const top = child.getBoundingClientRect().top
-      if (Math.abs(top - lastTop) > 2) {
-        if (line.length) lines.push(line)
-        line = []
-        lastTop = top
-      }
-      line.push(child)
-    }
-    if (line.length) lines.push(line)
-    for (const ln of lines) {
-      for (let i = 0; i < ln.length; i++) {
-        const pos =
-          ln.length === 1 ? 'solo' :
-          i === 0 ? 'first' :
-          i === ln.length - 1 ? 'last' : 'inner'
-        ln[i]!.setAttribute('data-line-pos', pos)
-      }
-    }
-  }
-  const ro = new ResizeObserver(update)
-  ro.observe(container)
-  update()
-  return () => ro.disconnect()
+const CRT_DEFAULTS = {
+  curvature: 0.08,
+  scanlineIntensity: 0.18,
+  vignetteIntensity: 0.3,
+  bloomIntensity: 0.15,
+  colorBleed: 0.0012,
+}
+
+const LCD_DEFAULTS = {
+  resolution: 200,
+  gridIntensity: 0.18,
+  subpixelIntensity: 0.12,
+  bands: 10,
+}
+
+const VHS_DEFAULTS = {
+  intensity: 0.012,
+  noiseAmount: 0.05,
+  aberration: 0.003,
+}
+
+const RETRO_DEFAULTS = {
+  levels: 8,
+  scanResolution: 300,
+  scanIntensity: 0.2,
 }
 
 // ─── Scene Setup ────────────────────────────────────────────────────────────
@@ -316,31 +308,147 @@ async function main() {
   let activePreset: ActivePreset = createPreset('clean')
   let elapsed = 0
 
+  // Slider param objects (mutated by tweakpane bindings)
+  const crtParams = { ...CRT_DEFAULTS }
+  const lcdParams = { ...LCD_DEFAULTS }
+  const vhsParams = { ...VHS_DEFAULTS }
+  const retroParams = { ...RETRO_DEFAULTS }
+
   function applyPreset(name: PresetName) {
     // Remove old passes
     flatland.clearPasses()
+
+    // Reset slider params to defaults
+    Object.assign(crtParams, CRT_DEFAULTS)
+    Object.assign(lcdParams, LCD_DEFAULTS)
+    Object.assign(vhsParams, VHS_DEFAULTS)
+    Object.assign(retroParams, RETRO_DEFAULTS)
 
     // Create and add new preset
     activePreset = createPreset(name)
     for (const p of activePreset.passes) {
       flatland.addPass(p)
     }
+
+    // Refresh pane to show reset values
+    pane.refresh()
   }
 
-  // ─── UI ─────────────────────────────────────────────────────────────────
+  // ─── Tweakpane UI ───────────────────────────────────────────────────────
 
-  const radioGroup = document.querySelector('wa-radio-group')!
-  setupWrappingGroup(radioGroup, 'wa-radio')
-  radioGroup.addEventListener('change', (e) => {
-    const value = (e.target as HTMLInputElement).value as PresetName
-    applyPreset(value)
+  const { pane, fpsGraph } = createPane()
+
+  const params = { preset: 'clean' as string }
+  const presetBinding = pane.addBinding(params, 'preset', {
+    label: 'Preset',
+    options: {
+      Clean: 'clean',
+      'CRT Arcade': 'crt',
+      Handheld: 'lcd',
+      'VHS Tape': 'vhs',
+      'Retro PC': 'retro',
+    },
   })
 
-  const statsEl = document.getElementById('stats')!
-  let frameCount = 0
-  let fpsElapsed = 0
-  let displayFps: string | number = '-'
-  let displayDraws: string | number = '-'
+  // ─── CRT Folder ─────────────────────────────────────────────────────────
+
+  const crtFolder = pane.addFolder({ title: 'CRT', hidden: true })
+  crtFolder.addBinding(crtParams, 'curvature', { min: 0, max: 0.2, step: 0.01 })
+  crtFolder.addBinding(crtParams, 'scanlineIntensity', { min: 0, max: 0.5, step: 0.01 })
+  crtFolder.addBinding(crtParams, 'vignetteIntensity', { min: 0, max: 1, step: 0.01 })
+  crtFolder.addBinding(crtParams, 'bloomIntensity', { min: 0, max: 0.5, step: 0.01 })
+  crtFolder.addBinding(crtParams, 'colorBleed', { min: 0, max: 0.005, step: 0.0001 })
+
+  crtFolder.on('change', () => {
+    const crt = activePreset.passes[0]
+    if (!crt) return
+    const c = crt as PassEffect & typeof CRT_DEFAULTS
+    c.curvature = crtParams.curvature
+    c.scanlineIntensity = crtParams.scanlineIntensity
+    c.vignetteIntensity = crtParams.vignetteIntensity
+    c.bloomIntensity = crtParams.bloomIntensity
+    c.colorBleed = crtParams.colorBleed
+  })
+
+  // ─── LCD Folder ─────────────────────────────────────────────────────────
+
+  const lcdFolder = pane.addFolder({ title: 'LCD', hidden: true })
+  lcdFolder.addBinding(lcdParams, 'resolution', { min: 50, max: 500, step: 10 })
+  lcdFolder.addBinding(lcdParams, 'gridIntensity', { min: 0, max: 0.5, step: 0.01 })
+  lcdFolder.addBinding(lcdParams, 'subpixelIntensity', { min: 0, max: 0.3, step: 0.01 })
+  lcdFolder.addBinding(lcdParams, 'bands', { min: 2, max: 16, step: 1 })
+
+  lcdFolder.on('change', () => {
+    // LCD preset: [posterize, lcdGrid, backlight, vignette]
+    const post = activePreset.passes[0] as PassEffect & { bands: number } | undefined
+    const grid = activePreset.passes[1] as PassEffect & { resolution: number; gridIntensity: number; subpixelIntensity: number } | undefined
+    if (post) post.bands = lcdParams.bands
+    if (grid) {
+      grid.resolution = lcdParams.resolution
+      grid.gridIntensity = lcdParams.gridIntensity
+      grid.subpixelIntensity = lcdParams.subpixelIntensity
+    }
+  })
+
+  // ─── VHS Folder ─────────────────────────────────────────────────────────
+
+  const vhsFolder = pane.addFolder({ title: 'VHS', hidden: true })
+  vhsFolder.addBinding(vhsParams, 'intensity', { min: 0, max: 0.05, step: 0.001 })
+  vhsFolder.addBinding(vhsParams, 'noiseAmount', { min: 0, max: 0.2, step: 0.005 })
+  vhsFolder.addBinding(vhsParams, 'aberration', { min: 0, max: 0.01, step: 0.001 })
+
+  vhsFolder.on('change', () => {
+    // VHS preset: [vhs, static, aberration]
+    const vhs = activePreset.passes[0] as PassEffect & { intensity: number; noiseAmount: number } | undefined
+    const aber = activePreset.passes[2] as PassEffect & { amount: number } | undefined
+    if (vhs) {
+      vhs.intensity = vhsParams.intensity
+      vhs.noiseAmount = vhsParams.noiseAmount
+    }
+    if (aber) aber.amount = vhsParams.aberration
+  })
+
+  // ─── Retro Folder ───────────────────────────────────────────────────────
+
+  const retroFolder = pane.addFolder({ title: 'Retro', hidden: true })
+  retroFolder.addBinding(retroParams, 'levels', { min: 2, max: 16, step: 1 })
+  retroFolder.addBinding(retroParams, 'scanResolution', { min: 100, max: 500, step: 10 })
+  retroFolder.addBinding(retroParams, 'scanIntensity', { min: 0, max: 0.5, step: 0.01 })
+
+  retroFolder.on('change', () => {
+    // Retro preset: [quantize, scanlines, vignette]
+    const quant = activePreset.passes[0] as PassEffect & { levels: number } | undefined
+    const scan = activePreset.passes[1] as PassEffect & { resolution: number; intensity: number } | undefined
+    if (quant) quant.levels = retroParams.levels
+    if (scan) {
+      scan.resolution = retroParams.scanResolution
+      scan.intensity = retroParams.scanIntensity
+    }
+  })
+
+  // ─── Monitors ───────────────────────────────────────────────────────────
+
+  const monitors = { drawCalls: 0, passCount: 0 }
+  const monitorFolder = pane.addFolder({ title: 'Monitors' })
+  monitorFolder.addBinding(monitors, 'drawCalls', { readonly: true })
+  monitorFolder.addBinding(monitors, 'passCount', { readonly: true })
+
+  // ─── Folder Visibility Toggle ───────────────────────────────────────────
+
+  const folders: Record<string, FolderApi> = {
+    crt: crtFolder,
+    lcd: lcdFolder,
+    vhs: vhsFolder,
+    retro: retroFolder,
+  }
+
+  presetBinding.on('change', (ev) => {
+    const value = ev.value as PresetName
+    for (const [key, folder] of Object.entries(folders)) {
+      folder.hidden = key !== value
+    }
+    applyPreset(value)
+  })
 
   // ─── Resize ─────────────────────────────────────────────────────────────
 
@@ -352,9 +460,11 @@ async function main() {
   // ─── Render Loop ────────────────────────────────────────────────────────
 
   let lastTime = performance.now()
+  let refreshTimer = 0
 
   function animate() {
     requestAnimationFrame(animate)
+    fpsGraph?.begin()
 
     const now = performance.now()
     const delta = (now - lastTime) / 1000
@@ -376,17 +486,16 @@ async function main() {
 
     flatland.render(renderer)
 
-    // Stats (update once per second)
-    frameCount++
-    fpsElapsed += delta
-    if (fpsElapsed >= 1) {
-      displayFps = Math.round(frameCount / fpsElapsed)
-      displayDraws = flatland.stats.drawCalls
-      frameCount = 0
-      fpsElapsed = 0
+    // Update monitors periodically
+    refreshTimer += delta
+    if (refreshTimer >= 0.5) {
+      monitors.drawCalls = flatland.stats.drawCalls
+      monitors.passCount = activePreset.passes.length
+      pane.refresh()
+      refreshTimer = 0
     }
-    const passCount = activePreset.passes.length
-    statsEl.textContent = `FPS: ${displayFps}\nDraws: ${displayDraws}\nPasses: ${passCount}`
+
+    fpsGraph?.end()
   }
 
   animate()

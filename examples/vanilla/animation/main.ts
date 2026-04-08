@@ -1,43 +1,7 @@
 import { WebGPURenderer } from 'three/webgpu'
 import { Scene, OrthographicCamera, Color, NearestFilter } from 'three'
 import { AnimatedSprite2D, SpriteSheetLoader, Layers } from 'three-flatland'
-import '@awesome.me/webawesome/dist/styles/themes/default.css'
-import '@awesome.me/webawesome/dist/components/radio-group/radio-group.js'
-import '@awesome.me/webawesome/dist/components/radio/radio.js'
-
-/** Re-apply per-line first/last pill rounding when wa-radio-group wraps */
-function setupWrappingRadioGroup(group: Element) {
-  const update = () => {
-    const radios = [...group.querySelectorAll('wa-radio')]
-    if (!radios.length) return
-    const lines: Element[][] = []
-    let lastTop = -Infinity
-    let line: Element[] = []
-    for (const radio of radios) {
-      const top = radio.getBoundingClientRect().top
-      if (Math.abs(top - lastTop) > 2) {
-        if (line.length) lines.push(line)
-        line = []
-        lastTop = top
-      }
-      line.push(radio)
-    }
-    if (line.length) lines.push(line)
-    for (const ln of lines) {
-      for (let i = 0; i < ln.length; i++) {
-        const pos =
-          ln.length === 1 ? 'solo' :
-          i === 0 ? 'first' :
-          i === ln.length - 1 ? 'last' : 'inner'
-        ln[i]!.setAttribute('data-line-pos', pos)
-      }
-    }
-  }
-  const ro = new ResizeObserver(update)
-  ro.observe(group)
-  update()
-  return () => ro.disconnect()
-}
+import { createPane } from '@three-flatland/tweakpane'
 
 async function main() {
   // Scene setup
@@ -147,36 +111,38 @@ async function main() {
   knight.position.set(0, 0, 0)
   scene.add(knight)
 
+  // Tweakpane UI
+  const { pane, fpsGraph } = createPane()
+  const params = { animation: 'idle', speed: 1, drawCalls: 0 }
+
+  const animFolder = pane.addFolder({ title: 'Animation' })
+
   function playAnimation(name: string) {
     knight.play(name, {
       onComplete: () => {
         // Return to idle after non-looping animations
         if (name === 'hit' || name === 'death') {
-          const radioGroup = document.querySelector('wa-radio-group')! as any
-          radioGroup.value = 'idle'
+          params.animation = 'idle'
+          animBinding.refresh()
           playAnimation('idle')
         }
       },
     })
   }
 
-  const radioGroup = document.querySelector('wa-radio-group')!
-  setupWrappingRadioGroup(radioGroup)
-
-  radioGroup.addEventListener('change', (e) => {
-    const value = (e.target as any).value
-    playAnimation(value)
+  const animBinding = animFolder.addBinding(params, 'animation', {
+    options: { Idle: 'idle', Run: 'run', Roll: 'roll', Hit: 'hit', Death: 'death' },
+  }).on('change', (ev) => {
+    playAnimation(ev.value)
   })
 
-  // Speed cycle button
-  const speeds = [0.5, 1, 1.5, 2, 3]
-  let speedIndex = 1
-  const speedBtn = document.getElementById('speed-btn')!
-  speedBtn.addEventListener('click', () => {
-    speedIndex = (speedIndex + 1) % speeds.length
-    knight.speed = speeds[speedIndex]!
-    speedBtn.textContent = `${speeds[speedIndex]}x`
+  animFolder.addBinding(params, 'speed', {
+    options: { '0.5x': 0.5, '1x': 1, '1.5x': 1.5, '2x': 2, '3x': 3 },
+  }).on('change', (ev) => {
+    knight.speed = ev.value
   })
+
+  pane.addBinding(params, 'drawCalls', { readonly: true, label: 'draws' })
 
   // Handle resize
   window.addEventListener('resize', () => {
@@ -189,12 +155,6 @@ async function main() {
     renderer.setSize(window.innerWidth, window.innerHeight)
   })
 
-  // Stats
-  const statsEl = document.getElementById('stats')!
-  let frameCount = 0
-  let fpsTime = 0
-  let currentFps = 0
-
   // Animation loop
   let lastTime = performance.now()
 
@@ -205,20 +165,17 @@ async function main() {
     const deltaMs = now - lastTime
     lastTime = now
 
+    fpsGraph?.begin()
+
     // Update sprite animation
     knight.update(deltaMs)
 
     renderer.render(scene, camera)
 
-    // Update stats (~once per second)
-    frameCount++
-    fpsTime += deltaMs
-    if (fpsTime >= 1000) {
-      currentFps = Math.round(frameCount * 1000 / fpsTime)
-      frameCount = 0
-      fpsTime = 0
-      statsEl.textContent = `FPS: ${currentFps}\nDraws: ${renderer.info.render.drawCalls}`
-    }
+    // Update draw calls monitor
+    params.drawCalls = renderer.info.render.drawCalls
+
+    fpsGraph?.end()
   }
 
   animate()

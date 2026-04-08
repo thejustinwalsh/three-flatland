@@ -8,12 +8,6 @@
       * { margin: 0; padding: 0; box-sizing: border-box; }
       body { overflow: hidden; background: #000; font-family: monospace; }
       canvas { display: block; }
-      #stats {
-        position: fixed; top: 12px; right: 12px;
-        padding: 5px 10px; background: rgba(0, 2, 28, 0.7); border-radius: 6px;
-        color: #4a9eff; font-family: monospace; font-size: 10px;
-        line-height: 1.5; z-index: 100; white-space: pre;
-      }
       #controls {
         position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%);
         display: flex; gap: 10px; z-index: 100;
@@ -29,10 +23,7 @@
     </style>
   </head>
   <body>
-    <div id="stats">FPS: -
-Knights: -
-Batches: -
-Draws: -</div>
+    <!-- TODO: migrate game UI to three-flatland events -->
     <div id="controls">
       <button id="btn-add">+ 100 Knights (Space)</button>
     </div>

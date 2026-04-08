@@ -13,16 +13,12 @@ import {
   type TilesetData,
   type TileLayerData,
 } from 'three-flatland'
+import { createPane } from '@three-flatland/tweakpane'
 
 // ============================================
 // CONSTANTS
 // ============================================
 
-const HIT_RADIUS = 8
-const CELL_SIZE = HIT_RADIUS * 4
-const KNIGHT_SCALE = 64
-const SPEED_MIN = 30
-const SPEED_MAX = 200
 const SPEED_THRESHOLD = 80
 const TRIP_LERP_RATE = 5
 const IDLE_AFTER_TRIP_MS = 400
@@ -32,6 +28,30 @@ const VIEW_SIZE = 640
 // Tilemap
 const TILE_PX = 16
 const TILE_SCALE = 2
+
+// ============================================
+// TWEAKPANE
+// ============================================
+
+const { pane, fpsGraph } = createPane()
+
+// Simulation params — tweakable at runtime
+const sim = { speedMin: 30, speedMax: 200, hitRadius: 8, knightScale: 64 }
+const simFolder = pane.addFolder({ title: 'Simulation' })
+simFolder.addBinding(sim, 'speedMin', { min: 10, max: 100, step: 5, label: 'speed min' })
+simFolder.addBinding(sim, 'speedMax', { min: 100, max: 300, step: 10, label: 'speed max' })
+simFolder.addBinding(sim, 'hitRadius', { min: 2, max: 20, step: 1, label: 'hit radius' })
+simFolder.addBinding(sim, 'knightScale', { min: 32, max: 128, step: 8, label: 'scale' })
+
+// Stats monitors — updated each frame
+const stats = { knights: 0, batches: 0, drawCalls: 0 }
+const statsFolder = pane.addFolder({ title: 'Stats' })
+statsFolder.addBinding(stats, 'knights', { readonly: true })
+statsFolder.addBinding(stats, 'batches', { readonly: true })
+statsFolder.addBinding(stats, 'drawCalls', { readonly: true, label: 'draws' })
+
+// Refresh monitors periodically (they don't auto-update)
+setInterval(() => pane.refresh(), 500)
 
 // ============================================
 // TYPES
@@ -257,10 +277,10 @@ async function main() {
 
   // --- Knights ---
   const knights: Knight[] = []
-  const spatialHash = new SpatialHash(CELL_SIZE)
+  const spatialHash = new SpatialHash(sim.hitRadius * 4)
 
   function spawnKnight(sheet: SpriteSheet): Knight {
-    const margin = KNIGHT_SCALE / 2
+    const margin = sim.knightScale / 2
     const sprite = new AnimatedSprite2D({
       spriteSheet: sheet,
       animationSet: knightAnimations,
@@ -268,11 +288,11 @@ async function main() {
       layer: Layers.ENTITIES,
       anchor: [0.5, 0.5],
     })
-    sprite.scale.set(KNIGHT_SCALE, KNIGHT_SCALE, 1)
+    sprite.scale.set(sim.knightScale, sim.knightScale, 1)
     const x = boundsLeft + margin + Math.random() * (boundsRight - boundsLeft - margin * 2)
     const y = boundsBottom + margin + Math.random() * (boundsTop - boundsBottom - margin * 2)
     sprite.position.set(x, y, 0)
-    const speed = SPEED_MIN + Math.random() * (SPEED_MAX - SPEED_MIN)
+    const speed = sim.speedMin + Math.random() * (sim.speedMax - sim.speedMin)
     const angle = Math.random() * Math.PI * 2
     const baseVx = Math.cos(angle) * speed
     const baseVy = Math.sin(angle) * speed
@@ -315,7 +335,6 @@ async function main() {
   spawnBatch(10)
 
   // --- UI ---
-  const statsEl = document.getElementById('stats')!
   const addBtn = document.getElementById('btn-add')!
   addBtn.addEventListener('click', () => spawnBatch(100))
   window.addEventListener('keydown', (e) => {
@@ -340,9 +359,6 @@ async function main() {
   }
   window.addEventListener('resize', handleResize)
 
-  // --- FPS tracking ---
-  let fpsFrames = 0, fpsTime = 0, fpsDisplay = 0
-
   // --- Animation loop ---
   let lastTime = performance.now()
   function animate() {
@@ -352,15 +368,14 @@ async function main() {
     lastTime = now
     const dt = deltaMs / 1000
 
-    fpsFrames++
-    fpsTime += deltaMs
-    if (fpsTime >= 500) {
-      fpsDisplay = Math.round((fpsFrames / fpsTime) * 1000)
-      fpsFrames = 0; fpsTime = 0
-    }
+    // FPS graph
+    fpsGraph?.begin()
+
+    // Derive cell size from current hitRadius
+    const cellSize = sim.hitRadius * 4
 
     // Update knight movement and animation
-    const margin = KNIGHT_SCALE / 2
+    const margin = sim.knightScale / 2
     for (const k of knights) {
       switch (k.state) {
         case 'WALK': case 'ROLL':
@@ -404,8 +419,10 @@ async function main() {
 
     // Knight-knight collisions via spatial hash
     spatialHash.clear()
+    // Update spatial hash cell size from current hitRadius
+    ;(spatialHash as unknown as { cellSize: number }).cellSize = cellSize
     for (const k of knights) spatialHash.insert(k)
-    const collisionDist = HIT_RADIUS * 2
+    const collisionDist = sim.hitRadius * 2
     const collisionDistSq = collisionDist * collisionDist
     for (const k of knights) {
       if (k.state !== 'WALK') continue
@@ -432,10 +449,13 @@ async function main() {
     renderer.render(scene, camera)
     const drawCalls = renderer.info.render.calls - callsBefore
 
-    // Update stats
+    // Update stats monitors
     const s = spriteGroup.stats
-    statsEl.textContent =
-      `FPS: ${fpsDisplay}\nKnights: ${knights.length}\nBatches: ${s.batchCount}\nDraws: ${drawCalls}`
+    stats.knights = knights.length
+    stats.batches = s.batchCount
+    stats.drawCalls = drawCalls
+
+    fpsGraph?.end()
   }
   animate()
 }

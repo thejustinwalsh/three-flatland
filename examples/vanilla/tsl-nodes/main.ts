@@ -31,44 +31,7 @@ import {
   dissolvePixelated,
   tint,
 } from '@three-flatland/nodes'
-
-import '@awesome.me/webawesome/dist/styles/themes/default.css'
-import '@awesome.me/webawesome/dist/components/radio-group/radio-group.js'
-import '@awesome.me/webawesome/dist/components/radio/radio.js'
-
-/** Re-apply per-line first/last pill rounding when wa-radio-group wraps */
-function setupWrappingRadioGroup(group: Element) {
-  const update = () => {
-    const radios = [...group.querySelectorAll('wa-radio')]
-    if (!radios.length) return
-    const lines: Element[][] = []
-    let lastTop = -Infinity
-    let line: Element[] = []
-    for (const radio of radios) {
-      const top = radio.getBoundingClientRect().top
-      if (Math.abs(top - lastTop) > 2) {
-        if (line.length) lines.push(line)
-        line = []
-        lastTop = top
-      }
-      line.push(radio)
-    }
-    if (line.length) lines.push(line)
-    for (const ln of lines) {
-      for (let i = 0; i < ln.length; i++) {
-        const pos =
-          ln.length === 1 ? 'solo' :
-          i === 0 ? 'first' :
-          i === ln.length - 1 ? 'last' : 'inner'
-        ln[i]!.setAttribute('data-line-pos', pos)
-      }
-    }
-  }
-  const ro = new ResizeObserver(update)
-  ro.observe(group)
-  update()
-  return () => ro.disconnect()
-}
+import { createPane } from '@three-flatland/tweakpane'
 
 // ========================================
 // Types
@@ -316,7 +279,7 @@ async function main() {
   let effectStartTime = 0
   let elapsedTime = 0
 
-  function setEffect(effect: EffectType) {
+  function applyEffect(effect: EffectType) {
     // Remove current effect
     if (currentInstance) {
       sprite.removeEffect(currentInstance)
@@ -364,33 +327,46 @@ async function main() {
   }
 
   // ========================================
-  // UI controls
+  // Tweakpane UI
   // ========================================
 
-  await customElements.whenDefined('wa-radio-group')
-  const radioGroup = document.querySelector('wa-radio-group')!
-  setupWrappingRadioGroup(radioGroup)
+  const { pane, fpsGraph } = createPane()
 
-  radioGroup.addEventListener('change', (e) => {
-    setEffect((e.target as any).value as EffectType)
+  const params = {
+    effect: 'normal' as string,
+    drawCalls: 0,
+  }
+
+  const effectBinding = pane.addBinding(params, 'effect', {
+    options: {
+      Normal: 'normal',
+      Damage: 'damage',
+      Dissolve: 'dissolve',
+      Rainbow: 'powerup',
+      Stone: 'petrify',
+      Outline: 'select',
+      Shadow: 'shadow',
+      Pixelate: 'pixelate',
+    },
   })
+
+  effectBinding.on('change', (ev) => {
+    applyEffect(ev.value as EffectType)
+  })
+
+  pane.addBinding(params, 'drawCalls', { readonly: true, label: 'draws' })
+
+  pane.addBlade({ view: 'separator' })
+  pane.addBlade({ view: 'text', label: '', value: 'Keys 1\u20138 select effect' } as any)
 
   // Keyboard controls
   window.addEventListener('keydown', (e) => {
-    const keyMap: Record<string, EffectType> = {
-      '1': 'normal',
-      '2': 'damage',
-      '3': 'dissolve',
-      '4': 'powerup',
-      '5': 'petrify',
-      '6': 'select',
-      '7': 'shadow',
-      '8': 'pixelate',
-    }
-    if (keyMap[e.key]) {
-      setEffect(keyMap[e.key]!)
-      const radioGroup = document.querySelector('wa-radio-group')! as any
-      radioGroup.value = keyMap[e.key]!
+    const effects: EffectType[] = ['normal', 'damage', 'dissolve', 'powerup', 'petrify', 'select', 'shadow', 'pixelate']
+    const idx = parseInt(e.key) - 1
+    if (idx >= 0 && idx < effects.length) {
+      params.effect = effects[idx]!
+      effectBinding.refresh()
+      applyEffect(effects[idx]!)
     }
   })
 
@@ -409,15 +385,11 @@ async function main() {
   // Animation loop
   // ========================================
 
-  const statsEl = document.getElementById('stats')!
-  let frameCount = 0
-  let fpsTime = 0
-  let currentFps = 0
-
   let lastTime = performance.now()
 
   function animate() {
     requestAnimationFrame(animate)
+    fpsGraph?.begin()
 
     const now = performance.now()
     const deltaMs = now - lastTime
@@ -453,15 +425,11 @@ async function main() {
 
     renderer.render(scene, camera)
 
-    // Update stats (~once per second)
-    frameCount++
-    fpsTime += deltaMs
-    if (fpsTime >= 1000) {
-      currentFps = Math.round(frameCount * 1000 / fpsTime)
-      frameCount = 0
-      fpsTime = 0
-      statsEl.innerHTML = `FPS: ${currentFps}\nDraws: ${renderer.info.render.drawCalls}\n`
-    }
+    // Update draw calls monitor
+    params.drawCalls = renderer.info.render.drawCalls
+    pane.refresh()
+
+    fpsGraph?.end()
   }
 
   animate()

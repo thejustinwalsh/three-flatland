@@ -1,4 +1,4 @@
-import { Suspense, useRef, useState, useCallback, useEffect } from 'react'
+import { Suspense, useRef, useCallback, useEffect } from 'react'
 import { Canvas, extend, useFrame, useThree, useLoader } from '@react-three/fiber/webgpu'
 import {
   AnimatedSprite2D,
@@ -6,12 +6,7 @@ import {
   Layers,
   type AnimationSetDefinition,
 } from 'three-flatland/react'
-
-import '@awesome.me/webawesome/dist/styles/themes/default.css'
-import WaRadioGroup from '@awesome.me/webawesome/dist/react/radio-group/index.js'
-import WaRadio from '@awesome.me/webawesome/dist/react/radio/index.js'
-
-const SPEEDS = [0.5, 1, 1.5, 2, 3]
+import { usePane, usePaneInput, usePaneFolder } from '@three-flatland/tweakpane/react'
 
 // Register AnimatedSprite2D with R3F (tree-shakeable)
 extend({ AnimatedSprite2D })
@@ -126,146 +121,72 @@ function Knight({ animation, speed, onAnimationComplete }: KnightProps) {
   )
 }
 
-function StatsTracker({ onStats }: { onStats: (fps: number, draws: number) => void }) {
-  const gl = useThree((s) => s.gl)
-  const frameCount = useRef(0)
-  const elapsed = useRef(0)
-  useFrame((_, delta) => {
-    frameCount.current++
-    elapsed.current += delta
-    if (elapsed.current >= 1) {
-      // Cast: R3F types gl as WebGLRenderer, but we use WebGPURenderer which has drawCalls
-      const draws = (gl.info.render as any).drawCalls as number
-      onStats(Math.round(frameCount.current / elapsed.current), draws)
-      frameCount.current = 0
-      elapsed.current = 0
-    }
-  })
-  return null
-}
+function Scene() {
+  const { pane, fpsGraph } = usePane()
+  const animFolder = usePaneFolder(pane, 'Animation')
 
-export default function App() {
-  const [animation, setAnimation] = useState('idle')
-  const [speedIndex, setSpeedIndex] = useState(1)
-  const speed = SPEEDS[speedIndex]!
-  const controlsRef = useRef<HTMLDivElement>(null)
-  const [stats, setStats] = useState({ fps: '-' as string | number, draws: '-' as string | number })
-  const handleStats = useCallback((fps: number, draws: number) => setStats({ fps, draws }), [])
+  const [animation, setAnimation] = usePaneInput(animFolder, 'animation', 'idle', {
+    options: { Idle: 'idle', Run: 'run', Roll: 'roll', Hit: 'hit', Death: 'death' },
+  })
+
+  const [speed] = usePaneInput(animFolder, 'speed', 1, {
+    options: { '0.5x': 0.5, '1x': 1, '1.5x': 1.5, '2x': 2, '3x': 3 },
+  })
+
+  // Draw calls monitor
+  const gl = useThree((s) => s.gl)
+  const drawCallsParams = useRef({ drawCalls: 0 })
+  const drawBindingRef = useRef<{ refresh(): void; dispose(): void } | null>(null)
+
+  useEffect(() => {
+    if (!pane) return
+    const binding = pane.addBinding(drawCallsParams.current, 'drawCalls', {
+      readonly: true,
+      label: 'draws',
+    })
+    drawBindingRef.current = binding as unknown as { refresh(): void; dispose(): void }
+    return () => {
+      binding.dispose()
+      drawBindingRef.current = null
+    }
+  }, [pane])
 
   const handleAnimationComplete = useCallback(() => {
     setAnimation('idle')
-  }, [])
+  }, [setAnimation])
 
-  // Per-line pill rounding for wrapped radio groups
-  useEffect(() => {
-    const group = controlsRef.current?.querySelector('wa-radio-group')
-    if (!group) return
-    const update = () => {
-      const radios = [...group.querySelectorAll('wa-radio')]
-      if (!radios.length) return
-      const lines: Element[][] = []
-      let lastTop = -Infinity
-      let line: Element[] = []
-      for (const radio of radios) {
-        const top = radio.getBoundingClientRect().top
-        if (Math.abs(top - lastTop) > 2) {
-          if (line.length) lines.push(line)
-          line = []
-          lastTop = top
-        }
-        line.push(radio)
-      }
-      if (line.length) lines.push(line)
-      for (const ln of lines) {
-        for (let i = 0; i < ln.length; i++) {
-          const pos =
-            ln.length === 1 ? 'solo' :
-            i === 0 ? 'first' :
-            i === ln.length - 1 ? 'last' : 'inner'
-          ln[i]!.setAttribute('data-line-pos', pos)
-        }
-      }
-    }
-    const ro = new ResizeObserver(update)
-    ro.observe(group)
-    update()
-    return () => ro.disconnect()
-  }, [])
+  const fpsRef = useRef(fpsGraph)
+  fpsRef.current = fpsGraph
+
+  useFrame(() => {
+    fpsRef.current?.begin()
+  }, -Infinity)
+
+  useFrame(() => {
+    fpsRef.current?.end()
+    // Update draw calls
+    drawCallsParams.current.drawCalls = (gl.info.render as any).drawCalls as number
+    drawBindingRef.current?.refresh()
+  }, Infinity)
 
   return (
     <>
-      {/* Hide radio group label */}
-      <style>{`
-        .anim-bar wa-radio-group::part(form-control-label) { display: none; }
-        .anim-bar wa-radio-group::part(form-control) { margin: 0; border: 0; padding: 0; }
-        .anim-bar wa-radio-group::part(form-control-input) { row-gap: 4px; justify-content: center; }
-        wa-radio[data-line-pos="first"] {
-          border-start-start-radius: var(--wa-border-radius-m);
-          border-end-start-radius: var(--wa-border-radius-m);
-          border-start-end-radius: 0;
-          border-end-end-radius: 0;
-        }
-        wa-radio[data-line-pos="inner"] { border-radius: 0; }
-        wa-radio[data-line-pos="last"] {
-          border-start-end-radius: var(--wa-border-radius-m);
-          border-end-end-radius: var(--wa-border-radius-m);
-          border-start-start-radius: 0;
-          border-end-start-radius: 0;
-        }
-        wa-radio[data-line-pos="solo"] { border-radius: var(--wa-border-radius-m); }
-      `}</style>
+      <color attach="background" args={['#1a1a2e']} />
+      <Suspense fallback={null}>
+        <Knight
+          animation={animation}
+          speed={speed as number}
+          onAnimationComplete={handleAnimationComplete}
+        />
+      </Suspense>
+    </>
+  )
+}
 
-      {/* Controls — centered bottom bar */}
-      <div
-        ref={controlsRef}
-        className="anim-bar"
-        style={{
-          position: 'fixed',
-          bottom: 32,
-          left: '50%',
-          transform: 'translateX(-50%)',
-          zIndex: 100,
-          pointerEvents: 'auto',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 6,
-          maxWidth: 'calc(100vw - 24px)',
-        }}
-      >
-        <WaRadioGroup
-          label="Animation"
-          size="small"
-          orientation="horizontal"
-          value={animation}
-          onChange={(e: any) =>
-            setAnimation((e.target as HTMLInputElement).value)
-          }
-        >
-          <WaRadio size="small" appearance="button" value="idle">Idle</WaRadio>
-          <WaRadio size="small" appearance="button" value="run">Run</WaRadio>
-          <WaRadio size="small" appearance="button" value="roll">Roll</WaRadio>
-          <WaRadio size="small" appearance="button" value="hit">Hit</WaRadio>
-          <WaRadio size="small" appearance="button" value="death">Death</WaRadio>
-        </WaRadioGroup>
-        <button
-          onClick={() => setSpeedIndex((i) => (i + 1) % SPEEDS.length)}
-          style={{
-            background: 'rgba(255, 255, 255, 0.1)',
-            border: '1px solid rgba(255, 255, 255, 0.15)',
-            borderRadius: 12,
-            color: '#ccc',
-            fontSize: 10,
-            fontFamily: 'monospace',
-            padding: '4px 8px',
-            cursor: 'pointer',
-            whiteSpace: 'nowrap',
-          }}
-        >
-          {speed}x
-        </button>
-      </div>
-
-      {/* Attribution — centered bottom */}
+export default function App() {
+  return (
+    <>
+      {/* Attribution */}
       <div
         style={{
           position: 'fixed',
@@ -290,41 +211,12 @@ export default function App() {
         (CC0)
       </div>
 
-      {/* Stats overlay */}
-      <div
-        style={{
-          position: 'fixed',
-          top: 12,
-          right: 12,
-          padding: '5px 10px',
-          background: 'rgba(0, 2, 28, 0.7)',
-          borderRadius: 6,
-          color: '#4a9eff',
-          fontFamily: 'monospace',
-          fontSize: 10,
-          lineHeight: 1.5,
-          zIndex: 100,
-          whiteSpace: 'pre',
-        }}
-      >
-        {`FPS: ${stats.fps}\nDraws: ${stats.draws}`}
-      </div>
-
-      {/* Three.js Canvas */}
       <Canvas
         orthographic
         camera={{ zoom: 5, position: [0, 0, 100] }}
         renderer={{ antialias: false }}
       >
-        <color attach="background" args={['#1a1a2e']} />
-        <StatsTracker onStats={handleStats} />
-        <Suspense fallback={null}>
-          <Knight
-            animation={animation}
-            speed={speed}
-            onAnimationComplete={handleAnimationComplete}
-          />
-        </Suspense>
+        <Scene />
       </Canvas>
     </>
   )
