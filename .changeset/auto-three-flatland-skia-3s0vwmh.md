@@ -5,56 +5,57 @@
 > Branch: feat-skia
 > PR: https://github.com/thejustinwalsh/three-flatland/pull/19
 
-**Initial release** of `@three-flatland/skia` — Skia-powered 2D vector rendering integrated with Three.js (WebGL and WebGPU).
+### Initial Release — `@three-flatland/skia`
 
-**WASM build & backends**
-- Skia compiled to WASM via Zig (chrome/m147), targeting both WebGL2 and WebGPU (Dawn)
-- WebGL backend: JS GL host shim bridges WASM imports to browser WebGL2 API
-- WebGPU backend: Dawn-based, Emscripten-compatible; auto-generated WGPU struct/enum bindings
-- SIMD enabled; WASM optimized with wasm-opt and compiler flags
-- WASM URL overridable at build time via `SKIA_WASM_URL_GL` / `SKIA_WASM_URL_WGPU` env vars
+**WASM Build & Backends**
+- Skia compiled to WASM via Zig from chrome/m147 submodule
+- WebGL backend with JS GL host shim for WASM WebGL imports
+- WebGPU (Dawn) backend with WASM32 struct definitions and Emscripten compatibility patches
+- SIMD enabled; WASM optimized with wasm-opt
+- Exception handling and custom font manager in WASM build
+- `SKIA_WASM_URL_GL` / `SKIA_WASM_URL_WGPU` env vars for bundler-time WASM URL overrides
+- `prepack.mjs` copies WASM assets into the package before publish
 
-**Core drawing API**
-- `SkiaPaint` — fill/stroke with color, gradient (multi-stop linear), image filter, color filter, shader, path effect, blend mode, anti-alias, stroke width/cap/join
-- `SkiaPath` — contour construction, boolean ops (union/intersect/difference/xor), simplification, in-place transforms
-- `SkiaImage` — load from URL or bytes; `SkiaImageLoader` for Three.js/R3F `useLoader`
-- `SkiaSVG` — load and render SVG documents; `SkiaSVGLoader` for Three.js/R3F `useLoader`
-- `SkiaShader` — runtime-effect shaders and gradient factories
-- `SkiaTextBlob` — shaped text for high-performance text drawing
-- `SkiaColorFilter`, `SkiaImageFilter`, `SkiaPathEffect`, `SkiaPicture` — full filter/effect pipeline
+**Drawing API**
+- `SkiaPaint` — fill/stroke, colors, gradients (multi-stop linear), blend modes
+- `SkiaPath` — vector paths with boolean ops, simplification, in-place transforms, path effects
+- `SkiaPathEffect` / `SkiaPathMeasure` — dash, path effects, path measurement
+- `SkiaDrawingContext` — canvas API (draw rect, oval, circle, line, path, image, text, SVG)
+- `SkiaImage` / `SkiaImageFilter` / `SkiaColorFilter` — image and filter support
+- `SkiaShader` — custom shaders
+- `SkiaTextBlob` — shaped text rendering
+- `SkiaSVG` — SVG rendering via SkSVGDOM
+- `SkiaPicture` — record and replay drawing commands
 
-**Font API**
-- `SkiaTypeface` — ref-counted, deduplicated typeface handle loaded from TTF/OTF bytes; call `.atSize(n)` to get a sized `SkiaFont`
-- `SkiaFont` — typeface at a specific point size; supports `measureText`, `getGlyphWidths`, `getMetrics`
-- `SkiaFontLoader` — Three.js `Loader` compatible with R3F `useLoader`; returns `SkiaTypeface` cached by URL; context resolved lazily from singleton
-- `SkiaTypeface.fromURL(ctx, url)` — standalone async loader
+**Font System**
+- New `SkiaTypeface` class — ref-counted typeface with dedup cache; call `.atSize(n)` for sized `SkiaFont` instances
+- `SkiaFont.fromData(ctx, bytes, size)` static factory for standalone font creation
+- `SkiaFontLoader` — Three.js `Loader` compatible, cached by URL, returns `SkiaTypeface`
 
-**Three.js scene graph**
-- `SkiaCanvas` — `Object3D` that owns a Skia drawing surface; two render modes:
-  - _Texture mode_: renders Skia into a `WebGLRenderTarget` / `GPUTexture` for use as a Three.js material texture
-  - _Overlay mode_: alpha-blends Skia output directly onto the canvas after the 3D scene
-- `SkiaGroup` — transform, clip, and effects container; uses standard `Object3D` `position`/`scale`/`rotation.z`
-- Drawing nodes: `SkiaCircle`, `SkiaImageNode`, `SkiaLine`, `SkiaOval`, `SkiaPathNode`, `SkiaRect`, `SkiaSVGNode`, `SkiaTextNode`, `SkiaTextPathNode`
-- `SkiaImageLoader` — load images for use in drawing nodes
-- `SkiaBlitPipeline` — internal WebGPU blit pipeline (BGRA to RGBA format conversion, premultiplied alpha blend)
+**Scene Graph (Three.js Objects)**
+- `SkiaCanvas` (`Object3D`) — main rendering surface; WebGL state save/restore around Skia draws
+  - Overlay mode: blits Skia output over the 3D scene with premultiplied alpha
+  - Texture mode: renders Skia into a `WebGLRenderTarget` / `GPURenderTarget`
+  - `render(invalidate?)` — pass `true` to force redraw; `invalidate()` to mark dirty
+- `SkiaGroup` — group node for scene graph composition
+- Shape nodes: `SkiaRect`, `SkiaCircle`, `SkiaOval`, `SkiaLine`
+- Content nodes: `SkiaImageNode`, `SkiaSVGNode`, `SkiaTextNode`, `SkiaPathNode`, `SkiaTextPathNode`
+- `SkiaImageLoader` / `SkiaFontLoader` / `SkiaSVGLoader` — R3F `useLoader`-compatible loaders
 
-**React (R3F) integration**
-- `<SkiaCanvas>` React component — wraps `SkiaCanvas` as a declarative R3F element with a React context provider
-- `useSkia()` — access the `SkiaContext` from any child component
-- `useSkiaFrame(callback)` — run a drawing callback every frame inside a Skia canvas
-- Full JSX type augmentation for all Three.js Skia nodes
+**React Integration**
+- `<SkiaCanvas>` R3F component — wraps `SkiaCanvas` with React context
+- `useSkiaContext()` — returns `SkiaContext` (never null); suspends via `React.use()` until init completes; wrap consumers in `<Suspense>`
+- `Skia.init(renderer)` stores the in-flight promise as `Skia.pending` for deferred resolution
 
-**Infrastructure**
-- `prepack` script copies built WASM artifacts into package before `npm publish`
-- Vendored freetype, harfbuzz, and expat sources for reproducible builds (avoids external rate limits)
-- Dawn patches for `DawnBuffer` constexpr logging and `Depth16Unorm` stencil format compatibility
-- Sync scripts support optional Dawn dependency for WGPU shim generation
+**WebGPU Blit Pipeline**
+- `SkiaBlitPipeline` — GPU blit from Skia (BGRA) to render target (RGBA) with optional alpha blend
+- Overlay mode uses `copyTextureToTexture` + alpha compositing onto the canvas surface
 
 ## BREAKING CHANGES
 
-- `SkiaFontLoader` now returns `SkiaTypeface` instead of `SkiaFont`. Call `.atSize(n)` on the result to get a sized font.
-- `SkiaFontLoader.load(url, options?)` no longer accepts a `size` option; the cache key is now the URL alone (not `url:size`).
-- `SkiaFontLoader.preload(urls)` no longer accepts an options argument.
-- `SkiaCanvas.render()` no longer accepts a `renderer` argument; the renderer is stored internally at initialization time.
+- **`SkiaFontLoader` return type changed** — now returns `SkiaTypeface` instead of `SkiaFont`. Call `.atSize(size)` to obtain a `SkiaFont`. `SkiaFontLoaderOptions`, `loader.size`, and `SkiaFontLoader.defaultSize` have been removed.
+- **`SkiaFont` constructor is internal** — use `SkiaFont.fromData(ctx, data, size)` or `SkiaTypeface.atSize(size)` instead of `new SkiaFont(ctx, data, size)`.
+- **`useSkiaContext()` is no longer nullable** — the hook now returns `SkiaContext` (not `SkiaContext | null`) and uses React `use()` to suspend. Wrap consuming components in `<Suspense>`.
+- **`SkiaCanvas.render()` signature changed** — the `renderer` argument is removed; the renderer is now stored internally. Use `canvas.render()` or `canvas.render(true)` to force redraw.
 
-Initial release introducing full Skia 2D rendering for Three.js with WebGL2 and WebGPU backends, a complete drawing API, React/R3F integration, and an npm-publishable package structure.
+Initial release of `@three-flatland/skia`, providing Skia vector graphics rendering for Three.js with WebGL and WebGPU backends, a full drawing API, a scene graph, and React Three Fiber integration.
