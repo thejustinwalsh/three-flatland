@@ -7,19 +7,26 @@ import type { SlugFont } from '@three-flatland/slug/react'
 import '@awesome.me/webawesome/dist/styles/themes/default.css'
 import WaRadioGroup from '@awesome.me/webawesome/dist/react/radio-group/index.js'
 import WaRadio from '@awesome.me/webawesome/dist/react/radio/index.js'
+import WaSlider from '@awesome.me/webawesome/dist/react/slider/index.js'
 
 extend({ SlugText })
 
 const BASE_URL = import.meta.env.BASE_URL
 const FONT_URL = BASE_URL + 'Inter-Regular.ttf'
-const TEXT = 'Hello, Slug!'
+const TEXT = 'Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.'
 
 const FONT_SIZE_OPTIONS = [
-  { value: '16', label: '16px' },
-  { value: '32', label: '32px' },
-  { value: '48', label: '48px' },
-  { value: '96', label: '96px' },
-  { value: '200', label: '200px' },
+  { value: '6', label: '6' },
+  { value: '8', label: '8' },
+  { value: '10', label: '10' },
+  { value: '12', label: '12' },
+  { value: '16', label: '16' },
+  { value: '24', label: '24' },
+  { value: '32', label: '32' },
+  { value: '48', label: '48' },
+  { value: '72', label: '72' },
+  { value: '96', label: '96' },
+  { value: '200', label: '200' },
 ] as const
 
 // --- Scene components ---
@@ -42,11 +49,15 @@ function SlugTextScene({
   text,
   fontSize,
   align,
+  stemDarken,
+  thicken,
 }: {
   font: SlugFont
   text: string
   fontSize: number
   align: 'left' | 'center' | 'right'
+  stemDarken: number
+  thicken: number
 }) {
   const ref = useRef<SlugText>(null)
   const { camera, size } = useThree()
@@ -67,6 +78,9 @@ function SlugTextScene({
       fontSize={fontSize}
       color={0xffffff}
       align={align}
+      maxWidth={size.width * 0.8}
+      stemDarken={stemDarken}
+      thicken={thicken}
     />
   )
 }
@@ -138,7 +152,7 @@ function HtmlOverlay({
         fontSize: `${fontSize}px`,
         lineHeight: 0,
         color: 'rgba(255, 100, 100, 0.6)',
-        whiteSpace: 'nowrap',
+        maxWidth: '80vw',
         display: visible ? undefined : 'none',
       }}
     >
@@ -152,7 +166,9 @@ function HtmlOverlay({
 export default function App() {
   const [font, setFont] = useState<SlugFont | null>(null)
   const [fontSize, setFontSize] = useState(48)
-  const [overlayVisible, setOverlayVisible] = useState(true)
+  const [stemDarken, setStemDarken] = useState(0)
+  const [thicken, setThicken] = useState(0)
+  const [overlayVisible, setOverlayVisible] = useState(false)
   const [forceRuntime, setForceRuntime] = useState(false)
   const [loadStatus, setLoadStatus] = useState('Loading font...')
   const uiRef = useRef<HTMLDivElement>(null)
@@ -203,6 +219,8 @@ export default function App() {
             text={TEXT}
             fontSize={fontSize}
             align="center"
+            stemDarken={stemDarken}
+            thicken={thicken}
           />
         )}
       </Canvas>
@@ -264,6 +282,32 @@ export default function App() {
             </WaRadio>
           ))}
         </WaRadioGroup>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 8, color: 'var(--wa-color-text-normal)', fontSize: 13 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ width: 80 }}>Darken</span>
+            <WaSlider
+              size="small"
+              min={0}
+              max={100}
+              value={Math.round(stemDarken * 100)}
+              onInput={(e: any) => setStemDarken(e.target.value / 100)}
+              style={{ width: 100 }}
+            />
+            <span style={{ width: 28, textAlign: 'right' }}>{Math.round(stemDarken * 100)}</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ width: 80 }}>Thicken</span>
+            <WaSlider
+              size="small"
+              min={0}
+              max={100}
+              value={Math.round((thicken / 3) * 100)}
+              onInput={(e: any) => setThicken((e.target.value / 100) * 3)}
+              style={{ width: 100 }}
+            />
+            <span style={{ width: 28, textAlign: 'right' }}>{Math.round((thicken / 3) * 100)}</span>
+          </div>
+        </div>
         <div style={{ display: 'flex', gap: 12, marginTop: 8, color: 'var(--wa-color-text-normal)', fontSize: 13 }}>
           <label style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
             <input
