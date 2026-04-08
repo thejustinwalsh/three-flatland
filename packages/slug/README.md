@@ -7,7 +7,7 @@ Slug evaluates quadratic Bezier curves directly in the fragment shader. No SDF a
 ## Highlights
 
 - **Pixel-perfect at every scale** -- glyphs are mathematically evaluated per-pixel, not sampled from a texture
-- **WebGPU + WebGL2** -- TSL (Three Shader Language) compiles to both WGSL and GLSL ES 3.0
+- **WebGPU + WebGL2** -- Ported reference HLSL to TSL (Three Shader Language) targeting WGSL and GLSL
 - **Instanced rendering** -- thousands of glyphs in a single draw call
 - **Zero precomputation** -- load a TTF/OTF font, render immediately
 - **Offline baking** -- `slug-bake` pre-processes fonts, eliminating opentype.js at runtime
