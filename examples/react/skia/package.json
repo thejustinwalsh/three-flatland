@@ -10,7 +10,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@three-flatland/skia": "^0.0.1-alpha.0",
+    "@three-flatland/skia": "^0.1.0-alpha.2",
     "@react-three/fiber": "^10.0.0-alpha.2",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
