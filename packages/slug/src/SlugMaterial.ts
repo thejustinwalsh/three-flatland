@@ -136,14 +136,14 @@ export class SlugMaterial extends MeshBasicNodeMaterial {
         emCenter.y.add(basePos.y.mul(emHalfH.mul(2.0))),
       )
 
-      // TODO: dilation disabled — needs fix for instanceMatrix interaction
-      // const dilated = slugDilate(
-      //   objPos, normal, emCoord, invScale,
-      //   mvpRow0, mvpRow1, mvpRow3, viewportUniform,
-      // )
+      // Dynamic dilation — expands quad by half a pixel in screen space
+      const dilated = slugDilate(
+        objPos, normal, emCoord, invScale,
+        mvpRow0, mvpRow1, mvpRow3, viewportUniform,
+      )
 
-      // Write em-space coordinate to varying for fragment shader
-      vRenderCoord.assign(emCoord)
+      // Write dilated em-space coordinate to varying for fragment shader
+      vRenderCoord.assign(dilated.texcoord)
 
       // Pass per-glyph metadata through varyings
       vGlyphLocX.assign(glyphTex.z)
@@ -151,7 +151,7 @@ export class SlugMaterial extends MeshBasicNodeMaterial {
       vNumHBands.assign(glyphJac.z)
       vNumVBands.assign(glyphJac.w)
 
-      return vec3(objPos.x, objPos.y, float(0.0))
+      return vec3(dilated.vpos.x, dilated.vpos.y, float(0.0))
     })()
 
     // --- Fragment shader ---
