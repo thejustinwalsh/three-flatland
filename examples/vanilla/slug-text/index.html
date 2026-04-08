@@ -111,8 +111,12 @@
         <wa-radio value="96" size="small" appearance="button">96px</wa-radio>
         <wa-radio value="200" size="small" appearance="button">200px</wa-radio>
       </wa-radio-group>
-      <label id="overlay-toggle" style="display:flex;align-items:center;gap:6px;margin-top:8px;color:var(--wa-color-text-normal);font-size:13px;cursor:pointer;">
-        <input type="checkbox" id="overlay-check" checked /><span><span style="text-decoration:underline">H</span>TML Overlay</span></label>
+      <div style="display:flex;gap:12px;margin-top:8px;color:var(--wa-color-text-normal);font-size:13px;">
+        <label style="display:flex;align-items:center;gap:4px;cursor:pointer;">
+          <input type="checkbox" id="overlay-check" checked /><span><span style="text-decoration:underline">H</span>TML Overlay</span></label>
+        <label style="display:flex;align-items:center;gap:4px;cursor:pointer;">
+          <input type="checkbox" id="runtime-check" /><span><span style="text-decoration:underline">R</span>untime Gen</span></label>
+      </div>
     </div>
     <script type="module" src="/main.ts"></script>
   </body>

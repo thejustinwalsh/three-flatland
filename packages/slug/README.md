@@ -10,6 +10,7 @@ Slug evaluates quadratic Bezier curves directly in the fragment shader. No SDF a
 - **WebGPU + WebGL2** -- TSL (Three Shader Language) compiles to both WGSL and GLSL ES 3.0
 - **Instanced rendering** -- thousands of glyphs in a single draw call
 - **Zero precomputation** -- load a TTF/OTF font, render immediately
+- **Offline baking** -- `slug-bake` pre-processes fonts, eliminating opentype.js at runtime
 - **Tiny API surface** -- `SlugFont`, `SlugText`, done
 
 ## Quick Start
@@ -19,13 +20,15 @@ pnpm add @three-flatland/slug three
 ```
 
 ```ts
-import { SlugFont, SlugText } from '@three-flatland/slug'
+import { SlugFontLoader, SlugText } from '@three-flatland/slug'
 
-// Load a font
-const font = await SlugFont.fromURL('/fonts/Inter-Regular.ttf')
+// Load a font (tries baked data first, falls back to .ttf)
+const font = await SlugFontLoader.load('/fonts/Inter-Regular.ttf')
 
 // Create text
-const text = new SlugText(font, 'Hello, Slug!', {
+const text = new SlugText({
+  font,
+  text: 'Hello, Slug!',
   fontSize: 48,
   color: 0xffffff,
   align: 'center',
@@ -33,7 +36,7 @@ const text = new SlugText(font, 'Hello, Slug!', {
 scene.add(text)
 
 // Call once per frame (rebuilds only when dirty)
-text.update()
+text.update(camera)
 ```
 
 Change text at runtime:
@@ -85,6 +88,39 @@ For the full algorithm walkthrough, see [docs/ARCHITECTURE.md](docs/ARCHITECTURE
 
 For full API docs with all options and types, see [docs/REFERENCE.md](docs/REFERENCE.md).
 
+## Pre-baking Fonts
+
+`slug-bake` pre-processes font files offline, producing `.slug.json` + `.slug.bin` files that eliminate runtime font parsing and the opentype.js dependency:
+
+```bash
+npx slug-bake Inter-Regular.ttf                    # All glyphs
+npx slug-bake Inter-Regular.ttf --range ascii       # ASCII only
+npx slug-bake Inter-Regular.ttf --range latin       # Latin Extended
+npx slug-bake Inter-Regular.ttf -r latin -r 0x2000-0x206F  # Multiple ranges
+```
+
+Place the baked files alongside the font. `SlugFont.fromURL()` detects them automatically — no code changes needed. The original `.ttf` is not fetched when baked data is present.
+
+### Predefined ranges
+
+| Name | Unicode Range | Description |
+|------|---------------|-------------|
+| `ascii` | U+0020–U+007E | Printable ASCII (95 glyphs) |
+| `latin` | U+0000–U+024F | Basic Latin + Extended A/B (~525 glyphs) |
+| `latin+` | Multiple blocks | Latin + punctuation + currency + symbols |
+
+### Size comparison (Inter Regular)
+
+| Range | Glyphs | Raw | Gzip | Brotli |
+|-------|--------|-----|------|--------|
+| All | 2,849 | 12.78 MB | 1.0 MB | 724 KB |
+| `latin` | 523 | 2.15 MB | 208 KB | 208 KB |
+| `ascii` | 95 | 412 KB | 44 KB | 32 KB |
+
+Gzip/Brotli compression is handled by your CDN — no JS decompression needed. ASCII-only with Brotli is **32 KB** for resolution-independent text.
+
+Missing glyphs at runtime render as a fallback rectangle (notdef).
+
 ## Supported Font Formats
 
 | Format | Support | Notes |
@@ -106,11 +142,12 @@ TSL compiles to WGSL for WebGPU and GLSL ES 3.0 for WebGL2. All features used (b
 
 ## Roadmap
 
-- [ ] Dynamic vertex dilation for edge-pixel coverage
+- [x] Dynamic vertex dilation for edge-pixel coverage
+- [x] React Three Fiber `<slugText>` component
+- [x] Offline font baking with glyph subsetting
 - [ ] Adaptive MSAA for small text (ppem < 16)
 - [ ] Stem darkening for thin strokes
 - [ ] Pixel-grid snapping for crisp small text
-- [ ] React Three Fiber `<slugText>` component
 - [ ] General shape rendering (SVG paths, icons)
 - [ ] WOFF2 support via opentype.js 2.x
 

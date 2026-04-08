@@ -1,8 +1,8 @@
 import { Canvas, extend, useFrame, useThree } from '@react-three/fiber/webgpu'
-import type { RootState } from '@react-three/fiber'
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { OrthographicCamera } from 'three'
-import { SlugText, SlugFont } from '@three-flatland/slug/react'
+import { SlugText, SlugFontLoader } from '@three-flatland/slug/react'
+import type { SlugFont } from '@three-flatland/slug/react'
 
 import '@awesome.me/webawesome/dist/styles/themes/default.css'
 import WaRadioGroup from '@awesome.me/webawesome/dist/react/radio-group/index.js'
@@ -11,6 +11,7 @@ import WaRadio from '@awesome.me/webawesome/dist/react/radio/index.js'
 extend({ SlugText })
 
 const BASE_URL = import.meta.env.BASE_URL
+const FONT_URL = BASE_URL + 'Inter-Regular.ttf'
 const TEXT = 'Hello, Slug!'
 
 const FONT_SIZE_OPTIONS = [
@@ -152,19 +153,32 @@ export default function App() {
   const [font, setFont] = useState<SlugFont | null>(null)
   const [fontSize, setFontSize] = useState(48)
   const [overlayVisible, setOverlayVisible] = useState(true)
+  const [forceRuntime, setForceRuntime] = useState(false)
+  const [loadStatus, setLoadStatus] = useState('Loading font...')
   const uiRef = useRef<HTMLDivElement>(null)
 
   useWrappingGroup(uiRef, 'wa-radio')
 
-  // Load font
+  // Load font — reloads when forceRuntime changes
   useEffect(() => {
-    SlugFont.fromURL(BASE_URL + 'Inter-Regular.ttf').then(setFont)
-  }, [])
+    let cancelled = false
+    setLoadStatus('Loading font...')
+    SlugFontLoader.clearCache()
+    const t0 = performance.now()
+    SlugFontLoader.load(FONT_URL, { forceRuntime }).then((f) => {
+      if (cancelled) return
+      const ms = (performance.now() - t0).toFixed(0)
+      setFont(f)
+      setLoadStatus(`${forceRuntime ? 'Runtime gen' : 'Baked'}: ${f.glyphs.size} glyphs in ${ms}ms`)
+    })
+    return () => { cancelled = true }
+  }, [forceRuntime])
 
-  // Toggle overlay with 'h' key
+  // Hotkeys
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'h') setOverlayVisible((v) => !v)
+      else if (e.key === 'r') setForceRuntime((v) => !v)
     }
     document.addEventListener('keydown', handler)
     return () => document.removeEventListener('keydown', handler)
@@ -219,9 +233,7 @@ export default function App() {
           borderRadius: 6,
         }}
       >
-        {font
-          ? `Font loaded: ${font.glyphs.size} glyphs, ${fontSize}px`
-          : 'Loading font...'}
+        {loadStatus}
       </div>
 
       {/* UI panel */}
@@ -252,24 +264,24 @@ export default function App() {
             </WaRadio>
           ))}
         </WaRadioGroup>
-        <label
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 6,
-            marginTop: 8,
-            color: 'var(--wa-color-text-normal)',
-            fontSize: 13,
-            cursor: 'pointer',
-          }}
-        >
-          <input
-            type="checkbox"
-            checked={overlayVisible}
-            onChange={(e) => setOverlayVisible(e.target.checked)}
-          />
-          <span><span style={{ textDecoration: 'underline' }}>H</span>TML Overlay</span>
-        </label>
+        <div style={{ display: 'flex', gap: 12, marginTop: 8, color: 'var(--wa-color-text-normal)', fontSize: 13 }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={overlayVisible}
+              onChange={(e) => setOverlayVisible(e.target.checked)}
+            />
+            <span><span style={{ textDecoration: 'underline' }}>H</span>TML Overlay</span>
+          </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={forceRuntime}
+              onChange={(e) => setForceRuntime(e.target.checked)}
+            />
+            <span><span style={{ textDecoration: 'underline' }}>R</span>untime Gen</span>
+          </label>
+        </div>
       </div>
     </>
   )

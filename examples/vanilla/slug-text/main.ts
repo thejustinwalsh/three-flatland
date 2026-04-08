@@ -1,6 +1,6 @@
 import { WebGPURenderer } from 'three/webgpu'
 import { Scene, OrthographicCamera, Color } from 'three'
-import { SlugFont, SlugText } from '@three-flatland/slug'
+import { SlugFontLoader, SlugText } from '@three-flatland/slug'
 
 import '@awesome.me/webawesome/dist/styles/themes/default.css'
 import '@awesome.me/webawesome/dist/components/radio-group/radio-group.js'
@@ -65,24 +65,12 @@ async function main() {
   log('Initializing WebGPU renderer...')
   await renderer.init()
 
-  // Load font — bundled TTF in public/
-  log('Loading font...')
   const fontUrl = import.meta.env.BASE_URL + 'Inter-Regular.ttf'
-  let font: SlugFont
-
-  try {
-    font = await SlugFont.fromURL(fontUrl)
-    log(`Font loaded: ${font.glyphs.size} glyphs, unitsPerEm=${font.unitsPerEm}`)
-  } catch (err) {
-    log(`Font load failed: ${err}`)
-    console.error(err)
-    return
-  }
-
-  // Create text object
   let fontSize = 48
+  let forceRuntime = false
+
+  // SlugText lives in the scene permanently; we swap its font when reloading
   const slugText = new SlugText({
-    font,
     text: 'Hello, Slug!',
     fontSize,
     color: 0xffffff,
@@ -90,33 +78,54 @@ async function main() {
   })
   slugText.setViewportSize(window.innerWidth, window.innerHeight)
   scene.add(slugText)
-  slugText.update()
 
-  log(`Rendering: ${slugText.count} glyph instances`)
-
-  // Position HTML overlay so its baseline matches slug baseline at y=0 (screen center).
-  // With line-height:0 the font's content area (ascender+|descender|) is centered
-  // at the element's top. The baseline sits (ascender+descender)/2 * fontSize below
-  // center, so we shift up by that amount.
+  // HTML overlay positioning
   const htmlCompare = document.getElementById('html-compare')!
   function syncHtmlPosition(fs: number) {
+    const font = slugText.font
+    if (!font) return
     const baselineOffset = (font.ascender + font.descender) * 0.5 * fs
     htmlCompare.style.fontSize = `${fs}px`
     htmlCompare.style.top = `calc(50% - ${baselineOffset}px)`
   }
-  syncHtmlPosition(fontSize)
+  // Load (or reload) the font
+  async function loadFont() {
+    log('Loading font...')
+    SlugFontLoader.clearCache()
+    const t0 = performance.now()
+    const font = await SlugFontLoader.load(fontUrl, { forceRuntime })
+    const ms = (performance.now() - t0).toFixed(0)
+    slugText.font = font
+    slugText.update()
+    syncHtmlPosition(fontSize)
+    const mode = forceRuntime ? 'Runtime gen' : 'Baked'
+    log(`${mode}: ${font.glyphs.size} glyphs in ${ms}ms`)
+  }
+
+  await loadFont()
 
   // Toggle HTML overlay with checkbox or 'h' key
   const overlayCheck = document.getElementById('overlay-check') as HTMLInputElement
   function toggleOverlay() {
-    const visible = overlayCheck.checked
-    htmlCompare.style.display = visible ? '' : 'none'
+    htmlCompare.style.display = overlayCheck.checked ? '' : 'none'
   }
   overlayCheck.addEventListener('change', toggleOverlay)
+
+  // Toggle force runtime with checkbox or 'r' key
+  const runtimeCheck = document.getElementById('runtime-check') as HTMLInputElement
+  function toggleRuntime() {
+    forceRuntime = runtimeCheck.checked
+    loadFont()
+  }
+  runtimeCheck.addEventListener('change', toggleRuntime)
+
   document.addEventListener('keydown', (e) => {
     if (e.key === 'h') {
       overlayCheck.checked = !overlayCheck.checked
       toggleOverlay()
+    } else if (e.key === 'r') {
+      runtimeCheck.checked = !runtimeCheck.checked
+      toggleRuntime()
     }
   })
 
@@ -148,7 +157,7 @@ async function main() {
   // Render loop
   function animate() {
     requestAnimationFrame(animate)
-    slugText.update(camera) // updates MVP for dilation + rebuilds if dirty
+    slugText.update(camera)
     renderer.render(scene, camera)
   }
 

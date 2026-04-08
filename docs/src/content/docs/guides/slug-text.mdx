@@ -1,0 +1,246 @@
+---
+title: Slug Text
+description: GPU-accelerated, resolution-independent text rendering using the Slug algorithm.
+---
+
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
+The `@three-flatland/slug` package renders crisp, resolution-independent text on the GPU using the [Slug algorithm](https://jcgt.org/published/0006/02/02/). Font outlines are rasterized per-pixel from quadratic Bezier curves — no texture atlases, no SDF approximations, no blurry edges at any zoom level.
+
+<Tabs syncKey="framework">
+  <TabItem label="Three.js" icon="seti:javascript">
+    ```typescript
+    import { WebGPURenderer } from 'three/webgpu';
+    import { SlugFontLoader, SlugText } from '@three-flatland/slug';
+
+    const font = await SlugFontLoader.load('/fonts/Inter-Regular.ttf');
+    const text = new SlugText({
+      font,
+      text: 'Hello, Slug!',
+      fontSize: 48,
+      color: 0xffffff,
+      align: 'center',
+    });
+
+    scene.add(text);
+
+    // Per-frame update (required for dilation + dirty rebuild)
+    function animate() {
+      requestAnimationFrame(animate);
+      text.update(camera);
+      renderer.render(scene, camera);
+    }
+    ```
+  </TabItem>
+  <TabItem label="React" icon="seti:react">
+    ```tsx
+    import { Canvas, extend, useFrame, useLoader, useThree } from '@react-three/fiber/webgpu';
+    import { SlugText, SlugFontLoader } from '@three-flatland/slug/react';
+
+    extend({ SlugText });
+
+    function TextScene() {
+      const font = useLoader(SlugFontLoader, '/fonts/Inter-Regular.ttf');
+      const ref = useRef<SlugText>(null);
+      const { camera, size } = useThree();
+
+      useEffect(() => {
+        ref.current?.setViewportSize(size.width, size.height);
+      }, [size]);
+
+      useFrame(() => {
+        ref.current?.update(camera);
+      });
+
+      return (
+        <slugText
+          ref={ref}
+          font={font}
+          text="Hello, Slug!"
+          fontSize={48}
+          color={0xffffff}
+          align="center"
+        />
+      );
+    }
+    ```
+  </TabItem>
+</Tabs>
+
+:::tip[WebGPU & WebGL2]
+Slug text works with both the WebGPU renderer and its WebGL2 fallback. The TSL shaders compile to WGSL or GLSL ES 3.0 automatically.
+:::
+
+## Loading Fonts
+
+`SlugFontLoader` is the single entry point for loading fonts. It automatically tries pre-baked data first (`.slug.json` + `.slug.bin`), and falls back to runtime parsing from the `.ttf` if baked data isn't available.
+
+<Tabs syncKey="framework">
+  <TabItem label="Three.js" icon="seti:javascript">
+    ```typescript
+    import { SlugFontLoader } from '@three-flatland/slug';
+
+    const font = await SlugFontLoader.load('/fonts/MyFont.ttf');
+    ```
+  </TabItem>
+  <TabItem label="React" icon="seti:react">
+    ```tsx
+    import { useLoader } from '@react-three/fiber/webgpu';
+    import { SlugFontLoader } from '@three-flatland/slug/react';
+
+    // Inside a component within <Canvas>, with <Suspense> boundary
+    const font = useLoader(SlugFontLoader, '/fonts/MyFont.ttf');
+    ```
+  </TabItem>
+</Tabs>
+
+After loading, the font provides:
+- `font.glyphs` — parsed glyph data (`Map<number, SlugGlyphData>`)
+- `font.curveTexture` — GPU texture with Bezier control points
+- `font.bandTexture` — GPU texture with spatial acceleration data
+- `font.unitsPerEm`, `font.ascender`, `font.descender`, `font.capHeight` — font metrics
+
+## SlugText Properties
+
+`SlugText` extends `InstancedMesh` — each glyph is an instanced quad evaluated per-pixel by the Slug fragment shader.
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `font` | `SlugFont \| null` | `null` | Font to render with |
+| `text` | `string` | `''` | Text content |
+| `fontSize` | `number` | `16` | Font size in scene units |
+| `color` | `Color \| number` | `0xffffff` | Text color |
+| `align` | `'left' \| 'center' \| 'right'` | `'left'` | Horizontal alignment |
+| `lineHeight` | `number` | `1.2` | Line height multiplier |
+| `maxWidth` | `number \| undefined` | `undefined` | Max width for word wrapping |
+
+All properties can be set after construction. Changes are applied on the next `update()` call.
+
+## Per-Frame Updates
+
+`SlugText.update(camera)` does two things:
+1. **Rebuilds geometry** if any property changed (dirty flag)
+2. **Updates the MVP matrix** for vertex dilation — this must happen every frame since the camera or object may move
+
+<Tabs syncKey="framework">
+  <TabItem label="Three.js" icon="seti:javascript">
+    ```typescript
+    function animate() {
+      requestAnimationFrame(animate);
+      text.update(camera);
+      renderer.render(scene, camera);
+    }
+    ```
+  </TabItem>
+  <TabItem label="React" icon="seti:react">
+    ```tsx
+    useFrame(() => {
+      ref.current?.update(camera);
+    });
+    ```
+  </TabItem>
+</Tabs>
+
+## Viewport Size
+
+For correct edge dilation (half-pixel anti-aliasing at quad boundaries), call `setViewportSize` when the viewport changes:
+
+<Tabs syncKey="framework">
+  <TabItem label="Three.js" icon="seti:javascript">
+    ```typescript
+    text.setViewportSize(window.innerWidth, window.innerHeight);
+
+    window.addEventListener('resize', () => {
+      text.setViewportSize(window.innerWidth, window.innerHeight);
+    });
+    ```
+  </TabItem>
+  <TabItem label="React" icon="seti:react">
+    ```tsx
+    const { size } = useThree();
+
+    useEffect(() => {
+      ref.current?.setViewportSize(size.width, size.height);
+    }, [size]);
+    ```
+  </TabItem>
+</Tabs>
+
+## Dynamic Text
+
+Change any property and the text rebuilds on the next `update()`:
+
+```typescript
+text.text = 'New content';
+text.fontSize = 96;
+text.align = 'right';
+text.color = 0xff0000;
+// Geometry rebuilds automatically on next update() call
+```
+
+## Multi-line & Word Wrap
+
+Set `maxWidth` to enable automatic word wrapping. Line breaks (`\n`) are also supported:
+
+```typescript
+const text = new SlugText({
+  font,
+  text: 'This is a long paragraph that will wrap automatically.',
+  fontSize: 24,
+  maxWidth: 400,
+  lineHeight: 1.4,
+});
+```
+
+## Material Options
+
+`SlugText` creates a `SlugMaterial` internally. Two shader-level options are available at construction time:
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `evenOdd` | `boolean` | `false` | Use even-odd fill rule instead of non-zero winding |
+| `weightBoost` | `boolean` | `false` | Apply `sqrt()` to coverage for bolder appearance |
+
+These are compile-time shader constants and cannot be changed after construction.
+
+## Pre-baking Fonts
+
+For production, use `slug-bake` to pre-process fonts offline. This eliminates opentype.js at runtime and lets you subset to only the glyphs you need:
+
+```bash
+# Install (or use npx)
+npx slug-bake Inter-Regular.ttf
+
+# Subset to ASCII only — 32 KB with Brotli
+npx slug-bake Inter-Regular.ttf --range ascii
+
+# Latin extended
+npx slug-bake Inter-Regular.ttf --range latin
+
+# Multiple ranges
+npx slug-bake Inter-Regular.ttf -r latin -r 0x2000-0x206F
+```
+
+Place the `.slug.json` + `.slug.bin` files alongside the font. `SlugFont.fromURL()` detects them automatically — no code changes needed. The `.ttf` is never fetched when baked data is present.
+
+| Range | Glyphs | Raw | Brotli |
+|-------|--------|-----|--------|
+| All | 2,849 | 12.78 MB | 724 KB |
+| `latin` | 523 | 2.15 MB | 208 KB |
+| `ascii` | 95 | 412 KB | 32 KB |
+
+:::tip[CDN Compression]
+Rely on your CDN's gzip/brotli — the browser decompresses automatically with zero JS cost. ASCII-only Inter with Brotli is **32 KB** for resolution-independent text at any zoom level.
+:::
+
+Missing glyphs render as a fallback rectangle. Named ranges: `ascii`, `latin`, `latin+`. Custom ranges use hex (`0x20-0x7E`) or decimal (`32-126`).
+
+## How It Works
+
+The Slug algorithm renders each pixel by:
+1. Casting dual rays (horizontal + vertical) from the pixel center
+2. Solving quadratic equations to find Bezier curve intersections
+3. Computing winding number from intersection results
+4. Producing fractional coverage for anti-aliased edges
+
+Spatial band structures accelerate the per-pixel curve lookup, and vertex dilation expands each glyph quad by half a pixel to ensure boundary fragments are evaluated.

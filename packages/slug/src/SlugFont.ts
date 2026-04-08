@@ -1,14 +1,20 @@
 import type { DataTexture } from 'three'
-import { parseFont } from './pipeline/fontParser.js'
-import { packTextures } from './pipeline/texturePacker.js'
-import { shapeText } from './pipeline/textShaper.js'
+import type { BakedFontData } from './baked.js'
 import type { SlugGlyphData, PositionedGlyph, SlugTextureData } from './types.js'
 
 /**
  * Font data container for Slug GPU text rendering.
  *
- * Holds parsed glyph outlines, spatial band structures, and packed GPU textures.
- * Provides text shaping (string → positioned glyphs).
+ * Load fonts via `SlugFontLoader` — the single entry point for all loading:
+ *
+ * @example
+ * ```typescript
+ * // Vanilla
+ * const font = await SlugFontLoader.load('/fonts/Inter-Regular.ttf')
+ *
+ * // R3F
+ * const font = useLoader(SlugFontLoader, '/fonts/Inter-Regular.ttf')
+ * ```
  */
 export class SlugFont {
   /** Glyph data indexed by glyph ID. */
@@ -35,9 +41,13 @@ export class SlugFont {
   /** Cap height in em-space. */
   readonly capHeight: number
 
-  /** The underlying opentype.js Font for text shaping. */
-  private _opentypeFont: import('opentype.js').Font | null = null
+  // --- Shaping backends (one or the other is set by the loader) ---
+  /** @internal */ _opentypeFont: import('opentype.js').Font | null = null
+  /** @internal */ _shapeTextOT: typeof import('./pipeline/textShaper.js').shapeText | null = null
+  /** @internal */ _bakedData: BakedFontData | null = null
+  /** @internal */ _shapeTextBaked: typeof import('./pipeline/textShaperBaked.js').shapeTextBaked | null = null
 
+  /** @internal — Use SlugFontLoader to create instances. */
   constructor(
     glyphs: Map<number, SlugGlyphData>,
     textures: SlugTextureData,
@@ -58,41 +68,38 @@ export class SlugFont {
     this.capHeight = metrics.capHeight
   }
 
-  /**
-   * Create a SlugFont from a font file ArrayBuffer.
-   */
-  /**
-   * Create a SlugFont from a font file ArrayBuffer.
-   */
-  static async fromArrayBuffer(buffer: ArrayBuffer): Promise<SlugFont> {
-    const opentype = await import('opentype.js')
+  /** @internal — Called by SlugFontLoader for baked path. */
+  static _createBaked(
+    glyphs: Map<number, SlugGlyphData>,
+    textures: SlugTextureData,
+    metrics: { unitsPerEm: number; ascender: number; descender: number; capHeight: number },
+    bakedData: BakedFontData,
+    shapeTextBaked: typeof import('./pipeline/textShaperBaked.js').shapeTextBaked,
+  ): SlugFont {
+    const font = new SlugFont(glyphs, textures, metrics)
+    font._bakedData = bakedData
+    font._shapeTextBaked = shapeTextBaked
+    return font
+  }
 
-    const { glyphs, unitsPerEm, ascender, descender, capHeight } = parseFont(buffer)
-    const textures = packTextures(glyphs)
-
-    const otFont = opentype.parse(buffer)
-
-    const font = new SlugFont(glyphs, textures, {
-      unitsPerEm,
-      ascender,
-      descender,
-      capHeight,
-    })
+  /** @internal — Called by SlugFontLoader for runtime path. */
+  static _createRuntime(
+    glyphs: Map<number, SlugGlyphData>,
+    textures: SlugTextureData,
+    metrics: { unitsPerEm: number; ascender: number; descender: number; capHeight: number },
+    otFont: import('opentype.js').Font,
+    shapeText: typeof import('./pipeline/textShaper.js').shapeText,
+  ): SlugFont {
+    const font = new SlugFont(glyphs, textures, metrics)
     font._opentypeFont = otFont
+    font._shapeTextOT = shapeText
     return font
   }
 
   /**
-   * Create a SlugFont from a URL.
-   */
-  static async fromURL(url: string): Promise<SlugFont> {
-    const response = await fetch(url)
-    const buffer = await response.arrayBuffer()
-    return SlugFont.fromArrayBuffer(buffer)
-  }
-
-  /**
    * Shape a text string into positioned glyphs.
+   * Uses baked shaper (no opentype.js) when loaded from baked data,
+   * or opentype.js shaper when loaded from .ttf at runtime.
    */
   shapeText(
     text: string,
@@ -103,29 +110,23 @@ export class SlugFont {
       maxWidth?: number
     },
   ): PositionedGlyph[] {
-    if (!this._opentypeFont) {
-      throw new Error('SlugFont: opentype.js font not available for text shaping')
+    if (this._bakedData && this._shapeTextBaked) {
+      return this._shapeTextBaked(this._bakedData, this.glyphs, this.unitsPerEm, text, fontSize, options)
     }
-    return shapeText(this._opentypeFont, text, fontSize, options)
+    if (this._opentypeFont && this._shapeTextOT) {
+      return this._shapeTextOT(this._opentypeFont, text, fontSize, options)
+    }
+    throw new Error('SlugFont: text shaping not available — load via SlugFontLoader')
   }
 
-  /**
-   * Get the number of horizontal bands for a glyph.
-   */
   getHBandCount(glyphId: number): number {
     return this.glyphs.get(glyphId)?.bands.hBands.length ?? 0
   }
 
-  /**
-   * Get the number of vertical bands for a glyph.
-   */
   getVBandCount(glyphId: number): number {
     return this.glyphs.get(glyphId)?.bands.vBands.length ?? 0
   }
 
-  /**
-   * Dispose GPU resources.
-   */
   dispose(): void {
     this.curveTexture.dispose()
     this.bandTexture.dispose()
