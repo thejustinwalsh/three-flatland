@@ -5,6 +5,6 @@
 > Branch: feat-skia
 > PR: https://github.com/thejustinwalsh/three-flatland/pull/19
 
-- Updated `peerDependencies` to use workspace catalog version for `three` instead of a hardcoded semver range
+- Version bump to align with `@three-flatland/skia` initial release
 
-Aligns peer dependency version management with the workspace catalog.
+No API changes. Version updated as part of the feat-skia monorepo release.
