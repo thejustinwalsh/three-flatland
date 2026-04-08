@@ -104,6 +104,21 @@ export class SlugText extends InstancedMesh {
     }
   }
 
+  // -- Color --
+
+  get color(): Color {
+    return this._color
+  }
+
+  set color(value: Color | number) {
+    const c = value instanceof Color ? value : new Color(value)
+    if (!this._color.equals(c)) {
+      this._color.copy(c)
+      this._slugMaterial?.setColor(c)
+      this._dirty = true
+    }
+  }
+
   // -- Font size --
 
   get fontSize(): number {

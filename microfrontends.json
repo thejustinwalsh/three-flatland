@@ -36,6 +36,19 @@
           "paths": ["/vanilla/slug-text", "/vanilla/slug-text/:path*"]
         }
       ]
+    },
+    "example-react-slug-text": {
+      "development": {
+        "local": {
+          "port": 4018
+        }
+      },
+      "routing": [
+        {
+          "group": "react-examples",
+          "paths": ["/react/slug-text", "/react/slug-text/:path*"]
+        }
+      ]
     }
   }
 }
