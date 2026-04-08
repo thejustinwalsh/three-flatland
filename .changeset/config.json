@@ -27,6 +27,8 @@
     "example-vanilla-pass-effects",
     "example-vanilla-template",
     "example-vanilla-tilemap",
-    "example-vanilla-tsl-nodes"
+    "example-vanilla-tsl-nodes",
+    "example-react-skia",
+    "example-vanilla-skia"
   ]
 }

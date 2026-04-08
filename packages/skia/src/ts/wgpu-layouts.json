@@ -1,0 +1,451 @@
+{
+  "WGPUStringView": {
+    "_size": 8,
+    "fields": {
+      "data": { "offset": 0, "size": 4, "type": "ptr" },
+      "length": { "offset": 4, "size": 4, "type": "u32" }
+    }
+  },
+  "WGPUChainedStruct": {
+    "_size": 8,
+    "fields": {
+      "next": { "offset": 0, "size": 4, "type": "ptr" },
+      "sType": { "offset": 4, "size": 4, "type": "u32" }
+    }
+  },
+  "WGPUExtent3D": {
+    "_size": 12,
+    "fields": {
+      "width": { "offset": 0, "size": 4, "type": "u32" },
+      "height": { "offset": 4, "size": 4, "type": "u32" },
+      "depthOrArrayLayers": { "offset": 8, "size": 4, "type": "u32" }
+    }
+  },
+  "WGPUColor": {
+    "_size": 32,
+    "fields": {
+      "r": { "offset": 0, "size": 8, "type": "f64" },
+      "g": { "offset": 8, "size": 8, "type": "f64" },
+      "b": { "offset": 16, "size": 8, "type": "f64" },
+      "a": { "offset": 24, "size": 8, "type": "f64" }
+    }
+  },
+  "WGPUBufferDescriptor": {
+    "_size": 40,
+    "fields": {
+      "nextInChain": { "offset": 0, "size": 4, "type": "ptr" },
+      "label": { "offset": 4, "size": 8, "type": "ptr" },
+      "usage": { "offset": 16, "size": 8, "type": "u64" },
+      "size": { "offset": 24, "size": 8, "type": "u64" },
+      "mappedAtCreation": { "offset": 32, "size": 4, "type": "u32" }
+    }
+  },
+  "WGPUTextureDescriptor": {
+    "_size": 64,
+    "fields": {
+      "nextInChain": { "offset": 0, "size": 4, "type": "ptr" },
+      "label": { "offset": 4, "size": 8, "type": "ptr" },
+      "usage": { "offset": 16, "size": 8, "type": "u64" },
+      "dimension": { "offset": 24, "size": 4, "type": "u32" },
+      "size": { "offset": 28, "size": 12, "type": "u32" },
+      "format": { "offset": 40, "size": 4, "type": "u32" },
+      "mipLevelCount": { "offset": 44, "size": 4, "type": "u32" },
+      "sampleCount": { "offset": 48, "size": 4, "type": "u32" },
+      "viewFormatCount": { "offset": 52, "size": 4, "type": "u32" },
+      "viewFormats": { "offset": 56, "size": 4, "type": "ptr" }
+    }
+  },
+  "WGPUShaderModuleDescriptor": {
+    "_size": 12,
+    "fields": {
+      "nextInChain": { "offset": 0, "size": 4, "type": "ptr" },
+      "label": { "offset": 4, "size": 8, "type": "ptr" }
+    }
+  },
+  "WGPUSamplerDescriptor": {
+    "_size": 52,
+    "fields": {
+      "nextInChain": { "offset": 0, "size": 4, "type": "ptr" },
+      "label": { "offset": 4, "size": 8, "type": "ptr" },
+      "addressModeU": { "offset": 12, "size": 4, "type": "u32" },
+      "addressModeV": { "offset": 16, "size": 4, "type": "u32" },
+      "addressModeW": { "offset": 20, "size": 4, "type": "u32" },
+      "magFilter": { "offset": 24, "size": 4, "type": "u32" },
+      "minFilter": { "offset": 28, "size": 4, "type": "u32" },
+      "mipmapFilter": { "offset": 32, "size": 4, "type": "u32" },
+      "lodMinClamp": { "offset": 36, "size": 4, "type": "f32" },
+      "lodMaxClamp": { "offset": 40, "size": 4, "type": "f32" },
+      "compare": { "offset": 44, "size": 4, "type": "u32" },
+      "maxAnisotropy": { "offset": 48, "size": 2, "type": "u16" }
+    }
+  },
+  "WGPUBindGroupLayoutDescriptor": {
+    "_size": 20,
+    "fields": {
+      "nextInChain": { "offset": 0, "size": 4, "type": "ptr" },
+      "label": { "offset": 4, "size": 8, "type": "ptr" },
+      "entryCount": { "offset": 12, "size": 4, "type": "u32" },
+      "entries": { "offset": 16, "size": 4, "type": "ptr" }
+    }
+  },
+  "WGPUBindGroupDescriptor": {
+    "_size": 24,
+    "fields": {
+      "nextInChain": { "offset": 0, "size": 4, "type": "ptr" },
+      "label": { "offset": 4, "size": 8, "type": "ptr" },
+      "layout": { "offset": 12, "size": 4, "type": "ptr" },
+      "entryCount": { "offset": 16, "size": 4, "type": "u32" },
+      "entries": { "offset": 20, "size": 4, "type": "ptr" }
+    }
+  },
+  "WGPUPipelineLayoutDescriptor": {
+    "_size": 24,
+    "fields": {
+      "nextInChain": { "offset": 0, "size": 4, "type": "ptr" },
+      "label": { "offset": 4, "size": 8, "type": "ptr" },
+      "bindGroupLayoutCount": { "offset": 12, "size": 4, "type": "u32" },
+      "bindGroupLayouts": { "offset": 16, "size": 4, "type": "ptr" }
+    }
+  },
+  "WGPURenderPassDescriptor": {
+    "_size": 32,
+    "fields": {
+      "nextInChain": { "offset": 0, "size": 4, "type": "ptr" },
+      "label": { "offset": 4, "size": 8, "type": "ptr" },
+      "colorAttachmentCount": { "offset": 12, "size": 4, "type": "u32" },
+      "colorAttachments": { "offset": 16, "size": 4, "type": "ptr" },
+      "depthStencilAttachment": { "offset": 20, "size": 4, "type": "ptr" },
+      "occlusionQuerySet": { "offset": 24, "size": 4, "type": "ptr" },
+      "timestampWrites": { "offset": 28, "size": 4, "type": "ptr" }
+    }
+  },
+  "WGPURenderPassColorAttachment": {
+    "_size": 56,
+    "fields": {
+      "nextInChain": { "offset": 0, "size": 4, "type": "ptr" },
+      "view": { "offset": 4, "size": 4, "type": "ptr" },
+      "depthSlice": { "offset": 8, "size": 4, "type": "u32" },
+      "resolveTarget": { "offset": 12, "size": 4, "type": "ptr" },
+      "loadOp": { "offset": 16, "size": 4, "type": "u32" },
+      "storeOp": { "offset": 20, "size": 4, "type": "u32" },
+      "clearValue": { "offset": 24, "size": 32, "type": "f64" }
+    }
+  },
+  "WGPURenderPassDepthStencilAttachment": {
+    "_size": 40,
+    "fields": {
+      "view": { "offset": 4, "size": 4, "type": "ptr" },
+      "depthLoadOp": { "offset": 8, "size": 4, "type": "u32" },
+      "depthStoreOp": { "offset": 12, "size": 4, "type": "u32" },
+      "depthClearValue": { "offset": 16, "size": 4, "type": "f32" },
+      "depthReadOnly": { "offset": 20, "size": 4, "type": "u32" },
+      "stencilLoadOp": { "offset": 24, "size": 4, "type": "u32" },
+      "stencilStoreOp": { "offset": 28, "size": 4, "type": "u32" },
+      "stencilClearValue": { "offset": 32, "size": 4, "type": "u32" },
+      "stencilReadOnly": { "offset": 36, "size": 4, "type": "u32" }
+    }
+  },
+  "WGPUColorTargetState": {
+    "_size": 24,
+    "fields": {
+      "nextInChain": { "offset": 0, "size": 4, "type": "ptr" },
+      "format": { "offset": 4, "size": 4, "type": "u32" },
+      "blend": { "offset": 8, "size": 4, "type": "ptr" },
+      "writeMask": { "offset": 16, "size": 8, "type": "u64" }
+    }
+  },
+  "WGPUBlendState": {
+    "_size": 24,
+    "fields": {
+      "color": { "offset": 0, "size": 12, "type": "u32" },
+      "alpha": { "offset": 12, "size": 12, "type": "u32" }
+    }
+  },
+  "WGPUVertexAttribute": {
+    "_size": 24,
+    "fields": {
+      "format": { "offset": 4, "size": 4, "type": "u32" },
+      "offset": { "offset": 8, "size": 8, "type": "u64" },
+      "shaderLocation": { "offset": 16, "size": 4, "type": "u32" }
+    }
+  },
+  "WGPUVertexBufferLayout": {
+    "_size": 24,
+    "fields": {
+      "nextInChain": { "offset": 0, "size": 4, "type": "ptr" },
+      "stepMode": { "offset": 4, "size": 4, "type": "u32" },
+      "arrayStride": { "offset": 8, "size": 8, "type": "u64" },
+      "attributeCount": { "offset": 16, "size": 4, "type": "u32" },
+      "attributes": { "offset": 20, "size": 4, "type": "ptr" }
+    }
+  },
+  "WGPUOrigin3D": {
+    "_size": 12,
+    "fields": {
+      "x": { "offset": 0, "size": 4, "type": "u32" },
+      "y": { "offset": 4, "size": 4, "type": "u32" },
+      "z": { "offset": 8, "size": 4, "type": "u32" }
+    }
+  },
+  "WGPUStencilFaceState": {
+    "_size": 16,
+    "fields": {
+      "compare": { "offset": 0, "size": 4, "type": "u32" },
+      "failOp": { "offset": 4, "size": 4, "type": "u32" },
+      "depthFailOp": { "offset": 8, "size": 4, "type": "u32" },
+      "passOp": { "offset": 12, "size": 4, "type": "u32" }
+    }
+  },
+  "WGPUBufferBindingLayout": {
+    "_size": 24,
+    "fields": {
+      "nextInChain": { "offset": 0, "size": 4, "type": "ptr" },
+      "type": { "offset": 4, "size": 4, "type": "u32" },
+      "hasDynamicOffset": { "offset": 8, "size": 4, "type": "u32" },
+      "minBindingSize": { "offset": 16, "size": 8, "type": "u64" }
+    }
+  },
+  "WGPUSamplerBindingLayout": {
+    "_size": 8,
+    "fields": {
+      "nextInChain": { "offset": 0, "size": 4, "type": "ptr" },
+      "type": { "offset": 4, "size": 4, "type": "u32" }
+    }
+  },
+  "WGPUTextureBindingLayout": {
+    "_size": 16,
+    "fields": {
+      "nextInChain": { "offset": 0, "size": 4, "type": "ptr" },
+      "sampleType": { "offset": 4, "size": 4, "type": "u32" },
+      "viewDimension": { "offset": 8, "size": 4, "type": "u32" },
+      "multisampled": { "offset": 12, "size": 4, "type": "u32" }
+    }
+  },
+  "WGPUStorageTextureBindingLayout": {
+    "_size": 16,
+    "fields": {
+      "nextInChain": { "offset": 0, "size": 4, "type": "ptr" },
+      "access": { "offset": 4, "size": 4, "type": "u32" },
+      "format": { "offset": 8, "size": 4, "type": "u32" },
+      "viewDimension": { "offset": 12, "size": 4, "type": "u32" }
+    }
+  },
+  "WGPUBindGroupEntry": {
+    "_size": 40,
+    "fields": {
+      "nextInChain": { "offset": 0, "size": 4, "type": "ptr" },
+      "binding": { "offset": 4, "size": 4, "type": "u32" },
+      "buffer": { "offset": 8, "size": 4, "type": "ptr" },
+      "offset": { "offset": 16, "size": 8, "type": "u64" },
+      "size": { "offset": 24, "size": 8, "type": "u64" },
+      "sampler": { "offset": 32, "size": 4, "type": "ptr" },
+      "textureView": { "offset": 36, "size": 4, "type": "ptr" }
+    }
+  },
+  "WGPUBindGroupLayoutEntry": {
+    "_size": 88,
+    "fields": {
+      "nextInChain": { "offset": 0, "size": 4, "type": "ptr" },
+      "binding": { "offset": 4, "size": 4, "type": "u32" },
+      "visibility": { "offset": 8, "size": 8, "type": "u64" },
+      "bindingArraySize": { "offset": 16, "size": 4, "type": "u32" },
+      "buffer": { "offset": 24, "size": 24, "type": "u32" },
+      "sampler": { "offset": 48, "size": 8, "type": "u32" },
+      "texture": { "offset": 56, "size": 16, "type": "u32" },
+      "storageTexture": { "offset": 72, "size": 16, "type": "u32" }
+    }
+  },
+  "WGPUShaderSourceWGSL": {
+    "_size": 16,
+    "fields": {
+      "chain": { "offset": 0, "size": 8, "type": "u32" },
+      "code": { "offset": 8, "size": 8, "type": "ptr" }
+    }
+  },
+  "WGPUTextureViewDescriptor": {
+    "_size": 48,
+    "fields": {
+      "nextInChain": { "offset": 0, "size": 4, "type": "ptr" },
+      "label": { "offset": 4, "size": 8, "type": "ptr" },
+      "format": { "offset": 12, "size": 4, "type": "u32" },
+      "dimension": { "offset": 16, "size": 4, "type": "u32" },
+      "baseMipLevel": { "offset": 20, "size": 4, "type": "u32" },
+      "mipLevelCount": { "offset": 24, "size": 4, "type": "u32" },
+      "baseArrayLayer": { "offset": 28, "size": 4, "type": "u32" },
+      "arrayLayerCount": { "offset": 32, "size": 4, "type": "u32" },
+      "aspect": { "offset": 36, "size": 4, "type": "u32" },
+      "usage": { "offset": 40, "size": 8, "type": "u64" }
+    }
+  },
+  "WGPUVertexState": {
+    "_size": 32,
+    "fields": {
+      "nextInChain": { "offset": 0, "size": 4, "type": "ptr" },
+      "module": { "offset": 4, "size": 4, "type": "ptr" },
+      "entryPoint": { "offset": 8, "size": 8, "type": "ptr" },
+      "constantCount": { "offset": 16, "size": 4, "type": "u32" },
+      "constants": { "offset": 20, "size": 4, "type": "ptr" },
+      "bufferCount": { "offset": 24, "size": 4, "type": "u32" },
+      "buffers": { "offset": 28, "size": 4, "type": "ptr" }
+    }
+  },
+  "WGPUFragmentState": {
+    "_size": 32,
+    "fields": {
+      "nextInChain": { "offset": 0, "size": 4, "type": "ptr" },
+      "module": { "offset": 4, "size": 4, "type": "ptr" },
+      "entryPoint": { "offset": 8, "size": 8, "type": "ptr" },
+      "constantCount": { "offset": 16, "size": 4, "type": "u32" },
+      "constants": { "offset": 20, "size": 4, "type": "ptr" },
+      "targetCount": { "offset": 24, "size": 4, "type": "u32" },
+      "targets": { "offset": 28, "size": 4, "type": "ptr" }
+    }
+  },
+  "WGPUPrimitiveState": {
+    "_size": 24,
+    "fields": {
+      "nextInChain": { "offset": 0, "size": 4, "type": "ptr" },
+      "topology": { "offset": 4, "size": 4, "type": "u32" },
+      "stripIndexFormat": { "offset": 8, "size": 4, "type": "u32" },
+      "frontFace": { "offset": 12, "size": 4, "type": "u32" },
+      "cullMode": { "offset": 16, "size": 4, "type": "u32" },
+      "unclippedDepth": { "offset": 20, "size": 4, "type": "u32" }
+    }
+  },
+  "WGPUMultisampleState": {
+    "_size": 16,
+    "fields": {
+      "nextInChain": { "offset": 0, "size": 4, "type": "ptr" },
+      "count": { "offset": 4, "size": 4, "type": "u32" },
+      "mask": { "offset": 8, "size": 4, "type": "u32" },
+      "alphaToCoverageEnabled": { "offset": 12, "size": 4, "type": "u32" }
+    }
+  },
+  "WGPUDepthStencilState": {
+    "_size": 68,
+    "fields": {
+      "nextInChain": { "offset": 0, "size": 4, "type": "ptr" },
+      "format": { "offset": 4, "size": 4, "type": "u32" },
+      "depthWriteEnabled": { "offset": 8, "size": 4, "type": "u32" },
+      "depthCompare": { "offset": 12, "size": 4, "type": "u32" },
+      "stencilFront": { "offset": 16, "size": 16, "type": "u32" },
+      "stencilBack": { "offset": 32, "size": 16, "type": "u32" },
+      "stencilReadMask": { "offset": 48, "size": 4, "type": "u32" },
+      "stencilWriteMask": { "offset": 52, "size": 4, "type": "u32" },
+      "depthBias": { "offset": 56, "size": 4, "type": "i32" },
+      "depthBiasSlopeScale": { "offset": 60, "size": 4, "type": "f32" },
+      "depthBiasClamp": { "offset": 64, "size": 4, "type": "f32" }
+    }
+  },
+  "WGPUComputeState": {
+    "_size": 24,
+    "fields": {
+      "nextInChain": { "offset": 0, "size": 4, "type": "ptr" },
+      "module": { "offset": 4, "size": 4, "type": "ptr" },
+      "entryPoint": { "offset": 8, "size": 8, "type": "ptr" },
+      "constantCount": { "offset": 16, "size": 4, "type": "u32" },
+      "constants": { "offset": 20, "size": 4, "type": "ptr" }
+    }
+  },
+  "WGPURenderPipelineDescriptor": {
+    "_size": 96,
+    "fields": {
+      "nextInChain": { "offset": 0, "size": 4, "type": "ptr" },
+      "label": { "offset": 4, "size": 8, "type": "ptr" },
+      "layout": { "offset": 12, "size": 4, "type": "ptr" },
+      "vertex": { "offset": 16, "size": 32, "type": "u32" },
+      "primitive": { "offset": 48, "size": 24, "type": "u32" },
+      "depthStencil": { "offset": 72, "size": 4, "type": "ptr" },
+      "multisample": { "offset": 76, "size": 16, "type": "u32" },
+      "fragment": { "offset": 92, "size": 4, "type": "ptr" }
+    }
+  },
+  "WGPUComputePipelineDescriptor": {
+    "_size": 40,
+    "fields": {
+      "nextInChain": { "offset": 0, "size": 4, "type": "ptr" },
+      "label": { "offset": 4, "size": 8, "type": "ptr" },
+      "layout": { "offset": 12, "size": 4, "type": "ptr" },
+      "compute": { "offset": 16, "size": 24, "type": "u32" }
+    }
+  },
+  "WGPUComputePassDescriptor": {
+    "_size": 16,
+    "fields": {
+      "nextInChain": { "offset": 0, "size": 4, "type": "ptr" },
+      "label": { "offset": 4, "size": 8, "type": "ptr" },
+      "timestampWrites": { "offset": 12, "size": 4, "type": "ptr" }
+    }
+  },
+  "WGPUTexelCopyBufferLayout": {
+    "_size": 16,
+    "fields": {
+      "offset": { "offset": 0, "size": 8, "type": "u64" },
+      "bytesPerRow": { "offset": 8, "size": 4, "type": "u32" },
+      "rowsPerImage": { "offset": 12, "size": 4, "type": "u32" }
+    }
+  },
+  "WGPUTexelCopyBufferInfo": {
+    "_size": 24,
+    "fields": {
+      "layout": { "offset": 0, "size": 16, "type": "u32" },
+      "buffer": { "offset": 16, "size": 4, "type": "ptr" }
+    }
+  },
+  "WGPUTexelCopyTextureInfo": {
+    "_size": 24,
+    "fields": {
+      "texture": { "offset": 0, "size": 4, "type": "ptr" },
+      "mipLevel": { "offset": 4, "size": 4, "type": "u32" },
+      "origin": { "offset": 8, "size": 12, "type": "u32" },
+      "aspect": { "offset": 20, "size": 4, "type": "u32" }
+    }
+  },
+  "WGPULimits": {
+    "_size": 152,
+    "fields": {
+      "nextInChain": { "offset": 0, "size": 4, "type": "ptr" },
+      "maxTextureDimension1D": { "offset": 4, "size": 4, "type": "u32" },
+      "maxTextureDimension2D": { "offset": 8, "size": 4, "type": "u32" },
+      "maxTextureDimension3D": { "offset": 12, "size": 4, "type": "u32" },
+      "maxTextureArrayLayers": { "offset": 16, "size": 4, "type": "u32" },
+      "maxBindGroups": { "offset": 20, "size": 4, "type": "u32" },
+      "maxBindGroupsPlusVertexBuffers": { "offset": 24, "size": 4, "type": "u32" },
+      "maxBindingsPerBindGroup": { "offset": 28, "size": 4, "type": "u32" },
+      "maxDynamicUniformBuffersPerPipelineLayout": { "offset": 32, "size": 4, "type": "u32" },
+      "maxDynamicStorageBuffersPerPipelineLayout": { "offset": 36, "size": 4, "type": "u32" },
+      "maxSampledTexturesPerShaderStage": { "offset": 40, "size": 4, "type": "u32" },
+      "maxSamplersPerShaderStage": { "offset": 44, "size": 4, "type": "u32" },
+      "maxStorageBuffersPerShaderStage": { "offset": 48, "size": 4, "type": "u32" },
+      "maxStorageTexturesPerShaderStage": { "offset": 52, "size": 4, "type": "u32" },
+      "maxUniformBuffersPerShaderStage": { "offset": 56, "size": 4, "type": "u32" },
+      "maxUniformBufferBindingSize": { "offset": 64, "size": 8, "type": "u64" },
+      "maxStorageBufferBindingSize": { "offset": 72, "size": 8, "type": "u64" },
+      "minUniformBufferOffsetAlignment": { "offset": 80, "size": 4, "type": "u32" },
+      "minStorageBufferOffsetAlignment": { "offset": 84, "size": 4, "type": "u32" },
+      "maxVertexBuffers": { "offset": 88, "size": 4, "type": "u32" },
+      "maxBufferSize": { "offset": 96, "size": 8, "type": "u64" },
+      "maxVertexAttributes": { "offset": 104, "size": 4, "type": "u32" },
+      "maxVertexBufferArrayStride": { "offset": 108, "size": 4, "type": "u32" },
+      "maxInterStageShaderVariables": { "offset": 112, "size": 4, "type": "u32" },
+      "maxColorAttachments": { "offset": 116, "size": 4, "type": "u32" },
+      "maxColorAttachmentBytesPerSample": { "offset": 120, "size": 4, "type": "u32" },
+      "maxComputeWorkgroupStorageSize": { "offset": 124, "size": 4, "type": "u32" },
+      "maxComputeInvocationsPerWorkgroup": { "offset": 128, "size": 4, "type": "u32" },
+      "maxComputeWorkgroupSizeX": { "offset": 132, "size": 4, "type": "u32" },
+      "maxComputeWorkgroupSizeY": { "offset": 136, "size": 4, "type": "u32" },
+      "maxComputeWorkgroupSizeZ": { "offset": 140, "size": 4, "type": "u32" },
+      "maxComputeWorkgroupsPerDimension": { "offset": 144, "size": 4, "type": "u32" },
+      "maxImmediateSize": { "offset": 148, "size": 4, "type": "u32" }
+    }
+  },
+  "WGPUQuerySetDescriptor": {
+    "_size": 20,
+    "fields": {
+      "nextInChain": { "offset": 0, "size": 4, "type": "ptr" },
+      "label": { "offset": 4, "size": 8, "type": "ptr" },
+      "type": { "offset": 12, "size": 4, "type": "u32" },
+      "count": { "offset": 16, "size": 4, "type": "u32" }
+    }
+  }
+}

@@ -5,6 +5,7 @@ export default defineConfig({
     globals: true,
     environment: 'node',
     include: ['packages/*/src/**/*.test.ts', 'packages/*/src/**/*.test.tsx'],
+    exclude: ['packages/skia/**'],
     setupFiles: ['./vitest.setup.ts'],
     coverage: {
       provider: 'v8',

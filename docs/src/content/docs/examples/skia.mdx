@@ -1,0 +1,171 @@
+---
+title: Skia
+description: GPU-accelerated 2D vector graphics via Skia WASM with WebGPU and WebGL.
+---
+
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+import ExamplePreview from '../../../components/ExamplePreview';
+import StackBlitzEmbed from '../../../components/StackBlitzEmbed';
+import ExampleTabs from '../../../components/ExampleTabs.astro';
+import { loadExample } from '../../../utils/loadExample';
+
+export const vanillaFiles = loadExample('vanilla', 'skia');
+export const reactFiles = loadExample('react', 'skia');
+
+<ExampleTabs>
+<Tabs>
+  <TabItem label="Preview" icon="rocket">
+    <ExamplePreview client:load type="vanilla" name="skia" />
+  </TabItem>
+  <TabItem label="Three.js" icon="seti:javascript">
+    <StackBlitzEmbed
+      client:load
+      title="Skia - Three.js"
+      files={vanillaFiles}
+      openFile="main.ts"
+      height={600}
+    />
+  </TabItem>
+  <TabItem label="React" icon="seti:react">
+    <StackBlitzEmbed
+      client:load
+      title="Skia - React"
+      files={reactFiles}
+      openFile="App.tsx"
+      height={600}
+    />
+  </TabItem>
+</Tabs>
+</ExampleTabs>
+
+## What It Demonstrates
+
+- **SkiaCanvas** — off-screen texture rendering and screen-space overlay modes
+- **Drawing nodes** — `SkiaRect`, `SkiaCircle`, `SkiaLine`, `SkiaPathNode`, `SkiaTextNode`, `SkiaGroup`
+- **SkiaPaint** — custom gradient shaders applied to drawing nodes
+- **SkiaPath** — programmatic paths with boolean operations (difference, intersect, union, xor)
+- **SkiaTypeface / SkiaFontLoader** — font loading with `useLoader`, sized fonts via `atSize()`
+- **attachSkiaTexture** — R3F attach helper for compositing Skia output onto 3D mesh materials
+- **useFrame phases** — `{ before: 'render' }` and `{ after: 'render' }` for render pipeline control
+
+## Key Patterns
+
+### Texture Mode
+
+Render Skia shapes to a texture and apply it to a 3D mesh:
+
+<Tabs syncKey="framework">
+  <TabItem label="Three.js" icon="seti:javascript">
+    ```typescript
+    import { Skia, SkiaPaint } from '@three-flatland/skia'
+    import { SkiaCanvas, SkiaRect, SkiaGroup } from '@three-flatland/skia/three'
+
+    const skia = await Skia.init(renderer)
+    const canvas = new SkiaCanvas({ renderer, width: 1024, height: 880 })
+    canvas.add(new SkiaRect()) // add shapes
+
+    // In animation loop:
+    canvas.render()
+    material.map = canvas.texture
+    ```
+  </TabItem>
+  <TabItem label="React" icon="seti:react">
+    ```tsx
+    import { SkiaCanvas, SkiaRect, attachSkiaTexture } from '@three-flatland/skia/react'
+
+    <mesh>
+      <meshBasicMaterial transparent premultipliedAlpha>
+        <SkiaCanvas attach={attachSkiaTexture} renderer={renderer}
+                    width={1024} height={880}>
+          <skiaRect x={0} y={0} width={100} height={100}
+                    fill={[1, 0, 0, 1]} />
+        </SkiaCanvas>
+      </meshBasicMaterial>
+    </mesh>
+    ```
+  </TabItem>
+</Tabs>
+
+### Overlay Mode
+
+Draw directly on top of the 3D scene (HUD, debug text):
+
+<Tabs syncKey="framework">
+  <TabItem label="Three.js" icon="seti:javascript">
+    ```typescript
+    const overlay = new SkiaCanvas({
+      renderer,
+      width: window.innerWidth * dpr,
+      height: window.innerHeight * dpr,
+      overlay: true,
+    })
+
+    // Render AFTER the 3D scene:
+    renderer.render(scene, camera)
+    overlay.render()
+    ```
+  </TabItem>
+  <TabItem label="React" icon="seti:react">
+    ```tsx
+    // SkiaCanvas with overlay renders to the screen framebuffer.
+    // Use useFrame with { after: 'render' } to draw after the 3D scene.
+    const overlayRef = useRef<SkiaCanvasRef>(null)
+
+    useFrame(() => {
+      overlayRef.current?.render()
+    }, { after: 'render' })
+
+    <SkiaCanvas ref={overlayRef} renderer={renderer}
+                width={pw} height={ph} overlay>
+      <skiaTextNode text="Hello" font={font}
+                    fill={[1, 1, 1, 1]} x={10} y={30} />
+    </SkiaCanvas>
+    ```
+  </TabItem>
+</Tabs>
+
+### Custom Paints (Gradients, Shaders)
+
+For effects beyond flat fill/stroke, create a `SkiaPaint` and assign it to a node's `paint` prop:
+
+<Tabs syncKey="framework">
+  <TabItem label="Three.js" icon="seti:javascript">
+    ```typescript
+    import { SkiaPaint } from '@three-flatland/skia'
+
+    const paint = new SkiaPaint(skia).setFill()
+    paint.setLinearGradient(0, 0, 200, 0,
+      [0xFFFF0000, 0xFF0000FF], [0, 1])
+
+    rect.paint = paint
+    ```
+  </TabItem>
+  <TabItem label="React" icon="seti:react">
+    ```tsx
+    import { SkiaPaint } from '@three-flatland/skia'
+    import { useSkiaContext } from '@three-flatland/skia/react'
+
+    function GradientRect() {
+      const skia = useSkiaContext()!
+      const [paint] = useState(() => new SkiaPaint(skia).setFill())
+
+      useFrame(({ elapsed }) => {
+        paint.setLinearGradient(0, 0, 200, 0,
+          [0xFFFF0000, 0xFF0000FF], [0, 1])
+      })
+
+      return <skiaRect paint={paint} x={0} y={0} width={200} height={50} />
+    }
+    ```
+  </TabItem>
+</Tabs>
+
+:::tip[useState for WASM Objects]
+In React, create `SkiaPaint` and `SkiaPath` with `useState(() => ...)` initializers instead of `useMemo`. The `useState` initializer runs exactly once and survives React strict mode double-mounts, while `useMemo` can re-evaluate and cause WASM handles to be disposed unexpectedly.
+:::
+
+## Next Steps
+
+- [Skia Guide](../guides/skia) — Concepts and API reference
+- [Basic Sprite](../examples/basic-sprite) — Three-flatland sprites
+- [TSL Nodes](../examples/tsl-nodes) — Shader nodes

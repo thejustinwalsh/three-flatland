@@ -1,0 +1,176 @@
+{
+  "name": "@three-flatland/skia",
+  "version": "0.0.1-alpha.1",
+  "description": "Lightweight CanvasKit alternative — Skia's core GPU rendering in ~1 MB of WASM, built with Zig",
+  "type": "module",
+  "exports": {
+    ".": {
+      "source": "./src/ts/index.ts",
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    },
+    "./three": {
+      "source": "./src/ts/three/index.ts",
+      "import": {
+        "types": "./dist/three/index.d.ts",
+        "default": "./dist/three/index.js"
+      },
+      "require": {
+        "types": "./dist/three/index.d.cts",
+        "default": "./dist/three/index.cjs"
+      }
+    },
+    "./three/*": {
+      "source": "./src/ts/three/*.ts",
+      "import": {
+        "types": "./dist/three/*.d.ts",
+        "default": "./dist/three/*.js"
+      },
+      "require": {
+        "types": "./dist/three/*.d.cts",
+        "default": "./dist/three/*.cjs"
+      }
+    },
+    "./react": {
+      "source": "./src/ts/react/index.ts",
+      "import": {
+        "types": "./dist/react/index.d.ts",
+        "default": "./dist/react/index.js"
+      },
+      "require": {
+        "types": "./dist/react/index.d.cts",
+        "default": "./dist/react/index.cjs"
+      }
+    },
+    "./react/*": {
+      "source": "./src/ts/react/*.ts",
+      "import": {
+        "types": "./dist/react/*.d.ts",
+        "default": "./dist/react/*.js"
+      },
+      "require": {
+        "types": "./dist/react/*.d.cts",
+        "default": "./dist/react/*.cjs"
+      }
+    },
+    "./wasm": "./dist/skia-gl/skia-gl.wasm",
+    "./wasm/gl": "./dist/skia-gl/skia-gl.wasm",
+    "./wasm/wgpu": "./dist/skia-wgpu/skia-wgpu.wasm"
+  },
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "skia-wasm": "./bin/copy-wasm.mjs"
+  },
+  "files": [
+    "dist",
+    "!dist/**/*-debug.wasm",
+    "!dist/**/*-ReleaseFast.wasm",
+    "!dist/**/*-ReleaseSmall.wasm",
+    "!dist/**/*.opt.wasm",
+    "bin",
+    "LICENSE",
+    "THIRD_PARTY_LICENSES"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "skia:setup": "node scripts/setup.mjs",
+    "skia:check": "node scripts/setup.mjs --check",
+    "skia:tools": "node scripts/setup.mjs --tools",
+    "build": "node scripts/setup.mjs --ensure && tsup",
+    "build:wasm": "node scripts/build-wasm.mjs",
+    "build:wasm:gl": "node scripts/build-wasm.mjs --gl-only",
+    "build:wasm:wgpu": "node scripts/build-wasm.mjs --wgpu-only",
+    "dev": "tsup --watch",
+    "test": "vitest run",
+    "test:gl": "vitest run --project gl",
+    "test:wgpu": "vitest run --project wgpu",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "prepack": "node scripts/prepack.mjs",
+    "clean": "rm -rf dist .tools"
+  },
+  "peerDependencies": {
+    "three": "catalog:",
+    "@react-three/fiber": "catalog:",
+    "react": "catalog:"
+  },
+  "peerDependenciesMeta": {
+    "three": { "optional": true },
+    "@react-three/fiber": { "optional": true },
+    "react": { "optional": true }
+  },
+  "devDependencies": {
+    "@bytecodealliance/componentize-js": "^0.19.3",
+    "@bytecodealliance/jco": "^1.17.6",
+    "@react-three/fiber": "catalog:",
+    "@types/react": "catalog:",
+    "@types/three": "catalog:",
+    "react": "catalog:",
+    "three": "catalog:"
+  },
+  "skiaDependencies": {
+    "skia": {
+      "branch": "chrome/m147",
+      "commit": "4502f88af90279ad2685528bd3cf7e90ab140f19"
+    },
+    "zig": "0.15.1",
+    "tools": {
+      "wasm-tools": {
+        "version": "1.246.1",
+        "repo": "bytecodealliance/wasm-tools",
+        "sha256": {
+          "aarch64-macos": "62f08a654cbba6c4d40dd2df08ecdf1d4e1f3ab926c77dcb13ecb1d02ce49f06",
+          "x86_64-macos": "aee9a6ba67d6f3190d20c20cefc5d220801bbb11bf1a7996847000b27b1ef16a",
+          "aarch64-linux": "80b26cf8893657cc45d6d5a471ab7615d50e60d51929a096ac5464c3994d8033",
+          "x86_64-linux": "b134a86561f006e6772dc2d7798f266bd079a1a178113ac2580f54e51fe5e516"
+        }
+      },
+      "wit-bindgen": {
+        "version": "0.54.0",
+        "repo": "bytecodealliance/wit-bindgen",
+        "sha256": {
+          "aarch64-macos": "5fa855483d3f81d86915d2a1fc82987d7b1eabc040a54d8f5b5f92b41c949380",
+          "x86_64-macos": "243c1a46a0f4ea438551568c057f8d7a8995fa05c09fa582ea8aed6254ea4c28",
+          "aarch64-linux": "b62a68fee5f68d15875988832cc26a61f0a3fdff32a3338c21caf8e61ad70808",
+          "x86_64-linux": "cbb6cc85f27c4fda892b2dbc39793228371180b02a9301953d42f4a74ed5e0ba"
+        }
+      },
+      "binaryen": {
+        "version": "129",
+        "repo": "WebAssembly/binaryen",
+        "sha256": {
+          "arm64-macos": "d1bb014775ca3002506712b81b4406d126ff6845e8b2f343bc2696a1a88b7117",
+          "x86_64-macos": "cc38897d3d93c968f24819fae210e04afd0146d0e2467e307207ea7e798a59b9",
+          "aarch64-linux": "81d46b86b10876ab615eec67e09fcc5615115a7b189cfe3d466725ee36c46ac2",
+          "x86_64-linux": "50b9fa62b9abea752da92ec57e0c555fee578760cd237c40107957715d2976ba"
+        }
+      }
+    }
+  },
+  "keywords": [
+    "three.js",
+    "skia",
+    "2d",
+    "vector",
+    "text",
+    "svg",
+    "webassembly",
+    "wasm",
+    "webgpu",
+    "webgl"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/thejustinwalsh/three-flatland.git",
+    "directory": "packages/skia"
+  }
+}

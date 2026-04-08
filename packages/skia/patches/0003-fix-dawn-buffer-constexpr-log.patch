@@ -1,0 +1,13 @@
+diff --git a/src/gpu/graphite/dawn/DawnBuffer.cpp b/src/gpu/graphite/dawn/DawnBuffer.cpp
+index e3905234..342ba911 100644
+--- a/src/gpu/graphite/dawn/DawnBuffer.cpp
++++ b/src/gpu/graphite/dawn/DawnBuffer.cpp
+@@ -55,7 +55,7 @@ void log_map_error(WGPUBufferMapAsyncStatus status, const char*) {
+             statusStr = "<other>";
+             break;
+     }
+-    SKGPU_LOG(priority, "Buffer async map failed with status %s.", statusStr);
++    SKGPU_LOG_E("Buffer async map failed with status %s.", statusStr);
+ }
+ 
+ #else

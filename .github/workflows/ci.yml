@@ -82,6 +82,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          submodules: true
 
       - name: Install pnpm
         uses: pnpm/action-setup@v4
@@ -91,6 +93,11 @@ jobs:
         with:
           node-version: ${{ matrix.node-version }}
           cache: 'pnpm'
+
+      - name: Setup Zig
+        uses: mlugg/setup-zig@v2
+        with:
+          version: 0.15.1
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -102,6 +109,14 @@ jobs:
           key: ${{ runner.os }}-turbo-${{ github.sha }}
           restore-keys: |
             ${{ runner.os }}-turbo-
+
+      - name: Cache Skia WASM tools
+        uses: actions/cache@v4
+        with:
+          path: packages/skia/.tools
+          key: ${{ runner.os }}-skia-tools-${{ hashFiles('packages/skia/package.json') }}
+          restore-keys: |
+            ${{ runner.os }}-skia-tools-
 
       - name: Verify package versions
         run: pnpm sync:pack:verify examples minis

@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Skia + Three.js Scene Graph Test</title>
+  <style>
+    html, body { margin: 0; height: 100%; }
+    body { background: #0d0d0d; color: #eee; font-family: monospace; display: flex; flex-direction: column; align-items: center; }
+    canvas { border: 1px solid #444; flex-shrink: 0; }
+    h1 { flex-shrink: 0; margin: 12px 0 8px; font-size: 18px; color: #e2e8f0; }
+    main { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; width: 100%; }
+    #log { white-space: pre-wrap; font-size: 12px; color: #aaa; height: 200px; overflow-y: auto; padding: 12px; background: rgba(255,255,255,0.04); border-radius: 6px; }
+    .ok { color: #4ade80; }
+    .err { color: #f87171; }
+    .info { color: #60a5fa; }
+  </style>
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.175.0/build/three.module.js",
+      "@three-flatland/skia": "../dist/index.js",
+      "@three-flatland/skia/three": "../dist/three/index.js"
+    },
+    "scopes": {
+      "../dist/": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.175.0/build/three.module.js",
+        "./color-filter": "../dist/color-filter.js",
+        "./context": "../dist/context.js",
+        "./drawing-context": "../dist/drawing-context.js",
+        "./font": "../dist/font.js",
+        "./image": "../dist/image.js",
+        "./image-filter": "../dist/image-filter.js",
+        "./init": "../dist/init.js",
+        "./paint": "../dist/paint.js",
+        "./path": "../dist/path.js",
+        "./path-effect": "../dist/path-effect.js",
+        "./path-measure": "../dist/path-measure.js",
+        "./picture": "../dist/picture.js",
+        "./preload": "../dist/preload.js",
+        "./shader": "../dist/shader.js",
+        "./svg": "../dist/svg.js",
+        "./text-blob": "../dist/text-blob.js",
+        "./types": "../dist/types.js",
+        "./wasm-loader": "../dist/wasm-loader.js"
+      },
+      "../dist/three/": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.175.0/build/three.module.js",
+        "../context": "../dist/context.js",
+        "../drawing-context": "../dist/drawing-context.js",
+        "../init": "../dist/init.js",
+        "../paint": "../dist/paint.js",
+        "../path": "../dist/path.js",
+        "../font": "../dist/font.js",
+        "../image": "../dist/image.js",
+        "../image-filter": "../dist/image-filter.js",
+        "../color-filter": "../dist/color-filter.js",
+        "../types": "../dist/types.js",
+        "./SkiaCanvas": "../dist/three/SkiaCanvas.js",
+        "./SkiaNode": "../dist/three/SkiaNode.js",
+        "./SkiaGroup": "../dist/three/SkiaGroup.js",
+        "./SkiaRect": "../dist/three/SkiaRect.js",
+        "./SkiaCircle": "../dist/three/SkiaCircle.js",
+        "./SkiaOval": "../dist/three/SkiaOval.js",
+        "./SkiaLine": "../dist/three/SkiaLine.js",
+        "./SkiaPathNode": "../dist/three/SkiaPathNode.js",
+        "./SkiaTextNode": "../dist/three/SkiaTextNode.js",
+        "./SkiaImageNode": "../dist/three/SkiaImageNode.js",
+        "./SkiaTextPathNode": "../dist/three/SkiaTextPathNode.js",
+        "./SkiaFontLoader": "../dist/three/SkiaFontLoader.js",
+        "./SkiaImageLoader": "../dist/three/SkiaImageLoader.js",
+        "./SkiaPaintProps": "../dist/three/SkiaPaintProps.js",
+        "./utils": "../dist/three/utils.js"
+      }
+    }
+  }
+  </script>
+</head>
+<body>
+  <h1>Skia + Three.js Scene Graph — Browser Test</h1>
+  <main>
+    <div id="container"></div>
+  </main>
+  <div style="max-width:800px;width:800px;flex-shrink:0;margin-bottom:20px;">
+    <div style="font-size:11px;color:#555;margin-bottom:4px;padding-left:4px;">Three.js Scene Graph Log</div>
+    <div id="log"></div>
+  </div>
+
+<script type="module">
+import * as THREE from 'three'
+import { SkiaPaint, SkiaPath, SkiaFont } from '@three-flatland/skia'
+import {
+  SkiaCanvas, SkiaGroup, SkiaRect, SkiaCircle, SkiaLine, SkiaPathNode, SkiaTextNode,
+} from '@three-flatland/skia/three'
+
+const log = document.getElementById('log')
+const L = (cls, msg) => { log.innerHTML += `<span class="${cls}">${msg}</span>\n`; log.scrollTop = log.scrollHeight }
+const ok = (msg) => L('ok', `[ok]  ${msg}`)
+const err = (msg) => L('err', `[err] ${msg}`)
+const info = (msg) => L('info', `[..] ${msg}`)
+
+async function run() {
+  const W = 512, H = 512
+
+  // ── Three.js renderer ──
+  info('Creating Three.js WebGLRenderer...')
+  const renderer = new THREE.WebGLRenderer({ antialias: true, stencil: true })
+  renderer.setSize(W, H)
+  renderer.setPixelRatio(1)
+  document.getElementById('container').appendChild(renderer.domElement)
+  renderer.domElement.style.border = '1px solid #444'
+
+  const gl = renderer.getContext()
+  ok(`WebGL2: ${gl.getParameter(gl.RENDERER)}`)
+
+  // Enable all GL extensions
+  for (const ext of gl.getSupportedExtensions() || []) gl.getExtension(ext)
+
+  // ── Create SkiaCanvas (overlay mode — draws directly to canvas FBO) ──
+  info('Creating SkiaCanvas (overlay mode)...')
+  const skiaCanvas = new SkiaCanvas({ renderer, width: W, height: H, overlay: true })
+
+  try {
+    await skiaCanvas.ready
+    ok('SkiaCanvas ready — WASM loaded')
+  } catch (e) {
+    err(`SkiaCanvas init failed: ${e.message}`)
+    return
+  }
+
+  const skia = skiaCanvas.skiaContext
+
+  // ── Build the scene graph ──
+  info('Building scene graph...')
+
+  // -- Row 1: Colored rounded rectangles --
+  const sqColors = [
+    [0.9, 0.3, 0.3], [0.3, 0.9, 0.4], [0.3, 0.5, 0.9],
+    [0.9, 0.7, 0.2], [0.7, 0.3, 0.9], [0.2, 0.8, 0.8],
+  ]
+  const squareGroup = new SkiaGroup()
+  const squares = []
+  for (let i = 0; i < sqColors.length; i++) {
+    const rect = new SkiaRect()
+    rect.x = 30 + i * 78
+    rect.y = 30
+    rect.width = 68
+    rect.height = 68
+    rect.cornerRadius = 10
+    rect.fill = [...sqColors[i], 1]
+    squares.push(rect)
+    squareGroup.add(rect)
+  }
+  skiaCanvas.add(squareGroup)
+
+  // -- Row 2: Circles --
+  const circleGroup = new SkiaGroup()
+  const circles = []
+  for (let i = 0; i < 8; i++) {
+    const circle = new SkiaCircle()
+    circle.cx = 64 + i * 56
+    circle.cy = 140
+    circle.r = 18
+    circles.push(circle)
+    circleGroup.add(circle)
+  }
+  skiaCanvas.add(circleGroup)
+
+  // -- Stroked frame --
+  const frameRect = new SkiaRect()
+  frameRect.x = 20; frameRect.y = 170; frameRect.width = 472; frameRect.height = 100
+  frameRect.stroke = [1, 1, 1, 0.3]; frameRect.strokeWidth = 2
+  skiaCanvas.add(frameRect)
+
+  const innerFrame = new SkiaRect()
+  innerFrame.x = 28; innerFrame.y = 176; innerFrame.width = 456; innerFrame.height = 88
+  innerFrame.cornerRadius = 10
+  innerFrame.stroke = [1, 1, 1, 0.3]; innerFrame.strokeWidth = 2
+  skiaCanvas.add(innerFrame)
+
+  // -- Scanner lines --
+  const lineGroup = new SkiaGroup()
+  const lines = []
+  for (let i = 0; i < 9; i++) {
+    const line = new SkiaLine()
+    line.x1 = 36; line.y1 = 184 + i * 9
+    line.x2 = 472; line.y2 = 184 + i * 9
+    line.strokeWidth = 2
+    lines.push(line)
+    lineGroup.add(line)
+  }
+  skiaCanvas.add(lineGroup)
+
+  // -- Gradient bars (use explicit paint with gradient shader) --
+  const gradColors = [
+    [0xFFFF4444, 0xFF4444FF],
+    [0xFF44FF44, 0xFFFF44FF],
+    [0xFFFFAA00, 0xFF00AAFF],
+    [0xFF4488FF, 0xFFFF8844],
+  ]
+  const barW = 452, barX = 30
+  const gradGroup = new SkiaGroup()
+  const gradBars = []
+  for (let i = 0; i < gradColors.length; i++) {
+    const rect = new SkiaRect()
+    rect.x = barX; rect.y = 284 + i * 22; rect.width = barW; rect.height = 16; rect.cornerRadius = 4
+    const paint = new SkiaPaint(skia).setFill()
+    rect.paint = paint
+    gradBars.push({ rect, paint, colors: gradColors[i] })
+    gradGroup.add(rect)
+  }
+  skiaCanvas.add(gradGroup)
+
+  // -- PathOps demo --
+  const pathOpsGroup = new SkiaGroup()
+  const pathOpsData = [
+    { op: 'difference', color: [0.9, 0.3, 0.3, 0.9] },
+    { op: 'intersect', color: [0.3, 0.9, 0.4, 0.9] },
+    { op: 'union', color: [0.3, 0.5, 0.9, 0.9] },
+    { op: 'xor', color: [0.9, 0.7, 0.2, 0.9] },
+  ]
+  // PathOps are dynamic per frame — we use SkiaPathNode with explicit path refs
+  const pathOpNodes = []
+  const pathOpGhostA = [] // ghost outlines
+  const pathOpGhostB = []
+  for (let i = 0; i < pathOpsData.length; i++) {
+    const resultNode = new SkiaPathNode()
+    resultNode.fill = pathOpsData[i].color
+    pathOpsGroup.add(resultNode)
+
+    const ghostA = new SkiaPathNode()
+    ghostA.stroke = [1, 1, 1, 0.15]; ghostA.strokeWidth = 2
+    pathOpsGroup.add(ghostA)
+
+    const ghostB = new SkiaPathNode()
+    ghostB.stroke = [1, 1, 1, 0.15]; ghostB.strokeWidth = 2
+    pathOpsGroup.add(ghostB)
+
+    pathOpNodes.push(resultNode)
+    pathOpGhostA.push(ghostA)
+    pathOpGhostB.push(ghostB)
+  }
+  skiaCanvas.add(pathOpsGroup)
+
+  ok(`Scene graph: ${skiaCanvas.children.length} top-level groups`)
+
+  // ── Helpers ──
+  function makeCirclePath(cx, cy, r) {
+    const path = new SkiaPath(skia)
+    for (let i = 0; i <= 64; i++) {
+      const a = (i / 64) * Math.PI * 2
+      if (i === 0) path.moveTo(cx + Math.cos(a) * r, cy + Math.sin(a) * r)
+      else path.lineTo(cx + Math.cos(a) * r, cy + Math.sin(a) * r)
+    }
+    path.close()
+    return path
+  }
+
+  const hslToArgb = (h, s, l) => {
+    const c = (1 - Math.abs(2 * l - 1)) * s
+    const x = c * (1 - Math.abs((h / 60) % 2 - 1))
+    const m = l - c / 2
+    let r, g, b
+    if (h < 60) { r = c; g = x; b = 0 }
+    else if (h < 120) { r = x; g = c; b = 0 }
+    else if (h < 180) { r = 0; g = c; b = x }
+    else if (h < 240) { r = 0; g = x; b = c }
+    else if (h < 300) { r = x; g = 0; b = c }
+    else { r = c; g = 0; b = x }
+    const ri = Math.round((r + m) * 255), gi = Math.round((g + m) * 255), bi = Math.round((b + m) * 255)
+    return 0xFF000000 | (ri << 16) | (gi << 8) | bi
+  }
+
+  // ── Load font + text nodes ──
+  info('Loading font...')
+  let titleNode, subtitleNode, fpsNode
+  const textPaint = new SkiaPaint(skia).setFill()
+
+  try {
+    const fontUrl = 'https://cdn.jsdelivr.net/gh/rsms/inter@v4.1/docs/font-files/InterVariable.ttf'
+    const fontData = new Uint8Array(await (await fetch(fontUrl)).arrayBuffer())
+    const font32 = new SkiaFont(skia, fontData, 32)
+    const font14 = new SkiaFont(skia, fontData, 14)
+    const font11 = new SkiaFont(skia, fontData, 11)
+
+    // Title
+    titleNode = new SkiaTextNode()
+    titleNode.text = '@three-flatland/skia'
+    titleNode.font = font32
+    titleNode.fill = [1, 1, 1, 1]
+    const titleW = font32.measureText(titleNode.text)
+    titleNode.x = (512 - titleW) / 2
+    titleNode.y = 466
+    skiaCanvas.add(titleNode)
+
+    // Subtitle — uses explicit paint for animated gradient
+    subtitleNode = new SkiaTextNode()
+    subtitleNode.text = 'GPU-accelerated vector graphics in the browser'
+    subtitleNode.font = font14
+    subtitleNode.paint = textPaint
+    const subW = font14.measureText(subtitleNode.text)
+    subtitleNode.x = (512 - subW) / 2
+    subtitleNode.y = 490
+    skiaCanvas.add(subtitleNode)
+
+    // FPS
+    fpsNode = new SkiaTextNode()
+    fpsNode.text = '0 fps'
+    fpsNode.font = font11
+    fpsNode.fill = [1, 1, 1, 0.35]
+    fpsNode.y = 18
+    skiaCanvas.add(fpsNode)
+
+    ok('Font loaded, text nodes added')
+  } catch (e) {
+    err(`Font loading failed: ${e.message}`)
+  }
+
+  // ── Animation state ──
+  let animTime = 0
+  let sqSwapA = 0, sqSwapB = 1, sqSwapStart = 0
+  let sqFromA = [...sqColors[0]], sqFromB = [...sqColors[1]]
+  let sqToA = [...sqColors[1]], sqToB = [...sqColors[0]]
+  let lastTime = 0, frameCount = 0, fps = 0
+
+  // ── Frame update — mutate scene graph, then render ──
+  function updateScene(t) {
+    animTime = t
+
+    // Squares — color lerp swap
+    const sqDur = 3000
+    let sqT = Math.min((t - sqSwapStart) / sqDur, 1.0)
+    sqT = sqT * sqT * (3 - 2 * sqT)
+    if (sqT >= 1.0 && t > 0) {
+      sqColors[sqSwapA] = [...sqToA]
+      sqColors[sqSwapB] = [...sqToB]
+      const a = Math.floor(Math.random() * 6)
+      const b = (a + 1 + Math.floor(Math.random() * 5)) % 6
+      sqSwapA = a; sqSwapB = b; sqSwapStart = t
+      sqFromA = [...sqColors[a]]; sqFromB = [...sqColors[b]]
+      sqToA = [...sqColors[b]]; sqToB = [...sqColors[a]]
+      sqT = 0
+    }
+    for (let i = 0; i < squares.length; i++) {
+      let c = sqColors[i]
+      if (i === sqSwapA) c = sqFromA.map((v, j) => v + (sqToA[j] - v) * sqT)
+      else if (i === sqSwapB) c = sqFromB.map((v, j) => v + (sqToB[j] - v) * sqT)
+      squares[i].fill = [c[0], c[1], c[2], 1]
+    }
+
+    // Circles — cycling muted colors
+    for (let i = 0; i < circles.length; i++) {
+      const ct = ((i / 8) + t * 0.0002) % 1.0
+      circles[i].fill = [
+        0.15 + 0.35 * ct,
+        0.2 + 0.25 * (1 - ct),
+        0.3 + 0.4 * Math.sin(ct * Math.PI * 2 + 4),
+        0.7,
+      ]
+    }
+
+    // Scanner lines — color shift at ~12hz
+    const linePhase = Math.floor(t / 83) % 9
+    for (let i = 0; i < lines.length; i++) {
+      const lt = ((i + linePhase) % 9) / 9
+      lines[i].stroke = [0.5 + 0.5 * lt, 0.8 - 0.3 * lt, 0.3 + 0.5 * lt, 0.6]
+      lines[i].strokeWidth = 2
+    }
+
+    // Gradient bars — animated midpoint
+    for (let i = 0; i < gradBars.length; i++) {
+      const { paint, colors, rect } = gradBars[i]
+      const dir = (i % 2 === 0) ? 1 : -1
+      const speed = 0.15 + i * 0.03
+      const mid = 0.5 + 0.4 * Math.sin(t * speed * 0.001 * dir)
+      paint.setLinearGradient(rect.x, rect.y, rect.x + barW, rect.y,
+        [colors[0], colors[1], colors[0]], [0.0, mid, 1.0])
+    }
+
+    // PathOps — animated spread
+    for (let pi = 0; pi < pathOpsData.length; pi++) {
+      const cx = 75 + pi * 120
+      const spread = 12 + 6 * Math.sin(t * 0.002 + pi)
+      const pa = makeCirclePath(cx - spread, 404, 26)
+      const pb = makeCirclePath(cx + spread, 404, 26)
+      const result = pa.op(pb, pathOpsData[pi].op)
+
+      // Dispose previous paths
+      pathOpNodes[pi].path?.dispose()
+      pathOpGhostA[pi].path?.dispose()
+      pathOpGhostB[pi].path?.dispose()
+
+      pathOpNodes[pi].path = result
+      pathOpGhostA[pi].path = pa
+      pathOpGhostB[pi].path = pb
+    }
+
+    // Subtitle gradient animation
+    if (subtitleNode) {
+      const hue1 = (t * 0.05) % 360
+      const hue2 = (hue1 + 120) % 360
+      textPaint.setLinearGradient(subtitleNode.x, 0, subtitleNode.x + 300, 0,
+        [hslToArgb(hue1, 0.8, 0.6), hslToArgb(hue2, 0.8, 0.6)], [0.0, 1.0])
+    }
+
+    // FPS
+    frameCount++
+    if (t - lastTime >= 1000) { fps = frameCount; frameCount = 0; lastTime = t }
+    if (fpsNode) {
+      fpsNode.text = `${fps} fps`
+      const fpsW = fpsNode.font?.measureText(fpsNode.text) ?? 40
+      fpsNode.x = 500 - fpsW
+    }
+  }
+
+  // ── Render loop ──
+  ok('Starting animation loop...')
+  info('SkiaCanvas.render() walks the Object3D tree and calls _draw() on each node')
+
+  const animate = (t) => {
+    // 1. Update scene graph properties
+    updateScene(t)
+
+    // 2. SkiaCanvas walks children and draws — this is the Three.js integration
+    skiaCanvas.invalidate()
+    skiaCanvas.render(renderer)
+
+    requestAnimationFrame(animate)
+  }
+
+  requestAnimationFrame(animate)
+  ok('Animation started')
+}
+
+run().catch(e => { console.error(e); document.getElementById('log').innerHTML += `<span class="err">[err] ${e.message}</span>\n` })
+</script>
+</body>
+</html>

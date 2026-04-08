@@ -1,0 +1,4 @@
+[submodule "packages/skia/third_party/skia"]
+	path = packages/skia/third_party/skia
+	url = https://github.com/google/skia.git
+	branch = chrome/m147

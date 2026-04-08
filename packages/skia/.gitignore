@@ -1,0 +1,16 @@
+# Zig build artifacts
+zig-out/
+zig-cache/
+.zig-cache/
+
+# Local tool installs (managed by scripts/setup.mjs)
+.tools/
+
+# WASM intermediate artifacts (skia-gl.wasm is the final output)
+**/skia-gl.opt.wasm
+*.component.wasm
+
+# dist/ is gitignored at root level
+
+# Override root vendor/ ignore — skia vendors freetype/harfbuzz/expat source
+!vendor/

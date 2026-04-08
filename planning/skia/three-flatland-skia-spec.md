@@ -1398,7 +1398,15 @@ These were originally open questions, now resolved by research and the RFC proce
 
 2. **Three.js WebGPU internals stability**: Three.js's WebGPU backend is still evolving. The `renderer.backend.device` access pattern and `StorageTexture` API may change. Pin to a specific Three.js version for initial development.
 
-3. **SkSVGDOM dependencies**: Verify that SVG rendering doesn't pull in image codec code (for embedded `<image>` elements). If it does, we may need to stub those codepaths.
+3. **SkSVGDOM dependencies** *(resolved)*: SVG `<image>` elements use `skresources::ResourceProvider::loadImageAsset()` — a virtual interface. Without a provider, image elements are silently skipped. No codec dependency is pulled in.
+
+   **Future: Browser-polyfilled SVG image loading.** To support `<image>` in SVG without compiling image codecs into WASM, implement a custom `ResourceProvider` subclass in the C++ layer that calls back to JS via a WASM import. The JS side would:
+   1. Receive the image URL from the WASM callback
+   2. `fetch()` + `createImageBitmap()` to decode using the browser's native decoder
+   3. Draw to an offscreen canvas, `getImageData()` to get raw pixels
+   4. Write pixels into WASM memory, create `SkImage::MakeRasterData()` from the buffer
+
+   This keeps **zero image codec code in WASM** — the browser handles all decoding (PNG, JPEG, WebP, AVIF, etc.). Add a WIT import like `import load-image: func(url: string) -> option<list<u8>>` and a C++ callback that constructs the `SkImage`. This is a post-Phase 4 enhancement.
 
 4. **wit-bindgen Zig ergonomics**: wit-bindgen generates C bindings (no native Zig target). The Zig code consumes these via `@cImport`. Evaluate during Phase 4 whether a thin Zig wrapper around the generated C headers is worth maintaining for better type safety, or whether raw `@cImport` is sufficient. See the blog post "Zig and the WASM Component Model" for the pattern.
 

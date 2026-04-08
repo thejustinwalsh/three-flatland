@@ -4,8 +4,13 @@
   "concurrency": "20",
   "tasks": {
     "build": {
-      "dependsOn": ["^build", "three-flatland#build", "@three-flatland/nodes#build", "@three-flatland/presets#build"],
+      "dependsOn": ["^build", "three-flatland#build", "@three-flatland/nodes#build", "@three-flatland/presets#build", "@three-flatland/skia#build"],
       "outputs": ["dist/**"]
+    },
+    "@three-flatland/skia#build": {
+      "dependsOn": ["^build"],
+      "outputs": ["dist/**"],
+      "inputs": ["src/**", "wit/**", "build.zig", "build.zig.zon", "tsup.config.ts", "tsconfig.json", "package.json"]
     },
     "three-flatland#build": {
       "dependsOn": ["^build"],
@@ -49,7 +54,9 @@
         "example-react-knightmark#build",
         "example-react-pass-effects#build",
         "example-react-tilemap#build",
-        "example-react-tsl-nodes#build"
+        "example-react-tsl-nodes#build",
+        "example-vanilla-skia#build",
+        "example-react-skia#build"
       ],
       "outputs": ["dist/**"],
       "inputs": [

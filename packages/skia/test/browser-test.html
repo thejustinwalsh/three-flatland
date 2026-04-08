@@ -1,0 +1,778 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Skia WASM GL Test</title>
+  <style>
+    html, body { margin: 0; height: 100%; }
+    body { background: #0d0d0d; color: #eee; font-family: monospace; display: flex; flex-direction: column; align-items: center; }
+    canvas { border: 1px solid #444; flex-shrink: 0; }
+    h1 { flex-shrink: 0; margin: 12px 0 8px; }
+    main { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; width: 100%; }
+    #log { white-space: pre-wrap; font-size: 12px; color: #aaa; height: 200px; overflow-y: auto; padding: 12px; background: rgba(255,255,255,0.04); border-radius: 6px; }
+    .ok { color: #4ade80; }
+    .err { color: #f87171; }
+    .info { color: #60a5fa; }
+    h1 { font-size: 18px; color: #e2e8f0; }
+  </style>
+</head>
+<body>
+  <h1>Skia WASM GL — Browser Test</h1>
+  <main>
+    <canvas id="canvas" width="512" height="512"></canvas>
+  </main>
+  <div style="max-width:800px;width:800px;flex-shrink:0;margin-bottom:20px;">
+    <div style="font-size:11px;color:#555;margin-bottom:4px;padding-left:4px;">GL Bridge Log</div>
+    <div id="log"></div>
+  </div>
+
+<script type="module">
+const log = document.getElementById('log');
+const L = (cls, msg) => { log.innerHTML += `<span class="${cls}">${msg}</span>\n`; log.scrollTop = log.scrollHeight; };
+const ok = (msg) => L('ok', `[ok]  ${msg}`);
+const err = (msg) => L('err', `[err] ${msg}`);
+const warn = (msg) => L('err', `[!!] ${msg}`);
+const info = (msg) => L('info', `[..] ${msg}`);
+
+async function run() {
+var wasmSizeKB = '?', wasmGzipKB = '...';
+  info('Setting up WebGL2 context...');
+
+  const canvas = document.getElementById('canvas');
+  const gl = canvas.getContext('webgl2', { antialias: true, stencil: true });
+  if (!gl) { err('WebGL2 not supported'); return; }
+  ok(`WebGL2: ${gl.getParameter(gl.RENDERER)}`);
+
+  // ── Enable all available extensions ──
+  // WebGL2 requires explicit activation before Skia can query extension parameters.
+  // Emscripten does this automatically; we need to do it ourselves.
+  const enabledExts = [];
+  for (const ext of gl.getSupportedExtensions() || []) {
+    if (gl.getExtension(ext)) enabledExts.push(ext);
+  }
+  ok(`${enabledExts.length} GL extensions enabled`);
+
+  // ── GL handle tables (integer <-> WebGL object) ──
+  const tables = {
+    textures: new Map(), buffers: new Map(), framebuffers: new Map(),
+    renderbuffers: new Map(), programs: new Map(), shaders: new Map(),
+    vaos: new Map(), queries: new Map(), samplers: new Map(),
+    syncs: new Map(), uniforms: new Map(),
+  };
+  let nextId = 1;
+  const allocId = () => nextId++;
+  let memory; // set after instantiation
+
+  const view = () => new DataView(memory.buffer);
+  const writeU32 = (ptr, val) => view().setUint32(ptr, val, true);
+  const readU32 = (ptr) => view().getUint32(ptr, true);
+
+  // ── String/data allocation via WASM's own allocator ──
+  const stringPtrs = new Map();
+
+  // Use cabi_realloc (WIT canonical ABI allocator) once WASM is instantiated
+  const wasmAlloc = (size) => {
+    return wasm.instance.exports.cabi_realloc(0, 0, 1, size);
+  };
+
+  const allocString = (str) => {
+    if (stringPtrs.has(str)) return stringPtrs.get(str);
+    const bytes = new TextEncoder().encode(str + '\0');
+    const ptr = wasmAlloc(bytes.length);
+    new Uint8Array(memory.buffer, ptr, bytes.length).set(bytes);
+    stringPtrs.set(str, ptr);
+    return ptr;
+  };
+  const readStr = (ptr) => {
+    const bytes = new Uint8Array(memory.buffer);
+    let end = ptr;
+    while (bytes[end] !== 0) end++;
+    return new TextDecoder().decode(bytes.slice(ptr, end));
+  };
+  const writeStr = (ptr, max, str) => {
+    const bytes = new TextEncoder().encode(str);
+    const len = Math.min(bytes.length, max - 1);
+    new Uint8Array(memory.buffer).set(bytes.subarray(0, len), ptr);
+    new Uint8Array(memory.buffer)[ptr + len] = 0;
+    return len;
+  };
+
+  // ── GL helpers ──
+  const texBytesPerPixel = (fmt, typ) => {
+    // Channel count from format
+    const channels = { 0x1906: 1, 0x1909: 1, 0x190A: 2, 0x1907: 3, 0x1908: 4, 0x8227: 1, 0x8228: 2 }; // ALPHA, LUMINANCE, LUM_ALPHA, RGB, RGBA, RG, RG
+    const ch = channels[fmt] || 4;
+    // Bytes per channel from type
+    if (typ === 0x1401) return ch;      // UNSIGNED_BYTE
+    if (typ === 0x8363 || typ === 0x8033) return 2; // UNSIGNED_SHORT_5_6_5, UNSIGNED_SHORT_4_4_4_4
+    if (typ === 0x8034) return 2;       // UNSIGNED_SHORT_5_5_5_1
+    if (typ === 0x1403) return ch * 2;  // UNSIGNED_SHORT
+    if (typ === 0x1405) return ch * 4;  // UNSIGNED_INT
+    if (typ === 0x1406) return ch * 4;  // FLOAT
+    if (typ === 0x140B) return ch * 2;  // HALF_FLOAT
+    return ch; // default: 1 byte per channel
+  };
+
+  // ── GL imports ──
+  const glImports = {
+    emscripten_glGetString(name) {
+      const GL_VERSION = 0x1F02, GL_EXTENSIONS = 0x1F03;
+      let str;
+      if (name === GL_EXTENSIONS) {
+        str = (gl.getSupportedExtensions() || []).join(' ');
+      } else {
+        try { str = gl.getParameter(name); } catch(e) { str = null; }
+        // Clear any GL error from unsupported enums
+        if (str == null) gl.getError();
+      }
+      // Skia's parsers expect Emscripten-style version strings.
+      // Browsers return "WebGL 2.0 (...)" — rewrite to match.
+      const GL_SHADING_LANGUAGE_VERSION = 0x8B8C;
+      if (name === GL_VERSION && typeof str === 'string' && str.startsWith('WebGL')) {
+        const m = str.match(/WebGL (\d+)\.(\d+)/);
+        if (m) {
+          const webglMaj = parseInt(m[1]), webglMin = parseInt(m[2]);
+          const esMaj = webglMaj === 2 ? 3 : 2, esMin = 0;
+          str = `OpenGL ES ${esMaj}.${esMin} (${str})`;
+        }
+      }
+      // GLSL version: "WebGL GLSL ES 3.00 (...)" → "OpenGL ES GLSL ES 3.00"
+      if (name === GL_SHADING_LANGUAGE_VERSION && typeof str === 'string' && str.startsWith('WebGL GLSL ES')) {
+        const m = str.match(/WebGL GLSL ES (\d+\.\d+)/);
+        if (m) str = `OpenGL ES GLSL ES ${m[1]}`;
+      }
+      // WEBGL_debug_renderer_info extension constants
+      const GL_UNMASKED_VENDOR_WEBGL = 0x9245, GL_UNMASKED_RENDERER_WEBGL = 0x9246;
+      if (str == null && (name === GL_UNMASKED_VENDOR_WEBGL || name === GL_UNMASKED_RENDERER_WEBGL)) {
+        // Try with the debug extension enabled
+        const dbg = gl.getExtension('WEBGL_debug_renderer_info');
+        if (dbg) str = gl.getParameter(name);
+        if (str == null) str = name === GL_UNMASKED_RENDERER_WEBGL ? gl.getParameter(gl.RENDERER) : gl.getParameter(gl.VENDOR);
+      }
+      if (typeof str === 'string') {
+        const ptr = allocString(str);
+        info(`glGetString(0x${name.toString(16)}) => "${str.slice(0, 80)}${str.length > 80 ? '...' : ''}" @ ptr=${ptr}`);
+        return ptr;
+      }
+      // Return empty string for unknown enums rather than null — prevents Skia from failing
+      const ptr = allocString('');
+      return ptr;
+    },
+    emscripten_glActiveTexture(t) { gl.activeTexture(t); },
+    emscripten_glAttachShader(p, s) { gl.attachShader(tables.programs.get(p), tables.shaders.get(s)); },
+    emscripten_glBindBuffer(t, b) { gl.bindBuffer(t, b ? tables.buffers.get(b) : null); },
+    emscripten_glBindFramebuffer(t, f) { gl.bindFramebuffer(t, f ? tables.framebuffers.get(f) : null); },
+    emscripten_glBindRenderbuffer(t, r) { gl.bindRenderbuffer(t, r ? tables.renderbuffers.get(r) : null); },
+    emscripten_glBindTexture(t, tex) { gl.bindTexture(t, tex ? tables.textures.get(tex) : null); },
+    emscripten_glBindVertexArray(a) { gl.bindVertexArray(a ? tables.vaos.get(a) : null); },
+    emscripten_glBlendColor(r, g, b, a) { gl.blendColor(r, g, b, a); },
+    emscripten_glBlendEquation(m) { gl.blendEquation(m); },
+    emscripten_glBlendFunc(s, d) { gl.blendFunc(s, d); },
+    emscripten_glBufferData(t, sz, data, usage) {
+      if (data) { gl.bufferData(t, new Uint8Array(memory.buffer, data, sz), usage); }
+      else { gl.bufferData(t, sz, usage); }
+    },
+    emscripten_glBufferSubData(t, off, sz, data) {
+      gl.bufferSubData(t, off, new Uint8Array(memory.buffer, data, sz));
+    },
+    emscripten_glCheckFramebufferStatus(t) { return gl.checkFramebufferStatus(t); },
+    emscripten_glClear(m) { gl.clear(m); },
+    emscripten_glClearColor(r, g, b, a) { gl.clearColor(r, g, b, a); },
+    emscripten_glClearStencil(s) { gl.clearStencil(s); },
+    emscripten_glColorMask(r, g, b, a) { gl.colorMask(!!r, !!g, !!b, !!a); },
+    emscripten_glCompileShader(s) { gl.compileShader(tables.shaders.get(s)); },
+    emscripten_glCreateProgram() { const id = allocId(); tables.programs.set(id, gl.createProgram()); return id; },
+    emscripten_glCreateShader(t) { const id = allocId(); tables.shaders.set(id, gl.createShader(t)); return id; },
+    emscripten_glCullFace(m) { gl.cullFace(m); },
+    emscripten_glDeleteBuffers(n, p) { for (let i = 0; i < n; i++) { const id = readU32(p+i*4); gl.deleteBuffer(tables.buffers.get(id)); tables.buffers.delete(id); } },
+    emscripten_glDeleteFramebuffers(n, p) { for (let i = 0; i < n; i++) { const id = readU32(p+i*4); gl.deleteFramebuffer(tables.framebuffers.get(id)); tables.framebuffers.delete(id); } },
+    emscripten_glDeleteProgram(p) { gl.deleteProgram(tables.programs.get(p)); tables.programs.delete(p); },
+    emscripten_glDeleteRenderbuffers(n, p) { for (let i = 0; i < n; i++) { const id = readU32(p+i*4); gl.deleteRenderbuffer(tables.renderbuffers.get(id)); tables.renderbuffers.delete(id); } },
+    emscripten_glDeleteShader(s) { gl.deleteShader(tables.shaders.get(s)); tables.shaders.delete(s); },
+    emscripten_glDeleteTextures(n, p) { for (let i = 0; i < n; i++) { const id = readU32(p+i*4); gl.deleteTexture(tables.textures.get(id)); tables.textures.delete(id); } },
+    emscripten_glDeleteVertexArrays(n, p) { for (let i = 0; i < n; i++) { const id = readU32(p+i*4); gl.deleteVertexArray(tables.vaos.get(id)); tables.vaos.delete(id); } },
+    emscripten_glDepthMask(f) { gl.depthMask(!!f); },
+    emscripten_glDisable(c) { gl.disable(c); },
+    emscripten_glDisableVertexAttribArray(i) { gl.disableVertexAttribArray(i); },
+    emscripten_glDrawArrays(m, f, c) { gl.drawArrays(m, f, c); },
+    emscripten_glDrawElements(m, c, t, o) { gl.drawElements(m, c, t, o); },
+    emscripten_glEnable(c) { gl.enable(c); },
+    emscripten_glEnableVertexAttribArray(i) { gl.enableVertexAttribArray(i); },
+    emscripten_glFinish() { gl.finish(); },
+    emscripten_glFlush() { gl.flush(); },
+    emscripten_glFramebufferRenderbuffer(t, a, rt, r) { gl.framebufferRenderbuffer(t, a, rt, tables.renderbuffers.get(r)); },
+    emscripten_glFramebufferTexture2D(t, a, tt, tex, l) { gl.framebufferTexture2D(t, a, tt, tables.textures.get(tex), l); },
+    emscripten_glFrontFace(m) { gl.frontFace(m); },
+    emscripten_glGenBuffers(n, p) { for (let i = 0; i < n; i++) { const id = allocId(); tables.buffers.set(id, gl.createBuffer()); writeU32(p+i*4, id); } },
+    emscripten_glGenFramebuffers(n, p) { for (let i = 0; i < n; i++) { const id = allocId(); tables.framebuffers.set(id, gl.createFramebuffer()); writeU32(p+i*4, id); } },
+    emscripten_glGenRenderbuffers(n, p) { for (let i = 0; i < n; i++) { const id = allocId(); tables.renderbuffers.set(id, gl.createRenderbuffer()); writeU32(p+i*4, id); } },
+    emscripten_glGenTextures(n, p) { for (let i = 0; i < n; i++) { const id = allocId(); tables.textures.set(id, gl.createTexture()); writeU32(p+i*4, id); } },
+    emscripten_glGenVertexArrays(n, p) { for (let i = 0; i < n; i++) { const id = allocId(); tables.vaos.set(id, gl.createVertexArray()); writeU32(p+i*4, id); } },
+    emscripten_glGenerateMipmap(t) { gl.generateMipmap(t); },
+    emscripten_glGetError() { const e = gl.getError(); if (e) console.log(`[gl] glGetError => 0x${e.toString(16)}`); return e; },
+    emscripten_glGetFloatv(p, ptr) {
+      const v = gl.getParameter(p);
+      if (v == null) { gl.getError(); view().setFloat32(ptr, 0, true); return; }
+      if (typeof v === 'number') view().setFloat32(ptr, v, true);
+      else if (v instanceof Float32Array) new Float32Array(memory.buffer, ptr, v.length).set(v);
+    },
+    emscripten_glGetIntegerv(p, ptr) {
+      const GL_NUM_EXTENSIONS = 0x821D;
+      let v;
+      if (p === GL_NUM_EXTENSIONS) {
+        v = (gl.getSupportedExtensions() || []).length;
+      } else {
+        v = gl.getParameter(p);
+        // Clear GL error for unsupported enums — WebGL generates INVALID_ENUM
+        // which Skia's GrDirectContext checks and aborts on
+        if (v == null) { gl.getError(); v = 0; }
+      }
+      if (typeof v === 'number') writeU32(ptr, v);
+      else if (typeof v === 'boolean') writeU32(ptr, v ? 1 : 0);
+      else if (v instanceof Int32Array) new Int32Array(memory.buffer, ptr, v.length).set(v);
+    },
+    emscripten_glGetProgramiv(p, n, ptr) {
+      const v = gl.getProgramParameter(tables.programs.get(p), n);
+      writeU32(ptr, typeof v === 'boolean' ? (v ? 1 : 0) : v);
+    },
+    emscripten_glGetShaderiv(s, n, ptr) {
+      const v = gl.getShaderParameter(tables.shaders.get(s), n);
+      writeU32(ptr, typeof v === 'boolean' ? (v ? 1 : 0) : v);
+    },
+    emscripten_glGetUniformLocation(p, namePtr) {
+      const loc = gl.getUniformLocation(tables.programs.get(p), readStr(namePtr));
+      if (!loc) return -1;
+      const id = allocId(); tables.uniforms.set(id, loc); return id;
+    },
+    emscripten_glIsTexture(t) { return gl.isTexture(tables.textures.get(t)) ? 1 : 0; },
+    emscripten_glLineWidth(w) { gl.lineWidth(w); },
+    emscripten_glLinkProgram(p) { gl.linkProgram(tables.programs.get(p)); },
+    emscripten_glPixelStorei(p, v) { gl.pixelStorei(p, v); },
+    emscripten_glReadPixels(x, y, w, h, fmt, t, ptr) {
+      gl.readPixels(x, y, w, h, fmt, t, new Uint8Array(memory.buffer, ptr, w*h*4));
+    },
+    emscripten_glRenderbufferStorage(t, f, w, h) { gl.renderbufferStorage(t, f, w, h); },
+    emscripten_glScissor(x, y, w, h) { gl.scissor(x, y, w, h); },
+    emscripten_glShaderSource(s, count, stringsPtr, lengthsPtr) {
+      let src = '';
+      for (let i = 0; i < count; i++) {
+        const strPtr = readU32(stringsPtr + i * 4);
+        if (lengthsPtr) {
+          const len = view().getInt32(lengthsPtr + i * 4, true);
+          if (len >= 0) src += new TextDecoder().decode(new Uint8Array(memory.buffer, strPtr, len));
+          else src += readStr(strPtr);
+        } else src += readStr(strPtr);
+      }
+      gl.shaderSource(tables.shaders.get(s), src);
+    },
+    emscripten_glStencilFunc(f, r, m) { gl.stencilFunc(f, r, m); },
+    emscripten_glStencilFuncSeparate(face, f, r, m) { gl.stencilFuncSeparate(face, f, r, m); },
+    emscripten_glStencilMask(m) { gl.stencilMask(m); },
+    emscripten_glStencilMaskSeparate(f, m) { gl.stencilMaskSeparate(f, m); },
+    emscripten_glStencilOp(f, z, p) { gl.stencilOp(f, z, p); },
+    emscripten_glStencilOpSeparate(face, sf, dp, dpp) { gl.stencilOpSeparate(face, sf, dp, dpp); },
+    emscripten_glTexImage2D(t, l, inf, w, h, b, fmt, typ, ptr) {
+      if (ptr) {
+        gl.texImage2D(t, l, inf, w, h, b, fmt, typ, new Uint8Array(memory.buffer, ptr));
+      } else {
+        gl.texImage2D(t, l, inf, w, h, b, fmt, typ, null);
+      }
+    },
+    emscripten_glTexParameterf(t, p, v) { gl.texParameterf(t, p, v); },
+    emscripten_glTexParameteri(t, p, v) { gl.texParameteri(t, p, v); },
+    emscripten_glTexSubImage2D(t, l, x, y, w, h, fmt, typ, ptr) {
+      gl.texSubImage2D(t, l, x, y, w, h, fmt, typ, new Uint8Array(memory.buffer, ptr));
+    },
+    emscripten_glUniform1f(l, v) { gl.uniform1f(tables.uniforms.get(l), v); },
+    emscripten_glUniform1i(l, v) { gl.uniform1i(tables.uniforms.get(l), v); },
+    emscripten_glUniform2f(l, a, b) { gl.uniform2f(tables.uniforms.get(l), a, b); },
+    emscripten_glUniform3f(l, a, b, c) { gl.uniform3f(tables.uniforms.get(l), a, b, c); },
+    emscripten_glUniform4f(l, a, b, c, d) { gl.uniform4f(tables.uniforms.get(l), a, b, c, d); },
+    emscripten_glUniform1fv(l, n, p) { gl.uniform1fv(tables.uniforms.get(l), new Float32Array(memory.buffer, p, n)); },
+    emscripten_glUniform2fv(l, n, p) { gl.uniform2fv(tables.uniforms.get(l), new Float32Array(memory.buffer, p, n*2)); },
+    emscripten_glUniform3fv(l, n, p) { gl.uniform3fv(tables.uniforms.get(l), new Float32Array(memory.buffer, p, n*3)); },
+    emscripten_glUniform4fv(l, n, p) { gl.uniform4fv(tables.uniforms.get(l), new Float32Array(memory.buffer, p, n*4)); },
+    emscripten_glUniformMatrix2fv(l, n, t, p) { gl.uniformMatrix2fv(tables.uniforms.get(l), !!t, new Float32Array(memory.buffer, p, n*4)); },
+    emscripten_glUniformMatrix3fv(l, n, t, p) { gl.uniformMatrix3fv(tables.uniforms.get(l), !!t, new Float32Array(memory.buffer, p, n*9)); },
+    emscripten_glUniformMatrix4fv(l, n, t, p) { gl.uniformMatrix4fv(tables.uniforms.get(l), !!t, new Float32Array(memory.buffer, p, n*16)); },
+    emscripten_glUseProgram(p) { gl.useProgram(p ? tables.programs.get(p) : null); },
+    emscripten_glVertexAttrib1f(i, x) { gl.vertexAttrib1f(i, x); },
+    emscripten_glVertexAttrib2fv(i, p) { gl.vertexAttrib2fv(i, new Float32Array(memory.buffer, p, 2)); },
+    emscripten_glVertexAttrib3fv(i, p) { gl.vertexAttrib3fv(i, new Float32Array(memory.buffer, p, 3)); },
+    emscripten_glVertexAttrib4fv(i, p) { gl.vertexAttrib4fv(i, new Float32Array(memory.buffer, p, 4)); },
+    emscripten_glVertexAttribPointer(i, s, t, n, st, o) { gl.vertexAttribPointer(i, s, t, !!n, st, o); },
+    emscripten_glViewport(x, y, w, h) { gl.viewport(x, y, w, h); },
+
+    // ── Stubs for less-common functions ──
+    emscripten_glBindAttribLocation(p, i, n) { gl.bindAttribLocation(tables.programs.get(p), i, readStr(n)); },
+    emscripten_glBindSampler(u, s) { gl.bindSampler(u, s ? tables.samplers.get(s) : null); },
+    emscripten_glBlitFramebuffer(...a) { gl.blitFramebuffer(...a); },
+    emscripten_glClientWaitSync() { return 0; },
+    emscripten_glCompressedTexImage2D() {},
+    emscripten_glCompressedTexSubImage2D() {},
+    emscripten_glCopyBufferSubData(r, w, ro, wo, s) { gl.copyBufferSubData(r, w, ro, wo, s); },
+    emscripten_glCopyTexSubImage2D(t, l, xo, yo, x, y, w, h) { gl.copyTexSubImage2D(t, l, xo, yo, x, y, w, h); },
+    emscripten_glDeleteQueries(n, p) { for (let i = 0; i < n; i++) { const id = readU32(p+i*4); gl.deleteQuery(tables.queries.get(id)); tables.queries.delete(id); } },
+    emscripten_glDeleteSamplers(n, p) { for (let i = 0; i < n; i++) { const id = readU32(p+i*4); gl.deleteSampler(tables.samplers.get(id)); tables.samplers.delete(id); } },
+    emscripten_glDeleteSync() {},
+    emscripten_glDrawArraysInstanced(m, f, c, inst) { gl.drawArraysInstanced(m, f, c, inst); },
+    emscripten_glDrawBuffers(n, p) { const b = []; for (let i = 0; i < n; i++) b.push(readU32(p+i*4)); gl.drawBuffers(b); },
+    emscripten_glDrawElementsInstanced(m, c, t, o, inst) { gl.drawElementsInstanced(m, c, t, o, inst); },
+    emscripten_glDrawRangeElements(m, _s, _e, c, t, o) { gl.drawElements(m, c, t, o); },
+    emscripten_glGenQueries(n, p) { for (let i = 0; i < n; i++) { const id = allocId(); tables.queries.set(id, gl.createQuery()); writeU32(p+i*4, id); } },
+    emscripten_glGenSamplers(n, p) { for (let i = 0; i < n; i++) { const id = allocId(); tables.samplers.set(id, gl.createSampler()); writeU32(p+i*4, id); } },
+    emscripten_glGetBufferParameteriv(t, p, ptr) { writeU32(ptr, gl.getBufferParameter(t, p)); },
+    emscripten_glGetFramebufferAttachmentParameteriv(t, a, p, ptr) { writeU32(ptr, gl.getFramebufferAttachmentParameter(t, a, p)); },
+    emscripten_glGetProgramInfoLog(p, sz, lp, ip) { const s = gl.getProgramInfoLog(tables.programs.get(p)) ?? ''; const w = writeStr(ip, sz, s); if (lp) writeU32(lp, w); },
+    emscripten_glGetRenderbufferParameteriv(t, p, ptr) { writeU32(ptr, gl.getRenderbufferParameter(t, p)); },
+    emscripten_glGetShaderInfoLog(s, sz, lp, ip) { const log = gl.getShaderInfoLog(tables.shaders.get(s)) ?? ''; const w = writeStr(ip, sz, log); if (lp) writeU32(lp, w); },
+    emscripten_glGetShaderPrecisionFormat(st, pt, rp, pp) { const f = gl.getShaderPrecisionFormat(st, pt); if (f) { writeU32(rp, f.rangeMin); writeU32(rp+4, f.rangeMax); writeU32(pp, f.precision); } },
+    emscripten_glGetStringi(name, index) {
+      const GL_EXTENSIONS = 0x1F03;
+      if (name === GL_EXTENSIONS) {
+        const exts = gl.getSupportedExtensions() || [];
+        if (index < exts.length) return allocString(exts[index]);
+      }
+      return 0;
+    },
+    emscripten_glTexParameterfv() {},
+    emscripten_glTexParameteriv() {},
+    emscripten_glTexStorage2D(t, l, f, w, h) { gl.texStorage2D(t, l, f, w, h); },
+    emscripten_glUniform1iv(l, n, p) { gl.uniform1iv(tables.uniforms.get(l), new Int32Array(memory.buffer, p, n)); },
+    emscripten_glUniform2i(l, a, b) { gl.uniform2i(tables.uniforms.get(l), a, b); },
+    emscripten_glUniform2iv(l, n, p) { gl.uniform2iv(tables.uniforms.get(l), new Int32Array(memory.buffer, p, n*2)); },
+    emscripten_glUniform3i(l, a, b, c) { gl.uniform3i(tables.uniforms.get(l), a, b, c); },
+    emscripten_glUniform3iv(l, n, p) { gl.uniform3iv(tables.uniforms.get(l), new Int32Array(memory.buffer, p, n*3)); },
+    emscripten_glUniform4i(l, a, b, c, d) { gl.uniform4i(tables.uniforms.get(l), a, b, c, d); },
+    emscripten_glUniform4iv(l, n, p) { gl.uniform4iv(tables.uniforms.get(l), new Int32Array(memory.buffer, p, n*4)); },
+    emscripten_glVertexAttribDivisor(i, d) { gl.vertexAttribDivisor(i, d); },
+    emscripten_glVertexAttribIPointer(i, s, t, st, o) { gl.vertexAttribIPointer(i, s, t, st, o); },
+    emscripten_glSamplerParameterf(s, p, v) { gl.samplerParameterf(tables.samplers.get(s), p, v); },
+    emscripten_glSamplerParameteri(s, p, v) { gl.samplerParameteri(tables.samplers.get(s), p, v); },
+    emscripten_glSamplerParameteriv() {},
+    emscripten_glBeginQuery(t, id) { gl.beginQuery(t, tables.queries.get(id)); },
+    emscripten_glEndQuery(t) { gl.endQuery(t); },
+    emscripten_glGetQueryObjectuiv() {},
+    emscripten_glGetQueryiv() {},
+    emscripten_glFenceSync() { return 0; },
+    emscripten_glIsSync() { return 0; },
+    emscripten_glWaitSync() {},
+    emscripten_glInvalidateFramebuffer() {},
+    emscripten_glInvalidateSubFramebuffer() {},
+    emscripten_glReadBuffer(s) { gl.readBuffer(s); },
+    emscripten_glRenderbufferStorageMultisample(t, s, f, w, h) { gl.renderbufferStorageMultisample(t, s, f, w, h); },
+    emscripten_glDrawArraysInstancedBaseInstance() {},
+    emscripten_glDrawElementsInstancedBaseVertexBaseInstance() {},
+    emscripten_glMultiDrawArraysInstancedBaseInstance() {},
+    emscripten_glMultiDrawElementsInstancedBaseVertexBaseInstance() {},
+    emscripten_glGetQueryObjecti64v() {},
+    emscripten_glGetQueryObjectui64v() {},
+    emscripten_glQueryCounter() {},
+  };
+
+  // ── Load WASM ──
+  info('Loading skia-gl.wasm...');
+
+  const wasmUrl = '../dist/skia-gl/skia-gl.wasm?v=' + Date.now();
+  let wasm;
+  try {
+    const response = await fetch(wasmUrl);
+    if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    const bytes = await response.arrayBuffer();
+    wasmSizeKB = (bytes.byteLength / 1024).toFixed(0);
+    info(`WASM loaded: ${wasmSizeKB} KB`);
+    // Compute gzipped size via CompressionStream
+    new Response(new Blob([bytes]).stream().pipeThrough(new CompressionStream('gzip')))
+      .arrayBuffer().then(gz => { wasmGzipKB = (gz.byteLength / 1024).toFixed(0); });
+
+    wasm = await WebAssembly.instantiate(bytes, {
+      gl: glImports,
+      env: new Proxy({}, { get: (_, name) => {
+        // All env imports are stubs — Skia's file I/O, logging, threading, etc.
+        // Return 0/null for everything. Specific overrides can be added as needed.
+        return (...args) => 0;
+      }}),
+      wasi_snapshot_preview1: new Proxy({}, { get: (_, name) => {
+        // WASI stubs — most return 0 (success), fd ops return EBADF/ENOENT
+        const fdStubs = { fd_prestat_get: 8, fd_prestat_dir_name: 8, fd_fdstat_get: 8, fd_filestat_get: 8, path_open: 44, path_filestat_get: 44 };
+        if (name in fdStubs) return () => fdStubs[name];
+        if (name === 'proc_exit') return () => { throw new Error('WASI proc_exit called'); };
+        // environ_sizes_get(count_ptr, size_ptr) — must write 0 to both pointers
+        if (name === 'environ_sizes_get') return (countPtr, sizePtr) => {
+          const v = () => new DataView(memory.buffer);
+          v().setUint32(countPtr, 0, true);
+          v().setUint32(sizePtr, 0, true);
+          return 0;
+        };
+        // args_sizes_get(argc_ptr, argv_buf_size_ptr)
+        if (name === 'args_sizes_get') return (argcPtr, sizePtr) => {
+          const v = () => new DataView(memory.buffer);
+          v().setUint32(argcPtr, 0, true);
+          v().setUint32(sizePtr, 0, true);
+          return 0;
+        };
+        return (...args) => 0;
+      }}),
+    });
+    ok('WASM instantiated');
+  } catch (e) {
+    err(`WASM load failed: ${e.message}`);
+    console.error(e);
+    return;
+  }
+
+  memory = wasm.instance.exports.memory;
+  const exports = wasm.instance.exports;
+
+  // ── Test: Initialize Skia GL context ──
+  info('Calling exports_skia_gl_init...');
+  try {
+    // init takes a list<u8> pointer — we pass a dummy
+    exports.exports_skia_gl_init(0);
+    const initErr = exports.sk_debug_init_error();
+    if (initErr === 0) ok('Skia GL initialized (context created)');
+    else if (initErr === 1) {
+      const extDbg = exports.sk_debug_ext_init();
+      const extMsg = {10:'getString null',11:'invalid version',20:'not indexed',21:'indexed',30:'getStringi null',31:'getIntegerv null'}[extDbg] || `code=${extDbg}`;
+      err(`MakeWebGL() returned null — extensions.init: ${extMsg}`);
+    }
+    else if (initErr === 2) {
+      const extDbg = exports.sk_debug_ext_init();
+      const ctxMsg = {70:'validate() failed',71:'driver version invalid',72:'GLSL generation failed',80:'GrGLContext::Make passed (Init failed)'}[extDbg] || `GrGLContext code=${extDbg}`;
+      err(`MakeGL() returned null — ${ctxMsg}`);
+    }
+    else if (initErr === 3) err('emscripten_glGetString fn ptr is NULL');
+    else if (initErr === 4) err('emscripten_glGetStringi fn ptr is NULL');
+    else if (initErr === 5) err('emscripten_glGetIntegerv fn ptr is NULL');
+    else err(`Unknown init error: ${initErr}`);
+  } catch (e) {
+    err(`init failed: ${e.message}`);
+    console.error(e);
+    return;
+  }
+
+  // Check for GL errors after init
+  const glErr = gl.getError();
+  if (glErr) info(`GL error after init: 0x${glErr.toString(16)}`);
+  else ok('No GL errors after init');
+
+  // ── Test: Begin drawing to FBO 0 (canvas framebuffer) ──
+  info('Calling begin_drawing(fbo=0, 512, 512)...');
+  try {
+    const retPtr = wasmAlloc(32); // scratch area for return values
+    const result = exports.exports_skia_gl_begin_drawing(0, 512, 512, retPtr);
+    if (result) {
+      ok('begin_drawing succeeded');
+    } else {
+      err('begin_drawing returned false');
+      // Debug: check if context was created by trying destroy
+      info('Checking GL errors...');
+      let errCount = 0;
+      let e2;
+      while ((e2 = gl.getError()) && errCount < 10) { info(`  GL error: 0x${e2.toString(16)}`); errCount++; }
+      if (!errCount) info('  No GL errors — context or surface creation returned null');
+      return;
+    }
+  } catch (e) {
+    err(`begin_drawing failed: ${e.message}`);
+    console.error(e);
+    return;
+  }
+
+  // ── Draw ──
+  info('Drawing...');
+
+  // Create paints (kept alive for animation loop)
+  const fillPaint = exports.sk_paint_new();
+  const strokePaint = exports.sk_paint_new();
+
+  var animTime = 0; // set by animation loop
+
+  // Square swap animation state
+  var sqCols = [
+    [0.9, 0.3, 0.3], [0.3, 0.9, 0.4], [0.3, 0.5, 0.9],
+    [0.9, 0.7, 0.2], [0.7, 0.3, 0.9], [0.2, 0.8, 0.8],
+  ];
+  var sqSwapA = 0, sqSwapB = 1, sqSwapStart = 0;
+  var sqFromA = [...sqCols[0]], sqFromB = [...sqCols[1]];
+  var sqToA = [...sqCols[1]], sqToB = [...sqCols[0]];
+  var gradBufC = null, gradBufS = null; // allocated on first use
+  var hudBuf = null;
+
+  const drawStaticScene = () => {
+  exports.exports_skia_gl_canvas_clear(0.06, 0.06, 0.1, 1.0);
+  exports.sk_paint_set_fill_style(fillPaint);
+  exports.sk_paint_set_stroke_style(strokePaint, 2.0);
+
+  // Draw colored rectangles — two swap and lerp every 3 seconds
+  var sqDur = 3000;
+  var sqT = Math.min((animTime - sqSwapStart) / sqDur, 1.0);
+  sqT = sqT * sqT * (3 - 2 * sqT); // smoothstep
+  if (sqT >= 1.0 && animTime > 0) {
+    // Commit swap and pick new pair
+    sqCols[sqSwapA] = [...sqToA];
+    sqCols[sqSwapB] = [...sqToB];
+    var a = Math.floor(Math.random() * 6);
+    var b2 = (a + 1 + Math.floor(Math.random() * 5)) % 6;
+    sqSwapA = a; sqSwapB = b2; sqSwapStart = animTime;
+    sqFromA = [...sqCols[a]]; sqFromB = [...sqCols[b2]];
+    sqToA = [...sqCols[b2]]; sqToB = [...sqCols[a]];
+    sqT = 0;
+  }
+  for (var i = 0; i < sqCols.length; i++) {
+    var c = sqCols[i];
+    if (i === sqSwapA) c = sqFromA.map((v, j) => v + (sqToA[j] - v) * sqT);
+    else if (i === sqSwapB) c = sqFromB.map((v, j) => v + (sqToB[j] - v) * sqT);
+    exports.sk_paint_color(fillPaint, c[0], c[1], c[2], 1.0);
+    exports.sk_draw_round_rect(30 + i * 78, 30, 68, 68, 10, 10, fillPaint);
+  }
+
+  // Draw circles — muted colors cycling slowly
+  for (let i = 0; i < 8; i++) {
+    const t = ((i / 8) + animTime * 0.0002) % 1.0;
+    exports.sk_paint_color(fillPaint, 0.15 + 0.35 * t, 0.2 + 0.25 * (1 - t), 0.3 + 0.4 * Math.sin(t * Math.PI * 2 + 4), 0.7);
+    exports.sk_draw_circle(64 + i * 56, 140, 18, fillPaint);
+  }
+
+  // Draw stroked frame with lines
+  exports.sk_paint_color(strokePaint, 1.0, 1.0, 1.0, 0.3);
+  exports.sk_draw_rect(20, 170, 472, 100, strokePaint);
+  exports.sk_draw_round_rect(28, 176, 456, 88, 10, 10, strokePaint);
+
+  // Lines — color shifts at ~12hz for a retro scanner effect
+  var linePhase = Math.floor(animTime / 83) % 9; // 83ms ≈ 12hz
+  for (let i = 0; i < 9; i++) {
+    const t = ((i + linePhase) % 9) / 9;
+    exports.sk_paint_color(strokePaint, 0.5 + 0.5 * t, 0.8 - 0.3 * t, 0.3 + 0.5 * t, 0.6);
+    exports.sk_draw_line(36, 184 + i * 9, 472, 184 + i * 9, strokePaint);
+  }
+
+  // Draw gradient bars
+  var gradPaint = exports.sk_paint_new();
+  exports.sk_paint_set_fill_style(gradPaint);
+  var gradColors = [
+    [0xFFFF4444, 0xFF4444FF],
+    [0xFF44FF44, 0xFFFF44FF],
+    [0xFFFFAA00, 0xFF00AAFF],
+    [0xFF4488FF, 0xFFFF8844],
+  ];
+  // Gradient bars — perfect wrapping loop
+  // Pattern: A→B→A pinned at ends (so 0 and 1 always match).
+  // The midpoint slides back and forth, creating the illusion of motion.
+  // Two bars stacked with opposite phases complete the wrap.
+  var barW = 452, barX = 30;
+  if (!gradBufC) { gradBufC = wasmAlloc(12); gradBufS = wasmAlloc(12); }
+  for (let i = 0; i < gradColors.length; i++) {
+    const y = 284 + i * 22;
+    const dir = (i % 2 === 0) ? 1 : -1;
+    const speed = 0.15 + i * 0.03;
+    // mid oscillates 0.1→0.9 as a sine wave — perfect loop
+    const mid = 0.5 + 0.4 * Math.sin(animTime * speed * 0.001 * dir);
+    const cA = gradColors[i][0], cB = gradColors[i][1];
+    const dv = new DataView(memory.buffer);
+    // 3 stops: A at 0, B at mid, A at 1
+    dv.setUint32(gradBufC + 0, cA, true);
+    dv.setUint32(gradBufC + 4, cB, true);
+    dv.setUint32(gradBufC + 8, cA, true);
+    dv.setFloat32(gradBufS + 0, 0.0, true);
+    dv.setFloat32(gradBufS + 4, mid, true);
+    dv.setFloat32(gradBufS + 8, 1.0, true);
+    exports.sk_paint_set_linear_gradient_n(gradPaint, barX, y, barX + barW, y, gradBufC, gradBufS, 3);
+    exports.sk_draw_round_rect(barX, y, barW, 16, 4, 4, gradPaint);
+  }
+  exports.sk_paint_delete(gradPaint);
+
+  // PathOps demo (impossible in Canvas API)
+  function makeCircle(cx, cy, r) {
+    var p = exports.skia_path_new();
+    for (var i = 0; i <= 64; i++) {
+      var a = (i / 64) * Math.PI * 2;
+      var x = cx + Math.cos(a) * r, y = cy + Math.sin(a) * r;
+      if (i === 0) exports.skia_path_move(p, x, y);
+      else exports.skia_path_line(p, x, y);
+    }
+    exports.skia_path_close(p);
+    return p;
+  }
+  var pathOps = [
+    { op: 0, color: [0.9, 0.3, 0.3] },
+    { op: 1, color: [0.3, 0.9, 0.4] },
+    { op: 2, color: [0.3, 0.5, 0.9] },
+    { op: 3, color: [0.9, 0.7, 0.2] },
+  ];
+  for (var pi = 0; pi < pathOps.length; pi++) {
+    var cx = 75 + pi * 120;
+    var spread = 12 + 6 * Math.sin(animTime * 0.002 + pi);
+    var pa = makeCircle(cx - spread, 404, 26);
+    var pb = makeCircle(cx + spread, 404, 26);
+    var result = exports.skia_path_op_combine(pa, pb, pathOps[pi].op);
+    if (result) {
+      exports.sk_paint_color(fillPaint, pathOps[pi].color[0], pathOps[pi].color[1], pathOps[pi].color[2], 0.9);
+      exports.skia_draw_path(result, fillPaint);
+      exports.skia_path_delete(result);
+    }
+    exports.sk_paint_color(strokePaint, 1.0, 1.0, 1.0, 0.15);
+    exports.skia_draw_path(pa, strokePaint);
+    exports.skia_draw_path(pb, strokePaint);
+    exports.skia_path_delete(pa);
+    exports.skia_path_delete(pb);
+  }
+
+  }; // end drawStaticScene
+
+  // Draw first static frame
+  drawStaticScene();
+  ok('Drew static scene');
+
+  // End first frame (before font load which takes time)
+  exports.exports_skia_gl_end_drawing();
+  exports.exports_skia_gl_flush();
+
+  // Load font and start animation
+  info('Loading font...');
+  try {
+    // Inter variable font (TTF)
+    const fontUrl = 'https://cdn.jsdelivr.net/gh/rsms/inter@v4.1/docs/font-files/InterVariable.ttf';
+    const fontResp = await fetch(fontUrl);
+    const fontData = new Uint8Array(await fontResp.arrayBuffer());
+
+    const fontPtr = wasmAlloc(fontData.length);
+    new Uint8Array(memory.buffer, fontPtr, fontData.length).set(fontData);
+
+    info(`Font data: ${fontData.length} bytes, ptr=${fontPtr}, memory=${memory.buffer.byteLength}`);
+    const typefaceH = exports.sk_typeface_load(fontPtr, fontData.length);
+    if (typefaceH) {
+      ok(`Font loaded (typeface handle: ${typefaceH})`);
+
+      const fontH = exports.sk_font_new(typefaceH, 32);
+      // Separate paints — gradient shader on one doesn't affect the other
+      const titlePaint = exports.sk_paint_new();
+      exports.sk_paint_set_fill_style(titlePaint);
+      exports.sk_paint_color(titlePaint, 1.0, 1.0, 1.0, 1.0);
+      const textPaint = exports.sk_paint_new();
+      exports.sk_paint_set_fill_style(textPaint);
+
+      const drawCentered = (str, y, font, paint) => {
+        const bytes = new TextEncoder().encode(str);
+        const ptr = wasmAlloc(bytes.length);
+        new Uint8Array(memory.buffer, ptr, bytes.length).set(bytes);
+        const w = exports.sk_measure_text(ptr, bytes.length, font);
+        exports.sk_draw_text(ptr, bytes.length, (512 - w) / 2, y, font, paint);
+      };
+
+      exports.sk_paint_color(textPaint, 1.0, 1.0, 1.0, 1.0);
+      drawCentered('@three-flatland/skia', 466, fontH, titlePaint);
+
+      // Subtitle — animated gradient fill (impossible with Canvas API)
+      const font2 = exports.sk_font_new(typefaceH, 14);
+      const subStr = 'GPU-accelerated vector graphics in the browser';
+      const subBytes = new TextEncoder().encode(subStr);
+      const subPtr = wasmAlloc(subBytes.length);
+      new Uint8Array(memory.buffer, subPtr, subBytes.length).set(subBytes);
+      const subW = exports.sk_measure_text(subPtr, subBytes.length, font2);
+      const subX = (512 - subW) / 2;
+
+      // First frame
+      exports.sk_paint_set_linear_gradient_2(textPaint, 80, 0, 440, 0, 0xFF44AAFF, 0xFFFF44AA);
+      exports.sk_draw_text(subPtr, subBytes.length, subX, 490, font2, textPaint);
+
+      ok('Drew text with Inter font');
+
+      // End first frame
+      exports.exports_skia_gl_end_drawing();
+      exports.exports_skia_gl_flush();
+
+      // ── Animation loop — animate gradient on subtitle ──
+      const hslToArgb = (h, s, l) => {
+        const c = (1 - Math.abs(2 * l - 1)) * s;
+        const x = c * (1 - Math.abs((h / 60) % 2 - 1));
+        const m = l - c / 2;
+        let r, g, b;
+        if (h < 60) { r = c; g = x; b = 0; }
+        else if (h < 120) { r = x; g = c; b = 0; }
+        else if (h < 180) { r = 0; g = c; b = x; }
+        else if (h < 240) { r = 0; g = x; b = c; }
+        else if (h < 300) { r = x; g = 0; b = c; }
+        else { r = c; g = 0; b = x; }
+        const ri = Math.round((r + m) * 255), gi = Math.round((g + m) * 255), bi = Math.round((b + m) * 255);
+        return 0xFF000000 | (ri << 16) | (gi << 8) | bi;
+      };
+
+      // FPS counter — rendered by Skia in the canvas
+      const fpsFont = exports.sk_font_new(typefaceH, 11);
+      const fpsPaint = exports.sk_paint_new();
+      exports.sk_paint_set_fill_style(fpsPaint);
+      let lastTime = 0, frameCount = 0, fps = 0;
+      const fpsStr = wasmAlloc(16);
+
+      const retPtr2 = wasmAlloc(32);
+      const animate = (t) => {
+        if (!exports.exports_skia_gl_begin_drawing(0, 512, 512, retPtr2)) return;
+
+        // Redraw full scene each frame (handle table now recycles)
+        animTime = t;
+        drawStaticScene();
+
+        // Title (always white — uses separate paint from gradient)
+        drawCentered('@three-flatland/skia', 466, fontH, titlePaint);
+
+        // Animated gradient subtitle
+        const hue1 = (t * 0.05) % 360;
+        const hue2 = (hue1 + 120) % 360;
+        exports.sk_paint_set_linear_gradient_2(textPaint, subX, 0, subX + subW, 0, hslToArgb(hue1, 0.8, 0.6), hslToArgb(hue2, 0.8, 0.6));
+        exports.sk_draw_text(subPtr, subBytes.length, subX, 490, font2, textPaint);
+
+        // HUD: sizes (top-left) + FPS (top-right)
+        frameCount++;
+        if (t - lastTime >= 1000) { fps = frameCount; frameCount = 0; lastTime = t; }
+        exports.sk_paint_color(fpsPaint, 1.0, 1.0, 1.0, 0.35);
+
+        // Sizes
+        const sizeText = `${wasmSizeKB} KB / ${wasmGzipKB} KB gzip`;
+        const sizeBytes = new TextEncoder().encode(sizeText);
+        new Uint8Array(memory.buffer, fpsStr, Math.min(sizeBytes.length, 15)).set(sizeBytes.subarray(0, 15));
+        // Need a bigger buffer for size string
+        var hudBuf = hudBuf || wasmAlloc(64);
+        new Uint8Array(memory.buffer, hudBuf, sizeBytes.length).set(sizeBytes);
+        exports.sk_draw_text(hudBuf, sizeBytes.length, 10, 18, fpsFont, fpsPaint);
+
+        // FPS
+        const fpsText = `${fps} fps`;
+        const fpsBytes = new TextEncoder().encode(fpsText);
+        new Uint8Array(memory.buffer, fpsStr, fpsBytes.length).set(fpsBytes);
+        const fpsW = exports.sk_measure_text(fpsStr, fpsBytes.length, fpsFont);
+        exports.sk_draw_text(fpsStr, fpsBytes.length, 500 - fpsW, 18, fpsFont, fpsPaint);
+
+        exports.exports_skia_gl_end_drawing();
+        exports.exports_skia_gl_flush();
+        requestAnimationFrame(animate);
+      };
+      requestAnimationFrame(animate);
+
+      // Don't destroy — keep alive for animation
+      ok('Animation started');
+      // Skip cleanup — resources kept alive for render loop
+      return;
+    } else {
+      const dbg = exports.sk_debug_font?.() ?? -1;
+      const msg = {1:'entered',2:'bad data',3:'font mgr null',4:'mgr ok',5:'copy failed',6:'data copied',7:'makeFromData returned null'}[dbg] || `code=${dbg}`;
+      warn(`Typeface creation failed: ${msg}`);
+    }
+  } catch (e) {
+    warn(`Font loading failed: ${e.message}`);
+    if (e.stack) info(e.stack.split('\n').slice(0, 5).join('\n'));
+  }
+
+  // ── Fallback: end drawing if font/animation didn't take over ──
+  exports.exports_skia_gl_end_drawing();
+  exports.exports_skia_gl_flush();
+  ok('Drawing complete (no animation)');
+
+  info('');
+  ok('Skia is rendering via WebGL + WASM!');
+}
+
+run().catch(e => err(`Unhandled: ${e.message}`));
+
+</script>
+</body>
+</html>

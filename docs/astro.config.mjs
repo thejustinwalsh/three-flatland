@@ -214,6 +214,7 @@ export default defineConfig({
             { label: 'TSL Nodes', slug: 'guides/tsl-nodes' },
             { label: 'Pass Effects', slug: 'guides/pass-effects' },
             { label: 'Tilemaps', slug: 'guides/tilemaps' },
+            { label: 'Skia', slug: 'guides/skia' },
           ],
         },
         {
@@ -226,6 +227,7 @@ export default defineConfig({
             { label: 'Tilemap', slug: 'examples/tilemap' },
             { label: 'Pass Effects', slug: 'examples/pass-effects' },
             { label: 'Knightmark', slug: 'examples/knightmark' },
+            { label: 'Skia', slug: 'examples/skia' },
           ],
         },
         {
