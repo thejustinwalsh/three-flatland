@@ -103,7 +103,7 @@
     "clean": "rm -rf dist"
   },
   "peerDependencies": {
-    "three": ">=0.170.0"
+    "three": "catalog:"
   },
   "peerDependenciesMeta": {
     "react": {
