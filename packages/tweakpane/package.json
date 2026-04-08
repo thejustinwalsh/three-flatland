@@ -1,0 +1,84 @@
+{
+  "name": "@three-flatland/tweakpane",
+  "version": "0.1.0-alpha.1",
+  "description": "Tweakpane v4 integration for three-flatland examples — theme, vanilla helpers, and React hooks",
+  "type": "module",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    },
+    "./react": {
+      "source": "./src/react.ts",
+      "import": {
+        "types": "./dist/react.d.ts",
+        "default": "./dist/react.js"
+      },
+      "require": {
+        "types": "./dist/react.d.cts",
+        "default": "./dist/react.cjs"
+      }
+    },
+    "./react/*": {
+      "source": "./src/react/*.ts",
+      "import": {
+        "types": "./dist/react/*.d.ts",
+        "default": "./dist/react/*.js"
+      },
+      "require": {
+        "types": "./dist/react/*.d.cts",
+        "default": "./dist/react/*.cjs"
+      }
+    }
+  },
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "peerDependencies": {
+    "tweakpane": "^4.0.5",
+    "@tweakpane/plugin-essentials": "^0.2.1"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@tweakpane/core": "catalog:",
+    "@tweakpane/plugin-essentials": "catalog:",
+    "@types/react": "catalog:",
+    "react": "catalog:",
+    "tweakpane": "catalog:",
+    "typescript": "catalog:"
+  },
+  "keywords": [
+    "three.js",
+    "tweakpane",
+    "debug",
+    "controls",
+    "webgpu"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/thejustinwalsh/three-flatland.git",
+    "directory": "packages/tweakpane"
+  }
+}
