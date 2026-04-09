@@ -542,8 +542,9 @@ async function main() {
     pane.refresh()
   }
 
-  // Tweakpane UI
-  const { pane, stats: globalStats } = createPane()
+  // Tweakpane UI — pass `scene` so draws/triangles and GPU timestamps are
+  // auto-wired via scene.onAfterRender.
+  const { pane, stats: globalStats } = createPane({ scene })
 
   // Layers folder
   const layerFolder = pane.addFolder({ title: 'Layers', expanded: false })
@@ -775,14 +776,6 @@ async function main() {
     tilemap.update(deltaMs)
 
     renderer.render(scene, camera)
-    globalStats.update({
-      drawCalls: renderer.info.render.drawCalls,
-      triangles: renderer.info.render.triangles,
-      lines: renderer.info.render.lines,
-      points: renderer.info.render.points,
-      geometries: renderer.info.memory.geometries,
-      textures: renderer.info.memory.textures,
-    })
     globalStats.end()
 
     // Update tile stats periodically

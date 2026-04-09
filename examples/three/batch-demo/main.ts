@@ -317,8 +317,9 @@ async function main() {
   selectedBuilding = 0 // Back to house
   updateHoverSprite()
 
-  // Tweakpane debug UI
-  const { pane, stats: globalStats } = createPane()
+  // Tweakpane debug UI — pass `scene` so draws/triangles and GPU timestamps
+  // are auto-wired via scene.onAfterRender.
+  const { pane, stats: globalStats } = createPane({ scene })
   const exampleStats = { sprites: 0, batches: 0 }
   const statsFolder = pane.addFolder({ title: 'Batching', expanded: false })
   statsFolder.addBinding(exampleStats, 'sprites', { readonly: true, format: (v: number) => v.toFixed(0) })
@@ -355,14 +356,6 @@ async function main() {
 
     globalStats.begin()
     renderer.render(scene, camera)
-    globalStats.update({
-      drawCalls: renderer.info.render.drawCalls,
-      triangles: renderer.info.render.triangles,
-      lines: renderer.info.render.lines,
-      points: renderer.info.render.points,
-      geometries: renderer.info.memory.geometries,
-      textures: renderer.info.memory.textures,
-    })
     globalStats.end()
 
     // Update stats monitors

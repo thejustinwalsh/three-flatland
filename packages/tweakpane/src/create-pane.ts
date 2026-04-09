@@ -24,11 +24,135 @@ interface StatsRenderer {
     }
   }
   backend?: {
-    /** `true` when the backend was constructed with `{ trackTimestamp: true }` and the adapter supports it. */
+    /** Set to `true` when the backend was constructed with `{ trackTimestamp: true }`. On WebGPU this is auto-downgraded to `false` if the adapter lacks `GPUFeatureName.TimestampQuery`; on WebGL it stays `true` even without the `EXT_disjoint_timer_query_webgl2` extension, so we also have to inspect `backend.disjoint`. */
     trackTimestamp?: boolean
+    /** WebGL-only: the `EXT_disjoint_timer_query_webgl2` extension object. `null` if unavailable → GPU timing can't work on this backend. */
+    disjoint?: unknown
+    constructor?: { name?: string }
   }
   /** Fire-and-forget — triggers async readback of the GPU timestamp query pool. */
   resolveTimestampsAsync?(type: 'render' | 'compute'): Promise<number | undefined>
+}
+
+/** True if this backend can actually populate `info.render.timestamp`. */
+function canTrackGpuTimestamps(renderer: StatsRenderer): boolean {
+  const backend = renderer.backend
+  if (!backend || backend.trackTimestamp !== true) return false
+  // WebGL fallback: the base `Backend` class doesn't downgrade
+  // `trackTimestamp` based on the `EXT_disjoint_timer_query_webgl2`
+  // extension — we have to check `backend.disjoint` ourselves, otherwise
+  // we'd enable GPU mode with no data on WebGL2 machines that lack the
+  // extension. WebGPU auto-downgrades `trackTimestamp` to `false` in
+  // `WebGPUBackend.init()` so no extra check is needed there.
+  const isWebGL = backend.constructor?.name === 'WebGLBackend'
+  if (isWebGL && !backend.disjoint) return false
+  return true
+}
+
+/**
+ * Wire a Three.js `Scene` into a `StatsHandle` — hooks `scene.onAfterRender`
+ * to capture `info.render` / `info.memory` on every render, and drains the
+ * GPU timestamp query pool via a per-frame microtask when trackTimestamp is
+ * available on the backend.
+ *
+ * Used by both `createPane({ scene })` (vanilla three.js path) and
+ * `useStatsMonitor` (React path) — centralises the scene plumbing so the
+ * pool-drain and GPU-mode detection behave identically regardless of which
+ * entry point created the pane.
+ *
+ * Returns a cleanup function that restores the previous `onAfterRender`.
+ */
+export function wireSceneStats(
+  scene: Scene,
+  stats: StatsHandle,
+  options: { debug?: boolean } = {},
+): () => void {
+  const { debug = false } = options
+
+  // three.js types `onAfterRender` with the Object3D per-object signature
+  // (`renderer, scene, camera, geometry, material, group`), but at the
+  // Scene level three.js calls it with a different shape
+  // (`renderer, scene, camera, renderTarget` — see `Renderer.js:1683`).
+  // We chain to the previous value using a permissive callable type.
+  type AnyCallable = (this: unknown, ...args: unknown[]) => void
+  const prev = scene.onAfterRender as unknown as AnyCallable
+  let gpuDetected = false
+  let firstGpuLogged = false
+  let debugLogged = false
+
+  const hook: AnyCallable = function (this: unknown, ...args) {
+    prev.call(this, ...args)
+    const renderer = args[0] as StatsRenderer | undefined
+    if (!renderer) return
+
+    const render = renderer.info?.render
+    const memory = renderer.info?.memory
+    stats.update({
+      drawCalls: render?.drawCalls,
+      triangles: render?.triangles,
+      lines: render?.lines,
+      points: render?.points,
+      geometries: memory?.geometries,
+      textures: memory?.textures,
+    })
+
+    const gpuCapable = canTrackGpuTimestamps(renderer)
+    if (gpuCapable && !gpuDetected) {
+      gpuDetected = true
+      stats.enableGpu()
+    }
+
+    if (debug && !debugLogged) {
+      debugLogged = true
+      const backendName = renderer.backend?.constructor?.name ?? 'unknown'
+      console.info('[flatland stats] diagnostics', {
+        backend: backendName,
+        'backend.trackTimestamp': renderer.backend?.trackTimestamp,
+        'backend.disjoint (WebGL only)': renderer.backend?.disjoint ?? '(n/a)',
+        gpuModeEnabled: gpuDetected,
+        'info.render': render,
+        'info.memory': memory,
+      })
+    }
+
+    // Queue the GPU timestamp resolution as a MICROTASK so it runs AFTER
+    // the current `renderer.render()` call has fully unwound. Calling
+    // resolveTimestampsAsync synchronously from inside scene.onAfterRender
+    // re-enters the renderer mid-render and corrupts the WebGPU timestamp
+    // query pool. The pool dedupes concurrent calls internally via
+    // `pendingResolve`, so firing one microtask per render frame is safe
+    // even when post-processing fans out into multiple render passes.
+    if (gpuCapable) {
+      Promise.resolve().then(() => {
+        const fn = renderer.resolveTimestampsAsync
+        if (typeof fn !== 'function') return
+        Promise.resolve(fn.call(renderer, 'render'))
+          .then(() => {
+            const ts = renderer.info?.render?.timestamp
+            if (typeof ts !== 'number') return
+            stats.gpuTime(ts)
+            if (debug && ts > 0 && !firstGpuLogged) {
+              firstGpuLogged = true
+              console.info(
+                '[flatland stats] first GPU time sample:',
+                ts.toFixed(3),
+                'ms',
+              )
+            }
+          })
+          .catch(() => {
+            /* swallow — transient readback failures are fine */
+          })
+      })
+    }
+  }
+  ;(scene as unknown as { onAfterRender: AnyCallable }).onAfterRender = hook
+
+  return () => {
+    if ((scene as unknown as { onAfterRender: AnyCallable }).onAfterRender === hook) {
+      ;(scene as unknown as { onAfterRender: AnyCallable }).onAfterRender = prev
+    }
+  }
 }
 
 export interface CreatePaneOptions {
@@ -54,6 +178,15 @@ export interface CreatePaneOptions {
    * three.js's auto-reset).
    */
   scene?: Scene
+  /**
+   * Log one-time diagnostic info to the console on the first frame — backend
+   * class, `trackTimestamp` state, first resolved GPU time. Two
+   * `console.info` calls total per pane (zero per-frame cost). Defaults to
+   * `true` because three-flatland is a dev-focused toolkit — pass
+   * `debug: false` explicitly if you're embedding a pane in a
+   * public-facing app and don't want the logs in visitors' consoles.
+   */
+  debug?: boolean
 }
 
 /**
@@ -77,6 +210,16 @@ export interface StatsHandle {
   end(): void
   /** Push renderer stats into the pane. Missing fields are left unchanged. */
   update(info: StatsUpdate): void
+  /**
+   * Enable the cycling graph's `gpu` mode. Called once when GPU timing is
+   * detected on the backend. Safe to call multiple times.
+   */
+  enableGpu(): void
+  /**
+   * Push a GPU frame time (milliseconds) into the graph's `gpu` mode.
+   * No-op if GPU mode isn't enabled yet.
+   */
+  gpuTime(ms: number): void
 }
 
 export interface PaneBundle {
@@ -124,6 +267,7 @@ export function createPane(options: CreatePaneOptions = {}): PaneBundle {
     expanded = true,
     stats: showStats = true,
     scene,
+    debug = true,
     ...rest
   } = options
 
@@ -209,63 +353,19 @@ export function createPane(options: CreatePaneOptions = {}): PaneBundle {
         textures: info.textures,
       })
     },
+    enableGpu() {
+      graph?.enableGpuMode()
+    },
+    gpuTime(ms) {
+      graph?.pushGpuTime(ms)
+    },
   }
 
-  // Auto-wire draw/triangle stats via scene.onAfterRender.
-  // Fires synchronously inside renderer.render() — AFTER info is populated
-  // and BEFORE three.js's Animation RAF can auto-reset it (R3F v10 doesn't
-  // drive render via setAnimationLoop, so the reset is out-of-band with
-  // R3F's phase graph and useFrame-based polling would read stale 0s).
-  //
-  // Also fires GPU timestamp resolution (when the renderer was constructed
-  // with `{ trackTimestamp: true }` and the adapter supports it), feeding
-  // `renderer.info.render.timestamp` (ms) into the graph's GPU mode. The
-  // async readback has a 1–2 frame lag so values trail the current frame.
-  let restoreSceneHook: (() => void) | null = null
-  if (showStats && scene) {
-    // three.js types `onAfterRender` with the Object3D per-object signature
-    // (`renderer, scene, camera, geometry, material, group`), but at the
-    // Scene level three.js calls it with a different shape
-    // (`renderer, scene, camera, renderTarget` — see `Renderer.js:1683`).
-    // We chain to the previous value using a permissive callable type.
-    type AnyCallable = (this: unknown, ...args: unknown[]) => void
-    const prev = scene.onAfterRender as unknown as AnyCallable
-    let gpuDetected = false
-    const hook: AnyCallable = function (this: unknown, ...args) {
-      prev.call(this, ...args)
-      const renderer = args[0] as StatsRenderer | undefined
-      if (!renderer) return
-      const render = renderer.info?.render
-      const memory = renderer.info?.memory
-      statsRow?.update({
-        draws: render?.drawCalls,
-        tris: render?.triangles,
-        prims: (render?.lines ?? 0) + (render?.points ?? 0),
-        geoms: memory?.geometries,
-        textures: memory?.textures,
-      })
-
-      // GPU timing — lazy-detect capability on first fire, then each frame
-      // trigger the async readback and push whatever's currently resolved.
-      if (renderer.backend?.trackTimestamp === true) {
-        if (!gpuDetected) {
-          gpuDetected = true
-          graph?.enableGpuMode()
-        }
-        renderer.resolveTimestampsAsync?.('render').catch(() => {
-          /* ignore — transient readback failures are fine, we'll retry next frame */
-        })
-        const ts = render?.timestamp
-        if (typeof ts === 'number') graph?.pushGpuTime(ts)
-      }
-    }
-    ;(scene as unknown as { onAfterRender: AnyCallable }).onAfterRender = hook
-    restoreSceneHook = () => {
-      if ((scene as unknown as { onAfterRender: AnyCallable }).onAfterRender === hook) {
-        ;(scene as unknown as { onAfterRender: AnyCallable }).onAfterRender = prev
-      }
-    }
-  }
+  // Vanilla three.js path: wire the scene hook here if the caller passed
+  // `scene`. React goes through `useStatsMonitor` instead, which calls the
+  // same `wireSceneStats` helper from its `useEffect`.
+  const restoreSceneHook: (() => void) | null =
+    showStats && scene ? wireSceneStats(scene, stats, { debug }) : null
 
   // Clean up on dispose
   const originalDispose = pane.dispose.bind(pane)

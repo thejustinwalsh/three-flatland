@@ -13,7 +13,7 @@ import {
   type TilesetData,
   type TileLayerData,
 } from 'three-flatland'
-import { createPane } from '@three-flatland/tweakpane'
+import { createPane, wireSceneStats } from '@three-flatland/tweakpane'
 
 // ============================================
 // CONSTANTS
@@ -176,6 +176,10 @@ async function main() {
   // Scene
   const scene = new Scene()
   scene.background = new Color(0x1a1a2e)
+
+  // Wire the pane's stats hooks to this scene — captures draws/tris/etc
+  // on each render and drains the GPU timestamp query pool.
+  wireSceneStats(scene, globalStats)
 
   // Orthographic camera
   const aspect = window.innerWidth / window.innerHeight
@@ -444,18 +448,11 @@ async function main() {
     // Render — systems run automatically in updateMatrixWorld
     renderer.render(scene, camera)
 
-    // Update stats monitors
+    // Knight batch monitors — draws/tris/etc are captured automatically
+    // by the `wireSceneStats(scene, globalStats)` call in main().
     const s = spriteGroup.stats
     knightStats.knights = knights.length
     knightStats.batches = s.batchCount
-    globalStats.update({
-      drawCalls: renderer.info.render.drawCalls,
-      triangles: renderer.info.render.triangles,
-      lines: renderer.info.render.lines,
-      points: renderer.info.render.points,
-      geometries: renderer.info.memory.geometries,
-      textures: renderer.info.memory.textures,
-    })
     globalStats.end()
   }
   animate()

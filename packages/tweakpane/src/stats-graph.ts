@@ -43,10 +43,14 @@ const MODE_COLORS: Record<Mode, string> = {
   mem: '#d94c87', // retro-pink
 }
 
+// Unit labels shown next to the live value overlay (bottom-right of the
+// graph). The left-side mode label distinguishes fps/ms/gpu/mem; this is
+// just the unit of the number itself, so `gpu` (also milliseconds) reads
+// `MS` here.
 const MODE_UNITS: Record<Mode, string> = {
   fps: 'FPS',
   ms: 'MS',
-  gpu: 'GPU',
+  gpu: 'MS',
   mem: 'MB',
 }
 
@@ -257,7 +261,7 @@ export function addStatsGraph(
         lblvL.textContent = 'gpu'
         lblvL.title = range ? `GPU range: ${range}` : ''
         valueSpan.textContent = lastGpu.toFixed(1)
-        unitSpan.textContent = 'GPU'
+        unitSpan.textContent = 'MS'
         break
       case 'mem': {
         const memMB = perfMemory ? perfMemory.usedJSHeapSize / 1048576 : 0
