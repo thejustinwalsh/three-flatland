@@ -10,7 +10,7 @@ import {
   type SpriteFrame,
   type RenderStats,
 } from 'three-flatland/react'
-import { usePane } from '@three-flatland/tweakpane/react'
+import { usePane, useStatsMonitor } from '@three-flatland/tweakpane/react'
 import type { Pane } from 'tweakpane'
 import type { StatsHandle } from '@three-flatland/tweakpane/react'
 // Extend R3F with our custom classes
@@ -353,20 +353,14 @@ function VillageScene({ entities, selectedBuilding, onPlaceBuilding, onStats, st
   // SpriteGroup ref for stats
   const spriteGroupRef = useRef<SpriteGroup>(null)
 
-  const statsRef = useRef(stats)
-  statsRef.current = stats
+  useStatsMonitor(stats)
 
+  // Surface SpriteGroup batching stats to the parent each frame
   useFrame(() => {
-    statsRef.current.begin()
-  }, { priority: -Infinity })
-
-  useFrame(() => {
-    statsRef.current.update({ drawCalls: (gl.info.render as any).drawCalls as number, triangles: (gl.info.render as any).triangles as number })
-    statsRef.current.end()
     if (spriteGroupRef.current) {
       onStats(spriteGroupRef.current.stats)
     }
-  }, { priority: Infinity })
+  }, { priority: -Infinity })
 
   // Hover position
   const hoverPosition: [number, number, number] = hoverGrid
@@ -499,7 +493,14 @@ export default function App() {
 
   return (
     <>
-      <Canvas style={{ background: '#87ceeb' }}>
+      <Canvas
+        dpr={1}
+        style={{ background: '#87ceeb' }}
+        renderer={{ antialias: false, trackTimestamp: true }}
+        onCreated={({ gl }) => {
+          gl.domElement.style.imageRendering = 'pixelated'
+        }}
+      >
         <FitOrthoCamera viewWidth={viewWidth} viewHeight={viewHeight} />
         <VillageScene
           entities={entities}

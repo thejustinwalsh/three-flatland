@@ -24,9 +24,6 @@ catalogs:
     '@types/three':
       specifier: ^0.183.1
       version: 0.183.1
-    '@vitejs/plugin-react':
-      specifier: ^4.3.4
-      version: 4.7.0
     koota:
       specifier: ^0.6.5
       version: 0.6.5
@@ -66,6 +63,9 @@ importers:
       '@eslint/js':
         specifier: ^9.18.0
         version: 9.39.2
+      '@playwright/test':
+        specifier: ^1.59.1
+        version: 1.59.1
       '@size-limit/preset-small-lib':
         specifier: ^12.0.0
         version: 12.0.0(size-limit@12.0.0)
@@ -227,7 +227,7 @@ importers:
   examples:
     dependencies:
       '@react-three/fiber':
-        specifier: 'catalog:'
+        specifier: ^10.0.0-alpha.2
         version: 10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.183.1)
       '@three-flatland/nodes':
         specifier: workspace:*
@@ -242,44 +242,44 @@ importers:
         specifier: workspace:*
         version: link:../packages/tweakpane
       '@tweakpane/core':
-        specifier: 'catalog:'
+        specifier: ^2.0.5
         version: 2.0.5
       '@tweakpane/plugin-essentials':
-        specifier: 'catalog:'
+        specifier: ^0.2.1
         version: 0.2.1(tweakpane@4.0.5)
       react:
-        specifier: 'catalog:'
+        specifier: ^19.0.0
         version: 19.2.3
       react-dom:
-        specifier: 'catalog:'
+        specifier: ^19.0.0
         version: 19.2.3(react@19.2.3)
       three:
-        specifier: 'catalog:'
+        specifier: ^0.183.1
         version: 0.183.1
       three-flatland:
         specifier: workspace:*
         version: link:../packages/three-flatland
       tweakpane:
-        specifier: 'catalog:'
+        specifier: ^4.0.5
         version: 4.0.5
     devDependencies:
       '@types/react':
-        specifier: 'catalog:'
+        specifier: ^19.0.2
         version: 19.2.9
       '@types/react-dom':
-        specifier: 'catalog:'
+        specifier: ^19.0.2
         version: 19.2.3(@types/react@19.2.9)
       '@types/three':
-        specifier: 'catalog:'
+        specifier: ^0.183.1
         version: 0.183.1
       '@vitejs/plugin-react':
-        specifier: 'catalog:'
+        specifier: ^4.3.4
         version: 4.7.0(vite@6.4.1(@types/node@22.19.7)(jiti@1.21.7)(terser@5.46.1)(tsx@4.21.0)(yaml@2.8.2))
       typescript:
-        specifier: 'catalog:'
+        specifier: ^5.7.3
         version: 5.9.3
       vite:
-        specifier: 'catalog:'
+        specifier: ^6.4.1
         version: 6.4.1(@types/node@22.19.7)(jiti@1.21.7)(terser@5.46.1)(tsx@4.21.0)(yaml@2.8.2)
 
   examples/react/animation:
@@ -1082,6 +1082,9 @@ importers:
 
   packages/tweakpane:
     devDependencies:
+      '@react-three/fiber':
+        specifier: 'catalog:'
+        version: 10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.183.1)
       '@tweakpane/core':
         specifier: 'catalog:'
         version: 2.0.5
@@ -1091,9 +1094,15 @@ importers:
       '@types/react':
         specifier: 'catalog:'
         version: 19.2.9
+      '@types/three':
+        specifier: 'catalog:'
+        version: 0.183.1
       react:
         specifier: 'catalog:'
         version: 19.2.3
+      three:
+        specifier: 'catalog:'
+        version: 0.183.1
       tweakpane:
         specifier: 'catalog:'
         version: 4.0.5
@@ -2539,6 +2548,11 @@ packages:
     resolution: {integrity: sha512-+1VkjdD0QBLPodGrJUeqarH8VAIvQODIbwh9XpP5Syisf7YoQgsJKPNFoqqLQlu+VQ/tVSshMR6loPMn8U+dPg==}
     engines: {node: '>=14'}
 
+  '@playwright/test@1.59.1':
+    resolution: {integrity: sha512-PG6q63nQg5c9rIi4/Z5lR5IVF7yU5MqmKaPOe0HSc0O2cX1fPi96sUQu5j7eo4gKCkB2AnNGoWt7y4/Xx3Kcqg==}
+    engines: {node: '>=18'}
+    hasBin: true
+
   '@react-three/fiber@10.0.0-alpha.2':
     resolution: {integrity: sha512-X4zbB5shS7QQX8X7lFxx6RXtXMIvshZBid4+7B4+lc+7Eg+qayVXt7ch0/NC/WqqNCfsNV4AOfGGXJ33yogKeQ==}
     peerDependencies:
@@ -3645,6 +3659,11 @@ packages:
     resolution: {integrity: sha512-yhlQgA6mnOJUKOsRUFsgJdQCvkKhcz8tlZG5HBQfReYZy46OwLcY+Zia0mtdHsOo9y/hP+CxMN0TU9QxoOtG4g==}
     engines: {node: '>=6 <7 || >=8'}
 
+  fsevents@2.3.2:
+    resolution: {integrity: sha512-xiqMQR4xAeHTuB9uWm+fFRcIOgKBMiOBP+eXiyT7jsgVCq1bkVygt00oASowB7EdtpOHaaPgKt812P9ab+DDKA==}
+    engines: {node: ^8.16.0 || ^10.6.0 || >=11.0.0}
+    os: [darwin]
+
   fsevents@2.3.3:
     resolution: {integrity: sha512-5xoDfX+fL7faATnagmWPpbFtwh/R77WmMMqqHGS65C3vvB0YHrgF+B1YmZ3441tMj5n63k0212XNoJwzlhffQw==}
     engines: {node: ^8.16.0 || ^10.6.0 || >=11.0.0}
@@ -4522,6 +4541,16 @@ packages:
 
   pkg-types@1.3.1:
     resolution: {integrity: sha512-/Jm5M4RvtBFVkKWRu2BLUTNP8/M2a+UwuAX+ae4770q1qVGtfjG+WTCupoZixokjmHiry8uI+dlY8KXYV5HVVQ==}
+
+  playwright-core@1.59.1:
+    resolution: {integrity: sha512-HBV/RJg81z5BiiZ9yPzIiClYV/QMsDCKUyogwH9p3MCP6IYjUFu/MActgYAvK0oWyV9NlwM3GLBjADyWgydVyg==}
+    engines: {node: '>=18'}
+    hasBin: true
+
+  playwright@1.59.1:
+    resolution: {integrity: sha512-C8oWjPR3F81yljW9o5OxcWzfh6avkVwDD2VYdwIGqTkl+OGFISgypqzfu7dOe4QNLL2aqcWBmI3PMtLIK233lw==}
+    engines: {node: '>=18'}
+    hasBin: true
 
   postcss-load-config@6.0.1:
     resolution: {integrity: sha512-oPtTM4oerL+UXmx+93ytZVN82RrlY/wPUV8IeDxFrzIjXOLF1pN+EmKPLbubvKHT2HC20xXsCAH2Z+CKV6Oz/g==}
@@ -6888,6 +6917,10 @@ snapshots:
   '@pkgjs/parseargs@0.11.0':
     optional: true
 
+  '@playwright/test@1.59.1':
+    dependencies:
+      playwright: 1.59.1
+
   '@react-three/fiber@10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.183.1)':
     dependencies:
       '@babel/runtime': 7.28.6
@@ -8206,6 +8239,9 @@ snapshots:
       jsonfile: 4.0.0
       universalify: 0.1.2
 
+  fsevents@2.3.2:
+    optional: true
+
   fsevents@2.3.3:
     optional: true
 
@@ -9470,6 +9506,14 @@ snapshots:
       confbox: 0.1.8
       mlly: 1.8.0
       pathe: 2.0.3
+
+  playwright-core@1.59.1: {}
+
+  playwright@1.59.1:
+    dependencies:
+      playwright-core: 1.59.1
+    optionalDependencies:
+      fsevents: 2.3.2
 
   postcss-load-config@6.0.1(jiti@1.21.7)(postcss@8.5.6)(tsx@4.21.0)(yaml@2.8.2):
     dependencies:

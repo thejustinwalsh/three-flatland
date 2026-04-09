@@ -52,19 +52,31 @@
     "clean": "rm -rf dist"
   },
   "peerDependencies": {
-    "tweakpane": "^4.0.5",
-    "@tweakpane/plugin-essentials": "^0.2.1"
+    "@react-three/fiber": "^10.0.0-alpha.2",
+    "@tweakpane/plugin-essentials": "^0.2.1",
+    "react": "^19.0.0",
+    "three": "^0.183.0",
+    "tweakpane": "^4.0.5"
   },
   "peerDependenciesMeta": {
     "react": {
       "optional": true
+    },
+    "@react-three/fiber": {
+      "optional": true
+    },
+    "three": {
+      "optional": true
     }
   },
   "devDependencies": {
+    "@react-three/fiber": "catalog:",
     "@tweakpane/core": "catalog:",
     "@tweakpane/plugin-essentials": "catalog:",
     "@types/react": "catalog:",
+    "@types/three": "catalog:",
     "react": "catalog:",
+    "three": "catalog:",
     "tweakpane": "catalog:",
     "typescript": "catalog:"
   },

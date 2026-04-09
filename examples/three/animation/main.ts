@@ -22,9 +22,10 @@ async function main() {
   camera.position.z = 100
 
   // WebGPU Renderer (required for TSL materials)
-  const renderer = new WebGPURenderer({ antialias: false })
+  const renderer = new WebGPURenderer({ antialias: false, trackTimestamp: true })
   renderer.setSize(window.innerWidth, window.innerHeight)
   renderer.setPixelRatio(1) // Pixel-perfect for pixel art
+  renderer.domElement.style.imageRendering = 'pixelated'
   document.body.appendChild(renderer.domElement)
 
   // Wait for renderer to initialize
@@ -111,8 +112,8 @@ async function main() {
   knight.position.set(0, 0, 0)
   scene.add(knight)
 
-  // Tweakpane UI
-  const { pane, stats } = createPane()
+  // Tweakpane UI — pass `scene` so draws/triangles are auto-wired
+  const { pane, stats } = createPane({ scene })
 
   const animFolder = pane.addFolder({ title: 'Animation' })
 
@@ -183,7 +184,6 @@ async function main() {
 
     renderer.render(scene, camera)
 
-    stats.update({ drawCalls: renderer.info.render.drawCalls, triangles: renderer.info.render.triangles })
     stats.end()
   }
 

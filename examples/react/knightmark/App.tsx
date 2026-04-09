@@ -13,7 +13,8 @@ import {
   type TilesetData,
   type TileLayerData,
 } from 'three-flatland/react'
-import { usePane, usePaneFolder, usePaneInput } from '@three-flatland/tweakpane/react'
+import { usePane, usePaneFolder, usePaneInput, useStatsMonitor } from '@three-flatland/tweakpane/react'
+import type { StatsHandle } from '@three-flatland/tweakpane/react'
 
 extend({ SpriteGroup, TileMap2D })
 
@@ -237,9 +238,8 @@ interface KnightmarkSceneProps {
   speedMax: number
   hitRadius: number
   knightScale: number
-  statsRef: React.RefObject<{ knights: number; batches: number }>
-  statsBegin: () => void
-  statsEnd: (gl: any) => void
+  knightStatsRef: React.RefObject<{ knights: number; batches: number }>
+  stats: StatsHandle
 }
 
 function KnightmarkScene({
@@ -248,12 +248,12 @@ function KnightmarkScene({
   speedMax,
   hitRadius,
   knightScale,
-  statsRef,
-  statsBegin,
-  statsEnd,
+  knightStatsRef,
+  stats,
 }: KnightmarkSceneProps) {
   const { size } = useThree()
-  const gl = useThree((s) => s.gl)
+
+  useStatsMonitor(stats)
 
   // Load assets (presets automatically apply NearestFilter)
   const knightSheet = useLoader(SpriteSheetLoader, './sprites/knight.json')
@@ -368,8 +368,6 @@ function KnightmarkScene({
     const sim = simRef.current
     const margin = sim.knightScale / 2
 
-    statsBegin()
-
     // Update spatial hash cell size from current hitRadius
     spatialHash.cellSize = sim.hitRadius * 4
 
@@ -440,14 +438,12 @@ function KnightmarkScene({
       })
     }
 
-    // Update stats for monitors
+    // Update knight-batch monitors
     if (spriteGroupRef.current) {
       const s = spriteGroupRef.current.stats
-      statsRef.current.knights = knights.length
-      statsRef.current.batches = s.batchCount
+      knightStatsRef.current.knights = knights.length
+      knightStatsRef.current.batches = s.batchCount
     }
-
-    statsEnd(gl)
   })
 
   return (
@@ -474,7 +470,7 @@ export default function App() {
   const { pane, stats } = usePane()
 
   // Knights monitors (first)
-  const statsRef = useRef({ knights: 0, batches: 0 })
+  const knightStatsRef = useRef({ knights: 0, batches: 0 })
   const statsFolder = usePaneFolder(pane, 'Knights')
 
   // Simulation folder (at bottom, collapsed)
@@ -485,8 +481,8 @@ export default function App() {
   const [knightScale] = usePaneInput(simFolder, 'knightScale', 64, { min: 32, max: 128, step: 8, label: 'scale' })
   useEffect(() => {
     if (!statsFolder) return
-    const bKnights = statsFolder.addBinding(statsRef.current, 'knights', { readonly: true, format: (v: number) => v.toFixed(0) })
-    const bBatches = statsFolder.addBinding(statsRef.current, 'batches', { readonly: true, format: (v: number) => v.toFixed(0) })
+    const bKnights = statsFolder.addBinding(knightStatsRef.current, 'knights', { readonly: true, format: (v: number) => v.toFixed(0) })
+    const bBatches = statsFolder.addBinding(knightStatsRef.current, 'batches', { readonly: true, format: (v: number) => v.toFixed(0) })
     const interval = setInterval(() => {
       bKnights.refresh()
       bBatches.refresh()
@@ -497,13 +493,6 @@ export default function App() {
       bBatches.dispose()
     }
   }, [statsFolder])
-
-  // Stats callbacks
-  const statsBeginCb = useCallback(() => stats.begin(), [stats])
-  const statsEndCb = useCallback((gl: any) => {
-    stats.update({ drawCalls: (gl.info.render as any).drawCalls as number, triangles: (gl.info.render as any).triangles as number })
-    stats.end()
-  }, [stats])
 
   // Keyboard: Space to add knights
   useEffect(() => {
@@ -521,7 +510,10 @@ export default function App() {
     <>
       <Canvas
         dpr={1}
-        renderer={{ antialias: false }}
+        renderer={{ antialias: false, trackTimestamp: true }}
+        onCreated={({ gl }) => {
+          gl.domElement.style.imageRendering = 'pixelated'
+        }}
       >
         <OrthoCamera viewSize={VIEW_SIZE} />
         <color attach="background" args={['#1a1a2e']} />
@@ -532,9 +524,8 @@ export default function App() {
             speedMax={speedMax}
             hitRadius={hitRadius}
             knightScale={knightScale}
-            statsRef={statsRef}
-            statsBegin={statsBeginCb}
-            statsEnd={statsEndCb}
+            knightStatsRef={knightStatsRef}
+            stats={stats}
           />
         </Suspense>
       </Canvas>

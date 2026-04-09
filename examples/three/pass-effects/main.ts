@@ -278,9 +278,10 @@ async function main() {
     clearColor: 0x1a1a2e,
   })
 
-  const renderer = new WebGPURenderer({ antialias: true })
+  const renderer = new WebGPURenderer({ antialias: false, trackTimestamp: true })
   renderer.setSize(window.innerWidth, window.innerHeight)
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
+  renderer.setPixelRatio(1) // Pixel-perfect for pixel art
+  renderer.domElement.style.imageRendering = 'pixelated'
   document.body.appendChild(renderer.domElement)
 
   await renderer.init()
@@ -336,7 +337,9 @@ async function main() {
 
   // ─── Tweakpane UI ───────────────────────────────────────────────────────
 
-  const { pane, stats } = createPane()
+  // Pass flatland.scene so draws/triangles are wired via scene.onAfterRender
+  // (fires inside flatland.render() → renderer.render()).
+  const { pane, stats } = createPane({ scene: flatland.scene })
 
   // ─── CRT Folder ─────────────────────────────────────────────────────────
 
@@ -486,7 +489,6 @@ async function main() {
     }
 
     flatland.render(renderer)
-    stats.update({ drawCalls: renderer.info.render.drawCalls, triangles: renderer.info.render.triangles })
 
     // Update monitors periodically
     refreshTimer += delta

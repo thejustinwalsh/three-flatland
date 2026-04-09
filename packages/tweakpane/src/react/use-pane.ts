@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { createPane } from '../create-pane.js'
+import { claimPane, createPane } from '../create-pane.js'
 import type { CreatePaneOptions, PaneBundle } from '../create-pane.js'
 
 /**
@@ -22,6 +22,10 @@ export function usePane(options: CreatePaneOptions = {}): PaneBundle {
     if (bundleRef.current === null) {
       bundleRef.current = createPane(options)
     }
+
+    // Mark this pane as "claimed" so a future createPane() call from
+    // another component doesn't wipe it out.
+    claimPane(bundleRef.current)
 
     return () => {
       // Use setTimeout to distinguish strict mode cleanup (sync re-mount)

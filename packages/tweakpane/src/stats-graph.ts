@@ -17,23 +17,36 @@ export interface StatsGraphHandle {
   readonly element: HTMLElement
   /** Stop and remove */
   dispose(): void
+  /**
+   * Push a GPU frame time (in milliseconds) to the 'gpu' mode buffer.
+   * No-op if GPU mode hasn't been enabled yet.
+   */
+  pushGpuTime(ms: number): void
+  /**
+   * Enable the 'gpu' mode in the click-cycle. Call once when GPU timing
+   * capability is detected (`renderer.backend.trackTimestamp === true`).
+   */
+  enableGpuMode(): void
 }
 
-type Mode = 'fps' | 'ms' | 'mem'
+type Mode = 'fps' | 'ms' | 'gpu' | 'mem'
 
-const MODES: Mode[] = ['fps', 'ms', 'mem']
+// Cycle order: FPS → MS → GPU → MEM (gpu next to ms so you can A/B them).
+const MODES: Mode[] = ['fps', 'ms', 'gpu', 'mem']
 const BUFFER_SIZE = 80
 
 // Retro-themed line colors (only applied to the graph line)
 const MODE_COLORS: Record<Mode, string> = {
   fps: '#47cca9', // retro-cyan
   ms: '#47cc6a', // green variant
+  gpu: '#ffa347', // retro-amber
   mem: '#d94c87', // retro-pink
 }
 
 const MODE_UNITS: Record<Mode, string> = {
   fps: 'FPS',
   ms: 'MS',
+  gpu: 'GPU',
   mem: 'MB',
 }
 
@@ -55,35 +68,40 @@ export function addStatsGraph(
   let mode: Mode = 'fps'
   let modeIndex = 0
   let disposed = false
+  let gpuEnabled = false
 
   // Buffers per mode
   const buffers: Record<Mode, number[]> = {
     fps: new Array(BUFFER_SIZE).fill(0),
     ms: new Array(BUFFER_SIZE).fill(0),
+    gpu: new Array(BUFFER_SIZE).fill(0),
     mem: new Array(BUFFER_SIZE).fill(0),
   }
-  const bufferIdx: Record<Mode, number> = { fps: 0, ms: 0, mem: 0 }
+  const bufferIdx: Record<Mode, number> = { fps: 0, ms: 0, gpu: 0, mem: 0 }
 
   // Graph max scales
   // FPS: 120 (tops out at 120fps)
   // MS: 16.67 (one frame at 60fps — hitting the top means blown frame budget)
+  // GPU: 16.67 (same frame budget as MS, just measured on the GPU side)
   // MEM: heap limit in MB
   const graphMax: Record<Mode, number> = {
     fps: 120,
     ms: 16.67,
+    gpu: 16.67,
     mem: perfMemory ? perfMemory.jsHeapSizeLimit / 1048576 : 256,
   }
 
   // Session min/max tracking (like stats.js displays "60 FPS (55-62)")
-  const sessionMin: Record<Mode, number> = { fps: Infinity, ms: Infinity, mem: Infinity }
-  const sessionMax: Record<Mode, number> = { fps: 0, ms: 0, mem: 0 }
+  const sessionMin: Record<Mode, number> = { fps: Infinity, ms: Infinity, gpu: Infinity, mem: Infinity }
+  const sessionMax: Record<Mode, number> = { fps: 0, ms: 0, gpu: 0, mem: 0 }
 
-  // FPS/MS tracking
+  // FPS/MS/GPU tracking
   let beginTime = 0
   let fpsFrames = 0
   let fpsStartTime = performance.now()
   let lastFps = 0
   let lastMs = 0
+  let lastGpu = 0
 
   // ── Build DOM matching Tweakpane's label + graph structure ──
 
@@ -177,7 +195,10 @@ export function addStatsGraph(
     do {
       modeIndex = (modeIndex + 1) % MODES.length
       mode = MODES[modeIndex]!
-    } while (mode === 'mem' && !perfMemory)
+    } while (
+      (mode === 'mem' && !perfMemory) ||
+      (mode === 'gpu' && !gpuEnabled)
+    )
     applyMode()
   })
 
@@ -232,6 +253,12 @@ export function addStatsGraph(
         valueSpan.textContent = lastMs.toFixed(1)
         unitSpan.textContent = 'MS'
         break
+      case 'gpu':
+        lblvL.textContent = 'gpu'
+        lblvL.title = range ? `GPU range: ${range}` : ''
+        valueSpan.textContent = lastGpu.toFixed(1)
+        unitSpan.textContent = 'GPU'
+        break
       case 'mem': {
         const memMB = perfMemory ? perfMemory.usedJSHeapSize / 1048576 : 0
         lblvL.textContent = 'mem'
@@ -276,6 +303,15 @@ export function addStatsGraph(
         fpsStartTime = now
         fpsFrames = 0
       }
+    },
+    pushGpuTime(ms) {
+      if (!gpuEnabled) return
+      if (!Number.isFinite(ms) || ms < 0) return
+      lastGpu = ms
+      pushValue('gpu', ms)
+    },
+    enableGpuMode() {
+      gpuEnabled = true
     },
     dispose() {
       disposed = true

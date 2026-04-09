@@ -166,9 +166,10 @@ class SpatialHash {
 
 async function main() {
   // WebGPU renderer
-  const renderer = new WebGPURenderer({ antialias: false })
+  const renderer = new WebGPURenderer({ antialias: false, trackTimestamp: true })
   renderer.setSize(window.innerWidth, window.innerHeight)
-  renderer.setPixelRatio(1)
+  renderer.setPixelRatio(1) // Pixel-perfect for pixel art
+  renderer.domElement.style.imageRendering = 'pixelated'
   document.body.appendChild(renderer.domElement)
   await renderer.init()
 
@@ -447,7 +448,14 @@ async function main() {
     const s = spriteGroup.stats
     knightStats.knights = knights.length
     knightStats.batches = s.batchCount
-    globalStats.update({ drawCalls: renderer.info.render.drawCalls, triangles: renderer.info.render.triangles })
+    globalStats.update({
+      drawCalls: renderer.info.render.drawCalls,
+      triangles: renderer.info.render.triangles,
+      lines: renderer.info.render.lines,
+      points: renderer.info.render.points,
+      geometries: renderer.info.memory.geometries,
+      textures: renderer.info.memory.textures,
+    })
     globalStats.end()
   }
   animate()

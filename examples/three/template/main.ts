@@ -19,9 +19,10 @@ async function main() {
   )
   camera.position.z = 100
 
-  const renderer = new WebGPURenderer({ antialias: true })
+  const renderer = new WebGPURenderer({ antialias: false, trackTimestamp: true })
   renderer.setSize(window.innerWidth, window.innerHeight)
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
+  renderer.setPixelRatio(1) // Pixel-perfect for pixel art
+  renderer.domElement.style.imageRendering = 'pixelated'
   document.body.appendChild(renderer.domElement)
 
   await renderer.init()
@@ -35,8 +36,8 @@ async function main() {
   sprite.scale.set(150, 150, 1)
   scene.add(sprite)
 
-  // Tweakpane UI
-  const { pane, stats } = createPane()
+  // Tweakpane UI — pass `scene` so draws/triangles are auto-wired
+  const { pane, stats } = createPane({ scene })
   const params = { tint: '#ffffff' }
   pane.addBinding(params, 'tint', {
     label: 'tint',
@@ -61,7 +62,6 @@ async function main() {
     requestAnimationFrame(animate)
     stats.begin()
     renderer.render(scene, camera)
-    stats.update({ drawCalls: renderer.info.render.drawCalls, triangles: renderer.info.render.triangles })
     stats.end()
   }
 

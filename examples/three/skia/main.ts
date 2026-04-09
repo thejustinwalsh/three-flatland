@@ -48,7 +48,7 @@ async function main() {
   const dpr = Math.min(devicePixelRatio, 2)
 
   // ── Three.js setup (3D perspective) ──
-  const renderer = new WebGPURenderer({ antialias: true })
+  const renderer = new WebGPURenderer({ antialias: true, trackTimestamp: true })
   renderer.setSize(window.innerWidth, window.innerHeight)
   renderer.setPixelRatio(dpr)
   renderer.setClearColor(new Color(0x191920))
@@ -289,7 +289,7 @@ async function main() {
   scene.add(ground)
 
   // ── TweakPane debug controls ──
-  const { pane, stats } = createPane()
+  const { pane, stats } = createPane({ scene })
 
   // ── Animation loop ──
 
@@ -392,7 +392,6 @@ async function main() {
     // 4. Skia overlay on top of 3D
     overlayCanvas.render(true)
 
-    stats.update({ drawCalls: renderer.info.render.drawCalls, triangles: renderer.info.render.triangles })
     stats.end()
     requestAnimationFrame(animate)
   }

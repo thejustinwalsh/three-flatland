@@ -7,7 +7,7 @@ Every example has: `App.tsx`, `main.tsx`, `index.html`, `package.json`, `tsconfi
 
 ## Canvas Setup
 ```tsx
-<Canvas orthographic camera={{ zoom: 5, position: [0, 0, 100] }} renderer={{ antialias: true }}>
+<Canvas orthographic camera={{ zoom: 5, position: [0, 0, 100] }} renderer={{ antialias: true, trackTimestamp: true }}>
   <color attach="background" args={['#00021c']} />
   <Scene />
 </Canvas>
@@ -39,18 +39,21 @@ usePaneButton(folder, 'Reset', () => { /* ... */ })
 
 ## Stats Monitoring (required in every example)
 ```tsx
-const statsRef = useRef(stats)
-statsRef.current = stats
+import { usePane, useStatsMonitor } from '@three-flatland/tweakpane/react'
 
-useFrame(() => { statsRef.current.begin() }, { priority: -Infinity })
-useFrame(() => {
-  statsRef.current.update({
-    drawCalls: (gl.info.render as any).drawCalls as number,
-    triangles: (gl.info.render as any).triangles as number,
-  })
-  statsRef.current.end()
-}, { priority: Infinity })
+const { pane, stats } = usePane()
+useStatsMonitor(stats)
 ```
+That's it. `useStatsMonitor` hooks `scene.onAfterRender` (via `useThree`) so draws/triangles are captured at the correct point in the render, and wires `stats.begin()` / `stats.end()` via `useFrame` for the FPS/MS graph. Must be called inside a component that has Canvas context.
+
+For examples that take over rendering (`useFrame(..., { phase: 'render' })`), R3F's auto-render is skipped and `scene.onAfterRender` won't fire — read `gl.info.render` directly right after your render call (it's still valid within the same synchronous block). See `pass-effects/App.tsx` for an example.
+
+### GPU time mode (optional)
+The stats graph cycles `fps → ms → gpu → mem` on click. The `gpu` mode shows three.js's GPU timestamp query result (in ms) — useful for GPU stall detection and CPU-bound vs GPU-bound diagnosis. It's **silently skipped** unless the renderer is constructed with `trackTimestamp: true`:
+```tsx
+<Canvas renderer={{ trackTimestamp: true }}>
+```
+The adapter must also support `GPUFeatureName.TimestampQuery` (most desktop browsers do; WebGL2 fallback doesn't). Values trail by 1–2 frames because the readback is async.
 
 ## useFrame Rules
 - Mutate refs directly — never `setState` in the render loop
@@ -73,9 +76,9 @@ const sheet = useLoader(SpriteSheetLoader, './sprites/knight.json')
 ## Ref Pattern for useFrame
 Always use a ref wrapper when accessing values that change between renders:
 ```tsx
-const statsRef = useRef(stats)
-statsRef.current = stats // update each render
-useFrame(() => { statsRef.current.begin() }) // stable reference in callback
+const valueRef = useRef(value)
+valueRef.current = value // update each render
+useFrame(() => { valueRef.current.doSomething() }) // stable reference in callback
 ```
 
 ## Do NOT
@@ -84,6 +87,6 @@ useFrame(() => { statsRef.current.begin() }) // stable reference in callback
 - Use GLSL or `onBeforeCompile` — this project uses TSL node materials
 - Use Web Awesome components — examples use `@three-flatland/tweakpane`
 - Use `Date.now()` for animation timing — use `state.clock.elapsedTime` or `delta`
-- Skip stats monitoring — every example must include the begin/end pattern
+- Skip stats monitoring — every example must call `useStatsMonitor(stats)` (or equivalent) after `usePane()`
 - Destructure `useThree()` in hot paths — use individual selectors
 - Forget `extend()` — R3F won't recognize library classes without it

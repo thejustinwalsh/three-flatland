@@ -22,9 +22,10 @@ async function main() {
   camera.position.z = 100
 
   // WebGPU Renderer (required for TSL materials)
-  const renderer = new WebGPURenderer({ antialias: true })
+  const renderer = new WebGPURenderer({ antialias: false, trackTimestamp: true })
   renderer.setSize(window.innerWidth, window.innerHeight)
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
+  renderer.setPixelRatio(1) // Pixel-perfect for pixel art
+  renderer.domElement.style.imageRendering = 'pixelated'
   document.body.appendChild(renderer.domElement)
 
   // Wait for renderer to initialize
@@ -41,8 +42,10 @@ async function main() {
   sprite.position.set(0, 0, 0)
   scene.add(sprite)
 
-  // Tweakpane UI
-  const { pane, stats } = createPane()
+  // Tweakpane UI — pass `scene` so draw/triangle stats are auto-wired via
+  // `scene.onAfterRender`. `stats.begin()` / `stats.end()` still need to be
+  // called manually in the animation loop for the FPS/MS graph.
+  const { pane, stats } = createPane({ scene })
 
   const params = {
     baseScale: 150,
@@ -174,7 +177,6 @@ async function main() {
     sprite.rotation.z += params.rotationSpeed * delta
 
     renderer.render(scene, camera)
-    stats.update({ drawCalls: renderer.info.render.drawCalls, triangles: renderer.info.render.triangles })
     stats.end()
   }
 

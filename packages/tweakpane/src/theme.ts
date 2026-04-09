@@ -53,6 +53,37 @@ const ACCENT_CSS = `
 .tp-radv_i:hover + .tp-radv_b { background-color: rgba(28, 40, 77, 0.9) !important; color: #f0edd8 !important; }
 .tp-radv_i:checked + .tp-radv_b { background-color: #1c284d !important; color: #d94c87 !important; }
 .tp-radv_i:active + .tp-radv_b { background-color: #343473 !important; color: #f0edd8 !important; }
+
+/* Dimmable pane — slightly translucent when idle, opaque on hover or when pinned.
+   Hover-promotion is gated on devices that actually have a pointer (desktop),
+   so on touch devices the pin toggle is the only way to flip opacity. */
+.tp-flatland-dimmable { opacity: 0.8; transition: opacity 750ms ease; }
+.tp-flatland-dimmable.tp-flatland-pinned { opacity: 1; }
+@media (hover: hover) {
+  .tp-flatland-dimmable:hover { opacity: 1; }
+}
+
+/* Pin in the pane header (left side, mirrors the collapse caret on the right) */
+.tp-flatland-pin {
+  position: absolute;
+  left: var(--cnt-hp, 4px);
+  top: 0;
+  bottom: 0;
+  margin: auto;
+  width: var(--cnt-usz, 20px);
+  height: var(--cnt-usz, 20px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(240, 237, 216, 0.45);
+  cursor: pointer;
+  border-radius: 2px;
+  transition: color 150ms, background-color 150ms;
+}
+.tp-flatland-pin:hover { color: #d94c87; background: transparent; }
+.tp-flatland-pin svg { display: block; }
+.tp-flatland-pin svg circle { fill: none; stroke: currentColor; stroke-width: 1.6; }
+.tp-flatland-pinned .tp-flatland-pin svg circle { fill: currentColor; }
 `
 
 export function applyTheme(

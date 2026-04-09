@@ -7,7 +7,7 @@ import {
   Layers,
   type AnimationSetDefinition,
 } from 'three-flatland/react'
-import { usePane, usePaneFolder } from '@three-flatland/tweakpane/react'
+import { usePane, usePaneFolder, useStatsMonitor } from '@three-flatland/tweakpane/react'
 
 // Register AnimatedSprite2D with R3F (tree-shakeable)
 extend({ AnimatedSprite2D })
@@ -110,7 +110,6 @@ function Knight({ animation, speed, onAnimationComplete }: KnightProps) {
 function Scene() {
   const { pane, stats } = usePane()
   const animFolder = usePaneFolder(pane, 'Animation', { expanded: true })
-  const gl = useThree((s) => s.gl)
 
   // Use state so changes trigger re-render → Knight gets new props
   const [animation, setAnimation] = useState('idle')
@@ -162,17 +161,7 @@ function Scene() {
     }
   }, [])
 
-  const statsRef = useRef(stats)
-  statsRef.current = stats
-
-  useFrame(() => {
-    statsRef.current.begin()
-  }, { priority: -Infinity })
-
-  useFrame(() => {
-    statsRef.current.update({ drawCalls: (gl.info.render as any).drawCalls as number, triangles: (gl.info.render as any).triangles as number })
-    statsRef.current.end()
-  }, { priority: Infinity })
+  useStatsMonitor(stats)
 
   return (
     <>
@@ -218,13 +207,17 @@ export default function App() {
 
       <Canvas
         orthographic
+        dpr={1}
         camera={{
           position: [0, 0, 100],
           near: 0.1,
           far: 1000,
           left: -1, right: 1, top: 1, bottom: -1,
         }}
-        renderer={{ antialias: false }}
+        renderer={{ antialias: false, trackTimestamp: true }}
+        onCreated={({ gl }) => {
+          gl.domElement.style.imageRendering = 'pixelated'
+        }}
       >
         <OrthoCamera viewSize={200} />
         <Scene />

@@ -31,7 +31,7 @@ import {
   dissolvePixelated,
   tint,
 } from '@three-flatland/nodes'
-import { usePane, usePaneFolder } from '@three-flatland/tweakpane/react'
+import { usePane, usePaneFolder, useStatsMonitor } from '@three-flatland/tweakpane/react'
 
 extend({ AnimatedSprite2D })
 
@@ -379,7 +379,6 @@ const effectLabels = ['Normal', 'Damage', 'Dissolve', 'Rainbow', 'Stone', 'Outli
 function Scene() {
   const { pane, stats } = usePane()
   const effectFolder = usePaneFolder(pane, 'Effects', { expanded: true })
-  const gl = useThree((s) => s.gl)
 
   const [effect, setEffect] = useState('normal')
   const gridRef = useRef<any>(null)
@@ -417,18 +416,7 @@ function Scene() {
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [])
 
-  // Stats begin/end
-  const statsRef = useRef(stats)
-  statsRef.current = stats
-
-  useFrame(() => {
-    statsRef.current.begin()
-  }, { priority: -Infinity })
-
-  useFrame(() => {
-    statsRef.current.update({ drawCalls: (gl.info.render as any).drawCalls as number, triangles: (gl.info.render as any).triangles as number })
-    statsRef.current.end()
-  }, { priority: Infinity })
+  useStatsMonitor(stats)
 
   return (
     <>
@@ -473,7 +461,13 @@ export default function App() {
       </div>
 
       {/* Three.js Canvas */}
-      <Canvas renderer={{ antialias: false }}>
+      <Canvas
+        dpr={1}
+        renderer={{ antialias: false, trackTimestamp: true }}
+        onCreated={({ gl }) => {
+          gl.domElement.style.imageRendering = 'pixelated'
+        }}
+      >
         <OrthoCamera viewSize={200} />
         <Scene />
       </Canvas>

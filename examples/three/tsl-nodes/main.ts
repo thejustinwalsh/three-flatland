@@ -169,9 +169,10 @@ async function main() {
   camera.position.z = 100
 
   // WebGPU Renderer (required for TSL materials)
-  const renderer = new WebGPURenderer({ antialias: false })
+  const renderer = new WebGPURenderer({ antialias: false, trackTimestamp: true })
   renderer.setSize(window.innerWidth, window.innerHeight)
   renderer.setPixelRatio(1) // Pixel-perfect for pixel art
+  renderer.domElement.style.imageRendering = 'pixelated'
   document.body.appendChild(renderer.domElement)
 
   // Wait for renderer to initialize
@@ -327,7 +328,7 @@ async function main() {
   // Tweakpane UI
   // ========================================
 
-  const { pane, stats } = createPane()
+  const { pane, stats } = createPane({ scene })
 
   const effectNames: EffectType[] = ['normal', 'damage', 'dissolve', 'powerup', 'petrify', 'select', 'shadow', 'pixelate']
   const effectLabels = ['Normal', 'Damage', 'Dissolve', 'Rainbow', 'Stone', 'Outline', 'Shadow', 'Pixelate']
@@ -412,7 +413,6 @@ async function main() {
     }
 
     renderer.render(scene, camera)
-    stats.update({ drawCalls: renderer.info.render.drawCalls, triangles: renderer.info.render.triangles })
     stats.end()
   }
 

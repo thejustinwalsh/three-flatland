@@ -12,7 +12,7 @@ import {
   type TilesetData,
   type TileLayerData,
 } from 'three-flatland/react'
-import { usePane, usePaneFolder, usePaneInput, usePaneButton } from '@three-flatland/tweakpane/react'
+import { usePane, usePaneFolder, usePaneInput, usePaneButton, useStatsMonitor } from '@three-flatland/tweakpane/react'
 
 // Register TileMap2D with R3F
 extend({ TileMap2D })
@@ -579,20 +579,8 @@ function CameraController({ mapSize, zoomRef, zoomSlider, setZoomSlider }: {
   return null
 }
 
-function StatsTracker({ stats }: { stats: { begin(): void; end(): void; update(info: { drawCalls: number; triangles?: number }): void } }) {
-  const gl = useThree((s) => s.gl)
-  const statsRef = useRef(stats)
-  statsRef.current = stats
-
-  useFrame(() => {
-    statsRef.current.begin()
-  }, { priority: -Infinity })
-
-  useFrame(() => {
-    statsRef.current.update({ drawCalls: (gl.info.render as any).drawCalls as number, triangles: (gl.info.render as any).triangles as number })
-    statsRef.current.end()
-  }, { priority: Infinity })
-
+function StatsTracker({ stats }: { stats: import('@three-flatland/tweakpane/react').StatsHandle }) {
+  useStatsMonitor(stats)
   return null
 }
 
@@ -690,8 +678,12 @@ export default function App() {
 
   return (
     <Canvas
-      renderer={{ antialias: false }}
+      dpr={1}
+      renderer={{ antialias: false, trackTimestamp: true }}
       style={{ touchAction: 'none' }}
+      onCreated={({ gl }) => {
+        gl.domElement.style.imageRendering = 'pixelated'
+      }}
     >
       <OrthoCamera viewSize={800} />
       <color attach="background" args={['#0a0a12']} />

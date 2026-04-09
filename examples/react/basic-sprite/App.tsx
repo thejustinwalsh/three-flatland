@@ -2,7 +2,7 @@ import { Canvas, extend, useFrame, useLoader, useThree } from '@react-three/fibe
 import { useRef, useState, useCallback } from 'react'
 import { Color, type OrthographicCamera as ThreeOrthographicCamera } from 'three'
 import { Sprite2D, TextureLoader } from 'three-flatland/react'
-import { usePane, usePaneFolder, usePaneInput } from '@three-flatland/tweakpane/react'
+import { usePane, usePaneFolder, usePaneInput, useStatsMonitor } from '@three-flatland/tweakpane/react'
 
 // Register Sprite2D with R3F (tree-shakeable)
 extend({ Sprite2D })
@@ -118,7 +118,6 @@ function InteractiveSprite({
 
 function Scene() {
   const { pane, stats } = usePane()
-  const gl = useThree((s) => s.gl)
 
   const spriteFolder = usePaneFolder(pane, 'Sprite')
   const [baseScale] = usePaneInput(spriteFolder, 'baseScale', 150, { min: 10, max: 300 })
@@ -132,17 +131,7 @@ function Scene() {
   const colorFolder = usePaneFolder(pane, 'Color')
   const [hoverTint] = usePaneInput(colorFolder, 'hoverTint', '#99d9ef')
 
-  const statsRef = useRef(stats)
-  statsRef.current = stats
-
-  useFrame(() => {
-    statsRef.current.begin()
-  }, { priority: -Infinity })
-
-  useFrame(() => {
-    statsRef.current.update({ drawCalls: (gl.info.render as any).drawCalls as number, triangles: (gl.info.render as any).triangles as number })
-    statsRef.current.end()
-  }, { priority: Infinity })
+  useStatsMonitor(stats)
 
   return (
     <>
@@ -161,7 +150,13 @@ function Scene() {
 
 export default function App() {
   return (
-    <Canvas renderer={{ antialias: true }}>
+    <Canvas
+      dpr={1}
+      renderer={{ antialias: false, trackTimestamp: true }}
+      onCreated={({ gl }) => {
+        gl.domElement.style.imageRendering = 'pixelated'
+      }}
+    >
       <OrthoCamera viewSize={400} />
       <Scene />
     </Canvas>

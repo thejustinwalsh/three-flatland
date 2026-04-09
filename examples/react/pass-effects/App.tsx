@@ -22,7 +22,8 @@ import {
   staticNoise,
   chromaticAberration,
 } from '@three-flatland/nodes'
-import { usePane } from '@three-flatland/tweakpane/react'
+import { usePane, useStatsMonitor } from '@three-flatland/tweakpane/react'
+import type { StatsHandle } from '@three-flatland/tweakpane/react'
 
 extend({ Flatland, Sprite2D })
 
@@ -210,11 +211,13 @@ function SpriteScene() {
 
 // ─── FlatlandScene (receives preset as prop, matches original architecture) ─
 
-function FlatlandScene({ preset }: { preset: PresetName }) {
+function FlatlandScene({ preset, stats }: { preset: PresetName; stats: StatsHandle }) {
   const flatlandRef = useRef<Flatland>(null)
   const gl = useThree((s) => s.gl)
   const presetRef = useRef<ActivePreset>({ passes: [], timeDriven: [] })
   const elapsedRef = useRef(0)
+  const statsRef = useRef(stats)
+  statsRef.current = stats
 
   // Apply preset when it changes (effect fires after mount, flatlandRef is ready)
   useEffect(() => {
@@ -235,13 +238,28 @@ function FlatlandScene({ preset }: { preset: PresetName }) {
     }
   })
 
-  // Render in the 'render' phase so R3F skips its own render
+  // Render in the 'render' phase so R3F skips its own render.
+  // Since we take over rendering, useStatsMonitor's scene.onAfterRender
+  // hook never fires (R3F's state.scene isn't rendered) — read the draw
+  // counts directly from renderer.info.render immediately after our render
+  // call, while the values are still valid and before three.js's next
+  // autoReset.
   const size = useThree((s) => s.size)
   useFrame(() => {
     const flatland = flatlandRef.current
     if (!flatland) return
     flatland.resize(size.width, size.height)
     flatland.render(gl as unknown as WebGPURenderer)
+    const render = gl.info.render as unknown as { drawCalls: number; triangles: number; lines: number; points: number }
+    const memory = gl.info.memory as unknown as { geometries: number; textures: number }
+    statsRef.current.update({
+      drawCalls: render.drawCalls,
+      triangles: render.triangles,
+      lines: render.lines,
+      points: render.points,
+      geometries: memory.geometries,
+      textures: memory.textures,
+    })
   }, { phase: 'render' })
 
   return (
@@ -253,17 +271,8 @@ function FlatlandScene({ preset }: { preset: PresetName }) {
 
 // ─── StatsTracker (inside Canvas for useFrame access) ───────────────────────
 
-function StatsTracker({ stats }: { stats: { begin(): void; end(): void; update(info: { drawCalls: number; triangles?: number }): void } }) {
-  const gl = useThree((s) => s.gl)
-  const ref = useRef(stats)
-  ref.current = stats
-
-  useFrame(() => { ref.current.begin() }, { priority: -Infinity })
-  useFrame(() => {
-    ref.current.update({ drawCalls: (gl.info.render as any).drawCalls as number, triangles: (gl.info.render as any).triangles as number })
-    ref.current.end()
-  }, { phase: 'finish' })
-
+function StatsTracker({ stats }: { stats: StatsHandle }) {
+  useStatsMonitor(stats)
   return null
 }
 
@@ -294,11 +303,15 @@ export default function App() {
   return (
     <Canvas
       orthographic
+      dpr={1}
       camera={{ zoom: 5, position: [0, 0, 100] }}
-      renderer={{ antialias: true }}
+      renderer={{ antialias: false, trackTimestamp: true }}
+      onCreated={({ gl }) => {
+        gl.domElement.style.imageRendering = 'pixelated'
+      }}
     >
       <StatsTracker stats={stats} />
-      <FlatlandScene preset={preset} />
+      <FlatlandScene preset={preset} stats={stats} />
     </Canvas>
   )
 }
