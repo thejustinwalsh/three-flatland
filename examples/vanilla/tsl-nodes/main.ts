@@ -317,10 +317,7 @@ async function main() {
         onComplete: () => sprite.play('idle'),
       })
     } else if (effect === 'pixelate') {
-      sprite.play(animName, {
-        loop: false,
-        onComplete: () => sprite.play('idle'),
-      })
+      sprite.play(animName)
     } else {
       sprite.play(animName)
     }
@@ -330,43 +327,34 @@ async function main() {
   // Tweakpane UI
   // ========================================
 
-  const { pane, fpsGraph } = createPane()
+  const { pane, stats } = createPane()
 
-  const params = {
-    effect: 'normal' as string,
-    drawCalls: 0,
-  }
+  const effectNames: EffectType[] = ['normal', 'damage', 'dissolve', 'powerup', 'petrify', 'select', 'shadow', 'pixelate']
+  const effectLabels = ['Normal', 'Damage', 'Dissolve', 'Rainbow', 'Stone', 'Outline', 'Shadow', 'Pixelate']
 
-  const effectBinding = pane.addBinding(params, 'effect', {
-    options: {
-      Normal: 'normal',
-      Damage: 'damage',
-      Dissolve: 'dissolve',
-      Rainbow: 'powerup',
-      Stone: 'petrify',
-      Outline: 'select',
-      Shadow: 'shadow',
-      Pixelate: 'pixelate',
+  const effectFolder = pane.addFolder({ title: 'Effects' })
+  const effectGrid = (effectFolder.addBlade({
+    view: 'radiogrid',
+    groupName: 'effect',
+    size: [3, 3],
+    cells: (x: number, y: number) => {
+      const i = y * 3 + x
+      if (i >= effectNames.length) return { title: '', value: '' }
+      return { title: effectLabels[i]!, value: effectNames[i]! }
     },
+    value: 'normal',
+  } as any) as any)
+
+  effectGrid.on('change', (ev: any) => {
+    if (ev.value) applyEffect(ev.value as EffectType)
   })
 
-  effectBinding.on('change', (ev) => {
-    applyEffect(ev.value as EffectType)
-  })
-
-  pane.addBinding(params, 'drawCalls', { readonly: true, label: 'draws' })
-
-  pane.addBlade({ view: 'separator' })
-  pane.addBlade({ view: 'text', label: '', value: 'Keys 1\u20138 select effect' } as any)
-
-  // Keyboard controls
+  // Keyboard controls (1-8 select effect)
   window.addEventListener('keydown', (e) => {
-    const effects: EffectType[] = ['normal', 'damage', 'dissolve', 'powerup', 'petrify', 'select', 'shadow', 'pixelate']
     const idx = parseInt(e.key) - 1
-    if (idx >= 0 && idx < effects.length) {
-      params.effect = effects[idx]!
-      effectBinding.refresh()
-      applyEffect(effects[idx]!)
+    if (idx >= 0 && idx < effectNames.length) {
+      effectGrid.value.rawValue = effectNames[idx]!
+      applyEffect(effectNames[idx]!)
     }
   })
 
@@ -389,7 +377,7 @@ async function main() {
 
   function animate() {
     requestAnimationFrame(animate)
-    fpsGraph?.begin()
+    stats.begin()
 
     const now = performance.now()
     const deltaMs = now - lastTime
@@ -424,12 +412,8 @@ async function main() {
     }
 
     renderer.render(scene, camera)
-
-    // Update draw calls monitor
-    params.drawCalls = renderer.info.render.drawCalls
-    pane.refresh()
-
-    fpsGraph?.end()
+    stats.update({ drawCalls: renderer.info.render.drawCalls, triangles: renderer.info.render.triangles })
+    stats.end()
   }
 
   animate()

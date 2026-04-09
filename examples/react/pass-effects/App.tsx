@@ -1,5 +1,5 @@
 import { Canvas, extend, useLoader, useFrame, useThree } from '@react-three/fiber/webgpu'
-import { useRef, useEffect, useCallback } from 'react'
+import { useRef, useEffect, useState } from 'react'
 import { convertToTexture } from 'three/tsl'
 import type { WebGPURenderer } from 'three/webgpu'
 import type TextureNode from 'three/src/nodes/accessors/TextureNode.js'
@@ -23,11 +23,10 @@ import {
   chromaticAberration,
 } from '@three-flatland/nodes'
 import { usePane } from '@three-flatland/tweakpane/react'
-import type { FolderApi } from 'tweakpane'
 
 extend({ Flatland, Sprite2D })
 
-// ─── PassEffect Definitions ─────────────────────────────────────────────────
+// ─── PassEffect Definitions (from original — uses `pass:` API) ──────────────
 
 const CRTPass = createPassEffect({
   name: 'crt',
@@ -52,50 +51,33 @@ const CRTPass = createPassEffect({
 
 const LCDGridPass = createPassEffect({
   name: 'lcdGrid',
-  schema: {
-    resolution: 200,
-    gridIntensity: 0.18,
-    subpixelIntensity: 0.12,
-  },
-  pass: ({ uniforms }) => (input, uv) => {
-    return lcdGrid(input, uv, uniforms.resolution, uniforms.gridIntensity, uniforms.subpixelIntensity)
-  },
+  schema: { resolution: 200, gridIntensity: 0.18, subpixelIntensity: 0.12 },
+  pass: ({ uniforms }) => (input, uv) =>
+    lcdGrid(input, uv, uniforms.resolution, uniforms.gridIntensity, uniforms.subpixelIntensity),
 })
 
 const PosterizePass = createPassEffect({
   name: 'posterize',
   schema: { bands: 6 },
-  pass: ({ uniforms }) => (input, _uv) => {
-    return posterize(input, uniforms.bands)
-  },
+  pass: ({ uniforms }) => (input) => posterize(input, uniforms.bands),
 })
 
 const QuantizePass = createPassEffect({
   name: 'quantize',
   schema: { levels: 8 },
-  pass: ({ uniforms }) => (input, _uv) => {
-    return quantize(input, uniforms.levels)
-  },
+  pass: ({ uniforms }) => (input) => quantize(input, uniforms.levels),
 })
 
 const ScanlinesPass = createPassEffect({
   name: 'scanlines',
-  schema: {
-    resolution: 300,
-    intensity: 0.2,
-  },
-  pass: ({ uniforms }) => (input, uv) => {
-    return scanlinesSmooth(input, uv, uniforms.resolution, uniforms.intensity)
-  },
+  schema: { resolution: 300, intensity: 0.2 },
+  pass: ({ uniforms }) => (input, uv) =>
+    scanlinesSmooth(input, uv, uniforms.resolution, uniforms.intensity),
 })
 
 const VHSPass = createPassEffect({
   name: 'vhs',
-  schema: {
-    time: 0,
-    intensity: 0.012,
-    noiseAmount: 0.05,
-  },
+  schema: { time: 0, intensity: 0.012, noiseAmount: 0.05 },
   pass: ({ uniforms }) => (input, uv) => {
     const tex = convertToTexture(input) as TextureNode<'vec4'>
     return vhsDistortion(tex, uv, uniforms.time, uniforms.intensity, uniforms.noiseAmount)
@@ -104,13 +86,9 @@ const VHSPass = createPassEffect({
 
 const StaticPass = createPassEffect({
   name: 'static',
-  schema: {
-    time: 0,
-    intensity: 0.04,
-  },
-  pass: ({ uniforms }) => (input, uv) => {
-    return staticNoise(input, uv, uniforms.time, uniforms.intensity)
-  },
+  schema: { time: 0, intensity: 0.04 },
+  pass: ({ uniforms }) => (input, uv) =>
+    staticNoise(input, uv, uniforms.time, uniforms.intensity),
 })
 
 const AberrationPass = createPassEffect({
@@ -124,21 +102,16 @@ const AberrationPass = createPassEffect({
 
 const VignettePass = createPassEffect({
   name: 'vignette',
-  schema: {
-    intensity: 0.4,
-    curvature: 2,
-  },
-  pass: ({ uniforms }) => (input, uv) => {
-    return crtVignette(input, uv, uniforms.intensity, uniforms.curvature)
-  },
+  schema: { intensity: 0.4, curvature: 2 },
+  pass: ({ uniforms }) => (input, uv) =>
+    crtVignette(input, uv, uniforms.intensity, uniforms.curvature),
 })
 
 const BacklightPass = createPassEffect({
   name: 'backlight',
   schema: { intensity: 0.12 },
-  pass: ({ uniforms }) => (input, uv) => {
-    return lcdBacklightBleed(input, uv, uniforms.intensity)
-  },
+  pass: ({ uniforms }) => (input, uv) =>
+    lcdBacklightBleed(input, uv, uniforms.intensity),
 })
 
 // ─── Preset Types ───────────────────────────────────────────────────────────
@@ -154,12 +127,8 @@ function createPreset(name: PresetName): ActivePreset {
   switch (name) {
     case 'clean':
       return { passes: [], timeDriven: [] }
-
-    case 'crt': {
-      const crt = new CRTPass()
-      return { passes: [crt], timeDriven: [] }
-    }
-
+    case 'crt':
+      return { passes: [new CRTPass()], timeDriven: [] }
     case 'lcd': {
       const post = new PosterizePass()
       ;(post as PassEffect & { bands: number }).bands = 10
@@ -169,7 +138,6 @@ function createPreset(name: PresetName): ActivePreset {
       ;(vig as PassEffect & { intensity: number }).intensity = 0.25
       return { passes: [post, grid, bleed, vig], timeDriven: [] }
     }
-
     case 'vhs': {
       const vhs = new VHSPass()
       const noise = new StaticPass()
@@ -182,7 +150,6 @@ function createPreset(name: PresetName): ActivePreset {
         ],
       }
     }
-
     case 'retro': {
       const quant = new QuantizePass()
       const scan = new ScanlinesPass()
@@ -191,35 +158,6 @@ function createPreset(name: PresetName): ActivePreset {
       return { passes: [quant, scan, vig], timeDriven: [] }
     }
   }
-}
-
-// ─── Default Slider Values per Preset ──────────────────────────────────────
-
-const CRT_DEFAULTS = {
-  curvature: 0.08,
-  scanlineIntensity: 0.18,
-  vignetteIntensity: 0.3,
-  bloomIntensity: 0.15,
-  colorBleed: 0.0012,
-}
-
-const LCD_DEFAULTS = {
-  resolution: 200,
-  gridIntensity: 0.18,
-  subpixelIntensity: 0.12,
-  bands: 10,
-}
-
-const VHS_DEFAULTS = {
-  intensity: 0.012,
-  noiseAmount: 0.05,
-  aberration: 0.003,
-}
-
-const RETRO_DEFAULTS = {
-  levels: 8,
-  scanResolution: 300,
-  scanIntensity: 0.2,
 }
 
 // ─── Sprite Layout ──────────────────────────────────────────────────────────
@@ -233,8 +171,6 @@ const SPRITE_LAYOUT = [
   { x: 0, y: 24, scale: 8, tint: '#bb86fc' },
   { x: 0, y: -24, scale: 8, tint: '#ff8a65' },
 ] as const
-
-// ─── Scene Component ────────────────────────────────────────────────────────
 
 function SpriteScene() {
   const texture = useLoader(TextureLoader, import.meta.env.BASE_URL + 'icon.svg')
@@ -272,188 +208,41 @@ function SpriteScene() {
   )
 }
 
-// ─── Flatland + Effects Component ───────────────────────────────────────────
+// ─── FlatlandScene (receives preset as prop, matches original architecture) ─
 
-function FlatlandScene() {
+function FlatlandScene({ preset }: { preset: PresetName }) {
   const flatlandRef = useRef<Flatland>(null)
   const gl = useThree((s) => s.gl)
   const presetRef = useRef<ActivePreset>({ passes: [], timeDriven: [] })
   const elapsedRef = useRef(0)
 
-  // Tweakpane — created once, imperatively managed
-  const { pane, fpsGraph } = usePane()
-  const fpsRef = useRef(fpsGraph)
-  fpsRef.current = fpsGraph
-
-  // Refs for folder visibility management
-  const foldersRef = useRef<Record<string, FolderApi>>({})
-  const paramsRef = useRef({
-    crt: { ...CRT_DEFAULTS },
-    lcd: { ...LCD_DEFAULTS },
-    vhs: { ...VHS_DEFAULTS },
-    retro: { ...RETRO_DEFAULTS },
-  })
-  const monitorsRef = useRef({ drawCalls: 0, passCount: 0 })
-  const refreshTimerRef = useRef(0)
-
-  const applyPreset = useCallback((name: PresetName) => {
+  // Apply preset when it changes (effect fires after mount, flatlandRef is ready)
+  useEffect(() => {
     const flatland = flatlandRef.current
     if (!flatland) return
 
     flatland.clearPasses()
-
-    // Reset params to defaults
-    Object.assign(paramsRef.current.crt, CRT_DEFAULTS)
-    Object.assign(paramsRef.current.lcd, LCD_DEFAULTS)
-    Object.assign(paramsRef.current.vhs, VHS_DEFAULTS)
-    Object.assign(paramsRef.current.retro, RETRO_DEFAULTS)
-
-    const active = createPreset(name)
-    for (const p of active.passes) {
-      flatland.addPass(p)
-    }
+    const active = createPreset(preset)
+    for (const p of active.passes) flatland.addPass(p)
     presetRef.current = active
     elapsedRef.current = 0
-  }, [])
-
-  // Build all tweakpane folders imperatively
-  useEffect(() => {
-    const presetParams = { preset: 'clean' as string }
-    const presetBinding = pane.addBinding(presetParams, 'preset', {
-      label: 'Preset',
-      options: {
-        Clean: 'clean',
-        'CRT Arcade': 'crt',
-        Handheld: 'lcd',
-        'VHS Tape': 'vhs',
-        'Retro PC': 'retro',
-      },
-    })
-
-    // CRT folder
-    const crtFolder = pane.addFolder({ title: 'CRT', hidden: true })
-    crtFolder.addBinding(paramsRef.current.crt, 'curvature', { min: 0, max: 0.2, step: 0.01 })
-    crtFolder.addBinding(paramsRef.current.crt, 'scanlineIntensity', { min: 0, max: 0.5, step: 0.01 })
-    crtFolder.addBinding(paramsRef.current.crt, 'vignetteIntensity', { min: 0, max: 1, step: 0.01 })
-    crtFolder.addBinding(paramsRef.current.crt, 'bloomIntensity', { min: 0, max: 0.5, step: 0.01 })
-    crtFolder.addBinding(paramsRef.current.crt, 'colorBleed', { min: 0, max: 0.005, step: 0.0001 })
-    crtFolder.on('change', () => {
-      const crt = presetRef.current.passes[0]
-      if (!crt) return
-      const c = crt as PassEffect & typeof CRT_DEFAULTS
-      c.curvature = paramsRef.current.crt.curvature
-      c.scanlineIntensity = paramsRef.current.crt.scanlineIntensity
-      c.vignetteIntensity = paramsRef.current.crt.vignetteIntensity
-      c.bloomIntensity = paramsRef.current.crt.bloomIntensity
-      c.colorBleed = paramsRef.current.crt.colorBleed
-    })
-
-    // LCD folder
-    const lcdFolder = pane.addFolder({ title: 'LCD', hidden: true })
-    lcdFolder.addBinding(paramsRef.current.lcd, 'resolution', { min: 50, max: 500, step: 10 })
-    lcdFolder.addBinding(paramsRef.current.lcd, 'gridIntensity', { min: 0, max: 0.5, step: 0.01 })
-    lcdFolder.addBinding(paramsRef.current.lcd, 'subpixelIntensity', { min: 0, max: 0.3, step: 0.01 })
-    lcdFolder.addBinding(paramsRef.current.lcd, 'bands', { min: 2, max: 16, step: 1 })
-    lcdFolder.on('change', () => {
-      const post = presetRef.current.passes[0] as PassEffect & { bands: number } | undefined
-      const grid = presetRef.current.passes[1] as PassEffect & { resolution: number; gridIntensity: number; subpixelIntensity: number } | undefined
-      if (post) post.bands = paramsRef.current.lcd.bands
-      if (grid) {
-        grid.resolution = paramsRef.current.lcd.resolution
-        grid.gridIntensity = paramsRef.current.lcd.gridIntensity
-        grid.subpixelIntensity = paramsRef.current.lcd.subpixelIntensity
-      }
-    })
-
-    // VHS folder
-    const vhsFolder = pane.addFolder({ title: 'VHS', hidden: true })
-    vhsFolder.addBinding(paramsRef.current.vhs, 'intensity', { min: 0, max: 0.05, step: 0.001 })
-    vhsFolder.addBinding(paramsRef.current.vhs, 'noiseAmount', { min: 0, max: 0.2, step: 0.005 })
-    vhsFolder.addBinding(paramsRef.current.vhs, 'aberration', { min: 0, max: 0.01, step: 0.001 })
-    vhsFolder.on('change', () => {
-      const vhs = presetRef.current.passes[0] as PassEffect & { intensity: number; noiseAmount: number } | undefined
-      const aber = presetRef.current.passes[2] as PassEffect & { amount: number } | undefined
-      if (vhs) {
-        vhs.intensity = paramsRef.current.vhs.intensity
-        vhs.noiseAmount = paramsRef.current.vhs.noiseAmount
-      }
-      if (aber) aber.amount = paramsRef.current.vhs.aberration
-    })
-
-    // Retro folder
-    const retroFolder = pane.addFolder({ title: 'Retro', hidden: true })
-    retroFolder.addBinding(paramsRef.current.retro, 'levels', { min: 2, max: 16, step: 1 })
-    retroFolder.addBinding(paramsRef.current.retro, 'scanResolution', { min: 100, max: 500, step: 10 })
-    retroFolder.addBinding(paramsRef.current.retro, 'scanIntensity', { min: 0, max: 0.5, step: 0.01 })
-    retroFolder.on('change', () => {
-      const quant = presetRef.current.passes[0] as PassEffect & { levels: number } | undefined
-      const scan = presetRef.current.passes[1] as PassEffect & { resolution: number; intensity: number } | undefined
-      if (quant) quant.levels = paramsRef.current.retro.levels
-      if (scan) {
-        scan.resolution = paramsRef.current.retro.scanResolution
-        scan.intensity = paramsRef.current.retro.scanIntensity
-      }
-    })
-
-    // Monitors folder
-    const monitorFolder = pane.addFolder({ title: 'Monitors' })
-    monitorFolder.addBinding(monitorsRef.current, 'drawCalls', { readonly: true })
-    monitorFolder.addBinding(monitorsRef.current, 'passCount', { readonly: true })
-
-    foldersRef.current = { crt: crtFolder, lcd: lcdFolder, vhs: vhsFolder, retro: retroFolder }
-
-    // Preset change handler
-    presetBinding.on('change', (ev) => {
-      const value = ev.value as PresetName
-      for (const [key, folder] of Object.entries(foldersRef.current)) {
-        folder.hidden = key !== value
-      }
-      applyPreset(value)
-      pane.refresh()
-    })
-
-    return () => {
-      presetBinding.dispose()
-      crtFolder.dispose()
-      lcdFolder.dispose()
-      vhsFolder.dispose()
-      retroFolder.dispose()
-      monitorFolder.dispose()
-    }
-  }, [pane, applyPreset])
-
-  // FPS graph + render loop
-  useFrame(() => {
-    fpsRef.current?.begin()
-  }, -Infinity)
+  }, [preset])
 
   useFrame((_state, delta) => {
-    const flatland = flatlandRef.current
-    if (!flatland) return
-
     elapsedRef.current += delta
-
-    // Update time-driven passes
     for (const { pass } of presetRef.current.timeDriven) {
       pass.time = elapsedRef.current
     }
-
-    // Cast: R3F types gl as WebGLRenderer, but Canvas from fiber/webgpu provides WebGPURenderer
-    flatland.render(gl as unknown as WebGPURenderer)
-
-    // Update monitors periodically
-    refreshTimerRef.current += delta
-    if (refreshTimerRef.current >= 0.5) {
-      monitorsRef.current.drawCalls = flatland.stats.drawCalls
-      monitorsRef.current.passCount = presetRef.current.passes.length
-      pane.refresh()
-      refreshTimerRef.current = 0
-    }
   })
 
+  // Render in the 'render' phase so R3F skips its own render
+  const size = useThree((s) => s.size)
   useFrame(() => {
-    fpsRef.current?.end()
-  }, Infinity)
+    const flatland = flatlandRef.current
+    if (!flatland) return
+    flatland.resize(size.width, size.height)
+    flatland.render(gl as unknown as WebGPURenderer)
+  }, { phase: 'render' })
 
   return (
     <flatland ref={flatlandRef} viewSize={80} clearColor={0x1a1a2e}>
@@ -462,16 +251,54 @@ function FlatlandScene() {
   )
 }
 
+// ─── StatsTracker (inside Canvas for useFrame access) ───────────────────────
+
+function StatsTracker({ stats }: { stats: { begin(): void; end(): void; update(info: { drawCalls: number; triangles?: number }): void } }) {
+  const gl = useThree((s) => s.gl)
+  const ref = useRef(stats)
+  ref.current = stats
+
+  useFrame(() => { ref.current.begin() }, { priority: -Infinity })
+  useFrame(() => {
+    ref.current.update({ drawCalls: (gl.info.render as any).drawCalls as number, triangles: (gl.info.render as any).triangles as number })
+    ref.current.end()
+  }, { phase: 'finish' })
+
+  return null
+}
+
 // ─── App ────────────────────────────────────────────────────────────────────
 
 export default function App() {
+  const { pane, stats } = usePane()
+  const [preset, setPreset] = useState<PresetName>('clean')
+
+  // Preset selector (synchronous init, no effect)
+  const initRef = useRef(false)
+  if (!initRef.current) {
+    initRef.current = true
+    pane.addBinding({ preset: 'clean' as string }, 'preset', {
+      label: 'Preset',
+      options: {
+        Clean: 'clean',
+        'CRT Arcade': 'crt',
+        Handheld: 'lcd',
+        'VHS Tape': 'vhs',
+        'Retro PC': 'retro',
+      },
+    }).on('change', (ev) => {
+      setPreset(ev.value as PresetName)
+    })
+  }
+
   return (
     <Canvas
       orthographic
       camera={{ zoom: 5, position: [0, 0, 100] }}
       renderer={{ antialias: true }}
     >
-      <FlatlandScene />
+      <StatsTracker stats={stats} />
+      <FlatlandScene preset={preset} />
     </Canvas>
   )
 }

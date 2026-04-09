@@ -42,7 +42,7 @@ async function main() {
   scene.add(sprite)
 
   // Tweakpane UI
-  const { pane, fpsGraph } = createPane()
+  const { pane, stats } = createPane()
 
   const params = {
     baseScale: 150,
@@ -53,16 +53,16 @@ async function main() {
     hoverTint: '#99d9ef',
   }
 
-  const spriteFolder = pane.addFolder({ title: 'Sprite' })
+  const spriteFolder = pane.addFolder({ title: 'Sprite', expanded: false })
   spriteFolder.addBinding(params, 'baseScale', { min: 10, max: 300 })
   spriteFolder.addBinding(params, 'hoverScale', { min: 10, max: 300 })
   spriteFolder.addBinding(params, 'pressedScale', { min: 10, max: 300 })
 
-  const animFolder = pane.addFolder({ title: 'Animation' })
+  const animFolder = pane.addFolder({ title: 'Animation', expanded: false })
   animFolder.addBinding(params, 'rotationSpeed', { min: 0, max: 2, step: 0.1 })
   animFolder.addBinding(params, 'lerpSpeed', { min: 1, max: 20, step: 1 })
 
-  const colorFolder = pane.addFolder({ title: 'Color' })
+  const colorFolder = pane.addFolder({ title: 'Color', expanded: false })
   colorFolder.addBinding(params, 'hoverTint')
 
   sprite.scale.set(params.baseScale, params.baseScale, 1)
@@ -144,7 +144,7 @@ async function main() {
 
   function animate() {
     requestAnimationFrame(animate)
-    fpsGraph?.begin()
+    stats.begin()
 
     const now = performance.now()
     const deltaMs = now - lastTime
@@ -174,7 +174,8 @@ async function main() {
     sprite.rotation.z += params.rotationSpeed * delta
 
     renderer.render(scene, camera)
-    fpsGraph?.end()
+    stats.update({ drawCalls: renderer.info.render.drawCalls, triangles: renderer.info.render.triangles })
+    stats.end()
   }
 
   animate()

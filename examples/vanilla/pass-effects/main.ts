@@ -336,19 +336,7 @@ async function main() {
 
   // ─── Tweakpane UI ───────────────────────────────────────────────────────
 
-  const { pane, fpsGraph } = createPane()
-
-  const params = { preset: 'clean' as string }
-  const presetBinding = pane.addBinding(params, 'preset', {
-    label: 'Preset',
-    options: {
-      Clean: 'clean',
-      'CRT Arcade': 'crt',
-      Handheld: 'lcd',
-      'VHS Tape': 'vhs',
-      'Retro PC': 'retro',
-    },
-  })
+  const { pane, stats } = createPane()
 
   // ─── CRT Folder ─────────────────────────────────────────────────────────
 
@@ -428,10 +416,23 @@ async function main() {
 
   // ─── Monitors ───────────────────────────────────────────────────────────
 
-  const monitors = { drawCalls: 0, passCount: 0 }
-  const monitorFolder = pane.addFolder({ title: 'Monitors' })
-  monitorFolder.addBinding(monitors, 'drawCalls', { readonly: true })
-  monitorFolder.addBinding(monitors, 'passCount', { readonly: true })
+  const monitors = { passCount: 0 }
+  const monitorFolder = pane.addFolder({ title: 'Passes', expanded: false })
+  monitorFolder.addBinding(monitors, 'passCount', { readonly: true, format: (v: number) => v.toFixed(0) })
+
+  // ─── Preset Selector (at bottom) ───────────────────────────────────────
+
+  const params = { preset: 'clean' as string }
+  const presetBinding = pane.addBinding(params, 'preset', {
+    label: 'Preset',
+    options: {
+      Clean: 'clean',
+      'CRT Arcade': 'crt',
+      Handheld: 'lcd',
+      'VHS Tape': 'vhs',
+      'Retro PC': 'retro',
+    },
+  })
 
   // ─── Folder Visibility Toggle ───────────────────────────────────────────
 
@@ -464,7 +465,7 @@ async function main() {
 
   function animate() {
     requestAnimationFrame(animate)
-    fpsGraph?.begin()
+    stats.begin()
 
     const now = performance.now()
     const delta = (now - lastTime) / 1000
@@ -485,17 +486,17 @@ async function main() {
     }
 
     flatland.render(renderer)
+    stats.update({ drawCalls: renderer.info.render.drawCalls, triangles: renderer.info.render.triangles })
 
     // Update monitors periodically
     refreshTimer += delta
     if (refreshTimer >= 0.5) {
-      monitors.drawCalls = flatland.stats.drawCalls
       monitors.passCount = activePreset.passes.length
       pane.refresh()
       refreshTimer = 0
     }
 
-    fpsGraph?.end()
+    stats.end()
   }
 
   animate()

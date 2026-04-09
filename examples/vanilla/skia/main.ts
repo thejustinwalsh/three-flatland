@@ -289,26 +289,12 @@ async function main() {
   scene.add(ground)
 
   // ── TweakPane debug controls ──
-  const { pane, fpsGraph } = createPane()
-
-  const cam = { dampingFactor: controls.dampingFactor, minDistance: controls.minDistance, maxDistance: controls.maxDistance }
-  const camFolder = pane.addFolder({ title: 'Camera' })
-  camFolder.addBinding(cam, 'dampingFactor', { min: 0.01, max: 0.2, step: 0.01, label: 'damping' })
-    .on('change', (ev) => { controls.dampingFactor = ev.value })
-  camFolder.addBinding(cam, 'minDistance', { min: 1, max: 5, step: 0.5, label: 'min dist' })
-    .on('change', (ev) => { controls.minDistance = ev.value })
-  camFolder.addBinding(cam, 'maxDistance', { min: 5, max: 20, step: 1, label: 'max dist' })
-    .on('change', (ev) => { controls.maxDistance = ev.value })
-
-  const canvas = { textureWidth: TEX_W, textureHeight: TEX_H }
-  const canvasFolder = pane.addFolder({ title: 'Canvas' })
-  canvasFolder.addBinding(canvas, 'textureWidth', { readonly: true, label: 'tex width' })
-  canvasFolder.addBinding(canvas, 'textureHeight', { readonly: true, label: 'tex height' })
+  const { pane, stats } = createPane()
 
   // ── Animation loop ──
 
   function animate(t: number) {
-    fpsGraph?.begin()
+    stats.begin()
 
     // ── Animate squares ──
     const sqDur = 3000
@@ -406,7 +392,8 @@ async function main() {
     // 4. Skia overlay on top of 3D
     overlayCanvas.render(true)
 
-    fpsGraph?.end()
+    stats.update({ drawCalls: renderer.info.render.drawCalls, triangles: renderer.info.render.triangles })
+    stats.end()
     requestAnimationFrame(animate)
   }
   requestAnimationFrame(animate)

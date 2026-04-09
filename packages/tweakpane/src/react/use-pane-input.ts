@@ -23,6 +23,9 @@ export interface PaneInputOptions {
 /**
  * Bind a Tweakpane input to React state.
  * Returns [value, setValue] — setValue updates both React state and the TP binding.
+ *
+ * Binding is created synchronously during render (same pattern as usePaneFolder)
+ * so all controls appear on first render with no pop-in.
  */
 export function usePaneInput<T>(
   parent: PaneParent | null,
@@ -33,10 +36,10 @@ export function usePaneInput<T>(
   const [value, setValueState] = useState<T>(initialValue)
   const paramsRef = useRef<Record<string, unknown>>({ [key]: initialValue })
   const bindingRef = useRef<{ refresh(): void; dispose(): void } | null>(null)
+  const listenerRef = useRef<((ev: { value: unknown }) => void) | null>(null)
 
-  useEffect(() => {
-    if (!parent) return
-
+  // Create binding synchronously on first render
+  if (parent && bindingRef.current === null) {
     const { label, ...bindingOpts } = options
     paramsRef.current[key] = initialValue
 
@@ -45,18 +48,47 @@ export function usePaneInput<T>(
       ...bindingOpts,
     } as Record<string, unknown>)
 
-    binding.on('change', (ev: { value: unknown }) => {
+    const listener = (ev: { value: unknown }) => {
       setValueState(ev.value as T)
-    })
-
+    }
+    binding.on('change', listener)
+    listenerRef.current = listener
     bindingRef.current = binding as unknown as { refresh(): void; dispose(): void }
+  }
+
+  // Deferred disposal — survives React strict mode cleanup/re-mount
+  const mountedRef = useRef(false)
+  useEffect(() => {
+    mountedRef.current = true
+
+    // Strict mode may have disposed the binding — recreate
+    if (parent && bindingRef.current === null) {
+      const { label, ...bindingOpts } = options
+      paramsRef.current[key] = initialValue
+      const binding = parent.addBinding(paramsRef.current, key, {
+        label: label ?? key,
+        ...bindingOpts,
+      } as Record<string, unknown>)
+      const listener = (ev: { value: unknown }) => { setValueState(ev.value as T) }
+      binding.on('change', listener)
+      listenerRef.current = listener
+      bindingRef.current = binding as unknown as { refresh(): void; dispose(): void }
+    }
 
     return () => {
-      binding.dispose()
-      bindingRef.current = null
+      const binding = bindingRef.current
+      setTimeout(() => {
+        if (!mountedRef.current && binding) {
+          binding.dispose()
+          if (bindingRef.current === binding) {
+            bindingRef.current = null
+            listenerRef.current = null
+          }
+        }
+      }, 0)
+      mountedRef.current = false
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [parent])
+  }, [])
 
   const setValue = useCallback(
     (v: T) => {

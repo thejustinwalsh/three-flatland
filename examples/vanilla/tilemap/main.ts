@@ -434,7 +434,7 @@ async function main() {
 
   // Orthographic camera
   const frustumSize = 800
-  const aspect = window.innerWidth / window.innerHeight
+  let aspect = window.innerWidth / window.innerHeight
   const camera = new OrthographicCamera(
     (-frustumSize * aspect) / 2,
     (frustumSize * aspect) / 2,
@@ -472,15 +472,17 @@ async function main() {
   // GUI state
   const gen = { mapSize: 'md' as string, chunkSize: 512, density: 'normal' as string, seed: 42 }
   const layers = { showGround: true, showWalls: true, showDecor: true }
-  const cam = { zoom: 50 }
-  const stats = { tiles: 0, chunks: 0, layers: 0, drawCalls: 0 }
+  const cam = { zoom: 0 }
+  const tileStats = { tiles: 0, chunks: 0, layers: 0 }
 
   // Zoom range computed from map extent
   let mapSize = MAP_SIZE_PRESETS[gen.mapSize]!
   let mapExtent = mapSize * TILE_SIZE
   let zoomOut = mapExtent / (frustumSize * Math.min(1, aspect))
   let zoomIn = 0.1
-  let zoom = zoomOut * Math.pow(zoomIn / zoomOut, 0.5)
+  // Start fully zoomed out to frame the whole map
+  let zoom = zoomOut
+  let targetZoom = zoom
 
   // Build tilemap from current state
   function buildTilemap(): TileMap2D {
@@ -508,9 +510,9 @@ async function main() {
   camera.position.y = (mapSize * TILE_SIZE) / 2
 
   function updateStats() {
-    stats.tiles = tilemap.totalTileCount
-    stats.chunks = tilemap.totalChunkCount
-    stats.layers = tilemap.layerCount
+    tileStats.tiles = tilemap.totalTileCount
+    tileStats.chunks = tilemap.totalChunkCount
+    tileStats.layers = tilemap.layerCount
   }
   updateStats()
 
@@ -527,22 +529,47 @@ async function main() {
     camera.position.x = (mapSize * TILE_SIZE) / 2
     camera.position.y = (mapSize * TILE_SIZE) / 2
 
-    // Recalculate zoom range and recompute zoom from current slider position
+    // Recalculate zoom range and auto-fit to new map
     mapExtent = mapSize * TILE_SIZE
     zoomOut = mapExtent / (frustumSize * Math.min(1, aspect))
     zoomIn = 0.1
-    const t = cam.zoom / 100
-    zoom = zoomOut * Math.pow(zoomIn / zoomOut, t)
+    cam.zoom = 0
+    zoom = zoomOut
+    targetZoom = zoomOut
 
     updateStats()
     pane.refresh()
   }
 
   // Tweakpane UI
-  const { pane, fpsGraph } = createPane()
+  const { pane, stats: globalStats } = createPane()
 
-  // Generation folder
-  const genFolder = pane.addFolder({ title: 'Generation' })
+  // Layers folder
+  const layerFolder = pane.addFolder({ title: 'Layers', expanded: false })
+  layerFolder.addBinding(layers, 'showGround', { label: 'ground' })
+    .on('change', (ev) => {
+      const layer = tilemap.getLayerAt(0)
+      if (layer) layer.visible = ev.value
+    })
+  layerFolder.addBinding(layers, 'showWalls', { label: 'walls' })
+    .on('change', (ev) => {
+      const layer = tilemap.getLayerAt(1)
+      if (layer) layer.visible = ev.value
+    })
+  layerFolder.addBinding(layers, 'showDecor', { label: 'decor' })
+    .on('change', (ev) => {
+      const layer = tilemap.getLayerAt(2)
+      if (layer) layer.visible = ev.value
+    })
+
+  // Tiles folder (monitors)
+  const tilesFolder = pane.addFolder({ title: 'Tiles', expanded: false })
+  tilesFolder.addBinding(tileStats, 'tiles', { readonly: true, format: (v: number) => v.toFixed(0) })
+  tilesFolder.addBinding(tileStats, 'chunks', { readonly: true, format: (v: number) => v.toFixed(0) })
+  tilesFolder.addBinding(tileStats, 'layers', { readonly: true, format: (v: number) => v.toFixed(0) })
+
+  // Generation folder (at bottom, expanded)
+  const genFolder = pane.addFolder({ title: 'Tilemap' })
   genFolder.addBinding(gen, 'mapSize', {
     options: { SM: 'sm', MD: 'md', LG: 'lg', XL: 'xl' },
     label: 'map size',
@@ -561,39 +588,6 @@ async function main() {
     pane.refresh()
     rebuildTilemap()
   })
-
-  // Layers folder
-  const layerFolder = pane.addFolder({ title: 'Layers' })
-  layerFolder.addBinding(layers, 'showGround', { label: 'ground' })
-    .on('change', (ev) => {
-      const layer = tilemap.getLayerAt(0)
-      if (layer) layer.visible = ev.value
-    })
-  layerFolder.addBinding(layers, 'showWalls', { label: 'walls' })
-    .on('change', (ev) => {
-      const layer = tilemap.getLayerAt(1)
-      if (layer) layer.visible = ev.value
-    })
-  layerFolder.addBinding(layers, 'showDecor', { label: 'decor' })
-    .on('change', (ev) => {
-      const layer = tilemap.getLayerAt(2)
-      if (layer) layer.visible = ev.value
-    })
-
-  // Camera folder
-  const camFolder = pane.addFolder({ title: 'Camera' })
-  camFolder.addBinding(cam, 'zoom', { min: 0, max: 100, step: 1 })
-    .on('change', (ev) => {
-      const t = ev.value / 100
-      zoom = zoomOut * Math.pow(zoomIn / zoomOut, t)
-    })
-
-  // Stats folder (monitors)
-  const statsFolder = pane.addFolder({ title: 'Stats' })
-  statsFolder.addBinding(stats, 'tiles', { readonly: true })
-  statsFolder.addBinding(stats, 'chunks', { readonly: true })
-  statsFolder.addBinding(stats, 'layers', { readonly: true })
-  statsFolder.addBinding(stats, 'drawCalls', { readonly: true, label: 'draw calls' })
 
   // Camera controls
   const keys = new Set<string>()
@@ -668,6 +662,47 @@ async function main() {
     }
   })
 
+  // Ctrl+wheel to zoom
+  function applyZoomSlider(newVal: number) {
+    cam.zoom = Math.max(0, Math.min(100, newVal))
+    const t = cam.zoom / 100
+    targetZoom = zoomOut * Math.pow(zoomIn / zoomOut, t)
+    pane.refresh()
+  }
+
+  renderer.domElement.addEventListener('wheel', (e) => {
+    if (!e.ctrlKey && !e.metaKey) return
+    e.preventDefault()
+    const delta = e.deltaY > 0 ? -2 : 2
+    applyZoomSlider(cam.zoom + delta)
+  }, { passive: false })
+
+  // Pinch-to-zoom via touch
+  let lastPinchDist = 0
+  function getPinchDist(): number {
+    const pts = [...activePointers.values()]
+    if (pts.length < 2) return 0
+    const dx = pts[0]!.clientX - pts[1]!.clientX
+    const dy = pts[0]!.clientY - pts[1]!.clientY
+    return Math.sqrt(dx * dx + dy * dy)
+  }
+
+  renderer.domElement.addEventListener('touchstart', () => {
+    if (activePointers.size >= 2) lastPinchDist = getPinchDist()
+  }, { passive: true })
+
+  window.addEventListener('pointermove', () => {
+    if (activePointers.size >= 2) {
+      const dist = getPinchDist()
+      if (lastPinchDist > 0 && dist > 0) {
+        const scale = dist / lastPinchDist
+        const delta = (scale - 1) * 15
+        applyZoomSlider(cam.zoom + delta)
+      }
+      lastPinchDist = dist
+    }
+  })
+
   // Click to toggle tile (only if not dragging)
   const raycaster = new Raycaster()
   const mouse = new Vector2()
@@ -695,7 +730,7 @@ async function main() {
 
   // Handle resize
   window.addEventListener('resize', () => {
-    const aspect = window.innerWidth / window.innerHeight
+    aspect = window.innerWidth / window.innerHeight
     camera.left = (-frustumSize * aspect) / 2
     camera.right = (frustumSize * aspect) / 2
     camera.top = frustumSize / 2
@@ -715,8 +750,11 @@ async function main() {
     const deltaMs = now - lastTime
     lastTime = now
 
-    // FPS graph
-    fpsGraph?.begin()
+    globalStats.begin()
+
+    // Lerp zoom toward target
+    const lerpRate = 1 - Math.pow(0.001, deltaMs / 1000) // ~6x per second smoothing
+    zoom += (targetZoom - zoom) * lerpRate
 
     // Camera movement
     const speed = 200 * (deltaMs / 1000) * zoom
@@ -736,13 +774,13 @@ async function main() {
     tilemap.update(deltaMs)
 
     renderer.render(scene, camera)
+    globalStats.update({ drawCalls: renderer.info.render.drawCalls, triangles: renderer.info.render.triangles })
+    globalStats.end()
 
-    fpsGraph?.end()
-
-    // Update stats monitors periodically
+    // Update tile stats periodically
     statsTime += deltaMs
     if (statsTime >= 1000) {
-      stats.drawCalls = renderer.info.render.drawCalls
+      updateStats()
       pane.refresh()
       statsTime = 0
     }

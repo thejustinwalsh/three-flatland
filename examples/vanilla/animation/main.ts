@@ -112,37 +112,48 @@ async function main() {
   scene.add(knight)
 
   // Tweakpane UI
-  const { pane, fpsGraph } = createPane()
-  const params = { animation: 'idle', speed: 1, drawCalls: 0 }
+  const { pane, stats } = createPane()
 
   const animFolder = pane.addFolder({ title: 'Animation' })
+
+  const animNames = ['idle', 'run', 'roll', 'hit', 'death']
+  const animLabels = ['Idle', 'Run', 'Roll', 'Hit', 'Death']
+  const animGrid = animFolder.addBlade({
+    view: 'radiogrid',
+    groupName: 'animation',
+    size: [5, 1],
+    cells: (x: number) => ({ title: animLabels[x]!, value: animNames[x]! }),
+    value: 'idle',
+    label: 'anim',
+  } as any) as any
 
   function playAnimation(name: string) {
     knight.play(name, {
       onComplete: () => {
-        // Return to idle after non-looping animations
         if (name === 'hit' || name === 'death') {
-          params.animation = 'idle'
-          animBinding.refresh()
-          playAnimation('idle')
+          animGrid.value.rawValue = 'idle'
+          knight.play('idle')
         }
       },
     })
   }
 
-  const animBinding = animFolder.addBinding(params, 'animation', {
-    options: { Idle: 'idle', Run: 'run', Roll: 'roll', Hit: 'hit', Death: 'death' },
-  }).on('change', (ev) => {
-    playAnimation(ev.value)
+  animGrid.on('change', (ev: any) => {
+    playAnimation(ev.value as string)
   })
 
-  animFolder.addBinding(params, 'speed', {
-    options: { '0.5x': 0.5, '1x': 1, '1.5x': 1.5, '2x': 2, '3x': 3 },
-  }).on('change', (ev) => {
+  const speeds = [0.5, 1, 1.5, 2, 3]
+  const speedLabels = ['0.5x', '1x', '1.5x', '2x', '3x']
+  ;(animFolder.addBlade({
+    view: 'radiogrid',
+    groupName: 'speed',
+    size: [5, 1],
+    cells: (x: number) => ({ title: speedLabels[x]!, value: speeds[x]! }),
+    value: 1,
+    label: 'speed',
+  } as any) as any).on('change', (ev: any) => {
     knight.speed = ev.value
   })
-
-  pane.addBinding(params, 'drawCalls', { readonly: true, label: 'draws' })
 
   // Handle resize
   window.addEventListener('resize', () => {
@@ -165,17 +176,15 @@ async function main() {
     const deltaMs = now - lastTime
     lastTime = now
 
-    fpsGraph?.begin()
+    stats.begin()
 
     // Update sprite animation
     knight.update(deltaMs)
 
     renderer.render(scene, camera)
 
-    // Update draw calls monitor
-    params.drawCalls = renderer.info.render.drawCalls
-
-    fpsGraph?.end()
+    stats.update({ drawCalls: renderer.info.render.drawCalls, triangles: renderer.info.render.triangles })
+    stats.end()
   }
 
   animate()

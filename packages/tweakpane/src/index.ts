@@ -1,4 +1,6 @@
 export { createPane } from './create-pane.js'
-export type { CreatePaneOptions, PaneBundle } from './create-pane.js'
+export type { CreatePaneOptions, PaneBundle, StatsHandle } from './create-pane.js'
+export { addStatsGraph } from './stats-graph.js'
+export type { StatsGraphHandle } from './stats-graph.js'
 export { applyTheme, FLATLAND_THEME } from './theme.js'
 export { registerPlugins, EssentialsPlugin } from './plugins.js'

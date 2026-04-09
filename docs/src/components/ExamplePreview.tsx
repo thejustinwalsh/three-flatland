@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useCallback } from 'react';
 
 interface Props {
   type: 'vanilla' | 'react';
@@ -6,13 +6,22 @@ interface Props {
   height?: number;
 }
 
+const buttonStyle: React.CSSProperties = {
+  padding: '5px 6px',
+  background: 'rgba(0, 0, 0, 0.6)',
+  color: '#f0edd8',
+  border: 'none',
+  fontFamily: 'monospace',
+  fontSize: 11,
+  cursor: 'pointer',
+  transition: 'color 0.15s',
+  lineHeight: 1,
+};
+
 function ExamplePreview({ type, name, height = 600 }: Props) {
   const isDev = import.meta.env.DEV;
-  // Ensure base URL has trailing slash
   const base = (import.meta.env.BASE_URL || '/').replace(/\/?$/, '/');
 
-  // Dev: absolute path — resolved by the microfrontends proxy on the current origin
-  // Prod: iframe to built static files
   const src = isDev
     ? `/${type}/${name}/`
     : `${base}examples/${type}/${name}/`;
@@ -33,33 +42,73 @@ function ExamplePreview({ type, name, height = 600 }: Props) {
   );
 }
 
+const STORAGE_KEY = 'flatland-example-type';
+
+function getStoredType(): 'vanilla' | 'react' | null {
+  try { return localStorage.getItem(STORAGE_KEY) as 'vanilla' | 'react' | null; } catch { return null; }
+}
+
 function DevExamplePreview(props: Props) {
-  const [activeType, setActiveType] = useState(props.type);
+  const [activeType, setActiveType] = useState<'vanilla' | 'react'>(
+    () => getStoredType() ?? props.type,
+  );
+  const containerRef = useRef<HTMLDivElement>(null);
+
   const toggle = () =>
-    setActiveType((t) => (t === 'vanilla' ? 'react' : 'vanilla'));
+    setActiveType((t) => {
+      const next = t === 'vanilla' ? 'react' : 'vanilla';
+      try { localStorage.setItem(STORAGE_KEY, next); } catch {}
+      return next;
+    });
+
+  const goFullscreen = useCallback(() => {
+    const iframe = containerRef.current?.querySelector('iframe');
+    if (iframe) {
+      iframe.requestFullscreen?.() ??
+        (iframe as any).webkitRequestFullscreen?.();
+    }
+  }, []);
+
+  const hover = (e: React.MouseEvent) => {
+    e.currentTarget.style.color = 'rgba(240, 237, 216, 0.9)';
+  };
+  const unhover = (e: React.MouseEvent) => {
+    e.currentTarget.style.color = buttonStyle.color as string;
+  };
 
   return (
-    <div style={{ position: 'relative' }}>
+    <div ref={containerRef} style={{ position: 'relative' }}>
       <ExamplePreview {...props} type={activeType} />
-      <button
-        onClick={toggle}
+      <div
         style={{
           position: 'absolute',
-          bottom: 12,
-          right: 12,
-          padding: '4px 10px',
-          background: 'rgba(0, 0, 0, 0.6)',
-          color: '#ccc',
-          border: '1px solid rgba(255, 255, 255, 0.15)',
-          borderRadius: 6,
-          fontFamily: 'monospace',
-          fontSize: 12,
-          cursor: 'pointer',
+          bottom: 10,
+          right: 10,
+          display: 'flex',
+          gap: 6,
           zIndex: 10,
         }}
       >
-        {activeType}
-      </button>
+        <button
+          className="preview-btn"
+          onClick={toggle}
+          onMouseEnter={hover}
+          onMouseLeave={unhover}
+          style={buttonStyle}
+        >
+          ⇄ {activeType === 'vanilla' ? 'three' : 'react'}
+        </button>
+        <button
+          className="preview-btn"
+          onClick={goFullscreen}
+          onMouseEnter={hover}
+          onMouseLeave={unhover}
+          style={buttonStyle}
+          title="Fullscreen"
+        >
+          ⛶
+        </button>
+      </div>
     </div>
   );
 }

@@ -12,6 +12,7 @@ import {
 } from 'three-flatland/react'
 import { usePane } from '@three-flatland/tweakpane/react'
 import type { Pane } from 'tweakpane'
+import type { StatsHandle } from '@three-flatland/tweakpane/react'
 // Extend R3F with our custom classes
 extend({ SpriteGroup, Sprite2D, Sprite2DMaterial })
 
@@ -200,15 +201,14 @@ function HoverPreview({ visible, position, material, building }: HoverPreviewPro
 // MAIN SCENE
 // ============================================
 
-function StatsMonitor({ pane, spriteStats, drawCalls }: { pane: Pane; spriteStats: RenderStats; drawCalls: number }) {
-  const statsObjRef = useRef({ sprites: 0, batches: 0, drawCalls: 0 })
+function StatsMonitor({ pane, spriteStats }: { pane: Pane; spriteStats: RenderStats }) {
+  const statsObjRef = useRef({ sprites: 0, batches: 0 })
   const folderRef = useRef<ReturnType<Pane['addFolder']> | null>(null)
 
   useEffect(() => {
-    const statsFolder = pane.addFolder({ title: 'Stats' })
-    statsFolder.addBinding(statsObjRef.current, 'sprites', { readonly: true })
-    statsFolder.addBinding(statsObjRef.current, 'batches', { readonly: true })
-    statsFolder.addBinding(statsObjRef.current, 'drawCalls', { readonly: true, label: 'draws' })
+    const statsFolder = pane.addFolder({ title: 'Batching', expanded: false })
+    statsFolder.addBinding(statsObjRef.current, 'sprites', { readonly: true, format: (v: number) => v.toFixed(0) })
+    statsFolder.addBinding(statsObjRef.current, 'batches', { readonly: true, format: (v: number) => v.toFixed(0) })
     folderRef.current = statsFolder
 
     return () => {
@@ -220,7 +220,6 @@ function StatsMonitor({ pane, spriteStats, drawCalls }: { pane: Pane; spriteStat
   // so we update on each render
   statsObjRef.current.sprites = spriteStats.spriteCount
   statsObjRef.current.batches = spriteStats.batchCount
-  statsObjRef.current.drawCalls = drawCalls
   pane.refresh()
 
   return null
@@ -231,11 +230,10 @@ interface VillageSceneProps {
   selectedBuilding: number
   onPlaceBuilding: (gridX: number, gridY: number) => void
   onStats: (stats: RenderStats) => void
-  onDrawCalls: (draws: number) => void
-  fpsGraph: { begin: () => void; end: () => void } | null
+  stats: StatsHandle
 }
 
-function VillageScene({ entities, selectedBuilding, onPlaceBuilding, onStats, onDrawCalls, fpsGraph }: VillageSceneProps) {
+function VillageScene({ entities, selectedBuilding, onPlaceBuilding, onStats, stats }: VillageSceneProps) {
   const { camera, gl } = useThree()
 
   // Load textures (presets are automatically applied - NearestFilter + SRGBColorSpace)
@@ -321,27 +319,20 @@ function VillageScene({ entities, selectedBuilding, onPlaceBuilding, onStats, on
   // SpriteGroup ref for stats
   const spriteGroupRef = useRef<SpriteGroup>(null)
 
-  // Disable auto-reset so we can read draw calls from the previous frame
-  useEffect(() => {
-    gl.info.autoReset = false
-    return () => { gl.info.autoReset = true }
-  }, [gl])
-
-  const fpsGraphRef = useRef(fpsGraph)
-  fpsGraphRef.current = fpsGraph
+  const statsRef = useRef(stats)
+  statsRef.current = stats
 
   useFrame(() => {
-    fpsGraphRef.current?.begin()
-  }, -Infinity)
+    statsRef.current.begin()
+  }, { priority: -Infinity })
 
   useFrame(() => {
-    fpsGraphRef.current?.end()
+    statsRef.current.update({ drawCalls: (gl.info.render as any).drawCalls as number, triangles: (gl.info.render as any).triangles as number })
+    statsRef.current.end()
     if (spriteGroupRef.current) {
       onStats(spriteGroupRef.current.stats)
     }
-    onDrawCalls((gl.info.render as any).drawCalls as number)
-    gl.info.reset()
-  }, Infinity)
+  }, { priority: Infinity })
 
   // Hover position
   const hoverPosition: [number, number, number] = hoverGrid
@@ -453,10 +444,9 @@ const INITIAL_ENTITIES: PlacedEntity[] = [
 export default function App() {
   const [entities, setEntities] = useState<PlacedEntity[]>(INITIAL_ENTITIES)
   const [selectedBuilding, setSelectedBuilding] = useState(0)
-  const [stats, setStats] = useState<RenderStats>({ spriteCount: 0, batchCount: 0, drawCalls: 0, visibleSprites: 0 })
-  const [drawCalls, setDrawCalls] = useState(0)
+  const [spriteStats, setSpriteStats] = useState<RenderStats>({ spriteCount: 0, batchCount: 0, drawCalls: 0, visibleSprites: 0 })
 
-  const { pane, fpsGraph } = usePane()
+  const { pane, stats } = usePane()
 
   const viewWidth = TILE_SIZE * (GRID_WIDTH + 2)
   const viewHeight = TILE_SIZE * (GRID_HEIGHT + 4)
@@ -493,13 +483,12 @@ export default function App() {
           entities={entities}
           selectedBuilding={selectedBuilding}
           onPlaceBuilding={handlePlaceBuilding}
-          onStats={setStats}
-          onDrawCalls={setDrawCalls}
-          fpsGraph={fpsGraph}
+          onStats={setSpriteStats}
+          stats={stats}
         />
       </Canvas>
 
-      <StatsMonitor pane={pane} spriteStats={stats} drawCalls={drawCalls} />
+      <StatsMonitor pane={pane} spriteStats={spriteStats} />
 
       {/* TODO: migrate game UI to three-flatland events */}
       <div style={styles.ui}>

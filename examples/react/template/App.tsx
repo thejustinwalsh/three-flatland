@@ -1,4 +1,4 @@
-import { Canvas, extend, useLoader, useFrame } from '@react-three/fiber/webgpu'
+import { Canvas, extend, useLoader, useFrame, useThree } from '@react-three/fiber/webgpu'
 import { useRef } from 'react'
 import { Sprite2D, TextureLoader } from 'three-flatland/react'
 import { usePane, usePaneInput } from '@three-flatland/tweakpane/react'
@@ -19,21 +19,23 @@ function SpriteScene({ tint }: { tint: string }) {
 }
 
 function Scene() {
-  const { pane, fpsGraph } = usePane()
+  const { pane, stats } = usePane()
+  const gl = useThree((s) => s.gl)
   const [tint] = usePaneInput(pane, 'tint', '#ffffff', {
     options: { White: '#ffffff', Cyan: '#47cca9', Pink: '#ff6b9d' },
   })
 
-  const fpsRef = useRef(fpsGraph)
-  fpsRef.current = fpsGraph
+  const statsRef = useRef(stats)
+  statsRef.current = stats
 
   useFrame(() => {
-    fpsRef.current?.begin()
-  }, -Infinity)
+    statsRef.current.begin()
+  }, { priority: -Infinity })
 
   useFrame(() => {
-    fpsRef.current?.end()
-  }, Infinity)
+    statsRef.current.update({ drawCalls: (gl.info.render as any).drawCalls as number, triangles: (gl.info.render as any).triangles as number })
+    statsRef.current.end()
+  }, { priority: Infinity })
 
   return (
     <>

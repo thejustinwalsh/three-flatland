@@ -1,4 +1,4 @@
-import { Suspense, useRef, useMemo, useEffect, useCallback } from 'react'
+import { Suspense, useState, useRef, useMemo, useEffect, useCallback } from 'react'
 import { Canvas, extend, useFrame, useThree } from '@react-three/fiber/webgpu'
 import {
   DataTexture,
@@ -391,29 +391,15 @@ function TilemapScene({ mapData, chunkSize, showGround, showWalls, showDecor, on
   )
 }
 
-function StatsTracker({ onDrawCalls }: { onDrawCalls: (draws: number) => void }) {
-  const gl = useThree((s) => s.gl)
-  const elapsed = useRef(0)
 
-  useEffect(() => {
-    gl.info.autoReset = false
-    return () => { gl.info.autoReset = true }
-  }, [gl])
-
-  useFrame((_, delta) => {
-    elapsed.current += delta
-    if (elapsed.current >= 1) {
-      const draws = (gl.info.render as any).drawCalls as number
-      onDrawCalls(draws)
-      elapsed.current = 0
-    }
-    gl.info.reset()
-  })
-
-  return null
-}
-
-function CameraController({ mapSize, zoomRef }: { mapSize: number; zoomRef: React.RefObject<number> }) {
+function CameraController({ mapSize, zoomRef, zoomSlider, setZoomSlider }: {
+  mapSize: number
+  zoomRef: React.RefObject<number>
+  zoomSlider: number
+  setZoomSlider: (v: number) => void
+}) {
+  const zoomSliderRef = useRef(zoomSlider)
+  zoomSliderRef.current = zoomSlider
   const { camera, gl } = useThree()
   const keys = useRef(new Set<string>())
   const isDragging = useRef(false)
@@ -488,10 +474,51 @@ function CameraController({ mapSize, zoomRef }: { mapSize: number; zoomRef: Reac
       }
     }
 
+    // Ctrl+wheel to zoom
+    const handleWheel = (e: WheelEvent) => {
+      if (!e.ctrlKey && !e.metaKey) return
+      e.preventDefault()
+      const delta = e.deltaY > 0 ? -2 : 2
+      const next = Math.max(0, Math.min(100, zoomSliderRef.current + delta))
+      zoomSliderRef.current = next
+      setZoomSlider(next)
+    }
+
+    // Pinch-to-zoom
+    let lastPinchDist = 0
+    const getPinchDist = (): number => {
+      const pts = [...activePointers.current.values()]
+      if (pts.length < 2) return 0
+      const dx = pts[0]!.clientX - pts[1]!.clientX
+      const dy = pts[0]!.clientY - pts[1]!.clientY
+      return Math.sqrt(dx * dx + dy * dy)
+    }
+
+    const handleTouchStart = () => {
+      if (activePointers.current.size >= 2) lastPinchDist = getPinchDist()
+    }
+
+    const handlePinchMove = () => {
+      if (activePointers.current.size >= 2) {
+        const dist = getPinchDist()
+        if (lastPinchDist > 0 && dist > 0) {
+          const scale = dist / lastPinchDist
+          const delta = (scale - 1) * 30
+          const next = Math.max(0, Math.min(100, zoomSliderRef.current + delta))
+          zoomSliderRef.current = next
+          setZoomSlider(next)
+        }
+        lastPinchDist = dist
+      }
+    }
+
     window.addEventListener('keydown', handleKeyDown)
     window.addEventListener('keyup', handleKeyUp)
     canvas.addEventListener('pointerdown', handlePointerDown)
+    canvas.addEventListener('wheel', handleWheel, { passive: false })
+    canvas.addEventListener('touchstart', handleTouchStart, { passive: true })
     window.addEventListener('pointermove', handlePointerMove)
+    window.addEventListener('pointermove', handlePinchMove)
     window.addEventListener('pointerup', handlePointerUp)
     window.addEventListener('pointercancel', handlePointerCancel)
 
@@ -499,45 +526,71 @@ function CameraController({ mapSize, zoomRef }: { mapSize: number; zoomRef: Reac
       window.removeEventListener('keydown', handleKeyDown)
       window.removeEventListener('keyup', handleKeyUp)
       canvas.removeEventListener('pointerdown', handlePointerDown)
+      canvas.removeEventListener('wheel', handleWheel)
+      canvas.removeEventListener('touchstart', handleTouchStart)
       window.removeEventListener('pointermove', handlePointerMove)
+      window.removeEventListener('pointermove', handlePinchMove)
       window.removeEventListener('pointerup', handlePointerUp)
       window.removeEventListener('pointercancel', handlePointerCancel)
     }
-  }, [camera, gl])
+  }, [camera, gl, setZoomSlider])
+
+  const currentZoom = useRef(zoomRef.current)
 
   useFrame((_, delta) => {
-    const z = zoomRef.current
+    // Lerp zoom toward target
+    const lerpRate = 1 - Math.pow(0.001, delta)
+    currentZoom.current += (zoomRef.current - currentZoom.current) * lerpRate
+
+    const z = currentZoom.current
     const speed = 200 * delta * z
     if (keys.current.has('w') || keys.current.has('arrowup')) camera.position.y += speed
     if (keys.current.has('s') || keys.current.has('arrowdown')) camera.position.y -= speed
     if (keys.current.has('a') || keys.current.has('arrowleft')) camera.position.x -= speed
     if (keys.current.has('d') || keys.current.has('arrowright')) camera.position.x += speed
 
-    camera.zoom = 2 / z
+    camera.zoom = 1 / z
     camera.updateProjectionMatrix()
   })
 
   return null
 }
 
-function FpsTracker({ fpsGraph }: { fpsGraph: { begin(): void; end(): void } | null }) {
-  useFrame(() => {
-    fpsGraph?.begin()
-  }, -Infinity)
+function StatsTracker({ stats }: { stats: { begin(): void; end(): void; update(info: { drawCalls: number; triangles?: number }): void } }) {
+  const gl = useThree((s) => s.gl)
+  const statsRef = useRef(stats)
+  statsRef.current = stats
 
   useFrame(() => {
-    fpsGraph?.end()
-  }, Infinity)
+    statsRef.current.begin()
+  }, { priority: -Infinity })
+
+  useFrame(() => {
+    statsRef.current.update({ drawCalls: (gl.info.render as any).drawCalls as number, triangles: (gl.info.render as any).triangles as number })
+    statsRef.current.end()
+  }, { priority: Infinity })
 
   return null
 }
 
 export default function App() {
   // Tweakpane
-  const { pane, fpsGraph } = usePane()
+  const { pane, stats } = usePane()
 
-  // Generation folder
-  const genFolder = usePaneFolder(pane, 'Generation')
+  // Layers folder
+  const layerFolder = usePaneFolder(pane, 'Layers')
+  const [showGround] = usePaneInput<boolean>(layerFolder, 'showGround', true, { label: 'ground' })
+  const [showWalls] = usePaneInput<boolean>(layerFolder, 'showWalls', true, { label: 'walls' })
+  const [showDecor] = usePaneInput<boolean>(layerFolder, 'showDecor', true, { label: 'decor' })
+
+  // Zoom state (controlled by pinch/ctrl+wheel, no pane slider)
+  const [zoomSlider, setZoomSlider] = useState(0)
+
+  // Tiles folder (readonly monitors)
+  const tilesFolder = usePaneFolder(pane, 'Tiles')
+
+  // Tilemap folder (at bottom, expanded)
+  const genFolder = usePaneFolder(pane, 'Tilemap', { expanded: true })
   const [mapSizePreset] = usePaneInput<string>(genFolder, 'mapSize', 'md', {
     options: { SM: 'sm', MD: 'md', LG: 'lg', XL: 'xl' },
     label: 'map size',
@@ -555,35 +608,20 @@ export default function App() {
   usePaneButton(genFolder, 'Regenerate', () => {
     setSeed(Math.floor(Math.random() * 1000000))
   })
-
-  // Layers folder
-  const layerFolder = usePaneFolder(pane, 'Layers')
-  const [showGround] = usePaneInput<boolean>(layerFolder, 'showGround', true, { label: 'ground' })
-  const [showWalls] = usePaneInput<boolean>(layerFolder, 'showWalls', true, { label: 'walls' })
-  const [showDecor] = usePaneInput<boolean>(layerFolder, 'showDecor', true, { label: 'decor' })
-
-  // Camera folder
-  const camFolder = usePaneFolder(pane, 'Camera')
-  const [zoomSlider] = usePaneInput<number>(camFolder, 'zoom', 50, { min: 0, max: 100, step: 1 })
-
-  // Stats folder (readonly monitors)
-  const statsFolder = usePaneFolder(pane, 'Stats')
-  const statsRef = useRef({ tiles: 0, chunks: 0, layers: 0, drawCalls: 0 })
+  const tileStatsRef = useRef({ tiles: 0, chunks: 0, layers: 0 })
 
   // Add readonly bindings directly to the pane
   useEffect(() => {
-    if (!statsFolder) return
-    const b1 = statsFolder.addBinding(statsRef.current, 'tiles', { readonly: true })
-    const b2 = statsFolder.addBinding(statsRef.current, 'chunks', { readonly: true })
-    const b3 = statsFolder.addBinding(statsRef.current, 'layers', { readonly: true })
-    const b4 = statsFolder.addBinding(statsRef.current, 'drawCalls', { readonly: true, label: 'draw calls' })
+    if (!tilesFolder) return
+    const b1 = tilesFolder.addBinding(tileStatsRef.current, 'tiles', { readonly: true, format: (v: number) => v.toFixed(0) })
+    const b2 = tilesFolder.addBinding(tileStatsRef.current, 'chunks', { readonly: true, format: (v: number) => v.toFixed(0) })
+    const b3 = tilesFolder.addBinding(tileStatsRef.current, 'layers', { readonly: true, format: (v: number) => v.toFixed(0) })
     return () => {
       b1.dispose()
       b2.dispose()
       b3.dispose()
-      b4.dispose()
     }
-  }, [statsFolder])
+  }, [tilesFolder])
 
   const mapSize = MAP_SIZE_PRESETS[mapSizePreset] ?? 128
 
@@ -591,7 +629,8 @@ export default function App() {
   const mapExtent = mapSize * TILE_SIZE
   const zoomOut = mapExtent / 800
   const zoomIn = 0.1
-  const zoomRef = useRef(zoomOut * Math.pow(zoomIn / zoomOut, 0.5))
+  // Start fully zoomed out to frame the whole map
+  const zoomRef = useRef(zoomOut)
 
   // Update zoom ref when slider or map extent changes
   useEffect(() => {
@@ -599,15 +638,10 @@ export default function App() {
     zoomRef.current = zoomOut * Math.pow(zoomIn / zoomOut, t)
   }, [zoomSlider, zoomOut, zoomIn])
 
-  const handleDrawCalls = useCallback((draws: number) => {
-    statsRef.current.drawCalls = draws
-    pane.refresh()
-  }, [pane])
-
   const handleStats = useCallback((tiles: number, chunks: number, layers: number) => {
-    statsRef.current.tiles = tiles
-    statsRef.current.chunks = chunks
-    statsRef.current.layers = layers
+    tileStatsRef.current.tiles = tiles
+    tileStatsRef.current.chunks = chunks
+    tileStatsRef.current.layers = layers
     pane.refresh()
   }, [pane])
 
@@ -634,14 +668,13 @@ export default function App() {
   return (
     <Canvas
       orthographic
-      camera={{ zoom: 2, position: [0, 0, 100] }}
+      camera={{ zoom: 1, position: [0, 0, 100] }}
       renderer={{ antialias: false }}
       style={{ touchAction: 'none' }}
     >
       <color attach="background" args={['#0a0a12']} />
-      <FpsTracker fpsGraph={fpsGraph} />
-      <StatsTracker onDrawCalls={handleDrawCalls} />
-      <CameraController mapSize={mapSize} zoomRef={zoomRef} />
+      <StatsTracker stats={stats} />
+      <CameraController mapSize={mapSize} zoomRef={zoomRef} zoomSlider={zoomSlider} setZoomSlider={setZoomSlider} />
       <Suspense fallback={null}>
         <TilemapScene
           mapData={mapData}

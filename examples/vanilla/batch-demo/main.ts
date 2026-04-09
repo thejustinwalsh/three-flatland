@@ -317,12 +317,11 @@ async function main() {
   updateHoverSprite()
 
   // Tweakpane debug UI
-  const { pane, fpsGraph } = createPane()
-  const stats = { sprites: 0, batches: 0, drawCalls: 0 }
-  const statsFolder = pane.addFolder({ title: 'Stats' })
-  statsFolder.addBinding(stats, 'sprites', { readonly: true })
-  statsFolder.addBinding(stats, 'batches', { readonly: true })
-  statsFolder.addBinding(stats, 'drawCalls', { readonly: true, label: 'draws' })
+  const { pane, stats: globalStats } = createPane()
+  const exampleStats = { sprites: 0, batches: 0 }
+  const statsFolder = pane.addFolder({ title: 'Batching', expanded: false })
+  statsFolder.addBinding(exampleStats, 'sprites', { readonly: true, format: (v: number) => v.toFixed(0) })
+  statsFolder.addBinding(exampleStats, 'batches', { readonly: true, format: (v: number) => v.toFixed(0) })
 
   // Handle resize
   function handleResize() {
@@ -353,15 +352,15 @@ async function main() {
   function animate() {
     requestAnimationFrame(animate)
 
-    fpsGraph?.begin()
+    globalStats.begin()
     renderer.render(scene, camera)
-    fpsGraph?.end()
+    globalStats.update({ drawCalls: renderer.info.render.drawCalls, triangles: renderer.info.render.triangles })
+    globalStats.end()
 
     // Update stats monitors
     const groupStats = spriteGroup.stats
-    stats.sprites = groupStats.spriteCount
-    stats.batches = groupStats.batchCount
-    stats.drawCalls = renderer.info.render.drawCalls
+    exampleStats.sprites = groupStats.spriteCount
+    exampleStats.batches = groupStats.batchCount
     pane.refresh()
   }
 

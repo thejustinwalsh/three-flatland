@@ -747,7 +747,7 @@ pre:has(code) {
 /* -----------------------------------------------------------------------------
    BUTTONS
    ----------------------------------------------------------------------------- */
-button:not(.theme-toggle):not(.sound-toggle),
+button:not(.theme-toggle):not(.sound-toggle):not(.preview-btn),
 .sl-link-button,
 .action {
   font-family: var(--font-pixel) !important;
@@ -779,7 +779,7 @@ button:not(.theme-toggle):not(.sound-toggle),
   color: var(--retro-cyan) !important;
 }
 
-button:hover,
+button:not(.preview-btn):hover,
 .sl-link-button:hover,
 .action:hover {
   background: var(--retro-purple) !important;

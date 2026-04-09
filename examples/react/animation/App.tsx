@@ -1,4 +1,4 @@
-import { Suspense, useRef, useCallback, useEffect } from 'react'
+import { Suspense, useState, useRef, useCallback, useEffect } from 'react'
 import { Canvas, extend, useFrame, useThree, useLoader } from '@react-three/fiber/webgpu'
 import {
   AnimatedSprite2D,
@@ -6,7 +6,7 @@ import {
   Layers,
   type AnimationSetDefinition,
 } from 'three-flatland/react'
-import { usePane, usePaneInput, usePaneFolder } from '@three-flatland/tweakpane/react'
+import { usePane, usePaneFolder } from '@three-flatland/tweakpane/react'
 
 // Register AnimatedSprite2D with R3F (tree-shakeable)
 extend({ AnimatedSprite2D })
@@ -22,37 +22,14 @@ const animationSet: AnimationSetDefinition = {
     },
     run: {
       frames: [
-        'run_0',
-        'run_1',
-        'run_2',
-        'run_3',
-        'run_4',
-        'run_5',
-        'run_6',
-        'run_7',
-        'run_8',
-        'run_9',
-        'run_10',
-        'run_11',
-        'run_12',
-        'run_13',
-        'run_14',
-        'run_15',
+        'run_0', 'run_1', 'run_2', 'run_3', 'run_4', 'run_5', 'run_6', 'run_7',
+        'run_8', 'run_9', 'run_10', 'run_11', 'run_12', 'run_13', 'run_14', 'run_15',
       ],
       fps: 12,
       loop: true,
     },
     roll: {
-      frames: [
-        'roll_0',
-        'roll_1',
-        'roll_2',
-        'roll_3',
-        'roll_4',
-        'roll_5',
-        'roll_6',
-        'roll_7',
-      ],
+      frames: ['roll_0', 'roll_1', 'roll_2', 'roll_3', 'roll_4', 'roll_5', 'roll_6', 'roll_7'],
       fps: 15,
       loop: true,
     },
@@ -62,12 +39,7 @@ const animationSet: AnimationSetDefinition = {
       loop: false,
     },
     death: {
-      frames: [
-        'death_0',
-        'death_1',
-        'death_2',
-        'death_3',
-      ],
+      frames: ['death_0', 'death_1', 'death_2', 'death_3'],
       fps: 8,
       loop: false,
     },
@@ -89,7 +61,6 @@ function Knight({ animation, speed, onAnimationComplete }: KnightProps) {
   if (ref.current && lastAnimation.current !== animation) {
     ref.current.play(animation, {
       onComplete: () => {
-        // Return to idle after non-looping animations
         if (animation === 'hit' || animation === 'death') {
           onAnimationComplete()
         }
@@ -122,52 +93,71 @@ function Knight({ animation, speed, onAnimationComplete }: KnightProps) {
 }
 
 function Scene() {
-  const { pane, fpsGraph } = usePane()
-  const animFolder = usePaneFolder(pane, 'Animation')
-
-  const [animation, setAnimation] = usePaneInput(animFolder, 'animation', 'idle', {
-    options: { Idle: 'idle', Run: 'run', Roll: 'roll', Hit: 'hit', Death: 'death' },
-  })
-
-  const [speed] = usePaneInput(animFolder, 'speed', 1, {
-    options: { '0.5x': 0.5, '1x': 1, '1.5x': 1.5, '2x': 2, '3x': 3 },
-  })
-
-  // Draw calls monitor
+  const { pane, stats } = usePane()
+  const animFolder = usePaneFolder(pane, 'Animation', { expanded: true })
   const gl = useThree((s) => s.gl)
-  const drawCallsParams = useRef({ drawCalls: 0 })
-  const drawBindingRef = useRef<{ refresh(): void; dispose(): void } | null>(null)
 
+  // Use state so changes trigger re-render → Knight gets new props
+  const [animation, setAnimation] = useState('idle')
+  const [speed, setSpeed] = useState(1)
+
+  // RadioGrid for animation selection
+  const animGridRef = useRef<any>(null)
   useEffect(() => {
-    if (!pane) return
-    const binding = pane.addBinding(drawCallsParams.current, 'drawCalls', {
-      readonly: true,
-      label: 'draws',
-    })
-    drawBindingRef.current = binding as unknown as { refresh(): void; dispose(): void }
-    return () => {
-      binding.dispose()
-      drawBindingRef.current = null
-    }
-  }, [pane])
+    if (!animFolder) return
+    const names = ['idle', 'run', 'roll', 'hit', 'death']
+    const labels = ['Idle', 'Run', 'Roll', 'Hit', 'Death']
+    const blade = animFolder.addBlade({
+      view: 'radiogrid',
+      groupName: 'animation',
+      size: [5, 1],
+      cells: (x: number) => ({ title: labels[x]!, value: names[x]! }),
+      value: 'idle',
+      label: 'anim',
+    } as any) as any
+    animGridRef.current = blade
+    blade.on('change', (ev: any) => { setAnimation(ev.value) })
+    return () => { blade.dispose(); animGridRef.current = null }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [animFolder])
+
+  // RadioGrid for speed selection
+  useEffect(() => {
+    if (!animFolder) return
+    const speeds = [0.5, 1, 1.5, 2, 3]
+    const labels = ['0.5x', '1x', '1.5x', '2x', '3x']
+    const blade = animFolder.addBlade({
+      view: 'radiogrid',
+      groupName: 'speed',
+      size: [5, 1],
+      cells: (x: number) => ({ title: labels[x]!, value: speeds[x]! }),
+      value: 1,
+      label: 'speed',
+    } as any) as any
+    blade.on('change', (ev: any) => { setSpeed(ev.value) })
+    return () => blade.dispose()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [animFolder])
 
   const handleAnimationComplete = useCallback(() => {
     setAnimation('idle')
-  }, [setAnimation])
+    // Sync radiogrid
+    if (animGridRef.current) {
+      animGridRef.current.value.rawValue = 'idle'
+    }
+  }, [])
 
-  const fpsRef = useRef(fpsGraph)
-  fpsRef.current = fpsGraph
+  const statsRef = useRef(stats)
+  statsRef.current = stats
 
   useFrame(() => {
-    fpsRef.current?.begin()
-  }, -Infinity)
+    statsRef.current.begin()
+  }, { priority: -Infinity })
 
   useFrame(() => {
-    fpsRef.current?.end()
-    // Update draw calls
-    drawCallsParams.current.drawCalls = (gl.info.render as any).drawCalls as number
-    drawBindingRef.current?.refresh()
-  }, Infinity)
+    statsRef.current.update({ drawCalls: (gl.info.render as any).drawCalls as number, triangles: (gl.info.render as any).triangles as number })
+    statsRef.current.end()
+  }, { priority: Infinity })
 
   return (
     <>
@@ -175,7 +165,7 @@ function Scene() {
       <Suspense fallback={null}>
         <Knight
           animation={animation}
-          speed={speed as number}
+          speed={speed}
           onAnimationComplete={handleAnimationComplete}
         />
       </Suspense>
@@ -213,7 +203,7 @@ export default function App() {
 
       <Canvas
         orthographic
-        camera={{ zoom: 5, position: [0, 0, 100] }}
+        camera={{ zoom: 3, position: [0, 0, 100] }}
         renderer={{ antialias: false }}
       >
         <Scene />

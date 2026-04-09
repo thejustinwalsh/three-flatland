@@ -33,25 +33,21 @@ const TILE_SCALE = 2
 // TWEAKPANE
 // ============================================
 
-const { pane, fpsGraph } = createPane()
+const { pane, stats: globalStats } = createPane()
 
-// Simulation params — tweakable at runtime
+// Stats monitors — updated each frame
+const knightStats = { knights: 0, batches: 0 }
+const statsFolder = pane.addFolder({ title: 'Knights', expanded: false })
+statsFolder.addBinding(knightStats, 'knights', { readonly: true, format: (v: number) => v.toFixed(0) })
+statsFolder.addBinding(knightStats, 'batches', { readonly: true, format: (v: number) => v.toFixed(0) })
+
+// Simulation params — tweakable at runtime (at bottom, collapsed)
 const sim = { speedMin: 30, speedMax: 200, hitRadius: 8, knightScale: 64 }
-const simFolder = pane.addFolder({ title: 'Simulation' })
+const simFolder = pane.addFolder({ title: 'Simulation', expanded: false })
 simFolder.addBinding(sim, 'speedMin', { min: 10, max: 100, step: 5, label: 'speed min' })
 simFolder.addBinding(sim, 'speedMax', { min: 100, max: 300, step: 10, label: 'speed max' })
 simFolder.addBinding(sim, 'hitRadius', { min: 2, max: 20, step: 1, label: 'hit radius' })
 simFolder.addBinding(sim, 'knightScale', { min: 32, max: 128, step: 8, label: 'scale' })
-
-// Stats monitors — updated each frame
-const stats = { knights: 0, batches: 0, drawCalls: 0 }
-const statsFolder = pane.addFolder({ title: 'Stats' })
-statsFolder.addBinding(stats, 'knights', { readonly: true })
-statsFolder.addBinding(stats, 'batches', { readonly: true })
-statsFolder.addBinding(stats, 'drawCalls', { readonly: true, label: 'draws' })
-
-// Refresh monitors periodically (they don't auto-update)
-setInterval(() => pane.refresh(), 500)
 
 // ============================================
 // TYPES
@@ -369,7 +365,7 @@ async function main() {
     const dt = deltaMs / 1000
 
     // FPS graph
-    fpsGraph?.begin()
+    globalStats.begin()
 
     // Derive cell size from current hitRadius
     const cellSize = sim.hitRadius * 4
@@ -445,17 +441,14 @@ async function main() {
     }
 
     // Render — systems run automatically in updateMatrixWorld
-    const callsBefore = renderer.info.render.calls
     renderer.render(scene, camera)
-    const drawCalls = renderer.info.render.calls - callsBefore
 
     // Update stats monitors
     const s = spriteGroup.stats
-    stats.knights = knights.length
-    stats.batches = s.batchCount
-    stats.drawCalls = drawCalls
-
-    fpsGraph?.end()
+    knightStats.knights = knights.length
+    knightStats.batches = s.batchCount
+    globalStats.update({ drawCalls: renderer.info.render.drawCalls, triangles: renderer.info.render.triangles })
+    globalStats.end()
   }
   animate()
 }

@@ -21,7 +21,7 @@ import {
 import { gaussianBlur } from 'three/addons/tsl/display/GaussianBlurNode.js'
 import { Color, DoubleSide, Fog, type Mesh, type MeshBasicMaterial } from 'three'
 import { MeshStandardNodeMaterial } from 'three/webgpu'
-import { usePane, usePaneFolder, usePaneInput } from '@three-flatland/tweakpane/react'
+import { usePane } from '@three-flatland/tweakpane/react'
 
 extend({ SkiaRect, SkiaCircle, SkiaLine, SkiaPathNode, SkiaTextNode, SkiaGroup })
 
@@ -423,40 +423,21 @@ function SkiaDemo() {
   const overlayRef = useRef<SkiaCanvasInstance>(null)
 
   // ── TweakPane debug controls ──
-  const { pane, fpsGraph } = usePane()
+  const { pane, stats } = usePane()
+  const gl = useThree((s) => s.gl)
 
-  const camFolder = usePaneFolder(pane, 'Camera')
-  const [dampingFactor] = usePaneInput(camFolder, 'dampingFactor', 0.05, { min: 0.01, max: 0.2, step: 0.01, label: 'damping' })
-  const [minDistance] = usePaneInput(camFolder, 'minDistance', 2, { min: 1, max: 5, step: 0.5, label: 'min dist' })
-  const [maxDistance] = usePaneInput(camFolder, 'maxDistance', 10, { min: 5, max: 20, step: 1, label: 'max dist' })
-
-  // Canvas folder with readonly monitors
-  const canvasParams = useRef({ textureWidth: TEX_W, textureHeight: TEX_H })
-  const canvasBindingsRef = useRef<{ dispose(): void }[]>([])
-
-  useEffect(() => {
-    if (!pane) return
-    const folder = pane.addFolder({ title: 'Canvas' })
-    const b1 = folder.addBinding(canvasParams.current, 'textureWidth', { readonly: true, label: 'tex width' })
-    const b2 = folder.addBinding(canvasParams.current, 'textureHeight', { readonly: true, label: 'tex height' })
-    canvasBindingsRef.current = [b1, b2]
-    return () => {
-      folder.dispose()
-      canvasBindingsRef.current = []
-    }
-  }, [pane])
-
-  // FPS graph: begin/end
-  const fpsRef = useRef(fpsGraph)
-  fpsRef.current = fpsGraph
+  // Stats: begin/end
+  const statsRef = useRef(stats)
+  statsRef.current = stats
 
   useFrame(() => {
-    fpsRef.current?.begin()
-  }, -Infinity)
+    statsRef.current.begin()
+  }, { priority: -Infinity })
 
   useFrame(() => {
-    fpsRef.current?.end()
-  }, Infinity)
+    statsRef.current.update({ drawCalls: (gl.info.render as any).drawCalls as number, triangles: (gl.info.render as any).triangles as number })
+    statsRef.current.end()
+  }, { priority: Infinity })
 
   // Render overlay after Three.js render
   useFrame(() => {
@@ -468,7 +449,7 @@ function SkiaDemo() {
   return <>
     <ambientLight color={0x404060} intensity={0.5} />
     <directionalLight color={0xffffff} intensity={0.8} position={[2, 4, 3]} />
-    <Controls dampingFactor={dampingFactor} minDistance={minDistance} maxDistance={maxDistance} />
+    <Controls dampingFactor={0.05} minDistance={2} maxDistance={10} />
     <Panels />
     <ReflectiveGround />
 

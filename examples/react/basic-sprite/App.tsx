@@ -1,4 +1,4 @@
-import { Canvas, extend, useFrame, useLoader } from '@react-three/fiber/webgpu'
+import { Canvas, extend, useFrame, useLoader, useThree } from '@react-three/fiber/webgpu'
 import { useRef, useState, useCallback } from 'react'
 import { Color } from 'three'
 import { Sprite2D, TextureLoader } from 'three-flatland/react'
@@ -89,7 +89,8 @@ function InteractiveSprite({
 }
 
 function Scene() {
-  const { pane, fpsGraph } = usePane()
+  const { pane, stats } = usePane()
+  const gl = useThree((s) => s.gl)
 
   const spriteFolder = usePaneFolder(pane, 'Sprite')
   const [baseScale] = usePaneInput(spriteFolder, 'baseScale', 30, { min: 10, max: 60 })
@@ -103,16 +104,17 @@ function Scene() {
   const colorFolder = usePaneFolder(pane, 'Color')
   const [hoverTint] = usePaneInput(colorFolder, 'hoverTint', '#99d9ef')
 
-  const fpsRef = useRef(fpsGraph)
-  fpsRef.current = fpsGraph
+  const statsRef = useRef(stats)
+  statsRef.current = stats
 
   useFrame(() => {
-    fpsRef.current?.begin()
-  }, -Infinity)
+    statsRef.current.begin()
+  }, { priority: -Infinity })
 
   useFrame(() => {
-    fpsRef.current?.end()
-  }, Infinity)
+    statsRef.current.update({ drawCalls: (gl.info.render as any).drawCalls as number, triangles: (gl.info.render as any).triangles as number })
+    statsRef.current.end()
+  }, { priority: Infinity })
 
   return (
     <>
@@ -133,7 +135,7 @@ export default function App() {
   return (
     <Canvas
       orthographic
-      camera={{ zoom: 5, position: [0, 0, 100] }}
+      camera={{ zoom: 1.5, position: [0, 0, 100] }}
       renderer={{ antialias: true }}
     >
       <Scene />

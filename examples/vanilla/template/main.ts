@@ -36,7 +36,7 @@ async function main() {
   scene.add(sprite)
 
   // Tweakpane UI
-  const { pane, fpsGraph } = createPane()
+  const { pane, stats } = createPane()
   const params = { tint: '#ffffff' }
   pane.addBinding(params, 'tint', {
     label: 'tint',
@@ -59,9 +59,10 @@ async function main() {
   // Render loop
   function animate() {
     requestAnimationFrame(animate)
-    fpsGraph?.begin()
+    stats.begin()
     renderer.render(scene, camera)
-    fpsGraph?.end()
+    stats.update({ drawCalls: renderer.info.render.drawCalls, triangles: renderer.info.render.triangles })
+    stats.end()
   }
 
   animate()

@@ -215,9 +215,9 @@ interface KnightmarkSceneProps {
   speedMax: number
   hitRadius: number
   knightScale: number
-  statsRef: React.RefObject<{ knights: number; batches: number; drawCalls: number }>
-  fpsBegin: () => void
-  fpsEnd: () => void
+  statsRef: React.RefObject<{ knights: number; batches: number }>
+  statsBegin: () => void
+  statsEnd: (gl: any) => void
 }
 
 function KnightmarkScene({
@@ -227,11 +227,12 @@ function KnightmarkScene({
   hitRadius,
   knightScale,
   statsRef,
-  fpsBegin,
-  fpsEnd,
+  statsBegin,
+  statsEnd,
 }: KnightmarkSceneProps) {
   const { size } = useThree()
   const camera = useThree((s) => s.camera) as OrthoCamera
+  const gl = useThree((s) => s.gl)
 
   // Load assets (presets automatically apply NearestFilter)
   const knightSheet = useLoader(SpriteSheetLoader, import.meta.env.BASE_URL + 'sprites/knight.json')
@@ -351,7 +352,7 @@ function KnightmarkScene({
     const sim = simRef.current
     const margin = sim.knightScale / 2
 
-    fpsBegin()
+    statsBegin()
 
     // Update spatial hash cell size from current hitRadius
     spatialHash.cellSize = sim.hitRadius * 4
@@ -428,10 +429,9 @@ function KnightmarkScene({
       const s = spriteGroupRef.current.stats
       statsRef.current.knights = knights.length
       statsRef.current.batches = s.batchCount
-      statsRef.current.drawCalls = s.drawCalls
     }
 
-    fpsEnd()
+    statsEnd(gl)
   })
 
   return (
@@ -455,39 +455,39 @@ export default function App() {
   const addKnightsRef = useRef<(() => void) | null>(null)
 
   // Tweakpane
-  const { pane, fpsGraph } = usePane()
+  const { pane, stats } = usePane()
 
-  // Simulation folder
+  // Knights monitors (first)
+  const statsRef = useRef({ knights: 0, batches: 0 })
+  const statsFolder = usePaneFolder(pane, 'Knights')
+
+  // Simulation folder (at bottom, collapsed)
   const simFolder = usePaneFolder(pane, 'Simulation')
   const [speedMin] = usePaneInput(simFolder, 'speedMin', 30, { min: 10, max: 100, step: 5, label: 'speed min' })
   const [speedMax] = usePaneInput(simFolder, 'speedMax', 200, { min: 100, max: 300, step: 10, label: 'speed max' })
   const [hitRadius] = usePaneInput(simFolder, 'hitRadius', 8, { min: 2, max: 20, step: 1, label: 'hit radius' })
   const [knightScale] = usePaneInput(simFolder, 'knightScale', 64, { min: 32, max: 128, step: 8, label: 'scale' })
-
-  // Stats monitors
-  const statsRef = useRef({ knights: 0, batches: 0, drawCalls: 0 })
-  const statsFolder = usePaneFolder(pane, 'Stats')
   useEffect(() => {
     if (!statsFolder) return
-    const bKnights = statsFolder.addBinding(statsRef.current, 'knights', { readonly: true })
-    const bBatches = statsFolder.addBinding(statsRef.current, 'batches', { readonly: true })
-    const bDraws = statsFolder.addBinding(statsRef.current, 'drawCalls', { readonly: true, label: 'draws' })
+    const bKnights = statsFolder.addBinding(statsRef.current, 'knights', { readonly: true, format: (v: number) => v.toFixed(0) })
+    const bBatches = statsFolder.addBinding(statsRef.current, 'batches', { readonly: true, format: (v: number) => v.toFixed(0) })
     const interval = setInterval(() => {
       bKnights.refresh()
       bBatches.refresh()
-      bDraws.refresh()
     }, 500)
     return () => {
       clearInterval(interval)
       bKnights.dispose()
       bBatches.dispose()
-      bDraws.dispose()
     }
   }, [statsFolder])
 
-  // FPS graph callbacks
-  const fpsBegin = useCallback(() => fpsGraph?.begin(), [fpsGraph])
-  const fpsEnd = useCallback(() => fpsGraph?.end(), [fpsGraph])
+  // Stats callbacks
+  const statsBeginCb = useCallback(() => stats.begin(), [stats])
+  const statsEndCb = useCallback((gl: any) => {
+    stats.update({ drawCalls: (gl.info.render as any).drawCalls as number, triangles: (gl.info.render as any).triangles as number })
+    stats.end()
+  }, [stats])
 
   // Keyboard: Space to add knights
   useEffect(() => {
@@ -518,8 +518,8 @@ export default function App() {
             hitRadius={hitRadius}
             knightScale={knightScale}
             statsRef={statsRef}
-            fpsBegin={fpsBegin}
-            fpsEnd={fpsEnd}
+            statsBegin={statsBeginCb}
+            statsEnd={statsEndCb}
           />
         </Suspense>
       </Canvas>

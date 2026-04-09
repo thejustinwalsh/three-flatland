@@ -1,5 +1,5 @@
-import { Suspense, useMemo, useRef, useEffect, useCallback } from 'react'
-import { Canvas, useFrame, useThree, useLoader } from '@react-three/fiber/webgpu'
+import { Suspense, useState, useMemo, useRef, useEffect } from 'react'
+import { Canvas, extend, useFrame, useThree, useLoader } from '@react-three/fiber/webgpu'
 import {
   texture as sampleTexture,
   uv,
@@ -31,7 +31,9 @@ import {
   dissolvePixelated,
   tint,
 } from '@three-flatland/nodes'
-import { usePane, usePaneInput } from '@three-flatland/tweakpane/react'
+import { usePane, usePaneFolder } from '@three-flatland/tweakpane/react'
+
+extend({ AnimatedSprite2D })
 
 // ========================================
 // Types
@@ -348,67 +350,62 @@ function EffectSprite({ effect }: EffectSpriteProps) {
 // Scene component (Tweakpane lives here, inside Canvas)
 // ========================================
 
+const effectNames: EffectType[] = ['normal', 'damage', 'dissolve', 'powerup', 'petrify', 'select', 'shadow', 'pixelate']
+const effectLabels = ['Normal', 'Damage', 'Dissolve', 'Rainbow', 'Stone', 'Outline', 'Shadow', 'Pixelate']
+
 function Scene() {
-  const { pane, fpsGraph } = usePane()
-
-  const [effect, setEffect] = usePaneInput<string>(pane, 'effect', 'normal', {
-    options: {
-      Normal: 'normal',
-      Damage: 'damage',
-      Dissolve: 'dissolve',
-      Rainbow: 'powerup',
-      Stone: 'petrify',
-      Outline: 'select',
-      Shadow: 'shadow',
-      Pixelate: 'pixelate',
-    },
-  })
-
-  // Draw calls monitor
+  const { pane, stats } = usePane()
+  const effectFolder = usePaneFolder(pane, 'Effects', { expanded: true })
   const gl = useThree((s) => s.gl)
-  const drawCallsParams = useRef({ drawCalls: 0 })
-  const drawBindingRef = useRef<{ refresh(): void; dispose(): void } | null>(null)
 
-  useEffect(() => {
-    if (!pane) return
-    const binding = pane.addBinding(drawCallsParams.current, 'drawCalls', {
-      readonly: true,
-      label: 'draws',
-    })
-    drawBindingRef.current = binding as unknown as { refresh(): void; dispose(): void }
-    return () => {
-      binding.dispose()
-      drawBindingRef.current = null
-    }
-  }, [pane])
+  const [effect, setEffect] = useState('normal')
+  const gridRef = useRef<any>(null)
 
-  // Keyboard controls
+  // 3×3 radiogrid for effect selection
   useEffect(() => {
-    const effects: EffectType[] = ['normal', 'damage', 'dissolve', 'powerup', 'petrify', 'select', 'shadow', 'pixelate']
+    if (!effectFolder) return
+    const grid = (effectFolder.addBlade({
+      view: 'radiogrid',
+      groupName: 'effect',
+      size: [3, 3],
+      cells: (x: number, y: number) => {
+        const i = y * 3 + x
+        if (i >= effectNames.length) return { title: '', value: '' }
+        return { title: effectLabels[i]!, value: effectNames[i]! }
+      },
+      value: 'normal',
+    } as any) as any)
+    gridRef.current = grid
+    grid.on('change', (ev: any) => { if (ev.value) setEffect(ev.value) })
+    return () => { grid.dispose(); gridRef.current = null }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [effectFolder])
+
+  // Keyboard controls (1-8 select effect)
+  useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const idx = parseInt(e.key) - 1
-      if (idx >= 0 && idx < effects.length) {
-        setEffect(effects[idx]!)
+      if (idx >= 0 && idx < effectNames.length) {
+        if (gridRef.current) gridRef.current.value.rawValue = effectNames[idx]!
+        setEffect(effectNames[idx]!)
       }
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [setEffect])
+  }, [])
 
-  // FPS graph begin/end
-  const fpsRef = useRef(fpsGraph)
-  fpsRef.current = fpsGraph
-
-  useFrame(() => {
-    fpsRef.current?.begin()
-  }, -Infinity)
+  // Stats begin/end
+  const statsRef = useRef(stats)
+  statsRef.current = stats
 
   useFrame(() => {
-    fpsRef.current?.end()
-    // Update draw calls
-    drawCallsParams.current.drawCalls = (gl.info.render as any).drawCalls as number
-    drawBindingRef.current?.refresh()
-  }, Infinity)
+    statsRef.current.begin()
+  }, { priority: -Infinity })
+
+  useFrame(() => {
+    statsRef.current.update({ drawCalls: (gl.info.render as any).drawCalls as number, triangles: (gl.info.render as any).triangles as number })
+    statsRef.current.end()
+  }, { priority: Infinity })
 
   return (
     <>
@@ -455,7 +452,7 @@ export default function App() {
       {/* Three.js Canvas */}
       <Canvas
         orthographic
-        camera={{ zoom: 5, position: [0, 0, 100] }}
+        camera={{ zoom: 3, position: [0, 0, 100] }}
         renderer={{ antialias: false }}
       >
         <Scene />
