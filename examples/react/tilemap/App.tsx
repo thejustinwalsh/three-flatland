@@ -392,6 +392,29 @@ function TilemapScene({ mapData, chunkSize, showGround, showWalls, showDecor, on
 }
 
 
+function OrthoCamera({ viewSize }: { viewSize: number }) {
+  const set = useThree((s) => s.set)
+  const size = useThree((s) => s.size)
+  const aspect = size.width / size.height
+  return (
+    <orthographicCamera
+      ref={(cam) => {
+        if (!cam) return
+        cam.left = (-viewSize * aspect) / 2
+        cam.right = (viewSize * aspect) / 2
+        cam.top = viewSize / 2
+        cam.bottom = -viewSize / 2
+        cam.updateProjectionMatrix()
+        set({ camera: cam })
+      }}
+      position={[0, 0, 100]}
+      near={0.1}
+      far={1000}
+      manual
+    />
+  )
+}
+
 function CameraController({ mapSize, zoomRef, zoomSlider, setZoomSlider }: {
   mapSize: number
   zoomRef: React.RefObject<number>
@@ -667,11 +690,10 @@ export default function App() {
 
   return (
     <Canvas
-      orthographic
-      camera={{ zoom: 1, position: [0, 0, 100] }}
       renderer={{ antialias: false }}
       style={{ touchAction: 'none' }}
     >
+      <OrthoCamera viewSize={800} />
       <color attach="background" args={['#0a0a12']} />
       <StatsTracker stats={stats} />
       <CameraController mapSize={mapSize} zoomRef={zoomRef} zoomSlider={zoomSlider} setZoomSlider={setZoomSlider} />

@@ -7,6 +7,7 @@ import StarlightHead from '@astrojs/starlight/components/Head.astro';
 import { ClientRouter } from 'astro:transitions';
 
 const isDev = import.meta.env.DEV;
+const baseUrl = import.meta.env.BASE_URL;
 ---
 
 <StarlightHead {...Astro.props}><slot /></StarlightHead>
@@ -47,9 +48,45 @@ const isDev = import.meta.env.DEV;
 </script>
 
 <!-- Reinitialize Pagefind search after view transitions -->
-<script is:inline>
+<script is:inline set:html={`
 (function() {
+  const BASE_URL = ${JSON.stringify(baseUrl)};
   let pagefindInitialized = false;
+  let pagefindLoading = null;
+
+  function loadPagefindUI() {
+    if (window.PagefindUI) return Promise.resolve();
+    if (pagefindLoading) return pagefindLoading;
+    pagefindLoading = new Promise((resolve, reject) => {
+      const script = document.createElement('script');
+      script.src = BASE_URL + 'pagefind/pagefind-ui.js';
+      script.onload = () => resolve();
+      script.onerror = () => reject(new Error('Failed to load pagefind-ui.js'));
+      document.head.appendChild(script);
+    });
+    return pagefindLoading;
+  }
+
+  function injectSuggestions() {
+    const container = document.getElementById('starlight__search');
+    if (!container || container.querySelector('.search-suggestions')) return;
+    const div = document.createElement('div');
+    div.className = 'search-suggestions';
+    div.innerHTML = \`
+      <div class="search-suggestions__label">Popular pages</div>
+      <ul class="search-suggestions__list">
+        <li><a href="\${BASE_URL}getting-started/quick-start/">Quick Start</a></li>
+        <li><a href="\${BASE_URL}guides/sprites/">Sprites</a></li>
+        <li><a href="\${BASE_URL}guides/animation/">Animation</a></li>
+        <li><a href="\${BASE_URL}guides/batch-rendering/">Batch Rendering</a></li>
+        <li><a href="\${BASE_URL}guides/tsl-nodes/">TSL Nodes</a></li>
+        <li><a href="\${BASE_URL}guides/pass-effects/">Pass Effects</a></li>
+        <li><a href="\${BASE_URL}examples/basic-sprite/">Basic Sprite Example</a></li>
+        <li><a href="\${BASE_URL}llm-prompts/">LLM Prompts</a></li>
+      </ul>
+    \`;
+    container.appendChild(div);
+  }
 
   async function initSearch() {
     const searchContainer = document.getElementById('starlight__search');
@@ -57,30 +94,32 @@ const isDev = import.meta.env.DEV;
 
     // Only reinitialize if container is empty (after view transition swap)
     if (searchContainer.children.length === 0 && pagefindInitialized) {
-      // Dynamically import PagefindUI from the bundled location
-      const base = document.querySelector('base')?.href || '/';
-      const { PagefindUI } = await import(base + 'pagefind/pagefind-ui.js');
+      await loadPagefindUI();
 
-      new PagefindUI({
+      new window.PagefindUI({
         ranking: { pageLength: 0.1, termFrequency: 0.1, termSaturation: 2, termSimilarity: 9 },
         element: '#starlight__search',
-        baseUrl: base,
-        bundlePath: base.replace(/\/$/, '') + '/pagefind/',
+        baseUrl: BASE_URL,
+        bundlePath: BASE_URL.replace(/\\/$/, '') + '/pagefind/',
         showImages: false,
         showSubResults: true,
       });
+      injectSuggestions();
     }
   }
 
-  // Mark as initialized after first DOMContentLoaded
+  // First load: don't reinit search (Starlight does that). Just inject the
+  // suggestions list once Starlight's PagefindUI is mounted.
   document.addEventListener('DOMContentLoaded', () => {
     pagefindInitialized = true;
+    // Wait a tick for Starlight's idle-callback PagefindUI init
+    setTimeout(injectSuggestions, 100);
   });
 
-  // Reinitialize after view transitions
-  document.addEventListener('astro:page-load', initSearch);
+  // After view transitions, the container is empty — reinit and inject
+  document.addEventListener('astro:after-swap', initSearch);
 })();
-</script>
+`}></script>
 
 {/* In dev mode, re-dispatch astro:page-load after HMR to fix ClientRouter state */}
 {isDev && (

@@ -5,10 +5,10 @@ description: Full-screen post-processing with composable pass effects.
 
 import { Tabs, TabItem } from '@astrojs/starlight/components';
 
-Pass Effects are full-screen post-processing effects applied after sprite rendering. They transform the entire scene output — CRT curvature, scanlines, color quantization, VHS distortion, and more. Pass effects require a [Flatland](../guides/flatland) instance.
+Pass Effects are full-screen post-processing effects applied after sprite rendering. They transform the entire scene output — CRT curvature, scanlines, color quantization, VHS distortion, and more. Pass effects require a [Flatland](../flatland/) instance.
 
 :::note[Pass Effects vs Material Effects]
-**Material Effects** (`createMaterialEffect`) run per-sprite in the fragment shader — damage flash, outlines, dissolve. See the [TSL Nodes guide](../guides/tsl-nodes).
+**Material Effects** (`createMaterialEffect`) run per-sprite in the fragment shader — damage flash, outlines, dissolve. See the [TSL Nodes guide](../tsl-nodes/).
 
 **Pass Effects** (`createPassEffect`) run on the full rendered scene as post-processing — CRT monitors, LCD grids, chromatic aberration.
 :::
@@ -251,5 +251,5 @@ All post-processing nodes are exported from `@three-flatland/nodes`:
 
 ## Next Steps
 
-- [Pass Effects Example](../examples/pass-effects) — Interactive demo with 5 presets
-- [TSL Nodes Guide](../guides/tsl-nodes) — Per-sprite material effects and low-level TSL usage
+- [Pass Effects Example](../../examples/pass-effects/) — Interactive demo with 5 presets
+- [TSL Nodes Guide](../tsl-nodes/) — Per-sprite material effects and low-level TSL usage

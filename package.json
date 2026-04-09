@@ -10,7 +10,7 @@
   },
   "scripts": {
     "build": "turbo run build",
-    "dev": "echo '\\n  ➜  Dev server: http://localhost:5173\\n' && turbo run dev --filter=docs --filter='example-*'",
+    "dev": "echo '\\n  ➜  Dev server: http://localhost:5173\\n' && turbo run dev --filter=docs --filter=examples",
     "typecheck": "turbo run typecheck",
     "lint": "eslint packages/*/src minis/*/src",
     "lint:fix": "eslint packages/*/src minis/*/src --fix",

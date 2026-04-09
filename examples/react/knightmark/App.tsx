@@ -1,6 +1,5 @@
 import { Suspense, useRef, useMemo, useCallback, useEffect } from 'react'
 import { Canvas, extend, useFrame, useThree, useLoader } from '@react-three/fiber/webgpu'
-import type { OrthographicCamera as OrthoCamera } from 'three'
 import {
   AnimatedSprite2D,
   SpriteGroup,
@@ -17,6 +16,29 @@ import {
 import { usePane, usePaneFolder, usePaneInput } from '@three-flatland/tweakpane/react'
 
 extend({ SpriteGroup, TileMap2D })
+
+function OrthoCamera({ viewSize }: { viewSize: number }) {
+  const set = useThree((s) => s.set)
+  const size = useThree((s) => s.size)
+  const aspect = size.width / size.height
+  return (
+    <orthographicCamera
+      ref={(cam) => {
+        if (!cam) return
+        cam.left = (-viewSize * aspect) / 2
+        cam.right = (viewSize * aspect) / 2
+        cam.top = viewSize / 2
+        cam.bottom = -viewSize / 2
+        cam.updateProjectionMatrix()
+        set({ camera: cam })
+      }}
+      position={[0, 0, 100]}
+      near={0.1}
+      far={1000}
+      manual
+    />
+  )
+}
 
 // ============================================
 // CONSTANTS
@@ -231,12 +253,11 @@ function KnightmarkScene({
   statsEnd,
 }: KnightmarkSceneProps) {
   const { size } = useThree()
-  const camera = useThree((s) => s.camera) as OrthoCamera
   const gl = useThree((s) => s.gl)
 
   // Load assets (presets automatically apply NearestFilter)
-  const knightSheet = useLoader(SpriteSheetLoader, import.meta.env.BASE_URL + 'sprites/knight.json')
-  const tilesetTex = useLoader(TextureLoader, import.meta.env.BASE_URL + 'sprites/Dungeon_Tileset.png')
+  const knightSheet = useLoader(SpriteSheetLoader, './sprites/knight.json')
+  const tilesetTex = useLoader(TextureLoader, './sprites/Dungeon_Tileset.png')
 
   const spriteGroupRef = useRef<SpriteGroup>(null)
   const knightsRef = useRef<Knight[]>([])
@@ -247,18 +268,13 @@ function KnightmarkScene({
   const simRef = useRef({ speedMin, speedMax, hitRadius, knightScale })
   simRef.current = { speedMin, speedMax, hitRadius, knightScale }
 
-  // Update camera frustum and bounds when size changes
+  // Track world bounds for spawn/cleanup logic (camera frustum is set by <OrthoCamera>)
   useEffect(() => {
     const aspect = size.width / size.height
     const halfW = (VIEW_SIZE * aspect) / 2
     const halfH = VIEW_SIZE / 2
-    camera.left = -halfW
-    camera.right = halfW
-    camera.top = halfH
-    camera.bottom = -halfH
-    camera.updateProjectionMatrix()
     boundsRef.current = { left: -halfW, right: halfW, top: halfH, bottom: -halfH }
-  }, [size, camera])
+  }, [size])
 
   // Build floor tilemap data
   const { mapData, mapWorldW, mapWorldH } = useMemo(() => {
@@ -505,10 +521,9 @@ export default function App() {
     <>
       <Canvas
         dpr={1}
-        orthographic
-        camera={{ position: [0, 0, 100], near: 0.1, far: 1000 }}
         renderer={{ antialias: false }}
       >
+        <OrthoCamera viewSize={VIEW_SIZE} />
         <color attach="background" args={['#1a1a2e']} />
         <Suspense fallback={null}>
           <KnightmarkScene

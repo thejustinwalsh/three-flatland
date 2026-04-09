@@ -211,9 +211,9 @@ function ManualPostProcessing() {
 
 ---
 
-## Key Differences from Vanilla
+## Key Differences from Three.js
 
-| Vanilla Three.js | React Three Fiber |
+| Three.js | React Three Fiber |
 |-----------------|-------------------|
 | `new Flatland({...})` | `<flatland viewSize={300}>` |
 | `flatland.add(sprite)` | `<sprite2D>` as child of `<flatland>` |

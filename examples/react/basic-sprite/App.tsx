@@ -1,11 +1,39 @@
 import { Canvas, extend, useFrame, useLoader, useThree } from '@react-three/fiber/webgpu'
 import { useRef, useState, useCallback } from 'react'
-import { Color } from 'three'
+import { Color, type OrthographicCamera as ThreeOrthographicCamera } from 'three'
 import { Sprite2D, TextureLoader } from 'three-flatland/react'
 import { usePane, usePaneFolder, usePaneInput } from '@three-flatland/tweakpane/react'
 
 // Register Sprite2D with R3F (tree-shakeable)
 extend({ Sprite2D })
+
+/**
+ * Declarative orthographic camera matching three.js frustumSize math.
+ * Ref callback fires synchronously during reconciliation; re-fires on
+ * resize because the parent re-renders with a new size.
+ */
+function OrthoCamera({ viewSize }: { viewSize: number }) {
+  const set = useThree((s) => s.set)
+  const size = useThree((s) => s.size)
+  const aspect = size.width / size.height
+  return (
+    <orthographicCamera
+      ref={(cam: ThreeOrthographicCamera | null) => {
+        if (!cam) return
+        cam.left = (-viewSize * aspect) / 2
+        cam.right = (viewSize * aspect) / 2
+        cam.top = viewSize / 2
+        cam.bottom = -viewSize / 2
+        ;(cam as any).manual = true
+        cam.updateProjectionMatrix()
+        set({ camera: cam })
+      }}
+      position={[0, 0, 100]}
+      near={0.1}
+      far={1000}
+    />
+  )
+}
 
 // Lerp helper
 function lerp(current: number, target: number, speed: number, delta: number): number {
@@ -32,7 +60,7 @@ function InteractiveSprite({
   const [isPressed, setIsPressed] = useState(false)
 
   // Load the flatland logo (presets are automatically applied)
-  const texture = useLoader(TextureLoader, import.meta.env.BASE_URL + 'icon.svg')
+  const texture = useLoader(TextureLoader, './icon.svg')
 
   // Tint colors (only hover effect)
   const normalTint = useRef(new Color(1, 1, 1))
@@ -93,9 +121,9 @@ function Scene() {
   const gl = useThree((s) => s.gl)
 
   const spriteFolder = usePaneFolder(pane, 'Sprite')
-  const [baseScale] = usePaneInput(spriteFolder, 'baseScale', 30, { min: 10, max: 60 })
-  const [hoverScale] = usePaneInput(spriteFolder, 'hoverScale', 33, { min: 10, max: 60 })
-  const [pressedScale] = usePaneInput(spriteFolder, 'pressedScale', 27, { min: 10, max: 60 })
+  const [baseScale] = usePaneInput(spriteFolder, 'baseScale', 150, { min: 10, max: 300 })
+  const [hoverScale] = usePaneInput(spriteFolder, 'hoverScale', 165, { min: 10, max: 300 })
+  const [pressedScale] = usePaneInput(spriteFolder, 'pressedScale', 135, { min: 10, max: 300 })
 
   const animFolder = usePaneFolder(pane, 'Animation')
   const [rotationSpeed] = usePaneInput(animFolder, 'rotationSpeed', 0.2, { min: 0, max: 2, step: 0.1 })
@@ -133,11 +161,8 @@ function Scene() {
 
 export default function App() {
   return (
-    <Canvas
-      orthographic
-      camera={{ zoom: 1.5, position: [0, 0, 100] }}
-      renderer={{ antialias: true }}
-    >
+    <Canvas renderer={{ antialias: true }}>
+      <OrthoCamera viewSize={400} />
       <Scene />
     </Canvas>
   )

@@ -11,6 +11,7 @@
   "updateInternalDependencies": "patch",
   "ignore": [
     "docs",
+    "examples",
     "@three-flatland/mini-breakout",
     "example-react-animation",
     "example-react-basic-sprite",
@@ -20,15 +21,15 @@
     "example-react-template",
     "example-react-tilemap",
     "example-react-tsl-nodes",
-    "example-vanilla-animation",
-    "example-vanilla-basic-sprite",
-    "example-vanilla-batch-demo",
-    "example-vanilla-knightmark",
-    "example-vanilla-pass-effects",
-    "example-vanilla-template",
-    "example-vanilla-tilemap",
-    "example-vanilla-tsl-nodes",
+    "example-three-animation",
+    "example-three-basic-sprite",
+    "example-three-batch-demo",
+    "example-three-knightmark",
+    "example-three-pass-effects",
+    "example-three-template",
+    "example-three-tilemap",
+    "example-three-tsl-nodes",
     "example-react-skia",
-    "example-vanilla-skia"
+    "example-three-skia"
   ]
 }

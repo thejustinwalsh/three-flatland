@@ -24,6 +24,9 @@ catalogs:
     '@types/three':
       specifier: ^0.183.1
       version: 0.183.1
+    '@vitejs/plugin-react':
+      specifier: ^4.3.4
+      version: 4.7.0
     koota:
       specifier: ^0.6.5
       version: 0.6.5
@@ -199,21 +202,79 @@ importers:
       example-react-tsl-nodes:
         specifier: workspace:*
         version: link:../examples/react/tsl-nodes
-      example-vanilla-animation:
+      example-three-animation:
         specifier: workspace:*
-        version: link:../examples/vanilla/animation
-      example-vanilla-basic-sprite:
+        version: link:../examples/three/animation
+      example-three-basic-sprite:
         specifier: workspace:*
-        version: link:../examples/vanilla/basic-sprite
-      example-vanilla-batch-demo:
+        version: link:../examples/three/basic-sprite
+      example-three-batch-demo:
         specifier: workspace:*
-        version: link:../examples/vanilla/batch-demo
-      example-vanilla-tilemap:
+        version: link:../examples/three/batch-demo
+      example-three-tilemap:
         specifier: workspace:*
-        version: link:../examples/vanilla/tilemap
-      example-vanilla-tsl-nodes:
+        version: link:../examples/three/tilemap
+      example-three-tsl-nodes:
         specifier: workspace:*
-        version: link:../examples/vanilla/tsl-nodes
+        version: link:../examples/three/tsl-nodes
+      typescript:
+        specifier: 'catalog:'
+        version: 5.9.3
+      vite:
+        specifier: 'catalog:'
+        version: 6.4.1(@types/node@22.19.7)(jiti@1.21.7)(terser@5.46.1)(tsx@4.21.0)(yaml@2.8.2)
+
+  examples:
+    dependencies:
+      '@react-three/fiber':
+        specifier: 'catalog:'
+        version: 10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.183.1)
+      '@three-flatland/nodes':
+        specifier: workspace:*
+        version: link:../packages/nodes
+      '@three-flatland/presets':
+        specifier: workspace:*
+        version: link:../packages/presets
+      '@three-flatland/skia':
+        specifier: workspace:*
+        version: link:../packages/skia
+      '@three-flatland/tweakpane':
+        specifier: workspace:*
+        version: link:../packages/tweakpane
+      '@tweakpane/core':
+        specifier: 'catalog:'
+        version: 2.0.5
+      '@tweakpane/plugin-essentials':
+        specifier: 'catalog:'
+        version: 0.2.1(tweakpane@4.0.5)
+      react:
+        specifier: 'catalog:'
+        version: 19.2.3
+      react-dom:
+        specifier: 'catalog:'
+        version: 19.2.3(react@19.2.3)
+      three:
+        specifier: 'catalog:'
+        version: 0.183.1
+      three-flatland:
+        specifier: workspace:*
+        version: link:../packages/three-flatland
+      tweakpane:
+        specifier: 'catalog:'
+        version: 4.0.5
+    devDependencies:
+      '@types/react':
+        specifier: 'catalog:'
+        version: 19.2.9
+      '@types/react-dom':
+        specifier: 'catalog:'
+        version: 19.2.3(@types/react@19.2.9)
+      '@types/three':
+        specifier: 'catalog:'
+        version: 0.183.1
+      '@vitejs/plugin-react':
+        specifier: 'catalog:'
+        version: 4.7.0(vite@6.4.1(@types/node@22.19.7)(jiti@1.21.7)(terser@5.46.1)(tsx@4.21.0)(yaml@2.8.2))
       typescript:
         specifier: 'catalog:'
         version: 5.9.3
@@ -641,7 +702,7 @@ importers:
         specifier: ^6.0.7
         version: 6.4.1(@types/node@22.19.7)(jiti@1.21.7)(terser@5.46.1)(tsx@4.21.0)(yaml@2.8.2)
 
-  examples/vanilla/animation:
+  examples/three/animation:
     dependencies:
       '@three-flatland/tweakpane':
         specifier: workspace:*
@@ -669,7 +730,7 @@ importers:
         specifier: ^6.0.7
         version: 6.4.1(@types/node@22.19.7)(jiti@1.21.7)(terser@5.46.1)(tsx@4.21.0)(yaml@2.8.2)
 
-  examples/vanilla/basic-sprite:
+  examples/three/basic-sprite:
     dependencies:
       '@three-flatland/tweakpane':
         specifier: workspace:*
@@ -697,7 +758,7 @@ importers:
         specifier: ^6.0.7
         version: 6.4.1(@types/node@22.19.7)(jiti@1.21.7)(terser@5.46.1)(tsx@4.21.0)(yaml@2.8.2)
 
-  examples/vanilla/batch-demo:
+  examples/three/batch-demo:
     dependencies:
       '@three-flatland/tweakpane':
         specifier: workspace:*
@@ -725,7 +786,7 @@ importers:
         specifier: ^6.0.7
         version: 6.4.1(@types/node@22.19.7)(jiti@1.21.7)(terser@5.46.1)(tsx@4.21.0)(yaml@2.8.2)
 
-  examples/vanilla/knightmark:
+  examples/three/knightmark:
     dependencies:
       '@three-flatland/tweakpane':
         specifier: workspace:*
@@ -753,7 +814,7 @@ importers:
         specifier: ^6.0.7
         version: 6.4.1(@types/node@22.19.7)(jiti@1.21.7)(terser@5.46.1)(tsx@4.21.0)(yaml@2.8.2)
 
-  examples/vanilla/pass-effects:
+  examples/three/pass-effects:
     dependencies:
       '@three-flatland/nodes':
         specifier: workspace:*
@@ -784,7 +845,7 @@ importers:
         specifier: ^6.0.7
         version: 6.4.1(@types/node@22.19.7)(jiti@1.21.7)(terser@5.46.1)(tsx@4.21.0)(yaml@2.8.2)
 
-  examples/vanilla/skia:
+  examples/three/skia:
     dependencies:
       '@three-flatland/skia':
         specifier: workspace:*
@@ -812,7 +873,7 @@ importers:
         specifier: ^6.0.7
         version: 6.4.1(@types/node@22.19.7)(jiti@1.21.7)(terser@5.46.1)(tsx@4.21.0)(yaml@2.8.2)
 
-  examples/vanilla/template:
+  examples/three/template:
     dependencies:
       '@three-flatland/tweakpane':
         specifier: workspace:*
@@ -840,7 +901,7 @@ importers:
         specifier: ^6.0.7
         version: 6.4.1(@types/node@22.19.7)(jiti@1.21.7)(terser@5.46.1)(tsx@4.21.0)(yaml@2.8.2)
 
-  examples/vanilla/tilemap:
+  examples/three/tilemap:
     dependencies:
       '@three-flatland/tweakpane':
         specifier: workspace:*
@@ -868,7 +929,7 @@ importers:
         specifier: ^6.0.7
         version: 6.4.1(@types/node@22.19.7)(jiti@1.21.7)(terser@5.46.1)(tsx@4.21.0)(yaml@2.8.2)
 
-  examples/vanilla/tsl-nodes:
+  examples/three/tsl-nodes:
     dependencies:
       '@three-flatland/nodes':
         specifier: workspace:*
@@ -2384,36 +2445,42 @@ packages:
     engines: {node: '>=20.0.0'}
     cpu: [arm64]
     os: [linux]
+    libc: [glibc]
 
   '@oxc-parser/binding-linux-arm64-musl@0.76.0':
     resolution: {integrity: sha512-wi9zQPMDHrBuRuT7Iurfidc9qlZh7cKa5vfYzOWNBCaqJdgxmNOFzvYen02wVUxSWGKhpiPHxrPX0jdRyJ8Npg==}
     engines: {node: '>=20.0.0'}
     cpu: [arm64]
     os: [linux]
+    libc: [musl]
 
   '@oxc-parser/binding-linux-riscv64-gnu@0.76.0':
     resolution: {integrity: sha512-0tqqu1pqPee2lLGY8vtYlX1L415fFn89e0a3yp4q5N9f03j1rRs0R31qesTm3bt/UK8HYjECZ+56FCVPs2MEMQ==}
     engines: {node: '>=20.0.0'}
     cpu: [riscv64]
     os: [linux]
+    libc: [glibc]
 
   '@oxc-parser/binding-linux-s390x-gnu@0.76.0':
     resolution: {integrity: sha512-y36Hh1a5TA+oIGtlc8lT7N9vdHXBlhBetQJW0p457KbiVQ7jF7AZkaPWhESkjHWAsTVKD2OjCa9ZqfaqhSI0FQ==}
     engines: {node: '>=20.0.0'}
     cpu: [s390x]
     os: [linux]
+    libc: [glibc]
 
   '@oxc-parser/binding-linux-x64-gnu@0.76.0':
     resolution: {integrity: sha512-7/acaG9htovp3gp/J0kHgbItQTuHctl+rbqPPqZ9DRBYTz8iV8kv3QN8t8Or8i/hOmOjfZp9McDoSU1duoR4/A==}
     engines: {node: '>=20.0.0'}
     cpu: [x64]
     os: [linux]
+    libc: [glibc]
 
   '@oxc-parser/binding-linux-x64-musl@0.76.0':
     resolution: {integrity: sha512-AxFt0reY6Q2rfudABmMTFGR8tFFr58NlH2rRBQgcj+F+iEwgJ+jMwAPhXd2y1I2zaI8GspuahedUYQinqxWqjA==}
     engines: {node: '>=20.0.0'}
     cpu: [x64]
     os: [linux]
+    libc: [musl]
 
   '@oxc-parser/binding-wasm32-wasi@0.76.0':
     resolution: {integrity: sha512-wHdkHdhf6AWBoO8vs5cpoR6zEFY1rB+fXWtq6j/xb9j/lu1evlujRVMkh8IM/M/pOUIrNkna3nzST/mRImiveQ==}

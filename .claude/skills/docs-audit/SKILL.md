@@ -31,7 +31,7 @@ docs/src/content/docs/examples/*.mdx
 
 **Source of truth (working examples):**
 ```
-examples/vanilla/*/main.ts
+examples/three/*/main.ts
 examples/react/*/App.tsx
 packages/core/src/**/*.ts (for API verification)
 ```
@@ -40,7 +40,7 @@ packages/core/src/**/*.ts (for API verification)
 
 | Doc File | Reference Example | What to Check |
 |----------|-------------------|---------------|
-| `quick-start.mdx` | `examples/vanilla/basic-sprite/main.ts`, `examples/react/basic-sprite/App.tsx` | Basic usage pattern |
+| `quick-start.mdx` | `examples/three/basic-sprite/main.ts`, `examples/react/basic-sprite/App.tsx` | Basic usage pattern |
 | `guides/sprites.mdx` | `examples/*/basic-sprite/*` | Sprite2D API |
 | `guides/animation.mdx` | `examples/*/animation/*` | AnimatedSprite2D API |
 | `guides/batch-rendering.mdx` | `examples/*/batch-demo/*` | SpriteGroup, Sprite2DMaterial API |
@@ -116,7 +116,7 @@ Instead, fix JSDoc comments in the source code and regenerate.
 pnpm dev
 
 # Run specific example
-pnpm --filter=example-vanilla-basic-sprite dev
+pnpm --filter=example-three-basic-sprite dev
 
 # Check what's exported from core
 grep -r "^export" packages/core/src/index.ts packages/core/src/*/index.ts

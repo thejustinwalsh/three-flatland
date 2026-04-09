@@ -1,10 +1,14 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 
 interface Props {
-  type: 'vanilla' | 'react';
+  type: 'three' | 'react';
   name: string;
   height?: number;
+  /** Match the example's clear color so the placeholder blends in */
+  bg?: string;
 }
+
+const EXAMPLES_PORT = import.meta.env.VITE_EXAMPLES_PORT;
 
 const buttonStyle: React.CSSProperties = {
   padding: '5px 6px',
@@ -18,12 +22,16 @@ const buttonStyle: React.CSSProperties = {
   lineHeight: 1,
 };
 
-function ExamplePreview({ type, name, height = 600 }: Props) {
+function ExamplePreview({ type, name, height = 600, bg = '#1a1a2e' }: Props) {
   const isDev = import.meta.env.DEV;
   const base = (import.meta.env.BASE_URL || '/').replace(/\/?$/, '/');
 
+  // In dev, point directly at the examples Vite server instead of the
+  // microfrontend proxy. Going through the proxy causes Vite's absolute
+  // dep URLs (/node_modules/.vite/deps/...) to be routed to the wrong app.
+  // Port comes from microfrontends.json via Vite define.
   const src = isDev
-    ? `/${type}/${name}/`
+    ? `http://localhost:${EXAMPLES_PORT}/${type}/${name}/`
     : `${base}examples/${type}/${name}/`;
 
   return (
@@ -34,7 +42,9 @@ function ExamplePreview({ type, name, height = 600 }: Props) {
         height,
         border: 'none',
         borderRadius: '8px',
-        background: '#1a1a2e',
+        background: bg,
+        colorScheme: 'dark',
+        viewTransitionName: 'example-preview',
       }}
       title={`${type}/${name} preview`}
       allow="cross-origin-isolated"
@@ -44,19 +54,27 @@ function ExamplePreview({ type, name, height = 600 }: Props) {
 
 const STORAGE_KEY = 'flatland-example-type';
 
-function getStoredType(): 'vanilla' | 'react' | null {
-  try { return localStorage.getItem(STORAGE_KEY) as 'vanilla' | 'react' | null; } catch { return null; }
+function getStoredType(): 'three' | 'react' | null {
+  try {
+    const v = localStorage.getItem(STORAGE_KEY);
+    return v === 'three' || v === 'react' ? v : null;
+  } catch { return null; }
 }
 
 function DevExamplePreview(props: Props) {
-  const [activeType, setActiveType] = useState<'vanilla' | 'react'>(
-    () => getStoredType() ?? props.type,
-  );
+  // Render a placeholder until we've read localStorage on the client.
+  // Avoids the SSR-then-flash where the iframe loads the prop type first
+  // and then re-navigates to the saved type.
+  const [activeType, setActiveType] = useState<'three' | 'react' | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setActiveType(getStoredType() ?? props.type);
+  }, [props.type]);
 
   const toggle = () =>
     setActiveType((t) => {
-      const next = t === 'vanilla' ? 'react' : 'vanilla';
+      const next = t === 'three' ? 'react' : 'three';
       try { localStorage.setItem(STORAGE_KEY, next); } catch {}
       return next;
     });
@@ -69,15 +87,29 @@ function DevExamplePreview(props: Props) {
     }
   }, []);
 
-  const hover = (e: React.MouseEvent) => {
+  const hover = (e: React.MouseEvent<HTMLButtonElement>) => {
     e.currentTarget.style.color = 'rgba(240, 237, 216, 0.9)';
   };
-  const unhover = (e: React.MouseEvent) => {
+  const unhover = (e: React.MouseEvent<HTMLButtonElement>) => {
     e.currentTarget.style.color = buttonStyle.color as string;
   };
 
+  if (activeType === null) {
+    return (
+      <div
+        style={{
+          width: '100%',
+          height: props.height ?? 600,
+          background: props.bg ?? '#1a1a2e',
+          borderRadius: '8px',
+          viewTransitionName: 'example-preview',
+        }}
+      />
+    );
+  }
+
   return (
-    <div ref={containerRef} style={{ position: 'relative' }}>
+    <div ref={containerRef} style={{ position: 'relative', viewTransitionName: 'example-preview-wrapper' }}>
       <ExamplePreview {...props} type={activeType} />
       <div
         style={{
@@ -96,7 +128,7 @@ function DevExamplePreview(props: Props) {
           onMouseLeave={unhover}
           style={buttonStyle}
         >
-          ⇄ {activeType === 'vanilla' ? 'three' : 'react'}
+          ⇄ {activeType}
         </button>
         <button
           className="preview-btn"

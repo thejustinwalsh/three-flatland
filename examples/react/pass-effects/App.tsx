@@ -163,17 +163,17 @@ function createPreset(name: PresetName): ActivePreset {
 // ─── Sprite Layout ──────────────────────────────────────────────────────────
 
 const SPRITE_LAYOUT = [
-  { x: 0, y: 0, scale: 24, tint: '#ffffff' },
-  { x: -20, y: 12, scale: 12, tint: '#ff6b9d' },
-  { x: 20, y: 12, scale: 12, tint: '#47cca9' },
-  { x: -20, y: -12, scale: 12, tint: '#ffd166' },
-  { x: 20, y: -12, scale: 12, tint: '#6b9dff' },
-  { x: 0, y: 24, scale: 8, tint: '#bb86fc' },
-  { x: 0, y: -24, scale: 8, tint: '#ff8a65' },
+  { x: 0, y: 0, scale: 120, tint: '#ffffff' },
+  { x: -100, y: 60, scale: 60, tint: '#ff6b9d' },
+  { x: 100, y: 60, scale: 60, tint: '#47cca9' },
+  { x: -100, y: -60, scale: 60, tint: '#ffd166' },
+  { x: 100, y: -60, scale: 60, tint: '#6b9dff' },
+  { x: 0, y: 120, scale: 40, tint: '#bb86fc' },
+  { x: 0, y: -120, scale: 40, tint: '#ff8a65' },
 ] as const
 
 function SpriteScene() {
-  const texture = useLoader(TextureLoader, import.meta.env.BASE_URL + 'icon.svg')
+  const texture = useLoader(TextureLoader, './icon.svg')
   const spritesRef = useRef<Sprite2D[]>([])
   const timeRef = useRef(0)
 
@@ -245,7 +245,7 @@ function FlatlandScene({ preset }: { preset: PresetName }) {
   }, { phase: 'render' })
 
   return (
-    <flatland ref={flatlandRef} viewSize={80} clearColor={0x1a1a2e}>
+    <flatland ref={flatlandRef} viewSize={400} clearColor={0x1a1a2e}>
       <SpriteScene />
     </flatland>
   )

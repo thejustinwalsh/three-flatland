@@ -23,7 +23,7 @@ High-performance 2D sprites, tilemaps, and effects for Three.js — built for We
 ## Installation
 
 ```bash
-# Core library (vanilla Three.js)
+# Core library (Three.js)
 npm install three-flatland@alpha
 
 # For React Three Fiber
@@ -35,7 +35,7 @@ npm install @three-flatland/nodes@alpha
 
 ## Quick Start
 
-### Vanilla Three.js
+### Three.js
 
 ```typescript
 import { WebGPURenderer } from 'three/webgpu'

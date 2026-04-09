@@ -6,14 +6,14 @@ description: Testing StackBlitz embed.
 import StackBlitzEmbed from '../../../components/StackBlitzEmbed';
 import { loadExample } from '../../../utils/loadExample';
 
-export const vanillaFiles = loadExample('vanilla', 'basic-sprite');
+export const threeFiles = loadExample('three', 'basic-sprite');
 
 ## Test Embed
 
 <StackBlitzEmbed
   client:load
-  title="Test - Vanilla"
-  files={vanillaFiles}
+  title="Test - Three.js"
+  files={threeFiles}
   openFile="main.ts"
   height={600}
 />

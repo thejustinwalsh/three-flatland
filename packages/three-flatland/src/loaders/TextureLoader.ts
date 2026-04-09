@@ -25,7 +25,7 @@ export interface TextureLoaderOptions {
  *
  * @example
  * ```typescript
- * // Vanilla usage - static API
+ * // Three.js usage - static API
  * const texture = await TextureLoader.load('/sprites/player.png')
  *
  * // R3F usage - works with useLoader
@@ -99,11 +99,11 @@ export class TextureLoader extends Loader<Texture> {
   }
 
   // ==========================================
-  // Static API for vanilla usage
+  // Static API for Three.js usage
   // ==========================================
 
   /**
-   * Load a texture from a URL (static method for vanilla usage).
+   * Load a texture from a URL (static method for Three.js usage).
    * Results are cached by URL and resolved options.
    */
   static load(url: string, options?: TextureLoaderOptions): Promise<Texture> {

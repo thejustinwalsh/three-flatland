@@ -15,9 +15,13 @@
   --sl-font-mono: var(--font-mono);
 }
 
-/* Smooth scrolling */
+/* Smooth scrolling + dark background to prevent white flash on reload */
 html {
   scroll-behavior: smooth;
+  background: var(--sl-color-bg, #1a1a2e);
+}
+body {
+  background: var(--sl-color-bg, #1a1a2e);
 }
 
 /* Better focus outlines for accessibility */

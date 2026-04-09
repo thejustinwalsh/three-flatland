@@ -35,6 +35,29 @@ import { usePane, usePaneFolder } from '@three-flatland/tweakpane/react'
 
 extend({ AnimatedSprite2D })
 
+function OrthoCamera({ viewSize }: { viewSize: number }) {
+  const set = useThree((s) => s.set)
+  const size = useThree((s) => s.size)
+  const aspect = size.width / size.height
+  return (
+    <orthographicCamera
+      ref={(cam) => {
+        if (!cam) return
+        cam.left = (-viewSize * aspect) / 2
+        cam.right = (viewSize * aspect) / 2
+        cam.top = viewSize / 2
+        cam.bottom = -viewSize / 2
+        cam.updateProjectionMatrix()
+        set({ camera: cam })
+      }}
+      position={[0, 0, 100]}
+      near={0.1}
+      far={1000}
+      manual
+    />
+  )
+}
+
 // ========================================
 // Types
 // ========================================
@@ -450,11 +473,8 @@ export default function App() {
       </div>
 
       {/* Three.js Canvas */}
-      <Canvas
-        orthographic
-        camera={{ zoom: 3, position: [0, 0, 100] }}
-        renderer={{ antialias: false }}
-      >
+      <Canvas renderer={{ antialias: false }}>
+        <OrthoCamera viewSize={200} />
         <Scene />
       </Canvas>
     </>

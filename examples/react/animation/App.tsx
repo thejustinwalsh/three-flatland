@@ -1,5 +1,6 @@
-import { Suspense, useState, useRef, useCallback, useEffect } from 'react'
+import { Suspense, useState, useRef, useCallback, useEffect, useLayoutEffect } from 'react'
 import { Canvas, extend, useFrame, useThree, useLoader } from '@react-three/fiber/webgpu'
+import type { OrthographicCamera as ThreeOrthographicCamera } from 'three'
 import {
   AnimatedSprite2D,
   SpriteSheetLoader,
@@ -10,6 +11,20 @@ import { usePane, usePaneFolder } from '@three-flatland/tweakpane/react'
 
 // Register AnimatedSprite2D with R3F (tree-shakeable)
 extend({ AnimatedSprite2D })
+
+function OrthoCamera({ viewSize }: { viewSize: number }) {
+  const camera = useThree((s) => s.camera) as ThreeOrthographicCamera
+  const size = useThree((s) => s.size)
+  useLayoutEffect(() => {
+    const aspect = size.width / size.height
+    camera.left = (-viewSize * aspect) / 2
+    camera.right = (viewSize * aspect) / 2
+    camera.top = viewSize / 2
+    camera.bottom = -viewSize / 2
+    camera.updateProjectionMatrix()
+  }, [camera, size, viewSize])
+  return null
+}
 
 // Animation definitions
 const animationSet: AnimationSetDefinition = {
@@ -203,9 +218,15 @@ export default function App() {
 
       <Canvas
         orthographic
-        camera={{ zoom: 3, position: [0, 0, 100] }}
+        camera={{
+          position: [0, 0, 100],
+          near: 0.1,
+          far: 1000,
+          left: -1, right: 1, top: 1, bottom: -1,
+        }}
         renderer={{ antialias: false }}
       >
+        <OrthoCamera viewSize={200} />
         <Scene />
       </Canvas>
     </>

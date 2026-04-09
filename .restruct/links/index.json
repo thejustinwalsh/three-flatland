@@ -1,0 +1,34 @@
+{
+  "version": 1,
+  "generated": "2026-04-09T06:01:58.552379Z",
+  "files": [
+    {
+      "source": "CLAUDE.md",
+      "path": "/Users/tjw/Developer/three-flatland/CLAUDE.md",
+      "hash": "a6a5aabb",
+      "keywords": [
+        "examples",
+        "skills",
+        "minis",
+        "architecture",
+        "built",
+        "cjs",
+        "claude",
+        "claude.md",
+        "coding",
+        "commands",
+        "development",
+        "eslint",
+        "maintenance",
+        "mini-games",
+        "packages"
+      ],
+      "categories": [
+        "context"
+      ],
+      "summary": "CLAUDE.md",
+      "rule_count": 13
+    }
+  ],
+  "total_rules": 13
+}

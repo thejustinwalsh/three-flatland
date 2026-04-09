@@ -16,11 +16,45 @@ import type { StatsHandle } from '@three-flatland/tweakpane/react'
 // Extend R3F with our custom classes
 extend({ SpriteGroup, Sprite2D, Sprite2DMaterial })
 
+// Letterboxed orthographic camera that fits viewWidth × viewHeight in the canvas
+function FitOrthoCamera({ viewWidth, viewHeight }: { viewWidth: number; viewHeight: number }) {
+  const set = useThree((s) => s.set)
+  const size = useThree((s) => s.size)
+  const aspect = size.width / size.height
+  const viewAspect = viewWidth / viewHeight
+  return (
+    <orthographicCamera
+      ref={(cam) => {
+        if (!cam) return
+        if (aspect > viewAspect) {
+          // Window wider — fit to height
+          cam.top = viewHeight / 2
+          cam.bottom = -viewHeight / 2
+          cam.left = (-viewHeight * aspect) / 2
+          cam.right = (viewHeight * aspect) / 2
+        } else {
+          // Window taller — fit to width
+          cam.left = -viewWidth / 2
+          cam.right = viewWidth / 2
+          cam.top = viewWidth / aspect / 2
+          cam.bottom = -viewWidth / aspect / 2
+        }
+        cam.updateProjectionMatrix()
+        set({ camera: cam })
+      }}
+      position={[0, 0, 100]}
+      near={0.1}
+      far={1000}
+      manual
+    />
+  )
+}
+
 // Configuration
 const TILE_SIZE = 64
 const GRID_WIDTH = 12
 const GRID_HEIGHT = 8
-const ASSET_BASE = import.meta.env.BASE_URL + 'assets/'
+const ASSET_BASE = './assets/'
 
 // Grass tilemap UV size (32x32 tiles in 640x256 texture)
 const TILE_UV_SIZE = { width: 32 / 640, height: 32 / 256 }
@@ -465,20 +499,8 @@ export default function App() {
 
   return (
     <>
-      <Canvas
-        orthographic
-        camera={{
-          position: [0, 0, 100],
-          zoom: 1,
-          near: 0.1,
-          far: 1000,
-          left: -viewWidth / 2,
-          right: viewWidth / 2,
-          top: viewHeight / 2,
-          bottom: -viewHeight / 2,
-        }}
-        style={{ background: '#87ceeb' }}
-      >
+      <Canvas style={{ background: '#87ceeb' }}>
+        <FitOrthoCamera viewWidth={viewWidth} viewHeight={viewHeight} />
         <VillageScene
           entities={entities}
           selectedBuilding={selectedBuilding}

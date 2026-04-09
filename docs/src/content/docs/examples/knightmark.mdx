@@ -9,19 +9,19 @@ import StackBlitzEmbed from '../../../components/StackBlitzEmbed';
 import ExampleTabs from '../../../components/ExampleTabs.astro';
 import { loadExample } from '../../../utils/loadExample';
 
-export const vanillaFiles = loadExample('vanilla', 'knightmark');
+export const threeFiles = loadExample('three', 'knightmark');
 export const reactFiles = loadExample('react', 'knightmark');
 
 <ExampleTabs>
 <Tabs>
   <TabItem label="Preview" icon="rocket">
-    <ExamplePreview client:load type="vanilla" name="knightmark" />
+    <ExamplePreview client:load type="three" name="knightmark" />
   </TabItem>
   <TabItem label="Three.js" icon="seti:javascript">
     <StackBlitzEmbed
       client:load
       title="Knightmark - Three.js"
-      files={vanillaFiles}
+      files={threeFiles}
       openFile="main.ts"
       height={600}
     />
@@ -90,5 +90,5 @@ spatialHash.forEachNeighbor(knight, (other) => {
 
 ## Next Steps
 
-- [Batch Rendering](../examples/batch-demo) - Learn more about batching
-- [Animation](../examples/animation) - Sprite animation basics
+- [Batch Rendering](../batch-demo/) - Learn more about batching
+- [Animation](../animation/) - Sprite animation basics

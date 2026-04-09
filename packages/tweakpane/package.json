@@ -1,7 +1,7 @@
 {
   "name": "@three-flatland/tweakpane",
   "version": "0.1.0-alpha.1",
-  "description": "Tweakpane v4 integration for three-flatland examples — theme, vanilla helpers, and React hooks",
+  "description": "Tweakpane v4 integration for three-flatland examples — theme, helpers, and React hooks",
   "type": "module",
   "exports": {
     ".": {

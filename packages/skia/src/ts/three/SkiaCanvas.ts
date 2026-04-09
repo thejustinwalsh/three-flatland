@@ -127,7 +127,7 @@ export interface SkiaCanvasOptions {
  * Skia context loading starts as soon as `renderer` is set.
  *
  * ```ts
- * // Vanilla — eager
+ * // Three.js — eager
  * const canvas = new SkiaCanvas({ renderer, width: 512, height: 512 })
  * await canvas.ready
  *

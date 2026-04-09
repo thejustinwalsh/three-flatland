@@ -9,19 +9,19 @@ import StackBlitzEmbed from '../../../components/StackBlitzEmbed';
 import ExampleTabs from '../../../components/ExampleTabs.astro';
 import { loadExample } from '../../../utils/loadExample';
 
-export const vanillaFiles = loadExample('vanilla', 'pass-effects');
+export const threeFiles = loadExample('three', 'pass-effects');
 export const reactFiles = loadExample('react', 'pass-effects');
 
 <ExampleTabs>
 <Tabs>
   <TabItem label="Preview" icon="rocket">
-    <ExamplePreview client:load type="vanilla" name="pass-effects" />
+    <ExamplePreview client:load type="three" name="pass-effects" />
   </TabItem>
   <TabItem label="Three.js" icon="seti:javascript">
     <StackBlitzEmbed
       client:load
       title="Pass Effects - Three.js"
-      files={vanillaFiles}
+      files={threeFiles}
       openFile="main.ts"
       height={600}
     />
@@ -162,5 +162,5 @@ Instantiate a pass and add it to Flatland. Passes chain in order — each receiv
 
 ## Next Steps
 
-- [Pass Effects Guide](../guides/pass-effects) — Full API reference and pass chain architecture
-- [TSL Nodes](../examples/tsl-nodes) — Per-sprite material effects
+- [Pass Effects Guide](../../guides/pass-effects/) — Full API reference and pass chain architecture
+- [TSL Nodes](../tsl-nodes/) — Per-sprite material effects
