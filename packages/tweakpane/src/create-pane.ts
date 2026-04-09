@@ -75,13 +75,13 @@ export function wireSceneStats(
   // (`renderer, scene, camera, renderTarget` — see `Renderer.js:1683`).
   // We chain to the previous value using a permissive callable type.
   type AnyCallable = (this: unknown, ...args: unknown[]) => void
-  const prev = scene.onAfterRender as unknown as AnyCallable
+  const prev = (scene.onAfterRender as unknown as AnyCallable).bind(scene)
   let gpuDetected = false
   let firstGpuLogged = false
   let debugLogged = false
 
   const hook: AnyCallable = function (this: unknown, ...args) {
-    prev.call(this, ...args)
+    prev(...args)
     const renderer = args[0] as StatsRenderer | undefined
     if (!renderer) return
 
@@ -123,26 +123,24 @@ export function wireSceneStats(
     // `pendingResolve`, so firing one microtask per render frame is safe
     // even when post-processing fans out into multiple render passes.
     if (gpuCapable) {
-      Promise.resolve().then(() => {
-        const fn = renderer.resolveTimestampsAsync
-        if (typeof fn !== 'function') return
-        Promise.resolve(fn.call(renderer, 'render'))
-          .then(() => {
-            const ts = renderer.info?.render?.timestamp
-            if (typeof ts !== 'number') return
-            stats.gpuTime(ts)
-            if (debug && ts > 0 && !firstGpuLogged) {
-              firstGpuLogged = true
-              console.info(
-                '[flatland stats] first GPU time sample:',
-                ts.toFixed(3),
-                'ms',
-              )
-            }
-          })
-          .catch(() => {
-            /* swallow — transient readback failures are fine */
-          })
+      const fn = renderer.resolveTimestampsAsync?.bind(renderer)
+      if (!fn) return
+      void Promise.resolve().then(() => {
+        return Promise.resolve(fn('render')).then(() => {
+          const ts = renderer.info?.render?.timestamp
+          if (typeof ts !== 'number') return
+          stats.gpuTime(ts)
+          if (debug && ts > 0 && !firstGpuLogged) {
+            firstGpuLogged = true
+            console.info(
+              '[flatland stats] first GPU time sample:',
+              ts.toFixed(3),
+              'ms',
+            )
+          }
+        })
+      }).catch(() => {
+        /* swallow — transient readback failures are fine */
       })
     }
   }
@@ -291,7 +289,7 @@ export function createPane(options: CreatePaneOptions = {}): PaneBundle {
   // CSS that backs the `tp-flatland-dimmable` / `tp-flatland-pinned`
   // classes and the `tp-flatland-pin` element.
   pane.element.classList.add('tp-flatland-dimmable')
-  const header = pane.element.querySelector('.tp-rotv_b') as HTMLElement | null
+  const header = pane.element.querySelector<HTMLElement>('.tp-rotv_b')
   if (header) {
     const pin = document.createElement('span')
     pin.className = 'tp-flatland-pin'

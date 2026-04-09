@@ -26,6 +26,10 @@ import { wireSceneStats, type StatsHandle } from '../create-pane.js'
 export function useStatsMonitor(stats: StatsHandle): void {
   const scene = useThree((s) => s.scene)
   const statsRef = useRef(stats)
+  // Ref mutation during render — keeps the captured callback in sync with
+  // the latest `stats` without re-running the effect. Incompatible with
+  // React Compiler, but required here to avoid stale closures in useFrame.
+  // eslint-disable-next-line react-hooks/refs
   statsRef.current = stats
 
   useEffect(() => {

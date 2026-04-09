@@ -38,7 +38,10 @@ export function usePaneInput<T>(
   const bindingRef = useRef<{ refresh(): void; dispose(): void } | null>(null)
   const listenerRef = useRef<((ev: { value: unknown }) => void) | null>(null)
 
-  // Create binding synchronously on first render
+  // Create binding synchronously on first render so controls appear on
+  // first paint with no pop-in. This deliberately accesses/mutates refs
+  // during render — incompatible with React Compiler, but the alternative
+  // (useEffect-only setup) causes visible flicker in strict mode.
   if (parent && bindingRef.current === null) {
     const { label, ...bindingOpts } = options
     paramsRef.current[key] = initialValue
@@ -88,6 +91,7 @@ export function usePaneInput<T>(
       }, 0)
       mountedRef.current = false
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const setValue = useCallback(

@@ -30,7 +30,6 @@ export function useFpsGraph(parent: PaneParent | null): FpsGraphHandle {
       graph.dispose()
       graphRef.current = null
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [parent])
 
   return {

@@ -42,5 +42,5 @@ export function usePane(options: CreatePaneOptions = {}): PaneBundle {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  return bundleRef.current!
+  return bundleRef.current
 }

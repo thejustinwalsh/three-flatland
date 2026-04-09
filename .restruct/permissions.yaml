@@ -1,0 +1,18 @@
+# Auto-approve common safe operations inside the project root.
+# Use /restruct:review-permissions-restruct later to expand this from historical decision data.
+
+allowed_paths:
+  - "."   # reads/writes inside the project root
+
+allowed_commands:
+  - "pnpm test"
+  - "pnpm lint"
+  - "pnpm typecheck"
+  - "pnpm build"
+  - "pnpm sync:pack"
+  - "pnpm sync:react"
+  - "pnpm exec tsc --noEmit"
+  - "pnpm exec vitest run"
+
+trusted_urls:
+  - "https://registry.npmjs.org/"

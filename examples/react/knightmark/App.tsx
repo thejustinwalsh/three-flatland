@@ -1,4 +1,5 @@
 import { Suspense, useRef, useMemo, useCallback, useEffect } from 'react'
+import type { OrthographicCamera } from 'three'
 import { Canvas, extend, useFrame, useThree, useLoader } from '@react-three/fiber/webgpu'
 import {
   AnimatedSprite2D,
@@ -24,7 +25,7 @@ function OrthoCamera({ viewSize }: { viewSize: number }) {
   const aspect = size.width / size.height
   return (
     <orthographicCamera
-      ref={(cam) => {
+      ref={(cam: OrthographicCamera | null) => {
         if (!cam) return
         cam.left = (-viewSize * aspect) / 2
         cam.right = (viewSize * aspect) / 2

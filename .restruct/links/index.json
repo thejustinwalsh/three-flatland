@@ -1,34 +1,65 @@
 {
   "version": 1,
-  "generated": "2026-04-09T06:01:58.552379Z",
+  "generated": "2026-04-09T23:07:58.487347Z",
   "files": [
     {
       "source": "CLAUDE.md",
       "path": "/Users/tjw/Developer/three-flatland/CLAUDE.md",
-      "hash": "a6a5aabb",
+      "hash": "8dd1c85f",
       "keywords": [
+        "three-flatland",
         "examples",
-        "skills",
-        "minis",
+        "react",
+        "r3f",
+        "three.js",
+        "pnpm",
         "architecture",
-        "built",
-        "cjs",
-        "claude",
-        "claude.md",
-        "coding",
-        "commands",
-        "development",
-        "eslint",
-        "maintenance",
-        "mini-games",
-        "packages"
+        "build",
+        "code",
+        "constraints",
+        "fiber",
+        "import",
+        "jsx",
+        "style",
+        "sync"
       ],
       "categories": [
-        "context"
+        "context",
+        "constraints",
+        "workflow",
+        "anti-patterns"
       ],
-      "summary": "CLAUDE.md",
+      "summary": "three-flatland",
+      "rule_count": 22
+    },
+    {
+      "source": "examples/react/CLAUDE.md",
+      "path": "/Users/tjw/Developer/three-flatland/examples/react/CLAUDE.md",
+      "hash": "11ae1f87",
+      "keywords": [
+        "useframe",
+        "example",
+        "canvas",
+        "stats",
+        "extend",
+        "monitoring",
+        "selectors",
+        "tweakpane",
+        "usethree",
+        "asset",
+        "controls",
+        "delta",
+        "file",
+        "imports",
+        "loading"
+      ],
+      "categories": [
+        "context",
+        "anti-patterns"
+      ],
+      "summary": "React Example Patterns",
       "rule_count": 13
     }
   ],
-  "total_rules": 13
+  "total_rules": 35
 }

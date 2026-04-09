@@ -1,6 +1,6 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react'
 import { Canvas, useFrame, useLoader, useThree, extend } from '@react-three/fiber/webgpu'
-import { Vector2, Raycaster, Plane, Vector3, type Texture } from 'three'
+import { Vector2, Raycaster, Plane, Vector3, type Texture, type OrthographicCamera } from 'three'
 import {
   Sprite2D,
   Sprite2DMaterial,
@@ -24,7 +24,7 @@ function FitOrthoCamera({ viewWidth, viewHeight }: { viewWidth: number; viewHeig
   const viewAspect = viewWidth / viewHeight
   return (
     <orthographicCamera
-      ref={(cam) => {
+      ref={(cam: OrthographicCamera | null) => {
         if (!cam) return
         if (aspect > viewAspect) {
           // Window wider — fit to height

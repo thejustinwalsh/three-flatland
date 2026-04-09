@@ -58,15 +58,18 @@ const MODE_UNITS: Record<Mode, string> = {
  * Add a cycling stats graph to a Tweakpane parent.
  * Matches the visual design of the built-in fpsgraph blade.
  */
+interface PerformanceMemory {
+  readonly usedJSHeapSize: number
+  readonly jsHeapSizeLimit: number
+}
+
 export function addStatsGraph(
   parent: Pane | FolderApi,
-  options: { rows?: number; label?: string } = {},
+  options: { rows?: number } = {},
 ): StatsGraphHandle {
-  const { rows = 2, label = 'stats' } = options
+  const { rows = 2 } = options
 
-  const perfMemory = (performance as any).memory as
-    | { usedJSHeapSize: number; jsHeapSizeLimit: number }
-    | undefined
+  const perfMemory = (performance as Performance & { memory?: PerformanceMemory }).memory
 
   // State
   let mode: Mode = 'fps'
@@ -75,11 +78,12 @@ export function addStatsGraph(
   let gpuEnabled = false
 
   // Buffers per mode
+  const makeBuffer = (): number[] => Array.from({ length: BUFFER_SIZE }, () => 0)
   const buffers: Record<Mode, number[]> = {
-    fps: new Array(BUFFER_SIZE).fill(0),
-    ms: new Array(BUFFER_SIZE).fill(0),
-    gpu: new Array(BUFFER_SIZE).fill(0),
-    mem: new Array(BUFFER_SIZE).fill(0),
+    fps: makeBuffer(),
+    ms: makeBuffer(),
+    gpu: makeBuffer(),
+    mem: makeBuffer(),
   }
   const bufferIdx: Record<Mode, number> = { fps: 0, ms: 0, gpu: 0, mem: 0 }
 
@@ -175,8 +179,8 @@ export function addStatsGraph(
   // Use addBlade to get a proper slot in the blade rack (maintains ordering).
   // Then replace the blade element's inner content with our custom graph.
 
-  const blade = parent.addBlade({ view: 'separator' }) as any
-  const bladeEl = blade.element as HTMLElement
+  const blade = parent.addBlade({ view: 'separator' })
+  const bladeEl = blade.element
 
   // Replace separator content with our graph layout
   bladeEl.innerHTML = ''

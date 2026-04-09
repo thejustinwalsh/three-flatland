@@ -5,6 +5,7 @@ import {
   RGBAFormat,
   NearestFilter,
   SRGBColorSpace,
+  type OrthographicCamera,
 } from 'three'
 import {
   TileMap2D,
@@ -398,7 +399,7 @@ function OrthoCamera({ viewSize }: { viewSize: number }) {
   const aspect = size.width / size.height
   return (
     <orthographicCamera
-      ref={(cam) => {
+      ref={(cam: OrthographicCamera | null) => {
         if (!cam) return
         cam.left = (-viewSize * aspect) / 2
         cam.right = (viewSize * aspect) / 2

@@ -25,8 +25,14 @@ import { Skia } from '../init'
  * ```
  */
 export function useSkiaContext(): SkiaContext {
-  // 1. Nearest React context (from parent <SkiaCanvas>)
+  // All hooks must be called unconditionally before any early returns
+  // (react-hooks/rules-of-hooks). All documented call sites of this hook
+  // live inside an R3F Canvas, so `useThree` is always safe to call —
+  // we just may not always need `gl` (cases 1–3 resolve without it).
   const nearest = useContext(SkiaReactContext)
+  const gl = useThree((s) => s.gl)
+
+  // 1. Nearest React context (from parent <SkiaCanvas>)
   if (nearest) return nearest
 
   // 2. Global singleton already initialized
@@ -40,6 +46,5 @@ export function useSkiaContext(): SkiaContext {
   }
 
   // 4. No init started — kick one off from the R3F renderer and suspend
-  const gl = useThree((s) => s.gl)
   return use(Skia.init(gl))
 }
