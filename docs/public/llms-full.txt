@@ -28,6 +28,7 @@ Three.js: `import { ... } from 'three-flatland'`
 React: `import { ... } from 'three-flatland/react'` (re-exports core + ThreeElements JSX types)
 Nodes: `import { ... } from '@three-flatland/nodes'` or per-category `'@three-flatland/nodes/color'`
 Skia: `import { Skia } from '@three-flatland/skia'`, scene nodes from `'@three-flatland/skia/three'`, R3F from `'@three-flatland/skia/react'`
+Tweakpane (examples only): `import { createPane, wireSceneStats } from '@three-flatland/tweakpane'`, React hooks from `'@three-flatland/tweakpane/react'`
 
 Always use `WebGPURenderer` from `'three/webgpu'`, never `WebGLRenderer`. R3F users import from `'@react-three/fiber/webgpu'`, not `'@react-three/fiber'`.
 
@@ -301,6 +302,48 @@ function MyOverlay() {
 ```
 
 For production, copy WASM with `npx skia-wasm public/skia` then pass `Skia.init(renderer, { wasmUrl: '/skia/skia-gl.wasm' })`. Vite dev mode is zero-config.
+
+---
+
+## Tweakpane helpers (`@three-flatland/tweakpane`)
+
+Examples use this workspace package (NOT part of the library API — optional dev dependency) for debug controls and performance stats. Wraps Tweakpane v4 with a Flatland theme, an auto-wired renderer stats row, FPS/MS graph, and GPU timestamp query support.
+
+**Core** (`@three-flatland/tweakpane`): `createPane(options)`, `wireSceneStats(scene, stats, options?)`, `addStatsGraph`, `applyTheme`, `FLATLAND_THEME`, `registerPlugins`, `EssentialsPlugin`. Types: `CreatePaneOptions`, `PaneBundle`, `StatsHandle`, `StatsUpdate`, `StatsGraphHandle`.
+
+**React** (`@three-flatland/tweakpane/react`): `usePane()`, `usePaneFolder(parent, title)`, `usePaneInput(parent, key, initial, options?)`, `usePaneButton(parent, title, onClick)`, `useFpsGraph(parent)`, `useStatsMonitor(stats)`. Types: `PaneParent`, `PaneInputOptions`, `FpsGraphHandle`, `CreatePaneOptions`, `PaneBundle`, `StatsHandle`.
+
+```typescript
+// Three.js — createPane({ scene }) returns { pane, stats }
+// stats row + FPS graph auto-wired; wireSceneStats hooks scene.onAfterRender
+// to capture renderer.info.render + memory and drain GPU timestamp pool.
+import { createPane } from '@three-flatland/tweakpane'
+const { pane, stats } = createPane({ scene })
+// pane.addFolder(...) — standard Tweakpane API
+// stats.begin() / stats.end() — frame timing; auto-populated if you pass scene
+```
+
+```tsx
+// R3F — hooks version. useStatsMonitor wires stats into the R3F frame loop
+// (priority: Infinity for begin, -Infinity for end) + calls wireSceneStats.
+import { usePane, usePaneFolder, usePaneInput, useStatsMonitor } from '@three-flatland/tweakpane/react'
+
+function Controls() {
+  const { pane, stats } = usePane()
+  const folder = usePaneFolder(pane, 'Settings')
+  const [speed] = usePaneInput(folder, 'speed', 1.0, { min: 0, max: 5, step: 0.1 })
+  useStatsMonitor(stats)
+  return null
+}
+```
+
+Requires `trackTimestamp: true` on `WebGPURenderer` for GPU frame time. WebGL backend auto-detects `EXT_disjoint_timer_query_webgl2` and falls back to CPU timing when unavailable.
+
+---
+
+## Showcases
+
+- [Breakout](https://thejustinwalsh.com/three-flatland/showcases/breakout/) — complete arcade game built on three-flatland + Koota ECS. StackBlitz embed + per-file source viewer.
 
 ---
 

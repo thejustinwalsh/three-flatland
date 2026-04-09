@@ -100,7 +100,7 @@ const flatland = new Flatland({
   postProcessing: false,  // Enable post-processing pipeline
   aspect: 1,              // Initial aspect ratio (use resize() to update)
   camera: null,           // Custom OrthographicCamera (null = internal)
-  renderTarget: null,     // WebGLRenderTarget (null = render to viewport)
+  renderTarget: null,     // RenderTarget (null = render to viewport)
 })
 ```
 
@@ -236,9 +236,9 @@ See the [Pass Effects guide](../pass-effects/) for creating custom effects and t
 Render Flatland output to a texture for use in 3D scenes:
 
 ```typescript
-import { WebGLRenderTarget } from 'three'
+import { RenderTarget } from 'three'
 
-const target = new WebGLRenderTarget(512, 512)
+const target = new RenderTarget(512, 512)
 const flatland = new Flatland({ renderTarget: target })
 
 // Use the texture on a 3D mesh

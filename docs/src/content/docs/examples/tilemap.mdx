@@ -40,54 +40,49 @@ export const reactFiles = loadExample('react', 'tilemap');
 
 ## Tilemap Setup
 
-Create a tilemap with a tileset texture:
+Load a map file and create a `TileMap2D`. Both `TiledLoader` and `LDtkLoader` return a `TileMapData` structure that `TileMap2D` consumes:
 
 ```typescript
-const tilemap = new Tilemap({
-  tileset: tilesetTexture,
-  tileWidth: 16,
-  tileHeight: 16,
-  mapWidth: 20,
-  mapHeight: 15,
+import { TileMap2D, TiledLoader } from 'three-flatland';
+
+const mapData = await TiledLoader.load('/maps/level1.json');
+
+const tilemap = new TileMap2D({
+  data: mapData,
+  chunkSize: 16, // Tiles per chunk (default: 16)
 });
 
-renderer2D.add(tilemap);
+scene.add(tilemap);
 ```
 
-## Tile Data
+This example procedurally generates its own `TileMapData` at runtime to show how to build a dungeon from scratch without a Tiled file — see `main.ts` for the BSP generator.
 
-Set the map data as a flat array of tile indices:
+## Layers
+
+Access individual layers by index to toggle visibility or read/write tiles:
 
 ```typescript
-const mapData = [
-  0, 1, 1, 1, 2,  // Row 0
-  3, 4, 4, 4, 5,  // Row 1
-  3, 4, 4, 4, 5,  // Row 2
-  6, 7, 7, 7, 8,  // Row 3
-];
+const groundLayer = tilemap.getLayerAt(0);
+const wallsLayer = tilemap.getLayerAt(1);
 
-tilemap.setData(mapData);
+// Toggle visibility
+groundLayer.visible = false;
+
+// Read/write tiles at a position
+const gid = groundLayer.getTileAt(x, y);
+wallsLayer.setTileAt(x, y, newGid);
 ```
 
-## Tile Indices
+## Animated Tiles
 
-Tiles are numbered left-to-right, top-to-bottom in the tileset image:
-
-```
-+---+---+---+---+
-| 0 | 1 | 2 | 3 |
-+---+---+---+---+
-| 4 | 5 | 6 | 7 |
-+---+---+---+---+
-```
-
-## Dynamic Updates
-
-Update individual tiles at runtime:
+Call `update(deltaMs)` each frame to advance tile animations defined in the source map:
 
 ```typescript
-tilemap.setTileAt(x, y, newTileIndex);
-tilemap.update();
+function animate() {
+  const deltaMs = /* time since last frame */;
+  tilemap.update(deltaMs);
+  renderer.render(scene, camera);
+}
 ```
 
 ## Next Steps

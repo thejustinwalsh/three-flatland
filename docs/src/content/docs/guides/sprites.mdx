@@ -68,13 +68,19 @@ The anchor point determines the sprite's origin for positioning and rotation. Va
 
 ### Size
 
-Sprite size is automatically determined from the texture dimensions but can be overridden:
+Sprite geometry is a unit plane — display size comes from `scale`. Set `scale.set(width, height, 1)` in pixels:
+
+```typescript
+const sprite = new Sprite2D({ texture: myTexture });
+sprite.scale.set(64, 64, 1);
+```
+
+To sample a sub-region of a texture atlas, pass a `frame` from a `SpriteSheet`:
 
 ```typescript
 const sprite = new Sprite2D({
-  texture: myTexture,
-  width: 64,
-  height: 64,
+  texture: sheet.texture,
+  frame: sheet.getFrame('player_idle_0'),
 });
 ```
 

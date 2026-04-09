@@ -40,31 +40,49 @@ export const reactFiles = loadExample('react', 'animation');
 
 ## AnimatedSprite2D
 
-The `AnimatedSprite2D` class extends `Sprite2D` with animation capabilities:
+The `AnimatedSprite2D` class extends `Sprite2D` with frame-based animation driven by a `SpriteSheet` and an `animationSet` of named animations:
 
 ```typescript
-const sprite = new AnimatedSprite2D({
-  texture: spritesheetTexture,
-  frameWidth: 32,
-  frameHeight: 32,
-  frameCount: 8,
-  fps: 12,
-});
+import { AnimatedSprite2D, SpriteSheetLoader } from 'three-flatland';
 
-sprite.play();
+const spriteSheet = await SpriteSheetLoader.load('/sprites/knight.json');
+
+const sprite = new AnimatedSprite2D({
+  spriteSheet,
+  animationSet: {
+    fps: 10, // Default fps for all animations
+    animations: {
+      idle: { frames: ['idle_0', 'idle_1', 'idle_2', 'idle_3'], fps: 8, loop: true },
+      run: { frames: ['run_0', 'run_1', 'run_2', 'run_3'], fps: 12, loop: true },
+    },
+  },
+  animation: 'idle', // Start playing immediately
+});
 ```
 
-## Spritesheet Layout
+## Playback Control
 
-Spritesheets should have frames arranged left-to-right, top-to-bottom. The frame index starts at 0 in the top-left corner.
+```typescript
+sprite.play('run');              // Play by name
+sprite.play('hit', {
+  onComplete: () => sprite.play('idle'), // Chain after non-looping anim
+});
+sprite.speed = 1.5;              // 1.5x speed
+```
 
 ## Animation Update
 
-For Three.js, call the update method in your animation loop:
+Advance the animation each frame by calling `update(deltaMs)`:
 
 ```typescript
-function animate(time: number) {
-  sprite.update(time);
+let lastTime = performance.now();
+
+function animate() {
+  const now = performance.now();
+  const deltaMs = now - lastTime;
+  lastTime = now;
+
+  sprite.update(deltaMs);
   renderer.render(scene, camera);
   requestAnimationFrame(animate);
 }

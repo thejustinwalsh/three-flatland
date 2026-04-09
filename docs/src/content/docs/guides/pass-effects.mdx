@@ -113,7 +113,7 @@ Schema fields become typed properties on instances with zero-cost uniform update
 
       useFrame(() => {
         flatlandRef.current?.render(gl as unknown as WebGPURenderer)
-      })
+      }, { phase: 'render' })
 
       return (
         <flatland ref={flatlandRef} viewSize={80} clearColor={0x1a1a2e}>
