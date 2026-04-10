@@ -10,7 +10,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@three-flatland/nodes": "^0.1.0-alpha.1",
+    "@three-flatland/nodes": "^0.1.0-alpha.3",
     "@three-flatland/tweakpane": "^0.1.0-alpha.1",
     "@tweakpane/plugin-essentials": "^0.2.1",
     "three-flatland": "^0.1.0-alpha.2",
@@ -20,6 +20,6 @@
   "devDependencies": {
     "@types/three": "^0.183.1",
     "typescript": "^5.7.3",
-    "vite": "^6.0.7"
+    "vite": "^6.4.1"
   }
 }
