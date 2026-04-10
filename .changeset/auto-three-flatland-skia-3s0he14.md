@@ -9,19 +9,16 @@
 
 ### Bug fixes
 
-- `useSkiaContext` now calls `useThree` unconditionally before any early returns, fixing a rules-of-hooks violation that surfaced in React strict mode and the linter
-- WASM test fixture now loads from `dist/<name>/<name>.wasm` (turbo-cached build output) instead of `zig-out/bin/` (raw zig output, not a declared turbo output) — warm-cache CI runs no longer need to rebuild the WASM module
-
-### Docs
-
-- JSDoc examples in `SkiaCanvas`, `SkiaFontLoader`, and the `three` subpath index updated from "Vanilla" to "Three.js" labels
+- `useSkiaContext`: moved `useThree` call before any early returns to comply with rules-of-hooks — previously the hook conditionally called `useThree` only in the "no init started" branch, which React Strict Mode could detect as a hook ordering violation
+- `wireSceneStats` cleanup: restore the original `onAfterRender` reference rather than a bound copy — stacked `wireSceneStats` calls and test assertions now correctly verify reference identity on teardown
 
 ### Tests
 
-- Added comprehensive unit tests for all four resolution paths of `useSkiaContext`: nearest React context, live global singleton, destroyed singleton (falls through to init), pre-existing pending init (Suspense), and fresh `Skia.init` kickoff
-- Tests use fulfilled/pending thenable helpers to exercise React `use()` without async re-render juggling
-- Regression guards verify `useThree` is called unconditionally even when cases 1 or 2 short-circuit
+- Added `hooks.test.tsx` covering `useSkiaContext` behaviour across all four resolution paths (React context, global singleton, pending init, no init)
+- Vitest workspace configured for the `@three-flatland/skia` package
 
-Fixed a rules-of-hooks violation in `useSkiaContext` and hardened CI test reliability by reading WASM from the turbo-cached `dist/` output.
+### Documentation
 
+- JSDoc examples in `SkiaCanvas`, `SkiaFontLoader`, and the three subpath index relabelled from "Vanilla" to "Three.js" for consistency with the broader repo rename
 
+Patch release fixes hook-ordering in `useSkiaContext` and a reference-identity bug in `wireSceneStats` teardown; no public API changes.

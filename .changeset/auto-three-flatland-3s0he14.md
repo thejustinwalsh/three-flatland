@@ -5,22 +5,22 @@
 > Branch: feat-examples-tweakplane
 > PR: https://github.com/thejustinwalsh/three-flatland/pull/22
 
-
 ## Changes
 
-### API
+### Renderer-agnostic render target
 
-- `FlatlandOptions.renderTarget` type widened from `WebGLRenderTarget` to renderer-agnostic `RenderTarget` — accepts any Three.js render target, not just WebGL ones
-- `Flatland.renderTarget` getter/setter updated to the same `RenderTarget` type
+- `Flatland.renderTarget` type changed from `WebGLRenderTarget` to renderer-agnostic `RenderTarget` — enables use with both WebGL and WebGPU backends without a type cast
+- JSDoc example updated: `new WebGLRenderTarget(...)` → `new RenderTarget(...)` with explicit import
 
-### Docs
+### Documentation
 
-- New "Debug Controls" guide covering `@three-flatland/tweakpane` integration
-- JSDoc examples updated: `new WebGLRenderTarget(...)` → `new RenderTarget(...)` with explicit import
-- Loader and tilemap JSDoc labels updated from "Vanilla" to "Three.js" throughout
+- New "Debug Controls" guide covering `@three-flatland/tweakpane` integration with all example scenes
+- Updated guides: Flatland, Pass Effects, Sprites, Animation, Tilemap — each now references the debug controls workflow
+- All loader and tilemap JSDoc examples relabelled from "Vanilla usage" to "Three.js usage" (`SpriteSheetLoader`, `TextureLoader`, `TiledLoader`, `LDtkLoader`, `TileMap2D`)
 
-### Examples
+### Examples restructure
 
-- Plain Three.js examples moved from `examples/vanilla/` to `examples/three/` — all example pairs now live under `examples/three/` and `examples/react/`
+- All plain Three.js examples moved from `examples/vanilla/` to `examples/three/` to match the `examples/react/` pairing convention
+- Doc site example previews and import paths updated to reflect the new folder layout
 
-`FlatlandOptions.renderTarget` now accepts the base `RenderTarget` type instead of the WebGL-specific subclass, enabling renderer-agnostic render-to-texture workflows.
+`Flatland` now accepts a renderer-agnostic `RenderTarget` instead of `WebGLRenderTarget`, and the examples directory has been reorganised into `examples/three/` and `examples/react/` pairs.

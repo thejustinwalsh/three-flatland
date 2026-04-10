@@ -9,36 +9,45 @@
 
 ### New package
 
-`@three-flatland/tweakpane` is a new Tweakpane v4 integration package for three-flatland, providing a themed debug pane with performance monitoring for both Three.js and React Three Fiber.
+Initial release of the Tweakpane integration package for three-flatland.
 
-### Core API (`@three-flatland/tweakpane`)
+### Core API (`import from '@three-flatland/tweakpane'`)
 
-- `createPane(options)` — creates a themed Tweakpane instance with idle-dimming, pin toggle, and stats; accepts `title`, `expanded`, `stats`, `scene`, and `debug` options
-- `wireSceneStats(scene, stats, options?)` — exported standalone function hooking `scene.onAfterRender` to auto-populate draw calls, triangle counts, and GPU frame times into a `StatsHandle`; used internally by `createPane({ scene })` and `useStatsMonitor`
-- `addStatsGraph(parent)` — cycling FPS/MS/GPU/MEM graph blade; updates driven by `begin()`/`end()`, no independent RAF loop
-- `addStatsRow(parent)` — single-row renderer metrics readout (draws, tris, geoms, textures)
-- `StatsHandle` interface — `begin()`, `end()`, `update(info)`, `enableGpu()`, `gpuTime(ms)`
-- `StatsUpdate` type exported for callers who push renderer info manually
-- GPU timing detection on WebGL correctly checks `backend.disjoint` (`EXT_disjoint_timer_query_webgl2`) in addition to `backend.trackTimestamp`, avoiding false-positive GPU mode on WebGL2 without the extension
+- `createPane(options)` creates a themed, collapsible Tweakpane instance with:
+  - Cycling FPS / MS / GPU / MEM performance graph (click to switch mode)
+  - Compact `StatsRow` showing draw calls, triangles, geometries, and textures
+  - Idle-dimming with a pin toggle in the header to lock full opacity
+  - Optional `scene` — pass a Three.js `Scene` to auto-capture `renderer.info` stats on every frame via `scene.onAfterRender` with no manual `stats.update()` needed
+  - Optional `debug` flag (default `true`) — logs one-time backend diagnostics on first frame
+- `wireSceneStats(scene, stats, options?)` exported helper: wires a `StatsHandle` into `scene.onAfterRender`, handles GPU timestamp detection (WebGPU and WebGL with `EXT_disjoint_timer_query_webgl2`), async readback via microtask, and restores the original hook on cleanup
+- `StatsHandle` now includes `enableGpu()` and `gpuTime(ms)`; `update()` accepts `StatsUpdate` (all fields optional)
+- `StatsUpdate` type exported from the main entry point
+- Orphan pane cleanup for React 18 StrictMode: `createPane` disposes any unclaimed pane from a previous discarded render; `claimPane()` marks a bundle as committed
 
-### React API (`@three-flatland/tweakpane/react`)
+### React API (`import from '@three-flatland/tweakpane/react'`)
 
-- `usePane(options?)` — creates and disposes a `PaneBundle`; survives React strict mode via deferred disposal and orphan pane cleanup (`claimPane`)
-- `useStatsMonitor(stats)` — wires the R3F scene into a `StatsHandle` via `wireSceneStats`; use inside a Canvas alongside `usePane`
-- `usePaneInput(parent, key, initialValue, options?)` — binds a Tweakpane input to React state; created synchronously on first render to avoid pop-in
-- `usePaneFolder(parent, title, options?)` — creates a folder synchronously with deferred disposal for strict mode
-- `usePaneButton(parent, title, onClick)` — adds a button with deferred disposal for strict mode
-- `useFpsGraph(parent)` — adds an FPS graph blade, returns `{ begin, end }`
+- `usePane(options?)` — pane mounted synchronously during render, disposed on unmount
+- `useStatsMonitor(stats)` — wires `stats.begin()` / `stats.end()` into R3F frame loop via `useFrame` (priority `Infinity` / `-Infinity`) and captures draw stats from `scene.onAfterRender`
+- `usePaneInput` — binding created synchronously on first render (no pop-in); deferred disposal for Strict Mode
+- `usePaneFolder` — folder created synchronously during render; deferred disposal for Strict Mode
+- `usePaneButton` — button created synchronously; deferred disposal for Strict Mode
+- `useFpsGraph` retained for compatibility
+
+### Performance fix — Safari frame-rate regression
+
+- Removed independent `requestAnimationFrame` loop that drove SVG graph updates; updates now driven by `stats.end()`, called once per frame from the render loop
+- SVG canvas dimensions cached via `ResizeObserver` instead of per-frame `getBoundingClientRect()` — eliminates layout reflow that caused Safari to throttle affected tabs to ~20 fps
 
 ### Bug fixes
 
-- Removed independent `requestAnimationFrame` loop from `addStatsGraph` — it was running SVG mutations in parallel with the render loop, causing Safari to throttle tabs to ~20fps; SVG dimensions now cached via `ResizeObserver` and graph updates are driven by `end()`
-- `wireSceneStats` properly binds `prev` before replacing `scene.onAfterRender` and uses a flattened Promise chain for GPU timestamp resolution to avoid re-entering the renderer mid-render
-- `usePane` returns a non-null `PaneBundle` synchronously, removing the need for non-null assertions at call sites
+- `wireSceneStats` cleanup restores the exact original `onAfterRender` reference (not a bound copy), fixing identity checks when wiring calls are stacked
+- GPU graph unit label corrected from `GPU` to `MS`
+- WebGL GPU tracking now checks `backend.disjoint` in addition to `trackTimestamp` — prevents enabling GPU mode on machines that lack `EXT_disjoint_timer_query_webgl2`
+- GPU timestamp readback moved to a microtask to prevent re-entering the renderer mid-render (WebGPU query pool corruption)
 
-### Tests
+### Build
 
-- Comprehensive unit tests added for `createPane`, `usePane`, `usePaneInput`, `usePaneFolder`, and `usePaneButton` covering strict mode, disposal, and re-mount scenarios
+- Built with `tsup` (ESM + CJS, dual `.d.ts`); peer deps `tweakpane ^4`, `@tweakpane/plugin-essentials ^0.2.1`, optional `react`
+- Full Vitest test suite covering `createPane`, `usePane`, `usePaneInput`, `usePaneFolder`, `usePaneButton`, `useStatsMonitor`
 
-Initial release of `@three-flatland/tweakpane` with a full-featured stats pane, React hooks with strict mode support, and a Safari performance fix for the stats graph RAF loop.
-
+This release introduces `@three-flatland/tweakpane` with a themed debug panel, a cycling performance graph, automatic GPU timing, React hooks safe under Strict Mode, and a fix for a Safari frame-rate regression caused by competing RAF loops.
