@@ -7,7 +7,7 @@
  *   e.g. pnpm sync:pack examples minis
  *
  * Flags:
- *   --files <file> ...   Process individual files (used by lint-staged)
+ *   --files <file> ...   Process individual files (used by lefthook)
  *   --verify             CI check, exit 1 if any files are out of sync
  */
 
@@ -212,7 +212,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
 
     console.log('Package versions are in sync.')
   } else if (fileMode) {
-    // File mode: process individual package.json files (used by lint-staged)
+    // File mode: process individual package.json files (used by lefthook)
     const files = args.slice(1)
     let totalChanged = 0
     const table = buildVersionTable(catalog, internal)

@@ -1,5 +1,5 @@
 /**
- * lint-staged check: verify the Skia submodule ref matches the pinned commit.
+ * lefthook check: verify the Skia submodule ref matches the pinned commit.
  * Rejects commit if the submodule is staged at any revision other than the pin.
  *
  * No silent pass-throughs — if this script runs, it must verify or reject.
