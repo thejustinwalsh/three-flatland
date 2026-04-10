@@ -1,13 +1,13 @@
 # Pre-commit hook configuration. Replaces the former simple-git-hooks +
-# lint-staged combination. stage_fixed: true re-stages files that a command
-# mutates, which is essential for the sync-pack-full triggers that may edit
-# files under examples/** and minis/* that were never in the original glob.
+# lint-staged combination. sync-pack-full explicitly runs git add because
+# stage_fixed only re-stages files matching the command's own glob, not files
+# in other directories that the command modifies.
 pre-commit:
   parallel: false
   commands:
     sync-pack-full:
       glob: "{pnpm-workspace.yaml,packages/*/package.json}"
-      run: pnpm sync:pack examples minis
+      run: pnpm sync:pack examples minis && git add examples minis
       stage_fixed: true
     sync-pack-files:
       glob: "{examples,minis}/**/package.json"
