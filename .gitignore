@@ -56,5 +56,7 @@ vendor/
 # Profile traces
 traces/
 
-# Restruct sessions
-.restruct/sessions/
+# Restruct
+.restruct/
+!.restruct/verify.yaml
+!.restruct/permissions.yaml

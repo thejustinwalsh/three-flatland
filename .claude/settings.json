@@ -2,5 +2,9 @@
   "enabledPlugins": {
     "typescript-lsp@claude-plugins-official": true,
     "restruct@thejustinwalsh": true
+  },
+  "attribution": {
+    "commit": "",
+    "pr": ""
   }
 }
