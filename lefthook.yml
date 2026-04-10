@@ -11,12 +11,12 @@ pre-commit:
       stage_fixed: true
     sync-pack-files:
       glob: "{examples,minis}/**/package.json"
-      run: tsx scripts/sync-pack.ts --files {staged_files}
+      run: pnpm exec tsx scripts/sync-pack.ts --files {staged_files}
       stage_fixed: true
     sync-react-subpaths:
       glob: "{packages/three-flatland/src/index.ts,packages/three-flatland/src/*/index.ts,packages/skia/src/ts/three/index.ts}"
-      run: tsx scripts/sync-react-subpaths.ts
+      run: pnpm exec tsx scripts/sync-react-subpaths.ts
       stage_fixed: true
     check-skia-pin:
       glob: "packages/skia/third_party/skia"
-      run: tsx scripts/check-skia-pin.ts
+      run: pnpm exec tsx scripts/check-skia-pin.ts
