@@ -5,22 +5,23 @@
 > Branch: feat-examples-tweakplane
 > PR: https://github.com/thejustinwalsh/three-flatland/pull/22
 
-## Changes
 
-### Renderer-agnostic render target
+## What's Changed
 
-- `Flatland.renderTarget` type changed from `WebGLRenderTarget` to renderer-agnostic `RenderTarget` — enables use with both WebGL and WebGPU backends without a type cast
-- JSDoc example updated: `new WebGLRenderTarget(...)` → `new RenderTarget(...)` with explicit import
+### API
+
+- `FlatlandOptions.renderTarget` type changed from `WebGLRenderTarget` to renderer-agnostic `RenderTarget`
+- `Flatland.renderTarget` getter/setter now typed as `RenderTarget` — `WebGLRenderTarget` values remain compatible
 
 ### Documentation
 
-- New "Debug Controls" guide covering `@three-flatland/tweakpane` integration with all example scenes
-- Updated guides: Flatland, Pass Effects, Sprites, Animation, Tilemap — each now references the debug controls workflow
-- All loader and tilemap JSDoc examples relabelled from "Vanilla usage" to "Three.js usage" (`SpriteSheetLoader`, `TextureLoader`, `TiledLoader`, `LDtkLoader`, `TileMap2D`)
+- New "Debug Controls" guide covering `@three-flatland/tweakpane` integration (`createPane`, `usePane`, `usePaneInput`, stats monitoring)
+- Example pages for animation and tilemap updated with debug controls usage
+- Updated pass-effects, sprites, and flatland guides
 
-### Examples restructure
+### Examples
 
-- All plain Three.js examples moved from `examples/vanilla/` to `examples/three/` to match the `examples/react/` pairing convention
-- Doc site example previews and import paths updated to reflect the new folder layout
+- Plain Three.js examples moved from `examples/vanilla/` to `examples/three/`
+- "Vanilla" terminology replaced with "Three.js" throughout source docs and comments (loaders, tilemap classes, SkiaCanvas)
 
-`Flatland` now accepts a renderer-agnostic `RenderTarget` instead of `WebGLRenderTarget`, and the examples directory has been reorganised into `examples/three/` and `examples/react/` pairs.
+All plain Three.js examples now live under `examples/three/`; React Three Fiber examples remain under `examples/react/`.
