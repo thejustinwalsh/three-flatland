@@ -1,5 +1,7 @@
 # TSL Full API Reference
 
+**This is the CURRENT Three.js shader API (r150+).** All shader code uses TSL node functions, not GLSL strings. Import from `'three/tsl'` and `'three/webgpu'`.
+
 ## Imports
 
 ```ts
@@ -712,6 +714,29 @@ material.positionNode = Fn(() => {
 ---
 
 ## GLSL to TSL Migration
+
+**If you are writing GLSL, you are using the wrong API.** TSL replaces GLSL entirely. Every GLSL pattern has a TSL equivalent:
+
+### GLSL Habits → TSL Equivalents
+
+| GLSL Habit | TSL Replacement |
+|------------|-----------------|
+| `ShaderMaterial({ vertexShader, fragmentShader })` | `MeshStandardNodeMaterial` with `.positionNode`, `.colorNode` |
+| `onBeforeCompile` | Set `.colorNode`, `.positionNode`, etc. directly |
+| Raw GLSL strings | `Fn(() => { ... })()` node builders |
+| `uniform float uTime;` | `const uTime = uniform(0.0)` then `uTime.value = t` |
+| `varying vec2 vUv;` | `varying(expression, 'name')` or just `uv()` |
+| `attribute vec3 aPosition;` | `attribute<'vec3'>('aPosition', 'vec3')` |
+| `#include <common>` | Not needed — built-in nodes handle this |
+| `#define PI 3.14159` | `const PI = float(Math.PI)` |
+| `gl_Position = ...` | `material.positionNode = ...` |
+| `void main() { ... }` | `Fn(() => { ... })()` |
+| `float x = 1.0; x += 2.0;` | `const x = float(1.0).toVar(); x.addAssign(2.0)` |
+| `if (x > 0.5) { ... }` | `If(x.greaterThan(0.5), () => { ... })` |
+| `x > 0.5 ? a : b` | `select(x.greaterThan(0.5), a, b)` |
+| `for (int i = 0; i < 10; i++)` | `Loop(10, ({ i }) => { ... })` |
+
+### Built-in Variable Mapping
 
 | GLSL | TSL |
 |------|-----|
