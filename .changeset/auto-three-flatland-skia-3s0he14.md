@@ -5,20 +5,21 @@
 > Branch: feat-examples-tweakplane
 > PR: https://github.com/thejustinwalsh/three-flatland/pull/22
 
-**Size-limit infrastructure**
+## Build
 
-- Replaced `.size-limit.json` with `.size-limit.cjs` to support esbuild plugins and custom WASM handling
-- WASM binaries (`skia-gl.opt.wasm`, `skia-wgpu.opt.wasm`) are now measured as raw + brotli file sizes via a new `scripts/size-limit.mjs` wrapper instead of inline size-limit entries
-- `@three-flatland/skia` esbuild config now stubs `.wasm` imports and resolves `.json` files from `src/` during bundle analysis — fixes incorrect size-limit failures on the base branch
-- `packages/skia/tsup.config.ts`: `onSuccess` hook now copies `wgpu-layouts.json` from `src/ts/` into `dist/` so runtime JSON imports resolve correctly after build
+- `tsup.config.ts` now copies `wgpu-layouts.json` to `dist/` on build (`onSuccess` hook) — fixes runtime JSON import failures when consuming the package
+- Size-limit config migrated from `.size-limit.json` to `.size-limit.cjs`; adds a custom esbuild plugin that stubs `.wasm` imports and resolves `.json` from `src/` when not present in `dist/`
+- Added `scripts/size-limit.mjs` wrapper: skips entries whose dist files don't exist (base-branch compat) and reports WASM binary raw + brotli file sizes separately
+- WASM binaries (`skia-gl.opt.wasm`, `skia-wgpu.opt.wasm`) are now measured as raw file sizes rather than bundled through esbuild
 
-**`useSkiaContext` hook fix (React rules-of-hooks)**
+## Tests
 
-- `useThree` is now called unconditionally before any early returns — fixes `react-hooks/rules-of-hooks` violation that occurred when the React context or global singleton resolved in cases 1–2
-- Added full test suite for all four resolution paths (nearest context, live singleton, destroyed singleton, cold init) plus regression guards for the unconditional hook ordering
+- Added comprehensive unit tests for `useSkiaContext` covering all resolution paths: nearest React context value, live global singleton, destroyed singleton fallback, already-fulfilled pending thenable, and Suspense suspension on an unresolved promise
+- Added vitest workspace config and test setup for the skia package
+- CI updated to run skia package tests
 
-**Examples reorganised**
+## Examples / docs
 
-- All Three.js examples moved from `examples/vanilla/` to `examples/three/`; `SkiaCanvas` and `SkiaFontLoader` docs updated to use "Three.js" terminology
+- `SkiaCanvas` code comments updated from "Vanilla" to "Three.js" terminology
 
-This release fixes a Safari performance regression in the stats graph (`~20fps` throttle caused by a competing RAF loop) and ships a complete test suite for the skia React hook alongside improved size-limit infrastructure.
+Improves the build pipeline with correct WASM handling in bundle-size checks and `dist/` JSON copying, and adds comprehensive React hook tests for `useSkiaContext`.
