@@ -49,6 +49,7 @@ triggers:
   - timerDelta
 author: three-flatland
 license: MIT
+source: https://threejsroadmap.com/blog/getting-ai-to-write-tsl-that-works
 ---
 
 # TSL (Three.js Shading Language) Rules
