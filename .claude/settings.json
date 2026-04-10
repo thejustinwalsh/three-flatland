@@ -3,8 +3,9 @@
     "typescript-lsp@claude-plugins-official": true,
     "restruct@thejustinwalsh": true
   },
+  "includeCoAuthoredBy": false,
   "attribution": {
-    "commit": "",
-    "pr": ""
+    "commits": false,
+    "pullRequests": false
   }
 }
