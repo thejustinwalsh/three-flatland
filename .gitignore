@@ -55,4 +55,6 @@ vendor/
 
 # Profile traces
 traces/
-.restruct/sessions/c3ef634b-df29-4c48-a9ea-f107f3d6d144.json
+
+# Restruct sessions
+.restruct/sessions/
