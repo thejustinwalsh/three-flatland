@@ -123,14 +123,20 @@ export function syncDeps(
   return changed
 }
 
-// Check if deps contain unresolved catalog:/workspace:* references (read-only)
-export function checkDeps(deps: Record<string, string> | undefined): string[] {
+// Check for drift: for each dep whose name is in the table, report a human
+// readable string when the current value differs from the table value.
+// Returns an empty array on a clean tree. Out-of-table deps are ignored.
+export function checkDeps(
+  deps: Record<string, string> | undefined,
+  table: Record<string, string>,
+): string[] {
   if (!deps) return []
   const issues: string[] = []
 
-  for (const [name, version] of Object.entries(deps)) {
-    if (version === 'catalog:' || version === 'workspace:*') {
-      issues.push(`  "${name}": "${version}"`)
+  for (const [name, current] of Object.entries(deps)) {
+    const target = table[name]
+    if (target !== undefined && current !== target) {
+      issues.push(`  "${name}": expected "${target}", got "${current}"`)
     }
   }
 
@@ -157,7 +163,8 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const internal = getInternalVersions()
 
   if (verifyMode) {
-    // Verify mode: check for unresolved catalog:/workspace:* refs (used by CI)
+    // Verify mode: report drift between example/mini pins and the catalog + internal packages (used by CI)
+    const table = buildVersionTable(catalog, internal)
     const dirs = args.slice(1)
     if (dirs.length === 0) {
       console.error('Usage: pnpm sync:pack --verify <dir> [<dir> ...]')
@@ -180,9 +187,10 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
         const pkg = JSON.parse(content)
         const relative = pkgPath.replace(ROOT + '/', '')
 
-        const depsIssues = checkDeps(pkg.dependencies)
-        const devDepsIssues = checkDeps(pkg.devDependencies)
-        const allIssues = [...depsIssues, ...devDepsIssues]
+        const depsIssues = checkDeps(pkg.dependencies, table)
+        const devDepsIssues = checkDeps(pkg.devDependencies, table)
+        const peerDepsIssues = checkDeps(pkg.peerDependencies, table)
+        const allIssues = [...depsIssues, ...devDepsIssues, ...peerDepsIssues]
 
         if (allIssues.length > 0) {
           console.error(`${relative}:`)
