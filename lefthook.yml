@@ -2,6 +2,10 @@
 # lint-staged combination. sync-pack-full explicitly runs git add because
 # stage_fixed only re-stages files matching the command's own glob, not files
 # in other directories that the command modifies.
+output:
+  - failure
+  - execution_out
+
 pre-commit:
   parallel: false
   commands:
