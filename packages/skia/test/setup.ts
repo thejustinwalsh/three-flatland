@@ -56,8 +56,12 @@ let cachedCtx: SkiaContext | null = null
 async function createMockContext(): Promise<SkiaContext> {
   if (cachedCtx) return cachedCtx
 
-  const wasmFile = BACKEND === 'wgpu' ? 'skia-wgpu.wasm' : 'skia-gl.wasm'
-  const wasmPath = resolve(__dirname, `../zig-out/bin/${wasmFile}`)
+  // Read from dist/ (turbo-cached output of @three-flatland/skia#build) rather
+  // than zig-out/bin/ (raw zig output, not declared as a turbo output) so that
+  // warm-cache CI runs can restore the WASM without rebuilding. dist/ and
+  // zig-out/bin/ contain the same module — dist is just optionally wasm-opt'd.
+  const wasmName = BACKEND === 'wgpu' ? 'skia-wgpu' : 'skia-gl'
+  const wasmPath = resolve(__dirname, `../dist/${wasmName}/${wasmName}.wasm`)
   const wasmBytes = readFileSync(wasmPath)
   const wasmImports = getWasmImports(wasmBytes)
 

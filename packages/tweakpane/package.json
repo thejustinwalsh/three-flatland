@@ -48,6 +48,8 @@
   "scripts": {
     "build": "tsup",
     "dev": "tsup --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist"
   },
@@ -71,11 +73,15 @@
   },
   "devDependencies": {
     "@react-three/fiber": "catalog:",
+    "@testing-library/react": "^16.1.0",
     "@tweakpane/core": "catalog:",
     "@tweakpane/plugin-essentials": "catalog:",
     "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
     "@types/three": "catalog:",
+    "happy-dom": "^15.11.7",
     "react": "catalog:",
+    "react-dom": "catalog:",
     "three": "catalog:",
     "tweakpane": "catalog:",
     "typescript": "catalog:"

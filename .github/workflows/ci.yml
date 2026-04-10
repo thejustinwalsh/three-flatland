@@ -136,6 +136,9 @@ jobs:
       - name: Test
         run: pnpm test
 
+      - name: Test Skia
+        run: pnpm --filter @three-flatland/skia run test
+
   smoke:
     name: Smoke tests (examples)
     needs: [changes, build]

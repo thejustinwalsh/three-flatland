@@ -74,8 +74,19 @@ export function wireSceneStats(
   // Scene level three.js calls it with a different shape
   // (`renderer, scene, camera, renderTarget` — see `Renderer.js:1683`).
   // We chain to the previous value using a permissive callable type.
+  //
+  // We keep two references: `original` is the exact function reference so the
+  // cleanup return path can restore identity (otherwise stacked wireSceneStats
+  // calls or test assertions break), and `prev` is a `.bind(scene)` copy that
+  // we call internally — binding here silences `@typescript-eslint/unbound-method`
+  // when we invoke the previous hook from inside our wrapper.
   type AnyCallable = (this: unknown, ...args: unknown[]) => void
-  const prev = (scene.onAfterRender as unknown as AnyCallable).bind(scene)
+  // Cast to escape the typed method access — `scene.onAfterRender` would
+  // otherwise trip `@typescript-eslint/unbound-method`. We need the raw
+  // function reference (not bound) so the cleanup path below can restore
+  // identity (`scene.onAfterRender = original`).
+  const original = (scene as unknown as { onAfterRender: AnyCallable }).onAfterRender
+  const prev = original.bind(scene)
   let gpuDetected = false
   let firstGpuLogged = false
   let debugLogged = false
@@ -148,7 +159,7 @@ export function wireSceneStats(
 
   return () => {
     if ((scene as unknown as { onAfterRender: AnyCallable }).onAfterRender === hook) {
-      ;(scene as unknown as { onAfterRender: AnyCallable }).onAfterRender = prev
+      ;(scene as unknown as { onAfterRender: typeof original }).onAfterRender = original
     }
   }
 }
