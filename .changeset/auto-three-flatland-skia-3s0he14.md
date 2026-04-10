@@ -5,22 +5,20 @@
 > Branch: feat-examples-tweakplane
 > PR: https://github.com/thejustinwalsh/three-flatland/pull/22
 
+**Size-limit infrastructure**
 
-## What's Changed
+- Replaced `.size-limit.json` with `.size-limit.cjs` to support esbuild plugins and custom WASM handling
+- WASM binaries (`skia-gl.opt.wasm`, `skia-wgpu.opt.wasm`) are now measured as raw + brotli file sizes via a new `scripts/size-limit.mjs` wrapper instead of inline size-limit entries
+- `@three-flatland/skia` esbuild config now stubs `.wasm` imports and resolves `.json` files from `src/` during bundle analysis — fixes incorrect size-limit failures on the base branch
+- `packages/skia/tsup.config.ts`: `onSuccess` hook now copies `wgpu-layouts.json` from `src/ts/` into `dist/` so runtime JSON imports resolve correctly after build
 
-### Bug Fixes
+**`useSkiaContext` hook fix (React rules-of-hooks)**
 
-- `useSkiaContext` now calls `useThree` unconditionally before any early returns — fixes `react-hooks/rules-of-hooks` violation that would fire when the global singleton or nearest React context resolved early
+- `useThree` is now called unconditionally before any early returns — fixes `react-hooks/rules-of-hooks` violation that occurred when the React context or global singleton resolved in cases 1–2
+- Added full test suite for all four resolution paths (nearest context, live singleton, destroyed singleton, cold init) plus regression guards for the unconditional hook ordering
 
-### Testing
+**Examples reorganised**
 
-- Added comprehensive unit tests for `useSkiaContext` (250 lines) covering all four resolution paths: nearest React context, global singleton, pre-existing pending promise, and fresh `Skia.init()` call
-- Tests cover Suspense fallback behavior for unresolved promises and two `rules-of-hooks` regression guards
-- Test setup now reads WASM from `dist/<name>/<name>.wasm` instead of `zig-out/bin/` — enables turbo cache hits on warm CI runs without rebuilding
+- All Three.js examples moved from `examples/vanilla/` to `examples/three/`; `SkiaCanvas` and `SkiaFontLoader` docs updated to use "Three.js" terminology
 
-### Build
-
-- `tsup.config.ts`: copies `wgpu-layouts.json` to `dist/` after build so runtime JSON imports resolve when consuming the built package
-- Size-limit config migrated from `.size-limit.json` to `.size-limit.cjs` with a custom `scripts/size-limit.mjs` for better WASM binary handling
-
-`useSkiaContext` now correctly satisfies the Rules of Hooks in all resolution paths; CI can now restore the WASM artifact from turbo cache without a full Zig rebuild.
+This release fixes a Safari performance regression in the stats graph (`~20fps` throttle caused by a competing RAF loop) and ships a complete test suite for the skia React hook alongside improved size-limit infrastructure.

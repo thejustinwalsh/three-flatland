@@ -5,23 +5,16 @@
 > Branch: feat-examples-tweakplane
 > PR: https://github.com/thejustinwalsh/three-flatland/pull/22
 
+**`Flatland` render target type updated to `RenderTarget`**
 
-## What's Changed
+- `FlatlandOptions.renderTarget` now typed as `RenderTarget` instead of `WebGLRenderTarget` — use `import { RenderTarget } from 'three'` in your scene setup
+- `Flatland.renderTarget` getter/setter updated to match
 
-### API
+**Documentation**
 
-- `FlatlandOptions.renderTarget` type changed from `WebGLRenderTarget` to renderer-agnostic `RenderTarget`
-- `Flatland.renderTarget` getter/setter now typed as `RenderTarget` — `WebGLRenderTarget` values remain compatible
+- New "Debug Controls" guide covering the Tweakpane integration and per-example debug pane setup
+- Updated guides (Flatland, sprites, pass-effects) and example pages (animation, tilemap, pass-effects)
+- All loader and tilemap API docs updated: "vanilla usage" renamed to "Three.js usage" to match the reorganised `examples/three/` folder structure
+- All examples reorganised from `examples/vanilla/` into `examples/three/` (Three.js) and paired with React Three Fiber counterparts in `examples/react/`
 
-### Documentation
-
-- New "Debug Controls" guide covering `@three-flatland/tweakpane` integration (`createPane`, `usePane`, `usePaneInput`, stats monitoring)
-- Example pages for animation and tilemap updated with debug controls usage
-- Updated pass-effects, sprites, and flatland guides
-
-### Examples
-
-- Plain Three.js examples moved from `examples/vanilla/` to `examples/three/`
-- "Vanilla" terminology replaced with "Three.js" throughout source docs and comments (loaders, tilemap classes, SkiaCanvas)
-
-All plain Three.js examples now live under `examples/three/`; React Three Fiber examples remain under `examples/react/`.
+This release migrates the `renderTarget` API surface from WebGL-specific types to the renderer-agnostic `RenderTarget` and ships a comprehensive Debug Controls guide alongside a full restructure of the examples directory.
