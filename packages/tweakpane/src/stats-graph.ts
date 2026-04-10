@@ -74,7 +74,6 @@ export function addStatsGraph(
   // State
   let mode: Mode = 'fps'
   let modeIndex = 0
-  let disposed = false
   let gpuEnabled = false
 
   // Buffers per mode
@@ -212,6 +211,22 @@ export function addStatsGraph(
 
   // ── Graph rendering ──
 
+  // Cache SVG dimensions via ResizeObserver to avoid getBoundingClientRect()
+  // on every frame. Safari's layout engine is expensive for SVG reflows and
+  // per-frame getBoundingClientRect() causes severe frame drops (~24fps).
+  let cachedW = 0
+  let cachedH = 0
+  const resizeObserver = new ResizeObserver(([entry]) => {
+    if (!entry) return
+    const r = entry.contentRect
+    cachedW = r.width
+    cachedH = r.height
+    if (cachedW > 0 && cachedH > 0) {
+      svg.setAttribute('viewBox', `0 0 ${cachedW} ${cachedH}`)
+    }
+  })
+  resizeObserver.observe(svg)
+
   function pushValue(m: Mode, val: number) {
     buffers[m][bufferIdx[m] % BUFFER_SIZE] = val
     bufferIdx[m]++
@@ -220,27 +235,22 @@ export function addStatsGraph(
   }
 
   function updateGraph() {
-    const rect = svg.getBoundingClientRect()
-    if (rect.width === 0 || rect.height === 0) return
+    if (cachedW === 0 || cachedH === 0) return
 
-    const w = rect.width
-    const h = rect.height
     const buf = buffers[mode]
     const idx = bufferIdx[mode]
     const max = graphMax[mode]
 
-    svg.setAttribute('viewBox', `0 0 ${w} ${h}`)
-
     const points: string[] = []
     for (let i = 0; i < BUFFER_SIZE; i++) {
       const val = buf[(idx + i) % BUFFER_SIZE]!
-      const x = (i / (BUFFER_SIZE - 1)) * w
-      const y = h - (val / max) * h * 0.85 - h * 0.05
+      const x = (i / (BUFFER_SIZE - 1)) * cachedW
+      const y = cachedH - (val / max) * cachedH * 0.85 - cachedH * 0.05
       points.push(`${x},${y}`)
     }
     polyline.setAttribute('points', points.join(' '))
     // Closed polygon for fill: line points + bottom-right + bottom-left
-    fillPoly.setAttribute('points', `${points.join(' ')} ${w},${h} 0,${h}`)
+    fillPoly.setAttribute('points', `${points.join(' ')} ${cachedW},${cachedH} 0,${cachedH}`)
   }
 
   function updateLabel() {
@@ -278,20 +288,6 @@ export function addStatsGraph(
     }
   }
 
-  // RAF loop
-  function tick() {
-    if (disposed) return
-    requestAnimationFrame(tick)
-
-    if (perfMemory) {
-      pushValue('mem', perfMemory.usedJSHeapSize / 1048576)
-    }
-
-    updateLabel()
-    updateGraph()
-  }
-  requestAnimationFrame(tick)
-
   return {
     element: bladeEl,
     begin() {
@@ -311,6 +307,15 @@ export function addStatsGraph(
         fpsStartTime = now
         fpsFrames = 0
       }
+
+      // Sample memory and update visuals in the same frame as the render
+      // loop — no independent RAF. A second RAF callback with SVG mutations
+      // causes Safari to throttle the entire tab to ~20fps.
+      if (perfMemory) {
+        pushValue('mem', perfMemory.usedJSHeapSize / 1048576)
+      }
+      updateLabel()
+      updateGraph()
     },
     pushGpuTime(ms) {
       if (!gpuEnabled) return
@@ -322,7 +327,7 @@ export function addStatsGraph(
       gpuEnabled = true
     },
     dispose() {
-      disposed = true
+      resizeObserver.disconnect()
       blade.dispose()
     },
   }
