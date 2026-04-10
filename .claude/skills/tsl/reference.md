@@ -1,25 +1,60 @@
 # TSL Full API Reference
 
+## Imports
+
+```ts
+// Runtime imports
+import * as THREE from 'three/webgpu'
+import {
+  Fn, vec2, vec3, vec4, float, int, uint, bool, color,
+  uniform, attribute, storage,
+  texture, uv, cubeTexture,
+  If, Discard, Loop, Break, Continue, Switch,
+  select, mix, step, smoothstep, clamp, saturate,
+  sin, cos, tan, asin, acos, atan,
+  abs, sign, floor, ceil, round, trunc, fract, mod, min, max,
+  pow, exp, exp2, log, log2, sqrt, inverseSqrt,
+  length, distance, dot, cross, normalize, reflect, refract,
+  dFdx, dFdy, fwidth,
+  positionLocal, positionWorld, positionView, positionGeometry,
+  normalLocal, normalWorld, normalView, normalGeometry,
+  cameraPosition, cameraNear, cameraFar,
+  screenUV, screenCoordinate, screenSize,
+  time, deltaTime, instanceIndex,
+  varying, vertexStage,
+  pass, convertToTexture,
+} from 'three/tsl'
+
+// Type imports — always use `type` keyword, import from source paths
+import type Node from 'three/src/nodes/core/Node.js'
+import type UniformNode from 'three/src/nodes/core/UniformNode.js'
+import type TextureNode from 'three/src/nodes/accessors/TextureNode.js'
+import type PassNode from 'three/src/nodes/display/PassNode.js'
+```
+
+---
+
 ## Type Constructors
 
-| Constructor | Input | Output |
-|-------------|-------|--------|
-| `float(x)` | number, node | float |
-| `int(x)` | number, node | int |
-| `uint(x)` | number, node | uint |
-| `bool(x)` | boolean, node | bool |
-| `vec2(x,y)` | numbers, nodes, Vector2 | vec2 |
-| `vec3(x,y,z)` | numbers, nodes, Vector3, Color | vec3 |
-| `vec4(x,y,z,w)` | numbers, nodes, Vector4 | vec4 |
-| `color(hex)` | hex number | vec3 |
-| `color(r,g,b)` | numbers 0-1 | vec3 |
-| `ivec2/3/4` | integers | signed int vector |
-| `uvec2/3/4` | integers | unsigned int vector |
-| `mat2/3/4` | numbers, Matrix | matrix |
+| Constructor | Input | Returns |
+|-------------|-------|---------|
+| `float(x)` | `number` | `ConstNode<'float', number>` |
+| `float(x)` | `Node` | `Node<'float'>` |
+| `int(x)` | `number` / `Node` | `ConstNode<'int'>` / `Node<'int'>` |
+| `uint(x)` | `number` / `Node` | `ConstNode<'uint'>` / `Node<'uint'>` |
+| `bool(x)` | `boolean` / `Node` | `ConstNode<'bool'>` / `Node<'bool'>` |
+| `vec2(x, y)` | `number`s / `Node`s / `Vector2` | `ConstNode<'vec2', Vector2>` / `Node<'vec2'>` |
+| `vec3(x, y, z)` | `number`s / `Node`s / `Vector3` / `Color` | `ConstNode<'vec3', Vector3>` / `Node<'vec3'>` |
+| `vec4(x, y, z, w)` | `number`s / `Node`s / `Vector4` | `ConstNode<'vec4', Vector4>` / `Node<'vec4'>` |
+| `color(hex)` | `number` | `ConstNode<'color', Color>` |
+| `color(r, g, b)` | `number`s | `ConstNode<'color', Color>` |
+| `ivec2/3/4` | integers | signed int vector node |
+| `uvec2/3/4` | integers | unsigned int vector node |
+| `mat2/3/4` | `number`s / `Matrix` | matrix node |
 
 ### Type Conversions
 
-```js
+```ts
 node.toFloat()  node.toInt()  node.toUint()  node.toBool()
 node.toVec2()   node.toVec3() node.toVec4()  node.toColor()
 ```
@@ -30,7 +65,7 @@ node.toVec2()   node.toVec3() node.toVec4()  node.toColor()
 
 ### Arithmetic (method chaining)
 
-```js
+```ts
 a.add(b)      // a + b (supports multiple: a.add(b, c, d))
 a.sub(b)      // a - b
 a.mul(b)      // a * b
@@ -39,9 +74,11 @@ a.mod(b)      // a % b
 a.negate()    // -a
 ```
 
+Operator overloads preserve types: `Node<'vec3'>.add(Node<'vec3'>)` returns `Node<'vec3'>`.
+
 ### Assignment (for mutable variables)
 
-```js
+```ts
 v.assign(x)        // v = x
 v.addAssign(x)     // v += x
 v.subAssign(x)     // v -= x
@@ -49,9 +86,9 @@ v.mulAssign(x)     // v *= x
 v.divAssign(x)     // v /= x
 ```
 
-### Comparison (returns bool node)
+### Comparison (returns `Node<'bool'>`)
 
-```js
+```ts
 a.equal(b)           // a == b
 a.notEqual(b)        // a != b
 a.lessThan(b)        // a < b
@@ -62,22 +99,22 @@ a.greaterThanEqual(b)// a >= b
 
 ### Logical
 
-```js
+```ts
 a.and(b)   a.or(b)   a.not()   a.xor(b)
 ```
 
 ### Bitwise
 
-```js
+```ts
 a.bitAnd(b)  a.bitOr(b)  a.bitXor(b)  a.bitNot()
 a.shiftLeft(n)  a.shiftRight(n)
 ```
 
 ### Swizzle
 
-```js
-v.x  v.y  v.z  v.w          // single component
-v.xy  v.xyz  v.xyzw         // multiple components
+```ts
+v.x  v.y  v.z  v.w          // single component → Node<'float'>
+v.xy  v.xyz  v.xyzw         // multiple → Node<'vec2'> / Node<'vec3'> / Node<'vec4'>
 v.zyx  v.bgr                // reorder
 v.xxx                       // duplicate
 // Aliases: xyzw = rgba = stpq
@@ -87,31 +124,45 @@ v.xxx                       // duplicate
 
 ## Variables
 
-```js
-const v = expr.toVar();           // mutable variable
-const v = expr.toVar('name');     // named mutable variable
-const c = expr.toConst();         // inline constant
-const p = property('float');      // uninitialized property
+```ts
+const v = expr.toVar()           // mutable variable
+const v = expr.toVar('name')     // named mutable variable
+const c = expr.toConst()         // inline constant
+const p = property('float')      // uninitialized property
 ```
 
 ---
 
 ## Uniforms
 
-```js
-// Create
-const u = uniform(initialValue);
-const u = uniform(new THREE.Color(0xff0000));
-const u = uniform(new THREE.Vector3(1, 2, 3));
-const u = uniform(0.5);
+```ts
+import type UniformNode from 'three/src/nodes/core/UniformNode.js'
+
+// Type is inferred from argument:
+const u1 = uniform(0.5)                       // UniformNode<'float', number>
+const u2 = uniform(new THREE.Color(0xff0000))  // UniformNode<'color', Color>
+const u3 = uniform(new THREE.Vector2(0, 0))    // UniformNode<'vec2', Vector2>
+const u4 = uniform(new THREE.Vector3(1, 2, 3)) // UniformNode<'vec3', Vector3>
+const u5 = uniform(new THREE.Vector4())        // UniformNode<'vec4', Vector4>
+const u6 = uniform(new THREE.Matrix4())        // UniformNode<'mat4', Matrix4>
 
 // Update from JS
-u.value = newValue;
+u1.value = 1.0
 
 // Auto-update callbacks
-u.onFrameUpdate(() => value);                    // once per frame
-u.onRenderUpdate(({ camera }) => value);         // once per render
-u.onObjectUpdate(({ object }) => object.position.y); // per object
+u1.onFrameUpdate(() => performance.now() / 1000)
+u1.onRenderUpdate(({ camera }) => camera.position.y)
+u1.onObjectUpdate(({ object }) => object.position.y)
+```
+
+### Uniform union type (for dynamic storage)
+
+```ts
+type UniformNodeValue =
+  | UniformNode<'float', number>
+  | UniformNode<'vec2', Vector2>
+  | UniformNode<'vec3', Vector3>
+  | UniformNode<'vec4', Vector4>
 ```
 
 ---
@@ -120,29 +171,36 @@ u.onObjectUpdate(({ object }) => object.position.y); // per object
 
 ### Fn() Syntax
 
-```js
-// Array parameters
-const myFn = Fn(([a, b, c]) => { return a.add(b).mul(c); });
+```ts
+// No params — return type inferred
+const myFn = Fn(() => {
+  return positionLocal.toVar()
+})
 
-// Object parameters
+// Array parameters
+const myFn = Fn(([a, b, c]) => {
+  return a.add(b).mul(c)
+})
+
+// Object parameters with defaults
 const myFn = Fn(({ color = vec3(1), intensity = 1.0 }) => {
-  return color.mul(intensity);
-});
+  return color.mul(intensity)
+})
 
 // With defaults
-const myFn = Fn(([t = time]) => { return t.sin(); });
+const myFn = Fn(([t = time]) => { return t.sin() })
 
 // Access build context (second param or first if no inputs)
 const myFn = Fn(([input], { material, geometry, object, camera }) => {
   // JS conditionals here run at BUILD time
-  if (material.transparent) { return input.mul(0.5); }
-  return input;
-});
+  if (material.transparent) { return input.mul(0.5) }
+  return input
+})
 ```
 
 ### Calling Functions
 
-```js
+```ts
 myFn(a, b, c)           // array params
 myFn({ color: red })    // object params
 myFn()                  // use defaults
@@ -150,9 +208,20 @@ myFn()                  // use defaults
 
 ### Inline Functions (no Fn wrapper)
 
-```js
+```ts
 // OK for simple expressions, no variables/conditionals
-const simple = (t) => t.sin().mul(0.5).add(0.5);
+const simple = (t: Node<'float'>) => t.sin().mul(0.5).add(0.5)
+```
+
+---
+
+## Attributes
+
+```ts
+// Explicit type param required for @types/three >= 0.183
+const instanceUV = attribute<'vec4'>('instanceUV', 'vec4')
+const instanceFlip = attribute<'vec2'>('instanceFlip', 'vec2')
+const customFloat = attribute<'float'>('myFloat', 'float')
 ```
 
 ---
@@ -161,44 +230,45 @@ const simple = (t) => t.sin().mul(0.5).add(0.5);
 
 ### If/ElseIf/Else (CAPITAL I)
 
-```js
+```ts
 // CORRECT (inside Fn())
 If(a.greaterThan(b), () => {
-  result.assign(a);
+  result.assign(a)
 }).ElseIf(a.lessThan(c), () => {
-  result.assign(c);
+  result.assign(c)
 }).Else(() => {
-  result.assign(b);
-});
+  result.assign(b)
+})
 ```
 
 ### Switch/Case
 
-```js
+```ts
 Switch(mode)
-  .Case(0, () => { out.assign(red); })
-  .Case(1, () => { out.assign(green); })
-  .Case(2, 3, () => { out.assign(blue); })  // multiple values
-  .Default(() => { out.assign(white); });
+  .Case(0, () => { out.assign(red) })
+  .Case(1, () => { out.assign(green) })
+  .Case(2, 3, () => { out.assign(blue) })  // multiple values
+  .Default(() => { out.assign(white) })
 // NOTE: No fallthrough, implicit break
 ```
 
-### select() - Ternary (Preferred)
+### select() — Ternary (Preferred)
 
-```js
-const result = select(condition, valueIfTrue, valueIfFalse);
+```ts
+// Works outside Fn(), returns value directly
+const result = select(condition, valueIfTrue, valueIfFalse)
 ```
 
 ### Math-Based (Preferred for Performance)
 
-```js
+```ts
 step(edge, x)           // x < edge ? 0 : 1
 mix(a, b, t)            // a*(1-t) + b*t
 smoothstep(e0, e1, x)   // smooth 0-1 transition
 clamp(x, min, max)      // constrain range
 saturate(x)             // clamp(x, 0, 1)
 
-// Pattern: conditional selection without branching
+// Branchless conditional selection
 mix(valueA, valueB, step(threshold, selector))
 ```
 
@@ -206,50 +276,50 @@ mix(valueA, valueB, step(threshold, selector))
 
 ## Loops
 
-```js
+```ts
 // Basic
-Loop(count, ({ i }) => { /* i is loop index */ });
+Loop(count, ({ i }) => { /* i is loop index */ })
 
 // With options
-Loop({ start: int(0), end: int(10), type: 'int', condition: '<' }, ({ i }) => {});
+Loop({ start: int(0), end: int(10), type: 'int', condition: '<' }, ({ i }) => {})
 
 // Nested
-Loop(10, 5, ({ i, j }) => {});
+Loop(10, 5, ({ i, j }) => {})
 
 // Backward
-Loop({ start: 10 }, ({ i }) => {});  // counts down
+Loop({ start: 10 }, ({ i }) => {})  // counts down
 
 // While-style
-Loop(value.lessThan(10), () => { value.addAssign(1); });
+Loop(value.lessThan(10), () => { value.addAssign(1) })
 
 // Control
-Break();     // exit loop
-Continue();  // skip iteration
+Break()     // exit loop
+Continue()  // skip iteration
 ```
 
 ---
 
 ## Math Functions
 
-```js
+```ts
 // All available as: func(x) OR x.func()
 
 // Basic
 abs(x) sign(x) floor(x) ceil(x) round(x) trunc(x) fract(x)
-mod(x,y) min(x,y) max(x,y) clamp(x,min,max) saturate(x)
+mod(x, y) min(x, y) max(x, y) clamp(x, min, max) saturate(x)
 
 // Interpolation
-mix(a,b,t) step(edge,x) smoothstep(e0,e1,x)
+mix(a, b, t) step(edge, x) smoothstep(e0, e1, x)
 
 // Trig
-sin(x) cos(x) tan(x) asin(x) acos(x) atan(y,x)
+sin(x) cos(x) tan(x) asin(x) acos(x) atan(y, x)
 
 // Exponential
-pow(x,y) exp(x) exp2(x) log(x) log2(x) sqrt(x) inverseSqrt(x)
+pow(x, y) exp(x) exp2(x) log(x) log2(x) sqrt(x) inverseSqrt(x)
 
 // Vector
-length(v) distance(a,b) dot(a,b) cross(a,b) normalize(v)
-reflect(I,N) refract(I,N,eta) faceforward(N,I,Nref)
+length(v) distance(a, b) dot(a, b) cross(a, b) normalize(v)
+reflect(I, N) refract(I, N, eta) faceforward(N, I, Nref)
 
 // Derivatives (fragment only)
 dFdx(x) dFdy(x) fwidth(x)
@@ -261,8 +331,8 @@ saturate(x)     // clamp(x, 0, 1)
 reciprocal(x)   // 1/x
 cbrt(x)         // cube root
 lengthSq(x)     // squared length (no sqrt)
-difference(x,y) // abs(x - y)
-equals(x,y)     // x == y
+difference(x, y) // abs(x - y)
+equals(x, y)     // x == y
 pow2(x) pow3(x) pow4(x) // x^2, x^3, x^4
 ```
 
@@ -270,7 +340,7 @@ pow2(x) pow3(x) pow4(x) // x^2, x^3, x^4
 
 ## Oscillators
 
-```js
+```ts
 oscSine(t = time)      // sine wave 0-1-0
 oscSquare(t = time)    // square wave 0/1
 oscTriangle(t = time)  // triangle wave
@@ -281,7 +351,7 @@ oscSawtooth(t = time)  // sawtooth wave
 
 ## Blend Modes
 
-```js
+```ts
 blendBurn(a, b)    // color burn
 blendDodge(a, b)   // color dodge
 blendScreen(a, b)  // screen
@@ -293,8 +363,8 @@ blendColor(a, b)   // normal blend
 
 ## UV Utilities
 
-```js
-uv()                                        // default UV coordinates (vec2, 0-1)
+```ts
+uv()                                        // AttributeNode<'vec2'>, 0-1
 uv(index)                                   // specific UV channel
 matcapUV                                    // matcap texture coords
 rotateUV(uv, rotation, center = vec2(0.5))  // rotate UVs
@@ -307,7 +377,7 @@ equirectUV(direction = positionWorldDirection) // equirect mapping
 
 ## Reflect
 
-```js
+```ts
 reflectView    // reflection in view space
 reflectVector  // reflection in world space
 ```
@@ -316,7 +386,7 @@ reflectVector  // reflection in world space
 
 ## Interpolation Helpers
 
-```js
+```ts
 remap(node, inLow, inHigh, outLow = 0, outHigh = 1)      // remap range
 remapClamp(node, inLow, inHigh, outLow = 0, outHigh = 1) // remap + clamp
 ```
@@ -325,7 +395,7 @@ remapClamp(node, inLow, inHigh, outLow = 0, outHigh = 1) // remap + clamp
 
 ## Random
 
-```js
+```ts
 hash(seed)      // pseudo-random float [0,1]
 range(min, max) // random attribute per instance
 ```
@@ -334,39 +404,49 @@ range(min, max) // random attribute per instance
 
 ## Arrays
 
-```js
+```ts
 // Constant array
-const arr = array([vec3(1,0,0), vec3(0,1,0), vec3(0,0,1)]);
+const arr = array([vec3(1, 0, 0), vec3(0, 1, 0), vec3(0, 0, 1)])
 arr.element(i)    // dynamic index
 arr[0]            // constant index only
 
 // Uniform array (updatable from JS)
-const arr = uniformArray([new THREE.Color(0xff0000)], 'color');
-arr.array[0] = new THREE.Color(0x00ff00);  // update
+const arr = uniformArray([new THREE.Color(0xff0000)], 'color')
+arr.array[0] = new THREE.Color(0x00ff00)  // update
 ```
 
 ---
 
 ## Varyings
 
-```js
+```ts
 // Compute in vertex, interpolate to fragment
-const v = varying(expression, 'name');
+const v = varying(expression, 'name')
 
 // Optimize: force vertex computation
-const v = vertexStage(expression);
+const v = vertexStage(expression)
 ```
 
 ---
 
 ## Textures
 
-```js
-texture(tex)                    // sample at default UV
+```ts
+texture(tex)                    // sample at default UV → TextureNode<'vec4'>
 texture(tex, uv)                // sample at UV
 texture(tex, uv, level)         // sample with LOD
 cubeTexture(tex, direction)     // cubemap
 triplanarTexture(texX, texY, texZ, scale, pos, normal)
+```
+
+For typed texture node params in function signatures:
+
+```ts
+import type TextureNode from 'three/src/nodes/accessors/TextureNode.js'
+
+function myEffect(tex: TextureNode<'vec4'>, inputUV: Node<'vec2'>): Node<'vec4'> {
+  return texture(tex, inputUV)
+}
 ```
 
 ---
@@ -375,64 +455,66 @@ triplanarTexture(texX, texY, texZ, scale, pos, normal)
 
 ### Position
 
-```js
-positionGeometry      // raw attribute
-positionLocal         // after skinning/morphing
-positionWorld         // world space
-positionView          // camera space
-positionWorldDirection // normalized
-positionViewDirection  // normalized
+```ts
+positionGeometry      // AttributeNode<'vec3'> — raw attribute
+positionLocal         // Node<'vec3'> — after skinning/morphing
+positionWorld         // Node<'vec3'>
+positionView          // Node<'vec3'>
+positionWorldDirection // Node<'vec3'> — normalized
+positionViewDirection  // Node<'vec3'> — normalized
 ```
 
 ### Normal
 
-```js
-normalGeometry   normalLocal   normalView   normalWorld
+```ts
+normalGeometry   normalLocal   normalView   normalWorld  // all Node<'vec3'>
 ```
 
 ### Camera
 
-```js
-cameraPosition  cameraNear  cameraFar
+```ts
+cameraPosition  // Node<'vec3'>
+cameraNear      // Node<'float'>
+cameraFar       // Node<'float'>
 cameraViewMatrix  cameraProjectionMatrix  cameraNormalMatrix
 ```
 
 ### Screen
 
-```js
-screenUV          // normalized [0,1]
-screenCoordinate  // pixels
-screenSize        // pixels
+```ts
+screenUV          // ScreenNode<'vec2'> — normalized [0,1]
+screenCoordinate  // ScreenNode<'vec2'> — pixels
+screenSize        // ScreenNode<'vec2'> — pixels
 viewportUV  viewport  viewportCoordinate  viewportSize
 ```
 
 ### Time
 
-```js
-time              // elapsed time in seconds (float)
-deltaTime         // time since last frame (float)
+```ts
+time              // UniformNode<'float', number> — elapsed seconds
+deltaTime         // UniformNode<'float', number> — frame delta
 ```
 
 ### Model
 
-```js
-modelDirection         // vec3
-modelViewMatrix        // mat4
-modelNormalMatrix       // mat3
-modelWorldMatrix       // mat4
-modelPosition          // vec3
-modelScale             // vec3
-modelViewPosition      // vec3
-modelWorldMatrixInverse // mat4
+```ts
+modelDirection          // Node<'vec3'>
+modelViewMatrix         // Node<'mat4'>
+modelNormalMatrix        // Node<'mat3'>
+modelWorldMatrix        // Node<'mat4'>
+modelPosition           // Node<'vec3'>
+modelScale              // Node<'vec3'>
+modelViewPosition       // Node<'vec3'>
+modelWorldMatrixInverse  // Node<'mat4'>
 ```
 
 ### Other
 
-```js
-uv()  uv(index)           // texture coordinates
+```ts
+uv()  uv(index)           // AttributeNode<'vec2'>
 vertexColor()             // vertex colors
-attribute('name', 'type') // custom attribute
-instanceIndex             // instance/thread ID (for instancing and compute)
+attribute('name', 'type') // custom attribute (use generic: attribute<'vec4'>(...))
+instanceIndex             // IndexNode — instance/thread ID
 ```
 
 ---
@@ -441,7 +523,7 @@ instanceIndex             // instance/thread ID (for instancing and compute)
 
 ### Available Materials
 
-```js
+```ts
 MeshBasicNodeMaterial      // unlit, fastest
 MeshStandardNodeMaterial   // PBR with roughness/metalness
 MeshPhysicalNodeMaterial   // PBR + clearcoat, transmission, etc.
@@ -456,31 +538,31 @@ LineBasicNodeMaterial      // solid lines
 LineDashedNodeMaterial     // dashed lines
 ```
 
-### All Materials - Common Properties
+### All Materials — Common Properties
 
-```js
-.colorNode      // vec4 - base color
-.opacityNode    // float - opacity
-.positionNode   // vec3 - vertex position (local space)
-.normalNode     // vec3 - surface normal
-.outputNode     // vec4 - final output
-.fragmentNode   // vec4 - replace entire fragment stage
-.vertexNode     // vec4 - replace entire vertex stage
+```ts
+.colorNode      // Node<'float'> | Node<'vec2'> | Node<'vec3'> | Node<'vec4'> | Node<'color'> | null
+.opacityNode    // Node | null
+.positionNode   // Node | null — vertex position (local space)
+.normalNode     // Node | null — surface normal
+.outputNode     // Node | null — final output
+.fragmentNode   // Node | null — replace entire fragment stage
+.vertexNode     // Node | null — replace entire vertex stage
 ```
 
 ### MeshStandardNodeMaterial
 
-```js
-.roughnessNode  // float
-.metalnessNode  // float
-.emissiveNode   // vec3 color
-.aoNode         // float
-.envNode        // vec3 color
+```ts
+.roughnessNode  // Node | null
+.metalnessNode  // Node | null
+.emissiveNode   // Node | null — vec3 color
+.aoNode         // Node | null
+.envNode        // Node | null — vec3 color
 ```
 
 ### MeshPhysicalNodeMaterial (extends Standard)
 
-```js
+```ts
 .clearcoatNode  .clearcoatRoughnessNode  .clearcoatNormalNode
 .sheenNode  .transmissionNode  .thicknessNode
 .iorNode  .iridescenceNode  .iridescenceThicknessNode
@@ -489,150 +571,142 @@ LineDashedNodeMaterial     // dashed lines
 
 ### SpriteNodeMaterial
 
-```js
-.positionNode   // vec3 - world position of sprite center
-.colorNode      // vec4 - color and alpha
-.scaleNode      // float - sprite size (or vec2 for non-uniform)
-.rotationNode   // float - rotation in radians
+```ts
+.positionNode   // Node | null — world position of sprite center
+.colorNode      // Node | null — color and alpha
+.scaleNode      // Node | null — sprite size
+.rotationNode   // Node | null — rotation in radians
 ```
 
 ### PointsNodeMaterial
 
-```js
-.positionNode   // vec3 - point position
-.colorNode      // vec4 - color and alpha
-.sizeNode       // float - point size in pixels
+```ts
+.positionNode   // Node | null — point position
+.colorNode      // Node | null — color and alpha
+.sizeNode       // Node | null — point size in pixels
 ```
 
 ---
 
 ## Compute Shaders
 
+### Storage Buffer Types
+
+```ts
+import { storage, instanceIndex, Fn, vec4 } from 'three/tsl'
+
+// storage() overloads by type string:
+// storage(attr, 'float', count) → StorageBufferNode<'float'>
+// storage(attr, 'vec2', count)  → StorageBufferNode<'vec2'>
+// storage(attr, 'vec3', count)  → StorageBufferNode<'vec3'>
+// storage(attr, 'vec4', count)  → StorageBufferNode<'vec4'>
+```
+
 ### Basic Compute (Standalone)
 
-```js
-import { Fn, instanceIndex, storage } from 'three/tsl';
+```ts
+const count = 1024
+const array = new Float32Array(count * 4)
+const bufferAttribute = new THREE.StorageBufferAttribute(array, 4)
+const buffer = storage(bufferAttribute, 'vec4', count)  // StorageBufferNode<'vec4'>
 
-// Create storage buffer
-const count = 1024;
-const array = new Float32Array(count * 4);
-const bufferAttribute = new THREE.StorageBufferAttribute(array, 4);
-const buffer = storage(bufferAttribute, 'vec4', count);
-
-// Define compute shader
 const computeShader = Fn(() => {
-  const idx = instanceIndex;
-  const data = buffer.element(idx);
-  buffer.element(idx).assign(data.mul(2));
-})().compute(count);
+  const idx = instanceIndex
+  const data = buffer.element(idx)
+  buffer.element(idx).assign(data.mul(2))
+})().compute(count)
 
 // Execute
-renderer.compute(computeShader);              // synchronous (per-frame)
-await renderer.computeAsync(computeShader);   // async (heavy one-off tasks)
+renderer.compute(computeShader)              // synchronous (per-frame)
+await renderer.computeAsync(computeShader)   // async (heavy one-off tasks)
 ```
 
 ### Compute to Render Pipeline
 
-When compute shader output needs to be rendered (e.g., simulations, procedural geometry), use `StorageInstancedBufferAttribute` with `storage()` for writing and `attribute()` for reading.
+Use `StorageInstancedBufferAttribute` with `storage()` for writing and `attribute()` for reading:
 
-```js
-import { Fn, instanceIndex, storage, attribute, vec4 } from 'three/tsl';
+```ts
+const COUNT = 1000
 
-const COUNT = 1000;
+// 1. Create storage attribute
+const dataArray = new Float32Array(COUNT * 4)
+const dataAttribute = new THREE.StorageInstancedBufferAttribute(dataArray, 4)
 
-// 1. Create typed array and storage attribute
-const dataArray = new Float32Array(COUNT * 4);
-const dataAttribute = new THREE.StorageInstancedBufferAttribute(dataArray, 4);
+// 2. Storage node for compute (write access)
+const dataStorage = storage(dataAttribute, 'vec4', COUNT)
 
-// 2. Create storage node for compute shader (write access)
-const dataStorage = storage(dataAttribute, 'vec4', COUNT);
-
-// 3. Define compute shader
+// 3. Compute shader
 const computeShader = Fn(() => {
-  const idx = instanceIndex;
-  const current = dataStorage.element(idx);
-  
-  // Modify data...
-  const newValue = current.xyz.add(vec3(0.01, 0, 0));
-  
-  dataStorage.element(idx).assign(vec4(newValue, current.w));
-})().compute(COUNT);
+  const idx = instanceIndex
+  const current = dataStorage.element(idx)
+  const newValue = current.xyz.add(vec3(0.01, 0, 0))
+  dataStorage.element(idx).assign(vec4(newValue, current.w))
+})().compute(COUNT)
 
-// 4. Attach attribute to geometry for rendering
-const geometry = new THREE.BufferGeometry();
-// ... set up base geometry ...
-geometry.setAttribute('instanceData', dataAttribute);
+// 4. Attach to geometry for rendering
+const geometry = new THREE.BufferGeometry()
+geometry.setAttribute('instanceData', dataAttribute)
 
-// 5. Read in material using attribute()
-const material = new THREE.MeshBasicNodeMaterial();
+// 5. Read in material via attribute() — NOT storage()
+const material = new THREE.MeshBasicNodeMaterial()
 material.positionNode = Fn(() => {
-  const data = attribute('instanceData', 'vec4');
-  return positionLocal.add(data.xyz);
-})();
+  const data = attribute<'vec4'>('instanceData', 'vec4')
+  return positionLocal.add(data.xyz)
+})()
 
-// 6. Create mesh
-const mesh = new THREE.InstancedMesh(geometry, material, COUNT);
-scene.add(mesh);
+// 6. Create mesh and animate
+const mesh = new THREE.InstancedMesh(geometry, material, COUNT)
+scene.add(mesh)
 
-// 7. Animation loop
-await renderer.init();
+await renderer.init()
 function animate() {
-  renderer.compute(computeShader);
-  renderer.render(scene, camera);
-  requestAnimationFrame(animate);
+  renderer.compute(computeShader)
+  renderer.render(scene, camera)
+  requestAnimationFrame(animate)
 }
-animate();
+animate()
 ```
 
 ### Updating Buffers from JavaScript
 
-```js
-// Modify the underlying array
+```ts
 for (let i = 0; i < COUNT; i++) {
-  dataArray[i * 4] = Math.random();
+  dataArray[i * 4] = Math.random()
 }
-// Flag for GPU upload
-dataAttribute.needsUpdate = true;
+dataAttribute.needsUpdate = true
 ```
 
 ---
 
-## Example: Basic Material Shader
+## Example: Typed Material Shader
 
-```js
-import * as THREE from 'three/webgpu';
-import { Fn, uniform, vec3, vec4, float, uv, time, 
-         normalWorld, positionWorld, cameraPosition,
-         mix, pow, dot, normalize, max } from 'three/tsl';
+```ts
+import * as THREE from 'three/webgpu'
+import { Fn, uniform, vec3, vec4, float, time,
+         normalWorld, positionWorld, positionLocal, cameraPosition,
+         mix, pow, dot, normalize, max, sin } from 'three/tsl'
 
-// Uniforms
-const baseColor = uniform(new THREE.Color(0x4488ff));
-const fresnelPower = uniform(3.0);
+const baseColor = uniform(new THREE.Color(0x4488ff))  // UniformNode<'color', Color>
+const fresnelPower = uniform(3.0)                      // UniformNode<'float', number>
 
-// Create material
-const material = new THREE.MeshStandardNodeMaterial();
+const material = new THREE.MeshStandardNodeMaterial()
 
-// Custom color with fresnel rim lighting
 material.colorNode = Fn(() => {
-  // Calculate fresnel
-  const viewDir = normalize(cameraPosition.sub(positionWorld));
-  const NdotV = max(dot(normalWorld, viewDir), 0.0);
-  const fresnel = pow(float(1.0).sub(NdotV), fresnelPower);
-  
-  // Mix base color with white rim
-  const rimColor = vec3(1.0, 1.0, 1.0);
-  const finalColor = mix(baseColor, rimColor, fresnel);
-  
-  return vec4(finalColor, 1.0);
-})();
+  const viewDir = normalize(cameraPosition.sub(positionWorld))
+  const NdotV = max(dot(normalWorld, viewDir), 0.0)
+  const fresnel = pow(float(1.0).sub(NdotV), fresnelPower)
 
-// Animated vertex displacement
+  const rimColor = vec3(1.0, 1.0, 1.0)
+  const finalColor = mix(baseColor, rimColor, fresnel)
+  return vec4(finalColor, 1.0)
+})()
+
 material.positionNode = Fn(() => {
-  const pos = positionLocal.toVar();
-  const wave = sin(pos.x.mul(4.0).add(time.mul(2.0))).mul(0.1);
-  pos.y.addAssign(wave);
-  return pos;
-})();
+  const pos = positionLocal.toVar()
+  const wave = sin(pos.x.mul(4.0).add(time.mul(2.0))).mul(0.1)
+  pos.y.addAssign(wave)
+  return pos
+})()
 ```
 
 ---
