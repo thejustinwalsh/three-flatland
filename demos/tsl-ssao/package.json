@@ -1,0 +1,18 @@
+{
+  "name": "tsl-ssao-demo",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build"
+  },
+  "dependencies": {
+    "three": "^0.183.1",
+    "stats-gl": "^2.4.2"
+  },
+  "devDependencies": {
+    "@types/three": "^0.183.1",
+    "typescript": "^5.7.3",
+    "vite": "^6.4.1"
+  }
+}
