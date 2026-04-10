@@ -1,0 +1,22 @@
+# Pre-commit hook configuration. Replaces the former simple-git-hooks +
+# lint-staged combination. stage_fixed: true re-stages files that a command
+# mutates, which is essential for the sync-pack-full triggers that may edit
+# files under examples/** and minis/* that were never in the original glob.
+pre-commit:
+  parallel: false
+  commands:
+    sync-pack-full:
+      glob: "{pnpm-workspace.yaml,packages/*/package.json}"
+      run: pnpm sync:pack examples minis
+      stage_fixed: true
+    sync-pack-files:
+      glob: "{examples,minis}/**/package.json"
+      run: tsx scripts/sync-pack.ts --files {staged_files}
+      stage_fixed: true
+    sync-react-subpaths:
+      glob: "{packages/three-flatland/src/index.ts,packages/three-flatland/src/*/index.ts,packages/skia/src/ts/three/index.ts}"
+      run: tsx scripts/sync-react-subpaths.ts
+      stage_fixed: true
+    check-skia-pin:
+      glob: "packages/skia/third_party/skia"
+      run: tsx scripts/check-skia-pin.ts
