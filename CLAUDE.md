@@ -23,6 +23,11 @@
 - R3F classes must be registered with `extend()` before use in JSX
 - All Three.js objects used as R3F JSX elements need: optional constructor params, property setters, array-compatible setters
 
+## Planning
+- All planning, PRDs, milestones, and specs live in /planning, ensure all planning docs live under this directory.
+- Save superpowers specs to planning/superpowers/specs.
+- Save superpowers plans to planning/superpowers/plans.
+
 ## Workflow
 - Use Conventional Commits — releases are cut from changesets generated from the commit history
 
