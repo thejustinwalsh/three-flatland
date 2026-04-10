@@ -67,6 +67,21 @@ export function getInternalVersions(): Record<string, string> {
   return versions
 }
 
+// Build a unified {name → version} lookup from the catalog and internal
+// workspace packages. Catalog values pass through verbatim (they already
+// include a range prefix like ^). Internal workspace versions get ^ prepended.
+// Internal wins on collision.
+export function buildVersionTable(
+  catalog: Record<string, string>,
+  internal: Record<string, string>,
+): Record<string, string> {
+  const table: Record<string, string> = { ...catalog }
+  for (const [name, version] of Object.entries(internal)) {
+    table[name] = `^${version}`
+  }
+  return table
+}
+
 // Find all package.json files under a directory
 function findPackages(dir: string): string[] {
   const results: string[] = []
