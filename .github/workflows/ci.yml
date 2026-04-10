@@ -3,13 +3,6 @@ name: CI
 on:
   push:
     branches: [main]
-    paths-ignore:
-      - '.changeset/**'
-      - '.claude/**'
-      - 'docs/**'
-      - 'scripts/**'
-      - '**/*.md'
-      - 'LICENSE'
   pull_request:
     branches: [main]
 
@@ -29,7 +22,6 @@ jobs:
 
       - name: Check if latest commit has build-relevant changes
         id: latest-commit
-        if: github.event_name == 'pull_request' && github.event.action == 'synchronize'
         run: |
           changed=$(git diff --name-only HEAD~1 HEAD)
           echo "Changed files in latest commit:"
@@ -42,7 +34,7 @@ jobs:
 
       - name: Check previous commit CI status
         id: prev-ci
-        if: github.event_name == 'pull_request' && github.event.action == 'synchronize' && steps.latest-commit.outputs.has_code == 'false'
+        if: github.event_name == 'pull_request' && steps.latest-commit.outputs.has_code == 'false'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -59,9 +51,7 @@ jobs:
       - name: Decide whether to build
         id: decide
         run: |
-          if [[ "${{ github.event_name }}" == "pull_request" && \
-                "${{ github.event.action }}" == "synchronize" && \
-                "${{ steps.latest-commit.outputs.has_code }}" == "false" && \
+          if [[ "${{ steps.latest-commit.outputs.has_code }}" == "false" && \
                 "${{ steps.prev-ci.outputs.prev_passed }}" == "true" ]]; then
             echo "should_build=false" >> "$GITHUB_OUTPUT"
             echo "Skipping build — latest commit has no code changes and previous CI passed"

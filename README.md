@@ -14,7 +14,7 @@ High-performance 2D sprites, tilemaps, and effects for Three.js — built for We
 - **WebGPU Native** — all shaders built with TSL (Three Shader Language), works on WebGPU and WebGL
 - **Automatic Batching** — sprites sharing a material batch into single draw calls
 - **Decoupled Scene Graph** — transform hierarchy and render order are independent (layer + zIndex)
-- **Composable Effects** — 50+ TSL shader nodes for tint, outline, dissolve, CRT, palette swap, and more
+- **Composable Effects** — TSL shader nodes for tint, outline, dissolve, CRT, palette swap, and more
 - **Animation System** — spritesheet-driven with frame-perfect timing and callbacks
 - **Tilemap Support** — Tiled and LDtk editor formats with animated tiles
 - **Tree-Shakeable** — import only what you use, deep imports for maximum control
@@ -24,12 +24,12 @@ High-performance 2D sprites, tilemaps, and effects for Three.js — built for We
 
 ```bash
 # Core library (Three.js)
-npm install three-flatland@alpha
+npm install three-flatland@alpha three koota
 
 # For React Three Fiber
-npm install three-flatland@alpha @react-three/fiber@alpha
+npm install three-flatland@alpha @react-three/fiber@alpha react react-dom
 
-# TSL shader nodes
+# TSL shader nodes (optional)
 npm install @three-flatland/nodes@alpha
 ```
 
@@ -170,13 +170,15 @@ flash.intensity = 0.8 // Animate per frame
 |---------|-------------|
 | [`three-flatland`](https://www.npmjs.com/package/three-flatland) | Core library — sprites, materials, animation, loaders, tilemaps, render pipeline |
 | [`three-flatland/react`](https://www.npmjs.com/package/three-flatland) | React Three Fiber subpath — re-exports core + JSX type augmentation |
-| [`@three-flatland/nodes`](https://www.npmjs.com/package/@three-flatland/nodes) | 50+ TSL shader nodes for effects (per-category subpaths) |
+| [`@three-flatland/nodes`](https://www.npmjs.com/package/@three-flatland/nodes) | TSL shader nodes for effects (per-category subpaths) |
+| [`@three-flatland/skia`](https://www.npmjs.com/package/@three-flatland/skia) | Skia GPU rendering via WASM — text, paths, and image filters |
+| [`@three-flatland/tweakpane`](https://www.npmjs.com/package/@three-flatland/tweakpane) | Tweakpane v4 integration — theme, helpers, and React hooks |
 | [`@three-flatland/presets`](https://www.npmjs.com/package/@three-flatland/presets) | Pre-configured effect combinations (coming soon) |
 
 ## Requirements
 
 - **three.js** >= 0.183.1 (TSL/WebGPU support)
-- **koota** >= 0.1.0 (ECS for batch rendering)
+- **koota** >= 0.6.5 (ECS for batch rendering)
 - **React** >= 19.0.0 (for `three-flatland/react`, uses `use()` hook)
 - **@react-three/fiber** >= 10.0.0-alpha.2 (for React, WebGPU support)
 
@@ -189,10 +191,10 @@ Full docs, interactive examples, and API reference at **[thejustinwalsh.com/thre
 - [x] Core sprite system (Sprite2D, materials, loaders)
 - [x] Animation system (AnimatedSprite2D, AnimationController)
 - [x] 2D render pipeline with automatic batching
-- [x] TSL effect nodes (50+ composable shader nodes)
+- [x] TSL effect nodes (composable shader nodes)
 - [x] Tilemap support (Tiled, LDtk)
 - [x] React Three Fiber integration
-- [ ] Text rendering (SDF, MSDF, bitmap)
+- [x] Skia GPU text rendering via WASM
 - [ ] Render targets for 2D-on-3D
 - [ ] Effect presets
 

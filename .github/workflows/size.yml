@@ -3,19 +3,46 @@ name: Size
 on:
   pull_request:
     branches: [main]
-    paths-ignore:
-      - '.changeset/**'
-      - '.claude/**'
-      - 'docs/**'
-      - 'scripts/**'
-      - '**/*.md'
-      - 'LICENSE'
 
 permissions:
   pull-requests: write
 
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      should_run: ${{ steps.decide.outputs.should_run }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Check if latest commit has build-relevant changes
+        id: latest-commit
+        run: |
+          changed=$(git diff --name-only HEAD~1 HEAD)
+          echo "Changed files in latest commit:"
+          echo "$changed"
+          if echo "$changed" | grep -qvE '^(\.changeset/|\.claude/|docs/|scripts/|.*\.md$|LICENSE$)'; then
+            echo "has_code=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_code=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Decide whether to run size check
+        id: decide
+        run: |
+          if [[ "${{ steps.latest-commit.outputs.has_code }}" == "false" ]]; then
+            echo "should_run=false" >> "$GITHUB_OUTPUT"
+            echo "Skipping size check — no code changes in latest commit"
+          else
+            echo "should_run=true" >> "$GITHUB_OUTPUT"
+            echo "Size check required"
+          fi
+
   size:
+    needs: changes
+    if: needs.changes.outputs.should_run == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -54,7 +81,7 @@ jobs:
       - uses: andresz1/size-limit-action@v1.8.0
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          build_script: build
+          build_script: build --filter=three-flatland --filter=@three-flatland/skia --filter=@three-flatland/tweakpane --filter=@three-flatland/nodes --filter=@three-flatland/presets
           skip_step: install
           package_manager: pnpm
           script: pnpm exec size-limit --json
