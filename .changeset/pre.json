@@ -22,12 +22,18 @@
     "example-vanilla-template": "0.0.1-alpha.0",
     "example-vanilla-tilemap": "0.0.1-alpha.0",
     "example-vanilla-tsl-nodes": "0.0.1-alpha.0",
-    "@three-flatland/mini-breakout": "0.0.1-alpha.0"
+    "@three-flatland/mini-breakout": "0.0.1-alpha.0",
+    "example-react-skia": "0.0.1-alpha.0",
+    "example-vanilla-skia": "0.0.1-alpha.0",
+    "@three-flatland/skia": "0.0.1-alpha.1"
   },
   "changesets": [
     "auto-alpha-release-3s2qcns",
     "auto-three-flatland-3s2oy7w",
+    "auto-three-flatland-nodes-3s0vwmh",
     "auto-three-flatland-nodes-3s2qcns",
-    "auto-three-flatland-presets-3s2qcns"
+    "auto-three-flatland-presets-3s0vwmh",
+    "auto-three-flatland-presets-3s2qcns",
+    "auto-three-flatland-skia-3s0vwmh"
   ]
 }

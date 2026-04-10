@@ -1,6 +1,6 @@
 {
   "name": "@three-flatland/skia",
-  "version": "0.0.1-alpha.1",
+  "version": "0.1.0-alpha.2",
   "description": "Lightweight CanvasKit alternative — Skia's core GPU rendering in ~1 MB of WASM, built with Zig",
   "type": "module",
   "exports": {
@@ -103,9 +103,15 @@
     "react": "catalog:"
   },
   "peerDependenciesMeta": {
-    "three": { "optional": true },
-    "@react-three/fiber": { "optional": true },
-    "react": { "optional": true }
+    "three": {
+      "optional": true
+    },
+    "@react-three/fiber": {
+      "optional": true
+    },
+    "react": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@bytecodealliance/componentize-js": "^0.19.3",

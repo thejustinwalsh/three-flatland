@@ -1,6 +1,6 @@
 {
   "name": "@three-flatland/nodes",
-  "version": "0.1.0-alpha.1",
+  "version": "0.1.0-alpha.3",
   "description": "TSL shader nodes for sprite rendering and effects",
   "type": "module",
   "exports": {
