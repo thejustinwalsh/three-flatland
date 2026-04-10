@@ -13,6 +13,14 @@ const baseUrl = import.meta.env.BASE_URL;
 <StarlightHead {...Astro.props}><slot /></StarlightHead>
 <ClientRouter />
 
+<!-- Self hosted metrics  -->
+{import.meta.env.PROD && (
+  <>
+    <link rel="preconnect" href="https://metrics.tjw.dev" />
+    <script is:inline defer src="https://metrics.tjw.dev/metrics.js" data-website-id="345cb050-cdc9-4278-8502-70825fdd4c2b"></script>
+  </>
+)}
+
 <!-- Theme persistence across view transitions -->
 <script is:inline>
 (function() {
