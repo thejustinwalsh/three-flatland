@@ -74,7 +74,7 @@ Exit non-zero if any mismatches are found. Entries outside the table are never r
 
 ### Git hooks: migrate to lefthook
 
-Retire `simple-git-hooks` and `lint-staged`. Install `lefthook` and move all pre-commit behavior into a single `lefthook.yml` at the repo root. lefthook's `stage_fixed: true` directive re-stages every file a command touched, regardless of whether the file was originally part of the staged set — this is the mechanism that makes the new sync-pack full-sync triggers safe.
+Retire `simple-git-hooks` and `lint-staged`. Install `lefthook` and move all pre-commit behavior into a single `lefthook.yml` at the repo root. lefthook's `stage_fixed: true` directive re-stages files matching the command's own `glob` pattern. For commands whose output files differ from their trigger glob (like `sync-pack-full`, which triggers on `pnpm-workspace.yaml` but writes to `examples/**`), an explicit `git add` in the `run` line stages the output files directly.
 
 **New file: `lefthook.yml`** (repo root):
 
@@ -84,28 +84,31 @@ pre-commit:
   commands:
     sync-pack-full:
       glob: "{pnpm-workspace.yaml,packages/*/package.json}"
-      run: pnpm sync:pack examples minis
+      run: pnpm sync:pack examples minis && git add examples minis
       stage_fixed: true
     sync-pack-files:
       glob: "{examples,minis}/**/package.json"
-      run: tsx scripts/sync-pack.ts --files {staged_files}
+      run: pnpm exec tsx scripts/sync-pack.ts --files {staged_files}
       stage_fixed: true
     sync-react-subpaths:
       glob: "{packages/three-flatland/src/index.ts,packages/three-flatland/src/*/index.ts,packages/skia/src/ts/three/index.ts}"
-      run: tsx scripts/sync-react-subpaths.ts
+      run: pnpm exec tsx scripts/sync-react-subpaths.ts
       stage_fixed: true
     check-skia-pin:
       glob: "packages/skia/third_party/skia"
-      run: tsx scripts/check-skia-pin.ts
+      run: pnpm exec tsx scripts/check-skia-pin.ts
 ```
 
 Notes on this config:
 
 - `parallel: false` gives deterministic ordering. `sync-pack-full` runs before `sync-pack-files`, so a commit that stages both `pnpm-workspace.yaml` and an example `package.json` applies the catalog bump across all examples first, then the per-file step runs as an idempotent no-op on the already-synced file.
-- `stage_fixed: true` is set on every mutating command. It covers both the full-sync case (files mutated outside the original glob) and the per-file case (in-place edits).
+- `sync-pack-full` appends `&& git add examples minis` because `stage_fixed: true` only re-stages files matching the command's own glob, not files in other directories that the command modifies. The explicit `git add` ensures propagated example/mini updates land in the same commit as the catalog bump.
+- `stage_fixed: true` on `sync-pack-files` works correctly because the files being modified are the same files that matched the glob (in-place edits via `--files`).
+- `sync-react-subpaths` already calls `git add` internally for its generated wrapper files, so `stage_fixed` is belt-and-suspenders.
 - `check-skia-pin` deliberately omits `stage_fixed`. It's a verification script that doesn't mutate files; it either passes or exits non-zero.
-- Glob brace expansion `{a,b,c}` matches any of the listed patterns, preserving the semantics of the current multi-entry `lint-staged` patterns for sync-react and the two sync-pack scopes.
-- The `{staged_files}` placeholder in `sync-pack-files` receives the staged files that matched the glob for that specific command — unchanged behavior versus the current lint-staged setup.
+- `pnpm exec tsx` is used instead of bare `tsx` because lefthook's subshell doesn't include `node_modules/.bin` on PATH.
+- Glob brace expansion `{a,b,c}` matches any of the listed patterns, preserving the semantics of the current multi-entry `lint-staged` patterns.
+- The `{staged_files}` placeholder in `sync-pack-files` receives the staged files that matched the glob for that specific command.
 
 **`package.json` changes:**
 
@@ -117,7 +120,7 @@ Notes on this config:
 **Developer-facing behavior after the migration:**
 
 - On `pnpm install`, lefthook installs its pre-commit shim.
-- On `git commit`, lefthook runs the pre-commit commands against the current staged set; mutated files are automatically re-staged.
+- On `git commit`, lefthook runs the pre-commit commands against the current staged set; `sync-pack-full` explicitly stages propagated files via `git add`, and `stage_fixed: true` handles in-place edits for the other commands.
 - Running `lefthook run pre-commit` manually executes the same commands outside of a commit, for debugging.
 
 ### One-time cleanup
