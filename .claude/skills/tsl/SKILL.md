@@ -376,6 +376,63 @@ a.lessThanEqual(b)   // a <= b
 | Import not found | `from 'three'` | `from 'three/webgpu'` |
 | Attribute type error | `attribute('n', 'vec4')` | `attribute<'vec4'>('n', 'vec4')` |
 | Node immutability | Direct `=` assignment | `.toVar()` then `.assign()` |
+| Loop unrolling | TSL `Loop()` for fixed counts | JS `for` loop (unrolls at build time) |
+| Matrix multiply | `matrix * vector` | `matrix.mul(vector)` |
+
+## Build-Time vs. Run-Time Loops
+
+This is the second most important concept after the build-time/run-time distinction. When you need a loop in TSL, you have two choices:
+
+```ts
+// BUILD-TIME LOOP (JS for-loop) — unrolls at shader compile time
+// Use for: fixed sample counts, pre-computed data, performance-critical paths
+const samples = generateSamples(16)
+let result: Node<'float'> = float(0)
+for (let i = 0; i < samples.length; i++) {
+  const dir = vec3(samples[i][0], samples[i][1], samples[i][2])
+  result = result.add(computeSample(dir))  // builds 16 separate node operations
+}
+
+// RUN-TIME LOOP (TSL Loop()) — compiles to GPU loop instruction
+// Use for: dynamic iteration counts, when unrolling would be too large
+Loop(count, ({ i }) => {
+  // TSL statements here execute on GPU each iteration
+})
+```
+
+**Rule of thumb:** If the iteration count is known at shader compile time (e.g., sample counts, kernel sizes), use a JS for-loop. The shader compiler will unroll it. If the count comes from a uniform or is very large, use `Loop()`.
+
+Note that reassigning a `let` node variable in a JS loop (like `result = result.add(...)`) is **build-time graph construction**, not GPU mutation. This is correct — you're building a longer node chain, not mutating a GPU variable.
+
+## Matrix Operations
+
+Matrix-vector multiplication uses the same `.mul()` method:
+
+```ts
+// mat4 × vec4 multiplication
+const viewPos = invProjectionMatrix.mul(clipSpacePos)  // Node<'vec4'>
+
+// Access result components
+const xyz = viewPos.xyz           // Node<'vec3'>
+const w = viewPos.w               // Node<'float'>
+
+// Perspective divide
+const result = viewPos.xyz.div(viewPos.w)  // Node<'vec3'>
+```
+
+## Texture Sampling — Two Syntaxes
+
+```ts
+// Function syntax (import texture from three/tsl)
+import { texture } from 'three/tsl'
+const color = texture(myTexture, uv)  // TextureNode<'vec4'>
+
+// Method syntax (on TextureNode instances)
+const color = texNode.sample(uv)  // Node<'vec4'>
+// Useful when you already have a TextureNode reference
+```
+
+Both work. The repo commonly aliases the import: `import { texture as sampleTexture } from 'three/tsl'` to avoid naming conflicts with local variables.
 
 ## Quick Patterns
 
