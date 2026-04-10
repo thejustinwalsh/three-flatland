@@ -102,44 +102,21 @@ function findPackages(dir: string): string[] {
   return results
 }
 
-// Replace version strings in a deps object (mutates deps)
+// Overwrite any dep whose name is in the version table with the table value.
+// Deps not in the table are left untouched. Returns true iff at least one
+// value changed.
 export function syncDeps(
   deps: Record<string, string> | undefined,
-  catalog: Record<string, string>,
-  internal: Record<string, string>,
-  strict = false,
-  filePath = '',
+  table: Record<string, string>,
 ): boolean {
   if (!deps) return false
   let changed = false
 
-  for (const [name, version] of Object.entries(deps)) {
-    if (version === 'catalog:') {
-      if (catalog[name]) {
-        deps[name] = catalog[name]
-        changed = true
-      } else if (strict) {
-        console.error(
-          `Error: No catalog entry for "${name}" in pnpm-workspace.yaml\n` +
-            `Fix the catalog or update the version in: ${filePath}`,
-        )
-        process.exit(1)
-      } else {
-        console.warn(`  ⚠ No catalog entry for "${name}"`)
-      }
-    } else if (version === 'workspace:*') {
-      if (internal[name]) {
-        deps[name] = `^${internal[name]}`
-        changed = true
-      } else if (strict) {
-        console.error(
-          `Error: No internal package for "${name}"\n` +
-            `Add the package to packages/ or update the version in: ${filePath}`,
-        )
-        process.exit(1)
-      } else {
-        console.warn(`  ⚠ No internal package for "${name}"`)
-      }
+  for (const [name, current] of Object.entries(deps)) {
+    const target = table[name]
+    if (target !== undefined && current !== target) {
+      deps[name] = target
+      changed = true
     }
   }
 
@@ -230,6 +207,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     // File mode: process individual package.json files (used by lint-staged)
     const files = args.slice(1)
     let totalChanged = 0
+    const table = buildVersionTable(catalog, internal)
 
     for (const file of files) {
       const absPath = resolve(ROOT, file)
@@ -240,12 +218,12 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
 
       const content = readFileSync(absPath, 'utf-8')
       const pkg = JSON.parse(content)
-      const relative = absPath.replace(ROOT + '/', '')
 
-      const depsChanged = syncDeps(pkg.dependencies, catalog, internal, true, relative)
-      const devDepsChanged = syncDeps(pkg.devDependencies, catalog, internal, true, relative)
+      const depsChanged = syncDeps(pkg.dependencies, table)
+      const devDepsChanged = syncDeps(pkg.devDependencies, table)
+      const peerDepsChanged = syncDeps(pkg.peerDependencies, table)
 
-      if (depsChanged || devDepsChanged) {
+      if (depsChanged || devDepsChanged || peerDepsChanged) {
         writeFileSync(absPath, JSON.stringify(pkg, null, 2) + '\n')
         totalChanged++
       }
@@ -256,8 +234,8 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     }
   } else {
     // Directory mode: walk directories (existing behavior)
-    console.log('Catalog versions:', catalog)
-    console.log('Internal versions:', internal)
+    const table = buildVersionTable(catalog, internal)
+    console.log('Version table:', table)
     console.log()
 
     let totalChanged = 0
@@ -278,10 +256,11 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
         const pkg = JSON.parse(content)
         const relative = pkgPath.replace(ROOT + '/', '')
 
-        const depsChanged = syncDeps(pkg.dependencies, catalog, internal)
-        const devDepsChanged = syncDeps(pkg.devDependencies, catalog, internal)
+        const depsChanged = syncDeps(pkg.dependencies, table)
+        const devDepsChanged = syncDeps(pkg.devDependencies, table)
+        const peerDepsChanged = syncDeps(pkg.peerDependencies, table)
 
-        if (depsChanged || devDepsChanged) {
+        if (depsChanged || devDepsChanged || peerDepsChanged) {
           writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n')
           console.log(`  ✓ Updated ${relative}`)
           totalChanged++
