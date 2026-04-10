@@ -21,8 +21,8 @@ const config = require(configPath)
 
 // WASM binaries measured as raw + brotli file sizes
 const wasmEntries = [
-  { name: '@three-flatland/skia GL WASM', path: 'packages/skia/dist/skia-gl/skia-gl.opt.wasm' },
-  { name: '@three-flatland/skia WebGPU WASM', path: 'packages/skia/dist/skia-wgpu/skia-wgpu.opt.wasm' },
+  { name: '@three-flatland/skia/wasm/wgpu', path: 'packages/skia/dist/skia-wgpu/skia-wgpu.opt.wasm' },
+  { name: '@three-flatland/skia/wasm/gl', path: 'packages/skia/dist/skia-gl/skia-gl.opt.wasm' },
 ]
 
 function brotliSize(buf) {
@@ -81,6 +81,19 @@ function getWasmEntries() {
   return results
 }
 
+/**
+ * Sort: three-flatland → @three-flatland/* (with WASM) → minis/
+ */
+function sortResults(results) {
+  function sortKey(name) {
+    if (name.startsWith('three-flatland')) return `0_${name}`
+    if (name.startsWith('@three-flatland')) return `1_${name.replace('(raw)', '(0raw)').replace('(brotli)', '(1brotli)')}`
+    if (name.startsWith('minis/')) return `2_${name}`
+    return `3_${name}`
+  }
+  return results.sort((a, b) => sortKey(a.name).localeCompare(sortKey(b.name)))
+}
+
 try {
   const output = execSync(`pnpm exec size-limit --config ${configArg} ${args}`, {
     cwd: root,
@@ -91,14 +104,14 @@ try {
   if (isJson && output) {
     const results = JSON.parse(output)
     results.push(...getWasmEntries())
-    process.stdout.write(JSON.stringify(results))
+    process.stdout.write(JSON.stringify(sortResults(results)))
   }
 } catch (e) {
   if (isJson && e.stdout) {
     try {
       const results = JSON.parse(e.stdout)
       results.push(...getWasmEntries())
-      process.stdout.write(JSON.stringify(results))
+      process.stdout.write(JSON.stringify(sortResults(results)))
     } catch {
       process.stderr.write(e.stdout || '')
     }
