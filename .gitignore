@@ -47,6 +47,7 @@ test-results/
 # Temporary
 tmp/
 temp/
+.size-limit-filtered.*
 
 # Agents
 settings.local.json

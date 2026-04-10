@@ -4,48 +4,6 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
-catalogs:
-  default:
-    '@react-three/fiber':
-      specifier: ^10.0.0-alpha.2
-      version: 10.0.0-alpha.2
-    '@tweakpane/core':
-      specifier: ^2.0.5
-      version: 2.0.5
-    '@tweakpane/plugin-essentials':
-      specifier: ^0.2.1
-      version: 0.2.1
-    '@types/react':
-      specifier: ^19.0.2
-      version: 19.2.9
-    '@types/react-dom':
-      specifier: ^19.0.2
-      version: 19.2.3
-    '@types/three':
-      specifier: ^0.183.1
-      version: 0.183.1
-    koota:
-      specifier: ^0.6.5
-      version: 0.6.5
-    react:
-      specifier: ^19.0.0
-      version: 19.2.3
-    react-dom:
-      specifier: ^19.0.0
-      version: 19.2.3
-    three:
-      specifier: ^0.183.1
-      version: 0.183.1
-    tweakpane:
-      specifier: ^4.0.5
-      version: 4.0.5
-    typescript:
-      specifier: ^5.7.3
-      version: 5.9.3
-    vite:
-      specifier: ^6.4.1
-      version: 6.4.1
-
 overrides:
   three-flatland: workspace:*
   '@three-flatland/nodes': workspace:*
@@ -95,7 +53,7 @@ importers:
         version: 12.0.0
       tsup:
         specifier: ^8.3.5
-        version: 8.5.1(jiti@1.21.7)(postcss@8.5.6)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.2)
+        version: 8.5.1(postcss@8.5.6)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.2)
       tsx:
         specifier: ^4.19.2
         version: 4.21.0
@@ -9628,6 +9586,14 @@ snapshots:
       tsx: 4.21.0
       yaml: 2.8.2
 
+  postcss-load-config@6.0.1(postcss@8.5.6)(tsx@4.21.0)(yaml@2.8.2):
+    dependencies:
+      lilconfig: 3.1.3
+    optionalDependencies:
+      postcss: 8.5.6
+      tsx: 4.21.0
+      yaml: 2.8.2
+
   postcss-nested@6.2.0(postcss@8.5.6):
     dependencies:
       postcss: 8.5.6
@@ -10221,6 +10187,34 @@ snapshots:
       joycon: 3.1.1
       picocolors: 1.1.1
       postcss-load-config: 6.0.1(jiti@1.21.7)(postcss@8.5.6)(tsx@4.21.0)(yaml@2.8.2)
+      resolve-from: 5.0.0
+      rollup: 4.56.0
+      source-map: 0.7.6
+      sucrase: 3.35.1
+      tinyexec: 0.3.2
+      tinyglobby: 0.2.15
+      tree-kill: 1.2.2
+    optionalDependencies:
+      postcss: 8.5.6
+      typescript: 5.9.3
+    transitivePeerDependencies:
+      - jiti
+      - supports-color
+      - tsx
+      - yaml
+
+  tsup@8.5.1(postcss@8.5.6)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.2):
+    dependencies:
+      bundle-require: 5.1.0(esbuild@0.27.2)
+      cac: 6.7.14
+      chokidar: 4.0.3
+      consola: 3.4.2
+      debug: 4.4.3
+      esbuild: 0.27.2
+      fix-dts-default-cjs-exports: 1.0.1
+      joycon: 3.1.1
+      picocolors: 1.1.1
+      postcss-load-config: 6.0.1(postcss@8.5.6)(tsx@4.21.0)(yaml@2.8.2)
       resolve-from: 5.0.0
       rollup: 4.56.0
       source-map: 0.7.6

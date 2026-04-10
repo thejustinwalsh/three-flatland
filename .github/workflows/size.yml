@@ -84,4 +84,4 @@ jobs:
           build_script: build --filter='./packages/*'
           skip_step: install
           package_manager: pnpm
-          script: pnpm exec size-limit --json
+          script: node scripts/size-limit.mjs --json
