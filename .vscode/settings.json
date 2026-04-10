@@ -1,0 +1,12 @@
+{
+  "vitest.disableWorkspaceWarning": true,
+  "cSpell.words": [
+    "koota"
+  ],
+  "git.ignoredRepositories": [
+    "packages/skia/third_party/skia"
+  ],
+  "cmake.configureOnOpen": false,
+  "cmake.configureOnEdit": false,
+  "cmake.autoSelectActiveFolder": false
+}
