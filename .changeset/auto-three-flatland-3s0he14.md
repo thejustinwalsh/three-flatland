@@ -5,23 +5,23 @@
 > Branch: feat-examples-tweakplane
 > PR: https://github.com/thejustinwalsh/three-flatland/pull/22
 
-## BREAKING CHANGES
+### API changes
 
-- `FlatlandOptions.renderTarget` is now typed as `RenderTarget` (from `three`) instead of `WebGLRenderTarget`. Update any existing render-target code to `import { RenderTarget } from 'three'`.
+- `Flatland.renderTarget` type changed from `WebGLRenderTarget` to `RenderTarget` — use `import { RenderTarget } from 'three'` instead of `WebGLRenderTarget` when passing a render target to `Flatland`
 
-## API changes
+### Examples
 
-- `Flatland.renderTarget` getter/setter now uses the renderer-agnostic `RenderTarget` type — removes the implicit WebGL-only constraint
+- All plain Three.js examples moved from `examples/vanilla/` to `examples/three/`; React examples remain under `examples/react/`
+- All examples now include Tweakpane debug controls via `createPane({ scene })` for live stats and scene-specific parameter controls
 
-## Documentation
+### Documentation
 
-- Added Debug Controls guide covering Tweakpane integration with `createPane` / `wireSceneStats`
-- Updated Animation, Pass Effects, and Tilemap example pages with debug controls usage
-- Updated Flatland, Sprites, and Pass Effects guides
+- New "Debug Controls" guide covering Tweakpane integration for both vanilla Three.js and R3F
+- Updated guides for Flatland, sprites, pass-effects, and loaders to reflect `RenderTarget` API and example restructuring
+- Updated LLM prompt context files
 
-## Examples
+### BREAKING CHANGES
 
-- All plain Three.js examples moved from `examples/vanilla/` to `examples/three/` — the `examples/react/` structure is unchanged
-- API docs and code comments updated from "Vanilla" to "Three.js" terminology throughout (`SpriteSheetLoader`, `TileMap2D`, `SkiaCanvas`)
+- `FlatlandOptions.renderTarget` accepts `RenderTarget` instead of `WebGLRenderTarget`. Update any call sites that pass a `WebGLRenderTarget` to use `RenderTarget` from `three`.
 
-Switches the Flatland render target type to the renderer-agnostic `RenderTarget`, adds a Debug Controls documentation guide, and reorganizes all plain Three.js examples under `examples/three/`.
+`Flatland.renderTarget` now uses the renderer-agnostic `RenderTarget` type throughout, and plain Three.js examples have been reorganised into `examples/three/` to align with the established `three/` vs `react/` naming convention.

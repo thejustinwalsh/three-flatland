@@ -5,35 +5,34 @@
 > Branch: feat-examples-tweakplane
 > PR: https://github.com/thejustinwalsh/three-flatland/pull/22
 
-## BREAKING CHANGES
+### New features
 
-- `PaneBundle.fpsGraph` is always `null`; replace all `fpsGraph.begin()` / `fpsGraph.end()` calls with `stats.begin()` / `stats.end()` from `PaneBundle.stats`
-- `CreatePaneOptions.fps` is removed; use `stats: boolean` to show/hide the stats panel
-- `addStatsGraph` no longer accepts a `label` option
+- `createPane` — initial release of `@three-flatland/tweakpane` with themed pane, FPS/MS/GPU/MEM cycling stats graph, and collapsible stats row showing draw calls, triangles, geometries, and textures
+- `createPane({ scene })` — pass a Three.js `Scene` to auto-wire `scene.onAfterRender` for per-frame draw/triangle stats; no manual `stats.update()` call required
+- `wireSceneStats(scene, stats)` — standalone export centralising GPU timestamp pool drain and WebGL/WebGPU backend detection; used by both `createPane` and `useStatsMonitor`
+- `StatsHandle` extended with `enableGpu()` and `gpuTime(ms)` — called automatically when `trackTimestamp` is detected; GPU mode cycles into the stats graph
+- `useStatsMonitor` hook (`@react-three/fiber`) — wires a `StatsHandle` from `usePane` into R3F's `useFrame` loop for automatic per-frame begin/end timing
+- `StatsRow` blade — compact single-row readout for draw calls, triangles, primitives, geometries, and textures beneath the cycling graph
+- Pane idle-dimming and pin toggle — pane fades when not hovered; click the pin button in the header to lock it fully opaque
+- `usePaneFolder`, `usePaneInput`, `usePaneButton` — created synchronously during render (no pop-in) with deferred disposal to survive React strict mode's cleanup/re-mount cycle
+- `claimPane` helper — prevents orphaned pane disposal when a pane is legitimately committed in a `useEffect`
 
-## New features
+### Performance fixes
 
-- `createPane` returns a `stats: StatsHandle` object — call `stats.begin()` / `stats.end()` each frame and `stats.update({ drawCalls, triangles, ... })` after render to drive the graph and stats folder
-- Cycling stats graph (click to cycle FPS / MS / MEM / GPU modes) replaces the plain FPS graph blade; GPU mode is auto-enabled when the backend supports timestamp queries
-- `wireSceneStats(scene, stats[, { debug }])` — exported helper for plain Three.js; hooks `scene.onAfterRender` to capture `renderer.info` each frame, auto-detects GPU timestamp support on WebGPU and WebGL backends, and microtask-queues GPU readback to avoid re-entering the renderer mid-frame
-- `useStatsMonitor(stats)` — R3F hook that wires `scene.onAfterRender` and `useFrame` (at `priority: Infinity` / `-Infinity`) into a `StatsHandle`; reads `renderer.info.render` accurately from inside the render callback rather than a racy `useFrame`
-- `StatsRow` — compact single-row renderer stats blade showing draw calls, triangles, primitives, geometries, and textures with outline SVG icons and compact number formatting (K / M / B / T suffixes)
-- `StatsHandle.enableGpu()` / `StatsHandle.gpuTime(ms)` — new methods to push GPU frame times into the cycling graph
-- `CreatePaneOptions.debug` (default `true`) — logs one-time backend diagnostics on the first frame (backend class, `trackTimestamp` state, first GPU time sample)
-- `CreatePaneOptions.stats` replaces `fps`; controls the stats panel
+- Removed independent `requestAnimationFrame` loop from `StatsGraph` — the competing RAF with SVG mutations caused Safari to throttle to ~20fps due to layout thrashing
+- `StatsGraph` now drives `updateLabel`/`updateGraph` from `end()` (once per render frame) and caches SVG dimensions via `ResizeObserver` instead of per-frame `getBoundingClientRect` calls
 
-## Bug fixes
+### Bug fixes
 
-- Stats graph no longer runs its own `requestAnimationFrame` loop alongside the render loop — fixes Safari tab-level throttling to ~20fps; SVG dimensions are now cached via `ResizeObserver` instead of per-frame `getBoundingClientRect` calls
-- `wireSceneStats` correctly binds the previous `onAfterRender` handler with the scene as `this`; `resolveTimestampsAsync` is also bound before the microtask so it can't be garbage-collected mid-microtask
-- `usePane` survives React Strict Mode double-invoke without disposing a live pane (uses `setTimeout` to distinguish strict-mode cleanup from real unmount)
-- TypeScript `any` casts removed from `addStatsGraph` and `stats-graph.ts`; `PerformanceMemory` typed explicitly
+- `wireSceneStats` cleanup now restores the exact original `onAfterRender` function reference (not a bound copy), fixing identity checks in stacked calls and tests
+- GPU timestamp async readback queued as a microtask to avoid re-entering the renderer mid-render and corrupting the WebGPU timestamp query pool
+- WebGL GPU detection now checks `backend.disjoint` in addition to `backend.trackTimestamp` — prevents GPU mode activating when `EXT_disjoint_timer_query_webgl2` is unavailable
+- `usePane` return type fixed (non-nullable after `useEffect` commits)
 
-## Build / package
+### BREAKING CHANGES
 
-- Initial tsup config added (`esm` + `cjs`, `dts`, `sourcemap`, `bundle: false`)
-- Exports wired: `index.ts` (vanilla), `react.ts` (R3F subpath), `useStatsMonitor` exported from `react.ts`
-- Comprehensive unit tests for `createPane`, `usePane`, `usePaneInput`, `usePaneFolder`, `usePaneButton`; vitest config and CI updated
+- `PaneBundle.fpsGraph` is now always `null` — use `stats.begin()`/`stats.end()` instead
+- `CreatePaneOptions.fps` option removed; replaced by `stats` (default: `true`)
+- `StatsHandle.update()` signature widened to `StatsUpdate` (all fields optional)
 
-Introduces a complete stats monitoring system — cycling graph, `wireSceneStats` for Three.js, `useStatsMonitor` for R3F, and `StatsRow` — while fixing a Safari performance regression caused by a competing RAF loop in the stats graph.
-
+`@three-flatland/tweakpane` introduces a full-featured stats pane with automatic GPU timing, a cycling FPS/MS/GPU/MEM graph, and React hooks that survive strict mode — replacing the earlier minimal FPS-only pane API.
