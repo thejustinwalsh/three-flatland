@@ -149,9 +149,9 @@ module.exports = [
   },
 
   // ── @three-flatland/skia (needs ESM + plugins for import.meta / .json / .wasm) ──
-  {
-    name: '@three-flatland/skia (full)',
-    path: 'packages/skia/dist/index.js',
+  ...[['', 'core'], ['/three', 'full'], ['/react', 'full']].map(([sub, label]) => ({
+    name: `@three-flatland/skia${sub} (${label})`,
+    path: `packages/skia/dist${sub || ''}/index.js`,
     import: '*',
     ignore: corePeerDeps,
     modifyEsbuildConfig(config) {
@@ -159,7 +159,7 @@ module.exports = [
       config.plugins = [...(config.plugins || []), resolveSkia]
       return config
     },
-  },
+  })),
 
   // ── minis (tree-shaken) — auto-scanned from index.html entry points ──
   ...(function () {
