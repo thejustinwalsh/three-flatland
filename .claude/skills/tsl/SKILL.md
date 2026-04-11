@@ -378,6 +378,48 @@ a.lessThanEqual(b)   // a <= b
 | Node immutability | Direct `=` assignment | `.toVar()` then `.assign()` |
 | Loop unrolling | TSL `Loop()` for fixed counts | JS `for` loop (unrolls at build time) |
 | Matrix multiply | `matrix * vector` | `matrix.mul(vector)` |
+| Depth texture empty | `depthNode.value` | `depthNode.sample(uv).r` |
+| Screen-space effect black/white | Inline in PostProcessing.outputNode | TempNode + own RenderTarget |
+| Hardcoded resolution | `float(window.innerWidth)` | `screenSize.x` (dynamic) |
+| Red AO output | Displaying RedFormat directly | Extract `.r` and spread to RGB |
+| `.add()` / `.mul()` not found | Cast to bare `Node` (lost generic) | Keep `Node<'vec2'>` — never cast to unparameterized `Node` |
+
+## Uniforms vs. Compile-Time Constants
+
+Not all parameters are equal. Some can change every frame (cheap), others require shader recompilation (expensive). Getting this wrong causes either stuttering (unnecessary recompiles) or inflexibility (baking values that should be tweakable).
+
+```ts
+// UNIFORM — changes at runtime, GPU sees update immediately, NO recompilation
+const radius = uniform(5.0)
+radius.value = 10.0  // instant, costs nothing
+
+// COMPILE-TIME CONSTANT — baked into shader, change requires full recompile
+const SAMPLES = 16  // used in JS for-loop or as literal in node graph
+// Changing this means rebuilding the shader from scratch
+```
+
+**Rule of thumb:**
+- **Uniforms** for anything the user might tweak: radius, intensity, color, bias, falloff
+- **Compile-time constants** for structural parameters: sample count (determines loop unrolling), render target format, number of blur passes
+
+**N8AO example:**
+| Parameter | Type | Why |
+|-----------|------|-----|
+| `radius`, `intensity`, `bias`, `distanceFalloff` | Uniform | Tuning knobs — change often |
+| `resolution` | Uniform | Changes on resize |
+| `projectionMatrix`, `projectionMatrixInverse` | Uniform | Changes every frame with camera |
+| `aoSamples` | Compile-time | Determines loop unrolling — rare change, triggers recompile |
+| `halfRes` | Compile-time | Changes render target size — requires pipeline rebuild |
+| `denoiseIterations` | Compile-time | Changes number of render passes — structural |
+
+**Noise textures** should use `NearestFilter` (not default `LinearFilter`) to avoid interpolation smoothing away the randomness:
+```ts
+const noiseTex = new DataTexture(data, 128, 128, RGBAFormat)
+noiseTex.minFilter = NearestFilter
+noiseTex.magFilter = NearestFilter
+noiseTex.wrapS = RepeatWrapping
+noiseTex.wrapT = RepeatWrapping
+```
 
 ## Build-Time vs. Run-Time Loops
 
@@ -508,16 +550,221 @@ function getPackedComponent(bufNodes: Node<'vec4'>[], offset: number): Node<'flo
 }
 ```
 
-## Full API Reference
+## TSL Execution Contexts — Material Nodes vs PostProcessing
 
-See [reference.md](reference.md) for complete documentation of:
-- Type constructors, operators, swizzle, type conversions
-- All math functions, oscillators, blend modes
-- Shader inputs with types (position, normal, camera, screen, time, model)
-- NodeMaterial types and all assignable properties
-- Compute shader patterns and storage buffer types
-- UV utilities, varyings, textures, arrays
-- GLSL-to-TSL migration table
+TSL code runs in **two completely different contexts**. Confusing them is the #1 source of PostProcessing bugs.
+
+### Context 1: Material Nodes
+
+Material nodes (`.colorNode`, `.positionNode`, `.normalNode`) run per-fragment with the geometry's context. They have access to `positionLocal`, `normalWorld`, `uv()`, etc. Textures can be sampled at any UV freely.
+
+```ts
+material.colorNode = Fn(() => {
+  const color = texture(tex, uv())
+  return vec4(color.rgb.mul(tintUniform), color.a)
+})()
+```
+
+### Context 2: PostProcessing Pipeline
+
+PostProcessing runs as a fullscreen quad AFTER the scene renders. It reads the scene's output via `pass()` nodes. **Complex screen-space effects that sample depth/normals at neighbor UVs need their own render pass** — they CANNOT be inlined into `PostProcessing.outputNode`.
+
+```ts
+// Setup: render scene to textures via pass() + MRT
+const scenePass = pass(scene, camera)
+scenePass.setMRT(mrt({
+  output: output,
+  normal: normalView,  // write view-space normals to MRT
+}))
+
+const scenePassColor = scenePass.getTextureNode('output')
+const scenePassNormal = scenePass.getTextureNode('normal')
+const scenePassDepth = scenePass.getTextureNode('depth')
+
+// Use official TSL effect nodes (they handle the render pass internally)
+import { ao } from 'three/addons/tsl/display/GTAONode.js'
+import { denoise } from 'three/addons/tsl/display/DenoiseNode.js'
+
+const aoPass = ao(scenePassDepth, scenePassNormal, camera)
+const denoised = denoise(aoPass.getTextureNode(), scenePassDepth, scenePassNormal, camera)
+
+// Composite
+const postProcessing = new THREE.PostProcessing(renderer)
+postProcessing.outputNode = scenePassColor.mul(denoised)
+```
+
+### CRITICAL: Depth Access in PostProcessing
+
+**This WILL bite you.** There are multiple ways to access depth, and most don't work the way you expect:
+
+| Method | Returns | Works at arbitrary UV? | Use for |
+|--------|---------|----------------------|---------|
+| `scenePass.getTextureNode('depth')` | `TextureNode` | YES via `.sample(uv)` | Sampling depth at neighbor pixels |
+| `scenePass.getLinearDepthNode()` | `Node<'float'>` | NO (current fragment only) | Reading depth at current pixel |
+| `scenePass.getViewZNode()` | `Node<'float'>` | NO (current fragment only) | View-space Z at current pixel |
+| `depthTextureNode.value` | raw `Texture` | **BROKEN** — returns empty | **DO NOT USE** |
+
+**Rule:** Use `.sample(uv)` on the TextureNode to read depth at any screen position. Never use `.value` to get the raw texture — it's empty in the PostProcessing context.
+
+### Built-in PostProcessing Helpers
+
+These are exported from `three/tsl` and handle view-space math correctly:
+
+```ts
+import {
+  getViewPosition,    // (uv, depth, invProjMatrix) → Node<'vec3'>
+  getScreenPosition,  // (viewPos, projMatrix) → Node<'vec2'>
+  getNormalFromDepth,  // (uv, depthNode, invProjMatrix) → Node<'vec3'>
+  screenSize,          // Node<'vec2'> — viewport dimensions in pixels
+  convertToTexture,    // (node) → RTTNode — renders node to intermediate texture
+  pass,                // (scene, camera) → PassNode
+  mrt,                 // ({output, normal, ...}) → MRTNode
+} from 'three/tsl'
+```
+
+### Official TSL Effect Nodes
+
+Three.js ships ready-to-use TSL post-processing effects. Import from `three/addons/tsl/display/`:
+
+```ts
+import { ao } from 'three/addons/tsl/display/GTAONode.js'       // ambient occlusion
+import { denoise } from 'three/addons/tsl/display/DenoiseNode.js' // Poisson bilateral denoise
+```
+
+These handle the TempNode + RenderTarget + QuadMesh pattern internally. **Use them instead of reimplementing from scratch** — the render pass orchestration is the hard part, not the shader math.
+
+### The TempNode Custom Pass Pattern
+
+If you need a custom screen-space effect that samples at neighbor pixels (like GTAONode does), you must extend `TempNode` and render to your own RenderTarget.
+
+**Import TempNode from the source path** — it's not in the `three/webgpu` barrel export but IS in three.js's package.json exports map (`"./src/*": "./src/*"`):
+
+```ts
+import TempNode from 'three/src/nodes/core/TempNode.js'
+import { RenderTarget, NodeMaterial, QuadMesh, NodeUpdateType } from 'three/webgpu'
+import { passTexture, Fn, uniform } from 'three/tsl'
+import type NodeBuilder from 'three/src/nodes/core/NodeBuilder.js'
+import type NodeFrame from 'three/src/nodes/core/NodeFrame.js'
+import type TextureNode from 'three/src/nodes/accessors/TextureNode.js'
+
+class MyEffectNode extends TempNode<'float'> {
+  // Type depth/normal as TextureNode so .sample() works without casts
+  depthNode: TextureNode
+  radius = uniform(1.0)
+
+  _renderTarget = new RenderTarget(1, 1)
+  _material = new NodeMaterial()
+  _textureNode: Node
+
+  constructor(depthNode: TextureNode) {
+    super('float')
+    this.depthNode = depthNode
+    this.updateBeforeType = NodeUpdateType.FRAME
+    // passTexture expects PassNode — cast needed (genuine @types/three gap)
+    this._textureNode = passTexture(
+      this as unknown as Parameters<typeof passTexture>[0],
+      this._renderTarget.texture
+    )
+  }
+
+  override setup(builder: NodeBuilder) {
+    this._material.fragmentNode = Fn(() => {
+      const depth = this.depthNode.sample(someUV).r  // .sample() works here!
+      // ... effect logic ...
+      return result
+    })()
+    this._material.needsUpdate = true
+    return this._textureNode
+  }
+
+  override updateBefore(frame: NodeFrame) {
+    const { renderer } = frame
+    if (!renderer) return undefined
+    renderer.setRenderTarget(this._renderTarget)
+    new QuadMesh(this._material).render(renderer)
+    renderer.setRenderTarget(null)
+    return undefined
+  }
+}
+```
+
+**You cannot skip this pattern.** Inlining depth neighbor-sampling into `PostProcessing.outputNode` produces black/white screens because the depth texture isn't bound in that context.
+
+See [typescript.md](typescript.md) for the full typing story, known `@types/three` gaps, and required casts.
+
+## GLSL → TSL Transpiler
+
+Three.js ships a **GLSL to TSL transpiler** that converts GLSL shader code to TSL node code. Use it to verify your mental model when porting shaders — don't guess at depth conventions or coordinate systems.
+
+```ts
+// Located at: three/examples/jsm/transpiler/
+import GLSLDecoder from 'three/examples/jsm/transpiler/GLSLDecoder.js'
+import TSLEncoder from 'three/examples/jsm/transpiler/TSLEncoder.js'
+
+const glsl = `
+uniform sampler2D sceneDepth;
+uniform mat4 projMat;
+uniform float near;
+uniform float far;
+
+float linearize_depth(float d, float zNear, float zFar) {
+    return (zFar * zNear) / (zFar - d * (zFar - zNear));
+}
+
+void main() {
+    vec2 vUv = vec2(0.5, 0.5);
+    float d = texture2D(sceneDepth, vUv).x;
+    float linearD = linearize_depth(d, near, far);
+    gl_FragColor = vec4(vec3(linearD), 1.0);
+}
+`
+
+const decoder = new GLSLDecoder()
+const encoder = new TSLEncoder()
+encoder.iife = false
+encoder.uniqueNames = false
+const ast = decoder.parse(glsl)
+console.log(encoder.emit(ast))
+```
+
+**Run it as a Node script** in your project directory (needs three.js installed):
+
+```bash
+node my-transpile-test.mjs
+```
+
+**The transpiler requires a full shader** with `void main()` — standalone functions won't parse. Wrap them in a main if needed.
+
+**When to use:**
+- Porting a GLSL shader to TSL — run it through the transpiler first
+- Debugging depth/projection issues — compare transpiler output to your code
+- Learning TSL patterns — see how GLSL idioms map to TSL method chains
+
+**What it handles:**
+- `texture2D(tex, uv)` → `tex.sample(uv)`
+- Math operators → `.mul()`, `.add()`, `.sub()`, `.div()`
+- GLSL functions → TSL equivalents
+- Uniforms → `uniform()` declarations
+- For loops → `Loop()`
+- `gl_FragColor` → output assignment
+
+**What it does NOT handle:**
+- WebGL vs WebGPU depth range differences (clip Z: -1..1 vs 0..1)
+- `getViewPosition` / `getScreenPosition` built-in helpers (transpiler doesn't know about these)
+- TempNode / PostProcessing pipeline orchestration
+- Three.js-specific patterns like `pass()`, `mrt()`, MRT normals
+
+**Workflow:** Transpile first → adapt output for your execution context (material node vs TempNode) → verify each step visually.
+
+## Reference Files
+
+| File | Contents |
+|------|----------|
+| [nodes.md](nodes.md) | Type system, constructors, operators, math, uniforms, Fn(), attributes, conditionals, loops, shader inputs, NodeMaterials, textures |
+| [postprocessing.md](postprocessing.md) | pass(), MRT, depth access, TempNode pattern, GTAONode, DenoiseNode, complete GTAO+Denoise example |
+| [compute.md](compute.md) | Storage buffers, compute shaders, compute-to-render pipeline |
+| [typescript.md](typescript.md) | tsconfig setup, import patterns, Node generics, extending TempNode in TS, known type gaps + workarounds |
+| [migration.md](migration.md) | GLSL→TSL habit mapping, built-in variable mapping, typed material example |
 
 ## Summary — TSL Rules to Remember
 
@@ -531,5 +778,13 @@ See [reference.md](reference.md) for complete documentation of:
 8. **`attribute<'vec4'>(...)`** — explicit type parameter for @types/three >= 0.183.
 9. **`storage()` to write, `attribute()` to read** in compute-to-render pipelines.
 10. **No GLSL.** No `ShaderMaterial`. No `onBeforeCompile`. No raw shader strings.
+11. **PostProcessing depth: use `.sample(uv)`** on `getTextureNode('depth')`. Never `.value`.
+12. **Screen-space effects need TempNode + RenderTarget** — cannot inline into `PostProcessing.outputNode`.
+13. **Use official TSL add-ons** from `three/addons/tsl/display/` — GTAONode, DenoiseNode, etc.
+14. **`screenSize`** for dynamic resolution. Never hardcode `window.innerWidth`.
 
-<!-- Source: https://threejsroadmap.com/blog/getting-ai-to-write-tsl-that-works -->
+<!-- Sources:
+  - https://threejsroadmap.com/blog/getting-ai-to-write-tsl-that-works
+  - https://github.com/three-types/three-ts-types — @types/three source, TSL types WIP (issue #2049)
+  - https://github.com/three-types/three-ts-types/tree/master/tsl-testing — TSL type integration tests
+-->
