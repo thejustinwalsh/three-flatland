@@ -116,7 +116,7 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git config user.name "github-actions[bot]"
           git add .changeset/auto-*-${{ steps.bid.outputs.value }}.md 2>/dev/null || true
-          if ! git diff-index --quiet HEAD 2>/dev/null; then
+          if ! git diff --cached --quiet; then
             git commit -m "ci: generate changesets"
             git push
             echo "Changesets committed and pushed"
