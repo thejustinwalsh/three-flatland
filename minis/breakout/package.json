@@ -28,7 +28,7 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "three-flatland": "^0.1.0-alpha.2",
+    "three-flatland": "^0.1.0-alpha.4",
     "@three-flatland/nodes": "^0.1.0-alpha.3",
     "koota": "^0.6.5"
   },
