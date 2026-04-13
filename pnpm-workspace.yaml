@@ -3,6 +3,7 @@ packages:
   - examples/**
   - minis/*
   - docs
+  - skills
 
 catalog:
   '@tweakpane/core': ^2.0.5
