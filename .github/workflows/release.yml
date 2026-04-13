@@ -77,15 +77,45 @@ jobs:
           NPM_CONFIG_PROVENANCE: true
           NPM_CONFIG_ACCESS: public
 
-      - name: Sync alpha dist-tag to latest
-        if: steps.changesets.outputs.published == 'true'
+      - name: Sync alpha dist-tag
+        if: always() && steps.changesets.conclusion == 'success'
         run: |
-          for pkg in three-flatland @three-flatland/nodes @three-flatland/presets @three-flatland/skia; do
-            version=$(npm view "$pkg" version 2>/dev/null)
-            if [ -n "$version" ] && echo "$version" | grep -q "alpha"; then
-              echo "Tagging $pkg@$version as alpha"
-              npm dist-tag add "$pkg@$version" alpha
-            fi
+          # Pass 1: trust the action's output for packages published this run
+          # (avoids registry read-after-write lag racing with the fresh publish).
+          if [ "${{ steps.changesets.outputs.published }}" = "true" ]; then
+            echo '${{ steps.changesets.outputs.publishedPackages }}' \
+              | node -e "process.stdin.on('data',d=>JSON.parse(d).forEach(p=>console.log(p.name+' '+p.version)))" \
+              | while read pkg version; do
+                  echo "$version" | grep -q alpha || continue
+                  echo "Tagging freshly published $pkg@$version as alpha"
+                  npm dist-tag add "$pkg@$version" alpha || true
+                done
+          fi
+
+          # Pass 2: self-heal drift for any non-ignored workspace package.
+          # Source of truth for the publish set is .changeset/config.json ignore[].
+          mapfile -t packages < <(
+            node -e "
+              const cfg = require('./.changeset/config.json');
+              const ignore = new Set(cfg.ignore || []);
+              const { execSync } = require('child_process');
+              const ws = JSON.parse(execSync('pnpm -r list --depth=-1 --json'));
+              for (const p of ws) {
+                if (!p.name || p.private) continue;
+                if (ignore.has(p.name)) continue;
+                console.log(p.name);
+              }
+            "
+          )
+          for pkg in "${packages[@]}"; do
+            tags=$(npm view "$pkg" dist-tags --json 2>/dev/null) || continue
+            latest=$(echo "$tags" | node -e "let d=''; process.stdin.on('data',c=>d+=c).on('end',()=>{const t=JSON.parse(d||'{}'); console.log(t.latest||'')})")
+            alpha=$(echo  "$tags" | node -e "let d=''; process.stdin.on('data',c=>d+=c).on('end',()=>{const t=JSON.parse(d||'{}'); console.log(t.alpha||'')})")
+            [ -z "$latest" ] && continue
+            echo "$latest" | grep -q alpha || continue
+            [ "$latest" = "$alpha" ] && continue
+            echo "Healing drift: $pkg alpha=$alpha -> $latest"
+            npm dist-tag add "$pkg@$latest" alpha || true
           done
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
