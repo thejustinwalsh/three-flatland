@@ -1,10 +1,27 @@
+<p align="center">
+  <img src="https://raw.githubusercontent.com/thejustinwalsh/three-flatland/main/assets/repo-banner.png" alt="three-flatland" width="100%" />
+</p>
+
 # @three-flatland/skia
 
-GPU-accelerated 2D vector graphics for [Three.js](https://threejs.org/) — Skia compiled to WASM with Zig. Includes a native WebGPU backend (Graphite/Dawn) alongside WebGL — CanvasKit's npm package ships WebGL only. A lightweight alternative at less than half the size.
+GPU-accelerated 2D vector graphics for [three-flatland](https://www.npmjs.com/package/three-flatland) and [Three.js](https://threejs.org/) — Skia compiled to WASM with Zig. Includes a native WebGPU backend (Graphite/Dawn) alongside WebGL — a lightweight CanvasKit alternative at less than half the size.
 
-Part of the [**three-flatland**](https://github.com/thejustinwalsh/three-flatland) ecosystem.
+> **Alpha Release** — this package is in active development. The API will evolve and breaking changes are expected between releases. Pin your version and check the [changelog](https://github.com/thejustinwalsh/three-flatland/releases) before upgrading.
 
-> **Alpha** — API is stabilizing. Expect minor breaking changes between releases.
+[![npm](https://img.shields.io/npm/v/@three-flatland/skia)](https://www.npmjs.com/package/@three-flatland/skia)
+[![license](https://img.shields.io/npm/l/@three-flatland/skia)](https://github.com/thejustinwalsh/three-flatland/blob/main/LICENSE)
+
+## Install
+
+```bash
+npm install @three-flatland/skia@alpha
+```
+
+### Requirements
+
+- **three** >= 0.183.1 (WebGPU/TSL support)
+- **React** >= 19.0.0 (for `@three-flatland/skia/react`)
+- **@react-three/fiber** >= 10.0.0-alpha.2 (for React)
 
 ## Features
 
@@ -17,14 +34,6 @@ Part of the [**three-flatland**](https://github.com/thejustinwalsh/three-flatlan
 - **Three.js Scene Graph** — `SkiaCanvas`, `SkiaGroup`, shape nodes as `Object3D` children
 - **React Three Fiber** — `<SkiaCanvas>`, JSX shape elements, `useSkiaContext()`, `useLoader` for fonts, `attachSkiaTexture`
 - **857 KB brotli** (WebGPU) / **1 MB** (WebGL) — vs CanvasKit's 2.2 MB (see [what we include and exclude](./docs/canvaskit-comparison.md))
-
-## Install
-
-```bash
-npm install @three-flatland/skia@alpha
-```
-
-Peer dependencies: `three >= 0.183.1`. For React: `@react-three/fiber >= 10.0.0-alpha.2`, `react >= 19`.
 
 ## Quick Start
 
@@ -66,13 +75,21 @@ function SkiaPanel() {
   )
 }
 
-// Fonts: useLoader returns a SkiaTypeface, call .atSize() for sized fonts
+// Fonts: useLoader returns a SkiaTypeface, call .atSize() for sized font
 function TextDemo() {
   const typeface = useLoader(SkiaFontLoader, '/fonts/Inter.ttf')
   const font = typeface.atSize(24)
   return <skiaTextNode text="Hello Skia" font={font} fill={[1, 1, 1, 1]} x={10} y={30} />
 }
 ```
+
+## Import Paths
+
+| Path | Contents |
+|------|----------|
+| `@three-flatland/skia` | Core API — `Skia`, `SkiaPaint`, `SkiaPath`, `SkiaFont`, `SkiaTypeface` |
+| `@three-flatland/skia/three` | Three.js scene graph — `SkiaCanvas`, `SkiaRect`, `SkiaGroup`, shape nodes, loaders |
+| `@three-flatland/skia/react` | R3F integration — re-exports everything + `useSkiaContext`, `attachSkiaTexture`, JSX types |
 
 ## WASM Setup
 
@@ -98,14 +115,6 @@ new DefinePlugin({
 })
 ```
 
-## Import Paths
-
-| Path | Contents |
-|------|----------|
-| `@three-flatland/skia` | Core API — `Skia`, `SkiaPaint`, `SkiaPath`, `SkiaFont`, `SkiaTypeface` |
-| `@three-flatland/skia/three` | Three.js scene graph — `SkiaCanvas`, `SkiaRect`, `SkiaGroup`, shape nodes, loaders |
-| `@three-flatland/skia/react` | R3F integration — re-exports everything + `useSkiaContext`, `attachSkiaTexture`, JSX types |
-
 ## Building from Source
 
 Requires [Zig 0.15.1](https://ziglang.org/download/). All other tools are downloaded automatically.
@@ -128,14 +137,12 @@ Pinned to **chrome/m147** (Chrome 147 stable release branch).
 
 ## Documentation
 
-- [Skia Guide](https://thejustinwalsh.com/three-flatland/guides/skia/) — full API walkthrough
-- [Skia Example](https://thejustinwalsh.com/three-flatland/examples/skia/) — interactive demo
-- [Three.js Integration](./docs/three.md) — scene graph, components, loaders
-- [React Three Fiber](./docs/react.md) — JSX elements, hooks, attach helpers
-- [CanvasKit Comparison](./docs/canvaskit-comparison.md) — what we include, exclude, and why
-- [Architecture](./docs/ARCHITECTURE.md) — build system, WASM pipeline, internals
-- [three-flatland](https://github.com/thejustinwalsh/three-flatland) — parent project
+Full docs, interactive examples, and API reference at **[thejustinwalsh.com/three-flatland](https://thejustinwalsh.com/three-flatland/)**
 
 ## License
 
 [MIT](./LICENSE)
+
+---
+
+<sub>This README was created with AI assistance. AI can make mistakes — please verify claims and test code examples. Submit corrections [here](https://github.com/thejustinwalsh/three-flatland/issues).</sub>

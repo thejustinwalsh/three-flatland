@@ -22,7 +22,7 @@ export interface SpriteSheetLoaderOptions {
  *
  * @example
  * ```typescript
- * // Vanilla usage - static API
+ * // Three.js usage - static API
  * const sheet = await SpriteSheetLoader.load('/sprites/player.json');
  *
  * // R3F usage - works with useLoader
@@ -70,11 +70,11 @@ export class SpriteSheetLoader extends Loader<SpriteSheet> {
   }
 
   // ==========================================
-  // Static API for vanilla usage
+  // Static API for Three.js usage
   // ==========================================
 
   /**
-   * Load a spritesheet from a JSON file (static method for vanilla usage).
+   * Load a spritesheet from a JSON file (static method for Three.js usage).
    * Results are cached by URL and resolved options.
    */
   static load(url: string, options?: SpriteSheetLoaderOptions): Promise<SpriteSheet> {

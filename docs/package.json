@@ -39,11 +39,11 @@
     "example-react-batch-demo": "workspace:*",
     "example-react-tilemap": "workspace:*",
     "example-react-tsl-nodes": "workspace:*",
-    "example-vanilla-animation": "workspace:*",
-    "example-vanilla-basic-sprite": "workspace:*",
-    "example-vanilla-batch-demo": "workspace:*",
-    "example-vanilla-tilemap": "workspace:*",
-    "example-vanilla-tsl-nodes": "workspace:*",
+    "example-three-animation": "workspace:*",
+    "example-three-basic-sprite": "workspace:*",
+    "example-three-batch-demo": "workspace:*",
+    "example-three-tilemap": "workspace:*",
+    "example-three-tsl-nodes": "workspace:*",
     "typescript": "catalog:",
     "vite": "catalog:"
   }

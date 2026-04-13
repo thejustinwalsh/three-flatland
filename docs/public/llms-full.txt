@@ -9,24 +9,28 @@
 ## Requirements
 
 - three.js >= 0.183.1 (TSL/WebGPU support)
+- koota >= 0.6.5 (peer, for ECS-driven batching)
 - React >= 19.0.0 (for `three-flatland/react`)
 - @react-three/fiber >= 10.0.0-alpha.2 (for React, WebGPU support)
 
 ## Installation
 
 ```bash
-npm install three-flatland@alpha              # vanilla Three.js
-npm install three-flatland@alpha @react-three/fiber@alpha  # React Three Fiber
-npm install @three-flatland/nodes@alpha        # TSL effect nodes (optional)
+npm install three-flatland@alpha                              # Three.js
+npm install three-flatland@alpha @react-three/fiber@alpha     # React Three Fiber
+npm install @three-flatland/nodes@alpha                       # TSL effect nodes (optional)
+npm install @three-flatland/skia@alpha                        # Skia vector graphics (optional)
 ```
 
 ## Imports
 
-Vanilla: `import { ... } from 'three-flatland'`
-React: `import { ... } from 'three-flatland/react'` (re-exports core + JSX types)
-Nodes: `import { ... } from '@three-flatland/nodes'` or `'@three-flatland/nodes/color'`
+Three.js: `import { ... } from 'three-flatland'`
+React: `import { ... } from 'three-flatland/react'` (re-exports core + ThreeElements JSX types)
+Nodes: `import { ... } from '@three-flatland/nodes'` or per-category `'@three-flatland/nodes/color'`
+Skia: `import { Skia } from '@three-flatland/skia'`, scene nodes from `'@three-flatland/skia/three'`, R3F from `'@three-flatland/skia/react'`
+Tweakpane (examples only): `import { createPane, wireSceneStats } from '@three-flatland/tweakpane'`, React hooks from `'@three-flatland/tweakpane/react'`
 
-Always use `WebGPURenderer` from `'three/webgpu'`, never `WebGLRenderer`.
+Always use `WebGPURenderer` from `'three/webgpu'`, never `WebGLRenderer`. R3F users import from `'@react-three/fiber/webgpu'`, not `'@react-three/fiber'`.
 
 ---
 
@@ -208,25 +212,25 @@ The `pass` function receives `{ uniforms }` and returns `(input, uv) => color`.
 
 Import from `@three-flatland/nodes` or per-category subpaths. All functions accept and return TSL nodes.
 
-**sprite** (`@three-flatland/nodes/sprite`): `outline`, `pixelate`, `sampleSprite`, `uvFlip`, `uvOffset`, `uvRotate`, `uvScale`
+**sprite** (`@three-flatland/nodes/sprite`): `uvScale`, `uvOffset`, `uvRotate`, `uvFlip`, `pixelate`, `pixelateBySize`, `outline`, `outline8`, `sampleSprite`, `spriteUV`
 
-**color** (`@three-flatland/nodes/color`): `brightness`, `contrast`, `saturate`, `hueShift`, `tintMultiply`, `tintAdditive`, `tintOverlay`, `colorRemap`
+**color** (`@three-flatland/nodes/color`): `tint`, `tintAdditive`, `hueShift`, `hueShiftNormalized`, `saturate`, `grayscale`, `brightness`, `brightnessMultiply`, `brightnessClamped`, `contrast`, `contrastSCurve`, `colorRemap`, `colorRemapCustom`
 
-**alpha** (`@three-flatland/nodes/alpha`): `alphaMask`, `alphaTest`, `dissolve`, `fadeEdge`
+**alpha** (`@three-flatland/nodes/alpha`): `alphaTest`, `alphaTestOpaque`, `alphaMask`, `alphaMaskValue`, `alphaMaskInvert`, `fadeEdge`, `fadeEdgeRadial`, `fadeEdgeHorizontal`, `fadeEdgeVertical`, `dissolve`, `dissolveSimple`, `dissolvePixelated`, `dissolveDirectional`
 
-**retro** (`@three-flatland/nodes/retro`): `bayerDither`, `posterize`, `quantize`, `palettize`, `colorReplace`
+**retro** (`@three-flatland/nodes/retro`): `quantize`, `quantizeRGB`, `posterize`, `posterizeGamma`, `bayerDither`, `bayerDither2x2`, `bayerDither4x4`, `bayerDither8x8`, `colorReplace`, `colorReplaceHard`, `colorReplaceMultiple`, `palettize`, `palettizeDithered`, `palettizeNearest` (plus `consolePalettes` constants)
 
-**distortion** (`@three-flatland/nodes/distortion`): `wave`, `distort`, `distortNoise`
+**distortion** (`@three-flatland/nodes/distortion`): `waveHorizontal`, `waveVertical`, `waveRadial`, `waveRipple`, `waveWater`, `distortPinch`, `distortBulge`, `distortTwirl`, `distortBarrel`, `distortPixelate`, `distortPixelateCount`, `distortShatter`, `distortDisplace`, `distortSpherize`, `distortNoise`, `distortPerlin`, `distortSimplex`, `distortTurbulence`
 
-**vfx** (`@three-flatland/nodes/vfx`): `flash`, `pulse`, `shimmer`, `sparkle`, `trail`, `afterimage`
+**vfx** (`@three-flatland/nodes/vfx`): `sparkle`, `sparkleStar`, `sparkleRainbow`, `shimmer`, `shimmerWave`, `shimmerHolographic`, `shimmerMetallic`, `pulse`, `pulseGlow`, `pulseHeartbeat`, `pulseRadial`, `pulseRainbow`, `flash`, `flashSmooth`, `flashAdditive`, `flashAlpha`, `flashDamage`, `flashHeal`, `flashPowerUp`, `trail`, `trailAdditive`, `trailBlur`, `trailVelocity`, `afterimage`, `afterimageTinted`, `afterimageGlow`, `ghost`, `ghostTrail`, `ghostSpeed`
 
-**blur** (`@three-flatland/nodes/blur`): `blurBox`, `blurGaussian`, `blurKawase`, `blurMotion`, `blurRadial`, `bloom`
+**blur** (`@three-flatland/nodes/blur`): `blurGaussian`, `blurGaussian9`, `blurGaussian2Pass`, `blurBox`, `blurBoxDirectional`, `blurBox3x3`, `blurBoxSmooth`, `blurRadial`, `blurRadialDistance`, `blurSpin`, `blurFocus`, `blurMotion`, `blurMotionVelocity`, `blurMotionObject`, `blurShake`, `speedLines`, `blurKawase`, `blurKawaseSimple`, `blurKawaseDown`, `blurKawaseUp`, `blurKawaseMulti`, `bloom`, `bloomThreshold`, `bloomSimple`, `bloomAnamorphic`, `glowSelective`, `vignette`, `filmGrain`
 
-**display** (`@three-flatland/nodes/display`): `crtComplete`, `scanlines`, `lcd`, `phosphorMask`
+**display** (`@three-flatland/nodes/display`): `scanlines`, `scanlinesSmooth`, `scanlinesGlow`, `scanlinesInterlaced`, `scanlinesGrid`, `phosphorApertureGrille`, `phosphorSlotMask`, `phosphorShadowMask`, `phosphorSimple`, `phosphorMask`, `crtCurvature`, `crtCurvatureWithCorners`, `crtVignette`, `crtBloom`, `crtColorBleed`, `crtComplete`, `crtConvergence`, `lcdGrid`, `dotMatrix`, `lcdGhosting`, `lcdMotionGhost`, `lcdBacklightBleed`, `lcdPocket`, `lcdGBC`
 
-**analog** (`@three-flatland/nodes/analog`): `chromaticAberration`, `videoArtifacts`
+**analog** (`@three-flatland/nodes/analog`): `chromaticAberration`, `chromaticAberrationRadial`, `chromaticAberrationCustom`, `chromaticAberrationPulse`, `colorBleeding`, `interlacing`, `ntscComposite`, `vhsDistortion`, `staticNoise`, `analogGlitch`, `signalInterference`
 
-**upscale** (`@three-flatland/nodes/upscale`): `scale2x`, `eagle`, `hq2x`
+**upscale** (`@three-flatland/nodes/upscale`): `scale2x`, `scale3x`, `eagle`, `superEagle`, `sai2x`, `hq2x`, `hq3x`, `hq4x`
 
 All node functions follow the pattern: `fn(color_or_input, uv?, options?)` returning a TSL `Node<'vec4'>` (or `Node<'vec2'>` for UV transforms).
 
@@ -242,11 +246,110 @@ scene.add(tilemap)
 tilemap.update(deltaMs)  // For animated tiles
 ```
 
+Exports: `TileMap2D`, `Tileset`, `TileLayer`, `TiledLoader`, `LDtkLoader`. Types: `TileMapData`, `TileLayerData`, `ObjectLayerData`, `TileMapObject`, `TileDefinition`, `TileAnimationFrame`, `CollisionShape`, `ChunkCoord`, `TileInstance`.
+
+---
+
+## Skia (`@three-flatland/skia`)
+
+GPU-accelerated 2D vector graphics via Skia WASM. Auto-detects WebGPU or WebGL from renderer. ~857 KB (WebGPU) / ~1 MB (WebGL) brotli vs CanvasKit's 2.2 MB. Optional separate package.
+
+**Subpaths:**
+- `@three-flatland/skia` — core: `Skia`, `SkiaContext`, `SkiaPaint`, `SkiaPath`, `SkiaFont`, `SkiaTypeface`, `SkiaImage`, `SkiaImageFilter`, `SkiaColorFilter`, `SkiaPathEffect`, `SkiaShader`, `SkiaPathMeasure`, `SkiaTextBlob`, `SkiaPicture`, `SkiaPictureRecorder`, `SkiaDrawingContext`. Types: `StrokeCap`, `StrokeJoin`, `BlendMode`, `BlurStyle`, `PathOp`, `TileMode`, `Path1DStyle`, `SkiaBackend`.
+- `@three-flatland/skia/three` — Three.js scene nodes: `SkiaCanvas`, `SkiaNode`, `SkiaGroup`, `SkiaRect`, `SkiaCircle`, `SkiaOval`, `SkiaLine`, `SkiaPathNode`, `SkiaTextNode`, `SkiaImageNode`, `SkiaTextPathNode`, `SkiaFontLoader`, `SkiaTypeface`, `SkiaImageLoader`, `getFBOId`.
+- `@three-flatland/skia/react` — R3F integration: `SkiaCanvas`, `useSkiaContext`, `attachSkiaTexture`, plus all scene nodes.
+
+Drawing nodes (`SkiaRect`, `SkiaCircle`, `SkiaLine`, `SkiaPathNode`, `SkiaTextNode`, `SkiaImageNode`, `SkiaGroup`) use no-arg construction + property assignment (R3F-compatible). Paint props (`fill`, `stroke`, `strokeWidth`, `strokeCap`, `strokeJoin`, `opacity`, `blur`, `dash`, `blendMode`, `antiAlias`) live on every node — assign via setter or pass an explicit `paint` ref. `SkiaRect` props: `x`, `y`, `width`, `height`, `cornerRadius`. `SkiaCircle` props: `cx`, `cy`, `r`.
+
+```typescript
+// Three.js — render Skia shapes into a Three.js scene
+import { Skia } from '@three-flatland/skia'
+import { SkiaCanvas, SkiaRect, SkiaCircle } from '@three-flatland/skia/three'
+
+await Skia.init(renderer)                          // auto-detects WebGPU/WebGL
+const canvas = new SkiaCanvas({ renderer, width: 512, height: 512 })
+await canvas.ready
+
+const rect = new SkiaRect()
+rect.x = 10; rect.y = 10; rect.width = 200; rect.height = 100
+rect.fill = [1, 0, 0, 1]                           // SkiaColor: [r, g, b, a]
+canvas.add(rect)
+
+const circle = new SkiaCircle()
+circle.cx = 256; circle.cy = 256; circle.r = 80
+circle.fill = [0, 0.5, 1, 1]
+canvas.add(circle)
+
+canvas.invalidate()                                // mark dirty; re-records on next render
+canvas.render(renderer)                            // call each frame (or only when invalidated)
+```
+
+```tsx
+// R3F — declarative SkiaCanvas, child nodes set props via reconciler
+import { SkiaCanvas, SkiaRect, SkiaTextNode } from '@three-flatland/skia/react'
+import { SkiaFontLoader } from '@three-flatland/skia/three'
+import { useLoader } from '@react-three/fiber/webgpu'
+
+function MyOverlay() {
+  const typeface = useLoader(SkiaFontLoader, '/fonts/Inter.ttf')
+  return (
+    <SkiaCanvas width={512} height={512} overlay>
+      <SkiaRect x={10} y={10} width={200} height={100} fill={[1, 0, 0, 1]} />
+      <SkiaTextNode text="Hello" font={typeface.atSize(48)} x={20} y={80} />
+    </SkiaCanvas>
+  )
+}
+```
+
+For production, copy WASM with `npx skia-wasm public/skia` then pass `Skia.init(renderer, { wasmUrl: '/skia/skia-gl.wasm' })`. Vite dev mode is zero-config.
+
+---
+
+## Tweakpane helpers (`@three-flatland/tweakpane`)
+
+Examples use this workspace package (NOT part of the library API — optional dev dependency) for debug controls and performance stats. Wraps Tweakpane v4 with a Flatland theme, an auto-wired renderer stats row, FPS/MS graph, and GPU timestamp query support.
+
+**Core** (`@three-flatland/tweakpane`): `createPane(options)`, `wireSceneStats(scene, stats, options?)`, `addStatsGraph`, `applyTheme`, `FLATLAND_THEME`, `registerPlugins`, `EssentialsPlugin`. Types: `CreatePaneOptions`, `PaneBundle`, `StatsHandle`, `StatsUpdate`, `StatsGraphHandle`.
+
+**React** (`@three-flatland/tweakpane/react`): `usePane()`, `usePaneFolder(parent, title)`, `usePaneInput(parent, key, initial, options?)`, `usePaneButton(parent, title, onClick)`, `useFpsGraph(parent)`, `useStatsMonitor(stats)`. Types: `PaneParent`, `PaneInputOptions`, `FpsGraphHandle`, `CreatePaneOptions`, `PaneBundle`, `StatsHandle`.
+
+```typescript
+// Three.js — createPane({ scene }) returns { pane, stats }
+// stats row + FPS graph auto-wired; wireSceneStats hooks scene.onAfterRender
+// to capture renderer.info.render + memory and drain GPU timestamp pool.
+import { createPane } from '@three-flatland/tweakpane'
+const { pane, stats } = createPane({ scene })
+// pane.addFolder(...) — standard Tweakpane API
+// stats.begin() / stats.end() — frame timing; auto-populated if you pass scene
+```
+
+```tsx
+// R3F — hooks version. useStatsMonitor wires stats into the R3F frame loop
+// (priority: Infinity for begin, -Infinity for end) + calls wireSceneStats.
+import { usePane, usePaneFolder, usePaneInput, useStatsMonitor } from '@three-flatland/tweakpane/react'
+
+function Controls() {
+  const { pane, stats } = usePane()
+  const folder = usePaneFolder(pane, 'Settings')
+  const [speed] = usePaneInput(folder, 'speed', 1.0, { min: 0, max: 5, step: 0.1 })
+  useStatsMonitor(stats)
+  return null
+}
+```
+
+Requires `trackTimestamp: true` on `WebGPURenderer` for GPU frame time. WebGL backend auto-detects `EXT_disjoint_timer_query_webgl2` and falls back to CPU timing when unavailable.
+
+---
+
+## Showcases
+
+- [Breakout](https://thejustinwalsh.com/three-flatland/showcases/breakout/) — complete arcade game built on three-flatland + Koota ECS. StackBlitz embed + per-file source viewer.
+
 ---
 
 ## Canonical Examples
 
-### Vanilla — minimal sprite
+### Three.js — minimal sprite
 
 ```typescript
 import { WebGPURenderer } from 'three/webgpu'

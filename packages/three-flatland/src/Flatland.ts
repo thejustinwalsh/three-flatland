@@ -2,7 +2,7 @@ import {
   Scene,
   OrthographicCamera,
   Color,
-  type WebGLRenderTarget,
+  type RenderTarget,
   Group,
   type Object3D,
   type ColorRepresentation,
@@ -33,7 +33,7 @@ import type { PassEffect } from './pipeline/PassEffect'
  */
 export interface FlatlandOptions {
   /** Render target (null = render to viewport) */
-  renderTarget?: WebGLRenderTarget | null
+  renderTarget?: RenderTarget | null
   /** Camera to use (null = use internal orthographic camera) */
   camera?: OrthographicCamera | null
   /** Orthographic view size in pixels (default: 400) */
@@ -73,7 +73,9 @@ export interface FlatlandOptions {
  * @example
  * ```typescript
  * // Render to texture
- * const target = new WebGLRenderTarget(512, 512)
+ * import { RenderTarget } from 'three'
+ *
+ * const target = new RenderTarget(512, 512)
  * const flatland = new Flatland({ renderTarget: target })
  * flatland.add(sprite)
  *
@@ -132,7 +134,7 @@ export class Flatland extends Group implements WorldProvider {
   private _ownsCamera: boolean
 
   /** Render target (null = viewport) */
-  private _renderTarget: WebGLRenderTarget | null = null
+  private _renderTarget: RenderTarget | null = null
 
   /** Render pipeline instance for post-processing */
   private _renderPipeline: RenderPipeline | null = null
@@ -288,14 +290,14 @@ export class Flatland extends Group implements WorldProvider {
   /**
    * Get the render target (null = viewport).
    */
-  get renderTarget(): WebGLRenderTarget | null {
+  get renderTarget(): RenderTarget | null {
     return this._renderTarget
   }
 
   /**
    * Set the render target.
    */
-  set renderTarget(value: WebGLRenderTarget | null) {
+  set renderTarget(value: RenderTarget | null) {
     this._renderTarget = value
   }
 

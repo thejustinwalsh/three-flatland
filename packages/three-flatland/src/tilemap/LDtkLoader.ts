@@ -153,7 +153,7 @@ export interface LDtkLoaderOptions {
  *
  * @example
  * ```typescript
- * // Vanilla usage - static API
+ * // Three.js usage - static API
  * const mapData = await LDtkLoader.load('/maps/world.ldtk', 'Level_0')
  *
  * // Override for this load
@@ -211,11 +211,11 @@ export class LDtkLoader extends Loader<TileMapData> {
   }
 
   // ==========================================
-  // Static API for vanilla usage
+  // Static API for Three.js usage
   // ==========================================
 
   /**
-   * Load a single level from an LDtk project (static method for vanilla usage).
+   * Load a single level from an LDtk project (static method for Three.js usage).
    */
   static async load(
     url: string,

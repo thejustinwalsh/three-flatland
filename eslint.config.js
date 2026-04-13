@@ -35,7 +35,7 @@ export default tseslint.config(
   },
   // React hooks rules (includes React Compiler lint rules)
   {
-    files: ['**/*.tsx'],
+    files: ['**/*.{ts,tsx}'],
     plugins: { 'react-hooks': reactHooks },
     rules: reactHooks.configs.recommended.rules,
   },

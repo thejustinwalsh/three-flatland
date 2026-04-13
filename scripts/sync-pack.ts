@@ -7,17 +7,18 @@
  *   e.g. pnpm sync:pack examples minis
  *
  * Flags:
- *   --files <file> ...   Process individual files (used by lint-staged)
+ *   --files <file> ...   Process individual files (used by lefthook)
  *   --verify             CI check, exit 1 if any files are out of sync
  */
 
 import { readFileSync, writeFileSync, readdirSync, statSync, existsSync } from 'node:fs'
 import { join, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 const ROOT = resolve(import.meta.dirname, '..')
 
 // Parse pnpm-workspace.yaml catalog (simple YAML parser for flat key-value)
-function parseCatalog(): Record<string, string> {
+export function parseCatalog(): Record<string, string> {
   const content = readFileSync(join(ROOT, 'pnpm-workspace.yaml'), 'utf-8')
   const catalog: Record<string, string> = {}
   let inCatalog = false
@@ -47,7 +48,7 @@ function parseCatalog(): Record<string, string> {
 }
 
 // Get internal package versions from packages/*/package.json
-function getInternalVersions(): Record<string, string> {
+export function getInternalVersions(): Record<string, string> {
   const versions: Record<string, string> = {}
   const packagesDir = join(ROOT, 'packages')
 
@@ -64,6 +65,21 @@ function getInternalVersions(): Record<string, string> {
   }
 
   return versions
+}
+
+// Build a unified {name → version} lookup from the catalog and internal
+// workspace packages. Catalog values pass through verbatim (they already
+// include a range prefix like ^). Internal workspace versions get ^ prepended.
+// Internal wins on collision.
+export function buildVersionTable(
+  catalog: Record<string, string>,
+  internal: Record<string, string>,
+): Record<string, string> {
+  const table: Record<string, string> = { ...catalog }
+  for (const [name, version] of Object.entries(internal)) {
+    table[name] = `^${version}`
+  }
+  return table
 }
 
 // Find all package.json files under a directory
@@ -86,192 +102,182 @@ function findPackages(dir: string): string[] {
   return results
 }
 
-// Replace version strings in a deps object (mutates deps)
-function syncDeps(
+// Overwrite any dep whose name is in the version table with the table value.
+// Deps not in the table are left untouched. Returns true iff at least one
+// value changed.
+export function syncDeps(
   deps: Record<string, string> | undefined,
-  catalog: Record<string, string>,
-  internal: Record<string, string>,
-  strict = false,
-  filePath = '',
+  table: Record<string, string>,
 ): boolean {
   if (!deps) return false
   let changed = false
 
-  for (const [name, version] of Object.entries(deps)) {
-    if (version === 'catalog:') {
-      if (catalog[name]) {
-        deps[name] = catalog[name]
-        changed = true
-      } else if (strict) {
-        console.error(
-          `Error: No catalog entry for "${name}" in pnpm-workspace.yaml\n` +
-            `Fix the catalog or update the version in: ${filePath}`,
-        )
-        process.exit(1)
-      } else {
-        console.warn(`  ⚠ No catalog entry for "${name}"`)
-      }
-    } else if (version === 'workspace:*') {
-      if (internal[name]) {
-        deps[name] = `^${internal[name]}`
-        changed = true
-      } else if (strict) {
-        console.error(
-          `Error: No internal package for "${name}"\n` +
-            `Add the package to packages/ or update the version in: ${filePath}`,
-        )
-        process.exit(1)
-      } else {
-        console.warn(`  ⚠ No internal package for "${name}"`)
-      }
+  for (const [name, current] of Object.entries(deps)) {
+    const target = table[name]
+    if (target !== undefined && current !== target) {
+      deps[name] = target
+      changed = true
     }
   }
 
   return changed
 }
 
-// Check if deps contain unresolved catalog:/workspace:* references (read-only)
-function checkDeps(deps: Record<string, string> | undefined): string[] {
+// Check for drift: for each dep whose name is in the table, report a human
+// readable string when the current value differs from the table value.
+// Returns an empty array on a clean tree. Out-of-table deps are ignored.
+export function checkDeps(
+  deps: Record<string, string> | undefined,
+  table: Record<string, string>,
+): string[] {
   if (!deps) return []
   const issues: string[] = []
 
-  for (const [name, version] of Object.entries(deps)) {
-    if (version === 'catalog:' || version === 'workspace:*') {
-      issues.push(`  "${name}": "${version}"`)
+  for (const [name, current] of Object.entries(deps)) {
+    const target = table[name]
+    if (target !== undefined && current !== target) {
+      issues.push(`  "${name}": expected "${target}", got "${current}"`)
     }
   }
 
   return issues
 }
 
-// Main
-const args = process.argv.slice(2)
-const fileMode = args[0] === '--files'
-const verifyMode = args[0] === '--verify'
+// Only run CLI when invoked directly, not when imported by tests
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+  // Main
+  const args = process.argv.slice(2)
+  const fileMode = args[0] === '--files'
+  const verifyMode = args[0] === '--verify'
 
-if (args.length === 0) {
-  console.error(
-    'Usage: pnpm sync:pack <dir> [<dir> ...]\n' +
-      '       pnpm sync:pack --files <file> [<file> ...]\n' +
-      '       pnpm sync:pack --verify <dir> [<dir> ...]',
-  )
-  process.exit(1)
-}
-
-const catalog = parseCatalog()
-const internal = getInternalVersions()
-
-if (verifyMode) {
-  // Verify mode: check for unresolved catalog:/workspace:* refs (used by CI)
-  const dirs = args.slice(1)
-  if (dirs.length === 0) {
-    console.error('Usage: pnpm sync:pack --verify <dir> [<dir> ...]')
-    process.exit(1)
-  }
-
-  let totalOutOfSync = 0
-
-  for (const dir of dirs) {
-    const absDir = resolve(ROOT, dir)
-    if (!existsSync(absDir)) {
-      console.warn(`⚠ Directory not found: ${dir}`)
-      continue
-    }
-
-    const packages = findPackages(absDir)
-
-    for (const pkgPath of packages) {
-      const content = readFileSync(pkgPath, 'utf-8')
-      const pkg = JSON.parse(content)
-      const relative = pkgPath.replace(ROOT + '/', '')
-
-      const depsIssues = checkDeps(pkg.dependencies)
-      const devDepsIssues = checkDeps(pkg.devDependencies)
-      const allIssues = [...depsIssues, ...devDepsIssues]
-
-      if (allIssues.length > 0) {
-        console.error(`${relative}:`)
-        for (const issue of allIssues) {
-          console.error(issue)
-        }
-        totalOutOfSync++
-      }
-    }
-  }
-
-  if (totalOutOfSync > 0) {
+  if (args.length === 0) {
     console.error(
-      `\n${totalOutOfSync} package(s) have unresolved versions.` +
-        `\nRun 'pnpm sync:pack ${dirs.join(' ')}' locally or install git hooks with 'pnpm prepare'.`,
+      'Usage: pnpm sync:pack <dir> [<dir> ...]\n' +
+        '       pnpm sync:pack --files <file> [<file> ...]\n' +
+        '       pnpm sync:pack --verify <dir> [<dir> ...]',
     )
     process.exit(1)
   }
 
-  console.log('Package versions are in sync.')
-} else if (fileMode) {
-  // File mode: process individual package.json files (used by lint-staged)
-  const files = args.slice(1)
-  let totalChanged = 0
+  const catalog = parseCatalog()
+  const internal = getInternalVersions()
 
-  for (const file of files) {
-    const absPath = resolve(ROOT, file)
-    if (!existsSync(absPath)) {
-      console.error(`Error: File not found: ${file}`)
+  if (verifyMode) {
+    // Verify mode: report drift between example/mini pins and the catalog + internal packages (used by CI)
+    const table = buildVersionTable(catalog, internal)
+    const dirs = args.slice(1)
+    if (dirs.length === 0) {
+      console.error('Usage: pnpm sync:pack --verify <dir> [<dir> ...]')
       process.exit(1)
     }
 
-    const content = readFileSync(absPath, 'utf-8')
-    const pkg = JSON.parse(content)
-    const relative = absPath.replace(ROOT + '/', '')
+    let totalOutOfSync = 0
 
-    const depsChanged = syncDeps(pkg.dependencies, catalog, internal, true, relative)
-    const devDepsChanged = syncDeps(pkg.devDependencies, catalog, internal, true, relative)
+    for (const dir of dirs) {
+      const absDir = resolve(ROOT, dir)
+      if (!existsSync(absDir)) {
+        console.warn(`⚠ Directory not found: ${dir}`)
+        continue
+      }
 
-    if (depsChanged || devDepsChanged) {
-      writeFileSync(absPath, JSON.stringify(pkg, null, 2) + '\n')
-      totalChanged++
-    }
-  }
+      const packages = findPackages(absDir)
 
-  if (totalChanged > 0) {
-    console.error(`Synced ${totalChanged} package.json file(s)`)
-  }
-} else {
-  // Directory mode: walk directories (existing behavior)
-  console.log('Catalog versions:', catalog)
-  console.log('Internal versions:', internal)
-  console.log()
+      for (const pkgPath of packages) {
+        const content = readFileSync(pkgPath, 'utf-8')
+        const pkg = JSON.parse(content)
+        const relative = pkgPath.replace(ROOT + '/', '')
 
-  let totalChanged = 0
+        const depsIssues = checkDeps(pkg.dependencies, table)
+        const devDepsIssues = checkDeps(pkg.devDependencies, table)
+        const peerDepsIssues = checkDeps(pkg.peerDependencies, table)
+        const allIssues = [...depsIssues, ...devDepsIssues, ...peerDepsIssues]
 
-  for (const dir of args) {
-    const absDir = resolve(ROOT, dir)
-
-    if (!existsSync(absDir)) {
-      console.warn(`⚠ Directory not found: ${dir}`)
-      continue
-    }
-
-    console.log(`Scanning ${dir}/`)
-    const packages = findPackages(absDir)
-
-    for (const pkgPath of packages) {
-      const content = readFileSync(pkgPath, 'utf-8')
-      const pkg = JSON.parse(content)
-      const relative = pkgPath.replace(ROOT + '/', '')
-
-      const depsChanged = syncDeps(pkg.dependencies, catalog, internal)
-      const devDepsChanged = syncDeps(pkg.devDependencies, catalog, internal)
-
-      if (depsChanged || devDepsChanged) {
-        writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n')
-        console.log(`  ✓ Updated ${relative}`)
-        totalChanged++
-      } else {
-        console.log(`    (no changes) ${relative}`)
+        if (allIssues.length > 0) {
+          console.error(`${relative}:`)
+          for (const issue of allIssues) {
+            console.error(issue)
+          }
+          totalOutOfSync++
+        }
       }
     }
-  }
 
-  console.log(`\nDone. Updated ${totalChanged} package.json files.`)
+    if (totalOutOfSync > 0) {
+      console.error(
+        `\n${totalOutOfSync} package(s) have unresolved versions.` +
+          `\nRun 'pnpm sync:pack ${dirs.join(' ')}' locally or install git hooks with 'pnpm prepare'.`,
+      )
+      process.exit(1)
+    }
+
+    console.log('Package versions are in sync.')
+  } else if (fileMode) {
+    // File mode: process individual package.json files (used by lefthook)
+    const files = args.slice(1)
+    let totalChanged = 0
+    const table = buildVersionTable(catalog, internal)
+
+    for (const file of files) {
+      const absPath = resolve(ROOT, file)
+      if (!existsSync(absPath)) {
+        console.error(`Error: File not found: ${file}`)
+        process.exit(1)
+      }
+
+      const content = readFileSync(absPath, 'utf-8')
+      const pkg = JSON.parse(content)
+
+      const depsChanged = syncDeps(pkg.dependencies, table)
+      const devDepsChanged = syncDeps(pkg.devDependencies, table)
+      const peerDepsChanged = syncDeps(pkg.peerDependencies, table)
+
+      if (depsChanged || devDepsChanged || peerDepsChanged) {
+        writeFileSync(absPath, JSON.stringify(pkg, null, 2) + '\n')
+        totalChanged++
+      }
+    }
+
+    if (totalChanged > 0) {
+      console.error(`Synced ${totalChanged} package.json file(s)`)
+    }
+  } else {
+    // Directory mode: walk directories (existing behavior)
+    const table = buildVersionTable(catalog, internal)
+    console.log('Version table:', table)
+    console.log()
+
+    let totalChanged = 0
+
+    for (const dir of args) {
+      const absDir = resolve(ROOT, dir)
+
+      if (!existsSync(absDir)) {
+        console.warn(`⚠ Directory not found: ${dir}`)
+        continue
+      }
+
+      console.log(`Scanning ${dir}/`)
+      const packages = findPackages(absDir)
+
+      for (const pkgPath of packages) {
+        const content = readFileSync(pkgPath, 'utf-8')
+        const pkg = JSON.parse(content)
+        const relative = pkgPath.replace(ROOT + '/', '')
+
+        const depsChanged = syncDeps(pkg.dependencies, table)
+        const devDepsChanged = syncDeps(pkg.devDependencies, table)
+        const peerDepsChanged = syncDeps(pkg.peerDependencies, table)
+
+        if (depsChanged || devDepsChanged || peerDepsChanged) {
+          writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n')
+          console.log(`  ✓ Updated ${relative}`)
+          totalChanged++
+        } else {
+          console.log(`    (no changes) ${relative}`)
+        }
+      }
+    }
+
+    console.log(`\nDone. Updated ${totalChanged} package.json files.`)
+  }
 }

@@ -10,14 +10,19 @@
   },
   "scripts": {
     "build": "turbo run build",
-    "dev": "echo '\\n  ➜  Dev server: http://localhost:5173\\n' && turbo run dev --filter=docs --filter='example-*'",
-    "typecheck": "turbo run typecheck",
+    "dev": "echo '\\n  ➜  Dev server: http://localhost:5173\\n' && turbo run dev --filter=docs --filter=examples",
+    "typecheck": "turbo run typecheck --filter='*'",
     "lint": "eslint packages/*/src minis/*/src",
     "lint:fix": "eslint packages/*/src minis/*/src --fix",
     "format": "prettier --write \"packages/*/src/**/*.{ts,tsx}\" \"minis/*/src/**/*.{ts,tsx}\"",
     "format:check": "prettier --check \"packages/*/src/**/*.{ts,tsx}\" \"minis/*/src/**/*.{ts,tsx}\"",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:skia": "pnpm --filter @three-flatland/skia run build:wasm && pnpm --filter @three-flatland/skia run test",
+    "test:smoke": "playwright test",
+    "test:smoke:ui": "playwright test --ui",
+    "test:smoke:headed": "playwright test --headed",
+    "test:smoke:install": "playwright install chromium",
     "clean": "turbo run clean && rm -rf node_modules/.vite",
     "changeset": "changeset",
     "changeset:generate": "tsx scripts/generate-changesets.ts",
@@ -28,18 +33,7 @@
     "sync:react": "tsx scripts/sync-react-subpaths.ts",
     "sync:react:verify": "tsx scripts/sync-react-subpaths.ts --verify",
     "size": "size-limit",
-    "prepare": "simple-git-hooks"
-  },
-  "simple-git-hooks": {
-    "pre-commit": "pnpm lint-staged"
-  },
-  "lint-staged": {
-    "packages/three-flatland/src/index.ts": "tsx scripts/sync-react-subpaths.ts",
-    "packages/three-flatland/src/*/index.ts": "tsx scripts/sync-react-subpaths.ts",
-    "packages/skia/src/ts/three/index.ts": "tsx scripts/sync-react-subpaths.ts",
-    "examples/**/package.json": "tsx scripts/sync-pack.ts --files",
-    "minis/**/package.json": "tsx scripts/sync-pack.ts --files",
-    "packages/skia/third_party/skia": "tsx scripts/check-skia-pin.ts"
+    "prepare": "lefthook install"
   },
   "pnpm": {
     "onlyBuiltDependencies": [
@@ -50,21 +44,22 @@
       "three-flatland": "workspace:*",
       "@three-flatland/nodes": "workspace:*",
       "@three-flatland/presets": "workspace:*",
-      "@three-flatland/skia": "workspace:*"
+      "@three-flatland/skia": "workspace:*",
+      "@three-flatland/tweakpane": "workspace:*"
     }
   },
   "devDependencies": {
     "@changesets/cli": "^2.27.10",
     "@eslint/js": "^9.18.0",
+    "@playwright/test": "^1.59.1",
     "@size-limit/preset-small-lib": "^12.0.0",
     "@types/node": "^22.10.5",
     "@vitest/coverage-v8": "^2.1.9",
     "eslint": "^9.18.0",
     "eslint-plugin-react-hooks": "^7.0.1",
     "globals": "^15.14.0",
-    "lint-staged": "^16.2.7",
+    "lefthook": "^2.1.5",
     "prettier": "^3.4.2",
-    "simple-git-hooks": "^2.13.1",
     "size-limit": "^12.0.0",
     "tsup": "^8.3.5",
     "tsx": "^4.19.2",

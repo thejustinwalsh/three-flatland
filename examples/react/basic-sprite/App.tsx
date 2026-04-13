@@ -1,39 +1,76 @@
 import { Canvas, extend, useFrame, useLoader, useThree } from '@react-three/fiber/webgpu'
-import { useRef, useState, useCallback, useEffect } from 'react'
-import { Color } from 'three'
+import { useRef, useState, useCallback } from 'react'
+import { Color, type OrthographicCamera as ThreeOrthographicCamera } from 'three'
 import { Sprite2D, TextureLoader } from 'three-flatland/react'
+import { usePane, usePaneFolder, usePaneInput, useStatsMonitor } from '@three-flatland/tweakpane/react'
 
 // Register Sprite2D with R3F (tree-shakeable)
 extend({ Sprite2D })
+
+/**
+ * Declarative orthographic camera matching three.js frustumSize math.
+ * Ref callback fires synchronously during reconciliation; re-fires on
+ * resize because the parent re-renders with a new size.
+ */
+function OrthoCamera({ viewSize }: { viewSize: number }) {
+  const set = useThree((s) => s.set)
+  const size = useThree((s) => s.size)
+  const aspect = size.width / size.height
+  return (
+    <orthographicCamera
+      ref={(cam: ThreeOrthographicCamera | null) => {
+        if (!cam) return
+        cam.left = (-viewSize * aspect) / 2
+        cam.right = (viewSize * aspect) / 2
+        cam.top = viewSize / 2
+        cam.bottom = -viewSize / 2
+        ;(cam as any).manual = true
+        cam.updateProjectionMatrix()
+        set({ camera: cam })
+      }}
+      position={[0, 0, 100]}
+      near={0.1}
+      far={1000}
+    />
+  )
+}
 
 // Lerp helper
 function lerp(current: number, target: number, speed: number, delta: number): number {
   return current + (target - current) * Math.min(speed * delta, 1)
 }
 
-function InteractiveSprite() {
+function InteractiveSprite({
+  baseScale,
+  hoverScale,
+  pressedScale,
+  rotationSpeed,
+  lerpSpeed,
+  hoverTint,
+}: {
+  baseScale: number
+  hoverScale: number
+  pressedScale: number
+  rotationSpeed: number
+  lerpSpeed: number
+  hoverTint: string
+}) {
   const spriteRef = useRef<Sprite2D>(null)
   const [isHovered, setIsHovered] = useState(false)
   const [isPressed, setIsPressed] = useState(false)
 
   // Load the flatland logo (presets are automatically applied)
-  const texture = useLoader(TextureLoader, import.meta.env.BASE_URL + 'icon.svg')
-
-  // Sprite size (SVGs may not have proper dimensions, so we set explicit size)
-  const spriteSize = 30
-
-  // Interaction constants (scale relative to spriteSize)
-  const baseScale = spriteSize
-  const hoverScale = spriteSize * 1.1
-  const pressedScale = spriteSize * 0.9
-  const lerpSpeed = 10
+  const texture = useLoader(TextureLoader, './icon.svg')
 
   // Tint colors (only hover effect)
   const normalTint = useRef(new Color(1, 1, 1))
-  const hoverTint = useRef(new Color(0.6, 0.85, 1.0)) // Soft cyan highlight
+  const hoverTintColor = useRef(new Color(hoverTint))
+
+  // Update hoverTint color when prop changes
+  hoverTintColor.current.set(hoverTint)
 
   // Current animated values
-  const currentScale = useRef(spriteSize)
+  const currentScale = useRef(baseScale)
   const currentTint = useRef(new Color(1, 1, 1))
 
   useFrame((_, delta) => {
@@ -41,7 +78,7 @@ function InteractiveSprite() {
 
     // Determine target scale and tint
     const targetScale = isPressed ? pressedScale : isHovered ? hoverScale : baseScale
-    const targetTint = isHovered ? hoverTint.current : normalTint.current
+    const targetTint = isHovered ? hoverTintColor.current : normalTint.current
 
     // Lerp scale
     currentScale.current = lerp(currentScale.current, targetScale, lerpSpeed, delta)
@@ -55,7 +92,7 @@ function InteractiveSprite() {
     spriteRef.current.tint = tint
 
     // Slow rotation
-    spriteRef.current.rotation.z += 0.2 * delta
+    spriteRef.current.rotation.z += rotationSpeed * delta
   })
 
   const handlePointerOver = useCallback(() => setIsHovered(true), [])
@@ -79,67 +116,49 @@ function InteractiveSprite() {
   )
 }
 
-function StatsTracker({ onStats }: { onStats: (fps: number, draws: number) => void }) {
-  const gl = useThree((s) => s.gl)
-  const frameCount = useRef(0)
-  const elapsed = useRef(0)
+function Scene() {
+  const { pane, stats } = usePane()
 
-  // Disable auto-reset so we can read draw calls from the previous frame
-  // before manually resetting. The WebGPU Animation loop resets info at
-  // the start of each frame — before useFrame runs — which would zero
-  // out the counters before we can read them.
-  useEffect(() => {
-    gl.info.autoReset = false
-    return () => { gl.info.autoReset = true }
-  }, [gl])
+  const spriteFolder = usePaneFolder(pane, 'Sprite')
+  const [baseScale] = usePaneInput(spriteFolder, 'baseScale', 150, { min: 10, max: 300 })
+  const [hoverScale] = usePaneInput(spriteFolder, 'hoverScale', 165, { min: 10, max: 300 })
+  const [pressedScale] = usePaneInput(spriteFolder, 'pressedScale', 135, { min: 10, max: 300 })
 
-  useFrame((_, delta) => {
-    frameCount.current++
-    elapsed.current += delta
-    if (elapsed.current >= 1) {
-      const draws = (gl.info.render as any).drawCalls as number
-      onStats(Math.round(frameCount.current / elapsed.current), draws)
-      frameCount.current = 0
-      elapsed.current = 0
-    }
-    gl.info.reset()
-  })
-  return null
-}
+  const animFolder = usePaneFolder(pane, 'Animation')
+  const [rotationSpeed] = usePaneInput(animFolder, 'rotationSpeed', 0.2, { min: 0, max: 2, step: 0.1 })
+  const [lerpSpeed] = usePaneInput(animFolder, 'lerpSpeed', 10, { min: 1, max: 20, step: 1 })
 
-export default function App() {
-  const [stats, setStats] = useState({ fps: '-' as string | number, draws: '-' as string | number })
-  const handleStats = useCallback((fps: number, draws: number) => setStats({ fps, draws }), [])
+  const colorFolder = usePaneFolder(pane, 'Color')
+  const [hoverTint] = usePaneInput(colorFolder, 'hoverTint', '#99d9ef')
+
+  useStatsMonitor(stats)
 
   return (
     <>
-      <div
-        style={{
-          position: 'fixed',
-          top: 12,
-          right: 12,
-          padding: '5px 10px',
-          background: 'rgba(0, 2, 28, 0.7)',
-          borderRadius: 6,
-          color: '#4a9eff',
-          fontFamily: 'monospace',
-          fontSize: 10,
-          lineHeight: 1.5,
-          zIndex: 100,
-          whiteSpace: 'pre',
-        }}
-      >
-        {`FPS: ${stats.fps}\nDraws: ${stats.draws}`}
-      </div>
-      <Canvas
-        orthographic
-        camera={{ zoom: 5, position: [0, 0, 100] }}
-        renderer={{ antialias: true }}
-      >
-        <color attach="background" args={['#1a1a2e']} />
-        <StatsTracker onStats={handleStats} />
-        <InteractiveSprite />
-      </Canvas>
+      <color attach="background" args={['#1a1a2e']} />
+      <InteractiveSprite
+        baseScale={baseScale}
+        hoverScale={hoverScale}
+        pressedScale={pressedScale}
+        rotationSpeed={rotationSpeed}
+        lerpSpeed={lerpSpeed}
+        hoverTint={hoverTint}
+      />
     </>
+  )
+}
+
+export default function App() {
+  return (
+    <Canvas
+      dpr={1}
+      renderer={{ antialias: false, trackTimestamp: true }}
+      onCreated={({ gl }) => {
+        gl.domElement.style.imageRendering = 'pixelated'
+      }}
+    >
+      <OrthoCamera viewSize={400} />
+      <Scene />
+    </Canvas>
   )
 }

@@ -9,19 +9,19 @@ import StackBlitzEmbed from '../../../components/StackBlitzEmbed';
 import ExampleTabs from '../../../components/ExampleTabs.astro';
 import { loadExample } from '../../../utils/loadExample';
 
-export const vanillaFiles = loadExample('vanilla', 'tsl-nodes');
+export const threeFiles = loadExample('three', 'tsl-nodes');
 export const reactFiles = loadExample('react', 'tsl-nodes');
 
 <ExampleTabs>
 <Tabs>
   <TabItem label="Preview" icon="rocket">
-    <ExamplePreview client:load type="vanilla" name="tsl-nodes" />
+    <ExamplePreview client:load type="three" name="tsl-nodes" />
   </TabItem>
   <TabItem label="Three.js" icon="seti:javascript">
     <StackBlitzEmbed
       client:load
       title="TSL Nodes - Three.js"
-      files={vanillaFiles}
+      files={threeFiles}
       openFile="main.ts"
       height={600}
     />
@@ -139,5 +139,5 @@ Instantiate an effect, add it to a sprite, and animate its properties:
 
 ## Next Steps
 
-- [TSL Nodes Guide](../guides/tsl-nodes) - Full node reference and Material Effect documentation
-- [Tilemap](../examples/tilemap) - Tile-based map rendering
+- [TSL Nodes Guide](../../guides/tsl-nodes/) - Full node reference and Material Effect documentation
+- [Tilemap](../tilemap/) - Tile-based map rendering

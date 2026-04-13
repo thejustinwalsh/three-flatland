@@ -1,12 +1,16 @@
 import { defineWorkspace } from 'vitest/config'
 
 /**
- * Run the full test suite against both WASM backends.
- * Each project loads a different WASM binary via SKIA_TEST_BACKEND env var.
+ * Run the full test suite across the WASM backends + React hook layer.
  *
- *   pnpm test          → runs both GL and WebGPU
+ *   pnpm test          → runs gl, wgpu, and react projects
  *   pnpm test:gl       → GL only
  *   pnpm test:wgpu     → WebGPU only
+ *   pnpm test:react    → React hook tests only (no WASM)
+ *
+ * The `gl` and `wgpu` projects load a WASM binary via SKIA_TEST_BACKEND env var
+ * and run in node. The `react` project mocks WASM out entirely and runs in
+ * happy-dom — it tests the React hook layer in isolation, no GPU context needed.
  */
 export default defineWorkspace([
   {
@@ -15,6 +19,7 @@ export default defineWorkspace([
       globals: true,
       environment: 'node',
       include: ['src/**/*.test.ts'],
+      exclude: ['src/ts/react/**'],
       setupFiles: ['./test/setup.ts'],
       env: { SKIA_TEST_BACKEND: 'gl' },
     },
@@ -25,8 +30,17 @@ export default defineWorkspace([
       globals: true,
       environment: 'node',
       include: ['src/**/*.test.ts'],
+      exclude: ['src/ts/react/**'],
       setupFiles: ['./test/setup.ts'],
       env: { SKIA_TEST_BACKEND: 'wgpu' },
+    },
+  },
+  {
+    test: {
+      name: 'react',
+      globals: true,
+      environment: 'happy-dom',
+      include: ['src/ts/react/**/*.test.{ts,tsx}'],
     },
   },
 ])

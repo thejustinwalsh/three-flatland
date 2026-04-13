@@ -2,7 +2,7 @@
 
 > High-performance 2D sprites, tilemaps, and effects for Three.js -- built for WebGPU with composable TSL shaders.
 
-three-flatland is a library for rendering 2D sprites, animated spritesheets, tilemaps, and post-processing effects in Three.js using TSL (Three Shader Language). It features automatic material-based batching, a layer/zIndex render ordering system decoupled from the scene graph, and first-class React Three Fiber support. Currently in early alpha.
+three-flatland is a library for rendering 2D sprites, animated spritesheets, tilemaps, and post-processing effects in Three.js using TSL (Three Shader Language). Features automatic material-based batching via SpriteGroup, a layer/zIndex render ordering system decoupled from the scene graph, MaterialEffect (per-sprite shader variations) and PassEffect (full-screen post-processing), first-class React Three Fiber support, and optional GPU-accelerated Skia vector graphics. Currently in early alpha.
 
 ## Documentation
 
@@ -12,30 +12,39 @@ three-flatland is a library for rendering 2D sprites, animated spritesheets, til
 
 ## Guides
 
-- [Flatland](https://thejustinwalsh.com/three-flatland/guides/flatland/): Unified 2D rendering pipeline with batching, post-processing, and camera management
-- [Sprites](https://thejustinwalsh.com/three-flatland/guides/sprites/): Sprite2D, textures, frames, anchors, tint, alpha, flip
-- [Animation](https://thejustinwalsh.com/three-flatland/guides/animation/): AnimatedSprite2D, spritesheet-driven animation with frame events
-- [Batch Rendering](https://thejustinwalsh.com/three-flatland/guides/batch-rendering/): Automatic batching via SpriteGroup and ECS-driven pipeline
-- [TSL Nodes](https://thejustinwalsh.com/three-flatland/guides/tsl-nodes/): 50+ composable shader effect functions for sprites and post-processing
-- [Loaders](https://thejustinwalsh.com/three-flatland/guides/loaders/): TextureLoader and SpriteSheetLoader with preset support
-- [Tilemaps](https://thejustinwalsh.com/three-flatland/guides/tilemaps/): Tiled and LDtk format tilemap rendering
-- [Pass Effects](https://thejustinwalsh.com/three-flatland/guides/pass-effects/): Full-screen post-processing pass effects
+- [Sprites](https://thejustinwalsh.com/three-flatland/guides/sprites/): Sprite2D, textures, frames, anchors, tint, alpha, flip, layer, zIndex
+- [Animation](https://thejustinwalsh.com/three-flatland/guides/animation/): AnimatedSprite2D, spritesheet-driven animation, frame events, AnimationController
+- [Batch Rendering](https://thejustinwalsh.com/three-flatland/guides/batch-rendering/): Automatic SpriteGroup batching, koota ECS pipeline, instance attributes
+- [Flatland](https://thejustinwalsh.com/three-flatland/guides/flatland/): Unified 2D rendering pipeline, batching, post-processing, orthographic camera, render targets
+- [Loaders](https://thejustinwalsh.com/three-flatland/guides/loaders/): TextureLoader, SpriteSheetLoader, TexturePacker JSON, pixel-art presets, NearestFilter
+- [TSL Nodes](https://thejustinwalsh.com/three-flatland/guides/tsl-nodes/): 100+ composable shader nodes for color, alpha, retro, distortion, vfx, blur, display, analog, upscale
+- [Pass Effects](https://thejustinwalsh.com/three-flatland/guides/pass-effects/): createPassEffect, full-screen post-processing, TSL uniforms, schema-driven
+- [Tilemaps](https://thejustinwalsh.com/three-flatland/guides/tilemaps/): TileMap2D, TiledLoader, LDtkLoader, animated tiles, TileLayer, Tileset
+- [Skia](https://thejustinwalsh.com/three-flatland/guides/skia/): GPU-accelerated 2D vector graphics, shapes, text, gradients, paths, WebGPU/WebGL backends
+- [Debug Controls](https://thejustinwalsh.com/three-flatland/guides/debug-controls/): Tweakpane helpers — createPane, usePane, useStatsMonitor, wireSceneStats, GPU timing, Flatland theme
 
 ## Examples
 
-- [Basic Sprite](https://thejustinwalsh.com/three-flatland/examples/basic-sprite/): Simple sprite rendering
-- [Animation](https://thejustinwalsh.com/three-flatland/examples/animation/): Spritesheet animation playback
-- [Batch Demo](https://thejustinwalsh.com/three-flatland/examples/batch-demo/): Thousands of batched sprites
-- [TSL Nodes](https://thejustinwalsh.com/three-flatland/examples/tsl-nodes/): Composable shader effects
-- [Pass Effects](https://thejustinwalsh.com/three-flatland/examples/pass-effects/): Post-processing effects
-- [Tilemap](https://thejustinwalsh.com/three-flatland/examples/tilemap/): Tiled/LDtk tilemap rendering
-- [KnightMark](https://thejustinwalsh.com/three-flatland/examples/knightmark/): Sprite benchmark
+- [Basic Sprite](https://thejustinwalsh.com/three-flatland/examples/basic-sprite/): Sprite2D, TextureLoader, minimal Three.js + R3F setup
+- [Animation](https://thejustinwalsh.com/three-flatland/examples/animation/): AnimatedSprite2D, spritesheet playback, animation states
+- [Batches](https://thejustinwalsh.com/three-flatland/examples/batch-demo/): SpriteGroup batching, thousands of sprites, single draw call
+- [TSL Nodes](https://thejustinwalsh.com/three-flatland/examples/tsl-nodes/): MaterialEffect, composable shader nodes, per-sprite parameters
+- [Tilemap](https://thejustinwalsh.com/three-flatland/examples/tilemap/): TileMap2D, Tiled/LDtk loader, animated tiles, zoom controls
+- [Pass Effects](https://thejustinwalsh.com/three-flatland/examples/pass-effects/): createPassEffect, CRT, bloom, post-processing pipeline
+- [Knightmark](https://thejustinwalsh.com/three-flatland/examples/knightmark/): Stress test, sprite benchmark, FPS measurement
+- [Skia](https://thejustinwalsh.com/three-flatland/examples/skia/): SkiaCanvas, vector shapes, text, gradients via Skia WASM
+
+## Showcases
+
+- [Breakout](https://thejustinwalsh.com/three-flatland/showcases/breakout/): Complete arcade game, three-flatland + Koota ECS, StackBlitz embed
 
 ## Packages
 
-- `three-flatland`: Core library -- sprites, materials, animation, loaders, tilemaps, render pipeline
-- `three-flatland/react`: React Three Fiber subpath -- re-exports core + JSX type augmentation
-- `@three-flatland/nodes`: 50+ TSL shader nodes for effects (per-category subpaths)
+- `three-flatland`: Core -- Sprite2D, AnimatedSprite2D, SpriteGroup, Flatland, MaterialEffect, PassEffect, loaders, TileMap2D
+- `three-flatland/react`: R3F subpath -- re-exports core + ThreeElements JSX type augmentation
+- `@three-flatland/nodes`: 100+ TSL shader nodes (sprite, color, alpha, retro, distortion, vfx, blur, display, analog, upscale)
+- `@three-flatland/skia`: Skia WASM 2D vector graphics, GPU-accelerated, WebGPU/WebGL, Three.js + R3F integration
+- `@three-flatland/tweakpane`: Tweakpane v4 helpers for examples -- createPane, wireSceneStats, usePane, useStatsMonitor, stats row, FPS graph, Flatland theme
 - `@three-flatland/presets`: Pre-configured effect combinations (coming soon)
 
 ## Optional

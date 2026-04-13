@@ -1,0 +1,26 @@
+checks:
+  - name: lint
+    command: "pnpm lint"
+    globs:
+      - "packages/*/src/**/*.{ts,tsx}"
+      - "minis/*/src/**/*.{ts,tsx}"
+  - name: typecheck
+    command: "pnpm typecheck"
+    globs:
+      - "packages/**/*.{ts,tsx}"
+      - "minis/**/*.{ts,tsx}"
+      - "examples/**/*.{ts,tsx}"
+      - "docs/**/*.{ts,tsx,astro}"
+  - name: test
+    command: "pnpm test"
+    globs:
+      - "packages/nodes/**/*.{ts,tsx}"
+      - "packages/presets/**/*.{ts,tsx}"
+      - "packages/slug/**/*.{ts,tsx}"
+      - "packages/three-flatland/**/*.{ts,tsx}"
+      - "packages/tweakpane/**/*.{ts,tsx}"
+      - "minis/**/*.{ts,tsx}"
+  - name: test-skia
+    command: "pnpm test:skia"
+    globs:
+      - "packages/skia/**/*.{ts,tsx}"

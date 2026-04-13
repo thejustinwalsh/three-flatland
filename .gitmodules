@@ -2,3 +2,4 @@
 	path = packages/skia/third_party/skia
 	url = https://github.com/google/skia.git
 	branch = chrome/m147
+	ignore = dirty

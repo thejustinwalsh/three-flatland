@@ -1,6 +1,6 @@
 import { Suspense, useRef, useMemo, useCallback, useEffect } from 'react'
+import type { OrthographicCamera } from 'three'
 import { Canvas, extend, useFrame, useThree, useLoader } from '@react-three/fiber/webgpu'
-import type { OrthographicCamera as OrthoCamera } from 'three'
 import {
   AnimatedSprite2D,
   SpriteGroup,
@@ -14,18 +14,38 @@ import {
   type TilesetData,
   type TileLayerData,
 } from 'three-flatland/react'
+import { usePane, usePaneFolder, usePaneInput, useStatsMonitor } from '@three-flatland/tweakpane/react'
+import type { StatsHandle } from '@three-flatland/tweakpane/react'
 
 extend({ SpriteGroup, TileMap2D })
+
+function OrthoCamera({ viewSize }: { viewSize: number }) {
+  const set = useThree((s) => s.set)
+  const size = useThree((s) => s.size)
+  const aspect = size.width / size.height
+  return (
+    <orthographicCamera
+      ref={(cam: OrthographicCamera | null) => {
+        if (!cam) return
+        cam.left = (-viewSize * aspect) / 2
+        cam.right = (viewSize * aspect) / 2
+        cam.top = viewSize / 2
+        cam.bottom = -viewSize / 2
+        cam.updateProjectionMatrix()
+        set({ camera: cam })
+      }}
+      position={[0, 0, 100]}
+      near={0.1}
+      far={1000}
+      manual
+    />
+  )
+}
 
 // ============================================
 // CONSTANTS
 // ============================================
 
-const HIT_RADIUS = 8
-const CELL_SIZE = HIT_RADIUS * 4
-const KNIGHT_SCALE = 64
-const SPEED_MIN = 30
-const SPEED_MAX = 200
 const SPEED_THRESHOLD = 80
 const TRIP_LERP_RATE = 5
 const IDLE_AFTER_TRIP_MS = 400
@@ -91,7 +111,7 @@ const knightAnimations: AnimationSetDefinition = {
 // ============================================
 
 class SpatialHash {
-  private cellSize: number
+  cellSize: number
   private cells = new Map<number, Knight[]>()
   private _bucketPool: Knight[][] = []
   private _activeBuckets: Knight[][] = []
@@ -181,8 +201,9 @@ function spawnKnight(
   sheet: SpriteSheet,
   spriteGroup: SpriteGroup,
   bounds: { left: number; right: number; top: number; bottom: number },
+  simParams: { speedMin: number; speedMax: number; knightScale: number },
 ): Knight {
-  const margin = KNIGHT_SCALE / 2
+  const margin = simParams.knightScale / 2
   const sprite = new AnimatedSprite2D({
     spriteSheet: sheet,
     animationSet: knightAnimations,
@@ -190,11 +211,11 @@ function spawnKnight(
     layer: Layers.ENTITIES,
     anchor: [0.5, 0.5],
   })
-  sprite.scale.set(KNIGHT_SCALE, KNIGHT_SCALE, 1)
+  sprite.scale.set(simParams.knightScale, simParams.knightScale, 1)
   const x = bounds.left + margin + Math.random() * (bounds.right - bounds.left - margin * 2)
   const y = bounds.bottom + margin + Math.random() * (bounds.top - bounds.bottom - margin * 2)
   sprite.position.set(x, y, 0)
-  const speed = SPEED_MIN + Math.random() * (SPEED_MAX - SPEED_MIN)
+  const speed = simParams.speedMin + Math.random() * (simParams.speedMax - simParams.speedMin)
   const angle = Math.random() * Math.PI * 2
   const baseVx = Math.cos(angle) * speed
   const baseVy = Math.sin(angle) * speed
@@ -213,36 +234,48 @@ function spawnKnight(
 // ============================================
 
 interface KnightmarkSceneProps {
-  statsRef: React.RefObject<HTMLDivElement | null>
   addKnightsRef: React.RefObject<(() => void) | null>
+  speedMin: number
+  speedMax: number
+  hitRadius: number
+  knightScale: number
+  knightStatsRef: React.RefObject<{ knights: number; batches: number }>
+  stats: StatsHandle
 }
 
-function KnightmarkScene({ statsRef, addKnightsRef }: KnightmarkSceneProps) {
+function KnightmarkScene({
+  addKnightsRef,
+  speedMin,
+  speedMax,
+  hitRadius,
+  knightScale,
+  knightStatsRef,
+  stats,
+}: KnightmarkSceneProps) {
   const { size } = useThree()
-  const camera = useThree((s) => s.camera) as OrthoCamera
+
+  useStatsMonitor(stats)
 
   // Load assets (presets automatically apply NearestFilter)
-  const knightSheet = useLoader(SpriteSheetLoader, import.meta.env.BASE_URL + 'sprites/knight.json')
-  const tilesetTex = useLoader(TextureLoader, import.meta.env.BASE_URL + 'sprites/Dungeon_Tileset.png')
+  const knightSheet = useLoader(SpriteSheetLoader, './sprites/knight.json')
+  const tilesetTex = useLoader(TextureLoader, './sprites/Dungeon_Tileset.png')
 
   const spriteGroupRef = useRef<SpriteGroup>(null)
   const knightsRef = useRef<Knight[]>([])
-  const spatialHashRef = useRef(new SpatialHash(CELL_SIZE))
+  const spatialHashRef = useRef(new SpatialHash(hitRadius * 4))
   const boundsRef = useRef({ left: 0, right: 0, top: 0, bottom: 0 })
-  const fpsRef = useRef({ frames: 0, time: 0, display: 0 })
 
-  // Update camera frustum and bounds when size changes
+  // Store latest sim params in refs for use in useFrame
+  const simRef = useRef({ speedMin, speedMax, hitRadius, knightScale })
+  simRef.current = { speedMin, speedMax, hitRadius, knightScale }
+
+  // Track world bounds for spawn/cleanup logic (camera frustum is set by <OrthoCamera>)
   useEffect(() => {
     const aspect = size.width / size.height
     const halfW = (VIEW_SIZE * aspect) / 2
     const halfH = VIEW_SIZE / 2
-    camera.left = -halfW
-    camera.right = halfW
-    camera.top = halfH
-    camera.bottom = -halfH
-    camera.updateProjectionMatrix()
     boundsRef.current = { left: -halfW, right: halfW, top: halfH, bottom: -halfH }
-  }, [size, camera])
+  }, [size])
 
   // Build floor tilemap data
   const { mapData, mapWorldW, mapWorldH } = useMemo(() => {
@@ -254,12 +287,10 @@ function KnightmarkScene({ statsRef, addKnightsRef }: KnightmarkSceneProps) {
     const mapRows = Math.ceil(VIEW_SIZE / TILE_PX) + 4
 
     // Floor tile pattern — 4×3 clean stone floor from rows 0-2, cols 6-9.
-    // The upper-left room tiles have wall shading baked in; these upper-right
-    // tiles are the standalone floor meant to be tiled freely.
     const FLOOR_PATTERN = [
-       7,  8,  9, 10, // row 0, cols 6-9
-      17, 18, 19, 20, // row 1, cols 6-9
-      27, 28, 29, 30, // row 2, cols 6-9
+       7,  8,  9, 10,
+      17, 18, 19, 20,
+      27, 28, 29, 30,
     ]
 
     const floorData = new Uint32Array(mapCols * mapRows)
@@ -315,8 +346,9 @@ function KnightmarkScene({ statsRef, addKnightsRef }: KnightmarkSceneProps) {
     const r2d = spriteGroupRef.current
     if (!r2d) return
     const bounds = boundsRef.current
+    const sim = simRef.current
     for (let i = 0; i < count; i++) {
-      knightsRef.current.push(spawnKnight(knightSheet, r2d, bounds))
+      knightsRef.current.push(spawnKnight(knightSheet, r2d, bounds, sim))
     }
   }, [knightSheet])
 
@@ -334,16 +366,11 @@ function KnightmarkScene({ statsRef, addKnightsRef }: KnightmarkSceneProps) {
     const knights = knightsRef.current
     const spatialHash = spatialHashRef.current
     const bounds = boundsRef.current
-    const margin = KNIGHT_SCALE / 2
+    const sim = simRef.current
+    const margin = sim.knightScale / 2
 
-    // FPS tracking
-    fpsRef.current.frames++
-    fpsRef.current.time += deltaMs
-    if (fpsRef.current.time >= 500) {
-      fpsRef.current.display = Math.round((fpsRef.current.frames / fpsRef.current.time) * 1000)
-      fpsRef.current.frames = 0
-      fpsRef.current.time = 0
-    }
+    // Update spatial hash cell size from current hitRadius
+    spatialHash.cellSize = sim.hitRadius * 4
 
     // Update knight movement and animation
     for (const k of knights) {
@@ -390,7 +417,7 @@ function KnightmarkScene({ statsRef, addKnightsRef }: KnightmarkSceneProps) {
     // Knight-knight collisions via spatial hash
     spatialHash.clear()
     for (const k of knights) spatialHash.insert(k)
-    const collisionDist = HIT_RADIUS * 2
+    const collisionDist = sim.hitRadius * 2
     const collisionDistSq = collisionDist * collisionDist
     for (const k of knights) {
       if (k.state !== 'WALK') continue
@@ -412,11 +439,11 @@ function KnightmarkScene({ statsRef, addKnightsRef }: KnightmarkSceneProps) {
       })
     }
 
-    // Update stats DOM directly (bypasses React rendering for perf)
-    if (statsRef.current && spriteGroupRef.current) {
+    // Update knight-batch monitors
+    if (spriteGroupRef.current) {
       const s = spriteGroupRef.current.stats
-      statsRef.current.textContent =
-        `FPS: ${fpsRef.current.display}\nKnights: ${knights.length}\nBatches: ${s.batchCount}\nDraws: ${s.drawCalls}`
+      knightStatsRef.current.knights = knights.length
+      knightStatsRef.current.batches = s.batchCount
     }
   })
 
@@ -438,8 +465,35 @@ function KnightmarkScene({ statsRef, addKnightsRef }: KnightmarkSceneProps) {
 // ============================================
 
 export default function App() {
-  const statsRef = useRef<HTMLDivElement>(null)
   const addKnightsRef = useRef<(() => void) | null>(null)
+
+  // Tweakpane
+  const { pane, stats } = usePane()
+
+  // Knights monitors (first)
+  const knightStatsRef = useRef({ knights: 0, batches: 0 })
+  const statsFolder = usePaneFolder(pane, 'Knights')
+
+  // Simulation folder (at bottom, collapsed)
+  const simFolder = usePaneFolder(pane, 'Simulation')
+  const [speedMin] = usePaneInput(simFolder, 'speedMin', 30, { min: 10, max: 100, step: 5, label: 'speed min' })
+  const [speedMax] = usePaneInput(simFolder, 'speedMax', 200, { min: 100, max: 300, step: 10, label: 'speed max' })
+  const [hitRadius] = usePaneInput(simFolder, 'hitRadius', 8, { min: 2, max: 20, step: 1, label: 'hit radius' })
+  const [knightScale] = usePaneInput(simFolder, 'knightScale', 64, { min: 32, max: 128, step: 8, label: 'scale' })
+  useEffect(() => {
+    if (!statsFolder) return
+    const bKnights = statsFolder.addBinding(knightStatsRef.current, 'knights', { readonly: true, format: (v: number) => v.toFixed(0) })
+    const bBatches = statsFolder.addBinding(knightStatsRef.current, 'batches', { readonly: true, format: (v: number) => v.toFixed(0) })
+    const interval = setInterval(() => {
+      bKnights.refresh()
+      bBatches.refresh()
+    }, 500)
+    return () => {
+      clearInterval(interval)
+      bKnights.dispose()
+      bBatches.dispose()
+    }
+  }, [statsFolder])
 
   // Keyboard: Space to add knights
   useEffect(() => {
@@ -457,38 +511,27 @@ export default function App() {
     <>
       <Canvas
         dpr={1}
-        orthographic
-        camera={{ position: [0, 0, 100], near: 0.1, far: 1000 }}
-        renderer={{ antialias: false }}
+        renderer={{ antialias: false, trackTimestamp: true }}
+        onCreated={({ gl }) => {
+          gl.domElement.style.imageRendering = 'pixelated'
+        }}
       >
+        <OrthoCamera viewSize={VIEW_SIZE} />
         <color attach="background" args={['#1a1a2e']} />
         <Suspense fallback={null}>
-          <KnightmarkScene statsRef={statsRef} addKnightsRef={addKnightsRef} />
+          <KnightmarkScene
+            addKnightsRef={addKnightsRef}
+            speedMin={speedMin}
+            speedMax={speedMax}
+            hitRadius={hitRadius}
+            knightScale={knightScale}
+            knightStatsRef={knightStatsRef}
+            stats={stats}
+          />
         </Suspense>
       </Canvas>
 
-      {/* Stats overlay */}
-      <div
-        ref={statsRef}
-        style={{
-          position: 'fixed',
-          top: 12,
-          right: 12,
-          padding: '5px 10px',
-          background: 'rgba(0, 2, 28, 0.7)',
-          borderRadius: 6,
-          color: '#4a9eff',
-          fontFamily: 'monospace',
-          fontSize: 10,
-          lineHeight: 1.5,
-          zIndex: 100,
-          whiteSpace: 'pre',
-        }}
-      >
-        {`FPS: -\nKnights: -\nBatches: -\nDraws: -`}
-      </div>
-
-      {/* Controls */}
+      {/* TODO: migrate game UI to three-flatland events */}
       <div
         style={{
           position: 'fixed',

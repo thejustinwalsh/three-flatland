@@ -128,7 +128,7 @@ export interface TiledLoaderOptions {
  *
  * @example
  * ```typescript
- * // Vanilla usage - static API
+ * // Three.js usage - static API
  * const mapData = await TiledLoader.load('/maps/level1.json')
  *
  * // Override for this load
@@ -179,11 +179,11 @@ export class TiledLoader extends Loader<TileMapData> {
   }
 
   // ==========================================
-  // Static API for vanilla usage
+  // Static API for Three.js usage
   // ==========================================
 
   /**
-   * Load a Tiled JSON map (static method for vanilla usage).
+   * Load a Tiled JSON map (static method for Three.js usage).
    * Results are cached by URL and resolved options.
    */
   static load(url: string, options?: TiledLoaderOptions): Promise<TileMapData> {

@@ -1,0 +1,26 @@
+# Pre-commit hook configuration. Replaces the former simple-git-hooks +
+# lint-staged combination. sync-pack-full explicitly runs git add because
+# stage_fixed only re-stages files matching the command's own glob, not files
+# in other directories that the command modifies.
+output:
+  - failure
+  - execution_out
+
+pre-commit:
+  parallel: false
+  commands:
+    sync-pack-full:
+      glob: "{pnpm-workspace.yaml,packages/*/package.json}"
+      run: pnpm sync:pack examples minis && git add examples minis
+      stage_fixed: true
+    sync-pack-files:
+      glob: "{examples,minis}/**/package.json"
+      run: pnpm exec tsx scripts/sync-pack.ts --files {staged_files}
+      stage_fixed: true
+    sync-react-subpaths:
+      glob: "{packages/three-flatland/src/index.ts,packages/three-flatland/src/*/index.ts,packages/skia/src/ts/three/index.ts}"
+      run: pnpm exec tsx scripts/sync-react-subpaths.ts
+      stage_fixed: true
+    check-skia-pin:
+      glob: "packages/skia/third_party/skia"
+      run: pnpm exec tsx scripts/check-skia-pin.ts

@@ -13,7 +13,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
  * Load an example from examples/{type}/{name} and transform for StackBlitz
  */
 export function loadExample(
-  type: 'vanilla' | 'react',
+  type: 'three' | 'react',
   name: string
 ): Record<string, string> {
   const exampleDir = path.resolve(__dirname, `../../../examples/${type}/${name}`);

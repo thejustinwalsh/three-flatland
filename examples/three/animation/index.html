@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Animation Example - three-flatland</title>
+    <style>
+      body {
+        margin: 0;
+        overflow: hidden;
+        background: #1a1a2e;
+      }
+      canvas {
+        display: block;
+      }
+      #credits {
+        position: fixed;
+        bottom: 8px;
+        left: 50%;
+        transform: translateX(-50%);
+        font-family: monospace;
+        color: #555;
+        font-size: 9px;
+        white-space: nowrap;
+        z-index: 100;
+      }
+      #credits a {
+        color: #777;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="credits">
+      Knight sprite by <a href="https://analogstudios.itch.io/camelot" target="_blank">analogStudios_</a> (CC0)
+    </div>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

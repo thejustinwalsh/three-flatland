@@ -1,0 +1,128 @@
+---
+title: LLMs
+description: LLM-readable context and copy-paste prompts for AI coding assistants building with three-flatland.
+---
+
+import { Aside, Tabs, TabItem } from '@astrojs/starlight/components';
+
+three-flatland provides machine-readable documentation so AI coding assistants can help you write correct code from the start. This page explains what's available and includes ready-to-use prompts.
+
+## Machine-Readable Documentation
+
+three-flatland publishes two files that AI assistants can consume directly:
+
+| File | What it contains | When to use it |
+|------|------------------|----------------|
+| [`llms.txt`](/three-flatland/llms.txt) | Links to all docs pages, guides, and examples | AI tools that can browse and follow links |
+| [`llms-full.txt`](/three-flatland/llms-full.txt) | Self-contained API reference with imports, classes, effects, and examples | AI tools that need everything in one file |
+
+These follow the [llms.txt standard](https://llmstxt.org/) — a convention for providing LLM-friendly documentation alongside your website.
+
+<Aside type="tip" title="How this helps">
+Without context, AI assistants often generate three-flatland code with wrong imports, missing `await renderer.init()`, or using `WebGLRenderer` instead of `WebGPURenderer`. These files prevent those common mistakes by giving the AI the right patterns upfront.
+</Aside>
+
+## Prompts
+
+Copy a prompt below, paste it into your AI assistant, and replace the placeholder at the end with your task.
+
+### Getting Started
+
+The general-purpose prompt. Works with any AI assistant that can fetch URLs.
+
+~~~
+I'm working with three-flatland, a 2D sprite and effects library for Three.js
+using WebGPU and TSL (Three Shader Language). It's currently in early alpha.
+
+Read this reference for the API:
+https://thejustinwalsh.com/three-flatland/llms-full.txt
+
+Key things to know:
+- Three.js users import from "three-flatland"
+- React Three Fiber users import from "three-flatland/react"
+- TSL effect nodes come from "@three-flatland/nodes"
+- Install with @alpha tag: npm install three-flatland@alpha
+- Requires three.js >= 0.183.1 and WebGPURenderer from "three/webgpu"
+
+Help me with the following:
+[Describe your task here]
+~~~
+
+### Build from an Example
+
+Start from a working example and adapt it. The AI reads the actual source code from GitHub, so it builds on patterns that are known to work.
+
+<Tabs syncKey="framework">
+  <TabItem label="Three.js" icon="seti:javascript">
+    ~~~
+    I'm building a project with three-flatland (2D sprites for Three.js/WebGPU).
+
+    Read the API reference: https://thejustinwalsh.com/three-flatland/llms-full.txt
+
+    Then fetch this example source from GitHub:
+    https://raw.githubusercontent.com/thejustinwalsh/three-flatland/main/examples/three/EXAMPLE_NAME/main.ts
+
+    Adapt it for my needs:
+    [Describe what you want to build]
+    ~~~
+  </TabItem>
+  <TabItem label="React" icon="seti:react">
+    ~~~
+    I'm building a React Three Fiber project with three-flatland (2D sprites for Three.js/WebGPU).
+
+    Read the API reference: https://thejustinwalsh.com/three-flatland/llms-full.txt
+
+    Then fetch this example source from GitHub:
+    https://raw.githubusercontent.com/thejustinwalsh/three-flatland/main/examples/react/EXAMPLE_NAME/App.tsx
+
+    Adapt it for my needs:
+    [Describe what you want to build]
+    ~~~
+  </TabItem>
+</Tabs>
+
+Replace `EXAMPLE_NAME` with one of these:
+
+| Example | What it demonstrates |
+|---------|---------------------|
+| `basic-sprite` | Texture loading, sprite creation, interaction |
+| `animation` | Spritesheet animation with `AnimatedSprite2D` |
+| `batch-demo` | Thousands of sprites in few draw calls |
+| `tsl-nodes` | Per-sprite effects with `MaterialEffect` and TSL nodes |
+| `pass-effects` | Full-screen post-processing with `PassEffect` |
+| `tilemap` | Tiled/LDtk tilemap loading and rendering |
+| `knightmark` | Sprite benchmark with batching stress test |
+
+### Deep Context (File Access Required)
+
+For AI assistants that can read local files — Claude Code, Cursor, Copilot workspace. The AI reads the project's own documentation files and explores the source code based on your task.
+
+~~~
+I'm working in the three-flatland repository.
+
+Start by reading these files:
+1. CLAUDE.md — Project instructions, architecture, build commands
+2. README.md — API overview and quick start examples
+
+Then explore based on what I need:
+- API details: read packages/three-flatland/src/index.ts and follow exports
+- Effect nodes: read packages/nodes/src/ category directories
+- Examples: read examples/three/ or examples/react/
+- React integration: read packages/three-flatland/src/react.ts
+
+Help me with the following:
+[Describe your task here]
+~~~
+
+## Common Pitfalls
+
+These are the mistakes AI assistants make most often with three-flatland. If you see any of these in generated code, correct the AI:
+
+| Mistake | Fix |
+|---------|-----|
+| `new THREE.WebGLRenderer()` | Use `new WebGPURenderer()` from `'three/webgpu'` |
+| `import { ... } from '@three-flatland/core'` | Import from `'three-flatland'` (or `'three-flatland/react'`) |
+| `npm install three-flatland` (no alpha tag) | Use `npm install three-flatland@alpha` |
+| Missing `await renderer.init()` | WebGPU requires async initialization before rendering |
+| Using `THREE.Sprite` | Use `Sprite2D` from three-flatland — different API entirely |
+| `renderer.render(scene, camera)` with Flatland | Use `flatland.render(renderer)` — Flatland manages its own scene and camera |

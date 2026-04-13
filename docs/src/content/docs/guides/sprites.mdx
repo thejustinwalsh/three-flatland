@@ -40,7 +40,7 @@ The `Sprite2D` class is the foundation for 2D rendering in three-flatland.
 </Tabs>
 
 :::tip[Loading Textures]
-Use `TextureLoader` from `three-flatland` (or `three-flatland/react`) to load textures with automatic preset configuration. For spritesheets, use `SpriteSheetLoader`. See the [Loaders guide](../guides/loaders) for details.
+Use `TextureLoader` from `three-flatland` (or `three-flatland/react`) to load textures with automatic preset configuration. For spritesheets, use `SpriteSheetLoader`. See the [Loaders guide](../loaders/) for details.
 :::
 
 ## Properties
@@ -68,13 +68,19 @@ The anchor point determines the sprite's origin for positioning and rotation. Va
 
 ### Size
 
-Sprite size is automatically determined from the texture dimensions but can be overridden:
+Sprite geometry is a unit plane — display size comes from `scale`. Set `scale.set(width, height, 1)` in pixels:
+
+```typescript
+const sprite = new Sprite2D({ texture: myTexture });
+sprite.scale.set(64, 64, 1);
+```
+
+To sample a sub-region of a texture atlas, pass a `frame` from a `SpriteSheet`:
 
 ```typescript
 const sprite = new Sprite2D({
-  texture: myTexture,
-  width: 64,
-  height: 64,
+  texture: sheet.texture,
+  frame: sheet.getFrame('player_idle_0'),
 });
 ```
 
@@ -119,7 +125,7 @@ For batched rendering with many sprites, use `SpriteGroup`:
 For simple cases with few sprites, you can add them directly to the scene without `SpriteGroup`.
 
 :::tip[Flatland]
-For a complete 2D pipeline with camera, post-processing, and global uniforms, use [Flatland](../guides/flatland) instead of adding a SpriteGroup to your scene manually.
+For a complete 2D pipeline with camera, post-processing, and global uniforms, use [Flatland](../flatland/) instead of adding a SpriteGroup to your scene manually.
 :::
 
 ## Layers

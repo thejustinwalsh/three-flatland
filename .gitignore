@@ -14,6 +14,7 @@ docs/src/content/docs/api/
 # IDE
 .idea/
 .vscode/
+!.vscode/settings.json
 *.swp
 *.swo
 
@@ -28,6 +29,9 @@ pnpm-debug.log*
 
 # Test
 coverage/
+playwright-report/
+test-results/
+.playwright/
 
 # Turbo
 .turbo/
@@ -43,6 +47,7 @@ coverage/
 # Temporary
 tmp/
 temp/
+.size-limit-filtered.*
 
 # Agents
 settings.local.json
@@ -52,3 +57,8 @@ vendor/
 
 # Profile traces
 traces/
+
+# Restruct
+.restruct/
+!.restruct/verify.yaml
+!.restruct/permissions.yaml

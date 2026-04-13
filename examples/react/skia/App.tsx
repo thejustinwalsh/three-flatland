@@ -19,8 +19,9 @@ import {
   reflector, color as tslColor, positionWorld, float as tslFloat,
 } from 'three/tsl'
 import { gaussianBlur } from 'three/addons/tsl/display/GaussianBlurNode.js'
-import { Color, DoubleSide, Fog, type Mesh, type MeshBasicMaterial } from 'three';
-import { MeshStandardNodeMaterial } from 'three/webgpu';
+import { Color, DoubleSide, Fog, type Mesh, type MeshBasicMaterial } from 'three'
+import { MeshStandardNodeMaterial } from 'three/webgpu'
+import { usePane, useStatsMonitor } from '@three-flatland/tweakpane/react'
 
 extend({ SkiaRect, SkiaCircle, SkiaLine, SkiaPathNode, SkiaTextNode, SkiaGroup })
 
@@ -248,25 +249,12 @@ function OverlayText() {
   const fpsFont = typeface.atSize(Math.round(11 * dpr))
 
   const subtitleRef = useRef<SkiaTextNode>(null)
-  const fpsRef = useRef<SkiaTextNode>(null)
   const [subtitlePaint] = useState(() => new SkiaPaint(skia).setFill())
 
   const titleX = (pw - titleFont.measureText('@three-flatland/skia')) / 2
   const subtitleX = (pw - subFont.measureText('GPU-accelerated vector graphics in the browser')) / 2
 
-  const fpsState = useRef({ count: 0, lastTime: performance.now(), fps: 0 })
-
   useFrame(({ elapsed }) => {
-    // FPS counter
-    const fs = fpsState.current
-    fs.count++
-    const now = performance.now()
-    if (now - fs.lastTime >= 1000) {
-      fs.fps = Math.round(fs.count * 1000 / (now - fs.lastTime))
-      fs.count = 0; fs.lastTime = now
-    }
-    if (fpsRef.current) fpsRef.current.text = `FPS: ${fs.fps}`
-
     // Subtitle rainbow gradient
     const sub = subtitleRef.current
     if (sub) {
@@ -287,8 +275,6 @@ function OverlayText() {
       fill={[1, 1, 1, 1]} x={titleX} y={ph - 90} />
     <skiaTextNode ref={subtitleRef} text="GPU-accelerated vector graphics in the browser"
       font={subFont} paint={subtitlePaint} x={subtitleX} y={ph - 40} />
-    <skiaTextNode ref={fpsRef} text="FPS: 0" font={fpsFont}
-      fill={[0.2, 0.9, 0.4, 1]} x={pw - 160} y={30} />
     <skiaTextNode text={`Backend: ${skia.backend.toUpperCase()}`} font={fpsFont}
       fill={[0.6, 0.6, 0.8, 0.6]} x={20} y={30} />
   </>
@@ -325,7 +311,11 @@ function ReflectiveGround() {
   )
 }
 
-function Controls() {
+function Controls({ dampingFactor, minDistance, maxDistance }: {
+  dampingFactor: number
+  minDistance: number
+  maxDistance: number
+}) {
   const gl = useThree((s) => s.gl)
   const camera = useThree((s) => s.camera)
   const controlsRef = useRef<OrbitControls | null>(null)
@@ -333,14 +323,22 @@ function Controls() {
   useEffect(() => {
     const controls = new OrbitControls(camera, gl.domElement)
     controls.enableDamping = true
-    controls.dampingFactor = 0.05
+    controls.dampingFactor = dampingFactor
     controls.target.set(0, 0.9, 0)
-    controls.minDistance = 2
-    controls.maxDistance = 10
+    controls.minDistance = minDistance
+    controls.maxDistance = maxDistance
     controls.maxPolarAngle = Math.PI * 0.85
     controlsRef.current = controls
     return () => controls.dispose()
-  }, [camera, gl])
+  }, [camera, gl]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    const c = controlsRef.current
+    if (!c) return
+    c.dampingFactor = dampingFactor
+    c.minDistance = minDistance
+    c.maxDistance = maxDistance
+  }, [dampingFactor, minDistance, maxDistance])
 
   useFrame(() => controlsRef.current?.update())
   return null
@@ -424,6 +422,10 @@ function SkiaDemo() {
 
   const overlayRef = useRef<SkiaCanvasInstance>(null)
 
+  // ── TweakPane debug controls ──
+  const { pane, stats } = usePane()
+  useStatsMonitor(stats)
+
   // Render overlay after Three.js render
   useFrame(() => {
     overlayRef.current?.render(true)
@@ -434,7 +436,7 @@ function SkiaDemo() {
   return <>
     <ambientLight color={0x404060} intensity={0.5} />
     <directionalLight color={0xffffff} intensity={0.8} position={[2, 4, 3]} />
-    <Controls />
+    <Controls dampingFactor={0.05} minDistance={2} maxDistance={10} />
     <Panels />
     <ReflectiveGround />
 
@@ -452,7 +454,7 @@ export default function App() {
   return (
     <Canvas
       camera={{ position: [0, 0.9, 4.5], fov: 40, near: 0.1, far: 100 }}
-      renderer={{ antialias: true }}
+      renderer={{ antialias: true, trackTimestamp: true }}
       onCreated={({ scene }) => {
         scene.background = new Color(0x191920)
         scene.fog = new Fog(0x191920, 0, 15)

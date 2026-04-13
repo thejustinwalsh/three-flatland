@@ -5,7 +5,7 @@ description: GPU-accelerated 2D vector graphics with Skia WASM — shapes, text,
 
 import { Tabs, TabItem } from '@astrojs/starlight/components';
 
-`@three-flatland/skia` brings Skia's GPU-accelerated vector rendering to Three.js via WASM, built with Zig. It auto-detects WebGPU or WebGL from your renderer and supports both vanilla Three.js and React Three Fiber.
+`@three-flatland/skia` brings Skia's GPU-accelerated vector rendering to Three.js via WASM, built with Zig. It auto-detects WebGPU or WebGL from your renderer and supports both Three.js and React Three Fiber.
 
 Includes a native WebGPU backend (Graphite/Dawn) — CanvasKit's npm package ships WebGL only. At **857 KB** (WebGPU) / **1 MB** (WebGL) brotli vs CanvasKit's 2.2 MB.
 
@@ -139,7 +139,7 @@ During development, Vite resolves `import.meta.url` correctly so the WASM loads 
 </Tabs>
 
 :::tip[Import Paths]
-Vanilla Three.js: import from `@three-flatland/skia` (core) and `@three-flatland/skia/three` (scene graph nodes).
+Three.js: import from `@three-flatland/skia` (core) and `@three-flatland/skia/three` (scene graph nodes).
 React: import from `@three-flatland/skia/react` which re-exports everything plus hooks and attach helpers.
 :::
 
@@ -404,5 +404,5 @@ import { SkiaCanvas, attachSkiaTexture } from '@three-flatland/skia/react'
 
 ## Next Steps
 
-- [Skia Example](../examples/skia) — Full interactive demo
-- [Sprites Guide](../guides/sprites) — Three-flatland 2D sprites
+- [Skia Example](../../examples/skia/) — Full interactive demo
+- [Sprites Guide](../sprites/) — Three-flatland 2D sprites

@@ -14,7 +14,7 @@ import { SkiaTypeface } from '../font'
  * const titleFont = typeface.atSize(32)
  * const bodyFont = typeface.atSize(14)
  *
- * // Vanilla
+ * // Three.js
  * const typeface = await SkiaFontLoader.load('/fonts/Inter.ttf')
  * const font = typeface.atSize(16)
  * ```

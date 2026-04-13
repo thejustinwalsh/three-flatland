@@ -4,7 +4,7 @@
 
 # @three-flatland/nodes
 
-50+ composable TSL shader nodes for [three-flatland](https://www.npmjs.com/package/three-flatland) and Three.js WebGPU. Tint, outline, dissolve, blur, CRT, palette swap, dithering, and more — all built with Three Shader Language.
+Composable TSL shader nodes for [three-flatland](https://www.npmjs.com/package/three-flatland) and Three.js WebGPU. Tint, outline, dissolve, blur, CRT, palette swap, dithering, and more — all built with Three Shader Language.
 
 > **Alpha Release** — this package is in active development. The API will evolve and breaking changes are expected between releases. Pin your version and check the [changelog](https://github.com/thejustinwalsh/three-flatland/releases) before upgrading.
 

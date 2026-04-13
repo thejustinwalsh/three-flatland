@@ -9,19 +9,19 @@ import StackBlitzEmbed from '../../../components/StackBlitzEmbed';
 import ExampleTabs from '../../../components/ExampleTabs.astro';
 import { loadExample } from '../../../utils/loadExample';
 
-export const vanillaFiles = loadExample('vanilla', 'skia');
+export const threeFiles = loadExample('three', 'skia');
 export const reactFiles = loadExample('react', 'skia');
 
 <ExampleTabs>
 <Tabs>
   <TabItem label="Preview" icon="rocket">
-    <ExamplePreview client:load type="vanilla" name="skia" />
+    <ExamplePreview client:load type="three" name="skia" bg="#191920" />
   </TabItem>
   <TabItem label="Three.js" icon="seti:javascript">
     <StackBlitzEmbed
       client:load
       title="Skia - Three.js"
-      files={vanillaFiles}
+      files={threeFiles}
       openFile="main.ts"
       height={600}
     />
@@ -166,6 +166,6 @@ In React, create `SkiaPaint` and `SkiaPath` with `useState(() => ...)` initializ
 
 ## Next Steps
 
-- [Skia Guide](../guides/skia) — Concepts and API reference
-- [Basic Sprite](../examples/basic-sprite) — Three-flatland sprites
-- [TSL Nodes](../examples/tsl-nodes) — Shader nodes
+- [Skia Guide](../../guides/skia/) — Concepts and API reference
+- [Basic Sprite](../basic-sprite/) — Three-flatland sprites
+- [TSL Nodes](../tsl-nodes/) — Shader nodes

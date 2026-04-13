@@ -3,7 +3,7 @@
  *
  * Three.js Object3D scene graph for Skia rendering.
  * Add SkiaRect, SkiaCircle, etc. as children of a SkiaCanvas.
- * Works with both vanilla Three.js and React Three Fiber.
+ * Works with both Three.js and React Three Fiber.
  *
  * @packageDocumentation
  */

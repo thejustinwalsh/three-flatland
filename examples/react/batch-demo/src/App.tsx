@@ -1,6 +1,6 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react'
 import { Canvas, useFrame, useLoader, useThree, extend } from '@react-three/fiber/webgpu'
-import { Vector2, Raycaster, Plane, Vector3, type Texture } from 'three'
+import { Vector2, Raycaster, Plane, Vector3, type Texture, type OrthographicCamera } from 'three'
 import {
   Sprite2D,
   Sprite2DMaterial,
@@ -10,14 +10,51 @@ import {
   type SpriteFrame,
   type RenderStats,
 } from 'three-flatland/react'
+import { usePane, useStatsMonitor } from '@three-flatland/tweakpane/react'
+import type { Pane } from 'tweakpane'
+import type { StatsHandle } from '@three-flatland/tweakpane/react'
 // Extend R3F with our custom classes
 extend({ SpriteGroup, Sprite2D, Sprite2DMaterial })
+
+// Letterboxed orthographic camera that fits viewWidth × viewHeight in the canvas
+function FitOrthoCamera({ viewWidth, viewHeight }: { viewWidth: number; viewHeight: number }) {
+  const set = useThree((s) => s.set)
+  const size = useThree((s) => s.size)
+  const aspect = size.width / size.height
+  const viewAspect = viewWidth / viewHeight
+  return (
+    <orthographicCamera
+      ref={(cam: OrthographicCamera | null) => {
+        if (!cam) return
+        if (aspect > viewAspect) {
+          // Window wider — fit to height
+          cam.top = viewHeight / 2
+          cam.bottom = -viewHeight / 2
+          cam.left = (-viewHeight * aspect) / 2
+          cam.right = (viewHeight * aspect) / 2
+        } else {
+          // Window taller — fit to width
+          cam.left = -viewWidth / 2
+          cam.right = viewWidth / 2
+          cam.top = viewWidth / aspect / 2
+          cam.bottom = -viewWidth / aspect / 2
+        }
+        cam.updateProjectionMatrix()
+        set({ camera: cam })
+      }}
+      position={[0, 0, 100]}
+      near={0.1}
+      far={1000}
+      manual
+    />
+  )
+}
 
 // Configuration
 const TILE_SIZE = 64
 const GRID_WIDTH = 12
 const GRID_HEIGHT = 8
-const ASSET_BASE = import.meta.env.BASE_URL + 'assets/'
+const ASSET_BASE = './assets/'
 
 // Grass tilemap UV size (32x32 tiles in 640x256 texture)
 const TILE_UV_SIZE = { width: 32 / 640, height: 32 / 256 }
@@ -198,31 +235,27 @@ function HoverPreview({ visible, position, material, building }: HoverPreviewPro
 // MAIN SCENE
 // ============================================
 
-function StatsTracker({ onStats }: { onStats: (fps: number, draws: number) => void }) {
-  const gl = useThree((s) => s.gl)
-  const frameCount = useRef(0)
-  const elapsed = useRef(0)
+function StatsMonitor({ pane, spriteStats }: { pane: Pane; spriteStats: RenderStats }) {
+  const statsObjRef = useRef({ sprites: 0, batches: 0 })
+  const folderRef = useRef<ReturnType<Pane['addFolder']> | null>(null)
 
-  // Disable auto-reset so we can read draw calls from the previous frame
-  // before manually resetting. The WebGPU Animation loop resets info at
-  // the start of each frame — before useFrame runs — which would zero
-  // out the counters before we can read them.
   useEffect(() => {
-    gl.info.autoReset = false
-    return () => { gl.info.autoReset = true }
-  }, [gl])
+    const statsFolder = pane.addFolder({ title: 'Batching', expanded: false })
+    statsFolder.addBinding(statsObjRef.current, 'sprites', { readonly: true, format: (v: number) => v.toFixed(0) })
+    statsFolder.addBinding(statsObjRef.current, 'batches', { readonly: true, format: (v: number) => v.toFixed(0) })
+    folderRef.current = statsFolder
 
-  useFrame((_, delta) => {
-    frameCount.current++
-    elapsed.current += delta
-    if (elapsed.current >= 1) {
-      const draws = (gl.info.render as any).drawCalls as number
-      onStats(Math.round(frameCount.current / elapsed.current), draws)
-      frameCount.current = 0
-      elapsed.current = 0
+    return () => {
+      statsFolder.dispose()
     }
-    gl.info.reset()
-  })
+  }, [pane])
+
+  // Update stats values each frame via useFrame is not possible here (outside Canvas),
+  // so we update on each render
+  statsObjRef.current.sprites = spriteStats.spriteCount
+  statsObjRef.current.batches = spriteStats.batchCount
+  pane.refresh()
+
   return null
 }
 
@@ -231,9 +264,10 @@ interface VillageSceneProps {
   selectedBuilding: number
   onPlaceBuilding: (gridX: number, gridY: number) => void
   onStats: (stats: RenderStats) => void
+  stats: StatsHandle
 }
 
-function VillageScene({ entities, selectedBuilding, onPlaceBuilding, onStats }: VillageSceneProps) {
+function VillageScene({ entities, selectedBuilding, onPlaceBuilding, onStats, stats }: VillageSceneProps) {
   const { camera, gl } = useThree()
 
   // Load textures (presets are automatically applied - NearestFilter + SRGBColorSpace)
@@ -319,11 +353,14 @@ function VillageScene({ entities, selectedBuilding, onPlaceBuilding, onStats }: 
   // SpriteGroup ref for stats
   const spriteGroupRef = useRef<SpriteGroup>(null)
 
+  useStatsMonitor(stats)
+
+  // Surface SpriteGroup batching stats to the parent each frame
   useFrame(() => {
     if (spriteGroupRef.current) {
       onStats(spriteGroupRef.current.stats)
     }
-  })
+  }, { priority: -Infinity })
 
   // Hover position
   const hoverPosition: [number, number, number] = hoverGrid
@@ -403,34 +440,8 @@ const styles = {
       transition: 'all 0.15s ease',
       overflow: 'hidden',
       position: 'relative',
+      padding: 0,
     }) as React.CSSProperties,
-
-  stats: {
-    position: 'fixed',
-    top: 12,
-    right: 12,
-    padding: '5px 10px',
-    background: 'rgba(0, 0, 0, 0.7)',
-    borderRadius: 6,
-    color: '#4a9eff',
-    fontFamily: 'monospace',
-    fontSize: 10,
-    lineHeight: 1.5,
-    zIndex: 100,
-  } as React.CSSProperties,
-
-  hint: {
-    position: 'fixed',
-    top: 12,
-    left: '50%',
-    transform: 'translateX(-50%)',
-    padding: '4px 12px',
-    background: 'rgba(0, 0, 0, 0.5)',
-    color: 'rgba(255, 255, 255, 0.7)',
-    fontSize: 11,
-    borderRadius: 4,
-    zIndex: 100,
-  } as React.CSSProperties,
 
   credits: {
     position: 'fixed',
@@ -461,9 +472,9 @@ const INITIAL_ENTITIES: PlacedEntity[] = [
 export default function App() {
   const [entities, setEntities] = useState<PlacedEntity[]>(INITIAL_ENTITIES)
   const [selectedBuilding, setSelectedBuilding] = useState(0)
-  const [stats, setStats] = useState<RenderStats>({ spriteCount: 0, batchCount: 0, drawCalls: 0, visibleSprites: 0 })
-  const [perfStats, setPerfStats] = useState({ fps: '-' as string | number, draws: '-' as string | number })
-  const handlePerfStats = useCallback((fps: number, draws: number) => setPerfStats({ fps, draws }), [])
+  const [spriteStats, setSpriteStats] = useState<RenderStats>({ spriteCount: 0, batchCount: 0, drawCalls: 0, visibleSprites: 0 })
+
+  const { pane, stats } = usePane()
 
   const viewWidth = TILE_SIZE * (GRID_WIDTH + 2)
   const viewHeight = TILE_SIZE * (GRID_HEIGHT + 4)
@@ -483,35 +494,26 @@ export default function App() {
   return (
     <>
       <Canvas
-        orthographic
-        camera={{
-          position: [0, 0, 100],
-          zoom: 1,
-          near: 0.1,
-          far: 1000,
-          left: -viewWidth / 2,
-          right: viewWidth / 2,
-          top: viewHeight / 2,
-          bottom: -viewHeight / 2,
-        }}
+        dpr={1}
         style={{ background: '#87ceeb' }}
+        renderer={{ antialias: false, trackTimestamp: true }}
+        onCreated={({ gl }) => {
+          gl.domElement.style.imageRendering = 'pixelated'
+        }}
       >
-        <StatsTracker onStats={handlePerfStats} />
+        <FitOrthoCamera viewWidth={viewWidth} viewHeight={viewHeight} />
         <VillageScene
           entities={entities}
           selectedBuilding={selectedBuilding}
           onPlaceBuilding={handlePlaceBuilding}
-          onStats={setStats}
+          onStats={setSpriteStats}
+          stats={stats}
         />
       </Canvas>
 
-      <div style={styles.stats}>
-        FPS: {perfStats.fps}<br />
-        Draws: {perfStats.draws}<br />
-        Sprites: {stats.spriteCount}<br />
-        Batches: {stats.batchCount}
-      </div>
+      <StatsMonitor pane={pane} spriteStats={spriteStats} />
 
+      {/* TODO: migrate game UI to three-flatland events */}
       <div style={styles.ui}>
         {BUILDINGS.map((building, index) => {
           const isTree = building.name === 'tree'

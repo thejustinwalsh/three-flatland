@@ -9,19 +9,19 @@ import StackBlitzEmbed from '../../../components/StackBlitzEmbed';
 import ExampleTabs from '../../../components/ExampleTabs.astro';
 import { loadExample } from '../../../utils/loadExample';
 
-export const vanillaFiles = loadExample('vanilla', 'batch-demo');
+export const threeFiles = loadExample('three', 'batch-demo');
 export const reactFiles = loadExample('react', 'batch-demo');
 
 <ExampleTabs>
 <Tabs>
   <TabItem label="Preview" icon="rocket">
-    <ExamplePreview client:load type="vanilla" name="batch-demo" />
+    <ExamplePreview client:load type="three" name="batch-demo" bg="#87ceeb" />
   </TabItem>
   <TabItem label="Three.js" icon="seti:javascript">
     <StackBlitzEmbed
       client:load
       title="Batch Demo - Three.js"
-      files={vanillaFiles}
+      files={threeFiles}
       openFile="main.ts"
       height={600}
     />
@@ -76,5 +76,5 @@ console.log(`Sprites: ${spriteCount}, Batches: ${batchCount}, Draw Calls: ${draw
 
 ## Next Steps
 
-- [TSL Nodes](../examples/tsl-nodes) - Add shader effects
-- [Tilemap](../examples/tilemap) - Efficient tile-based rendering
+- [TSL Nodes](../tsl-nodes/) - Add shader effects
+- [Tilemap](../tilemap/) - Efficient tile-based rendering

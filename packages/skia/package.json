@@ -117,9 +117,13 @@
     "@bytecodealliance/componentize-js": "^0.19.3",
     "@bytecodealliance/jco": "^1.17.6",
     "@react-three/fiber": "catalog:",
+    "@testing-library/react": "^16.1.0",
     "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
     "@types/three": "catalog:",
+    "happy-dom": "^15.11.7",
     "react": "catalog:",
+    "react-dom": "catalog:",
     "three": "catalog:"
   },
   "skiaDependencies": {

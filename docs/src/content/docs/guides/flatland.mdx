@@ -100,11 +100,11 @@ const flatland = new Flatland({
   postProcessing: false,  // Enable post-processing pipeline
   aspect: 1,              // Initial aspect ratio (use resize() to update)
   camera: null,           // Custom OrthographicCamera (null = internal)
-  renderTarget: null,     // WebGLRenderTarget (null = render to viewport)
+  renderTarget: null,     // RenderTarget (null = render to viewport)
 })
 ```
 
-See the [FlatlandOptions API reference](/api/interfaces/flatlandoptions/) for full type details.
+See the [FlatlandOptions API reference](/three-flatland/api/interfaces/flatlandoptions/) for full type details.
 
 ## Adding Sprites
 
@@ -229,16 +229,16 @@ The render pipeline auto-initializes on the first `addPass()` call. Passes chain
 | `clearPasses()` | Remove all passes |
 | `passes` | Read-only array of current passes |
 
-See the [Pass Effects guide](../guides/pass-effects) for creating custom effects and the full node library.
+See the [Pass Effects guide](../pass-effects/) for creating custom effects and the full node library.
 
 ## Render to Texture
 
 Render Flatland output to a texture for use in 3D scenes:
 
 ```typescript
-import { WebGLRenderTarget } from 'three'
+import { RenderTarget } from 'three'
 
-const target = new WebGLRenderTarget(512, 512)
+const target = new RenderTarget(512, 512)
 const flatland = new Flatland({ renderTarget: target })
 
 // Use the texture on a 3D mesh
@@ -261,7 +261,7 @@ This destroys the ECS world, sprite batches, render pipeline, and all pass effec
 
 ## Next Steps
 
-- [Pass Effects](../guides/pass-effects) — Full-screen post-processing effects
-- [Batch Rendering](../guides/batch-rendering) — How sprite batching works under the hood
-- [TSL Nodes](../guides/tsl-nodes) — Per-sprite material effects and low-level TSL usage
-- [Breakout Showcase](../showcases/breakout) — A complete game built with Flatland
+- [Pass Effects](../pass-effects/) — Full-screen post-processing effects
+- [Batch Rendering](../batch-rendering/) — How sprite batching works under the hood
+- [TSL Nodes](../tsl-nodes/) — Per-sprite material effects and low-level TSL usage
+- [Breakout Showcase](../showcases/breakout/) — A complete game built with Flatland

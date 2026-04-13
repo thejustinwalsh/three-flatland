@@ -4,4 +4,4 @@ Village builder with click-to-place buildings, batched rendering, isometric Y-so
 
 Part of [three-flatland](https://github.com/thejustinwalsh/three-flatland) — a TSL-native 2D rendering library for Three.js.
 
-> Also available as a [vanilla example](../../vanilla/batch-demo).
+> Also available as a [Three.js example](../../three/batch-demo).

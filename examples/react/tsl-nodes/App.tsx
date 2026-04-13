@@ -1,5 +1,5 @@
-import { Suspense, useMemo, useRef, useEffect, useState, useCallback } from 'react'
-import { Canvas, useFrame, useThree, useLoader } from '@react-three/fiber/webgpu'
+import { Suspense, useState, useMemo, useRef, useEffect } from 'react'
+import { Canvas, extend, useFrame, useThree, useLoader } from '@react-three/fiber/webgpu'
 import {
   texture as sampleTexture,
   uv,
@@ -11,6 +11,7 @@ import {
 import {
   CanvasTexture,
   RepeatWrapping,
+  type OrthographicCamera,
 } from 'three'
 import {
   AnimatedSprite2D,
@@ -31,10 +32,32 @@ import {
   dissolvePixelated,
   tint,
 } from '@three-flatland/nodes'
+import { usePane, usePaneFolder, useStatsMonitor } from '@three-flatland/tweakpane/react'
 
-import '@awesome.me/webawesome/dist/styles/themes/default.css'
-import WaRadioGroup from '@awesome.me/webawesome/dist/react/radio-group/index.js'
-import WaRadio from '@awesome.me/webawesome/dist/react/radio/index.js'
+extend({ AnimatedSprite2D })
+
+function OrthoCamera({ viewSize }: { viewSize: number }) {
+  const set = useThree((s) => s.set)
+  const size = useThree((s) => s.size)
+  const aspect = size.width / size.height
+  return (
+    <orthographicCamera
+      ref={(cam: OrthographicCamera | null) => {
+        if (!cam) return
+        cam.left = (-viewSize * aspect) / 2
+        cam.right = (viewSize * aspect) / 2
+        cam.top = viewSize / 2
+        cam.bottom = -viewSize / 2
+        cam.updateProjectionMatrix()
+        set({ camera: cam })
+      }}
+      position={[0, 0, 100]}
+      near={0.1}
+      far={1000}
+      manual
+    />
+  )
+}
 
 // ========================================
 // Types
@@ -49,17 +72,6 @@ type EffectType =
   | 'select'
   | 'shadow'
   | 'pixelate'
-
-const effectLabels: Record<EffectType, string> = {
-  normal: 'Normal',
-  damage: 'Damage',
-  dissolve: 'Dissolve',
-  powerup: 'Rainbow',
-  petrify: 'Stone',
-  select: 'Outline',
-  shadow: 'Shadow',
-  pixelate: 'Pixelate',
-}
 
 // Animation set
 const animationSet: AnimationSetDefinition = {
@@ -359,25 +371,62 @@ function EffectSprite({ effect }: EffectSpriteProps) {
 }
 
 // ========================================
-// Stats tracker
+// Scene component (Tweakpane lives here, inside Canvas)
 // ========================================
 
-function StatsTracker({ onStats }: { onStats: (fps: number, draws: number) => void }) {
-  const gl = useThree((s) => s.gl)
-  const frameCount = useRef(0)
-  const elapsed = useRef(0)
-  useFrame((_, delta) => {
-    frameCount.current++
-    elapsed.current += delta
-    if (elapsed.current >= 1) {
-      // Cast: R3F types gl as WebGLRenderer, but we use WebGPURenderer which has drawCalls
-      const draws = (gl.info.render as any).drawCalls as number
-      onStats(Math.round(frameCount.current / elapsed.current), draws)
-      frameCount.current = 0
-      elapsed.current = 0
+const effectNames: EffectType[] = ['normal', 'damage', 'dissolve', 'powerup', 'petrify', 'select', 'shadow', 'pixelate']
+const effectLabels = ['Normal', 'Damage', 'Dissolve', 'Rainbow', 'Stone', 'Outline', 'Shadow', 'Pixelate']
+
+function Scene() {
+  const { pane, stats } = usePane()
+  const effectFolder = usePaneFolder(pane, 'Effects', { expanded: true })
+
+  const [effect, setEffect] = useState('normal')
+  const gridRef = useRef<any>(null)
+
+  // 3×3 radiogrid for effect selection
+  useEffect(() => {
+    if (!effectFolder) return
+    const grid = (effectFolder.addBlade({
+      view: 'radiogrid',
+      groupName: 'effect',
+      size: [3, 3],
+      cells: (x: number, y: number) => {
+        const i = y * 3 + x
+        if (i >= effectNames.length) return { title: '', value: '' }
+        return { title: effectLabels[i]!, value: effectNames[i]! }
+      },
+      value: 'normal',
+    } as any) as any)
+    gridRef.current = grid
+    grid.on('change', (ev: any) => { if (ev.value) setEffect(ev.value) })
+    return () => { grid.dispose(); gridRef.current = null }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [effectFolder])
+
+  // Keyboard controls (1-8 select effect)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const idx = parseInt(e.key) - 1
+      if (idx >= 0 && idx < effectNames.length) {
+        if (gridRef.current) gridRef.current.value.rawValue = effectNames[idx]!
+        setEffect(effectNames[idx]!)
+      }
     }
-  })
-  return null
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [])
+
+  useStatsMonitor(stats)
+
+  return (
+    <>
+      <color attach="background" args={['#1a1a2e']} />
+      <Suspense fallback={null}>
+        <EffectSprite effect={effect as EffectType} />
+      </Suspense>
+    </>
+  )
 }
 
 // ========================================
@@ -385,133 +434,9 @@ function StatsTracker({ onStats }: { onStats: (fps: number, draws: number) => vo
 // ========================================
 
 export default function App() {
-  const [effect, setEffect] = useState<EffectType>('normal')
-  const controlsRef = useRef<HTMLDivElement>(null)
-  const [stats, setStats] = useState({ fps: '-' as string | number, draws: '-' as string | number })
-  const handleStats = useCallback((fps: number, draws: number) => setStats({ fps, draws }), [])
-
-  // Per-line pill rounding for wrapped radio groups
-  useEffect(() => {
-    const group = controlsRef.current?.querySelector('wa-radio-group')
-    if (!group) return
-    const update = () => {
-      const radios = [...group.querySelectorAll('wa-radio')]
-      if (!radios.length) return
-      const lines: Element[][] = []
-      let lastTop = -Infinity
-      let line: Element[] = []
-      for (const radio of radios) {
-        const top = radio.getBoundingClientRect().top
-        if (Math.abs(top - lastTop) > 2) {
-          if (line.length) lines.push(line)
-          line = []
-          lastTop = top
-        }
-        line.push(radio)
-      }
-      if (line.length) lines.push(line)
-      for (const ln of lines) {
-        for (let i = 0; i < ln.length; i++) {
-          const pos =
-            ln.length === 1 ? 'solo' :
-            i === 0 ? 'first' :
-            i === ln.length - 1 ? 'last' : 'inner'
-          ln[i]!.setAttribute('data-line-pos', pos)
-        }
-      }
-    }
-    const ro = new ResizeObserver(update)
-    ro.observe(group)
-    update()
-    return () => ro.disconnect()
-  }, [])
-
-  // Keyboard controls
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      const keyMap: Record<string, EffectType> = {
-        '1': 'normal',
-        '2': 'damage',
-        '3': 'dissolve',
-        '4': 'powerup',
-        '5': 'petrify',
-        '6': 'select',
-        '7': 'shadow',
-        '8': 'pixelate',
-      }
-      if (keyMap[e.key]) {
-        setEffect(keyMap[e.key]!)
-      }
-    }
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [])
-
   return (
     <>
-      {/* Hide radio group label via shadow DOM part */}
-      <style>{`
-        .effect-bar wa-radio-group::part(form-control-label) { display: none; }
-        .effect-bar wa-radio-group::part(form-control) { margin: 0; border: 0; padding: 0; }
-        .effect-bar wa-radio-group::part(form-control-input) { row-gap: 4px; justify-content: center; }
-        wa-radio[data-line-pos="first"] {
-          border-start-start-radius: var(--wa-border-radius-m);
-          border-end-start-radius: var(--wa-border-radius-m);
-          border-start-end-radius: 0;
-          border-end-end-radius: 0;
-        }
-        wa-radio[data-line-pos="inner"] { border-radius: 0; }
-        wa-radio[data-line-pos="last"] {
-          border-start-end-radius: var(--wa-border-radius-m);
-          border-end-end-radius: var(--wa-border-radius-m);
-          border-start-start-radius: 0;
-          border-end-start-radius: 0;
-        }
-        wa-radio[data-line-pos="solo"] { border-radius: var(--wa-border-radius-m); }
-      `}</style>
-
-      {/* Stats overlay with keyboard hint */}
-      <div
-        style={{
-          position: 'fixed',
-          top: 12,
-          right: 12,
-          padding: '5px 10px',
-          background: 'rgba(0, 2, 28, 0.7)',
-          borderRadius: 6,
-          color: '#4a9eff',
-          fontFamily: 'monospace',
-          fontSize: 10,
-          lineHeight: 1.5,
-          zIndex: 100,
-          whiteSpace: 'pre',
-        }}
-      >
-        {`FPS: ${stats.fps}\nDraws: ${stats.draws}\n`}<span style={{ color: '#555' }}>1–8</span>
-      </div>
-
-      {/* Effect picker — centered, floating, game-like */}
-      <div
-        ref={controlsRef}
-        className="effect-bar"
-        style={{
-          position: 'fixed',
-          bottom: 32,
-          left: '50%',
-          transform: 'translateX(-50%)',
-          zIndex: 100,
-          pointerEvents: 'auto',
-          maxWidth: 'calc(100vw - 24px)',
-        }}
-      >
-        <WaRadioGroup label="Effect" size="small" orientation="horizontal" value={effect} onChange={(e: any) => setEffect((e.target as HTMLInputElement).value as EffectType)}>
-          {(Object.entries(effectLabels) as [EffectType, string][]).map(([value, label]) => (
-            <WaRadio key={value} value={value} size="small" appearance="button">{label}</WaRadio>
-          ))}
-        </WaRadioGroup>
-      </div>
-
-      {/* Attribution — centered bottom */}
+      {/* Attribution -- centered bottom */}
       <div
         style={{
           position: 'fixed',
@@ -538,15 +463,14 @@ export default function App() {
 
       {/* Three.js Canvas */}
       <Canvas
-        orthographic
-        camera={{ zoom: 5, position: [0, 0, 100] }}
-        renderer={{ antialias: false }}
+        dpr={1}
+        renderer={{ antialias: false, trackTimestamp: true }}
+        onCreated={({ gl }) => {
+          gl.domElement.style.imageRendering = 'pixelated'
+        }}
       >
-        <color attach="background" args={['#1a1a2e']} />
-        <StatsTracker onStats={handleStats} />
-        <Suspense fallback={null}>
-          <EffectSprite effect={effect} />
-        </Suspense>
+        <OrthoCamera viewSize={200} />
+        <Scene />
       </Canvas>
     </>
   )

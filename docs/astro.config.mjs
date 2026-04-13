@@ -1,4 +1,6 @@
 import { defineConfig } from 'astro/config';
+import { readFileSync, readdirSync, existsSync } from 'node:fs';
+import { resolve } from 'node:path';
 import starlight from '@astrojs/starlight';
 import starlightTypeDoc, { typeDocSidebarGroup } from 'starlight-typedoc';
 import react from '@astrojs/react';
@@ -8,9 +10,30 @@ import { rehypeExternalLinks } from './rehype-plugins/external-links.js';
 
 const isProd = process.env.NODE_ENV === 'production';
 
+// Read examples server port from microfrontends.json (single source of truth)
+const mfe = JSON.parse(readFileSync('../microfrontends.json', 'utf-8'));
+const examplesPort = mfe.applications.examples.development.local.port;
+
+// Auto-generate vanilla→three redirects from filesystem so adding/removing
+// examples doesn't require updating this config.
+const examplesThreeDir = resolve('../examples/three');
+const exampleNames = existsSync(examplesThreeDir)
+  ? readdirSync(examplesThreeDir, { withFileTypes: true })
+      .filter((d) => d.isDirectory() && existsSync(resolve(examplesThreeDir, d.name, 'package.json')))
+      .map((d) => d.name)
+  : [];
+const vanillaRedirects = Object.fromEntries(
+  exampleNames.map((name) => [
+    `/examples/vanilla/${name}`,
+    `/three-flatland/examples/three/${name}/`,
+  ]),
+);
+
 export default defineConfig({
   site: 'https://thejustinwalsh.com',
-  base: isProd ? 'three-flatland' : undefined,
+  base: '/three-flatland/',
+  trailingSlash: 'always',
+  redirects: vanillaRedirects,
   integrations: [
     starlight({
       title: 'three-flatland',
@@ -215,6 +238,7 @@ export default defineConfig({
             { label: 'Pass Effects', slug: 'guides/pass-effects' },
             { label: 'Tilemaps', slug: 'guides/tilemaps' },
             { label: 'Skia', slug: 'guides/skia' },
+            { label: 'Debug Controls', slug: 'guides/debug-controls' },
           ],
         },
         {
@@ -256,6 +280,12 @@ export default defineConfig({
       conditions: ['source'],
     },
     plugins: [watchExamples(), copyExamples()],
+    optimizeDeps: {
+      include: ['react-dom/client'],
+    },
+    define: {
+      'import.meta.env.VITE_EXAMPLES_PORT': JSON.stringify(examplesPort),
+    },
     server: {
       headers: {
         'Cross-Origin-Embedder-Policy': 'require-corp',

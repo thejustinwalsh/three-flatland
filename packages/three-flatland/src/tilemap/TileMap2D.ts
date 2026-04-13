@@ -25,7 +25,7 @@ import type {
  *
  * @example
  * ```typescript
- * // Vanilla Three.js
+ * // Three.js
  * const mapData = await TiledLoader.load('/maps/level1.json')
  * const tilemap = new TileMap2D({ data: mapData })
  * scene.add(tilemap)
