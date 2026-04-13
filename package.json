@@ -32,6 +32,7 @@
     "sync:pack:verify": "tsx scripts/sync-pack.ts --verify",
     "sync:react": "tsx scripts/sync-react-subpaths.ts",
     "sync:react:verify": "tsx scripts/sync-react-subpaths.ts --verify",
+    "validate:skills": "pnpm --filter @three-flatland/skills validate",
     "size": "size-limit",
     "prepare": "lefthook install"
   },
@@ -45,6 +46,7 @@
       "@three-flatland/nodes": "workspace:*",
       "@three-flatland/presets": "workspace:*",
       "@three-flatland/skia": "workspace:*",
+      "@three-flatland/skills": "workspace:*",
       "@three-flatland/tweakpane": "workspace:*"
     }
   },

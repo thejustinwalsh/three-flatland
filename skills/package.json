@@ -1,0 +1,20 @@
+{
+  "name": "@three-flatland/skills",
+  "version": "0.1.0-alpha.1",
+  "description": "Claude Code skills for the three-flatland ecosystem (TSL, …).",
+  "keywords": ["claude-code", "agent-skills", "tsl", "three", "webgpu"],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/thejustinwalsh/three-flatland.git",
+    "directory": "skills"
+  },
+  "files": ["*/", "README.md"],
+  "scripts": {
+    "validate": "uvx skills-ref validate */ && tsx ../scripts/validate-skills.ts",
+    "test": "pnpm validate"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}
