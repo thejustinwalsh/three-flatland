@@ -11,7 +11,6 @@
   "updateInternalDependencies": "patch",
   "ignore": [
     "docs",
-    "examples",
     "@three-flatland/mini-breakout",
     "example-react-animation",
     "example-react-basic-sprite",
