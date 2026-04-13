@@ -2,7 +2,7 @@
 import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 
-const skillsDir = join(process.cwd(), 'skills')
+const skillsDir = join(process.cwd(), process.argv[2] ?? 'skills')
 
 type Issue = { skill: string; message: string }
 const issues: Issue[] = []

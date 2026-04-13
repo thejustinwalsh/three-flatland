@@ -11,7 +11,7 @@
   },
   "files": ["*/", "README.md"],
   "scripts": {
-    "validate": "uvx skills-ref validate */ && tsx ../scripts/validate-skills.ts",
+    "validate": "uvx --from skills-ref agentskills validate */ && tsx ../scripts/validate-skills.ts .",
     "test": "pnpm validate"
   },
   "publishConfig": {
