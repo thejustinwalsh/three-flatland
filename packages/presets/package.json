@@ -1,6 +1,6 @@
 {
   "name": "@three-flatland/presets",
-  "version": "0.1.0-alpha.3",
+  "version": "0.1.0-alpha.4",
   "description": "Pre-configured setups for three-flatland",
   "type": "module",
   "main": "./dist/index.cjs",
