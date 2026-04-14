@@ -230,20 +230,29 @@ async function main() {
   }
 
   function applyStyles() {
-    slugText.styles = recomputeStyles()
+    const spans = recomputeStyles()
+    slugText.styles = spans
+    stackText.styles = spans
     slugText.update()
+    stackText.update()
     if (params.compare === 'diff') redrawCompare()
   }
 
   /** Flip fill/outline visibility when the Outline radio changes.
-   *  Fill-only: outline off. Outline-only: fill opacity 0. Both: both visible. */
+   *  Fill-only: outline off. Outline-only: fill opacity 0. Both: both
+   *  visible. Applied to both slugText and stackText for 1:1 parity —
+   *  icons mode gets the same outline/fill story as lorem mode. */
   function applyOutline() {
     if (params.outlineStyle === 'fill') {
       slugText.outline = null
       slugText.setOpacity(1)
+      stackText.outline = null
+      stackText.setOpacity(1)
     } else {
       slugText.outline = { width: params.outlineWidth, color: params.outlineColor }
       slugText.setOpacity(params.outlineStyle === 'outline' ? 0 : 1)
+      stackText.outline = { width: params.outlineWidth, color: params.outlineColor }
+      stackText.setOpacity(params.outlineStyle === 'outline' ? 0 : 1)
     }
   }
 
@@ -614,9 +623,13 @@ async function main() {
   outlineFolder.addBinding(params, 'outlineWidth', {
     label: 'width',
     min: 0.001, max: 0.15, step: 0.001,
-  }).on('change', () => slugText.setOutlineWidth(params.outlineWidth))
+  }).on('change', () => {
+    slugText.setOutlineWidth(params.outlineWidth)
+    stackText.setOutlineWidth(params.outlineWidth)
+  })
   outlineFolder.addBinding(params, 'outlineColor', { label: 'color' }).on('change', () => {
     slugText.setOutlineColor(params.outlineColor)
+    stackText.setOutlineColor(params.outlineColor)
   })
 
   stylesFolder.addBinding(params, 'styleScope', {

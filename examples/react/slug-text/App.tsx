@@ -283,15 +283,25 @@ function SlugTextScene({
   )
 }
 
-/** Renders SlugStackText — used for the icon-fallback demo. */
+/** Renders SlugStackText — used for the icon-fallback demo.
+ *  1:1 parity with SlugTextScene for styles + outline controls so
+ *  icons mode isn't feature-starved relative to fill mode. */
 function SlugStackTextScene({
   stack,
   text,
   fontSize,
+  styles,
+  outlineStyle,
+  outlineWidth,
+  outlineColor,
 }: {
   stack: SlugFontStack
   text: string
   fontSize: number
+  styles: readonly StyleSpan[]
+  outlineStyle: 'fill' | 'outline' | 'both'
+  outlineWidth: number
+  outlineColor: string
 }) {
   const ref = useRef<SlugStackText>(null)
   const { camera, size } = useThree()
@@ -299,6 +309,29 @@ function SlugStackTextScene({
   useEffect(() => {
     ref.current?.setViewportSize(size.width, size.height)
   }, [size])
+
+  useEffect(() => {
+    const mesh = ref.current
+    if (!mesh) return
+    if (outlineStyle === 'fill') {
+      mesh.outline = null
+    } else {
+      mesh.outline = { width: outlineWidth, color: outlineColor }
+    }
+  }, [outlineStyle])
+
+  useEffect(() => {
+    ref.current?.setOutlineWidth(outlineWidth)
+  }, [outlineWidth])
+
+  useEffect(() => {
+    ref.current?.setOutlineColor(outlineColor)
+  }, [outlineColor])
+
+  // Outline-only mode: drop fill alpha to 0. Parity with SlugTextScene.
+  useEffect(() => {
+    ref.current?.setOpacity(outlineStyle === 'outline' ? 0 : 1)
+  }, [outlineStyle])
 
   useFrame(() => {
     ref.current?.update(camera)
@@ -314,6 +347,7 @@ function SlugStackTextScene({
       align="center"
       lineHeight={LINE_HEIGHT}
       maxWidth={size.width * MAX_WIDTH_FRACTION}
+      styles={styles}
     />
   )
 }
@@ -894,7 +928,15 @@ export default function App() {
         <StatsTracker stats={stats} />
         <CanvasGrabber onReady={setGpuCanvas} />
         {iconsMode && stack && (
-          <SlugStackTextScene stack={stack} text={text} fontSize={fontSize} />
+          <SlugStackTextScene
+            stack={stack}
+            text={text}
+            fontSize={fontSize}
+            styles={styles}
+            outlineStyle={outlineStyle}
+            outlineWidth={outlineWidth}
+            outlineColor={outlineColor}
+          />
         )}
         {!iconsMode && font && (
           <SlugTextScene

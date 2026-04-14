@@ -25,13 +25,22 @@ export interface DecorationFontMetrics {
  * (the cursor advances through it during shaping); whitespace at the
  * boundary of a run (where the style toggles off mid-line) is excluded.
  */
+/**
+ * Advance lookup — used to compute the right-edge of a run. A function
+ * (rather than a Map) accommodates the font-stack case, where the same
+ * `glyphId` value can belong to different fonts with different advances.
+ * Callers pass a closure that knows which font each positioned glyph
+ * came from.
+ */
+export type GlyphAdvanceLookup = (glyph: PositionedGlyph) => number
+
 export function emitDecorations(
   text: string,
   positioned: readonly PositionedGlyph[],
   styles: readonly StyleSpan[],
   fontSize: number,
   metrics: DecorationFontMetrics,
-  glyphAdvances: Map<number, number>,
+  glyphAdvances: Map<number, number> | GlyphAdvanceLookup,
 ): DecorationRect[] {
   if (styles.length === 0 || positioned.length === 0) return []
 
@@ -64,6 +73,9 @@ export function emitDecorations(
   const stH = metrics.strikethroughThickness * fontSize
 
   const rects: DecorationRect[] = []
+  const advanceOf: GlyphAdvanceLookup = typeof glyphAdvances === 'function'
+    ? glyphAdvances
+    : (pg) => glyphAdvances.get(pg.glyphId) ?? 0
 
   for (const [lineY, lineGlyphs] of linesByY) {
     for (const kind of ['underline', 'strike'] as const) {
@@ -72,7 +84,7 @@ export function emitDecorations(
 
       const flush = () => {
         if (!runStart || !runEnd) return
-        const advanceEm = glyphAdvances.get(runEnd.glyphId) ?? 0
+        const advanceEm = advanceOf(runEnd)
         const advancePx = advanceEm * fontSize
         const left = runStart.x
         const right = runEnd.x + advancePx

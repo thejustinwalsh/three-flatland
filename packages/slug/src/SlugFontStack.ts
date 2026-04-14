@@ -1,5 +1,7 @@
 import { wrapLinesStack } from './pipeline/wrapLinesStack.js'
+import { emitDecorations as emitDecorationsCore } from './pipeline/decorations.js'
 import type { SlugFont } from './SlugFont.js'
+import type { DecorationRect, PositionedGlyph, StyleSpan } from './types.js'
 
 /**
  * Ordered chain of fonts used by `SlugText` for per-codepoint glyph
@@ -74,5 +76,46 @@ export class SlugFontStack {
    */
   wrapText(text: string, fontSize: number, maxWidth?: number): string[] {
     return wrapLinesStack(this, text, fontSize, maxWidth)
+  }
+
+  /**
+   * Emit underline / strike decoration rects for a stack-shaped text.
+   * Takes the flat combined list of positioned glyphs (sorted by
+   * `srcCharIndex`) plus a per-glyph font-index lookup, and consults
+   * the *primary* font's decoration metrics — line position and
+   * thickness should look consistent across a styled run even when
+   * individual chars come from different fonts in the stack.
+   *
+   * The per-glyph advance lookup picks the correct font per glyph
+   * (the same glyphId can live in two fonts with different advances,
+   * which a single-font Map key can't disambiguate).
+   */
+  emitDecorations(
+    text: string,
+    positioned: readonly PositionedGlyph[],
+    glyphFontIdx: readonly number[],
+    styles: readonly StyleSpan[],
+    fontSize: number,
+  ): DecorationRect[] {
+    const primary = this.primary
+    // Build an index from each positioned glyph object to its font.
+    // The array is parallel to `positioned` — same order, same length.
+    const fontByGlyph = new WeakMap<PositionedGlyph, SlugFont>()
+    for (let i = 0; i < positioned.length; i++) {
+      fontByGlyph.set(positioned[i]!, this.fonts[glyphFontIdx[i]!]!)
+    }
+    return emitDecorationsCore(
+      text,
+      positioned,
+      styles,
+      fontSize,
+      {
+        underlinePosition: primary.underlinePosition,
+        underlineThickness: primary.underlineThickness,
+        strikethroughPosition: primary.strikethroughPosition,
+        strikethroughThickness: primary.strikethroughThickness,
+      },
+      (pg) => fontByGlyph.get(pg)?.glyphs.get(pg.glyphId)?.advanceWidth ?? 0,
+    )
   }
 }
