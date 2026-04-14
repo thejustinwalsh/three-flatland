@@ -8,6 +8,8 @@ export { SlugText } from './SlugText.js'
 export { SlugStackText } from './SlugStackText.js'
 export type { SlugStackTextOptions } from './SlugStackText.js'
 export { SlugMaterial } from './SlugMaterial.js'
+export { SlugStrokeMaterial } from './SlugStrokeMaterial.js'
+export type { SlugStrokeMaterialOptions } from './SlugStrokeMaterial.js'
 export { SlugGeometry } from './SlugGeometry.js'
 
 export type {

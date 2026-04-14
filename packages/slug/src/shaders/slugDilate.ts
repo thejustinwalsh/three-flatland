@@ -1,10 +1,4 @@
-import {
-  float,
-  vec2,
-  dot,
-  sqrt,
-  normalize,
-} from 'three/tsl'
+import { float, vec2, dot, sqrt, normalize } from 'three/tsl'
 import type Node from 'three/src/nodes/core/Node.js'
 
 /**
@@ -36,6 +30,17 @@ export function slugDilate(
   mvpRow1: Node<'vec4'>,
   mvpRow3: Node<'vec4'>,
   viewport: Node<'vec2'>,
+  /**
+   * Optional stroke half-width in em-space. When provided, the quad is
+   * additionally expanded by `strokeHalfWidth / invScale` in object space
+   * along the unit outward normal, so fragments outside the glyph's
+   * fill bounding box still get shaded by the stroke fragment shader.
+   * Texcoords are adjusted by the em-space equivalent so em-space
+   * addressing stays correct.
+   *
+   * Passing `undefined` preserves legacy fill-only behavior exactly.
+   */
+  strokeHalfWidth?: Node<'float'>,
 ) {
   // Normalize the outward normal to unit length
   const n = normalize(normal)
@@ -55,16 +60,25 @@ export function slugDilate(
     t.mul(dot(mvpRow1.xy, posXY).add(mvpRow1.w)),
   ).mul(viewport.y)
 
-  // Dilation distance along the unit normal
+  // Dilation distance along the unit normal for half-pixel AA coverage.
   const s2 = s.mul(s)
   const st = s.mul(t)
   const uv = u.mul(u).add(v.mul(v))
   const denom = uv.sub(s2.mul(t).mul(t))
   const dist = s2.mul(st.add(sqrt(uv))).div(denom)
 
-  // Displace along the UNIT normal (not the raw normal) for fixed half-pixel dilation
-  const dx = n.x.mul(dist)
-  const dy = n.y.mul(dist)
+  // Object-space object-width of strokeHalfWidth_em = strokeHalfWidth / invScale
+  // (invScale = em_per_obj, so 1/invScale = obj_per_em).
+  const strokeObj = strokeHalfWidth
+    ? strokeHalfWidth.div(invScale)
+    : float(0.0)
+
+  const totalDist = dist.add(strokeObj)
+
+  // Displace along the UNIT normal. Fill-only path yields `dist`; stroke
+  // path adds `strokeObj` so the quad grows past the glyph bbox.
+  const dx = n.x.mul(totalDist)
+  const dy = n.y.mul(totalDist)
 
   // Dilated vertex position
   const vpos = vec2(posXY.x.add(dx), posXY.y.add(dy))
