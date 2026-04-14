@@ -194,6 +194,9 @@ async function main() {
     underline: false,
     strike: false,
     icons: false,
+    outlineStyle: 'fill' as 'fill' | 'outline' | 'both',
+    outlineWidth: 0.025,
+    outlineColor: '#000000',
   }
 
   // Hover state drives the measure overlay only. No click-to-style —
@@ -230,6 +233,18 @@ async function main() {
     slugText.styles = recomputeStyles()
     slugText.update()
     if (params.compare === 'diff') redrawCompare()
+  }
+
+  /** Flip fill/outline visibility when the Outline radio changes.
+   *  Fill-only: outline off. Outline-only: fill opacity 0. Both: both visible. */
+  function applyOutline() {
+    if (params.outlineStyle === 'fill') {
+      slugText.outline = null
+      slugText.setOpacity(1)
+    } else {
+      slugText.outline = { width: params.outlineWidth, color: params.outlineColor }
+      slugText.setOpacity(params.outlineStyle === 'outline' ? 0 : 1)
+    }
   }
 
   const monitors = {
@@ -591,6 +606,19 @@ async function main() {
   // range (first word / first sentence / first line). Demonstrates the
   // public StyleSpan API; arbitrary span editing is rich-text territory.
   const stylesFolder = pane.addFolder({ title: 'Styles', expanded: false })
+  const outlineFolder = pane.addFolder({ title: 'Outline', expanded: false })
+  outlineFolder.addBinding(params, 'outlineStyle', {
+    label: 'style',
+    options: { Fill: 'fill', Outline: 'outline', Both: 'both' },
+  }).on('change', () => applyOutline())
+  outlineFolder.addBinding(params, 'outlineWidth', {
+    label: 'width',
+    min: 0.001, max: 0.15, step: 0.001,
+  }).on('change', () => slugText.setOutlineWidth(params.outlineWidth))
+  outlineFolder.addBinding(params, 'outlineColor', { label: 'color' }).on('change', () => {
+    slugText.setOutlineColor(params.outlineColor)
+  })
+
   stylesFolder.addBinding(params, 'styleScope', {
     label: 'scope',
     options: { 'First word': 'word', 'First sentence': 'sentence', 'First line': 'line' },

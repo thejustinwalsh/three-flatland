@@ -115,9 +115,15 @@ export class SlugText extends InstancedMesh {
     this._outlineWidth = w
     this._strokeMaterial?.setStrokeHalfWidth(w)
   }
-  setOutlineColor(c: Color | number): void {
+  setOutlineColor(c: Color | number | string): void {
+    // Color.set() accepts all three — number, CSS string, or another Color.
     this._outlineColor.set(c as Color)
     this._strokeMaterial?.setColor(this._outlineColor)
+  }
+
+  /** Fill opacity — runtime uniform on the fill material. */
+  setOpacity(value: number): void {
+    this._slugMaterial?.setOpacity(value)
   }
 
   private _setupOutline(): void {

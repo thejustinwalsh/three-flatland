@@ -155,8 +155,12 @@ export interface SlugTextOptions {
 export interface SlugOutlineOptions {
   /** Stroke half-width in em-space. Default 0.025 (≈5% em total width). */
   width?: number
-  /** Stroke color. Default 0x000000. */
-  color?: number | Color
+  /**
+   * Stroke color. Accepts anything three.js's `Color` ingests: number
+   * (hex), CSS string (`'#ff0000'`, `'red'`), or a `Color` instance.
+   * Default 0x000000.
+   */
+  color?: number | string | Color
 }
 
 /**

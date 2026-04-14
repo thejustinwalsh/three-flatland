@@ -212,6 +212,9 @@ function SlugTextScene({
   stemDarken,
   thicken,
   styles,
+  outlineStyle,
+  outlineWidth,
+  outlineColor,
 }: {
   font: SlugFont
   text: string
@@ -220,6 +223,9 @@ function SlugTextScene({
   stemDarken: number
   thicken: number
   styles: readonly StyleSpan[]
+  outlineStyle: 'fill' | 'outline' | 'both'
+  outlineWidth: number
+  outlineColor: string
 }) {
   const ref = useRef<SlugText>(null)
   const { camera, size } = useThree()
@@ -227,6 +233,35 @@ function SlugTextScene({
   useEffect(() => {
     ref.current?.setViewportSize(size.width, size.height)
   }, [size])
+
+  // Runtime uniform updates — avoid React re-rendering the JSX prop on
+  // every slider tick by mutating the material in place. The `outline`
+  // prop on <slugText> configures the mesh's child; width/color changes
+  // never rebuild.
+  useEffect(() => {
+    const mesh = ref.current
+    if (!mesh) return
+    if (outlineStyle === 'fill') {
+      mesh.outline = null
+    } else {
+      mesh.outline = { width: outlineWidth, color: outlineColor }
+    }
+  }, [outlineStyle])
+
+  useEffect(() => {
+    ref.current?.setOutlineWidth(outlineWidth)
+  }, [outlineWidth])
+
+  useEffect(() => {
+    ref.current?.setOutlineColor(outlineColor)
+  }, [outlineColor])
+
+  // Fill opacity: when the user selects Outline-only, drop the fill
+  // alpha to 0 so only the stroke pass shows. Transparent blend on the
+  // fill material handles the composite.
+  useEffect(() => {
+    ref.current?.setOpacity(outlineStyle === 'outline' ? 0 : 1)
+  }, [outlineStyle])
 
   useFrame(() => {
     ref.current?.update(camera)
@@ -639,6 +674,18 @@ export default function App() {
   const [stemDarken] = usePaneInput<number>(settings, 'darken', 0, { min: 0, max: 2, step: 0.01 })
   const [thicken] = usePaneInput<number>(settings, 'thicken', 0, { min: 0, max: 2, step: 0.01 })
 
+  // Outline folder — Phase 4 stroke surface. `style` toggles which meshes
+  // render: Fill = fill only (stroke alpha=0), Outline = stroke only
+  // (fill alpha=0), Both = both visible and composited.
+  const outline = usePaneFolder(pane, 'Outline')
+  const [outlineStyle] = usePaneInput<'fill' | 'outline' | 'both'>(outline, 'style', 'fill', {
+    options: { Fill: 'fill', Outline: 'outline', Both: 'both' },
+  })
+  const [outlineWidth] = usePaneInput<number>(outline, 'width', 0.025, {
+    min: 0.001, max: 0.15, step: 0.001,
+  })
+  const [outlineColor] = usePaneInput<string>(outline, 'color', '#000000')
+
   const mode = usePaneFolder(pane, 'Mode')
   const [compareMode] = usePaneInput<CompareMode>(
     mode,
@@ -811,6 +858,9 @@ export default function App() {
             stemDarken={stemDarken}
             thicken={thicken}
             styles={styles}
+            outlineStyle={outlineStyle}
+            outlineWidth={outlineWidth}
+            outlineColor={outlineColor}
           />
         )}
       </Canvas>
