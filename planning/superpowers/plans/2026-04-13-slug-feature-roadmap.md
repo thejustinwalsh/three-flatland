@@ -552,6 +552,40 @@ Conclusion: the full realtime-animatable set ships through the fill pipeline at 
 - Texture pool for dynamic curve/band append
 - Shared contour → GPU data pipeline refactor
 
+**Added (addendum 2026-04-14 round 3):**
+- **`SlugStackText` outline support.** The stack renderer has no outline path today — Phase 4 shipped outline only on `SlugText`. Phase 5 lands stack outline as part of Task 19: per-font stroke sets are baked alongside each font, and `SlugStackText` dispatches per-glyph to the corresponding font's stroke-set texture exactly like it dispatches per-glyph curve data today.
+- **Regression test gating between every task.** Phase 5 touches the baked-file format, the fontParser pipeline, the fill shader, and example wiring. One careless change breaks text rendering in ways pure-unit-tests can miss (shader uniform wiring, texture format mismatches, UV math). Explicit gates below.
+
+### Regression-safety protocol (MANDATORY between every Phase 5 task commit)
+
+Phase 5 is the first phase that refactors load-bearing font-rendering code paths. Every task commits behind this gate:
+
+**Automated gate (runs via `pnpm test + pnpm typecheck`):**
+- All 140+ existing slug unit tests pass unchanged.
+- All example typechecks pass.
+- Any new tests introduced by the task are passing.
+
+**Manual gate (human verification in `pnpm dev` before each commit):**
+1. **Lorem scene** — default font size, forceRuntime both on and off. Compare side-by-side (onion mode) — must visually match Canvas2D. Wrap correctly at multiple viewport widths.
+2. **Icons scene** — SlugStackText with FA fallback. Lorem + icons display identically to pre-task rendering. Canvas2D compare stays aligned.
+3. **Outline Fill/Outline/Both** — Phase 4 dynamic path must still work. Width slider still live-updates. Color picker still works.
+4. **Measure overlay** — hover each line in Lorem mode, verify bounds rectangles sit where they did before.
+5. **Style toggles** — underline + strikethrough across scope variants unchanged.
+6. **Runtime font swap** — flip forceRuntime on/off mid-session. No crash, no visual change.
+
+**Pre-merge gate (Phase 5 shipping):**
+- Everything above, plus new Phase 5 features (baked stroke width swap, dash offset animation, SlugShapeBatch).
+- Bake the checked-in fixtures with at least 2 stroke variants; confirm file-size growth is acceptable (< 2× for a 2-variant bake).
+
+### Pre-Phase-5 baseline capture (Task 14.5 — prerequisite)
+
+Before Task 15 touches the pipeline, snapshot the current rendered output of both examples at default settings so later regressions are detectable:
+- Playwright / headless WebGPU screenshot of the `three/slug-text` example at Lorem default, Icons default, Outline=Both + width=0.05.
+- Store as PNG goldens under `packages/slug/test/golden/phase-4-baseline/`.
+- Each task's manual gate includes a diff check against these goldens; material differences require justification in the commit message.
+
+(If a full Playwright setup is more infrastructure than Phase 5 can absorb, the fallback is saving one set of screenshots manually now and eyeballing diffs. Not great, still better than nothing.)
+
 ### Curve offsetting (the core new piece)
 
 Quadratic Bezier offsetting is *not* closed-form — the parallel curve of a quadratic is a higher-order curve. Production approach:
@@ -703,13 +737,15 @@ The core new build-time piece. Slug keeps this proprietary; ours is the open imp
 - [ ] **Step 18.5: Visual regression** — dashed rectangle via SlugShapeBatch (anticipating Task 20) with `dashArray=[10,5]`, `dashOffset` sweeping from 0 to 15. Verify marching-ants animation.
 - [ ] **Step 18.6: Commit.** `feat(slug): dash-offset modifier on fill shader`
 
-### Task 19: SlugText outline → baked-set path
+### Task 19: SlugText + SlugStackText outline → baked-set path
 
 - [ ] **Step 19.1: Extend `SlugText.outline`** — accepts full stroke spec: `{ width, color, join?, cap?, miterLimit?, dashArray?, dashOffset?, mode? }`. `mode = 'baked' | 'dynamic'`. Default 'baked'.
-- [ ] **Step 19.2: Baked-set lookup** — on outline config, SlugText calls `font.getStrokeSet(glyphId, width, join, cap)`. Present → create a child `InstancedMesh` using `SlugMaterial` bound to the stroke set's textures. Missing → dispatch `SlugBaker.buildOffset(...)` async; render fallback (no stroke, or 'dynamic' mode) while pending.
+- [ ] **Step 19.2: Baked-set lookup on SlugText** — on outline config, SlugText calls `font.getStrokeSet(glyphId, width, join, cap)`. Present → create a child `InstancedMesh` using `SlugMaterial` bound to the stroke set's textures. Missing → dispatch `SlugBaker.buildOffset(...)` async; render fallback (no stroke, or 'dynamic' mode) while pending.
 - [ ] **Step 19.3: Width-swap API** — changing `outline.width` to a different pre-baked value swaps the stroke set's texture binding only; glyph instance data untouched. Benchmark: width swap = zero per-frame cost delta vs steady-state outlined text.
-- [ ] **Step 19.4: Dashing pass-through** — `dashOffset` uniform forwarded to stroke-set material. Tweakpane scrub of `dashOffset` visibly animates marching ants with no rebuild.
-- [ ] **Step 19.5: Commit.** `feat(slug): SlugText.outline baked-as-fill path + width-swap + dashing`
+- [ ] **Step 19.4: `SlugStackText.outline` — per-font stroke-set dispatch.** SlugStackText already dispatches glyphs per-font; extend that dispatch to per-font stroke sets. Each child InstancedMesh (one per font in the stack) gains a sibling stroke-InstancedMesh bound to its font's stroke set texture. Config mirrors SlugText exactly. When a fallback font's glyph (e.g. FA icon) has no baked stroke set at the requested width, either async-bake or skip stroke on that subset (caller-configurable; default skip with a console warning).
+- [ ] **Step 19.5: Dashing pass-through** — `dashOffset` uniform forwarded to all stroke-set materials. Tweakpane scrub of `dashOffset` visibly animates marching ants with no rebuild, on both single-font and stack text.
+- [ ] **Step 19.6: Manual gate** — verify in example: Lorem outline (existing behavior unchanged with `mode: 'dynamic'` fallback, baked path visually matches), Icons outline now works (currently broken), dashOffset animates smoothly on both.
+- [ ] **Step 19.7: Commit.** `feat(slug): SlugText + SlugStackText.outline baked-as-fill + width-swap + dashing`
 
 ### Task 20: Texture pool + runtime offset-bake
 
