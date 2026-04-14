@@ -74,4 +74,33 @@ describe('OcclusionPass', () => {
     pass.resize(256, 256)
     expect(() => pass.dispose()).not.toThrow()
   })
+
+  it('caches occlusion materials per source texture', async () => {
+    const { Texture } = await import('three')
+    const { Sprite2DMaterial } = await import('../materials/Sprite2DMaterial')
+
+    const pass = new OcclusionPass()
+    const tex = new Texture()
+    const mat = new Sprite2DMaterial({ map: tex })
+
+    // Access the private cache via the private-field back door for test.
+    const cache = (pass as unknown as {
+      _occlusionMaterials: Map<unknown, unknown>
+    })._occlusionMaterials
+    expect(cache.size).toBe(0)
+
+    const getOrCreate = (pass as unknown as {
+      _getOrCreateOcclusionMaterial: (t: unknown) => unknown
+    })._getOrCreateOcclusionMaterial.bind(pass)
+
+    const first = getOrCreate(tex)
+    const second = getOrCreate(tex)
+    expect(first).toBe(second)
+    expect(cache.size).toBe(1)
+
+    pass.dispose()
+    expect(cache.size).toBe(0)
+
+    mat.dispose()
+  })
 })

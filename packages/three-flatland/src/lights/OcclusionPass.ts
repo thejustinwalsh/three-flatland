@@ -2,12 +2,30 @@ import {
   RenderTarget,
   type Scene,
   type Camera,
+  type Material,
+  type Mesh,
+  type Object3D,
+  type Texture,
   type ColorRepresentation,
   Color,
   NearestFilter,
   LinearFilter,
 } from 'three'
+import { MeshBasicNodeMaterial } from 'three/webgpu'
 import type { WebGPURenderer } from 'three/webgpu'
+import {
+  Fn,
+  uv,
+  vec2,
+  vec4,
+  float,
+  select,
+  attribute,
+  texture as sampleTexture,
+} from 'three/tsl'
+import type Node from 'three/src/nodes/core/Node.js'
+import { readCastShadowFlag } from './wrapWithLightFlags'
+import { Sprite2DMaterial } from '../materials/Sprite2DMaterial'
 
 /**
  * Optional construction knobs for {@link OcclusionPass}.
@@ -59,6 +77,21 @@ export class OcclusionPass {
   private _width = 1
   private _height = 1
 
+  /**
+   * Per-source-texture occlusion material cache. Each SpriteBatch that feeds
+   * the pass has its own source texture (sprite atlas); we mint an
+   * occlusion material once per texture and reuse it across frames.
+   */
+  private _occlusionMaterials = new Map<Texture, MeshBasicNodeMaterial>()
+
+  /**
+   * Reusable arrays for the per-frame material-swap dance. Never reallocated
+   * — only `length = 0` + push — so the render path stays zero-alloc past
+   * warmup, matching the perf conventions in Sprite2D / transformSyncSystem.
+   */
+  private _swappedMeshes: Mesh[] = []
+  private _swappedOriginals: Material[] = []
+
   constructor(options: OcclusionPassOptions = {}) {
     this._resolutionScale = options.resolutionScale ?? 0.5
     this._clearColor = new Color(options.clearColor ?? 0x000000)
@@ -105,18 +138,36 @@ export class OcclusionPass {
   }
 
   /**
-   * Render `scene` with `camera` into the occlusion RT. Saves and restores
-   * the renderer's render target, scene background, and clear state so the
+   * Render `scene` with `camera` into the occlusion RT. Every mesh whose
+   * material is a {@link Sprite2DMaterial} has its material temporarily
+   * swapped to a per-texture occlusion variant that samples the sprite's
+   * alpha and masks it by the per-instance `castsShadow` bit in
+   * `effectBuf0.x`. Non-casters contribute alpha = 0 to the SDF seed;
+   * casters contribute their silhouette alpha unchanged.
+   *
+   * Non-sprite meshes render with their own materials. That's usually
+   * harmless (background meshes don't emit alpha) but callers who mix in
+   * custom materials can park them on a dedicated layer that the occlusion
+   * camera excludes.
+   *
+   * Saves and restores renderer render target and scene.background so the
    * caller's subsequent main-scene render sees no side effects.
    */
   render(renderer: WebGPURenderer, scene: Scene, camera: Camera): void {
     const prevRT = renderer.getRenderTarget()
     const prevBackground = scene.background
 
-    // Clear color/alpha are deliberately NOT restored — Flatland.render sets
-    // them per-frame immediately after the pre-pass, so round-tripping the
-    // Color4 (which isn't part of the public three type export) would add
-    // complexity without changing observable behaviour.
+    // Swap in occlusion materials for any Sprite2DMaterial we find. The
+    // original materials are stashed in parallel arrays (not an object
+    // literal) to keep the traverse callback allocation-free.
+    this._swappedMeshes.length = 0
+    this._swappedOriginals.length = 0
+    scene.traverse(this._collectAndSwap)
+
+    // Clear color/alpha are deliberately NOT restored — Flatland.render
+    // sets them per-frame immediately after the pre-pass, so round-tripping
+    // the Color4 (which isn't part of the public three type export) would
+    // add complexity without changing observable behaviour.
     try {
       scene.background = null
       renderer.setRenderTarget(this._rt)
@@ -124,12 +175,95 @@ export class OcclusionPass {
       renderer.clear(true, false, false)
       renderer.render(scene, camera)
     } finally {
+      // Restore original materials in reverse order so the arrays can clear
+      // via `length = 0` without per-element delete overhead.
+      for (let i = this._swappedMeshes.length - 1; i >= 0; i--) {
+        this._swappedMeshes[i]!.material = this._swappedOriginals[i]!
+      }
+      this._swappedMeshes.length = 0
+      this._swappedOriginals.length = 0
+
       scene.background = prevBackground
       renderer.setRenderTarget(prevRT)
     }
   }
 
+  /**
+   * Traverse callback bound once so `scene.traverse` doesn't re-box it
+   * every frame. Reads `this._swappedMeshes` / `_swappedOriginals` /
+   * `_occlusionMaterials` via arrow-function closure.
+   */
+  private _collectAndSwap = (obj: Object3D): void => {
+    const mesh = obj as Mesh
+    if (!(mesh as { isMesh?: boolean }).isMesh) return
+    const current = mesh.material
+    if (Array.isArray(current)) return
+    if (!(current instanceof Sprite2DMaterial)) return
+
+    const texture = current.getTexture()
+    if (!texture) return
+
+    const occlusion = this._getOrCreateOcclusionMaterial(texture)
+    this._swappedMeshes.push(mesh)
+    this._swappedOriginals.push(current)
+    mesh.material = occlusion
+  }
+
+  private _getOrCreateOcclusionMaterial(texture: Texture): MeshBasicNodeMaterial {
+    const cached = this._occlusionMaterials.get(texture)
+    if (cached) return cached
+    const material = buildOcclusionMaterial(texture)
+    this._occlusionMaterials.set(texture, material)
+    return material
+  }
+
   dispose(): void {
     this._rt.dispose()
+    for (const mat of this._occlusionMaterials.values()) mat.dispose()
+    this._occlusionMaterials.clear()
   }
+}
+
+/**
+ * Construct the TSL occlusion material for a given sprite atlas texture.
+ *
+ * Shader responsibilities (fragment):
+ *   1. Replicate Sprite2DMaterial's instance-UV flip + atlas remap so each
+ *      sprite samples its own frame out of the shared atlas.
+ *   2. Sample the alpha channel of the atlas at the remapped UV.
+ *   3. Read `castsShadow` (bit 2 of `effectBuf0.x`) per instance; multiply
+ *      sampled alpha by 1 when set, 0 when clear.
+ *   4. Output `vec4(0, 0, 0, alpha * castMask)`.
+ *
+ * Output RGB is deliberately zero — the SDF JFA seed pass only consumes
+ * alpha, so no color bandwidth is spent on the occlusion silhouette.
+ *
+ * **Maintenance note:** the UV remap mirrors the logic in
+ * `Sprite2DMaterial._buildBaseColor`. If the instance attribute shape
+ * changes (e.g., adding instanceUVOffset) this material must be updated
+ * in lockstep — there is no shared helper yet. Revisit if we grow a
+ * second consumer of the same UV math.
+ */
+function buildOcclusionMaterial(texture: Texture): MeshBasicNodeMaterial {
+  const material = new MeshBasicNodeMaterial({ transparent: true })
+  material.colorNode = Fn(() => {
+    const instanceUV = attribute<'vec4'>('instanceUV', 'vec4')
+    const instanceFlip = attribute<'vec2'>('instanceFlip', 'vec2')
+
+    const baseUV = uv()
+    const flippedUV = vec2(
+      select(instanceFlip.x.greaterThan(float(0)), baseUV.x, float(1).sub(baseUV.x)),
+      select(instanceFlip.y.greaterThan(float(0)), baseUV.y, float(1).sub(baseUV.y))
+    )
+    const atlasUV = flippedUV
+      .mul(vec2(instanceUV.z, instanceUV.w))
+      .add(vec2(instanceUV.x, instanceUV.y))
+
+    const alpha = sampleTexture(texture, atlasUV).a
+    const casts = readCastShadowFlag()
+    const mask = select(casts, float(1), float(0))
+    return vec4(float(0), float(0), float(0), alpha.mul(mask))
+  })() as Node<'vec4'>
+
+  return material
 }
