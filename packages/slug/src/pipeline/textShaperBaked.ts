@@ -98,6 +98,7 @@ export function shapeTextBaked(
     if (glyphId !== 0 && glyphData && (glyphData.bounds.xMax - glyphData.bounds.xMin) > 0) {
       currentLine.push({
         glyphId,
+        srcCharIndex: i,
         x: cursorX,
         y: 0,
         scale,

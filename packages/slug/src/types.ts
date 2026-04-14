@@ -64,6 +64,49 @@ export interface PositionedGlyph {
   y: number
   /** Scale factor (fontSize / unitsPerEm) */
   scale: number
+  /**
+   * Index of the source character (UTF-16 code unit in the original text)
+   * this glyph was shaped from. Used by decoration / rich-text passes to
+   * map back to per-character style spans without having to re-derive the
+   * mapping from char-walk + filter.
+   */
+  srcCharIndex: number
+}
+
+/**
+ * Character range with style applied. Ranges are half-open: `[start, end)`
+ * in code-point offsets. When ranges overlap, decoration booleans OR
+ * together; for `scriptLevel` the most recent matching span wins (matches
+ * Slug's `script(n)` directive semantics where each call replaces state).
+ *
+ * - `underline` / `strike` draw a filled horizontal stroke through/below
+ *   the run, positioned per the font's declared `underlinePosition` /
+ *   `strikethroughPosition` (see `SlugFont`).
+ * - `scriptLevel` follows Slug's manual §2.7 `script(n)` rule: positive =
+ *   superscript, negative = subscript, magnitude in `[1, 3]` is the depth
+ *   (transform applied n times). 0 / undefined = none.
+ */
+export interface StyleSpan {
+  start: number
+  end: number
+  underline?: boolean
+  strike?: boolean
+  /** Slug's script(n) level: positive = super, negative = sub. Clamped to [-3, 3]. */
+  scriptLevel?: number
+}
+
+/**
+ * Rectangle primitive emitted by the shaper for underline / strike
+ * decorations. Positioned in object-space like a glyph; the renderer
+ * draws it as a solid-fill rect via the shader's rect-sentinel path.
+ */
+export interface DecorationRect {
+  /** Center x, y in object space */
+  x: number
+  y: number
+  /** Rectangle width and height in object space */
+  width: number
+  height: number
 }
 
 /** Packed GPU textures for all glyphs in a font. */
@@ -96,6 +139,8 @@ export interface SlugTextOptions {
   supersample?: boolean
   /** Snap glyph positions to pixel grid. Default true. */
   pixelSnap?: boolean
+  /** Style spans (underline / strike / sub-super) applied to character ranges. */
+  styles?: readonly StyleSpan[]
 }
 
 /**

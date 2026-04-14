@@ -12,11 +12,12 @@
 import type { SlugGlyphData, GlyphBounds } from './types.js'
 
 /** Format version. Increment on breaking changes. */
-export const BAKED_VERSION = 3
+export const BAKED_VERSION = 4
+// v4: metrics block extended with underline/strike position+thickness and
+//     subscript/superscript scale+offset (FontDecorationData / FontScriptData
+//     analogues, sourced from OpenType post + os2 tables at bake time).
 // v3: curve texture changed from RGBA32F (Float32) to RGBA16F (Uint16 half-float);
 //     band texture changed from RGBA32F (Float32) to RG32F (2-channel).
-//     Both halve texture bandwidth; coordinate precision is unaffected at
-//     rendering resolutions. Old bakes require re-running `slug-bake`.
 
 /** JSON header stored in the .slug.json file. */
 export interface BakedJSON {
@@ -26,6 +27,14 @@ export interface BakedJSON {
     ascender: number
     descender: number
     capHeight: number
+    underlinePosition: number
+    underlineThickness: number
+    strikethroughPosition: number
+    strikethroughThickness: number
+    subscriptScale: { x: number; y: number }
+    subscriptOffset: { x: number; y: number }
+    superscriptScale: { x: number; y: number }
+    superscriptOffset: { x: number; y: number }
   }
   textureWidth: number
   curveTexture: { height: number; byteOffset: number; byteLength: number }

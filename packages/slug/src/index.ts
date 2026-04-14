@@ -20,6 +20,8 @@ export type {
   ParagraphMetrics,
   ParagraphLineMetrics,
   MeasureParagraphOptions,
+  StyleSpan,
+  DecorationRect,
 } from './types.js'
 
 export type { SlugMaterialOptions } from './SlugMaterial.js'

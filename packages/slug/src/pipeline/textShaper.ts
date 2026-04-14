@@ -80,6 +80,7 @@ export function shapeText(
     if (glyph.index !== 0 && glyph.path && glyph.path.commands.length > 0) {
       currentLine.push({
         glyphId: glyph.index,
+        srcCharIndex: i,
         x: cursorX,
         y: 0, // Y set during alignment pass
         scale,

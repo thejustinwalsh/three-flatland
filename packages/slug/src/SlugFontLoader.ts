@@ -179,14 +179,28 @@ export class SlugFontLoader extends Loader<SlugFont> {
     ])
 
     const buffer = await response.arrayBuffer()
-    const { glyphs, unitsPerEm, ascender, descender, capHeight } = parseFont(buffer)
+    const parsed = parseFont(buffer)
+    const { glyphs } = parsed
     const textures = packTextures(glyphs)
     const otFont = opentype.parse(buffer)
 
     return SlugFont._createRuntime(
       glyphs,
       textures,
-      { unitsPerEm, ascender, descender, capHeight },
+      {
+        unitsPerEm: parsed.unitsPerEm,
+        ascender: parsed.ascender,
+        descender: parsed.descender,
+        capHeight: parsed.capHeight,
+        underlinePosition: parsed.underlinePosition,
+        underlineThickness: parsed.underlineThickness,
+        strikethroughPosition: parsed.strikethroughPosition,
+        strikethroughThickness: parsed.strikethroughThickness,
+        subscriptScale: parsed.subscriptScale,
+        subscriptOffset: parsed.subscriptOffset,
+        superscriptScale: parsed.superscriptScale,
+        superscriptOffset: parsed.superscriptOffset,
+      },
       otFont,
       shapeText,
       wrapLines,

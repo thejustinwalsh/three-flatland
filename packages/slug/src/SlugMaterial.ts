@@ -232,6 +232,13 @@ export class SlugMaterial extends MeshBasicNodeMaterial {
     this.colorNode = Fn(() => {
       const renderCoord = vRenderCoord
 
+      // Rect sentinel: `vNumVBands < 0` means this instance is a solid-fill
+      // rectangle (underline, strikethrough, etc.) — skip the curve
+      // evaluation entirely and return constant coverage. The signed
+      // encoding is used so a negative value preserves the magnitude of
+      // numVBands information (none needed here) without a separate attr.
+      const isRect = vNumVBands.lessThan(float(0))
+
       // Single-sample coverage (default path)
       const single = evalCoverage(renderCoord)
 
@@ -245,7 +252,9 @@ export class SlugMaterial extends MeshBasicNodeMaterial {
         .mul(0.25)
 
       // Compile-time bool: dead-code eliminates the unused path
-      const coverage = select(supersampleNode, ss, single)
+      const curveCoverage = select(supersampleNode, ss, single)
+      // Rect instances short-circuit to full coverage.
+      const coverage = select(isRect, float(1.0), curveCoverage)
 
       // Final color: glyph color * material color * coverage
       return vec4(

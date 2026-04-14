@@ -3,7 +3,7 @@ import type { Camera } from 'three'
 import { SlugFont } from './SlugFont.js'
 import { SlugMaterial } from './SlugMaterial.js'
 import { SlugGeometry } from './SlugGeometry.js'
-import type { SlugTextOptions } from './types.js'
+import type { SlugTextOptions, StyleSpan } from './types.js'
 
 /**
  * High-level text rendering object using the Slug algorithm.
@@ -32,6 +32,7 @@ export class SlugText extends InstancedMesh {
   private _thicken = 0
   private _supersample = false
   private _pixelSnap = true
+  private _styles: readonly StyleSpan[] = []
   private _dirty = true
 
   private _slugMaterial: SlugMaterial | null = null
@@ -61,7 +62,19 @@ export class SlugText extends InstancedMesh {
     if (options.supersample !== undefined) this._supersample = options.supersample
     if (options.pixelSnap !== undefined) this._pixelSnap = options.pixelSnap
     if (options.text !== undefined) this._text = options.text
+    if (options.styles !== undefined) this._styles = options.styles
     if (options.font !== undefined) this._setFont(options.font)
+  }
+
+  /** Style spans (underline / strike / sub-super) applied to the text. */
+  get styles(): readonly StyleSpan[] {
+    return this._styles
+  }
+  set styles(value: readonly StyleSpan[]) {
+    if (this._styles !== value) {
+      this._styles = value
+      this._dirty = true
+    }
   }
 
   // -- Font (triggers material creation + rebuild) --
@@ -248,16 +261,20 @@ export class SlugText extends InstancedMesh {
       return
     }
 
+    const decorations = this._styles.length > 0
+      ? this._font.emitDecorations(this._text, positionedGlyphs, this._styles, this._fontSize)
+      : []
+
     this._slugGeometry.setGlyphs(positionedGlyphs, this._font, {
       r: this._color.r,
       g: this._color.g,
       b: this._color.b,
       a: 1,
-    })
+    }, decorations)
 
     // Ensure instanceMatrix is large enough with identity matrices.
     // InstancedMesh multiplies each vertex by instanceMatrix — zeros = invisible.
-    const needed = positionedGlyphs.length
+    const needed = positionedGlyphs.length + decorations.length
     if (this.instanceMatrix.count < needed) {
       const capacity = Math.max(needed, this._slugGeometry.capacity)
       const buf = new Float32Array(capacity * 16)

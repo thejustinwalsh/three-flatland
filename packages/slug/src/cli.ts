@@ -118,7 +118,8 @@ function bakeFont(fontPath: string, ranges: [number, number][] | null): void {
   const arrayBuffer = fileBuffer.buffer.slice(fileBuffer.byteOffset, fileBuffer.byteOffset + fileBuffer.byteLength)
 
   console.log(`Parsing ${basename(fontPath)}...`)
-  const { glyphs: allGlyphs, unitsPerEm, ascender, descender, capHeight } = parseFont(arrayBuffer)
+  const parsed = parseFont(arrayBuffer)
+  const { glyphs: allGlyphs, unitsPerEm } = parsed
 
   // Extract cmap (filtered by ranges if specified)
   const otFont = opentype.parse(arrayBuffer)
@@ -205,7 +206,20 @@ function bakeFont(fontPath: string, ranges: [number, number][] | null): void {
 
   console.log('  Packing binary...')
   const { json, bin } = packBaked({
-    metrics: { unitsPerEm, ascender, descender, capHeight },
+    metrics: {
+      unitsPerEm,
+      ascender: parsed.ascender,
+      descender: parsed.descender,
+      capHeight: parsed.capHeight,
+      underlinePosition: parsed.underlinePosition,
+      underlineThickness: parsed.underlineThickness,
+      strikethroughPosition: parsed.strikethroughPosition,
+      strikethroughThickness: parsed.strikethroughThickness,
+      subscriptScale: parsed.subscriptScale,
+      subscriptOffset: parsed.subscriptOffset,
+      superscriptScale: parsed.superscriptScale,
+      superscriptOffset: parsed.superscriptOffset,
+    },
     textureWidth: curveWidth,
     curveTextureHeight: curveHeight,
     curveData,

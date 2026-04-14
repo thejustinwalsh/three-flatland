@@ -1,7 +1,7 @@
 import { WebGPURenderer } from 'three/webgpu'
 import { Scene, OrthographicCamera, Color } from 'three'
 import { SlugFontLoader, SlugText } from '@three-flatland/slug'
-import type { SlugFont } from '@three-flatland/slug'
+import type { SlugFont, StyleSpan } from '@three-flatland/slug'
 import { createPane } from '@three-flatland/tweakpane'
 
 // --- Lorem ipsum generator ---
@@ -175,10 +175,46 @@ async function main() {
     thicken: 0,
     compare: 'onion' as CompareMode,
     forceRuntime: false,
+    styleScope: 'word' as 'word' | 'sentence' | 'line',
+    underline: false,
+    strike: false,
   }
 
-  // Click-to-measure state. null = no line selected.
-  let selectedLine: number | null = null
+  // Hover state drives the measure overlay only. No click-to-style —
+  // arbitrary character-range selection is rich-text editor territory
+  // and lives in a future example.
+  let hoveredLine: number | null = null
+
+  /** Compute the demo style range from the current scope. */
+  function computeStyleRange(): { start: number; end: number } {
+    if (params.styleScope === 'word') {
+      const m = text.match(/^\S+/)
+      return { start: 0, end: m ? m[0].length : 0 }
+    }
+    if (params.styleScope === 'sentence') {
+      const m = text.match(/^[^.!?]*[.!?]?/)
+      return { start: 0, end: m ? m[0].length : text.length }
+    }
+    const font = slugText.font
+    if (font) {
+      const lines = font.wrapText(text, params.size, window.innerWidth * maxWidthFraction)
+      return { start: 0, end: lines[0]?.length ?? 0 }
+    }
+    return { start: 0, end: 0 }
+  }
+
+  function recomputeStyles(): StyleSpan[] {
+    if (!params.underline && !params.strike) return []
+    const r = computeStyleRange()
+    if (r.start === r.end) return []
+    return [{ start: r.start, end: r.end, underline: params.underline, strike: params.strike }]
+  }
+
+  function applyStyles() {
+    slugText.styles = recomputeStyles()
+    slugText.update()
+    if (params.compare === 'diff') redrawCompare()
+  }
 
   const monitors = {
     glyphs: 0,
@@ -322,23 +358,46 @@ async function main() {
       div.style.top = `${by - m.fontBoundingBoxAscent}px`
       div.style.width = `${m.width}px`
       div.style.height = `${m.fontBoundingBoxAscent + m.fontBoundingBoxDescent}px`
-      div.addEventListener('pointerdown', (e) => {
-        e.stopPropagation()
-        selectedLine = i === selectedLine ? null : i
-        updateBoundsOverlay()
+      div.addEventListener('pointerenter', () => {
+        hoveredLine = i
+        updateMeasureOverlay()
+      })
+      div.addEventListener('pointerleave', () => {
+        if (hoveredLine === i) {
+          hoveredLine = null
+          updateMeasureOverlay()
+        }
       })
       hitRectsContainer.appendChild(div)
     })
 
-    // Clamp stale selection if word count shrinks the line list.
-    if (selectedLine != null && selectedLine >= lines.length) selectedLine = null
+    if (hoveredLine != null && hoveredLine >= lines.length) hoveredLine = null
 
-    const metrics = selectedLine != null ? lineMetrics[selectedLine] : null
-    setSelectedMetrics(metrics ?? null)
+    updateMeasureOverlay()
+  }
 
-    if (!metrics || selectedLine == null) return
+  /** Render the measure overlay for whichever line is hovered. */
+  function updateMeasureOverlay() {
+    const font = slugText.font
+    boundsActual.style.display = 'none'
+    boundsFont.style.display = 'none'
 
-    const by = firstBaselineY + selectedLine * lineHeightPx
+    if (!font || hoveredLine == null) {
+      setSelectedMetrics(null)
+      return
+    }
+
+    const maxWidth = window.innerWidth * maxWidthFraction
+    const lines = font.wrapText(text, params.size, maxWidth)
+    if (hoveredLine >= lines.length) return
+    const line = lines[hoveredLine]!
+    const metrics = font.measureText(line, params.size)
+    setSelectedMetrics(metrics)
+
+    const lineHeightPx = params.size * 1.2
+    const firstBaselineY = window.innerHeight / 2 - (lines.length - 1) * lineHeightPx / 2
+    const by = firstBaselineY + hoveredLine * lineHeightPx
+    const centerX = window.innerWidth / 2
     const penOriginX = centerX - metrics.width / 2
 
     boundsFont.style.display = 'block'
@@ -397,13 +456,13 @@ async function main() {
     },
   }).on('change', () => {
     slugText.fontSize = params.size
-    slugText.update()
+    applyStyles()
     updateSplitUI()
   })
   settings.addBinding(params, 'words', { min: 5, max: 200, step: 1 }).on('change', () => {
     text = getLoremText(params.words)
     slugText.text = text
-    slugText.update()
+    applyStyles()
     updateSplitUI()
   })
   settings.addBinding(params, 'darken', { min: 0, max: 2, step: 0.01 }).on('change', () => {
@@ -427,6 +486,17 @@ async function main() {
   mode.addBinding(monitors, 'source', { readonly: true })
   mode.addBinding(monitors, 'glyphs', { readonly: true, format: (v: number) => v.toFixed(0) })
   mode.addBinding(monitors, 'loadMs', { readonly: true, label: 'load (ms)', format: (v: number) => v.toFixed(0) })
+
+  // Styles folder — applies underline / strike to a preset character
+  // range (first word / first sentence / first line). Demonstrates the
+  // public StyleSpan API; arbitrary span editing is rich-text territory.
+  const stylesFolder = pane.addFolder({ title: 'Styles', expanded: false })
+  stylesFolder.addBinding(params, 'styleScope', {
+    label: 'scope',
+    options: { 'First word': 'word', 'First sentence': 'sentence', 'First line': 'line' },
+  }).on('change', applyStyles)
+  stylesFolder.addBinding(params, 'underline').on('change', applyStyles)
+  stylesFolder.addBinding(params, 'strike').on('change', applyStyles)
 
   // Measure folder: paragraph monitors live-update; line-level monitors
   // populate when a line is clicked and reset when deselected.

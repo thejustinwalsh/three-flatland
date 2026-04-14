@@ -2,7 +2,7 @@ import { Canvas, extend, useFrame, useThree } from '@react-three/fiber/webgpu'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { OrthographicCamera } from 'three'
 import { SlugText, SlugFontLoader } from '@three-flatland/slug/react'
-import type { SlugFont, TextMetrics } from '@three-flatland/slug/react'
+import type { SlugFont, StyleSpan, TextMetrics } from '@three-flatland/slug/react'
 import {
   usePane,
   usePaneFolder,
@@ -180,6 +180,7 @@ function SlugTextScene({
   align,
   stemDarken,
   thicken,
+  styles,
 }: {
   font: SlugFont
   text: string
@@ -187,6 +188,7 @@ function SlugTextScene({
   align: 'left' | 'center' | 'right'
   stemDarken: number
   thicken: number
+  styles: readonly StyleSpan[]
 }) {
   const ref = useRef<SlugText>(null)
   const { camera, size } = useThree()
@@ -210,6 +212,7 @@ function SlugTextScene({
       maxWidth={size.width * MAX_WIDTH_FRACTION}
       stemDarken={stemDarken}
       thicken={thicken}
+      styles={styles}
     />
   )
 }
@@ -401,12 +404,10 @@ function SplitLabels({ splitX, mode }: { splitX: number; mode: CompareMode }) {
 }
 
 /**
- * Click-to-measure: renders `actualBoundingBox` (cyan solid) and
- * `fontBoundingBox` (yellow dashed) overlays for the currently-selected
- * line, and a transparent hit-rect per line so clicks pick.
- *
- * Clicking the already-selected line deselects; clicking empty area
- * (outside any line) also deselects.
+ * Hover any rendered line → measure overlays (cyan tight ink, yellow
+ * dashed font envelope) appear and the parent's `onMetrics` fires for
+ * that line. Live, transient — leave the line and the overlays + measure
+ * monitors clear.
  */
 function MeasureOverlay({
   font,
@@ -414,8 +415,6 @@ function MeasureOverlay({
   fontSize,
   maxWidth,
   windowSize,
-  selectedLine,
-  onSelect,
   onMetrics,
 }: {
   font: SlugFont
@@ -423,27 +422,25 @@ function MeasureOverlay({
   fontSize: number
   maxWidth: number
   windowSize: { w: number; h: number }
-  selectedLine: number | null
-  onSelect: (lineIndex: number | null) => void
   onMetrics: (m: TextMetrics | null) => void
 }) {
   const shapedLines = useMemo(() => font.wrapText(text, fontSize, maxWidth), [font, text, fontSize, maxWidth])
   const lineCount = shapedLines.length
 
-  // Per-line metrics drive both the hit-rects and the selected overlay.
   const lineMetrics = useMemo(
     () => shapedLines.map((line) => font.measureText(line, fontSize)),
     [font, shapedLines, fontSize],
   )
 
-  const metrics = selectedLine != null ? lineMetrics[selectedLine] : null
+  const [hoveredLine, setHoveredLine] = useState<number | null>(null)
+  const overlayLine = hoveredLine
+  const overlayMetrics = overlayLine != null ? lineMetrics[overlayLine] : null
 
-  // Surface metrics for the selected line (or null when nothing selected).
+  // Surface metrics for whichever line is hovered (or null when none).
   useEffect(() => {
-    onMetrics(metrics ?? null)
-  }, [metrics, onMetrics])
+    onMetrics(overlayMetrics ?? null)
+  }, [overlayMetrics, onMetrics])
 
-  // Slug centers the block — first-line baseline is above viewport center.
   const lineHeightPx = fontSize * LINE_HEIGHT
   const firstBaselineY = windowSize.h / 2 - (lineCount - 1) * lineHeightPx / 2
   const centerX = windowSize.w / 2
@@ -452,42 +449,37 @@ function MeasureOverlay({
 
   return (
     <>
-      {/* Per-line hit-rects — transparent, click to select/deselect. */}
+      {/* Per-line hit-rects — transparent, hover → measure, click → select. */}
       {lineMetrics.map((m, i) => {
         const by = baselineFor(i)
         return (
           <div
             key={i}
-            onPointerDown={(e) => {
-              e.stopPropagation()
-              onSelect(i === selectedLine ? null : i)
-            }}
+            onPointerEnter={() => setHoveredLine(i)}
+            onPointerLeave={() => setHoveredLine((cur) => (cur === i ? null : cur))}
             style={{
               position: 'fixed',
               left: centerX - m.width / 2,
               top: by - m.fontBoundingBoxAscent,
               width: m.width,
               height: m.fontBoundingBoxAscent + m.fontBoundingBoxDescent,
-              cursor: 'pointer',
-              // Keep hit-rects *below* the split handle (z:2) so its drag
-              // always wins. Bounds overlays sit higher (z:5/6) so they
-              // still appear on top of the selected line.
+              // Below the split handle (z:2) so its drag always wins.
               zIndex: 1,
             }}
           />
         )
       })}
 
-      {/* Overlays for the selected line. */}
-      {metrics && selectedLine != null && (
+      {/* Measure overlays follow the hovered line. */}
+      {overlayMetrics && overlayLine != null && (
         <>
           <div
             style={{
               position: 'fixed',
-              left: centerX - metrics.width / 2,
-              top: baselineFor(selectedLine) - metrics.fontBoundingBoxAscent,
-              width: metrics.width,
-              height: metrics.fontBoundingBoxAscent + metrics.fontBoundingBoxDescent,
+              left: centerX - overlayMetrics.width / 2,
+              top: baselineFor(overlayLine) - overlayMetrics.fontBoundingBoxAscent,
+              width: overlayMetrics.width,
+              height: overlayMetrics.fontBoundingBoxAscent + overlayMetrics.fontBoundingBoxDescent,
               border: '1px dashed rgba(255, 214, 102, 0.8)',
               pointerEvents: 'none',
               zIndex: 5,
@@ -496,13 +488,12 @@ function MeasureOverlay({
           <div
             style={{
               position: 'fixed',
-              left: centerX - metrics.width / 2 - metrics.actualBoundingBoxLeft,
-              top: baselineFor(selectedLine) - metrics.actualBoundingBoxAscent,
-              width: metrics.actualBoundingBoxLeft + metrics.actualBoundingBoxRight,
-              height: metrics.actualBoundingBoxAscent + metrics.actualBoundingBoxDescent,
+              left: centerX - overlayMetrics.width / 2 - overlayMetrics.actualBoundingBoxLeft,
+              top: baselineFor(overlayLine) - overlayMetrics.actualBoundingBoxAscent,
+              width: overlayMetrics.actualBoundingBoxLeft + overlayMetrics.actualBoundingBoxRight,
+              height: overlayMetrics.actualBoundingBoxAscent + overlayMetrics.actualBoundingBoxDescent,
               border: '1px solid rgba(102, 217, 239, 0.9)',
               pointerEvents: 'none',
-              // actual sits inside font — bump above so the cyan isn't hidden.
               zIndex: 6,
             }}
           />
@@ -569,6 +560,18 @@ export default function App() {
   // Measure folder: paragraph monitors are live (always populate for the
   // currently-rendered block); line-level monitors populate when a line
   // is clicked and reset when deselected.
+  // Styles folder — demonstrates the public StyleSpan API by applying
+  // decorations to one of three preset character ranges. Anything richer
+  // (per-character spans, multiple stacked styles, click-and-drag
+  // selection) is rich-text editor territory and lives in a future
+  // example. Here we just prove `font.emitDecorations` round-trips.
+  const stylesFolder = usePaneFolder(pane, 'Styles')
+  const [styleScope] = usePaneInput<'word' | 'sentence' | 'line'>(stylesFolder, 'scope', 'word', {
+    options: { 'First word': 'word', 'First sentence': 'sentence', 'First line': 'line' },
+  })
+  const [styleUnderline] = usePaneInput<boolean>(stylesFolder, 'underline', false)
+  const [styleStrike] = usePaneInput<boolean>(stylesFolder, 'strike', false)
+
   const measure = usePaneFolder(pane, 'Measure')
   const numFmt = (v: number) => v.toFixed(1)
   const intFmt = (v: number) => v.toFixed(0)
@@ -580,8 +583,6 @@ export default function App() {
   const [, setActualDescent] = usePaneInput<number>(measure, 'actualDescent', 0, { label: 'actual ↓', readonly: true, format: numFmt })
   const [, setFontAscent] = usePaneInput<number>(measure, 'fontAscent', 0, { label: 'font ↑', readonly: true, format: numFmt })
   const [, setFontDescent] = usePaneInput<number>(measure, 'fontDescent', 0, { label: 'font ↓', readonly: true, format: numFmt })
-
-  const [selectedLine, setSelectedLine] = useState<number | null>(null)
 
   const handleMetrics = useCallback((m: TextMetrics | null) => {
     if (!m) {
@@ -604,6 +605,37 @@ export default function App() {
   const windowSize = useWindowSize()
   const [splitX, setSplitX] = useState(() => Math.round(window.innerWidth / 2))
   const text = useMemo(() => getLoremText(wordCount), [wordCount])
+
+  // Compute the demo span [start, end) from the chosen scope. Falls back
+  // to the entire text if the heuristic finds nothing (e.g. a line scope
+  // with no wrapping yet).
+  const styleRange = useMemo<{ start: number; end: number }>(() => {
+    if (styleScope === 'word') {
+      const m = text.match(/^\S+/)
+      return { start: 0, end: m ? m[0].length : 0 }
+    }
+    if (styleScope === 'sentence') {
+      const m = text.match(/^[^.!?]*[.!?]?/)
+      return { start: 0, end: m ? m[0].length : text.length }
+    }
+    // 'line' — first wrapped line via the font's own wrap.
+    if (font) {
+      const lines = font.wrapText(text, fontSize, windowSize.w * MAX_WIDTH_FRACTION)
+      return { start: 0, end: lines[0]?.length ?? 0 }
+    }
+    return { start: 0, end: 0 }
+  }, [styleScope, text, font, fontSize, windowSize.w])
+
+  const styles = useMemo<StyleSpan[]>(() => {
+    if (!styleUnderline && !styleStrike) return []
+    if (styleRange.start === styleRange.end) return []
+    return [{
+      start: styleRange.start,
+      end: styleRange.end,
+      underline: styleUnderline,
+      strike: styleStrike,
+    }]
+  }, [styleRange, styleUnderline, styleStrike])
 
   useEffect(() => {
     setSplitX(Math.round(windowSize.w / 2))
@@ -659,6 +691,7 @@ export default function App() {
             align="center"
             stemDarken={stemDarken}
             thicken={thicken}
+            styles={styles}
           />
         )}
       </Canvas>
@@ -684,8 +717,6 @@ export default function App() {
             fontSize={fontSize}
             maxWidth={windowSize.w * MAX_WIDTH_FRACTION}
             windowSize={windowSize}
-            selectedLine={selectedLine}
-            onSelect={setSelectedLine}
             onMetrics={handleMetrics}
           />
         </>

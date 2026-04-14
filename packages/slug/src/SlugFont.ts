@@ -7,7 +7,30 @@ import type {
   TextMetrics,
   ParagraphMetrics,
   MeasureParagraphOptions,
+  StyleSpan,
+  DecorationRect,
 } from './types.js'
+import { emitDecorations } from './pipeline/decorations.js'
+
+/**
+ * Per-font metrics passed into `SlugFont`. Mirrors `parseFont`'s output and
+ * the subset of `BakedJSON.metrics` needed at runtime — both loader paths
+ * construct one of these.
+ */
+export interface SlugFontMetrics {
+  unitsPerEm: number
+  ascender: number
+  descender: number
+  capHeight: number
+  underlinePosition: number
+  underlineThickness: number
+  strikethroughPosition: number
+  strikethroughThickness: number
+  subscriptScale: { x: number; y: number }
+  subscriptOffset: { x: number; y: number }
+  superscriptScale: { x: number; y: number }
+  superscriptOffset: { x: number; y: number }
+}
 
 /**
  * Font data container for Slug GPU text rendering.
@@ -48,6 +71,23 @@ export class SlugFont {
   /** Cap height in em-space. */
   readonly capHeight: number
 
+  /** Underline stroke bottom-edge y, em-space (negative — below baseline). */
+  readonly underlinePosition: number
+  /** Underline stroke thickness, em-space. */
+  readonly underlineThickness: number
+  /** Strikethrough stroke bottom-edge y, em-space. */
+  readonly strikethroughPosition: number
+  /** Strikethrough stroke thickness, em-space. */
+  readonly strikethroughThickness: number
+  /** Per-font subscript scale (xx, yy). */
+  readonly subscriptScale: { x: number; y: number }
+  /** Per-font subscript offset (x, y), em-space. Y is negative — moves down. */
+  readonly subscriptOffset: { x: number; y: number }
+  /** Per-font superscript scale (xx, yy). */
+  readonly superscriptScale: { x: number; y: number }
+  /** Per-font superscript offset (x, y), em-space. Y is positive — raises. */
+  readonly superscriptOffset: { x: number; y: number }
+
   // --- Shaping backends (one or the other is set by the loader) ---
   /** @internal */ _opentypeFont: import('opentype.js').Font | null = null
   /** @internal */ _shapeTextOT: typeof import('./pipeline/textShaper.js').shapeText | null = null
@@ -62,12 +102,7 @@ export class SlugFont {
   constructor(
     glyphs: Map<number, SlugGlyphData>,
     textures: SlugTextureData,
-    metrics: {
-      unitsPerEm: number
-      ascender: number
-      descender: number
-      capHeight: number
-    },
+    metrics: SlugFontMetrics,
   ) {
     this.glyphs = glyphs
     this.curveTexture = textures.curveTexture
@@ -77,13 +112,21 @@ export class SlugFont {
     this.ascender = metrics.ascender
     this.descender = metrics.descender
     this.capHeight = metrics.capHeight
+    this.underlinePosition = metrics.underlinePosition
+    this.underlineThickness = metrics.underlineThickness
+    this.strikethroughPosition = metrics.strikethroughPosition
+    this.strikethroughThickness = metrics.strikethroughThickness
+    this.subscriptScale = metrics.subscriptScale
+    this.subscriptOffset = metrics.subscriptOffset
+    this.superscriptScale = metrics.superscriptScale
+    this.superscriptOffset = metrics.superscriptOffset
   }
 
   /** @internal — Called by SlugFontLoader for baked path. */
   static _createBaked(
     glyphs: Map<number, SlugGlyphData>,
     textures: SlugTextureData,
-    metrics: { unitsPerEm: number; ascender: number; descender: number; capHeight: number },
+    metrics: SlugFontMetrics,
     bakedData: BakedFontData,
     shapeTextBaked: typeof import('./pipeline/textShaperBaked.js').shapeTextBaked,
     wrapLinesBaked: typeof import('./pipeline/wrapLinesBaked.js').wrapLinesBaked,
@@ -101,7 +144,7 @@ export class SlugFont {
   static _createRuntime(
     glyphs: Map<number, SlugGlyphData>,
     textures: SlugTextureData,
-    metrics: { unitsPerEm: number; ascender: number; descender: number; capHeight: number },
+    metrics: SlugFontMetrics,
     otFont: import('opentype.js').Font,
     shapeText: typeof import('./pipeline/textShaper.js').shapeText,
     wrapLines: typeof import('./pipeline/wrapLines.js').wrapLines,
@@ -204,6 +247,34 @@ export class SlugFont {
       fontBoundingBoxAscent: sample.fontBoundingBoxAscent,
       fontBoundingBoxDescent: sample.fontBoundingBoxDescent,
     }
+  }
+
+  /**
+   * Compute underline / strikethrough rectangles for a shaped text run.
+   *
+   * Pure post-processing over the output of `shapeText` — pass the same
+   * `text`, the resulting positioned glyphs, and the style spans you want
+   * to apply. Vertical position + thickness come from the font's declared
+   * `underline*` / `strikethrough*` metrics scaled to `fontSize`.
+   *
+   * Returned rectangles are designed to be uploaded as additional
+   * `SlugGeometry` instances with the rect-sentinel bit set, so they
+   * render in the same draw call as the glyphs.
+   */
+  emitDecorations(
+    text: string,
+    positioned: readonly PositionedGlyph[],
+    styles: readonly StyleSpan[],
+    fontSize: number,
+  ): DecorationRect[] {
+    const advances = new Map<number, number>()
+    for (const [id, g] of this.glyphs) advances.set(id, g.advanceWidth)
+    return emitDecorations(text, positioned, styles, fontSize, {
+      underlinePosition: this.underlinePosition,
+      underlineThickness: this.underlineThickness,
+      strikethroughPosition: this.strikethroughPosition,
+      strikethroughThickness: this.strikethroughThickness,
+    }, advances)
   }
 
   /**

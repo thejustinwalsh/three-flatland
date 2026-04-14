@@ -10,22 +10,89 @@ import { buildBands } from './bandBuilder.js'
  */
 const LINE_EPSILON_FONT_UNITS = 0.125
 
-/** Parse a font from an ArrayBuffer into glyph data suitable for Slug rendering. */
-export function parseFont(buffer: ArrayBuffer): {
-  glyphs: Map<number, SlugGlyphData>
+export interface ParsedFontMetrics {
   unitsPerEm: number
   ascender: number
   descender: number
   capHeight: number
-} {
+  /** Y of the underline stroke's bottom edge, em-space (negative — below baseline). */
+  underlinePosition: number
+  /** Underline stroke thickness, em-space. */
+  underlineThickness: number
+  /** Y of the strikethrough stroke's bottom edge, em-space (positive — above baseline, mid-glyph). */
+  strikethroughPosition: number
+  /** Strikethrough stroke thickness, em-space. */
+  strikethroughThickness: number
+  /** Per-font subscript scale (xx, yy), em-space. Slug's `FontScriptData.scriptScale` for `kFontKeySubscript`. */
+  subscriptScale: { x: number; y: number }
+  /** Per-font subscript offset (x, y), em-space. Y is negative — moves glyphs down. */
+  subscriptOffset: { x: number; y: number }
+  /** Per-font superscript scale (xx, yy), em-space. */
+  superscriptScale: { x: number; y: number }
+  /** Per-font superscript offset (x, y), em-space. Y is positive — raises glyphs. */
+  superscriptOffset: { x: number; y: number }
+}
+
+/** Parse a font from an ArrayBuffer into glyph data suitable for Slug rendering. */
+export function parseFont(buffer: ArrayBuffer): {
+  glyphs: Map<number, SlugGlyphData>
+} & ParsedFontMetrics {
   const font = opentype.parse(buffer)
   const unitsPerEm = font.unitsPerEm
   const ascender = font.ascender / unitsPerEm
   const descender = font.descender / unitsPerEm
 
-  // Try to get cap height from OS/2 table, fallback to ascender
-  const os2 = font.tables['os2'] as { sCapHeight?: number } | undefined
+  // OpenType post + OS/2 tables. Values are in font units; normalize to em.
+  const os2 = font.tables['os2'] as {
+    sCapHeight?: number
+    yStrikeoutPosition?: number
+    yStrikeoutSize?: number
+    ySubscriptXSize?: number
+    ySubscriptYSize?: number
+    ySubscriptXOffset?: number
+    ySubscriptYOffset?: number
+    ySuperscriptXSize?: number
+    ySuperscriptYSize?: number
+    ySuperscriptXOffset?: number
+    ySuperscriptYOffset?: number
+  } | undefined
+  const post = font.tables['post'] as {
+    underlinePosition?: number
+    underlineThickness?: number
+  } | undefined
+
   const capHeight = os2?.sCapHeight ? os2.sCapHeight / unitsPerEm : ascender
+
+  const norm = (v: number | undefined, fallback: number) =>
+    v != null ? v / unitsPerEm : fallback
+
+  // OpenType defaults that ship in nearly every font. Strikethrough position
+  // typically sits around half cap-height; underline sits ~10% below baseline.
+  const underlinePosition = norm(post?.underlinePosition, -0.1)
+  const underlineThickness = norm(post?.underlineThickness, 0.05)
+  const strikethroughPosition = norm(os2?.yStrikeoutPosition, capHeight * 0.5)
+  const strikethroughThickness = norm(os2?.yStrikeoutSize, 0.05)
+
+  // OS/2 sub/super defaults. OpenType offsets are signed: ySubscriptYOffset is
+  // POSITIVE in the table but means "shift down" — so we negate to keep our
+  // convention of "y up = positive". ySuperscriptYOffset is positive = up,
+  // matches our convention directly.
+  const subscriptScale = {
+    x: norm(os2?.ySubscriptXSize, 0.583),
+    y: norm(os2?.ySubscriptYSize, 0.583),
+  }
+  const subscriptOffset = {
+    x: norm(os2?.ySubscriptXOffset, 0),
+    y: -norm(os2?.ySubscriptYOffset, 0.075),
+  }
+  const superscriptScale = {
+    x: norm(os2?.ySuperscriptXSize, 0.583),
+    y: norm(os2?.ySuperscriptYSize, 0.583),
+  }
+  const superscriptOffset = {
+    x: norm(os2?.ySuperscriptXOffset, 0),
+    y: norm(os2?.ySuperscriptYOffset, 0.35),
+  }
 
   const glyphs = new Map<number, SlugGlyphData>()
 
@@ -53,7 +120,21 @@ export function parseFont(buffer: ArrayBuffer): {
     })
   }
 
-  return { glyphs, unitsPerEm, ascender, descender, capHeight }
+  return {
+    glyphs,
+    unitsPerEm,
+    ascender,
+    descender,
+    capHeight,
+    underlinePosition,
+    underlineThickness,
+    strikethroughPosition,
+    strikethroughThickness,
+    subscriptScale,
+    subscriptOffset,
+    superscriptScale,
+    superscriptOffset,
+  }
 }
 
 /** Load and parse a font from a URL. */

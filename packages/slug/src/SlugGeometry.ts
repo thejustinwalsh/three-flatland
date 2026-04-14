@@ -5,7 +5,7 @@ import {
   Uint16BufferAttribute,
 } from 'three'
 import type { SlugFont } from './SlugFont.js'
-import type { PositionedGlyph, SlugGlyphData } from './types.js'
+import type { DecorationRect, PositionedGlyph, SlugGlyphData } from './types.js'
 
 /** Default initial capacity for glyph instances. */
 const DEFAULT_CAPACITY = 256
@@ -83,37 +83,89 @@ export class SlugGeometry extends BufferGeometry {
   }
 
   /**
-   * Set glyph instances from positioned glyphs.
+   * Set glyph instances from positioned glyphs and (optional) decoration
+   * rectangles.
    *
-   * Each positioned glyph becomes one instanced quad with appropriate
-   * position, em-space coordinates, band metadata, and Jacobian.
+   * Decoration rects are appended after the glyph instances in the same
+   * InstancedMesh. They use the rect-sentinel encoding: `glyphJac.w` is
+   * negative, which `SlugMaterial`'s fragment shader detects and short-
+   * circuits to constant coverage = 1 (skipping the curve evaluation
+   * entirely). One draw call covers both glyphs and decorations.
    */
   setGlyphs(
     glyphs: PositionedGlyph[],
     font: SlugFont,
     color: { r: number; g: number; b: number; a: number } = { r: 1, g: 1, b: 1, a: 1 },
+    decorations: readonly DecorationRect[] = [],
   ): void {
-    // Grow buffers if needed
-    if (glyphs.length > this._capacity) {
-      this._grow(glyphs.length)
-    }
+    const total = glyphs.length + decorations.length
+    if (total > this._capacity) this._grow(total)
 
-    this._count = glyphs.length
+    this._count = total
 
+    let idx = 0
     for (let i = 0; i < glyphs.length; i++) {
       const pg = glyphs[i]!
       const glyphData = font.glyphs.get(pg.glyphId)
       if (!glyphData) continue
-
-      this._writeGlyphInstance(i, pg, glyphData, font, color)
+      this._writeGlyphInstance(idx, pg, glyphData, font, color)
+      idx++
     }
 
-    // Mark attributes for upload
+    for (let i = 0; i < decorations.length; i++) {
+      this._writeDecorationInstance(idx, decorations[i]!, color)
+      idx++
+    }
+
+    // The actual live count is `idx` (some glyphs may have been skipped
+    // when their data is missing). Update the count to match.
+    this._count = idx
+
     this._glyphPosAttr.needsUpdate = true
     this._glyphTexAttr.needsUpdate = true
     this._glyphJacAttr.needsUpdate = true
     this._glyphBandAttr.needsUpdate = true
     this._glyphColorAttr.needsUpdate = true
+  }
+
+  /**
+   * Write a rect-sentinel instance for an underline / strikethrough rect.
+   * Sentinel: `glyphJac.w = -1` triggers the fragment shader to bypass
+   * curve evaluation and output coverage=1 across the entire quad.
+   */
+  private _writeDecorationInstance(
+    index: number,
+    rect: DecorationRect,
+    color: { r: number; g: number; b: number; a: number },
+  ): void {
+    const i4 = index * 4
+    this._glyphPos[i4] = rect.x
+    this._glyphPos[i4 + 1] = rect.y
+    this._glyphPos[i4 + 2] = rect.width * 0.5
+    this._glyphPos[i4 + 3] = rect.height * 0.5
+
+    this._glyphTex[i4] = 0
+    this._glyphTex[i4 + 1] = 0
+    this._glyphTex[i4 + 2] = 0
+    this._glyphTex[i4 + 3] = 0
+
+    // invScale must remain finite (used by dilation math); pick 1 so the
+    // dilation produces a sensible em-space delta even though we skip the
+    // curve eval. Set glyphJac.w to negative as the rect sentinel.
+    this._glyphJac[i4] = 1
+    this._glyphJac[i4 + 1] = 1
+    this._glyphJac[i4 + 2] = 0
+    this._glyphJac[i4 + 3] = -1
+
+    this._glyphBand[i4] = 0
+    this._glyphBand[i4 + 1] = 0
+    this._glyphBand[i4 + 2] = 0
+    this._glyphBand[i4 + 3] = 0
+
+    this._glyphColor[i4] = color.r
+    this._glyphColor[i4 + 1] = color.g
+    this._glyphColor[i4 + 2] = color.b
+    this._glyphColor[i4 + 3] = color.a
   }
 
   private _writeGlyphInstance(
