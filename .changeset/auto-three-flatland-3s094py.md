@@ -5,23 +5,23 @@
 > Branch: fix-sprite-sort-regression
 > PR: https://github.com/thejustinwalsh/three-flatland/pull/28
 
-## Sprite z-sort regression fix
+### Sprite z-sorting — correctness fix and performance opt-in
 
-### Batch sort system
+**Core fix (re-sort batch instance slots by zIndex each frame)**
+- Adds `batchSortSystem` running after `transformSyncSystem` and before `sceneGraphSyncSystem` — sprites now render in correct zIndex order within a batch
+- Gated on `Changed(SpriteZIndex)`: only batches with a zIndex change this frame are re-sorted; unchanged batches pay zero CPU cost
+- `SpriteBatch.swapSlots(a, b)` swaps instanceMatrix, UV, color, flip, and all custom effect buffer rows in lockstep; free-list and entity IDs are unaffected
+- `Sprite2D.zIndex` setter now triggers Koota's `Changed` tracker; `batchAssignSystem` fires it once on first slot assignment so newly-added sprites sort immediately
+- All sort scratch arrays are module-scope and reused frame-to-frame for zero-alloc hot paths
+- 234-line test suite added (`batchSort.test.ts`) covering sort correctness, no-op frames, and the alphaTest gate
 
-- Added `batchSortSystem` — runs after `transformSyncSystem`, before `sceneGraphSyncSystem`
-- Only re-sorts batches whose sprites had a `zIndex` change this frame (`Changed(SpriteZIndex)` gate), avoiding unnecessary work
-- Sorts occupied instance slots by `zIndex` ascending using insertion sort (near-sorted after the first frame → O(n) in practice)
-- Permutes GPU rows (instanceMatrix, UV, color, flip, custom effect buffers) in-place via new `SpriteBatch.swapSlots(a, b)`; physical free-list holes are preserved
-- All scratch storage is module-scoped and reused frame-to-frame — zero allocations in the hot path
-- `Sprite2D.zIndex` setter now emits `entity.set(SpriteZIndex, …)` so Koota's change tracker fires; `batchAssignSystem` fires it once on first slot assignment to trigger initial sort
+**`alphaTest` opt-in for pixel-art / opaque sprites**
+- `Sprite2DMaterialOptions.alphaTest` is now fully supported: when `> 0`, the material defaults to `transparent=false`, `depthWrite=true`, and the TSL shader discards fragments where `finalAlpha < alphaTest`
+- `Sprite2DMaterial.getShared()` dedup key now includes `alphaTest`, so different cutoff values produce distinct cached instances
+- `batchSortSystem` short-circuits any batch whose material has `alphaTest > 0 && depthWrite` — GPU depth test resolves draw order without CPU sorting
+- Knightmark demo updated to use `alphaTest: 0.5` (hard-edge pixel-art atlas), opting into the depth-test fast path
 
-### `alphaTest` opt-in for GPU depth-test fast path
+**Internal / CI**
+- Fixed `prefer-const` lint error on `batchEntityBuckets` in `batchSortSystem` that was blocking CI on PR #28
 
-- `Sprite2DMaterialOptions.alphaTest` is now wired end-to-end on `Sprite2DMaterial`
-- When `alphaTest > 0` the material defaults to `transparent = false` and `depthWrite = true`; TSL shader discards fragments where `finalAlpha < alphaTest`
-- `batchSortSystem` skips any batch whose material has `alphaTest > 0 && depthWrite` — GPU depth test (fed by the layer/zIndex-derived `pz` baked into the instance matrix) resolves draw order, making CPU sorting unnecessary
-- `Sprite2DMaterial.getShared()` cache key now includes `alphaTest` so different cutoff values produce distinct shared instances
-- Knightmark example updated to use `alphaTest: 0.5` — pixel-art hard edges make it an ideal candidate for this path
-
-Fixes sprite z-ordering regression for transparent batches and introduces a GPU-side fast path for opaque/cutout sprites, eliminating per-frame CPU sorting overhead for materials with hard alpha edges.
+Fixes sprite z-ordering within batches for transparent sprites (CPU sort) and adds a GPU depth-test fast path for opaque/pixel-art sprites via `alphaTest`.
