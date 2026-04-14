@@ -41,41 +41,34 @@ describe('shadowPipelineSystem + ShadowPipeline trait', () => {
     expect(pipeline?.occlusionPass ?? null).toBeNull()
   })
 
-  it('running the system with a needsShadows effect allocates generators', () => {
+  it('setLighting with a needsShadows effect eagerly allocates generators', () => {
+    // T5 contract: the SDFGenerator has to exist at buildLightFn time so
+    // effect shaders can capture a stable texture reference for TSL
+    // `texture()` calls. Flatland.setLighting therefore allocates before
+    // calling buildLightFn — the system picks up the existing instances
+    // on its first tick and just runs init()/resize() against them.
     vi.spyOn(console, 'warn').mockImplementation(() => {})
     const flatland = new Flatland()
     flatland.setLighting(new LitWithShadows())
 
-    // Before the system runs, the trait exists but generators are null.
-    const pipelineBefore = getPipeline(flatland)
-    expect(pipelineBefore?.sdfGenerator ?? null).toBeNull()
+    const pipeline = getPipeline(flatland)
+    expect(pipeline?.sdfGenerator).not.toBeNull()
+    expect(pipeline?.occlusionPass).not.toBeNull()
 
-    // Simulate running the system (without a renderer it should bail early).
-    // The allocation path only fires with renderer + camera present — that's
-    // guaranteed inside Flatland.render, but for this test we populate the
-    // LightingContext runtime fields manually to exercise allocation.
-    const lctxEntities = flatland.world.query(LightingContext)
-    const lctx = lctxEntities[0]!.get(LightingContext)
-    // Fake minimal renderer / camera — the system only needs .getSize and
-    // .isScene on the camera parent chain isn't walked anymore.
+    // Running the system afterwards is idempotent — it shouldn't replace
+    // the existing allocations.
+    const sdfBefore = pipeline!.sdfGenerator
+    const lctx = flatland.world.query(LightingContext)[0]!.get(LightingContext)
     lctx.renderer = {
-      getSize: (target: { set: (x: number, y: number) => void }) => {
-        target.set(1920, 1080)
-        return target
+      getSize: (t: { set: (x: number, y: number) => void }) => {
+        t.set(1920, 1080)
+        return t
       },
-      // The system only calls getSize for allocation; render calls require
-      // a full renderer. We skip the render branch by providing no scene.
     } as unknown as typeof lctx.renderer
     lctx.camera = flatland.camera
-    // Deliberately leave lctx.scene = null so the render branch is skipped;
-    // allocation still runs.
     lctx.scene = null
-
     shadowPipelineSystem(flatland.world)
-
-    const pipelineAfter = getPipeline(flatland)
-    expect(pipelineAfter?.sdfGenerator).not.toBeNull()
-    expect(pipelineAfter?.occlusionPass).not.toBeNull()
+    expect(pipeline!.sdfGenerator).toBe(sdfBefore)
   })
 
   it('switching from shadow → no-shadow tears down on next system tick', () => {
