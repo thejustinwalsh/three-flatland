@@ -24,7 +24,7 @@ function getNumericStore(world: World, trait: Trait): Record<string, number[]> {
 let dirtyBatches: Uint8Array = new Uint8Array(16)
 
 /** Per-batch entity list — indices into entity array for each batch. */
-let batchEntityBuckets: number[][] = []
+const batchEntityBuckets: number[][] = []
 
 /** Scratch array of entity IDs belonging to one batch, populated per batch. */
 const scratchEids: number[] = []
