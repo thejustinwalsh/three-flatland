@@ -23,6 +23,8 @@ export type {
 } from './LightEffect'
 
 // GPU infrastructure (used by preset LightEffects that own these resources)
+export { OcclusionPass } from './OcclusionPass'
+export type { OcclusionPassOptions } from './OcclusionPass'
 export { SDFGenerator } from './SDFGenerator'
 export { RadianceCascades } from './RadianceCascades'
 export type { RadianceCascadesConfig } from './RadianceCascades'
