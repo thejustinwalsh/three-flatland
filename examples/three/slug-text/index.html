@@ -94,6 +94,28 @@
       }
       #computing svg { animation: slug-spin 0.7s linear infinite; }
       #computing[data-visible] { display: block; }
+
+      /* measureText() bounds overlays — positioned in JS */
+      .measure-bounds {
+        position: fixed;
+        display: none;
+        pointer-events: none;
+        z-index: 5;
+      }
+      /* actual bounds sit inside font bounds — bump above so the cyan solid
+         isn't obscured by the yellow dashed. */
+      #bounds-actual { border: 1px solid rgba(102, 217, 239, 0.9); z-index: 6; }
+      #bounds-font { border: 1px dashed rgba(255, 214, 102, 0.8); }
+
+      /* Per-line click hit-targets for click-to-measure.
+         Kept below the split handle (z:2) so the handle drag wins when
+         the two overlap. Bounds overlays (z:5/6) still sit on top so
+         selection is visible. */
+      .measure-hit {
+        position: fixed;
+        cursor: pointer;
+        z-index: 1;
+      }
     </style>
   </head>
   <body>
@@ -107,6 +129,9 @@
     <div id="split-handle"></div>
     <div id="split-label-left" class="split-label">SLUG</div>
     <div id="split-label-right" class="split-label">Canvas2D</div>
+    <div id="bounds-actual" class="measure-bounds"></div>
+    <div id="bounds-font" class="measure-bounds"></div>
+    <div id="measure-hits"></div>
     <script type="module" src="./main.ts"></script>
   </body>
 </html>

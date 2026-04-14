@@ -1,6 +1,13 @@
 import type { DataTexture } from 'three'
 import type { BakedFontData } from './baked.js'
-import type { SlugGlyphData, PositionedGlyph, SlugTextureData } from './types.js'
+import type {
+  SlugGlyphData,
+  PositionedGlyph,
+  SlugTextureData,
+  TextMetrics,
+  ParagraphMetrics,
+  MeasureParagraphOptions,
+} from './types.js'
 
 /**
  * Font data container for Slug GPU text rendering.
@@ -45,9 +52,11 @@ export class SlugFont {
   /** @internal */ _opentypeFont: import('opentype.js').Font | null = null
   /** @internal */ _shapeTextOT: typeof import('./pipeline/textShaper.js').shapeText | null = null
   /** @internal */ _wrapLinesOT: typeof import('./pipeline/wrapLines.js').wrapLines | null = null
+  /** @internal */ _measureTextOT: typeof import('./pipeline/textMeasure.js').measureText | null = null
   /** @internal */ _bakedData: BakedFontData | null = null
   /** @internal */ _shapeTextBaked: typeof import('./pipeline/textShaperBaked.js').shapeTextBaked | null = null
   /** @internal */ _wrapLinesBaked: typeof import('./pipeline/wrapLinesBaked.js').wrapLinesBaked | null = null
+  /** @internal */ _measureTextBaked: typeof import('./pipeline/textMeasureBaked.js').measureTextBaked | null = null
 
   /** @internal — Use SlugFontLoader to create instances. */
   constructor(
@@ -78,11 +87,13 @@ export class SlugFont {
     bakedData: BakedFontData,
     shapeTextBaked: typeof import('./pipeline/textShaperBaked.js').shapeTextBaked,
     wrapLinesBaked: typeof import('./pipeline/wrapLinesBaked.js').wrapLinesBaked,
+    measureTextBaked: typeof import('./pipeline/textMeasureBaked.js').measureTextBaked,
   ): SlugFont {
     const font = new SlugFont(glyphs, textures, metrics)
     font._bakedData = bakedData
     font._shapeTextBaked = shapeTextBaked
     font._wrapLinesBaked = wrapLinesBaked
+    font._measureTextBaked = measureTextBaked
     return font
   }
 
@@ -94,11 +105,13 @@ export class SlugFont {
     otFont: import('opentype.js').Font,
     shapeText: typeof import('./pipeline/textShaper.js').shapeText,
     wrapLines: typeof import('./pipeline/wrapLines.js').wrapLines,
+    measureText: typeof import('./pipeline/textMeasure.js').measureText,
   ): SlugFont {
     const font = new SlugFont(glyphs, textures, metrics)
     font._opentypeFont = otFont
     font._shapeTextOT = shapeText
     font._wrapLinesOT = wrapLines
+    font._measureTextOT = measureText
     return font
   }
 
@@ -123,6 +136,74 @@ export class SlugFont {
       return this._shapeTextOT(this._opentypeFont, text, fontSize, options)
     }
     throw new Error('SlugFont: text shaping not available — load via SlugFontLoader')
+  }
+
+  /**
+   * Measure a single unwrapped line of text.
+   *
+   * Spiritually aligned with `CanvasRenderingContext2D.measureText` — same
+   * field names, single-line semantics, no wrap. Multi-line paragraph
+   * layout is the caller's job (or a later rich-text API).
+   *
+   * Uses the same advance-width source as `shapeText` and `wrapText`, so
+   * widths agree across all three APIs.
+   */
+  measureText(text: string, fontSize: number): TextMetrics {
+    if (this._bakedData && this._measureTextBaked) {
+      return this._measureTextBaked(
+        this._bakedData,
+        this.glyphs,
+        this.unitsPerEm,
+        this.ascender,
+        this.descender,
+        text,
+        fontSize,
+      )
+    }
+    if (this._opentypeFont && this._measureTextOT) {
+      return this._measureTextOT(this._opentypeFont, this.glyphs, text, fontSize)
+    }
+    throw new Error('SlugFont: text measurement not available — load via SlugFontLoader')
+  }
+
+  /**
+   * Measure a multi-line (optionally wrapped) block of text.
+   *
+   * Convenience over `wrapText` + per-line `measureText`. Respects the same
+   * `lineHeight` multiplier used by `SlugText` (default 1.2), so the block
+   * height here matches what the shaper lays out.
+   *
+   * - `width` is the widest line's advance — bounded above by `maxWidth`.
+   * - `height = lines.length * fontSize * lineHeight`.
+   * - Call with `maxWidth` omitted to measure unwrapped multi-line text
+   *   (still honours embedded `\n` as forced breaks via the shaper).
+   */
+  measureParagraph(
+    text: string,
+    fontSize: number,
+    options: MeasureParagraphOptions = {},
+  ): ParagraphMetrics {
+    const lineHeight = options.lineHeight ?? 1.2
+    const lines = this.wrapText(text, fontSize, options.maxWidth)
+
+    let maxWidth = 0
+    const lineMetrics = lines.map((line) => {
+      const w = this.measureText(line, fontSize).width
+      if (w > maxWidth) maxWidth = w
+      return { text: line, width: w }
+    })
+
+    // Any measureText call gives the same font-level values — reuse those
+    // so callers don't have to compute them separately.
+    const sample = this.measureText('', fontSize)
+
+    return {
+      width: maxWidth,
+      height: lines.length * fontSize * lineHeight,
+      lines: lineMetrics,
+      fontBoundingBoxAscent: sample.fontBoundingBoxAscent,
+      fontBoundingBoxDescent: sample.fontBoundingBoxDescent,
+    }
   }
 
   /**

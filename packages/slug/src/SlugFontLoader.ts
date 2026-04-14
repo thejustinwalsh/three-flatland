@@ -3,6 +3,7 @@ import { SlugFont } from './SlugFont.js'
 import { BAKED_VERSION, bakedURLs, unpackBaked } from './baked.js'
 import { shapeTextBaked } from './pipeline/textShaperBaked.js'
 import { wrapLinesBaked } from './pipeline/wrapLinesBaked.js'
+import { measureTextBaked } from './pipeline/textMeasureBaked.js'
 import type { BakedJSON } from './baked.js'
 
 /**
@@ -151,6 +152,7 @@ export class SlugFontLoader extends Loader<SlugFont> {
         bakedData,
         shapeTextBaked,
         wrapLinesBaked,
+        measureTextBaked,
       )
     } catch {
       return null
@@ -165,6 +167,7 @@ export class SlugFontLoader extends Loader<SlugFont> {
       { packTextures },
       { shapeText },
       { wrapLines },
+      { measureText },
     ] = await Promise.all([
       fetch(url),
       import('opentype.js'),
@@ -172,6 +175,7 @@ export class SlugFontLoader extends Loader<SlugFont> {
       import('./pipeline/texturePacker.js'),
       import('./pipeline/textShaper.js'),
       import('./pipeline/wrapLines.js'),
+      import('./pipeline/textMeasure.js'),
     ])
 
     const buffer = await response.arrayBuffer()
@@ -186,6 +190,7 @@ export class SlugFontLoader extends Loader<SlugFont> {
       otFont,
       shapeText,
       wrapLines,
+      measureText,
     )
   }
 }

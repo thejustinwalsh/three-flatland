@@ -156,7 +156,9 @@ async function main() {
   const camera = new OrthographicCamera(-w / 2, w / 2, h / 2, -h / 2, 0.1, 1000)
   camera.position.z = 100
 
-  const renderer = new WebGPURenderer({ antialias: true, trackTimestamp: true })
+  // Slug's shader is analytically antialiased per-fragment; MSAA would add
+  // 4× sample cost + a canvas-area resolve for zero visual gain.
+  const renderer = new WebGPURenderer({ antialias: false, trackTimestamp: true })
   renderer.setSize(w, h)
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
   document.body.appendChild(renderer.domElement)
@@ -175,10 +177,23 @@ async function main() {
     forceRuntime: false,
   }
 
+  // Click-to-measure state. null = no line selected.
+  let selectedLine: number | null = null
+
   const monitors = {
     glyphs: 0,
     loadMs: 0,
     source: 'baked',
+    // Paragraph-level (live, for the currently-rendered block)
+    paraWidth: 0,
+    paraHeight: 0,
+    paraLines: 0,
+    // Line-level (populated when a line is clicked)
+    width: 0,
+    actualAscent: 0,
+    actualDescent: 0,
+    fontAscent: 0,
+    fontDescent: 0,
   }
 
   let splitX = Math.round(w / 2)
@@ -201,6 +216,9 @@ async function main() {
   const splitLabelLeft = document.getElementById('split-label-left')!
   const splitLabelRight = document.getElementById('split-label-right')!
   const computingEl = document.getElementById('computing')!
+  const boundsActual = document.getElementById('bounds-actual')!
+  const boundsFont = document.getElementById('bounds-font')!
+  const hitRectsContainer = document.getElementById('measure-hits')!
 
   function resizeCompareCanvas() {
     const dpr = window.devicePixelRatio
@@ -256,6 +274,93 @@ async function main() {
     splitLabelRight.textContent = MODE_LABELS[params.compare]
     redrawCompare()
     updateSplitPosition()
+    updateBoundsOverlay()
+  }
+
+  /**
+   * Click-to-measure: each rendered line gets a transparent hit-rect
+   * (div child of #measure-hits) sized to its font-ascent/descent box.
+   * Clicking toggles selection; the selected line's actual/font bounds
+   * overlay on top and its metrics populate the readonly monitors.
+   */
+  function updateBoundsOverlay() {
+    const font = slugText.font
+    hitRectsContainer.innerHTML = ''
+    boundsActual.style.display = 'none'
+    boundsFont.style.display = 'none'
+
+    if (!font) {
+      setSelectedMetrics(null)
+      monitors.paraWidth = 0
+      monitors.paraHeight = 0
+      monitors.paraLines = 0
+      pane.refresh()
+      return
+    }
+
+    const maxWidth = window.innerWidth * maxWidthFraction
+
+    // Paragraph-level monitors live-update for the currently-rendered text.
+    const para = font.measureParagraph(text, params.size, { maxWidth, lineHeight: 1.2 })
+    monitors.paraWidth = para.width
+    monitors.paraHeight = para.height
+    monitors.paraLines = para.lines.length
+
+    const lines = font.wrapText(text, params.size, maxWidth)
+    const lineMetrics = lines.map((line) => font.measureText(line, params.size))
+
+    const lineHeightPx = params.size * 1.2
+    const firstBaselineY = window.innerHeight / 2 - (lines.length - 1) * lineHeightPx / 2
+    const centerX = window.innerWidth / 2
+
+    // Emit per-line hit-rects (transparent, pointer-events: auto).
+    lineMetrics.forEach((m, i) => {
+      const by = firstBaselineY + i * lineHeightPx
+      const div = document.createElement('div')
+      div.className = 'measure-hit'
+      div.style.left = `${centerX - m.width / 2}px`
+      div.style.top = `${by - m.fontBoundingBoxAscent}px`
+      div.style.width = `${m.width}px`
+      div.style.height = `${m.fontBoundingBoxAscent + m.fontBoundingBoxDescent}px`
+      div.addEventListener('pointerdown', (e) => {
+        e.stopPropagation()
+        selectedLine = i === selectedLine ? null : i
+        updateBoundsOverlay()
+      })
+      hitRectsContainer.appendChild(div)
+    })
+
+    // Clamp stale selection if word count shrinks the line list.
+    if (selectedLine != null && selectedLine >= lines.length) selectedLine = null
+
+    const metrics = selectedLine != null ? lineMetrics[selectedLine] : null
+    setSelectedMetrics(metrics ?? null)
+
+    if (!metrics || selectedLine == null) return
+
+    const by = firstBaselineY + selectedLine * lineHeightPx
+    const penOriginX = centerX - metrics.width / 2
+
+    boundsFont.style.display = 'block'
+    boundsFont.style.left = `${penOriginX}px`
+    boundsFont.style.top = `${by - metrics.fontBoundingBoxAscent}px`
+    boundsFont.style.width = `${metrics.width}px`
+    boundsFont.style.height = `${metrics.fontBoundingBoxAscent + metrics.fontBoundingBoxDescent}px`
+
+    boundsActual.style.display = 'block'
+    boundsActual.style.left = `${penOriginX - metrics.actualBoundingBoxLeft}px`
+    boundsActual.style.top = `${by - metrics.actualBoundingBoxAscent}px`
+    boundsActual.style.width = `${metrics.actualBoundingBoxLeft + metrics.actualBoundingBoxRight}px`
+    boundsActual.style.height = `${metrics.actualBoundingBoxAscent + metrics.actualBoundingBoxDescent}px`
+  }
+
+  function setSelectedMetrics(m: { width: number; actualBoundingBoxAscent: number; actualBoundingBoxDescent: number; fontBoundingBoxAscent: number; fontBoundingBoxDescent: number } | null) {
+    monitors.width = m?.width ?? 0
+    monitors.actualAscent = m?.actualBoundingBoxAscent ?? 0
+    monitors.actualDescent = m?.actualBoundingBoxDescent ?? 0
+    monitors.fontAscent = m?.fontBoundingBoxAscent ?? 0
+    monitors.fontDescent = m?.fontBoundingBoxDescent ?? 0
+    pane.refresh()
   }
 
   setupSplitHandle(splitHandle, (x) => {
@@ -322,6 +427,20 @@ async function main() {
   mode.addBinding(monitors, 'source', { readonly: true })
   mode.addBinding(monitors, 'glyphs', { readonly: true, format: (v: number) => v.toFixed(0) })
   mode.addBinding(monitors, 'loadMs', { readonly: true, label: 'load (ms)', format: (v: number) => v.toFixed(0) })
+
+  // Measure folder: paragraph monitors live-update; line-level monitors
+  // populate when a line is clicked and reset when deselected.
+  const measureFolder = pane.addFolder({ title: 'Measure', expanded: false })
+  const fmt = (v: number) => v.toFixed(1)
+  const intFmt = (v: number) => v.toFixed(0)
+  measureFolder.addBinding(monitors, 'paraWidth', { label: 'block w', readonly: true, format: fmt })
+  measureFolder.addBinding(monitors, 'paraHeight', { label: 'block h', readonly: true, format: fmt })
+  measureFolder.addBinding(monitors, 'paraLines', { label: 'lines', readonly: true, format: intFmt })
+  measureFolder.addBinding(monitors, 'width', { label: 'line w', readonly: true, format: fmt })
+  measureFolder.addBinding(monitors, 'actualAscent', { label: 'actual ↑', readonly: true, format: fmt })
+  measureFolder.addBinding(monitors, 'actualDescent', { label: 'actual ↓', readonly: true, format: fmt })
+  measureFolder.addBinding(monitors, 'fontAscent', { label: 'font ↑', readonly: true, format: fmt })
+  measureFolder.addBinding(monitors, 'fontDescent', { label: 'font ↓', readonly: true, format: fmt })
 
   await document.fonts.load('48px Inter-Slug')
   await loadFont()

@@ -18,6 +18,16 @@ export interface PaneInputOptions {
   color?: { type: 'float' }
   /** Inverted range */
   inverted?: boolean
+  /**
+   * Render as a read-only monitor (no interactive editor). Value still
+   * updates when `setValue` is called; tweakpane repaints on refresh.
+   */
+  readonly?: boolean
+  /**
+   * Custom display formatter (e.g. `(v) => v.toFixed(2)`). Forwarded to
+   * tweakpane's native `format` option.
+   */
+  format?: (value: number) => string
 }
 
 /**

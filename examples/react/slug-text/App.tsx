@@ -1,8 +1,8 @@
 import { Canvas, extend, useFrame, useThree } from '@react-three/fiber/webgpu'
-import { useState, useRef, useEffect, useMemo } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { OrthographicCamera } from 'three'
 import { SlugText, SlugFontLoader } from '@three-flatland/slug/react'
-import type { SlugFont } from '@three-flatland/slug/react'
+import type { SlugFont, TextMetrics } from '@three-flatland/slug/react'
 import {
   usePane,
   usePaneFolder,
@@ -400,6 +400,118 @@ function SplitLabels({ splitX, mode }: { splitX: number; mode: CompareMode }) {
   )
 }
 
+/**
+ * Click-to-measure: renders `actualBoundingBox` (cyan solid) and
+ * `fontBoundingBox` (yellow dashed) overlays for the currently-selected
+ * line, and a transparent hit-rect per line so clicks pick.
+ *
+ * Clicking the already-selected line deselects; clicking empty area
+ * (outside any line) also deselects.
+ */
+function MeasureOverlay({
+  font,
+  text,
+  fontSize,
+  maxWidth,
+  windowSize,
+  selectedLine,
+  onSelect,
+  onMetrics,
+}: {
+  font: SlugFont
+  text: string
+  fontSize: number
+  maxWidth: number
+  windowSize: { w: number; h: number }
+  selectedLine: number | null
+  onSelect: (lineIndex: number | null) => void
+  onMetrics: (m: TextMetrics | null) => void
+}) {
+  const shapedLines = useMemo(() => font.wrapText(text, fontSize, maxWidth), [font, text, fontSize, maxWidth])
+  const lineCount = shapedLines.length
+
+  // Per-line metrics drive both the hit-rects and the selected overlay.
+  const lineMetrics = useMemo(
+    () => shapedLines.map((line) => font.measureText(line, fontSize)),
+    [font, shapedLines, fontSize],
+  )
+
+  const metrics = selectedLine != null ? lineMetrics[selectedLine] : null
+
+  // Surface metrics for the selected line (or null when nothing selected).
+  useEffect(() => {
+    onMetrics(metrics ?? null)
+  }, [metrics, onMetrics])
+
+  // Slug centers the block — first-line baseline is above viewport center.
+  const lineHeightPx = fontSize * LINE_HEIGHT
+  const firstBaselineY = windowSize.h / 2 - (lineCount - 1) * lineHeightPx / 2
+  const centerX = windowSize.w / 2
+
+  const baselineFor = (lineIndex: number) => firstBaselineY + lineIndex * lineHeightPx
+
+  return (
+    <>
+      {/* Per-line hit-rects — transparent, click to select/deselect. */}
+      {lineMetrics.map((m, i) => {
+        const by = baselineFor(i)
+        return (
+          <div
+            key={i}
+            onPointerDown={(e) => {
+              e.stopPropagation()
+              onSelect(i === selectedLine ? null : i)
+            }}
+            style={{
+              position: 'fixed',
+              left: centerX - m.width / 2,
+              top: by - m.fontBoundingBoxAscent,
+              width: m.width,
+              height: m.fontBoundingBoxAscent + m.fontBoundingBoxDescent,
+              cursor: 'pointer',
+              // Keep hit-rects *below* the split handle (z:2) so its drag
+              // always wins. Bounds overlays sit higher (z:5/6) so they
+              // still appear on top of the selected line.
+              zIndex: 1,
+            }}
+          />
+        )
+      })}
+
+      {/* Overlays for the selected line. */}
+      {metrics && selectedLine != null && (
+        <>
+          <div
+            style={{
+              position: 'fixed',
+              left: centerX - metrics.width / 2,
+              top: baselineFor(selectedLine) - metrics.fontBoundingBoxAscent,
+              width: metrics.width,
+              height: metrics.fontBoundingBoxAscent + metrics.fontBoundingBoxDescent,
+              border: '1px dashed rgba(255, 214, 102, 0.8)',
+              pointerEvents: 'none',
+              zIndex: 5,
+            }}
+          />
+          <div
+            style={{
+              position: 'fixed',
+              left: centerX - metrics.width / 2 - metrics.actualBoundingBoxLeft,
+              top: baselineFor(selectedLine) - metrics.actualBoundingBoxAscent,
+              width: metrics.actualBoundingBoxLeft + metrics.actualBoundingBoxRight,
+              height: metrics.actualBoundingBoxAscent + metrics.actualBoundingBoxDescent,
+              border: '1px solid rgba(102, 217, 239, 0.9)',
+              pointerEvents: 'none',
+              // actual sits inside font — bump above so the cyan isn't hidden.
+              zIndex: 6,
+            }}
+          />
+        </>
+      )}
+    </>
+  )
+}
+
 function ComputingIndicator() {
   return (
     <>
@@ -454,6 +566,39 @@ export default function App() {
     label: 'runtime',
   })
 
+  // Measure folder: paragraph monitors are live (always populate for the
+  // currently-rendered block); line-level monitors populate when a line
+  // is clicked and reset when deselected.
+  const measure = usePaneFolder(pane, 'Measure')
+  const numFmt = (v: number) => v.toFixed(1)
+  const intFmt = (v: number) => v.toFixed(0)
+  const [, setParaWidth] = usePaneInput<number>(measure, 'paraWidth', 0, { label: 'block w', readonly: true, format: numFmt })
+  const [, setParaHeight] = usePaneInput<number>(measure, 'paraHeight', 0, { label: 'block h', readonly: true, format: numFmt })
+  const [, setParaLines] = usePaneInput<number>(measure, 'paraLines', 0, { label: 'lines', readonly: true, format: intFmt })
+  const [, setWidth] = usePaneInput<number>(measure, 'width', 0, { label: 'line w', readonly: true, format: numFmt })
+  const [, setActualAscent] = usePaneInput<number>(measure, 'actualAscent', 0, { label: 'actual ↑', readonly: true, format: numFmt })
+  const [, setActualDescent] = usePaneInput<number>(measure, 'actualDescent', 0, { label: 'actual ↓', readonly: true, format: numFmt })
+  const [, setFontAscent] = usePaneInput<number>(measure, 'fontAscent', 0, { label: 'font ↑', readonly: true, format: numFmt })
+  const [, setFontDescent] = usePaneInput<number>(measure, 'fontDescent', 0, { label: 'font ↓', readonly: true, format: numFmt })
+
+  const [selectedLine, setSelectedLine] = useState<number | null>(null)
+
+  const handleMetrics = useCallback((m: TextMetrics | null) => {
+    if (!m) {
+      setWidth(0)
+      setActualAscent(0)
+      setActualDescent(0)
+      setFontAscent(0)
+      setFontDescent(0)
+      return
+    }
+    setWidth(m.width)
+    setActualAscent(m.actualBoundingBoxAscent)
+    setActualDescent(m.actualBoundingBoxDescent)
+    setFontAscent(m.fontBoundingBoxAscent)
+    setFontDescent(m.fontBoundingBoxDescent)
+  }, [setWidth, setActualAscent, setActualDescent, setFontAscent, setFontDescent])
+
   const [font, setFont] = useState<SlugFont | null>(null)
   const [gpuCanvas, setGpuCanvas] = useState<HTMLCanvasElement | null>(null)
   const windowSize = useWindowSize()
@@ -463,6 +608,18 @@ export default function App() {
   useEffect(() => {
     setSplitX(Math.round(windowSize.w / 2))
   }, [windowSize.w])
+
+  // Live paragraph monitors — always reflect the currently-rendered text.
+  useEffect(() => {
+    if (!font) return
+    const p = font.measureParagraph(text, fontSize, {
+      maxWidth: windowSize.w * MAX_WIDTH_FRACTION,
+      lineHeight: LINE_HEIGHT,
+    })
+    setParaWidth(p.width)
+    setParaHeight(p.height)
+    setParaLines(p.lines.length)
+  }, [font, text, fontSize, windowSize, setParaWidth, setParaHeight, setParaLines])
 
   // Load font — reloads when forceRuntime changes. Wait for @font-face so
   // Canvas2D comparison renders with the same glyph metrics.
@@ -485,7 +642,10 @@ export default function App() {
       <Canvas
         orthographic
         camera={{ position: [0, 0, 100], near: 0.1, far: 1000 }}
-        renderer={{ antialias: true, trackTimestamp: true }}
+        // Slug provides its own analytic anti-aliasing via per-fragment
+        // coverage — MSAA adds 4× sample cost + a canvas-area resolve pass
+        // for zero visual gain. Keep it off.
+        renderer={{ antialias: false, trackTimestamp: true }}
       >
         <color attach="background" args={['#00021c']} />
         <PixelCamera />
@@ -518,6 +678,16 @@ export default function App() {
           />
           <SplitHandle splitX={splitX} onDrag={setSplitX} />
           <SplitLabels splitX={splitX} mode={compareMode} />
+          <MeasureOverlay
+            font={font}
+            text={text}
+            fontSize={fontSize}
+            maxWidth={windowSize.w * MAX_WIDTH_FRACTION}
+            windowSize={windowSize}
+            selectedLine={selectedLine}
+            onSelect={setSelectedLine}
+            onMetrics={handleMetrics}
+          />
         </>
       )}
     </>

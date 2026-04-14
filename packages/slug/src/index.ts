@@ -16,6 +16,10 @@ export type {
   PositionedGlyph,
   SlugTextureData,
   SlugTextOptions,
+  TextMetrics,
+  ParagraphMetrics,
+  ParagraphLineMetrics,
+  MeasureParagraphOptions,
 } from './types.js'
 
 export type { SlugMaterialOptions } from './SlugMaterial.js'

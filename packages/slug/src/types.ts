@@ -97,3 +97,54 @@ export interface SlugTextOptions {
   /** Snap glyph positions to pixel grid. Default true. */
   pixelSnap?: boolean
 }
+
+/**
+ * Text metrics for a single, unwrapped line. Shape mirrors the subset of the
+ * browser's `CanvasRenderingContext2D` `TextMetrics` interface that can be
+ * computed cheaply from font outlines plus glyph bounds.
+ *
+ * Units are in the same object-space the caller supplies `fontSize` in —
+ * typically pixels at `fontSize` px.
+ */
+export interface TextMetrics {
+  /** Horizontal advance of the shaped line. */
+  width: number
+  /** Tight inked bounds, measured from the starting pen position. */
+  actualBoundingBoxLeft: number
+  actualBoundingBoxRight: number
+  actualBoundingBoxAscent: number
+  actualBoundingBoxDescent: number
+  /** Font-level ascent/descent for `fontSize`, independent of the glyphs present. */
+  fontBoundingBoxAscent: number
+  fontBoundingBoxDescent: number
+}
+
+export interface MeasureParagraphOptions {
+  /** Max width before word-wrap kicks in. Omit for no wrapping. */
+  maxWidth?: number
+  /** Line-height multiplier of fontSize. Defaults to 1.2 — matches SlugText's default so measured height aligns with what the shaper renders. */
+  lineHeight?: number
+}
+
+export interface ParagraphLineMetrics {
+  /** The shaped line text (as produced by the wrap policy). */
+  text: string
+  /** Line's advance width. */
+  width: number
+}
+
+/**
+ * Metrics for a wrapped block of text. Accepts the same wrap/line-height
+ * semantics as `SlugText` so `measureParagraph` results agree with rendering
+ * by construction.
+ */
+export interface ParagraphMetrics {
+  /** Widest line's advance width. Never greater than `maxWidth`. */
+  width: number
+  /** Total block height = `lines.length * fontSize * lineHeight`. */
+  height: number
+  lines: ParagraphLineMetrics[]
+  /** Font-level ascent/descent for `fontSize` — useful for positioning the first baseline. */
+  fontBoundingBoxAscent: number
+  fontBoundingBoxDescent: number
+}
