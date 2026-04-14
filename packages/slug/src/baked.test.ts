@@ -7,7 +7,7 @@ import { packBaked, unpackBaked, bakedURLs, BAKED_VERSION, cmapLookup, kernLooku
 import type { BakeInput, BakedJSON } from './baked.js'
 
 // Load Inter for tests
-const fontPath = resolve(__dirname, '../../../examples/vanilla/slug-text/public/Inter-Regular.ttf')
+const fontPath = resolve(__dirname, '../../../examples/three/slug-text/public/Inter-Regular.ttf')
 const fontBuffer = readFileSync(fontPath)
 const arrayBuffer = fontBuffer.buffer.slice(fontBuffer.byteOffset, fontBuffer.byteOffset + fontBuffer.byteLength)
 

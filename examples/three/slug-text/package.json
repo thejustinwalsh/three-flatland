@@ -1,5 +1,5 @@
 {
-  "name": "example-vanilla-slug-text",
+  "name": "example-three-slug-text",
   "version": "0.0.1-alpha.0",
   "private": true,
   "type": "module",
@@ -17,6 +17,6 @@
   "devDependencies": {
     "@types/three": "^0.183.1",
     "typescript": "^5.7.3",
-    "vite": "^6.0.7"
+    "vite": "^6.4.1"
   }
 }

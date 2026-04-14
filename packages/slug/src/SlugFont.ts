@@ -44,8 +44,10 @@ export class SlugFont {
   // --- Shaping backends (one or the other is set by the loader) ---
   /** @internal */ _opentypeFont: import('opentype.js').Font | null = null
   /** @internal */ _shapeTextOT: typeof import('./pipeline/textShaper.js').shapeText | null = null
+  /** @internal */ _wrapLinesOT: typeof import('./pipeline/wrapLines.js').wrapLines | null = null
   /** @internal */ _bakedData: BakedFontData | null = null
   /** @internal */ _shapeTextBaked: typeof import('./pipeline/textShaperBaked.js').shapeTextBaked | null = null
+  /** @internal */ _wrapLinesBaked: typeof import('./pipeline/wrapLinesBaked.js').wrapLinesBaked | null = null
 
   /** @internal — Use SlugFontLoader to create instances. */
   constructor(
@@ -75,10 +77,12 @@ export class SlugFont {
     metrics: { unitsPerEm: number; ascender: number; descender: number; capHeight: number },
     bakedData: BakedFontData,
     shapeTextBaked: typeof import('./pipeline/textShaperBaked.js').shapeTextBaked,
+    wrapLinesBaked: typeof import('./pipeline/wrapLinesBaked.js').wrapLinesBaked,
   ): SlugFont {
     const font = new SlugFont(glyphs, textures, metrics)
     font._bakedData = bakedData
     font._shapeTextBaked = shapeTextBaked
+    font._wrapLinesBaked = wrapLinesBaked
     return font
   }
 
@@ -89,10 +93,12 @@ export class SlugFont {
     metrics: { unitsPerEm: number; ascender: number; descender: number; capHeight: number },
     otFont: import('opentype.js').Font,
     shapeText: typeof import('./pipeline/textShaper.js').shapeText,
+    wrapLines: typeof import('./pipeline/wrapLines.js').wrapLines,
   ): SlugFont {
     const font = new SlugFont(glyphs, textures, metrics)
     font._opentypeFont = otFont
     font._shapeTextOT = shapeText
+    font._wrapLinesOT = wrapLines
     return font
   }
 
@@ -117,6 +123,25 @@ export class SlugFont {
       return this._shapeTextOT(this._opentypeFont, text, fontSize, options)
     }
     throw new Error('SlugFont: text shaping not available — load via SlugFontLoader')
+  }
+
+  /**
+   * Wrap `text` into lines using Slug's shaper wrap policy
+   * (word boundary, hard-break fallback at overflow). Returns the line text
+   * for each shaped line — useful for external reference renderers that need
+   * to stay line-for-line with Slug's shaped output.
+   *
+   * Measurements use the same advance-width source as `shapeText` so line
+   * breaks are deterministic across baked and runtime paths.
+   */
+  wrapText(text: string, fontSize: number, maxWidth?: number): string[] {
+    if (this._bakedData && this._wrapLinesBaked) {
+      return this._wrapLinesBaked(this._bakedData, this.glyphs, this.unitsPerEm, text, fontSize, maxWidth)
+    }
+    if (this._opentypeFont && this._wrapLinesOT) {
+      return this._wrapLinesOT(this._opentypeFont, text, fontSize, maxWidth)
+    }
+    throw new Error('SlugFont: wrapText not available — load via SlugFontLoader')
   }
 
   getHBandCount(glyphId: number): number {

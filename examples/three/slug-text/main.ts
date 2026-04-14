@@ -66,31 +66,20 @@ function log(msg: string) {
 
 // --- Canvas2D text rendering ---
 
-function wrapText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string[] {
-  const words = text.split(' ')
-  const lines: string[] = []
-  let line = ''
-  for (const word of words) {
-    const test = line ? `${line} ${word}` : word
-    if (ctx.measureText(test).width > maxWidth && line) {
-      lines.push(line)
-      line = word
-    } else {
-      line = test
-    }
-  }
-  if (line) lines.push(line)
-  return lines
-}
-
 /**
  * Draw Canvas2D comparison text.
  * - 'onion': red semi-transparent text, no background (overlays Slug)
  * - 'split': white text on dark background (occludes Slug)
  * - 'diff': white text on dark background (used to compute diff)
+ *
+ * Line wrapping comes from `font.wrapText` so line breaks are identical to
+ * Slug's shaped output — browser hinting at medium font sizes can shrink
+ * `ctx.measureText` widths below the opentype-derived advances, so a naive
+ * Canvas2D wrap produces a different line count and block height.
  */
 function drawCompareText(
   ctx: CanvasRenderingContext2D,
+  font: SlugFont,
   text: string,
   fontSize: number,
   maxWidth: number,
@@ -115,7 +104,7 @@ function drawCompareText(
   ctx.textAlign = 'center'
   ctx.textBaseline = 'alphabetic'
 
-  const lines = wrapText(ctx, text, maxWidth)
+  const lines = font.wrapText(text, fontSize, maxWidth)
   const lineHeightPx = fontSize * lineHeight
 
   // Vertically center the text block around viewport center, matching Slug's
@@ -140,6 +129,7 @@ function drawCompareText(
 function drawDiff(
   compareCtx: CanvasRenderingContext2D,
   gpuCanvas: HTMLCanvasElement,
+  font: SlugFont,
   text: string,
   fontSize: number,
   maxWidth: number,
@@ -149,7 +139,7 @@ function drawDiff(
   const ch = compareCtx.canvas.height
 
   // Draw Canvas2D reference (white on dark bg) into compare canvas
-  drawCompareText(compareCtx, text, fontSize, maxWidth, lineHeight, 'diff')
+  drawCompareText(compareCtx, font, text, fontSize, maxWidth, lineHeight, 'diff')
   const canvasPixels = compareCtx.getImageData(0, 0, cw, ch)
 
   // Read WebGPU canvas pixels — draw at native size to match compare canvas
@@ -241,7 +231,7 @@ async function main() {
   log('Initializing WebGPU renderer...')
   await renderer.init()
 
-  const fontUrl = import.meta.env.BASE_URL + 'Inter-Regular.ttf'
+  const fontUrl = './Inter-Regular.ttf'
   let fontSize = 48
   let wordCount = 20
   let text = getLoremText(wordCount)
@@ -288,6 +278,9 @@ async function main() {
 
   /** Expensive: re-renders the full compare canvas. Call on content/mode changes. */
   function redrawCompare() {
+    const font = slugText.font
+    if (!font) return
+
     if (compareMode === 'diff') {
       // Show computing indicator
       computingEl.setAttribute('data-visible', '')
@@ -297,7 +290,7 @@ async function main() {
       requestAnimationFrame(() => {
         slugText.update(camera)
         renderer.render(scene, camera)
-        drawDiff(compareCtx, renderer.domElement, text, fontSize, window.innerWidth * maxWidthFraction, 1.2)
+        drawDiff(compareCtx, renderer.domElement, font, text, fontSize, window.innerWidth * maxWidthFraction, 1.2)
 
         // Keep indicator visible for at least 1 second
         computingTimer = setTimeout(() => {
@@ -308,7 +301,7 @@ async function main() {
     } else {
       computingEl.removeAttribute('data-visible')
       if (computingTimer) { clearTimeout(computingTimer); computingTimer = null }
-      drawCompareText(compareCtx, text, fontSize, window.innerWidth * maxWidthFraction, 1.2, compareMode)
+      drawCompareText(compareCtx, font, text, fontSize, window.innerWidth * maxWidthFraction, 1.2, compareMode)
     }
   }
 
