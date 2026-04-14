@@ -141,8 +141,9 @@ function writePackedEffects(slot: number, mesh: SpriteBatch, sprite: Sprite2D): 
   const tier = material._effectTier
   if (tier === 0) return
 
-  // Write flags
+  // effectBuf0.x = system flags, effectBuf0.y = enable bits
   mesh.writeEffectSlot(slot, 0, 0, sprite._effectFlags)
+  mesh.writeEffectSlot(slot, 0, 1, sprite._effectEnableBits)
 
   // Write active effect fields
   for (const effect of sprite._effects) {
