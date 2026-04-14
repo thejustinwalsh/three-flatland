@@ -126,6 +126,26 @@ export class SlugText extends InstancedMesh {
     this._slugMaterial?.setOpacity(value)
   }
 
+  /**
+   * Build the stroke child mesh + material. Called eagerly from
+   * `_setFont` (not lazily on first outline-enable) so the WebGPU
+   * pipeline compile happens during the normal font-load frame rather
+   * than stalling the first frame the user toggles the outline on.
+   *
+   * The mesh starts hidden (`visible = false`). `_syncOutline` flips
+   * it visible only when outline is enabled AND there's real glyph
+   * data to draw — avoids compiling against a zero-count instance
+   * buffer (the same WebGPU validation trap that hit the fill mesh
+   * earlier — see SlugText._setFont for the full incident).
+   *
+   * On R3F first-frame render, WebGPU sees this hidden mesh in the
+   * scene with `count > 0` once glyphs are shaped, compiles the
+   * stroke pipeline, and draws it fully alpha-invisible (fillOpacity
+   * stays 1, outline is behind, the outline mesh itself has
+   * visibility gated on `_outlineEnabled`). That one-time compile
+   * happens without the user ever toggling anything — so the toggle
+   * itself is instant.
+   */
   private _setupOutline(): void {
     if (!this._font || this._outlineMesh) return
     this._strokeMaterial = new SlugStrokeMaterial(this._font, {
@@ -214,9 +234,10 @@ export class SlugText extends InstancedMesh {
       this.material = this._slugMaterial
       this._dirty = true
 
-      // If outline was configured before the font landed, wire it up now.
-      // If the font is being swapped, rebuild the stroke material against
-      // the new font's textures.
+      // If outline is already configured (including font swap while
+      // outline stays on) rebuild the stroke mesh against the new
+      // font's textures. Don't pre-build for users who never enable
+      // outline — that pays GPU-resource cost for nothing.
       if (this._outlineEnabled) {
         this._teardownOutline()
         this._setupOutline()

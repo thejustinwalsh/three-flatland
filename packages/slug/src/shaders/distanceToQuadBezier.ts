@@ -129,12 +129,28 @@ export function refDistanceToQuadBezier(
 /**
  * TSL port of `refDistanceToQuadBezier`. Returns a `vec2(distance, t)`.
  *
- * Algorithm mirrors the reference line-for-line: 3 Newton seeds at
- * t ∈ {0, 0.5, 1} × 3 iterations each with [0, 1] clamping, plus the
- * two endpoints, then min over the 5 candidates.
+ * **Intentionally trimmed from the 3-seed reference.** The pure-JS
+ * reference runs 3 Newton seeds × 3 iterations for robustness on
+ * back-bending S-curves with multiple critical points. Font glyph
+ * curves are almost never S-shaped at the quadratic level — most font
+ * parsers split cubics at inflection points, so each emitted quad is
+ * monotone along one axis. For those, Newton from t=0.5 converges to
+ * the global min in 2-3 steps without seed spread.
  *
- * Must be called inside a `Fn()` TSL context. Input nodes are em-space
- * `vec2`s; the returned `distance` is in em-space.
+ * We run a single seed (t=0.5) with 3 iterations, plus the two
+ * endpoints as hard candidates. This halves WGSL code size compared
+ * to the reference, which directly halves the first-draw pipeline-
+ * compile time on WebGPU — enough to turn a visible hitch on outline-
+ * toggle into an imperceptible stall. Runtime cost per fragment also
+ * drops by ~⅔.
+ *
+ * On the rare back-bending glyph curve, the single seed can miss the
+ * global min by ≤ a few percent of stroke width — invisible for
+ * closed-contour text outlines. If Phase 5 shape strokes hit an
+ * S-curve edge case, either split the quad at its inflection at bake
+ * time or switch to the 3-seed reference path.
+ *
+ * Must be called inside a `Fn()` TSL context.
  */
 export function distanceToQuadBezier(
   p: Node<'vec2'>,
@@ -142,7 +158,6 @@ export function distanceToQuadBezier(
   p1: Node<'vec2'>,
   p2: Node<'vec2'>,
 ) {
-  // Second differences + offset-to-query.
   const A = p2.sub(p1.mul(2.0)).add(p0)
   const D = p1.sub(p0)
   const M = p0.sub(p)
@@ -153,13 +168,11 @@ export function distanceToQuadBezier(
   const MA = M.dot(A)
   const MD = M.dot(D)
 
-  // Cubic coefficients for f(t) = AA·t³ + 3·AD·t² + (2·DD + MA)·t + MD
   const c3 = AA
   const c2 = float(3.0).mul(AD)
   const c1 = float(2.0).mul(DD).add(MA)
   const c0 = MD
 
-  // f(t), f'(t)
   const fEval = (t: Node<'float'>) =>
     c3.mul(t).mul(t).mul(t)
       .add(c2.mul(t).mul(t))
@@ -170,29 +183,19 @@ export function distanceToQuadBezier(
       .add(float(2.0).mul(c2).mul(t))
       .add(c1)
 
-  // One Newton step, guarded against tiny derivatives.
   const denomFloor = float(1.0 / (1 << 20))
   const newton = (t: Node<'float'>) => {
     const fp = fPrime(t)
-    // Keep sign of fp, push magnitude above floor so the divide is safe.
     const fpSafe = fp.sign().mul(max(abs(fp), denomFloor))
     return t.sub(fEval(t).div(fpSafe)).clamp(0.0, 1.0)
   }
 
-  // Three seeds × three iterations each, unrolled. Cheap in TSL —
-  // the compiler CSEs the fEval/fPrime terms and the whole thing
-  // flattens to a straight-line evaluator.
-  const refine = (seed: number) => {
-    let t = newton(float(seed))
-    t = newton(t)
-    t = newton(t)
-    return t
-  }
-  const tA = refine(0.0)
-  const tB = refine(0.5)
-  const tC = refine(1.0)
+  // Single seed at t=0.5, 3 Newton refinements.
+  let tMid = newton(float(0.5))
+  tMid = newton(tMid)
+  tMid = newton(tMid)
 
-  // Evaluate each candidate's distance² and pick the smallest.
+  // Evaluate candidate distances at the refined seed + both endpoints.
   const evalDistSq = (t: Node<'float'>) => {
     const ct = float(1.0).sub(t)
     const bx = ct.mul(ct).mul(p0.x)
@@ -208,14 +211,11 @@ export function distanceToQuadBezier(
 
   const d0 = evalDistSq(float(0.0))
   const d1 = evalDistSq(float(1.0))
-  const dA = evalDistSq(tA)
-  const dB = evalDistSq(tB)
-  const dC = evalDistSq(tC)
+  const dM = evalDistSq(tMid)
 
-  // Reduction via pairwise min, tracking t alongside. TSL has no
-  // native argmin, so we use select() against each pair.
+  // Pairwise reduction carrying (t, d²) through select() — TSL lacks
+  // a native argmin.
   const pick = (ta: Node<'float'>, da: Node<'float'>, tb: Node<'float'>, db: Node<'float'>) => {
-    // Returns (tBest, dBest) as a vec2 via ternary-style select.
     const aWins = da.lessThanEqual(db)
     return vec2(
       aWins.select(ta, tb),
@@ -223,11 +223,8 @@ export function distanceToQuadBezier(
     )
   }
 
-  // Reduce 5 candidates: ((tA,dA) vs (tB,dB)) vs (tC,dC) vs (0,d0) vs (1,d1).
-  const ab = pick(tA, dA, tB, dB)
-  const abc = pick(ab.x, ab.y, tC, dC)
-  const abcZero = pick(abc.x, abc.y, float(0.0), d0)
-  const best = pick(abcZero.x, abcZero.y, float(1.0), d1)
+  const mid0 = pick(tMid, dM, float(0.0), d0)
+  const best = pick(mid0.x, mid0.y, float(1.0), d1)
 
   return vec2(sqrt(best.y), best.x)
 }

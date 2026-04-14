@@ -1,4 +1,4 @@
-import { float, vec2, dot, sqrt, normalize } from 'three/tsl'
+import { vec2, dot, sqrt, normalize } from 'three/tsl'
 import type Node from 'three/src/nodes/core/Node.js'
 
 /**
@@ -30,18 +30,18 @@ export function slugDilate(
   mvpRow1: Node<'vec4'>,
   mvpRow3: Node<'vec4'>,
   viewport: Node<'vec2'>,
-  /**
-   * Optional stroke half-width in em-space. When provided, the quad is
-   * additionally expanded by `strokeHalfWidth / invScale` in object space
-   * along the unit outward normal, so fragments outside the glyph's
-   * fill bounding box still get shaded by the stroke fragment shader.
-   * Texcoords are adjusted by the em-space equivalent so em-space
-   * addressing stays correct.
-   *
-   * Passing `undefined` preserves legacy fill-only behavior exactly.
-   */
-  strokeHalfWidth?: Node<'float'>,
 ) {
+  // Pixel-AA dilation only. Stroke-width quad expansion is now the
+  // caller's responsibility (applied axis-aligned to posXY/texXY before
+  // this call) because the unit-normal approach used here can't grow
+  // each axis independently — at quad corners the unit normal is
+  // diagonal, so `n · halfWidth` is only `halfWidth/√2` along each
+  // axis. That under-expansion clips the stroke's outer ring near
+  // glyph extents. Axis-aligned pre-expansion keeps the full stroke
+  // half-width on every side; the pixel AA handled here remains a
+  // uniform half-pixel regardless of direction, which is what the AA
+  // window needs.
+
   // Normalize the outward normal to unit length
   const n = normalize(normal)
 
@@ -67,18 +67,9 @@ export function slugDilate(
   const denom = uv.sub(s2.mul(t).mul(t))
   const dist = s2.mul(st.add(sqrt(uv))).div(denom)
 
-  // Object-space object-width of strokeHalfWidth_em = strokeHalfWidth / invScale
-  // (invScale = em_per_obj, so 1/invScale = obj_per_em).
-  const strokeObj = strokeHalfWidth
-    ? strokeHalfWidth.div(invScale)
-    : float(0.0)
-
-  const totalDist = dist.add(strokeObj)
-
-  // Displace along the UNIT normal. Fill-only path yields `dist`; stroke
-  // path adds `strokeObj` so the quad grows past the glyph bbox.
-  const dx = n.x.mul(totalDist)
-  const dy = n.y.mul(totalDist)
+  // Displace along the UNIT normal — half-pixel AA expansion.
+  const dx = n.x.mul(dist)
+  const dy = n.y.mul(dist)
 
   // Dilated vertex position
   const vpos = vec2(posXY.x.add(dx), posXY.y.add(dy))

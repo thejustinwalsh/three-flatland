@@ -11,6 +11,7 @@ import type { Camera, Object3D } from 'three'
 import {
   Fn,
   float,
+  sign,
   vec2,
   vec3,
   vec4,
@@ -112,33 +113,54 @@ export class SlugStrokeMaterial extends MeshBasicNodeMaterial {
       const center = vec2(glyphPos.x, glyphPos.y)
       const halfSize = vec2(glyphPos.z, glyphPos.w)
 
-      const objPos = vec2(
+      // Object-space corner position before stroke expansion.
+      const baseObjPos = vec2(
         center.x.add(basePos.x.mul(halfSize.x.mul(2.0))),
         center.y.add(basePos.y.mul(halfSize.y.mul(2.0))),
-      )
-
-      const normal = vec2(
-        basePos.x.mul(halfSize.x.mul(2.0)),
-        basePos.y.mul(halfSize.y.mul(2.0)),
       )
 
       const emCenter = vec2(glyphTex.x, glyphTex.y)
       const invScale = glyphJac.x
       const emHalfW = halfSize.x.mul(invScale)
       const emHalfH = halfSize.y.mul(invScale)
-      const emCoord = vec2(
+      const baseEmCoord = vec2(
         emCenter.x.add(basePos.x.mul(emHalfW.mul(2.0))),
         emCenter.y.add(basePos.y.mul(emHalfH.mul(2.0))),
       )
 
-      // Stroke dilation grows the quad by the stroke half-width in em,
-      // on top of the half-pixel AA margin. Without this, fragments on
-      // the stroke's outer ring fall outside the glyph's fill bbox and
-      // never get shaded.
+      // Axis-aligned stroke expansion. Every vertex pushes outward by
+      // strokeHalfWidth (em-space) along each axis independently, signed
+      // by its basePos quadrant. That grows the full (W × H) quad to
+      // (W + 2·halfWidth) × (H + 2·halfWidth) regardless of aspect
+      // ratio — vs. unit-normal dilation which under-expands the axes
+      // at corners (diagonal normal only delivers halfWidth/√2 along
+      // each axis, visibly clipping the stroke's outer ring at glyph
+      // extents).
+      const strokeEm = strokeHalfWidthUniform
+      const strokeObj = strokeEm.div(invScale)
+      const signX = sign(basePos.x)
+      const signY = sign(basePos.y)
+
+      const expandedObjPos = vec2(
+        baseObjPos.x.add(signX.mul(strokeObj)),
+        baseObjPos.y.add(signY.mul(strokeObj)),
+      )
+      const expandedEmCoord = vec2(
+        baseEmCoord.x.add(signX.mul(strokeEm)),
+        baseEmCoord.y.add(signY.mul(strokeEm)),
+      )
+
+      // Outward normal from center to the expanded corner — used by
+      // slugDilate for the uniform half-pixel AA margin on top of the
+      // stroke expansion.
+      const expandedNormal = vec2(
+        basePos.x.mul(halfSize.x.mul(2.0).add(signX.mul(strokeObj))),
+        basePos.y.mul(halfSize.y.mul(2.0).add(signY.mul(strokeObj))),
+      )
+
       const dilated = slugDilate(
-        objPos, normal, emCoord, invScale,
+        expandedObjPos, expandedNormal, expandedEmCoord, invScale,
         mvpRow0, mvpRow1, mvpRow3, viewportUniform,
-        strokeHalfWidthUniform,
       )
 
       vRenderCoord.assign(dilated.texcoord)
