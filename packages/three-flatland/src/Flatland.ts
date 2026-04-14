@@ -37,7 +37,8 @@ import { LightStore } from './lights/LightStore'
 import { LightEffect } from './lights/LightEffect'
 import { wrapWithLightFlags } from './lights/wrapWithLightFlags'
 import type { ChannelName } from './materials/channels'
-import type { SDFGenerator } from './lights/SDFGenerator'
+import { SDFGenerator } from './lights/SDFGenerator'
+import { OcclusionPass } from './lights/OcclusionPass'
 import type { RegistryData } from './ecs/batchUtils'
 
 /** Shape of the LightingContext trait data. */
@@ -218,6 +219,18 @@ export class Flatland extends Group implements WorldProvider {
 
   /** SDF generator (lazy — created when LightEffect.needsShadows is true) */
   private _sdfGenerator: SDFGenerator | null = null
+
+  /** Occlusion pre-pass (lazy — created alongside _sdfGenerator) */
+  private _occlusionPass: OcclusionPass | null = null
+
+  /**
+   * Shadow pipeline size tracker. Set on first render; compared against
+   * renderer size each frame so resize() only fires when dimensions
+   * actually change.
+   */
+  private _shadowRTWidth = 0
+  private _shadowRTHeight = 0
+  private _shadowInitialized = false
 
   /** Active LightEffect instance */
   private _lightEffect: LightEffect | null = null
@@ -718,6 +731,22 @@ export class Flatland extends Group implements WorldProvider {
 
       // Store required channels from the effect class
       const ctor = lightEffect.constructor as typeof LightEffect
+
+      // Stand up the shadow pipeline when the effect declares it needs
+      // shadows. Construction here is cheap (no GPU resources yet — those
+      // allocate on first render when the renderer size is known).
+      if (ctor.needsShadows) {
+        if (!this._sdfGenerator) this._sdfGenerator = new SDFGenerator()
+        if (!this._occlusionPass) this._occlusionPass = new OcclusionPass()
+      } else if (this._sdfGenerator) {
+        this._sdfGenerator.dispose()
+        this._sdfGenerator = null
+        this._occlusionPass?.dispose()
+        this._occlusionPass = null
+        this._shadowInitialized = false
+        this._shadowRTWidth = 0
+        this._shadowRTHeight = 0
+      }
       const requiredChannels: ReadonlySet<ChannelName> = new Set(ctor.requires ?? [])
 
       // Spawn ECS entity for the effect
@@ -855,6 +884,44 @@ export class Flatland extends Group implements WorldProvider {
   }
 
   /**
+   * Keep the shadow pipeline's render targets matched to the current
+   * viewport. Runs each frame while shadows are active. First call
+   * bootstraps `SDFGenerator` (which allocates its ping-pong + final RTs
+   * at a concrete size); subsequent calls only resize when the viewport
+   * actually changed, so the common case is a cheap size comparison.
+   *
+   * OcclusionPass takes the viewport size directly and applies its own
+   * `resolutionScale` internally. SDFGenerator takes the post-scale
+   * dimensions — we derive those once here.
+   */
+  private _ensureShadowPipelineSize(renderer: WebGPURenderer): void {
+    const occlusionPass = this._occlusionPass
+    const sdfGenerator = this._sdfGenerator
+    if (!occlusionPass || !sdfGenerator) return
+
+    const size = renderer.getSize(this._tempVec2)
+    const scale = occlusionPass.resolutionScale
+    const sdfW = Math.max(1, Math.floor(size.x * scale))
+    const sdfH = Math.max(1, Math.floor(size.y * scale))
+
+    if (!this._shadowInitialized) {
+      sdfGenerator.init(sdfW, sdfH)
+      occlusionPass.resize(size.x, size.y)
+      this._shadowRTWidth = sdfW
+      this._shadowRTHeight = sdfH
+      this._shadowInitialized = true
+      return
+    }
+
+    if (sdfW !== this._shadowRTWidth || sdfH !== this._shadowRTHeight) {
+      sdfGenerator.resize(sdfW, sdfH)
+      occlusionPass.resize(size.x, size.y)
+      this._shadowRTWidth = sdfW
+      this._shadowRTHeight = sdfH
+    }
+  }
+
+  /**
    * WeakSet of sprites already warned about, so the same gap doesn't spam
    * the console every time a sprite is re-added or lighting is re-attached.
    */
@@ -968,6 +1035,16 @@ export class Flatland extends Group implements WorldProvider {
     // Store renderer reference
     if (!this._renderer || this._renderer.deref() !== renderer) {
       this._renderer = new WeakRef(renderer)
+    }
+
+    // Shadow pre-pass — render occluder silhouettes to the occlusion RT
+    // and JFA that into the SDF texture consumed by the lit material's
+    // shadow-tracing shader. Skipped when the active LightEffect doesn't
+    // declare needsShadows (both handles are null in that case).
+    if (this._sdfGenerator && this._occlusionPass) {
+      this._ensureShadowPipelineSize(renderer)
+      this._occlusionPass.render(renderer, this.scene, this._camera)
+      this._sdfGenerator.generate(renderer, this._occlusionPass.renderTarget)
     }
 
     // Auto-initialize or rebuild render pipeline if needed
@@ -1151,6 +1228,11 @@ export class Flatland extends Group implements WorldProvider {
     this._lightStore = null
     this._sdfGenerator?.dispose()
     this._sdfGenerator = null
+    this._occlusionPass?.dispose()
+    this._occlusionPass = null
+    this._shadowInitialized = false
+    this._shadowRTWidth = 0
+    this._shadowRTHeight = 0
     this._lights.length = 0
     this._spriteMaterials.clear()
     this._lightingSystemsRegistered = false
