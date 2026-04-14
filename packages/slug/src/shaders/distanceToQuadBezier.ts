@@ -1,7 +1,10 @@
+import { vec2, float, sqrt, abs, max } from 'three/tsl'
+import type Node from 'three/src/nodes/core/Node.js'
+
 /**
  * Analytic closest-point / distance from a point to a quadratic Bezier
- * curve. Shared by the pure-JS reference and — in Phase 4 Task 10 — the
- * TSL port used by the stroke fragment shader.
+ * curve. Shared by the pure-JS reference and the TSL port used by the
+ * stroke fragment shader.
  *
  * The distance function D(t) = |B(t) - P|² is a quartic in t; its
  * derivative dD/dt is a cubic
@@ -122,3 +125,110 @@ export function refDistanceToQuadBezier(
 
   return { distance: Math.sqrt(bestDistSq), t: bestT }
 }
+
+/**
+ * TSL port of `refDistanceToQuadBezier`. Returns a `vec2(distance, t)`.
+ *
+ * Algorithm mirrors the reference line-for-line: 3 Newton seeds at
+ * t ∈ {0, 0.5, 1} × 3 iterations each with [0, 1] clamping, plus the
+ * two endpoints, then min over the 5 candidates.
+ *
+ * Must be called inside a `Fn()` TSL context. Input nodes are em-space
+ * `vec2`s; the returned `distance` is in em-space.
+ */
+export function distanceToQuadBezier(
+  p: Node<'vec2'>,
+  p0: Node<'vec2'>,
+  p1: Node<'vec2'>,
+  p2: Node<'vec2'>,
+) {
+  // Second differences + offset-to-query.
+  const A = p2.sub(p1.mul(2.0)).add(p0)
+  const D = p1.sub(p0)
+  const M = p0.sub(p)
+
+  const AA = A.dot(A)
+  const AD = A.dot(D)
+  const DD = D.dot(D)
+  const MA = M.dot(A)
+  const MD = M.dot(D)
+
+  // Cubic coefficients for f(t) = AA·t³ + 3·AD·t² + (2·DD + MA)·t + MD
+  const c3 = AA
+  const c2 = float(3.0).mul(AD)
+  const c1 = float(2.0).mul(DD).add(MA)
+  const c0 = MD
+
+  // f(t), f'(t)
+  const fEval = (t: Node<'float'>) =>
+    c3.mul(t).mul(t).mul(t)
+      .add(c2.mul(t).mul(t))
+      .add(c1.mul(t))
+      .add(c0)
+  const fPrime = (t: Node<'float'>) =>
+    float(3.0).mul(c3).mul(t).mul(t)
+      .add(float(2.0).mul(c2).mul(t))
+      .add(c1)
+
+  // One Newton step, guarded against tiny derivatives.
+  const denomFloor = float(1.0 / (1 << 20))
+  const newton = (t: Node<'float'>) => {
+    const fp = fPrime(t)
+    // Keep sign of fp, push magnitude above floor so the divide is safe.
+    const fpSafe = fp.sign().mul(max(abs(fp), denomFloor))
+    return t.sub(fEval(t).div(fpSafe)).clamp(0.0, 1.0)
+  }
+
+  // Three seeds × three iterations each, unrolled. Cheap in TSL —
+  // the compiler CSEs the fEval/fPrime terms and the whole thing
+  // flattens to a straight-line evaluator.
+  const refine = (seed: number) => {
+    let t = newton(float(seed))
+    t = newton(t)
+    t = newton(t)
+    return t
+  }
+  const tA = refine(0.0)
+  const tB = refine(0.5)
+  const tC = refine(1.0)
+
+  // Evaluate each candidate's distance² and pick the smallest.
+  const evalDistSq = (t: Node<'float'>) => {
+    const ct = float(1.0).sub(t)
+    const bx = ct.mul(ct).mul(p0.x)
+      .add(float(2.0).mul(ct).mul(t).mul(p1.x))
+      .add(t.mul(t).mul(p2.x))
+    const by = ct.mul(ct).mul(p0.y)
+      .add(float(2.0).mul(ct).mul(t).mul(p1.y))
+      .add(t.mul(t).mul(p2.y))
+    const dx = bx.sub(p.x)
+    const dy = by.sub(p.y)
+    return dx.mul(dx).add(dy.mul(dy))
+  }
+
+  const d0 = evalDistSq(float(0.0))
+  const d1 = evalDistSq(float(1.0))
+  const dA = evalDistSq(tA)
+  const dB = evalDistSq(tB)
+  const dC = evalDistSq(tC)
+
+  // Reduction via pairwise min, tracking t alongside. TSL has no
+  // native argmin, so we use select() against each pair.
+  const pick = (ta: Node<'float'>, da: Node<'float'>, tb: Node<'float'>, db: Node<'float'>) => {
+    // Returns (tBest, dBest) as a vec2 via ternary-style select.
+    const aWins = da.lessThanEqual(db)
+    return vec2(
+      aWins.select(ta, tb),
+      aWins.select(da, db),
+    )
+  }
+
+  // Reduce 5 candidates: ((tA,dA) vs (tB,dB)) vs (tC,dC) vs (0,d0) vs (1,d1).
+  const ab = pick(tA, dA, tB, dB)
+  const abc = pick(ab.x, ab.y, tC, dC)
+  const abcZero = pick(abc.x, abc.y, float(0.0), d0)
+  const best = pick(abcZero.x, abcZero.y, float(1.0), d1)
+
+  return vec2(sqrt(best.y), best.x)
+}
+
