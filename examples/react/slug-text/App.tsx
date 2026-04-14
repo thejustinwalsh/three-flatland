@@ -490,50 +490,49 @@ function CompareCanvas({
       ? stack.wrapText(text, fontSize, maxWidth)
       : null
 
+    // Defer Canvas2D draws so the Slug WebGPU canvas has a chance to
+    // render the new content before the compare overlay updates.
+    // useEffect fires synchronously after commit, but R3F's useFrame
+    // (and thus the WebGPU submit) runs on the next RAF. Without a
+    // delay, Canvas2D paints one frame *ahead* of Slug — visible
+    // flash on scene toggle, word-count changes, etc.
+    //
+    // requestIdleCallback runs after layout/paint/commit, guaranteeing
+    // the WebGPU frame has committed first. Timeout caps at ~2 frames
+    // (32ms) so bursty activity can't starve the compare. Safari has
+    // never shipped `requestIdleCallback`; fall back to `setTimeout`
+    // with the same budget so behavior stays equivalent across
+    // browsers.
+    type Handle = { kind: 'idle' | 'timeout', id: number }
+    const scheduleAfterFrame = (fn: () => void): Handle => {
+      if (typeof requestIdleCallback === 'function') {
+        return { kind: 'idle', id: requestIdleCallback(fn, { timeout: 32 }) }
+      }
+      return { kind: 'timeout', id: setTimeout(fn, 32) as unknown as number }
+    }
+    const cancelAfterFrame = (h: Handle) => {
+      if (h.kind === 'idle') cancelIdleCallback(h.id)
+      else clearTimeout(h.id)
+    }
+
     if (mode === 'diff') {
       if (!gpuCanvas) return
       setComputing(true)
-      // Two RAFs — one for R3F to run its useFrame and schedule the
-      // WebGPU render, one to let the browser actually commit it. Same
-      // rationale as the non-diff path below.
-      let rafA = 0
-      const rafB = { current: 0 }
-      rafA = requestAnimationFrame(() => {
-        rafB.current = requestAnimationFrame(() => {
-          drawDiff(ctx, gpuCanvas, font, text, fontSize, maxWidth, LINE_HEIGHT, fontFamily, preWrappedLines)
-        })
+      const id = scheduleAfterFrame(() => {
+        drawDiff(ctx, gpuCanvas, font, text, fontSize, maxWidth, LINE_HEIGHT, fontFamily, preWrappedLines)
       })
       const t = setTimeout(() => setComputing(false), 1000)
       return () => {
-        cancelAnimationFrame(rafA)
-        cancelAnimationFrame(rafB.current)
+        cancelAfterFrame(id)
         clearTimeout(t)
       }
     }
 
     setComputing(false)
-
-    // Defer the Canvas2D draw by two RAFs so the Slug WebGPU canvas
-    // has a chance to render the new content before the compare
-    // overlay updates. Without this, `useEffect` fires synchronously
-    // after state change and Canvas2D paints the new text *one frame
-    // ahead* of the Slug canvas — producing a visible flash during
-    // scene toggle (Lorem ↔ Icons), wordCount changes, font reload,
-    // etc. Two RAFs guarantees we're past at least one R3F render
-    // cycle (R3F schedules its own RAF for the frame loop) plus the
-    // browser's next paint. Net effect: both layers flip on the same
-    // frame.
-    let rafA = 0
-    const rafB = { current: 0 }
-    rafA = requestAnimationFrame(() => {
-      rafB.current = requestAnimationFrame(() => {
-        drawCompareText(ctx, font, text, fontSize, maxWidth, LINE_HEIGHT, mode, fontFamily, preWrappedLines)
-      })
+    const id = scheduleAfterFrame(() => {
+      drawCompareText(ctx, font, text, fontSize, maxWidth, LINE_HEIGHT, mode, fontFamily, preWrappedLines)
     })
-    return () => {
-      cancelAnimationFrame(rafA)
-      cancelAnimationFrame(rafB.current)
-    }
+    return () => cancelAfterFrame(id)
   }, [font, stack, text, fontSize, mode, stemDarken, thicken, windowSize, gpuCanvas, iconsMode])
 
   return (
