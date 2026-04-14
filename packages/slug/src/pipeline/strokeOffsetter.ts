@@ -250,3 +250,165 @@ export function offsetQuadraticBezier(
   return { p0x, p0y, p1x, p1y, p2x, p2y }
 }
 
+// ─── Join insertion (Task 16.3) ──────────────────────────────────────
+
+export type JoinStyle = 'miter' | 'round' | 'bevel'
+
+export interface JoinContext {
+  /** Source contour vertex where curve A ends and curve B begins. */
+  cornerX: number
+  cornerY: number
+  /** Unit tangent at the end of curve A (points out of A). */
+  tangentA: [number, number]
+  /** Unit tangent at the start of curve B (points into B). */
+  tangentB: [number, number]
+  /** Offset endpoint: end of the last offset segment of A. */
+  endA: { x: number; y: number }
+  /** Offset endpoint: start of the first offset segment of B. */
+  startB: { x: number; y: number }
+  /** Signed offset distance (matches what was used for the segments). */
+  halfWidth: number
+  joinStyle: JoinStyle
+  /** Miter clip ratio (SVG default 4). Ignored for `round` / `bevel`. */
+  miterLimit: number
+}
+
+/**
+ * Emit quadratic-Bezier segments that fill the gap between two
+ * adjacent offset segments at a contour corner.
+ *
+ * Caller contract: invoked only when the source contour's tangent is
+ * discontinuous at the corner (i.e. curves A and B meet at a non-
+ * smooth angle). For smooth joins (`tangentA == tangentB`) the offset
+ * endpoints coincide and no join geometry is needed — this function
+ * short-circuits to an empty array in that case.
+ *
+ * Emits join geometry on the *outside* of the corner. The caller is
+ * responsible for choosing which side to offset (positive vs negative
+ * halfWidth) and thus which side has the gap; this function assumes
+ * it's called for that side.
+ *
+ * - `bevel`: single straight quadratic from `endA` to `startB`.
+ * - `miter`: two straight quadratics meeting at the miter point (the
+ *   intersection of the offset tangent lines through `endA` and
+ *   `startB`). If the miter length exceeds `miterLimit · halfWidth`,
+ *   falls back to bevel per the SVG spec.
+ * - `round`: arc from `endA` to `startB` centered at `(cornerX, cornerY)`
+ *   with radius `|halfWidth|`, split into ≤60°-per-segment quadratics.
+ *   Each 60° sub-arc is approximated by a single quadratic whose
+ *   control point is the intersection of the arc's endpoint tangents
+ *   — max deviation from the true arc is ~r·(1 − cos 30°)² ≈ 0.018·r,
+ *   well below the stroke-width-relative error budget for all
+ *   reasonable stroke widths.
+ */
+export function insertJoin(ctx: JoinContext): QuadCurve[] {
+  const { endA, startB, tangentA, tangentB, halfWidth, joinStyle, miterLimit } = ctx
+
+  // Smooth join: the offset endpoints coincide. No gap to fill.
+  const gap = Math.hypot(startB.x - endA.x, startB.y - endA.y)
+  if (gap < 1e-10) return []
+
+  if (joinStyle === 'bevel') {
+    return [straightQuad(endA.x, endA.y, startB.x, startB.y)]
+  }
+
+  if (joinStyle === 'miter') {
+    const miter = intersectLines(
+      endA.x, endA.y, tangentA[0], tangentA[1],
+      startB.x, startB.y, -tangentB[0], -tangentB[1],
+    )
+    if (!miter) {
+      // Near-parallel offset tangents — no meaningful miter point. SVG
+      // fallback is bevel in this pathological case too.
+      return [straightQuad(endA.x, endA.y, startB.x, startB.y)]
+    }
+
+    // Miter clip: if the miter extends further than `miterLimit · halfWidth`
+    // from the corner, bevel instead. Matches the SVG stroke-miterlimit
+    // behavior.
+    const miterLen = Math.hypot(miter.x - ctx.cornerX, miter.y - ctx.cornerY)
+    if (miterLen > miterLimit * Math.abs(halfWidth)) {
+      return [straightQuad(endA.x, endA.y, startB.x, startB.y)]
+    }
+
+    return [
+      straightQuad(endA.x, endA.y, miter.x, miter.y),
+      straightQuad(miter.x, miter.y, startB.x, startB.y),
+    ]
+  }
+
+  // round
+  const r = Math.abs(halfWidth)
+  if (r < 1e-10) return [straightQuad(endA.x, endA.y, startB.x, startB.y)]
+
+  const a0 = Math.atan2(endA.y - ctx.cornerY, endA.x - ctx.cornerX)
+  const a1 = Math.atan2(startB.y - ctx.cornerY, startB.x - ctx.cornerX)
+  // Shortest-path angular delta in [-π, π].
+  let delta = a1 - a0
+  while (delta > Math.PI) delta -= 2 * Math.PI
+  while (delta < -Math.PI) delta += 2 * Math.PI
+
+  // Split the arc into segments of ≤ 60° each. Single quadratic per
+  // segment gives a visually-indistinguishable approximation at all
+  // typical stroke widths; below-60°-per-segment budgets exist but
+  // produce no observable improvement for text/shape strokes.
+  const maxStep = Math.PI / 3
+  const nSegments = Math.max(1, Math.ceil(Math.abs(delta) / maxStep))
+  const step = delta / nSegments
+
+  const out: QuadCurve[] = []
+  for (let i = 0; i < nSegments; i++) {
+    const startAngle = a0 + step * i
+    const endAngle = a0 + step * (i + 1)
+    const p0x = ctx.cornerX + r * Math.cos(startAngle)
+    const p0y = ctx.cornerY + r * Math.sin(startAngle)
+    const p2x = ctx.cornerX + r * Math.cos(endAngle)
+    const p2y = ctx.cornerY + r * Math.sin(endAngle)
+
+    // Tangent to a circle at angle θ is perpendicular to the radius,
+    // pointing in the direction of increasing θ: (-sin θ, cos θ).
+    const tax = -Math.sin(startAngle)
+    const tay = Math.cos(startAngle)
+    const tbx = -Math.sin(endAngle)
+    const tby = Math.cos(endAngle)
+
+    const cp = intersectLines(p0x, p0y, tax, tay, p2x, p2y, -tbx, -tby)
+    if (cp) {
+      out.push({ p0x, p0y, p1x: cp.x, p1y: cp.y, p2x, p2y })
+    } else {
+      // Fallback for degenerate arc (zero-length segment).
+      out.push(straightQuad(p0x, p0y, p2x, p2y))
+    }
+  }
+  return out
+}
+
+/** Single straight quadratic (p1 at chord midpoint). */
+function straightQuad(ax: number, ay: number, bx: number, by: number): QuadCurve {
+  return {
+    p0x: ax, p0y: ay,
+    p1x: (ax + bx) * 0.5, p1y: (ay + by) * 0.5,
+    p2x: bx, p2y: by,
+  }
+}
+
+/**
+ * Intersect two parametric lines given by (point, direction). Returns
+ * null for parallel / near-parallel lines.
+ *
+ *   line A: (ax, ay) + s · (adx, ady)
+ *   line B: (bx, by) + t · (bdx, bdy)
+ */
+function intersectLines(
+  ax: number, ay: number, adx: number, ady: number,
+  bx: number, by: number, bdx: number, bdy: number,
+): { x: number; y: number } | null {
+  const det = adx * bdy - ady * bdx
+  if (Math.abs(det) < 1e-10) return null
+  const dx = bx - ax
+  const dy = by - ay
+  const s = (dx * bdy - dy * bdx) / det
+  return { x: ax + s * adx, y: ay + s * ady }
+}
+
+

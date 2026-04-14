@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest'
-import { offsetQuadraticBezier, subdivideForOffset, unitTangentAt } from './strokeOffsetter'
+import {
+  insertJoin,
+  offsetQuadraticBezier,
+  subdivideForOffset,
+  unitTangentAt,
+  type JoinContext,
+} from './strokeOffsetter'
 import type { QuadCurve } from '../types'
 
 describe('subdivideForOffset — straight segments', () => {
@@ -234,5 +240,119 @@ describe('offsetQuadraticBezier — curved segments', () => {
     expect(back.p0y).toBeCloseTo(c.p0y, 8)
     expect(back.p2x).toBeCloseTo(c.p2x, 8)
     expect(back.p2y).toBeCloseTo(c.p2y, 8)
+  })
+})
+
+describe('insertJoin', () => {
+  // Reusable 90° left-turn corner context:
+  //  - curve A ends travelling +x at corner (0,0)
+  //  - curve B begins travelling +y from corner (0,0)
+  //  - offset halfWidth = 1 (positive → left-hand side of travel)
+  // Left-hand normal of +x is +y; of +y is -x.
+  // So endA = (0, 1) and startB = (-1, 0).
+  const corner90: JoinContext = {
+    cornerX: 0, cornerY: 0,
+    tangentA: [1, 0],
+    tangentB: [0, 1],
+    endA: { x: 0, y: 1 },
+    startB: { x: -1, y: 0 },
+    halfWidth: 1,
+    joinStyle: 'bevel',
+    miterLimit: 4,
+  }
+
+  it('smooth join (coincident endpoints) emits nothing', () => {
+    const smooth: JoinContext = {
+      ...corner90,
+      tangentA: [1, 0], tangentB: [1, 0],
+      endA: { x: 0, y: 1 }, startB: { x: 0, y: 1 },
+    }
+    expect(insertJoin(smooth)).toEqual([])
+  })
+
+  it('bevel emits one straight quadratic from endA to startB', () => {
+    const quads = insertJoin({ ...corner90, joinStyle: 'bevel' })
+    expect(quads).toHaveLength(1)
+    expect(quads[0]!.p0x).toBeCloseTo(0, 10)
+    expect(quads[0]!.p0y).toBeCloseTo(1, 10)
+    expect(quads[0]!.p2x).toBeCloseTo(-1, 10)
+    expect(quads[0]!.p2y).toBeCloseTo(0, 10)
+    // Straight quad has p1 at the chord midpoint.
+    expect(quads[0]!.p1x).toBeCloseTo(-0.5, 10)
+    expect(quads[0]!.p1y).toBeCloseTo(0.5, 10)
+  })
+
+  it('miter at 90° with miterLimit=4 emits two straight quads via the miter point', () => {
+    const quads = insertJoin({ ...corner90, joinStyle: 'miter', miterLimit: 4 })
+    // 90° turn: miter length = halfWidth / sin(45°) = √2 ≈ 1.414.
+    // 1.414 < 4·1 = 4 → miter applies, 2 quads emitted.
+    expect(quads).toHaveLength(2)
+    // Miter point is where the offset tangent lines meet — should be
+    // at (-1, 1) for our corner geometry.
+    expect(quads[0]!.p2x).toBeCloseTo(-1, 8)
+    expect(quads[0]!.p2y).toBeCloseTo(1, 8)
+    expect(quads[1]!.p0x).toBeCloseTo(-1, 8)
+    expect(quads[1]!.p0y).toBeCloseTo(1, 8)
+    // Join endpoints match input.
+    expect(quads[0]!.p0x).toBeCloseTo(0, 8)
+    expect(quads[0]!.p0y).toBeCloseTo(1, 8)
+    expect(quads[1]!.p2x).toBeCloseTo(-1, 8)
+    expect(quads[1]!.p2y).toBeCloseTo(0, 8)
+  })
+
+  it('miter falls back to bevel when miter length exceeds miterLimit × halfWidth', () => {
+    // Very acute angle — 10° turn. Miter length blows up.
+    const acute: JoinContext = {
+      cornerX: 0, cornerY: 0,
+      tangentA: [1, 0],
+      tangentB: [Math.cos(Math.PI - 10 * Math.PI / 180), Math.sin(Math.PI - 10 * Math.PI / 180)],
+      endA: { x: 0, y: 1 },
+      startB: { x: 0, y: 0 }, // placeholder; miter calc doesn't use this directly
+      halfWidth: 1,
+      joinStyle: 'miter',
+      miterLimit: 2,
+    }
+    const quads = insertJoin(acute)
+    // Fall-back bevel = single straight quad.
+    expect(quads).toHaveLength(1)
+  })
+
+  it('round at 90° emits two quadratics approximating the arc', () => {
+    // Delta angle from (0,1) to (-1,0) around the corner origin: π/2
+    // (CCW). At a 60° max step, that's 2 segments.
+    const quads = insertJoin({ ...corner90, joinStyle: 'round' })
+    expect(quads).toHaveLength(2)
+    // First and last endpoints match the offset endpoints.
+    expect(quads[0]!.p0x).toBeCloseTo(0, 8)
+    expect(quads[0]!.p0y).toBeCloseTo(1, 8)
+    expect(quads[quads.length - 1]!.p2x).toBeCloseTo(-1, 8)
+    expect(quads[quads.length - 1]!.p2y).toBeCloseTo(0, 8)
+    // All sampled midpoints lie approximately on the arc of radius 1
+    // centered at the corner.
+    for (const q of quads) {
+      const mx = 0.25 * q.p0x + 0.5 * q.p1x + 0.25 * q.p2x
+      const my = 0.25 * q.p0y + 0.5 * q.p1y + 0.25 * q.p2y
+      const r = Math.hypot(mx, my)
+      expect(r).toBeGreaterThan(0.98)
+      expect(r).toBeLessThan(1.02)
+    }
+  })
+
+  it('round at 180° emits three quadratics (60°-per-step budget)', () => {
+    // A U-turn: endA at +x axis, startB at -x axis, corner at origin,
+    // tangentA = +y, tangentB = -y.
+    const uturn: JoinContext = {
+      cornerX: 0, cornerY: 0,
+      tangentA: [0, 1],
+      tangentB: [0, -1],
+      endA: { x: 1, y: 0 },
+      startB: { x: -1, y: 0 },
+      halfWidth: 1,
+      joinStyle: 'round',
+      miterLimit: 4,
+    }
+    const quads = insertJoin(uturn)
+    // π of arc / (π/3) max step = 3 segments.
+    expect(quads).toHaveLength(3)
   })
 })
