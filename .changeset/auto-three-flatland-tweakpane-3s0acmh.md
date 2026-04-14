@@ -5,13 +5,9 @@
 > Branch: feat-slug
 > PR: https://github.com/thejustinwalsh/three-flatland/pull/20
 
-### `usePaneInput` — readonly monitors and custom formatters
+## Changes
 
-- `PaneInputOptions.readonly` — renders the binding as a non-interactive monitor; value still updates when `setValue` is called
-- `PaneInputOptions.format` — custom display formatter (e.g. `(v) => v.toFixed(2)`), forwarded to tweakpane's native `format` option
+- `PaneInputOptions`: added `readonly` and `format` fields so `usePaneInput` can create read-only monitors with custom value formatters
+- `createPane`: fixed z-index stacking — `1000` is now applied to the `.tp-dfwv` wrapper element that tweakpane creates as a body sibling, not just the inner pane root; previously the z-index had no effect when competing with full-viewport overlays
 
-### `createPane` — z-index fix for default wrapper
-
-- Fixed z-index application: tweakpane wraps `pane.element` in a `.tp-dfwv` body-sibling div that forms the actual stacking context; z-index is now applied to that wrapper (when it exists) so the pane correctly floats above full-viewport canvas overlays
-
-Added `readonly` and `format` options to `usePaneInput`, and fixed `createPane` z-index so the pane reliably stacks above canvas elements in full-screen examples.
+`usePaneInput` now supports monitor-style bindings; the pane wrapper correctly floats above full-viewport canvas elements in both plain Three.js and R3F setups.
