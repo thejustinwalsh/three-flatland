@@ -34,4 +34,8 @@ export { ForwardPlusLighting, TILE_SIZE, MAX_LIGHTS_PER_TILE } from './ForwardPl
 export { worldToUV, uvToWorld } from './coordUtils'
 
 // Utility: wrap lighting with per-instance light flags for batched sprites
-export { wrapWithLightFlags, readReceiveShadowsFlag } from './wrapWithLightFlags'
+export {
+  wrapWithLightFlags,
+  readReceiveShadowsFlag,
+  readCastShadowFlag,
+} from './wrapWithLightFlags'

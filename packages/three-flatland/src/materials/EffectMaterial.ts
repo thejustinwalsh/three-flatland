@@ -6,12 +6,7 @@ import type { InstanceAttributeConfig, InstanceAttributeType } from '../pipeline
 import type { MaterialEffect, EffectSchemaValue, SchemaToNodeType, ChannelNodeContext } from './MaterialEffect'
 import { channelDefaults } from './channels'
 
-/**
- * System flags (lit, receiveShadows) occupy the lowest bits of the effect flags bitmask.
- * MaterialEffect enable bits start at this offset to avoid collision.
- * Must match EFFECT_BIT_OFFSET in Sprite2D.ts.
- */
-const EFFECT_BIT_OFFSET = 2
+import { EFFECT_BIT_OFFSET } from './effectFlagBits'
 
 // ============================================
 // Color Transform Types
