@@ -1,9 +1,11 @@
 import { describe, it, expect } from 'vitest'
 import {
+  insertCap,
   insertJoin,
   offsetQuadraticBezier,
   subdivideForOffset,
   unitTangentAt,
+  type CapContext,
   type JoinContext,
 } from './strokeOffsetter'
 import type { QuadCurve } from '../types'
@@ -354,5 +356,72 @@ describe('insertJoin', () => {
     const quads = insertJoin(uturn)
     // π of arc / (π/3) max step = 3 segments.
     expect(quads).toHaveLength(3)
+  })
+})
+
+describe('insertCap', () => {
+  // Reusable end-cap context: straight horizontal stroke of half-width 1
+  // terminating at origin, traveling +x.
+  //   outerEnd = (0, 1)   — left-hand offset
+  //   innerEnd = (0, -1)  — right-hand offset
+  //   tangent  = (1, 0)   — out of the contour
+  const endCap: CapContext = {
+    endpointX: 0, endpointY: 0,
+    tangent: [1, 0],
+    outerEnd: { x: 0, y: 1 },
+    innerEnd: { x: 0, y: -1 },
+    halfWidth: 1,
+    capStyle: 'flat',
+  }
+
+  it('flat cap: 1 straight quad outer→inner, no extension past endpoint', () => {
+    const quads = insertCap({ ...endCap, capStyle: 'flat' })
+    expect(quads).toHaveLength(1)
+    expect(quads[0]!.p0x).toBeCloseTo(0, 10)
+    expect(quads[0]!.p0y).toBeCloseTo(1, 10)
+    expect(quads[0]!.p2x).toBeCloseTo(0, 10)
+    expect(quads[0]!.p2y).toBeCloseTo(-1, 10)
+    // Midpoint is on the chord — no extension
+    expect(quads[0]!.p1x).toBeCloseTo(0, 10)
+    expect(quads[0]!.p1y).toBeCloseTo(0, 10)
+  })
+
+  it('square cap: 3 straight quads, outer rectangle half-width past endpoint', () => {
+    const quads = insertCap({ ...endCap, capStyle: 'square' })
+    expect(quads).toHaveLength(3)
+    // Outer edge extends along tangent from (0,1) to (1,1)
+    expect(quads[0]!.p0x).toBeCloseTo(0, 10); expect(quads[0]!.p0y).toBeCloseTo(1, 10)
+    expect(quads[0]!.p2x).toBeCloseTo(1, 10); expect(quads[0]!.p2y).toBeCloseTo(1, 10)
+    // Across: (1,1) → (1,-1)
+    expect(quads[1]!.p2x).toBeCloseTo(1, 10); expect(quads[1]!.p2y).toBeCloseTo(-1, 10)
+    // Back to inner: (1,-1) → (0,-1)
+    expect(quads[2]!.p2x).toBeCloseTo(0, 10); expect(quads[2]!.p2y).toBeCloseTo(-1, 10)
+  })
+
+  it('triangle cap: 2 straight quads meeting at apex half-width past endpoint', () => {
+    const quads = insertCap({ ...endCap, capStyle: 'triangle' })
+    expect(quads).toHaveLength(2)
+    // Apex at (1, 0) — endpoint + tangent·halfWidth.
+    expect(quads[0]!.p2x).toBeCloseTo(1, 10); expect(quads[0]!.p2y).toBeCloseTo(0, 10)
+    expect(quads[1]!.p0x).toBeCloseTo(1, 10); expect(quads[1]!.p0y).toBeCloseTo(0, 10)
+    // Endpoints match outer/inner.
+    expect(quads[0]!.p0y).toBeCloseTo(1, 10)
+    expect(quads[1]!.p2y).toBeCloseTo(-1, 10)
+  })
+
+  it('round cap: emits semicircle approximated by ≤60°-per-segment quads', () => {
+    const quads = insertCap({ ...endCap, capStyle: 'round' })
+    // 180° arc / 60° max = 3 segments.
+    expect(quads).toHaveLength(3)
+    // Start/end match outer/inner.
+    expect(quads[0]!.p0x).toBeCloseTo(0, 8)
+    expect(quads[0]!.p0y).toBeCloseTo(1, 8)
+    expect(quads[quads.length - 1]!.p2x).toBeCloseTo(0, 8)
+    expect(quads[quads.length - 1]!.p2y).toBeCloseTo(-1, 8)
+    // Arc bulges outward (positive x direction — matches tangent).
+    // Every segment's p1 has x > 0.
+    for (const q of quads) {
+      expect(q.p1x).toBeGreaterThan(0)
+    }
   })
 })

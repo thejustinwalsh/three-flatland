@@ -411,4 +411,133 @@ function intersectLines(
   return { x: ax + s * adx, y: ay + s * ady }
 }
 
+// ─── Cap insertion (Task 16.4) ───────────────────────────────────────
+
+export type CapStyle = 'flat' | 'square' | 'round' | 'triangle'
+
+export interface CapContext {
+  /**
+   * The source endpoint being capped. For the start cap (contour's
+   * very first vertex), this is the original p0 of the first curve;
+   * for the end cap, the original p2 of the last curve.
+   */
+  endpointX: number
+  endpointY: number
+  /**
+   * Unit tangent at the endpoint, pointing **out of** the contour
+   * (away from the rest of the curve). For the end cap this is the
+   * same direction the final curve is travelling; for the start cap
+   * it's the reverse of the initial tangent.
+   */
+  tangent: [number, number]
+  /** Outer offset endpoint (on the +halfWidth side of the endpoint). */
+  outerEnd: { x: number; y: number }
+  /** Inner offset endpoint (on the -halfWidth side of the endpoint). */
+  innerEnd: { x: number; y: number }
+  /** Signed stroke half-width (sign matches the outer-offset direction). */
+  halfWidth: number
+  capStyle: CapStyle
+}
+
+/**
+ * Emit cap geometry from `outerEnd` to `innerEnd`, going "around"
+ * the endpoint outside the stroke path. Called once per open-contour
+ * endpoint; closed contours never need caps.
+ *
+ * - **flat**: 1 straight quadratic from outer to inner (no extension
+ *   past the endpoint).
+ * - **square**: 3 straight quadratics forming a rectangle half-width
+ *   beyond the endpoint along the tangent: outer → outer+tangent·hw →
+ *   inner+tangent·hw → inner.
+ * - **round**: semicircle from outer to inner centered at the
+ *   endpoint, radius `|halfWidth|`, split into ≤60°-per-segment
+ *   quadratics (same approach as round joins).
+ * - **triangle**: 2 straight quadratics forming an isosceles triangle
+ *   half-width beyond the endpoint: outer → apex → inner, where apex
+ *   = endpoint + tangent · halfWidth.
+ */
+export function insertCap(ctx: CapContext): QuadCurve[] {
+  const { outerEnd, innerEnd, endpointX, endpointY, tangent, halfWidth, capStyle } = ctx
+  const r = Math.abs(halfWidth)
+
+  if (capStyle === 'flat') {
+    return [straightQuad(outerEnd.x, outerEnd.y, innerEnd.x, innerEnd.y)]
+  }
+
+  if (capStyle === 'square') {
+    const ox = tangent[0] * r
+    const oy = tangent[1] * r
+    const outerExt = { x: outerEnd.x + ox, y: outerEnd.y + oy }
+    const innerExt = { x: innerEnd.x + ox, y: innerEnd.y + oy }
+    return [
+      straightQuad(outerEnd.x, outerEnd.y, outerExt.x, outerExt.y),
+      straightQuad(outerExt.x, outerExt.y, innerExt.x, innerExt.y),
+      straightQuad(innerExt.x, innerExt.y, innerEnd.x, innerEnd.y),
+    ]
+  }
+
+  if (capStyle === 'triangle') {
+    const apex = {
+      x: endpointX + tangent[0] * r,
+      y: endpointY + tangent[1] * r,
+    }
+    return [
+      straightQuad(outerEnd.x, outerEnd.y, apex.x, apex.y),
+      straightQuad(apex.x, apex.y, innerEnd.x, innerEnd.y),
+    ]
+  }
+
+  // round — semicircle from outerEnd to innerEnd centered at endpoint.
+  if (r < 1e-10) {
+    return [straightQuad(outerEnd.x, outerEnd.y, innerEnd.x, innerEnd.y)]
+  }
+
+  const a0 = Math.atan2(outerEnd.y - endpointY, outerEnd.x - endpointX)
+  const a1 = Math.atan2(innerEnd.y - endpointY, innerEnd.x - endpointX)
+  // For a cap we go the *long way* around — 180° across the endpoint,
+  // not the shortest arc (which would go back through the contour
+  // interior). Determine direction by checking whether the tangent
+  // sits on the correct side: the cap arc should bulge in the
+  // direction of `tangent` (away from the contour).
+  let delta = a1 - a0
+  // Normalize to [-π, π].
+  while (delta > Math.PI) delta -= 2 * Math.PI
+  while (delta < -Math.PI) delta += 2 * Math.PI
+  // The correct cap direction is the one whose midpoint falls in the
+  // half-plane defined by `tangent`. Midpoint at angle `a0 + delta/2`.
+  const midAngle = a0 + delta / 2
+  const midX = Math.cos(midAngle)
+  const midY = Math.sin(midAngle)
+  // If midpoint direction is anti-parallel to tangent, flip delta to
+  // go around the other way.
+  if (midX * tangent[0] + midY * tangent[1] < 0) {
+    delta = delta > 0 ? delta - 2 * Math.PI : delta + 2 * Math.PI
+  }
+
+  const maxStep = Math.PI / 3
+  const nSegments = Math.max(1, Math.ceil(Math.abs(delta) / maxStep))
+  const step = delta / nSegments
+
+  const out: QuadCurve[] = []
+  for (let i = 0; i < nSegments; i++) {
+    const startAngle = a0 + step * i
+    const endAngle = a0 + step * (i + 1)
+    const p0x = endpointX + r * Math.cos(startAngle)
+    const p0y = endpointY + r * Math.sin(startAngle)
+    const p2x = endpointX + r * Math.cos(endAngle)
+    const p2y = endpointY + r * Math.sin(endAngle)
+    const tax = -Math.sin(startAngle)
+    const tay = Math.cos(startAngle)
+    const tbx = -Math.sin(endAngle)
+    const tby = Math.cos(endAngle)
+    const cp = intersectLines(p0x, p0y, tax, tay, p2x, p2y, -tbx, -tby)
+    if (cp) {
+      out.push({ p0x, p0y, p1x: cp.x, p1y: cp.y, p2x, p2y })
+    } else {
+      out.push(straightQuad(p0x, p0y, p2x, p2y))
+    }
+  }
+  return out
+}
+
 
