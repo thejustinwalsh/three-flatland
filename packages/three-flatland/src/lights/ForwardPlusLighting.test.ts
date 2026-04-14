@@ -140,6 +140,117 @@ describe('ForwardPlusLighting', () => {
     expect(typeof lookup).toBe('function')
   })
 
+  it('should skip lights that do not reach a tile (distance cutoff)', () => {
+    const fp = new ForwardPlusLighting()
+    fp.init(64, 64)
+    fp.setWorldBounds(new Vector2(64, 64), new Vector2(0, 0))
+
+    // Small-distance light in the far corner — should only affect nearby tiles.
+    const light = new Light2D({
+      type: 'point',
+      position: [2, 2],
+      intensity: 1,
+      distance: 4,
+    })
+    fp.update([light])
+
+    const data = fp.tileTexture!.image.data as Float32Array
+    const blocksPerTile = MAX_LIGHTS_PER_TILE / 4
+    const tileCountX = Math.ceil(64 / TILE_SIZE)
+    const tileCountY = Math.ceil(64 / TILE_SIZE)
+
+    // The light is at (2,2) with radius 4 → must reach tile (0,0) but not the
+    // far-corner tile.
+    const tileHasLight = (tx: number, ty: number): boolean => {
+      const tileIdx = ty * tileCountX + tx
+      const base = tileIdx * blocksPerTile * 4
+      for (let i = 0; i < MAX_LIGHTS_PER_TILE; i++) {
+        if (data[base + i] !== 0) return true
+      }
+      return false
+    }
+    expect(tileHasLight(0, 0)).toBe(true)
+    expect(tileHasLight(tileCountX - 1, tileCountY - 1)).toBe(false)
+  })
+
+  it('should evict the weakest light when a tile overflows', () => {
+    const fp = new ForwardPlusLighting()
+    fp.init(16, 16) // single tile
+    fp.setWorldBounds(new Vector2(16, 16), new Vector2(0, 0))
+
+    // MAX_LIGHTS_PER_TILE dim lights (intensity 0.01) followed by one bright.
+    const lights: Light2D[] = []
+    for (let i = 0; i < MAX_LIGHTS_PER_TILE; i++) {
+      lights.push(
+        new Light2D({ type: 'point', position: [8, 8], intensity: 0.01 })
+      )
+    }
+    lights.push(
+      new Light2D({ type: 'point', position: [8, 8], intensity: 100 })
+    )
+
+    fp.update(lights)
+
+    const data = fp.tileTexture!.image.data as Float32Array
+    // Light IDs are lightIdx+1, so the bright light (last) is ID 17.
+    let brightFound = false
+    for (let i = 0; i < MAX_LIGHTS_PER_TILE; i++) {
+      if (data[i] === MAX_LIGHTS_PER_TILE + 1) brightFound = true
+    }
+    expect(brightFound).toBe(true)
+  })
+
+  it('should NOT evict when incoming score ties with the weakest slot', () => {
+    const fp = new ForwardPlusLighting()
+    fp.init(16, 16)
+    fp.setWorldBounds(new Vector2(16, 16), new Vector2(0, 0))
+
+    // All lights identical — the first MAX should win, the overflow should be
+    // dropped (no thrash on ties).
+    const lights: Light2D[] = []
+    for (let i = 0; i < MAX_LIGHTS_PER_TILE + 1; i++) {
+      lights.push(
+        new Light2D({ type: 'point', position: [8, 8], intensity: 1 })
+      )
+    }
+
+    fp.update(lights)
+
+    const data = fp.tileTexture!.image.data as Float32Array
+    const ids = new Set<number>()
+    for (let i = 0; i < MAX_LIGHTS_PER_TILE; i++) ids.add(data[i] as number)
+    // Must NOT contain the last light's ID (MAX+1); must contain ID 1..MAX.
+    expect(ids.has(MAX_LIGHTS_PER_TILE + 1)).toBe(false)
+    for (let id = 1; id <= MAX_LIGHTS_PER_TILE; id++) {
+      expect(ids.has(id)).toBe(true)
+    }
+  })
+
+  it('should always place directional lights in every tile', () => {
+    const fp = new ForwardPlusLighting()
+    fp.init(64, 64)
+    fp.setWorldBounds(new Vector2(64, 64), new Vector2(0, 0))
+
+    const sun = new Light2D({
+      type: 'directional',
+      direction: [1, -1],
+      intensity: 1,
+    })
+    fp.update([sun])
+
+    const data = fp.tileTexture!.image.data as Float32Array
+    const blocksPerTile = MAX_LIGHTS_PER_TILE / 4
+    const tileCountX = Math.ceil(64 / TILE_SIZE)
+    const tileCountY = Math.ceil(64 / TILE_SIZE)
+    for (let ty = 0; ty < tileCountY; ty++) {
+      for (let tx = 0; tx < tileCountX; tx++) {
+        const tileIdx = ty * tileCountX + tx
+        const base = tileIdx * blocksPerTile * 4
+        expect(data[base]).toBe(1)
+      }
+    }
+  })
+
   it('should dispose without errors', () => {
     const fp = new ForwardPlusLighting()
     fp.init(64, 64)
