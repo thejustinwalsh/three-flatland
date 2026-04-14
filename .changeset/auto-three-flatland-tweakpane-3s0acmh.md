@@ -7,11 +7,15 @@
 
 **New features**
 
-- `usePaneRadioGrid` React hook (`three-flatland/tweakpane/react`) backed by the essentials radiogrid blade — inline button-bar selector with active-state affordance, suited for scene/mode toggles
-- `PaneInputOptions` extended with `readonly` and `format` fields, allowing readonly monitors with custom value formatters
+- `usePaneRadioGrid` hook (react subpath): inline button-bar selector backed by Tweakpane essentials' `radiogrid` blade; active-state affordance reads better than a dropdown for scene/mode toggles
+- `PaneInputOptions` extended with `readonly` and `format` for readonly monitors with custom value formatters
+- `z-index: 1000` now applied to `.tp-dfwv` wrapper (the actual stacking context), fixing layering against other overlays
 
 **Bug fixes**
 
-- `createPane` now applies `z-index: 1000` to the `.tp-dfwv` wrapper element (the actual stacking context) instead of the inner `pane.element`, fixing pane rendering behind other overlays
+- Checkbox hit target stretched to full control box (`width/height: var(--cnt-usz)`); clicks land directly on `<input>` without unreliable `<label>` forwarding
+- Checkbox box surface unified with other controls (`rgba(28,40,77,0.6)`); check stroke turns accent pink on `:checked`
+- `useWindowSize` now tracks `{ w, h, dpr }` and subscribes to a `resolution` media query; canvas resizes correctly on monitor swap without dimension change
+- `document.fullscreenchange` handled in addition to `resize`; double-measurement (immediate + next RAF) catches post-transition layout settle
 
-Added `usePaneRadioGrid` hook and readonly monitor support; fixed pane stacking context so the panel consistently renders above page overlays.
+Adds `usePaneRadioGrid`, `readonly`/`format` monitor options, and fixes checkbox hit target, DPR tracking, and fullscreen resize handling.
