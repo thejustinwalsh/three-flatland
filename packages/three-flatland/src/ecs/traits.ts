@@ -1,6 +1,6 @@
 import { trait, relation } from 'koota'
 import type { Entity, Trait } from 'koota'
-import type { Group, Object3D, OrthographicCamera, Vector2 } from 'three'
+import type { Group, Object3D, OrthographicCamera, Scene, Vector2 } from 'three'
 import type { WebGPURenderer } from 'three/webgpu'
 import type { Sprite2D } from '../sprites/Sprite2D'
 import type { SpriteBatch } from '../pipeline/SpriteBatch'
@@ -10,6 +10,7 @@ import type { LightEffect, LightEffectRuntimeContext } from '../lights/LightEffe
 import type { LightStore } from '../lights/LightStore'
 import type { Light2D } from '../lights/Light2D'
 import type { SDFGenerator } from '../lights/SDFGenerator'
+import type { OcclusionPass } from '../lights/OcclusionPass'
 import type { ChannelName } from '../materials/channels'
 import type { SystemSchedule } from './SystemSchedule'
 import type Node from 'three/src/nodes/core/Node.js'
@@ -189,6 +190,37 @@ export const LightEffectTrait = trait(() => ({
  * Spawned by Flatland.setLighting(); lighting ECS systems read from this.
  * Replaces the scattered private fields on Flatland.
  */
+/**
+ * World-level singleton owning the shared shadow pipeline infrastructure.
+ *
+ * Multiple LightEffects can depend on SDF data (DefaultLightEffect for
+ * shadows, RadianceLightEffect for GI). Rather than each effect owning
+ * its own SDFGenerator, the pipeline is shared at the world level.
+ *
+ * Lifecycle: `shadowPipelineSystem` owns this trait end-to-end — it
+ * allocates the generators when the active effect declares
+ * `needsShadows`, resizes them as the viewport changes, runs the
+ * per-frame pre-pass, and disposes on detach. Flatland does not touch
+ * these fields.
+ *
+ * Fast-path contract: every field here is either a nullable object
+ * reference or a small scalar. Consumers read via `entity.get(ShadowPipeline)`
+ * (O(1) pointer deref in Koota) and mutate in place. No per-frame
+ * allocation.
+ */
+export const ShadowPipeline = trait(() => ({
+  /** JFA SDF generator. Null while inactive. */
+  sdfGenerator: null as SDFGenerator | null,
+  /** Occluder silhouette pre-pass. Null while inactive. */
+  occlusionPass: null as OcclusionPass | null,
+  /** Last SDF render-target width (post-resolution-scale). */
+  width: 0,
+  /** Last SDF render-target height (post-resolution-scale). */
+  height: 0,
+  /** True once the first-frame init() has allocated GPU resources. */
+  initialized: false,
+}))
+
 export const LightingContext = trait(() => ({
   /** Active LightEffect instance. */
   effect: null as LightEffect | null,
@@ -213,6 +245,8 @@ export const LightingContext = trait(() => ({
   renderer: null as WebGPURenderer | null,
   /** Camera for world bounds computation. */
   camera: null as OrthographicCamera | null,
+  /** Scene containing the sprites being lit — needed by the shadow pre-pass. */
+  scene: null as Scene | null,
   /** World size in units (computed from camera frustum). */
   worldSize: null as Vector2 | null,
   /** World offset (camera left/bottom). */
