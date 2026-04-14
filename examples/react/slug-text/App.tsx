@@ -1,13 +1,15 @@
 import { Canvas, extend, useFrame, useThree } from '@react-three/fiber/webgpu'
-import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
+import { useState, useRef, useEffect, useMemo } from 'react'
 import { OrthographicCamera } from 'three'
 import { SlugText, SlugFontLoader } from '@three-flatland/slug/react'
 import type { SlugFont } from '@three-flatland/slug/react'
-
-import '@awesome.me/webawesome/dist/styles/themes/default.css'
-import WaRadioGroup from '@awesome.me/webawesome/dist/react/radio-group/index.js'
-import WaRadio from '@awesome.me/webawesome/dist/react/radio/index.js'
-import WaSlider from '@awesome.me/webawesome/dist/react/slider/index.js'
+import {
+  usePane,
+  usePaneFolder,
+  usePaneInput,
+  useStatsMonitor,
+} from '@three-flatland/tweakpane/react'
+import type { StatsHandle } from '@three-flatland/tweakpane/react'
 
 extend({ SlugText })
 
@@ -26,9 +28,16 @@ const MODE_LABELS: Record<CompareMode, string> = {
   split: 'Canvas (Split)',
 }
 
-const FONT_SIZE_OPTIONS = [
-  '6', '8', '10', '12', '16', '24', '32', '48', '72', '96', '200',
-] as const
+const FONT_SIZE_OPTIONS = {
+  '6': 6, '8': 8, '10': 10, '12': 12, '16': 16, '24': 24,
+  '32': 32, '48': 48, '72': 72, '96': 96, '200': 200,
+}
+
+const COMPARE_MODE_OPTIONS = {
+  Onion: 'onion' as const,
+  Diff: 'diff' as const,
+  Split: 'split' as const,
+}
 
 function getLoremText(wordCount: number): string {
   const words: string[] = []
@@ -205,45 +214,12 @@ function SlugTextScene({
   )
 }
 
-// --- UI components ---
-
-/** Per-line pill rounding for wrapped radio groups (Web Awesome only). */
-function useWrappingGroup(ref: React.RefObject<HTMLDivElement | null>, selector: string) {
-  useEffect(() => {
-    const container = ref.current?.querySelector(selector)?.parentElement
-    if (!container) return
-    const update = () => {
-      const children = [...container.querySelectorAll(selector)]
-      if (!children.length) return
-      const lines: Element[][] = []
-      let lastTop = -Infinity
-      let line: Element[] = []
-      for (const child of children) {
-        const top = child.getBoundingClientRect().top
-        if (Math.abs(top - lastTop) > 2) {
-          if (line.length) lines.push(line)
-          line = []
-          lastTop = top
-        }
-        line.push(child)
-      }
-      if (line.length) lines.push(line)
-      for (const ln of lines) {
-        for (let i = 0; i < ln.length; i++) {
-          const pos =
-            ln.length === 1 ? 'solo' :
-            i === 0 ? 'first' :
-            i === ln.length - 1 ? 'last' : 'inner'
-          ln[i]!.setAttribute('data-line-pos', pos)
-        }
-      }
-    }
-    const ro = new ResizeObserver(update)
-    ro.observe(container)
-    update()
-    return () => ro.disconnect()
-  }, [ref, selector])
+function StatsTracker({ stats }: { stats: StatsHandle }) {
+  useStatsMonitor(stats)
+  return null
 }
+
+// --- Compare UI components ---
 
 function useWindowSize() {
   const [size, setSize] = useState(() => ({ w: window.innerWidth, h: window.innerHeight }))
@@ -255,7 +231,6 @@ function useWindowSize() {
   return size
 }
 
-/** Full-window Canvas2D reference comparison, driven by props. */
 function CompareCanvas({
   font,
   text,
@@ -280,7 +255,6 @@ function CompareCanvas({
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [computing, setComputing] = useState(false)
 
-  // Resize canvas (backing store + CSS) to match window with DPR.
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
@@ -291,7 +265,6 @@ function CompareCanvas({
     canvas.style.height = `${windowSize.h}px`
   }, [windowSize])
 
-  // Redraw on content / mode change.
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
@@ -327,7 +300,7 @@ function CompareCanvas({
           width: '100%',
           height: '100%',
           pointerEvents: 'none',
-          zIndex: 10,
+          zIndex: 1,
           clipPath: `inset(0 0 0 ${splitX}px)`,
         }}
       />
@@ -361,7 +334,7 @@ function SplitHandle({ splitX, onDrag }: { splitX: number; onDrag: (x: number) =
         left: splitX - 16,
         width: 32,
         height: '100%',
-        zIndex: 20,
+        zIndex: 2,
         cursor: 'col-resize',
       }}
       onPointerDown={(e) => {
@@ -410,13 +383,14 @@ function SplitLabels({ splitX, mode }: { splitX: number; mode: CompareMode }) {
   const base: React.CSSProperties = {
     position: 'fixed',
     top: 8,
-    zIndex: 21,
+    zIndex: 3,
     fontFamily: 'monospace',
     fontSize: 11,
     padding: '2px 6px',
     borderRadius: 3,
     background: 'rgba(0, 2, 28, 0.7)',
     pointerEvents: 'none',
+    whiteSpace: 'nowrap',
   }
   return (
     <>
@@ -433,8 +407,8 @@ function ComputingIndicator() {
         style={{
           position: 'fixed',
           top: 12,
-          right: 12,
-          zIndex: 200,
+          left: 12,
+          zIndex: 4,
         }}
       >
         <svg
@@ -461,41 +435,44 @@ function ComputingIndicator() {
 // --- App ---
 
 export default function App() {
+  const { pane, stats } = usePane()
+
+  const settings = usePaneFolder(pane, 'Settings')
+  const [fontSize] = usePaneInput<number>(settings, 'size', 48, { options: FONT_SIZE_OPTIONS })
+  const [wordCount] = usePaneInput<number>(settings, 'words', 20, { min: 5, max: 200, step: 1 })
+  const [stemDarken] = usePaneInput<number>(settings, 'darken', 0, { min: 0, max: 2, step: 0.01 })
+  const [thicken] = usePaneInput<number>(settings, 'thicken', 0, { min: 0, max: 2, step: 0.01 })
+
+  const mode = usePaneFolder(pane, 'Mode')
+  const [compareMode] = usePaneInput<CompareMode>(
+    mode,
+    'compare',
+    'onion',
+    { options: COMPARE_MODE_OPTIONS },
+  )
+  const [forceRuntime] = usePaneInput<boolean>(mode, 'forceRuntime', false, {
+    label: 'runtime',
+  })
+
   const [font, setFont] = useState<SlugFont | null>(null)
-  const [fontSize, setFontSize] = useState(48)
-  const [wordCount, setWordCount] = useState(20)
-  const [stemDarken, setStemDarken] = useState(0)
-  const [thicken, setThicken] = useState(0)
-  const [compareMode, setCompareMode] = useState<CompareMode>('onion')
-  const [forceRuntime, setForceRuntime] = useState(false)
-  const [loadStatus, setLoadStatus] = useState('Loading font...')
   const [gpuCanvas, setGpuCanvas] = useState<HTMLCanvasElement | null>(null)
   const windowSize = useWindowSize()
   const [splitX, setSplitX] = useState(() => Math.round(window.innerWidth / 2))
-  const uiRef = useRef<HTMLDivElement>(null)
-
   const text = useMemo(() => getLoremText(wordCount), [wordCount])
 
-  useWrappingGroup(uiRef, 'wa-radio')
-
-  // Re-center split on resize.
   useEffect(() => {
     setSplitX(Math.round(windowSize.w / 2))
   }, [windowSize.w])
 
-  // Load font — reloads when forceRuntime changes. Waits for @font-face to be
-  // ready so Canvas2D comparison renders with the same glyph metrics.
+  // Load font — reloads when forceRuntime changes. Wait for @font-face so
+  // Canvas2D comparison renders with the same glyph metrics.
   useEffect(() => {
     let cancelled = false
-    setLoadStatus('Loading font...')
     SlugFontLoader.clearCache()
     document.fonts.load('48px Inter-Slug').finally(() => {
-      const t0 = performance.now()
       SlugFontLoader.load(FONT_URL, { forceRuntime }).then((f) => {
         if (cancelled) return
-        const ms = (performance.now() - t0).toFixed(0)
         setFont(f)
-        setLoadStatus(`${forceRuntime ? 'Runtime gen' : 'Baked'}: ${f.glyphs.size} glyphs in ${ms}ms`)
       })
     })
     return () => {
@@ -503,32 +480,16 @@ export default function App() {
     }
   }, [forceRuntime])
 
-  // Hotkeys
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === 'r') setForceRuntime((v) => !v)
-    }
-    document.addEventListener('keydown', handler)
-    return () => document.removeEventListener('keydown', handler)
-  }, [])
-
-  const handleFontSizeChange = useCallback((e: Event) => {
-    setFontSize(parseInt((e.target as HTMLInputElement).value, 10))
-  }, [])
-
-  const handleCompareModeChange = useCallback((e: Event) => {
-    setCompareMode((e.target as HTMLInputElement).value as CompareMode)
-  }, [])
-
   return (
     <>
       <Canvas
         orthographic
         camera={{ position: [0, 0, 100], near: 0.1, far: 1000 }}
-        renderer={{ antialias: true }}
+        renderer={{ antialias: true, trackTimestamp: true }}
       >
         <color attach="background" args={['#00021c']} />
         <PixelCamera />
+        <StatsTracker stats={stats} />
         <CanvasGrabber onReady={setGpuCanvas} />
         {font && (
           <SlugTextScene
@@ -543,161 +504,22 @@ export default function App() {
       </Canvas>
 
       {font && (
-        <CompareCanvas
-          font={font}
-          text={text}
-          fontSize={fontSize}
-          mode={compareMode}
-          splitX={splitX}
-          gpuCanvas={gpuCanvas}
-          windowSize={windowSize}
-          stemDarken={stemDarken}
-          thicken={thicken}
-        />
+        <>
+          <CompareCanvas
+            font={font}
+            text={text}
+            fontSize={fontSize}
+            mode={compareMode}
+            splitX={splitX}
+            gpuCanvas={gpuCanvas}
+            windowSize={windowSize}
+            stemDarken={stemDarken}
+            thicken={thicken}
+          />
+          <SplitHandle splitX={splitX} onDrag={setSplitX} />
+          <SplitLabels splitX={splitX} mode={compareMode} />
+        </>
       )}
-
-      <SplitHandle splitX={splitX} onDrag={setSplitX} />
-      <SplitLabels splitX={splitX} mode={compareMode} />
-
-      {/* Status */}
-      <div
-        style={{
-          position: 'fixed',
-          top: 12,
-          left: 12,
-          zIndex: 100,
-          color: '#f0edd8',
-          fontFamily: 'monospace',
-          fontSize: 12,
-          background: 'rgba(0, 2, 28, 0.85)',
-          padding: '8px 12px',
-          borderRadius: 6,
-        }}
-      >
-        {loadStatus}
-      </div>
-
-      {/* UI panel */}
-      <div
-        ref={uiRef}
-        style={{
-          position: 'fixed',
-          bottom: 12,
-          right: 12,
-          zIndex: 100,
-          pointerEvents: 'auto',
-          padding: 10,
-          background: 'rgba(0, 2, 28, 0.85)',
-          borderRadius: 8,
-          maxWidth: 'calc(100vw - 24px)',
-        }}
-      >
-        <WaRadioGroup
-          label="Font Size"
-          size="small"
-          orientation="horizontal"
-          value={String(fontSize)}
-          onChange={handleFontSizeChange as unknown as React.FormEventHandler}
-        >
-          {FONT_SIZE_OPTIONS.map((v) => (
-            <WaRadio key={v} value={v} size="small" appearance="button">
-              {v}
-            </WaRadio>
-          ))}
-        </WaRadioGroup>
-        <div
-          style={{
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 6,
-            marginTop: 8,
-            color: 'var(--wa-color-text-normal)',
-            fontSize: 13,
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ width: 80 }}>Words</span>
-            <WaSlider
-              size="small"
-              min={5}
-              max={200}
-              value={wordCount}
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              onInput={(e: any) => setWordCount(Number(e.target.value))}
-              style={{ width: 100 }}
-            />
-            <span style={{ width: 28, textAlign: 'right' }}>{wordCount}</span>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ width: 80 }}>Darken</span>
-            <WaSlider
-              size="small"
-              min={0}
-              max={100}
-              value={Math.round((stemDarken / 2) * 100)}
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              onInput={(e: any) => setStemDarken((Number(e.target.value) / 100) * 2)}
-              style={{ width: 100 }}
-            />
-            <span style={{ width: 28, textAlign: 'right' }}>
-              {Math.round((stemDarken / 2) * 100)}
-            </span>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ width: 80 }}>Thicken</span>
-            <WaSlider
-              size="small"
-              min={0}
-              max={100}
-              value={Math.round((thicken / 2) * 100)}
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              onInput={(e: any) => setThicken((Number(e.target.value) / 100) * 2)}
-              style={{ width: 100 }}
-            />
-            <span style={{ width: 28, textAlign: 'right' }}>
-              {Math.round((thicken / 2) * 100)}
-            </span>
-          </div>
-          <WaRadioGroup
-            label="Compare"
-            size="small"
-            orientation="horizontal"
-            value={compareMode}
-            onChange={handleCompareModeChange as unknown as React.FormEventHandler}
-            style={{ marginTop: 4 }}
-          >
-            <WaRadio value="onion" size="small" appearance="button">
-              Onion
-            </WaRadio>
-            <WaRadio value="diff" size="small" appearance="button">
-              Diff
-            </WaRadio>
-            <WaRadio value="split" size="small" appearance="button">
-              Split
-            </WaRadio>
-          </WaRadioGroup>
-          <div
-            style={{
-              display: 'flex',
-              gap: 12,
-              marginTop: 4,
-              color: 'var(--wa-color-text-normal)',
-              fontSize: 13,
-            }}
-          >
-            <label style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
-              <input
-                type="checkbox"
-                checked={forceRuntime}
-                onChange={(e) => setForceRuntime(e.target.checked)}
-              />
-              <span>
-                <span style={{ textDecoration: 'underline' }}>R</span>untime Gen
-              </span>
-            </label>
-          </div>
-        </div>
-      </div>
     </>
   )
 }

@@ -10,8 +10,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@awesome.me/webawesome": "^3.0.0",
     "@three-flatland/slug": "^0.1.0-alpha.1",
+    "@three-flatland/tweakpane": "^0.1.0-alpha.2",
     "three": "^0.183.1"
   },
   "devDependencies": {
