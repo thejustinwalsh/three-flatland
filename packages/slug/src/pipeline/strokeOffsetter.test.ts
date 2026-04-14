@@ -3,6 +3,8 @@ import {
   insertCap,
   insertJoin,
   offsetQuadraticBezier,
+  reverseContour,
+  strokeOffsetter,
   subdivideForOffset,
   unitTangentAt,
   type CapContext,
@@ -157,33 +159,33 @@ describe('unitTangentAt', () => {
 })
 
 describe('offsetQuadraticBezier — straight segments', () => {
-  it('offsets a horizontal line upward by +halfWidth', () => {
-    // Line from (0,0) to (10,0) along +x axis. Left-hand normal = (0,1).
+  it('offsets a horizontal line downward by +halfWidth (right-hand normal)', () => {
+    // Line from (0,0) to (10,0) along +x axis. Right-hand normal = (0,-1).
+    // For font CCW contours, right-hand is the OUTSIDE of the fill.
     const line: QuadCurve = { p0x: 0, p0y: 0, p1x: 5, p1y: 0, p2x: 10, p2y: 0 }
     const out = offsetQuadraticBezier(line, 0.5)
     expect(out.p0x).toBeCloseTo(0, 10)
-    expect(out.p0y).toBeCloseTo(0.5, 10)
+    expect(out.p0y).toBeCloseTo(-0.5, 10)
     expect(out.p2x).toBeCloseTo(10, 10)
-    expect(out.p2y).toBeCloseTo(0.5, 10)
-    // p1 for a straight line falls back to the midpoint of p0' and p2'
+    expect(out.p2y).toBeCloseTo(-0.5, 10)
     expect(out.p1x).toBeCloseTo(5, 10)
-    expect(out.p1y).toBeCloseTo(0.5, 10)
+    expect(out.p1y).toBeCloseTo(-0.5, 10)
   })
 
-  it('offsets a horizontal line downward with a negative halfWidth', () => {
+  it('offsets a horizontal line upward with a negative halfWidth', () => {
     const line: QuadCurve = { p0x: 0, p0y: 0, p1x: 5, p1y: 0, p2x: 10, p2y: 0 }
     const out = offsetQuadraticBezier(line, -0.3)
-    expect(out.p0y).toBeCloseTo(-0.3, 10)
-    expect(out.p2y).toBeCloseTo(-0.3, 10)
+    expect(out.p0y).toBeCloseTo(0.3, 10)
+    expect(out.p2y).toBeCloseTo(0.3, 10)
   })
 
-  it('offsets a vertical line to the left (left-hand normal convention)', () => {
-    // (0,0) → (0,10) along +y axis. Left-hand normal = (-1, 0).
+  it('offsets a vertical line to the right (right-hand normal convention)', () => {
+    // (0,0) → (0,10) along +y axis. Right-hand normal = (1, 0).
     const line: QuadCurve = { p0x: 0, p0y: 0, p1x: 0, p1y: 5, p2x: 0, p2y: 10 }
     const out = offsetQuadraticBezier(line, 0.5)
-    expect(out.p0x).toBeCloseTo(-0.5, 10)
+    expect(out.p0x).toBeCloseTo(0.5, 10)
     expect(out.p0y).toBeCloseTo(0, 10)
-    expect(out.p2x).toBeCloseTo(-0.5, 10)
+    expect(out.p2x).toBeCloseTo(0.5, 10)
     expect(out.p2y).toBeCloseTo(10, 10)
   })
 })
@@ -210,13 +212,14 @@ describe('offsetQuadraticBezier — curved segments', () => {
   })
 
   it('inner + outer offsets of a symmetric curve are mirror images of the source', () => {
-    // Symmetric quad peaking at y=1
+    // Symmetric quad peaking at y=1. Tangent at p0 = (+, +), tangent at
+    // p2 = (+, -). With right-hand normal convention, +halfWidth pushes
+    // the curve toward -y (below the peak), -halfWidth toward +y.
     const c: QuadCurve = { p0x: -1, p0y: 0, p1x: 0, p1y: 1, p2x: 1, p2y: 0 }
-    const outer = offsetQuadraticBezier(c, 0.2)
-    const inner = offsetQuadraticBezier(c, -0.2)
-    // Outer lifts the peak (higher y), inner drops it (lower y)
-    expect(outer.p1y).toBeGreaterThan(c.p1y)
-    expect(inner.p1y).toBeLessThan(c.p1y)
+    const plus = offsetQuadraticBezier(c, 0.2)
+    const minus = offsetQuadraticBezier(c, -0.2)
+    expect(plus.p1y).toBeLessThan(c.p1y)
+    expect(minus.p1y).toBeGreaterThan(c.p1y)
   })
 
   it('zero offset returns the input control points', () => {
@@ -423,5 +426,152 @@ describe('insertCap', () => {
     for (const q of quads) {
       expect(q.p1x).toBeGreaterThan(0)
     }
+  })
+})
+
+describe('reverseContour', () => {
+  it('swaps traversal direction: last p2 becomes first p0', () => {
+    const curves: QuadCurve[] = [
+      { p0x: 0, p0y: 0, p1x: 1, p1y: 1, p2x: 2, p2y: 0 },
+      { p0x: 2, p0y: 0, p1x: 3, p1y: -1, p2x: 4, p2y: 0 },
+    ]
+    const rev = reverseContour(curves)
+    expect(rev).toHaveLength(2)
+    // First reversed curve starts at the original last curve's p2.
+    expect(rev[0]!.p0x).toBe(4); expect(rev[0]!.p0y).toBe(0)
+    expect(rev[0]!.p2x).toBe(2); expect(rev[0]!.p2y).toBe(0)
+    // p1 (control point) stays in place — just re-labeled.
+    expect(rev[0]!.p1x).toBe(3); expect(rev[0]!.p1y).toBe(-1)
+    // Second reversed curve picks up where the first left off.
+    expect(rev[1]!.p0x).toBe(2); expect(rev[1]!.p0y).toBe(0)
+    expect(rev[1]!.p2x).toBe(0); expect(rev[1]!.p2y).toBe(0)
+  })
+
+  it('round-trip: reverse twice = identity', () => {
+    const curves: QuadCurve[] = [
+      { p0x: 0, p0y: 0, p1x: 1, p1y: 1, p2x: 2, p2y: 0 },
+      { p0x: 2, p0y: 0, p1x: 3, p1y: -1, p2x: 4, p2y: 0 },
+    ]
+    const twice = reverseContour(reverseContour(curves))
+    expect(twice).toEqual(curves)
+  })
+})
+
+describe('strokeOffsetter — closed contours', () => {
+  // Unit square going CCW (each edge is a degenerate straight quad)
+  const unitSquare: QuadCurve[] = [
+    { p0x: 0, p0y: 0, p1x: 0.5, p1y: 0, p2x: 1, p2y: 0 },   // bottom: +x
+    { p0x: 1, p0y: 0, p1x: 1, p1y: 0.5, p2x: 1, p2y: 1 },   // right: +y
+    { p0x: 1, p0y: 1, p1x: 0.5, p1y: 1, p2x: 0, p2y: 1 },   // top: -x
+    { p0x: 0, p0y: 1, p1x: 0, p1y: 0.5, p2x: 0, p2y: 0 },   // left: -y
+  ]
+
+  it('emits outer + inner closed contours', () => {
+    const out = strokeOffsetter(unitSquare, true, {
+      halfWidth: 0.1,
+      joinStyle: 'miter',
+      miterLimit: 4,
+    })
+    expect(out).toHaveLength(2)
+    expect(out[0]!.closed).toBe(true)
+    expect(out[1]!.closed).toBe(true)
+    // Outer has more than the source count (joins add extras at corners).
+    expect(out[0]!.curves.length).toBeGreaterThanOrEqual(unitSquare.length)
+    expect(out[1]!.curves.length).toBeGreaterThanOrEqual(unitSquare.length)
+  })
+
+  it('outer contour is CCW (same as source); inner is reversed (CW)', () => {
+    const out = strokeOffsetter(unitSquare, true, { halfWidth: 0.1 })
+    // Shoelace formula — positive = CCW, negative = CW.
+    const signedArea = (curves: QuadCurve[]) => {
+      let sum = 0
+      for (const c of curves) sum += (c.p2x - c.p0x) * (c.p2y + c.p0y)
+      return -sum * 0.5
+    }
+    expect(signedArea(out[0]!.curves)).toBeGreaterThan(0)
+    expect(signedArea(out[1]!.curves)).toBeLessThan(0)
+  })
+
+  it('closed-contour offset has no cap (cap style is ignored)', () => {
+    const miter = strokeOffsetter(unitSquare, true, { halfWidth: 0.1, capStyle: 'round' })
+    const flat = strokeOffsetter(unitSquare, true, { halfWidth: 0.1, capStyle: 'flat' })
+    // Same curve count regardless of cap style — closed contours never
+    // invoke insertCap.
+    expect(miter[0]!.curves.length).toBe(flat[0]!.curves.length)
+    expect(miter[1]!.curves.length).toBe(flat[1]!.curves.length)
+  })
+
+  it('outer at halfWidth=0.1 grows the square by 0.1 on each side', () => {
+    const out = strokeOffsetter(unitSquare, true, { halfWidth: 0.1, joinStyle: 'miter' })
+    // Find extreme x and y values in the outer contour.
+    let xMin = Infinity, xMax = -Infinity, yMin = Infinity, yMax = -Infinity
+    for (const c of out[0]!.curves) {
+      for (const p of [[c.p0x, c.p0y], [c.p1x, c.p1y], [c.p2x, c.p2y]]) {
+        if (p[0]! < xMin) xMin = p[0]!
+        if (p[0]! > xMax) xMax = p[0]!
+        if (p[1]! < yMin) yMin = p[1]!
+        if (p[1]! > yMax) yMax = p[1]!
+      }
+    }
+    // Miter at 90° corner extends halfWidth·√2 on the diagonal bisector.
+    // xMin/yMin should be around -0.1 (inner-edge extended by miter).
+    expect(xMin).toBeLessThan(-0.09)
+    expect(xMax).toBeGreaterThan(1.09)
+    expect(yMin).toBeLessThan(-0.09)
+    expect(yMax).toBeGreaterThan(1.09)
+  })
+})
+
+describe('strokeOffsetter — open contours', () => {
+  // Horizontal line segment split into two curves.
+  const openLine: QuadCurve[] = [
+    { p0x: 0, p0y: 0, p1x: 1, p1y: 0, p2x: 2, p2y: 0 },
+    { p0x: 2, p0y: 0, p1x: 3, p1y: 0, p2x: 4, p2y: 0 },
+  ]
+
+  it('emits one closed contour stitching outer + end cap + inner + start cap', () => {
+    const out = strokeOffsetter(openLine, false, {
+      halfWidth: 0.1,
+      joinStyle: 'miter',
+      capStyle: 'flat',
+    })
+    expect(out).toHaveLength(1)
+    expect(out[0]!.closed).toBe(true)
+  })
+
+  it('flat cap produces minimum curve count (1 quad per cap)', () => {
+    const flat = strokeOffsetter(openLine, false, { halfWidth: 0.1, capStyle: 'flat' })
+    const round = strokeOffsetter(openLine, false, { halfWidth: 0.1, capStyle: 'round' })
+    const square = strokeOffsetter(openLine, false, { halfWidth: 0.1, capStyle: 'square' })
+    const triangle = strokeOffsetter(openLine, false, { halfWidth: 0.1, capStyle: 'triangle' })
+    // flat (1+1) < triangle (2+2) < square (3+3) < round (3+3) in quad count.
+    expect(flat[0]!.curves.length).toBeLessThan(triangle[0]!.curves.length)
+    expect(triangle[0]!.curves.length).toBeLessThanOrEqual(square[0]!.curves.length)
+    expect(square[0]!.curves.length).toBeLessThanOrEqual(round[0]!.curves.length)
+  })
+
+  it('closed-loop traversal — last curve ends where first begins', () => {
+    const out = strokeOffsetter(openLine, false, { halfWidth: 0.1, capStyle: 'flat' })
+    const curves = out[0]!.curves
+    const first = curves[0]!
+    const last = curves[curves.length - 1]!
+    expect(last.p2x).toBeCloseTo(first.p0x, 6)
+    expect(last.p2y).toBeCloseTo(first.p0y, 6)
+  })
+
+  it('adjacent curves share endpoints (p2 of one === p0 of next)', () => {
+    const out = strokeOffsetter(openLine, false, { halfWidth: 0.1, capStyle: 'flat' })
+    const curves = out[0]!.curves
+    for (let i = 0; i < curves.length - 1; i++) {
+      expect(curves[i]!.p2x).toBeCloseTo(curves[i + 1]!.p0x, 6)
+      expect(curves[i]!.p2y).toBeCloseTo(curves[i + 1]!.p0y, 6)
+    }
+  })
+})
+
+describe('strokeOffsetter — empty + degenerate input', () => {
+  it('empty source returns empty output', () => {
+    expect(strokeOffsetter([], true, { halfWidth: 0.1 })).toEqual([])
+    expect(strokeOffsetter([], false, { halfWidth: 0.1 })).toEqual([])
   })
 })

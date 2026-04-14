@@ -184,13 +184,12 @@ function clamp(v: number, lo: number, hi: number): number {
  *   3. Intersect the offset tangent lines through p0' and p2'
  *      to locate p1'
  *
- * Sign convention: the "left-hand" normal of tangent (tx, ty) is
- * (-ty, tx) — so a positive `offset` moves the curve to the left of
- * its direction of travel (p0 → p2). Pass a negative offset for the
- * opposite side. Callers walking a closed contour in a known winding
- * direction (font outlines: counter-clockwise = outside-on-the-left)
- * can use +halfWidth for the outer offset and -halfWidth for the
- * inner.
+ * Sign convention: the **right-hand** normal of tangent (tx, ty) is
+ * (ty, -tx) — positive `offset` moves the curve to the right of its
+ * direction of travel (p0 → p2). For font-glyph contours, which are
+ * conventionally CCW in em-space (Y-up), right-hand is *outside* the
+ * fill region — so `+halfWidth` gives the outer stroke edge without
+ * caller sign-flipping.
  *
  * Degenerate tangents (cusps, coincident control points) fall back
  * to the chord-direction tangent via `unitTangentAt`. If the two
@@ -211,12 +210,13 @@ export function offsetQuadraticBezier(
   const [t0x, t0y] = unitTangentAt(curve, 0)
   const [t1x, t1y] = unitTangentAt(curve, 1)
 
-  // Left-hand unit normals. Rotating (tx, ty) by +90° gives (-ty, tx),
-  // i.e. perpendicular, to the left of the direction of travel.
-  const n0x = -t0y
-  const n0y = t0x
-  const n1x = -t1y
-  const n1y = t1x
+  // Right-hand unit normals. Rotating (tx, ty) by -90° gives (ty, -tx),
+  // i.e. perpendicular, to the right of the direction of travel —
+  // which for CCW contours is the *outside* of the fill.
+  const n0x = t0y
+  const n0y = -t0x
+  const n1x = t1y
+  const n1y = -t1x
 
   // Offset the two anchor points.
   const p0x = curve.p0x + n0x * offset
@@ -541,3 +541,186 @@ export function insertCap(ctx: CapContext): QuadCurve[] {
 }
 
 
+
+// ─── Contour stitching + full offsetter API (Task 16.5 + 16.6) ──────
+
+/** A contour — ordered list of quadratic Beziers with a closed flag. */
+export interface Contour {
+  curves: QuadCurve[]
+  closed: boolean
+}
+
+export interface StrokeOffsetOptions {
+  /** Stroke half-width in the same coordinate space as the input curves. */
+  halfWidth: number
+  /** Default 'miter'. */
+  joinStyle?: JoinStyle
+  /** Default 'flat' — applies to open contours only. */
+  capStyle?: CapStyle
+  /** SVG default: 4. */
+  miterLimit?: number
+  /** Overrides for the adaptive subdivision tolerance. */
+  subdivide?: SubdivideOptions
+}
+
+/**
+ * Reverse a chain of quadratic Beziers so iteration order + per-curve
+ * p0/p2 swap traversal direction. Used when stitching the inner
+ * offset back into a closed loop.
+ */
+export function reverseContour(curves: readonly QuadCurve[]): QuadCurve[] {
+  const out: QuadCurve[] = []
+  for (let i = curves.length - 1; i >= 0; i--) {
+    const c = curves[i]!
+    out.push({
+      p0x: c.p2x, p0y: c.p2y,
+      p1x: c.p1x, p1y: c.p1y,
+      p2x: c.p0x, p2y: c.p0y,
+    })
+  }
+  return out
+}
+
+/**
+ * Offset one side of a source contour. Produces the chain of offset
+ * quadratics with joins inserted at each inter-curve vertex on the
+ * chosen side. Does not close the chain — stitching into a closed
+ * path is the caller's job (different for closed vs open source).
+ */
+function offsetOneSide(
+  source: readonly QuadCurve[],
+  signedHalfWidth: number,
+  joinStyle: JoinStyle,
+  miterLimit: number,
+  closed: boolean,
+  subdivide?: SubdivideOptions,
+): QuadCurve[] {
+  // Pre-compute the offset subs for each source curve so we can look
+  // up adjacent ends cheaply when inserting joins.
+  const perSource: QuadCurve[][] = source.map((c) =>
+    subdivideForOffset(c, Math.abs(signedHalfWidth), subdivide)
+      .map((sub) => offsetQuadraticBezier(sub, signedHalfWidth)),
+  )
+
+  const out: QuadCurve[] = []
+  for (let i = 0; i < source.length; i++) {
+    const mine = perSource[i]!
+    out.push(...mine)
+
+    // Emit a join between this curve and the next. For closed
+    // contours we wrap around to index 0; for open we skip the
+    // last-to-nothing step.
+    const nextIdx = i + 1 < source.length ? i + 1 : (closed ? 0 : -1)
+    if (nextIdx < 0) continue
+
+    const current = source[i]!
+    const next = source[nextIdx]!
+    const nextSubs = perSource[nextIdx]!
+
+    const lastSub = mine[mine.length - 1]!
+    const firstNextSub = nextSubs[0]!
+
+    const joinQuads = insertJoin({
+      cornerX: current.p2x,
+      cornerY: current.p2y,
+      tangentA: unitTangentAt(current, 1),
+      tangentB: unitTangentAt(next, 0),
+      endA: { x: lastSub.p2x, y: lastSub.p2y },
+      startB: { x: firstNextSub.p0x, y: firstNextSub.p0y },
+      halfWidth: signedHalfWidth,
+      joinStyle,
+      miterLimit,
+    })
+    out.push(...joinQuads)
+  }
+
+  return out
+}
+
+/**
+ * Full stroke offsetter. Given a source contour (closed or open) and
+ * stroke parameters, produce the closed offset contours that, when
+ * rendered through the Slug fill pipeline, yield the stroked shape.
+ *
+ * Output shape:
+ * - Closed source → two contours: outer loop (CCW preserving) and
+ *   inner loop reversed (CW), forming an annular ring. Fill rule
+ *   (non-zero or even-odd) renders only the stroke region between.
+ * - Open source → one closed contour stitching outer + end cap +
+ *   reversed inner + start cap.
+ *
+ * Sign convention: `halfWidth` is the magnitude; "outer" is the
+ * left-hand side of the source traversal. For font-glyph contours
+ * (CCW), left-hand is outside the fill — which is what you want.
+ */
+export function strokeOffsetter(
+  source: readonly QuadCurve[],
+  closed: boolean,
+  options: StrokeOffsetOptions,
+): Contour[] {
+  const {
+    halfWidth,
+    joinStyle = 'miter',
+    capStyle = 'flat',
+    miterLimit = 4,
+    subdivide,
+  } = options
+
+  if (source.length === 0) return []
+  const hw = Math.abs(halfWidth)
+
+  const outer = offsetOneSide(source, +hw, joinStyle, miterLimit, closed, subdivide)
+  const inner = offsetOneSide(source, -hw, joinStyle, miterLimit, closed, subdivide)
+
+  if (closed) {
+    // Two separate closed loops. Inner is reversed so winding opposes
+    // the outer — the fill rule reads it as a hole.
+    return [
+      { curves: outer, closed: true },
+      { curves: reverseContour(inner), closed: true },
+    ]
+  }
+
+  // Open source: stitch outer + end cap + reverse(inner) + start cap
+  // into a single closed contour.
+  const first = source[0]!
+  const last = source[source.length - 1]!
+
+  const endCap = insertCap({
+    endpointX: last.p2x,
+    endpointY: last.p2y,
+    tangent: unitTangentAt(last, 1),
+    outerEnd: { x: outer[outer.length - 1]!.p2x, y: outer[outer.length - 1]!.p2y },
+    innerEnd: { x: inner[inner.length - 1]!.p2x, y: inner[inner.length - 1]!.p2y },
+    halfWidth: hw,
+    capStyle,
+  })
+
+  const innerReversed = reverseContour(inner)
+
+  // Start cap — tangent points OUT of the contour at the start, so
+  // reverse the initial tangent.
+  const startTangentInto = unitTangentAt(first, 0)
+  const startTangentOut: [number, number] = [-startTangentInto[0], -startTangentInto[1]]
+  const startCap = insertCap({
+    endpointX: first.p0x,
+    endpointY: first.p0y,
+    tangent: startTangentOut,
+    // After innerReversed, we arrive at the first source curve's p0 on
+    // the inner side; we need to traverse around the endpoint back to
+    // outer's p0. outerEnd in cap context = where we are (inner side),
+    // innerEnd = where we want to end up (outer side).
+    outerEnd: {
+      x: innerReversed[innerReversed.length - 1]!.p2x,
+      y: innerReversed[innerReversed.length - 1]!.p2y,
+    },
+    innerEnd: { x: outer[0]!.p0x, y: outer[0]!.p0y },
+    halfWidth: hw,
+    capStyle,
+  })
+
+  return [{
+    curves: [...outer, ...endCap, ...innerReversed, ...startCap],
+    closed: true,
+  }]
+}
