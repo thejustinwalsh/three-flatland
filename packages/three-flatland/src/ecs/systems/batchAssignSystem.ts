@@ -150,8 +150,9 @@ function syncEffectBuffers(
   const tier = material._effectTier
   if (tier === 0) return
 
-  // Write flags to slot 0
+  // effectBuf0.x = system flags, effectBuf0.y = enable bits
   mesh.writeEffectSlot(slot, 0, 0, sprite._effectFlags)
+  mesh.writeEffectSlot(slot, 0, 1, sprite._effectEnableBits)
 
   // Write effect field values
   for (const effect of sprite._effects) {

@@ -45,13 +45,14 @@ describe('Sprite2D castsShadow flag', () => {
     expect(sprite._effectFlags).toBe(before)
   })
 
-  it('three system bits coexist without colliding with MaterialEffect bits', () => {
-    // EFFECT_BIT_OFFSET must reserve space for all three system bits.
-    expect(EFFECT_BIT_OFFSET).toBeGreaterThanOrEqual(3)
+  it('system flag bits occupy their own component so MaterialEffect bits are unaffected', () => {
+    // System flags live in effectBuf0.x; MaterialEffect enable bits live in
+    // effectBuf0.y. The components are disjoint, so EFFECT_BIT_OFFSET stays
+    // at 0 — the first registered effect's enable bit is bit 0 of y.
     expect(LIT_FLAG_MASK).toBe(1)
     expect(RECEIVE_SHADOWS_MASK).toBe(2)
     expect(CAST_SHADOW_MASK).toBe(4)
-    expect(1 << EFFECT_BIT_OFFSET).toBe(8) // first MaterialEffect bit = 8
+    expect(EFFECT_BIT_OFFSET).toBe(0)
   })
 
   it('toggling castsShadow does not deopt existing lit / receiveShadows state', () => {

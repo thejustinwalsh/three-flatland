@@ -252,15 +252,30 @@ export class Sprite2D extends Mesh {
   // ============================================
 
   /**
-   * Enable flags bitmask for packed effects.
-   * Bits 0-2 are reserved system flags (lit, receiveShadows, castsShadow).
-   * `lit` and `receiveShadows` default on; `castsShadow` defaults off
-   * (opt-in for shadow contribution). Bits 3+ are MaterialEffect enable
-   * flags (bit N+3 = effect at index N is enabled). All values stay
-   * within Float32's 24-bit mantissa range.
+   * System-flag bitmask written to `effectBuf0.x`.
+   *
+   * Bits:
+   *   0 — lit             (default on)
+   *   1 — receiveShadows  (default on)
+   *   2 — castsShadow     (default off, opt in)
+   *   3..23 — reserved for future system flags
+   *
+   * MaterialEffect enable bits live in a separate field
+   * ({@link _effectEnableBits}) written to `effectBuf0.y`.
    * @internal
    */
   _effectFlags: number = LIT_FLAG_MASK | RECEIVE_SHADOWS_MASK
+
+  /**
+   * MaterialEffect enable-bit bitmask written to `effectBuf0.y`.
+   *
+   * Bit N is set while the Nth registered MaterialEffect on this sprite's
+   * material is currently active. 24 slots, bits 0..23. Separate from
+   * {@link _effectFlags} so system flags don't compete with user-defined
+   * effect capacity.
+   * @internal
+   */
+  _effectEnableBits: number = 0
 
   /**
    * Active MaterialEffect instances on this sprite.
@@ -974,9 +989,9 @@ export class Sprite2D extends Mesh {
         }
       }
 
-      // Set enable bit
+      // Set enable bit (lives in effectBuf0.y, indexed from bit 0)
       const bitIndex = this.material._effectBitIndex.get(EffectClass.effectName)!
-      this._effectFlags |= (1 << bitIndex)
+      this._effectEnableBits |= (1 << bitIndex)
 
       // Add trait to entity (if enrolled)
       if (this._entity) {
@@ -1007,9 +1022,9 @@ export class Sprite2D extends Mesh {
     // 2. Link effect to this sprite's entity
     effect._attach(this)
 
-    // 3. Set enable bit in flags bitmask
+    // 3. Set enable bit (effectBuf0.y)
     const bitIndex = material._effectBitIndex.get(EffectClass.effectName)!
-    this._effectFlags |= (1 << bitIndex)
+    this._effectEnableBits |= (1 << bitIndex)
 
     // 4. Add trait to entity (if enrolled)
     if (this._entity) {
@@ -1047,9 +1062,9 @@ export class Sprite2D extends Mesh {
     const effectIndex = this._effects.indexOf(effect)
     if (effectIndex === -1) return this
 
-    // 1. Clear enable bit in flags bitmask
+    // 1. Clear enable bit (effectBuf0.y)
     const bitIndex = material._effectBitIndex.get(EffectClass.effectName)!
-    this._effectFlags &= ~(1 << bitIndex)
+    this._effectEnableBits &= ~(1 << bitIndex)
 
     // 2. Remove trait from entity (if enrolled)
     if (this._entity && this._entity.has(EffectClass._trait)) {
@@ -1099,8 +1114,9 @@ export class Sprite2D extends Mesh {
     const tier = material._effectTier
     if (tier === 0) return
 
-    // Write flags to slot 0
+    // Slot 0 (effectBuf0.x) = system flags; slot 1 (effectBuf0.y) = enable bits.
     this._writePackedSlotOwn(0, this._effectFlags)
+    this._writePackedSlotOwn(1, this._effectEnableBits)
 
     // Write effect field values to their packed positions
     for (const effect of this._effects) {
@@ -1159,8 +1175,9 @@ export class Sprite2D extends Mesh {
 
 
   /**
-   * Sync `_effectFlags` directly to the batch buffer for already-batched sprites.
-   * Writes flags to effectBuf0.x (slot 0, component 0) bypassing ECS change detection.
+   * Sync both per-sprite flag words to the batch buffer for already-batched
+   * sprites. Writes system flags to `effectBuf0.x` and enable bits to
+   * `effectBuf0.y`, bypassing ECS change detection.
    * @internal
    */
   _syncEffectFlagsToBatch(): void {
@@ -1172,7 +1189,10 @@ export class Sprite2D extends Mesh {
     const registry = registryEntities[0]!.get(BatchRegistry) as RegistryData | undefined
     if (!registry) return
     const batch = registry.batchSlots[bs.batchIdx]
-    if (batch) batch.writeEffectSlot(bs.slot, 0, 0, this._effectFlags)
+    if (batch) {
+      batch.writeEffectSlot(bs.slot, 0, 0, this._effectFlags)
+      batch.writeEffectSlot(bs.slot, 0, 1, this._effectEnableBits)
+    }
   }
 
   /**

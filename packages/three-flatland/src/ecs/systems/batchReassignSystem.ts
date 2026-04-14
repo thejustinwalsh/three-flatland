@@ -161,7 +161,9 @@ function syncAllBuffers(
 function writePackedEffects(slot: number, mesh: SpriteBatch, sprite: Sprite2D): void {
   const material = sprite.material
 
+  // effectBuf0.x = system flags, effectBuf0.y = enable bits
   mesh.writeEffectSlot(slot, 0, 0, sprite._effectFlags)
+  mesh.writeEffectSlot(slot, 0, 1, sprite._effectEnableBits)
 
   for (const effect of sprite._effects) {
     const EffectClass = effect.constructor as typeof MaterialEffect

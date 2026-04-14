@@ -254,8 +254,11 @@ export class EffectMaterial extends MeshBasicNodeMaterial {
     const bitIndex = this._effects.length - 1 + EFFECT_BIT_OFFSET
     this._effectBitIndex.set(effectClass.effectName, bitIndex)
 
-    // 2. Assign sequential float offsets for each field (after flags at slot 0)
-    let nextOffset = 1 // Start after the flags float
+    // 2. Assign sequential float offsets for each field. Slots 0 and 1 are
+    //    reserved: slot 0 (effectBuf0.x) = system flags, slot 1
+    //    (effectBuf0.y) = MaterialEffect enable bits. Effect field data
+    //    starts at slot 2 (effectBuf0.z).
+    let nextOffset = 2
     for (const existingEffect of this._effects) {
       for (const field of existingEffect._fields) {
         const key = `${existingEffect.effectName}_${field.name}`
@@ -268,12 +271,12 @@ export class EffectMaterial extends MeshBasicNodeMaterial {
       }
     }
 
-    // 3. Compute new total: 1 (flags) + sum of all effect data floats
+    // 3. Compute new total: 2 (system flags + enable bits) + sum of all effect data floats
     let dataFloats = 0
     for (const eff of this._effects) {
       dataFloats += eff._totalFloats
     }
-    this._effectTotalFloats = 1 + dataFloats
+    this._effectTotalFloats = 2 + dataFloats
 
     // 4. Compute new tier
     const oldTier = this._effectTier
@@ -491,15 +494,16 @@ export class EffectMaterial extends MeshBasicNodeMaterial {
 
       // ─── Phase 3: Chain color-transforming MaterialEffects ───────────
       if (effectData.length > 0) {
-        const flags = getPackedComponent(bufNodes, 0)
+        // Enable bits live in effectBuf0.y (slot 1); system flags occupy x.
+        const enableFlags = getPackedComponent(bufNodes, 1)
 
         for (const { effectClass, bitIndex, attrs, constants, isProvider } of effectData) {
           // Skip provider-only effects (they only produce channel data)
           if (isProvider) continue
 
-          // Extract enable bit: floor(mod(flags / 2^bitIndex, 2))
+          // Extract enable bit: floor(mod(enableFlags / 2^bitIndex, 2))
           const divisor = float(1 << bitIndex)
-          const shifted = floor(flags.div(divisor))
+          const shifted = floor(enableFlags.div(divisor))
           const enabled = mod(shifted, float(2.0))
 
           const effectResult = effectClass._node({
