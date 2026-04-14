@@ -22,6 +22,7 @@ import { GlobalUniforms } from './GlobalUniforms'
 import type { RenderStats } from './pipeline/types'
 import { Sprite2D } from './sprites/Sprite2D'
 import type { Sprite2DMaterial } from './materials/Sprite2DMaterial'
+import { MaterialEffect } from './materials/MaterialEffect'
 import type Node from 'three/src/nodes/core/Node.js'
 import type PassNode from 'three/src/nodes/display/PassNode.js'
 import type { WorldProvider } from './ecs/world'
@@ -414,6 +415,7 @@ export class Flatland extends Group implements WorldProvider {
           lctx.materials.add(child.material)
         }
         this.spriteGroup.add(child)
+        this._validateLightingChannels(child)
       } else if (child instanceof Light2D) {
         // Track lights separately for the lighting system
         if (!this._lights.includes(child)) {
@@ -764,6 +766,12 @@ export class Flatland extends Group implements WorldProvider {
 
       // Register lighting systems on the schedule (before sprite systems)
       this._ensureLightingSystems()
+
+      // Dev-time: warn on any already-added lit sprite whose MaterialEffects
+      // don't cover the lighting's declared channel `requires`. Without this,
+      // missing providers silently fall back to channelDefaults (flat
+      // normals, etc.) and "why does my lighting look wrong" takes an hour.
+      this._validateLightingChannels()
     } else {
       // Clearing lighting
       if (this._lightingContextEntity) {
@@ -844,6 +852,73 @@ export class Flatland extends Group implements WorldProvider {
       .prepend(lightMaterialAssignSystem)
       .prepend(lightEffectSystem)
       .prepend(lightSyncSystem)
+  }
+
+  /**
+   * WeakSet of sprites already warned about, so the same gap doesn't spam
+   * the console every time a sprite is re-added or lighting is re-attached.
+   */
+  private _channelWarnedSprites: WeakSet<Sprite2D> = new WeakSet()
+
+  /**
+   * Dev-only check: for the currently attached lighting effect's declared
+   * channel `requires`, ensure every lit sprite has at least one
+   * MaterialEffect with `provides` covering it.
+   *
+   * Missing providers silently fall back to `channelDefaults` at runtime
+   * (flat normals, etc.) which makes lighting look "off" without any
+   * actionable signal. This helper logs a focused warning per sprite
+   * identifying the specific missing channels.
+   *
+   * @param sprite If provided, validate only this sprite; otherwise walk
+   *               every sprite currently parented to the SpriteGroup.
+   */
+  private _validateLightingChannels(sprite?: Sprite2D): void {
+    if (typeof process !== 'undefined' && process.env?.['NODE_ENV'] === 'production') {
+      return
+    }
+    const effect = this._lightEffect
+    if (!effect) return
+    const ctor = effect.constructor as typeof LightEffect
+    const required = ctor.requires ?? []
+    if (required.length === 0) return
+
+    const check = (s: Sprite2D): void => {
+      if (!s.lit) return
+      if (this._channelWarnedSprites.has(s)) return
+
+      const provided = new Set<ChannelName>()
+      for (const eff of s._effects) {
+        const effCtor = eff.constructor as typeof MaterialEffect
+        for (const ch of effCtor.provides ?? []) provided.add(ch)
+      }
+
+      const missing = required.filter((ch) => !provided.has(ch))
+      if (missing.length === 0) return
+
+      this._channelWarnedSprites.add(s)
+      const name = s.name || '<unnamed>'
+      const lightName = (ctor as { lightName?: string }).lightName ?? ctor.name
+      console.warn(
+        `[flatland] Lit sprite "${name}" is missing channel provider(s) for: ${missing.join(', ')}. ` +
+          `The active LightEffect "${lightName}" declares requires: [${required.join(', ')}]. ` +
+          `Add a MaterialEffect that provides these channels (e.g. AutoNormalProvider for 'normal'), ` +
+          `or the channel will fall back to channelDefaults and lighting will look incorrect.`
+      )
+    }
+
+    if (sprite) {
+      check(sprite)
+      return
+    }
+    // Enumerate sprites via the ECS BatchRegistry — the canonical source of
+    // sprite membership. Sprites enroll into the batch rather than becoming
+    // scene-graph children, so spriteGroup.children is empty by design.
+    const registry = this._getRegistry()
+    if (!registry) return
+    for (const s of registry.spriteArr) {
+      if (s) check(s)
+    }
   }
 
   /**
