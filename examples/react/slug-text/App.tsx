@@ -493,46 +493,33 @@ function CompareCanvas({
     // Defer Canvas2D draws so the Slug WebGPU canvas has a chance to
     // render the new content before the compare overlay updates.
     // useEffect fires synchronously after commit, but R3F's useFrame
-    // (and thus the WebGPU submit) runs on the next RAF. Without a
-    // delay, Canvas2D paints one frame *ahead* of Slug — visible
-    // flash on scene toggle, word-count changes, etc.
+    // (and thus the WebGPU submit) runs on the next RAF — without a
+    // delay, Canvas2D paints one frame *ahead* of Slug and you see a
+    // visible flash on scene toggle, word-count changes, font reload.
     //
-    // requestIdleCallback runs after layout/paint/commit, guaranteeing
-    // the WebGPU frame has committed first. Timeout caps at ~2 frames
-    // (32ms) so bursty activity can't starve the compare. Safari has
-    // never shipped `requestIdleCallback`; fall back to `setTimeout`
-    // with the same budget so behavior stays equivalent across
-    // browsers.
-    type Handle = { kind: 'idle' | 'timeout', id: number }
-    const scheduleAfterFrame = (fn: () => void): Handle => {
-      if (typeof requestIdleCallback === 'function') {
-        return { kind: 'idle', id: requestIdleCallback(fn, { timeout: 32 }) }
-      }
-      return { kind: 'timeout', id: setTimeout(fn, 32) as unknown as number }
-    }
-    const cancelAfterFrame = (h: Handle) => {
-      if (h.kind === 'idle') cancelIdleCallback(h.id)
-      else clearTimeout(h.id)
-    }
-
+    // requestIdleCallback runs after layout/paint/commit, so the
+    // WebGPU frame has already committed by the time our callback
+    // fires. Timeout caps at ~2 frames so bursty activity can't
+    // starve the compare overlay. Safari is polyfilled at the
+    // example entry (main.tsx) — the API is universal here.
     if (mode === 'diff') {
       if (!gpuCanvas) return
       setComputing(true)
-      const id = scheduleAfterFrame(() => {
+      const idleId = requestIdleCallback(() => {
         drawDiff(ctx, gpuCanvas, font, text, fontSize, maxWidth, LINE_HEIGHT, fontFamily, preWrappedLines)
-      })
+      }, { timeout: 32 })
       const t = setTimeout(() => setComputing(false), 1000)
       return () => {
-        cancelAfterFrame(id)
+        cancelIdleCallback(idleId)
         clearTimeout(t)
       }
     }
 
     setComputing(false)
-    const id = scheduleAfterFrame(() => {
+    const idleId = requestIdleCallback(() => {
       drawCompareText(ctx, font, text, fontSize, maxWidth, LINE_HEIGHT, mode, fontFamily, preWrappedLines)
-    })
-    return () => cancelAfterFrame(id)
+    }, { timeout: 32 })
+    return () => cancelIdleCallback(idleId)
   }, [font, stack, text, fontSize, mode, stemDarken, thicken, windowSize, gpuCanvas, iconsMode])
 
   return (
