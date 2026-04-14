@@ -90,26 +90,90 @@ export class ForwardPlusLighting {
     this._tileData.fill(0)
 
     const lightCounts = new Uint8Array(this._tileCount)
-    const screenW = this._screenSize.x
-    const screenH = this._screenSize.y
-    const _worldToScreenX = screenW / this._worldSize.x
-    const _worldToScreenY = screenH / this._worldSize.y
+    // Per-tile parallel score array for reservoir eviction — only read
+    // when a tile hits MAX_LIGHTS_PER_TILE, so the hot path stays a bare
+    // append.
+    const tileScores = new Float32Array(this._tileCount * MAX_LIGHTS_PER_TILE)
 
-    // BRUTE FORCE: assign every non-ambient light to every tile
+    const tileCountX = this._tileCountX
+    const tileCountY = this._tileCountY
+    const worldSizeX = this._worldSize.x
+    const worldSizeY = this._worldSize.y
+    const worldOffsetX = this._worldOffset.x
+    const worldOffsetY = this._worldOffset.y
+    const tileWorldWidth = worldSizeX / tileCountX
+    const tileWorldHeight = worldSizeY / tileCountY
+
     for (let lightIdx = 0; lightIdx < lights.length; lightIdx++) {
       const light = lights[lightIdx]!
       if (!light.enabled) continue
       if (light.lightType === 'ambient') continue
 
-      for (let tileIdx = 0; tileIdx < this._tileCount; tileIdx++) {
-        const count = lightCounts[tileIdx]!
-        if (count >= MAX_LIGHTS_PER_TILE) continue
+      const isDirectional = light.lightType === 'directional'
+      const lx = light.position.x
+      const ly = light.position.y
+      const intensity = light.intensity
+      const cutoff = light.distance
+      const cutoffSq = cutoff > 0 ? cutoff * cutoff : 0
+      const decay = light.decay
 
-        const blockIdx = Math.floor(count / 4)
-        const elementIdx = count % 4
-        const texelIdx = (tileIdx * 4 + blockIdx) * 4 + elementIdx
-        this._tileData[texelIdx] = lightIdx + 1
-        lightCounts[tileIdx] = count + 1
+      for (let ty = 0; ty < tileCountY; ty++) {
+        const tileMinY = ty * tileWorldHeight + worldOffsetY
+        const tileMaxY = tileMinY + tileWorldHeight
+        const closestY = ly < tileMinY ? tileMinY : ly > tileMaxY ? tileMaxY : ly
+        const dyAABB = ly - closestY
+        for (let tx = 0; tx < tileCountX; tx++) {
+          let score: number
+          if (isDirectional) {
+            score = intensity
+          } else {
+            const tileMinX = tx * tileWorldWidth + worldOffsetX
+            const tileMaxX = tileMinX + tileWorldWidth
+            const closestX =
+              lx < tileMinX ? tileMinX : lx > tileMaxX ? tileMaxX : lx
+            const dxAABB = lx - closestX
+            const distSq = dxAABB * dxAABB + dyAABB * dyAABB
+            if (cutoffSq > 0 && distSq >= cutoffSq) continue
+            const dist = Math.sqrt(distSq)
+            const base = intensity / Math.max(Math.pow(dist, decay), 1)
+            const falloff = cutoff > 0 ? 1 - dist / cutoff : 1
+            score = base * falloff
+          }
+          if (score <= 0) continue
+
+          const tileIdx = ty * tileCountX + tx
+          const count = lightCounts[tileIdx]!
+          const scoreBase = tileIdx * MAX_LIGHTS_PER_TILE
+          const texelBase = tileIdx * 4 * 4 // blocksPerTile * 4
+
+          if (count < MAX_LIGHTS_PER_TILE) {
+            const blockIdx = count >> 2
+            const elementIdx = count & 3
+            this._tileData[texelBase + blockIdx * 4 + elementIdx] = lightIdx + 1
+            tileScores[scoreBase + count] = score
+            lightCounts[tileIdx] = count + 1
+            continue
+          }
+
+          // Tile full — scan for the weakest occupant and evict only if the
+          // incoming light is strictly brighter at the tile center. Prevents
+          // thrash at equal scores.
+          let minSlot = 0
+          let minScore = tileScores[scoreBase]!
+          for (let s = 1; s < MAX_LIGHTS_PER_TILE; s++) {
+            const v = tileScores[scoreBase + s]!
+            if (v < minScore) {
+              minScore = v
+              minSlot = s
+            }
+          }
+          if (score > minScore) {
+            const blockIdx = minSlot >> 2
+            const elementIdx = minSlot & 3
+            this._tileData[texelBase + blockIdx * 4 + elementIdx] = lightIdx + 1
+            tileScores[scoreBase + minSlot] = score
+          }
+        }
       }
     }
 
