@@ -28,7 +28,7 @@ const ICON_DEMO =
   `Built with ${ICON.code} and ${ICON.heart}\n` +
   `${ICON.coffee} brewed  ${ICON.rocket} launched  ${ICON.bolt} fast`
 
-type CompareMode = 'onion' | 'diff' | 'split'
+type CompareMode = 'off' | 'onion' | 'diff' | 'split'
 
 // --- Canvas2D text rendering ---
 
@@ -356,6 +356,7 @@ async function main() {
   resizeCompareCanvas()
 
   const MODE_LABELS: Record<CompareMode, string> = {
+    off: '',
     onion: 'Canvas (Onion Skin)',
     diff: 'Canvas (Diff)',
     split: 'Canvas (Split)',
@@ -367,6 +368,15 @@ async function main() {
   function redrawCompare() {
     const font = slugText.font
     if (!font) return
+
+    // 'off' — clear the canvas, leave the DOM affordances hidden via
+    // updateSplitUI. No Canvas2D work needed.
+    if (params.compare === 'off') {
+      compareCtx.clearRect(0, 0, compareCanvas.width, compareCanvas.height)
+      computingEl.removeAttribute('data-visible')
+      if (computingTimer) { clearTimeout(computingTimer); computingTimer = null }
+      return
+    }
 
     const compareText = getCompareText()
     const fontFamily = params.icons
@@ -410,7 +420,14 @@ async function main() {
   }
 
   function updateSplitUI() {
+    const off = params.compare === 'off'
     splitLabelRight.textContent = MODE_LABELS[params.compare]
+    // Gate the entire compare-overlay DOM (canvas, split handle,
+    // left/right labels) on mode !== 'off'. Standalone-Slug mode.
+    compareCanvas.style.display = off ? 'none' : ''
+    splitHandle.style.display = off ? 'none' : ''
+    splitLabelLeft.style.display = off ? 'none' : ''
+    splitLabelRight.style.display = off ? 'none' : ''
     redrawCompare()
     updateSplitPosition()
     updateBoundsOverlay()
@@ -600,7 +617,7 @@ async function main() {
 
   const mode = pane.addFolder({ title: 'Mode', expanded: false })
   mode.addBinding(params, 'compare', {
-    options: { Onion: 'onion', Diff: 'diff', Split: 'split' },
+    options: { Off: 'off', Onion: 'onion', Diff: 'diff', Split: 'split' },
   }).on('change', () => {
     updateSplitUI()
   })

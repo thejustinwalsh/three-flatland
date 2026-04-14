@@ -364,8 +364,24 @@ export class SlugStackText extends Group {
   }
 
   dispose(): this {
+    // Tear outlines first — they hold SlugStrokeMaterial refs that
+    // aren't in `_materials`, and they share geometry with the fill
+    // meshes so disposing geometry first here would double-free.
+    this._teardownOutlines()
+    // Remove + dispose each fill InstancedMesh child. R3F's scene-
+    // graph cleanup handles geometry/material disposal via its
+    // generic traversal, but we also own references internally; be
+    // explicit so nothing leaks if callers invoke dispose() outside
+    // the R3F lifecycle.
+    for (const mesh of this._meshes) {
+      this.remove(mesh)
+      mesh.dispose()
+    }
     for (const g of this._geometries) g.dispose()
     for (const m of this._materials) m.dispose()
+    this._meshes = []
+    this._geometries = []
+    this._materials = []
     return this
   }
 

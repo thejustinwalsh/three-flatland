@@ -38,9 +38,10 @@ const LOREM_WORDS = LOREM.split(' ')
 const MAX_WIDTH_FRACTION = 0.8
 const LINE_HEIGHT = 1.2
 
-type CompareMode = 'onion' | 'diff' | 'split'
+type CompareMode = 'off' | 'onion' | 'diff' | 'split'
 
 const MODE_LABELS: Record<CompareMode, string> = {
+  off: '',
   onion: 'Canvas (Onion Skin)',
   diff: 'Canvas (Diff)',
   split: 'Canvas (Split)',
@@ -52,6 +53,7 @@ const FONT_SIZE_OPTIONS = {
 }
 
 const COMPARE_MODE_OPTIONS = {
+  Off: 'off' as const,
   Onion: 'onion' as const,
   Diff: 'diff' as const,
   Split: 'split' as const,
@@ -200,6 +202,23 @@ function CanvasGrabber({ onReady }: { onReady: (canvas: HTMLCanvasElement) => vo
   useEffect(() => {
     onReady(gl.domElement as HTMLCanvasElement)
   }, [gl, onReady])
+  return null
+}
+
+/**
+ * Force the WebGPU renderer's pixel ratio to match the tracked DPR.
+ * R3F's `<Canvas>` captures DPR at mount and doesn't re-sync on
+ * monitor-swap / OS-zoom / fullscreen transitions. Post-transition the
+ * Slug canvas ends up at the old ratio while the compare canvas uses
+ * the live DPR — producing sub-pixel drift and visible desync.
+ * This component lives inside `<Canvas>` and pushes `windowSize.dpr`
+ * onto the renderer whenever it changes.
+ */
+function DprSync({ dpr }: { dpr: number }) {
+  const gl = useThree((s) => s.gl)
+  useEffect(() => {
+    gl.setPixelRatio(Math.min(dpr, 2))
+  }, [gl, dpr])
   return null
 }
 
@@ -925,6 +944,7 @@ export default function App() {
       >
         <color attach="background" args={['#00021c']} />
         <PixelCamera />
+        <DprSync dpr={windowSize.dpr} />
         <StatsTracker stats={stats} />
         <CanvasGrabber onReady={setGpuCanvas} />
         {iconsMode && stack && (
@@ -956,21 +976,29 @@ export default function App() {
 
       {font && (
         <>
-          <CompareCanvas
-            font={font}
-            stack={stack}
-            text={text}
-            fontSize={fontSize}
-            mode={compareMode}
-            splitX={splitX}
-            gpuCanvas={gpuCanvas}
-            windowSize={windowSize}
-            stemDarken={stemDarken}
-            thicken={thicken}
-            iconsMode={iconsMode}
-          />
-          <SplitHandle splitX={splitX} onDrag={setSplitX} />
-          <SplitLabels splitX={splitX} mode={compareMode} />
+          {/* Compare overlay + split affordance only when comparison is
+              on. `off` mode hides every piece of the overlay so the
+              Slug canvas renders standalone — useful for pure-signal
+              verification and for screenshotting. */}
+          {compareMode !== 'off' && (
+            <>
+              <CompareCanvas
+                font={font}
+                stack={stack}
+                text={text}
+                fontSize={fontSize}
+                mode={compareMode}
+                splitX={splitX}
+                gpuCanvas={gpuCanvas}
+                windowSize={windowSize}
+                stemDarken={stemDarken}
+                thicken={thicken}
+                iconsMode={iconsMode}
+              />
+              <SplitHandle splitX={splitX} onDrag={setSplitX} />
+              <SplitLabels splitX={splitX} mode={compareMode} />
+            </>
+          )}
           {/* Measure overlays are primary-font only — in icons mode they
               would misreport FA glyph widths (treated as notdef), so hide. */}
           {!iconsMode && (
