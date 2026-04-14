@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { subdivideForOffset, unitTangentAt } from './strokeOffsetter'
+import { offsetQuadraticBezier, subdivideForOffset, unitTangentAt } from './strokeOffsetter'
 import type { QuadCurve } from '../types'
 
 describe('subdivideForOffset — straight segments', () => {
@@ -145,5 +145,94 @@ describe('unitTangentAt', () => {
     // B'(0) = 2(p1-p0) = 0, falls back to chord direction (1, 0)
     expect(t[0]).toBeCloseTo(1, 5)
     expect(t[1]).toBeCloseTo(0, 5)
+  })
+})
+
+describe('offsetQuadraticBezier — straight segments', () => {
+  it('offsets a horizontal line upward by +halfWidth', () => {
+    // Line from (0,0) to (10,0) along +x axis. Left-hand normal = (0,1).
+    const line: QuadCurve = { p0x: 0, p0y: 0, p1x: 5, p1y: 0, p2x: 10, p2y: 0 }
+    const out = offsetQuadraticBezier(line, 0.5)
+    expect(out.p0x).toBeCloseTo(0, 10)
+    expect(out.p0y).toBeCloseTo(0.5, 10)
+    expect(out.p2x).toBeCloseTo(10, 10)
+    expect(out.p2y).toBeCloseTo(0.5, 10)
+    // p1 for a straight line falls back to the midpoint of p0' and p2'
+    expect(out.p1x).toBeCloseTo(5, 10)
+    expect(out.p1y).toBeCloseTo(0.5, 10)
+  })
+
+  it('offsets a horizontal line downward with a negative halfWidth', () => {
+    const line: QuadCurve = { p0x: 0, p0y: 0, p1x: 5, p1y: 0, p2x: 10, p2y: 0 }
+    const out = offsetQuadraticBezier(line, -0.3)
+    expect(out.p0y).toBeCloseTo(-0.3, 10)
+    expect(out.p2y).toBeCloseTo(-0.3, 10)
+  })
+
+  it('offsets a vertical line to the left (left-hand normal convention)', () => {
+    // (0,0) → (0,10) along +y axis. Left-hand normal = (-1, 0).
+    const line: QuadCurve = { p0x: 0, p0y: 0, p1x: 0, p1y: 5, p2x: 0, p2y: 10 }
+    const out = offsetQuadraticBezier(line, 0.5)
+    expect(out.p0x).toBeCloseTo(-0.5, 10)
+    expect(out.p0y).toBeCloseTo(0, 10)
+    expect(out.p2x).toBeCloseTo(-0.5, 10)
+    expect(out.p2y).toBeCloseTo(10, 10)
+  })
+})
+
+describe('offsetQuadraticBezier — curved segments', () => {
+  it('offset endpoints sit on their respective normals at distance halfWidth', () => {
+    // Curve bending upward
+    const c: QuadCurve = { p0x: 0, p0y: 0, p1x: 1, p1y: 2, p2x: 2, p2y: 0 }
+    const halfWidth = 0.3
+    const out = offsetQuadraticBezier(c, halfWidth)
+
+    // Distance from p0 to p0' should equal halfWidth
+    const d0 = Math.hypot(out.p0x - c.p0x, out.p0y - c.p0y)
+    expect(d0).toBeCloseTo(halfWidth, 8)
+
+    // Distance from p2 to p2' should equal halfWidth
+    const d2 = Math.hypot(out.p2x - c.p2x, out.p2y - c.p2y)
+    expect(d2).toBeCloseTo(halfWidth, 8)
+
+    // (p0' - p0) must be perpendicular to the tangent at p0
+    const [t0x, t0y] = unitTangentAt(c, 0)
+    const dot0 = (out.p0x - c.p0x) * t0x + (out.p0y - c.p0y) * t0y
+    expect(Math.abs(dot0)).toBeLessThan(1e-8)
+  })
+
+  it('inner + outer offsets of a symmetric curve are mirror images of the source', () => {
+    // Symmetric quad peaking at y=1
+    const c: QuadCurve = { p0x: -1, p0y: 0, p1x: 0, p1y: 1, p2x: 1, p2y: 0 }
+    const outer = offsetQuadraticBezier(c, 0.2)
+    const inner = offsetQuadraticBezier(c, -0.2)
+    // Outer lifts the peak (higher y), inner drops it (lower y)
+    expect(outer.p1y).toBeGreaterThan(c.p1y)
+    expect(inner.p1y).toBeLessThan(c.p1y)
+  })
+
+  it('zero offset returns the input control points', () => {
+    const c: QuadCurve = { p0x: 1, p0y: 2, p1x: 3, p1y: 4, p2x: 5, p2y: 2 }
+    const out = offsetQuadraticBezier(c, 0)
+    expect(out.p0x).toBeCloseTo(c.p0x, 10)
+    expect(out.p0y).toBeCloseTo(c.p0y, 10)
+    expect(out.p2x).toBeCloseTo(c.p2x, 10)
+    expect(out.p2y).toBeCloseTo(c.p2y, 10)
+    expect(out.p1x).toBeCloseTo(c.p1x, 10)
+    expect(out.p1y).toBeCloseTo(c.p1y, 10)
+  })
+
+  it('round-trip: offset +halfWidth then -halfWidth returns to source within a tight bound', () => {
+    // On a single subdivided segment, offset round-trip should be
+    // near-exact for endpoints (tangents are re-derived from the
+    // offset curve, so p1 can drift slightly).
+    const c: QuadCurve = { p0x: 0, p0y: 0, p1x: 0.3, p1y: 0.5, p2x: 1, p2y: 0 }
+    const halfWidth = 0.05
+    const out = offsetQuadraticBezier(c, halfWidth)
+    const back = offsetQuadraticBezier(out, -halfWidth)
+    expect(back.p0x).toBeCloseTo(c.p0x, 8)
+    expect(back.p0y).toBeCloseTo(c.p0y, 8)
+    expect(back.p2x).toBeCloseTo(c.p2x, 8)
+    expect(back.p2y).toBeCloseTo(c.p2y, 8)
   })
 })

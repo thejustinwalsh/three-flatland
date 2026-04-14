@@ -173,3 +173,80 @@ export function unitTangentAt(curve: QuadCurve, t: number): [number, number] {
 function clamp(v: number, lo: number, hi: number): number {
   return v < lo ? lo : v > hi ? hi : v
 }
+
+/**
+ * Offset a single (already-subdivided) quadratic Bezier by a signed
+ * distance. Returns the offset quadratic approximated via the
+ * Tiller-Hanson construction:
+ *
+ *   1. Offset p0 along its unit normal → p0'
+ *   2. Offset p2 along its unit normal → p2'
+ *   3. Intersect the offset tangent lines through p0' and p2'
+ *      to locate p1'
+ *
+ * Sign convention: the "left-hand" normal of tangent (tx, ty) is
+ * (-ty, tx) — so a positive `offset` moves the curve to the left of
+ * its direction of travel (p0 → p2). Pass a negative offset for the
+ * opposite side. Callers walking a closed contour in a known winding
+ * direction (font outlines: counter-clockwise = outside-on-the-left)
+ * can use +halfWidth for the outer offset and -halfWidth for the
+ * inner.
+ *
+ * Degenerate tangents (cusps, coincident control points) fall back
+ * to the chord-direction tangent via `unitTangentAt`. If the two
+ * offset tangents are parallel (straight segment), p1' collapses to
+ * the midpoint of p0' and p2' — which for a genuinely straight
+ * source curve produces the same straight offset segment.
+ *
+ * Caller contract: the input curve should already have been passed
+ * through `subdivideForOffset` so the single-quadratic approximation
+ * fits within epsilon of the true offset. Calling this directly on
+ * a highly-curved source will produce visibly off offsets.
+ */
+export function offsetQuadraticBezier(
+  curve: QuadCurve,
+  offset: number,
+): QuadCurve {
+  // Unit tangents at both endpoints.
+  const [t0x, t0y] = unitTangentAt(curve, 0)
+  const [t1x, t1y] = unitTangentAt(curve, 1)
+
+  // Left-hand unit normals. Rotating (tx, ty) by +90° gives (-ty, tx),
+  // i.e. perpendicular, to the left of the direction of travel.
+  const n0x = -t0y
+  const n0y = t0x
+  const n1x = -t1y
+  const n1y = t1x
+
+  // Offset the two anchor points.
+  const p0x = curve.p0x + n0x * offset
+  const p0y = curve.p0y + n0y * offset
+  const p2x = curve.p2x + n1x * offset
+  const p2y = curve.p2y + n1y * offset
+
+  // Intersect the two offset tangent lines:
+  //   Line A: (p0x, p0y) + s * (t0x, t0y)
+  //   Line B: (p2x, p2y) - u * (t1x, t1y)   (going back from p2')
+  // Solve for s. Derivation in the module doc above.
+  const dx = p2x - p0x
+  const dy = p2y - p0y
+  const det = t0y * t1x - t0x * t1y
+
+  let p1x: number
+  let p1y: number
+  if (Math.abs(det) < 1e-10) {
+    // Parallel tangents — either straight segment (offset is straight,
+    // midpoint works) or a cusp (we can't recover a clean quadratic,
+    // so midpoint is the best cheap fallback; caller should have
+    // pre-subdivided past the cusp).
+    p1x = (p0x + p2x) * 0.5
+    p1y = (p0y + p2y) * 0.5
+  } else {
+    const s = (dy * t1x - dx * t1y) / det
+    p1x = p0x + s * t0x
+    p1y = p0y + s * t0y
+  }
+
+  return { p0x, p0y, p1x, p1y, p2x, p2y }
+}
+
