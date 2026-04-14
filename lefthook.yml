@@ -17,6 +17,10 @@ pre-commit:
       glob: "{examples,minis}/**/package.json"
       run: pnpm exec tsx scripts/sync-pack.ts --files {staged_files}
       stage_fixed: true
+    sync-lockfile:
+      glob: "{pnpm-workspace.yaml,**/package.json}"
+      run: pnpm install --lockfile-only && git add pnpm-lock.yaml
+      stage_fixed: true
     sync-react-subpaths:
       glob: "{packages/three-flatland/src/index.ts,packages/three-flatland/src/*/index.ts,packages/skia/src/ts/three/index.ts}"
       run: pnpm exec tsx scripts/sync-react-subpaths.ts
