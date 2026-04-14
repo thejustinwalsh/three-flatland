@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
+  bakeStrokeForGlyph,
   insertCap,
   insertJoin,
   offsetQuadraticBezier,
@@ -10,6 +11,7 @@ import {
   type CapContext,
   type JoinContext,
 } from './strokeOffsetter'
+import { buildGpuGlyphData, buildAdvanceOnlyGlyph } from './buildGpuGlyph'
 import type { QuadCurve } from '../types'
 
 describe('subdivideForOffset — straight segments', () => {
@@ -573,5 +575,82 @@ describe('strokeOffsetter — empty + degenerate input', () => {
   it('empty source returns empty output', () => {
     expect(strokeOffsetter([], true, { halfWidth: 0.1 })).toEqual([])
     expect(strokeOffsetter([], false, { halfWidth: 0.1 })).toEqual([])
+  })
+})
+
+describe('bakeStrokeForGlyph', () => {
+  // Unit square contour packed as a SlugGlyphData record (as if it
+  // came out of fontParser).
+  const unitSquareCurves: QuadCurve[] = [
+    { p0x: 0, p0y: 0, p1x: 0.5, p1y: 0, p2x: 1, p2y: 0 },
+    { p0x: 1, p0y: 0, p1x: 1, p1y: 0.5, p2x: 1, p2y: 1 },
+    { p0x: 1, p0y: 1, p1x: 0.5, p1y: 1, p2x: 0, p2y: 1 },
+    { p0x: 0, p0y: 1, p1x: 0, p1y: 0.5, p2x: 0, p2y: 0 },
+  ]
+  const sourceGlyph = buildGpuGlyphData(42, unitSquareCurves, [0], 1.0, 0.05)
+
+  it('returns null for an advance-only (no-outline) glyph', () => {
+    const space = buildAdvanceOnlyGlyph(3, 0.5, 0.02)
+    const out = bakeStrokeForGlyph(space, { halfWidth: 0.05 })
+    expect(out).toBeNull()
+  })
+
+  it('returns null for an empty curves array', () => {
+    const empty: typeof sourceGlyph = {
+      ...sourceGlyph,
+      curves: [],
+      contourStarts: [],
+    }
+    expect(bakeStrokeForGlyph(empty, { halfWidth: 0.05 })).toBeNull()
+  })
+
+  it('bakes a closed source into a glyph with two contours (outer + inner hole)', () => {
+    const stroked = bakeStrokeForGlyph(sourceGlyph, {
+      halfWidth: 0.05,
+      joinStyle: 'miter',
+      miterLimit: 4,
+    })
+    expect(stroked).not.toBeNull()
+    // Closed source → strokeOffsetter emits 2 contours per source
+    // contour (outer + inner reversed). Single source contour → 2 in
+    // the stroked glyph.
+    expect(stroked!.contourStarts.length).toBe(2)
+    // Curves array is non-empty and chained correctly within each
+    // contour.
+    expect(stroked!.curves.length).toBeGreaterThan(0)
+    for (let i = 0; i < stroked!.contourStarts.length; i++) {
+      const start = stroked!.contourStarts[i]!
+      const end = i + 1 < stroked!.contourStarts.length
+        ? stroked!.contourStarts[i + 1]!
+        : stroked!.curves.length
+      // Adjacent curves in each contour share endpoints (p2 of one
+      // equals p0 of the next).
+      for (let j = start; j < end - 1; j++) {
+        expect(stroked!.curves[j]!.p2x).toBeCloseTo(stroked!.curves[j + 1]!.p0x, 6)
+        expect(stroked!.curves[j]!.p2y).toBeCloseTo(stroked!.curves[j + 1]!.p0y, 6)
+      }
+    }
+  })
+
+  it('preserves source glyph advance/lsb (so shaping uses the same width)', () => {
+    const stroked = bakeStrokeForGlyph(sourceGlyph, { halfWidth: 0.05 })
+    expect(stroked!.advanceWidth).toBe(sourceGlyph.advanceWidth)
+    expect(stroked!.lsb).toBe(sourceGlyph.lsb)
+    expect(stroked!.glyphId).toBe(sourceGlyph.glyphId)
+  })
+
+  it('bounds grow outward — stroked glyph bbox extends halfWidth beyond source', () => {
+    const stroked = bakeStrokeForGlyph(sourceGlyph, {
+      halfWidth: 0.05,
+      joinStyle: 'miter',
+      miterLimit: 4,
+    })
+    // Source bbox: (0,0)..(1,1). Outer offset + miter corner extends
+    // by ~halfWidth on each side at 90° (miter = halfWidth·√2 on the
+    // diagonal). Stroked bbox should comfortably exceed source bbox.
+    expect(stroked!.bounds.xMin).toBeLessThan(sourceGlyph.bounds.xMin)
+    expect(stroked!.bounds.yMin).toBeLessThan(sourceGlyph.bounds.yMin)
+    expect(stroked!.bounds.xMax).toBeGreaterThan(sourceGlyph.bounds.xMax)
+    expect(stroked!.bounds.yMax).toBeGreaterThan(sourceGlyph.bounds.yMax)
   })
 })

@@ -1,4 +1,5 @@
-import type { QuadCurve } from '../types.js'
+import type { QuadCurve, SlugGlyphData } from '../types.js'
+import { buildGpuGlyphData } from './buildGpuGlyph.js'
 
 /**
  * Quadratic-Bezier adaptive stroke offsetter (Phase 5 Task 16).
@@ -723,4 +724,64 @@ export function strokeOffsetter(
     curves: [...outer, ...endCap, ...innerReversed, ...startCap],
     closed: true,
   }]
+}
+
+// ─── Glyph-level stroke bake helper (Phase 5 Task 17 prep) ───────────
+
+/**
+ * Bake a single glyph's stroke into a new `SlugGlyphData` record.
+ *
+ * Walks the source glyph's contours (via `contourStarts` into
+ * `curves`), runs each through `strokeOffsetter`, concatenates the
+ * resulting offset contours, then packs them into a fresh glyph-
+ * shaped record via `buildGpuGlyphData` — ready to render through
+ * the Slug fill pipeline just like a normal glyph.
+ *
+ * Returns `null` if the source glyph has no contours (advance-only
+ * records like space or degenerate inputs) — the caller signals "no
+ * stroke set for this glyph" by omitting it from the bake output.
+ *
+ * The stroked glyph keeps the source's `advanceWidth`/`lsb` so
+ * downstream shaping uses the same advance whether fill or stroke
+ * is requested.
+ */
+export function bakeStrokeForGlyph(
+  source: SlugGlyphData,
+  options: StrokeOffsetOptions,
+): SlugGlyphData | null {
+  if (source.curves.length === 0) return null
+  if (source.contourStarts.length === 0) return null
+
+  // Split the flat curves array into per-contour arrays.
+  const allOffsetCurves: QuadCurve[] = []
+  const newContourStarts: number[] = []
+
+  for (let i = 0; i < source.contourStarts.length; i++) {
+    const start = source.contourStarts[i]!
+    const end = i + 1 < source.contourStarts.length
+      ? source.contourStarts[i + 1]!
+      : source.curves.length
+    const sourceContour = source.curves.slice(start, end)
+
+    // Font contours are closed by convention (TrueType + OpenType
+    // outline format). A future open-contour entrypoint for SVG paths
+    // will thread `closed: false` through here, probably via a new
+    // field on SlugGlyphData.
+    const offsetContours = strokeOffsetter(sourceContour, true, options)
+
+    for (const oc of offsetContours) {
+      newContourStarts.push(allOffsetCurves.length)
+      for (const c of oc.curves) allOffsetCurves.push(c)
+    }
+  }
+
+  if (allOffsetCurves.length === 0) return null
+
+  return buildGpuGlyphData(
+    source.glyphId,
+    allOffsetCurves,
+    newContourStarts,
+    source.advanceWidth,
+    source.lsb,
+  )
 }
