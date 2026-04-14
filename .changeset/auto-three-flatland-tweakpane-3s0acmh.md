@@ -5,17 +5,18 @@
 > Branch: feat-slug
 > PR: https://github.com/thejustinwalsh/three-flatland/pull/20
 
-**New features**
+## New Features
 
-- `usePaneRadioGrid` hook (react subpath): inline button-bar selector backed by Tweakpane essentials' `radiogrid` blade; active-state affordance reads better than a dropdown for scene/mode toggles
-- `PaneInputOptions` extended with `readonly` and `format` for readonly monitors with custom value formatters
-- `z-index: 1000` now applied to `.tp-dfwv` wrapper (the actual stacking context), fixing layering against other overlays
+- `usePaneRadioGrid` hook (react subpath) — inline button-bar selector backed by Tweakpane Essentials' radiogrid blade; active-state affordance, deferred disposal + synchronous creation matching existing hook patterns
+- `PaneInputOptions` extended with `readonly` and `format` — enables readonly monitor inputs with custom value formatters
 
-**Bug fixes**
+## Bug Fixes
 
-- Checkbox hit target stretched to full control box (`width/height: var(--cnt-usz)`); clicks land directly on `<input>` without unreliable `<label>` forwarding
-- Checkbox box surface unified with other controls (`rgba(28,40,77,0.6)`); check stroke turns accent pink on `:checked`
-- `useWindowSize` now tracks `{ w, h, dpr }` and subscribes to a `resolution` media query; canvas resizes correctly on monitor swap without dimension change
-- `document.fullscreenchange` handled in addition to `resize`; double-measurement (immediate + next RAF) catches post-transition layout settle
+- `createPane`: z-index applied to `.tp-dfwv` wrapper element instead of inner pane root — fixes tweakpane not stacking above other overlays when no custom container is provided
+- Checkbox hit target stretched to full box size via `width/height: var(--cnt-usz)` on `.tp-ckbv_i` — eliminates missed clicks caused by browser label-forwarding quirks
+- `useWindowSize` hook now tracks `{ w, h, dpr }` and subscribes to a `resolution: Ndppx` media query — fixes Canvas2D overlay desyncing from the WebGPU canvas on monitor swaps that change DPR without changing viewport dimensions
+- Fullscreen enter/exit re-measures immediately and once more in the next RAF via `document.fullscreenchange` listener — fixes stale `innerWidth/innerHeight` on fullscreen return
+- Checkbox surface and hover/focus/active states aligned with other controls; check stroke turns accent color on `:checked`
 
-Adds `usePaneRadioGrid`, `readonly`/`format` monitor options, and fixes checkbox hit target, DPR tracking, and fullscreen resize handling.
+Adds `usePaneRadioGrid`, monitor/format support, and fixes z-index stacking, checkbox interaction, and DPR/fullscreen tracking.
+
