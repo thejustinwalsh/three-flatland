@@ -3,7 +3,7 @@ import type { World } from 'koota'
 import { LightingContext, ShadowPipeline } from '../traits'
 import { SDFGenerator } from '../../lights/SDFGenerator'
 import { OcclusionPass } from '../../lights/OcclusionPass'
-import { LightEffect } from '../../lights/LightEffect'
+import type { LightEffect } from '../../lights/LightEffect'
 
 /**
  * Owns the shared shadow pipeline end-to-end.

@@ -7,15 +7,8 @@ import { assignWorld, type WorldProvider } from '../ecs/world'
 import {
   BatchRegistry,
   BatchMesh,
-  BatchMeta,
-  IsRenderable,
-  IsBatched,
-  InBatch,
-  BatchSlot,
-  SpriteMaterialRef,
 } from '../ecs/traits'
 import type { RegistryData } from '../ecs/batchUtils'
-import { computeRunKey, recycleBatchIfEmpty } from '../ecs/batchUtils'
 import { SystemSchedule } from '../ecs/SystemSchedule'
 import {
   deferredDestroySystem,

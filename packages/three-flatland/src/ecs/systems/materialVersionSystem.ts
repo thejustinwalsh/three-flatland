@@ -1,4 +1,4 @@
-import type { World, Entity } from 'koota'
+import type { World } from 'koota'
 import {
   BatchRegistry,
   IsBatched,

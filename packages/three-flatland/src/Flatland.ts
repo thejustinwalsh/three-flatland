@@ -22,8 +22,8 @@ import { SpriteGroup } from './pipeline/SpriteGroup'
 import { GlobalUniforms } from './GlobalUniforms'
 import type { RenderStats } from './pipeline/types'
 import { Sprite2D } from './sprites/Sprite2D'
-import type { Sprite2DMaterial } from './materials/Sprite2DMaterial'
-import { MaterialEffect } from './materials/MaterialEffect'
+import type { Sprite2DMaterial, ColorTransformFn } from './materials/Sprite2DMaterial'
+import type { MaterialEffect } from './materials/MaterialEffect'
 import type Node from 'three/src/nodes/core/Node.js'
 import type PassNode from 'three/src/nodes/display/PassNode.js'
 import type { WorldProvider } from './ecs/world'
@@ -38,7 +38,7 @@ import { shadowPipelineSystem } from './ecs/systems/shadowPipelineSystem'
 import type { PassEffect } from './pipeline/PassEffect'
 import { Light2D } from './lights/Light2D'
 import { LightStore } from './lights/LightStore'
-import { LightEffect } from './lights/LightEffect'
+import type { LightEffect } from './lights/LightEffect'
 import { wrapWithLightFlags } from './lights/wrapWithLightFlags'
 import type { ChannelName } from './materials/channels'
 import type { RegistryData } from './ecs/batchUtils'
@@ -48,7 +48,7 @@ interface LightingContextData {
   effect: LightEffect | null
   lightStore: LightStore | null
   lights: Light2D[]
-  wrappedLightFn: import('./materials/Sprite2DMaterial').ColorTransformFn | null
+  wrappedLightFn: ColorTransformFn | null
   requiredChannels: ReadonlySet<ChannelName>
   materials: Set<Sprite2DMaterial>
   dirty: boolean
@@ -739,7 +739,7 @@ export class Flatland extends Group implements WorldProvider {
       // RTs are 1×1 placeholders at this point; shadowPipelineSystem
       // resizes them to the viewport on first frame.
       this._ensureShadowPipelineEntity()
-      let sdfTexture: import('three').Texture | null = null
+      let sdfTexture: Texture | null = null
       if (ctor.needsShadows && this._shadowPipelineEntity) {
         const pipeline = this._shadowPipelineEntity.get(ShadowPipeline)
         if (pipeline) {
@@ -932,9 +932,8 @@ export class Flatland extends Group implements WorldProvider {
    *               every sprite currently parented to the SpriteGroup.
    */
   private _validateLightingChannels(sprite?: Sprite2D): void {
-    if (typeof process !== 'undefined' && process.env?.['NODE_ENV'] === 'production') {
-      return
-    }
+    const proc = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process
+    if (proc?.env?.['NODE_ENV'] === 'production') return
     const effect = this._lightEffect
     if (!effect) return
     const ctor = effect.constructor as typeof LightEffect

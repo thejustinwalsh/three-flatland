@@ -313,5 +313,5 @@ export function shadowSDF2D(
     })
 
     return shadow.clamp(0, 1)
-  })() as Node<'float'>
+  })()
 }
