@@ -5,9 +5,13 @@
 > Branch: feat-slug
 > PR: https://github.com/thejustinwalsh/three-flatland/pull/20
 
-## Changes
+**New features**
 
-- `PaneInputOptions`: added `readonly` and `format` fields so `usePaneInput` can create read-only monitors with custom value formatters
-- `createPane`: fixed z-index stacking — `1000` is now applied to the `.tp-dfwv` wrapper element that tweakpane creates as a body sibling, not just the inner pane root; previously the z-index had no effect when competing with full-viewport overlays
+- `usePaneRadioGrid` React hook (`three-flatland/tweakpane/react`) backed by the essentials radiogrid blade — inline button-bar selector with active-state affordance, suited for scene/mode toggles
+- `PaneInputOptions` extended with `readonly` and `format` fields, allowing readonly monitors with custom value formatters
 
-`usePaneInput` now supports monitor-style bindings; the pane wrapper correctly floats above full-viewport canvas elements in both plain Three.js and R3F setups.
+**Bug fixes**
+
+- `createPane` now applies `z-index: 1000` to the `.tp-dfwv` wrapper element (the actual stacking context) instead of the inner `pane.element`, fixing pane rendering behind other overlays
+
+Added `usePaneRadioGrid` hook and readonly monitor support; fixed pane stacking context so the panel consistently renders above page overlays.
