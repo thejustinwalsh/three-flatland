@@ -109,9 +109,14 @@ export class SlugText extends InstancedMesh {
       // Restore viewport size on the new material
       this._slugMaterial.setViewportSize(this._viewportWidth, this._viewportHeight)
       this.material = this._slugMaterial
-      this.visible = true
       this._dirty = true
 
+      // Stay hidden until the first `_rebuild` has populated instance data.
+      // R3F can render once between prop-set and the first `useFrame`; if
+      // the pipeline sees a zero-count / unpopulated instance buffer on
+      // that pass, WebGPU validates a zero-size binding and aborts the
+      // command submission for the frame ("Binding size is zero ... is
+      // invalid due to a previous error"). Flip visible on in `_rebuild`.
       if (this._text) {
         this._rebuild()
       }
@@ -247,6 +252,7 @@ export class SlugText extends InstancedMesh {
   private _rebuild(): void {
     if (!this._text || !this._font) {
       this.count = 0
+      this.visible = false
       return
     }
 
@@ -258,6 +264,7 @@ export class SlugText extends InstancedMesh {
 
     if (positionedGlyphs.length === 0) {
       this.count = 0
+      this.visible = false
       return
     }
 
@@ -289,6 +296,7 @@ export class SlugText extends InstancedMesh {
       this.instanceMatrix = new InstancedBufferAttribute(buf, 16)
     }
     this.count = needed
+    this.visible = true
   }
 
   /** Update viewport size for dilation calculations. */

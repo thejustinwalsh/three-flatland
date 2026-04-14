@@ -23,6 +23,19 @@
         font-weight: 400;
         font-style: normal;
       }
+      /* FA Solid — used only by the Canvas2D compare overlay when icons
+         mode is on, so browser falls back from Inter-Slug to FA-Solid
+         for the PUA codepoints (same chain as the Slug font stack). */
+      @font-face {
+        font-family: 'FA-Solid';
+        src: url('./fa-solid-900.ttf') format('truetype');
+        /* Declare normal weight so Canvas2D's default `400` request matches.
+           The file is bundle-named `fa-solid-900`, but we treat it as the
+           single available face — weight 900 would force callers to pass
+           `bold` in `ctx.font`, which isn't worth the surprise. */
+        font-weight: normal;
+        font-style: normal;
+      }
     </style>
   </head>
   <body>

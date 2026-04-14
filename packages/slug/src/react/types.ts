@@ -1,5 +1,6 @@
 import type { ThreeElement } from '@react-three/fiber'
 import type { SlugText } from '../SlugText'
+import type { SlugStackText } from '../SlugStackText'
 import type { SlugMaterial } from '../SlugMaterial'
 import type { SlugGeometry } from '../SlugGeometry'
 
@@ -26,7 +27,9 @@ import type { SlugGeometry } from '../SlugGeometry'
 declare module '@react-three/fiber' {
   interface ThreeElements {
     slugText: ThreeElement<typeof SlugText>
+    slugStackText: ThreeElement<typeof SlugStackText>
     slugMaterial: ThreeElement<typeof SlugMaterial>
     slugGeometry: ThreeElement<typeof SlugGeometry>
+    slugFontStack: ThreeElement<typeof import('../SlugFontStack').SlugFontStack>
   }
 }

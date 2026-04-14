@@ -16,7 +16,9 @@ export function wrapLines(
   maxWidth: number | undefined,
 ): string[] {
   const scale = fontSize / font.unitsPerEm
-  const openGlyphs = font.stringToGlyphs(text)
+  // Features off — see textShaper.ts for why ligatures break text[i]
+  // indexing in this loop.
+  const openGlyphs = (font.stringToGlyphs as (s: string, opts?: { features?: unknown[] }) => ReturnType<Font['stringToGlyphs']>)(text, { features: [] })
   const lines: string[] = []
   let lineStart = 0
   let cursorX = 0

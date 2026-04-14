@@ -98,7 +98,27 @@ export function parseFont(buffer: ArrayBuffer): {
 
   for (let i = 0; i < font.glyphs.length; i++) {
     const glyph = font.glyphs.get(i)
-    if (!glyph || !glyph.path || glyph.path.commands.length === 0) continue
+    if (!glyph) continue
+
+    // Glyphs without outlines (space, tab, zero-width controls) still need
+    // an entry so consumers that look up advance via `glyphs.get(id)`
+    // (notably `shapeStackText`) can retrieve the correct advance width.
+    // Mirrors the post-pass the bake CLI applies for baked output.
+    const hasOutline = !!glyph.path && glyph.path.commands.length > 0
+    if (!hasOutline) {
+      glyphs.set(glyph.index, {
+        glyphId: glyph.index,
+        curves: [],
+        contourStarts: [],
+        bands: { hBands: [], vBands: [] },
+        bounds: { xMin: 0, yMin: 0, xMax: 0, yMax: 0 },
+        bandLocation: { x: 0, y: 0 },
+        curveLocation: { x: 0, y: 0 },
+        advanceWidth: (glyph.advanceWidth ?? 0) / unitsPerEm,
+        lsb: (glyph.leftSideBearing ?? 0) / unitsPerEm,
+      })
+      continue
+    }
 
     const { curves, contourStarts } = extractCurves(glyph.path.commands, unitsPerEm)
     if (curves.length === 0) continue

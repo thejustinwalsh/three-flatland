@@ -1,6 +1,6 @@
 import { WebGPURenderer } from 'three/webgpu'
 import { Scene, OrthographicCamera, Color } from 'three'
-import { SlugFontLoader, SlugText } from '@three-flatland/slug'
+import { SlugFontLoader, SlugFontStack, SlugStackText, SlugText } from '@three-flatland/slug'
 import type { SlugFont, StyleSpan } from '@three-flatland/slug'
 import { createPane } from '@three-flatland/tweakpane'
 
@@ -16,6 +16,17 @@ function getLoremText(wordCount: number): string {
   }
   return words.join(' ')
 }
+
+// Font Awesome PUA codepoints — keep in sync with the bake command that
+// produced `fa-solid.slug.{json,bin}`.
+const ICON = {
+  heart: '\uf004', star: '\uf005', home: '\uf015', user: '\uf007',
+  gear: '\uf013', bolt: '\uf0e7', thumbsUp: '\uf164', paperPlane: '\uf1d8',
+  code: '\uf121', coffee: '\uf0f4', rocket: '\uf135', book: '\uf02d',
+}
+const ICON_DEMO =
+  `Built with ${ICON.code} and ${ICON.heart}\n` +
+  `${ICON.coffee} brewed  ${ICON.rocket} launched  ${ICON.bolt} fast`
 
 type CompareMode = 'onion' | 'diff' | 'split'
 
@@ -40,6 +51,8 @@ function drawCompareText(
   maxWidth: number,
   lineHeight: number,
   mode: CompareMode,
+  fontFamily: string = 'Inter-Slug, sans-serif',
+  preWrappedLines: string[] | null = null,
 ) {
   const dpr = window.devicePixelRatio
   const w = ctx.canvas.width / dpr
@@ -54,12 +67,12 @@ function drawCompareText(
     ctx.fillRect(0, 0, w, h)
   }
 
-  ctx.font = `${fontSize}px Inter-Slug, sans-serif`
+  ctx.font = `${fontSize}px ${fontFamily}`
   ctx.fillStyle = mode === 'onion' ? 'rgba(255, 100, 100, 0.6)' : '#ffffff'
   ctx.textAlign = 'center'
   ctx.textBaseline = 'alphabetic'
 
-  const lines = font.wrapText(text, fontSize, maxWidth)
+  const lines = preWrappedLines ?? font.wrapText(text, fontSize, maxWidth)
   const lineHeightPx = fontSize * lineHeight
 
   const totalBlockHeight = (lines.length - 1) * lineHeightPx
@@ -80,11 +93,13 @@ function drawDiff(
   fontSize: number,
   maxWidth: number,
   lineHeight: number,
+  fontFamily: string = 'Inter-Slug, sans-serif',
+  preWrappedLines: string[] | null = null,
 ) {
   const cw = compareCtx.canvas.width
   const ch = compareCtx.canvas.height
 
-  drawCompareText(compareCtx, font, text, fontSize, maxWidth, lineHeight, 'diff')
+  drawCompareText(compareCtx, font, text, fontSize, maxWidth, lineHeight, 'diff', fontFamily, preWrappedLines)
   const canvasPixels = compareCtx.getImageData(0, 0, cw, ch)
 
   const tempCanvas = document.createElement('canvas')
@@ -178,6 +193,7 @@ async function main() {
     styleScope: 'word' as 'word' | 'sentence' | 'line',
     underline: false,
     strike: false,
+    icons: false,
   }
 
   // Hover state drives the measure overlay only. No click-to-style —
@@ -245,6 +261,56 @@ async function main() {
   slugText.setViewportSize(w, h)
   scene.add(slugText)
 
+  /** Icon-fallback demo renderer. Hidden until `icons` toggled on. Lazily
+   *  constructed — the FA font and stack load once on first activation.
+   *  `maxWidth` works: Canvas2D compare pre-wraps via `stack.wrapText`
+   *  so both paths agree on line count regardless of viewport width. */
+  const stackText = new SlugStackText({
+    text: ICON_DEMO,
+    fontSize: params.size,
+    color: 0xffffff,
+    align: 'center',
+    maxWidth: w * maxWidthFraction,
+  })
+  stackText.setViewportSize(w, h)
+  stackText.visible = false
+  scene.add(stackText)
+
+  let iconFont: SlugFont | null = null
+  let stack: SlugFontStack | null = null
+
+  function applyIconsMode() {
+    slugText.visible = !params.icons
+    stackText.visible = params.icons
+    // Measure overlays are primary-font only — in icons mode they would
+    // misreport FA glyph widths (treated as notdef), so hide them. Compare
+    // stays visible: Canvas2D mirrors the Slug stack via CSS @font-face
+    // fallback (Inter-Slug, FA-Solid).
+    hitRectsContainer.style.display = params.icons ? 'none' : ''
+    if (params.icons) {
+      boundsActual.style.display = 'none'
+      boundsFont.style.display = 'none'
+    }
+    redrawCompare()
+  }
+
+  /** Canvas2D compare reads from whichever scene is visible. Slug side is
+   *  driven directly by `slugText` / `stackText`; this just picks the
+   *  matching text for the 2D overlay. */
+  function getCompareText(): string {
+    return params.icons ? ICON_DEMO : text
+  }
+
+  async function ensureStack() {
+    if (stack) return stack
+    iconFont = await SlugFontLoader.load('./fa-solid.ttf')
+    const primary = slugText.font
+    if (!primary) return null
+    stack = new SlugFontStack([primary, iconFont])
+    stackText.font = stack
+    return stack
+  }
+
   // --- Overlay elements ---
   const compareCanvas = document.getElementById('compare-canvas') as HTMLCanvasElement
   const compareCtx = compareCanvas.getContext('2d')!
@@ -278,14 +344,27 @@ async function main() {
     const font = slugText.font
     if (!font) return
 
+    const compareText = getCompareText()
+    const fontFamily = params.icons
+      ? 'Inter-Slug, FA-Solid, sans-serif'
+      : 'Inter-Slug, sans-serif'
+    const maxWidth = window.innerWidth * maxWidthFraction
+    // In icons mode, pre-wrap through the stack so Canvas2D breaks
+    // exactly where `SlugStackText` does — `font.wrapText` uses the
+    // primary only and can't account for FA advance widths.
+    const preWrappedLines = params.icons && stack
+      ? stack.wrapText(compareText, params.size, maxWidth)
+      : null
+
     if (params.compare === 'diff') {
       computingEl.setAttribute('data-visible', '')
       if (computingTimer) clearTimeout(computingTimer)
 
       requestAnimationFrame(() => {
         slugText.update(camera)
+        stackText.update(camera)
         renderer.render(scene, camera)
-        drawDiff(compareCtx, renderer.domElement, font, text, params.size, window.innerWidth * maxWidthFraction, 1.2)
+        drawDiff(compareCtx, renderer.domElement, font, compareText, params.size, maxWidth, 1.2, fontFamily, preWrappedLines)
 
         computingTimer = setTimeout(() => {
           computingEl.removeAttribute('data-visible')
@@ -295,7 +374,7 @@ async function main() {
     } else {
       computingEl.removeAttribute('data-visible')
       if (computingTimer) { clearTimeout(computingTimer); computingTimer = null }
-      drawCompareText(compareCtx, font, text, params.size, window.innerWidth * maxWidthFraction, 1.2, params.compare)
+      drawCompareText(compareCtx, font, compareText, params.size, maxWidth, 1.2, params.compare, fontFamily, preWrappedLines)
     }
   }
 
@@ -448,6 +527,26 @@ async function main() {
   // --- Tweakpane UI ---
   const { pane, stats } = createPane({ scene })
 
+  // Top-of-pane scene toggle — inline radiogrid (essentials). Mirrors
+  // React's `usePaneRadioGrid`. 'lorem' → SlugText + wrap-aware compare;
+  // 'icons' → SlugStackText + stack-wrap compare.
+  ;(pane as unknown as { addBlade: (opts: Record<string, unknown>) => {
+    on: (ev: string, fn: (e: { value: 'lorem' | 'icons' }) => void) => unknown
+  } }).addBlade({
+    view: 'radiogrid',
+    groupName: 'scene',
+    size: [2, 1],
+    cells: (x: number, _y: number) => ({
+      title: ['Lorem', 'Icons'][x],
+      value: (['lorem', 'icons'] as const)[x],
+    }),
+    value: 'lorem',
+  }).on('change', async (ev) => {
+    params.icons = ev.value === 'icons'
+    if (params.icons) await ensureStack()
+    applyIconsMode()
+  })
+
   const settings = pane.addFolder({ title: 'Settings', expanded: false })
   settings.addBinding(params, 'size', {
     options: {
@@ -456,6 +555,7 @@ async function main() {
     },
   }).on('change', () => {
     slugText.fontSize = params.size
+    stackText.fontSize = params.size
     applyStyles()
     updateSplitUI()
   })
@@ -512,7 +612,10 @@ async function main() {
   measureFolder.addBinding(monitors, 'fontAscent', { label: 'font ↑', readonly: true, format: fmt })
   measureFolder.addBinding(monitors, 'fontDescent', { label: 'font ↓', readonly: true, format: fmt })
 
-  await document.fonts.load('48px Inter-Slug')
+  await Promise.allSettled([
+    document.fonts.load('48px Inter-Slug'),
+    document.fonts.load('48px FA-Solid'),
+  ])
   await loadFont()
 
   // --- Resize ---
@@ -527,6 +630,8 @@ async function main() {
     renderer.setSize(rw, rh)
     slugText.maxWidth = rw * maxWidthFraction
     slugText.setViewportSize(rw, rh)
+    stackText.maxWidth = rw * maxWidthFraction
+    stackText.setViewportSize(rw, rh)
     resizeCompareCanvas()
     splitX = Math.round(rw / 2)
     updateSplitUI()
@@ -537,6 +642,7 @@ async function main() {
     requestAnimationFrame(animate)
     stats.begin()
     slugText.update(camera)
+    stackText.update(camera)
     renderer.render(scene, camera)
     const render = renderer.info.render as unknown as {
       drawCalls: number; triangles: number; lines: number; points: number

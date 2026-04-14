@@ -21,6 +21,18 @@
         font-style: normal;
       }
 
+      /* FA Solid — Canvas2D fallback for the icons-mode compare overlay,
+         so the browser mirrors the Slug font stack (Inter → FA) for PUA
+         codepoints. */
+      @font-face {
+        font-family: 'FA-Solid';
+        src: url('./fa-solid-900.ttf') format('truetype');
+        /* normal weight so Canvas2D's default 400 request matches — see
+           react index.html for detail. */
+        font-weight: normal;
+        font-style: normal;
+      }
+
       /* Comparison canvas overlays the WebGPU canvas exactly.
          Kept below tweakpane (z-index: 1000) so controls stay interactive. */
       #compare-canvas {

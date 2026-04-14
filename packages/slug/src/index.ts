@@ -29,5 +29,5 @@ export type {
 
 export type { SlugMaterialOptions } from './SlugMaterial.js'
 
-export { bakedURLs, BAKED_VERSION } from './baked.js'
+export { bakedURLs } from './baked.js'
 export type { BakedJSON } from './baked.js'

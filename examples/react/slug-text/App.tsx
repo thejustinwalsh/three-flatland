@@ -1,19 +1,37 @@
 import { Canvas, extend, useFrame, useThree } from '@react-three/fiber/webgpu'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { OrthographicCamera } from 'three'
-import { SlugText, SlugFontLoader } from '@three-flatland/slug/react'
+import { SlugText, SlugStackText, SlugFontLoader, SlugFontStack } from '@three-flatland/slug/react'
 import type { SlugFont, StyleSpan, TextMetrics } from '@three-flatland/slug/react'
 import {
   usePane,
   usePaneFolder,
   usePaneInput,
+  usePaneRadioGrid,
   useStatsMonitor,
 } from '@three-flatland/tweakpane/react'
 import type { StatsHandle } from '@three-flatland/tweakpane/react'
 
-extend({ SlugText })
+extend({ SlugText, SlugStackText })
 
 const FONT_URL = './Inter-Regular.ttf'
+/** Font Awesome 6 Free Solid — baked subset of 12 icons in the PUA
+ *  codepoints U+F000–U+F7FF. Demoed as a fallback font in the SlugFontStack:
+ *  primary Inter has no PUA glyphs, so the stack routes those codepoints to
+ *  FA. No TTF on disk — baked artifacts (`fa-solid.slug.{json,bin}`) are
+ *  served directly; `SlugFontLoader` derives the baked URLs from the passed
+ *  path. forceRuntime would 404 here, so the toggle is primary-only. */
+const FA_FONT_URL = './fa-solid.ttf'
+/** PUA codepoints for the baked FA icons. Keep in sync with the `-r` args
+ *  in the slug-bake command that produced `fa-solid.slug.*`. */
+const ICON = {
+  heart: '\uf004', star: '\uf005', home: '\uf015', user: '\uf007',
+  gear: '\uf013', bolt: '\uf0e7', thumbsUp: '\uf164', paperPlane: '\uf1d8',
+  code: '\uf121', coffee: '\uf0f4', rocket: '\uf135', book: '\uf02d',
+} as const
+const ICON_DEMO =
+  `Built with ${ICON.code} and ${ICON.heart}\n` +
+  `${ICON.coffee} brewed  ${ICON.rocket} launched  ${ICON.bolt} fast`
 const LOREM =
   'Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.'
 const LOREM_WORDS = LOREM.split(' ')
@@ -54,6 +72,15 @@ function getLoremText(wordCount: number): string {
  * exactly — browser hinting at medium font sizes (48/72/96) can shrink
  * `ctx.measureText` widths below the opentype-derived advances, giving a
  * different line count and breaking vertical alignment.
+ *
+ * `fontFamily` is the `ctx.font` font-family list. For plain Inter use
+ * `'Inter-Slug, sans-serif'`; for icons mode use `'Inter-Slug, FA-Solid, sans-serif'`
+ * so the browser's native per-codepoint fallback mirrors the Slug font
+ * stack (Inter → FA-Solid).
+ *
+ * `preWrappedLines` overrides the internal `font.wrapText` — pass this in
+ * icons mode with `SlugFontStack.wrapText` so line breaks agree with the
+ * per-codepoint advances that `SlugStackText` actually uses.
  */
 function drawCompareText(
   ctx: CanvasRenderingContext2D,
@@ -63,6 +90,8 @@ function drawCompareText(
   maxWidth: number,
   lineHeight: number,
   mode: CompareMode,
+  fontFamily: string = 'Inter-Slug, sans-serif',
+  preWrappedLines: string[] | null = null,
 ) {
   const dpr = window.devicePixelRatio
   const w = ctx.canvas.width / dpr
@@ -77,12 +106,12 @@ function drawCompareText(
     ctx.fillRect(0, 0, w, h)
   }
 
-  ctx.font = `${fontSize}px Inter-Slug, sans-serif`
+  ctx.font = `${fontSize}px ${fontFamily}`
   ctx.fillStyle = mode === 'onion' ? 'rgba(255, 100, 100, 0.6)' : '#ffffff'
   ctx.textAlign = 'center'
   ctx.textBaseline = 'alphabetic'
 
-  const lines = font.wrapText(text, fontSize, maxWidth)
+  const lines = preWrappedLines ?? font.wrapText(text, fontSize, maxWidth)
   const lineHeightPx = fontSize * lineHeight
 
   const totalBlockHeight = (lines.length - 1) * lineHeightPx
@@ -103,11 +132,13 @@ function drawDiff(
   fontSize: number,
   maxWidth: number,
   lineHeight: number,
+  fontFamily: string = 'Inter-Slug, sans-serif',
+  preWrappedLines: string[] | null = null,
 ) {
   const cw = compareCtx.canvas.width
   const ch = compareCtx.canvas.height
 
-  drawCompareText(compareCtx, font, text, fontSize, maxWidth, lineHeight, 'diff')
+  drawCompareText(compareCtx, font, text, fontSize, maxWidth, lineHeight, 'diff', fontFamily, preWrappedLines)
   const canvasPixels = compareCtx.getImageData(0, 0, cw, ch)
 
   const tempCanvas = document.createElement('canvas')
@@ -217,6 +248,41 @@ function SlugTextScene({
   )
 }
 
+/** Renders SlugStackText — used for the icon-fallback demo. */
+function SlugStackTextScene({
+  stack,
+  text,
+  fontSize,
+}: {
+  stack: SlugFontStack
+  text: string
+  fontSize: number
+}) {
+  const ref = useRef<SlugStackText>(null)
+  const { camera, size } = useThree()
+
+  useEffect(() => {
+    ref.current?.setViewportSize(size.width, size.height)
+  }, [size])
+
+  useFrame(() => {
+    ref.current?.update(camera)
+  })
+
+  return (
+    <slugStackText
+      ref={ref}
+      font={stack}
+      text={text}
+      fontSize={fontSize}
+      color={0xffffff}
+      align="center"
+      lineHeight={LINE_HEIGHT}
+      maxWidth={size.width * MAX_WIDTH_FRACTION}
+    />
+  )
+}
+
 function StatsTracker({ stats }: { stats: StatsHandle }) {
   useStatsMonitor(stats)
   return null
@@ -236,6 +302,7 @@ function useWindowSize() {
 
 function CompareCanvas({
   font,
+  stack,
   text,
   fontSize,
   mode,
@@ -244,8 +311,10 @@ function CompareCanvas({
   windowSize,
   stemDarken,
   thicken,
+  iconsMode,
 }: {
   font: SlugFont
+  stack: SlugFontStack | null
   text: string
   fontSize: number
   mode: CompareMode
@@ -254,6 +323,7 @@ function CompareCanvas({
   windowSize: { w: number; h: number }
   stemDarken: number
   thicken: number
+  iconsMode: boolean
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [computing, setComputing] = useState(false)
@@ -274,12 +344,22 @@ function CompareCanvas({
     const ctx = canvas.getContext('2d')
     if (!ctx) return
     const maxWidth = windowSize.w * MAX_WIDTH_FRACTION
+    const fontFamily = iconsMode
+      ? 'Inter-Slug, FA-Solid, sans-serif'
+      : 'Inter-Slug, sans-serif'
+    // In icons mode, wrap via the stack so line breaks agree with
+    // `SlugStackText` (which uses per-codepoint FA advance widths). The
+    // primary-only `font.wrapText` would diverge as soon as FA glyphs
+    // push a line over the limit.
+    const preWrappedLines = iconsMode && stack
+      ? stack.wrapText(text, fontSize, maxWidth)
+      : null
 
     if (mode === 'diff') {
       if (!gpuCanvas) return
       setComputing(true)
       const raf = requestAnimationFrame(() => {
-        drawDiff(ctx, gpuCanvas, font, text, fontSize, maxWidth, LINE_HEIGHT)
+        drawDiff(ctx, gpuCanvas, font, text, fontSize, maxWidth, LINE_HEIGHT, fontFamily, preWrappedLines)
       })
       const t = setTimeout(() => setComputing(false), 1000)
       return () => {
@@ -289,8 +369,8 @@ function CompareCanvas({
     }
 
     setComputing(false)
-    drawCompareText(ctx, font, text, fontSize, maxWidth, LINE_HEIGHT, mode)
-  }, [font, text, fontSize, mode, stemDarken, thicken, windowSize, gpuCanvas])
+    drawCompareText(ctx, font, text, fontSize, maxWidth, LINE_HEIGHT, mode, fontFamily, preWrappedLines)
+  }, [font, stack, text, fontSize, mode, stemDarken, thicken, windowSize, gpuCanvas, iconsMode])
 
   return (
     <>
@@ -540,6 +620,19 @@ function ComputingIndicator() {
 export default function App() {
   const { pane, stats } = usePane()
 
+  // Top-of-pane toggle bar — scene selector. Inline radiogrid (essentials)
+  // gives an active-state button affordance that reads better than a
+  // dropdown for a two-way scene switch.
+  const [scene] = usePaneRadioGrid<'lorem' | 'icons'>(pane, {
+    groupName: 'scene',
+    initialValue: 'lorem',
+    cells: [
+      { title: 'Lorem', value: 'lorem' },
+      { title: 'Icons', value: 'icons' },
+    ],
+  })
+  const iconsMode = scene === 'icons'
+
   const settings = usePaneFolder(pane, 'Settings')
   const [fontSize] = usePaneInput<number>(settings, 'size', 48, { options: FONT_SIZE_OPTIONS })
   const [wordCount] = usePaneInput<number>(settings, 'words', 20, { min: 5, max: 200, step: 1 })
@@ -601,10 +694,18 @@ export default function App() {
   }, [setWidth, setActualAscent, setActualDescent, setFontAscent, setFontDescent])
 
   const [font, setFont] = useState<SlugFont | null>(null)
+  const [iconFont, setIconFont] = useState<SlugFont | null>(null)
   const [gpuCanvas, setGpuCanvas] = useState<HTMLCanvasElement | null>(null)
   const windowSize = useWindowSize()
   const [splitX, setSplitX] = useState(() => Math.round(window.innerWidth / 2))
-  const text = useMemo(() => getLoremText(wordCount), [wordCount])
+  const text = useMemo(
+    () => (iconsMode ? ICON_DEMO : getLoremText(wordCount)),
+    [iconsMode, wordCount],
+  )
+  const stack = useMemo(
+    () => (font && iconFont ? new SlugFontStack([font, iconFont]) : null),
+    [font, iconFont],
+  )
 
   // Compute the demo span [start, end) from the chosen scope. Falls back
   // to the entire text if the heuristic finds nothing (e.g. a line scope
@@ -653,21 +754,36 @@ export default function App() {
     setParaLines(p.lines.length)
   }, [font, text, fontSize, windowSize, setParaWidth, setParaHeight, setParaLines])
 
-  // Load font — reloads when forceRuntime changes. Wait for @font-face so
-  // Canvas2D comparison renders with the same glyph metrics.
+  // Load Inter — reloads when `forceRuntime` changes. The static cache is
+  // keyed on `${url}:runtime?`, so toggling uses a fresh slot; no manual
+  // clearCache needed. @font-face preloads keep Canvas2D compare + icons
+  // overlay aligned with the Slug shaping on first paint.
   useEffect(() => {
     let cancelled = false
-    SlugFontLoader.clearCache()
-    document.fonts.load('48px Inter-Slug').finally(() => {
-      SlugFontLoader.load(FONT_URL, { forceRuntime }).then((f) => {
-        if (cancelled) return
-        setFont(f)
-      })
+    Promise.allSettled([
+      document.fonts.load('48px Inter-Slug'),
+      document.fonts.load('48px FA-Solid'),
+    ]).finally(() => {
+      SlugFontLoader.load(FONT_URL, { forceRuntime })
+        .then((f) => { if (!cancelled) setFont(f) })
+        .catch((err) => {
+          if (!cancelled) console.error('[slug-text] Inter load failed:', err)
+        })
     })
-    return () => {
-      cancelled = true
-    }
+    return () => { cancelled = true }
   }, [forceRuntime])
+
+  // Icon fallback font — baked-only (no .ttf on disk), independent of
+  // forceRuntime. Load once on mount.
+  useEffect(() => {
+    let cancelled = false
+    SlugFontLoader.load(FA_FONT_URL)
+      .then((f) => { if (!cancelled) setIconFont(f) })
+      .catch((err) => {
+        if (!cancelled) console.error('[slug-text] FA load failed:', err)
+      })
+    return () => { cancelled = true }
+  }, [])
 
   return (
     <>
@@ -683,7 +799,10 @@ export default function App() {
         <PixelCamera />
         <StatsTracker stats={stats} />
         <CanvasGrabber onReady={setGpuCanvas} />
-        {font && (
+        {iconsMode && stack && (
+          <SlugStackTextScene stack={stack} text={text} fontSize={fontSize} />
+        )}
+        {!iconsMode && font && (
           <SlugTextScene
             font={font}
             text={text}
@@ -700,6 +819,7 @@ export default function App() {
         <>
           <CompareCanvas
             font={font}
+            stack={stack}
             text={text}
             fontSize={fontSize}
             mode={compareMode}
@@ -708,17 +828,22 @@ export default function App() {
             windowSize={windowSize}
             stemDarken={stemDarken}
             thicken={thicken}
+            iconsMode={iconsMode}
           />
           <SplitHandle splitX={splitX} onDrag={setSplitX} />
           <SplitLabels splitX={splitX} mode={compareMode} />
-          <MeasureOverlay
-            font={font}
-            text={text}
-            fontSize={fontSize}
-            maxWidth={windowSize.w * MAX_WIDTH_FRACTION}
-            windowSize={windowSize}
-            onMetrics={handleMetrics}
-          />
+          {/* Measure overlays are primary-font only — in icons mode they
+              would misreport FA glyph widths (treated as notdef), so hide. */}
+          {!iconsMode && (
+            <MeasureOverlay
+              font={font}
+              text={text}
+              fontSize={fontSize}
+              maxWidth={windowSize.w * MAX_WIDTH_FRACTION}
+              windowSize={windowSize}
+              onMetrics={handleMetrics}
+            />
+          )}
         </>
       )}
     </>

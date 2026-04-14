@@ -1,3 +1,4 @@
+import { wrapLinesStack } from './pipeline/wrapLinesStack.js'
 import type { SlugFont } from './SlugFont.js'
 
 /**
@@ -61,5 +62,17 @@ export class SlugFontStack {
   /** The primary font — used for default metrics (line-height, etc.). */
   get primary(): SlugFont {
     return this.fonts[0]!
+  }
+
+  /**
+   * Wrap `text` into lines using the stack's per-codepoint font
+   * resolution + advance widths. Mirrors `SlugFont.wrapText` but chooses
+   * the right font per char, so breaks stay consistent with what
+   * `SlugStackText` will actually render — essential for external
+   * reference renderers (Canvas2D overlays) that need line-for-line
+   * agreement with the shaped output.
+   */
+  wrapText(text: string, fontSize: number, maxWidth?: number): string[] {
+    return wrapLinesStack(this, text, fontSize, maxWidth)
   }
 }

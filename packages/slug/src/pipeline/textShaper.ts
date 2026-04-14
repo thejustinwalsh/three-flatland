@@ -19,7 +19,16 @@ export function shapeText(
   const scale = fontSize / font.unitsPerEm
   const lineHeightPx = fontSize * lineHeight
 
-  const openGlyphs = font.stringToGlyphs(text)
+  // Disable default Latin features (`liga`, `rlig`) — opentype.js marks
+  // the component tokens of a matched ligature as `deleted` and drops them
+  // from the returned array, which makes `openGlyphs.length < text.length`
+  // after the first ligature. The rest of this loop indexes back into
+  // `text` by the openGlyphs index (`text[i]`) to detect spaces/newlines,
+  // so any drift silently misdetects word boundaries — whitespace runs
+  // collapse at wrap points and newline handling skips the wrong cursor
+  // advance. The baked shaper doesn't apply GSUB at all; pass an empty
+  // features list to keep the two paths aligned.
+  const openGlyphs = (font.stringToGlyphs as (s: string, opts?: { features?: unknown[] }) => ReturnType<Font['stringToGlyphs']>)(text, { features: [] })
   const positioned: PositionedGlyph[] = []
 
   const lines: PositionedGlyph[][] = [[]]

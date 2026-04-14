@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { parseFont } from './pipeline/fontParser.js'
 import { packTextures } from './pipeline/texturePacker.js'
-import { packBaked, unpackBaked, bakedURLs, BAKED_VERSION, cmapLookup, kernLookup } from './baked.js'
+import { packBaked, unpackBaked, bakedURLs, cmapLookup, kernLookup } from './baked.js'
 import type { BakeInput, BakedJSON } from './baked.js'
 
 // Load Inter for tests
@@ -86,10 +86,6 @@ describe('bakedURLs', () => {
 
 describe('packBaked', () => {
   const { json, bin } = packBaked(input)
-
-  it('produces correct version', () => {
-    expect(json.version).toBe(BAKED_VERSION)
-  })
 
   it('preserves font metrics', () => {
     expect(json.metrics.unitsPerEm).toBe(parsed.unitsPerEm)

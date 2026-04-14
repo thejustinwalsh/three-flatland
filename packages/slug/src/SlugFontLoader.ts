@@ -1,6 +1,6 @@
 import { DataTexture, FloatType, HalfFloatType, Loader, NearestFilter, RGBAFormat, RGFormat } from 'three'
 import { SlugFont } from './SlugFont.js'
-import { BAKED_VERSION, bakedURLs, unpackBaked } from './baked.js'
+import { bakedURLs, unpackBaked } from './baked.js'
 import { shapeTextBaked } from './pipeline/textShaperBaked.js'
 import { wrapLinesBaked } from './pipeline/wrapLinesBaked.js'
 import { measureTextBaked } from './pipeline/textMeasureBaked.js'
@@ -121,8 +121,6 @@ export class SlugFontLoader extends Loader<SlugFont> {
       if (!jsonResp.ok || !binResp.ok) return null
 
       const meta: BakedJSON = await jsonResp.json()
-      if (meta.version !== BAKED_VERSION) return null
-
       const binBuffer = await binResp.arrayBuffer()
 
       // Curve texture: RGBA16F — 2 bytes per channel × 4 channels = 8 bytes/texel

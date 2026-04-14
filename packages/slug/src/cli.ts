@@ -113,7 +113,7 @@ function extractKerning(
 
 // --- Main ---
 
-function bakeFont(fontPath: string, ranges: [number, number][] | null): void {
+function bakeFont(fontPath: string, ranges: [number, number][] | null, outputBase?: string): void {
   const fileBuffer = readFileSync(fontPath)
   const arrayBuffer = fileBuffer.buffer.slice(fileBuffer.byteOffset, fileBuffer.byteOffset + fileBuffer.byteLength)
 
@@ -230,9 +230,11 @@ function bakeFont(fontPath: string, ranges: [number, number][] | null): void {
     kern,
   })
 
-  // Write files
-  const dir = dirname(fontPath)
-  const name = basename(fontPath, extname(fontPath))
+  // Write files. `--output` overrides the derived-from-font-path base.
+  const dir = outputBase ? dirname(outputBase) : dirname(fontPath)
+  const name = outputBase
+    ? basename(outputBase).replace(/\.slug\.(json|bin)?$/, '')
+    : basename(fontPath, extname(fontPath))
   const jsonPath = join(dir, `${name}.slug.json`)
   const binPath = join(dir, `${name}.slug.bin`)
 
@@ -249,6 +251,7 @@ function bakeFont(fontPath: string, ranges: [number, number][] | null): void {
 const args = process.argv.slice(2)
 const fontFiles: string[] = []
 const rangeArgs: string[] = []
+let outputBase: string | undefined
 
 // Parse args
 for (let i = 0; i < args.length; i++) {
@@ -259,6 +262,13 @@ for (let i = 0; i < args.length; i++) {
       process.exit(1)
     }
     rangeArgs.push(args[i]!)
+  } else if (args[i] === '--output' || args[i] === '-o') {
+    i++
+    if (i >= args.length) {
+      console.error('--output requires a value')
+      process.exit(1)
+    }
+    outputBase = args[i]!
   } else if (args[i] === '--help' || args[i] === '-h') {
     console.log(`Usage: slug-bake <font-file> [options]
 
@@ -267,12 +277,15 @@ Options:
                         Named: ascii, latin, latin+
                         Custom: 0x20-0x7E or 32-126
                         Default: all glyphs
+  --output, -o <path>   Output base path (writes <path>.slug.json + .bin).
+                        Default: derive from font filename.
 
 Examples:
   slug-bake Inter.ttf                          # All glyphs
   slug-bake Inter.ttf --range ascii            # ASCII only (~95 glyphs)
   slug-bake Inter.ttf --range latin            # Latin (~600 glyphs)
-  slug-bake Inter.ttf -r latin -r 0x2000-0x206F  # Latin + punctuation`)
+  slug-bake Inter.ttf -r latin -r 0x2000-0x206F  # Latin + punctuation
+  slug-bake Inter.ttf -r 0x41-0x5A -o Inter-Caps # Different output name`)
     process.exit(0)
   } else {
     fontFiles.push(args[i]!)
@@ -292,7 +305,7 @@ if (ranges) {
 
 for (const fontFile of fontFiles) {
   try {
-    bakeFont(fontFile, ranges)
+    bakeFont(fontFile, ranges, outputBase)
   } catch (err) {
     console.error(`Error processing ${fontFile}:`, err)
     process.exit(1)

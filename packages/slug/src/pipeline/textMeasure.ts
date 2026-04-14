@@ -31,7 +31,9 @@ export function measureText(
   let inkAscent = 0
   let inkDescent = 0
 
-  const openGlyphs = font.stringToGlyphs(text)
+  // Features off — see textShaper.ts. Ligature substitution would shorten
+  // the array vs `text.length` and misalign the '\n' skip check.
+  const openGlyphs = (font.stringToGlyphs as (s: string, opts?: { features?: unknown[] }) => ReturnType<Font['stringToGlyphs']>)(text, { features: [] })
 
   for (let i = 0; i < openGlyphs.length; i++) {
     const glyph = openGlyphs[i]!
