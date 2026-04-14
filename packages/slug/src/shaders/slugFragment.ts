@@ -140,30 +140,33 @@ export function slugRender(
     const maxX = max(max(p0.x, p1.x), p2.x).mul(pixelsPerEmX)
     If(maxX.lessThan(-0.5), () => { Break() })
 
-    // Root eligibility
+    // Root eligibility — if both roots are ineligible (rootCode == 0) the
+    // curve doesn't cross the horizontal ray at all and contributes nothing.
+    // Skip the sqrt + divisions + saturates + weight math in that case.
     const rootCode = calcRootCode(p0.y, p1.y, p2.y)
 
-    // Solve intersection
-    const r = solveHorizPoly(p0, p1, p2)
-    const rpxX = r.x.mul(pixelsPerEmX)
-    const rpxY = r.y.mul(pixelsPerEmX)
+    If(rootCode.greaterThan(uint(0)), () => {
+      const r = solveHorizPoly(p0, p1, p2)
+      const rpxX = r.x.mul(pixelsPerEmX)
+      const rpxY = r.y.mul(pixelsPerEmX)
 
-    // Coverage from first root (bit 0)
-    const hasRoot1 = rootCode.bitAnd(uint(1)).greaterThan(uint(0))
-    xcov.addAssign(select(hasRoot1, saturate(rpxX.mul(thickenFactor).add(0.5)), 0.0))
+      // Coverage from first root (bit 0)
+      const hasRoot1 = rootCode.bitAnd(uint(1)).greaterThan(uint(0))
+      xcov.addAssign(select(hasRoot1, saturate(rpxX.mul(thickenFactor).add(0.5)), 0.0))
 
-    // Coverage from second root (bit 8)
-    const hasRoot2 = rootCode.bitAnd(uint(0x100)).greaterThan(uint(0))
-    xcov.subAssign(select(hasRoot2, saturate(rpxY.mul(thickenFactor).add(0.5)), 0.0))
+      // Coverage from second root (bit 8)
+      const hasRoot2 = rootCode.bitAnd(uint(0x100)).greaterThan(uint(0))
+      xcov.subAssign(select(hasRoot2, saturate(rpxY.mul(thickenFactor).add(0.5)), 0.0))
 
-    // Weight: proximity to pixel center
-    const w1 = saturate(float(1.0).sub(abs(rpxX).mul(2.0)))
-    const w2 = saturate(float(1.0).sub(abs(rpxY).mul(2.0)))
-    const curveWgt = max(
-      select(hasRoot1, w1, 0.0),
-      select(hasRoot2, w2, 0.0),
-    )
-    xwgt.assign(max(xwgt, curveWgt))
+      // Weight: proximity to pixel center
+      const w1 = saturate(float(1.0).sub(abs(rpxX).mul(2.0)))
+      const w2 = saturate(float(1.0).sub(abs(rpxY).mul(2.0)))
+      const curveWgt = max(
+        select(hasRoot1, w1, 0.0),
+        select(hasRoot2, w2, 0.0),
+      )
+      xwgt.assign(max(xwgt, curveWgt))
+    })
   })
 
   // --- Vertical band pass ---
@@ -193,24 +196,27 @@ export function slugRender(
     If(maxY.lessThan(-0.5), () => { Break() })
 
     const rootCode = calcRootCode(p0.x, p1.x, p2.x)
-    const r = solveVertPoly(p0, p1, p2)
-    const rpyX = r.x.mul(pixelsPerEmY)
-    const rpyY = r.y.mul(pixelsPerEmY)
 
-    // Vertical band: signs INVERTED vs horizontal per Lengyel's convention
-    const hasRoot1 = rootCode.bitAnd(uint(1)).greaterThan(uint(0))
-    ycov.subAssign(select(hasRoot1, saturate(rpyX.mul(thickenFactor).add(0.5)), 0.0))
+    If(rootCode.greaterThan(uint(0)), () => {
+      const r = solveVertPoly(p0, p1, p2)
+      const rpyX = r.x.mul(pixelsPerEmY)
+      const rpyY = r.y.mul(pixelsPerEmY)
 
-    const hasRoot2 = rootCode.bitAnd(uint(0x100)).greaterThan(uint(0))
-    ycov.addAssign(select(hasRoot2, saturate(rpyY.mul(thickenFactor).add(0.5)), 0.0))
+      // Vertical band: signs INVERTED vs horizontal per Lengyel's convention
+      const hasRoot1 = rootCode.bitAnd(uint(1)).greaterThan(uint(0))
+      ycov.subAssign(select(hasRoot1, saturate(rpyX.mul(thickenFactor).add(0.5)), 0.0))
 
-    const w1 = saturate(float(1.0).sub(abs(rpyX).mul(2.0)))
-    const w2 = saturate(float(1.0).sub(abs(rpyY).mul(2.0)))
-    const curveWgt = max(
-      select(hasRoot1, w1, 0.0),
-      select(hasRoot2, w2, 0.0),
-    )
-    ywgt.assign(max(ywgt, curveWgt))
+      const hasRoot2 = rootCode.bitAnd(uint(0x100)).greaterThan(uint(0))
+      ycov.addAssign(select(hasRoot2, saturate(rpyY.mul(thickenFactor).add(0.5)), 0.0))
+
+      const w1 = saturate(float(1.0).sub(abs(rpyX).mul(2.0)))
+      const w2 = saturate(float(1.0).sub(abs(rpyY).mul(2.0)))
+      const curveWgt = max(
+        select(hasRoot1, w1, 0.0),
+        select(hasRoot2, w2, 0.0),
+      )
+      ywgt.assign(max(ywgt, curveWgt))
+    })
   })
 
   return calcCoverage(xcov, xwgt, ycov, ywgt, evenOdd, weightBoost, stemDarken, ppem)

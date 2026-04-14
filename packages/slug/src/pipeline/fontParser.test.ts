@@ -78,8 +78,8 @@ describe('fontParser', () => {
     const { glyphs } = loadTestFont()
     const h = glyphs.get(161)!
 
-    expect(h.bands.hBands.length).toBe(8)
-    expect(h.bands.vBands.length).toBe(8)
+    expect(h.bands.hBands.length).toBe(16)
+    expect(h.bands.vBands.length).toBe(16)
 
     // At least some bands should have curves
     const totalHCurves = h.bands.hBands.reduce((sum, b) => sum + b.curveIndices.length, 0)

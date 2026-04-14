@@ -1,7 +1,13 @@
 import type { QuadCurve, GlyphBounds, GlyphBands, Band } from '../types.js'
 
-/** Default number of bands per axis. */
-const DEFAULT_BAND_COUNT = 8
+/**
+ * Default number of bands per axis. Doubled from 8 → 16 as a pure-data
+ * optimization: halving the band cell size roughly halves the expected
+ * curves per band, which linearly reduces the per-fragment curve-eval
+ * ALU cost in the shader. Tradeoff: per-glyph band-header count doubles,
+ * but header storage is negligible compared to curve data.
+ */
+const DEFAULT_BAND_COUNT = 16
 
 /** Overlap epsilon in em-space for assigning curves to bands. */
 const BAND_EPSILON = 1 / 1024
