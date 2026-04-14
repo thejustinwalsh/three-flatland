@@ -88,26 +88,23 @@ function observeColor(c: Color, cb: () => void): void {
 }
 
 /**
- * System flags occupy the lowest bits of `_effectFlags`.
- * MaterialEffect enable bits start at EFFECT_BIT_OFFSET.
- * This keeps all flag values small enough for Float32 precision (≤ 2^24).
+ * System flag layout for `_effectFlags` now lives in a neutral module
+ * so `EffectMaterial` can consume the same constants without creating a
+ * Sprite2D → Sprite2DMaterial → EffectMaterial → Sprite2D cycle.
+ * Re-exported here so existing `import { LIT_FLAG_MASK } from '.../Sprite2D'`
+ * call sites keep working.
  */
-
-/** Bit 0 of _effectFlags reserved for the per-sprite lit flag. */
-const LIT_FLAG_BIT = 0
-/** Bitmask for the per-sprite lit flag (bit 0). */
-export const LIT_FLAG_MASK = 1 << LIT_FLAG_BIT
-
-/** Bit 1 of _effectFlags reserved for the per-sprite receiveShadows flag. */
-const RECEIVE_SHADOWS_BIT = 1
-/** Bitmask for the per-sprite receiveShadows flag (bit 1). */
-export const RECEIVE_SHADOWS_MASK = 1 << RECEIVE_SHADOWS_BIT
-
-/**
- * Number of low bits reserved for system flags (lit, receiveShadows).
- * EffectMaterial assigns effect enable bits starting at this offset.
- */
-export const EFFECT_BIT_OFFSET = 2
+export {
+  LIT_FLAG_MASK,
+  RECEIVE_SHADOWS_MASK,
+  CAST_SHADOW_MASK,
+  EFFECT_BIT_OFFSET,
+} from '../materials/effectFlagBits'
+import {
+  LIT_FLAG_MASK,
+  RECEIVE_SHADOWS_MASK,
+  CAST_SHADOW_MASK,
+} from '../materials/effectFlagBits'
 
 /** Size in floats for each attribute type. */
 const ATTR_TYPE_SIZES: Record<string, number> = { float: 1, vec2: 2, vec3: 3, vec4: 4 }
@@ -219,15 +216,48 @@ export class Sprite2D extends Mesh {
     }
   }
 
+  /**
+   * Whether this sprite contributes its silhouette to the shadow-caster
+   * occlusion pre-pass. Stored as bit 2 of `_effectFlags`. Default: `false`
+   * — most sprites don't cast; opt in by setting to `true`.
+   *
+   * Consumed by the occlusion pre-pass shader, which masks the sprite's
+   * alpha by this bit before the SDF seed. Flipping it takes effect on
+   * the next frame with zero CPU rebuild (same model as `receiveShadows`).
+   */
+  get castsShadow(): boolean {
+    return (this._effectFlags & CAST_SHADOW_MASK) !== 0
+  }
+
+  set castsShadow(value: boolean) {
+    const was = (this._effectFlags & CAST_SHADOW_MASK) !== 0
+    if (was === value) return
+
+    if (value) {
+      this._effectFlags |= CAST_SHADOW_MASK
+    } else {
+      this._effectFlags &= ~CAST_SHADOW_MASK
+    }
+
+    // Sync to GPU buffers
+    if (this._entity) {
+      this._syncEffectFlagsToBatch()
+    } else {
+      this._writeEffectDataOwn()
+    }
+  }
+
   // ============================================
   // EFFECT STATE
   // ============================================
 
   /**
    * Enable flags bitmask for packed effects.
-   * Bits 0-1 are reserved system flags (lit, receiveShadows), defaulting on.
-   * Bits 2+ are MaterialEffect enable flags (bit N+2 = effect at index N is enabled).
-   * All values stay within Float32's 24-bit mantissa range.
+   * Bits 0-2 are reserved system flags (lit, receiveShadows, castsShadow).
+   * `lit` and `receiveShadows` default on; `castsShadow` defaults off
+   * (opt-in for shadow contribution). Bits 3+ are MaterialEffect enable
+   * flags (bit N+3 = effect at index N is enabled). All values stay
+   * within Float32's 24-bit mantissa range.
    * @internal
    */
   _effectFlags: number = LIT_FLAG_MASK | RECEIVE_SHADOWS_MASK
@@ -442,6 +472,10 @@ export class Sprite2D extends Mesh {
 
     if (options.receiveShadows === false) {
       this._effectFlags &= ~RECEIVE_SHADOWS_MASK
+    }
+
+    if (options.castsShadow === true) {
+      this._effectFlags |= CAST_SHADOW_MASK
     }
 
     this._updateOwnFlip()

@@ -1,6 +1,10 @@
 import { int, attribute, select } from 'three/tsl'
 import type Node from 'three/src/nodes/core/Node.js'
-import { LIT_FLAG_MASK, RECEIVE_SHADOWS_MASK } from '../sprites/Sprite2D'
+import {
+  LIT_FLAG_MASK,
+  RECEIVE_SHADOWS_MASK,
+  CAST_SHADOW_MASK,
+} from '../sprites/Sprite2D'
 import type { ColorTransformFn } from '../materials/Sprite2DMaterial'
 
 /**
@@ -33,4 +37,18 @@ export function wrapWithLightFlags(lightFn: ColorTransformFn): ColorTransformFn 
 export function readReceiveShadowsFlag(): Node<'bool'> {
   const flags = int(attribute<'vec4'>('effectBuf0', 'vec4').x)
   return flags.bitAnd(int(RECEIVE_SHADOWS_MASK)).greaterThan(int(0))
+}
+
+/**
+ * Read the per-instance castsShadow flag (bit 2 of `effectBuf0.x`).
+ *
+ * Consumed by the occlusion-pass fragment shader to mask a sprite's
+ * alpha contribution to the SDF seed — casters emit their silhouette,
+ * non-casters emit alpha = 0.
+ *
+ * @returns A TSL boolean node — `true` when the sprite casts shadow.
+ */
+export function readCastShadowFlag(): Node<'bool'> {
+  const flags = int(attribute<'vec4'>('effectBuf0', 'vec4').x)
+  return flags.bitAnd(int(CAST_SHADOW_MASK)).greaterThan(int(0))
 }

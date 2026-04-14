@@ -57,6 +57,8 @@ export interface Sprite2DOptions {
   lit?: boolean
   /** Whether this sprite receives shadows from the SDF shadow pipeline (default: true) */
   receiveShadows?: boolean
+  /** Whether this sprite contributes to the shadow-caster occlusion pre-pass (default: false — opt in) */
+  castsShadow?: boolean
   /** Custom material (sprites with same material instance batch together) */
   material?: Sprite2DMaterial
 }
