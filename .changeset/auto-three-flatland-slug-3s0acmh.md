@@ -7,53 +7,50 @@
 
 ## New package: `@three-flatland/slug`
 
-WebGPU/TSL analytic text renderer using ray-band intersection for per-fragment coverage — no SDF atlas, no MSAA needed.
+GPU-accelerated, resolution-independent text rendering for Three.js and React Three Fiber via the Slug algorithm (WebGPU + TSL only).
 
-### Core rendering
-- New `SlugFont`, `SlugGeometry`, `SlugMaterial`, `SlugText` classes for Three.js
-- Font parsing pipeline: glyph extraction, bezier curve decomposition, band-based spatial acceleration structure
-- TSL shader computes analytic coverage per fragment via quadratic ray-curve intersection
-- React subpath (`three-flatland/react`) with R3F-compatible class registrations
-- Dynamic dilation on `SlugMaterial` quads for sub-pixel correctness at small sizes
-- Endpoint sharing in texture packing reduces curve texture footprint
-- `slugDilate` shader node for dilated quad geometry
+### Core classes
 
-### Baked fonts (pre-processing pipeline)
-- `slug-bake` CLI tool converts `.ttf` fonts to `.slug.bin` + `.slug.json` assets
-- `SlugFontLoader` supports both runtime (opentype.js, lazy-loaded) and pre-baked loading paths
-- `textShaperBaked` dispatches layout from baked glyph data without opentype.js at runtime
+- `SlugFont` — loads and owns font data; exposes `shapeText`, `wrapText`, `measureText`, `measureParagraph`, and `emitDecorations`
+- `SlugText` — high-level Three.js `Object3D` with text, fontSize, color, align, lineHeight, maxWidth, styles, and render quality options
+- `SlugMaterial` — TSL node material; drives glyph + decoration rendering in a single draw call
+- `SlugGeometry` — instanced geometry; accepts shaped glyphs and decoration rects
+- `SlugFontLoader` — Three.js `Loader` subclass; tries pre-baked data first, falls back to runtime opentype.js parsing
 
-### Text layout API
-- `SlugFont.wrapText(text, fontSize, maxWidth?)` → `string[]` — dispatches on baked vs runtime path; uses opentype-derived advances for accurate line breaks at all sizes
+### Font loading and baking
 
-### Text measurement API
-- `SlugFont.measureText(text, fontSize)` → `TextMetrics` — CanvasRenderingContext2D-compatible fields (`width`, `actualBoundingBox*`, `fontBoundingBox*`); O(1) per call using pre-computed glyph bounds
-- `SlugFont.measureParagraph(text, fontSize, { maxWidth?, lineHeight? })` → `ParagraphMetrics` — multi-line measurement matching `SlugText` default `lineHeight: 1.2`
+- `SlugFontLoader.load(url)` static method for vanilla usage; `useLoader(SlugFontLoader, url)` for R3F; results cached by URL
+- `slug-bake` CLI tool pre-processes `.ttf`/`.otf` → `.slug.json` + `.slug.bin`; baked path never loads opentype.js at runtime
+- `forceRuntime` option to skip baked data
 
-### Rendering quality
-- Stem darkening and thickening options on `SlugMaterial` and `SlugText` for improved legibility at small sizes
-- Updated coverage calculations for stem weight modulation
-- Fixed `LINE_EPSILON` in font parser for correct curve classification at glyph boundaries
+### Text measurement
+
+- `font.measureText(text, fontSize)` → `TextMetrics` — single-line ink + font-envelope bounds, matching `CanvasRenderingContext2D.measureText` field names
+- `font.measureParagraph(text, fontSize, { maxWidth?, lineHeight? })` → `ParagraphMetrics` — multi-line block dimensions using the same wrap and line-height defaults as `SlugText`
+
+### Text decorations
+
+- `StyleSpan { start, end, underline?, strike? }` — half-open character range with per-span decoration flags
+- `font.emitDecorations(text, positioned, styles, fontSize)` → `DecorationRect[]` — pure post-pass; one rect per contiguous styled run per line
+- `SlugText` accepts `styles?: StyleSpan[]` at construction and as a runtime setter; decorations render in the same draw call as glyphs
+
+### Render quality options (`SlugMaterialOptions` / `SlugTextOptions`)
+
+- `stemDarken` — stem darkening strength (0 = off, ~0.4 subtle, ~1.0 strong)
+- `thicken` — coverage widening at small sizes
+- `supersample` — optional 2×2 supersampling (quarter-pixel jitter, 4 taps)
+- `pixelSnap` — snap glyph centers to pixel grid for crisp small text (default `true`)
+- `evenOdd`, `weightBoost` — winding and weight options carried from initial release
 
 ### Performance
-- `curveTexture` → `RGBA16F`: halves texture bandwidth (8 bytes/texel vs 16); half-float mantissa is subpixel-accurate across all realistic display sizes
-- `bandTexture` → `RG32F`: eliminates two wasted float channels per texel
-- `MAX_CURVES_PER_BAND` reduced 64 → 40 based on full Inter corpus analysis (p999 = 25, max = 38); reduces shader register pressure; bake-time warning if any band exceeds bound
-- `bandCount` increased 8 → 16: roughly halves expected curves per band (mean ~3.2 vs 6.3), reducing per-fragment ALU proportionally
-- Shader skips sqrt + divisions for ~30% of curves per band via `If(rootCode > 0)` guard
 
-### Examples
-- Three.js + React slug-text examples with Canvas2D comparison overlay (onion skin, split, and diff modes)
-- Draggable split handle; diff mode renders luminance-weighted heatmap against WebGPU canvas
-- Measure example: click lines to select; cyan ink bounds + dashed yellow font-envelope overlays; paragraph monitors update live
-- Both examples use Tweakpane for settings/mode controls with GPU stats
-
-### Bug fixes & housekeeping
-- Fixed baked measure returning zero ink bounds (incorrect `curves.length > 0` heuristic replaced with `xMax > xMin` bounds-area check)
-- Fixed `three` peer dependency to use workspace catalog version
-- Added `analyze-bands.ts` and `inspect-bounds.ts` scripts for corpus analysis
+- Curve texture changed from RGBA32F to RGBA16F (−50% bandwidth); band texture from RGBA32F to RG32F (−50%)
+- `MAX_CURVES_PER_BAND` reduced 64 → 40; `bandCount` doubled 8 → 16 (halves expected curves/band, reducing per-fragment ALU)
+- Fragment shader skips the quadratic solve for curves whose root code is 0 (~30% of curves per band)
+- Baked fixture size reduced ~45% (13 MB → 7.1 MB for Inter Regular)
 
 ### BREAKING CHANGES
-- `BAKED_VERSION` bumped 2 → 3; existing `.slug.bin`/`.slug.json` files must be re-processed with `slug-bake` (baked assets are ~45% smaller on disk: 13 MB → 7.1 MB for Inter Regular)
 
-Initial release of `@three-flatland/slug` — a fully analytic WebGPU text renderer with runtime and pre-baked font paths, text layout/measurement APIs, stem darkening, and substantial GPU bandwidth and ALU optimizations.
+- `BAKED_VERSION` has been bumped across multiple iterations (final: 4). Any `.slug.bin` / `.slug.json` files baked with earlier versions must be re-generated with `slug-bake`.
+
+Initial release of `@three-flatland/slug`: a WebGPU-native, resolution-independent text renderer built on the Slug algorithm, with baked font support, text measurement, underline/strikethrough decorations, and multiple render-quality controls — all in a single instanced draw call.
