@@ -493,18 +493,47 @@ function CompareCanvas({
     if (mode === 'diff') {
       if (!gpuCanvas) return
       setComputing(true)
-      const raf = requestAnimationFrame(() => {
-        drawDiff(ctx, gpuCanvas, font, text, fontSize, maxWidth, LINE_HEIGHT, fontFamily, preWrappedLines)
+      // Two RAFs — one for R3F to run its useFrame and schedule the
+      // WebGPU render, one to let the browser actually commit it. Same
+      // rationale as the non-diff path below.
+      let rafA = 0
+      const rafB = { current: 0 }
+      rafA = requestAnimationFrame(() => {
+        rafB.current = requestAnimationFrame(() => {
+          drawDiff(ctx, gpuCanvas, font, text, fontSize, maxWidth, LINE_HEIGHT, fontFamily, preWrappedLines)
+        })
       })
       const t = setTimeout(() => setComputing(false), 1000)
       return () => {
-        cancelAnimationFrame(raf)
+        cancelAnimationFrame(rafA)
+        cancelAnimationFrame(rafB.current)
         clearTimeout(t)
       }
     }
 
     setComputing(false)
-    drawCompareText(ctx, font, text, fontSize, maxWidth, LINE_HEIGHT, mode, fontFamily, preWrappedLines)
+
+    // Defer the Canvas2D draw by two RAFs so the Slug WebGPU canvas
+    // has a chance to render the new content before the compare
+    // overlay updates. Without this, `useEffect` fires synchronously
+    // after state change and Canvas2D paints the new text *one frame
+    // ahead* of the Slug canvas — producing a visible flash during
+    // scene toggle (Lorem ↔ Icons), wordCount changes, font reload,
+    // etc. Two RAFs guarantees we're past at least one R3F render
+    // cycle (R3F schedules its own RAF for the frame loop) plus the
+    // browser's next paint. Net effect: both layers flip on the same
+    // frame.
+    let rafA = 0
+    const rafB = { current: 0 }
+    rafA = requestAnimationFrame(() => {
+      rafB.current = requestAnimationFrame(() => {
+        drawCompareText(ctx, font, text, fontSize, maxWidth, LINE_HEIGHT, mode, fontFamily, preWrappedLines)
+      })
+    })
+    return () => {
+      cancelAnimationFrame(rafA)
+      cancelAnimationFrame(rafB.current)
+    }
   }, [font, stack, text, fontSize, mode, stemDarken, thicken, windowSize, gpuCanvas, iconsMode])
 
   return (
