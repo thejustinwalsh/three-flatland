@@ -70,6 +70,22 @@ const input: BakeInput = {
   kern,
 }
 
+describe('packBaked — strokeSets', () => {
+  it('omits strokeSets from JSON when none configured', () => {
+    const { json } = packBaked(input)
+    expect(json.strokeSets).toBeUndefined()
+  })
+
+  it('round-trips strokeSets metadata through the JSON header', () => {
+    const strokeSets = [
+      { width: 0.025, joinStyle: 'miter' as const, capStyle: 'flat' as const, miterLimit: 4, glyphIdOffset: 3000 },
+      { width: 0.05, joinStyle: 'round' as const, capStyle: 'round' as const, miterLimit: 4, glyphIdOffset: 6000 },
+    ]
+    const { json } = packBaked({ ...input, strokeSets })
+    expect(json.strokeSets).toEqual(strokeSets)
+  })
+})
+
 describe('bakedURLs', () => {
   it('derives .slug.json and .slug.bin from font URL', () => {
     const urls = bakedURLs('/fonts/Inter-Regular.ttf')

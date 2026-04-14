@@ -38,6 +38,33 @@ export interface BakedJSON {
   cmap: { byteOffset: number; count: number }
   /** Kerning: [glyphId1(u16), glyphId2(u16), value(i16)] triples. */
   kern: { byteOffset: number; count: number }
+  /**
+   * Optional stroke sets produced at bake time by running each source
+   * glyph's contours through the quadratic-Bezier offsetter. When
+   * present, each entry describes a single (width, join, cap,
+   * miterLimit) tuple; the baked stroke glyph for source glyph `sid`
+   * lives at `strokeGlyphId = sid + glyphIdOffset`.
+   *
+   * Stroke-glyph curve + band data live in the same curve/band
+   * textures as the source glyphs — just with fresh IDs in the main
+   * glyph table. Lookups at runtime happen via
+   * `SlugFont.getStrokeGlyph(sourceGlyphId, width, join, cap)`.
+   *
+   * Absent when no stroke sets were configured at bake time. Files
+   * written before this field was introduced load cleanly with
+   * `strokeSets === undefined`.
+   */
+  strokeSets?: Array<{
+    width: number
+    joinStyle: 'miter' | 'round' | 'bevel'
+    capStyle: 'flat' | 'square' | 'round' | 'triangle'
+    miterLimit: number
+    /**
+     * strokeGlyphId = sourceGlyphId + glyphIdOffset. Offsets are
+     * allocated so all stroke sets live in disjoint ID ranges.
+     */
+    glyphIdOffset: number
+  }>
 }
 
 /** Glyph table layout: 10 Float32 values per glyph. */
@@ -69,6 +96,10 @@ export interface BakeInput {
   glyphs: Map<number, SlugGlyphData>
   cmap: [charCode: number, glyphId: number][]
   kern: [glyphId1: number, glyphId2: number, value: number][]
+  /** Optional stroke-set metadata. Stroke glyphs themselves live in
+   *  the `glyphs` map with fresh IDs; this array records the
+   *  (params, glyphIdOffset) mapping so runtime can look them up. */
+  strokeSets?: BakedJSON['strokeSets']
 }
 
 export interface BakeOutput {
@@ -196,6 +227,7 @@ export function packBaked(input: BakeInput): BakeOutput {
     bands: { byteOffset: bandsOffset, byteLength: bandSectionSize },
     cmap: { byteOffset: cmapOffset, count: cmap.length },
     kern: { byteOffset: kernOffset, count: kern.length },
+    ...(input.strokeSets ? { strokeSets: input.strokeSets } : {}),
   }
 
   return { json, bin: new Uint8Array(buffer) }

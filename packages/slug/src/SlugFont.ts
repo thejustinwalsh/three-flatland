@@ -95,6 +95,20 @@ export class SlugFont {
   /** @internal */ _wrapLinesOT: typeof import('./pipeline/wrapLines.js').wrapLines | null = null
   /** @internal */ _measureTextOT: typeof import('./pipeline/textMeasure.js').measureText | null = null
   /** @internal */ _bakedData: BakedFontData | null = null
+  /**
+   * Pre-baked stroke sets keyed by `(width, joinStyle, capStyle,
+   * miterLimit)`. Each entry's `glyphIdOffset` maps a source glyph
+   * ID to its corresponding stroke glyph ID (which lives in
+   * `this.glyphs` alongside the source glyphs). Empty when the
+   * font was baked without `--stroke-widths`.
+   */
+  strokeSets: ReadonlyArray<{
+    width: number
+    joinStyle: 'miter' | 'round' | 'bevel'
+    capStyle: 'flat' | 'square' | 'round' | 'triangle'
+    miterLimit: number
+    glyphIdOffset: number
+  }> = []
   /** @internal */ _shapeTextBaked: typeof import('./pipeline/textShaperBaked.js').shapeTextBaked | null = null
   /** @internal */ _wrapLinesBaked: typeof import('./pipeline/wrapLinesBaked.js').wrapLinesBaked | null = null
   /** @internal */ _measureTextBaked: typeof import('./pipeline/textMeasureBaked.js').measureTextBaked | null = null
@@ -310,6 +324,41 @@ export class SlugFont {
       return this._opentypeFont.charToGlyph(String.fromCharCode(charCode)).index !== 0
     }
     return false
+  }
+
+  /**
+   * Look up a pre-baked stroke-glyph data record matching the given
+   * stroke parameters, or `null` if the font wasn't baked with a
+   * matching `(width, joinStyle, capStyle, miterLimit)` tuple or the
+   * source glyph has no outline.
+   *
+   * Returns a `SlugGlyphData` the caller can render through the
+   * normal fill pipeline (`slugRender`) — no new shader, 1× fill
+   * cost. The stroke glyph has its own ID, bounds, bands, and curves
+   * in `this.curveTexture` / `this.bandTexture`.
+   *
+   * Runtime async fallback for widths not in the baked set is Phase 5
+   * Task 20's responsibility — this method just reports pre-baked
+   * availability.
+   */
+  getStrokeGlyph(
+    sourceGlyphId: number,
+    width: number,
+    joinStyle: 'miter' | 'round' | 'bevel' = 'miter',
+    capStyle: 'flat' | 'square' | 'round' | 'triangle' = 'flat',
+    miterLimit = 4,
+  ): SlugGlyphData | null {
+    for (const s of this.strokeSets) {
+      if (
+        s.width === width &&
+        s.joinStyle === joinStyle &&
+        s.capStyle === capStyle &&
+        s.miterLimit === miterLimit
+      ) {
+        return this.glyphs.get(sourceGlyphId + s.glyphIdOffset) ?? null
+      }
+    }
+    return null
   }
 
   getHBandCount(glyphId: number): number {

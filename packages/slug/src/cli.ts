@@ -24,7 +24,10 @@ import { basename, dirname, join, extname } from 'node:path'
 import opentype from 'opentype.js'
 import { parseFont } from './pipeline/fontParser.js'
 import { packTextures } from './pipeline/texturePacker.js'
+import { bakeStrokeForGlyph } from './pipeline/strokeOffsetter.js'
+import type { CapStyle, JoinStyle } from './pipeline/strokeOffsetter.js'
 import { packBaked } from './baked.js'
+import type { BakedJSON } from './baked.js'
 import type { SlugGlyphData } from './types.js'
 
 // --- Predefined Unicode ranges ---
@@ -113,7 +116,19 @@ function extractKerning(
 
 // --- Main ---
 
-function bakeFont(fontPath: string, ranges: [number, number][] | null, outputBase?: string): void {
+interface StrokeSetConfig {
+  width: number
+  joinStyle: JoinStyle
+  capStyle: CapStyle
+  miterLimit: number
+}
+
+function bakeFont(
+  fontPath: string,
+  ranges: [number, number][] | null,
+  outputBase?: string,
+  strokeConfigs: StrokeSetConfig[] = [],
+): void {
   const fileBuffer = readFileSync(fontPath)
   const arrayBuffer = fileBuffer.buffer.slice(fileBuffer.byteOffset, fileBuffer.byteOffset + fileBuffer.byteLength)
 
@@ -160,6 +175,54 @@ function bakeFont(fontPath: string, ranges: [number, number][] | null, outputBas
     })
   }
 
+  // Generate stroke sets, if configured. Each configured (width,
+  // join, cap, miterLimit) tuple runs every outline-bearing source
+  // glyph through `bakeStrokeForGlyph`, producing offset-contour
+  // pseudo-glyphs that render through the fill shader at zero extra
+  // runtime shader cost. Stroke glyphs get fresh IDs starting at
+  // `maxSourceId + 1 + set_idx * sourceIdRange` so lookups at runtime
+  // resolve to a unique entry in the combined glyph table.
+  const strokeSets: NonNullable<BakedJSON['strokeSets']> = []
+  if (strokeConfigs.length > 0) {
+    // ID range per stroke set = (maxSourceId + 1), so offsets are
+    // always monotone and non-overlapping with source glyph IDs.
+    let maxSourceId = 0
+    for (const id of glyphs.keys()) if (id > maxSourceId) maxSourceId = id
+    const idRange = maxSourceId + 1
+
+    for (let si = 0; si < strokeConfigs.length; si++) {
+      const cfg = strokeConfigs[si]!
+      const glyphIdOffset = idRange * (si + 1)
+      let bakedCount = 0
+      for (const [sourceId, sourceGlyph] of Array.from(glyphs.entries())) {
+        if (sourceId >= idRange) continue // skip any stroke glyphs already added by earlier sets
+        const strokeGlyph = bakeStrokeForGlyph(sourceGlyph, {
+          halfWidth: cfg.width,
+          joinStyle: cfg.joinStyle,
+          capStyle: cfg.capStyle,
+          miterLimit: cfg.miterLimit,
+        })
+        if (!strokeGlyph) continue
+        const strokeId = sourceId + glyphIdOffset
+        strokeGlyph.glyphId = strokeId
+        glyphs.set(strokeId, strokeGlyph)
+        bakedCount++
+      }
+      strokeSets.push({
+        width: cfg.width,
+        joinStyle: cfg.joinStyle,
+        capStyle: cfg.capStyle,
+        miterLimit: cfg.miterLimit,
+        glyphIdOffset,
+      })
+      console.log(
+        `  stroke set #${si}: width=${cfg.width} join=${cfg.joinStyle} ` +
+        `cap=${cfg.capStyle} miterLimit=${cfg.miterLimit} → ${bakedCount} glyphs ` +
+        `(offset +${glyphIdOffset})`,
+      )
+    }
+  }
+
   console.log('  Packing textures...')
   const textures = packTextures(glyphs)
 
@@ -200,7 +263,14 @@ function bakeFont(fontPath: string, ranges: [number, number][] | null, outputBas
   console.log(`  ${cmap.length} cmap entries`)
 
   console.log('  Extracting kerning...')
-  const glyphIds = new Set(glyphs.keys())
+  // Stroke glyphs live at offset IDs that opentype.js doesn't know
+  // about — filter to source IDs only so extractKerning can look
+  // each up in the font's hmtx.
+  const maxSourceIdForKern = strokeSets.length > 0
+    ? strokeSets[0]!.glyphIdOffset
+    : Infinity
+  const glyphIds = new Set<number>()
+  for (const id of glyphs.keys()) if (id < maxSourceIdForKern) glyphIds.add(id)
   const kern = extractKerning(otFont, glyphIds)
   console.log(`  ${kern.length} kerning pairs`)
 
@@ -228,6 +298,7 @@ function bakeFont(fontPath: string, ranges: [number, number][] | null, outputBas
     glyphs,
     cmap,
     kern,
+    ...(strokeSets.length > 0 ? { strokeSets } : {}),
   })
 
   // Write files. `--output` overrides the derived-from-font-path base.
@@ -252,23 +323,63 @@ const args = process.argv.slice(2)
 const fontFiles: string[] = []
 const rangeArgs: string[] = []
 let outputBase: string | undefined
+const strokeWidthArgs: number[] = []
+let strokeJoin: JoinStyle = 'miter'
+let strokeCap: CapStyle = 'flat'
+let miterLimit = 4
+
+function expectValue(flag: string, i: number): string {
+  if (i >= args.length) {
+    console.error(`${flag} requires a value`)
+    process.exit(1)
+  }
+  return args[i]!
+}
 
 // Parse args
 for (let i = 0; i < args.length; i++) {
   if (args[i] === '--range' || args[i] === '-r') {
     i++
-    if (i >= args.length) {
-      console.error('--range requires a value')
-      process.exit(1)
-    }
-    rangeArgs.push(args[i]!)
+    rangeArgs.push(expectValue('--range', i))
   } else if (args[i] === '--output' || args[i] === '-o') {
     i++
-    if (i >= args.length) {
-      console.error('--output requires a value')
+    outputBase = expectValue('--output', i)
+  } else if (args[i] === '--stroke-widths' || args[i] === '--stroke-width') {
+    // Comma-separated list of em-space half-widths.
+    i++
+    const raw = expectValue(args[i - 1]!, i)
+    for (const part of raw.split(',')) {
+      const n = Number(part.trim())
+      if (!Number.isFinite(n) || n <= 0) {
+        console.error(`Invalid stroke width: "${part}". Expect positive number in em.`)
+        process.exit(1)
+      }
+      strokeWidthArgs.push(n)
+    }
+  } else if (args[i] === '--stroke-join') {
+    i++
+    const raw = expectValue('--stroke-join', i)
+    if (raw !== 'miter' && raw !== 'round' && raw !== 'bevel') {
+      console.error(`--stroke-join must be miter | round | bevel (got "${raw}")`)
       process.exit(1)
     }
-    outputBase = args[i]!
+    strokeJoin = raw
+  } else if (args[i] === '--stroke-cap') {
+    i++
+    const raw = expectValue('--stroke-cap', i)
+    if (raw !== 'flat' && raw !== 'square' && raw !== 'round' && raw !== 'triangle') {
+      console.error(`--stroke-cap must be flat | square | round | triangle (got "${raw}")`)
+      process.exit(1)
+    }
+    strokeCap = raw
+  } else if (args[i] === '--miter-limit') {
+    i++
+    const n = Number(expectValue('--miter-limit', i))
+    if (!Number.isFinite(n) || n < 1) {
+      console.error('--miter-limit must be a number >= 1')
+      process.exit(1)
+    }
+    miterLimit = n
   } else if (args[i] === '--help' || args[i] === '-h') {
     console.log(`Usage: slug-bake <font-file> [options]
 
@@ -279,18 +390,42 @@ Options:
                         Default: all glyphs
   --output, -o <path>   Output base path (writes <path>.slug.json + .bin).
                         Default: derive from font filename.
+  --stroke-widths <list>  Comma-separated em-space stroke half-widths
+                        to pre-bake. For each entry, every outlined
+                        glyph is offset through the stroke offsetter
+                        and packed into the same textures as the source
+                        glyphs. Runtime picks the matching baked set;
+                        widths not in the list fall back to the async
+                        CPU offsetter (Task 20).
+  --stroke-join <style> miter | round | bevel. Default 'miter'.
+                        Applies to every baked stroke set.
+  --stroke-cap <style>  flat | square | round | triangle. Default 'flat'.
+                        Used only for open contours (SVG paths).
+                        Closed font contours ignore cap style.
+  --miter-limit <n>     Miter clip ratio. SVG default 4. Values above
+                        clip a given miter to a bevel. Applies to all
+                        baked stroke sets.
 
 Examples:
-  slug-bake Inter.ttf                          # All glyphs
+  slug-bake Inter.ttf                          # All glyphs, fill only
   slug-bake Inter.ttf --range ascii            # ASCII only (~95 glyphs)
   slug-bake Inter.ttf --range latin            # Latin (~600 glyphs)
   slug-bake Inter.ttf -r latin -r 0x2000-0x206F  # Latin + punctuation
-  slug-bake Inter.ttf -r 0x41-0x5A -o Inter-Caps # Different output name`)
+  slug-bake Inter.ttf -r 0x41-0x5A -o Inter-Caps # Different output name
+  slug-bake Inter.ttf --stroke-widths 0.025     # Baked stroke at 0.025 em
+  slug-bake Inter.ttf --stroke-widths 0.02,0.05,0.1 --stroke-join round`)
     process.exit(0)
   } else {
     fontFiles.push(args[i]!)
   }
 }
+
+const strokeConfigs: StrokeSetConfig[] = strokeWidthArgs.map((width) => ({
+  width,
+  joinStyle: strokeJoin,
+  capStyle: strokeCap,
+  miterLimit,
+}))
 
 if (fontFiles.length === 0) {
   console.error('No font files specified. Use --help for usage.')
@@ -305,7 +440,7 @@ if (ranges) {
 
 for (const fontFile of fontFiles) {
   try {
-    bakeFont(fontFile, ranges, outputBase)
+    bakeFont(fontFile, ranges, outputBase, strokeConfigs)
   } catch (err) {
     console.error(`Error processing ${fontFile}:`, err)
     process.exit(1)

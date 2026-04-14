@@ -143,7 +143,7 @@ export class SlugFontLoader extends Loader<SlugFont> {
 
       const bakedData = unpackBaked(binBuffer, meta)
 
-      return SlugFont._createBaked(
+      const font = SlugFont._createBaked(
         bakedData.glyphs,
         { curveTexture, bandTexture, textureWidth: meta.textureWidth },
         meta.metrics,
@@ -152,6 +152,10 @@ export class SlugFontLoader extends Loader<SlugFont> {
         wrapLinesBaked,
         measureTextBaked,
       )
+      if (meta.strokeSets && meta.strokeSets.length > 0) {
+        font.strokeSets = meta.strokeSets
+      }
+      return font
     } catch {
       return null
     }
