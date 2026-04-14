@@ -1,4 +1,4 @@
-import type { DataTexture, Vector2 } from 'three'
+import type { Color, DataTexture, Vector2 } from 'three'
 
 /** A quadratic Bezier curve defined by three control points in em-space. */
 export interface QuadCurve {
@@ -141,6 +141,22 @@ export interface SlugTextOptions {
   pixelSnap?: boolean
   /** Style spans (underline / strike / sub-super) applied to character ranges. */
   styles?: readonly StyleSpan[]
+  /**
+   * Optional outline. Renders a child stroke mesh behind the fill with
+   * runtime-uniform half-width. Pass `{ width: 0.025, color: 0x000000 }`
+   * for a thin black outline. Phase 5 extends this with `join` and
+   * `miterLimit` for explicit miter geometry; until then, exterior
+   * corners render as bevels via `min(distance)` — crisp for text at
+   * typical sizes and widths.
+   */
+  outline?: SlugOutlineOptions
+}
+
+export interface SlugOutlineOptions {
+  /** Stroke half-width in em-space. Default 0.025 (≈5% em total width). */
+  width?: number
+  /** Stroke color. Default 0x000000. */
+  color?: number | Color
 }
 
 /**

@@ -2,8 +2,9 @@ import { InstancedMesh, InstancedBufferAttribute, Color } from 'three'
 import type { Camera } from 'three'
 import { SlugFont } from './SlugFont.js'
 import { SlugMaterial } from './SlugMaterial.js'
+import { SlugStrokeMaterial } from './SlugStrokeMaterial.js'
 import { SlugGeometry } from './SlugGeometry.js'
-import type { SlugTextOptions, StyleSpan } from './types.js'
+import type { SlugOutlineOptions, SlugTextOptions, StyleSpan } from './types.js'
 
 /**
  * High-level text rendering object using the Slug algorithm.
@@ -38,6 +39,13 @@ export class SlugText extends InstancedMesh {
   private _slugMaterial: SlugMaterial | null = null
   private _slugGeometry: SlugGeometry
 
+  // --- Outline (stroke) — optional child mesh behind the fill ---
+  private _outlineEnabled = false
+  private _outlineWidth = 0.025
+  private _outlineColor = new Color(0x000000)
+  private _outlineMesh: InstancedMesh | null = null
+  private _strokeMaterial: SlugStrokeMaterial | null = null
+
   constructor(options?: SlugTextOptions) {
     const geometry = new SlugGeometry()
     // Construct with a placeholder material — replaced when font is set
@@ -63,7 +71,96 @@ export class SlugText extends InstancedMesh {
     if (options.pixelSnap !== undefined) this._pixelSnap = options.pixelSnap
     if (options.text !== undefined) this._text = options.text
     if (options.styles !== undefined) this._styles = options.styles
+    if (options.outline !== undefined) {
+      this._outlineEnabled = true
+      if (options.outline.width !== undefined) this._outlineWidth = options.outline.width
+      if (options.outline.color !== undefined) this._outlineColor.set(options.outline.color)
+    }
     if (options.font !== undefined) this._setFont(options.font)
+  }
+
+  // -- Outline --
+
+  /**
+   * Outline config. Setting to `null` disables the outline; setting an
+   * object toggles it on with the provided (or default) width/color.
+   * Individual field mutations do NOT rebuild — they update uniforms in
+   * place, so scrubbing width in a tweakpane slider is instant.
+   */
+  get outline(): { width: number; color: Color } | null {
+    return this._outlineEnabled
+      ? { width: this._outlineWidth, color: this._outlineColor }
+      : null
+  }
+  set outline(value: SlugOutlineOptions | null) {
+    if (value === null) {
+      if (this._outlineEnabled) {
+        this._outlineEnabled = false
+        this._teardownOutline()
+      }
+      return
+    }
+    if (value.width !== undefined) this._outlineWidth = value.width
+    if (value.color !== undefined) this._outlineColor.set(value.color)
+    if (!this._outlineEnabled) {
+      this._outlineEnabled = true
+      if (this._font) this._setupOutline()
+    } else {
+      this._strokeMaterial?.setStrokeHalfWidth(this._outlineWidth)
+      this._strokeMaterial?.setColor(this._outlineColor)
+    }
+  }
+
+  setOutlineWidth(w: number): void {
+    this._outlineWidth = w
+    this._strokeMaterial?.setStrokeHalfWidth(w)
+  }
+  setOutlineColor(c: Color | number): void {
+    this._outlineColor.set(c as Color)
+    this._strokeMaterial?.setColor(this._outlineColor)
+  }
+
+  private _setupOutline(): void {
+    if (!this._font || this._outlineMesh) return
+    this._strokeMaterial = new SlugStrokeMaterial(this._font, {
+      color: this._outlineColor,
+      strokeHalfWidth: this._outlineWidth,
+      transparent: true,
+    })
+    this._strokeMaterial.setViewportSize(this._viewportWidth, this._viewportHeight)
+
+    // Child mesh shares the glyph geometry (including all instance
+    // attributes — glyphPos, glyphTex, glyphJac, glyphBand, glyphColor)
+    // so the stroke sees exactly the same shaped layout as the fill.
+    this._outlineMesh = new InstancedMesh(this._slugGeometry, this._strokeMaterial, 0)
+    this._outlineMesh.frustumCulled = false
+    // Add behind fill: lower renderOrder draws first. The actual fill
+    // mesh (this) renders on top courtesy of both materials having
+    // depthWrite=false + transparent alpha blending.
+    this._outlineMesh.renderOrder = -1
+    this.add(this._outlineMesh)
+
+    this._syncOutline()
+  }
+
+  private _teardownOutline(): void {
+    if (this._outlineMesh) {
+      this.remove(this._outlineMesh)
+      this._outlineMesh.dispose()
+      this._outlineMesh = null
+    }
+    this._strokeMaterial?.dispose()
+    this._strokeMaterial = null
+  }
+
+  /** Mirror the fill mesh's `count` + `instanceMatrix` onto the outline. */
+  private _syncOutline(): void {
+    const mesh = this._outlineMesh
+    if (!mesh) return
+    mesh.count = this.count
+    // Share the same instance matrix attribute — no copy, no drift.
+    mesh.instanceMatrix = this.instanceMatrix
+    mesh.visible = this.count > 0 && this.visible
   }
 
   /** Style spans (underline / strike / sub-super) applied to the text. */
@@ -111,6 +208,14 @@ export class SlugText extends InstancedMesh {
       this.material = this._slugMaterial
       this._dirty = true
 
+      // If outline was configured before the font landed, wire it up now.
+      // If the font is being swapped, rebuild the stroke material against
+      // the new font's textures.
+      if (this._outlineEnabled) {
+        this._teardownOutline()
+        this._setupOutline()
+      }
+
       // Stay hidden until the first `_rebuild` has populated instance data.
       // R3F can render once between prop-set and the first `useFrame`; if
       // the pipeline sees a zero-count / unpopulated instance buffer on
@@ -123,6 +228,7 @@ export class SlugText extends InstancedMesh {
     } else {
       this.visible = false
       this.count = 0
+      this._teardownOutline()
     }
   }
 
@@ -244,8 +350,9 @@ export class SlugText extends InstancedMesh {
     }
 
     // Update MVP for dilation every frame (camera/object may have moved)
-    if (camera && this._slugMaterial) {
-      this._slugMaterial.updateMVP(this, camera)
+    if (camera) {
+      this._slugMaterial?.updateMVP(this, camera)
+      this._strokeMaterial?.updateMVP(this, camera)
     }
   }
 
@@ -253,6 +360,7 @@ export class SlugText extends InstancedMesh {
     if (!this._text || !this._font) {
       this.count = 0
       this.visible = false
+      this._syncOutline()
       return
     }
 
@@ -265,6 +373,7 @@ export class SlugText extends InstancedMesh {
     if (positionedGlyphs.length === 0) {
       this.count = 0
       this.visible = false
+      this._syncOutline()
       return
     }
 
@@ -297,6 +406,7 @@ export class SlugText extends InstancedMesh {
     }
     this.count = needed
     this.visible = true
+    this._syncOutline()
   }
 
   /** Update viewport size for dilation calculations. */
@@ -304,10 +414,12 @@ export class SlugText extends InstancedMesh {
     this._viewportWidth = width
     this._viewportHeight = height
     this._slugMaterial?.setViewportSize(width, height)
+    this._strokeMaterial?.setViewportSize(width, height)
   }
 
   /** Dispose all resources. */
   dispose(): this {
+    this._teardownOutline()
     this._slugGeometry.dispose()
     this._slugMaterial?.dispose()
     return super.dispose()

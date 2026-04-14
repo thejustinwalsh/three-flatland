@@ -27,6 +27,7 @@ export type {
   MeasureParagraphOptions,
   StyleSpan,
   DecorationRect,
+  SlugOutlineOptions,
 } from './types.js'
 
 export type { SlugMaterialOptions } from './SlugMaterial.js'
