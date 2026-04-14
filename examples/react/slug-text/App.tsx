@@ -326,11 +326,57 @@ function StatsTracker({ stats }: { stats: StatsHandle }) {
 // --- Compare UI components ---
 
 function useWindowSize() {
-  const [size, setSize] = useState(() => ({ w: window.innerWidth, h: window.innerHeight }))
+  const [size, setSize] = useState(() => ({
+    w: window.innerWidth,
+    h: window.innerHeight,
+    dpr: window.devicePixelRatio,
+  }))
   useEffect(() => {
-    const onResize = () => setSize({ w: window.innerWidth, h: window.innerHeight })
-    window.addEventListener('resize', onResize)
-    return () => window.removeEventListener('resize', onResize)
+    // Measure all three together — DPR changes can happen without a
+    // dimension change (monitor swap), and fullscreen transitions fire
+    // resize events that are sometimes dispatched before the layout
+    // viewport has actually settled. Reading live from window on every
+    // event keeps the canvas DPR-aware on multi-monitor setups and
+    // correct after fullscreen enter/exit.
+    const measure = () => setSize({
+      w: window.innerWidth,
+      h: window.innerHeight,
+      dpr: window.devicePixelRatio,
+    })
+
+    // The `resolution` media query fires whenever DPR changes — covers
+    // moving the window between monitors with different scale factors,
+    // system zoom, OS UI-scale changes. Re-subscribed each time because
+    // the matched resolution changes.
+    let mediaQuery: MediaQueryList | null = null
+    const attachDprListener = () => {
+      mediaQuery?.removeEventListener('change', onDprChange)
+      mediaQuery = window.matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`)
+      mediaQuery.addEventListener('change', onDprChange)
+    }
+    const onDprChange = () => {
+      measure()
+      attachDprListener()
+    }
+
+    // Re-measure once more on the next frame after a fullscreen
+    // change — the 'resize' event that browsers fire on fullscreen
+    // transition can land before the document has finished re-layout,
+    // leaving innerWidth/innerHeight stale for one tick.
+    const onFullscreenChange = () => {
+      measure()
+      requestAnimationFrame(measure)
+    }
+
+    window.addEventListener('resize', measure)
+    document.addEventListener('fullscreenchange', onFullscreenChange)
+    attachDprListener()
+
+    return () => {
+      window.removeEventListener('resize', measure)
+      document.removeEventListener('fullscreenchange', onFullscreenChange)
+      mediaQuery?.removeEventListener('change', onDprChange)
+    }
   }, [])
   return size
 }
@@ -355,7 +401,7 @@ function CompareCanvas({
   mode: CompareMode
   splitX: number
   gpuCanvas: HTMLCanvasElement | null
-  windowSize: { w: number; h: number }
+  windowSize: { w: number; h: number; dpr: number }
   stemDarken: number
   thicken: number
   iconsMode: boolean
@@ -366,9 +412,10 @@ function CompareCanvas({
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
-    const dpr = window.devicePixelRatio
-    canvas.width = windowSize.w * dpr
-    canvas.height = windowSize.h * dpr
+    // Pull DPR from the tracked state (not window.devicePixelRatio
+    // directly) so monitor swaps + scale changes re-run this effect.
+    canvas.width = windowSize.w * windowSize.dpr
+    canvas.height = windowSize.h * windowSize.dpr
     canvas.style.width = `${windowSize.w}px`
     canvas.style.height = `${windowSize.h}px`
   }, [windowSize])

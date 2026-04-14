@@ -646,8 +646,14 @@ async function main() {
   ])
   await loadFont()
 
-  // --- Resize ---
-  window.addEventListener('resize', () => {
+  // --- Resize / DPR / fullscreen tracking ---
+  // Unified re-layout. Triggered on:
+  //  - window 'resize' (viewport size change)
+  //  - `(resolution: Ndppx)` media-query change (monitor swap, OS zoom)
+  //  - document 'fullscreenchange' + a trailing RAF to catch post-
+  //    transition layout settles that browsers occasionally dispatch
+  //    before the viewport metrics have updated.
+  const relayout = () => {
     const rw = window.innerWidth
     const rh = window.innerHeight
     camera.left = -rw / 2
@@ -656,6 +662,7 @@ async function main() {
     camera.bottom = -rh / 2
     camera.updateProjectionMatrix()
     renderer.setSize(rw, rh)
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
     slugText.maxWidth = rw * maxWidthFraction
     slugText.setViewportSize(rw, rh)
     stackText.maxWidth = rw * maxWidthFraction
@@ -663,7 +670,25 @@ async function main() {
     resizeCompareCanvas()
     splitX = Math.round(rw / 2)
     updateSplitUI()
+  }
+
+  let dprMediaQuery: MediaQueryList | null = null
+  const attachDprListener = () => {
+    dprMediaQuery?.removeEventListener('change', onDprChange)
+    dprMediaQuery = window.matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`)
+    dprMediaQuery.addEventListener('change', onDprChange)
+  }
+  const onDprChange = () => {
+    relayout()
+    attachDprListener()
+  }
+
+  window.addEventListener('resize', relayout)
+  document.addEventListener('fullscreenchange', () => {
+    relayout()
+    requestAnimationFrame(relayout)
   })
+  attachDprListener()
 
   // --- Render loop ---
   function animate() {
