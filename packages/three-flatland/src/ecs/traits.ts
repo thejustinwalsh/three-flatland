@@ -6,7 +6,7 @@ import type { Sprite2D } from '../sprites/Sprite2D'
 import type { SpriteBatch } from '../pipeline/SpriteBatch'
 import type { Sprite2DMaterial, ColorTransformFn } from '../materials/Sprite2DMaterial'
 import type { MaterialEffect } from '../materials/MaterialEffect'
-import type { LightEffect, LightEffectRuntimeContext } from '../lights/LightEffect'
+import type { LightEffect } from '../lights/LightEffect'
 import type { LightStore } from '../lights/LightStore'
 import type { Light2D } from '../lights/Light2D'
 import type { SDFGenerator } from '../lights/SDFGenerator'
@@ -233,7 +233,7 @@ export const LightingContext = trait(() => ({
   /** Per-fragment channels required by the active LightEffect. */
   requiredChannels: new Set() as ReadonlySet<ChannelName>,
   /** All tracked sprite materials for colorTransform assignment. */
-  materials: new Set() as Set<Sprite2DMaterial>,
+  materials: new Set<Sprite2DMaterial>(),
   /** Whether the lighting colorTransform needs reassigning to materials. */
   dirty: false as boolean,
   /** Whether the effect has been initialized (init() called). */

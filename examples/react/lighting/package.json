@@ -1,0 +1,31 @@
+{
+  "name": "example-react-lighting",
+  "version": "0.0.1-alpha.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite dev --port ${TURBO_MFE_PORT:-5183}",
+    "build": "vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@react-three/fiber": "^10.0.0-alpha.2",
+    "@three-flatland/presets": "^0.1.0-alpha.4",
+    "@three-flatland/tweakpane": "^0.1.0-alpha.2",
+    "@tweakpane/plugin-essentials": "^0.2.1",
+    "three-flatland": "^0.1.0-alpha.4",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "three": "^0.183.1",
+    "tweakpane": "^4.0.5"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.2",
+    "@types/react-dom": "^19.0.2",
+    "@types/three": "^0.183.1",
+    "@vitejs/plugin-react": "^4.3.4",
+    "typescript": "^5.7.3",
+    "vite": "^6.4.1"
+  }
+}

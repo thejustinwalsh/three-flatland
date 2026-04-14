@@ -1,6 +1,5 @@
 import type { World } from 'koota'
 import { BatchRegistry } from '../traits'
-import type { MaterialEffect } from '../../materials/MaterialEffect'
 import type { RegistryData } from '../batchUtils'
 
 /**
@@ -18,7 +17,7 @@ export function effectTraitsSystem(world: World): void {
   registry.effectTraits.clear()
   for (const { material } of registry.materialRefs.values()) {
     for (const effectClass of material.getEffects()) {
-      registry.effectTraits.set(effectClass._trait, effectClass as typeof MaterialEffect)
+      registry.effectTraits.set(effectClass._trait, effectClass)
     }
   }
 }

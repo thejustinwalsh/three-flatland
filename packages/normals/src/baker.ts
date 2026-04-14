@@ -20,10 +20,13 @@ const baker: Baker = {
     ].join('\n')
   },
 
-  async run(args) {
+  run(args) {
+    // Body is synchronous — wrap result so the Baker contract's async
+    // signature holds. The require-await lint rule forbids async methods
+    // that never await, so this non-async shape is the clean alternative.
     if (args.length === 0 || args.includes('--help') || args.includes('-h')) {
       process.stdout.write(this.usage!() + '\n')
-      return args.length === 0 ? 1 : 0
+      return Promise.resolve(args.length === 0 ? 1 : 0)
     }
 
     let strength: number | undefined
@@ -35,12 +38,12 @@ const baker: Baker = {
         const next = args[i + 1]
         if (!next) {
           process.stderr.write('--strength requires a number\n')
-          return 1
+          return Promise.resolve(1)
         }
         const parsed = Number(next)
         if (!Number.isFinite(parsed)) {
           process.stderr.write(`--strength value "${next}" is not a number\n`)
-          return 1
+          return Promise.resolve(1)
         }
         strength = parsed
         i++
@@ -52,19 +55,19 @@ const baker: Baker = {
     const [inputArg, outputArg] = positional
     if (!inputArg) {
       process.stderr.write('missing <input.png>. Run `flatland-bake normal --help`.\n')
-      return 1
+      return Promise.resolve(1)
     }
 
     const inputPath = resolve(inputArg)
     if (!existsSync(inputPath)) {
       process.stderr.write(`input not found: ${inputPath}\n`)
-      return 1
+      return Promise.resolve(1)
     }
 
     const outputPath = outputArg ? resolve(outputArg) : undefined
     const written = bakeNormalMapFile(inputPath, outputPath, { strength })
     process.stdout.write(`wrote ${written}\n`)
-    return 0
+    return Promise.resolve(0)
   },
 }
 

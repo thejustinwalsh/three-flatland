@@ -1,7 +1,9 @@
 import { trait, type Entity, type Trait } from 'koota'
 import { uniform } from 'three/tsl'
 import { Vector2, Vector3, Vector4 } from 'three'
-import type { OrthographicCamera } from 'three'
+import type { OrthographicCamera, Texture } from 'three'
+import type Node from 'three/src/nodes/core/Node.js'
+import type { ColorTransformContext } from '../materials/Sprite2DMaterial'
 import type UniformNode from 'three/src/nodes/core/UniformNode.js'
 import type { WebGPURenderer } from 'three/webgpu'
 import type {
@@ -49,7 +51,7 @@ export interface LightEffectBuildContext<S extends EffectSchema = EffectSchema> 
    * should compile out the shadow path in that case (JS-level `if`, not
    * a GPU branch).
    */
-  sdfTexture: import('three').Texture | null
+  sdfTexture: Texture | null
   /**
    * Camera frustum width/height uniform node, updated each frame from the
    * camera bounds. Effects that map between world and UV space
@@ -388,7 +390,7 @@ export abstract class LightEffect {
     lightStore: LightStore,
     worldSizeNode: UniformNode<'vec2', Vector2>,
     worldOffsetNode: UniformNode<'vec2', Vector2>,
-    sdfTexture: import('three').Texture | null = null
+    sdfTexture: Texture | null = null
   ): ColorTransformFn {
     return this._buildLightFn(lightStore, worldSizeNode, worldOffsetNode, sdfTexture)
   }
@@ -403,7 +405,7 @@ export abstract class LightEffect {
     lightStore: LightStore,
     worldSizeNode: UniformNode<'vec2', Vector2>,
     worldOffsetNode: UniformNode<'vec2', Vector2>,
-    sdfTexture: import('three').Texture | null = null
+    sdfTexture: Texture | null = null
   ): ColorTransformFn {
     if (!this._lightFn) {
       const ctor = this.constructor as typeof LightEffect
@@ -524,8 +526,8 @@ interface LightEffectConfig<
    * e.g., `requires: ['normal']` guarantees `ctx.normal` is `Node<'vec3'>`.
    */
   light: (context: LightEffectBuildContext<S>) =>
-    (ctx: import('../materials/Sprite2DMaterial').ColorTransformContext & WithRequiredChannels<C>) =>
-      import('three/src/nodes/core/Node.js').default<'vec4'>
+    (ctx: ColorTransformContext & WithRequiredChannels<C>) =>
+      Node<'vec4'>
 
   // Lifecycle hooks (optional) — `this` is the effect instance
   /** Initialize GPU resources. Called lazily on first render. */

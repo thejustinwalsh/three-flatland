@@ -1,4 +1,4 @@
-import { Loader, LoadingManager, TextureLoader, type Texture } from 'three'
+import { Loader, type LoadingManager, TextureLoader, type Texture } from 'three'
 import { bakedNormalURL } from './bake.js'
 
 /**
@@ -124,7 +124,7 @@ export class NormalMapLoader extends Loader<NormalMapResult> {
     }
     if (!head.ok) return null
 
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve, _reject) => {
       const loader = new TextureLoader()
       loader.load(
         bakedURL,
