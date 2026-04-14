@@ -1,6 +1,6 @@
 import { Vector2 } from 'three'
 import type { World } from 'koota'
-import { LightingContext } from '../traits'
+import { LightingContext, ShadowPipeline } from '../traits'
 import type { LightEffectRuntimeContext } from '../../lights/LightEffect'
 
 /**
@@ -8,6 +8,9 @@ import type { LightEffectRuntimeContext } from '../../lights/LightEffect'
  *
  * Self-gating: no-ops if LightingContext doesn't exist, effect is disabled,
  * or runtime context (renderer/camera) is not yet available.
+ *
+ * The SDFGenerator reference is sourced from the `ShadowPipeline` singleton
+ * trait — the authoritative owner of that handle. No mirrored state.
  */
 export function lightEffectSystem(world: World): void {
   const ctxEntities = world.query(LightingContext)
@@ -17,6 +20,15 @@ export function lightEffectSystem(world: World): void {
   if (!ctx) return
   if (!ctx.effect?.enabled || !ctx.lightStore) return
   if (!ctx.renderer || !ctx.camera) return
+
+  // Pull the live SDF handle from ShadowPipeline. Null when the active
+  // effect does not declare needsShadows, which is correct — effects that
+  // don't need shadows shouldn't see a generator in their runtime context.
+  const pipelineEntities = world.query(ShadowPipeline)
+  const pipeline = pipelineEntities.length > 0
+    ? pipelineEntities[0]!.get(ShadowPipeline)
+    : null
+  const sdfGenerator = pipeline?.sdfGenerator ?? null
 
   const cam = ctx.camera
   const worldSize = ctx.worldSize ?? new Vector2()
@@ -29,7 +41,7 @@ export function lightEffectSystem(world: World): void {
     renderer: ctx.renderer,
     camera: cam,
     lightStore: ctx.lightStore,
-    sdfGenerator: ctx.sdfGenerator,
+    sdfGenerator,
     lights: ctx.lights,
     worldSize,
     worldOffset,

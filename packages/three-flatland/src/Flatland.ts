@@ -50,7 +50,6 @@ interface LightingContextData {
   materials: Set<Sprite2DMaterial>
   dirty: boolean
   initialized: boolean
-  sdfGenerator: import('./lights/SDFGenerator').SDFGenerator | null
   renderer: WebGPURenderer | null
   camera: OrthographicCamera | null
   scene: Scene | null
@@ -769,10 +768,6 @@ export class Flatland extends Group implements WorldProvider {
         materials: this._spriteMaterials,
         dirty: true,
         initialized: false,
-        // `shadowPipelineSystem` publishes the live SDFGenerator handle here
-        // once allocated; keep whatever the previous context had so the first
-        // frame before the system runs is still null-safe.
-        sdfGenerator: existingCtx?.sdfGenerator ?? null,
         renderer: existingCtx?.renderer ?? null,
         camera: existingCtx?.camera ?? null,
         scene: existingCtx?.scene ?? null,
@@ -801,7 +796,6 @@ export class Flatland extends Group implements WorldProvider {
           materials: existingCtx?.materials ?? new Set(),
           dirty: true,
           initialized: false,
-          sdfGenerator: existingCtx?.sdfGenerator ?? null,
           renderer: existingCtx?.renderer ?? null,
           camera: existingCtx?.camera ?? null,
           scene: existingCtx?.scene ?? null,
@@ -842,7 +836,6 @@ export class Flatland extends Group implements WorldProvider {
           materials: new Set(),
           dirty: false,
           initialized: false,
-          sdfGenerator: null,
           renderer: null,
           camera: null,
           scene: null,

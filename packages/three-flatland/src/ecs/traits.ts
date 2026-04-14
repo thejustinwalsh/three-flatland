@@ -238,8 +238,6 @@ export const LightingContext = trait(() => ({
   dirty: false as boolean,
   /** Whether the effect has been initialized (init() called). */
   initialized: false as boolean,
-  /** SDF generator (lazy — created when LightEffect.needsShadows is true). */
-  sdfGenerator: null as SDFGenerator | null,
   // Runtime context (set each frame before systems run)
   /** Renderer reference for GPU passes. */
   renderer: null as WebGPURenderer | null,
