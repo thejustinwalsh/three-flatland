@@ -1,5 +1,6 @@
 import type { DataTexture } from 'three'
 import type { BakedFontData } from './baked.js'
+import { cmapLookup } from './baked.js'
 import type {
   SlugGlyphData,
   PositionedGlyph,
@@ -294,6 +295,21 @@ export class SlugFont {
       return this._wrapLinesOT(this._opentypeFont, text, fontSize, maxWidth)
     }
     throw new Error('SlugFont: wrapText not available — load via SlugFontLoader')
+  }
+
+  /**
+   * Cheap codepoint-coverage check used by `SlugFontStack` to walk
+   * fallback chains. Returns true when the font's cmap maps `charCode`
+   * to a non-notdef glyph.
+   */
+  hasCharCode(charCode: number): boolean {
+    if (this._bakedData) {
+      return cmapLookup(charCode, this._bakedData.cmapCodes, this._bakedData.cmapGlyphs) !== 0
+    }
+    if (this._opentypeFont) {
+      return this._opentypeFont.charToGlyph(String.fromCharCode(charCode)).index !== 0
+    }
+    return false
   }
 
   getHBandCount(glyphId: number): number {

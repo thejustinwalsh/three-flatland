@@ -3,7 +3,10 @@
 
 export { SlugFont } from './SlugFont.js'
 export { SlugFontLoader } from './SlugFontLoader.js'
+export { SlugFontStack } from './SlugFontStack.js'
 export { SlugText } from './SlugText.js'
+export { SlugStackText } from './SlugStackText.js'
+export type { SlugStackTextOptions } from './SlugStackText.js'
 export { SlugMaterial } from './SlugMaterial.js'
 export { SlugGeometry } from './SlugGeometry.js'
 
