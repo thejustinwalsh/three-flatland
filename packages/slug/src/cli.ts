@@ -162,7 +162,35 @@ function bakeFont(fontPath: string, ranges: [number, number][] | null): void {
   console.log('  Packing textures...')
   const textures = packTextures(glyphs)
 
-  const curveData = (textures.curveTexture as any).image.data as Float32Array
+  // Shader loop bound — keep in sync with MAX_CURVES_PER_BAND in
+  // src/shaders/slugFragment.ts. Bands exceeding this cap get truncated
+  // at render time, which is a correctness bug — warn the user so they
+  // can either raise the shader bound or subset to fit.
+  const SHADER_MAX_CURVES_PER_BAND = 40
+  let maxBandFill = 0
+  let overBudgetBands = 0
+  for (const glyph of glyphs.values()) {
+    for (const band of glyph.bands.hBands) {
+      if (band.curveIndices.length > maxBandFill) maxBandFill = band.curveIndices.length
+      if (band.curveIndices.length > SHADER_MAX_CURVES_PER_BAND) overBudgetBands++
+    }
+    for (const band of glyph.bands.vBands) {
+      if (band.curveIndices.length > maxBandFill) maxBandFill = band.curveIndices.length
+      if (band.curveIndices.length > SHADER_MAX_CURVES_PER_BAND) overBudgetBands++
+    }
+  }
+  if (overBudgetBands > 0) {
+    console.warn(
+      `  WARNING: ${overBudgetBands} bands exceed MAX_CURVES_PER_BAND (${SHADER_MAX_CURVES_PER_BAND}); ` +
+      `max observed ${maxBandFill}. Those glyphs will render incorrectly. ` +
+      `Increase the shader bound or drop the affected glyphs from the subset.`,
+    )
+  } else {
+    console.log(`  max band fill: ${maxBandFill} / ${SHADER_MAX_CURVES_PER_BAND}`)
+  }
+
+  // Curve data is Uint16Array (half-float RGBA). Band data is Float32Array (RG).
+  const curveData = (textures.curveTexture as any).image.data as Uint16Array
   const bandData = (textures.bandTexture as any).image.data as Float32Array
   const curveWidth = (textures.curveTexture as any).image.width as number
   const curveHeight = (textures.curveTexture as any).image.height as number

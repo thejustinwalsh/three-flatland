@@ -22,8 +22,17 @@ import { calcCoverage } from './calcCoverage.js'
 
 import type { DataTexture } from 'three'
 
-/** Maximum curves per band to iterate in the shader. */
-const MAX_CURVES_PER_BAND = 64
+/**
+ * Maximum curves per band the shader iterates. The loop has an early-exit
+ * on `i >= curveCount`, so under-filled bands pay the branch cost but not
+ * the body cost. WGSL/GLSL compilers still reserve registers for the full
+ * bound, so keeping this tight reduces register pressure.
+ *
+ * Chosen to cover 100% of Inter Regular's full 2849-glyph corpus (max
+ * observed band fill: 38 curves, p999: 25). Baked fonts that exceed 40
+ * emit a bake-time warning.
+ */
+const MAX_CURVES_PER_BAND = 40
 
 /** log2(TEXTURE_WIDTH) for row-wrapping bit ops. */
 const LOG_TEXTURE_WIDTH = 12 // 2^12 = 4096

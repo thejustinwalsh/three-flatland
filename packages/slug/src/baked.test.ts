@@ -47,7 +47,7 @@ function extractTestKern(glyphIds: Set<number>): [number, number, number][] {
 const cmap = extractTestCmap()
 const kern = extractTestKern(new Set(parsed.glyphs.keys()))
 
-const curveData = (textures.curveTexture as any).image.data as Float32Array
+const curveData = (textures.curveTexture as any).image.data as Uint16Array
 const bandData = (textures.bandTexture as any).image.data as Float32Array
 const curveWidth = (textures.curveTexture as any).image.width as number
 const curveHeight = (textures.curveTexture as any).image.height as number
@@ -116,10 +116,10 @@ describe('packBaked', () => {
   })
 
   it('curve texture data round-trips correctly', () => {
-    const restored = new Float32Array(
-      bin.buffer, bin.byteOffset + json.curveTexture.byteOffset, json.curveTexture.byteLength / 4,
+    // Half-float data — 2 bytes per element.
+    const restored = new Uint16Array(
+      bin.buffer, bin.byteOffset + json.curveTexture.byteOffset, json.curveTexture.byteLength / 2,
     )
-    // Spot check first 100 floats
     for (let i = 0; i < Math.min(100, restored.length); i++) {
       expect(restored[i]).toBe(curveData[i])
     }

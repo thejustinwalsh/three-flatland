@@ -12,7 +12,11 @@
 import type { SlugGlyphData, GlyphBounds } from './types.js'
 
 /** Format version. Increment on breaking changes. */
-export const BAKED_VERSION = 2
+export const BAKED_VERSION = 3
+// v3: curve texture changed from RGBA32F (Float32) to RGBA16F (Uint16 half-float);
+//     band texture changed from RGBA32F (Float32) to RG32F (2-channel).
+//     Both halve texture bandwidth; coordinate precision is unaffected at
+//     rendering resolutions. Old bakes require re-running `slug-bake`.
 
 /** JSON header stored in the .slug.json file. */
 export interface BakedJSON {
@@ -57,8 +61,10 @@ export interface BakeInput {
   metrics: BakedJSON['metrics']
   textureWidth: number
   curveTextureHeight: number
-  curveData: Float32Array
+  /** RGBA half-float data — 4 channels × 2 bytes per texel. */
+  curveData: Uint16Array
   bandTextureHeight: number
+  /** RG float32 data — 2 channels × 4 bytes per texel. */
   bandData: Float32Array
   glyphs: Map<number, SlugGlyphData>
   cmap: [charCode: number, glyphId: number][]
@@ -114,10 +120,10 @@ export function packBaked(input: BakeInput): BakeOutput {
   const totalSize = offset
   const buffer = new ArrayBuffer(totalSize)
 
-  // Curve texture
-  new Float32Array(buffer, curveOffset, curveData.length).set(curveData)
+  // Curve texture (half-float — 2 bytes per element)
+  new Uint16Array(buffer, curveOffset, curveData.length).set(curveData)
 
-  // Band texture
+  // Band texture (float32 RG — 2 channels)
   new Float32Array(buffer, bandTexOffset, bandData.length).set(bandData)
 
   // Glyph table: [glyphId, xMin, yMin, xMax, yMax, bandLocX, bandLocY, advanceWidth, lsb, hasOutline]

@@ -1,4 +1,4 @@
-import { DataTexture, FloatType, Loader, NearestFilter, RGBAFormat } from 'three'
+import { DataTexture, FloatType, HalfFloatType, Loader, NearestFilter, RGBAFormat, RGFormat } from 'three'
 import { SlugFont } from './SlugFont.js'
 import { BAKED_VERSION, bakedURLs, unpackBaked } from './baked.js'
 import { shapeTextBaked } from './pipeline/textShaperBaked.js'
@@ -124,17 +124,19 @@ export class SlugFontLoader extends Loader<SlugFont> {
 
       const binBuffer = await binResp.arrayBuffer()
 
+      // Curve texture: RGBA16F — 2 bytes per channel × 4 channels = 8 bytes/texel
       const curveTexture = new DataTexture(
-        new Float32Array(binBuffer, meta.curveTexture.byteOffset, meta.curveTexture.byteLength / 4),
-        meta.textureWidth, meta.curveTexture.height, RGBAFormat, FloatType,
+        new Uint16Array(binBuffer, meta.curveTexture.byteOffset, meta.curveTexture.byteLength / 2),
+        meta.textureWidth, meta.curveTexture.height, RGBAFormat, HalfFloatType,
       )
       curveTexture.minFilter = NearestFilter
       curveTexture.magFilter = NearestFilter
       curveTexture.needsUpdate = true
 
+      // Band texture: RG32F — 4 bytes per channel × 2 channels = 8 bytes/texel
       const bandTexture = new DataTexture(
         new Float32Array(binBuffer, meta.bandTexture.byteOffset, meta.bandTexture.byteLength / 4),
-        meta.textureWidth, meta.bandTexture.height, RGBAFormat, FloatType,
+        meta.textureWidth, meta.bandTexture.height, RGFormat, FloatType,
       )
       bandTexture.minFilter = NearestFilter
       bandTexture.magFilter = NearestFilter

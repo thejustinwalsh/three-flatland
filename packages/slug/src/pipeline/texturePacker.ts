@@ -1,10 +1,11 @@
 import {
   DataTexture,
+  DataUtils,
   FloatType,
-  RGBAFormat,
-  UnsignedIntType,
-  RGIntegerFormat,
+  HalfFloatType,
   NearestFilter,
+  RGBAFormat,
+  RGFormat,
 } from 'three'
 import type { SlugGlyphData, SlugTextureData } from '../types.js'
 
@@ -26,14 +27,20 @@ function nextPow2(n: number): number {
 /**
  * Pack all glyph curve and band data into GPU DataTextures.
  *
- * Curve Texture (RGBA32Float):
+ * Curve Texture (RGBA16F — HalfFloatType):
  *   - 2 texels per curve: [p0x, p0y, p1x, p1y] + [p2x, p2y, 0, 0]
  *   - Endpoint sharing: contiguous curves share texels
+ *   - 8 bytes per texel vs 16 for Float32 — halves texture bandwidth.
+ *     Em-space coordinates are in ~[-1, +1.25], well within half-float
+ *     range and at ~11-bit mantissa precision which is subpixel-accurate
+ *     at all realistic rendering sizes.
  *
- * Band Texture (RG32Uint):
+ * Band Texture (RG32Float — FloatType, 2-channel):
  *   - Per glyph: [hBand headers][vBand headers][curve ref lists]
- *   - Header: (curveCount, offsetFromGlyphStart)
+ *   - Header: (curveCount, offsetFromGlyphStart) — stored as floats but
+ *     always integer values, exactly representable up to 2^24
  *   - Curve ref: (texelX, texelY) → pointer into curve texture
+ *   - 8 bytes per texel vs 16 for RGBA32F — halves band bandwidth
  */
 export function packTextures(glyphs: Map<number, SlugGlyphData>): SlugTextureData {
   // First pass: calculate total sizes
@@ -70,9 +77,11 @@ export function packTextures(glyphs: Map<number, SlugGlyphData>): SlugTextureDat
   const curveHeight = nextPow2(Math.max(1, Math.ceil(totalCurveTexels / TEXTURE_WIDTH)))
   const bandHeight = nextPow2(Math.max(1, Math.ceil(totalBandTexels / TEXTURE_WIDTH)))
 
-  // Allocate buffers
-  const curveData = new Float32Array(TEXTURE_WIDTH * curveHeight * 4) // RGBA
-  const bandData = new Uint32Array(TEXTURE_WIDTH * bandHeight * 2) // RG
+  // Allocate buffers.
+  // Curve texture: 4 channels × 2 bytes (half-float) = 8 bytes/texel.
+  // Band texture: 2 channels × 4 bytes (float) = 8 bytes/texel.
+  const curveData = new Uint16Array(TEXTURE_WIDTH * curveHeight * 4) // RGBA half-float
+  const bandData = new Float32Array(TEXTURE_WIDTH * bandHeight * 2)  // RG float
 
   let curveOffset = 0 // texel offset into curve texture
   let bandOffset = 0 // texel offset into band texture
@@ -115,10 +124,10 @@ export function packTextures(glyphs: Map<number, SlugGlyphData>): SlugTextureDat
         curveTexelMap[ci] = curveOffset
 
         const idx = curveOffset * 4
-        curveData[idx] = curve.p0x
-        curveData[idx + 1] = curve.p0y
-        curveData[idx + 2] = curve.p1x
-        curveData[idx + 3] = curve.p1y
+        curveData[idx] = DataUtils.toHalfFloat(curve.p0x)
+        curveData[idx + 1] = DataUtils.toHalfFloat(curve.p0y)
+        curveData[idx + 2] = DataUtils.toHalfFloat(curve.p1x)
+        curveData[idx + 3] = DataUtils.toHalfFloat(curve.p1y)
         curveOffset++
       }
 
@@ -128,9 +137,9 @@ export function packTextures(glyphs: Map<number, SlugGlyphData>): SlugTextureDat
       // so curveOffset here is at most x=4095 which is fine (endpoint is the +1 read).
       const lastCurve = glyph.curves[contourEnd - 1]!
       const idx = curveOffset * 4
-      curveData[idx] = lastCurve.p2x
-      curveData[idx + 1] = lastCurve.p2y
-      curveData[idx + 2] = 0
+      curveData[idx] = DataUtils.toHalfFloat(lastCurve.p2x)
+      curveData[idx + 1] = DataUtils.toHalfFloat(lastCurve.p2y)
+      curveData[idx + 2] = 0 // half-float zero is bit-pattern 0
       curveData[idx + 3] = 0
       curveOffset++
     }
@@ -184,33 +193,26 @@ export function packTextures(glyphs: Map<number, SlugGlyphData>): SlugTextureDat
     packBandGroup(glyph.bands.vBands, vHeaderStart)
   }
 
-  // Create DataTextures
+  // Curve texture — RGBA16F (half-float).
   const curveTexture = new DataTexture(
     curveData,
     TEXTURE_WIDTH,
     curveHeight,
     RGBAFormat,
-    FloatType,
+    HalfFloatType,
   )
   curveTexture.minFilter = NearestFilter
   curveTexture.magFilter = NearestFilter
   curveTexture.needsUpdate = true
 
-  // For the band texture, we use a float-encoded workaround since integer
-  // DataTextures have limited support. Pack uint32 pairs into RGBA float.
-  const bandFloatData = new Float32Array(TEXTURE_WIDTH * bandHeight * 4)
-  for (let i = 0; i < TEXTURE_WIDTH * bandHeight; i++) {
-    bandFloatData[i * 4] = bandData[i * 2]! // R = first uint
-    bandFloatData[i * 4 + 1] = bandData[i * 2 + 1]! // G = second uint
-    bandFloatData[i * 4 + 2] = 0
-    bandFloatData[i * 4 + 3] = 0
-  }
-
+  // Band texture — RG32F. Values are always small non-negative integers
+  // (counts up to ~40, offsets up to a few thousand) which are exactly
+  // representable as float32. Halves texel width vs the old RGBA32F.
   const bandTexture = new DataTexture(
-    bandFloatData,
+    bandData,
     TEXTURE_WIDTH,
     bandHeight,
-    RGBAFormat,
+    RGFormat,
     FloatType,
   )
   bandTexture.minFilter = NearestFilter

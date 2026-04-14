@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'fs'
 import { resolve } from 'path'
+import { DataUtils } from 'three'
 import { parseFont } from './fontParser'
 import { packTextures } from './texturePacker'
 
@@ -78,23 +79,24 @@ describe('texturePacker', () => {
   it('curve texture contains correct control point data for glyph H', () => {
     const { glyphs, textures } = loadAndPack()
     const h = glyphs.get(161)! // H glyph
-    const data = textures.curveTexture.image.data as Float32Array
+    // Curve texture is RGBA16F — decode Uint16 half-float bits back to Float32.
+    const data = textures.curveTexture.image.data as Uint16Array
     const width = textures.textureWidth
 
-    // Read first curve from texture
     const cx = h.curveLocation.x
     const cy = h.curveLocation.y
     const idx = (cy * width + cx) * 4
 
-    const p0x = data[idx]!
-    const p0y = data[idx + 1]!
-    const p1x = data[idx + 2]!
-    const p1y = data[idx + 3]!
+    const p0x = DataUtils.fromHalfFloat(data[idx]!)
+    const p0y = DataUtils.fromHalfFloat(data[idx + 1]!)
+    const p1x = DataUtils.fromHalfFloat(data[idx + 2]!)
+    const p1y = DataUtils.fromHalfFloat(data[idx + 3]!)
 
-    // Should match the first curve's control points
-    expect(p0x).toBeCloseTo(h.curves[0]!.p0x, 5)
-    expect(p0y).toBeCloseTo(h.curves[0]!.p0y, 5)
-    expect(p1x).toBeCloseTo(h.curves[0]!.p1x, 5)
-    expect(p1y).toBeCloseTo(h.curves[0]!.p1y, 5)
+    // Half-float has ~3 decimal digits of precision in [-1, 1] range —
+    // loosen tolerance from 5 to 3.
+    expect(p0x).toBeCloseTo(h.curves[0]!.p0x, 3)
+    expect(p0y).toBeCloseTo(h.curves[0]!.p0y, 3)
+    expect(p1x).toBeCloseTo(h.curves[0]!.p1x, 3)
+    expect(p1y).toBeCloseTo(h.curves[0]!.p1y, 3)
   })
 })
