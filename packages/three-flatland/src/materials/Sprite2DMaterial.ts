@@ -103,11 +103,13 @@ export class Sprite2DMaterial extends EffectMaterial {
    */
   static getShared(options: Sprite2DMaterialOptions = {}): Sprite2DMaterial {
     const textureId = options.map?.id ?? -1
-    const transparent = options.transparent ?? true
+    const alphaTest = options.alphaTest ?? 0
+    // alphaTest > 0 implies the depth-test fast path: opaque + depthWrite=true.
+    const transparent = options.transparent ?? (alphaTest > 0 ? false : true)
     const lit = options.lit ?? false
     const ctId = getColorTransformId(options.colorTransform)
 
-    const key = `${textureId}:${transparent}:${lit}:${ctId}`
+    const key = `${textureId}:${transparent}:${lit}:${ctId}:${alphaTest}`
 
     let material = Sprite2DMaterial._cache.get(key)
     if (!material) {
@@ -138,7 +140,15 @@ export class Sprite2DMaterial extends EffectMaterial {
     this._lit = options.lit ?? false
     this._globalUniforms = options.globalUniforms ?? null
     this._colorTransform = options.colorTransform ?? null
-    this.transparent = options.transparent ?? true
+
+    // alphaTest > 0 opts the material into an opaque + depth-test fast
+    // path. Transparent defaults flip to false and depthWrite flips to
+    // true, so the GPU's depth buffer resolves draw order regardless of
+    // instance slot order (the batchSortSystem's CPU sort is then
+    // unnecessary and is skipped for this material).
+    const alphaTest = options.alphaTest ?? 0
+    this.alphaTest = alphaTest
+    this.transparent = options.transparent ?? (alphaTest > 0 ? false : true)
     this.depthTest = true
     this.side = FrontSide
 
@@ -149,7 +159,9 @@ export class Sprite2DMaterial extends EffectMaterial {
       this.depthWrite = false
     } else {
       this.blending = NormalBlending
-      this.depthWrite = false
+      // Opaque (transparent=false) materials write depth so the depth
+      // test can resolve ordering — enables the alphaTest fast path.
+      this.depthWrite = !this.transparent
     }
 
     if (options.map) {
@@ -259,10 +271,17 @@ export class Sprite2DMaterial extends EffectMaterial {
     const finalAlpha = texColor.a.mul(instanceColor.a)
 
     let color: Node<'vec4'>
+    const alphaTestValue = this.alphaTest
     if (this._premultipliedAlpha) {
+      if (alphaTestValue > 0) {
+        If(finalAlpha.lessThan(float(alphaTestValue)), () => {
+          Discard()
+        })
+      }
       color = vec4(tintedRGB.mul(finalAlpha), finalAlpha)
     } else {
-      If(texColor.a.lessThan(float(0.01)), () => {
+      const cutoff = alphaTestValue > 0 ? alphaTestValue : 0.01
+      If(finalAlpha.lessThan(float(cutoff)), () => {
         Discard()
       })
       color = vec4(tintedRGB, finalAlpha)

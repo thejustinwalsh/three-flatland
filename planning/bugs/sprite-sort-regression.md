@@ -247,3 +247,80 @@ Long-term (Option B):
   two sprites into one batch with differing zIndex, run the pipeline,
   inspect `SpriteBatch.instanceMatrix.array` and `sortedSlots` to
   confirm the lower-zIndex sprite sits at the lower physical slot.
+
+## Resolution
+
+Shipped both strategies — Option B as the default correctness path,
+Option A repurposed as an opt-in performance path.
+
+### Option B — `batchSortSystem` (default)
+
+New system: `packages/three-flatland/src/ecs/systems/batchSortSystem.ts`.
+Runs in `SpriteGroup._runSystems()` after `transformSyncSystem`, before
+`sceneGraphSyncSystem` and `flushDirtyRanges()`.
+
+- Gated on `Changed(SpriteZIndex)` — only batches whose member sprites
+  had a zIndex flip this frame are re-sorted. Other batches pay zero
+  cost.
+- Per-batch: collects `(eid, zIndex, currentSlot)` into module-scope
+  scratch arrays, insertion-sorts by zIndex ascending, and re-applies
+  via `SpriteBatch.swapSlots(a, b)` which swaps instanceMatrix / UV /
+  color / flip / all custom (effect) buffer rows in lockstep. Each
+  entity's `BatchSlot.slot` SoA entry is updated to its new physical
+  slot; ECS entity IDs do not move.
+- Hole-preserving: the set of occupied physical slots is held constant;
+  only the mapping from entity → slot is permuted. `_freeList` stays
+  valid.
+- Zero-alloc past warmup: `dirtyBatches: Uint8Array`, `scratchEids`,
+  `scratchZ`, `scratchSlots`, and `batchEntityBuckets` are all
+  module-scope and reused frame to frame.
+- `Sprite2D.zIndex` setter now mirrors the raw SoA write with an
+  `entity.set(SpriteZIndex, ...)` call when enrolled, so Koota's
+  Changed tracker fires. `batchAssignSystem` also fires it once on
+  first assignment so newly-added sprites trigger one initial sort.
+
+### Option A — `alphaTest` opt-in (opaque fast path)
+
+- `Sprite2DMaterialOptions.alphaTest` is now surfaced end-to-end. When
+  > 0 the material defaults to `transparent: false` + `depthWrite: true`,
+  and the shader discards fragments with `finalAlpha < alphaTest`.
+- `Sprite2DMaterial.getShared()` key includes `alphaTest` so
+  `getShared({ map, alphaTest: 0.5 })` and
+  `getShared({ map, alphaTest: 0.25 })` return distinct instances.
+- `batchSortSystem` short-circuits any batch whose material has
+  `alphaTest > 0 && depthWrite` — the GPU depth test, fed by the
+  layer/zIndex-derived `pz` already baked into the instance matrix by
+  `transformSyncSystem`, resolves ordering for free.
+- `examples/react/knightmark/App.tsx` opts in with
+  `Sprite2DMaterial.getShared({ map: sheet.texture, alphaTest: 0.5 })`.
+
+### New files
+
+- `packages/three-flatland/src/ecs/systems/batchSortSystem.ts`
+- `packages/three-flatland/src/ecs/systems/batchSort.test.ts`
+
+### Modified files
+
+- `packages/three-flatland/src/pipeline/SpriteBatch.ts` — adds
+  `swapSlots(a, b)`.
+- `packages/three-flatland/src/pipeline/SpriteGroup.ts` — wires
+  `batchSortSystem` into the pipeline.
+- `packages/three-flatland/src/ecs/systems/index.ts` — export.
+- `packages/three-flatland/src/ecs/systems/batchAssignSystem.ts` —
+  fires `Changed(SpriteZIndex)` on first assignment.
+- `packages/three-flatland/src/materials/Sprite2DMaterial.ts` —
+  `alphaTest` wiring, shader discard threshold, dedup key.
+- `packages/three-flatland/src/sprites/Sprite2D.ts` — `zIndex` setter
+  fires Koota Changed.
+- `examples/react/knightmark/App.tsx` — opts into alphaTest=0.5.
+
+### Constraints honored
+
+- No edits to `effectBuf0` packing / flag bits (`EffectMaterial.ts`,
+  `effectFlagBits.ts`, `Sprite2D.ts` flag fields) — minimum-touch
+  compatibility with the `lighting-stochastic-adoption` branch.
+- Hot paths stay zero-alloc: all scratch storage is module-scope and
+  reused via `length = 0` / in-place `Uint8Array` reset.
+- No reverse maps; `BatchRegistry.spriteArr` remains canonical.
+- WebGL2 and WebGPU both unaffected (no storage-buffer-only features
+  introduced).
