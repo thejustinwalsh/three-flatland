@@ -43,9 +43,14 @@
   "dependencies": {
     "pngjs": "^7.0.0"
   },
+  "peerDependencies": {
+    "three": ">=0.170.0"
+  },
   "devDependencies": {
     "@types/pngjs": "^6.0.5",
-    "@three-flatland/bake": "workspace:*"
+    "@three-flatland/bake": "workspace:*",
+    "@types/three": "catalog:",
+    "three": "catalog:"
   },
   "flatland": {
     "bakers": [

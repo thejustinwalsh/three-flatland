@@ -7,5 +7,5 @@ export default defineConfig({
   sourcemap: true,
   clean: true,
   bundle: false,
-  external: ['@three-flatland/bake', 'pngjs'],
+  external: ['@three-flatland/bake', 'pngjs', 'three'],
 })

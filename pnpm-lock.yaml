@@ -843,6 +843,12 @@ importers:
       '@types/pngjs':
         specifier: ^6.0.5
         version: 6.0.5
+      '@types/three':
+        specifier: 'catalog:'
+        version: 0.183.1
+      three:
+        specifier: 'catalog:'
+        version: 0.183.1
 
   packages/presets:
     dependencies:
