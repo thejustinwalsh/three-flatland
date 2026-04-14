@@ -1,11 +1,23 @@
-# SDF Shadow Plumbing — Wiring the existing pieces together
+# SDF Shadow Plumbing — Phase 1 (baseline inline sphere-trace)
 
-**Scope:** This is a tactical plan for connecting `SDFGenerator` to `LightEffect` so the `shadow = float(1.0)` stub in `DefaultLightEffect.ts:155` and `DirectLightEffect.ts:141` can be replaced with a real SDF sphere-trace. Nothing here invents new algorithms — the algorithm docs live in `Unified-2D-Lighting-Architecture.md` and `Hybrid-SDF-Shadow-System.md`. This doc is about the eight concrete touchpoints required to go from "classes exist but nothing runs" to "shadow texture bound at shader time, refreshed each frame."
+**Scope:** This is the tactical plan for Phase 1 — connecting `SDFGenerator` to `LightEffect` so the `shadow = float(1.0)` stub in `DefaultLightEffect.ts:155` and `DirectLightEffect.ts:141` can be replaced with an inline per-fragment SDF sphere-trace (the `shadowSDF2D` helper in `@three-flatland/nodes/lighting`). The eight touchpoints here go from "classes exist but nothing runs" to "shadow texture bound at shader time, refreshed each frame, per-pixel trace working."
 
-The quad-resolution decoupled shadow pass (HypeHype-style) from
-`planning/superpowers/specs/stochastic-tiled-lighting-evaluation.md` is NOT
-part of this slice. That's a later optimization, gated on having a working
-baseline to measure against.
+Algorithm references live in `Unified-2D-Lighting-Architecture.md` and `Hybrid-SDF-Shadow-System.md`. Research evaluation lives in `planning/superpowers/specs/stochastic-tiled-lighting-evaluation.md`.
+
+## Phase 2 is required, not optional
+
+Phase 2 is the **quad-resolution decoupled shadow atlas** (HypeHype-style — see `SDF-Shadow-Atlas.md` for its spec). It is **not** a speculative optimization. It is the committed next phase after Phase 1 validates the baseline, and it must ship before the lighting system is considered complete.
+
+Phase 1 exists first because:
+- Phase 2's atlas consumes the inline trace produced by `shadowSDF2D`. Phase 1 builds the primitive; Phase 2 decouples and batches it.
+- We need baseline perf numbers to evaluate Phase 2's win. Without the baseline we can't say "this saved us X ms at N lights."
+- The inline path lets us validate shadow correctness (look, feel, edge artifacts, self-shadow) before adding atlas-allocator complexity.
+
+Phase 1 → Phase 2 transition gate:
+- Phase 1 lands end-to-end (T1-T8)
+- Visual verification in `examples/react/lighting` passes (shadows track movers, soft edges look right, no self-shadow artifacts)
+- Measured frame time at 1080p with 16 lights + 8 shadow casters on the target hardware
+- Phase 2 spec signed off against those measurements
 
 ## Current gaps
 

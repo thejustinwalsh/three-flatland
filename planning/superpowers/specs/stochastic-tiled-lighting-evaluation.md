@@ -60,12 +60,14 @@ Replace "silently skip at light #17" with a 16-slot importance reservoir keyed o
 - Risk: low — pure CPU-side sort, deterministic
 - Fits issue #12
 
-### 5.2 Quad-resolution decoupled shadow pass  [adopt]
+### 5.2 Quad-resolution decoupled shadow pass  [**required — Phase 2 of the SDF shadow rollout**]
+
 Evaluate SDF sphere traces once per 2×2 quad into an 8-bit atlas, then sample in the light loop. STB's core bandwidth-saving idea, orthogonal to stochastic sampling, directly applicable to 2D SDF shadows.
 
 - Scope: new pass between `SDFGenerator` and fragment lighting
 - Expected win: ~4× reduction in SDF trace work
 - Fits issues #11 and #14
+- **Committed spec**: `planning/experiments/SDF-Shadow-Atlas.md` — the atlas is the explicit next phase after baseline inline-trace shadow ships (Phase 1 in `SDF-Shadow-Plumbing.md`). It is **not** an optional optimization; the plan is Phase 1 → validate → Phase 2, not "Phase 1 and maybe Phase 2 if we feel like it."
 
 ### 5.3 Per-tile illuminance-based early cull  [adopt]
 Use a cheap 2D light-vs-tile-AABB illuminance score to drop lights below a threshold *before* tile list insertion. The planning docs describe SDF-aware culling; this is a simpler prerequisite that works without SDF.
