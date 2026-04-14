@@ -1,0 +1,70 @@
+{
+  "name": "@three-flatland/normals",
+  "version": "0.1.0-alpha.1",
+  "description": "Offline + runtime normal map generation for sprites. Contributes a `flatland-bake normal` subcommand.",
+  "type": "module",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    },
+    "./baker": {
+      "source": "./src/baker.ts",
+      "import": {
+        "types": "./dist/baker.d.ts",
+        "default": "./dist/baker.js"
+      },
+      "require": {
+        "types": "./dist/baker.d.cts",
+        "default": "./dist/baker.cjs"
+      }
+    }
+  },
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "pngjs": "^7.0.0"
+  },
+  "devDependencies": {
+    "@types/pngjs": "^6.0.5",
+    "@three-flatland/bake": "workspace:*"
+  },
+  "flatland": {
+    "bakers": [
+      {
+        "name": "normal",
+        "description": "Bake a tangent-space normal map from a sprite PNG",
+        "entry": "./dist/baker.js"
+      }
+    ]
+  },
+  "keywords": [
+    "three-flatland",
+    "normal-map",
+    "bake"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/thejustinwalsh/three-flatland.git",
+    "directory": "packages/normals"
+  }
+}

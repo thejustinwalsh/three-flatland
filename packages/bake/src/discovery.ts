@@ -24,11 +24,31 @@ export function discoverBakers(cwd: string = process.cwd()): {
   const bakers = new Map<string, BakerRegistration>()
   const conflicts: string[] = []
 
+  // CWD-package self-discovery: if the user is iterating inside a package
+  // that declares a baker, let them invoke it without symlinking into
+  // node_modules first. Registers the baker before node_modules scans so a
+  // local version always wins against an older installed copy.
+  const selfDir = findPackageRoot(cwd)
+  if (selfDir) {
+    readPackage(selfDir, bakers, conflicts, seenPackages)
+  }
+
   for (const nodeModulesDir of findNodeModulesDirs(cwd)) {
     scanNodeModules(nodeModulesDir, bakers, conflicts, seenPackages)
   }
 
   return { bakers: Array.from(bakers.values()), conflicts }
+}
+
+/** Walk upward from `start` until a directory with package.json is found. */
+function findPackageRoot(start: string): string | null {
+  let dir = resolve(start)
+  while (true) {
+    if (existsSync(join(dir, 'package.json'))) return dir
+    const parent = resolve(dir, '..')
+    if (parent === dir) return null
+    dir = parent
+  }
 }
 
 /** Walk upward from `cwd` collecting each `node_modules` directory we find. */

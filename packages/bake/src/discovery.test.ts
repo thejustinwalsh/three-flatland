@@ -104,6 +104,24 @@ describe('discoverBakers', () => {
     expect(bakers).toEqual([])
   })
 
+  it('self-discovers a baker declared by the CWD package', () => {
+    // CWD is a package with its own flatland.bakers — must be picked up
+    // without requiring a node_modules symlink.
+    writePkg(tmp, {
+      name: 'self-pkg',
+      flatland: {
+        bakers: [
+          { name: 'self', description: 'Self baker', entry: './dist/baker.js' },
+        ],
+      },
+    })
+
+    const { bakers } = discoverBakers(tmp)
+    expect(bakers).toHaveLength(1)
+    expect(bakers[0]!.name).toBe('self')
+    expect(bakers[0]!.packageName).toBe('self-pkg')
+  })
+
   it('tolerates broken package.json files', () => {
     const badDir = join(tmp, 'node_modules', 'broken')
     mkdirSync(badDir, { recursive: true })
