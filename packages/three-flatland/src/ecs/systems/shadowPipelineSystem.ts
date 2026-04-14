@@ -72,7 +72,6 @@ export function shadowPipelineSystem(world: World): void {
     pipeline.initialized = false
     pipeline.width = 0
     pipeline.height = 0
-    if (ctx.sdfGenerator) ctx.sdfGenerator = null
     return
   }
 
@@ -85,11 +84,11 @@ export function shadowPipelineSystem(world: World): void {
   if (!camera) return
 
   // Lazy allocate on first entry. Construction here is cheap (no GPU
-  // resources until init() below). Publishing to LightingContext happens
-  // in the same pass so downstream effects see the handle on this frame.
+  // resources until init() below). Consumers (lightEffectSystem builds
+  // the effect runtime context) pull the handle straight from this trait
+  // each frame — no mirrored state on LightingContext.
   if (!pipeline.sdfGenerator) {
     pipeline.sdfGenerator = new SDFGenerator()
-    ctx.sdfGenerator = pipeline.sdfGenerator
   }
   if (!pipeline.occlusionPass) {
     pipeline.occlusionPass = new OcclusionPass()

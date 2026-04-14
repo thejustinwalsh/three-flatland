@@ -106,7 +106,13 @@ describe('shadowPipelineSystem + ShadowPipeline trait', () => {
     expect(pipeline?.initialized ?? true).toBe(false)
   })
 
-  it('publishes the live SDFGenerator handle to LightingContext for consumers', () => {
+  it('lightEffectSystem sources the SDF handle from ShadowPipeline (no mirror)', async () => {
+    // Contract: there is exactly one SDFGenerator owner (ShadowPipeline).
+    // Consumers (lightEffectSystem building the effect runtime context)
+    // pull it live from that trait. LightingContext does not carry a
+    // mirrored copy — this test guards against regression to a double-
+    // sourced layout.
+    const { lightEffectSystem } = await import('./ecs/systems/lightEffectSystem')
     vi.spyOn(console, 'warn').mockImplementation(() => {})
     const flatland = new Flatland()
     flatland.setLighting(new LitWithShadows())
@@ -122,9 +128,15 @@ describe('shadowPipelineSystem + ShadowPipeline trait', () => {
     lctx.scene = null
 
     shadowPipelineSystem(flatland.world)
-
     const pipeline = getPipeline(flatland)!
-    expect(lctx.sdfGenerator).toBe(pipeline.sdfGenerator)
+    expect(pipeline.sdfGenerator).not.toBeNull()
+
+    // LightingContext must NOT carry a mirrored sdfGenerator field.
+    expect((lctx as unknown as Record<string, unknown>).sdfGenerator).toBeUndefined()
+
+    // Smoke: lightEffectSystem can still run without it (no throw) — the
+    // runtime context it builds internally pulls from ShadowPipeline.
+    expect(() => lightEffectSystem(flatland.world)).not.toThrow()
   })
 
   it('Flatland.dispose() releases trait-owned GPU resources', () => {
