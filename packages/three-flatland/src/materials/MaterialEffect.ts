@@ -3,7 +3,7 @@ import type { Entity, Trait } from 'koota'
 import type Node from 'three/src/nodes/core/Node.js'
 import type { Texture } from 'three'
 import type { Sprite2D } from '../sprites/Sprite2D'
-import type { ChannelName } from './channels'
+import type { ChannelName, ChannelNodeMap } from './channels'
 
 // ============================================
 // Schema Types
@@ -412,17 +412,40 @@ export abstract class MaterialEffect {
 // ============================================
 
 /** Configuration passed to createMaterialEffect(). */
-interface MaterialEffectConfig<S extends EffectSchema> {
+interface MaterialEffectConfig<
+  S extends EffectSchema,
+  C extends readonly ChannelName[] = readonly [],
+> {
   /** Unique name for this effect. */
   name: string
   /** Per-sprite data schema — default values define types and initial values. */
   schema: S
   /** TSL node builder: receives input color, UV, and per-field attribute nodes. Optional for provider-only effects. */
   node?: (context: EffectNodeContext<S>) => Node<'vec4'>
-  /** Per-fragment channels this effect provides (e.g., ['normal']). */
-  provides?: readonly ChannelName[]
-  /** Channel node builder — produces TSL nodes for declared channels. */
-  channelNode?: (channelName: string, context: ChannelNodeContext<S>) => Node
+  /**
+   * Per-fragment channels this effect provides (e.g., `['normal'] as const`).
+   * The `as const` (or literal array) is required for return-type narrowing
+   * of {@link channelNode}.
+   */
+  provides?: C
+  /**
+   * Channel node builder — produces TSL nodes for declared channels.
+   *
+   * The return type is narrowed by the declared `provides`: if
+   * `provides: ['normal'] as const`, the channelNode must return
+   * `ChannelNodeMap['normal']` (i.e. `Node<'vec3'>`). For multi-channel
+   * providers, the return is the union of `ChannelNodeMap[C[number]]` and
+   * the function must narrow on `channelName` before returning.
+   *
+   * Omitting `provides` leaves `C = readonly []`, which makes this field
+   * uncallable by type — a `channelNode` without a `provides` is a
+   * compile-time error.
+   */
+  channelNode?: C extends readonly [] ? never
+    : (
+        channelName: C[number],
+        context: ChannelNodeContext<S>,
+      ) => ChannelNodeMap[C[number]]
 }
 
 /**
@@ -468,8 +491,11 @@ export type MaterialEffectClass<S extends EffectSchema> = {
  * sprite.addEffect(dissolve)
  * ```
  */
-export function createMaterialEffect<const S extends EffectSchema>(
-  config: MaterialEffectConfig<S>
+export function createMaterialEffect<
+  const S extends EffectSchema,
+  const C extends readonly ChannelName[] = readonly [],
+>(
+  config: MaterialEffectConfig<S, C>
 ): MaterialEffectClass<S> {
   const { name, schema, node, provides: channelProvides, channelNode: channelNodeFn } = config
 
@@ -478,9 +504,17 @@ export function createMaterialEffect<const S extends EffectSchema>(
     static readonly effectName = name
     static readonly effectSchema = schema as EffectSchema
     static readonly provides: readonly ChannelName[] = channelProvides ?? []
-    static channelNode: ((ch: string, ctx: ChannelNodeContext) => Node) | null = channelNodeFn
-      ? (ch: string, ctx: ChannelNodeContext) => channelNodeFn(ch, ctx as ChannelNodeContext<S>)
-      : null
+    // Erase narrowed call-site types back to the storage surface (string, Node)
+    // — the runtime dispatcher in buildMaterial() looks up by string channel
+    // name and the pipeline resolves node types from ChannelNodeMap.
+    static channelNode: ((ch: string, ctx: ChannelNodeContext) => Node) | null =
+      channelNodeFn
+        ? (ch: string, ctx: ChannelNodeContext) =>
+            (channelNodeFn as unknown as (
+              ch: string,
+              ctx: ChannelNodeContext<S>,
+            ) => Node)(ch, ctx as ChannelNodeContext<S>)
+        : null
     static override _initialized: boolean = false
 
     static override buildNode(context: EffectNodeContext): Node<'vec4'> {
