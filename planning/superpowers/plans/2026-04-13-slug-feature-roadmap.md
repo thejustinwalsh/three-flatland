@@ -487,94 +487,156 @@ This task is the gate. Phase 4 does not ship until all rows of the crispness mat
 
 ---
 
-## Phase 5 — Generic Vector Graphics (Slug manual ch.3 — full stroke surface)
+## Phase 5 — Generic Vector Graphics (bake strokes as fills, Slug manual ch.3)
 
-**Scope expanded (2026-04-14):** everything Phase 4 deferred lands here, because open paths actually need it. This phase is bigger than Phase 4 by design — it closes the full SVG-level stroke API: explicit miter joins with `miterLimit` fallback, round joins, all four cap styles (`flat` / `square` / `round` / `triangle`), and arbitrary dashing with `dashOffset`. On top of that sits `SlugShapeBatch` — the retained-mode batch allocator Slug uses for generic shape rendering — and an SVG path-d parser.
+**Re-scoped (2026-04-14, round 2):** Phase 4 shipped a dynamic analytic-distance stroke shader — useful for dev iteration, **not the ship path.** Benching against M2 text budgets and re-reading the Slug manual made the runtime numbers clear: Slug's reference doesn't run a distance-to-curve shader in production. It **bakes strokes as offset contours that render through the fill shader** (manual §4430, §4714). That's the path Phase 5 commits to.
 
-**Why it belongs together:** the stroke-shader extensions (joins, caps, dashing) only become *visible* on arbitrary open paths. Landing them in a vacuum without `SlugShapeBatch` leaves the features untestable and the demos contrived. Landing `SlugShapeBatch` without them leaves strokes looking like Phase 4 bevels, which is wrong for shape rendering. Shipping them together gives one coherent "you can now do SVG" milestone.
+**Why this is the right call:**
+- Per-fragment cost of baked-as-fill = 1× fill (what text already pays). Dynamic `slugStroke` = ~2.6× fill. On M2 text already eats 3–4 ms/frame; games can't afford another 2× on top.
+- What users actually animate in strokes (audited on real product use cases): dash offset (marching ants), color, opacity, transform, pre-baked width swap. None of those need the dynamic shader — they're all bake-compatible.
+- Continuous width scrubbing is the only dynamic-exclusive knob. Covered by a runtime fallback (JS offsetter + texture-pool upload) that warms into the fast path after one frame.
 
-### Architecture
+**Architecture:**
+1. **`slug-bake` CLI grows a quadratic-Bezier contour offsetter.** CPU, build-time. Emits offset contours for a user-configured set of stroke widths × join × cap variants. Store as additional closed contours in the baked file, packed into the same curve/band textures the fill shader already reads.
+2. **Offset contours reference the glyph's curves by offset metadata, not copy.** Per-glyph "stroke set" = (width, joinStyle, capStyle) → (extra curve table, extra band table). Switching width = swap the stroke-set reference via instance-attribute or uniform. Glyph curve data itself is untouched. Never re-process glyph geometry when the stroke width changes.
+3. **Same fill shader (`slugRender`) renders stroked text and stroked shapes.** Zero new fragment path. No miter/cap/distance math at runtime. Join and cap geometry are decided at bake time.
+4. **Dashing** becomes a fill-shader modifier: per-curve arc-length section + a single-float `dashOffset` uniform + dash-array texture. Fragments in gap regions reject. Same shader, one cheap modulo + array lookup.
+5. **Runtime fallback for unbaked widths:** async-worker curve offsetter uploads new stroke contours into the texture pool on demand. First frame at a new width = degraded (fall back to unstroked fill, or synchronous dynamic for that frame only). Steady state = cache warm, 1× fill cost forever.
+6. **Dynamic stroke shader (`slugStroke`) stays as `outline: { mode: 'dynamic' }` opt-in** — no miter/cap/dash work goes into it. Bevel-via-min forever. Documented as a dev/tinker mode with honest cost. Phase 4's shipping implementation stays intact.
 
-**`SlugShapeBatch`** — one `InstancedMesh` subclass owning a (curve, band) texture pair, reused `SlugMaterial` or `SlugStrokeMaterial`, reused `SlugGeometry` instance-attribute layout. Shapes are glyph-shaped instances. Each batch is one draw call regardless of shape count.
+**Why keep the dynamic path at all:**
+- Dev/demo tool — scrubbing width live to see what a design looks like is valuable during iteration.
+- Runtime fallback if async offsetter hasn't finished (one frame of bevel-via-min beats a missing stroke).
+- No ongoing cost — the shader is already written and the uniform slots reserved.
 
-Matches Slug's native model exactly (confirmed against manual §3.1, §3.2, ch.3):
-- Retained-mode, count-then-create. Mirror `CountFill` / `CreateFill` / `CountStroke` / `CreateStroke`: `batch.countShape(contours) → { curveTexels, bandTexels }` then `batch.appendShape(contours) → ShapeHandle`.
-- **Caller-owned append cursor** on the (curve, band) textures — same as Slug's `curveWriteLocation` / `bandWriteLocation` in/out pattern.
-- **No compaction in v1.** Add appends; remove tombstones (drop instance, leak the slot). Fragmentation recovery is a later knob.
-- **Strokes don't generate band data** (manual §4430) for standalone shapes — the stroke shader walks all curves of the shape per-fragment. Our twist: we *do* build bands for shapes too, because the stroke-width halo probe matches what fills need; reusing the band path keeps per-fragment cost sub-linear in curve count. Fall back to linear walk only if `bands.length === 0` (degenerate shape).
-- **Texture format constraint:** curve + band textures are 4096-wide strips, grow in height by pow2 doubling. Exceeding capacity = one full re-upload (amortized cheap). Partial adds = `renderer.copyTextureToTexture` of only the new rows.
+### What can we animate at shipping runtime cost?
 
-### Stroke-shader extensions (moved from Phase 4)
+Audit driving the re-scope. ✅ = ship-path (via baked-as-fill). `dyn` = dynamic-only.
 
-Phase 4's `slugStroke.ts` left labeled extension points; this phase fills them.
+| Property | Text | Shapes | Path |
+|---|---|---|---|
+| Fill color | ✅ | ✅ | uniform |
+| Opacity | ✅ | ✅ | uniform |
+| Transform (pos/rot/scale) | ✅ | ✅ | MVP |
+| Stem-darken / thicken | ✅ | ✅ | uniform |
+| Stroke color | ✅ | ✅ | uniform |
+| **Stroke width — swap among pre-baked set** | ✅ | ✅ | instance attr / uniform |
+| **Dash offset (marching ants)** | ✅ | ✅ | uniform |
+| Dash array structure | — | ✅ | dash-array texture rebind |
+| Stroke width — continuous scrub | dyn | dyn | slugStroke (dev) / async offsetter (prod) |
+| Join style (miter/round/bevel) | dyn | dyn | rebake, or dynamic-mode runtime |
+| Cap style (flat/square/round/triangle) | — | dyn | rebake, or dynamic-mode runtime |
+| Miter limit | dyn | dyn | rebake, or dynamic-mode runtime |
 
-**Joins.** Endpoint-aware classifier replaces the naive `min(d)`:
+Conclusion: the full realtime-animatable set ships through the fill pipeline at fill cost. The dynamic path serves exactly the scrub-and-iterate dev workflow.
+
+### Scope delta vs the previous Phase-5 sketch
+
+**Deleted:**
+- Full miter/round/bevel extension of `slugStroke.ts` with in-shader classifier dispatch (Task 18)
+- Cap-style shader logic (Task 19)
+- In-shader distance-based dashing via arc-length tables (Task 20)
+- 3-texel curve layout with neighbor tangents (redundant — bake-time offsetter produces closed contours; neighbor tangents are a CPU concern, not GPU)
+- `SlugStrokeMaterial` extension with join/cap/dash uniforms (same reason)
+
+**Added:**
+- CPU quadratic-Bezier contour offsetter (build-time, in `slug-bake`)
+- Stroke-set data model in the baked format (per-width, per-(join,cap) variant)
+- Stroke-set runtime swap API (`SlugText.outline.width` picks from pre-baked set, or triggers async offset)
+- Runtime offset worker + texture-pool integration for unbaked widths
+- Dash offset / dash-array uniform modifier on `SlugMaterial` (fill shader)
+
+**Kept:**
+- `SlugShapeBatch` — retained-mode batch allocator (unchanged)
+- SVG path-d parser
+- Texture pool for dynamic curve/band append
+- Shared contour → GPU data pipeline refactor
+
+### Curve offsetting (the core new piece)
+
+Quadratic Bezier offsetting is *not* closed-form — the parallel curve of a quadratic is a higher-order curve. Production approach:
+
+1. **Adaptive subdivision.** Split each quadratic at points of high curvature until each segment's offset can be approximated by a single quadratic within tolerance ε.
+2. **Per-segment offset.** For each subdivided quadratic, construct the offset-segment control points using the normal at p0, p1, p2 at the offset distance `±halfWidth`.
+3. **Join insertion at contour vertices.** At each inter-curve vertex, compute the outer-side bisector. Emit:
+   - **Miter:** one sharp vertex extending to `miterLength = halfWidth / sin(angle/2)`. If `miterLength > miterLimit·halfWidth`, fall through to bevel.
+   - **Bevel:** flat segment connecting the two outer offset endpoints.
+   - **Round:** arc approximated by 2–4 quadratic Beziers covering the outer angle.
+4. **Cap insertion at contour endpoints (open paths).** Flat = no extension. Square = a square extension of 2 short quads. Round = 2–4 quads forming a semicircle. Triangle = 2 quads forming an isoceles triangle.
+5. **Close the offset.** Inner offset (on the fill side) + outer offset (on the stroke side) glue together at caps/joins to form one closed contour per original contour.
+
+Tolerance `ε = 0.01·halfWidth` is a reasonable default — visually indistinguishable but keeps subdivision bounded. ε lower for extreme magnification cases. Cap this with a hard max subdivision depth (8 levels) so pathological inputs can't explode.
+
+Output: a new set of closed contours (quadratic Beziers). Emit into the same pipeline the fill path uses — `buildContoursToGpuGlyph` packs them into curve + band textures, `slugRender` renders them through standard winding-number coverage.
+
+### Baked format for stroke sets
+
+Per-glyph (or per-shape), the baked file optionally holds a **stroke set** — one or more offset-contour bundles keyed by stroke parameters:
+
 ```
-(d, t) = distanceToQuadBezier(coord, curve)
-if t ≤ 0 and curve has prevTangent:
-  // start-side join with curve A→this
-  dispatch(joinStyle): {
-    miter: miter-extension clip (with miterLimit fallback to bevel)
-    round: accept d (capsule extends naturally)
-    bevel: clip to bevel triangle
-  }
-else if t ≥ 1 and curve has nextTangent:
-  // end-side join with this→curve B
-  (same dispatch)
-else:
-  accept d (body)
-```
-- **Miter (default for shapes):** compute outer-side bisector. If the fragment is in the mitered triangular extension (bounded by the two outer offset edges out to their intersection), accept with perpendicular-to-bisector distance. `miterLength = halfWidth / sin(angleBetween/2)`; if `miterLength > miterLimit × halfWidth`, fall through to bevel. SVG default: `miterLimit = 4`.
-- **Round:** accept `d` unconditionally at endpoint region — distance field at the endpoint naturally produces a semicircular capsule end.
-- **Bevel:** reject outside the bevel triangle (bounded by the two outer offset points and the shared vertex); min-distance elsewhere. Matches Phase 4's bevel-via-min but now *explicit* so `miterLimit` fallback has a target.
-
-**Caps.** Applied at contour endpoints where `prevTangent` or `nextTangent` is the zero vector (open-contour end marker):
-- **Flat:** reject fragments beyond the tangent plane at the endpoint (stroke ends precisely at final control point).
-- **Square:** accept fragments within `halfWidth` past the endpoint along the tangent (half-square extension).
-- **Round:** accept `d` unconditionally — the capsule end is a semicircle.
-- **Triangle:** accept fragments inside the isosceles triangle extending `halfWidth` past the endpoint.
-
-Per manual §987–996: when `capStyle ≠ flat`, caps apply to both ends of each individual dash; and when two curves meet *inside* a dash (not inside a gap), the `miterLimit` + `joinStyle` determine the corner. Dashing logic must therefore cooperate with join classification.
-
-**Dashing.** Per Slug manual §987–996 and `StrokeData` (§8064–8095):
-- `dashCount`: even number ≤ 256 (sum of dash + gap entries).
-- `dashArray[0..dashCount-1]`: alternating `(dashLen, gapLen, dashLen, gapLen, …)`.
-- `dashOffset`: starting arc-length into the dash pattern.
-- At each fragment: compute arc-length `s(t)` along the containing curve, add the accumulated arc-length of all preceding curves in the contour, subtract `dashOffset`, wrap modulo `sum(dashArray)`. If the result lands in a dash interval, continue; if in a gap, reject.
-
-Arc-length parametrization of a quadratic Bezier doesn't have a closed form (elliptic integral), so we pre-compute a table per curve at shape-creation time:
-- Baked sample: `N` segments of equal `Δt`, cumulative `s(t_i)`.
-- Stored as a texel row appended to the curve texture when the shape has dashing enabled.
-- Stored into a new per-curve `arcLengthTableRow` field (row index in a separate RG16F arc-length texture, or null if no dashing).
-- Fragment shader: reads `N` table rows, does binary search on `t` (the closest-point `t` from `distanceToQuadBezier`) to interpolate `s(t)`.
-
-`N = 16` is a starting value — delivers ~1% arc-length accuracy for typical cubic-derived quads. Benchmark Task 19's arc-length fidelity against CPU reference; adjust if dashing visibly slips.
-
-**Contour arc-length accumulation.** Per-contour prefix-sum of curve total lengths is also stored — per curve as a single `contourArcLengthOffset` float. Fragment shader reads this + `s(t)` to get the global arc-length along the contour.
-
-### Data model (curve-texture layout v2)
-
-Phase 4 kept the 2-texel curve layout. Phase 5 bumps to the full layout Phase 4 left documented:
-
-Per-curve (3 texels for joins/caps, +1 texel if arc-length table row referenced for dashing):
-```
-texel 0: p0.xy, p1.xy       // endpoint sharing with previous curve preserved
-texel 1: p2.xy, flags_packed, arcLengthTableRow (or 0)
-texel 2: prevTangent.xy, nextTangent.xy
-         // prevTangent.xy = (0,0) if contour start
-         // nextTangent.xy = (0,0) if contour end
-         // magnitude 1.0 encoded; (0,0) reserved as sentinel
+StrokeSet {
+  width: float                      // em-space stroke width
+  joinStyle: 'miter' | 'round' | 'bevel'
+  capStyle: 'flat' | 'square' | 'round' | 'triangle'
+  miterLimit: float                 // only meaningful when joinStyle === 'miter'
+  curveTable: Uint16[]              // offset contour curves (same layout as glyph)
+  bandTable: Float32[]              // bands for these curves
+  arcLengthTable?: Uint16[]         // optional — present when dashing needed
+  totalLength: float                // contour total arc-length (for dashOffset math)
+}
 ```
 
-Arc-length texture (RG16F, 4096-wide, present only if any shape in the batch uses dashing):
-```
-row per curve containing N+1 cumulative arc-length samples
-column 0 = 0.0, column N = curve total length
+A glyph/shape may carry multiple stroke sets — one per configured (width, join, cap) tuple. Runtime picks the closest match; exact match = fast path, no match = async offsetter fallback.
+
+### Runtime API additions
+
+```ts
+// Per-instance on SlugShapeBatch + SlugText.outline config:
+interface StrokeSpec {
+  width: number                      // em-space
+  color?: Color | number | string
+  join?: 'miter' | 'round' | 'bevel' // bake-time choice, swapping needs rebake
+  cap?: 'flat' | 'square' | 'round' | 'triangle'  // same
+  miterLimit?: number                // same
+  dashArray?: number[]               // runtime — uniform array, cheap
+  dashOffset?: number                // runtime — single float uniform
+}
+
+// Material selection:
+// - stroke set exists in baked data → uses SlugMaterial (fill shader)
+// - stroke set doesn't match → async SlugBaker.buildOffset(width, join, cap)
+//   uploads into texture pool, instance re-binds on completion
+// - while pending → configurable fallback: draw nothing, or draw bevel-via-min
+//   dynamic stroke for one frame
 ```
 
-**Backward compatibility.** Phase 4 ships with 2-texel curves. Phase 5 bumps to 3-texel. `BAKED_VERSION` increments; old baked files must error with a clear "re-run `slug-bake`" message. Re-bake checked-in Inter fixtures alongside the format change.
+### Dash-offset as fill-shader modifier
 
-Per-shape storage within `SlugShapeBatch` uses the same layout. `SlugShape.fromSvg(d)` emits this layout directly; `SlugFont` loading via the shared extract pipeline from Task 16 emits it too.
+Dashing on baked offset contours is a fragment-shader modulator, not a new coverage algorithm:
+
+```
+// In slugRender fragment path (fill shader):
+if (strokeSetHasDashing) {
+  // Per-curve arc-length: computed once at bake, in a per-glyph texture row
+  const s_raw = contourArcLengthOffset + sampleArcLength(arcLengthRow, t_from_nearest_intersection)
+  const s = mod(s_raw - dashOffset, dashPatternTotalLength)
+  const inDash = binarySearchDashArray(s, dashArrayUniform)
+  if (!inDash) discard
+}
+// ... existing winding-number coverage math
+```
+
+Binary search over an 8-deep uniform array is ~3 ALU ops per fragment. Comparable to the dash-interval check Slug's reference shader does. Negligible cost on top of fill.
+
+Only enabled when the instance's stroke spec includes a dashArray — uniform branch is compile-time DCE'd otherwise.
+
+### Out of scope for v1
+
+- **Gradients (manual §3.1).** Fragment-shader math wrapped around coverage — follow-up.
+- **Slot compaction / defragmentation.** Tombstones only.
+- **SVG features beyond path `d`:** `<rect>`, `<circle>`, `<ellipse>`, `<polygon>` — callers synthesize to path `d`.
+- **Variable-width strokes along a path.** Single width per stroke set.
+- **Stroke rebake on (join/cap/miterLimit) mutation.** v1 requires matching a pre-baked set; mutating these keys at runtime falls through to async offset-bake. Good enough.
 
 ### Out of scope for v1
 
@@ -585,125 +647,121 @@ Per-shape storage within `SlugShapeBatch` uses the same layout. `SlugShape.fromS
 
 ### Files
 
-- Create: `packages/slug/src/pipeline/texturePool.ts` — append allocator over a (curve, band, arc-length) texture triple. Append, tombstone, track capacity, grow via `copyTextureToTexture`.
-- Create: `packages/slug/src/pipeline/texturePool.test.ts`.
-- Create: `packages/slug/src/pipeline/arcLengthSampler.ts` — per-curve arc-length table builder. Pure-JS, pure-TSL read helper.
+- Create: `packages/slug/src/pipeline/strokeOffsetter.ts` — quadratic-Bezier adaptive offsetter. CPU, pure JS. Takes `(contours, halfWidth, joinStyle, capStyle, miterLimit) → offsetContours`.
+- Create: `packages/slug/src/pipeline/strokeOffsetter.test.ts`.
+- Create: `packages/slug/src/pipeline/arcLengthSampler.ts` — per-curve arc-length table builder. Runs inside the offsetter output pass.
 - Create: `packages/slug/src/pipeline/arcLengthSampler.test.ts`.
-- Create: `packages/slug/src/vector/svgPath.ts` — SVG `d`-attribute parser producing contours of quadratic Beziers. Commands: M, m, L, l, H, h, V, v, Q, q, T, t, C, c, S, s, Z/z. Emits closed/open flag per contour.
+- Create: `packages/slug/src/pipeline/texturePool.ts` — append allocator over curve + band textures. Append, tombstone, grow via `copyTextureToTexture`. Used by SlugShapeBatch and by the runtime offset-bake fallback.
+- Create: `packages/slug/src/pipeline/texturePool.test.ts`.
+- Create: `packages/slug/src/vector/svgPath.ts` — SVG `d`-attribute parser. Commands: M, m, L, l, H, h, V, v, Q, q, T, t, C, c, S, s, Z/z. Emits closed/open flag per contour.
 - Create: `packages/slug/src/vector/svgPath.test.ts`.
 - Create: `packages/slug/src/vector/SlugShapeBatch.ts` — `InstancedMesh` subclass.
 - Create: `packages/slug/src/vector/SlugShapeBatch.test.ts`.
 - Create: `packages/slug/src/vector/SlugShape.ts` — data factory, not a Mesh.
-- Create: `packages/slug/src/shaders/joins.ts` — small TSL helpers: `insideMiterTriangle`, `insideBevelTriangle`, `bisectorClipDistance`, `miterLengthExceeds`.
-- Create: `packages/slug/src/shaders/caps.ts` — TSL helpers: `flatCap`, `squareCap`, `roundCap`, `triangleCap` (each returns coverage-accept decision + possibly-adjusted distance).
-- Create: `packages/slug/src/shaders/dashing.ts` — TSL helper: `insideDash(s, dashArray, dashCount, dashOffset)` using binary-search table reads.
-- Modify: `packages/slug/src/pipeline/fontParser.ts` — Task 16 extracts `buildContoursToGpuGlyph`. Emits the 3-texel layout with neighbor tangents. `SlugFont` loading + `SlugShapeBatch.appendShape` both use it.
-- Modify: `packages/slug/src/pipeline/texturePacker.ts` — 2 → 3 texels per curve, optional 4th for arc-length row index.
-- Modify: `packages/slug/src/shaders/slugStroke.ts` — fill in Phase 4's extension points: endpoint classifier, miter/round/bevel join dispatch, cap-style dispatch at contour endpoints, dash-interval clipping.
-- Modify: `packages/slug/src/SlugStrokeMaterial.ts` — add `joinStyle: 0|1|2`, `miterLimit`, `capStyle: 0|1|2|3`, `dashCount`, `dashOffset`, `dashArrayTexture` uniforms.
-- Modify: `packages/slug/src/baked.ts` — bump `BAKED_VERSION`, 3-texel per-curve encode/decode, optional arc-length section.
-- Modify: `packages/slug/src/cli.ts` — emit neighbor tangents, optional arc-length tables.
-- Modify: `packages/slug/src/index.ts`, `packages/slug/src/react/*` — exports + R3F wrappers.
-- Modify: `packages/slug/src/SlugText.ts` — extend `outline` config with `join`, `miterLimit`, `cap` (cap is no-op for closed contours but accept the prop for API consistency with `SlugShapeBatch`).
+- Create: `packages/slug/src/SlugBaker.ts` — runtime offset-bake worker. Wraps `strokeOffsetter` for on-demand stroke generation when a requested (width, join, cap) isn't pre-baked. Runs in a Web Worker when available; falls back to synchronous main-thread for environments without Worker support.
+- Create: `packages/slug/src/runtime/strokeSetCache.ts` — maps (shapeId, width, join, cap) → baked stroke-set data. Tracks pending async bakes so concurrent requests dedupe.
+- Modify: `packages/slug/src/pipeline/fontParser.ts` — extract `buildContoursToGpuGlyph`. Used by font loading, shape append, and the offset-bake pipeline.
+- Modify: `packages/slug/src/cli.ts` — add `--stroke-widths=W1,W2,W3 --stroke-join=miter --stroke-cap=flat --miter-limit=4` options. For each configured stroke tuple, run `strokeOffsetter` on every glyph contour, emit the resulting offset contours into a stroke-set section in the baked file.
+- Modify: `packages/slug/src/baked.ts` — new baked-file section: stroke sets (per-glyph, per-(width,join,cap)). Baked-version bump so Phase 4 baked files are rejected with a clear "re-run slug-bake" message.
+- Modify: `packages/slug/src/SlugFont.ts` — expose `getStrokeSet(glyphId, width, join, cap) → StrokeSetData | null`. Null = request an async runtime bake.
+- Modify: `packages/slug/src/shaders/slugFragment.ts` (fill shader) — add optional dashing modifier gated on a uniform. No-op when no dash array is bound.
+- Modify: `packages/slug/src/SlugMaterial.ts` — add `dashArray`, `dashOffset`, `arcLengthTexture` uniforms (all no-ops unless dashing is on).
+- Modify: `packages/slug/src/SlugText.ts` — `outline` spec gains `join`, `cap`, `miterLimit`, `dashArray`, `dashOffset`. The SlugText renders an additional stroke-set mesh per configured outline, using `SlugMaterial` bound to the stroke-set's curve+band textures. `SlugStrokeMaterial` stays as the dev `mode: 'dynamic'` path — all existing Phase 4 code preserved.
+- Modify: `packages/slug/src/index.ts`, `packages/slug/src/react/*` — exports + R3F wrappers for shape batching.
 
-### Task 15: Extract shared contour → GPU data pipeline
+### Task 15: Extract shared contour → GPU pipeline
 
-- [ ] **Step 15.1: Refactor `fontParser.ts`** — introduce `buildGpuGlyphFromContours(contours, options): { glyph: SlugGlyphData, curveTexelsNeeded: number, bandTexelsNeeded: number }`. Emits the 3-texel layout (p0/p1/p2, flags, tangents). Handles both closed (contours from fonts) and open (contours from SVG) inputs. Existing font-loading tests must still pass with re-baked fixtures.
-- [ ] **Step 15.2: Extend pure-JS `fontParser`** to populate neighbor tangents (start, end, prev, next). Tangents are unit derivatives of the Bezier at p0/p2. Contour-start's `prevTangent = (0,0)`; contour-end's `nextTangent = (0,0)`. Tests: on `O` (smooth) prev/next match start/end of neighbours; on `A` (one sharp exterior tip at top) the angle jump is present; on dot-over-`i` (separate contour) the prev/next are zero.
-- [ ] **Step 15.3: Extend `texturePacker.ts`** from 2 → 3 texels per curve. Bump `BAKED_VERSION`. Old baked files throw a clear "re-run slug-bake" error.
-- [ ] **Step 15.4: Re-bake** the checked-in Inter + FA fixtures (both example public dirs). Commit regenerated fixtures alongside.
-- [ ] **Step 15.5: Commit.** `refactor(slug): 3-texel curve layout with neighbor tangents (baked v2)`
+- [ ] **Step 15.1: Refactor `fontParser.ts`** — introduce `buildGpuGlyphFromContours(contours): { curveTable, bandTable, bounds, ... }`. Handles closed (font) and open (SVG) contours. Existing font-loading tests must still pass unchanged.
+- [ ] **Step 15.2: Commit.** `refactor(slug): extract shared contour-to-GPU pipeline`
 
-### Task 16: Texture pool (append allocator)
+### Task 16: Quadratic-Bezier stroke offsetter
 
-- [ ] **Step 16.1: Test** `texturePool.test.ts`. Pool with initial height 32 rows. Append a 10-row entry → cursor advances. Append a 25-row entry → grows texture (height 64), full re-upload, cursor advances. Tombstone first entry → live count decreases, cursor doesn't move. Arc-length texture grows independently when any appended shape has dashing enabled.
-- [ ] **Step 16.2: Implement `texturePool.ts`.** Wrap curve (RGBA16F, 4096-wide), band (RG32F, 4096-wide), and optional arc-length (RG16F, 4096-wide) `DataTexture`s. `append(curveData, bandData, arcLengthData?) → Handle`, `remove(handle)`, `flushUploads(renderer)` via `renderer.copyTextureToTexture` from a staging DataTexture. On grow, allocate new pow2 DataTexture, blit old content, dispose old.
-- [ ] **Step 16.3: Commit.** `feat(slug): append-only curve/band/arc-length texture pool`
+The core new build-time piece. Slug keeps this proprietary; ours is the open implementation.
 
-### Task 17: SVG path parser
+- [ ] **Step 16.1: Adaptive subdivision CPU reference** — `subdivideForOffset(curve, halfWidth, epsilon): QuadCurve[]`. Recurse until each segment's offset can be approximated within ε by a single quadratic. Test: straight segment offsets to a straight segment (single output). High-curvature quad subdivides into ~3–5 segments at halfWidth=0.05. Max depth bounded at 8.
+- [ ] **Step 16.2: Per-segment offset CPU** — `offsetSegment(curve, halfWidth): QuadCurve`. Offset p0, p1, p2 along their unit normals. Test: straight segment offsets correctly; gentle curve offsets cleanly; per-endpoint normal is derivative-based.
+- [ ] **Step 16.3: Join insertion** — for each contour vertex between two curves, emit miter/round/bevel geometry between outer offset endpoints. `miterLimit` fallback: if miter length exceeds threshold, emit bevel instead. Test: sharp-corner glyph outline produces miter geometry at angle < 30°; with miterLimit=2 at same angle produces bevel.
+- [ ] **Step 16.4: Cap insertion** — flat/square/round/triangle at open-contour endpoints. Test: a straight segment stroked with round caps produces a pill shape (verified via perimeter length).
+- [ ] **Step 16.5: Inner + outer offset close** — glue inner and outer offsets at caps/joins to form one closed contour per original contour. Preserves winding. Test: stroked open segment produces one closed output; stroked circle produces one outer closed contour + one inner (reversed-winding) closed contour.
+- [ ] **Step 16.6: Full offsetter API** — `strokeOffsetter(contours, { halfWidth, joinStyle, capStyle, miterLimit }): Contour[]`. Composes 16.1–16.5.
+- [ ] **Step 16.7: Commit.** `feat(slug): quadratic-Bezier adaptive stroke offsetter`
 
-- [ ] **Step 17.1: Test** — `parseSvgPath('M0 0 L10 0 L10 10 Z')` returns one closed contour with 3 quads. `parseSvgPath('M0 0 Q5 10 10 0')` returns one open contour, 1 curve. `parseSvgPath('M0 0 C0 5 5 10 10 10')` splits the cubic into N quads. `parseSvgPath('M0 0 L10 0 M20 0 L30 0')` returns two separate contours. Closed vs open contour flag propagated so the renderer applies caps vs joins correctly.
-- [ ] **Step 17.2: Implement `svgPath.ts`.** State machine over command letters. Cubic → quadratic via the shared util from Task 15. Y-axis: SVG is y-down, convert to y-up at parse time.
-- [ ] **Step 17.3: Commit.** `feat(slug): SVG path-d parser`
+### Task 17: Stroke-set bake integration in CLI
 
-### Task 18: Explicit join logic (miter / round / bevel) in stroke shader
+- [ ] **Step 17.1: Extend baked file format** — new section per-glyph: `strokeSets: Array<{ key, curveTable, bandTable, totalLength, arcLengthTable? }>` where `key = hash(width, joinStyle, capStyle, miterLimit)`. Baked-version bump; Phase 4 baked files error with "re-run slug-bake".
+- [ ] **Step 17.2: CLI flag plumbing** — `slug-bake Inter.ttf --stroke-widths=0.025,0.05 --stroke-join=miter --stroke-cap=flat --miter-limit=4`. Multi-variant: `--stroke-widths=0.025,0.05 --stroke-joins=miter,round` bakes the cartesian product. Log output enumerates each emitted set.
+- [ ] **Step 17.3: Unit test** — re-bake Inter with one stroke width, verify the baked file includes stroke sets with correct glyph curve counts. Load + assert `SlugFont.getStrokeSet(glyphId, 0.025, 'miter', 'flat').curveTable.length > 0`.
+- [ ] **Step 17.4: Re-bake checked-in fixtures** with one default stroke set (`0.025, miter, flat, miterLimit=4`). Commit regenerated fixtures.
+- [ ] **Step 17.5: Commit.** `feat(slug): stroke sets in baked format (CLI + file version bump)`
 
-Extends Phase 4's `slugStroke.ts` extension points.
+### Task 18: Fill shader dash-offset modifier
 
-- [ ] **Step 18.1: CPU reference** — `strokeCoverage(shape, coord, halfWidth, joinStyle, miterLimit)`. Unit test on A's top tip (miter produces sharp point; at acute angle `miterLimit=4` kicks in and falls back to bevel; `miterLimit=2` kicks in at less-acute angle). H's interior corner stays crisp for all join styles (that's the distance field, not the join logic). O has no joins.
-- [ ] **Step 18.2: `joins.ts` TSL helpers** — `insideMiterTriangle`, `insideBevelTriangle`, `bisectorClipDistance`, `miterLengthExceeds(halfWidth, angle, miterLimit): bool`. Pure-JS twins in `joins.test.ts`.
-- [ ] **Step 18.3: Wire into `slugStroke.ts`** — replace Phase 4's stubbed classifier with the real endpoint dispatch. Compile-time uniform-bool `select` per join style so unused branches DCE per backend.
-- [ ] **Step 18.4: GPU-vs-CPU parity** on the sharp-corner corpus (A, V, W, M, K, serif capital I with slab serifs) at halfWidth ∈ {0.02, 0.05, 0.10}. Max pixel delta < 1/255 across 32×32 grids.
-- [ ] **Step 18.5: Visual regression on text** — SlugText with the new join logic, miter default, miterLimit=4. Assert tips on AVWMK are sharper than Phase 4's bevel-via-min baseline. Re-run the Phase 4 crispness gate; with the exterior-tip relaxed tolerance removed, golden diffs against Canvas2D's `strokeText` should now match in the body *and* at tips.
-- [ ] **Step 18.6: Commit.** `feat(slug): explicit miter/round/bevel joins in stroke shader`
+- [ ] **Step 18.1: Arc-length sampler** — `buildArcLengthTable(curve, N=16): Float32Array` Gaussian-quadrature cumulative. Test: straight line = `|p2 - p0|`, quarter-arc approximation within 0.5% of `π·r/2`.
+- [ ] **Step 18.2: TSL `insideDash`** — `insideDash(s, dashArrayTexture, dashCount, dashOffset, totalLength): bool`. Modulo wrap + binary search (8-deep for max 256-entry dash arrays). Pure-JS twin for tests.
+- [ ] **Step 18.3: Extend `slugFragment.ts`** — optional gate: read `s = contourArcLengthOffset + sampleArcLength(arcLengthRow, t_from_fill_ray)` inside the per-curve loop; if `!insideDash(s)` reject that curve's coverage contribution. Compile-time dead-code when no dash uniform is bound.
+- [ ] **Step 18.4: `SlugMaterial` uniform additions** — `dashArray: Float32Array`, `dashOffset: number`, `arcLengthTexture: DataTexture`. All optional; null = dashing disabled.
+- [ ] **Step 18.5: Visual regression** — dashed rectangle via SlugShapeBatch (anticipating Task 20) with `dashArray=[10,5]`, `dashOffset` sweeping from 0 to 15. Verify marching-ants animation.
+- [ ] **Step 18.6: Commit.** `feat(slug): dash-offset modifier on fill shader`
 
-### Task 19: Cap style logic in stroke shader
+### Task 19: SlugText outline → baked-set path
 
-- [ ] **Step 19.1: CPU reference** — `strokeCoverage(shape, coord, halfWidth, joinStyle, capStyle, miterLimit)`. Unit test flat cap on a straight segment (no extension past endpoint), square cap (extends `halfWidth` past endpoint along tangent), round cap (semicircle accepted), triangle cap (isosceles triangle accepted). Verify: the four corners where caps meet the stroke on a rectangular open path stay sharp (no visible corner gap or overlap).
-- [ ] **Step 19.2: `caps.ts` TSL helpers** — `flatCap`, `squareCap`, `roundCap`, `triangleCap`. Each takes `(coord, endpoint, tangent, halfWidth): { accept: bool, distance: float }` and returns whether the fragment is inside the cap region + a (possibly adjusted) distance for coverage smoothstep.
-- [ ] **Step 19.3: Wire into `slugStroke.ts`** — at endpoint hits where `prevTangent` or `nextTangent` is the zero sentinel, dispatch on `capStyle` uniform. Closed contours never hit this branch (their endpoints always have neighbour tangents).
-- [ ] **Step 19.4: GPU-vs-CPU parity** on a cap-exercise path: `M 0 0 L 100 0` with each of flat/square/round/triangle at halfWidth=5.
-- [ ] **Step 19.5: Commit.** `feat(slug): cap styles (flat/square/round/triangle) in stroke shader`
+- [ ] **Step 19.1: Extend `SlugText.outline`** — accepts full stroke spec: `{ width, color, join?, cap?, miterLimit?, dashArray?, dashOffset?, mode? }`. `mode = 'baked' | 'dynamic'`. Default 'baked'.
+- [ ] **Step 19.2: Baked-set lookup** — on outline config, SlugText calls `font.getStrokeSet(glyphId, width, join, cap)`. Present → create a child `InstancedMesh` using `SlugMaterial` bound to the stroke set's textures. Missing → dispatch `SlugBaker.buildOffset(...)` async; render fallback (no stroke, or 'dynamic' mode) while pending.
+- [ ] **Step 19.3: Width-swap API** — changing `outline.width` to a different pre-baked value swaps the stroke set's texture binding only; glyph instance data untouched. Benchmark: width swap = zero per-frame cost delta vs steady-state outlined text.
+- [ ] **Step 19.4: Dashing pass-through** — `dashOffset` uniform forwarded to stroke-set material. Tweakpane scrub of `dashOffset` visibly animates marching ants with no rebuild.
+- [ ] **Step 19.5: Commit.** `feat(slug): SlugText.outline baked-as-fill path + width-swap + dashing`
 
-### Task 20: Dashing
+### Task 20: Texture pool + runtime offset-bake
 
-- [ ] **Step 20.1: Arc-length sampler CPU reference** — `buildArcLengthTable(curve, N=16): Float32Array`. Gaussian-quadrature integration of `|B'(t)|` at N+1 sample points cumulatively, or simpler piecewise-linear approximation with N segments. Test against known curve lengths (straight line: exactly `|p2 − p0|`; quarter-circle approximation: within 0.5% of `π·r/2`).
-- [ ] **Step 20.2: Per-contour arc-length prefix sum** — each curve stores `contourArcLengthOffset` = sum of lengths of preceding curves in its contour.
-- [ ] **Step 20.3: `dashing.ts` TSL helper** — `insideDash(s, dashArrayTexture, dashCount, dashOffset): bool`. Binary search over the dash-array's cumulative prefix sums (pre-computed CPU-side and stored as a texture uniform because dash arrays are per-shape). Handles `dashOffset` and modulo-wrap.
-- [ ] **Step 20.4: Wire into `slugStroke.ts`** — at any fragment hit, read `(d, t)` from `distanceToQuadBezier`, compute `s = contourArcLengthOffset + sampleArcLength(arcLengthTableRow, t)`, consult `insideDash`. If in a gap, reject. Joins inside dashes: the endpoint classifier still fires if the fragment hits a join-region, but the join-rejection-or-acceptance is gated on `insideDash` of both the curve and its neighbour. Caps apply to both ends of each dash when `capStyle ≠ flat`.
-- [ ] **Step 20.5: GPU-vs-CPU parity** on a dashed open path: `M 0 0 L 100 0` with `dashArray=[10, 5]`, `dashOffset ∈ {0, 5, 12}`. Verify dashes land at expected arc-length intervals, caps apply per-dash when `capStyle=round`, `dashOffset=12` shifts the pattern correctly (first visible dash ends at s=3).
-- [ ] **Step 20.6: Manual edge case** — closed contour with dashing and `dashOffset ≠ 0`: confirm wraparound behaves. If edge cases show up, clamp `dashOffset = 0` on closed contours with a `console.warn("Slug: dashOffset ignored on closed contour — wraparound undefined in v1")`.
-- [ ] **Step 20.7: Commit.** `feat(slug): dashing with arc-length tables (v1 — open contours, closed with dashOffset=0)`
+- [ ] **Step 20.1: Implement `texturePool.ts`** — append allocator over (curve, band, arcLength) textures. Append, tombstone, grow via `copyTextureToTexture`. Tests cover grow + tombstone behavior.
+- [ ] **Step 20.2: Implement `SlugBaker`** — wraps `strokeOffsetter` for on-demand stroke generation. Web Worker when available; sync main-thread fallback. Returns a promise that resolves when the texture pool has the new stroke set.
+- [ ] **Step 20.3: Runtime fallback path** — `strokeSetCache` maps (glyphId or shapeId, width, join, cap) → handle. Dedup concurrent requests. On completion, material's texture bindings update; R3F re-renders next frame.
+- [ ] **Step 20.4: Integration test** — SlugText.outline at width=0.04 (not pre-baked). Assert: first frame renders with fallback, subsequent frames render baked. Second load at same width is instant (cache warm).
+- [ ] **Step 20.5: Commit.** `feat(slug): texture pool + runtime async stroke offsetter`
 
-### Task 21: SlugShapeBatch
+### Task 21: SVG path parser
 
-- [ ] **Step 21.1: Test** — create batch, add two shapes (one filled closed path, one stroked open path with miter joins + square caps + dashed), render, assert both visible with expected style. Remove first (tombstone), assert second renders, first is gone. Add a third; appended at cursor.
-- [ ] **Step 21.2: Implement `SlugShapeBatch`** extending `InstancedMesh`:
+- [ ] **Step 21.1: Test** — `parseSvgPath('M0 0 L10 0 L10 10 Z')` returns one closed contour. `parseSvgPath('M0 0 Q5 10 10 0')` one open contour. Cubic → N quads via shared util. Multi-contour paths separate correctly.
+- [ ] **Step 21.2: Implement `svgPath.ts`** — state machine, cubic split, y-flip from SVG coords.
+- [ ] **Step 21.3: Commit.** `feat(slug): SVG path-d parser`
+
+### Task 22: SlugShapeBatch
+
+- [ ] **Step 22.1: Test** — create batch, add filled closed path + stroked open path with dash. Remove + re-add. Verify `drawCalls === 1` per batch.
+- [ ] **Step 22.2: Implement `SlugShapeBatch`** — one `InstancedMesh`, curve + band textures via pool, instance attributes select per-shape stroke set. Fill-only and stroke-only batches. Mixed shapes = same batch; per-instance stroke spec.
   ```ts
   class SlugShapeBatch extends InstancedMesh {
-    constructor(options?: { capacity?: number; mode?: 'fill' | 'stroke' })
+    constructor(options?: { capacity?: number })
     add(shape: SlugShape, transform: {
       x, y, scale?, rotation?, color?,
-      stroke?: {
-        width, color, join?, cap?, miterLimit?,
-        dashArray?: number[], dashOffset?: number,
-      },
+      stroke?: StrokeSpec,  // see earlier — width/join/cap/dash
     }): ShapeHandle
     remove(handle: ShapeHandle): void
     update(renderer: Renderer, camera?: Camera): void
     dispose(): void
   }
   ```
-  Fill mode uses `SlugMaterial`; stroke mode uses the Phase-5 `SlugStrokeMaterial`. One batch = one material; for mixed fill+stroke the user creates two batches (matches Slug's separate `CreateFill` / `CreateStroke`).
-- [ ] **Step 21.3: Commit.** `feat(slug): SlugShapeBatch — batched vector shape rendering`
-
-### Task 22: SlugText outline upgrade (joins + miterLimit)
-
-Cheap follow-up now that join logic exists.
-
-- [ ] **Step 22.1: Extend `SlugText.outline`** — optional `join: 'miter' | 'round' | 'bevel'` (default miter), `miterLimit: number` (default 4). Mutation updates uniforms in place.
-- [ ] **Step 22.2: Tighten the Phase 4 crispness gate** — re-enable strict exterior-tip golden comparison against Canvas2D `strokeText`. Mean + max pixel delta should now meet Phase-4-intended thresholds at sharp tips.
-- [ ] **Step 22.3: Commit.** `feat(slug): SlugText.outline — miter/round/bevel joins + miterLimit`
+- [ ] **Step 22.3: Commit.** `feat(slug): SlugShapeBatch with baked-stroke path`
 
 ### Task 23: Factory + examples + docs
 
-- [ ] **Step 23.1:** `SlugShape.fromSvg(d)` returns `{ contours, bounds, isClosed }`. No Mesh. No material. Data only.
-- [ ] **Step 23.2:** R3F wrappers `<slugShapeBatch>` + declarative `<slugShape d=... />` children, auto-add/remove on mount/unmount. Run `pnpm sync:react`.
-- [ ] **Step 23.3:** `examples/{three,react}/slug-shapes/` with three live demos on one page:
-  1. **Icons** — 20–50 filled icons in one batch; monitor `renderer.info.render.drawCalls === 1` via Tweakpane.
-  2. **Stroke joins** — a star with a slider that sweeps `miterLimit` from 1 to 10, visibly flipping miter→bevel; side-by-side comparison with `joinStyle=round`. Tweakpane controls: `joinStyle`, `miterLimit`, `strokeWidth`.
-  3. **Caps + dashing** — an open zigzag path with controls for `capStyle` (flat/square/round/triangle), `dashArray` (preset dropdown: solid, `[10,5]`, `[15,5,5,5]`), `dashOffset` slider.
-- [ ] **Step 23.4:** Extend `examples/{three,react}/slug-text/` with the new outline join controls: `join: [Miter | Round | Bevel]` radio, `miterLimit` slider.
+- [ ] **Step 23.1:** `SlugShape.fromSvg(d, { strokeSpecs? })` — data factory; optional pre-bake of common stroke variants.
+- [ ] **Step 23.2:** R3F wrappers + `pnpm sync:react`.
+- [ ] **Step 23.3:** `examples/{three,react}/slug-shapes/` — three demos:
+  1. **Icons** — 20–50 filled icons in one batch; `drawCalls === 1` monitor.
+  2. **Width swap** — stroked shape with Tweakpane radio flipping between 3 pre-baked widths (0.02, 0.05, 0.10). Frame-time monitor visibly flat across swaps.
+  3. **Marching ants** — open path with `dashArray` preset + animated `dashOffset` slider. Confirms dash-offset animation at zero per-frame cost.
+- [ ] **Step 23.4:** Extend `examples/{three,react}/slug-text/` — Outline folder gets `join`/`cap`/`miterLimit` radios (require re-bake, so marked as dev-only in the UI) and `dashOffset` slider (live).
 - [ ] **Step 23.5:** Docs + `astro.config.mjs` entry + commit.
 
 ### Phase 5 shipping gate
 
-Phase 5 doesn't ship until:
-- All Phase 4 crispness goldens pass with the stricter tolerance (miter tips match Canvas2D).
-- Cap-style visual regression on `M 0 0 L 100 0` for all four caps matches CPU reference pixel-for-pixel.
-- Dashing visual regression on `M 0 0 L 100 0` with `[10, 5]` matches CPU reference.
-- `drawCalls === 1` assertion on the 20–50 icons demo.
-- Interactive verification in a dev build: user clicks through join/cap/dash controls on both examples and confirms it visibly works.
+- Baked-as-fill stroked text matches Canvas2D `strokeText` on goldens (tighter than Phase 4's bevel-via-min relaxation).
+- Width swap among pre-baked set: zero measured per-frame delta vs steady-state stroked text.
+- `dashOffset` animates smoothly at 60fps on M2 with zero frame-time increase vs static.
+- `SlugShapeBatch` draws 20+ shapes in 1 draw call.
+- Runtime fallback path works: requesting an unbaked width resolves to baked within 2 frames and thereafter renders at fill cost.
+- Interactive verification in both examples.
 
 ---
 
@@ -764,13 +822,22 @@ export type RichText = { runs: RichRun[]; align?: 'left'|'center'|'right'; lineH
 | Font styles (underline, strikethrough, super/sub, p.20, 24) | Phase 2 |
 | Rich text | Phase 6 |
 
-**Phase 4 ↔ Phase 5 handshake (re-scoped 2026-04-14):**
-- Phase 4 ships the distance-to-curve primitive, the `SlugStrokeMaterial` skeleton with uniform slots reserved for Phase 5, crispness-gated coverage, and bevel-via-min joins for text. **No explicit joins, caps, or dashing.**
-- Phase 5 lands everything deferred: 3-texel curve layout with neighbor tangents (+ baked-format bump), explicit miter/round/bevel join dispatch with `miterLimit` fallback, all four cap styles (flat/square/round/triangle), arc-length tables + dashing + `dashOffset`, and `SlugShapeBatch`. It also retroactively tightens Phase 4's crispness gate on text by upgrading `SlugText.outline` to miter joins by default.
-- Why merge all of that into one phase: joins/caps/dashing only become *visible* on arbitrary open paths, which only exist once `SlugShapeBatch` does. Landing them in separate phases leaves each half untestable.
+**Phase 4 ↔ Phase 5 handshake (re-scoped 2026-04-14 round 2 — runtime-cost pivot):**
+- Phase 4 shipped the dynamic analytic-distance stroke shader (`slugStroke` + `SlugStrokeMaterial`). Works end-to-end, nice for dev iteration. **Kept as `outline: { mode: 'dynamic' }` opt-in forever; no more invested in it after Phase 4.**
+- Phase 5 commits to the ship path: **offset-contour bake at build time, rendered through the fill shader.** 1× fill cost for stroked text, same as glyph fills. Join/cap/miterLimit baked; width is a per-stroke-set lookup (pre-baked set → instant swap, unbaked → async CPU offsetter warms the cache). Dashing = fill-shader modifier (one float uniform).
+- Why this pivot after Phase 4 shipped dynamic: M2 benching showed ~2.6× fill cost for dynamic stroke per fragment, which is unaffordable on top of the existing 3–4ms text budget once gameplay is added. The realtime-animatable audit (see Phase 5 preamble) confirms that no real product use case needs the dynamic shader except continuous width scrubbing, which the async offsetter path handles via 1-frame fallback.
 
-**Task-numbering note:** old Phase 4 Tasks 9–15 (5 shader + integration + crispness) collapse to new Phase 4 Tasks 9–14 (bevel-via-min flavour only). Old Phase 5 Tasks 16–21 expand to new Phase 5 Tasks 15–23. Phase 6 RichText tasks remain 22–23, now renumbered 24–25 as the last content phase before 24.x release.
+**What stays dynamic in Phase 5:**
+- Dash offset (marching ants) — single float uniform on the fill shader.
+- Pre-baked stroke width swap — texture-slot swap, no shader cost.
+- All the existing SlugMaterial uniforms (color, opacity, stem-darken, thicken, viewport, MVP).
 
-**Placeholder scan:** algorithmic sketches in Phases 4–6 intentionally leave inner code to the implementation step — each step has a concrete test + file list. Arc-length table size (`N=16`) is the one tunable; Task 20.1 benches it.
+**What requires rebake (dev-mode or build-time):**
+- Continuous stroke width — async offsetter fallback on first use; cached thereafter.
+- Join style / cap style / miterLimit — rebake-only in v1; exposed in examples as dev-mode controls that trigger async offsetter.
 
-**Type consistency:** `SlugFontStack.resolveCodepoint` (Task 6) / `shaperStack` (Task 7) / `SlugText.font: SlugFont | SlugFontStack` (Task 8) align. `StyleSpan`/`StyleFlags` used consistently from Phase 2 onward. `strokeHalfWidth`/`joinStyle`/`miterLimit`/`capStyle`/`dashCount`/`dashOffset` named consistently across Phase 4 material skeleton and Phase 5 extensions.
+**Task-numbering note:** Phase 4 shipped as Tasks 9–14. Phase 5 new shape: 15–23. Phase 6 RichText = 24–25. Phase 7 release = 26. Previous Phase 5 tasks (in-shader joins/caps/dashing) are fully deprecated — the new Phase 5 takes a different architecture.
+
+**Placeholder scan:** offsetter epsilon (`ε = 0.01·halfWidth`), subdivision depth cap (8), arc-length sample count (`N=16`) are the three tunables. Each benched in its owning task.
+
+**Type consistency:** `StrokeSpec` (width/color/join/cap/miterLimit/dashArray/dashOffset/mode) used consistently across `SlugText.outline`, `SlugShapeBatch.add()`, and `SlugFont.getStrokeSet()`. `strokeHalfWidth` retained as the Phase-4 dynamic-path uniform name for backward compat.
