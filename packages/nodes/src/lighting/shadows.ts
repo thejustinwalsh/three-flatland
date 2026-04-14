@@ -1,4 +1,14 @@
-import { vec2, vec3, vec4, float, texture as sampleTexture } from 'three/tsl'
+import {
+  vec2,
+  vec3,
+  vec4,
+  float,
+  Fn,
+  Loop,
+  If,
+  Break,
+  texture as sampleTexture,
+} from 'three/tsl'
 import type { Texture } from 'three'
 import type Node from 'three/src/nodes/core/Node.js'
 import type { Vec2Input, Vec3Input, FloatInput } from '../types'
@@ -198,4 +208,110 @@ export function shadowSoft2D(
   }
 
   return totalShadow.div(float(lightOffsets.length)).clamp(float(1).sub(strengthNode), 1)
+}
+
+/**
+ * Sphere-trace a 2D soft shadow ray through an SDF texture.
+ *
+ * Walks along the line from the shaded surface point toward the light,
+ * sampling the SDF at each step to advance by the guaranteed-clear
+ * distance. If the trace ever collapses below an epsilon the ray has
+ * hit an occluder (shadowed); if the trace reaches the light distance
+ * the ray is clear (lit). A running penumbra term tracks the minimum
+ * `softness * d / t` across the walk for Inigo-Quilez-style soft
+ * shadows — small softness values produce hard edges, larger values
+ * (24-32) produce a wide penumbra.
+ *
+ * The SDF texture is assumed to be produced by `SDFGenerator` and
+ * encode distance in UV-space units on the `.r` channel. Conversion to
+ * world-space distance uses an isotropic scene-size approximation
+ * (`(worldSize.x + worldSize.y) * 0.5`). For non-square worlds this
+ * introduces slight directional error in the trace step size — fine
+ * for typical 2D scenes; revisit if a consumer needs anisotropic
+ * correctness.
+ *
+ * @param surfaceWorldPos World-space position of the shaded fragment.
+ * @param lightWorldPos   World-space position of the light.
+ * @param sdfTexture      SDF texture captured at build time. Must come
+ *                        from `SDFGenerator` (UV-space distances in .r).
+ * @param worldSize       Camera frustum size (Node — uniform, updated
+ *                        each frame from the camera bounds).
+ * @param worldOffset     Camera frustum offset (Node — uniform).
+ * @param options.steps   Compile-time loop count. Default 32.
+ * @param options.softness Penumbra width — higher = sharper. Default 32.
+ * @param options.startOffset Initial world-space offset along the ray
+ *                            to skip self-shadow on the caster itself.
+ *                            Default 0.5.
+ * @param options.eps     World-space hit threshold. Default 0.5.
+ * @returns Node<'float'> in [0, 1]. 0 = fully shadowed, 1 = fully lit.
+ */
+export function shadowSDF2D(
+  surfaceWorldPos: Node<'vec2'>,
+  lightWorldPos: Node<'vec2'>,
+  sdfTexture: Texture,
+  worldSize: Node<'vec2'>,
+  worldOffset: Node<'vec2'>,
+  options: {
+    steps?: number
+    softness?: FloatInput
+    startOffset?: FloatInput
+    eps?: FloatInput
+  } = {}
+): Node<'float'> {
+  const steps = options.steps ?? 32
+  const softness =
+    typeof options.softness === 'number'
+      ? float(options.softness)
+      : (options.softness ?? float(32))
+  const startOffset =
+    typeof options.startOffset === 'number'
+      ? float(options.startOffset)
+      : (options.startOffset ?? float(0.5))
+  const epsNode =
+    typeof options.eps === 'number' ? float(options.eps) : (options.eps ?? float(0.5))
+
+  return Fn(() => {
+    const toLight = lightWorldPos.sub(surfaceWorldPos)
+    // `max` guards a light coincident with the surface (division by zero).
+    const lightDist = toLight.length().max(float(0.0001))
+    const dir = toLight.div(lightDist)
+
+    // Isotropic UV → world scale. The SDF encodes distance in UV space
+    // (0..1 across the camera-aligned RT); world distance is the average
+    // of the frustum extents.
+    const worldScale = worldSize.x.add(worldSize.y).mul(float(0.5))
+
+    const t = startOffset.toVar('shadowT')
+    const shadow = float(1).toVar('shadow')
+
+    Loop(steps, () => {
+      const pos = surfaceWorldPos.add(dir.mul(t))
+      const uv = pos.sub(worldOffset).div(worldSize)
+      const sdfSample = sampleTexture(sdfTexture, uv).r
+      const sdfWorld = sdfSample.mul(worldScale)
+
+      // Penumbra accumulation — running min of softness * d / t produces
+      // the IQ-style soft shadow term. Clamp keeps it in [0, 1].
+      const penumbra = softness.mul(sdfWorld).div(t).clamp(0, 1)
+      shadow.assign(shadow.min(penumbra))
+
+      // Hit: the ray came within epsilon of an occluder.
+      If(sdfWorld.lessThan(epsNode), () => {
+        shadow.assign(float(0))
+        Break()
+      })
+
+      // Clear: reached the light without hitting anything — the
+      // accumulated penumbra is the final shadow value.
+      If(t.greaterThan(lightDist), () => {
+        Break()
+      })
+
+      // Advance by the clear distance, guarded against zero steps so the
+      // loop can't stall when the trace grazes an occluder.
+      t.assign(t.add(sdfWorld.max(epsNode)))
+    })
+
+    return shadow.clamp(0, 1)
+  })() as Node<'float'>
 }

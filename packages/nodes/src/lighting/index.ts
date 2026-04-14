@@ -11,4 +11,10 @@ export { litDiffuse, litSpecular, litRim, litCelShaded, litSprite, litSpriteMult
 export type { LitSpriteOptions } from './lit'
 
 // Shadows
-export { shadowDrop, shadowDropSoft, shadow2D, shadowSoft2D } from './shadows'
+export {
+  shadowDrop,
+  shadowDropSoft,
+  shadow2D,
+  shadowSoft2D,
+  shadowSDF2D,
+} from './shadows'
