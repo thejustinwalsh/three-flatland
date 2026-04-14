@@ -5,21 +5,15 @@
 > Branch: feat-slug
 > PR: https://github.com/thejustinwalsh/three-flatland/pull/20
 
-## New hooks
+## New features
 
-- `usePaneRadioGrid` (React subpath) — inline button-bar selector backed by tweakpane-essentials' `radiogrid` blade; deferred disposal and synchronous creation match existing hook patterns
+- `usePaneRadioGrid` hook (react subpath) — inline button-bar selector backed by essentials' radiogrid blade; active-state affordance; deferred disposal and synchronous creation match existing `usePaneButton`/`usePaneInput` pattern
+- `PaneInputOptions.readonly` + `PaneInputOptions.format` — create readonly monitors with custom formatters from React hooks
 
-## Input options
+## Fixes
 
-- `PaneInputOptions` gains `readonly` and `format` fields — create readonly monitors with custom formatters from any `usePaneInput` call
+- `z-index: 1000` applied to `.tp-dfwv` wrapper (the body-sibling stacking context) instead of the inner pane root — fixes tweakpane not stacking above other overlays
+- Checkbox hit target: `.tp-ckbv_i` stretched to full `var(--cnt-usz)` box size — fixes multi-click required in some browser/pointer-events combinations
+- Checkbox theme: box surface now matches other controls (`rgba(28,40,77,0.6)`) with hover/focus/active parity; check stroke turns accent pink on `:checked`
 
-## Theme fixes
-
-- Checkbox hidden `<input>` stretched to full `var(--cnt-usz)` box — eliminates need for `<label>` click forwarding that was flaky under certain pointer-events / z-index combinations
-- Checkbox box surface matches other controls (`rgba(28,40,77,0.6)`) with hover/focus/active parity; check stroke uses accent pink on `:checked`
-
-## Bug fixes
-
-- `createPane` now applies `z-index: 1000` to the `.tp-dfwv` wrapper element (body-sibling stacking context) instead of the inner pane root — previously had no effect on pane stacking
-
-This release adds `usePaneRadioGrid`, improves input hook flexibility with `readonly`/`format` options, and fixes checkbox hit-target reliability and pane z-index stacking.
+Adds `usePaneRadioGrid` for inline mode-selector controls, extends `PaneInputOptions` with `readonly` and `format` support, and fixes checkbox theming and hit-target reliability.
