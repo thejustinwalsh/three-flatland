@@ -36,6 +36,31 @@ export interface LightEffectBuildContext<S extends EffectSchema = EffectSchema> 
   constants: EffectConstants<S>
   /** The LightStore providing light data textures and count. */
   lightStore: LightStore
+  /**
+   * Stable reference to the scene's SDF texture. Non-null only when the
+   * effect's class declared `needsShadows = true` — in that case Flatland
+   * eagerly allocates the SDFGenerator before calling buildLightFn so the
+   * reference is bindable in TSL `texture()` calls. The texture's RTs are
+   * 1×1 placeholders at build time; the shadow pipeline system resizes
+   * them on first frame and refreshes contents each subsequent frame,
+   * without ever changing the reference.
+   *
+   * Null when the active effect doesn't declare `needsShadows` — shaders
+   * should compile out the shadow path in that case (JS-level `if`, not
+   * a GPU branch).
+   */
+  sdfTexture: import('three').Texture | null
+  /**
+   * Camera frustum width/height uniform node, updated each frame from the
+   * camera bounds. Effects that map between world and UV space
+   * (shadow sampling, radiance cascades, any other screen-projected
+   * sampler) consume this instead of rolling their own uniform.
+   */
+  worldSizeNode: UniformNode<'vec2', Vector2>
+  /**
+   * Camera frustum bottom-left offset uniform node, updated each frame.
+   */
+  worldOffsetNode: UniformNode<'vec2', Vector2>
 }
 
 /** Runtime context — passed to init/update each frame. */
@@ -359,19 +384,37 @@ export abstract class LightEffect {
    * sprite.material.requiredChannels = new Set(DefaultLightEffect.requires)
    * ```
    */
-  build(lightStore: LightStore): ColorTransformFn {
-    return this._buildLightFn(lightStore)
+  build(
+    lightStore: LightStore,
+    worldSizeNode: UniformNode<'vec2', Vector2>,
+    worldOffsetNode: UniformNode<'vec2', Vector2>,
+    sdfTexture: import('three').Texture | null = null
+  ): ColorTransformFn {
+    return this._buildLightFn(lightStore, worldSizeNode, worldOffsetNode, sdfTexture)
   }
 
   /**
    * Build and cache the light function by calling the static buildLightFn() once.
-   * The returned function closes over uniform nodes and constants.
+   * The returned function closes over uniform nodes, constants, world bounds,
+   * and the stable SDF texture reference (if shadows are needed).
    * @internal
    */
-  _buildLightFn(lightStore: LightStore): ColorTransformFn {
+  _buildLightFn(
+    lightStore: LightStore,
+    worldSizeNode: UniformNode<'vec2', Vector2>,
+    worldOffsetNode: UniformNode<'vec2', Vector2>,
+    sdfTexture: import('three').Texture | null = null
+  ): ColorTransformFn {
     if (!this._lightFn) {
       const ctor = this.constructor as typeof LightEffect
-      this._lightFn = ctor.buildLightFn({ uniforms: this._uniforms, constants: this._constants, lightStore })
+      this._lightFn = ctor.buildLightFn({
+        uniforms: this._uniforms,
+        constants: this._constants,
+        lightStore,
+        sdfTexture,
+        worldSizeNode,
+        worldOffsetNode,
+      })
     }
     return this._lightFn
   }

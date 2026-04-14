@@ -66,13 +66,13 @@ export class SDFGenerator {
     this._geometry = new PlaneGeometry(2, 2)
     this._quad = new Mesh(this._geometry)
     this._scene.add(this._quad)
-  }
 
-  /**
-   * Initialize render targets at the given resolution.
-   */
-  init(width: number, height: number): void {
-    // JFA ping-pong stores: RG = seed UV (nearest occluder position)
+    // Eagerly allocate 1×1 placeholder RTs + materials so the sdfTexture
+    // reference is stable from construction onward. TSL captures texture
+    // references at shader-build time, which happens when a LightEffect
+    // attaches — well before the shadow pipeline system's first tick
+    // resizes the RTs to the viewport. Mirrors the same trick in
+    // ForwardPlusLighting (see its constructor comment).
     const jfaOptions = {
       type: HalfFloatType,
       minFilter: NearestFilter,
@@ -80,8 +80,6 @@ export class SDFGenerator {
       depthBuffer: false,
       stencilBuffer: false,
     }
-
-    // Final SDF output uses LinearFilter for smooth distance sampling
     const sdfOptions = {
       type: HalfFloatType,
       minFilter: LinearFilter,
@@ -89,14 +87,24 @@ export class SDFGenerator {
       depthBuffer: false,
       stencilBuffer: false,
     }
+    this._pingRT = new RenderTarget(1, 1, jfaOptions)
+    this._pongRT = new RenderTarget(1, 1, jfaOptions)
+    this._sdfRT = new RenderTarget(1, 1, sdfOptions)
 
-    this._pingRT = new RenderTarget(width, height, jfaOptions)
-    this._pongRT = new RenderTarget(width, height, jfaOptions)
-    this._sdfRT = new RenderTarget(width, height, sdfOptions)
-
-    // Create JFA and final materials now (they reference stable RT textures)
+    // Materials capture the RT textures via TSL texture(); the RT
+    // reference is stable across setSize() so materials never need
+    // rebuilding after the initial construction.
     this._createJFAMaterials()
     this._createFinalMaterials()
+  }
+
+  /**
+   * Resize render targets to the given dimensions. First-call semantics
+   * (previously called `init`) and subsequent resizes are the same code
+   * path now — the RTs already exist from the constructor.
+   */
+  init(width: number, height: number): void {
+    this.resize(width, height)
   }
 
   /**

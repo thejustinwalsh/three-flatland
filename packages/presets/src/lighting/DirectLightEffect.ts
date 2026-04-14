@@ -9,6 +9,7 @@ import {
 import type Node from 'three/src/nodes/core/Node.js'
 import { createLightEffect } from 'three-flatland'
 import type { LightEffectBuildContext } from 'three-flatland'
+import { shadowSDF2D } from '@three-flatland/nodes/lighting'
 
 /**
  * Direct lighting: per-fragment loop over all lights, no tiling.
@@ -51,7 +52,7 @@ export const DirectLightEffect = createLightEffect({
   } as const,
   needsShadows: true,
   requires: ['normal'] as const,
-  light: ({ uniforms, lightStore }: LightEffectBuildContext<{
+  light: ({ uniforms, lightStore, sdfTexture, worldSizeNode, worldOffsetNode }: LightEffectBuildContext<{
     shadowStrength: 0.6
     shadowSoftness: 8.0
     shadowBias: 0.04
@@ -64,10 +65,9 @@ export const DirectLightEffect = createLightEffect({
     rimPower: 2
   }>) => {
     const count = lightStore.countNode
-    // Shadow uniforms — will be used when SDF pipeline is wired
-    const _shadowStr = uniforms.shadowStrength
-    const _shadowSoftness = uniforms.shadowSoftness
-    const _shadowBias = uniforms.shadowBias
+    const shadowStrength = uniforms.shadowStrength
+    const shadowSoftness = uniforms.shadowSoftness
+    const shadowBias = uniforms.shadowBias
     const bands = uniforms.bands
     const pixelSize = uniforms.pixelSize
     const glowRadius = uniforms.glowRadius
@@ -138,8 +138,21 @@ export const DirectLightEffect = createLightEffect({
             const NdotL = ctx.normal.dot(lightDir3D).clamp(0, 1)
             const diffuse = isAmbient.select(float(1), NdotL)
 
-            // TODO: SDF shadow marching will be wired when Flatland manages the SDF pipeline
-            const shadow = float(1.0)
+            // SDF sphere-traced soft shadow — see DefaultLightEffect for
+            // the detailed comment. Same pattern, different light loop.
+            let shadow: Node<'float'> = float(1)
+            if (sdfTexture) {
+              const trace = shadowSDF2D(
+                vec2(surfacePos),
+                lightPos,
+                sdfTexture,
+                worldSizeNode,
+                worldOffsetNode,
+                { softness: shadowSoftness, startOffset: shadowBias }
+              )
+              shadow = float(1).sub(float(1).sub(trace).mul(shadowStrength))
+              shadow = isAmbient.select(float(1), shadow)
+            }
             totalLight.addAssign(contribution.mul(atten).mul(diffuse).mul(shadow))
 
             // Rim lighting — edge highlight from inverse normal dot

@@ -15,6 +15,7 @@ import {
   pass,
   uv as uvNode,
   convertToTexture,
+  uniform,
 } from 'three/tsl'
 import type { World, Entity } from 'koota'
 import { SpriteGroup } from './pipeline/SpriteGroup'
@@ -27,6 +28,8 @@ import type Node from 'three/src/nodes/core/Node.js'
 import type PassNode from 'three/src/nodes/display/PassNode.js'
 import type { WorldProvider } from './ecs/world'
 import { PostPassTrait, PostPassRegistry, LightEffectTrait, LightingContext, ShadowPipeline, BatchRegistry } from './ecs/traits'
+import { SDFGenerator } from './lights/SDFGenerator'
+import { OcclusionPass } from './lights/OcclusionPass'
 import { postPassSystem } from './ecs/systems/postPassSystem'
 import { lightSyncSystem } from './ecs/systems/lightSyncSystem'
 import { lightEffectSystem } from './ecs/systems/lightEffectSystem'
@@ -200,6 +203,15 @@ export class Flatland extends Group implements WorldProvider {
 
   /** Reusable Vector2 to avoid per-frame allocations */
   private _tempVec2 = new Vector2()
+
+  /**
+   * Camera frustum bounds as TSL uniform nodes. Created once per Flatland
+   * instance so effect shaders can capture stable references at build
+   * time. Updated in render() from the camera bounds each frame;
+   * `.value` mutation doesn't require a shader rebuild.
+   */
+  private _worldSizeUniform = uniform(new Vector2(1, 1))
+  private _worldOffsetUniform = uniform(new Vector2(0, 0))
 
   /** Active PassEffect instances */
   private _passes: PassEffect[] = []
@@ -717,17 +729,37 @@ export class Flatland extends Group implements WorldProvider {
         this._markLightingDirty()
       })
 
-      // Build the colorTransform and wrap with per-instance lit-bit check
-      const fn = lightEffect._buildLightFn(this._lightStore)
-      const wrappedLightFn = wrapWithLightFlags(fn)
-
       // Store required channels from the effect class
       const ctor = lightEffect.constructor as typeof LightEffect
 
-      // Ensure the ShadowPipeline singleton entity exists — `shadowPipelineSystem`
-      // owns its lifecycle end-to-end (alloc, resize, per-frame render, dispose).
-      // Flatland just makes sure the trait is present so the system can find it.
+      // Ensure the ShadowPipeline singleton entity exists. For effects that
+      // declare `needsShadows`, eagerly allocate the SDFGenerator +
+      // OcclusionPass NOW (not on first system tick) so the sdfTexture
+      // reference is bindable in buildLightFn's TSL `texture()` call. The
+      // RTs are 1×1 placeholders at this point; shadowPipelineSystem
+      // resizes them to the viewport on first frame.
       this._ensureShadowPipelineEntity()
+      let sdfTexture: import('three').Texture | null = null
+      if (ctor.needsShadows && this._shadowPipelineEntity) {
+        const pipeline = this._shadowPipelineEntity.get(ShadowPipeline)
+        if (pipeline) {
+          if (!pipeline.sdfGenerator) pipeline.sdfGenerator = new SDFGenerator()
+          if (!pipeline.occlusionPass) pipeline.occlusionPass = new OcclusionPass()
+          sdfTexture = pipeline.sdfGenerator.sdfTexture
+        }
+      }
+
+      // Build the colorTransform and wrap with per-instance lit-bit check.
+      // The SDF texture reference passed here is stable — safe to close over
+      // in TSL. World-bound uniforms are Flatland-owned so every effect
+      // shares one update-path.
+      const fn = lightEffect._buildLightFn(
+        this._lightStore,
+        this._worldSizeUniform,
+        this._worldOffsetUniform,
+        sdfTexture
+      )
+      const wrappedLightFn = wrapWithLightFlags(fn)
 
       const requiredChannels: ReadonlySet<ChannelName> = new Set(ctor.requires ?? [])
 
@@ -981,6 +1013,14 @@ export class Flatland extends Group implements WorldProvider {
       if (!lctx.worldSize) lctx.worldSize = new Vector2()
       if (!lctx.worldOffset) lctx.worldOffset = new Vector2()
     }
+
+    // Sync the Flatland-owned world uniform nodes from the current camera
+    // bounds so shader-side shadow / radiance math has live values. Mutation
+    // on `.value` is free — no shader rebuild. The uniform references were
+    // captured by effect shaders at setLighting time.
+    const cam = this._camera
+    this._worldSizeUniform.value.set(cam.right - cam.left, cam.top - cam.bottom)
+    this._worldOffsetUniform.value.set(cam.left, cam.bottom)
 
     // Run all systems via the schedule (lighting + sprite phases)
     const registry = this._getRegistry()
