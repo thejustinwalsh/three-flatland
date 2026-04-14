@@ -6,6 +6,7 @@ import {
   SpriteUV,
   SpriteFlip,
   SpriteLayer,
+  SpriteZIndex,
   SpriteMaterialRef,
   InBatch,
   BatchSlot,
@@ -85,6 +86,13 @@ export function batchAssignSystem(
     const meta = batchEntity.get(BatchMeta)
     const batchIdx = meta?.batchIdx ?? -1
     entity.set(BatchSlot, { batchIdx, slot }, false)
+
+    // Fire Changed(SpriteZIndex) so batchSortSystem re-sorts this batch
+    // at least once with the new member present. zIndex writes via
+    // Sprite2D.zIndex setter use raw SoA writes for perf, so Koota's
+    // Changed tracker wouldn't pick up the initial value otherwise.
+    const zIdx = entity.get(SpriteZIndex)
+    if (zIdx) entity.set(SpriteZIndex, { zIndex: zIdx.zIndex })
 
     // One-time full buffer sync from current trait state (no needsUpdate — deferred)
     syncSlotBuffers(entity, slot, mesh, sprite, effectTraits)

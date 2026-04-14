@@ -269,6 +269,89 @@ export class SpriteBatch extends InstancedMesh {
     if (index > custom.dirtyMax) custom.dirtyMax = index
   }
 
+  /**
+   * Swap all per-instance attribute rows between physical slots `a` and `b`.
+   * Used by batchSortSystem to re-order instances by zIndex without
+   * rewriting ECS state — all buffers (matrix, UV, color, flip, custom
+   * effect buffers) are permuted in lockstep.
+   *
+   * Zero-alloc: uses element-wise writes on typed arrays in place.
+   */
+  swapSlots(a: number, b: number): void {
+    if (a === b) return
+
+    // instanceMatrix (16 floats)
+    const m = this.instanceMatrix.array as Float32Array
+    const ao = a * 16
+    const bo = b * 16
+    for (let i = 0; i < 16; i++) {
+      const tmp = m[ao + i]!
+      m[ao + i] = m[bo + i]!
+      m[bo + i] = tmp
+    }
+    if (a < this._matrixDirtyMin) this._matrixDirtyMin = a
+    if (a > this._matrixDirtyMax) this._matrixDirtyMax = a
+    if (b < this._matrixDirtyMin) this._matrixDirtyMin = b
+    if (b > this._matrixDirtyMax) this._matrixDirtyMax = b
+
+    // instanceUV (4 floats)
+    const uv = this._instanceUV
+    const auv = a * 4
+    const buv = b * 4
+    for (let i = 0; i < 4; i++) {
+      const tmp = uv[auv + i]!
+      uv[auv + i] = uv[buv + i]!
+      uv[buv + i] = tmp
+    }
+    if (a < this._uvDirtyMin) this._uvDirtyMin = a
+    if (a > this._uvDirtyMax) this._uvDirtyMax = a
+    if (b < this._uvDirtyMin) this._uvDirtyMin = b
+    if (b > this._uvDirtyMax) this._uvDirtyMax = b
+
+    // instanceColor (4 floats)
+    const col = this._instanceColor
+    for (let i = 0; i < 4; i++) {
+      const tmp = col[auv + i]!
+      col[auv + i] = col[buv + i]!
+      col[buv + i] = tmp
+    }
+    if (a < this._colorDirtyMin) this._colorDirtyMin = a
+    if (a > this._colorDirtyMax) this._colorDirtyMax = a
+    if (b < this._colorDirtyMin) this._colorDirtyMin = b
+    if (b > this._colorDirtyMax) this._colorDirtyMax = b
+
+    // instanceFlip (2 floats)
+    const flip = this._instanceFlip
+    const af = a * 2
+    const bf = b * 2
+    for (let i = 0; i < 2; i++) {
+      const tmp = flip[af + i]!
+      flip[af + i] = flip[bf + i]!
+      flip[bf + i] = tmp
+    }
+    if (a < this._flipDirtyMin) this._flipDirtyMin = a
+    if (a > this._flipDirtyMax) this._flipDirtyMax = a
+    if (b < this._flipDirtyMin) this._flipDirtyMin = b
+    if (b > this._flipDirtyMax) this._flipDirtyMax = b
+
+    // Custom attributes (effect buffers + user-defined)
+    for (const [, custom] of this._customAttributes) {
+      const size = custom.size
+      const buf = custom.buffer
+      const ax = a * size
+      const bx = b * size
+      for (let i = 0; i < size; i++) {
+        const tmp = buf[ax + i]!
+        buf[ax + i] = buf[bx + i]!
+        buf[bx + i] = tmp
+      }
+      if (a < custom.dirtyMin) custom.dirtyMin = a
+      if (a > custom.dirtyMax) custom.dirtyMax = a
+      if (b < custom.dirtyMin) custom.dirtyMin = b
+      if (b > custom.dirtyMax) custom.dirtyMax = b
+    }
+  }
+
   // ============================================
   // Slot management (used by ECS systems)
   // ============================================

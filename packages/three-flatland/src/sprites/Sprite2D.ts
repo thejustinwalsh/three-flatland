@@ -595,9 +595,18 @@ export class Sprite2D extends Mesh {
 
   /**
    * Set z-index within layer (secondary sort key).
+   *
+   * When enrolled in a world, also fires Koota's Changed(SpriteZIndex)
+   * via entity.set() so that `batchSortSystem` can gate its per-frame
+   * sort on which batches actually had zIndex flips.
    */
   set zIndex(value: number) {
+    const prev = this._zIndexArr[this._idx]!
+    if (prev === value) return
     this._zIndexArr[this._idx] = value
+    if (this._entity) {
+      this._entity.set(SpriteZIndex, { zIndex: value })
+    }
   }
 
   /**

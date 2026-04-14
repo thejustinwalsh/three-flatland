@@ -26,6 +26,7 @@ import {
   bufferSyncFlipSystem,
   bufferSyncEffectSystem,
   transformSyncSystem,
+  batchSortSystem,
   sceneGraphSyncSystem,
 } from '../ecs/systems'
 import { measure } from '../util/measure'
@@ -351,6 +352,12 @@ export class SpriteGroup extends Group implements WorldProvider {
       transformSyncSystem(this._world)
       end()
     }
+
+    // Sort instance slots by zIndex within each batch that had zIndex
+    // changes this frame. Opt-out for materials with alphaTest+depthWrite.
+    end = measure(batchSortSystem)
+    batchSortSystem(this._world)
+    end()
 
     // Scene graph sync
     end = measure(sceneGraphSyncSystem)

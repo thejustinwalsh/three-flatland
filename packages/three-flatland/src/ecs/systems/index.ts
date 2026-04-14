@@ -8,5 +8,6 @@ export {
   bufferSyncEffectSystem,
 } from './bufferSyncSystem'
 export { transformSyncSystem } from './transformSyncSystem'
+export { batchSortSystem } from './batchSortSystem'
 export { sceneGraphSyncSystem } from './sceneGraphSyncSystem'
 export { postPassSystem } from './postPassSystem'
