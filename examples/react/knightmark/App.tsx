@@ -3,6 +3,7 @@ import type { OrthographicCamera } from 'three'
 import { Canvas, extend, useFrame, useThree, useLoader } from '@react-three/fiber/webgpu'
 import {
   AnimatedSprite2D,
+  Sprite2DMaterial,
   SpriteGroup,
   SpriteSheetLoader,
   TextureLoader,
@@ -204,12 +205,20 @@ function spawnKnight(
   simParams: { speedMin: number; speedMax: number; knightScale: number },
 ): Knight {
   const margin = simParams.knightScale / 2
+  // Opaque alphaTest material enables the GPU depth-test fast path:
+  // the y-sort (zIndex = -y) is resolved by the depth buffer, so the
+  // CPU batchSortSystem can skip this batch entirely.
+  const material = Sprite2DMaterial.getShared({
+    map: sheet.texture,
+    alphaTest: 0.5,
+  })
   const sprite = new AnimatedSprite2D({
     spriteSheet: sheet,
     animationSet: knightAnimations,
     animation: 'idle',
     layer: Layers.ENTITIES,
     anchor: [0.5, 0.5],
+    material,
   })
   sprite.scale.set(simParams.knightScale, simParams.knightScale, 1)
   const x = bounds.left + margin + Math.random() * (bounds.right - bounds.left - margin * 2)
