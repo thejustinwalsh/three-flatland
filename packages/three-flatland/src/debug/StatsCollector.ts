@@ -48,6 +48,14 @@ export class StatsCollector {
   private _gpuResolveInFlight = false
   private _gpuMs: number | undefined
   private _gpuLastAt = 0
+  /**
+   * Throttle resolveTimestampsAsync so we don't allocate a Promise +
+   * `.then`/`.catch` closures every frame (~12 KB/s of GC pressure).
+   * Every Nth frame is plenty for a 4 Hz batch flush — the cached
+   * `_gpuMs` carries between resolves.
+   */
+  private _gpuResolveSkip = 0
+  private static readonly GPU_RESOLVE_EVERY = 6
 
   private _perfMemory: { usedJSHeapSize: number; jsHeapSizeLimit: number } | undefined =
     typeof performance !== 'undefined'
@@ -157,6 +165,11 @@ export class StatsCollector {
     }
     if (!this._gpuCapable) return
     if (this._gpuResolveInFlight) return
+    // Throttle. Skip until the counter rolls over — keeps the query
+    // pool drained at ~10 Hz (every 6 frames at 60 Hz) which is plenty
+    // for a 4 Hz consumer batch.
+    if (++this._gpuResolveSkip < StatsCollector.GPU_RESOLVE_EVERY) return
+    this._gpuResolveSkip = 0
     const fn = renderer.resolveTimestampsAsync?.bind(renderer)
     if (!fn) return
 

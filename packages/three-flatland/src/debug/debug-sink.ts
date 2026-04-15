@@ -78,7 +78,7 @@ export function registerDebugTexture(
   name: string,
   source: DataTexture | { width: number; height: number; texture: Texture },
   pixelType: TexturePixelType = 'rgba8',
-  opts?: { label?: string; display?: BufferDisplayMode },
+  opts?: { label?: string; display?: BufferDisplayMode; maxDim?: number },
 ): void {
   if (!DEVTOOLS_BUNDLED) return
   _activeTextures?.register(name, source, pixelType, opts)

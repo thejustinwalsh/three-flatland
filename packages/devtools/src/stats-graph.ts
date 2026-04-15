@@ -118,26 +118,24 @@ export function addStatsGraph(
   fpsvG.className = 'tp-fpsv_g'
   fpsv.appendChild(fpsvG)
 
-  // tp-grlv: graph log view (SVG)
+  // tp-grlv: graph log view. We render into a 2D canvas instead of an
+  // SVG polyline because per-frame `setAttribute('points', ...)` was
+  // (a) allocating long template-literal strings every rAF and (b)
+  // forcing the browser to re-allocate CSS-selector strings to
+  // re-evaluate styles for every ancestor in the `.tp-cntv .tp-v-fst …`
+  // chain — a measurable string-GC cost in profiles. Canvas drawing is
+  // pure path commands, no DOM mutation.
   const grlv = document.createElement('div')
   grlv.className = 'tp-grlv'
   fpsvG.appendChild(grlv)
 
-  const svgNS = 'http://www.w3.org/2000/svg'
-  const svg = document.createElementNS(svgNS, 'svg')
-  svg.classList.add('tp-grlv_g')
-  svg.style.height = `calc(var(--cnt-usz, 20px) * ${rows})`
-  svg.setAttribute('preserveAspectRatio', 'none')
-  grlv.appendChild(svg)
-
-  // Fill area (closed polygon under the line)
-  const fillPoly = document.createElementNS(svgNS, 'polygon')
-  fillPoly.style.stroke = 'none'
-  svg.appendChild(fillPoly)
-
-  // Stroke line
-  const polyline = document.createElementNS(svgNS, 'polyline')
-  svg.appendChild(polyline)
+  const canvas = document.createElement('canvas')
+  canvas.classList.add('tp-grlv_g')
+  canvas.style.cssText = `display:block;width:100%;height:calc(var(--cnt-usz, 20px) * ${rows})`
+  canvas.width = 1
+  canvas.height = 1
+  grlv.appendChild(canvas)
+  const gfx = canvas.getContext('2d')
 
   // tp-fpsv_l: value label overlay (bottom-right) with bg for readability
   const fpsvL = document.createElement('div')
@@ -171,9 +169,6 @@ export function addStatsGraph(
   // ── Mode cycling ──
 
   function applyMode() {
-    polyline.style.stroke = MODE_COLORS[mode]
-    fillPoly.style.fill = MODE_COLORS[mode]
-    fillPoly.style.opacity = '0.33'
     lblvL.textContent = mode
     unitSpan.textContent = MODE_UNITS[mode]
   }
@@ -196,21 +191,25 @@ export function addStatsGraph(
 
   // ── Graph rendering ──
 
-  // Cache SVG dimensions via ResizeObserver to avoid getBoundingClientRect()
-  // on every frame. Safari's layout engine is expensive for SVG reflows and
-  // per-frame getBoundingClientRect() causes severe frame drops (~24fps).
+  // Sync canvas backing to CSS box × DPR so 1 source pixel = 1 device
+  // pixel; avoids per-frame `getBoundingClientRect` which Safari pays
+  // dearly for, and keeps the polyline crisp on HiDPI.
   let cachedW = 0
   let cachedH = 0
   const resizeObserver = new ResizeObserver(([entry]) => {
     if (!entry) return
     const r = entry.contentRect
-    cachedW = r.width
-    cachedH = r.height
-    if (cachedW > 0 && cachedH > 0) {
-      svg.setAttribute('viewBox', `0 0 ${cachedW} ${cachedH}`)
+    const dpr = window.devicePixelRatio || 1
+    const w = Math.max(1, Math.round(r.width * dpr))
+    const h = Math.max(1, Math.round(r.height * dpr))
+    if (canvas.width !== w || canvas.height !== h) {
+      canvas.width = w
+      canvas.height = h
     }
+    cachedW = w
+    cachedH = h
   })
-  resizeObserver.observe(svg)
+  resizeObserver.observe(canvas)
 
   const MODE_LABEL: Record<Mode, string> = { fps: 'fps', ms: 'ms', gpu: 'gpu', mem: 'mem' }
   const MODE_VALUE_UNIT: Record<Mode, string> = { fps: 'FPS', ms: 'MS', gpu: 'MS', mem: 'MB' }
@@ -264,30 +263,49 @@ export function addStatsGraph(
   })
 
   // ── Render ────────────────────────────────────────────────────────────
-  // `update()` is pure reads + two DOM writes (polyline + fill). The
-  // only allocation is the `pointsStr` concatenation, unavoidable for
-  // SVG `setAttribute`.
+  // Canvas path-based draw — no DOM attribute mutation per frame, no
+  // string allocations beyond the unavoidable `toFixed` for the text
+  // label (and even those are deduped: textContent is only re-assigned
+  // when the rendered string actually changes).
 
   let rafId = 0
   let disposed = false
-  let pointsStr = ''
+
+  function setText(node: HTMLElement, next: string, cache: { v: string }): void {
+    if (cache.v === next) return
+    node.textContent = next
+    cache.v = next
+  }
+  // Boxed cache holders keep `setText` allocation-free past creation.
+  const labelCache = { v: '' }
+  const valueCache = { v: '' }
+  const unitCache = { v: '' }
+  const titleCache = { v: '' }
 
   function update(): void {
     if (disposed) return
-    if (cachedW === 0 || cachedH === 0) return
+    if (cachedW === 0 || cachedH === 0 || gfx === null) return
 
     const now = performance.now()
     const t = Math.min(1, Math.max(0, (now - lastBatchAt) / STATS_BATCH_MS))
 
-    // Polyline: slide the display window through the ring so the newest
-    // samples fade in smoothly. At t=0 the right edge sits `batchCount`
-    // samples behind the ring's write head; at t=1 it has caught up.
+    // Slide the display window through the ring so newest samples fade
+    // in. At t=0 the right edge sits `batchCount` samples behind the
+    // ring's write head; at t=1 it has caught up.
     const ring = seriesFor(mode)
     const size = ring.data.length
     const max = graphMax[mode] || 1
     const rightOffset = batchCount * (1 - t)
     const startFloat = ring.write - rightOffset - BUFFER_SIZE + size * 2
-    pointsStr = ''
+
+    const w = cachedW
+    const h = cachedH
+    gfx.clearRect(0, 0, w, h)
+
+    // Build the polyline directly into a path. Track first point so we
+    // can close the fill polygon by lining back to the bottom corners.
+    const color = MODE_COLORS[mode]
+    gfx.beginPath()
     let mn = Infinity
     let mx = 0
     for (let i = 0; i < BUFFER_SIZE; i++) {
@@ -300,28 +318,64 @@ export function addStatsGraph(
       const v = a * (1 - frac) + b * frac
       if (v < mn) mn = v
       if (v > mx) mx = v
-      const x = (i / (BUFFER_SIZE - 1)) * cachedW
-      const y = cachedH - (v / max) * cachedH * 0.85 - cachedH * 0.05
-      pointsStr += i === 0 ? `${x},${y}` : ` ${x},${y}`
+      const x = (i / (BUFFER_SIZE - 1)) * w
+      const y = h - (v / max) * h * 0.85 - h * 0.05
+      if (i === 0) gfx.moveTo(x, y)
+      else gfx.lineTo(x, y)
     }
+
+    // Translucent fill under the line. Closing the path by lining to
+    // bottom-right then bottom-left.
+    gfx.lineTo(w, h)
+    gfx.lineTo(0, h)
+    gfx.closePath()
+    gfx.fillStyle = color
+    gfx.globalAlpha = 0.33
+    gfx.fill()
+    gfx.globalAlpha = 1
+
+    // Re-stroke the line over the fill so the top edge is sharp.
+    // Re-traversing the polyline path keeps allocations to zero.
+    gfx.beginPath()
+    for (let i = 0; i < BUFFER_SIZE; i++) {
+      const fi = startFloat + i
+      const aIdx = Math.floor(fi) % size
+      const bIdx = (aIdx + 1) % size
+      const frac = fi - Math.floor(fi)
+      const a = ring.data[aIdx]!
+      const b = ring.data[bIdx]!
+      const v = a * (1 - frac) + b * frac
+      const x = (i / (BUFFER_SIZE - 1)) * w
+      const y = h - (v / max) * h * 0.85 - h * 0.05
+      if (i === 0) gfx.moveTo(x, y)
+      else gfx.lineTo(x, y)
+    }
+    gfx.strokeStyle = color
+    gfx.lineWidth = Math.max(1, (window.devicePixelRatio || 1))
+    gfx.stroke()
+
     if (hasLabel[mode]) {
       sessionMin[mode] = Math.min(sessionMin[mode], mn)
       sessionMax[mode] = Math.max(sessionMax[mode], mx)
     }
-    polyline.setAttribute('points', pointsStr)
-    fillPoly.setAttribute('points', `${pointsStr} ${cachedW},${cachedH} 0,${cachedH}`)
 
-    // Label: lerp prev→curr over the same t, so the number transitions
-    // smoothly instead of jumping on batch boundaries.
+    // Text — lerp the label's number toward the latest batch mean.
+    // `toFixed` allocates a new string each call (~one per rAF) but
+    // we dedupe assignment to avoid setting `textContent` redundantly,
+    // which would trigger DOM mutation work even when the string is
+    // identical.
     const has = hasLabel[mode]
     const lerped = prevLabel[mode] + (currLabel[mode] - prevLabel[mode]) * t
     const sMn = sessionMin[mode]
     const sMx = sessionMax[mode]
-    const range = sMn !== Infinity ? `${Math.round(sMn)}–${Math.round(sMx)}` : ''
-    lblvL.textContent = MODE_LABEL[mode]
-    lblvL.title = range ? `${MODE_RANGE_UNIT[mode]} range: ${range}` : ''
-    valueSpan.textContent = has ? lerped.toFixed(MODE_DECIMALS[mode]) : '--'
-    unitSpan.textContent = MODE_VALUE_UNIT[mode]
+    setText(lblvL, MODE_LABEL[mode], labelCache)
+    setText(valueSpan, has ? lerped.toFixed(MODE_DECIMALS[mode]) : '--', valueCache)
+    setText(unitSpan, MODE_VALUE_UNIT[mode], unitCache)
+    const nextTitle = sMn !== Infinity ? `${MODE_RANGE_UNIT[mode]} range: ${Math.round(sMn)}–${Math.round(sMx)}` : ''
+    if (titleCache.v !== nextTitle) {
+      lblvL.title = nextTitle
+      titleCache.v = nextTitle
+    }
   }
 
   if (driver === 'raf') {
