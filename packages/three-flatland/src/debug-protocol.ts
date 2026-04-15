@@ -14,28 +14,33 @@
  *
  * ## Overview
  *
- * One server (the engine, via `Flatland`), many consumers (tweakpane
- * panels, pop-out debuggers, future remote dashboards). Each consumer
- * generates a stable id at construction time (UUID) and tells the
- * server which *features* it wants to receive:
+ * Many providers (Flatland's built-in system provider, user-created
+ * providers for bare three.js apps or R3F, future remote adapters)
+ * and many consumers (tweakpane panels, pop-out debuggers, remote
+ * dashboards). Providers announce themselves on construction;
+ * consumers discover providers via a `provider:query`, pick one by
+ * preference (user > system), and subscribe to it.
  *
- *   consumer → server:   `subscribe { id, features: [...] }`
- *   server   → consumer: `subscribe:ack { id, features, env }`   (bootstrap env incl.)
- *   server   → broadcast: `data { features: { stats?, env?, ... } }`  per tick
- *   consumer → server:   `ack { id }`                             ~1 Hz
- *   consumer → server:   `unsubscribe { id }`                     explicit leave
+ *   provider → all:      `provider:announce { identity }`        on construct + on query
+ *   provider → all:      `provider:gone { id }`                  on dispose
+ *   consumer → all:      `provider:query {}`                     on start
+ *   consumer → provider: `subscribe { id, features, providerId }`
+ *   provider → consumer: `subscribe:ack { id, providerId, features, env }`
+ *   provider → broadcast: `data { providerId, frame, features }` per frame
+ *   provider → broadcast: `ping { providerId }`                  when idle
+ *   consumer → provider: `ack { id }`                            ~1 Hz
+ *   consumer → provider: `unsubscribe { id }`                    explicit leave
  *
- * The server maintains a `Map<id, { features, lastAckAt }>`. Its active
- * feature set is the union across all consumers. Each render tick, if
- * anything is active, the server emits one `data` packet containing
- * whichever feature payloads have fresh content this tick. A consumer
- * whose `lastAckAt` falls outside the grace window is dropped; when
- * the map empties, producers idle completely.
+ * Each provider maintains its own `Map<consumerId, { features,
+ * lastAckAt }>`. Only handles subscribes / acks / unsubscribes whose
+ * `providerId` matches its own id. Consumers filter incoming
+ * `data` / `ping` / `subscribe:ack` by `providerId === chosen`.
  *
- * Consumer id is UUID v4 (36 chars) — reused across re-subscribes from
- * the same instance. Re-subscribe with the *same id* and a new feature
- * set *is* the subscription update path (idempotent in features, not
- * a separate message type).
+ * Identities are UUIDs (provider ids and consumer ids). Providers
+ * additionally carry a `name` (human-readable) and a `kind`
+ * (`'system'` for auto-constructed ones like Flatland's, `'user'` for
+ * ones the application explicitly created). Consumers prefer `user`
+ * over `system` when multiple are available.
  *
  * ## Delta semantics
  *
@@ -130,6 +135,15 @@ export const IDLE_PING_MS = 2000
  */
 export const SERVER_LIVENESS_MS = 5000
 
+/**
+ * Consumer discovery window: after sending `provider:query`, collect
+ * `provider:announce` responses for this long before picking one.
+ * Short enough to not delay startup; long enough to hear back from
+ * providers in the same process (BroadcastChannel is effectively
+ * immediate in-process).
+ */
+export const DISCOVERY_WINDOW_MS = 150
+
 // ─── Devtools build gate ────────────────────────────────────────────────────
 
 /**
@@ -166,6 +180,28 @@ export function isDevtoolsActive(): boolean {
   if (typeof window === 'undefined') return true
   const flag = (window as { __FLATLAND_DEVTOOLS__?: boolean }).__FLATLAND_DEVTOOLS__
   return flag !== false
+}
+
+// ─── Provider identity ──────────────────────────────────────────────────────
+
+/**
+ * Provider classification. `system` providers are auto-constructed by
+ * a framework (Flatland constructs one per instance). `user` providers
+ * are explicitly created by app code — e.g., a bare three.js app that
+ * called `new DevtoolsProvider({ scene, name: 'my-game' })` or mounted
+ * the React `<DevtoolsProvider>` under its `<Canvas>`. When multiple
+ * providers are on the bus, consumers prefer `user` (an explicit
+ * app-level opt-in) over `system` (framework default).
+ */
+export type ProviderKind = 'system' | 'user'
+
+export interface ProviderIdentity {
+  /** UUID. Stable for the provider's lifetime. */
+  id: string
+  /** Human-readable name, shown in the consumer UI. */
+  name: string
+  /** `system` = auto-constructed; `user` = explicitly created. */
+  kind: ProviderKind
 }
 
 // ─── Features ───────────────────────────────────────────────────────────────
@@ -289,23 +325,23 @@ export interface AtlasFullscreenPayload {
 }
 
 /**
- * Server data packet — emitted *only* when at least one subscribed
+ * Provider data packet — emitted *only* when at least one subscribed
  * feature has fresh content. Not a heartbeat; silence means "nothing
  * changed." If a consumer needs a liveness signal beyond this, it can
- * rely on `subscribe:ack` (server-alive confirmation) and its own ack
- * timer (server-drops-on-stale).
+ * rely on `subscribe:ack` (provider-alive confirmation) and its own ack
+ * timer (provider-drops-on-stale).
  *
- * `frame` is always set by the server when a packet goes out — ties
- * the packet's contents to a specific engine render so consumers can
- * correlate data with a frame number (useful for GPU-timing lag, for
- * pairing with user-triggered events, etc.). Think of it as a second
- * metadata field alongside `ts` on the envelope.
- *
- * Each feature slot is delta-encoded: absent = no change for that
- * feature, `null` = feature cleared/gone, object = new/changed payload
- * to merge into consumer state.
+ * `providerId` tags every packet so consumers can filter — a consumer
+ * that subscribed to provider X ignores packets from provider Y. `frame`
+ * is always set when a packet goes out — ties the packet's contents to
+ * a specific engine render so consumers can correlate data with a
+ * frame number. Each feature slot is delta-encoded: absent = no change
+ * for that feature, `null` = feature cleared/gone, object = new/changed
+ * payload to merge into consumer state.
  */
 export interface DataPayload {
+  /** UUID of the provider that emitted this packet. */
+  providerId: string
   /** Engine render frame this packet was emitted from. */
   frame: number
   features: {
@@ -319,53 +355,92 @@ export interface DataPayload {
 
 // ─── Lifecycle payloads ─────────────────────────────────────────────────────
 
-/** Consumer → server: start/update subscription. Idempotent on same id + features. */
+/** Consumer → provider: start/update subscription. Idempotent on same id + features. */
 export interface SubscribePayload {
+  /** Consumer UUID. */
   id: string
   features: DebugFeature[]
+  /**
+   * Target provider id. The only provider that should act on this
+   * message is the one whose id matches. Absent = unaddressed; current
+   * implementation ignores unaddressed subscribes so the consumer must
+   * complete discovery first.
+   */
+  providerId?: string
 }
 
 /**
- * Server → consumer: subscription confirmation. Echoes features actually
- * honoured + carries one-shot bootstrap env info so the consumer knows
- * capabilities (e.g. Safari WebGPU lacks GPU timestamp queries) without
- * having to subscribe to env just to find out.
+ * Provider → consumer: subscription confirmation. Echoes features
+ * actually honoured + carries one-shot bootstrap env info so the
+ * consumer knows capabilities (e.g. Safari WebGPU lacks GPU timestamp
+ * queries) without having to subscribe to env just to find out.
  */
 export interface SubscribeAckPayload {
   id: string
+  /** UUID of the provider that accepted the subscribe. */
+  providerId: string
   features: DebugFeature[]
   env: EnvPayload
 }
 
-/** Consumer → server: explicit leave. */
+/** Consumer → provider: explicit leave. */
 export interface UnsubscribePayload {
   id: string
+  /** Target provider id. Only that provider acts on it. */
+  providerId?: string
 }
 
 /**
- * Consumer → server: "I'm still alive." Cadence: `ACK_INTERVAL_MS`.
- * Server drops the consumer after `ACK_GRACE_MS` without one.
+ * Consumer → provider: "I'm still alive." Cadence: `ACK_INTERVAL_MS`.
+ * Provider drops the consumer after `ACK_GRACE_MS` without one.
  */
 export interface AckPayload {
   id: string
+  /** Target provider id. Only that provider acts on it. */
+  providerId?: string
 }
 
 /**
- * Server → consumers: liveness signal emitted when `IDLE_PING_MS` has
- * elapsed since the last outbound broadcast. Payload is intentionally
- * empty — the presence of the message is the signal, and the envelope's
- * `ts` tells consumers when the server last drew breath.
- *
- * Not a heartbeat in the tick sense: the server does NOT ping every
- * interval, only when there's been no `data` to send. Consumers use
- * any server message (`data` / `ping` / `subscribe:ack`) to refresh
- * their "server alive" timer; after `SERVER_LIVENESS_MS` of total
- * silence they re-subscribe.
+ * Provider → consumers: idle liveness signal. Empty payload (presence
+ * + envelope `ts` are the info).
  */
-// Intentionally empty — the presence of a `ping` message is the signal.
-// Using a type alias rather than an empty interface (lint: empty interfaces
-// are disallowed).
-export type PingPayload = Record<string, never>
+export interface PingPayload {
+  /** UUID of the provider that sent the ping. Consumers filter on this. */
+  providerId: string
+}
+
+// ─── Provider discovery ─────────────────────────────────────────────────────
+
+/**
+ * Provider → all: "I'm here." Sent on provider construction and in
+ * response to every `provider:query`. Consumers track the full set of
+ * announced providers, pick one, and subscribe to that id specifically.
+ */
+export interface ProviderAnnouncePayload {
+  identity: ProviderIdentity
+}
+
+/**
+ * Consumer → all: "Any providers out there?" Providers reply with
+ * `provider:announce`. Consumer aggregates responses over a short
+ * discovery window before choosing one.
+ */
+export interface ProviderQueryPayload {
+  /** UUID of the consumer asking. Informational; providers don't filter on it. */
+  requesterId?: string
+}
+
+/**
+ * Provider → all: "I'm leaving." Sent on `dispose()`. Consumers
+ * currently subscribed to this provider should drop it from their
+ * known-providers map and fall back to another one if available (or
+ * re-run discovery).
+ */
+export interface ProviderGonePayload {
+  id: string
+}
+
+// (`PingPayload` moved above; it now carries `providerId` for filtering.)
 
 // ─── RPC payloads (consumer ↔ consumer; server ignores) ─────────────────────
 
@@ -415,15 +490,19 @@ export interface DebugMessageEnvelope {
  * Every variant carries the `DebugMessageEnvelope` fields (`v`, `ts`).
  */
 export type DebugMessage = DebugMessageEnvelope & (
-  // Consumer → server (lifecycle)
+  // Discovery (both directions)
+  | { type: 'provider:announce'; payload: ProviderAnnouncePayload }
+  | { type: 'provider:query'; payload: ProviderQueryPayload }
+  | { type: 'provider:gone'; payload: ProviderGonePayload }
+  // Consumer → provider (lifecycle)
   | { type: 'subscribe'; payload: SubscribePayload }
   | { type: 'unsubscribe'; payload: UnsubscribePayload }
   | { type: 'ack'; payload: AckPayload }
-  // Server → consumer (lifecycle + data + liveness)
+  // Provider → consumer (lifecycle + data + liveness)
   | { type: 'subscribe:ack'; payload: SubscribeAckPayload }
   | { type: 'data'; payload: DataPayload }
   | { type: 'ping'; payload: PingPayload }
-  // Consumer ↔ consumer (server ignores; `rpc:` prefix)
+  // Consumer ↔ consumer (providers ignore; `rpc:` prefix)
   | { type: 'rpc:registry:select'; payload: RpcRegistrySelectPayload }
   | { type: 'rpc:ui:expand'; payload: RpcUiTogglePayload }
   | { type: 'rpc:ui:gridAll'; payload: RpcUiTogglePayload }

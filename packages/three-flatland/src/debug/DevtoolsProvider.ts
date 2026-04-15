@@ -1,12 +1,38 @@
 import type { WebGPURenderer } from 'three/webgpu'
-import type { DataPayload, DebugFeature, DebugMessage, EnvPayload, StatsPayload } from '../debug-protocol'
+import type {
+  DataPayload,
+  DebugFeature,
+  DebugMessage,
+  EnvPayload,
+  ProviderIdentity,
+  ProviderKind,
+  StatsPayload,
+} from '../debug-protocol'
 import { DEBUG_CHANNEL, IDLE_PING_MS, stampMessage } from '../debug-protocol'
 import { SubscriberRegistry } from './SubscriberRegistry'
 import { StatsCollector } from './StatsCollector'
 import { EnvCollector } from './EnvCollector'
 
-/** Construction options for `DevtoolsProducer`. */
-export interface DevtoolsProducerOptions {
+/**
+ * Construction options for a user-created `DevtoolsProvider`.
+ *
+ * There's intentionally no `kind` field here — external callers of
+ * this class get `kind: 'user'`, always. `system` is reserved for
+ * framework-internal providers (Flatland's auto-constructed one) and
+ * is set via the package-private `DevtoolsProvider._createSystem`
+ * factory. User providers win the default-selection preference over
+ * system providers, so there's no reason for an app to want to flag
+ * itself as system anyway.
+ */
+export interface DevtoolsProviderOptions {
+  /**
+   * Human-readable name shown in the consumer UI. Default: `'user'`.
+   * Override to distinguish multiple user providers or to give a
+   * meaningful label (`name: 'my-engine'`, `name: 'minimap'`).
+   */
+  name?: string
+  /** Explicit provider UUID. Default: auto-generated. */
+  id?: string
   /**
    * Channel name for the `BroadcastChannel`. Override when you want to
    * run multiple isolated devtools sessions in the same origin (e.g.
@@ -14,6 +40,17 @@ export interface DevtoolsProducerOptions {
    * work.
    */
   channelName?: string
+}
+
+/**
+ * Internal options with the escape hatch for `kind: 'system'`. Only
+ * reachable via `DevtoolsProvider._createSystem` — exported only for
+ * same-package consumers (Flatland). External users of the public
+ * `DevtoolsProviderOptions` can never set `kind`.
+ * @internal
+ */
+interface _InternalProviderOptions extends DevtoolsProviderOptions {
+  kind: ProviderKind
 }
 
 /**
@@ -29,7 +66,7 @@ export interface DevtoolsProducerOptions {
  *    exist.
  *
  * 2. **Standalone** — a bare three.js app (no Flatland, or a different
- *    engine) can instantiate `DevtoolsProducer` and call
+ *    engine) can instantiate `DevtoolsProvider` and call
  *    `beginFrame(now)` / `endFrame(renderer)` around its rAF tick (or
  *    around each `renderer.render()` call if the app has only one).
  *    Standard bus protocol; any consumer that knows the protocol
@@ -67,27 +104,59 @@ export interface DevtoolsProducerOptions {
  * `IDLE_PING_MS`. Pure liveness signal — consumers treat any server
  * message (`data` / `ping` / `subscribe:ack`) as proof-of-life.
  */
-export class DevtoolsProducer {
-  private _bus: BroadcastChannel
-  private _subs: SubscriberRegistry
-  private _stats: StatsCollector
-  private _env: EnvCollector
+export class DevtoolsProvider {
+  readonly identity!: ProviderIdentity
+
+  // Fields initialised from `_init()` (called by constructor or
+  // `_createSystem`). The `!` marks them definitely-assigned — TS
+  // can't trace across the indirect-init path.
+  private _bus!: BroadcastChannel
+  private _subs!: SubscriberRegistry
+  private _stats!: StatsCollector
+  private _env!: EnvCollector
 
   /** Scratch `data` message reused every tick. */
-  private _dataScratch: DebugMessage
+  private _dataScratch!: DebugMessage
   /** Scratch envelope for idle `ping` broadcasts. */
-  private _pingScratch: DebugMessage
+  private _pingScratch!: DebugMessage
   /** Scratch feature payloads, referenced from `_dataScratch.payload.features`. */
   private _statsScratch: StatsPayload = {}
   private _envScratch: EnvPayload = {}
 
   /** Wall-clock time (`Date.now()`) of the last outbound broadcast (`data` or `ping`). */
-  private _lastBroadcastAt: number
+  private _lastBroadcastAt!: number
 
   /** Latest renderer seen during `endFrame` — cached so `_sendSubscribeAck` can use it without another argument. */
   private _latestRenderer: WebGPURenderer | undefined
 
-  constructor(options: DevtoolsProducerOptions = {}) {
+  constructor(options: DevtoolsProviderOptions = {}) {
+    // External callers always get `kind: 'user'`. The `_createSystem`
+    // factory below uses the internal options shape to override.
+    this._init(options as _InternalProviderOptions, 'user')
+  }
+
+  /**
+   * @internal Used by Flatland to construct its framework-owned system
+   * provider. External code should construct via `new DevtoolsProvider(...)`
+   * which always produces `kind: 'user'`. Named with `_` to signal
+   * package-private; TypeScript can't enforce cross-package access, but
+   * the public `DevtoolsProviderOptions` type excludes `kind` so this
+   * is the only way in.
+   */
+  static _createSystem(options: DevtoolsProviderOptions = {}): DevtoolsProvider {
+    const p = Object.create(DevtoolsProvider.prototype) as DevtoolsProvider
+    ;(p as unknown as { _init: (o: _InternalProviderOptions, k: ProviderKind) => void })
+      ._init(options as _InternalProviderOptions, 'system')
+    return p
+  }
+
+  private _init(options: DevtoolsProviderOptions, kind: ProviderKind): void {
+    ;(this as { identity: ProviderIdentity }).identity = {
+      id: options.id ?? generateUuid(),
+      name: options.name ?? (kind === 'system' ? 'flatland' : 'user'),
+      kind,
+    }
+
     const channel = options.channelName ?? DEBUG_CHANNEL
     this._bus = new BroadcastChannel(channel)
     this._subs = new SubscriberRegistry()
@@ -98,13 +167,13 @@ export class DevtoolsProducer {
       v: 1,
       ts: 0,
       type: 'data',
-      payload: { frame: 0, features: {} },
+      payload: { providerId: this.identity.id, frame: 0, features: {} },
     }
     this._pingScratch = {
       v: 1,
       ts: 0,
       type: 'ping',
-      payload: {},
+      payload: { providerId: this.identity.id },
     }
     this._lastBroadcastAt = Date.now()
 
@@ -113,6 +182,9 @@ export class DevtoolsProducer {
       if (!msg || typeof msg !== 'object' || !('type' in msg)) return
       this._handleBusMessage(msg)
     })
+
+    // Announce ourselves to any consumers already listening.
+    this._announce()
   }
 
   /**
@@ -210,6 +282,16 @@ export class DevtoolsProducer {
    * the BroadcastChannel, clears subscriber state. Idempotent.
    */
   dispose(): void {
+    // Tell consumers we're leaving so they can drop us from their
+    // known-provider map and fall back to another option.
+    try {
+      this._bus.postMessage(
+        stampMessage({
+          type: 'provider:gone',
+          payload: { id: this.identity.id },
+        }),
+      )
+    } catch { /* bus may already be closing */ }
     this._stats.dispose()
     this._subs.dispose()
     try { this._bus.close() } catch { /* noop */ }
@@ -229,7 +311,16 @@ export class DevtoolsProducer {
 
   private _handleBusMessage(msg: DebugMessage): void {
     switch (msg.type) {
+      case 'provider:query': {
+        // A consumer is discovering providers — announce ourselves so
+        // they can include us in their choice.
+        this._announce()
+        break
+      }
       case 'subscribe': {
+        // Only handle subscribes targeted at us. Consumers tag every
+        // subscribe with a providerId chosen after discovery.
+        if (msg.payload.providerId !== this.identity.id) break
         this._subs.onSubscribe(msg.payload.id, msg.payload.features)
         // Late-joining consumers: reset per-feature delta trackers so
         // the next `data` packet carries a full snapshot.
@@ -239,18 +330,34 @@ export class DevtoolsProducer {
         break
       }
       case 'ack': {
+        if (msg.payload.providerId !== undefined && msg.payload.providerId !== this.identity.id) break
         this._subs.onAck(msg.payload.id)
         break
       }
       case 'unsubscribe': {
+        if (msg.payload.providerId !== undefined && msg.payload.providerId !== this.identity.id) break
         this._subs.onUnsubscribe(msg.payload.id)
         break
       }
-      // All other types are either server-emitted (we sent them, no
-      // self-handling needed) or consumer-to-consumer RPCs that the
-      // server deliberately ignores.
+      // All other types are either provider-emitted (we sent them, no
+      // self-handling needed), RPCs (consumer-to-consumer), or
+      // announces from OTHER providers (we ignore those — we have our
+      // own identity and only care who's subscribed to US).
       default:
         break
+    }
+  }
+
+  private _announce(): void {
+    try {
+      this._bus.postMessage(
+        stampMessage({
+          type: 'provider:announce',
+          payload: { identity: this.identity },
+        }),
+      )
+    } catch {
+      // Bus may be closing.
     }
   }
 
@@ -268,7 +375,7 @@ export class DevtoolsProducer {
       this._bus.postMessage(
         stampMessage({
           type: 'subscribe:ack',
-          payload: { id, features: Array.from(echoed), env },
+          payload: { id, providerId: this.identity.id, features: Array.from(echoed), env },
         }),
       )
     } catch {
@@ -292,4 +399,17 @@ export class DevtoolsProducer {
       // Bus may be closing during shutdown — swallow.
     }
   }
+}
+
+/** UUID v4 for provider ids. Matches the consumer-side helper. */
+function generateUuid(): string {
+  const c = typeof crypto !== 'undefined' ? crypto : undefined
+  if (c && typeof c.randomUUID === 'function') return c.randomUUID()
+  const bytes = new Uint8Array(16)
+  if (c && typeof c.getRandomValues === 'function') c.getRandomValues(bytes)
+  else for (let i = 0; i < 16; i++) bytes[i] = Math.floor(Math.random() * 256)
+  bytes[6] = (bytes[6]! & 0x0f) | 0x40
+  bytes[8] = (bytes[8]! & 0x3f) | 0x80
+  const h = Array.from(bytes, (b) => b.toString(16).padStart(2, '0'))
+  return `${h.slice(0, 4).join('')}-${h.slice(4, 6).join('')}-${h.slice(6, 8).join('')}-${h.slice(8, 10).join('')}-${h.slice(10).join('')}`
 }

@@ -2,12 +2,14 @@ import type {
   DebugFeature,
   DebugMessage,
   EnvPayload,
+  ProviderIdentity,
   StatsPayload,
 } from 'three-flatland/debug-protocol'
 import {
   ACK_INTERVAL_MS,
   DEBUG_CHANNEL,
   DEBUG_PROTOCOL_VERSION,
+  DISCOVERY_WINDOW_MS,
   SERVER_LIVENESS_MS,
 } from 'three-flatland/debug-protocol'
 
@@ -63,10 +65,16 @@ export interface DevtoolsState {
   canvasHeight?: number
   canvasPixelRatio?: number
 
+  // --- Provider selection ------------------------------------------------
+  /** All providers currently announced on the bus (updated live). */
+  providers: ProviderIdentity[]
+  /** The provider this client is subscribed to. `null` until discovery picks one. */
+  selectedProviderId: string | null
+
   // --- Liveness (client-tracked) -----------------------------------------
-  /** Is the server considered alive? False after `SERVER_LIVENESS_MS` silence. */
+  /** Is the selected provider considered alive? False after `SERVER_LIVENESS_MS` silence. */
   serverAlive: boolean
-  /** ms since the last server message. */
+  /** ms since the last message from the selected provider. */
   serverLagMs: number
 }
 
@@ -94,16 +102,25 @@ export class DevtoolsClient {
 
   private _ackTimer: ReturnType<typeof setInterval> | null = null
   private _livenessTimer: ReturnType<typeof setInterval> | null = null
+  private _discoveryTimer: ReturnType<typeof setTimeout> | null = null
   private _lastServerAt = 0
   private _subscribed = false
   private _disposed = false
+
+  /** Known providers by id — updated live via `provider:announce` + `provider:gone`. */
+  private _providers = new Map<string, ProviderIdentity>()
 
   constructor(options: DevtoolsClientOptions) {
     this.id = generateUuid()
     this._features = [...options.features]
     this._onChange = options.onChange
     this._ch = new BroadcastChannel(options.channelName ?? DEBUG_CHANNEL)
-    this.state = { serverAlive: false, serverLagMs: 0 }
+    this.state = {
+      providers: [],
+      selectedProviderId: null,
+      serverAlive: false,
+      serverLagMs: 0,
+    }
 
     this._ch.addEventListener('message', (ev: MessageEvent<DebugMessage>) => {
       this._onMessage(ev.data)
@@ -111,16 +128,29 @@ export class DevtoolsClient {
   }
 
   /**
-   * Send the initial `subscribe` and begin the liveness watcher. Idempotent
-   * — calling again while already started is a no-op.
+   * Begin discovery + subscription. Sends a `provider:query`, waits
+   * `DISCOVERY_WINDOW_MS` for `provider:announce` responses, then picks
+   * the best provider (user > system) and subscribes to it.
+   *
+   * Idempotent — calling again while already started is a no-op.
    */
   start(): void {
     if (this._disposed || this._subscribed) return
     this._subscribed = true
+
+    // Announce ourselves to the bus and ask who's out there.
     this._post({
-      type: 'subscribe',
-      payload: { id: this.id, features: this._features },
+      type: 'provider:query',
+      payload: { requesterId: this.id },
     })
+
+    // Give providers a moment to respond with `provider:announce`
+    // before we pick one. Any announces we've already received
+    // (producers that were constructed before we started) count too.
+    this._discoveryTimer = setTimeout(() => {
+      this._discoveryTimer = null
+      this._pickProviderAndSubscribe()
+    }, DISCOVERY_WINDOW_MS)
 
     // Liveness watcher — fires every second, flips serverAlive false and
     // re-subscribes if we've gone silent past the grace window.
@@ -128,30 +158,62 @@ export class DevtoolsClient {
   }
 
   /**
-   * Update the feature set. Sends a fresh `subscribe` with the same id;
-   * server treats it as an idempotent update (adds/removes features).
+   * Update the feature set. Re-posts `subscribe` with the same consumer
+   * id to the currently-selected provider.
    */
   setFeatures(features: DebugFeature[]): void {
     this._features = [...features]
-    if (this._subscribed) {
+    if (this._subscribed && this.state.selectedProviderId !== null) {
       this._post({
         type: 'subscribe',
-        payload: { id: this.id, features: this._features },
+        payload: {
+          id: this.id,
+          features: this._features,
+          providerId: this.state.selectedProviderId,
+        },
       })
     }
   }
 
   /** Tear down: unsubscribe, clear timers, close bus. Idempotent. */
+  /**
+   * Manually switch to a different provider (by UUID). Useful for UI
+   * "pick provider" dropdowns. No-op if the id isn't a known provider.
+   * If already subscribed, unsubscribes from the old provider first.
+   */
+  selectProvider(providerId: string): void {
+    if (!this._providers.has(providerId)) return
+    if (this.state.selectedProviderId === providerId) return
+    // Unsubscribe from current provider.
+    if (this.state.selectedProviderId !== null) {
+      this._post({
+        type: 'unsubscribe',
+        payload: { id: this.id, providerId: this.state.selectedProviderId },
+      })
+    }
+    this.state.selectedProviderId = providerId
+    this._resetAccumulatedState()
+    // Subscribe to the newly selected provider.
+    this._post({
+      type: 'subscribe',
+      payload: { id: this.id, features: this._features, providerId },
+    })
+    this._fire()
+  }
+
   dispose(): void {
     if (this._disposed) return
     this._disposed = true
 
-    if (this._subscribed) {
+    if (this._subscribed && this.state.selectedProviderId !== null) {
       try {
-        this._post({ type: 'unsubscribe', payload: { id: this.id } })
+        this._post({
+          type: 'unsubscribe',
+          payload: { id: this.id, providerId: this.state.selectedProviderId },
+        })
       } catch { /* bus may already be closing */ }
-      this._subscribed = false
     }
+    this._subscribed = false
     if (this._ackTimer !== null) {
       clearInterval(this._ackTimer)
       this._ackTimer = null
@@ -159,6 +221,10 @@ export class DevtoolsClient {
     if (this._livenessTimer !== null) {
       clearInterval(this._livenessTimer)
       this._livenessTimer = null
+    }
+    if (this._discoveryTimer !== null) {
+      clearTimeout(this._discoveryTimer)
+      this._discoveryTimer = null
     }
     try { this._ch.close() } catch { /* already closed */ }
   }
@@ -168,21 +234,41 @@ export class DevtoolsClient {
   private _onMessage(msg: DebugMessage | undefined): void {
     if (!msg || typeof msg !== 'object' || !('type' in msg)) return
 
-    // Any server-originated message refreshes our liveness clock.
-    if (msg.type === 'data' || msg.type === 'ping' || msg.type === 'subscribe:ack') {
-      this._lastServerAt = Date.now()
-      if (!this.state.serverAlive) {
-        this.state.serverAlive = true
-        this._fire()
-      }
-    }
-
     switch (msg.type) {
+      case 'provider:announce': {
+        // Track every provider that announces itself, regardless of
+        // whether we've picked one yet. UI can show the full list.
+        const id = msg.payload.identity.id
+        this._providers.set(id, msg.payload.identity)
+        this.state.providers = Array.from(this._providers.values())
+        this._fire()
+        // If we've already completed discovery but a new provider shows
+        // up, we don't auto-switch — user has to choose. If we haven't
+        // selected anything yet (e.g., late-joining provider during
+        // our discovery window), `_pickProviderAndSubscribe` will see
+        // the updated map when it fires.
+        break
+      }
+      case 'provider:gone': {
+        const id = msg.payload.id
+        if (!this._providers.has(id)) return
+        this._providers.delete(id)
+        this.state.providers = Array.from(this._providers.values())
+        // If the provider we were subscribed to just left, fall back
+        // to another one (preference rules) or mark nothing selected.
+        if (this.state.selectedProviderId === id) {
+          this.state.selectedProviderId = null
+          this._resetAccumulatedState()
+          this._pickProviderAndSubscribe()
+        }
+        this._fire()
+        break
+      }
       case 'subscribe:ack': {
-        if (msg.payload.id !== this.id) return // addressed to a different consumer
-        // Bootstrap env from the ack.
+        if (msg.payload.id !== this.id) return
+        if (msg.payload.providerId !== this.state.selectedProviderId) return
+        this._markServerAlive()
         this._applyEnv(msg.payload.env)
-        // Start the ack cadence.
         if (this._ackTimer === null) {
           this._ackTimer = setInterval(() => this._sendAck(), ACK_INTERVAL_MS)
         }
@@ -190,6 +276,8 @@ export class DevtoolsClient {
         break
       }
       case 'data': {
+        if (msg.payload.providerId !== this.state.selectedProviderId) return
+        this._markServerAlive()
         this.state.frame = msg.payload.frame
         const features = msg.payload.features
         if (features.stats !== undefined) this._applyStats(features.stats)
@@ -198,14 +286,52 @@ export class DevtoolsClient {
         this._fire()
         break
       }
-      case 'ping':
-        // Already refreshed liveness above; nothing else to do.
+      case 'ping': {
+        if (msg.payload.providerId !== this.state.selectedProviderId) return
+        this._markServerAlive()
         break
+      }
       default:
         // Other types are consumer→server (our own sends) or RPC
         // targeted at others — ignore.
         break
     }
+  }
+
+  private _markServerAlive(): void {
+    this._lastServerAt = Date.now()
+    if (!this.state.serverAlive) {
+      this.state.serverAlive = true
+      this._fire()
+    }
+  }
+
+  /**
+   * Pick the best provider from the currently-known set and subscribe
+   * to it. Preference: `user` over `system`; first-announced as
+   * tiebreak. No-op if zero providers are known (we'll stay waiting;
+   * any future `provider:announce` that arrives doesn't auto-trigger
+   * this — call it again or restart discovery).
+   */
+  private _pickProviderAndSubscribe(): void {
+    if (this.state.selectedProviderId !== null) return
+    const providers = Array.from(this._providers.values())
+    if (providers.length === 0) return
+    const user = providers.find((p) => p.kind === 'user')
+    const chosen = user ?? providers[0]!
+    this.state.selectedProviderId = chosen.id
+    this._post({
+      type: 'subscribe',
+      payload: { id: this.id, features: this._features, providerId: chosen.id },
+    })
+    this._fire()
+  }
+
+  /** Clear all feature-derived state so the next data packet can start fresh. */
+  private _resetAccumulatedState(): void {
+    this.state.frame = undefined
+    this._applyStats(null)
+    this._applyEnv(null)
   }
 
   /**
