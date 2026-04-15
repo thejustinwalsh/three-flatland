@@ -274,12 +274,6 @@ const SPRITE_LAYOUT = [
   { x: 0, y: -120, scale: 40, tint: 0xff8a65 },       // Bottom — orange
 ]
 
-/* HMR-tracked teardown state. Without this, every dev save accumulates
- * a fresh renderer + animate() loop while the previous one keeps
- * RAFing forever. Dev-only — `import.meta.hot` is undefined in prod. */
-let rafId = 0
-let activeRenderer: WebGPURenderer | null = null
-
 async function main() {
   // Gem-tinted L2 backdrop matching the masonry tile poster. The
   // Flatland clearColor matches the docs --card token (#16191e) so
@@ -291,7 +285,6 @@ async function main() {
   ;(flatland.scene as any).backgroundNode = gemGradientNode({ gem: GEM })
 
   const renderer = new WebGPURenderer({ antialias: false, trackTimestamp: true })
-  activeRenderer = renderer
   renderer.setSize(window.innerWidth, window.innerHeight)
   renderer.setPixelRatio(1) // Pixel-perfect for pixel art
   renderer.domElement.style.imageRendering = 'pixelated'
@@ -350,9 +343,7 @@ async function main() {
 
   // ─── Tweakpane UI ───────────────────────────────────────────────────────
 
-  // Pass flatland.scene so draws/triangles are wired via scene.onAfterRender
-  // (fires inside flatland.render() → renderer.render()).
-  const { pane, stats } = createPane({ scene: flatland.scene })
+  const { pane, update: updateDevtools } = createPane({ driver: 'manual' })
 
   // ─── CRT Folder ─────────────────────────────────────────────────────────
 
@@ -480,8 +471,7 @@ async function main() {
   let refreshTimer = 0
 
   function animate() {
-    rafId = requestAnimationFrame(animate)
-    stats.begin()
+    requestAnimationFrame(animate)
 
     const now = performance.now()
     const delta = (now - lastTime) / 1000
@@ -502,6 +492,7 @@ async function main() {
     }
 
     flatland.render(renderer)
+    updateDevtools()
 
     // Update monitors periodically
     refreshTimer += delta
@@ -510,25 +501,9 @@ async function main() {
       pane.refresh()
       refreshTimer = 0
     }
-
-    stats.end()
   }
 
   animate()
 }
 
 main()
-
-if (import.meta.hot) {
-  import.meta.hot.dispose(() => {
-    if (rafId) {
-      cancelAnimationFrame(rafId)
-      rafId = 0
-    }
-    if (activeRenderer) {
-      activeRenderer.dispose?.()
-      activeRenderer.domElement.remove()
-      activeRenderer = null
-    }
-  })
-}

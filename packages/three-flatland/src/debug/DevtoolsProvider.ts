@@ -6,51 +6,30 @@ import type {
   EnvPayload,
   ProviderIdentity,
   ProviderKind,
+  RegistryPayload,
   StatsPayload,
 } from '../debug-protocol'
-import { DEBUG_CHANNEL, IDLE_PING_MS, stampMessage } from '../debug-protocol'
+import { DISCOVERY_CHANNEL, IDLE_PING_MS, STATS_BATCH_MS, providerChannelName, stampMessage } from '../debug-protocol'
 import { SubscriberRegistry } from './SubscriberRegistry'
 import { StatsCollector } from './StatsCollector'
 import { EnvCollector } from './EnvCollector'
+import { DebugRegistry } from './DebugRegistry'
+import { _setActiveRegistry } from './debug-sink'
 
-/**
- * Construction options for a user-created `DevtoolsProvider`.
- *
- * There's intentionally no `kind` field here — external callers of
- * this class get `kind: 'user'`, always. `system` is reserved for
- * framework-internal providers (Flatland's auto-constructed one) and
- * is set via the package-private `DevtoolsProvider._createSystem`
- * factory. User providers win the default-selection preference over
- * system providers, so there's no reason for an app to want to flag
- * itself as system anyway.
- */
 export interface DevtoolsProviderOptions {
-  /**
-   * Human-readable name shown in the consumer UI. Default: `'user'`.
-   * Override to distinguish multiple user providers or to give a
-   * meaningful label (`name: 'my-engine'`, `name: 'minimap'`).
-   */
+  /** Human-readable name shown in the consumer UI. */
   name?: string
   /** Explicit provider UUID. Default: auto-generated. */
   id?: string
   /**
-   * Channel name for the `BroadcastChannel`. Override when you want to
-   * run multiple isolated devtools sessions in the same origin (e.g.
-   * for tests). Defaults to `DEBUG_CHANNEL` so standard consumers just
-   * work.
+   * Override the discovery (bonjour) channel name. Rarely needed — the
+   * default `DISCOVERY_CHANNEL` is what every consumer uses. Providing a
+   * custom value only makes sense if you're running multiple isolated
+   * devtools sessions in the same origin (e.g. tests).
    */
-  channelName?: string
-}
-
-/**
- * Internal options with the escape hatch for `kind: 'system'`. Only
- * reachable via `DevtoolsProvider._createSystem` — exported only for
- * same-package consumers (Flatland). External users of the public
- * `DevtoolsProviderOptions` can never set `kind`.
- * @internal
- */
-interface _InternalProviderOptions extends DevtoolsProviderOptions {
-  kind: ProviderKind
+  discoveryChannelName?: string
+  /** Provider kind. Default: `'user'`. */
+  kind?: ProviderKind
 }
 
 /**
@@ -105,86 +84,87 @@ interface _InternalProviderOptions extends DevtoolsProviderOptions {
  * message (`data` / `ping` / `subscribe:ack`) as proof-of-life.
  */
 export class DevtoolsProvider {
-  readonly identity!: ProviderIdentity
+  readonly identity: ProviderIdentity
 
-  // Fields initialised from `_init()` (called by constructor or
-  // `_createSystem`). The `!` marks them definitely-assigned — TS
-  // can't trace across the indirect-init path.
-  private _bus!: BroadcastChannel
-  private _subs!: SubscriberRegistry
-  private _stats!: StatsCollector
-  private _env!: EnvCollector
+  /** Bonjour channel — discovery traffic only (query/announce/gone). */
+  private _discoveryBus: BroadcastChannel
+  /** Per-provider data channel — named after `identity.id`. Carries subscribe/ack/data/ping. */
+  private _dataBus: BroadcastChannel
+  private _subs = new SubscriberRegistry()
+  private _stats = new StatsCollector()
+  private _env = new EnvCollector()
+  private _registry = new DebugRegistry()
 
-  /** Scratch `data` message reused every tick. */
-  private _dataScratch!: DebugMessage
+  /** Scratch `data` message. Reused across flushes; features reassigned each tick. */
+  private _dataScratch: DebugMessage
   /** Scratch envelope for idle `ping` broadcasts. */
-  private _pingScratch!: DebugMessage
-  /** Scratch feature payloads, referenced from `_dataScratch.payload.features`. */
-  private _statsScratch: StatsPayload = {}
+  private _pingScratch: DebugMessage
+  /** Scratch env payload reused across flushes. */
   private _envScratch: EnvPayload = {}
+  /** Scratch stats payload reused across flushes; fields reassigned each drain. */
+  private _statsScratch: StatsPayload = { startFrame: 0, count: 0 }
+  /** Scratch registry payload reused across flushes. */
+  private _registryScratch: RegistryPayload = {}
 
-  /** Wall-clock time (`Date.now()`) of the last outbound broadcast (`data` or `ping`). */
-  private _lastBroadcastAt!: number
+  /** Wall-clock time of the last outbound broadcast. */
+  private _lastBroadcastAt = Date.now()
 
-  /** Latest renderer seen during `endFrame` — cached so `_sendSubscribeAck` can use it without another argument. */
+  /** Latest renderer seen during `endFrame` — cached so `_sendSubscribeAck` has something to read. */
   private _latestRenderer: WebGPURenderer | undefined
 
+  /** Flush timer handle. Ticks every `STATS_BATCH_MS`. */
+  private _flushTimer: ReturnType<typeof setInterval>
+  private _disposed = false
+
   constructor(options: DevtoolsProviderOptions = {}) {
-    // External callers always get `kind: 'user'`. The `_createSystem`
-    // factory below uses the internal options shape to override.
-    this._init(options as _InternalProviderOptions, 'user')
-  }
-
-  /**
-   * @internal Used by Flatland to construct its framework-owned system
-   * provider. External code should construct via `new DevtoolsProvider(...)`
-   * which always produces `kind: 'user'`. Named with `_` to signal
-   * package-private; TypeScript can't enforce cross-package access, but
-   * the public `DevtoolsProviderOptions` type excludes `kind` so this
-   * is the only way in.
-   */
-  static _createSystem(options: DevtoolsProviderOptions = {}): DevtoolsProvider {
-    const p = Object.create(DevtoolsProvider.prototype) as DevtoolsProvider
-    ;(p as unknown as { _init: (o: _InternalProviderOptions, k: ProviderKind) => void })
-      ._init(options as _InternalProviderOptions, 'system')
-    return p
-  }
-
-  private _init(options: DevtoolsProviderOptions, kind: ProviderKind): void {
-    ;(this as { identity: ProviderIdentity }).identity = {
+    const kind = options.kind ?? 'user'
+    this.identity = {
       id: options.id ?? generateUuid(),
       name: options.name ?? (kind === 'system' ? 'flatland' : 'user'),
       kind,
     }
 
-    const channel = options.channelName ?? DEBUG_CHANNEL
-    this._bus = new BroadcastChannel(channel)
-    this._subs = new SubscriberRegistry()
-    this._stats = new StatsCollector()
-    this._env = new EnvCollector()
+    const discoveryName = options.discoveryChannelName ?? DISCOVERY_CHANNEL
+    this._discoveryBus = new BroadcastChannel(discoveryName)
+    this._dataBus = new BroadcastChannel(providerChannelName(this.identity.id))
 
     this._dataScratch = {
       v: 1,
       ts: 0,
       type: 'data',
-      payload: { providerId: this.identity.id, frame: 0, features: {} },
+      payload: { frame: 0, features: {} },
     }
     this._pingScratch = {
       v: 1,
       ts: 0,
       type: 'ping',
-      payload: { providerId: this.identity.id },
+      payload: {},
     }
-    this._lastBroadcastAt = Date.now()
 
-    this._bus.addEventListener('message', (ev: MessageEvent<DebugMessage>) => {
+    // Discovery bus: only query traffic reaches us here. Everything
+    // else we send/receive on our own data channel.
+    this._discoveryBus.addEventListener('message', (ev: MessageEvent<DebugMessage>) => {
       const msg = ev.data
       if (!msg || typeof msg !== 'object' || !('type' in msg)) return
-      this._handleBusMessage(msg)
+      if (msg.type === 'provider:query') this._announce()
     })
 
-    // Announce ourselves to any consumers already listening.
+    this._dataBus.addEventListener('message', (ev: MessageEvent<DebugMessage>) => {
+      const msg = ev.data
+      if (!msg || typeof msg !== 'object' || !('type' in msg)) return
+      this._handleDataMessage(msg)
+    })
+
+    // Expose our registry to module-level sink so engine code can
+    // publish arrays without a direct dependency on this class.
+    _setActiveRegistry(this._registry)
+
+    // Announce ourselves in case a client is already listening (the
+    // client will also `provider:query` on its own start, so discovery
+    // works from either side).
     this._announce()
+
+    this._flushTimer = setInterval(() => this._flush(), STATS_BATCH_MS)
   }
 
   /**
@@ -198,29 +178,27 @@ export class DevtoolsProvider {
   }
 
   /**
-   * Mark the end of a logical frame. Call after all `renderer.render()`
-   * calls for this frame have completed. Updates stats, schedules the
-   * async GPU-timestamp resolve (if `stats` is subscribed), prunes
-   * stale consumers, and broadcasts the data packet (or idle ping).
+   * Mark the end of a logical frame. Records the sample and drains the
+   * GPU-timestamp query pool. Does NOT broadcast — batches are shipped
+   * on the `_flush` interval, not per-frame.
    */
   endFrame(renderer: WebGPURenderer): void {
+    this._latestRenderer = renderer
     this._stats.endFrame(renderer as unknown as Parameters<StatsCollector['endFrame']>[0])
-    this.send(renderer)
+    // Always drain the GPU-timestamp query pool when the renderer is
+    // set up with `trackTimestamp: true`. No-op when the backend can't
+    // do timestamps, so this is cheap when irrelevant.
+    this._stats.maybeResolveGpu()
   }
 
   /**
-   * Broadcast whatever the current state says. Normally driven by
-   * `endFrame()`; exposed for advanced cases (e.g. on-demand emit
-   * without a render tick). `renderer` is cached for `subscribe:ack`
-   * env bootstrap on future subscribes.
+   * Assemble and broadcast a batched `data` packet. Invoked by the
+   * `STATS_BATCH_MS` interval. No-op when there are no subscribers or
+   * no samples / env delta accumulated this window; idle pings keep
+   * consumers aware that the server is alive.
    */
-  send(renderer: WebGPURenderer): void {
-    this._latestRenderer = renderer
-
-    // Schedule async GPU-timestamp resolve only when someone's watching
-    // `stats`. Cheap no-op when backend doesn't support timestamps.
-    if (this._subs.isActive('stats')) this._stats.maybeResolveGpu()
-
+  private _flush(): void {
+    if (this._disposed) return
     this._subs.pruneStale()
     if (this._subs.size() === 0) return
 
@@ -230,8 +208,6 @@ export class DevtoolsProvider {
     const msg = this._dataScratch
     const features = (msg.payload as DataPayload).features
 
-    // Delete (not set-to-undefined) absent slots so `structuredClone`
-    // emits truly absent keys, not `{ field: undefined }` noise.
     delete features.stats
     delete features.env
     delete features['atlas:tick']
@@ -242,25 +218,36 @@ export class DevtoolsProvider {
 
     if (active.has('stats')) {
       const statsOut = this._statsScratch
-      if (this._stats.fillStats(statsOut)) {
+      if (this._stats.drainBatch(statsOut)) {
         features.stats = statsOut
         anyFeature = true
       }
     }
 
-    if (active.has('env')) {
+    if (active.has('env') && this._latestRenderer !== undefined) {
       const envOut = this._envScratch
       delete envOut.threeFlatlandVersion
       delete envOut.threeRevision
       delete envOut.backend
       delete envOut.canvas
-      if (this._env.fillEnv(envOut, renderer)) {
+      if (this._env.fillEnv(envOut, this._latestRenderer)) {
         features.env = envOut
         anyFeature = true
       }
     }
 
-    // atlas:* and registry feature slots are hooked up in later phases.
+    if (active.has('registry')) {
+      // Union filter across all consumers — `null` means everyone wants
+      // everything; a set means only those names get their sample; an
+      // empty set means nobody wants samples right now (metadata still
+      // ships so the pane's picker UI stays populated).
+      const filter = this._subs.registryFilter()
+      const regOut = this._registryScratch
+      if (this._registry.drain(regOut, filter)) {
+        features.registry = regOut
+        anyFeature = true
+      }
+    }
 
     if (!anyFeature) {
       this._maybeIdlePing()
@@ -270,7 +257,7 @@ export class DevtoolsProvider {
     ;(msg.payload as DataPayload).frame = this._stats.frame
     stampMessage(msg)
     try {
-      this._bus.postMessage(msg)
+      this._dataBus.postMessage(msg)
       this._lastBroadcastAt = Date.now()
     } catch {
       // Bus may be closing during shutdown — swallow.
@@ -278,14 +265,17 @@ export class DevtoolsProvider {
   }
 
   /**
-   * Tear down everything: stops the `scene.onAfterRender` hook, closes
-   * the BroadcastChannel, clears subscriber state. Idempotent.
+   * Tear down everything: closes both channels, clears subscriber state.
+   * Idempotent.
    */
   dispose(): void {
+    if (this._disposed) return
+    this._disposed = true
+    clearInterval(this._flushTimer)
     // Tell consumers we're leaving so they can drop us from their
     // known-provider map and fall back to another option.
     try {
-      this._bus.postMessage(
+      this._discoveryBus.postMessage(
         stampMessage({
           type: 'provider:gone',
           payload: { id: this.identity.id },
@@ -293,64 +283,67 @@ export class DevtoolsProvider {
       )
     } catch { /* bus may already be closing */ }
     this._stats.dispose()
+    this._registry.dispose()
+    _setActiveRegistry(null)
     this._subs.dispose()
-    try { this._bus.close() } catch { /* noop */ }
+    try { this._dataBus.close() } catch { /* noop */ }
+    try { this._discoveryBus.close() } catch { /* noop */ }
     this._latestRenderer = undefined
   }
 
   // ── Introspection (useful for tests / advanced integrations) ────────────
 
-  /** The underlying BroadcastChannel. Exposed for test harnesses. */
-  get bus(): BroadcastChannel { return this._bus }
+  /** The per-provider data channel. Exposed for test harnesses. */
+  get bus(): BroadcastChannel { return this._dataBus }
   /** The current subscriber registry. Read-only view. */
   get subscribers(): SubscriberRegistry { return this._subs }
   /** Current engine frame counter. */
   get frame(): number { return this._stats.frame }
+  /**
+   * Debug registry — register CPU arrays here to expose them to the
+   * pane. Entries only cost wire bytes when subscribers include
+   * `registry` in their feature set, so it's safe to leave permanently
+   * registered from engine code.
+   */
+  get registry(): DebugRegistry { return this._registry }
 
   // ── Bus message routing ─────────────────────────────────────────────────
 
-  private _handleBusMessage(msg: DebugMessage): void {
+  /**
+   * Handler for the per-provider data channel — all traffic here is
+   * already implicitly addressed to us, so no per-message `providerId`
+   * filtering is needed.
+   */
+  private _handleDataMessage(msg: DebugMessage): void {
     switch (msg.type) {
-      case 'provider:query': {
-        // A consumer is discovering providers — announce ourselves so
-        // they can include us in their choice.
-        this._announce()
-        break
-      }
       case 'subscribe': {
-        // Only handle subscribes targeted at us. Consumers tag every
-        // subscribe with a providerId chosen after discovery.
-        if (msg.payload.providerId !== this.identity.id) break
-        this._subs.onSubscribe(msg.payload.id, msg.payload.features)
+        this._subs.onSubscribe(msg.payload.id, msg.payload.features, msg.payload.registryFilter)
         // Late-joining consumers: reset per-feature delta trackers so
         // the next `data` packet carries a full snapshot.
         this._stats.resetDelta()
         this._env.resetDelta()
+        this._registry.resetDelta()
         this._sendSubscribeAck(msg.payload.id, msg.payload.features)
         break
       }
       case 'ack': {
-        if (msg.payload.providerId !== undefined && msg.payload.providerId !== this.identity.id) break
         this._subs.onAck(msg.payload.id)
         break
       }
       case 'unsubscribe': {
-        if (msg.payload.providerId !== undefined && msg.payload.providerId !== this.identity.id) break
         this._subs.onUnsubscribe(msg.payload.id)
         break
       }
-      // All other types are either provider-emitted (we sent them, no
-      // self-handling needed), RPCs (consumer-to-consumer), or
-      // announces from OTHER providers (we ignore those — we have our
-      // own identity and only care who's subscribed to US).
       default:
+        // Echoes of our own sends (data / ping / subscribe:ack) and any
+        // stray messages aren't self-handled.
         break
     }
   }
 
   private _announce(): void {
     try {
-      this._bus.postMessage(
+      this._discoveryBus.postMessage(
         stampMessage({
           type: 'provider:announce',
           payload: { identity: this.identity },
@@ -362,20 +355,16 @@ export class DevtoolsProvider {
   }
 
   private _sendSubscribeAck(id: string, _requested: readonly DebugFeature[]): void {
-    // `WebGPURenderer` is structurally compatible with EnvCollector's
-    // `RendererLike` (has `backend`, `getSize(Vector2)`, `getPixelRatio()`).
-    // The opaque `unknown` cast satisfies TS without narrowing; runtime
-    // access in EnvCollector is defensive against all shapes.
     const r = this._latestRenderer as unknown as Parameters<typeof this._env.snapshot>[0]
     const env = this._env.snapshot(r)
     this._env.recordSnapshotAsPrev(r)
 
     const echoed = this._subs.featuresFor(id) ?? []
     try {
-      this._bus.postMessage(
+      this._dataBus.postMessage(
         stampMessage({
           type: 'subscribe:ack',
-          payload: { id, providerId: this.identity.id, features: Array.from(echoed), env },
+          payload: { id, features: Array.from(echoed), env },
         }),
       )
     } catch {
@@ -385,15 +374,15 @@ export class DevtoolsProvider {
 
   /**
    * If no `data` packet has been sent in `IDLE_PING_MS`, broadcast a
-   * `ping` so consumers know the server is alive during quiet periods.
-   * No-op if we've broadcast recently.
+   * `ping` on our data channel so consumers know we're alive during
+   * quiet periods.
    */
   private _maybeIdlePing(): void {
     if (Date.now() - this._lastBroadcastAt < IDLE_PING_MS) return
     const msg = this._pingScratch
     stampMessage(msg)
     try {
-      this._bus.postMessage(msg)
+      this._dataBus.postMessage(msg)
       this._lastBroadcastAt = Date.now()
     } catch {
       // Bus may be closing during shutdown — swallow.

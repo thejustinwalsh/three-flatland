@@ -7,26 +7,31 @@
  */
 
 import type { FolderApi, Pane } from 'tweakpane'
+import { STATS_BATCH_MS } from 'three-flatland/debug-protocol'
+
+import type { DevtoolsClient, DevtoolsSeries } from './devtools-client.js'
 
 export interface StatsGraphHandle {
-  /** Call at start of frame */
-  begin(): void
-  /** Call at end of frame */
-  end(): void
   /** The root element */
   readonly element: HTMLElement
-  /** Stop and remove */
+  /**
+   * Render a frame. Required when constructed with `driver: 'manual'`;
+   * no-op for the `'raf'` driver (the internal rAF is doing it).
+   */
+  update(): void
+  /** Stop and remove. */
   dispose(): void
+}
+
+export interface AddStatsGraphOptions {
+  rows?: number
   /**
-   * Push a GPU frame time (in milliseconds) to the 'gpu' mode buffer.
-   * No-op if GPU mode hasn't been enabled yet.
+   * `'raf'` (default) — the graph runs its own `requestAnimationFrame`
+   * loop. `'manual'` — no rAF; caller drives via `handle.update()` from
+   * their own frame tick (e.g. `renderer.setAnimationLoop`, R3F
+   * `useFrame`).
    */
-  pushGpuTime(ms: number): void
-  /**
-   * Enable the 'gpu' mode in the click-cycle. Call once when GPU timing
-   * capability is detected (`renderer.backend.trackTimestamp === true`).
-   */
-  enableGpuMode(): void
+  driver?: 'raf' | 'manual'
 }
 
 type Mode = 'fps' | 'ms' | 'gpu' | 'mem'
@@ -58,57 +63,33 @@ const MODE_UNITS: Record<Mode, string> = {
  * Add a cycling stats graph to a Tweakpane parent.
  * Matches the visual design of the built-in fpsgraph blade.
  */
-interface PerformanceMemory {
-  readonly usedJSHeapSize: number
-  readonly jsHeapSizeLimit: number
-}
-
 export function addStatsGraph(
   parent: Pane | FolderApi,
-  options: { rows?: number } = {},
+  client: DevtoolsClient,
+  options: AddStatsGraphOptions = {},
 ): StatsGraphHandle {
-  const { rows = 2 } = options
-
-  const perfMemory = (performance as Performance & { memory?: PerformanceMemory }).memory
+  const { rows = 2, driver = 'raf' } = options
 
   // State
   let mode: Mode = 'fps'
   let modeIndex = 0
-  let gpuEnabled = false
-
-  // Buffers per mode
-  const makeBuffer = (): number[] => Array.from({ length: BUFFER_SIZE }, () => 0)
-  const buffers: Record<Mode, number[]> = {
-    fps: makeBuffer(),
-    ms: makeBuffer(),
-    gpu: makeBuffer(),
-    mem: makeBuffer(),
-  }
-  const bufferIdx: Record<Mode, number> = { fps: 0, ms: 0, gpu: 0, mem: 0 }
 
   // Graph max scales
   // FPS: 120 (tops out at 120fps)
   // MS: 16.67 (one frame at 60fps — hitting the top means blown frame budget)
   // GPU: 16.67 (same frame budget as MS, just measured on the GPU side)
-  // MEM: heap limit in MB
+  // MEM: heap limit in MB — pulled from `state.heapLimitMB` once it
+  //      arrives; default 256 until then.
   const graphMax: Record<Mode, number> = {
     fps: 120,
     ms: 16.67,
     gpu: 16.67,
-    mem: perfMemory ? perfMemory.jsHeapSizeLimit / 1048576 : 256,
+    mem: 256,
   }
 
   // Session min/max tracking (like stats.js displays "60 FPS (55-62)")
   const sessionMin: Record<Mode, number> = { fps: Infinity, ms: Infinity, gpu: Infinity, mem: Infinity }
   const sessionMax: Record<Mode, number> = { fps: 0, ms: 0, gpu: 0, mem: 0 }
-
-  // FPS/MS/GPU tracking
-  let beginTime = 0
-  let fpsFrames = 0
-  let fpsStartTime = performance.now()
-  let lastFps = 0
-  let lastMs = 0
-  let lastGpu = 0
 
   // ── Build DOM matching Tweakpane's label + graph structure ──
 
@@ -199,12 +180,16 @@ export function addStatsGraph(
   applyMode()
 
   lblv.addEventListener('click', () => {
+    // Only cycle to modes the producer is actually streaming values for
+    // (gpuMs for gpu, heapUsedMB for mem). Client state is the source of
+    // truth — no separate enabled flags.
+    const state = client.state
     do {
       modeIndex = (modeIndex + 1) % MODES.length
       mode = MODES[modeIndex]!
     } while (
-      (mode === 'mem' && !perfMemory) ||
-      (mode === 'gpu' && !gpuEnabled)
+      (mode === 'mem' && state.heapUsedMB === undefined) ||
+      (mode === 'gpu' && !state.gpuModeEnabled)
     )
     applyMode()
   })
@@ -227,106 +212,138 @@ export function addStatsGraph(
   })
   resizeObserver.observe(svg)
 
-  function pushValue(m: Mode, val: number) {
-    buffers[m][bufferIdx[m] % BUFFER_SIZE] = val
-    bufferIdx[m]++
-    sessionMin[m] = Math.min(sessionMin[m], val)
-    sessionMax[m] = Math.max(sessionMax[m], val)
+  const MODE_LABEL: Record<Mode, string> = { fps: 'fps', ms: 'ms', gpu: 'gpu', mem: 'mem' }
+  const MODE_VALUE_UNIT: Record<Mode, string> = { fps: 'FPS', ms: 'MS', gpu: 'MS', mem: 'MB' }
+  const MODE_RANGE_UNIT: Record<Mode, string> = { fps: 'FPS', ms: 'MS', gpu: 'GPU', mem: 'MB' }
+  const MODE_DECIMALS: Record<Mode, number> = { fps: 0, ms: 1, gpu: 1, mem: 0 }
+
+  function seriesFor(m: Mode): DevtoolsSeries {
+    const s = client.state.series
+    switch (m) {
+      case 'fps': return s.fps
+      case 'ms': return s.cpuMs
+      case 'gpu': return s.gpuMs
+      case 'mem': return s.heapUsedMB
+    }
   }
 
-  function updateGraph() {
+  // ── Arrival snapshots (written in the listener, read in RAF) ──────────
+  // The listener only snapshots values and resets the interpolation
+  // clock. RAF does all rendering, so the display stays smooth between
+  // the 4 Hz batches.
+  const prevLabel: Record<Mode, number> = { fps: 0, ms: 0, gpu: 0, mem: 0 }
+  const currLabel: Record<Mode, number> = { fps: 0, ms: 0, gpu: 0, mem: 0 }
+  const hasLabel: Record<Mode, boolean> = { fps: false, ms: false, gpu: false, mem: false }
+  let batchCount = 0
+  let lastBatchAt = performance.now()
+  let prevRingWrite = 0
+
+  const snap = (m: Mode, v: number | undefined): void => {
+    if (v === undefined) return
+    prevLabel[m] = hasLabel[m] ? currLabel[m] : v
+    currLabel[m] = v
+    hasLabel[m] = true
+  }
+
+  const unsubscribe = client.addListener((s) => {
+    if (s.heapLimitMB !== undefined) graphMax.mem = s.heapLimitMB
+    snap('fps', s.fps)
+    snap('ms', s.cpuMs)
+    snap('gpu', s.gpuMs)
+    snap('mem', s.heapUsedMB)
+    // How many new samples came in this batch? All series write in
+    // lockstep, so we can just watch `fps`.
+    const fps = s.series.fps
+    const size = fps.data.length
+    const delta = (fps.write - prevRingWrite + size) % size
+    if (delta > 0) {
+      batchCount = delta
+      prevRingWrite = fps.write
+      lastBatchAt = performance.now()
+    }
+  })
+
+  // ── Render ────────────────────────────────────────────────────────────
+  // `update()` is pure reads + two DOM writes (polyline + fill). The
+  // only allocation is the `pointsStr` concatenation, unavoidable for
+  // SVG `setAttribute`.
+
+  let rafId = 0
+  let disposed = false
+  let pointsStr = ''
+
+  function update(): void {
+    if (disposed) return
     if (cachedW === 0 || cachedH === 0) return
 
-    const buf = buffers[mode]
-    const idx = bufferIdx[mode]
-    const max = graphMax[mode]
+    const now = performance.now()
+    const t = Math.min(1, Math.max(0, (now - lastBatchAt) / STATS_BATCH_MS))
 
-    const points: string[] = []
+    // Polyline: slide the display window through the ring so the newest
+    // samples fade in smoothly. At t=0 the right edge sits `batchCount`
+    // samples behind the ring's write head; at t=1 it has caught up.
+    const ring = seriesFor(mode)
+    const size = ring.data.length
+    const max = graphMax[mode] || 1
+    const rightOffset = batchCount * (1 - t)
+    const startFloat = ring.write - rightOffset - BUFFER_SIZE + size * 2
+    pointsStr = ''
+    let mn = Infinity
+    let mx = 0
     for (let i = 0; i < BUFFER_SIZE; i++) {
-      const val = buf[(idx + i) % BUFFER_SIZE]!
+      const fi = startFloat + i
+      const aIdx = Math.floor(fi) % size
+      const bIdx = (aIdx + 1) % size
+      const frac = fi - Math.floor(fi)
+      const a = ring.data[aIdx]!
+      const b = ring.data[bIdx]!
+      const v = a * (1 - frac) + b * frac
+      if (v < mn) mn = v
+      if (v > mx) mx = v
       const x = (i / (BUFFER_SIZE - 1)) * cachedW
-      const y = cachedH - (val / max) * cachedH * 0.85 - cachedH * 0.05
-      points.push(`${x},${y}`)
+      const y = cachedH - (v / max) * cachedH * 0.85 - cachedH * 0.05
+      pointsStr += i === 0 ? `${x},${y}` : ` ${x},${y}`
     }
-    polyline.setAttribute('points', points.join(' '))
-    // Closed polygon for fill: line points + bottom-right + bottom-left
-    fillPoly.setAttribute('points', `${points.join(' ')} ${cachedW},${cachedH} 0,${cachedH}`)
+    if (hasLabel[mode]) {
+      sessionMin[mode] = Math.min(sessionMin[mode], mn)
+      sessionMax[mode] = Math.max(sessionMax[mode], mx)
+    }
+    polyline.setAttribute('points', pointsStr)
+    fillPoly.setAttribute('points', `${pointsStr} ${cachedW},${cachedH} 0,${cachedH}`)
+
+    // Label: lerp prev→curr over the same t, so the number transitions
+    // smoothly instead of jumping on batch boundaries.
+    const has = hasLabel[mode]
+    const lerped = prevLabel[mode] + (currLabel[mode] - prevLabel[mode]) * t
+    const sMn = sessionMin[mode]
+    const sMx = sessionMax[mode]
+    const range = sMn !== Infinity ? `${Math.round(sMn)}–${Math.round(sMx)}` : ''
+    lblvL.textContent = MODE_LABEL[mode]
+    lblvL.title = range ? `${MODE_RANGE_UNIT[mode]} range: ${range}` : ''
+    valueSpan.textContent = has ? lerped.toFixed(MODE_DECIMALS[mode]) : '--'
+    unitSpan.textContent = MODE_VALUE_UNIT[mode]
   }
 
-  function updateLabel() {
-    const mn = sessionMin[mode]
-    const mx = sessionMax[mode]
-    const range = mn !== Infinity ? `${Math.round(mn)}–${Math.round(mx)}` : ''
-
-    switch (mode) {
-      case 'fps':
-        lblvL.textContent = 'fps'
-        lblvL.title = range ? `FPS range: ${range}` : ''
-        valueSpan.textContent = lastFps.toFixed(0)
-        unitSpan.textContent = 'FPS'
-        break
-      case 'ms':
-        lblvL.textContent = 'ms'
-        lblvL.title = range ? `MS range: ${range}` : ''
-        valueSpan.textContent = lastMs.toFixed(1)
-        unitSpan.textContent = 'MS'
-        break
-      case 'gpu':
-        lblvL.textContent = 'gpu'
-        lblvL.title = range ? `GPU range: ${range}` : ''
-        valueSpan.textContent = lastGpu.toFixed(1)
-        unitSpan.textContent = 'MS'
-        break
-      case 'mem': {
-        const memMB = perfMemory ? perfMemory.usedJSHeapSize / 1048576 : 0
-        lblvL.textContent = 'mem'
-        lblvL.title = range ? `MB range: ${range}` : ''
-        valueSpan.textContent = memMB.toFixed(0)
-        unitSpan.textContent = 'MB'
-        break
-      }
+  if (driver === 'raf') {
+    const autoFrame = (): void => {
+      if (disposed) return
+      rafId = requestAnimationFrame(autoFrame)
+      update()
     }
+    rafId = requestAnimationFrame(autoFrame)
   }
 
   return {
     element: bladeEl,
-    begin() {
-      beginTime = performance.now()
-    },
-    end() {
-      const now = performance.now()
-      const frameMs = now - beginTime
-
-      pushValue('ms', frameMs)
-      lastMs = frameMs
-
-      fpsFrames++
-      if (now - fpsStartTime >= 1000) {
-        lastFps = (fpsFrames * 1000) / (now - fpsStartTime)
-        pushValue('fps', lastFps)
-        fpsStartTime = now
-        fpsFrames = 0
-      }
-
-      // Sample memory and update visuals in the same frame as the render
-      // loop — no independent RAF. A second RAF callback with SVG mutations
-      // causes Safari to throttle the entire tab to ~20fps.
-      if (perfMemory) {
-        pushValue('mem', perfMemory.usedJSHeapSize / 1048576)
-      }
-      updateLabel()
-      updateGraph()
-    },
-    pushGpuTime(ms) {
-      if (!gpuEnabled) return
-      if (!Number.isFinite(ms) || ms < 0) return
-      lastGpu = ms
-      pushValue('gpu', ms)
-    },
-    enableGpuMode() {
-      gpuEnabled = true
-    },
+    // In `'raf'` mode the internal loop already runs, so public `update()`
+    // is a no-op — we don't want to paint twice per frame when the host
+    // also (redundantly) drives it. In `'manual'` mode this is the only
+    // way the graph gets painted.
+    update: driver === 'manual' ? update : () => {},
     dispose() {
+      disposed = true
+      if (rafId !== 0) cancelAnimationFrame(rafId)
+      unsubscribe()
       resizeObserver.disconnect()
       blade.dispose()
     },

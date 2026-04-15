@@ -3,14 +3,17 @@ import type {
   DebugMessage,
   EnvPayload,
   ProviderIdentity,
+  RegistryEntryDelta,
+  RegistryEntryKind,
+  RegistryPayload,
   StatsPayload,
 } from 'three-flatland/debug-protocol'
 import {
   ACK_INTERVAL_MS,
-  DEBUG_CHANNEL,
   DEBUG_PROTOCOL_VERSION,
-  DISCOVERY_WINDOW_MS,
+  DISCOVERY_CHANNEL,
   SERVER_LIVENESS_MS,
+  providerChannelName,
 } from 'three-flatland/debug-protocol'
 
 /**
@@ -19,19 +22,64 @@ import {
 export interface DevtoolsClientOptions {
   /** Features to subscribe to. */
   features: DebugFeature[]
-  /** Override the bus channel name (defaults to the protocol's standard). */
-  channelName?: string
+  /**
+   * Override the discovery (bonjour) channel name. Rarely needed — only
+   * for isolated test sessions.
+   */
+  discoveryChannelName?: string
   /**
    * Optional first listener, equivalent to calling `addListener(cb)`
-   * after construction. Kept as a convenience for the common single-
-   * consumer case; multi-consumer callers should use `addListener` /
-   * `removeListener` directly.
+   * after construction.
    */
   onChange?: (state: DevtoolsState) => void
 }
 
 /** Listener signature for `DevtoolsClient.addListener`. */
 export type DevtoolsStateListener = (state: DevtoolsState) => void
+
+/**
+ * Discovery retry backoff. Starts at `QUERY_RETRY_MIN_MS`, doubles each
+ * attempt, caps at `QUERY_RETRY_MAX_MS`, and gives up after `QUERY_MAX_RETRIES`
+ * total tries. After giving up, a provider that comes online later will
+ * still wire us up via its own startup `provider:announce`.
+ */
+const QUERY_RETRY_MIN_MS = 500
+const QUERY_RETRY_MAX_MS = 5000
+const QUERY_MAX_RETRIES = 10
+
+/**
+ * Size of the client-side decoded series rings. Sized generously so the
+ * graph (default 80-sample window) has plenty of history at 60 Hz
+ * regardless of batch timing.
+ */
+const CLIENT_SERIES_SIZE = 256
+
+/** Shared zero-length placeholder used for metadata-only registry snapshots. */
+const EMPTY_SAMPLE: Float32Array = new Float32Array(0)
+
+/** Per-field time-series ring. */
+export interface DevtoolsSeries {
+  /** Pre-allocated Float32 buffer. Read via (write - i - 1 + size) % size. */
+  readonly data: Float32Array
+  /** Next write index. */
+  write: number
+  /** Valid sample count (<= size). */
+  length: number
+}
+
+/**
+ * Snapshot of a registered CPU array as seen by the client. The
+ * `sample` typed array is owned by this object (structured-cloned from
+ * the provider) — read-only by contract; don't mutate in place.
+ */
+export interface RegistryEntrySnapshot {
+  name: string
+  kind: RegistryEntryKind
+  version: number
+  count: number
+  sample: Float32Array | Uint32Array | Int32Array
+  label?: string
+}
 
 /**
  * Accumulated state the consumer keeps up-to-date by merging deltas
@@ -44,18 +92,40 @@ export type DevtoolsStateListener = (state: DevtoolsState) => void
  * to `undefined`.
  */
 export interface DevtoolsState {
-  /** Engine frame counter from the most recent `data` packet. */
+  /** Engine frame counter — last frame index covered by the latest batch. */
   frame?: number
 
-  // --- Stats (merged from data.features.stats) -----------------------------
+  // --- Stats scalars — mean across the most recent batch window. --------
+  // Naturally smoothed (roughly 500 ms of samples per batch); good for
+  // text display. For per-frame granularity use `series.*` instead.
   drawCalls?: number
   triangles?: number
+  /** Lines + points aggregated. */
+  primitives?: number
   geometries?: number
   textures?: number
   cpuMs?: number
   fps?: number
   gpuMs?: number
-  gpuFrame?: number
+  /** JS heap used, MB. `undefined` on Safari / Firefox. */
+  heapUsedMB?: number
+  /** JS heap limit, MB. Static per environment. */
+  heapLimitMB?: number
+
+  // --- Per-frame time series (decoded + de-scaled on arrival). -------------
+  // Each ring is a Float32Array of `CLIENT_SERIES_SIZE` values. Read
+  // most-recent-first via `(write - i - 1 + size) % size`.
+  series: {
+    fps: DevtoolsSeries
+    cpuMs: DevtoolsSeries
+    gpuMs: DevtoolsSeries
+    heapUsedMB: DevtoolsSeries
+    drawCalls: DevtoolsSeries
+    triangles: DevtoolsSeries
+    primitives: DevtoolsSeries
+    geometries: DevtoolsSeries
+    textures: DevtoolsSeries
+  }
 
   // --- Env (merged from data.features.env + subscribe:ack.env bootstrap) ---
   threeFlatlandVersion?: string
@@ -67,6 +137,14 @@ export interface DevtoolsState {
   canvasWidth?: number
   canvasHeight?: number
   canvasPixelRatio?: number
+
+  // --- Registry (live CPU array readouts from the provider) --------------
+  /**
+   * Named CPU arrays the provider has registered. Entries update on the
+   * `registry` feature of each data batch; keys are entry names, values
+   * are the latest sample + metadata. Removed entries are pruned.
+   */
+  registry: Map<string, RegistryEntrySnapshot>
 
   // --- Provider selection ------------------------------------------------
   /** All providers currently announced on the bus (updated live). */
@@ -99,13 +177,24 @@ export class DevtoolsClient {
   readonly id: string
   readonly state: DevtoolsState
 
-  private _ch: BroadcastChannel
+  /** Shared discovery bus — carries query/announce/gone only. */
+  private _discoveryBus: BroadcastChannel
+  /** Per-provider data bus. Opened when we subscribe; closed on switch / gone. */
+  private _dataBus: BroadcastChannel | null = null
+  /** Bound handler for the current `_dataBus`. Tracked so we can detach on close. */
+  private _dataHandler: ((ev: MessageEvent<DebugMessage>) => void) | null = null
   private _features: DebugFeature[]
+  /**
+   * Registry entry filter. `null` = all entries; `string[]` = only
+   * these. Starts empty-array so providers don't drain (sometimes
+   * expensive) registry payloads until the pane actually needs them.
+   */
+  private _registryFilter: string[] | null = []
   private _listeners = new Set<DevtoolsStateListener>()
 
   private _ackTimer: ReturnType<typeof setInterval> | null = null
   private _livenessTimer: ReturnType<typeof setInterval> | null = null
-  private _discoveryTimer: ReturnType<typeof setTimeout> | null = null
+  private _queryRetryTimer: ReturnType<typeof setTimeout> | null = null
   private _lastServerAt = 0
   private _subscribed = false
   private _disposed = false
@@ -117,16 +206,34 @@ export class DevtoolsClient {
     this.id = generateUuid()
     this._features = [...options.features]
     if (options.onChange) this._listeners.add(options.onChange)
-    this._ch = new BroadcastChannel(options.channelName ?? DEBUG_CHANNEL)
+    this._discoveryBus = new BroadcastChannel(options.discoveryChannelName ?? DISCOVERY_CHANNEL)
+    const mkSeries = (): DevtoolsSeries => ({
+      data: new Float32Array(CLIENT_SERIES_SIZE),
+      write: 0,
+      length: 0,
+    })
     this.state = {
+      series: {
+        fps: mkSeries(),
+        cpuMs: mkSeries(),
+        gpuMs: mkSeries(),
+        heapUsedMB: mkSeries(),
+        drawCalls: mkSeries(),
+        triangles: mkSeries(),
+        primitives: mkSeries(),
+        geometries: mkSeries(),
+        textures: mkSeries(),
+      },
+      registry: new Map(),
       providers: [],
       selectedProviderId: null,
       serverAlive: false,
       serverLagMs: 0,
     }
 
-    this._ch.addEventListener('message', (ev: MessageEvent<DebugMessage>) => {
-      this._onMessage(ev.data)
+    // Discovery handler — only processes provider:announce / provider:gone.
+    this._discoveryBus.addEventListener('message', (ev: MessageEvent<DebugMessage>) => {
+      this._onDiscoveryMessage(ev.data)
     })
   }
 
@@ -141,65 +248,88 @@ export class DevtoolsClient {
     if (this._disposed || this._subscribed) return
     this._subscribed = true
 
-    // Announce ourselves to the bus and ask who's out there.
-    this._post({
-      type: 'provider:query',
-      payload: { requesterId: this.id },
-    })
-
-    // Give providers a moment to respond with `provider:announce`
-    // before we pick one. Any announces we've already received
-    // (producers that were constructed before we started) count too.
-    this._discoveryTimer = setTimeout(() => {
-      this._discoveryTimer = null
-      this._pickProviderAndSubscribe()
-    }, DISCOVERY_WINDOW_MS)
+    // Broadcast who we are and ask providers to announce. First announce
+    // received triggers subscribe directly from the message handler —
+    // no fixed window. If no provider is up yet (or our query/their
+    // announce was lost), retry with exponential backoff up to
+    // `QUERY_MAX_RETRIES` tries. After we give up, a provider that
+    // starts later will announce on its own construct, wiring us up
+    // without further polling.
+    this._sendQuery()
+    let retries = 0
+    let nextDelay = QUERY_RETRY_MIN_MS
+    const tick = () => {
+      if (this._disposed || this.state.selectedProviderId !== null) {
+        this._queryRetryTimer = null
+        return
+      }
+      if (retries >= QUERY_MAX_RETRIES) {
+        this._queryRetryTimer = null
+        return
+      }
+      retries++
+      this._sendQuery()
+      nextDelay = Math.min(nextDelay * 2, QUERY_RETRY_MAX_MS)
+      this._queryRetryTimer = setTimeout(tick, nextDelay)
+    }
+    this._queryRetryTimer = setTimeout(tick, nextDelay)
 
     // Liveness watcher — fires every second, flips serverAlive false and
     // re-subscribes if we've gone silent past the grace window.
     this._livenessTimer = setInterval(() => this._checkLiveness(), 1000)
   }
 
+  private _sendQuery(): void {
+    this._postDiscovery({
+      type: 'provider:query',
+      payload: { requesterId: this.id },
+    })
+  }
+
   /**
-   * Update the feature set. Re-posts `subscribe` with the same consumer
-   * id to the currently-selected provider.
+   * Update the feature set. Re-posts `subscribe` on the current
+   * provider's data channel.
    */
   setFeatures(features: DebugFeature[]): void {
+    if (sameSet(this._features, features)) return
     this._features = [...features]
-    if (this._subscribed && this.state.selectedProviderId !== null) {
-      this._post({
+    this._resubscribe()
+  }
+
+  /**
+   * Update the registry entry filter. Pass `null` for "every entry",
+   * `[]` to stop all registry traffic, or a list of names to narrow.
+   * Re-posts `subscribe` if the filter actually changed.
+   */
+  setRegistryFilter(names: string[] | null): void {
+    if (sameFilter(this._registryFilter, names)) return
+    this._registryFilter = names === null ? null : [...names]
+    this._resubscribe()
+  }
+
+  private _resubscribe(): void {
+    if (this._subscribed && this._dataBus !== null) {
+      this._postData({
         type: 'subscribe',
-        payload: {
-          id: this.id,
-          features: this._features,
-          providerId: this.state.selectedProviderId,
-        },
+        payload: { id: this.id, features: this._features, registryFilter: this._registryFilter ?? undefined },
       })
     }
   }
 
-  /** Tear down: unsubscribe, clear timers, close bus. Idempotent. */
   /**
-   * Manually switch to a different provider (by UUID). Useful for UI
-   * "pick provider" dropdowns. No-op if the id isn't a known provider.
-   * If already subscribed, unsubscribes from the old provider first.
+   * Manually switch to a different provider. No-op if unknown or if
+   * already selected. Closes the old data channel and opens the new one.
    */
   selectProvider(providerId: string): void {
     if (!this._providers.has(providerId)) return
     if (this.state.selectedProviderId === providerId) return
-    // Unsubscribe from current provider.
-    if (this.state.selectedProviderId !== null) {
-      this._post({
-        type: 'unsubscribe',
-        payload: { id: this.id, providerId: this.state.selectedProviderId },
-      })
-    }
+    this._leaveDataChannel()
     this.state.selectedProviderId = providerId
     this._resetAccumulatedState()
-    // Subscribe to the newly selected provider.
-    this._post({
+    this._joinDataChannel(providerId)
+    this._postData({
       type: 'subscribe',
-      payload: { id: this.id, features: this._features, providerId },
+      payload: { id: this.id, features: this._features, registryFilter: this._registryFilter ?? undefined },
     })
     this._fire()
   }
@@ -208,14 +338,7 @@ export class DevtoolsClient {
     if (this._disposed) return
     this._disposed = true
 
-    if (this._subscribed && this.state.selectedProviderId !== null) {
-      try {
-        this._post({
-          type: 'unsubscribe',
-          payload: { id: this.id, providerId: this.state.selectedProviderId },
-        })
-      } catch { /* bus may already be closing */ }
-    }
+    this._leaveDataChannel()
     this._subscribed = false
     if (this._ackTimer !== null) {
       clearInterval(this._ackTimer)
@@ -225,31 +348,61 @@ export class DevtoolsClient {
       clearInterval(this._livenessTimer)
       this._livenessTimer = null
     }
-    if (this._discoveryTimer !== null) {
-      clearTimeout(this._discoveryTimer)
-      this._discoveryTimer = null
+    if (this._queryRetryTimer !== null) {
+      clearTimeout(this._queryRetryTimer)
+      this._queryRetryTimer = null
     }
-    try { this._ch.close() } catch { /* already closed */ }
+    try { this._discoveryBus.close() } catch { /* already closed */ }
+  }
+
+  /**
+   * Open a fresh per-provider data channel and start listening on it.
+   * Caller is responsible for posting the initial `subscribe`.
+   */
+  private _joinDataChannel(providerId: string): void {
+    this._dataBus = new BroadcastChannel(providerChannelName(providerId))
+    this._dataHandler = (ev: MessageEvent<DebugMessage>) => {
+      this._onDataMessage(ev.data)
+    }
+    this._dataBus.addEventListener('message', this._dataHandler)
+  }
+
+  /**
+   * Send `unsubscribe` (if we have someone to tell) and close the data
+   * channel. Idempotent — safe to call when there's no active channel.
+   */
+  private _leaveDataChannel(): void {
+    if (this._dataBus !== null) {
+      if (this._subscribed) {
+        try {
+          this._postData({ type: 'unsubscribe', payload: { id: this.id } })
+        } catch { /* bus may already be closing */ }
+      }
+      if (this._dataHandler !== null) {
+        try { this._dataBus.removeEventListener('message', this._dataHandler) } catch { /* ignore */ }
+      }
+      try { this._dataBus.close() } catch { /* already closed */ }
+      this._dataBus = null
+      this._dataHandler = null
+    }
   }
 
   // ── Internal ──────────────────────────────────────────────────────────
 
-  private _onMessage(msg: DebugMessage | undefined): void {
+  /**
+   * Handler for the shared discovery bus. Only discovery messages land
+   * here by protocol; anything else is ignored.
+   */
+  private _onDiscoveryMessage(msg: DebugMessage | undefined): void {
     if (!msg || typeof msg !== 'object' || !('type' in msg)) return
 
     switch (msg.type) {
       case 'provider:announce': {
-        // Track every provider that announces itself, regardless of
-        // whether we've picked one yet. UI can show the full list.
         const id = msg.payload.identity.id
         this._providers.set(id, msg.payload.identity)
         this.state.providers = Array.from(this._providers.values())
         this._fire()
-        // If we've already completed discovery but a new provider shows
-        // up, we don't auto-switch — user has to choose. If we haven't
-        // selected anything yet (e.g., late-joining provider during
-        // our discovery window), `_pickProviderAndSubscribe` will see
-        // the updated map when it fires.
+        if (this.state.selectedProviderId === null) this._pickProviderAndSubscribe()
         break
       }
       case 'provider:gone': {
@@ -257,9 +410,8 @@ export class DevtoolsClient {
         if (!this._providers.has(id)) return
         this._providers.delete(id)
         this.state.providers = Array.from(this._providers.values())
-        // If the provider we were subscribed to just left, fall back
-        // to another one (preference rules) or mark nothing selected.
         if (this.state.selectedProviderId === id) {
+          this._leaveDataChannel()
           this.state.selectedProviderId = null
           this._resetAccumulatedState()
           this._pickProviderAndSubscribe()
@@ -267,9 +419,23 @@ export class DevtoolsClient {
         this._fire()
         break
       }
+      default:
+        break
+    }
+  }
+
+  /**
+   * Handler for the per-provider data channel. Everything here is
+   * already implicitly addressed to us (we opened the channel with the
+   * provider's id), so no per-message filtering is required beyond
+   * matching our consumer `id` on `subscribe:ack`.
+   */
+  private _onDataMessage(msg: DebugMessage | undefined): void {
+    if (!msg || typeof msg !== 'object' || !('type' in msg)) return
+
+    switch (msg.type) {
       case 'subscribe:ack': {
         if (msg.payload.id !== this.id) return
-        if (msg.payload.providerId !== this.state.selectedProviderId) return
         this._markServerAlive()
         this._applyEnv(msg.payload.env)
         if (this._ackTimer === null) {
@@ -279,24 +445,20 @@ export class DevtoolsClient {
         break
       }
       case 'data': {
-        if (msg.payload.providerId !== this.state.selectedProviderId) return
         this._markServerAlive()
         this.state.frame = msg.payload.frame
         const features = msg.payload.features
         if (features.stats !== undefined) this._applyStats(features.stats)
         if (features.env !== undefined) this._applyEnv(features.env)
-        // atlas:*, registry features handled in later phases.
+        if (features.registry !== undefined) this._applyRegistry(features.registry)
         this._fire()
         break
       }
       case 'ping': {
-        if (msg.payload.providerId !== this.state.selectedProviderId) return
         this._markServerAlive()
         break
       }
       default:
-        // Other types are consumer→server (our own sends) or RPC
-        // targeted at others — ignore.
         break
     }
   }
@@ -323,9 +485,10 @@ export class DevtoolsClient {
     const user = providers.find((p) => p.kind === 'user')
     const chosen = user ?? providers[0]!
     this.state.selectedProviderId = chosen.id
-    this._post({
+    this._joinDataChannel(chosen.id)
+    this._postData({
       type: 'subscribe',
-      payload: { id: this.id, features: this._features, providerId: chosen.id },
+      payload: { id: this.id, features: this._features, registryFilter: this._registryFilter ?? undefined },
     })
     this._fire()
   }
@@ -335,35 +498,131 @@ export class DevtoolsClient {
     this.state.frame = undefined
     this._applyStats(null)
     this._applyEnv(null)
+    this.state.registry.clear()
   }
 
   /**
-   * Apply a delta to the accumulated stats. Field rules (protocol):
-   *   - absent    → no change
-   *   - null      → clear (undefined in local state)
-   *   - value     → overwrite
+   * Apply a stats batch. Null = reset (feature cleared / provider gone).
+   * Otherwise: decode each typed array onto the matching Float32 ring
+   * and update the scalar with the batch mean (natural smoothing for
+   * the text label).
    */
-  private _applyStats(delta: StatsPayload | null): void {
-    if (delta === null) {
-      // Feature cleared at the server — reset our stats slice.
+  private _applyStats(batch: StatsPayload | null): void {
+    if (batch === null) {
       this.state.drawCalls = undefined
       this.state.triangles = undefined
+      this.state.primitives = undefined
       this.state.geometries = undefined
       this.state.textures = undefined
       this.state.cpuMs = undefined
       this.state.fps = undefined
       this.state.gpuMs = undefined
-      this.state.gpuFrame = undefined
+      this.state.heapUsedMB = undefined
+      this.state.heapLimitMB = undefined
+      const s = this.state.series
+      s.fps.write = 0; s.fps.length = 0
+      s.cpuMs.write = 0; s.cpuMs.length = 0
+      s.gpuMs.write = 0; s.gpuMs.length = 0
+      s.heapUsedMB.write = 0; s.heapUsedMB.length = 0
+      s.drawCalls.write = 0; s.drawCalls.length = 0
+      s.triangles.write = 0; s.triangles.length = 0
+      s.primitives.write = 0; s.primitives.length = 0
+      s.geometries.write = 0; s.geometries.length = 0
+      s.textures.write = 0; s.textures.length = 0
       return
     }
-    if ('drawCalls' in delta) this.state.drawCalls = delta.drawCalls ?? undefined
-    if ('triangles' in delta) this.state.triangles = delta.triangles ?? undefined
-    if ('geometries' in delta) this.state.geometries = delta.geometries ?? undefined
-    if ('textures' in delta) this.state.textures = delta.textures ?? undefined
-    if ('cpuMs' in delta) this.state.cpuMs = delta.cpuMs ?? undefined
-    if ('fps' in delta) this.state.fps = delta.fps ?? undefined
-    if ('gpuMs' in delta) this.state.gpuMs = delta.gpuMs ?? undefined
-    if ('gpuFrame' in delta) this.state.gpuFrame = delta.gpuFrame ?? undefined
+    const count = batch.count
+    if (count <= 0) return
+    const s = this.state.series
+    if (batch.fps)        this.state.fps        = this._ingestI16(s.fps,        batch.fps,        count, 0.1)
+    if (batch.cpuMs)      this.state.cpuMs      = this._ingestU16(s.cpuMs,      batch.cpuMs,      count, 0.01)
+    if (batch.gpuMs)      this.state.gpuMs      = this._ingestU16(s.gpuMs,      batch.gpuMs,      count, 0.01)
+    if (batch.heapUsedMB) this.state.heapUsedMB = this._ingestU16(s.heapUsedMB, batch.heapUsedMB, count, 1)
+    if (batch.drawCalls)  this.state.drawCalls  = this._ingestU32(s.drawCalls,  batch.drawCalls,  count)
+    if (batch.triangles)  this.state.triangles  = this._ingestU32(s.triangles,  batch.triangles,  count)
+    if (batch.primitives) this.state.primitives = this._ingestU32(s.primitives, batch.primitives, count)
+    if (batch.geometries) this.state.geometries = this._ingestU32(s.geometries, batch.geometries, count)
+    if (batch.textures)   this.state.textures   = this._ingestU32(s.textures,   batch.textures,   count)
+    if (batch.heapLimitMB !== undefined) this.state.heapLimitMB = batch.heapLimitMB
+  }
+
+  /**
+   * Append `count` samples from a scaled integer view to a Float32 ring;
+   * return the batch mean (scaled). Zero-alloc past the ring itself.
+   */
+  private _ingestI16(ring: DevtoolsSeries, src: Int16Array, count: number, scale: number): number {
+    const size = ring.data.length
+    let sum = 0
+    let w = ring.write
+    for (let i = 0; i < count; i++) {
+      const v = src[i]! * scale
+      ring.data[w] = v
+      sum += v
+      w = (w + 1) % size
+    }
+    ring.write = w
+    ring.length = Math.min(size, ring.length + count)
+    return sum / count
+  }
+  private _ingestU16(ring: DevtoolsSeries, src: Uint16Array, count: number, scale: number): number {
+    const size = ring.data.length
+    let sum = 0
+    let w = ring.write
+    for (let i = 0; i < count; i++) {
+      const v = src[i]! * scale
+      ring.data[w] = v
+      sum += v
+      w = (w + 1) % size
+    }
+    ring.write = w
+    ring.length = Math.min(size, ring.length + count)
+    return sum / count
+  }
+  private _ingestU32(ring: DevtoolsSeries, src: Uint32Array, count: number): number {
+    const size = ring.data.length
+    let sum = 0
+    let w = ring.write
+    for (let i = 0; i < count; i++) {
+      const v = src[i]!
+      ring.data[w] = v
+      sum += v
+      w = (w + 1) % size
+    }
+    ring.write = w
+    ring.length = Math.min(size, ring.length + count)
+    return sum / count
+  }
+
+  /**
+   * Apply a registry delta. `entries[name] === null` → remove;
+   * `entries[name]` present → upsert a snapshot keyed by `name`.
+   * A `null` batch (feature cleared) drops every entry.
+   */
+  private _applyRegistry(delta: RegistryPayload | null): void {
+    if (delta === null) {
+      this.state.registry.clear()
+      return
+    }
+    if (!delta.entries) return
+    for (const [name, d] of Object.entries(delta.entries)) {
+      if (d === null) {
+        this.state.registry.delete(name)
+        continue
+      }
+      const prev = this.state.registry.get(name)
+      // Metadata-only deltas (filter excluded this entry) still
+      // propagate name/kind/count so the UI can offer it, but we keep
+      // the last-seen sample around for display if it's ever streamed.
+      const sample = d.sample ?? prev?.sample ?? EMPTY_SAMPLE
+      this.state.registry.set(name, {
+        name,
+        kind: d.kind,
+        version: d.version,
+        count: d.count,
+        sample,
+        label: d.label,
+      })
+    }
   }
 
   private _applyEnv(delta: EnvPayload | null): void {
@@ -423,22 +682,31 @@ export class DevtoolsClient {
       // Idempotent re-subscribe. Server's onSubscribe handler resets
       // the per-feature delta so we get a full snapshot on the next
       // data packet.
-      this._post({
-        type: 'subscribe',
-        payload: { id: this.id, features: this._features },
-      })
+      if (this._dataBus !== null) {
+        this._postData({
+          type: 'subscribe',
+          payload: { id: this.id, features: this._features, registryFilter: this._registryFilter ?? undefined },
+        })
+      }
     }
     this._fire()
   }
 
   private _sendAck(): void {
-    if (this._disposed) return
-    this._post({ type: 'ack', payload: { id: this.id } })
+    if (this._disposed || this._dataBus === null) return
+    this._postData({ type: 'ack', payload: { id: this.id } })
   }
 
-  private _post(body: Omit<DebugMessage, 'v' | 'ts'>): void {
+  private _postDiscovery(body: Omit<DebugMessage, 'v' | 'ts'>): void {
     try {
-      this._ch.postMessage({ v: DEBUG_PROTOCOL_VERSION, ts: Date.now(), ...body })
+      this._discoveryBus.postMessage({ v: DEBUG_PROTOCOL_VERSION, ts: Date.now(), ...body })
+    } catch { /* bus may be closing */ }
+  }
+
+  private _postData(body: Omit<DebugMessage, 'v' | 'ts'>): void {
+    if (this._dataBus === null) return
+    try {
+      this._dataBus.postMessage({ v: DEBUG_PROTOCOL_VERSION, ts: Date.now(), ...body })
     } catch { /* bus may be closing */ }
   }
 
@@ -462,6 +730,20 @@ export class DevtoolsClient {
 
 // Cheap UUID v4 for consumer ids. Prefer `crypto.randomUUID()` when
 // available; fall back to a hex-derived UUID otherwise.
+/** Cheap equality for two small feature lists treated as sets. */
+function sameSet(a: readonly string[], b: readonly string[]): boolean {
+  if (a.length !== b.length) return false
+  for (const v of a) if (!b.includes(v)) return false
+  return true
+}
+
+/** Equality for registry filters (where `null` has a distinct meaning). */
+function sameFilter(a: readonly string[] | null, b: readonly string[] | null): boolean {
+  if (a === b) return true
+  if (a === null || b === null) return false
+  return sameSet(a, b)
+}
+
 function generateUuid(): string {
   const c = typeof crypto !== 'undefined' ? crypto : undefined
   if (c && typeof c.randomUUID === 'function') return c.randomUUID()

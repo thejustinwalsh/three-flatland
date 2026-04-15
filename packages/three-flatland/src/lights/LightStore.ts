@@ -3,6 +3,11 @@ import { uniform, int, ivec2, texture as sampleTexture, textureLoad } from 'thre
 import type Node from 'three/src/nodes/core/Node.js'
 import type UniformNode from 'three/src/nodes/core/UniformNode.js'
 import type { Light2D } from './Light2D'
+import {
+  registerDebugArray,
+  touchDebugArray,
+  unregisterDebugArray,
+} from '../debug/debug-sink'
 
 /**
  * Light type encoding for the shader.
@@ -76,6 +81,12 @@ export class LightStore {
     this._lightsTextureNode = sampleTexture(this._lightsTexture)
 
     this._countNode = uniform(0)
+
+    // Expose the CPU-side data texture backing to the devtools pane.
+    // Cheap — the sink is a no-op when devtools isn't bundled.
+    registerDebugArray('lightStore.data', this._lightsData, 'float', {
+      label: 'Lights DataTexture (row-packed)',
+    })
   }
 
   /** Get the lights DataTexture (for use by GPU systems like RadianceCascades) */
@@ -159,6 +170,7 @@ export class LightStore {
     }
 
     this._lightsTexture.needsUpdate = true
+    touchDebugArray('lightStore.data')
   }
 
   /**
@@ -182,5 +194,6 @@ export class LightStore {
   /** Dispose of GPU resources. */
   dispose(): void {
     this._lightsTexture.dispose()
+    unregisterDebugArray('lightStore.data')
   }
 }

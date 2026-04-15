@@ -21,7 +21,7 @@ import {
 import { gaussianBlur } from 'three/addons/tsl/display/GaussianBlurNode.js'
 import { Color, DoubleSide, Fog, type Mesh, type MeshBasicMaterial } from 'three'
 import { MeshStandardNodeMaterial } from 'three/webgpu'
-import { usePane, useStatsMonitor } from '@three-flatland/devtools/react'
+import { usePane } from '@three-flatland/devtools/react'
 
 extend({ SkiaRect, SkiaCircle, SkiaLine, SkiaPathNode, SkiaTextNode, SkiaGroup })
 
@@ -423,8 +423,7 @@ function SkiaDemo() {
   const overlayRef = useRef<SkiaCanvasInstance>(null)
 
   // ── TweakPane debug controls ──
-  const { pane, stats } = usePane()
-  useStatsMonitor(stats)
+  usePane()
 
   // Render overlay after Three.js render
   useFrame(() => {

@@ -1,6 +1,11 @@
 import { DataTexture, FloatType, RGBAFormat, NearestFilter, Vector2 } from 'three'
 import { uniform, int, ivec2, textureLoad } from 'three/tsl'
 import type { Light2D } from './Light2D'
+import {
+  registerDebugArray,
+  touchDebugArray,
+  unregisterDebugArray,
+} from '../debug/debug-sink'
 
 export const TILE_SIZE = 16
 export const MAX_LIGHTS_PER_TILE = 16
@@ -12,6 +17,18 @@ export class ForwardPlusLighting {
 
   private _tileData: Float32Array
   private _tileTexture: DataTexture
+  /**
+   * Per-tile light count (`length = _tileCount`). Promoted to a
+   * persistent member so (a) no per-frame allocation, and (b) the
+   * devtools registry can hold a stable reference to visualise which
+   * tiles are saturated / empty.
+   */
+  private _lightCounts: Uint32Array = new Uint32Array(0)
+  /**
+   * Per-slot reservoir scores (`length = _tileCount * MAX_LIGHTS_PER_TILE`).
+   * Same rationale — also exposed for debugging (per-tile quality).
+   */
+  private _tileScores: Float32Array = new Float32Array(0)
 
   private _screenSize = new Vector2()
   private _worldSize = new Vector2()
@@ -58,6 +75,8 @@ export class ForwardPlusLighting {
 
     const blocksPerTile = MAX_LIGHTS_PER_TILE / 4
     this._tileData = new Float32Array(this._tileCount * blocksPerTile * 4)
+    this._lightCounts = new Uint32Array(this._tileCount)
+    this._tileScores = new Float32Array(this._tileCount * MAX_LIGHTS_PER_TILE)
 
     // Resize existing texture — stable reference for TSL textureLoad
     this._tileTexture.image = {
@@ -66,6 +85,16 @@ export class ForwardPlusLighting {
       height: this._tileCount,
     }
     this._tileTexture.needsUpdate = true
+
+    // (Re-)publish debug views. `registerDebugArray` is a no-op when
+    // devtools isn't bundled (build-time gated), so this costs nothing
+    // in production.
+    registerDebugArray('forwardPlus.lightCounts', this._lightCounts, 'uint', {
+      label: 'Lights per tile',
+    })
+    registerDebugArray('forwardPlus.tileScores', this._tileScores, 'float', {
+      label: 'Reservoir scores',
+    })
   }
 
   resize(screenWidth: number, screenHeight: number): void {
@@ -89,11 +118,11 @@ export class ForwardPlusLighting {
 
     this._tileData.fill(0)
 
-    const lightCounts = new Uint8Array(this._tileCount)
-    // Per-tile parallel score array for reservoir eviction — only read
-    // when a tile hits MAX_LIGHTS_PER_TILE, so the hot path stays a bare
-    // append.
-    const tileScores = new Float32Array(this._tileCount * MAX_LIGHTS_PER_TILE)
+    // Persistent buffers, zeroed in place — no per-frame allocation.
+    const lightCounts = this._lightCounts
+    const tileScores = this._tileScores
+    lightCounts.fill(0)
+    tileScores.fill(0)
 
     const tileCountX = this._tileCountX
     const tileCountY = this._tileCountY
@@ -178,6 +207,10 @@ export class ForwardPlusLighting {
     }
 
     this._tileTexture.needsUpdate = true
+
+    // Notify devtools the arrays changed this frame (no-op in prod).
+    touchDebugArray('forwardPlus.lightCounts')
+    touchDebugArray('forwardPlus.tileScores')
   }
 
   createTileLookup() {
@@ -191,5 +224,7 @@ export class ForwardPlusLighting {
 
   dispose(): void {
     this._tileTexture.dispose()
+    unregisterDebugArray('forwardPlus.lightCounts')
+    unregisterDebugArray('forwardPlus.tileScores')
   }
 }

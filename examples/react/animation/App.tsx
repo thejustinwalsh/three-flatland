@@ -7,7 +7,7 @@ import {
   Layers,
   type AnimationSetDefinition,
 } from 'three-flatland/react'
-import { usePane, usePaneFolder, useStatsMonitor } from '@three-flatland/devtools/react'
+import { usePane, usePaneFolder } from '@three-flatland/devtools/react'
 
 // Register AnimatedSprite2D with R3F (tree-shakeable)
 extend({ AnimatedSprite2D })
@@ -108,7 +108,7 @@ function Knight({ animation, speed, onAnimationComplete }: KnightProps) {
 }
 
 function Scene() {
-  const { pane, stats } = usePane()
+  const { pane } = usePane()
   const animFolder = usePaneFolder(pane, 'Animation', { expanded: true })
 
   // Use state so changes trigger re-render → Knight gets new props
@@ -160,8 +160,6 @@ function Scene() {
       animGridRef.current.value.rawValue = 'idle'
     }
   }, [])
-
-  useStatsMonitor(stats)
 
   return (
     <>

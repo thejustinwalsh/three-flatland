@@ -46,18 +46,11 @@ function hslToArgb(h: number, s: number, l: number): number {
 
 function smoothstep(t: number): number { return t * t * (3 - 2 * t) }
 
-/* HMR-tracked teardown state. Without this, every dev save accumulates
- * a fresh renderer + animate() loop while the previous one keeps
- * RAFing forever. Dev-only — `import.meta.hot` is undefined in prod. */
-let rafId = 0
-let activeRenderer: WebGPURenderer | null = null
-
 async function main() {
   const dpr = Math.min(devicePixelRatio, 2)
 
   // ── Three.js setup (3D perspective) ──
   const renderer = new WebGPURenderer({ antialias: true, trackTimestamp: true })
-  activeRenderer = renderer
   renderer.setSize(window.innerWidth, window.innerHeight)
   renderer.setPixelRatio(dpr)
   document.body.appendChild(renderer.domElement)
@@ -359,13 +352,11 @@ async function main() {
   scene.add(floorEdge)
 
   // ── TweakPane debug controls ──
-  const { pane, stats } = createPane({ scene })
+  const { update: updateDevtools } = createPane({ driver: 'manual' })
 
   // ── Animation loop ──
 
   function animate(t: number) {
-    stats.begin()
-
     // ── Animate squares ──
     const sqDur = 3000
     let sqT = Math.min((t - sqSwapStart) / sqDur, 1.0)
@@ -461,11 +452,11 @@ async function main() {
 
     // 4. Skia overlay on top of 3D
     overlayCanvas.render(true)
+    updateDevtools()
 
-    stats.end()
-    rafId = requestAnimationFrame(animate)
+    requestAnimationFrame(animate)
   }
-  rafId = requestAnimationFrame(animate)
+  requestAnimationFrame(animate)
 
   // ── Resize ──
   window.addEventListener('resize', () => {
@@ -479,20 +470,6 @@ async function main() {
     overlayCanvas.setSize(npw, nph)
     titleText.y = nph - 90
     subtitleText.y = nph - 40
-  })
-}
-
-if (import.meta.hot) {
-  import.meta.hot.dispose(() => {
-    if (rafId) {
-      cancelAnimationFrame(rafId)
-      rafId = 0
-    }
-    if (activeRenderer) {
-      activeRenderer.dispose?.()
-      activeRenderer.domElement.remove()
-      activeRenderer = null
-    }
   })
 }
 

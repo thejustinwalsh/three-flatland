@@ -7,11 +7,12 @@ export { usePaneRadioGrid } from './react/use-pane-radio-grid.js'
 export type { PaneRadioGridCell, PaneRadioGridOptions } from './react/use-pane-radio-grid.js'
 export { useFpsGraph } from './react/use-fps-graph.js'
 export type { FpsGraphHandle } from './react/use-fps-graph.js'
-export { useStatsMonitor } from './react/use-stats-monitor.js'
-export { useDevtoolsPanel } from './react/use-devtools-panel.js'
-export type { CreatePaneOptions, PaneBundle, StatsHandle } from './create-pane.js'
-// Re-export the bus consumer for callers who want custom UI.
+export type { CreatePaneOptions, PaneBundle } from './create-pane.js'
+// Advanced: re-export the bus consumer so callers can spin up extra
+// consumers next to the one that `usePane` already manages.
 export { DevtoolsClient } from './devtools-client.js'
-export type { DevtoolsClientOptions, DevtoolsState } from './devtools-client.js'
-export { mountDevtoolsPanel } from './devtools-panel.js'
-export type { DevtoolsPanelHandle, MountDevtoolsPanelOptions } from './devtools-panel.js'
+export type {
+  DevtoolsClientOptions,
+  DevtoolsState,
+  DevtoolsStateListener,
+} from './devtools-client.js'
