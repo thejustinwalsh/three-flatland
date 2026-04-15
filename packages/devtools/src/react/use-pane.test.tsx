@@ -53,7 +53,11 @@ describe('usePane', () => {
 
     let captured: PaneBundle | null = null
     function Probe() {
-      const bundle = usePane()
+      // `debug: false` opts out of the auto-mounted devtools bus panel
+      // — that panel runs `setInterval` timers for ack/liveness that
+      // run forever under `vi.runAllTimers()`. The test is about pane
+      // lifecycle, not devtools behaviour.
+      const bundle = usePane({ debug: false })
       captured = bundle
       return null
     }

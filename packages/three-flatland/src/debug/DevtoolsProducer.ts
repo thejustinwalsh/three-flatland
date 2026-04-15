@@ -1,4 +1,3 @@
-import type { Scene } from 'three'
 import type { WebGPURenderer } from 'three/webgpu'
 import type { DataPayload, DebugFeature, DebugMessage, EnvPayload, StatsPayload } from '../debug-protocol'
 import { DEBUG_CHANNEL, IDLE_PING_MS, stampMessage } from '../debug-protocol'
@@ -8,8 +7,6 @@ import { EnvCollector } from './EnvCollector'
 
 /** Construction options for `DevtoolsProducer`. */
 export interface DevtoolsProducerOptions {
-  /** The `Scene` the engine renders into. `StatsCollector` hooks `scene.onAfterRender` on it to track frame counts. */
-  scene: Scene
   /**
    * Channel name for the `BroadcastChannel`. Override when you want to
    * run multiple isolated devtools sessions in the same origin (e.g.
@@ -27,38 +24,35 @@ export interface DevtoolsProducerOptions {
  *
  * 1. **Composed inside `Flatland`** — Flatland constructs one when the
  *    `DEVTOOLS_BUNDLED` build-gate + `isDevtoolsActive()` runtime-gate
- *    are both true. Nothing else to do — the producer self-fires
- *    `send()` from `scene.onAfterRender`. Host consumers don't have
- *    to know devtools exist.
+ *    are both true, and calls `beginFrame()` / `endFrame()` around
+ *    its `render()` body. Host consumers don't have to know devtools
+ *    exist.
  *
  * 2. **Standalone** — a bare three.js app (no Flatland, or a different
- *    engine) can instantiate `DevtoolsProducer` directly with its
- *    `scene`. Same deal: `send()` fires automatically from the scene
- *    hook; call `dispose()` on teardown. Advanced use cases
- *    (multi-scene bundling, headless tests, non-standard render loops)
- *    can call `setAutoSend(false)` and invoke `send(renderer)`
- *    manually instead. Standard bus protocol; any consumer that knows
- *    the protocol (tweakpane devtools panel, pop-out debugger, remote
- *    adapter) works the same.
+ *    engine) can instantiate `DevtoolsProducer` and call
+ *    `beginFrame(now)` / `endFrame(renderer)` around its rAF tick (or
+ *    around each `renderer.render()` call if the app has only one).
+ *    Standard bus protocol; any consumer that knows the protocol
+ *    works the same.
  *
  * ## Timing
  *
- * `StatsCollector` hooks `scene.onBeforeRender` + `scene.onAfterRender`
- * on the scene passed in. These bracket the actual three.js
- * `renderer.render()` call, so:
- *   - `cpuMs` measures real three.js render time (not wrapper overhead)
- *   - FPS is derived from the interval between consecutive
- *     `onAfterRender` fires — the true render cadence, regardless of
- *     whether the caller is Flatland or a bare `renderer.render()`
- *   - Frame counter increments per `renderer.render()` call
+ * Explicit begin/end boundaries, not scene hooks. Engines that do
+ * multiple internal `renderer.render()` calls per logical frame (SDF
+ * pass, occlusion pass, main render, post-processing) would count
+ * each internal pass as a separate "frame" if we hooked
+ * `scene.onAfterRender` — FPS misreports as a multiple of the real
+ * rate, and per-render stats don't aggregate. The begin/end approach
+ * lets the caller define the true frame boundary.
  *
- * **Multi-scene caveat**: three.js has no clean renderer-level
- * per-frame hook. The scene hooks fire per `renderer.render(scene, ...)`
- * call, not per user-frame. Apps that render multiple scenes per frame
- * (main scene + UI overlay scene + debug scene) will see each as its
- * own "frame" in these stats. If that matters, we'll add a manual
- * `frameBegin`/`frameEnd` mode later that lets the caller define the
- * real frame boundary. For v1 we ship the single-scene auto path.
+ *   - `cpuMs` = `endFrame` - `beginFrame` (full frame CPU cost)
+ *   - FPS = interval between consecutive `endFrame` calls
+ *   - `drawCalls` / `triangles` = `renderer.info.render` delta between
+ *     begin and end, aggregating across all internal render passes
+ *     during the frame
+ *
+ * For multi-scene apps, call begin/end around the whole rAF tick and
+ * `renderer.info.render` accumulates across every scene's render.
  *
  * ## Hot path
  *
@@ -93,21 +87,12 @@ export class DevtoolsProducer {
   /** Latest renderer seen during `endFrame` — cached so `_sendSubscribeAck` can use it without another argument. */
   private _latestRenderer: WebGPURenderer | undefined
 
-  constructor(options: DevtoolsProducerOptions) {
+  constructor(options: DevtoolsProducerOptions = {}) {
     const channel = options.channelName ?? DEBUG_CHANNEL
     this._bus = new BroadcastChannel(channel)
     this._subs = new SubscriberRegistry()
-    this._stats = new StatsCollector(options.scene)
+    this._stats = new StatsCollector()
     this._env = new EnvCollector()
-
-    // Auto-fire `send()` from inside StatsCollector's onAfterRender
-    // hook. Same hook that captures stats flushes the packet, so there's
-    // no gap between "frame ended" and "packet emitted". Users who want
-    // manual control over when packets go out can call `setAutoSend(false)`
-    // and drive `send(renderer)` themselves.
-    this._stats.setOnFrameEnd((renderer) => {
-      this.send(renderer as unknown as WebGPURenderer)
-    })
 
     this._dataScratch = {
       v: 1,
@@ -131,19 +116,31 @@ export class DevtoolsProducer {
   }
 
   /**
-   * Per-frame work: schedule async GPU resolve, prune stale consumers,
-   * build + emit a delta-encoded `data` packet (or idle `ping`).
-   *
-   * By default this is **fired automatically** from inside
-   * `scene.onAfterRender` — callers don't need to invoke it. Exposed
-   * publicly for advanced use cases:
-   *   - Multi-scene apps that want to bundle N renders into one
-   *     packet (disable auto-fire via `setAutoSend(false)`, then
-   *     call `send(renderer)` yourself at the real frame boundary).
-   *   - Headless tests that pump renders manually.
-   *
-   * `renderer` is cached for `subscribe:ack` env bootstrap on future
-   * subscribes.
+   * Mark the start of a logical frame. Call before any
+   * `renderer.render()` for this frame. `now` should be
+   * `performance.now()`.
+   */
+  beginFrame(now: number, renderer: WebGPURenderer): void {
+    this._latestRenderer = renderer
+    this._stats.beginFrame(now, renderer as unknown as Parameters<StatsCollector['beginFrame']>[1])
+  }
+
+  /**
+   * Mark the end of a logical frame. Call after all `renderer.render()`
+   * calls for this frame have completed. Updates stats, schedules the
+   * async GPU-timestamp resolve (if `stats` is subscribed), prunes
+   * stale consumers, and broadcasts the data packet (or idle ping).
+   */
+  endFrame(renderer: WebGPURenderer): void {
+    this._stats.endFrame(renderer as unknown as Parameters<StatsCollector['endFrame']>[0])
+    this.send(renderer)
+  }
+
+  /**
+   * Broadcast whatever the current state says. Normally driven by
+   * `endFrame()`; exposed for advanced cases (e.g. on-demand emit
+   * without a render tick). `renderer` is cached for `subscribe:ack`
+   * env bootstrap on future subscribes.
    */
   send(renderer: WebGPURenderer): void {
     this._latestRenderer = renderer
@@ -205,22 +202,6 @@ export class DevtoolsProducer {
       this._lastBroadcastAt = Date.now()
     } catch {
       // Bus may be closing during shutdown — swallow.
-    }
-  }
-
-  /**
-   * Enable or disable auto-fire of `send()` from `scene.onAfterRender`.
-   * Default: enabled. Disable when you want to manually drive packet
-   * emit (e.g., multi-scene bundling, headless tests, non-standard
-   * render loops).
-   */
-  setAutoSend(enabled: boolean): void {
-    if (enabled) {
-      this._stats.setOnFrameEnd((renderer) => {
-        this.send(renderer as unknown as WebGPURenderer)
-      })
-    } else {
-      this._stats.setOnFrameEnd(null)
     }
   }
 
