@@ -5,17 +5,18 @@
 > Branch: lighting-stochastic-adoption
 > PR: https://github.com/thejustinwalsh/three-flatland/pull/27
 
-**New TSL lighting shader nodes**
+## New lighting TSL nodes
 
-- `normalFromSprite` — computes tangent-space normals from sprite alpha gradient (4-neighbor sample)
-- `normalFromHeight` — derives normals from a height map
-- `shadowSDF2D(surfaceWorldPos, lightWorldPos, sdfTexture, worldSize, worldOffset, opts?)` — sphere-trace soft shadow through an SDF texture; returns `[0, 1]` shadow factor with Inigo-Quilez penumbra; configurable `steps`, `softness`, `startOffset`, `eps`
-- `lit` node for compositing diffuse lighting with normals, shadows, and light contributions
-- `lights` node utilities for per-light evaluation
+- `shadowSDF2D(surfaceWorldPos, lightWorldPos, sdfTexture, worldSize, worldOffset, options)` — sphere-trace soft shadow through an SDF texture; returns a `[0, 1]` float node (0 = fully shadowed, 1 = fully lit) with Inigo-Quilez-style penumbra
+  - Options: `steps` (default 32), `softness` (penumbra width), `startOffset` (self-shadow bias), `eps`
+  - Shipped alongside the existing `shadow2D` / `shadowSoft2D` alpha-raymarch helpers; both algorithms are supported
+- `lit(normal, lightDir, lightColor, attenuation)` — Lambertian diffuse helper node
+- `normalFromSprite(atlas, uv, strength)` — runtime tangent-space normals derived from sprite alpha gradient
+- `normalFromHeight(atlas, uv, strength)` — height-map variant
+- `lights` — TSL nodes for Forward+ light store reads
 
-**Updates**
+## Lighting example
 
-- Lighting example (`examples/react/lighting`) rebuilt against current API with Tweakpane controls
-- `shadows.ts` startOffset and softness defaults tuned for the new SDF pipeline
+- New `examples/react/lighting`: dungeon scene with TileMap2D floor, castsShadow walls, 4 wandering knights + 10 slimes as point lights, 2 flickering torches, WASD-controlled hero, Tweakpane panel via `@three-flatland/devtools`
 
-All new nodes ship in `@three-flatland/nodes/lighting` alongside existing `shadow2D`/`shadowSoft2D` helpers.
+Adds a full suite of 2D lighting TSL shader nodes — including SDF soft shadows, normals-from-sprite, and Forward+ light reads — plus a comprehensive React lighting example.

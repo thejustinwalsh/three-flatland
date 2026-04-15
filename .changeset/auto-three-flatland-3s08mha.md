@@ -5,44 +5,48 @@
 > Branch: lighting-stochastic-adoption
 > PR: https://github.com/thejustinwalsh/three-flatland/pull/27
 
-**2D lighting pipeline**
+## 2D lighting system
 
-- New `Light2D` class supporting point, directional, ambient, and spot light types
-- `LightStore` — flat typed-array store for GPU light data, keyed by `Light2D` instance
-- `LightingSystem` — strategy-pattern dispatcher: Simple, Direct (Forward+), Radiance Cascades
-- `ForwardPlusLighting` — tiled Forward+ culling with reservoir-based tile overflow: lights past the 16-slot per-tile cap are now ranked by contribution score (intensity × falloff at closest AABB point), evicting the weakest occupant rather than silently dropping by submission order
-- `SDFGenerator` — JFA-based signed-distance-field generator seeded from the OcclusionPass render target; stable texture reference across resize so TSL bindings built at shader-compile time remain valid
-- `OcclusionPass` — offscreen render pass that outputs per-sprite alpha silhouettes for SDF seeding; per-instance `castsShadow` filtering so non-casters contribute `alpha = 0` without a separate draw
+- New `Light2D` class with point, directional, ambient, and spot light types
+- `Flatland.setLighting(effect)` attaches a `LightEffect` strategy; switching effects disposes old GPU resources cleanly
+- `LightEffect` system with ECS traits, `LightStore`, `ForwardPlusLighting` tiled culling, `SDFGenerator`, and `LightingSystem`
+- `LightEffectBuildContext` carries `sdfTexture`, `worldSizeNode`, and `worldOffsetNode` so TSL bindings are stable across resizes
+- `Flatland` owns a pair of `uniform(Vector2)` nodes for world bounds; updated each frame from camera bounds — no shader rebuild on camera movement
+- Dev-time warning emitted when a lit sprite is missing a required channel provider (e.g., `normal`); suppressed in `NODE_ENV=production`
 
-**Per-sprite shadow casting**
+## SDF soft shadows
 
-- `Sprite2D.castsShadow` setter (default `false`): opt-in per sprite, zero GPU overhead for non-casters
-- Instance flag stored in bit 2 of `effectBuf0.x`; propagates through batch attribute buffers with no material rebuild
-- `readCastShadowFlag()` TSL helper mirrors `readReceiveShadowsFlag()` for shader consumption
+- `SDFGenerator`: JFA-based SDF built from the OcclusionPass RT; `sdfTexture` reference stable from construction
+- `OcclusionPass`: renders scene silhouette into a resolution-scaled RT; per-texture occlusion material caches per atlas; swap/restore is zero-alloc past warmup
+- Shadow pipeline state moved to `ShadowPipeline` ECS trait + `shadowPipelineSystem`; removed six private fields from `Flatland`
+- `Flatland.setLighting` eagerly allocates `SDFGenerator` + `OcclusionPass` when effect declares `needsShadows = true`; system is idempotent on first tick
 
-**effectBuf0 layout change**
+## Per-sprite shadow casting
 
-- `effectBuf0.x` now holds system flags only (lit, receiveShadows, castsShadow — 3 of 24 bits)
-- `effectBuf0.y` holds MaterialEffect enable bits (24 slots, up from 21)
-- Effect field data starts at slot 2 (`effectBuf0.z`); `EFFECT_BIT_OFFSET` reset to 0
+- `Sprite2D.castsShadow` — per-instance opt-in for shadow casting (default `false`)
+- `effectBuf0.x` holds system flags (lit, receiveShadows, castsShadow); `effectBuf0.y` holds 24 user MaterialEffect enable bits — the two fields are now separate, recovering the mixed capacity they previously shared
 
-**LightEffect system**
+## Forward+ improvements
 
-- `LightEffect` base class + `LightEffectBuildContext` passed to `buildLightFn` at shader-compile time carrying `lightStore`, `sdfTexture`, `worldSizeNode`, `worldOffsetNode`
-- `LightEffectRuntimeContext` carried per-frame: `renderer`, `camera`, `scene`, `sdfGenerator`
-- `ShadowPipeline` ECS singleton trait owns `sdfGenerator` / `occlusionPass` / resize state; `shadowPipelineSystem` manages full lifecycle (allocate → init → resize → pre-pass → dispose)
-- `Flatland.setLighting(effect)` eagerly allocates `ShadowPipeline` when `effect.needsShadows` is true, before `buildLightFn` runs, so the SDF texture reference is captured at shader-build time
-- World-bound `uniform(Vector2)` nodes for size and offset owned by `Flatland`, mutated cheaply each frame from camera bounds — no shader rebuild on camera move
-- React attach helpers: `useAttach` / `attach` for declarative `<lightEffect>` JSX wiring
+- Reservoir-based tile overflow: when a tile exceeds 16 lights, the weakest occupant is evicted by importance score (intensity × falloff to tile AABB closest point) — fixes tile-edge flicker in dense scenes vs. the previous silent-drop behaviour
 
-**Developer experience**
+## MaterialEffect type safety
 
-- Dev-time warning when a lit sprite is missing a `MaterialEffect` that provides channels declared `requires` by the active `LightEffect`; deduped via `WeakSet`, suppressed under `NODE_ENV=production`
-- `createMaterialEffect` is now generic over the `provides` tuple: returning the wrong `Node` type for a declared channel is a `tsc` error at the factory call site
-- `LightingContext` no longer mirrors `sdfGenerator` — sole owner is `ShadowPipeline`; eliminates a class of silent-desync regression
+- `createMaterialEffect` is now generic over the `provides` tuple; the `channelNode` callback return type is enforced at compile time — returning the wrong node type for a declared channel fails `tsc` with TS2322 at the factory call site
+- Omitting `provides` but supplying a `channelNode` is a compile-time error (`channelNode: never`)
 
-**Lighting example**
+## Devtools bus producer (Phase A → C)
 
-- `examples/react/lighting` rebuilt with Tweakpane controls, dungeon tilemap, wandering knights + slimes as point lights, flickering torches, keyboard-controlled hero, `DefaultLightEffect` with SDF shadows
+- `DevtoolsProvider`: BroadcastChannel producer, zero-cost in prod (tree-shaken when `DEVTOOLS_BUNDLED = false`)
+- Stats broadcast via `beginFrame` / `endFrame` boundaries — accurate per-logical-frame totals across multi-pass renders (SDF, occlusion, main, post)
+- `DebugRegistry`: engine code publishes CPU typed arrays via `registerDebugArray` / `touchDebugArray`; `ForwardPlusLighting` publishes `lightCounts` + `tileScores`; `LightStore` publishes its DataTexture backing
+- `DebugTextureRegistry`: `DataTexture` paths copy CPU buffer; `RenderTarget` paths use `renderer.readRenderTargetPixelsAsync`, one in-flight per entry
+- Multi-provider discovery protocol: `provider:announce`, `provider:query`, `provider:gone`; consumers auto-switch on provider loss
+- `FlatlandOptions.name?: string` to distinguish multiple instances in the devtools UI
+- Debug bus protocol: subscribe/ack, delta-encoded data packets (absent = no change, null = clear), idle ping after `IDLE_PING_MS` of silence, zero-alloc hot path via scratch objects
 
-This release delivers a complete end-to-end 2D lighting pipeline: ECS-integrated lights, JFA SDF shadow generation, per-sprite caster control, and type-safe effect authoring.
+## Removed
+
+- `Flatland.stats` getter removed; use `spriteGroup.stats` for sprite-domain metrics (spriteCount, batchCount, visibleSprites)
+
+This release delivers a complete 2D lighting pipeline — SDF soft shadows, Forward+ tiled culling with importance-based overflow, per-sprite `castsShadow`, type-safe MaterialEffect channels, and a full devtools bus for live engine inspection.
