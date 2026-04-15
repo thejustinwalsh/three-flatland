@@ -109,6 +109,27 @@ export const ACK_GRACE_MS = 3000
  */
 export const FEATURE_STALE_MS = 2000
 
+/**
+ * Server emits a `ping` broadcast when no `data` packet has been sent
+ * in this window — lets consumers distinguish "idle server" from "dead
+ * server" without requiring per-tick broadcasts. Faster than
+ * `ACK_GRACE_MS` on purpose: the server gives consumers at least one
+ * liveness signal per their ack cycle before they would time it out.
+ */
+export const IDLE_PING_MS = 2000
+
+/**
+ * Consumer-side grace window: if no server message (`data`, `ping`, or
+ * `subscribe:ack`) arrives in this window, the consumer should
+ * presume the server is gone and re-subscribe to recover. Sized at
+ * ~2× `IDLE_PING_MS` so one missed ping survives, two doesn't.
+ *
+ * Implemented by consumers (devtools package, future remote
+ * dashboards); documented here so the cross-party contract is in one
+ * place.
+ */
+export const SERVER_LIVENESS_MS = 5000
+
 // ─── Devtools build gate ────────────────────────────────────────────────────
 
 /**
@@ -329,6 +350,23 @@ export interface AckPayload {
   id: string
 }
 
+/**
+ * Server → consumers: liveness signal emitted when `IDLE_PING_MS` has
+ * elapsed since the last outbound broadcast. Payload is intentionally
+ * empty — the presence of the message is the signal, and the envelope's
+ * `ts` tells consumers when the server last drew breath.
+ *
+ * Not a heartbeat in the tick sense: the server does NOT ping every
+ * interval, only when there's been no `data` to send. Consumers use
+ * any server message (`data` / `ping` / `subscribe:ack`) to refresh
+ * their "server alive" timer; after `SERVER_LIVENESS_MS` of total
+ * silence they re-subscribe.
+ */
+// Intentionally empty — the presence of a `ping` message is the signal.
+// Using a type alias rather than an empty interface (lint: empty interfaces
+// are disallowed).
+export type PingPayload = Record<string, never>
+
 // ─── RPC payloads (consumer ↔ consumer; server ignores) ─────────────────────
 
 /** Base shape — every RPC carries the recipient's id. */
@@ -381,9 +419,10 @@ export type DebugMessage = DebugMessageEnvelope & (
   | { type: 'subscribe'; payload: SubscribePayload }
   | { type: 'unsubscribe'; payload: UnsubscribePayload }
   | { type: 'ack'; payload: AckPayload }
-  // Server → consumer (lifecycle + data)
+  // Server → consumer (lifecycle + data + liveness)
   | { type: 'subscribe:ack'; payload: SubscribeAckPayload }
   | { type: 'data'; payload: DataPayload }
+  | { type: 'ping'; payload: PingPayload }
   // Consumer ↔ consumer (server ignores; `rpc:` prefix)
   | { type: 'rpc:registry:select'; payload: RpcRegistrySelectPayload }
   | { type: 'rpc:ui:expand'; payload: RpcUiTogglePayload }
