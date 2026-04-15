@@ -10,14 +10,9 @@ import {
   type SpriteFrame,
   type RenderStats,
 } from 'three-flatland/react'
-import { usePane, useStatsMonitor } from '@three-flatland/tweakpane/react'
+import { usePane, useStatsMonitor } from '@three-flatland/devtools/react'
 import type { Pane } from 'tweakpane'
-import type { StatsHandle } from '@three-flatland/tweakpane/react'
-// Helper + gem live at the example root since the sync script writes
-// to the example's top-level dir; this App.tsx is in src/, so import
-// up one level.
-import { GemBackground } from '../GemBackground'
-import { GEM } from '../gem'
+import type { StatsHandle } from '@three-flatland/devtools/react'
 // Extend R3F with our custom classes
 extend({ SpriteGroup, Sprite2D, Sprite2DMaterial })
 
@@ -500,14 +495,12 @@ export default function App() {
     <>
       <Canvas
         dpr={1}
-        style={{ background: "#16191e" }}
+        style={{ background: '#87ceeb' }}
         renderer={{ antialias: false, trackTimestamp: true }}
         onCreated={({ gl }) => {
           gl.domElement.style.imageRendering = 'pixelated'
         }}
       >
-        {/* L1 + L2 — gem-tinted clear color + lit radial gradient. */}
-        <GemBackground gem={GEM} />
         <FitOrthoCamera viewWidth={viewWidth} viewHeight={viewHeight} />
         <VillageScene
           entities={entities}

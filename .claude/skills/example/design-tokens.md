@@ -21,7 +21,7 @@ Tweakpane colors come from `FLATLAND_THEME` — don't redefine them. The tokens 
 
 ## Tweakpane Theme
 
-The pane is themed automatically by `createPane()` / `usePane()` via `FLATLAND_THEME` from `@three-flatland/tweakpane`. The theme uses retro-midnight backgrounds, retro-white text, and a pink accent (`#d94c87`) on slider thumbs and active buttons. Source: `packages/tweakpane/src/theme.ts`.
+The pane is themed automatically by `createPane()` / `usePane()` via `FLATLAND_THEME` from `@three-flatland/devtools`. The theme uses retro-midnight backgrounds, retro-white text, and a pink accent (`#d94c87`) on slider thumbs and active buttons. Source: `packages/devtools/src/theme.ts`.
 
 **Do not** override the pane's CSS variables in example code — the theme is applied per-instance and shared across all examples for consistency. If a setting needs adjustment, update `FLATLAND_THEME` in the package.
 

@@ -92,6 +92,14 @@ export class OcclusionPass {
   private _swappedMeshes: Mesh[] = []
   private _swappedOriginals: Material[] = []
 
+  /**
+   * Meshes hidden for the duration of the occlusion pass because their
+   * geometry lacks the `effectBuf0` instance attribute the occlusion shader
+   * needs (e.g. tilemap chunks, which share Sprite2DMaterial but don't
+   * allocate effect buffers). They can't per-instance cast shadows anyway.
+   */
+  private _hiddenMeshes: Mesh[] = []
+
   constructor(options: OcclusionPassOptions = {}) {
     this._resolutionScale = options.resolutionScale ?? 0.5
     this._clearColor = new Color(options.clearColor ?? 0x000000)
@@ -162,6 +170,7 @@ export class OcclusionPass {
     // literal) to keep the traverse callback allocation-free.
     this._swappedMeshes.length = 0
     this._swappedOriginals.length = 0
+    this._hiddenMeshes.length = 0
     scene.traverse(this._collectAndSwap)
 
     // Clear color/alpha are deliberately NOT restored — Flatland.render
@@ -183,6 +192,11 @@ export class OcclusionPass {
       this._swappedMeshes.length = 0
       this._swappedOriginals.length = 0
 
+      for (let i = this._hiddenMeshes.length - 1; i >= 0; i--) {
+        this._hiddenMeshes[i]!.visible = true
+      }
+      this._hiddenMeshes.length = 0
+
       scene.background = prevBackground
       renderer.setRenderTarget(prevRT)
     }
@@ -199,6 +213,20 @@ export class OcclusionPass {
     const current = mesh.material
     if (Array.isArray(current)) return
     if (!(current instanceof Sprite2DMaterial)) return
+
+    // The occlusion shader reads `effectBuf0` per instance. Meshes that
+    // share Sprite2DMaterial but bypass the EffectMaterial attribute setup
+    // (notably TileLayer chunks) don't have effectBuf0 on their geometry
+    // — rendering them here triggers a TSL "attribute not found" warning
+    // and can't contribute meaningful shadow data anyway. Hide them for
+    // the duration of the pass and restore afterwards.
+    if (!mesh.geometry.getAttribute('effectBuf0')) {
+      if (mesh.visible) {
+        mesh.visible = false
+        this._hiddenMeshes.push(mesh)
+      }
+      return
+    }
 
     const texture = current.getTexture()
     if (!texture) return

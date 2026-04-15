@@ -22,8 +22,8 @@ import {
   staticNoise,
   chromaticAberration,
 } from '@three-flatland/nodes'
-import { usePane, useStatsMonitor } from '@three-flatland/tweakpane/react'
-import type { StatsHandle } from '@three-flatland/tweakpane/react'
+import { usePane, useStatsMonitor } from '@three-flatland/devtools/react'
+import type { StatsHandle } from '@three-flatland/devtools/react'
 
 extend({ Flatland, Sprite2D })
 

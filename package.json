@@ -53,7 +53,7 @@
       "@three-flatland/skia": "workspace:*",
       "@three-flatland/skills": "workspace:*",
       "@three-flatland/slug": "workspace:*",
-      "@three-flatland/tweakpane": "workspace:*",
+      "@three-flatland/devtools": "workspace:*",
       "yaml": "^2.8.4"
     }
   },

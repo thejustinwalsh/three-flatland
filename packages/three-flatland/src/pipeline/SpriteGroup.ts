@@ -259,15 +259,27 @@ export class SpriteGroup extends Group implements WorldProvider {
    * before drawing children. This is the main integration point — no manual
    * `update()` call is needed.
    */
+  private _inSystems = false
+
   override updateMatrixWorld(force?: boolean): void {
-    if (this._world) {
+    // Reentrancy guard: systems (e.g. shadowPipelineSystem) can trigger a
+    // nested renderer.render() for offscreen passes, and three.js will call
+    // scene.updateMatrixWorld inside it. Running the ECS schedule again from
+    // that nested call recurses forever, so skip straight to the matrix
+    // update on reentry — systems already ran for this frame.
+    if (this._world && !this._inSystems) {
       const registry = this._getRegistry()
       if (registry?.schedule) {
         // Keep autoInvalidateTransforms in sync
         registry.autoInvalidateTransforms = this.autoInvalidateTransforms
         // nextFrame + run — idempotent if update() already ran this frame
         registry.schedule.nextFrame()
-        registry.schedule.run(this._world)
+        this._inSystems = true
+        try {
+          registry.schedule.run(this._world)
+        } finally {
+          this._inSystems = false
+        }
       }
     }
 

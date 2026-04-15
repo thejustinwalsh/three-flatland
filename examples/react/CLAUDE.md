@@ -19,7 +19,7 @@ Every example has: `App.tsx`, `main.tsx`, `index.html`, `package.json`, `tsconfi
 ```tsx
 import { Canvas, extend, useLoader, useFrame, useThree } from '@react-three/fiber/webgpu'
 import { Sprite2D, TextureLoader } from 'three-flatland/react'
-import { usePane, usePaneInput, usePaneFolder, usePaneButton } from '@three-flatland/tweakpane/react'
+import { usePane, usePaneInput, usePaneFolder, usePaneButton } from '@three-flatland/devtools/react'
 ```
 
 ## extend() Registration
@@ -39,7 +39,7 @@ usePaneButton(folder, 'Reset', () => { /* ... */ })
 
 ## Stats Monitoring (required in every example)
 ```tsx
-import { usePane, useStatsMonitor } from '@three-flatland/tweakpane/react'
+import { usePane, useStatsMonitor } from '@three-flatland/devtools/react'
 
 const { pane, stats } = usePane()
 useStatsMonitor(stats)
@@ -85,7 +85,7 @@ useFrame(() => { valueRef.current.doSomething() }) // stable reference in callba
 - Import from `@react-three/fiber` — always use `@react-three/fiber/webgpu`
 - Use `setState` inside `useFrame` — mutate refs directly
 - Use GLSL or `onBeforeCompile` — this project uses TSL node materials
-- Use Web Awesome components — examples use `@three-flatland/tweakpane`
+- Use Web Awesome components — examples use `@three-flatland/devtools`
 - Use `Date.now()` for animation timing — use `state.clock.elapsedTime` or `delta`
 - Skip stats monitoring — every example must call `useStatsMonitor(stats)` (or equivalent) after `usePane()`
 - Destructure `useThree()` in hot paths — use individual selectors

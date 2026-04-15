@@ -12,7 +12,7 @@
   "dependencies": {
     "@react-three/fiber": "^10.0.0-alpha.2",
     "@three-flatland/presets": "^0.1.0-alpha.4",
-    "@three-flatland/tweakpane": "^0.1.0-alpha.2",
+    "@three-flatland/devtools": "^0.1.0-alpha.2",
     "@tweakpane/plugin-essentials": "^0.2.1",
     "three-flatland": "^0.1.0-alpha.4",
     "react": "^19.0.0",

@@ -13,9 +13,7 @@ import {
   type TilesetData,
   type TileLayerData,
 } from 'three-flatland/react'
-import { usePane, usePaneFolder, usePaneInput, usePaneButton, useStatsMonitor } from '@three-flatland/tweakpane/react'
-import { GemBackground } from './GemBackground'
-import { GEM } from './gem'
+import { usePane, usePaneFolder, usePaneInput, usePaneButton, useStatsMonitor } from '@three-flatland/devtools/react'
 
 // Register TileMap2D with R3F
 extend({ TileMap2D })
@@ -582,7 +580,7 @@ function CameraController({ mapSize, zoomRef, zoomSlider, setZoomSlider }: {
   return null
 }
 
-function StatsTracker({ stats }: { stats: import('@three-flatland/tweakpane/react').StatsHandle }) {
+function StatsTracker({ stats }: { stats: import('@three-flatland/devtools/react').StatsHandle }) {
   useStatsMonitor(stats)
   return null
 }
@@ -689,7 +687,7 @@ export default function App() {
       }}
     >
       <OrthoCamera viewSize={800} />
-      <GemBackground gem={GEM} />
+      <color attach="background" args={['#0a0a12']} />
       <StatsTracker stats={stats} />
       <CameraController mapSize={mapSize} zoomRef={zoomRef} zoomSlider={zoomSlider} setZoomSlider={setZoomSlider} />
       <Suspense fallback={null}>

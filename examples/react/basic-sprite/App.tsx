@@ -2,9 +2,7 @@ import { Canvas, extend, useFrame, useLoader, useThree } from '@react-three/fibe
 import { useRef, useState, useCallback } from 'react'
 import { Color, type OrthographicCamera as ThreeOrthographicCamera } from 'three'
 import { Sprite2D, TextureLoader } from 'three-flatland/react'
-import { usePane, usePaneFolder, usePaneInput, useStatsMonitor } from '@three-flatland/tweakpane/react'
-import { GemBackground } from './GemBackground'
-import { GEM } from './gem'
+import { usePane, usePaneFolder, usePaneInput, useStatsMonitor } from '@three-flatland/devtools/react'
 
 // Register Sprite2D with R3F (tree-shakeable)
 extend({ Sprite2D })
@@ -137,10 +135,7 @@ function Scene() {
 
   return (
     <>
-      {/* Gem-tinted L2 backdrop matching the masonry tile poster.
-         No L1 clear color — body bg (#16191e) shows through during
-         shader compile, no color jump. */}
-      <GemBackground gem={GEM} />
+      <color attach="background" args={['#1a1a2e']} />
       <InteractiveSprite
         baseScale={baseScale}
         hoverScale={hoverScale}

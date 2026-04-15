@@ -28,7 +28,7 @@ import {
 } from 'three-flatland/react'
 import { DefaultLightEffect, AutoNormalProvider } from '@three-flatland/presets'
 import '@three-flatland/presets/react'
-import { usePane, usePaneFolder, usePaneInput, useStatsMonitor } from '@three-flatland/tweakpane/react'
+import { usePane, usePaneFolder, usePaneInput, useStatsMonitor, type StatsHandle } from '@three-flatland/devtools/react'
 
 extend({
   Flatland,
@@ -141,13 +141,13 @@ function OrthoCamera({ viewSize }: { viewSize: number }) {
         cam.right = (viewSize * aspect) / 2
         cam.top = viewSize / 2
         cam.bottom = -viewSize / 2
-        ;(cam as unknown as { manual: boolean }).manual = true
         cam.updateProjectionMatrix()
         set({ camera: cam })
       }}
       position={[0, 0, 100]}
       near={0.1}
       far={1000}
+      manual
     />
   )
 }
@@ -301,9 +301,14 @@ interface SceneProps {
 }
 
 function FlatlandScene(props: SceneProps) {
-  const knightSheet = useLoader(SpriteSheetLoader, import.meta.env.BASE_URL + 'sprites/knight.json')
-  const tilesetTex = useLoader(TextureLoader, import.meta.env.BASE_URL + 'sprites/Dungeon_Tileset.png')
-  const { gl, size } = useThree()
+  const knightSheet = useLoader(SpriteSheetLoader, './sprites/knight.json')
+  const tilesetTex = useLoader(TextureLoader, './sprites/Dungeon_Tileset.png')
+  // Individual selectors — destructuring `useThree()` subscribes to the
+  // entire zustand store, so any `set(...)` (including our camera ref
+  // callback setting `camera`) re-renders this component, recreates the
+  // OrthoCamera ref, and cascades into a render loop.
+  const gl = useThree((s) => s.gl)
+  const size = useThree((s) => s.size)
   const flatlandRef = useRef<Flatland>(null)
   const defaultLightRef = useRef<InstanceType<typeof DefaultLightEffect>>(null)
   const ambientRef = useRef<Light2D>(null)
@@ -618,9 +623,13 @@ function FlatlandScene(props: SceneProps) {
 // APP
 // ============================================
 
+function Stats({ stats }: { stats: StatsHandle }) {
+  useStatsMonitor(stats)
+  return null
+}
+
 export default function App() {
   const { pane, stats } = usePane()
-  useStatsMonitor(stats)
 
   const light = usePaneFolder(pane, 'Lighting', { expanded: true })
   const [quantize] = usePaneInput(light, 'quantize', true)
@@ -649,6 +658,7 @@ export default function App() {
   return (
     <Canvas renderer={{ antialias: false, trackTimestamp: true }}>
       <color attach="background" args={['#06060c']} />
+      <Stats stats={stats} />
       <Suspense fallback={null}>
         <FlatlandScene
           bands={bands}
