@@ -128,24 +128,24 @@ export function addRegistryView(
   const groups = new Map<string, GroupUI>()
   let activeGroup: string | null = null
   // Start collapsed — don't stream registry data until the user opens
-  // the view. `setRegistryFilter([])` below keeps the provider quiet.
+  // the view. `setRegistry([])` below keeps the provider quiet.
   let collapsed = true
   body.style.display = 'none'
 
   /** Push the currently-visible entry names up to the client. */
   function syncFilter(): void {
     if (collapsed || activeGroup === null) {
-      client.setRegistryFilter([])
+      client.setRegistry([])
       return
     }
     const g = groups.get(activeGroup)
     if (!g) {
-      client.setRegistryFilter([])
+      client.setRegistry([])
       return
     }
     const names: string[] = []
     for (const row of g.entries.values()) names.push(row.name)
-    client.setRegistryFilter(names)
+    client.setRegistry(names)
   }
 
   const toggleCollapse = (e: Event): void => {

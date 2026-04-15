@@ -1,4 +1,7 @@
 import type {
+  BufferDelta,
+  BufferDisplayMode,
+  BuffersPayload,
   DebugFeature,
   DebugMessage,
   EnvPayload,
@@ -7,6 +10,7 @@ import type {
   RegistryEntryKind,
   RegistryPayload,
   StatsPayload,
+  TexturePixelType,
 } from 'three-flatland/debug-protocol'
 import {
   ACK_INTERVAL_MS,
@@ -15,6 +19,7 @@ import {
   SERVER_LIVENESS_MS,
   providerChannelName,
 } from 'three-flatland/debug-protocol'
+import { tracePerf } from './perf-trace.js'
 
 /**
  * Construction options for `DevtoolsClient`.
@@ -78,6 +83,20 @@ export interface RegistryEntrySnapshot {
   version: number
   count: number
   sample: Float32Array | Uint32Array | Int32Array
+  label?: string
+}
+
+/** Snapshot of a registered debug buffer as seen by the client. */
+export interface BufferSnapshot {
+  name: string
+  width: number
+  height: number
+  pixelType: TexturePixelType
+  /** How the consumer should visualise this buffer (defaults applied by producer). */
+  display: BufferDisplayMode
+  version: number
+  /** Latest CPU readback; `null` until the provider has served a sample. */
+  pixels: Uint8Array | Float32Array | null
   label?: string
 }
 
@@ -146,6 +165,14 @@ export interface DevtoolsState {
    */
   registry: Map<string, RegistryEntrySnapshot>
 
+  /**
+   * Named debug buffers — same lifecycle as `registry`, but backed by
+   * periodic GPU readbacks through the `buffers` feature. `pixels` is
+   * `null` until the provider has delivered a sample (metadata arrives
+   * first so the UI can list the entry for selection).
+   */
+  buffers: Map<string, BufferSnapshot>
+
   // --- Provider selection ------------------------------------------------
   /** All providers currently announced on the bus (updated live). */
   providers: ProviderIdentity[]
@@ -189,7 +216,9 @@ export class DevtoolsClient {
    * these. Starts empty-array so providers don't drain (sometimes
    * expensive) registry payloads until the pane actually needs them.
    */
-  private _registryFilter: string[] | null = []
+  private _registrySelection: string[] | null = []
+  /** Buffer selection — same semantics as `_registrySelection`. */
+  private _buffersSelection: string[] | null = []
   private _listeners = new Set<DevtoolsStateListener>()
 
   private _ackTimer: ReturnType<typeof setInterval> | null = null
@@ -225,6 +254,7 @@ export class DevtoolsClient {
         textures: mkSeries(),
       },
       registry: new Map(),
+      buffers: new Map(),
       providers: [],
       selectedProviderId: null,
       serverAlive: false,
@@ -301,9 +331,21 @@ export class DevtoolsClient {
    * `[]` to stop all registry traffic, or a list of names to narrow.
    * Re-posts `subscribe` if the filter actually changed.
    */
-  setRegistryFilter(names: string[] | null): void {
-    if (sameFilter(this._registryFilter, names)) return
-    this._registryFilter = names === null ? null : [...names]
+  /**
+   * Narrow which registry entries the provider should ship samples
+   * for. `null` = all entries; `[]` = none; `[name, …]` = only these.
+   * Metadata still flows regardless — only sample bytes are gated.
+   */
+  setRegistry(names: string[] | null): void {
+    if (sameFilter(this._registrySelection, names)) return
+    this._registrySelection = names === null ? null : [...names]
+    this._resubscribe()
+  }
+
+  /** Same as `setRegistry`, but for debug buffers (the `buffers` feature). */
+  setBuffers(names: string[] | null): void {
+    if (sameFilter(this._buffersSelection, names)) return
+    this._buffersSelection = names === null ? null : [...names]
     this._resubscribe()
   }
 
@@ -311,7 +353,12 @@ export class DevtoolsClient {
     if (this._subscribed && this._dataBus !== null) {
       this._postData({
         type: 'subscribe',
-        payload: { id: this.id, features: this._features, registryFilter: this._registryFilter ?? undefined },
+        payload: {
+        id: this.id,
+        features: this._features,
+        registry: this._registrySelection ?? undefined,
+        buffers: this._buffersSelection ?? undefined,
+      },
       })
     }
   }
@@ -329,7 +376,12 @@ export class DevtoolsClient {
     this._joinDataChannel(providerId)
     this._postData({
       type: 'subscribe',
-      payload: { id: this.id, features: this._features, registryFilter: this._registryFilter ?? undefined },
+      payload: {
+        id: this.id,
+        features: this._features,
+        registry: this._registrySelection ?? undefined,
+        buffers: this._buffersSelection ?? undefined,
+      },
     })
     this._fire()
   }
@@ -395,6 +447,7 @@ export class DevtoolsClient {
    */
   private _onDiscoveryMessage(msg: DebugMessage | undefined): void {
     if (!msg || typeof msg !== 'object' || !('type' in msg)) return
+    tracePerf(msg)
 
     switch (msg.type) {
       case 'provider:announce': {
@@ -432,6 +485,7 @@ export class DevtoolsClient {
    */
   private _onDataMessage(msg: DebugMessage | undefined): void {
     if (!msg || typeof msg !== 'object' || !('type' in msg)) return
+    tracePerf(msg)
 
     switch (msg.type) {
       case 'subscribe:ack': {
@@ -451,6 +505,7 @@ export class DevtoolsClient {
         if (features.stats !== undefined) this._applyStats(features.stats)
         if (features.env !== undefined) this._applyEnv(features.env)
         if (features.registry !== undefined) this._applyRegistry(features.registry)
+        if (features.buffers !== undefined) this._applyBuffers(features.buffers)
         this._fire()
         break
       }
@@ -488,7 +543,12 @@ export class DevtoolsClient {
     this._joinDataChannel(chosen.id)
     this._postData({
       type: 'subscribe',
-      payload: { id: this.id, features: this._features, registryFilter: this._registryFilter ?? undefined },
+      payload: {
+        id: this.id,
+        features: this._features,
+        registry: this._registrySelection ?? undefined,
+        buffers: this._buffersSelection ?? undefined,
+      },
     })
     this._fire()
   }
@@ -499,6 +559,7 @@ export class DevtoolsClient {
     this._applyStats(null)
     this._applyEnv(null)
     this.state.registry.clear()
+    this.state.buffers.clear()
   }
 
   /**
@@ -625,6 +686,42 @@ export class DevtoolsClient {
     }
   }
 
+  /**
+   * Apply a buffers delta. Metadata (width/height/version/pixelType)
+   * ships regardless of the client's selection; `pixels` only arrives
+   * when this entry is in the current selection. Retain the previous
+   * `pixels` when the delta is metadata-only so the UI keeps showing
+   * the last thumbnail while browsing.
+   */
+  private _applyBuffers(delta: BuffersPayload | null): void {
+    if (delta === null) {
+      this.state.buffers.clear()
+      return
+    }
+    if (!delta.entries) return
+    for (const [name, d] of Object.entries(delta.entries)) {
+      if (d === null) {
+        this.state.buffers.delete(name)
+        continue
+      }
+      const prev = this.state.buffers.get(name)
+      const pixels = d.pixels ?? prev?.pixels ?? null
+      // Default `display` here as a safety net for any older provider
+      // that doesn't ship the field; current ones always do.
+      const isFloat = d.pixelType === 'rgba16f' || d.pixelType === 'rgba32f'
+      this.state.buffers.set(name, {
+        name,
+        width: d.width,
+        height: d.height,
+        pixelType: d.pixelType,
+        display: d.display ?? (isFloat ? 'normalize' : 'colors'),
+        version: d.version,
+        pixels,
+        label: d.label,
+      })
+    }
+  }
+
   private _applyEnv(delta: EnvPayload | null): void {
     if (delta === null) {
       this.state.threeFlatlandVersion = undefined
@@ -685,7 +782,12 @@ export class DevtoolsClient {
       if (this._dataBus !== null) {
         this._postData({
           type: 'subscribe',
-          payload: { id: this.id, features: this._features, registryFilter: this._registryFilter ?? undefined },
+          payload: {
+        id: this.id,
+        features: this._features,
+        registry: this._registrySelection ?? undefined,
+        buffers: this._buffersSelection ?? undefined,
+      },
         })
       }
     }

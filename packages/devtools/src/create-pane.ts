@@ -5,6 +5,7 @@ import { addStatsGraph, type StatsGraphHandle } from './stats-graph.js'
 import { addStatsRow, type StatsRowHandle } from './stats-row.js'
 import { addProviderSwitcher, type ProviderSwitcherHandle } from './provider-switcher.js'
 import { addRegistryView, type RegistryViewHandle } from './registry-view.js'
+import { addBuffersView, type BuffersViewHandle } from './buffers-view.js'
 import { DevtoolsClient } from './devtools-client.js'
 
 export interface CreatePaneOptions {
@@ -139,8 +140,9 @@ export function createPane(options: CreatePaneOptions = {}): PaneBundle {
   let statsRow: StatsRowHandle | null = null
   let providerSwitcher: ProviderSwitcherHandle | null = null
   let registryView: RegistryViewHandle | null = null
+  let buffersView: BuffersViewHandle | null = null
 
-  const ACTIVE_FEATURES: ('stats' | 'env' | 'registry')[] = ['stats', 'env', 'registry']
+  const ACTIVE_FEATURES: ('stats' | 'env' | 'registry' | 'buffers')[] = ['stats', 'env', 'registry', 'buffers']
 
   try {
     client = new DevtoolsClient({ features: ACTIVE_FEATURES })
@@ -151,6 +153,9 @@ export function createPane(options: CreatePaneOptions = {}): PaneBundle {
     // Hidden until the provider publishes at least one entry via
     // `registerDebugArray`.
     registryView = addRegistryView(pane, client)
+    // Hidden until the provider publishes at least one debug texture
+    // via `registerDebugTexture`.
+    buffersView = addBuffersView(pane, client)
     client.start()
 
     // Pane fold → mute the bus. When the outer header is collapsed the
@@ -178,6 +183,7 @@ export function createPane(options: CreatePaneOptions = {}): PaneBundle {
     statsRow?.dispose()
     providerSwitcher?.dispose()
     registryView?.dispose()
+    buffersView?.dispose()
     client?.dispose()
     // If the user disposed the pane directly without claiming, free
     // the slot so the next createPane doesn't try to dispose us again.
