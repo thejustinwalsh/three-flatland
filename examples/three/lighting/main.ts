@@ -25,7 +25,7 @@ import {
   DefaultLightEffect,
   AutoNormalProvider,
 } from '@three-flatland/presets'
-import { createPane, mountDevtoolsPanel } from '@three-flatland/devtools'
+import { createPane } from '@three-flatland/devtools'
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -428,11 +428,6 @@ async function main() {
   }
 
   const { pane, stats } = createPane({ scene: flatland.scene })
-
-  // Mount the devtools bus consumer — subscribes to `stats` + `env`,
-  // renders a live readonly panel at the top of the pane. Flatland's
-  // DevtoolsProducer broadcasts; this panel listens.
-  mountDevtoolsPanel(pane)
 
   const lightFolder = pane.addFolder({ title: 'Lighting', expanded: true })
   lightFolder.addBinding(params, 'quantize')

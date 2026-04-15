@@ -4,6 +4,7 @@ import { applyTheme, FLATLAND_THEME } from './theme.js'
 import { registerPlugins } from './plugins.js'
 import { addStatsGraph, type StatsGraphHandle } from './stats-graph.js'
 import { addStatsRow, type StatsRowHandle } from './stats-row.js'
+import { mountDevtoolsPanel, type DevtoolsPanelHandle } from './devtools-panel.js'
 
 /** Minimal shape of a three.js-ish renderer exposed inside `scene.onAfterRender`. */
 interface StatsRenderer {
@@ -332,12 +333,26 @@ export function createPane(options: CreatePaneOptions = {}): PaneBundle {
 
   let graph: StatsGraphHandle | null = null
   let statsRow: StatsRowHandle | null = null
+  let devtoolsPanel: DevtoolsPanelHandle | null = null
 
   if (showStats) {
     // Cycling FPS/MS/GPU/MEM graph at the top of the pane.
     graph = addStatsGraph(pane)
     // Single-row readout for draws/tris/geoms/textures.
     statsRow = addStatsRow(pane)
+  }
+
+  // Auto-mount the devtools bus panel when `debug: true` (default).
+  // Consumer code gets the panel "for free" — no extra calls needed.
+  // If no producer is broadcasting (prod build, or explicit opt-out),
+  // the panel sits silent with `server: dead` and zeros.
+  if (debug) {
+    try {
+      devtoolsPanel = mountDevtoolsPanel(pane)
+    } catch {
+      // Bus not available (e.g., test environment without BroadcastChannel)
+      // — swallow; panel just doesn't appear.
+    }
   }
 
   const stats: StatsHandle = {
@@ -381,6 +396,7 @@ export function createPane(options: CreatePaneOptions = {}): PaneBundle {
   pane.dispose = () => {
     graph?.dispose()
     statsRow?.dispose()
+    devtoolsPanel?.dispose()
     restoreSceneHook?.()
     originalDispose()
   }

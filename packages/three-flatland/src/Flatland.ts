@@ -289,16 +289,15 @@ export class Flatland extends Group implements WorldProvider {
     // Devtools producer — two-layer gate:
     //   1. `DEVTOOLS_BUNDLED` (build-time const) — folded to `false` in
     //      prod builds with no flags set, so the entire branch is dead
-    //      code and tree-shakes out. No BroadcastChannel constructed, no
-    //      scene.onAfterRender hook installed, no allocation.
+    //      code and tree-shakes out.
     //   2. `isDevtoolsActive()` (runtime, only read when bundled) — lets
     //      a user disable devtools on specific pages by setting
     //      `window.__FLATLAND_DEVTOOLS__ = false` before Flatland loads.
-    // See `debug-protocol.ts` for the full gate contract. Flatland just
-    // coordinates (constructs + calls begin/end/dispose around render);
-    // the state and methods live on `DevtoolsProducer`.
+    // Flatland coordinates (constructs + calls begin/end/dispose around
+    // render); the producer owns the state. See `debug-protocol.ts` for
+    // the full gate contract.
     if (DEVTOOLS_BUNDLED && isDevtoolsActive()) {
-      this._debug = new DevtoolsProducer({ scene: this.scene })
+      this._debug = new DevtoolsProducer()
     }
   }
 
@@ -1062,6 +1061,14 @@ export class Flatland extends Group implements WorldProvider {
     // lighting shader for the rest of the scene.
     this._flushPendingChannelValidation()
 
+    // Devtools: mark frame start before ANY renderer.render() calls this
+    // frame. Flatland runs multiple internal render passes (SDF pass,
+    // occlusion pass, main render, post-processing) — `beginFrame` +
+    // `endFrame` aggregates them as ONE logical frame so FPS, cpuMs,
+    // draw calls and triangles all report the actual user-visible
+    // frame stats, not multiplied by pass count.
+    this._debug?.beginFrame(performance.now(), renderer)
+
     // Auto-sync global uniforms from renderer
     this._syncGlobals(renderer)
 
@@ -1132,11 +1139,11 @@ export class Flatland extends Group implements WorldProvider {
       }
     }
 
-    // Devtools: nothing to do here. `DevtoolsProducer` auto-fires
-    // `update()` from inside `scene.onAfterRender` (which three.js
-    // called during `renderer.render()` above), so the packet has
-    // already been emitted for this frame. Flatland constructs the
-    // producer; the producer runs itself.
+    // Devtools: mark frame end after ALL renderer.render() calls have
+    // completed this frame. Aggregates draw calls / triangles across
+    // internal passes, computes real cpuMs and FPS at the logical
+    // frame boundary, emits the data packet (or idle ping).
+    this._debug?.endFrame(renderer)
   }
 
   /**

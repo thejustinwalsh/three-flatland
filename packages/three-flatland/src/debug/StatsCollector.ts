@@ -1,4 +1,3 @@
-import type { Scene } from 'three'
 import type { StatsPayload } from '../debug-protocol'
 import { FEATURE_STALE_MS } from '../debug-protocol'
 
@@ -27,44 +26,26 @@ interface RendererLike {
   resolveTimestampsAsync?(type: 'render' | 'compute'): Promise<number | undefined>
 }
 
-/** Permissive callable — chains `scene.onAfterRender` regardless of three's type. */
-type AnyCallable = (this: unknown, ...args: unknown[]) => void
-
 /**
  * Per-frame stats collector.
  *
- * Merges the former `stats:frame` and `stats:gpuReady` topics into a
- * single `stats` feature whose payload includes optional `gpuMs` /
- * `gpuFrame`. The server caches the last-resolved GPU timing between
- * async-readback completions so the `stats` packet can carry a stable
- * value even on frames where no readback arrived.
+ * Explicit-driven — caller invokes `beginFrame(now, renderer)` and
+ * `endFrame(renderer)` at the boundaries of a logical frame. Works
+ * correctly for engines like Flatland that do multiple internal
+ * `renderer.render()` calls per frame (SDF pass, occlusion pass, main
+ * render): stats accumulate across all passes between begin/end.
  *
- * This class does NOT dispatch messages itself. Flatland owns the
- * per-tick `data` packet and calls `fillStats(out)` when the `stats`
- * feature is active; we write delta-encoded fields into `out` and
- * return whether we had anything to contribute this tick.
+ * Call sites:
+ *   - Flatland wraps its whole `render()` method body.
+ *   - Bare three.js apps wrap their rAF tick body (or `renderer.render()`
+ *     call if there's only one).
+ *   - Multi-scene apps bracket their full frame.
  *
- * Double-buffered scratch:
- *   `_prev`  — last emitted values (diff reference)
- *   Output payload — written into by `fillStats`; caller owns allocation
- *
- * `resetDelta()` clears `_prev` so the next `fillStats` emits a full
- * snapshot — called when subscriptions change and late-joining
- * consumers need the full state on the first post-subscribe tick.
+ * This class does NOT dispatch messages. `DevtoolsProducer` owns the
+ * packet build; `fillStats(out)` writes delta-encoded fields into a
+ * caller-owned scratch and returns whether anything changed.
  */
 export class StatsCollector {
-  private _scene: Scene
-  private _originalBefore: AnyCallable | null = null
-  private _originalAfter: AnyCallable | null = null
-
-  /**
-   * Callback fired from inside `scene.onAfterRender` after this
-   * collector has updated its internal state. Producer wires this to
-   * its `update()` so packet emit happens from the same hook as stats
-   * capture — no timing gap. Optional; auto-firing users leave it
-   * null and call `update()` themselves.
-   */
-  private _onFrameEnd: ((renderer: RendererLike) => void) | null = null
 
   /** Latest renderer seen via `scene.onAfterRender`. Set whenever a render fires. */
   private _latestRenderer: RendererLike | undefined
@@ -101,9 +82,9 @@ export class StatsCollector {
   /** CPU time (ms) of the most recent three.js render (onAfterRender - onBeforeRender). */
   private _cpuMs: number | undefined
 
-  /** FPS computed from the interval between consecutive `onAfterRender` fires. */
+  /** FPS computed from the interval between consecutive `endFrame()` calls (true frame boundary). */
   private _fps: number | undefined
-  private _lastAfterRenderAt = 0
+  private _lastFrameEndAt = 0
   private _fpsAccum = 0
   private _fpsFrames = 0
 
@@ -134,18 +115,54 @@ export class StatsCollector {
     gpuFrame?: number
   } = {}
 
-  constructor(scene: Scene) {
-    this._scene = scene
-    this._installHook()
+  constructor() {
+    // No args — explicit begin/end driven. Caller (DevtoolsProducer or
+    // a bare-three.js app) calls `beginFrame()` / `endFrame()` to
+    // bracket a logical frame.
   }
 
   /**
-   * Set (or clear) the per-frame-end callback. Called from inside
-   * `scene.onAfterRender` after internal state has been updated, so
-   * the listener sees a fully-settled frame.
+   * Mark the start of a logical frame. Snapshots `renderer.info.render`
+   * counters as the "before" reference so `endFrame()` can compute
+   * per-frame deltas — correct aggregation across multiple internal
+   * `renderer.render()` calls and independent of
+   * `renderer.info.autoReset`.
    */
-  setOnFrameEnd(cb: ((renderer: RendererLike) => void) | null): void {
-    this._onFrameEnd = cb
+  beginFrame(now: number, renderer: RendererLike | undefined): void {
+    this._renderStartAt = now
+    this._latestRenderer = renderer
+    const render = renderer?.info?.render
+    this._callsBefore = render?.calls ?? 0
+    this._trianglesBefore = render?.triangles ?? 0
+  }
+
+  /**
+   * Mark the end of the logical frame. Computes cpuMs, per-frame draw
+   * call + triangle deltas, updates FPS from the interval between
+   * consecutive `endFrame` calls, increments the engine frame counter.
+   */
+  endFrame(renderer: RendererLike): void {
+    const now = performance.now()
+
+    if (this._renderStartAt > 0) this._cpuMs = now - this._renderStartAt
+
+    if (this._lastFrameEndAt > 0) {
+      this._fpsAccum += now - this._lastFrameEndAt
+      this._fpsFrames++
+      if (this._fpsAccum >= 500) {
+        this._fps = (this._fpsFrames * 1000) / this._fpsAccum
+        this._fpsAccum = 0
+        this._fpsFrames = 0
+      }
+    }
+    this._lastFrameEndAt = now
+
+    this._latestRenderer = renderer
+    this._frame++
+
+    const render = renderer.info?.render
+    this._drawCalls = (render?.calls ?? 0) - this._callsBefore
+    this._triangles = (render?.triangles ?? 0) - this._trianglesBefore
   }
 
 
@@ -285,92 +302,8 @@ export class StatsCollector {
     this._prev = {}
   }
 
-  /** Stop intercepting `scene.onBeforeRender` / `scene.onAfterRender`. */
+  /** Clear internal state. No global hooks to undo in the explicit-driven design. */
   dispose(): void {
-    if (this._originalBefore) {
-      ;(this._scene as unknown as { onBeforeRender: AnyCallable }).onBeforeRender = this._originalBefore
-      this._originalBefore = null
-    }
-    if (this._originalAfter) {
-      ;(this._scene as unknown as { onAfterRender: AnyCallable }).onAfterRender = this._originalAfter
-      this._originalAfter = null
-    }
     this._latestRenderer = undefined
-  }
-
-  /**
-   * Install chained `onBeforeRender` + `onAfterRender` hooks on the
-   * scene. These bracket the ENTIRE three.js render — not just our
-   * engine's wrapper-of-a-wrapper — so `cpuMs` measures actual
-   * renderer.render() cost and FPS reflects the real engine render
-   * rate. Works the same whether called from Flatland.render or a bare
-   * renderer.render.
-   *
-   * Both callbacks chain any pre-existing callback users may have set.
-   * Restored on dispose.
-   */
-  private _installHook(): void {
-    type Scene3 = { onBeforeRender: AnyCallable; onAfterRender: AnyCallable }
-    const scene = this._scene as unknown as Scene3
-
-    const origBefore = scene.onBeforeRender
-    this._originalBefore = origBefore
-    const prevBefore = origBefore.bind(scene)
-    scene.onBeforeRender = (...args) => {
-      prevBefore(...args)
-      // Mark the start of the three.js render phase.
-      this._renderStartAt = performance.now()
-      // Snapshot cumulative renderer counters so onAfterRender can
-      // compute THIS render's delta (correct regardless of
-      // `renderer.info.autoReset`).
-      const renderer = args[0] as RendererLike | undefined
-      const render = renderer?.info?.render
-      this._callsBefore = render?.calls ?? 0
-      this._trianglesBefore = render?.triangles ?? 0
-    }
-
-    const origAfter = scene.onAfterRender
-    this._originalAfter = origAfter
-    const prevAfter = origAfter.bind(scene)
-    scene.onAfterRender = (...args) => {
-      prevAfter(...args)
-      const now = performance.now()
-
-      // CPU time spent inside renderer.render() for this frame.
-      if (this._renderStartAt > 0) this._cpuMs = now - this._renderStartAt
-
-      // FPS from interval between consecutive onAfterRender fires.
-      // Anchors to the real render cadence regardless of who calls
-      // renderer.render — Flatland, bare three.js, multiple instances.
-      if (this._lastAfterRenderAt > 0) {
-        this._fpsAccum += now - this._lastAfterRenderAt
-        this._fpsFrames++
-        if (this._fpsAccum >= 500) {
-          this._fps = (this._fpsFrames * 1000) / this._fpsAccum
-          this._fpsAccum = 0
-          this._fpsFrames = 0
-        }
-      }
-      this._lastAfterRenderAt = now
-
-      const renderer = args[0] as RendererLike | undefined
-      if (!renderer) return
-      this._frame++
-      this._latestRenderer = renderer
-
-      // Compute per-render deltas. autoReset=true → _callsBefore is 0
-      // and delta == current value; autoReset=false → delta is this
-      // render's contribution vs the running cumulative.
-      const render = renderer.info?.render
-      this._drawCalls = (render?.calls ?? 0) - this._callsBefore
-      this._triangles = (render?.triangles ?? 0) - this._trianglesBefore
-
-      // Notify owner (DevtoolsProducer) that a frame just ended so it
-      // can flush the packet from the same hook. Keeps timing
-      // consistent: stats captured → packet emitted, no gap. Works the
-      // same for Flatland and standalone users since neither has to
-      // manually pump.
-      this._onFrameEnd?.(renderer)
-    }
   }
 }
