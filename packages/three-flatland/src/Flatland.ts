@@ -42,7 +42,7 @@ import type { LightEffect } from './lights/LightEffect'
 import { wrapWithLightFlags } from './lights/wrapWithLightFlags'
 import type { ChannelName } from './materials/channels'
 import type { RegistryData } from './ecs/batchUtils'
-import { DEBUG_CHANNEL, DEVTOOLS_BUNDLED, isDevtoolsActive, stampMessage } from './debug-protocol'
+import { DEBUG_CHANNEL, DEVTOOLS_BUNDLED, IDLE_PING_MS, isDevtoolsActive, stampMessage } from './debug-protocol'
 import type { DebugFeature, DebugMessage, DataPayload, StatsPayload, EnvPayload } from './debug-protocol'
 import { SubscriberRegistry } from './debug/SubscriberRegistry'
 import { StatsCollector } from './debug/StatsCollector'
@@ -324,6 +324,15 @@ export class Flatland extends Group implements WorldProvider {
       type: 'data',
       payload: { frame: 0, features: {} },
     }
+    this._debugPingScratch = {
+      v: 1,
+      ts: 0,
+      type: 'ping',
+      payload: {},
+    }
+    // Treat init as "just broadcast" so a fresh gate doesn't immediately
+    // fire an idle ping with no subscribers.
+    this._debugLastBroadcastAt = Date.now()
 
     bus.addEventListener('message', (ev: MessageEvent<DebugMessage>) => {
       const msg = ev.data
@@ -446,7 +455,14 @@ export class Flatland extends Group implements WorldProvider {
 
     // atlas:* and registry feature slots are hooked up in later phases.
 
-    if (!anyFeature) return
+    if (!anyFeature) {
+      // No delta content for any feature this tick. If it's been long
+      // enough since our last outbound broadcast, emit an idle `ping`
+      // so consumers' server-liveness grace doesn't time out.
+      this._maybeIdlePing()
+      return
+    }
+
     // Tag the packet with the current engine frame. Metadata, not a
     // heartbeat — lets consumers correlate data with a specific render
     // (e.g. pairing GPU timing lag, user-input events, etc.).
@@ -454,6 +470,26 @@ export class Flatland extends Group implements WorldProvider {
     stampMessage(msg)
     try {
       this._debugBus?.postMessage(msg)
+      this._debugLastBroadcastAt = Date.now()
+    } catch {
+      // Bus may be closing during shutdown — swallow.
+    }
+  }
+
+  /**
+   * If no `data` packet has been sent in `IDLE_PING_MS`, broadcast a
+   * `ping` so consumers know the server is alive during quiet periods.
+   * No-op if we've broadcast recently (data or a previous ping).
+   */
+  private _maybeIdlePing(): void {
+    const bus = this._debugBus
+    const msg = this._debugPingScratch
+    if (!bus || !msg) return
+    if (Date.now() - this._debugLastBroadcastAt < IDLE_PING_MS) return
+    stampMessage(msg)
+    try {
+      bus.postMessage(msg)
+      this._debugLastBroadcastAt = Date.now()
     } catch {
       // Bus may be closing during shutdown — swallow.
     }
@@ -481,6 +517,8 @@ export class Flatland extends Group implements WorldProvider {
     this._debugDataScratch = null
     this._debugStatsScratch = null
     this._debugEnvScratch = null
+    this._debugPingScratch = null
+    this._debugLastBroadcastAt = 0
   }
 
   /**
@@ -1144,6 +1182,21 @@ export class Flatland extends Group implements WorldProvider {
   /** Scratch slots for per-feature payloads — referenced from `_debugDataScratch.payload.features`. */
   private _debugStatsScratch: StatsPayload | null = null
   private _debugEnvScratch: EnvPayload | null = null
+
+  /**
+   * Scratch envelope for idle `ping` broadcasts. Reused like the data
+   * scratch. See `IDLE_PING_MS` in debug-protocol.ts — liveness signal
+   * emitted only when `data` has gone quiet.
+   */
+  private _debugPingScratch: DebugMessage | null = null
+
+  /**
+   * Wall-clock time (`Date.now()`) of the last outbound broadcast
+   * (`data` or `ping`). Used by the idle-ping check in `_tickDebug`:
+   * if nothing has been sent in `IDLE_PING_MS`, emit a ping so
+   * consumers' `SERVER_LIVENESS_MS` grace doesn't time out.
+   */
+  private _debugLastBroadcastAt = 0
 
   /**
    * Dev-only check: for the currently attached lighting effect's declared
