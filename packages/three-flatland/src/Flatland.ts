@@ -20,7 +20,6 @@ import {
 import type { World, Entity } from 'koota'
 import { SpriteGroup } from './pipeline/SpriteGroup'
 import { GlobalUniforms } from './GlobalUniforms'
-import type { RenderStats } from './pipeline/types'
 import { Sprite2D } from './sprites/Sprite2D'
 import type { Sprite2DMaterial, ColorTransformFn } from './materials/Sprite2DMaterial'
 import type { MaterialEffect } from './materials/MaterialEffect'
@@ -42,11 +41,8 @@ import type { LightEffect } from './lights/LightEffect'
 import { wrapWithLightFlags } from './lights/wrapWithLightFlags'
 import type { ChannelName } from './materials/channels'
 import type { RegistryData } from './ecs/batchUtils'
-import { DEBUG_CHANNEL, DEVTOOLS_BUNDLED, IDLE_PING_MS, isDevtoolsActive, stampMessage } from './debug-protocol'
-import type { DebugFeature, DebugMessage, DataPayload, StatsPayload, EnvPayload } from './debug-protocol'
-import { SubscriberRegistry } from './debug/SubscriberRegistry'
-import { StatsCollector } from './debug/StatsCollector'
-import { EnvCollector } from './debug/EnvCollector'
+import { DEVTOOLS_BUNDLED, isDevtoolsActive } from './debug-protocol'
+import { DevtoolsProducer } from './debug/DevtoolsProducer'
 
 /** Shape of the LightingContext trait data. */
 interface LightingContextData {
@@ -203,8 +199,6 @@ export class Flatland extends Group implements WorldProvider {
   /** Whether the render pipeline was auto-initialized (vs. manual setRenderPipeline) */
   private _autoRenderPipeline = false
 
-  /** Draw calls captured from renderer.info after last render */
-  private _drawCalls = 0
 
   /** Reusable Vector2 to avoid per-frame allocations */
   private _tempVec2 = new Vector2()
@@ -292,7 +286,7 @@ export class Flatland extends Group implements WorldProvider {
     // Render pipeline
     this._renderPipelineEnabled = options.postProcessing ?? false
 
-    // Debug producers — two-layer gate:
+    // Devtools producer — two-layer gate:
     //   1. `DEVTOOLS_BUNDLED` (build-time const) — folded to `false` in
     //      prod builds with no flags set, so the entire branch is dead
     //      code and tree-shakes out. No BroadcastChannel constructed, no
@@ -300,225 +294,12 @@ export class Flatland extends Group implements WorldProvider {
     //   2. `isDevtoolsActive()` (runtime, only read when bundled) — lets
     //      a user disable devtools on specific pages by setting
     //      `window.__FLATLAND_DEVTOOLS__ = false` before Flatland loads.
-    // See `debug-protocol.ts` for the full gate contract.
-    if (DEVTOOLS_BUNDLED && isDevtoolsActive()) this._initDebug()
-  }
-
-  private _initDebug(): void {
-    const bus = new BroadcastChannel(DEBUG_CHANNEL)
-    this._debugBus = bus
-    this._debugSubs = new SubscriberRegistry()
-    this._debugStats = new StatsCollector(this.scene)
-    this._debugEnv = new EnvCollector()
-
-    // Pre-allocate empty scratch objects. Delta fields are added and
-    // removed (via `delete`) per tick so `structuredClone` sees absent
-    // keys, not `{ field: undefined }` pairs, for the wire. Re-used
-    // across every post — one allocation at init, ~zero per tick past
-    // the per-field writes inside fillStats / fillEnv.
-    this._debugStatsScratch = {}
-    this._debugEnvScratch = {}
-    this._debugDataScratch = {
-      v: 1,
-      ts: 0,
-      type: 'data',
-      payload: { frame: 0, features: {} },
+    // See `debug-protocol.ts` for the full gate contract. Flatland just
+    // coordinates (constructs + calls begin/end/dispose around render);
+    // the state and methods live on `DevtoolsProducer`.
+    if (DEVTOOLS_BUNDLED && isDevtoolsActive()) {
+      this._debug = new DevtoolsProducer({ scene: this.scene })
     }
-    this._debugPingScratch = {
-      v: 1,
-      ts: 0,
-      type: 'ping',
-      payload: {},
-    }
-    // Treat init as "just broadcast" so a fresh gate doesn't immediately
-    // fire an idle ping with no subscribers.
-    this._debugLastBroadcastAt = Date.now()
-
-    bus.addEventListener('message', (ev: MessageEvent<DebugMessage>) => {
-      const msg = ev.data
-      if (!msg || typeof msg !== 'object' || !('type' in msg)) return
-      this._handleBusMessage(msg)
-    })
-  }
-
-  /**
-   * Dispatch bus messages to the right handler. Only lifecycle messages
-   * (subscribe / unsubscribe / ack) are server-interpreted; `rpc:*`
-   * messages and our own server-emitted messages are ignored here
-   * (they're for other consumers).
-   */
-  private _handleBusMessage(msg: DebugMessage): void {
-    switch (msg.type) {
-      case 'subscribe': {
-        const subs = this._debugSubs
-        if (!subs) return
-        subs.onSubscribe(msg.payload.id, msg.payload.features)
-        // Late-joining consumers: reset per-feature delta trackers so
-        // the next `data` packet carries a full snapshot.
-        this._debugStats?.resetDelta()
-        this._debugEnv?.resetDelta()
-        // Reply with subscribe:ack including bootstrap env info.
-        this._sendSubscribeAck(msg.payload.id, msg.payload.features)
-        break
-      }
-      case 'ack': {
-        this._debugSubs?.onAck(msg.payload.id)
-        break
-      }
-      case 'unsubscribe': {
-        this._debugSubs?.onUnsubscribe(msg.payload.id)
-        break
-      }
-      // All other message types are either server-emitted (we sent
-      // them, no self-handling needed) or consumer-to-consumer RPCs
-      // that the server deliberately ignores.
-      default:
-        break
-    }
-  }
-
-  private _sendSubscribeAck(id: string, features: readonly DebugFeature[]): void {
-    const bus = this._debugBus
-    if (!bus) return
-    const renderer = this._renderer?.deref()
-    const env = this._debugEnv?.snapshot(renderer) ?? {}
-    // Record the snapshot as the `prev` baseline so subsequent
-    // `fillEnv` deltas are computed relative to what the consumer
-    // already has from this ack.
-    this._debugEnv?.recordSnapshotAsPrev(renderer)
-
-    const echoed = this._debugSubs?.featuresFor(id) ?? features
-    try {
-      bus.postMessage(
-        stampMessage({
-          type: 'subscribe:ack',
-          payload: { id, features: Array.from(echoed), env },
-        }),
-      )
-    } catch {
-      // Bus may be closing during shutdown — swallow.
-    }
-  }
-
-  /**
-   * Per-tick driver. Called from `render()` when devtools are active.
-   * Prunes stale consumers, builds a delta-encoded `data` packet with
-   * whichever features have fresh content, posts once if non-empty.
-   */
-  private _tickDebug(renderer: WebGPURenderer): void {
-    const subs = this._debugSubs
-    const stats = this._debugStats
-    const env = this._debugEnv
-    const msg = this._debugDataScratch
-    if (!subs || !stats || !env || !msg) return
-
-    subs.pruneStale()
-    if (subs.size() === 0) return
-    const active = subs.active()
-    if (active.size === 0) return
-
-    const features = (msg.payload as DataPayload).features
-
-    // Delete (not set-to-undefined) every feature slot so absent
-    // features are truly absent on the wire, not present-with-undefined.
-    // `structuredClone` would otherwise emit `{ stats: undefined, ... }`
-    // for every slot we didn't populate — wire bloat + confusing
-    // consumer console output.
-    delete features.stats
-    delete features.env
-    delete features['atlas:tick']
-    delete features['atlas:fullscreen']
-    delete features.registry
-
-    let anyFeature = false
-
-    if (active.has('stats')) {
-      const statsOut = this._debugStatsScratch!
-      if (stats.fillStats(statsOut)) {
-        features.stats = statsOut
-        anyFeature = true
-      }
-    }
-
-    if (active.has('env')) {
-      const envOut = this._debugEnvScratch!
-      // Reset env scratch slots — same delete-not-undefined discipline.
-      delete envOut.threeFlatlandVersion
-      delete envOut.threeRevision
-      delete envOut.backend
-      delete envOut.canvas
-      if (env.fillEnv(envOut, renderer)) {
-        features.env = envOut
-        anyFeature = true
-      }
-    }
-
-    // atlas:* and registry feature slots are hooked up in later phases.
-
-    if (!anyFeature) {
-      // No delta content for any feature this tick. If it's been long
-      // enough since our last outbound broadcast, emit an idle `ping`
-      // so consumers' server-liveness grace doesn't time out.
-      this._maybeIdlePing()
-      return
-    }
-
-    // Tag the packet with the current engine frame. Metadata, not a
-    // heartbeat — lets consumers correlate data with a specific render
-    // (e.g. pairing GPU timing lag, user-input events, etc.).
-    ;(msg.payload as DataPayload).frame = stats.frame
-    stampMessage(msg)
-    try {
-      this._debugBus?.postMessage(msg)
-      this._debugLastBroadcastAt = Date.now()
-    } catch {
-      // Bus may be closing during shutdown — swallow.
-    }
-  }
-
-  /**
-   * If no `data` packet has been sent in `IDLE_PING_MS`, broadcast a
-   * `ping` so consumers know the server is alive during quiet periods.
-   * No-op if we've broadcast recently (data or a previous ping).
-   */
-  private _maybeIdlePing(): void {
-    const bus = this._debugBus
-    const msg = this._debugPingScratch
-    if (!bus || !msg) return
-    if (Date.now() - this._debugLastBroadcastAt < IDLE_PING_MS) return
-    stampMessage(msg)
-    try {
-      bus.postMessage(msg)
-      this._debugLastBroadcastAt = Date.now()
-    } catch {
-      // Bus may be closing during shutdown — swallow.
-    }
-  }
-
-  /**
-   * Tear down debug producers. Removes the `scene.onAfterRender` hook,
-   * closes the BroadcastChannel, and clears all subscription state.
-   * Idempotent. Called automatically by `dispose()`.
-   */
-  private _disposeDebug(): void {
-    if (this._debugStats) {
-      this._debugStats.dispose()
-      this._debugStats = null
-    }
-    this._debugEnv = null
-    if (this._debugBus) {
-      this._debugBus.close()
-      this._debugBus = null
-    }
-    if (this._debugSubs) {
-      this._debugSubs.dispose()
-      this._debugSubs = null
-    }
-    this._debugDataScratch = null
-    this._debugStatsScratch = null
-    this._debugEnvScratch = null
-    this._debugPingScratch = null
-    this._debugLastBroadcastAt = 0
   }
 
   /**
@@ -1159,44 +940,17 @@ export class Flatland extends Group implements WorldProvider {
   private _pendingChannelValidation: Set<Sprite2D> = new Set()
 
   /**
-   * Debug bus + producers. All three are `null` outside of `DEVTOOLS_ENABLED`
-   * — the entire devtools subsystem is dead-code-eliminated in prod builds
-   * with no flags set, so these refs cost a single nullable field each.
-   * See `debug-protocol.ts` for the gate and protocol contract.
+   * Devtools producer — owns the BroadcastChannel, subscribers, stats,
+   * env, scratch message buffers, and the tick-building logic.
+   * Flatland coordinates timing (begin/end around render) but doesn't
+   * hold the data.
+   *
+   * `null` outside of `DEVTOOLS_BUNDLED && isDevtoolsActive()`. Prod
+   * builds with no flags have this as a single `null` field and the
+   * entire subsystem tree-shakes out. See `debug-protocol.ts` for the
+   * gate contract.
    */
-  private _debugBus: BroadcastChannel | null = null
-  private _debugSubs: SubscriberRegistry | null = null
-  private _debugStats: StatsCollector | null = null
-  private _debugEnv: EnvCollector | null = null
-
-  /**
-   * Scratch `data` message reused every tick. One allocation at
-   * `_initDebug` time; `stampMessage` rewrites `v`/`ts` in place and
-   * the payload's `features` sub-objects get mutated per send.
-   * `structuredClone` inside `bus.postMessage` gives subscribers an
-   * independent copy, so this scratch is safe to mutate on the next
-   * tick.
-   */
-  private _debugDataScratch: DebugMessage | null = null
-
-  /** Scratch slots for per-feature payloads — referenced from `_debugDataScratch.payload.features`. */
-  private _debugStatsScratch: StatsPayload | null = null
-  private _debugEnvScratch: EnvPayload | null = null
-
-  /**
-   * Scratch envelope for idle `ping` broadcasts. Reused like the data
-   * scratch. See `IDLE_PING_MS` in debug-protocol.ts — liveness signal
-   * emitted only when `data` has gone quiet.
-   */
-  private _debugPingScratch: DebugMessage | null = null
-
-  /**
-   * Wall-clock time (`Date.now()`) of the last outbound broadcast
-   * (`data` or `ping`). Used by the idle-ping check in `_tickDebug`:
-   * if nothing has been sent in `IDLE_PING_MS`, emit a ping so
-   * consumers' `SERVER_LIVENESS_MS` grace doesn't time out.
-   */
-  private _debugLastBroadcastAt = 0
+  private _debug: DevtoolsProducer | null = null
 
   /**
    * Dev-only check: for the currently attached lighting effect's declared
@@ -1308,21 +1062,6 @@ export class Flatland extends Group implements WorldProvider {
     // lighting shader for the rest of the scene.
     this._flushPendingChannelValidation()
 
-    // Anchor FPS rolling-average to the engine's render rate, not the
-    // browser's repaint cadence. Cheap (one Date.now + a few ints), and
-    // a no-op when StatsCollector wasn't created (prod build).
-    this._debugStats?.beginFrame(performance.now())
-
-    // If anyone's watching `stats`, schedule an async GPU-timestamp
-    // resolve now so the result is available to a future tick's
-    // `fillStats`. Cheap no-op when backend doesn't support timestamps.
-    if (this._debugSubs?.isActive('stats')) this._debugStats?.maybeResolveGpu()
-
-    // Build + dispatch the per-tick `data` packet covering whichever
-    // features consumers have subscribed to. Prunes stale consumers,
-    // no-ops when nobody's listening.
-    this._tickDebug(renderer)
-
     // Auto-sync global uniforms from renderer
     this._syncGlobals(renderer)
 
@@ -1366,9 +1105,6 @@ export class Flatland extends Group implements WorldProvider {
     // Save current render target
     const currentRenderTarget = renderer.getRenderTarget()
 
-    // Snapshot draw calls before render so we can compute the delta
-    const callsBefore = renderer.info.render.calls
-
     if (this._renderPipeline && this._renderPipelineEnabled) {
       // Render pipeline handles its own render target
       this._renderPipeline.render()
@@ -1396,8 +1132,11 @@ export class Flatland extends Group implements WorldProvider {
       }
     }
 
-    // Capture real draw calls from renderer.info (delta = only our render pass)
-    this._drawCalls = renderer.info.render.calls - callsBefore
+    // Devtools: nothing to do here. `DevtoolsProducer` auto-fires
+    // `update()` from inside `scene.onAfterRender` (which three.js
+    // called during `renderer.render()` above), so the packet has
+    // already been emitted for this frame. Flatland constructs the
+    // producer; the producer runs itself.
   }
 
   /**
@@ -1484,16 +1223,6 @@ export class Flatland extends Group implements WorldProvider {
   }
 
   /**
-   * Get render statistics.
-   * Draw calls are derived from Three.js renderer.info, not estimated internally.
-   */
-  get stats(): RenderStats {
-    const s = this.spriteGroup.stats
-    s.drawCalls = this._drawCalls
-    return s
-  }
-
-  /**
    * Clone for devtools/serialization compatibility.
    * Flatland manages internal scene, camera, and render pipeline that
    * cannot be meaningfully cloned. Returns a Group with cloned children.
@@ -1519,7 +1248,8 @@ export class Flatland extends Group implements WorldProvider {
   dispose(): void {
     // Tear down debug producers first — releases the scene.onAfterRender
     // hook so subsequent renders during dispose don't try to dispatch.
-    this._disposeDebug()
+    this._debug?.dispose()
+    this._debug = null
 
     // Clear ECS pass entities before world destruction
     this.clearPasses()
