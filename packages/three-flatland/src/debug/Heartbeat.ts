@@ -1,8 +1,8 @@
 import type { DebugMessage, DebugTopic } from '../debug-protocol'
 import {
-  DEBUG_PROTOCOL_VERSION,
   PING_INTERVAL_MS,
   PONG_WINDOW_MS,
+  stampMessage,
 } from '../debug-protocol'
 
 /**
@@ -30,6 +30,18 @@ export class Heartbeat {
   private _bus: BroadcastChannel
   private _topics = new Map<DebugTopic, { lastPongAt: number }>()
   private _interval: ReturnType<typeof setInterval> | null = null
+
+  /**
+   * Single scratch ping message reused for every `ui:ping` send. `topic`
+   * is rewritten per dispatch; `stampMessage` rewrites `v` / `ts` in
+   * place. Zero allocations per ping after construction.
+   */
+  private _pingScratch: DebugMessage = {
+    v: 1,
+    ts: 0,
+    type: 'ui:ping',
+    payload: { topic: 'stats:frame' },
+  }
 
   constructor(bus: BroadcastChannel) {
     this._bus = bus
@@ -111,12 +123,14 @@ export class Heartbeat {
   }
 
   private _sendPing(topic: DebugTopic): void {
+    // Mutate scratch in place — zero allocations per ping. `structuredClone`
+    // inside `bus.postMessage` gives subscribers an independent copy, so
+    // the next ping can safely overwrite these fields.
+    const scratch = this._pingScratch
+    if (scratch.type === 'ui:ping') scratch.payload.topic = topic
+    stampMessage(scratch)
     try {
-      this._bus.postMessage({
-        v: DEBUG_PROTOCOL_VERSION,
-        type: 'ui:ping',
-        payload: { topic },
-      })
+      this._bus.postMessage(scratch)
     } catch {
       // Bus may be closing during shutdown — swallow.
     }

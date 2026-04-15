@@ -14,6 +14,26 @@
  * Both `three-flatland` (gated by `DEVTOOLS_ENABLED`) and
  * `@three-flatland/devtools` import from this module. Third-party
  * adapters (websocket bridges, chrome extensions, etc.) do the same.
+ *
+ * ## Delta semantics
+ *
+ * To minimise bandwidth and structured-clone overhead (important at
+ * 60Hz for `stats:frame`), payloads use a cumulative / delta encoding:
+ *
+ * - **Field absent** from the payload → *no change*; subscriber keeps
+ *   its previously-accumulated value.
+ * - **Field === `null`** → *clear*; subscriber resets the field to
+ *   undefined.
+ * - **Field present with a value** → new value; subscriber overwrites.
+ *
+ * Fields that the engine *always* has to emit (a frame counter, a
+ * required identifier) stay non-nullable in their TS type. Everything
+ * else is `T | null | undefined` (omitted = no change).
+ *
+ * Producers track "last-sent" state per topic and reset it on every
+ * `ui:subscribe` so late-joining consumers receive a full snapshot
+ * on the next dispatch. Subscribers should initialise their
+ * accumulated state from the first message they see after subscribing.
  */
 
 /** Channel name used by `new BroadcastChannel(DEBUG_CHANNEL)`. */
@@ -23,6 +43,50 @@ export const DEBUG_CHANNEL = 'flatland-debug'
 export const DEBUG_PROTOCOL_VERSION = 1
 
 /**
+ * Type helper: message body (type + payload) without the envelope.
+ * Producers typically hold a long-lived scratch body of this shape,
+ * mutate its payload each tick, then call `stampMessage(scratch)` and
+ * `bus.postMessage(scratch)` — the scratch object is the message, and
+ * `structuredClone` inside `postMessage` decouples it from the
+ * subscriber's copy, so the producer can keep mutating for the next
+ * send without interference.
+ */
+export type DebugMessageBody = Omit<DebugMessage, 'v' | 'ts'>
+
+/**
+ * Stamp a message body with the current envelope fields (`v`, `ts`)
+ * **in place**. Returns the same object, narrowed to `DebugMessage`, so
+ * callers can chain or assign.
+ *
+ * Mutation-based so producers can hold a single scratch message and
+ * reuse it across every send — one allocation at construction, zero
+ * allocations per send (aside from whatever payload construction
+ * requires). Safe because `bus.postMessage()` structure-clones before
+ * handing to subscribers; the producer's scratch is untouched by the
+ * subscriber side and free to be mutated on the next tick.
+ */
+export function stampMessage<T extends DebugMessageBody>(body: T): T & DebugMessageEnvelope {
+  const stamped = body as T & { v: 1; ts: number }
+  stamped.v = DEBUG_PROTOCOL_VERSION
+  stamped.ts = Date.now()
+  return stamped
+}
+
+// ─── Wire format ────────────────────────────────────────────────────────────
+//
+// For same-process `BroadcastChannel` (v1's only transport), messages are
+// posted as-is with verbose field names. The structured-clone algorithm
+// that `postMessage` uses is native-code and fast; adding a JS-level
+// encode/decode pass before it would cost more than the bandwidth it
+// saves. Keys stay full ("drawCalls", not "dc") — the in-process win is
+// negative.
+//
+// When a `WebSocketTransport` (or any serialize-to-bytes transport) is
+// added, its adapter is the right place for key compression and
+// msgpack/CBOR encoding. Producers and consumers stay oblivious;
+// compression lives at the wire boundary, scoped to where it matters.
+
+/**
  * Topics carry independent producer/consumer pairs. A consumer subscribes
  * to the topics it cares about by sending `ui:subscribe` pings; producers
  * pause topics whose last ping is older than `STALE_PING_MS`.
@@ -30,6 +94,7 @@ export const DEBUG_PROTOCOL_VERSION = 1
 export type DebugTopic =
   | 'stats:frame'
   | 'stats:gpu'
+  | 'env:info'
   | 'atlas:tick'
   | 'atlas:fullscreen'
   | 'registry:changed'
@@ -52,17 +117,72 @@ export type DebugFormat =
   | 'float-array'
   | 'uint-array'
 
-/** Stats payload — one frame's snapshot of `renderer.info.render`. */
+/**
+ * Per-frame stats snapshot. Delta-encoded: only fields that changed since
+ * the last dispatch are included. `frame` is always present (monotonic
+ * engine counter, doubles as a "producer alive" heartbeat).
+ */
 export interface StatsFramePayload {
+  /** Monotonic engine-render counter. Always present. */
   frame: number
-  drawCalls: number
-  triangles: number
-  geometries: number
-  textures: number
+  /** Omit = no change; null = clear; number = new value. See "Delta semantics". */
+  drawCalls?: number | null
+  triangles?: number | null
+  geometries?: number | null
+  textures?: number | null
   /** CPU time between begin/end markers, in ms. */
-  cpuMs?: number
+  cpuMs?: number | null
   /** Rolling-average frames per second, computed by the producer. */
-  fps?: number
+  fps?: number | null
+}
+
+/**
+ * Runtime environment snapshot — versions, backend capabilities, canvas
+ * dimensions. Produced on the `env:info` topic: subscribe to receive.
+ *
+ * Delta-encoded per the rules at the top of this file. Most fields
+ * (versions, backend capabilities) are fixed at renderer construction
+ * and only appear in the first snapshot after subscribe; only
+ * `canvas.{width,height,pixelRatio}` change at runtime (on resize /
+ * DPI switch) and produce deltas afterwards.
+ *
+ * Re-subscribing forces the producer to reset its delta tracker and
+ * re-emit a full snapshot — that's the re-query path.
+ */
+export interface EnvInfoPayload {
+  /** three-flatland package VERSION constant. */
+  threeFlatlandVersion?: string | null
+  /** Three.js REVISION string (e.g. `'183'`). */
+  threeRevision?: string | null
+  backend?: EnvBackendDelta | null
+  canvas?: EnvCanvasDelta | null
+}
+
+/** Nested delta for backend info — all fields optional/nullable. */
+export interface EnvBackendDelta {
+  /** Renderer backend class name, e.g. `'WebGPUBackend'` / `'WebGLBackend'`. */
+  name?: string | null
+  /** Whether the renderer was constructed with `trackTimestamp: true`. */
+  trackTimestamp?: boolean | null
+  /**
+   * WebGL-only: `true` if `EXT_disjoint_timer_query_webgl2` is available.
+   * `null` when the backend isn't WebGL (distinguished from "value
+   * cleared" by subscribers via context — this is a rare enough nuance
+   * to tolerate).
+   */
+  disjoint?: boolean | null
+  /**
+   * Derived: can we actually resolve GPU timestamps on this backend?
+   * True iff `trackTimestamp && (backend !== WebGL || disjoint)`.
+   */
+  gpuModeEnabled?: boolean | null
+}
+
+/** Nested delta for canvas dimensions. */
+export interface EnvCanvasDelta {
+  width?: number | null
+  height?: number | null
+  pixelRatio?: number | null
 }
 
 /** GPU timestamp readback for a specific past frame. Arrives async. */
@@ -94,25 +214,52 @@ export interface TickSetPayload {
 }
 
 /**
+ * Envelope shared by every message on the bus. Held as a separate shape
+ * rather than duplicated into every union variant — readability wins.
+ *
+ * `ts` is `Date.now()` milliseconds, stamped by the producer at post
+ * time. Subscribers use it for:
+ *   - Graphing data on a real time axis (stats:frame isn't strictly
+ *     uniform — renders may stall or batch).
+ *   - Computing latency (current `Date.now()` - `msg.ts`) to detect
+ *     slow bus delivery or backgrounded-tab throttling.
+ *   - Interpolating between values when `stats:frame` arrives faster
+ *     or slower than the subscriber's own render cadence.
+ *   - Ordering messages across a pop-out window / websocket bridge
+ *     where delivery order isn't guaranteed.
+ *
+ * `Date.now()` (wall clock) is used instead of `performance.now()`
+ * (monotonic, per-origin) so timestamps stay comparable across pop-out
+ * windows and remote consumers.
+ */
+export interface DebugMessageEnvelope {
+  v: 1
+  ts: number
+}
+
+/**
  * Discriminated union of all debug-bus messages. Every variant is
  * structured-clone-safe (no functions, no DOM nodes, no class instances).
+ * Every variant carries the `DebugMessageEnvelope` fields (`v`, `ts`).
  */
-export type DebugMessage =
+export type DebugMessage = DebugMessageEnvelope & (
   // Producers → subscribers (data)
-  | { v: 1; type: 'stats:frame'; payload: StatsFramePayload }
-  | { v: 1; type: 'stats:gpuReady'; payload: StatsGpuReadyPayload }
-  | { v: 1; type: 'registry:changed'; payload: RegistryChangedPayload }
+  | { type: 'stats:frame'; payload: StatsFramePayload }
+  | { type: 'stats:gpuReady'; payload: StatsGpuReadyPayload }
+  | { type: 'env:info'; payload: EnvInfoPayload }
+  | { type: 'registry:changed'; payload: RegistryChangedPayload }
   // Producers → subscribers (liveness probe)
-  | { v: 1; type: 'ui:ping'; payload: UiSubscribePayload }
+  | { type: 'ui:ping'; payload: UiSubscribePayload }
   // Subscribers → producers (liveness + lifecycle)
-  | { v: 1; type: 'ui:subscribe'; payload: UiSubscribePayload }
-  | { v: 1; type: 'ui:unsubscribe'; payload: UiSubscribePayload }
-  | { v: 1; type: 'ui:pong'; payload: UiSubscribePayload }
+  | { type: 'ui:subscribe'; payload: UiSubscribePayload }
+  | { type: 'ui:unsubscribe'; payload: UiSubscribePayload }
+  | { type: 'ui:pong'; payload: UiSubscribePayload }
   // UI-local state (cross-window-portable)
-  | { v: 1; type: 'registry:select'; payload: RegistrySelectPayload }
-  | { v: 1; type: 'ui:expand'; payload: UiToggleOnPayload }
-  | { v: 1; type: 'ui:gridAll'; payload: UiToggleOnPayload }
-  | { v: 1; type: 'tick:set'; payload: TickSetPayload }
+  | { type: 'registry:select'; payload: RegistrySelectPayload }
+  | { type: 'ui:expand'; payload: UiToggleOnPayload }
+  | { type: 'ui:gridAll'; payload: UiToggleOnPayload }
+  | { type: 'tick:set'; payload: TickSetPayload }
+)
 
 /**
  * Liveness protocol — producer-driven ping/pong with self-healing.
