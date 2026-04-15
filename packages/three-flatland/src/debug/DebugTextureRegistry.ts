@@ -1,5 +1,16 @@
 import type { WebGPURenderer } from 'three/webgpu'
 import type { DataTexture, Texture } from 'three'
+import {
+  Mesh,
+  OrthographicCamera,
+  PlaneGeometry,
+  RenderTarget,
+  Scene,
+  UnsignedByteType,
+  RGBAFormat,
+} from 'three'
+import { texture as sampleTexture } from 'three/tsl'
+import { NodeMaterial } from 'three/webgpu'
 import type { BufferDelta, BufferDisplayMode, BuffersPayload, TexturePixelType } from '../debug-protocol'
 
 /**
@@ -14,6 +25,13 @@ interface DebugTextureEntry {
   name: string
   pixelType: TexturePixelType
   display: BufferDisplayMode
+  /**
+   * Cap on the readback's larger dimension. Sources bigger than this
+   * are downsampled (aspect-preserving) on the GPU before readback so
+   * we don't ship megabytes per frame for thumbnail-only previews.
+   * `0` = no cap (read at native size).
+   */
+  maxDim: number
   version: number
   label?: string
   /** Last-emitted version; provider drains iff it doesn't match. */
@@ -34,6 +52,12 @@ interface DebugTextureEntry {
   /** Width/height of the most recent sample. */
   width: number
   height: number
+  /**
+   * Scratch render target used when `maxDim` requires downsampling.
+   * Lazy-allocated on first downsample for this entry; reused
+   * thereafter (`setSize` if aspect/dims change).
+   */
+  scratchRT?: RenderTarget
 }
 
 /** Minimal shape used for GPU readback. Matches three's `RenderTarget`. */
@@ -51,6 +75,8 @@ interface ReadableRenderTarget {
 export class DebugTextureRegistry {
   private _entries = new Map<string, DebugTextureEntry>()
   private _removed = new Set<string>()
+  /** Lazy GPU downsampler used by render-target readbacks with a cap. */
+  private _downsampler: Downsampler | null = null
 
   /**
    * Register (or replace) a debug texture.
@@ -63,7 +89,7 @@ export class DebugTextureRegistry {
     name: string,
     source: DataTexture | ReadableRenderTarget,
     pixelType: TexturePixelType,
-    opts: { label?: string; display?: BufferDisplayMode } = {},
+    opts: { label?: string; display?: BufferDisplayMode; maxDim?: number } = {},
   ): void {
     const existing = this._entries.get(name)
     const version = (existing?.version ?? 0) + 1
@@ -72,10 +98,15 @@ export class DebugTextureRegistry {
     // floats nearly always need normalising.
     const isFloat = pixelType === 'rgba16f' || pixelType === 'rgba32f'
     const display = opts.display ?? (isFloat ? 'normalize' : 'colors')
+    // Default cap for GPU render targets: 256 px on the longer edge.
+    // DataTextures are typically tiny and unaffected; explicit `maxDim:0`
+    // disables the cap when full-resolution is needed.
+    const maxDim = opts.maxDim ?? (isDataTexture ? 0 : 256)
     this._entries.set(name, {
       name,
       pixelType,
       display,
+      maxDim,
       version,
       label: opts.label,
       lastEmittedVersion: existing?.lastEmittedVersion ?? 0,
@@ -168,6 +199,11 @@ export class DebugTextureRegistry {
   }
 
   dispose(): void {
+    for (const e of this._entries.values()) {
+      e.scratchRT?.dispose()
+    }
+    this._downsampler?.dispose()
+    this._downsampler = null
     this._entries.clear()
     this._removed.clear()
   }
@@ -197,7 +233,48 @@ export class DebugTextureRegistry {
 
     if (e.renderTarget !== undefined && renderer !== undefined) {
       const rt = e.renderTarget
-      const byteCount = rt.width * rt.height * 4
+
+      // Decide what we're actually reading back: the source RT, or a
+      // smaller scratch RT that the downsampler renders the source
+      // into. The cap is `maxDim` on the longer edge — anything within
+      // the cap reads back at native size.
+      let srcW = rt.width
+      let srcH = rt.height
+      let target: ReadableRenderTarget = rt
+      if (e.maxDim > 0 && Math.max(rt.width, rt.height) > e.maxDim) {
+        const aspect = rt.width / rt.height
+        const dw = aspect >= 1 ? e.maxDim : Math.max(1, Math.round(e.maxDim * aspect))
+        const dh = aspect >= 1 ? Math.max(1, Math.round(e.maxDim / aspect)) : e.maxDim
+
+        if (e.scratchRT === undefined) {
+          e.scratchRT = new RenderTarget(dw, dh, { format: RGBAFormat, type: UnsignedByteType })
+        } else if (e.scratchRT.width !== dw || e.scratchRT.height !== dh) {
+          e.scratchRT.setSize(dw, dh)
+        }
+
+        if (this._downsampler === null) this._downsampler = new Downsampler()
+        try {
+          this._downsampler.render(renderer, rt.texture, e.scratchRT)
+        } catch {
+          // Downsample failed (e.g. unsupported renderer); fall back to
+          // native-size readback so the consumer still sees something.
+          target = rt
+        }
+        if (target === rt) {
+          srcW = rt.width
+          srcH = rt.height
+        } else {
+          target = e.scratchRT as unknown as ReadableRenderTarget
+          srcW = dw
+          srcH = dh
+        }
+        // Always prefer the scratch on success.
+        target = e.scratchRT as unknown as ReadableRenderTarget
+        srcW = dw
+        srcH = dh
+      }
+
+      const byteCount = srcW * srcH * 4
       const buf = new Uint8Array(byteCount)
       const readAsync = (renderer as unknown as {
         readRenderTargetPixelsAsync?: (
@@ -207,11 +284,11 @@ export class DebugTextureRegistry {
         ) => Promise<Uint8Array>
       }).readRenderTargetPixelsAsync
       if (typeof readAsync !== 'function') return
-      const p = readAsync.call(renderer, rt, 0, 0, rt.width, rt.height, buf).then(
+      const p = readAsync.call(renderer, target, 0, 0, srcW, srcH, buf).then(
         () => {
           e.sample = buf
-          e.width = rt.width
-          e.height = rt.height
+          e.width = srcW
+          e.height = srcH
           e.pendingReadback = null
           // Bump version so the next drain ships the fresh pixels.
           e.version++
@@ -224,5 +301,48 @@ export class DebugTextureRegistry {
       )
       e.pendingReadback = p
     }
+  }
+}
+
+/**
+ * Reusable fullscreen-quad pass that copies any source texture into a
+ * caller-provided render target, hardware-bilinear-downsampling on the
+ * way. Uses TSL / `NodeMaterial` so it works on `WebGPURenderer`. One
+ * instance per registry is plenty — the source texture is rebound per
+ * `render()` call.
+ */
+class Downsampler {
+  private _scene: Scene | null = null
+  private _camera: OrthographicCamera | null = null
+  private _quad: Mesh | null = null
+  private _material: NodeMaterial | null = null
+
+  private _ensure(): void {
+    if (this._scene !== null) return
+    this._scene = new Scene()
+    this._camera = new OrthographicCamera(-1, 1, 1, -1, 0, 1)
+    this._material = new NodeMaterial()
+    this._quad = new Mesh(new PlaneGeometry(2, 2), this._material)
+    this._scene.add(this._quad)
+  }
+
+  render(renderer: WebGPURenderer, src: Texture, dst: RenderTarget): void {
+    this._ensure()
+    const m = this._material!
+    m.colorNode = sampleTexture(src) as unknown as typeof m.colorNode
+    m.needsUpdate = true
+    const prev = renderer.getRenderTarget()
+    renderer.setRenderTarget(dst)
+    renderer.render(this._scene!, this._camera!)
+    renderer.setRenderTarget(prev)
+  }
+
+  dispose(): void {
+    this._quad?.geometry.dispose()
+    this._material?.dispose()
+    this._scene = null
+    this._camera = null
+    this._quad = null
+    this._material = null
   }
 }

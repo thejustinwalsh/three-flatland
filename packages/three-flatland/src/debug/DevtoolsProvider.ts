@@ -17,6 +17,7 @@ import { EnvCollector } from './EnvCollector'
 import { DebugRegistry } from './DebugRegistry'
 import { DebugTextureRegistry } from './DebugTextureRegistry'
 import { _setActiveRegistry, _setActiveTextureRegistry } from './debug-sink'
+import { PERF_TRACK, perfMeasure } from './perf-track'
 
 export interface DevtoolsProviderOptions {
   /** Human-readable name shown in the consumer UI. */
@@ -205,6 +206,7 @@ export class DevtoolsProvider {
    */
   private _flush(): void {
     if (this._disposed) return
+    const flushStart = performance.now()
     this._subs.pruneStale()
     if (this._subs.size() === 0) return
 
@@ -276,6 +278,11 @@ export class DevtoolsProvider {
     } catch {
       // Bus may be closing during shutdown — swallow.
     }
+    // Per-flush CPU cost on the Devtools track. Pairs with the
+    // consumer-side `bus:*` spans on the same track so a flush and
+    // its delivery show up next to each other under the
+    // `three-flatland` group.
+    perfMeasure(PERF_TRACK.Devtools, 'flush', flushStart, performance.now(), 'warning')
   }
 
   /**

@@ -148,6 +148,14 @@ export function addBuffersView(
   let lastRenderedVersion = -1
   const ctx = canvas.getContext('2d')
 
+  // Cached ImageData reused across paints when dimensions match — without
+  // this, `createImageData(w, h)` allocates a fresh Uint8ClampedArray
+  // (~w*h*4 bytes) every frame, ~400 KB/s of throwaway garbage at 4 Hz
+  // for a 256×96 thumb.
+  let cachedImgData: ImageData | null = null
+  let cachedImgDataW = 0
+  let cachedImgDataH = 0
+
   // Keep the canvas backing locked to its actual rendered pixel size so
   // `drawImage(0,0,canvas.width,canvas.height)` truly fills what the
   // user sees. Re-render the active buffer on resize so a freshly-
@@ -240,11 +248,18 @@ export function addBuffersView(
     if (offscreen.width !== width || offscreen.height !== height) {
       offscreen.width = width
       offscreen.height = height
+      // Backing dims changed → invalidate the ImageData cache.
+      cachedImgData = null
     }
     const offCtx = offscreen.getContext('2d')
     if (!offCtx) return
 
-    const imgData = offCtx.createImageData(width, height)
+    if (cachedImgData === null || cachedImgDataW !== width || cachedImgDataH !== height) {
+      cachedImgData = offCtx.createImageData(width, height)
+      cachedImgDataW = width
+      cachedImgDataH = height
+    }
+    const imgData = cachedImgData
     const out = imgData.data
     const count = width * height
     const stride = pixelType === 'r8' ? 1 : 4
