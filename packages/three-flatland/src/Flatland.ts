@@ -42,7 +42,7 @@ import { wrapWithLightFlags } from './lights/wrapWithLightFlags'
 import type { ChannelName } from './materials/channels'
 import type { RegistryData } from './ecs/batchUtils'
 import { DEVTOOLS_BUNDLED, isDevtoolsActive } from './debug-protocol'
-import { DevtoolsProducer } from './debug/DevtoolsProducer'
+import { DevtoolsProvider } from './debug/DevtoolsProvider'
 
 /** Shape of the LightingContext trait data. */
 interface LightingContextData {
@@ -65,6 +65,13 @@ interface LightingContextData {
  * Options for creating a Flatland instance.
  */
 export interface FlatlandOptions {
+  /**
+   * Human-readable name shown in the devtools consumer UI. Useful to
+   * distinguish multiple Flatland instances (e.g. `name: 'main-game'`
+   * vs `name: 'minimap'`) or a custom engine's provider from the
+   * default. Default: `'flatland'`.
+   */
+  name?: string
   /** Render target (null = render to viewport) */
   renderTarget?: RenderTarget | null
   /** Camera to use (null = use internal orthographic camera) */
@@ -297,7 +304,14 @@ export class Flatland extends Group implements WorldProvider {
     // render); the producer owns the state. See `debug-protocol.ts` for
     // the full gate contract.
     if (DEVTOOLS_BUNDLED && isDevtoolsActive()) {
-      this._debug = new DevtoolsProducer()
+      // Uses the package-private `_createSystem` factory so the
+      // provider is flagged as `kind: 'system'`. Consumer UI defaults
+      // to preferring `user` providers over `system` ones, which means
+      // if the app also creates its own `DevtoolsProvider`, that one
+      // wins the auto-selection and Flatland's sits in the dropdown.
+      this._debug = DevtoolsProvider._createSystem({
+        name: options.name ?? 'flatland',
+      })
     }
   }
 
@@ -949,7 +963,7 @@ export class Flatland extends Group implements WorldProvider {
    * entire subsystem tree-shakes out. See `debug-protocol.ts` for the
    * gate contract.
    */
-  private _debug: DevtoolsProducer | null = null
+  private _debug: DevtoolsProvider | null = null
 
   /**
    * Dev-only check: for the currently attached lighting effect's declared
