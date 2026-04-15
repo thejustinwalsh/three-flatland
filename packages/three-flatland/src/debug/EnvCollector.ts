@@ -2,15 +2,14 @@ import { REVISION } from 'three'
 import type {
   EnvBackendDelta,
   EnvCanvasDelta,
-  EnvInfoPayload,
+  EnvPayload,
 } from '../debug-protocol'
-import { stampMessage } from '../debug-protocol'
 import { VERSION as THREE_FLATLAND_VERSION } from '../index'
 
 /**
- * Subset of `WebGPURenderer` we inspect. Fields are all optional / unknown
- * so three's concrete `Backend` type is still assignable — we narrow
- * defensively at runtime.
+ * Subset of `WebGPURenderer` we inspect. Fields are all optional /
+ * unknown so three's concrete `Backend` type is still assignable — we
+ * narrow defensively at runtime.
  */
 interface RendererLike {
   backend?: unknown
@@ -19,15 +18,15 @@ interface RendererLike {
 }
 
 /**
- * Shape of the last-dispatched `env:info` payload we track for delta
- * encoding. Separate from `EnvInfoPayload` so we hold concrete values
- * (not `T | null | undefined`) — simpler to diff against.
+ * Previous-snapshot shape. Holds full (non-delta) values we last
+ * emitted, so `fillEnv` can diff current-vs-prev and decide what goes
+ * into the output payload.
  */
 interface EnvSnapshot {
   threeFlatlandVersion?: string
   threeRevision?: string
   backend: {
-    name?: string
+    name?: string | null
     trackTimestamp?: boolean
     disjoint?: boolean | null
     gpuModeEnabled?: boolean
@@ -40,70 +39,98 @@ interface EnvSnapshot {
 }
 
 /**
- * Environment metadata producer for the `env:info` topic.
+ * Runtime environment collector for the `env` feature.
  *
- * Almost everything `env:info` carries is static (versions fixed at
- * build time, renderer backend fixed at construction); only the canvas
- * `width` / `height` / `pixelRatio` can change at runtime, and even
- * those only on user-triggered resize. So the collector is cheap:
- * - First dispatch after `ui:subscribe` sends a full snapshot.
- * - Subsequent ticks (only while a subscriber is active) diff against
- *   the cached snapshot and dispatch only if something changed (in
- *   practice: canvas dims).
- * - When no subscriber is active, `update()` is a no-op guarded by the
- *   `Heartbeat.isActive('env:info')` check from the caller.
+ * Two modes:
  *
- * Delta encoding rules match the rest of the protocol: fields that
- * haven't changed are omitted, fields that were set and are now
- * unavailable are sent as `null`.
+ * - **`snapshot(renderer)`** — full env snapshot, used on `subscribe:ack`
+ *   so a fresh consumer gets bootstrap capability info without having
+ *   to subscribe to env just to find out whether (e.g.) GPU timing is
+ *   available.
+ *
+ * - **`fillEnv(out, renderer)`** — delta-encoded payload written into
+ *   a caller-owned scratch. Returns `true` if anything differed from
+ *   the last emit. Fields absent = no change; `null` = clear (rare for
+ *   env — values don't usually *disappear*, just change).
+ *
+ * Almost every env field is static (versions fixed at build time,
+ * renderer backend fixed at construction); only canvas `width`,
+ * `height`, `pixelRatio` change at runtime. So `fillEnv` is cheap — it
+ * usually returns `false` once the first snapshot has been emitted.
+ *
+ * `resetDelta()` clears `_prev` so the next `fillEnv` emits a full
+ * snapshot (re-subscribe path).
  */
 export class EnvCollector {
-  private _bus: BroadcastChannel
-  private _last: EnvSnapshot = { backend: {}, canvas: {} }
-
-  /** Scratch Vector2-shaped object for `renderer.getSize` — avoids allocations. */
+  private _prev: EnvSnapshot = { backend: {}, canvas: {} }
   private _sizeScratch = { x: 0, y: 0 }
 
-  constructor(bus: BroadcastChannel) {
-    this._bus = bus
+  /**
+   * Build a full env snapshot. Used for bootstrap info in the
+   * `subscribe:ack` message so consumers see capabilities immediately.
+   * Does NOT update the delta tracker — callers that want to count
+   * this as the baseline should call `resetDelta()` first and then
+   * `fillEnv(out)` on the next tick to synchronise.
+   */
+  snapshot(renderer: RendererLike | undefined): EnvPayload {
+    const out: EnvPayload = {}
+    out.threeFlatlandVersion = THREE_FLATLAND_VERSION
+    out.threeRevision = REVISION
+
+    if (renderer?.backend) {
+      const b = renderer.backend as {
+        trackTimestamp?: boolean
+        constructor?: { name?: string }
+        disjoint?: unknown
+      }
+      const name = b.constructor?.name ?? null
+      const trackTimestamp = b.trackTimestamp === true
+      const isWebGL = name === 'WebGLBackend'
+      const disjoint = isWebGL ? b.disjoint != null : null
+      const gpuModeEnabled = trackTimestamp && (!isWebGL || disjoint === true)
+      const backend: EnvBackendDelta = { name, trackTimestamp, disjoint, gpuModeEnabled }
+      out.backend = backend
+    }
+
+    if (renderer?.getSize) {
+      renderer.getSize(this._sizeScratch)
+      const canvas: EnvCanvasDelta = {
+        width: this._sizeScratch.x,
+        height: this._sizeScratch.y,
+        pixelRatio: renderer.getPixelRatio?.() ?? 1,
+      }
+      out.canvas = canvas
+    }
+
+    return out
   }
 
   /**
-   * Reset the delta tracker so the next `update()` emits a full snapshot.
-   * Called by Flatland when a fresh `ui:subscribe` for `env:info` arrives.
+   * Write delta-encoded env updates into `out`. Returns `true` if any
+   * field changed since the last emit.
+   *
+   * `out` must be an EnvPayload the caller owns (typically a scratch).
+   * All fields should be `undefined` on entry; `fillEnv` leaves
+   * unchanged fields as `undefined` (meaning "no change" on the wire)
+   * and sets changed fields to their new value or `null`.
    */
-  resetDelta(): void {
-    this._last = { backend: {}, canvas: {} }
-  }
-
-  /**
-   * Inspect the current environment and dispatch a delta message on the
-   * bus if anything changed since the last dispatch. Caller is expected
-   * to gate on `Heartbeat.isActive('env:info')` — this method doesn't
-   * check for itself.
-   */
-  update(renderer: RendererLike | undefined): void {
-    const payload: EnvInfoPayload = {}
-    const last = this._last
+  fillEnv(out: EnvPayload, renderer: RendererLike | undefined): boolean {
+    const prev = this._prev
     let changed = false
 
-    // --- Static fields (versions) -------------------------------------
-    if (last.threeFlatlandVersion !== THREE_FLATLAND_VERSION) {
-      payload.threeFlatlandVersion = THREE_FLATLAND_VERSION
-      last.threeFlatlandVersion = THREE_FLATLAND_VERSION
+    if (prev.threeFlatlandVersion !== THREE_FLATLAND_VERSION) {
+      out.threeFlatlandVersion = THREE_FLATLAND_VERSION
+      prev.threeFlatlandVersion = THREE_FLATLAND_VERSION
       changed = true
     }
-    if (last.threeRevision !== REVISION) {
-      payload.threeRevision = REVISION
-      last.threeRevision = REVISION
+    if (prev.threeRevision !== REVISION) {
+      out.threeRevision = REVISION
+      prev.threeRevision = REVISION
       changed = true
     }
 
-    // --- Backend info (effectively static once renderer is created) ---
+    // Backend (effectively static once renderer is created).
     if (renderer?.backend) {
-      // three's Backend type doesn't declare these as public, but they
-      // exist on the concrete WebGPU/WebGL backend instances. Structural
-      // cast + defensive optional chaining handles both real and absent.
       const b = renderer.backend as {
         trackTimestamp?: boolean
         constructor?: { name?: string }
@@ -116,26 +143,34 @@ export class EnvCollector {
       const gpuModeEnabled = trackTimestamp && (!isWebGL || disjoint === true)
 
       const backendDelta: EnvBackendDelta = {}
-      if (last.backend.name !== name) { backendDelta.name = name; last.backend.name = name ?? undefined }
-      if (last.backend.trackTimestamp !== trackTimestamp) {
+      let backendChanged = false
+      if (prev.backend.name !== name) {
+        backendDelta.name = name
+        prev.backend.name = name
+        backendChanged = true
+      }
+      if (prev.backend.trackTimestamp !== trackTimestamp) {
         backendDelta.trackTimestamp = trackTimestamp
-        last.backend.trackTimestamp = trackTimestamp
+        prev.backend.trackTimestamp = trackTimestamp
+        backendChanged = true
       }
-      if (last.backend.disjoint !== disjoint) {
+      if (prev.backend.disjoint !== disjoint) {
         backendDelta.disjoint = disjoint
-        last.backend.disjoint = disjoint
+        prev.backend.disjoint = disjoint
+        backendChanged = true
       }
-      if (last.backend.gpuModeEnabled !== gpuModeEnabled) {
+      if (prev.backend.gpuModeEnabled !== gpuModeEnabled) {
         backendDelta.gpuModeEnabled = gpuModeEnabled
-        last.backend.gpuModeEnabled = gpuModeEnabled
+        prev.backend.gpuModeEnabled = gpuModeEnabled
+        backendChanged = true
       }
-      if (Object.keys(backendDelta).length > 0) {
-        payload.backend = backendDelta
+      if (backendChanged) {
+        out.backend = backendDelta
         changed = true
       }
     }
 
-    // --- Canvas dimensions (runtime-variable on resize / DPI change) --
+    // Canvas (runtime-variable on resize / DPI change).
     if (renderer?.getSize) {
       renderer.getSize(this._sizeScratch)
       const width = this._sizeScratch.x
@@ -143,23 +178,50 @@ export class EnvCollector {
       const pixelRatio = renderer.getPixelRatio?.() ?? 1
 
       const canvasDelta: EnvCanvasDelta = {}
-      if (last.canvas.width !== width) { canvasDelta.width = width; last.canvas.width = width }
-      if (last.canvas.height !== height) { canvasDelta.height = height; last.canvas.height = height }
-      if (last.canvas.pixelRatio !== pixelRatio) {
-        canvasDelta.pixelRatio = pixelRatio
-        last.canvas.pixelRatio = pixelRatio
+      let canvasChanged = false
+      if (prev.canvas.width !== width) {
+        canvasDelta.width = width
+        prev.canvas.width = width
+        canvasChanged = true
       }
-      if (Object.keys(canvasDelta).length > 0) {
-        payload.canvas = canvasDelta
+      if (prev.canvas.height !== height) {
+        canvasDelta.height = height
+        prev.canvas.height = height
+        canvasChanged = true
+      }
+      if (prev.canvas.pixelRatio !== pixelRatio) {
+        canvasDelta.pixelRatio = pixelRatio
+        prev.canvas.pixelRatio = pixelRatio
+        canvasChanged = true
+      }
+      if (canvasChanged) {
+        out.canvas = canvasDelta
         changed = true
       }
     }
 
-    if (!changed) return
-    try {
-      this._bus.postMessage(stampMessage({ type: 'env:info', payload }))
-    } catch {
-      // Bus may be closing during shutdown — swallow.
-    }
+    return changed
+  }
+
+  /**
+   * Reset the delta tracker so the next `fillEnv` emits a full snapshot.
+   * Called when subscriptions change. Also useful after `snapshot()` is
+   * consumed as bootstrap: reset then the next tick's delta is relative
+   * to that bootstrap rather than to an empty prev.
+   */
+  resetDelta(): void {
+    this._prev = { backend: {}, canvas: {} }
+  }
+
+  /**
+   * Record a full snapshot as the current prev. Call this after
+   * `snapshot()` is used for bootstrap so subsequent `fillEnv` calls
+   * compute deltas relative to what the consumer already has.
+   */
+  recordSnapshotAsPrev(renderer: RendererLike | undefined): void {
+    this.resetDelta()
+    // Throwaway output — we just want `fillEnv` to update `_prev`.
+    const throwaway: EnvPayload = {}
+    this.fillEnv(throwaway, renderer)
   }
 }
