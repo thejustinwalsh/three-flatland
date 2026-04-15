@@ -1,7 +1,7 @@
 import { WebGPURenderer } from 'three/webgpu'
 import { Scene, OrthographicCamera, Color } from 'three'
 import { Sprite2D, TextureLoader } from 'three-flatland'
-import { createPane } from '@three-flatland/tweakpane'
+import { createPane } from '@three-flatland/devtools'
 
 async function main() {
   const scene = new Scene()

@@ -13,7 +13,7 @@ import {
   type TilesetData,
   type TileLayerData,
 } from 'three-flatland'
-import { createPane, wireSceneStats } from '@three-flatland/tweakpane'
+import { createPane, wireSceneStats } from '@three-flatland/devtools'
 
 // ============================================
 // CONSTANTS

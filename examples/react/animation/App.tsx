@@ -7,7 +7,7 @@ import {
   Layers,
   type AnimationSetDefinition,
 } from 'three-flatland/react'
-import { usePane, usePaneFolder, useStatsMonitor } from '@three-flatland/tweakpane/react'
+import { usePane, usePaneFolder, useStatsMonitor } from '@three-flatland/devtools/react'
 
 // Register AnimatedSprite2D with R3F (tree-shakeable)
 extend({ AnimatedSprite2D })

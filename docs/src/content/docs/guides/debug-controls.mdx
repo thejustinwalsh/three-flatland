@@ -5,10 +5,10 @@ description: Themed Tweakpane helpers with automatic renderer stats, GPU timing,
 
 import { Tabs, TabItem } from '@astrojs/starlight/components';
 
-`@three-flatland/tweakpane` wraps [Tweakpane v4](https://tweakpane.github.io/docs/) with a Flatland-themed pane, a compact renderer stats row, a cycling FPS/MS/GPU/MEM graph, and React hooks that survive Strict Mode. It's the UI layer every three-flatland example uses — available as a standalone package so you can drop the same controls into your own project.
+`@three-flatland/devtools` wraps [Tweakpane v4](https://tweakpane.github.io/docs/) with a Flatland-themed pane, a compact renderer stats row, a cycling FPS/MS/GPU/MEM graph, and React hooks that survive Strict Mode. It's the UI layer every three-flatland example uses — available as a standalone package so you can drop the same controls into your own project.
 
 :::note[Alpha package]
-The examples in this repo consume `@three-flatland/tweakpane` via workspace linking today. An npm release is planned so third-party projects can install it directly. Until then, you can clone the package into your own monorepo or copy the helpers out of `packages/tweakpane/src/`.
+The examples in this repo consume `@three-flatland/devtools` via workspace linking today. An npm release is planned so third-party projects can install it directly. Until then, you can clone the package into your own monorepo or copy the helpers out of `packages/devtools/src/`.
 :::
 
 ## Installation
@@ -16,22 +16,22 @@ The examples in this repo consume `@three-flatland/tweakpane` via workspace link
 <Tabs syncKey="pkg">
   <TabItem label="npm">
     ```bash
-    npm install @three-flatland/tweakpane tweakpane @tweakpane/plugin-essentials
+    npm install @three-flatland/devtools tweakpane @tweakpane/plugin-essentials
     ```
   </TabItem>
   <TabItem label="pnpm">
     ```bash
-    pnpm add @three-flatland/tweakpane tweakpane @tweakpane/plugin-essentials
+    pnpm add @three-flatland/devtools tweakpane @tweakpane/plugin-essentials
     ```
   </TabItem>
   <TabItem label="yarn">
     ```bash
-    yarn add @three-flatland/tweakpane tweakpane @tweakpane/plugin-essentials
+    yarn add @three-flatland/devtools tweakpane @tweakpane/plugin-essentials
     ```
   </TabItem>
   <TabItem label="bun">
     ```bash
-    bun add @three-flatland/tweakpane tweakpane @tweakpane/plugin-essentials
+    bun add @three-flatland/devtools tweakpane @tweakpane/plugin-essentials
     ```
   </TabItem>
 </Tabs>
@@ -40,8 +40,8 @@ Peer dependencies: `three >= 0.183`, `tweakpane ^4.0.5`, `@tweakpane/plugin-esse
 
 Import from two entry points:
 
-- `@three-flatland/tweakpane` — vanilla Three.js: `createPane`, `wireSceneStats`, `addStatsGraph`, `applyTheme`, `FLATLAND_THEME`
-- `@three-flatland/tweakpane/react` — React hooks: `usePane`, `usePaneFolder`, `usePaneInput`, `usePaneButton`, `useStatsMonitor`, `useFpsGraph`
+- `@three-flatland/devtools` — vanilla Three.js: `createPane`, `wireSceneStats`, `addStatsGraph`, `applyTheme`, `FLATLAND_THEME`
+- `@three-flatland/devtools/react` — React hooks: `usePane`, `usePaneFolder`, `usePaneInput`, `usePaneButton`, `useStatsMonitor`, `useFpsGraph`
 
 ## What You Get
 
@@ -61,7 +61,7 @@ For plain Three.js, pass your `Scene` to `createPane` — it hooks `scene.onAfte
 ```typescript
 import { WebGPURenderer } from 'three/webgpu'
 import { Scene, OrthographicCamera } from 'three'
-import { createPane } from '@three-flatland/tweakpane'
+import { createPane } from '@three-flatland/devtools'
 
 const renderer = new WebGPURenderer({ trackTimestamp: true })
 await renderer.init()
@@ -122,7 +122,7 @@ function animate() {
 `wireSceneStats(scene, stats)` is the low-level helper `createPane({ scene })` uses internally. Call it directly when you want to wire stats into a scene separately from pane creation:
 
 ```typescript
-import { createPane, wireSceneStats } from '@three-flatland/tweakpane'
+import { createPane, wireSceneStats } from '@three-flatland/devtools'
 
 const { pane, stats } = createPane() // pane without auto-wiring
 const unwire = wireSceneStats(scene, stats)
@@ -134,7 +134,7 @@ pane.dispose()
 
 ## React Usage
 
-The React entry point (`@three-flatland/tweakpane/react`) mirrors the vanilla API as hooks that work inside an R3F `<Canvas>`. Create the pane with `usePane()`, then wire stats to the R3F frame loop with `useStatsMonitor(stats)`:
+The React entry point (`@three-flatland/devtools/react`) mirrors the vanilla API as hooks that work inside an R3F `<Canvas>`. Create the pane with `usePane()`, then wire stats to the R3F frame loop with `useStatsMonitor(stats)`:
 
 ```tsx
 import { Canvas, useFrame } from '@react-three/fiber/webgpu'
@@ -144,7 +144,7 @@ import {
   usePaneInput,
   usePaneButton,
   useStatsMonitor,
-} from '@three-flatland/tweakpane/react'
+} from '@three-flatland/devtools/react'
 
 function Scene() {
   const { pane, stats } = usePane()
@@ -223,7 +223,7 @@ The pane uses `FLATLAND_THEME` — monospace font, muted palette, and CSS variab
 
 ```typescript
 import { Pane } from 'tweakpane'
-import { applyTheme, FLATLAND_THEME } from '@three-flatland/tweakpane'
+import { applyTheme, FLATLAND_THEME } from '@three-flatland/devtools'
 
 const pane = new Pane({ title: 'Controls' })
 applyTheme(pane.element, FLATLAND_THEME)

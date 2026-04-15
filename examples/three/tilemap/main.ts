@@ -13,7 +13,7 @@ import {
   Vector3,
 } from 'three'
 import { TileMap2D, type TileMapData, type TilesetData, type TileLayerData } from 'three-flatland'
-import { createPane } from '@three-flatland/tweakpane'
+import { createPane } from '@three-flatland/devtools'
 
 // Tile IDs for our procedural tileset
 const TILES = {

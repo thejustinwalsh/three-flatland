@@ -21,7 +21,7 @@ import {
 import { gaussianBlur } from 'three/addons/tsl/display/GaussianBlurNode.js'
 import { Color, DoubleSide, Fog, type Mesh, type MeshBasicMaterial } from 'three'
 import { MeshStandardNodeMaterial } from 'three/webgpu'
-import { usePane, useStatsMonitor } from '@three-flatland/tweakpane/react'
+import { usePane, useStatsMonitor } from '@three-flatland/devtools/react'
 
 extend({ SkiaRect, SkiaCircle, SkiaLine, SkiaPathNode, SkiaTextNode, SkiaGroup })
 

@@ -19,7 +19,7 @@ import {
   SkiaGroup,
   SkiaFontLoader,
 } from '@three-flatland/skia/three'
-import { createPane } from '@three-flatland/tweakpane'
+import { createPane } from '@three-flatland/devtools'
 
 function setStatus(msg: string, _ok: boolean) {
   console.log(`[skia] ${msg}`)

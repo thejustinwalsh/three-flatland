@@ -31,7 +31,7 @@ import {
   dissolvePixelated,
   tint,
 } from '@three-flatland/nodes'
-import { createPane } from '@three-flatland/tweakpane'
+import { createPane } from '@three-flatland/devtools'
 
 // ========================================
 // Types

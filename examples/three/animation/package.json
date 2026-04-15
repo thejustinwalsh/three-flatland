@@ -10,7 +10,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@three-flatland/tweakpane": "^0.1.0-alpha.2",
+    "@three-flatland/devtools": "^0.1.0-alpha.2",
     "@tweakpane/plugin-essentials": "^0.2.1",
     "tweakpane": "^4.0.5",
     "three-flatland": "^0.1.0-alpha.4",

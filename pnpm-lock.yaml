@@ -52,7 +52,7 @@ overrides:
   '@three-flatland/presets': workspace:*
   '@three-flatland/skia': workspace:*
   '@three-flatland/skills': workspace:*
-  '@three-flatland/tweakpane': workspace:*
+  '@three-flatland/devtools': workspace:*
 
 importers:
 
@@ -227,6 +227,9 @@ importers:
       '@react-three/fiber':
         specifier: ^10.0.0-alpha.2
         version: 10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.183.1)
+      '@three-flatland/devtools':
+        specifier: workspace:*
+        version: link:../packages/devtools
       '@three-flatland/nodes':
         specifier: workspace:*
         version: link:../packages/nodes
@@ -236,9 +239,6 @@ importers:
       '@three-flatland/skia':
         specifier: workspace:*
         version: link:../packages/skia
-      '@three-flatland/tweakpane':
-        specifier: workspace:*
-        version: link:../packages/tweakpane
       '@tweakpane/core':
         specifier: ^2.0.5
         version: 2.0.5
@@ -285,9 +285,9 @@ importers:
       '@react-three/fiber':
         specifier: ^10.0.0-alpha.2
         version: 10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.183.1)
-      '@three-flatland/tweakpane':
+      '@three-flatland/devtools':
         specifier: workspace:*
-        version: link:../../../packages/tweakpane
+        version: link:../../../packages/devtools
       '@tweakpane/plugin-essentials':
         specifier: ^0.2.1
         version: 0.2.1(tweakpane@4.0.5)
@@ -331,9 +331,9 @@ importers:
       '@react-three/fiber':
         specifier: ^10.0.0-alpha.2
         version: 10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.183.1)
-      '@three-flatland/tweakpane':
+      '@three-flatland/devtools':
         specifier: workspace:*
-        version: link:../../../packages/tweakpane
+        version: link:../../../packages/devtools
       '@tweakpane/plugin-essentials':
         specifier: ^0.2.1
         version: 0.2.1(tweakpane@4.0.5)
@@ -377,9 +377,9 @@ importers:
       '@react-three/fiber':
         specifier: ^10.0.0-alpha.2
         version: 10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.183.1)
-      '@three-flatland/tweakpane':
+      '@three-flatland/devtools':
         specifier: workspace:*
-        version: link:../../../packages/tweakpane
+        version: link:../../../packages/devtools
       '@tweakpane/plugin-essentials':
         specifier: ^0.2.1
         version: 0.2.1(tweakpane@4.0.5)
@@ -423,9 +423,9 @@ importers:
       '@react-three/fiber':
         specifier: ^10.0.0-alpha.2
         version: 10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.183.1)
-      '@three-flatland/tweakpane':
+      '@three-flatland/devtools':
         specifier: workspace:*
-        version: link:../../../packages/tweakpane
+        version: link:../../../packages/devtools
       '@tweakpane/plugin-essentials':
         specifier: ^0.2.1
         version: 0.2.1(tweakpane@4.0.5)
@@ -469,12 +469,12 @@ importers:
       '@react-three/fiber':
         specifier: ^10.0.0-alpha.2
         version: 10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.183.1)
+      '@three-flatland/devtools':
+        specifier: workspace:*
+        version: link:../../../packages/devtools
       '@three-flatland/presets':
         specifier: workspace:*
         version: link:../../../packages/presets
-      '@three-flatland/tweakpane':
-        specifier: workspace:*
-        version: link:../../../packages/tweakpane
       '@tweakpane/plugin-essentials':
         specifier: ^0.2.1
         version: 0.2.1(tweakpane@4.0.5)
@@ -518,12 +518,12 @@ importers:
       '@react-three/fiber':
         specifier: ^10.0.0-alpha.2
         version: 10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.183.1)
+      '@three-flatland/devtools':
+        specifier: workspace:*
+        version: link:../../../packages/devtools
       '@three-flatland/nodes':
         specifier: workspace:*
         version: link:../../../packages/nodes
-      '@three-flatland/tweakpane':
-        specifier: workspace:*
-        version: link:../../../packages/tweakpane
       '@tweakpane/plugin-essentials':
         specifier: ^0.2.1
         version: 0.2.1(tweakpane@4.0.5)
@@ -567,12 +567,12 @@ importers:
       '@react-three/fiber':
         specifier: ^10.0.0-alpha.2
         version: 10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.183.1)
+      '@three-flatland/devtools':
+        specifier: workspace:*
+        version: link:../../../packages/devtools
       '@three-flatland/skia':
         specifier: workspace:*
         version: link:../../../packages/skia
-      '@three-flatland/tweakpane':
-        specifier: workspace:*
-        version: link:../../../packages/tweakpane
       '@tweakpane/plugin-essentials':
         specifier: ^0.2.1
         version: 0.2.1(tweakpane@4.0.5)
@@ -613,9 +613,9 @@ importers:
       '@react-three/fiber':
         specifier: ^10.0.0-alpha.2
         version: 10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.183.1)
-      '@three-flatland/tweakpane':
+      '@three-flatland/devtools':
         specifier: workspace:*
-        version: link:../../../packages/tweakpane
+        version: link:../../../packages/devtools
       '@tweakpane/plugin-essentials':
         specifier: ^0.2.1
         version: 0.2.1(tweakpane@4.0.5)
@@ -659,9 +659,9 @@ importers:
       '@react-three/fiber':
         specifier: ^10.0.0-alpha.2
         version: 10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.183.1)
-      '@three-flatland/tweakpane':
+      '@three-flatland/devtools':
         specifier: workspace:*
-        version: link:../../../packages/tweakpane
+        version: link:../../../packages/devtools
       '@tweakpane/plugin-essentials':
         specifier: ^0.2.1
         version: 0.2.1(tweakpane@4.0.5)
@@ -705,12 +705,12 @@ importers:
       '@react-three/fiber':
         specifier: ^10.0.0-alpha.2
         version: 10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.183.1)
+      '@three-flatland/devtools':
+        specifier: workspace:*
+        version: link:../../../packages/devtools
       '@three-flatland/nodes':
         specifier: workspace:*
         version: link:../../../packages/nodes
-      '@three-flatland/tweakpane':
-        specifier: workspace:*
-        version: link:../../../packages/tweakpane
       '@tweakpane/plugin-essentials':
         specifier: ^0.2.1
         version: 0.2.1(tweakpane@4.0.5)
@@ -751,9 +751,9 @@ importers:
 
   examples/three/animation:
     dependencies:
-      '@three-flatland/tweakpane':
+      '@three-flatland/devtools':
         specifier: workspace:*
-        version: link:../../../packages/tweakpane
+        version: link:../../../packages/devtools
       '@tweakpane/plugin-essentials':
         specifier: ^0.2.1
         version: 0.2.1(tweakpane@4.0.5)
@@ -779,9 +779,9 @@ importers:
 
   examples/three/basic-sprite:
     dependencies:
-      '@three-flatland/tweakpane':
+      '@three-flatland/devtools':
         specifier: workspace:*
-        version: link:../../../packages/tweakpane
+        version: link:../../../packages/devtools
       '@tweakpane/plugin-essentials':
         specifier: ^0.2.1
         version: 0.2.1(tweakpane@4.0.5)
@@ -807,9 +807,9 @@ importers:
 
   examples/three/batch-demo:
     dependencies:
-      '@three-flatland/tweakpane':
+      '@three-flatland/devtools':
         specifier: workspace:*
-        version: link:../../../packages/tweakpane
+        version: link:../../../packages/devtools
       '@tweakpane/plugin-essentials':
         specifier: ^0.2.1
         version: 0.2.1(tweakpane@4.0.5)
@@ -835,9 +835,40 @@ importers:
 
   examples/three/knightmark:
     dependencies:
-      '@three-flatland/tweakpane':
+      '@three-flatland/devtools':
         specifier: workspace:*
-        version: link:../../../packages/tweakpane
+        version: link:../../../packages/devtools
+      '@tweakpane/plugin-essentials':
+        specifier: ^0.2.1
+        version: 0.2.1(tweakpane@4.0.5)
+      three:
+        specifier: ^0.183.1
+        version: 0.183.1
+      three-flatland:
+        specifier: workspace:*
+        version: link:../../../packages/three-flatland
+      tweakpane:
+        specifier: ^4.0.5
+        version: 4.0.5
+    devDependencies:
+      '@types/three':
+        specifier: ^0.183.1
+        version: 0.183.1
+      typescript:
+        specifier: ^5.7.3
+        version: 5.9.3
+      vite:
+        specifier: ^6.4.1
+        version: 6.4.1(@types/node@22.19.7)(jiti@1.21.7)(terser@5.46.1)(tsx@4.21.0)(yaml@2.8.2)
+
+  examples/three/lighting:
+    dependencies:
+      '@three-flatland/devtools':
+        specifier: workspace:*
+        version: link:../../../packages/devtools
+      '@three-flatland/presets':
+        specifier: workspace:*
+        version: link:../../../packages/presets
       '@tweakpane/plugin-essentials':
         specifier: ^0.2.1
         version: 0.2.1(tweakpane@4.0.5)
@@ -863,12 +894,12 @@ importers:
 
   examples/three/pass-effects:
     dependencies:
+      '@three-flatland/devtools':
+        specifier: workspace:*
+        version: link:../../../packages/devtools
       '@three-flatland/nodes':
         specifier: workspace:*
         version: link:../../../packages/nodes
-      '@three-flatland/tweakpane':
-        specifier: workspace:*
-        version: link:../../../packages/tweakpane
       '@tweakpane/plugin-essentials':
         specifier: ^0.2.1
         version: 0.2.1(tweakpane@4.0.5)
@@ -894,12 +925,12 @@ importers:
 
   examples/three/skia:
     dependencies:
+      '@three-flatland/devtools':
+        specifier: workspace:*
+        version: link:../../../packages/devtools
       '@three-flatland/skia':
         specifier: workspace:*
         version: link:../../../packages/skia
-      '@three-flatland/tweakpane':
-        specifier: workspace:*
-        version: link:../../../packages/tweakpane
       '@tweakpane/plugin-essentials':
         specifier: ^0.2.1
         version: 0.2.1(tweakpane@4.0.5)
@@ -922,9 +953,9 @@ importers:
 
   examples/three/template:
     dependencies:
-      '@three-flatland/tweakpane':
+      '@three-flatland/devtools':
         specifier: workspace:*
-        version: link:../../../packages/tweakpane
+        version: link:../../../packages/devtools
       '@tweakpane/plugin-essentials':
         specifier: ^0.2.1
         version: 0.2.1(tweakpane@4.0.5)
@@ -950,9 +981,9 @@ importers:
 
   examples/three/tilemap:
     dependencies:
-      '@three-flatland/tweakpane':
+      '@three-flatland/devtools':
         specifier: workspace:*
-        version: link:../../../packages/tweakpane
+        version: link:../../../packages/devtools
       '@tweakpane/plugin-essentials':
         specifier: ^0.2.1
         version: 0.2.1(tweakpane@4.0.5)
@@ -978,12 +1009,12 @@ importers:
 
   examples/three/tsl-nodes:
     dependencies:
+      '@three-flatland/devtools':
+        specifier: workspace:*
+        version: link:../../../packages/devtools
       '@three-flatland/nodes':
         specifier: workspace:*
         version: link:../../../packages/nodes
-      '@three-flatland/tweakpane':
-        specifier: workspace:*
-        version: link:../../../packages/tweakpane
       '@tweakpane/plugin-essentials':
         specifier: ^0.2.1
         version: 0.2.1(tweakpane@4.0.5)
@@ -1057,6 +1088,48 @@ importers:
         version: 6.4.1(@types/node@22.19.7)(jiti@1.21.7)(terser@5.46.1)(tsx@4.21.0)(yaml@2.8.2)
 
   packages/bake: {}
+
+  packages/devtools:
+    devDependencies:
+      '@react-three/fiber':
+        specifier: 'catalog:'
+        version: 10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.183.1)
+      '@testing-library/react':
+        specifier: ^16.1.0
+        version: 16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@19.2.3(@types/react@19.2.9))(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
+      '@tweakpane/core':
+        specifier: 'catalog:'
+        version: 2.0.5
+      '@tweakpane/plugin-essentials':
+        specifier: 'catalog:'
+        version: 0.2.1(tweakpane@4.0.5)
+      '@types/react':
+        specifier: 'catalog:'
+        version: 19.2.9
+      '@types/react-dom':
+        specifier: 'catalog:'
+        version: 19.2.3(@types/react@19.2.9)
+      '@types/three':
+        specifier: 'catalog:'
+        version: 0.183.1
+      happy-dom:
+        specifier: ^15.11.7
+        version: 15.11.7
+      react:
+        specifier: 'catalog:'
+        version: 19.2.3
+      react-dom:
+        specifier: 'catalog:'
+        version: 19.2.3(react@19.2.3)
+      three:
+        specifier: 'catalog:'
+        version: 0.183.1
+      tweakpane:
+        specifier: 'catalog:'
+        version: 4.0.5
+      typescript:
+        specifier: 'catalog:'
+        version: 5.9.3
 
   packages/nodes:
     devDependencies:
@@ -1162,48 +1235,6 @@ importers:
       three:
         specifier: 'catalog:'
         version: 0.183.1
-
-  packages/tweakpane:
-    devDependencies:
-      '@react-three/fiber':
-        specifier: 'catalog:'
-        version: 10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.183.1)
-      '@testing-library/react':
-        specifier: ^16.1.0
-        version: 16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@19.2.3(@types/react@19.2.9))(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
-      '@tweakpane/core':
-        specifier: 'catalog:'
-        version: 2.0.5
-      '@tweakpane/plugin-essentials':
-        specifier: 'catalog:'
-        version: 0.2.1(tweakpane@4.0.5)
-      '@types/react':
-        specifier: 'catalog:'
-        version: 19.2.9
-      '@types/react-dom':
-        specifier: 'catalog:'
-        version: 19.2.3(@types/react@19.2.9)
-      '@types/three':
-        specifier: 'catalog:'
-        version: 0.183.1
-      happy-dom:
-        specifier: ^15.11.7
-        version: 15.11.7
-      react:
-        specifier: 'catalog:'
-        version: 19.2.3
-      react-dom:
-        specifier: 'catalog:'
-        version: 19.2.3(react@19.2.3)
-      three:
-        specifier: 'catalog:'
-        version: 0.183.1
-      tweakpane:
-        specifier: 'catalog:'
-        version: 4.0.5
-      typescript:
-        specifier: 'catalog:'
-        version: 5.9.3
 
   skills: {}
 

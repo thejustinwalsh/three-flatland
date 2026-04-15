@@ -14,8 +14,8 @@ import {
   type TilesetData,
   type TileLayerData,
 } from 'three-flatland/react'
-import { usePane, usePaneFolder, usePaneInput, useStatsMonitor } from '@three-flatland/tweakpane/react'
-import type { StatsHandle } from '@three-flatland/tweakpane/react'
+import { usePane, usePaneFolder, usePaneInput, useStatsMonitor } from '@three-flatland/devtools/react'
+import type { StatsHandle } from '@three-flatland/devtools/react'
 
 extend({ SpriteGroup, TileMap2D })
 

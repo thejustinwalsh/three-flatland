@@ -44,7 +44,7 @@ three-flatland is a library for rendering 2D sprites, animated spritesheets, til
 - `three-flatland/react`: R3F subpath -- re-exports core + ThreeElements JSX type augmentation
 - `@three-flatland/nodes`: 100+ TSL shader nodes (sprite, color, alpha, retro, distortion, vfx, blur, display, analog, upscale)
 - `@three-flatland/skia`: Skia WASM 2D vector graphics, GPU-accelerated, WebGPU/WebGL, Three.js + R3F integration
-- `@three-flatland/tweakpane`: Tweakpane v4 helpers for examples -- createPane, wireSceneStats, usePane, useStatsMonitor, stats row, FPS graph, Flatland theme
+- `@three-flatland/devtools`: Tweakpane v4 helpers for examples -- createPane, wireSceneStats, usePane, useStatsMonitor, stats row, FPS graph, Flatland theme
 - `@three-flatland/presets`: Pre-configured effect combinations (coming soon)
 
 ## Optional

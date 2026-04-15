@@ -32,7 +32,7 @@ import {
   dissolvePixelated,
   tint,
 } from '@three-flatland/nodes'
-import { usePane, usePaneFolder, useStatsMonitor } from '@three-flatland/tweakpane/react'
+import { usePane, usePaneFolder, useStatsMonitor } from '@three-flatland/devtools/react'
 
 extend({ AnimatedSprite2D })
 

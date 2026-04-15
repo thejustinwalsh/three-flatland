@@ -26,7 +26,7 @@ import {
   staticNoise,
   chromaticAberration,
 } from '@three-flatland/nodes'
-import { createPane } from '@three-flatland/tweakpane'
+import { createPane } from '@three-flatland/devtools'
 import type { FolderApi } from 'tweakpane'
 
 // ─── PassEffect Definitions ─────────────────────────────────────────────────

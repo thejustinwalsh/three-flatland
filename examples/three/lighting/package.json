@@ -1,15 +1,16 @@
 {
-  "name": "example-three-template",
+  "name": "example-three-lighting",
   "version": "0.0.1-alpha.0",
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite dev --port ${TURBO_MFE_PORT:-5179}",
+    "dev": "vite dev --port ${TURBO_MFE_PORT:-5181}",
     "build": "vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@three-flatland/presets": "^0.1.0-alpha.4",
     "@three-flatland/devtools": "^0.1.0-alpha.2",
     "@tweakpane/plugin-essentials": "^0.2.1",
     "three-flatland": "^0.1.0-alpha.4",

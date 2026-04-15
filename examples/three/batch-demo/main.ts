@@ -1,7 +1,7 @@
 import { WebGPURenderer } from 'three/webgpu'
 import { Scene, OrthographicCamera, Color, Vector2, Raycaster, Plane, Vector3 } from 'three'
 import { Sprite2D, Sprite2DMaterial, SpriteGroup, Layers, TextureLoader } from 'three-flatland'
-import { createPane } from '@three-flatland/tweakpane'
+import { createPane } from '@three-flatland/devtools'
 
 // Configuration
 const TILE_SIZE = 64

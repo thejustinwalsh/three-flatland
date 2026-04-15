@@ -10,9 +10,9 @@ import {
   type SpriteFrame,
   type RenderStats,
 } from 'three-flatland/react'
-import { usePane, useStatsMonitor } from '@three-flatland/tweakpane/react'
+import { usePane, useStatsMonitor } from '@three-flatland/devtools/react'
 import type { Pane } from 'tweakpane'
-import type { StatsHandle } from '@three-flatland/tweakpane/react'
+import type { StatsHandle } from '@three-flatland/devtools/react'
 // Extend R3F with our custom classes
 extend({ SpriteGroup, Sprite2D, Sprite2DMaterial })
 

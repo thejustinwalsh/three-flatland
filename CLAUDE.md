@@ -14,7 +14,7 @@
 ## Architecture
 - WebGPU + TSL (Three Shader Language) exclusively — no WebGL, no GLSL
 - R3F examples import from `@react-three/fiber/webgpu`, not `@react-three/fiber`
-- Three.js users: `import from 'three-flatland'` — R3F users: `import from 'three-flatland/react'` (all packages follow this `/react` subpath pattern, incl. `@three-flatland/tweakpane/react`)
+- Three.js users: `import from 'three-flatland'` — R3F users: `import from 'three-flatland/react'` (all packages follow this `/react` subpath pattern, incl. `@three-flatland/devtools/react`)
 - Shared versions in `pnpm-workspace.yaml` catalog; `pnpm.overrides` maps `@three-flatland/*` to `workspace:*`
 
 ## Examples
@@ -38,5 +38,5 @@
 ## Do NOT
 - Use GLSL or `onBeforeCompile` — all shaders use TSL node materials
 - Use `WebGLRenderTarget` — use renderer-agnostic `RenderTarget`
-- Use Web Awesome (`@awesome.me/webawesome`) — examples use Tweakpane (`@three-flatland/tweakpane/react`) now
+- Use Web Awesome (`@awesome.me/webawesome`) — examples use Tweakpane (`@three-flatland/devtools/react`) now
 - Add `declare global { namespace JSX }` — use `ThreeElements` interface augmentation via `three-flatland/react`

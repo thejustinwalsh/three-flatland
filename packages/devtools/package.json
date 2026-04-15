@@ -1,7 +1,7 @@
 {
-  "name": "@three-flatland/tweakpane",
+  "name": "@three-flatland/devtools",
   "version": "0.1.0-alpha.2",
-  "description": "Tweakpane v4 integration for three-flatland examples — theme, helpers, and React hooks",
+  "description": "Dev-time introspection toolkit for three-flatland — Tweakpane v4 UI plugin, stats monitor, and buffer inspection",
   "type": "module",
   "exports": {
     ".": {
@@ -97,6 +97,6 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/thejustinwalsh/three-flatland.git",
-    "directory": "packages/tweakpane"
+    "directory": "packages/devtools"
   }
 }

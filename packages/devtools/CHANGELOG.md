@@ -1,4 +1,4 @@
-# @three-flatland/tweakpane
+# @three-flatland/devtools
 
 ## 0.1.0-alpha.2
 
@@ -9,7 +9,7 @@
   > PR: https://github.com/thejustinwalsh/three-flatland/pull/22
 
   ### New features
-  - `createPane` — initial release of `@three-flatland/tweakpane` with themed pane, FPS/MS/GPU/MEM cycling stats graph, and collapsible stats row showing draw calls, triangles, geometries, and textures
+  - `createPane` — initial release of `@three-flatland/devtools` with themed pane, FPS/MS/GPU/MEM cycling stats graph, and collapsible stats row showing draw calls, triangles, geometries, and textures
   - `createPane({ scene })` — pass a Three.js `Scene` to auto-wire `scene.onAfterRender` for per-frame draw/triangle stats; no manual `stats.update()` call required
   - `wireSceneStats(scene, stats)` — standalone export centralising GPU timestamp pool drain and WebGL/WebGPU backend detection; used by both `createPane` and `useStatsMonitor`
   - `StatsHandle` extended with `enableGpu()` and `gpuTime(ms)` — called automatically when `trackTimestamp` is detected; GPU mode cycles into the stats graph
@@ -34,4 +34,4 @@
   - `CreatePaneOptions.fps` option removed; replaced by `stats` (default: `true`)
   - `StatsHandle.update()` signature widened to `StatsUpdate` (all fields optional)
 
-  `@three-flatland/tweakpane` introduces a full-featured stats pane with automatic GPU timing, a cycling FPS/MS/GPU/MEM graph, and React hooks that survive strict mode — replacing the earlier minimal FPS-only pane API.
+  `@three-flatland/devtools` introduces a full-featured stats pane with automatic GPU timing, a cycling FPS/MS/GPU/MEM graph, and React hooks that survive strict mode — replacing the earlier minimal FPS-only pane API.

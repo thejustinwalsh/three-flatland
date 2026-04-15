@@ -47,7 +47,7 @@
       "@three-flatland/presets": "workspace:*",
       "@three-flatland/skia": "workspace:*",
       "@three-flatland/skills": "workspace:*",
-      "@three-flatland/tweakpane": "workspace:*"
+      "@three-flatland/devtools": "workspace:*"
     }
   },
   "devDependencies": {

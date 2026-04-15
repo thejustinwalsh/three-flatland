@@ -2,7 +2,7 @@ import { Canvas, extend, useFrame, useLoader, useThree } from '@react-three/fibe
 import { useRef, useState, useCallback } from 'react'
 import { Color, type OrthographicCamera as ThreeOrthographicCamera } from 'three'
 import { Sprite2D, TextureLoader } from 'three-flatland/react'
-import { usePane, usePaneFolder, usePaneInput, useStatsMonitor } from '@three-flatland/tweakpane/react'
+import { usePane, usePaneFolder, usePaneInput, useStatsMonitor } from '@three-flatland/devtools/react'
 
 // Register Sprite2D with R3F (tree-shakeable)
 extend({ Sprite2D })

@@ -2,7 +2,7 @@ import { Canvas, extend, useLoader, useThree } from '@react-three/fiber/webgpu'
 import { useLayoutEffect } from 'react'
 import type { OrthographicCamera as ThreeOrthographicCamera } from 'three'
 import { Sprite2D, TextureLoader } from 'three-flatland/react'
-import { usePane, usePaneInput, useStatsMonitor } from '@three-flatland/tweakpane/react'
+import { usePane, usePaneInput, useStatsMonitor } from '@three-flatland/devtools/react'
 
 extend({ Sprite2D })
 
