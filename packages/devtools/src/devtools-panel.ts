@@ -6,6 +6,16 @@ export interface MountDevtoolsPanelOptions {
   channelName?: string
   /** Optional title for the folder. Default: `Devtools`. */
   title?: string
+  /**
+   * Share an existing `DevtoolsClient` instead of constructing one.
+   * `createPane` uses this to construct one client per pane and have
+   * both the panel and the stats graph/row subscribe to it — one
+   * source of truth, no duplicate bus subscriptions.
+   *
+   * If provided, the panel won't dispose the client when the panel
+   * goes away (the owner of the client is responsible).
+   */
+  client?: DevtoolsClient
 }
 
 /**
@@ -87,22 +97,33 @@ export function mountDevtoolsPanel(
   env.addBinding(display, 'threeVersion', { readonly: true, label: 'three' })
   env.addBinding(display, 'flatlandVersion', { readonly: true, label: 'flatland' })
 
-  const client = new DevtoolsClient({
+  const ownsClient = options.client === undefined
+  const client = options.client ?? new DevtoolsClient({
     features: ['stats', 'env'],
     channelName: options.channelName,
-    onChange: (state) => {
-      copyState(state, display)
-      folder.refresh()
-    },
   })
 
-  client.start()
+  // Seed the display from any state the client has already accumulated
+  // (relevant when `createPane` constructs the client first, then the
+  // panel subscribes — there may be initial announces already).
+  copyState(client.state, display)
+  folder.refresh()
+
+  const unsubscribe = client.addListener((state) => {
+    copyState(state, display)
+    folder.refresh()
+  })
+
+  // Only start the client if we constructed it. When sharing a
+  // caller-supplied client, the caller is responsible for `start()`.
+  if (ownsClient) client.start()
 
   return {
     client,
     folder,
     dispose() {
-      client.dispose()
+      unsubscribe()
+      if (ownsClient) client.dispose()
       try { folder.dispose() } catch { /* already disposed */ }
     },
   }
