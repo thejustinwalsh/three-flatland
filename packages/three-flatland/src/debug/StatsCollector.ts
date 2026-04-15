@@ -1,10 +1,6 @@
 import type { Scene } from 'three'
-import type {
-  DebugMessage,
-  StatsFramePayload,
-  StatsGpuReadyPayload,
-} from '../debug-protocol'
-import { DEBUG_PROTOCOL_VERSION } from '../debug-protocol'
+import type { DebugMessage } from '../debug-protocol'
+import { stampMessage } from '../debug-protocol'
 import type { Heartbeat } from './Heartbeat'
 
 /** Subset of three's renderer.info we read each frame. */
@@ -73,6 +69,58 @@ export class StatsCollector {
   /** Set true while we have an in-flight `resolveTimestampsAsync` to avoid pile-up. */
   private _gpuResolveInFlight = false
 
+  /**
+   * Last-dispatched stats:frame field values. Used by the delta encoder
+   * to send only fields that changed. Undefined entries mean "never
+   * sent". Reset by `resetDelta()` on `ui:subscribe` for stats:frame.
+   *
+   * Not a scratch — this is the *diff reference*, persisted across
+   * ticks. Cleared by reassigning its properties, not the object itself,
+   * to keep the same backing shape.
+   */
+  private _lastStatsFrame: {
+    drawCalls?: number
+    triangles?: number
+    geometries?: number
+    textures?: number
+    fps?: number
+  } = {}
+
+  /**
+   * Scratch envelope + payload for `stats:frame` — reused every render.
+   * `stampMessage` mutates `v` / `ts` in place; the fields on the payload
+   * are overwritten per tick (undefined where unchanged, a value where
+   * changed). `structuredClone` inside `bus.postMessage` gives
+   * subscribers an independent copy, so this scratch is safe to mutate
+   * immediately after the post.
+   *
+   * Payload shape is declared fully here (all optional delta fields set
+   * to `undefined` by default) so V8 can pick a stable hidden class for
+   * the object — no shape churn across frames.
+   */
+  private _statsFrameScratch: DebugMessage = {
+    v: 1,
+    ts: 0,
+    type: 'stats:frame',
+    payload: {
+      frame: 0,
+      drawCalls: undefined,
+      triangles: undefined,
+      geometries: undefined,
+      textures: undefined,
+      cpuMs: undefined,
+      fps: undefined,
+    },
+  }
+
+  /** Scratch envelope for `stats:gpuReady`. Low frequency (async), but still worth not-allocating. */
+  private _statsGpuScratch: DebugMessage = {
+    v: 1,
+    ts: 0,
+    type: 'stats:gpuReady',
+    payload: { frame: 0, gpuMs: 0 },
+  }
+
   constructor(scene: Scene, bus: BroadcastChannel, pings: Heartbeat) {
     this._scene = scene
     this._bus = bus
@@ -138,21 +186,81 @@ export class StatsCollector {
     const wantsGpu = this._pings.isActive('stats:gpu')
     if (!wantsFrame && !wantsGpu) return
 
-    if (wantsFrame) {
-      const render = renderer.info?.render
-      const memory = renderer.info?.memory
-      const payload: StatsFramePayload = {
-        frame: this._frame,
-        drawCalls: render?.drawCalls ?? 0,
-        triangles: render?.triangles ?? 0,
-        geometries: memory?.geometries ?? 0,
-        textures: memory?.textures ?? 0,
-        fps: this._fps,
-      }
-      this._post({ v: DEBUG_PROTOCOL_VERSION, type: 'stats:frame', payload })
-    }
+    if (wantsFrame) this._postStatsFrame(renderer)
 
     if (wantsGpu) this._maybeResolveGpu(renderer)
+  }
+
+  /**
+   * Build and dispatch a `stats:frame` payload using delta-encoding.
+   * `frame` is always included; other fields are included only when
+   * they differ from the last-sent value. Undefined fields signal "no
+   * change"; null is reserved for "clear" (not used here — we always
+   * have values to send for all non-optional metrics).
+   */
+  private _postStatsFrame(renderer: RendererLike): void {
+    const render = renderer.info?.render
+    const memory = renderer.info?.memory
+
+    const drawCalls = render?.drawCalls ?? 0
+    const triangles = render?.triangles ?? 0
+    const geometries = memory?.geometries ?? 0
+    const textures = memory?.textures ?? 0
+    const fps = this._fps
+
+    const msg = this._statsFrameScratch
+    if (msg.type !== 'stats:frame') return // TS narrowing guard
+    const payload = msg.payload
+    const last = this._lastStatsFrame
+
+    // Always-present fields
+    payload.frame = this._frame
+
+    // Delta fields: undefined = "no change" on the wire. Reset all to
+    // undefined first (clears any stale value from the previous tick),
+    // then set only the ones that differ from last-sent.
+    payload.drawCalls = undefined
+    payload.triangles = undefined
+    payload.geometries = undefined
+    payload.textures = undefined
+    payload.fps = undefined
+
+    if (drawCalls !== last.drawCalls) { payload.drawCalls = drawCalls; last.drawCalls = drawCalls }
+    if (triangles !== last.triangles) { payload.triangles = triangles; last.triangles = triangles }
+    if (geometries !== last.geometries) { payload.geometries = geometries; last.geometries = geometries }
+    if (textures !== last.textures) { payload.textures = textures; last.textures = textures }
+    if (fps !== last.fps) {
+      // Treat undefined as null for the wire — subscriber clears the field
+      payload.fps = fps === undefined ? null : fps
+      last.fps = fps
+    }
+
+    this._post(msg)
+  }
+
+  /**
+   * Stamp the envelope + dispatch a scratch message on the bus. Takes
+   * the scratch by reference (no allocation), rewrites `v` / `ts` in
+   * place via `stampMessage`, posts. Catches bus-closed errors during
+   * shutdown. Centralised so every send site has identical semantics.
+   */
+  private _post(msg: DebugMessage): void {
+    stampMessage(msg)
+    try {
+      this._bus.postMessage(msg)
+    } catch {
+      // Bus may be closing during shutdown — swallow.
+    }
+  }
+
+  /**
+   * Reset the delta tracker so the next dispatch emits a full snapshot.
+   * Called by Flatland when a fresh `ui:subscribe` arrives for
+   * `stats:frame` — lets late-joining consumers see every field on the
+   * next frame rather than having to infer state from partial deltas.
+   */
+  resetDelta(): void {
+    this._lastStatsFrame = {}
   }
 
   private _maybeResolveGpu(renderer: RendererLike): void {
@@ -181,20 +289,15 @@ export class StatsCollector {
         this._gpuResolveInFlight = false
         const gpuMs = renderer.info?.render?.timestamp
         if (typeof gpuMs !== 'number' || gpuMs <= 0) return
-        const payload: StatsGpuReadyPayload = { frame, gpuMs }
-        this._post({ v: DEBUG_PROTOCOL_VERSION, type: 'stats:gpuReady', payload })
+        const msg = this._statsGpuScratch
+        if (msg.type !== 'stats:gpuReady') return
+        msg.payload.frame = frame
+        msg.payload.gpuMs = gpuMs
+        this._post(msg)
       })
       .catch(() => {
         this._gpuResolveInFlight = false
         // Transient readback failures are fine; we'll try again next frame.
       })
-  }
-
-  private _post(msg: DebugMessage): void {
-    try {
-      this._bus.postMessage(msg)
-    } catch {
-      // Bus may be closing during shutdown — swallow.
-    }
   }
 }

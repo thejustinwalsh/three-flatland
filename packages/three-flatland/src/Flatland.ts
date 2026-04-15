@@ -46,6 +46,7 @@ import { DEBUG_CHANNEL, DEVTOOLS_BUNDLED, isDevtoolsActive } from './debug-proto
 import type { DebugMessage } from './debug-protocol'
 import { Heartbeat } from './debug/Heartbeat'
 import { StatsCollector } from './debug/StatsCollector'
+import { EnvCollector } from './debug/EnvCollector'
 
 /** Shape of the LightingContext trait data. */
 interface LightingContextData {
@@ -307,8 +308,19 @@ export class Flatland extends Group implements WorldProvider {
     this._debugBus = new BroadcastChannel(DEBUG_CHANNEL)
     this._debugPings = new Heartbeat(this._debugBus)
     this._debugStats = new StatsCollector(this.scene, this._debugBus, this._debugPings)
+    this._debugEnv = new EnvCollector(this._debugBus)
+
     this._debugBus.addEventListener('message', (ev: MessageEvent<DebugMessage>) => {
-      this._debugPings?.handle(ev.data)
+      const msg = ev.data
+      if (!msg || typeof msg !== 'object' || !('type' in msg)) return
+      this._debugPings?.handle(msg)
+      // Late-joining subscribers: reset the per-topic delta tracker so the
+      // next dispatch is a full snapshot. Sender is about to get full
+      // state on the next producer tick.
+      if (msg.type === 'ui:subscribe') {
+        if (msg.payload.topic === 'stats:frame') this._debugStats?.resetDelta()
+        if (msg.payload.topic === 'env:info') this._debugEnv?.resetDelta()
+      }
     })
   }
 
@@ -322,6 +334,7 @@ export class Flatland extends Group implements WorldProvider {
       this._debugStats.dispose()
       this._debugStats = null
     }
+    this._debugEnv = null
     if (this._debugBus) {
       this._debugBus.close()
       this._debugBus = null
@@ -978,6 +991,7 @@ export class Flatland extends Group implements WorldProvider {
   private _debugBus: BroadcastChannel | null = null
   private _debugPings: Heartbeat | null = null
   private _debugStats: StatsCollector | null = null
+  private _debugEnv: EnvCollector | null = null
 
   /**
    * Dev-only check: for the currently attached lighting effect's declared
@@ -1093,6 +1107,13 @@ export class Flatland extends Group implements WorldProvider {
     // browser's repaint cadence. Cheap (one Date.now + a few ints), and
     // a no-op when StatsCollector wasn't created (prod build).
     this._debugStats?.beginFrame(performance.now())
+
+    // Dispatch env:info deltas if anyone's listening. Cheap per-render —
+    // field-by-field comparison against cached state, posts only if
+    // something changed (in practice: first subscribe + canvas resize).
+    if (this._debugEnv && this._debugPings?.isActive('env:info')) {
+      this._debugEnv.update(renderer)
+    }
 
     // Auto-sync global uniforms from renderer
     this._syncGlobals(renderer)
