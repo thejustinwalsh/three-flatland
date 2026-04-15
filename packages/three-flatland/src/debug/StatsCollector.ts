@@ -180,16 +180,19 @@ export class StatsCollector {
     const textures = memory?.textures ?? 0
     const fps = this._fps
 
-    // Clear all delta fields first so stale values from previous ticks
-    // don't leak through the scratch payload.
-    out.drawCalls = undefined
-    out.triangles = undefined
-    out.geometries = undefined
-    out.textures = undefined
-    out.cpuMs = undefined
-    out.fps = undefined
-    out.gpuMs = undefined
-    out.gpuFrame = undefined
+    // Delete (not set-to-undefined) every delta field so `structuredClone`
+    // inside postMessage emits a truly absent key, not an explicit
+    // `{ fieldName: undefined }` on the wire. Absent = no change per
+    // protocol; explicit undefined would round-trip to consumers as
+    // visible `undefined` values and waste bytes in the message.
+    delete out.drawCalls
+    delete out.triangles
+    delete out.geometries
+    delete out.textures
+    delete out.cpuMs
+    delete out.fps
+    delete out.gpuMs
+    delete out.gpuFrame
 
     let changed = false
     const prev = this._prev

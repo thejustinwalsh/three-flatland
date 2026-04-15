@@ -311,25 +311,13 @@ export class Flatland extends Group implements WorldProvider {
     this._debugStats = new StatsCollector(this.scene)
     this._debugEnv = new EnvCollector()
 
-    // Pre-allocate scratch payloads (stable hidden class for V8 — all
-    // delta fields declared, set to undefined). These live inside the
-    // data-packet scratch's `features` object.
-    this._debugStatsScratch = {
-      drawCalls: undefined,
-      triangles: undefined,
-      geometries: undefined,
-      textures: undefined,
-      cpuMs: undefined,
-      fps: undefined,
-      gpuMs: undefined,
-      gpuFrame: undefined,
-    }
-    this._debugEnvScratch = {
-      threeFlatlandVersion: undefined,
-      threeRevision: undefined,
-      backend: undefined,
-      canvas: undefined,
-    }
+    // Pre-allocate empty scratch objects. Delta fields are added and
+    // removed (via `delete`) per tick so `structuredClone` sees absent
+    // keys, not `{ field: undefined }` pairs, for the wire. Re-used
+    // across every post — one allocation at init, ~zero per tick past
+    // the per-field writes inside fillStats / fillEnv.
+    this._debugStatsScratch = {}
+    this._debugEnvScratch = {}
     this._debugDataScratch = {
       v: 1,
       ts: 0,
@@ -422,13 +410,16 @@ export class Flatland extends Group implements WorldProvider {
 
     const features = (msg.payload as DataPayload).features
 
-    // Clear all feature slots on the scratch so last tick's payloads
-    // don't leak into this tick.
-    features.stats = undefined
-    features.env = undefined
-    features['atlas:tick'] = undefined
-    features['atlas:fullscreen'] = undefined
-    features.registry = undefined
+    // Delete (not set-to-undefined) every feature slot so absent
+    // features are truly absent on the wire, not present-with-undefined.
+    // `structuredClone` would otherwise emit `{ stats: undefined, ... }`
+    // for every slot we didn't populate — wire bloat + confusing
+    // consumer console output.
+    delete features.stats
+    delete features.env
+    delete features['atlas:tick']
+    delete features['atlas:fullscreen']
+    delete features.registry
 
     let anyFeature = false
 
@@ -442,11 +433,11 @@ export class Flatland extends Group implements WorldProvider {
 
     if (active.has('env')) {
       const envOut = this._debugEnvScratch!
-      // Reset env scratch slots so stale values don't leak.
-      envOut.threeFlatlandVersion = undefined
-      envOut.threeRevision = undefined
-      envOut.backend = undefined
-      envOut.canvas = undefined
+      // Reset env scratch slots — same delete-not-undefined discipline.
+      delete envOut.threeFlatlandVersion
+      delete envOut.threeRevision
+      delete envOut.backend
+      delete envOut.canvas
       if (env.fillEnv(envOut, renderer)) {
         features.env = envOut
         anyFeature = true
