@@ -58,6 +58,7 @@
     "@tweakpane/plugin-essentials": "^0.2.1",
     "react": "^19.0.0",
     "three": "^0.183.0",
+    "three-flatland": "^0.1.0-alpha.4",
     "tweakpane": "^4.0.5"
   },
   "peerDependenciesMeta": {
@@ -68,6 +69,9 @@
       "optional": true
     },
     "three": {
+      "optional": true
+    },
+    "three-flatland": {
       "optional": true
     }
   },
@@ -83,6 +87,7 @@
     "react": "catalog:",
     "react-dom": "catalog:",
     "three": "catalog:",
+    "three-flatland": "workspace:*",
     "tweakpane": "catalog:",
     "typescript": "catalog:"
   },
