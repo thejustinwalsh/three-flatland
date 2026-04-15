@@ -5,16 +5,20 @@
 > Branch: lighting-stochastic-adoption
 > PR: https://github.com/thejustinwalsh/three-flatland/pull/27
 
-## New package: `@three-flatland/bake`
+**CLI**
 
-- New `flatland-bake` CLI binary — single entry point that discovers and dispatches to package-contributed bakers
-- Bakers declared via `flatland.bakers` array in `package.json`; installing a package makes its subcommand appear in `flatland-bake --list` automatically
-- Baker interface: default-export a `Baker` object `{ name, description, run(args), usage? }`
-- Discovery walks `node_modules` upward from CWD; handles scoped packages, missing dirs, and malformed manifests; duplicate-name conflicts reported with first-wins policy
-- CWD self-discovery: when the CLI runs inside a package with its own baker declarations those are registered first, enabling iteration without self-symlink
+- New `flatland-bake` binary — single entry point that discovers and dispatches to bakers contributed by any installed package
+- Bakers declared via `"flatland": { "bakers": [{ "name", "description", "entry" }] }` in package.json
+- Discovery walks `node_modules` upward from CWD, tolerating scoped packages, missing dirs, and malformed manifests
+- CWD-self-discovery: bakers in the CWD's own `package.json` register first, enabling package authors to iterate without self-symlinking
+- Duplicate-name conflicts reported with first-wins policy
+- `flatland-bake --list` enumerates all discovered bakers
 
-## `flatland-bake normal` (via `@three-flatland/normals`)
+**Normal-map baker**
 
-- `flatland-bake normal <input.png> [output.png] [--strength N]` — offline normal-map baker contributed by `@three-flatland/normals`
+- `flatland-bake normal <sprite.png>` — offline Node port of the `normalFromSprite` TSL helper
+- Reads RGBA PNG, computes 4-neighbor alpha gradient, writes sibling `.normal.png`
+- `--strength <n>` flag scales the gradient before normalization (default 1)
+- Reduces per-fragment shader cost: consumers load the baked PNG as a texture instead of paying four alpha samples + gradient at runtime
 
-Adds a `flatland-bake` CLI for discoverable, package-contributed asset bakers; the initial `normal` subcommand is provided by `@three-flatland/normals`.
+`@three-flatland/bake` ships the extensible CLI; `@three-flatland/normals` ships the first concrete baker and the runtime loader that consumes baked output.

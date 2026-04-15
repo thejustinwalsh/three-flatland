@@ -5,26 +5,13 @@
 > Branch: lighting-stochastic-adoption
 > PR: https://github.com/thejustinwalsh/three-flatland/pull/27
 
-## New package: `@three-flatland/normals`
+**New package: `@three-flatland/normals`**
 
-- Offline normal-map baker: reads an RGBA PNG, computes a 4-neighbor alpha gradient, and writes a tangent-space `.normal.png` sibling
-- Contributed as `flatland-bake normal` subcommand — appears in `flatland-bake --list` automatically after install
-- Optional `--strength` multiplier; output path defaults to `<input>.normal.png`
+- Offline normal-map baker: reads RGBA PNG, computes 4-neighbor alpha gradient, outputs tangent-space `.normal.png` (available as `flatland-bake normal <sprite.png>`)
+- `NormalMapLoader` — runtime "try baked → fall back to runtime TSL" loader implementing the canonical loader pattern
+  - Instance API extending `three.Loader` (compatible with R3F `useLoader`)
+  - Static API: `NormalMapLoader.load(url, { forceRuntime? })` with a shared URL+option-keyed cache
+  - Silent HEAD probe for 404; dev-time warning on runtime fallback (suppressed under `NODE_ENV=production`)
+- Post-rebase fixes: unused import cleanup in `baker.ts`, hoisted inline `import()` type annotations to named `import type`
 
-## `NormalMapLoader`
-
-- Runtime loader extending `three.Loader` — R3F `useLoader`-compatible
-- Static `NormalMapLoader.load(url, { forceRuntime? })` API with shared URL-keyed cache for vanilla use
-- Returns a `Texture` loaded from the sibling `.normal.png` if it exists, otherwise `null` — caller switches to the runtime `normalFromSprite` TSL path
-- Silent HEAD probe on 404; dev-time warning fired at most once per URL when the runtime path is taken; suppressed in `NODE_ENV=production`
-
-## Example
-
-```ts
-// try baked first, fall back to runtime normalFromSprite
-const loader = new NormalMapLoader()
-const tex = await loader.loadAsync('/sprites/knight.png')
-// tex === Texture (baked) or null (runtime fallback)
-```
-
-Adds offline normal-map baking via `flatland-bake normal` and a `NormalMapLoader` runtime loader that implements the canonical try-baked / fallback-to-runtime pattern.
+`@three-flatland/normals` covers the full round-trip from offline baking to runtime loading, with a graceful fallback to the `normalFromSprite` TSL path when no baked file is present.

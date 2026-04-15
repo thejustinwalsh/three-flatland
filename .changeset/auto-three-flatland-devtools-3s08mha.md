@@ -5,38 +5,55 @@
 > Branch: lighting-stochastic-adoption
 > PR: https://github.com/thejustinwalsh/three-flatland/pull/27
 
-## Renamed from `@three-flatland/tweakpane`
 
-The package was renamed `@three-flatland/tweakpane` → `@three-flatland/devtools`.
+**Devtools panel (`createPane` / `usePane`)**
 
-## `DevtoolsClient`
+- `createPane({ debug: true })` and `usePane()` now auto-mount the devtools bus panel — no separate `mountDevtoolsPanel` / `useDevtoolsPanel` call needed
+- Devtools folder sub-sections: Liveness, Perf (FPS/CPU/GPU/frame), Scene (draws/triangles/geometries/textures), Environment (backend/canvas/versions)
+- Single shared `DevtoolsClient` drives both the bus panel and the stats graph/row from one source of truth, eliminating timing divergence
+- `DevtoolsClient.addListener(cb)` / `removeListener(cb)` for multi-consumer subscriptions; errors in one listener are caught individually
 
-- Framework-agnostic bus consumer; subscribes to a `DevtoolsProvider`, accumulates delta state per the debug protocol
-- Multi-listener via `addListener(cb)` / `removeListener(cb)`
-- Multi-provider discovery: `DevtoolsState.providers` + `selectedProviderId`; `client.selectProvider(id)` for manual override
-- Auto-reconnect: re-subscribes after `SERVER_LIVENESS_MS` of silence
+**Multi-provider discovery**
 
-## Panel and hooks
+- `provider:announce` / `provider:query` / `provider:gone` discovery protocol over a shared `flatland-debug` channel
+- Consumers auto-select best provider (`user` kind over `system`); auto-switch on provider disconnect
+- `client.selectProvider(id)` for manual override
+- `ProviderIdentity`: `{ id, name, kind }` — `FlatlandOptions.name` distinguishes multiple Flatland instances in the UI
+- `DevtoolsProvider._createSystem()` internal factory enforces system vs. user kind at the type level
 
-- `mountDevtoolsPanel(pane, options?)` — readonly Tweakpane folder with sub-folders: Liveness, Perf, Scene, Environment
-- `useDevtoolsPanel(pane)` — React hook; mounts on first render, disposes on unmount
-- `createPane` / `usePane` auto-mount the devtools panel when `debug: true` (default) — no separate call to `mountDevtoolsPanel` needed
-- `options.client` lets callers share a pre-existing `DevtoolsClient` across the panel and stats graph/row (single source of truth for frame stats)
+**DebugRegistry (CPU typed-array inspector)**
 
-## DebugRegistry blade
+- `registerDebugArray` / `touchDebugArray` / `unregisterDebugArray` module-level sinks (no-op when `DEVTOOLS_BUNDLED` is false)
+- ForwardPlusLighting publishes `lightCounts` and `tileScores`; LightStore publishes its DataTexture backing
+- Pane registry blade: grouped by name prefix, collapsible, cycle arrows, visibility-driven bandwidth throttling — only selected group's data hits the wire
+- Renamed: `setRegistryFilter` → `setRegistry`; subscribe payload field `registryFilter` → `registry`
 
-- Grouped, collapsible view of CPU typed arrays published via `registerDebugArray`; per-entry selection throttles wire bandwidth
-- `◀ name ▶` arrows cycle groups; collapsing hides data from the wire entirely
-- `ForwardPlusLighting` publishes `lightCounts` and `tileScores`; `LightStore` publishes its DataTexture backing
+**GPU buffer viewer (Phase C)**
 
-## GPU buffer thumbnail blade
+- `DebugTextureRegistry`: registers `DataTexture` and `RenderTarget` instances; async readback via `renderer.readRenderTargetPixelsAsync` (one in-flight per entry); `maxDim` cap (default 256) with lazy GPU `Downsampler` to avoid 8 MB readbacks
+- `LightStore.lightsTexture` published as `lightStore.lights`; `ForwardPlusLighting._tileTexture` published as `forwardPlus.tiles`
+- Buffers view blade: `◀ name ▶` cycle arrows, 240×120 canvas thumbnail, four display modes: `colors`, `normalize`, `signed` (red/green diverging), `mono`
+- Subscribe payload field `atlasFilter` → `buffers`; `buffersSelection()` API
 
-- `buffers-view`: `◀ name ▶` selector cycles registered GPU buffers; 240×120 thumbnail backed by async GPU readback
-- Four decode modes: `colors`, `normalize`, `signed` (diverging red/green), `mono`
-- ResizeObserver keeps canvas backing locked to CSS size × DPR
+**Stats pipeline & performance**
 
-## Performance tracing
+- Stats batched into preallocated typed-array rings on the provider, flushed every 250ms via `subarray` (zero data copy); graph interpolates between batches for smooth display at 4 Hz
+- Stats graph ported from SVG polyline to Canvas — eliminates per-rAF DOM string allocations (~5k/s) and CSS selector invalidations; `textContent` deduped via cached holders
+- `StatsCollector.maybeResolveGpu` throttled from 60 Hz to 10 Hz (6× less Promise churn)
+- `perf-track.ts`: `perfMeasure` / `perfStart` helpers emit User Timing spans on Chrome's custom track (`three-flatland` track group); bus-receive latency spans on the `devtools` track
+- `tracePerf(msg)` emits `bus:<type>` spans visible in Chrome DevTools Performance → Timings
 
-- `tracePerf` emits `performance.measure` spans on every inbound bus message — visible in Chrome DevTools Performance → Timings
+**Protocol**
 
-Adds `DevtoolsClient`, devtools panel, DebugRegistry and GPU buffer thumbnail blades, and auto-mounts the panel from `createPane`/`usePane` with no extra wiring.
+- Two-channel split: shared discovery channel (`flatland-debug`) + per-provider data channel (`flatland-debug:<id>`)
+- `subscribe` / `subscribe:ack` / `data` / `ping` / `unsubscribe` messages; delta encoding (absent = no change, `null` = clear); zero-alloc hot path via scratch objects
+- Idle `ping` emitted every 2s when data is quiet so consumers can distinguish idle from dead provider
+- `provider:query` / `provider:announce` / `provider:gone` for discovery
+
+## BREAKING CHANGES
+
+- Subscribe payload fields renamed: `registryFilter` → `registry`, `atlasFilter` → `buffers`; third-party bus subscribers must update their subscribe messages
+- `DevtoolsClient.onChange` option is now a convenience seed for `addListener`; callers using a single callback are unaffected, but direct field assignment is no longer supported
+- `setRegistryFilter` renamed to `setRegistry` on `DevtoolsClient`
+
+This release delivers the complete devtools panel (Phase A–C): live stats, CPU typed-array inspection, and GPU buffer visualization, all wired through a single bus-driven client with multi-provider discovery.

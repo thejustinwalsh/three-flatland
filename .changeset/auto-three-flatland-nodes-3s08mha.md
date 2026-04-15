@@ -5,18 +5,17 @@
 > Branch: lighting-stochastic-adoption
 > PR: https://github.com/thejustinwalsh/three-flatland/pull/27
 
-## New lighting TSL nodes
+**Lighting shader nodes**
 
-- `shadowSDF2D(surfaceWorldPos, lightWorldPos, sdfTexture, worldSize, worldOffset, options)` — sphere-trace soft shadow through an SDF texture; returns a `[0, 1]` float node (0 = fully shadowed, 1 = fully lit) with Inigo-Quilez-style penumbra
-  - Options: `steps` (default 32), `softness` (penumbra width), `startOffset` (self-shadow bias), `eps`
-  - Shipped alongside the existing `shadow2D` / `shadowSoft2D` alpha-raymarch helpers; both algorithms are supported
-- `lit(normal, lightDir, lightColor, attenuation)` — Lambertian diffuse helper node
-- `normalFromSprite(atlas, uv, strength)` — runtime tangent-space normals derived from sprite alpha gradient
-- `normalFromHeight(atlas, uv, strength)` — height-map variant
-- `lights` — TSL nodes for Forward+ light store reads
+- Added `shadowSDF2D` TSL helper: sphere-traces a line from surface toward light through an SDF texture, returning a `[0,1]` shadow value with Inigo-Quilez-style penumbra for soft edges
+  - Signature: `shadowSDF2D(surfaceWorldPos, lightWorldPos, sdfTexture, worldSize, worldOffset, { steps?, softness?, startOffset?, eps? })`
+  - Default 32 steps, compile-time unrolled for small step counts
+- Added `normalFromSprite` and `normalFromHeight` TSL nodes for computing tangent-space normals from sprite alpha and heightmap inputs
+- Added `lights.ts` with TSL lighting computation helpers
+- Added `lit.ts` TSL node for combining light contributions
 
-## Lighting example
+**Post-rebase fixes**
 
-- New `examples/react/lighting`: dungeon scene with TileMap2D floor, castsShadow walls, 4 wandering knights + 10 slimes as point lights, 2 flickering torches, WASD-controlled hero, Tweakpane panel via `@three-flatland/devtools`
+- `shadows.ts` lint cleanup: unused import removal
 
-Adds a full suite of 2D lighting TSL shader nodes — including SDF soft shadows, normals-from-sprite, and Forward+ light reads — plus a comprehensive React lighting example.
+These nodes underpin the `@three-flatland/presets` lighting effects and are available for use in custom `LightEffect` implementations.
