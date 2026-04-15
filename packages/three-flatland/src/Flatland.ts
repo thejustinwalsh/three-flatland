@@ -42,6 +42,10 @@ import type { LightEffect } from './lights/LightEffect'
 import { wrapWithLightFlags } from './lights/wrapWithLightFlags'
 import type { ChannelName } from './materials/channels'
 import type { RegistryData } from './ecs/batchUtils'
+import { DEBUG_CHANNEL, DEVTOOLS_BUNDLED, isDevtoolsActive } from './debug-protocol'
+import type { DebugMessage } from './debug-protocol'
+import { Heartbeat } from './debug/Heartbeat'
+import { StatsCollector } from './debug/StatsCollector'
 
 /** Shape of the LightingContext trait data. */
 interface LightingContextData {
@@ -286,6 +290,46 @@ export class Flatland extends Group implements WorldProvider {
 
     // Render pipeline
     this._renderPipelineEnabled = options.postProcessing ?? false
+
+    // Debug producers — two-layer gate:
+    //   1. `DEVTOOLS_BUNDLED` (build-time const) — folded to `false` in
+    //      prod builds with no flags set, so the entire branch is dead
+    //      code and tree-shakes out. No BroadcastChannel constructed, no
+    //      scene.onAfterRender hook installed, no allocation.
+    //   2. `isDevtoolsActive()` (runtime, only read when bundled) — lets
+    //      a user disable devtools on specific pages by setting
+    //      `window.__FLATLAND_DEVTOOLS__ = false` before Flatland loads.
+    // See `debug-protocol.ts` for the full gate contract.
+    if (DEVTOOLS_BUNDLED && isDevtoolsActive()) this._initDebug()
+  }
+
+  private _initDebug(): void {
+    this._debugBus = new BroadcastChannel(DEBUG_CHANNEL)
+    this._debugPings = new Heartbeat(this._debugBus)
+    this._debugStats = new StatsCollector(this.scene, this._debugBus, this._debugPings)
+    this._debugBus.addEventListener('message', (ev: MessageEvent<DebugMessage>) => {
+      this._debugPings?.handle(ev.data)
+    })
+  }
+
+  /**
+   * Tear down the debug producers. Removes the `scene.onAfterRender` hook,
+   * closes the BroadcastChannel, and clears all ping state. Idempotent.
+   * Called automatically by `dispose()` when the engine is destroyed.
+   */
+  private _disposeDebug(): void {
+    if (this._debugStats) {
+      this._debugStats.dispose()
+      this._debugStats = null
+    }
+    if (this._debugBus) {
+      this._debugBus.close()
+      this._debugBus = null
+    }
+    if (this._debugPings) {
+      this._debugPings.dispose()
+      this._debugPings = null
+    }
   }
 
   /**
@@ -432,7 +476,13 @@ export class Flatland extends Group implements WorldProvider {
           lctx.materials.add(child.material)
         }
         this.spriteGroup.add(child)
-        this._validateLightingChannels(child)
+        // Defer validation to `render()` — by the time that runs, R3F has
+        // mounted any MaterialEffect children (AutoNormalProvider, etc.)
+        // and imperative callers have finished their `addEffect` chain, so
+        // we won't warn about effects that simply haven't landed yet.
+        // We don't touch `child.onBeforeRender` — that callback slot
+        // belongs to the user.
+        this._pendingChannelValidation.add(child)
       } else if (child instanceof Light2D) {
         // Track lights separately for the lighting system
         if (!this._lights.includes(child)) {
@@ -917,6 +967,17 @@ export class Flatland extends Group implements WorldProvider {
    * the console every time a sprite is re-added or lighting is re-attached.
    */
   private _channelWarnedSprites: WeakSet<Sprite2D> = new WeakSet()
+  private _pendingChannelValidation: Set<Sprite2D> = new Set()
+
+  /**
+   * Debug bus + producers. All three are `null` outside of `DEVTOOLS_ENABLED`
+   * — the entire devtools subsystem is dead-code-eliminated in prod builds
+   * with no flags set, so these refs cost a single nullable field each.
+   * See `debug-protocol.ts` for the gate and protocol contract.
+   */
+  private _debugBus: BroadcastChannel | null = null
+  private _debugPings: Heartbeat | null = null
+  private _debugStats: StatsCollector | null = null
 
   /**
    * Dev-only check: for the currently attached lighting effect's declared
@@ -931,6 +992,25 @@ export class Flatland extends Group implements WorldProvider {
    * @param sprite If provided, validate only this sprite; otherwise walk
    *               every sprite currently parented to the SpriteGroup.
    */
+  /**
+   * Drain `_pendingChannelValidation` — runs sprite-by-sprite validation for
+   * everything queued by `add()`. Called from `render()` so by the time
+   * validation runs, R3F has finished mounting MaterialEffect children and
+   * imperative callers have completed their `addEffect` chain.
+   *
+   * Public-by-name (with leading `_` to mark internal) so tests and headless
+   * use cases can drain without a renderer. Production code never needs to
+   * call this directly — `render()` handles it.
+   * @internal
+   */
+  _flushPendingChannelValidation(): void {
+    if (this._pendingChannelValidation.size === 0) return
+    for (const sprite of this._pendingChannelValidation) {
+      this._validateLightingChannels(sprite)
+    }
+    this._pendingChannelValidation.clear()
+  }
+
   private _validateLightingChannels(sprite?: Sprite2D): void {
     const proc = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process
     if (proc?.env?.['NODE_ENV'] === 'production') return
@@ -959,9 +1039,13 @@ export class Flatland extends Group implements WorldProvider {
       console.warn(
         `[flatland] Lit sprite "${name}" is missing channel provider(s) for: ${missing.join(', ')}. ` +
           `The active LightEffect "${lightName}" declares requires: [${required.join(', ')}]. ` +
-          `Add a MaterialEffect that provides these channels (e.g. AutoNormalProvider for 'normal'), ` +
-          `or the channel will fall back to channelDefaults and lighting will look incorrect.`
+          `Add a MaterialEffect that provides these channels (e.g. AutoNormalProvider for 'normal'). ` +
+          `Forcing lit = false on this sprite so it renders unlit instead of falling back to ` +
+          `zeroed channelDefaults and poisoning the scene's lighting shader.`
       )
+      // Self-disable so the sprite renders unlit. Better a visibly-flat
+      // sprite than a scene-wide lighting blowout from zeroed defaults.
+      s.lit = false
     }
 
     if (sprite) {
@@ -999,6 +1083,17 @@ export class Flatland extends Group implements WorldProvider {
    * Render Flatland.
    */
   render(renderer: WebGPURenderer): void {
+    // Drain pending lighting-channel validation before doing any real work.
+    // Anything missing gets logged once and has `lit` force-cleared on that
+    // sprite so it can't fall back to zeroed channelDefaults and poison the
+    // lighting shader for the rest of the scene.
+    this._flushPendingChannelValidation()
+
+    // Anchor FPS rolling-average to the engine's render rate, not the
+    // browser's repaint cadence. Cheap (one Date.now + a few ints), and
+    // a no-op when StatsCollector wasn't created (prod build).
+    this._debugStats?.beginFrame(performance.now())
+
     // Auto-sync global uniforms from renderer
     this._syncGlobals(renderer)
 
@@ -1193,6 +1288,10 @@ export class Flatland extends Group implements WorldProvider {
    * Dispose of all resources.
    */
   dispose(): void {
+    // Tear down debug producers first — releases the scene.onAfterRender
+    // hook so subsequent renders during dispose don't try to dispatch.
+    this._disposeDebug()
+
     // Clear ECS pass entities before world destruction
     this.clearPasses()
     if (this._postPassRegistryEntity) {

@@ -34,6 +34,10 @@ describe('Flatland — channel provider validation (dev-only)', () => {
     const sprite = new Sprite2D()
     sprite.name = 'test-sprite'
     flatland.add(sprite)
+    // Validation is deferred to the next render() so R3F's child
+    // MaterialEffect attaches have time to land. In a headless test, drain
+    // the queue manually.
+    flatland._flushPendingChannelValidation()
 
     const messages = warn.mock.calls.map((c) => String(c[0]))
     expect(messages.some((m) => m.includes('test-sprite'))).toBe(true)
