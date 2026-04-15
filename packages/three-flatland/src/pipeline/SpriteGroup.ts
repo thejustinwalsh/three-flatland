@@ -318,16 +318,11 @@ export class SpriteGroup extends Group implements WorldProvider {
   }
 
   /**
-   * Get render statistics.
-   *
-   * Note: `drawCalls` is NOT computed here — it must come from
-   * `renderer.info.render.calls` after the actual Three.js render pass.
-   * See Flatland.stats for the real value, or capture the delta yourself:
-   * ```ts
-   * const before = renderer.info.render.calls
-   * renderer.render(scene, camera)
-   * const drawCalls = renderer.info.render.calls - before
-   * ```
+   * Sprite-domain stats: sprite count, batch count, visible-after-
+   * culling. Does NOT include renderer-level stats (draw calls,
+   * triangles, GPU timing, etc.) — subscribe to the devtools bus's
+   * `stats` feature for those. Keeps this path free of renderer.info
+   * math in prod builds.
    */
   get stats(): RenderStats {
     const registry = this._getRegistry()
@@ -344,7 +339,6 @@ export class SpriteGroup extends Group implements WorldProvider {
     return {
       spriteCount: this._spriteCount,
       batchCount,
-      drawCalls: 0,
       visibleSprites,
     }
   }
