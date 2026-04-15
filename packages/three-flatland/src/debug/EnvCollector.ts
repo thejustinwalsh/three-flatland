@@ -1,4 +1,4 @@
-import { REVISION } from 'three'
+import { REVISION, Vector2 } from 'three'
 import type {
   EnvBackendDelta,
   EnvCanvasDelta,
@@ -9,11 +9,13 @@ import { VERSION as THREE_FLATLAND_VERSION } from '../index'
 /**
  * Subset of `WebGPURenderer` we inspect. Fields are all optional /
  * unknown so three's concrete `Backend` type is still assignable — we
- * narrow defensively at runtime.
+ * narrow defensively at runtime. `getSize(target)` mutates `target`
+ * via `target.set(w, h)` so it must be a real `Vector2`, not a plain
+ * `{x, y}` object literal.
  */
 interface RendererLike {
   backend?: unknown
-  getSize?(target: { x: number; y: number }): unknown
+  getSize?(target: Vector2): Vector2
   getPixelRatio?(): number
 }
 
@@ -63,7 +65,8 @@ interface EnvSnapshot {
  */
 export class EnvCollector {
   private _prev: EnvSnapshot = { backend: {}, canvas: {} }
-  private _sizeScratch = { x: 0, y: 0 }
+  /** Real Vector2 — three's `getSize(target)` calls `target.set(w, h)`. */
+  private _sizeScratch = new Vector2()
 
   /**
    * Build a full env snapshot. Used for bootstrap info in the
