@@ -28,7 +28,7 @@ import {
 } from 'three-flatland/react'
 import { DefaultLightEffect, AutoNormalProvider } from '@three-flatland/presets'
 import '@three-flatland/presets/react'
-import { usePane, usePaneFolder, usePaneInput, useStatsMonitor, type StatsHandle } from '@three-flatland/devtools/react'
+import { usePane, usePaneFolder, usePaneInput, useStatsMonitor, useDevtoolsPanel, type StatsHandle } from '@three-flatland/devtools/react'
 
 extend({
   Flatland,
@@ -630,6 +630,7 @@ function Stats({ stats }: { stats: StatsHandle }) {
 
 export default function App() {
   const { pane, stats } = usePane()
+  useDevtoolsPanel(pane)
 
   const light = usePaneFolder(pane, 'Lighting', { expanded: true })
   const [quantize] = usePaneInput(light, 'quantize', true)
