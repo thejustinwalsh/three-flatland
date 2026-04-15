@@ -81,8 +81,32 @@
 
 // ─── Channel + version ──────────────────────────────────────────────────────
 
-/** Channel name used by `new BroadcastChannel(DEBUG_CHANNEL)`. */
-export const DEBUG_CHANNEL = 'flatland-debug'
+/**
+ * Shared discovery ("bonjour") channel. ONLY carries discovery traffic:
+ * `provider:query` (consumer → all), `provider:announce` / `provider:gone`
+ * (provider → all). Every provider and every consumer subscribes here.
+ * Kept deliberately low-noise so it scales to many providers / consumers
+ * without turning into a firehose.
+ */
+export const DISCOVERY_CHANNEL = 'flatland-debug'
+
+/**
+ * Legacy alias — kept briefly for in-flight imports. Prefer
+ * `DISCOVERY_CHANNEL` for the discovery bus name.
+ * @deprecated
+ */
+export const DEBUG_CHANNEL = DISCOVERY_CHANNEL
+
+/**
+ * Per-provider data channel name. A provider opens one of these named
+ * after its own UUID; subscribed consumers open the same channel by id
+ * once they've picked a provider from discovery. All subscribe /
+ * ack / data / ping / subscribe:ack traffic flows here — implicitly
+ * addressed, so the messages don't carry a `providerId` field.
+ */
+export function providerChannelName(providerId: string): string {
+  return `flatland-debug:${providerId}`
+}
 
 /** Protocol version. Bumped on breaking schema changes. */
 export const DEBUG_PROTOCOL_VERSION = 1
@@ -122,6 +146,22 @@ export const FEATURE_STALE_MS = 2000
  * liveness signal per their ack cycle before they would time it out.
  */
 export const IDLE_PING_MS = 2000
+
+/**
+ * Producer batches per-frame stats samples and flushes them on this
+ * cadence. 250 ms ≈ 15–30 samples per batch at typical frame rates —
+ * fast enough that the graph scroll reads as motion rather than
+ * per-second steps; slow enough to stay well under the bus rate limit.
+ */
+export const STATS_BATCH_MS = 250
+
+/**
+ * Maximum samples held in the producer's ring. Any frames that arrive
+ * beyond this within a single batch window are dropped (oldest wins —
+ * they'd otherwise overwrite the tail of the same batch). Sized for
+ * 4 s @ 60 Hz / 2 s @ 120 Hz — plenty for a 500 ms flush.
+ */
+export const STATS_RING_SIZE = 240
 
 /**
  * Consumer-side grace window: if no server message (`data`, `ping`, or
@@ -240,36 +280,55 @@ export type DebugFormat =
 // ─── Feature payloads (delta-encoded) ───────────────────────────────────────
 
 /**
- * Stats payload. Carried on the `stats` feature when at least one field
- * changed since the last emit.
+ * Stats payload — a batch of per-frame samples collected on the producer
+ * over a short window (default 500 ms) and shipped together so the bus
+ * isn't hammered at render rate. Each typed array holds `count` samples
+ * for frames `[startFrame, startFrame + count - 1]`. Arrays may be
+ * shorter if the window was clipped, so always read by `count`.
  *
- * Every field is delta: absent = no change, `null` = clear, value = new.
- * There's no always-present "heartbeat" field — if nothing changed, the
- * `stats` feature is omitted from the `data` packet entirely, and if no
- * other feature has fresh content either, no packet is emitted at all.
- * Consumers rely on the top-level `DataPayload.frame` (always set by the
- * server when a packet is emitted) to correlate data with an engine
- * frame.
+ * Scaled encodings keep payloads compact (see table). Consumers decode
+ * into whatever view they want (typically Float32Array for display).
+ *
+ *   | field        | encoding          | decode            |
+ *   |--------------|-------------------|-------------------|
+ *   | fps          | Int16Array  × 10  | fps = raw / 10    |
+ *   | cpuMs        | Uint16Array × 100 | ms  = raw / 100   |
+ *   | gpuMs        | Uint16Array × 100 | ms  = raw / 100   |
+ *   | heapUsedMB   | Uint16Array × 1   | mb  = raw         |
+ *   | drawCalls    | Uint32Array × 1   | n   = raw         |
+ *   | triangles    | Uint32Array × 1   | n   = raw         |
+ *   | geometries   | Uint32Array × 1   | n   = raw         |
+ *   | textures     | Uint32Array × 1   | n   = raw         |
+ *
+ * Fields are optional so the producer can omit what isn't subscribed /
+ * isn't available in the current environment (e.g. `gpuMs` when
+ * `trackTimestamp` is off, `heapUsedMB` on Safari).
  */
 export interface StatsPayload {
-  /** Delta: omit = unchanged, null = clear, number = new. */
-  drawCalls?: number | null
-  triangles?: number | null
-  geometries?: number | null
-  textures?: number | null
-  /** CPU time between begin/end markers, in ms. */
-  cpuMs?: number | null
-  /** Rolling-average FPS (producer-computed). */
-  fps?: number | null
-  /** Latest async-resolved GPU frame time, ms. Server caches across ticks. */
-  gpuMs?: number | null
+  /** Frame index of the first sample in every array. */
+  startFrame: number
+  /** Number of valid samples. Arrays may be longer; only read `count`. */
+  count: number
+  /** FPS × 10 (one sample per frame). */
+  fps?: Int16Array
+  /** CPU frame time ms × 100. */
+  cpuMs?: Uint16Array
+  /** GPU frame time ms × 100 (async-resolved; may be stale or absent). */
+  gpuMs?: Uint16Array
+  /** JS heap MB (rounded) per frame. Absent on Safari / Firefox. */
+  heapUsedMB?: Uint16Array
+  /** Raw counts per frame. */
+  drawCalls?: Uint32Array
+  triangles?: Uint32Array
+  /** lines + points (aggregated primitive count). */
+  primitives?: Uint32Array
+  geometries?: Uint32Array
+  textures?: Uint32Array
   /**
-   * Engine frame the cached `gpuMs` was resolved from. Useful to
-   * correlate GPU timing with the top-level `DataPayload.frame` (which
-   * is the *current* frame at packet emit time, typically a few frames
-   * ahead of `gpuFrame` because of async readback).
+   * JS heap limit in MB. Static per environment so carried as a scalar,
+   * not an array. Set only on the first batch (then omitted).
    */
-  gpuFrame?: number | null
+  heapLimitMB?: number
 }
 
 /**
@@ -307,10 +366,54 @@ export interface EnvCanvasDelta {
   pixelRatio?: number | null
 }
 
-/** Registry-changed payload. TBD; stub for Phase B. */
+/**
+ * Kind tag for a registered CPU array. Determines how the pane
+ * presents it — histogram / sparkline for 1D numeric data, min/max
+ * tables for vector kinds, bit strips for flag arrays.
+ */
+export type RegistryEntryKind =
+  | 'float'      // Float32Array — scalar 1D
+  | 'uint'       // Uint32Array  — scalar 1D, integer
+  | 'int'        // Int32Array   — scalar 1D, signed integer
+  | 'float2'     // Float32Array interpreted as vec2 pairs
+  | 'float3'     // vec3 triples
+  | 'float4'     // vec4 quads
+  | 'bits'       // Uint32Array interpreted as a bitmask
+
+/**
+ * One entry in the registry delta. `version` bumps whenever the host
+ * mutates or replaces the buffer — absent between batches means "no
+ * change since last emit". Typed-array `sample` is shipped by
+ * structured-cloned copy (small enough at registry sizes; switch to
+ * transferList or atlas textures in Phase C for anything large).
+ */
+export interface RegistryEntryDelta {
+  kind: RegistryEntryKind
+  /** Monotonic — incremented by the provider each time it re-samples. */
+  version: number
+  /** Number of valid elements (typed arrays may be padded at the end). */
+  count: number
+  /**
+   * The sample itself. Typed array view; consumers should treat it as
+   * owned-by-the-message (structured-cloned copy). Absent when the
+   * consumer's filter excludes this entry — name/kind/count still
+   * arrive so the UI knows the entry exists and can be selected, but
+   * the (often large) typed-array payload is omitted.
+   */
+  sample?: Float32Array | Uint32Array | Int32Array
+  /** Optional human label (defaults to the entry name). */
+  label?: string
+}
+
+/**
+ * Registry feature payload. Sent on the `registry` feature of the data
+ * packet. Delta rules:
+ *   - `entries[name]` absent → no change for that entry.
+ *   - `entries[name] = null` → entry removed.
+ *   - `entries[name] = delta` → new / updated.
+ */
 export interface RegistryPayload {
-  added?: string[] | null
-  removed?: string[] | null
+  entries?: Record<string, RegistryEntryDelta | null>
 }
 
 /** Atlas tick payload. TBD; stub for Phase C. */
@@ -325,23 +428,12 @@ export interface AtlasFullscreenPayload {
 }
 
 /**
- * Provider data packet — emitted *only* when at least one subscribed
- * feature has fresh content. Not a heartbeat; silence means "nothing
- * changed." If a consumer needs a liveness signal beyond this, it can
- * rely on `subscribe:ack` (provider-alive confirmation) and its own ack
- * timer (provider-drops-on-stale).
- *
- * `providerId` tags every packet so consumers can filter — a consumer
- * that subscribed to provider X ignores packets from provider Y. `frame`
- * is always set when a packet goes out — ties the packet's contents to
- * a specific engine render so consumers can correlate data with a
- * frame number. Each feature slot is delta-encoded: absent = no change
- * for that feature, `null` = feature cleared/gone, object = new/changed
- * payload to merge into consumer state.
+ * Provider data packet — emitted on each batch flush when subscribed
+ * features have fresh content. Silence = "nothing changed". Carried on
+ * the per-provider data channel, so it's implicitly addressed — no
+ * `providerId` field needed.
  */
 export interface DataPayload {
-  /** UUID of the provider that emitted this packet. */
-  providerId: string
   /** Engine render frame this packet was emitted from. */
   frame: number
   features: {
@@ -361,24 +453,27 @@ export interface SubscribePayload {
   id: string
   features: DebugFeature[]
   /**
-   * Target provider id. The only provider that should act on this
-   * message is the one whose id matches. Absent = unaddressed; current
-   * implementation ignores unaddressed subscribes so the consumer must
-   * complete discovery first.
+   * Registry entry filter. Only meaningful when `'registry'` is in
+   * `features`.
+   *   - `undefined` — ship every entry (default).
+   *   - `[]`        — consumer wants no entries right now (e.g. its
+   *                   registry view is collapsed); provider skips the
+   *                   registry drain entirely for this consumer.
+   *   - `[name, …]` — consumer only wants these entries.
+   * Provider takes the *union* of all consumers' filters (any consumer
+   * subscribed without a filter forces all-on).
    */
-  providerId?: string
+  registryFilter?: string[]
 }
 
 /**
  * Provider → consumer: subscription confirmation. Echoes features
- * actually honoured + carries one-shot bootstrap env info so the
- * consumer knows capabilities (e.g. Safari WebGPU lacks GPU timestamp
- * queries) without having to subscribe to env just to find out.
+ * actually honoured + carries a one-shot bootstrap env snapshot so the
+ * consumer knows capabilities without having to subscribe to env just
+ * to find out.
  */
 export interface SubscribeAckPayload {
   id: string
-  /** UUID of the provider that accepted the subscribe. */
-  providerId: string
   features: DebugFeature[]
   env: EnvPayload
 }
@@ -386,8 +481,6 @@ export interface SubscribeAckPayload {
 /** Consumer → provider: explicit leave. */
 export interface UnsubscribePayload {
   id: string
-  /** Target provider id. Only that provider acts on it. */
-  providerId?: string
 }
 
 /**
@@ -396,18 +489,10 @@ export interface UnsubscribePayload {
  */
 export interface AckPayload {
   id: string
-  /** Target provider id. Only that provider acts on it. */
-  providerId?: string
 }
 
-/**
- * Provider → consumers: idle liveness signal. Empty payload (presence
- * + envelope `ts` are the info).
- */
-export interface PingPayload {
-  /** UUID of the provider that sent the ping. Consumers filter on this. */
-  providerId: string
-}
+/** Provider → consumers: idle liveness signal. Presence is the info. */
+export interface PingPayload {}
 
 // ─── Provider discovery ─────────────────────────────────────────────────────
 

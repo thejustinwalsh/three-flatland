@@ -14,7 +14,7 @@ afterEach(() => {
 // usePaneFolder needs a parent (Pane | FolderApi). The simplest fixture is a
 // real createPane bundle that we claim and tear down per-test.
 function withParent<T>(fn: (bundle: PaneBundle) => T): T {
-  const bundle = createPane({ debug: false })
+  const bundle = createPane({})
   claimPane(bundle)
   try {
     return fn(bundle)
@@ -65,7 +65,7 @@ describe('usePaneFolder', () => {
   it('disposes the folder on real unmount (after deferred-disposal microtask)', async () => {
     vi.useFakeTimers()
 
-    const bundle = createPane({ debug: false })
+    const bundle = createPane({})
     claimPane(bundle)
 
     let captured: ReturnType<typeof usePaneFolder> = null
@@ -82,7 +82,7 @@ describe('usePaneFolder', () => {
 
     unmount()
     await act(async () => {
-      vi.runAllTimers()
+      vi.runOnlyPendingTimers()
     })
 
     expect(disposeSpy).toHaveBeenCalled()
@@ -93,7 +93,7 @@ describe('usePaneFolder', () => {
   it('survives strict-mode cleanup/remount without disposing the folder', async () => {
     vi.useFakeTimers()
 
-    const bundle = createPane({ debug: false })
+    const bundle = createPane({})
     claimPane(bundle)
 
     let captured: ReturnType<typeof usePaneFolder> = null
@@ -114,7 +114,7 @@ describe('usePaneFolder', () => {
     const disposeSpy = vi.spyOn(folder, 'dispose')
 
     await act(async () => {
-      vi.runAllTimers()
+      vi.runOnlyPendingTimers()
     })
 
     // Strict mode mount → cleanup → mount: the deferred check sees a remounted

@@ -14,8 +14,7 @@ import {
   type TilesetData,
   type TileLayerData,
 } from 'three-flatland/react'
-import { usePane, usePaneFolder, usePaneInput, useStatsMonitor } from '@three-flatland/devtools/react'
-import type { StatsHandle } from '@three-flatland/devtools/react'
+import { usePane, usePaneFolder, usePaneInput } from '@three-flatland/devtools/react'
 
 extend({ SpriteGroup, TileMap2D })
 
@@ -240,7 +239,6 @@ interface KnightmarkSceneProps {
   hitRadius: number
   knightScale: number
   knightStatsRef: React.RefObject<{ knights: number; batches: number }>
-  stats: StatsHandle
 }
 
 function KnightmarkScene({
@@ -250,11 +248,8 @@ function KnightmarkScene({
   hitRadius,
   knightScale,
   knightStatsRef,
-  stats,
 }: KnightmarkSceneProps) {
   const { size } = useThree()
-
-  useStatsMonitor(stats)
 
   // Load assets (presets automatically apply NearestFilter)
   const knightSheet = useLoader(SpriteSheetLoader, './sprites/knight.json')
@@ -468,7 +463,7 @@ export default function App() {
   const addKnightsRef = useRef<(() => void) | null>(null)
 
   // Tweakpane
-  const { pane, stats } = usePane()
+  const { pane } = usePane()
 
   // Knights monitors (first)
   const knightStatsRef = useRef({ knights: 0, batches: 0 })
@@ -526,7 +521,6 @@ export default function App() {
             hitRadius={hitRadius}
             knightScale={knightScale}
             knightStatsRef={knightStatsRef}
-            stats={stats}
           />
         </Suspense>
       </Canvas>

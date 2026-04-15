@@ -304,13 +304,9 @@ export class Flatland extends Group implements WorldProvider {
     // render); the producer owns the state. See `debug-protocol.ts` for
     // the full gate contract.
     if (DEVTOOLS_BUNDLED && isDevtoolsActive()) {
-      // Uses the package-private `_createSystem` factory so the
-      // provider is flagged as `kind: 'system'`. Consumer UI defaults
-      // to preferring `user` providers over `system` ones, which means
-      // if the app also creates its own `DevtoolsProvider`, that one
-      // wins the auto-selection and Flatland's sits in the dropdown.
-      this._debug = DevtoolsProvider._createSystem({
+      this._debug = new DevtoolsProvider({
         name: options.name ?? 'flatland',
+        kind: 'system',
       })
     }
   }

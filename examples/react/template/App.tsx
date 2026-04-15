@@ -2,7 +2,7 @@ import { Canvas, extend, useLoader, useThree } from '@react-three/fiber/webgpu'
 import { useLayoutEffect } from 'react'
 import type { OrthographicCamera as ThreeOrthographicCamera } from 'three'
 import { Sprite2D, TextureLoader } from 'three-flatland/react'
-import { usePane, usePaneInput, useStatsMonitor } from '@three-flatland/devtools/react'
+import { usePane, usePaneInput } from '@three-flatland/devtools/react'
 
 extend({ Sprite2D })
 
@@ -34,12 +34,10 @@ function SpriteScene({ tint }: { tint: string }) {
 }
 
 function Scene() {
-  const { pane, stats } = usePane()
+  const { pane } = usePane()
   const [tint] = usePaneInput(pane, 'tint', '#ffffff', {
     options: { White: '#ffffff', Cyan: '#47cca9', Pink: '#ff6b9d' },
   })
-
-  useStatsMonitor(stats)
 
   return (
     <>

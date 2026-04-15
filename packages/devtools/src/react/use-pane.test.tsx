@@ -1,8 +1,18 @@
 import { describe, it, expect, afterEach, vi } from 'vitest'
 import { StrictMode } from 'react'
 import { render, cleanup, renderHook, act } from '@testing-library/react'
-import { usePane } from './use-pane'
 import type { PaneBundle } from '../create-pane'
+
+// R3F's `useFrame` only works inside a `<Canvas>`, which pulls in the
+// full renderer — way too heavy for a hook-shape test. Stub it so
+// `usePane` renders cleanly in happy-dom; the actual frame-driving
+// behaviour is covered by integration in example apps.
+vi.mock('@react-three/fiber', () => ({
+  useFrame: (_cb: () => void, _priority?: number) => {},
+}))
+
+// eslint-disable-next-line import/first
+import { usePane } from './use-pane'
 
 afterEach(() => {
   cleanup()
@@ -39,7 +49,7 @@ describe('usePane', () => {
     unmount()
     // Disposal is queued via setTimeout(..., 0); flush the timer queue.
     await act(async () => {
-      vi.runAllTimers()
+      vi.runOnlyPendingTimers()
     })
 
     expect(document.body.contains(element)).toBe(false)
@@ -53,11 +63,7 @@ describe('usePane', () => {
 
     let captured: PaneBundle | null = null
     function Probe() {
-      // `debug: false` opts out of the auto-mounted devtools bus panel
-      // — that panel runs `setInterval` timers for ack/liveness that
-      // run forever under `vi.runAllTimers()`. The test is about pane
-      // lifecycle, not devtools behaviour.
-      const bundle = usePane({ debug: false })
+      const bundle = usePane()
       captured = bundle
       return null
     }
@@ -76,8 +82,13 @@ describe('usePane', () => {
     // cleanup. The remount should have set mountedRef.current = true again,
     // so the dispose-check inside the timeout sees a mounted component and
     // skips disposal.
+    //
+    // Use `runOnlyPendingTimers` (not `runAllTimers`) because the pane
+    // internally starts setInterval timers for the bus ack/liveness
+    // watchers — `runAllTimers` would re-fire those forever and hit
+    // vitest's 10k-iteration safety net.
     await act(async () => {
-      vi.runAllTimers()
+      vi.runOnlyPendingTimers()
     })
 
     // The pane element is still attached — strict mode did not destroy it

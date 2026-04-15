@@ -36,8 +36,8 @@ async function main() {
   sprite.scale.set(150, 150, 1)
   scene.add(sprite)
 
-  // Tweakpane UI — pass `scene` so draws/triangles are auto-wired
-  const { pane, stats } = createPane({ scene })
+  // Tweakpane UI
+  const { pane, update: updateDevtools } = createPane({ driver: 'manual' })
   const params = { tint: '#ffffff' }
   pane.addBinding(params, 'tint', {
     label: 'tint',
@@ -60,9 +60,8 @@ async function main() {
   // Render loop
   function animate() {
     requestAnimationFrame(animate)
-    stats.begin()
     renderer.render(scene, camera)
-    stats.end()
+    updateDevtools()
   }
 
   animate()

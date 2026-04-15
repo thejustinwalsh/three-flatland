@@ -112,8 +112,8 @@ async function main() {
   knight.position.set(0, 0, 0)
   scene.add(knight)
 
-  // Tweakpane UI — pass `scene` so draws/triangles are auto-wired
-  const { pane, stats } = createPane({ scene })
+  // Tweakpane UI
+  const { pane, update: updateDevtools } = createPane({ driver: 'manual' })
 
   const animFolder = pane.addFolder({ title: 'Animation' })
 
@@ -177,14 +177,11 @@ async function main() {
     const deltaMs = now - lastTime
     lastTime = now
 
-    stats.begin()
-
     // Update sprite animation
     knight.update(deltaMs)
 
     renderer.render(scene, camera)
-
-    stats.end()
+    updateDevtools()
   }
 
   animate()

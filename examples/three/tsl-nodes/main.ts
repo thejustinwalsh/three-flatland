@@ -328,7 +328,7 @@ async function main() {
   // Tweakpane UI
   // ========================================
 
-  const { pane, stats } = createPane({ scene })
+  const { pane, update: updateDevtools } = createPane({ driver: 'manual' })
 
   const effectNames: EffectType[] = ['normal', 'damage', 'dissolve', 'powerup', 'petrify', 'select', 'shadow', 'pixelate']
   const effectLabels = ['Normal', 'Damage', 'Dissolve', 'Rainbow', 'Stone', 'Outline', 'Shadow', 'Pixelate']
@@ -378,7 +378,6 @@ async function main() {
 
   function animate() {
     requestAnimationFrame(animate)
-    stats.begin()
 
     const now = performance.now()
     const deltaMs = now - lastTime
@@ -413,7 +412,7 @@ async function main() {
     }
 
     renderer.render(scene, camera)
-    stats.end()
+    updateDevtools()
   }
 
   animate()

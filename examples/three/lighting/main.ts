@@ -427,7 +427,7 @@ async function main() {
     showKnights: true,
   }
 
-  const { pane, stats } = createPane({ scene: flatland.scene })
+  const { pane, update: updateDevtools } = createPane({ driver: 'manual' })
 
   const lightFolder = pane.addFolder({ title: 'Lighting', expanded: true })
   lightFolder.addBinding(params, 'quantize')
@@ -476,7 +476,6 @@ async function main() {
 
   function animate() {
     requestAnimationFrame(animate)
-    stats.begin()
 
     const now = performance.now()
     const delta = (now - lastTime) / 1000
@@ -552,7 +551,7 @@ async function main() {
     }
 
     flatland.render(renderer)
-    stats.end()
+    updateDevtools()
   }
 
   animate()

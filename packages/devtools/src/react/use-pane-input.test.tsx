@@ -10,7 +10,7 @@ afterEach(() => {
 })
 
 function withParent<T>(fn: (bundle: PaneBundle) => T): T {
-  const bundle = createPane({ debug: false })
+  const bundle = createPane({})
   claimPane(bundle)
   try {
     return fn(bundle)
@@ -83,7 +83,7 @@ describe('usePaneInput', () => {
 
   it('disposes the binding on real unmount (after deferred-disposal)', async () => {
     vi.useFakeTimers()
-    const bundle = createPane({ debug: false })
+    const bundle = createPane({})
     claimPane(bundle)
 
     function Probe() {
@@ -98,7 +98,7 @@ describe('usePaneInput', () => {
 
     unmount()
     await act(async () => {
-      vi.runAllTimers()
+      vi.runOnlyPendingTimers()
     })
 
     const afterUnmountCount = bundle.pane.element.querySelectorAll('.tp-lblv').length

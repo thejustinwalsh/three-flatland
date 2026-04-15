@@ -12,19 +12,20 @@
  */
 
 import type { FolderApi, Pane } from 'tweakpane'
+import type { DevtoolsClient } from './devtools-client.js'
 
-export interface StatsRowValues {
-  draws?: number
-  tris?: number
-  /** Points + lines aggregated — most examples will show 0 here. */
-  prims?: number
-  geoms?: number
-  textures?: number
+/** Internal shape of the cells we render — matches the icon + tooltip tables below. */
+interface StatsRowValues {
+  draws: number
+  tris: number
+  /** Points + lines aggregated — not currently on the bus (reserved for future). */
+  prims: number
+  geoms: number
+  textures: number
 }
 
 export interface StatsRowHandle {
   readonly element: HTMLElement
-  update(values: StatsRowValues): void
   dispose(): void
 }
 
@@ -127,7 +128,7 @@ function injectStyles(): void {
 
 // ── Blade construction ──────────────────────────────────────────────────
 
-export function addStatsRow(parent: Pane | FolderApi): StatsRowHandle {
+export function addStatsRow(parent: Pane | FolderApi, client: DevtoolsClient): StatsRowHandle {
   injectStyles()
 
   // Use a separator blade as a slot so ordering plays nicely with the rack,
@@ -202,41 +203,21 @@ export function addStatsRow(parent: Pane | FolderApi): StatsRowHandle {
 
   bladeEl.appendChild(row)
 
-  // Keep a local cache so callers can pass partial updates without
-  // clobbering fields they don't know about.
-  const state: Required<StatsRowValues> = {
-    draws: 0,
-    tris: 0,
-    prims: 0,
-    geoms: 0,
-    textures: 0,
-  }
+  // Bus-driven: the client holds the full live state. On every update
+  // we just render the current values — setting textContent to the
+  // same string is a no-op, so diffing locally is unnecessary.
+  const unsubscribe = client.addListener((s) => {
+    valueEls.draws.textContent = formatCompact(s.drawCalls ?? 0)
+    valueEls.tris.textContent = formatCompact(s.triangles ?? 0)
+    valueEls.prims.textContent = formatCompact(s.primitives ?? 0)
+    valueEls.geoms.textContent = formatCompact(s.geometries ?? 0)
+    valueEls.textures.textContent = formatCompact(s.textures ?? 0)
+  })
 
   return {
     element: bladeEl,
-    update(values) {
-      if (values.draws !== undefined && values.draws !== state.draws) {
-        state.draws = values.draws
-        valueEls.draws.textContent = formatCompact(values.draws)
-      }
-      if (values.tris !== undefined && values.tris !== state.tris) {
-        state.tris = values.tris
-        valueEls.tris.textContent = formatCompact(values.tris)
-      }
-      if (values.prims !== undefined && values.prims !== state.prims) {
-        state.prims = values.prims
-        valueEls.prims.textContent = formatCompact(values.prims)
-      }
-      if (values.geoms !== undefined && values.geoms !== state.geoms) {
-        state.geoms = values.geoms
-        valueEls.geoms.textContent = formatCompact(values.geoms)
-      }
-      if (values.textures !== undefined && values.textures !== state.textures) {
-        state.textures = values.textures
-        valueEls.textures.textContent = formatCompact(values.textures)
-      }
-    },
     dispose() {
+      unsubscribe()
       blade.dispose()
     },
   }

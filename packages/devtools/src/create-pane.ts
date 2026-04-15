@@ -1,170 +1,11 @@
 import { Pane } from 'tweakpane'
-import type { Scene } from 'three'
 import { applyTheme, FLATLAND_THEME } from './theme.js'
 import { registerPlugins } from './plugins.js'
 import { addStatsGraph, type StatsGraphHandle } from './stats-graph.js'
 import { addStatsRow, type StatsRowHandle } from './stats-row.js'
-import { mountDevtoolsPanel, type DevtoolsPanelHandle } from './devtools-panel.js'
+import { addProviderSwitcher, type ProviderSwitcherHandle } from './provider-switcher.js'
+import { addRegistryView, type RegistryViewHandle } from './registry-view.js'
 import { DevtoolsClient } from './devtools-client.js'
-
-/** Minimal shape of a three.js-ish renderer exposed inside `scene.onAfterRender`. */
-interface StatsRenderer {
-  info?: {
-    render?: {
-      drawCalls: number
-      triangles: number
-      lines: number
-      points: number
-      calls: number
-      frameCalls: number
-      /** GPU frame time in ms, populated after `resolveTimestampsAsync` resolves. */
-      timestamp?: number
-    }
-    memory?: {
-      geometries: number
-      textures: number
-    }
-  }
-  backend?: {
-    /** Set to `true` when the backend was constructed with `{ trackTimestamp: true }`. On WebGPU this is auto-downgraded to `false` if the adapter lacks `GPUFeatureName.TimestampQuery`; on WebGL it stays `true` even without the `EXT_disjoint_timer_query_webgl2` extension, so we also have to inspect `backend.disjoint`. */
-    trackTimestamp?: boolean
-    /** WebGL-only: the `EXT_disjoint_timer_query_webgl2` extension object. `null` if unavailable → GPU timing can't work on this backend. */
-    disjoint?: unknown
-    constructor?: { name?: string }
-  }
-  /** Fire-and-forget — triggers async readback of the GPU timestamp query pool. */
-  resolveTimestampsAsync?(type: 'render' | 'compute'): Promise<number | undefined>
-}
-
-/** True if this backend can actually populate `info.render.timestamp`. */
-function canTrackGpuTimestamps(renderer: StatsRenderer): boolean {
-  const backend = renderer.backend
-  if (!backend || backend.trackTimestamp !== true) return false
-  // WebGL fallback: the base `Backend` class doesn't downgrade
-  // `trackTimestamp` based on the `EXT_disjoint_timer_query_webgl2`
-  // extension — we have to check `backend.disjoint` ourselves, otherwise
-  // we'd enable GPU mode with no data on WebGL2 machines that lack the
-  // extension. WebGPU auto-downgrades `trackTimestamp` to `false` in
-  // `WebGPUBackend.init()` so no extra check is needed there.
-  const isWebGL = backend.constructor?.name === 'WebGLBackend'
-  if (isWebGL && !backend.disjoint) return false
-  return true
-}
-
-/**
- * Wire a Three.js `Scene` into a `StatsHandle` — hooks `scene.onAfterRender`
- * to capture `info.render` / `info.memory` on every render, and drains the
- * GPU timestamp query pool via a per-frame microtask when trackTimestamp is
- * available on the backend.
- *
- * Used by both `createPane({ scene })` (vanilla three.js path) and
- * `useStatsMonitor` (React path) — centralises the scene plumbing so the
- * pool-drain and GPU-mode detection behave identically regardless of which
- * entry point created the pane.
- *
- * Returns a cleanup function that restores the previous `onAfterRender`.
- */
-export function wireSceneStats(
-  scene: Scene,
-  stats: StatsHandle,
-  options: { debug?: boolean } = {},
-): () => void {
-  const { debug = false } = options
-
-  // three.js types `onAfterRender` with the Object3D per-object signature
-  // (`renderer, scene, camera, geometry, material, group`), but at the
-  // Scene level three.js calls it with a different shape
-  // (`renderer, scene, camera, renderTarget` — see `Renderer.js:1683`).
-  // We chain to the previous value using a permissive callable type.
-  //
-  // We keep two references: `original` is the exact function reference so the
-  // cleanup return path can restore identity (otherwise stacked wireSceneStats
-  // calls or test assertions break), and `prev` is a `.bind(scene)` copy that
-  // we call internally — binding here silences `@typescript-eslint/unbound-method`
-  // when we invoke the previous hook from inside our wrapper.
-  type AnyCallable = (this: unknown, ...args: unknown[]) => void
-  // Cast to escape the typed method access — `scene.onAfterRender` would
-  // otherwise trip `@typescript-eslint/unbound-method`. We need the raw
-  // function reference (not bound) so the cleanup path below can restore
-  // identity (`scene.onAfterRender = original`).
-  const original = (scene as unknown as { onAfterRender: AnyCallable }).onAfterRender
-  const prev = original.bind(scene)
-  let gpuDetected = false
-  let firstGpuLogged = false
-  let debugLogged = false
-
-  const hook: AnyCallable = function (this: unknown, ...args) {
-    prev(...args)
-    const renderer = args[0] as StatsRenderer | undefined
-    if (!renderer) return
-
-    const render = renderer.info?.render
-    const memory = renderer.info?.memory
-    stats.update({
-      drawCalls: render?.drawCalls,
-      triangles: render?.triangles,
-      lines: render?.lines,
-      points: render?.points,
-      geometries: memory?.geometries,
-      textures: memory?.textures,
-    })
-
-    const gpuCapable = canTrackGpuTimestamps(renderer)
-    if (gpuCapable && !gpuDetected) {
-      gpuDetected = true
-      stats.enableGpu()
-    }
-
-    if (debug && !debugLogged) {
-      debugLogged = true
-      const backendName = renderer.backend?.constructor?.name ?? 'unknown'
-      console.info('[flatland stats] diagnostics', {
-        backend: backendName,
-        'backend.trackTimestamp': renderer.backend?.trackTimestamp,
-        'backend.disjoint (WebGL only)': renderer.backend?.disjoint ?? '(n/a)',
-        gpuModeEnabled: gpuDetected,
-        'info.render': render,
-        'info.memory': memory,
-      })
-    }
-
-    // Queue the GPU timestamp resolution as a MICROTASK so it runs AFTER
-    // the current `renderer.render()` call has fully unwound. Calling
-    // resolveTimestampsAsync synchronously from inside scene.onAfterRender
-    // re-enters the renderer mid-render and corrupts the WebGPU timestamp
-    // query pool. The pool dedupes concurrent calls internally via
-    // `pendingResolve`, so firing one microtask per render frame is safe
-    // even when post-processing fans out into multiple render passes.
-    if (gpuCapable) {
-      const fn = renderer.resolveTimestampsAsync?.bind(renderer)
-      if (!fn) return
-      void Promise.resolve().then(() => {
-        return Promise.resolve(fn('render')).then(() => {
-          const ts = renderer.info?.render?.timestamp
-          if (typeof ts !== 'number') return
-          stats.gpuTime(ts)
-          if (debug && ts > 0 && !firstGpuLogged) {
-            firstGpuLogged = true
-            console.info(
-              '[flatland stats] first GPU time sample:',
-              ts.toFixed(3),
-              'ms',
-            )
-          }
-        })
-      }).catch(() => {
-        /* swallow — transient readback failures are fine */
-      })
-    }
-  }
-  ;(scene as unknown as { onAfterRender: AnyCallable }).onAfterRender = hook
-
-  return () => {
-    if ((scene as unknown as { onAfterRender: AnyCallable }).onAfterRender === hook) {
-      ;(scene as unknown as { onAfterRender: typeof original }).onAfterRender = original
-    }
-  }
-}
 
 export interface CreatePaneOptions {
   /** Custom container element */
@@ -173,71 +14,30 @@ export interface CreatePaneOptions {
   title?: string
   /** Default expansion state (default: true) */
   expanded?: boolean
-  /** Add stats graph + renderer monitors (default: true) */
-  stats?: boolean
   /**
-   * Three.js `Scene` to wire for automatic per-frame draw/triangle stats.
-   *
-   * When provided, `createPane` hooks `scene.onAfterRender` to capture
-   * `renderer.info.render.drawCalls` / `triangles` at the exact moment
-   * they're valid — inside `renderer.render()`, after the draw has been
-   * recorded and before three.js's internal `info.reset()` fires next
-   * frame. You no longer need to call `stats.update()` manually.
-   *
-   * Works for both vanilla three.js (`renderer.setAnimationLoop`) and R3F
-   * v10 (whose phase-based scheduler reads `info.render` out-of-band with
-   * three.js's auto-reset).
+   * Who drives the stats-graph render?
+   *  - `'raf'` (default): the pane starts its own `requestAnimationFrame`
+   *    loop. Zero setup; fine for simple apps.
+   *  - `'manual'`: no internal rAF. Call `bundle.update()` from your own
+   *    frame tick — `renderer.setAnimationLoop` callback, R3F `useFrame`,
+   *    or any ticker you already own. Preferred when you have a render
+   *    loop; avoids a second rAF (which Safari throttles).
    */
-  scene?: Scene
-  /**
-   * Log one-time diagnostic info to the console on the first frame — backend
-   * class, `trackTimestamp` state, first resolved GPU time. Two
-   * `console.info` calls total per pane (zero per-frame cost). Defaults to
-   * `true` because three-flatland is a dev-focused toolkit — pass
-   * `debug: false` explicitly if you're embedding a pane in a
-   * public-facing app and don't want the logs in visitors' consoles.
-   */
-  debug?: boolean
-}
-
-/**
- * Shape of what can be pushed into the stats panel. Mirrors the subset of
- * `renderer.info` we surface in the Stats folder. All fields are optional
- * so callers can pass just `drawCalls` + `triangles` or the full set.
- */
-export interface StatsUpdate {
-  drawCalls?: number
-  triangles?: number
-  lines?: number
-  points?: number
-  geometries?: number
-  textures?: number
-}
-
-export interface StatsHandle {
-  /** Call at start of frame */
-  begin(): void
-  /** Call at end of frame */
-  end(): void
-  /** Push renderer stats into the pane. Missing fields are left unchanged. */
-  update(info: StatsUpdate): void
-  /**
-   * Enable the cycling graph's `gpu` mode. Called once when GPU timing is
-   * detected on the backend. Safe to call multiple times.
-   */
-  enableGpu(): void
-  /**
-   * Push a GPU frame time (milliseconds) into the graph's `gpu` mode.
-   * No-op if GPU mode isn't enabled yet.
-   */
-  gpuTime(ms: number): void
+  driver?: 'raf' | 'manual'
 }
 
 export interface PaneBundle {
   pane: Pane
-  /** @deprecated Use stats.begin()/end() instead */
-  fpsGraph: null
-  stats: StatsHandle
+  /**
+   * Render a stats-graph frame. Call from your existing animation loop
+   * (R3F `useFrame`, `renderer.setAnimationLoop`, etc.) for shared-tick
+   * visuals — avoids a second `requestAnimationFrame` callback, which
+   * Safari penalises.
+   *
+   * If you never call `update()`, the graph falls back to its own rAF
+   * so the pane works out-of-the-box in apps without a render loop.
+   */
+  update(): void
 }
 
 /**
@@ -276,9 +76,7 @@ export function createPane(options: CreatePaneOptions = {}): PaneBundle {
   const {
     title = 'Controls',
     expanded = true,
-    stats: showStats = true,
-    scene,
-    debug = true,
+    driver = 'raf',
     ...rest
   } = options
 
@@ -332,112 +130,65 @@ export function createPane(options: CreatePaneOptions = {}): PaneBundle {
     header.insertBefore(pin, header.firstChild)
   }
 
+  // Always-on stats graph + row, bus-driven. A single `DevtoolsClient`
+  // feeds both. If the bus isn't available in the environment (e.g., a
+  // test runner without BroadcastChannel), the try/catch swallows it
+  // and the pane still works for user controls — just no stats display.
+  let client: DevtoolsClient | null = null
   let graph: StatsGraphHandle | null = null
   let statsRow: StatsRowHandle | null = null
-  let devtoolsPanel: DevtoolsPanelHandle | null = null
+  let providerSwitcher: ProviderSwitcherHandle | null = null
+  let registryView: RegistryViewHandle | null = null
 
-  if (showStats) {
-    // Cycling FPS/MS/GPU/MEM graph at the top of the pane.
-    graph = addStatsGraph(pane)
-    // Single-row readout for draws/tris/geoms/textures.
-    statsRow = addStatsRow(pane)
+  const ACTIVE_FEATURES: ('stats' | 'env' | 'registry')[] = ['stats', 'env', 'registry']
+
+  try {
+    client = new DevtoolsClient({ features: ACTIVE_FEATURES })
+    graph = addStatsGraph(pane, client, { driver })
+    statsRow = addStatsRow(pane, client)
+    // Hidden until two or more providers announce.
+    providerSwitcher = addProviderSwitcher(pane, client)
+    // Hidden until the provider publishes at least one entry via
+    // `registerDebugArray`.
+    registryView = addRegistryView(pane, client)
+    client.start()
+
+    // Pane fold → mute the bus. When the outer header is collapsed the
+    // user can't see any of the data anyway, so we drop every feature
+    // and let the provider skip all flushes. Expanding restores.
+    pane.on('fold', (ev) => {
+      const c = client
+      if (c === null) return
+      if (ev.expanded) c.setFeatures(ACTIVE_FEATURES)
+      else c.setFeatures([])
+    })
+  } catch {
+    // Bus unavailable — skip the stats blades. Pane still usable.
   }
 
-  const stats: StatsHandle = {
-    begin() {
-      graph?.begin()
-    },
-    end() {
-      graph?.end()
-    },
-    update(info) {
-      // Aggregate lines + points into `prims` — both are tracked in the
-      // StatsUpdate contract but we render them as a single column.
-      let prims: number | undefined
-      if (info.lines !== undefined || info.points !== undefined) {
-        prims = (info.lines ?? 0) + (info.points ?? 0)
-      }
-      statsRow?.update({
-        draws: info.drawCalls,
-        tris: info.triangles,
-        prims,
-        geoms: info.geometries,
-        textures: info.textures,
-      })
-    },
-    enableGpu() {
-      graph?.enableGpuMode()
-    },
-    gpuTime(ms) {
-      graph?.pushGpuTime(ms)
-    },
-  }
-
-  // Stats data path: when `debug: true`, we share ONE DevtoolsClient
-  // between the devtools folder (readonly blades) and the existing
-  // stats graph / stats row. Single source of truth, no duplicate bus
-  // subscriptions, numbers can't diverge.
-  //
-  // When `debug: false` (or BroadcastChannel isn't available in this
-  // environment, e.g. a test), we fall back to the legacy
-  // `wireSceneStats` path — hooks `scene.onAfterRender` directly and
-  // pushes into `stats.update()` / `stats.gpuTime()`. Only engages when
-  // a `scene` option was passed.
-  let sharedClient: DevtoolsClient | null = null
-  let clientUnsubscribe: (() => void) | null = null
-  let restoreSceneHook: (() => void) | null = null
-  /** Track GPU mode so we only call `stats.enableGpu()` once. */
-  let gpuEnabled = false
-
-  if (debug) {
-    try {
-      sharedClient = new DevtoolsClient({ features: ['stats', 'env'] })
-      devtoolsPanel = mountDevtoolsPanel(pane, { client: sharedClient })
-      // Pipe the shared client's state through to the stats graph + row.
-      if (showStats) {
-        clientUnsubscribe = sharedClient.addListener((s) => {
-          stats.update({
-            drawCalls: s.drawCalls,
-            triangles: s.triangles,
-            geometries: s.geometries,
-            textures: s.textures,
-          })
-          if (s.gpuModeEnabled && !gpuEnabled) {
-            stats.enableGpu()
-            gpuEnabled = true
-          }
-          if (s.gpuMs !== undefined) stats.gpuTime(s.gpuMs)
-        })
-      }
-      sharedClient.start()
-    } catch {
-      // Bus not available (e.g., test environment without
-      // BroadcastChannel). Fall through to the legacy scene-hook path
-      // so the stats row still works.
-      sharedClient = null
-      devtoolsPanel = null
-    }
-  }
-
-  // Fallback scene hook for the `debug: false` case OR when the bus
-  // wasn't available. Only engages if the caller passed a `scene`.
-  if (!sharedClient && showStats && scene) {
-    restoreSceneHook = wireSceneStats(scene, stats, { debug })
-  }
-
-  // Clean up on dispose
+  // Clean up on dispose. Idempotent: calling `dispose()` twice (e.g.,
+  // once by the user and once by a later `createPane` disposing the
+  // unclaimed slot) no-ops the second time instead of throwing.
+  let disposed = false
   const originalDispose = pane.dispose.bind(pane)
   pane.dispose = () => {
+    if (disposed) return
+    disposed = true
     graph?.dispose()
     statsRow?.dispose()
-    clientUnsubscribe?.()
-    devtoolsPanel?.dispose()
-    sharedClient?.dispose()
-    restoreSceneHook?.()
+    providerSwitcher?.dispose()
+    registryView?.dispose()
+    client?.dispose()
+    // If the user disposed the pane directly without claiming, free
+    // the slot so the next createPane doesn't try to dispose us again.
+    if (_unclaimedPane === bundle) _unclaimedPane = null
     originalDispose()
   }
 
-  const bundle: PaneBundle = { pane, fpsGraph: null, stats }
+  const bundle: PaneBundle = {
+    pane,
+    update: () => graph?.update(),
+  }
   _unclaimedPane = bundle
   return bundle
 }

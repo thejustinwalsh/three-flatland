@@ -31,22 +31,13 @@ extend({ Sprite2D })
 
 ## Tweakpane UI Controls
 ```tsx
-const { pane, stats } = usePane()
+const { pane } = usePane()
 const folder = usePaneFolder(pane, 'Settings')
 const [value] = usePaneInput(folder, 'speed', 1.0, { min: 0, max: 10 })
 usePaneButton(folder, 'Reset', () => { /* ... */ })
 ```
 
-## Stats Monitoring (required in every example)
-```tsx
-import { usePane, useStatsMonitor } from '@three-flatland/devtools/react'
-
-const { pane, stats } = usePane()
-useStatsMonitor(stats)
-```
-That's it. `useStatsMonitor` hooks `scene.onAfterRender` (via `useThree`) so draws/triangles are captured at the correct point in the render, and wires `stats.begin()` / `stats.end()` via `useFrame` for the FPS/MS graph. Must be called inside a component that has Canvas context.
-
-For examples that take over rendering (`useFrame(..., { phase: 'render' })`), R3F's auto-render is skipped and `scene.onAfterRender` won't fire — read `gl.info.render` directly right after your render call (it's still valid within the same synchronous block). See `pass-effects/App.tsx` for an example.
+The stats graph and scene stats row are auto-mounted by `usePane()` and driven internally by the devtools bus — callers do no wiring.
 
 ### GPU time mode (optional)
 The stats graph cycles `fps → ms → gpu → mem` on click. The `gpu` mode shows three.js's GPU timestamp query result (in ms) — useful for GPU stall detection and CPU-bound vs GPU-bound diagnosis. It's **silently skipped** unless the renderer is constructed with `trackTimestamp: true`:
@@ -87,6 +78,5 @@ useFrame(() => { valueRef.current.doSomething() }) // stable reference in callba
 - Use GLSL or `onBeforeCompile` — this project uses TSL node materials
 - Use Web Awesome components — examples use `@three-flatland/devtools`
 - Use `Date.now()` for animation timing — use `state.clock.elapsedTime` or `delta`
-- Skip stats monitoring — every example must call `useStatsMonitor(stats)` (or equivalent) after `usePane()`
 - Destructure `useThree()` in hot paths — use individual selectors
 - Forget `extend()` — R3F won't recognize library classes without it

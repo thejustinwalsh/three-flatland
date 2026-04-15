@@ -289,13 +289,11 @@ async function main() {
   scene.add(ground)
 
   // ── TweakPane debug controls ──
-  const { pane, stats } = createPane({ scene })
+  const { update: updateDevtools } = createPane({ driver: 'manual' })
 
   // ── Animation loop ──
 
   function animate(t: number) {
-    stats.begin()
-
     // ── Animate squares ──
     const sqDur = 3000
     let sqT = Math.min((t - sqSwapStart) / sqDur, 1.0)
@@ -391,8 +389,8 @@ async function main() {
 
     // 4. Skia overlay on top of 3D
     overlayCanvas.render(true)
+    updateDevtools()
 
-    stats.end()
     requestAnimationFrame(animate)
   }
   requestAnimationFrame(animate)

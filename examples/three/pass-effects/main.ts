@@ -337,9 +337,7 @@ async function main() {
 
   // ─── Tweakpane UI ───────────────────────────────────────────────────────
 
-  // Pass flatland.scene so draws/triangles are wired via scene.onAfterRender
-  // (fires inside flatland.render() → renderer.render()).
-  const { pane, stats } = createPane({ scene: flatland.scene })
+  const { pane, update: updateDevtools } = createPane({ driver: 'manual' })
 
   // ─── CRT Folder ─────────────────────────────────────────────────────────
 
@@ -468,7 +466,6 @@ async function main() {
 
   function animate() {
     requestAnimationFrame(animate)
-    stats.begin()
 
     const now = performance.now()
     const delta = (now - lastTime) / 1000
@@ -489,6 +486,7 @@ async function main() {
     }
 
     flatland.render(renderer)
+    updateDevtools()
 
     // Update monitors periodically
     refreshTimer += delta
@@ -497,8 +495,6 @@ async function main() {
       pane.refresh()
       refreshTimer = 0
     }
-
-    stats.end()
   }
 
   animate()

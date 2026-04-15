@@ -5,6 +5,12 @@ import { ACK_GRACE_MS } from '../debug-protocol'
 interface ConsumerState {
   features: Set<DebugFeature>
   lastAckAt: number
+  /**
+   * Registry entry filter. `null` = no filter (ship all entries);
+   * `Set<name>` = ship only these. Union across consumers is what the
+   * provider actually drains — any `null` wins.
+   */
+  registryFilter: Set<string> | null
 }
 
 /**
@@ -39,31 +45,34 @@ export class SubscriberRegistry {
   private _activeCache: Set<DebugFeature> | null = null
 
   /**
+   * Cached union of registry filters. `undefined` = not yet computed;
+   * `null` = at least one consumer wants everything; `Set<name>` = the
+   * narrow union (only these names are drained).
+   */
+  private _registryFilterCache: Set<string> | null | undefined = undefined
+
+  /**
    * Insert or update a consumer's subscription. Same id + different
    * features = feature-set modification. Same id + same features = no-op
    * (still refreshes `lastAckAt` — counts as implicit ack).
    */
-  onSubscribe(id: string, features: readonly DebugFeature[]): void {
+  onSubscribe(id: string, features: readonly DebugFeature[], registryFilter?: readonly string[]): void {
     const now = Date.now()
+    const filter = registryFilter === undefined ? null : new Set(registryFilter)
     const existing = this._consumers.get(id)
     if (existing) {
-      // Fast path: feature sets equal → just refresh ack.
-      if (existing.features.size === features.length) {
-        let same = true
-        for (const f of features) {
-          if (!existing.features.has(f)) { same = false; break }
-        }
-        if (same) {
-          existing.lastAckAt = now
-          return
-        }
-      }
       existing.features = new Set(features)
+      existing.registryFilter = filter
       existing.lastAckAt = now
     } else {
-      this._consumers.set(id, { features: new Set(features), lastAckAt: now })
+      this._consumers.set(id, {
+        features: new Set(features),
+        registryFilter: filter,
+        lastAckAt: now,
+      })
     }
     this._activeCache = null
+    this._registryFilterCache = undefined
   }
 
   /** Refresh a consumer's `lastAckAt`. No-op for unknown ids. */
@@ -74,7 +83,10 @@ export class SubscriberRegistry {
 
   /** Remove a consumer explicitly. */
   onUnsubscribe(id: string): void {
-    if (this._consumers.delete(id)) this._activeCache = null
+    if (this._consumers.delete(id)) {
+      this._activeCache = null
+      this._registryFilterCache = undefined
+    }
   }
 
   /**
@@ -90,7 +102,32 @@ export class SubscriberRegistry {
         pruned = true
       }
     }
-    if (pruned) this._activeCache = null
+    if (pruned) {
+      this._activeCache = null
+      this._registryFilterCache = undefined
+    }
+  }
+
+  /**
+   * Union registry filter across all consumers.
+   *   - `null` → at least one consumer wants every entry (no-filter drain).
+   *   - `Set<name>` → only these names are needed; provider drains only them.
+   *   - empty set → no consumer wants any entries; provider skips drain.
+   */
+  registryFilter(): Set<string> | null {
+    if (this._registryFilterCache !== undefined) return this._registryFilterCache
+    const union = new Set<string>()
+    for (const c of this._consumers.values()) {
+      if (!c.features.has('registry')) continue
+      if (c.registryFilter === null) {
+        // Any unfiltered consumer forces no-filter drain.
+        this._registryFilterCache = null
+        return null
+      }
+      for (const name of c.registryFilter) union.add(name)
+    }
+    this._registryFilterCache = union
+    return union
   }
 
   /** Is any consumer subscribed to this feature right now? */
@@ -118,6 +155,7 @@ export class SubscriberRegistry {
   dispose(): void {
     this._consumers.clear()
     this._activeCache = null
+    this._registryFilterCache = undefined
   }
 
   private _active(): Set<DebugFeature> {

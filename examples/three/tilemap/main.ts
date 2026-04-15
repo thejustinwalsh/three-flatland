@@ -542,9 +542,8 @@ async function main() {
     pane.refresh()
   }
 
-  // Tweakpane UI — pass `scene` so draws/triangles and GPU timestamps are
-  // auto-wired via scene.onAfterRender.
-  const { pane, stats: globalStats } = createPane({ scene })
+  // Tweakpane UI
+  const { pane, update: updateDevtools } = createPane({ driver: 'manual' })
 
   // Layers folder
   const layerFolder = pane.addFolder({ title: 'Layers', expanded: false })
@@ -752,8 +751,6 @@ async function main() {
     const deltaMs = now - lastTime
     lastTime = now
 
-    globalStats.begin()
-
     // Lerp zoom toward target
     const lerpRate = 1 - Math.pow(0.001, deltaMs / 1000) // ~6x per second smoothing
     zoom += (targetZoom - zoom) * lerpRate
@@ -776,7 +773,7 @@ async function main() {
     tilemap.update(deltaMs)
 
     renderer.render(scene, camera)
-    globalStats.end()
+    updateDevtools()
 
     // Update tile stats periodically
     statsTime += deltaMs
