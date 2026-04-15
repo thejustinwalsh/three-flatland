@@ -26,6 +26,17 @@
         "default": "./dist/react.cjs"
       }
     },
+    "./debug-protocol": {
+      "source": "./src/debug-protocol.ts",
+      "import": {
+        "types": "./dist/debug-protocol.d.ts",
+        "default": "./dist/debug-protocol.js"
+      },
+      "require": {
+        "types": "./dist/debug-protocol.d.cts",
+        "default": "./dist/debug-protocol.cjs"
+      }
+    },
     "./sprites": {
       "source": "./src/sprites/index.ts",
       "import": {
