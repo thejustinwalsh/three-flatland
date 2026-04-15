@@ -6,11 +6,13 @@ interface ConsumerState {
   features: Set<DebugFeature>
   lastAckAt: number
   /**
-   * Registry entry filter. `null` = no filter (ship all entries);
+   * Registry entry selection. `null` = no filter (ship all entries);
    * `Set<name>` = ship only these. Union across consumers is what the
    * provider actually drains — any `null` wins.
    */
-  registryFilter: Set<string> | null
+  registry: Set<string> | null
+  /** Same semantics, for the `buffers` feature. */
+  buffers: Set<string> | null
 }
 
 /**
@@ -49,30 +51,40 @@ export class SubscriberRegistry {
    * `null` = at least one consumer wants everything; `Set<name>` = the
    * narrow union (only these names are drained).
    */
-  private _registryFilterCache: Set<string> | null | undefined = undefined
+  private _registrySelectionCache: Set<string> | null | undefined = undefined
+  private _buffersSelectionCache: Set<string> | null | undefined = undefined
 
   /**
    * Insert or update a consumer's subscription. Same id + different
    * features = feature-set modification. Same id + same features = no-op
    * (still refreshes `lastAckAt` — counts as implicit ack).
    */
-  onSubscribe(id: string, features: readonly DebugFeature[], registryFilter?: readonly string[]): void {
+  onSubscribe(
+    id: string,
+    features: readonly DebugFeature[],
+    registry?: readonly string[],
+    buffers?: readonly string[],
+  ): void {
     const now = Date.now()
-    const filter = registryFilter === undefined ? null : new Set(registryFilter)
+    const regSel = registry === undefined ? null : new Set(registry)
+    const bufSel = buffers === undefined ? null : new Set(buffers)
     const existing = this._consumers.get(id)
     if (existing) {
       existing.features = new Set(features)
-      existing.registryFilter = filter
+      existing.registry = regSel
+      existing.buffers = bufSel
       existing.lastAckAt = now
     } else {
       this._consumers.set(id, {
         features: new Set(features),
-        registryFilter: filter,
+        registry: regSel,
+        buffers: bufSel,
         lastAckAt: now,
       })
     }
     this._activeCache = null
-    this._registryFilterCache = undefined
+    this._registrySelectionCache = undefined
+    this._buffersSelectionCache = undefined
   }
 
   /** Refresh a consumer's `lastAckAt`. No-op for unknown ids. */
@@ -85,7 +97,8 @@ export class SubscriberRegistry {
   onUnsubscribe(id: string): void {
     if (this._consumers.delete(id)) {
       this._activeCache = null
-      this._registryFilterCache = undefined
+      this._registrySelectionCache = undefined
+      this._buffersSelectionCache = undefined
     }
   }
 
@@ -104,29 +117,45 @@ export class SubscriberRegistry {
     }
     if (pruned) {
       this._activeCache = null
-      this._registryFilterCache = undefined
+      this._registrySelectionCache = undefined
+      this._buffersSelectionCache = undefined
     }
   }
 
   /**
-   * Union registry filter across all consumers.
+   * Union of every consumer's registry selection.
    *   - `null` → at least one consumer wants every entry (no-filter drain).
    *   - `Set<name>` → only these names are needed; provider drains only them.
    *   - empty set → no consumer wants any entries; provider skips drain.
    */
-  registryFilter(): Set<string> | null {
-    if (this._registryFilterCache !== undefined) return this._registryFilterCache
+  registrySelection(): Set<string> | null {
+    if (this._registrySelectionCache !== undefined) return this._registrySelectionCache
     const union = new Set<string>()
     for (const c of this._consumers.values()) {
       if (!c.features.has('registry')) continue
-      if (c.registryFilter === null) {
-        // Any unfiltered consumer forces no-filter drain.
-        this._registryFilterCache = null
+      if (c.registry === null) {
+        this._registrySelectionCache = null
         return null
       }
-      for (const name of c.registryFilter) union.add(name)
+      for (const name of c.registry) union.add(name)
     }
-    this._registryFilterCache = union
+    this._registrySelectionCache = union
+    return union
+  }
+
+  /** Same semantics as `registrySelection()`, for `buffers` names. */
+  buffersSelection(): Set<string> | null {
+    if (this._buffersSelectionCache !== undefined) return this._buffersSelectionCache
+    const union = new Set<string>()
+    for (const c of this._consumers.values()) {
+      if (!c.features.has('buffers')) continue
+      if (c.buffers === null) {
+        this._buffersSelectionCache = null
+        return null
+      }
+      for (const name of c.buffers) union.add(name)
+    }
+    this._buffersSelectionCache = union
     return union
   }
 
@@ -155,7 +184,8 @@ export class SubscriberRegistry {
   dispose(): void {
     this._consumers.clear()
     this._activeCache = null
-    this._registryFilterCache = undefined
+    this._registrySelectionCache = undefined
+    this._buffersSelectionCache = undefined
   }
 
   private _active(): Set<DebugFeature> {

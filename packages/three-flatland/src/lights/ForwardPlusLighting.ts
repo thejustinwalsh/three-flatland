@@ -3,8 +3,11 @@ import { uniform, int, ivec2, textureLoad } from 'three/tsl'
 import type { Light2D } from './Light2D'
 import {
   registerDebugArray,
+  registerDebugTexture,
   touchDebugArray,
+  touchDebugTexture,
   unregisterDebugArray,
+  unregisterDebugTexture,
 } from '../debug/debug-sink'
 
 export const TILE_SIZE = 16
@@ -94,6 +97,9 @@ export class ForwardPlusLighting {
     })
     registerDebugArray('forwardPlus.tileScores', this._tileScores, 'float', {
       label: 'Reservoir scores',
+    })
+    registerDebugTexture('forwardPlus.tiles', this._tileTexture, 'rgba32f', {
+      label: 'Tile index DataTexture',
     })
   }
 
@@ -211,6 +217,7 @@ export class ForwardPlusLighting {
     // Notify devtools the arrays changed this frame (no-op in prod).
     touchDebugArray('forwardPlus.lightCounts')
     touchDebugArray('forwardPlus.tileScores')
+    touchDebugTexture('forwardPlus.tiles')
   }
 
   createTileLookup() {
@@ -226,5 +233,6 @@ export class ForwardPlusLighting {
     this._tileTexture.dispose()
     unregisterDebugArray('forwardPlus.lightCounts')
     unregisterDebugArray('forwardPlus.tileScores')
+    unregisterDebugTexture('forwardPlus.tiles')
   }
 }

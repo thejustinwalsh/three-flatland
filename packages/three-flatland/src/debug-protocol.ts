@@ -255,8 +255,7 @@ export interface ProviderIdentity {
 export type DebugFeature =
   | 'stats'
   | 'env'
-  | 'atlas:tick'
-  | 'atlas:fullscreen'
+  | 'buffers'
   | 'registry'
 
 /** Categories help the UI group registered buffers. Free-form string accepted. */
@@ -416,15 +415,69 @@ export interface RegistryPayload {
   entries?: Record<string, RegistryEntryDelta | null>
 }
 
-/** Atlas tick payload. TBD; stub for Phase C. */
-export interface AtlasTickPayload {
-  /** Placeholder — actual fields land in Phase C. */
-  _placeholder?: never
+/**
+ * Pixel type tag for a texture snapshot. Controls client-side
+ * interpretation + range remapping. MVP only does `rgba8`; float and
+ * half-float land when a proper downsample pass is added.
+ */
+export type TexturePixelType = 'rgba8' | 'r8' | 'rgba16f' | 'rgba32f'
+
+/**
+ * How the consumer should visualise a buffer's pixels.
+ *
+ * - `colors`     — Treat as display-ready RGB(A). Floats are clamped
+ *                  to `[0, 1]`. Use for color textures, tone-mapped HDR.
+ * - `normalize`  — Per-channel auto-normalise: scan min/max, remap to
+ *                  `[0, 1]`. Default for float buffers; reveals data
+ *                  whose natural range isn't 0..1 (positions, indices,
+ *                  intensities).
+ * - `mono`       — Treat the first channel as luminance, render
+ *                  greyscale. Good for masks / single-value buffers.
+ *                  Auto-normalises.
+ * - `signed`     — Centre 0 as mid-grey; positives push red, negatives
+ *                  push green. Auto-symmetric range. Use for SDFs and
+ *                  signed deltas.
+ *
+ * Defaults when the producer doesn't specify:
+ *   - byte formats (`rgba8`, `r8`)            → `colors`
+ *   - float formats (`rgba16f`, `rgba32f`)    → `normalize`
+ */
+export type BufferDisplayMode = 'colors' | 'normalize' | 'mono' | 'signed'
+
+/**
+ * One registered debug buffer's metadata + optional sample. Same
+ * shape pattern as `RegistryEntryDelta` — metadata always ships (so
+ * the UI can list/cycle available buffers), `pixels` only ships when
+ * the consumer's selection includes this name.
+ */
+export interface BufferDelta {
+  width: number
+  height: number
+  pixelType: TexturePixelType
+  /** Monotonic; bumps on re-sample or re-register. */
+  version: number
+  /**
+   * CPU-side readback. Absent when the consumer didn't ask for samples.
+   * Row-major, tightly packed, origin top-left. For `rgba8` / `r8` a
+   * `Uint8Array`; for float variants a `Float32Array`. Half-float is
+   * expanded to Float32 on the provider so the client doesn't need a
+   * Float16 parser.
+   */
+  pixels?: Uint8Array | Float32Array
+  /** Optional human label (falls back to the entry name). */
+  label?: string
+  /** How the consumer should visualise this buffer. See `BufferDisplayMode`. */
+  display?: BufferDisplayMode
 }
 
-/** Atlas fullscreen payload. TBD; stub for Phase D. */
-export interface AtlasFullscreenPayload {
-  _placeholder?: never
+/**
+ * `buffers` feature payload. Each key is a registered buffer name;
+ * value `null` means unregistered. Metadata ships regardless of the
+ * consumer's selection so the UI can list available buffers; pixels
+ * are gated by the selection.
+ */
+export interface BuffersPayload {
+  entries?: Record<string, BufferDelta | null>
 }
 
 /**
@@ -439,8 +492,7 @@ export interface DataPayload {
   features: {
     stats?: StatsPayload | null
     env?: EnvPayload | null
-    'atlas:tick'?: AtlasTickPayload | null
-    'atlas:fullscreen'?: AtlasFullscreenPayload | null
+    buffers?: BuffersPayload | null
     registry?: RegistryPayload | null
   }
 }
@@ -453,17 +505,21 @@ export interface SubscribePayload {
   id: string
   features: DebugFeature[]
   /**
-   * Registry entry filter. Only meaningful when `'registry'` is in
+   * Registry entry selection. Only meaningful when `'registry'` is in
    * `features`.
    *   - `undefined` — ship every entry (default).
-   *   - `[]`        — consumer wants no entries right now (e.g. its
-   *                   registry view is collapsed); provider skips the
-   *                   registry drain entirely for this consumer.
+   *   - `[]`        — consumer wants no entries right now.
    *   - `[name, …]` — consumer only wants these entries.
-   * Provider takes the *union* of all consumers' filters (any consumer
-   * subscribed without a filter forces all-on).
+   * Provider takes the *union* of all consumers' selections (any
+   * consumer that omits the field forces no-filter drain).
    */
-  registryFilter?: string[]
+  registry?: string[]
+  /**
+   * Buffer selection — same semantics as `registry`, for the
+   * `'buffers'` feature. Readback is expensive, so consumers are
+   * expected to send a short list (typically one name at a time).
+   */
+  buffers?: string[]
 }
 
 /**

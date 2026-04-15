@@ -5,8 +5,11 @@ import type UniformNode from 'three/src/nodes/core/UniformNode.js'
 import type { Light2D } from './Light2D'
 import {
   registerDebugArray,
+  registerDebugTexture,
   touchDebugArray,
+  touchDebugTexture,
   unregisterDebugArray,
+  unregisterDebugTexture,
 } from '../debug/debug-sink'
 
 /**
@@ -86,6 +89,9 @@ export class LightStore {
     // Cheap — the sink is a no-op when devtools isn't bundled.
     registerDebugArray('lightStore.data', this._lightsData, 'float', {
       label: 'Lights DataTexture (row-packed)',
+    })
+    registerDebugTexture('lightStore.lights', this._lightsTexture, 'rgba32f', {
+      label: 'Lights DataTexture',
     })
   }
 
@@ -171,6 +177,7 @@ export class LightStore {
 
     this._lightsTexture.needsUpdate = true
     touchDebugArray('lightStore.data')
+    touchDebugTexture('lightStore.lights')
   }
 
   /**
@@ -195,5 +202,6 @@ export class LightStore {
   dispose(): void {
     this._lightsTexture.dispose()
     unregisterDebugArray('lightStore.data')
+    unregisterDebugTexture('lightStore.lights')
   }
 }

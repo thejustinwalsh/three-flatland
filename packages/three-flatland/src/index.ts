@@ -31,5 +31,12 @@ export * from './lights'
 export * from './Flatland'
 
 // Devtools debug sink (no-op in prod builds)
-export { registerDebugArray, touchDebugArray, unregisterDebugArray } from './debug/debug-sink'
+export {
+  registerDebugArray,
+  touchDebugArray,
+  unregisterDebugArray,
+  registerDebugTexture,
+  touchDebugTexture,
+  unregisterDebugTexture,
+} from './debug/debug-sink'
 

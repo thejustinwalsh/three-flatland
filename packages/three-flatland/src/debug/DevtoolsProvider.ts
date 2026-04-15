@@ -1,5 +1,6 @@
 import type { WebGPURenderer } from 'three/webgpu'
 import type {
+  BuffersPayload,
   DataPayload,
   DebugFeature,
   DebugMessage,
@@ -14,7 +15,8 @@ import { SubscriberRegistry } from './SubscriberRegistry'
 import { StatsCollector } from './StatsCollector'
 import { EnvCollector } from './EnvCollector'
 import { DebugRegistry } from './DebugRegistry'
-import { _setActiveRegistry } from './debug-sink'
+import { DebugTextureRegistry } from './DebugTextureRegistry'
+import { _setActiveRegistry, _setActiveTextureRegistry } from './debug-sink'
 
 export interface DevtoolsProviderOptions {
   /** Human-readable name shown in the consumer UI. */
@@ -94,6 +96,7 @@ export class DevtoolsProvider {
   private _stats = new StatsCollector()
   private _env = new EnvCollector()
   private _registry = new DebugRegistry()
+  private _textures = new DebugTextureRegistry()
 
   /** Scratch `data` message. Reused across flushes; features reassigned each tick. */
   private _dataScratch: DebugMessage
@@ -105,6 +108,8 @@ export class DevtoolsProvider {
   private _statsScratch: StatsPayload = { startFrame: 0, count: 0 }
   /** Scratch registry payload reused across flushes. */
   private _registryScratch: RegistryPayload = {}
+  /** Scratch buffers payload reused across flushes. */
+  private _buffersScratch: BuffersPayload = {}
 
   /** Wall-clock time of the last outbound broadcast. */
   private _lastBroadcastAt = Date.now()
@@ -155,9 +160,10 @@ export class DevtoolsProvider {
       this._handleDataMessage(msg)
     })
 
-    // Expose our registry to module-level sink so engine code can
-    // publish arrays without a direct dependency on this class.
+    // Expose our registries to module-level sinks so engine code can
+    // publish arrays / textures without a direct dependency on this class.
     _setActiveRegistry(this._registry)
+    _setActiveTextureRegistry(this._textures)
 
     // Announce ourselves in case a client is already listening (the
     // client will also `provider:query` on its own start, so discovery
@@ -210,8 +216,7 @@ export class DevtoolsProvider {
 
     delete features.stats
     delete features.env
-    delete features['atlas:tick']
-    delete features['atlas:fullscreen']
+    delete features.buffers
     delete features.registry
 
     let anyFeature = false
@@ -237,14 +242,23 @@ export class DevtoolsProvider {
     }
 
     if (active.has('registry')) {
-      // Union filter across all consumers — `null` means everyone wants
-      // everything; a set means only those names get their sample; an
-      // empty set means nobody wants samples right now (metadata still
-      // ships so the pane's picker UI stays populated).
-      const filter = this._subs.registryFilter()
+      // Union selection across all consumers — `null` means everyone
+      // wants everything; a set means only those names get their
+      // sample; an empty set means nobody wants samples right now
+      // (metadata still ships so the pane's picker UI stays populated).
+      const selection = this._subs.registrySelection()
       const regOut = this._registryScratch
-      if (this._registry.drain(regOut, filter)) {
+      if (this._registry.drain(regOut, selection)) {
         features.registry = regOut
+        anyFeature = true
+      }
+    }
+
+    if (active.has('buffers')) {
+      const selection = this._subs.buffersSelection()
+      const bufOut = this._buffersScratch
+      if (this._textures.drain(bufOut, selection, this._latestRenderer)) {
+        features.buffers = bufOut
         anyFeature = true
       }
     }
@@ -284,7 +298,9 @@ export class DevtoolsProvider {
     } catch { /* bus may already be closing */ }
     this._stats.dispose()
     this._registry.dispose()
+    this._textures.dispose()
     _setActiveRegistry(null)
+    _setActiveTextureRegistry(null)
     this._subs.dispose()
     try { this._dataBus.close() } catch { /* noop */ }
     try { this._discoveryBus.close() } catch { /* noop */ }
@@ -317,12 +333,18 @@ export class DevtoolsProvider {
   private _handleDataMessage(msg: DebugMessage): void {
     switch (msg.type) {
       case 'subscribe': {
-        this._subs.onSubscribe(msg.payload.id, msg.payload.features, msg.payload.registryFilter)
+        this._subs.onSubscribe(
+          msg.payload.id,
+          msg.payload.features,
+          msg.payload.registry,
+          msg.payload.buffers,
+        )
         // Late-joining consumers: reset per-feature delta trackers so
         // the next `data` packet carries a full snapshot.
         this._stats.resetDelta()
         this._env.resetDelta()
         this._registry.resetDelta()
+        this._textures.resetDelta()
         this._sendSubscribeAck(msg.payload.id, msg.payload.features)
         break
       }
