@@ -5,6 +5,7 @@ import { registerPlugins } from './plugins.js'
 import { addStatsGraph, type StatsGraphHandle } from './stats-graph.js'
 import { addStatsRow, type StatsRowHandle } from './stats-row.js'
 import { mountDevtoolsPanel, type DevtoolsPanelHandle } from './devtools-panel.js'
+import { DevtoolsClient } from './devtools-client.js'
 
 /** Minimal shape of a three.js-ish renderer exposed inside `scene.onAfterRender`. */
 interface StatsRenderer {
@@ -342,19 +343,6 @@ export function createPane(options: CreatePaneOptions = {}): PaneBundle {
     statsRow = addStatsRow(pane)
   }
 
-  // Auto-mount the devtools bus panel when `debug: true` (default).
-  // Consumer code gets the panel "for free" — no extra calls needed.
-  // If no producer is broadcasting (prod build, or explicit opt-out),
-  // the panel sits silent with `server: dead` and zeros.
-  if (debug) {
-    try {
-      devtoolsPanel = mountDevtoolsPanel(pane)
-    } catch {
-      // Bus not available (e.g., test environment without BroadcastChannel)
-      // — swallow; panel just doesn't appear.
-    }
-  }
-
   const stats: StatsHandle = {
     begin() {
       graph?.begin()
@@ -385,18 +373,66 @@ export function createPane(options: CreatePaneOptions = {}): PaneBundle {
     },
   }
 
-  // Vanilla three.js path: wire the scene hook here if the caller passed
-  // `scene`. React goes through `useStatsMonitor` instead, which calls the
-  // same `wireSceneStats` helper from its `useEffect`.
-  const restoreSceneHook: (() => void) | null =
-    showStats && scene ? wireSceneStats(scene, stats, { debug }) : null
+  // Stats data path: when `debug: true`, we share ONE DevtoolsClient
+  // between the devtools folder (readonly blades) and the existing
+  // stats graph / stats row. Single source of truth, no duplicate bus
+  // subscriptions, numbers can't diverge.
+  //
+  // When `debug: false` (or BroadcastChannel isn't available in this
+  // environment, e.g. a test), we fall back to the legacy
+  // `wireSceneStats` path — hooks `scene.onAfterRender` directly and
+  // pushes into `stats.update()` / `stats.gpuTime()`. Only engages when
+  // a `scene` option was passed.
+  let sharedClient: DevtoolsClient | null = null
+  let clientUnsubscribe: (() => void) | null = null
+  let restoreSceneHook: (() => void) | null = null
+  /** Track GPU mode so we only call `stats.enableGpu()` once. */
+  let gpuEnabled = false
+
+  if (debug) {
+    try {
+      sharedClient = new DevtoolsClient({ features: ['stats', 'env'] })
+      devtoolsPanel = mountDevtoolsPanel(pane, { client: sharedClient })
+      // Pipe the shared client's state through to the stats graph + row.
+      if (showStats) {
+        clientUnsubscribe = sharedClient.addListener((s) => {
+          stats.update({
+            drawCalls: s.drawCalls,
+            triangles: s.triangles,
+            geometries: s.geometries,
+            textures: s.textures,
+          })
+          if (s.gpuModeEnabled && !gpuEnabled) {
+            stats.enableGpu()
+            gpuEnabled = true
+          }
+          if (s.gpuMs !== undefined) stats.gpuTime(s.gpuMs)
+        })
+      }
+      sharedClient.start()
+    } catch {
+      // Bus not available (e.g., test environment without
+      // BroadcastChannel). Fall through to the legacy scene-hook path
+      // so the stats row still works.
+      sharedClient = null
+      devtoolsPanel = null
+    }
+  }
+
+  // Fallback scene hook for the `debug: false` case OR when the bus
+  // wasn't available. Only engages if the caller passed a `scene`.
+  if (!sharedClient && showStats && scene) {
+    restoreSceneHook = wireSceneStats(scene, stats, { debug })
+  }
 
   // Clean up on dispose
   const originalDispose = pane.dispose.bind(pane)
   pane.dispose = () => {
     graph?.dispose()
     statsRow?.dispose()
+    clientUnsubscribe?.()
     devtoolsPanel?.dispose()
+    sharedClient?.dispose()
     restoreSceneHook?.()
     originalDispose()
   }

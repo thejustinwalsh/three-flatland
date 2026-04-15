@@ -22,13 +22,16 @@ export interface DevtoolsClientOptions {
   /** Override the bus channel name (defaults to the protocol's standard). */
   channelName?: string
   /**
-   * Called whenever the accumulated state changes (new data packet,
-   * liveness state flip, subscribe:ack processed). The argument is a
-   * live reference to the same state object every call — callers can
-   * read from it or trigger UI refreshes.
+   * Optional first listener, equivalent to calling `addListener(cb)`
+   * after construction. Kept as a convenience for the common single-
+   * consumer case; multi-consumer callers should use `addListener` /
+   * `removeListener` directly.
    */
   onChange?: (state: DevtoolsState) => void
 }
+
+/** Listener signature for `DevtoolsClient.addListener`. */
+export type DevtoolsStateListener = (state: DevtoolsState) => void
 
 /**
  * Accumulated state the consumer keeps up-to-date by merging deltas
@@ -98,7 +101,7 @@ export class DevtoolsClient {
 
   private _ch: BroadcastChannel
   private _features: DebugFeature[]
-  private _onChange: ((state: DevtoolsState) => void) | undefined
+  private _listeners = new Set<DevtoolsStateListener>()
 
   private _ackTimer: ReturnType<typeof setInterval> | null = null
   private _livenessTimer: ReturnType<typeof setInterval> | null = null
@@ -113,7 +116,7 @@ export class DevtoolsClient {
   constructor(options: DevtoolsClientOptions) {
     this.id = generateUuid()
     this._features = [...options.features]
-    this._onChange = options.onChange
+    if (options.onChange) this._listeners.add(options.onChange)
     this._ch = new BroadcastChannel(options.channelName ?? DEBUG_CHANNEL)
     this.state = {
       providers: [],
@@ -439,8 +442,21 @@ export class DevtoolsClient {
     } catch { /* bus may be closing */ }
   }
 
+  /** Subscribe to state-change events. Returns an unsubscribe function. */
+  addListener(cb: DevtoolsStateListener): () => void {
+    this._listeners.add(cb)
+    return () => { this._listeners.delete(cb) }
+  }
+
+  /** Explicit remove — equivalent to calling the unsubscribe returned from `addListener`. */
+  removeListener(cb: DevtoolsStateListener): void {
+    this._listeners.delete(cb)
+  }
+
   private _fire(): void {
-    this._onChange?.(this.state)
+    for (const cb of this._listeners) {
+      try { cb(this.state) } catch { /* listener errors shouldn't break the bus */ }
+    }
   }
 }
 
