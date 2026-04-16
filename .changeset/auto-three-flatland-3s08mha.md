@@ -5,51 +5,43 @@
 > Branch: lighting-stochastic-adoption
 > PR: https://github.com/thejustinwalsh/three-flatland/pull/27
 
+**2D Lighting Pipeline:**
+- `Light2D` class with point, directional, ambient, and spot light types
+- `LightingSystem` with pluggable strategy pattern (Simple/Direct/Radiance)
+- `LightEffect` system with ECS traits, registry, and `setLighting(effect)` API on `Flatland`
+- `ForwardPlusLighting`: tiled light culling with reservoir-based overflow by importance score — graceful degradation instead of silent first-16-wins drop
+- `SDFGenerator`: JFA-based signed-distance field generator for shadow occlusion
+- `OcclusionPass`: offscreen pre-pass rendering shadow silhouettes at configurable scale (default 0.5×)
+- React `attach` helpers for connecting lights and effects to the R3F scene graph
 
-**2D Lighting system**
+**Shadow System:**
+- Per-sprite `castsShadow` flag (bit 2 of `effectBuf0.x`); zero-rebuild bit-flip setter
+- `OcclusionPass` masks per-instance alpha by `castsShadow` attribute, allowing non-casters to contribute zero to the SDF seed
+- Shadow pipeline promoted to `ShadowPipeline` ECS trait + `shadowPipelineSystem`; six private `Flatland` fields replaced by an O(1) cached query lookup
+- `sdfTexture`, `worldSizeNode`, `worldOffsetNode` threaded through `LightEffectBuildContext`; non-shadow effects compile out the shadow path entirely (no GPU branch, no wasted uniform slot)
+- `Flatland.setLighting` eagerly allocates `SDFGenerator` + `OcclusionPass` before calling `buildLightFn` so TSL `texture()` bindings captured at shader-build time remain stable across resize
 
-- New `Light2D` class with point, directional, ambient, and spot light types
-- JFA-based `SDFGenerator` produces a signed-distance field from sprite occlusion silhouettes
-- Forward+ tiled light culling with reservoir-based importance overflow — dense tiles evict the weakest occupant rather than dropping lights in scene-graph order, eliminating tile-edge flicker
-- `OcclusionPass` renders sprite silhouettes into a half-resolution RT; `castsShadow` per-instance flag (bit-masked, default off) gates which sprites contribute
-- `shadowSDF2D` sphere-trace wired into `DefaultLightEffect` and `DirectLightEffect`; `shadow = float(1.0)` stub replaced — controlled by `shadowStrength`, `shadowSoftness`, `shadowBias` uniforms
-- Shadow pipeline state moved to an ECS `ShadowPipeline` singleton trait + `shadowPipelineSystem`; `SDFGenerator` and `OcclusionPass` allocated eagerly on `setLighting` when `needsShadows`, idempotently managed by the system
-- `LightEffectBuildContext` carries stable `sdfTexture`, `worldSizeNode`, `worldOffsetNode` uniforms; TSL texture bindings captured at shader-build time remain valid across resize
-- `setLighting(effect)` / `add(sprite)` emit dev-time warnings for lit sprites missing required channel providers (deduped via `WeakSet`, suppressed in production)
-- `createMaterialEffect` generic over the `provides` tuple — `channelNode` return type type-checked against declared channels at compile time
+**MaterialEffect:**
+- `createMaterialEffect` is now generic over the `provides` tuple; `channelNode` return type constrained to the declared channel's node type — mismatched types fail at compile time with TS2322
+- `effectBuf0` layout split: system flags (lit, receiveShadows, castsShadow) in `.x`; 24 effect enable bits in `.y` — recovers the capacity lost to the flag addition
+- Dev-time warning (deduped, suppressed in production) when lit sprites attach without a provider for a required channel
 
-**effectBuf0 layout**
+**Devtools — producer side:**
+- Debug bus via `BroadcastChannel('flatland-debug')`, gated by `DEVTOOLS_BUNDLED` (`import.meta.env.DEV || VITE_FLATLAND_DEVTOOLS=true`) — zero bytes/runtime in prod builds; `window.__FLATLAND_DEVTOOLS__=false` runtime opt-out
+- `DevtoolsProvider` (renamed from `DevtoolsProducer`): multi-provider `provider:announce/query/gone` discovery protocol; `FlatlandOptions.name` to distinguish multiple instances
+- Explicit `beginFrame(now, renderer)` / `endFrame(renderer)` API on `DevtoolsProvider` and `StatsCollector` — fixes ~6× inflated FPS reporting in multi-pass scenes
+- Per-frame stats flushed as batched typed-array delta packets (250ms batches, zero-copy `subarray` views)
+- `DebugRegistry`: module-level `registerDebugArray`/`touchDebugArray` sink for publishing CPU typed arrays (no-op in prod)
+- `DebugTextureRegistry`: GPU buffer readback with `maxDim` downsampling — 1920×1080 SDF reads back at ~150 KB instead of 8 MB per drain
+- `perf-track.ts`: `perfMeasure`/`perfStart` helpers emitting User Timing spans on the `three-flatland` Chrome custom track
+- Bus offload-worker scaffolding: `BusTransport` interface with `WorkerBusTransport` (spawns dedicated worker) and `InlineBusTransport` fallback; `bus-pool.ts` two-tier buffer pool (4 KB×8, 256 KB×4)
 
-- `effectBuf0.x` now holds only system flags (lit, receiveShadows, castsShadow); `effectBuf0.y` holds effect enable bits (24 slots, up from 21)
-- `EFFECT_BIT_OFFSET` reset to 0 — effect enable bits start at bit 0 of `.y` component
-- Flag constants extracted to `materials/effectFlagBits.ts`, breaking the previous circular import
+**Bug fixes:**
+- Wire protocol: absent delta fields now use `delete` instead of `undefined` — fixes ghost keys in structured-clone payloads that caused confusing consumer state
+- Server emits idle `ping` when no `data` has been broadcast in 2 s, allowing consumers to distinguish idle from dead
 
-**Devtools bus (Phase A–C)**
+**Example:**
+- `examples/react/lighting`: dungeon-floor tilemap, wandering sprite point lights (slimes), flickering torches, keyboard-controlled hero, `castsShadow` wall sprites, Tweakpane devtools panel
 
-- `debug-protocol.ts` sub-export: public types-only API for third-party bus subscribers
-- `DevtoolsProvider` / `DevtoolsProducer` extracted from Flatland; any bare three.js app can instantiate directly
-- Frame-accurate stats via `beginFrame` / `endFrame` boundaries — FPS and draw counts aggregate across all internal render passes (SDF, occlusion, main, post) per logical frame
-- `DebugRegistry`: `registerDebugArray` / `touchDebugArray` / `unregisterDebugArray` module-level sinks; ForwardPlusLighting publishes `lightCounts` + `tileScores`; LightStore publishes its DataTexture
-- `DebugTextureRegistry`: `registerDebugTexture` / `touchDebugTexture` / `unregisterDebugTexture`; `maxDim` cap with lazy GPU `Downsampler` before readback
-- `perf-track.ts`: `perfMeasure` / `perfStart` User Timing spans on Chrome's custom track (`three-flatland` group)
-- Multi-provider discovery: `provider:announce` / `provider:query` / `provider:gone`; `FlatlandOptions.name` for distinguishing instances
-- Two-channel bus: shared discovery (`flatland-debug`) + per-provider data (`flatland-debug:<id>`)
-- Delta-encoded `data` packets, idle `ping` every 2s, zero-alloc scratch-object hot path
-- All devtools code gated by `DEVTOOLS_BUNDLED` (dead-code-eliminated in production builds)
+This release delivers the complete 2D lighting pipeline — JFA SDF generation, Forward+ tiled culling, per-sprite shadow casting, and a fully instrumented devtools producer — all integrated into `three-flatland`'s ECS architecture.
 
-**React integration**
-
-- `attach` helpers updated; `usePane`/`createPane` wiring compatible with new devtools bus
-- Lighting example rebuilt on Tweakpane + current API: dungeon floor, shadow-casting walls, wandering point-light enemies, flickering torches, WASD hero knight
-
-## BREAKING CHANGES
-
-- `Flatland.stats` getter removed; use `spriteGroup.stats` for sprite-domain metrics (spriteCount, batchCount, visibleSprites)
-- `drawCalls` removed from the `RenderStats` interface
-- `effectBuf0.y` now holds effect enable bits; custom `EffectMaterial` implementations that hard-coded bit positions in `.x` must be updated
-- `EFFECT_BIT_OFFSET` is now `0` (was `3`); callers computing per-effect masks via `1 << (EFFECT_BIT_OFFSET + i)` continue to work without change
-- `DevtoolsProducer` and `StatsCollector` no longer accept a `scene` constructor argument; use `beginFrame` / `endFrame` instead
-- `setAutoSend` removed from `DevtoolsProducer`
-- Subscribe payload fields `registryFilter` → `registry`, `atlasFilter` → `buffers`; third-party subscribers must update
-
-This release delivers the full 2D lighting pipeline (SDF shadows, Forward+ culling, per-sprite shadow casting) and a complete Phase A–C devtools bus with live stats, CPU array inspection, and GPU buffer visualization.

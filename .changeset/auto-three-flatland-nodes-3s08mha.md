@@ -5,17 +5,11 @@
 > Branch: lighting-stochastic-adoption
 > PR: https://github.com/thejustinwalsh/three-flatland/pull/27
 
-**Lighting shader nodes**
+**Lighting shader nodes** (`@three-flatland/nodes/lighting`):
+- `shadowSDF2D(surfaceWorldPos, lightWorldPos, sdfTexture, worldSize, worldOffset, opts)`: sphere-traced soft shadow through an SDF texture; returns a `[0, 1]` float node with Inigo-Quilez running-min penumbra
+  - Options: `steps` (default 32), `softness`, `startOffset` (self-shadow bias), `eps` — accept compile-time constants or uniform nodes
+- `lit`, `normalFromSprite`, `normalFromHeight`, `lights`, `shadows` — full TSL lighting node set exported from `@three-flatland/nodes/lighting`
 
-- Added `shadowSDF2D` TSL helper: sphere-traces a line from surface toward light through an SDF texture, returning a `[0,1]` shadow value with Inigo-Quilez-style penumbra for soft edges
-  - Signature: `shadowSDF2D(surfaceWorldPos, lightWorldPos, sdfTexture, worldSize, worldOffset, { steps?, softness?, startOffset?, eps? })`
-  - Default 32 steps, compile-time unrolled for small step counts
-- Added `normalFromSprite` and `normalFromHeight` TSL nodes for computing tangent-space normals from sprite alpha and heightmap inputs
-- Added `lights.ts` with TSL lighting computation helpers
-- Added `lit.ts` TSL node for combining light contributions
+Minor fix: `shadowSDF2D` loop uses `Loop`/`Break` with compile-time unroll for small step counts; penumbra clamped to `[0, 1]`, higher `softness` = sharper.
 
-**Post-rebase fixes**
-
-- `shadows.ts` lint cleanup: unused import removal
-
-These nodes underpin the `@three-flatland/presets` lighting effects and are available for use in custom `LightEffect` implementations.
+`@three-flatland/nodes` adds the `shadowSDF2D` SDF sphere-trace helper and completes the TSL lighting node library powering the 2D shadow pipeline.

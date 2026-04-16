@@ -5,20 +5,10 @@
 > Branch: lighting-stochastic-adoption
 > PR: https://github.com/thejustinwalsh/three-flatland/pull/27
 
-**CLI**
+- New `flatland-bake` binary — discovers and dispatches to bakers contributed by workspace or npm packages via a `package.json` `flatland.bakers` manifest
+- Baker discovery walks `node_modules` upward from CWD; CWD-self-discovery lets package authors iterate without symlinking their own package
+- `flatland-bake --list` enumerates all discovered bakers; first-wins conflict detection for duplicate names
+- `flatland-bake normal <input.png>` bakes a tangent-space normal map from RGBA sprite alpha using a 4-neighbor gradient; `--strength` option scales the gradient
+- Output written as a sibling `.normal.png`; runtime consumers load it directly as a texture
 
-- New `flatland-bake` binary — single entry point that discovers and dispatches to bakers contributed by any installed package
-- Bakers declared via `"flatland": { "bakers": [{ "name", "description", "entry" }] }` in package.json
-- Discovery walks `node_modules` upward from CWD, tolerating scoped packages, missing dirs, and malformed manifests
-- CWD-self-discovery: bakers in the CWD's own `package.json` register first, enabling package authors to iterate without self-symlinking
-- Duplicate-name conflicts reported with first-wins policy
-- `flatland-bake --list` enumerates all discovered bakers
-
-**Normal-map baker**
-
-- `flatland-bake normal <sprite.png>` — offline Node port of the `normalFromSprite` TSL helper
-- Reads RGBA PNG, computes 4-neighbor alpha gradient, writes sibling `.normal.png`
-- `--strength <n>` flag scales the gradient before normalization (default 1)
-- Reduces per-fragment shader cost: consumers load the baked PNG as a texture instead of paying four alpha samples + gradient at runtime
-
-`@three-flatland/bake` ships the extensible CLI; `@three-flatland/normals` ships the first concrete baker and the runtime loader that consumes baked output.
+`@three-flatland/bake` introduces the extensible `flatland-bake` CLI and the first concrete baker for offline normal-map generation.
