@@ -20,6 +20,7 @@ import {
   AnimatedSprite2D,
   Sprite2DMaterial,
   SpriteSheetLoader,
+  createDevtoolsProvider,
   createMaterialEffect,
 } from 'three-flatland'
 import type { MaterialEffect, AnimationSetDefinition } from 'three-flatland'
@@ -330,6 +331,7 @@ async function main() {
   // ========================================
 
   const { pane, update: updateDevtools } = createPane({ driver: 'manual' })
+  const devtools = createDevtoolsProvider({ name: 'tsl-nodes' })
 
   const effectNames: EffectType[] = ['normal', 'damage', 'dissolve', 'powerup', 'petrify', 'select', 'shadow', 'pixelate']
   const effectLabels = ['Normal', 'Damage', 'Dissolve', 'Rainbow', 'Stone', 'Outline', 'Shadow', 'Pixelate']
@@ -412,7 +414,9 @@ async function main() {
         Math.min(1, effectElapsed / 1.0)
     }
 
+    devtools.beginFrame(performance.now(), renderer)
     renderer.render(scene, camera)
+    devtools.endFrame(renderer)
     updateDevtools()
   }
 

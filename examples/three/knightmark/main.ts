@@ -14,6 +14,7 @@ import {
   type TileMapData,
   type TilesetData,
   type TileLayerData,
+  createDevtoolsProvider,
 } from 'three-flatland'
 import { createPane } from '@three-flatland/devtools'
 
@@ -36,6 +37,7 @@ const TILE_SCALE = 2
 // ============================================
 
 const { pane, update: updateDevtools } = createPane({ driver: 'manual' })
+const devtools = createDevtoolsProvider({ name: 'knightmark' })
 
 // Stats monitors — updated each frame
 const knightStats = { knights: 0, batches: 0 }
@@ -452,7 +454,9 @@ async function main() {
     }
 
     // Render — systems run automatically in updateMatrixWorld
+    devtools.beginFrame(performance.now(), renderer)
     renderer.render(scene, camera)
+    devtools.endFrame(renderer)
     updateDevtools()
 
     // Knight batch monitors

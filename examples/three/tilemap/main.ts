@@ -12,7 +12,7 @@ import {
   Plane,
   Vector3,
 } from 'three'
-import { TileMap2D, type TileMapData, type TilesetData, type TileLayerData } from 'three-flatland'
+import { TileMap2D, type TileMapData, type TilesetData, type TileLayerData, createDevtoolsProvider } from 'three-flatland'
 import { createPane } from '@three-flatland/devtools'
 
 // Tile IDs for our procedural tileset
@@ -551,6 +551,7 @@ async function main() {
 
   // Tweakpane UI
   const { pane, update: updateDevtools } = createPane({ driver: 'manual' })
+  const devtools = createDevtoolsProvider({ name: 'tilemap' })
 
   // Layers folder
   const layerFolder = pane.addFolder({ title: 'Layers', expanded: false })
@@ -779,7 +780,9 @@ async function main() {
     // Update animated tiles
     tilemap.update(deltaMs)
 
+    devtools.beginFrame(performance.now(), renderer)
     renderer.render(scene, camera)
+    devtools.endFrame(renderer)
     updateDevtools()
 
     // Update tile stats periodically

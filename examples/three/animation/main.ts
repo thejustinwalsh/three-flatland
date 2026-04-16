@@ -1,6 +1,6 @@
 import { WebGPURenderer } from 'three/webgpu'
 import { Scene, OrthographicCamera, Color, NearestFilter } from 'three'
-import { AnimatedSprite2D, SpriteSheetLoader, Layers } from 'three-flatland'
+import { AnimatedSprite2D, SpriteSheetLoader, Layers, createDevtoolsProvider } from 'three-flatland'
 import { createPane } from '@three-flatland/devtools'
 
 /* HMR-tracked teardown state. Without this, every dev save accumulates
@@ -121,6 +121,7 @@ async function main() {
 
   // Tweakpane UI
   const { pane, update: updateDevtools } = createPane({ driver: 'manual' })
+  const devtools = createDevtoolsProvider({ name: 'animation' })
 
   const animFolder = pane.addFolder({ title: 'Animation' })
 
@@ -187,7 +188,9 @@ async function main() {
     // Update sprite animation
     knight.update(deltaMs)
 
+    devtools.beginFrame(performance.now(), renderer)
     renderer.render(scene, camera)
+    devtools.endFrame(renderer)
     updateDevtools()
   }
 
