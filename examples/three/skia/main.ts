@@ -20,6 +20,7 @@ import {
   SkiaFontLoader,
 } from '@three-flatland/skia/three'
 import { createPane } from '@three-flatland/devtools'
+import { createDevtoolsProvider } from 'three-flatland'
 
 function setStatus(msg: string, _ok: boolean) {
   console.log(`[skia] ${msg}`)
@@ -290,6 +291,7 @@ async function main() {
 
   // ── TweakPane debug controls ──
   const { update: updateDevtools } = createPane({ driver: 'manual' })
+  const devtools = createDevtoolsProvider({ name: 'skia' })
 
   // ── Animation loop ──
 
@@ -385,7 +387,9 @@ async function main() {
     }
 
     // 3. Three.js renders 3D scene (panel with Skia texture + reflection + ground)
+    devtools.beginFrame(performance.now(), renderer)
     renderer.render(scene, camera)
+    devtools.endFrame(renderer)
 
     // 4. Skia overlay on top of 3D
     overlayCanvas.render(true)

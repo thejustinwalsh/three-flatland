@@ -1,6 +1,6 @@
 import { WebGPURenderer } from 'three/webgpu'
 import { Scene, OrthographicCamera, Color, Vector2, Raycaster, Plane, Vector3 } from 'three'
-import { Sprite2D, Sprite2DMaterial, SpriteGroup, Layers, TextureLoader } from 'three-flatland'
+import { Sprite2D, Sprite2DMaterial, SpriteGroup, Layers, TextureLoader, createDevtoolsProvider } from 'three-flatland'
 import { createPane } from '@three-flatland/devtools'
 
 // Configuration
@@ -319,6 +319,7 @@ async function main() {
 
   // Tweakpane debug UI
   const { pane, update: updateDevtools } = createPane({ driver: 'manual' })
+  const devtools = createDevtoolsProvider({ name: 'batch-demo' })
   const exampleStats = { sprites: 0, batches: 0 }
   const statsFolder = pane.addFolder({ title: 'Batching', expanded: false })
   statsFolder.addBinding(exampleStats, 'sprites', { readonly: true, format: (v: number) => v.toFixed(0) })
@@ -353,7 +354,9 @@ async function main() {
   function animate() {
     requestAnimationFrame(animate)
 
+    devtools.beginFrame(performance.now(), renderer)
     renderer.render(scene, camera)
+    devtools.endFrame(renderer)
     updateDevtools()
 
     // Update stats monitors
