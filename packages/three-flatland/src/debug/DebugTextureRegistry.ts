@@ -60,6 +60,8 @@ interface DebugTextureEntry {
    * thereafter (`setSize` if aspect/dims change).
    */
   scratchRT?: RenderTarget
+  /** True once we've logged the "doesn't fit in pool buffer" warning. */
+  warnedOversized?: boolean
 }
 
 /** Minimal shape used for GPU readback. Matches three's `RenderTarget`. */
@@ -176,12 +178,24 @@ export class DebugTextureRegistry {
         ...(e.label !== undefined ? { label: e.label } : {}),
       }
       if (inFilter && e.sample !== null) {
-        // Pool path: copy pixels into the shared buffer for transfer.
-        // Inline path: hand over the cached sample reference (BC will
-        // structuredClone).
-        delta.pixels = into !== undefined
-          ? copyTypedTo(into, e.sample)
-          : e.sample
+        if (into !== undefined) {
+          const need = e.sample.byteLength
+          const have = into.buffer.byteLength - into.byteOffset
+          if (need > have) {
+            if (e.warnedOversized !== true) {
+              console.warn(
+                `[devtools] buffer entry '${name}' (${need}B) exceeds remaining ` +
+                `pool buffer space (${have}B). Shipping metadata only. ` +
+                `Bump POOL.large.size in bus-pool.ts if you want this entry visible.`,
+              )
+              e.warnedOversized = true
+            }
+          } else {
+            delta.pixels = copyTypedTo(into, e.sample)
+          }
+        } else {
+          delta.pixels = e.sample
+        }
       }
       entries[name] = delta
       e.lastEmittedVersion = e.version
