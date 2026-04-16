@@ -28,6 +28,8 @@ interface RegistryEntry {
   sampleView: Float32Array | Uint32Array | Int32Array
   /** Snapshot length (sampleView is `ref.subarray(0, length)`). */
   length: number
+  /** True once we've logged the "doesn't fit in pool buffer" warning. */
+  warnedOversized?: boolean
 }
 
 /**
@@ -130,13 +132,29 @@ export class DebugRegistry {
         ...(e.label !== undefined ? { label: e.label } : {}),
       }
       if (inFilter) {
-        // Pool path: copy into the shared buffer so the producer can
-        // transfer it to the worker without `structuredClone` running
-        // on the render thread. Otherwise the legacy view-over-private
-        // -ring path (BC will structuredClone for us).
-        base.sample = into !== undefined
-          ? copyTypedTo(into, e.sampleView)
-          : e.sampleView
+        if (into !== undefined) {
+          // Pool path. Guard against the entry not fitting in the
+          // remaining cursor space — happens when something like
+          // ForwardPlusLighting's `tileScores` outruns the large
+          // tier. Fail-soft: ship metadata-only with a one-shot
+          // warn so we notice without blowing up the whole flush.
+          const need = e.sampleView.byteLength
+          const have = into.buffer.byteLength - into.byteOffset
+          if (need > have) {
+            if (!e.warnedOversized) {
+              console.warn(
+                `[devtools] registry entry '${name}' (${need}B) exceeds remaining ` +
+                `pool buffer space (${have}B). Shipping metadata only. ` +
+                `Bump POOL.large.size in bus-pool.ts if you want this entry visible.`,
+              )
+              e.warnedOversized = true
+            }
+          } else {
+            base.sample = copyTypedTo(into, e.sampleView)
+          }
+        } else {
+          base.sample = e.sampleView
+        }
       }
       entries[name] = base
       e.lastEmittedVersion = e.version

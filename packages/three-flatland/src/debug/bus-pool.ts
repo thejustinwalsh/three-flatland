@@ -27,8 +27,14 @@
 
 /** Tier sizes / counts. Hard-coded; bump here if we ever see exhaustion. */
 export const POOL = {
-  small: { size: 4 * 1024, count: 8 },      // 32 KB
-  large: { size: 256 * 1024, count: 4 },    //  1 MB
+  small: { size: 4 * 1024, count: 8 },         // 32 KB
+  // Sized to fit the worst-case combined drain we can realistically
+  // produce: ForwardPlusLighting's `tileScores` at 1080p is
+  // tileCount * MAX_LIGHTS_PER_TILE * 4B ≈ 510 KB; combined with
+  // `lightCounts` (32 KB), `lightStore.data` (16 KB), and a stats
+  // batch (~1 KB) we're around 560 KB. 2 MB gives headroom for 4K
+  // displays and future registrations without re-tuning.
+  large: { size: 2 * 1024 * 1024, count: 4 },  //  8 MB
 } as const
 
 export type PoolTier = 'small' | 'large'
