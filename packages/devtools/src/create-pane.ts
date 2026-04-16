@@ -40,6 +40,12 @@ export interface PaneBundle {
    * so the pane works out-of-the-box in apps without a render loop.
    */
   update(): void
+  /**
+   * `true` once `pane.dispose()` has been called. Lets React hooks
+   * detect that a prior cleanup tore the bundle down and decide
+   * whether to recreate (StrictMode mount→cleanup→mount).
+   */
+  readonly disposed: boolean
 }
 
 /**
@@ -203,6 +209,9 @@ export function createPane(options: CreatePaneOptions = {}): PaneBundle {
   const bundle: PaneBundle = {
     pane,
     update: () => graph?.update(),
+    get disposed() {
+      return disposed
+    },
   }
   _unclaimedPane = bundle
   return bundle

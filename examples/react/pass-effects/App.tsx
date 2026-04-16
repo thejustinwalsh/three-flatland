@@ -22,7 +22,7 @@ import {
   staticNoise,
   chromaticAberration,
 } from '@three-flatland/nodes'
-import { usePane } from '@three-flatland/devtools/react'
+import { usePane, usePaneInput } from '@three-flatland/devtools/react'
 
 extend({ Flatland, Sprite2D })
 

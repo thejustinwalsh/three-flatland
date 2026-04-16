@@ -13,7 +13,7 @@ import {
   type TilesetData,
   type TileLayerData,
 } from 'three-flatland/react'
-import { usePane, usePaneFolder, usePaneInput, usePaneButton } from '@three-flatland/devtools/react'
+import { DevtoolsProvider, usePane, usePaneFolder, usePaneInput, usePaneButton } from '@three-flatland/devtools/react'
 
 // Register TileMap2D with R3F
 extend({ TileMap2D })
@@ -682,6 +682,7 @@ export default function App() {
       }}
     >
       <OrthoCamera viewSize={800} />
+      <DevtoolsProvider name="tilemap" />
       <color attach="background" args={['#0a0a12']} />
       <CameraController mapSize={mapSize} zoomRef={zoomRef} zoomSlider={zoomSlider} setZoomSlider={setZoomSlider} />
       <Suspense fallback={null}>

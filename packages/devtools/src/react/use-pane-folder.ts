@@ -1,46 +1,42 @@
-import { useEffect, useRef } from 'react'
+import { useLayoutEffect, useRef, useState } from 'react'
 import type { FolderApi, FolderParams } from 'tweakpane'
 import type { PaneParent } from './use-pane-input.js'
 
 /**
- * Create a Tweakpane folder. Disposes on unmount.
- * Returns the FolderApi (usable as parent for usePaneInput).
+ * Create a Tweakpane folder underneath `parent`. Disposes on unmount and
+ * recreates when `parent` (or `title`) changes — e.g., when `usePane`
+ * tears down and rebuilds its bundle on a StrictMode remount.
  *
- * Created synchronously during render so it's immediately available
- * for child hooks on first render. Uses deferred disposal to survive
- * React strict mode's cleanup/re-mount cycle.
+ * Returns `null` on the first render before the layout effect commits,
+ * then the FolderApi on the next render. The two renders happen
+ * synchronously before paint, so consumers don't see a flicker.
  */
 export function usePaneFolder(
   parent: PaneParent | null,
   title: string,
   options: Partial<FolderParams> = {},
 ): FolderApi | null {
-  const folderRef = useRef<FolderApi | null>(null)
-  const mountedRef = useRef(false)
+  const optsRef = useRef(options)
+  optsRef.current = options
 
-  if (parent && folderRef.current === null) {
-    folderRef.current = parent.addFolder({ expanded: false, ...options, title })
-  }
+  const [folder, setFolder] = useState<FolderApi | null>(null)
 
-  useEffect(() => {
-    mountedRef.current = true
-
-    if (parent && folderRef.current === null) {
-      folderRef.current = parent.addFolder({ expanded: false, ...options, title })
+  useLayoutEffect(() => {
+    if (!parent) {
+      setFolder(null)
+      return
     }
-
+    const f = parent.addFolder({ expanded: false, ...optsRef.current, title })
+    setFolder(f)
     return () => {
-      const folder = folderRef.current
-      setTimeout(() => {
-        if (!mountedRef.current && folder) {
-          folder.dispose()
-          if (folderRef.current === folder) folderRef.current = null
-        }
-      }, 0)
-      mountedRef.current = false
+      try {
+        f.dispose()
+      } catch {
+        // Parent may have been disposed first (cascade), in which case
+        // the folder is already gone. Ignore.
+      }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [parent, title])
 
-  return parent ? folderRef.current : null
+  return folder
 }

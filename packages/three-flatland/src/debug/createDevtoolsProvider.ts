@@ -40,6 +40,8 @@ export interface DevtoolsProviderHandle {
   beginFrame(now: number, renderer: WebGPURenderer): void
   endFrame(renderer: WebGPURenderer): void
   dispose(): void
+  /** `true` once `dispose()` has been called. */
+  readonly disposed: boolean
 }
 
 /**
@@ -50,11 +52,18 @@ export function createDevtoolsProvider(
   options: DevtoolsProviderOptions = {},
 ): DevtoolsProviderHandle {
   if (!DEVTOOLS_BUNDLED || !isDevtoolsActive()) return NOOP_PROVIDER
-  return new DevtoolsProvider(options)
+  const provider = new DevtoolsProvider(options)
+  // The class constructor is now side-effect-free — explicit `start()`
+  // is required to open channels / start the flush timer / announce on
+  // discovery. The vanilla helper does both together so external
+  // callers see no behavior change.
+  provider.start()
+  return provider
 }
 
 const NOOP_PROVIDER: DevtoolsProviderHandle = {
   beginFrame() { /* no-op */ },
   endFrame() { /* no-op */ },
   dispose() { /* no-op */ },
+  get disposed() { return false },
 }

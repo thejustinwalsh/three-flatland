@@ -46,3 +46,9 @@ export {
   type DevtoolsProviderHandle,
 } from './debug/createDevtoolsProvider'
 
+// Devtools gates — re-exported so wrappers (e.g., @three-flatland/devtools'
+// React `<DevtoolsProvider>`) can early-return in production / when
+// devtools is disabled at runtime, allowing bundlers to drop the dev-only
+// branch entirely.
+export { DEVTOOLS_BUNDLED, isDevtoolsActive } from './debug-protocol'
+

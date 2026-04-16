@@ -14,7 +14,7 @@ import {
   type TilesetData,
   type TileLayerData,
 } from 'three-flatland/react'
-import { usePane, usePaneFolder, usePaneInput } from '@three-flatland/devtools/react'
+import { DevtoolsProvider, usePane, usePaneFolder, usePaneInput } from '@three-flatland/devtools/react'
 
 extend({ SpriteGroup, TileMap2D })
 
@@ -512,6 +512,7 @@ export default function App() {
         }}
       >
         <OrthoCamera viewSize={VIEW_SIZE} />
+        <DevtoolsProvider name="knightmark" />
         <color attach="background" args={['#1a1a2e']} />
         <Suspense fallback={null}>
           <KnightmarkScene

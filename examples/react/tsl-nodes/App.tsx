@@ -32,7 +32,7 @@ import {
   dissolvePixelated,
   tint,
 } from '@three-flatland/nodes'
-import { usePane, usePaneFolder } from '@three-flatland/devtools/react'
+import { DevtoolsProvider, usePane, usePaneFolder } from '@three-flatland/devtools/react'
 
 extend({ AnimatedSprite2D })
 
@@ -468,6 +468,7 @@ export default function App() {
         }}
       >
         <OrthoCamera viewSize={200} />
+        <DevtoolsProvider name="tsl-nodes" />
         <Scene />
       </Canvas>
     </>

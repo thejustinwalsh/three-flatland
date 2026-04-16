@@ -1,62 +1,54 @@
-import { useEffect, useRef } from 'react'
-import { useFrame } from '@react-three/fiber'
+import { useEffect, useReducer, useRef } from 'react'
 import { claimPane, createPane } from '../create-pane.js'
 import type { CreatePaneOptions, PaneBundle } from '../create-pane.js'
 
 /**
- * Create a themed Tweakpane instance. Disposes on unmount. Returns a
- * stable `PaneBundle` (pane + `update`).
+ * Create a themed Tweakpane instance. Disposes on unmount, recreates on
+ * remount. Returns a `PaneBundle` whose identity changes if React tears
+ * the component down and rebuilds it (StrictMode, parent remount,
+ * Suspense). Child hooks that depend on the pane (`usePaneFolder`,
+ * `usePaneInput`) re-bind when this happens.
  *
- * The graph is driven by R3F's `useFrame` so we share one rAF with
- * the host. Default phase / priority on purpose — the pane's
- * `update()` only repaints from the (already-current) bus state, so
- * sampling timing is irrelevant. Setting a positive priority would
- * otherwise collide with the example's `useFrame(..., { phase:
- * 'render' })` callback under StrictMode's mount → cleanup → remount,
- * surfacing as `[useFrame] Job with id "..." already exists, replacing`.
+ * Lifecycle:
+ *   - Render: lazy-creates the bundle into a ref so it's available
+ *     synchronously on first paint. Render runs twice in StrictMode but
+ *     the ref guard prevents double-creation. Orphans from aborted
+ *     concurrent renders are reclaimed by `createPane`'s unclaimed-slot
+ *     mechanism.
+ *   - Effect: claims the bundle so unrelated `createPane` calls won't
+ *     dispose it; cleanup disposes the pane unconditionally.
+ *   - Effect re-mount (StrictMode or true remount): the bundle in the
+ *     ref is now `disposed`, so we create a fresh one and `force()` a
+ *     re-render so consumers receive the new identity.
  *
- * Internally forces `driver: 'manual'` — a secondary
- * `requestAnimationFrame` would double-tick under R3F (and Safari
- * throttles multi-rAF pages).
+ * Uses `driver: 'raf'` so the stats graph self-ticks via its own
+ * `requestAnimationFrame` loop. This makes `usePane` work regardless
+ * of whether it's called inside or outside R3F's `<Canvas>` context.
  */
 export function usePane(options: CreatePaneOptions = {}): PaneBundle {
-  const bundleRef = useRef<PaneBundle | null>(null)
-  const mountedRef = useRef(false)
+  const optsRef = useRef(options)
+  optsRef.current = options
 
-  if (bundleRef.current === null) {
-    bundleRef.current = createPane({ ...options, driver: 'manual' })
+  const bundleRef = useRef<PaneBundle | null>(null)
+  const [, force] = useReducer((x: number) => x + 1, 0)
+
+  if (bundleRef.current === null || bundleRef.current.disposed) {
+    bundleRef.current = createPane(optsRef.current)
   }
 
-  useFrame(() => {
-    bundleRef.current?.update()
-  })
+  const bundle = bundleRef.current
 
   useEffect(() => {
-    mountedRef.current = true
-
-    // Strict mode may have disposed the pane in the previous cleanup
-    // pass — recreate if so.
-    if (bundleRef.current === null) {
-      bundleRef.current = createPane({ ...options, driver: 'manual' })
+    if (bundle.disposed) {
+      bundleRef.current = createPane(optsRef.current)
+      force()
+      return
     }
-
-    // Claim the pane so a later createPane in an unrelated component
-    // doesn't dispose it.
-    claimPane(bundleRef.current)
-
+    claimPane(bundle)
     return () => {
-      // Strict mode cleans up synchronously then re-mounts. Defer the
-      // dispose check one microtask so the re-mount can cancel it.
-      const bundle = bundleRef.current
-      setTimeout(() => {
-        if (!mountedRef.current && bundle) {
-          bundle.pane.dispose()
-        }
-      }, 0)
-      mountedRef.current = false
+      bundle.pane.dispose()
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [bundle])
 
-  return bundleRef.current
+  return bundle
 }

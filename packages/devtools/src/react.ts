@@ -1,4 +1,6 @@
 export { usePane } from './react/use-pane.js'
+export { DevtoolsProvider } from './react/devtools-provider.js'
+export type { DevtoolsProviderProps } from './react/devtools-provider.js'
 export { usePaneInput } from './react/use-pane-input.js'
 export type { PaneParent, PaneInputOptions } from './react/use-pane-input.js'
 export { usePaneFolder } from './react/use-pane-folder.js'

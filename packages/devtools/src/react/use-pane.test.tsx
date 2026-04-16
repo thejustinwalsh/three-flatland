@@ -1,23 +1,13 @@
 import { describe, it, expect, afterEach, vi } from 'vitest'
 import { StrictMode } from 'react'
-import { render, cleanup, renderHook, act } from '@testing-library/react'
+import { render, cleanup, renderHook } from '@testing-library/react'
 import type { PaneBundle } from '../create-pane'
 
-// R3F's `useFrame` only works inside a `<Canvas>`, which pulls in the
-// full renderer — way too heavy for a hook-shape test. Stub it so
-// `usePane` renders cleanly in happy-dom; the actual frame-driving
-// behaviour is covered by integration in example apps.
-vi.mock('@react-three/fiber', () => ({
-  useFrame: (_cb: () => void, _priority?: number) => {},
-}))
-
-// eslint-disable-next-line import/first
 import { usePane } from './use-pane'
 
 afterEach(() => {
   cleanup()
   document.body.innerHTML = ''
-  vi.useRealTimers()
 })
 
 describe('usePane', () => {
@@ -38,29 +28,25 @@ describe('usePane', () => {
     expect(result.current).toBe(first)
   })
 
-  it('disposes the pane on real unmount (after the deferred-disposal microtask)', async () => {
-    vi.useFakeTimers()
+  it('disposes the pane on real unmount', () => {
     const { result, unmount } = renderHook(() => usePane())
     const bundle = result.current
     const element = bundle.pane.element
 
     expect(document.body.contains(element)).toBe(true)
+    expect(bundle.disposed).toBe(false)
 
     unmount()
-    // Disposal is queued via setTimeout(..., 0); flush the timer queue.
-    await act(async () => {
-      vi.runOnlyPendingTimers()
-    })
 
+    expect(bundle.disposed).toBe(true)
     expect(document.body.contains(element)).toBe(false)
   })
 
-  it('survives React strict-mode cleanup/remount without disposing the pane', async () => {
-    // Strict mode mounts → cleans up → mounts again synchronously. The
-    // deferred-disposal pattern (setTimeout 0) ensures the dispose check
-    // happens AFTER the second mount, where mountedRef.current === true.
-    vi.useFakeTimers()
-
+  it('recreates the pane after strict-mode cleanup/remount', () => {
+    // Strict mode: mount → cleanup → mount on the same instance. Our
+    // cleanup disposes the pane; the re-mount detects that and creates
+    // a fresh bundle + force-renders so consumers see the new identity.
+    // End state: exactly one pane attached to the DOM.
     let captured: PaneBundle | null = null
     function Probe() {
       const bundle = usePane()
@@ -76,23 +62,14 @@ describe('usePane', () => {
 
     const bundle = captured!
     expect(bundle).not.toBeNull()
-    const element = bundle.pane.element
+    expect(bundle.disposed).toBe(false)
 
-    // Flush any deferred-disposal timeouts queued by strict mode's first
-    // cleanup. The remount should have set mountedRef.current = true again,
-    // so the dispose-check inside the timeout sees a mounted component and
-    // skips disposal.
-    //
-    // Use `runOnlyPendingTimers` (not `runAllTimers`) because the pane
-    // internally starts setInterval timers for the bus ack/liveness
-    // watchers — `runAllTimers` would re-fire those forever and hit
-    // vitest's 10k-iteration safety net.
-    await act(async () => {
-      vi.runOnlyPendingTimers()
-    })
+    // Live pane element is attached.
+    expect(document.body.contains(bundle.pane.element)).toBe(true)
 
-    // The pane element is still attached — strict mode did not destroy it
-    expect(document.body.contains(element)).toBe(true)
+    // Exactly one pane in the DOM (StrictMode orphans got cleaned up).
+    const allPanes = document.body.querySelectorAll('.tp-rotv')
+    expect(allPanes.length).toBe(1)
   })
 
   it('passes the title option through to createPane', () => {

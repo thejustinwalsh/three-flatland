@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useLayoutEffect, useRef, useState } from 'react'
 import type { FolderApi, Pane } from 'tweakpane'
 
 export type PaneParent = Pane | FolderApi
@@ -22,10 +22,13 @@ export interface PaneInputOptions {
 
 /**
  * Bind a Tweakpane input to React state.
- * Returns [value, setValue] — setValue updates both React state and the TP binding.
+ * Returns [value, setValue] — setValue updates both React state and the
+ * Tweakpane binding.
  *
- * Binding is created synchronously during render (same pattern as usePaneFolder)
- * so all controls appear on first render with no pop-in.
+ * The binding is created in `useLayoutEffect` and rebuilt whenever
+ * `parent` or `key` changes — so when `usePane` tears down and rebuilds
+ * its bundle (StrictMode, true remount), this hook automatically
+ * re-binds to the new pane. Cleanup disposes the binding immediately.
  */
 export function usePaneInput<T>(
   parent: PaneParent | null,
@@ -36,71 +39,48 @@ export function usePaneInput<T>(
   const [value, setValueState] = useState<T>(initialValue)
   const paramsRef = useRef<Record<string, unknown>>({ [key]: initialValue })
   const bindingRef = useRef<{ refresh(): void; dispose(): void } | null>(null)
-  const listenerRef = useRef<((ev: { value: unknown }) => void) | null>(null)
+  const optsRef = useRef(options)
+  optsRef.current = options
 
-  // Track mount lifecycle so the binding's change listener can drop
-  // updates that arrive between React's cleanup and our `setTimeout(0)`
-  // actually disposing the binding (deferred-disposal pattern). Without
-  // this gate, those late events trigger React's "state update on
-  // unmounted component" warning.
-  const mountedRef = useRef(false)
+  // Keep paramsRef in sync with React state — covers external setValue
+  // calls between effect runs and ensures a recreated binding shows the
+  // latest value (not the initial).
+  paramsRef.current[key] = value
 
-  // Create binding synchronously on first render so controls appear on
-  // first paint with no pop-in. This deliberately accesses/mutates refs
-  // during render — incompatible with React Compiler, but the alternative
-  // (useEffect-only setup) causes visible flicker in strict mode.
-  if (parent && bindingRef.current === null) {
-    const { label, ...bindingOpts } = options
-    paramsRef.current[key] = initialValue
+  useLayoutEffect(() => {
+    if (!parent) {
+      bindingRef.current = null
+      return
+    }
 
+    const { label, ...bindingOpts } = optsRef.current
     const binding = parent.addBinding(paramsRef.current, key, {
       label: label ?? key,
       ...bindingOpts,
     } as Record<string, unknown>)
 
-    const listener = (ev: { value: unknown }) => {
-      if (mountedRef.current) setValueState(ev.value as T)
-    }
-    binding.on('change', listener)
-    listenerRef.current = listener
+    binding.on('change', (ev: { value: unknown }) => {
+      setValueState(ev.value as T)
+    })
     bindingRef.current = binding as unknown as { refresh(): void; dispose(): void }
-  }
-
-  // Deferred disposal — survives React strict mode cleanup/re-mount
-  useEffect(() => {
-    mountedRef.current = true
-
-    // Strict mode may have disposed the binding — recreate
-    if (parent && bindingRef.current === null) {
-      const { label, ...bindingOpts } = options
-      paramsRef.current[key] = initialValue
-      const binding = parent.addBinding(paramsRef.current, key, {
-        label: label ?? key,
-        ...bindingOpts,
-      } as Record<string, unknown>)
-      const listener = (ev: { value: unknown }) => {
-        if (mountedRef.current) setValueState(ev.value as T)
-      }
-      binding.on('change', listener)
-      listenerRef.current = listener
-      bindingRef.current = binding as unknown as { refresh(): void; dispose(): void }
-    }
 
     return () => {
-      const binding = bindingRef.current
-      setTimeout(() => {
-        if (!mountedRef.current && binding) {
-          binding.dispose()
-          if (bindingRef.current === binding) {
-            bindingRef.current = null
-            listenerRef.current = null
-          }
-        }
-      }, 0)
-      mountedRef.current = false
+      try {
+        binding.dispose()
+      } catch {
+        // Parent may have been disposed first (cascade). Ignore.
+      }
+      if (
+        bindingRef.current ===
+        (binding as unknown as { refresh(): void; dispose(): void })
+      ) {
+        bindingRef.current = null
+      }
     }
+    // optsRef captures the latest options without retriggering setup;
+    // value isn't a dep because we sync paramsRef above.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [parent, key])
 
   const setValue = useCallback(
     (v: T) => {
