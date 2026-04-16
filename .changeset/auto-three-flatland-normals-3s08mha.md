@@ -5,19 +5,10 @@
 > Branch: lighting-stochastic-adoption
 > PR: https://github.com/thejustinwalsh/three-flatland/pull/27
 
-**New package** — `@three-flatland/normals` provides offline normal-map baking and runtime loading for sprite assets.
+**New `@three-flatland/normals` package:**
+- `flatland-bake normal <sprite.png>`: Node-runnable normal-map baker; reads RGBA PNG, computes 4-neighbor alpha gradient, writes sibling `.normal.png`; `--strength` option scales the gradient
+- `NormalMapLoader`: runtime loader implementing the canonical "try baked → fall back to runtime TSL" pattern; HEAD-probes for `.normal.png` to avoid 404 noise; returns `Texture | null`; dev-time warn-once on fallback (suppressed in production)
+- Instance API extending `three.Loader` (R3F `useLoader`-compatible) and static API `NormalMapLoader.load(url, { forceRuntime? })` with a shared URL-keyed cache
+- `@three-flatland/bake` CWD-self-discovery: CLI registers its own package's bakers first, enabling local iteration without symlinking
 
-**Normal-map baker**
-- Node.js baker: reads RGBA PNG, computes 4-neighbor alpha gradient, normalizes to tangent-space, writes sibling `.normal.png`
-- Contributes `flatland-bake normal` subcommand via `flatland.bakers` manifest — `flatland-bake normal sprite.png [out.png] [--strength n]`
-- Eliminates four alpha-sample + gradient cost per fragment at runtime when the baked PNG is available
-
-**NormalMapLoader** (runtime)
-- Instance API: extends `three.Loader`; R3F `useLoader`-compatible
-- Static API: `NormalMapLoader.load(url, { forceRuntime? })` with shared URL+`forceRuntime`-keyed cache
-- Canonical "try baked → fall back to runtime" pattern: HEAD probe keeps 404 silent; dev-time warning fires at most once per URL outside `NODE_ENV=production`; successful HEAD with failed `TextureLoader` warns and falls through to `normalFromSprite` TSL path
-
-**Lighting example** (post-rebase)
-- New `examples/react/lighting` showcasing `castsShadow` sprites, wandering light-emitting characters, flickering torches, and keyboard-controlled hero via `DefaultLightEffect`
-
-New `@three-flatland/normals` package delivers a complete normal-map pipeline from offline baking to runtime loading with graceful fallback to the existing TSL shader path.
+`@three-flatland/normals` provides offline normal-map baking via `flatland-bake normal` and a runtime loader that transparently prefers pre-baked textures over per-fragment TSL computation.

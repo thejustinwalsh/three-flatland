@@ -5,43 +5,22 @@
 > Branch: lighting-stochastic-adoption
 > PR: https://github.com/thejustinwalsh/three-flatland/pull/27
 
-**DevtoolsClient (new)**
-- Framework-agnostic bus consumer; `start()` / `dispose()` lifecycle
-- `addListener(cb)` / `removeListener(cb)` multi-listener API (replaces single `onChange`)
-- Accumulates delta state per the debug protocol; `setFeatures([...])` re-subscribes with updated feature list
-- Liveness watcher: flips `serverAlive` false after `SERVER_LIVENESS_MS` silence, auto-resubscribes
+**New features:**
+- `DevtoolsClient` + `mountDevtoolsPanel` / `useDevtoolsPanel`: bus-driven readonly debug pane with Perf, Scene, Environment, and Liveness folders
+- Multi-provider discovery protocol: `provider:announce/query/gone` messages; consumer auto-selects user provider over system provider, auto-switches on disconnect
+- `createPane` / `usePane` auto-mount the devtools panel when `debug: true` — no separate `mountDevtoolsPanel` call needed
+- Phase B `DebugRegistry`: engine publishes CPU typed arrays (e.g. `lightCounts`, `tileScores`) via `registerDebugArray`/`touchDebugArray`; collapsible registry blade; per-entry subscribe filter gates bandwidth
+- Phase C `DebugTextureRegistry` + buffers view: live GPU buffer thumbnails (240×120 canvas) with `colors`/`normalize`/`mono`/`signed` display modes; `maxDim` cap (default 256) downsamples large render targets via GPU `Downsampler` before readback
+- `perf-track.ts`: `perfMeasure`/`perfStart` emit User Timing spans on Chrome's custom-track extension (`trackGroup: 'three-flatland'`), covering flush CPU time and bus-receive latency
 
-**mountDevtoolsPanel / useDevtoolsPanel (new)**
-- Readonly Tweakpane folder with live FPS, CPU ms, GPU ms, draw calls, triangles, env snapshot
-- `options.client` lets callers share a pre-existing `DevtoolsClient` so lifecycle is caller-owned
-- `createPane` / `usePane` auto-mount the panel when `debug: true` — no separate mount call needed
+**Performance:**
+- Stats graph rewritten from SVG polyline to Canvas — eliminates ~5k string allocations/s and CSS selector invalidations per rAF
+- `StatsCollector.maybeResolveGpu` throttled from 60 Hz to 10 Hz, reducing Promise/closure churn 6×
+- Buffers view caches `ImageData` across paints when dimensions match; 1920×1080 SDF reads back at 256×144 (~150 KB) instead of 8 MB
+- `textContent` writes deduped via boxed cache holders
 
-**Multi-provider discovery**
-- `provider:announce` / `provider:query` / `provider:gone` protocol; 150 ms collection window
-- `selectProvider(id)` manual override; auto-switch on `provider:gone` matching selection
-- `user` providers preferred over `system` providers; `FlatlandOptions.name` distinguishes instances
+**Fixes:**
+- Shared `DevtoolsClient` across stats graph, stats row, and devtools panel — single source of truth, no timing drift between readouts
+- Protocol rename: `registryFilter`/`atlasFilter` → `registry`/`buffers` for consistency with the `features` shape
 
-**Debug buffers view**
-- `buffers-view.ts` blade: `◀ name ▶` arrows cycle registered buffers, 240×120 thumbnail
-- Four display modes: `colors`, `normalize`, `mono`, `signed` (red/green diverging, good for SDFs)
-- `setBuffers(names | null)` mirrors `setRegistry` for visibility-driven bandwidth control
-
-**Debug registry view**
-- Grouped collapsible blade for CPU typed-array entries published via `registerDebugArray` / `touchDebugArray`
-- Visibility-driven throttling: collapse pane → `features: []`; collapse registry → `registryFilter: []`
-- `ForwardPlusLighting` publishes `lightCounts` + `tileScores`; `LightStore` publishes its DataTexture
-
-**Performance**
-- Stats graph replaced SVG polyline with Canvas `ctx.beginPath` / `lineTo` — eliminates ~5 k string allocs/s and CSS selector invalidation
-- `textContent` writes deduplicated via boxed cache — only re-assigns on actual value change
-- `StatsCollector.maybeResolveGpu` throttled from 60 Hz to 10 Hz, reducing Promise closure churn 6×
-- `DebugTextureRegistry` `maxDim` cap (default 256): large RTs blitted to downsampled scratch before readback — 1920×1080 SDF reads at 256×144 (~150 KB) instead of ~8 MB per drain
-- `ImageData` cached across paints when source dimensions match, eliminating ~400 KB/s Uint8ClampedArray allocation
-
-**perf-trace.ts (new)**
-- `perfMeasure` / `perfStart` emit User Timing spans on Chrome's custom-track extension
-- Convention: `trackGroup = 'three-flatland'`, tracks `devtools` / `lighting` / `sprites` / `sdf`
-- Per-message byte counts attached as entry properties after latency measurement
-
-This release delivers a complete debuggability stack: a bus-driven devtools panel, live GPU texture inspection, CPU typed-array registry, and near-zero render-thread overhead via a worker-offloaded buffer pool.
-
+Comprehensive devtools upgrade delivering bus-driven provider discovery, live GPU buffer inspection with downsampled readback, and significantly reduced allocation overhead on the debug hot path.

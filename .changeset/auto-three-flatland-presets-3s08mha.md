@@ -5,22 +5,19 @@
 > Branch: lighting-stochastic-adoption
 > PR: https://github.com/thejustinwalsh/three-flatland/pull/27
 
-**New lighting effect presets**
+**New lighting preset effects:**
+- `DefaultLightEffect`: Forward+ tiled lit effect with ambient, point, spot, and directional light support; real SDF soft shadows replace the previous `float(1.0)` stub; `shadowStrength`, `shadowSoftness`, `shadowBias` controls
+- `DirectLightEffect`: direct-only lit effect with the same SDF shadow integration
+- `SimpleLightEffect`, `RadianceLightEffect`: additional lighting strategies
+- `AutoNormalProvider`: MaterialEffect that derives normals from sprite alpha at runtime
+- `NormalMapProvider`: MaterialEffect that binds a pre-baked normal texture
 
-- `DefaultLightEffect`: Forward+ tiled point lights with JFA-based SDF soft shadows and ambient support
-- `DirectLightEffect`: single directional light with SDF soft shadows
-- `SimpleLightEffect`: flat ambient-only, no shadow cost
-- `RadianceLightEffect`: experimental radiance cascades GI preset (WIP)
-- `AutoNormalProvider`: MaterialEffect that computes per-sprite normals at runtime via `normalFromSprite` TSL
-- `NormalMapProvider`: MaterialEffect that loads pre-baked `.normal.png` via `NormalMapLoader` with runtime fallback
+**Shadow wiring:**
+- `LightEffectBuildContext` extended with `sdfTexture`, `worldSizeNode`, `worldOffsetNode`; effects bind the SDF texture at shader-build time (reference stable across resize)
+- `Flatland.setLighting` eagerly allocates `SDFGenerator` + `OcclusionPass` before calling `buildLightFn` when `needsShadows = true`
 
-**SDF shadow wiring (T7)**
-- `shadow = float(1.0)` stub replaced with real `shadowSDF2D` call in `DefaultLightEffect` and `DirectLightEffect`
-- `shadowStrength` (0–1), `shadowSoftness` (penumbra width), `shadowBias` (self-shadow start offset) are configurable
-- Ambient light contributions skip shadow computation, preserving ambient semantics
-
-**Package**
+**Package:**
 - `./react` subpath export added
-- `@react-three/fiber` declared as optional peer dependency so `ThreeElements` augmentation resolves without requiring R3F
+- `@react-three/fiber` declared as optional peer dependency so the `ThreeElements` module augmentation resolves without requiring R3F in every consumer
 
-`@three-flatland/presets` provides ready-to-use lighting effects covering the full range from simple ambient to SDF soft shadows, all wired into the Flatland ECS pipeline.
+`@three-flatland/presets` ships a complete set of production-ready 2D light effects with real SDF-based soft shadows and normal-map support wired end-to-end.
