@@ -12,6 +12,8 @@ import {
 import { texture as sampleTexture } from 'three/tsl'
 import { NodeMaterial } from 'three/webgpu'
 import type { BufferDelta, BufferDisplayMode, BuffersPayload, TexturePixelType } from '../debug-protocol'
+import type { BufferCursor } from './bus-pool'
+import { copyTypedTo } from './bus-pool'
 
 /**
  * Shape the provider holds for a registered texture. Supports:
@@ -149,6 +151,7 @@ export class DebugTextureRegistry {
     out: BuffersPayload,
     filter: Set<string> | null,
     renderer: WebGPURenderer | undefined,
+    into?: BufferCursor,
   ): boolean {
     let wrote = false
     const entries: Record<string, BufferDelta | null> = {}
@@ -172,7 +175,14 @@ export class DebugTextureRegistry {
         version: e.version,
         ...(e.label !== undefined ? { label: e.label } : {}),
       }
-      if (inFilter && e.sample !== null) delta.pixels = e.sample
+      if (inFilter && e.sample !== null) {
+        // Pool path: copy pixels into the shared buffer for transfer.
+        // Inline path: hand over the cached sample reference (BC will
+        // structuredClone).
+        delta.pixels = into !== undefined
+          ? copyTypedTo(into, e.sample)
+          : e.sample
+      }
       entries[name] = delta
       e.lastEmittedVersion = e.version
       e.lastEmittedShape = target
