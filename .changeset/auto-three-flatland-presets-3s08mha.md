@@ -5,17 +5,17 @@
 > Branch: lighting-stochastic-adoption
 > PR: https://github.com/thejustinwalsh/three-flatland/pull/27
 
-**Lighting effect presets**
+**New lighting preset effects and providers for the 2D pipeline**
 
-- `SimpleLightEffect`, `DefaultLightEffect`, `DirectLightEffect`, `RadianceLightEffect` — ready-to-use 2D lighting strategies exported from `@three-flatland/presets/lighting`
-- `AutoNormalProvider` — MaterialEffect that automatically derives normals from sprite alpha at runtime; `NormalMapProvider` — loads baked `.normal.png` textures
-- React subpath: `@three-flatland/presets/react` exports JSX-compatible lighting components
-- `@react-three/fiber` declared as an optional peer dep so the `ThreeElements` augmentation resolves without requiring R3F in vanilla projects
+- `DefaultLightEffect`: full Forward+ tiled lighting with per-sprite normals and SDF soft shadows
+- `DirectLightEffect`: simpler direct lighting without tiling, supports SDF shadows
+- `SimpleLightEffect`: ambient + single directional light, no shadows
+- `RadianceLightEffect`: radiance cascades GI strategy (WIP)
+- `AutoNormalProvider`: `MaterialEffect` that derives tangent-space normals from sprite alpha at runtime via `normalFromSprite`
+- `NormalMapProvider`: `MaterialEffect` that reads normals from a pre-baked `.normal.png` via `NormalMapLoader`
+- `DefaultLightEffect` and `DirectLightEffect` replace `shadow = float(1.0)` stub with real `shadowSDF2D` sphere-trace; `shadowStrength`, `shadowSoftness`, `shadowBias` controls; ambient lights skip shadows
+- `LightEffectBuildContext` now carries `sdfTexture`, `worldSizeNode`, `worldOffsetNode` — effects bind SDF and world-bounds uniforms at shader build time, stable across resize
+- Added `./react` subpath export for R3F consumers (`ThreeElements` augmentation resolves correctly)
+- `@react-three/fiber` declared as optional peer dep
 
-**SDF shadow integration**
-
-- `DefaultLightEffect` and `DirectLightEffect` now call `shadowSDF2D` for real soft shadows; the `shadow = float(1.0)` stub is replaced
-- Shadow strength, softness, and bias are configurable per-effect via `LightEffectBuildContext`
-- World-bound uniforms (`worldSizeNode`, `worldOffsetNode`) threaded through the build context; effects no longer need to compute their own world↔UV mapping
-
-`@three-flatland/presets` provides drop-in lighting effects with SDF soft shadows, normal providers, and full React integration out of the box.
+Provides ready-to-use lighting effect presets that compose with Flatland's ECS pipeline, from simple ambient-only to full tiled Forward+ with SDF soft shadows.

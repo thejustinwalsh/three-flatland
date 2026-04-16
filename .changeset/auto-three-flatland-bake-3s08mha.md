@@ -5,17 +5,12 @@
 > Branch: lighting-stochastic-adoption
 > PR: https://github.com/thejustinwalsh/three-flatland/pull/27
 
-**New package: `@three-flatland/bake`**
+**New package: `@three-flatland/bake` — extensible asset-baking CLI**
 
-- New `flatland-bake` CLI binary — single entry point that discovers and dispatches to bakers contributed by any installed npm/workspace package
-- Bakers are declared in `package.json` under `flatland.bakers[].entry`; installing a package with this manifest makes its subcommand appear in `flatland-bake --list` with no manual wiring
-- Discovery walks `node_modules` upward from CWD, tolerates scoped packages, missing dirs, and malformed manifests; duplicate names use first-wins with a conflict warning
-- CWD self-discovery: when the CLI runs inside a package that itself declares bakers, those are registered first, enabling author iteration without symlinking
+- New `flatland-bake` binary; dispatches to subcommands contributed by packages via a `flatland.bakers` manifest in `package.json`
+- Bakers are auto-discovered by walking `node_modules` upward from CWD; installing a package that declares bakers makes its subcommand appear in `flatland-bake --list`
+- CWD self-discovery: when the CLI runs inside a package whose own `package.json` declares bakers, those register ahead of `node_modules` scans — iterate on a baker without symlinking it into its own `node_modules`
+- Duplicate-name baker registrations reported as conflicts with first-wins policy
+- `flatland-bake normal <input.png>` subcommand added by installing `@three-flatland/normals` (no additional wiring required)
 
-**Normal-map baker integration**
-
-- `flatland-bake normal <sprite.png>` bakes a sibling `.normal.png` using the same 4-neighbor alpha-gradient algorithm as the runtime `normalFromSprite` TSL helper
-- Optional `--strength <n>` multiplier; output path defaults to `<input>.normal.png`
-- Installing `@three-flatland/normals` automatically registers the `normal` subcommand
-
-`@three-flatland/bake` is the extensible offline asset pipeline for the flatland ecosystem; baking normals (and future slug/font atlases) moves per-fragment GPU work to build time.
+Extensible bake pipeline for offline asset pre-processing, with `@three-flatland/normals` as the first shipped baker.

@@ -5,17 +5,13 @@
 > Branch: lighting-stochastic-adoption
 > PR: https://github.com/thejustinwalsh/three-flatland/pull/27
 
-**Lighting shader nodes**
+**New TSL lighting node library for 2D sprite rendering**
 
-- `shadowSDF2D(surfaceWorldPos, lightWorldPos, sdfTexture, worldSize, worldOffset, opts?)` — sphere-trace soft shadow helper; returns `[0, 1]` shadow factor with Inigo-Quilez penumbra term
-  - Options: `steps` (default 32), `softness` (8=soft, 32=sharp), `startOffset` (self-shadow bias), `eps`
-  - SDF texture expected from `SDFGenerator` (`.r` channel, UV-space distance)
-- `lit`, `normalFromSprite`, `normalFromHeight` TSL lighting node helpers
-- `lights` — light-store TSL node bindings for point/directional/ambient/spot lights
+- `lit` node: per-fragment Phong/diffuse accumulation over the Forward+ light list
+- `normalFromSprite` node: derives tangent-space normals from sprite alpha gradient (4-neighbor)
+- `normalFromHeight` node: derives normals from a grayscale heightmap texture
+- `shadow2D` / `shadowSoft2D` nodes: raymarch occluder alpha for soft and hard shadows
+- `shadowSDF2D(surfacePos, lightPos, sdfTexture, worldSize, worldOffset, opts)`: sphere-trace soft shadow through a pre-built SDF; Inigo-Quilez penumbra term; default 32 steps; compile-time option bag (`steps`, `softness`, `startOffset`, `eps`)
+- React lighting example (`examples/react/lighting`): dungeon floor via `TileMap2D`, shadow-casting wall sprites, wandering point-light enemies, keyboard-controlled hero, flickering torches, Tweakpane debug panel
 
-**Lighting example**
-
-- `examples/react/lighting` rebuilt with dungeon tilemap, castsShadow walls, wandering point-light enemies, keyboard-controlled hero, and Tweakpane devtools panel
-- Shadow soft-edges now wired end-to-end via `shadowSDF2D` in `DefaultLightEffect` / `DirectLightEffect`
-
-`@three-flatland/nodes` now ships a complete set of TSL lighting primitives covering lit surfaces, tangent-space normals, and SDF-based soft shadows.
+TSL shadow nodes cover two complementary algorithms: direct alpha raymarching (`shadow2D`/`shadowSoft2D`) and SDF sphere-tracing (`shadowSDF2D`) — both ship in `@three-flatland/nodes/lighting`.
