@@ -7,7 +7,7 @@ import {
   Layers,
   type AnimationSetDefinition,
 } from 'three-flatland/react'
-import { usePane, usePaneFolder } from '@three-flatland/devtools/react'
+import { DevtoolsProvider, usePane, usePaneFolder } from '@three-flatland/devtools/react'
 
 // Register AnimatedSprite2D with R3F (tree-shakeable)
 extend({ AnimatedSprite2D })
@@ -218,6 +218,7 @@ export default function App() {
         }}
       >
         <OrthoCamera viewSize={200} />
+        <DevtoolsProvider name="animation" />
         <Scene />
       </Canvas>
     </>

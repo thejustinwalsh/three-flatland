@@ -1,18 +1,19 @@
 import { describe, it, expect, afterEach, vi } from 'vitest'
 import { StrictMode } from 'react'
-import { render, cleanup, renderHook, act } from '@testing-library/react'
+import { render, cleanup, renderHook } from '@testing-library/react'
 import { claimPane, createPane, type PaneBundle } from '../create-pane'
 import { usePane } from './use-pane'
 import { usePaneFolder } from './use-pane-folder'
 
+
+
 afterEach(() => {
   cleanup()
   document.body.innerHTML = ''
-  vi.useRealTimers()
 })
 
-// usePaneFolder needs a parent (Pane | FolderApi). The simplest fixture is a
-// real createPane bundle that we claim and tear down per-test.
+// usePaneFolder needs a parent (Pane | FolderApi). The simplest fixture
+// is a real createPane bundle that we claim and tear down per-test.
 function withParent<T>(fn: (bundle: PaneBundle) => T): T {
   const bundle = createPane({})
   claimPane(bundle)
@@ -33,16 +34,16 @@ describe('usePaneFolder', () => {
     expect(result.current).toBeNull()
   })
 
-  it('creates a folder synchronously on first render with a parent', () => {
+  it('creates a folder after the layout effect commits', () => {
     withParent((bundle) => {
       const { result } = renderHook(() => usePaneFolder(bundle.pane, 'MyFolder'))
+      // After mount + layout effect + setState re-render, folder is set.
       expect(result.current).not.toBeNull()
-      // The folder element should be inside the pane's DOM tree
       expect(bundle.pane.element.textContent).toContain('MyFolder')
     })
   })
 
-  it('returns the same folder across re-renders', () => {
+  it('returns the same folder across re-renders (no parent change)', () => {
     withParent((bundle) => {
       const { result, rerender } = renderHook(() =>
         usePaneFolder(bundle.pane, 'StableFolder'),
@@ -62,9 +63,7 @@ describe('usePaneFolder', () => {
     })
   })
 
-  it('disposes the folder on real unmount (after deferred-disposal microtask)', async () => {
-    vi.useFakeTimers()
-
+  it('disposes the folder on real unmount', () => {
     const bundle = createPane({})
     claimPane(bundle)
 
@@ -81,25 +80,21 @@ describe('usePaneFolder', () => {
     const disposeSpy = vi.spyOn(folder, 'dispose')
 
     unmount()
-    await act(async () => {
-      vi.runOnlyPendingTimers()
-    })
 
     expect(disposeSpy).toHaveBeenCalled()
 
     bundle.pane.dispose()
   })
 
-  it('survives strict-mode cleanup/remount without disposing the folder', async () => {
-    vi.useFakeTimers()
-
+  it('produces a single live folder after strict-mode cycle', () => {
+    // Symmetric cleanup means strict mode disposes the first folder and
+    // creates a fresh one. End state: one folder labeled "StrictFolder"
+    // visible in the pane.
     const bundle = createPane({})
     claimPane(bundle)
 
-    let captured: ReturnType<typeof usePaneFolder> = null
     function Probe() {
-      const folder = usePaneFolder(bundle.pane, 'StrictFolder')
-      captured = folder
+      usePaneFolder(bundle.pane, 'StrictFolder')
       return null
     }
 
@@ -109,17 +104,9 @@ describe('usePaneFolder', () => {
       </StrictMode>,
     )
 
-    const folder = captured!
-    expect(folder).not.toBeNull()
-    const disposeSpy = vi.spyOn(folder, 'dispose')
-
-    await act(async () => {
-      vi.runOnlyPendingTimers()
-    })
-
-    // Strict mode mount → cleanup → mount: the deferred check sees a remounted
-    // component and skips dispose.
-    expect(disposeSpy).not.toHaveBeenCalled()
+    const labels = bundle.pane.element.querySelectorAll('.tp-fldv_t')
+    const titles = Array.from(labels).map((el) => el.textContent)
+    expect(titles.filter((t) => t === 'StrictFolder').length).toBe(1)
 
     bundle.pane.dispose()
   })
@@ -132,10 +119,8 @@ describe('usePaneFolder', () => {
     }
 
     render(<Probe />)
-    // The pane is created during render and the folder is added during render
     const panes = document.body.querySelectorAll('.tp-rotv')
     expect(panes.length).toBeGreaterThan(0)
-    // The folder label appears in the DOM
     expect(document.body.textContent).toContain('Integrated')
   })
 })

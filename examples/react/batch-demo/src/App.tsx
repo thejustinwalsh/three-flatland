@@ -10,7 +10,7 @@ import {
   type SpriteFrame,
   type RenderStats,
 } from 'three-flatland/react'
-import { usePane } from '@three-flatland/devtools/react'
+import { DevtoolsProvider, usePane } from '@three-flatland/devtools/react'
 import type { Pane } from 'tweakpane'
 // Extend R3F with our custom classes
 extend({ SpriteGroup, Sprite2D, Sprite2DMaterial })
@@ -498,6 +498,7 @@ export default function App() {
         }}
       >
         <FitOrthoCamera viewWidth={viewWidth} viewHeight={viewHeight} />
+        <DevtoolsProvider name="batch-demo" />
         <VillageScene
           entities={entities}
           selectedBuilding={selectedBuilding}

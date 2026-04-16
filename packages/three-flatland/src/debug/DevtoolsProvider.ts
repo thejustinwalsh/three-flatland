@@ -92,17 +92,34 @@ export interface DevtoolsProviderOptions {
 export class DevtoolsProvider {
   readonly identity: ProviderIdentity
 
-  /** Bonjour channel — discovery traffic only (query/announce/gone). */
-  private _discoveryBus: BroadcastChannel
+  /**
+   * Cached options — needed at `start()` time. The constructor only
+   * stashes them; channels / transport / listeners aren't created until
+   * `start()` runs. This is what makes the class safe to construct
+   * speculatively (e.g. inside `Flatland`'s constructor, which R3F may
+   * call for renders that get discarded).
+   */
+  private readonly _opts: { discoveryChannelName: string; dataChannelName: string }
+
+  /** Bonjour channel — discovery traffic only (query/announce/gone). Lazy. */
+  private _discoveryBus: BroadcastChannel | null = null
   /**
    * Per-provider data channel — named after `identity.id`. Used in
    * receive-only mode (subscribe/ack/unsubscribe in). Outbound data /
    * ping / subscribe:ack go through `_dataTransport` so the heavy
-   * `data` packets can be offloaded to a worker.
+   * `data` packets can be offloaded to a worker. Lazy.
    */
-  private _dataBus: BroadcastChannel
-  /** Producer-side transport for outbound data-channel messages. */
-  private _dataTransport: BusTransport
+  private _dataBus: BroadcastChannel | null = null
+  /** Producer-side transport for outbound data-channel messages. Lazy. */
+  private _dataTransport: BusTransport | null = null
+  /**
+   * Listener references kept so we can `removeEventListener` on dispose
+   * — important because `BroadcastChannel.close()` doesn't always
+   * detach pending callbacks in every runtime.
+   */
+  private _onDiscovery: ((ev: MessageEvent<DebugMessage>) => void) | null = null
+  private _onData: ((ev: MessageEvent<DebugMessage>) => void) | null = null
+
   private _subs = new SubscriberRegistry()
   private _stats = new StatsCollector()
   private _env = new EnvCollector()
@@ -128,9 +145,15 @@ export class DevtoolsProvider {
   /** Latest renderer seen during `endFrame` — cached so `_sendSubscribeAck` has something to read. */
   private _latestRenderer: WebGPURenderer | undefined
 
-  /** Flush timer handle. Ticks every `STATS_BATCH_MS`. */
-  private _flushTimer: ReturnType<typeof setInterval>
-  private _disposed = false
+  /** Flush timer handle. Ticks every `STATS_BATCH_MS`. Null when not active. */
+  private _flushTimer: ReturnType<typeof setInterval> | null = null
+  /**
+   * `true` between `start()` and `dispose()`. Pure-constructor instances
+   * stay `false` until something explicitly activates them; per-frame
+   * methods short-circuit while inactive so they're safe to call
+   * speculatively.
+   */
+  private _active = false
 
   constructor(options: DevtoolsProviderOptions = {}) {
     const kind = options.kind ?? 'user'
@@ -140,11 +163,10 @@ export class DevtoolsProvider {
       kind,
     }
 
-    const discoveryName = options.discoveryChannelName ?? DISCOVERY_CHANNEL
-    this._discoveryBus = new BroadcastChannel(discoveryName)
-    const dataChannelName = providerChannelName(this.identity.id)
-    this._dataBus = new BroadcastChannel(dataChannelName)
-    this._dataTransport = createBusTransport({ channelName: dataChannelName })
+    this._opts = {
+      discoveryChannelName: options.discoveryChannelName ?? DISCOVERY_CHANNEL,
+      dataChannelName: providerChannelName(this.identity.id),
+    }
 
     this._dataScratch = {
       v: 1,
@@ -158,20 +180,41 @@ export class DevtoolsProvider {
       type: 'ping',
       payload: {},
     }
+    // No I/O, no listeners, no module-level sink registration, no
+    // announce, no timer. All of that lives in `start()`.
+  }
+
+  /**
+   * Activate the provider on the bus. Opens BroadcastChannels, registers
+   * listeners + module-level debug sinks, announces our existence on
+   * discovery, and starts the batched flush timer.
+   *
+   * Idempotent: a second call while already active is a no-op. Safe to
+   * call after `dispose()` to re-activate (e.g. when a Flatland Object3D
+   * is re-added to the scene graph).
+   */
+  start(): void {
+    if (this._active) return
+    this._active = true
+    this._discoveryBus = new BroadcastChannel(this._opts.discoveryChannelName)
+    this._dataBus = new BroadcastChannel(this._opts.dataChannelName)
+    this._dataTransport = createBusTransport({ channelName: this._opts.dataChannelName })
 
     // Discovery bus: only query traffic reaches us here. Everything
     // else we send/receive on our own data channel.
-    this._discoveryBus.addEventListener('message', (ev: MessageEvent<DebugMessage>) => {
+    this._onDiscovery = (ev: MessageEvent<DebugMessage>) => {
       const msg = ev.data
       if (!msg || typeof msg !== 'object' || !('type' in msg)) return
       if (msg.type === 'provider:query') this._announce()
-    })
+    }
+    this._discoveryBus.addEventListener('message', this._onDiscovery)
 
-    this._dataBus.addEventListener('message', (ev: MessageEvent<DebugMessage>) => {
+    this._onData = (ev: MessageEvent<DebugMessage>) => {
       const msg = ev.data
       if (!msg || typeof msg !== 'object' || !('type' in msg)) return
       this._handleDataMessage(msg)
-    })
+    }
+    this._dataBus.addEventListener('message', this._onData)
 
     // Expose our registries to module-level sinks so engine code can
     // publish arrays / textures without a direct dependency on this class.
@@ -192,6 +235,7 @@ export class DevtoolsProvider {
    * `performance.now()`.
    */
   beginFrame(now: number, renderer: WebGPURenderer): void {
+    if (!this._active) return
     this._latestRenderer = renderer
     this._stats.beginFrame(now, renderer as unknown as Parameters<StatsCollector['beginFrame']>[1])
   }
@@ -202,6 +246,7 @@ export class DevtoolsProvider {
    * on the `_flush` interval, not per-frame.
    */
   endFrame(renderer: WebGPURenderer): void {
+    if (!this._active) return
     this._latestRenderer = renderer
     this._stats.endFrame(renderer as unknown as Parameters<StatsCollector['endFrame']>[0])
     // Always drain the GPU-timestamp query pool when the renderer is
@@ -217,7 +262,9 @@ export class DevtoolsProvider {
    * consumers aware that the server is alive.
    */
   private _flush(): void {
-    if (this._disposed) return
+    if (!this._active) return
+    const transport = this._dataTransport
+    if (transport === null) return
     const flushStart = performance.now()
     this._subs.pruneStale()
     if (this._subs.size() === 0) return
@@ -237,7 +284,7 @@ export class DevtoolsProvider {
     // cursor. Large tier covers the worst case (a buffer payload up to
     // 256×256×4 = 256 KB). If nothing actually gets encoded, we
     // release the buffer back to the pool unused.
-    const poolBuf = this._dataTransport.acquireLarge()
+    const poolBuf = transport.acquireLarge()
     const cursor: BufferCursor = { buffer: poolBuf, byteOffset: 0 }
 
     let anyFeature = false
@@ -286,7 +333,7 @@ export class DevtoolsProvider {
 
     if (!anyFeature) {
       // Nothing got written into the pool buffer — return it.
-      this._dataTransport.releaseUnused(poolBuf)
+      transport.releaseUnused(poolBuf)
       this._maybeIdlePing()
       return
     }
@@ -299,7 +346,7 @@ export class DevtoolsProvider {
     // typed-array bytes synchronously into BC delivery queues — then
     // bounces `poolBuf` back to the producer's pool. Render thread
     // pays only the typed-array memcpy + one `port.postMessage`.
-    this._dataTransport.post(msg, [poolBuf])
+    transport.post(msg, [poolBuf])
     this._lastBroadcastAt = Date.now()
     // Per-flush CPU cost on the Devtools track. Pairs with the
     // consumer-side `bus:*` spans on the same track so a flush and
@@ -309,39 +356,68 @@ export class DevtoolsProvider {
   }
 
   /**
-   * Tear down everything: closes both channels, clears subscriber state.
-   * Idempotent.
+   * `true` when the provider is NOT currently active on the bus —
+   * either because `start()` was never called, or because `dispose()`
+   * has been called since the last `start()`. After `dispose()` the
+   * instance can be re-activated by calling `start()` again.
+   */
+  get disposed(): boolean {
+    return !this._active
+  }
+
+  /**
+   * Release bus resources: closes both channels, stops the flush
+   * timer, clears module-level sinks, broadcasts `provider:gone`.
+   * Idempotent. After this returns the instance is dormant but
+   * reusable — call `start()` to bring it back online.
    */
   dispose(): void {
-    if (this._disposed) return
-    this._disposed = true
-    clearInterval(this._flushTimer)
+    if (!this._active) return
+    this._active = false
+    if (this._flushTimer !== null) {
+      clearInterval(this._flushTimer)
+      this._flushTimer = null
+    }
     // Tell consumers we're leaving so they can drop us from their
     // known-provider map and fall back to another option.
     try {
-      this._discoveryBus.postMessage(
+      this._discoveryBus?.postMessage(
         stampMessage({
           type: 'provider:gone',
           payload: { id: this.identity.id },
         }),
       )
     } catch { /* bus may already be closing */ }
+    if (this._discoveryBus !== null && this._onDiscovery !== null) {
+      this._discoveryBus.removeEventListener('message', this._onDiscovery)
+    }
+    if (this._dataBus !== null && this._onData !== null) {
+      this._dataBus.removeEventListener('message', this._onData)
+    }
+    this._onDiscovery = null
+    this._onData = null
     this._stats.dispose()
     this._registry.dispose()
     this._textures.dispose()
     _setActiveRegistry(null)
     _setActiveTextureRegistry(null)
     this._subs.dispose()
-    this._dataTransport.dispose()
-    try { this._dataBus.close() } catch { /* noop */ }
-    try { this._discoveryBus.close() } catch { /* noop */ }
+    this._dataTransport?.dispose()
+    this._dataTransport = null
+    try { this._dataBus?.close() } catch { /* noop */ }
+    try { this._discoveryBus?.close() } catch { /* noop */ }
+    this._dataBus = null
+    this._discoveryBus = null
     this._latestRenderer = undefined
   }
 
   // ── Introspection (useful for tests / advanced integrations) ────────────
 
-  /** The per-provider data channel. Exposed for test harnesses. */
-  get bus(): BroadcastChannel { return this._dataBus }
+  /**
+   * The per-provider data channel. Exposed for test harnesses. `null`
+   * before `start()` or after `dispose()`.
+   */
+  get bus(): BroadcastChannel | null { return this._dataBus }
   /** The current subscriber registry. Read-only view. */
   get subscribers(): SubscriberRegistry { return this._subs }
   /** Current engine frame counter. */
@@ -395,6 +471,7 @@ export class DevtoolsProvider {
   }
 
   private _announce(): void {
+    if (this._discoveryBus === null) return
     try {
       this._discoveryBus.postMessage(
         stampMessage({
@@ -408,6 +485,7 @@ export class DevtoolsProvider {
   }
 
   private _sendSubscribeAck(id: string, _requested: readonly DebugFeature[]): void {
+    if (this._dataTransport === null) return
     const r = this._latestRenderer as unknown as Parameters<typeof this._env.snapshot>[0]
     const env = this._env.snapshot(r)
     this._env.recordSnapshotAsPrev(r)
@@ -425,6 +503,7 @@ export class DevtoolsProvider {
    * quiet periods.
    */
   private _maybeIdlePing(): void {
+    if (this._dataTransport === null) return
     if (Date.now() - this._lastBroadcastAt < IDLE_PING_MS) return
     const msg = this._pingScratch
     stampMessage(msg)

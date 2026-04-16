@@ -300,11 +300,15 @@ export class Flatland extends Group implements WorldProvider {
     //   2. `isDevtoolsActive()` (runtime, only read when bundled) — lets
     //      a user disable devtools on specific pages by setting
     //      `window.__FLATLAND_DEVTOOLS__ = false` before Flatland loads.
-    // Flatland coordinates (constructs + calls begin/end/dispose around
-    // render); the producer owns the state. See `debug-protocol.ts` for
-    // the full gate contract.
+    //
+    // Construction is pure (no I/O, no listeners, no announce). The
+    // provider activates lazily on first `render()` call (see render()),
+    // which works for both vanilla three.js (Flatland is the scene root,
+    // never added to a parent) and React/R3F (discarded renders never
+    // reach `render()`, so orphan Flatland instances stay inert and GC).
+    // Cleanup happens in `dispose()` below.
     if (DEVTOOLS_BUNDLED && isDevtoolsActive()) {
-      this._debug = new DevtoolsProvider({
+      this._devtools = new DevtoolsProvider({
         name: options.name ?? 'flatland',
         kind: 'system',
       })
@@ -959,7 +963,7 @@ export class Flatland extends Group implements WorldProvider {
    * entire subsystem tree-shakes out. See `debug-protocol.ts` for the
    * gate contract.
    */
-  private _debug: DevtoolsProvider | null = null
+  private _devtools: DevtoolsProvider | null = null
 
   /**
    * Dev-only check: for the currently attached lighting effect's declared
@@ -1071,13 +1075,19 @@ export class Flatland extends Group implements WorldProvider {
     // lighting shader for the rest of the scene.
     this._flushPendingChannelValidation()
 
-    // Devtools: mark frame start before ANY renderer.render() calls this
-    // frame. Flatland runs multiple internal render passes (SDF pass,
-    // occlusion pass, main render, post-processing) — `beginFrame` +
-    // `endFrame` aggregates them as ONE logical frame so FPS, cpuMs,
-    // draw calls and triangles all report the actual user-visible
-    // frame stats, not multiplied by pass count.
-    this._debug?.beginFrame(performance.now(), renderer)
+    // Devtools: lazy-start on first render(). Both vanilla three.js
+    // (where Flatland is the scene root and 'added' never fires) and
+    // React/R3F (where discarded renders never reach `render()`) get
+    // safe activation here. `start()` is idempotent — no-op every
+    // subsequent frame.
+    this._devtools?.start()
+    // Mark frame start before ANY renderer.render() calls this frame.
+    // Flatland runs multiple internal render passes (SDF pass, occlusion
+    // pass, main render, post-processing) — `beginFrame` + `endFrame`
+    // aggregates them as ONE logical frame so FPS, cpuMs, draw calls and
+    // triangles all report the actual user-visible frame stats, not
+    // multiplied by pass count.
+    this._devtools?.beginFrame(performance.now(), renderer)
 
     // Auto-sync global uniforms from renderer
     this._syncGlobals(renderer)
@@ -1153,7 +1163,7 @@ export class Flatland extends Group implements WorldProvider {
     // completed this frame. Aggregates draw calls / triangles across
     // internal passes, computes real cpuMs and FPS at the logical
     // frame boundary, emits the data packet (or idle ping).
-    this._debug?.endFrame(renderer)
+    this._devtools?.endFrame(renderer)
   }
 
   /**
@@ -1265,8 +1275,8 @@ export class Flatland extends Group implements WorldProvider {
   dispose(): void {
     // Tear down debug producers first — releases the scene.onAfterRender
     // hook so subsequent renders during dispose don't try to dispatch.
-    this._debug?.dispose()
-    this._debug = null
+    this._devtools?.dispose()
+    this._devtools = null
 
     // Clear ECS pass entities before world destruction
     this.clearPasses()

@@ -6,7 +6,6 @@ import { usePaneInput } from './use-pane-input'
 afterEach(() => {
   cleanup()
   document.body.innerHTML = ''
-  vi.useRealTimers()
 })
 
 function withParent<T>(fn: (bundle: PaneBundle) => T): T {
@@ -81,8 +80,7 @@ describe('usePaneInput', () => {
     })
   })
 
-  it('disposes the binding on real unmount (after deferred-disposal)', async () => {
-    vi.useFakeTimers()
+  it('disposes the binding on real unmount', () => {
     const bundle = createPane({})
     claimPane(bundle)
 
@@ -97,12 +95,9 @@ describe('usePaneInput', () => {
     expect(beforeUnmountCount).toBeGreaterThan(0)
 
     unmount()
-    await act(async () => {
-      vi.runOnlyPendingTimers()
-    })
 
     const afterUnmountCount = bundle.pane.element.querySelectorAll('.tp-lblv').length
-    // After deferred disposal the binding's label-view is removed from the DOM
+    // Cleanup synchronously removes the binding from the pane DOM.
     expect(afterUnmountCount).toBeLessThan(beforeUnmountCount)
 
     bundle.pane.dispose()
@@ -125,5 +120,39 @@ describe('usePaneInput', () => {
       // value still reflects state
       expect(result.current[0]).toBe(0)
     })
+  })
+
+  it('rebinds when parent identity changes (e.g., pane recreated)', () => {
+    const a = createPane({})
+    claimPane(a)
+    const b = createPane({})
+    claimPane(b)
+
+    let parent: PaneBundle = a
+    const { result, rerender } = renderHook(() =>
+      usePaneInput(parent.pane, 'k', 0, { label: 'Knob' }),
+    )
+
+    // Initially bound to A
+    expect(a.pane.element.textContent).toContain('Knob')
+    expect(b.pane.element.textContent).not.toContain('Knob')
+
+    // Update value through React API; binding on A reflects it.
+    act(() => {
+      result.current[1](7)
+    })
+    expect(result.current[0]).toBe(7)
+
+    // Swap parent — should dispose A's binding and create one on B,
+    // carrying the current value (7) over via paramsRef sync.
+    parent = b
+    rerender()
+
+    expect(a.pane.element.textContent).not.toContain('Knob')
+    expect(b.pane.element.textContent).toContain('Knob')
+    expect(result.current[0]).toBe(7)
+
+    a.pane.dispose()
+    b.pane.dispose()
   })
 })
