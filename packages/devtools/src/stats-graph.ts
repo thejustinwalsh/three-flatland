@@ -215,6 +215,27 @@ export function addStatsGraph(
   const MODE_VALUE_UNIT: Record<Mode, string> = { fps: 'FPS', ms: 'MS', gpu: 'MS', mem: 'MB' }
   const MODE_RANGE_UNIT: Record<Mode, string> = { fps: 'FPS', ms: 'MS', gpu: 'GPU', mem: 'MB' }
   const MODE_DECIMALS: Record<Mode, number> = { fps: 0, ms: 1, gpu: 1, mem: 0 }
+  const MODE_SCALE: Record<Mode, number> = { fps: 1, ms: 10, gpu: 10, mem: 1 }
+
+  // Rounded-integer-keyed cache for the `toFixed` result per mode.
+  // `toFixed` allocates a fresh string every call; with this cache,
+  // we only allocate when the rounded display value actually changes
+  // (e.g. fps stays at 60 for many rAF ticks while the lerped value
+  // wiggles in the high 59s — single string reused for the whole run).
+  const fmtCache: Record<Mode, { key: number; str: string }> = {
+    fps: { key: NaN, str: '' },
+    ms: { key: NaN, str: '' },
+    gpu: { key: NaN, str: '' },
+    mem: { key: NaN, str: '' },
+  }
+  function fmtCached(m: Mode, v: number): string {
+    const key = Math.round(v * MODE_SCALE[m])
+    const c = fmtCache[m]
+    if (c.key === key) return c.str
+    c.key = key
+    c.str = v.toFixed(MODE_DECIMALS[m])
+    return c.str
+  }
 
   function seriesFor(m: Mode): DevtoolsSeries {
     const s = client.state.series
@@ -369,7 +390,7 @@ export function addStatsGraph(
     const sMn = sessionMin[mode]
     const sMx = sessionMax[mode]
     setText(lblvL, MODE_LABEL[mode], labelCache)
-    setText(valueSpan, has ? lerped.toFixed(MODE_DECIMALS[mode]) : '--', valueCache)
+    setText(valueSpan, has ? fmtCached(mode, lerped) : '--', valueCache)
     setText(unitSpan, MODE_VALUE_UNIT[mode], unitCache)
     const nextTitle = sMn !== Infinity ? `${MODE_RANGE_UNIT[mode]} range: ${Math.round(sMn)}–${Math.round(sMx)}` : ''
     if (titleCache.v !== nextTitle) {
