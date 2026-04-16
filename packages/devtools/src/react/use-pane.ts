@@ -4,23 +4,20 @@ import { claimPane, createPane } from '../create-pane.js'
 import type { CreatePaneOptions, PaneBundle } from '../create-pane.js'
 
 /**
- * High `useFrame` priority — positive numbers run AFTER R3F's own
- * auto-render, and larger numbers run later among registered frame
- * callbacks. This drives the stats graph after everything else in the
- * frame has had a chance to update `renderer.info`, so the sample we
- * push is the true end-of-frame state.
- */
-const LATE_FRAME_PRIORITY = 1000
-
-/**
  * Create a themed Tweakpane instance. Disposes on unmount. Returns a
  * stable `PaneBundle` (pane + `update`).
  *
- * The graph is driven by R3F's `useFrame` at a late priority so the
- * stats sample we read is post-render. Internally forces
- * `driver: 'manual'` — a secondary `requestAnimationFrame` would
- * double-tick under R3F (and Safari throttles multi-rAF pages), so we
- * piggy-back on R3F's single loop instead.
+ * The graph is driven by R3F's `useFrame` so we share one rAF with
+ * the host. Default phase / priority on purpose — the pane's
+ * `update()` only repaints from the (already-current) bus state, so
+ * sampling timing is irrelevant. Setting a positive priority would
+ * otherwise collide with the example's `useFrame(..., { phase:
+ * 'render' })` callback under StrictMode's mount → cleanup → remount,
+ * surfacing as `[useFrame] Job with id "..." already exists, replacing`.
+ *
+ * Internally forces `driver: 'manual'` — a secondary
+ * `requestAnimationFrame` would double-tick under R3F (and Safari
+ * throttles multi-rAF pages).
  */
 export function usePane(options: CreatePaneOptions = {}): PaneBundle {
   const bundleRef = useRef<PaneBundle | null>(null)
@@ -30,11 +27,9 @@ export function usePane(options: CreatePaneOptions = {}): PaneBundle {
     bundleRef.current = createPane({ ...options, driver: 'manual' })
   }
 
-  // Note: R3F deprecated the positional-priority signature. The
-  // options object is the canonical form now.
   useFrame(() => {
     bundleRef.current?.update()
-  }, { priority: LATE_FRAME_PRIORITY })
+  })
 
   useEffect(() => {
     mountedRef.current = true

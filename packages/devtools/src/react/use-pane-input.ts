@@ -38,6 +38,13 @@ export function usePaneInput<T>(
   const bindingRef = useRef<{ refresh(): void; dispose(): void } | null>(null)
   const listenerRef = useRef<((ev: { value: unknown }) => void) | null>(null)
 
+  // Track mount lifecycle so the binding's change listener can drop
+  // updates that arrive between React's cleanup and our `setTimeout(0)`
+  // actually disposing the binding (deferred-disposal pattern). Without
+  // this gate, those late events trigger React's "state update on
+  // unmounted component" warning.
+  const mountedRef = useRef(false)
+
   // Create binding synchronously on first render so controls appear on
   // first paint with no pop-in. This deliberately accesses/mutates refs
   // during render — incompatible with React Compiler, but the alternative
@@ -52,7 +59,7 @@ export function usePaneInput<T>(
     } as Record<string, unknown>)
 
     const listener = (ev: { value: unknown }) => {
-      setValueState(ev.value as T)
+      if (mountedRef.current) setValueState(ev.value as T)
     }
     binding.on('change', listener)
     listenerRef.current = listener
@@ -60,7 +67,6 @@ export function usePaneInput<T>(
   }
 
   // Deferred disposal — survives React strict mode cleanup/re-mount
-  const mountedRef = useRef(false)
   useEffect(() => {
     mountedRef.current = true
 
@@ -72,7 +78,9 @@ export function usePaneInput<T>(
         label: label ?? key,
         ...bindingOpts,
       } as Record<string, unknown>)
-      const listener = (ev: { value: unknown }) => { setValueState(ev.value as T) }
+      const listener = (ev: { value: unknown }) => {
+        if (mountedRef.current) setValueState(ev.value as T)
+      }
       binding.on('change', listener)
       listenerRef.current = listener
       bindingRef.current = binding as unknown as { refresh(): void; dispose(): void }
