@@ -6,6 +6,7 @@ import { addStatsRow, type StatsRowHandle } from './stats-row.js'
 import { addProviderSwitcher, type ProviderSwitcherHandle } from './provider-switcher.js'
 import { addRegistryView, type RegistryViewHandle } from './registry-view.js'
 import { addBuffersView, type BuffersViewHandle } from './buffers-view.js'
+import { createBuffersModal, type BuffersModalHandle } from './buffers-modal.js'
 import { DevtoolsClient } from './devtools-client.js'
 
 export interface CreatePaneOptions {
@@ -141,6 +142,7 @@ export function createPane(options: CreatePaneOptions = {}): PaneBundle {
   let providerSwitcher: ProviderSwitcherHandle | null = null
   let registryView: RegistryViewHandle | null = null
   let buffersView: BuffersViewHandle | null = null
+  let buffersModal: BuffersModalHandle | null = null
 
   const ACTIVE_FEATURES: ('stats' | 'env' | 'registry' | 'buffers')[] = ['stats', 'env', 'registry', 'buffers']
 
@@ -153,9 +155,15 @@ export function createPane(options: CreatePaneOptions = {}): PaneBundle {
     // Hidden until the provider publishes at least one entry via
     // `registerDebugArray`.
     registryView = addRegistryView(pane, client)
+    // Modal is built lazily — `createBuffersModal` mounts the DOM
+    // immediately (display:none) so the first expand is instant.
+    buffersModal = createBuffersModal(client)
     // Hidden until the provider publishes at least one debug texture
-    // via `registerDebugTexture`.
-    buffersView = addBuffersView(pane, client)
+    // via `registerDebugTexture`. ⤢ in-blade button calls into the
+    // modal handle.
+    buffersView = addBuffersView(pane, client, {
+      onExpand: (name) => buffersModal?.open(name),
+    })
     client.start()
 
     // Pane fold → mute the bus. When the outer header is collapsed the
@@ -184,6 +192,7 @@ export function createPane(options: CreatePaneOptions = {}): PaneBundle {
     providerSwitcher?.dispose()
     registryView?.dispose()
     buffersView?.dispose()
+    buffersModal?.dispose()
     client?.dispose()
     // If the user disposed the pane directly without claiming, free
     // the slot so the next createPane doesn't try to dispose us again.

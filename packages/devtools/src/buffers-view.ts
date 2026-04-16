@@ -24,9 +24,19 @@ const THUMB_WIDTH = 240
 // canvas instead of taking its own row below.
 const THUMB_HEIGHT = 120
 
+export interface AddBuffersViewOptions {
+  /**
+   * Invoked when the user clicks the bottom-right ⤢ button. Wired by
+   * `createPane` to open the fullscreen modal viewer with the active
+   * buffer pre-selected. When omitted, the click is a no-op.
+   */
+  onExpand?: (name: string) => void
+}
+
 export function addBuffersView(
   parent: Pane | FolderApi,
   client: DevtoolsClient,
+  options: AddBuffersViewOptions = {},
 ): BuffersViewHandle {
   const blade = parent.addBlade({ view: 'separator' }) as unknown as {
     element: HTMLElement
@@ -119,7 +129,7 @@ export function addBuffersView(
   expandBtn.textContent = '⤢'
   expandBtn.setAttribute('role', 'button')
   expandBtn.setAttribute('aria-label', 'Open fullscreen buffer viewer')
-  expandBtn.title = 'Open fullscreen viewer (coming soon)'
+  expandBtn.title = 'Open fullscreen buffer viewer'
   expandBtn.style.cssText = [
     'position:absolute',
     'right:10px',
@@ -217,8 +227,9 @@ export function addBuffersView(
   nextBtn.addEventListener('click', (e) => { e.stopPropagation(); cycle(1) })
   expandBtn.addEventListener('click', (e) => {
     e.stopPropagation()
-    // Stub — fullscreen modal lands in the next PR.
-    console.info('[devtools] fullscreen buffer viewer: coming soon', activeName)
+    if (activeName !== null && options.onExpand !== undefined) {
+      options.onExpand(activeName)
+    }
   })
 
   // ── Render ────────────────────────────────────────────────────────────
