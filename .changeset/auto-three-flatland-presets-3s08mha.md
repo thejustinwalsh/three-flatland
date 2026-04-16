@@ -5,20 +5,22 @@
 > Branch: lighting-stochastic-adoption
 > PR: https://github.com/thejustinwalsh/three-flatland/pull/27
 
-**Light effects:**
-- `DefaultLightEffect`: Forward+ tiled point/spot/directional lighting with SDF shadow support; `shadowStrength`, `shadowSoftness`, `shadowBias` uniforms
-- `DirectLightEffect`: directional-only lighting with SDF shadows
-- `SimpleLightEffect`: ambient-only fallback with no shadow cost
-- `RadianceLightEffect`: experimental radiance cascades GI
-- `AutoNormalProvider`: derives tangent-space normals from sprite alpha at runtime via `normalFromSprite` TSL; no baked texture required
-- `NormalMapProvider`: samples a pre-baked normal map texture
+**New lighting effect presets**
 
-**Shadow wiring:**
-- `DefaultLightEffect` and `DirectLightEffect` replace the `shadow = float(1.0)` stub with real `shadowSDF2D` calls when `sdfTexture` is in the build context; ambient lights skip shadowing
-- `sdfTexture`, `worldSizeNode`, `worldOffsetNode` threaded through `LightEffectBuildContext`; non-shadow effects compile out the shadow path with no GPU branch
+- `DefaultLightEffect`: Forward+ tiled point lights with JFA-based SDF soft shadows and ambient support
+- `DirectLightEffect`: single directional light with SDF soft shadows
+- `SimpleLightEffect`: flat ambient-only, no shadow cost
+- `RadianceLightEffect`: experimental radiance cascades GI preset (WIP)
+- `AutoNormalProvider`: MaterialEffect that computes per-sprite normals at runtime via `normalFromSprite` TSL
+- `NormalMapProvider`: MaterialEffect that loads pre-baked `.normal.png` via `NormalMapLoader` with runtime fallback
 
-**Package:**
-- Added `./react` subpath export
-- `@react-three/fiber` declared as optional peer dependency so `ThreeElements` module augmentation resolves in R3F projects
+**SDF shadow wiring (T7)**
+- `shadow = float(1.0)` stub replaced with real `shadowSDF2D` call in `DefaultLightEffect` and `DirectLightEffect`
+- `shadowStrength` (0–1), `shadowSoftness` (penumbra width), `shadowBias` (self-shadow start offset) are configurable
+- Ambient light contributions skip shadow computation, preserving ambient semantics
 
-`@three-flatland/presets` ships the full suite of ready-to-use light effects and normal providers, with real SDF-based soft shadows replacing the previous stub.
+**Package**
+- `./react` subpath export added
+- `@react-three/fiber` declared as optional peer dependency so `ThreeElements` augmentation resolves without requiring R3F
+
+`@three-flatland/presets` provides ready-to-use lighting effects covering the full range from simple ambient to SDF soft shadows, all wired into the Flatland ECS pipeline.

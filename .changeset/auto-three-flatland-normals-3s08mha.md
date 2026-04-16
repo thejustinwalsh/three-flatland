@@ -5,15 +5,19 @@
 > Branch: lighting-stochastic-adoption
 > PR: https://github.com/thejustinwalsh/three-flatland/pull/27
 
-**NormalMapLoader** (runtime):
-- Try-baked-then-runtime pattern: loads sibling `.normal.png` (produced by `flatland-bake normal`), falls back to TSL `normalFromSprite` path with a once-per-URL dev-time warning (suppressed in production)
-- Instance API extending `three.Loader`, compatible with R3F `useLoader`
-- Static API: `NormalMapLoader.load(url, { forceRuntime? })` with shared URL+forceRuntime-keyed cache
-- Silent HEAD probe keeps 404s from logging errors; a HEAD success followed by `TextureLoader` failure warns and falls through
+**New package** — `@three-flatland/normals` provides offline normal-map baking and runtime loading for sprite assets.
 
-**Normal-map baker** (build tool):
-- `flatland-bake normal <input.png>`: offline tangent-space normal map from RGBA sprite alpha via 4-neighbor gradient; writes `.normal.png` sibling
-- `--strength` option for gradient scale
-- Contributed via `package.json` `flatland.bakers` manifest — auto-registers when `@three-flatland/normals` is installed
+**Normal-map baker**
+- Node.js baker: reads RGBA PNG, computes 4-neighbor alpha gradient, normalizes to tangent-space, writes sibling `.normal.png`
+- Contributes `flatland-bake normal` subcommand via `flatland.bakers` manifest — `flatland-bake normal sprite.png [out.png] [--strength n]`
+- Eliminates four alpha-sample + gradient cost per fragment at runtime when the baked PNG is available
 
-`@three-flatland/normals` delivers both the offline bake tool and the runtime loader for the full baked-normal pipeline.
+**NormalMapLoader** (runtime)
+- Instance API: extends `three.Loader`; R3F `useLoader`-compatible
+- Static API: `NormalMapLoader.load(url, { forceRuntime? })` with shared URL+`forceRuntime`-keyed cache
+- Canonical "try baked → fall back to runtime" pattern: HEAD probe keeps 404 silent; dev-time warning fires at most once per URL outside `NODE_ENV=production`; successful HEAD with failed `TextureLoader` warns and falls through to `normalFromSprite` TSL path
+
+**Lighting example** (post-rebase)
+- New `examples/react/lighting` showcasing `castsShadow` sprites, wandering light-emitting characters, flickering torches, and keyboard-controlled hero via `DefaultLightEffect`
+
+New `@three-flatland/normals` package delivers a complete normal-map pipeline from offline baking to runtime loading with graceful fallback to the existing TSL shader path.
