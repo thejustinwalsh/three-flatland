@@ -5,40 +5,57 @@
 > Branch: lighting-stochastic-adoption
 > PR: https://github.com/thejustinwalsh/three-flatland/pull/27
 
-**2D Lighting System:**
+**2D lighting pipeline**
+
 - `Light2D` class with point, directional, ambient, and spot light types
-- `LightEffect` plugin system: `Flatland.setLighting(effect)` activates an effect; `LightStore` manages packed light data uploaded to a DataTexture each frame
-- ECS systems for lighting: `lightEffectSystem`, `lightMaterialAssignSystem`, `lightSyncSystem`, `effectTraitsSystem`, `materialVersionSystem`, `lateAssignSystem`, `conditionalTransformSyncSystem`, `flushDirtyRangesSystem`
-- `ForwardPlusLighting`: tiled light culling with reservoir-based overflow by importance score — lights in dense clusters degrade gracefully to brightest contributors instead of flickering by scene-graph order
-- `needsShadows` flag on `LightEffect` triggers eager `SDFGenerator` allocation before shader build, so TSL `texture()` bindings are stable
+- `LightEffect` API: `flatland.setLighting(effect)` installs a shader-build strategy; `LightEffectBuildContext` carries `lightStore`, `sdfTexture`, `worldSizeNode`, and `worldOffsetNode`
+- `LightStore` — typed-array backed light data texture; registered to devtools as `lightStore.lights`
+- `ForwardPlusLighting` — tiled Forward+ culling; tile DataTexture registered as `forwardPlus.tiles`
+- `SDFGenerator` — JFA-based signed-distance-field generation from an occlusion render target
+- `OcclusionPass` — renders the scene into a resolution-scaled silhouette render target; per-sprite `castsShadow` flag filters non-casters inside the batch shader
+- `ShadowPipeline` ECS trait + `shadowPipelineSystem`: shadow resources managed as a singleton ECS entity, allocated lazily on first tick when `needsShadows = true`
+- World-bound uniforms (`worldSizeNode`, `worldOffsetNode`) owned by Flatland, updated each frame from camera bounds at zero shader-rebuild cost
+- Forward+ tile-light overflow: importance-based reservoir eviction replaces silent drop — dense light clusters degrade gracefully to highest-contribution lights
+- React helpers: `attach` utilities for `<lightEffect>` and `<light2D>` JSX elements
 
-**SDF Shadow Pipeline:**
-- `SDFGenerator`: JFA-based SDF generation from occluder silhouette render target
-- `OcclusionPass`: renders each `SpriteBatch` with a per-texture occlusion material; per-sprite `castsShadow` bit masks non-casters to alpha=0; material cache per atlas texture; zero-alloc scene traverse
-- Shadow pipeline moved to `ShadowPipeline` ECS trait + `shadowPipelineSystem`; removed 5 private Flatland fields and an ensure-method
-- `LightEffectBuildContext` carries `sdfTexture`, `worldSizeNode`, `worldOffsetNode`; effects bind the SDF at shader-build time, world-bound uniforms updated zero-cost via `.value` mutation each frame
+**Per-sprite shadow flags**
 
-**Sprite & Material System:**
-- `castsShadow` per-instance flag on `Sprite2D` (bit 2 of `effectBuf0.x`); opt-in, default off
-- `effectBuf0` component split: system flags (lit, receiveShadows, castsShadow) isolated in `.x`; effect enable bits moved to `.y` (24 slots, up from 21)
-- `createMaterialEffect` generic over `provides` tuple: `channelNode` return type narrowed at compile time — returning wrong channel type is now a `tsc` error rather than a silent runtime mismatch
-- Dev-time warning for lit sprites with unsatisfied channel provider requirements; deduped via `WeakSet`, suppressed in production
+- `sprite.castsShadow` (default `false`) — opt-in per-sprite shadow casting; wired through batch attribute buffer at zero rebuild cost
+- `sprite.lit`, `sprite.receiveShadows` continue to work as before
+- `effectBuf0.x` now holds only the 3 system flags (lit, receiveShadows, castsShadow); `effectBuf0.y` holds the 24 MaterialEffect enable bits — expands available MaterialEffect slots from 21 to 24
 
-**Devtools / Debug Infrastructure:**
-- `DevtoolsProvider` (renamed from `DevtoolsProducer`): broadcasts stats, env, registry, and buffer data via `BroadcastChannel`; zero-alloc scratch-object hot path
-- `BusTransport` with offload worker: pool-buffer transfer to worker thread eliminates `structuredClone` on the render thread; two-tier pool (4 KB × 8 small, 2 MB × 4 large); `bus-frame.ts` fixed-header zero-alloc frame writer
-- Debug pool tier bumped to 2 MB; oversized entries ship metadata-only with a one-shot warn instead of throwing
-- `DebugRegistry`: publishes CPU typed arrays (`lightCounts`, `tileScores`, light store data) with per-entry subscribe filtering
-- `DebugTextureRegistry`: async GPU readback with `maxDim` downsampling; `Downsampler` TSL blit keeps readback payload small
-- Frame-boundary stats via `beginFrame`/`endFrame` on `StatsCollector` — eliminates multi-pass FPS inflation (was ~6× real rate); `scene` arg removed from `DevtoolsProducer`/`StatsCollector` constructors
-- Subscribe/ack protocol with multi-provider discovery (`provider:announce/query/gone`), delta-encoded wire format, idle ping for liveness, and `delete`-based field omission (absent = no change)
-- `perf-track.ts` User Timing spans for flush CPU and bus-receive latency
+**MaterialEffect type safety**
 
-**Lighting Example:**
-- `examples/react/lighting`: dungeon tilemap floor, perimeter walls as shadow casters, wandering knights + slimes as point lights, flickering torches, WASD hero, Tweakpane debug panel
+- `createMaterialEffect` is now generic over the `provides` tuple — `channelNode` return type is constrained to the declared channel map; mismatched node types fail `tsc` at the factory call site
+- Omitting `provides` while supplying `channelNode` is also a type error
 
-**Fixes:**
-- `Flatland._validateLightingChannels` uses `globalThis.process` for compatibility with packages without `@types/node`
-- Lint cleanup: unused imports in `SpriteGroup`, ECS systems, and traits
+**Dev-time validation**
 
-This release delivers the complete 2D lighting pipeline (Forward+ tiled culling with importance-based overflow, SDF soft shadows, normal-map channels) alongside a zero-alloc devtools bus with offload-worker transport and live GPU buffer inspection.
+- `flatland.setLighting(effect)` and `flatland.add(sprite)` emit a one-time warning per sprite when a lit sprite is missing a MaterialEffect that provides a required channel (e.g. `normal`); suppressed in production
+
+**Devtools bus (provider side)**
+
+- `DevtoolsProvider` (formerly `DevtoolsProducer`) — standalone class; Flatland constructs one internally via `_createSystem()`; vanilla apps use `createDevtoolsProvider(opts?)`
+- `beginFrame(now, renderer)` / `endFrame(renderer)` explicit frame-boundary API; `Flatland.render()` brackets these automatically — FPS and draw-call stats now reflect the logical frame across all internal render passes
+- Zero-alloc hot path: scratch message objects mutated in place; typed-array ring buffers flushed via `subarray` views; BroadcastChannel posting offloaded to a pool-buffered worker
+- `DebugRegistry` — module-level `registerDebugArray`/`touchDebugArray` sink for CPU typed arrays; no-op when `DEVTOOLS_BUNDLED` is false; ForwardPlusLighting publishes `lightCounts` and `tileScores`
+- `DebugTextureRegistry` — registers GPU textures/render-targets for async readback; `maxDim` cap (default 256) with GPU downsampler blit before readback
+- Two-channel bus: shared `flatland-debug` discovery channel + per-provider data channels; multi-provider discovery with user-over-system preference and auto-switch on disconnect
+- Debug protocol uses delta encoding: absent field = no change, `null` = clear, value = new; `DataPayload.frame` monotonic counter for gap detection
+- `perf-track.ts` emits User Timing spans on Chrome's custom-track extension (`trackGroup: 'three-flatland'`)
+
+**Fixes**
+
+- Fixed FPS reporting ~6x too high when Flatland ran multiple internal render passes per logical frame
+- Fixed debug wire bloat: `delete out.field` instead of `out.field = undefined` so absent delta fields are truly absent in `structuredClone`
+- Fixed `tileScores` at 1080p (~510 KB) blowing past the old 256 KB pool tier and causing `copyTypedTo` to throw on every flush
+
+## BREAKING CHANGES
+
+- `Flatland.stats` getter removed; per-frame draw stats now flow through `DevtoolsProvider`/`DevtoolsClient`
+- `drawCalls` removed from the `RenderStats` interface (was always `0` in `SpriteGroup.stats`)
+- `effectBuf0.y` is now reserved for MaterialEffect enable bits; custom shaders reading packed effect bits from `effectBuf0.x` beyond bit 2 must shift their masks to `effectBuf0.y`
+- `DevtoolsProducer` class renamed to `DevtoolsProvider`; `setAutoSend` removed (use `beginFrame`/`endFrame`)
+
+This release delivers a complete 2D lighting pipeline with JFA SDF shadows, Forward+ tiled culling, per-sprite shadow casting, and a zero-alloc devtools bus with live GPU buffer inspection.
+

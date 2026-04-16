@@ -5,8 +5,17 @@
 > Branch: lighting-stochastic-adoption
 > PR: https://github.com/thejustinwalsh/three-flatland/pull/27
 
-**New TSL lighting nodes:**
-- `shadowSDF2D(surfaceWorldPos, lightWorldPos, sdfTexture, worldSize, worldOffset, opts)`: sphere-trace soft shadow helper; walks toward the light sampling an SDF texture, returns `[0,1]` shadow value with IQ-style running-min penumbra; configurable `steps` (default 32), `softness`, `startOffset`, `eps`
-- Initial lighting TSL node modules: `lit`, `shadows` (`shadow2D`/`shadowSoft2D`/`shadowSDF2D`), `normalFromSprite`, `normalFromHeight`, `lights` — foundational shader helpers for the 2D lighting pipeline
+**Lighting shader nodes**
 
-`@three-flatland/nodes` ships the full set of TSL lighting shader helpers including `shadowSDF2D` for SDF-based soft shadows alongside the existing alpha-raymarching shadow helpers.
+- `shadowSDF2D(surfaceWorldPos, lightWorldPos, sdfTexture, worldSize, worldOffset, opts?)` — sphere-trace soft shadow helper; returns `[0, 1]` shadow factor with Inigo-Quilez penumbra term
+  - Options: `steps` (default 32), `softness` (8=soft, 32=sharp), `startOffset` (self-shadow bias), `eps`
+  - SDF texture expected from `SDFGenerator` (`.r` channel, UV-space distance)
+- `lit`, `normalFromSprite`, `normalFromHeight` TSL lighting node helpers
+- `lights` — light-store TSL node bindings for point/directional/ambient/spot lights
+
+**Lighting example**
+
+- `examples/react/lighting` rebuilt with dungeon tilemap, castsShadow walls, wandering point-light enemies, keyboard-controlled hero, and Tweakpane devtools panel
+- Shadow soft-edges now wired end-to-end via `shadowSDF2D` in `DefaultLightEffect` / `DirectLightEffect`
+
+`@three-flatland/nodes` now ships a complete set of TSL lighting primitives covering lit surfaces, tangent-space normals, and SDF-based soft shadows.
