@@ -665,24 +665,36 @@ export class DevtoolsClient {
       return
     }
     if (!delta.entries) return
-    for (const [name, d] of Object.entries(delta.entries)) {
+    const entries = delta.entries
+    // `for…in` to avoid the `Object.entries` array allocation each
+    // batch; mutate existing snapshots in place so steady state is
+    // alloc-free past the first sight of each entry.
+    for (const name in entries) {
+      const d = entries[name]
+      if (d === undefined) continue
       if (d === null) {
         this.state.registry.delete(name)
         continue
       }
-      const prev = this.state.registry.get(name)
-      // Metadata-only deltas (filter excluded this entry) still
-      // propagate name/kind/count so the UI can offer it, but we keep
-      // the last-seen sample around for display if it's ever streamed.
-      const sample = d.sample ?? prev?.sample ?? EMPTY_SAMPLE
-      this.state.registry.set(name, {
-        name,
-        kind: d.kind,
-        version: d.version,
-        count: d.count,
-        sample,
-        label: d.label,
-      })
+      let snap = this.state.registry.get(name)
+      const sample = d.sample ?? snap?.sample ?? EMPTY_SAMPLE
+      if (snap === undefined) {
+        snap = {
+          name,
+          kind: d.kind,
+          version: d.version,
+          count: d.count,
+          sample,
+          label: d.label,
+        }
+        this.state.registry.set(name, snap)
+      } else {
+        snap.kind = d.kind
+        snap.version = d.version
+        snap.count = d.count
+        snap.sample = sample
+        snap.label = d.label
+      }
     }
   }
 
@@ -699,26 +711,39 @@ export class DevtoolsClient {
       return
     }
     if (!delta.entries) return
-    for (const [name, d] of Object.entries(delta.entries)) {
+    const entries = delta.entries
+    for (const name in entries) {
+      const d = entries[name]
+      if (d === undefined) continue
       if (d === null) {
         this.state.buffers.delete(name)
         continue
       }
-      const prev = this.state.buffers.get(name)
-      const pixels = d.pixels ?? prev?.pixels ?? null
-      // Default `display` here as a safety net for any older provider
-      // that doesn't ship the field; current ones always do.
+      let snap = this.state.buffers.get(name)
+      const pixels = d.pixels ?? snap?.pixels ?? null
       const isFloat = d.pixelType === 'rgba16f' || d.pixelType === 'rgba32f'
-      this.state.buffers.set(name, {
-        name,
-        width: d.width,
-        height: d.height,
-        pixelType: d.pixelType,
-        display: d.display ?? (isFloat ? 'normalize' : 'colors'),
-        version: d.version,
-        pixels,
-        label: d.label,
-      })
+      const display = d.display ?? (isFloat ? 'normalize' : 'colors')
+      if (snap === undefined) {
+        snap = {
+          name,
+          width: d.width,
+          height: d.height,
+          pixelType: d.pixelType,
+          display,
+          version: d.version,
+          pixels,
+          label: d.label,
+        }
+        this.state.buffers.set(name, snap)
+      } else {
+        snap.width = d.width
+        snap.height = d.height
+        snap.pixelType = d.pixelType
+        snap.display = display
+        snap.version = d.version
+        snap.pixels = pixels
+        snap.label = d.label
+      }
     }
   }
 
