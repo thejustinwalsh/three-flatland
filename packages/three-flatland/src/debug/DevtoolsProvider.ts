@@ -18,6 +18,9 @@ import { DebugRegistry } from './DebugRegistry'
 import { DebugTextureRegistry } from './DebugTextureRegistry'
 import { _setActiveRegistry, _setActiveTextureRegistry } from './debug-sink'
 import { PERF_TRACK, perfMeasure } from './perf-track'
+import type { BufferCursor } from './bus-pool'
+import type { BusTransport } from './bus-transport'
+import { createBusTransport } from './bus-transport'
 
 export interface DevtoolsProviderOptions {
   /** Human-readable name shown in the consumer UI. */
@@ -91,8 +94,15 @@ export class DevtoolsProvider {
 
   /** Bonjour channel — discovery traffic only (query/announce/gone). */
   private _discoveryBus: BroadcastChannel
-  /** Per-provider data channel — named after `identity.id`. Carries subscribe/ack/data/ping. */
+  /**
+   * Per-provider data channel — named after `identity.id`. Used in
+   * receive-only mode (subscribe/ack/unsubscribe in). Outbound data /
+   * ping / subscribe:ack go through `_dataTransport` so the heavy
+   * `data` packets can be offloaded to a worker.
+   */
   private _dataBus: BroadcastChannel
+  /** Producer-side transport for outbound data-channel messages. */
+  private _dataTransport: BusTransport
   private _subs = new SubscriberRegistry()
   private _stats = new StatsCollector()
   private _env = new EnvCollector()
@@ -132,7 +142,9 @@ export class DevtoolsProvider {
 
     const discoveryName = options.discoveryChannelName ?? DISCOVERY_CHANNEL
     this._discoveryBus = new BroadcastChannel(discoveryName)
-    this._dataBus = new BroadcastChannel(providerChannelName(this.identity.id))
+    const dataChannelName = providerChannelName(this.identity.id)
+    this._dataBus = new BroadcastChannel(dataChannelName)
+    this._dataTransport = createBusTransport({ channelName: dataChannelName })
 
     this._dataScratch = {
       v: 1,
@@ -221,11 +233,18 @@ export class DevtoolsProvider {
     delete features.buffers
     delete features.registry
 
+    // Acquire a pool buffer up front; encoders write into it via the
+    // cursor. Large tier covers the worst case (a buffer payload up to
+    // 256×256×4 = 256 KB). If nothing actually gets encoded, we
+    // release the buffer back to the pool unused.
+    const poolBuf = this._dataTransport.acquireLarge()
+    const cursor: BufferCursor = { buffer: poolBuf, byteOffset: 0 }
+
     let anyFeature = false
 
     if (active.has('stats')) {
       const statsOut = this._statsScratch
-      if (this._stats.drainBatch(statsOut)) {
+      if (this._stats.drainBatch(statsOut, cursor)) {
         features.stats = statsOut
         anyFeature = true
       }
@@ -250,7 +269,7 @@ export class DevtoolsProvider {
       // (metadata still ships so the pane's picker UI stays populated).
       const selection = this._subs.registrySelection()
       const regOut = this._registryScratch
-      if (this._registry.drain(regOut, selection)) {
+      if (this._registry.drain(regOut, selection, cursor)) {
         features.registry = regOut
         anyFeature = true
       }
@@ -259,25 +278,29 @@ export class DevtoolsProvider {
     if (active.has('buffers')) {
       const selection = this._subs.buffersSelection()
       const bufOut = this._buffersScratch
-      if (this._textures.drain(bufOut, selection, this._latestRenderer)) {
+      if (this._textures.drain(bufOut, selection, this._latestRenderer, cursor)) {
         features.buffers = bufOut
         anyFeature = true
       }
     }
 
     if (!anyFeature) {
+      // Nothing got written into the pool buffer — return it.
+      this._dataTransport.releaseUnused(poolBuf)
       this._maybeIdlePing()
       return
     }
 
     ;(msg.payload as DataPayload).frame = this._stats.frame
     stampMessage(msg)
-    try {
-      this._dataBus.postMessage(msg)
-      this._lastBroadcastAt = Date.now()
-    } catch {
-      // Bus may be closing during shutdown — swallow.
-    }
+    // The transport ships the message + transfers `poolBuf` to the
+    // worker (when worker is available). The worker calls
+    // `bc.postMessage(msg)` — which `structuredSerialize`s the
+    // typed-array bytes synchronously into BC delivery queues — then
+    // bounces `poolBuf` back to the producer's pool. Render thread
+    // pays only the typed-array memcpy + one `port.postMessage`.
+    this._dataTransport.post(msg, [poolBuf])
+    this._lastBroadcastAt = Date.now()
     // Per-flush CPU cost on the Devtools track. Pairs with the
     // consumer-side `bus:*` spans on the same track so a flush and
     // its delivery show up next to each other under the
@@ -309,6 +332,7 @@ export class DevtoolsProvider {
     _setActiveRegistry(null)
     _setActiveTextureRegistry(null)
     this._subs.dispose()
+    this._dataTransport.dispose()
     try { this._dataBus.close() } catch { /* noop */ }
     try { this._discoveryBus.close() } catch { /* noop */ }
     this._latestRenderer = undefined
@@ -389,16 +413,10 @@ export class DevtoolsProvider {
     this._env.recordSnapshotAsPrev(r)
 
     const echoed = this._subs.featuresFor(id) ?? []
-    try {
-      this._dataBus.postMessage(
-        stampMessage({
-          type: 'subscribe:ack',
-          payload: { id, features: Array.from(echoed), env },
-        }),
-      )
-    } catch {
-      // Bus may be closing during shutdown — swallow.
-    }
+    this._dataTransport.post(stampMessage({
+      type: 'subscribe:ack',
+      payload: { id, features: Array.from(echoed), env },
+    }))
   }
 
   /**
@@ -410,12 +428,8 @@ export class DevtoolsProvider {
     if (Date.now() - this._lastBroadcastAt < IDLE_PING_MS) return
     const msg = this._pingScratch
     stampMessage(msg)
-    try {
-      this._dataBus.postMessage(msg)
-      this._lastBroadcastAt = Date.now()
-    } catch {
-      // Bus may be closing during shutdown — swallow.
-    }
+    this._dataTransport.post(msg)
+    this._lastBroadcastAt = Date.now()
   }
 }
 

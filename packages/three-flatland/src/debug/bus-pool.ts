@@ -124,3 +124,49 @@ export function allocateTier(tier: PoolTier): ArrayBuffer[] {
   for (let i = 0; i < spec.count; i++) out[i] = new ArrayBuffer(spec.size)
   return out
 }
+
+/**
+ * Mutable cursor handed to `drain*` functions so they can append
+ * their typed-array bytes into a shared pool buffer. Each `copyTypedTo`
+ * call writes a TypedArray's contents at the current offset and
+ * returns a new same-typed view positioned at that offset, then
+ * advances the cursor (4-byte aligned for downstream views).
+ */
+export interface BufferCursor {
+  buffer: ArrayBuffer
+  byteOffset: number
+}
+
+/**
+ * Copy `src`'s bytes into `cursor.buffer` at `cursor.byteOffset`,
+ * return a same-typed view at that location, advance the cursor with
+ * 4-byte alignment.
+ *
+ * After the producer transfers the buffer to the worker via
+ * `postMessage(msg, [cursor.buffer])`, the returned view's underlying
+ * ArrayBuffer is the worker's copy — `bc.postMessage(msg)`'s
+ * structuredSerialize then copies the bytes into the BC delivery
+ * queues for each subscriber.
+ */
+export function copyTypedTo<
+  T extends Int8Array | Uint8Array | Int16Array | Uint16Array
+       | Int32Array | Uint32Array | Float32Array | Float64Array,
+>(cursor: BufferCursor, src: T): T {
+  const len = src.length
+  const byteLen = src.byteLength
+  if (cursor.byteOffset + byteLen > cursor.buffer.byteLength) {
+    throw new RangeError(
+      `bus-pool cursor overflow: need ${byteLen}B at offset ${cursor.byteOffset} ` +
+      `(buffer ${cursor.buffer.byteLength}B)`,
+    )
+  }
+  const dstU8 = new Uint8Array(cursor.buffer, cursor.byteOffset, byteLen)
+  const srcU8 = new Uint8Array(src.buffer, src.byteOffset, byteLen)
+  dstU8.set(srcU8)
+  const Ctor = src.constructor as new (b: ArrayBuffer, o: number, l: number) => T
+  const view = new Ctor(cursor.buffer, cursor.byteOffset, len)
+  // 4-byte align the cursor so the next typed-array view (up to
+  // Float32) starts on a natural boundary.
+  cursor.byteOffset = (cursor.byteOffset + byteLen + 3) & ~3
+  return view
+}

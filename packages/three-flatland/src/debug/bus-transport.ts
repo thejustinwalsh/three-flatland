@@ -45,6 +45,13 @@ export interface BusTransport {
    * allocations on the slow path.
    */
   post(msg: DebugMessage, bufs?: ArrayBuffer[]): void
+  /**
+   * Return a buffer to the pool without sending it. Use when an
+   * `acquire*` happened but the flush turned out to have nothing to
+   * ship — avoids pool starvation. No-op for the inline transport
+   * (its buffers GC themselves).
+   */
+  releaseUnused(buf: ArrayBuffer): void
   /** Approximate count of buffers currently held in each pool tier. */
   poolStats(): { smallFree: number; largeFree: number }
   dispose(): void
@@ -102,6 +109,10 @@ class WorkerBusTransport implements BusTransport {
     }
   }
 
+  releaseUnused(buf: ArrayBuffer): void {
+    this._pool.release(buf)
+  }
+
   poolStats(): { smallFree: number; largeFree: number } {
     const s = this._pool.stats()
     return { smallFree: s.smallFree, largeFree: s.largeFree }
@@ -139,6 +150,8 @@ class InlineBusTransport implements BusTransport {
     if (this._disposed) return
     try { this._bc.postMessage(msg) } catch { /* swallow */ }
   }
+
+  releaseUnused(_buf: ArrayBuffer): void { /* no pool to return to */ }
 
   poolStats(): { smallFree: number; largeFree: number } {
     return { smallFree: 0, largeFree: 0 }

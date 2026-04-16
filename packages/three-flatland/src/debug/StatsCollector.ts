@@ -1,5 +1,7 @@
 import type { StatsPayload } from '../debug-protocol'
 import { FEATURE_STALE_MS, STATS_RING_SIZE } from '../debug-protocol'
+import type { BufferCursor } from './bus-pool'
+import { copyTypedTo } from './bus-pool'
 
 interface RenderInfo {
   calls?: number
@@ -190,31 +192,52 @@ export class StatsCollector {
   get gpuCapable(): boolean { return this._gpuCapable }
 
   /**
-   * Fill `out` with views of the valid prefix of each buffer. Returns
-   * `true` if anything was written. After a successful drain `_write`
-   * resets to 0 — next frame starts the next batch. Buffers themselves
-   * are not reallocated; `postMessage` / structuredClone copies the
-   * view contents synchronously so overwriting afterward is safe.
+   * Fill `out` with the valid prefix of each ring as typed-array
+   * views. Two modes:
+   *
+   *   - `into` provided  → views are positioned over the supplied
+   *     pool buffer (`copyTypedTo` memcpys our private rings in).
+   *     The producer can then transfer that pool buffer to the bus
+   *     worker without paying `structuredClone` on the render thread.
+   *   - `into` omitted   → views over our private rings (legacy path
+   *     used by the inline transport, which `structuredClone`s on
+   *     `BroadcastChannel.postMessage` — fine when not bus-busy).
+   *
+   * Returns `true` if anything was written. `_write` resets to 0
+   * either way — next frame starts the next batch.
    */
-  drainBatch(out: StatsPayload): boolean {
+  drainBatch(out: StatsPayload, into?: BufferCursor): boolean {
     const count = this._write
     if (count === 0) return false
 
     out.startFrame = this._startFrame
     out.count = count
-    out.fps = this._fpsBuf.subarray(0, count)
-    out.cpuMs = this._cpuMsBuf.subarray(0, count)
-    out.drawCalls = this._drawCallsBuf.subarray(0, count)
-    out.triangles = this._trianglesBuf.subarray(0, count)
-    out.primitives = this._primitivesBuf.subarray(0, count)
-    out.geometries = this._geometriesBuf.subarray(0, count)
-    out.textures = this._texturesBuf.subarray(0, count)
 
-    if (this._gpuCapable) out.gpuMs = this._gpuMsBuf.subarray(0, count)
-    else delete out.gpuMs
-
-    if (this._perfMemory) out.heapUsedMB = this._heapUsedBuf.subarray(0, count)
-    else delete out.heapUsedMB
+    if (into !== undefined) {
+      out.fps = copyTypedTo(into, this._fpsBuf.subarray(0, count))
+      out.cpuMs = copyTypedTo(into, this._cpuMsBuf.subarray(0, count))
+      out.drawCalls = copyTypedTo(into, this._drawCallsBuf.subarray(0, count))
+      out.triangles = copyTypedTo(into, this._trianglesBuf.subarray(0, count))
+      out.primitives = copyTypedTo(into, this._primitivesBuf.subarray(0, count))
+      out.geometries = copyTypedTo(into, this._geometriesBuf.subarray(0, count))
+      out.textures = copyTypedTo(into, this._texturesBuf.subarray(0, count))
+      if (this._gpuCapable) out.gpuMs = copyTypedTo(into, this._gpuMsBuf.subarray(0, count))
+      else delete out.gpuMs
+      if (this._perfMemory) out.heapUsedMB = copyTypedTo(into, this._heapUsedBuf.subarray(0, count))
+      else delete out.heapUsedMB
+    } else {
+      out.fps = this._fpsBuf.subarray(0, count)
+      out.cpuMs = this._cpuMsBuf.subarray(0, count)
+      out.drawCalls = this._drawCallsBuf.subarray(0, count)
+      out.triangles = this._trianglesBuf.subarray(0, count)
+      out.primitives = this._primitivesBuf.subarray(0, count)
+      out.geometries = this._geometriesBuf.subarray(0, count)
+      out.textures = this._texturesBuf.subarray(0, count)
+      if (this._gpuCapable) out.gpuMs = this._gpuMsBuf.subarray(0, count)
+      else delete out.gpuMs
+      if (this._perfMemory) out.heapUsedMB = this._heapUsedBuf.subarray(0, count)
+      else delete out.heapUsedMB
+    }
 
     if (this._perfMemory && !this._heapLimitEmitted) {
       out.heapLimitMB = Math.round(this._perfMemory.jsHeapSizeLimit / 1048576)

@@ -1,4 +1,6 @@
 import type { RegistryEntryDelta, RegistryEntryKind, RegistryPayload } from '../debug-protocol'
+import type { BufferCursor } from './bus-pool'
+import { copyTypedTo } from './bus-pool'
 
 /**
  * Registered CPU array. Holds a *reference* to a host-owned typed array
@@ -112,7 +114,7 @@ export class DebugRegistry {
    *
    * Returns `true` if anything was written.
    */
-  drain(out: RegistryPayload, filter: Set<string> | null = null): boolean {
+  drain(out: RegistryPayload, filter: Set<string> | null = null, into?: BufferCursor): boolean {
     let wrote = false
     const entries: Record<string, RegistryEntryDelta | null> = {}
     for (const [name, e] of this._entries) {
@@ -127,7 +129,15 @@ export class DebugRegistry {
         count: e.length,
         ...(e.label !== undefined ? { label: e.label } : {}),
       }
-      if (inFilter) base.sample = e.sampleView
+      if (inFilter) {
+        // Pool path: copy into the shared buffer so the producer can
+        // transfer it to the worker without `structuredClone` running
+        // on the render thread. Otherwise the legacy view-over-private
+        // -ring path (BC will structuredClone for us).
+        base.sample = into !== undefined
+          ? copyTypedTo(into, e.sampleView)
+          : e.sampleView
+      }
       entries[name] = base
       e.lastEmittedVersion = e.version
       e.lastEmittedShape = target
