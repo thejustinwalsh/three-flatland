@@ -5,13 +5,16 @@
 > Branch: lighting-stochastic-adoption
 > PR: https://github.com/thejustinwalsh/three-flatland/pull/27
 
-**New TSL lighting node library for 2D sprite rendering**
+**New `@three-flatland/nodes/lighting` TSL shader node module:**
+- `lit`: per-fragment diffuse + specular with distance-based light attenuation
+- `shadow2D` / `shadowSoft2D`: alpha-raymarched 2D occlusion helpers
+- `shadowSDF2D(surfaceWorldPos, lightWorldPos, sdfTexture, worldSize, worldOffset, opts?)`: sphere-traced soft shadows through a JFA SDF texture; Inigo-Quilez penumbra term; configurable `steps` (default 32, compile-time unrolled), `softness`, `startOffset`, `eps`
+- `normalFromSprite` / `normalFromHeight`: tangent-space normal generation from alpha gradient or height map
+- `lights`: light packing/unpacking helpers for the Forward+ LightStore texture
 
-- `lit` node: per-fragment Phong/diffuse accumulation over the Forward+ light list
-- `normalFromSprite` node: derives tangent-space normals from sprite alpha gradient (4-neighbor)
-- `normalFromHeight` node: derives normals from a grayscale heightmap texture
-- `shadow2D` / `shadowSoft2D` nodes: raymarch occluder alpha for soft and hard shadows
-- `shadowSDF2D(surfacePos, lightPos, sdfTexture, worldSize, worldOffset, opts)`: sphere-trace soft shadow through a pre-built SDF; Inigo-Quilez penumbra term; default 32 steps; compile-time option bag (`steps`, `softness`, `startOffset`, `eps`)
-- React lighting example (`examples/react/lighting`): dungeon floor via `TileMap2D`, shadow-casting wall sprites, wandering point-light enemies, keyboard-controlled hero, flickering torches, Tweakpane debug panel
+**LightEffect system:**
+- `LightEffect` base class and registry for custom lighting effects
+- `LightEffectBuildContext` carries `lightStore`, `sdfTexture`, `worldSizeNode`, `worldOffsetNode` for shader build time
+- React `attach` helpers for wiring `LightEffect` and `Light2D` as R3F JSX children
 
-TSL shadow nodes cover two complementary algorithms: direct alpha raymarching (`shadow2D`/`shadowSoft2D`) and SDF sphere-tracing (`shadowSDF2D`) — both ship in `@three-flatland/nodes/lighting`.
+Introduces `@three-flatland/nodes/lighting`, a set of TSL shader helpers for the 2D lighting pipeline including SDF sphere-traced soft shadows, normal generation, and Forward+ light store access.

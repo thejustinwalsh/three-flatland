@@ -5,17 +5,23 @@
 > Branch: lighting-stochastic-adoption
 > PR: https://github.com/thejustinwalsh/three-flatland/pull/27
 
-**New lighting preset effects and providers for the 2D pipeline**
+**New lighting effect presets:**
+- `DefaultLightEffect`: Forward+ tiled lighting with SDF sphere-traced soft shadows
+- `DirectLightEffect`: direct-only lighting with SDF soft shadows
+- `SimpleLightEffect`: ambient-only, no shadow computation
+- `RadianceLightEffect`: radiance cascades GI (experimental)
+- `AutoNormalProvider`: material effect that derives normals from sprite alpha at runtime
+- `NormalMapProvider`: material effect that binds a pre-baked normal map texture
+- All presets exported from both `@three-flatland/presets` and `@three-flatland/presets/react`
 
-- `DefaultLightEffect`: full Forward+ tiled lighting with per-sprite normals and SDF soft shadows
-- `DirectLightEffect`: simpler direct lighting without tiling, supports SDF shadows
-- `SimpleLightEffect`: ambient + single directional light, no shadows
-- `RadianceLightEffect`: radiance cascades GI strategy (WIP)
-- `AutoNormalProvider`: `MaterialEffect` that derives tangent-space normals from sprite alpha at runtime via `normalFromSprite`
-- `NormalMapProvider`: `MaterialEffect` that reads normals from a pre-baked `.normal.png` via `NormalMapLoader`
-- `DefaultLightEffect` and `DirectLightEffect` replace `shadow = float(1.0)` stub with real `shadowSDF2D` sphere-trace; `shadowStrength`, `shadowSoftness`, `shadowBias` controls; ambient lights skip shadows
-- `LightEffectBuildContext` now carries `sdfTexture`, `worldSizeNode`, `worldOffsetNode` — effects bind SDF and world-bounds uniforms at shader build time, stable across resize
-- Added `./react` subpath export for R3F consumers (`ThreeElements` augmentation resolves correctly)
-- `@react-three/fiber` declared as optional peer dep
+**SDF shadow integration (T5 + T7):**
+- `LightEffectBuildContext` gains `sdfTexture`, `worldSizeNode`, `worldOffsetNode` for build-time shader capture
+- `DefaultLightEffect` and `DirectLightEffect` now call `shadowSDF2D` — the `shadow = float(1.0)` stub is removed
+- Shadow strength, softness, and bias are configurable per effect instance
+- `sdfTexture` is `null` for non-shadow effects; shader compiles out the shadow branch via a JS-level guard
 
-Provides ready-to-use lighting effect presets that compose with Flatland's ECS pipeline, from simple ambient-only to full tiled Forward+ with SDF soft shadows.
+**Package changes:**
+- Added `./react` subpath export
+- `@react-three/fiber` declared as optional peer dependency so `ThreeElements` augmentation resolves without a hard R3F dep
+
+Adds ready-to-use lighting presets (`DefaultLightEffect`, `DirectLightEffect`, `SimpleLightEffect`) and normal providers with SDF soft shadow integration now active in the two primary presets.

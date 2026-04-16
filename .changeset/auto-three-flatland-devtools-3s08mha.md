@@ -5,54 +5,41 @@
 > Branch: lighting-stochastic-adoption
 > PR: https://github.com/thejustinwalsh/three-flatland/pull/27
 
+**New features:**
+- `DevtoolsClient`: framework-agnostic bus consumer; subscribes to a `DevtoolsProvider`, accumulates delta state, exposes `addListener` / `removeListener`
+- `mountDevtoolsPanel` / `useDevtoolsPanel`: mounts a readonly Tweakpane panel with Liveness, Perf, Scene, and Environment folders
+- Multi-provider discovery protocol: `provider:announce` / `provider:query` / `provider:gone` with automatic provider selection (user over system) and auto-switch on disconnect; `client.selectProvider(id)` for manual override
+- `createPane` / `usePane` now auto-mount the devtools panel; explicit `mountDevtoolsPanel` call no longer needed
+- Shared `DevtoolsClient` across panel and stats graph — single source of truth for all displayed values
+- `FlatlandOptions.name` lets users label multiple Flatland instances in the UI
 
-**Major devtools overhaul: bus protocol, GPU buffer inspection, and performance hardening**
-
-### Debug bus protocol
-
-- Two-channel `BroadcastChannel` design: shared discovery channel (`flatland-debug`) for `provider:query` / `announce` / `gone`; per-provider data channels (`flatland-debug:<id>`) for `subscribe` / `ack` / `data` / `ping`
-- Multi-provider discovery: consumers auto-pick on start, prefer `user` over `system` providers, auto-switch on `provider:gone`; `client.selectProvider(id)` for manual override
-- Delta-encoded `data` packets — absent field = no change, `null` = clear; zero-alloc scratch objects on the producer hot path
-- Server-side idle ping every 2 s when no `data` has been sent; consumers detect dead providers after 5 s silence
-- `FlatlandOptions.name` lets users distinguish multiple Flatland instances
-
-### Client & panel
-
-- `DevtoolsClient`: framework-agnostic bus consumer; multi-listener via `addListener` / `removeListener`; shared across panel + stats graph (single source of truth, no timing drift)
-- `mountDevtoolsPanel` / `useDevtoolsPanel`: Tweakpane panel with Liveness, Perf, Scene, and Environment folders
-- `createPane` / `usePane` auto-mount the devtools panel when `debug: true` — no separate `mountDevtoolsPanel` call needed
-- `createDevtoolsProvider(opts?)` helper exported from the main package for vanilla three.js apps without a `Flatland` instance
-
-### CPU typed-array registry (Phase B)
-
-- `DebugRegistry`: engine code publishes CPU typed arrays via `registerDebugArray` / `touchDebugArray`; no-op when `DEVTOOLS_BUNDLED` is false
+**Phase B — DebugRegistry:**
+- `registerDebugArray` / `touchDebugArray` / `unregisterDebugArray` module-level sink (no-op in prod builds)
+- Collapsible grouped registry blade in the pane; per-entry filter on subscribe so only visible data crosses the wire
 - `ForwardPlusLighting` publishes `lightCounts` and `tileScores`; `LightStore` publishes its DataTexture backing
-- Registry blade in the pane: grouped by name prefix, collapsible, bandwidth-gated by visibility
 
-### GPU buffer inspection (Phase C)
+**Phase C — GPU buffer viewer:**
+- `DebugTextureRegistry`: async GPU readback for `DataTexture` and `RenderTarget`; per-entry `maxDim` cap (default 256) with TSL `Downsampler` blit to avoid multi-MB readbacks
+- Live 240×120 thumbnail blade with four display modes: `colors`, `normalize`, `mono`, `signed` (red/green diverging)
+- Fullscreen modal on expand: collapsible buffer sidebar, aspect-correct canvas, selection drives `client.setBuffers()` to stream only the active buffer; Esc to close
+- `perf-track.ts`: User Timing spans on Chrome's custom-track extension (`trackGroup: 'three-flatland'`, tracks `devtools`, `lighting`, `sprites`, `sdf`)
 
-- `DebugTextureRegistry`: `DataTexture` paths copy CPU buffer; `RenderTarget` paths use async GPU readback
-- `buffers-view` blade: thumbnail with `◀ name ▶` cycling, 240×120 canvas preview, four decode modes (`colors` / `normalize` / `mono` / `signed`)
-- Fullscreen modal (click ⤢): collapsible sidebar with buffer list, aspect-correct main canvas, Esc to close; drives `client.setBuffers([active])` so only the inspected buffer is streamed
-- `DebugTextureRegistry` `maxDim` cap (default 256 px) with lazy GPU `Downsampler` — a 1920×1080 SDF reads back at ~150 KB instead of 8 MB
+**Protocol changes:**
+- Two BroadcastChannels: shared discovery (`flatland-debug`) + per-provider data (`flatland-debug:<id>`)
+- Subscribe/ack protocol replaces ping/pong heartbeat; idle server emits `ping` every 2 s when data is quiet
+- `registry` / `buffers` selection fields on subscribe payload (renamed from `registryFilter` / `atlasFilter`)
 
-### Worker bus transport
+**Performance:**
+- Stats graph rewritten from SVG polyline to Canvas `beginPath`/`lineTo` — eliminates per-rAF string allocation and DOM mutation
+- `maybeResolveGpu` throttled from 60 Hz to 10 Hz; drops Promise closure churn by 6×
+- `_applyRegistry` / `_applyBuffers` mutate snapshots in place; `toFixed` strings cached per mode
+- Off-thread BroadcastChannel hot path: `BusTransport` worker pool with `BufferCursor` + `copyTypedTo` — zero `structuredClone` on the render thread
+- `POOL.large.size` raised to 2 MB; fail-soft on oversized entries to prevent flush failures at 1080p
 
-- `BusTransport` abstraction with `WorkerBusTransport` (spawns offload worker) and `InlineBusTransport` fallback
-- Pool-based zero-alloc data path: `_flush` acquires a pool buffer, encoders `copyTypedTo` into successive offsets, buffer is transferred to the worker — no `structuredClone` on the render thread
-- Pool tiers: small 4 KB × 8, large 2 MB × 4; fail-soft for oversized entries (metadata-only, one-shot warn)
+**Bug fixes:**
+- Fixed `[useFrame] Job already exists` warning and FPS showing `--` by dropping the priority option from `usePane`'s `useFrame` call
+- Fixed "React state update on unmounted component" in `usePaneInput` by gating change handler on `mountedRef`
+- Fixed FPS reporting ~6× actual rate when Flatland runs multiple internal render passes per frame (SDF, occlusion, main, post)
+- Fixed debug wire bloat from `undefined`-valued delta fields (switched to `delete` on reset)
 
-### Performance fixes
-
-- Stats graph replaced from SVG `<polyline>` to Canvas `ctx.beginPath/lineTo` — eliminates ~5 k template-literal allocs/s and CSS selector invalidations
-- `_applyRegistry` / `_applyBuffers` mutate snapshots in place; `toFixed` results cached per display precision
-- `StatsCollector.maybeResolveGpu` throttled from 60 Hz to 10 Hz — 6× fewer Promise closures
-- `ImageData` for buffer thumbnails cached when source dimensions match — was ~400 KB/s of `Uint8ClampedArray` allocs at 4 Hz
-- User Timing spans via `perfMeasure` / `perfStart` on Chrome's custom-track extension (`three-flatland` track group)
-
-### Bug fixes
-
-- R3F `useFrame` switched from positional priority `useFrame(cb, 1000)` to options-object form `useFrame(cb, { priority: 1000 })` — removes deprecation warning in all React examples
-- Frame-boundary stats: switched from `scene.onBeforeRender`/`onAfterRender` hooks (which fired per internal pass) to explicit `beginFrame` / `endFrame` — FPS and draw-call counts now report logical frame rates regardless of how many internal render passes Flatland runs
-
-Delivers a full end-to-end devtools system: live stats, CPU array inspection, GPU buffer thumbnails with fullscreen viewer, and a zero-alloc worker-offloaded data path.
+This release delivers a complete devtools consumer pipeline: real-time FPS/CPU/GPU stats, typed-array registry inspection, live GPU buffer thumbnails with a fullscreen viewer, multi-provider discovery, and a zero-alloc off-thread broadcast path.
