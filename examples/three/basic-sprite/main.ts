@@ -1,6 +1,6 @@
 import { WebGPURenderer } from 'three/webgpu'
 import { Scene, OrthographicCamera, Color } from 'three'
-import { Sprite2D, TextureLoader } from 'three-flatland'
+import { Sprite2D, TextureLoader, createDevtoolsProvider } from 'three-flatland'
 import { createPane } from '@three-flatland/devtools'
 
 async function main() {
@@ -44,6 +44,13 @@ async function main() {
 
   // Tweakpane UI
   const { pane, update: updateDevtools } = createPane({ driver: 'manual' })
+
+  // Vanilla three.js apps don't get a devtools provider for free —
+  // Flatland constructs one inside `Flatland.render()`. For non-
+  // Flatland examples we spawn one ourselves and bracket the render
+  // call below. No-op (zero cost) when the devtools build flag is
+  // off in production.
+  const devtools = createDevtoolsProvider({ name: 'basic-sprite' })
 
   const params = {
     baseScale: 150,
@@ -173,7 +180,9 @@ async function main() {
     // Slow rotation
     sprite.rotation.z += params.rotationSpeed * delta
 
+    devtools.beginFrame(performance.now(), renderer)
     renderer.render(scene, camera)
+    devtools.endFrame(renderer)
     updateDevtools()
   }
 

@@ -40,3 +40,9 @@ export {
   unregisterDebugTexture,
 } from './debug/debug-sink'
 
+// Devtools provider helper for non-Flatland three.js apps
+export {
+  createDevtoolsProvider,
+  type DevtoolsProviderHandle,
+} from './debug/createDevtoolsProvider'
+

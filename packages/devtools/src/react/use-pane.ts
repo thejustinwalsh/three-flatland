@@ -30,9 +30,11 @@ export function usePane(options: CreatePaneOptions = {}): PaneBundle {
     bundleRef.current = createPane({ ...options, driver: 'manual' })
   }
 
+  // Note: R3F deprecated the positional-priority signature. The
+  // options object is the canonical form now.
   useFrame(() => {
     bundleRef.current?.update()
-  }, LATE_FRAME_PRIORITY)
+  }, { priority: LATE_FRAME_PRIORITY })
 
   useEffect(() => {
     mountedRef.current = true
