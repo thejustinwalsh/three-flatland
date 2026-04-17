@@ -13,6 +13,7 @@ import { MeshBasicNodeMaterial } from 'three/webgpu'
 import type { WebGPURenderer } from 'three/webgpu'
 import { uniform, uv, vec2, vec4, float, Fn, texture as sampleTexture } from 'three/tsl'
 import type Node from 'three/src/nodes/core/Node.js'
+import { registerDebugTexture, unregisterDebugTexture } from '../debug/debug-sink'
 
 /**
  * Jump Flood Algorithm (JFA) SDF Generator.
@@ -96,6 +97,11 @@ export class SDFGenerator {
     // rebuilding after the initial construction.
     this._createJFAMaterials()
     this._createFinalMaterials()
+
+    registerDebugTexture('sdf.distanceField', this._sdfRT, 'rgba16f', {
+      display: 'signed',
+      label: 'SDF distance field',
+    })
   }
 
   /**
@@ -172,6 +178,7 @@ export class SDFGenerator {
    * Dispose of all GPU resources.
    */
   dispose(): void {
+    unregisterDebugTexture('sdf.distanceField')
     this._pingRT?.dispose()
     this._pongRT?.dispose()
     this._sdfRT?.dispose()

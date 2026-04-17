@@ -143,6 +143,73 @@ export function createBuffersModal(client: DevtoolsClient): BuffersModalHandle {
   let lastRenderedVersion = -1
   let sidebarCollapsed = false
 
+  // ── Pan + zoom ─────────────────────────────────────────────────────────
+
+  let zoom = 1
+  let panX = 0
+  let panY = 0
+  let isDragging = false
+  let dragStartX = 0
+  let dragStartY = 0
+  let panStartX = 0
+  let panStartY = 0
+
+  function applyTransform(): void {
+    canvas.style.transform = `translate(${panX}px, ${panY}px) scale(${zoom})`
+    canvas.style.transformOrigin = 'center center'
+  }
+
+  function resetTransform(): void {
+    zoom = 1
+    panX = 0
+    panY = 0
+    applyTransform()
+  }
+
+  canvas.addEventListener('wheel', (e) => {
+    e.preventDefault()
+    const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15
+    const newZoom = Math.max(0.1, Math.min(50, zoom * factor))
+
+    // Zoom toward cursor position relative to canvas center
+    const rect = canvas.getBoundingClientRect()
+    const cx = rect.left + rect.width / 2
+    const cy = rect.top + rect.height / 2
+    const dx = e.clientX - cx - panX
+    const dy = e.clientY - cy - panY
+    const scale = newZoom / zoom
+
+    panX = e.clientX - cx - dx * scale
+    panY = e.clientY - cy - dy * scale
+    zoom = newZoom
+    applyTransform()
+  }, { passive: false })
+
+  canvas.addEventListener('mousedown', (e) => {
+    if (e.button !== 0) return
+    isDragging = true
+    dragStartX = e.clientX
+    dragStartY = e.clientY
+    panStartX = panX
+    panStartY = panY
+    canvas.style.cursor = 'grabbing'
+  })
+
+  window.addEventListener('mousemove', (e) => {
+    if (!isDragging) return
+    panX = panStartX + (e.clientX - dragStartX)
+    panY = panStartY + (e.clientY - dragStartY)
+    applyTransform()
+  })
+
+  window.addEventListener('mouseup', () => {
+    if (!isDragging) return
+    isDragging = false
+    canvas.style.cursor = 'grab'
+  })
+
+  canvas.style.cursor = 'grab'
+
   // Track the per-row DOM nodes so we can update highlight without
   // re-rendering the whole sidebar each batch.
   const rowEls = new Map<string, HTMLDivElement>()
@@ -306,6 +373,7 @@ export function createBuffersModal(client: DevtoolsClient): BuffersModalHandle {
     if (activeName === name) return
     activeName = name
     lastRenderedVersion = -1
+    resetTransform()
     client.setBuffers([name])
     highlightActive()
     refresh()
