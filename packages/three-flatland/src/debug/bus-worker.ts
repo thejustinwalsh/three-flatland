@@ -43,6 +43,7 @@
  */
 
 import { allocateTier } from './bus-pool'
+import { convertToRGBA8 } from './pixel-convert'
 
 // ─── Types ────────────────────────────────────────────────────────────────
 
@@ -124,15 +125,14 @@ class StreamEncoder {
       display: msg.display,
     })
 
-    const frame = new VideoFrame(
-      new Uint8Array(msg.pixels, 0, msg.width * msg.height * 4),
-      {
-        format: 'RGBA',
-        codedWidth: msg.width,
-        codedHeight: msg.height,
-        timestamp,
-      },
-    )
+    const rgba8 = convertToRGBA8(msg.pixels, msg.pixelType, msg.display, msg.width, msg.height)
+
+    const frame = new VideoFrame(rgba8, {
+      format: 'RGBA',
+      codedWidth: msg.width,
+      codedHeight: msg.height,
+      timestamp,
+    })
     encoder.encode(frame, { keyFrame: forceKey })
     frame.close()
 

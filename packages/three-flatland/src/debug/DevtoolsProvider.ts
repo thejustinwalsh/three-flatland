@@ -342,13 +342,16 @@ export class DevtoolsProvider {
             for (const name in bufOut.entries) {
               const entry = bufOut.entries[name]
               if (!entry || !entry.pixels) continue
-              // VP9 encoder only handles RGBA8. Float textures fall
-              // through with raw pixels intact (the consumer's CPU
-              // decoder handles them).
-              if (entry.pixelType !== 'rgba8' && entry.pixelType !== 'r8') continue
-              const pixels = entry.pixels as Uint8Array
+              // Copy raw pixel bytes into a pool buffer for transfer
+              // to the worker. The worker handles format conversion
+              // (f16→f32→RGBA8, display mode mapping) before encoding.
+              const pixels = entry.pixels
               const encBuf = transport.acquireLarge()
-              new Uint8Array(encBuf).set(pixels)
+              if (pixels instanceof Uint8Array) {
+                new Uint8Array(encBuf).set(pixels)
+              } else {
+                new Uint8Array(encBuf).set(new Uint8Array(pixels.buffer, pixels.byteOffset, pixels.byteLength))
+              }
               transport.encode({
                 name,
                 width: entry.width,
