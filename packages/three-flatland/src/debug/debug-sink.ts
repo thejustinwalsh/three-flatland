@@ -19,16 +19,31 @@ import type { DebugTextureRegistry } from './DebugTextureRegistry'
 let _active: DebugRegistry | null = null
 let _activeTextures: DebugTextureRegistry | null = null
 
+// Queued registrations that arrived before the registry was set.
+// Replayed on _setActive*Registry and cleared.
+type QueuedArray = { name: string; ref: Float32Array | Uint32Array | Int32Array; kind: RegistryEntryKind; opts?: { label?: string; length?: number } }
+type QueuedTexture = { name: string; source: DataTexture | { width: number; height: number; texture: Texture }; pixelType: TexturePixelType; opts?: { label?: string; display?: BufferDisplayMode; maxDim?: number } }
+let _pendingArrays: QueuedArray[] | null = null
+let _pendingTextures: QueuedTexture[] | null = null
+
 /** @internal Called by `DevtoolsProvider` — not for app code. */
 export function _setActiveRegistry(registry: DebugRegistry | null): void {
   if (!DEVTOOLS_BUNDLED) return
   _active = registry
+  if (registry !== null && _pendingArrays !== null) {
+    for (const q of _pendingArrays) registry.register(q.name, q.ref, q.kind, q.opts)
+    _pendingArrays = null
+  }
 }
 
 /** @internal Called by `DevtoolsProvider` — not for app code. */
 export function _setActiveTextureRegistry(registry: DebugTextureRegistry | null): void {
   if (!DEVTOOLS_BUNDLED) return
   _activeTextures = registry
+  if (registry !== null && _pendingTextures !== null) {
+    for (const q of _pendingTextures) registry.register(q.name, q.source, q.pixelType, q.opts)
+    _pendingTextures = null
+  }
 }
 
 /**
@@ -47,7 +62,9 @@ export function registerDebugArray(
   opts?: { label?: string; length?: number },
 ): void {
   if (!DEVTOOLS_BUNDLED) return
-  _active?.register(name, ref, kind, opts)
+  if (_active !== null) { _active.register(name, ref, kind, opts); return }
+  if (_pendingArrays === null) _pendingArrays = []
+  _pendingArrays.push({ name, ref, kind, opts })
 }
 
 /**
@@ -81,7 +98,9 @@ export function registerDebugTexture(
   opts?: { label?: string; display?: BufferDisplayMode; maxDim?: number },
 ): void {
   if (!DEVTOOLS_BUNDLED) return
-  _activeTextures?.register(name, source, pixelType, opts)
+  if (_activeTextures !== null) { _activeTextures.register(name, source, pixelType, opts); return }
+  if (_pendingTextures === null) _pendingTextures = []
+  _pendingTextures.push({ name, source, pixelType, opts })
 }
 
 /** Signal that a registered texture's content has changed. */
