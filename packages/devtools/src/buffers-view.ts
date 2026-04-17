@@ -16,6 +16,11 @@ import type { BufferSnapshot, DevtoolsClient } from './devtools-client.js'
 
 export interface BuffersViewHandle {
   readonly element: HTMLElement
+  /** Tell the view the modal is open/closed. While open, the view
+   *  defers buffer selection to the modal. */
+  setModalOpen(open: boolean): void
+  /** Sync the view's active buffer to match the modal's selection. */
+  setActiveFromModal(name: string): void
   dispose(): void
 }
 
@@ -191,7 +196,10 @@ export function addBuffersView(
     return Array.from(client.state.buffers.keys())
   }
 
+  let modalOpen = false
+
   function syncSelection(): void {
+    if (modalOpen) return
     if (collapsed || activeName === null) {
       client.setBuffers([])
       return
@@ -340,6 +348,16 @@ export function addBuffersView(
 
   return {
     element: bladeEl,
+    setModalOpen(open: boolean) {
+      modalOpen = open
+      if (!open) syncSelection()
+    },
+    setActiveFromModal(name: string) {
+      if (activeName === name) return
+      activeName = name
+      nameLabel.textContent = name
+      lastRenderedVersion = -1
+    },
     dispose() {
       resizeObserver.disconnect()
       unsubscribe()

@@ -47,12 +47,21 @@ export interface BuffersModalHandle {
   dispose(): void
 }
 
+export interface BuffersModalOptions {
+  onActiveChange?: (name: string) => void
+  onOpen?: () => void
+  onClose?: () => void
+}
+
 /**
  * Build a fullscreen modal anchored to `document.body`. Returns an
  * imperative handle — the in-pane thumbnail's expand button calls
  * `open(activeName)` to surface it.
  */
-export function createBuffersModal(client: DevtoolsClient): BuffersModalHandle {
+export function createBuffersModal(
+  client: DevtoolsClient,
+  options: BuffersModalOptions = {},
+): BuffersModalHandle {
   // ── Root + overlay ────────────────────────────────────────────────────
 
   const root = document.createElement('div')
@@ -432,13 +441,11 @@ export function createBuffersModal(client: DevtoolsClient): BuffersModalHandle {
     activeName = name
     lastRenderedVersion = -1
     resetTransform()
-    // Reset decoder so the new buffer starts fresh (wait for keyframe)
     stopDecoder()
     decoderWidth = 0
     decoderHeight = 0
-    // Re-subscribe with stream flag so the provider switches which
-    // buffer gets encoded + streams the new one
     client.setBuffers([name], codecAvailable)
+    options.onActiveChange?.(name)
     highlightActive()
     refresh()
   }
@@ -562,10 +569,9 @@ export function createBuffersModal(client: DevtoolsClient): BuffersModalHandle {
     if (isOpen && activeName === name) return
     isOpen = true
     root.style.display = 'flex'
+    options.onOpen?.()
     setActive(name)
-    // Start streaming via WebCodecs if available
-    if (codecAvailable) {
-      client.setBuffers([name], true)
+    if (codecAvailable && unsubChunks === null) {
       unsubChunks = client.addChunkListener(onChunk)
     }
   }
@@ -579,8 +585,9 @@ export function createBuffersModal(client: DevtoolsClient): BuffersModalHandle {
       unsubChunks()
       unsubChunks = null
     }
-    // Revert to non-stream mode
+    // Revert to non-stream mode — thumbnail resumes driving selection
     client.setBuffers(activeName !== null ? [activeName] : [])
+    options.onClose?.()
   }
 
   return {
