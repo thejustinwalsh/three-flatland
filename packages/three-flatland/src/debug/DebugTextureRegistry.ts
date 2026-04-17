@@ -48,7 +48,7 @@ interface DebugTextureEntry {
    * In-flight readback promise. Prevents multiple simultaneous
    * readbacks for the same entry; resolves to a typed-array copy.
    */
-  pendingReadback: Promise<Uint8Array | Float32Array> | null
+  pendingReadback: Promise<void> | null
   /** Latest successfully-read sample (re-used across drains). */
   sample: Uint8Array | Float32Array | null
   /** Width/height of the most recent sample. */
@@ -278,6 +278,7 @@ export class DebugTextureRegistry {
 
     if (e.renderTarget !== undefined && renderer !== undefined) {
       const rt = e.renderTarget
+      if (rt.width <= 1 || rt.height <= 1) return // not yet sized
 
       // Decide what we're actually reading back: the source RT, or a
       // smaller scratch RT that the downsampler renders the source
@@ -319,29 +320,25 @@ export class DebugTextureRegistry {
         srcH = dh
       }
 
-      const byteCount = srcW * srcH * 4
-      const buf = new Uint8Array(byteCount)
       const readAsync = (renderer as unknown as {
         readRenderTargetPixelsAsync?: (
           renderTarget: unknown,
           x: number, y: number, w: number, h: number,
-          buffer: Uint8Array,
-        ) => Promise<Uint8Array>
+        ) => Promise<ArrayBufferView>
       }).readRenderTargetPixelsAsync
       if (typeof readAsync !== 'function') return
-      const p = readAsync.call(renderer, target, 0, 0, srcW, srcH, buf).then(
-        () => {
-          e.sample = buf
+      const p = readAsync.call(renderer, target, 0, 0, srcW, srcH).then(
+        (result: ArrayBufferView) => {
+          e.sample = result instanceof Uint8Array
+            ? result
+            : new Uint8Array(result.buffer, result.byteOffset, result.byteLength)
           e.width = srcW
           e.height = srcH
           e.pendingReadback = null
-          // Bump version so the next drain ships the fresh pixels.
           e.version++
-          return buf
         },
         () => {
           e.pendingReadback = null
-          return buf
         },
       )
       e.pendingReadback = p
