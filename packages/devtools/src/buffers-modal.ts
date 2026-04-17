@@ -432,7 +432,13 @@ export function createBuffersModal(client: DevtoolsClient): BuffersModalHandle {
     activeName = name
     lastRenderedVersion = -1
     resetTransform()
-    client.setBuffers([name])
+    // Reset decoder so the new buffer starts fresh (wait for keyframe)
+    stopDecoder()
+    decoderWidth = 0
+    decoderHeight = 0
+    // Re-subscribe with stream flag so the provider switches which
+    // buffer gets encoded + streams the new one
+    client.setBuffers([name], codecAvailable)
     highlightActive()
     refresh()
   }
