@@ -118,7 +118,7 @@ export function createBuffersModal(client: DevtoolsClient): BuffersModalHandle {
   ].join(';')
 
   const main = document.createElement('div')
-  main.style.cssText = 'flex:1;display:flex;align-items:center;justify-content:center;padding:16px;min-width:0;min-height:0'
+  main.style.cssText = 'flex:1;display:flex;align-items:center;justify-content:center;padding:16px;min-width:0;min-height:0;overflow:hidden;position:relative'
 
   const canvas = document.createElement('canvas')
   canvas.style.cssText = 'display:block;background:rgba(0,2,28,0.6);border-radius:4px;image-rendering:pixelated;max-width:100%;max-height:100%'
@@ -128,7 +128,32 @@ export function createBuffersModal(client: DevtoolsClient): BuffersModalHandle {
   offscreen.width = 1
   offscreen.height = 1
 
+  // Zoom info overlay
+  const zoomInfo = document.createElement('div')
+  zoomInfo.style.cssText = [
+    'position:absolute', 'bottom:8px', 'right:8px',
+    'padding:4px 8px', 'border-radius:4px',
+    'background:rgba(0,0,0,0.6)', 'color:#aaa',
+    'font:11px/1.4 monospace', 'pointer-events:none',
+    'user-select:none', 'z-index:1',
+  ].join(';')
+  zoomInfo.textContent = '1.0×'
+
+  // Reset button
+  const resetBtn = document.createElement('div')
+  resetBtn.style.cssText = [
+    'position:absolute', 'bottom:8px', 'left:8px',
+    'padding:3px 8px', 'border-radius:4px',
+    'background:rgba(0,0,0,0.6)', 'color:#aaa',
+    'font:11px/1.4 monospace', 'cursor:pointer',
+    'user-select:none', 'z-index:1',
+  ].join(';')
+  resetBtn.textContent = '⟲ Reset'
+  resetBtn.title = 'Reset zoom & pan (double-click canvas also resets)'
+
   main.appendChild(canvas)
+  main.appendChild(zoomInfo)
+  main.appendChild(resetBtn)
   body.appendChild(sidebar)
   body.appendChild(main)
 
@@ -145,6 +170,9 @@ export function createBuffersModal(client: DevtoolsClient): BuffersModalHandle {
 
   // ── Pan + zoom ─────────────────────────────────────────────────────────
 
+  const MIN_ZOOM = 0.25
+  const MAX_ZOOM = 64
+
   let zoom = 1
   let panX = 0
   let panY = 0
@@ -154,9 +182,17 @@ export function createBuffersModal(client: DevtoolsClient): BuffersModalHandle {
   let panStartX = 0
   let panStartY = 0
 
+  function updateZoomInfo(): void {
+    const z = zoom < 10 ? zoom.toFixed(1) : Math.round(zoom).toString()
+    zoomInfo.textContent = zoom === 1 ? '1.0×' : `${z}× · (${Math.round(panX)}, ${Math.round(panY)})`
+    zoomInfo.style.display = zoom === 1 && panX === 0 && panY === 0 ? 'none' : 'block'
+    resetBtn.style.display = zoom === 1 && panX === 0 && panY === 0 ? 'none' : 'block'
+  }
+
   function applyTransform(): void {
     canvas.style.transform = `translate(${panX}px, ${panY}px) scale(${zoom})`
     canvas.style.transformOrigin = 'center center'
+    updateZoomInfo()
   }
 
   function resetTransform(): void {
@@ -166,49 +202,57 @@ export function createBuffersModal(client: DevtoolsClient): BuffersModalHandle {
     applyTransform()
   }
 
-  canvas.addEventListener('wheel', (e) => {
+  // Prevent page scroll when pointer is over the main area
+  main.addEventListener('wheel', (e) => {
     e.preventDefault()
+    e.stopPropagation()
+
     const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15
-    const newZoom = Math.max(0.1, Math.min(50, zoom * factor))
+    const newZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, zoom * factor))
+    if (newZoom === zoom) return
 
-    // Zoom toward cursor position relative to canvas center
-    const rect = canvas.getBoundingClientRect()
-    const cx = rect.left + rect.width / 2
-    const cy = rect.top + rect.height / 2
-    const dx = e.clientX - cx - panX
-    const dy = e.clientY - cy - panY
-    const scale = newZoom / zoom
-
-    panX = e.clientX - cx - dx * scale
-    panY = e.clientY - cy - dy * scale
+    // Zoom toward cursor position
+    const rect = main.getBoundingClientRect()
+    const mx = e.clientX - rect.left - rect.width / 2
+    const my = e.clientY - rect.top - rect.height / 2
+    const ratio = 1 - newZoom / zoom
+    panX += (mx - panX) * ratio
+    panY += (my - panY) * ratio
     zoom = newZoom
     applyTransform()
   }, { passive: false })
 
-  canvas.addEventListener('mousedown', (e) => {
+  main.addEventListener('mousedown', (e) => {
     if (e.button !== 0) return
     isDragging = true
     dragStartX = e.clientX
     dragStartY = e.clientY
     panStartX = panX
     panStartY = panY
-    canvas.style.cursor = 'grabbing'
+    main.style.cursor = 'grabbing'
+    e.preventDefault()
   })
 
-  window.addEventListener('mousemove', (e) => {
+  const onMouseMove = (e: MouseEvent) => {
     if (!isDragging) return
     panX = panStartX + (e.clientX - dragStartX)
     panY = panStartY + (e.clientY - dragStartY)
     applyTransform()
-  })
+  }
 
-  window.addEventListener('mouseup', () => {
+  const onMouseUp = () => {
     if (!isDragging) return
     isDragging = false
-    canvas.style.cursor = 'grab'
-  })
+    main.style.cursor = 'grab'
+  }
 
-  canvas.style.cursor = 'grab'
+  window.addEventListener('mousemove', onMouseMove)
+  window.addEventListener('mouseup', onMouseUp)
+
+  main.addEventListener('dblclick', () => resetTransform())
+  resetBtn.addEventListener('click', () => resetTransform())
+
+  main.style.cursor = 'grab'
 
   // Track the per-row DOM nodes so we can update highlight without
   // re-rendering the whole sidebar each batch.
@@ -532,6 +576,8 @@ export function createBuffersModal(client: DevtoolsClient): BuffersModalHandle {
       unsubscribe()
       document.removeEventListener('keydown', onKeydown)
       window.removeEventListener('resize', onResize)
+      window.removeEventListener('mousemove', onMouseMove)
+      window.removeEventListener('mouseup', onMouseUp)
       root.remove()
       rowEls.clear()
       groupContainers.clear()
