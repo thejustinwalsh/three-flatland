@@ -169,6 +169,17 @@ export class DebugTextureRegistry {
       // in-flight readback will land on a future drain.
       if (inFilter) this._readback(e, renderer)
 
+      // Read live dimensions from the source — render targets start at
+      // 1×1 and resize later, so the cached width/height from
+      // registration time may be stale or zero.
+      if (e.renderTarget) {
+        e.width = e.renderTarget.width
+        e.height = e.renderTarget.height
+      } else if (e.dataTexture) {
+        e.width = e.dataTexture.image.width
+        e.height = e.dataTexture.image.height
+      }
+
       const delta: BufferDelta = {
         width: e.width,
         height: e.height,
