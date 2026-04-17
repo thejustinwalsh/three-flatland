@@ -32,14 +32,15 @@
  * transfers each buffer back. Lifecycle messages (no typed arrays)
  * skip the field entirely and stay on a regular structuredClone path.
  *
- * ## WebCodecs encoding
+ * ## Pixel conversion + optional WebCodecs encoding
  *
- * When the producer sends `{ type: '__encode__', ... }`, the worker
- * constructs a `VideoFrame` from the transferred pixel buffer, feeds
- * it to a VP9 `VideoEncoder`, and broadcasts the resulting
- * `EncodedVideoChunk` as a `buffer:chunk` message. The raw pixel
- * buffer is bounced back immediately after `VideoFrame` construction
- * (the encoder has its own copy).
+ * When the producer sends `{ type: '__convert__', ... }`, the worker
+ * converts the raw pixels to RGBA8 (via `convertToRGBA8`). If
+ * `stream` is true and WebCodecs is available, the RGBA8 is fed to a
+ * VP9 `VideoEncoder` and the encoded chunk is broadcast as
+ * `buffer:chunk`. Otherwise the RGBA8 is broadcast as `buffer:raw`
+ * for direct display. The raw pixel buffer is bounced back immediately
+ * after conversion (the converter allocates its own output).
  */
 
 import { allocateTier } from './bus-pool'
@@ -52,17 +53,17 @@ interface InitMessage {
   channelName: string
 }
 
-interface EncodeMessage {
-  type: '__encode__'
+interface ConvertMessage {
+  type: '__convert__'
   name: string
   width: number
   height: number
   pixelType: string
   display: string
   frame: number
-  capturedAt: number
-  forceKeyFrame: boolean
+  stream: boolean
   pixels: ArrayBuffer
+  pixelsByteLength: number
   __poolBufs?: ArrayBuffer[]
 }
 
@@ -100,37 +101,41 @@ class StreamEncoder {
     this._bc = bc
   }
 
-  encode(msg: EncodeMessage): void {
-    const needsReconfigure = msg.width !== this._width || msg.height !== this._height
+  /**
+   * Encode already-converted RGBA8 pixels into a VP9 video stream.
+   * Conversion from the source pixel format happens before this call.
+   */
+  encode(rgba8: Uint8Array, meta: {
+    name: string; frame: number; width: number; height: number
+    pixelType: string; display: string
+  }): void {
+    const needsReconfigure = meta.width !== this._width || meta.height !== this._height
 
     if (needsReconfigure || this._encoder === null) {
-      this._configure(msg.width, msg.height)
+      this._configure(meta.width, meta.height)
     }
 
     const encoder = this._encoder
     if (encoder === null) return
 
     const timestamp = this._tsCounter++
-    const forceKey = msg.forceKeyFrame ||
-      needsReconfigure ||
+    const forceKey = needsReconfigure ||
       Date.now() - this._lastKeyFrameAt > KEYFRAME_INTERVAL_MS
 
     this._pendingMeta.set(timestamp, {
-      name: msg.name,
-      frame: msg.frame,
-      capturedAt: msg.capturedAt,
-      width: msg.width,
-      height: msg.height,
-      pixelType: msg.pixelType,
-      display: msg.display,
+      name: meta.name,
+      frame: meta.frame,
+      capturedAt: performance.now(),
+      width: meta.width,
+      height: meta.height,
+      pixelType: meta.pixelType,
+      display: meta.display,
     })
-
-    const rgba8 = convertToRGBA8(msg.pixels, msg.pixelType, msg.display, msg.width, msg.height)
 
     const frame = new VideoFrame(rgba8, {
       format: 'RGBA',
-      codedWidth: msg.width,
-      codedHeight: msg.height,
+      codedWidth: meta.width,
+      codedHeight: meta.height,
       timestamp,
     })
     encoder.encode(frame, { keyFrame: forceKey })
@@ -234,7 +239,7 @@ async function probeCodecSupport(): Promise<boolean> {
 // ─── Message handler ──────────────────────────────────────────────────────
 
 ctx.onmessage = (ev: MessageEvent<unknown>) => {
-  const msg = ev.data as InitMessage | EncodeMessage | (Record<string, unknown> & BounceTag) | undefined
+  const msg = ev.data as InitMessage | ConvertMessage | (Record<string, unknown> & BounceTag) | undefined
   if (msg === undefined) return
 
   // Init handshake — set up the BroadcastChannel, allocate the pool,
@@ -264,22 +269,53 @@ ctx.onmessage = (ev: MessageEvent<unknown>) => {
 
   if (bc === null) return
 
-  // WebCodecs encode request — pixel buffer transferred in
-  if (msg && (msg as EncodeMessage).type === '__encode__') {
-    const enc = msg as EncodeMessage
+  // Pixel conversion request — converts raw pixels to RGBA8, then
+  // either feeds to the VP9 stream encoder or broadcasts as buffer:raw.
+  if (msg && (msg as ConvertMessage).type === '__convert__') {
+    const conv = msg as ConvertMessage
 
-    // Bounce pool buffers back immediately — VideoFrame constructor
-    // copies the pixel data, so the producer can reuse the buffer.
-    const poolBufs = enc.__poolBufs
+    // Convert BEFORE bouncing the pool buffer — conv.pixels IS the
+    // pool buffer. Transferring it back detaches it from our scope.
+    const rgba8 = convertToRGBA8(conv.pixels, conv.pixelType, conv.display, conv.width, conv.height, conv.pixelsByteLength)
+
+    // Now bounce pool buffers back (conversion is done).
+    const poolBufs = conv.__poolBufs
     if (poolBufs !== undefined) {
-      delete enc.__poolBufs
+      delete conv.__poolBufs
       for (const buf of poolBufs) {
         ctx.postMessage({ type: '__release__', buf }, [buf])
       }
     }
 
-    if (codecSupported && encoder !== null) {
-      encoder.encode(enc)
+    if (conv.stream && codecSupported && encoder !== null) {
+      // Stream mode: feed RGBA8 to VP9 encoder
+      encoder.encode(rgba8, {
+        name: conv.name,
+        frame: conv.frame,
+        width: conv.width,
+        height: conv.height,
+        pixelType: conv.pixelType,
+        display: conv.display,
+      })
+    } else {
+      // Non-stream mode: broadcast as buffer:raw
+      const rawMsg = {
+        v: 1 as const,
+        ts: Date.now(),
+        type: 'buffer:raw' as const,
+        payload: {
+          name: conv.name,
+          frame: conv.frame,
+          width: conv.width,
+          height: conv.height,
+          data: rgba8.buffer,
+        },
+      }
+      try {
+        bc.postMessage(rawMsg)
+      } catch {
+        // BC may be closed during teardown.
+      }
     }
     return
   }

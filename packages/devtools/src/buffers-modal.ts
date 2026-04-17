@@ -121,7 +121,7 @@ export function createBuffersModal(client: DevtoolsClient): BuffersModalHandle {
   main.style.cssText = 'flex:1;display:flex;align-items:center;justify-content:center;padding:16px;min-width:0;min-height:0;overflow:hidden;position:relative'
 
   const canvas = document.createElement('canvas')
-  canvas.style.cssText = 'display:block;background:rgba(0,2,28,0.6);border-radius:4px;image-rendering:pixelated;max-width:100%;max-height:100%'
+  canvas.style.cssText = 'display:block;background:rgba(0,2,28,0.6);image-rendering:pixelated;max-width:100%;max-height:100%'
   const ctx = canvas.getContext('2d')
 
   const offscreen = document.createElement('canvas')
@@ -316,7 +316,7 @@ export function createBuffersModal(client: DevtoolsClient): BuffersModalHandle {
 
   function paint(snap: BufferSnapshot): void {
     if (ctx === null) return
-    const { width, height, pixelType, pixels, display } = snap
+    const { width, height, pixels } = snap
     if (width === 0 || height === 0 || pixels === null) {
       // Size canvas to a placeholder so it still occupies space.
       canvas.width = 1; canvas.height = 1
@@ -332,17 +332,22 @@ export function createBuffersModal(client: DevtoolsClient): BuffersModalHandle {
 
     const imgData = offCtx.createImageData(width, height)
     const out = imgData.data
-    const count = width * height
-    const stride = pixelType === 'r8' ? 1 : 4
 
-    if (display === 'colors') {
-      decodeColors(pixels, out, count, stride)
-    } else if (display === 'mono') {
-      decodeMono(pixels, out, count, stride)
-    } else if (display === 'signed') {
-      decodeSigned(pixels, out, count, stride)
+    // Pixels arrive as display-ready RGBA8 from the worker — copy
+    // directly into the ImageData without any decoder logic.
+    if (pixels instanceof Uint8Array) {
+      out.set(pixels.subarray(0, out.length))
     } else {
-      decodeNormalize(pixels, out, count, stride)
+      // Float32Array fallback (shouldn't happen post-pipeline, but
+      // guard against legacy callers).
+      const count = width * height
+      for (let i = 0; i < count; i++) {
+        const o = i * 4
+        out[o]     = Math.round(Math.max(0, Math.min(1, pixels[i * 4]     ?? 0)) * 255)
+        out[o + 1] = Math.round(Math.max(0, Math.min(1, pixels[i * 4 + 1] ?? 0)) * 255)
+        out[o + 2] = Math.round(Math.max(0, Math.min(1, pixels[i * 4 + 2] ?? 0)) * 255)
+        out[o + 3] = Math.round(Math.max(0, Math.min(1, pixels[i * 4 + 3] ?? 1)) * 255)
+      }
     }
     offCtx.putImageData(imgData, 0, 0)
 
@@ -594,130 +599,3 @@ export function createBuffersModal(client: DevtoolsClient): BuffersModalHandle {
   }
 }
 
-// ── Decoders (duplicated from buffers-view.ts to keep the modal
-//    self-contained; identical logic). If we ever need a third
-//    consumer we can promote them to a shared module.
-
-type Pixels = Uint8Array | Float32Array
-
-function clamp01to255(v: number): number {
-  if (v <= 0) return 0
-  if (v >= 1) return 255
-  return Math.round(v * 255)
-}
-
-function decodeColors(src: Pixels, out: Uint8ClampedArray, count: number, stride: number): void {
-  if (src instanceof Uint8Array) {
-    if (stride === 1) {
-      for (let i = 0; i < count; i++) {
-        const v = src[i] ?? 0
-        const o = i * 4
-        out[o] = v; out[o + 1] = v; out[o + 2] = v; out[o + 3] = 255
-      }
-    } else {
-      const n = Math.min(src.length, out.length)
-      for (let i = 0; i < n; i++) out[i] = src[i]!
-    }
-    return
-  }
-  if (stride === 1) {
-    for (let i = 0; i < count; i++) {
-      const v = clamp01to255(src[i] ?? 0)
-      const o = i * 4
-      out[o] = v; out[o + 1] = v; out[o + 2] = v; out[o + 3] = 255
-    }
-  } else {
-    for (let i = 0; i < count; i++) {
-      const o = i * 4
-      out[o] = clamp01to255(src[i * 4] ?? 0)
-      out[o + 1] = clamp01to255(src[i * 4 + 1] ?? 0)
-      out[o + 2] = clamp01to255(src[i * 4 + 2] ?? 0)
-      const a = src[i * 4 + 3]
-      out[o + 3] = a === undefined ? 255 : clamp01to255(a)
-    }
-  }
-}
-
-function decodeNormalize(src: Pixels, out: Uint8ClampedArray, count: number, stride: number): void {
-  if (stride === 1) {
-    let mn = Infinity, mx = -Infinity
-    for (let i = 0; i < count; i++) {
-      const v = (src as Pixels)[i] ?? 0
-      if (v < mn) mn = v
-      if (v > mx) mx = v
-    }
-    const span = mx - mn || 1
-    for (let i = 0; i < count; i++) {
-      const v = (src as Pixels)[i] ?? 0
-      const b = Math.round(((v - mn) / span) * 255)
-      const o = i * 4
-      out[o] = b; out[o + 1] = b; out[o + 2] = b; out[o + 3] = 255
-    }
-    return
-  }
-  let rMn = Infinity, rMx = -Infinity
-  let gMn = Infinity, gMx = -Infinity
-  let bMn = Infinity, bMx = -Infinity
-  for (let i = 0; i < count; i++) {
-    const r = src[i * 4] ?? 0
-    const g = src[i * 4 + 1] ?? 0
-    const b = src[i * 4 + 2] ?? 0
-    if (r < rMn) rMn = r; if (r > rMx) rMx = r
-    if (g < gMn) gMn = g; if (g > gMx) gMx = g
-    if (b < bMn) bMn = b; if (b > bMx) bMx = b
-  }
-  const rSpan = rMx - rMn || 1
-  const gSpan = gMx - gMn || 1
-  const bSpan = bMx - bMn || 1
-  for (let i = 0; i < count; i++) {
-    const r = src[i * 4] ?? 0
-    const g = src[i * 4 + 1] ?? 0
-    const b = src[i * 4 + 2] ?? 0
-    const o = i * 4
-    out[o] = Math.round(((r - rMn) / rSpan) * 255)
-    out[o + 1] = Math.round(((g - gMn) / gSpan) * 255)
-    out[o + 2] = Math.round(((b - bMn) / bSpan) * 255)
-    out[o + 3] = 255
-  }
-}
-
-function decodeMono(src: Pixels, out: Uint8ClampedArray, count: number, stride: number): void {
-  let mn = Infinity, mx = -Infinity
-  for (let i = 0; i < count; i++) {
-    const v = stride === 1 ? (src[i] ?? 0) : (src[i * 4] ?? 0)
-    if (v < mn) mn = v
-    if (v > mx) mx = v
-  }
-  const span = mx - mn || 1
-  for (let i = 0; i < count; i++) {
-    const v = stride === 1 ? (src[i] ?? 0) : (src[i * 4] ?? 0)
-    const b = Math.round(((v - mn) / span) * 255)
-    const o = i * 4
-    out[o] = b; out[o + 1] = b; out[o + 2] = b; out[o + 3] = 255
-  }
-}
-
-function decodeSigned(src: Pixels, out: Uint8ClampedArray, count: number, stride: number): void {
-  let absMax = 0
-  for (let i = 0; i < count; i++) {
-    const v = stride === 1 ? (src[i] ?? 0) : (src[i * 4] ?? 0)
-    const a = v < 0 ? -v : v
-    if (a > absMax) absMax = a
-  }
-  const range = absMax || 1
-  for (let i = 0; i < count; i++) {
-    const v = stride === 1 ? (src[i] ?? 0) : (src[i * 4] ?? 0)
-    const t = v / range
-    const o = i * 4
-    if (t >= 0) {
-      out[o] = Math.round(128 + 127 * t)
-      out[o + 1] = 128 - Math.round(64 * t)
-      out[o + 2] = 128 - Math.round(64 * t)
-    } else {
-      out[o] = 128 - Math.round(64 * (-t))
-      out[o + 1] = Math.round(128 + 127 * (-t))
-      out[o + 2] = 128 - Math.round(64 * (-t))
-    }
-    out[o + 3] = 255
-  }
-}

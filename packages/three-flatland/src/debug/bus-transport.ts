@@ -31,17 +31,19 @@
 
 import type { DebugMessage } from '../debug-protocol'
 import { BufferPool, POOL, allocateTier } from './bus-pool'
+import { convertToRGBA8 } from './pixel-convert'
 
-export interface EncodeRequest {
+export interface ConvertRequest {
   name: string
   width: number
   height: number
   pixelType: string
   display: string
   frame: number
-  capturedAt: number
-  forceKeyFrame: boolean
+  stream: boolean
   pixels: ArrayBuffer
+  /** Actual byte length of pixel data within the (possibly larger) pool buffer. */
+  pixelsByteLength: number
 }
 
 export interface BusTransport {
@@ -58,12 +60,13 @@ export interface BusTransport {
    */
   post(msg: DebugMessage, bufs?: ArrayBuffer[]): void
   /**
-   * Send raw pixels to the worker for VP9 encoding + broadcast.
-   * The pixel buffer is transferred (zero-copy) to the worker and
-   * bounced back to the pool after the `VideoFrame` constructor
-   * copies it. No-op when codec is unsupported or transport is inline.
+   * Send raw pixels to the worker for format conversion (and optional
+   * VP9 encoding when `req.stream` is true). The pixel buffer is
+   * transferred (zero-copy) to the worker. The worker converts to
+   * RGBA8, then either feeds the VP9 encoder or broadcasts as
+   * `buffer:raw`. Pool buffer is bounced back after conversion.
    */
-  encode(req: EncodeRequest, poolBuf: ArrayBuffer): void
+  convert(req: ConvertRequest, poolBuf: ArrayBuffer): void
   /**
    * Whether the worker-side VP9 encoder is available. `null` until
    * the capability probe completes; `false` when WebCodecs or VP9
@@ -144,13 +147,13 @@ class WorkerBusTransport implements BusTransport {
     }
   }
 
-  encode(req: EncodeRequest, poolBuf: ArrayBuffer): void {
-    if (this._disposed || this._codecSupported !== true) {
+  convert(req: ConvertRequest, poolBuf: ArrayBuffer): void {
+    if (this._disposed) {
       this._pool.release(poolBuf)
       return
     }
     const msg = {
-      type: '__encode__' as const,
+      type: '__convert__' as const,
       ...req,
       __poolBufs: [poolBuf],
     }
@@ -205,8 +208,23 @@ class InlineBusTransport implements BusTransport {
     try { this._bc.postMessage(msg) } catch { /* swallow */ }
   }
 
-  encode(_req: EncodeRequest, _poolBuf: ArrayBuffer): void {
-    // Inline transport doesn't support encoding — raw pixel path only.
+  convert(req: ConvertRequest, _poolBuf: ArrayBuffer): void {
+    if (this._disposed) return
+    // Inline transport: convert on the main thread and broadcast directly.
+    const rgba8 = convertToRGBA8(req.pixels, req.pixelType, req.display, req.width, req.height, req.pixelsByteLength)
+    const msg = {
+      v: 1 as const,
+      ts: Date.now(),
+      type: 'buffer:raw' as const,
+      payload: {
+        name: req.name,
+        frame: req.frame,
+        width: req.width,
+        height: req.height,
+        data: rgba8.buffer,
+      },
+    }
+    try { this._bc.postMessage(msg) } catch { /* swallow */ }
   }
 
   releaseUnused(_buf: ArrayBuffer): void { /* no pool to return to */ }

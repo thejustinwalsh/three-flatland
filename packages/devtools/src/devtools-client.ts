@@ -2,6 +2,7 @@ import type {
   BufferChunkPayload,
   BufferDelta,
   BufferDisplayMode,
+  BufferRawPayload,
   BuffersPayload,
   DebugFeature,
   DebugMessage,
@@ -526,6 +527,31 @@ export class DevtoolsClient {
         for (const cb of this._chunkListeners) {
           try { cb(payload) } catch { /* listener errors shouldn't break the bus */ }
         }
+        break
+      }
+      case 'buffer:raw': {
+        this._markServerAlive()
+        const payload = msg.payload as BufferRawPayload
+        let snap = this.state.buffers.get(payload.name)
+        if (snap !== undefined) {
+          snap.pixels = new Uint8Array(payload.data)
+          snap.width = payload.width
+          snap.height = payload.height
+          snap.pixelType = 'rgba8'
+          snap.version++
+        } else {
+          snap = {
+            name: payload.name,
+            width: payload.width,
+            height: payload.height,
+            pixelType: 'rgba8',
+            display: 'colors',
+            version: 0,
+            pixels: new Uint8Array(payload.data),
+          }
+          this.state.buffers.set(payload.name, snap)
+        }
+        this._fire()
         break
       }
       case 'ping': {

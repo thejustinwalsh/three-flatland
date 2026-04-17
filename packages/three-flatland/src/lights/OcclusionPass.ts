@@ -115,8 +115,8 @@ export class OcclusionPass {
     this._rt.texture.magFilter = filter
 
     registerDebugTexture('occlusion.mask', this._rt, 'rgba8', {
-      display: 'mono',
-      label: 'Occlusion mask (alpha = solid)',
+      display: 'alpha',
+      label: 'Occlusion mask',
       maxDim: 0,
     })
   }
