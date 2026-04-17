@@ -191,7 +191,8 @@ export function createBuffersModal(client: DevtoolsClient): BuffersModalHandle {
   function updateZoomInfo(): void {
     const z = zoom < 10 ? zoom.toFixed(1) : Math.round(zoom).toString()
     zoomInfo.textContent = zoom === 1 ? '1.0×' : `${z}× · (${Math.round(panX)}, ${Math.round(panY)})`
-    zoomBar.style.display = zoom === 1 && panX === 0 && panY === 0 ? 'none' : 'flex'
+    const atIdentity = zoom === 1 && panX === 0 && panY === 0
+    resetBtn.style.display = atIdentity ? 'none' : 'inline'
   }
 
   function applyTransform(): void {
