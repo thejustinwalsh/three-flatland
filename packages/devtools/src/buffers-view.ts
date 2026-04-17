@@ -253,7 +253,7 @@ export function addBuffersView(
     if (!ctx) return
     ctx.clearRect(0, 0, canvas.width, canvas.height)
 
-    const { width, height, pixelType, pixels, display } = entry
+    const { width, height, pixels } = entry
     if (width === 0 || height === 0 || pixels === null) return
 
     if (offscreen.width !== width || offscreen.height !== height) {
@@ -272,17 +272,22 @@ export function addBuffersView(
     }
     const imgData = cachedImgData
     const out = imgData.data
-    const count = width * height
-    const stride = pixelType === 'r8' ? 1 : 4
 
-    if (display === 'colors') {
-      decodeColors(pixels, out, count, stride)
-    } else if (display === 'mono') {
-      decodeMono(pixels, out, count, stride)
-    } else if (display === 'signed') {
-      decodeSigned(pixels, out, count, stride)
+    // Pixels arrive as display-ready RGBA8 from the worker — copy
+    // directly into the ImageData without any decoder logic.
+    if (pixels instanceof Uint8Array) {
+      out.set(pixels.subarray(0, out.length))
     } else {
-      decodeNormalize(pixels, out, count, stride)
+      // Float32Array fallback (shouldn't happen post-pipeline, but
+      // guard against legacy callers).
+      const count = width * height
+      for (let i = 0; i < count; i++) {
+        const o = i * 4
+        out[o]     = Math.round(Math.max(0, Math.min(1, pixels[i * 4]     ?? 0)) * 255)
+        out[o + 1] = Math.round(Math.max(0, Math.min(1, pixels[i * 4 + 1] ?? 0)) * 255)
+        out[o + 2] = Math.round(Math.max(0, Math.min(1, pixels[i * 4 + 2] ?? 0)) * 255)
+        out[o + 3] = Math.round(Math.max(0, Math.min(1, pixels[i * 4 + 3] ?? 1)) * 255)
+      }
     }
 
     offCtx.putImageData(imgData, 0, 0)
@@ -343,156 +348,3 @@ export function addBuffersView(
   }
 }
 
-function clamp01to255(v: number): number {
-  if (v <= 0) return 0
-  if (v >= 1) return 255
-  return Math.round(v * 255)
-}
-
-type Pixels = Uint8Array | Float32Array
-
-/**
- * `'colors'` — display-ready. Bytes pass through; floats clamp to
- * `[0, 1]` then map to bytes. Alpha is preserved (bytes) or clamped
- * (floats); for `r8` the value goes to all three channels with full
- * alpha.
- */
-function decodeColors(src: Pixels, out: Uint8ClampedArray, count: number, stride: number): void {
-  if (src instanceof Uint8Array) {
-    if (stride === 1) {
-      for (let i = 0; i < count; i++) {
-        const v = src[i] ?? 0
-        const o = i * 4
-        out[o] = v; out[o + 1] = v; out[o + 2] = v; out[o + 3] = 255
-      }
-    } else {
-      const n = Math.min(src.length, out.length)
-      for (let i = 0; i < n; i++) out[i] = src[i]!
-    }
-    return
-  }
-  if (stride === 1) {
-    for (let i = 0; i < count; i++) {
-      const v = clamp01to255(src[i] ?? 0)
-      const o = i * 4
-      out[o] = v; out[o + 1] = v; out[o + 2] = v; out[o + 3] = 255
-    }
-  } else {
-    for (let i = 0; i < count; i++) {
-      const o = i * 4
-      out[o]     = clamp01to255(src[i * 4] ?? 0)
-      out[o + 1] = clamp01to255(src[i * 4 + 1] ?? 0)
-      out[o + 2] = clamp01to255(src[i * 4 + 2] ?? 0)
-      const a = src[i * 4 + 3]
-      out[o + 3] = a === undefined ? 255 : clamp01to255(a)
-    }
-  }
-}
-
-/**
- * `'normalize'` — per-channel auto-normalise. Scan each colour
- * channel's min/max, remap to `[0, 1]`. Alpha is forced opaque so
- * unused (alpha=0) cells render as black instead of vanishing into
- * the canvas background.
- */
-function decodeNormalize(src: Pixels, out: Uint8ClampedArray, count: number, stride: number): void {
-  if (stride === 1) {
-    let mn = Infinity, mx = -Infinity
-    for (let i = 0; i < count; i++) {
-      const v = src instanceof Uint8Array ? (src[i] ?? 0) : (src[i] ?? 0)
-      if (v < mn) mn = v
-      if (v > mx) mx = v
-    }
-    const span = mx - mn || 1
-    for (let i = 0; i < count; i++) {
-      const v = src instanceof Uint8Array ? (src[i] ?? 0) : (src[i] ?? 0)
-      const b = Math.round(((v - mn) / span) * 255)
-      const o = i * 4
-      out[o] = b; out[o + 1] = b; out[o + 2] = b; out[o + 3] = 255
-    }
-    return
-  }
-  // Per-channel min/max (RGB only — alpha forced to 255).
-  let rMn = Infinity, rMx = -Infinity
-  let gMn = Infinity, gMx = -Infinity
-  let bMn = Infinity, bMx = -Infinity
-  for (let i = 0; i < count; i++) {
-    const r = src[i * 4] ?? 0
-    const g = src[i * 4 + 1] ?? 0
-    const b = src[i * 4 + 2] ?? 0
-    if (r < rMn) rMn = r; if (r > rMx) rMx = r
-    if (g < gMn) gMn = g; if (g > gMx) gMx = g
-    if (b < bMn) bMn = b; if (b > bMx) bMx = b
-  }
-  const rSpan = rMx - rMn || 1
-  const gSpan = gMx - gMn || 1
-  const bSpan = bMx - bMn || 1
-  for (let i = 0; i < count; i++) {
-    const r = src[i * 4] ?? 0
-    const g = src[i * 4 + 1] ?? 0
-    const b = src[i * 4 + 2] ?? 0
-    const o = i * 4
-    out[o]     = Math.round(((r - rMn) / rSpan) * 255)
-    out[o + 1] = Math.round(((g - gMn) / gSpan) * 255)
-    out[o + 2] = Math.round(((b - bMn) / bSpan) * 255)
-    out[o + 3] = 255
-  }
-}
-
-/**
- * `'mono'` — first channel only, normalised to greyscale. Useful for
- * masks / single-value buffers stored in RGBA.
- */
-function decodeMono(src: Pixels, out: Uint8ClampedArray, count: number, stride: number): void {
-  let mn = Infinity, mx = -Infinity
-  for (let i = 0; i < count; i++) {
-    const v = stride === 1
-      ? (src instanceof Uint8Array ? (src[i] ?? 0) : (src[i] ?? 0))
-      : (src[i * 4] ?? 0)
-    if (v < mn) mn = v
-    if (v > mx) mx = v
-  }
-  const span = mx - mn || 1
-  for (let i = 0; i < count; i++) {
-    const v = stride === 1
-      ? (src instanceof Uint8Array ? (src[i] ?? 0) : (src[i] ?? 0))
-      : (src[i * 4] ?? 0)
-    const b = Math.round(((v - mn) / span) * 255)
-    const o = i * 4
-    out[o] = b; out[o + 1] = b; out[o + 2] = b; out[o + 3] = 255
-  }
-}
-
-/**
- * `'signed'` — first channel, mapped diverging around 0. Positives
- * push red, negatives push green, zero is mid-grey. Range is
- * symmetric about 0 (`±max(|min|, |max|)`) so equal magnitudes get
- * equal saturation. Good for SDFs and signed deltas.
- */
-function decodeSigned(src: Pixels, out: Uint8ClampedArray, count: number, stride: number): void {
-  let absMax = 0
-  for (let i = 0; i < count; i++) {
-    const v = stride === 1
-      ? (src instanceof Uint8Array ? (src[i] ?? 0) : (src[i] ?? 0))
-      : (src[i * 4] ?? 0)
-    const a = v < 0 ? -v : v
-    if (a > absMax) absMax = a
-  }
-  const range = absMax || 1
-  for (let i = 0; i < count; i++) {
-    const v = stride === 1
-      ? (src instanceof Uint8Array ? (src[i] ?? 0) : (src[i] ?? 0))
-      : (src[i * 4] ?? 0)
-    const t = v / range // -1..1
-    const o = i * 4
-    if (t >= 0) {
-      // Mid-grey → red as t goes 0..1.
-      const lift = Math.round(128 + 127 * t)
-      out[o] = lift; out[o + 1] = 128 - Math.round(64 * t); out[o + 2] = 128 - Math.round(64 * t)
-    } else {
-      const lift = Math.round(128 + 127 * (-t))
-      out[o] = 128 - Math.round(64 * (-t)); out[o + 1] = lift; out[o + 2] = 128 - Math.round(64 * (-t))
-    }
-    out[o + 3] = 255
-  }
-}

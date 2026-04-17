@@ -442,7 +442,7 @@ export type TexturePixelType = 'rgba8' | 'r8' | 'rgba16f' | 'rgba32f'
  *   - byte formats (`rgba8`, `r8`)            → `colors`
  *   - float formats (`rgba16f`, `rgba32f`)    → `normalize`
  */
-export type BufferDisplayMode = 'colors' | 'normalize' | 'mono' | 'signed'
+export type BufferDisplayMode = 'colors' | 'normalize' | 'mono' | 'signed' | 'alpha'
 
 /**
  * One registered debug buffer's metadata + optional sample. Same
@@ -500,6 +500,22 @@ export interface BufferChunkPayload {
   display: BufferDisplayMode
   keyFrame: boolean
   codec: string
+  data: ArrayBuffer
+}
+
+/**
+ * Display-ready RGBA8 pixel payload for a single buffer — transmitted
+ * as a standalone `'buffer:raw'` message. The worker thread converts
+ * from the source pixel format + display mode to RGBA8 before
+ * broadcasting, so consumers receive pixels that can be painted
+ * directly into an `ImageData` without any decoder logic.
+ */
+export interface BufferRawPayload {
+  name: string
+  frame: number
+  width: number
+  height: number
+  /** RGBA8, display-ready. */
   data: ArrayBuffer
 }
 
@@ -674,6 +690,7 @@ export type DebugMessage = DebugMessageEnvelope & (
   | { type: 'subscribe:ack'; payload: SubscribeAckPayload }
   | { type: 'data'; payload: DataPayload }
   | { type: 'buffer:chunk'; payload: BufferChunkPayload }
+  | { type: 'buffer:raw'; payload: BufferRawPayload }
   | { type: 'ping'; payload: PingPayload }
   // Consumer ↔ consumer (providers ignore; `rpc:` prefix)
   | { type: 'rpc:registry:select'; payload: RpcRegistrySelectPayload }

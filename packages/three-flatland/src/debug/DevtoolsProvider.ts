@@ -327,51 +327,39 @@ export class DevtoolsProvider {
       const selection = this._subs.buffersSelection()
       const isStream = this._subs.isStreamMode() && transport.codecSupported === true
 
-      if (isStream) {
-        // Stream mode: encode each selected buffer via the worker's VP9
-        // encoder. Raw pixels go in a separate pool buffer per buffer
-        // entry. Metadata still ships in the data batch (no pixels).
-        const bufOut = this._buffersScratch
-        if (this._textures.drain(bufOut, selection, this._latestRenderer, cursor)) {
-          features.buffers = bufOut
-          anyFeature = true
-          // Post encode requests for entries that have fresh pixels
-          if (bufOut.entries) {
-            const forceKey = this._forceNextKeyFrame
-            this._forceNextKeyFrame = false
-            for (const name in bufOut.entries) {
-              const entry = bufOut.entries[name]
-              if (!entry || !entry.pixels) continue
-              // Copy raw pixel bytes into a pool buffer for transfer
-              // to the worker. The worker handles format conversion
-              // (f16→f32→RGBA8, display mode mapping) before encoding.
-              const pixels = entry.pixels
-              const encBuf = transport.acquireLarge()
-              if (pixels instanceof Uint8Array) {
-                new Uint8Array(encBuf).set(pixels)
-              } else {
-                new Uint8Array(encBuf).set(new Uint8Array(pixels.buffer, pixels.byteOffset, pixels.byteLength))
-              }
-              transport.encode({
-                name,
-                width: entry.width,
-                height: entry.height,
-                pixelType: entry.pixelType,
-                display: entry.display ?? 'colors',
-                frame: this._stats.frame,
-                capturedAt: performance.now(),
-                forceKeyFrame: forceKey,
-                pixels: encBuf,
-              }, encBuf)
-              delete entry.pixels
+      const bufOut = this._buffersScratch
+      if (this._textures.drain(bufOut, selection, this._latestRenderer, cursor)) {
+        features.buffers = bufOut
+        anyFeature = true
+        // Route every buffer's raw pixels through __convert__ on the
+        // worker. The worker converts to RGBA8 and either feeds the
+        // VP9 stream encoder (stream=true) or broadcasts as buffer:raw.
+        // Metadata stays in the data batch so the consumer can update
+        // its sidebar/labels.
+        if (bufOut.entries) {
+          for (const name in bufOut.entries) {
+            const entry = bufOut.entries[name]
+            if (!entry || !entry.pixels) continue
+            const pixels = entry.pixels
+            const convBuf = transport.acquireLarge()
+            if (pixels instanceof Uint8Array) {
+              new Uint8Array(convBuf).set(pixels)
+            } else {
+              new Uint8Array(convBuf).set(new Uint8Array(pixels.buffer, pixels.byteOffset, pixels.byteLength))
             }
+            transport.convert({
+              name,
+              width: entry.width,
+              height: entry.height,
+              pixelType: entry.pixelType,
+              display: entry.display ?? 'colors',
+              frame: this._stats.frame,
+              stream: isStream,
+              pixels: convBuf,
+              pixelsByteLength: pixels.byteLength,
+            }, convBuf)
+            delete entry.pixels
           }
-        }
-      } else {
-        const bufOut = this._buffersScratch
-        if (this._textures.drain(bufOut, selection, this._latestRenderer, cursor)) {
-          features.buffers = bufOut
-          anyFeature = true
         }
       }
     }
