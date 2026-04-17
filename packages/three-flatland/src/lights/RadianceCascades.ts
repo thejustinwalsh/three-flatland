@@ -13,6 +13,7 @@ import {
 } from 'three'
 import { MeshBasicNodeMaterial } from 'three/webgpu'
 import type { WebGPURenderer } from 'three/webgpu'
+import { registerDebugTexture, unregisterDebugTexture } from '../debug/debug-sink'
 import {
   uniform,
   uv,
@@ -122,6 +123,12 @@ export class RadianceCascades {
       depthBuffer: false,
       stencilBuffer: false,
     })
+
+    registerDebugTexture('radiance.finalIrradiance', this._finalRadianceRT, 'rgba16f', {
+      display: 'colors',
+      label: 'GI final irradiance',
+      maxDim: 0,
+    })
   }
 
   get config(): RadianceCascadesConfig {
@@ -200,6 +207,12 @@ export class RadianceCascades {
       stencilBuffer: false,
     })
 
+    registerDebugTexture('radiance.sceneRadiance', this._sceneRadianceRT, 'rgba16f', {
+      display: 'colors',
+      label: 'GI scene radiance (light circles)',
+      maxDim: 0,
+    })
+
     // Resize the eagerly-allocated final RT to match computed probe dimensions.
     // The .texture reference stays stable — TSL nodes that captured it remain valid.
     this._finalRadianceRT.setSize(probeCount, probeCount)
@@ -208,8 +221,9 @@ export class RadianceCascades {
   }
 
   private _rebuildCascadeRTs(): void {
-    for (const rt of this._cascadeRTs) {
-      rt.dispose()
+    for (let i = 0; i < this._cascadeRTs.length; i++) {
+      unregisterDebugTexture(`radiance.cascade${i}`)
+      this._cascadeRTs[i]!.dispose()
     }
     this._cascadeRTs = []
 
@@ -218,7 +232,6 @@ export class RadianceCascades {
     }
     this._cascadeMaterials = []
 
-    // Invalidate final radiance material (it references cascade 0 texture)
     this._finalRadianceMaterial?.dispose()
     this._finalRadianceMaterial = null
 
@@ -234,6 +247,11 @@ export class RadianceCascades {
         stencilBuffer: false,
       })
       this._cascadeRTs.push(rt)
+      registerDebugTexture(`radiance.cascade${i}`, rt, 'rgba16f', {
+        display: 'colors',
+        label: `GI cascade ${i}`,
+        maxDim: 0,
+      })
     }
 
     this._createCascadeMaterials()
@@ -626,14 +644,17 @@ export class RadianceCascades {
   // ============================================
 
   dispose(): void {
-    for (const rt of this._cascadeRTs) {
-      rt.dispose()
+    for (let i = 0; i < this._cascadeRTs.length; i++) {
+      unregisterDebugTexture(`radiance.cascade${i}`)
+      this._cascadeRTs[i]!.dispose()
     }
     this._cascadeRTs = []
 
+    unregisterDebugTexture('radiance.sceneRadiance')
     this._sceneRadianceRT?.dispose()
     this._sceneRadianceRT = null
 
+    unregisterDebugTexture('radiance.finalIrradiance')
     this._finalRadianceRT.dispose()
 
     for (const mat of this._cascadeMaterials) {
