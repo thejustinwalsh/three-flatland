@@ -98,6 +98,16 @@ export class SDFGenerator {
     this._createJFAMaterials()
     this._createFinalMaterials()
 
+    registerDebugTexture('sdf.jfaPing', this._pingRT, 'rgba16f', {
+      display: 'normalize',
+      label: 'JFA ping buffer',
+      maxDim: 0,
+    })
+    registerDebugTexture('sdf.jfaPong', this._pongRT, 'rgba16f', {
+      display: 'normalize',
+      label: 'JFA pong buffer',
+      maxDim: 0,
+    })
     registerDebugTexture('sdf.distanceField', this._sdfRT, 'rgba16f', {
       display: 'signed',
       label: 'SDF distance field',
@@ -179,6 +189,8 @@ export class SDFGenerator {
    * Dispose of all GPU resources.
    */
   dispose(): void {
+    unregisterDebugTexture('sdf.jfaPing')
+    unregisterDebugTexture('sdf.jfaPong')
     unregisterDebugTexture('sdf.distanceField')
     this._pingRT?.dispose()
     this._pongRT?.dispose()
