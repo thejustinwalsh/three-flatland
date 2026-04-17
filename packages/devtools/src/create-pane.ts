@@ -163,7 +163,11 @@ export function createPane(options: CreatePaneOptions = {}): PaneBundle {
     registryView = addRegistryView(pane, client)
     // Modal is built lazily — `createBuffersModal` mounts the DOM
     // immediately (display:none) so the first expand is instant.
-    buffersModal = createBuffersModal(client)
+    buffersModal = createBuffersModal(client, {
+      onActiveChange: (name) => buffersView?.setActiveFromModal(name),
+      onOpen: () => buffersView?.setModalOpen(true),
+      onClose: () => buffersView?.setModalOpen(false),
+    })
     // Hidden until the provider publishes at least one debug texture
     // via `registerDebugTexture`. ⤢ in-blade button calls into the
     // modal handle.
