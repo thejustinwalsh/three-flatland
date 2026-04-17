@@ -171,13 +171,23 @@ export class DebugTextureRegistry {
 
       // Read live dimensions from the source — render targets start at
       // 1×1 and resize later, so the cached width/height from
-      // registration time may be stale or zero.
+      // registration time may be stale or zero. A dimension change
+      // bumps the version so the skip-check above fails and we re-emit
+      // metadata + kick a fresh readback at the correct size.
       if (e.renderTarget) {
-        e.width = e.renderTarget.width
-        e.height = e.renderTarget.height
+        const lw = e.renderTarget.width, lh = e.renderTarget.height
+        if (lw !== e.width || lh !== e.height) {
+          e.width = lw; e.height = lh
+          e.version++
+          e.sample = null
+          e.pendingReadback = null
+        }
       } else if (e.dataTexture) {
-        e.width = e.dataTexture.image.width
-        e.height = e.dataTexture.image.height
+        const lw = e.dataTexture.image.width, lh = e.dataTexture.image.height
+        if (lw !== e.width || lh !== e.height) {
+          e.width = lw; e.height = lh
+          e.version++
+        }
       }
 
       const delta: BufferDelta = {
