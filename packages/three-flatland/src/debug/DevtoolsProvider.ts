@@ -154,6 +154,7 @@ export class DevtoolsProvider {
    * speculatively.
    */
   private _active = false
+  private _forceNextKeyFrame = false
 
   constructor(options: DevtoolsProviderOptions = {}) {
     const kind = options.kind ?? 'user'
@@ -324,10 +325,52 @@ export class DevtoolsProvider {
 
     if (active.has('buffers')) {
       const selection = this._subs.buffersSelection()
-      const bufOut = this._buffersScratch
-      if (this._textures.drain(bufOut, selection, this._latestRenderer, cursor)) {
-        features.buffers = bufOut
-        anyFeature = true
+      const isStream = this._subs.isStreamMode() && transport.codecSupported === true
+
+      if (isStream) {
+        // Stream mode: encode each selected buffer via the worker's VP9
+        // encoder. Raw pixels go in a separate pool buffer per buffer
+        // entry. Metadata still ships in the data batch (no pixels).
+        const bufOut = this._buffersScratch
+        if (this._textures.drain(bufOut, selection, this._latestRenderer, cursor)) {
+          features.buffers = bufOut
+          anyFeature = true
+          // Post encode requests for entries that have fresh pixels
+          if (bufOut.entries) {
+            const forceKey = this._forceNextKeyFrame
+            this._forceNextKeyFrame = false
+            for (const name in bufOut.entries) {
+              const entry = bufOut.entries[name]
+              if (!entry || !entry.pixels) continue
+              const encBuf = transport.acquireLarge()
+              const pixels = entry.pixels
+              const byteLen = pixels.byteLength
+              new Uint8Array(encBuf, 0, byteLen).set(
+                pixels instanceof Uint8Array ? pixels : new Uint8Array(pixels.buffer, pixels.byteOffset, byteLen),
+              )
+              transport.encode({
+                name,
+                width: entry.width,
+                height: entry.height,
+                pixelType: entry.pixelType,
+                display: entry.display ?? 'colors',
+                frame: this._stats.frame,
+                capturedAt: performance.now(),
+                forceKeyFrame: forceKey,
+                pixels: encBuf,
+              }, encBuf)
+              // Strip pixels from the data batch — consumers get the
+              // encoded chunks via buffer:chunk messages instead.
+              delete entry.pixels
+            }
+          }
+        }
+      } else {
+        const bufOut = this._buffersScratch
+        if (this._textures.drain(bufOut, selection, this._latestRenderer, cursor)) {
+          features.buffers = bufOut
+          anyFeature = true
+        }
       }
     }
 
@@ -445,7 +488,9 @@ export class DevtoolsProvider {
           msg.payload.features,
           msg.payload.registry,
           msg.payload.buffers,
+          msg.payload.streamBuffers,
         )
+        if (msg.payload.streamBuffers) this._forceNextKeyFrame = true
         // Late-joining consumers: reset per-feature delta trackers so
         // the next `data` packet carries a full snapshot.
         this._stats.resetDelta()

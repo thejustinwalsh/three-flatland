@@ -32,6 +32,18 @@
 import type { DebugMessage } from '../debug-protocol'
 import { BufferPool, POOL, allocateTier } from './bus-pool'
 
+export interface EncodeRequest {
+  name: string
+  width: number
+  height: number
+  pixelType: string
+  display: string
+  frame: number
+  capturedAt: number
+  forceKeyFrame: boolean
+  pixels: ArrayBuffer
+}
+
 export interface BusTransport {
   /** Pop a small (4 KB) pool buffer. */
   acquireSmall(): ArrayBuffer
@@ -45,6 +57,19 @@ export interface BusTransport {
    * allocations on the slow path.
    */
   post(msg: DebugMessage, bufs?: ArrayBuffer[]): void
+  /**
+   * Send raw pixels to the worker for VP9 encoding + broadcast.
+   * The pixel buffer is transferred (zero-copy) to the worker and
+   * bounced back to the pool after the `VideoFrame` constructor
+   * copies it. No-op when codec is unsupported or transport is inline.
+   */
+  encode(req: EncodeRequest, poolBuf: ArrayBuffer): void
+  /**
+   * Whether the worker-side VP9 encoder is available. `null` until
+   * the capability probe completes; `false` when WebCodecs or VP9
+   * is unsupported; `true` when ready.
+   */
+  readonly codecSupported: boolean | null
   /**
    * Return a buffer to the pool without sending it. Use when an
    * `acquire*` happened but the flush turned out to have nothing to
@@ -70,24 +95,34 @@ interface PoolReleaseMessage {
   buf: ArrayBuffer
 }
 
+interface CodecSupportMessage {
+  type: '__codec_support__'
+  vp9: boolean
+}
+
 class WorkerBusTransport implements BusTransport {
   private _worker: Worker
   private _pool = new BufferPool()
   private _disposed = false
+  private _codecSupported: boolean | null = null
 
   constructor(channelName: string, worker: Worker) {
     this._worker = worker
     this._worker.addEventListener('message', (ev) => {
-      const msg = ev.data as PoolInitMessage | PoolReleaseMessage | undefined
+      const msg = ev.data as PoolInitMessage | PoolReleaseMessage | CodecSupportMessage | undefined
       if (msg === undefined) return
       if (msg.type === '__pool_init__') {
         this._pool.seed(msg.tier, msg.bufs)
       } else if (msg.type === '__release__') {
         this._pool.release(msg.buf)
+      } else if (msg.type === '__codec_support__') {
+        this._codecSupported = msg.vp9
       }
     })
     this._worker.postMessage({ type: '__init__', channelName })
   }
+
+  get codecSupported(): boolean | null { return this._codecSupported }
 
   acquireSmall(): ArrayBuffer { return this._pool.acquireSmall() }
   acquireLarge(): ArrayBuffer { return this._pool.acquireLarge() }
@@ -106,6 +141,23 @@ class WorkerBusTransport implements BusTransport {
       try {
         this._worker.postMessage(msg)
       } catch { /* swallow */ }
+    }
+  }
+
+  encode(req: EncodeRequest, poolBuf: ArrayBuffer): void {
+    if (this._disposed || this._codecSupported !== true) {
+      this._pool.release(poolBuf)
+      return
+    }
+    const msg = {
+      type: '__encode__' as const,
+      ...req,
+      __poolBufs: [poolBuf],
+    }
+    try {
+      this._worker.postMessage(msg, [poolBuf])
+    } catch {
+      // Worker may be terminating.
     }
   }
 
@@ -143,12 +195,18 @@ class InlineBusTransport implements BusTransport {
     this._bc = new BroadcastChannel(channelName)
   }
 
+  get codecSupported(): boolean | null { return false }
+
   acquireSmall(): ArrayBuffer { return new ArrayBuffer(POOL.small.size) }
   acquireLarge(): ArrayBuffer { return new ArrayBuffer(POOL.large.size) }
 
   post(msg: DebugMessage, _bufs?: ArrayBuffer[]): void {
     if (this._disposed) return
     try { this._bc.postMessage(msg) } catch { /* swallow */ }
+  }
+
+  encode(_req: EncodeRequest, _poolBuf: ArrayBuffer): void {
+    // Inline transport doesn't support encoding — raw pixel path only.
   }
 
   releaseUnused(_buf: ArrayBuffer): void { /* no pool to return to */ }

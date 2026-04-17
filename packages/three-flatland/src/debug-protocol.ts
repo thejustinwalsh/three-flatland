@@ -481,6 +481,29 @@ export interface BuffersPayload {
 }
 
 /**
+ * Encoded video chunk for a single buffer — transmitted as a standalone
+ * `'buffer:chunk'` message (not bundled into `data` batches). The
+ * provider only emits these when a consumer subscribes with
+ * `streamBuffers: true` and WebCodecs is available.
+ *
+ * Encoding happens on the bus worker thread (off main thread). The
+ * consumer creates a `VideoDecoder` to reconstruct `VideoFrame`s and
+ * draws them directly to the modal canvas.
+ */
+export interface BufferChunkPayload {
+  name: string
+  frame: number
+  capturedAt: number
+  width: number
+  height: number
+  pixelType: TexturePixelType
+  display: BufferDisplayMode
+  keyFrame: boolean
+  codec: string
+  data: ArrayBuffer
+}
+
+/**
  * Provider data packet — emitted on each batch flush when subscribed
  * features have fresh content. Silence = "nothing changed". Carried on
  * the per-provider data channel, so it's implicitly addressed — no
@@ -520,6 +543,14 @@ export interface SubscribePayload {
    * expected to send a short list (typically one name at a time).
    */
   buffers?: string[]
+  /**
+   * When `true`, the provider encodes selected buffers via WebCodecs
+   * (VP9) and streams `buffer:chunk` messages instead of embedding raw
+   * pixels in the `data` batch. The provider falls back to raw pixels
+   * when WebCodecs is unavailable. Typically set when the fullscreen
+   * modal is open.
+   */
+  streamBuffers?: boolean
 }
 
 /**
@@ -642,6 +673,7 @@ export type DebugMessage = DebugMessageEnvelope & (
   // Provider → consumer (lifecycle + data + liveness)
   | { type: 'subscribe:ack'; payload: SubscribeAckPayload }
   | { type: 'data'; payload: DataPayload }
+  | { type: 'buffer:chunk'; payload: BufferChunkPayload }
   | { type: 'ping'; payload: PingPayload }
   // Consumer ↔ consumer (providers ignore; `rpc:` prefix)
   | { type: 'rpc:registry:select'; payload: RpcRegistrySelectPayload }
