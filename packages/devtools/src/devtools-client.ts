@@ -1,4 +1,5 @@
 import type {
+  BufferChunkPayload,
   BufferDelta,
   BufferDisplayMode,
   BuffersPayload,
@@ -41,6 +42,10 @@ export interface DevtoolsClientOptions {
 
 /** Listener signature for `DevtoolsClient.addListener`. */
 export type DevtoolsStateListener = (state: DevtoolsState) => void
+
+/** Listener for incoming WebCodecs buffer chunks. */
+export type { BufferChunkPayload }
+export type BufferChunkListener = (chunk: BufferChunkPayload) => void
 
 /**
  * Discovery retry backoff. Starts at `QUERY_RETRY_MIN_MS`, doubles each
@@ -219,7 +224,9 @@ export class DevtoolsClient {
   private _registrySelection: string[] | null = []
   /** Buffer selection — same semantics as `_registrySelection`. */
   private _buffersSelection: string[] | null = []
+  private _streamBuffers = false
   private _listeners = new Set<DevtoolsStateListener>()
+  private _chunkListeners = new Set<BufferChunkListener>()
 
   private _ackTimer: ReturnType<typeof setInterval> | null = null
   private _livenessTimer: ReturnType<typeof setInterval> | null = null
@@ -343,9 +350,12 @@ export class DevtoolsClient {
   }
 
   /** Same as `setRegistry`, but for debug buffers (the `buffers` feature). */
-  setBuffers(names: string[] | null): void {
-    if (sameFilter(this._buffersSelection, names)) return
+  setBuffers(names: string[] | null, stream?: boolean): void {
+    const changed = !sameFilter(this._buffersSelection, names)
+    const streamChanged = (stream ?? false) !== this._streamBuffers
+    if (!changed && !streamChanged) return
     this._buffersSelection = names === null ? null : [...names]
+    this._streamBuffers = stream ?? false
     this._resubscribe()
   }
 
@@ -354,11 +364,12 @@ export class DevtoolsClient {
       this._postData({
         type: 'subscribe',
         payload: {
-        id: this.id,
-        features: this._features,
-        registry: this._registrySelection ?? undefined,
-        buffers: this._buffersSelection ?? undefined,
-      },
+          id: this.id,
+          features: this._features,
+          registry: this._registrySelection ?? undefined,
+          buffers: this._buffersSelection ?? undefined,
+          streamBuffers: this._streamBuffers || undefined,
+        },
       })
     }
   }
@@ -507,6 +518,14 @@ export class DevtoolsClient {
         if (features.registry !== undefined) this._applyRegistry(features.registry)
         if (features.buffers !== undefined) this._applyBuffers(features.buffers)
         this._fire()
+        break
+      }
+      case 'buffer:chunk': {
+        this._markServerAlive()
+        const payload = msg.payload as BufferChunkPayload
+        for (const cb of this._chunkListeners) {
+          try { cb(payload) } catch { /* listener errors shouldn't break the bus */ }
+        }
         break
       }
       case 'ping': {
@@ -846,6 +865,12 @@ export class DevtoolsClient {
   /** Explicit remove — equivalent to calling the unsubscribe returned from `addListener`. */
   removeListener(cb: DevtoolsStateListener): void {
     this._listeners.delete(cb)
+  }
+
+  /** Subscribe to incoming WebCodecs buffer chunks. Returns an unsubscribe function. */
+  addChunkListener(cb: BufferChunkListener): () => void {
+    this._chunkListeners.add(cb)
+    return () => { this._chunkListeners.delete(cb) }
   }
 
   private _fire(): void {

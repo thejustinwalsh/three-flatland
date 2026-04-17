@@ -34,7 +34,7 @@
  * modal restores whatever the in-pane thumbnail's selection was.
  */
 
-import type { BufferSnapshot, DevtoolsClient } from './devtools-client.js'
+import type { BufferChunkPayload, BufferSnapshot, DevtoolsClient } from './devtools-client.js'
 
 export interface BuffersModalHandle {
   /** Show the modal with the given buffer pre-selected. */
@@ -338,19 +338,116 @@ export function createBuffersModal(client: DevtoolsClient): BuffersModalHandle {
 
   // ── Open / close ──────────────────────────────────────────────────────
 
+  // ── WebCodecs decoder ─────────────────────────────────────────────────
+
+  const codecAvailable = typeof VideoDecoder !== 'undefined'
+  let decoder: VideoDecoder | null = null
+  let unsubChunks: (() => void) | null = null
+  let waitingForKeyFrame = true
+
+  function startDecoder(width: number, height: number): void {
+    stopDecoder()
+    if (!codecAvailable) return
+    waitingForKeyFrame = true
+    decoder = new VideoDecoder({
+      output: (frame) => {
+        if (ctx === null) { frame.close(); return }
+        // Aspect-fit into the main area
+        const mainRect = main.getBoundingClientRect()
+        const maxW = mainRect.width - 32
+        const maxH = mainRect.height - 32
+        const srcAspect = frame.codedWidth / frame.codedHeight
+        const boxAspect = maxW / maxH
+        let cssW: number, cssH: number
+        if (srcAspect > boxAspect) {
+          cssW = maxW
+          cssH = Math.max(1, Math.round(maxW / srcAspect))
+        } else {
+          cssH = maxH
+          cssW = Math.max(1, Math.round(maxH * srcAspect))
+        }
+        canvas.style.width = `${cssW}px`
+        canvas.style.height = `${cssH}px`
+        if (canvas.width !== frame.codedWidth || canvas.height !== frame.codedHeight) {
+          canvas.width = frame.codedWidth
+          canvas.height = frame.codedHeight
+        }
+        ctx.drawImage(frame as unknown as CanvasImageSource, 0, 0)
+        frame.close()
+      },
+      error: () => {
+        stopDecoder()
+      },
+    })
+    decoder.configure({
+      codec: 'vp09.00.10.08',
+      codedWidth: width,
+      codedHeight: height,
+    })
+  }
+
+  function stopDecoder(): void {
+    if (decoder !== null && decoder.state !== 'closed') {
+      try { decoder.close() } catch { /* may already be errored */ }
+    }
+    decoder = null
+    waitingForKeyFrame = true
+  }
+
+  let decoderWidth = 0
+  let decoderHeight = 0
+
+  function onChunk(chunk: BufferChunkPayload): void {
+    if (!isOpen) return
+    if (chunk.name !== activeName) return
+
+    // Start or reconfigure decoder on dimension change
+    if (decoder === null || chunk.width !== decoderWidth || chunk.height !== decoderHeight) {
+      decoderWidth = chunk.width
+      decoderHeight = chunk.height
+      startDecoder(chunk.width, chunk.height)
+    }
+    if (decoder === null) return
+
+    if (waitingForKeyFrame && !chunk.keyFrame) return
+    if (chunk.keyFrame) waitingForKeyFrame = false
+
+    try {
+      const encoded = new EncodedVideoChunk({
+        type: chunk.keyFrame ? 'key' : 'delta',
+        timestamp: chunk.capturedAt * 1000,
+        data: chunk.data,
+      })
+      decoder.decode(encoded)
+    } catch {
+      stopDecoder()
+    }
+  }
+
+  // ── Open / close ──────────────────────────────────────────────────────
+
   function open(name: string): void {
     if (isOpen && activeName === name) return
     isOpen = true
     root.style.display = 'flex'
     setActive(name)
+    // Start streaming via WebCodecs if available
+    if (codecAvailable) {
+      client.setBuffers([name], true)
+      unsubChunks = client.addChunkListener(onChunk)
+    }
   }
 
   function close(): void {
     if (!isOpen) return
     isOpen = false
     root.style.display = 'none'
-    // Drop the modal's selection so the in-pane thumbnail's
-    // selection (if any) takes over again.
+    stopDecoder()
+    if (unsubChunks !== null) {
+      unsubChunks()
+      unsubChunks = null
+    }
+    // Revert to non-stream mode
     client.setBuffers(activeName !== null ? [activeName] : [])
   }
 
@@ -359,6 +456,11 @@ export function createBuffersModal(client: DevtoolsClient): BuffersModalHandle {
     open,
     close,
     dispose() {
+      stopDecoder()
+      if (unsubChunks !== null) {
+        unsubChunks()
+        unsubChunks = null
+      }
       unsubscribe()
       document.removeEventListener('keydown', onKeydown)
       window.removeEventListener('resize', onResize)

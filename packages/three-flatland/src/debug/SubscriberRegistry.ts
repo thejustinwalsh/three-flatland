@@ -13,6 +13,8 @@ interface ConsumerState {
   registry: Set<string> | null
   /** Same semantics, for the `buffers` feature. */
   buffers: Set<string> | null
+  /** When true, encode selected buffers via WebCodecs instead of raw pixels. */
+  streamBuffers: boolean
 }
 
 /**
@@ -64,21 +66,25 @@ export class SubscriberRegistry {
     features: readonly DebugFeature[],
     registry?: readonly string[],
     buffers?: readonly string[],
+    streamBuffers?: boolean,
   ): void {
     const now = Date.now()
     const regSel = registry === undefined ? null : new Set(registry)
     const bufSel = buffers === undefined ? null : new Set(buffers)
+    const stream = streamBuffers === true
     const existing = this._consumers.get(id)
     if (existing) {
       existing.features = new Set(features)
       existing.registry = regSel
       existing.buffers = bufSel
+      existing.streamBuffers = stream
       existing.lastAckAt = now
     } else {
       this._consumers.set(id, {
         features: new Set(features),
         registry: regSel,
         buffers: bufSel,
+        streamBuffers: stream,
         lastAckAt: now,
       })
     }
@@ -157,6 +163,14 @@ export class SubscriberRegistry {
     }
     this._buffersSelectionCache = union
     return union
+  }
+
+  /** True if any consumer requested `streamBuffers` encoding. */
+  isStreamMode(): boolean {
+    for (const c of this._consumers.values()) {
+      if (c.streamBuffers && c.features.has('buffers')) return true
+    }
+    return false
   }
 
   /** Is any consumer subscribed to this feature right now? */
