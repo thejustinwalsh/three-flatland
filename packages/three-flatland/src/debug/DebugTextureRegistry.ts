@@ -163,11 +163,8 @@ export class DebugTextureRegistry {
       const target = inFilter ? 'full' : 'meta'
       if (e.version === e.lastEmittedVersion && e.lastEmittedShape === target) continue
 
-      // Kick off a readback only when the filter wants samples AND we
-      // don't already have one in flight. We'll ship the cached
-      // `sample` (possibly from a previous drain) if it exists; the
-      // in-flight readback will land on a future drain.
-      if (inFilter) this._readback(e, renderer)
+      // Readbacks are triggered by `readbackAll()` at end-of-frame,
+      // not here. drain() just ships whatever cached sample exists.
 
       // Read live dimensions from the source — render targets start at
       // 1×1 and resize later, so the cached width/height from
@@ -233,6 +230,19 @@ export class DebugTextureRegistry {
     if (wrote) out.entries = entries
     else delete out.entries
     return wrote
+  }
+
+  /**
+   * Kick readbacks for all entries matching the filter. Called at
+   * end-of-frame when the render targets are fully rendered — the GPU
+   * copy captures consistent content. No-op for entries that already
+   * have a readback in flight.
+   */
+  readbackAll(filter: Set<string> | null, renderer: WebGPURenderer): void {
+    for (const [name, e] of this._entries) {
+      if (filter !== null && !filter.has(name)) continue
+      this._readback(e, renderer)
+    }
   }
 
   /** Force the next drain to re-emit everything. */

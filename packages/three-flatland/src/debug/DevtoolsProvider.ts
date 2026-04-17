@@ -254,6 +254,14 @@ export class DevtoolsProvider {
     // set up with `trackTimestamp: true`. No-op when the backend can't
     // do timestamps, so this is cheap when irrelevant.
     this._stats.maybeResolveGpu()
+
+    // Kick texture readbacks NOW — the frame is fully rendered, so
+    // the GPU copy captures consistent content. The flush timer just
+    // ships whatever samples are cached; it never triggers readbacks.
+    if (this._subs.isActive('buffers')) {
+      const selection = this._subs.buffersSelection()
+      this._textures.readbackAll(selection, renderer as unknown as import('three/webgpu').WebGPURenderer)
+    }
   }
 
   /**
