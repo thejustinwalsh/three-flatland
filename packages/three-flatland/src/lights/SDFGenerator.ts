@@ -101,6 +101,7 @@ export class SDFGenerator {
     registerDebugTexture('sdf.distanceField', this._sdfRT, 'rgba16f', {
       display: 'signed',
       label: 'SDF distance field',
+      maxDim: 0,
     })
   }
 
