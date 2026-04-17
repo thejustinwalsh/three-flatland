@@ -413,7 +413,10 @@ export function createBuffersModal(client: DevtoolsClient): BuffersModalHandle {
     if (snap === undefined) return
     titleEl.textContent = snap.label !== undefined ? `${activeName} — ${snap.label}` : activeName
     dimsEl.textContent = `${snap.width}×${snap.height} · ${snap.pixelType} · ${snap.display}`
-    if (snap.version !== lastRenderedVersion) {
+    // In stream mode the VideoDecoder draws directly to the canvas —
+    // don't let paint() overwrite it (pixels are stripped from the
+    // batch so snap.pixels is null, which would clear the canvas).
+    if (decoder === null && snap.version !== lastRenderedVersion) {
       lastRenderedVersion = snap.version
       paint(snap)
     }

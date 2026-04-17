@@ -117,6 +117,7 @@ export class OcclusionPass {
     registerDebugTexture('occlusion.mask', this._rt, 'rgba8', {
       display: 'mono',
       label: 'Occlusion mask (alpha = solid)',
+      maxDim: 0,
     })
   }
 

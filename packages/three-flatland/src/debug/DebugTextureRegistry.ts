@@ -329,9 +329,11 @@ export class DebugTextureRegistry {
       if (typeof readAsync !== 'function') return
       const p = readAsync.call(renderer, target, 0, 0, srcW, srcH).then(
         (result: ArrayBufferView) => {
-          e.sample = result instanceof Uint8Array
-            ? result
-            : new Uint8Array(result.buffer, result.byteOffset, result.byteLength)
+          if (result instanceof Uint8Array || result instanceof Float32Array) {
+            e.sample = result
+          } else {
+            e.sample = new Uint8Array(result.buffer, result.byteOffset, result.byteLength)
+          }
           e.width = srcW
           e.height = srcH
           e.pendingReadback = null
