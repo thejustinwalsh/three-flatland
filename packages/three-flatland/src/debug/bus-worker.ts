@@ -62,6 +62,7 @@ interface ConvertMessage {
   display: string
   frame: number
   stream: boolean
+  forceKeyFrame: boolean
   pixels: ArrayBuffer
   pixelsByteLength: number
   __poolBufs?: ArrayBuffer[]
@@ -107,7 +108,7 @@ class StreamEncoder {
    */
   encode(rgba8: Uint8Array, meta: {
     name: string; frame: number; width: number; height: number
-    pixelType: string; display: string
+    pixelType: string; display: string; forceKeyFrame: boolean
   }): void {
     const needsReconfigure = meta.width !== this._width || meta.height !== this._height
 
@@ -119,7 +120,7 @@ class StreamEncoder {
     if (encoder === null) return
 
     const timestamp = this._tsCounter++
-    const forceKey = needsReconfigure ||
+    const forceKey = meta.forceKeyFrame || needsReconfigure ||
       Date.now() - this._lastKeyFrameAt > KEYFRAME_INTERVAL_MS
 
     this._pendingMeta.set(timestamp, {
@@ -296,6 +297,7 @@ ctx.onmessage = (ev: MessageEvent<unknown>) => {
         height: conv.height,
         pixelType: conv.pixelType,
         display: conv.display,
+        forceKeyFrame: conv.forceKeyFrame,
       })
     } else {
       // Non-stream mode: broadcast as buffer:raw

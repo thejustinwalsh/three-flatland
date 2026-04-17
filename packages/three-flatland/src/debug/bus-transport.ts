@@ -41,6 +41,7 @@ export interface ConvertRequest {
   display: string
   frame: number
   stream: boolean
+  forceKeyFrame: boolean
   pixels: ArrayBuffer
   /** Actual byte length of pixel data within the (possibly larger) pool buffer. */
   pixelsByteLength: number

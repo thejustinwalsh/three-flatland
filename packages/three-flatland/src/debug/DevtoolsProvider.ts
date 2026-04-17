@@ -345,6 +345,8 @@ export class DevtoolsProvider {
         // Metadata stays in the data batch so the consumer can update
         // its sidebar/labels.
         if (bufOut.entries) {
+          const forceKey = this._forceNextKeyFrame
+          this._forceNextKeyFrame = false
           for (const name in bufOut.entries) {
             const entry = bufOut.entries[name]
             if (!entry || !entry.pixels) continue
@@ -363,6 +365,7 @@ export class DevtoolsProvider {
               display: entry.display ?? 'colors',
               frame: this._stats.frame,
               stream: isStream,
+              forceKeyFrame: forceKey,
               pixels: convBuf,
               pixelsByteLength: pixels.byteLength,
             }, convBuf)
