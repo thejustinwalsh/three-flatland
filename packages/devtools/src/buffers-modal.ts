@@ -128,32 +128,38 @@ export function createBuffersModal(client: DevtoolsClient): BuffersModalHandle {
   offscreen.width = 1
   offscreen.height = 1
 
-  // Zoom info overlay
-  const zoomInfo = document.createElement('div')
+  // Zoom info + reset — top-left to avoid conflict with docs page controls
+  const zoomBar = document.createElement('div')
+  zoomBar.style.cssText = [
+    'position:absolute', 'top:8px', 'left:8px',
+    'display:flex', 'gap:6px', 'align-items:center',
+    'z-index:1',
+  ].join(';')
+
+  const zoomInfo = document.createElement('span')
   zoomInfo.style.cssText = [
-    'position:absolute', 'bottom:8px', 'right:8px',
-    'padding:4px 8px', 'border-radius:4px',
+    'padding:3px 8px', 'border-radius:4px',
     'background:rgba(0,0,0,0.6)', 'color:#aaa',
     'font:11px/1.4 monospace', 'pointer-events:none',
-    'user-select:none', 'z-index:1',
+    'user-select:none',
   ].join(';')
   zoomInfo.textContent = '1.0×'
 
-  // Reset button
-  const resetBtn = document.createElement('div')
+  const resetBtn = document.createElement('span')
   resetBtn.style.cssText = [
-    'position:absolute', 'bottom:8px', 'left:8px',
     'padding:3px 8px', 'border-radius:4px',
     'background:rgba(0,0,0,0.6)', 'color:#aaa',
     'font:11px/1.4 monospace', 'cursor:pointer',
-    'user-select:none', 'z-index:1',
+    'user-select:none',
   ].join(';')
   resetBtn.textContent = '⟲ Reset'
-  resetBtn.title = 'Reset zoom & pan (double-click canvas also resets)'
+  resetBtn.title = 'Reset zoom & pan (double-click also resets)'
+
+  zoomBar.appendChild(zoomInfo)
+  zoomBar.appendChild(resetBtn)
 
   main.appendChild(canvas)
-  main.appendChild(zoomInfo)
-  main.appendChild(resetBtn)
+  main.appendChild(zoomBar)
   body.appendChild(sidebar)
   body.appendChild(main)
 
@@ -185,8 +191,7 @@ export function createBuffersModal(client: DevtoolsClient): BuffersModalHandle {
   function updateZoomInfo(): void {
     const z = zoom < 10 ? zoom.toFixed(1) : Math.round(zoom).toString()
     zoomInfo.textContent = zoom === 1 ? '1.0×' : `${z}× · (${Math.round(panX)}, ${Math.round(panY)})`
-    zoomInfo.style.display = zoom === 1 && panX === 0 && panY === 0 ? 'none' : 'block'
-    resetBtn.style.display = zoom === 1 && panX === 0 && panY === 0 ? 'none' : 'block'
+    zoomBar.style.display = zoom === 1 && panX === 0 && panY === 0 ? 'none' : 'flex'
   }
 
   function applyTransform(): void {
