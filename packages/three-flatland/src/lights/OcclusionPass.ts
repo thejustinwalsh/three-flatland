@@ -13,6 +13,7 @@ import {
 } from 'three'
 import { MeshBasicNodeMaterial } from 'three/webgpu'
 import type { WebGPURenderer } from 'three/webgpu'
+import { registerDebugTexture, unregisterDebugTexture } from '../debug/debug-sink'
 import {
   Fn,
   uv,
@@ -112,6 +113,11 @@ export class OcclusionPass {
     const filter = options.nearestFilter ?? true ? NearestFilter : LinearFilter
     this._rt.texture.minFilter = filter
     this._rt.texture.magFilter = filter
+
+    registerDebugTexture('occlusion.mask', this._rt, 'rgba8', {
+      display: 'mono',
+      label: 'Occlusion mask (alpha = solid)',
+    })
   }
 
   /** The render target whose `texture.a` is the occluder silhouette. */
@@ -246,6 +252,7 @@ export class OcclusionPass {
   }
 
   dispose(): void {
+    unregisterDebugTexture('occlusion.mask')
     this._rt.dispose()
     for (const mat of this._occlusionMaterials.values()) mat.dispose()
     this._occlusionMaterials.clear()
