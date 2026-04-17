@@ -346,10 +346,9 @@ export class DevtoolsProvider {
               // through with raw pixels intact (the consumer's CPU
               // decoder handles them).
               if (entry.pixelType !== 'rgba8' && entry.pixelType !== 'r8') continue
-              const encBuf = transport.acquireLarge()
               const pixels = entry.pixels as Uint8Array
-              const byteLen = pixels.byteLength
-              new Uint8Array(encBuf, 0, byteLen).set(pixels)
+              const encBuf = transport.acquireLarge()
+              new Uint8Array(encBuf).set(pixels)
               transport.encode({
                 name,
                 width: entry.width,
