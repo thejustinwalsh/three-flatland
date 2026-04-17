@@ -1,5 +1,5 @@
 import { Canvas, extend, useLoader, useFrame, useThree } from '@react-three/fiber/webgpu'
-import { useRef, useEffect, useState } from 'react'
+import { useRef, useEffect } from 'react'
 import { convertToTexture } from 'three/tsl'
 import type { WebGPURenderer } from 'three/webgpu'
 import type TextureNode from 'three/src/nodes/accessors/TextureNode.js'
@@ -255,25 +255,17 @@ function FlatlandScene({ preset }: { preset: PresetName }) {
 
 export default function App() {
   const { pane } = usePane()
-  const [preset, setPreset] = useState<PresetName>('clean')
 
-  // Preset selector (synchronous init, no effect)
-  const initRef = useRef(false)
-  if (!initRef.current) {
-    initRef.current = true
-    pane.addBinding({ preset: 'clean' as string }, 'preset', {
-      label: 'Preset',
-      options: {
-        Clean: 'clean',
-        'CRT Arcade': 'crt',
-        Handheld: 'lcd',
-        'VHS Tape': 'vhs',
-        'Retro PC': 'retro',
-      },
-    }).on('change', (ev) => {
-      setPreset(ev.value as PresetName)
-    })
-  }
+  const [preset] = usePaneInput<string>(pane, 'preset', 'clean', {
+    label: 'Preset',
+    options: {
+      Clean: 'clean',
+      'CRT Arcade': 'crt',
+      Handheld: 'lcd',
+      'VHS Tape': 'vhs',
+      'Retro PC': 'retro',
+    },
+  })
 
   return (
     <Canvas
@@ -285,7 +277,7 @@ export default function App() {
         gl.domElement.style.imageRendering = 'pixelated'
       }}
     >
-      <FlatlandScene preset={preset} />
+      <FlatlandScene preset={preset as PresetName} />
     </Canvas>
   )
 }
