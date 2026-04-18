@@ -13,6 +13,21 @@ import {
 export const TILE_SIZE = 16
 export const MAX_LIGHTS_PER_TILE = 16
 
+/**
+ * Fixed side-length of the tile-index DataTexture. Allocated once at
+ * construction and NEVER resized — the previous tall-narrow layout
+ * (`width = blocksPerTile`, `height = tileCount`) hit WebGPU's 8192
+ * 2D-texture dimension limit at fullscreen (e.g. 1440p / 16-px tiles
+ * ≈ 10k–14k rows), causing the GPU texture to allocate at a clipped
+ * size and the shader to read zeros — visible as "lights disappear on
+ * fullscreen, only ambient survives."
+ *
+ * 512 × 512 × RGBA32F = 4 MB GPU + CPU. Capacity is
+ * `512² / blocksPerTile = 65,536` tiles — enough for 5K CSS canvas
+ * (5120×2880 → 57,600 tiles) at TILE_SIZE=16.
+ */
+export const TILE_TEXTURE_DIM = 512
+
 export class ForwardPlusLighting {
   private _tileCountX = 0
   private _tileCountY = 0
@@ -44,14 +59,18 @@ export class ForwardPlusLighting {
   readonly ambientNode = uniform(new Vector3(0, 0, 0))
 
   constructor() {
-    // Eagerly allocate a 1-tile placeholder so createTileLookup() can
-    // capture a stable texture reference at node-build time.
-    const blocksPerTile = MAX_LIGHTS_PER_TILE / 4
-    this._tileData = new Float32Array(blocksPerTile * 4)
+    // Pre-allocate the tile texture at its maximum size. Never resized —
+    // runtime `init()`/`resize()` updates only tile-count uniforms and
+    // CPU-side bookkeeping arrays. Avoids the three.js-WebGPU resize
+    // pitfall (replacing DataTexture.image orphans the backend's Source
+    // cache) and sidesteps the WebGPU 8192 2D-texture dim limit that the
+    // previous `height = tileCount` layout hit at fullscreen.
+    const totalTexels = TILE_TEXTURE_DIM * TILE_TEXTURE_DIM
+    this._tileData = new Float32Array(totalTexels * 4)
     this._tileTexture = new DataTexture(
       this._tileData,
-      blocksPerTile,
-      1,
+      TILE_TEXTURE_DIM,
+      TILE_TEXTURE_DIM,
       RGBAFormat,
       FloatType
     )
@@ -77,18 +96,26 @@ export class ForwardPlusLighting {
     this.tileCountXNode.value = this._tileCountX
     this.screenSizeNode.value.set(screenWidth, screenHeight)
 
+    // Capacity check — if the viewport implies more tiles than the
+    // fixed-size tile texture can hold, the last (out-of-capacity) tiles
+    // will alias back into the texture via the linear-index mod. Warn so
+    // callers know to bump TILE_TEXTURE_DIM or TILE_SIZE.
     const blocksPerTile = MAX_LIGHTS_PER_TILE / 4
-    this._tileData = new Float32Array(this._tileCount * blocksPerTile * 4)
-    this._lightCounts = new Uint32Array(this._tileCount)
-    this._tileScores = new Float32Array(this._tileCount * MAX_LIGHTS_PER_TILE)
-
-    // Resize existing texture — stable reference for TSL textureLoad
-    this._tileTexture.image = {
-      data: this._tileData,
-      width: blocksPerTile,
-      height: this._tileCount,
+    const maxTiles = Math.floor((TILE_TEXTURE_DIM * TILE_TEXTURE_DIM) / blocksPerTile)
+    if (this._tileCount > maxTiles) {
+      console.warn(
+        `[ForwardPlusLighting] ${this._tileCount} tiles exceeds texture capacity ${maxTiles}. ` +
+          `Increase TILE_TEXTURE_DIM or TILE_SIZE. Excess tiles will alias.`
+      )
     }
-    this._tileTexture.needsUpdate = true
+
+    // Grow-only CPU bookkeeping. These don't bind to the GPU so resize
+    // is free — just allocate larger arrays when the tile count grows.
+    // Never shrink (avoids churn when the window resizes down-then-up).
+    if (this._lightCounts.length < this._tileCount) {
+      this._lightCounts = new Uint32Array(this._tileCount)
+      this._tileScores = new Float32Array(this._tileCount * MAX_LIGHTS_PER_TILE)
+    }
 
     // (Re-)publish debug views. `registerDebugArray` is a no-op when
     // devtools isn't bundled (build-time gated), so this costs nothing
@@ -123,13 +150,17 @@ export class ForwardPlusLighting {
   update(lights: Light2D[]): void {
     if (this._tileCount === 0) return
 
-    this._tileData.fill(0)
+    // Buffers are over-allocated vs. the current tile count — zero only
+    // the portion we'll write to so per-frame cost doesn't scale with the
+    // max-capacity tile texture (4MB).
+    const blocksPerTile = MAX_LIGHTS_PER_TILE / 4
+    const usedTileFloats = this._tileCount * blocksPerTile * 4
+    this._tileData.fill(0, 0, usedTileFloats)
 
-    // Persistent buffers, zeroed in place — no per-frame allocation.
     const lightCounts = this._lightCounts
     const tileScores = this._tileScores
-    lightCounts.fill(0)
-    tileScores.fill(0)
+    lightCounts.fill(0, 0, this._tileCount)
+    tileScores.fill(0, 0, this._tileCount * MAX_LIGHTS_PER_TILE)
 
     // Accumulate ambient lights into a single uniform — they affect every
     // pixel equally so they don't need Forward+ tile slots.
@@ -234,10 +265,18 @@ export class ForwardPlusLighting {
 
   createTileLookup() {
     const tileTexture = this._tileTexture
+    const blocksPerTile = int(MAX_LIGHTS_PER_TILE / 4)
+    const texWidth = int(TILE_TEXTURE_DIM)
+    // Each tile occupies `blocksPerTile` consecutive RGBA texels in a
+    // flat linear order. Convert `(tileIndex, blockOffset)` → linear
+    // texel index → 2D `(x, y)` in the fixed TILE_TEXTURE_DIM² texture.
     return (tileIndex: ReturnType<typeof int>, slotIndex: ReturnType<typeof int>) => {
       const blockOffset = slotIndex.div(int(4))
       const elementOffset = slotIndex.mod(int(4))
-      return int(textureLoad(tileTexture, ivec2(blockOffset, tileIndex)).element(elementOffset))
+      const linearTexel = tileIndex.mul(blocksPerTile).add(blockOffset)
+      const x = linearTexel.mod(texWidth)
+      const y = linearTexel.div(texWidth)
+      return int(textureLoad(tileTexture, ivec2(x, y)).element(elementOffset))
     }
   }
 
