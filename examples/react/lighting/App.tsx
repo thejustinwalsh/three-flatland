@@ -245,6 +245,7 @@ function FlatlandScene(props: SceneProps) {
   const heroPos = useRef(new Vector2(0, 0))
   const heroKeys = useRef({ up: false, down: false, left: false, right: false })
   const heroAnim = useRef<'idle' | 'run'>('idle')
+  const heroFacing = useRef(new Vector2(1, 0))
 
   const knightsRef = useRef<{ anim: Wanderer; sprite: AnimatedSprite2D | null }[]>([])
   const slimesRef = useRef<{ anim: Wanderer; sprite: Sprite2D | null; light: Light2D | null }[]>([])
@@ -303,7 +304,39 @@ function FlatlandScene(props: SceneProps) {
           return null
       }
     }
+    const tryActivateTorch = () => {
+      const hero = heroPos.current
+      const facing = heroFacing.current
+      const activationRadius = TILE_PX * TILE_SCALE * 2.5
+      const facingThreshold = 0.3 // ~72° cone — plenty of slop
+      const switchStart = fixedLightPositions.length
+      let bestIdx = -1
+      let bestDist = Infinity
+      for (let i = 0; i < switchPositions.length; i++) {
+        const [sx, sy] = switchPositions[i]!
+        const dx = sx - hero.x
+        const dy = sy - hero.y
+        const dist = Math.hypot(dx, dy)
+        if (dist > activationRadius) continue
+        if (dist > 1) {
+          const dot = (dx / dist) * facing.x + (dy / dist) * facing.y
+          if (dot < facingThreshold) continue
+        }
+        if (dist < bestDist) { bestDist = dist; bestIdx = i }
+      }
+      if (bestIdx < 0) return
+      setTorchEnabled(prev => {
+        const next = [...prev]
+        next[switchStart + bestIdx] = !next[switchStart + bestIdx]
+        return next
+      })
+    }
     const down = (e: KeyboardEvent) => {
+      if (e.code === 'Space') {
+        tryActivateTorch()
+        e.preventDefault()
+        return
+      }
       const k = keymap(e)
       if (k) { heroKeys.current[k] = true; e.preventDefault() }
     }
@@ -348,19 +381,26 @@ function FlatlandScene(props: SceneProps) {
     flickerTimer.current += delta
     const t = flickerTimer.current
 
+    const wallCount = fixedLightPositions.length
     for (let i = 0; i < torchLightRefs.current.length; i++) {
       const torch = torchLightRefs.current[i]
       if (!torch) continue
       torch.enabled = torchEnabled[i] ?? true
-      torch.distance = props.torchDistance
+      const isWall = i < wallCount
+      const intensityMul = isWall ? 1.6 : 0.8
+      const distanceMul = isWall ? 1.0 : 0.7
+      torch.distance = props.torchDistance * distanceMul
       torch.intensity =
-        props.torchIntensity * (1 + Math.sin(t * (15 + i * 2)) * 0.1 + Math.sin(t * (23 + i * 3)) * 0.05)
+        props.torchIntensity *
+        intensityMul *
+        (1 + Math.sin(t * (15 + i * 2)) * 0.1 + Math.sin(t * (23 + i * 3)) * 0.05)
     }
     const k = heroKeys.current
     const hvx = (k.right ? 1 : 0) - (k.left ? 1 : 0)
     const hvy = (k.up ? 1 : 0) - (k.down ? 1 : 0)
     if (hvx !== 0 || hvy !== 0) {
       const len = Math.hypot(hvx, hvy)
+      heroFacing.current.set(hvx / len, hvy / len)
       heroPos.current.x += (hvx / len) * 70 * delta
       heroPos.current.y += (hvy / len) * 70 * delta
       const mx = mapHalfW - WALL_TILE - KNIGHT_SCALE / 2
@@ -429,7 +469,7 @@ function FlatlandScene(props: SceneProps) {
         </tileMap2D>
 
         {/* Ambient — purple-tinted dungeon atmosphere */}
-        <light2D lightType="ambient" color={0x222244} intensity={props.ambient} />
+        <light2D lightType="ambient" color={0x5544aa} intensity={props.ambient} />
 
         {/* Wall torches (fixed) — warm orange */}
         {fixedLightPositions.map((pos, i) => (
@@ -534,7 +574,7 @@ export default function App() {
   const light = usePaneFolder(pane, 'Lighting', { expanded: true })
   const [quantize] = usePaneInput(light, 'quantize', true)
   const [bands] = usePaneInput(light, 'bands', 4, { min: 0, max: 8, step: 1 })
-  const [ambient] = usePaneInput(light, 'ambient', 0.12, { min: 0, max: 0.6, step: 0.01 })
+  const [ambient] = usePaneInput(light, 'ambient', 0.4, { min: 0, max: 3, step: 0.05 })
 
   const shadows = usePaneFolder(pane, 'Shadows')
   const [shadowStrength] = usePaneInput(shadows, 'strength', 0.85, { min: 0, max: 1, step: 0.05 })
