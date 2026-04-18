@@ -218,9 +218,11 @@ export function shadowSoft2D(
  * distance. If the trace ever collapses below an epsilon the ray has
  * hit an occluder (shadowed); if the trace reaches the light distance
  * the ray is clear (lit). A running penumbra term tracks the minimum
- * `softness * d / t` across the walk for Inigo-Quilez-style soft
- * shadows — small softness values produce hard edges, larger values
- * (24-32) produce a wide penumbra.
+ * `(32 / softness) * d / t` across the walk for Inigo-Quilez-style
+ * soft shadows — the parameter is inverted vs the raw IQ `k` so the
+ * name matches intuition: LOW softness → sharp/hard edge, HIGH softness
+ * → wide diffuse penumbra. The constant 32 matches IQ's canonical
+ * "hard" default when softness = 1.
  *
  * The SDF texture is assumed to be produced by `SDFGenerator` and
  * encode distance in UV-space units on the `.r` channel. Conversion to
@@ -238,7 +240,9 @@ export function shadowSoft2D(
  *                        each frame from the camera bounds).
  * @param worldOffset     Camera frustum offset (Node — uniform).
  * @param options.steps   Compile-time loop count. Default 32.
- * @param options.softness Penumbra width — higher = sharper. Default 32.
+ * @param options.softness Penumbra width — higher = softer / wider. Low
+ *                         values (1-2) give hard IQ-style edges; high
+ *                         values (16-48) give diffuse penumbras. Default 8.
  * @param options.startOffset Initial world-space offset along the ray
  *                            to skip self-shadow on the caster itself.
  *                            Default 0.5.
@@ -262,7 +266,7 @@ export function shadowSDF2D(
   const softness =
     typeof options.softness === 'number'
       ? float(options.softness)
-      : (options.softness ?? float(32))
+      : (options.softness ?? float(8))
   const startOffset =
     typeof options.startOffset === 'number'
       ? float(options.startOffset)
@@ -290,9 +294,11 @@ export function shadowSDF2D(
       const sdfSample = sampleTexture(sdfTexture, uv).r
       const sdfWorld = sdfSample.mul(worldScale)
 
-      // Penumbra accumulation — running min of softness * d / t produces
-      // the IQ-style soft shadow term. Clamp keeps it in [0, 1].
-      const penumbra = softness.mul(sdfWorld).div(t).clamp(0, 1)
+      // Penumbra accumulation — running min of (32/softness) * d / t
+      // produces the IQ-style soft shadow term with the user-facing
+      // parameter *inverted* so higher softness → wider penumbra. The
+      // constant 32 matches IQ's "hard shadow" default when softness = 1.
+      const penumbra = float(32).mul(sdfWorld).div(softness.mul(t)).clamp(0, 1)
       shadow.assign(shadow.min(penumbra))
 
       // Hit: the ray came within epsilon of an occluder.
