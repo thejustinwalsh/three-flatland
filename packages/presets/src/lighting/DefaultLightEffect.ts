@@ -50,7 +50,7 @@ export const DefaultLightEffect = createLightEffect({
     shadowStrength: 0.6,
     shadowSoftness: 8.0,
     shadowBias: 0.04,
-    bands: 0,
+    bands: 8,
     pixelSize: 0,
     glowRadius: 0,
     glowIntensity: 0,
@@ -181,6 +181,11 @@ export const DefaultLightEffect = createLightEffect({
           const rimFactor = isAmbient.select(float(0), float(1).sub(NdotL).pow(rimPower))
           totalRim.addAssign(contribution.mul(atten).mul(rimFactor))
         })
+
+        // Ambient contribution — accumulated from Light2D ambient lights
+        // in ForwardPlusLighting.update(). Applied outside the tile loop
+        // so ambient doesn't consume a tile slot. Unaffected by shadows.
+        totalLight.addAssign(fp.ambientNode)
 
         // Add rim to diffuse lighting
         const useRim = rimIntensity.greaterThan(float(0))

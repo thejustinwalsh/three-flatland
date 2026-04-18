@@ -313,22 +313,14 @@ export class LDtkLoader extends Loader<TileMapData> {
 
       for (const layer of layers) {
         if (layer.__type === 'Tiles' || layer.__type === 'AutoLayer') {
-          const tileLayer = this.parseTileLayer(layer, tilesets, project)
-          if (tileLayer) {
-            tileLayers.push(tileLayer)
-          }
+          tileLayers.push(...this.parseTileLayer(layer, tilesets, project))
         } else if (layer.__type === 'Entities') {
           objectLayers.push(this.parseEntityLayer(layer))
         } else if (layer.__type === 'IntGrid') {
-          // IntGrid can also have auto-tiles
           if (layer.autoLayerTiles && layer.autoLayerTiles.length > 0) {
-            const tileLayer = this.parseTileLayer(layer, tilesets, project)
-            if (tileLayer) {
-              tileLayers.push(tileLayer)
-            }
+            tileLayers.push(...this.parseTileLayer(layer, tilesets, project))
           }
-          // Also create collision layer from IntGrid
-          objectLayers.push(this.parseIntGridLayer(layer))
+          objectLayers.push(this.parseIntGridLayer(layer, project))
         }
       }
     }
@@ -422,49 +414,62 @@ export class LDtkLoader extends Loader<TileMapData> {
   private static parseTileLayer(
     layer: LDtkLayerInstance,
     tilesets: TilesetData[],
-    project: LDtkProject
-  ): TileLayerData | null {
-    // Get tiles (from gridTiles or autoLayerTiles)
+    _project: LDtkProject
+  ): TileLayerData[] {
     const tiles = layer.gridTiles ?? layer.autoLayerTiles ?? []
-    if (tiles.length === 0) return null
+    if (tiles.length === 0) return []
 
-    // Find tileset
     const tileset = tilesets.find((ts) => {
-      const tsDef = project.defs.tilesets.find((d) => d.uid === layer.__tilesetDefUid)
+      const tsDef = _project.defs.tilesets.find((d) => d.uid === layer.__tilesetDefUid)
       return tsDef && ts.name === tsDef.identifier
     })
-    if (!tileset) return null
+    if (!tileset) return []
 
-    // Create data array
-    const data = new Uint32Array(layer.__cWid * layer.__cHei)
+    // LDtk can stack multiple tiles at the same grid cell. Split into
+    // sub-layers so each cell holds at most one tile — TileLayerData's
+    // Uint32Array can only store one GID per index.
+    const cellCount = layer.__cWid * layer.__cHei
+    const subLayers: Uint32Array[] = [new Uint32Array(cellCount)]
 
     for (const tile of tiles) {
       const tileX = Math.floor(tile.px[0] / layer.__gridSize)
       const tileY = Math.floor(tile.px[1] / layer.__gridSize)
       const index = tileY * layer.__cWid + tileX
 
-      // Convert local tile ID to GID
       let gid = tile.t + tileset.firstGid
+      if (tile.f & 1) gid |= 0x80000000
+      if (tile.f & 2) gid |= 0x40000000
 
-      // Apply flip flags (LDtk uses: 1=flipX, 2=flipY)
-      if (tile.f & 1) gid |= 0x80000000 // Flip H
-      if (tile.f & 2) gid |= 0x40000000 // Flip V
-
-      data[index] = gid
+      // Find the first sub-layer where this cell is empty
+      let placed = false
+      for (const data of subLayers) {
+        if (data[index] === 0) {
+          data[index] = gid
+          placed = true
+          break
+        }
+      }
+      if (!placed) {
+        const data = new Uint32Array(cellCount)
+        data[index] = gid
+        subLayers.push(data)
+      }
     }
 
-    return {
-      name: layer.__identifier,
-      id: layer.layerDefUid,
+    const offset =
+      layer.pxOffsetX !== 0 || layer.pxOffsetY !== 0
+        ? { x: layer.pxOffsetX, y: layer.pxOffsetY }
+        : undefined
+
+    return subLayers.map((data, i) => ({
+      name: subLayers.length > 1 ? `${layer.__identifier}_${i}` : layer.__identifier,
+      id: layer.layerDefUid + i * 1000,
       width: layer.__cWid,
       height: layer.__cHei,
       data,
-      offset:
-        layer.pxOffsetX !== 0 || layer.pxOffsetY !== 0
-          ? { x: layer.pxOffsetX, y: layer.pxOffsetY }
-          : undefined,
+      offset,
       visible: layer.visible,
-    }
+    }))
   }
 
   /**
@@ -501,11 +506,19 @@ export class LDtkLoader extends Loader<TileMapData> {
   /**
    * Parse IntGrid layer as collision data.
    */
-  private static parseIntGridLayer(layer: LDtkLayerInstance): ObjectLayerData {
+  private static parseIntGridLayer(layer: LDtkLayerInstance, project: LDtkProject): ObjectLayerData {
     const objects: TileMapObject[] = []
     const gridCsv = layer.intGridCsv ?? []
 
-    // Create rectangle objects for IntGrid values > 0
+    // Build value→identifier lookup from layer definition
+    const layerDef = project.defs.layers.find(l => l.uid === layer.layerDefUid)
+    const valueNames = new Map<number, string>()
+    if (layerDef && 'intGridValues' in layerDef) {
+      for (const v of (layerDef as { intGridValues: Array<{ value: number; identifier: string }> }).intGridValues) {
+        if (v.identifier) valueNames.set(v.value, v.identifier)
+      }
+    }
+
     let id = 0
     for (let y = 0; y < layer.__cHei; y++) {
       for (let x = 0; x < layer.__cWid; x++) {
@@ -513,10 +526,11 @@ export class LDtkLoader extends Loader<TileMapData> {
         const value = gridCsv[index]
 
         if (value && value > 0) {
+          const identifier = valueNames.get(value)
           objects.push({
             id: id++,
-            name: `intgrid_${value}`,
-            type: 'collision',
+            name: identifier ?? `intgrid_${value}`,
+            type: identifier ?? 'collision',
             x: x * layer.__gridSize,
             y: y * layer.__gridSize,
             width: layer.__gridSize,
@@ -528,7 +542,7 @@ export class LDtkLoader extends Loader<TileMapData> {
     }
 
     return {
-      name: layer.__identifier + '_collision',
+      name: layer.__identifier,
       id: layer.layerDefUid,
       objects,
       visible: false,
@@ -553,7 +567,8 @@ export class LDtkLoader extends Loader<TileMapData> {
   /**
    * Parse LDtk color string.
    */
-  private static parseColor(color: string): number {
+  private static parseColor(color: string | null | undefined): number {
+    if (!color) return 0x000000
     if (color.startsWith('#')) {
       color = color.substring(1)
     }

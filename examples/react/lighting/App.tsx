@@ -1,4 +1,4 @@
-import { Suspense, useRef, useEffect, useMemo } from 'react'
+import { Suspense, useRef, useEffect, useMemo, useState } from 'react'
 import { Canvas, extend, useFrame, useLoader, useThree } from '@react-three/fiber/webgpu'
 import type { WebGPURenderer } from 'three/webgpu'
 import {
@@ -17,13 +17,10 @@ import {
   SpriteGroup,
   TileMap2D,
   SpriteSheetLoader,
-  TextureLoader,
+  LDtkLoader,
   Layers,
   attachLighting,
   attachEffect,
-  type TilesetData,
-  type TileLayerData,
-  type TileMapData,
   type AnimationSetDefinition,
 } from 'three-flatland/react'
 import { DefaultLightEffect, AutoNormalProvider } from '@three-flatland/presets'
@@ -45,16 +42,13 @@ extend({
 // CONSTANTS
 // ============================================
 
-const VIEW_SIZE = 400
-const INDICATOR_SIZE = 20
+const VIEW_SIZE = 640
 const TILE_PX = 16
 const TILE_SCALE = 2
-const KNIGHT_SCALE = 28
-const SLIME_SCALE = 18
+const KNIGHT_SCALE = TILE_PX * TILE_SCALE * 2
+const SLIME_SCALE = TILE_PX * TILE_SCALE
 const WALL_TILE = 24
 const KNIGHT_COUNT = 4
-const ROOM_HALF_W = 170
-const ROOM_HALF_H = 120
 
 // ============================================
 // SYNTHETIC ASSETS
@@ -84,30 +78,7 @@ function solidCircle(r: number, g: number, b: number, size = 32, softEdge = fals
   return tex
 }
 
-function flatRect(r: number, g: number, b: number, size = WALL_TILE): DataTexture {
-  const data = new Uint8Array(size * size * 4)
-  for (let y = 0; y < size; y++) {
-    for (let x = 0; x < size; x++) {
-      const noise = (Math.sin(x * 0.7) + Math.sin(y * 0.9)) * 8
-      const i = (y * size + x) * 4
-      data[i] = Math.max(0, Math.min(255, r + noise))
-      data[i + 1] = Math.max(0, Math.min(255, g + noise))
-      data[i + 2] = Math.max(0, Math.min(255, b + noise))
-      data[i + 3] = 255
-    }
-  }
-  const tex = new DataTexture(data, size, size, RGBAFormat, UnsignedByteType)
-  tex.minFilter = NearestFilter
-  tex.magFilter = NearestFilter
-  tex.needsUpdate = true
-  return tex
-}
-
-const torch1Tex = solidCircle(255, 102, 0)
-const torch2Tex = solidCircle(255, 170, 0)
 const slimeTex = solidCircle(0x3f, 0xff, 0x73, 24, true)
-const wallTex = flatRect(84, 84, 100)
-const pillarTex = flatRect(54, 54, 70)
 
 // ============================================
 // ANIMATION
@@ -156,90 +127,30 @@ function OrthoCamera({ viewSize }: { viewSize: number }) {
 // TILEMAP
 // ============================================
 
-function useDungeonFloor(tilesetTex: ReturnType<typeof useLoader>): TileMapData {
-  return useMemo(() => {
-    const TS_COLS = 10
-    const TS_ROWS = 10
-    const mapCols = Math.ceil((VIEW_SIZE * 2) / TILE_PX) + 4
-    const mapRows = Math.ceil(VIEW_SIZE / TILE_PX) + 4
-    const FLOOR_PATTERN = [7, 8, 9, 10, 17, 18, 19, 20, 27, 28, 29, 30]
-    const floorData = new Uint32Array(mapCols * mapRows)
-    for (let y = 0; y < mapRows; y++) {
-      for (let x = 0; x < mapCols; x++) {
-        floorData[y * mapCols + x] = FLOOR_PATTERN[(y % 3) * 4 + (x % 4)]!
-      }
-    }
-    const tilesetData: TilesetData = {
-      name: 'dungeon',
-      firstGid: 1,
-      tileWidth: TILE_PX,
-      tileHeight: TILE_PX,
-      imageWidth: TS_COLS * TILE_PX,
-      imageHeight: TS_ROWS * TILE_PX,
-      columns: TS_COLS,
-      tileCount: TS_COLS * TS_ROWS,
-      tiles: new Map(),
-      texture: tilesetTex as unknown as DataTexture,
-    }
-    const floorLayer: TileLayerData = {
-      name: 'Floor',
-      id: 0,
-      width: mapCols,
-      height: mapRows,
-      data: floorData,
-    }
-    return {
-      width: mapCols,
-      height: mapRows,
-      tileWidth: TILE_PX,
-      tileHeight: TILE_PX,
-      orientation: 'orthogonal',
-      renderOrder: 'right-down',
-      infinite: false,
-      tilesets: [tilesetData],
-      tileLayers: [floorLayer],
-      objectLayers: [],
-    }
-  }, [tilesetTex])
-}
-
 // ============================================
-// WALLS + PILLARS + TORCH POSITIONS
+// MAP DATA EXTRACTION
 // ============================================
 
-interface WallSegment {
-  x: number
-  y: number
-  w: number
-  h: number
+import type { TileMapData, TileMapObject } from 'three-flatland/react'
+
+function extractObjectsByType(mapData: TileMapData, type: string): TileMapObject[] {
+  const results: TileMapObject[] = []
+  for (const layer of mapData.objectLayers) {
+    for (const obj of layer.objects) {
+      if (obj.type === type) results.push(obj)
+    }
+  }
+  return results
 }
 
-function buildRoomWalls(): WallSegment[] {
-  const segs: WallSegment[] = []
-  const T = WALL_TILE
-  segs.push({ x: 0, y: ROOM_HALF_H, w: ROOM_HALF_W * 2 + T, h: T })
-  segs.push({ x: 0, y: -ROOM_HALF_H, w: ROOM_HALF_W * 2 + T, h: T })
-  segs.push({ x: -ROOM_HALF_W, y: 0, w: T, h: ROOM_HALF_H * 2 })
-  segs.push({ x: ROOM_HALF_W, y: 0, w: T, h: ROOM_HALF_H * 2 })
-  segs.push({ x: -40, y: 40, w: 80, h: T })
-  segs.push({ x: 0, y: 10, w: T, h: 60 })
-  segs.push({ x: 60, y: -50, w: T, h: 40 })
-  return segs
+function mapToWorld(obj: TileMapObject, mapData: TileMapData, scale: number): [number, number] {
+  const mapH = mapData.height * mapData.tileHeight
+  const cx = (obj.x + obj.width / 2) * scale
+  const cy = (mapH - obj.y - obj.height / 2) * scale
+  const offsetX = (mapData.width * mapData.tileWidth * scale) / 2
+  const offsetY = (mapH * scale) / 2
+  return [cx - offsetX, cy - offsetY]
 }
-
-const ROOM_WALLS = buildRoomWalls()
-
-const PILLARS: [number, number][] = [
-  [-100, 60],
-  [100, 60],
-  [-100, -60],
-  [100, -60],
-]
-
-const TORCH_POSITIONS: [number, number][] = [
-  [-100, 80],
-  [100, 80],
-]
 
 // ============================================
 // WANDERERS
@@ -251,18 +162,18 @@ interface Wanderer {
   retargetTimer: number
 }
 
-function newWanderer(): Wanderer {
+function newWanderer(halfW: number, halfH: number): Wanderer {
   return {
     pos: new Vector2(
-      (Math.random() - 0.5) * ROOM_HALF_W * 0.6,
-      (Math.random() - 0.5) * ROOM_HALF_H * 0.6
+      (Math.random() - 0.5) * halfW * 0.6,
+      (Math.random() - 0.5) * halfH * 0.6
     ),
     vel: new Vector2(),
     retargetTimer: Math.random() * 2,
   }
 }
 
-function updateWanderer(w: Wanderer, delta: number, speed: number): void {
+function updateWanderer(w: Wanderer, delta: number, speed: number, halfW: number, halfH: number, entityRadius = 0): void {
   w.retargetTimer -= delta
   if (w.retargetTimer <= 0) {
     const a = Math.random() * Math.PI * 2
@@ -271,8 +182,8 @@ function updateWanderer(w: Wanderer, delta: number, speed: number): void {
   }
   w.pos.x += w.vel.x * delta
   w.pos.y += w.vel.y * delta
-  const mx = ROOM_HALF_W - WALL_TILE
-  const my = ROOM_HALF_H - WALL_TILE
+  const mx = halfW - WALL_TILE - entityRadius
+  const my = halfH - WALL_TILE - entityRadius
   if (w.pos.x > mx) { w.pos.x = mx; w.vel.x = -Math.abs(w.vel.x) }
   if (w.pos.x < -mx) { w.pos.x = -mx; w.vel.x = Math.abs(w.vel.x) }
   if (w.pos.y > my) { w.pos.y = my; w.vel.y = -Math.abs(w.vel.y) }
@@ -291,33 +202,44 @@ interface SceneProps {
   shadowBias: number
   ambient: number
   slimeCount: number
-  torch1: boolean
-  torch2: boolean
   torchIntensity: number
   torchDistance: number
-  showWalls: boolean
-  showPillars: boolean
   showKnights: boolean
 }
 
 function FlatlandScene(props: SceneProps) {
   const knightSheet = useLoader(SpriteSheetLoader, './sprites/knight.json')
-  const tilesetTex = useLoader(TextureLoader, './sprites/Dungeon_Tileset.png')
-  // Individual selectors — destructuring `useThree()` subscribes to the
-  // entire zustand store, so any `set(...)` (including our camera ref
-  // callback setting `camera`) re-renders this component, recreates the
-  // OrthoCamera ref, and cascades into a render loop.
+  const mapData = useLoader(LDtkLoader, './maps/dungeon.ldtk')
+
   const gl = useThree((s) => s.gl)
   const size = useThree((s) => s.size)
   const flatlandRef = useRef<Flatland>(null)
+  const tilemapRef = useRef<TileMap2D>(null)
   const defaultLightRef = useRef<InstanceType<typeof DefaultLightEffect>>(null)
-  const ambientRef = useRef<Light2D>(null)
 
-  const mapData = useDungeonFloor(tilesetTex)
-
-  const torch1Ref = useRef<Light2D>(null)
-  const torch2Ref = useRef<Light2D>(null)
+  const torchLightRefs = useRef<(Light2D | null)[]>([])
+  const [torchEnabled, setTorchEnabled] = useState<boolean[]>([])
   const flickerTimer = useRef(0)
+
+  const mapHalfW = (mapData.width * mapData.tileWidth * TILE_SCALE) / 2
+  const mapHalfH = (mapData.height * mapData.tileHeight * TILE_SCALE) / 2
+
+  const fixedLightPositions = useMemo(() =>
+    extractObjectsByType(mapData, 'light').map(obj => mapToWorld(obj, mapData, TILE_SCALE)),
+  [mapData])
+
+  const switchPositions = useMemo(() =>
+    extractObjectsByType(mapData, 'torch_switch').map(obj => mapToWorld(obj, mapData, TILE_SCALE)),
+  [mapData])
+
+  const allTorchPositions = useMemo(() =>
+    [...fixedLightPositions, ...switchPositions],
+  [fixedLightPositions, switchPositions])
+
+  useEffect(() => {
+    setTorchEnabled(allTorchPositions.map(() => true))
+  }, [allTorchPositions.length])
+
 
   const heroRef = useRef<AnimatedSprite2D | null>(null)
   const heroPos = useRef(new Vector2(0, 0))
@@ -328,11 +250,11 @@ function FlatlandScene(props: SceneProps) {
   const slimesRef = useRef<{ anim: Wanderer; sprite: Sprite2D | null; light: Light2D | null }[]>([])
 
   if (knightsRef.current.length === 0) {
-    for (let i = 0; i < KNIGHT_COUNT; i++) knightsRef.current.push({ anim: newWanderer(), sprite: null })
+    for (let i = 0; i < KNIGHT_COUNT; i++) knightsRef.current.push({ anim: newWanderer(mapHalfW, mapHalfH), sprite: null })
   }
   if (slimesRef.current.length !== props.slimeCount) {
     while (slimesRef.current.length < props.slimeCount) {
-      slimesRef.current.push({ anim: newWanderer(), sprite: null, light: null })
+      slimesRef.current.push({ anim: newWanderer(mapHalfW, mapHalfH), sprite: null, light: null })
     }
     if (slimesRef.current.length > props.slimeCount) slimesRef.current.length = props.slimeCount
   }
@@ -352,6 +274,10 @@ function FlatlandScene(props: SceneProps) {
     e.shadowSoftness = props.shadowSoftness
     e.shadowBias = props.shadowBias
   }, [props.bands, props.quantize, props.shadowStrength, props.shadowSoftness, props.shadowBias])
+
+  useEffect(() => {
+    tilemapRef.current?.markOccluders(['collision', 'torch_switch'])
+  }, [mapData])
 
   useEffect(() => {
     flatlandRef.current?.resize(size.width, size.height)
@@ -385,34 +311,51 @@ function FlatlandScene(props: SceneProps) {
       const k = keymap(e)
       if (k) { heroKeys.current[k] = false; e.preventDefault() }
     }
+    const canvas = (gl as unknown as { domElement: HTMLCanvasElement }).domElement
+    const click = (e: MouseEvent) => {
+      if (!canvas) return
+      const rect = canvas.getBoundingClientRect()
+      const ndcX = ((e.clientX - rect.left) / rect.width) * 2 - 1
+      const ndcY = -(((e.clientY - rect.top) / rect.height) * 2 - 1)
+      const aspect = rect.width / rect.height
+      const worldX = ndcX * (VIEW_SIZE * aspect) / 2
+      const worldY = ndcY * VIEW_SIZE / 2
+      const hitRadius = TILE_PX * TILE_SCALE
+      const switchStart = fixedLightPositions.length
+      for (let i = 0; i < switchPositions.length; i++) {
+        const [sx, sy] = switchPositions[i]!
+        if (Math.abs(worldX - sx) < hitRadius && Math.abs(worldY - sy) < hitRadius) {
+          setTorchEnabled(prev => {
+            const next = [...prev]
+            next[switchStart + i] = !next[switchStart + i]
+            return next
+          })
+          break
+        }
+      }
+    }
     window.addEventListener('keydown', down)
     window.addEventListener('keyup', up)
+    canvas.addEventListener('click', click)
     return () => {
       window.removeEventListener('keydown', down)
       window.removeEventListener('keyup', up)
+      canvas.removeEventListener('click', click)
     }
-  }, [])
+  }, [gl, fixedLightPositions.length, switchPositions])
 
   useFrame((_, delta) => {
     flickerTimer.current += delta
     const t = flickerTimer.current
 
-    if (torch1Ref.current) {
-      torch1Ref.current.enabled = props.torch1
-      torch1Ref.current.distance = props.torchDistance
-      torch1Ref.current.intensity =
-        props.torchIntensity * (1 + Math.sin(t * 15) * 0.1 + Math.sin(t * 23) * 0.05)
+    for (let i = 0; i < torchLightRefs.current.length; i++) {
+      const torch = torchLightRefs.current[i]
+      if (!torch) continue
+      torch.enabled = torchEnabled[i] ?? true
+      torch.distance = props.torchDistance
+      torch.intensity =
+        props.torchIntensity * (1 + Math.sin(t * (15 + i * 2)) * 0.1 + Math.sin(t * (23 + i * 3)) * 0.05)
     }
-    if (torch2Ref.current) {
-      torch2Ref.current.enabled = props.torch2
-      torch2Ref.current.distance = props.torchDistance
-      torch2Ref.current.intensity =
-        props.torchIntensity *
-        0.85 *
-        (1 + Math.sin(t * 17 + 1) * 0.1 + Math.sin(t * 19 + 2) * 0.05)
-    }
-    if (ambientRef.current) ambientRef.current.intensity = props.ambient
-
     const k = heroKeys.current
     const hvx = (k.right ? 1 : 0) - (k.left ? 1 : 0)
     const hvy = (k.up ? 1 : 0) - (k.down ? 1 : 0)
@@ -420,8 +363,8 @@ function FlatlandScene(props: SceneProps) {
       const len = Math.hypot(hvx, hvy)
       heroPos.current.x += (hvx / len) * 70 * delta
       heroPos.current.y += (hvy / len) * 70 * delta
-      const mx = ROOM_HALF_W - WALL_TILE
-      const my = ROOM_HALF_H - WALL_TILE
+      const mx = mapHalfW - WALL_TILE - KNIGHT_SCALE / 2
+      const my = mapHalfH - WALL_TILE - KNIGHT_SCALE / 2
       heroPos.current.x = Math.max(-mx, Math.min(mx, heroPos.current.x))
       heroPos.current.y = Math.max(-my, Math.min(my, heroPos.current.y))
     }
@@ -441,7 +384,7 @@ function FlatlandScene(props: SceneProps) {
     }
 
     for (const kn of knightsRef.current) {
-      updateWanderer(kn.anim, delta, 28)
+      updateWanderer(kn.anim, delta, 28, mapHalfW, mapHalfH, KNIGHT_SCALE / 2)
       if (kn.sprite) {
         kn.sprite.position.set(kn.anim.pos.x, kn.anim.pos.y, 0)
         kn.sprite.zIndex = -Math.floor(kn.anim.pos.y)
@@ -451,7 +394,7 @@ function FlatlandScene(props: SceneProps) {
     }
     for (let i = 0; i < slimesRef.current.length; i++) {
       const s = slimesRef.current[i]!
-      updateWanderer(s.anim, delta, 36)
+      updateWanderer(s.anim, delta, 36, mapHalfW, mapHalfH, SLIME_SCALE / 2)
       if (s.sprite) {
         s.sprite.position.set(s.anim.pos.x, s.anim.pos.y, 0)
         s.sprite.zIndex = -Math.floor(s.anim.pos.y)
@@ -480,29 +423,40 @@ function FlatlandScene(props: SceneProps) {
           shadowBias={props.shadowBias}
         />
 
-        {/* Floor */}
-        <tileMap2D data={mapData} scale={[TILE_SCALE, TILE_SCALE, 1]} position={[0, 0, -100]} />
+        {/* Floor — centered so map origin is at screen center */}
+        <tileMap2D ref={tilemapRef} data={mapData} scale={[TILE_SCALE, TILE_SCALE, 1]} position={[-mapHalfW, -mapHalfH, -100]}>
+          <autoNormalProvider attach={attachEffect} />
+        </tileMap2D>
 
-        {/* Lights */}
-        <light2D
-          ref={torch1Ref}
-          lightType="point"
-          position={[TORCH_POSITIONS[0]![0], TORCH_POSITIONS[0]![1], 0]}
-          color={0xff6600}
-          intensity={1.2}
-          distance={180}
-          decay={2}
-        />
-        <light2D
-          ref={torch2Ref}
-          lightType="point"
-          position={[TORCH_POSITIONS[1]![0], TORCH_POSITIONS[1]![1], 0]}
-          color={0xffaa00}
-          intensity={1.0}
-          distance={180}
-          decay={2}
-        />
-        <light2D ref={ambientRef} lightType="ambient" color={0x222233} intensity={props.ambient} />
+        {/* Ambient — purple-tinted dungeon atmosphere */}
+        <light2D lightType="ambient" color={0x222244} intensity={props.ambient} />
+
+        {/* Wall torches (fixed) — warm orange */}
+        {fixedLightPositions.map((pos, i) => (
+          <light2D
+            key={`wall-torch-${i}`}
+            ref={(el) => { torchLightRefs.current[i] = el }}
+            lightType="point"
+            position={[pos[0], pos[1], 0]}
+            color={0xff6600}
+            intensity={props.torchIntensity}
+            distance={props.torchDistance}
+            decay={2}
+          />
+        ))}
+        {/* Toggle torches (switchable) — cool amber */}
+        {switchPositions.map((pos, i) => (
+          <light2D
+            key={`switch-torch-${i}`}
+            ref={(el) => { torchLightRefs.current[fixedLightPositions.length + i] = el }}
+            lightType="point"
+            position={[pos[0], pos[1], 0]}
+            color={0xffcc44}
+            intensity={props.torchIntensity * 0.8}
+            distance={props.torchDistance * 0.7}
+            decay={2}
+          />
+        ))}
 
         {/* Hero */}
         <animatedSprite2D
@@ -512,45 +466,13 @@ function FlatlandScene(props: SceneProps) {
           animationSet={knightAnimations}
           animation="idle"
           position={[0, 0, 0]}
-          scale={[KNIGHT_SCALE * 1.2, KNIGHT_SCALE * 1.2, 1]}
+          scale={[KNIGHT_SCALE, KNIGHT_SCALE, 1]}
           castsShadow
           lit
           layer={Layers.ENTITIES}
         >
           <autoNormalProvider attach={attachEffect} />
         </animatedSprite2D>
-
-        {/* Walls */}
-        {props.showWalls &&
-          ROOM_WALLS.map((w, i) => (
-            <sprite2D
-              key={`wall-${i}`}
-              texture={wallTex}
-              position={[w.x, w.y, 0]}
-              scale={[w.w, w.h, 1]}
-              castsShadow
-              lit
-              layer={Layers.ENTITIES}
-            >
-              <autoNormalProvider attach={attachEffect} />
-            </sprite2D>
-          ))}
-
-        {/* Pillars */}
-        {props.showPillars &&
-          PILLARS.map((p, i) => (
-            <sprite2D
-              key={`pillar-${i}`}
-              texture={pillarTex}
-              position={[p[0], p[1], 0]}
-              scale={[WALL_TILE, WALL_TILE * 1.5, 1]}
-              castsShadow
-              lit
-              layer={Layers.ENTITIES}
-            >
-              <autoNormalProvider attach={attachEffect} />
-            </sprite2D>
-          ))}
 
         {/* Wandering knights */}
         {props.showKnights &&
@@ -597,23 +519,6 @@ function FlatlandScene(props: SceneProps) {
           />
         ))}
 
-        {/* Fixed torch flame indicators */}
-        <sprite2D
-          texture={torch1Tex}
-          position={[TORCH_POSITIONS[0]![0], TORCH_POSITIONS[0]![1], 0]}
-          scale={[INDICATOR_SIZE, INDICATOR_SIZE, 1]}
-          layer={Layers.FOREGROUND}
-          alpha={props.torch1 ? 0.9 : 0.25}
-          lit={false}
-        />
-        <sprite2D
-          texture={torch2Tex}
-          position={[TORCH_POSITIONS[1]![0], TORCH_POSITIONS[1]![1], 0]}
-          scale={[INDICATOR_SIZE, INDICATOR_SIZE, 1]}
-          layer={Layers.FOREGROUND}
-          alpha={props.torch2 ? 0.9 : 0.25}
-          lit={false}
-        />
       </flatland>
     </>
   )
@@ -637,8 +542,6 @@ export default function App() {
   const [shadowBias] = usePaneInput(shadows, 'bias', 1, { min: 0, max: 4, step: 0.1 })
 
   const torches = usePaneFolder(pane, 'Torches')
-  const [torch1] = usePaneInput(torches, 'torch1', true)
-  const [torch2] = usePaneInput(torches, 'torch2', true)
   const [torchIntensity] = usePaneInput(torches, 'intensity', 1.2, { min: 0, max: 3, step: 0.05 })
   const [torchDistance] = usePaneInput(torches, 'distance', 180, { min: 40, max: 400, step: 10 })
 
@@ -646,8 +549,6 @@ export default function App() {
   const [slimeCount] = usePaneInput(lights, 'count', 10, { min: 0, max: 20, step: 1 })
 
   const scene = usePaneFolder(pane, 'Scene', { expanded: false })
-  const [showWalls] = usePaneInput(scene, 'walls', true)
-  const [showPillars] = usePaneInput(scene, 'pillars', true)
   const [showKnights] = usePaneInput(scene, 'knights', true)
 
   return (
@@ -662,12 +563,8 @@ export default function App() {
           shadowBias={shadowBias}
           ambient={ambient}
           slimeCount={slimeCount}
-          torch1={torch1}
-          torch2={torch2}
           torchIntensity={torchIntensity}
           torchDistance={torchDistance}
-          showWalls={showWalls}
-          showPillars={showPillars}
           showKnights={showKnights}
         />
       </Suspense>

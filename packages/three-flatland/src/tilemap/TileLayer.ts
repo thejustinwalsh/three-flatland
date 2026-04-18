@@ -8,6 +8,11 @@ import {
   Vector3,
 } from 'three'
 import { Sprite2DMaterial } from '../materials/Sprite2DMaterial'
+import {
+  LIT_FLAG_MASK,
+  RECEIVE_SHADOWS_MASK,
+  CAST_SHADOW_MASK,
+} from '../materials/effectFlagBits'
 import type { Tileset } from './Tileset'
 import type { TileLayerData } from './types'
 
@@ -17,6 +22,7 @@ interface ChunkData {
   instanceUV: Float32Array
   instanceColor: Float32Array
   instanceFlip: Float32Array
+  effectBufs: Map<string, Float32Array>
   instanceCount: number
 }
 
@@ -91,12 +97,80 @@ export class TileLayer extends Group {
   /** Animation state (keyed by base GID) */
   private animationTimers: Map<number, { elapsed: number; frameIndex: number }> = new Map()
 
+  /** System flags bitmask — same semantics as Sprite2D._effectFlags */
+  private _effectFlags: number = LIT_FLAG_MASK | RECEIVE_SHADOWS_MASK
+
   /** Whether the tileset texture uses flipY (loaded images vs DataTextures) */
   private readonly texFlipY: boolean
 
   /** Reusable matrix for transforms */
   private static tempMatrix = new Matrix4()
   private static tempScale = new Vector3()
+
+  get lit(): boolean {
+    return (this._effectFlags & LIT_FLAG_MASK) !== 0
+  }
+
+  set lit(value: boolean) {
+    const was = (this._effectFlags & LIT_FLAG_MASK) !== 0
+    if (was === value) return
+    if (value) {
+      this._effectFlags |= LIT_FLAG_MASK
+    } else {
+      this._effectFlags &= ~LIT_FLAG_MASK
+    }
+    this._syncEffectFlagsToChunks()
+  }
+
+  get receiveShadows(): boolean {
+    return (this._effectFlags & RECEIVE_SHADOWS_MASK) !== 0
+  }
+
+  set receiveShadows(value: boolean) {
+    const was = (this._effectFlags & RECEIVE_SHADOWS_MASK) !== 0
+    if (was === value) return
+    if (value) {
+      this._effectFlags |= RECEIVE_SHADOWS_MASK
+    } else {
+      this._effectFlags &= ~RECEIVE_SHADOWS_MASK
+    }
+    this._syncEffectFlagsToChunks()
+  }
+
+  /**
+   * Set castsShadow on a specific tile by its data-array index.
+   * Use with IntGrid data to mark wall tiles as shadow casters.
+   */
+  setCastsShadowAt(tileX: number, tileY: number, value: boolean): void {
+    const index = tileY * this.data.width + tileX
+    const mapping = this.tileIndexMap.get(index)
+    if (!mapping) return
+    const chunk = this.chunks.get(mapping.chunkKey)
+    if (!chunk) return
+    const eb0 = chunk.effectBufs.get('effectBuf0')
+    if (!eb0) return
+    const off = mapping.instanceIndex * 4
+    if (value) {
+      eb0[off] = (eb0[off] ?? 0) | CAST_SHADOW_MASK
+    } else {
+      eb0[off] = (eb0[off] ?? 0) & ~CAST_SHADOW_MASK
+    }
+    const attr = chunk.mesh.geometry.getAttribute('effectBuf0') as InstancedBufferAttribute
+    attr.needsUpdate = true
+  }
+
+  private _syncEffectFlagsToChunks(): void {
+    const flags = this._effectFlags
+    for (const chunk of this.chunks.values()) {
+      const eb0 = chunk.effectBufs.get('effectBuf0')
+      if (!eb0) continue
+      for (let i = 0; i < chunk.instanceCount; i++) {
+        eb0[i * 4] = flags
+      }
+      const attr = chunk.mesh.geometry.getAttribute('effectBuf0') as InstancedBufferAttribute
+      attr.needsUpdate = true
+    }
+  }
 
   /**
    * Write UV data for a tile into the instanceUV buffer.
@@ -145,11 +219,12 @@ export class TileLayer extends Group {
     // Detect whether the texture uses flipY (loaded images = true, DataTextures = false)
     this.texFlipY = tileset.texture?.flipY ?? false
 
-    // Create material with premultiplied alpha (no Discard needed)
     this.material = new Sprite2DMaterial({
       map: tileset.texture ?? undefined,
-      premultipliedAlpha: true,
+      transparent: true,
     })
+    this.material.depthWrite = true
+    this.material.alphaTest = 0.5
 
     // Build chunked instanced meshes from tile data
     this.buildInstances()
@@ -244,6 +319,28 @@ export class TileLayer extends Group {
       flipAttr.setUsage(DynamicDrawUsage)
       geometry.setAttribute('instanceFlip', flipAttr)
 
+      // Add all effect buffer attributes from the material schema so the
+      // shader's attribute() reads don't hit missing bindings.
+      const effectBufs = new Map<string, Float32Array>()
+      const schema = this.material.getInstanceAttributeSchema()
+      for (const [name, config] of schema) {
+        const size = config.type === 'vec4' ? 4 : config.type === 'vec3' ? 3 : config.type === 'vec2' ? 2 : 1
+        const buf = new Float32Array(count * size)
+        const attr = new InstancedBufferAttribute(buf, size)
+        attr.setUsage(DynamicDrawUsage)
+        geometry.setAttribute(name, attr)
+        effectBufs.set(name, buf)
+      }
+
+      // Write system flags into effectBuf0.x (lit + receiveShadows)
+      const eb0 = effectBufs.get('effectBuf0')
+      if (eb0) {
+        const flags = this._effectFlags
+        for (let i = 0; i < count; i++) {
+          eb0[i * 4] = flags
+        }
+      }
+
       // Track bounds for frustum culling
       let minX = Infinity
       let minY = Infinity
@@ -323,6 +420,7 @@ export class TileLayer extends Group {
         instanceUV,
         instanceColor,
         instanceFlip,
+        effectBufs,
         instanceCount: count,
       })
       this.add(mesh)
