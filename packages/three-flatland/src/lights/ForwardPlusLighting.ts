@@ -1,4 +1,4 @@
-import { DataTexture, FloatType, RGBAFormat, NearestFilter, Vector2 } from 'three'
+import { DataTexture, FloatType, RGBAFormat, NearestFilter, Vector2, Vector3 } from 'three'
 import { uniform, int, ivec2, textureLoad } from 'three/tsl'
 import type { Light2D } from './Light2D'
 import {
@@ -41,6 +41,7 @@ export class ForwardPlusLighting {
   readonly screenSizeNode = uniform(new Vector2(1, 1))
   readonly worldSizeNode = uniform(new Vector2(1, 1))
   readonly worldOffsetNode = uniform(new Vector2(0, 0))
+  readonly ambientNode = uniform(new Vector3(0, 0, 0))
 
   constructor() {
     // Eagerly allocate a 1-tile placeholder so createTileLookup() can
@@ -129,6 +130,17 @@ export class ForwardPlusLighting {
     const tileScores = this._tileScores
     lightCounts.fill(0)
     tileScores.fill(0)
+
+    // Accumulate ambient lights into a single uniform — they affect every
+    // pixel equally so they don't need Forward+ tile slots.
+    let ambR = 0, ambG = 0, ambB = 0
+    for (const light of lights) {
+      if (!light.enabled || light.lightType !== 'ambient') continue
+      ambR += light.color.r * light.intensity
+      ambG += light.color.g * light.intensity
+      ambB += light.color.b * light.intensity
+    }
+    this.ambientNode.value.set(ambR, ambG, ambB)
 
     const tileCountX = this._tileCountX
     const tileCountY = this._tileCountY

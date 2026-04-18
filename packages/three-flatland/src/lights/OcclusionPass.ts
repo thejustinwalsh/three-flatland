@@ -101,6 +101,15 @@ export class OcclusionPass {
    */
   private _hiddenMeshes: Mesh[] = []
 
+  /**
+   * Re-entrancy guard. OcclusionPass.render() calls renderer.render(scene)
+   * on the host scene, which triggers updateMatrixWorld → SpriteGroup runs
+   * the ECS schedule → shadowPipelineSystem → OcclusionPass.render() again.
+   * Without this guard the inner call clears _swappedMeshes, destroying the
+   * outer call's material-restore data.
+   */
+  private _rendering = false
+
   constructor(options: OcclusionPassOptions = {}) {
     this._resolutionScale = options.resolutionScale ?? 0.5
     this._clearColor = new Color(options.clearColor ?? 0x000000)
@@ -169,6 +178,9 @@ export class OcclusionPass {
    * caller's subsequent main-scene render sees no side effects.
    */
   render(renderer: WebGPURenderer, scene: Scene, camera: Camera): void {
+    if (this._rendering) return
+    this._rendering = true
+
     const prevRT = renderer.getRenderTarget()
     const prevBackground = scene.background
 
@@ -206,6 +218,7 @@ export class OcclusionPass {
 
       scene.background = prevBackground
       renderer.setRenderTarget(prevRT)
+      this._rendering = false
     }
   }
 

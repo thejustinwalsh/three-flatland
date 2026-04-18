@@ -1,6 +1,7 @@
 import { Group, Box3, Vector3 } from 'three'
 import { Tileset } from './Tileset'
 import { TileLayer } from './TileLayer'
+import type { MaterialEffect } from '../materials/MaterialEffect'
 import type { Sprite2DMaterial } from '../materials/Sprite2DMaterial'
 import type {
   TileMapData,
@@ -399,6 +400,74 @@ export class TileMap2D extends Group {
       y: worldY,
       width: obj.width,
       height: obj.height,
+    }
+  }
+
+  get lit(): boolean {
+    return this.tileLayers[0]?.lit ?? true
+  }
+
+  set lit(value: boolean) {
+    for (const layer of this.tileLayers) {
+      layer.lit = value
+    }
+  }
+
+  get receiveShadows(): boolean {
+    return this.tileLayers[0]?.receiveShadows ?? true
+  }
+
+  set receiveShadows(value: boolean) {
+    for (const layer of this.tileLayers) {
+      layer.receiveShadows = value
+    }
+  }
+
+  /**
+   * Register a MaterialEffect on all tile layer materials.
+   * Use this to add channel providers (e.g. AutoNormalProvider) so
+   * tilemaps participate in the lighting pipeline's channel system.
+   *
+   * @example
+   * ```tsx
+   * <tileMap2D data={mapData}>
+   *   <autoNormalProvider attach={attachEffect} />
+   * </tileMap2D>
+   * ```
+   */
+  addEffect(effect: MaterialEffect): this {
+    const EffectClass = effect.constructor as typeof MaterialEffect
+    for (const layer of this.tileLayers) {
+      if (!layer.material.hasEffect(EffectClass)) {
+        layer.material.registerEffect(EffectClass, effect._constants)
+      }
+    }
+    return this
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  removeEffect(_effect: MaterialEffect): this {
+    return this
+  }
+
+  /**
+   * Mark tiles as shadow casters based on object layer data.
+   * Typically called with IntGrid-derived collision objects.
+   *
+   * @param types - Object types to treat as occluders (e.g. ['collision', 'torch_switch'])
+   * @param layerIndex - Which tile layer to mark (default: 0)
+   */
+  markOccluders(types: string[], layerIndex = 0): void {
+    const layer = this.tileLayers[layerIndex]
+    if (!layer || !this._data) return
+    const typeSet = new Set(types)
+    for (const objLayer of this.objectLayers) {
+      for (const obj of objLayer.objects) {
+        if (!typeSet.has(obj.type)) continue
+        const tileX = Math.floor(obj.x / this._tileWidth)
+        const tileY = Math.floor(obj.y / this._tileHeight)
+        layer.setCastsShadowAt(tileX, tileY, true)
+      }
     }
   }
 

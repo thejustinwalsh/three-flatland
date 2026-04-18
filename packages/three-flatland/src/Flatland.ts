@@ -21,6 +21,7 @@ import type { World, Entity } from 'koota'
 import { SpriteGroup } from './pipeline/SpriteGroup'
 import { GlobalUniforms } from './GlobalUniforms'
 import { Sprite2D } from './sprites/Sprite2D'
+import { TileMap2D } from './tilemap/TileMap2D'
 import type { Sprite2DMaterial, ColorTransformFn } from './materials/Sprite2DMaterial'
 import type { MaterialEffect } from './materials/MaterialEffect'
 import type Node from 'three/src/nodes/core/Node.js'
@@ -260,7 +261,12 @@ export class Flatland extends Group implements WorldProvider {
     this.name = 'Flatland'
 
     // Create internal scene (separate from this Group for proper camera/rendering)
+    // Disable automatic matrixWorld updates — Flatland manages transforms via
+    // ECS systems and calls updateMatrixWorld explicitly. This prevents
+    // renderer.render(scene) from re-running the ECS schedule through
+    // SpriteGroup.updateMatrixWorld during internal passes (occlusion, SDF).
     this.scene = new Scene()
+    this.scene.matrixWorldAutoUpdate = false
 
     // Create sprite group
     this.spriteGroup = new SpriteGroup()
@@ -466,6 +472,21 @@ export class Flatland extends Group implements WorldProvider {
         // We don't touch `child.onBeforeRender` — that callback slot
         // belongs to the user.
         this._pendingChannelValidation.add(child)
+      } else if (child instanceof TileMap2D) {
+        // Track tilemap layer materials for lighting
+        const lctx = this._getLightingContext()
+        for (const layer of child.getLayers()) {
+          const mat = layer.material
+          this._spriteMaterials.add(mat)
+          if (lctx?.wrappedLightFn) {
+            mat.requiredChannels = lctx.requiredChannels
+            mat.colorTransform = lctx.wrappedLightFn
+          }
+          if (lctx) {
+            lctx.materials.add(mat)
+          }
+        }
+        this.scene.add(child)
       } else if (child instanceof Light2D) {
         // Track lights separately for the lighting system
         if (!this._lights.includes(child)) {
@@ -499,6 +520,15 @@ export class Flatland extends Group implements WorldProvider {
           lctx.materials.delete(child.material)
         }
         this.spriteGroup.remove(child)
+      } else if (child instanceof TileMap2D) {
+        const lctx = this._getLightingContext()
+        for (const layer of child.getLayers()) {
+          this._spriteMaterials.delete(layer.material)
+          if (lctx) {
+            lctx.materials.delete(layer.material)
+          }
+        }
+        this.scene.remove(child)
       } else if (child instanceof Light2D) {
         const idx = this._lights.indexOf(child)
         if (idx !== -1) this._lights.splice(idx, 1)
@@ -1120,6 +1150,10 @@ export class Flatland extends Group implements WorldProvider {
 
     // Update sprite batches (idempotent — schedule already ran)
     this.spriteGroup.update()
+
+    // Explicitly update transforms — matrixWorldAutoUpdate is disabled on
+    // this.scene to prevent re-entrant schedule runs from internal passes.
+    this.scene.updateMatrixWorld(true)
 
     // Store renderer reference
     if (!this._renderer || this._renderer.deref() !== renderer) {
