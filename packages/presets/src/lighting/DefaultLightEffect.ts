@@ -182,23 +182,22 @@ export const DefaultLightEffect = createLightEffect({
           totalRim.addAssign(contribution.mul(atten).mul(rimFactor))
         })
 
-        // Ambient contribution — accumulated from Light2D ambient lights
-        // in ForwardPlusLighting.update(). Applied outside the tile loop
-        // so ambient doesn't consume a tile slot. Unaffected by shadows.
-        totalLight.addAssign(fp.ambientNode)
-
-        // Add rim to diffuse lighting
+        // Add rim to diffuse lighting (direct contribution only)
         const useRim = rimIntensity.greaterThan(float(0))
-        const combined = useRim.select(
+        const direct = useRim.select(
           vec3(totalLight).add(vec3(totalRim).mul(rimIntensity)),
           vec3(totalLight)
         )
 
-        // Quantize to discrete bands
+        // Quantize direct lighting to discrete bands. Ambient is added
+        // AFTER quantization so it acts as a continuous floor — shadowed
+        // regions still receive baseline illumination, and subtle ambient
+        // tints aren't snapped to zero by large band counts.
         const useBands = bands.greaterThan(float(0))
-        const raw = combined
-        const quantized = raw.mul(bands).add(float(0.5)).floor().div(bands)
-        return useBands.select(quantized, raw)
+        const quantized = direct.mul(bands).add(float(0.5)).floor().div(bands)
+        const shapedDirect = useBands.select(quantized, direct)
+
+        return shapedDirect.add(fp.ambientNode)
       })() as Node<'vec3'>
 
       return Fn(() => {
