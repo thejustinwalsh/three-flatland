@@ -43,9 +43,12 @@ export interface OcclusionPassOptions {
   /** Clear alpha. Default: 0. */
   clearAlpha?: number
   /**
-   * Use NearestFilter on the RT texture instead of LinearFilter. SDF seeding
-   * reads via NearestFilter in `SDFGenerator`, so this matches the default
-   * consumer. Switch to linear only if a custom consumer needs it.
+   * Use NearestFilter on the RT texture instead of LinearFilter. Default is
+   * LinearFilter: the SDF seed pass binary-thresholds alpha > 0, so bilinear
+   * sampling at silhouette edges produces a slightly wider anti-aliased
+   * seed, which is the cheapest available mitigation for the ringing
+   * artifacts introduced by JFA Voronoi seams. Flip to `true` only if a
+   * custom consumer needs hard-edged occluder alpha.
    */
   nearestFilter?: boolean
 }
@@ -119,7 +122,7 @@ export class OcclusionPass {
       depthBuffer: false,
       stencilBuffer: false,
     })
-    const filter = options.nearestFilter ?? true ? NearestFilter : LinearFilter
+    const filter = options.nearestFilter ? NearestFilter : LinearFilter
     this._rt.texture.minFilter = filter
     this._rt.texture.magFilter = filter
 
