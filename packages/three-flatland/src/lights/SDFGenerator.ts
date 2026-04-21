@@ -214,15 +214,21 @@ export class SDFGenerator {
       renderer.setRenderTarget(this._sdfRT)
       _quadMesh.render(renderer)
 
-      // Separable blur is still disabled pending a zero-output investigation —
-      // see earlier commit history. Re-enable once fixed.
-      // _quadMesh.material = this._blurHMaterial
-      // renderer.setRenderTarget(this._sdfBlurRT)
-      // _quadMesh.render(renderer)
-      //
-      // _quadMesh.material = this._blurVMaterial
-      // renderer.setRenderTarget(this._sdfRT)
-      // _quadMesh.render(renderer)
+      // Separable 5-tap binomial blur — H: sdfRT → sdfBlurRT,
+      // V: sdfBlurRT → sdfRT. Smooths the per-texel distance values so
+      // soft-shadow math (and any future linear-filter consumers) see a
+      // graceful transition instead of the stair-stepped Voronoi seams
+      // the raw JFA leaves at diagonal boundaries. Samples are taken at
+      // ±1 and ±2 full-texel offsets, so NearestFilter source sampling
+      // still returns exact texel values; the blur smooths the stored
+      // distances without needing linear interpolation.
+      _quadMesh.material = this._blurHMaterial
+      renderer.setRenderTarget(this._sdfBlurRT)
+      _quadMesh.render(renderer)
+
+      _quadMesh.material = this._blurVMaterial
+      renderer.setRenderTarget(this._sdfRT)
+      _quadMesh.render(renderer)
     } finally {
       RendererUtils.restoreRendererState(renderer, _rendererState)
     }
