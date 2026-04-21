@@ -148,7 +148,7 @@ export const DirectLightEffect = createLightEffect({
                 sdfTexture,
                 worldSizeNode,
                 worldOffsetNode,
-                { softness: shadowSoftness, startOffset: shadowBias }
+                { softness: shadowSoftness, eps: shadowBias }
               )
               shadow = float(1).sub(float(1).sub(trace).mul(shadowStrength))
               shadow = isAmbient.select(float(1), shadow)

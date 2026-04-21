@@ -27,13 +27,12 @@ describe('shadowSDF2D', () => {
     const result = shadowSDF2D(surface, light, sdf, worldSize, worldOffset, {
       steps: 16,
       softness: 8,
-      startOffset: 1,
       eps: 0.1,
     })
     expect(result).toBeDefined()
   })
 
-  it('accepts uniform nodes for softness / startOffset / eps', () => {
+  it('accepts uniform nodes for softness / eps', () => {
     const surface = vec2(0, 0)
     const light = vec2(5, 5)
     const worldSize = uniform(new Vector2(100, 100))

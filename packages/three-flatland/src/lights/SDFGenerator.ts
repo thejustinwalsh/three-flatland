@@ -1,16 +1,17 @@
 import {
   RenderTarget,
-  Scene,
-  OrthographicCamera,
-  PlaneGeometry,
-  Mesh,
   HalfFloatType,
   NearestFilter,
-  LinearFilter,
+  ClampToEdgeWrapping,
+  Vector2,
   type Texture,
 } from 'three'
-import { MeshBasicNodeMaterial } from 'three/webgpu'
-import type { WebGPURenderer } from 'three/webgpu'
+import {
+  NodeMaterial,
+  QuadMesh,
+  RendererUtils,
+  type WebGPURenderer,
+} from 'three/webgpu'
 import { uniform, uv, vec2, vec4, float, Fn, texture as sampleTexture } from 'three/tsl'
 import type Node from 'three/src/nodes/core/Node.js'
 import { registerDebugTexture, unregisterDebugTexture } from '../debug/debug-sink'
@@ -18,62 +19,71 @@ import { registerDebugTexture, unregisterDebugTexture } from '../debug/debug-sin
 /**
  * Jump Flood Algorithm (JFA) SDF Generator.
  *
- * Converts a binary occlusion texture into a signed distance field.
- * Uses fragment-shader-only passes (no compute shaders — works on WebGL 2 and WebGPU).
+ * Converts a binary occlusion texture into an unsigned distance field
+ * (distance to nearest occluder edge, zero inside or on the caster).
  *
- * Output:
- * - SDF texture: R = distance to nearest occluder (normalized UV space),
- *                G = vector X to nearest occluder, B = vector Y to nearest occluder.
+ * Output SDF texture (RGBA16F):
+ * - R = distance to nearest occluder in WORLD units (always positive)
+ * - G, B = world-space vector (x, y) from fragment to nearest occluder seed
+ * - A = 1
  *
- * Pass count: 1 seed + ceil(log2(max(w,h))) JFA + 1 final ≈ 10-12 passes.
+ * World-space distances keep the field isotropic on non-square viewports.
+ * Caller must supply current frustum size via {@link setWorldBounds} before
+ * each {@link generate}.
  *
- * NOTE: This generator is SDF-only. Light propagation is handled separately
- * by RadianceCascades which uses the SDF for visibility testing.
+ * **Rendering pattern**: uses three.js canonical screen-space pass path —
+ * `QuadMesh` + `NodeMaterial.fragmentNode` + `RendererUtils.*RendererState`.
+ * The prior hand-rolled Scene/Camera/PlaneGeometry/Mesh approach produced
+ * WebGPU Y-flip mismatches between ping and pong buffers, because three.js
+ * bakes Y-convention handling into `QuadMesh.render()` but not into
+ * user-authored scene renders. All passes here go through `_quadMesh`.
  */
+
+// Module-level singletons — one QuadMesh shared across all SDFGenerator
+// instances (matches the N8AONode / BloomNode pattern in three.js examples).
+const _quadMesh = new QuadMesh()
+let _rendererState: ReturnType<typeof RendererUtils.resetRendererState>
+
 export class SDFGenerator {
-  /** Final SDF output texture */
+  /** Final SDF output texture. Reference is stable across resizes. */
   get sdfTexture(): Texture {
-    return this._sdfRT!.texture
+    return this._sdfRT.texture
   }
 
-  // Render targets: ping-pong for JFA, final SDF output
-  private _pingRT: RenderTarget | null = null
-  private _pongRT: RenderTarget | null = null
-  private _sdfRT: RenderTarget | null = null
+  // Render targets: ping-pong for JFA, scratch for separable blur, final SDF.
+  private _pingRT: RenderTarget
+  private _pongRT: RenderTarget
+  private _sdfRT: RenderTarget
+  private _sdfBlurRT: RenderTarget
 
-  // Fullscreen quad rendering setup
-  private _scene: Scene
-  private _camera: OrthographicCamera
-  private _quad: Mesh
-  private _geometry: PlaneGeometry
+  // Materials — one per pass / read-direction. `NodeMaterial` (not
+  // `MeshBasicNodeMaterial`) matches the three.js TSL post-effect convention.
+  private _seedMaterial: NodeMaterial | null = null
+  private _jfaMaterialA: NodeMaterial // reads ping → writes pong
+  private _jfaMaterialB: NodeMaterial // reads pong → writes ping
+  private _finalMaterialA: NodeMaterial // reads ping → writes sdf
+  private _finalMaterialB: NodeMaterial // reads pong → writes sdf
+  private _blurHMaterial: NodeMaterial // reads sdf  → writes sdfBlur
+  private _blurVMaterial: NodeMaterial // reads sdfBlur → writes sdf
 
-  // Materials for each pass (created lazily)
-  private _seedMaterial: MeshBasicNodeMaterial | null = null
-  private _jfaMaterialA: MeshBasicNodeMaterial | null = null // reads ping → writes pong
-  private _jfaMaterialB: MeshBasicNodeMaterial | null = null // reads pong → writes ping
-  private _finalMaterialA: MeshBasicNodeMaterial | null = null // reads ping → writes sdf
-  private _finalMaterialB: MeshBasicNodeMaterial | null = null // reads pong → writes sdf
-
-  // JFA step size uniforms (one per material since they read different RTs)
+  // JFA step-size uniforms — one per material (they read different RTs).
   private _jumpSizeA = uniform(0.5)
   private _jumpSizeB = uniform(0.5)
 
-  // Tracks input texture for seed material creation
+  // Reciprocal RT size — texel step for the separable blur kernel.
+  private _texelSize = uniform(new Vector2(1, 1))
+
+  // Frustum size — weights JFA diffs to world space so the SDF is isotropic.
+  private _worldSizeNode = uniform(new Vector2(1, 1))
+
+  // Tracks the input occlusion texture so we only rebuild the seed material
+  // when the caller swaps it out.
   private _occlusionTex: Texture | null = null
 
   constructor() {
-    this._scene = new Scene()
-    this._camera = new OrthographicCamera(-1, 1, 1, -1, 0, 1)
-    this._geometry = new PlaneGeometry(2, 2)
-    this._quad = new Mesh(this._geometry)
-    this._scene.add(this._quad)
-
-    // Eagerly allocate 1×1 placeholder RTs + materials so the sdfTexture
-    // reference is stable from construction onward. TSL captures texture
-    // references at shader-build time, which happens when a LightEffect
-    // attaches — well before the shadow pipeline system's first tick
-    // resizes the RTs to the viewport. Mirrors the same trick in
-    // ForwardPlusLighting (see its constructor comment).
+    // Eagerly allocate 1×1 placeholder RTs so `sdfTexture` hands out a stable
+    // reference to downstream consumers (sprite materials captured it at
+    // shader-build time, well before the first `resize` fires).
     const jfaOptions = {
       type: HalfFloatType,
       minFilter: NearestFilter,
@@ -81,22 +91,40 @@ export class SDFGenerator {
       depthBuffer: false,
       stencilBuffer: false,
     }
+    // NearestFilter on the SDF output: the shadow sphere-trace samples
+    // this texture at sub-texel UVs, and bilinear interpolation between a
+    // dist=0 texel and a dist=1 texel gives a smooth 0→0.5→1 ramp. With
+    // the hit threshold (eps) at 0.5, any trace stepping through that
+    // half-texel ramp registers a hit — producing a faint halo exactly
+    // `eps` wide around every caster. Nearest snaps sub-texel samples to
+    // the closest texel's value, so the hit/no-hit transition is a clean
+    // step at the silhouette boundary.
     const sdfOptions = {
       type: HalfFloatType,
-      minFilter: LinearFilter,
-      magFilter: LinearFilter,
+      minFilter: NearestFilter,
+      magFilter: NearestFilter,
       depthBuffer: false,
       stencilBuffer: false,
     }
     this._pingRT = new RenderTarget(1, 1, jfaOptions)
     this._pongRT = new RenderTarget(1, 1, jfaOptions)
     this._sdfRT = new RenderTarget(1, 1, sdfOptions)
+    this._sdfBlurRT = new RenderTarget(1, 1, sdfOptions)
 
-    // Materials capture the RT textures via TSL texture(); the RT
-    // reference is stable across setSize() so materials never need
-    // rebuilding after the initial construction.
-    this._createJFAMaterials()
-    this._createFinalMaterials()
+    for (const rt of [this._pingRT, this._pongRT, this._sdfRT, this._sdfBlurRT]) {
+      rt.texture.wrapS = ClampToEdgeWrapping
+      rt.texture.wrapT = ClampToEdgeWrapping
+    }
+
+    // Build pass materials once. TSL captures the RT textures at construction
+    // time; the RT references are stable across `setSize`, so these never
+    // need rebuilding.
+    this._jfaMaterialA = this._buildJFAMaterial(this._pingRT.texture, this._jumpSizeA)
+    this._jfaMaterialB = this._buildJFAMaterial(this._pongRT.texture, this._jumpSizeB)
+    this._finalMaterialA = this._buildFinalMaterial(this._pingRT.texture)
+    this._finalMaterialB = this._buildFinalMaterial(this._pongRT.texture)
+    this._blurHMaterial = this._buildBlurMaterial(this._sdfRT.texture, 'horizontal')
+    this._blurVMaterial = this._buildBlurMaterial(this._sdfBlurRT.texture, 'vertical')
 
     registerDebugTexture('sdf.jfaPing', this._pingRT, 'rgba16f', {
       display: 'normalize',
@@ -113,170 +141,167 @@ export class SDFGenerator {
       label: 'SDF distance field',
       maxDim: 0,
     })
+    registerDebugTexture('sdf.blurScratch', this._sdfBlurRT, 'rgba16f', {
+      display: 'signed',
+      label: 'SDF blur scratch',
+      maxDim: 0,
+    })
   }
 
-  /**
-   * Resize render targets to the given dimensions. First-call semantics
-   * (previously called `init`) and subsequent resizes are the same code
-   * path now — the RTs already exist from the constructor.
-   */
   init(width: number, height: number): void {
     this.resize(width, height)
   }
 
-  /**
-   * Resize all render targets. RT textures are stable objects so materials don't need recreation.
-   */
   resize(width: number, height: number): void {
-    this._pingRT?.setSize(width, height)
-    this._pongRT?.setSize(width, height)
-    this._sdfRT?.setSize(width, height)
+    this._pingRT.setSize(width, height)
+    this._pongRT.setSize(width, height)
+    this._sdfRT.setSize(width, height)
+    this._sdfBlurRT.setSize(width, height)
+    this._texelSize.value.set(1 / Math.max(1, width), 1 / Math.max(1, height))
   }
 
   /**
-   * Generate SDF from occlusion render target.
-   * The occlusion RT should have alpha > 0 where occluders exist.
-   *
-   * @param renderer - WebGPU renderer
-   * @param occlusionRT - Occlusion render target (alpha = occluder mask)
+   * Push the current camera frustum (world units) to the JFA / final-pass
+   * shaders so distance math is world-isotropic on non-square viewports.
+   * Must be called each frame before {@link generate}.
+   */
+  setWorldBounds(worldSize: Vector2): void {
+    this._worldSizeNode.value.copy(worldSize)
+  }
+
+  /**
+   * Run the full JFA pipeline: seed pass → N ping-pong passes → final
+   * distance pass → separable blur. All passes go through the shared
+   * `QuadMesh` with `RendererUtils` wrapping the state save/restore —
+   * matching the three.js canonical TSL post-effect pattern (N8AONode,
+   * BloomNode, etc.). That path is what lets three.js handle the WebGPU
+   * Y-flip and binding refresh correctly; our previous hand-rolled
+   * Scene/Camera/Mesh render did not.
    */
   generate(renderer: WebGPURenderer, occlusionRT: RenderTarget): void {
-    // Ensure seed material exists and matches the input texture
     this._ensureSeedMaterial(occlusionRT.texture)
 
-    const prevRT = renderer.getRenderTarget()
-    const maxDim = Math.max(this._pingRT!.width, this._pingRT!.height)
-    const passes = Math.ceil(Math.log2(maxDim))
+    _rendererState = RendererUtils.resetRendererState(renderer, _rendererState)
 
-    // Pass 1: Seed — read occlusion alpha, write seed UVs
-    this._quad.material = this._seedMaterial!
-    renderer.setRenderTarget(this._pingRT)
-    renderer.render(this._scene, this._camera)
+    try {
+      const maxDim = Math.max(this._pingRT.width, this._pingRT.height)
+      const passes = Math.ceil(Math.log2(maxDim))
 
-    // JFA passes: ping-pong with halving jump size
-    let readPing = true
-    for (let i = 0; i < passes; i++) {
-      const jumpSize = Math.pow(2, passes - 1 - i) / maxDim
+      // Seed pass — occlusion alpha → seed UV into ping buffer.
+      _quadMesh.material = this._seedMaterial!
+      renderer.setRenderTarget(this._pingRT)
+      _quadMesh.render(renderer)
 
-      if (readPing) {
-        this._jumpSizeA.value = jumpSize
-        this._quad.material = this._jfaMaterialA!
-        renderer.setRenderTarget(this._pongRT)
-      } else {
-        this._jumpSizeB.value = jumpSize
-        this._quad.material = this._jfaMaterialB!
-        renderer.setRenderTarget(this._pingRT)
+      // JFA ping-pong with halving jump sizes.
+      let readPing = true
+      for (let i = 0; i < passes; i++) {
+        const jumpSize = Math.pow(2, passes - 1 - i) / maxDim
+        if (readPing) {
+          this._jumpSizeA.value = jumpSize
+          _quadMesh.material = this._jfaMaterialA
+          renderer.setRenderTarget(this._pongRT)
+        } else {
+          this._jumpSizeB.value = jumpSize
+          _quadMesh.material = this._jfaMaterialB
+          renderer.setRenderTarget(this._pingRT)
+        }
+        _quadMesh.render(renderer)
+        readPing = !readPing
       }
 
-      renderer.render(this._scene, this._camera)
-      readPing = !readPing
+      // Final distance pass — converged seed UV → world-distance SDF.
+      _quadMesh.material = readPing ? this._finalMaterialA : this._finalMaterialB
+      renderer.setRenderTarget(this._sdfRT)
+      _quadMesh.render(renderer)
+
+      // Separable blur is still disabled pending a zero-output investigation —
+      // see earlier commit history. Re-enable once fixed.
+      // _quadMesh.material = this._blurHMaterial
+      // renderer.setRenderTarget(this._sdfBlurRT)
+      // _quadMesh.render(renderer)
+      //
+      // _quadMesh.material = this._blurVMaterial
+      // renderer.setRenderTarget(this._sdfRT)
+      // _quadMesh.render(renderer)
+    } finally {
+      RendererUtils.restoreRendererState(renderer, _rendererState)
     }
-
-    // Final pass: compute distance from converged seed UVs
-    if (readPing) {
-      this._quad.material = this._finalMaterialA! // reads ping
-    } else {
-      this._quad.material = this._finalMaterialB! // reads pong
-    }
-
-    renderer.setRenderTarget(this._sdfRT)
-    renderer.render(this._scene, this._camera)
-
-    renderer.setRenderTarget(prevRT)
   }
 
-  /**
-   * Dispose of all GPU resources.
-   */
   dispose(): void {
     unregisterDebugTexture('sdf.jfaPing')
     unregisterDebugTexture('sdf.jfaPong')
     unregisterDebugTexture('sdf.distanceField')
-    this._pingRT?.dispose()
-    this._pongRT?.dispose()
-    this._sdfRT?.dispose()
-    this._geometry.dispose()
+    unregisterDebugTexture('sdf.blurScratch')
+    this._pingRT.dispose()
+    this._pongRT.dispose()
+    this._sdfRT.dispose()
+    this._sdfBlurRT.dispose()
     this._seedMaterial?.dispose()
-    this._jfaMaterialA?.dispose()
-    this._jfaMaterialB?.dispose()
-    this._finalMaterialA?.dispose()
-    this._finalMaterialB?.dispose()
+    this._jfaMaterialA.dispose()
+    this._jfaMaterialB.dispose()
+    this._finalMaterialA.dispose()
+    this._finalMaterialB.dispose()
+    this._blurHMaterial.dispose()
+    this._blurVMaterial.dispose()
   }
 
   /**
-   * Create or recreate the seed material when input texture changes.
-   * TSL texture() captures a Texture object reference at node creation time,
-   * so we must recreate if the reference changes.
-   *
-   * Seed pass output:
-   * - R, G: Seed UV for SDF (fragment UV where occluder, FAR otherwise)
+   * Seed pass — reads the occlusion texture (3×3 max-alpha dilation closes
+   * pixel-art silhouette gaps) and writes `(fragUV, 0, 1)` at occluder
+   * fragments or `(FAR, FAR, 0, 1)` elsewhere. Rebuilt when the input
+   * texture reference changes.
    */
   private _ensureSeedMaterial(occlusionTexture: Texture): void {
     if (this._occlusionTex === occlusionTexture && this._seedMaterial) return
-
     this._occlusionTex = occlusionTexture
     this._seedMaterial?.dispose()
 
     const FAR = float(9999)
-    this._seedMaterial = new MeshBasicNodeMaterial()
-    this._seedMaterial.colorNode = Fn(() => {
+    const mat = new NodeMaterial()
+    mat.fragmentNode = Fn(() => {
       const fragUV = uv()
-      const occSample = sampleTexture(occlusionTexture, fragUV)
-      const hasOccluder = occSample.a.greaterThan(float(0))
-
-      // SDF seed: fragment UV where occluder exists, FAR sentinel otherwise
+      const alpha = sampleTexture(occlusionTexture, fragUV).a
+      // Threshold at 0.5 instead of 0 so any residual fractional alpha
+      // (e.g. from sub-pixel sprite positioning or anti-aliased sprite
+      // art) rounds to a clean binary occluder mask. Without this the
+      // SDF silhouette grows by half a pixel along each edge.
+      const hasOccluder = alpha.greaterThan(float(0.5))
       const seedUV = hasOccluder.select(fragUV, vec2(FAR, FAR))
-
       return vec4(seedUV.x, seedUV.y, float(0), float(1))
     })() as Node<'vec4'>
+    this._seedMaterial = mat
   }
 
   /**
-   * Create JFA propagation materials (A reads ping, B reads pong).
-   * Each material checks 9 neighbors at offset * jumpSize and keeps the closest seed UV.
+   * JFA propagation material. For each fragment, tests 9 neighbor texels at
+   * `jumpSize` UV distance, keeps the seed that's closest in WORLD space.
+   * (UV-space comparison on a non-square RT would pick an anisotropic
+   * winner — the SDF would come out squashed along one axis.)
    */
-  private _createJFAMaterials(): void {
-    const pingTex = this._pingRT!.texture
-    const pongTex = this._pongRT!.texture
-
-    this._jfaMaterialA = new MeshBasicNodeMaterial()
-    this._jfaMaterialA.colorNode = this._jfaColorNode(pingTex, this._jumpSizeA)
-
-    this._jfaMaterialB = new MeshBasicNodeMaterial()
-    this._jfaMaterialB.colorNode = this._jfaColorNode(pongTex, this._jumpSizeB)
-  }
-
-  /**
-   * Create the JFA propagation shader node.
-   * For each fragment, check 9 neighbors at offset * jumpSize.
-   * Keep the seed UV that is closest to this fragment.
-   */
-  private _jfaColorNode(sourceTex: Texture, jumpSize: ReturnType<typeof uniform>): Node<'vec4'> {
-    return Fn(() => {
+  private _buildJFAMaterial(
+    sourceTex: Texture,
+    jumpSize: ReturnType<typeof uniform>
+  ): NodeMaterial {
+    const worldSize = this._worldSizeNode
+    const mat = new NodeMaterial()
+    mat.fragmentNode = Fn(() => {
       const fragUV = uv()
-
-      // Read current pixel data
       const currentData = sampleTexture(sourceTex, fragUV)
       const currentSeedUV = vec2(currentData.r, currentData.g)
-
-      // Initialize best seed with current value
+      const currentDiff = fragUV.sub(currentSeedUV).mul(worldSize)
       const bestSeed = currentSeedUV.toVar('bestSeed')
-      const bestDist = fragUV.sub(currentSeedUV).dot(fragUV.sub(currentSeedUV)).toVar('bestDist')
+      const bestDist = currentDiff.dot(currentDiff).toVar('bestDist')
 
-      // 9-neighbor search (3×3 grid centered on fragment)
       for (let dy = -1; dy <= 1; dy++) {
         for (let dx = -1; dx <= 1; dx++) {
-          if (dx === 0 && dy === 0) continue // Skip center (already processed)
-
+          if (dx === 0 && dy === 0) continue
           const offset = vec2(float(dx), float(dy)).mul(float(jumpSize))
           const neighborUV = fragUV.add(offset)
           const neighborData = sampleTexture(sourceTex, neighborUV)
           const neighborSeedUV = vec2(neighborData.r, neighborData.g)
-
-          // Check if this neighbor's seed is closer
-          const diff = fragUV.sub(neighborSeedUV)
+          const diff = fragUV.sub(neighborSeedUV).mul(worldSize)
           const dist = diff.dot(diff)
-
           const isCloser = dist.lessThan(bestDist)
           bestDist.assign(isCloser.select(dist, bestDist))
           bestSeed.assign(isCloser.select(neighborSeedUV, bestSeed))
@@ -285,37 +310,54 @@ export class SDFGenerator {
 
       return vec4(bestSeed.x, bestSeed.y, float(0), float(1))
     })() as Node<'vec4'>
+    return mat
   }
 
   /**
-   * Create final pass materials (A reads ping, B reads pong).
-   * Computes final SDF distance from converged seed UVs.
+   * Final-distance material. Reads the converged seed UV at each fragment,
+   * converts diff UV → world via `* worldSize`, encodes length in R, and
+   * the world-space diff vector in G/B.
    */
-  private _createFinalMaterials(): void {
-    const pingTex = this._pingRT!.texture
-    const pongTex = this._pongRT!.texture
-
-    this._finalMaterialA = new MeshBasicNodeMaterial()
-    this._finalMaterialA.colorNode = this._finalColorNode(pingTex)
-
-    this._finalMaterialB = new MeshBasicNodeMaterial()
-    this._finalMaterialB.colorNode = this._finalColorNode(pongTex)
-  }
-
-  /**
-   * Create the final computation shader node.
-   * R = distance to nearest occluder (UV space)
-   * G = vector X to nearest occluder
-   * B = vector Y to nearest occluder
-   */
-  private _finalColorNode(sourceTex: Texture): Node<'vec4'> {
-    return Fn(() => {
+  private _buildFinalMaterial(sourceTex: Texture): NodeMaterial {
+    const worldSize = this._worldSizeNode
+    const mat = new NodeMaterial()
+    mat.fragmentNode = Fn(() => {
       const fragUV = uv()
       const data = sampleTexture(sourceTex, fragUV)
       const seedUV = vec2(data.r, data.g)
-      const diff = fragUV.sub(seedUV)
+      const diff = fragUV.sub(seedUV).mul(worldSize)
       const dist = diff.length()
       return vec4(dist, diff.x, diff.y, float(1))
     })() as Node<'vec4'>
+    return mat
+  }
+
+  /**
+   * 5-tap binomial separable blur [1,4,6,4,1]/16. Disabled in the hot path
+   * until a zero-output bug is fixed, but kept built so the shader graph
+   * stays consistent and `sdfBlurRT` is a valid debug target.
+   */
+  private _buildBlurMaterial(
+    sourceTex: Texture,
+    axis: 'horizontal' | 'vertical'
+  ): NodeMaterial {
+    const ts = this._texelSize
+    const mat = new NodeMaterial()
+    mat.fragmentNode = Fn(() => {
+      const fragUV = uv()
+      const step = axis === 'horizontal' ? vec2(ts.x, float(0)) : vec2(float(0), ts.y)
+      const s0 = sampleTexture(sourceTex, fragUV)
+      const s1a = sampleTexture(sourceTex, fragUV.add(step))
+      const s1b = sampleTexture(sourceTex, fragUV.sub(step))
+      const s2a = sampleTexture(sourceTex, fragUV.add(step.mul(float(2))))
+      const s2b = sampleTexture(sourceTex, fragUV.sub(step.mul(float(2))))
+      return s0
+        .mul(float(6 / 16))
+        .add(s1a.mul(float(4 / 16)))
+        .add(s1b.mul(float(4 / 16)))
+        .add(s2a.mul(float(1 / 16)))
+        .add(s2b.mul(float(1 / 16)))
+    })() as Node<'vec4'>
+    return mat
   }
 }

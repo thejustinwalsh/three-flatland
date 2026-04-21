@@ -35,7 +35,11 @@ export interface OcclusionPassOptions {
   /**
    * Resolution multiplier relative to the main viewport (0 < x <= 1).
    * The SDF is derived from this RT, so lower values trade shadow fidelity
-   * for shadow cost. Default: 0.5 (half resolution each axis).
+   * for shadow cost. Default: 1.0 (full resolution). Half-res produced
+   * visible JFA seam artifacts and multi-texel caster edges at small
+   * canvas sizes — the texel-to-world ratio was too coarse for thin
+   * sprites. Drop to 0.5 (or 0.25) on low-end mobile where the shadow
+   * cost dominates and a blockier silhouette is acceptable.
    */
   resolutionScale?: number
   /** Clear color for the RT. Default: transparent black. */
@@ -43,14 +47,15 @@ export interface OcclusionPassOptions {
   /** Clear alpha. Default: 0. */
   clearAlpha?: number
   /**
-   * Use NearestFilter on the RT texture instead of LinearFilter. Default is
-   * LinearFilter: the SDF seed pass binary-thresholds alpha > 0, so bilinear
-   * sampling at silhouette edges produces a slightly wider anti-aliased
-   * seed, which is the cheapest available mitigation for the ringing
-   * artifacts introduced by JFA Voronoi seams. Flip to `true` only if a
-   * custom consumer needs hard-edged occluder alpha.
+   * Use LinearFilter on the RT texture instead of the NearestFilter default.
+   * Linear sampling smears alpha across silhouette edges (a texel just
+   * outside the sprite interpolates to a fractional alpha), which inflates
+   * the SDF seed by ~½ pixel in every direction and produces a faint halo
+   * around every caster. NearestFilter keeps the alpha binary and pixel-
+   * perfect. Flip to `true` only if a custom consumer explicitly wants the
+   * anti-aliased silhouette.
    */
-  nearestFilter?: boolean
+  linearFilter?: boolean
 }
 
 /**
@@ -114,7 +119,7 @@ export class OcclusionPass {
   private _rendering = false
 
   constructor(options: OcclusionPassOptions = {}) {
-    this._resolutionScale = options.resolutionScale ?? 0.5
+    this._resolutionScale = options.resolutionScale ?? 1.0
     this._clearColor = new Color(options.clearColor ?? 0x000000)
     this._clearAlpha = options.clearAlpha ?? 0
 
@@ -122,7 +127,7 @@ export class OcclusionPass {
       depthBuffer: false,
       stencilBuffer: false,
     })
-    const filter = options.nearestFilter ? NearestFilter : LinearFilter
+    const filter = options.linearFilter ? LinearFilter : NearestFilter
     this._rt.texture.minFilter = filter
     this._rt.texture.magFilter = filter
 
@@ -314,7 +319,22 @@ function buildOcclusionMaterial(texture: Texture): MeshBasicNodeMaterial {
     const alpha = sampleTexture(texture, atlasUV).a
     const casts = readCastShadowFlag()
     const mask = select(casts, float(1), float(0))
-    return vec4(float(0), float(0), float(0), alpha.mul(mask))
+    const effectiveAlpha = alpha.mul(mask)
+    // Emit binary alpha matching Sprite2DMaterial's 0.01 discard threshold,
+    // so the occlusion RT silhouette is pixel-identical to the rendered
+    // sprite. Using `select` + blending (instead of `Discard()`) keeps the
+    // shader's control flow uniform — `Discard()` in a branch forces
+    // per-fragment flow control and can stall the WebGPU rasterizer when
+    // atlas texels are mostly transparent. SrcAlpha/OneMinusSrcAlpha
+    // blending on the transparent RT means `alpha = 0` fragments
+    // contribute nothing to the destination, giving us the same
+    // "no overwrite" semantics as Discard without the stall.
+    const casterAlpha = select(
+      effectiveAlpha.greaterThan(float(0.01)),
+      float(1),
+      float(0)
+    )
+    return vec4(float(0), float(0), float(0), casterAlpha)
   })() as Node<'vec4'>
 
   return material

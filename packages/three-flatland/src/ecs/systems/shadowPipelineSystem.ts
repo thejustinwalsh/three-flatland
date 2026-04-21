@@ -37,6 +37,7 @@ import type { LightEffect } from '../../lights/LightEffect'
  *   in JS beyond that.
  */
 const _sizeScratch = new Vector2()
+const _worldSizeScratch = new Vector2()
 
 export function shadowPipelineSystem(world: World): void {
   const ctxEntities = world.query(LightingContext)
@@ -117,6 +118,20 @@ export function shadowPipelineSystem(world: World): void {
 
   const scene = ctx.scene
   if (!scene) return
+
+  // Push current world bounds into the SDF generator so the JFA seed
+  // comparison and final distance encode world-space values. Read them
+  // directly off the camera — `ctx.worldSize` is only populated later
+  // in the frame by lightEffectSystem, so using it here would lag a frame
+  // (and be (0,0) on the first frame, collapsing the JFA metric). An
+  // ortho camera is required by the shadow pipeline; cast guards against
+  // callers that plug in a perspective camera by mistake.
+  const ortho = camera as { left?: number; right?: number; top?: number; bottom?: number }
+  if (typeof ortho.left === 'number' && typeof ortho.right === 'number' &&
+      typeof ortho.top === 'number' && typeof ortho.bottom === 'number') {
+    _worldSizeScratch.set(ortho.right - ortho.left, ortho.top - ortho.bottom)
+    pipeline.sdfGenerator.setWorldBounds(_worldSizeScratch)
+  }
 
   pipeline.occlusionPass.render(renderer, scene, camera)
   pipeline.sdfGenerator.generate(renderer, pipeline.occlusionPass.renderTarget)

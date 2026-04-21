@@ -489,10 +489,9 @@ export class RadianceCascades {
       const visibility = float(1).toVar() // 0 = hit occluder (SDF), 1 = clear
       const t = float(intervalOffset).toVar()
 
-      // SDF stores distance in UV space [0,1]. Convert ray direction to UV
-      // space so we can compare SDF distance against ray step directly.
-      // Scale by average of world dimensions for isotropic approximation.
-      const sdfScale = worldSize.x.add(worldSize.y).mul(float(0.5))
+      // SDF stores distance in WORLD units (see SDFGenerator) — no
+      // UV→world rescale needed. The ray t is in world units too, so
+      // sdfDist feeds directly into the sphere-trace step.
 
       Loop(32, () => {
         const sampleWorld = probeWorldPos.add(rayDir.mul(t))
@@ -511,7 +510,7 @@ export class RadianceCascades {
 
         // SDF sphere trace — check for occluder hit
         const sdfSample = sampleTexture(sdfTexture, sampleUV)
-        const sdfDist = sdfSample.r.mul(sdfScale)
+        const sdfDist = sdfSample.r
 
         If(sdfDist.lessThan(float(EPS)), () => {
           // Hit occluder — ray is blocked. Capture any emission at surface.
