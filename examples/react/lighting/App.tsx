@@ -201,6 +201,9 @@ interface SceneProps {
   shadowSoftness: number
   shadowBias: number
   shadowMaxDistance: number
+  shadowPixelSize: number
+  shadowBands: number
+  shadowBandCurve: number
   shadowDebug: number
   ambient: number
   slimeCount: number
@@ -271,6 +274,9 @@ function FlatlandScene(props: SceneProps) {
       shadowSoftness: number
       shadowBias: number
       shadowMaxDistance: number
+      shadowPixelSize: number
+      shadowBands: number
+      shadowBandCurve: number
       shadowDebug: number
     } | null
     if (!e) return
@@ -279,6 +285,9 @@ function FlatlandScene(props: SceneProps) {
     e.shadowSoftness = props.shadowSoftness
     e.shadowBias = props.shadowBias
     e.shadowMaxDistance = props.shadowMaxDistance
+    e.shadowPixelSize = props.shadowPixelSize
+    e.shadowBands = props.shadowBands
+    e.shadowBandCurve = props.shadowBandCurve
     e.shadowDebug = props.shadowDebug
   }, [
     props.bands,
@@ -287,6 +296,9 @@ function FlatlandScene(props: SceneProps) {
     props.shadowSoftness,
     props.shadowBias,
     props.shadowMaxDistance,
+    props.shadowPixelSize,
+    props.shadowBands,
+    props.shadowBandCurve,
     props.shadowDebug,
   ])
 
@@ -479,6 +491,9 @@ function FlatlandScene(props: SceneProps) {
           shadowSoftness={props.shadowSoftness}
           shadowBias={props.shadowBias}
           shadowMaxDistance={props.shadowMaxDistance}
+          shadowPixelSize={props.shadowPixelSize}
+          shadowBands={props.shadowBands}
+          shadowBandCurve={props.shadowBandCurve}
         />
 
         {/* Floor — centered so map origin is at screen center */}
@@ -602,6 +617,9 @@ export default function App() {
   const [shadowSoftness] = usePaneInput(shadows, 'softness', 16, { min: 1, max: 48, step: 1 })
   const [shadowBias] = usePaneInput(shadows, 'bias', 0.5, { min: 0, max: 2, step: 0.05 })
   const [shadowMaxDistance] = usePaneInput(shadows, 'maxDistance', 0, { min: 0, max: 600, step: 10 })
+  const [shadowPixelSize] = usePaneInput(shadows, 'pixelSize', 0, { min: 0, max: 8, step: 1 })
+  const [shadowBands] = usePaneInput(shadows, 'bands', 0, { min: 0, max: 8, step: 1 })
+  const [shadowBandCurve] = usePaneInput(shadows, 'bandCurve', 1, { min: 0.25, max: 4, step: 0.05 })
   // Debug view modes:
   //   0 = normal, 1 = avg shadow mask, 2 = direct light (no shadow),
   //   3 = direct light (w/ shadow), 4 = SDF at surface, 5 = tile light count
@@ -632,6 +650,9 @@ export default function App() {
           shadowSoftness={shadowSoftness}
           shadowBias={shadowBias}
           shadowMaxDistance={shadowMaxDistance}
+          shadowPixelSize={shadowPixelSize}
+          shadowBands={shadowBands}
+          shadowBandCurve={shadowBandCurve}
           shadowDebug={shadowDebug}
           ambient={ambient}
           slimeCount={slimeCount}
