@@ -60,6 +60,27 @@ export const DefaultLightEffect = createLightEffect({
     // near-caster shadows solid while hiding cone-fan artifacts far away
     // from the caster.
     shadowMaxDistance: 0,
+    // Snap the shadow trace's surface position to a world-unit block grid.
+    // 0 = off (per-fragment trace). 1/2/4/8 = blocky shadow silhouettes
+    // where every fragment in that many world-unit block traces from the
+    // same origin and therefore receives the same shadow. Independent of
+    // the `pixelSize` uniform, which snaps everything — this only
+    // chunkifies shadows. Purely aesthetic; does NOT reduce GPU cost.
+    shadowPixelSize: 0,
+    // Quantize each per-light shadow value (after `shadowStrength` is
+    // applied) to this many tones. 0 = continuous. 2-4 gives crisp
+    // stepped shadows in the style of the `bands` uniform. Visible only
+    // when shadow has intermediate values (shadowStrength < 1 or
+    // shadowMaxDistance > 0); with binary hit/miss + strength 1, there's
+    // nothing to band.
+    shadowBands: 0,
+    // Nonlinear quantization curve for `shadowBands`. 1 = linear (even
+    // spacing). >1 clusters tones toward the dark end — useful when
+    // shadows fall off quickly and you want more perceptual resolution
+    // near casters and less in the faint-shadow tail. <1 clusters tones
+    // toward lit. Applied as `pow(pow(shadow, 1/curve).quantize(), curve)`
+    // so the round-trip preserves the 0→0 and 1→1 endpoints.
+    shadowBandCurve: 1,
     // Debug view mode — picks what to render instead of normal lighting.
     // Each mode bypasses the sprite-color multiplication so the output
     // is a pure diagnostic image.
@@ -88,6 +109,9 @@ export const DefaultLightEffect = createLightEffect({
     const shadowSoftness = uniforms.shadowSoftness
     const shadowBias = uniforms.shadowBias
     const shadowMaxDistance = uniforms.shadowMaxDistance
+    const shadowPixelSize = uniforms.shadowPixelSize
+    const shadowBands = uniforms.shadowBands
+    const shadowBandCurve = uniforms.shadowBandCurve
     const shadowDebug = uniforms.shadowDebug
     const bands = uniforms.bands
     const pixelSize = uniforms.pixelSize
@@ -190,8 +214,22 @@ export const DefaultLightEffect = createLightEffect({
           // controls penumbra width; `shadowBias` is the SDF hit epsilon.
           let shadow: Node<'float'> = float(1)
           if (sdfTexture) {
+            // Optional block-snap on the shadow trace origin — neighbors
+            // in the same `shadowPixelSize` world-unit block trace from
+            // the same point and thus get identical shadow, producing
+            // chunky pixel-art silhouettes independent of the main
+            // `pixelSize` snap.
+            const useShadowSnap = shadowPixelSize.greaterThan(float(0))
+            const shadowSnappedPos = vec2(surfacePos)
+              .div(shadowPixelSize)
+              .floor()
+              .mul(shadowPixelSize)
+            const shadowSurfacePos = useShadowSnap.select(
+              shadowSnappedPos,
+              vec2(surfacePos)
+            )
             const trace = shadowSDF2D(
-              vec2(surfacePos),
+              shadowSurfacePos,
               lightPos,
               sdfTexture,
               worldSizeNode,
@@ -206,6 +244,29 @@ export const DefaultLightEffect = createLightEffect({
             // Attenuate shadowing by shadowStrength — lerp from lit (1)
             // toward the trace value by the configured strength.
             shadow = float(1).sub(float(1).sub(trace).mul(shadowStrength))
+            // Optional bit-crush: quantize the per-light shadow value
+            // to `shadowBands` discrete tones before it scales the
+            // light contribution. Parallel to the `bands` uniform that
+            // quantizes total direct lighting.
+            //
+            // `shadowBandCurve` reshapes the quantization non-linearly:
+            // expand the shadow through `pow(x, 1/curve)`, quantize
+            // evenly, then compress back through `pow(y, curve)`. With
+            // curve > 1, more output tones cluster near shadow = 0 (deep
+            // shadow / near caster); curve = 1 is even linear spacing;
+            // curve < 1 clusters tones near shadow = 1 (lit). Endpoints
+            // 0 and 1 are preserved.
+            const useShadowBands = shadowBands.greaterThan(float(0))
+            const curve = shadowBandCurve.max(float(0.01))
+            const invCurve = float(1).div(curve)
+            const shadowExpanded = shadow.pow(invCurve)
+            const shadowBandedExp = shadowExpanded
+              .mul(shadowBands)
+              .add(float(0.5))
+              .floor()
+              .div(shadowBands)
+            const shadowBanded = shadowBandedExp.pow(curve)
+            shadow = useShadowBands.select(shadowBanded, shadow)
             // Ambient lights ignore shadows.
             shadow = isAmbient.select(float(1), shadow)
           }
