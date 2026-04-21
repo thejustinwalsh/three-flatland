@@ -28,13 +28,14 @@
 /** Tier sizes / counts. Hard-coded; bump here if we ever see exhaustion. */
 export const POOL = {
   small: { size: 4 * 1024, count: 8 },         // 32 KB
-  // Sized to fit the worst-case combined drain we can realistically
-  // produce: ForwardPlusLighting's `tileScores` at 1080p is
-  // tileCount * MAX_LIGHTS_PER_TILE * 4B ≈ 510 KB; combined with
-  // `lightCounts` (32 KB), `lightStore.data` (16 KB), and a stats
-  // batch (~1 KB) we're around 560 KB. 2 MB gives headroom for 4K
-  // displays and future registrations without re-tuning.
-  large: { size: 2 * 1024 * 1024, count: 4 },  //  8 MB
+  // Sized to fit the largest debug buffer we routinely drain: full-res
+  // SDF RTs at typical canvas sizes. At 1440×1200 RGBA16F (8 B/texel)
+  // that's ~13.8 MB per RT, and we register 4 SDF RTs (jfaPing, jfaPong,
+  // distanceField, blurScratch). 16 MB per slot × 4 slots = 64 MB total
+  // — generous but this is dev-only, never shipped. Alternative for
+  // production: downsample debug previews to a 256² thumbnail before
+  // queuing. Revisit if devtools memory becomes an issue.
+  large: { size: 16 * 1024 * 1024, count: 4 }, // 64 MB
 } as const
 
 export type PoolTier = 'small' | 'large'

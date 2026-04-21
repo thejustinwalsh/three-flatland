@@ -200,6 +200,8 @@ interface SceneProps {
   shadowStrength: number
   shadowSoftness: number
   shadowBias: number
+  shadowMaxDistance: number
+  shadowDebug: number
   ambient: number
   slimeCount: number
   torchIntensity: number
@@ -268,16 +270,31 @@ function FlatlandScene(props: SceneProps) {
       shadowStrength: number
       shadowSoftness: number
       shadowBias: number
+      shadowMaxDistance: number
+      shadowDebug: number
     } | null
     if (!e) return
     e.bands = props.quantize ? props.bands : 0
     e.shadowStrength = props.shadowStrength
     e.shadowSoftness = props.shadowSoftness
     e.shadowBias = props.shadowBias
-  }, [props.bands, props.quantize, props.shadowStrength, props.shadowSoftness, props.shadowBias])
+    e.shadowMaxDistance = props.shadowMaxDistance
+    e.shadowDebug = props.shadowDebug
+  }, [
+    props.bands,
+    props.quantize,
+    props.shadowStrength,
+    props.shadowSoftness,
+    props.shadowBias,
+    props.shadowMaxDistance,
+    props.shadowDebug,
+  ])
 
   useEffect(() => {
-    tilemapRef.current?.markOccluders(['collision', 'torch_switch'])
+    // torch_switch tiles hold a torch Light2D at their center — treating
+    // them as shadow casters would self-shadow their own light. They remain
+    // collision for the hero (handled separately), just not occluders.
+    tilemapRef.current?.markOccluders(['collision'])
   }, [mapData])
 
   useEffect(() => {
@@ -461,6 +478,7 @@ function FlatlandScene(props: SceneProps) {
           shadowStrength={props.shadowStrength}
           shadowSoftness={props.shadowSoftness}
           shadowBias={props.shadowBias}
+          shadowMaxDistance={props.shadowMaxDistance}
         />
 
         {/* Floor — centered so map origin is at screen center */}
@@ -540,7 +558,10 @@ function FlatlandScene(props: SceneProps) {
             ref={(el) => { s.sprite = el }}
             texture={slimeTex}
             scale={[SLIME_SCALE, SLIME_SCALE, 1]}
-            castsShadow
+            // castsShadow omitted — the slime IS a light source (attached
+            // Light2D at its center). Marking it as an occluder would
+            // self-shadow its own light. Future: emit an "emissive rim"
+            // so slimes still read as glowing solids without this hack.
             lit
             layer={Layers.ENTITIES}
           >
@@ -579,7 +600,16 @@ export default function App() {
   const shadows = usePaneFolder(pane, 'Shadows')
   const [shadowStrength] = usePaneInput(shadows, 'strength', 0.85, { min: 0, max: 1, step: 0.05 })
   const [shadowSoftness] = usePaneInput(shadows, 'softness', 16, { min: 1, max: 48, step: 1 })
-  const [shadowBias] = usePaneInput(shadows, 'bias', 1, { min: 0, max: 4, step: 0.1 })
+  const [shadowBias] = usePaneInput(shadows, 'bias', 0.5, { min: 0, max: 2, step: 0.05 })
+  const [shadowMaxDistance] = usePaneInput(shadows, 'maxDistance', 0, { min: 0, max: 600, step: 10 })
+  // Debug view modes:
+  //   0 = normal, 1 = avg shadow mask, 2 = direct light (no shadow),
+  //   3 = direct light (w/ shadow), 4 = SDF at surface, 5 = tile light count
+  const [shadowDebug] = usePaneInput(shadows, 'debug mode', 0, {
+    min: 0,
+    max: 5,
+    step: 1,
+  })
 
   const torches = usePaneFolder(pane, 'Torches')
   const [torchIntensity] = usePaneInput(torches, 'intensity', 1.2, { min: 0, max: 3, step: 0.05 })
@@ -601,6 +631,8 @@ export default function App() {
           shadowStrength={shadowStrength}
           shadowSoftness={shadowSoftness}
           shadowBias={shadowBias}
+          shadowMaxDistance={shadowMaxDistance}
+          shadowDebug={shadowDebug}
           ambient={ambient}
           slimeCount={slimeCount}
           torchIntensity={torchIntensity}

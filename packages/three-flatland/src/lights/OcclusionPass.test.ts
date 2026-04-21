@@ -11,12 +11,12 @@ describe('OcclusionPass', () => {
     pass.dispose()
   })
 
-  it('applies the default 0.5 resolution scale', () => {
+  it('applies the default 1.0 resolution scale', () => {
     const pass = new OcclusionPass()
     pass.resize(1920, 1080)
-    expect(pass.width).toBe(960)
-    expect(pass.height).toBe(540)
-    expect(pass.resolutionScale).toBe(0.5)
+    expect(pass.width).toBe(1920)
+    expect(pass.height).toBe(1080)
+    expect(pass.resolutionScale).toBe(1.0)
     pass.dispose()
   })
 
@@ -62,8 +62,8 @@ describe('OcclusionPass', () => {
     pass.dispose()
   })
 
-  it('switches to LinearFilter when opted out', () => {
-    const pass = new OcclusionPass({ nearestFilter: false })
+  it('switches to LinearFilter when opted in', () => {
+    const pass = new OcclusionPass({ linearFilter: true })
     expect(pass.renderTarget.texture.minFilter).toBe(LinearFilter)
     expect(pass.renderTarget.texture.magFilter).toBe(LinearFilter)
     pass.dispose()

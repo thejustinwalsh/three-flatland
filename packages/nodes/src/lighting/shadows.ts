@@ -211,26 +211,33 @@ export function shadowSoft2D(
 }
 
 /**
- * Sphere-trace a 2D soft shadow ray through an SDF texture.
+ * Sphere-trace a 2D hard shadow ray through an SDF texture.
  *
  * Walks along the line from the shaded surface point toward the light,
  * sampling the SDF at each step to advance by the guaranteed-clear
- * distance. If the trace ever collapses below an epsilon the ray has
- * hit an occluder (shadowed); if the trace reaches the light distance
- * the ray is clear (lit). A running penumbra term tracks the minimum
- * `(32 / softness) * d / t` across the walk for Inigo-Quilez-style
- * soft shadows — the parameter is inverted vs the raw IQ `k` so the
- * name matches intuition: LOW softness → sharp/hard edge, HIGH softness
- * → wide diffuse penumbra. The constant 32 matches IQ's canonical
- * "hard" default when softness = 1.
+ * distance. Binary result: `0` if the ray hits an occluder along the
+ * way, `1` if it reaches the light cleanly. Soft shadow edges come
+ * from (a) LinearFilter sampling of the SDF texture and (b) the
+ * separable gaussian blur applied in `SDFGenerator` — not from a
+ * per-ray penumbra integration.
+ *
+ * The classic IQ penumbra term `min(k · h / t)` was removed because
+ * it accumulates at every step of the walk, which in closed 2D scenes
+ * (dungeons, corridors — casters scattered everywhere) produces a
+ * uniform global darkening: every ray walks near *something*, so
+ * `h/t` always drops below 1 somewhere, `shadow` always ends below 1,
+ * and `shadowStrength` linearly amplifies that scene-wide. The
+ * `softness` option is retained for API stability (now ignored); a
+ * future PCSS-style two-phase trace could reintroduce real
+ * distance-aware penumbra widening without the false-proximity issue.
  *
  * The SDF texture is assumed to be produced by `SDFGenerator` and
- * encode distance in UV-space units on the `.r` channel. Conversion to
- * world-space distance uses an isotropic scene-size approximation
- * (`(worldSize.x + worldSize.y) * 0.5`). For non-square worlds this
- * introduces slight directional error in the trace step size — fine
- * for typical 2D scenes; revisit if a consumer needs anisotropic
- * correctness.
+ * encodes unsigned **world-space** distance on the `.r` channel — zero
+ * inside/on occluders, positive outside. World-space distances keep the
+ * sphere-trace isotropic on non-square viewports (no `(sx+sy)*0.5`
+ * approximation). `worldSize` / `worldOffset` are still consumed here to
+ * transform the fragment/ray world position into the SDF's UV space for
+ * sampling.
  *
  * @param surfaceWorldPos World-space position of the shaded fragment.
  * @param lightWorldPos   World-space position of the light.
@@ -240,13 +247,20 @@ export function shadowSoft2D(
  *                        each frame from the camera bounds).
  * @param worldOffset     Camera frustum offset (Node — uniform).
  * @param options.steps   Compile-time loop count. Default 32.
- * @param options.softness Penumbra width — higher = softer / wider. Low
- *                         values (1-2) give hard IQ-style edges; high
- *                         values (16-48) give diffuse penumbras. Default 8.
- * @param options.startOffset Initial world-space offset along the ray
- *                            to skip self-shadow on the caster itself.
- *                            Default 0.5.
+ * @param options.softness Retained for API stability; currently ignored.
+ *                         Soft edges come from SDF blur + linear sampling,
+ *                         not per-ray integration. Will re-enable once a
+ *                         PCSS-style trace lands.
  * @param options.eps     World-space hit threshold. Default 0.5.
+ * @param options.fragmentCastsShadow
+ *   When provided, gates the `nearCaster` escape path: the ray only
+ *   skips past an occluder it's sitting on if THIS fragment is itself
+ *   a shadow caster. Without this gate, a floor fragment that happens
+ *   to lie under a sprite's rasterized silhouette (seeded in the SDF)
+ *   would incorrectly escape and render as lit — leaving a bright
+ *   alpha-blended halo wherever a sprite's anti-aliased edge overlaps
+ *   the floor. Pass `readCastShadowFlag()` here from the caller's
+ *   light shader.
  * @returns Node<'float'> in [0, 1]. 0 = fully shadowed, 1 = fully lit.
  */
 export function shadowSDF2D(
@@ -258,21 +272,31 @@ export function shadowSDF2D(
   options: {
     steps?: number
     softness?: FloatInput
-    startOffset?: FloatInput
     eps?: FloatInput
+    fragmentCastsShadow?: Node<'bool'>
+    /**
+     * Maximum world-space distance from the receiver at which shadow
+     * still applies. A ray that hits an occluder at `t = t_hit` has
+     * its shadow scaled by `1 - t_hit / maxShadowDistance`, clamped to
+     * [0, 1]. Default 0 means no distance falloff (shadow is binary at
+     * every distance). Set >0 to hide point-light cone-fan artifacts
+     * far from the caster — close-range shadows stay solid, long-range
+     * shadows fade to lit.
+     */
+    maxShadowDistance?: FloatInput
   } = {}
 ): Node<'float'> {
   const steps = options.steps ?? 32
-  const softness =
-    typeof options.softness === 'number'
-      ? float(options.softness)
-      : (options.softness ?? float(8))
-  const startOffset =
-    typeof options.startOffset === 'number'
-      ? float(options.startOffset)
-      : (options.startOffset ?? float(0.5))
+  // `options.softness` is accepted for API stability but currently unused —
+  // binary hit/miss shadow, see function docstring.
+  void options.softness
   const epsNode =
     typeof options.eps === 'number' ? float(options.eps) : (options.eps ?? float(0.5))
+  const fragmentCastsShadow = options.fragmentCastsShadow
+  const maxShadowDist =
+    typeof options.maxShadowDistance === 'number'
+      ? float(options.maxShadowDistance)
+      : (options.maxShadowDistance ?? float(0))
 
   return Fn(() => {
     const toLight = lightWorldPos.sub(surfaceWorldPos)
@@ -280,36 +304,79 @@ export function shadowSDF2D(
     const lightDist = toLight.length().max(float(0.0001))
     const dir = toLight.div(lightDist)
 
-    // Isotropic UV → world scale. The SDF encodes distance in UV space
-    // (0..1 across the camera-aligned RT); world distance is the average
-    // of the frustum extents.
-    const worldScale = worldSize.x.add(worldSize.y).mul(float(0.5))
+    // World-space position → SDF-texture UV. three.js's WebGPU screen
+    // convention has UV y=0 at the TOP, but our world coords are Y-up
+    // (worldPos.y increases upward). Flip y here so we sample the
+    // post-process RT in its canonical convention — same flip pattern as
+    // three.js's own `getScreenPosition` helper on WebGPU. Without this
+    // the SDF sample row is mirrored across the viewport center and
+    // shadows show up on the wrong side of their caster whenever a
+    // caster isn't at Y=0.
+    const worldToSDFUV = (wpos: Node<'vec2'>): Node<'vec2'> => {
+      const u = wpos.sub(worldOffset).div(worldSize).clamp(0, 1)
+      return vec2(u.x, float(1).sub(u.y))
+    }
 
-    const t = startOffset.toVar('shadowT')
+    // Self-shadow guard: if the SURFACE itself sits inside / on a caster
+    // silhouette, the sphere trace will start inside that caster and
+    // immediately trip the hit predicate — producing `shadow = 0` for
+    // every light regardless of whether the ray actually reaches them.
+    // Typical cause: sprite fragments for `castsShadow = true` sprites
+    // (hero, knights, slimes) reading their own silhouette.
+    // Detection: sample SDF at the surface; if it's below eps the fragment
+    // is on/inside a caster. Push the ray origin forward by a caster-escape
+    // distance so the trace leaves the enclosing caster before evaluating
+    // hits. Uses an unsigned SDF so we can't know the caster's depth
+    // precisely; a fixed 40-world-unit escape covers sprite-scale casters
+    // and the dungeon hero at 64-unit scale with margin.
+    const surfaceUV = worldToSDFUV(surfaceWorldPos)
+    const sdfAtSurface = sampleTexture(sdfTexture, surfaceUV).r
+    // Fragments sitting on (or inside) a caster silhouette must skip past
+    // their own occluder or the trace hits at t=0 and self-shadows. Push
+    // the origin out by a fixed escape offset in that case; otherwise
+    // start at t=0 and let the SDF drive the march naturally — no extra
+    // offset needed, because sphere-trace advances by the SDF's own
+    // safe-step distance at each iteration.
+    //
+    // IMPORTANT: the escape only applies to fragments that are themselves
+    // shadow casters (`fragmentCastsShadow`). A non-caster fragment that
+    // happens to lie under a seeded texel (floor drawn behind a sprite's
+    // rasterized silhouette) must NOT escape — it should trace normally
+    // and receive shadow from the overlapping caster. Skipping this gate
+    // produces a bright alpha-blended halo at every sprite's anti-aliased
+    // edge, because the floor under the edge is rendered lit and bleeds
+    // through the semi-transparent sprite pixels.
+    const onCaster = sdfAtSurface.lessThan(epsNode)
+    const nearCaster = fragmentCastsShadow
+      ? onCaster.and(fragmentCastsShadow)
+      : onCaster
+    const escapeOffset = float(40)
+    const effectiveStart = nearCaster.select(escapeOffset, float(0))
+
+    const t = effectiveStart.toVar('shadowT')
     const shadow = float(1).toVar('shadow')
+    // Records t at the step where we hit, so we can compute distance-
+    // based falloff after the loop if maxShadowDistance > 0.
+    const hitT = float(0).toVar('hitT')
 
     Loop(steps, () => {
-      const pos = surfaceWorldPos.add(dir.mul(t))
-      const uv = pos.sub(worldOffset).div(worldSize)
-      const sdfSample = sampleTexture(sdfTexture, uv).r
-      const sdfWorld = sdfSample.mul(worldScale)
-
-      // Penumbra accumulation — running min of (32/softness) * d / t
-      // produces the IQ-style soft shadow term with the user-facing
-      // parameter *inverted* so higher softness → wider penumbra. The
-      // constant 32 matches IQ's "hard shadow" default when softness = 1.
-      const penumbra = float(32).mul(sdfWorld).div(softness.mul(t)).clamp(0, 1)
-      shadow.assign(shadow.min(penumbra))
-
-      // Hit: the ray came within epsilon of an occluder.
-      If(sdfWorld.lessThan(epsNode), () => {
-        shadow.assign(float(0))
+      // Reached-light check runs FIRST — lights mounted near walls (wall
+      // torches) would otherwise trigger a spurious hit at `t ≈ lightDist`
+      // when the final SDF sample lands at/near the wall the light is
+      // attached to. If `t` has already walked to the light, break out
+      // with `shadow = 1` regardless of what the SDF says at that point.
+      If(t.greaterThanEqual(lightDist), () => {
         Break()
       })
 
-      // Clear: reached the light without hitting anything — the
-      // accumulated penumbra is the final shadow value.
-      If(t.greaterThan(lightDist), () => {
+      const pos = surfaceWorldPos.add(dir.mul(t))
+      const uv = worldToSDFUV(pos)
+      const sdfWorld = sampleTexture(sdfTexture, uv).r
+
+      // Hit: the ray came within epsilon of an occluder → hard shadow.
+      If(sdfWorld.lessThan(epsNode), () => {
+        shadow.assign(float(0))
+        hitT.assign(t)
         Break()
       })
 
@@ -318,6 +385,16 @@ export function shadowSDF2D(
       t.assign(t.add(sdfWorld.max(epsNode)))
     })
 
-    return shadow.clamp(0, 1)
+    // Distance falloff — when maxShadowDistance > 0, scale the hit-shadow
+    // by (1 - hitT/max) so close-range shadows stay solid and long-range
+    // shadows fade to lit. Hides point-light cone-fan artifacts without
+    // touching close-to-caster shadows. When maxShadowDistance == 0 this
+    // term reduces to 1.0 and has no effect (binary shadow).
+    const useFalloff = maxShadowDist.greaterThan(float(0))
+    const falloff = float(1).sub(hitT.div(maxShadowDist.max(float(0.0001)))).clamp(0, 1)
+    const falloffShadow = float(1).sub(float(1).sub(shadow).mul(falloff))
+    const finalShadow = useFalloff.select(falloffShadow, shadow)
+
+    return finalShadow.clamp(0, 1)
   })()
 }
