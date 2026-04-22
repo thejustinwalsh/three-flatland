@@ -1,5 +1,12 @@
-import type { DebugFeature } from '../debug-protocol'
+import type { BufferSubscriptionEntry, DebugFeature } from '../debug-protocol'
 import { ACK_GRACE_MS } from '../debug-protocol'
+
+/**
+ * Resolved buffer subscription the producer can drain against. Keyed by
+ * entry name; the value is the (mode, thumbSize) pair the consumers
+ * collectively asked for after union.
+ */
+export type BuffersSubscription = Map<string, BufferSubscriptionEntry>
 
 /** Per-consumer state tracked by the server. */
 interface ConsumerState {
@@ -11,10 +18,12 @@ interface ConsumerState {
    * provider actually drains — any `null` wins.
    */
   registry: Set<string> | null
-  /** Same semantics, for the `buffers` feature. */
-  buffers: Set<string> | null
-  /** When true, encode selected buffers via WebCodecs instead of raw pixels. */
-  streamBuffers: boolean
+  /**
+   * Buffer subscription. Map of entry-name → mode/config. Empty map =
+   * no entries subscribed (the feature is on but nothing's being
+   * watched). Absent entries get metadata-only in the drain.
+   */
+  buffers: Map<string, BufferSubscriptionEntry>
 }
 
 /**
@@ -54,7 +63,7 @@ export class SubscriberRegistry {
    * narrow union (only these names are drained).
    */
   private _registrySelectionCache: Set<string> | null | undefined = undefined
-  private _buffersSelectionCache: Set<string> | null | undefined = undefined
+  private _buffersSelectionCache: BuffersSubscription | undefined = undefined
 
   /**
    * Insert or update a consumer's subscription. Same id + different
@@ -65,26 +74,27 @@ export class SubscriberRegistry {
     id: string,
     features: readonly DebugFeature[],
     registry?: readonly string[],
-    buffers?: readonly string[],
-    streamBuffers?: boolean,
+    buffers?: Record<string, BufferSubscriptionEntry>,
   ): void {
     const now = Date.now()
     const regSel = registry === undefined ? null : new Set(registry)
-    const bufSel = buffers === undefined ? null : new Set(buffers)
-    const stream = streamBuffers === true
+    const bufMap = new Map<string, BufferSubscriptionEntry>()
+    if (buffers !== undefined) {
+      for (const [name, entry] of Object.entries(buffers)) {
+        bufMap.set(name, entry)
+      }
+    }
     const existing = this._consumers.get(id)
     if (existing) {
       existing.features = new Set(features)
       existing.registry = regSel
-      existing.buffers = bufSel
-      existing.streamBuffers = stream
+      existing.buffers = bufMap
       existing.lastAckAt = now
     } else {
       this._consumers.set(id, {
         features: new Set(features),
         registry: regSel,
-        buffers: bufSel,
-        streamBuffers: stream,
+        buffers: bufMap,
         lastAckAt: now,
       })
     }
@@ -149,28 +159,41 @@ export class SubscriberRegistry {
     return union
   }
 
-  /** Same semantics as `registrySelection()`, for `buffers` names. */
-  buffersSelection(): Set<string> | null {
+  /**
+   * Union of every consumer's buffer subscription map.
+   *   - Entry present with `mode: 'stream'` in ANY consumer → stream wins.
+   *   - Else if any consumer asks for `mode: 'thumbnail'` → thumbnail,
+   *     using the MAX `thumbSize` requested by any consumer.
+   *   - Entry absent from all consumers → not in the union (metadata-only).
+   *
+   * An empty map means no consumer is watching any entry: the producer
+   * can skip readback entirely.
+   */
+  buffersSelection(): BuffersSubscription {
     if (this._buffersSelectionCache !== undefined) return this._buffersSelectionCache
-    const union = new Set<string>()
+    const union: BuffersSubscription = new Map()
     for (const c of this._consumers.values()) {
       if (!c.features.has('buffers')) continue
-      if (c.buffers === null) {
-        this._buffersSelectionCache = null
-        return null
+      for (const [name, entry] of c.buffers) {
+        const existing = union.get(name)
+        if (existing === undefined) {
+          union.set(name, { mode: entry.mode, thumbSize: entry.thumbSize })
+        } else if (existing.mode !== 'stream') {
+          // 'stream' dominates 'thumbnail'; upgrade if any consumer
+          // asks for stream. For thumbnails, keep the max thumbSize.
+          if (entry.mode === 'stream') {
+            existing.mode = 'stream'
+            existing.thumbSize = undefined
+          } else {
+            const a = existing.thumbSize ?? 256
+            const b = entry.thumbSize ?? 256
+            if (b > a) existing.thumbSize = b
+          }
+        }
       }
-      for (const name of c.buffers) union.add(name)
     }
     this._buffersSelectionCache = union
     return union
-  }
-
-  /** True if any consumer requested `streamBuffers` encoding. */
-  isStreamMode(): boolean {
-    for (const c of this._consumers.values()) {
-      if (c.streamBuffers && c.features.has('buffers')) return true
-    }
-    return false
   }
 
   /** Is any consumer subscribed to this feature right now? */

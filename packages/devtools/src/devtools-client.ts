@@ -3,6 +3,7 @@ import type {
   BufferDelta,
   BufferDisplayMode,
   BufferRawPayload,
+  BufferSubscriptionEntry,
   BuffersPayload,
   DebugFeature,
   DebugMessage,
@@ -95,8 +96,14 @@ export interface RegistryEntrySnapshot {
 /** Snapshot of a registered debug buffer as seen by the client. */
 export interface BufferSnapshot {
   name: string
+  /** Dimensions of the pixels currently stored in `pixels` — equal to
+   *  source dims in stream mode, downsampled dims in thumbnail mode. */
   width: number
   height: number
+  /** Source (pre-downsample) dimensions — the "true" buffer size.
+   *  Equals width/height in stream mode. */
+  srcWidth: number
+  srcHeight: number
   pixelType: TexturePixelType
   /** How the consumer should visualise this buffer (defaults applied by producer). */
   display: BufferDisplayMode
@@ -223,9 +230,13 @@ export class DevtoolsClient {
    * expensive) registry payloads until the pane actually needs them.
    */
   private _registrySelection: string[] | null = []
-  /** Buffer selection — same semantics as `_registrySelection`. */
-  private _buffersSelection: string[] | null = []
-  private _streamBuffers = false
+  /**
+   * Buffer subscription. Map of entry-name → { mode, thumbSize? }.
+   * Empty map = metadata-only (consumer is connected to the `buffers`
+   * feature but isn't actually watching anything — provider skips all
+   * readbacks). `null` is not a distinct state; represented by `{}`.
+   */
+  private _buffersSelection: Record<string, BufferSubscriptionEntry> = {}
   private _listeners = new Set<DevtoolsStateListener>()
   private _chunkListeners = new Set<BufferChunkListener>()
 
@@ -350,26 +361,35 @@ export class DevtoolsClient {
     this._resubscribe()
   }
 
-  /** Same as `setRegistry`, but for debug buffers (the `buffers` feature). */
-  setBuffers(names: string[] | null, stream?: boolean): void {
-    const changed = !sameFilter(this._buffersSelection, names)
-    const streamChanged = (stream ?? false) !== this._streamBuffers
-    if (!changed && !streamChanged) return
-    this._buffersSelection = names === null ? null : [...names]
-    this._streamBuffers = stream ?? false
+  /**
+   * Update the buffer subscription. Map of entry-name → (mode, thumbSize?).
+   *   - Empty map / missing names → metadata-only (provider sends no pixels,
+   *     runs no readbacks). This is the idle state when no preview or
+   *     modal is visible.
+   *   - `{ name: { mode: 'thumbnail', thumbSize: 256 } }` → small
+   *     downsampled preview. Use when a thumbnail card is visible.
+   *   - `{ name: { mode: 'stream' } }` → full-size VP9 video stream.
+   *     Use when the fullscreen modal is open.
+   *
+   * Mode changes (incl. unsubscribing) take effect on the next
+   * provider flush; the producer will drop old readbacks immediately.
+   */
+  setBuffers(subscription: Record<string, BufferSubscriptionEntry>): void {
+    if (sameBufferSubscription(this._buffersSelection, subscription)) return
+    this._buffersSelection = { ...subscription }
     this._resubscribe()
   }
 
   private _resubscribe(): void {
     if (this._subscribed && this._dataBus !== null) {
+      const hasBuffers = Object.keys(this._buffersSelection).length > 0
       this._postData({
         type: 'subscribe',
         payload: {
           id: this.id,
           features: this._features,
           registry: this._registrySelection ?? undefined,
-          buffers: this._buffersSelection ?? undefined,
-          streamBuffers: this._streamBuffers || undefined,
+          buffers: hasBuffers ? this._buffersSelection : undefined,
         },
       })
     }
@@ -392,7 +412,10 @@ export class DevtoolsClient {
         id: this.id,
         features: this._features,
         registry: this._registrySelection ?? undefined,
-        buffers: this._buffersSelection ?? undefined,
+        buffers:
+          Object.keys(this._buffersSelection).length > 0
+            ? this._buffersSelection
+            : undefined,
       },
     })
     this._fire()
@@ -534,16 +557,20 @@ export class DevtoolsClient {
         const payload = msg.payload as BufferRawPayload
         let snap = this.state.buffers.get(payload.name)
         if (snap !== undefined) {
+          // buffer:raw only carries the converted RGBA8 pixels and the
+          // shipped dims. Don't overwrite pixelType/display/srcWidth —
+          // those belong to the source metadata set by _applyBuffers.
           snap.pixels = new Uint8Array(payload.data)
           snap.width = payload.width
           snap.height = payload.height
-          snap.pixelType = 'rgba8'
           snap.version++
         } else {
           snap = {
             name: payload.name,
             width: payload.width,
             height: payload.height,
+            srcWidth: payload.width,
+            srcHeight: payload.height,
             pixelType: 'rgba8',
             display: 'colors',
             version: 0,
@@ -592,7 +619,10 @@ export class DevtoolsClient {
         id: this.id,
         features: this._features,
         registry: this._registrySelection ?? undefined,
-        buffers: this._buffersSelection ?? undefined,
+        buffers:
+          Object.keys(this._buffersSelection).length > 0
+            ? this._buffersSelection
+            : undefined,
       },
     })
     this._fire()
@@ -768,11 +798,15 @@ export class DevtoolsClient {
       const pixels = d.pixels ?? snap?.pixels ?? null
       const isFloat = d.pixelType === 'rgba16f' || d.pixelType === 'rgba32f'
       const display = d.display ?? (isFloat ? 'normalize' : 'colors')
+      const srcW = d.srcWidth ?? d.width
+      const srcH = d.srcHeight ?? d.height
       if (snap === undefined) {
         snap = {
           name,
           width: d.width,
           height: d.height,
+          srcWidth: srcW,
+          srcHeight: srcH,
           pixelType: d.pixelType,
           display,
           version: d.version,
@@ -783,6 +817,8 @@ export class DevtoolsClient {
       } else {
         snap.width = d.width
         snap.height = d.height
+        snap.srcWidth = srcW
+        snap.srcHeight = srcH
         snap.pixelType = d.pixelType
         snap.display = display
         snap.version = d.version
@@ -856,7 +892,10 @@ export class DevtoolsClient {
         id: this.id,
         features: this._features,
         registry: this._registrySelection ?? undefined,
-        buffers: this._buffersSelection ?? undefined,
+        buffers:
+          Object.keys(this._buffersSelection).length > 0
+            ? this._buffersSelection
+            : undefined,
       },
         })
       }
@@ -920,6 +959,24 @@ function sameFilter(a: readonly string[] | null, b: readonly string[] | null): b
   if (a === b) return true
   if (a === null || b === null) return false
   return sameSet(a, b)
+}
+
+/** Equality for buffer subscription records. Compares keys and nested fields. */
+function sameBufferSubscription(
+  a: Record<string, BufferSubscriptionEntry>,
+  b: Record<string, BufferSubscriptionEntry>,
+): boolean {
+  const ak = Object.keys(a)
+  const bk = Object.keys(b)
+  if (ak.length !== bk.length) return false
+  for (const k of ak) {
+    const av = a[k]
+    const bv = b[k]
+    if (av === undefined || bv === undefined) return false
+    if (av.mode !== bv.mode) return false
+    if ((av.thumbSize ?? 256) !== (bv.thumbSize ?? 256)) return false
+  }
+  return true
 }
 
 function generateUuid(): string {

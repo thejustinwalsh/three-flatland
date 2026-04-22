@@ -127,7 +127,6 @@ export class RadianceCascades {
     registerDebugTexture('radiance.finalIrradiance', this._finalRadianceRT, 'rgba16f', {
       display: 'colors',
       label: 'GI final irradiance',
-      maxDim: 0,
     })
   }
 
@@ -210,7 +209,6 @@ export class RadianceCascades {
     registerDebugTexture('radiance.sceneRadiance', this._sceneRadianceRT, 'rgba16f', {
       display: 'colors',
       label: 'GI scene radiance (light circles)',
-      maxDim: 0,
     })
 
     // Resize the eagerly-allocated final RT to match computed probe dimensions.
@@ -250,7 +248,6 @@ export class RadianceCascades {
       registerDebugTexture(`radiance.cascade${i}`, rt, 'rgba16f', {
         display: 'colors',
         label: `GI cascade ${i}`,
-        maxDim: 0,
       })
     }
 

@@ -28,14 +28,13 @@
 /** Tier sizes / counts. Hard-coded; bump here if we ever see exhaustion. */
 export const POOL = {
   small: { size: 4 * 1024, count: 8 },         // 32 KB
-  // Sized to fit the largest debug buffer we routinely drain: full-res
-  // SDF RTs at typical canvas sizes. At 1440×1200 RGBA16F (8 B/texel)
-  // that's ~13.8 MB per RT, and we register 4 SDF RTs (jfaPing, jfaPong,
-  // distanceField, blurScratch). 16 MB per slot × 4 slots = 64 MB total
-  // — generous but this is dev-only, never shipped. Alternative for
-  // production: downsample debug previews to a 256² thumbnail before
-  // queuing. Revisit if devtools memory becomes an issue.
-  large: { size: 16 * 1024 * 1024, count: 4 }, // 64 MB
+  // Sized to fit the largest debug buffer we routinely drain. With the
+  // consumer-driven subscription model only one texture is usually in
+  // flight at a time (the currently-viewed thumbnail or the modal's
+  // stream), so `count: 4` is plenty. `size: 16 MB` covers rgba16f
+  // canvases up to ~2.1M pixels (≈ 1440×1440); larger streams should
+  // use `mode: 'thumbnail'` which downsamples before readback. Dev-only.
+  large: { size: 16 * 1024 * 1024, count: 4 }, // 64 MB, dev-only
 } as const
 
 export type PoolTier = 'small' | 'large'
@@ -56,6 +55,15 @@ export class BufferPool {
   private _smallExhausted = 0
   private _largeExhausted = 0
   private _orphaned = 0
+  /**
+   * Flips to true on the first `seed()` call. Before that, the pool
+   * is empty by construction (the worker is still booting and hasn't
+   * transferred buffers yet); any `acquire*` in that window is part
+   * of the boot race and not a sign of actual shortage. We allocate
+   * a one-off as normal but suppress the warning so it doesn't look
+   * like a persistent leak.
+   */
+  private _seeded = false
 
   /**
    * Seed the pool with buffers transferred in from the worker. Called
@@ -67,13 +75,14 @@ export class BufferPool {
       if (tier === 'small') this._smallFree.push(b)
       else this._largeFree.push(b)
     }
+    this._seeded = true
   }
 
   acquireSmall(): ArrayBuffer {
     const b = this._smallFree.pop()
     if (b !== undefined) return b
     this._smallExhausted++
-    if ((this._smallExhausted & 15) === 1) {
+    if (this._seeded && (this._smallExhausted & 15) === 1) {
       console.warn(`[devtools] small pool exhausted; allocating one-off. ${this._smallExhausted} events total`)
     }
     return new ArrayBuffer(POOL.small.size)
@@ -83,7 +92,7 @@ export class BufferPool {
     const b = this._largeFree.pop()
     if (b !== undefined) return b
     this._largeExhausted++
-    if ((this._largeExhausted & 15) === 1) {
+    if (this._seeded && (this._largeExhausted & 15) === 1) {
       console.warn(`[devtools] large pool exhausted; allocating one-off. ${this._largeExhausted} events total`)
     }
     return new ArrayBuffer(POOL.large.size)

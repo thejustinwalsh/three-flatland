@@ -347,6 +347,38 @@ export class TileLayer extends Group {
       let maxX = -Infinity
       let maxY = -Infinity
 
+      // Cache per-effect-field writer info so the hot loop below can map
+      // `TileDefinition.properties[fieldName]` straight into the packed
+      // effect buffers. Named properties whose key matches a registered
+      // effect's schema field are written per-tile; anything else is
+      // ignored. Tiles without matching properties fall back to the
+      // effect's schema defaults (zero-init in the buffers since they
+      // were just allocated).
+      type FieldWriter = {
+        effectName: string
+        fieldName: string
+        bufferName: string
+        componentIndex: number
+        size: number
+      }
+      const fieldWriters: FieldWriter[] = []
+      for (const effectClass of this.material.getEffects()) {
+        for (const field of effectClass._fields) {
+          const loc = this.material.getEffectFieldLocation(
+            effectClass.effectName,
+            field.name
+          )
+          if (!loc) continue
+          fieldWriters.push({
+            effectName: effectClass.effectName,
+            fieldName: field.name,
+            bufferName: loc.bufferName,
+            componentIndex: loc.componentIndex,
+            size: loc.size,
+          })
+        }
+      }
+
       // Populate buffers
       for (let i = 0; i < count; i++) {
         const tile = tiles[i]!
@@ -367,6 +399,28 @@ export class TileLayer extends Group {
         // Flip via instanceFlip attribute
         instanceFlip[i * 2 + 0] = tile.flipH ? -1 : 1
         instanceFlip[i * 2 + 1] = tile.flipV ? -1 : 1
+
+        // Per-tile effect attribute overrides from TileDefinition.properties.
+        // Example: a tile with `{ normalKind: 1 }` in its properties sets
+        // the `normalKind` field on any registered effect that declares it.
+        const tileDef = this.tileset.getTile(tile.gid)
+        const props = tileDef?.properties
+        if (props && fieldWriters.length > 0) {
+          for (const writer of fieldWriters) {
+            const value = props[writer.fieldName]
+            if (value === undefined) continue
+            const buf = effectBufs.get(writer.bufferName)
+            if (!buf) continue
+            const base = i * 4 + writer.componentIndex
+            if (writer.size === 1 && typeof value === 'number') {
+              buf[base] = value
+            } else if (Array.isArray(value)) {
+              for (let c = 0; c < Math.min(writer.size, value.length); c++) {
+                buf[base + c] = Number(value[c])
+              }
+            }
+          }
+        }
 
         // Expand bounds
         minX = Math.min(minX, tile.x)

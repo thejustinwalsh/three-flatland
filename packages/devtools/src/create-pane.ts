@@ -184,6 +184,10 @@ export function createPane(options: CreatePaneOptions = {}): PaneBundle {
       if (c === null) return
       if (ev.expanded) c.setFeatures(ACTIVE_FEATURES)
       else c.setFeatures([])
+      // Buffers-view tracks its own collapse state independently; the
+      // pane-level fold needs to propagate down so the view drops its
+      // thumbnail subscription when the whole pane hides.
+      buffersView?.setPaneFolded(!ev.expanded)
     })
   } catch {
     // Bus unavailable — skip the stats blades. Pane still usable.

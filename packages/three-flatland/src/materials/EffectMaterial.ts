@@ -562,4 +562,30 @@ export class EffectMaterial extends MeshBasicNodeMaterial {
     }
     return stride
   }
+
+  /**
+   * Locate an effect's schema field within the packed instance buffers.
+   * Returns the `effectBufN` attribute that contains this field, the
+   * float offset within a single instance's 4-float slice of that
+   * buffer (0-3), and the field's float width. Returns `undefined`
+   * if no registered effect declares the given field.
+   *
+   * Used by instance-writing code (e.g. TileLayer, SpriteBatch) that
+   * needs to poke per-instance effect values directly without going
+   * through a MaterialEffect instance's property setter.
+   */
+  getEffectFieldLocation(
+    effectName: string,
+    fieldName: string
+  ): { bufferName: string; componentIndex: number; size: number } | undefined {
+    const slotKey = `${effectName}_${fieldName}`
+    const slotInfo = this._effectSlots.get(slotKey)
+    if (!slotInfo) return undefined
+    const bufferIndex = Math.floor(slotInfo.offset / 4)
+    return {
+      bufferName: `effectBuf${bufferIndex}`,
+      componentIndex: slotInfo.offset % 4,
+      size: slotInfo.size,
+    }
+  }
 }
