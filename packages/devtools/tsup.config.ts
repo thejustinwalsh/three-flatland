@@ -9,11 +9,6 @@ export default defineConfig({
     'src/**/*.tsx',
     '!src/**/*.test.ts',
     '!src/**/*.test.tsx',
-    // Dashboard files are served directly as source by the vite plugin;
-    // their JSX + vendored Preact aren't something tsup should compile.
-    // Instead the `onSuccess` hook below copies `src/dashboard/` → `dist/
-    // dashboard/` verbatim so the plugin can resolve it via the same
-    // `./dashboard` path at runtime regardless of source vs. built usage.
     '!src/dashboard/**/*',
   ],
   format: ['esm', 'cjs'],
@@ -23,6 +18,7 @@ export default defineConfig({
   bundle: false,
   external: ['tweakpane', '@tweakpane/plugin-essentials', 'react', 'vite'],
   async onSuccess() {
+    // Copy vendored dashboard app for vite plugin
     await cp(
       resolve('src/dashboard'),
       resolve('dist/dashboard'),

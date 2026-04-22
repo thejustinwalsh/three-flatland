@@ -23,7 +23,7 @@
  *     JSON. List height stays uniform; expanding/collapsing doesn't
  *     reflow the virtualized rows.
  */
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks'
+import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks'
 import type { DebugMessage } from 'three-flatland/debug-protocol'
 import { getClient } from '../client.js'
 import { exportSession } from '../export.js'
@@ -239,7 +239,7 @@ export function ProtocolLog() {
     }
     // Filter primitives as deps; `filterPredicateRef.current` is read
     // inside but kept stable against renders via the ref.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [store, activeProviderId, hasActiveFilter, needle, dirFilter, minBytes, excludedTypes])
 
   // Live-append: when a new message matches the active filter, extend
@@ -493,7 +493,7 @@ export function ProtocolLog() {
                 const offsetTop = (start + i) * ROW_HEIGHT
                 const isLoading = 'kind' in r
                 const isPlaceholder = isLoading
-                const e = isPlaceholder ? null : (r as LogEntry)
+                const e = isPlaceholder ? null : r
                 const id = isPlaceholder ? (r as { id: number }).id : e!.id
                 const isHover = !isPlaceholder && hoveredId === id
                 const isSelected = !isPlaceholder && selectedId === id
@@ -676,8 +676,8 @@ function estimateBytes(msg: DebugMessage): number {
     if (v instanceof ArrayBuffer) { bytes += v.byteLength; return }
     if (ArrayBuffer.isView(v)) { bytes += v.byteLength; return }
     if (typeof v === 'object') {
-      if (seen.has(v as object)) return
-      seen.add(v as object)
+      if (seen.has(v)) return
+      seen.add(v)
       if (Array.isArray(v)) { for (const x of v) walk(x); return }
       for (const k in v as Record<string, unknown>) {
         bytes += k.length
@@ -706,7 +706,7 @@ function stringify(msg: DebugMessage): string {
     return JSON.stringify(msg, (_k, v) => {
       if (v instanceof ArrayBuffer) return `[ArrayBuffer ${v.byteLength}B]`
       if (ArrayBuffer.isView(v)) return `[${v.constructor.name} ${v.byteLength}B]`
-      return v
+      return v as unknown
     }, 2)
   } catch {
     return '[unserialisable]'

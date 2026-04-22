@@ -61,7 +61,7 @@
     "dev": "tsup --watch",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.dashboard.json",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p src/dashboard/tsconfig.json",
     "clean": "rm -rf dist"
   },
   "peerDependencies": {
