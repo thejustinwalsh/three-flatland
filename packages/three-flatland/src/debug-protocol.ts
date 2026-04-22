@@ -451,8 +451,21 @@ export type BufferDisplayMode = 'colors' | 'normalize' | 'mono' | 'signed' | 'al
  * the consumer's selection includes this name.
  */
 export interface BufferDelta {
+  /**
+   * Dimensions of the `pixels` payload. If the producer downsampled to
+   * a thumbnail before shipping, these describe the SHIPPED bytes, not
+   * the source. Consumers decode pixels with `width × height × bytesPerTexel`.
+   */
   width: number
   height: number
+  /**
+   * Source RT dimensions, when different from `width`/`height` (i.e.,
+   * the producer downsampled). Omitted when shipped == source. The UI
+   * should use these for "native resolution" labels in thumbnail cards
+   * and modal viewers, and for aspect-preserving scale fits.
+   */
+  srcWidth?: number
+  srcHeight?: number
   pixelType: TexturePixelType
   /** Monotonic; bumps on re-sample or re-register. */
   version: number
@@ -554,19 +567,32 @@ export interface SubscribePayload {
    */
   registry?: string[]
   /**
-   * Buffer selection — same semantics as `registry`, for the
-   * `'buffers'` feature. Readback is expensive, so consumers are
-   * expected to send a short list (typically one name at a time).
+   * Buffer subscription for the `'buffers'` feature. Maps entry name
+   * to a request mode:
+   *   - `'thumbnail'` — producer downsamples to `thumbSize` (default
+   *     256) and ships pixels once per flush. Cheap; used for panel
+   *     previews.
+   *   - `'stream'` — producer reads native-size pixels and feeds them
+   *     to the WebCodecs VP9 encoder (or falls back to raw broadcast
+   *     when codecs unavailable). Expensive; used by the fullscreen
+   *     modal viewer.
+   *
+   * Absence of an entry means metadata-only (the entry stays in the
+   * registry list but no pixels drain). When no consumer has *any*
+   * entries in its map, the producer skips the readback pass entirely
+   * and no GPU/memory work is spent on the buffers feature.
    */
-  buffers?: string[]
+  buffers?: Record<string, BufferSubscriptionEntry>
+}
+
+/** One line item in a buffer subscription. */
+export interface BufferSubscriptionEntry {
+  mode: 'thumbnail' | 'stream'
   /**
-   * When `true`, the provider encodes selected buffers via WebCodecs
-   * (VP9) and streams `buffer:chunk` messages instead of embedding raw
-   * pixels in the `data` batch. The provider falls back to raw pixels
-   * when WebCodecs is unavailable. Typically set when the fullscreen
-   * modal is open.
+   * Thumbnail longer-edge size in pixels. Only meaningful for
+   * `mode: 'thumbnail'`. Default: 256.
    */
-  streamBuffers?: boolean
+  thumbSize?: number
 }
 
 /**

@@ -22,7 +22,7 @@ let _activeTextures: DebugTextureRegistry | null = null
 // Queued registrations that arrived before the registry was set.
 // Replayed on _setActive*Registry and cleared.
 type QueuedArray = { name: string; ref: Float32Array | Uint32Array | Int32Array; kind: RegistryEntryKind; opts?: { label?: string; length?: number } }
-type QueuedTexture = { name: string; source: DataTexture | { width: number; height: number; texture: Texture }; pixelType: TexturePixelType; opts?: { label?: string; display?: BufferDisplayMode; maxDim?: number } }
+type QueuedTexture = { name: string; source: DataTexture | { width: number; height: number; texture: Texture }; pixelType: TexturePixelType; opts?: { label?: string; display?: BufferDisplayMode } }
 let _pendingArrays: QueuedArray[] | null = null
 let _pendingTextures: QueuedTexture[] | null = null
 
@@ -95,7 +95,7 @@ export function registerDebugTexture(
   name: string,
   source: DataTexture | { width: number; height: number; texture: Texture },
   pixelType: TexturePixelType = 'rgba8',
-  opts?: { label?: string; display?: BufferDisplayMode; maxDim?: number },
+  opts?: { label?: string; display?: BufferDisplayMode },
 ): void {
   if (!DEVTOOLS_BUNDLED) return
   if (_activeTextures !== null) { _activeTextures.register(name, source, pixelType, opts); return }

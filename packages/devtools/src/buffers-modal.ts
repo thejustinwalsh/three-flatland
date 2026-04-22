@@ -360,25 +360,6 @@ export function createBuffersModal(
     }
     offCtx.putImageData(imgData, 0, 0)
 
-    // Aspect-fit into the available main area. We size the visible
-    // canvas to the source aspect ratio, capped by the container's
-    // box, then drawImage 1:1.
-    const mainRect = main.getBoundingClientRect()
-    const maxW = mainRect.width - 32
-    const maxH = mainRect.height - 32
-    const srcAspect = width / height
-    const boxAspect = maxW / maxH
-    let cssW: number
-    let cssH: number
-    if (srcAspect > boxAspect) {
-      cssW = maxW
-      cssH = Math.max(1, Math.round(maxW / srcAspect))
-    } else {
-      cssH = maxH
-      cssW = Math.max(1, Math.round(maxH * srcAspect))
-    }
-    canvas.style.width = `${cssW}px`
-    canvas.style.height = `${cssH}px`
     // Backing matches displayed pixels at 1:1 (no DPR mul — modal is
     // about inspection, not pretty rendering, and 1:1 keeps the
     // pixel grid clearly visible).
@@ -386,6 +367,15 @@ export function createBuffersModal(
       canvas.width = width
       canvas.height = height
     }
+    // Fit the canvas CSS box to the SOURCE aspect — thumbnails are
+    // downsampled, but the modal should still display at native aspect
+    // so the user doesn't see a wildly-stretched preview while the
+    // stream mode warms up.
+    const fitW = snap.srcWidth > 0 ? snap.srcWidth : width
+    const fitH = snap.srcHeight > 0 ? snap.srcHeight : height
+    canvasSrcW = fitW
+    canvasSrcH = fitH
+    fitCanvas(fitW, fitH)
     ctx.imageSmoothingEnabled = false
     ctx.drawImage(offscreen, 0, 0)
   }
@@ -413,8 +403,8 @@ export function createBuffersModal(
       activeName = first ?? null
       // setActive resyncs server filter, but we may be in mid-refresh
       // so call the underlying setter directly.
-      if (activeName !== null) client.setBuffers([activeName])
-      else client.setBuffers([])
+      if (activeName !== null) client.setBuffers({ [activeName]: { mode: 'stream' } })
+      else client.setBuffers({})
     }
     highlightActive()
 
@@ -444,7 +434,10 @@ export function createBuffersModal(
     stopDecoder()
     decoderWidth = 0
     decoderHeight = 0
-    client.setBuffers([name], codecAvailable)
+    // Modal always wants the live stream — codec fallback is handled
+    // provider-side (falls back to raw broadcasts when WebCodecs is
+    // unavailable).
+    client.setBuffers({ [name]: { mode: 'stream' } })
     options.onActiveChange?.(name)
     highlightActive()
     refresh()
@@ -467,6 +460,36 @@ export function createBuffersModal(
   }
   document.addEventListener('keydown', onKeydown)
 
+  // Aspect-fit the canvas box inside `main`, given source dimensions.
+  // Shared by `paint()`, the decoder output callback, and the
+  // ResizeObserver below so the CSS box always tracks the container
+  // regardless of which path last touched the canvas.
+  function fitCanvas(srcW: number, srcH: number): void {
+    if (srcW <= 0 || srcH <= 0) return
+    const mainRect = main.getBoundingClientRect()
+    const maxW = Math.max(1, mainRect.width - 32)
+    const maxH = Math.max(1, mainRect.height - 32)
+    const srcAspect = srcW / srcH
+    const boxAspect = maxW / maxH
+    let cssW: number
+    let cssH: number
+    if (srcAspect > boxAspect) {
+      cssW = maxW
+      cssH = Math.max(1, Math.round(maxW / srcAspect))
+    } else {
+      cssH = maxH
+      cssW = Math.max(1, Math.round(maxH * srcAspect))
+    }
+    canvas.style.width = `${cssW}px`
+    canvas.style.height = `${cssH}px`
+  }
+
+  // Track current source dimensions so the ResizeObserver can re-fit
+  // without waiting for a new frame. Set by both paint() (thumbnail
+  // mode) and the decoder output callback (stream mode).
+  let canvasSrcW = 0
+  let canvasSrcH = 0
+
   // Re-paint on viewport resize so the canvas re-fits its container.
   const onResize = () => {
     if (!isOpen || activeName === null) return
@@ -474,6 +497,16 @@ export function createBuffersModal(
     if (snap !== undefined) paint(snap)
   }
   window.addEventListener('resize', onResize)
+
+  // Observe the container itself: sidebar collapse, viewport resize,
+  // or ancestor layout changes can all change `main`'s box without
+  // firing a window resize. Without this, a zoomed-in canvas keeps
+  // its stale CSS size and clips against the shrunken main container.
+  const mainResizeObserver = new ResizeObserver(() => {
+    if (!isOpen) return
+    if (canvasSrcW > 0 && canvasSrcH > 0) fitCanvas(canvasSrcW, canvasSrcH)
+  })
+  mainResizeObserver.observe(main)
 
   // ── Open / close ──────────────────────────────────────────────────────
 
@@ -491,26 +524,13 @@ export function createBuffersModal(
     decoder = new VideoDecoder({
       output: (frame) => {
         if (ctx === null) { frame.close(); return }
-        // Aspect-fit into the main area
-        const mainRect = main.getBoundingClientRect()
-        const maxW = mainRect.width - 32
-        const maxH = mainRect.height - 32
-        const srcAspect = frame.codedWidth / frame.codedHeight
-        const boxAspect = maxW / maxH
-        let cssW: number, cssH: number
-        if (srcAspect > boxAspect) {
-          cssW = maxW
-          cssH = Math.max(1, Math.round(maxW / srcAspect))
-        } else {
-          cssH = maxH
-          cssW = Math.max(1, Math.round(maxH * srcAspect))
-        }
-        canvas.style.width = `${cssW}px`
-        canvas.style.height = `${cssH}px`
         if (canvas.width !== frame.codedWidth || canvas.height !== frame.codedHeight) {
           canvas.width = frame.codedWidth
           canvas.height = frame.codedHeight
         }
+        canvasSrcW = frame.codedWidth
+        canvasSrcH = frame.codedHeight
+        fitCanvas(frame.codedWidth, frame.codedHeight)
         ctx.drawImage(frame as unknown as CanvasImageSource, 0, 0)
         frame.close()
       },
@@ -571,6 +591,11 @@ export function createBuffersModal(
     root.style.display = 'flex'
     options.onOpen?.()
     setActive(name)
+    // setActive short-circuits when re-opening the same target, but
+    // close() already wiped the subscription (and buffers-view may have
+    // switched it to thumbnail). Force stream mode here — no-op when
+    // setActive just set it.
+    client.setBuffers({ [name]: { mode: 'stream' } })
     if (codecAvailable && unsubChunks === null) {
       unsubChunks = client.addChunkListener(onChunk)
     }
@@ -585,8 +610,9 @@ export function createBuffersModal(
       unsubChunks()
       unsubChunks = null
     }
-    // Revert to non-stream mode — thumbnail resumes driving selection
-    client.setBuffers(activeName !== null ? [activeName] : [])
+    // Revert to idle — thumbnail view (if any) will re-subscribe
+    // in thumbnail mode itself when it becomes the active consumer.
+    client.setBuffers({})
     options.onClose?.()
   }
 
@@ -601,6 +627,7 @@ export function createBuffersModal(
         unsubChunks = null
       }
       unsubscribe()
+      mainResizeObserver.disconnect()
       document.removeEventListener('keydown', onKeydown)
       window.removeEventListener('resize', onResize)
       window.removeEventListener('mousemove', onMouseMove)

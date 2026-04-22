@@ -21,6 +21,9 @@ export interface BuffersViewHandle {
   setModalOpen(open: boolean): void
   /** Sync the view's active buffer to match the modal's selection. */
   setActiveFromModal(name: string): void
+  /** Tell the view the outer pane was folded/unfolded. When folded the
+   *  view unsubscribes regardless of its own collapse state. */
+  setPaneFolded(folded: boolean): void
   dispose(): void
 }
 
@@ -159,6 +162,7 @@ export function addBuffersView(
   // ── State ─────────────────────────────────────────────────────────────
 
   let collapsed = true
+  let paneFolded = false
   let activeName: string | null = null
   let lastRenderedVersion = -1
   const ctx = canvas.getContext('2d')
@@ -200,11 +204,13 @@ export function addBuffersView(
 
   function syncSelection(): void {
     if (modalOpen) return
-    if (collapsed || activeName === null) {
-      client.setBuffers([])
+    if (paneFolded || collapsed || activeName === null) {
+      // Fully idle — provider skips readbacks entirely.
+      client.setBuffers({})
       return
     }
-    client.setBuffers([activeName])
+    // Thumbnail panel is visible → ask for a small downsampled preview.
+    client.setBuffers({ [activeName]: { mode: 'thumbnail', thumbSize: 256 } })
   }
 
   function setActive(name: string | null): void {
@@ -342,7 +348,11 @@ export function addBuffersView(
     if (entry.version === lastRenderedVersion) return
     lastRenderedVersion = entry.version
     renderThumb(entry)
-    valueLabel.textContent = `${entry.width}×${entry.height} · ${entry.pixelType}`
+    // Prefer source dims for the label — the shipped thumbnail dims
+    // (e.g. 256×16) confuse users who want to know the real buffer size.
+    const lw = entry.srcWidth > 0 ? entry.srcWidth : entry.width
+    const lh = entry.srcHeight > 0 ? entry.srcHeight : entry.height
+    valueLabel.textContent = `${lw}×${lh} · ${entry.pixelType}`
     nameLabel.title = `${entry.name}${entry.label ? ` — ${entry.label}` : ''}`
   })
 
@@ -357,6 +367,12 @@ export function addBuffersView(
       activeName = name
       nameLabel.textContent = name
       lastRenderedVersion = -1
+    },
+    setPaneFolded(folded: boolean) {
+      if (paneFolded === folded) return
+      paneFolded = folded
+      if (folded) lastRenderedVersion = -1
+      syncSelection()
     },
     dispose() {
       resizeObserver.disconnect()

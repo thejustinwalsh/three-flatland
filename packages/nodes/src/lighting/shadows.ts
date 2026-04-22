@@ -353,11 +353,14 @@ export function shadowSDF2D(
     const escapeOffset = float(40)
     const effectiveStart = nearCaster.select(escapeOffset, float(0))
 
-    const t = effectiveStart.toVar('shadowT')
-    const shadow = float(1).toVar('shadow')
+    // `.toVar()` without an explicit name — TSL auto-generates unique
+    // identifiers so we don't collide when multiple materials in the
+    // same scene invoke this function and share a build namespace.
+    const t = effectiveStart.toVar()
+    const shadow = float(1).toVar()
     // Records t at the step where we hit, so we can compute distance-
     // based falloff after the loop if maxShadowDistance > 0.
-    const hitT = float(0).toVar('hitT')
+    const hitT = float(0).toVar()
 
     Loop(steps, () => {
       // Reached-light check runs FIRST — lights mounted near walls (wall

@@ -258,9 +258,18 @@ export class DevtoolsProvider {
     // Kick texture readbacks NOW — the frame is fully rendered, so
     // the GPU copy captures consistent content. The flush timer just
     // ships whatever samples are cached; it never triggers readbacks.
+    // Subscription map drives everything: entries absent from the map
+    // cost zero (no readback, no scratch RT). When the UI collapses
+    // all its panels the map is empty and readback is a one-line
+    // short-circuit.
     if (this._subs.isActive('buffers')) {
-      const selection = this._subs.buffersSelection()
-      this._textures.readbackAll(selection, renderer as unknown as import('three/webgpu').WebGPURenderer)
+      const subscription = this._subs.buffersSelection()
+      if (subscription.size > 0) {
+        this._textures.readbackAll(
+          subscription,
+          renderer as unknown as import('three/webgpu').WebGPURenderer,
+        )
+      }
     }
   }
 
@@ -332,24 +341,27 @@ export class DevtoolsProvider {
     }
 
     if (active.has('buffers')) {
-      const selection = this._subs.buffersSelection()
-      const isStream = this._subs.isStreamMode() && transport.codecSupported === true
+      const subscription = this._subs.buffersSelection()
 
       const bufOut = this._buffersScratch
-      if (this._textures.drain(bufOut, selection, this._latestRenderer, cursor)) {
+      if (this._textures.drain(bufOut, subscription, this._latestRenderer, cursor)) {
         features.buffers = bufOut
         anyFeature = true
         // Route every buffer's raw pixels through __convert__ on the
         // worker. The worker converts to RGBA8 and either feeds the
-        // VP9 stream encoder (stream=true) or broadcasts as buffer:raw.
-        // Metadata stays in the data batch so the consumer can update
-        // its sidebar/labels.
+        // VP9 stream encoder (when the subscription said `mode: 'stream'`
+        // and codecs are available) or broadcasts as buffer:raw (for
+        // thumbnail mode, or as a stream fallback). Metadata stays in
+        // the data batch so the consumer can update sidebar/labels.
         if (bufOut.entries) {
           const forceKey = this._forceNextKeyFrame
           this._forceNextKeyFrame = false
           for (const name in bufOut.entries) {
             const entry = bufOut.entries[name]
             if (!entry || !entry.pixels) continue
+            const sub = subscription.get(name)
+            const useStream =
+              sub?.mode === 'stream' && transport.codecSupported === true
             const pixels = entry.pixels
             const convBuf = transport.acquireLarge()
             if (pixels instanceof Uint8Array) {
@@ -364,7 +376,7 @@ export class DevtoolsProvider {
               pixelType: entry.pixelType,
               display: entry.display ?? 'colors',
               frame: this._stats.frame,
-              stream: isStream,
+              stream: useStream,
               forceKeyFrame: forceKey,
               pixels: convBuf,
               pixelsByteLength: pixels.byteLength,
@@ -489,9 +501,18 @@ export class DevtoolsProvider {
           msg.payload.features,
           msg.payload.registry,
           msg.payload.buffers,
-          msg.payload.streamBuffers,
         )
-        if (msg.payload.streamBuffers) this._forceNextKeyFrame = true
+        // Force a keyframe on the next stream frame if any entry in the
+        // new subscription asks for stream mode — otherwise the consumer
+        // decoder won't be able to decode until the next scheduled key.
+        if (msg.payload.buffers !== undefined) {
+          for (const entry of Object.values(msg.payload.buffers)) {
+            if (entry.mode === 'stream') {
+              this._forceNextKeyFrame = true
+              break
+            }
+          }
+        }
         // Late-joining consumers: reset per-feature delta trackers so
         // the next `data` packet carries a full snapshot.
         this._stats.resetDelta()

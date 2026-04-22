@@ -126,25 +126,23 @@ export class SDFGenerator {
     this._blurHMaterial = this._buildBlurMaterial(this._sdfRT.texture, 'horizontal')
     this._blurVMaterial = this._buildBlurMaterial(this._sdfBlurRT.texture, 'vertical')
 
+    // Preview mode (thumbnail vs full-size stream) is now a per-consumer
+    // runtime choice; no downsample cap at registration.
     registerDebugTexture('sdf.jfaPing', this._pingRT, 'rgba16f', {
       display: 'normalize',
       label: 'JFA ping buffer',
-      maxDim: 0,
     })
     registerDebugTexture('sdf.jfaPong', this._pongRT, 'rgba16f', {
       display: 'normalize',
       label: 'JFA pong buffer',
-      maxDim: 0,
     })
     registerDebugTexture('sdf.distanceField', this._sdfRT, 'rgba16f', {
       display: 'signed',
       label: 'SDF distance field',
-      maxDim: 0,
     })
     registerDebugTexture('sdf.blurScratch', this._sdfBlurRT, 'rgba16f', {
       display: 'signed',
       label: 'SDF blur scratch',
-      maxDim: 0,
     })
   }
 
@@ -296,8 +294,11 @@ export class SDFGenerator {
       const currentData = sampleTexture(sourceTex, fragUV)
       const currentSeedUV = vec2(currentData.r, currentData.g)
       const currentDiff = fragUV.sub(currentSeedUV).mul(worldSize)
-      const bestSeed = currentSeedUV.toVar('bestSeed')
-      const bestDist = currentDiff.dot(currentDiff).toVar('bestDist')
+      // Anonymous toVar — TSL auto-names to avoid collisions across the
+      // pair of JFA materials (A reads ping, B reads pong) that build
+      // into the same shader namespace.
+      const bestSeed = currentSeedUV.toVar()
+      const bestDist = currentDiff.dot(currentDiff).toVar()
 
       for (let dy = -1; dy <= 1; dy++) {
         for (let dx = -1; dx <= 1; dx++) {

@@ -23,7 +23,11 @@ import {
   attachEffect,
   type AnimationSetDefinition,
 } from 'three-flatland/react'
-import { DefaultLightEffect, AutoNormalProvider } from '@three-flatland/presets'
+import {
+  DefaultLightEffect,
+  AutoNormalProvider,
+  TileNormalProvider,
+} from '@three-flatland/presets'
 import '@three-flatland/presets/react'
 import { usePane, usePaneFolder, usePaneInput } from '@three-flatland/devtools/react'
 
@@ -36,6 +40,7 @@ extend({
   Light2D,
   DefaultLightEffect,
   AutoNormalProvider,
+  TileNormalProvider,
 })
 
 // ============================================
@@ -496,9 +501,11 @@ function FlatlandScene(props: SceneProps) {
           shadowBandCurve={props.shadowBandCurve}
         />
 
-        {/* Floor — centered so map origin is at screen center */}
+        {/* Floor + walls. TileNormalProvider reads `normalKind` from each
+            tile's custom properties (tagged above) so walls react to
+            lights directionally while floors stay flat. */}
         <tileMap2D ref={tilemapRef} data={mapData} scale={[TILE_SCALE, TILE_SCALE, 1]} position={[-mapHalfW, -mapHalfH, -100]}>
-          <autoNormalProvider attach={attachEffect} />
+          <tileNormalProvider attach={attachEffect} />
         </tileMap2D>
 
         {/* Ambient — purple-tinted dungeon atmosphere */}

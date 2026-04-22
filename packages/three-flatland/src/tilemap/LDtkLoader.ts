@@ -298,7 +298,12 @@ export class LDtkLoader extends Loader<TileMapData> {
     for (const tsDef of project.defs.tilesets) {
       if (!usedTilesetUids.has(tsDef.uid)) continue
 
-      const tileset = await this.parseTileset(tsDef, baseUrl, firstGid, textureOptions)
+      const tileset = await this.parseTileset(
+        tsDef,
+        baseUrl,
+        firstGid,
+        textureOptions
+      )
       tilesets.push(tileset)
       firstGid += tileset.tileCount
     }
@@ -358,15 +363,31 @@ export class LDtkLoader extends Loader<TileMapData> {
     const textureUrl = baseUrl + def.relPath
     const texture = await this.loadTexture(textureUrl, textureOptions)
 
-    // Parse tile definitions (custom data, enum tags)
+    // Per-tile custom data — LDtk's free-form string field. If the
+    // string parses as a JSON object, its keys are merged into
+    // `properties` so they're directly consumable by effect schemas
+    // (e.g. `{"normalKind": 1}` on a wall tile flows into the
+    // TileNormalProvider's `normalKind` attribute). The raw string is
+    // always preserved under `properties.customData` as a fallback.
     const tiles = new Map<number, TileDefinition>()
-
     for (const custom of def.customData) {
       const existing = tiles.get(custom.tileId) ?? {
         id: custom.tileId,
         uv: this.calculateUV(custom.tileId, def),
       }
-      existing.properties = { ...(existing.properties ?? {}), customData: custom.data }
+      const merged: Record<string, unknown> = {
+        ...(existing.properties ?? {}),
+        customData: custom.data,
+      }
+      try {
+        const parsed = JSON.parse(custom.data)
+        if (parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          Object.assign(merged, parsed)
+        }
+      } catch {
+        // Not JSON — leave the raw string under `customData` only.
+      }
+      existing.properties = merged
       tiles.set(custom.tileId, existing)
     }
 
