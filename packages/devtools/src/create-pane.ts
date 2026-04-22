@@ -152,6 +152,99 @@ export function createPane(options: CreatePaneOptions = {}): PaneBundle {
 
   const ACTIVE_FEATURES: ('stats' | 'env' | 'registry' | 'buffers')[] = ['stats', 'env', 'registry', 'buffers']
 
+  // Three-mode cycle — full → minimal → collapsed → full. Replaces
+  // Tweakpane's binary fold with something more useful: "minimal" keeps
+  // only the stats graph + draws/tris row visible (no buffers, no
+  // registry, no provider switcher, no user-added controls) so you can
+  // watch perf numbers without a giant pane covering the viewport, AND
+  // without paying the cost of buffer streaming.
+  type Mode = 'full' | 'minimal' | 'collapsed'
+  let mode: Mode = expanded ? 'full' : 'collapsed'
+
+  const applyMode = (): void => {
+    pane.element.classList.toggle('tp-flatland-minimal', mode === 'minimal')
+    // 'full' and 'minimal' both have the pane expanded at the TP level;
+    // 'collapsed' folds it.
+    if (pane.expanded !== (mode !== 'collapsed')) {
+      pane.expanded = mode !== 'collapsed'
+    }
+    // Our own caret icon reflects the cycle position.
+    if (modeToggle !== null) {
+      modeToggle.setAttribute('data-mode', mode)
+      modeToggle.setAttribute(
+        'aria-label',
+        mode === 'full' ? 'Full pane (click for minimal)'
+        : mode === 'minimal' ? 'Minimal pane (click to collapse)'
+        : 'Collapsed (click to expand)',
+      )
+    }
+    const c = client
+    if (c !== null) {
+      // Feature gating follows the mode:
+      //   full     → everything
+      //   minimal  → stats + env only; no registry, no buffers drain
+      //   collapsed → nothing
+      if (mode === 'full') c.setFeatures(ACTIVE_FEATURES)
+      else if (mode === 'minimal') c.setFeatures(['stats', 'env'])
+      else c.setFeatures([])
+    }
+    // Propagate into the buffers view so it knows to unsubscribe. Both
+    // 'minimal' and 'collapsed' ask the view to treat itself as folded
+    // (no thumbnail stream, no GPU readback on the provider).
+    buffersView?.setPaneFolded(mode !== 'full')
+  }
+
+  const cycleMode = (): void => {
+    mode = mode === 'full' ? 'minimal' : mode === 'minimal' ? 'collapsed' : 'full'
+    applyMode()
+  }
+
+  // Replace Tweakpane's built-in fold caret with our own mode-cycle
+  // button AND intercept clicks anywhere on the pane header so the
+  // native binary-fold behavior doesn't skip 'minimal'. The native
+  // caret is hidden via CSS (.tp-rotv_m display:none).
+  let modeToggle: HTMLElement | null = null
+  if (header) {
+    modeToggle = document.createElement('span')
+    modeToggle.className = 'tp-flatland-mode'
+    modeToggle.setAttribute('role', 'button')
+    modeToggle.setAttribute('tabindex', '0')
+    modeToggle.title = 'Cycle pane mode: full → minimal → collapsed'
+    // Single caret glyph — CSS rotates it based on data-mode so one
+    // visual vocabulary handles all three states. Matches tweakpane's
+    // native rotating-caret convention and gives a screw-head look at
+    // 45° for minimal.
+    modeToggle.innerHTML = '<span class="tp-flatland-mode-glyph"></span>'
+    const go = (e: Event): void => {
+      e.preventDefault()
+      e.stopPropagation()
+      cycleMode()
+    }
+    modeToggle.addEventListener('click', go)
+    modeToggle.addEventListener('mousedown', (e) => e.stopPropagation())
+    modeToggle.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') go(e)
+    })
+    header.appendChild(modeToggle)
+
+    // Capture-phase click on the header itself — Tweakpane's root
+    // component wires a listener that toggles `expanded`, which would
+    // skip our tri-state. Intercept before it fires, cycle our modes,
+    // stop propagation so the default toggle never runs. Clicks on our
+    // own overlay buttons (pin, mode toggle) already stop propagation
+    // themselves, so they're unaffected.
+    const onHeaderClick = (e: MouseEvent): void => {
+      const target = e.target as HTMLElement | null
+      if (target === null) return
+      // Let clicks on our own interactive children through untouched.
+      if (target.closest('.tp-flatland-pin, .tp-flatland-mode') !== null) return
+      e.preventDefault()
+      e.stopPropagation()
+      cycleMode()
+    }
+    header.addEventListener('click', onHeaderClick, true)
+  }
+
   try {
     client = new DevtoolsClient({ features: ACTIVE_FEATURES })
     graph = addStatsGraph(pane, client, { driver })
@@ -176,18 +269,25 @@ export function createPane(options: CreatePaneOptions = {}): PaneBundle {
     })
     client.start()
 
-    // Pane fold → mute the bus. When the outer header is collapsed the
-    // user can't see any of the data anyway, so we drop every feature
-    // and let the provider skip all flushes. Expanding restores.
+    // Mark the always-visible blades so CSS can keep them shown while
+    // hiding everything else in 'minimal' mode.
+    graph?.element.classList.add('tp-flatland-minimal-keep')
+    statsRow?.element.classList.add('tp-flatland-minimal-keep')
+
+    applyMode()
+
+    // Tweakpane still tries to toggle expanded when the user clicks the
+    // header — intercept and redirect through our cycle. The `fold`
+    // event fires from keyboard ⇥-space or external sets; keep it as a
+    // fallback that syncs our mode if something else flips expansion.
     pane.on('fold', (ev) => {
-      const c = client
-      if (c === null) return
-      if (ev.expanded) c.setFeatures(ACTIVE_FEATURES)
-      else c.setFeatures([])
-      // Buffers-view tracks its own collapse state independently; the
-      // pane-level fold needs to propagate down so the view drops its
-      // thumbnail subscription when the whole pane hides.
-      buffersView?.setPaneFolded(!ev.expanded)
+      const desired: Mode = ev.expanded
+        ? (mode === 'collapsed' ? 'full' : mode)
+        : 'collapsed'
+      if (desired !== mode) {
+        mode = desired
+        applyMode()
+      }
     })
   } catch {
     // Bus unavailable — skip the stats blades. Pane still usable.
