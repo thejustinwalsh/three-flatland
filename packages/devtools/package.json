@@ -36,6 +36,17 @@
         "types": "./dist/react/*.d.cts",
         "default": "./dist/react/*.cjs"
       }
+    },
+    "./vite": {
+      "source": "./src/vite-plugin.ts",
+      "import": {
+        "types": "./dist/vite-plugin.d.ts",
+        "default": "./dist/vite-plugin.js"
+      },
+      "require": {
+        "types": "./dist/vite-plugin.d.cts",
+        "default": "./dist/vite-plugin.cjs"
+      }
     }
   },
   "main": "./dist/index.cjs",
@@ -50,7 +61,7 @@
     "dev": "tsup --watch",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.dashboard.json",
     "clean": "rm -rf dist"
   },
   "peerDependencies": {
@@ -59,7 +70,8 @@
     "react": "^19.0.0",
     "three": "^0.183.0",
     "three-flatland": "^0.1.0-alpha.4",
-    "tweakpane": "^4.0.5"
+    "tweakpane": "^4.0.5",
+    "vite": "^5.0.0 || ^6.0.0"
   },
   "peerDependenciesMeta": {
     "react": {
@@ -72,6 +84,9 @@
       "optional": true
     },
     "three-flatland": {
+      "optional": true
+    },
+    "vite": {
       "optional": true
     }
   },
@@ -89,7 +104,8 @@
     "three": "catalog:",
     "three-flatland": "workspace:*",
     "tweakpane": "catalog:",
-    "typescript": "catalog:"
+    "typescript": "catalog:",
+    "vite": "catalog:"
   },
   "keywords": [
     "three.js",

@@ -1,0 +1,20 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "declaration": false,
+    "declarationMap": false,
+    "jsx": "react-jsx",
+    "jsxImportSource": "preact",
+    "allowJs": true,
+    "checkJs": false,
+    "baseUrl": ".",
+    "paths": {
+      "preact": ["./src/dashboard/vendor/preact.module"],
+      "preact/jsx-runtime": ["./src/dashboard/vendor/jsx-runtime"],
+      "preact/hooks": ["./src/dashboard/vendor/hooks.module"]
+    }
+  },
+  "include": ["src/dashboard/**/*"],
+  "exclude": ["node_modules", "dist", "**/*.test.ts", "**/*.test.tsx"]
+}
