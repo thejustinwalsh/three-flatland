@@ -1,0 +1,884 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>three-flatland devtools</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0e1016;
+      --bg-elev: #14171e;
+      --bg-elev-2: #1b1f29;
+      --border: #2a2e37;
+      --fg: #e4e6eb;
+      --fg-dim: #9aa0ab;
+      --accent: #5eb0ff;
+      --live: #5ed38a;
+    }
+    html, body { height: 100%; margin: 0; overflow: hidden; }
+    body {
+      background: var(--bg);
+      color: var(--fg);
+      font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+    }
+    button { font: inherit; color: inherit; }
+
+    /* Shared scroll styling across every scrollable region in the
+     * dashboard — thin scrollbars, muted thumbs, contain-by-default so
+     * wheel events don't chain into ancestor containers. */
+    .dashboard-root * {
+      scrollbar-width: thin;
+      scrollbar-color: rgba(255, 255, 255, 0.12) transparent;
+    }
+    .dashboard-root *::-webkit-scrollbar { width: 8px; height: 8px; }
+    .dashboard-root *::-webkit-scrollbar-track { background: transparent; }
+    .dashboard-root *::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.12);
+      border-radius: 4px;
+    }
+    .dashboard-root *::-webkit-scrollbar-thumb:hover {
+      background: rgba(255, 255, 255, 0.2);
+    }
+
+    /* Lock the root to the viewport — no page-level scrolling, each
+     * panel owns its own scroll region. `100dvh` (with a `100vh`
+     * fallback) keeps mobile Safari's dynamic toolbar from clipping the
+     * bottom panel. `min-height: 0` lets descendant flex items shrink
+     * below their content. */
+    .dashboard-root {
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      height: 100dvh;
+      min-height: 0;
+    }
+    .dashboard-header {
+      padding: 6px 12px;
+      border-bottom: 1px solid var(--border);
+      background: var(--bg-elev);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .brand { font-weight: 600; letter-spacing: 0.02em; flex: 0 0 auto; }
+    .dashboard-main { flex: 1; display: flex; min-height: 0; }
+    .dashboard-content {
+      flex: 1;
+      padding: 8px;
+      min-width: 0;
+      min-height: 0;
+      /* Column flex so the stats strip sits on top and the split grows
+       * to absorb the remaining vertical space. No outer overflow —
+       * each panel manages its own scrolling so the page doesn't
+       * expand past the viewport. */
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      overflow: hidden;
+    }
+    /*
+     * Main content split: on wide viewports, buffers + registry live in
+     * a left column while protocol takes the right. Below ~1150px (too
+     * narrow for both a fullscreen canvas and a usable protocol list)
+     * they fall back into one stacked column.
+     */
+    .dashboard-split {
+      display: flex;
+      gap: 8px;
+      min-height: 0;
+      /* Let the split stretch vertically so the protocol column can
+       * actually grow — otherwise it just hugs its min-height. */
+      flex: 1;
+    }
+    .dashboard-split-col {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      min-width: 0;
+      min-height: 0;
+      flex: 1;
+    }
+    /*
+     * Narrow viewports: stack everything in a single column but keep
+     * the viewport-bounded layout — page never scrolls, each panel
+     * internal-scrolls. Panels divide the remaining vertical space by
+     * flex ratios so a too-short viewport shrinks them uniformly
+     * instead of pushing one off-screen.
+     */
+    @media (max-width: 1150px) {
+      .dashboard-split { flex-direction: column; }
+      /* In a stacked column the panels' flex-grow values need tuning
+       * since they're now siblings rather than grid cells. Buffers gets
+       * the most room (canvas preview); registry smaller; protocol a
+       * sizable share since it's the densest read. */
+      .buffers-panel { flex: 4; }
+      .registry-panel { flex: 2; }
+      .protocol-panel { flex: 5; }
+    }
+
+    .producer-select { position: relative; }
+    .producer-button {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 4px 10px;
+      background: var(--bg);
+      color: var(--fg);
+      border: 1px solid var(--border);
+      border-radius: 3px;
+      cursor: pointer;
+      min-width: 220px;
+    }
+    .producer-button:disabled { opacity: 0.5; cursor: default; }
+    .producer-button-open { border-color: var(--accent); }
+    .producer-button .producer-label {
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      text-align: left;
+    }
+    .producer-button .producer-kind {
+      font-size: 9px;
+      text-transform: uppercase;
+      color: var(--fg-dim);
+      letter-spacing: 0.06em;
+    }
+    .producer-caret { color: var(--fg-dim); font-size: 8px; }
+    .producer-menu {
+      position: absolute;
+      top: calc(100% + 4px);
+      left: 0;
+      right: 0;
+      margin: 0;
+      padding: 4px 0;
+      list-style: none;
+      background: var(--bg-elev-2);
+      border: 1px solid var(--border);
+      border-radius: 3px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+      z-index: 100;
+      max-height: 320px;
+      overflow-y: auto;
+    }
+    .producer-option {
+      display: grid;
+      grid-template-columns: 16px 1fr auto;
+      gap: 8px;
+      align-items: center;
+      width: 100%;
+      padding: 4px 10px;
+      background: transparent;
+      color: var(--fg);
+      border: none;
+      cursor: pointer;
+      text-align: left;
+    }
+    .producer-option:hover { background: rgba(255, 255, 255, 0.04); }
+    .producer-option-active { color: var(--accent); }
+    .producer-check { text-align: center; color: var(--accent); }
+
+    .header-stats {
+      display: inline-flex;
+      gap: 12px;
+      margin-left: auto;
+      color: var(--fg-dim);
+      font-variant-numeric: tabular-nums;
+      font-size: 11px;
+    }
+    .header-stats span[title] { cursor: help; }
+    /* Match protocol-log direction arrow palette: green in, amber out. */
+    .header-arrow-in { color: #5ed38a; font-weight: 700; }
+    .header-arrow-out { color: #f0b429; font-weight: 700; }
+
+    .panel {
+      background: var(--bg-elev-2);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      /* Gap-based spacing is owned by the layout containers now; the
+       * per-panel margin would stack with `gap` and push total height
+       * past the viewport, causing the log to grow the page down. */
+    }
+    .panel-header {
+      padding: 6px 10px;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--fg-dim);
+      border-bottom: 1px solid var(--border);
+      background: rgba(255, 255, 255, 0.02);
+    }
+    .panel-body { padding: 8px 10px; }
+    .panel-empty { margin: 4px 0; color: var(--fg-dim); }
+
+    .producers-list { list-style: none; margin: 0; padding: 0; }
+    .producers-list li + li { margin-top: 2px; }
+    .producer-row {
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      gap: 8px;
+      align-items: center;
+      width: 100%;
+      padding: 6px 8px;
+      background: transparent;
+      border: 1px solid transparent;
+      border-radius: 3px;
+      cursor: pointer;
+      text-align: left;
+    }
+    .producer-row:hover { background: rgba(255, 255, 255, 0.03); }
+    .producer-row-selected {
+      background: rgba(94, 176, 255, 0.08);
+      border-color: rgba(94, 176, 255, 0.3);
+    }
+    .producer-kind {
+      font-size: 10px;
+      text-transform: uppercase;
+      color: var(--fg-dim);
+    }
+    .producer-label { color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #3a3f4b;
+    }
+    .dot-live { background: var(--live); box-shadow: 0 0 6px rgba(94, 211, 138, 0.6); }
+
+    .stats-strip {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+      gap: 4px;
+      /* Keep top/bottom padding in line with other panels so the gap
+       * between Stats and the panel beneath doesn't read larger than
+       * the inter-panel gap elsewhere. */
+      padding: 4px 10px;
+    }
+    .stat {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      padding: 6px 10px;
+      background: var(--bg);
+      border: 1px solid transparent;
+      border-radius: 3px;
+      overflow: hidden;
+      min-height: 52px;
+      cursor: pointer;
+      text-align: left;
+      color: inherit;
+      font: inherit;
+      appearance: none;
+      -webkit-appearance: none;
+    }
+    .stat:focus { outline: none; }
+    .stat:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
+    .stat-canvas {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      opacity: 0.6;
+    }
+    .stat-label {
+      position: relative;
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--stat-color, var(--fg-dim));
+    }
+    .stat-value {
+      position: relative;
+      font-size: 15px;
+      font-variant-numeric: tabular-nums;
+      font-weight: 500;
+    }
+    .stat:hover { background: rgba(255, 255, 255, 0.02); }
+    .stat-selected { box-shadow: inset 0 0 0 1px var(--stat-color, var(--accent)); }
+
+    .stat-detail {
+      margin: 0 10px 8px;
+      padding: 8px 10px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-top: 2px solid var(--stat-color, var(--accent));
+      border-radius: 3px;
+    }
+    .stat-detail-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 6px;
+    }
+    .stat-detail-label {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--stat-color, var(--fg));
+    }
+    .stat-detail-samples { font-size: 10px; color: var(--fg-dim); }
+    .stat-detail-close {
+      margin-left: auto;
+      background: transparent;
+      border: none;
+      color: var(--fg-dim);
+      cursor: pointer;
+      font-size: 16px;
+      line-height: 1;
+      padding: 0 4px;
+    }
+    .stat-detail-close:hover { color: var(--fg); }
+    .stat-detail-metrics {
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+      gap: 4px;
+      margin-bottom: 6px;
+    }
+    .stat-metric {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      padding: 4px 6px;
+      background: var(--bg-elev-2);
+      border-radius: 2px;
+    }
+    .stat-metric-label {
+      font-size: 9px;
+      text-transform: uppercase;
+      color: var(--fg-dim);
+      letter-spacing: 0.06em;
+    }
+    .stat-metric-value {
+      font-size: 13px;
+      font-variant-numeric: tabular-nums;
+    }
+    .stat-histo {
+      display: block;
+      width: 100%;
+      height: 80px;
+    }
+
+    .protocol-panel {
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      /* Fill the column; scroll internally via .protocol-body so the
+       * log can't push the page taller as messages accumulate. */
+      flex: 1;
+    }
+    .protocol-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      text-transform: none;
+      letter-spacing: 0;
+    }
+    .protocol-header > span:first-child {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      flex: 0 0 auto;
+    }
+    .protocol-filter {
+      flex: 1;
+      min-width: 0;
+      background: var(--bg);
+      color: var(--fg);
+      border: 1px solid var(--border);
+      border-radius: 3px;
+      padding: 3px 6px;
+      font: inherit;
+    }
+    .protocol-btn {
+      background: var(--bg);
+      color: var(--fg-dim);
+      border: 1px solid var(--border);
+      border-radius: 3px;
+      padding: 3px 8px;
+      cursor: pointer;
+    }
+    .protocol-btn:hover { color: var(--fg); }
+    .protocol-btn-on { color: var(--accent); border-color: rgba(94, 176, 255, 0.5); }
+    .protocol-btn[disabled] { opacity: 0.4; cursor: default; }
+    .protocol-match-count {
+      font-size: 10px;
+      color: var(--fg-dim);
+      font-variant-numeric: tabular-nums;
+      padding: 0 6px;
+      background: rgba(94, 176, 255, 0.1);
+      border: 1px solid rgba(94, 176, 255, 0.3);
+      border-radius: 3px;
+      line-height: 18px;
+    }
+
+    .protocol-layout { flex: 1; display: flex; min-height: 0; }
+    .protocol-body {
+      flex: 1;
+      min-width: 0;
+      /* `min-height: 0` lets the flex item contract below its
+       * virtualization spacer and actually activate the scroll. */
+      min-height: 0;
+      overflow: auto;
+      padding: 0;
+      position: relative;
+      /* Keep wheel/touch scrolls inside the panel so they don't chain
+       * to the page — otherwise in single-column mode scrolling past
+       * the tail propagates to html, the page scrolls, and our
+       * `scrollTop = 0` tail pin becomes visually meaningless. */
+      overscroll-behavior: contain;
+      scrollbar-width: thin;
+      scrollbar-color: var(--border) transparent;
+    }
+    .protocol-body::-webkit-scrollbar { width: 8px; height: 8px; }
+    .protocol-body::-webkit-scrollbar-track { background: transparent; }
+    .protocol-body::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.12);
+      border-radius: 4px;
+    }
+    .protocol-body::-webkit-scrollbar-thumb:hover {
+      background: rgba(255, 255, 255, 0.2);
+    }
+    .protocol-spacer { position: relative; width: 100%; }
+    .protocol-row {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      display: grid;
+      grid-template-columns: 14px 90px 60px 120px 1fr 56px;
+      gap: 8px;
+      padding: 0 10px;
+      background: transparent;
+      border: none;
+      cursor: pointer;
+      text-align: left;
+      font-size: 11px;
+      font-variant-numeric: tabular-nums;
+      align-items: center;
+      white-space: nowrap;
+      will-change: transform;
+    }
+    .protocol-frame { color: var(--fg-dim); font-size: 10px; }
+    .protocol-size { color: var(--fg-dim); text-align: right; }
+    .protocol-row-hover { background: rgba(255, 255, 255, 0.04); }
+    .protocol-row-selected {
+      background: rgba(94, 176, 255, 0.1) !important;
+      box-shadow: inset 2px 0 0 var(--accent);
+    }
+    .protocol-row-placeholder {
+      color: rgba(255, 255, 255, 0.2);
+    }
+    .protocol-dir { font-weight: 700; }
+    .protocol-row-in .protocol-dir { color: #5ed38a; }
+    .protocol-row-out .protocol-dir { color: #f0b429; }
+    .protocol-time { color: var(--fg-dim); }
+    .protocol-type { color: var(--fg); }
+    .protocol-tag {
+      color: var(--fg-dim);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .protocol-detail {
+      flex: 0 0 420px;
+      display: flex;
+      flex-direction: column;
+      border-left: 1px solid var(--border);
+      background: var(--bg);
+      min-width: 0;
+    }
+    .protocol-detail-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 6px 10px;
+      border-bottom: 1px solid var(--border);
+    }
+    .protocol-detail-title {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .protocol-detail-meta {
+      display: flex;
+      gap: 12px;
+      padding: 4px 10px;
+      font-size: 10px;
+      color: var(--fg-dim);
+      border-bottom: 1px solid var(--border);
+    }
+    .protocol-detail-body {
+      flex: 1;
+      margin: 0;
+      padding: 8px 10px;
+      overflow: auto;
+      font-size: 11px;
+      color: var(--fg-dim);
+      white-space: pre;
+    }
+    .json-key { color: #8ab4ff; }
+    .json-str { color: #c3e88d; }
+    .json-num { color: #f78c6c; }
+    .json-bool { color: #c792ea; }
+    .json-null { color: #89ddff; font-style: italic; }
+
+    .registry-panel {
+      display: flex;
+      flex-direction: column;
+      flex: 2;
+      min-height: 0;
+    }
+    .registry-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      text-transform: none;
+      letter-spacing: 0;
+    }
+    .registry-header > span:first-child {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+    .registry-count {
+      font-size: 10px;
+      color: var(--fg-dim);
+      font-variant-numeric: tabular-nums;
+    }
+    .registry-layout { flex: 1; display: flex; min-height: 0; min-width: 0; }
+    .registry-list {
+      list-style: none;
+      margin: 0;
+      padding: 4px 0;
+      overflow-y: auto;
+      flex: 0 0 260px;
+      border-right: 1px solid var(--border);
+      background: var(--bg-elev-2);
+    }
+    .registry-row {
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      gap: 8px;
+      align-items: center;
+      width: 100%;
+      padding: 4px 10px;
+      background: transparent;
+      border: none;
+      cursor: pointer;
+      text-align: left;
+      font-size: 11px;
+      color: var(--fg);
+    }
+    .registry-row:hover { background: rgba(255, 255, 255, 0.03); }
+    .registry-row-selected {
+      background: rgba(94, 176, 255, 0.1);
+      box-shadow: inset 2px 0 0 var(--accent);
+    }
+    .registry-kind {
+      font-size: 9px;
+      text-transform: uppercase;
+      color: var(--fg-dim);
+      letter-spacing: 0.04em;
+    }
+    .registry-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .registry-count-pill {
+      color: var(--fg-dim);
+      font-variant-numeric: tabular-nums;
+      font-size: 10px;
+    }
+
+    .registry-detail {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      background: var(--bg);
+    }
+    .registry-detail-header {
+      display: flex;
+      gap: 8px;
+      padding: 6px 10px;
+      border-bottom: 1px solid var(--border);
+      align-items: baseline;
+    }
+    .registry-detail-name { font-weight: 600; }
+    .registry-detail-label { color: var(--fg-dim); font-size: 11px; }
+    .registry-detail-meta {
+      display: flex;
+      gap: 12px;
+      padding: 4px 10px;
+      font-size: 10px;
+      color: var(--fg-dim);
+      border-bottom: 1px solid var(--border);
+    }
+    .registry-detail-body { flex: 1; min-height: 0; overflow: auto; padding: 6px 10px; font-size: 11px; }
+
+    .sample-grid {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      font-variant-numeric: tabular-nums;
+    }
+    .sample-row {
+      display: grid;
+      grid-template-columns: 56px repeat(8, 1fr);
+      gap: 6px;
+      align-items: center;
+    }
+    .sample-index { color: var(--fg-dim); font-size: 10px; text-align: right; padding-right: 4px; }
+    .sample-cell { text-align: right; color: var(--fg); padding: 1px 2px; }
+
+    .buffers-panel {
+      display: flex;
+      flex-direction: column;
+      /* Share the column with Registry — 3:2 split is a good default
+       * for the canvas/preview + entry list rhythm. Both need
+       * `min-height: 0` so their internal overflow containers can
+       * actually scroll instead of expanding the panel. */
+      flex: 3;
+      min-height: 0;
+    }
+    .buffers-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      text-transform: none;
+      letter-spacing: 0;
+    }
+    .buffers-header > span:first-child {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+    .buffers-layout { flex: 1; display: flex; min-height: 0; min-width: 0; }
+    .buffers-list {
+      list-style: none;
+      margin: 0;
+      padding: 4px 0;
+      overflow-y: auto;
+      flex: 0 0 260px;
+      border-right: 1px solid var(--border);
+      background: var(--bg-elev-2);
+    }
+    .buffers-row {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      width: 100%;
+      padding: 6px 10px;
+      background: transparent;
+      border: none;
+      cursor: pointer;
+      text-align: left;
+      font-size: 11px;
+      color: var(--fg);
+    }
+    .buffers-row:hover { background: rgba(255, 255, 255, 0.03); }
+    .buffers-row-selected {
+      background: rgba(94, 176, 255, 0.1);
+      box-shadow: inset 2px 0 0 var(--accent);
+    }
+    .buffers-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .buffers-meta {
+      color: var(--fg-dim);
+      font-size: 10px;
+      font-variant-numeric: tabular-nums;
+    }
+    .buffers-stage {
+      flex: 1;
+      min-width: 0;
+      position: relative;
+      background: var(--bg);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 8px;
+      overflow: hidden;
+    }
+    .buffers-canvas {
+      image-rendering: pixelated;
+      display: block;
+      background: rgba(0, 2, 28, 0.6);
+      border-radius: 2px;
+    }
+    .buffers-info {
+      position: absolute;
+      bottom: 8px;
+      left: 12px;
+      right: 12px;
+      display: flex;
+      gap: 12px;
+      font-size: 10px;
+      color: var(--fg-dim);
+      background: rgba(0, 0, 0, 0.5);
+      border-radius: 3px;
+      padding: 3px 8px;
+      pointer-events: none;
+    }
+    .buffers-warn { color: #f0b429; }
+    .buffers-close {
+      position: absolute;
+      top: 6px;
+      right: 8px;
+      background: rgba(0, 0, 0, 0.5);
+      color: var(--fg-dim);
+      border: 1px solid var(--border);
+      border-radius: 3px;
+      cursor: pointer;
+      padding: 0 6px;
+      line-height: 18px;
+      font-size: 14px;
+    }
+    .buffers-close:hover { color: var(--fg); background: rgba(0, 0, 0, 0.7); }
+
+    .env-popover { position: relative; }
+    .env-trigger {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      background: var(--bg);
+      color: var(--fg);
+      border: 1px solid var(--border);
+      border-radius: 3px;
+      cursor: pointer;
+      font-size: 11px;
+    }
+    .env-trigger-open { border-color: var(--accent); }
+    .env-trigger-summary { color: var(--fg-dim); }
+    .env-caret { color: var(--fg-dim); font-size: 8px; }
+    .env-menu {
+      position: absolute;
+      top: calc(100% + 6px);
+      right: 0;
+      min-width: 280px;
+      padding: 8px 12px;
+      background: var(--bg-elev-2);
+      border: 1px solid var(--border);
+      border-radius: 3px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+      z-index: 100;
+    }
+    .env-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 2px 0;
+      font-size: 11px;
+    }
+    .env-label { color: var(--fg-dim); }
+    .env-value { font-variant-numeric: tabular-nums; color: var(--fg); }
+
+    .buffers-canvas {
+      transform-origin: center center;
+      will-change: transform;
+    }
+    .buffers-zoom { margin-left: auto; color: var(--fg-dim); }
+    .buffers-probe {
+      position: absolute;
+      top: 6px;
+      left: 8px;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 3px 8px;
+      background: rgba(0, 0, 0, 0.6);
+      border: 1px solid var(--border);
+      border-radius: 3px;
+      color: var(--fg);
+      font-size: 10px;
+      font-variant-numeric: tabular-nums;
+      pointer-events: none;
+    }
+    .probe-chip {
+      width: 10px;
+      height: 10px;
+      border-radius: 2px;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+    .buffers-reset {
+      position: absolute;
+      top: 6px;
+      right: 38px;
+      background: rgba(0, 0, 0, 0.5);
+      color: var(--fg-dim);
+      border: 1px solid var(--border);
+      border-radius: 3px;
+      cursor: pointer;
+      padding: 0 6px;
+      line-height: 18px;
+      font-size: 14px;
+    }
+    .buffers-reset:hover { color: var(--fg); background: rgba(0, 0, 0, 0.7); }
+    .buffers-stage { user-select: none; }
+
+    .protocol-dir-toggle { display: inline-flex; gap: 2px; }
+    .protocol-filter-menu-wrap { position: relative; }
+    .protocol-filter-menu {
+      position: absolute;
+      top: calc(100% + 6px);
+      right: 0;
+      min-width: 260px;
+      padding: 8px;
+      background: var(--bg-elev-2);
+      border: 1px solid var(--border);
+      border-radius: 3px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+      z-index: 100;
+    }
+    .protocol-filter-menu-section { margin-bottom: 10px; }
+    .protocol-filter-menu-section:last-child { margin-bottom: 0; }
+    .protocol-filter-menu-title {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 10px;
+      text-transform: uppercase;
+      color: var(--fg-dim);
+      letter-spacing: 0.06em;
+      margin-bottom: 4px;
+    }
+    .protocol-filter-menu-clear {
+      padding: 0 6px;
+      font-size: 10px;
+    }
+    .protocol-filter-menu-value {
+      display: inline-block;
+      margin-left: 8px;
+      font-size: 11px;
+      color: var(--fg-dim);
+      font-variant-numeric: tabular-nums;
+    }
+    .protocol-filter-menu input[type="range"] {
+      vertical-align: middle;
+      width: 160px;
+    }
+    .protocol-filter-types {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      max-height: 240px;
+      overflow-y: auto;
+    }
+    .protocol-filter-type {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 2px 4px;
+      font-size: 11px;
+      cursor: pointer;
+    }
+    .protocol-filter-type:hover { background: rgba(255, 255, 255, 0.03); }
+    .protocol-filter-type input { margin: 0; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="module" src="./index.tsx"></script>
+</body>
+</html>

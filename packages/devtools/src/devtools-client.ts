@@ -49,6 +49,10 @@ export type DevtoolsStateListener = (state: DevtoolsState) => void
 export type { BufferChunkPayload }
 export type BufferChunkListener = (chunk: BufferChunkPayload) => void
 
+/** Listener for raw protocol messages. Direction is `in` for messages
+ *  received from the bus, `out` for messages the client posts. */
+export type RawMessageListener = (msg: DebugMessage, direction: 'in' | 'out') => void
+
 /**
  * Discovery retry backoff. Starts at `QUERY_RETRY_MIN_MS`, doubles each
  * attempt, caps at `QUERY_RETRY_MAX_MS`, and gives up after `QUERY_MAX_RETRIES`
@@ -60,11 +64,12 @@ const QUERY_RETRY_MAX_MS = 5000
 const QUERY_MAX_RETRIES = 10
 
 /**
- * Size of the client-side decoded series rings. Sized generously so the
- * graph (default 80-sample window) has plenty of history at 60 Hz
- * regardless of batch timing.
+ * Size of the client-side decoded series rings. Sized generously so
+ * downstream consumers (graphs, percentile detail panels) have plenty
+ * of history across both 4 Hz batch and 60 Hz sample cadences. 1024 ×
+ * Float32 × ~9 fields ≈ 36 KB total — negligible.
  */
-const CLIENT_SERIES_SIZE = 256
+const CLIENT_SERIES_SIZE = 1024
 
 /** Shared zero-length placeholder used for metadata-only registry snapshots. */
 const EMPTY_SAMPLE: Float32Array = new Float32Array(0)
@@ -239,6 +244,7 @@ export class DevtoolsClient {
   private _buffersSelection: Record<string, BufferSubscriptionEntry> = {}
   private _listeners = new Set<DevtoolsStateListener>()
   private _chunkListeners = new Set<BufferChunkListener>()
+  private _rawMessageListeners = new Set<RawMessageListener>()
 
   private _ackTimer: ReturnType<typeof setInterval> | null = null
   private _livenessTimer: ReturnType<typeof setInterval> | null = null
@@ -521,6 +527,18 @@ export class DevtoolsClient {
   private _onDataMessage(msg: DebugMessage | undefined): void {
     if (!msg || typeof msg !== 'object' || !('type' in msg)) return
     tracePerf(msg)
+
+    // Tap for protocol-log panels. Fires for every inbound message,
+    // including our own echoes — intentional: seeing our outbound traffic
+    // is half the reason the devtools exists. Kept free-form (no
+    // byte-count, no decoded size) because computing that per-message
+    // noticeably shows up on streaming workloads; panels that care can
+    // derive it themselves.
+    if (this._rawMessageListeners.size > 0) {
+      for (const cb of this._rawMessageListeners) {
+        try { cb(msg, 'in') } catch { /* listener errors shouldn't break the bus */ }
+      }
+    }
 
     switch (msg.type) {
       case 'subscribe:ack': {
@@ -909,16 +927,27 @@ export class DevtoolsClient {
   }
 
   private _postDiscovery(body: Omit<DebugMessage, 'v' | 'ts'>): void {
+    const msg = { v: DEBUG_PROTOCOL_VERSION, ts: Date.now(), ...body } as DebugMessage
+    this._fireRawMessage(msg, 'out')
     try {
-      this._discoveryBus.postMessage({ v: DEBUG_PROTOCOL_VERSION, ts: Date.now(), ...body })
+      this._discoveryBus.postMessage(msg)
     } catch { /* bus may be closing */ }
   }
 
   private _postData(body: Omit<DebugMessage, 'v' | 'ts'>): void {
     if (this._dataBus === null) return
+    const msg = { v: DEBUG_PROTOCOL_VERSION, ts: Date.now(), ...body } as DebugMessage
+    this._fireRawMessage(msg, 'out')
     try {
-      this._dataBus.postMessage({ v: DEBUG_PROTOCOL_VERSION, ts: Date.now(), ...body })
+      this._dataBus.postMessage(msg)
     } catch { /* bus may be closing */ }
+  }
+
+  private _fireRawMessage(msg: DebugMessage, direction: 'in' | 'out'): void {
+    if (this._rawMessageListeners.size === 0) return
+    for (const cb of this._rawMessageListeners) {
+      try { cb(msg, direction) } catch { /* listener errors shouldn't break the bus */ }
+    }
   }
 
   /** Subscribe to state-change events. Returns an unsubscribe function. */
@@ -936,6 +965,17 @@ export class DevtoolsClient {
   addChunkListener(cb: BufferChunkListener): () => void {
     this._chunkListeners.add(cb)
     return () => { this._chunkListeners.delete(cb) }
+  }
+
+  /**
+   * Subscribe to every bus message — both inbound (from providers) and
+   * outbound (our own `subscribe`/`ack`/etc.). Used by the dashboard's
+   * protocol-log panel. Listeners fire on the hot path so keep them
+   * cheap — filter and format lazily.
+   */
+  addRawMessageListener(cb: RawMessageListener): () => void {
+    this._rawMessageListeners.add(cb)
+    return () => { this._rawMessageListeners.delete(cb) }
   }
 
   private _fire(): void {
