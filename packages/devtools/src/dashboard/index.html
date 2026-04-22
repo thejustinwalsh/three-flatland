@@ -99,24 +99,6 @@
       min-height: 0;
       flex: 1;
     }
-    /*
-     * Narrow viewports: stack everything in a single column but keep
-     * the viewport-bounded layout — page never scrolls, each panel
-     * internal-scrolls. Panels divide the remaining vertical space by
-     * flex ratios so a too-short viewport shrinks them uniformly
-     * instead of pushing one off-screen.
-     */
-    @media (max-width: 1150px) {
-      .dashboard-split { flex-direction: column; }
-      /* In a stacked column the panels' flex-grow values need tuning
-       * since they're now siblings rather than grid cells. Buffers gets
-       * the most room (canvas preview); registry smaller; protocol a
-       * sizable share since it's the densest read. */
-      .buffers-panel { flex: 4; }
-      .registry-panel { flex: 2; }
-      .protocol-panel { flex: 5; }
-    }
-
     .producer-select { position: relative; }
     .producer-button {
       display: inline-flex;
@@ -424,11 +406,10 @@
       overflow: auto;
       padding: 0;
       position: relative;
-      /* Keep wheel/touch scrolls inside the panel so they don't chain
-       * to the page — otherwise in single-column mode scrolling past
-       * the tail propagates to html, the page scrolls, and our
-       * `scrollTop = 0` tail pin becomes visually meaningless. */
-      overscroll-behavior: contain;
+      /* `auto` so scroll gestures chain to the page when the log is
+       * already at its top / bottom edge — matches how native mobile
+       * nested scroll containers behave. */
+      overscroll-behavior: auto;
       scrollbar-width: thin;
       scrollbar-color: var(--border) transparent;
     }
@@ -562,7 +543,7 @@
     }
     .registry-row {
       display: grid;
-      grid-template-columns: auto 1fr auto;
+      grid-template-columns: auto 1fr auto auto;
       gap: 8px;
       align-items: center;
       width: 100%;
@@ -573,6 +554,42 @@
       text-align: left;
       font-size: 11px;
       color: var(--fg);
+    }
+    .registry-sparkline { image-rendering: pixelated; }
+    .registry-viz-wrap {
+      /* Wrapper supplies the horizontal breathing room; the canvas
+       * below expands to fill it. Previous version applied `margin: 0
+       * 10px` directly to the canvas alongside `width: 100%`, which
+       * added up to `100% + 20px` and pushed the graph past the panel
+       * border on every render. */
+      padding: 0 10px;
+      box-sizing: border-box;
+      width: 100%;
+    }
+    .registry-viz-stack {
+      position: relative;
+      width: 100%;
+      height: 80px;
+    }
+    .registry-viz {
+      display: block;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 2, 28, 0.35);
+      border-radius: 2px;
+    }
+    .registry-viz-stack { cursor: crosshair; }
+    .registry-viz-cursor-line {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      width: 1px;
+      background: rgba(255, 255, 255, 0.9);
+      pointer-events: none;
+      display: none;
+      /* Imperative positioning driven directly by mousemove — no React
+       * re-render per frame, just a style.left update. */
+      will-change: left;
     }
     .registry-row:hover { background: rgba(255, 255, 255, 0.03); }
     .registry-row-selected {
@@ -616,22 +633,66 @@
       color: var(--fg-dim);
       border-bottom: 1px solid var(--border);
     }
-    .registry-detail-body { flex: 1; min-height: 0; overflow: auto; padding: 6px 10px; font-size: 11px; }
-
-    .sample-grid {
+    /* Flex-column so the inner `.sample-grid-scroller` can `flex: 1` +
+     * overflow inside. Previously `overflow: auto` on this element
+     * itself made it the scroller, while the inner scroller had no
+     * flex context and sized to content — `scrollTo` on the inner was
+     * a no-op because the outer was what actually scrolled. */
+    .registry-detail-body {
+      flex: 1;
+      min-height: 0;
       display: flex;
       flex-direction: column;
-      gap: 2px;
+      padding: 6px 10px;
+      font-size: 11px;
+    }
+
+    .sample-grid-scroller {
+      flex: 1;
+      min-height: 0;
+      overflow: auto;
+    }
+    .sample-grid {
+      position: relative;
+      /* Fixed-width decimal "hex-viewer"-style grid — monospace font,
+       * tabular figures, and each cell padded to the same char count by
+       * the formatter. Raw value lives in each cell's `title` so hover
+       * shows full precision. */
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
       font-variant-numeric: tabular-nums;
+      white-space: pre;
     }
     .sample-row {
+      position: absolute;
+      left: 0;
+      right: 0;
       display: grid;
-      grid-template-columns: 56px repeat(8, 1fr);
+      /* 8-char cell + 1 char padding via ch units so columns line up
+       * regardless of zoom / font-size. */
+      grid-template-columns: 5ch repeat(8, 9ch);
       gap: 6px;
       align-items: center;
+      will-change: transform;
     }
     .sample-index { color: var(--fg-dim); font-size: 10px; text-align: right; padding-right: 4px; }
-    .sample-cell { text-align: right; color: var(--fg); padding: 1px 2px; }
+    .sample-cell {
+      text-align: right;
+      color: var(--fg);
+      padding: 1px 4px;
+      border-radius: 2px;
+      cursor: pointer;
+    }
+    .sample-cell:hover { background: rgba(255, 255, 255, 0.04); }
+    .sample-cell-cursor {
+      background: rgba(255, 255, 255, 0.12);
+      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.3);
+    }
+    .registry-cursor-label {
+      color: var(--fg);
+      background: rgba(255, 255, 255, 0.08);
+      border-radius: 2px;
+      padding: 0 4px;
+    }
 
     .buffers-panel {
       display: flex;
@@ -875,6 +936,34 @@
     }
     .protocol-filter-type:hover { background: rgba(255, 255, 255, 0.03); }
     .protocol-filter-type input { margin: 0; }
+
+    /*
+     * Narrow viewports (<= 1150px): give up the viewport-bound layout.
+     * Stacking four panels in one column squeezes everything below
+     * the usable threshold — canvas previews, registry graphs, and
+     * protocol rows all need real height. Let the page scroll with
+     * per-panel fixed heights so cascading doesn't un-do them.
+     *
+     * NOTE: This block sits at the very end of the stylesheet on
+     * purpose — the cascade goes top-down at equal specificity, so
+     * placing panel height overrides above the default `.buffers-panel
+     * { flex: 3 }` / `.registry-panel { flex: 2 }` rules means those
+     * rules win and the narrow-mode sizes get discarded. Keep it last.
+     */
+    @media (max-width: 1150px) {
+      html, body { overflow: auto; }
+      .dashboard-root {
+        height: auto;
+        min-height: 100vh;
+        min-height: 100dvh;
+      }
+      .dashboard-content { overflow: visible; min-height: 0; }
+      .dashboard-split { flex-direction: column; flex: initial; }
+      .dashboard-split-col { flex: initial; }
+      .buffers-panel { flex: initial; height: 340px; }
+      .registry-panel { flex: initial; height: 300px; }
+      .protocol-panel { flex: initial; height: 420px; }
+    }
   </style>
 </head>
 <body>
