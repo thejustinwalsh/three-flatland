@@ -1,16 +1,5 @@
 import { Vector2 } from 'three'
-import {
-  vec2,
-  vec3,
-  vec4,
-  float,
-  int,
-  Fn,
-  Loop,
-  If,
-  Break,
-  texture as sampleTexture,
-} from 'three/tsl'
+import { vec2, vec3, vec4, float, int, Fn, Loop, If, Break } from 'three/tsl'
 import type Node from 'three/src/nodes/core/Node.js'
 import {
   createLightEffect,
@@ -34,7 +23,7 @@ import { shadowSDF2D } from '@three-flatland/nodes/lighting'
  * - Optional pixel-snapping for retro aesthetics
  * - Optional glow (broad secondary falloff)
  * - Optional rim lighting (edge highlights from light direction)
- * - Shadow uniforms (SDF shadow marching placeholder)
+ * - SDF-traced soft shadows
  *
  * @example
  * ```typescript
@@ -50,7 +39,6 @@ export const DefaultLightEffect = createLightEffect({
   schema: {
     // Uniforms (runtime-settable, TSL nodes)
     shadowStrength: 0.6,
-    shadowSoftness: 8.0,
     // Hit epsilon (world units) — SDF sample values below this count as
     // an occluder strike, terminating the trace.
     shadowBias: 0.5,
@@ -69,29 +57,10 @@ export const DefaultLightEffect = createLightEffect({
     shadowPixelSize: 0,
     // Quantize each per-light shadow value (after `shadowStrength` is
     // applied) to this many tones. 0 = continuous. 2-4 gives crisp
-    // stepped shadows in the style of the `bands` uniform. Visible only
-    // when shadow has intermediate values (shadowStrength < 1 or
-    // shadowMaxDistance > 0); with binary hit/miss + strength 1, there's
-    // nothing to band.
+    // stepped shadows in the style of the `bands` uniform.
     shadowBands: 0,
-    // Nonlinear quantization curve for `shadowBands`. 1 = linear (even
-    // spacing). >1 clusters tones toward the dark end — useful when
-    // shadows fall off quickly and you want more perceptual resolution
-    // near casters and less in the faint-shadow tail. <1 clusters tones
-    // toward lit. Applied as `pow(pow(shadow, 1/curve).quantize(), curve)`
-    // so the round-trip preserves the 0→0 and 1→1 endpoints.
+    // Nonlinear quantization curve for `shadowBands`. 1 = linear.
     shadowBandCurve: 1,
-    // Debug view mode — picks what to render instead of normal lighting.
-    // Each mode bypasses the sprite-color multiplication so the output
-    // is a pure diagnostic image.
-    //   0 = normal rendering (default)
-    //   1 = average shadow mask across tile lights (white=lit, black=blocked)
-    //   2 = direct light only, NO shadows (every trace returns 1, no ambient)
-    //   3 = direct light only, WITH shadows (per-light trace applied, no ambient)
-    //   4 = SDF sample at surface — green = positive (outside caster),
-    //       red = negative (inside caster), brightness = magnitude
-    //   5 = tile light count as grayscale (black = 0 lights, white = 16 lights)
-    shadowDebug: 0,
     bands: 8,
     pixelSize: 0,
     glowRadius: 0,
@@ -99,23 +68,28 @@ export const DefaultLightEffect = createLightEffect({
     lightHeight: 0.75,
     rimIntensity: 0,
     rimPower: 2,
+    // How strongly the direct-light contribution is attenuated for
+    // "camera-facing" fragments (where normal.z ≈ 1).
+    capShadowStrength: 0,
+    // Threshold above which a fragment counts as a "cap" for the gate.
+    capShadowThreshold: 0.9,
     // Constants (per-instance, read-only reference, mutable internals)
     forwardPlus: () => new ForwardPlusLighting(),
   } as const,
   needsShadows: true,
-  requires: ['normal'] as const,
+  requires: ['normal', 'elevation'] as const,
   light: ({ uniforms, constants, lightStore, sdfTexture, worldSizeNode, worldOffsetNode }) => {
     const shadowStrength = uniforms.shadowStrength
-    const shadowSoftness = uniforms.shadowSoftness
     const shadowBias = uniforms.shadowBias
     const shadowMaxDistance = uniforms.shadowMaxDistance
     const shadowPixelSize = uniforms.shadowPixelSize
     const shadowBands = uniforms.shadowBands
     const shadowBandCurve = uniforms.shadowBandCurve
-    const shadowDebug = uniforms.shadowDebug
     const bands = uniforms.bands
     const pixelSize = uniforms.pixelSize
     const glowRadius = uniforms.glowRadius
+    const capShadowStrength = uniforms.capShadowStrength
+    const capShadowThreshold = uniforms.capShadowThreshold
     const glowIntensity = uniforms.glowIntensity
     const lightHeight = uniforms.lightHeight
     const rimIntensity = uniforms.rimIntensity
@@ -125,18 +99,13 @@ export const DefaultLightEffect = createLightEffect({
     const tileLookup = fp.createTileLookup()
 
     return (ctx) => {
-      const lit = Fn(() => {
+      return Fn(() => {
         const rawPos = ctx.worldPosition
         const usePixelSnap = pixelSize.greaterThan(float(0))
         const snappedPos = vec2(rawPos).div(pixelSize).floor().mul(pixelSize)
         const surfacePos = usePixelSnap.select(snappedPos, vec2(rawPos))
         const totalLight = vec3(0, 0, 0).toVar('totalLight')
-        const totalLightUnshadowed = vec3(0, 0, 0).toVar('totalLightUnshadowed')
         const totalRim = vec3(0, 0, 0).toVar('totalRim')
-        // Debug accumulators.
-        const shadowSum = float(0).toVar('shadowSum')
-        const shadowCount = float(0).toVar('shadowCount')
-        const tileLightCount = float(0).toVar('tileLightCount')
 
         // Compute tile index from world position
         const screenPos = surfacePos
@@ -152,8 +121,6 @@ export const DefaultLightEffect = createLightEffect({
           If(lightId.equal(int(0)), () => {
             Break()
           })
-          // Count this slot for the debug "tile light count" view.
-          tileLightCount.addAssign(float(1))
 
           const idx = float(lightId.sub(int(1)))
           const { row0, row1, row2, row3 } = lightStore.readLightData(idx)
@@ -199,94 +166,86 @@ export const DefaultLightEffect = createLightEffect({
           const isSpot = lightType.greaterThan(float(0.5)).and(lightType.lessThan(float(1.5)))
           const atten = isPoint.select(pointAtten, isSpot.select(pointAtten.mul(coneAtten), float(1)))
 
-          // Normal-based directional diffuse shading
-          // Ambient lights are omnidirectional — skip normal-based diffuse
-          const lightDir3D = vec3(toLight.normalize(), lightHeight).normalize()
+          // Normal-based directional diffuse shading. Ambient lights skip
+          // the N·L gate entirely.
+          //
+          // Per-fragment elevation lowers `L.z` by the fragment's height
+          // above the ground plane — a torch at `lightHeight = 0.75`
+          // targeting a wall cap at `elevation = 1.0` sees L.z = -0.25,
+          // so N·L with `N = (0, 0, 1)` goes negative → clamped to 0 →
+          // cap receives no direct light (only ambient).
+          //
+          // `dist.max(0.0001)` guards fragment-at-light coincidence. Using
+          // `toLight / dist` avoids the redundant 2D normalize we'd
+          // otherwise do before building the 3D direction.
+          const safeDist = dist.max(float(0.0001))
+          const toLightN = toLight.div(safeDist)
+          const lightDir3D = vec3(
+            toLightN,
+            lightHeight.sub(ctx.elevation)
+          ).normalize()
           const isAmbient = lightType.greaterThan(float(2.5))
           const NdotL = ctx.normal.dot(lightDir3D).clamp(0, 1)
           const diffuse = isAmbient.select(float(1), NdotL)
 
-          // SDF sphere-traced soft shadow. `sdfTexture` is null only when
-          // the effect runs without the shadow pipeline — in that case
-          // the path compiles out at build time (JS-level if) so no GPU
-          // branch is emitted. `shadowStrength` scales the effect from 0
-          // (disabled) to 1 (full darkness in shadow); `shadowSoftness`
-          // controls penumbra width; `shadowBias` is the SDF hit epsilon.
-          let shadow: Node<'float'> = float(1)
+          // Shadow. Gated so the 32-tap SDF trace only runs when the
+          // fragment actually needs it — ambient lights ignore shadow,
+          // and fragments with `N·L ≤ 0` are already dark so tracing is
+          // wasted. Both branches are runtime GPU gates (not JS), so the
+          // trace is physically skipped on those fragments/lights.
+          const shadow = float(1).toVar('shadow')
           if (sdfTexture) {
-            // Optional block-snap on the shadow trace origin — neighbors
-            // in the same `shadowPixelSize` world-unit block trace from
-            // the same point and thus get identical shadow, producing
-            // chunky pixel-art silhouettes independent of the main
-            // `pixelSize` snap.
-            const useShadowSnap = shadowPixelSize.greaterThan(float(0))
-            const shadowSnappedPos = vec2(surfacePos)
-              .div(shadowPixelSize)
-              .floor()
-              .mul(shadowPixelSize)
-            const shadowSurfacePos = useShadowSnap.select(
-              shadowSnappedPos,
-              vec2(surfacePos)
-            )
-            const trace = shadowSDF2D(
-              shadowSurfacePos,
-              lightPos,
-              sdfTexture,
-              worldSizeNode,
-              worldOffsetNode,
-              {
-                softness: shadowSoftness,
-                eps: shadowBias,
-                fragmentCastsShadow: readCastShadowFlag(),
-                maxShadowDistance: shadowMaxDistance,
-              }
-            )
-            // Attenuate shadowing by shadowStrength — lerp from lit (1)
-            // toward the trace value by the configured strength.
-            shadow = float(1).sub(float(1).sub(trace).mul(shadowStrength))
-            // Optional bit-crush: quantize the per-light shadow value
-            // to `shadowBands` discrete tones before it scales the
-            // light contribution. Parallel to the `bands` uniform that
-            // quantizes total direct lighting.
-            //
-            // `shadowBandCurve` reshapes the quantization non-linearly:
-            // expand the shadow through `pow(x, 1/curve)`, quantize
-            // evenly, then compress back through `pow(y, curve)`. With
-            // curve > 1, more output tones cluster near shadow = 0 (deep
-            // shadow / near caster); curve = 1 is even linear spacing;
-            // curve < 1 clusters tones near shadow = 1 (lit). Endpoints
-            // 0 and 1 are preserved.
-            const useShadowBands = shadowBands.greaterThan(float(0))
-            const curve = shadowBandCurve.max(float(0.01))
-            const invCurve = float(1).div(curve)
-            const shadowExpanded = shadow.pow(invCurve)
-            const shadowBandedExp = shadowExpanded
-              .mul(shadowBands)
-              .add(float(0.5))
-              .floor()
-              .div(shadowBands)
-            const shadowBanded = shadowBandedExp.pow(curve)
-            shadow = useShadowBands.select(shadowBanded, shadow)
-            // Ambient lights ignore shadows.
-            shadow = isAmbient.select(float(1), shadow)
+            const shouldTrace = isAmbient.not().and(NdotL.greaterThan(float(0)))
+            If(shouldTrace, () => {
+              // Optional block-snap on the shadow trace origin.
+              const useShadowSnap = shadowPixelSize.greaterThan(float(0))
+              const shadowSnappedPos = vec2(surfacePos)
+                .div(shadowPixelSize)
+                .floor()
+                .mul(shadowPixelSize)
+              const shadowSurfacePos = useShadowSnap.select(
+                shadowSnappedPos,
+                vec2(surfacePos)
+              )
+              const trace = shadowSDF2D(
+                shadowSurfacePos,
+                lightPos,
+                sdfTexture,
+                worldSizeNode,
+                worldOffsetNode,
+                {
+                  eps: shadowBias,
+                  fragmentCastsShadow: readCastShadowFlag(),
+                  maxShadowDistance: shadowMaxDistance,
+                }
+              )
+              // Attenuate by shadowStrength (lerp lit → trace).
+              const s = float(1).sub(float(1).sub(trace).mul(shadowStrength))
+              // Optional bit-crush: quantize the per-light shadow value.
+              // `shadowBandCurve` reshapes quantization non-linearly —
+              // expand through `pow(x, 1/curve)`, quantize evenly,
+              // compress back through `pow(y, curve)`. Endpoints 0 and 1
+              // are preserved.
+              const useShadowBands = shadowBands.greaterThan(float(0))
+              const curve = shadowBandCurve.max(float(0.01))
+              const invCurve = float(1).div(curve)
+              const shadowExpanded = s.pow(invCurve)
+              const shadowBandedExp = shadowExpanded
+                .mul(shadowBands)
+                .add(float(0.5))
+                .floor()
+                .div(shadowBands)
+              const shadowBanded = shadowBandedExp.pow(curve)
+              shadow.assign(useShadowBands.select(shadowBanded, s))
+            })
           }
-          // Per-light contribution (with and without shadow). Tracked in
-          // parallel so debug modes can visualize lights with vs. without
-          // shadows without re-running the shader.
+
           const baseContribution = contribution.mul(atten).mul(diffuse)
-          totalLightUnshadowed.addAssign(baseContribution)
           totalLight.addAssign(baseContribution.mul(shadow))
 
           // Rim lighting — edge highlight from inverse normal dot
           const rimFactor = isAmbient.select(float(0), float(1).sub(NdotL).pow(rimPower))
           totalRim.addAssign(contribution.mul(atten).mul(rimFactor))
-
-          // Debug-only: track per-pixel average shadow. Skip ambient lights
-          // since they always ignore shadows (would bias the average to 1).
-          If(isAmbient.not(), () => {
-            shadowSum.addAssign(shadow)
-            shadowCount.addAssign(float(1))
-          })
         })
 
         // Add rim to diffuse lighting (direct contribution only)
@@ -297,123 +256,21 @@ export const DefaultLightEffect = createLightEffect({
         )
 
         // Quantize direct lighting to discrete bands. Ambient is added
-        // AFTER quantization so it acts as a continuous floor — shadowed
-        // regions still receive baseline illumination, and subtle ambient
-        // tints aren't snapped to zero by large band counts.
+        // AFTER quantization so it acts as a continuous floor.
         const useBands = bands.greaterThan(float(0))
         const quantized = direct.mul(bands).add(float(0.5)).floor().div(bands)
         const shapedDirect = useBands.select(quantized, direct)
 
-        const normalOut = shapedDirect.add(fp.ambientNode)
-
-        // ------------------------------------------------------------
-        // DEBUG MODES — see schema comment for the full list.
-        // ------------------------------------------------------------
-
-        // Mode 1: average shadow mask across tile lights
-        const avgShadow = shadowCount
-          .greaterThan(float(0))
-          .select(shadowSum.div(shadowCount), float(1))
-        const mode1 = vec3(avgShadow)
-
-        // Mode 2: direct light only, NO shadows applied
-        const mode2 = vec3(totalLightUnshadowed)
-
-        // Mode 3: direct light only, WITH shadows applied
-        const mode3 = vec3(totalLight)
-
-        // Mode 4/7/8: signed SDF at the shaded surface — green positive
-        // (open space), red negative (inside caster). sqrt magnitude
-        // so small values still register visibly. Clamp to [0, 1] is
-        // defensive against out-of-frustum floor fragments.
-        // SDF .r is world-space distance — no `(sx+sy)/2` rescale needed.
-        // `surfaceUV` here is Y-up (world convention); `sdfSampleUV`
-        // flips Y for the QuadMesh-written SDF which uses three.js's
-        // WebGPU screen-UV convention (Y-down). Same flip the trace in
-        // `shadowSDF2D` applies.
-        const surfaceUV = vec2(surfacePos)
-          .sub(fp.worldOffsetNode)
-          .div(fp.worldSizeNode)
+        // Cap-shadow gate — attenuate direct light on fragments whose
+        // normal is ≈ (0, 0, 1). See schema comment for details.
+        const capness = ctx.normal.z
+          .sub(capShadowThreshold)
+          .div(float(1).sub(capShadowThreshold).max(float(0.0001)))
           .clamp(0, 1)
-        const sdfSampleUV = vec2(surfaceUV.x, float(1).sub(surfaceUV.y))
-        const sdfAtSurface = sdfTexture
-          ? sampleTexture(sdfTexture, sdfSampleUV).r
-          : float(0)
-        const sdfMagnitude = sdfAtSurface.abs().div(float(100)).sqrt().clamp(0, 1)
-        const sdfPos = sdfAtSurface.greaterThan(float(0))
-        const mode4 = vec3(
-          sdfPos.select(float(0), sdfMagnitude),
-          sdfPos.select(sdfMagnitude, float(0)),
-          float(0)
-        )
+        const capGate = float(1).sub(capShadowStrength.mul(capness))
+        const gatedDirect = shapedDirect.mul(capGate)
 
-        // Mode 5: tile light count — 0 lights = black, 16 lights = white
-        const mode5 = vec3(tileLightCount.div(float(MAX_LIGHTS_PER_TILE)))
-
-        // Mode 6: surfaceUV that the shader computes for SDF sampling
-        // (pre-flip, Y-up world convention). Red = UV.x, Green = UV.y.
-        // Expected: smooth diagonal gradient (0,0) bottom-left to (1,1)
-        // top-right.
-        const mode6 = vec3(surfaceUV.x, surfaceUV.y, float(0))
-
-        // Mode 7: raw SDF sample `.r` as grayscale, normalized by the
-        // mean frustum extent so values land in [0,1]. SDF .r now stores
-        // WORLD-space distance (0 on caster, ~sqrt(sx²+sy²) at corners),
-        // so undivided .r would clip nearly everything to white.
-        const sdfNorm = fp.worldSizeNode.x
-          .add(fp.worldSizeNode.y)
-          .mul(float(0.5))
-          .max(float(0.0001))
-        const mode7 = sdfTexture
-          ? vec3(sampleTexture(sdfTexture, sdfSampleUV).r.div(sdfNorm))
-          : vec3(0, 0, 0)
-
-        // Mode 8: sample the SDF at a HARDCODED UV (0.5, 0.5). Same
-        // normalization as mode 7. If this is uniform gray across the
-        // entire viewport, texture sampling itself works correctly —
-        // the bug is purely in the UV arg we pass (surfaceUV).
-        const mode8 = sdfTexture
-          ? vec3(sampleTexture(sdfTexture, vec2(float(0.5), float(0.5))).r.div(sdfNorm))
-          : vec3(0, 0, 0)
-
-        // Mode selection — chained ternary on the float `shadowDebug`
-        // uniform. Written flat so the nesting stays obvious.
-        const m = shadowDebug
-        const picked = m.greaterThan(float(7.5)).select(
-          mode8,
-          m.greaterThan(float(6.5)).select(
-            mode7,
-            m.greaterThan(float(5.5)).select(
-              mode6,
-              m.greaterThan(float(4.5)).select(
-                mode5,
-                m.greaterThan(float(3.5)).select(
-                  mode4,
-                  m.greaterThan(float(2.5)).select(
-                    mode3,
-                    m.greaterThan(float(1.5)).select(
-                      mode2,
-                      m.greaterThan(float(0.5)).select(mode1, normalOut)
-                    )
-                  )
-                )
-              )
-            )
-          )
-        )
-        return picked
-      })() as Node<'vec3'>
-
-      return Fn(() => {
-        // Materialize `lit` once into a var so referencing it in both
-        // branches of the debug select doesn't re-expand the whole
-        // light-loop subgraph and trigger "Declaration already in use"
-        // TSL warnings.
-        const litVar = lit.toVar('litResult')
-        const isDebug = shadowDebug.greaterThan(float(0.5))
-        // In debug modes bypass the sprite-color multiply so the whole
-        // scene reads as a pure diagnostic image.
-        const litColor = isDebug.select(litVar, ctx.color.rgb.mul(litVar))
+        const litColor = gatedDirect.add(fp.ambientNode).mul(ctx.color.rgb)
         return vec4(litColor, ctx.color.a)
       })() as Node<'vec4'>
     }

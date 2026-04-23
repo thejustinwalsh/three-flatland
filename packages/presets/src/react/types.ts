@@ -4,8 +4,6 @@ import type { DirectLightEffect } from '../lighting/DirectLightEffect'
 import type { SimpleLightEffect } from '../lighting/SimpleLightEffect'
 import type { RadianceLightEffect } from '../lighting/RadianceLightEffect'
 import type { NormalMapProvider } from '../lighting/NormalMapProvider'
-import type { AutoNormalProvider } from '../lighting/AutoNormalProvider'
-import type { TileNormalProvider } from '../lighting/TileNormalProvider'
 
 declare module '@react-three/fiber' {
   interface ThreeElements {
@@ -14,7 +12,5 @@ declare module '@react-three/fiber' {
     simpleLightEffect: LightEffectElement<typeof SimpleLightEffect>
     radianceLightEffect: LightEffectElement<typeof RadianceLightEffect>
     normalMapProvider: EffectElement<typeof NormalMapProvider>
-    autoNormalProvider: EffectElement<typeof AutoNormalProvider>
-    tileNormalProvider: EffectElement<typeof TileNormalProvider>
   }
 }

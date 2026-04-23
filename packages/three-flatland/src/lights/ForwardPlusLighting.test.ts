@@ -1,6 +1,11 @@
 import { describe, it, expect } from 'vitest'
 import { Vector2 } from 'three'
-import { ForwardPlusLighting, TILE_SIZE, MAX_LIGHTS_PER_TILE } from './ForwardPlusLighting'
+import {
+  ForwardPlusLighting,
+  TILE_SIZE,
+  MAX_LIGHTS_PER_TILE,
+  TILE_TEXTURE_DIM,
+} from './ForwardPlusLighting'
 import { Light2D } from './Light2D'
 
 describe('ForwardPlusLighting constants', () => {
@@ -14,11 +19,14 @@ describe('ForwardPlusLighting constants', () => {
 })
 
 describe('ForwardPlusLighting', () => {
-  it('should construct with placeholder texture', () => {
+  it('should construct with the fixed-size tile texture', () => {
+    // Texture is pre-allocated at TILE_TEXTURE_DIM × TILE_TEXTURE_DIM and
+    // never resized — keeps us below WebGPU's 8192 2D-texture dim limit
+    // that the previous tall-narrow layout hit at fullscreen.
     const fp = new ForwardPlusLighting()
     expect(fp.tileTexture).not.toBeNull()
-    expect(fp.tileTexture.image.width).toBe(MAX_LIGHTS_PER_TILE / 4)
-    expect(fp.tileTexture.image.height).toBe(1)
+    expect(fp.tileTexture.image.width).toBe(TILE_TEXTURE_DIM)
+    expect(fp.tileTexture.image.height).toBe(TILE_TEXTURE_DIM)
     expect(fp.tileCountX).toBe(0)
   })
 
@@ -31,17 +39,16 @@ describe('ForwardPlusLighting', () => {
     expect(fp.tileCountXNode.value).toBe(Math.ceil(160 / TILE_SIZE))
   })
 
-  it('should create tile texture with correct dimensions', () => {
+  it('keeps the tile texture at TILE_TEXTURE_DIM² regardless of viewport', () => {
+    // init() only updates uniforms + CPU bookkeeping — it never changes
+    // the DataTexture's dimensions. Tile-in-texture indexing stays linear
+    // (blocksPerTile texels per tile) in the beginning of the buffer.
     const fp = new ForwardPlusLighting()
     fp.init(64, 64)
 
-    const tileCountX = Math.ceil(64 / TILE_SIZE)
-    const tileCountY = Math.ceil(64 / TILE_SIZE)
-    const tileCount = tileCountX * tileCountY
-
     const tex = fp.tileTexture!
-    expect(tex.image.width).toBe(MAX_LIGHTS_PER_TILE / 4) // blocksPerTile
-    expect(tex.image.height).toBe(tileCount)
+    expect(tex.image.width).toBe(TILE_TEXTURE_DIM)
+    expect(tex.image.height).toBe(TILE_TEXTURE_DIM)
   })
 
   it('should update with lights', () => {

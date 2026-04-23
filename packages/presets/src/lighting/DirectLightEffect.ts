@@ -5,6 +5,7 @@ import {
   float,
   Fn,
   Loop,
+  If,
 } from 'three/tsl'
 import type Node from 'three/src/nodes/core/Node.js'
 import { createLightEffect } from 'three-flatland'
@@ -40,7 +41,6 @@ export const DirectLightEffect = createLightEffect({
   name: 'directLight',
   schema: {
     shadowStrength: 0.6,
-    shadowSoftness: 8.0,
     shadowBias: 0.04,
     bands: 0,
     pixelSize: 0,
@@ -54,7 +54,6 @@ export const DirectLightEffect = createLightEffect({
   requires: ['normal'] as const,
   light: ({ uniforms, lightStore, sdfTexture, worldSizeNode, worldOffsetNode }: LightEffectBuildContext<{
     shadowStrength: 0.6
-    shadowSoftness: 8.0
     shadowBias: 0.04
     bands: 0
     pixelSize: 0
@@ -66,7 +65,6 @@ export const DirectLightEffect = createLightEffect({
   }>) => {
     const count = lightStore.countNode
     const shadowStrength = uniforms.shadowStrength
-    const shadowSoftness = uniforms.shadowSoftness
     const shadowBias = uniforms.shadowBias
     const bands = uniforms.bands
     const pixelSize = uniforms.pixelSize
@@ -140,18 +138,20 @@ export const DirectLightEffect = createLightEffect({
 
             // SDF sphere-traced soft shadow — see DefaultLightEffect for
             // the detailed comment. Same pattern, different light loop.
-            let shadow: Node<'float'> = float(1)
+            const shadow = float(1).toVar('shadow')
             if (sdfTexture) {
-              const trace = shadowSDF2D(
-                vec2(surfacePos),
-                lightPos,
-                sdfTexture,
-                worldSizeNode,
-                worldOffsetNode,
-                { softness: shadowSoftness, eps: shadowBias }
-              )
-              shadow = float(1).sub(float(1).sub(trace).mul(shadowStrength))
-              shadow = isAmbient.select(float(1), shadow)
+              const shouldTrace = isAmbient.not().and(NdotL.greaterThan(float(0)))
+              If(shouldTrace, () => {
+                const trace = shadowSDF2D(
+                  vec2(surfacePos),
+                  lightPos,
+                  sdfTexture,
+                  worldSizeNode,
+                  worldOffsetNode,
+                  { eps: shadowBias }
+                )
+                shadow.assign(float(1).sub(float(1).sub(trace).mul(shadowStrength)))
+              })
             }
             totalLight.addAssign(contribution.mul(atten).mul(diffuse).mul(shadow))
 
