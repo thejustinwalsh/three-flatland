@@ -2,129 +2,133 @@
 
 ## Goal
 
-Bake normal maps from albedo (or explicit height) sprites. Ship as (a) a standalone publishable CLI + library and (b) a GUI webview inside the suite that reuses atlas-editor components.
+GUI wrapper around the existing normal baker shipped on branch `lighting-stochastic-adoption`. Right-click a PNG → visual region editor for the `NormalSourceDescriptor` (tiles, frames, cap/face splits, per-region tilt + elevation) → live preview → bake → writes `.normal.png` + `.normal.json` next to the source.
 
-## Status
+## Status (existing work to build on)
 
-**Greenfield.** Repo search confirmed no existing normal-map baker exists. The only "bake" CLI is `slug-bake` for fonts (at `packages/slug/src/cli.ts`). The PRD lists `normalFromHeight(heightMap, strength)` and `normalFromSprite(sprite, depth)` as wishlist TSL node signatures ([THREE-FLATLAND-PRD.md:346-349](/Users/tjw/Developer/three-flatland/planning/THREE-FLATLAND-PRD.md)) but nothing is implemented.
+**Not greenfield.** Commit `61a2c7b` on `lighting-stochastic-adoption` introduced:
 
-## Two deliverables
+- `packages/bake/` — shared Baker framework (CLI dispatch, FNV-1a 64-bit content hashing, `bakedSiblingURL`, `probeBakedSibling`, `devtimeWarn`, `writeSidecar`, `discovery`).
+- `packages/normals/` — normal baker implementation:
+  - CLI: `flatland-bake normal <input.png> [output.png] [options]` — `packages/normals/src/cli.ts`
+  - Programmatic: `bakeNormalMapFile` from `bake.node.ts`
+  - Descriptor: `NormalSourceDescriptor` with `version`, `pitch`, `regions[]` — `packages/normals/src/descriptor.ts`
+  - Loader: `NormalMapLoader` that probes the sibling and verifies the `tEXt` stamp hash
+  - Example asset: `examples/react/lighting/public/sprites/Dungeon_Tileset.normal.{png,json}`
+- PNG `tEXt` chunk carries the descriptor's content hash so runtime loaders invalidate stale siblings.
 
-### (1) `packages/normal-baker` — standalone
+Our job: build the GUI that produces these descriptors interactively. We do not reimplement baking.
 
-Public npm package. Mirrors `packages/slug` layout.
+## Descriptor format (inherited)
 
-```
-packages/normal-baker/
-  package.json
-    bin: { "normal-bake": "./dist/cli.js" }
-    exports:
-      '.'    → bakeNormal programmatic API
-      './cli' → CLI entry
-  src/
-    bakeNormal.ts     # pure function, no VSCode deps
-    cli.ts            # argv parsing, file IO, sidecar write
-    index.ts          # re-export
-  README.md
-```
-
-**API**:
-
-```ts
-export interface BakeNormalOptions {
-  image: Uint8Array          // PNG bytes
-  mode?: 'albedo' | 'height' // default: 'albedo' (derive height from luminance)
-  strength?: number          // 0..10, default 4
-  blur?: number              // 0..5 px, default 0
-  invertY?: boolean          // default false (DirectX vs OpenGL)
-  tile?: boolean             // default false (seamless vs clamped edges)
-  channel?: 'r' | 'g' | 'b' | 'a' | 'luma' // source channel; default 'luma'
-  alphaMask?: boolean        // zero normals where alpha == 0; default true
+```json
+{
+  "version": 1,
+  "pitch": 0.7853981633974483,
+  "regions": [
+    { "x": 0,  "y": 0, "w": 16, "h": 16 },
+    { "x": 16, "y": 0, "w": 16, "h": 4,  "elevation": 1 },
+    { "x": 16, "y": 4, "w": 16, "h": 12, "direction": "south", "elevation": 0.5 }
+  ]
 }
+```
 
-export interface BakeNormalResult {
-  png: Uint8Array            // baked normal map PNG
-  sidecar: {
-    app: 'normal-baker'
-    version: '1.0'
-    source: string           // basename of input
-    strength: number
-    blur: number
-    invertY: boolean
-    tile: boolean
-    channel: string
+- `pitch` (radians) = default tilt angle from flat; per-region override via `pitch`.
+- `direction` (enum) = `flat | up | down | left | right | north | south | east | west | up-left | …`. Resolves to a 2D tilt axis.
+- `elevation` = 0..1 height multiplier for the gradient (raises/lowers the surface).
+- Regions without a declared `direction` use the descriptor-level default; zero regions means "apply defaults to whole texture" (the flat-flags case).
+
+CLI flags on `flatland-bake normal`:
+- `--descriptor <path>`
+- `--direction <dir>` (implicit zero-region descriptor)
+- `--pitch <radians>`
+- `--bump <alpha|none>`
+- `--strength <n>`
+
+## GUI flow
+
+1. Right-click `tileset.png` → "Bake Normal Map". Command `threeFlatland.normalBaker.open`.
+2. Webview opens with:
+   - **Canvas** showing the PNG with region overlays (rects colored by direction).
+   - **Region list** (vscode-tree) — select/reorder/delete regions.
+   - **Region properties** panel — x/y/w/h number fields, direction picker (9-way compass + `flat`), pitch slider, elevation slider.
+   - **Default panel** — descriptor-level `pitch`, `direction`, `strength`, `bump` mode.
+   - **Preview panel** — live normal-map render + lit composite with a rotating `<LightRig>`.
+3. Edits are serialized to a `NormalSourceDescriptor` and passed to the host, which either:
+   - Runs `bakeNormalMapFile` directly (extension host is Node) → writes `.normal.png` + `.normal.json`.
+   - Produces a preview-only in-memory bake for the live preview (no file I/O until Save).
+4. Save also updates the sidecar's content-hash stamp so the runtime loader's cache invalidation works.
+
+## Architecture
+
+```
+Extension host (ESM)                     Webview (React + StyleX)
+  NormalBakerCommand                       React app
+    → spawns webview panel                   - tools-design-system
+  NormalBakerService                         - tools-preview (NormalPreview, AtlasPreview for regions)
+    - wraps @three-flatland/normals.bakeNormalMapFile
+    - wraps @three-flatland/bake.writeSidecar
+    - ajv-validates descriptor against JSON Schema before bake
+  FsBridge → webview
+```
+
+The host directly imports `@three-flatland/normals` and `@three-flatland/bake` — both are workspace packages, ESM, and already Node-safe.
+
+## Rect editing overlap with Sprite Atlas
+
+The region rect editor is the same widget the atlas editor uses for frame rects. Both consume `tools-preview/AtlasPreview` and `tools-io/slice` helpers (grid snap, drag-resize, selection marquee). Shared code keeps parity between the two tools.
+
+The normal baker's regions have additional per-region properties (`direction`, `pitch`, `elevation`) that the atlas editor doesn't use; the rect widget is agnostic to that.
+
+## JSON Schema
+
+Authoritative schema at `tools/io/schemas/normal-descriptor.schema.json`. Derived from the `NormalSourceDescriptor` TypeScript type in `packages/normals/src/descriptor.ts`. Ajv-validated before bake. Unit tests assert parity between the TS type and the JSON schema (via `ts-json-schema-generator`).
+
+## Contribution
+
+```json
+"contributes": {
+  "commands": [
+    { "command": "threeFlatland.normalBaker.open", "title": "Bake Normal Map" }
+  ],
+  "menus": {
+    "explorer/context": [
+      {
+        "command": "threeFlatland.normalBaker.open",
+        "when": "resourceExtname in threeFlatland.imageExts",
+        "group": "navigation@20"
+      }
+    ]
   }
 }
-
-export function bakeNormal(opts: BakeNormalOptions): Promise<BakeNormalResult>
 ```
 
-**Algorithm** (Sobel by default):
-1. Decode PNG (via `@napi-rs/canvas` or `pngjs` — pick pure-JS to avoid native deps in the CLI).
-2. Optional Gaussian blur on source channel.
-3. Sobel X/Y gradient on height.
-4. Normal `n = normalize(vec3(-dx*strength, -dy*strength, 1))` (flip Y via `invertY` → `n.y *= -1`).
-5. Encode `(n * 0.5 + 0.5)` into RGB, alpha passthrough if `alphaMask`.
+## Dependency sequencing
 
-Optional Skia path for GPU-accelerated variants later — `packages/skia/src/ts/image-filter.ts` exposes `matrixTransform` + image filter primitives. Not needed at v0.
+This tool depends on `lighting-stochastic-adoption` merging (or being rebased into) `main`. Options:
 
-**CLI**:
+1. **Wait for merge** — cleanest; no duplicate work.
+2. **Branch-off from `lighting-stochastic-adoption`** for development; rebase when main catches up.
+3. **Implement in parallel, targeting the package API** as specified by `packages/normals` on that branch; integrate after merge.
 
-```
-normal-bake input.png [--out input.normal.png]
-            [--strength 4] [--blur 0] [--invert-y]
-            [--tile] [--channel luma]
-            [--sidecar input.normal.json]
-```
+Recommend option (2): cut a `feat/normal-baker-gui` branch from `lighting-stochastic-adoption`, develop against the real `packages/normals`, rebase onto the post-merge `main` when ready.
 
-### (2) `apps/vscode-tools` integration — GUI
+## Risks
 
-Command `threeFlatland.normalBaker.run` registered on:
-- Explorer context menu: `when: resourceExtname == .png`, group `navigation@20` (below atlas opener).
-- Command palette.
+1. **Descriptor version upgrade** — if `packages/normals` bumps `version`, this tool must migrate. Add a migration layer keyed on `descriptor.version`.
+2. **Preview fidelity** — in-webview lit preview uses hand-rolled TSL until `Sprite2DMaterial` gets proper normal-map support. Keep the preview renderer in `tools-preview` so both atlas and baker share improvements when the main runtime lands normal-mapping.
+3. **Hash re-stamp on Save** — after `bakeNormalMapFile` succeeds, the returned sidecar has the stamped hash. Editor must not write a stale descriptor separately.
+4. **Large sheets** — CCL auto-region-seed on large tilesets can be slow; debounce and/or run in a worker.
 
-Opens a webview panel (not a CustomEditor — this is task-oriented, not file-oriented). Webview:
+## Follow-ups against main repo
 
-- Loads input PNG via bridge.
-- Left column: `vscode-design-system` controls (Slider, NumberField, Toggle) bound to `BakeNormalOptions`.
-- Right column: `NormalPreview` (from `vscode-preview`) showing three modes:
-  - Split view (albedo | normal)
-  - Lit composite (albedo × generated normal under a rotating light)
-  - Normal only
-- Live preview updates as sliders change (debounced 150 ms; preview runs in the webview via the same algorithm, not the extension host).
-- "Save" button → posts the output PNG + sidecar back to the host, which writes both files via `workspace.fs`.
-
-## Code sharing with Atlas Editor
-
-Belongs in the shared packages defined in [suite-architecture.md](./suite-architecture.md#shared-package-layout):
-
-| Concern | Package | Export |
-|---|---|---|
-| Decode/encode PNG | `vscode-io` | `loadPng`, `encodePng` |
-| Read/write sidecar | `vscode-io` | `readSidecar`, `writeSidecar` (polymorphic by `meta.app`) |
-| `bakeNormal` | `normal-baker` | direct import (CLI + GUI share) |
-| `NormalPreview` | `vscode-preview` | `<NormalPreview albedo normal mode='split'|'lit' />` |
-| `LightRig` | `vscode-preview` | rotating light used by both atlas lit preview and baker lit preview |
-| Sliders, Toolbar | `vscode-design-system` | `Slider`, `NumberField`, `Toolbar` |
-| `FsBridge` | `vscode-webview-bridge` | shared extension ↔ webview RPC |
-
-App-specific code in `apps/vscode-tools/src/tools/normalBaker/` is ~200-300 LOC of glue: register command, spawn webview, wire bridge, call `bakeNormal`, write files.
-
-## Runtime gap
-
-three-flatland has no normal-map consumer yet. This tool produces artifacts the runtime can't use. Follow-up against three-flatland (same as atlas editor's follow-up):
-
-1. Add `normalMap` uniform + tangent-space lighting as a new `MaterialEffect`.
-2. Build the corresponding TSL node at `packages/nodes/src/lighting/normalMap2D.ts` (slot identified in research — `packages/nodes/src/` currently has no `lighting/` dir).
-3. Optionally `normalFromHeight` + `normalFromSprite` TSL utility nodes per the PRD wishlist.
-
-Until those land, this tool still has value (content authoring ahead of runtime; normal maps consumable by other engines, plus our own when runtime catches up).
+- Normal-map support on `Sprite2DMaterial` / as a `MaterialEffect` — tracked with the sprite atlas editor's preview gap.
+- Teach `SpriteSheetLoader` to read `meta.normal` + `meta.animations` from atlas sidecars (same follow-up as atlas editor).
 
 ## References
 
-- [`packages/slug/src/cli.ts`](/Users/tjw/Developer/three-flatland/packages/slug/src/cli.ts) — CLI shape template
-- [`packages/slug/package.json:85`](/Users/tjw/Developer/three-flatland/packages/slug/package.json) — bin-entry pattern
-- [`packages/nodes/src/index.ts`](/Users/tjw/Developer/three-flatland/packages/nodes/src/index.ts) — where `lighting/normalMap2D.ts` would slot
-- [`packages/skia/src/ts/image-filter.ts`](/Users/tjw/Developer/three-flatland/packages/skia/src/ts/image-filter.ts) — available Skia primitives for future GPU path
-- [THREE-FLATLAND-PRD.md:346-349, 1611-1636](/Users/tjw/Developer/three-flatland/planning/THREE-FLATLAND-PRD.md) — normal-map TSL wishlist + lit-sprite shader sketch
-- [M6-tsl-nodes-part2.md](/Users/tjw/Developer/three-flatland/planning/milestones/M6-tsl-nodes-part2.md) — `normalMap2D` consumer node spec
+- `lighting-stochastic-adoption` commit `61a2c7b` — introduces `packages/normals` + `packages/bake`
+- `packages/normals/src/cli.ts` — CLI shape
+- `packages/normals/src/descriptor.ts` — descriptor type
+- `packages/bake/src/sidecar.ts` — `bakedSiblingURL`, `hashDescriptor`, `probeBakedSibling`
+- `examples/react/lighting/public/sprites/Dungeon_Tileset.normal.json` — real-world descriptor example

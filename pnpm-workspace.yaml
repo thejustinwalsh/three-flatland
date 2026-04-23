@@ -4,6 +4,7 @@ packages:
   - minis/*
   - docs
   - skills
+  - tools/*
 
 catalog:
   '@tweakpane/core': ^2.0.5
