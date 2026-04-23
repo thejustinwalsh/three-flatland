@@ -64,22 +64,22 @@ export function App() {
       }}
     >
       <Toolbar>
-        <ToolbarButton icon="symbol-ruler" title="Grid Slice" disabled />
-        <ToolbarButton icon="wand" title="Auto Detect Sprites" disabled />
+        <ToolbarButton icon="symbol-ruler" title="Grid Slice" />
+        <ToolbarButton icon="wand" title="Auto Detect Sprites" />
         <Divider />
-        <ToolbarButton icon="add" title="New Rect" disabled />
-        <ToolbarButton icon="selection" title="Select" disabled />
-        <ToolbarButton icon="move" title="Move" disabled />
+        <ToolbarButton icon="add" title="New Rect" />
+        <ToolbarButton icon="selection" title="Select" />
+        <ToolbarButton icon="move" title="Move" />
         <Divider />
-        <ToolbarButton icon="symbol-array" title="Frames" disabled />
-        <ToolbarButton icon="run-all" title="Animations" disabled />
+        <ToolbarButton icon="symbol-array" title="Frames" />
+        <ToolbarButton icon="run-all" title="Animations" />
         <div style={{ flex: 1 }} />
-        <ToolbarButton icon="zoom-in" title="Zoom In" disabled />
-        <ToolbarButton icon="zoom-out" title="Zoom Out" disabled />
-        <ToolbarButton icon="screen-full" title="Fit" disabled />
+        <ToolbarButton icon="zoom-in" title="Zoom In" />
+        <ToolbarButton icon="zoom-out" title="Zoom Out" />
+        <ToolbarButton icon="screen-full" title="Fit" />
         <Divider />
-        <ToolbarButton icon="refresh" title="Reload" disabled />
-        <ToolbarButton icon="save" title="Save" disabled />
+        <ToolbarButton icon="refresh" title="Reload" />
+        <ToolbarButton icon="save" title="Save" />
       </Toolbar>
 
       <div

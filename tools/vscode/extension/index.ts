@@ -1,6 +1,6 @@
 import * as vscode from 'vscode'
-import { registerAtlasTool } from './tools/atlas/register.js'
-import { getChannel, log } from './log.js'
+import { registerAtlasTool } from './tools/atlas/register'
+import { getChannel, log } from './log'
 
 export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(getChannel())

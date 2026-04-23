@@ -3,7 +3,7 @@
   "tasks": [
     {
       "label": "FL: build",
-      "detail": "One-shot host + webview build. Used by the F5 launch config.",
+      "detail": "One-shot extension + webview build. Used by the F5 launch config.",
       "type": "shell",
       "command": "pnpm",
       "args": ["--filter", "@three-flatland/vscode", "build"],
@@ -15,32 +15,22 @@
       }
     },
     {
-      "label": "FL: watch",
-      "detail": "Live-rebuild host + webview on every save. Run manually while iterating; reload the Extension Development Host window (Cmd+R) to pick up changes.",
-      "dependsOn": ["FL: watch host", "FL: watch webview"],
-      "problemMatcher": []
-    },
-    {
-      "label": "FL: watch host",
+      "label": "FL: dev",
+      "detail": "Vite dev server + tsdown watch for the extension. Enables webview HMR.",
       "type": "shell",
       "command": "pnpm",
-      "args": ["--filter", "@three-flatland/vscode", "dev:host"],
+      "args": ["--filter", "@three-flatland/vscode", "dev"],
       "isBackground": true,
-      "problemMatcher": [],
+      "problemMatcher": {
+        "owner": "vite",
+        "pattern": [{ "regexp": "^.*$", "file": 1, "location": 2, "message": 3 }],
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": "VITE",
+          "endsPattern": "ready in"
+        }
+      },
       "presentation": {
-        "group": "FL watchers",
-        "panel": "dedicated"
-      }
-    },
-    {
-      "label": "FL: watch webview",
-      "type": "shell",
-      "command": "pnpm",
-      "args": ["--filter", "@three-flatland/vscode", "dev:webview"],
-      "isBackground": true,
-      "problemMatcher": [],
-      "presentation": {
-        "group": "FL watchers",
         "panel": "dedicated"
       }
     }

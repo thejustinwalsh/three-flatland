@@ -1,7 +1,7 @@
 import * as vscode from 'vscode'
 import { createHostBridge } from '@three-flatland/bridge/host'
-import { composeAtlasHtml } from './html.js'
-import { log } from '../../log.js'
+import { getWebviewHtml } from 'virtual:vscode'
+import { log } from '../../log'
 
 type AtlasDocument = vscode.CustomDocument
 
@@ -15,47 +15,47 @@ export class AtlasCustomEditorProvider implements vscode.CustomReadonlyEditorPro
     return { uri, dispose: () => void 0 }
   }
 
-  async resolveCustomEditor(document: AtlasDocument, panel: vscode.WebviewPanel): Promise<void> {
+  resolveCustomEditor(document: AtlasDocument, panel: vscode.WebviewPanel): void {
     log(`resolveCustomEditor: ${document.uri.fsPath}`)
-    const extUri = this.context.extensionUri
     const webview = panel.webview
 
     webview.options = {
       enableScripts: true,
       localResourceRoots: [
-        vscode.Uri.joinPath(extUri, 'dist'),
+        vscode.Uri.joinPath(this.context.extensionUri, 'dist'),
         vscode.Uri.joinPath(document.uri, '..'),
       ],
     }
 
-    const webviewDir = vscode.Uri.joinPath(extUri, 'dist', 'webview', 'atlas')
     const imageUri = webview.asWebviewUri(document.uri).toString()
     const fileName = document.uri.path.split('/').pop() ?? 'image.png'
 
-    log(`webviewDir = ${webviewDir.fsPath}`)
-    log(`imageUri   = ${imageUri}`)
+    log(`imageUri = ${imageUri}`)
 
-    webview.html = await composeAtlasHtml({
+    // getWebviewHtml resolves asset URIs via asWebviewUri(), injects a
+    // CSP meta + nonce, and in dev mode points at the Vite dev server for
+    // HMR. One call replaces the entire composeAtlasHtml / tokenize-and-
+    // rewrite dance.
+    panel.webview.html = getWebviewHtml({
+      serverUrl: process.env.VITE_DEV_SERVER_URL,
       webview,
-      webviewDir,
-      cspSource: webview.cspSource,
-      initialPayload: { imageUri, fileName },
-      log: (msg) => log(`[html] ${msg}`),
+      context: this.context,
+      inputName: 'atlas',
+      injectCode: `<script>window.__FL_ATLAS__ = ${JSON.stringify({
+        imageUri,
+        fileName,
+      })};</script>`,
     })
 
-    log(`webview.html length = ${webview.html.length}`)
-
     const bridge = createHostBridge(webview)
+
     bridge.on('atlas/ready', async () => {
       log('webview sent atlas/ready')
       bridge.emit('atlas/init', { imageUri, fileName })
       return { ok: true }
     })
 
-    // Forward any client-side console.error the webview ships (via our
-    // `client/log` event — wired in the webview's App.tsx) into the
-    // extension's output channel so the user can see them without
-    // opening Webview DevTools.
+    // Forward webview console.error/warn/etc. into the output channel.
     bridge.on<{ level: string; args: unknown[] }>('client/log', ({ level, args }) => {
       log(`[webview:${level}]`, ...args)
       return { ok: true }
