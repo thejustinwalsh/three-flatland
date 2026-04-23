@@ -254,8 +254,6 @@ interface SceneProps {
   shadowBias: number
   shadowMaxDistance: number
   shadowPixelSize: number
-  shadowBands: number
-  shadowBandCurve: number
   ambient: number
   slimeCount: number
   slimeLights: boolean
@@ -404,8 +402,6 @@ function FlatlandScene(props: SceneProps) {
       shadowBias: number
       shadowMaxDistance: number
       shadowPixelSize: number
-      shadowBands: number
-      shadowBandCurve: number
       lightHeight: number
       capShadowStrength: number
       capShadowThreshold: number
@@ -416,8 +412,6 @@ function FlatlandScene(props: SceneProps) {
     e.shadowBias = props.shadowBias
     e.shadowMaxDistance = props.shadowMaxDistance
     e.shadowPixelSize = props.shadowPixelSize
-    e.shadowBands = props.shadowBands
-    e.shadowBandCurve = props.shadowBandCurve
     e.lightHeight = props.lightHeight
     e.capShadowStrength = props.capShadowStrength
     e.capShadowThreshold = props.capShadowThreshold
@@ -428,8 +422,6 @@ function FlatlandScene(props: SceneProps) {
     props.shadowBias,
     props.shadowMaxDistance,
     props.shadowPixelSize,
-    props.shadowBands,
-    props.shadowBandCurve,
     props.lightHeight,
     props.capShadowStrength,
     props.capShadowThreshold,
@@ -826,8 +818,6 @@ function FlatlandScene(props: SceneProps) {
           shadowBias={props.shadowBias}
           shadowMaxDistance={props.shadowMaxDistance}
           shadowPixelSize={props.shadowPixelSize}
-          shadowBands={props.shadowBands}
-          shadowBandCurve={props.shadowBandCurve}
         />
 
         {/* Floor + walls. Tileset's baked normalMap (synthesized by
@@ -965,8 +955,6 @@ export default function App() {
   const [shadowBias] = usePaneInput(shadows, 'bias', 0.5, { min: 0, max: 2, step: 0.05 })
   const [shadowMaxDistance] = usePaneInput(shadows, 'maxDistance', 300, { min: 0, max: 600, step: 10 })
   const [shadowPixelSize] = usePaneInput(shadows, 'pixelSize', 4, { min: 0, max: 8, step: 1 })
-  const [shadowBands] = usePaneInput(shadows, 'bands', 4, { min: 0, max: 8, step: 1 })
-  const [shadowBandCurve] = usePaneInput(shadows, 'bandCurve', 1, { min: 0.25, max: 4, step: 0.05 })
 
   const torches = usePaneFolder(pane, 'Torches')
   const [torchIntensity] = usePaneInput(torches, 'intensity', 1.8, { min: 0, max: 3, step: 0.05 })
@@ -987,8 +975,6 @@ export default function App() {
           shadowBias={shadowBias}
           shadowMaxDistance={shadowMaxDistance}
           shadowPixelSize={shadowPixelSize}
-          shadowBands={shadowBands}
-          shadowBandCurve={shadowBandCurve}
           ambient={ambient}
           slimeCount={slimeCount}
           slimeLights={slimeLights}
