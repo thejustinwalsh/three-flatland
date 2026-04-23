@@ -958,7 +958,7 @@ export default function App() {
   const shadows = usePaneFolder(pane, 'Shadows')
   const [shadowStrength] = usePaneInput(shadows, 'strength', 0.8, { min: 0, max: 1, step: 0.05 })
   const [shadowBias] = usePaneInput(shadows, 'bias', 0.5, { min: 0, max: 2, step: 0.05 })
-  const [shadowStartOffset] = usePaneInput(shadows, 'startOffset', 1.5, { min: 0, max: 8, step: 0.1 })
+  const [shadowStartOffset] = usePaneInput(shadows, 'startOffset', 40, { min: 0, max: 80, step: 1 })
   const [shadowMaxDistance] = usePaneInput(shadows, 'maxDistance', 300, { min: 0, max: 600, step: 10 })
   const [shadowPixelSize] = usePaneInput(shadows, 'pixelSize', 4, { min: 0, max: 8, step: 1 })
 

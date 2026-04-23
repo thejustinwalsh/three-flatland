@@ -43,11 +43,14 @@ export const DefaultLightEffect = createLightEffect({
     // an occluder strike, terminating the trace.
     shadowBias: 0.5,
     // World-space offset applied to the trace origin for fragments that
-    // sit inside their own caster silhouette (signed SDF < 0). Sized to
-    // clear typical caster radii without jumping past nearby occluders.
-    // Default 1.5 works for sprite-scale scenes; bump for larger
-    // casters.
-    shadowStartOffset: 1.5,
+    // sit inside their own caster silhouette (signed SDF < 0). Must
+    // clear the caster's radius — too small and the trace's first
+    // samples land inside the caster (self-shadow) or in the Voronoi-
+    // seam zone adjacent to the silhouette (ringing on the shadow
+    // edge). Default 40 matches the old unsigned-SDF escapeOffset and
+    // covers the demo's knight (64-unit body) plus margin. Scenes with
+    // smaller sprites can dial this down through the pane slider.
+    shadowStartOffset: 40,
     // Max world-space distance a shadow is allowed to extend from the
     // receiver before fading to lit. 0 disables falloff (binary shadow at
     // any distance). Typical values: 100-300 world units — enough to keep
