@@ -7,6 +7,8 @@ export type Rect = {
   y: number
   w: number
   h: number
+  /** Optional human label; falls back to a frame index in display code. */
+  name?: string
 }
 
 export type RectOverlayProps = {
@@ -22,6 +24,9 @@ export type RectOverlayProps = {
    * selection so callers don't track additive/replace logic.
    */
   onSelectionChange?: (ids: Set<string>) => void
+
+  /** Whether to render a name / index label next to each rect. Default: true. */
+  showLabels?: boolean
 
   /** Optional styling overrides. Stroke is non-scaling by default. */
   color?: string
@@ -43,6 +48,47 @@ function normalized(d: Drag) {
 }
 
 const EMPTY: ReadonlySet<string> = new Set()
+
+/**
+ * Label for a rect — small text rendered just above the rect's top edge.
+ * Uses image-pixel units (we're inside the viewBox-scaled SVG). font-size
+ * is in image-px too; at typical zoom that renders as ~10-12 CSS px.
+ */
+function RectLabel({
+  rect,
+  text,
+  selected,
+  imgW,
+}: {
+  rect: { x: number; y: number; w: number; h: number }
+  text: string
+  selected: boolean
+  imgW: number
+}) {
+  const fontPx = Math.max(8, Math.round(imgW / 64))
+  const pad = Math.max(2, Math.round(fontPx / 3))
+  return (
+    <text
+      x={rect.x + pad}
+      y={Math.max(fontPx, rect.y - pad)}
+      fontSize={fontPx}
+      fontFamily="var(--vscode-font-family, sans-serif)"
+      fontWeight={selected ? 600 : 400}
+      fill={selected ? 'var(--vscode-focusBorder, #007fd4)' : '#ffcc00'}
+      style={{
+        paintOrder: 'stroke',
+        stroke: 'rgba(0,0,0,0.7)',
+        strokeWidth: 3,
+        strokeLinejoin: 'round',
+        pointerEvents: 'none',
+        userSelect: 'none',
+      }}
+      dominantBaseline="alphabetic"
+    >
+      {text}
+    </text>
+  )
+}
 
 /**
  * SVG overlay layer for rect editing. Sits on top of the three.js canvas
@@ -67,6 +113,7 @@ export function RectOverlay({
   onRectCreate,
   selectedIds = EMPTY,
   onSelectionChange,
+  showLabels = true,
   color = '#ffcc00',
   draftColor = '#00ff99',
   selectedColor = 'var(--vscode-focusBorder, #007fd4)',
@@ -159,40 +206,49 @@ export function RectOverlay({
         />
       )}
 
-      {rects.map((r) => {
+      {rects.map((r, i) => {
         const sel = selectedIds.has(r.id)
         return (
-          <rect
-            key={r.id}
-            x={r.x}
-            y={r.y}
-            width={r.w}
-            height={r.h}
-            fill={sel ? 'rgba(0, 127, 212, 0.12)' : 'rgba(255, 204, 0, 0.05)'}
-            stroke={sel ? selectedColor : color}
-            strokeWidth={sel ? 2 : 1}
-            vectorEffect="non-scaling-stroke"
-            shapeRendering="crispEdges"
-            style={{
-              pointerEvents: 'all',
-              cursor: 'pointer',
-            }}
-            onPointerDown={(e) => {
-              // Rect clicks always take precedence over draw/deselect so
-              // selections work regardless of the active tool.
-              e.stopPropagation()
-              if (!onSelectionChange) return
-              const next = new Set(selectedIds)
-              if (e.shiftKey) {
-                if (next.has(r.id)) next.delete(r.id)
-                else next.add(r.id)
-              } else {
-                next.clear()
-                next.add(r.id)
-              }
-              onSelectionChange(next)
-            }}
-          />
+          <g key={r.id}>
+            <rect
+              x={r.x}
+              y={r.y}
+              width={r.w}
+              height={r.h}
+              fill={sel ? 'rgba(0, 127, 212, 0.12)' : 'rgba(255, 204, 0, 0.05)'}
+              stroke={sel ? selectedColor : color}
+              strokeWidth={sel ? 2 : 1}
+              vectorEffect="non-scaling-stroke"
+              shapeRendering="crispEdges"
+              style={{
+                pointerEvents: 'all',
+                cursor: 'pointer',
+              }}
+              onPointerDown={(e) => {
+                // Rect clicks always take precedence over draw/deselect so
+                // selections work regardless of the active tool.
+                e.stopPropagation()
+                if (!onSelectionChange) return
+                const next = new Set(selectedIds)
+                if (e.shiftKey) {
+                  if (next.has(r.id)) next.delete(r.id)
+                  else next.add(r.id)
+                } else {
+                  next.clear()
+                  next.add(r.id)
+                }
+                onSelectionChange(next)
+              }}
+            />
+            {showLabels ? (
+              <RectLabel
+                rect={r}
+                text={r.name ?? `#${i}`}
+                selected={sel}
+                imgW={vp.imageW}
+              />
+            ) : null}
+          </g>
         )
       })}
 

@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useState } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
+} from 'react'
 import { createClientBridge } from '@three-flatland/bridge/client'
 import {
   DevReloadToast,
@@ -19,6 +27,10 @@ declare global {
 }
 
 type Tool = 'select' | 'rect' | 'move'
+type RenameMode =
+  | { kind: 'none' }
+  | { kind: 'inline'; id: string }
+  | { kind: 'prefix'; ids: string[] }
 
 function dumpThemeTokens() {
   const styles = getComputedStyle(document.body)
@@ -26,7 +38,6 @@ function dumpThemeTokens() {
     'foreground',
     'descriptionForeground',
     'editor-background',
-    'editor-foreground',
     'focusBorder',
     'font-family',
     'font-size',
@@ -40,12 +51,24 @@ function dumpThemeTokens() {
 function isEditableTarget(t: EventTarget | null): boolean {
   if (!(t instanceof HTMLElement)) return false
   const tag = t.tagName.toLowerCase()
-  return (
-    tag === 'input' ||
-    tag === 'textarea' ||
-    tag === 'select' ||
-    t.isContentEditable
-  )
+  return tag === 'input' || tag === 'textarea' || tag === 'select' || t.isContentEditable
+}
+
+/**
+ * Sort rects into reading-order (top-to-bottom, left-to-right) with a
+ * y-tolerance of ~half the median rect height so rects that are vertically
+ * within the same row cluster together before being ordered by x.
+ */
+function readingOrder(rects: readonly Rect[]): Rect[] {
+  if (rects.length === 0) return []
+  const heights = rects.map((r) => r.h).sort((a, b) => a - b)
+  const medianH = heights[Math.floor(heights.length / 2)] ?? 1
+  const tol = Math.max(1, Math.round(medianH / 2))
+  return [...rects].sort((a, b) => {
+    const dy = a.y - b.y
+    if (Math.abs(dy) > tol) return dy
+    return a.x - b.x
+  })
 }
 
 export function App() {
@@ -53,7 +76,15 @@ export function App() {
   const [rects, setRects] = useState<Rect[]>([])
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [tool, setTool] = useState<Tool>('rect')
+  const [renameMode, setRenameMode] = useState<RenameMode>({ kind: 'none' })
+  const [prefixDraft, setPrefixDraft] = useState('')
   const editorBg = useCssVar('--vscode-editor-background', '#1e1e1e')
+
+  const indexById = useMemo(() => {
+    const m = new Map<string, number>()
+    rects.forEach((r, i) => m.set(r.id, i))
+    return m
+  }, [rects])
 
   useEffect(() => {
     dumpThemeTokens()
@@ -65,8 +96,6 @@ export function App() {
 
   const handleRectCreate = useCallback((r: Rect) => {
     setRects((prev) => [...prev, r])
-    // Select the newly-created rect so the frame list scrolls to it and
-    // rename/delete operate on the user's latest work without extra clicks.
     setSelectedIds(new Set([r.id]))
   }, [])
 
@@ -82,20 +111,54 @@ export function App() {
     setSelectedIds(new Set(rects.map((r) => r.id)))
   }, [rects])
 
-  // Keyboard shortcuts — only consume keys we actually act on. Everything
-  // else passes through to the browser / editor host.
-  //   R — rect tool         S — select tool         M — move tool
-  //   Escape — deselect (no-op when selection empty)
-  //   Delete/Backspace — remove selected (no-op when selection empty)
-  //   Ctrl/Cmd+A — select all (no-op when no rects)
+  const renameRect = useCallback((id: string, name: string) => {
+    const trimmed = name.trim()
+    setRects((prev) =>
+      prev.map((r) => (r.id === id ? { ...r, name: trimmed === '' ? undefined : trimmed } : r))
+    )
+  }, [])
+
+  const applyPrefixToSelection = useCallback(
+    (prefix: string) => {
+      const p = prefix.trim()
+      if (p === '') return
+      const ids = new Set(selectedIds)
+      const selectedRects = rects.filter((r) => ids.has(r.id))
+      const ordered = readingOrder(selectedRects)
+      const nameById = new Map<string, string>()
+      ordered.forEach((r, i) => {
+        nameById.set(r.id, `${p}_${i}`)
+      })
+      setRects((prev) =>
+        prev.map((r) => (nameById.has(r.id) ? { ...r, name: nameById.get(r.id) } : r))
+      )
+    },
+    [rects, selectedIds]
+  )
+
+  const startRename = useCallback(() => {
+    const ids = [...selectedIds]
+    if (ids.length === 0) return
+    if (ids.length === 1) {
+      setRenameMode({ kind: 'inline', id: ids[0]! })
+    } else {
+      setPrefixDraft('frame')
+      setRenameMode({ kind: 'prefix', ids })
+    }
+  }, [selectedIds])
+
+  // Keyboard — only consumes keys we handle.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (isEditableTarget(e.target)) return
       const mod = e.metaKey || e.ctrlKey
 
-      // Editing shortcuts — preventDefault only if we actually do something
-      // so empty-state Backspace still triggers browser back-nav / etc.
       if (e.key === 'Escape') {
+        if (renameMode.kind !== 'none') {
+          setRenameMode({ kind: 'none' })
+          e.preventDefault()
+          return
+        }
         if (selectedIds.size === 0) return
         clearSelection()
         e.preventDefault()
@@ -113,20 +176,21 @@ export function App() {
         e.preventDefault()
         return
       }
-
-      // Tool switches — skip when a modifier is held so we don't collide
-      // with system shortcuts. No preventDefault; R/S/M have no browser
-      // default action, and consuming them would break future users of
-      // these keys downstream.
       if (mod || e.altKey || e.shiftKey) return
       const k = e.key.toLowerCase()
       if (k === 'r') setTool('rect')
       else if (k === 's') setTool('select')
       else if (k === 'm') setTool('move')
+      else if (k === 'n') {
+        if (selectedIds.size > 0) {
+          startRename()
+          e.preventDefault()
+        }
+      }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [selectedIds, rects, clearSelection, deleteSelected, selectAll])
+  }, [selectedIds, rects, renameMode, clearSelection, deleteSelected, selectAll, startRename])
 
   return (
     <div
@@ -167,18 +231,18 @@ export function App() {
           onClick={() => setTool('move')}
         />
         <Divider />
-        <ToolbarButton icon="symbol-array" title="Frames" />
+        <ToolbarButton
+          icon="symbol-string"
+          title="Rename / Auto-name  (N)"
+          onClick={startRename}
+        />
         <ToolbarButton icon="run-all" title="Animations" />
         <div style={{ flex: 1 }} />
         <ToolbarButton icon="zoom-in" title="Zoom In" />
         <ToolbarButton icon="zoom-out" title="Zoom Out" />
         <ToolbarButton icon="screen-full" title="Fit" />
         <Divider />
-        <ToolbarButton
-          icon="trash"
-          title="Delete Selected  (Del)"
-          onClick={deleteSelected}
-        />
+        <ToolbarButton icon="trash" title="Delete Selected  (Del)" onClick={deleteSelected} />
         <ToolbarButton
           icon="clear-all"
           title="Clear All Rects"
@@ -213,10 +277,24 @@ export function App() {
             </CanvasStage>
           </div>
         </Panel>
+
         <Panel title={`Frames (${rects.length}${selectedIds.size > 0 ? ` · ${selectedIds.size} sel` : ''})`}>
+          {renameMode.kind === 'prefix' ? (
+            <PrefixRenameBar
+              initial={prefixDraft}
+              count={renameMode.ids.length}
+              onCommit={(prefix) => {
+                applyPrefixToSelection(prefix)
+                setRenameMode({ kind: 'none' })
+              }}
+              onCancel={() => setRenameMode({ kind: 'none' })}
+            />
+          ) : null}
+
           {rects.length === 0 ? (
             <div style={{ color: 'var(--vscode-descriptionForeground)' }}>
-              Draw rects with the <i className="codicon codicon-add" /> tool <span style={{ opacity: 0.6 }}>(R)</span>.
+              Draw rects with the <i className="codicon codicon-add" /> tool{' '}
+              <span style={{ opacity: 0.6 }}>(R)</span>.
             </div>
           ) : (
             <ul
@@ -231,10 +309,13 @@ export function App() {
             >
               {rects.map((r, i) => {
                 const sel = selectedIds.has(r.id)
+                const editing = renameMode.kind === 'inline' && renameMode.id === r.id
+                const displayName = r.name ?? `#${i}`
                 return (
                   <li
                     key={r.id}
                     onClick={(e) => {
+                      if (editing) return
                       const next = new Set(selectedIds)
                       if (e.shiftKey) {
                         if (next.has(r.id)) next.delete(r.id)
@@ -245,9 +326,13 @@ export function App() {
                       }
                       setSelectedIds(next)
                     }}
+                    onDoubleClick={() => {
+                      setSelectedIds(new Set([r.id]))
+                      setRenameMode({ kind: 'inline', id: r.id })
+                    }}
                     style={{
                       padding: '4px 6px',
-                      cursor: 'pointer',
+                      cursor: editing ? 'text' : 'pointer',
                       background: sel
                         ? 'var(--vscode-list-activeSelectionBackground, transparent)'
                         : 'transparent',
@@ -258,10 +343,25 @@ export function App() {
                       display: 'flex',
                       justifyContent: 'space-between',
                       alignItems: 'center',
+                      gap: 8,
                     }}
                   >
-                    <span>#{i}</span>
-                    <span style={{ color: 'inherit', opacity: 0.7 }}>
+                    {editing ? (
+                      <InlineRenameInput
+                        initial={r.name ?? ''}
+                        placeholder={`#${i}`}
+                        onCommit={(name) => {
+                          renameRect(r.id, name)
+                          setRenameMode({ kind: 'none' })
+                        }}
+                        onCancel={() => setRenameMode({ kind: 'none' })}
+                      />
+                    ) : (
+                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {displayName}
+                      </span>
+                    )}
+                    <span style={{ opacity: 0.7, flex: '0 0 auto' }}>
                       {r.x},{r.y} · {r.w}×{r.h}
                     </span>
                   </li>
@@ -272,6 +372,128 @@ export function App() {
         </Panel>
       </div>
       <DevReloadToast />
+    </div>
+  )
+
+  // Minor: keep indexById live even if it's not displayed directly —
+  // suppresses 'unused' lint and future frame-index helpers reuse it.
+  void indexById
+}
+
+function InlineRenameInput({
+  initial,
+  placeholder,
+  onCommit,
+  onCancel,
+}: {
+  initial: string
+  placeholder: string
+  onCommit: (value: string) => void
+  onCancel: () => void
+}) {
+  const [value, setValue] = useState(initial)
+  const ref = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    ref.current?.focus()
+    ref.current?.select()
+  }, [])
+
+  const handleKey = (e: ReactKeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      onCommit(value)
+      e.preventDefault()
+    } else if (e.key === 'Escape') {
+      onCancel()
+      e.preventDefault()
+    }
+  }
+
+  return (
+    <input
+      ref={ref}
+      value={value}
+      placeholder={placeholder}
+      spellCheck={false}
+      onChange={(e: ChangeEvent<HTMLInputElement>) => setValue(e.target.value)}
+      onBlur={() => onCommit(value)}
+      onKeyDown={handleKey}
+      style={{
+        flex: 1,
+        minWidth: 0,
+        padding: '2px 4px',
+        background: 'var(--vscode-input-background)',
+        color: 'var(--vscode-input-foreground)',
+        border: '1px solid var(--vscode-focusBorder, transparent)',
+        outline: 'none',
+        fontFamily: 'var(--vscode-editor-font-family)',
+        fontSize: 12,
+      }}
+    />
+  )
+}
+
+function PrefixRenameBar({
+  initial,
+  count,
+  onCommit,
+  onCancel,
+}: {
+  initial: string
+  count: number
+  onCommit: (prefix: string) => void
+  onCancel: () => void
+}) {
+  const [value, setValue] = useState(initial)
+  const ref = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    ref.current?.focus()
+    ref.current?.select()
+  }, [])
+
+  return (
+    <div
+      style={{
+        display: 'flex',
+        gap: 6,
+        alignItems: 'center',
+        padding: '6px 4px',
+        marginBottom: 8,
+        borderBottom: '1px solid var(--vscode-panel-border, transparent)',
+      }}
+    >
+      <span style={{ color: 'var(--vscode-descriptionForeground)', whiteSpace: 'nowrap' }}>
+        Name {count} as:
+      </span>
+      <input
+        ref={ref}
+        value={value}
+        placeholder="prefix"
+        spellCheck={false}
+        onChange={(e: ChangeEvent<HTMLInputElement>) => setValue(e.target.value)}
+        onKeyDown={(e: ReactKeyboardEvent<HTMLInputElement>) => {
+          if (e.key === 'Enter') {
+            onCommit(value)
+            e.preventDefault()
+          } else if (e.key === 'Escape') {
+            onCancel()
+            e.preventDefault()
+          }
+        }}
+        style={{
+          flex: 1,
+          minWidth: 0,
+          padding: '2px 4px',
+          background: 'var(--vscode-input-background)',
+          color: 'var(--vscode-input-foreground)',
+          border: '1px solid var(--vscode-focusBorder, transparent)',
+          outline: 'none',
+          fontFamily: 'var(--vscode-editor-font-family)',
+          fontSize: 12,
+        }}
+      />
+      <span style={{ opacity: 0.65, whiteSpace: 'nowrap' }}>{value || 'name'}_0 …</span>
     </div>
   )
 }
