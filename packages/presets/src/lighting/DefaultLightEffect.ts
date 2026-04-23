@@ -42,6 +42,12 @@ export const DefaultLightEffect = createLightEffect({
     // Hit epsilon (world units) — SDF sample values below this count as
     // an occluder strike, terminating the trace.
     shadowBias: 0.5,
+    // World-space offset applied to the trace origin for fragments that
+    // sit inside their own caster silhouette (signed SDF < 0). Sized to
+    // clear typical caster radii without jumping past nearby occluders.
+    // Default 1.5 works for sprite-scale scenes; bump for larger
+    // casters.
+    shadowStartOffset: 1.5,
     // Max world-space distance a shadow is allowed to extend from the
     // receiver before fading to lit. 0 disables falloff (binary shadow at
     // any distance). Typical values: 100-300 world units — enough to keep
@@ -75,6 +81,7 @@ export const DefaultLightEffect = createLightEffect({
   light: ({ uniforms, constants, lightStore, sdfTexture, worldSizeNode, worldOffsetNode }) => {
     const shadowStrength = uniforms.shadowStrength
     const shadowBias = uniforms.shadowBias
+    const shadowStartOffset = uniforms.shadowStartOffset
     const shadowMaxDistance = uniforms.shadowMaxDistance
     const shadowPixelSize = uniforms.shadowPixelSize
     const bands = uniforms.bands
@@ -227,6 +234,7 @@ export const DefaultLightEffect = createLightEffect({
                 worldOffsetNode,
                 {
                   eps: shadowBias,
+                  startOffset: shadowStartOffset,
                   fragmentCastsShadow: readCastShadowFlag(),
                   maxShadowDistance: shadowMaxDistance,
                 }
