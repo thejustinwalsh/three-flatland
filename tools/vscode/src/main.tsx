@@ -1,6 +1,11 @@
 import { StrictMode, Suspense } from 'react'
 import { createRoot } from 'react-dom/client'
 import { getVSCodeApi } from '@three-flatland/bridge/client'
+// Silence the "custom element already registered" console-warn deluge that
+// triggers when Vite HMR re-runs this module. Documented by vscode-elements.
+// Must be set BEFORE importing the side-effect registration module.
+;(globalThis as unknown as { __vscodeElements_disableRegistryWarning__?: boolean })
+  .__vscodeElements_disableRegistryWarning__ = true
 // Side-effect import: registers every <vscode-*> custom element with the
 // browser's CustomElementRegistry. Without this the React wrappers render
 // inert unknown tags.
@@ -25,23 +30,16 @@ function tagCodiconStylesheet() {
 }
 tagCodiconStylesheet()
 
-// Forward uncaught errors + console.error to the extension host output
-// channel so "empty panel" situations are diagnosable without opening
-// Webview Developer Tools.
+// Forward uncaught errors to the extension host output channel so "empty
+// panel" situations are diagnosable without opening Webview Developer
+// Tools. We do NOT monkey-patch console.* — the plugin's patched
+// acquireVsCodeApi().postMessage logs via console.log, which would make
+// any console patch recurse infinitely when send() fires.
 let vscode: ReturnType<typeof getVSCodeApi> | null = null
 try {
   vscode = getVSCodeApi()
 } catch {
   // Not running inside a webview — no-op; nothing to forward.
-}
-
-function send(level: string, args: unknown[]) {
-  vscode?.postMessage({
-    kind: 'request',
-    id: `log-${Math.random().toString(36).slice(2)}`,
-    method: 'client/log',
-    params: { level, args: args.map(safe) },
-  })
 }
 
 function safe(v: unknown): unknown {
@@ -54,16 +52,17 @@ function safe(v: unknown): unknown {
   }
 }
 
+function send(level: string, args: unknown[]) {
+  vscode?.postMessage({
+    kind: 'request',
+    id: `log-${Math.random().toString(36).slice(2)}`,
+    method: 'client/log',
+    params: { level, args: args.map(safe) },
+  })
+}
+
 window.addEventListener('error', (e) => send('error', [e.message, `${e.filename}:${e.lineno}:${e.colno}`]))
 window.addEventListener('unhandledrejection', (e) => send('unhandledrejection', [safe(e.reason)]))
-
-for (const level of ['log', 'info', 'warn', 'error'] as const) {
-  const orig = console[level]
-  console[level] = (...args: unknown[]) => {
-    send(level, args)
-    orig.apply(console, args as never[])
-  }
-}
 
 send('info', ['webview boot'])
 
