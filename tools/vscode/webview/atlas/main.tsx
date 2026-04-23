@@ -52,14 +52,16 @@ window.addEventListener('unhandledrejection', (e) => send('unhandledrejection', 
 
 send('info', ['webview boot'])
 
-// PWA-style live reload. The extension host watches dist/webview/<tool>/
-// and emits 'dev/reload' when files change. We just reload the page; the
-// webview panel re-invokes our resolve flow and we re-initialize cleanly.
+// PWA-style live reload. The extension host fs-watches dist/webview/<tool>/
+// and emits 'dev/reload' when Vite rebuilds the bundle. We surface it as a
+// DOM event that useDevReload() (from the design system) picks up; the UI
+// renders a dismissable toast so the user clicks to reload rather than
+// having the page yanked out from under them mid-thought.
 try {
   const bridge = createClientBridge()
   bridge.on('dev/reload', () => {
-    send('info', ['dev/reload — reloading webview'])
-    location.reload()
+    send('info', ['dev/reload — bundle rebuilt'])
+    window.dispatchEvent(new Event('fl:dev-changed'))
   })
 } catch {
   // Not in a webview (unit/test context) — skip.

@@ -1,8 +1,10 @@
 export { Button, type ButtonProps } from './primitives/Button'
 export { Panel, type PanelProps } from './primitives/Panel'
 export { Toolbar, type ToolbarProps } from './primitives/Toolbar'
+export { DevReloadToast } from './primitives/DevReloadToast'
 export { useThemeKind, type ThemeKind } from './theme/useThemeKind'
 export { useCssVar } from './theme/useCssVar'
+export { useDevReload } from './theme/useDevReload'
 export { vscodeTokens } from './tokens'
 
 // Re-export common VSCode Elements so tools don't need to depend on the

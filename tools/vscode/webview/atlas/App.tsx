@@ -1,6 +1,13 @@
 import { useEffect, useState } from 'react'
 import { createClientBridge } from '@three-flatland/bridge/client'
-import { Panel, Toolbar, ToolbarButton, Divider, useCssVar } from '@three-flatland/design-system'
+import {
+  DevReloadToast,
+  Divider,
+  Panel,
+  Toolbar,
+  ToolbarButton,
+  useCssVar,
+} from '@three-flatland/design-system'
 import { SpritePreview } from '@three-flatland/preview'
 
 type InitPayload = { imageUri: string; fileName: string }
@@ -101,6 +108,7 @@ export function App() {
           </div>
         </Panel>
       </div>
+      <DevReloadToast />
     </div>
   )
 }
