@@ -1,4 +1,4 @@
-import { StrictMode } from 'react'
+import { StrictMode, Suspense } from 'react'
 import { createRoot } from 'react-dom/client'
 import { getVSCodeApi } from '@three-flatland/bridge/client'
 // Side-effect import: registers every <vscode-*> custom element with the
@@ -49,6 +49,25 @@ for (const level of ['log', 'info', 'warn', 'error'] as const) {
 
 send('info', ['webview boot'])
 
+function RootFallback() {
+  return (
+    <div
+      style={{
+        height: '100vh',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: 'var(--vscode-editor-background)',
+        color: 'var(--vscode-descriptionForeground)',
+        fontFamily: 'var(--vscode-font-family)',
+        fontSize: 'var(--vscode-font-size)',
+      }}
+    >
+      <vscode-progress-ring />
+    </div>
+  )
+}
+
 const root = document.getElementById('root')
 if (!root) {
   send('error', ['Root element missing'])
@@ -58,7 +77,9 @@ if (!root) {
 try {
   createRoot(root).render(
     <StrictMode>
-      <App />
+      <Suspense fallback={<RootFallback />}>
+        <App />
+      </Suspense>
     </StrictMode>
   )
   send('info', ['react mounted'])

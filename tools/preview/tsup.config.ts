@@ -1,7 +1,7 @@
 import { defineConfig } from 'tsup'
 
 export default defineConfig({
-  entry: ['src/index.ts', 'src/SpritePreview.tsx', 'src/useTextureFromUri.ts'],
+  entry: ['src/index.ts', 'src/SpritePreview.tsx'],
   format: ['esm'],
   dts: true,
   sourcemap: true,
