@@ -1,0 +1,81 @@
+{
+  "name": "@three-flatland/vscode",
+  "displayName": "three-flatland Tools",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Official three-flatland tools for editor hosts (VSCode, Cursor, Antigravity)",
+  "publisher": "three-flatland",
+  "type": "module",
+  "main": "./dist/extension.js",
+  "engines": {
+    "vscode": "^1.94.0"
+  },
+  "activationEvents": [],
+  "contributes": {
+    "commands": [
+      {
+        "command": "threeFlatland.atlas.openEditor",
+        "title": "Open in FL Sprite Atlas",
+        "category": "FL"
+      }
+    ],
+    "customEditors": [
+      {
+        "viewType": "threeFlatland.atlas",
+        "displayName": "FL Sprite Atlas",
+        "selector": [
+          { "filenamePattern": "*.png" }
+        ],
+        "priority": "option"
+      }
+    ],
+    "menus": {
+      "explorer/context": [
+        {
+          "command": "threeFlatland.atlas.openEditor",
+          "when": "resourceExtname == .png",
+          "group": "navigation@10"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "threeFlatland.atlas.openEditor",
+          "when": "resourceExtname == .png"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "build": "pnpm run build:webview && pnpm run build:host",
+    "build:host": "node esbuild.config.mjs",
+    "build:webview": "vite build",
+    "dev": "concurrently -k -n host,webview \"pnpm run dev:host\" \"pnpm run dev:webview\"",
+    "dev:host": "node esbuild.config.mjs --watch",
+    "dev:webview": "vite build --watch",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist",
+    "package": "vsce package --no-dependencies"
+  },
+  "dependencies": {
+    "@three-flatland/bridge": "workspace:*",
+    "@three-flatland/design-system": "workspace:*",
+    "@three-flatland/io": "workspace:*",
+    "@three-flatland/preview": "workspace:*",
+    "@react-three/fiber": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "three": "catalog:",
+    "three-flatland": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "@types/vscode": "^1.94.0",
+    "@vitejs/plugin-react": "catalog:",
+    "concurrently": "^9.1.0",
+    "esbuild": "^0.25.0",
+    "typescript": "catalog:",
+    "vite": "catalog:"
+  }
+}

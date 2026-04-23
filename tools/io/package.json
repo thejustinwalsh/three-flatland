@@ -1,0 +1,28 @@
+{
+  "name": "@three-flatland/io",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Shared data-layer helpers for three-flatland editor tools — image decode, fixture loaders, ajv error formatting",
+  "type": "module",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    }
+  },
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  }
+}
