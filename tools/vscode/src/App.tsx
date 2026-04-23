@@ -1,13 +1,17 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { createClientBridge } from '@three-flatland/bridge/client'
 import { Panel, Toolbar, ToolbarButton, Divider, useCssVar } from '@three-flatland/design-system'
 import { SpritePreview } from '@three-flatland/preview'
 
-type InitPayload = { imageUri: string; fileName: string }
+type InitPayload = {
+  bytes: number[] | Uint8Array
+  mime: string
+  fileName: string
+}
 
 declare global {
   interface Window {
-    __FL_ATLAS__?: InitPayload
+    __FL_ATLAS__?: { fileName: string }
   }
 }
 
@@ -39,8 +43,26 @@ function dumpThemeTokens() {
 }
 
 export function App() {
-  const [payload, setPayload] = useState<InitPayload | null>(() => window.__FL_ATLAS__ ?? null)
+  const [payload, setPayload] = useState<InitPayload | null>(null)
   const editorBg = useCssVar('--vscode-editor-background', '#1e1e1e')
+
+  // Wrap the bytes in a same-origin blob URL so three-flatland's
+  // TextureLoader can fetch them without crossing origins. Works in both
+  // dev-iframe and prod-webview contexts.
+  const imageUri = useMemo(() => {
+    if (!payload) return null
+    const bytes = payload.bytes instanceof Uint8Array
+      ? payload.bytes
+      : new Uint8Array(payload.bytes)
+    const blob = new Blob([bytes.buffer as ArrayBuffer], { type: payload.mime })
+    return URL.createObjectURL(blob)
+  }, [payload])
+
+  useEffect(() => {
+    return () => {
+      if (imageUri) URL.revokeObjectURL(imageUri)
+    }
+  }, [imageUri])
 
   useEffect(() => {
     dumpThemeTokens()
@@ -94,7 +116,7 @@ export function App() {
       >
         <Panel title="Preview">
           <div style={{ flex: 1, minHeight: 0 }}>
-            <SpritePreview imageUri={payload?.imageUri ?? null} background={editorBg} />
+            <SpritePreview imageUri={imageUri} background={editorBg} />
           </div>
         </Panel>
         <Panel title="Frames">
