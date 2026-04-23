@@ -141,6 +141,10 @@ export class Light2D extends Object3D {
    * Whether this light casts shadows. When false, the shader skips the
    * SDF shadow trace for this light — useful for cosmetic/atmospheric
    * lights (slime glows, ambient fills) that don't need occlusion.
+   *
+   * Currently only respected by `DefaultLightEffect`. `DirectLightEffect`
+   * still traces shadows for every non-ambient light regardless of this
+   * flag.
    */
   castsShadow: boolean = true
 
@@ -266,9 +270,9 @@ export class Light2D extends Object3D {
       angle: this.angle,
       penumbra: this.penumbra,
       decay: this.decay,
+      castsShadow: this.castsShadow,
     })
     light.enabled = this.enabled
-    light.castsShadow = this.castsShadow
     return light as this
   }
 
