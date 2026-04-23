@@ -1,3 +1,4 @@
+import '../styles.css'
 import { StrictMode, Suspense } from 'react'
 import { createRoot } from 'react-dom/client'
 import { createClientBridge, getVSCodeApi } from '@three-flatland/bridge/client'

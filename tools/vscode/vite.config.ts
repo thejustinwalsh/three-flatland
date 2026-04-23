@@ -1,5 +1,6 @@
 import { defineConfig, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
+import stylex from '@stylexjs/unplugin'
 import { resolve } from 'node:path'
 import { readdirSync, statSync } from 'node:fs'
 
@@ -49,7 +50,17 @@ function tokenizeAssetBase(token = '%FL_BASE%'): Plugin {
 }
 
 export default defineConfig({
-  plugins: [react(), tokenizeAssetBase()],
+  plugins: [
+    stylex.vite({
+      useCSSLayers: true,
+      include: [
+        resolve(__dirname, 'webview/**/*.{ts,tsx}'),
+        resolve(__dirname, '../design-system/src/**/*.{ts,tsx}'),
+      ],
+    }),
+    react(),
+    tokenizeAssetBase(),
+  ],
   root: resolve(__dirname, 'webview'),
   base: './',
   build: {
