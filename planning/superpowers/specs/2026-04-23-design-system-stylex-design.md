@@ -195,11 +195,11 @@ In scope:
    - `Toolbar` — convert inline padding to `stylex.create`; adopt `style?: StyleXStyles` API.
    - `DevReloadToast` — convert both inline style blocks to `stylex.create`. No public `style` prop.
    - `Button` — leave alone (thin pass-through, no styles to migrate).
-4. Verify build clean: `pnpm --filter @three-flatland/vscode build` green; F5 in VSCode renders the Atlas tool with VSCode-themed primitives correctly across light/dark/high-contrast.
+4. Migrate `tools/vscode/webview/atlas/App.tsx` — every inline `style={{...}}` site (~17 occurrences) and every direct `var(--vscode-*)` reference moves to `stylex.create` blocks at the top of the file. Apply the same conventions: tokens via `vscode.*` / `space.*` / `radius.*` / `z.*`, longhand properties, no raw vars. Style overrides on `Panel`/`Toolbar` go through their new `style?: StyleXStyles` props.
+5. Verify build clean: `pnpm --filter @three-flatland/vscode build` green; F5 in VSCode renders the Atlas tool with VSCode-themed primitives correctly across light/dark/high-contrast. The atlas editor (rect creation/select/rename/save) keeps working identically.
 
 Out of scope (follow-up tickets):
 
-- Atlas `App.tsx` migration (~17 inline-style sites + direct `var(--vscode-*)` refs).
 - Other tools (none exist yet).
 - ESLint plugin (`@stylexjs/eslint-plugin`) wiring — defer until we have enough StyleX surface to benefit.
 
@@ -215,8 +215,9 @@ Out of scope (follow-up tickets):
 - `pnpm --filter @three-flatland/design-system typecheck` — clean.
 - `pnpm --filter @three-flatland/vscode build` — clean (Vite emits one CSS bundle with extracted atomic styles).
 - F5 in VSCode → open a `.png` → Atlas opens, VSCode-themed primitives (`Panel`, `Toolbar`, `DevReloadToast`) render with correct colors/spacing.
-- Switch VSCode theme (light → dark → high-contrast) without reopening the editor → primitives recolor instantly with no React rerender.
-- Atlas `App.tsx` — inline styles still in place but rendering correctly (out-of-scope migration).
+- Switch VSCode theme (light → dark → high-contrast) without reopening the editor → primitives **and the atlas chrome** recolor instantly with no React rerender.
+- `grep -rn "style={{" tools/vscode/webview tools/design-system/src` returns zero hits.
+- `grep -rn "var(--vscode-" tools/vscode/webview tools/design-system/src` returns hits only inside `tokens/vscode-theme.stylex.ts`.
 
 ## Ordering hint for the implementation plan
 
@@ -228,4 +229,5 @@ Tokens before consumers, infra before migration. Rough order:
 4. Migrate `Panel` (canonical) and verify build.
 5. Migrate `Toolbar` and `DevReloadToast`.
 6. Delete `tokens.ts`, drop `tsup.config.ts`, switch `package.json` exports to source-only.
-7. Final build + F5 verify across themes.
+7. Migrate Atlas `App.tsx` — token swap first (raw `var(--vscode-*)` → `vscode.*`), then convert each inline `style={{...}}` block to a `stylex.create` namespace, then verify the build + atlas behaviour.
+8. Final build + F5 verify across themes; run the two `grep` checks from the Verification section.
