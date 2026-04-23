@@ -20,7 +20,8 @@
         "--extensionDevelopmentPath=${workspaceFolder}/tools/vscode",
         "${workspaceFolder}"
       ],
-      "outFiles": ["${workspaceFolder}/tools/vscode/dist/extension/**/*.js"]
+      "outFiles": ["${workspaceFolder}/tools/vscode/dist/extension/**/*.js"],
+      "preLaunchTask": "FL: dev"
     }
   ]
 }
