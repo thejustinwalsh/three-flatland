@@ -1,1 +1,5 @@
+export { CanvasStage, type CanvasStageProps } from './CanvasStage'
+export { ThreeLayer, type ThreeLayerProps } from './ThreeLayer'
+export { RectOverlay, type RectOverlayProps, type Rect } from './RectOverlay'
 export { SpritePreview, type SpritePreviewProps } from './SpritePreview'
+export { useViewport, ViewportContext, type Viewport } from './Viewport'
