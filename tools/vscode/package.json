@@ -57,6 +57,7 @@
     "package": "vsce package --no-dependencies"
   },
   "dependencies": {
+    "@stylexjs/stylex": "catalog:",
     "@three-flatland/bridge": "workspace:*",
     "@three-flatland/design-system": "workspace:*",
     "@three-flatland/io": "workspace:*",
@@ -72,6 +73,7 @@
     "three-flatland": "workspace:*"
   },
   "devDependencies": {
+    "@stylexjs/unplugin": "catalog:",
     "@types/node": "^22.10.0",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",

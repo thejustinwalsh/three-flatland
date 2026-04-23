@@ -25,6 +25,9 @@
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist"
   },
+  "dependencies": {
+    "@stylexjs/stylex": "catalog:"
+  },
   "peerDependencies": {
     "@vscode-elements/react-elements": "^2.4.0",
     "react": "catalog:"
