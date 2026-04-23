@@ -57,6 +57,7 @@ export class SpriteBatch extends InstancedMesh {
   private _instanceUV: Float32Array
   private _instanceColor: Float32Array
   private _instanceFlip: Float32Array
+  private _instanceShadowRadius: Float32Array
 
   /**
    * Core attribute references.
@@ -64,6 +65,7 @@ export class SpriteBatch extends InstancedMesh {
   private _uvAttribute: InstancedBufferAttribute
   private _colorAttribute: InstancedBufferAttribute
   private _flipAttribute: InstancedBufferAttribute
+  private _shadowRadiusAttribute: InstancedBufferAttribute
 
   /**
    * Custom attribute buffers (from material schema).
@@ -86,6 +88,8 @@ export class SpriteBatch extends InstancedMesh {
   private _colorDirtyMax = -1
   private _flipDirtyMin = Infinity
   private _flipDirtyMax = -1
+  private _shadowRadiusDirtyMin = Infinity
+  private _shadowRadiusDirtyMax = -1
 
   constructor(material: Sprite2DMaterial, maxSize: number = DEFAULT_BATCH_SIZE) {
     // Allocate core attribute buffers BEFORE creating InstancedMesh
@@ -93,6 +97,13 @@ export class SpriteBatch extends InstancedMesh {
     const instanceUV = new Float32Array(maxSize * 4)
     const instanceColor = new Float32Array(maxSize * 4)
     const instanceFlip = new Float32Array(maxSize * 2)
+    // `instanceShadowRadius` carries the sprite's occluder size (world
+    // units) to any lighting effect that traces shadows. Consumers read
+    // it via `readShadowRadius()` and use it as e.g. the SDF sphere-
+    // trace escape distance. 0 is a safe default meaning "no escape";
+    // transformSyncSystem resolves each sprite's actual radius each
+    // frame (user override or auto max(scale.x, scale.y)).
+    const instanceShadowRadius = new Float32Array(maxSize)
 
     // Initialize with default values (white, fully opaque, no flip, full texture)
     for (let i = 0; i < maxSize; i++) {
@@ -109,6 +120,8 @@ export class SpriteBatch extends InstancedMesh {
       // instanceFlip: no flip (1, 1)
       instanceFlip[i * 2 + 0] = 1
       instanceFlip[i * 2 + 1] = 1
+      // instanceShadowRadius: 0 (transformSyncSystem fills it each frame)
+      instanceShadowRadius[i] = 0
     }
 
     // Create geometry and add ALL instance attributes BEFORE super()
@@ -126,6 +139,10 @@ export class SpriteBatch extends InstancedMesh {
     const flipAttr = new InstancedBufferAttribute(instanceFlip, 2)
     flipAttr.setUsage(DynamicDrawUsage)
     geometry.setAttribute('instanceFlip', flipAttr)
+
+    const shadowRadiusAttr = new InstancedBufferAttribute(instanceShadowRadius, 1)
+    shadowRadiusAttr.setUsage(DynamicDrawUsage)
+    geometry.setAttribute('instanceShadowRadius', shadowRadiusAttr)
 
     // Create custom attributes from material schema BEFORE super()
     // This is critical - the shader may compile in super() or on first render,
@@ -166,9 +183,11 @@ export class SpriteBatch extends InstancedMesh {
     this._instanceUV = instanceUV
     this._instanceColor = instanceColor
     this._instanceFlip = instanceFlip
+    this._instanceShadowRadius = instanceShadowRadius
     this._uvAttribute = uvAttr
     this._colorAttribute = colorAttr
     this._flipAttribute = flipAttr
+    this._shadowRadiusAttribute = shadowRadiusAttr
     this._customAttributes = customAttributes
     this.spriteMaterial = material // Keep reference to original for batchId matching
     this.maxSize = maxSize
@@ -206,6 +225,12 @@ export class SpriteBatch extends InstancedMesh {
     this._instanceFlip[index * 2 + 1] = flipY
     if (index < this._flipDirtyMin) this._flipDirtyMin = index
     if (index > this._flipDirtyMax) this._flipDirtyMax = index
+  }
+
+  writeShadowRadius(index: number, radius: number): void {
+    this._instanceShadowRadius[index] = radius
+    if (index < this._shadowRadiusDirtyMin) this._shadowRadiusDirtyMin = index
+    if (index > this._shadowRadiusDirtyMax) this._shadowRadiusDirtyMax = index
   }
 
   writeMatrix(index: number, matrix: Matrix4): void {
@@ -254,6 +279,10 @@ export class SpriteBatch extends InstancedMesh {
 
   getFlipAttribute(): InstancedBufferAttribute {
     return this._flipAttribute
+  }
+
+  getShadowRadiusAttribute(): InstancedBufferAttribute {
+    return this._shadowRadiusAttribute
   }
 
   getCustomAttribute(name: string): InstancedBufferAttribute | undefined {
@@ -408,6 +437,14 @@ export class SpriteBatch extends InstancedMesh {
       this._flipAttribute.needsUpdate = true
       this._flipDirtyMin = Infinity
       this._flipDirtyMax = -1
+    }
+
+    if (this._shadowRadiusDirtyMax >= 0) {
+      this._shadowRadiusAttribute.clearUpdateRanges()
+      this._shadowRadiusAttribute.addUpdateRange(this._shadowRadiusDirtyMin, this._shadowRadiusDirtyMax - this._shadowRadiusDirtyMin + 1)
+      this._shadowRadiusAttribute.needsUpdate = true
+      this._shadowRadiusDirtyMin = Infinity
+      this._shadowRadiusDirtyMax = -1
     }
 
     for (const [, custom] of this._customAttributes) {

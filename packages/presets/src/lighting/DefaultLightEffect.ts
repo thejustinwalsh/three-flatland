@@ -7,6 +7,7 @@ import {
   MAX_LIGHTS_PER_TILE,
   TILE_SIZE,
   readCastShadowFlag,
+  readShadowRadius,
 } from 'three-flatland'
 import type { Light2D } from 'three-flatland'
 import { shadowSDF2D } from '@three-flatland/nodes/lighting'
@@ -42,15 +43,15 @@ export const DefaultLightEffect = createLightEffect({
     // Hit epsilon (world units) — SDF sample values below this count as
     // an occluder strike, terminating the trace.
     shadowBias: 0.5,
-    // World-space offset applied to the trace origin for fragments that
-    // sit inside their own caster silhouette (signed SDF < 0). Must
-    // clear the caster's radius — too small and the trace's first
-    // samples land inside the caster (self-shadow) or in the Voronoi-
-    // seam zone adjacent to the silhouette (ringing on the shadow
-    // edge). Default 40 matches the old unsigned-SDF escapeOffset and
-    // covers the demo's knight (64-unit body) plus margin. Scenes with
-    // smaller sprites can dial this down through the pane slider.
-    shadowStartOffset: 40,
+    // Multiplier on each sprite's per-instance `shadowRadius`
+    // (auto-resolved to `max(scale.x, scale.y)` or user-overridden)
+    // when the sphere-trace origin sits inside that sprite's
+    // silhouette. The per-instance radius already sizes the escape to
+    // the caster, so 1.0 is correct for the common case; nudge above
+    // 1.0 if you see residual self-shadow (e.g., elongated sprites
+    // where worst-case diagonal exit exceeds max-side), or below 1.0
+    // if the default over-pushes past nearby occluders.
+    shadowStartOffsetScale: 1,
     // Max world-space distance a shadow is allowed to extend from the
     // receiver before fading to lit. 0 disables falloff (binary shadow at
     // any distance). Typical values: 100-300 world units — enough to keep
@@ -84,7 +85,7 @@ export const DefaultLightEffect = createLightEffect({
   light: ({ uniforms, constants, lightStore, sdfTexture, worldSizeNode, worldOffsetNode }) => {
     const shadowStrength = uniforms.shadowStrength
     const shadowBias = uniforms.shadowBias
-    const shadowStartOffset = uniforms.shadowStartOffset
+    const shadowStartOffsetScale = uniforms.shadowStartOffsetScale
     const shadowMaxDistance = uniforms.shadowMaxDistance
     const shadowPixelSize = uniforms.shadowPixelSize
     const bands = uniforms.bands
@@ -237,7 +238,12 @@ export const DefaultLightEffect = createLightEffect({
                 worldOffsetNode,
                 {
                   eps: shadowBias,
-                  startOffset: shadowStartOffset,
+                  // Per-instance occluder radius × effect-level
+                  // multiplier. The radius auto-tracks each sprite's
+                  // scale (so the knight uses ~64 and the slime uses
+                  // ~32 without manual tuning); the multiplier is a
+                  // scene-wide fine-tune.
+                  startOffset: readShadowRadius().mul(shadowStartOffsetScale),
                   fragmentCastsShadow: readCastShadowFlag(),
                   maxShadowDistance: shadowMaxDistance,
                 }

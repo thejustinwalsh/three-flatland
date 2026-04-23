@@ -252,7 +252,7 @@ interface SceneProps {
   quantize: boolean
   shadowStrength: number
   shadowBias: number
-  shadowStartOffset: number
+  shadowStartOffsetScale: number
   shadowMaxDistance: number
   shadowPixelSize: number
   ambient: number
@@ -401,7 +401,7 @@ function FlatlandScene(props: SceneProps) {
       bands: number
       shadowStrength: number
       shadowBias: number
-      shadowStartOffset: number
+      shadowStartOffsetScale: number
       shadowMaxDistance: number
       shadowPixelSize: number
       lightHeight: number
@@ -412,7 +412,7 @@ function FlatlandScene(props: SceneProps) {
     e.bands = props.quantize ? props.bands : 0
     e.shadowStrength = props.shadowStrength
     e.shadowBias = props.shadowBias
-    e.shadowStartOffset = props.shadowStartOffset
+    e.shadowStartOffsetScale = props.shadowStartOffsetScale
     e.shadowMaxDistance = props.shadowMaxDistance
     e.shadowPixelSize = props.shadowPixelSize
     e.lightHeight = props.lightHeight
@@ -423,7 +423,7 @@ function FlatlandScene(props: SceneProps) {
     props.quantize,
     props.shadowStrength,
     props.shadowBias,
-    props.shadowStartOffset,
+    props.shadowStartOffsetScale,
     props.shadowMaxDistance,
     props.shadowPixelSize,
     props.lightHeight,
@@ -820,7 +820,7 @@ function FlatlandScene(props: SceneProps) {
           bands={props.quantize ? props.bands : 0}
           shadowStrength={props.shadowStrength}
           shadowBias={props.shadowBias}
-          shadowStartOffset={props.shadowStartOffset}
+          shadowStartOffsetScale={props.shadowStartOffsetScale}
           shadowMaxDistance={props.shadowMaxDistance}
           shadowPixelSize={props.shadowPixelSize}
         />
@@ -958,7 +958,7 @@ export default function App() {
   const shadows = usePaneFolder(pane, 'Shadows')
   const [shadowStrength] = usePaneInput(shadows, 'strength', 0.8, { min: 0, max: 1, step: 0.05 })
   const [shadowBias] = usePaneInput(shadows, 'bias', 0.5, { min: 0, max: 2, step: 0.05 })
-  const [shadowStartOffset] = usePaneInput(shadows, 'startOffset', 40, { min: 0, max: 80, step: 1 })
+  const [shadowStartOffsetScale] = usePaneInput(shadows, 'startOffsetScale', 1, { min: 0, max: 3, step: 0.05 })
   const [shadowMaxDistance] = usePaneInput(shadows, 'maxDistance', 300, { min: 0, max: 600, step: 10 })
   const [shadowPixelSize] = usePaneInput(shadows, 'pixelSize', 4, { min: 0, max: 8, step: 1 })
 
@@ -979,7 +979,7 @@ export default function App() {
           quantize={quantize}
           shadowStrength={shadowStrength}
           shadowBias={shadowBias}
-          shadowStartOffset={shadowStartOffset}
+          shadowStartOffsetScale={shadowStartOffsetScale}
           shadowMaxDistance={shadowMaxDistance}
           shadowPixelSize={shadowPixelSize}
           ambient={ambient}

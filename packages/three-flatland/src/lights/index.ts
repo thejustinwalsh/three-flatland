@@ -38,4 +38,5 @@ export {
   wrapWithLightFlags,
   readReceiveShadowsFlag,
   readCastShadowFlag,
+  readShadowRadius,
 } from './wrapWithLightFlags'
