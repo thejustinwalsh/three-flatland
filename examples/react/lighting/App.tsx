@@ -928,6 +928,7 @@ function FlatlandScene(props: SceneProps) {
             intensity={0.25}
             distance={40}
             decay={2}
+            castsShadow={false}
           />
         ))}
 
