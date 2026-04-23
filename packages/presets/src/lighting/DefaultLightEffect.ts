@@ -55,12 +55,6 @@ export const DefaultLightEffect = createLightEffect({
     // the `pixelSize` uniform, which snaps everything — this only
     // chunkifies shadows. Purely aesthetic; does NOT reduce GPU cost.
     shadowPixelSize: 0,
-    // Quantize each per-light shadow value (after `shadowStrength` is
-    // applied) to this many tones. 0 = continuous. 2-4 gives crisp
-    // stepped shadows in the style of the `bands` uniform.
-    shadowBands: 0,
-    // Nonlinear quantization curve for `shadowBands`. 1 = linear.
-    shadowBandCurve: 1,
     bands: 8,
     pixelSize: 0,
     glowRadius: 0,
@@ -83,8 +77,6 @@ export const DefaultLightEffect = createLightEffect({
     const shadowBias = uniforms.shadowBias
     const shadowMaxDistance = uniforms.shadowMaxDistance
     const shadowPixelSize = uniforms.shadowPixelSize
-    const shadowBands = uniforms.shadowBands
-    const shadowBandCurve = uniforms.shadowBandCurve
     const bands = uniforms.bands
     const pixelSize = uniforms.pixelSize
     const glowRadius = uniforms.glowRadius
@@ -240,23 +232,7 @@ export const DefaultLightEffect = createLightEffect({
                 }
               )
               // Attenuate by shadowStrength (lerp lit → trace).
-              const s = float(1).sub(float(1).sub(trace).mul(shadowStrength))
-              // Optional bit-crush: quantize the per-light shadow value.
-              // `shadowBandCurve` reshapes quantization non-linearly —
-              // expand through `pow(x, 1/curve)`, quantize evenly,
-              // compress back through `pow(y, curve)`. Endpoints 0 and 1
-              // are preserved.
-              const useShadowBands = shadowBands.greaterThan(float(0))
-              const curve = shadowBandCurve.max(float(0.01))
-              const invCurve = float(1).div(curve)
-              const shadowExpanded = s.pow(invCurve)
-              const shadowBandedExp = shadowExpanded
-                .mul(shadowBands)
-                .add(float(0.5))
-                .floor()
-                .div(shadowBands)
-              const shadowBanded = shadowBandedExp.pow(curve)
-              shadow.assign(useShadowBands.select(shadowBanded, s))
+              shadow.assign(float(1).sub(float(1).sub(trace).mul(shadowStrength)))
             })
           }
 
