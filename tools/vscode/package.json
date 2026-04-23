@@ -62,6 +62,8 @@
     "@three-flatland/io": "workspace:*",
     "@three-flatland/preview": "workspace:*",
     "@react-three/fiber": "catalog:",
+    "@vscode-elements/elements": "^2.5.1",
+    "@vscode-elements/react-elements": "^2.4.0",
     "react": "catalog:",
     "react-dom": "catalog:",
     "three": "catalog:",
