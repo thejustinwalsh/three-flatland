@@ -1281,10 +1281,13 @@ importers:
         version: link:../preview
       '@vscode-elements/elements':
         specifier: ^2.5.1
-        version: 2.5.1(@vscode/codicons@0.0.45)
+        version: 2.5.1(@vscode/codicons@0.0.44)
       '@vscode-elements/react-elements':
         specifier: ^2.4.0
-        version: 2.4.0(@types/react@19.2.9)(@vscode/codicons@0.0.45)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
+        version: 2.4.0(@types/react@19.2.9)(@vscode/codicons@0.0.44)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
+      '@vscode/codicons':
+        specifier: ^0.0.44
+        version: 0.0.44
       react:
         specifier: 'catalog:'
         version: 19.2.3
@@ -3238,6 +3241,9 @@ packages:
     peerDependencies:
       react: 17 || 18 || 19
       react-dom: 17 || 18 || 19
+
+  '@vscode/codicons@0.0.44':
+    resolution: {integrity: sha512-F7qPRumUK3EHjNdopfICLGRf3iNPoZQt+McTHAn4AlOWPB3W2kL4H0S7uqEqbyZ6rCxaeDjpAn3MCUnwTu/VJQ==}
 
   '@vscode/codicons@0.0.45':
     resolution: {integrity: sha512-1KAZ7XCMagp5Gdrlr4bbbcAqgcIL623iO1wW6rfcSVGAVUQvR0WP7bQx1SbJ11gmV3fdQTSEFIJQ/5C+HuVasw==}
@@ -7757,11 +7763,27 @@ snapshots:
       path-browserify: 1.0.1
       vscode-uri: 3.1.0
 
+  '@vscode-elements/elements@2.5.1(@vscode/codicons@0.0.44)':
+    dependencies:
+      '@lit/context': 1.1.6
+      '@vscode/codicons': 0.0.44
+      lit: 3.3.2
+
   '@vscode-elements/elements@2.5.1(@vscode/codicons@0.0.45)':
     dependencies:
       '@lit/context': 1.1.6
       '@vscode/codicons': 0.0.45
       lit: 3.3.2
+
+  '@vscode-elements/react-elements@2.4.0(@types/react@19.2.9)(@vscode/codicons@0.0.44)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)':
+    dependencies:
+      '@lit/react': 1.0.8(@types/react@19.2.9)
+      '@vscode-elements/elements': 2.5.1(@vscode/codicons@0.0.44)
+      react: 19.2.3
+      react-dom: 19.2.3(react@19.2.3)
+    transitivePeerDependencies:
+      - '@types/react'
+      - '@vscode/codicons'
 
   '@vscode-elements/react-elements@2.4.0(@types/react@19.2.9)(@vscode/codicons@0.0.45)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)':
     dependencies:
@@ -7772,6 +7794,8 @@ snapshots:
     transitivePeerDependencies:
       - '@types/react'
       - '@vscode/codicons'
+
+  '@vscode/codicons@0.0.44': {}
 
   '@vscode/codicons@0.0.45': {}
 

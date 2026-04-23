@@ -5,7 +5,25 @@ import { getVSCodeApi } from '@three-flatland/bridge/client'
 // browser's CustomElementRegistry. Without this the React wrappers render
 // inert unknown tags.
 import '@vscode-elements/elements'
+// Vite resolves these to hashed asset URLs under dist/webview/atlas/assets/.
+// The codicon.ttf is referenced by the CSS relative to itself, so both
+// files must live in the same bundled directory (Vite handles this).
+import codiconCssUrl from '@vscode/codicons/dist/codicon.css?url'
 import { App } from './App'
+
+// VscodeIcon expects a <link id="vscode-codicon-stylesheet"> to be present
+// on the page so it can mirror the codicon font stylesheet into its shadow
+// root. Without this, every icon renders as a zero-sized glyph and icon-
+// only buttons look invisible. Must run before any <vscode-icon> mounts.
+function installCodiconStylesheet() {
+  if (document.getElementById('vscode-codicon-stylesheet')) return
+  const link = document.createElement('link')
+  link.id = 'vscode-codicon-stylesheet'
+  link.rel = 'stylesheet'
+  link.href = codiconCssUrl
+  document.head.appendChild(link)
+}
+installCodiconStylesheet()
 
 // Forward uncaught errors + console.error to the extension host output
 // channel so "empty panel" situations are diagnosable without opening
