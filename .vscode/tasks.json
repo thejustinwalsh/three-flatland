@@ -6,17 +6,19 @@
       "detail": "One-shot extension + webview build. Used by 'FL Tools (build)' launch.",
       "type": "shell",
       "command": "pnpm",
-      "args": ["--filter", "@three-flatland/vscode", "build"],
+      "args": ["exec", "vite", "build"],
+      "options": { "cwd": "${workspaceFolder}/tools/vscode" },
       "group": "build",
       "problemMatcher": [],
       "presentation": { "reveal": "silent", "panel": "dedicated" }
     },
     {
       "label": "FL: dev",
-      "detail": "Vite dev server + tsdown watch. Runs in the background; used by 'FL Tools (dev)' launch. Webview edits HMR; extension edits need Cmd+R on the Extension Development Host.",
+      "detail": "Vite dev server + tsdown watch. Runs in the background; used by 'FL Tools (dev)' launch. Webview edits HMR; extension edits need Cmd+R on the Extension Development Host. Stopping this task kills the Vite server cleanly.",
       "type": "shell",
       "command": "pnpm",
-      "args": ["--filter", "@three-flatland/vscode", "dev"],
+      "args": ["exec", "vite"],
+      "options": { "cwd": "${workspaceFolder}/tools/vscode" },
       "isBackground": true,
       "problemMatcher": {
         "owner": "fl-vite",
