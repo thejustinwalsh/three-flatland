@@ -35,8 +35,12 @@ function tokenizeAssetBase(token = '%FL_BASE%'): Plugin {
     transformIndexHtml: {
       order: 'post',
       handler(html) {
+        // Match any asset URL prefix: `../`, `./`, or `/`, in any sequence.
+        // Vite emits `../assets/...` from a tool subdir, `./assets/...` from
+        // a root HTML, `/assets/...` with base: '/'. All collapse to the
+        // same shared asset dir under the webview root.
         return html.replace(
-          /((?:src|href))="(?:\.\/|\/)(?=[^/"])/g,
+          /((?:src|href))="(?:\.\.?\/)+(?=[^/"])/g,
           (_m, attr) => `${attr}="${token}`
         )
       },

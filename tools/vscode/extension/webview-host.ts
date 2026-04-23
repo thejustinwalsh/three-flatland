@@ -35,7 +35,11 @@ export async function composeToolHtml(params: ComposeHtmlParams): Promise<string
   }
 
   const nonce = randomBytes(16).toString('hex')
-  const base = webview.asWebviewUri(toolDir).toString().replace(/\/?$/, '/')
+  // Base is the SHARED webview root (dist/webview/), not the per-tool dir —
+  // Vite emits `../assets/…` from tool subdirs to a shared assets/ folder,
+  // so tokens need to resolve against the parent.
+  const webviewRoot = vscode.Uri.joinPath(extensionUri, 'dist', 'webview')
+  const base = webview.asWebviewUri(webviewRoot).toString().replace(/\/?$/, '/')
 
   // Substitute the asset-URL token our Vite plugin emitted.
   html = html.split('%FL_BASE%').join(base)
@@ -44,7 +48,14 @@ export async function composeToolHtml(params: ComposeHtmlParams): Promise<string
   // trigger odd resource-loading paths in some webview versions.
   html = html.replace(/\s+crossorigin(?:="[^"]*")?/g, '')
 
-  // Add nonce to every <script> tag so they satisfy our CSP.
+  // Nonceify injectCode's <script> tags BEFORE stamping the HTML's own
+  // <script> tags so we only do one regex pass that covers both.
+  const noncedInject = (injectCode ?? '').replace(
+    /<script\b((?:\s+[^>]*)?)>/g,
+    (_m, attrs) => `<script nonce="${nonce}"${attrs ?? ''}>`
+  )
+
+  // Add nonce to every <script> tag in the Vite-emitted HTML.
   html = html.replace(/<script\b((?:\s+[^>]*)?)>/g, (_m, attrs) => `<script nonce="${nonce}"${attrs ?? ''}>`)
 
   const csp = [
@@ -59,8 +70,7 @@ export async function composeToolHtml(params: ComposeHtmlParams): Promise<string
   ].join('; ')
 
   const meta = `<meta http-equiv="Content-Security-Policy" content="${csp}">`
-  const bootstrap = injectCode ?? ''
-  html = html.replace('<head>', `<head>\n${meta}\n${bootstrap}`)
+  html = html.replace('<head>', `<head>\n${meta}\n${noncedInject}`)
 
   return html
 }
