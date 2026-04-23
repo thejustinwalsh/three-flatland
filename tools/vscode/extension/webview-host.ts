@@ -85,26 +85,34 @@ function placeholderHtml(message: string): string {
 }
 
 /**
- * Watch the tool's built `dist/webview/<tool>/` directory for changes and
- * emit a `dev/reload` event to the webview so it can reload itself
- * (PWA-style live reload — no React Fast Refresh, but no iframe either).
- * Safe no-op outside dev / when the dir doesn't exist.
+ * Watch the whole `dist/webview/` tree for changes and emit a `dev/reload`
+ * notification so the webview can show its "Reload" toast. We need the
+ * whole tree (not just the per-tool subdir) because Vite emits:
  *
- * Debounced to a single reload per burst of file writes (Vite emits the
- * bundle + source map + asset files in rapid succession).
+ *   dist/webview/<tool>/index.html          ← thin HTML referencing hashed assets
+ *   dist/webview/assets/<tool>-HASH.js      ← real bundle, shared asset dir
+ *   dist/webview/assets/<tool>-HASH.css
+ *
+ * Watching only `<tool>/` means we'd see `index.html` regenerate but
+ * sometimes miss the event (fs.watch + atomic rename on macOS is flaky),
+ * and we wouldn't see the asset files that actually carry the change.
+ * Watching the shared parent picks up all of it.
+ *
+ * Debounced to one reload per burst of writes. Safe no-op if the root
+ * doesn't exist yet (pre-first-build).
  */
 export function setupDevReload(
   extensionUri: vscode.Uri,
-  tool: string,
+  _tool: string,
   onReload: () => void,
-  debounceMs = 120
+  debounceMs = 150
 ): vscode.Disposable {
-  const dir = vscode.Uri.joinPath(extensionUri, 'dist', 'webview', tool).fsPath
+  const root = vscode.Uri.joinPath(extensionUri, 'dist', 'webview').fsPath
   let watcher: FSWatcher | null = null
   let t: NodeJS.Timeout | null = null
 
   try {
-    watcher = watch(dir, { recursive: true }, () => {
+    watcher = watch(root, { recursive: true }, () => {
       if (t) clearTimeout(t)
       t = setTimeout(() => {
         t = null
@@ -112,7 +120,7 @@ export function setupDevReload(
       }, debounceMs)
     })
   } catch {
-    // Directory doesn't exist yet (pre-first-build) — no-op.
+    // Directory doesn't exist yet.
   }
 
   return {
