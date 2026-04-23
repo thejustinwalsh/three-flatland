@@ -45,8 +45,10 @@ tools/
     src/                      # R3F components: SpritePreview, NormalPreview, AtlasPreview
 
   io/                         # @three-flatland/tools-io
-    src/                      # image decode/encode, sidecar read/write, JSON Schema + ajv validators
-    schemas/                  # JSON Schema files (atlas.schema.json, etc.)
+    src/                      # image decode/encode helpers, auto-slice (CCL/grid), fs-bridge helpers,
+                              # tiny test harness for schemas (loadFixture, ajvErrorsToString,
+                              # assertSchemaMatchesType). No format-specific schemas here — those live
+                              # in their format-owning packages (packages/three-flatland, packages/normals).
 
   bridge/                     # @three-flatland/tools-bridge
     src/                      # typed postMessage RPC (host + client)

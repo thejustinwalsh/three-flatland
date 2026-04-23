@@ -82,7 +82,15 @@ The normal baker's regions have additional per-region properties (`direction`, `
 
 ## JSON Schema
 
-Authoritative schema at `tools/io/schemas/normal-descriptor.schema.json`. Derived from the `NormalSourceDescriptor` TypeScript type in `packages/normals/src/descriptor.ts`. Ajv-validated before bake. Unit tests assert parity between the TS type and the JSON schema (via `ts-json-schema-generator`).
+Owned by `packages/normals/` — lives with the descriptor type and loader:
+
+- Schema: `packages/normals/src/descriptor.schema.json` — published at `https://three-flatland.dev/schemas/normal-descriptor.v1.json`
+- Validator: `packages/normals/src/descriptor.schema.ts` — exports pre-compiled `validateNormalDescriptor`
+- Type: `packages/normals/src/descriptor.ts` — `NormalSourceDescriptor` stays authoritative; schema parity enforced by test
+
+The normal baker GUI imports `validateNormalDescriptor` from `@three-flatland/normals` and runs it before handing the doc to `bakeNormalMapFile`. Tests live in `packages/normals/` alongside the type.
+
+See [schemas/README.md](./schemas/README.md) for authoring rules and docs-site publication.
 
 ## Contribution
 

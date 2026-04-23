@@ -9,26 +9,28 @@ Right-click a sprite image → open a CustomEditor that lets the user define spr
 | Format | v0 | v1 | Notes |
 |---|---|---|---|
 | PNG | yes | yes | Primary source format |
-| WebP | no | yes | Lossy/lossless acceptable; wider tooling support than KTX2 |
-| KTX2 (BasisU) | no | yes | Via Spark tool for encoding; editor previews via three.js KTX2Loader |
+| WebP | no | yes | Default modern source; pairs with `spark.js` loader for GPU-compressed runtime |
+| KTX2 (BasisU) | no | yes | Alternative compressed path; pairs with three's `KTX2Loader` |
 
-The editor treats all three as sprite sources. Encoding between formats is the Spark tool's job; this tool only consumes.
+The editor treats all three as sprite sources. Encoding between formats is the [Spark tool's](./tool-spark.md) job; this tool only consumes.
 
-## Runtime loader fallback (follow-up against three-flatland)
+## Runtime loader contract (follow-up against three-flatland)
 
-Authoring can request formats that runtime may not support (iOS Safari has partial KTX2; old devices have no BasisU). Runtime loaders take an ordered fallback array:
+Two orthogonal knobs in the new loader API:
 
 ```ts
 loadSpriteSheet('hero', {
-  formats: ['ktx2', 'webp', 'png']   // prefer ktx2; webp fallback; png final
+  formats: ['webp', 'ktx2', 'png'],   // source-format preference, first supported wins
+  loader:  'auto'                     // 'spark' | 'three-ktx' | 'three-default' | 'auto'
 })
 ```
 
-- If the array is omitted: loader defaults to `['webp', 'png']` and logs a dev-time warn when requested format is missing at authoring time.
-- Loader probes `meta.sources: [{ format, uri }]` in the sidecar. First supported format wins.
-- Sidecar emits all authored formats; Spark (or the atlas editor) keeps them in sync.
+- `auto` (default): spark when a WebP source exists and a spark-compatible sibling is present; three-ktx when KTX2 exists; three-default otherwise.
+- When `formats` is omitted it defaults to `['webp', 'png']` with a dev-time warn if a requested format is missing.
+- Loader probes `meta.sources: [{ format, uri }]` in the sidecar. Runtime-available formats are filtered from the preference list before selection.
+- Atlas editor + Spark emit sidecars whose `meta.sources` list every authored variant. Any one of them is sufficient for runtime; more variants give the loader more paths.
 
-This lives in `packages/three-flatland/` loaders (new contract), not in `tools/`. Filed as a separate work item.
+Lives in `packages/three-flatland/` (new loader contract), not in `tools/`. Filed as a separate work item.
 
 ## User flow
 
@@ -115,9 +117,15 @@ Webview never touches filesystem directly — all I/O via bridge.
 
 ## Sidecar JSON schema
 
-Located at `tools/io/schemas/atlas.schema.json`. Ajv-validated at write and in unit tests. Superset of existing `SpriteSheetJSONHash` (`packages/three-flatland/src/sprites/types.ts:81`) so current `SpriteSheetLoader` consumes it verbatim at v0.
+Owned by `packages/three-flatland/` — lives with its types and loader:
 
-See [schemas/README.md](./schemas/README.md) for authoring rules.
+- Schema: `packages/three-flatland/src/sprites/atlas.schema.json` — published at `https://three-flatland.dev/schemas/atlas.v1.json`
+- Validator: `packages/three-flatland/src/sprites/atlas.schema.ts` — exports pre-compiled `validateAtlas` ajv function
+- Type: `packages/three-flatland/src/sprites/types.ts` — `SpriteSheetJSONHash` stays authoritative; schema parity enforced by test
+
+The atlas editor imports `validateAtlas` from the three-flatland package and runs it authoritatively in the host before `workspace.fs.writeFile`.
+
+See [schemas/README.md](./schemas/README.md) for authoring rules, consumption patterns, and the docs-site publication pipeline.
 
 Sketch (full schema file is authoritative):
 
