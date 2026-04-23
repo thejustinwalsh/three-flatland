@@ -5,25 +5,25 @@ import { getVSCodeApi } from '@three-flatland/bridge/client'
 // browser's CustomElementRegistry. Without this the React wrappers render
 // inert unknown tags.
 import '@vscode-elements/elements'
-// Vite resolves these to hashed asset URLs under dist/webview/atlas/assets/.
-// The codicon.ttf is referenced by the CSS relative to itself, so both
-// files must live in the same bundled directory (Vite handles this).
-import codiconCssUrl from '@vscode/codicons/dist/codicon.css?url'
+// Regular CSS import — Vite emits a <link rel="stylesheet" href="/assets/
+// codicon-HASH.css"> tag into the HTML, which is caught and rewritten to a
+// webview URI by composeAtlasHtml. The codicon.ttf referenced inside the
+// CSS resolves relative to the CSS's own URL, so both end up as valid
+// vscode-webview:// resources permitted by localResourceRoots.
+import '@vscode/codicons/dist/codicon.css'
 import { App } from './App'
 
-// VscodeIcon expects a <link id="vscode-codicon-stylesheet"> to be present
-// on the page so it can mirror the codicon font stylesheet into its shadow
-// root. Without this, every icon renders as a zero-sized glyph and icon-
-// only buttons look invisible. Must run before any <vscode-icon> mounts.
-function installCodiconStylesheet() {
+// VscodeIcon expects a <link id="vscode-codicon-stylesheet"> on the page
+// so it can mirror the codicon font stylesheet into each icon's shadow
+// root. Vite bundles codicon.css into the page's main stylesheet (rules
+// + @font-face), so we tag the main <link> as the codicon stylesheet.
+// Must run before any <vscode-icon> mounts.
+function tagCodiconStylesheet() {
   if (document.getElementById('vscode-codicon-stylesheet')) return
-  const link = document.createElement('link')
-  link.id = 'vscode-codicon-stylesheet'
-  link.rel = 'stylesheet'
-  link.href = codiconCssUrl
-  document.head.appendChild(link)
+  const link = document.querySelector<HTMLLinkElement>('link[rel="stylesheet"]')
+  if (link) link.id = 'vscode-codicon-stylesheet'
 }
-installCodiconStylesheet()
+tagCodiconStylesheet()
 
 // Forward uncaught errors + console.error to the extension host output
 // channel so "empty panel" situations are diagnosable without opening

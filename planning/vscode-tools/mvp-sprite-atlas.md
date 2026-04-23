@@ -101,18 +101,28 @@ tools/
 - `pnpm --filter @three-flatland/vscode build` — extension + webview bundles.
 - F5 in VSCode with the extension opened as the workspace root, or via the launch config.
 
-## Task breakdown
+## Task breakdown (Phases 1 + 2 complete)
 
-- [ ] **T1** — Write `pnpm-workspace.yaml` addition (done earlier), confirm `tools/*` captured.
-- [ ] **T2** — Scaffold `tools/design-system` with minimal `Button`/`Panel`/`Toolbar` and CSS-var-based tokens.
-- [ ] **T3** — Scaffold `tools/bridge` with typed RPC helpers.
-- [ ] **T4** — Scaffold `tools/io` with image load + fixture helper stubs.
-- [ ] **T5** — Scaffold `tools/preview` with `SpritePreview` using existing `SpriteGroup` from three-flatland.
-- [ ] **T6** — Scaffold `tools/vscode` — `package.json` contributions (commands + menus + customEditors), esbuild + Vite configs, `.vscode/launch.json` + `tasks.json`.
-- [ ] **T7** — Implement `AtlasCustomEditorProvider` — opens webview, resolves image URI via `asWebviewUri`, composes HTML with CSP nonce.
-- [ ] **T8** — Implement webview React app — toolbar + canvas rendering `<SpritePreview>`.
-- [ ] **T9** — `pnpm install` + build each package; fix any type errors.
-- [ ] **T10** — F5 launch → verify context menu, open editor, see image rendered via three-flatland.
+- [x] **T1** — `pnpm-workspace.yaml` includes `tools/*`.
+- [x] **T2** — `tools/design-system` scaffolded. Swapped inline-styled primitives → `@vscode-elements/react-elements` wrappers for native VSCode chrome.
+- [x] **T3** — `tools/bridge` typed RPC (`createHostBridge` / `createClientBridge` / `getVSCodeApi` singleton).
+- [x] **T4** — `tools/io` with `decodeImageData`, `loadImage`.
+- [x] **T5** — `tools/preview` with `<SpritePreview>` using R3F v10 webgpu + `useLoader(TextureLoader)` + inner Suspense boundary.
+- [x] **T6** — `tools/vscode` extension with esbuild host + Vite webview, FL branding, explorer context menu on `.png`, launch/tasks.json at repo root.
+- [x] **T7** — `AtlasCustomEditorProvider` composes webview HTML with CSP nonce, import-map-compatible asset rewriting, initial payload bootstrap, bridge wiring, host OutputChannel + client/log forwarding.
+- [x] **T8** — webview React app: outer DOM Suspense + `<App>` with icon-only toolbar, themed panels, canvas preview.
+- [x] **T9** — all packages build + typecheck clean.
+- [x] **T10** — F5 launch verified end-to-end: right-click PNG → "Open in FL Sprite Atlas" → CustomEditor opens → image renders via three-flatland.
+- [x] **T11** — codicons properly installed (`@vscode/codicons` dep, `?url` import, `<link id="vscode-codicon-stylesheet">` injected pre-mount).
+
+## Phase 3 — editor functionality (current)
+
+- [ ] **T12** — Click-drag rect creation in the canvas. Rects stored in React state, rendered as three.js line frames overlaid on the sprite.
+- [ ] **T13** — Selection (click rect) + delete (keyboard) + escape to deselect. Selected rect highlighted distinctly.
+- [ ] **T14** — Frames panel lists rects with editable names; F2 renames; multi-select auto-numbers in (y, x) order.
+- [ ] **T15** — Atlas sidecar schema (`atlas.schema.json`) colocated in `packages/three-flatland/src/sprites/`. Ajv validator exported as `validateAtlas`.
+- [ ] **T16** — Save: writes `{basename}.atlas.json` next to the image, ajv-validated first.
+- [ ] **T17** — Load-on-open: if a sidecar exists, seed rects + names from it.
 
 ---
 
