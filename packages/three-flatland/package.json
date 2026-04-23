@@ -37,6 +37,7 @@
         "default": "./dist/sprites/index.cjs"
       }
     },
+    "./sprites/atlas.schema.json": "./src/sprites/atlas.schema.json",
     "./sprites/*": {
       "source": "./src/sprites/*.ts",
       "import": {
