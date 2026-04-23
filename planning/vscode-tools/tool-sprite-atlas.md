@@ -34,7 +34,7 @@ Lives in `packages/three-flatland/` (new loader contract), not in `tools/`. File
 
 ## User flow
 
-1. Right-click `characters/hero.png` → "Open in Sprite Atlas".
+1. Right-click `characters/hero.png` → "Open in FL Sprite Atlas".
 2. CustomEditor opens; three panes: slice editor, frame list, animation timeline. Live preview in a fourth pane.
 3. Slice: grid / auto-detect / manual rect / snap.
 4. Name: F2 renames selected frame(s); multi-select auto-numbers `{prefix}_{index}` in `(y, x)` order with tolerance.
@@ -69,11 +69,11 @@ Schema:
 ```
 Extension host (ESM)                         Webview (atlas editor)
   AtlasCustomEditorProvider                    React app
-   - openCustomDocument                        - tools-design-system (StyleX + Lit)
-   - resolveCustomEditor                       - tools-preview (SpritePreview, AtlasPreview, Timeline)
-   - saveCustomDocument (ajv-validates)        - tools-io (CCL, grid slice, schema validator)
+   - openCustomDocument                        - design-system (StyleX + Lit)
+   - resolveCustomEditor                       - preview (SpritePreview, AtlasPreview, Timeline)
+   - saveCustomDocument (ajv-validates)        - io (CCL, grid slice, schema validator)
    - backupCustomDocument                      - three-flatland preview
-  AtlasFsBridge (tools-bridge)
+  AtlasFsBridge (bridge)
    - readImage(uri) → bytes
    - readSidecar(uri) → AtlasSidecar | null
    - writeSidecar(uri, doc) → WorkspaceEdit
@@ -89,7 +89,7 @@ Webview never touches filesystem directly — all I/O via bridge.
   "customEditors": [
     {
       "viewType": "threeFlatland.atlas",
-      "displayName": "three-flatland Sprite Atlas",
+      "displayName": "FL Sprite Atlas",
       "selector": [
         { "filenamePattern": "*.png" },
         { "filenamePattern": "*.webp" },
@@ -99,7 +99,7 @@ Webview never touches filesystem directly — all I/O via bridge.
     }
   ],
   "commands": [
-    { "command": "threeFlatland.atlas.openEditor", "title": "Open in Sprite Atlas" }
+    { "command": "threeFlatland.atlas.openEditor", "title": "Open in FL Sprite Atlas", "category": "FL" }
   ],
   "menus": {
     "explorer/context": [
@@ -208,7 +208,7 @@ Never auto-applies; user reviews and accepts/edits.
 
 ## Preview
 
-Uses `@three-flatland/tools-preview`:
+Uses `@three-flatland/preview`:
 
 ```tsx
 <AtlasPreview sheetUri={uri} sourceFormats={['webp','png']} rects={rects} onRectChange={setRects} />

@@ -11,7 +11,7 @@ Portability note: this plugin may migrate to its own `zzfx-studio` repo. What's 
 ```
 Extension host (ESM)                           Webview (React + StyleX)
   ZzfxCodeLensProvider                           React app
-    ↓ via tools-codelens-service/ts client         - sliders, pills, preview
+    ↓ via codelens-service/ts client         - sliders, pills, preview
   Go sidecar: zzfx-scan                            - bundled zzfx.js
     tree-sitter + tree-sitter-typescript          - AudioContext playback
     modernc.org/sqlite — per-project cache        - postMessage bridge
@@ -111,8 +111,17 @@ Trailing zeros may be omitted in source.
 
 Return only `range` in `provideCodeLenses`; compute titles in `resolveCodeLens`. Two lenses per finding:
 
-- `▶ Play` → `threeFlatland.zzfx.playParams` with params array
+- `▶ Play` → `threeFlatland.zzfx.playParams` with params array (CodeLens inline — no FL prefix, context is clear from position)
 - `⚙ Edit` → `threeFlatland.zzfx.openEditor` with `{ uri, findingId }`
+
+Command palette versions use the FL category: `FL: Play ZzFX at Cursor`, `FL: Open ZzFX Editor`. Registered as:
+
+```json
+"commands": [
+  { "command": "threeFlatland.zzfx.playAtCursor", "title": "Play ZzFX at Cursor", "category": "FL" },
+  { "command": "threeFlatland.zzfx.openEditor",   "title": "Open ZzFX Editor",    "category": "FL" }
+]
+```
 
 Fire `onDidChangeCodeLenses` on sidecar `document/parse` completion, debounced 250 ms.
 
@@ -122,7 +131,7 @@ Fire `onDidChangeCodeLenses` on sidecar `document/parse` completion, debounced 2
 
 ## Editor webview
 
-- React 19 + StyleX + VSCode Elements (sliders + pills composed with StyleX primitives from `tools-design-system`).
+- React 19 + StyleX + VSCode Elements (sliders + pills composed with StyleX primitives from `design-system`).
 - Bundled `zzfx.js` (<1 KB minified). AudioContext created lazily; resumed on first user gesture (required by autoplay policy).
 - Panels:
   - **Sliders** for 21 params, grouped: envelope, pitch, shape, effects.

@@ -1,93 +1,221 @@
 # Tool: Image Encoder (A/B with per-loader GPU memory)
 
-Squoosh-style A/B image encoder across PNG / WebP / AVIF / KTX2, with disk / decoded-RAM / GPU-memory readouts per candidate runtime loader (three default, `KTX2Loader`, spark.js). Pairs with the `spark.js` runtime transcoder, but is independent — any image can be encoded into any supported format regardless of which loader the user runs it through.
+Squoosh-style A/B image encoder across PNG / WebP / AVIF / KTX2, with disk / decoded-RAM / GPU-memory readouts per candidate runtime loader (three default, `KTX2Loader`, spark.js).
 
-## spark.js (context, not a dependency for encoding)
+**The tool is a thin GUI over a baker package.** All encoding logic, runtime helpers, and the CLI live in `@three-flatland/image` following the same pattern as `@three-flatland/normals`:
 
-`spark.js` (Ignacio Castano / ludicon): a runtime **transcoder** — not an encoder. Reads a standard image (URL / DOM Image / ImageBitmap / Canvas / GPUTexture; examples ship `.avif`) and emits a compressed `GPUTexture` (BC7 / ASTC / ETC2) in memory at load time. No disk output, no CLI, no encoder utility in the repo. `encodeTexture(source, options)` — the name is misleading; it "encodes" the runtime GPU texture, not a file.
+- **Browser-safe runtime** + **node file-I/O surface** + **CLI subcommand** via `flatland-bake encode`.
+- The VSCode tool imports `@three-flatland/image/node` for encoding and `@three-flatland/image` for memory estimation and preview.
+- Headless / CI / scripts use `flatland-bake encode <input> [output] --format webp` — no VSCode needed.
+- Runtime consumers (three-flatland loaders) import the same package for format-fallback resolution and source decoding.
 
-- Repo: https://github.com/ludicon/spark.js
-- Overview: https://www.ludicon.com/castano/blog/2025/09/three-js-spark-js/
+## Package: `@three-flatland/image`
 
-**Implication for this tool**: we own all on-disk encoding. spark.js only enters as the *runtime path* we simulate for the GPU-memory column — optionally by actually calling `encodeTexture()` in the preview webview against our encoded candidate to read the real transcoded texture size.
+Lives at `packages/image/`. Mirrors `packages/normals/` structurally.
 
-## Goal
+### Layout
 
-Right-click a PNG / WebP / AVIF / KTX2 → open a webview that encodes the image to any of the other formats and shows an A/B comparison across three memory axes:
+```
+packages/image/
+  package.json              # flatland.bake: [{ name: "encode", entry: "./dist/cli.js" }]
+  src/
+    index.ts                # browser-safe: encoders, decoders, memory estimator, fallback resolver
+    node.ts                 # re-exports index + file-I/O wrappers (encodeImageFile, batch)
+    cli.ts                  # default-exports Baker for `flatland-bake encode`
+    encode.ts               # pure encode — WASM codec invocations (browser-safe)
+    encode.node.ts          # file-I/O wrappers, worker_threads spawner
+    decode.ts               # pure decode (browser-safe)
+    memory.ts               # GpuMemoryEstimator (analytic + spark-measured)
+    resolveSource.ts        # format-fallback resolver used by runtime loaders
+    codecs/
+      png.ts                # @jsquash/png wrapper
+      webp.ts               # @jsquash/webp wrapper
+      avif.ts               # @jsquash/avif wrapper
+      ktx2.ts               # basis_universal WASM wrapper
+    types.ts                # EncodeFormat, ImageEncodeOptions, GpuMemoryEstimate, SourceEntry
+    __fixtures__/
+      valid/   invalid/     # codec round-trip tests
+    *.test.ts
+  tsup.config.ts
+```
 
-| Axis | Shown as |
-|---|---|
-| **Disk** | encoded file size (bytes) |
-| **Decoded RAM** | decoded-to-RGBA8 size (width × height × 4) |
-| **GPU memory** | per runtime loader — see table |
+### `package.json` (essential fields)
 
-## GPU memory estimation
+```jsonc
+{
+  "name": "@three-flatland/image",
+  "type": "module",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "node":    { "types": "./dist/node.d.ts",  "import": "./dist/node.js" },
+      "browser": { "types": "./dist/index.d.ts", "import": "./dist/index.js" },
+      "default": { "types": "./dist/index.d.ts", "import": "./dist/index.js" }
+    },
+    "./node": {
+      "source": "./src/node.ts",
+      "types":  "./dist/node.d.ts",
+      "import": "./dist/node.js"
+    },
+    "./cli": {
+      "source": "./src/cli.ts",
+      "types":  "./dist/cli.d.ts",
+      "import": "./dist/cli.js"
+    }
+  },
+  "sideEffects": false,
+  "dependencies": {
+    "@three-flatland/bake": "workspace:*",
+    "@jsquash/png":  "^3.1.0",
+    "@jsquash/webp": "^1.4.0",
+    "@jsquash/avif": "^1.5.0"
+  },
+  "peerDependencies": { "three": ">=0.170.0" },
+  "flatland": {
+    "bake": [
+      { "name": "encode", "description": "Encode image to PNG/WebP/AVIF/KTX2", "entry": "./dist/cli.js" }
+    ]
+  }
+}
+```
 
-| Runtime loader | Source format | GPU format (typical desktop) | GPU bytes |
-|---|---|---|---|
-| three.js default `TextureLoader` | PNG / WebP / AVIF | RGBA8 uncompressed | `w × h × 4` |
-| three.js `KTX2Loader` | KTX2 / BasisU | BC7 desktop / ASTC 4×4 mobile | `w × h × 1` (BC7, 8 bpp) |
-| **spark.js loader** | PNG / WebP / AVIF / Canvas → compressed `GPUTexture` | BC7 / ASTC 4×4 / ETC2 (chosen per device caps) | measured by spark: `(w * h * bytesPerBlock) / pixelsPerBlock` (BC7/ASTC 4×4 = 1 B/px; ETC2 RGB = 0.5 B/px; ETC2 RGBA = 1 B/px) |
+### API (public surface)
 
-Preferred strategy for the spark column: **run spark.js in the preview webview** against the candidate encoded source, read the resulting `GPUTexture.format` + dimensions, compute exact bytes. Fall back to the table if spark isn't available in that preview context.
+```ts
+// @three-flatland/image (browser-safe)
+export type EncodeFormat = 'png' | 'webp' | 'avif' | 'ktx2'
 
-Readout updates live as encoder params change. Green/red indicators highlight best-in-class per column. Mipmapped and non-mipmapped sizes both shown — spark mipmaps by default (~+33% GPU memory).
+export interface ImageEncodeOptions {
+  format: EncodeFormat
+  quality?: number                    // 0..100 (PNG ignores; WebP/AVIF use; KTX2: ETC1S quality)
+  mode?: 'lossy' | 'lossless'         // WebP/AVIF
+  basis?: { mode?: 'etc1s' | 'uastc', mipmaps?: boolean, uastcLevel?: 0|1|2|3|4 }
+  alpha?: boolean                     // auto-detected if omitted
+}
 
-## User flow
+/** Pure encode. Input: RGBA8 ImageData. Output: encoded bytes. Browser + Node. */
+export function encodeImage(pixels: ImageData, opts: ImageEncodeOptions): Promise<Uint8Array>
 
-1. Right-click `hero.png` → "Open in Image Encoder". (Or command palette: `Image Encoder: Open`.)
+/** Pure decode. Input: encoded bytes + format. Output: RGBA8 ImageData. */
+export function decodeImage(bytes: Uint8Array, format: EncodeFormat): Promise<ImageData>
+
+export interface GpuMemoryEstimate {
+  loader: 'three-default' | 'three-ktx' | 'spark'
+  gpuFormat: string           // e.g. 'RGBA8', 'BC7', 'ASTC_4x4_RGBA'
+  bytes: number
+  mipBytes?: number           // + 1/3 mipmap pyramid if mipmaps enabled
+  measured?: boolean          // true if spark computed from a real GPUTexture
+}
+
+export function estimateGpuMemory(
+  source: { width: number, height: number, alpha: boolean, format: EncodeFormat },
+  loader: 'three-default' | 'three-ktx' | 'spark' | 'all'
+): Promise<GpuMemoryEstimate[]>
+
+/** Source-format fallback resolver used by runtime loaders. Given `formats: ['webp','ktx2','png']`
+ *  and a sidecar's meta.sources array, pick the first supported entry. */
+export function resolveImageSource(
+  sources: { format: EncodeFormat, uri: string }[],
+  formats: EncodeFormat[],
+  caps: { webp: boolean, avif: boolean, ktx2: boolean }
+): { format: EncodeFormat, uri: string } | null
+```
+
+```ts
+// @three-flatland/image/node (adds file I/O)
+export * from '@three-flatland/image'
+
+/** Reads input path, encodes, writes output path (or infers from --format). Returns output path. */
+export function encodeImageFile(input: string, output: string | null, opts: ImageEncodeOptions): Promise<string>
+
+/** Runs a batch in worker_threads. Progress stream via AsyncIterable. */
+export function encodeImageBatch(
+  items: { input: string, output?: string, opts: ImageEncodeOptions }[],
+  concurrency?: number
+): AsyncIterable<{ input: string, status: 'ok' | 'err', output?: string, error?: string, bytes?: number, ms?: number }>
+```
+
+```ts
+// @three-flatland/image/cli (default export is Baker)
+const baker: Baker = {
+  name: 'encode',
+  description: 'Encode image to PNG/WebP/AVIF/KTX2',
+  usage() { /* ... */ },
+  run(args): Promise<number> { /* parse args, call encodeImageFile or batch, exit code 0/1 */ },
+}
+export default baker
+```
+
+### CLI usage
+
+```
+flatland-bake encode <input> [output] [options]
+
+Options:
+  --format <fmt>          png | webp | avif | ktx2  (required)
+  --quality <n>           0..100 (WebP/AVIF) or ETC1S quality for KTX2
+  --mode <m>              lossy | lossless (WebP/AVIF)
+  --basis-mode <m>        etc1s | uastc (KTX2)
+  --uastc-level <0..4>    UASTC pack level (KTX2)
+  --mipmaps               Generate mipmap pyramid (KTX2)
+  --batch <glob>          Process every matching file; output dir via --out-dir
+  --out-dir <path>        Batch output directory
+  --sidecar               Update matching *.atlas.json meta.sources after success
+```
+
+`flatland-bake encode hero.png --format webp --quality 80` → `hero.webp`.
+`flatland-bake encode "sprites/*.png" --batch --format avif --quality 55 --out-dir out/` → batch.
+
+CLI uses `@three-flatland/bake` discovery (`flatland.bake` in this package's `package.json`) exactly like `normal` does.
+
+## VSCode tool (GUI wrapper)
+
+Lives at `tools/vscode/src/tools/imageEncoder/`. Imports:
+- `@three-flatland/image/node` — for `encodeImageFile`, `encodeImageBatch`, `decodeImage` (file I/O in the extension host).
+- `@three-flatland/image` — for `estimateGpuMemory`, types, source-preview decoding inside the webview.
+
+No codec, file-I/O, or worker_thread logic lives in `tools/`. The tool is pure UI + glue.
+
+### User flow
+
+1. Right-click `hero.png` → "Open in FL Image Encoder". Or command palette `FL: Open Image Encoder`.
 2. Webview opens with source on the left; encoded result on the right.
 3. Top bar picks output format: PNG / WebP / AVIF / KTX2. Format-specific param panel below.
 4. Second top bar picks runtime loader simulation: three default / `KTX2Loader` / spark.js. Updates the GPU memory readout.
-5. Live preview: before/after canvas, zoom + pan synced, pixel peeker, delta overlay (per-pixel RGB distance) to catch quality regressions on lossy encodes.
-6. Save: writes the encoded output next to the source (`hero.webp`, `hero.avif`, `hero.ktx2`). If a `hero.atlas.json` sibling exists, offer to update `meta.sources` (ajv-validated against the atlas schema in `packages/three-flatland/`).
+5. Live preview: before/after canvas, zoom + pan synced, pixel peeker, delta overlay.
+6. Save: calls `encodeImageFile` in the host; writes next to source. If a `*.atlas.json` sibling exists, offers to update `meta.sources` (ajv-validated against `validateAtlas`).
 
-## Encoder stack (confirmed — spark.js has no encoder)
-
-All encoders are WASM so they work identically in the extension host (Node `worker_threads`) and in a future standalone web playground. Encoding stays in the host; the webview is view-only.
-
-| Target | Encoder | Notes |
-|---|---|---|
-| PNG | `@jsquash/png` (WASM) — or `sharp` (native Node) | `@jsquash/png` is universal; swap to sharp if speed matters |
-| WebP | `@jsquash/webp` (WASM — Squoosh's encoder) | Lossy + lossless; quality 0..100; alpha; full libwebp params |
-| AVIF | `@jsquash/avif` (WASM — Squoosh's encoder) | Slow encodes; valuable (spark's own examples ship `.avif`) |
-| KTX2 / BasisU | `basis_universal` WASM (Binomial) | ETC1S (small/lossy) + UASTC (larger/high quality); optional mipmap pyramid |
-
-Decode paths (for opening inputs): `@jsquash/*` decode counterparts for PNG/WebP/AVIF; KTX2 input decoded via `KTX2Loader`'s transcoder in a worker for display, or `basis_universal` reverse in the host.
-
-Encoder workers stream progress events through the bridge → webview progress bar.
-
-## Architecture
+### Architecture
 
 ```
-Extension host (ESM)                    Webview (React + StyleX)
-  ImageEncoderCommand                     React app
-    → spawns webview                        - tools-design-system
-  EncoderService                            - before/after canvas, pixel peeker,
-    - WASM encoders in worker_threads         delta overlay
-    - encode({ input, target, params })     - format picker + param panel
-    - decode({ bytes, format })             - loader picker + memory readout
-  GpuMemoryEstimator                        - Save button → postMessage
-    - disk: trivial
-    - RAM: w × h × 4
-    - GPU per loader:
-        * three-default: analytic
-        * three-ktx: analytic (BC7/ASTC)
-        * spark: actual run via spark.js in
-          a hidden preview WebGPU context
-  SidecarPatcher
-    - on save, if meta.sources exists in
-      matching .atlas.json, splice + validate
-      against validateAtlas (from packages/
-      three-flatland/sprites)
+Extension host (ESM)                          Webview (React + StyleX)
+  ImageEncoderCommand                           React app
+    → spawns webview                              - design-system
+  host-side:                                      - before/after canvas, pixel peeker
+    import { encodeImageFile,                     - delta overlay
+      encodeImageBatch, decodeImage }             - format picker + param panel
+      from '@three-flatland/image/node'           - loader picker + memory readout
+                                                  - Save button → postMessage
+  SidecarPatcher                                webview-side:
+    - on save, if meta.sources exists in           import { estimateGpuMemory,
+      matching .atlas.json, splice + validate          decodeImage } from
+      against validateAtlas                              '@three-flatland/image'
+      (packages/three-flatland/sprites)
+                                                 For the spark.js GPU column:
+                                                   - webview lazy-imports spark.js
+                                                   - runs encodeTexture() against the
+                                                     candidate encoded source in a
+                                                     hidden WebGPU context
+                                                   - reads real GPUTexture size
+                                                   - returns measured: true
 ```
 
-## Contribution
+### Contribution
 
 ```json
 "contributes": {
   "commands": [
-    { "command": "threeFlatland.imageEncoder.open", "title": "Open in Image Encoder" }
+    { "command": "threeFlatland.imageEncoder.open", "title": "Open in FL Image Encoder", "category": "FL" }
   ],
   "menus": {
     "explorer/context": [
@@ -101,59 +229,55 @@ Extension host (ESM)                    Webview (React + StyleX)
 }
 ```
 
-`threeFlatland.imageExts` is a context key we set at activation from the package configuration; value includes `.png`, `.webp`, `.avif`, `.ktx2`.
+## Why this split (baker package pattern)
 
-Tool directory: `tools/ext/src/tools/imageEncoder/`.
+Three independent consumption paths for the same logic:
 
-## Runtime loader work (sister task, not this tool)
+| Path | Entry | Use case |
+|---|---|---|
+| Runtime (browser) | `@three-flatland/image` | Loaders resolve `{ formats, loader }`; call `resolveImageSource`; decode if needed; compute memory estimates for devtools overlays |
+| Node (programmatic) | `@three-flatland/image/node` | Build scripts, CI, bespoke tooling, the VSCode tool's extension host |
+| CLI (headless) | `flatland-bake encode` | Terminal one-offs, CI, Makefiles, `npm run bake` |
 
-Out of scope here but tracked as a follow-up against `packages/three-flatland/`. The `TextureLoader` / `SpriteSheetLoader` should accept:
+All three share one codec implementation (`codecs/*.ts`). No duplication.
+
+## GPU memory readout (unchanged)
+
+| Runtime loader | Source format | GPU format (desktop) | GPU bytes |
+|---|---|---|---|
+| three default `TextureLoader` | PNG / WebP / AVIF | RGBA8 uncompressed | `w × h × 4` |
+| three `KTX2Loader` | KTX2 / BasisU | BC7 / ASTC 4×4 | `w × h × 1` (BC7) |
+| **spark.js** | PNG / WebP / AVIF / Canvas → compressed `GPUTexture` | BC7 / ASTC 4×4 / ETC2 | measured: read `GPUTexture.format` + dims, compute from block size |
+
+For the spark column the webview **actually runs** `spark.encodeTexture()` in a hidden WebGPU context against the candidate encoded source and reads the real GPU texture size. `measured: true` marks the result. Analytic formula is the fallback when a WebGPU context isn't available (e.g., VSCode web, remote workspaces).
+
+## Runtime loader follow-up
+
+Out of scope for this package, tracked against `packages/three-flatland/`. `TextureLoader` / `SpriteSheetLoader` add:
 
 ```ts
 loadSpriteSheet('hero', {
-  formats: ['webp', 'ktx2', 'png'],   // source format preference, first supported wins
-  loader:  'auto'                     // 'spark' | 'three-ktx' | 'three-default' | 'auto'
+  formats: ['webp', 'ktx2', 'png'],
+  loader:  'auto'    // 'spark' | 'three-ktx' | 'three-default' | 'auto'
 })
 ```
 
-- `auto`: spark when a WebP/AVIF source exists and spark is available at runtime; else `three-ktx` when KTX2 exists; else `three-default`.
-- Loaders dynamically imported so three's KTX2Loader + BasisU transcoder aren't paid for on the spark path.
-- Dev-time warn if a requested format is missing; degrade to next in `formats` array.
-
-The Image Encoder tool produces the alternate source files; the loader picks which to use.
-
-## Sidecar patch (atlas)
-
-When a matching `*.atlas.json` is found:
-
-```diff
- "meta": {
-   "image": "hero.png",
-   "sources": [
-     { "format": "png",  "uri": "hero.png" },
-+    { "format": "webp", "uri": "hero.webp" },
-+    { "format": "avif", "uri": "hero.avif" },
-+    { "format": "ktx2", "uri": "hero.ktx2" }
-   ]
- }
-```
-
-User confirms via modal before write. ajv-validated against `validateAtlas` (exported from `packages/three-flatland/src/sprites/atlas.schema.ts`) before saving.
+They use `@three-flatland/image.resolveImageSource` for format-fallback resolution — same package, one implementation.
 
 ## Risks
 
-1. **Encoder performance** — WASM on `worker_thread` can still block large images for seconds. Progress bar + debounce param changes.
-2. **KTX2 transcoder + CSP** — if we preview KTX2 output in the webview, CSP needs `wasm-unsafe-eval` for the BasisU transcoder.
-3. **Lossy color shifts** — A/B delta overlay is mandatory so users don't ship quality regressions unknowingly.
-4. **AVIF encode time** — `@jsquash/avif` is slow at high quality; cap default quality at 50-60 and show encode time in the UI.
-5. **spark.js GPU stat reliability** — spark's device-capability detection may pick different target formats in preview (dev machine) vs deploy (user devices). Show the chosen format next to the byte count and note the assumption.
+1. **spark.js GPU measurement reliability** — spark picks different target formats based on device caps; preview-machine result may differ from user-device result. Show the chosen format alongside the byte count.
+2. **Encoder performance** — AVIF at high quality is slow even in workers. Cap default quality to 55; show encode time; offer "fast preview / full quality" toggle.
+3. **Lossy color shifts** — delta overlay is mandatory; not optional.
+4. **KTX2 CSP in webview** — if we preview transcoded KTX2, CSP needs `wasm-unsafe-eval` for BasisU transcoder.
+5. **@jsquash WASM download size** — each codec is ~400 KB – 2 MB WASM. Loaded lazily per format the user picks.
 
 ## References
 
-- [spark.js repo](https://github.com/ludicon/spark.js)
-- [three.js + spark.js overview](https://www.ludicon.com/castano/blog/2025/09/three-js-spark-js/)
-- [Squoosh (reference A/B UX)](https://squoosh.app/)
-- [jSquash (WASM encoders: WebP, AVIF, PNG, etc.)](https://github.com/jamsinclair/jSquash)
+- `packages/normals/` — baker package prototype: `src/{index,node,cli,bake,bake.node,NormalMapLoader}.ts`
+- `packages/bake/src/types.ts` — `Baker` contract
+- [spark.js](https://github.com/ludicon/spark.js)
+- [Squoosh](https://squoosh.app/) — reference UX
+- [jSquash (WASM codecs)](https://github.com/jamsinclair/jSquash)
 - [basis_universal](https://github.com/BinomialLLC/basis_universal)
-- [KTX 2.0 spec](https://registry.khronos.org/KTX/specs/2.0/ktxspec.v2.html)
 - [three.js KTX2Loader](https://threejs.org/docs/#examples/en/loaders/KTX2Loader)

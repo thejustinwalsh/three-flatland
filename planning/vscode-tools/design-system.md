@@ -1,4 +1,4 @@
-# Design System — `@three-flatland/tools-design-system`
+# Design System — `@three-flatland/design-system`
 
 ## Stack
 
@@ -147,7 +147,7 @@ export function codiconAssets(webview: vscode.Webview, ctx: vscode.ExtensionCont
 
 ```
 tools/design-system/
-  package.json              # @three-flatland/tools-design-system, private
+  package.json              # @three-flatland/design-system, private
   stylex.config.js          # build config
   src/
     index.ts                # re-exports
