@@ -219,6 +219,10 @@
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist"
   },
+  "dependencies": {
+    "@three-flatland/bake": "workspace:*",
+    "@three-flatland/normals": "workspace:*"
+  },
   "peerDependencies": {
     "koota": "catalog:",
     "three": "catalog:"

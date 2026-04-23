@@ -1,6 +1,5 @@
 // Normal map generation
 export { normalFromHeight, normalFromHeightSmooth } from './normalFromHeight'
-export { normalFromSprite, normalFromSpriteRounded } from './normalFromSprite'
 
 // Light types
 export { pointLight2D, spotLight2D, directionalLight2D, ambientLight2D } from './lights'
