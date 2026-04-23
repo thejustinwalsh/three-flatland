@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { createClientBridge } from '@three-flatland/bridge/client'
 import {
   DevReloadToast,
@@ -8,7 +8,7 @@ import {
   ToolbarButton,
   useCssVar,
 } from '@three-flatland/design-system'
-import { SpritePreview } from '@three-flatland/preview'
+import { CanvasStage, RectOverlay, type Rect } from '@three-flatland/preview'
 
 type InitPayload = { imageUri: string; fileName: string }
 
@@ -17,6 +17,8 @@ declare global {
     __FL_ATLAS__?: InitPayload
   }
 }
+
+type Tool = 'select' | 'rect' | 'move'
 
 function dumpThemeTokens() {
   const styles = getComputedStyle(document.body)
@@ -45,6 +47,8 @@ function dumpThemeTokens() {
 
 export function App() {
   const [payload, setPayload] = useState<InitPayload | null>(() => window.__FL_ATLAS__ ?? null)
+  const [rects, setRects] = useState<Rect[]>([])
+  const [tool, setTool] = useState<Tool>('rect')
   const editorBg = useCssVar('--vscode-editor-background', '#1e1e1e')
 
   useEffect(() => {
@@ -53,6 +57,10 @@ export function App() {
     const off = bridge.on<InitPayload>('atlas/init', (p) => setPayload(p))
     void bridge.request('atlas/ready')
     return off
+  }, [])
+
+  const handleRectCreate = useCallback((r: Rect) => {
+    setRects((prev) => [...prev, r])
   }, [])
 
   return (
@@ -72,9 +80,27 @@ export function App() {
         <ToolbarButton icon="symbol-ruler" title="Grid Slice" />
         <ToolbarButton icon="wand" title="Auto Detect Sprites" />
         <Divider />
-        <ToolbarButton icon="add" title="New Rect" />
-        <ToolbarButton icon="selection" title="Select" />
-        <ToolbarButton icon="move" title="Move" />
+        <ToolbarButton
+          icon="add"
+          title="Draw Rect"
+          toggleable
+          checked={tool === 'rect'}
+          onClick={() => setTool('rect')}
+        />
+        <ToolbarButton
+          icon="selection"
+          title="Select"
+          toggleable
+          checked={tool === 'select'}
+          onClick={() => setTool('select')}
+        />
+        <ToolbarButton
+          icon="move"
+          title="Move"
+          toggleable
+          checked={tool === 'move'}
+          onClick={() => setTool('move')}
+        />
         <Divider />
         <ToolbarButton icon="symbol-array" title="Frames" />
         <ToolbarButton icon="run-all" title="Animations" />
@@ -83,7 +109,11 @@ export function App() {
         <ToolbarButton icon="zoom-out" title="Zoom Out" />
         <ToolbarButton icon="screen-full" title="Fit" />
         <Divider />
-        <ToolbarButton icon="refresh" title="Reload" />
+        <ToolbarButton
+          icon="clear-all"
+          title="Clear All Rects"
+          onClick={() => setRects([])}
+        />
         <ToolbarButton icon="save" title="Save" />
       </Toolbar>
 
@@ -99,13 +129,50 @@ export function App() {
       >
         <Panel title="Preview">
           <div style={{ flex: 1, minHeight: 0 }}>
-            <SpritePreview imageUri={payload?.imageUri ?? null} background={editorBg} />
+            <CanvasStage imageUri={payload?.imageUri ?? null} background={editorBg}>
+              <RectOverlay
+                rects={rects}
+                drawEnabled={tool === 'rect'}
+                onRectCreate={handleRectCreate}
+              />
+            </CanvasStage>
           </div>
         </Panel>
-        <Panel title="Frames">
-          <div style={{ color: 'var(--vscode-descriptionForeground)' }}>
-            No frames yet. Slicing tools land in Phase 2.
-          </div>
+        <Panel title={`Frames (${rects.length})`}>
+          {rects.length === 0 ? (
+            <div style={{ color: 'var(--vscode-descriptionForeground)' }}>
+              Draw rects with the <i className="codicon codicon-add" /> tool.
+            </div>
+          ) : (
+            <ul
+              style={{
+                listStyle: 'none',
+                margin: 0,
+                padding: 0,
+                overflowY: 'auto',
+                fontFamily: 'var(--vscode-editor-font-family)',
+                fontSize: 12,
+              }}
+            >
+              {rects.map((r, i) => (
+                <li
+                  key={r.id}
+                  style={{
+                    padding: '4px 6px',
+                    borderBottom: '1px solid var(--vscode-panel-border, transparent)',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                  }}
+                >
+                  <span>#{i}</span>
+                  <span style={{ color: 'var(--vscode-descriptionForeground)' }}>
+                    {r.x},{r.y} · {r.w}×{r.h}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
         </Panel>
       </div>
       <DevReloadToast />
