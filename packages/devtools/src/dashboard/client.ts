@@ -8,7 +8,7 @@
  */
 import { DevtoolsClient } from '../devtools-client.js'
 
-const ALL_FEATURES = ['stats', 'env', 'registry', 'buffers'] as const
+const ALL_FEATURES = ['stats', 'env', 'registry', 'buffers', 'batches'] as const
 
 let instance: DevtoolsClient | null = null
 

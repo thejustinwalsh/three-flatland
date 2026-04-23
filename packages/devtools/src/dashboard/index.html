@@ -950,6 +950,181 @@
      * { flex: 3 }` / `.registry-panel { flex: 2 }` rules means those
      * rules win and the narrow-mode sizes get discarded. Keep it last.
      */
+    /* ── Batches panel ──────────────────────────────────────────────── */
+    .batches-panel {
+      display: flex;
+      flex-direction: column;
+      flex: 2;
+      min-height: 0;
+      overflow: hidden;
+    }
+    .batches-header {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 8px;
+      text-transform: none;
+      letter-spacing: 0;
+    }
+    .batches-header > span:first-child {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+    .batches-header-meta {
+      font-size: 10px;
+      color: var(--fg-dim);
+      font-variant-numeric: tabular-nums;
+    }
+    /* Single scroll container for both sections so the panel scrolls
+     * naturally inside `.dashboard-split-col` without nested scrollers. */
+    .batches-scroll { flex: 1; overflow-y: auto; min-height: 0; }
+    .batches-section { border-top: 1px solid var(--border); }
+    .batches-section:first-of-type { border-top: none; }
+    .batches-section-title {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      width: 100%;
+      padding: 4px 10px;
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--fg-dim);
+      /* Solid fill — sticky headers mask scrolling content beneath.
+       * Layering the subtle highlight over the panel base color keeps
+       * the existing shade while blocking the rows behind. */
+      background: var(--bg-elev-2);
+      background-image: linear-gradient(rgba(255, 255, 255, 0.02), rgba(255, 255, 255, 0.02));
+      position: sticky;
+      top: 0;
+      z-index: 2;
+      border-bottom: 1px solid var(--border);
+    }
+    .batches-section-count {
+      margin-left: auto;
+      color: var(--fg-dim);
+      font-variant-numeric: tabular-nums;
+      text-transform: none;
+      letter-spacing: 0;
+    }
+    /* Per-pass collapse caret in the tree. Styled as a tiny inline
+     * button; `--leaf` variant is an invisible placeholder so leaf
+     * and parent rows share the same label x-offset. */
+    .batches-tree-caret {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 12px;
+      height: 12px;
+      margin-right: 2px;
+      padding: 0;
+      border: 0;
+      background: transparent;
+      box-shadow: none;
+      -webkit-appearance: none;
+      appearance: none;
+      color: var(--fg-dim);
+      font: inherit;
+      font-size: 9px;
+      line-height: 1;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+    .batches-tree-caret:hover { color: var(--fg); }
+    .batches-tree-caret:focus { outline: none; }
+    .batches-tree-caret:focus-visible { outline: 1px dotted var(--fg-dim); outline-offset: 1px; }
+    .batches-tree-caret--leaf { cursor: default; visibility: hidden; }
+    .batches-pass-label {
+      display: flex;
+      align-items: center;
+      gap: 2px;
+      min-width: 0;
+    }
+    .batches-pass-label > span:last-child {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .batches-pass-row--parent { font-weight: 500; }
+    .batches-table-head,
+    .batches-pass-row,
+    .batches-total-row,
+    .batches-run-head,
+    .batches-batch-row {
+      display: grid;
+      gap: 8px;
+      padding: 3px 10px;
+      font-size: 11px;
+      font-variant-numeric: tabular-nums;
+      align-items: center;
+    }
+    /* Passes section: label | calls | tris | ms (4 columns). */
+    .batches-table-head--passes,
+    .batches-pass-row,
+    .batches-total-row {
+      grid-template-columns: 1fr 60px 70px 60px;
+    }
+    /* Runs section: label | layer | sprites (3 columns). Header + run
+     * rows + per-batch rows all use the same template so labels line up. */
+    .batches-table-head--runs,
+    .batches-run-head,
+    .batches-batch-row {
+      grid-template-columns: 1fr 60px 70px;
+    }
+    .batches-batch-row {
+      padding-left: 22px;
+    }
+    .batches-table-head {
+      color: var(--fg-dim);
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      border-bottom: 1px solid var(--border);
+      padding-top: 4px;
+      padding-bottom: 4px;
+    }
+    .batches-col-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .batches-col-num { text-align: right; color: var(--fg); }
+    .batches-table-head .batches-col-num { color: var(--fg-dim); }
+    .batches-pass-list,
+    .batches-run-list { list-style: none; margin: 0; padding: 0; }
+    .batches-pass-row:nth-child(even) { background: rgba(255, 255, 255, 0.02); }
+    .batches-total-row {
+      border-top: 1px solid var(--border);
+      background: rgba(255, 255, 255, 0.03);
+      color: var(--fg);
+      font-weight: 600;
+    }
+    .batches-run { border-bottom: 1px dotted rgba(255, 255, 255, 0.06); }
+    .batches-run-label { display: flex; gap: 6px; align-items: baseline; }
+    .batches-kind {
+      display: inline-block;
+      padding: 0 5px;
+      margin-right: 4px;
+      border-radius: 3px;
+      font-size: 9px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      line-height: 14px;
+      color: var(--fg-dim);
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .batches-kind--sprite    { color: #47cc6a; border-color: rgba(71, 204, 106, 0.35); }
+    .batches-kind--tilechunk { color: #9d7aff; border-color: rgba(157, 122, 255, 0.35); }
+    .batches-kind--mesh      { color: #ffa347; border-color: rgba(255, 163, 71, 0.35); }
+    .batches-mat { color: var(--fg); }
+    .batches-run-sub {
+      font-size: 10px;
+      color: var(--fg-dim);
+      font-variant-numeric: tabular-nums;
+    }
+    .batches-run-children { list-style: none; margin: 0; padding: 0; }
+    .batches-batch-label { color: var(--fg-dim); }
+    .batches-empty { padding: 8px 10px; color: var(--fg-dim); font-size: 11px; }
+
     @media (max-width: 1150px) {
       html, body { overflow: auto; }
       .dashboard-root {
@@ -961,6 +1136,7 @@
       .dashboard-split { flex-direction: column; flex: initial; }
       .dashboard-split-col { flex: initial; }
       .buffers-panel { flex: initial; height: 340px; }
+      .batches-panel { flex: initial; height: 360px; }
       .registry-panel { flex: initial; height: 300px; }
       .protocol-panel { flex: initial; height: 420px; }
     }

@@ -44,6 +44,7 @@ import type { ChannelName } from './materials/channels'
 import type { RegistryData } from './ecs/batchUtils'
 import { DEVTOOLS_BUNDLED, isDevtoolsActive } from './debug-protocol'
 import { DevtoolsProvider } from './debug/DevtoolsProvider'
+import { beginDebugPass, endDebugPass } from './debug/debug-sink'
 
 /** Shape of the LightingContext trait data. */
 interface LightingContextData {
@@ -1141,18 +1142,19 @@ export class Flatland extends Group implements WorldProvider {
     this._worldSizeUniform.value.set(cam.right - cam.left, cam.top - cam.bottom)
     this._worldOffsetUniform.value.set(cam.left, cam.bottom)
 
-    // Run all systems via the schedule (lighting + sprite phases)
-    const registry = this._getRegistry()
-    if (registry?.schedule) {
-      registry.schedule.nextFrame()
-      registry.schedule.run(this.world)
-    }
-
-    // Update sprite batches (idempotent — schedule already ran)
-    this.spriteGroup.update()
-
-    // Explicitly update transforms — matrixWorldAutoUpdate is disabled on
-    // this.scene to prevent re-entrant schedule runs from internal passes.
+    // ONE canonical trigger for the ECS schedule + matrix update per
+    // frame. `scene.updateMatrixWorld(true)` walks into
+    // `SpriteGroup.updateMatrixWorld`, which runs the schedule (all
+    // lighting + sprite systems) exactly once, then recurses into
+    // three.js matrix propagation. `scene.matrixWorldAutoUpdate` is
+    // disabled at construction so internal passes (OcclusionPass, SDF)
+    // don't trigger extra schedule runs.
+    //
+    // The `scheduleRuns` counter on the registry is kept as a defensive
+    // guard — if any future path (user code, new internal pass) calls
+    // `scene.updateMatrixWorld` or `spriteGroup.update` again in the
+    // same frame, `SpriteGroup` observes the advanced counter and
+    // short-circuits.
     this.scene.updateMatrixWorld(true)
 
     // Store renderer reference
@@ -1168,7 +1170,9 @@ export class Flatland extends Group implements WorldProvider {
 
     if (this._renderPipeline && this._renderPipelineEnabled) {
       // Render pipeline handles its own render target
+      beginDebugPass('main.post', renderer)
       this._renderPipeline.render()
+      endDebugPass(renderer)
     } else {
       // Direct rendering
       if (this._renderTarget) {
@@ -1184,7 +1188,9 @@ export class Flatland extends Group implements WorldProvider {
       if (this.autoClear) {
         renderer.setClearColor(this.clearAlpha < 1 ? 0x000000 : this.clearColor, this.clearAlpha)
       }
+      beginDebugPass('main', renderer)
       renderer.render(this.scene, this._camera)
+      endDebugPass(renderer)
       renderer.autoClear = prevAutoClear
 
       // Restore render target
@@ -1196,7 +1202,9 @@ export class Flatland extends Group implements WorldProvider {
     // Devtools: mark frame end after ALL renderer.render() calls have
     // completed this frame. Aggregates draw calls / triangles across
     // internal passes, computes real cpuMs and FPS at the logical
-    // frame boundary, emits the data packet (or idle ping).
+    // frame boundary, emits the data packet (or idle ping). The batch
+    // registry snapshot is pulled via the sink source Flatland
+    // registered in its constructor — no explicit capture call needed.
     this._devtools?.endFrame(renderer)
   }
 

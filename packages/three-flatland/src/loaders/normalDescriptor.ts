@@ -193,8 +193,16 @@ export function tileToRegions(
     // Whole-cell flat region — stays at descriptor-default elevation
     // unless the tile explicitly sets one (e.g., an all-cap tile at
     // elevation 1 for a roof patch or dead-on wall-top view).
+    //
+    // `tileBump` + `tileStrength` forward through here so flat tiles
+    // can still carry per-texel bump detail (stone grout, plank
+    // seams, brick mortar on a flat floor). `tileDir` / `tilePitch`
+    // are deliberately NOT forwarded — they only make sense on a
+    // tilted face.
     const region: NormalRegion = { x: cell.x, y: cell.y, w: cell.w, h: cell.h }
     if (meta?.tileElevation !== undefined) region.elevation = meta.tileElevation
+    if (meta?.tileBump !== undefined) region.bump = meta.tileBump
+    if (meta?.tileStrength !== undefined) region.strength = meta.tileStrength
     return [region]
   }
 

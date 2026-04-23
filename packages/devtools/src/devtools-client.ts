@@ -1,4 +1,6 @@
 import type {
+  BatchesPayload,
+  BatchInfo,
   BufferChunkPayload,
   BufferDelta,
   BufferDisplayMode,
@@ -8,6 +10,7 @@ import type {
   DebugFeature,
   DebugMessage,
   EnvPayload,
+  PassEvent,
   ProviderIdentity,
   RegistryEntryDelta,
   RegistryEntryKind,
@@ -99,6 +102,38 @@ export interface RegistryEntrySnapshot {
 }
 
 /** Snapshot of a registered debug buffer as seen by the client. */
+/**
+ * Client-side view of one render-pass event. Shallow copies of
+ * `PassEvent` from the wire — the provider reuses its scratch pool
+ * every frame, so we copy fields into fresh objects once on receive.
+ */
+export interface BatchPassSnapshot {
+  label: string
+  calls: number
+  triangles: number
+  cpuMs: number
+  depth: number
+  parent: number
+}
+
+/** Client-side view of one batched-draw row. */
+export interface BatchSnapshot {
+  frame: number
+  passes: BatchPassSnapshot[]
+  batches: Array<{
+    runKey: number
+    materialId: number
+    layer: number
+    materialName: string
+    spriteCount: number
+    batchIdx: number
+    /** Subsystem tag (e.g. `'sprite'`, `'tilechunk'`). Defaults to `'sprite'` on the client when absent. */
+    kind: string
+    /** Per-batch label (e.g. `'chunk(0,2)'`). Empty string when the source didn't set one. */
+    label: string
+  }>
+}
+
 export interface BufferSnapshot {
   name: string
   /** Dimensions of the pixels currently stored in `pixels` — equal to
@@ -191,6 +226,13 @@ export interface DevtoolsState {
    */
   buffers: Map<string, BufferSnapshot>
 
+  /**
+   * Most recent batch inspector snapshot — per-pass draw events + active
+   * batch registry contents. Client stores shallow copies of the arrays
+   * so subsequent bus messages don't mutate UI state under a render.
+   */
+  batches: BatchSnapshot
+
   // --- Provider selection ------------------------------------------------
   /** All providers currently announced on the bus (updated live). */
   providers: ProviderIdentity[]
@@ -280,6 +322,7 @@ export class DevtoolsClient {
       },
       registry: new Map(),
       buffers: new Map(),
+      batches: { frame: 0, passes: [], batches: [] },
       providers: [],
       selectedProviderId: null,
       serverAlive: false,
@@ -559,6 +602,7 @@ export class DevtoolsClient {
         if (features.env !== undefined) this._applyEnv(features.env)
         if (features.registry !== undefined) this._applyRegistry(features.registry)
         if (features.buffers !== undefined) this._applyBuffers(features.buffers)
+        if (features.batches !== undefined) this._applyBatches(features.batches)
         this._fire()
         break
       }
@@ -653,6 +697,7 @@ export class DevtoolsClient {
     this._applyEnv(null)
     this.state.registry.clear()
     this.state.buffers.clear()
+    this._applyBatches(null)
   }
 
   /**
@@ -745,6 +790,81 @@ export class DevtoolsClient {
     ring.write = w
     ring.length = Math.min(size, ring.length + count)
     return sum / count
+  }
+
+  /**
+   * Apply a batches feature payload — replaces the snapshot wholesale.
+   * The wire arrays are scratch pools on the producer; we truncate by
+   * the provided counts and copy fields into persistent snapshot
+   * objects the UI can hold across subsequent frames.
+   *
+   * The client-side snapshot arrays grow monotonically to the high
+   * watermark and entries are overwritten in place — same alloc
+   * discipline as the producer.
+   */
+  private _applyBatches(delta: BatchesPayload | null): void {
+    if (delta === null) {
+      this.state.batches.frame = 0
+      this.state.batches.passes.length = 0
+      this.state.batches.batches.length = 0
+      return
+    }
+    this.state.batches.frame = delta.frame
+
+    const passesIn = delta.passes
+    const passCount = delta.passCount | 0
+    const passesOut = this.state.batches.passes
+    if (passesIn !== undefined) {
+      for (let i = 0; i < passCount; i++) {
+        const src = passesIn[i] as PassEvent | undefined
+        if (src === undefined) continue
+        let dst = passesOut[i]
+        if (dst === undefined) {
+          dst = { label: '', calls: 0, triangles: 0, cpuMs: 0, depth: 0, parent: -1 }
+          passesOut[i] = dst
+        }
+        dst.label = src.label
+        dst.calls = src.calls
+        dst.triangles = src.triangles
+        dst.cpuMs = src.cpuMs
+        dst.depth = src.depth
+        dst.parent = src.parent
+      }
+    }
+    if (passesOut.length > passCount) passesOut.length = passCount
+
+    const batchesIn = delta.batches
+    const batchCount = delta.batchCount | 0
+    const batchesOut = this.state.batches.batches
+    if (batchesIn !== undefined) {
+      for (let i = 0; i < batchCount; i++) {
+        const src = batchesIn[i] as BatchInfo | undefined
+        if (src === undefined) continue
+        let dst = batchesOut[i]
+        if (dst === undefined) {
+          dst = {
+            runKey: 0,
+            materialId: 0,
+            layer: 0,
+            materialName: '',
+            spriteCount: 0,
+            batchIdx: 0,
+            kind: 'sprite',
+            label: '',
+          }
+          batchesOut[i] = dst
+        }
+        dst.runKey = src.runKey
+        dst.materialId = src.materialId
+        dst.layer = src.layer
+        dst.materialName = src.materialName
+        dst.spriteCount = src.spriteCount
+        dst.batchIdx = src.batchIdx
+        dst.kind = src.kind ?? 'sprite'
+        dst.label = src.label ?? ''
+      }
+    }
+    if (batchesOut.length > batchCount) batchesOut.length = batchCount
   }
 
   /**

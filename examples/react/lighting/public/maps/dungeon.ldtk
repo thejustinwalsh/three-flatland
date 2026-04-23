@@ -133,29 +133,91 @@
 			"enumTags": [],
 			"customData": [
 				{ "tileId": 0, "data": "{\"tileDir\": \"flat\", \"tileElevation\": 1.0}" },
-				{ "tileId": 1, "data": "{\"tileDir\": \"south\", \"tileCapTop\": 4}" },
-				{ "tileId": 2, "data": "{\"tileDir\": \"south\", \"tileCapTop\": 4}" },
-				{ "tileId": 3, "data": "{\"tileDir\": \"south\", \"tileCapTop\": 4}" },
-				{ "tileId": 4, "data": "{\"tileDir\": \"south\", \"tileCapTop\": 4}" },
+				{
+					"tileId": 1,
+					"data": "{\"tileDir\": \"south\", \"tileCapTop\": 4, \"tileBump\": \"luminance\", \"tileStrength\": 1.5}"
+				},
+				{
+					"tileId": 2,
+					"data": "{\"tileDir\": \"south\", \"tileCapTop\": 4, \"tileBump\": \"luminance\", \"tileStrength\": 1.5}"
+				},
+				{
+					"tileId": 3,
+					"data": "{\"tileDir\": \"south\", \"tileCapTop\": 4, \"tileBump\": \"luminance\", \"tileStrength\": 1.5}"
+				},
+				{
+					"tileId": 4,
+					"data": "{\"tileDir\": \"south\", \"tileCapTop\": 4, \"tileBump\": \"luminance\", \"tileStrength\": 1.5}"
+				},
 				{ "tileId": 5, "data": "{\"tileDir\": \"flat\", \"tileElevation\": 1.0}" },
+				{ "tileId": 6, "data": "{\"tileDir\": \"flat\", \"tileBump\": \"luminance\", \"tileStrength\": 1.1}" },
+				{ "tileId": 7, "data": "{\"tileDir\": \"flat\", \"tileBump\": \"luminance\", \"tileStrength\": 1.1}" },
+				{ "tileId": 8, "data": "{\"tileDir\": \"flat\", \"tileBump\": \"luminance\", \"tileStrength\": 1.1}" },
+				{ "tileId": 9, "data": "{\"tileDir\": \"flat\", \"tileBump\": \"luminance\", \"tileStrength\": 1.1}" },
 				{ "tileId": 10, "data": "{\"tileDir\": \"flat\", \"tileElevation\": 1.0}" },
+				{ "tileId": 11, "data": "{\"tileDir\": \"flat\", \"tileBump\": \"luminance\", \"tileStrength\": 1.1}" },
+				{ "tileId": 12, "data": "{\"tileDir\": \"flat\", \"tileBump\": \"luminance\", \"tileStrength\": 1.1}" },
+				{ "tileId": 13, "data": "{\"tileDir\": \"flat\", \"tileBump\": \"luminance\", \"tileStrength\": 1.1}" },
+				{ "tileId": 14, "data": "{\"tileDir\": \"flat\", \"tileBump\": \"luminance\", \"tileStrength\": 1.1}" },
 				{ "tileId": 15, "data": "{\"tileDir\": \"flat\", \"tileElevation\": 1.0}" },
+				{ "tileId": 16, "data": "{\"tileDir\": \"flat\", \"tileBump\": \"luminance\", \"tileStrength\": 1.1}" },
+				{ "tileId": 17, "data": "{\"tileDir\": \"flat\", \"tileBump\": \"luminance\", \"tileStrength\": 1.1}" },
+				{ "tileId": 18, "data": "{\"tileDir\": \"flat\", \"tileBump\": \"luminance\", \"tileStrength\": 1.1}" },
+				{ "tileId": 19, "data": "{\"tileDir\": \"flat\", \"tileBump\": \"luminance\", \"tileStrength\": 1.1}" },
 				{ "tileId": 20, "data": "{\"tileDir\": \"flat\", \"tileElevation\": 1.0}" },
+				{ "tileId": 21, "data": "{\"tileDir\": \"flat\", \"tileBump\": \"luminance\", \"tileStrength\": 1.1}" },
+				{ "tileId": 22, "data": "{\"tileDir\": \"flat\", \"tileBump\": \"luminance\", \"tileStrength\": 1.1}" },
+				{ "tileId": 23, "data": "{\"tileDir\": \"flat\", \"tileBump\": \"luminance\", \"tileStrength\": 1.1}" },
+				{ "tileId": 24, "data": "{\"tileDir\": \"flat\", \"tileBump\": \"luminance\", \"tileStrength\": 1.1}" },
 				{ "tileId": 25, "data": "{\"tileDir\": \"flat\", \"tileElevation\": 1.0}" },
+				{ "tileId": 26, "data": "{\"tileDir\": \"flat\", \"tileBump\": \"luminance\", \"tileStrength\": 1.1}" },
+				{ "tileId": 27, "data": "{\"tileDir\": \"flat\", \"tileBump\": \"luminance\", \"tileStrength\": 1.1}" },
+				{ "tileId": 28, "data": "{\"tileDir\": \"flat\", \"tileBump\": \"luminance\", \"tileStrength\": 1.1}" },
+				{ "tileId": 29, "data": "{\"tileDir\": \"flat\", \"tileBump\": \"luminance\", \"tileStrength\": 1.1}" },
 				{ "tileId": 30, "data": "{\"tileDir\": \"flat\", \"tileElevation\": 1.0}" },
+				{ "tileId": 31, "data": "{\"tileDir\": \"flat\", \"tileBump\": \"luminance\", \"tileStrength\": 1.1}" },
+				{ "tileId": 32, "data": "{\"tileDir\": \"flat\", \"tileBump\": \"luminance\", \"tileStrength\": 1.1}" },
+				{ "tileId": 33, "data": "{\"tileDir\": \"flat\", \"tileBump\": \"luminance\", \"tileStrength\": 1.1}" },
+				{ "tileId": 34, "data": "{\"tileDir\": \"flat\", \"tileBump\": \"luminance\", \"tileStrength\": 1.1}" },
 				{ "tileId": 35, "data": "{\"tileDir\": \"flat\", \"tileElevation\": 1.0}" },
-				{ "tileId": 40, "data": "{\"tileDirection\": \"south-west\", \"tileCapTopRight\": 4}" },
+				{
+					"tileId": 40,
+					"data": "{\"tileDirection\": \"south-west\", \"tileCapTopRight\": 4, \"tileBump\": \"luminance\", \"tileStrength\": 1.5}"
+				},
 				{ "tileId": 41, "data": "{\"tileDir\": \"south\", \"tileCapTop\": 4}" },
 				{ "tileId": 42, "data": "{\"tileDir\": \"south\", \"tileCapTop\": 4}" },
 				{ "tileId": 43, "data": "{\"tileDir\": \"south\", \"tileCapTop\": 4}" },
 				{ "tileId": 44, "data": "{\"tileDir\": \"south\", \"tileCapTop\": 4}" },
 				{ "tileId": 45, "data": "{\"tileDirection\": \"south-east\", \"tileCapTopLeft\": 4}" },
 				{ "tileId": 50, "data": "{\"tileDir\": \"south-east\", \"tileCapTop\": 4, \"tileCapLeft\": 4}" },
-				{ "tileId": 51, "data": "{\"tileDir\": \"south\", \"tileCapTop\": 4}" },
-				{ "tileId": 52, "data": "{\"tileDir\": \"south\", \"tileCapTop\": 4}" },
-				{ "tileId": 53, "data": "{\"tileDir\": \"south-west\", \"tileCapTop\": 4, \"tileCapRight\": 4}" },
-				{ "tileId": 54, "data": "{\"tileDir\": \"south-east\", \"tileCapTop\": 4, \"tileCapLeft\": 4}" },
-				{ "tileId": 55, "data": "{\"tileDir\": \"south-west\", \"tileCapTop\": 4, \"tileCapRight\": 4}" }
+				{
+					"tileId": 51,
+					"data": "{\"tileDir\": \"south\", \"tileCapTop\": 4, \"tileBump\": \"luminance\", \"tileStrength\": 1.5}"
+				},
+				{
+					"tileId": 52,
+					"data": "{\"tileDir\": \"south\", \"tileCapTop\": 4, \"tileBump\": \"luminance\", \"tileStrength\": 1.5}"
+				},
+				{
+					"tileId": 53,
+					"data": "{\"tileDir\": \"south-west\", \"tileCapTop\": 4, \"tileCapRight\": 4, \"tileBump\": \"luminance\", \"tileStrength\": 1.5}"
+				},
+				{
+					"tileId": 54,
+					"data": "{\"tileDir\": \"south-east\", \"tileCapTop\": 4, \"tileCapLeft\": 4, \"tileBump\": \"luminance\", \"tileStrength\": 1.5}"
+				},
+				{
+					"tileId": 55,
+					"data": "{\"tileDir\": \"south-west\", \"tileCapTop\": 4, \"tileCapRight\": 4, \"tileBump\": \"luminance\", \"tileStrength\": 1.5}"
+				},
+				{ "tileId": 60, "data": "{\"tileDir\": \"flat\", \"tileBump\": \"luminance\", \"tileStrength\": 1.1}" },
+				{ "tileId": 61, "data": "{\"tileDir\": \"flat\", \"tileBump\": \"luminance\", \"tileStrength\": 1.1}" },
+				{ "tileId": 62, "data": "{\"tileDir\": \"flat\", \"tileBump\": \"luminance\", \"tileStrength\": 1.1}" },
+				{ "tileId": 63, "data": "{\"tileDir\": \"flat\", \"tileBump\": \"luminance\", \"tileStrength\": 1.1}" },
+				{ "tileId": 70, "data": "{\"tileDir\": \"flat\", \"tileBump\": \"luminance\", \"tileStrength\": 1.1}" },
+				{ "tileId": 71, "data": "{\"tileDir\": \"flat\", \"tileBump\": \"luminance\", \"tileStrength\": 1.1}" },
+				{ "tileId": 72, "data": "{\"tileDir\": \"flat\", \"tileBump\": \"luminance\", \"tileStrength\": 1.1}" },
+				{ "tileId": 73, "data": "{\"tileDir\": \"flat\", \"tileBump\": \"luminance\", \"tileStrength\": 1.1}" }
 			],
 			"savedSelections": [],
 			"cachedPixelData": {

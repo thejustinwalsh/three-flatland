@@ -257,6 +257,7 @@ export type DebugFeature =
   | 'env'
   | 'buffers'
   | 'registry'
+  | 'batches'
 
 /** Categories help the UI group registered buffers. Free-form string accepted. */
 export type DebugCategory = 'lighting' | 'materials' | 'post' | 'sprites' | (string & {})
@@ -494,6 +495,93 @@ export interface BuffersPayload {
 }
 
 /**
+ * One render-pass event — captured by the producer's `BatchCollector`
+ * via `recordPass(label, renderer, fn)` around a `renderer.render()`
+ * or `QuadMesh.render()`. Fields are all scalars so the scratch
+ * `PassEvent` array can be reused across frames without reallocation.
+ *
+ * `parent` is an index into the same `passes` array (-1 = root), so a
+ * consumer can reconstruct the nesting tree without following label
+ * conventions. Depth is redundant with parent-walking but shipped
+ * anyway — cheaper to read than re-derive in the renderer.
+ */
+export interface PassEvent {
+  /** Stable label. Always a string constant; never per-frame concatenated. */
+  label: string
+  /** `renderer.info.render.calls` delta across this pass. */
+  calls: number
+  /** `renderer.info.render.triangles` delta across this pass. */
+  triangles: number
+  /** Wall-clock duration (ms). */
+  cpuMs: number
+  /** 0-based nesting depth. */
+  depth: number
+  /** Parent index in `passes[]` (`-1` = root). */
+  parent: number
+}
+
+/**
+ * One batched-draw snapshot — a row from either the ECS
+ * `BatchRegistry.activeBatches` OR an engine-owned mesh source (e.g.
+ * a `TileLayer`'s per-chunk `InstancedMesh`), flattened for transport.
+ * Captured at frame end, before the next frame's `beginFrame` runs,
+ * so counts reflect what the main pass actually drew.
+ *
+ * Like `PassEvent`, every field is a scalar and the containing array
+ * is a producer-side scratch pool reused across frames.
+ */
+export interface BatchInfo {
+  /** (layer << 32 | materialId) key from `BatchRegistry.runs`. */
+  runKey: number
+  /** Numeric material id — matches `Sprite2DMaterial.batchId` / `Material.id`. */
+  materialId: number
+  /** Render layer (e.g. `Layers.ENTITIES`) or three.js `Object3D.layers.mask`. */
+  layer: number
+  /** Best-effort human label — material name, or `material#<id>`. */
+  materialName: string
+  /** Number of instances packed into this batch / chunk. */
+  spriteCount: number
+  /**
+   * Opaque batch identifier. For ECS-owned batches this is the
+   * `BatchRegistry.batchSlots` index; for mesh-source batches
+   * (tile chunks, particles, etc.) it's a negative running counter.
+   */
+  batchIdx: number
+  /**
+   * Kind tag set by the source — identifies which subsystem owns this
+   * batch. Panels use it to group / badge rows. Canonical values:
+   *   - `'sprite'`      (default) — ECS `SpriteBatch` via `BatchRegistry`.
+   *   - `'tilechunk'`   — `TileLayer` chunk `InstancedMesh`.
+   *   - `'mesh'`        — any other externally-registered instanced mesh.
+   * Omitted on the wire when `'sprite'` (the default) to save bytes.
+   */
+  kind?: string
+  /**
+   * Per-batch human label shown in the inspector next to
+   * `batch #${batchIdx}`. Sources populate it with something
+   * meaningful — e.g. `'chunk(0,2)'` for a tile chunk — so operators
+   * can identify which chunk spiked in triangles.
+   */
+  label?: string
+}
+
+/**
+ * `batches` feature payload. Passes + batch snapshot for the most
+ * recent frame. Both arrays are producer-owned scratch pools; only the
+ * first `passCount` / `batchCount` entries are valid. Consumers read by
+ * count, not by array length.
+ */
+export interface BatchesPayload {
+  frame: number
+  passCount: number
+  /** Scratch array of length >= `passCount`. Entries past `passCount` are stale. */
+  passes?: PassEvent[]
+  batchCount: number
+  /** Scratch array of length >= `batchCount`. Entries past `batchCount` are stale. */
+  batches?: BatchInfo[]
+}
+
+/**
  * Encoded video chunk for a single buffer — transmitted as a standalone
  * `'buffer:chunk'` message (not bundled into `data` batches). The
  * provider only emits these when a consumer subscribes with
@@ -546,6 +634,7 @@ export interface DataPayload {
     env?: EnvPayload | null
     buffers?: BuffersPayload | null
     registry?: RegistryPayload | null
+    batches?: BatchesPayload | null
   }
 }
 
