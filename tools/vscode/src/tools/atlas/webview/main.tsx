@@ -75,6 +75,14 @@ if (!root) {
 }
 
 try {
+  // Outer Suspense boundary — lives in the React DOM reconciler.
+  // Catches any DOM-side async work that suspends at or below <App/>
+  // (dynamic imports, React.lazy, non-R3F suspense-reading hooks).
+  //
+  // A SECOND Suspense boundary lives inside <Canvas> in SpritePreview —
+  // that one is in the @react-three/fiber reconciler, which is a
+  // separate React tree. R3F's useLoader() suspends there, not here,
+  // so it must have its own boundary.
   createRoot(root).render(
     <StrictMode>
       <Suspense fallback={<RootFallback />}>

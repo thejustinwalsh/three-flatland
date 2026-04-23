@@ -15,9 +15,17 @@ export type SpritePreviewProps = {
    */
   background?: string
   /**
-   * Optional fallback rendered inside the Canvas while the texture
-   * suspends. Defaults to `null` (transparent) so the canvas chrome
-   * stays mounted; use an empty state if you need a placeholder.
+   * Fallback rendered INSIDE <Canvas> while the texture loads.
+   *
+   * The contents of <Canvas> run in the @react-three/fiber reconciler,
+   * which is a separate React tree from the DOM reconciler. Any loaders
+   * that suspend (useLoader, useTexture, etc.) suspend in *this* tree
+   * and must be caught by a Suspense boundary that's also mounted
+   * inside the Canvas.
+   *
+   * Must be an R3F-compatible element (three.js objects), not DOM.
+   * Defaults to `null` so the canvas stays visually mounted (background,
+   * camera, etc.) while the sprite is pending.
    */
   suspenseFallback?: React.ReactNode
 }
@@ -71,6 +79,9 @@ export function SpritePreview({
       {background != null ? <color attach="background" args={[background]} /> : null}
       <OrthoCamera viewSize={defaultView} />
       {imageUri ? (
+        // Inner Suspense — mounted INSIDE <Canvas>, so it belongs to the
+        // R3F reconciler. Catches useLoader() on the texture. The outer
+        // DOM Suspense in main.tsx cannot reach across reconciler trees.
         <Suspense fallback={suspenseFallback}>
           <Sprite imageUri={imageUri} />
         </Suspense>
