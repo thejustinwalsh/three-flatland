@@ -12,7 +12,7 @@ Not prefixed `vscode-` because the tools are portable across editor hosts. CLI t
 4. [tool-zzfx-studio.md](./tool-zzfx-studio.md) — ZzFX CodeLens + sound editor + `vscode.lm` generation. Go sidecar with tree-sitter + SQLite cache.
 5. [tool-sprite-atlas.md](./tool-sprite-atlas.md) — CustomEditor over PNG/WebP/KTX2 sources, auto-slice, frame-duplication timing, R3F preview, JSON Schema validation.
 6. [tool-normal-baker.md](./tool-normal-baker.md) — GUI wrapper around `packages/normals` + `packages/bake` from `lighting-stochastic-adoption` branch.
-7. [tool-spark.md](./tool-spark.md) — Squoosh-style A/B image encoder (PNG ↔ WebP ↔ KTX2) with disk/RAM/GPU memory stats per runtime loader (`spark.js`, `KTX2Loader`, default).
+7. [tool-image-encoder.md](./tool-image-encoder.md) — Squoosh-style A/B image encoder (PNG ↔ WebP ↔ AVIF ↔ KTX2) with disk/RAM/GPU memory stats per runtime loader (`spark.js`, `KTX2Loader`, default).
 8. [schemas/README.md](./schemas/README.md) — JSON Schema authoring + test strategy.
 
 ## Shipping targets
@@ -22,7 +22,7 @@ Not prefixed `vscode-` because the tools are portable across editor hosts. CLI t
 | ZzFX Studio | Regex pre-filter + Go sidecar tree-sitter scan, play lens, manual-edit webview, SQLite cache | `vscode.lm` AI generation with category/style pills, variable-ref write-back, cross-file resolution |
 | Sprite Atlas | Grid + CCL auto-slice, frame-duplication timeline, JSON Schema validation, PNG input | WebP + KTX2 inputs, `vscode.lm` naming assist, animation event markers |
 | Normal Baker | GUI wrapper around `flatland-bake normal` — region editor, direction/pitch/elevation pickers | KTX2 output, multi-atlas batch |
-| Spark (image A/B encoder) | PNG ↔ WebP ↔ KTX2 with triple memory stats (disk/RAM/GPU), per-loader GPU estimate (three default / KTX2Loader / spark.js) | Per-channel settings, batch mode, dim-reduce preview |
+| Image Encoder | PNG ↔ WebP ↔ AVIF ↔ KTX2 with triple memory stats (disk/RAM/GPU); per-loader GPU estimate (three default / KTX2Loader / spark.js). WASM encoders: @jsquash/{png,webp,avif} + basis_universal | Per-channel settings, batch mode, delta overlay, side-by-side presets |
 | Design System | VSCode Elements wrappers + StyleX custom primitives, ThemeProvider, codicons | Dialog, Toolbar composites, split pane |
 
 ## Decisions
