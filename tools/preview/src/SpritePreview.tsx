@@ -9,7 +9,11 @@ export type SpritePreviewProps = {
   imageUri: string | null
   /** World-space view size in pixels. Default: fits-the-image with margin. */
   viewSize?: number
-  /** Background color. Falls back to a VSCode-ish neutral when omitted. */
+  /**
+   * Background color for the three.js canvas. When omitted the Canvas is
+   * transparent so the surrounding panel's theme-colored background shows
+   * through — preferred for VSCode webview use.
+   */
   background?: string
 }
 
@@ -49,8 +53,13 @@ function Sprite({ imageUri }: { imageUri: string | null }) {
 export function SpritePreview({ imageUri, viewSize, background }: SpritePreviewProps) {
   const defaultView = viewSize ?? 512
   return (
-    <Canvas dpr={1} renderer={{ antialias: false }}>
-      <color attach="background" args={[background ?? '#1e1e1e']} />
+    <Canvas
+      dpr={1}
+      renderer={{ antialias: false }}
+      gl={{ alpha: background == null }}
+      style={{ background: 'transparent' }}
+    >
+      {background != null ? <color attach="background" args={[background]} /> : null}
       <OrthoCamera viewSize={defaultView} />
       <Sprite imageUri={imageUri} />
     </Canvas>

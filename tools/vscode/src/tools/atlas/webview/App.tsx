@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { createClientBridge } from '@three-flatland/bridge/client'
-import { Button, Panel, Toolbar, vscodeTokens as t } from '@three-flatland/design-system'
+import { Button, Panel, Toolbar, vscodeTokens as t, useCssVar } from '@three-flatland/design-system'
 import { SpritePreview } from '@three-flatland/preview'
 
 type InitPayload = { imageUri: string; fileName: string }
@@ -13,6 +13,7 @@ declare global {
 
 export function App() {
   const [payload, setPayload] = useState<InitPayload | null>(() => window.__FL_ATLAS__ ?? null)
+  const editorBg = useCssVar('--vscode-editor-background', '#1e1e1e')
 
   useEffect(() => {
     const bridge = createClientBridge()
@@ -28,6 +29,10 @@ export function App() {
         display: 'flex',
         flexDirection: 'column',
         minHeight: 0,
+        background: t.bg,
+        color: t.fg,
+        fontFamily: t.fontFamily,
+        fontSize: t.fontSize,
       }}
     >
       <Toolbar>
@@ -55,8 +60,8 @@ export function App() {
         }}
       >
         <Panel title="Preview">
-          <div style={{ flex: 1, minHeight: 0 }}>
-            <SpritePreview imageUri={payload?.imageUri ?? null} />
+          <div style={{ flex: 1, minHeight: 0, background: editorBg }}>
+            <SpritePreview imageUri={payload?.imageUri ?? null} background={editorBg} />
           </div>
         </Panel>
         <Panel title="Frames">
