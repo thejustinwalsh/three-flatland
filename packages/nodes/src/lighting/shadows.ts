@@ -232,10 +232,12 @@ export function shadowSoft2D(
  * distance-aware penumbra widening without the false-proximity issue.
  *
  * The SDF texture is assumed to be produced by `SDFGenerator` and
- * encodes unsigned **world-space** distance on the `.r` channel — zero
- * inside/on occluders, positive outside. World-space distances keep the
- * sphere-trace isotropic on non-square viewports (no `(sx+sy)*0.5`
- * approximation). `worldSize` / `worldOffset` are still consumed here to
+ * encodes SIGNED **world-space** distance on the `.r` channel — negative
+ * inside occluders, positive outside. Signed distance lets the trace
+ * detect "stepped into an occluder" mid-walk without needing the
+ * hardcoded caster-escape offset the unsigned variant required. World-
+ * space distances keep the sphere-trace isotropic on non-square
+ * viewports. `worldSize` / `worldOffset` are still consumed here to
  * transform the fragment/ray world position into the SDF's UV space for
  * sampling.
  *
@@ -317,26 +319,19 @@ export function shadowSDF2D(
       return vec2(u.x, float(1).sub(u.y))
     }
 
-    // Self-shadow guard: if the SURFACE itself sits inside / on a caster
-    // silhouette, the sphere trace will start inside that caster and
-    // immediately trip the hit predicate — producing `shadow = 0` for
-    // every light regardless of whether the ray actually reaches them.
-    // Typical cause: sprite fragments for `castsShadow = true` sprites
-    // (hero, knights, slimes) reading their own silhouette.
-    // Detection: sample SDF at the surface; if it's below eps the fragment
-    // is on/inside a caster. Push the ray origin forward by a caster-escape
-    // distance so the trace leaves the enclosing caster before evaluating
-    // hits. Uses an unsigned SDF so we can't know the caster's depth
-    // precisely; a fixed 40-world-unit escape covers sprite-scale casters
-    // and the dungeon hero at 64-unit scale with margin.
-    const surfaceUV = worldToSDFUV(surfaceWorldPos)
-    const sdfAtSurface = sampleTexture(sdfTexture, surfaceUV).r
-    // Fragments sitting on (or inside) a caster silhouette must skip past
-    // their own occluder or the trace hits at t=0 and self-shadows. Push
-    // the origin out by a fixed escape offset in that case; otherwise
-    // start at t=0 and let the SDF drive the march naturally — no extra
-    // offset needed, because sphere-trace advances by the SDF's own
-    // safe-step distance at each iteration.
+    // Self-shadow guard: if the SURFACE itself sits inside a caster
+    // silhouette, the sphere trace will start at negative SDF and the
+    // in-loop `sdf < 0` terminator (below) would immediately fire,
+    // producing `shadow = 0` for every light regardless of whether
+    // the ray actually reaches them. Typical cause: sprite fragments
+    // for `castsShadow = true` sprites (hero, knights, slimes)
+    // reading their own silhouette. Push the ray origin forward by a
+    // caster-escape distance so the trace leaves the enclosing caster
+    // before its first hit-test.
+    //
+    // Detection is now trivial with a signed SDF: `sdfAtSurface < 0`
+    // means the fragment is strictly inside an occluder. No eps
+    // approximation needed.
     //
     // IMPORTANT: the escape only applies to fragments that are themselves
     // shadow casters (`fragmentCastsShadow`). A non-caster fragment that
@@ -346,7 +341,9 @@ export function shadowSDF2D(
     // produces a bright alpha-blended halo at every sprite's anti-aliased
     // edge, because the floor under the edge is rendered lit and bleeds
     // through the semi-transparent sprite pixels.
-    const onCaster = sdfAtSurface.lessThan(epsNode)
+    const surfaceUV = worldToSDFUV(surfaceWorldPos)
+    const sdfAtSurface = sampleTexture(sdfTexture, surfaceUV).r
+    const onCaster = sdfAtSurface.lessThan(float(0))
     const nearCaster = fragmentCastsShadow
       ? onCaster.and(fragmentCastsShadow)
       : onCaster
@@ -376,15 +373,20 @@ export function shadowSDF2D(
       const uv = worldToSDFUV(pos)
       const sdfWorld = sampleTexture(sdfTexture, uv).r
 
-      // Hit: the ray came within epsilon of an occluder → hard shadow.
+      // Hit: the ray either entered an occluder (signed SDF < 0, which
+      // can happen if the sphere-trace step size was rounded up to
+      // `eps`) or grazed one within the epsilon tolerance. Either way,
+      // the path to the light is blocked.
       If(sdfWorld.lessThan(epsNode), () => {
         shadow.assign(float(0))
         hitT.assign(t)
         Break()
       })
 
-      // Advance by the clear distance, guarded against zero steps so the
-      // loop can't stall when the trace grazes an occluder.
+      // Advance by the clear distance, guarded against zero / negative
+      // steps so the loop can't stall. The `max(eps)` floor is also the
+      // safety net that keeps the trace from walking into an occluder
+      // on the step following a near-miss grazing sample.
       t.assign(t.add(sdfWorld.max(epsNode)))
     })
 
