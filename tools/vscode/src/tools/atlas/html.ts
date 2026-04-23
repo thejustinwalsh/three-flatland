@@ -39,10 +39,26 @@ export async function composeAtlasHtml({
   const base = webview.asWebviewUri(webviewDir).toString().replace(/\/?$/, '/')
   log?.(`base URI: ${base}`)
 
-  // Rewrite every root-absolute src/href to a webview URI rooted at the
-  // webviewDir. Vite builds with base: '/' by default so everything emits
-  // as /assets/... or /chunks/...; we remap them wholesale.
-  html = html.replace(/(src|href)="\/([^"]+)"/g, (_m, attr, path) => `${attr}="${base}${path}"`)
+  // Rewrite HTML asset URLs to absolute webview-cdn URIs.
+  //
+  // VSCode webview iframes load from vscode-webview://HASH/ (root). Any
+  // relative or root-absolute URL in the HTML resolves against that origin,
+  // which does NOT serve our bundle — only the cdn URI returned by
+  // webview.asWebviewUri() does. So every asset URL must be rewritten to
+  // the full cdn form here.
+  //
+  // We match both `"./foo"` (Vite with base: './') and `"/foo"` (Vite with
+  // base: '/'), capturing just the path suffix.
+  //
+  // CSS-internal url(...) refs are NOT rewritten here — they're inside the
+  // emitted stylesheet. But since the stylesheet itself is fetched via a
+  // cdn URI (thanks to the <link href> rewrite below), any relative url()
+  // inside the CSS correctly resolves against that cdn URI. That's why we
+  // keep Vite's base: './' — CSS refs emit as `url(./foo.ttf)`.
+  html = html.replace(
+    /(src|href)="(?:\.\/|\/)([^"]+)"/g,
+    (_m, attr, path) => `${attr}="${base}${path}"`
+  )
 
   // Strip crossorigin — it's a no-op for vscode-webview:// and sometimes
   // triggers odd resource-loading paths.
