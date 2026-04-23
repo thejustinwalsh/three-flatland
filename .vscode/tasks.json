@@ -3,7 +3,7 @@
   "tasks": [
     {
       "label": "FL: build",
-      "detail": "One-shot extension + webview build. Used by 'FL Tools (one-shot build)' launch.",
+      "detail": "One-shot extension + webview build. Used by 'FL Tools (build)' launch.",
       "type": "shell",
       "command": "pnpm",
       "args": ["--filter", "@three-flatland/vscode", "build"],
@@ -13,17 +13,19 @@
     },
     {
       "label": "FL: dev",
-      "detail": "Vite dev server + tsdown watch. Keeps running. Start once, then F5 'FL Tools (attach to running FL: dev)'. Edit webview → HMR. Edit extension → Cmd+R extension dev host.",
+      "detail": "Vite dev server + tsdown watch. Runs in the background; used by 'FL Tools (dev)' launch. Webview edits HMR; extension edits need Cmd+R on the Extension Development Host.",
       "type": "shell",
       "command": "pnpm",
       "args": ["--filter", "@three-flatland/vscode", "dev"],
       "isBackground": true,
       "problemMatcher": {
-        "owner": "vite",
-        "pattern": [{ "regexp": "^.*$", "file": 1, "location": 2, "message": 3 }],
+        "owner": "fl-vite",
+        "pattern": [
+          { "regexp": "^.*$", "file": 1, "location": 2, "message": 3 }
+        ],
         "background": {
           "activeOnStart": true,
-          "beginsPattern": "VITE",
+          "beginsPattern": ".",
           "endsPattern": "ready in"
         }
       },
