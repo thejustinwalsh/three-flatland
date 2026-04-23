@@ -2,7 +2,7 @@ import * as vscode from 'vscode'
 import { createHostBridge } from '@three-flatland/bridge/host'
 import { composeToolHtml, setupDevReload } from '../../webview-host'
 import { log } from '../../log'
-import { buildAtlasJson, writeAtlasSidecar, type RectInput } from './sidecar'
+import { buildAtlasJson, readAtlasSidecar, writeAtlasSidecar, type RectInput } from './sidecar'
 
 const TOOL = 'atlas'
 
@@ -53,7 +53,24 @@ export class AtlasCustomEditorProvider implements vscode.CustomReadonlyEditorPro
 
     bridge.on('atlas/ready', async () => {
       log('webview sent atlas/ready')
-      bridge.emit('atlas/init', { imageUri, fileName })
+      // If a sidecar already exists, seed the webview with its rects.
+      // Validation errors surface as a non-fatal warning so a broken
+      // sidecar doesn't lock the user out of the editor entirely.
+      let rects: RectInput[] = []
+      let loadError: string | null = null
+      try {
+        const loaded = await readAtlasSidecar(document.uri)
+        if (loaded) {
+          rects = loaded.rects
+          log(`atlas/ready loaded ${rects.length} frame(s) from sidecar`)
+        } else {
+          log('atlas/ready no existing sidecar')
+        }
+      } catch (err) {
+        loadError = err instanceof Error ? err.message : String(err)
+        log(`atlas/ready sidecar load failed: ${loadError}`)
+      }
+      bridge.emit('atlas/init', { imageUri, fileName, rects, loadError })
       return { ok: true }
     })
 

@@ -1288,6 +1288,9 @@ importers:
       '@vscode/codicons':
         specifier: ^0.0.44
         version: 0.0.44
+      ajv:
+        specifier: ^8.17.1
+        version: 8.17.1
       react:
         specifier: 'catalog:'
         version: 19.2.3

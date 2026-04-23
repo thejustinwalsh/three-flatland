@@ -18,7 +18,14 @@ import {
 } from '@three-flatland/design-system'
 import { CanvasStage, RectOverlay, type Rect } from '@three-flatland/preview'
 
-type InitPayload = { imageUri: string; fileName: string }
+type InitPayload = {
+  imageUri: string
+  fileName: string
+  /** Rects seeded from an existing sidecar, if one was found and valid. */
+  rects?: readonly Rect[]
+  /** Populated when a sidecar existed but failed to parse/validate. */
+  loadError?: string | null
+}
 
 declare global {
   interface Window {
@@ -116,7 +123,20 @@ export function App() {
     dumpThemeTokens()
     const bridge = createClientBridge()
     bridgeRef.current = bridge
-    const off = bridge.on<InitPayload>('atlas/init', (p) => setPayload(p))
+    const off = bridge.on<InitPayload>('atlas/init', (p) => {
+      setPayload(p)
+      if (p.rects && p.rects.length > 0) {
+        // Seed from the sidecar. Clone so later setRects mutations don't
+        // share the array reference with the init payload.
+        setRects([...p.rects])
+      }
+      if (p.loadError) {
+        setSaveStatus({
+          kind: 'error',
+          message: `Sidecar exists but failed to load — ${p.loadError}`,
+        })
+      }
+    })
     void bridge.request('atlas/ready')
     return off
   }, [])
