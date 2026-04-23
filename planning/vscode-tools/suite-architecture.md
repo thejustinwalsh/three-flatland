@@ -13,10 +13,10 @@ tools/
     src/
       extension.ts            # activate() — dispatches to each tool module
       tools/
-        zzfx/        { codeLens.ts, editor.ts, scanner-client.ts, webview/ }
-        atlas/       { customEditor.ts, slice.ts, webview/ }
-        normalBaker/ { command.ts, webview/ }
-        spark/       { command.ts, webview/ }
+        zzfx/         { codeLens.ts, editor.ts, scanner-client.ts, webview/ }
+        atlas/        { customEditor.ts, slice.ts, webview/ }
+        normalBaker/  { command.ts, webview/ }
+        imageEncoder/ { command.ts, encoder/, webview/ }   # WASM encoders in worker_threads
     bin/                      # all Go binaries packed into the VSIX
       darwin-arm64/zzfx-scan
       darwin-x64/zzfx-scan
@@ -197,7 +197,7 @@ Prefix: `threeFlatland.<tool>.<action>`.
 - `threeFlatland.zzfx.openEditor`
 - `threeFlatland.atlas.openEditor`
 - `threeFlatland.normalBaker.open`
-- `threeFlatland.spark.convert`
+- `threeFlatland.imageEncoder.open`
 
 ## Publishing
 

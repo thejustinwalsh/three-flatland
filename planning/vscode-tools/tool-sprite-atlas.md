@@ -12,7 +12,7 @@ Right-click a sprite image → open a CustomEditor that lets the user define spr
 | WebP | no | yes | Default modern source; pairs with `spark.js` loader for GPU-compressed runtime |
 | KTX2 (BasisU) | no | yes | Alternative compressed path; pairs with three's `KTX2Loader` |
 
-The editor treats all three as sprite sources. Encoding between formats is the [Spark tool's](./tool-spark.md) job; this tool only consumes.
+The editor treats all three as sprite sources. Encoding between formats is the [Image Encoder tool's](./tool-image-encoder.md) job; this tool only consumes.
 
 ## Runtime loader contract (follow-up against three-flatland)
 
@@ -28,7 +28,7 @@ loadSpriteSheet('hero', {
 - `auto` (default): spark when a WebP source exists and a spark-compatible sibling is present; three-ktx when KTX2 exists; three-default otherwise.
 - When `formats` is omitted it defaults to `['webp', 'png']` with a dev-time warn if a requested format is missing.
 - Loader probes `meta.sources: [{ format, uri }]` in the sidecar. Runtime-available formats are filtered from the preference list before selection.
-- Atlas editor + Spark emit sidecars whose `meta.sources` list every authored variant. Any one of them is sufficient for runtime; more variants give the loader more paths.
+- Atlas editor + Image Encoder emit sidecars whose `meta.sources` list every authored variant. Any one of them is sufficient for runtime; more variants give the loader more paths.
 
 Lives in `packages/three-flatland/` (new loader contract), not in `tools/`. Filed as a separate work item.
 
