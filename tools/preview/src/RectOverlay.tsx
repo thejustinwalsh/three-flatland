@@ -75,10 +75,14 @@ function RectLabel({
       fontFamily="var(--vscode-font-family, sans-serif)"
       fontWeight={selected ? 600 : 400}
       fill={selected ? 'var(--vscode-focusBorder, #007fd4)' : '#ffcc00'}
+      vectorEffect="non-scaling-stroke"
       style={{
+        // Subtle paint-order halo for legibility on both light and dark
+        // sprites. Non-scaling-stroke keeps it at a CSS-pixel thickness
+        // regardless of zoom; opacity keeps it from reading as a brick.
         paintOrder: 'stroke',
-        stroke: 'rgba(0,0,0,0.7)',
-        strokeWidth: 3,
+        stroke: 'rgba(0, 0, 0, 0.45)',
+        strokeWidth: 1.5,
         strokeLinejoin: 'round',
         pointerEvents: 'none',
         userSelect: 'none',
