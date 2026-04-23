@@ -104,7 +104,13 @@ export const DefaultLightEffect = createLightEffect({
         const usePixelSnap = pixelSize.greaterThan(float(0))
         const snappedPos = vec2(rawPos).div(pixelSize).floor().mul(pixelSize)
         const surfacePos = usePixelSnap.select(snappedPos, vec2(rawPos))
-        const totalLight = vec3(0, 0, 0).toVar('totalLight')
+        // Two direct-light accumulators. `totalLightLit` ignores shadow
+        // (so `bands` quantization below can stair-step the direct
+        // gradient without stepping the shadow edge); `totalLightShaded`
+        // includes per-light shadow. The ratio recovers a per-pixel
+        // shadow scalar that is applied AFTER cel-band quantization.
+        const totalLightLit = vec3(0, 0, 0).toVar('totalLightLit')
+        const totalLightShaded = vec3(0, 0, 0).toVar('totalLightShaded')
         const totalRim = vec3(0, 0, 0).toVar('totalRim')
 
         // Compute tile index from world position
@@ -255,25 +261,49 @@ export const DefaultLightEffect = createLightEffect({
           }
 
           const baseContribution = contribution.mul(atten).mul(diffuse)
-          totalLight.addAssign(baseContribution.mul(shadow))
+          totalLightLit.addAssign(baseContribution)
+          totalLightShaded.addAssign(baseContribution.mul(shadow))
 
           // Rim lighting — edge highlight from inverse normal dot
           const rimFactor = isAmbient.select(float(0), float(1).sub(NdotL).pow(rimPower))
           totalRim.addAssign(contribution.mul(atten).mul(rimFactor))
         })
 
-        // Add rim to diffuse lighting (direct contribution only)
+        // Build the unshadowed direct contribution (lit + rim). This
+        // is what `bands` quantizes against — so cel-banding steps the
+        // direct-light gradient, and the shadow edge is applied
+        // separately below after quantization.
+        //
+        // Note: because the per-pixel shadow scalar is recovered from
+        // the lit/shaded ratio (see below) and applied to the full
+        // bundle, rim lighting now inherits the same shadow as direct.
+        // Previously rim was unshadowed. Rim is opt-in (default
+        // `rimIntensity = 0`), so this change is only visible in
+        // scenes that explicitly enable it.
         const useRim = rimIntensity.greaterThan(float(0))
-        const direct = useRim.select(
-          vec3(totalLight).add(vec3(totalRim).mul(rimIntensity)),
-          vec3(totalLight)
+        const directLit = useRim.select(
+          vec3(totalLightLit).add(vec3(totalRim).mul(rimIntensity)),
+          vec3(totalLightLit)
         )
 
-        // Quantize direct lighting to discrete bands. Ambient is added
-        // AFTER quantization so it acts as a continuous floor.
+        // Quantize the unshadowed direct to discrete bands. Ambient is
+        // added AFTER quantization so it acts as a continuous floor;
+        // shadow is applied AFTER quantization so the shadow gradient
+        // stays smooth even with `bands > 0`.
         const useBands = bands.greaterThan(float(0))
-        const quantized = direct.mul(bands).add(float(0.5)).floor().div(bands)
-        const shapedDirect = useBands.select(quantized, direct)
+        const quantized = directLit.mul(bands).add(float(0.5)).floor().div(bands)
+        const shapedDirect = useBands.select(quantized, directLit)
+
+        // Per-pixel shadow scalar, recovered as the ratio of shadowed
+        // to unshadowed per-light direct light. Weighted by each
+        // light's contribution, so a brighter light dominates the
+        // ratio. Clamped to [0, 1] because shadow is strictly
+        // attenuating; `max(epsilon)` guards the divide-by-zero on
+        // fragments with no direct contribution.
+        const shadowRatio = vec3(totalLightShaded)
+          .div(vec3(totalLightLit).max(vec3(1e-6)))
+          .clamp(0, 1)
+        const shadedDirect = shapedDirect.mul(shadowRatio)
 
         // Cap-shadow gate — attenuate direct light on fragments whose
         // normal is ≈ (0, 0, 1). See schema comment for details.
@@ -282,7 +312,7 @@ export const DefaultLightEffect = createLightEffect({
           .div(float(1).sub(capShadowThreshold).max(float(0.0001)))
           .clamp(0, 1)
         const capGate = float(1).sub(capShadowStrength.mul(capness))
-        const gatedDirect = shapedDirect.mul(capGate)
+        const gatedDirect = shadedDirect.mul(capGate)
 
         const litColor = gatedDirect.add(fp.ambientNode).mul(ctx.color.rgb)
         return vec4(litColor, ctx.color.a)
