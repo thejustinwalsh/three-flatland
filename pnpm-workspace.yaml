@@ -11,6 +11,8 @@ catalog:
   '@tweakpane/plugin-essentials': ^0.2.1
   tweakpane: ^4.0.5
   '@react-three/fiber': ^10.0.0-alpha.2
+  '@stylexjs/stylex': ^0.18.3
+  '@stylexjs/unplugin': ^0.18.3
   '@types/react': ^19.0.2
   '@types/react-dom': ^19.0.2
   '@types/three': ^0.183.1
