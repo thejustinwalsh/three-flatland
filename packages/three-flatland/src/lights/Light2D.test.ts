@@ -12,6 +12,7 @@ describe('Light2D', () => {
     expect(light.penumbra).toBe(0)
     expect(light.decay).toBe(2)
     expect(light.enabled).toBe(true)
+    expect(light.castsShadow).toBe(true)
     expect(light.color).toBeInstanceOf(Color)
     expect(light.direction).toBeInstanceOf(Vector2)
   })
@@ -37,6 +38,16 @@ describe('Light2D', () => {
     expect(light.decay).toBe(1)
     expect(light.position.x).toBe(100)
     expect(light.position.y).toBe(200)
+  })
+
+  it('should accept castsShadow: false in options', () => {
+    const light = new Light2D({ castsShadow: false })
+    expect(light.castsShadow).toBe(false)
+  })
+
+  it('should accept castsShadow: true in options (explicit)', () => {
+    const light = new Light2D({ castsShadow: true })
+    expect(light.castsShadow).toBe(true)
   })
 
   it('should set position from array', () => {
@@ -121,6 +132,7 @@ describe('Light2D', () => {
       color: 0xffffff,
       intensity: 0.8,
       direction: [1, -1],
+      castsShadow: false,
     })
 
     const u = light.getUniforms()
@@ -129,6 +141,7 @@ describe('Light2D', () => {
     expect(u.position).toBeInstanceOf(Vector2)
     expect(u.direction).toBeInstanceOf(Vector2)
     expect(u.color).toBeInstanceOf(Color)
+    expect(u.castsShadow).toBe(false)
   })
 
   it('should clone with all properties', () => {
@@ -142,6 +155,7 @@ describe('Light2D', () => {
       angle: Math.PI / 3,
       penumbra: 0.5,
       decay: 1.5,
+      castsShadow: false,
     })
     light.enabled = false
 
@@ -157,6 +171,7 @@ describe('Light2D', () => {
     expect(cloned.penumbra).toBe(0.5)
     expect(cloned.decay).toBe(1.5)
     expect(cloned.enabled).toBe(false)
+    expect(cloned.castsShadow).toBe(false)
   })
 
   it('should have type "Light2D"', () => {
