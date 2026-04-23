@@ -2,7 +2,7 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "FL Tools (one-shot build)",
+      "name": "FL Tools (build)",
       "type": "extensionHost",
       "request": "launch",
       "args": [
@@ -13,7 +13,7 @@
       "preLaunchTask": "FL: build"
     },
     {
-      "name": "FL Tools (attach to running FL: dev)",
+      "name": "FL Tools (dev)",
       "type": "extensionHost",
       "request": "launch",
       "args": [
