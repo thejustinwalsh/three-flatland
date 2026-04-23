@@ -207,10 +207,15 @@ function newWanderer(halfW: number, halfH: number): Wanderer {
  * never overlaps a wall on frame 0). Used for slime spawns so the
  * group scatters across the whole dungeon rather than clumping at the
  * hero's starting spot.
+ *
+ * `wallInset` is the collision thickness of the outer wall ring. Pass
+ * `TILE_PX * TILE_SCALE` (full wall tile) for tight-bodied sprites
+ * like slimes; pass the smaller `WALL_TILE` fudge for sprites whose
+ * art is designed to overlap the wall a bit (e.g. the hero).
  */
-function newInteriorWanderer(halfW: number, halfH: number, entityHalf: number): Wanderer {
-  const mx = halfW - WALL_TILE - entityHalf
-  const my = halfH - WALL_TILE - entityHalf
+function newInteriorWanderer(halfW: number, halfH: number, entityHalf: number, wallInset: number): Wanderer {
+  const mx = halfW - wallInset - entityHalf
+  const my = halfH - wallInset - entityHalf
   return {
     pos: new Vector2(
       (Math.random() * 2 - 1) * mx,
@@ -253,6 +258,7 @@ interface SceneProps {
   shadowBandCurve: number
   ambient: number
   slimeCount: number
+  slimeLights: boolean
   torchIntensity: number
   torchDistance: number
   lightHeight: number
@@ -366,7 +372,16 @@ function FlatlandScene(props: SceneProps) {
       // don't all burst out of the gate in unison either.
       const hopPhase = Math.random() < 0.5 ? 'hop' : 'pause'
       slimesRef.current.push({
-        anim: newInteriorWanderer(mapHalfW, mapHalfH, SLIME_SCALE / 2),
+        // Full-tile wall inset (TILE_PX * TILE_SCALE = 32) keeps the
+        // slime's tight body clear of the wall art. The hero uses the
+        // smaller WALL_TILE fudge because its frame has transparent
+        // padding that can visually overlap the wall without clipping.
+        anim: newInteriorWanderer(
+          mapHalfW,
+          mapHalfH,
+          SLIME_SCALE / 2,
+          TILE_PX * TILE_SCALE,
+        ),
         sprite: null,
         light: null,
         stamina,
@@ -664,8 +679,13 @@ function FlatlandScene(props: SceneProps) {
     ]
     const exciteRadiusSq = SLIME_EXCITE_RADIUS * SLIME_EXCITE_RADIUS
 
-    const slimeBoundX = mapHalfW - WALL_TILE - SLIME_SCALE / 2
-    const slimeBoundY = mapHalfH - WALL_TILE - SLIME_SCALE / 2
+    // Slimes use the full wall-tile thickness (TILE_PX * TILE_SCALE)
+    // for collision instead of the looser WALL_TILE fudge the hero
+    // gets away with. Without this, the tight slime body visually
+    // punches into the wall art by ~8 world units on impact.
+    const slimeWallInset = TILE_PX * TILE_SCALE
+    const slimeBoundX = mapHalfW - slimeWallInset - SLIME_SCALE / 2
+    const slimeBoundY = mapHalfH - slimeWallInset - SLIME_SCALE / 2
 
     for (let i = 0; i < slimesRef.current.length; i++) {
       const s = slimesRef.current[i]!
@@ -777,7 +797,11 @@ function FlatlandScene(props: SceneProps) {
       // ── Steady glow ────────────────────────────────────────────
       // Slimes glow steadily — no flicker. Intensity shifts with state
       // so operators can read the state at a glance without HUD text.
+      // `slimeLights` pane toggle disables the light entirely without
+      // tearing the Light2D instance down (zero cost when disabled —
+      // Forward+ culls disabled lights before per-tile upload).
       if (s.light) {
+        s.light.enabled = props.slimeLights
         s.light.position.set(s.anim.pos.x, s.anim.pos.y, 0)
         s.light.intensity = s.state === 'excited' ? 0.35
           : s.state === 'rest' ? 0.2
@@ -949,6 +973,7 @@ export default function App() {
 
   const lights = usePaneFolder(pane, 'Slimes')
   const [slimeCount] = usePaneInput(lights, 'count', 5, { min: 0, max: 1000, step: 1 })
+  const [slimeLights] = usePaneInput(lights, 'lights', true)
 
   return (
     <Canvas renderer={{ antialias: false, trackTimestamp: true }}>
@@ -965,6 +990,7 @@ export default function App() {
           shadowBandCurve={shadowBandCurve}
           ambient={ambient}
           slimeCount={slimeCount}
+          slimeLights={slimeLights}
           torchIntensity={torchIntensity}
           torchDistance={torchDistance}
           lightHeight={lightHeight}
