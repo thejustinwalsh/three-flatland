@@ -27,6 +27,8 @@ export interface Light2DOptions {
   penumbra?: number
   /** Decay exponent controlling attenuation curve shape (default: 2 for quadratic) */
   decay?: number
+  /** Whether this light casts shadows (default: true) */
+  castsShadow?: boolean
 }
 
 /**
@@ -42,6 +44,7 @@ export interface Light2DUniforms {
   angle: number
   penumbra: number
   decay: number
+  castsShadow: boolean
 }
 
 /**
@@ -134,6 +137,13 @@ export class Light2D extends Object3D {
    */
   enabled: boolean = true
 
+  /**
+   * Whether this light casts shadows. When false, the shader skips the
+   * SDF shadow trace for this light — useful for cosmetic/atmospheric
+   * lights (slime glows, ambient fills) that don't need occlusion.
+   */
+  castsShadow: boolean = true
+
   constructor(options: Light2DOptions = {}) {
     super()
 
@@ -166,6 +176,7 @@ export class Light2D extends Object3D {
     this.angle = options.angle ?? Math.PI / 4
     this.penumbra = options.penumbra ?? 0
     this.decay = options.decay ?? 2
+    this.castsShadow = options.castsShadow ?? true
   }
 
   /**
@@ -237,6 +248,7 @@ export class Light2D extends Object3D {
       angle: this.angle,
       penumbra: this.penumbra,
       decay: this.decay,
+      castsShadow: this.castsShadow,
     }
   }
 
@@ -256,6 +268,7 @@ export class Light2D extends Object3D {
       decay: this.decay,
     })
     light.enabled = this.enabled
+    light.castsShadow = this.castsShadow
     return light as this
   }
 
