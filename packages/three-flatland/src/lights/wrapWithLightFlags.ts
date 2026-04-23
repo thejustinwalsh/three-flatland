@@ -67,8 +67,12 @@ export function readCastShadowFlag(): Node<'bool'> {
  * shadow systems (future shadow maps, AO) would use it for depth bias
  * or sample radius.
  *
+ * The underlying attribute is a vec2; only `.x` carries the radius.
+ * Single-component attributes don't bind reliably through TSL, so the
+ * extra `.y` slot stays reserved for a future per-sprite shadow datum.
+ *
  * @returns A TSL float node — the sprite's occluder radius in world units.
  */
 export function readShadowRadius(): Node<'float'> {
-  return attribute<'float'>('instanceShadowRadius', 'float')
+  return attribute<'vec2'>('instanceShadowRadius', 'vec2').x
 }

@@ -390,13 +390,16 @@ export class Sprite2D extends Mesh {
     1, 1, // vertex 2
     1, 1, // vertex 3
   ])
-  // instanceShadowRadius: 4 vertices x float = 4 floats. Same value per
-  // vertex — the attribute is effectively per-instance; replicating it
-  // across the quad's 4 verts matches three.js's standard
-  // per-instance-as-per-vertex pattern for non-InstancedMesh geometry.
-  // Populated from `_shadowRadius` (user override) or auto-resolved at
-  // write time from `max(scale.x, scale.y)`.
-  private _instanceShadowRadiusBuffer: Float32Array = new Float32Array([0, 0, 0, 0])
+  // instanceShadowRadius: 4 vertices x vec2 = 8 floats. Only `.x`
+  // carries the radius; `.y` is reserved for a future per-sprite
+  // shadow datum. Single-component attributes don't bind reliably
+  // through TSL / WebGPU — vec2 is the minimum safe shape.
+  private _instanceShadowRadiusBuffer: Float32Array = new Float32Array([
+    0, 0,
+    0, 0,
+    0, 0,
+    0, 0,
+  ])
 
   /**
    * Create a new Sprite2D.
@@ -563,10 +566,11 @@ export class Sprite2D extends Mesh {
    */
   private _updateOwnShadowRadius() {
     const r = this._resolveShadowRadius()
-    this._instanceShadowRadiusBuffer[0] = r
-    this._instanceShadowRadiusBuffer[1] = r
-    this._instanceShadowRadiusBuffer[2] = r
-    this._instanceShadowRadiusBuffer[3] = r
+    // Replicate across 4 vertices; only `.x` carries meaning.
+    for (let v = 0; v < 4; v++) {
+      this._instanceShadowRadiusBuffer[v * 2 + 0] = r
+      this._instanceShadowRadiusBuffer[v * 2 + 1] = 0
+    }
     const attr = this.geometry.getAttribute('instanceShadowRadius') as
       | BufferAttribute
       | undefined
@@ -958,7 +962,7 @@ export class Sprite2D extends Mesh {
     geo.setAttribute('instanceUV', new BufferAttribute(this._instanceUVBuffer, 4))
     geo.setAttribute('instanceColor', new BufferAttribute(this._instanceColorBuffer, 4))
     geo.setAttribute('instanceFlip', new BufferAttribute(this._instanceFlipBuffer, 2))
-    geo.setAttribute('instanceShadowRadius', new BufferAttribute(this._instanceShadowRadiusBuffer, 1))
+    geo.setAttribute('instanceShadowRadius', new BufferAttribute(this._instanceShadowRadiusBuffer, 2))
 
     // Custom attributes from material schema (effects add these)
     this._customBuffers.clear()
