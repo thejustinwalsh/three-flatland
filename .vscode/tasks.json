@@ -3,20 +3,17 @@
   "tasks": [
     {
       "label": "FL: build",
-      "detail": "One-shot extension + webview build. Used by the F5 launch config.",
+      "detail": "One-shot extension + webview build. Used by 'FL Tools (one-shot build)' launch.",
       "type": "shell",
       "command": "pnpm",
       "args": ["--filter", "@three-flatland/vscode", "build"],
       "group": "build",
       "problemMatcher": [],
-      "presentation": {
-        "reveal": "silent",
-        "panel": "dedicated"
-      }
+      "presentation": { "reveal": "silent", "panel": "dedicated" }
     },
     {
       "label": "FL: dev",
-      "detail": "Vite dev server + tsdown watch for the extension. Enables webview HMR.",
+      "detail": "Vite dev server + tsdown watch. Keeps running. Start once, then F5 'FL Tools (attach to running FL: dev)'. Edit webview → HMR. Edit extension → Cmd+R extension dev host.",
       "type": "shell",
       "command": "pnpm",
       "args": ["--filter", "@three-flatland/vscode", "dev"],
@@ -30,9 +27,7 @@
           "endsPattern": "ready in"
         }
       },
-      "presentation": {
-        "panel": "dedicated"
-      }
+      "presentation": { "panel": "dedicated", "reveal": "always" }
     }
   ]
 }
