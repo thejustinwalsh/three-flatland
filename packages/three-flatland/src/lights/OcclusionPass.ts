@@ -124,7 +124,15 @@ export class OcclusionPass {
   private _rendering = false
 
   constructor(options: OcclusionPassOptions = {}) {
-    this._resolutionScale = options.resolutionScale ?? 1.0
+    // Default half-res. Quarters fill cost across every RT-sized pass
+    // (OcclusionPass render, JFA ping-pong, SDF final, separable blur)
+    // while staying visually indistinguishable from full-res on
+    // typical viewports — the separable binomial blur masks the
+    // coarser seed and `NearestFilter` sampling keeps shadow edges
+    // crisp. Construct with `{ resolutionScale: 1 }` to override for
+    // very small viewports / pixel-art modes where the ¼-pixel
+    // silhouette quantization reads as blocky.
+    this._resolutionScale = options.resolutionScale ?? 0.5
     this._clearColor = new Color(options.clearColor ?? 0x000000)
     this._clearAlpha = options.clearAlpha ?? 0
 
@@ -147,6 +155,13 @@ export class OcclusionPass {
     return this._rt
   }
 
+  /**
+   * Read-only — set at construction only. Treated as a static config
+   * value so the shadow pipeline doesn't need teardown/rebuild logic
+   * for runtime scale changes. Viewport resizes take the cheap
+   * `resize()` path (RTs set new dimensions, JFA pass count
+   * recomputed) without touching material / node graphs.
+   */
   get resolutionScale(): number {
     return this._resolutionScale
   }

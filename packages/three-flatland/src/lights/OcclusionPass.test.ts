@@ -11,12 +11,12 @@ describe('OcclusionPass', () => {
     pass.dispose()
   })
 
-  it('applies the default 1.0 resolution scale', () => {
+  it('applies the default 0.5 (half-res) resolution scale', () => {
     const pass = new OcclusionPass()
     pass.resize(1920, 1080)
-    expect(pass.width).toBe(1920)
-    expect(pass.height).toBe(1080)
-    expect(pass.resolutionScale).toBe(1.0)
+    expect(pass.width).toBe(960)
+    expect(pass.height).toBe(540)
+    expect(pass.resolutionScale).toBe(0.5)
     pass.dispose()
   })
 

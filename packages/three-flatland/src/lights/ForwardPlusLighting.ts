@@ -182,6 +182,9 @@ export class ForwardPlusLighting {
     const tileWorldWidth = worldSizeX / tileCountX
     const tileWorldHeight = worldSizeY / tileCountY
 
+    const tileWorldWidthInv = 1 / tileWorldWidth
+    const tileWorldHeightInv = 1 / tileWorldHeight
+
     for (let lightIdx = 0; lightIdx < lights.length; lightIdx++) {
       const light = lights[lightIdx]!
       if (!light.enabled) continue
@@ -192,29 +195,86 @@ export class ForwardPlusLighting {
       const ly = light.position.y
       const intensity = light.intensity
       const cutoff = light.distance
-      const cutoffSq = cutoff > 0 ? cutoff * cutoff : 0
+      const hasCutoff = cutoff > 0
+      const cutoffSq = hasCutoff ? cutoff * cutoff : 0
+      const cutoffInv = hasCutoff ? 1 / cutoff : 0
       const decay = light.decay
 
-      for (let ty = 0; ty < tileCountY; ty++) {
-        const tileMinY = ty * tileWorldHeight + worldOffsetY
+      // ── Per-light tile-range clamp ─────────────────────────────
+      // Directional + no-cutoff lights touch every tile; everything
+      // else only touches tiles whose AABB intersects the light's
+      // bounding square `(lx ± cutoff, ly ± cutoff)`. For a scrolling
+      // scene with many lights off-screen, most lights hit the
+      // `continue` below and cost O(1) here instead of O(tileCount).
+      let minTx: number
+      let maxTx: number
+      let minTy: number
+      let maxTy: number
+      if (isDirectional || !hasCutoff) {
+        minTx = 0; maxTx = tileCountX - 1
+        minTy = 0; maxTy = tileCountY - 1
+      } else {
+        minTx = Math.max(0, Math.floor((lx - cutoff - worldOffsetX) * tileWorldWidthInv))
+        maxTx = Math.min(tileCountX - 1, Math.floor((lx + cutoff - worldOffsetX) * tileWorldWidthInv))
+        minTy = Math.max(0, Math.floor((ly - cutoff - worldOffsetY) * tileWorldHeightInv))
+        maxTy = Math.min(tileCountY - 1, Math.floor((ly + cutoff - worldOffsetY) * tileWorldHeightInv))
+        // Entirely off-screen — light's bounding box doesn't overlap
+        // the viewport at all. Most off-screen lights hit this branch.
+        if (minTx > maxTx || minTy > maxTy) continue
+      }
+
+      // Accumulator-style tile-world coordinates to avoid recomputing
+      // `ty * tileWorldHeight + worldOffsetY` inside the loop: start
+      // at the min-row edge and step by `tileWorldHeight` each
+      // iteration. Same pattern for x inside the row loop.
+      let tileMinY = minTy * tileWorldHeight + worldOffsetY
+      for (let ty = minTy; ty <= maxTy; ty++, tileMinY += tileWorldHeight) {
         const tileMaxY = tileMinY + tileWorldHeight
         const closestY = ly < tileMinY ? tileMinY : ly > tileMaxY ? tileMaxY : ly
         const dyAABB = ly - closestY
-        for (let tx = 0; tx < tileCountX; tx++) {
+        const dySq = dyAABB * dyAABB
+        // Row-level reject — even the closest Y on this row is out of
+        // reach. Redundant with the range clamp in theory, but cheap
+        // and catches edge rows where the clamp included tiles whose
+        // closest-Y sits just outside `cutoff`.
+        if (hasCutoff && dySq >= cutoffSq) continue
+
+        let tileMinX = minTx * tileWorldWidth + worldOffsetX
+        for (let tx = minTx; tx <= maxTx; tx++, tileMinX += tileWorldWidth) {
           let score: number
           if (isDirectional) {
             score = intensity
           } else {
-            const tileMinX = tx * tileWorldWidth + worldOffsetX
             const tileMaxX = tileMinX + tileWorldWidth
-            const closestX =
-              lx < tileMinX ? tileMinX : lx > tileMaxX ? tileMaxX : lx
+            const closestX = lx < tileMinX ? tileMinX : lx > tileMaxX ? tileMaxX : lx
             const dxAABB = lx - closestX
-            const distSq = dxAABB * dxAABB + dyAABB * dyAABB
-            if (cutoffSq > 0 && distSq >= cutoffSq) continue
-            const dist = Math.sqrt(distSq)
-            const base = intensity / Math.max(Math.pow(dist, decay), 1)
-            const falloff = cutoff > 0 ? 1 - dist / cutoff : 1
+            const distSq = dxAABB * dxAABB + dySq
+            if (hasCutoff && distSq >= cutoffSq) continue
+
+            // Fast-math scoring. `score` is a ranking-only quantity
+            // (only relative ordering matters for tile slot
+            // eviction), so we minimise sqrt / pow where the common
+            // decay values allow:
+            //   decay = 2 → base = intensity / max(distSq, 1)      no sqrt for base
+            //   decay = 0 → base = intensity                       no dist math at all
+            //   decay = 1 → base = intensity / max(dist, 1)        needs sqrt
+            //   other    → base = intensity / max(pow(dist, d), 1) needs sqrt + pow
+            // Falloff `1 - dist / cutoff` still needs dist — but
+            // only when the light has a finite cutoff, and if decay
+            // already forced a sqrt we reuse it.
+            const needDist = hasCutoff || (decay !== 2 && decay !== 0)
+            const dist = needDist ? Math.sqrt(distSq) : 0
+            let base: number
+            if (decay === 2) {
+              base = intensity / Math.max(distSq, 1)
+            } else if (decay === 0) {
+              base = intensity
+            } else if (decay === 1) {
+              base = intensity / Math.max(dist, 1)
+            } else {
+              base = intensity / Math.max(Math.pow(dist, decay), 1)
+            }
+            const falloff = hasCutoff ? 1 - dist * cutoffInv : 1
             score = base * falloff
           }
           if (score <= 0) continue
