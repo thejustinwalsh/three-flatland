@@ -1,0 +1,16 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Launch FL Tools Extension",
+      "type": "extensionHost",
+      "request": "launch",
+      "args": [
+        "--extensionDevelopmentPath=${workspaceFolder}/tools/vscode",
+        "${workspaceFolder}"
+      ],
+      "outFiles": ["${workspaceFolder}/tools/vscode/dist/**/*.js"],
+      "preLaunchTask": "FL: watch all"
+    }
+  ]
+}
