@@ -135,6 +135,7 @@ export const DefaultLightEffect = createLightEffect({
           const lightPenumbra = row2.a
           const lightType = row3.r
           const lightEnabled = row3.g
+          const lightCastsShadow = row3.b
 
           const contribution = lightColor.mul(lightIntensityVal).mul(lightEnabled)
 
@@ -190,18 +191,22 @@ export const DefaultLightEffect = createLightEffect({
 
           // Shadow. Gated so the 32-tap SDF trace only runs when the
           // fragment actually needs it — ambient lights ignore shadow,
-          // fragments with `N·L ≤ 0` are already dark, and fragments
-          // where `atten × diffuse` is sub-visible can't receive a
-          // visible shadow either. All three are runtime GPU gates
-          // (not JS), so the trace is physically skipped on those
-          // fragments/lights. The `0.01` atten threshold sits below
-          // 8-bit channel quantization — a trace we'd skip here
-          // couldn't have produced a visible pixel delta.
+          // fragments with `N·L ≤ 0` are already dark, fragments where
+          // `atten × diffuse` is sub-visible can't receive a visible
+          // shadow either, and lights marked `castsShadow: false` opt
+          // out entirely. All four are runtime GPU gates (not JS), so
+          // the trace is physically skipped on those fragments/lights.
+          // The `0.01` atten threshold sits below 8-bit channel
+          // quantization — a trace we'd skip here couldn't have
+          // produced a visible pixel delta. The `0.5` threshold on
+          // `lightCastsShadow` is a safe midpoint for the 0/1 float
+          // flag packed by LightStore.
           const shadow = float(1).toVar('shadow')
           if (sdfTexture) {
             const shouldTrace = isAmbient.not()
               .and(NdotL.greaterThan(float(0)))
               .and(atten.greaterThan(float(0.01)))
+              .and(lightCastsShadow.greaterThan(float(0.5)))
             If(shouldTrace, () => {
               // Optional block-snap on the shadow trace origin.
               const useShadowSnap = shadowPixelSize.greaterThan(float(0))
