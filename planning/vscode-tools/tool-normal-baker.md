@@ -47,7 +47,7 @@ CLI flags on `flatland-bake normal`:
 
 ## GUI flow
 
-1. Right-click `tileset.png` → "Bake Normal Map". Command `threeFlatland.normalBaker.open`.
+1. Right-click `tileset.png` → "Open in FL Normal Baker". Command `threeFlatland.normalBaker.open`.
 2. Webview opens with:
    - **Canvas** showing the PNG with region overlays (rects colored by direction).
    - **Region list** (vscode-tree) — select/reorder/delete regions.
@@ -64,8 +64,8 @@ CLI flags on `flatland-bake normal`:
 ```
 Extension host (ESM)                     Webview (React + StyleX)
   NormalBakerCommand                       React app
-    → spawns webview panel                   - tools-design-system
-  NormalBakerService                         - tools-preview (NormalPreview, AtlasPreview for regions)
+    → spawns webview panel                   - design-system
+  NormalBakerService                         - preview (NormalPreview, AtlasPreview for regions)
     - wraps @three-flatland/normals.bakeNormalMapFile
     - wraps @three-flatland/bake.writeSidecar
     - ajv-validates descriptor against JSON Schema before bake
@@ -76,7 +76,7 @@ The host directly imports `@three-flatland/normals` and `@three-flatland/bake` �
 
 ## Rect editing overlap with Sprite Atlas
 
-The region rect editor is the same widget the atlas editor uses for frame rects. Both consume `tools-preview/AtlasPreview` and `tools-io/slice` helpers (grid snap, drag-resize, selection marquee). Shared code keeps parity between the two tools.
+The region rect editor is the same widget the atlas editor uses for frame rects. Both consume `preview/AtlasPreview` and `io/slice` helpers (grid snap, drag-resize, selection marquee). Shared code keeps parity between the two tools.
 
 The normal baker's regions have additional per-region properties (`direction`, `pitch`, `elevation`) that the atlas editor doesn't use; the rect widget is agnostic to that.
 
@@ -97,7 +97,7 @@ See [schemas/README.md](./schemas/README.md) for authoring rules and docs-site p
 ```json
 "contributes": {
   "commands": [
-    { "command": "threeFlatland.normalBaker.open", "title": "Bake Normal Map" }
+    { "command": "threeFlatland.normalBaker.open", "title": "Open in FL Normal Baker", "category": "FL" }
   ],
   "menus": {
     "explorer/context": [
@@ -124,7 +124,7 @@ Recommend option (2): cut a `feat/normal-baker-gui` branch from `lighting-stocha
 ## Risks
 
 1. **Descriptor version upgrade** — if `packages/normals` bumps `version`, this tool must migrate. Add a migration layer keyed on `descriptor.version`.
-2. **Preview fidelity** — in-webview lit preview uses hand-rolled TSL until `Sprite2DMaterial` gets proper normal-map support. Keep the preview renderer in `tools-preview` so both atlas and baker share improvements when the main runtime lands normal-mapping.
+2. **Preview fidelity** — in-webview lit preview uses hand-rolled TSL until `Sprite2DMaterial` gets proper normal-map support. Keep the preview renderer in `preview` so both atlas and baker share improvements when the main runtime lands normal-mapping.
 3. **Hash re-stamp on Save** — after `bakeNormalMapFile` succeeds, the returned sidecar has the stamped hash. Editor must not write a stale descriptor separately.
 4. **Large sheets** — CCL auto-region-seed on large tilesets can be slow; debounce and/or run in a worker.
 

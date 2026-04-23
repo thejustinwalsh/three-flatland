@@ -61,7 +61,7 @@ function load(json: unknown) {
 ### Tool (authoritative validate before write)
 
 ```ts
-// tools/ext/src/tools/atlas/save.ts
+// tools/vscode/src/tools/atlas/save.ts
 import { validateAtlas } from 'three-flatland/sprites/atlas'
 
 async function saveAtlas(uri: vscode.Uri, doc: unknown) {

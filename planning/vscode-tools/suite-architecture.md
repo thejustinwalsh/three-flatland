@@ -6,8 +6,8 @@
 
 ```
 tools/
-  ext/                        # the single VSIX publishing target
-    package.json              # @three-flatland/tools, private: true
+  vscode/                     # the single VSIX publishing target
+    package.json              # @three-flatland/vscode, private: true
     esbuild.config.mjs        # host bundle → dist/extension.js (ESM)
     vite.config.ts            # webview bundles → dist/webview/<tool>/*
     src/
@@ -26,7 +26,7 @@ tools/
 
   zzfx-studio/                # extension-facing TS wrapper for the zzfx plugin
                               # thin — may migrate to standalone zzfx-studio repo later
-                              # (v0: may just live in tools/ext/src/tools/zzfx/)
+                              # (v0: may just live in tools/vscode/src/tools/zzfx/)
 
   codelens-service/           # shared Go sidecar source + TS client
     go/                       # Go module root (module tools/codelens-service/go)
@@ -35,22 +35,22 @@ tools/
       internal/scanner/       # tree-sitter harness
       internal/cache/         # SQLite (modernc.org/sqlite) — pure Go
       internal/rpc/           # JSON-RPC (LSP framing)
-    ts/                       # @three-flatland/tools-codelens-service
+    ts/                       # @three-flatland/codelens-service
       src/                    # TS client: spawn, RPC, session, CodeLens provider helper
 
-  design-system/              # @three-flatland/tools-design-system
+  design-system/              # @three-flatland/design-system
     src/                      # StyleX + VSCode Elements wrappers
 
-  preview/                    # @three-flatland/tools-preview
+  preview/                    # @three-flatland/preview
     src/                      # R3F components: SpritePreview, NormalPreview, AtlasPreview
 
-  io/                         # @three-flatland/tools-io
+  io/                         # @three-flatland/io
     src/                      # image decode/encode helpers, auto-slice (CCL/grid), fs-bridge helpers,
                               # tiny test harness for schemas (loadFixture, ajvErrorsToString,
                               # assertSchemaMatchesType). No format-specific schemas here — those live
                               # in their format-owning packages (packages/three-flatland, packages/normals).
 
-  bridge/                     # @three-flatland/tools-bridge
+  bridge/                     # @three-flatland/bridge
     src/                      # typed postMessage RPC (host + client)
 ```
 
@@ -60,7 +60,7 @@ CLIs (`flatland-bake`, `slug-bake`, future bakers) continue to live in `packages
 
 ## Packaging
 
-**One VSIX, all platforms.** Go cross-compiles trivially (pure-Go path; tree-sitter cgo still works with `zig cc`). Pack all binaries under `tools/ext/bin/<platform>-<arch>/`. At activation:
+**One VSIX, all platforms.** Go cross-compiles trivially (pure-Go path; tree-sitter cgo still works with `zig cc`). Pack all binaries under `tools/vscode/bin/<platform>-<arch>/`. At activation:
 
 ```ts
 const bin = path.join(
@@ -78,10 +78,10 @@ If size becomes a problem, fall back to `vsce package --target <id>` per platfor
 
 VSCode extension host gained ESM support in v1.94 (2024-10). We target it exclusively.
 
-- `tools/ext/package.json`: `"type": "module"`, `engines.vscode: "^1.94.0"`, `"main": "./dist/extension.js"`.
+- `tools/vscode/package.json`: `"type": "module"`, `engines.vscode: "^1.94.0"`, `"main": "./dist/extension.js"`.
 - **Host bundle** (esbuild): `format: 'esm'`, `platform: 'node'`, `target: 'node20'`, `external: ['vscode']`.
 - **Webview bundles** (Vite): always ESM; one entry per tool via `build.rollupOptions.input`.
-- All shared packages (`tools/*` except `ext`) ship ESM only — no dual builds.
+- All shared packages (`tools/*` except `vscode`) ship ESM only — no dual builds.
 
 `@types/vscode: ^1.94.0`.
 
@@ -191,13 +191,21 @@ Webview never touches the filesystem directly — bridge only.
 
 ## Commands
 
-Prefix: `threeFlatland.<tool>.<action>`.
+Command id prefix: `threeFlatland.<tool>.<action>`. User-facing `category: "FL"` gives palette entries the shape `FL: <title>`. Context-menu titles include `FL` inline so right-click menus stay recognizable.
 
-- `threeFlatland.zzfx.playAtCursor`
-- `threeFlatland.zzfx.openEditor`
-- `threeFlatland.atlas.openEditor`
-- `threeFlatland.normalBaker.open`
-- `threeFlatland.imageEncoder.open`
+| Command id | Palette title | Context-menu title |
+|---|---|---|
+| `threeFlatland.zzfx.playAtCursor` | Play ZzFX at Cursor | — (inline CodeLens: ▶ Play) |
+| `threeFlatland.zzfx.openEditor` | Open ZzFX Editor | — (inline CodeLens: ⚙ Edit) |
+| `threeFlatland.atlas.openEditor` | Open Sprite Atlas | Open in FL Sprite Atlas |
+| `threeFlatland.normalBaker.open` | Open Normal Baker | Open in FL Normal Baker |
+| `threeFlatland.imageEncoder.open` | Open Image Encoder | Open in FL Image Encoder |
+
+Rules of thumb:
+- Every registered command has `"category": "FL"`.
+- Explorer-context titles carry `FL <ToolName>` inline (the category doesn't render in context menus).
+- Inline CodeLens titles stay compact (space cost is high).
+- Custom editors' `displayName` also include `FL`: `"FL Sprite Atlas"`, etc.
 
 ## Publishing
 
