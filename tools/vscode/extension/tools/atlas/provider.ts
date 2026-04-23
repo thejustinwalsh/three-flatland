@@ -2,6 +2,7 @@ import * as vscode from 'vscode'
 import { createHostBridge } from '@three-flatland/bridge/host'
 import { composeToolHtml, setupDevReload } from '../../webview-host'
 import { log } from '../../log'
+import { buildAtlasJson, writeAtlasSidecar, type RectInput } from './sidecar'
 
 const TOOL = 'atlas'
 
@@ -60,6 +61,28 @@ export class AtlasCustomEditorProvider implements vscode.CustomReadonlyEditorPro
       log(`[webview:${level}]`, ...args)
       return { ok: true }
     })
+
+    // atlas/save: webview hands us a snapshot of rects + the image's
+    // native size; we project to SpriteSheetJSONHash and write
+    // <basename>.atlas.json next to the image.
+    bridge.on<{ rects: RectInput[]; image: { width: number; height: number } }>(
+      'atlas/save',
+      async ({ rects, image }) => {
+        try {
+          const json = buildAtlasJson({
+            image: { ...image, fileName },
+            rects,
+          })
+          const out = await writeAtlasSidecar(document.uri, json)
+          log(`atlas/save wrote ${out.fsPath} (${rects.length} frames)`)
+          return { ok: true, sidecarUri: out.toString(), frameCount: rects.length }
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err)
+          log(`atlas/save failed: ${msg}`)
+          throw new Error(msg)
+        }
+      }
+    )
 
     // Toast "Reload" click → re-render the HTML from disk. VSCode webviews
     // can't location.reload() their inline HTML (ENOENT on the non-existent

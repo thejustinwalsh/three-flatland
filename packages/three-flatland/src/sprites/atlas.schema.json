@@ -1,0 +1,119 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://three-flatland.dev/schemas/atlas.v1.json",
+  "title": "three-flatland Sprite Atlas",
+  "description": "Sidecar JSON for a sprite atlas image. Superset of TexturePacker's JSON-Hash format — every TexturePacker-emitted file validates; three-flatland additions (meta.app, meta.version, meta.sources, meta.normal, meta.animations) are all optional and additive.",
+  "type": "object",
+  "required": ["meta", "frames"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "meta": {
+      "type": "object",
+      "required": ["image", "size"],
+      "additionalProperties": true,
+      "properties": {
+        "app": { "type": "string" },
+        "version": { "type": "string" },
+        "image": { "type": "string" },
+        "size": { "$ref": "#/$defs/Size" },
+        "scale": { "type": "string" },
+        "format": { "type": "string" },
+        "pivot": { "$ref": "#/$defs/Vec2" },
+        "normal": { "type": "string" },
+        "sources": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/SourceEntry" }
+        },
+        "animations": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/Animation" }
+        }
+      }
+    },
+    "frames": {
+      "type": "object",
+      "patternProperties": {
+        "^.+$": { "$ref": "#/$defs/Frame" }
+      },
+      "additionalProperties": false
+    }
+  },
+  "$defs": {
+    "Size": {
+      "type": "object",
+      "required": ["w", "h"],
+      "additionalProperties": false,
+      "properties": {
+        "w": { "type": "integer", "minimum": 1 },
+        "h": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "Rect": {
+      "type": "object",
+      "required": ["x", "y", "w", "h"],
+      "additionalProperties": false,
+      "properties": {
+        "x": { "type": "integer", "minimum": 0 },
+        "y": { "type": "integer", "minimum": 0 },
+        "w": { "type": "integer", "minimum": 0 },
+        "h": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "Vec2": {
+      "type": "object",
+      "required": ["x", "y"],
+      "additionalProperties": false,
+      "properties": {
+        "x": { "type": "number" },
+        "y": { "type": "number" }
+      }
+    },
+    "Frame": {
+      "type": "object",
+      "required": ["frame", "rotated", "trimmed", "spriteSourceSize", "sourceSize"],
+      "additionalProperties": false,
+      "properties": {
+        "frame": { "$ref": "#/$defs/Rect" },
+        "rotated": { "type": "boolean" },
+        "trimmed": { "type": "boolean" },
+        "spriteSourceSize": { "$ref": "#/$defs/Rect" },
+        "sourceSize": { "$ref": "#/$defs/Size" },
+        "pivot": { "$ref": "#/$defs/Vec2" }
+      }
+    },
+    "SourceEntry": {
+      "type": "object",
+      "required": ["format", "uri"],
+      "additionalProperties": false,
+      "properties": {
+        "format": {
+          "type": "string",
+          "enum": ["png", "webp", "avif", "ktx2"]
+        },
+        "uri": { "type": "string" }
+      }
+    },
+    "Animation": {
+      "type": "object",
+      "required": ["frames"],
+      "additionalProperties": false,
+      "properties": {
+        "frames": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "fps": { "type": "number", "exclusiveMinimum": 0 },
+        "loop": { "type": "boolean" },
+        "pingPong": { "type": "boolean" },
+        "events": {
+          "type": "object",
+          "patternProperties": {
+            "^[0-9]+$": { "type": "string" }
+          },
+          "additionalProperties": false
+        }
+      }
+    }
+  }
+}

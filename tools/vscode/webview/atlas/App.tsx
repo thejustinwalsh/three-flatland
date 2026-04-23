@@ -78,6 +78,14 @@ export function App() {
   const [tool, setTool] = useState<Tool>('rect')
   const [renameMode, setRenameMode] = useState<RenameMode>({ kind: 'none' })
   const [prefixDraft, setPrefixDraft] = useState('')
+  const [imageSize, setImageSize] = useState<{ w: number; h: number } | null>(null)
+  const [saveStatus, setSaveStatus] = useState<
+    | { kind: 'idle' }
+    | { kind: 'saving' }
+    | { kind: 'saved'; at: number; path: string; count: number }
+    | { kind: 'error'; message: string }
+  >({ kind: 'idle' })
+  const bridgeRef = useRef<ReturnType<typeof createClientBridge> | null>(null)
   const editorBg = useCssVar('--vscode-editor-background', '#1e1e1e')
 
   const indexById = useMemo(() => {
@@ -89,10 +97,46 @@ export function App() {
   useEffect(() => {
     dumpThemeTokens()
     const bridge = createClientBridge()
+    bridgeRef.current = bridge
     const off = bridge.on<InitPayload>('atlas/init', (p) => setPayload(p))
     void bridge.request('atlas/ready')
     return off
   }, [])
+
+  const handleSave = useCallback(async () => {
+    const bridge = bridgeRef.current
+    if (!bridge) return
+    if (!imageSize) {
+      setSaveStatus({ kind: 'error', message: 'Image not loaded yet' })
+      return
+    }
+    if (rects.length === 0) {
+      setSaveStatus({ kind: 'error', message: 'No rects to save' })
+      return
+    }
+    setSaveStatus({ kind: 'saving' })
+    try {
+      const res = await bridge.request<{
+        ok: true
+        sidecarUri: string
+        frameCount: number
+      }>('atlas/save', {
+        rects: rects.map(({ id, x, y, w, h, name }) => ({ id, x, y, w, h, name })),
+        image: { width: imageSize.w, height: imageSize.h },
+      })
+      setSaveStatus({
+        kind: 'saved',
+        at: Date.now(),
+        path: res.sidecarUri,
+        count: res.frameCount,
+      })
+    } catch (err) {
+      setSaveStatus({
+        kind: 'error',
+        message: err instanceof Error ? err.message : String(err),
+      })
+    }
+  }, [rects, imageSize])
 
   const handleRectCreate = useCallback((r: Rect) => {
     setRects((prev) => [...prev, r])
@@ -176,6 +220,14 @@ export function App() {
         e.preventDefault()
         return
       }
+      // Cmd/Ctrl+S — Save. Handled under the modifier branch before the
+      // tool-switch branch so it doesn't collide with the 's' shortcut.
+      if (mod && (e.key === 's' || e.key === 'S')) {
+        void handleSave()
+        e.preventDefault()
+        return
+      }
+
       if (mod || e.altKey || e.shiftKey) return
       const k = e.key.toLowerCase()
       if (k === 'r') setTool('rect')
@@ -190,7 +242,7 @@ export function App() {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [selectedIds, rects, renameMode, clearSelection, deleteSelected, selectAll, startRename])
+  }, [selectedIds, rects, renameMode, clearSelection, deleteSelected, selectAll, startRename, handleSave])
 
   return (
     <div
@@ -251,7 +303,11 @@ export function App() {
             setSelectedIds(new Set())
           }}
         />
-        <ToolbarButton icon="save" title="Save" />
+        <ToolbarButton
+          icon={saveStatus.kind === 'saving' ? 'loading' : 'save'}
+          title="Save Atlas  (⌘S)"
+          onClick={() => void handleSave()}
+        />
       </Toolbar>
 
       <div
@@ -266,7 +322,11 @@ export function App() {
       >
         <Panel title="Preview">
           <div style={{ flex: 1, minHeight: 0 }}>
-            <CanvasStage imageUri={payload?.imageUri ?? null} background={editorBg}>
+            <CanvasStage
+              imageUri={payload?.imageUri ?? null}
+              background={editorBg}
+              onImageReady={setImageSize}
+            >
               <RectOverlay
                 rects={rects}
                 drawEnabled={tool === 'rect'}
@@ -371,6 +431,7 @@ export function App() {
           )}
         </Panel>
       </div>
+      <SaveStatusLine status={saveStatus} />
       <DevReloadToast />
     </div>
   )
@@ -430,6 +491,91 @@ function InlineRenameInput({
         fontSize: 12,
       }}
     />
+  )
+}
+
+function SaveStatusLine({
+  status,
+}: {
+  status:
+    | { kind: 'idle' }
+    | { kind: 'saving' }
+    | { kind: 'saved'; at: number; path: string; count: number }
+    | { kind: 'error'; message: string }
+}) {
+  const [visible, setVisible] = useState(false)
+
+  useEffect(() => {
+    if (status.kind === 'saved') {
+      setVisible(true)
+      const t = setTimeout(() => setVisible(false), 2500)
+      return () => clearTimeout(t)
+    }
+    if (status.kind === 'error') {
+      setVisible(true)
+      return
+    }
+    setVisible(status.kind === 'saving')
+  }, [status])
+
+  if (!visible || status.kind === 'idle') return null
+
+  const base: React.CSSProperties = {
+    position: 'fixed',
+    left: 12,
+    bottom: 12,
+    zIndex: 900,
+    padding: '6px 10px',
+    borderRadius: 3,
+    fontFamily: 'var(--vscode-font-family)',
+    fontSize: 'var(--vscode-font-size)',
+    border: '1px solid var(--vscode-panel-border, transparent)',
+    boxShadow: '0 2px 8px rgba(0, 0, 0, 0.35)',
+    maxWidth: '60%',
+  }
+
+  if (status.kind === 'saving') {
+    return (
+      <div
+        style={{
+          ...base,
+          background: 'var(--vscode-editorWidget-background)',
+          color: 'var(--vscode-foreground)',
+        }}
+      >
+        <i className="codicon codicon-loading codicon-modifier-spin" /> &nbsp;Saving atlas…
+      </div>
+    )
+  }
+
+  if (status.kind === 'error') {
+    return (
+      <div
+        style={{
+          ...base,
+          background: 'var(--vscode-inputValidation-errorBackground, #5a1d1d)',
+          color: 'var(--vscode-inputValidation-errorForeground, #ffb3b3)',
+          borderColor: 'var(--vscode-inputValidation-errorBorder, transparent)',
+        }}
+      >
+        <i className="codicon codicon-error" /> &nbsp;Save failed: {status.message}
+      </div>
+    )
+  }
+
+  // saved
+  const fileName = status.path.split('/').pop() ?? status.path
+  return (
+    <div
+      style={{
+        ...base,
+        background: 'var(--vscode-editorWidget-background)',
+        color: 'var(--vscode-foreground)',
+      }}
+    >
+      <i className="codicon codicon-check" /> &nbsp;Saved {status.count} frame
+      {status.count === 1 ? '' : 's'} → <strong>{fileName}</strong>
+    </div>
   )
 }
 
