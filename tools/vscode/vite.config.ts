@@ -18,6 +18,14 @@ export default defineConfig({
     }),
   ],
   root: resolve(__dirname, 'webview'),
+  // Dedicated port for tool webviews. Root `pnpm dev` (docs + examples MPA)
+  // already owns 5173; strictPort makes us fail loudly instead of silently
+  // drifting to 5174+ where the plugin's dev-server-URL handoff might miss.
+  server: {
+    port: 5200,
+    strictPort: true,
+    host: '127.0.0.1',
+  },
   build: {
     rollupOptions: {
       input: {
