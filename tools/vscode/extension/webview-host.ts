@@ -1,7 +1,6 @@
 import * as vscode from 'vscode'
 import { randomBytes } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
-import { watch, type FSWatcher } from 'node:fs'
 
 export type ComposeHtmlParams = {
   webview: vscode.Webview
@@ -85,21 +84,18 @@ function placeholderHtml(message: string): string {
 }
 
 /**
- * Watch the whole `dist/webview/` tree for changes and emit a `dev/reload`
- * notification so the webview can show its "Reload" toast. We need the
- * whole tree (not just the per-tool subdir) because Vite emits:
+ * Watch the whole `dist/webview/` tree and fire a debounced `onReload` on
+ * any add/change/delete. Uses VSCode's `workspace.createFileSystemWatcher`
+ * (chokidar-backed, cross-platform) rather than Node's `fs.watch` — the
+ * latter silently dies on macOS when Vite wipes and re-creates the dist
+ * directory (observed: first rebuild fires, subsequent rebuilds go
+ * unnoticed). VSCode's watcher survives dir recreation.
  *
- *   dist/webview/<tool>/index.html          ← thin HTML referencing hashed assets
- *   dist/webview/assets/<tool>-HASH.js      ← real bundle, shared asset dir
- *   dist/webview/assets/<tool>-HASH.css
+ * Scoped to the whole `dist/webview/` subtree because Vite writes to two
+ * places per rebuild: `<tool>/index.html` and the shared `assets/` dir
+ * (hashed JS/CSS). Either event tells us the bundle changed.
  *
- * Watching only `<tool>/` means we'd see `index.html` regenerate but
- * sometimes miss the event (fs.watch + atomic rename on macOS is flaky),
- * and we wouldn't see the asset files that actually carry the change.
- * Watching the shared parent picks up all of it.
- *
- * Debounced to one reload per burst of writes. Safe no-op if the root
- * doesn't exist yet (pre-first-build).
+ * `_tool` currently unused; reserved for future per-tool filtering.
  */
 export function setupDevReload(
   extensionUri: vscode.Uri,
@@ -107,26 +103,32 @@ export function setupDevReload(
   onReload: () => void,
   debounceMs = 150
 ): vscode.Disposable {
-  const root = vscode.Uri.joinPath(extensionUri, 'dist', 'webview').fsPath
-  let watcher: FSWatcher | null = null
+  const pattern = new vscode.RelativePattern(
+    vscode.Uri.joinPath(extensionUri, 'dist', 'webview'),
+    '**/*'
+  )
+  const watcher = vscode.workspace.createFileSystemWatcher(pattern)
   let t: NodeJS.Timeout | null = null
 
-  try {
-    watcher = watch(root, { recursive: true }, () => {
-      if (t) clearTimeout(t)
-      t = setTimeout(() => {
-        t = null
-        onReload()
-      }, debounceMs)
-    })
-  } catch {
-    // Directory doesn't exist yet.
+  const trigger = () => {
+    if (t) clearTimeout(t)
+    t = setTimeout(() => {
+      t = null
+      onReload()
+    }, debounceMs)
   }
+
+  const subs: vscode.Disposable[] = [
+    watcher.onDidChange(trigger),
+    watcher.onDidCreate(trigger),
+    watcher.onDidDelete(trigger),
+    watcher,
+  ]
 
   return {
     dispose: () => {
       if (t) clearTimeout(t)
-      watcher?.close()
+      for (const s of subs) s.dispose()
     },
   }
 }
