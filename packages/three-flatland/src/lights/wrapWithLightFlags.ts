@@ -52,3 +52,23 @@ export function readCastShadowFlag(): Node<'bool'> {
   const flags = int(attribute<'vec4'>('effectBuf0', 'vec4').x)
   return flags.bitAnd(int(CAST_SHADOW_MASK)).greaterThan(int(0))
 }
+
+/**
+ * Read the per-instance shadow-occluder radius from the
+ * `instanceShadowRadius` attribute. This is the sprite's size as an
+ * occluder in world units — auto-resolved to `max(|scale.x|, |scale.y|)`
+ * each frame by `transformSyncSystem`, overridable via the
+ * `shadowRadius` field on Sprite2D.
+ *
+ * Shadow-casting LightEffects consume this per-instance value rather
+ * than a scene-wide uniform so scenes with mixed-size casters don't
+ * have to calibrate a single value that works for everybody. The SDF
+ * sphere-tracer uses it as the self-silhouette escape distance; other
+ * shadow systems (future shadow maps, AO) would use it for depth bias
+ * or sample radius.
+ *
+ * @returns A TSL float node — the sprite's occluder radius in world units.
+ */
+export function readShadowRadius(): Node<'float'> {
+  return attribute<'float'>('instanceShadowRadius', 'float')
+}

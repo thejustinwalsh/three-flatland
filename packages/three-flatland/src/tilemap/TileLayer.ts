@@ -360,6 +360,14 @@ export class TileLayer extends Group {
       const instanceUV = new Float32Array(count * 4)
       const instanceColor = new Float32Array(count * 4)
       const instanceFlip = new Float32Array(count * 2)
+      // Per-tile shadow-occluder radius (world units). All tiles in a
+      // layer share the same tile dimensions, so every slot gets the
+      // same max-of-width/height. The shader needs this attribute
+      // bound (lighting reads `instanceShadowRadius`) even for tiles
+      // that never cast shadows.
+      const instanceShadowRadius = new Float32Array(count)
+      const tileRadius = Math.max(this.tileWidth, this.tileHeight)
+      for (let i = 0; i < count; i++) instanceShadowRadius[i] = tileRadius
 
       // Create geometry with instance attributes
       const geometry = new PlaneGeometry(1, 1)
@@ -375,6 +383,10 @@ export class TileLayer extends Group {
       const flipAttr = new InstancedBufferAttribute(instanceFlip, 2)
       flipAttr.setUsage(DynamicDrawUsage)
       geometry.setAttribute('instanceFlip', flipAttr)
+
+      const shadowRadiusAttr = new InstancedBufferAttribute(instanceShadowRadius, 1)
+      shadowRadiusAttr.setUsage(DynamicDrawUsage)
+      geometry.setAttribute('instanceShadowRadius', shadowRadiusAttr)
 
       // Add all effect buffer attributes from the material schema so the
       // shader's attribute() reads don't hit missing bindings.

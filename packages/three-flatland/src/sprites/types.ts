@@ -59,6 +59,16 @@ export interface Sprite2DOptions {
   receiveShadows?: boolean
   /** Whether this sprite contributes to the shadow-caster occlusion pre-pass (default: false — opt in) */
   castsShadow?: boolean
+  /**
+   * Per-sprite occluder radius in world units. Consumed by shadow-
+   * casting LightEffects (e.g., the SDF sphere-tracer uses it as the
+   * self-silhouette escape distance). When omitted (default), the
+   * batch layer auto-resolves to `max(scale.x, scale.y)` each frame,
+   * which tracks scale changes and animation frame size swaps. Set
+   * explicitly to override — useful when the visible body is tighter
+   * than the quad bounds.
+   */
+  shadowRadius?: number
   /** Custom material (sprites with same material instance batch together) */
   material?: Sprite2DMaterial
 }

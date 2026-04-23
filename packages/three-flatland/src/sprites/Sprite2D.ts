@@ -217,6 +217,39 @@ export class Sprite2D extends Mesh {
   }
 
   /**
+   * Per-sprite occluder radius used by shadow-casting effects (world
+   * units). Consumed by any LightEffect that needs to know "how big is
+   * this sprite as an occluder" — the SDF sphere-tracer uses it as the
+   * self-silhouette escape distance; a future shadow-map effect would
+   * use it for depth bias; an AO pass could use it as sample radius.
+   *
+   * `undefined` (default) means auto-resolve from `max(scale.x, scale.y)`
+   * at batch-write time — tracks scale changes automatically, covers
+   * sprite animation frames whose source size differs (AnimatedSprite2D
+   * updates `scale` from `frame.sourceWidth/Height`). Assign a number
+   * to override — useful when the visible body is tighter than the
+   * quad's bounds or when the anchor pushes the silhouette off-center.
+   */
+  private _shadowRadius: number | undefined = undefined
+
+  get shadowRadius(): number | undefined {
+    return this._shadowRadius
+  }
+
+  set shadowRadius(value: number | undefined) {
+    if (this._shadowRadius === value) return
+    this._shadowRadius = value
+    // Push to GPU: standalone writes the own-geometry buffer; batched
+    // lets transformSyncSystem pick it up on the next frame (it reads
+    // scale + override together when resolving the per-slot value).
+    if (this._entity) {
+      this._syncShadowRadiusToBatch()
+    } else {
+      this._updateOwnShadowRadius()
+    }
+  }
+
+  /**
    * Whether this sprite contributes its silhouette to the shadow-caster
    * occlusion pre-pass. Stored as bit 2 of `_effectFlags`. Default: `false`
    * — most sprites don't cast; opt in by setting to `true`.
@@ -357,6 +390,13 @@ export class Sprite2D extends Mesh {
     1, 1, // vertex 2
     1, 1, // vertex 3
   ])
+  // instanceShadowRadius: 4 vertices x float = 4 floats. Same value per
+  // vertex — the attribute is effectively per-instance; replicating it
+  // across the quad's 4 verts matches three.js's standard
+  // per-instance-as-per-vertex pattern for non-InstancedMesh geometry.
+  // Populated from `_shadowRadius` (user override) or auto-resolved at
+  // write time from `max(scale.x, scale.y)`.
+  private _instanceShadowRadiusBuffer: Float32Array = new Float32Array([0, 0, 0, 0])
 
   /**
    * Create a new Sprite2D.
@@ -493,7 +533,68 @@ export class Sprite2D extends Mesh {
       this._effectFlags |= CAST_SHADOW_MASK
     }
 
+    if (options.shadowRadius !== undefined) {
+      this._shadowRadius = options.shadowRadius
+    }
+
     this._updateOwnFlip()
+    this._updateOwnShadowRadius()
+  }
+
+  /**
+   * Resolve the effective shadow radius for this sprite — either the
+   * explicit user override or the auto-derived `max(scale.x, scale.y)`.
+   * Called by both the standalone path (_updateOwnShadowRadius) and
+   * `transformSyncSystem` when populating the batch's per-instance
+   * `instanceShadowRadius` attribute.
+   * @internal
+   */
+  _resolveShadowRadius(): number {
+    if (this._shadowRadius !== undefined) return this._shadowRadius
+    const sx = Math.abs(this.scale.x)
+    const sy = Math.abs(this.scale.y)
+    return sx > sy ? sx : sy
+  }
+
+  /**
+   * Write the resolved shadow radius to the own-geometry buffer
+   * (standalone mode — not enrolled in a SpriteGroup).
+   * @internal
+   */
+  private _updateOwnShadowRadius() {
+    const r = this._resolveShadowRadius()
+    this._instanceShadowRadiusBuffer[0] = r
+    this._instanceShadowRadiusBuffer[1] = r
+    this._instanceShadowRadiusBuffer[2] = r
+    this._instanceShadowRadiusBuffer[3] = r
+    const attr = this.geometry.getAttribute('instanceShadowRadius') as
+      | BufferAttribute
+      | undefined
+    if (attr) attr.needsUpdate = true
+  }
+
+  /**
+   * Push the resolved shadow radius to the enrolled SpriteBatch's
+   * per-instance buffer. Used when `shadowRadius` is imperatively set
+   * by user code; the per-frame `transformSyncSystem` also writes this
+   * value as part of the transform sync so scale-driven auto values
+   * stay in lockstep with `instanceMatrix`.
+   * @internal
+   */
+  private _syncShadowRadiusToBatch() {
+    if (!this._entity || !this._flatlandWorld) return
+    const bs = this._entity.get(BatchSlot) as { batchIdx: number; slot: number } | undefined
+    if (!bs || bs.batchIdx < 0) return
+    const registryEntities = this._flatlandWorld.query(BatchRegistry)
+    if (registryEntities.length === 0) return
+    const registry = registryEntities[0]!.get(BatchRegistry) as
+      | { batchSlots: readonly unknown[] }
+      | undefined
+    if (!registry) return
+    const mesh = registry.batchSlots[bs.batchIdx] as
+      | { writeShadowRadius(i: number, v: number): void }
+      | undefined
+    mesh?.writeShadowRadius(bs.slot, this._resolveShadowRadius())
   }
 
   /**
@@ -857,6 +958,7 @@ export class Sprite2D extends Mesh {
     geo.setAttribute('instanceUV', new BufferAttribute(this._instanceUVBuffer, 4))
     geo.setAttribute('instanceColor', new BufferAttribute(this._instanceColorBuffer, 4))
     geo.setAttribute('instanceFlip', new BufferAttribute(this._instanceFlipBuffer, 2))
+    geo.setAttribute('instanceShadowRadius', new BufferAttribute(this._instanceShadowRadiusBuffer, 1))
 
     // Custom attributes from material schema (effects add these)
     this._customBuffers.clear()
@@ -1425,6 +1527,9 @@ export class Sprite2D extends Mesh {
             zIndex: this.zIndex,
             pixelPerfect: this.pixelPerfect,
             lit: this.lit,
+            receiveShadows: this.receiveShadows,
+            castsShadow: this.castsShadow,
+            shadowRadius: this._shadowRadius,
           }
         : undefined
     )

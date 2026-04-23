@@ -113,6 +113,48 @@ describe('Sprite2D', () => {
     expect(pos2D.x).toBe(100)
     expect(pos2D.y).toBe(200)
   })
+
+  it('should default shadowRadius to undefined (auto-resolve from scale)', () => {
+    const sprite = new Sprite2D({ texture })
+    sprite.scale.set(64, 64, 1)
+    expect(sprite.shadowRadius).toBeUndefined()
+    // _resolveShadowRadius reflects the auto-derived value.
+    expect(sprite._resolveShadowRadius()).toBe(64)
+  })
+
+  it('should accept explicit shadowRadius in options', () => {
+    const sprite = new Sprite2D({ texture, shadowRadius: 25 })
+    expect(sprite.shadowRadius).toBe(25)
+    expect(sprite._resolveShadowRadius()).toBe(25)
+  })
+
+  it('should auto-resolve to max(|scale.x|, |scale.y|) with negative flips', () => {
+    const sprite = new Sprite2D({ texture })
+    sprite.scale.set(-64, 32, 1)
+    expect(sprite._resolveShadowRadius()).toBe(64)
+  })
+
+  it('should pick up shadowRadius override through the setter', () => {
+    const sprite = new Sprite2D({ texture })
+    sprite.scale.set(64, 64, 1)
+    expect(sprite._resolveShadowRadius()).toBe(64)
+    sprite.shadowRadius = 12
+    expect(sprite._resolveShadowRadius()).toBe(12)
+    sprite.shadowRadius = undefined
+    expect(sprite._resolveShadowRadius()).toBe(64)
+  })
+
+  it('should preserve shadowRadius override across clone', () => {
+    const sprite = new Sprite2D({ texture, shadowRadius: 18 })
+    const cloned = sprite.clone()
+    expect(cloned.shadowRadius).toBe(18)
+  })
+
+  it('should leave auto shadowRadius undefined on clone', () => {
+    const sprite = new Sprite2D({ texture })
+    const cloned = sprite.clone()
+    expect(cloned.shadowRadius).toBeUndefined()
+  })
 })
 
 // ============================================
