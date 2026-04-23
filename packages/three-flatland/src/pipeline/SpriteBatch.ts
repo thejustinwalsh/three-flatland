@@ -99,11 +99,14 @@ export class SpriteBatch extends InstancedMesh {
     const instanceFlip = new Float32Array(maxSize * 2)
     // `instanceShadowRadius` carries the sprite's occluder size (world
     // units) to any lighting effect that traces shadows. Consumers read
-    // it via `readShadowRadius()` and use it as e.g. the SDF sphere-
-    // trace escape distance. 0 is a safe default meaning "no escape";
+    // it via `readShadowRadius()` (which unpacks `.x`) and use it as
+    // e.g. the SDF sphere-trace escape distance. Stored as a vec2
+    // rather than a single float because single-component attributes
+    // don't bind reliably through TSL; `.y` is reserved for a future
+    // per-sprite shadow datum (e.g., softness hint or penumbra width).
     // transformSyncSystem resolves each sprite's actual radius each
     // frame (user override or auto max(scale.x, scale.y)).
-    const instanceShadowRadius = new Float32Array(maxSize)
+    const instanceShadowRadius = new Float32Array(maxSize * 2)
 
     // Initialize with default values (white, fully opaque, no flip, full texture)
     for (let i = 0; i < maxSize; i++) {
@@ -120,8 +123,9 @@ export class SpriteBatch extends InstancedMesh {
       // instanceFlip: no flip (1, 1)
       instanceFlip[i * 2 + 0] = 1
       instanceFlip[i * 2 + 1] = 1
-      // instanceShadowRadius: 0 (transformSyncSystem fills it each frame)
-      instanceShadowRadius[i] = 0
+      // instanceShadowRadius: (0, 0) — transformSyncSystem fills .x each frame.
+      instanceShadowRadius[i * 2 + 0] = 0
+      instanceShadowRadius[i * 2 + 1] = 0
     }
 
     // Create geometry and add ALL instance attributes BEFORE super()
@@ -140,7 +144,7 @@ export class SpriteBatch extends InstancedMesh {
     flipAttr.setUsage(DynamicDrawUsage)
     geometry.setAttribute('instanceFlip', flipAttr)
 
-    const shadowRadiusAttr = new InstancedBufferAttribute(instanceShadowRadius, 1)
+    const shadowRadiusAttr = new InstancedBufferAttribute(instanceShadowRadius, 2)
     shadowRadiusAttr.setUsage(DynamicDrawUsage)
     geometry.setAttribute('instanceShadowRadius', shadowRadiusAttr)
 
@@ -228,7 +232,7 @@ export class SpriteBatch extends InstancedMesh {
   }
 
   writeShadowRadius(index: number, radius: number): void {
-    this._instanceShadowRadius[index] = radius
+    this._instanceShadowRadius[index * 2 + 0] = radius
     if (index < this._shadowRadiusDirtyMin) this._shadowRadiusDirtyMin = index
     if (index > this._shadowRadiusDirtyMax) this._shadowRadiusDirtyMax = index
   }
@@ -441,7 +445,7 @@ export class SpriteBatch extends InstancedMesh {
 
     if (this._shadowRadiusDirtyMax >= 0) {
       this._shadowRadiusAttribute.clearUpdateRanges()
-      this._shadowRadiusAttribute.addUpdateRange(this._shadowRadiusDirtyMin, this._shadowRadiusDirtyMax - this._shadowRadiusDirtyMin + 1)
+      this._shadowRadiusAttribute.addUpdateRange(this._shadowRadiusDirtyMin * 2, (this._shadowRadiusDirtyMax - this._shadowRadiusDirtyMin + 1) * 2)
       this._shadowRadiusAttribute.needsUpdate = true
       this._shadowRadiusDirtyMin = Infinity
       this._shadowRadiusDirtyMax = -1
