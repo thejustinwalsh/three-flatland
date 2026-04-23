@@ -28,7 +28,12 @@ export function useDevReload(): {
   }, [])
 
   const reload = useCallback(() => {
-    window.location.reload()
+    // Don't call location.reload() directly — VSCode webviews set their
+    // HTML inline via panel.webview.html, so reload() tries to GET that
+    // origin's index and 404s with ENOENT. Instead dispatch an event the
+    // webview's bridge glue catches and turns into a bridge request so
+    // the extension host can re-set panel.webview.html cleanly.
+    window.dispatchEvent(new Event('fl:reload-request'))
   }, [])
 
   const dismiss = useCallback(() => {

@@ -34,13 +34,20 @@ export class AtlasCustomEditorProvider implements vscode.CustomReadonlyEditorPro
 
     log(`imageUri = ${imageUri}`)
 
-    panel.webview.html = await composeToolHtml({
-      webview,
-      tool: TOOL,
-      extensionUri: this.context.extensionUri,
-      injectCode: `<script>window.__FL_ATLAS__ = ${JSON.stringify({ imageUri, fileName })};</script>`,
-    })
+    const renderHtml = async () =>
+      composeToolHtml({
+        webview,
+        tool: TOOL,
+        extensionUri: this.context.extensionUri,
+        injectCode: `<script>window.__FL_ATLAS__ = ${JSON.stringify({ imageUri, fileName })};</script>`,
+      })
 
+    panel.webview.html = await renderHtml()
+
+    // One bridge lives across re-renders. Setting panel.webview.html below
+    // replaces the webview document (and its client bridge instance), but
+    // our host-side listeners stay subscribed via panel.webview's
+    // onDidReceiveMessage which persists across html reassignments.
     const bridge = createHostBridge(webview)
 
     bridge.on('atlas/ready', async () => {
@@ -54,9 +61,21 @@ export class AtlasCustomEditorProvider implements vscode.CustomReadonlyEditorPro
       return { ok: true }
     })
 
-    // PWA-style live reload. See extension/webview-host.ts.
+    // Toast "Reload" click → re-render the HTML from disk. VSCode webviews
+    // can't location.reload() their inline HTML (ENOENT on the non-existent
+    // origin file); reassigning webview.html is the supported re-render
+    // path and it picks up the freshly-built bundle transparently.
+    bridge.on('dev/reload-request', async () => {
+      log('dev/reload-request → re-rendering webview.html')
+      panel.webview.html = await renderHtml()
+      return { ok: true }
+    })
+
+    // fs-watch dist/webview/<tool> for rebuilds. Emits 'dev/reload' as a
+    // notification (not a reload); the webview's toast then waits for the
+    // user to click Reload (which round-trips back as dev/reload-request).
     const disposeReload = setupDevReload(this.context.extensionUri, TOOL, () => {
-      log('dev/reload → nudging webview')
+      log('dev/reload → notifying webview (opt-in reload)')
       bridge.emit('dev/reload', { tool: TOOL })
     })
 
