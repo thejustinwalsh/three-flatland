@@ -1,15 +1,25 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
+import { getVSCodeApi } from '@three-flatland/bridge/client'
 import { App } from './App'
 
 // Forward uncaught errors + console.error to the extension host output
 // channel so "empty panel" situations are diagnosable without opening
 // Webview Developer Tools.
-const api = (globalThis as unknown as { acquireVsCodeApi?: () => { postMessage: (m: unknown) => void } }).acquireVsCodeApi
-const vscode = typeof api === 'function' ? api() : null
+let vscode: ReturnType<typeof getVSCodeApi> | null = null
+try {
+  vscode = getVSCodeApi()
+} catch {
+  // Not running inside a webview — no-op; nothing to forward.
+}
 
 function send(level: string, args: unknown[]) {
-  vscode?.postMessage({ kind: 'request', id: `log-${Math.random().toString(36).slice(2)}`, method: 'client/log', params: { level, args: args.map(safe) } })
+  vscode?.postMessage({
+    kind: 'request',
+    id: `log-${Math.random().toString(36).slice(2)}`,
+    method: 'client/log',
+    params: { level, args: args.map(safe) },
+  })
 }
 
 function safe(v: unknown): unknown {
