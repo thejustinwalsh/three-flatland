@@ -1,0 +1,42 @@
+{
+  "name": "@three-flatland/bridge",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Typed postMessage RPC between VSCode extension host and webview",
+  "type": "module",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    },
+    "./host": {
+      "source": "./src/host.ts",
+      "import": {
+        "types": "./dist/host.d.ts",
+        "default": "./dist/host.js"
+      }
+    },
+    "./client": {
+      "source": "./src/client.ts",
+      "import": {
+        "types": "./dist/client.d.ts",
+        "default": "./dist/client.js"
+      }
+    }
+  },
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  }
+}
