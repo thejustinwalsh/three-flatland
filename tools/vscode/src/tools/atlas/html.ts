@@ -39,26 +39,16 @@ export async function composeAtlasHtml({
   const base = webview.asWebviewUri(webviewDir).toString().replace(/\/?$/, '/')
   log?.(`base URI: ${base}`)
 
-  // Rewrite HTML asset URLs to absolute webview-cdn URIs.
+  // Substitute the %FL_BASE% token that the fl-tokenize-asset-base Vite
+  // plugin injected in place of every asset URL's leading ./ or /. After
+  // this runs every <script src> and <link href> points at the full
+  // vscode-cdn URI.
   //
-  // VSCode webview iframes load from vscode-webview://HASH/ (root). Any
-  // relative or root-absolute URL in the HTML resolves against that origin,
-  // which does NOT serve our bundle — only the cdn URI returned by
-  // webview.asWebviewUri() does. So every asset URL must be rewritten to
-  // the full cdn form here.
-  //
-  // We match both `"./foo"` (Vite with base: './') and `"/foo"` (Vite with
-  // base: '/'), capturing just the path suffix.
-  //
-  // CSS-internal url(...) refs are NOT rewritten here — they're inside the
-  // emitted stylesheet. But since the stylesheet itself is fetched via a
-  // cdn URI (thanks to the <link href> rewrite below), any relative url()
-  // inside the CSS correctly resolves against that cdn URI. That's why we
-  // keep Vite's base: './' — CSS refs emit as `url(./foo.ttf)`.
-  html = html.replace(
-    /(src|href)="(?:\.\/|\/)([^"]+)"/g,
-    (_m, attr, path) => `${attr}="${base}${path}"`
-  )
+  // CSS-internal url(...) refs are untouched — they stay relative, which
+  // is correct: the stylesheet itself is fetched via the cdn URI (thanks
+  // to the tokenized <link href> above), so url(./foo.ttf) inside the CSS
+  // resolves against that same cdn URI.
+  html = html.split('%FL_BASE%').join(base)
 
   // Strip crossorigin — it's a no-op for vscode-webview:// and sometimes
   // triggers odd resource-loading paths.
