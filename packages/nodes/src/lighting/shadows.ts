@@ -257,11 +257,11 @@ export function shadowSoft2D(
  * @param options.startOffset
  *   World-space distance to push the ray origin forward when the
  *   fragment itself sits inside a caster silhouette (signed SDF < 0).
- *   Sized to clear typical caster radii — too small and the first
- *   sample still reads negative and self-shadows; too large and the
- *   trace misses near-caster occluders. Default 1.5 world units works
- *   for sprite-scale casters; scenes with substantially larger casters
- *   (e.g. big boss sprites) should pass a larger value.
+ *   Must clear the caster's radius — too small and the first samples
+ *   land inside the caster (self-shadow) or in the Voronoi-seam zone
+ *   near the silhouette (shadow-edge ringing). Default 40 world units
+ *   matches the old unsigned-SDF escape calibration; scenes with
+ *   smaller/larger casters should tune accordingly.
  * @param options.fragmentCastsShadow
  *   When provided, gates the `nearCaster` escape path: the ray only
  *   skips past an occluder it's sitting on if THIS fragment is itself
@@ -306,7 +306,7 @@ export function shadowSDF2D(
   const startOffsetNode =
     typeof options.startOffset === 'number'
       ? float(options.startOffset)
-      : (options.startOffset ?? float(1.5))
+      : (options.startOffset ?? float(40))
   const fragmentCastsShadow = options.fragmentCastsShadow
   const maxShadowDist =
     typeof options.maxShadowDistance === 'number'
