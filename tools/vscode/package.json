@@ -65,6 +65,7 @@
     "@vscode-elements/elements": "^2.5.1",
     "@vscode-elements/react-elements": "^2.4.0",
     "@vscode/codicons": "^0.0.44",
+    "ajv": "^8.17.1",
     "react": "catalog:",
     "react-dom": "catalog:",
     "three": "catalog:",

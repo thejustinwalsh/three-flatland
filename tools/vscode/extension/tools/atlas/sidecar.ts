@@ -1,4 +1,6 @@
 import * as vscode from 'vscode'
+import { randomUUID } from 'node:crypto'
+import { assertValidAtlas } from './validateAtlas'
 
 /** Rect in image-pixel coords, as sent from the webview. */
 export type RectInput = {
@@ -92,10 +94,69 @@ export async function writeAtlasSidecar(
   imageUri: vscode.Uri,
   json: AtlasJson
 ): Promise<vscode.Uri> {
+  // Validate before writing so a schema-invalid blob never hits disk.
+  // We control the build path so this should never throw in practice,
+  // but it's cheap insurance if the shape ever drifts.
+  assertValidAtlas(json)
   const uri = sidecarUriForImage(imageUri)
   const text = JSON.stringify(json, null, 2) + '\n'
   await vscode.workspace.fs.writeFile(uri, Buffer.from(text, 'utf8'))
   return uri
+}
+
+/**
+ * Try to read the sidecar for the given image. Returns `null` if no
+ * sidecar exists yet (fresh atlas). Throws if the file exists but the
+ * contents are malformed or fail schema validation — caller decides
+ * whether to surface the error or fall back to empty.
+ */
+export type LoadedAtlas = {
+  json: AtlasJson
+  rects: RectInput[]
+}
+
+export async function readAtlasSidecar(imageUri: vscode.Uri): Promise<LoadedAtlas | null> {
+  const uri = sidecarUriForImage(imageUri)
+  let bytes: Uint8Array
+  try {
+    bytes = await vscode.workspace.fs.readFile(uri)
+  } catch (err) {
+    if (err instanceof vscode.FileSystemError && err.code === 'FileNotFound') {
+      return null
+    }
+    throw err
+  }
+  const text = new TextDecoder('utf-8').decode(bytes)
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(text)
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    throw new Error(`Atlas sidecar is not valid JSON: ${msg}`)
+  }
+  assertValidAtlas(parsed)
+  return { json: parsed, rects: atlasToRects(parsed) }
+}
+
+/**
+ * Project a validated AtlasJson back into the webview's RectInput[] model.
+ * Frame keys become `name`; ids are freshly generated (sidecar has no
+ * durable id concept). Future phases may preserve extra per-frame fields
+ * we currently drop (pivot, rotated, trimmed, spriteSourceSize).
+ */
+export function atlasToRects(json: AtlasJson): RectInput[] {
+  const out: RectInput[] = []
+  for (const [name, frame] of Object.entries(json.frames)) {
+    out.push({
+      id: randomUUID(),
+      x: frame.frame.x,
+      y: frame.frame.y,
+      w: frame.frame.w,
+      h: frame.frame.h,
+      name,
+    })
+  }
+  return out
 }
 
 function uniqueKey(candidate: string, used: Set<string>): string {
