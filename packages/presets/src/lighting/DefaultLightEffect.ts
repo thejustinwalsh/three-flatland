@@ -155,9 +155,12 @@ export const DefaultLightEffect = createLightEffect({
             sharpAtten
           )
 
-          // Spot light cone
+          // Spot light cone. `lightDir` is already normalized at the
+          // JS layer (Light2D `_direction` is normalized on every set,
+          // and RGBA32F upload preserves the unit-length invariant),
+          // so we skip a redundant per-fragment per-light normalize.
           const toSurfaceNorm = vec2(surfacePos).sub(lightPos).normalize()
-          const spotCos = toSurfaceNorm.dot(lightDir.normalize())
+          const spotCos = toSurfaceNorm.dot(lightDir)
           const innerCos = lightAngle.cos()
           const outerCos = lightAngle.add(lightPenumbra).cos()
           const coneAtten = spotCos.sub(outerCos).div(innerCos.sub(outerCos)).clamp(0, 1)
