@@ -40,7 +40,6 @@ export class AtlasCustomEditorProvider implements vscode.CustomReadonlyEditorPro
       serverUrl: process.env.VITE_DEV_SERVER_URL,
       webview,
       context: this.context,
-      inputName: 'atlas',
       injectCode: `<script>window.__FL_ATLAS__ = ${JSON.stringify({
         imageUri,
         fileName,
