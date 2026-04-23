@@ -57,7 +57,10 @@ export async function composeAtlasHtml({
     `media-src ${cspSource} blob:`,
     `font-src ${cspSource}`,
     `style-src ${cspSource} 'unsafe-inline'`,
-    `script-src 'nonce-${nonce}' ${cspSource} 'wasm-unsafe-eval'`,
+    // 'unsafe-eval' is required by three.js and @react-three/fiber internals
+    // (Function-constructor shader string compilation, some uniform paths).
+    // 'wasm-unsafe-eval' is required by WebGPU shader/module compilation.
+    `script-src 'nonce-${nonce}' ${cspSource} 'wasm-unsafe-eval' 'unsafe-eval'`,
     `connect-src ${cspSource} blob: data:`,
     `worker-src ${cspSource} blob:`,
   ].join('; ')
