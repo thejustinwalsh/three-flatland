@@ -233,16 +233,17 @@ export function App() {
         return
       }
       if (mod && (e.key === 'a' || e.key === 'A')) {
-        if (rects.length === 0) return
-        selectAll()
+        // Always intercept — we never want the browser's 'select all text'
+        // default in this webview, even when there are no rects yet.
         e.preventDefault()
+        if (rects.length > 0) selectAll()
         return
       }
-      // Cmd/Ctrl+S — Save. Handled under the modifier branch before the
-      // tool-switch branch so it doesn't collide with the 's' shortcut.
+      // Cmd/Ctrl+S — Save. preventDefault first so the browser never sees
+      // it (VSCode would otherwise offer its own Save dialog for the panel).
       if (mod && (e.key === 's' || e.key === 'S')) {
-        void handleSave()
         e.preventDefault()
+        void handleSave()
         return
       }
 
@@ -258,8 +259,11 @@ export function App() {
         }
       }
     }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
+    // Use capture phase so we preventDefault on Cmd+A / Cmd+S before any
+    // bubble-phase handler (including the browser's implicit default) can
+    // fire. Without capture, some hosts still process the default action.
+    window.addEventListener('keydown', onKey, { capture: true })
+    return () => window.removeEventListener('keydown', onKey, { capture: true })
   }, [selectedIds, rects, renameMode, clearSelection, deleteSelected, selectAll, startRename, handleSave])
 
   return (
