@@ -14,7 +14,12 @@ import {
 } from 'three/webgpu'
 import { uniform, uv, vec2, vec4, float, Fn, texture as sampleTexture } from 'three/tsl'
 import type Node from 'three/src/nodes/core/Node.js'
-import { registerDebugTexture, unregisterDebugTexture } from '../debug/debug-sink'
+import {
+  beginDebugPass,
+  endDebugPass,
+  registerDebugTexture,
+  unregisterDebugTexture,
+} from '../debug/debug-sink'
 
 /**
  * Jump Flood Algorithm (JFA) SDF Generator.
@@ -186,11 +191,18 @@ export class SDFGenerator {
       const passes = Math.ceil(Math.log2(maxDim))
 
       // Seed pass — occlusion alpha → seed UV into ping buffer.
+      beginDebugPass('sdf.seed', renderer)
       _quadMesh.material = this._seedMaterial!
       renderer.setRenderTarget(this._pingRT)
       _quadMesh.render(renderer)
+      endDebugPass(renderer)
 
-      // JFA ping-pong with halving jump sizes.
+      // JFA ping-pong with halving jump sizes. Grouped under one
+      // `sdf.jfa` span so the panel collapses the ~11 iterations into
+      // a single totaling row; still fine-grained numbers are
+      // recoverable by expanding. Labels are stable strings so no
+      // per-iteration label allocation.
+      beginDebugPass('sdf.jfa', renderer)
       let readPing = true
       for (let i = 0; i < passes; i++) {
         const jumpSize = Math.pow(2, passes - 1 - i) / maxDim
@@ -206,11 +218,14 @@ export class SDFGenerator {
         _quadMesh.render(renderer)
         readPing = !readPing
       }
+      endDebugPass(renderer)
 
       // Final distance pass — converged seed UV → world-distance SDF.
+      beginDebugPass('sdf.final', renderer)
       _quadMesh.material = readPing ? this._finalMaterialA : this._finalMaterialB
       renderer.setRenderTarget(this._sdfRT)
       _quadMesh.render(renderer)
+      endDebugPass(renderer)
 
       // Separable 5-tap binomial blur — H: sdfRT → sdfBlurRT,
       // V: sdfBlurRT → sdfRT. Smooths the per-texel distance values so
@@ -220,13 +235,17 @@ export class SDFGenerator {
       // ±1 and ±2 full-texel offsets, so NearestFilter source sampling
       // still returns exact texel values; the blur smooths the stored
       // distances without needing linear interpolation.
+      beginDebugPass('sdf.blurH', renderer)
       _quadMesh.material = this._blurHMaterial
       renderer.setRenderTarget(this._sdfBlurRT)
       _quadMesh.render(renderer)
+      endDebugPass(renderer)
 
+      beginDebugPass('sdf.blurV', renderer)
       _quadMesh.material = this._blurVMaterial
       renderer.setRenderTarget(this._sdfRT)
       _quadMesh.render(renderer)
+      endDebugPass(renderer)
     } finally {
       RendererUtils.restoreRendererState(renderer, _rendererState)
     }

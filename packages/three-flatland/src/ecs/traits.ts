@@ -155,6 +155,22 @@ export const BatchRegistry = trait(() => ({
   autoInvalidateTransforms: true as boolean,
   /** The SystemSchedule for this world. */
   schedule: null as SystemSchedule | null,
+  /**
+   * Monotonic counter of how many times `schedule.run` has executed
+   * for this registry. Entry points (`SpriteGroup.update`,
+   * `SpriteGroup.updateMatrixWorld`, `Flatland.render`) consult the
+   * counter against their own last-seen value so that multiple
+   * triggers inside one logical frame collapse to a single run.
+   *
+   * `Flatland.render` bumps a private "this frame runs allowed"
+   * counter before running the schedule the first time; the second
+   * and third entry points see that a run has already happened and
+   * skip. Without this, `shadowPipelineSystem` fires three times per
+   * frame (direct schedule.run + spriteGroup.update + scene
+   * updateMatrixWorld) and the whole shadow pipeline gets paid for
+   * 3× the cost.
+   */
+  scheduleRuns: 0,
 }))
 
 // ============================================

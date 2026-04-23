@@ -4,6 +4,7 @@
  * reclaim left-rail real estate — the rail is gone, the content area
  * fills the full viewport.
  */
+import { BatchesPanel } from './panels/batches.js'
 import { BuffersPanel } from './panels/buffers.js'
 import { EnvPopover } from './panels/env.js'
 import { HeaderStats } from './panels/header-stats.js'
@@ -27,6 +28,7 @@ export function App() {
           <div class="dashboard-split">
             <div class="dashboard-split-col">
               <BuffersPanel />
+              <BatchesPanel />
               <RegistryPanel />
             </div>
             <div class="dashboard-split-col">

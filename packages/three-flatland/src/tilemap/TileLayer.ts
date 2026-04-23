@@ -8,6 +8,13 @@ import {
   Vector3,
 } from 'three'
 import { Sprite2DMaterial } from '../materials/Sprite2DMaterial'
+import { DEVTOOLS_BUNDLED } from '../debug-protocol'
+import {
+  _registerMeshBatchSource,
+  _unregisterMeshBatchSource,
+  type MeshBatchEntry,
+  type MeshBatchSourceFn,
+} from '../debug/debug-sink'
 import {
   LIT_FLAG_MASK,
   RECEIVE_SHADOWS_MASK,
@@ -70,6 +77,14 @@ export class TileLayer extends Group {
 
   /** Chunks keyed by "cx,cy" */
   private chunks: Map<string, ChunkData> = new Map()
+
+  /**
+   * Bound mesh-source callback registered with the devtools sink so
+   * each chunk's `InstancedMesh` shows up in the batch inspector.
+   * Retained on the instance so `dispose()` can pass the same
+   * reference to `_unregisterMeshBatchSource`.
+   */
+  private _batchMeshSource: MeshBatchSourceFn | null = null
 
   /** Total instance count across all chunks */
   private _totalInstanceCount: number = 0
@@ -225,10 +240,52 @@ export class TileLayer extends Group {
     })
     this.material.depthWrite = true
     this.material.alphaTest = 0.5
+    // Tag the material so devtools / scene walkers can distinguish
+    // tile-layer materials from regular sprite materials at a glance.
+    // `type` stays `'Sprite2DMaterial'` (they share a class); `name`
+    // carries the layer-specific hint.
+    this.material.name = `tilemap:${data.name}`
+
+    // Register chunk meshes with the devtools sink so the batch
+    // inspector sees tile-chunk draws alongside ECS sprite batches.
+    // No-op in prod (tree-shaken by DEVTOOLS_BUNDLED).
+    if (DEVTOOLS_BUNDLED) {
+      this._batchMeshSource = () => this._iterChunkMeshes()
+      _registerMeshBatchSource(this._batchMeshSource)
+    }
 
     // Build chunked instanced meshes from tile data
     this.buildInstances()
   }
+
+  /**
+   * Lazy iterator over the current chunk meshes, tagged as
+   * `kind: 'tilechunk'` with `label: 'chunk(x,y)'` so the batch
+   * inspector can group tile chunks distinctly from sprite batches
+   * and identify which chunk in the grid each draw corresponds to.
+   *
+   * Per-frame allocation cost: one small `{ mesh, kind, label }`
+   * object per chunk. Chunk counts are tiny (1 per frustum-sized
+   * region), so this is well below measurement noise — but the scratch
+   * object is reused across frames via `_chunkEntryScratch` below.
+   */
+  private *_iterChunkMeshes(): Iterable<MeshBatchEntry> {
+    let i = 0
+    for (const [chunkKey, chunk] of this.chunks) {
+      let entry = this._chunkEntryScratch[i]
+      if (entry === undefined) {
+        entry = { mesh: chunk.mesh, kind: 'tilechunk', label: '' }
+        this._chunkEntryScratch[i] = entry
+      }
+      entry.mesh = chunk.mesh
+      entry.kind = 'tilechunk'
+      entry.label = `chunk(${chunkKey})`
+      yield entry
+      i++
+    }
+  }
+  /** Reused `{ mesh, kind, label }` scratch — one slot per active chunk. */
+  private _chunkEntryScratch: MeshBatchEntry[] = []
 
   /**
    * Build chunked instanced meshes from tile data.
@@ -631,6 +688,10 @@ export class TileLayer extends Group {
    * Dispose of all resources.
    */
   dispose(): void {
+    if (DEVTOOLS_BUNDLED && this._batchMeshSource !== null) {
+      _unregisterMeshBatchSource(this._batchMeshSource)
+      this._batchMeshSource = null
+    }
     for (const chunk of this.chunks.values()) {
       chunk.mesh.geometry.dispose()
     }

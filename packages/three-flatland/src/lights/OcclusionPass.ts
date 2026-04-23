@@ -13,7 +13,12 @@ import {
 } from 'three'
 import { MeshBasicNodeMaterial } from 'three/webgpu'
 import type { WebGPURenderer } from 'three/webgpu'
-import { registerDebugTexture, unregisterDebugTexture } from '../debug/debug-sink'
+import {
+  beginDebugPass,
+  endDebugPass,
+  registerDebugTexture,
+  unregisterDebugTexture,
+} from '../debug/debug-sink'
 import {
   Fn,
   uv,
@@ -208,7 +213,9 @@ export class OcclusionPass {
       renderer.setRenderTarget(this._rt)
       renderer.setClearColor(this._clearColor.getHex(), this._clearAlpha)
       renderer.clear(true, false, false)
+      beginDebugPass('occluder', renderer)
       renderer.render(scene, camera)
+      endDebugPass(renderer)
     } finally {
       // Restore original materials in reverse order so the arrays can clear
       // via `length = 0` without per-element delete overhead.

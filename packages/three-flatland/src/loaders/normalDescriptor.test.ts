@@ -38,6 +38,33 @@ describe('tileToRegions', () => {
     expect(regions).toEqual([{ x: 0, y: 0, w: 16, h: 16 }])
   })
 
+  it('forwards tileBump / tileStrength / tileElevation on flat tiles', () => {
+    const regions = tileToRegions(cell, {
+      tileElevation: 0.25,
+      tileBump: 'luminance',
+      tileStrength: 1.5,
+    })
+    expect(regions).toHaveLength(1)
+    expect(regions[0]).toMatchObject({
+      x: 0,
+      y: 0,
+      w: 16,
+      h: 16,
+      elevation: 0.25,
+      bump: 'luminance',
+      strength: 1.5,
+    })
+    // No direction / pitch on a flat region — those only make sense
+    // on a tilted face.
+    expect(regions[0]).not.toHaveProperty('direction')
+    expect(regions[0]).not.toHaveProperty('pitch')
+  })
+
+  it('flat-tile bump forwards even without explicit tileDir', () => {
+    const regions = tileToRegions(cell, { tileBump: 'red', tileStrength: 0.5 })
+    expect(regions[0]).toMatchObject({ bump: 'red', strength: 0.5 })
+  })
+
   it('accepts tileDirection as an alias of tileDir', () => {
     const a = tileToRegions(cell, { tileDir: 'south', tileCap: 4 })
     const b = tileToRegions(cell, { tileDirection: 'south', tileCap: 4 })

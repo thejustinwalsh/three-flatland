@@ -35,6 +35,8 @@ export interface RegistryData {
   autoInvalidateTransforms: boolean
   /** The SystemSchedule for this world. */
   schedule: SystemSchedule | null
+  /** Monotonic counter of completed `schedule.run` invocations — see trait doc. */
+  scheduleRuns: number
 }
 
 /**

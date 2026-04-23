@@ -1,5 +1,6 @@
 import type { WebGPURenderer } from 'three/webgpu'
 import type {
+  BatchesPayload,
   BuffersPayload,
   DataPayload,
   DebugFeature,
@@ -11,12 +12,20 @@ import type {
   StatsPayload,
 } from '../debug-protocol'
 import { DISCOVERY_CHANNEL, IDLE_PING_MS, STATS_BATCH_MS, providerChannelName, stampMessage } from '../debug-protocol'
+import type { RegistryData } from '../ecs/batchUtils'
 import { SubscriberRegistry } from './SubscriberRegistry'
 import { StatsCollector } from './StatsCollector'
 import { EnvCollector } from './EnvCollector'
 import { DebugRegistry } from './DebugRegistry'
 import { DebugTextureRegistry } from './DebugTextureRegistry'
-import { _setActiveRegistry, _setActiveTextureRegistry } from './debug-sink'
+import { BatchCollector } from './BatchCollector'
+import {
+  _getBatchSources,
+  _getMeshBatchSources,
+  _setActiveBatchCollector,
+  _setActiveRegistry,
+  _setActiveTextureRegistry,
+} from './debug-sink'
 import { PERF_TRACK, perfMeasure } from './perf-track'
 import type { BufferCursor } from './bus-pool'
 import type { BusTransport } from './bus-transport'
@@ -125,6 +134,7 @@ export class DevtoolsProvider {
   private _env = new EnvCollector()
   private _registry = new DebugRegistry()
   private _textures = new DebugTextureRegistry()
+  private _batches = new BatchCollector()
 
   /** Scratch `data` message. Reused across flushes; features reassigned each tick. */
   private _dataScratch: DebugMessage
@@ -138,6 +148,8 @@ export class DevtoolsProvider {
   private _registryScratch: RegistryPayload = {}
   /** Scratch buffers payload reused across flushes. */
   private _buffersScratch: BuffersPayload = {}
+  /** Scratch batches payload reused across flushes. */
+  private _batchesScratch: BatchesPayload = { frame: 0, passCount: 0, batchCount: 0 }
 
   /** Wall-clock time of the last outbound broadcast. */
   private _lastBroadcastAt = Date.now()
@@ -221,6 +233,7 @@ export class DevtoolsProvider {
     // publish arrays / textures without a direct dependency on this class.
     _setActiveRegistry(this._registry)
     _setActiveTextureRegistry(this._textures)
+    _setActiveBatchCollector(this._batches)
 
     // Announce ourselves in case a client is already listening (the
     // client will also `provider:query` on its own start, so discovery
@@ -239,6 +252,15 @@ export class DevtoolsProvider {
     if (!this._active) return
     this._latestRenderer = renderer
     this._stats.beginFrame(now, renderer as unknown as Parameters<StatsCollector['beginFrame']>[1])
+    // Reset the per-frame pass / batch pools. Cheap — just resets
+    // counters. When no consumer is subscribed `beginPass`/`endPass`
+    // short-circuit so the pools never grow.
+    this._batches.beginFrame()
+    this._batches.setCapturing(this._subs.isActive('batches'))
+    // Open the implicit "frame" root pass so hosts that don't call
+    // `beginDebugPass` still get one totals row with the full frame's
+    // renderer.info delta.
+    this._batches.frameStart(renderer)
   }
 
   /**
@@ -246,10 +268,30 @@ export class DevtoolsProvider {
    * GPU-timestamp query pool. Does NOT broadcast — batches are shipped
    * on the `_flush` interval, not per-frame.
    */
+  /**
+   * Snapshot the current `BatchRegistry` into the batches collector.
+   * Called by the host engine (Flatland) once per frame after all
+   * internal passes complete and the batch set is stable. No-op when
+   * no consumer is subscribed to the `'batches'` feature.
+   */
+  captureBatches(registry: RegistryData): void {
+    if (!this._active) return
+    this._batches.captureBatches(registry)
+  }
+
   endFrame(renderer: WebGPURenderer): void {
     if (!this._active) return
     this._latestRenderer = renderer
     this._stats.endFrame(renderer as unknown as Parameters<StatsCollector['endFrame']>[0])
+    // Close the implicit "frame" root pass + pull the active-batches
+    // snapshot from every registered source. Both short-circuit when
+    // no consumer is subscribed to `'batches'`.
+    this._batches.frameEnd(renderer)
+    this._batches.captureAllSources(_getBatchSources(), _getMeshBatchSources())
+    // Atomic publish — swaps the build pool into the published slot
+    // so `drain` (and any flush landing between frames) reads a fully
+    // committed snapshot, never half-built scratch.
+    this._batches.commit()
     // Always drain the GPU-timestamp query pool when the renderer is
     // set up with `trackTimestamp: true`. No-op when the backend can't
     // do timestamps, so this is cheap when irrelevant.
@@ -297,6 +339,7 @@ export class DevtoolsProvider {
     delete features.env
     delete features.buffers
     delete features.registry
+    delete features.batches
 
     // Acquire a pool buffer up front; encoders write into it via the
     // cursor. Large tier covers the worst case (a buffer payload up to
@@ -323,6 +366,14 @@ export class DevtoolsProvider {
       delete envOut.canvas
       if (this._env.fillEnv(envOut, this._latestRenderer)) {
         features.env = envOut
+        anyFeature = true
+      }
+    }
+
+    if (active.has('batches')) {
+      const batchesOut = this._batchesScratch
+      if (this._batches.drain(batchesOut, this._stats.frame)) {
+        features.batches = batchesOut
         anyFeature = true
       }
     }
@@ -455,8 +506,10 @@ export class DevtoolsProvider {
     this._stats.dispose()
     this._registry.dispose()
     this._textures.dispose()
+    this._batches.dispose()
     _setActiveRegistry(null)
     _setActiveTextureRegistry(null)
+    _setActiveBatchCollector(null)
     this._subs.dispose()
     this._dataTransport?.dispose()
     this._dataTransport = null
@@ -519,6 +572,8 @@ export class DevtoolsProvider {
         this._env.resetDelta()
         this._registry.resetDelta()
         this._textures.resetDelta()
+        this._batches.resetDelta()
+        this._batches.setCapturing(this._subs.isActive('batches'))
         this._sendSubscribeAck(msg.payload.id, msg.payload.features)
         break
       }

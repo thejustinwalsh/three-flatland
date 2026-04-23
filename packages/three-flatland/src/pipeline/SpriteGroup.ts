@@ -9,6 +9,12 @@ import {
   BatchMesh,
 } from '../ecs/traits'
 import type { RegistryData } from '../ecs/batchUtils'
+import { DEVTOOLS_BUNDLED } from '../debug-protocol'
+import {
+  _registerBatchSource,
+  _unregisterBatchSource,
+  type BatchSourceFn,
+} from '../debug/debug-sink'
 import { SystemSchedule } from '../ecs/SystemSchedule'
 import {
   deferredDestroySystem,
@@ -64,6 +70,21 @@ export class SpriteGroup extends Group implements WorldProvider {
    * Entity holding the BatchRegistry singleton trait.
    */
   private _registryEntity: ReturnType<World['spawn']> | null = null
+
+  /** Bound source getter registered with the devtools sink. */
+  private _batchSource: BatchSourceFn | null = null
+
+  /**
+   * Last observed `registry.scheduleRuns` value at the time one of
+   * this SpriteGroup's own entry points (`update` /
+   * `updateMatrixWorld`) invoked `schedule.run`. When the registry's
+   * counter has already advanced past this value — e.g. Flatland
+   * bumped it by running the schedule directly — the entry point
+   * treats the run as already satisfied for this frame and skips.
+   * Reset by host frame bookkeeping (Flatland does this by
+   * incrementing `scheduleRuns` when it runs the schedule itself).
+   */
+  private _lastRunSeen = 0
 
   /**
    * Maximum sprites per batch.
@@ -131,6 +152,15 @@ export class SpriteGroup extends Group implements WorldProvider {
         .add(lateAssignSystem)
         .add(flushDirtyRangesSystem)
 
+      // Register with the devtools batch-source sink so the batches
+      // feature can snapshot our active batches each frame. No-op in
+      // prod (tree-shaken via DEVTOOLS_BUNDLED). The getter closure
+      // stays allocation-free past construction.
+      if (DEVTOOLS_BUNDLED) {
+        this._batchSource = () => this._getRegistry()
+        _registerBatchSource(this._batchSource)
+      }
+
       // Spawn the batch registry singleton with all system context
       this._registryEntity = this._world.spawn(
         BatchRegistry({
@@ -151,6 +181,7 @@ export class SpriteGroup extends Group implements WorldProvider {
           parentRemove: Group.prototype.remove.bind(this),
           autoInvalidateTransforms: this.autoInvalidateTransforms,
           schedule,
+          scheduleRuns: 0,
         })
       )
     }
@@ -270,15 +301,25 @@ export class SpriteGroup extends Group implements WorldProvider {
     if (this._world && !this._inSystems) {
       const registry = this._getRegistry()
       if (registry?.schedule) {
-        // Keep autoInvalidateTransforms in sync
-        registry.autoInvalidateTransforms = this.autoInvalidateTransforms
-        // nextFrame + run — idempotent if update() already ran this frame
-        registry.schedule.nextFrame()
-        this._inSystems = true
-        try {
-          registry.schedule.run(this._world)
-        } finally {
-          this._inSystems = false
+        // Skip if the schedule has already run this frame (e.g.
+        // Flatland owns the frame and already called schedule.run
+        // directly). Without this check `scene.updateMatrixWorld(true)`
+        // from inside Flatland.render would trigger a second run in
+        // the same frame, which is how `shadowPipelineSystem` was
+        // firing N times per frame.
+        if (registry.scheduleRuns !== this._lastRunSeen) {
+          this._lastRunSeen = registry.scheduleRuns
+        } else {
+          registry.autoInvalidateTransforms = this.autoInvalidateTransforms
+          registry.schedule.nextFrame()
+          this._inSystems = true
+          try {
+            registry.schedule.run(this._world)
+            registry.scheduleRuns++
+            this._lastRunSeen = registry.scheduleRuns
+          } finally {
+            this._inSystems = false
+          }
         }
       }
     }
@@ -295,11 +336,20 @@ export class SpriteGroup extends Group implements WorldProvider {
     if (!this._world) return
     const registry = this._getRegistry()
     if (registry?.schedule) {
-      // Keep autoInvalidateTransforms in sync
+      // Skip when the schedule has already run this frame (e.g. via
+      // Flatland.render's direct `schedule.run`). `update()` becoming
+      // a no-op under Flatland is intentional — the direct call above
+      // it already did the work. Standalone callers who haven't run
+      // the schedule yet still get a full run here.
+      if (registry.scheduleRuns !== this._lastRunSeen) {
+        this._lastRunSeen = registry.scheduleRuns
+        return
+      }
       registry.autoInvalidateTransforms = this.autoInvalidateTransforms
-      // Always advance + run — explicit call always means "new frame"
       registry.schedule.nextFrame()
       registry.schedule.run(this._world)
+      registry.scheduleRuns++
+      this._lastRunSeen = registry.scheduleRuns
     }
   }
 
@@ -451,6 +501,10 @@ export class SpriteGroup extends Group implements WorldProvider {
    */
   dispose(): void {
     this.clear()
+    if (DEVTOOLS_BUNDLED && this._batchSource !== null) {
+      _unregisterBatchSource(this._batchSource)
+      this._batchSource = null
+    }
     if (this._world) {
       this._world.destroy()
       this._world = null

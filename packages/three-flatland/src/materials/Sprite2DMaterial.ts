@@ -77,6 +77,16 @@ function getColorTransformId(fn: ColorTransformFn | undefined): number {
  */
 export class Sprite2DMaterial extends EffectMaterial {
   /**
+   * Canonical three.js class identifier — every built-in material
+   * overrides this (MeshBasicMaterial's `type` is `'MeshBasicMaterial'`,
+   * etc.). Devtools / inspectors that walk the scene graph read `.type`
+   * to categorise materials without `instanceof` checks. Subclasses
+   * (e.g. future `TileMapMaterial`) should override again.
+   */
+  override type: string = 'Sprite2DMaterial'
+
+
+  /**
    * Cache of shared material instances, keyed by configuration.
    * Used by `getShared()` so sprites with identical config reuse the same material.
    */
