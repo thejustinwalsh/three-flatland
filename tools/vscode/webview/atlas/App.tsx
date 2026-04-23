@@ -86,7 +86,25 @@ export function App() {
     | { kind: 'error'; message: string }
   >({ kind: 'idle' })
   const bridgeRef = useRef<ReturnType<typeof createClientBridge> | null>(null)
+  const rootRef = useRef<HTMLDivElement>(null)
   const editorBg = useCssVar('--vscode-editor-background', '#1e1e1e')
+
+  // VSCode webviews only dispatch modifier-key keydowns (Cmd+A, Cmd+S, …)
+  // to the DOM when something inside the webview has focus. Give the root
+  // div a tabindex, focus it on mount, and refocus on any pointerdown
+  // that isn't already inside an input/button so keyboard shortcuts keep
+  // working after toolbar clicks / selection updates.
+  useEffect(() => {
+    rootRef.current?.focus()
+  }, [])
+
+  const handleRootPointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    if (isEditableTarget(e.target)) return
+    if (!(e.target instanceof Element)) return
+    // Let toolbar buttons / custom elements keep their own focus semantics.
+    if (e.target.closest('vscode-toolbar-button, button, a, [tabindex]:not([tabindex="-1"])')) return
+    rootRef.current?.focus()
+  }, [])
 
   const indexById = useMemo(() => {
     const m = new Map<string, number>()
@@ -246,11 +264,15 @@ export function App() {
 
   return (
     <div
+      ref={rootRef}
+      tabIndex={-1}
+      onPointerDown={handleRootPointerDown}
       style={{
         height: '100vh',
         display: 'flex',
         flexDirection: 'column',
         minHeight: 0,
+        outline: 'none',
         background: 'var(--vscode-editor-background)',
         color: 'var(--vscode-foreground)',
         fontFamily: 'var(--vscode-font-family)',
