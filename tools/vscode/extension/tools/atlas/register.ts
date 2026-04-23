@@ -1,5 +1,5 @@
 import * as vscode from 'vscode'
-import { AtlasCustomEditorProvider } from './provider.js'
+import { AtlasCustomEditorProvider } from './provider'
 
 export function registerAtlasTool(context: vscode.ExtensionContext): void {
   // CustomEditor: handles `vscode.openWith(uri, 'threeFlatland.atlas')` and

@@ -9,18 +9,19 @@
         "--extensionDevelopmentPath=${workspaceFolder}/tools/vscode",
         "${workspaceFolder}"
       ],
-      "outFiles": ["${workspaceFolder}/tools/vscode/dist/**/*.js"],
+      "outFiles": ["${workspaceFolder}/tools/vscode/dist/extension/**/*.js"],
       "preLaunchTask": "FL: build"
     },
     {
-      "name": "Launch FL Tools Extension (no build)",
+      "name": "Launch FL Tools Extension (watch + HMR)",
       "type": "extensionHost",
       "request": "launch",
       "args": [
         "--extensionDevelopmentPath=${workspaceFolder}/tools/vscode",
         "${workspaceFolder}"
       ],
-      "outFiles": ["${workspaceFolder}/tools/vscode/dist/**/*.js"]
+      "outFiles": ["${workspaceFolder}/tools/vscode/dist/extension/**/*.js"],
+      "preLaunchTask": "FL: dev"
     }
   ]
 }

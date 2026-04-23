@@ -6,7 +6,7 @@
   "description": "Official three-flatland tools for editor hosts (VSCode, Cursor, Antigravity)",
   "publisher": "three-flatland",
   "type": "module",
-  "main": "./dist/extension.js",
+  "main": "./dist/extension/index.js",
   "engines": {
     "vscode": "^1.94.0"
   },
@@ -46,12 +46,8 @@
     }
   },
   "scripts": {
-    "build": "pnpm run build:webview && pnpm run build:host",
-    "build:host": "node esbuild.config.mjs",
-    "build:webview": "vite build",
-    "dev": "concurrently -k -n host,webview \"pnpm run dev:host\" \"pnpm run dev:webview\"",
-    "dev:host": "node esbuild.config.mjs --watch",
-    "dev:webview": "vite build --watch",
+    "build": "vite build",
+    "dev": "vite",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist",
     "package": "vsce package --no-dependencies"
@@ -71,14 +67,12 @@
     "three-flatland": "workspace:*"
   },
   "devDependencies": {
+    "@tomjs/vite-plugin-vscode": "^7.1.1",
     "@types/node": "^22.10.0",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
-    "@tomjs/vite-plugin-vscode": "^7.1.1",
     "@types/vscode": "^1.94.0",
     "@vitejs/plugin-react": "catalog:",
-    "concurrently": "^9.1.0",
-    "esbuild": "^0.25.0",
     "typescript": "catalog:",
     "vite": "catalog:"
   }
