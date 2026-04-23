@@ -2,11 +2,53 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { App } from './App'
 
-const root = document.getElementById('root')
-if (!root) throw new Error('Root element missing')
+// Forward uncaught errors + console.error to the extension host output
+// channel so "empty panel" situations are diagnosable without opening
+// Webview Developer Tools.
+const api = (globalThis as unknown as { acquireVsCodeApi?: () => { postMessage: (m: unknown) => void } }).acquireVsCodeApi
+const vscode = typeof api === 'function' ? api() : null
 
-createRoot(root).render(
-  <StrictMode>
-    <App />
-  </StrictMode>
-)
+function send(level: string, args: unknown[]) {
+  vscode?.postMessage({ kind: 'request', id: `log-${Math.random().toString(36).slice(2)}`, method: 'client/log', params: { level, args: args.map(safe) } })
+}
+
+function safe(v: unknown): unknown {
+  try {
+    if (v instanceof Error) return { message: v.message, stack: v.stack }
+    JSON.stringify(v)
+    return v
+  } catch {
+    return String(v)
+  }
+}
+
+window.addEventListener('error', (e) => send('error', [e.message, `${e.filename}:${e.lineno}:${e.colno}`]))
+window.addEventListener('unhandledrejection', (e) => send('unhandledrejection', [safe(e.reason)]))
+
+for (const level of ['log', 'info', 'warn', 'error'] as const) {
+  const orig = console[level]
+  console[level] = (...args: unknown[]) => {
+    send(level, args)
+    orig.apply(console, args as never[])
+  }
+}
+
+send('info', ['webview boot'])
+
+const root = document.getElementById('root')
+if (!root) {
+  send('error', ['Root element missing'])
+  throw new Error('Root element missing')
+}
+
+try {
+  createRoot(root).render(
+    <StrictMode>
+      <App />
+    </StrictMode>
+  )
+  send('info', ['react mounted'])
+} catch (err) {
+  send('error', ['React mount threw', safe(err)])
+  throw err
+}

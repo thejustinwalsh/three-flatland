@@ -10,7 +10,17 @@
         "${workspaceFolder}"
       ],
       "outFiles": ["${workspaceFolder}/tools/vscode/dist/**/*.js"],
-      "preLaunchTask": "FL: watch all"
+      "preLaunchTask": "FL: build"
+    },
+    {
+      "name": "Launch FL Tools Extension (no build)",
+      "type": "extensionHost",
+      "request": "launch",
+      "args": [
+        "--extensionDevelopmentPath=${workspaceFolder}/tools/vscode",
+        "${workspaceFolder}"
+      ],
+      "outFiles": ["${workspaceFolder}/tools/vscode/dist/**/*.js"]
     }
   ]
 }
