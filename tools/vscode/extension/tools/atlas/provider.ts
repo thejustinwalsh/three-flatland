@@ -1,21 +1,9 @@
 import * as vscode from 'vscode'
 import { createHostBridge } from '@three-flatland/bridge/host'
-import { getWebviewHtml } from 'virtual:vscode'
+import { composeToolHtml, setupDevReload } from '../../webview-host'
 import { log } from '../../log'
 
-function mimeFromName(name: string): string {
-  const ext = name.toLowerCase().split('.').pop() ?? ''
-  return (
-    {
-      png: 'image/png',
-      webp: 'image/webp',
-      avif: 'image/avif',
-      jpg: 'image/jpeg',
-      jpeg: 'image/jpeg',
-      gif: 'image/gif',
-    }[ext] ?? 'application/octet-stream'
-  )
-}
+const TOOL = 'atlas'
 
 type AtlasDocument = vscode.CustomDocument
 
@@ -29,7 +17,7 @@ export class AtlasCustomEditorProvider implements vscode.CustomReadonlyEditorPro
     return { uri, dispose: () => void 0 }
   }
 
-  resolveCustomEditor(document: AtlasDocument, panel: vscode.WebviewPanel): void {
+  async resolveCustomEditor(document: AtlasDocument, panel: vscode.WebviewPanel): Promise<void> {
     log(`resolveCustomEditor: ${document.uri.fsPath}`)
     const webview = panel.webview
 
@@ -41,23 +29,16 @@ export class AtlasCustomEditorProvider implements vscode.CustomReadonlyEditorPro
       ],
     }
 
-    const imageUri = webview.asWebviewUri(document.uri).toString()
     const fileName = document.uri.path.split('/').pop() ?? 'image.png'
+    const imageUri = webview.asWebviewUri(document.uri).toString()
 
     log(`imageUri = ${imageUri}`)
 
-    // getWebviewHtml resolves asset URIs via asWebviewUri(), injects a
-    // CSP meta + nonce, and in dev mode points at the Vite dev server for
-    // HMR. One call replaces the entire composeAtlasHtml / tokenize-and-
-    // rewrite dance.
-    panel.webview.html = getWebviewHtml({
-      serverUrl: process.env.VITE_DEV_SERVER_URL,
+    panel.webview.html = await composeToolHtml({
       webview,
-      context: this.context,
-      injectCode: `<script>window.__FL_ATLAS__ = ${JSON.stringify({
-        imageUri,
-        fileName,
-      })};</script>`,
+      tool: TOOL,
+      extensionUri: this.context.extensionUri,
+      injectCode: `<script>window.__FL_ATLAS__ = ${JSON.stringify({ imageUri, fileName })};</script>`,
     })
 
     const bridge = createHostBridge(webview)
@@ -68,14 +49,20 @@ export class AtlasCustomEditorProvider implements vscode.CustomReadonlyEditorPro
       return { ok: true }
     })
 
-    // Forward webview console.error/warn/etc. into the output channel.
     bridge.on<{ level: string; args: unknown[] }>('client/log', ({ level, args }) => {
       log(`[webview:${level}]`, ...args)
       return { ok: true }
     })
 
+    // PWA-style live reload. See extension/webview-host.ts.
+    const disposeReload = setupDevReload(this.context.extensionUri, TOOL, () => {
+      log('dev/reload → nudging webview')
+      bridge.emit('dev/reload', { tool: TOOL })
+    })
+
     panel.onDidDispose(() => {
       log(`panel disposed: ${document.uri.fsPath}`)
+      disposeReload.dispose()
       bridge.dispose()
     })
   }
