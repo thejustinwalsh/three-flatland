@@ -1,13 +1,6 @@
 import { useEffect, useState } from 'react'
 import { createClientBridge } from '@three-flatland/bridge/client'
-import {
-  Button,
-  Panel,
-  Toolbar,
-  ToolbarButton,
-  Divider,
-  useCssVar,
-} from '@three-flatland/design-system'
+import { Panel, Toolbar, ToolbarButton, Divider, useCssVar } from '@three-flatland/design-system'
 import { SpritePreview } from '@three-flatland/preview'
 
 type InitPayload = { imageUri: string; fileName: string }
@@ -18,9 +11,8 @@ declare global {
   }
 }
 
-// One-shot boot-time dump of VSCode theme tokens we depend on.
-// Shows up in the FL Tools output channel so we can confirm the webview
-// is actually receiving the active theme's --vscode-* values.
+// One-shot boot-time dump of VSCode theme tokens we depend on. Surfaces in
+// the FL Tools output channel so theme coverage is diagnosable.
 function dumpThemeTokens() {
   const styles = getComputedStyle(document.body)
   const keys = [
@@ -72,15 +64,22 @@ export function App() {
       }}
     >
       <Toolbar>
-        <strong style={{ fontWeight: 600, padding: '0 6px' }}>FL Sprite Atlas</strong>
+        <ToolbarButton icon="symbol-ruler" title="Grid Slice" disabled />
+        <ToolbarButton icon="wand" title="Auto Detect Sprites" disabled />
         <Divider />
-        <span style={{ color: 'var(--vscode-descriptionForeground)', padding: '0 6px' }}>
-          {payload?.fileName ?? 'no file'}
-        </span>
+        <ToolbarButton icon="add" title="New Rect" disabled />
+        <ToolbarButton icon="selection" title="Select" disabled />
+        <ToolbarButton icon="move" title="Move" disabled />
+        <Divider />
+        <ToolbarButton icon="symbol-array" title="Frames" disabled />
+        <ToolbarButton icon="run-all" title="Animations" disabled />
         <div style={{ flex: 1 }} />
-        <ToolbarButton disabled label="Grid Slice" />
-        <ToolbarButton disabled label="Auto Detect" />
-        <Button disabled>Save</Button>
+        <ToolbarButton icon="zoom-in" title="Zoom In" disabled />
+        <ToolbarButton icon="zoom-out" title="Zoom Out" disabled />
+        <ToolbarButton icon="screen-full" title="Fit" disabled />
+        <Divider />
+        <ToolbarButton icon="refresh" title="Reload" disabled />
+        <ToolbarButton icon="save" title="Save" disabled />
       </Toolbar>
 
       <div
