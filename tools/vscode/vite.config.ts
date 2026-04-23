@@ -1,46 +1,61 @@
-import { defineConfig } from 'vite'
+import { defineConfig, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
-import vscode from '@tomjs/vite-plugin-vscode'
+import { resolve } from 'node:path'
+import { readdirSync, statSync } from 'node:fs'
 
-// Plugin convention (from the react example):
-//   index.html at package root, webview src in ./src, extension in ./extension.
-// No `root` override, no multi-input. The plugin handles the rest — getWebviewHtml
-// returns a dev-iframe shell in dev mode and an inlined prod HTML in build mode.
+// Multi-tool webview bundle. Each tool lives at webview/<tool>/index.html
+// and gets its own rollup input entry auto-discovered. Adding a new tool is
+// just dropping a new `webview/<tool>/` folder with index.html + main.tsx —
+// no config change required.
+const toolsDir = resolve(__dirname, 'webview')
+const inputs = Object.fromEntries(
+  readdirSync(toolsDir)
+    .filter((name) => {
+      const p = resolve(toolsDir, name)
+      try {
+        return statSync(p).isDirectory() && statSync(resolve(p, 'index.html')).isFile()
+      } catch {
+        return false
+      }
+    })
+    .map((tool) => [tool, resolve(toolsDir, tool, 'index.html')])
+)
+
+/**
+ * Replaces the leading `./` (or `/`) on every asset URL Vite emits with a
+ * token the extension host substitutes at runtime with the real
+ * vscode-webview:// cdn URI for that panel. CSS `url()` refs inside the
+ * emitted stylesheet stay relative (`./codicon.ttf`) and resolve correctly
+ * against the stylesheet's own cdn URI.
+ */
+function tokenizeAssetBase(token = '%FL_BASE%'): Plugin {
+  return {
+    name: 'fl-tokenize-asset-base',
+    enforce: 'post',
+    transformIndexHtml: {
+      order: 'post',
+      handler(html) {
+        return html.replace(
+          /((?:src|href))="(?:\.\/|\/)(?=[^/"])/g,
+          (_m, attr) => `${attr}="${token}`
+        )
+      },
+    },
+  }
+}
+
 export default defineConfig({
-  plugins: [
-    react(),
-    vscode({
-      extension: {
-        entry: 'extension/index.ts',
-      },
-      // The plugin's default CSP is too tight: default-src 'none' + only
-      // script-src + style-src. We need img/font/media/worker/connect too
-      // for image blobs, codicon font, AudioContext/WebGPU workers, and
-      // the HMR websocket in dev.
-      webview: {
-        csp:
-          '<meta http-equiv="Content-Security-Policy" content="' +
-          [
-            "default-src 'none'",
-            "img-src {{cspSource}} https: data: blob:",
-            "media-src {{cspSource}} blob:",
-            "font-src {{cspSource}}",
-            "style-src {{cspSource}} 'unsafe-inline'",
-            "script-src {{cspSource}} 'nonce-{{nonce}}' 'unsafe-eval' 'wasm-unsafe-eval'",
-            "connect-src {{cspSource}} blob: data: ws: wss: http: https:",
-            "worker-src {{cspSource}} blob:",
-            "frame-src {{cspSource}} blob: http: https:",
-          ].join('; ') +
-          '">',
-      },
-    }),
-  ],
-  // Root pnpm dev already serves docs + examples on 5173; pin tool webviews to
-  // 5200 and fail loudly if taken. `host: 'localhost'` — not 127.0.0.1 — so the
-  // webview sandbox treats the iframe origin as the plugin's hardcoded literal.
-  server: {
-    port: 5200,
-    strictPort: true,
-    host: 'localhost',
+  plugins: [react(), tokenizeAssetBase()],
+  root: resolve(__dirname, 'webview'),
+  base: './',
+  build: {
+    outDir: resolve(__dirname, 'dist/webview'),
+    emptyOutDir: true,
+    sourcemap: true,
+    target: 'esnext',
+    assetsDir: 'assets',
+    rollupOptions: {
+      input: inputs,
+    },
   },
 })

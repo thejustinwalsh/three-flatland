@@ -6,7 +6,7 @@
       "detail": "One-shot extension + webview build. Used by 'FL Tools (build)' launch.",
       "type": "shell",
       "command": "pnpm",
-      "args": ["exec", "vite", "build"],
+      "args": ["exec", "pnpm", "run", "build"],
       "options": { "cwd": "${workspaceFolder}/tools/vscode" },
       "group": "build",
       "problemMatcher": [],
@@ -14,21 +14,21 @@
     },
     {
       "label": "FL: dev",
-      "detail": "Vite dev server + tsdown watch. Runs in the background; used by 'FL Tools (dev)' launch. Webview edits HMR; extension edits need Cmd+R on the Extension Development Host. Stopping this task kills the Vite server cleanly.",
+      "detail": "Watch host (esbuild) + webview (vite build --watch). On webview change the extension host fs-watches dist/webview and nudges open panels to reload (PWA-style). On extension code change, Cmd+R the Extension Development Host to pick up.",
       "type": "shell",
       "command": "pnpm",
-      "args": ["exec", "vite"],
+      "args": ["exec", "pnpm", "run", "dev"],
       "options": { "cwd": "${workspaceFolder}/tools/vscode" },
       "isBackground": true,
       "problemMatcher": {
-        "owner": "fl-vite",
+        "owner": "fl-dev",
         "pattern": [
           { "regexp": "^.*$", "file": 1, "location": 2, "message": 3 }
         ],
         "background": {
           "activeOnStart": true,
-          "beginsPattern": "^.*\\[tomjs:vscode\\] extension build start.*$",
-          "endsPattern": "^.*\\[tomjs:vscode\\] extension build success.*$"
+          "beginsPattern": "^.*\\[host\\].*$",
+          "endsPattern": "^.*watching extension host.*$"
         }
       },
       "presentation": { "panel": "dedicated", "reveal": "always" }

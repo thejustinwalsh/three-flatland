@@ -1,28 +1,19 @@
 import { StrictMode, Suspense } from 'react'
 import { createRoot } from 'react-dom/client'
-import { getVSCodeApi } from '@three-flatland/bridge/client'
-// Silence the "custom element already registered" console-warn deluge that
-// triggers when Vite HMR re-runs this module. Documented by vscode-elements.
-// Must be set BEFORE importing the side-effect registration module.
+import { createClientBridge, getVSCodeApi } from '@three-flatland/bridge/client'
+// Suppress the 'custom element already registered' warning that fires when
+// any code path re-imports this module at runtime. Documented escape hatch.
 ;(globalThis as unknown as { __vscodeElements_disableRegistryWarning__?: boolean })
   .__vscodeElements_disableRegistryWarning__ = true
-// Side-effect import: registers every <vscode-*> custom element with the
-// browser's CustomElementRegistry. Without this the React wrappers render
-// inert unknown tags.
+// Side-effect import: registers every <vscode-*> custom element.
 import '@vscode-elements/elements'
-// Regular CSS import — Vite emits a <link rel="stylesheet" href="/assets/
-// codicon-HASH.css"> tag into the HTML, which is caught and rewritten to a
-// webview URI by composeAtlasHtml. The codicon.ttf referenced inside the
-// CSS resolves relative to the CSS's own URL, so both end up as valid
-// vscode-webview:// resources permitted by localResourceRoots.
+// Regular CSS import so Vite emits a <link> tag we can tag as the codicon
+// stylesheet below.
 import '@vscode/codicons/dist/codicon.css'
 import { App } from './App'
 
-// VscodeIcon expects a <link id="vscode-codicon-stylesheet"> on the page
-// so it can mirror the codicon font stylesheet into each icon's shadow
-// root. Vite bundles codicon.css into the page's main stylesheet (rules
-// + @font-face), so we tag the main <link> as the codicon stylesheet.
-// Must run before any <vscode-icon> mounts.
+// Tag the main stylesheet link as 'vscode-codicon-stylesheet' so VscodeIcon
+// can mirror the codicon font rules into each icon's shadow root.
 function tagCodiconStylesheet() {
   if (document.getElementById('vscode-codicon-stylesheet')) return
   const link = document.querySelector<HTMLLinkElement>('link[rel="stylesheet"]')
@@ -30,17 +21,12 @@ function tagCodiconStylesheet() {
 }
 tagCodiconStylesheet()
 
-// Forward uncaught errors to the extension host output channel so "empty
-// panel" situations are diagnosable without opening Webview Developer
-// Tools. We do NOT monkey-patch console.* — the plugin's patched
-// acquireVsCodeApi().postMessage logs via console.log, which would make
-// any console patch recurse infinitely when send() fires.
+// Forward uncaught errors to the FL Tools output channel so 'empty panel'
+// situations are diagnosable without opening Webview Developer Tools.
 let vscode: ReturnType<typeof getVSCodeApi> | null = null
 try {
   vscode = getVSCodeApi()
-} catch {
-  // Not running inside a webview — no-op; nothing to forward.
-}
+} catch {}
 
 function safe(v: unknown): unknown {
   try {
@@ -65,6 +51,19 @@ window.addEventListener('error', (e) => send('error', [e.message, `${e.filename}
 window.addEventListener('unhandledrejection', (e) => send('unhandledrejection', [safe(e.reason)]))
 
 send('info', ['webview boot'])
+
+// PWA-style live reload. The extension host watches dist/webview/<tool>/
+// and emits 'dev/reload' when files change. We just reload the page; the
+// webview panel re-invokes our resolve flow and we re-initialize cleanly.
+try {
+  const bridge = createClientBridge()
+  bridge.on('dev/reload', () => {
+    send('info', ['dev/reload — reloading webview'])
+    location.reload()
+  })
+} catch {
+  // Not in a webview (unit/test context) — skip.
+}
 
 function RootFallback() {
   return (
@@ -92,14 +91,6 @@ if (!root) {
 }
 
 try {
-  // Outer Suspense boundary — lives in the React DOM reconciler.
-  // Catches any DOM-side async work that suspends at or below <App/>
-  // (dynamic imports, React.lazy, non-R3F suspense-reading hooks).
-  //
-  // A SECOND Suspense boundary lives inside <Canvas> in SpritePreview —
-  // that one is in the @react-three/fiber reconciler, which is a
-  // separate React tree. R3F's useLoader() suspends there, not here,
-  // so it must have its own boundary.
   createRoot(root).render(
     <StrictMode>
       <Suspense fallback={<RootFallback />}>

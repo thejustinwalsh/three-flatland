@@ -1,22 +1,16 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { createClientBridge } from '@three-flatland/bridge/client'
 import { Panel, Toolbar, ToolbarButton, Divider, useCssVar } from '@three-flatland/design-system'
 import { SpritePreview } from '@three-flatland/preview'
 
-type InitPayload = {
-  bytes: number[] | Uint8Array
-  mime: string
-  fileName: string
-}
+type InitPayload = { imageUri: string; fileName: string }
 
 declare global {
   interface Window {
-    __FL_ATLAS__?: { fileName: string }
+    __FL_ATLAS__?: InitPayload
   }
 }
 
-// One-shot boot-time dump of VSCode theme tokens we depend on. Surfaces in
-// the FL Tools output channel so theme coverage is diagnosable.
 function dumpThemeTokens() {
   const styles = getComputedStyle(document.body)
   const keys = [
@@ -43,44 +37,14 @@ function dumpThemeTokens() {
 }
 
 export function App() {
-  const [payload, setPayload] = useState<InitPayload | null>(null)
+  const [payload, setPayload] = useState<InitPayload | null>(() => window.__FL_ATLAS__ ?? null)
   const editorBg = useCssVar('--vscode-editor-background', '#1e1e1e')
-
-  // Wrap the bytes in a same-origin blob URL so three-flatland's
-  // TextureLoader can fetch them without crossing origins. Works in both
-  // dev-iframe and prod-webview contexts.
-  const imageUri = useMemo(() => {
-    if (!payload) return null
-    const bytes = payload.bytes instanceof Uint8Array
-      ? payload.bytes
-      : new Uint8Array(payload.bytes)
-    const blob = new Blob([bytes.buffer as ArrayBuffer], { type: payload.mime })
-    return URL.createObjectURL(blob)
-  }, [payload])
-
-  useEffect(() => {
-    return () => {
-      if (imageUri) URL.revokeObjectURL(imageUri)
-    }
-  }, [imageUri])
 
   useEffect(() => {
     dumpThemeTokens()
     const bridge = createClientBridge()
-    const off = bridge.on<InitPayload>('atlas/init', (p) => {
-      console.info('[FL Atlas] atlas/init received:', {
-        fileName: p.fileName,
-        mime: p.mime,
-        byteCount: (p.bytes as { length: number }).length,
-        firstBytes: Array.from(p.bytes).slice(0, 8),
-      })
-      setPayload(p)
-    })
-    void bridge.request('atlas/ready').then(() => {
-      console.info('[FL Atlas] atlas/ready request resolved')
-    }).catch((err) => {
-      console.error('[FL Atlas] atlas/ready request failed:', err)
-    })
+    const off = bridge.on<InitPayload>('atlas/init', (p) => setPayload(p))
+    void bridge.request('atlas/ready')
     return off
   }, [])
 
@@ -127,30 +91,8 @@ export function App() {
         }}
       >
         <Panel title="Preview">
-          <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
-            <SpritePreview imageUri={imageUri} background={editorBg} />
-            {/* Diagnostic img probe. If this loads but the Canvas sprite
-                doesn't, the failure is in three.js TextureLoader, not the
-                blob URL / bytes / CSP. If this also fails, the bytes
-                aren't arriving or the URL is wrong. Remove once stable. */}
-            {imageUri ? (
-              <img
-                src={imageUri}
-                alt={payload?.fileName ?? ''}
-                onLoad={() => console.info('[FL Atlas] <img> loaded', imageUri)}
-                onError={(e) => console.error('[FL Atlas] <img> error', e, imageUri)}
-                style={{
-                  position: 'absolute',
-                  left: 8,
-                  top: 8,
-                  maxWidth: 96,
-                  maxHeight: 96,
-                  border: '1px solid var(--vscode-panel-border, gray)',
-                  background: 'var(--vscode-editor-background)',
-                  imageRendering: 'pixelated',
-                }}
-              />
-            ) : null}
+          <div style={{ flex: 1, minHeight: 0 }}>
+            <SpritePreview imageUri={payload?.imageUri ?? null} background={editorBg} />
           </div>
         </Panel>
         <Panel title="Frames">
