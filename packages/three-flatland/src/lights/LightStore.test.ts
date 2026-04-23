@@ -149,6 +149,57 @@ describe('LightStore', () => {
     expect(data[3 * lineSize + 1]).toBe(0) // enabled = 0
   })
 
+  it('should pack castsShadow=true into row3.b as 1.0', () => {
+    const store = new LightStore({ maxLights: 4 })
+    const light = new Light2D({ type: 'point', intensity: 1, castsShadow: true })
+
+    store.sync([light])
+
+    const data = store.lightsTexture.image.data as Float32Array
+    const lineSize = store.maxLights * 4
+
+    // Row 3, column B (offset +2) = castsShadow flag
+    expect(data[3 * lineSize + 2]).toBe(1)
+  })
+
+  it('should pack castsShadow=false into row3.b as 0.0', () => {
+    const store = new LightStore({ maxLights: 4 })
+    const light = new Light2D({ type: 'point', intensity: 1, castsShadow: false })
+
+    store.sync([light])
+
+    const data = store.lightsTexture.image.data as Float32Array
+    const lineSize = store.maxLights * 4
+
+    expect(data[3 * lineSize + 2]).toBe(0)
+  })
+
+  it('should default castsShadow packing to 1.0 when option omitted', () => {
+    const store = new LightStore({ maxLights: 4 })
+    const light = new Light2D({ type: 'point', intensity: 1 })
+
+    store.sync([light])
+
+    const data = store.lightsTexture.image.data as Float32Array
+    const lineSize = store.maxLights * 4
+
+    expect(data[3 * lineSize + 2]).toBe(1)
+  })
+
+  it('should preserve enabled column G when writing castsShadow column B', () => {
+    const store = new LightStore({ maxLights: 4 })
+    const light = new Light2D({ type: 'point', intensity: 1, castsShadow: false })
+
+    store.sync([light])
+
+    const data = store.lightsTexture.image.data as Float32Array
+    const lineSize = store.maxLights * 4
+
+    // Regression guard: column G (enabled) unaffected by the new column B write.
+    expect(data[3 * lineSize + 1]).toBe(1)
+    expect(data[3 * lineSize + 2]).toBe(0)
+  })
+
   it('should expose readLightData that returns TSL nodes', () => {
     const store = new LightStore({ maxLights: 8 })
 
