@@ -68,6 +68,18 @@ function fullLabel(name: string | undefined, index: number): string {
 }
 
 /**
+ * Returns the rect's group key — the prefix before a trailing `_N`
+ * suffix. Rects with the same group key belong to the same named series
+ * (auto-numbered via prefix rename) and hide their indexes when a sibling
+ * is hovered so the hovered rect's full name is readable alone.
+ */
+function groupKey(name: string | undefined): string | null {
+  if (!name) return null
+  const m = /^(.+)_\d+$/.exec(name)
+  return m ? m[1]! : null
+}
+
+/**
  * Label for a rect — small text rendered just above the rect's top edge.
  * Uses image-pixel units (we're inside the viewBox-scaled SVG). font-size
  * is in image-px too; at typical zoom that renders as ~10-12 CSS px.
@@ -77,11 +89,13 @@ function RectLabel({
   text,
   selected,
   imgW,
+  opacity = 1,
 }: {
   rect: { x: number; y: number; w: number; h: number }
   text: string
   selected: boolean
   imgW: number
+  opacity?: number
 }) {
   const fontPx = Math.max(8, Math.round(imgW / 64))
   const pad = Math.max(2, Math.round(fontPx / 3))
@@ -92,18 +106,17 @@ function RectLabel({
       fontSize={fontPx}
       fontFamily="var(--vscode-font-family, sans-serif)"
       fontWeight={selected ? 600 : 400}
-      fill={selected ? 'var(--vscode-focusBorder, #007fd4)' : '#ffcc00'}
+      fill={selected ? '#ffcc00' : 'var(--vscode-descriptionForeground, #aaa)'}
       vectorEffect="non-scaling-stroke"
+      opacity={opacity}
       style={{
-        // Subtle paint-order halo for legibility on both light and dark
-        // sprites. Non-scaling-stroke keeps it at a CSS-pixel thickness
-        // regardless of zoom; opacity keeps it from reading as a brick.
         paintOrder: 'stroke',
         stroke: 'rgba(0, 0, 0, 0.45)',
         strokeWidth: 1.5,
         strokeLinejoin: 'round',
         pointerEvents: 'none',
         userSelect: 'none',
+        transition: 'opacity 120ms ease',
       }}
       dominantBaseline="alphabetic"
     >
@@ -136,13 +149,18 @@ export function RectOverlay({
   selectedIds = EMPTY,
   onSelectionChange,
   showLabels = true,
-  color = '#ffcc00',
+  // Resting rects read as quiet chrome; selection pops to bright yellow.
+  color = 'var(--vscode-descriptionForeground, #888)',
   draftColor = '#00ff99',
-  selectedColor = 'var(--vscode-focusBorder, #007fd4)',
+  selectedColor = '#ffcc00',
 }: RectOverlayProps) {
   const vp = useViewport()
   const svgRef = useRef<SVGSVGElement>(null)
   const [drag, setDrag] = useState<Drag | null>(null)
+  const [hoveredId, setHoveredId] = useState<string | null>(null)
+
+  const hoveredRect = hoveredId ? rects.find((r) => r.id === hoveredId) : null
+  const hoverGroup = hoveredRect ? groupKey(hoveredRect.name) : null
 
   const toImagePx = useCallback(
     (e: ReactPointerEvent<SVGElement>): { x: number; y: number } | null => {
@@ -230,16 +248,25 @@ export function RectOverlay({
 
       {rects.map((r, i) => {
         const sel = selectedIds.has(r.id)
+        const isHovered = hoveredId === r.id
+        const gkey = groupKey(r.name)
+        const siblingOfHover = hoverGroup !== null && gkey === hoverGroup && !isHovered
+
+        // Hovered rect shows its full name; non-hovered siblings in the
+        // same prefix group fade out so the hovered label stands alone.
+        // Selected rects always show their short label (frame index) —
+        // the Frames panel carries the full detail for selection state.
+        const labelText = isHovered ? fullLabel(r.name, i) : shortLabel(r.name, i)
+        const labelOpacity = siblingOfHover ? 0 : 1
+
         return (
           <g key={r.id}>
-            {/* Native browser hover tooltip showing the full name. */}
-            <title>{fullLabel(r.name, i)}</title>
             <rect
               x={r.x}
               y={r.y}
               width={r.w}
               height={r.h}
-              fill={sel ? 'rgba(0, 127, 212, 0.12)' : 'rgba(255, 204, 0, 0.05)'}
+              fill={sel ? 'rgba(255, 204, 0, 0.12)' : 'transparent'}
               stroke={sel ? selectedColor : color}
               strokeWidth={sel ? 2 : 1}
               vectorEffect="non-scaling-stroke"
@@ -248,6 +275,10 @@ export function RectOverlay({
                 pointerEvents: 'all',
                 cursor: 'pointer',
               }}
+              onPointerEnter={() => setHoveredId(r.id)}
+              onPointerLeave={() =>
+                setHoveredId((cur) => (cur === r.id ? null : cur))
+              }
               onPointerDown={(e) => {
                 // Rect clicks always take precedence over draw/deselect so
                 // selections work regardless of the active tool.
@@ -267,9 +298,10 @@ export function RectOverlay({
             {showLabels ? (
               <RectLabel
                 rect={r}
-                text={shortLabel(r.name, i)}
+                text={labelText}
                 selected={sel}
                 imgW={vp.imageW}
+                opacity={labelOpacity}
               />
             ) : null}
           </g>
