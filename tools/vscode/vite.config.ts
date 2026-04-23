@@ -13,6 +13,26 @@ export default defineConfig({
       extension: {
         entry: 'extension/index.ts',
       },
+      // The plugin's default CSP is too tight: default-src 'none' + only
+      // script-src + style-src. We need img/font/media/worker/connect too
+      // for image blobs, codicon font, AudioContext/WebGPU workers, and
+      // the HMR websocket in dev.
+      webview: {
+        csp:
+          '<meta http-equiv="Content-Security-Policy" content="' +
+          [
+            "default-src 'none'",
+            "img-src {{cspSource}} https: data: blob:",
+            "media-src {{cspSource}} blob:",
+            "font-src {{cspSource}}",
+            "style-src {{cspSource}} 'unsafe-inline'",
+            "script-src {{cspSource}} 'nonce-{{nonce}}' 'unsafe-eval' 'wasm-unsafe-eval'",
+            "connect-src {{cspSource}} blob: data: ws: wss: http: https:",
+            "worker-src {{cspSource}} blob:",
+            "frame-src {{cspSource}} blob: http: https:",
+          ].join('; ') +
+          '">',
+      },
     }),
   ],
   // Root pnpm dev already serves docs + examples on 5173; pin tool webviews to
