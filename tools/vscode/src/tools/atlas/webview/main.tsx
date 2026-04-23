@@ -1,6 +1,10 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { getVSCodeApi } from '@three-flatland/bridge/client'
+// Side-effect import: registers every <vscode-*> custom element with the
+// browser's CustomElementRegistry. Without this the React wrappers render
+// inert unknown tags.
+import '@vscode-elements/elements'
 import { App } from './App'
 
 // Forward uncaught errors + console.error to the extension host output

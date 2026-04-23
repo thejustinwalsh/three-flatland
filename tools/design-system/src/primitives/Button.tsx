@@ -1,32 +1,12 @@
-import type { ButtonHTMLAttributes, CSSProperties } from 'react'
-import { vscodeTokens as t } from '../tokens'
+import type { ComponentProps } from 'react'
+import { VscodeButton } from '@vscode-elements/react-elements'
 
-type Variant = 'primary' | 'secondary'
+/**
+ * VSCode-native Button. Wraps vscode-button (Lit) with its React binding.
+ * Styling, focus ring, hover, disabled — all from VSCode itself.
+ */
+export type ButtonProps = ComponentProps<typeof VscodeButton>
 
-export type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
-  variant?: Variant
-}
-
-const baseStyle: CSSProperties = {
-  background: t.btnBg,
-  color: t.btnFg,
-  border: `1px solid ${t.btnBorder}`,
-  padding: '4px 11px',
-  fontFamily: t.fontFamily,
-  fontSize: t.fontSize,
-  cursor: 'pointer',
-  borderRadius: 2,
-  lineHeight: '18px',
-}
-
-const secondaryStyle: CSSProperties = {
-  ...baseStyle,
-  background: 'transparent',
-  color: t.fg,
-  border: `1px solid ${t.border}`,
-}
-
-export function Button({ variant = 'primary', style, ...rest }: ButtonProps) {
-  const composed = { ...(variant === 'secondary' ? secondaryStyle : baseStyle), ...style }
-  return <button {...rest} style={composed} />
+export function Button(props: ButtonProps) {
+  return <VscodeButton {...props} />
 }

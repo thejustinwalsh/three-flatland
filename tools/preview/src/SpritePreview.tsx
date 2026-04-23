@@ -52,12 +52,13 @@ function Sprite({ imageUri }: { imageUri: string | null }) {
 
 export function SpritePreview({ imageUri, viewSize, background }: SpritePreviewProps) {
   const defaultView = viewSize ?? 512
+  // R3F v10 webgpu build removed the `gl` prop — use `renderer` only.
+  // For the transparent path the canvas DOM background shows through.
   return (
     <Canvas
       dpr={1}
       renderer={{ antialias: false }}
-      gl={{ alpha: background == null }}
-      style={{ background: 'transparent' }}
+      style={{ background: background ?? 'transparent' }}
     >
       {background != null ? <color attach="background" args={[background]} /> : null}
       <OrthoCamera viewSize={defaultView} />
