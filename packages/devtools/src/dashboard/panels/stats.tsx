@@ -90,6 +90,12 @@ function StatCard({
   onSelect: () => void
 }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
+  // Persistent per-card smoothed axis range — prevents the "peaks
+  // jumping as it scrolls" effect that raw per-frame min/max
+  // produces when a tall sample exits the visible window. Grows
+  // instantly to match new peaks, decays slowly afterward (see
+  // `drawSeries`'s RANGE_DECAY).
+  const rangeRef = useRef<{ min: number; max: number } | null>(null)
   const value = def.pick(state)
   const series = def.series(state)
 
@@ -106,7 +112,7 @@ function StatCard({
       canvas.width = w
       canvas.height = h
     }
-    drawSeries(ctx, canvas.width, canvas.height, series, def.color)
+    drawSeries(ctx, canvas.width, canvas.height, series, def.color, rangeRef)
   })
 
   return (
@@ -267,10 +273,39 @@ function drawHistogram(
 }
 
 /**
- * Draw a muted sparkline of the ring's samples. Auto-ranges per series
- * using the observed min/max across the live window; if max ≈ min (flat
- * metric) we draw a centered horizontal line so a zero-variance series
- * still shows intent.
+ * Axis hysteresis via power-of-two buckets.
+ *
+ * The earlier attempt used continuous exponential smoothing — grow
+ * fast, decay slow. It hides scroll-out pops but introduces a new
+ * problem: the axis is *always* drifting, so the same stable sample
+ * value renders at a different height on every draw. Under a noisy
+ * series like `gpuMs` the continuous drift reads as "the line
+ * reshapes" — peaks get sharper or flatter even for frozen historic
+ * data as it scrolls across the canvas.
+ *
+ * The bucket approach pins max to the next 2^n above the observed
+ * value (1, 2, 4, 8, 16, 32, 64, …). The axis snaps cleanly between
+ * discrete steps instead of drifting continuously; most of the time
+ * max sits in the SAME bucket frame after frame, so renders are
+ * pixel-stable. Shrink only when observed drops well below the
+ * bucket (the `* 2.5` threshold) so we don't oscillate at bucket
+ * boundaries.
+ *
+ * Min is anchored at 0. For ms / count metrics, 0 is the
+ * meaningful floor; auto-smoothing the min just adds another
+ * variable axis we don't need.
+ */
+function bucketUp(v: number): number {
+  if (v <= 1) return 1
+  return Math.pow(2, Math.ceil(Math.log2(v)))
+}
+
+/**
+ * Draw a muted sparkline of the ring's samples. Uses a bucketed
+ * power-of-two max with hysteresis (see `bucketUp` above) and an
+ * anchored zero floor — the axis only snaps between discrete
+ * `[0, 2^n]` scales, keeping render heights pixel-stable for stable
+ * data. Flat series render as a centered line.
  */
 function drawSeries(
   ctx: CanvasRenderingContext2D,
@@ -278,27 +313,42 @@ function drawSeries(
   h: number,
   series: DevtoolsSeries,
   color: string,
+  rangeRef: { current: { min: number; max: number } | null },
 ): void {
   ctx.clearRect(0, 0, w, h)
   const len = series.length
   const size = series.data.length
   if (len === 0 || size === 0) return
 
-  let min = Infinity
-  let max = -Infinity
+  let observedMax = 0
   // Walk the last `len` samples, oldest → newest, so the sparkline
   // reads left-to-right. `series.write` is the next-to-write slot, so
   // the oldest valid sample is at `(write - len + size) % size`.
   const start = (series.write - len + size) % size
   for (let i = 0; i < len; i++) {
     const v = series.data[(start + i) % size]!
-    if (v < min) min = v
-    if (v > max) max = v
+    if (v > observedMax) observedMax = v
   }
+  if (!Number.isFinite(observedMax)) return
+
+  // Bucket the max to next 2^n with hysteresis.
+  if (rangeRef.current === null) {
+    rangeRef.current = { min: 0, max: bucketUp(observedMax) }
+  } else {
+    const r = rangeRef.current
+    if (observedMax > r.max) {
+      r.max = bucketUp(observedMax)
+    } else if (observedMax * 2.5 < r.max && r.max > 1) {
+      // Observed is well under half the current bucket — shrink.
+      r.max = bucketUp(observedMax)
+    }
+    // else: stay in the current bucket — no axis motion.
+  }
+  const { min, max } = rangeRef.current
 
   // Flat line when range is trivial — render at center.
   const range = max - min
-  const useCenter = !Number.isFinite(min) || !Number.isFinite(max) || range < 1e-6
+  const useCenter = range < 1e-6
 
   // Translucent fill under the line so it reads as a muted band.
   // Anchor the fill polygon at the bottom-left regardless of where the

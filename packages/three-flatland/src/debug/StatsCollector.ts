@@ -14,8 +14,19 @@ interface RenderInfo {
 }
 
 interface RendererLike {
-  info?: { render?: RenderInfo; memory?: { geometries: number; textures: number } }
-  backend?: { trackTimestamp?: boolean; constructor?: { name?: string }; disjoint?: unknown }
+  info?: { render?: RenderInfo; memory?: { geometries: number; textures: number }; frame?: number }
+  backend?: {
+    trackTimestamp?: boolean
+    constructor?: { name?: string }
+    disjoint?: unknown
+    /**
+     * Public three.js API for reading which frame ids were in the last
+     * resolved timestamp batch. `type` is `'render' | 'compute'`.
+     * Returns `[...frameIds]` where the LAST entry is the frame whose
+     * duration is in `renderer.info[type].timestamp`.
+     */
+    getTimestampFrames?(type: 'render' | 'compute'): number[]
+  }
   resolveTimestampsAsync?(type: 'render' | 'compute'): Promise<number | undefined>
 }
 
@@ -51,13 +62,30 @@ export class StatsCollector {
   private _gpuMs: number | undefined
   private _gpuLastAt = 0
   /**
-   * Throttle resolveTimestampsAsync so we don't allocate a Promise +
-   * `.then`/`.catch` closures every frame (~12 KB/s of GC pressure).
-   * Every Nth frame is plenty for a 4 Hz batch flush — the cached
-   * `_gpuMs` carries between resolves.
+   * Most-recently-resolved GPU ms, used to forward-fill the ring slot
+   * for frames whose own resolve hasn't landed yet. Without this the
+   * graph zigzags — only ~1/3 of frames get a resolved value per GPU
+   * round-trip, so the remaining 2/3 would ship as `0` and render as
+   * noise spikes. Forward-fill renders as stairsteps between updates
+   * instead, which accurately reflects "we don't have newer data
+   * yet" without fabricating a fake zero.
    */
-  private _gpuResolveSkip = 0
-  private static readonly GPU_RESOLVE_EVERY = 6
+  private _lastResolvedGpuMs = 0
+  /**
+   * Three.js frame id → ring slot index. Populated in `endFrame` so
+   * the async timestamp-resolve path can retroactively write the
+   * duration into the sample slot for the frame it actually measured,
+   * not the frame that happened to be current when the promise
+   * landed. `getTimestampFrames()` gives us the frame id of the
+   * resolved duration (last entry of its array); we look up the slot
+   * and write there.
+   *
+   * Cleared on `drainBatch` since slot indices are relative to
+   * `_write` which resets. Late-arriving resolves for already-drained
+   * frames silently drop — acceptable since the consumer has already
+   * rendered the batch.
+   */
+  private _tjsFrameToIdx = new Map<number, number>()
 
   private _perfMemory: { usedJSHeapSize: number; jsHeapSizeLimit: number } | undefined =
     typeof performance !== 'undefined'
@@ -123,8 +151,6 @@ export class StatsCollector {
       Math.max(0, (render?.points ?? 0) - this._pointsBefore)
     const geometries = memory?.geometries ?? 0
     const textures = memory?.textures ?? 0
-    const gpuFresh = this._gpuCapable && this._gpuMs !== undefined && Date.now() - this._gpuLastAt <= FEATURE_STALE_MS
-    const gpuMs = gpuFresh ? (this._gpuMs as number) : 0
     const heapUsedMB = this._perfMemory ? Math.round(this._perfMemory.usedJSHeapSize / 1048576) : 0
 
     this._frame++
@@ -138,7 +164,15 @@ export class StatsCollector {
     // Scaled encodings (see StatsPayload docstring).
     this._fpsBuf[idx] = Math.min(32767, Math.round(fps * 10))
     this._cpuMsBuf[idx] = Math.min(65535, Math.round(cpuMs * 100))
-    this._gpuMsBuf[idx] = Math.min(65535, Math.round(gpuMs * 100))
+    // `gpuMs` is forward-filled with the last-known resolved value.
+    // An async `maybeResolveGpu` may later overwrite this specific
+    // slot with the accurate per-frame duration (via
+    // `_tjsFrameToIdx`). Until that lands, this slot ships the prior
+    // sample — renders as a stairstep, not a zero spike. Frames
+    // drained before their resolve arrives keep the forward-fill
+    // forever, which is fine: "no fresher data available" is the
+    // honest answer.
+    this._gpuMsBuf[idx] = Math.min(65535, Math.round(this._lastResolvedGpuMs * 100))
     this._heapUsedBuf[idx] = Math.min(65535, heapUsedMB)
     this._drawCallsBuf[idx] = drawCalls
     this._trianglesBuf[idx] = triangles
@@ -146,6 +180,15 @@ export class StatsCollector {
     this._geometriesBuf[idx] = geometries
     this._texturesBuf[idx] = textures
     this._write = idx + 1
+
+    // Remember which ring slot belongs to this frame's three.js frame
+    // id so the async timestamp resolve can retroactively fill the
+    // correct slot. three.js's `info.frame` is the same counter the
+    // timestamp query pool tags each query with (`:fN` uids).
+    const tjsFrame = renderer.info?.frame
+    if (typeof tjsFrame === 'number') {
+      this._tjsFrameToIdx.set(tjsFrame, idx)
+    }
   }
 
   /**
@@ -166,12 +209,15 @@ export class StatsCollector {
       }
     }
     if (!this._gpuCapable) return
+    // One resolve in flight at a time. three.js's internal
+    // `pendingResolve` guard would coalesce extra calls into the same
+    // promise anyway, but calling `resolveTimestampsAsync` still
+    // allocates a wrapping Promise + `.then`/`.catch` closures —
+    // those are what we're throttling. The resolve itself trips every
+    // frame we're idle, so we get one duration landed per GPU
+    // round-trip (typically 1–3 frames — way better than the old
+    // one-per-6-frames plateau).
     if (this._gpuResolveInFlight) return
-    // Throttle. Skip until the counter rolls over — keeps the query
-    // pool drained at ~10 Hz (every 6 frames at 60 Hz) which is plenty
-    // for a 4 Hz consumer batch.
-    if (++this._gpuResolveSkip < StatsCollector.GPU_RESOLVE_EVERY) return
-    this._gpuResolveSkip = 0
     const fn = renderer.resolveTimestampsAsync?.bind(renderer)
     if (!fn) return
 
@@ -181,8 +227,64 @@ export class StatsCollector {
         this._gpuResolveInFlight = false
         const gpuMs = renderer.info?.render?.timestamp
         if (typeof gpuMs !== 'number' || gpuMs <= 0) return
+        // Keep the cached "latest value" for any consumer that still
+        // wants a live single-sample readout (e.g. a big-number tile)
+        // — but the ring gets per-frame attribution below, not this
+        // blanket value.
         this._gpuMs = gpuMs
         this._gpuLastAt = Date.now()
+        // Update forward-fill reference so the NEXT `endFrame`'s slot
+        // ships this value as its placeholder. Combined with the
+        // retroactive write below, the graph reads:
+        //   older slots: actual per-frame value (retroactively filled)
+        //   newer slots: most recent resolved value (forward-filled)
+        // — always monotonic in freshness, never zero.
+        this._lastResolvedGpuMs = gpuMs
+
+        // Ask three.js which frame id this duration belongs to.
+        // `getTimestampFrames('render')` returns the array of tjs
+        // frame ids that were in the just-resolved batch; the LAST
+        // entry matches `info.render.timestamp` (per three.js's
+        // `WebGPUTimestampQueryPool._resolveQueries`).
+        //
+        // **Coalescing caveat**: three.js's `resolveQueriesAsync`
+        // uses a `pendingResolve` guard — multiple calls made while
+        // an earlier resolve is in flight return the same promise.
+        // By the time that promise lands, the pool has accumulated
+        // queries from MULTIPLE frames. The pool computes individual
+        // `framesDuration[frame]` internally but only returns the
+        // LAST frame's value. We can't recover the intermediate
+        // frames' individual durations — they're aggregated away.
+        const frames = renderer.backend?.getTimestampFrames?.('render')
+        if (!frames || frames.length === 0) return
+        const tjsFrame = frames[frames.length - 1]!
+        const encoded = Math.min(65535, Math.round(gpuMs * 100))
+
+        // Update EVERY slot we're still tracking with the new value.
+        // Three groups covered by the single write:
+        //   1. Slot for `tjsFrame` itself — gets its accurate value.
+        //   2. Slots for frames BEFORE `tjsFrame` in the coalesced
+        //      batch — their individual durations are lost forever,
+        //      so `V_new` is the best available estimate.
+        //   3. Slots for frames AFTER `tjsFrame` that are still
+        //      pending — they'll be refined when their own resolves
+        //      land; meanwhile `V_new` beats stale `V_prev`.
+        // Without (2) the ring had stairsteps within each batch
+        // window that showed up as moving "reshape" jitter under
+        // Tweakpane's inter-batch interpolation.
+        for (const [, i] of this._tjsFrameToIdx) {
+          if (i < this._write) {
+            this._gpuMsBuf[i] = encoded
+          }
+        }
+
+        // Garbage-collect resolved mappings — anything at or before
+        // the resolved frame either got its slot written above or
+        // belongs to an already-drained batch. Frames after stay in
+        // the map to receive their own (refining) resolve.
+        for (const f of this._tjsFrameToIdx.keys()) {
+          if (f <= tjsFrame) this._tjsFrameToIdx.delete(f)
+        }
       })
       .catch(() => {
         this._gpuResolveInFlight = false
@@ -247,6 +349,12 @@ export class StatsCollector {
     }
 
     this._write = 0
+    // Ring slot indices are about to be reused for the next batch.
+    // Any still-in-flight timestamp resolve that points at a
+    // pre-drain slot would now write into a freshly-rebuilt sample
+    // from a newer frame — wrong data. Drop the whole mapping; late
+    // resolves for drained frames are silently discarded.
+    this._tjsFrameToIdx.clear()
     return true
   }
 
@@ -257,5 +365,6 @@ export class StatsCollector {
 
   dispose(): void {
     this._latestRenderer = undefined
+    this._tjsFrameToIdx.clear()
   }
 }
