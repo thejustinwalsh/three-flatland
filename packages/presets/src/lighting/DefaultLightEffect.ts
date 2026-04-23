@@ -190,12 +190,18 @@ export const DefaultLightEffect = createLightEffect({
 
           // Shadow. Gated so the 32-tap SDF trace only runs when the
           // fragment actually needs it — ambient lights ignore shadow,
-          // and fragments with `N·L ≤ 0` are already dark so tracing is
-          // wasted. Both branches are runtime GPU gates (not JS), so the
-          // trace is physically skipped on those fragments/lights.
+          // fragments with `N·L ≤ 0` are already dark, and fragments
+          // where `atten × diffuse` is sub-visible can't receive a
+          // visible shadow either. All three are runtime GPU gates
+          // (not JS), so the trace is physically skipped on those
+          // fragments/lights. The `0.01` atten threshold sits below
+          // 8-bit channel quantization — a trace we'd skip here
+          // couldn't have produced a visible pixel delta.
           const shadow = float(1).toVar('shadow')
           if (sdfTexture) {
-            const shouldTrace = isAmbient.not().and(NdotL.greaterThan(float(0)))
+            const shouldTrace = isAmbient.not()
+              .and(NdotL.greaterThan(float(0)))
+              .and(atten.greaterThan(float(0.01)))
             If(shouldTrace, () => {
               // Optional block-snap on the shadow trace origin.
               const useShadowSnap = shadowPixelSize.greaterThan(float(0))
