@@ -3,6 +3,20 @@ import { createHostBridge } from '@three-flatland/bridge/host'
 import { getWebviewHtml } from 'virtual:vscode'
 import { log } from '../../log'
 
+function mimeFromName(name: string): string {
+  const ext = name.toLowerCase().split('.').pop() ?? ''
+  return (
+    {
+      png: 'image/png',
+      webp: 'image/webp',
+      avif: 'image/avif',
+      jpg: 'image/jpeg',
+      jpeg: 'image/jpeg',
+      gif: 'image/gif',
+    }[ext] ?? 'application/octet-stream'
+  )
+}
+
 type AtlasDocument = vscode.CustomDocument
 
 export class AtlasCustomEditorProvider implements vscode.CustomReadonlyEditorProvider<AtlasDocument> {
