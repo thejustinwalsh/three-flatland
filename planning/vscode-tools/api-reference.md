@@ -2,6 +2,8 @@
 
 Dense reference filtered to what this suite uses. Keep open while implementing.
 
+Host assumes ESM (`engines.vscode: ^1.94.0`, `"type": "module"`). Extension module imports `vscode` via standard ESM `import * as vscode from 'vscode'` — still marked `external` to the bundler.
+
 ## CodeLensProvider
 
 Register with `vscode.languages.registerCodeLensProvider(selector, provider)`. Provider returns `CodeLens[]` from `provideCodeLenses(document, token)`; VSCode calls `resolveCodeLens(lens, token)` lazily for visible lenses.
@@ -157,11 +159,12 @@ Groups (numeric sort): `navigation`, `1_modification`, `7_modification`, etc. In
 
 ## Sidecar Go binary
 
-- **Layout**: `resources/bin/<platform>-<arch>/<name>[.exe]`. Resolve at activation with `path.join(context.extensionPath, 'resources', 'bin', `${process.platform}-${process.arch}`, 'tool')`. Mark `chmod +x` in CI.
-- **Packaging**: one VSIX per target via `vsce package --target <id>`. Targets: `win32-x64`, `win32-arm64`, `darwin-x64`, `darwin-arm64`, `linux-x64`, `linux-arm64`, `linux-armhf`, `alpine-x64`, `alpine-arm64`, `web`. Requires `engines.vscode >= 1.61`.
+- **Layout**: `bin/<platform>-<arch>/<name>[.exe]` under the extension root. Resolve at activation with `path.join(context.extensionPath, 'bin', \`${process.platform}-${process.arch}\`, name + (process.platform === 'win32' ? '.exe' : ''))`. Mark `chmod +x` in CI.
+- **Packaging**: **all platforms in a single VSIX** — not per-target. Go cross-compiles trivially; pure-Go sidecar (`modernc.org/sqlite`, tree-sitter via cgo with `zig cc`) produces small binaries. Fall back to `vsce package --target <id>` only if total VSIX size becomes unacceptable.
 - **Spawn**: `child_process.spawn(bin, args, { stdio: ['pipe','pipe','pipe'] })`. **Never** `stdio: 'inherit'` (crashes host — #138036). Route stderr to `OutputChannel`.
 - **IPC**: stdio JSON-RPC via `vscode-jsonrpc` — `createMessageConnection(new StreamMessageReader(child.stdout), new StreamMessageWriter(child.stdin))`. LSP framing for free.
 - **Cleanup**: `context.subscriptions.push({ dispose: () => child.kill() })`.
+- **Cache**: sidecar opens a per-project SQLite at `${storageUri}/codelens.sqlite` (pure-Go `modernc.org/sqlite`, no cgo for the DB). Survives reloads.
 
 ## Commands + contributions
 
