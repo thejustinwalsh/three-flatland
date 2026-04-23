@@ -99,6 +99,15 @@ function RectLabel({
 }) {
   const fontPx = Math.max(8, Math.round(imgW / 64))
   const pad = Math.max(2, Math.round(fontPx / 3))
+
+  // Asymmetric fade: snap out fast when the user hovers a sibling, drift
+  // back in gently when they leave. Prevents rapid strobing as the user
+  // sweeps across multiple rects in quick succession.
+  const transition =
+    opacity < 1
+      ? 'opacity 120ms ease'
+      : 'opacity 350ms ease 80ms'
+
   return (
     <text
       x={rect.x + pad}
@@ -116,7 +125,7 @@ function RectLabel({
         strokeLinejoin: 'round',
         pointerEvents: 'none',
         userSelect: 'none',
-        transition: 'opacity 120ms ease',
+        transition,
       }}
       dominantBaseline="alphabetic"
     >
