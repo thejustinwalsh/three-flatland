@@ -1,19 +1,20 @@
 /**
  * Contract every baker must satisfy.
  *
- * Bakers are registered by package.json via a `flatland.bakers` field:
+ * Bakers are registered by package.json via a `flatland.bake` field:
  *
  * ```json
  * {
  *   "flatland": {
- *     "bakers": [
- *       { "name": "font", "description": "Bake SlugFont", "entry": "./dist/baker.js" }
+ *     "bake": [
+ *       { "name": "font", "description": "Bake SlugFont", "entry": "./dist/cli.js" }
  *     ]
  *   }
  * }
  * ```
  *
- * Entry modules must default-export a `Baker`.
+ * Entry modules must default-export a `Baker`. The legacy `flatland.bakers`
+ * shape is still accepted for one release with a deprecation warning.
  */
 export interface Baker {
   /** Subcommand name used on the CLI: `flatland-bake <name> ...` */
@@ -39,10 +40,51 @@ export interface BakerRegistration {
   resolvedEntry: string
 }
 
+export interface FlatlandManifestEntry {
+  name: string
+  description: string
+  entry: string
+}
+
 export interface FlatlandManifest {
-  bakers?: Array<{
-    name: string
-    description: string
-    entry: string
-  }>
+  /** Current registration shape. */
+  bake?: FlatlandManifestEntry[]
+  /** @deprecated Legacy shape; use `bake` instead. Accepted for one release. */
+  bakers?: FlatlandManifestEntry[]
+}
+
+/**
+ * Shared option interface for every loader that speaks the
+ * "try baked sibling first → fall back to in-memory generation" pattern.
+ *
+ * Loaders extend this with their asset-specific options:
+ *
+ * ```ts
+ * interface MyLoaderOptions extends BakedAssetLoaderOptions {
+ *   // asset-specific fields
+ * }
+ * ```
+ */
+export interface BakedAssetLoaderOptions {
+  /**
+   * Skip the baked-sibling probe. Loader generates in-memory directly
+   * (or uses an explicit URL the caller provided). Suppresses the
+   * devtime "no baked sibling" warning.
+   *
+   * Use during asset iteration when you know no baked output exists yet
+   * and don't want the probe cost or console noise.
+   */
+  skipBakedProbe?: boolean
+}
+
+/**
+ * Metadata stamped into a baked PNG's `tEXt` chunk under the key
+ * `flatland`. Read back by `probeBakedSibling` to validate the baked
+ * file still matches the descriptor a consumer is about to use.
+ */
+export interface BakedSidecarMetadata {
+  /** Content hash of the descriptor that produced this file. */
+  hash: string
+  /** Schema version of the metadata format itself. */
+  v: 1
 }

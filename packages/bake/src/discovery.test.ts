@@ -30,11 +30,11 @@ describe('discoverBakers', () => {
     writePkg(join(tmp, 'node_modules', 'fake-slug'), {
       name: 'fake-slug',
       flatland: {
-        bakers: [
+        bake: [
           {
             name: 'font',
             description: 'Bake fonts',
-            entry: './dist/baker.js',
+            entry: './dist/cli.js',
           },
         ],
       },
@@ -44,7 +44,7 @@ describe('discoverBakers', () => {
     expect(bakers).toHaveLength(1)
     expect(bakers[0]!.name).toBe('font')
     expect(bakers[0]!.packageName).toBe('fake-slug')
-    expect(bakers[0]!.resolvedEntry.endsWith('fake-slug/dist/baker.js')).toBe(
+    expect(bakers[0]!.resolvedEntry.endsWith('fake-slug/dist/cli.js')).toBe(
       true
     )
   })
@@ -53,11 +53,11 @@ describe('discoverBakers', () => {
     writePkg(join(tmp, 'node_modules', '@three-flatland', 'fake-normals'), {
       name: '@three-flatland/fake-normals',
       flatland: {
-        bakers: [
+        bake: [
           {
             name: 'normal',
             description: 'Bake normals',
-            entry: './dist/baker.js',
+            entry: './dist/cli.js',
           },
         ],
       },
@@ -73,17 +73,13 @@ describe('discoverBakers', () => {
     writePkg(join(tmp, 'node_modules', 'pkg-a'), {
       name: 'pkg-a',
       flatland: {
-        bakers: [
-          { name: 'font', description: 'A', entry: './dist/baker.js' },
-        ],
+        bake: [{ name: 'font', description: 'A', entry: './dist/cli.js' }],
       },
     })
     writePkg(join(tmp, 'node_modules', 'pkg-b'), {
       name: 'pkg-b',
       flatland: {
-        bakers: [
-          { name: 'font', description: 'B', entry: './dist/baker.js' },
-        ],
+        bake: [{ name: 'font', description: 'B', entry: './dist/cli.js' }],
       },
     })
 
@@ -96,7 +92,7 @@ describe('discoverBakers', () => {
     expect(conflicts[0]).toContain('pkg-b')
   })
 
-  it('ignores packages that do not declare flatland.bakers', () => {
+  it('ignores packages that do not declare flatland.bake', () => {
     writePkg(join(tmp, 'node_modules', 'bystander'), {
       name: 'bystander',
     })
@@ -105,13 +101,13 @@ describe('discoverBakers', () => {
   })
 
   it('self-discovers a baker declared by the CWD package', () => {
-    // CWD is a package with its own flatland.bakers — must be picked up
+    // CWD is a package with its own flatland.bake — must be picked up
     // without requiring a node_modules symlink.
     writePkg(tmp, {
       name: 'self-pkg',
       flatland: {
-        bakers: [
-          { name: 'self', description: 'Self baker', entry: './dist/baker.js' },
+        bake: [
+          { name: 'self', description: 'Self baker', entry: './dist/cli.js' },
         ],
       },
     })
@@ -129,6 +125,43 @@ describe('discoverBakers', () => {
 
     const { bakers, conflicts } = discoverBakers(tmp)
     expect(bakers).toEqual([])
+    expect(conflicts).toEqual([])
+  })
+
+  it('accepts legacy flatland.bakers shape with a deprecation warning', () => {
+    writePkg(join(tmp, 'node_modules', 'legacy-pkg'), {
+      name: 'legacy-pkg',
+      flatland: {
+        bakers: [
+          { name: 'legacy', description: 'Legacy', entry: './dist/baker.js' },
+        ],
+      },
+    })
+
+    const { bakers, conflicts } = discoverBakers(tmp)
+    expect(bakers).toHaveLength(1)
+    expect(bakers[0]!.name).toBe('legacy')
+    expect(conflicts).toHaveLength(1)
+    expect(conflicts[0]).toContain('legacy-pkg')
+    expect(conflicts[0]).toContain('flatland.bake')
+    expect(conflicts[0]).toContain('flatland.bakers')
+  })
+
+  it('prefers flatland.bake when both shapes are present', () => {
+    writePkg(join(tmp, 'node_modules', 'mixed-pkg'), {
+      name: 'mixed-pkg',
+      flatland: {
+        bake: [{ name: 'new', description: 'New', entry: './dist/cli.js' }],
+        bakers: [
+          { name: 'old', description: 'Old', entry: './dist/baker.js' },
+        ],
+      },
+    })
+
+    const { bakers, conflicts } = discoverBakers(tmp)
+    expect(bakers).toHaveLength(1)
+    expect(bakers[0]!.name).toBe('new')
+    // No deprecation warning when the canonical shape exists alongside.
     expect(conflicts).toEqual([])
   })
 })

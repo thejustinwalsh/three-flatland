@@ -31,14 +31,14 @@ describe('NormalMapLoader', () => {
     expect(result).toBeNull()
     // dev-time warning should have fired once
     expect(warn).toHaveBeenCalledTimes(1)
-    expect(String(warn.mock.calls[0]![0])).toContain('Generating data at runtime')
+    expect(String(warn.mock.calls[0]![0])).toContain('No baked normal sibling')
     expect(String(warn.mock.calls[0]![0])).toContain('flatland-bake normal')
   })
 
   it('does not warn when the baked path is used', async () => {
     // HEAD returns 200; TextureLoader is stubbed via module mock below — for
     // this test we skip the actual TextureLoader round-trip by returning
-    // early: set forceRuntime=false, HEAD 200, but also stub TextureLoader
+    // early: set skipBakedProbe=false, HEAD 200, but also stub TextureLoader
     // via the prototype so it immediately onLoads with a stub texture.
     globalThis.fetch = vi.fn().mockResolvedValue(new Response(null, { status: 200 }))
     const { TextureLoader } = await import('three')
@@ -56,19 +56,19 @@ describe('NormalMapLoader', () => {
     loadSpy.mockRestore()
   })
 
-  it('skips the baked probe when forceRuntime is true', async () => {
+  it('skips the baked probe when skipBakedProbe is true', async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 200 }))
     globalThis.fetch = fetchMock
 
     vi.spyOn(console, 'warn').mockImplementation(() => {})
     const result = await NormalMapLoader.load('/sprites/knight.png', {
-      forceRuntime: true,
+      skipBakedProbe: true,
     })
     expect(result).toBeNull()
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
-  it('caches results per (url, forceRuntime) pair', async () => {
+  it('caches results per (url, skipBakedProbe) pair', async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 404 }))
     globalThis.fetch = fetchMock
     vi.spyOn(console, 'warn').mockImplementation(() => {})
@@ -77,8 +77,8 @@ describe('NormalMapLoader', () => {
     await NormalMapLoader.load('/sprites/knight.png')
     expect(fetchMock).toHaveBeenCalledTimes(1)
 
-    await NormalMapLoader.load('/sprites/knight.png', { forceRuntime: true })
-    // forceRuntime path doesn't fetch at all, but it stores a separate cache
+    await NormalMapLoader.load('/sprites/knight.png', { skipBakedProbe: true })
+    // skipBakedProbe path doesn't fetch at all, but it stores a separate cache
     // entry — a subsequent non-forced call still hits the baked path only once.
     await NormalMapLoader.load('/sprites/knight.png')
     expect(fetchMock).toHaveBeenCalledTimes(1)

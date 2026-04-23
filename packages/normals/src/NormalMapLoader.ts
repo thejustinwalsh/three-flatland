@@ -1,4 +1,8 @@
 import { Loader, type LoadingManager, TextureLoader, type Texture } from 'three'
+import {
+  devtimeWarn as sharedDevtimeWarn,
+  _resetDevtimeWarnings as sharedResetDevtimeWarnings,
+} from '@three-flatland/bake'
 import { bakedNormalURL } from './bake.js'
 
 /**
@@ -29,16 +33,16 @@ export type NormalMapResult = Texture | null
  * if (normalTex) material.normalMap = normalTex
  * else material.useRuntimeNormals = true
  *
- * // Force the runtime path (skip baked probe)
- * const tex = await NormalMapLoader.load(url, { forceRuntime: true })
+ * // Skip the baked probe — go straight to "no normal sibling"
+ * const tex = await NormalMapLoader.load(url, { skipBakedProbe: true })
  *
  * // R3F useLoader
  * const tex = useLoader(NormalMapLoader, '/sprites/knight.png')
  * ```
  */
 export class NormalMapLoader extends Loader<NormalMapResult> {
-  /** Skip the baked probe; always resolve to `null` (use runtime path). */
-  forceRuntime = false
+  /** Skip the baked probe; resolve directly to `null`. */
+  skipBakedProbe = false
 
   constructor(manager?: LoadingManager) {
     super(manager)
@@ -54,7 +58,7 @@ export class NormalMapLoader extends Loader<NormalMapResult> {
   ): NormalMapResult {
     const resolved = this.manager.resolveURL(url)
 
-    NormalMapLoader._loadImpl(resolved, this.forceRuntime)
+    NormalMapLoader._loadImpl(resolved, this.skipBakedProbe)
       .then((result) => {
         onLoad?.(result)
       })
@@ -70,7 +74,7 @@ export class NormalMapLoader extends Loader<NormalMapResult> {
   loadAsync(url: string): Promise<NormalMapResult> {
     return NormalMapLoader._loadImpl(
       this.manager.resolveURL(url),
-      this.forceRuntime
+      this.skipBakedProbe
     )
   }
 
@@ -80,14 +84,14 @@ export class NormalMapLoader extends Loader<NormalMapResult> {
 
   static load(
     url: string,
-    options?: { forceRuntime?: boolean }
+    options?: { skipBakedProbe?: boolean }
   ): Promise<NormalMapResult> {
-    const forceRuntime = options?.forceRuntime ?? false
-    const cacheKey = forceRuntime ? `${url}:runtime` : url
+    const skipBakedProbe = options?.skipBakedProbe ?? false
+    const cacheKey = skipBakedProbe ? `${url}:skip-probe` : url
     const cached = this._cache.get(cacheKey)
     if (cached) return cached
 
-    const promise = this._loadImpl(url, forceRuntime)
+    const promise = this._loadImpl(url, skipBakedProbe)
     this._cache.set(cacheKey, promise)
     return promise
   }
@@ -100,14 +104,18 @@ export class NormalMapLoader extends Loader<NormalMapResult> {
 
   private static async _loadImpl(
     url: string,
-    forceRuntime: boolean
+    skipBakedProbe: boolean
   ): Promise<NormalMapResult> {
-    if (!forceRuntime) {
+    if (!skipBakedProbe) {
       const baked = await this._tryLoadBaked(url)
       if (baked) return baked
     }
 
-    devtimeWarn(url)
+    sharedDevtimeWarn(
+      'normal',
+      url,
+      `No baked normal sibling for ${url}. Bake with \`npx flatland-bake normal\` or pass \`normals\` to a high-level loader (SpriteSheetLoader, LDtkLoader) for in-memory generation.`
+    )
     return null
   }
 
@@ -142,20 +150,7 @@ export class NormalMapLoader extends Loader<NormalMapResult> {
   }
 }
 
-let _warned = new Set<string>()
-
-function devtimeWarn(url: string): void {
-  if (typeof process === 'undefined') return
-  if (process.env?.['NODE_ENV'] === 'production') return
-  if (_warned.has(url)) return
-  _warned.add(url)
-  console.warn(
-    `[normal] Generating data at runtime for ${url}. ` +
-      `Bake with \`npx flatland-bake normal\` for production.`
-  )
-}
-
 /** Clear the devtime-warning dedupe set. Intended for tests. */
 export function _resetDevtimeWarnings(): void {
-  _warned = new Set<string>()
+  sharedResetDevtimeWarnings()
 }

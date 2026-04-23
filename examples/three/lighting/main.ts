@@ -23,7 +23,7 @@ import {
 } from 'three-flatland'
 import {
   DefaultLightEffect,
-  AutoNormalProvider,
+  NormalMapProvider,
 } from '@three-flatland/presets'
 import { createPane } from '@three-flatland/devtools'
 
@@ -227,7 +227,9 @@ function makeLitSprite(texture: DataTexture, w: number, h: number, x: number, y:
   s.position.set(x, y, 0)
   s.lit = true
   s.castsShadow = true
-  s.addEffect(new AutoNormalProvider())
+  // Synthetic procedural texture has no baked normal sibling — provider
+  // emits a flat (0, 0, 1) normal so the sprite still receives light.
+  s.addEffect(new NormalMapProvider())
   return s
 }
 
@@ -256,7 +258,7 @@ async function main() {
   // ─ Assets ──────────────────────────────────────────────────────────────────
 
   const [knightSheet, tilesetTex] = await Promise.all([
-    SpriteSheetLoader.load('./sprites/knight.json') as Promise<SpriteSheet>,
+    SpriteSheetLoader.load('./sprites/knight.json', { normals: true }) as Promise<SpriteSheet>,
     TextureLoader.load('./sprites/Dungeon_Tileset.png'),
   ])
 
@@ -301,7 +303,9 @@ async function main() {
   hero.scale.set(KNIGHT_SCALE * 1.2, KNIGHT_SCALE * 1.2, 1)
   hero.lit = true
   hero.castsShadow = true
-  hero.addEffect(new AutoNormalProvider())
+  const heroNormals = new NormalMapProvider()
+  heroNormals.normalMap = knightSheet.normalMap ?? null
+  hero.addEffect(heroNormals)
   flatland.add(hero)
 
   const heroPos = new Vector2(0, 0)
@@ -359,7 +363,9 @@ async function main() {
     sprite.scale.set(KNIGHT_SCALE, KNIGHT_SCALE, 1)
     sprite.lit = true
     sprite.castsShadow = true
-    sprite.addEffect(new AutoNormalProvider())
+    const knightNormals = new NormalMapProvider()
+    knightNormals.normalMap = knightSheet.normalMap ?? null
+    sprite.addEffect(knightNormals)
     flatland.add(sprite)
     knights.push({ anim: newWanderer(), sprite })
   }
@@ -374,7 +380,7 @@ async function main() {
       sprite.scale.set(SLIME_SCALE, SLIME_SCALE, 1)
       sprite.lit = true
       sprite.castsShadow = true
-      sprite.addEffect(new AutoNormalProvider())
+      sprite.addEffect(new NormalMapProvider())
       const light = new Light2D({
         type: 'point',
         color: 0x33ff66,
@@ -415,7 +421,6 @@ async function main() {
     bands: 4,
     ambient: 0.12,
     shadowStrength: 0.85,
-    shadowSoftness: 16,
     shadowBias: 1,
     torch1: true,
     torch2: true,
@@ -436,7 +441,6 @@ async function main() {
 
   const shadowFolder = pane.addFolder({ title: 'Shadows' })
   shadowFolder.addBinding(params, 'shadowStrength', { min: 0, max: 1, step: 0.05, label: 'strength' })
-  shadowFolder.addBinding(params, 'shadowSoftness', { min: 1, max: 48, step: 1, label: 'softness' })
   shadowFolder.addBinding(params, 'shadowBias', { min: 0, max: 4, step: 0.1, label: 'bias' })
 
   const torchFolder = pane.addFolder({ title: 'Torches' })
@@ -467,7 +471,6 @@ async function main() {
   const lightingAttrs = lighting as unknown as {
     bands: number
     shadowStrength: number
-    shadowSoftness: number
     shadowBias: number
   }
 
@@ -485,7 +488,6 @@ async function main() {
     // Push lighting uniforms
     lightingAttrs.bands = params.quantize ? params.bands : 0
     lightingAttrs.shadowStrength = params.shadowStrength
-    lightingAttrs.shadowSoftness = params.shadowSoftness
     lightingAttrs.shadowBias = params.shadowBias
 
     // Torches (flicker)

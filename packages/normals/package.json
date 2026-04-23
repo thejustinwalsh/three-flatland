@@ -1,33 +1,35 @@
 {
   "name": "@three-flatland/normals",
   "version": "0.1.0-alpha.1",
-  "description": "Offline + runtime normal map generation for sprites. Contributes a `flatland-bake normal` subcommand.",
+  "description": "Offline + runtime normal map generation for sprites and tilesets. Contributes a `normal` subcommand to the flatland-bake CLI.",
   "type": "module",
   "exports": {
     ".": {
       "source": "./src/index.ts",
-      "import": {
-        "types": "./dist/index.d.ts",
-        "default": "./dist/index.js"
+      "node": {
+        "types": "./dist/node.d.ts",
+        "import": "./dist/node.js"
       },
-      "require": {
-        "types": "./dist/index.d.cts",
-        "default": "./dist/index.cjs"
+      "browser": {
+        "types": "./dist/index.d.ts",
+        "import": "./dist/index.js"
+      },
+      "default": {
+        "types": "./dist/index.d.ts",
+        "import": "./dist/index.js"
       }
     },
-    "./baker": {
-      "source": "./src/baker.ts",
-      "import": {
-        "types": "./dist/baker.d.ts",
-        "default": "./dist/baker.js"
-      },
-      "require": {
-        "types": "./dist/baker.d.cts",
-        "default": "./dist/baker.cjs"
-      }
+    "./node": {
+      "source": "./src/node.ts",
+      "types": "./dist/node.d.ts",
+      "import": "./dist/node.js"
+    },
+    "./cli": {
+      "source": "./src/cli.ts",
+      "types": "./dist/cli.d.ts",
+      "import": "./dist/cli.js"
     }
   },
-  "main": "./dist/index.cjs",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "files": [
@@ -41,6 +43,7 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
+    "@three-flatland/bake": "workspace:*",
     "pngjs": "^7.0.0"
   },
   "peerDependencies": {
@@ -48,16 +51,15 @@
   },
   "devDependencies": {
     "@types/pngjs": "^6.0.5",
-    "@three-flatland/bake": "workspace:*",
     "@types/three": "catalog:",
     "three": "catalog:"
   },
   "flatland": {
-    "bakers": [
+    "bake": [
       {
         "name": "normal",
         "description": "Bake a tangent-space normal map from a sprite PNG",
-        "entry": "./dist/baker.js"
+        "entry": "./dist/cli.js"
       }
     ]
   },

@@ -75,6 +75,14 @@ export interface SpriteSheet {
   width: number
   /** Atlas height in pixels */
   height: number
+  /**
+   * Tangent-space normal map, 1:1 co-registered with `texture`.
+   *
+   * Populated when the loader is given `normals: true` (or a
+   * descriptor). Binds to `NormalMapProvider.normalMap` on a lit
+   * sprite.
+   */
+  normalMap?: Texture
   /** Get a frame by name */
   getFrame(name: string): SpriteFrame
   /** Get all frame names */

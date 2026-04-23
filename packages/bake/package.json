@@ -1,7 +1,7 @@
 {
   "name": "@three-flatland/bake",
   "version": "0.1.0-alpha.1",
-  "description": "Unified bake CLI that dispatches to package-contributed bakers via a flatland.bakers manifest",
+  "description": "Shared bake pipeline infrastructure — CLI, discovery, and browser-safe loader utilities for assets with offline-baked siblings",
   "type": "module",
   "bin": {
     "flatland-bake": "./dist/cli.js"
@@ -9,17 +9,25 @@
   "exports": {
     ".": {
       "source": "./src/index.ts",
-      "import": {
-        "types": "./dist/index.d.ts",
-        "default": "./dist/index.js"
+      "node": {
+        "types": "./dist/node.d.ts",
+        "import": "./dist/node.js"
       },
-      "require": {
-        "types": "./dist/index.d.cts",
-        "default": "./dist/index.cjs"
+      "browser": {
+        "types": "./dist/index.d.ts",
+        "import": "./dist/index.js"
+      },
+      "default": {
+        "types": "./dist/index.d.ts",
+        "import": "./dist/index.js"
       }
+    },
+    "./node": {
+      "source": "./src/node.ts",
+      "types": "./dist/node.d.ts",
+      "import": "./dist/node.js"
     }
   },
-  "main": "./dist/index.cjs",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "files": [
@@ -31,6 +39,12 @@
     "dev": "tsup --watch",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "pngjs": "^7.0.0"
+  },
+  "devDependencies": {
+    "@types/pngjs": "^6.0.5"
   },
   "keywords": [
     "three-flatland",
