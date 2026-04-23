@@ -9,7 +9,14 @@ export type ClientBridge = {
 
 let cachedApi: VSCodeApiLike | null = null
 
-function acquireApi(): VSCodeApiLike {
+/**
+ * Returns the singleton webview-side `acquireVsCodeApi()` handle.
+ *
+ * `acquireVsCodeApi()` may only be called once per page — subsequent
+ * calls throw. Every module that needs to post to the host should go
+ * through this helper so there is exactly one call site.
+ */
+export function getVSCodeApi(): VSCodeApiLike {
   if (cachedApi) return cachedApi
   const fn = (globalThis as unknown as { acquireVsCodeApi?: () => VSCodeApiLike }).acquireVsCodeApi
   if (!fn) {
@@ -20,7 +27,7 @@ function acquireApi(): VSCodeApiLike {
 }
 
 export function createClientBridge(): ClientBridge {
-  const api = acquireApi()
+  const api = getVSCodeApi()
   const pending = new Map<string, { resolve: (v: unknown) => void; reject: (e: Error) => void }>()
   const listeners = new Map<string, Set<EventHandler>>()
 
