@@ -254,6 +254,14 @@ export function shadowSoft2D(
  *                         not per-ray integration. Will re-enable once a
  *                         PCSS-style trace lands.
  * @param options.eps     World-space hit threshold. Default 0.5.
+ * @param options.startOffset
+ *   World-space distance to push the ray origin forward when the
+ *   fragment itself sits inside a caster silhouette (signed SDF < 0).
+ *   Sized to clear typical caster radii — too small and the first
+ *   sample still reads negative and self-shadows; too large and the
+ *   trace misses near-caster occluders. Default 1.5 world units works
+ *   for sprite-scale casters; scenes with substantially larger casters
+ *   (e.g. big boss sprites) should pass a larger value.
  * @param options.fragmentCastsShadow
  *   When provided, gates the `nearCaster` escape path: the ray only
  *   skips past an occluder it's sitting on if THIS fragment is itself
@@ -275,6 +283,7 @@ export function shadowSDF2D(
     steps?: number
     softness?: FloatInput
     eps?: FloatInput
+    startOffset?: FloatInput
     fragmentCastsShadow?: Node<'bool'>
     /**
      * Maximum world-space distance from the receiver at which shadow
@@ -294,6 +303,10 @@ export function shadowSDF2D(
   void options.softness
   const epsNode =
     typeof options.eps === 'number' ? float(options.eps) : (options.eps ?? float(0.5))
+  const startOffsetNode =
+    typeof options.startOffset === 'number'
+      ? float(options.startOffset)
+      : (options.startOffset ?? float(1.5))
   const fragmentCastsShadow = options.fragmentCastsShadow
   const maxShadowDist =
     typeof options.maxShadowDistance === 'number'
@@ -347,8 +360,7 @@ export function shadowSDF2D(
     const nearCaster = fragmentCastsShadow
       ? onCaster.and(fragmentCastsShadow)
       : onCaster
-    const escapeOffset = float(40)
-    const effectiveStart = nearCaster.select(escapeOffset, float(0))
+    const effectiveStart = nearCaster.select(startOffsetNode, float(0))
 
     // `.toVar()` without an explicit name — TSL auto-generates unique
     // identifiers so we don't collide when multiple materials in the
