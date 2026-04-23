@@ -63,6 +63,16 @@ try {
     send('info', ['dev/reload — bundle rebuilt'])
     window.dispatchEvent(new Event('fl:dev-changed'))
   })
+  // When the toast's Reload button fires fl:reload-request, relay it to
+  // the extension host via the bridge — VSCode can't do a real
+  // location.reload() on an inline-html webview, so the host re-renders
+  // panel.webview.html for us.
+  window.addEventListener('fl:reload-request', () => {
+    send('info', ['dev/reload-request → asking host to re-render webview'])
+    void bridge.request('dev/reload-request').catch((err) => {
+      send('error', ['dev/reload-request failed', String(err)])
+    })
+  })
 } catch {
   // Not in a webview (unit/test context) — skip.
 }
