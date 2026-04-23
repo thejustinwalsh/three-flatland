@@ -84,7 +84,7 @@ const shouldTrace = isAmbient.not()
 
 Threshold `0.5` is standard for float-as-bool comparison — the stored value is exactly 0 or 1, so the midpoint is safe. GPU gate, physically skipped on the shader.
 
-No other preset effect references `row3.b` today (DirectLightEffect, SimpleLightEffect, RadianceLightEffect). They don't need updates for this spec — shadow tracing is only in DefaultLightEffect.
+`DirectLightEffect` also runs `shadowSDF2D` but is left unchanged in this spec: propagating the flag there is a straightforward follow-up (read `row3.b`, chain the same `.and()`), but out of scope for the initial landing. `SimpleLightEffect` and `RadianceLightEffect` don't run an SDF trace and need no update.
 
 ### 2.4 Demo wiring (`examples/react/lighting/App.tsx`)
 
@@ -125,7 +125,7 @@ Not unit-testable (TSL fragment code). Visual verification via the lighting exam
 
 - No DataTexture layout rework — row3 has free columns, no need for bit-packing.
 - No change to `enabled` semantics — it still fully gates the light's contribution; `castsShadow` only gates the trace.
-- No generalization to other effects (RadianceLightEffect, DirectLightEffect). Those don't run the SDF trace.
+- No generalization to `DirectLightEffect`. It runs the SDF trace and would benefit from the same gate, but wiring it is deferred to a follow-up. `RadianceLightEffect` and `SimpleLightEffect` don't run an SDF trace and are unaffected.
 - No runtime reactivity beyond what the existing sync loop provides — `castsShadow` is a JS field written through to the texture on each `sync()` call, same as every other Light2D property.
 
 ## 5. Order of operations
