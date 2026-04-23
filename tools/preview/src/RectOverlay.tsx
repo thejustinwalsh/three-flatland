@@ -50,6 +50,24 @@ function normalized(d: Drag) {
 const EMPTY: ReadonlySet<string> = new Set()
 
 /**
+ * Short label shown on the canvas. If the rect's name ends with `_N`
+ * (auto-numbered via prefix rename), show only the `N`. Otherwise show
+ * the full short name. No name → the frame index. Keeps labels compact
+ * on small sprites where full names would overlap each other.
+ */
+function shortLabel(name: string | undefined, index: number): string {
+  if (!name) return String(index)
+  const m = /_(\d+)$/.exec(name)
+  if (m) return m[1]!
+  return name
+}
+
+/** Full label for hover tooltips and any context where space isn't tight. */
+function fullLabel(name: string | undefined, index: number): string {
+  return name ?? `#${index}`
+}
+
+/**
  * Label for a rect — small text rendered just above the rect's top edge.
  * Uses image-pixel units (we're inside the viewBox-scaled SVG). font-size
  * is in image-px too; at typical zoom that renders as ~10-12 CSS px.
@@ -214,6 +232,8 @@ export function RectOverlay({
         const sel = selectedIds.has(r.id)
         return (
           <g key={r.id}>
+            {/* Native browser hover tooltip showing the full name. */}
+            <title>{fullLabel(r.name, i)}</title>
             <rect
               x={r.x}
               y={r.y}
@@ -247,7 +267,7 @@ export function RectOverlay({
             {showLabels ? (
               <RectLabel
                 rect={r}
-                text={r.name ?? `#${i}`}
+                text={shortLabel(r.name, i)}
                 selected={sel}
                 imgW={vp.imageW}
               />
