@@ -21,10 +21,15 @@ export default defineConfig({
   // Dedicated port for tool webviews. Root `pnpm dev` (docs + examples MPA)
   // already owns 5173; strictPort makes us fail loudly instead of silently
   // drifting to 5174+ where the plugin's dev-server-URL handoff might miss.
+  //
+  // host MUST be 'localhost' (not '127.0.0.1') — the webview sandbox
+  // treats the two as distinct origins, and the plugin generates HTML that
+  // references http://localhost:PORT; binding to 127.0.0.1 causes the
+  // webview to 404 on its own bundle.
   server: {
     port: 5200,
     strictPort: true,
-    host: '127.0.0.1',
+    host: 'localhost',
   },
   build: {
     rollupOptions: {
