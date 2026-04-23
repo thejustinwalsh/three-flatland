@@ -25,8 +25,7 @@ import {
 } from 'three-flatland/react'
 import {
   DefaultLightEffect,
-  AutoNormalProvider,
-  TileNormalProvider,
+  NormalMapProvider,
 } from '@three-flatland/presets'
 import '@three-flatland/presets/react'
 import { usePane, usePaneFolder, usePaneInput } from '@three-flatland/devtools/react'
@@ -39,8 +38,7 @@ extend({
   TileMap2D,
   Light2D,
   DefaultLightEffect,
-  AutoNormalProvider,
-  TileNormalProvider,
+  NormalMapProvider,
 })
 
 // ============================================
@@ -203,23 +201,28 @@ interface SceneProps {
   bands: number
   quantize: boolean
   shadowStrength: number
-  shadowSoftness: number
   shadowBias: number
   shadowMaxDistance: number
   shadowPixelSize: number
   shadowBands: number
   shadowBandCurve: number
-  shadowDebug: number
   ambient: number
   slimeCount: number
   torchIntensity: number
   torchDistance: number
   showKnights: boolean
+  lightHeight: number
+  capShadowStrength: number
+  capShadowThreshold: number
 }
 
 function FlatlandScene(props: SceneProps) {
-  const knightSheet = useLoader(SpriteSheetLoader, './sprites/knight.json')
-  const mapData = useLoader(LDtkLoader, './maps/dungeon.ldtk')
+  const knightSheet = useLoader(SpriteSheetLoader, './sprites/knight.json', (l) => {
+    l.normals = true
+  })
+  const mapData = useLoader(LDtkLoader, './maps/dungeon.ldtk', (l) => {
+    l.normals = true
+  })
 
   const gl = useThree((s) => s.gl)
   const size = useThree((s) => s.size)
@@ -276,35 +279,38 @@ function FlatlandScene(props: SceneProps) {
     const e = defaultLightRef.current as unknown as {
       bands: number
       shadowStrength: number
-      shadowSoftness: number
       shadowBias: number
       shadowMaxDistance: number
       shadowPixelSize: number
       shadowBands: number
       shadowBandCurve: number
-      shadowDebug: number
+      lightHeight: number
+      capShadowStrength: number
+      capShadowThreshold: number
     } | null
     if (!e) return
     e.bands = props.quantize ? props.bands : 0
     e.shadowStrength = props.shadowStrength
-    e.shadowSoftness = props.shadowSoftness
     e.shadowBias = props.shadowBias
     e.shadowMaxDistance = props.shadowMaxDistance
     e.shadowPixelSize = props.shadowPixelSize
     e.shadowBands = props.shadowBands
     e.shadowBandCurve = props.shadowBandCurve
-    e.shadowDebug = props.shadowDebug
+    e.lightHeight = props.lightHeight
+    e.capShadowStrength = props.capShadowStrength
+    e.capShadowThreshold = props.capShadowThreshold
   }, [
     props.bands,
     props.quantize,
     props.shadowStrength,
-    props.shadowSoftness,
     props.shadowBias,
     props.shadowMaxDistance,
     props.shadowPixelSize,
     props.shadowBands,
     props.shadowBandCurve,
-    props.shadowDebug,
+    props.lightHeight,
+    props.capShadowStrength,
+    props.capShadowThreshold,
   ])
 
   useEffect(() => {
@@ -493,7 +499,6 @@ function FlatlandScene(props: SceneProps) {
           attach={attachLighting}
           bands={props.quantize ? props.bands : 0}
           shadowStrength={props.shadowStrength}
-          shadowSoftness={props.shadowSoftness}
           shadowBias={props.shadowBias}
           shadowMaxDistance={props.shadowMaxDistance}
           shadowPixelSize={props.shadowPixelSize}
@@ -501,11 +506,12 @@ function FlatlandScene(props: SceneProps) {
           shadowBandCurve={props.shadowBandCurve}
         />
 
-        {/* Floor + walls. TileNormalProvider reads `normalKind` from each
-            tile's custom properties (tagged above) so walls react to
-            lights directionally while floors stay flat. */}
+        {/* Floor + walls. Tileset's baked normalMap (synthesized by
+            LDtkLoader from per-tile `tileDir` / `tileCap*` custom data)
+            drives directional lighting — walls tilt toward their visible
+            face, floors stay flat. */}
         <tileMap2D ref={tilemapRef} data={mapData} scale={[TILE_SCALE, TILE_SCALE, 1]} position={[-mapHalfW, -mapHalfH, -100]}>
-          <tileNormalProvider attach={attachEffect} />
+          <normalMapProvider attach={attachEffect} normalMap={mapData.tilesets[0]?.normalMap ?? null} />
         </tileMap2D>
 
         {/* Ambient — purple-tinted dungeon atmosphere */}
@@ -551,7 +557,7 @@ function FlatlandScene(props: SceneProps) {
           lit
           layer={Layers.ENTITIES}
         >
-          <autoNormalProvider attach={attachEffect} />
+          <normalMapProvider attach={attachEffect} normalMap={knightSheet.normalMap ?? null} />
         </animatedSprite2D>
 
         {/* Wandering knights */}
@@ -569,11 +575,14 @@ function FlatlandScene(props: SceneProps) {
               lit
               layer={Layers.ENTITIES}
             >
-              <autoNormalProvider attach={attachEffect} />
+              <normalMapProvider attach={attachEffect} normalMap={knightSheet.normalMap ?? null} />
             </animatedSprite2D>
           ))}
 
-        {/* Slimes + per-slime lights */}
+        {/* Slimes + per-slime lights. Synthetic `slimeTex` has no baked
+            normal map — `normalMapProvider` with `normalMap: null` emits
+            a flat (0, 0, 1) which lets the slime still receive light
+            without per-texel surface detail. */}
         {slimesRef.current.map((s, i) => (
           <sprite2D
             key={`slime-${i}`}
@@ -587,7 +596,7 @@ function FlatlandScene(props: SceneProps) {
             lit
             layer={Layers.ENTITIES}
           >
-            <autoNormalProvider attach={attachEffect} />
+            <normalMapProvider attach={attachEffect} normalMap={null} />
           </sprite2D>
         ))}
         {slimesRef.current.map((s, i) => (
@@ -618,23 +627,25 @@ export default function App() {
   const [quantize] = usePaneInput(light, 'quantize', true)
   const [bands] = usePaneInput(light, 'bands', 4, { min: 0, max: 8, step: 1 })
   const [ambient] = usePaneInput(light, 'ambient', 0.4, { min: 0, max: 3, step: 0.05 })
+  // lightHeight: the universal +Z component added to every light's
+  // direction. Higher values make flat surfaces (floors, wall caps)
+  // read as more "top-lit" — classic 2.5D look. Lower values push the
+  // light toward a side-lit feel where tilted faces dominate.
+  const [lightHeight] = usePaneInput(light, 'lightHeight', 0.75, { min: 0, max: 2, step: 0.05 })
+  // capShadowStrength: attenuate direct light on fragments whose
+  // normal is ≈ (0, 0, 1). 0 = caps lit normally; 1 = caps only pick
+  // up ambient. Uses `normal.z` as a proxy — floors are also
+  // attenuated (tilt them slightly if you want floors lit + caps dark).
+  const [capShadowStrength] = usePaneInput(light, 'capShadow', 0, { min: 0, max: 1, step: 0.05 })
+  const [capShadowThreshold] = usePaneInput(light, 'capShadowThresh', 0.9, { min: 0, max: 1, step: 0.01 })
 
   const shadows = usePaneFolder(pane, 'Shadows')
   const [shadowStrength] = usePaneInput(shadows, 'strength', 0.85, { min: 0, max: 1, step: 0.05 })
-  const [shadowSoftness] = usePaneInput(shadows, 'softness', 16, { min: 1, max: 48, step: 1 })
   const [shadowBias] = usePaneInput(shadows, 'bias', 0.5, { min: 0, max: 2, step: 0.05 })
   const [shadowMaxDistance] = usePaneInput(shadows, 'maxDistance', 0, { min: 0, max: 600, step: 10 })
   const [shadowPixelSize] = usePaneInput(shadows, 'pixelSize', 0, { min: 0, max: 8, step: 1 })
   const [shadowBands] = usePaneInput(shadows, 'bands', 0, { min: 0, max: 8, step: 1 })
   const [shadowBandCurve] = usePaneInput(shadows, 'bandCurve', 1, { min: 0.25, max: 4, step: 0.05 })
-  // Debug view modes:
-  //   0 = normal, 1 = avg shadow mask, 2 = direct light (no shadow),
-  //   3 = direct light (w/ shadow), 4 = SDF at surface, 5 = tile light count
-  const [shadowDebug] = usePaneInput(shadows, 'debug mode', 0, {
-    min: 0,
-    max: 5,
-    step: 1,
-  })
 
   const torches = usePaneFolder(pane, 'Torches')
   const [torchIntensity] = usePaneInput(torches, 'intensity', 1.2, { min: 0, max: 3, step: 0.05 })
@@ -654,18 +665,19 @@ export default function App() {
           bands={bands}
           quantize={quantize}
           shadowStrength={shadowStrength}
-          shadowSoftness={shadowSoftness}
           shadowBias={shadowBias}
           shadowMaxDistance={shadowMaxDistance}
           shadowPixelSize={shadowPixelSize}
           shadowBands={shadowBands}
           shadowBandCurve={shadowBandCurve}
-          shadowDebug={shadowDebug}
           ambient={ambient}
           slimeCount={slimeCount}
           torchIntensity={torchIntensity}
           torchDistance={torchDistance}
           showKnights={showKnights}
+          lightHeight={lightHeight}
+          capShadowStrength={capShadowStrength}
+          capShadowThreshold={capShadowThreshold}
         />
       </Suspense>
     </Canvas>

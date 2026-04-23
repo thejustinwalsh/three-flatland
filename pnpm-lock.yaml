@@ -70,6 +70,9 @@ importers:
       '@size-limit/preset-small-lib':
         specifier: ^12.0.0
         version: 12.0.0(size-limit@12.0.0)
+      '@three-flatland/normals':
+        specifier: workspace:*
+        version: link:packages/normals
       '@types/node':
         specifier: ^22.10.5
         version: 22.19.7
@@ -94,6 +97,9 @@ importers:
       size-limit:
         specifier: ^12.0.0
         version: 12.0.0
+      three-flatland:
+        specifier: workspace:*
+        version: link:packages/three-flatland
       tsup:
         specifier: ^8.3.5
         version: 8.5.1(jiti@1.21.7)(postcss@8.5.6)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.2)
@@ -1087,7 +1093,15 @@ importers:
         specifier: ^6.4.1
         version: 6.4.1(@types/node@22.19.7)(jiti@1.21.7)(terser@5.46.1)(tsx@4.21.0)(yaml@2.8.2)
 
-  packages/bake: {}
+  packages/bake:
+    dependencies:
+      pngjs:
+        specifier: ^7.0.0
+        version: 7.0.0
+    devDependencies:
+      '@types/pngjs':
+        specifier: ^6.0.5
+        version: 6.0.5
 
   packages/devtools:
     devDependencies:
@@ -1148,13 +1162,13 @@ importers:
 
   packages/normals:
     dependencies:
+      '@three-flatland/bake':
+        specifier: workspace:*
+        version: link:../bake
       pngjs:
         specifier: ^7.0.0
         version: 7.0.0
     devDependencies:
-      '@three-flatland/bake':
-        specifier: workspace:*
-        version: link:../bake
       '@types/pngjs':
         specifier: ^6.0.5
         version: 6.0.5
@@ -1222,6 +1236,12 @@ importers:
 
   packages/three-flatland:
     dependencies:
+      '@three-flatland/bake':
+        specifier: workspace:*
+        version: link:../bake
+      '@three-flatland/normals':
+        specifier: workspace:*
+        version: link:../normals
       koota:
         specifier: 'catalog:'
         version: 0.6.5(@types/react@19.2.9)(react@19.2.3)

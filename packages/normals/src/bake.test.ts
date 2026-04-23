@@ -29,13 +29,14 @@ describe('bakeNormalMapFromPixels', () => {
     const input = solidSquare(w, h)
     const out = bakeNormalMapFromPixels(input, w, h)
 
-    // Normal should be (0, 0, 1) → encoded (128, 128, 255).
+    // Encoding: R/G = nx/ny (128 = 0), B = elevation (0 = ground).
+    // Runtime reconstructs nz = sqrt(1 − nx² − ny²) = 1 for a flat bake.
     for (let y = 1; y < h - 1; y++) {
       for (let x = 1; x < w - 1; x++) {
         const [r, g, b] = rgbAt(out, x, y, w)
         expect(r).toBe(128)
         expect(g).toBe(128)
-        expect(b).toBe(255)
+        expect(b).toBe(0)
       }
     }
   })
@@ -70,16 +71,14 @@ describe('bakeNormalMapFromPixels', () => {
     const out = bakeNormalMapFromPixels(input, w, h)
 
     // At the transition (x=1 or x=2, mid rows) we expect a strong +x in the normal.
-    const [r1, , b1] = rgbAt(out, 1, 2, w)
-    const [r2, , b2] = rgbAt(out, 2, 2, w)
-
-    // r > 128 → normal.x > 0 (pointing toward the filled side in tangent space
-    // depends on convention, but both neighbors must agree).
+    const [r1] = rgbAt(out, 1, 2, w)
+    const [r2] = rgbAt(out, 2, 2, w)
+    // r > 128 → normal.x > 0 (pointing toward the filled side).
     expect(r1).toBeGreaterThan(128)
     expect(r2).toBeGreaterThan(128)
-    // z remains positive → b is at least 128.
-    expect(b1).toBeGreaterThanOrEqual(128)
-    expect(b2).toBeGreaterThanOrEqual(128)
+    // nz reconstruction at runtime = sqrt(1 − nx² − ny²), always ≥ 0 —
+    // no direct B-channel assertion needed here since B now carries
+    // elevation (0 by default).
   })
 
   it('scales gradient with strength option', () => {
@@ -109,7 +108,7 @@ describe('bakeNormalMapFromPixels', () => {
     const [r, g, b] = rgbAt(out, 0, 0, 1)
     expect(r).toBe(128)
     expect(g).toBe(128)
-    expect(b).toBe(255)
+    expect(b).toBe(0) // elevation default = ground
     expect(alphaAt(out, 0, 0, 1)).toBe(200)
   })
 })

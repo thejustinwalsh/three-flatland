@@ -50,7 +50,11 @@ export type EffectValues<S extends EffectSchema> = {
  * (e.g. `this.forwardPlus.resize(w, h)` works live — no remove/re-add needed).
  */
 export type EffectConstants<S extends EffectSchema> = {
-  readonly [K in ConstantKeys<S>]: S[K] extends () => infer R ? R : never
+  // Writable — backed by a getter/setter that reads/writes `_constants`.
+  // Assignment is only meaningful before `sprite.addEffect(effect)` —
+  // after attach, the effect's material routing is locked in by the
+  // values in `_constants` at the time of attach.
+  [K in ConstantKeys<S>]: S[K] extends () => infer R ? R : never
 }
 
 // ============================================
@@ -305,12 +309,23 @@ export abstract class MaterialEffect {
       }
     }
 
-    // Initialize constant fields — call factory, store value, define read-only property
+    // Initialize constant fields — call factory, store value, expose a
+    // getter/setter that writes back into `_constants`. Assignment is
+    // only meaningful BEFORE the effect is attached to a sprite/tilemap
+    // (the effect's effectsKey / material routing is computed from
+    // `_constants` at addEffect time). After attach, a set will update
+    // the stored value but the effect's material binding is already
+    // locked in — primarily useful for library code (and R3F default
+    // prop-setting) that initializes a constant prior to calling
+    // `sprite.addEffect(effect)`.
     for (const [name, factory] of Object.entries(ctor._constantFactories)) {
       const value = factory()
       this._constants[name] = value
       Object.defineProperty(this, name, {
         get: () => this._constants[name],
+        set: (v: unknown) => {
+          this._constants[name] = v
+        },
         enumerable: true,
         configurable: true,
       })

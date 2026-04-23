@@ -1,6 +1,10 @@
 import { readFileSync, readdirSync, existsSync, statSync } from 'node:fs'
 import { resolve, join } from 'node:path'
-import type { BakerRegistration, FlatlandManifest } from './types.js'
+import type {
+  BakerRegistration,
+  FlatlandManifest,
+  FlatlandManifestEntry,
+} from './types.js'
 
 interface PackageJson {
   name?: string
@@ -10,7 +14,8 @@ interface PackageJson {
 /**
  * Discover registered bakers by walking `node_modules` near the current
  * working directory. Supports both flat and pnpm-symlinked layouts: every
- * `package.json` that declares a `flatland.bakers` field is picked up.
+ * `package.json` that declares a `flatland.bake` (or legacy
+ * `flatland.bakers`) field is picked up.
  *
  * Conflicts (multiple packages registering the same baker name) are reported;
  * the first match wins and the rest are returned as warnings so the caller
@@ -121,7 +126,7 @@ function readPackage(
   if (seenPackages.has(name)) return
   seenPackages.add(name)
 
-  const manifest = pkg.flatland?.bakers
+  const manifest = resolveManifest(pkg.flatland, name, conflicts)
   if (!manifest || manifest.length === 0) return
 
   for (const decl of manifest) {
@@ -143,4 +148,24 @@ function readPackage(
     }
     bakers.set(decl.name, registration)
   }
+}
+
+/**
+ * Prefer `flatland.bake` (current); fall back to `flatland.bakers`
+ * (legacy) with a one-time deprecation warning per package.
+ */
+function resolveManifest(
+  manifest: FlatlandManifest | undefined,
+  packageName: string,
+  conflicts: string[]
+): FlatlandManifestEntry[] | undefined {
+  if (!manifest) return undefined
+  if (manifest.bake && manifest.bake.length > 0) return manifest.bake
+  if (manifest.bakers && manifest.bakers.length > 0) {
+    conflicts.push(
+      `"${packageName}" uses deprecated \`flatland.bakers\` — rename to \`flatland.bake\` (the legacy key is accepted for one release)`
+    )
+    return manifest.bakers
+  }
+  return undefined
 }

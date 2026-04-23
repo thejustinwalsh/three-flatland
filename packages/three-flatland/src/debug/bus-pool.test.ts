@@ -84,7 +84,10 @@ describe('bus-pool', () => {
   describe('exhaustion fallback', () => {
     it('returns a fresh buffer + bumps `smallExhausted` when the small free stack is empty', () => {
       const pool = new BufferPool()
-      // No seed → empty free stack from the start.
+      // Seed with zero buffers to flip `_seeded` past the boot-race gate.
+      // Real pools are always seeded before use — the gate only suppresses
+      // warnings during the worker-boot window.
+      pool.seed('small', [])
       const fallback = pool.acquireSmall()
       expect(fallback.byteLength).toBe(POOL.small.size)
       expect(pool.stats().smallExhausted).toBe(1)
@@ -93,6 +96,7 @@ describe('bus-pool', () => {
 
     it('throttles the warning so we get at most one per 16 events', () => {
       const pool = new BufferPool()
+      pool.seed('small', [])
       for (let i = 0; i < 17; i++) pool.acquireSmall()
       // 17 events → warning fires when count hits 1, then 17 (none in-between).
       expect(warnSpy.mock.calls.length).toBe(2)
