@@ -11,18 +11,22 @@ import {
 } from '../debug/debug-sink'
 
 /**
- * Screen-space tile edge in pixels. 32px balances CPU tile-assignment
- * cost against per-tile light density:
+ * Screen-space tile edge in pixels.
  *
- * - **CPU cost** scales with `tileCount * avgLightsPerTile`. At 32px
- *   tiles, a 1920×1080 viewport has 2,040 tiles vs 8,160 at 16px —
- *   4× less CPU work per frame in the tile-culling loop.
- * - **Per-tile density** rises because each tile covers 4× the area,
- *   so more lights overlap it. `MAX_LIGHTS_PER_TILE = 16` caps
- *   per-fragment shader cost regardless; saturated tiles fall back
- *   to the reservoir path.
+ * 16px gives finer-grained coverage of small fill lights (slime glows
+ * ~40 world units) so the tile's closest-point score stays
+ * representative of what the fragment would see at the tile center.
+ * 32px showed visible blockiness on small fill lights because the
+ * tile AABB could contain the light while its effective reach
+ * barely extends to the tile's opposite corner — the scoring would
+ * keep the light on the light's own side of the tile but evict it
+ * by the far side, producing grid-aligned intensity falloff.
+ *
+ * CPU cost at 16px doubles vs 32px (more tiles), but dedup + the
+ * reservoir path keep per-tile work bounded, and the per-fragment
+ * shader loop is unchanged either way (MAX_LIGHTS_PER_TILE caps it).
  */
-export const TILE_SIZE = 32
+export const TILE_SIZE = 16
 
 /**
  * Max lights any single tile can hold. Each tile dedicates
@@ -93,9 +97,9 @@ export const TILE_STRIDE = 8
  * fullscreen, only ambient survives."
  *
  * 512 × 512 × RGBA32F = 1 MB GPU + CPU. Capacity is
- * `512² / TILE_STRIDE = 32,768` tiles — covers up to ~8K CSS canvas
- * (7680×4320 → 32,400 tiles, 99% utilization) at TILE_SIZE=32.
- * Beyond 8K, bump TILE_SIZE to 64 or TILE_TEXTURE_DIM to 1024.
+ * `512² / TILE_STRIDE = 32,768` tiles — covers up to 4K CSS canvas
+ * (3840×2160 → 32,400 tiles, 99% utilization) at TILE_SIZE=16.
+ * Beyond 4K, bump TILE_SIZE to 32 or TILE_TEXTURE_DIM to 1024.
  */
 export const TILE_TEXTURE_DIM = 512
 
