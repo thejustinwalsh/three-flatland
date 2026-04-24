@@ -146,13 +146,24 @@ import './index.css'
 | `importSources` | string[] | `['@stylexjs/stylex']` | Custom import sources |
 | `styleResolution` | string | `'property-specificity'` | `'application-order'` (last wins) or `'property-specificity'` (more specific wins) |
 
-### Unplugin / PostCSS shared options
+### Unplugin options (Vite / Webpack / Rspack / esbuild / Rollup)
+
+| Option | Type | Default | Description |
+|---|---|---|---|
+| `useCSSLayers` | boolean | false | Wrap output in `@layer` for cascade control |
+
+`@stylexjs/unplugin` does **not** accept `include` / `exclude` options. File selection is automatic: it transforms any `.js/.jsx/.ts/.tsx` file the host bundler hands it that imports from `@stylexjs/stylex`. Adding `include` to the options object silently breaks TypeScript (`error TS2353: 'include' does not exist`) because it's not in `UserOptions`.
+
+### PostCSS plugin options (`@stylexjs/postcss-plugin`)
 
 | Option | Type | Default | Description |
 |---|---|---|---|
 | `useCSSLayers` | boolean | false | Wrap output in `@layer` for cascade control |
 | `include` | string[] | `['**/*.{js,jsx,ts,tsx}']` | Files to process |
 | `exclude` | string[] | `['node_modules/**']` | Files to skip |
+| `babelConfig` | object | – | Babel config used when parsing source files |
+
+`include` / `exclude` only apply to the PostCSS plugin (Next.js setup). The unplugin path does not need them.
 
 ## TypeScript
 
