@@ -162,6 +162,33 @@ export class EffectMaterial extends MeshBasicNodeMaterial {
   _effectSchemaVersion: number = 0
 
   /**
+   * Maximum number of per-instance effect floats a single material can
+   * consume before hitting WebGPU's 8-vertex-buffer cap. Exposed for
+   * diagnostics. Effects that push past this at `registerEffect` time
+   * throw a clear error.
+   *
+   * Budget: 8 buffers total − 3 geometry (position/normal/uv) − 1
+   * instanceMatrix − 1 interleaved core = 3 buffers × 4 floats = 12.
+   */
+  static readonly MAX_EFFECT_FLOATS = 12
+
+  /**
+   * Return the maximum number of per-instance effect floats this
+   * material type supports. See {@link MAX_EFFECT_FLOATS}.
+   */
+  static getMaxEffectFloats(): number {
+    return EffectMaterial.MAX_EFFECT_FLOATS
+  }
+
+  /**
+   * Current per-instance effect-float usage (sum across all registered
+   * effects). Complements {@link getMaxEffectFloats}.
+   */
+  getUsedEffectFloats(): number {
+    return this._effectTotalFloats
+  }
+
+  /**
    * Color transform function (e.g., lighting).
    * @internal
    */
@@ -254,11 +281,12 @@ export class EffectMaterial extends MeshBasicNodeMaterial {
     const bitIndex = this._effects.length - 1 + EFFECT_BIT_OFFSET
     this._effectBitIndex.set(effectClass.effectName, bitIndex)
 
-    // 2. Assign sequential float offsets for each field. Slots 0 and 1 are
-    //    reserved: slot 0 (effectBuf0.x) = system flags, slot 1
-    //    (effectBuf0.y) = MaterialEffect enable bits. Effect field data
-    //    starts at slot 2 (effectBuf0.z).
-    let nextOffset = 2
+    // 2. Assign sequential float offsets for each field starting at
+    //    slot 0 (effectBuf0.x). System flags and MaterialEffect enable
+    //    bits used to live here, but they moved to the interleaved
+    //    `instanceSystem` attribute (see SpriteBatch), so `effectBuf*`
+    //    is now pure effect data with no reservations.
+    let nextOffset = 0
     for (const existingEffect of this._effects) {
       for (const field of existingEffect._fields) {
         const key = `${existingEffect.effectName}_${field.name}`
@@ -271,12 +299,31 @@ export class EffectMaterial extends MeshBasicNodeMaterial {
       }
     }
 
-    // 3. Compute new total: 2 (system flags + enable bits) + sum of all effect data floats
+    // 3. Compute new total — sum of all effect data floats. No longer
+    //    includes the old `+2` for system/enable reservations.
     let dataFloats = 0
     for (const eff of this._effects) {
       dataFloats += eff._totalFloats
     }
-    this._effectTotalFloats = 2 + dataFloats
+    this._effectTotalFloats = dataFloats
+
+    // Hard cap: WebGPU allows 8 vertex-buffer bindings per pipeline.
+    // SpriteBatch uses 5 for fixed bindings (3 geometry + instanceMatrix
+    // + interleaved core), leaving 3 for `effectBuf0/1/2` × 4 floats =
+    // 12 effect floats max. Exceeding that would force a 4th effectBuf
+    // binding which WebGPU will reject at pipeline creation with a
+    // cryptic "vertex buffer count exceeds maximum" error. Reject
+    // clearly here instead.
+    if (dataFloats > EffectMaterial.MAX_EFFECT_FLOATS) {
+      const names = this._effects.map((e) => e.effectName).join(', ')
+      throw new Error(
+        `[EffectMaterial] Cannot register '${effectClass.effectName}': ` +
+          `effects would use ${dataFloats} floats of per-instance data, ` +
+          `exceeding the cap of ${EffectMaterial.MAX_EFFECT_FLOATS} ` +
+          `(WebGPU 8-buffer limit). Registered so far: [${names}]. ` +
+          `Reduce a schema or consolidate effects.`
+      )
+    }
 
     // 4. Compute new tier
     const oldTier = this._effectTier

@@ -97,7 +97,7 @@ export function transformSyncSystem(world: World): void {
     // Per-instance shadow radius — either the sprite's explicit override
     // or auto-derived `max(|sx|, |sy|)` so the default tracks scale
     // changes (incl. AnimatedSprite2D frame-source-size swaps).
-    // Written into `effectBuf0.z`; consumed by shadow-casting
+    // Written into `instanceExtras.x`; consumed by shadow-casting
     // LightEffects via `readShadowRadius()`.
     const override = sprite.shadowRadius
     let radius: number
@@ -108,6 +108,6 @@ export function transformSyncSystem(world: World): void {
       const asy = sy < 0 ? -sy : sy
       radius = asx > asy ? asx : asy
     }
-    mesh.writeEffectSlot(slot, 0, 2, radius)
+    mesh.writeShadowRadius(slot, radius)
   }
 }

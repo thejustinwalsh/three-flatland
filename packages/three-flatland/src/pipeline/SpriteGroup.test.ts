@@ -221,12 +221,14 @@ describe('SpriteGroup', () => {
     // Run systems via updateMatrixWorld — should sync trait to batch buffer
     renderer.updateMatrixWorld()
 
-    // Verify batch buffer was updated
+    // Verify batch buffer was updated. Interleaved layout — color
+    // at offsets 4..7 within each instance's 16-float slice.
     const colorAttr = mesh!.getColorAttribute()
     const array = colorAttr.array as Float32Array
-    expect(array[slot * 4 + 0]).toBeCloseTo(1) // r
-    expect(array[slot * 4 + 1]).toBeCloseTo(0) // g
-    expect(array[slot * 4 + 2]).toBeCloseTo(0) // b
+    const base = slot * 16 + 4
+    expect(array[base + 0]).toBeCloseTo(1) // r
+    expect(array[base + 1]).toBeCloseTo(0) // g
+    expect(array[base + 2]).toBeCloseTo(0) // b
   })
 
   it('update() and updateMatrixWorld() should not run systems twice', () => {

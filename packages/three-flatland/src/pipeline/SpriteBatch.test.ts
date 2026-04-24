@@ -72,10 +72,12 @@ describe('SpriteBatch', () => {
     // Free the slot
     batch.freeSlot(slot)
 
-    // Alpha should be 0 (invisible)
+    // Alpha should be 0 (invisible). All core attributes share one
+    // interleaved buffer with stride INSTANCE_STRIDE=16 and color at
+    // offset 4; alpha is component 3 of color.
     const colorAttr = batch.getColorAttribute()
     const array = colorAttr.array as Float32Array
-    expect(array[slot * 4 + 3]).toBe(0)
+    expect(array[slot * 16 + 4 + 3]).toBe(0)
   })
 
   it('should write and read color data', () => {
@@ -86,10 +88,11 @@ describe('SpriteBatch', () => {
 
     const colorAttr = batch.getColorAttribute()
     const array = colorAttr.array as Float32Array
-    expect(array[slot * 4 + 0]).toBeCloseTo(1) // r
-    expect(array[slot * 4 + 1]).toBeCloseTo(0) // g
-    expect(array[slot * 4 + 2]).toBeCloseTo(0) // b
-    expect(array[slot * 4 + 3]).toBeCloseTo(0.5) // a
+    // Interleaved layout: stride 16 per instance, color at offset 4.
+    expect(array[slot * 16 + 4 + 0]).toBeCloseTo(1) // r
+    expect(array[slot * 16 + 4 + 1]).toBeCloseTo(0) // g
+    expect(array[slot * 16 + 4 + 2]).toBeCloseTo(0) // b
+    expect(array[slot * 16 + 4 + 3]).toBeCloseTo(0.5) // a
   })
 
   it('should write and read UV data', () => {
@@ -100,10 +103,11 @@ describe('SpriteBatch', () => {
 
     const uvAttr = batch.getUVAttribute()
     const array = uvAttr.array as Float32Array
-    expect(array[slot * 4 + 0]).toBeCloseTo(0.25)
-    expect(array[slot * 4 + 1]).toBeCloseTo(0.5)
-    expect(array[slot * 4 + 2]).toBeCloseTo(0.25)
-    expect(array[slot * 4 + 3]).toBeCloseTo(0.25)
+    // Interleaved layout: stride 16, UV at offset 0.
+    expect(array[slot * 16 + 0]).toBeCloseTo(0.25)
+    expect(array[slot * 16 + 1]).toBeCloseTo(0.5)
+    expect(array[slot * 16 + 2]).toBeCloseTo(0.25)
+    expect(array[slot * 16 + 3]).toBeCloseTo(0.25)
   })
 
   it('should write and read flip data', () => {
@@ -112,10 +116,11 @@ describe('SpriteBatch', () => {
 
     batch.writeFlip(slot, -1, 1)
 
-    const flipAttr = batch.getFlipAttribute()
-    const array = flipAttr.array as Float32Array
-    expect(array[slot * 2 + 0]).toBe(-1) // x flipped
-    expect(array[slot * 2 + 1]).toBe(1)  // y normal
+    // Flip lives at `instanceSystem.xy` — offset 8/9 within the stride.
+    const systemAttr = batch.getSystemAttribute()
+    const array = systemAttr.array as Float32Array
+    expect(array[slot * 16 + 8]).toBe(-1) // x flipped
+    expect(array[slot * 16 + 9]).toBe(1) // y normal
   })
 
   it('should reset all slots', () => {

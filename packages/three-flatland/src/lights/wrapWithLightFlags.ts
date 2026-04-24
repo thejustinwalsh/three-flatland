@@ -10,16 +10,17 @@ import type { ColorTransformFn } from '../materials/Sprite2DMaterial'
 /**
  * Wrap a light ColorTransformFn with a per-instance lit-bit check.
  *
- * Reads bit 0 of `effectBuf0.x` and uses `select()` to bypass lighting
- * for sprites whose lit flag is not set. Only needed for batched sprites —
- * standalone usage can assign the raw `lightFn` directly.
+ * Reads bit 0 of `instanceSystem.z` and uses `select()` to bypass
+ * lighting for sprites whose lit flag is not set. Only needed for
+ * batched sprites — standalone usage can assign the raw `lightFn`
+ * directly.
  *
  * @param lightFn - The lighting ColorTransformFn to wrap
  * @returns A new ColorTransformFn that gates lighting per instance
  */
 export function wrapWithLightFlags(lightFn: ColorTransformFn): ColorTransformFn {
   return (ctx) => {
-    const flags = int(attribute<'vec4'>('effectBuf0', 'vec4').x)
+    const flags = int(attribute<'vec4'>('instanceSystem', 'vec4').z)
     const isLit = flags.bitAnd(int(LIT_FLAG_MASK)).greaterThan(int(0))
     const litColor = lightFn(ctx)
     return select(isLit, litColor, ctx.color)
@@ -27,7 +28,8 @@ export function wrapWithLightFlags(lightFn: ColorTransformFn): ColorTransformFn 
 }
 
 /**
- * Read the per-instance receiveShadows flag (bit 1 of `effectBuf0.x`).
+ * Read the per-instance receiveShadows flag (bit 1 of
+ * `instanceSystem.z`).
  *
  * Preset LightEffects call this in their shadow calculation to skip
  * shadow for sprites that have opted out.
@@ -35,12 +37,12 @@ export function wrapWithLightFlags(lightFn: ColorTransformFn): ColorTransformFn 
  * @returns A TSL boolean node — `true` when the sprite receives shadows
  */
 export function readReceiveShadowsFlag(): Node<'bool'> {
-  const flags = int(attribute<'vec4'>('effectBuf0', 'vec4').x)
+  const flags = int(attribute<'vec4'>('instanceSystem', 'vec4').z)
   return flags.bitAnd(int(RECEIVE_SHADOWS_MASK)).greaterThan(int(0))
 }
 
 /**
- * Read the per-instance castsShadow flag (bit 2 of `effectBuf0.x`).
+ * Read the per-instance castsShadow flag (bit 2 of `instanceSystem.z`).
  *
  * Consumed by the occlusion-pass fragment shader to mask a sprite's
  * alpha contribution to the SDF seed — casters emit their silhouette,
@@ -49,12 +51,12 @@ export function readReceiveShadowsFlag(): Node<'bool'> {
  * @returns A TSL boolean node — `true` when the sprite casts shadow.
  */
 export function readCastShadowFlag(): Node<'bool'> {
-  const flags = int(attribute<'vec4'>('effectBuf0', 'vec4').x)
+  const flags = int(attribute<'vec4'>('instanceSystem', 'vec4').z)
   return flags.bitAnd(int(CAST_SHADOW_MASK)).greaterThan(int(0))
 }
 
 /**
- * Read the per-instance shadow-occluder radius from `effectBuf0.z`.
+ * Read the per-instance shadow-occluder radius from `instanceExtras.x`.
  * This is the sprite's size as an occluder in world units — auto-
  * resolved to `max(|scale.x|, |scale.y|)` each frame by
  * `transformSyncSystem`, overridable via the `shadowRadius` field on
@@ -67,13 +69,8 @@ export function readCastShadowFlag(): Node<'bool'> {
  * shadow systems (future shadow maps, AO) would use it for depth bias
  * or sample radius.
  *
- * Packed into the `.z` slot of `effectBuf0` (previously reserved for
- * a per-sprite layer bitmask) instead of its own attribute because
- * WebGPU caps at 8 vertex buffers per render pipeline and SpriteBatch
- * already sits exactly at that cap.
- *
  * @returns A TSL float node — the sprite's occluder radius in world units.
  */
 export function readShadowRadius(): Node<'float'> {
-  return attribute<'vec4'>('effectBuf0', 'vec4').z
+  return attribute<'vec4'>('instanceExtras', 'vec4').x
 }

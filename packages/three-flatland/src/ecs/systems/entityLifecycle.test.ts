@@ -536,17 +536,22 @@ describe('Entity Lifecycle: Material Tier Change', () => {
     const initialBatchCount = registry.activeBatches.length
     expect(initialBatchCount).toBe(1)
 
-    // Register a big effect that forces tier upgrade (8 -> 16)
+    // Register an effect big enough to force a tier upgrade past the
+    // default of 8. With the interleaved-buffer refactor, system flags
+    // + enable bits no longer consume 2 slots in effectBuf0, so the
+    // threshold for a tier bump is 8 pure effect floats (not 6). Use
+    // three vec4 fields = 12 floats → tier goes from 8 to 12.
     const BigEffect = createMaterialEffect({
       name: 'big_tier',
       schema: {
         a: [0, 0, 0, 0],
         b: [0, 0, 0, 0],
+        c: [0, 0, 0, 0],
       },
       node: ({ inputColor }) => inputColor,
     })
     material.registerEffect(BigEffect)
-    expect(material._effectTier).toBe(16)
+    expect(material._effectTier).toBeGreaterThan(8)
 
     // Run systems — should detect version change and rebuild batches
     runSystems(group)

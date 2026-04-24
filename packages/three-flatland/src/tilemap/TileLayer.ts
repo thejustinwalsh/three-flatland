@@ -3,6 +3,8 @@ import {
   InstancedMesh,
   PlaneGeometry,
   InstancedBufferAttribute,
+  InstancedInterleavedBuffer,
+  InterleavedBufferAttribute,
   DynamicDrawUsage,
   Matrix4,
   Vector3,
@@ -23,12 +25,12 @@ import {
 import type { Tileset } from './Tileset'
 import type { TileLayerData } from './types'
 
-/** Internal per-chunk data */
+/** Internal per-chunk data. `instanceData` is the interleaved core
+ *  buffer (stride 16 floats): UV at offset 0, color at 4, system
+ *  (flip/flags/enable) at 8, extras (shadowRadius/reserved) at 12. */
 interface ChunkData {
   mesh: InstancedMesh
-  instanceUV: Float32Array
-  instanceColor: Float32Array
-  instanceFlip: Float32Array
+  instanceData: Float32Array
   effectBufs: Map<string, Float32Array>
   instanceCount: number
 }
@@ -356,29 +358,26 @@ export class TileLayer extends Group {
     for (const [chunkKey, tiles] of chunkTiles) {
       const count = tiles.length
 
-      // Allocate buffers
-      const instanceUV = new Float32Array(count * 4)
-      const instanceColor = new Float32Array(count * 4)
-      const instanceFlip = new Float32Array(count * 2)
+      // Allocate interleaved core buffer — 16 floats per instance
+      // matching SpriteBatch's layout (see `INSTANCE_STRIDE` header
+      // comment there). Keeps TileLayer under WebGPU's 8-buffer cap
+      // and keeps the shader attribute shape identical to the sprite
+      // path.
+      const instanceData = new Float32Array(count * 16)
 
       // Create geometry with instance attributes
       const geometry = new PlaneGeometry(1, 1)
 
-      const uvAttr = new InstancedBufferAttribute(instanceUV, 4)
-      uvAttr.setUsage(DynamicDrawUsage)
-      geometry.setAttribute('instanceUV', uvAttr)
-
-      const colorAttr = new InstancedBufferAttribute(instanceColor, 4)
-      colorAttr.setUsage(DynamicDrawUsage)
-      geometry.setAttribute('instanceColor', colorAttr)
-
-      const flipAttr = new InstancedBufferAttribute(instanceFlip, 2)
-      flipAttr.setUsage(DynamicDrawUsage)
-      geometry.setAttribute('instanceFlip', flipAttr)
-
+      const interleaved = new InstancedInterleavedBuffer(instanceData, 16, 1)
+      interleaved.setUsage(DynamicDrawUsage)
+      geometry.setAttribute('instanceUV', new InterleavedBufferAttribute(interleaved, 4, 0))
+      geometry.setAttribute('instanceColor', new InterleavedBufferAttribute(interleaved, 4, 4))
+      geometry.setAttribute('instanceSystem', new InterleavedBufferAttribute(interleaved, 4, 8))
+      geometry.setAttribute('instanceExtras', new InterleavedBufferAttribute(interleaved, 4, 12))
 
       // Add all effect buffer attributes from the material schema so the
-      // shader's attribute() reads don't hit missing bindings.
+      // shader's attribute() reads don't hit missing bindings. Effect
+      // data is pure here — no system reservations.
       const effectBufs = new Map<string, Float32Array>()
       const schema = this.material.getInstanceAttributeSchema()
       for (const [name, config] of schema) {
@@ -390,18 +389,28 @@ export class TileLayer extends Group {
         effectBufs.set(name, buf)
       }
 
-      // Write system flags into effectBuf0.x (lit + receiveShadows) and
-      // per-tile shadow radius into effectBuf0.z (consumed by
-      // `readShadowRadius()`). All tiles in a layer share the same
-      // tile dimensions, so every slot gets the same radius.
-      const eb0 = effectBufs.get('effectBuf0')
-      if (eb0) {
-        const flags = this._effectFlags
-        const tileRadius = Math.max(this.tileWidth, this.tileHeight)
-        for (let i = 0; i < count; i++) {
-          eb0[i * 4 + 0] = flags
-          eb0[i * 4 + 2] = tileRadius
-        }
+      // Populate per-instance system data in the interleaved buffer:
+      //   instanceSystem.x = flipX (1 by default, written below per-tile)
+      //   instanceSystem.y = flipY (1 by default)
+      //   instanceSystem.z = system flags (lit/receive/cast)
+      //   instanceSystem.w = MaterialEffect enable bits (0 — tiles
+      //                      don't currently use MaterialEffect uniforms)
+      //   instanceExtras.x = per-tile shadow radius (all tiles in a
+      //                      layer share tile dimensions → same radius)
+      const flags = this._effectFlags
+      const tileRadius = Math.max(this.tileWidth, this.tileHeight)
+      for (let i = 0; i < count; i++) {
+        const base = i * 16
+        // Initialize UV and color to sensible defaults; the per-tile
+        // loop below overwrites UV. Color stays white/opaque.
+        instanceData[base + 4] = 1 // color.r
+        instanceData[base + 5] = 1 // color.g
+        instanceData[base + 6] = 1 // color.b
+        instanceData[base + 7] = 1 // color.a
+        instanceData[base + 8] = 1 // flipX
+        instanceData[base + 9] = 1 // flipY
+        instanceData[base + 10] = flags
+        instanceData[base + 12] = tileRadius
       }
 
       // Track bounds for frustum culling
@@ -451,17 +460,14 @@ export class TileLayer extends Group {
 
         // UV — handles flipY difference between loaded images and DataTextures
         const uv = this.tileset.getUV(tile.gid)
-        this.writeUV(instanceUV, i * 4, uv)
-
-        // Color: white, fully opaque
-        instanceColor[i * 4 + 0] = 1
-        instanceColor[i * 4 + 1] = 1
-        instanceColor[i * 4 + 2] = 1
-        instanceColor[i * 4 + 3] = 1
-
-        // Flip via instanceFlip attribute
-        instanceFlip[i * 2 + 0] = tile.flipH ? -1 : 1
-        instanceFlip[i * 2 + 1] = tile.flipV ? -1 : 1
+        const base = i * 16
+        // UV at interleaved offset 0..3
+        this.writeUV(instanceData, base + 0, uv)
+        // Color already initialized to white/opaque by the outer loop.
+        // Flip overrides the default (1, 1) at offset 8..9 only when
+        // the tile is actually flipped.
+        if (tile.flipH) instanceData[base + 8] = -1
+        if (tile.flipV) instanceData[base + 9] = -1
 
         // Per-tile effect attribute overrides from TileDefinition.properties.
         // Example: a tile with `{ normalKind: 1 }` in its properties sets
@@ -534,9 +540,7 @@ export class TileLayer extends Group {
 
       this.chunks.set(chunkKey, {
         mesh,
-        instanceUV,
-        instanceColor,
-        instanceFlip,
+        instanceData,
         effectBufs,
         instanceCount: count,
       })
@@ -585,7 +589,8 @@ export class TileLayer extends Group {
 
       const i = data.instanceIndex
       const uv = this.tileset.getUV(newGid)
-      this.writeUV(chunk.instanceUV, i * 4, uv)
+      // UV lives at offset 0 within each instance's 16-float stride.
+      this.writeUV(chunk.instanceData, i * 16 + 0, uv)
 
       data.gid = newGid
       dirtyChunks.add(data.chunkKey)
@@ -594,8 +599,12 @@ export class TileLayer extends Group {
     for (const chunkKey of dirtyChunks) {
       const chunk = this.chunks.get(chunkKey)
       if (chunk) {
-        const uvAttr = chunk.mesh.geometry.getAttribute('instanceUV') as InstancedBufferAttribute
-        uvAttr.needsUpdate = true
+        // Any attribute view into the interleaved buffer re-uploads the
+        // full stride when we flip `data.needsUpdate`.
+        const uvAttr = chunk.mesh.geometry.getAttribute('instanceUV') as InterleavedBufferAttribute
+        if (uvAttr && (uvAttr.data as { needsUpdate?: boolean })) {
+          ;(uvAttr.data as { needsUpdate: boolean }).needsUpdate = true
+        }
       }
     }
   }
@@ -639,16 +648,16 @@ export class TileLayer extends Group {
 
       const i = mapping.instanceIndex
       const uv = this.tileset.getUV(gid)
-      this.writeUV(chunk.instanceUV, i * 4, uv)
+      const base = i * 16
+      this.writeUV(chunk.instanceData, base + 0, uv)
+      // Reset flip for newly set tiles (offset 8..9 within the stride).
+      chunk.instanceData[base + 8] = 1
+      chunk.instanceData[base + 9] = 1
 
-      // Reset flip for newly set tiles
-      chunk.instanceFlip[i * 2 + 0] = 1
-      chunk.instanceFlip[i * 2 + 1] = 1
-
-      const uvAttr = chunk.mesh.geometry.getAttribute('instanceUV') as InstancedBufferAttribute
-      uvAttr.needsUpdate = true
-      const flipAttr = chunk.mesh.geometry.getAttribute('instanceFlip') as InstancedBufferAttribute
-      flipAttr.needsUpdate = true
+      const uvAttr = chunk.mesh.geometry.getAttribute('instanceUV') as InterleavedBufferAttribute
+      if (uvAttr && (uvAttr.data as { needsUpdate?: boolean })) {
+        ;(uvAttr.data as { needsUpdate: boolean }).needsUpdate = true
+      }
     } else {
       // Tile added or removed — rebuild the entire layer
       this.buildInstances()
