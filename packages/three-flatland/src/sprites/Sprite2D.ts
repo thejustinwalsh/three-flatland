@@ -390,16 +390,6 @@ export class Sprite2D extends Mesh {
     1, 1, // vertex 2
     1, 1, // vertex 3
   ])
-  // instanceShadowRadius: 4 vertices x vec2 = 8 floats. Only `.x`
-  // carries the radius; `.y` is reserved for a future per-sprite
-  // shadow datum. Single-component attributes don't bind reliably
-  // through TSL / WebGPU — vec2 is the minimum safe shape.
-  private _instanceShadowRadiusBuffer: Float32Array = new Float32Array([
-    0, 0,
-    0, 0,
-    0, 0,
-    0, 0,
-  ])
 
   /**
    * Create a new Sprite2D.
@@ -560,27 +550,29 @@ export class Sprite2D extends Mesh {
   }
 
   /**
-   * Write the resolved shadow radius to the own-geometry buffer
-   * (standalone mode — not enrolled in a SpriteGroup).
+   * Write the resolved shadow radius into the standalone sprite's own
+   * `effectBuf0.z` slot. Uses the material's slot locator to find the
+   * right buffer + offset, matching the existing pattern used by
+   * `_syncEffectFlagsToBatch` / `_writeEffectDataOwn` for the `.x`
+   * (system flags) and `.y` (effect enable bits) slots.
    * @internal
    */
   private _updateOwnShadowRadius() {
     const r = this._resolveShadowRadius()
-    // Replicate across 4 vertices; only `.x` carries meaning.
+    const buf = this._customBuffers.get('effectBuf0')
+    if (!buf) return
+    // vec4 stride, `.z` is component 2. 4 vertices.
     for (let v = 0; v < 4; v++) {
-      this._instanceShadowRadiusBuffer[v * 2 + 0] = r
-      this._instanceShadowRadiusBuffer[v * 2 + 1] = 0
+      buf.buffer[v * 4 + 2] = r
     }
-    const attr = this.geometry.getAttribute('instanceShadowRadius') as
-      | BufferAttribute
-      | undefined
+    const attr = this.geometry.getAttribute('effectBuf0') as BufferAttribute | undefined
     if (attr) attr.needsUpdate = true
   }
 
   /**
    * Push the resolved shadow radius to the enrolled SpriteBatch's
-   * per-instance buffer. Used when `shadowRadius` is imperatively set
-   * by user code; the per-frame `transformSyncSystem` also writes this
+   * `effectBuf0.z`. Used when `shadowRadius` is imperatively set by
+   * user code; the per-frame `transformSyncSystem` also writes this
    * value as part of the transform sync so scale-driven auto values
    * stay in lockstep with `instanceMatrix`.
    * @internal
@@ -596,9 +588,10 @@ export class Sprite2D extends Mesh {
       | undefined
     if (!registry) return
     const mesh = registry.batchSlots[bs.batchIdx] as
-      | { writeShadowRadius(i: number, v: number): void }
+      | { writeEffectSlot(i: number, buf: number, comp: number, v: number): void }
       | undefined
-    mesh?.writeShadowRadius(bs.slot, this._resolveShadowRadius())
+    // effectBuf0.z — bufferIndex 0, component 2.
+    mesh?.writeEffectSlot(bs.slot, 0, 2, this._resolveShadowRadius())
   }
 
   /**
@@ -962,7 +955,6 @@ export class Sprite2D extends Mesh {
     geo.setAttribute('instanceUV', new BufferAttribute(this._instanceUVBuffer, 4))
     geo.setAttribute('instanceColor', new BufferAttribute(this._instanceColorBuffer, 4))
     geo.setAttribute('instanceFlip', new BufferAttribute(this._instanceFlipBuffer, 2))
-    geo.setAttribute('instanceShadowRadius', new BufferAttribute(this._instanceShadowRadiusBuffer, 2))
 
     // Custom attributes from material schema (effects add these)
     this._customBuffers.clear()

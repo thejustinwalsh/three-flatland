@@ -54,11 +54,11 @@ export function readCastShadowFlag(): Node<'bool'> {
 }
 
 /**
- * Read the per-instance shadow-occluder radius from the
- * `instanceShadowRadius` attribute. This is the sprite's size as an
- * occluder in world units — auto-resolved to `max(|scale.x|, |scale.y|)`
- * each frame by `transformSyncSystem`, overridable via the
- * `shadowRadius` field on Sprite2D.
+ * Read the per-instance shadow-occluder radius from `effectBuf0.z`.
+ * This is the sprite's size as an occluder in world units — auto-
+ * resolved to `max(|scale.x|, |scale.y|)` each frame by
+ * `transformSyncSystem`, overridable via the `shadowRadius` field on
+ * Sprite2D.
  *
  * Shadow-casting LightEffects consume this per-instance value rather
  * than a scene-wide uniform so scenes with mixed-size casters don't
@@ -67,12 +67,13 @@ export function readCastShadowFlag(): Node<'bool'> {
  * shadow systems (future shadow maps, AO) would use it for depth bias
  * or sample radius.
  *
- * The underlying attribute is a vec2; only `.x` carries the radius.
- * Single-component attributes don't bind reliably through TSL, so the
- * extra `.y` slot stays reserved for a future per-sprite shadow datum.
+ * Packed into the `.z` slot of `effectBuf0` (previously reserved for
+ * a per-sprite layer bitmask) instead of its own attribute because
+ * WebGPU caps at 8 vertex buffers per render pipeline and SpriteBatch
+ * already sits exactly at that cap.
  *
  * @returns A TSL float node — the sprite's occluder radius in world units.
  */
 export function readShadowRadius(): Node<'float'> {
-  return attribute<'vec2'>('instanceShadowRadius', 'vec2').x
+  return attribute<'vec4'>('effectBuf0', 'vec4').z
 }

@@ -360,17 +360,6 @@ export class TileLayer extends Group {
       const instanceUV = new Float32Array(count * 4)
       const instanceColor = new Float32Array(count * 4)
       const instanceFlip = new Float32Array(count * 2)
-      // Per-tile shadow-occluder radius (world units), stored as a
-      // vec2 with only `.x` populated — matches the sprite-side
-      // binding shape (single-component attributes don't bind
-      // reliably through TSL). All tiles in a layer share the same
-      // tile dimensions, so every slot gets the same radius.
-      const instanceShadowRadius = new Float32Array(count * 2)
-      const tileRadius = Math.max(this.tileWidth, this.tileHeight)
-      for (let i = 0; i < count; i++) {
-        instanceShadowRadius[i * 2 + 0] = tileRadius
-        instanceShadowRadius[i * 2 + 1] = 0
-      }
 
       // Create geometry with instance attributes
       const geometry = new PlaneGeometry(1, 1)
@@ -387,9 +376,6 @@ export class TileLayer extends Group {
       flipAttr.setUsage(DynamicDrawUsage)
       geometry.setAttribute('instanceFlip', flipAttr)
 
-      const shadowRadiusAttr = new InstancedBufferAttribute(instanceShadowRadius, 2)
-      shadowRadiusAttr.setUsage(DynamicDrawUsage)
-      geometry.setAttribute('instanceShadowRadius', shadowRadiusAttr)
 
       // Add all effect buffer attributes from the material schema so the
       // shader's attribute() reads don't hit missing bindings.
@@ -404,12 +390,17 @@ export class TileLayer extends Group {
         effectBufs.set(name, buf)
       }
 
-      // Write system flags into effectBuf0.x (lit + receiveShadows)
+      // Write system flags into effectBuf0.x (lit + receiveShadows) and
+      // per-tile shadow radius into effectBuf0.z (consumed by
+      // `readShadowRadius()`). All tiles in a layer share the same
+      // tile dimensions, so every slot gets the same radius.
       const eb0 = effectBufs.get('effectBuf0')
       if (eb0) {
         const flags = this._effectFlags
+        const tileRadius = Math.max(this.tileWidth, this.tileHeight)
         for (let i = 0; i < count; i++) {
-          eb0[i * 4] = flags
+          eb0[i * 4 + 0] = flags
+          eb0[i * 4 + 2] = tileRadius
         }
       }
 
