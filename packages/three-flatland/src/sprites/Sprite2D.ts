@@ -5,6 +5,8 @@ import {
   Vector3,
   Color,
   BufferAttribute,
+  InterleavedBuffer,
+  InterleavedBufferAttribute,
   type Texture,
 } from 'three'
 import type { Entity, World } from 'koota'
@@ -369,27 +371,46 @@ export class Sprite2D extends Mesh {
    * Instance attribute buffers for single-sprite rendering.
    * PlaneGeometry has 4 vertices, so we need 4 copies of each value.
    */
-  // instanceUV: 4 vertices x vec4 = 16 floats
-  private _instanceUVBuffer: Float32Array = new Float32Array([
-    0, 0, 1, 1, // vertex 0
-    0, 0, 1, 1, // vertex 1
-    0, 0, 1, 1, // vertex 2
-    0, 0, 1, 1, // vertex 3
-  ])
-  // instanceColor: 4 vertices x vec4 = 16 floats
-  private _instanceColorBuffer: Float32Array = new Float32Array([
-    1, 1, 1, 1, // vertex 0
-    1, 1, 1, 1, // vertex 1
-    1, 1, 1, 1, // vertex 2
-    1, 1, 1, 1, // vertex 3
-  ])
-  // instanceFlip: 4 vertices x vec2 = 8 floats
-  private _instanceFlipBuffer: Float32Array = new Float32Array([
-    1, 1, // vertex 0
-    1, 1, // vertex 1
-    1, 1, // vertex 2
-    1, 1, // vertex 3
-  ])
+  /**
+   * Interleaved per-vertex storage mirroring SpriteBatch's instance
+   * layout. 4 vertices × 16 floats per vertex = 64 floats. Each
+   * vertex carries the same instance data (no per-vertex variation on
+   * standalone sprites). Keeps the attribute-binding shape identical
+   * between batched and standalone paths so the same shader compiles.
+   *
+   * Layout per vertex (offset in floats from vertex base):
+   *   0..3   instanceUV      (x, y, w, h)
+   *   4..7   instanceColor   (r, g, b, a)
+   *   8..11  instanceSystem  (flipX, flipY, sysFlags, enableBits)
+   *  12..15  instanceExtras  (shadowRadius, reserved, reserved, reserved)
+   */
+  private _instanceDataBuffer: Float32Array = (() => {
+    const data = new Float32Array(4 * 16)
+    for (let v = 0; v < 4; v++) {
+      const base = v * 16
+      // UV: full texture
+      data[base + 0] = 0
+      data[base + 1] = 0
+      data[base + 2] = 1
+      data[base + 3] = 1
+      // Color: white, fully opaque
+      data[base + 4] = 1
+      data[base + 5] = 1
+      data[base + 6] = 1
+      data[base + 7] = 1
+      // System: flipX=1, flipY=1, flags=0, enableBits=0
+      data[base + 8] = 1
+      data[base + 9] = 1
+      data[base + 10] = 0
+      data[base + 11] = 0
+      // Extras: shadowRadius=0, reserved=0
+      data[base + 12] = 0
+      data[base + 13] = 0
+      data[base + 14] = 0
+      data[base + 15] = 0
+    }
+    return data
+  })()
 
   /**
    * Create a new Sprite2D.
@@ -550,23 +571,17 @@ export class Sprite2D extends Mesh {
   }
 
   /**
-   * Write the resolved shadow radius into the standalone sprite's own
-   * `effectBuf0.z` slot. Uses the material's slot locator to find the
-   * right buffer + offset, matching the existing pattern used by
-   * `_syncEffectFlagsToBatch` / `_writeEffectDataOwn` for the `.x`
-   * (system flags) and `.y` (effect enable bits) slots.
+   * Write the resolved shadow radius into `instanceExtras.x`
+   * (interleaved core buffer, float offset 12 within each vertex's
+   * stride of 16).
    * @internal
    */
   private _updateOwnShadowRadius() {
     const r = this._resolveShadowRadius()
-    const buf = this._customBuffers.get('effectBuf0')
-    if (!buf) return
-    // vec4 stride, `.z` is component 2. 4 vertices.
     for (let v = 0; v < 4; v++) {
-      buf.buffer[v * 4 + 2] = r
+      this._instanceDataBuffer[v * 16 + 12] = r
     }
-    const attr = this.geometry.getAttribute('effectBuf0') as BufferAttribute | undefined
-    if (attr) attr.needsUpdate = true
+    this._markInstanceDataDirty()
   }
 
   /**
@@ -588,10 +603,9 @@ export class Sprite2D extends Mesh {
       | undefined
     if (!registry) return
     const mesh = registry.batchSlots[bs.batchIdx] as
-      | { writeEffectSlot(i: number, buf: number, comp: number, v: number): void }
+      | { writeShadowRadius(i: number, r: number): void }
       | undefined
-    // effectBuf0.z — bufferIndex 0, component 2.
-    mesh?.writeEffectSlot(bs.slot, 0, 2, this._resolveShadowRadius())
+    mesh?.writeShadowRadius(bs.slot, this._resolveShadowRadius())
   }
 
   /**
@@ -926,37 +940,57 @@ export class Sprite2D extends Mesh {
   }
 
   /**
-   * Update flip flags in own geometry buffer (standalone mode).
+   * Mark the shared instance-data buffer dirty so three.js re-uploads
+   * it on the next render. The four `InterleavedBufferAttribute`
+   * views all point at the same underlying `InterleavedBuffer`, so
+   * flipping `needsUpdate` on any one of them re-uploads the full
+   * per-vertex stride.
+   */
+  private _markInstanceDataDirty() {
+    const attr = this.geometry.getAttribute('instanceUV') as
+      | import('three').InterleavedBufferAttribute
+      | undefined
+    if (attr && (attr.data as { needsUpdate?: boolean })) {
+      ;(attr.data as { needsUpdate: boolean }).needsUpdate = true
+    }
+  }
+
+  /**
+   * Update flip flags in own geometry buffer (standalone mode). Flip
+   * lives in `instanceSystem.xy` per the interleaved layout.
    */
   private _updateOwnFlip() {
     const idx = this._idx
     const fx = this._flipXArr[idx]!
     const fy = this._flipYArr[idx]!
-    for (let i = 0; i < 4; i++) {
-      this._instanceFlipBuffer[i * 2 + 0] = fx
-      this._instanceFlipBuffer[i * 2 + 1] = fy
+    for (let v = 0; v < 4; v++) {
+      this._instanceDataBuffer[v * 16 + 8] = fx
+      this._instanceDataBuffer[v * 16 + 9] = fy
     }
-    const flipAttr = this.geometry.getAttribute('instanceFlip') as BufferAttribute
-    if (flipAttr) {
-      flipAttr.needsUpdate = true
-    }
+    this._markInstanceDataDirty()
   }
 
   /**
    * Set up instance attributes on the geometry for single-sprite rendering.
-   * These are the same attributes used by SpriteBatch for batched rendering.
-   * Also allocates buffers for custom attributes from the material's schema
-   * (including effectBuf0, effectBuf1, ... for packed effect data).
+   * Uses one interleaved buffer (mirroring SpriteBatch) so batched and
+   * standalone paths share the same shader attribute shape. Also
+   * allocates buffers for custom attributes from the material's schema
+   * (pure effect data — `effectBuf0`, `effectBuf1`, ...).
    */
   _setupInstanceAttributes() {
     const geo = this.geometry
 
-    // Core instance attributes (persistent buffers)
-    geo.setAttribute('instanceUV', new BufferAttribute(this._instanceUVBuffer, 4))
-    geo.setAttribute('instanceColor', new BufferAttribute(this._instanceColorBuffer, 4))
-    geo.setAttribute('instanceFlip', new BufferAttribute(this._instanceFlipBuffer, 2))
+    // Core instance data — single interleaved buffer, four attribute
+    // views. InterleavedBuffer (not InstancedInterleavedBuffer) because
+    // standalone Sprite2D is a regular Mesh, not an InstancedMesh.
+    const interleaved = new InterleavedBuffer(this._instanceDataBuffer, 16)
+    geo.setAttribute('instanceUV', new InterleavedBufferAttribute(interleaved, 4, 0))
+    geo.setAttribute('instanceColor', new InterleavedBufferAttribute(interleaved, 4, 4))
+    geo.setAttribute('instanceSystem', new InterleavedBufferAttribute(interleaved, 4, 8))
+    geo.setAttribute('instanceExtras', new InterleavedBufferAttribute(interleaved, 4, 12))
 
-    // Custom attributes from material schema (effects add these)
+    // Custom attributes from material schema (pure effect data — no
+    // system reservations)
     this._customBuffers.clear()
     const schema = this.material.getInstanceAttributeSchema()
     for (const [name, config] of schema) {
@@ -986,16 +1020,14 @@ export class Sprite2D extends Mesh {
     const y = this._uvY[idx]!
     const w = this._uvW[idx]!
     const h = this._uvH[idx]!
-    for (let i = 0; i < 4; i++) {
-      this._instanceUVBuffer[i * 4 + 0] = x
-      this._instanceUVBuffer[i * 4 + 1] = y
-      this._instanceUVBuffer[i * 4 + 2] = w
-      this._instanceUVBuffer[i * 4 + 3] = h
+    for (let v = 0; v < 4; v++) {
+      const base = v * 16
+      this._instanceDataBuffer[base + 0] = x
+      this._instanceDataBuffer[base + 1] = y
+      this._instanceDataBuffer[base + 2] = w
+      this._instanceDataBuffer[base + 3] = h
     }
-    const uvAttr = this.geometry.getAttribute('instanceUV') as BufferAttribute
-    if (uvAttr) {
-      uvAttr.needsUpdate = true
-    }
+    this._markInstanceDataDirty()
   }
 
   /**
@@ -1008,16 +1040,14 @@ export class Sprite2D extends Mesh {
     const g = this._colorG[idx]!
     const b = this._colorB[idx]!
     const a = this._colorA[idx]!
-    for (let i = 0; i < 4; i++) {
-      this._instanceColorBuffer[i * 4 + 0] = r
-      this._instanceColorBuffer[i * 4 + 1] = g
-      this._instanceColorBuffer[i * 4 + 2] = b
-      this._instanceColorBuffer[i * 4 + 3] = a
+    for (let v = 0; v < 4; v++) {
+      const base = v * 16 + 4
+      this._instanceDataBuffer[base + 0] = r
+      this._instanceDataBuffer[base + 1] = g
+      this._instanceDataBuffer[base + 2] = b
+      this._instanceDataBuffer[base + 3] = a
     }
-    const colorAttr = this.geometry.getAttribute('instanceColor') as BufferAttribute
-    if (colorAttr) {
-      colorAttr.needsUpdate = true
-    }
+    this._markInstanceDataDirty()
   }
 
   /**
@@ -1209,12 +1239,18 @@ export class Sprite2D extends Mesh {
    */
   _writeEffectDataOwn(): void {
     const material = this.material
+
+    // System flags + enable bits live on `instanceSystem.z/.w` (offsets
+    // 10, 11 within each vertex's stride of 16). Write unconditionally
+    // — lit non-effect sprites still need their flags.
+    for (let v = 0; v < 4; v++) {
+      this._instanceDataBuffer[v * 16 + 10] = this._effectFlags
+      this._instanceDataBuffer[v * 16 + 11] = this._effectEnableBits
+    }
+    this._markInstanceDataDirty()
+
     const tier = material._effectTier
     if (tier === 0) return
-
-    // Slot 0 (effectBuf0.x) = system flags; slot 1 (effectBuf0.y) = enable bits.
-    this._writePackedSlotOwn(0, this._effectFlags)
-    this._writePackedSlotOwn(1, this._effectEnableBits)
 
     // Write effect field values to their packed positions
     for (const effect of this._effects) {
@@ -1273,9 +1309,9 @@ export class Sprite2D extends Mesh {
 
 
   /**
-   * Sync both per-sprite flag words to the batch buffer for already-batched
-   * sprites. Writes system flags to `effectBuf0.x` and enable bits to
-   * `effectBuf0.y`, bypassing ECS change detection.
+   * Sync both per-sprite flag words to the batch buffer for already-
+   * batched sprites. Writes system flags + enable bits into
+   * `instanceSystem.z/.w`, bypassing ECS change detection.
    * @internal
    */
   _syncEffectFlagsToBatch(): void {
@@ -1286,10 +1322,15 @@ export class Sprite2D extends Mesh {
     if (registryEntities.length === 0) return
     const registry = registryEntities[0]!.get(BatchRegistry) as RegistryData | undefined
     if (!registry) return
-    const batch = registry.batchSlots[bs.batchIdx]
+    const batch = registry.batchSlots[bs.batchIdx] as
+      | {
+          writeSystemFlags(i: number, v: number): void
+          writeEnableBits(i: number, v: number): void
+        }
+      | undefined
     if (batch) {
-      batch.writeEffectSlot(bs.slot, 0, 0, this._effectFlags)
-      batch.writeEffectSlot(bs.slot, 0, 1, this._effectEnableBits)
+      batch.writeSystemFlags(bs.slot, this._effectFlags)
+      batch.writeEnableBits(bs.slot, this._effectEnableBits)
     }
   }
 

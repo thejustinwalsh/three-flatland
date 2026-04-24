@@ -189,16 +189,18 @@ export class Sprite2DMaterial extends EffectMaterial {
     const globalUniforms = this._globalUniforms
 
     // Read from core instance attributes
-    // Explicit type params needed for @types/three ≥0.183 generic AttributeNode
+    // Explicit type params needed for @types/three ≥0.183 generic AttributeNode.
+    // Flip now lives in `instanceSystem.xy` (interleaved with flags +
+    // enable bits); see `SpriteBatch` header comment for layout.
     const instanceUV = attribute<'vec4'>('instanceUV', 'vec4')
     const instanceColor = attribute<'vec4'>('instanceColor', 'vec4')
-    const instanceFlip = attribute<'vec2'>('instanceFlip', 'vec2')
+    const instanceSystem = attribute<'vec4'>('instanceSystem', 'vec4')
 
     // Apply flip
     const baseUV = uv()
     const flippedUV = vec2(
-      select(instanceFlip.x.greaterThan(float(0)), baseUV.x, float(1).sub(baseUV.x)),
-      select(instanceFlip.y.greaterThan(float(0)), baseUV.y, float(1).sub(baseUV.y))
+      select(instanceSystem.x.greaterThan(float(0)), baseUV.x, float(1).sub(baseUV.x)),
+      select(instanceSystem.y.greaterThan(float(0)), baseUV.y, float(1).sub(baseUV.y))
     )
 
     // Remap to frame in atlas

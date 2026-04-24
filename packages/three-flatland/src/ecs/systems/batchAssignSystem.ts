@@ -147,12 +147,14 @@ function syncEffectBuffers(
   _effectTraits: ReadonlyMap<Trait, typeof MaterialEffect>
 ): void {
   const material = sprite.material
+
+  // System flags + enable bits live on `instanceSystem` now; write
+  // unconditionally so lit non-effect sprites still get their flags.
+  mesh.writeSystemFlags(slot, sprite._effectFlags)
+  mesh.writeEnableBits(slot, sprite._effectEnableBits)
+
   const tier = material._effectTier
   if (tier === 0) return
-
-  // effectBuf0.x = system flags, effectBuf0.y = enable bits
-  mesh.writeEffectSlot(slot, 0, 0, sprite._effectFlags)
-  mesh.writeEffectSlot(slot, 0, 1, sprite._effectEnableBits)
 
   // Write effect field values
   for (const effect of sprite._effects) {

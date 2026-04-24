@@ -138,12 +138,16 @@ export function bufferSyncEffectSystem(world: World): void {
 
 function writePackedEffects(slot: number, mesh: SpriteBatch, sprite: Sprite2D): void {
   const material = sprite.material
+
+  // System flags + enable bits live on the interleaved `instanceSystem`
+  // attribute now, not in effectBuf0. Write them unconditionally — even
+  // for materials with no effects (tier == 0), lit sprites still need
+  // their flags to reach the shader.
+  mesh.writeSystemFlags(slot, sprite._effectFlags)
+  mesh.writeEnableBits(slot, sprite._effectEnableBits)
+
   const tier = material._effectTier
   if (tier === 0) return
-
-  // effectBuf0.x = system flags, effectBuf0.y = enable bits
-  mesh.writeEffectSlot(slot, 0, 0, sprite._effectFlags)
-  mesh.writeEffectSlot(slot, 0, 1, sprite._effectEnableBits)
 
   // Write active effect fields
   for (const effect of sprite._effects) {

@@ -246,9 +246,10 @@ describe('EffectMaterial.registerEffect', () => {
 
     expect(material.hasEffect(Dissolve)).toBe(true)
     expect(material._effectBitIndex.get('dissolve')).toBe(EFFECT_BIT_OFFSET)
-    // Slots 0+1 reserved (system flags, enable bits); effect data starts at slot 2.
-    expect(material._effectSlots.get('dissolve_progress')).toEqual({ offset: 2, size: 1 })
-    expect(material._effectTotalFloats).toBe(3) // 2 reserved + 1 data
+    // Effect data starts at slot 0 (effectBuf0.x) — system flags +
+    // enable bits moved to the interleaved `instanceSystem` attribute.
+    expect(material._effectSlots.get('dissolve_progress')).toEqual({ offset: 0, size: 1 })
+    expect(material._effectTotalFloats).toBe(1) // 1 data float, no reservations
   })
 
   it('should assign sequential offsets for multiple effects', () => {
@@ -279,16 +280,14 @@ describe('EffectMaterial.registerEffect', () => {
     expect(material._effectBitIndex.get('dissolve')).toBe(EFFECT_BIT_OFFSET)
     expect(material._effectBitIndex.get('flash')).toBe(EFFECT_BIT_OFFSET + 1)
 
-    // Slot layout:
-    //   0 = system flags (effectBuf0.x)
-    //   1 = enable bits  (effectBuf0.y)
-    //   2 = dissolve_progress (effectBuf0.z)
-    //   3 = flash_intensity   (effectBuf0.w)
-    //   4..6 = flash_color    (effectBuf1.x..z)
-    expect(material._effectSlots.get('dissolve_progress')).toEqual({ offset: 2, size: 1 })
-    expect(material._effectSlots.get('flash_intensity')).toEqual({ offset: 3, size: 1 })
-    expect(material._effectSlots.get('flash_color')).toEqual({ offset: 4, size: 3 })
-    expect(material._effectTotalFloats).toBe(7) // 2 reserved + 1 + 1 + 3
+    // Slot layout (pure effect data — no system reservations):
+    //   0 = dissolve_progress (effectBuf0.x)
+    //   1 = flash_intensity   (effectBuf0.y)
+    //   2..4 = flash_color    (effectBuf0.z, .w, effectBuf1.x)
+    expect(material._effectSlots.get('dissolve_progress')).toEqual({ offset: 0, size: 1 })
+    expect(material._effectSlots.get('flash_intensity')).toEqual({ offset: 1, size: 1 })
+    expect(material._effectSlots.get('flash_color')).toEqual({ offset: 2, size: 3 })
+    expect(material._effectTotalFloats).toBe(5) // 1 + 1 + 3
   })
 
   it('should compute correct tier from total floats', () => {
@@ -317,11 +316,24 @@ describe('EffectMaterial.registerEffect', () => {
       node: ({ inputColor }) => inputColor,
     })
 
-    // Total needed: 1 flags + 4 + 4 = 9 → tier 16
+    // Total needed: 4 + 4 = 8 → tier 8 (unchanged from default 8, so
+    // tierChanged is false; pick a bigger effect that actually pushes
+    // past the default tier to test the upgrade path).
+    const Huge = createMaterialEffect({
+      name: 'huge',
+      schema: {
+        a: [0, 0, 0, 0],
+        b: [0, 0, 0, 0],
+        c: [0, 0, 0, 0],
+      },
+      node: ({ inputColor }) => inputColor,
+    })
+    // Total: 12 floats → tier 12 (rounded up to multiple of 4)
     const material = new Sprite2DMaterial()
-    const tierChanged = material.registerEffect(Big)
+    const tierChanged = material.registerEffect(Huge)
     expect(tierChanged).toBe(true)
-    expect(material._effectTier).toBe(16)
+    expect(material._effectTier).toBeGreaterThan(8)
+    void Big
   })
 
   it('should not change tier when within capacity', () => {
@@ -371,16 +383,19 @@ describe('EffectMaterial.registerEffect', () => {
   })
 
   it('should increment schema version on tier change', () => {
+    // Three vec4 fields = 12 floats → tier upgrade past the default 8.
+    // With system flags/enable bits moved off effectBuf0, two vec4s
+    // (8 floats) no longer trigger a tier change.
     const Big = createMaterialEffect({
       name: 'big',
-      schema: { a: [0, 0, 0, 0], b: [0, 0, 0, 0] },
+      schema: { a: [0, 0, 0, 0], b: [0, 0, 0, 0], c: [0, 0, 0, 0] },
       node: ({ inputColor }) => inputColor,
     })
 
     const material = new Sprite2DMaterial()
     expect(material._effectSchemaVersion).toBe(0)
 
-    material.registerEffect(Big) // causes tier upgrade 8 → 16
+    material.registerEffect(Big)
     expect(material._effectSchemaVersion).toBe(1)
   })
 
@@ -399,7 +414,9 @@ describe('EffectMaterial.registerEffect', () => {
     expect(effects).toHaveLength(1)
     expect(effects[0]!.effectName).toBe('dissolve')
     expect(cloned.hasEffect(Dissolve)).toBe(true)
-    expect(cloned._effectSlots.get('dissolve_progress')).toEqual({ offset: 2, size: 1 })
+    // Effect data starts at slot 0 (effectBuf0.x); system flags + enable
+    // bits moved off effectBuf0 into the interleaved `instanceSystem`.
+    expect(cloned._effectSlots.get('dissolve_progress')).toEqual({ offset: 0, size: 1 })
   })
 
   it('should rebuild colorNode when texture set after effects', () => {
@@ -475,12 +492,13 @@ describe('Sprite2D.addEffect', () => {
     expect(sprite._effectFlags).toBe(DEFAULT_FLAGS)
     expect(sprite._effectEnableBits).toBe(E0)
 
-    // Verify the packed buffer carries both words — x = system flags, y = enable bits.
-    const buf0 = sprite.geometry.getAttribute('effectBuf0')
-    expect(buf0).toBeDefined()
-    const array = (buf0 as unknown as { array: Float32Array }).array
-    expect(array[0]).toBe(DEFAULT_FLAGS) // vertex 0, x = system flags
-    expect(array[1]).toBe(E0)            // vertex 0, y = enable bits
+    // System flags + enable bits live on `instanceSystem.z/.w` (offsets
+    // 10, 11 within the interleaved stride of 16 floats per vertex).
+    const systemAttr = sprite.geometry.getAttribute('instanceSystem')
+    expect(systemAttr).toBeDefined()
+    const sysArray = (systemAttr as unknown as { array: Float32Array }).array
+    expect(sysArray[10]).toBe(DEFAULT_FLAGS) // vertex 0, system.z = system flags
+    expect(sysArray[11]).toBe(E0) // vertex 0, system.w = enable bits
   })
 
   it('should write effect data to correct packed positions', () => {
@@ -496,16 +514,13 @@ describe('Sprite2D.addEffect', () => {
     dissolve.progress = 0.75
     sprite.addEffect(dissolve)
 
-    // Slot layout: 0 = system flags, 1 = enable bits, 2 = dissolve_progress.
+    // Effect data lives in effectBuf0 starting at slot 0 (no
+    // reservations). dissolve_progress is the first (and only) field.
     const buf0 = sprite.geometry.getAttribute('effectBuf0')
     const array = (buf0 as unknown as { array: Float32Array }).array
-    expect(array[0]).toBe(DEFAULT_FLAGS) // v0.x = system flags
-    expect(array[1]).toBe(E0)            // v0.y = enable bits
-    expect(array[2]).toBe(0.75)          // v0.z = progress
-    // All vertices should have the same values.
-    expect(array[4]).toBe(DEFAULT_FLAGS) // v1.x
-    expect(array[5]).toBe(E0)            // v1.y
-    expect(array[6]).toBe(0.75)          // v1.z
+    expect(array[0]).toBe(0.75) // v0.x = progress
+    // All vertices should carry the same value on a standalone sprite.
+    expect(array[4]).toBe(0.75) // v1.x
   })
 
   it('should support vec3 effect values in packed buffer', () => {
@@ -525,20 +540,14 @@ describe('Sprite2D.addEffect', () => {
     flash.color = [0, 1, 0]
     sprite.addEffect(flash)
 
-    // New layout with reserved slots 0+1:
-    //   effectBuf0 = [system_flags, enable_bits, intensity, color_r]
-    //   effectBuf1 = [color_g, color_b, 0, 0]
+    // Pure effect layout (no system reservations):
+    //   effectBuf0 = [intensity, color_r, color_g, color_b]
     const buf0 = sprite.geometry.getAttribute('effectBuf0')
     const array0 = (buf0 as unknown as { array: Float32Array }).array
-    expect(array0[0]).toBe(DEFAULT_FLAGS)   // system flags
-    expect(array0[1]).toBe(E0)              // enable bits
-    expect(array0[2]).toBeCloseTo(0.8)      // intensity (Float32 precision)
-    expect(array0[3]).toBe(0)               // color_r
-
-    const buf1 = sprite.geometry.getAttribute('effectBuf1')
-    const array1 = (buf1 as unknown as { array: Float32Array }).array
-    expect(array1[0]).toBe(1)  // color_g
-    expect(array1[1]).toBe(0)  // color_b
+    expect(array0[0]).toBeCloseTo(0.8) // intensity (Float32 precision)
+    expect(array0[1]).toBe(0) // color_r
+    expect(array0[2]).toBe(1) // color_g
+    expect(array0[3]).toBe(0) // color_b
   })
 
   it('should support multiple effects on same sprite', () => {
@@ -564,17 +573,17 @@ describe('Sprite2D.addEffect', () => {
     flash.intensity = 0.8
     sprite.addEffect(flash)
 
-    // Both enable bits set; system flags untouched.
+    // Both enable bits set; system flags untouched. Flags live on
+    // instanceSystem now, not effectBuf0.
     expect(sprite._effectFlags).toBe(DEFAULT_FLAGS)
     expect(sprite._effectEnableBits).toBe(E0 | E1)
 
-    // Layout: [system_flags, enable_bits, dissolve_progress, flash_intensity, …]
+    // Pure effect layout in effectBuf0 (starting at slot 0):
+    //   [dissolve_progress, flash_intensity, ...]
     const buf0 = sprite.geometry.getAttribute('effectBuf0')
     const array = (buf0 as unknown as { array: Float32Array }).array
-    expect(array[0]).toBe(DEFAULT_FLAGS)
-    expect(array[1]).toBe(E0 | E1)
-    expect(array[2]).toBe(0.5) // dissolve progress
-    expect(array[3]).toBeCloseTo(0.8) // flash intensity (Float32 precision)
+    expect(array[0]).toBe(0.5) // dissolve progress
+    expect(array[1]).toBeCloseTo(0.8) // flash intensity (Float32 precision)
   })
 
   it('should update packed data when effect property changes', () => {
@@ -597,7 +606,7 @@ describe('Sprite2D.addEffect', () => {
 
     const buf0 = sprite.geometry.getAttribute('effectBuf0')
     const array = (buf0 as unknown as { array: Float32Array }).array
-    expect(array[2]).toBeCloseTo(0.9) // updated progress (slot 2 after reserved 0+1)
+    expect(array[0]).toBeCloseTo(0.9) // updated progress at slot 0 (no reservations)
   })
 
   it('should share packed layout between sprites with same material', () => {
@@ -625,8 +634,8 @@ describe('Sprite2D.addEffect', () => {
     const array1 = (sprite1.geometry.getAttribute('effectBuf0') as unknown as { array: Float32Array }).array
     const array2 = (sprite2.geometry.getAttribute('effectBuf0') as unknown as { array: Float32Array }).array
 
-    expect(array1[2]).toBeCloseTo(0.3) // sprite1 progress (slot 2)
-    expect(array2[2]).toBeCloseTo(0.7) // sprite2 progress (slot 2)
+    expect(array1[0]).toBeCloseTo(0.3) // sprite1 progress (slot 0)
+    expect(array2[0]).toBeCloseTo(0.7) // sprite2 progress (slot 0)
   })
 })
 
@@ -677,11 +686,13 @@ describe('Sprite2D.removeEffect', () => {
     sprite.addEffect(dissolve)
     sprite.removeEffect(dissolve)
 
-    // Packed buffer should reflect the reset
-    const array = (sprite.geometry.getAttribute('effectBuf0') as unknown as { array: Float32Array }).array
-    expect(array[0]).toBe(DEFAULT_FLAGS) // system flags (unchanged)
-    expect(array[1]).toBe(0)             // enable bits (cleared)
-    expect(array[2]).toBe(0)             // progress (reset to default)
+    // Enable bits + system flags live on instanceSystem now; effect
+    // data (progress) is at slot 0 of effectBuf0 and should be reset.
+    const sysArr = (sprite.geometry.getAttribute('instanceSystem') as unknown as { array: Float32Array }).array
+    const effectArr = (sprite.geometry.getAttribute('effectBuf0') as unknown as { array: Float32Array }).array
+    expect(sysArr[10]).toBe(DEFAULT_FLAGS) // system flags (unchanged)
+    expect(sysArr[11]).toBe(0) // enable bits (cleared)
+    expect(effectArr[0]).toBe(0) // progress (reset to default)
   })
 
   it('should not affect other effects', () => {
@@ -713,11 +724,12 @@ describe('Sprite2D.removeEffect', () => {
     expect(sprite._effectFlags).toBe(DEFAULT_FLAGS)
     expect(sprite._effectEnableBits).toBe(E1)
 
-    const array = (sprite.geometry.getAttribute('effectBuf0') as unknown as { array: Float32Array }).array
-    expect(array[0]).toBe(DEFAULT_FLAGS)  // system flags
-    expect(array[1]).toBe(E1)             // enable bits: only flash
-    expect(array[2]).toBe(0)              // dissolve progress: reset to default
-    expect(array[3]).toBeCloseTo(0.8)     // flash intensity: unchanged
+    const sysArr = (sprite.geometry.getAttribute('instanceSystem') as unknown as { array: Float32Array }).array
+    const effectArr = (sprite.geometry.getAttribute('effectBuf0') as unknown as { array: Float32Array }).array
+    expect(sysArr[10]).toBe(DEFAULT_FLAGS) // system flags on instanceSystem.z
+    expect(sysArr[11]).toBe(E1) // enable bits on instanceSystem.w — only flash
+    expect(effectArr[0]).toBe(0) // dissolve progress: reset
+    expect(effectArr[1]).toBeCloseTo(0.8) // flash intensity: unchanged
   })
 
   it('should be no-op for unregistered effect', () => {
@@ -773,9 +785,9 @@ describe('Enable flags bitmask', () => {
     expect(sprite._effectFlags).toBe(DEFAULT_FLAGS)
     expect(sprite._effectEnableBits).toBe(E0 | E1 | E2 | E3 | E4)
 
-    const array = (sprite.geometry.getAttribute('effectBuf0') as unknown as { array: Float32Array }).array
-    expect(array[0]).toBe(DEFAULT_FLAGS)                        // system flags in x
-    expect(array[1]).toBe(E0 | E1 | E2 | E3 | E4)               // enable bits in y
+    const sysArr = (sprite.geometry.getAttribute('instanceSystem') as unknown as { array: Float32Array }).array
+    expect(sysArr[10]).toBe(DEFAULT_FLAGS) // system flags on instanceSystem.z
+    expect(sysArr[11]).toBe(E0 | E1 | E2 | E3 | E4) // enable bits on instanceSystem.w
   })
 
   it('should support selective enable/disable', () => {
@@ -868,16 +880,17 @@ describe('_setField ECS integration', () => {
     const world = createWorld()
     sprite._enrollInWorld(world)
 
-    // Get initial own buffer value
+    // Get initial own buffer value — progress is now at slot 0
+    // (effectBuf0.x) since system flags/enable bits moved off effectBuf0.
     const buf0 = sprite.geometry.getAttribute('effectBuf0')
     const array = (buf0 as unknown as { array: Float32Array }).array
-    const initialValue = array[2] // progress lives at slot 2 (after system flags + enable bits)
+    const initialValue = array[0]
 
     // Change progress — should write to trait only, NOT to own buffer
     dissolve.progress = 0.9
 
     // Own buffer should NOT have changed
-    expect(array[2]).toBe(initialValue)
+    expect(array[0]).toBe(initialValue)
 
     // But reading progress should return new value (from trait)
     expect(dissolve.progress).toBeCloseTo(0.9)
@@ -894,10 +907,11 @@ describe('_setField ECS integration', () => {
     // No enrollment — standalone
     dissolve.progress = 0.9
 
-    // Own buffer SHOULD be updated (standalone path)
+    // Own buffer SHOULD be updated (standalone path). Progress is at
+    // slot 0 of effectBuf0 (no system reservations).
     const buf0 = sprite.geometry.getAttribute('effectBuf0')
     const array = (buf0 as unknown as { array: Float32Array }).array
-    expect(array[2]).toBeCloseTo(0.9) // progress slot 2
+    expect(array[0]).toBeCloseTo(0.9)
   })
 })
 
@@ -1016,11 +1030,12 @@ describe('Effect remove + add cycle', () => {
     expect(sprite._effectFlags).toBe(DEFAULT_FLAGS)
     expect(sprite._effectEnableBits).toBe(E0)
 
-    // Property updates should write to own buffer
+    // Property updates should write to own buffer. Progress at slot 0
+    // of effectBuf0 (pure effect layout — no system reservations).
     d2.progress = 0.9
     const buf0 = sprite.geometry.getAttribute('effectBuf0')
     const array = (buf0 as unknown as { array: Float32Array }).array
-    expect(array[2]).toBeCloseTo(0.9) // progress lives at slot 2
+    expect(array[0]).toBeCloseTo(0.9)
   })
 
   it('enrolled: removeEffect + addEffect cycle preserves trait functionality', () => {

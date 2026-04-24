@@ -62,11 +62,12 @@ export const NormalMapProvider = createMaterialEffect({
     const nz = max(float(0), nzSq).sqrt()
 
     // Flip correction — mirror XY by the instance's flip flags so a
-    // flipped sprite responds to lights from the mirrored side.
-    const flip = attribute('instanceFlip', 'vec2') as unknown as {
+    // flipped sprite responds to lights from the mirrored side. Flip
+    // now lives in `instanceSystem.xy` (interleaved core buffer).
+    const sys = attribute('instanceSystem', 'vec4') as unknown as {
       x: ReturnType<typeof float>
       y: ReturnType<typeof float>
     }
-    return vec3(nx.mul(flip.x), ny.mul(flip.y), nz).normalize()
+    return vec3(nx.mul(sys.x), ny.mul(sys.y), nz).normalize()
   },
 })
