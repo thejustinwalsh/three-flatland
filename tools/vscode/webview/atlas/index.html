@@ -3,6 +3,12 @@
   <head>
     <meta charset="UTF-8" />
     <title>FL Sprite Atlas</title>
+    <!--
+      Pre-bundle FOUC guard. Paints the page in the VSCode theme before the
+      JS bundle loads + StyleX classes apply. Values mirror the `vscode.bg`,
+      `vscode.fg`, `vscode.fontFamily`, `vscode.fontSize` tokens in
+      `tools/design-system/src/tokens/vscode-theme.stylex.ts` — keep in sync.
+    -->
     <style>
       html, body, #root { margin: 0; padding: 0; height: 100%; overflow: hidden; }
       body {

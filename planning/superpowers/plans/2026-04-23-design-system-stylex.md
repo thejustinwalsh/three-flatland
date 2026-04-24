@@ -740,7 +740,7 @@ const s = stylex.create({
     display: 'flex',
     flexDirection: 'column',
     minHeight: 0,
-    outline: 'none',
+    outlineStyle: 'none',
     backgroundColor: vscode.bg,
     color: vscode.fg,
     fontFamily: vscode.fontFamily,
