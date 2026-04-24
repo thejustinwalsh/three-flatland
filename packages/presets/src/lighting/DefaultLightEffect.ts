@@ -100,6 +100,7 @@ export const DefaultLightEffect = createLightEffect({
 
     const fp = constants.forwardPlus
     const tileLookup = fp.createTileLookup()
+    const tileMetaLookup = fp.createTileMetaLookup()
 
     return (ctx) => {
       return Fn(() => {
@@ -124,6 +125,13 @@ export const DefaultLightEffect = createLightEffect({
         const tileX = int(screenPos.x.div(float(TILE_SIZE)).floor())
         const tileY = int(screenPos.y.div(float(TILE_SIZE)).floor())
         const tileIndex = tileY.mul(fp.tileCountXNode).add(tileX)
+
+        // Per-tile meta: .x holds `fillScale`, the luminance-preserving
+        // multiplier applied to non-shadow-casting ("fill") lights when
+        // some of their in-range siblings were culled by the Forward+
+        // per-tile fill quota. 1.0 when no dedup happened.
+        const tileMeta = tileMetaLookup(tileIndex)
+        const fillScale = tileMeta.x
 
         Loop(MAX_LIGHTS_PER_TILE, ({ i }: { i: Node<'int'> }) => {
           const lightId = tileLookup(tileIndex, i)
@@ -254,8 +262,17 @@ export const DefaultLightEffect = createLightEffect({
           }
 
           const baseContribution = contribution.mul(atten).mul(diffuse)
-          totalLightLit.addAssign(baseContribution)
-          totalLightShaded.addAssign(baseContribution.mul(shadow))
+          // Fill-light luminance compensation — non-shadow-casting
+          // lights get their contribution boosted by `fillScale` to
+          // preserve total tile luminance when dedup culled siblings.
+          // Hero (castsShadow) lights pass through unchanged since
+          // they bypass the dedup path entirely.
+          const scaledContribution = lightCastsShadow.greaterThan(float(0.5)).select(
+            baseContribution,
+            baseContribution.mul(fillScale)
+          )
+          totalLightLit.addAssign(scaledContribution)
+          totalLightShaded.addAssign(scaledContribution.mul(shadow))
 
           // Rim lighting — edge highlight from inverse normal dot
           const rimFactor = isAmbient.select(float(0), float(1).sub(NdotL).pow(rimPower))

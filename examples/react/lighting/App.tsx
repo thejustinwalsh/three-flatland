@@ -847,6 +847,7 @@ function FlatlandScene(props: SceneProps) {
             intensity={props.torchIntensity}
             distance={props.torchDistance}
             decay={2}
+            importance={10}
           />
         ))}
         {/* Toggle torches (switchable) — cool amber */}
@@ -860,6 +861,7 @@ function FlatlandScene(props: SceneProps) {
             intensity={props.torchIntensity * 0.8}
             distance={props.torchDistance * 0.7}
             decay={2}
+            importance={10}
           />
         ))}
 

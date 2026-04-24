@@ -78,15 +78,24 @@ describe('ForwardPlusLighting', () => {
 
     fp.update(lights)
 
-    // Ambient lights should not be in any tile
+    // Ambient lights should not be in any tile — scan only the
+    // light-index blocks (stride 8 per tile; first 4 texels / 16
+    // floats carry light indices, remaining 4 texels are meta/reserved).
     const data = fp.tileTexture!.image.data as Float32Array
-    // All values should be 0 (no lights assigned to tiles)
+    const TILE_STRIDE = 8
+    const BLOCKS_PER_TILE = 4
+    const tileCountX = Math.ceil(64 / TILE_SIZE)
+    const tileCountY = Math.ceil(64 / TILE_SIZE)
     let hasNonZero = false
-    for (let i = 0; i < data.length; i++) {
-      if (data[i] !== 0) {
-        hasNonZero = true
-        break
+    for (let tileIdx = 0; tileIdx < tileCountX * tileCountY; tileIdx++) {
+      const base = tileIdx * TILE_STRIDE * 4
+      for (let i = 0; i < BLOCKS_PER_TILE * 4; i++) {
+        if (data[base + i] !== 0) {
+          hasNonZero = true
+          break
+        }
       }
+      if (hasNonZero) break
     }
     expect(hasNonZero).toBe(false)
   })
@@ -101,13 +110,23 @@ describe('ForwardPlusLighting', () => {
 
     fp.update([light])
 
+    // Same scan pattern as the ambient-light test — inspect only
+    // light-index blocks; meta texels carry fillScale=1.0 fallbacks.
     const data = fp.tileTexture!.image.data as Float32Array
+    const TILE_STRIDE = 8
+    const BLOCKS_PER_TILE = 4
+    const tileCountX = Math.ceil(64 / TILE_SIZE)
+    const tileCountY = Math.ceil(64 / TILE_SIZE)
     let hasNonZero = false
-    for (let i = 0; i < data.length; i++) {
-      if (data[i] !== 0) {
-        hasNonZero = true
-        break
+    for (let tileIdx = 0; tileIdx < tileCountX * tileCountY; tileIdx++) {
+      const base = tileIdx * TILE_STRIDE * 4
+      for (let i = 0; i < BLOCKS_PER_TILE * 4; i++) {
+        if (data[base + i] !== 0) {
+          hasNonZero = true
+          break
+        }
       }
+      if (hasNonZero) break
     }
     expect(hasNonZero).toBe(false)
   })
@@ -162,7 +181,7 @@ describe('ForwardPlusLighting', () => {
     fp.update([light])
 
     const data = fp.tileTexture!.image.data as Float32Array
-    const blocksPerTile = MAX_LIGHTS_PER_TILE / 4
+    const TILE_STRIDE = 8
     const tileCountX = Math.ceil(64 / TILE_SIZE)
     const tileCountY = Math.ceil(64 / TILE_SIZE)
 
@@ -170,7 +189,9 @@ describe('ForwardPlusLighting', () => {
     // far-corner tile.
     const tileHasLight = (tx: number, ty: number): boolean => {
       const tileIdx = ty * tileCountX + tx
-      const base = tileIdx * blocksPerTile * 4
+      const base = tileIdx * TILE_STRIDE * 4
+      // Scan the first MAX_LIGHTS_PER_TILE slots (light-index blocks only;
+      // meta texels after those are not part of the light list).
       for (let i = 0; i < MAX_LIGHTS_PER_TILE; i++) {
         if (data[base + i] !== 0) return true
       }
@@ -246,13 +267,13 @@ describe('ForwardPlusLighting', () => {
     fp.update([sun])
 
     const data = fp.tileTexture!.image.data as Float32Array
-    const blocksPerTile = MAX_LIGHTS_PER_TILE / 4
+    const TILE_STRIDE = 8
     const tileCountX = Math.ceil(64 / TILE_SIZE)
     const tileCountY = Math.ceil(64 / TILE_SIZE)
     for (let ty = 0; ty < tileCountY; ty++) {
       for (let tx = 0; tx < tileCountX; tx++) {
         const tileIdx = ty * tileCountX + tx
-        const base = tileIdx * blocksPerTile * 4
+        const base = tileIdx * TILE_STRIDE * 4
         expect(data[base]).toBe(1)
       }
     }
@@ -273,5 +294,119 @@ describe('ForwardPlusLighting', () => {
     expect(fp.worldSizeNode.value.y).toBe(600)
     expect(fp.worldOffsetNode.value.x).toBe(-400)
     expect(fp.worldOffsetNode.value.y).toBe(-300)
+  })
+
+  it('should bias score via Light2D.importance', () => {
+    // Two overlapping equal-intensity lights competing for slots in a
+    // 1-tile viewport full of filler lights. The one with higher
+    // `importance` should win the slot.
+    const fp = new ForwardPlusLighting()
+    fp.init(16, 16)
+    fp.setWorldBounds(new Vector2(16, 16), new Vector2(0, 0))
+
+    // Fill the tile with MAX shadow-casting fillers at baseline intensity.
+    const lights: Light2D[] = []
+    for (let i = 0; i < MAX_LIGHTS_PER_TILE; i++) {
+      lights.push(new Light2D({ type: 'point', position: [8, 8], intensity: 1, castsShadow: true }))
+    }
+    // Incoming light at same position + intensity but importance 100 —
+    // should evict one of the fillers.
+    lights.push(
+      new Light2D({ type: 'point', position: [8, 8], intensity: 1, castsShadow: true, importance: 100 })
+    )
+    fp.update(lights)
+
+    const data = fp.tileTexture!.image.data as Float32Array
+    const ids = new Set<number>()
+    for (let i = 0; i < MAX_LIGHTS_PER_TILE; i++) ids.add(data[i] as number)
+    expect(ids.has(MAX_LIGHTS_PER_TILE + 1)).toBe(true) // importance-boosted light won a slot
+  })
+
+  it('should cap fill lights (castsShadow=false) per tile and write fillScale for compensation', () => {
+    // Scene: one tile, 10 non-shadow-casting "fill" lights. Quota =
+    // MAX_FILL_LIGHTS_PER_TILE (currently 2). Expect 2 fill slots
+    // claimed + a fillScale of 10/2 = 5 in the meta texel.
+    const fp = new ForwardPlusLighting()
+    fp.init(16, 16)
+    fp.setWorldBounds(new Vector2(16, 16), new Vector2(0, 0))
+
+    const FILL_COUNT = 10
+    const lights: Light2D[] = []
+    for (let i = 0; i < FILL_COUNT; i++) {
+      lights.push(
+        new Light2D({ type: 'point', position: [8, 8], intensity: 1, castsShadow: false })
+      )
+    }
+    fp.update(lights)
+
+    const data = fp.tileTexture!.image.data as Float32Array
+    const TILE_STRIDE = 8
+    const BLOCKS_PER_TILE = 4
+    const META_BLOCK_INDEX = BLOCKS_PER_TILE
+    const metaBase = (0 * TILE_STRIDE + META_BLOCK_INDEX) * 4
+
+    // Only 2 slots should be filled (the others stay zero).
+    let fillSlotsUsed = 0
+    for (let i = 0; i < MAX_LIGHTS_PER_TILE; i++) {
+      if (data[i] !== 0) fillSlotsUsed++
+    }
+    expect(fillSlotsUsed).toBe(2)
+
+    // fillScale = inRange / kept = 10 / 2 = 5
+    expect(data[metaBase]).toBeCloseTo(5)
+    // Reserved meta channels should remain zero.
+    expect(data[metaBase + 1]).toBe(0)
+    expect(data[metaBase + 2]).toBe(0)
+    expect(data[metaBase + 3]).toBe(0)
+  })
+
+  it('should not let fill lights evict hero lights', () => {
+    // Scene: one tile. First, fill with MAX hero lights. Then add a
+    // super-bright fill light. Hero lights should stay (fills never
+    // displace heroes); the fill bumps fillInRange but gets no slot.
+    const fp = new ForwardPlusLighting()
+    fp.init(16, 16)
+    fp.setWorldBounds(new Vector2(16, 16), new Vector2(0, 0))
+
+    const lights: Light2D[] = []
+    for (let i = 0; i < MAX_LIGHTS_PER_TILE; i++) {
+      lights.push(
+        new Light2D({ type: 'point', position: [8, 8], intensity: 1, castsShadow: true })
+      )
+    }
+    // Try to crash a fill into the full tile.
+    lights.push(
+      new Light2D({ type: 'point', position: [8, 8], intensity: 1000, castsShadow: false })
+    )
+
+    fp.update(lights)
+
+    const data = fp.tileTexture!.image.data as Float32Array
+    const ids = new Set<number>()
+    for (let i = 0; i < MAX_LIGHTS_PER_TILE; i++) ids.add(data[i] as number)
+    // Super-bright fill (id 17) must NOT have won a slot.
+    expect(ids.has(MAX_LIGHTS_PER_TILE + 1)).toBe(false)
+    // All hero lights (ids 1..MAX) should still be present.
+    for (let id = 1; id <= MAX_LIGHTS_PER_TILE; id++) {
+      expect(ids.has(id)).toBe(true)
+    }
+  })
+
+  it('should leave fillScale at 1.0 when no fills reach a tile', () => {
+    const fp = new ForwardPlusLighting()
+    fp.init(16, 16)
+    fp.setWorldBounds(new Vector2(16, 16), new Vector2(0, 0))
+
+    // Only hero lights — no fills in range.
+    const lights: Light2D[] = [
+      new Light2D({ type: 'point', position: [8, 8], intensity: 1, castsShadow: true }),
+    ]
+    fp.update(lights)
+
+    const data = fp.tileTexture!.image.data as Float32Array
+    const TILE_STRIDE = 8
+    const metaBase = 4 * 4 // META_BLOCK_INDEX=4, 4 floats per texel
+    // With no fills, kept = 0 so fillScale falls back to 1.0.
+    expect(data[metaBase]).toBeCloseTo(1)
   })
 })

@@ -13,8 +13,25 @@ describe('Light2D', () => {
     expect(light.decay).toBe(2)
     expect(light.enabled).toBe(true)
     expect(light.castsShadow).toBe(true)
+    expect(light.importance).toBe(1)
     expect(light.color).toBeInstanceOf(Color)
     expect(light.direction).toBeInstanceOf(Vector2)
+  })
+
+  it('should accept importance in options', () => {
+    const light = new Light2D({ importance: 10 })
+    expect(light.importance).toBe(10)
+  })
+
+  it('should round-trip importance through getUniforms', () => {
+    const light = new Light2D({ importance: 7 })
+    expect(light.getUniforms().importance).toBe(7)
+  })
+
+  it('should preserve importance across clone()', () => {
+    const light = new Light2D({ importance: 42 })
+    const cloned = light.clone()
+    expect(cloned.importance).toBe(42)
   })
 
   it('should construct with custom options', () => {
