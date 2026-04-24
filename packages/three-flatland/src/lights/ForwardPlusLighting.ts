@@ -294,8 +294,28 @@ export class ForwardPlusLighting {
     const worldSizeY = this._worldSize.y
     const worldOffsetX = this._worldOffset.x
     const worldOffsetY = this._worldOffset.y
-    const tileWorldWidth = worldSizeX / tileCountX
-    const tileWorldHeight = worldSizeY / tileCountY
+    const screenWidth = this._screenSize.x
+    const screenHeight = this._screenSize.y
+
+    // CPU tile bounds MUST agree with the shader's screen-pixel tile
+    // division `tileX = floor(screenPos.x / TILE_SIZE)`. The intuitive
+    // `worldSize / tileCount` subdivides world evenly but diverges
+    // from the shader math whenever the viewport isn't a multiple of
+    // TILE_SIZE (e.g., 1080-px heights give ceil(1080/32)=34 tiles of
+    // world extent worldSize/34, but the shader's tile stride in
+    // world coordinates is 32/1080 * worldSize — a ~0.1% per-tile
+    // drift that accumulates to several world units by the last
+    // row). The mismatch manifests as tile-wide checkerboard gaps in
+    // assigned lights: fragments read a shader tile the CPU didn't
+    // populate. Match the shader exactly:
+    //
+    //   tileWorldStride = TILE_SIZE / screenSize * worldSize
+    //
+    // The last tile may extend slightly past `worldSize` (because
+    // tileCount * TILE_SIZE > screenSize for non-multiples), but
+    // that "extra" area is off-screen so no fragments reference it.
+    const tileWorldWidth = (TILE_SIZE / Math.max(1, screenWidth)) * worldSizeX
+    const tileWorldHeight = (TILE_SIZE / Math.max(1, screenHeight)) * worldSizeY
 
     const tileWorldWidthInv = 1 / tileWorldWidth
     const tileWorldHeightInv = 1 / tileWorldHeight
