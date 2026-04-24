@@ -5,22 +5,13 @@
 > Branch: lighting-stochastic-adoption
 > PR: https://github.com/thejustinwalsh/three-flatland/pull/27
 
-NEW PACKAGE. Everything listed below is additive.
+- New `@three-flatland/normals` package: offline normal-map baker that ports the `normalFromSprite` TSL shader to Node.js
+- Reads an RGBA PNG, computes 4-neighbor alpha gradient, normalizes to tangent-space, and writes a sibling `.normal.png` — consumers load the baked texture directly instead of paying per-fragment alpha sampling at runtime
+- Contributed `flatland.bakers` manifest makes `flatland-bake normal <input.png>` available as soon as the package is installed; optional `--strength` flag controls normal exaggeration
+- `NormalMapLoader` — runtime loader implementing the canonical "try baked → fall back to runtime `normalFromSprite`" pattern; issues dev-time warnings (at most once per URL, suppressed in production) when falling back
+  - Instance API: extends `three.Loader`, compatible with R3F `useLoader`
+  - Static API: `NormalMapLoader.load(url, { forceRuntime? })` with a shared URL-keyed cache
+- Normal map descriptor format (`.normal.json`) supported alongside direct `.normal.png` consumption
+- Region-aware baking (`bakeRegions`) for sprite-sheet inputs
 
-**Offline baker**
-- Reads an RGBA PNG, computes a 4-neighbor alpha gradient, normalizes to tangent-space, and writes a sibling `.normal.png`
-- Registered with `flatland.bakers` so `flatland-bake normal` appears automatically after install
-- `--strength` option scales the gradient before normalization
-- `flatland-bake normal sprite.png` / `flatland-bake normal sprite.png out.normal.png --strength 2`
-
-**Runtime loader**
-- `NormalMapLoader` implements the canonical "try baked → fall back to runtime TSL `normalFromSprite`" pattern
-- Instance API extends `three.Loader` for R3F `useLoader` compatibility
-- Static API: `NormalMapLoader.load(url, { forceRuntime? })` with a shared URL+option-keyed cache
-- Silent HEAD probe: a 404 for the `.normal.png` silently falls through to the runtime path
-- Dev-time warning fires at most once per URL when the runtime fallback is taken (suppressed in `NODE_ENV=production`)
-
-**Descriptor**
-- `NormalMapDescriptor` format and `descriptor.ts` parser for per-region normal-map sidecar files produced by the baker
-
-New `@three-flatland/normals` package providing an offline normal-map baker and a `NormalMapLoader` that transparently falls back from pre-baked PNG to the runtime TSL path.
+`@three-flatland/normals` provides both build-time baking and runtime loading for sprite normal maps, enabling deferred normal-map computation that integrates with the Flatland lighting pipeline.
