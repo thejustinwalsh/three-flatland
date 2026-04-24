@@ -9,6 +9,7 @@ import {
 } from 'three'
 import type Node from 'three/src/nodes/core/Node.js'
 import { EffectMaterial } from './EffectMaterial'
+import { readFlip } from '../lights/wrapWithLightFlags'
 import type { GlobalUniforms } from '../GlobalUniforms'
 
 // Re-export types that moved to EffectMaterial for backwards compatibility
@@ -188,19 +189,18 @@ export class Sprite2DMaterial extends EffectMaterial {
     const mapTexture = this._spriteTexture!
     const globalUniforms = this._globalUniforms
 
-    // Read from core instance attributes
-    // Explicit type params needed for @types/three ≥0.183 generic AttributeNode.
-    // Flip now lives in `instanceSystem.xy` (interleaved with flags +
-    // enable bits); see `SpriteBatch` header comment for layout.
+    // Read from core instance attributes. Named helpers
+    // (`readFlip`) hide the packed layout; see
+    // `lights/wrapWithLightFlags.ts` for the full accessor set.
     const instanceUV = attribute<'vec4'>('instanceUV', 'vec4')
     const instanceColor = attribute<'vec4'>('instanceColor', 'vec4')
-    const instanceSystem = attribute<'vec4'>('instanceSystem', 'vec4')
+    const flip = readFlip()
 
     // Apply flip
     const baseUV = uv()
     const flippedUV = vec2(
-      select(instanceSystem.x.greaterThan(float(0)), baseUV.x, float(1).sub(baseUV.x)),
-      select(instanceSystem.y.greaterThan(float(0)), baseUV.y, float(1).sub(baseUV.y))
+      select(flip.x.greaterThan(float(0)), baseUV.x, float(1).sub(baseUV.x)),
+      select(flip.y.greaterThan(float(0)), baseUV.y, float(1).sub(baseUV.y))
     )
 
     // Remap to frame in atlas

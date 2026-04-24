@@ -30,7 +30,7 @@ import {
   texture as sampleTexture,
 } from 'three/tsl'
 import type Node from 'three/src/nodes/core/Node.js'
-import { readCastShadowFlag } from './wrapWithLightFlags'
+import { readCastShadowFlag, readFlip } from './wrapWithLightFlags'
 import { Sprite2DMaterial } from '../materials/Sprite2DMaterial'
 
 /**
@@ -326,13 +326,12 @@ function buildOcclusionMaterial(texture: Texture): MeshBasicNodeMaterial {
   const material = new MeshBasicNodeMaterial({ transparent: true })
   material.colorNode = Fn(() => {
     const instanceUV = attribute<'vec4'>('instanceUV', 'vec4')
-    // Flip lives in `instanceSystem.xy` (interleaved core buffer).
-    const instanceSystem = attribute<'vec4'>('instanceSystem', 'vec4')
+    const flip = readFlip()
 
     const baseUV = uv()
     const flippedUV = vec2(
-      select(instanceSystem.x.greaterThan(float(0)), baseUV.x, float(1).sub(baseUV.x)),
-      select(instanceSystem.y.greaterThan(float(0)), baseUV.y, float(1).sub(baseUV.y))
+      select(flip.x.greaterThan(float(0)), baseUV.x, float(1).sub(baseUV.x)),
+      select(flip.y.greaterThan(float(0)), baseUV.y, float(1).sub(baseUV.y))
     )
     const atlasUV = flippedUV
       .mul(vec2(instanceUV.z, instanceUV.w))
