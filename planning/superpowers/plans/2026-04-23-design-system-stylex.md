@@ -144,23 +144,16 @@ Edit `tools/vscode/vite.config.ts` — top imports:
 
 ```ts
 import stylex from '@stylexjs/unplugin'
-import { resolve } from 'node:path'
 ```
 
-(`resolve` already imported — leave the existing line alone.)
+(`resolve` from `node:path` is already imported — leave it alone.)
 
 Then update the `plugins` array:
 
 ```ts
 export default defineConfig({
   plugins: [
-    stylex.vite({
-      useCSSLayers: true,
-      include: [
-        resolve(__dirname, 'webview/**/*.{ts,tsx}'),
-        resolve(__dirname, '../design-system/src/**/*.{ts,tsx}'),
-      ],
-    }),
+    stylex.vite({ useCSSLayers: true }),
     react(),
     tokenizeAssetBase(),
   ],
@@ -169,7 +162,7 @@ export default defineConfig({
 })
 ```
 
-The `include` paths are absolute, computed with `resolve(__dirname, ...)`. Don't use relative globs — Vite's `root` is set to `webview/` and a relative include silently misses files.
+`@stylexjs/unplugin` does **not** accept an `include` option (TS will error with `TS2353: 'include' does not exist on UserOptions`). It auto-transforms any `.{ts,tsx,js,jsx}` file the bundler hands it that imports `@stylexjs/stylex`. Workspace symlinks (e.g. `node_modules/@three-flatland/design-system → tools/design-system`) follow the package's `exports`; once Task 3 switches design-system to source-only exports, the unplugin will pick those up automatically.
 
 - [ ] **Step 2.2: Create the CSS entrypoint**
 
