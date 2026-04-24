@@ -21,3 +21,16 @@ export type {
 // Channel types and defaults
 export { channelDefaults } from './channels'
 export type { ChannelName, ChannelNodeMap, WithRequiredChannels } from './channels'
+
+// Per-instance TSL attribute accessors (reads into the interleaved
+// core buffer shared between SpriteBatch, Sprite2D standalone, and
+// TileLayer geometry). See `instanceAttributes.ts` for layout.
+export {
+  readFlip,
+  readSystemFlags,
+  readEnableBits,
+  readShadowRadius,
+  readLitFlag,
+  readReceiveShadowsFlag,
+  readCastShadowFlag,
+} from './instanceAttributes'

@@ -9,7 +9,7 @@ import {
 } from 'three'
 import type Node from 'three/src/nodes/core/Node.js'
 import { EffectMaterial } from './EffectMaterial'
-import { readFlip } from '../lights/wrapWithLightFlags'
+import { readFlip } from './instanceAttributes'
 import type { GlobalUniforms } from '../GlobalUniforms'
 
 // Re-export types that moved to EffectMaterial for backwards compatibility
@@ -191,7 +191,7 @@ export class Sprite2DMaterial extends EffectMaterial {
 
     // Read from core instance attributes. Named helpers
     // (`readFlip`) hide the packed layout; see
-    // `lights/wrapWithLightFlags.ts` for the full accessor set.
+    // `materials/instanceAttributes.ts` for the full accessor set.
     const instanceUV = attribute<'vec4'>('instanceUV', 'vec4')
     const instanceColor = attribute<'vec4'>('instanceColor', 'vec4')
     const flip = readFlip()

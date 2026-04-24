@@ -33,19 +33,9 @@ export { ForwardPlusLighting, TILE_SIZE, MAX_LIGHTS_PER_TILE } from './ForwardPl
 // Shared coordinate utilities
 export { worldToUV, uvToWorld } from './coordUtils'
 
-// TSL accessors for per-instance packed data + helper to gate
-// lighting on the lit flag. See `wrapWithLightFlags.ts` header for
-// the layout these helpers index into.
-export {
-  // Raw reads
-  readFlip,
-  readSystemFlags,
-  readEnableBits,
-  readShadowRadius,
-  // Typed bit readers
-  readLitFlag,
-  readReceiveShadowsFlag,
-  readCastShadowFlag,
-  // Composite helper
-  wrapWithLightFlags,
-} from './wrapWithLightFlags'
+// Lit-gate wrapper for ColorTransforms. The per-instance attribute
+// accessors it builds on (readFlip, readShadowRadius, readLitFlag,
+// readCastShadowFlag, …) live next to the flag-mask constants in
+// `materials/instanceAttributes.ts` and are exported from the
+// `materials` barrel.
+export { wrapWithLightFlags } from './wrapWithLightFlags'
