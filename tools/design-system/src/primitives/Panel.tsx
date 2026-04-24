@@ -1,7 +1,47 @@
-import type { CSSProperties, HTMLAttributes, ReactNode } from 'react'
+import * as stylex from '@stylexjs/stylex'
+import type { StyleXStyles } from '@stylexjs/stylex'
+import type { HTMLAttributes, ReactNode } from 'react'
+import { vscode } from '../tokens/vscode-theme.stylex'
+import { space } from '../tokens/space.stylex'
+import { radius } from '../tokens/radius.stylex'
 
-export type PanelProps = HTMLAttributes<HTMLDivElement> & {
+const s = stylex.create({
+  shell: {
+    display: 'flex',
+    flexDirection: 'column',
+    minHeight: 0,
+    backgroundColor: vscode.bg,
+    color: vscode.fg,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: vscode.panelBorder,
+    borderRadius: radius.sm,
+  },
+  header: {
+    paddingInline: space.xl,
+    paddingBlock: space.sm,
+    borderBottomWidth: 1,
+    borderBottomStyle: 'solid',
+    borderBottomColor: vscode.panelBorder,
+    fontFamily: vscode.fontFamily,
+    fontSize: '11px',
+    color: vscode.panelTitleFg,
+    textTransform: 'uppercase',
+    letterSpacing: '0.04em',
+    backgroundColor: vscode.panelBg,
+  },
+  body: {
+    flex: 1,
+    minHeight: 0,
+    display: 'flex',
+    flexDirection: 'column',
+    padding: space.lg,
+  },
+})
+
+export type PanelProps = Omit<HTMLAttributes<HTMLDivElement>, 'style' | 'className'> & {
   title?: ReactNode
+  style?: StyleXStyles
 }
 
 /**
@@ -9,40 +49,11 @@ export type PanelProps = HTMLAttributes<HTMLDivElement> & {
  * doesn't ship a generic "Panel" primitive, so this is hand-built against
  * the same tokens VSCode uses for the editor/panel chrome.
  */
-const shellStyle: CSSProperties = {
-  display: 'flex',
-  flexDirection: 'column',
-  minHeight: 0,
-  background: 'var(--vscode-editor-background)',
-  color: 'var(--vscode-foreground)',
-  border: '1px solid var(--vscode-panel-border, var(--vscode-editorGroup-border, transparent))',
-  borderRadius: 2,
-}
-
-const headerStyle: CSSProperties = {
-  padding: '4px 10px',
-  borderBottom: '1px solid var(--vscode-panel-border, var(--vscode-editorGroup-border, transparent))',
-  fontFamily: 'var(--vscode-font-family)',
-  fontSize: '11px',
-  color: 'var(--vscode-panelTitle-activeForeground, var(--vscode-foreground))',
-  textTransform: 'uppercase',
-  letterSpacing: '0.04em',
-  background: 'var(--vscode-panel-background, var(--vscode-editor-background))',
-}
-
-const bodyStyle: CSSProperties = {
-  flex: 1,
-  minHeight: 0,
-  display: 'flex',
-  flexDirection: 'column',
-  padding: 8,
-}
-
 export function Panel({ title, children, style, ...rest }: PanelProps) {
   return (
-    <div {...rest} style={{ ...shellStyle, ...style }}>
-      {title != null ? <div style={headerStyle}>{title}</div> : null}
-      <div style={bodyStyle}>{children}</div>
+    <div {...rest} {...stylex.props(s.shell, style)}>
+      {title != null ? <div {...stylex.props(s.header)}>{title}</div> : null}
+      <div {...stylex.props(s.body)}>{children}</div>
     </div>
   )
 }
