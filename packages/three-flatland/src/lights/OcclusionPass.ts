@@ -30,7 +30,7 @@ import {
   texture as sampleTexture,
 } from 'three/tsl'
 import type Node from 'three/src/nodes/core/Node.js'
-import { readCastShadowFlag, readFlip } from './wrapWithLightFlags'
+import { readCastShadowFlag, readFlip } from '../materials/instanceAttributes'
 import { Sprite2DMaterial } from '../materials/Sprite2DMaterial'
 
 /**
