@@ -5,24 +5,22 @@
 > Branch: lighting-stochastic-adoption
 > PR: https://github.com/thejustinwalsh/three-flatland/pull/27
 
-**New package: `@three-flatland/normals`** — offline normal-map baker and runtime loader for sprite normal maps.
+NEW PACKAGE. Everything listed below is additive.
 
-### Offline baker
+**Offline baker**
+- Reads an RGBA PNG, computes a 4-neighbor alpha gradient, normalizes to tangent-space, and writes a sibling `.normal.png`
+- Registered with `flatland.bakers` so `flatland-bake normal` appears automatically after install
+- `--strength` option scales the gradient before normalization
+- `flatland-bake normal sprite.png` / `flatland-bake normal sprite.png out.normal.png --strength 2`
 
-- `flatland-bake normal <input.png>` — Node-side port of the `normalFromSprite` TSL helper: reads RGBA PNG, computes 4-neighbor alpha gradient, writes a sibling `.normal.png`
-- Optional `--strength` multiplier and explicit output path: `flatland-bake normal sprite.png sprite.normal.png --strength 2`
-- Registered via the `flatland.bakers` manifest, so installing the package makes the subcommand available with no extra wiring
-- Region-aware baker for sprite sheets: `bakeRegions` computes normals per atlas frame
-- `descriptor.ts` for reading/writing `.normal.json` atlas descriptors alongside baked PNGs
+**Runtime loader**
+- `NormalMapLoader` implements the canonical "try baked → fall back to runtime TSL `normalFromSprite`" pattern
+- Instance API extends `three.Loader` for R3F `useLoader` compatibility
+- Static API: `NormalMapLoader.load(url, { forceRuntime? })` with a shared URL+option-keyed cache
+- Silent HEAD probe: a 404 for the `.normal.png` silently falls through to the runtime path
+- Dev-time warning fires at most once per URL when the runtime fallback is taken (suppressed in `NODE_ENV=production`)
 
-### Runtime loader
+**Descriptor**
+- `NormalMapDescriptor` format and `descriptor.ts` parser for per-region normal-map sidecar files produced by the baker
 
-- `NormalMapLoader` implements the canonical try-baked-then-runtime pattern:
-  - Silent HEAD probe; 404 falls through to the runtime TSL `normalFromSprite` path
-  - `forceRuntime` option bypasses baked lookup
-  - Dev-time warnings fire at most once per URL outside `NODE_ENV=production`
-- Instance API: extends `three.Loader`, compatible with R3F `useLoader`
-- Static API: `NormalMapLoader.load(url, { forceRuntime? })` with shared URL-keyed cache
-- `resolveNormalMap` utility for deriving the baked URL from a sprite URL
-
-Eliminates per-fragment alpha gradient cost when baked normals are available; runtime path remains fully functional as fallback.
+New `@three-flatland/normals` package providing an offline normal-map baker and a `NormalMapLoader` that transparently falls back from pre-baked PNG to the runtime TSL path.

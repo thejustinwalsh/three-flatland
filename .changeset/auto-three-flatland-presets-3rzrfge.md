@@ -5,26 +5,27 @@
 > Branch: lighting-stochastic-adoption
 > PR: https://github.com/thejustinwalsh/three-flatland/pull/27
 
-### DefaultLightEffect
+**Lighting effects (new)**
+- `DefaultLightEffect` — full tiled-forward+ lighting with SDF soft shadows, cel-banding, rim lighting, ambient, and per-light `castsShadow` gating
+- `DirectLightEffect` — directional lighting with SDF shadow trace
+- `./react` subpath export added; `@react-three/fiber` declared as optional peer dep so `ThreeElements` augmentation resolves without hard dependency
 
-- Real SDF shadow tracing via `shadowSDF2D`; `shadow = float(1.0)` stub replaced
-- Per-light `castsShadow` gate: shadow trace skipped for lights with `castsShadow: false`, reducing cost to O(casting lights) in dense scenes
-- Attenuation gate: shadow trace skipped when `atten <= 0.01` (sub-visible contribution)
-- Shadow applied after cel-band quantization; fixes stepped shadow artifact when `bands > 0`; rim lighting inherits the same per-pixel shadow ratio
-- `shadowStartOffset` uniform (default 40 world units) for tunable self-shadow escape; split from `shadowBias` (IQ hit epsilon)
-- `shadowStartOffsetScale` replaces the scene-wide `shadowStartOffset` uniform — a per-instance multiplier on the sprite's own `shadowRadius`
-- `shadowPixelSize`, `bands`, `bandCurve` uniforms for retro/cel look
-- Removed `shadowBands` / `shadowBandCurve` (obsoleted by post-quantization shadow path)
-- `lightDir.normalize()` dropped from spot cone shader (direction is pre-normalized at every set-site)
-- World bounds sourced from `LightEffectBuildContext` for consistency with `DirectLightEffect`
+**Shadow pipeline**
+- `shadowSDF2D` wired into `DefaultLightEffect` and `DirectLightEffect`; the `shadow = float(1.0)` stub is replaced with a real trace gated by `sdfTexture` availability
+- `shadowStartOffset` uniform: tunable self-shadow escape (replaces hardcoded 40); subsequently replaced by per-sprite `shadowRadius` (see below)
+- `shadowStartOffsetScale` (default 1.0): per-effect multiplier on the per-instance `shadowRadius`
+- Shadow trace gated on attenuation (`atten <= 0.01` skipped), per-light `castsShadow` flag, ambient type, and N·L — O(casting lights) cost in dense scenes
+- Shadow applied after cel-band quantization so stair-steps land on the direct gradient, not the shadow edge; rim lighting inherits the same per-pixel shadow ratio
 
-### DirectLightEffect
+**Performance**
+- Redundant `lightDir.normalize()` removed from spot cone math — direction is normalized at every set-site
+- `shadowBands` / `shadowBandCurve` uniforms removed (obsoleted by post-quantization shadow approach)
 
-- `shadowSDF2D` wired via build context `sdfTexture`; ambient lights skip shadow trace
+**Removed / cleaned up**
+- `AutoNormalProvider`, `NormalMapProvider`, `TileNormalProvider` removed (superseded by `@three-flatland/normals`)
+- Unused imports and providers pruned across `DefaultLightEffect`, `DirectLightEffect`, and `index.ts`
 
-### Provider cleanup
+**Instance attribute helpers**
+- `NormalMapProvider.channelNode` migrated off raw `attribute(...)` reads to `readFlip()` typed helper
 
-- Removed `AutoNormalProvider`, `NormalMapProvider`, `TileNormalProvider`, `SimpleLightEffect`, `RadianceLightEffect` — superseded by the descriptor-based normal pipeline and consolidated lighting effects
-- `@three-flatland/presets` gains a `./react` subpath export; `@react-three/fiber` declared as optional peer dep so `ThreeElements` augmentation resolves in non-R3F packages
-
-`DefaultLightEffect` now produces correct soft shadows with cel-band compatibility and per-light shadow opt-out, at a fraction of the previous uniform cost.
+`@three-flatland/presets` now ships fully wired lighting effects with SDF soft shadows, per-light shadow gating, and correct cel-band / shadow interaction out of the box.

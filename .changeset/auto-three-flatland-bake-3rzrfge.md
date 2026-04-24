@@ -5,23 +5,20 @@
 > Branch: lighting-stochastic-adoption
 > PR: https://github.com/thejustinwalsh/three-flatland/pull/27
 
-**New package: `@three-flatland/bake`** — extensible offline asset pipeline CLI.
+NEW PACKAGE. Everything listed below is additive.
 
-### CLI
+**CLI**
+- New `flatland-bake` binary — discovers and dispatches to bakers contributed by workspace or npm packages via a `flatland.bakers` field in `package.json`
+- Bakers default-export a `Baker` object (`{ name, description, run(args), usage? }`) and are picked up automatically
+- `--list` enumerates all discovered bakers and descriptions
+- Discovery walks `node_modules` upward from CWD, tolerating scoped packages, missing dirs, and malformed manifests
+- Duplicate-name registrations are reported as conflicts with a first-wins policy
 
-- New `flatland-bake` binary with extensible subcommand dispatch
-- Baker discovery walks `node_modules` upward from CWD, tolerating scoped packages and malformed manifests; first-wins on name conflicts
-- CWD-self-discovery: packages declaring their own `flatland.bakers` are registered before `node_modules` scan, enabling authoring without self-symlinking
-- `flatland-bake --list` enumerates all registered bakers
+**Discovery**
+- CWD self-discovery: when the CLI runs inside a package that declares its own `flatland.bakers`, those bakers register ahead of `node_modules` scans — lets package authors iterate without symlinking into their own `node_modules`
 
-### Baker protocol
+**Utilities**
+- `devtimeWarn` — fires a warning at most once per key, only outside `NODE_ENV=production`
+- Sidecar file helpers (`sidecar.ts`, `writeSidecar.ts`) for co-located baked asset descriptors
 
-- Packages contribute bakers via `package.json` `flatland.bakers` array: `{ name, description, entry }` where `entry` default-exports a `Baker` (`{ name, description, run(args), usage? }`)
-- Installing a package with a `flatland.bakers` manifest automatically makes its subcommands available with no wiring
-
-### Sidecar support
-
-- `sidecar` / `writeSidecar` modules for reading and writing `.json` descriptor files alongside baked assets
-- `devtimeWarn` helper for issuing one-shot dev-only warnings in the try-baked-then-runtime loader pattern
-
-Installing `@three-flatland/normals` makes `flatland-bake normal` available automatically via the baker manifest.
+New `@three-flatland/bake` package providing the extensible `flatland-bake` CLI; installing any package that contributes a `flatland.bakers` manifest makes its subcommand available automatically.
