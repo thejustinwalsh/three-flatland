@@ -6,6 +6,7 @@ import {
   useState,
   type ChangeEvent,
   type KeyboardEvent as ReactKeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
 } from 'react'
 import { createClientBridge } from '@three-flatland/bridge/client'
 import {
@@ -89,7 +90,7 @@ const s = stylex.create({
     display: 'flex',
     flexDirection: 'column',
     minHeight: 0,
-    outline: 'none',
+    outlineStyle: 'none',
     backgroundColor: vscode.bg,
     color: vscode.fg,
     fontFamily: vscode.fontFamily,
@@ -149,7 +150,7 @@ const s = stylex.create({
     color: vscode.inputFg,
     borderWidth: 1,
     borderStyle: 'solid',
-    borderColor: vscode.focusRing,
+    borderColor: vscode.inputBorder,
     outlineStyle: 'none',
     fontFamily: vscode.monoFontFamily,
     fontSize: '12px',
@@ -227,7 +228,7 @@ export function App() {
     rootRef.current?.focus()
   }, [])
 
-  const handleRootPointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+  const handleRootPointerDown = useCallback((e: ReactPointerEvent<HTMLDivElement>) => {
     if (isEditableTarget(e.target)) return
     if (!(e.target instanceof Element)) return
     // Let toolbar buttons / custom elements keep their own focus semantics.
