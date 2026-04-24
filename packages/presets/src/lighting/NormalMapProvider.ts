@@ -1,6 +1,6 @@
-import { vec3, texture, attribute, float, max } from 'three/tsl'
+import { vec3, texture, float, max } from 'three/tsl'
 import type { Texture } from 'three'
-import { createMaterialEffect } from 'three-flatland'
+import { createMaterialEffect, readFlip } from 'three-flatland'
 
 /**
  * Provides the 'normal' and 'elevation' channels from a pre-baked
@@ -62,12 +62,8 @@ export const NormalMapProvider = createMaterialEffect({
     const nz = max(float(0), nzSq).sqrt()
 
     // Flip correction — mirror XY by the instance's flip flags so a
-    // flipped sprite responds to lights from the mirrored side. Flip
-    // now lives in `instanceSystem.xy` (interleaved core buffer).
-    const sys = attribute('instanceSystem', 'vec4') as unknown as {
-      x: ReturnType<typeof float>
-      y: ReturnType<typeof float>
-    }
-    return vec3(nx.mul(sys.x), ny.mul(sys.y), nz).normalize()
+    // flipped sprite responds to lights from the mirrored side.
+    const flip = readFlip()
+    return vec3(nx.mul(flip.x), ny.mul(flip.y), nz).normalize()
   },
 })

@@ -33,10 +33,19 @@ export { ForwardPlusLighting, TILE_SIZE, MAX_LIGHTS_PER_TILE } from './ForwardPl
 // Shared coordinate utilities
 export { worldToUV, uvToWorld } from './coordUtils'
 
-// Utility: wrap lighting with per-instance light flags for batched sprites
+// TSL accessors for per-instance packed data + helper to gate
+// lighting on the lit flag. See `wrapWithLightFlags.ts` header for
+// the layout these helpers index into.
 export {
-  wrapWithLightFlags,
+  // Raw reads
+  readFlip,
+  readSystemFlags,
+  readEnableBits,
+  readShadowRadius,
+  // Typed bit readers
+  readLitFlag,
   readReceiveShadowsFlag,
   readCastShadowFlag,
-  readShadowRadius,
+  // Composite helper
+  wrapWithLightFlags,
 } from './wrapWithLightFlags'
