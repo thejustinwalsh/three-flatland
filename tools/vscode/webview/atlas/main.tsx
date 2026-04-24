@@ -13,7 +13,7 @@ import '@vscode-elements/elements'
 import '@vscode/codicons/dist/codicon.css'
 import { App } from './App'
 import * as stylex from '@stylexjs/stylex'
-import { vscode as vscodeTokens } from '@three-flatland/design-system/tokens/vscode-theme.stylex'
+import { vscode } from '@three-flatland/design-system/tokens/vscode-theme.stylex'
 
 // Tag the main stylesheet link as 'vscode-codicon-stylesheet' so VscodeIcon
 // can mirror the codicon font rules into each icon's shadow root.
@@ -26,9 +26,9 @@ tagCodiconStylesheet()
 
 // Forward uncaught errors to the FL Tools output channel so 'empty panel'
 // situations are diagnosable without opening Webview Developer Tools.
-let vscode: ReturnType<typeof getVSCodeApi> | null = null
+let vscodeApi: ReturnType<typeof getVSCodeApi> | null = null
 try {
-  vscode = getVSCodeApi()
+  vscodeApi = getVSCodeApi()
 } catch {}
 
 function safe(v: unknown): unknown {
@@ -42,7 +42,7 @@ function safe(v: unknown): unknown {
 }
 
 function send(level: string, args: unknown[]) {
-  vscode?.postMessage({
+  vscodeApi?.postMessage({
     kind: 'request',
     id: `log-${Math.random().toString(36).slice(2)}`,
     method: 'client/log',
@@ -80,22 +80,22 @@ try {
   // Not in a webview (unit/test context) — skip.
 }
 
-const ms = stylex.create({
+const s = stylex.create({
   fallback: {
     height: '100vh',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: vscodeTokens.bg,
-    color: vscodeTokens.descriptionFg,
-    fontFamily: vscodeTokens.fontFamily,
-    fontSize: vscodeTokens.fontSize,
+    backgroundColor: vscode.bg,
+    color: vscode.descriptionFg,
+    fontFamily: vscode.fontFamily,
+    fontSize: vscode.fontSize,
   },
 })
 
 function RootFallback() {
   return (
-    <div {...stylex.props(ms.fallback)}>
+    <div {...stylex.props(s.fallback)}>
       <vscode-progress-ring />
     </div>
   )
