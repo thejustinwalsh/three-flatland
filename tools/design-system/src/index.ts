@@ -5,7 +5,11 @@ export { DevReloadToast } from './primitives/DevReloadToast'
 export { useThemeKind, type ThemeKind } from './theme/useThemeKind'
 export { useCssVar } from './theme/useCssVar'
 export { useDevReload } from './theme/useDevReload'
-export { vscodeTokens } from './tokens'
+
+export { vscode } from './tokens/vscode-theme.stylex'
+export { space } from './tokens/space.stylex'
+export { radius } from './tokens/radius.stylex'
+export { z } from './tokens/z.stylex'
 
 // Re-export common VSCode Elements so tools don't need to depend on the
 // package directly. Add more as needed.
