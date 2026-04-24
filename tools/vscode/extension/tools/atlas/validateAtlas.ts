@@ -1,4 +1,4 @@
-import Ajv, { type ValidateFunction } from 'ajv'
+import Ajv2020, { type ValidateFunction } from 'ajv/dist/2020'
 import schema from 'three-flatland/sprites/atlas.schema.json' with { type: 'json' }
 import type { AtlasJson } from './sidecar'
 
@@ -7,13 +7,16 @@ import type { AtlasJson } from './sidecar'
 // via the 'three-flatland/sprites/atlas.schema.json' package path. Any
 // future runtime consumer (the sprite sheet loader, other tools) compiles
 // against the same file.
+//
+// The schema declares `"$schema": "https://json-schema.org/draft/2020-12/schema"`.
+// ajv's default `Ajv` class only knows draft-07; importing `Ajv2020` from
+// `ajv/dist/2020` ships the draft 2020-12 meta-schema so compile() can
+// resolve it at module load. Using the default `Ajv` throws
+// "no schema with key or ref ..." at extension activation.
 
-const ajv = new Ajv({
+const ajv = new Ajv2020({
   allErrors: true,
   strict: false,
-  // draft 2020-12 keywords already supported in ajv 8; disable strict
-  // defaulting so additional-property validation stays permissive where
-  // the schema explicitly opted into `additionalProperties: true`.
 })
 
 const validate: ValidateFunction<AtlasJson> = ajv.compile<AtlasJson>(
