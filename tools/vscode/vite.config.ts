@@ -51,13 +51,7 @@ function tokenizeAssetBase(token = '%FL_BASE%'): Plugin {
 
 export default defineConfig({
   plugins: [
-    stylex.vite({
-      useCSSLayers: true,
-      include: [
-        resolve(__dirname, 'webview/**/*.{ts,tsx}'),
-        resolve(__dirname, '../design-system/src/**/*.{ts,tsx}'),
-      ],
-    }),
+    stylex.vite({ useCSSLayers: true }),
     react(),
     tokenizeAssetBase(),
   ],
