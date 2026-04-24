@@ -38,12 +38,16 @@ export type TileLookupFn = (tileIndex: Node<'int'>, slotIndex: Node<'int'>) => N
  * RGBAFormat, FloatType). Supports up to `maxLights` (default 256, configurable).
  *
  * DataTexture layout:
- * | Row | R      | G         | B             | A        |
- * |-----|--------|-----------|---------------|----------|
- * | 0   | posX   | posY      | colorR        | colorG   |
- * | 1   | colorB | intensity | distance      | decay    |
- * | 2   | dirX   | dirY      | angle         | penumbra |
- * | 3   | type   | enabled   | castsShadow   | 0        |
+ * | Row | R      | G         | B             | A              |
+ * |-----|--------|-----------|---------------|----------------|
+ * | 0   | posX   | posY      | colorR        | colorG         |
+ * | 1   | colorB | intensity | distance      | decay          |
+ * | 2   | dirX   | dirY      | angle         | penumbra       |
+ * | 3   | type   | enabled   | castsShadow   | categoryBucket |
+ *
+ * `categoryBucket` is 0..3 — the hashed bucket index derived from
+ * `Light2D.category`. Consumed by `DefaultLightEffect` to select the
+ * correct `fillScale[bucket]` from the tile meta texel.
  *
  * The shader reads via `textureLoad(lightsTexture, ivec2(lightIndex, row))`.
  *
@@ -144,7 +148,7 @@ export class LightStore {
       data[2 * lineSize + offset + 2] = light.angle
       data[2 * lineSize + offset + 3] = light.penumbra
 
-      // Row 3: type, enabled, castsShadow, 0
+      // Row 3: type, enabled, castsShadow, categoryBucket
       let lightType = LIGHT_TYPE_POINT
       switch (light.lightType) {
         case 'point':
@@ -163,7 +167,7 @@ export class LightStore {
       data[3 * lineSize + offset + 0] = lightType
       data[3 * lineSize + offset + 1] = light.enabled ? 1 : 0
       data[3 * lineSize + offset + 2] = light.castsShadow ? 1 : 0
-      data[3 * lineSize + offset + 3] = 0
+      data[3 * lineSize + offset + 3] = light._categoryBucket
     }
 
     // Zero out unused slots (enabled=0)

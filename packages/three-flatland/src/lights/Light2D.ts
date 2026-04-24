@@ -1,4 +1,5 @@
 import { Object3D, Color, Vector2, type ColorRepresentation } from 'three'
+import { categoryToBucket } from './categoryHash'
 
 /**
  * Light type for 2D lighting.
@@ -41,6 +42,20 @@ export interface Light2DOptions {
    * it's in a tile slot, only which lights claim the slots.
    */
   importance?: number
+  /**
+   * Group tag used by Forward+ to bucket `castsShadow: false` fill
+   * lights into independent per-tile quotas with per-bucket luminance
+   * compensation. Lights sharing a category compete for that
+   * category's 2-slot quota; different categories never evict each
+   * other. Up to 4 distinct buckets (hashed from the string — 5th+
+   * categories collide into earlier buckets, degrading gracefully).
+   *
+   * Typical usage: `"slime"`, `"water"`, `"fire"` for cosmetic fills
+   * with visually distinct identities. Hero lights (`castsShadow:
+   * true`) ignore this field entirely. When omitted, the light
+   * shares bucket 0 with every other un-tagged fill.
+   */
+  category?: string
 }
 
 /**
@@ -58,6 +73,7 @@ export interface Light2DUniforms {
   decay: number
   castsShadow: boolean
   importance: number
+  category: string | undefined
 }
 
 /**
@@ -168,6 +184,23 @@ export class Light2D extends Object3D {
    */
   importance: number = 1
 
+  /**
+   * User-facing category string — see {@link Light2DOptions.category}.
+   * Assigned directly via the `category` accessor which also updates
+   * the cached `_categoryBucket` integer consumed by LightStore.
+   */
+  private _category: string | undefined = undefined
+
+  /**
+   * Cached 2-bit bucket index (0..3) derived from `category` via
+   * `categoryToBucket`. LightStore writes this into row 3 column A
+   * of the lights DataTexture each frame so Forward+ assignment +
+   * shader compensation can select the right per-category scalar
+   * without paying hash cost on the hot path.
+   * @internal
+   */
+  _categoryBucket: number = 0
+
   constructor(options: Light2DOptions = {}) {
     super()
 
@@ -202,6 +235,22 @@ export class Light2D extends Object3D {
     this.decay = options.decay ?? 2
     this.castsShadow = options.castsShadow ?? true
     this.importance = options.importance ?? 1
+    if (options.category !== undefined) {
+      this.category = options.category
+    }
+  }
+
+  /** User-facing category string. See {@link Light2DOptions.category}. */
+  get category(): string | undefined {
+    return this._category
+  }
+
+  set category(value: string | undefined) {
+    if (this._category === value) return
+    this._category = value
+    // djb2 runs here — at the setter, not per-frame. Module-level
+    // map caches repeated strings across all Light2D instances.
+    this._categoryBucket = categoryToBucket(value)
   }
 
   /**
@@ -275,6 +324,7 @@ export class Light2D extends Object3D {
       decay: this.decay,
       castsShadow: this.castsShadow,
       importance: this.importance,
+      category: this._category,
     }
   }
 
@@ -294,6 +344,7 @@ export class Light2D extends Object3D {
       decay: this.decay,
       castsShadow: this.castsShadow,
       importance: this.importance,
+      category: this._category,
     })
     light.enabled = this.enabled
     return light as this

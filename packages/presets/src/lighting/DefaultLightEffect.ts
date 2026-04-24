@@ -126,12 +126,12 @@ export const DefaultLightEffect = createLightEffect({
         const tileY = int(screenPos.y.div(float(TILE_SIZE)).floor())
         const tileIndex = tileY.mul(fp.tileCountXNode).add(tileX)
 
-        // Per-tile meta: .x holds `fillScale`, the luminance-preserving
-        // multiplier applied to non-shadow-casting ("fill") lights when
-        // some of their in-range siblings were culled by the Forward+
-        // per-tile fill quota. 1.0 when no dedup happened.
+        // Per-tile meta: vec4 of per-category `fillScale` values.
+        // Channels map to fill-light category buckets 0..3 as hashed
+        // from `Light2D.category`; each channel is the luminance-
+        // preserving multiplier for its bucket (1.0 when no dedup
+        // happened for that category).
         const tileMeta = tileMetaLookup(tileIndex)
-        const fillScale = tileMeta.x
 
         Loop(MAX_LIGHTS_PER_TILE, ({ i }: { i: Node<'int'> }) => {
           const lightId = tileLookup(tileIndex, i)
@@ -263,13 +263,28 @@ export const DefaultLightEffect = createLightEffect({
 
           const baseContribution = contribution.mul(atten).mul(diffuse)
           // Fill-light luminance compensation — non-shadow-casting
-          // lights get their contribution boosted by `fillScale` to
-          // preserve total tile luminance when dedup culled siblings.
-          // Hero (castsShadow) lights pass through unchanged since
-          // they bypass the dedup path entirely.
+          // lights get their contribution boosted by their category's
+          // `fillScale` to preserve total tile luminance when dedup
+          // culled siblings. 4 compensation scalars live in the tile
+          // meta texel (one per category bucket); this light's bucket
+          // index is its row3.a in LightStore.
+          //
+          // The 4-way select compiles to a small branch chain in TSL;
+          // all four scales are always loaded (from `tileMeta`), only
+          // one is selected.
+          const categoryBucket = int(row3.a)
+          const categoryFillScale = categoryBucket.equal(int(0)).select(
+            tileMeta.x,
+            categoryBucket.equal(int(1)).select(
+              tileMeta.y,
+              categoryBucket.equal(int(2)).select(tileMeta.z, tileMeta.w)
+            )
+          )
+          // Hero lights (castsShadow: true) bypass compensation
+          // entirely — they never went through dedup.
           const scaledContribution = lightCastsShadow.greaterThan(float(0.5)).select(
             baseContribution,
-            baseContribution.mul(fillScale)
+            baseContribution.mul(categoryFillScale)
           )
           totalLightLit.addAssign(scaledContribution)
           totalLightShaded.addAssign(scaledContribution.mul(shadow))
