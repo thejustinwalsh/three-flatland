@@ -6,6 +6,9 @@ export { useThemeKind, type ThemeKind } from './theme/useThemeKind'
 export { useCssVar } from './theme/useCssVar'
 export { useDevReload } from './theme/useDevReload'
 
+// Re-exported here for type-only / non-StyleX consumers. StyleX consumers MUST
+// import from the @three-flatland/design-system/tokens/<name> subpaths because
+// the babel plugin can't follow defineVars through barrel re-exports.
 export { vscode } from './tokens/vscode-theme.stylex'
 export { space } from './tokens/space.stylex'
 export { radius } from './tokens/radius.stylex'

@@ -717,11 +717,16 @@ Two things stay as inline non-style props:
 
 - [ ] **Step 8.1: Add token + StyleX imports at the top of App.tsx**
 
+> **Note on import paths:** StyleX's babel plugin can't follow `defineVars`/`defineConsts` re-exports through a barrel `index.ts`. Tokens MUST be imported from the package's subpath exports (`@three-flatland/design-system/tokens/<name>`), not from the main entry. The `tools/design-system/package.json` declares those subpaths.
+
 Edit `tools/vscode/webview/atlas/App.tsx`. Below the existing `@three-flatland/preview` import (around line 19), add:
 
 ```ts
 import * as stylex from '@stylexjs/stylex'
-import { vscode, space, radius, z } from '@three-flatland/design-system'
+import { vscode } from '@three-flatland/design-system/tokens/vscode-theme.stylex'
+import { space } from '@three-flatland/design-system/tokens/space.stylex'
+import { radius } from '@three-flatland/design-system/tokens/radius.stylex'
+import { z } from '@three-flatland/design-system/tokens/z.stylex'
 ```
 
 - [ ] **Step 8.2: Add the styles block right before `export function App()`**

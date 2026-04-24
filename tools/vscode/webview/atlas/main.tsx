@@ -13,7 +13,7 @@ import '@vscode-elements/elements'
 import '@vscode/codicons/dist/codicon.css'
 import { App } from './App'
 import * as stylex from '@stylexjs/stylex'
-import { vscode as vscodeTokens } from '@three-flatland/design-system/src/tokens/vscode-theme.stylex'
+import { vscode as vscodeTokens } from '@three-flatland/design-system/tokens/vscode-theme.stylex'
 
 // Tag the main stylesheet link as 'vscode-codicon-stylesheet' so VscodeIcon
 // can mirror the codicon font rules into each icon's shadow root.
