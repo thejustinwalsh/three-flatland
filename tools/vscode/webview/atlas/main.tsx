@@ -12,6 +12,8 @@ import '@vscode-elements/elements'
 // stylesheet below.
 import '@vscode/codicons/dist/codicon.css'
 import { App } from './App'
+import * as stylex from '@stylexjs/stylex'
+import { vscode as vscodeTokens } from '@three-flatland/design-system/src/tokens/vscode-theme.stylex'
 
 // Tag the main stylesheet link as 'vscode-codicon-stylesheet' so VscodeIcon
 // can mirror the codicon font rules into each icon's shadow root.
@@ -78,20 +80,22 @@ try {
   // Not in a webview (unit/test context) — skip.
 }
 
+const ms = stylex.create({
+  fallback: {
+    height: '100vh',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: vscodeTokens.bg,
+    color: vscodeTokens.descriptionFg,
+    fontFamily: vscodeTokens.fontFamily,
+    fontSize: vscodeTokens.fontSize,
+  },
+})
+
 function RootFallback() {
   return (
-    <div
-      style={{
-        height: '100vh',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        background: 'var(--vscode-editor-background)',
-        color: 'var(--vscode-descriptionForeground)',
-        fontFamily: 'var(--vscode-font-family)',
-        fontSize: 'var(--vscode-font-size)',
-      }}
-    >
+    <div {...stylex.props(ms.fallback)}>
       <vscode-progress-ring />
     </div>
   )

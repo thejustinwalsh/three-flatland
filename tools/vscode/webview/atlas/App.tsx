@@ -17,6 +17,11 @@ import {
   useCssVar,
 } from '@three-flatland/design-system'
 import { CanvasStage, RectOverlay, type Rect } from '@three-flatland/preview'
+import * as stylex from '@stylexjs/stylex'
+import { vscode } from '@three-flatland/design-system/src/tokens/vscode-theme.stylex'
+import { space } from '@three-flatland/design-system/src/tokens/space.stylex'
+import { radius } from '@three-flatland/design-system/src/tokens/radius.stylex'
+import { z } from '@three-flatland/design-system/src/tokens/z.stylex'
 
 type InitPayload = {
   imageUri: string
@@ -77,6 +82,123 @@ function readingOrder(rects: readonly Rect[]): Rect[] {
     return a.x - b.x
   })
 }
+
+const s = stylex.create({
+  root: {
+    height: '100vh',
+    display: 'flex',
+    flexDirection: 'column',
+    minHeight: 0,
+    outline: 'none',
+    backgroundColor: vscode.bg,
+    color: vscode.fg,
+    fontFamily: vscode.fontFamily,
+    fontSize: vscode.fontSize,
+  },
+  toolbarSpacer: { flex: 1 },
+  workArea: {
+    flex: 1,
+    minHeight: 0,
+    display: 'grid',
+    gridTemplateColumns: 'minmax(0, 1fr) 280px',
+    gap: space.lg,
+    padding: space.lg,
+  },
+  previewWrap: { flex: 1, minHeight: 0 },
+  emptyState: { color: vscode.descriptionFg },
+  hintDim: { opacity: 0.6 },
+  frameList: {
+    listStyle: 'none',
+    margin: 0,
+    padding: 0,
+    overflowY: 'auto',
+    fontFamily: vscode.monoFontFamily,
+    fontSize: '12px',
+  },
+  frameItem: {
+    paddingInline: space.md,
+    paddingBlock: space.sm,
+    cursor: 'pointer',
+    backgroundColor: 'transparent',
+    color: vscode.fg,
+    borderBottomWidth: 1,
+    borderBottomStyle: 'solid',
+    borderBottomColor: vscode.panelBorder,
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: space.lg,
+  },
+  frameItemSelected: {
+    backgroundColor: vscode.listActiveSelectionBg,
+    color: vscode.listActiveSelectionFg,
+  },
+  frameItemEditing: { cursor: 'text' },
+  frameName: {
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  },
+  frameCoords: { opacity: 0.7, flex: '0 0 auto' },
+  inlineRenameInput: {
+    flex: 1,
+    minWidth: 0,
+    paddingInline: space.sm,
+    paddingBlock: space.xs,
+    backgroundColor: vscode.inputBg,
+    color: vscode.inputFg,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: vscode.focusRing,
+    outlineStyle: 'none',
+    fontFamily: vscode.monoFontFamily,
+    fontSize: '12px',
+  },
+  saveStatusBase: {
+    position: 'fixed',
+    left: space.xxl,
+    bottom: space.xxl,
+    zIndex: z.overlay,
+    paddingInline: space.xl,
+    paddingBlock: space.md,
+    borderRadius: radius.md,
+    fontFamily: vscode.fontFamily,
+    fontSize: vscode.fontSize,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: vscode.panelBorder,
+    boxShadow: '0 2px 8px rgba(0, 0, 0, 0.35)',
+    maxWidth: '60%',
+  },
+  saveStatusInfo: {
+    backgroundColor: vscode.panelBg,
+    color: vscode.fg,
+  },
+  saveStatusError: {
+    backgroundColor: vscode.errorBg,
+    color: vscode.errorFg,
+    borderColor: vscode.errorBorder,
+  },
+  prefixBar: {
+    display: 'flex',
+    gap: space.md,
+    alignItems: 'center',
+    paddingInline: space.sm,
+    paddingBlock: space.md,
+    marginBottom: space.lg,
+    borderBottomWidth: 1,
+    borderBottomStyle: 'solid',
+    borderBottomColor: vscode.panelBorder,
+  },
+  prefixLabel: {
+    color: vscode.descriptionFg,
+    whiteSpace: 'nowrap',
+  },
+  prefixSuffix: {
+    opacity: 0.65,
+    whiteSpace: 'nowrap',
+  },
+})
 
 export function App() {
   const [payload, setPayload] = useState<InitPayload | null>(() => window.__FL_ATLAS__ ?? null)
@@ -291,17 +413,7 @@ export function App() {
       ref={rootRef}
       tabIndex={-1}
       onPointerDown={handleRootPointerDown}
-      style={{
-        height: '100vh',
-        display: 'flex',
-        flexDirection: 'column',
-        minHeight: 0,
-        outline: 'none',
-        background: 'var(--vscode-editor-background)',
-        color: 'var(--vscode-foreground)',
-        fontFamily: 'var(--vscode-font-family)',
-        fontSize: 'var(--vscode-font-size)',
-      }}
+      {...stylex.props(s.root)}
     >
       <Toolbar>
         <ToolbarButton icon="symbol-ruler" title="Grid Slice" />
@@ -335,7 +447,7 @@ export function App() {
           onClick={startRename}
         />
         <ToolbarButton icon="run-all" title="Animations" />
-        <div style={{ flex: 1 }} />
+        <div {...stylex.props(s.toolbarSpacer)} />
         <ToolbarButton icon="zoom-in" title="Zoom In" />
         <ToolbarButton icon="zoom-out" title="Zoom Out" />
         <ToolbarButton icon="screen-full" title="Fit" />
@@ -356,18 +468,9 @@ export function App() {
         />
       </Toolbar>
 
-      <div
-        style={{
-          flex: 1,
-          minHeight: 0,
-          display: 'grid',
-          gridTemplateColumns: 'minmax(0, 1fr) 280px',
-          gap: 8,
-          padding: 8,
-        }}
-      >
+      <div {...stylex.props(s.workArea)}>
         <Panel title="Preview">
-          <div style={{ flex: 1, minHeight: 0 }}>
+          <div {...stylex.props(s.previewWrap)}>
             <CanvasStage
               imageUri={payload?.imageUri ?? null}
               background={editorBg}
@@ -398,21 +501,12 @@ export function App() {
           ) : null}
 
           {rects.length === 0 ? (
-            <div style={{ color: 'var(--vscode-descriptionForeground)' }}>
+            <div {...stylex.props(s.emptyState)}>
               Draw rects with the <i className="codicon codicon-add" /> tool{' '}
-              <span style={{ opacity: 0.6 }}>(R)</span>.
+              <span {...stylex.props(s.hintDim)}>(R)</span>.
             </div>
           ) : (
-            <ul
-              style={{
-                listStyle: 'none',
-                margin: 0,
-                padding: 0,
-                overflowY: 'auto',
-                fontFamily: 'var(--vscode-editor-font-family)',
-                fontSize: 12,
-              }}
-            >
+            <ul {...stylex.props(s.frameList)}>
               {rects.map((r, i) => {
                 const sel = selectedIds.has(r.id)
                 const editing = renameMode.kind === 'inline' && renameMode.id === r.id
@@ -436,21 +530,11 @@ export function App() {
                       setSelectedIds(new Set([r.id]))
                       setRenameMode({ kind: 'inline', id: r.id })
                     }}
-                    style={{
-                      padding: '4px 6px',
-                      cursor: editing ? 'text' : 'pointer',
-                      background: sel
-                        ? 'var(--vscode-list-activeSelectionBackground, transparent)'
-                        : 'transparent',
-                      color: sel
-                        ? 'var(--vscode-list-activeSelectionForeground, var(--vscode-foreground))'
-                        : 'var(--vscode-foreground)',
-                      borderBottom: '1px solid var(--vscode-panel-border, transparent)',
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center',
-                      gap: 8,
-                    }}
+                    {...stylex.props(
+                      s.frameItem,
+                      sel && s.frameItemSelected,
+                      editing && s.frameItemEditing,
+                    )}
                   >
                     {editing ? (
                       <InlineRenameInput
@@ -463,11 +547,11 @@ export function App() {
                         onCancel={() => setRenameMode({ kind: 'none' })}
                       />
                     ) : (
-                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      <span {...stylex.props(s.frameName)}>
                         {displayName}
                       </span>
                     )}
-                    <span style={{ opacity: 0.7, flex: '0 0 auto' }}>
+                    <span {...stylex.props(s.frameCoords)}>
                       {r.x},{r.y} · {r.w}×{r.h}
                     </span>
                   </li>
@@ -525,17 +609,7 @@ function InlineRenameInput({
       onChange={(e: ChangeEvent<HTMLInputElement>) => setValue(e.target.value)}
       onBlur={() => onCommit(value)}
       onKeyDown={handleKey}
-      style={{
-        flex: 1,
-        minWidth: 0,
-        padding: '2px 4px',
-        background: 'var(--vscode-input-background)',
-        color: 'var(--vscode-input-foreground)',
-        border: '1px solid var(--vscode-focusBorder, transparent)',
-        outline: 'none',
-        fontFamily: 'var(--vscode-editor-font-family)',
-        fontSize: 12,
-      }}
+      {...stylex.props(s.inlineRenameInput)}
     />
   )
 }
@@ -566,29 +640,9 @@ function SaveStatusLine({
 
   if (!visible || status.kind === 'idle') return null
 
-  const base: React.CSSProperties = {
-    position: 'fixed',
-    left: 12,
-    bottom: 12,
-    zIndex: 900,
-    padding: '6px 10px',
-    borderRadius: 3,
-    fontFamily: 'var(--vscode-font-family)',
-    fontSize: 'var(--vscode-font-size)',
-    border: '1px solid var(--vscode-panel-border, transparent)',
-    boxShadow: '0 2px 8px rgba(0, 0, 0, 0.35)',
-    maxWidth: '60%',
-  }
-
   if (status.kind === 'saving') {
     return (
-      <div
-        style={{
-          ...base,
-          background: 'var(--vscode-editorWidget-background)',
-          color: 'var(--vscode-foreground)',
-        }}
-      >
+      <div {...stylex.props(s.saveStatusBase, s.saveStatusInfo)}>
         <i className="codicon codicon-loading codicon-modifier-spin" /> &nbsp;Saving atlas…
       </div>
     )
@@ -596,14 +650,7 @@ function SaveStatusLine({
 
   if (status.kind === 'error') {
     return (
-      <div
-        style={{
-          ...base,
-          background: 'var(--vscode-inputValidation-errorBackground, #5a1d1d)',
-          color: 'var(--vscode-inputValidation-errorForeground, #ffb3b3)',
-          borderColor: 'var(--vscode-inputValidation-errorBorder, transparent)',
-        }}
-      >
+      <div {...stylex.props(s.saveStatusBase, s.saveStatusError)}>
         <i className="codicon codicon-error" /> &nbsp;Save failed: {status.message}
       </div>
     )
@@ -612,13 +659,7 @@ function SaveStatusLine({
   // saved
   const fileName = status.path.split('/').pop() ?? status.path
   return (
-    <div
-      style={{
-        ...base,
-        background: 'var(--vscode-editorWidget-background)',
-        color: 'var(--vscode-foreground)',
-      }}
-    >
+    <div {...stylex.props(s.saveStatusBase, s.saveStatusInfo)}>
       <i className="codicon codicon-check" /> &nbsp;Saved {status.count} frame
       {status.count === 1 ? '' : 's'} → <strong>{fileName}</strong>
     </div>
@@ -645,17 +686,8 @@ function PrefixRenameBar({
   }, [])
 
   return (
-    <div
-      style={{
-        display: 'flex',
-        gap: 6,
-        alignItems: 'center',
-        padding: '6px 4px',
-        marginBottom: 8,
-        borderBottom: '1px solid var(--vscode-panel-border, transparent)',
-      }}
-    >
-      <span style={{ color: 'var(--vscode-descriptionForeground)', whiteSpace: 'nowrap' }}>
+    <div {...stylex.props(s.prefixBar)}>
+      <span {...stylex.props(s.prefixLabel)}>
         Name {count} as:
       </span>
       <input
@@ -673,19 +705,9 @@ function PrefixRenameBar({
             e.preventDefault()
           }
         }}
-        style={{
-          flex: 1,
-          minWidth: 0,
-          padding: '2px 4px',
-          background: 'var(--vscode-input-background)',
-          color: 'var(--vscode-input-foreground)',
-          border: '1px solid var(--vscode-focusBorder, transparent)',
-          outline: 'none',
-          fontFamily: 'var(--vscode-editor-font-family)',
-          fontSize: 12,
-        }}
+        {...stylex.props(s.inlineRenameInput)}
       />
-      <span style={{ opacity: 0.65, whiteSpace: 'nowrap' }}>{value || 'name'}_0 …</span>
+      <span {...stylex.props(s.prefixSuffix)}>{value || 'name'}_0 …</span>
     </div>
   )
 }
