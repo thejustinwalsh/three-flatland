@@ -49,6 +49,15 @@ export const MAX_LIGHTS_PER_TILE = 16
 export const MAX_FILL_LIGHTS_PER_TILE = 2
 
 /**
+ * Number of fill-light categories with independent per-tile quotas
+ * and compensation scales. Matches the meta texel channel count
+ * (`.x/.y/.z/.w`) — 4 scalars of luminance compensation per tile,
+ * one per category. Category 0 is the default for lights without a
+ * `category` string set.
+ */
+export const FILL_CATEGORY_COUNT = 4
+
+/**
  * Light-index blocks per tile — each block is one RGBA texel holding
  * 4 light indices. With MAX_LIGHTS_PER_TILE = 16 this is 4 blocks.
  */
@@ -110,23 +119,32 @@ export class ForwardPlusLighting {
    */
   private _tileScores: Float32Array = new Float32Array(0)
   /**
-   * Per-slot flag marking whether a claimed tile slot holds a fill
-   * light (`1`) or a hero light (`0`). Lets the reservoir-eviction
-   * path compete lights against their own category (fills displace
-   * fills; heroes displace heroes) so slime glows can't evict
-   * torches in dense clusters. Length = `_tileCount * MAX_LIGHTS_PER_TILE`.
+   * Per-slot category marker:
+   *
+   *   -1     hero slot (`castsShadow: true` light — never evicted by fills)
+   *   0..3   fill slot holding a light with the given category bucket
+   *
+   * Lets the reservoir-eviction path compete each light against its
+   * own category (fills in bucket 0 only displace other bucket-0
+   * fills; buckets 1/2/3 likewise; heroes compete only among heroes).
+   *
+   * Length = `_tileCount * MAX_LIGHTS_PER_TILE`. `Int8Array` because
+   * signed (need -1 for the hero marker).
    */
-  private _tileSlotIsFill: Uint8Array = new Uint8Array(0)
+  private _tileSlotCategory: Int8Array = new Int8Array(0)
   /**
-   * Per-tile count of fill-light slots currently claimed. Bounded by
-   * `MAX_FILL_LIGHTS_PER_TILE`. Length = `_tileCount`.
+   * Per-tile per-category count of fill-light slots currently
+   * claimed. Bounded by `MAX_FILL_LIGHTS_PER_TILE` per bucket.
+   * Length = `_tileCount * FILL_CATEGORY_COUNT`.
    */
   private _tileFillCount: Uint8Array = new Uint8Array(0)
   /**
-   * Per-tile count of fill lights in range this frame — i.e., how
-   * many fills actually tried to claim a slot, including those that
-   * got skipped by the quota. Divided by `_tileFillCount` to derive
-   * the per-tile `fillScale` compensation factor. Length = `_tileCount`.
+   * Per-tile per-category count of fill lights in range this frame —
+   * how many fills in each bucket actually tried to claim a slot,
+   * including those skipped by the quota. Divided by
+   * `_tileFillCount[tileIdx * FILL_CATEGORY_COUNT + cat]` to derive
+   * the per-tile per-category `fillScale` compensation factor.
+   * Length = `_tileCount * FILL_CATEGORY_COUNT`.
    */
   private _tileFillInRange: Uint32Array = new Uint32Array(0)
 
@@ -196,12 +214,12 @@ export class ForwardPlusLighting {
     if (this._lightCounts.length < this._tileCount) {
       this._lightCounts = new Uint32Array(this._tileCount)
       this._tileScores = new Float32Array(this._tileCount * MAX_LIGHTS_PER_TILE)
-      this._tileSlotIsFill = new Uint8Array(this._tileCount * MAX_LIGHTS_PER_TILE)
-      this._tileFillCount = new Uint8Array(this._tileCount)
+      this._tileSlotCategory = new Int8Array(this._tileCount * MAX_LIGHTS_PER_TILE)
+      this._tileFillCount = new Uint8Array(this._tileCount * FILL_CATEGORY_COUNT)
       // Uint32 (not Uint16) because the debug-sink API only accepts
       // Float32/Uint32/Int32. The tile counter rarely exceeds a few
-      // thousand fills in range, so the width upgrade is free.
-      this._tileFillInRange = new Uint32Array(this._tileCount)
+      // thousand fills in range per category, so the width upgrade is free.
+      this._tileFillInRange = new Uint32Array(this._tileCount * FILL_CATEGORY_COUNT)
     }
 
     // (Re-)publish debug views. `registerDebugArray` is a no-op when
@@ -248,14 +266,16 @@ export class ForwardPlusLighting {
 
     const lightCounts = this._lightCounts
     const tileScores = this._tileScores
-    const tileSlotIsFill = this._tileSlotIsFill
+    const tileSlotCategory = this._tileSlotCategory
     const tileFillCount = this._tileFillCount
     const tileFillInRange = this._tileFillInRange
     lightCounts.fill(0, 0, this._tileCount)
     tileScores.fill(0, 0, this._tileCount * MAX_LIGHTS_PER_TILE)
-    tileSlotIsFill.fill(0, 0, this._tileCount * MAX_LIGHTS_PER_TILE)
-    tileFillCount.fill(0, 0, this._tileCount)
-    tileFillInRange.fill(0, 0, this._tileCount)
+    // Zero out slot categories — -1 means "empty". Using fill() with
+    // -1 on Int8Array writes 0xFF which reads back as -1.
+    tileSlotCategory.fill(-1, 0, this._tileCount * MAX_LIGHTS_PER_TILE)
+    tileFillCount.fill(0, 0, this._tileCount * FILL_CATEGORY_COUNT)
+    tileFillInRange.fill(0, 0, this._tileCount * FILL_CATEGORY_COUNT)
 
     // Accumulate ambient lights into a single uniform — they affect every
     // pixel equally so they don't need Forward+ tile slots.
@@ -288,6 +308,10 @@ export class ForwardPlusLighting {
       const isDirectional = light.lightType === 'directional'
       const isFill = !light.castsShadow
       const importance = light.importance
+      // `_categoryBucket` is a precomputed 0..3 hash of light.category
+      // (see `categoryHash.ts`). Clamped defensively in case a user
+      // mutated it directly.
+      const categoryBucket = light._categoryBucket & (FILL_CATEGORY_COUNT - 1)
       const lx = light.position.x
       const ly = light.position.y
       const intensity = light.intensity
@@ -389,33 +413,40 @@ export class ForwardPlusLighting {
           const texelBase = tileIdx * TILE_STRIDE * 4
 
           if (isFill) {
-            tileFillInRange[tileIdx] = tileFillInRange[tileIdx]! + 1
-            const fillCount = tileFillCount[tileIdx]!
+            // Per-tile per-category counters drive both the quota and
+            // the compensation-scaling math downstream.
+            const fillKey = tileIdx * FILL_CATEGORY_COUNT + categoryBucket
+            tileFillInRange[fillKey] = tileFillInRange[fillKey]! + 1
+            const fillCountOfCat = tileFillCount[fillKey]!
 
-            if (fillCount < MAX_FILL_LIGHTS_PER_TILE) {
-              // Fill quota not met. Try to claim any remaining tile slot.
+            if (fillCountOfCat < MAX_FILL_LIGHTS_PER_TILE) {
+              // This category's quota not met. Try to claim any
+              // remaining tile slot. Fills never evict heroes or
+              // other categories — they only fill empty space.
               if (count < MAX_LIGHTS_PER_TILE) {
                 const blockIdx = count >> 2
                 const elementIdx = count & 3
                 this._tileData[texelBase + blockIdx * 4 + elementIdx] = lightIdx + 1
                 tileScores[scoreBase + count] = score
-                tileSlotIsFill[scoreBase + count] = 1
+                tileSlotCategory[scoreBase + count] = categoryBucket
                 lightCounts[tileIdx] = count + 1
-                tileFillCount[tileIdx] = fillCount + 1
+                tileFillCount[fillKey] = fillCountOfCat + 1
               }
-              // Tile full of heroes — fills don't evict heroes, skip.
-              // The in-range bump above still counts toward compensation.
+              // Tile full (other categories / heroes claimed all
+              // slots). Skip — the in-range bump above still counts
+              // toward this category's compensation scale.
               continue
             }
 
-            // Fill quota met. Compete within the fill bucket — find
-            // the weakest existing fill-slot occupant and evict if the
-            // incoming score is strictly higher (`>` prevents thrash
-            // at equal scores).
+            // Quota met for this category. Compete only within this
+            // category's existing slots — find the weakest occupant
+            // of the same bucket and evict only if the incoming
+            // score is strictly higher (`>` prevents thrash at equal
+            // scores).
             let minFillSlot = -1
             let minFillScore = Infinity
             for (let s = 0; s < MAX_LIGHTS_PER_TILE; s++) {
-              if (tileSlotIsFill[scoreBase + s] === 0) continue
+              if (tileSlotCategory[scoreBase + s] !== categoryBucket) continue
               const v = tileScores[scoreBase + s]!
               if (v < minFillScore) {
                 minFillScore = v
@@ -427,31 +458,32 @@ export class ForwardPlusLighting {
               const elementIdx = minFillSlot & 3
               this._tileData[texelBase + blockIdx * 4 + elementIdx] = lightIdx + 1
               tileScores[scoreBase + minFillSlot] = score
-              // tileSlotIsFill stays 1 (replaced a fill with a fill).
+              // tileSlotCategory stays at `categoryBucket`.
             }
             continue
           }
 
-          // Hero light path (castsShadow=true, or a light without a
-          // per-instance flag — torches, sun, cutscene key lights).
+          // Hero light path (castsShadow=true — torches, sun,
+          // cutscene key lights). Heroes compete only among heroes
+          // and claim any free slot first.
           if (count < MAX_LIGHTS_PER_TILE) {
             const blockIdx = count >> 2
             const elementIdx = count & 3
             this._tileData[texelBase + blockIdx * 4 + elementIdx] = lightIdx + 1
             tileScores[scoreBase + count] = score
-            tileSlotIsFill[scoreBase + count] = 0
+            tileSlotCategory[scoreBase + count] = -1  // hero sentinel
             lightCounts[tileIdx] = count + 1
             continue
           }
 
-          // Tile full — hero lights compete with other heroes only.
+          // Tile full — heroes compete only with other heroes.
           // Evicting a fill with a hero would violate the quota
-          // invariant (we committed to keeping top-K fills for
-          // compensation math); skip and let the reservoir converge.
+          // invariants the compensation math depends on; skip and
+          // let the reservoir converge.
           let minHeroSlot = -1
           let minHeroScore = Infinity
           for (let s = 0; s < MAX_LIGHTS_PER_TILE; s++) {
-            if (tileSlotIsFill[scoreBase + s] !== 0) continue
+            if (tileSlotCategory[scoreBase + s] !== -1) continue
             const v = tileScores[scoreBase + s]!
             if (v < minHeroScore) {
               minHeroScore = v
@@ -468,18 +500,20 @@ export class ForwardPlusLighting {
       }
     }
 
-    // Compensation pass — for every tile with fill-light dedup, write
-    // `fillScale = inRange / kept` into the meta texel so the shader
-    // can multiply it into each non-casting light's contribution and
-    // preserve total luminance. Tiles with no fills or with kept >=
-    // inRange get fillScale = 1.0 (no-op).
+    // Compensation pass — per-category `fillScale = inRange / kept`.
+    // Each tile's meta texel packs 4 scales into .x/.y/.z/.w, one
+    // per fill-light category bucket. Categories with zero kept
+    // lights fall back to 1.0 (no-op multiplier), so the shader can
+    // always multiply blindly without branching on "is this tile
+    // empty for my bucket".
     for (let tileIdx = 0; tileIdx < this._tileCount; tileIdx++) {
-      const kept = tileFillCount[tileIdx]!
-      const inRange = tileFillInRange[tileIdx]!
-      const fillScale = kept > 0 ? inRange / kept : 1
       const metaBase = (tileIdx * TILE_STRIDE + META_BLOCK_INDEX) * 4
-      this._tileData[metaBase + 0] = fillScale
-      // Meta .y/.z/.w reserved — leave zeroed from the fill() above.
+      const fillBase = tileIdx * FILL_CATEGORY_COUNT
+      for (let cat = 0; cat < FILL_CATEGORY_COUNT; cat++) {
+        const kept = tileFillCount[fillBase + cat]!
+        const inRange = tileFillInRange[fillBase + cat]!
+        this._tileData[metaBase + cat] = kept > 0 ? inRange / kept : 1
+      }
     }
 
     this._tileTexture.needsUpdate = true

@@ -34,6 +34,49 @@ describe('Light2D', () => {
     expect(cloned.importance).toBe(42)
   })
 
+  it('should default category to undefined and bucket 0', () => {
+    const light = new Light2D()
+    expect(light.category).toBeUndefined()
+    expect(light._categoryBucket).toBe(0)
+  })
+
+  it('should cache a 0..3 bucket when category is set', () => {
+    const light = new Light2D({ category: 'slime' })
+    expect(light.category).toBe('slime')
+    expect(light._categoryBucket).toBeGreaterThanOrEqual(0)
+    expect(light._categoryBucket).toBeLessThanOrEqual(3)
+  })
+
+  it('should reuse the cached bucket for repeated category strings', () => {
+    const a = new Light2D({ category: 'water' })
+    const b = new Light2D({ category: 'water' })
+    expect(a._categoryBucket).toBe(b._categoryBucket)
+  })
+
+  it('should update bucket when category setter is reassigned', () => {
+    const light = new Light2D({ category: 'slime' })
+    const first = light._categoryBucket
+    light.category = 'fire'
+    // fire and slime may collide (4-bucket hash), but either way the
+    // bucket must still be valid 0..3 and the category field updated.
+    expect(light.category).toBe('fire')
+    expect(light._categoryBucket).toBeGreaterThanOrEqual(0)
+    expect(light._categoryBucket).toBeLessThanOrEqual(3)
+    void first
+  })
+
+  it('should round-trip category through getUniforms', () => {
+    const light = new Light2D({ category: 'dust' })
+    expect(light.getUniforms().category).toBe('dust')
+  })
+
+  it('should preserve category across clone()', () => {
+    const light = new Light2D({ category: 'magic' })
+    const cloned = light.clone()
+    expect(cloned.category).toBe('magic')
+    expect(cloned._categoryBucket).toBe(light._categoryBucket)
+  })
+
   it('should construct with custom options', () => {
     const light = new Light2D({
       type: 'spot',

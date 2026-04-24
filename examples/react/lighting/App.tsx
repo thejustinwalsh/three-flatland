@@ -926,6 +926,7 @@ function FlatlandScene(props: SceneProps) {
             distance={40}
             decay={2}
             castsShadow={false}
+            category="slime"
           />
         ))}
 
