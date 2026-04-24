@@ -10,7 +10,7 @@ import { Light2D } from './Light2D'
 
 describe('ForwardPlusLighting constants', () => {
   it('should export TILE_SIZE', () => {
-    expect(TILE_SIZE).toBe(16)
+    expect(TILE_SIZE).toBe(32)
   })
 
   it('should export MAX_LIGHTS_PER_TILE', () => {
