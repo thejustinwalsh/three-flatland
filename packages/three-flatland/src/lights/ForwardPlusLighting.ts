@@ -21,13 +21,58 @@ import {
  *   so more lights overlap it. `MAX_LIGHTS_PER_TILE = 16` caps
  *   per-fragment shader cost regardless; saturated tiles fall back
  *   to the reservoir path.
- *
- * Increase if CPU time in `ForwardPlusLighting.update` dominates the
- * frame and per-tile saturation is rare. Decrease if you see visible
- * reservoir sampling artifacts in scenes with extreme light density.
  */
 export const TILE_SIZE = 32
+
+/**
+ * Max lights any single tile can hold. Each tile dedicates
+ * `MAX_LIGHTS_PER_TILE / 4 = 4` RGBA texels to light indices. Caps
+ * the per-fragment shader loop iteration count — the inner loop
+ * breaks early on the empty-slot sentinel, so tiles with fewer lights
+ * pay only for what they hold.
+ *
+ * Raising this increases tile-texture footprint and the saturated-
+ * tile shader worst case. Lowering it makes reservoir eviction kick
+ * in sooner in dense scenes.
+ */
 export const MAX_LIGHTS_PER_TILE = 16
+
+/**
+ * Per-tile fill-light quota (sprites with `castsShadow: false`, e.g.
+ * slime glows, atmospheric ambience). Fill lights saturating a tile
+ * get deduplicated to the top-K by score; remaining in-range fills
+ * are compensated via a luminance-preserving scale factor written to
+ * the tile meta texel and applied in the shader. Keeps 1000-slime
+ * scenes from drowning hero lights (torches) in tile competition
+ * while preserving the "lots of soft fill" visual read.
+ */
+export const MAX_FILL_LIGHTS_PER_TILE = 2
+
+/**
+ * Light-index blocks per tile — each block is one RGBA texel holding
+ * 4 light indices. With MAX_LIGHTS_PER_TILE = 16 this is 4 blocks.
+ */
+export const BLOCKS_PER_TILE = MAX_LIGHTS_PER_TILE / 4
+
+/**
+ * Index of the first meta block within a tile's stride. Meta block
+ * carries per-tile scalars consumed by the light shader:
+ *
+ *   meta.x = fillScale   (compensation for fill-light dedup; 1.0 if no fills skipped)
+ *   meta.y = reserved
+ *   meta.z = reserved
+ *   meta.w = reserved
+ */
+export const META_BLOCK_INDEX = BLOCKS_PER_TILE
+
+/**
+ * Total RGBA texels consumed per tile. Sized to align each tile to a
+ * 128-byte cache line on every target GPU class (mobile, desktop,
+ * console) — stride 8 × 16 bytes/RGBA32F = 128 bytes. Reserves 3
+ * meta slots beyond `fillScale` for future per-tile scalars without
+ * needing another stride refactor.
+ */
+export const TILE_STRIDE = 8
 
 /**
  * Fixed side-length of the tile-index DataTexture. Allocated once at
@@ -38,9 +83,10 @@ export const MAX_LIGHTS_PER_TILE = 16
  * size and the shader to read zeros — visible as "lights disappear on
  * fullscreen, only ambient survives."
  *
- * 512 × 512 × RGBA32F = 4 MB GPU + CPU. Capacity is
- * `512² / blocksPerTile = 65,536` tiles — enough for 5K CSS canvas
- * (5120×2880 → 57,600 tiles) at TILE_SIZE=16.
+ * 512 × 512 × RGBA32F = 1 MB GPU + CPU. Capacity is
+ * `512² / TILE_STRIDE = 32,768` tiles — covers up to ~8K CSS canvas
+ * (7680×4320 → 32,400 tiles, 99% utilization) at TILE_SIZE=32.
+ * Beyond 8K, bump TILE_SIZE to 64 or TILE_TEXTURE_DIM to 1024.
  */
 export const TILE_TEXTURE_DIM = 512
 
@@ -63,6 +109,26 @@ export class ForwardPlusLighting {
    * Same rationale — also exposed for debugging (per-tile quality).
    */
   private _tileScores: Float32Array = new Float32Array(0)
+  /**
+   * Per-slot flag marking whether a claimed tile slot holds a fill
+   * light (`1`) or a hero light (`0`). Lets the reservoir-eviction
+   * path compete lights against their own category (fills displace
+   * fills; heroes displace heroes) so slime glows can't evict
+   * torches in dense clusters. Length = `_tileCount * MAX_LIGHTS_PER_TILE`.
+   */
+  private _tileSlotIsFill: Uint8Array = new Uint8Array(0)
+  /**
+   * Per-tile count of fill-light slots currently claimed. Bounded by
+   * `MAX_FILL_LIGHTS_PER_TILE`. Length = `_tileCount`.
+   */
+  private _tileFillCount: Uint8Array = new Uint8Array(0)
+  /**
+   * Per-tile count of fill lights in range this frame — i.e., how
+   * many fills actually tried to claim a slot, including those that
+   * got skipped by the quota. Divided by `_tileFillCount` to derive
+   * the per-tile `fillScale` compensation factor. Length = `_tileCount`.
+   */
+  private _tileFillInRange: Uint32Array = new Uint32Array(0)
 
   private _screenSize = new Vector2()
   private _worldSize = new Vector2()
@@ -116,8 +182,7 @@ export class ForwardPlusLighting {
     // fixed-size tile texture can hold, the last (out-of-capacity) tiles
     // will alias back into the texture via the linear-index mod. Warn so
     // callers know to bump TILE_TEXTURE_DIM or TILE_SIZE.
-    const blocksPerTile = MAX_LIGHTS_PER_TILE / 4
-    const maxTiles = Math.floor((TILE_TEXTURE_DIM * TILE_TEXTURE_DIM) / blocksPerTile)
+    const maxTiles = Math.floor((TILE_TEXTURE_DIM * TILE_TEXTURE_DIM) / TILE_STRIDE)
     if (this._tileCount > maxTiles) {
       console.warn(
         `[ForwardPlusLighting] ${this._tileCount} tiles exceeds texture capacity ${maxTiles}. ` +
@@ -131,6 +196,12 @@ export class ForwardPlusLighting {
     if (this._lightCounts.length < this._tileCount) {
       this._lightCounts = new Uint32Array(this._tileCount)
       this._tileScores = new Float32Array(this._tileCount * MAX_LIGHTS_PER_TILE)
+      this._tileSlotIsFill = new Uint8Array(this._tileCount * MAX_LIGHTS_PER_TILE)
+      this._tileFillCount = new Uint8Array(this._tileCount)
+      // Uint32 (not Uint16) because the debug-sink API only accepts
+      // Float32/Uint32/Int32. The tile counter rarely exceeds a few
+      // thousand fills in range, so the width upgrade is free.
+      this._tileFillInRange = new Uint32Array(this._tileCount)
     }
 
     // (Re-)publish debug views. `registerDebugArray` is a no-op when
@@ -141,6 +212,9 @@ export class ForwardPlusLighting {
     })
     registerDebugArray('forwardPlus.tileScores', this._tileScores, 'float', {
       label: 'Reservoir scores',
+    })
+    registerDebugArray('forwardPlus.fillInRange', this._tileFillInRange, 'uint', {
+      label: 'Fill lights in range (per tile)',
     })
     registerDebugTexture('forwardPlus.tiles', this._tileTexture, 'rgba32f', {
       label: 'Tile index DataTexture',
@@ -168,15 +242,20 @@ export class ForwardPlusLighting {
 
     // Buffers are over-allocated vs. the current tile count — zero only
     // the portion we'll write to so per-frame cost doesn't scale with the
-    // max-capacity tile texture (4MB).
-    const blocksPerTile = MAX_LIGHTS_PER_TILE / 4
-    const usedTileFloats = this._tileCount * blocksPerTile * 4
+    // max-capacity tile texture (1MB).
+    const usedTileFloats = this._tileCount * TILE_STRIDE * 4
     this._tileData.fill(0, 0, usedTileFloats)
 
     const lightCounts = this._lightCounts
     const tileScores = this._tileScores
+    const tileSlotIsFill = this._tileSlotIsFill
+    const tileFillCount = this._tileFillCount
+    const tileFillInRange = this._tileFillInRange
     lightCounts.fill(0, 0, this._tileCount)
     tileScores.fill(0, 0, this._tileCount * MAX_LIGHTS_PER_TILE)
+    tileSlotIsFill.fill(0, 0, this._tileCount * MAX_LIGHTS_PER_TILE)
+    tileFillCount.fill(0, 0, this._tileCount)
+    tileFillInRange.fill(0, 0, this._tileCount)
 
     // Accumulate ambient lights into a single uniform — they affect every
     // pixel equally so they don't need Forward+ tile slots.
@@ -207,6 +286,8 @@ export class ForwardPlusLighting {
       if (light.lightType === 'ambient') continue
 
       const isDirectional = light.lightType === 'directional'
+      const isFill = !light.castsShadow
+      const importance = light.importance
       const lx = light.position.x
       const ly = light.position.y
       const intensity = light.intensity
@@ -294,41 +375,111 @@ export class ForwardPlusLighting {
             score = base * falloff
           }
           if (score <= 0) continue
+          // Per-light importance bias — multiplicative so it stacks
+          // cleanly with the physical score. Default 1.0 for most
+          // lights; hero lights (torches) typically bump to 10 to keep
+          // them immune to eviction by dense cosmetic clusters.
+          score *= importance
 
           const tileIdx = ty * tileCountX + tx
           const count = lightCounts[tileIdx]!
           const scoreBase = tileIdx * MAX_LIGHTS_PER_TILE
-          const texelBase = tileIdx * 4 * 4 // blocksPerTile * 4
+          // Tile stride includes meta blocks; light blocks occupy the
+          // first BLOCKS_PER_TILE texels. texelBase is in floats.
+          const texelBase = tileIdx * TILE_STRIDE * 4
 
+          if (isFill) {
+            tileFillInRange[tileIdx] = tileFillInRange[tileIdx]! + 1
+            const fillCount = tileFillCount[tileIdx]!
+
+            if (fillCount < MAX_FILL_LIGHTS_PER_TILE) {
+              // Fill quota not met. Try to claim any remaining tile slot.
+              if (count < MAX_LIGHTS_PER_TILE) {
+                const blockIdx = count >> 2
+                const elementIdx = count & 3
+                this._tileData[texelBase + blockIdx * 4 + elementIdx] = lightIdx + 1
+                tileScores[scoreBase + count] = score
+                tileSlotIsFill[scoreBase + count] = 1
+                lightCounts[tileIdx] = count + 1
+                tileFillCount[tileIdx] = fillCount + 1
+              }
+              // Tile full of heroes — fills don't evict heroes, skip.
+              // The in-range bump above still counts toward compensation.
+              continue
+            }
+
+            // Fill quota met. Compete within the fill bucket — find
+            // the weakest existing fill-slot occupant and evict if the
+            // incoming score is strictly higher (`>` prevents thrash
+            // at equal scores).
+            let minFillSlot = -1
+            let minFillScore = Infinity
+            for (let s = 0; s < MAX_LIGHTS_PER_TILE; s++) {
+              if (tileSlotIsFill[scoreBase + s] === 0) continue
+              const v = tileScores[scoreBase + s]!
+              if (v < minFillScore) {
+                minFillScore = v
+                minFillSlot = s
+              }
+            }
+            if (minFillSlot >= 0 && score > minFillScore) {
+              const blockIdx = minFillSlot >> 2
+              const elementIdx = minFillSlot & 3
+              this._tileData[texelBase + blockIdx * 4 + elementIdx] = lightIdx + 1
+              tileScores[scoreBase + minFillSlot] = score
+              // tileSlotIsFill stays 1 (replaced a fill with a fill).
+            }
+            continue
+          }
+
+          // Hero light path (castsShadow=true, or a light without a
+          // per-instance flag — torches, sun, cutscene key lights).
           if (count < MAX_LIGHTS_PER_TILE) {
             const blockIdx = count >> 2
             const elementIdx = count & 3
             this._tileData[texelBase + blockIdx * 4 + elementIdx] = lightIdx + 1
             tileScores[scoreBase + count] = score
+            tileSlotIsFill[scoreBase + count] = 0
             lightCounts[tileIdx] = count + 1
             continue
           }
 
-          // Tile full — scan for the weakest occupant and evict only if the
-          // incoming light is strictly brighter at the tile center. Prevents
-          // thrash at equal scores.
-          let minSlot = 0
-          let minScore = tileScores[scoreBase]!
-          for (let s = 1; s < MAX_LIGHTS_PER_TILE; s++) {
+          // Tile full — hero lights compete with other heroes only.
+          // Evicting a fill with a hero would violate the quota
+          // invariant (we committed to keeping top-K fills for
+          // compensation math); skip and let the reservoir converge.
+          let minHeroSlot = -1
+          let minHeroScore = Infinity
+          for (let s = 0; s < MAX_LIGHTS_PER_TILE; s++) {
+            if (tileSlotIsFill[scoreBase + s] !== 0) continue
             const v = tileScores[scoreBase + s]!
-            if (v < minScore) {
-              minScore = v
-              minSlot = s
+            if (v < minHeroScore) {
+              minHeroScore = v
+              minHeroSlot = s
             }
           }
-          if (score > minScore) {
-            const blockIdx = minSlot >> 2
-            const elementIdx = minSlot & 3
+          if (minHeroSlot >= 0 && score > minHeroScore) {
+            const blockIdx = minHeroSlot >> 2
+            const elementIdx = minHeroSlot & 3
             this._tileData[texelBase + blockIdx * 4 + elementIdx] = lightIdx + 1
-            tileScores[scoreBase + minSlot] = score
+            tileScores[scoreBase + minHeroSlot] = score
           }
         }
       }
+    }
+
+    // Compensation pass — for every tile with fill-light dedup, write
+    // `fillScale = inRange / kept` into the meta texel so the shader
+    // can multiply it into each non-casting light's contribution and
+    // preserve total luminance. Tiles with no fills or with kept >=
+    // inRange get fillScale = 1.0 (no-op).
+    for (let tileIdx = 0; tileIdx < this._tileCount; tileIdx++) {
+      const kept = tileFillCount[tileIdx]!
+      const inRange = tileFillInRange[tileIdx]!
+      const fillScale = kept > 0 ? inRange / kept : 1
+      const metaBase = (tileIdx * TILE_STRIDE + META_BLOCK_INDEX) * 4
+      this._tileData[metaBase + 0] = fillScale
+      // Meta .y/.z/.w reserved — leave zeroed from the fill() above.
     }
 
     this._tileTexture.needsUpdate = true
@@ -336,23 +487,47 @@ export class ForwardPlusLighting {
     // Notify devtools the arrays changed this frame (no-op in prod).
     touchDebugArray('forwardPlus.lightCounts')
     touchDebugArray('forwardPlus.tileScores')
+    touchDebugArray('forwardPlus.fillInRange')
     touchDebugTexture('forwardPlus.tiles')
   }
 
   createTileLookup() {
     const tileTexture = this._tileTexture
-    const blocksPerTile = int(MAX_LIGHTS_PER_TILE / 4)
+    const tileStride = int(TILE_STRIDE)
     const texWidth = int(TILE_TEXTURE_DIM)
-    // Each tile occupies `blocksPerTile` consecutive RGBA texels in a
-    // flat linear order. Convert `(tileIndex, blockOffset)` → linear
-    // texel index → 2D `(x, y)` in the fixed TILE_TEXTURE_DIM² texture.
+    // Each tile occupies TILE_STRIDE consecutive RGBA texels in a flat
+    // linear order — BLOCKS_PER_TILE light-index texels followed by
+    // meta texels. Convert `(tileIndex, slotIndex)` → linear texel
+    // index → 2D `(x, y)` in the fixed TILE_TEXTURE_DIM² texture.
     return (tileIndex: ReturnType<typeof int>, slotIndex: ReturnType<typeof int>) => {
       const blockOffset = slotIndex.div(int(4))
       const elementOffset = slotIndex.mod(int(4))
-      const linearTexel = tileIndex.mul(blocksPerTile).add(blockOffset)
+      const linearTexel = tileIndex.mul(tileStride).add(blockOffset)
       const x = linearTexel.mod(texWidth)
       const y = linearTexel.div(texWidth)
       return int(textureLoad(tileTexture, ivec2(x, y)).element(elementOffset))
+    }
+  }
+
+  /**
+   * Shader-side accessor for the per-tile meta texel. Returns the
+   * full vec4 — `.x` is `fillScale`, `.y`/`.z`/`.w` reserved for
+   * future per-tile scalars.
+   *
+   * Consumers read `fillScale` once at the start of their per-fragment
+   * work and multiply it into non-shadow-casting light contributions
+   * to preserve luminance when the fill-light quota culls some fills.
+   */
+  createTileMetaLookup() {
+    const tileTexture = this._tileTexture
+    const tileStride = int(TILE_STRIDE)
+    const metaIndex = int(META_BLOCK_INDEX)
+    const texWidth = int(TILE_TEXTURE_DIM)
+    return (tileIndex: ReturnType<typeof int>) => {
+      const linearTexel = tileIndex.mul(tileStride).add(metaIndex)
+      const x = linearTexel.mod(texWidth)
+      const y = linearTexel.div(texWidth)
+      return textureLoad(tileTexture, ivec2(x, y))
     }
   }
 
@@ -360,6 +535,7 @@ export class ForwardPlusLighting {
     this._tileTexture.dispose()
     unregisterDebugArray('forwardPlus.lightCounts')
     unregisterDebugArray('forwardPlus.tileScores')
+    unregisterDebugArray('forwardPlus.fillInRange')
     unregisterDebugTexture('forwardPlus.tiles')
   }
 }

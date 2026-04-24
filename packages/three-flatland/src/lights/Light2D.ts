@@ -29,6 +29,18 @@ export interface Light2DOptions {
   decay?: number
   /** Whether this light casts shadows (default: true) */
   castsShadow?: boolean
+  /**
+   * Multiplicative bias applied to this light's tile-ranking score
+   * during Forward+ tile assignment. Default `1.0` (neutral). Higher
+   * values bias this light toward winning slot allocation when tiles
+   * saturate. Typical use: set hero lights (torches, key lights) to
+   * `10` so they resist eviction by dense cosmetic clusters.
+   *
+   * Score ordering only — never appears in the fragment shader's
+   * illuminance math, so it doesn't change how the light looks once
+   * it's in a tile slot, only which lights claim the slots.
+   */
+  importance?: number
 }
 
 /**
@@ -45,6 +57,7 @@ export interface Light2DUniforms {
   penumbra: number
   decay: number
   castsShadow: boolean
+  importance: number
 }
 
 /**
@@ -148,6 +161,13 @@ export class Light2D extends Object3D {
    */
   castsShadow: boolean = true
 
+  /**
+   * Multiplicative bias applied to this light's tile-ranking score
+   * during Forward+ tile assignment. See {@link Light2DOptions.importance}
+   * for full semantics. Default `1.0` — neutral.
+   */
+  importance: number = 1
+
   constructor(options: Light2DOptions = {}) {
     super()
 
@@ -181,6 +201,7 @@ export class Light2D extends Object3D {
     this.penumbra = options.penumbra ?? 0
     this.decay = options.decay ?? 2
     this.castsShadow = options.castsShadow ?? true
+    this.importance = options.importance ?? 1
   }
 
   /**
@@ -253,6 +274,7 @@ export class Light2D extends Object3D {
       penumbra: this.penumbra,
       decay: this.decay,
       castsShadow: this.castsShadow,
+      importance: this.importance,
     }
   }
 
@@ -271,6 +293,7 @@ export class Light2D extends Object3D {
       penumbra: this.penumbra,
       decay: this.decay,
       castsShadow: this.castsShadow,
+      importance: this.importance,
     })
     light.enabled = this.enabled
     return light as this
