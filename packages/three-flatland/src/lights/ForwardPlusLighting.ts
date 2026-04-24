@@ -10,7 +10,23 @@ import {
   unregisterDebugTexture,
 } from '../debug/debug-sink'
 
-export const TILE_SIZE = 16
+/**
+ * Screen-space tile edge in pixels. 32px balances CPU tile-assignment
+ * cost against per-tile light density:
+ *
+ * - **CPU cost** scales with `tileCount * avgLightsPerTile`. At 32px
+ *   tiles, a 1920×1080 viewport has 2,040 tiles vs 8,160 at 16px —
+ *   4× less CPU work per frame in the tile-culling loop.
+ * - **Per-tile density** rises because each tile covers 4× the area,
+ *   so more lights overlap it. `MAX_LIGHTS_PER_TILE = 16` caps
+ *   per-fragment shader cost regardless; saturated tiles fall back
+ *   to the reservoir path.
+ *
+ * Increase if CPU time in `ForwardPlusLighting.update` dominates the
+ * frame and per-tile saturation is rare. Decrease if you see visible
+ * reservoir sampling artifacts in scenes with extreme light density.
+ */
+export const TILE_SIZE = 32
 export const MAX_LIGHTS_PER_TILE = 16
 
 /**
