@@ -2,6 +2,10 @@ import * as stylex from '@stylexjs/stylex'
 
 export const vscode = stylex.defineVars({
   // surfaces
+  // Note: panelBg intentionally maps to --vscode-editorWidget-background (floating
+  // widget chrome inside a webview), not --vscode-panel-background (the editor's
+  // bottom dock area). Different colors in many themes; widget background is the
+  // correct surface for our Panel primitive.
   fg: 'var(--vscode-foreground)',
   bg: 'var(--vscode-editor-background)',
   panelBg: 'var(--vscode-editorWidget-background)',
@@ -18,7 +22,7 @@ export const vscode = stylex.defineVars({
   // inputs
   inputBg: 'var(--vscode-input-background)',
   inputFg: 'var(--vscode-input-foreground)',
-  inputBorder: 'var(--vscode-input-border, var(--vscode-editorWidget-border))',
+  inputBorder: 'var(--vscode-input-border, var(--vscode-editorWidget-border, transparent))',
   // notifications (DevReloadToast)
   notifyBg: 'var(--vscode-notifications-background, var(--vscode-editorWidget-background))',
   notifyFg: 'var(--vscode-notifications-foreground, var(--vscode-foreground))',
