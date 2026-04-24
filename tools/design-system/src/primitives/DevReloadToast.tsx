@@ -1,6 +1,39 @@
-import type { CSSProperties } from 'react'
+import * as stylex from '@stylexjs/stylex'
 import { Button } from './Button'
 import { useDevReload } from '../theme/useDevReload'
+import { vscode } from '../tokens/vscode-theme.stylex'
+import { space } from '../tokens/space.stylex'
+import { radius } from '../tokens/radius.stylex'
+import { z } from '../tokens/z.stylex'
+
+const s = stylex.create({
+  toast: {
+    position: 'fixed',
+    right: space.xxl,
+    bottom: space.xxl,
+    zIndex: z.toast,
+    display: 'flex',
+    alignItems: 'center',
+    gap: space.lg,
+    paddingInline: space.xl,
+    paddingBlock: space.md,
+    borderRadius: radius.md,
+    backgroundColor: vscode.notifyBg,
+    color: vscode.notifyFg,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: vscode.notifyBorder,
+    boxShadow: '0 2px 8px rgba(0, 0, 0, 0.35)',
+    fontFamily: vscode.fontFamily,
+    fontSize: vscode.fontSize,
+  },
+  label: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: space.md,
+    paddingRight: space.sm,
+  },
+})
 
 /**
  * Small corner toast that appears when the webview dev-watcher reports a
@@ -10,37 +43,12 @@ import { useDevReload } from '../theme/useDevReload'
  * Place once at the top of each tool's <App /> so every webview in the
  * suite gets the same affordance.
  */
-const toastStyle: CSSProperties = {
-  position: 'fixed',
-  right: 12,
-  bottom: 12,
-  zIndex: 999,
-  display: 'flex',
-  alignItems: 'center',
-  gap: 8,
-  padding: '6px 10px 6px 12px',
-  borderRadius: 3,
-  background: 'var(--vscode-notifications-background, var(--vscode-editorWidget-background))',
-  color: 'var(--vscode-notifications-foreground, var(--vscode-foreground))',
-  border: '1px solid var(--vscode-notifications-border, var(--vscode-focusBorder, transparent))',
-  boxShadow: '0 2px 8px rgba(0, 0, 0, 0.35)',
-  fontFamily: 'var(--vscode-font-family)',
-  fontSize: 'var(--vscode-font-size)',
-}
-
-const labelStyle: CSSProperties = {
-  display: 'inline-flex',
-  alignItems: 'center',
-  gap: 6,
-  paddingRight: 4,
-}
-
 export function DevReloadToast() {
   const { pending, reload, dismiss } = useDevReload()
   if (!pending) return null
   return (
-    <div style={toastStyle} role="status" aria-live="polite">
-      <span style={labelStyle}>
+    <div {...stylex.props(s.toast)} role="status" aria-live="polite">
+      <span {...stylex.props(s.label)}>
         <i className="codicon codicon-zap" aria-hidden="true" />
         Webview rebuilt
       </span>
