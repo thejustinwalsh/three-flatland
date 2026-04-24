@@ -18,10 +18,10 @@ import {
 } from '@three-flatland/design-system'
 import { CanvasStage, RectOverlay, type Rect } from '@three-flatland/preview'
 import * as stylex from '@stylexjs/stylex'
-import { vscode } from '@three-flatland/design-system/src/tokens/vscode-theme.stylex'
-import { space } from '@three-flatland/design-system/src/tokens/space.stylex'
-import { radius } from '@three-flatland/design-system/src/tokens/radius.stylex'
-import { z } from '@three-flatland/design-system/src/tokens/z.stylex'
+import { vscode } from '@three-flatland/design-system/tokens/vscode-theme.stylex'
+import { space } from '@three-flatland/design-system/tokens/space.stylex'
+import { radius } from '@three-flatland/design-system/tokens/radius.stylex'
+import { z } from '@three-flatland/design-system/tokens/z.stylex'
 
 type InitPayload = {
   imageUri: string
