@@ -100,7 +100,14 @@ export const DefaultLightEffect = createLightEffect({
 
     const fp = constants.forwardPlus
     const tileLookup = fp.createTileLookup()
-    const tileMetaLookup = fp.createTileMetaLookup()
+    // The shader currently ignores `tileMetaLookup` (per-tile fill
+    // compensation). Per-tile fillScale produced visible tile-aligned
+    // brightness steps at fill-quota saturation boundaries — fixing
+    // it cleanly needs temporal accumulation (history RT) we don't
+    // have yet. ForwardPlusLighting still computes the values CPU-
+    // side and writes them into the tile meta texel for devtools
+    // inspection + future hookup of a smooth (e.g., bilinear or
+    // temporally-filtered) compensation path.
 
     return (ctx) => {
       return Fn(() => {
@@ -125,13 +132,6 @@ export const DefaultLightEffect = createLightEffect({
         const tileX = int(screenPos.x.div(float(TILE_SIZE)).floor())
         const tileY = int(screenPos.y.div(float(TILE_SIZE)).floor())
         const tileIndex = tileY.mul(fp.tileCountXNode).add(tileX)
-
-        // Per-tile meta: vec4 of per-category `fillScale` values.
-        // Channels map to fill-light category buckets 0..3 as hashed
-        // from `Light2D.category`; each channel is the luminance-
-        // preserving multiplier for its bucket (1.0 when no dedup
-        // happened for that category).
-        const tileMeta = tileMetaLookup(tileIndex)
 
         Loop(MAX_LIGHTS_PER_TILE, ({ i }: { i: Node<'int'> }) => {
           const lightId = tileLookup(tileIndex, i)
@@ -262,32 +262,19 @@ export const DefaultLightEffect = createLightEffect({
           }
 
           const baseContribution = contribution.mul(atten).mul(diffuse)
-          // Fill-light luminance compensation — non-shadow-casting
-          // lights get their contribution boosted by their category's
-          // `fillScale` to preserve total tile luminance when dedup
-          // culled siblings. 4 compensation scalars live in the tile
-          // meta texel (one per category bucket); this light's bucket
-          // index is its row3.a in LightStore.
-          //
-          // The 4-way select compiles to a small branch chain in TSL;
-          // all four scales are always loaded (from `tileMeta`), only
-          // one is selected.
-          const categoryBucket = int(row3.a)
-          const categoryFillScale = categoryBucket.equal(int(0)).select(
-            tileMeta.x,
-            categoryBucket.equal(int(1)).select(
-              tileMeta.y,
-              categoryBucket.equal(int(2)).select(tileMeta.z, tileMeta.w)
-            )
-          )
-          // Hero lights (castsShadow: true) bypass compensation
-          // entirely — they never went through dedup.
-          const scaledContribution = lightCastsShadow.greaterThan(float(0.5)).select(
-            baseContribution,
-            baseContribution.mul(categoryFillScale)
-          )
-          totalLightLit.addAssign(scaledContribution)
-          totalLightShaded.addAssign(scaledContribution.mul(shadow))
+          // Fill-quota dedup may cull some `castsShadow: false` lights
+          // when a tile saturates its per-category bucket; the CPU
+          // tracks per-tile/per-category in-range vs kept counts and
+          // writes a `fillScale` to the tile meta texel for future
+          // temporal compensation. Not consumed here — applying a
+          // per-tile scale produces visible tile-aligned brightness
+          // steps at quota boundaries without history-buffer
+          // accumulation to smooth them. Kept lights contribute their
+          // natural amount; culled lights are absent. Net effect: a
+          // small, smooth dimming in dense fill clusters rather than a
+          // checkerboard.
+          totalLightLit.addAssign(baseContribution)
+          totalLightShaded.addAssign(baseContribution.mul(shadow))
 
           // Rim lighting — edge highlight from inverse normal dot
           const rimFactor = isAmbient.select(float(0), float(1).sub(NdotL).pow(rimPower))
