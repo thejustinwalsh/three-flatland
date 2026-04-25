@@ -1252,10 +1252,20 @@ importers:
   tools/io: {}
 
   tools/preview:
+    dependencies:
+      '@stylexjs/stylex':
+        specifier: 'catalog:'
+        version: 0.18.3
+      '@three-flatland/io':
+        specifier: workspace:*
+        version: link:../io
     devDependencies:
       '@react-three/fiber':
         specifier: 'catalog:'
         version: 10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.183.1)
+      '@three-flatland/design-system':
+        specifier: workspace:*
+        version: link:../design-system
       '@types/react':
         specifier: 'catalog:'
         version: 19.2.9

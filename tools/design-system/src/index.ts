@@ -1,6 +1,7 @@
 export { Button, type ButtonProps } from './primitives/Button'
 export { Panel, type PanelProps } from './primitives/Panel'
 export { Toolbar, type ToolbarProps } from './primitives/Toolbar'
+export { ToolbarButton, type ToolbarButtonProps } from './primitives/ToolbarButton'
 export { DevReloadToast } from './primitives/DevReloadToast'
 export { useThemeKind, type ThemeKind } from './theme/useThemeKind'
 export { useCssVar } from './theme/useCssVar'
@@ -32,5 +33,4 @@ export {
   VscodeTreeItem as TreeItem,
   VscodeCheckbox as Checkbox,
   VscodeCollapsible as Collapsible,
-  VscodeToolbarButton as ToolbarButton,
 } from '@vscode-elements/react-elements'
