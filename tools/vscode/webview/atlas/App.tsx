@@ -535,26 +535,15 @@ export function App() {
     [updateSlice, regenerateGrid],
   )
 
-  const togglePick = useCallback(
-    (row: number, col: number, _additive: boolean) => {
+  const setCellPicked = useCallback(
+    (row: number, col: number, picked: boolean) => {
       updateSlice((prev) => {
         const key = cellKey(row, col)
+        const has = prev.picked.has(key)
+        if (picked === has) return prev
         const next = new Set(prev.picked)
-        if (next.has(key)) next.delete(key)
-        else next.add(key)
-        return { ...prev, picked: next }
-      })
-    },
-    [updateSlice],
-  )
-
-  const pickRange = useCallback(
-    (rowMin: number, rowMax: number, colMin: number, colMax: number) => {
-      updateSlice((prev) => {
-        const next = new Set(prev.picked)
-        for (let r = rowMin; r <= rowMax; r++) {
-          for (let c = colMin; c <= colMax; c++) next.add(cellKey(r, c))
-        }
+        if (picked) next.add(key)
+        else next.delete(key)
         return { ...prev, picked: next }
       })
     },
@@ -777,8 +766,7 @@ export function App() {
                   grid={mode.state.grid}
                   picked={mode.state.picked}
                   onGridChange={setSliceGrid}
-                  onPickToggle={togglePick}
-                  onPickRange={pickRange}
+                  onCellSet={setCellPicked}
                 />
               ) : null}
               <InfoPanel />
