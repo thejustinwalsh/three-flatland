@@ -17,7 +17,18 @@ import {
   ToolbarButton,
   useCssVar,
 } from '@three-flatland/design-system'
-import { CanvasStage, RectOverlay, type Rect } from '@three-flatland/preview'
+import {
+  CanvasStage,
+  GridSliceOverlay,
+  InfoPanel,
+  RectOverlay,
+  cellExtent,
+  cellKey,
+  gridFromCellSize,
+  gridFromRowCol,
+  type GridSpec,
+  type Rect,
+} from '@three-flatland/preview'
 import * as stylex from '@stylexjs/stylex'
 import { vscode } from '@three-flatland/design-system/tokens/vscode-theme.stylex'
 import { space } from '@three-flatland/design-system/tokens/space.stylex'
@@ -44,6 +55,28 @@ type RenameMode =
   | { kind: 'none' }
   | { kind: 'inline'; id: string }
   | { kind: 'prefix'; ids: string[] }
+
+type SliceInputMode = 'pixels' | 'cells'
+
+type SliceState = {
+  inputMode: SliceInputMode
+  cellW: number
+  cellH: number
+  cols: number
+  rows: number
+  offsetX: number
+  offsetY: number
+  gutterX: number
+  gutterY: number
+  /** Generated/edited grid; line drag updates this directly. */
+  grid: GridSpec
+  /** cellKey(row, col) values for cells the user wants to commit. */
+  picked: Set<string>
+  /** Name prefix for committed cells; auto-numbered in reading order. */
+  prefix: string
+}
+
+type EditorMode = { kind: 'normal' } | { kind: 'slicing'; state: SliceState }
 
 function dumpThemeTokens() {
   const styles = getComputedStyle(document.body)
@@ -199,6 +232,101 @@ const s = stylex.create({
     opacity: 0.65,
     whiteSpace: 'nowrap',
   },
+  // Slice mode — config panel inside the Frames sidebar
+  slicePanel: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: space.lg,
+  },
+  sliceModeRow: {
+    display: 'flex',
+    gap: space.sm,
+  },
+  sliceModeBtn: {
+    flex: 1,
+    paddingInline: space.md,
+    paddingBlock: space.sm,
+    cursor: 'pointer',
+    backgroundColor: 'transparent',
+    color: vscode.fg,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: vscode.panelBorder,
+    borderRadius: radius.sm,
+    fontFamily: vscode.fontFamily,
+    fontSize: '11px',
+    textAlign: 'center',
+  },
+  sliceModeBtnActive: {
+    backgroundColor: vscode.btnBg,
+    color: vscode.btnFg,
+    borderColor: vscode.focusRing,
+  },
+  sliceFieldRow: {
+    display: 'grid',
+    gridTemplateColumns: 'auto 1fr',
+    rowGap: space.sm,
+    columnGap: space.lg,
+    alignItems: 'center',
+  },
+  sliceLabel: {
+    color: vscode.descriptionFg,
+    fontSize: '11px',
+    whiteSpace: 'nowrap',
+  },
+  slicePairRow: {
+    display: 'grid',
+    gridTemplateColumns: '1fr 1fr',
+    gap: space.md,
+  },
+  sliceNumInput: {
+    width: '100%',
+    minWidth: 0,
+    paddingInline: space.sm,
+    paddingBlock: space.xs,
+    backgroundColor: vscode.inputBg,
+    color: vscode.inputFg,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: vscode.inputBorder,
+    outlineStyle: 'none',
+    fontFamily: vscode.monoFontFamily,
+    fontSize: '12px',
+  },
+  sliceDivider: {
+    height: 1,
+    backgroundColor: vscode.panelBorder,
+    marginBlock: space.sm,
+  },
+  sliceCount: {
+    color: vscode.descriptionFg,
+    fontSize: '11px',
+  },
+  sliceActions: {
+    display: 'flex',
+    gap: space.md,
+    marginTop: space.md,
+  },
+  sliceBtn: {
+    flex: 1,
+    paddingInline: space.md,
+    paddingBlock: space.md,
+    cursor: { default: 'pointer', ':disabled': 'not-allowed' },
+    backgroundColor: vscode.btnBg,
+    color: vscode.btnFg,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: vscode.btnBorder,
+    borderRadius: radius.sm,
+    fontFamily: vscode.fontFamily,
+    fontSize: '12px',
+    opacity: { default: 1, ':disabled': 0.45 },
+  },
+  sliceBtnGhost: {
+    backgroundColor: 'transparent',
+    color: vscode.fg,
+    borderColor: vscode.panelBorder,
+  },
 })
 
 export function App() {
@@ -209,6 +337,7 @@ export function App() {
   const [renameMode, setRenameMode] = useState<RenameMode>({ kind: 'none' })
   const [prefixDraft, setPrefixDraft] = useState('')
   const [imageSize, setImageSize] = useState<{ w: number; h: number } | null>(null)
+  const [mode, setMode] = useState<EditorMode>({ kind: 'normal' })
   const [saveStatus, setSaveStatus] = useState<
     | { kind: 'idle' }
     | { kind: 'saving' }
@@ -352,6 +481,109 @@ export function App() {
     }
   }, [selectedIds])
 
+  // Build a fresh GridSpec from the current slice input params + image size.
+  // Topology-changing edits (cellW/H, cols/rows, offsets, gutters) clear picks
+  // because (row, col) keys would no longer line up with previous extents.
+  // Drag edits go straight to slice.grid and preserve picks naturally.
+  const regenerateGrid = useCallback(
+    (next: SliceState): SliceState => {
+      const w = imageSize?.w ?? 0
+      const h = imageSize?.h ?? 0
+      if (w <= 0 || h <= 0) return next
+      const grid =
+        next.inputMode === 'pixels'
+          ? gridFromCellSize(w, h, next.cellW, next.cellH, next.offsetX, next.offsetY, next.gutterX, next.gutterY)
+          : gridFromRowCol(w, h, next.cols, next.rows, next.offsetX, next.offsetY, next.gutterX, next.gutterY)
+      return { ...next, grid, picked: new Set() }
+    },
+    [imageSize],
+  )
+
+  const enterSlice = useCallback(() => {
+    if (!imageSize) return
+    const initial: SliceState = regenerateGrid({
+      inputMode: 'pixels',
+      cellW: 16,
+      cellH: 16,
+      cols: 0,
+      rows: 0,
+      offsetX: 0,
+      offsetY: 0,
+      gutterX: 0,
+      gutterY: 0,
+      grid: { colEdges: [], rowEdges: [] },
+      picked: new Set(),
+      prefix: 'frame',
+    })
+    setMode({ kind: 'slicing', state: initial })
+    setSelectedIds(new Set())
+    setRenameMode({ kind: 'none' })
+  }, [imageSize, regenerateGrid])
+
+  const exitSlice = useCallback(() => {
+    setMode({ kind: 'normal' })
+  }, [])
+
+  const updateSlice = useCallback((updater: (prev: SliceState) => SliceState) => {
+    setMode((m) => (m.kind === 'slicing' ? { kind: 'slicing', state: updater(m.state) } : m))
+  }, [])
+
+  const updateSliceParams = useCallback(
+    (patch: Partial<SliceState>) => {
+      updateSlice((prev) => regenerateGrid({ ...prev, ...patch }))
+    },
+    [updateSlice, regenerateGrid],
+  )
+
+  const togglePick = useCallback(
+    (row: number, col: number, additive: boolean) => {
+      updateSlice((prev) => {
+        const key = cellKey(row, col)
+        const next = new Set(prev.picked)
+        if (next.has(key)) next.delete(key)
+        else next.add(key)
+        return additive ? { ...prev, picked: next } : { ...prev, picked: next }
+      })
+    },
+    [updateSlice],
+  )
+
+  const setSliceGrid = useCallback(
+    (next: GridSpec) => {
+      updateSlice((prev) => ({ ...prev, grid: next }))
+    },
+    [updateSlice],
+  )
+
+  const commitSlice = useCallback(() => {
+    if (mode.kind !== 'slicing') return
+    const { state } = mode
+    const prefix = state.prefix.trim()
+    if (prefix === '' || state.picked.size === 0) return
+    // Picked cells in reading order — for a grid this is just (row, col)
+    // sorted lexicographically. The existing readingOrder helper does extra
+    // y-tolerance work that's unnecessary here.
+    const ordered = [...state.picked]
+      .map((k) => {
+        const [r, c] = k.split(',').map(Number) as [number, number]
+        return { r, c }
+      })
+      .sort((a, b) => (a.r !== b.r ? a.r - b.r : a.c - b.c))
+    const newRects: Rect[] = ordered.map(({ r, c }, i) => {
+      const ext = cellExtent(state.grid, r, c)
+      return { id: crypto.randomUUID(), x: ext.x, y: ext.y, w: ext.w, h: ext.h, name: `${prefix}_${i}` }
+    })
+    setRects((prev) => [...prev, ...newRects])
+    setSelectedIds(new Set(newRects.map((r) => r.id)))
+    setMode({ kind: 'normal' })
+  }, [mode])
+
+  const slicing = mode.kind === 'slicing'
+  const sliceCanCommit =
+    mode.kind === 'slicing' &&
+    mode.state.picked.size > 0 &&
+    mode.state.prefix.trim() !== ''
+
   // Keyboard — only consumes keys we handle.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -359,6 +591,11 @@ export function App() {
       const mod = e.metaKey || e.ctrlKey
 
       if (e.key === 'Escape') {
+        if (mode.kind === 'slicing') {
+          exitSlice()
+          e.preventDefault()
+          return
+        }
         if (renameMode.kind !== 'none') {
           setRenameMode({ kind: 'none' })
           e.preventDefault()
@@ -367,6 +604,13 @@ export function App() {
         if (selectedIds.size === 0) return
         clearSelection()
         e.preventDefault()
+        return
+      }
+      if (e.key === 'Enter' && mode.kind === 'slicing') {
+        if (sliceCanCommit) {
+          commitSlice()
+          e.preventDefault()
+        }
         return
       }
       if (e.key === 'Delete' || e.key === 'Backspace') {
@@ -407,7 +651,20 @@ export function App() {
     // fire. Without capture, some hosts still process the default action.
     window.addEventListener('keydown', onKey, { capture: true })
     return () => window.removeEventListener('keydown', onKey, { capture: true })
-  }, [selectedIds, rects, renameMode, clearSelection, deleteSelected, selectAll, startRename, handleSave])
+  }, [
+    selectedIds,
+    rects,
+    renameMode,
+    clearSelection,
+    deleteSelected,
+    selectAll,
+    startRename,
+    handleSave,
+    mode,
+    sliceCanCommit,
+    commitSlice,
+    exitSlice,
+  ])
 
   return (
     <div
@@ -417,46 +674,62 @@ export function App() {
       {...stylex.props(s.root)}
     >
       <Toolbar>
-        <ToolbarButton icon="symbol-ruler" title="Grid Slice" />
-        <ToolbarButton icon="wand" title="Auto Detect Sprites" />
+        <ToolbarButton
+          icon="symbol-ruler"
+          title="Grid Slice"
+          toggleable
+          checked={slicing}
+          onClick={() => (slicing ? exitSlice() : enterSlice())}
+        />
+        <ToolbarButton icon="wand" title="Auto Detect Sprites" disabled={slicing} />
         <Divider />
         <ToolbarButton
           icon="add"
           title="Draw Rect  (R)"
           toggleable
-          checked={tool === 'rect'}
+          checked={tool === 'rect' && !slicing}
+          disabled={slicing}
           onClick={() => setTool('rect')}
         />
         <ToolbarButton
           icon="selection"
           title="Select  (S)"
           toggleable
-          checked={tool === 'select'}
+          checked={tool === 'select' && !slicing}
+          disabled={slicing}
           onClick={() => setTool('select')}
         />
         <ToolbarButton
           icon="move"
           title="Move  (M)"
           toggleable
-          checked={tool === 'move'}
+          checked={tool === 'move' && !slicing}
+          disabled={slicing}
           onClick={() => setTool('move')}
         />
         <Divider />
         <ToolbarButton
           icon="symbol-string"
           title="Rename / Auto-name  (N)"
+          disabled={slicing}
           onClick={startRename}
         />
-        <ToolbarButton icon="run-all" title="Animations" />
+        <ToolbarButton icon="run-all" title="Animations" disabled={slicing} />
         <div {...stylex.props(s.toolbarSpacer)} />
         <ToolbarButton icon="zoom-in" title="Zoom In" />
         <ToolbarButton icon="zoom-out" title="Zoom Out" />
         <ToolbarButton icon="screen-full" title="Fit" />
         <Divider />
-        <ToolbarButton icon="trash" title="Delete Selected  (Del)" onClick={deleteSelected} />
+        <ToolbarButton
+          icon="trash"
+          title="Delete Selected  (Del)"
+          disabled={slicing}
+          onClick={deleteSelected}
+        />
         <ToolbarButton
           icon="clear-all"
           title="Clear All Rects"
+          disabled={slicing}
           onClick={() => {
             setRects([])
             setSelectedIds(new Set())
@@ -465,6 +738,7 @@ export function App() {
         <ToolbarButton
           icon={saveStatus.kind === 'saving' ? 'loading' : 'save'}
           title="Save Atlas  (⌘S)"
+          disabled={slicing}
           onClick={() => void handleSave()}
         />
       </Toolbar>
@@ -479,17 +753,44 @@ export function App() {
             >
               <RectOverlay
                 rects={rects}
-                drawEnabled={tool === 'rect'}
+                drawEnabled={tool === 'rect' && !slicing}
+                interactive={!slicing}
                 onRectCreate={handleRectCreate}
                 selectedIds={selectedIds}
-                onSelectionChange={setSelectedIds}
+                onSelectionChange={slicing ? undefined : setSelectedIds}
               />
+              {mode.kind === 'slicing' ? (
+                <GridSliceOverlay
+                  grid={mode.state.grid}
+                  picked={mode.state.picked}
+                  onGridChange={setSliceGrid}
+                  onPickToggle={togglePick}
+                />
+              ) : null}
+              <InfoPanel />
             </CanvasStage>
           </div>
         </Panel>
 
-        <Panel title={`Frames (${rects.length}${selectedIds.size > 0 ? ` · ${selectedIds.size} sel` : ''})`}>
-          {renameMode.kind === 'prefix' ? (
+        <Panel
+          title={
+            slicing
+              ? `Slice (${mode.state.picked.size} picked)`
+              : `Frames (${rects.length}${selectedIds.size > 0 ? ` · ${selectedIds.size} sel` : ''})`
+          }
+        >
+          {mode.kind === 'slicing' ? (
+            <SliceConfigPanel
+              state={mode.state}
+              onParamsChange={updateSliceParams}
+              onPrefixChange={(prefix) => updateSlice((p) => ({ ...p, prefix }))}
+              canCommit={sliceCanCommit}
+              onCommit={commitSlice}
+              onCancel={exitSlice}
+            />
+          ) : null}
+
+          {!slicing && renameMode.kind === 'prefix' ? (
             <PrefixRenameBar
               initial={prefixDraft}
               count={renameMode.ids.length}
@@ -501,12 +802,12 @@ export function App() {
             />
           ) : null}
 
-          {rects.length === 0 ? (
+          {!slicing && rects.length === 0 ? (
             <div {...stylex.props(s.emptyState)}>
               Draw rects with the <i className="codicon codicon-add" /> tool{' '}
               <span {...stylex.props(s.hintDim)}>(R)</span>.
             </div>
-          ) : (
+          ) : !slicing ? (
             <ul {...stylex.props(s.frameList)}>
               {rects.map((r, i) => {
                 const sel = selectedIds.has(r.id)
@@ -559,7 +860,7 @@ export function App() {
                 )
               })}
             </ul>
-          )}
+          ) : null}
         </Panel>
       </div>
       <SaveStatusLine status={saveStatus} />
@@ -709,6 +1010,160 @@ function PrefixRenameBar({
         {...stylex.props(s.inlineRenameInput)}
       />
       <span {...stylex.props(s.prefixSuffix)}>{value || 'name'}_0 …</span>
+    </div>
+  )
+}
+
+function SliceNumField({
+  value,
+  min,
+  onChange,
+}: {
+  value: number
+  min: number
+  onChange: (n: number) => void
+}) {
+  return (
+    <input
+      type="number"
+      min={min}
+      value={value}
+      onChange={(e: ChangeEvent<HTMLInputElement>) => {
+        const n = Number(e.target.value)
+        if (Number.isFinite(n)) onChange(Math.max(min, Math.round(n)))
+      }}
+      {...stylex.props(s.sliceNumInput)}
+    />
+  )
+}
+
+function SliceConfigPanel({
+  state,
+  onParamsChange,
+  onPrefixChange,
+  canCommit,
+  onCommit,
+  onCancel,
+}: {
+  state: SliceState
+  onParamsChange: (patch: Partial<SliceState>) => void
+  onPrefixChange: (prefix: string) => void
+  canCommit: boolean
+  onCommit: () => void
+  onCancel: () => void
+}) {
+  const cols = state.grid.colEdges.length - 1
+  const rows = state.grid.rowEdges.length - 1
+  const total = Math.max(0, cols * rows)
+  return (
+    <div {...stylex.props(s.slicePanel)}>
+      <div {...stylex.props(s.sliceModeRow)}>
+        <button
+          type="button"
+          {...stylex.props(s.sliceModeBtn, state.inputMode === 'pixels' && s.sliceModeBtnActive)}
+          onClick={() => onParamsChange({ inputMode: 'pixels' })}
+        >
+          Cell W × H
+        </button>
+        <button
+          type="button"
+          {...stylex.props(s.sliceModeBtn, state.inputMode === 'cells' && s.sliceModeBtnActive)}
+          onClick={() => onParamsChange({ inputMode: 'cells' })}
+        >
+          Cols × Rows
+        </button>
+      </div>
+
+      {state.inputMode === 'pixels' ? (
+        <div {...stylex.props(s.slicePairRow)}>
+          <div {...stylex.props(s.sliceFieldRow)}>
+            <span {...stylex.props(s.sliceLabel)}>Cell W</span>
+            <SliceNumField value={state.cellW} min={1} onChange={(n) => onParamsChange({ cellW: n })} />
+          </div>
+          <div {...stylex.props(s.sliceFieldRow)}>
+            <span {...stylex.props(s.sliceLabel)}>Cell H</span>
+            <SliceNumField value={state.cellH} min={1} onChange={(n) => onParamsChange({ cellH: n })} />
+          </div>
+        </div>
+      ) : (
+        <div {...stylex.props(s.slicePairRow)}>
+          <div {...stylex.props(s.sliceFieldRow)}>
+            <span {...stylex.props(s.sliceLabel)}>Cols</span>
+            <SliceNumField
+              value={state.cols || cols}
+              min={1}
+              onChange={(n) => onParamsChange({ cols: n })}
+            />
+          </div>
+          <div {...stylex.props(s.sliceFieldRow)}>
+            <span {...stylex.props(s.sliceLabel)}>Rows</span>
+            <SliceNumField
+              value={state.rows || rows}
+              min={1}
+              onChange={(n) => onParamsChange({ rows: n })}
+            />
+          </div>
+        </div>
+      )}
+
+      <div {...stylex.props(s.slicePairRow)}>
+        <div {...stylex.props(s.sliceFieldRow)}>
+          <span {...stylex.props(s.sliceLabel)}>Offset X</span>
+          <SliceNumField value={state.offsetX} min={0} onChange={(n) => onParamsChange({ offsetX: n })} />
+        </div>
+        <div {...stylex.props(s.sliceFieldRow)}>
+          <span {...stylex.props(s.sliceLabel)}>Offset Y</span>
+          <SliceNumField value={state.offsetY} min={0} onChange={(n) => onParamsChange({ offsetY: n })} />
+        </div>
+      </div>
+      <div {...stylex.props(s.slicePairRow)}>
+        <div {...stylex.props(s.sliceFieldRow)}>
+          <span {...stylex.props(s.sliceLabel)}>Gutter X</span>
+          <SliceNumField value={state.gutterX} min={0} onChange={(n) => onParamsChange({ gutterX: n })} />
+        </div>
+        <div {...stylex.props(s.sliceFieldRow)}>
+          <span {...stylex.props(s.sliceLabel)}>Gutter Y</span>
+          <SliceNumField value={state.gutterY} min={0} onChange={(n) => onParamsChange({ gutterY: n })} />
+        </div>
+      </div>
+
+      <div {...stylex.props(s.sliceDivider)} />
+
+      <div {...stylex.props(s.sliceCount)}>
+        Picked {state.picked.size} / {total} {cols}×{rows}
+      </div>
+
+      <div {...stylex.props(s.sliceFieldRow)}>
+        <span {...stylex.props(s.sliceLabel)}>Name as</span>
+        <input
+          type="text"
+          value={state.prefix}
+          placeholder="frame"
+          spellCheck={false}
+          onChange={(e: ChangeEvent<HTMLInputElement>) => onPrefixChange(e.target.value)}
+          {...stylex.props(s.sliceNumInput)}
+        />
+      </div>
+
+      <div {...stylex.props(s.sliceActions)}>
+        <button
+          type="button"
+          {...stylex.props(s.sliceBtn)}
+          disabled={!canCommit}
+          onClick={onCommit}
+          title={canCommit ? 'Commit picked cells as atlas frames (Enter)' : 'Pick cells and set a name prefix to commit'}
+        >
+          Commit
+        </button>
+        <button
+          type="button"
+          {...stylex.props(s.sliceBtn, s.sliceBtnGhost)}
+          onClick={onCancel}
+          title="Discard slice and exit (Esc)"
+        >
+          Cancel
+        </button>
+      </div>
     </div>
   )
 }

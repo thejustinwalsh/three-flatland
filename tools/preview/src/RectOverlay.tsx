@@ -34,6 +34,13 @@ export type RectOverlayProps = {
   draftColor?: string
   /** Selected rect accent — defaults to the VSCode focus border. */
   selectedColor?: string
+
+  /**
+   * When false, rects render at reduced opacity and ignore pointer events
+   * (visual context only). Used by Atlas while another modal overlay
+   * (grid slicing) owns interaction. Defaults to true.
+   */
+  interactive?: boolean
 }
 
 type Drag = { start: { x: number; y: number }; current: { x: number; y: number } }
@@ -162,6 +169,7 @@ export function RectOverlay({
   color = 'var(--vscode-descriptionForeground, #888)',
   draftColor = '#00ff99',
   selectedColor = '#ffcc00',
+  interactive = true,
 }: RectOverlayProps) {
   const vp = useViewport()
   const svgRef = useRef<SVGSVGElement>(null)
@@ -211,7 +219,7 @@ export function RectOverlay({
           clicks (draw start or deselect). Transparent fill, but pointer-
           events:all so it receives the hit when the user clicks past
           the rects. */}
-      {(drawEnabled || selectionActive) && (
+      {interactive && (drawEnabled || selectionActive) && (
         <rect
           x={0}
           y={0}
@@ -280,8 +288,9 @@ export function RectOverlay({
               strokeWidth={sel ? 2 : 1}
               vectorEffect="non-scaling-stroke"
               shapeRendering="crispEdges"
+              opacity={interactive ? 1 : 0.35}
               style={{
-                pointerEvents: 'all',
+                pointerEvents: interactive ? 'all' : 'none',
                 cursor: 'pointer',
               }}
               onPointerEnter={() => setHoveredId(r.id)}
