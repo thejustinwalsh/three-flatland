@@ -11,6 +11,13 @@ export type CursorReading = {
 export type CursorStore = {
   get(): CursorReading | null
   set(reading: CursorReading | null): void
+  /**
+   * Freeze the snapshot — `set()` becomes a no-op until `unfreeze()`.
+   * Used while dragging grid lines so the InfoPanel locks at the
+   * pre-drag reading instead of jittering with line motion.
+   */
+  freeze(): void
+  unfreeze(): void
   subscribe(fn: () => void): () => void
 }
 
@@ -25,16 +32,24 @@ export type CursorStore = {
  */
 export function createCursorStore(): CursorStore {
   let snapshot: CursorReading | null = null
+  let frozen = false
   const listeners = new Set<() => void>()
   return {
     get: () => snapshot,
     set: (next) => {
+      if (frozen) return
       // Identity check is enough — set() is called from a single pointer
       // handler, and we replace the whole object every move. Equality
       // comparison would just be more allocations.
       if (snapshot === next) return
       snapshot = next
       for (const l of listeners) l()
+    },
+    freeze: () => {
+      frozen = true
+    },
+    unfreeze: () => {
+      frozen = false
     },
     subscribe: (fn) => {
       listeners.add(fn)

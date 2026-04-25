@@ -14,10 +14,9 @@ const NEXT: Record<CoordMode, CoordMode> = { 'px': 'uv+', 'uv+': 'uv-', 'uv-': '
 const s = stylex.create({
   bar: {
     position: 'absolute',
-    left: 0,
     right: 0,
     bottom: 0,
-    display: 'flex',
+    display: 'inline-flex',
     alignItems: 'center',
     gap: space.lg,
     paddingInline: space.md,
@@ -26,6 +25,10 @@ const s = stylex.create({
     borderTopWidth: 1,
     borderTopStyle: 'solid',
     borderTopColor: vscode.panelBorder,
+    borderLeftWidth: 1,
+    borderLeftStyle: 'solid',
+    borderLeftColor: vscode.panelBorder,
+    borderTopLeftRadius: radius.md,
     color: vscode.fg,
     fontFamily: vscode.monoFontFamily,
     fontSize: '11px',
