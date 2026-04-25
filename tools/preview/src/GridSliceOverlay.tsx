@@ -27,9 +27,11 @@ export type GridSliceOverlayProps = {
   /** Set of `cellKey(row, col)` strings. */
   picked: ReadonlySet<string>
   onGridChange: (next: GridSpec) => void
-  onPickToggle: (row: number, col: number, additive: boolean) => void
-  /** Add every cell in the (row, col) range (inclusive) to the picked set. */
-  onPickRange?: (rowMin: number, rowMax: number, colMin: number, colMax: number) => void
+  /**
+   * Set the picked state of a single cell. Called once per cell crossed
+   * by a click or paint-drag. `picked = true` adds, `false` removes.
+   */
+  onCellSet: (row: number, col: number, picked: boolean) => void
 
   /** Visual styling overrides — defaults read from VSCode theme. */
   lineColor?: string
@@ -42,16 +44,18 @@ type LineDrag = {
   pointerId: number
 }
 
-type MarqueeDrag = {
-  startCell: { row: number; col: number }
-  startImg: { x: number; y: number }
-  currentImg: { x: number; y: number }
+/**
+ * Paint gesture state. `mode` is determined by the start cell's picked
+ * state (clicking an unpicked cell → pick mode; picked cell → unpick),
+ * and every new cell the cursor enters during the drag is set to the
+ * matching state. `visited` prevents re-applying to the same cell when
+ * the cursor jiggles inside one cell's bounds.
+ */
+type PaintDrag = {
+  mode: 'pick' | 'unpick'
+  visited: Set<string>
   pointerId: number
-  /** True once the pointer has moved enough pixels to count as a drag. */
-  active: boolean
 }
-
-const MARQUEE_THRESHOLD_PX = 3
 
 const DEFAULTS = {
   lineColor: 'var(--vscode-panel-border, var(--vscode-editorGroup-border, transparent))',
@@ -78,8 +82,7 @@ export function GridSliceOverlay({
   grid,
   picked,
   onGridChange,
-  onPickToggle,
-  onPickRange,
+  onCellSet,
   lineColor = DEFAULTS.lineColor,
   lineActiveColor = DEFAULTS.lineActiveColor,
 }: GridSliceOverlayProps) {
@@ -87,7 +90,7 @@ export function GridSliceOverlay({
   const cursorStore = useCursorStore()
   const svgRef = useRef<SVGSVGElement>(null)
   const [drag, setDrag] = useState<LineDrag | null>(null)
-  const [marquee, setMarquee] = useState<MarqueeDrag | null>(null)
+  const paintRef = useRef<PaintDrag | null>(null)
   const [hoverCell, setHoverCell] = useState<string | null>(null)
 
   const toImagePx = useCallback(
@@ -196,67 +199,42 @@ export function GridSliceOverlay({
   const handleCellPointerDown = (row: number, col: number, e: ReactPointerEvent<SVGElement>) => {
     e.stopPropagation()
     e.currentTarget.setPointerCapture(e.pointerId)
-    const p = toImagePx(e)
-    if (!p) return
-    setMarquee({
-      startCell: { row, col },
-      startImg: p,
-      currentImg: p,
+    const startKey = cellKey(row, col)
+    const wasPicked = picked.has(startKey)
+    const mode: 'pick' | 'unpick' = wasPicked ? 'unpick' : 'pick'
+    onCellSet(row, col, mode === 'pick')
+    paintRef.current = {
+      mode,
+      visited: new Set([startKey]),
       pointerId: e.pointerId,
-      active: false,
-    })
+    }
   }
 
   const handleCellPointerMove = (e: ReactPointerEvent<SVGElement>) => {
-    if (!marquee) return
-    if (e.pointerId !== marquee.pointerId) return
+    const paint = paintRef.current
+    if (!paint || e.pointerId !== paint.pointerId) return
     const p = toImagePx(e)
     if (!p) return
-    const dx = p.x - marquee.startImg.x
-    const dy = p.y - marquee.startImg.y
-    const moved = Math.hypot(dx, dy) > MARQUEE_THRESHOLD_PX
-    setMarquee({ ...marquee, currentImg: p, active: marquee.active || moved })
+    const c = cellAt(p)
+    if (!c) return
+    const k = cellKey(c.row, c.col)
+    if (paint.visited.has(k)) return
+    paint.visited.add(k)
+    onCellSet(c.row, c.col, paint.mode === 'pick')
   }
 
-  const handleCellPointerUp = (row: number, col: number, e: ReactPointerEvent<SVGElement>) => {
-    if (!marquee) return
+  const handleCellPointerUp = (_row: number, _col: number, e: ReactPointerEvent<SVGElement>) => {
+    const paint = paintRef.current
+    if (!paint) return
     if (e.currentTarget.hasPointerCapture(e.pointerId)) {
       e.currentTarget.releasePointerCapture(e.pointerId)
     }
-    if (!marquee.active) {
-      // Treat as a single-click toggle on the originating cell.
-      onPickToggle(marquee.startCell.row, marquee.startCell.col, e.shiftKey)
-    } else {
-      const endCell = cellAt(marquee.currentImg) ?? { row, col }
-      const rMin = Math.min(marquee.startCell.row, endCell.row)
-      const rMax = Math.max(marquee.startCell.row, endCell.row)
-      const cMin = Math.min(marquee.startCell.col, endCell.col)
-      const cMax = Math.max(marquee.startCell.col, endCell.col)
-      if (onPickRange) {
-        onPickRange(rMin, rMax, cMin, cMax)
-      } else {
-        // Fallback: synthesise toggles for each cell in the range.
-        for (let r = rMin; r <= rMax; r++) {
-          for (let c = cMin; c <= cMax; c++) onPickToggle(r, c, true)
-        }
-      }
-    }
-    setMarquee(null)
+    paintRef.current = null
   }
 
   const handleCellPointerCancel = () => {
-    setMarquee(null)
+    paintRef.current = null
   }
-
-  // Marquee preview rect bounds (in image-px) for the in-progress drag.
-  const marqueeRect = marquee && marquee.active
-    ? {
-        x: Math.min(marquee.startImg.x, marquee.currentImg.x),
-        y: Math.min(marquee.startImg.y, marquee.currentImg.y),
-        w: Math.abs(marquee.currentImg.x - marquee.startImg.x),
-        h: Math.abs(marquee.currentImg.y - marquee.startImg.y),
-      }
-    : null
 
   return (
     <svg
@@ -344,24 +322,6 @@ export function GridSliceOverlay({
           )
         }),
       )}
-
-      {/* Marquee selection preview — drawn above cells, below grid lines so
-          the user can still see where the lines fall during a drag. */}
-      {marqueeRect ? (
-        <rect
-          x={marqueeRect.x}
-          y={marqueeRect.y}
-          width={marqueeRect.w}
-          height={marqueeRect.h}
-          fill="rgba(255, 204, 0, 0.08)"
-          stroke={DEFAULTS.pickStroke}
-          strokeWidth={1}
-          strokeDasharray="3 3"
-          vectorEffect="non-scaling-stroke"
-          shapeRendering="crispEdges"
-          style={{ pointerEvents: 'none' }}
-        />
-      ) : null}
 
       {/* Vertical (column) lines — there are cols + 1. */}
       {grid.colEdges.map((x, i) => {
