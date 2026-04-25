@@ -327,6 +327,23 @@ const s = stylex.create({
     color: vscode.fg,
     borderColor: vscode.panelBorder,
   },
+  // Right-side panel column — holds Frames + active tool panel(s).
+  sidebarStack: {
+    display: 'grid',
+    minHeight: 0,
+    height: '100%',
+  },
+  sidebarRows: (rows: string) => ({ gridTemplateRows: rows }),
+  splitter: {
+    height: 4,
+    cursor: 'row-resize',
+    backgroundColor: {
+      default: 'transparent',
+      ':hover': vscode.focusRing,
+    },
+    transitionProperty: 'background-color',
+    transitionDuration: '120ms',
+  },
 })
 
 export function App() {
@@ -338,6 +355,11 @@ export function App() {
   const [prefixDraft, setPrefixDraft] = useState('')
   const [imageSize, setImageSize] = useState<{ w: number; h: number } | null>(null)
   const [mode, setMode] = useState<EditorMode>({ kind: 'normal' })
+  // Fraction of the right sidebar height taken by the Frames panel when a
+  // tool panel is active below it. Persisted in component state only; resets
+  // to default on remount.
+  const [framesFrac, setFramesFrac] = useState(0.5)
+  const sidebarRef = useRef<HTMLDivElement>(null)
   const [saveStatus, setSaveStatus] = useState<
     | { kind: 'idle' }
     | { kind: 'saving' }
@@ -557,14 +579,15 @@ export function App() {
     [updateSlice],
   )
 
+  // Commit picked cells as named rects but STAY in slice mode so the user
+  // can mark out additional ranges without re-entering the tool. Picks
+  // clear after commit; the grid + prefix persist so subsequent commits
+  // pick up where the last one left off.
   const commitSlice = useCallback(() => {
     if (mode.kind !== 'slicing') return
     const { state } = mode
     const prefix = state.prefix.trim()
     if (prefix === '' || state.picked.size === 0) return
-    // Picked cells in reading order — for a grid this is just (row, col)
-    // sorted lexicographically. The existing readingOrder helper does extra
-    // y-tolerance work that's unnecessary here.
     const ordered = [...state.picked]
       .map((k) => {
         const [r, c] = k.split(',').map(Number) as [number, number]
@@ -577,8 +600,8 @@ export function App() {
     })
     setRects((prev) => [...prev, ...newRects])
     setSelectedIds(new Set(newRects.map((r) => r.id)))
-    setMode({ kind: 'normal' })
-  }, [mode])
+    updateSlice((prev) => ({ ...prev, picked: new Set() }))
+  }, [mode, updateSlice])
 
   const slicing = mode.kind === 'slicing'
   const sliceCanCommit =
@@ -774,25 +797,17 @@ export function App() {
           </div>
         </Panel>
 
-        <Panel
-          title={
-            slicing
-              ? `Slice (${mode.state.picked.size} picked)`
-              : `Frames (${rects.length}${selectedIds.size > 0 ? ` · ${selectedIds.size} sel` : ''})`
-          }
+        <div
+          ref={sidebarRef}
+          {...stylex.props(
+            s.sidebarStack,
+            s.sidebarRows(slicing ? `${framesFrac}fr 4px ${1 - framesFrac}fr` : '1fr'),
+          )}
         >
-          {mode.kind === 'slicing' ? (
-            <SliceConfigPanel
-              state={mode.state}
-              onParamsChange={updateSliceParams}
-              onPrefixChange={(prefix) => updateSlice((p) => ({ ...p, prefix }))}
-              canCommit={sliceCanCommit}
-              onCommit={commitSlice}
-              onCancel={exitSlice}
-            />
-          ) : null}
-
-          {!slicing && renameMode.kind === 'prefix' ? (
+        <Panel
+          title={`Frames (${rects.length}${selectedIds.size > 0 ? ` · ${selectedIds.size} sel` : ''})`}
+        >
+          {renameMode.kind === 'prefix' ? (
             <PrefixRenameBar
               initial={prefixDraft}
               count={renameMode.ids.length}
@@ -804,12 +819,18 @@ export function App() {
             />
           ) : null}
 
-          {!slicing && rects.length === 0 ? (
+          {rects.length === 0 ? (
             <div {...stylex.props(s.emptyState)}>
-              Draw rects with the <i className="codicon codicon-add" /> tool{' '}
-              <span {...stylex.props(s.hintDim)}>(R)</span>.
+              {slicing
+                ? 'No frames yet. Pick cells in the Slice panel and Commit to add them.'
+                : (
+                  <>
+                    Draw rects with the <i className="codicon codicon-add" /> tool{' '}
+                    <span {...stylex.props(s.hintDim)}>(R)</span>.
+                  </>
+                )}
             </div>
-          ) : !slicing ? (
+          ) : (
             <ul {...stylex.props(s.frameList)}>
               {rects.map((r, i) => {
                 const sel = selectedIds.has(r.id)
@@ -862,8 +883,33 @@ export function App() {
                 )
               })}
             </ul>
-          ) : null}
+          )}
         </Panel>
+
+        {slicing ? (
+          <>
+            <Splitter
+              onDrag={(clientY) => {
+                const el = sidebarRef.current
+                if (!el) return
+                const rect = el.getBoundingClientRect()
+                const f = (clientY - rect.top) / rect.height
+                setFramesFrac(Math.max(0.15, Math.min(0.85, f)))
+              }}
+            />
+            <Panel title={`Slice (${mode.state.picked.size} picked)`}>
+              <SliceConfigPanel
+                state={mode.state}
+                onParamsChange={updateSliceParams}
+                onPrefixChange={(prefix) => updateSlice((p) => ({ ...p, prefix }))}
+                canCommit={sliceCanCommit}
+                onCommit={commitSlice}
+                onCancel={exitSlice}
+              />
+            </Panel>
+          </>
+        ) : null}
+        </div>
       </div>
       <SaveStatusLine status={saveStatus} />
       <DevReloadToast />
@@ -1013,6 +1059,34 @@ function PrefixRenameBar({
       />
       <span {...stylex.props(s.prefixSuffix)}>{value || 'name'}_0 …</span>
     </div>
+  )
+}
+
+function Splitter({ onDrag }: { onDrag: (clientY: number) => void }) {
+  const draggingRef = useRef(false)
+  return (
+    <div
+      role="separator"
+      aria-orientation="horizontal"
+      {...stylex.props(s.splitter)}
+      onPointerDown={(e: ReactPointerEvent<HTMLDivElement>) => {
+        e.currentTarget.setPointerCapture(e.pointerId)
+        draggingRef.current = true
+      }}
+      onPointerMove={(e: ReactPointerEvent<HTMLDivElement>) => {
+        if (!draggingRef.current) return
+        onDrag(e.clientY)
+      }}
+      onPointerUp={(e: ReactPointerEvent<HTMLDivElement>) => {
+        if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+          e.currentTarget.releasePointerCapture(e.pointerId)
+        }
+        draggingRef.current = false
+      }}
+      onPointerCancel={() => {
+        draggingRef.current = false
+      }}
+    />
   )
 }
 
