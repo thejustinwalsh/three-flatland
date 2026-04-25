@@ -10,6 +10,7 @@ import {
 } from 'react'
 import { createClientBridge } from '@three-flatland/bridge/client'
 import {
+  Collapsible,
   DevReloadToast,
   Divider,
   Panel,
@@ -98,6 +99,48 @@ function isEditableTarget(t: EventTarget | null): boolean {
   if (!(t instanceof HTMLElement)) return false
   const tag = t.tagName.toLowerCase()
   return tag === 'input' || tag === 'textarea' || tag === 'select' || t.isContentEditable
+}
+
+/**
+ * Returns the prefix portion of a `<prefix>_<index>` name. Rects without
+ * the suffix (or no name at all) return null and end up in the "Unnamed"
+ * group.
+ */
+function groupKey(name: string | undefined): string | null {
+  if (!name) return null
+  const m = /^(.+)_\d+$/.exec(name)
+  return m ? m[1]! : null
+}
+
+/** Trailing numeric index from a `<prefix>_<index>` name, or 0 if absent. */
+function indexFromName(name: string | undefined): number {
+  if (!name) return 0
+  const m = /_(\d+)$/.exec(name)
+  return m ? Number(m[1]) : 0
+}
+
+type FrameGroup = { prefix: string; rects: Rect[] }
+
+function groupRectsByPrefix(rects: readonly Rect[]): { named: FrameGroup[]; singles: Rect[] } {
+  const namedMap = new Map<string, Rect[]>()
+  const singles: Rect[] = []
+  for (const r of rects) {
+    const key = groupKey(r.name)
+    if (key === null) {
+      singles.push(r)
+    } else {
+      const arr = namedMap.get(key)
+      if (arr) arr.push(r)
+      else namedMap.set(key, [r])
+    }
+  }
+  const named: FrameGroup[] = [...namedMap.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([prefix, rs]) => ({
+      prefix,
+      rects: rs.slice().sort((a, b) => indexFromName(a.name) - indexFromName(b.name)),
+    }))
+  return { named, singles }
 }
 
 /**
@@ -831,58 +874,36 @@ export function App() {
                 )}
             </div>
           ) : (
-            <ul {...stylex.props(s.frameList)}>
-              {rects.map((r, i) => {
-                const sel = selectedIds.has(r.id)
-                const editing = renameMode.kind === 'inline' && renameMode.id === r.id
-                const displayName = r.name ?? `#${i}`
-                return (
-                  <li
-                    key={r.id}
-                    onClick={(e) => {
-                      if (editing) return
-                      const next = new Set(selectedIds)
-                      if (e.shiftKey) {
-                        if (next.has(r.id)) next.delete(r.id)
-                        else next.add(r.id)
-                      } else {
-                        next.clear()
-                        next.add(r.id)
-                      }
-                      setSelectedIds(next)
-                    }}
-                    onDoubleClick={() => {
-                      setSelectedIds(new Set([r.id]))
-                      setRenameMode({ kind: 'inline', id: r.id })
-                    }}
-                    {...stylex.props(
-                      s.frameItem,
-                      sel && s.frameItemSelected,
-                      editing && s.frameItemEditing,
-                    )}
-                  >
-                    {editing ? (
-                      <InlineRenameInput
-                        initial={r.name ?? ''}
-                        placeholder={`#${i}`}
-                        onCommit={(name) => {
-                          renameRect(r.id, name)
-                          setRenameMode({ kind: 'none' })
-                        }}
-                        onCancel={() => setRenameMode({ kind: 'none' })}
-                      />
-                    ) : (
-                      <span {...stylex.props(s.frameName)}>
-                        {displayName}
-                      </span>
-                    )}
-                    <span {...stylex.props(s.frameCoords)}>
-                      {r.x},{r.y} · {r.w}×{r.h}
-                    </span>
-                  </li>
-                )
-              })}
-            </ul>
+            <FramesView
+              rects={rects}
+              selectedIds={selectedIds}
+              renameMode={renameMode}
+              onSelectRect={(id, additive) => {
+                const next = new Set(selectedIds)
+                if (additive) {
+                  if (next.has(id)) next.delete(id)
+                  else next.add(id)
+                } else {
+                  next.clear()
+                  next.add(id)
+                }
+                setSelectedIds(next)
+              }}
+              onSelectGroup={(ids, additive) => {
+                const next = additive ? new Set(selectedIds) : new Set<string>()
+                for (const id of ids) next.add(id)
+                setSelectedIds(next)
+              }}
+              onStartInlineRename={(id) => {
+                setSelectedIds(new Set([id]))
+                setRenameMode({ kind: 'inline', id })
+              }}
+              onCommitInlineRename={(id, name) => {
+                renameRect(id, name)
+                setRenameMode({ kind: 'none' })
+              }}
+              onCancelInlineRename={() => setRenameMode({ kind: 'none' })}
+            />
           )}
         </Panel>
 
@@ -1059,6 +1080,148 @@ function PrefixRenameBar({
       />
       <span {...stylex.props(s.prefixSuffix)}>{value || 'name'}_0 …</span>
     </div>
+  )
+}
+
+type FrameRowHandlers = {
+  onSelectRect: (id: string, additive: boolean) => void
+  onStartInlineRename: (id: string) => void
+  onCommitInlineRename: (id: string, name: string) => void
+  onCancelInlineRename: () => void
+}
+
+function FrameRow({
+  rect,
+  globalIndex,
+  selected,
+  editing,
+  handlers,
+}: {
+  rect: Rect
+  globalIndex: number
+  selected: boolean
+  editing: boolean
+  handlers: FrameRowHandlers
+}) {
+  const displayName = rect.name ?? `#${globalIndex}`
+  return (
+    <li
+      onClick={(e) => {
+        if (editing) return
+        handlers.onSelectRect(rect.id, e.shiftKey)
+      }}
+      onDoubleClick={() => handlers.onStartInlineRename(rect.id)}
+      {...stylex.props(s.frameItem, selected && s.frameItemSelected, editing && s.frameItemEditing)}
+    >
+      {editing ? (
+        <InlineRenameInput
+          initial={rect.name ?? ''}
+          placeholder={`#${globalIndex}`}
+          onCommit={(name) => handlers.onCommitInlineRename(rect.id, name)}
+          onCancel={handlers.onCancelInlineRename}
+        />
+      ) : (
+        <span {...stylex.props(s.frameName)}>{displayName}</span>
+      )}
+      <span {...stylex.props(s.frameCoords)}>
+        {rect.x},{rect.y} · {rect.w}×{rect.h}
+      </span>
+    </li>
+  )
+}
+
+function FramesView({
+  rects,
+  selectedIds,
+  renameMode,
+  onSelectRect,
+  onSelectGroup,
+  onStartInlineRename,
+  onCommitInlineRename,
+  onCancelInlineRename,
+}: {
+  rects: Rect[]
+  selectedIds: ReadonlySet<string>
+  renameMode: RenameMode
+  onSelectRect: (id: string, additive: boolean) => void
+  onSelectGroup: (ids: string[], additive: boolean) => void
+  onStartInlineRename: (id: string) => void
+  onCommitInlineRename: (id: string, name: string) => void
+  onCancelInlineRename: () => void
+}) {
+  const handlers: FrameRowHandlers = {
+    onSelectRect,
+    onStartInlineRename,
+    onCommitInlineRename,
+    onCancelInlineRename,
+  }
+  const indexById = useMemo(() => {
+    const m = new Map<string, number>()
+    rects.forEach((r, i) => m.set(r.id, i))
+    return m
+  }, [rects])
+  const groups = useMemo(() => groupRectsByPrefix(rects), [rects])
+  const renderList = (list: Rect[]) => (
+    <ul {...stylex.props(s.frameList)}>
+      {list.map((r) => {
+        const sel = selectedIds.has(r.id)
+        const editing = renameMode.kind === 'inline' && renameMode.id === r.id
+        return (
+          <FrameRow
+            key={r.id}
+            rect={r}
+            globalIndex={indexById.get(r.id) ?? 0}
+            selected={sel}
+            editing={editing}
+            handlers={handlers}
+          />
+        )
+      })}
+    </ul>
+  )
+  return (
+    <>
+      {groups.named.map((g) => {
+        const groupIds = g.rects.map((r) => r.id)
+        const selectedCount = groupIds.reduce((n, id) => n + (selectedIds.has(id) ? 1 : 0), 0)
+        const description =
+          selectedCount > 0
+            ? `${g.rects.length} · ${selectedCount} sel`
+            : `${g.rects.length} frame${g.rects.length === 1 ? '' : 's'}`
+        return (
+          <Collapsible
+            key={g.prefix}
+            heading={g.prefix}
+            description={description}
+            open
+            onClick={(e: React.MouseEvent) => {
+              // Shift-click on the header selects the whole group without
+              // toggling collapsed state. The Lit collapsible's own
+              // toggle still fires on plain clicks.
+              if (!e.shiftKey) return
+              e.preventDefault()
+              e.stopPropagation()
+              onSelectGroup(groupIds, false)
+            }}
+          >
+            {renderList(g.rects)}
+          </Collapsible>
+        )
+      })}
+      {groups.singles.length > 0 ? (
+        groups.named.length === 0 ? (
+          renderList(groups.singles)
+        ) : (
+          <Collapsible
+            heading="Unnamed"
+            description={`${groups.singles.length} frame${groups.singles.length === 1 ? '' : 's'}`}
+            open
+          >
+            {renderList(groups.singles)}
+          </Collapsible>
+        )
+      ) : null}
+    </>
   )
 }
 
