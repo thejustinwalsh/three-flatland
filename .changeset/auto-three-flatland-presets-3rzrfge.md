@@ -5,24 +5,27 @@
 > Branch: lighting-stochastic-adoption
 > PR: https://github.com/thejustinwalsh/three-flatland/pull/27
 
-**Lighting effects**
+### Shadow pipeline
 
-- `DefaultLightEffect` and `DirectLightEffect` now perform real SDF shadow tracing via `shadowSDF2D`; the `shadow = float(1.0)` stub is gone
-- Per-light `castsShadow` flag gates the 32-tap shadow trace in `DefaultLightEffect`; lights with `castsShadow: false` skip tracing entirely, reducing cost to O(casting lights) in dense scenes
-- Shadow trace skipped when attenuation is sub-visible (≤ 0.01), eliminating traces for near-miss contributions at the edge of the attenuation curve
-- Shadow applied after cel-band quantization: `bands` stair-steps the direct gradient while the shadow edge stays smooth; rim lighting now inherits the same per-pixel shadow ratio
-- Removed `shadowBands` / `shadowBandCurve` uniforms (obsoleted by post-quantization shadow application)
-- `DefaultLightEffect.shadowStartOffsetScale` (default 1.0) replaces the scene-wide `shadowStartOffset` as a per-instance multiplier on sprite radius
-- `shadowBias` (IQ hit epsilon) and `shadowStartOffset` (self-shadow escape) are now independent uniforms with distinct semantics
-- Spot light `normalize()` call removed from the inner per-tile loop (direction is already unit-length at upload); free ALU saving per spot fragment
-- `@three-flatland/presets` gains a `./react` subpath export
+- `DefaultLightEffect` and `DirectLightEffect` now use `shadowSDF2D` for SDF sphere-trace shadows — the `shadow = float(1.0)` stub is gone
+- `shadowStrength`, `shadowSoftness`, `shadowBias`, `shadowPixelSize` uniforms control shadow appearance
+- Shadow trace gated on: ambient check, N·L attenuation, `atten <= 0.01` threshold, and per-light `castsShadow` flag — skips expensive 32-tap trace for invisible contributions
+- Removed `shadowBands` / `shadowBandCurve` uniforms (replaced by post-quantization approach)
+- Cel-banding (`bands > 0`) now quantizes unshadowed direct light; shadow factor applied after, keeping shadow edges smooth
+- Rim lighting inherits per-pixel shadow ratio when enabled
+- `shadowStartOffsetScale` per-effect multiplier on per-instance `shadowRadius` (replaces old scene-wide `shadowStartOffset` uniform)
+- Spot light `lightDir.normalize()` removed from per-fragment loop (direction normalized at set-site)
 
-**Normal providers**
+### Fill-light system
 
-- `NormalMapProvider` migrated to typed TSL helpers (`readFlip()`, `readSystemFlags()`) — removes the `as unknown as` cast on the raw attribute read
+- `Light2D.category?: string` — assign fill lights to named buckets (hashed via djb2, cached per instance); each category gets independent tile quota and compensation
+- `Light2D.importance?: number` (default 1.0) — multiplicative bias on tile-ranking score; set high values on torches/hero lights to resist eviction by dense fill clusters
+- Per-tile fill quota: 2 fill slots per category per tile; fills only compete within their own bucket
+- Dropped per-tile `fillScale` shader multiply that caused tile-boundary brightness banding; fill lights contribute at natural intensity
 
-**Lighting providers**
+### Cleanup
 
-- Removed unused `AutoNormalProvider`, `TileNormalProvider`, `SimpleLightEffect`, `RadianceLightEffect` and stale loader stubs; codebase trimmed by ~1 500 lines
+- Removed unused `AutoNormalProvider`, `TileNormalProvider` providers
+- Added `./react` subpath export to package
 
-This release completes the first end-to-end shadow pipeline: SDF generation, per-light shadow tracing, per-sprite radius auto-sizing, and cel-shade-compatible shadow compositing all work together out of the box.
+This release delivers production-quality SDF shadow tracing with per-light control and a robust fill-light system for dense particle-light scenes.
