@@ -10,12 +10,18 @@ const s = stylex.create({
     display: 'flex',
     flexDirection: 'column',
     minHeight: 0,
+    minWidth: 0,
     backgroundColor: vscode.bg,
     color: vscode.fg,
     borderWidth: 1,
     borderStyle: 'solid',
     borderColor: vscode.panelBorder,
     borderRadius: radius.sm,
+    // Clip overflowing children to the panel rect so a scrolling body
+    // doesn't draw past the rounded corners or bleed into adjacent grid
+    // rows when this panel sits in a CSS grid (e.g. the Atlas sidebar
+    // splitter layout).
+    overflow: 'hidden',
   },
   header: {
     paddingInline: space.xl,
@@ -33,9 +39,15 @@ const s = stylex.create({
   body: {
     flex: 1,
     minHeight: 0,
+    minWidth: 0,
     display: 'flex',
     flexDirection: 'column',
     padding: space.lg,
+    // Body owns the scroll for any overflowing content. Without this,
+    // tall content (stacked collapsibles, long frame lists) overflows the
+    // panel rect into adjacent grid rows / overlays. Use both axes — long
+    // names without word-breaks would otherwise force horizontal overflow.
+    overflow: 'auto',
   },
 })
 
