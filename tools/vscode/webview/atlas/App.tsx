@@ -188,7 +188,6 @@ const s = stylex.create({
     listStyle: 'none',
     margin: 0,
     padding: 0,
-    overflowY: 'auto',
     fontFamily: vscode.monoFontFamily,
     fontSize: '12px',
   },
