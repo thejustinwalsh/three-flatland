@@ -9,7 +9,7 @@ import {
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from 'react'
-import { decodeImageData } from '@three-flatland/io'
+import { loadImage } from '@three-flatland/io'
 import { ThreeLayer } from './ThreeLayer'
 import { ViewportContext, type Viewport } from './Viewport'
 import { createCursorStore, type CursorStore } from './cursorStore'
@@ -71,22 +71,30 @@ export function CanvasStage({
     [onImageReady],
   )
 
-  // Decode the image bytes once for cursor color sampling. Runs in
-  // parallel with the three.js texture load — the canvas can render
-  // before sampling is available.
+  // Decode the image once for cursor color sampling. Uses the same
+  // `<Image>`-based load path as Three.js's TextureLoader (vscode-webview
+  // URIs play nicely with `<img>` but `fetch()` can fail for them with
+  // opaque CORS / CSP errors). Runs in parallel with the three.js
+  // texture load — the canvas can render before sampling is available.
   useEffect(() => {
     if (!imageUri) {
       setImageData(null)
       return
     }
     let cancelled = false
-    fetch(imageUri)
-      .then((r) => r.blob())
-      .then(decodeImageData)
-      .then((data) => {
-        if (!cancelled) setImageData(data)
+    loadImage(imageUri)
+      .then((img) => {
+        if (cancelled) return
+        const w = img.naturalWidth
+        const h = img.naturalHeight
+        const canvas = new OffscreenCanvas(w, h)
+        const ctx = canvas.getContext('2d')
+        if (!ctx) throw new Error('2D context unavailable for image decode')
+        ctx.drawImage(img, 0, 0)
+        setImageData(ctx.getImageData(0, 0, w, h))
       })
-      .catch(() => {
+      .catch((err) => {
+        console.error('[CanvasStage] image decode failed for cursor sampling', err)
         if (!cancelled) setImageData(null)
       })
     return () => {
