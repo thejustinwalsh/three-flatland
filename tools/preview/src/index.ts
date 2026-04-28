@@ -2,7 +2,9 @@ export {
   CanvasStage,
   useCursorStore,
   useImageData,
+  useViewportController,
   type CanvasStageProps,
+  type ViewportController,
 } from './CanvasStage'
 export { ThreeLayer, type ThreeLayerProps } from './ThreeLayer'
 export { RectOverlay, type RectOverlayProps, type Rect } from './RectOverlay'
@@ -19,3 +21,8 @@ export {
   type GridSliceOverlayProps,
 } from './GridSliceOverlay'
 export { createCursorStore, useCursor, type CursorReading, type CursorStore } from './cursorStore'
+export { connectedComponents, type DetectedRect, type CCLOptions } from './ccl'
+export {
+  AutoDetectOverlay,
+  type AutoDetectOverlayProps,
+} from './AutoDetectOverlay'
