@@ -344,9 +344,9 @@ export function RectOverlay({
   const inProgress = drag ? normalized(drag) : null
   const selectionActive = Boolean(onSelectionChange)
 
-  // ── Handle size in image-px: 8×8 squares, centered on the corner/edge ────
+  // ── Handle size in image-px: 4×4 squares, centered on the corner/edge ────
   // We keep them fixed-size in image-px so zoom doesn't shrink them to nothing.
-  const HANDLE_SIZE = 8
+  const HANDLE_SIZE = 4
 
   // ── Escape cancels any active drag ────────────────────────────────────────
   const handleKeyDown = (e: ReactKeyboardEvent<SVGSVGElement>) => {
@@ -670,10 +670,7 @@ export function RectOverlay({
                     y={hy}
                     width={HANDLE_SIZE}
                     height={HANDLE_SIZE}
-                    fill="var(--vscode-focusBorder, #007acc)"
-                    stroke="rgba(0,0,0,0.4)"
-                    strokeWidth={1}
-                    vectorEffect="non-scaling-stroke"
+                    fill={selectedColor}
                     shapeRendering="crispEdges"
                     style={{
                       pointerEvents: 'all',
