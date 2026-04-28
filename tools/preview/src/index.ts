@@ -2,7 +2,7 @@ export { CanvasStage, useCursorStore, type CanvasStageProps } from './CanvasStag
 export { ThreeLayer, type ThreeLayerProps } from './ThreeLayer'
 export { RectOverlay, type RectOverlayProps, type Rect } from './RectOverlay'
 export { SpritePreview, type SpritePreviewProps } from './SpritePreview'
-export { useViewport, ViewportContext, type Viewport } from './Viewport'
+export { useViewport, viewBoxFor, ViewportContext, type Viewport } from './Viewport'
 export { InfoPanel, type InfoPanelProps } from './InfoPanel'
 export {
   GridSliceOverlay,
