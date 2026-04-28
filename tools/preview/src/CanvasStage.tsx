@@ -535,6 +535,10 @@ export function CanvasStage({
         height: '100%',
         minHeight: 0,
         cursor: isPanning ? 'grabbing' : inPanMode ? 'grab' : undefined,
+        // Establishes a containment context so floating overlays (InfoPanel,
+        // HoverFrameChip) can use `@container (max-width: …)` queries to
+        // restack themselves when the canvas is narrow.
+        containerType: 'inline-size',
       }}
       onPointerMove={combinedPointerMove}
       onPointerLeave={handlePointerLeave}
