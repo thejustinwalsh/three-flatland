@@ -11,7 +11,7 @@ import {
 } from 'react'
 import { loadImage } from '@three-flatland/io'
 import { ThreeLayer } from './ThreeLayer'
-import { ViewportContext, type Viewport } from './Viewport'
+import { ViewportContext, viewBoxFor, type Viewport } from './Viewport'
 import { createCursorStore, type CursorStore } from './cursorStore'
 
 export type CanvasStageProps = {
@@ -65,10 +65,10 @@ export function CanvasStage({
 
   const handleReady = useCallback(
     (size: { w: number; h: number }) => {
-      setViewport({ imageW: size.w, imageH: size.h })
+      setViewport({ imageW: size.w, imageH: size.h, fitMargin })
       onImageReady?.(size)
     },
-    [onImageReady],
+    [onImageReady, fitMargin],
   )
 
   // Decode the image once for cursor color sampling. Uses the same
@@ -154,7 +154,7 @@ export function CanvasStage({
       {viewport ? (
         <svg
           ref={anchorRef}
-          viewBox={`0 0 ${viewport.imageW} ${viewport.imageH}`}
+          viewBox={viewBoxFor(viewport)}
           preserveAspectRatio="xMidYMid meet"
           style={{
             position: 'absolute',

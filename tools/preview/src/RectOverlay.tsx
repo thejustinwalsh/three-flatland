@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
-import { useViewport } from './Viewport'
+import { useViewport, viewBoxFor } from './Viewport'
 
 export type Rect = {
   id: string
@@ -205,7 +205,7 @@ export function RectOverlay({
   return (
     <svg
       ref={svgRef}
-      viewBox={`0 0 ${vp.imageW} ${vp.imageH}`}
+      viewBox={viewBoxFor(vp)}
       preserveAspectRatio="xMidYMid meet"
       style={{
         position: 'absolute',

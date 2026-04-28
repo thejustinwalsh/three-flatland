@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
-import { useViewport } from './Viewport'
+import { useViewport, viewBoxFor } from './Viewport'
 import { useCursorStore } from './CanvasStage'
 
 export type GridSpec = {
@@ -239,7 +239,7 @@ export function GridSliceOverlay({
   return (
     <svg
       ref={svgRef}
-      viewBox={`0 0 ${vp.imageW} ${vp.imageH}`}
+      viewBox={viewBoxFor(vp)}
       preserveAspectRatio="xMidYMid meet"
       style={{
         position: 'absolute',
