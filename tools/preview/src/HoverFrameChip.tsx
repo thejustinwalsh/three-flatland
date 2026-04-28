@@ -11,11 +11,23 @@ export type HoverFrameChipProps = {
   index: number | null
 }
 
+// InfoPanel is ~24px tall in monospace 11px with its xs-padding. When the
+// canvas is too narrow for the chip + InfoPanel to sit side-by-side, the
+// chip lifts above InfoPanel by this much.
+const STACK_OFFSET_PX = 24
+// Threshold at which the two floating panels would otherwise overlap.
+// Picked to comfortably fit the InfoPanel (~280px in float-rgba mode) plus
+// a typical chip width.
+const STACK_BREAKPOINT = '480px'
+
 const s = stylex.create({
   chip: {
     position: 'absolute',
     left: 0,
-    bottom: 0,
+    bottom: {
+      default: 0,
+      [`@container (max-width: ${STACK_BREAKPOINT})`]: STACK_OFFSET_PX,
+    },
     display: 'inline-flex',
     alignItems: 'center',
     gap: space.lg,
