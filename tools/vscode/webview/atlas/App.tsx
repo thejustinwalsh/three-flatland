@@ -427,6 +427,10 @@ export function App() {
   // a tiny <ViewportControllerSink> child captures it into this ref so the
   // toolbar (rendered outside CanvasStage) can call zoom/fit methods.
   const viewportControllerRef = useRef<ViewportController | null>(null)
+  // Decoded ImageData lives in CanvasStage's state; an <ImageDataSink>
+  // child surfaces it here so panels rendered in the sidebar (outside
+  // CanvasStage's provider tree) can read it.
+  const [imageData, setImageData] = useState<ImageData | null>(null)
   const [saveStatus, setSaveStatus] = useState<
     | { kind: 'idle' }
     | { kind: 'saving' }
@@ -998,6 +1002,7 @@ export function App() {
                 />
               ) : null}
               <ViewportControllerSink controllerRef={viewportControllerRef} />
+              <ImageDataSink onChange={setImageData} />
               <InfoPanel />
             </CanvasStage>
           </div>
@@ -1097,6 +1102,7 @@ export function App() {
               <Panel title={`Auto Detect (${mode.state.picked.size}/${mode.state.detected.length} picked)`}>
                 <AutoDetectConfigPanel
                   state={mode.state}
+                  imageData={imageData}
                   onOptionChange={setAutoDetectOption}
                   onPrefixChange={setAutoDetectPrefix}
                   onDetect={(detected) =>
@@ -1424,8 +1430,22 @@ function ViewportControllerSink({
   return null
 }
 
+/**
+ * Mirrors CanvasStage's decoded ImageData into App state so sidebar
+ * panels (which sit outside CanvasStage's provider tree) can read it.
+ * Renders nothing.
+ */
+function ImageDataSink({ onChange }: { onChange: (data: ImageData | null) => void }) {
+  const data = useImageData()
+  useEffect(() => {
+    onChange(data)
+  }, [data, onChange])
+  return null
+}
+
 function AutoDetectConfigPanel({
   state,
+  imageData,
   onOptionChange,
   onPrefixChange,
   onDetect,
@@ -1434,6 +1454,8 @@ function AutoDetectConfigPanel({
   onCancel,
 }: {
   state: AutoDetectState
+  /** Decoded image pixels — null until the image finishes decoding. */
+  imageData: ImageData | null
   onOptionChange: <K extends keyof Required<CCLOptions>>(
     key: K,
     value: Required<CCLOptions>[K],
@@ -1444,7 +1466,6 @@ function AutoDetectConfigPanel({
   onCommit: () => void
   onCancel: () => void
 }) {
-  const imageData = useImageData()
   const [running, setRunning] = useState(false)
 
   const detect = () => {
@@ -1588,14 +1609,32 @@ function SliceNumField({
   min: number
   onChange: (n: number) => void
 }) {
+  // Hold the editing text separately from the committed value so the user
+  // can backspace through digits or briefly clear the field without
+  // hitting the clamp on every keystroke. Commit only when the text
+  // parses to a valid in-range integer; snap to min on blur if invalid.
+  const [text, setText] = useState(() => String(value))
+  useEffect(() => {
+    setText(String(value))
+  }, [value])
   return (
     <input
       type="number"
       min={min}
-      value={value}
+      value={text}
       onChange={(e: ChangeEvent<HTMLInputElement>) => {
-        const n = Number(e.target.value)
-        if (Number.isFinite(n)) onChange(Math.max(min, Math.round(n)))
+        const v = e.target.value
+        setText(v)
+        if (v === '' || v === '-') return // mid-edit; wait for a valid value
+        const n = Number(v)
+        if (Number.isFinite(n) && n >= min) onChange(Math.round(n))
+      }}
+      onBlur={() => {
+        const n = Number(text)
+        if (!Number.isFinite(n) || n < min) {
+          onChange(min)
+          setText(String(min))
+        }
       }}
       {...stylex.props(s.sliceNumInput)}
     />
