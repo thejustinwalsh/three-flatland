@@ -8,8 +8,10 @@ import { useCursor, type CursorReading } from './cursorStore'
 import { useViewport } from './Viewport'
 
 type CoordMode = 'px' | 'uv+' | 'uv-'
+type ColorMode = 'hex' | 'rgba' | 'float'
 
 const NEXT: Record<CoordMode, CoordMode> = { 'px': 'uv+', 'uv+': 'uv-', 'uv-': 'px' }
+const NEXT_COLOR: Record<ColorMode, ColorMode> = { 'hex': 'rgba', 'rgba': 'float', 'float': 'hex' }
 
 const s = stylex.create({
   bar: {
@@ -46,9 +48,30 @@ const s = stylex.create({
     borderStyle: 'solid',
     borderColor: vscode.panelBorder,
     borderRadius: radius.sm,
+    flexShrink: 0,
   },
   swatchFill: (color: string) => ({ backgroundColor: color }),
-  hex: { opacity: 0.8 },
+  clickable: {
+    cursor: 'pointer',
+    pointerEvents: 'auto',
+    userSelect: 'none',
+    paddingInline: space.sm,
+    paddingBlock: space.xs,
+    borderRadius: radius.sm,
+    backgroundColor: {
+      default: 'transparent',
+      ':hover': vscode.bg,
+    },
+  },
+  // Per-mode min-width reservations for the color display.
+  // Sized to the longest possible value in each mode so the panel
+  // never shifts while the cursor is scanning — only reflows on a click.
+  colorHex: { minWidth: '9ch' },   // #rrggbbaa = 9 chars
+  colorRgba: { minWidth: '18ch' }, // 255, 255, 255, 255 = 18 chars
+  colorFloat: { minWidth: '26ch' }, // 1.000, 1.000, 1.000, 1.000 = 26 chars
+  // Per-mode min-width reservations for the coord display.
+  coordPx: { minWidth: '14ch' },  // px: 9999, 9999 = 14 chars
+  coordUv: { minWidth: '17ch' },  // uv+: 1.000, 1.000 = 17 chars
   coord: {
     cursor: 'pointer',
     pointerEvents: 'auto',
@@ -68,10 +91,22 @@ function hex2(n: number): string {
   return n.toString(16).padStart(2, '0')
 }
 
-function formatColor(rgba: [number, number, number, number] | null): string {
+function formatColor(
+  rgba: [number, number, number, number] | null,
+  mode: ColorMode,
+): string {
   if (!rgba) return '—'
   const [r, g, b, a] = rgba
-  return a < 255 ? `#${hex2(r)}${hex2(g)}${hex2(b)}${hex2(a)}` : `#${hex2(r)}${hex2(g)}${hex2(b)}`
+  if (mode === 'hex') {
+    return a < 255
+      ? `#${hex2(r)}${hex2(g)}${hex2(b)}${hex2(a)}`
+      : `#${hex2(r)}${hex2(g)}${hex2(b)}`
+  }
+  if (mode === 'rgba') {
+    return `${r}, ${g}, ${b}, ${a}`
+  }
+  // float
+  return [r, g, b, a].map((v) => (v / 255).toFixed(3)).join(', ')
 }
 
 function formatCoord(reading: CursorReading | null, mode: CoordMode, w: number, h: number): string {
@@ -89,9 +124,10 @@ export type InfoPanelProps = Record<string, never>
 
 /**
  * Bottom-of-viewport status bar showing the color and coordinates under
- * the cursor. Click the coord display to cycle px → uv+ → uv-. Reads from
- * the `<CanvasStage>` cursor store + viewport context; renders nothing
- * until the viewport (image dimensions) is known.
+ * the cursor. Click the color display to cycle hex → rgba → float rgba.
+ * Click the coord display to cycle px → uv+ → uv-. Reads from the
+ * `<CanvasStage>` cursor store + viewport context; renders nothing until
+ * the viewport (image dimensions) is known.
  *
  * Mount inside `<CanvasStage>` as a child so it has access to both
  * contexts and positions absolutely against the stage.
@@ -100,11 +136,16 @@ export function InfoPanel(_: InfoPanelProps = {} as InfoPanelProps) {
   const store = useCursorStore()
   const reading = useCursor(store)
   const vp = useViewport()
-  const [mode, setMode] = useState<CoordMode>('px')
+  const [coordMode, setCoordMode] = useState<CoordMode>('px')
+  const [colorMode, setColorMode] = useState<ColorMode>('hex')
 
   if (!vp) return null
 
-  const cycle = () => setMode((m) => NEXT[m])
+  const cycleCoord = () => setCoordMode((m) => NEXT[m])
+  const cycleColor = () => setColorMode((m) => NEXT_COLOR[m])
+
+  const colorMinWidth = colorMode === 'hex' ? s.colorHex : colorMode === 'rgba' ? s.colorRgba : s.colorFloat
+  const coordMinWidth = coordMode === 'px' ? s.coordPx : s.coordUv
 
   return (
     <div {...stylex.props(s.bar)}>
@@ -119,10 +160,20 @@ export function InfoPanel(_: InfoPanelProps = {} as InfoPanelProps) {
             ),
           )}
         />
-        <span {...stylex.props(s.hex, !reading && s.empty)}>{formatColor(reading?.rgba ?? null)}</span>
+        <span
+          {...stylex.props(s.clickable, colorMinWidth, !reading && s.empty)}
+          onClick={cycleColor}
+          title="Cycle hex → rgba → float rgba"
+        >
+          {formatColor(reading?.rgba ?? null, colorMode)}
+        </span>
       </span>
-      <span {...stylex.props(s.coord, !reading && s.empty)} onClick={cycle} title="Cycle px → uv+ → uv-">
-        {formatCoord(reading, mode, vp.imageW, vp.imageH)}
+      <span
+        {...stylex.props(s.coord, coordMinWidth, !reading && s.empty)}
+        onClick={cycleCoord}
+        title="Cycle px → uv+ → uv-"
+      >
+        {formatCoord(reading, coordMode, vp.imageW, vp.imageH)}
       </span>
     </div>
   )
