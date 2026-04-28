@@ -283,6 +283,13 @@ const s = stylex.create({
     alignItems: 'center',
     gap: space.md,
   },
+  frameItemLeft: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: space.md,
+    minWidth: 0,
+    flex: 1,
+  },
   thumb: {
     width: 28,
     height: 28,
@@ -313,6 +320,7 @@ const s = stylex.create({
     overflow: 'hidden',
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
+    minWidth: 0,
   },
   frameCoords: { opacity: 0.7, flex: '0 0 auto' },
   inlineRenameInput: {
@@ -1387,24 +1395,26 @@ function FrameRow({
       onDoubleClick={() => handlers.onStartInlineRename(rect.id)}
       {...stylex.props(s.frameItem, selected && s.frameItemSelected, editing && s.frameItemEditing)}
     >
-      {thumbBg ? (
-        <span
-          aria-hidden="true"
-          {...stylex.props(s.thumb, s.thumbBg(thumbBg.bgImage, thumbBg.bgSize, thumbBg.bgPos))}
-        />
-      ) : (
-        <span aria-hidden="true" {...stylex.props(s.thumb)} />
-      )}
-      {editing ? (
-        <InlineRenameInput
-          initial={rect.name ?? ''}
-          placeholder={`#${globalIndex}`}
-          onCommit={(name) => handlers.onCommitInlineRename(rect.id, name)}
-          onCancel={handlers.onCancelInlineRename}
-        />
-      ) : (
-        <span {...stylex.props(s.frameName)}>{displayName}</span>
-      )}
+      <span {...stylex.props(s.frameItemLeft)}>
+        {thumbBg ? (
+          <span
+            aria-hidden="true"
+            {...stylex.props(s.thumb, s.thumbBg(thumbBg.bgImage, thumbBg.bgSize, thumbBg.bgPos))}
+          />
+        ) : (
+          <span aria-hidden="true" {...stylex.props(s.thumb)} />
+        )}
+        {editing ? (
+          <InlineRenameInput
+            initial={rect.name ?? ''}
+            placeholder={`#${globalIndex}`}
+            onCommit={(name) => handlers.onCommitInlineRename(rect.id, name)}
+            onCancel={handlers.onCancelInlineRename}
+          />
+        ) : (
+          <span {...stylex.props(s.frameName)}>{displayName}</span>
+        )}
+      </span>
       <span {...stylex.props(s.frameCoords)}>
         {rect.x},{rect.y} · {rect.w}×{rect.h}
       </span>
