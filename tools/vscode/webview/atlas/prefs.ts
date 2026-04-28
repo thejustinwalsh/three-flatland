@@ -30,6 +30,16 @@ export type AtlasPrefs = {
    * zoom is the more flexible default.
    */
   pixelSnapZoom: boolean
+  /**
+   * Whether the animation drawer (inside the Atlas pane) is expanded.
+   * Defaults true once the sidecar contains animations; the runtime
+   * resets it to true on first load if `meta.animations` has entries.
+   */
+  animDrawerExpanded: boolean
+  /** Drawer body height in pixels when expanded. Persisted across sessions. */
+  animDrawerHeight: number
+  /** Last corner the floating preview PIP was parked in. */
+  animPipCorner: 'tl' | 'tr' | 'br' | 'bl'
 }
 
 const DEFAULTS: AtlasPrefs = {
@@ -41,6 +51,9 @@ const DEFAULTS: AtlasPrefs = {
   showHoverChip: true,
   showInfoPanel: true,
   pixelSnapZoom: false,
+  animDrawerExpanded: false,
+  animDrawerHeight: 140,
+  animPipCorner: 'br',
 }
 
 const STORAGE_KEY = 'fl-atlas-prefs:v1'
