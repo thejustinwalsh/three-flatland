@@ -32,8 +32,9 @@ export type AtlasPrefs = {
   pixelSnapZoom: boolean
   /**
    * Whether the animation drawer (inside the Atlas pane) is expanded.
-   * Defaults true once the sidecar contains animations; the runtime
-   * resets it to true on first load if `meta.animations` has entries.
+   * Persisted across sessions. The drawer mount auto-promotes this to
+   * true the first time a sidecar with non-empty `meta.animations`
+   * loads (see `tools/vscode/webview/atlas/App.tsx`).
    */
   animDrawerExpanded: boolean
   /** Drawer body height in pixels when expanded. Persisted across sessions. */
