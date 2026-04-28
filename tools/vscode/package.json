@@ -33,14 +33,14 @@
       "explorer/context": [
         {
           "command": "threeFlatland.atlas.openEditor",
-          "when": "resourceExtname == .png",
+          "when": "resourceExtname == .png || resourceFilename =~ /\\.atlas\\.json$/",
           "group": "navigation@10"
         }
       ],
       "commandPalette": [
         {
           "command": "threeFlatland.atlas.openEditor",
-          "when": "resourceExtname == .png"
+          "when": "resourceExtname == .png || resourceFilename =~ /\\.atlas\\.json$/"
         }
       ]
     }
