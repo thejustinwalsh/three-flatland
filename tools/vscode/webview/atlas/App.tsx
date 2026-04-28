@@ -302,6 +302,12 @@ const s = stylex.create({
     borderRadius: radius.sm,
     imageRendering: 'pixelated',
   },
+  collapsibleMeta: {
+    color: vscode.descriptionFg,
+    fontSize: '11px',
+    whiteSpace: 'nowrap',
+    paddingInline: space.sm,
+  },
   thumbBg: (
     bgImage: string,
     bgSize: string,
@@ -1514,7 +1520,6 @@ function FramesView({
           <Collapsible
             key={g.prefix}
             heading={g.prefix}
-            description={description}
             open
             onClick={(e: React.MouseEvent) => {
               // Shift-click on the header selects the whole group without
@@ -1526,6 +1531,9 @@ function FramesView({
               onSelectGroup(groupIds, false)
             }}
           >
+            <span slot="decorations" {...stylex.props(s.collapsibleMeta)}>
+              {description}
+            </span>
             {renderList(g.rects)}
           </Collapsible>
         )
@@ -1534,11 +1542,10 @@ function FramesView({
         groups.named.length === 0 ? (
           renderList(groups.singles)
         ) : (
-          <Collapsible
-            heading="Unnamed"
-            description={`${groups.singles.length} frame${groups.singles.length === 1 ? '' : 's'}`}
-            open
-          >
+          <Collapsible heading="Unnamed" open>
+            <span slot="decorations" {...stylex.props(s.collapsibleMeta)}>
+              {`${groups.singles.length} frame${groups.singles.length === 1 ? '' : 's'}`}
+            </span>
             {renderList(groups.singles)}
           </Collapsible>
         )
