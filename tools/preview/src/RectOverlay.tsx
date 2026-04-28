@@ -686,6 +686,11 @@ export function RectOverlay({
                 const r = normalized(d)
                 if (r.w >= 2 && r.h >= 2) {
                   onRectCreate({ id: crypto.randomUUID(), ...r })
+                } else if (selectionActive) {
+                  // Tiny / no-drag click on empty in-image space →
+                  // treat as a deselect so the user can clear the
+                  // selection without leaving the rect tool.
+                  onSelectionChange?.(new Set())
                 }
               }
               return null

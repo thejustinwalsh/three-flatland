@@ -112,12 +112,98 @@ const PIXEL_PERFECT_SCALES = [
 ] as const
 
 /**
- * Given a target zoom and the current canvas + image dimensions, return
- * the zoom that makes the limiting-axis scale equal the nearest pixel-
- * perfect ratio. Compares in log-space so steps are perceptually even
- * across the full zoom range.
+ * Compute the limiting-axis screen-px:image-px ratio at a given zoom.
+ * Mirrors the SVG `preserveAspectRatio="xMidYMid meet"` math: whichever
+ * axis fits less tightly determines the on-screen pixel size.
  */
-function snapZoomToPixelPerfect(
+function scaleAtZoom(
+  zoom: number,
+  imageW: number,
+  imageH: number,
+  fitMargin: number,
+  canvasW: number,
+  canvasH: number,
+): { scale: number; limitingByW: boolean } {
+  const scaleW = (canvasW * zoom) / (imageW * fitMargin)
+  const scaleH = (canvasH * zoom) / (imageH * fitMargin)
+  const limitingByW = scaleW <= scaleH
+  return { scale: limitingByW ? scaleW : scaleH, limitingByW }
+}
+
+/** Inverse of scaleAtZoom — given a target scale, what zoom produces it? */
+function zoomForScale(
+  scale: number,
+  limitingByW: boolean,
+  imageW: number,
+  imageH: number,
+  fitMargin: number,
+  canvasW: number,
+  canvasH: number,
+): number {
+  return limitingByW
+    ? (scale * imageW * fitMargin) / canvasW
+    : (scale * imageH * fitMargin) / canvasH
+}
+
+/**
+ * Step the zoom to the NEXT pixel-perfect ratio in the given direction
+ * (+1 zooms in, -1 zooms out). Used by the wheel + zoomIn/Out paths so
+ * each input event reliably advances one pixel-perfect step instead of
+ * snapping back to the same level.
+ */
+function snapZoomStep(
+  currentZoom: number,
+  direction: 1 | -1,
+  imageW: number,
+  imageH: number,
+  fitMargin: number,
+  canvasW: number,
+  canvasH: number,
+): number {
+  if (canvasW <= 0 || canvasH <= 0) return currentZoom
+  const { scale, limitingByW } = scaleAtZoom(currentZoom, imageW, imageH, fitMargin, canvasW, canvasH)
+  if (scale <= 0) return currentZoom
+  // Use a small tolerance against the current scale so a tiny float drift
+  // doesn't trap us on the same step (e.g. scale = 1 + 1e-9 wouldn't
+  // qualify as ">1" and we'd never advance).
+  let target: number | null = null
+  if (direction === 1) {
+    for (const lv of PIXEL_PERFECT_SCALES) {
+      if (lv > scale * 1.001) { target = lv; break }
+    }
+  } else {
+    for (let i = PIXEL_PERFECT_SCALES.length - 1; i >= 0; i--) {
+      const lv = PIXEL_PERFECT_SCALES[i]!
+      if (lv < scale / 1.001) { target = lv; break }
+    }
+  }
+  if (target == null) return currentZoom // already at limit
+  return zoomForScale(target, limitingByW, imageW, imageH, fitMargin, canvasW, canvasH)
+}
+
+/**
+ * Format a pixel-perfect scale as a compact ratio suffix:
+ *   2 → "2×",  4 → "4×",  0.5 → "1/2×",  1/3 → "1/3×".
+ * Returns null when the scale isn't close to any known level.
+ */
+function formatPixelRatio(scale: number): string | null {
+  for (const lv of PIXEL_PERFECT_SCALES) {
+    if (Math.abs(scale - lv) / lv < 0.01) {
+      if (lv >= 1) return `${Math.round(lv)}×`
+      const inv = 1 / lv
+      return `1/${Math.round(inv)}×`
+    }
+  }
+  return null
+}
+
+/**
+ * Snap to the NEAREST pixel-perfect ratio. Used when the controller's
+ * setZoom() lands on an arbitrary value — we still want it to settle
+ * on a pixel-perfect step when the pref is on. Compares in log-space
+ * so the choice is perceptually even.
+ */
+function snapZoomNearest(
   rawZoom: number,
   imageW: number,
   imageH: number,
@@ -126,23 +212,15 @@ function snapZoomToPixelPerfect(
   canvasH: number,
 ): number {
   if (canvasW <= 0 || canvasH <= 0) return rawZoom
-  const scaleW = (canvasW * rawZoom) / (imageW * fitMargin)
-  const scaleH = (canvasH * rawZoom) / (imageH * fitMargin)
-  const limitingByW = scaleW <= scaleH
-  const currentScale = limitingByW ? scaleW : scaleH
-  if (currentScale <= 0) return rawZoom
-  let bestScale = currentScale
+  const { scale, limitingByW } = scaleAtZoom(rawZoom, imageW, imageH, fitMargin, canvasW, canvasH)
+  if (scale <= 0) return rawZoom
+  let bestScale = scale
   let bestDist = Infinity
   for (const lv of PIXEL_PERFECT_SCALES) {
-    const d = Math.abs(Math.log(lv / currentScale))
-    if (d < bestDist) {
-      bestDist = d
-      bestScale = lv
-    }
+    const d = Math.abs(Math.log(lv / scale))
+    if (d < bestDist) { bestDist = d; bestScale = lv }
   }
-  return limitingByW
-    ? (bestScale * imageW * fitMargin) / canvasW
-    : (bestScale * imageH * fitMargin) / canvasH
+  return zoomForScale(bestScale, limitingByW, imageW, imageH, fitMargin, canvasW, canvasH)
 }
 
 /**
@@ -261,26 +339,36 @@ export function CanvasStage({
     return { ...baseViewport, zoom, panX, panY }
   }, [baseViewport, zoom, panX, panY])
 
-  // Snap a candidate zoom to the nearest pixel-perfect ratio, but only
-  // when the user has opted in via the prop. Reads canvas + viewport
-  // through refs so it stays callable from any closure without re-binding.
-  const maybeSnap = useCallback((z: number): number => {
-    if (!pixelSnapZoomRef.current) return z
+  // Resolve a step-snap (wheel/zoomIn/Out) when pixel-snap is on,
+  // otherwise return the raw target. Direction: +1 zoom in, -1 zoom out.
+  const stepSnap = useCallback((current: number, direction: 1 | -1, raw: number): number => {
+    if (!pixelSnapZoomRef.current) return raw
     const el = wrapperRef.current
     const vp = viewportRef.current
-    if (!el || !vp) return z
-    return snapZoomToPixelPerfect(z, vp.imageW, vp.imageH, vp.fitMargin, el.clientWidth, el.clientHeight)
+    if (!el || !vp) return raw
+    return snapZoomStep(current, direction, vp.imageW, vp.imageH, vp.fitMargin, el.clientWidth, el.clientHeight)
   }, [])
 
-  // Helper: apply new zoom/pan from ref-based current values (for handlers)
+  // Resolve a nearest-snap (direct setZoom) when pixel-snap is on.
+  const nearestSnap = useCallback((raw: number): number => {
+    if (!pixelSnapZoomRef.current) return raw
+    const el = wrapperRef.current
+    const vp = viewportRef.current
+    if (!el || !vp) return raw
+    return snapZoomNearest(raw, vp.imageW, vp.imageH, vp.fitMargin, el.clientWidth, el.clientHeight)
+  }, [])
+
+  // Helper: apply new zoom/pan from ref-based current values (for handlers).
+  // No snap here — callers decide which snap variant (step vs nearest) is
+  // appropriate before passing the target zoom in.
   const applyZoom = useCallback((newZoom: number, newPanX: number, newPanY: number) => {
-    const clamped = clampZoom(maybeSnap(newZoom))
+    const clamped = clampZoom(newZoom)
     setZoomState(clamped)
     // We need the base viewport dimensions to clamp pan — use ref-cloned inline
     // since we only pan-clamp after baseViewport is set.
     setPanXState(newPanX)
     setPanYState(newPanY)
-  }, [maybeSnap])
+  }, [])
 
   // Clamp pan against current viewport when both are available. This runs
   // after every render but is cheap (just two Math.max/min calls).
@@ -393,7 +481,9 @@ export function CanvasStage({
       // Smooth continuous zoom: exp(-deltaY * k) gives ~1.1 per notch at 100px/notch
       const factor = Math.exp(-e.deltaY * 0.001)
       const oldZoom = zoomRef.current
-      const newZoom = clampZoom(oldZoom * factor)
+      const direction: 1 | -1 = e.deltaY < 0 ? 1 : -1
+      const rawNext = oldZoom * factor
+      const newZoom = clampZoom(stepSnap(oldZoom, direction, rawNext))
 
       // Find the image-pixel coord under the cursor
       const pt = svg.createSVGPoint()
@@ -425,7 +515,7 @@ export function CanvasStage({
       const [cx, cy] = clampPan(newPanX, newPanY, vpForClamp)
       applyZoom(newZoom, cx, cy)
     },
-    [applyZoom],
+    [applyZoom, stepSnap],
   )
 
   // -------------------------------------------------------------------------
@@ -555,9 +645,11 @@ export function CanvasStage({
   // -------------------------------------------------------------------------
 
   const controller = useMemo<ViewportController>(() => {
-    const doZoomAroundCenter = (factor: number) => {
+    const doStep = (direction: 1 | -1, fallbackFactor: number) => {
       setZoomState((prev) => {
-        const next = clampZoom(prev * factor)
+        // Step-snap when pixel-perfect zoom is on; otherwise multiplicative.
+        const raw = prev * fallbackFactor
+        const next = clampZoom(stepSnap(prev, direction, raw))
         // Re-clamp pan with new zoom
         const vp = viewportRef.current
         if (vp) {
@@ -573,15 +665,15 @@ export function CanvasStage({
       get zoom() { return zoomRef.current },
       get panX() { return panXRef.current },
       get panY() { return panYRef.current },
-      zoomIn() { doZoomAroundCenter(1.25) },
-      zoomOut() { doZoomAroundCenter(1 / 1.25) },
+      zoomIn() { doStep(1, 1.25) },
+      zoomOut() { doStep(-1, 1 / 1.25) },
       fitToView() {
         setZoomState(1)
         setPanXState(0)
         setPanYState(0)
       },
       setZoom(z: number) {
-        const next = clampZoom(z)
+        const next = clampZoom(nearestSnap(z))
         setZoomState(next)
         const vp = viewportRef.current
         if (vp) {
@@ -721,28 +813,11 @@ export function CanvasStage({
       </ViewportContext.Provider>
       {viewport ? (
         // Zoom badge — small monospace readout in the top-left so the
-        // user can always see the current zoom level. Sits above the
-        // overlays but is non-interactive (pointerEvents:none) so it
-        // never absorbs editor clicks.
-        <div
-          aria-hidden="true"
-          style={{
-            position: 'absolute',
-            top: 8,
-            left: 8,
-            paddingInline: 6,
-            paddingBlock: 2,
-            fontFamily: 'var(--vscode-editor-font-family, monospace)',
-            fontSize: 10,
-            color: 'var(--vscode-foreground)',
-            backgroundColor: 'rgba(0, 0, 0, 0.45)',
-            borderRadius: 4,
-            pointerEvents: 'none',
-            userSelect: 'none',
-          }}
-        >
-          {Math.round(zoom * 100)}%
-        </div>
+        // user can always see the current zoom level. Appends the
+        // image-px:screen-px ratio (e.g. "2×", "1/2×") whenever the
+        // current scale lands on a pixel-perfect step, regardless of
+        // whether snap is on.
+        <ZoomBadge zoom={zoom} viewport={viewport} wrapperRef={wrapperRef} />
       ) : null}
       {inPanMode && viewport ? (
         // Transparent capture layer above all overlays. Forces the grab/
@@ -760,6 +835,50 @@ export function CanvasStage({
           }}
         />
       ) : null}
+    </div>
+  )
+}
+
+/**
+ * Zoom indicator pinned to the top-left of the canvas. Shows zoom %
+ * always; when the current scale matches a pixel-perfect step, also
+ * shows the ratio (2×, 1/2×, …). Reads canvas dimensions from the
+ * wrapper ref at render time — close enough for this readout.
+ */
+function ZoomBadge({
+  zoom,
+  viewport,
+  wrapperRef,
+}: {
+  zoom: number
+  viewport: Viewport
+  wrapperRef: React.RefObject<HTMLDivElement | null>
+}) {
+  const el = wrapperRef.current
+  let ratio: string | null = null
+  if (el && el.clientWidth > 0 && el.clientHeight > 0) {
+    const { scale } = scaleAtZoom(zoom, viewport.imageW, viewport.imageH, viewport.fitMargin, el.clientWidth, el.clientHeight)
+    ratio = formatPixelRatio(scale)
+  }
+  return (
+    <div
+      aria-hidden="true"
+      style={{
+        position: 'absolute',
+        top: 8,
+        left: 8,
+        paddingInline: 6,
+        paddingBlock: 2,
+        fontFamily: 'var(--vscode-editor-font-family, monospace)',
+        fontSize: 10,
+        color: 'var(--vscode-foreground)',
+        backgroundColor: 'rgba(0, 0, 0, 0.6)',
+        borderRadius: 4,
+        pointerEvents: 'none',
+        userSelect: 'none',
+      }}
+    >
+      {Math.round(zoom * 100)}%{ratio != null ? ` (${ratio})` : ''}
     </div>
   )
 }
