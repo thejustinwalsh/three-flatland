@@ -1,5 +1,6 @@
 import {
   useCallback,
+  useEffect,
   useRef,
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
@@ -126,6 +127,80 @@ const HANDLE_CURSORS: Record<HandleDir, string> = {
 
 /** Distance in image-px below which a pointerdown+up is treated as a click. */
 const MOVE_THRESHOLD_PX = 3
+
+/**
+ * Resize edges within this many image-pixels of another rect's matching
+ * edge snap to it. Holding Shift bypasses (matches the snapStep convention).
+ */
+const RESIZE_SNAP_PX = 4
+
+/** Edges that a given handle direction modifies. */
+function movedEdges(dir: HandleDir): { left: boolean; right: boolean; top: boolean; bottom: boolean } {
+  return {
+    left: dir === 'nw' || dir === 'w' || dir === 'sw',
+    right: dir === 'ne' || dir === 'e' || dir === 'se',
+    top: dir === 'nw' || dir === 'n' || dir === 'ne',
+    bottom: dir === 'sw' || dir === 's' || dir === 'se',
+  }
+}
+
+/**
+ * After raw resize, pull each moved edge to the nearest matching edge of
+ * any OTHER rect within `threshold`. Mirrors how design tools nudge new
+ * geometry into alignment with neighbors. Width/height stay ≥ 1.
+ */
+function snapResizeToRectEdges(
+  next: { x: number; y: number; w: number; h: number },
+  dir: HandleDir,
+  others: readonly Rect[],
+  threshold: number,
+): { x: number; y: number; w: number; h: number } {
+  if (others.length === 0) return next
+  const moved = movedEdges(dir)
+  const xCandidates = new Set<number>()
+  const yCandidates = new Set<number>()
+  for (const r of others) {
+    xCandidates.add(r.x)
+    xCandidates.add(r.x + r.w)
+    yCandidates.add(r.y)
+    yCandidates.add(r.y + r.h)
+  }
+  const snap1d = (v: number, candidates: Iterable<number>) => {
+    let best = v
+    let bestDist = threshold + 0.5 // strict <= against threshold
+    for (const c of candidates) {
+      const d = Math.abs(c - v)
+      if (d < bestDist) {
+        bestDist = d
+        best = c
+      }
+    }
+    return best
+  }
+
+  let { x, y, w, h } = next
+  if (moved.left) {
+    const right = x + w
+    const sx = snap1d(x, xCandidates)
+    x = Math.min(sx, right - 1)
+    w = right - x
+  }
+  if (moved.right) {
+    const sr = snap1d(x + w, xCandidates)
+    w = Math.max(1, sr - x)
+  }
+  if (moved.top) {
+    const bottom = y + h
+    const sy = snap1d(y, yCandidates)
+    y = Math.min(sy, bottom - 1)
+    h = bottom - y
+  }
+  if (moved.bottom) {
+    const sb = snap1d(y + h, yCandidates)
+    h = Math.max(1, sb - y)
+  }
+  return { x, y, w, h }
+}
 
 const EMPTY: ReadonlySet<string> = new Set()
 
@@ -310,16 +385,42 @@ export function RectOverlay({
     h: number
   } | null>(null)
 
-  // Fire onHoverChange whenever hoveredId transitions.
+  // Fire onHoverChange whenever hover changes OR a drag preview updates
+  // for the hovered rect — consumers (HoverFrameChip) want to track the
+  // live in-progress geometry, not the pre-drag values.
   const onHoverChangeRef = useRef(onHoverChange)
   onHoverChangeRef.current = onHoverChange
 
-  const prevHoveredIdRef = useRef<string | null>(null)
-  if (prevHoveredIdRef.current !== hoveredId) {
-    prevHoveredIdRef.current = hoveredId
-    const rect = hoveredId ? (rects.find((r) => r.id === hoveredId) ?? null) : null
-    onHoverChangeRef.current?.(rect)
-  }
+  useEffect(() => {
+    if (!hoveredId) {
+      onHoverChangeRef.current?.(null)
+      return
+    }
+    const base = rects.find((r) => r.id === hoveredId) ?? null
+    if (!base) {
+      onHoverChangeRef.current?.(null)
+      return
+    }
+    if (resizeDragPreview && resizeDragPreview.id === hoveredId) {
+      onHoverChangeRef.current?.({
+        ...base,
+        x: resizeDragPreview.x,
+        y: resizeDragPreview.y,
+        w: resizeDragPreview.w,
+        h: resizeDragPreview.h,
+      })
+      return
+    }
+    if (moveDragPreview && moveDragPreview.id === hoveredId) {
+      onHoverChangeRef.current?.({
+        ...base,
+        x: moveDragPreview.x,
+        y: moveDragPreview.y,
+      })
+      return
+    }
+    onHoverChangeRef.current?.(base)
+  }, [hoveredId, rects, moveDragPreview, resizeDragPreview])
 
   const toImagePx = useCallback(
     (e: ReactPointerEvent<SVGElement>): { x: number; y: number } | null => {
@@ -495,7 +596,13 @@ export function RectOverlay({
     if (!rd || rd.id !== r.id || e.pointerId !== rd.pointerId) return
     const p = toImagePx(e)
     if (!p || !vp) return
-    const next = applyResizeDelta(rd.startImg, rd.startRect, p, rd.handle, vp.imageW, vp.imageH)
+    const raw = applyResizeDelta(rd.startImg, rd.startRect, p, rd.handle, vp.imageW, vp.imageH)
+    // Snap each moved edge to nearby edges of OTHER rects so the user can
+    // align frames without per-pixel hunting. Shift bypasses (same
+    // convention as the existing grid snap).
+    const next = e.shiftKey
+      ? raw
+      : snapResizeToRectEdges(raw, rd.handle, rects.filter((x) => x.id !== r.id), RESIZE_SNAP_PX)
     rd.preview = next
     setResizeDragPreview({ id: r.id, ...next })
   }
@@ -542,6 +649,10 @@ export function RectOverlay({
           events:all so it receives the hit when the user clicks past
           the rects. */}
       {interactive && (drawEnabled || selectionActive) && (
+        // Image-area catcher: starts new draws and consumes empty-space
+        // clicks INSIDE the image bounds. Margin clicks (outside the
+        // image) are handled by CanvasStage's stage-level background
+        // catcher — no need to inflate this rect to canvas size.
         <rect
           x={0}
           y={0}
@@ -558,7 +669,6 @@ export function RectOverlay({
               const p = toImagePx(e)
               if (p) setDrag({ start: p, current: p })
             } else if (selectionActive) {
-              // Click on empty space in select-only modes → clear.
               onSelectionChange?.(new Set())
             }
           }}
@@ -622,9 +732,15 @@ export function RectOverlay({
                 cursor: bodyCursor,
               }}
               onPointerEnter={() => setHoveredId(r.id)}
-              onPointerLeave={() =>
+              onPointerLeave={() => {
+                // Don't clear hover while a drag is in flight — the
+                // pointer can leave the rect's body when the user
+                // resizes outward or moves the rect away faster than
+                // the cursor. We want the chip to stay anchored to the
+                // rect being edited until the drag settles.
+                if (moveDragRef.current || resizeDragRef.current) return
                 setHoveredId((cur) => (cur === r.id ? null : cur))
-              }
+              }}
               onPointerDown={(e) => handleRectPointerDown(r, e)}
               onPointerMove={(e) => handleRectPointerMove(r, e)}
               onPointerUp={(e) => handleRectPointerUp(r, e)}

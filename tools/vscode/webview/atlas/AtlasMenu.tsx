@@ -253,6 +253,11 @@ export function AtlasMenu({ prefs }: AtlasMenuProps) {
             checked={prefs.dimOutOfBounds}
             onChange={(v) => prefsStore.set({ dimOutOfBounds: v })}
           />
+          <Toggle
+            label="Pixel-perfect zoom"
+            checked={prefs.pixelSnapZoom}
+            onChange={(v) => prefsStore.set({ pixelSnapZoom: v })}
+          />
 
           <div {...stylex.props(s.divider)} />
           <div {...stylex.props(s.sectionLabel)}>Cursor info</div>

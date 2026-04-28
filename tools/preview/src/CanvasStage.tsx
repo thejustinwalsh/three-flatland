@@ -52,6 +52,21 @@ export type CanvasStageProps = {
    * adding visible chrome to the image itself. Defaults to false.
    */
   dimOutOfBounds?: boolean
+  /**
+   * Fires on a left pointerdown anywhere in the canvas margin (outside
+   * the image bounds and not on any overlay). Editors wire this to
+   * "deselect" so clicking the surround clears selection without
+   * needing a giant SVG catcher in the rect overlay. Suppressed in
+   * pan mode (the pan capture absorbs everything).
+   */
+  onBackgroundPointerDown?: () => void
+  /**
+   * When true, every zoom application snaps to the nearest pixel-
+   * perfect ratio (image-px : screen-px integer / unit-fraction). The
+   * snap is computed against the live canvas dimensions, so it adapts
+   * automatically when the panel is resized.
+   */
+  pixelSnapZoom?: boolean
 }
 
 /**
@@ -84,6 +99,50 @@ const ZOOM_MAX = 50
 
 function clampZoom(z: number): number {
   return Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, z))
+}
+
+/**
+ * Image-px : screen-px ratios that count as "pixel-perfect" — each
+ * image pixel maps to an integer (or unit-fraction) screen pixel. Used
+ * for the optional snap-to-perfect-zoom behaviour.
+ */
+const PIXEL_PERFECT_SCALES = [
+  1 / 16, 1 / 12, 1 / 8, 1 / 6, 1 / 4, 1 / 3, 1 / 2, 2 / 3,
+  1, 2, 3, 4, 5, 6, 7, 8, 10, 12, 16, 24, 32,
+] as const
+
+/**
+ * Given a target zoom and the current canvas + image dimensions, return
+ * the zoom that makes the limiting-axis scale equal the nearest pixel-
+ * perfect ratio. Compares in log-space so steps are perceptually even
+ * across the full zoom range.
+ */
+function snapZoomToPixelPerfect(
+  rawZoom: number,
+  imageW: number,
+  imageH: number,
+  fitMargin: number,
+  canvasW: number,
+  canvasH: number,
+): number {
+  if (canvasW <= 0 || canvasH <= 0) return rawZoom
+  const scaleW = (canvasW * rawZoom) / (imageW * fitMargin)
+  const scaleH = (canvasH * rawZoom) / (imageH * fitMargin)
+  const limitingByW = scaleW <= scaleH
+  const currentScale = limitingByW ? scaleW : scaleH
+  if (currentScale <= 0) return rawZoom
+  let bestScale = currentScale
+  let bestDist = Infinity
+  for (const lv of PIXEL_PERFECT_SCALES) {
+    const d = Math.abs(Math.log(lv / currentScale))
+    if (d < bestDist) {
+      bestDist = d
+      bestScale = lv
+    }
+  }
+  return limitingByW
+    ? (bestScale * imageW * fitMargin) / canvasW
+    : (bestScale * imageH * fitMargin) / canvasH
 }
 
 /**
@@ -162,6 +221,8 @@ export function CanvasStage({
   onSpaceHold,
   backgroundStyle = 'solid',
   dimOutOfBounds = false,
+  onBackgroundPointerDown,
+  pixelSnapZoom = false,
 }: CanvasStageProps) {
   const [baseViewport, setBaseViewport] = useState<Omit<Viewport, 'zoom' | 'panX' | 'panY'> | null>(null)
   const [imageData, setImageData] = useState<ImageData | null>(null)
@@ -178,7 +239,11 @@ export function CanvasStage({
   panXRef.current = panX
   panYRef.current = panY
 
+  const wrapperRef = useRef<HTMLDivElement>(null)
   const anchorRef = useRef<SVGSVGElement>(null)
+  // Mirrored prop so callbacks built with empty deps see fresh values.
+  const pixelSnapZoomRef = useRef(pixelSnapZoom)
+  pixelSnapZoomRef.current = pixelSnapZoom
   const cursorStore = useMemo(() => createCursorStore(), [])
   const imageDataRef = useRef<ImageData | null>(null)
   imageDataRef.current = imageData
@@ -196,15 +261,26 @@ export function CanvasStage({
     return { ...baseViewport, zoom, panX, panY }
   }, [baseViewport, zoom, panX, panY])
 
+  // Snap a candidate zoom to the nearest pixel-perfect ratio, but only
+  // when the user has opted in via the prop. Reads canvas + viewport
+  // through refs so it stays callable from any closure without re-binding.
+  const maybeSnap = useCallback((z: number): number => {
+    if (!pixelSnapZoomRef.current) return z
+    const el = wrapperRef.current
+    const vp = viewportRef.current
+    if (!el || !vp) return z
+    return snapZoomToPixelPerfect(z, vp.imageW, vp.imageH, vp.fitMargin, el.clientWidth, el.clientHeight)
+  }, [])
+
   // Helper: apply new zoom/pan from ref-based current values (for handlers)
   const applyZoom = useCallback((newZoom: number, newPanX: number, newPanY: number) => {
-    const clamped = clampZoom(newZoom)
+    const clamped = clampZoom(maybeSnap(newZoom))
     setZoomState(clamped)
     // We need the base viewport dimensions to clamp pan — use ref-cloned inline
     // since we only pan-clamp after baseViewport is set.
     setPanXState(newPanX)
     setPanYState(newPanY)
-  }, [])
+  }, [maybeSnap])
 
   // Clamp pan against current viewport when both are available. This runs
   // after every render but is cheap (just two Math.max/min calls).
@@ -558,6 +634,7 @@ export function CanvasStage({
 
   return (
     <div
+      ref={wrapperRef}
       style={{
         position: 'relative',
         width: '100%',
@@ -615,6 +692,24 @@ export function CanvasStage({
           ) : null}
         </svg>
       ) : null}
+      {onBackgroundPointerDown && !inPanMode && viewport ? (
+        // Stage-level click catcher beneath the editing overlays. Sits
+        // above the three.js canvas (whose internal canvas element would
+        // otherwise become e.target) so a left-click in the canvas
+        // margin reliably becomes a "deselect" signal. Children paint
+        // on top via DOM order, so their own catchers (e.g.
+        // RectOverlay's image-bounds catcher) take priority where they
+        // exist — this only fires on truly empty stage area.
+        <div
+          aria-hidden="true"
+          style={{ position: 'absolute', inset: 0 }}
+          onPointerDown={(e) => {
+            if (e.button !== 0) return
+            if (e.metaKey || e.ctrlKey || e.altKey) return
+            onBackgroundPointerDown()
+          }}
+        />
+      ) : null}
       <ViewportContext.Provider value={viewport}>
         <CursorStoreContext.Provider value={cursorStore}>
           <ImageDataContext.Provider value={imageData}>
@@ -624,6 +719,31 @@ export function CanvasStage({
           </ImageDataContext.Provider>
         </CursorStoreContext.Provider>
       </ViewportContext.Provider>
+      {viewport ? (
+        // Zoom badge — small monospace readout in the top-left so the
+        // user can always see the current zoom level. Sits above the
+        // overlays but is non-interactive (pointerEvents:none) so it
+        // never absorbs editor clicks.
+        <div
+          aria-hidden="true"
+          style={{
+            position: 'absolute',
+            top: 8,
+            left: 8,
+            paddingInline: 6,
+            paddingBlock: 2,
+            fontFamily: 'var(--vscode-editor-font-family, monospace)',
+            fontSize: 10,
+            color: 'var(--vscode-foreground)',
+            backgroundColor: 'rgba(0, 0, 0, 0.45)',
+            borderRadius: 4,
+            pointerEvents: 'none',
+            userSelect: 'none',
+          }}
+        >
+          {Math.round(zoom * 100)}%
+        </div>
+      ) : null}
       {inPanMode && viewport ? (
         // Transparent capture layer above all overlays. Forces the grab/
         // grabbing cursor regardless of what's underneath, and absorbs

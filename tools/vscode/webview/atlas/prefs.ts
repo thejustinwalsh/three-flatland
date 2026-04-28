@@ -24,6 +24,12 @@ export type AtlasPrefs = {
   showHoverChip: boolean
   /** Render the cursor info bar in the bottom-right of the canvas. */
   showInfoPanel: boolean
+  /**
+   * Snap wheel zoom to nearest pixel-perfect ratio (image-px to
+   * screen-px integer / unit-fraction). Off by default since smooth
+   * zoom is the more flexible default.
+   */
+  pixelSnapZoom: boolean
 }
 
 const DEFAULTS: AtlasPrefs = {
@@ -34,6 +40,7 @@ const DEFAULTS: AtlasPrefs = {
   showFrameNumbers: true,
   showHoverChip: true,
   showInfoPanel: true,
+  pixelSnapZoom: false,
 }
 
 const STORAGE_KEY = 'fl-atlas-prefs:v1'
