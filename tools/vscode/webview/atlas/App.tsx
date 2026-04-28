@@ -303,6 +303,17 @@ const s = stylex.create({
     borderRadius: radius.sm,
     imageRendering: 'pixelated',
   },
+  // VscodeBadge's counter variant has fixed 18px min-height / 11px
+  // line-height inside its shadow DOM, taller than the collapsible's
+  // header text. Visually shrink it via transform-scale (transform
+  // doesn't affect layout box, so the header row height stays unchanged)
+  // and inset from the right edge with a margin.
+  collapsibleBadge: {
+    marginInlineStart: space.md,
+    marginInlineEnd: space.md,
+    transform: 'scale(0.85)',
+    transformOrigin: 'center right',
+  },
   thumbBg: (
     bgImage: string,
     bgSize: string,
@@ -1521,7 +1532,7 @@ function FramesView({
               onSelectGroup(groupIds, false)
             }}
           >
-            <Badge slot="decorations" variant="counter">
+            <Badge slot="decorations" variant="counter" {...stylex.props(s.collapsibleBadge)}>
               {g.rects.length}
             </Badge>
             {renderList(g.rects)}
@@ -1533,7 +1544,7 @@ function FramesView({
           renderList(groups.singles)
         ) : (
           <Collapsible heading="Unnamed" open>
-            <Badge slot="decorations" variant="counter">
+            <Badge slot="decorations" variant="counter" {...stylex.props(s.collapsibleBadge)}>
               {groups.singles.length}
             </Badge>
             {renderList(groups.singles)}
