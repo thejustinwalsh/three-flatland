@@ -49,23 +49,32 @@ const s = stylex.create({
     fontSize: '11px',
     pointerEvents: 'none',
   },
+  dim: {
+    color: vscode.descriptionFg,
+  },
 })
 
 /**
  * Floating chip pinned to the bottom-left of the canvas stage that shows
- * the hovered rect's full name and index. Mirror of InfoPanel's position
- * and visual style, but anchored to the left side.
+ * the hovered rect's full name, frame index, and image-pixel position.
+ * Mirror of InfoPanel's position and visual style, but anchored left.
  *
  * Returns null when no rect is hovered so it takes up no space.
  */
 export function HoverFrameChip({ rect, index }: HoverFrameChipProps): ReactElement | null {
   if (rect == null) return null
 
-  const label = rect.name != null ? `${rect.name} (index ${index ?? '?'})` : `#${index ?? '?'}`
+  const idxStr = index ?? '?'
+  const namePart = rect.name != null ? rect.name : `#${idxStr}`
+  const xy = `${rect.x},${rect.y}`
+  const size = `${rect.w}×${rect.h}`
 
   return (
     <div {...stylex.props(s.chip)}>
-      {label}
+      <span>{namePart}</span>
+      <span {...stylex.props(s.dim)}>idx {idxStr}</span>
+      <span {...stylex.props(s.dim)}>{xy}</span>
+      <span {...stylex.props(s.dim)}>{size}</span>
     </div>
   )
 }
