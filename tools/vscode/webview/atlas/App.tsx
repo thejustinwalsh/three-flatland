@@ -10,6 +10,7 @@ import {
 } from 'react'
 import { createClientBridge } from '@three-flatland/bridge/client'
 import {
+  Badge,
   Collapsible,
   DevReloadToast,
   Divider,
@@ -301,12 +302,6 @@ const s = stylex.create({
     borderColor: vscode.panelBorder,
     borderRadius: radius.sm,
     imageRendering: 'pixelated',
-  },
-  collapsibleMeta: {
-    color: vscode.descriptionFg,
-    fontSize: '11px',
-    whiteSpace: 'nowrap',
-    paddingInline: space.sm,
   },
   thumbBg: (
     bgImage: string,
@@ -1068,7 +1063,7 @@ export function App() {
       </Toolbar>
 
       <div {...stylex.props(s.workArea)}>
-        <Panel title="Preview">
+        <Panel title="Atlas">
           <div {...stylex.props(s.previewWrap)}>
             <CanvasStage
               imageUri={payload?.imageUri ?? null}
@@ -1511,11 +1506,6 @@ function FramesView({
     <>
       {groups.named.map((g) => {
         const groupIds = g.rects.map((r) => r.id)
-        const selectedCount = groupIds.reduce((n, id) => n + (selectedIds.has(id) ? 1 : 0), 0)
-        const description =
-          selectedCount > 0
-            ? `${g.rects.length} · ${selectedCount} sel`
-            : `${g.rects.length} frame${g.rects.length === 1 ? '' : 's'}`
         return (
           <Collapsible
             key={g.prefix}
@@ -1531,9 +1521,9 @@ function FramesView({
               onSelectGroup(groupIds, false)
             }}
           >
-            <span slot="decorations" {...stylex.props(s.collapsibleMeta)}>
-              {description}
-            </span>
+            <Badge slot="decorations" variant="counter">
+              {g.rects.length}
+            </Badge>
             {renderList(g.rects)}
           </Collapsible>
         )
@@ -1543,9 +1533,9 @@ function FramesView({
           renderList(groups.singles)
         ) : (
           <Collapsible heading="Unnamed" open>
-            <span slot="decorations" {...stylex.props(s.collapsibleMeta)}>
-              {`${groups.singles.length} frame${groups.singles.length === 1 ? '' : 's'}`}
-            </span>
+            <Badge slot="decorations" variant="counter">
+              {groups.singles.length}
+            </Badge>
             {renderList(groups.singles)}
           </Collapsible>
         )
