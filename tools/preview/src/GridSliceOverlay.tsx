@@ -120,20 +120,15 @@ export function GridSliceOverlay({
   // 1.5% of the smaller image dimension, min 4px, max 8px image-units.
   const hitWidth = Math.max(4, Math.min(8, Math.round(Math.min(vp.imageW, vp.imageH) * 0.015)))
 
-  // Map each picked cell key → its index in commit order (row-major over
-  // just the picked cells, NOT all cells). The label on a picked cell
-  // shows the index it'll get in the atlas frames array on commit, not
-  // its raw position in the grid. e.g. picking the 4 corners of an 8×8
-  // grid labels them 0/1/2/3 — not 0/7/56/63.
+  // Map each picked cell key → its index in pick order. Set iteration
+  // is insertion-order, so the user's click order IS the commit order:
+  // if they click bottom-right then top-left, the labels show 1 and 0
+  // respectively, matching the frame indices they'll get on commit.
+  // Re-picking a cell after unpicking moves it to the end of the order.
   const pickedIndexByKey = (() => {
     const m = new Map<string, number>()
-    const ordered = [...picked].sort((a, b) => {
-      const [aR, aC] = a.split(',').map(Number) as [number, number]
-      const [bR, bC] = b.split(',').map(Number) as [number, number]
-      if (aR !== bR) return aR - bR
-      return aC - bC
-    })
-    ordered.forEach((k, i) => m.set(k, i))
+    let i = 0
+    for (const key of picked) m.set(key, i++)
     return m
   })()
 
