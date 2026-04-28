@@ -14,6 +14,7 @@ import {
   Collapsible,
   DevReloadToast,
   Divider,
+  NumberField,
   Panel,
   Toolbar,
   ToolbarButton,
@@ -23,6 +24,7 @@ import {
   AutoDetectOverlay,
   CanvasStage,
   GridSliceOverlay,
+  HoverFrameChip,
   InfoPanel,
   RectOverlay,
   cellExtent,
@@ -534,6 +536,8 @@ export function App() {
   // child surfaces it here so panels rendered in the sidebar (outside
   // CanvasStage's provider tree) can read it.
   const [imageData, setImageData] = useState<ImageData | null>(null)
+  // Hovered rect (drives the bottom-left HoverFrameChip).
+  const [hoveredRect, setHoveredRect] = useState<Rect | null>(null)
   const [saveStatus, setSaveStatus] = useState<
     | { kind: 'idle' }
     | { kind: 'saving' }
@@ -1144,6 +1148,7 @@ export function App() {
                 onRectChange={inTool ? undefined : handleRectChange}
                 selectedIds={selectedIds}
                 onSelectionChange={inTool ? undefined : setSelectedIds}
+                onHoverChange={setHoveredRect}
               />
               {mode.kind === 'slicing' ? (
                 <GridSliceOverlay
@@ -1163,6 +1168,10 @@ export function App() {
               ) : null}
               <ViewportControllerSink controllerRef={viewportControllerRef} />
               <ImageDataSink onChange={setImageData} />
+              <HoverFrameChip
+                rect={hoveredRect}
+                index={hoveredRect ? rects.indexOf(hoveredRect) : null}
+              />
               <InfoPanel />
             </CanvasStage>
           </div>
@@ -1172,7 +1181,7 @@ export function App() {
           ref={sidebarRef}
           {...stylex.props(
             s.sidebarStack,
-            s.sidebarRows(inTool ? `${framesFrac}fr 4px ${1 - framesFrac}fr` : '1fr'),
+            s.sidebarRows(inTool ? 'minmax(0, 1fr) max-content' : '1fr'),
           )}
         >
         <Panel
@@ -1240,15 +1249,6 @@ export function App() {
 
         {inTool ? (
           <>
-            <Splitter
-              onDrag={(clientY) => {
-                const el = sidebarRef.current
-                if (!el) return
-                const rect = el.getBoundingClientRect()
-                const f = (clientY - rect.top) / rect.height
-                setFramesFrac(Math.max(0.15, Math.min(0.85, f)))
-              }}
-            />
             {mode.kind === 'slicing' ? (
               <Panel title={`Slice (${mode.state.picked.size} picked)`}>
                 <SliceConfigPanel
@@ -1795,6 +1795,9 @@ function Splitter({ onDrag }: { onDrag: (clientY: number) => void }) {
   )
 }
 
+// SliceNumField was replaced by the design-system <NumberField/> primitive
+// which gives us VSCode-native styling, drag-handle inc/dec, and keyboard
+// arrow support. Adapter component preserves the call sites' shape.
 function SliceNumField({
   value,
   min,
@@ -1804,36 +1807,7 @@ function SliceNumField({
   min: number
   onChange: (n: number) => void
 }) {
-  // Hold the editing text separately from the committed value so the user
-  // can backspace through digits or briefly clear the field without
-  // hitting the clamp on every keystroke. Commit only when the text
-  // parses to a valid in-range integer; snap to min on blur if invalid.
-  const [text, setText] = useState(() => String(value))
-  useEffect(() => {
-    setText(String(value))
-  }, [value])
-  return (
-    <input
-      type="number"
-      min={min}
-      value={text}
-      onChange={(e: ChangeEvent<HTMLInputElement>) => {
-        const v = e.target.value
-        setText(v)
-        if (v === '' || v === '-') return // mid-edit; wait for a valid value
-        const n = Number(v)
-        if (Number.isFinite(n) && n >= min) onChange(Math.round(n))
-      }}
-      onBlur={() => {
-        const n = Number(text)
-        if (!Number.isFinite(n) || n < min) {
-          onChange(min)
-          setText(String(min))
-        }
-      }}
-      {...stylex.props(s.sliceNumInput)}
-    />
-  )
+  return <NumberField value={value} min={min} onChange={(n) => onChange(Math.round(n))} />
 }
 
 function SliceConfigPanel({
