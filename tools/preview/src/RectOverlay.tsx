@@ -64,6 +64,13 @@ export type RectOverlayProps = {
    * (grid slicing) owns interaction. Defaults to true.
    */
   interactive?: boolean
+
+  /**
+   * Fires when the user hovers over a rect (or leaves to empty space).
+   * null = no rect hovered. Called once per hover-state change, not on
+   * every pointer-move.
+   */
+  onHoverChange?: (rect: Rect | null) => void
 }
 
 // ─── Draw drag (new rect creation) ───────────────────────────────────────────
@@ -122,91 +129,45 @@ const MOVE_THRESHOLD_PX = 3
 
 const EMPTY: ReadonlySet<string> = new Set()
 
-// ─── Label helpers ───────────────────────────────────────────────────────────
+// ─── CornerIndex ─────────────────────────────────────────────────────────────
 
 /**
- * Short label shown on the canvas. If the rect's name ends with `_N`
- * (auto-numbered via prefix rename), show only the `N`. Otherwise show
- * the full short name. No name → the frame index. Keeps labels compact
- * on small sprites where full names would overlap each other.
+ * Tiny monospace digit drawn inside the top-left corner of a rect.
+ * Always visible — no hover-fade, no group-hide logic.
+ * Uses image-pixel units (we're inside the viewBox-scaled SVG).
  */
-function shortLabel(name: string | undefined, index: number): string {
-  if (!name) return String(index)
-  const m = /_(\d+)$/.exec(name)
-  if (m) return m[1]!
-  return name
-}
-
-/** Full label for hover tooltips and any context where space isn't tight. */
-function fullLabel(name: string | undefined, index: number): string {
-  return name ?? `#${index}`
-}
-
-/**
- * Returns the rect's group key — the prefix before a trailing `_N`
- * suffix. Rects with the same group key belong to the same named series
- * (auto-numbered via prefix rename) and hide their indexes when a sibling
- * is hovered so the hovered rect's full name is readable alone.
- */
-function groupKey(name: string | undefined): string | null {
-  if (!name) return null
-  const m = /^(.+)_\d+$/.exec(name)
-  return m ? m[1]! : null
-}
-
-// ─── RectLabel ───────────────────────────────────────────────────────────────
-
-/**
- * Label for a rect — small text rendered just above the rect's top edge.
- * Uses image-pixel units (we're inside the viewBox-scaled SVG). font-size
- * is in image-px too; at typical zoom that renders as ~10-12 CSS px.
- */
-function RectLabel({
+function CornerIndex({
   rect,
-  text,
+  index,
   selected,
   imgW,
-  opacity = 1,
 }: {
   rect: { x: number; y: number; w: number; h: number }
-  text: string
+  index: number
   selected: boolean
   imgW: number
-  opacity?: number
 }) {
-  const fontPx = Math.max(8, Math.round(imgW / 64))
-  const pad = Math.max(2, Math.round(fontPx / 3))
-
-  // Asymmetric fade: snap out fast when the user hovers a sibling, drift
-  // back in gently when they leave. Prevents rapid strobing as the user
-  // sweeps across multiple rects in quick succession.
-  const transition =
-    opacity < 1
-      ? 'opacity 120ms ease'
-      : 'opacity 350ms ease 80ms'
+  const fontPx = Math.max(7, Math.round(imgW / 120))
 
   return (
     <text
-      x={rect.x + pad}
-      y={Math.max(fontPx, rect.y - pad)}
+      x={rect.x + 1}
+      y={rect.y + fontPx + 1}
       fontSize={fontPx}
-      fontFamily="var(--vscode-font-family, sans-serif)"
-      fontWeight={selected ? 600 : 400}
+      fontFamily="var(--vscode-editor-font-family, monospace)"
       fill={selected ? '#ffcc00' : 'var(--vscode-descriptionForeground, #aaa)'}
       vectorEffect="non-scaling-stroke"
-      opacity={opacity}
       style={{
         paintOrder: 'stroke',
-        stroke: 'rgba(0, 0, 0, 0.45)',
+        stroke: 'rgba(0, 0, 0, 0.55)',
         strokeWidth: 1.5,
         strokeLinejoin: 'round',
         pointerEvents: 'none',
         userSelect: 'none',
-        transition,
       }}
-      dominantBaseline="alphabetic"
+      dominantBaseline="auto"
     >
-      {text}
+      {index}
     </text>
   )
 }
@@ -314,6 +275,7 @@ export function RectOverlay({
   selectedColor = '#ffcc00',
   interactive = true,
   snapStep = 0,
+  onHoverChange,
 }: RectOverlayProps) {
   // Round a number to the nearest multiple of `step`, with a 0/Shift-key
   // pass-through. The Shift check happens at call sites that have the
@@ -348,8 +310,16 @@ export function RectOverlay({
     h: number
   } | null>(null)
 
-  const hoveredRect = hoveredId ? rects.find((r) => r.id === hoveredId) : null
-  const hoverGroup = hoveredRect ? groupKey(hoveredRect.name) : null
+  // Fire onHoverChange whenever hoveredId transitions.
+  const onHoverChangeRef = useRef(onHoverChange)
+  onHoverChangeRef.current = onHoverChange
+
+  const prevHoveredIdRef = useRef<string | null>(null)
+  if (prevHoveredIdRef.current !== hoveredId) {
+    prevHoveredIdRef.current = hoveredId
+    const rect = hoveredId ? (rects.find((r) => r.id === hoveredId) ?? null) : null
+    onHoverChangeRef.current?.(rect)
+  }
 
   const toImagePx = useCallback(
     (e: ReactPointerEvent<SVGElement>): { x: number; y: number } | null => {
@@ -617,16 +587,6 @@ export function RectOverlay({
 
       {rects.map((r, i) => {
         const sel = selectedIds.has(r.id)
-        const isHovered = hoveredId === r.id
-        const gkey = groupKey(r.name)
-        const siblingOfHover = hoverGroup !== null && gkey === hoverGroup && !isHovered
-
-        // Hovered rect shows its full name; non-hovered siblings in the
-        // same prefix group fade out so the hovered label stands alone.
-        // Selected rects always show their short label (frame index) —
-        // the Frames panel carries the full detail for selection state.
-        const labelText = isHovered ? fullLabel(r.name, i) : shortLabel(r.name, i)
-        const labelOpacity = siblingOfHover ? 0 : 1
 
         // During move drag, show preview position for this rect.
         const isMoving = moveDragPreview?.id === r.id && moveDragRef.current?.committed
@@ -671,12 +631,11 @@ export function RectOverlay({
               onPointerCancel={() => handleRectPointerCancel(r)}
             />
             {showLabels ? (
-              <RectLabel
+              <CornerIndex
                 rect={dispRect}
-                text={labelText}
+                index={i}
                 selected={sel}
                 imgW={vp.imageW}
-                opacity={labelOpacity}
               />
             ) : null}
           </g>
