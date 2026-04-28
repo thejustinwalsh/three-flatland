@@ -321,6 +321,13 @@ const s = stylex.create({
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
     minWidth: 0,
+    // Match the inline rename input's box (padding + 1px transparent
+    // border) so swapping span → input doesn't shift the row content.
+    paddingInline: space.sm,
+    paddingBlock: space.xs,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: 'transparent',
   },
   frameCoords: { opacity: 0.7, flex: '0 0 auto' },
   inlineRenameInput: {
