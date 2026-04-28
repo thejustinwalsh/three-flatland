@@ -1,4 +1,5 @@
 export { Button, type ButtonProps } from './primitives/Button'
+export { NumberField, type NumberFieldProps } from './primitives/NumberField'
 export { Panel, type PanelProps } from './primitives/Panel'
 export { Toolbar, type ToolbarProps } from './primitives/Toolbar'
 export { ToolbarButton, type ToolbarButtonProps } from './primitives/ToolbarButton'
