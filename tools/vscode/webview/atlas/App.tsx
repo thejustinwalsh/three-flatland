@@ -1171,9 +1171,11 @@ export function App() {
               background={editorBg}
               backgroundStyle={prefs.background === 'checker' ? 'checker' : 'solid'}
               dimOutOfBounds={prefs.dimOutOfBounds}
+              pixelSnapZoom={prefs.pixelSnapZoom}
               onImageReady={setImageSize}
               panMode={tool === 'move' && !inTool}
               onSpaceHold={handleSpaceHold}
+              onBackgroundPointerDown={inTool ? undefined : () => setSelectedIds(new Set())}
             >
               <RectOverlay
                 rects={rects}
@@ -1208,7 +1210,11 @@ export function App() {
               {prefs.showHoverChip ? (
                 <HoverFrameChip
                   rect={hoveredRect}
-                  index={hoveredRect ? rects.indexOf(hoveredRect) : null}
+                  // findIndex by id, not indexOf by reference: during a
+                  // resize/move drag RectOverlay surfaces a synthesized
+                  // rect carrying the live preview geometry, which won't
+                  // be reference-equal to anything in the rects array.
+                  index={hoveredRect ? rects.findIndex((r) => r.id === hoveredRect.id) : null}
                 />
               ) : null}
               {prefs.showInfoPanel ? (
