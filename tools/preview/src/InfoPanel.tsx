@@ -13,13 +13,23 @@ type ColorMode = 'hex' | 'rgba' | 'float'
 const NEXT: Record<CoordMode, CoordMode> = { 'px': 'uv+', 'uv+': 'uv-', 'uv-': 'px' }
 const NEXT_COLOR: Record<ColorMode, ColorMode> = { 'hex': 'rgba', 'rgba': 'float', 'float': 'hex' }
 
+// Match HoverFrameChip's breakpoint so the two panels stack together
+// at the same canvas width. Keep in sync.
+const NARROW = '@container (max-width: 480px)'
+
 const s = stylex.create({
   bar: {
     position: 'absolute',
+    // Full-width strip when narrow (left: 0); natural-width tab on the
+    // right when wide (left: auto).
+    left: { default: 'auto', [NARROW]: 0 },
     right: 0,
     bottom: 0,
-    display: 'inline-flex',
+    display: { default: 'inline-flex', [NARROW]: 'flex' },
     alignItems: 'center',
+    // Spread swatch + coord across the available width when stretched;
+    // tight gap when sitting as a natural-width tab.
+    justifyContent: { default: 'flex-start', [NARROW]: 'space-between' },
     gap: space.lg,
     paddingInline: space.md,
     paddingBlock: space.xs,
@@ -27,10 +37,12 @@ const s = stylex.create({
     borderTopWidth: 1,
     borderTopStyle: 'solid',
     borderTopColor: vscode.panelBorder,
-    borderLeftWidth: 1,
+    // Left border + top-left radius only when bar is on the right side
+    // (wide layout). Drops when stretched to full width.
+    borderLeftWidth: { default: 1, [NARROW]: 0 },
     borderLeftStyle: 'solid',
     borderLeftColor: vscode.panelBorder,
-    borderTopLeftRadius: radius.md,
+    borderTopLeftRadius: { default: radius.md, [NARROW]: 0 },
     color: vscode.fg,
     fontFamily: vscode.monoFontFamily,
     fontSize: '11px',
