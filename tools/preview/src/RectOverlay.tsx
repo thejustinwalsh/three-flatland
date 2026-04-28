@@ -39,6 +39,15 @@ export type RectOverlayProps = {
    */
   onRectChange?: (id: string, next: { x: number; y: number; w: number; h: number }) => void
 
+  /**
+   * If > 0, snap committed move/resize geometry to multiples of this
+   * value (image-pixel units). Useful for tile-based authoring where
+   * everything sits on an N-pixel grid. The drag preview snaps live so
+   * the user sees the grid alignment as they move. Holding Shift during
+   * the drag temporarily disables snapping.
+   */
+  snapStep?: number
+
   /** Whether to render a name / index label next to each rect. Default: true. */
   showLabels?: boolean
 
@@ -304,7 +313,18 @@ export function RectOverlay({
   draftColor = '#00ff99',
   selectedColor = '#ffcc00',
   interactive = true,
+  snapStep = 0,
 }: RectOverlayProps) {
+  // Round a number to the nearest multiple of `step`, with a 0/Shift-key
+  // pass-through. The Shift check happens at call sites that have the
+  // event in scope; this helper just does the arithmetic.
+  const snap = (v: number): number => (snapStep > 0 ? Math.round(v / snapStep) * snapStep : Math.round(v))
+  const snapRect = (r: { x: number; y: number; w: number; h: number }) => ({
+    x: snap(r.x),
+    y: snap(r.y),
+    w: Math.max(1, snap(r.w)),
+    h: Math.max(1, snap(r.h)),
+  })
   const vp = useViewport()
   const svgRef = useRef<SVGSVGElement>(null)
   const [drag, setDrag] = useState<Drag | null>(null)
@@ -440,13 +460,15 @@ export function RectOverlay({
         e.currentTarget.releasePointerCapture(e.pointerId)
       }
       if (md.committed) {
-        // Committed drag — fire onRectChange with final position.
-        onRectChange!(r.id, {
+        // Committed drag — fire onRectChange with final (snapped if
+        // configured, raw if Shift was held during release).
+        const raw = {
           x: md.preview.x,
           y: md.preview.y,
           w: md.startRect.w,
           h: md.startRect.h,
-        })
+        }
+        onRectChange!(r.id, e.shiftKey ? raw : snapRect(raw))
       } else {
         // Sub-threshold: treat as a click → selection.
         if (onSelectionChange) {
@@ -515,7 +537,7 @@ export function RectOverlay({
     if (e.currentTarget.hasPointerCapture(e.pointerId)) {
       e.currentTarget.releasePointerCapture(e.pointerId)
     }
-    onRectChange!(r.id, rd.preview)
+    onRectChange!(r.id, e.shiftKey ? rd.preview : snapRect(rd.preview))
     resizeDragRef.current = null
     setResizeDragPreview(null)
   }
