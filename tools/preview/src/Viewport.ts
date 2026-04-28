@@ -11,24 +11,40 @@ import { createContext, useContext } from 'react'
  * rendered image — without the matching margin, cursor coords are off
  * by `(fitMargin - 1)` of the visible area.
  *
- * Extended later with { panX, panY, zoom } for interactive navigation.
+ * `zoom` and `panX/panY` extend the base fit: zoom=1 means fit-to-canvas
+ * (the default), panX/panY are offsets in image-pixel units from center.
  */
 export type Viewport = {
   imageW: number
   imageH: number
   fitMargin: number
+  /**
+   * 1 = fit-to-canvas (default). 2 = 2× zoom in. 0.5 = zoom out.
+   * Clamped to [0.05, 50] by the viewport controller.
+   */
+  zoom: number
+  /**
+   * Pan offsets in image-pixel units. (0, 0) = centered on image.
+   * Positive X pans right (image moves left in view); positive Y pans down.
+   */
+  panX: number
+  panY: number
 }
 
 /**
- * SVG `viewBox` attribute that matches `ThreeLayer`'s fit. The image
- * still occupies (0, 0) → (imageW, imageH) in SVG-local coords (so all
- * existing pointer math is unchanged); the viewBox just expands to
- * include the same margin Three.js leaves around the image.
+ * SVG `viewBox` attribute that matches `ThreeLayer`'s fit, including pan
+ * and zoom. The image still occupies (0, 0) → (imageW, imageH) in
+ * SVG-local coords (so all existing pointer math is unchanged); the
+ * viewBox shifts and scales to reflect the current pan and zoom level.
  */
 export function viewBoxFor(vp: Viewport): string {
-  const padX = (vp.imageW * (vp.fitMargin - 1)) / 2
-  const padY = (vp.imageH * (vp.fitMargin - 1)) / 2
-  return `${-padX} ${-padY} ${vp.imageW * vp.fitMargin} ${vp.imageH * vp.fitMargin}`
+  const visibleW = (vp.imageW * vp.fitMargin) / vp.zoom
+  const visibleH = (vp.imageH * vp.fitMargin) / vp.zoom
+  const centerX = vp.imageW / 2 + vp.panX
+  const centerY = vp.imageH / 2 + vp.panY
+  const x = centerX - visibleW / 2
+  const y = centerY - visibleH / 2
+  return `${x} ${y} ${visibleW} ${visibleH}`
 }
 
 export const ViewportContext = createContext<Viewport | null>(null)

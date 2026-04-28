@@ -13,17 +13,44 @@ export type ThreeLayerProps = {
   onImageReady?: (size: { w: number; h: number }) => void
   /** Padding around the image inside the viewport (1 = exact fit). */
   fitMargin?: number
+  /**
+   * Current zoom level (1 = fit-to-canvas). Applied to the ortho frustum
+   * so the camera zooms into the image without moving the sprite geometry.
+   */
+  zoom?: number
+  /**
+   * Pan offset in image-pixel units. Positive X shifts the view right
+   * (camera moves right). Positive Y shifts the view down (camera moves
+   * down — note Three.js Y is up so we negate internally).
+   */
+  panX?: number
+  panY?: number
   /** Optional fallback while the texture suspends. R3F-compatible. */
   suspenseFallback?: React.ReactNode
 }
 
-function OrthoFitCamera({ imgW, imgH, margin = 1.15 }: { imgW: number; imgH: number; margin?: number }) {
+function OrthoFitCamera({
+  imgW,
+  imgH,
+  margin = 1.15,
+  zoom = 1,
+  panX = 0,
+  panY = 0,
+}: {
+  imgW: number
+  imgH: number
+  margin?: number
+  zoom?: number
+  panX?: number
+  panY?: number
+}) {
   const set = useThree((s) => s.set)
   const size = useThree((s) => s.size)
   const aspect = size.width / size.height
   // Fit both image dimensions inside the ortho frustum (letterboxed on
   // the tighter axis). Matches SVG preserveAspectRatio="xMidYMid meet".
-  const viewSize = Math.max(imgH, imgW / aspect) * margin
+  // Dividing viewSize by zoom narrows the frustum = zoom in.
+  const viewSize = (Math.max(imgH, imgW / aspect) * margin) / zoom
 
   return (
     <orthographicCamera
@@ -37,7 +64,8 @@ function OrthoFitCamera({ imgW, imgH, margin = 1.15 }: { imgW: number; imgH: num
         cam.updateProjectionMatrix()
         set({ camera: cam })
       }}
-      position={[0, 0, 100]}
+      // Three.js Y is up, image Y is down — negate panY.
+      position={[panX, -panY, 100]}
       near={0.1}
       far={1000}
     />
@@ -71,6 +99,9 @@ export function ThreeLayer({
   background,
   onImageReady,
   fitMargin = 1.15,
+  zoom = 1,
+  panX = 0,
+  panY = 0,
   suspenseFallback = null,
 }: ThreeLayerProps) {
   return (
@@ -90,8 +121,18 @@ export function ThreeLayer({
             imgW={imageUri ? 512 : 512}
             imgH={imageUri ? 512 : 512}
             margin={fitMargin}
+            zoom={zoom}
+            panX={panX}
+            panY={panY}
           />
-          <SpriteWithCamera imageUri={imageUri} onReady={onImageReady} fitMargin={fitMargin} />
+          <SpriteWithCamera
+            imageUri={imageUri}
+            onReady={onImageReady}
+            fitMargin={fitMargin}
+            zoom={zoom}
+            panX={panX}
+            panY={panY}
+          />
         </Suspense>
       ) : null}
     </Canvas>
@@ -107,10 +148,16 @@ function SpriteWithCamera({
   imageUri,
   onReady,
   fitMargin,
+  zoom = 1,
+  panX = 0,
+  panY = 0,
 }: {
   imageUri: string
   onReady?: (size: { w: number; h: number }) => void
   fitMargin: number
+  zoom?: number
+  panX?: number
+  panY?: number
 }) {
   const texture = useLoader(TextureLoader, imageUri)
   const img = texture.image as { width?: number; height?: number } | null | undefined
@@ -121,7 +168,7 @@ function SpriteWithCamera({
   }, [w, h, onReady])
   return (
     <>
-      <OrthoFitCamera imgW={w} imgH={h} margin={fitMargin} />
+      <OrthoFitCamera imgW={w} imgH={h} margin={fitMargin} zoom={zoom} panX={panX} panY={panY} />
       <sprite2D texture={texture} anchor={[0.5, 0.5]} scale={[w, h, 1]} />
     </>
   )
