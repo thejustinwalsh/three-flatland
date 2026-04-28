@@ -24,6 +24,10 @@ const s = stylex.create({
     overflow: 'hidden',
   },
   header: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: space.md,
     paddingInline: space.xl,
     paddingBlock: space.sm,
     borderBottomWidth: 1,
@@ -35,6 +39,17 @@ const s = stylex.create({
     textTransform: 'uppercase',
     letterSpacing: '0.04em',
     backgroundColor: vscode.panelBg,
+  },
+  headerTitle: {
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  },
+  headerActions: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    flexShrink: 0,
   },
   body: {
     flex: 1,
@@ -53,6 +68,12 @@ const s = stylex.create({
 
 export type PanelProps = Omit<HTMLAttributes<HTMLDivElement>, 'style' | 'className'> & {
   title?: ReactNode
+  /**
+   * Optional content rendered at the right edge of the title bar
+   * (e.g. a hamburger menu, a small toolbar). The header is always
+   * rendered when this is provided, even if `title` is empty.
+   */
+  headerActions?: ReactNode
   style?: StyleXStyles
 }
 
@@ -61,10 +82,18 @@ export type PanelProps = Omit<HTMLAttributes<HTMLDivElement>, 'style' | 'classNa
  * doesn't ship a generic "Panel" primitive, so this is hand-built against
  * the same tokens VSCode uses for the editor/panel chrome.
  */
-export function Panel({ title, children, style, ...rest }: PanelProps) {
+export function Panel({ title, headerActions, children, style, ...rest }: PanelProps) {
+  const showHeader = title != null || headerActions != null
   return (
     <div {...rest} {...stylex.props(s.shell, style)}>
-      {title != null ? <div {...stylex.props(s.header)}>{title}</div> : null}
+      {showHeader ? (
+        <div {...stylex.props(s.header)}>
+          <span {...stylex.props(s.headerTitle)}>{title}</span>
+          {headerActions != null ? (
+            <span {...stylex.props(s.headerActions)}>{headerActions}</span>
+          ) : null}
+        </div>
+      ) : null}
       <div {...stylex.props(s.body)}>{children}</div>
     </div>
   )
