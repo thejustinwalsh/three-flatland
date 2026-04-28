@@ -10,7 +10,7 @@ export { ThreeLayer, type ThreeLayerProps } from './ThreeLayer'
 export { RectOverlay, type RectOverlayProps, type Rect } from './RectOverlay'
 export { SpritePreview, type SpritePreviewProps } from './SpritePreview'
 export { useViewport, viewBoxFor, ViewportContext, type Viewport } from './Viewport'
-export { InfoPanel, type InfoPanelProps } from './InfoPanel'
+export { InfoPanel, type InfoPanelProps, type ColorMode, type CoordMode } from './InfoPanel'
 export {
   GridSliceOverlay,
   cellExtent,

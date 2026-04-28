@@ -1,10 +1,19 @@
 import { useSyncExternalStore } from 'react'
 
 export type CursorReading = {
-  /** Image-pixel coordinates, top-left origin. */
+  /** Image-pixel coordinates, top-left origin. May be outside [0, imageW/H). */
   x: number
   y: number
-  /** Sampled RGBA at (x, y), each component 0-255. Null if no ImageData. */
+  /**
+   * False when (x, y) sits outside the image rect — coords are still valid
+   * but no pixel exists to sample, so consumers should switch to wrapped /
+   * zero-fill display rather than showing live data.
+   */
+  inBounds: boolean
+  /**
+   * Sampled RGBA at (x, y), each component 0-255. Null when out of bounds
+   * or when ImageData hasn't decoded yet.
+   */
   rgba: [number, number, number, number] | null
 }
 
