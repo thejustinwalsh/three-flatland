@@ -1,4 +1,10 @@
-import { useCallback, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
+import {
+  useCallback,
+  useRef,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
+} from 'react'
 import { useViewport, viewBoxFor } from './Viewport'
 
 export type Rect = {
@@ -25,6 +31,14 @@ export type RectOverlayProps = {
    */
   onSelectionChange?: (ids: Set<string>) => void
 
+  /**
+   * Called when the user drags a rect's body (move) or one of its
+   * resize handles (resize). Fires on pointerup with the final geometry,
+   * not on every move event — callers don't need to debounce.
+   * Omit to make rects geometrically read-only.
+   */
+  onRectChange?: (id: string, next: { x: number; y: number; w: number; h: number }) => void
+
   /** Whether to render a name / index label next to each rect. Default: true. */
   showLabels?: boolean
 
@@ -43,6 +57,8 @@ export type RectOverlayProps = {
   interactive?: boolean
 }
 
+// ─── Draw drag (new rect creation) ───────────────────────────────────────────
+
 type Drag = { start: { x: number; y: number }; current: { x: number; y: number } }
 
 function normalized(d: Drag) {
@@ -54,7 +70,50 @@ function normalized(d: Drag) {
   }
 }
 
+// ─── Move drag ───────────────────────────────────────────────────────────────
+
+type MoveDrag = {
+  id: string
+  pointerId: number
+  startImg: { x: number; y: number }
+  startRect: { x: number; y: number; w: number; h: number }
+  /** Preview position while dragging (image-px). */
+  preview: { x: number; y: number }
+  /** Has the pointer moved past the click-vs-drag threshold? */
+  committed: boolean
+}
+
+// ─── Resize handles ──────────────────────────────────────────────────────────
+
+type HandleDir = 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w'
+
+type ResizeDrag = {
+  id: string
+  handle: HandleDir
+  pointerId: number
+  startImg: { x: number; y: number }
+  startRect: { x: number; y: number; w: number; h: number }
+  /** Current constrained preview geometry while dragging. */
+  preview: { x: number; y: number; w: number; h: number }
+}
+
+const HANDLE_CURSORS: Record<HandleDir, string> = {
+  nw: 'nwse-resize',
+  n: 'ns-resize',
+  ne: 'nesw-resize',
+  e: 'ew-resize',
+  se: 'nwse-resize',
+  s: 'ns-resize',
+  sw: 'nesw-resize',
+  w: 'ew-resize',
+}
+
+/** Distance in image-px below which a pointerdown+up is treated as a click. */
+const MOVE_THRESHOLD_PX = 3
+
 const EMPTY: ReadonlySet<string> = new Set()
+
+// ─── Label helpers ───────────────────────────────────────────────────────────
 
 /**
  * Short label shown on the canvas. If the rect's name ends with `_N`
@@ -85,6 +144,8 @@ function groupKey(name: string | undefined): string | null {
   const m = /^(.+)_\d+$/.exec(name)
   return m ? m[1]! : null
 }
+
+// ─── RectLabel ───────────────────────────────────────────────────────────────
 
 /**
  * Label for a rect — small text rendered just above the rect's top edge.
@@ -141,6 +202,76 @@ function RectLabel({
   )
 }
 
+// ─── Handle geometry helpers ─────────────────────────────────────────────────
+
+/** Returns the center point for a given handle direction on a rect. */
+function handleCenter(
+  r: { x: number; y: number; w: number; h: number },
+  dir: HandleDir,
+): { x: number; y: number } {
+  const cx = r.x + r.w / 2
+  const cy = r.y + r.h / 2
+  switch (dir) {
+    case 'nw': return { x: r.x, y: r.y }
+    case 'n':  return { x: cx, y: r.y }
+    case 'ne': return { x: r.x + r.w, y: r.y }
+    case 'e':  return { x: r.x + r.w, y: cy }
+    case 'se': return { x: r.x + r.w, y: r.y + r.h }
+    case 's':  return { x: cx, y: r.y + r.h }
+    case 'sw': return { x: r.x, y: r.y + r.h }
+    case 'w':  return { x: r.x, y: cy }
+  }
+}
+
+const ALL_HANDLES: HandleDir[] = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w']
+
+/**
+ * Compute preview geometry for a resize drag given the current pointer
+ * position. Clamps to image bounds and enforces 1×1 minimum size.
+ */
+function applyResizeDelta(
+  start: { x: number; y: number },
+  startRect: { x: number; y: number; w: number; h: number },
+  current: { x: number; y: number },
+  handle: HandleDir,
+  imageW: number,
+  imageH: number,
+): { x: number; y: number; w: number; h: number } {
+  const dx = current.x - start.x
+  const dy = current.y - start.y
+
+  let { x, y, w, h } = startRect
+
+  // Apply delta to the edges that this handle controls.
+  // Horizontal axis
+  if (handle === 'nw' || handle === 'w' || handle === 'sw') {
+    // Moving the left edge
+    const rawLeft = Math.max(0, Math.min(x + w - 1, x + dx))
+    w = x + w - rawLeft
+    x = rawLeft
+  } else if (handle === 'ne' || handle === 'e' || handle === 'se') {
+    // Moving the right edge
+    const rawRight = Math.max(x + 1, Math.min(imageW, x + w + dx))
+    w = rawRight - x
+  }
+
+  // Vertical axis
+  if (handle === 'nw' || handle === 'n' || handle === 'ne') {
+    // Moving the top edge
+    const rawTop = Math.max(0, Math.min(y + h - 1, y + dy))
+    h = y + h - rawTop
+    y = rawTop
+  } else if (handle === 'sw' || handle === 's' || handle === 'se') {
+    // Moving the bottom edge
+    const rawBottom = Math.max(y + 1, Math.min(imageH, y + h + dy))
+    h = rawBottom - y
+  }
+
+  return { x: Math.round(x), y: Math.round(y), w: Math.round(w), h: Math.round(h) }
+}
+
+// ─── RectOverlay ─────────────────────────────────────────────────────────────
+
 /**
  * SVG overlay layer for rect editing. Sits on top of the three.js canvas
  * and uses `viewBox="0 0 imageW imageH"` + `preserveAspectRatio="xMidYMid
@@ -155,6 +286,8 @@ function RectLabel({
  *       ← present when drawing or selecting; handles draws + deselect
  *     <rect-N pointer-events:all>  for each rect
  *       ← always catches clicks so rects are always selectable
+ *     <handles-N pointer-events:all>  for each selected rect
+ *       ← sits above rect chrome; stopPropagation prevents move drag
  *     <draft pointer-events:none>
  *       ← doesn't block drag-move
  */
@@ -164,6 +297,7 @@ export function RectOverlay({
   onRectCreate,
   selectedIds = EMPTY,
   onSelectionChange,
+  onRectChange,
   showLabels = true,
   // Resting rects read as quiet chrome; selection pops to bright yellow.
   color = 'var(--vscode-descriptionForeground, #888)',
@@ -175,6 +309,24 @@ export function RectOverlay({
   const svgRef = useRef<SVGSVGElement>(null)
   const [drag, setDrag] = useState<Drag | null>(null)
   const [hoveredId, setHoveredId] = useState<string | null>(null)
+
+  // Move-drag state (stored in ref so pointermove handler always sees latest)
+  const moveDragRef = useRef<MoveDrag | null>(null)
+  const [moveDragPreview, setMoveDragPreview] = useState<{
+    id: string
+    x: number
+    y: number
+  } | null>(null)
+
+  // Resize-drag state
+  const resizeDragRef = useRef<ResizeDrag | null>(null)
+  const [resizeDragPreview, setResizeDragPreview] = useState<{
+    id: string
+    x: number
+    y: number
+    w: number
+    h: number
+  } | null>(null)
 
   const hoveredRect = hoveredId ? rects.find((r) => r.id === hoveredId) : null
   const hoverGroup = hoveredRect ? groupKey(hoveredRect.name) : null
@@ -202,18 +354,196 @@ export function RectOverlay({
   const inProgress = drag ? normalized(drag) : null
   const selectionActive = Boolean(onSelectionChange)
 
+  // ── Handle size in image-px: 8×8 squares, centered on the corner/edge ────
+  // We keep them fixed-size in image-px so zoom doesn't shrink them to nothing.
+  const HANDLE_SIZE = 8
+
+  // ── Escape cancels any active drag ────────────────────────────────────────
+  const handleKeyDown = (e: ReactKeyboardEvent<SVGSVGElement>) => {
+    if (e.key !== 'Escape') return
+    // Cancel draw drag
+    setDrag(null)
+    // Cancel move drag
+    if (moveDragRef.current) {
+      moveDragRef.current = null
+      setMoveDragPreview(null)
+    }
+    // Cancel resize drag
+    if (resizeDragRef.current) {
+      resizeDragRef.current = null
+      setResizeDragPreview(null)
+    }
+  }
+
+  // ── Rect body pointerdown: move or select ─────────────────────────────────
+  const handleRectPointerDown = (r: Rect, e: ReactPointerEvent<SVGRectElement>) => {
+    // Always stop so background catcher doesn't start a draw.
+    e.stopPropagation()
+
+    if (onRectChange && selectedIds.has(r.id)) {
+      // Capture pointer for move drag.
+      e.currentTarget.setPointerCapture(e.pointerId)
+      const p = toImagePx(e)
+      if (!p) return
+      moveDragRef.current = {
+        id: r.id,
+        pointerId: e.pointerId,
+        startImg: p,
+        startRect: { x: r.x, y: r.y, w: r.w, h: r.h },
+        preview: { x: r.x, y: r.y },
+        committed: false,
+      }
+      // Don't update preview yet — wait for threshold.
+    } else {
+      // Selection-only path (existing behavior).
+      if (!onSelectionChange) return
+      const next = new Set(selectedIds)
+      if (e.shiftKey) {
+        if (next.has(r.id)) next.delete(r.id)
+        else next.add(r.id)
+      } else {
+        next.clear()
+        next.add(r.id)
+      }
+      onSelectionChange(next)
+    }
+  }
+
+  // ── Rect body pointermove: update move drag preview ───────────────────────
+  const handleRectPointerMove = (r: Rect, e: ReactPointerEvent<SVGRectElement>) => {
+    const md = moveDragRef.current
+    if (!md || md.id !== r.id || e.pointerId !== md.pointerId) return
+    const p = toImagePx(e)
+    if (!p || !vp) return
+
+    const dx = p.x - md.startImg.x
+    const dy = p.y - md.startImg.y
+
+    if (!md.committed) {
+      const dist = Math.sqrt(dx * dx + dy * dy)
+      if (dist < MOVE_THRESHOLD_PX) return
+      md.committed = true
+    }
+
+    // Clamp so rect stays within image bounds.
+    const newX = Math.max(0, Math.min(vp.imageW - md.startRect.w, md.startRect.x + dx))
+    const newY = Math.max(0, Math.min(vp.imageH - md.startRect.h, md.startRect.y + dy))
+    md.preview = { x: Math.round(newX), y: Math.round(newY) }
+    setMoveDragPreview({ id: r.id, x: md.preview.x, y: md.preview.y })
+  }
+
+  // ── Rect body pointerup: commit move or do selection click ────────────────
+  const handleRectPointerUp = (r: Rect, e: ReactPointerEvent<SVGRectElement>) => {
+    const md = moveDragRef.current
+    if (md && md.id === r.id && e.pointerId === md.pointerId) {
+      if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+        e.currentTarget.releasePointerCapture(e.pointerId)
+      }
+      if (md.committed) {
+        // Committed drag — fire onRectChange with final position.
+        onRectChange!(r.id, {
+          x: md.preview.x,
+          y: md.preview.y,
+          w: md.startRect.w,
+          h: md.startRect.h,
+        })
+      } else {
+        // Sub-threshold: treat as a click → selection.
+        if (onSelectionChange) {
+          const next = new Set(selectedIds)
+          if (e.shiftKey) {
+            if (next.has(r.id)) next.delete(r.id)
+            else next.add(r.id)
+          } else {
+            next.clear()
+            next.add(r.id)
+          }
+          onSelectionChange(next)
+        }
+      }
+      moveDragRef.current = null
+      setMoveDragPreview(null)
+    }
+  }
+
+  // ── Rect body pointercancel: revert move drag ─────────────────────────────
+  const handleRectPointerCancel = (r: Rect) => {
+    const md = moveDragRef.current
+    if (md && md.id === r.id) {
+      moveDragRef.current = null
+      setMoveDragPreview(null)
+    }
+  }
+
+  // ── Handle pointerdown: start resize ─────────────────────────────────────
+  const handleResizePointerDown = (
+    r: Rect,
+    dir: HandleDir,
+    e: ReactPointerEvent<SVGRectElement>,
+  ) => {
+    // Stop propagation so the rect body move handler doesn't also fire.
+    e.stopPropagation()
+    e.currentTarget.setPointerCapture(e.pointerId)
+    const p = toImagePx(e)
+    if (!p) return
+    resizeDragRef.current = {
+      id: r.id,
+      handle: dir,
+      pointerId: e.pointerId,
+      startImg: p,
+      startRect: { x: r.x, y: r.y, w: r.w, h: r.h },
+      preview: { x: r.x, y: r.y, w: r.w, h: r.h },
+    }
+    setResizeDragPreview({ id: r.id, x: r.x, y: r.y, w: r.w, h: r.h })
+  }
+
+  // ── Handle pointermove: update resize preview ─────────────────────────────
+  const handleResizePointerMove = (r: Rect, e: ReactPointerEvent<SVGRectElement>) => {
+    const rd = resizeDragRef.current
+    if (!rd || rd.id !== r.id || e.pointerId !== rd.pointerId) return
+    const p = toImagePx(e)
+    if (!p || !vp) return
+    const next = applyResizeDelta(rd.startImg, rd.startRect, p, rd.handle, vp.imageW, vp.imageH)
+    rd.preview = next
+    setResizeDragPreview({ id: r.id, ...next })
+  }
+
+  // ── Handle pointerup: commit resize ───────────────────────────────────────
+  const handleResizePointerUp = (r: Rect, e: ReactPointerEvent<SVGRectElement>) => {
+    const rd = resizeDragRef.current
+    if (!rd || rd.id !== r.id || e.pointerId !== rd.pointerId) return
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+      e.currentTarget.releasePointerCapture(e.pointerId)
+    }
+    onRectChange!(r.id, rd.preview)
+    resizeDragRef.current = null
+    setResizeDragPreview(null)
+  }
+
+  // ── Handle pointercancel: revert resize ───────────────────────────────────
+  const handleResizePointerCancel = (r: Rect) => {
+    const rd = resizeDragRef.current
+    if (rd && rd.id === r.id) {
+      resizeDragRef.current = null
+      setResizeDragPreview(null)
+    }
+  }
+
   return (
     <svg
       ref={svgRef}
       viewBox={viewBoxFor(vp)}
       preserveAspectRatio="xMidYMid meet"
+      tabIndex={-1}
       style={{
         position: 'absolute',
         inset: 0,
         width: '100%',
         height: '100%',
         pointerEvents: 'none',
+        outline: 'none',
       }}
+      onKeyDown={handleKeyDown}
     >
       {/* Background catcher: present whenever we need to handle empty-space
           clicks (draw start or deselect). Transparent fill, but pointer-
@@ -276,13 +606,29 @@ export function RectOverlay({
         const labelText = isHovered ? fullLabel(r.name, i) : shortLabel(r.name, i)
         const labelOpacity = siblingOfHover ? 0 : 1
 
+        // During move drag, show preview position for this rect.
+        const isMoving = moveDragPreview?.id === r.id && moveDragRef.current?.committed
+        const isResizing = resizeDragPreview?.id === r.id
+        const dispX = isMoving ? moveDragPreview!.x : isResizing ? resizeDragPreview!.x : r.x
+        const dispY = isMoving ? moveDragPreview!.y : isResizing ? resizeDragPreview!.y : r.y
+        const dispW = isResizing ? resizeDragPreview!.w : r.w
+        const dispH = isResizing ? resizeDragPreview!.h : r.h
+
+        // Rect used for display (may differ from r during drag).
+        const dispRect = { x: dispX, y: dispY, w: dispW, h: dispH }
+
+        // Cursor for the rect body: show 'move' when onRectChange is set
+        // and this rect is selected, otherwise pointer.
+        const canMove = Boolean(onRectChange) && sel && interactive
+        const bodyCursor = isMoving ? 'grabbing' : canMove ? 'grab' : 'pointer'
+
         return (
           <g key={r.id}>
             <rect
-              x={r.x}
-              y={r.y}
-              width={r.w}
-              height={r.h}
+              x={dispX}
+              y={dispY}
+              width={dispW}
+              height={dispH}
               fill={sel ? 'rgba(255, 204, 0, 0.12)' : 'transparent'}
               stroke={sel ? selectedColor : color}
               strokeWidth={sel ? 2 : 1}
@@ -291,31 +637,20 @@ export function RectOverlay({
               opacity={interactive ? 1 : 0.35}
               style={{
                 pointerEvents: interactive ? 'all' : 'none',
-                cursor: 'pointer',
+                cursor: bodyCursor,
               }}
               onPointerEnter={() => setHoveredId(r.id)}
               onPointerLeave={() =>
                 setHoveredId((cur) => (cur === r.id ? null : cur))
               }
-              onPointerDown={(e) => {
-                // Rect clicks always take precedence over draw/deselect so
-                // selections work regardless of the active tool.
-                e.stopPropagation()
-                if (!onSelectionChange) return
-                const next = new Set(selectedIds)
-                if (e.shiftKey) {
-                  if (next.has(r.id)) next.delete(r.id)
-                  else next.add(r.id)
-                } else {
-                  next.clear()
-                  next.add(r.id)
-                }
-                onSelectionChange(next)
-              }}
+              onPointerDown={(e) => handleRectPointerDown(r, e)}
+              onPointerMove={(e) => handleRectPointerMove(r, e)}
+              onPointerUp={(e) => handleRectPointerUp(r, e)}
+              onPointerCancel={() => handleRectPointerCancel(r)}
             />
             {showLabels ? (
               <RectLabel
-                rect={r}
+                rect={dispRect}
                 text={labelText}
                 selected={sel}
                 imgW={vp.imageW}
@@ -325,6 +660,54 @@ export function RectOverlay({
           </g>
         )
       })}
+
+      {/* Resize handles — rendered above all rect chrome so they're always
+          on top and hittable. One <g> per selected rect. Only when
+          onRectChange is provided and overlay is interactive. */}
+      {interactive && onRectChange &&
+        rects.map((r) => {
+          if (!selectedIds.has(r.id)) return null
+
+          const isResizing = resizeDragPreview?.id === r.id
+          const isMoving = moveDragPreview?.id === r.id && moveDragRef.current?.committed
+          const gx = isMoving ? moveDragPreview!.x : isResizing ? resizeDragPreview!.x : r.x
+          const gy = isMoving ? moveDragPreview!.y : isResizing ? resizeDragPreview!.y : r.y
+          const gw = isResizing ? resizeDragPreview!.w : r.w
+          const gh = isResizing ? resizeDragPreview!.h : r.h
+          const gr = { x: gx, y: gy, w: gw, h: gh }
+
+          return (
+            <g key={`handles-${r.id}`}>
+              {ALL_HANDLES.map((dir) => {
+                const center = handleCenter(gr, dir)
+                const hx = center.x - HANDLE_SIZE / 2
+                const hy = center.y - HANDLE_SIZE / 2
+                return (
+                  <rect
+                    key={dir}
+                    x={hx}
+                    y={hy}
+                    width={HANDLE_SIZE}
+                    height={HANDLE_SIZE}
+                    fill="var(--vscode-focusBorder, #007acc)"
+                    stroke="rgba(0,0,0,0.4)"
+                    strokeWidth={1}
+                    vectorEffect="non-scaling-stroke"
+                    shapeRendering="crispEdges"
+                    style={{
+                      pointerEvents: 'all',
+                      cursor: HANDLE_CURSORS[dir],
+                    }}
+                    onPointerDown={(e) => handleResizePointerDown(r, dir, e)}
+                    onPointerMove={(e) => handleResizePointerMove(r, e)}
+                    onPointerUp={(e) => handleResizePointerUp(r, e)}
+                    onPointerCancel={() => handleResizePointerCancel(r)}
+                  />
+                )
+              })}
+            </g>
+          )
+        })}
 
       {inProgress ? (
         <rect
