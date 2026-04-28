@@ -34,6 +34,17 @@ export function useCursorStore(): CursorStore | null {
 }
 
 /**
+ * Decoded image pixels for the loaded sprite, exposed for overlays that
+ * need the full pixel buffer (auto-detect / connected-component labeling,
+ * future histogram tooling). Null until the image finishes decoding or
+ * when no image is loaded.
+ */
+const ImageDataContext = createContext<ImageData | null>(null)
+export function useImageData(): ImageData | null {
+  return useContext(ImageDataContext)
+}
+
+/**
  * Two-layer preview surface:
  *   - Bottom: three.js canvas (image + lighting + animation playback).
  *   - Top: children — typically SVG overlays for editor UI (rect draw,
@@ -168,7 +179,9 @@ export function CanvasStage({
       ) : null}
       <ViewportContext.Provider value={viewport}>
         <CursorStoreContext.Provider value={cursorStore}>
-          {viewport ? children : null}
+          <ImageDataContext.Provider value={imageData}>
+            {viewport ? children : null}
+          </ImageDataContext.Provider>
         </CursorStoreContext.Provider>
       </ViewportContext.Provider>
     </div>

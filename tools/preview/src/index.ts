@@ -1,4 +1,9 @@
-export { CanvasStage, useCursorStore, type CanvasStageProps } from './CanvasStage'
+export {
+  CanvasStage,
+  useCursorStore,
+  useImageData,
+  type CanvasStageProps,
+} from './CanvasStage'
 export { ThreeLayer, type ThreeLayerProps } from './ThreeLayer'
 export { RectOverlay, type RectOverlayProps, type Rect } from './RectOverlay'
 export { SpritePreview, type SpritePreviewProps } from './SpritePreview'
