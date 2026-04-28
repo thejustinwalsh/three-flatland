@@ -20,29 +20,25 @@ const NARROW = '@container (max-width: 480px)'
 const s = stylex.create({
   bar: {
     position: 'absolute',
-    // Full-width strip when narrow (left: 0); natural-width tab on the
-    // right when wide (left: auto).
-    left: { default: 'auto', [NARROW]: 0 },
-    right: 0,
-    bottom: 0,
+    // Inset from the canvas edges so the panel reads as a floating card
+    // rather than a flush tab. Full-width strip when narrow stretches
+    // between the matching insets on both sides.
+    left: { default: 'auto', [NARROW]: space.lg },
+    right: space.lg,
+    bottom: space.lg,
     display: { default: 'inline-flex', [NARROW]: 'flex' },
     alignItems: 'center',
     // Spread swatch + coord across the available width when stretched;
-    // tight gap when sitting as a natural-width tab.
+    // tight gap when sitting as a natural-width card.
     justifyContent: { default: 'flex-start', [NARROW]: 'space-between' },
     gap: space.lg,
     paddingInline: space.md,
     paddingBlock: space.xs,
     backgroundColor: vscode.panelBg,
-    borderTopWidth: 1,
-    borderTopStyle: 'solid',
-    borderTopColor: vscode.panelBorder,
-    // Left border + top-left radius only when bar is on the right side
-    // (wide layout). Drops when stretched to full width.
-    borderLeftWidth: { default: 1, [NARROW]: 0 },
-    borderLeftStyle: 'solid',
-    borderLeftColor: vscode.panelBorder,
-    borderTopLeftRadius: { default: radius.md, [NARROW]: 0 },
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: vscode.panelBorder,
+    borderRadius: radius.md,
     color: vscode.fg,
     fontFamily: vscode.monoFontFamily,
     fontSize: '11px',

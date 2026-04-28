@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import * as stylex from '@stylexjs/stylex'
-import { ToolbarButton } from '@three-flatland/design-system'
+import { Icon } from '@three-flatland/design-system'
 import { vscode } from '@three-flatland/design-system/tokens/vscode-theme.stylex'
 import { space } from '@three-flatland/design-system/tokens/space.stylex'
 import { radius } from '@three-flatland/design-system/tokens/radius.stylex'
@@ -13,6 +13,24 @@ const s = stylex.create({
   anchor: {
     position: 'relative',
     display: 'inline-flex',
+  },
+  // Inline trigger sized to the panel-header text height so the
+  // hamburger never makes the title bar taller than its sibling
+  // (Frames) panel. VSCode's ToolbarButton brings ~24px of intrinsic
+  // height; this stays under the 11px font's line box + a hair of
+  // padding.
+  trigger: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: 16,
+    height: 16,
+    padding: 0,
+    borderWidth: 0,
+    borderRadius: radius.sm,
+    backgroundColor: { default: 'transparent', ':hover': vscode.bg },
+    color: vscode.panelTitleFg,
+    cursor: 'pointer',
   },
   popover: {
     position: 'absolute',
@@ -211,11 +229,16 @@ export function AtlasMenu({ prefs }: AtlasMenuProps) {
 
   return (
     <div ref={anchorRef} {...stylex.props(s.anchor)}>
-      <ToolbarButton
-        icon="settings-gear"
+      <button
+        type="button"
         title="Display options"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        {...stylex.props(s.trigger)}
         onClick={() => setOpen((o) => !o)}
-      />
+      >
+        <Icon name="settings-gear" />
+      </button>
       {open ? (
         <div role="menu" {...stylex.props(s.popover)}>
           <div {...stylex.props(s.sectionLabel)}>Background</div>
