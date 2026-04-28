@@ -430,22 +430,26 @@ const s = stylex.create({
     color: vscode.btnFg,
     borderColor: vscode.focusRing,
   },
-  sliceFieldRow: {
+  // Two-pair input grid: [label][input] [label][input] across 4 columns.
+  // The two `auto` columns each size to the WIDEST label in that column,
+  // so all left labels (Cell W, Offset X, Gutter X) align with each
+  // other and all right labels (Cell H, Offset Y, Gutter Y) align too.
+  sliceGrid: {
     display: 'grid',
-    gridTemplateColumns: 'auto 1fr',
+    gridTemplateColumns: 'auto 1fr auto 1fr',
     rowGap: space.sm,
     columnGap: space.lg,
     alignItems: 'center',
+  },
+  // Single-pair row with one input that spans the remaining 3 columns
+  // of the parent grid (label in col 1, input from col 2 to col -1).
+  sliceFieldFull: {
+    gridColumn: '2 / -1',
   },
   sliceLabel: {
     color: vscode.descriptionFg,
     fontSize: '11px',
     whiteSpace: 'nowrap',
-  },
-  slicePairRow: {
-    display: 'grid',
-    gridTemplateColumns: '1fr 1fr',
-    gap: space.md,
   },
   sliceNumInput: {
     width: '100%',
@@ -1680,41 +1684,31 @@ function AutoDetectConfigPanel({
 
   return (
     <div {...stylex.props(s.slicePanel)}>
-      <div {...stylex.props(s.slicePairRow)}>
-        <div {...stylex.props(s.sliceFieldRow)}>
-          <span {...stylex.props(s.sliceLabel)}>Alpha ≥</span>
-          <SliceNumField
-            value={state.options.alphaThreshold}
-            min={1}
-            onChange={(n) => onOptionChange('alphaThreshold', Math.min(255, n))}
-          />
-        </div>
-        <div {...stylex.props(s.sliceFieldRow)}>
-          <span {...stylex.props(s.sliceLabel)}>Connect</span>
-          <SliceNumField
-            value={state.options.connectivity}
-            min={4}
-            onChange={(n) => onOptionChange('connectivity', n >= 8 ? 8 : 4)}
-          />
-        </div>
-      </div>
-      <div {...stylex.props(s.slicePairRow)}>
-        <div {...stylex.props(s.sliceFieldRow)}>
-          <span {...stylex.props(s.sliceLabel)}>Min px</span>
-          <SliceNumField
-            value={state.options.minPixels}
-            min={1}
-            onChange={(n) => onOptionChange('minPixels', n)}
-          />
-        </div>
-        <div {...stylex.props(s.sliceFieldRow)}>
-          <span {...stylex.props(s.sliceLabel)}>Min size</span>
-          <SliceNumField
-            value={state.options.minSize}
-            min={1}
-            onChange={(n) => onOptionChange('minSize', n)}
-          />
-        </div>
+      <div {...stylex.props(s.sliceGrid)}>
+        <span {...stylex.props(s.sliceLabel)}>Alpha ≥</span>
+        <SliceNumField
+          value={state.options.alphaThreshold}
+          min={1}
+          onChange={(n) => onOptionChange('alphaThreshold', Math.min(255, n))}
+        />
+        <span {...stylex.props(s.sliceLabel)}>Connect</span>
+        <SliceNumField
+          value={state.options.connectivity}
+          min={4}
+          onChange={(n) => onOptionChange('connectivity', n >= 8 ? 8 : 4)}
+        />
+        <span {...stylex.props(s.sliceLabel)}>Min px</span>
+        <SliceNumField
+          value={state.options.minPixels}
+          min={1}
+          onChange={(n) => onOptionChange('minPixels', n)}
+        />
+        <span {...stylex.props(s.sliceLabel)}>Min size</span>
+        <SliceNumField
+          value={state.options.minSize}
+          min={1}
+          onChange={(n) => onOptionChange('minSize', n)}
+        />
       </div>
 
       <div {...stylex.props(s.sliceDivider)} />
@@ -1723,7 +1717,7 @@ function AutoDetectConfigPanel({
         Detected {state.detected.length} · Picked {state.picked.size}
       </div>
 
-      <div {...stylex.props(s.sliceFieldRow)}>
+      <div {...stylex.props(s.sliceGrid)}>
         <span {...stylex.props(s.sliceLabel)}>Name as</span>
         <input
           type="text"
@@ -1731,7 +1725,7 @@ function AutoDetectConfigPanel({
           placeholder="sprite"
           spellCheck={false}
           onChange={(e: ChangeEvent<HTMLInputElement>) => onPrefixChange(e.target.value)}
-          {...stylex.props(s.sliceNumInput)}
+          {...stylex.props(s.sliceNumInput, s.sliceFieldFull)}
         />
       </div>
 
@@ -1847,57 +1841,38 @@ function SliceConfigPanel({
         </button>
       </div>
 
-      {state.inputMode === 'pixels' ? (
-        <div {...stylex.props(s.slicePairRow)}>
-          <div {...stylex.props(s.sliceFieldRow)}>
+      <div {...stylex.props(s.sliceGrid)}>
+        {state.inputMode === 'pixels' ? (
+          <>
             <span {...stylex.props(s.sliceLabel)}>Cell W</span>
             <SliceNumField value={state.cellW} min={1} onChange={(n) => onParamsChange({ cellW: n })} />
-          </div>
-          <div {...stylex.props(s.sliceFieldRow)}>
             <span {...stylex.props(s.sliceLabel)}>Cell H</span>
             <SliceNumField value={state.cellH} min={1} onChange={(n) => onParamsChange({ cellH: n })} />
-          </div>
-        </div>
-      ) : (
-        <div {...stylex.props(s.slicePairRow)}>
-          <div {...stylex.props(s.sliceFieldRow)}>
+          </>
+        ) : (
+          <>
             <span {...stylex.props(s.sliceLabel)}>Cols</span>
             <SliceNumField
               value={state.cols || cols}
               min={1}
               onChange={(n) => onParamsChange({ cols: n })}
             />
-          </div>
-          <div {...stylex.props(s.sliceFieldRow)}>
             <span {...stylex.props(s.sliceLabel)}>Rows</span>
             <SliceNumField
               value={state.rows || rows}
               min={1}
               onChange={(n) => onParamsChange({ rows: n })}
             />
-          </div>
-        </div>
-      )}
-
-      <div {...stylex.props(s.slicePairRow)}>
-        <div {...stylex.props(s.sliceFieldRow)}>
-          <span {...stylex.props(s.sliceLabel)}>Offset X</span>
-          <SliceNumField value={state.offsetX} min={0} onChange={(n) => onParamsChange({ offsetX: n })} />
-        </div>
-        <div {...stylex.props(s.sliceFieldRow)}>
-          <span {...stylex.props(s.sliceLabel)}>Offset Y</span>
-          <SliceNumField value={state.offsetY} min={0} onChange={(n) => onParamsChange({ offsetY: n })} />
-        </div>
-      </div>
-      <div {...stylex.props(s.slicePairRow)}>
-        <div {...stylex.props(s.sliceFieldRow)}>
-          <span {...stylex.props(s.sliceLabel)}>Gutter X</span>
-          <SliceNumField value={state.gutterX} min={0} onChange={(n) => onParamsChange({ gutterX: n })} />
-        </div>
-        <div {...stylex.props(s.sliceFieldRow)}>
-          <span {...stylex.props(s.sliceLabel)}>Gutter Y</span>
-          <SliceNumField value={state.gutterY} min={0} onChange={(n) => onParamsChange({ gutterY: n })} />
-        </div>
+          </>
+        )}
+        <span {...stylex.props(s.sliceLabel)}>Offset X</span>
+        <SliceNumField value={state.offsetX} min={0} onChange={(n) => onParamsChange({ offsetX: n })} />
+        <span {...stylex.props(s.sliceLabel)}>Offset Y</span>
+        <SliceNumField value={state.offsetY} min={0} onChange={(n) => onParamsChange({ offsetY: n })} />
+        <span {...stylex.props(s.sliceLabel)}>Gutter X</span>
+        <SliceNumField value={state.gutterX} min={0} onChange={(n) => onParamsChange({ gutterX: n })} />
+        <span {...stylex.props(s.sliceLabel)}>Gutter Y</span>
+        <SliceNumField value={state.gutterY} min={0} onChange={(n) => onParamsChange({ gutterY: n })} />
       </div>
 
       <div {...stylex.props(s.sliceDivider)} />
@@ -1906,7 +1881,7 @@ function SliceConfigPanel({
         Picked {state.picked.size} / {total} {cols}×{rows}
       </div>
 
-      <div {...stylex.props(s.sliceFieldRow)}>
+      <div {...stylex.props(s.sliceGrid)}>
         <span {...stylex.props(s.sliceLabel)}>Name as</span>
         <input
           type="text"
@@ -1914,7 +1889,7 @@ function SliceConfigPanel({
           placeholder="frame"
           spellCheck={false}
           onChange={(e: ChangeEvent<HTMLInputElement>) => onPrefixChange(e.target.value)}
-          {...stylex.props(s.sliceNumInput)}
+          {...stylex.props(s.sliceNumInput, s.sliceFieldFull)}
         />
       </div>
 
