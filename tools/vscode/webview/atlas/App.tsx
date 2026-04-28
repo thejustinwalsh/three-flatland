@@ -258,7 +258,8 @@ const s = stylex.create({
     flex: 1,
     minHeight: 0,
     display: 'grid',
-    gap: space.lg,
+    // No column gap — the 4px splitter sits directly between the panels.
+    // Outer padding keeps the work area off the toolbar / window edges.
     padding: space.lg,
   },
   // Atlas | splitter | Frames sidebar. Splitter is 4px; Frames width is
@@ -1215,7 +1216,9 @@ export function App() {
             // padding ≈ 20px, so we leave a small margin).
             const next = rect.right - clientX
             const min = 200
-            const max = Math.max(min, rect.width - 200 - 24)
+            // Splitter (4px) is the only inter-column gap now — leave just
+            // a tiny margin so the user can't overlap the columns.
+            const max = Math.max(min, rect.width - 200 - 4)
             setFramesPx(Math.max(min, Math.min(max, next)))
           }}
         />
