@@ -818,18 +818,18 @@ export function App() {
   // can mark out additional ranges without re-entering the tool. Picks
   // clear after commit; the grid + prefix persist so subsequent commits
   // pick up where the last one left off.
+  //
+  // Frame order = user's pick order. Set iteration is insertion-order,
+  // so we just iterate state.picked directly — no row-major sort. If the
+  // user wanted the cells reordered they'd pick them in a different
+  // order; we don't impose a reading-order convention.
   const commitSlice = useCallback(() => {
     if (mode.kind !== 'slicing') return
     const { state } = mode
     const prefix = state.prefix.trim()
     if (prefix === '' || state.picked.size === 0) return
-    const ordered = [...state.picked]
-      .map((k) => {
-        const [r, c] = k.split(',').map(Number) as [number, number]
-        return { r, c }
-      })
-      .sort((a, b) => (a.r !== b.r ? a.r - b.r : a.c - b.c))
-    const newRects: Rect[] = ordered.map(({ r, c }, i) => {
+    const newRects: Rect[] = [...state.picked].map((k, i) => {
+      const [r, c] = k.split(',').map(Number) as [number, number]
       const ext = cellExtent(state.grid, r, c)
       return { id: crypto.randomUUID(), x: ext.x, y: ext.y, w: ext.w, h: ext.h, name: `${prefix}_${i}` }
     })
@@ -913,9 +913,10 @@ export function App() {
     const { state } = mode
     const prefix = state.prefix.trim()
     if (prefix === '' || state.picked.size === 0) return
-    // Picked indices in detection order (already reading-order sorted by ccl).
-    const ordered = [...state.picked].sort((a, b) => a - b)
-    const newRects: Rect[] = ordered.map((i, idx) => {
+    // Frame order = user's pick order (Set iteration is insertion-order),
+    // not the algorithm's reading-order sort. Lets the user override the
+    // CCL ordering by picking blobs in their own sequence.
+    const newRects: Rect[] = [...state.picked].map((i, idx) => {
       const d = state.detected[i]!
       return { id: crypto.randomUUID(), x: d.x, y: d.y, w: d.w, h: d.h, name: `${prefix}_${idx}` }
     })
