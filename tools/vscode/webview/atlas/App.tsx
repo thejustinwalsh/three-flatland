@@ -40,6 +40,8 @@ import {
   type Rect,
   type ViewportController,
 } from '@three-flatland/preview'
+import { AtlasMenu } from './AtlasMenu'
+import { prefsStore, usePrefs } from './prefs'
 import * as stylex from '@stylexjs/stylex'
 import { vscode } from '@three-flatland/design-system/tokens/vscode-theme.stylex'
 import { space } from '@three-flatland/design-system/tokens/space.stylex'
@@ -571,6 +573,10 @@ export function App() {
   const bridgeRef = useRef<ReturnType<typeof createClientBridge> | null>(null)
   const rootRef = useRef<HTMLDivElement>(null)
   const editorBg = useCssVar('--vscode-editor-background', '#1e1e1e')
+  // Persistent display preferences (background style, dim, color/coord
+  // formats, overlay visibility). Edited via the AtlasMenu hamburger in
+  // the Atlas Panel header.
+  const prefs = usePrefs()
 
   // VSCode webviews only dispatch modifier-key keydowns (Cmd+A, Cmd+S, …)
   // to the DOM when something inside the webview has focus. Give the root
@@ -1158,11 +1164,13 @@ export function App() {
         ref={workAreaRef}
         {...stylex.props(s.workArea, s.workAreaCols(framesPx))}
       >
-        <Panel title="Atlas">
+        <Panel title="Atlas" headerActions={<AtlasMenu prefs={prefs} />}>
           <div {...stylex.props(s.previewWrap)}>
             <CanvasStage
               imageUri={payload?.imageUri ?? null}
               background={editorBg}
+              backgroundStyle={prefs.background === 'checker' ? 'checker' : 'solid'}
+              dimOutOfBounds={prefs.dimOutOfBounds}
               onImageReady={setImageSize}
               panMode={tool === 'move' && !inTool}
               onSpaceHold={handleSpaceHold}
@@ -1176,6 +1184,7 @@ export function App() {
                 selectedIds={selectedIds}
                 onSelectionChange={inTool ? undefined : setSelectedIds}
                 onHoverChange={setHoveredRect}
+                showLabels={prefs.showFrameNumbers}
               />
               {mode.kind === 'slicing' ? (
                 <GridSliceOverlay
@@ -1196,11 +1205,20 @@ export function App() {
               ) : null}
               <ViewportControllerSink controllerRef={viewportControllerRef} />
               <ImageDataSink onChange={setImageData} />
-              <HoverFrameChip
-                rect={hoveredRect}
-                index={hoveredRect ? rects.indexOf(hoveredRect) : null}
-              />
-              <InfoPanel />
+              {prefs.showHoverChip ? (
+                <HoverFrameChip
+                  rect={hoveredRect}
+                  index={hoveredRect ? rects.indexOf(hoveredRect) : null}
+                />
+              ) : null}
+              {prefs.showInfoPanel ? (
+                <InfoPanel
+                  colorMode={prefs.colorMode}
+                  onColorModeChange={(v) => prefsStore.set({ colorMode: v })}
+                  coordMode={prefs.coordMode}
+                  onCoordModeChange={(v) => prefsStore.set({ coordMode: v })}
+                />
+              ) : null}
             </CanvasStage>
           </div>
         </Panel>
