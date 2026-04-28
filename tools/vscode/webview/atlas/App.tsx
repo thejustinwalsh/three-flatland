@@ -258,10 +258,15 @@ const s = stylex.create({
     flex: 1,
     minHeight: 0,
     display: 'grid',
-    gridTemplateColumns: 'minmax(0, 1fr) 280px',
     gap: space.lg,
     padding: space.lg,
   },
+  // Atlas | splitter | Frames sidebar. Splitter is 4px; Frames width is
+  // user-controlled with both columns clamped to a 200px min so the user
+  // can't collapse either side away.
+  workAreaCols: (framesPx: number) => ({
+    gridTemplateColumns: `minmax(200px, 1fr) 4px ${framesPx}px`,
+  }),
   previewWrap: { flex: 1, minHeight: 0 },
   emptyState: { color: vscode.descriptionFg },
   hintDim: { opacity: 0.6 },
@@ -516,6 +521,16 @@ const s = stylex.create({
     transitionProperty: 'background-color',
     transitionDuration: '120ms',
   },
+  splitterV: {
+    width: 4,
+    cursor: 'col-resize',
+    backgroundColor: {
+      default: 'transparent',
+      ':hover': vscode.focusRing,
+    },
+    transitionProperty: 'background-color',
+    transitionDuration: '120ms',
+  },
 })
 
 export function App() {
@@ -532,6 +547,10 @@ export function App() {
   // to default on remount.
   const [framesFrac, setFramesFrac] = useState(0.5)
   const sidebarRef = useRef<HTMLDivElement>(null)
+  // User-resizable width of the Frames sidebar. Clamped to 200px min on
+  // both columns; default 280px matches the prior fixed value.
+  const [framesPx, setFramesPx] = useState(280)
+  const workAreaRef = useRef<HTMLDivElement>(null)
   // Viewport controller is owned by CanvasStage and exposed via context;
   // a tiny <ViewportControllerSink> child captures it into this ref so the
   // toolbar (rendered outside CanvasStage) can call zoom/fit methods.
@@ -1134,7 +1153,10 @@ export function App() {
         />
       </Toolbar>
 
-      <div {...stylex.props(s.workArea)}>
+      <div
+        ref={workAreaRef}
+        {...stylex.props(s.workArea, s.workAreaCols(framesPx))}
+      >
         <Panel title="Atlas">
           <div {...stylex.props(s.previewWrap)}>
             <CanvasStage
@@ -1180,6 +1202,23 @@ export function App() {
             </CanvasStage>
           </div>
         </Panel>
+
+        <Splitter
+          axis="vertical"
+          onDrag={(clientX) => {
+            const el = workAreaRef.current
+            if (!el) return
+            const rect = el.getBoundingClientRect()
+            // Frames width = the distance from the cursor to the right
+            // edge of the work area. Clamped so neither column drops
+            // below 200px (the splitter itself is 4px + 2× space.lg
+            // padding ≈ 20px, so we leave a small margin).
+            const next = rect.right - clientX
+            const min = 200
+            const max = Math.max(min, rect.width - 200 - 24)
+            setFramesPx(Math.max(min, Math.min(max, next)))
+          }}
+        />
 
         <div
           ref={sidebarRef}
@@ -1761,20 +1800,32 @@ function AutoDetectConfigPanel({
   )
 }
 
-function Splitter({ onDrag }: { onDrag: (clientY: number) => void }) {
+function Splitter({
+  axis,
+  onDrag,
+}: {
+  /**
+   * 'horizontal' = a horizontal line dragged vertically (splits rows of a
+   *   column).
+   * 'vertical' = a vertical line dragged horizontally (splits columns of a
+   *   row).
+   */
+  axis: 'horizontal' | 'vertical'
+  onDrag: (clientPx: number) => void
+}) {
   const draggingRef = useRef(false)
   return (
     <div
       role="separator"
-      aria-orientation="horizontal"
-      {...stylex.props(s.splitter)}
+      aria-orientation={axis}
+      {...stylex.props(axis === 'horizontal' ? s.splitter : s.splitterV)}
       onPointerDown={(e: ReactPointerEvent<HTMLDivElement>) => {
         e.currentTarget.setPointerCapture(e.pointerId)
         draggingRef.current = true
       }}
       onPointerMove={(e: ReactPointerEvent<HTMLDivElement>) => {
         if (!draggingRef.current) return
-        onDrag(e.clientY)
+        onDrag(axis === 'horizontal' ? e.clientY : e.clientX)
       }}
       onPointerUp={(e: ReactPointerEvent<HTMLDivElement>) => {
         if (e.currentTarget.hasPointerCapture(e.pointerId)) {
