@@ -27,3 +27,10 @@ export {
   type AutoDetectOverlayProps,
 } from './AutoDetectOverlay'
 export { HoverFrameChip, type HoverFrameChipProps } from './HoverFrameChip'
+export {
+  createAnimationStore,
+  useAnimationPlayback,
+  advancePlayhead,
+  type AnimationStore,
+  type PlaybackSnapshot,
+} from './animationStore'
