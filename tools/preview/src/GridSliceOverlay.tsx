@@ -120,6 +120,23 @@ export function GridSliceOverlay({
   // 1.5% of the smaller image dimension, min 4px, max 8px image-units.
   const hitWidth = Math.max(4, Math.min(8, Math.round(Math.min(vp.imageW, vp.imageH) * 0.015)))
 
+  // Map each picked cell key → its index in commit order (row-major over
+  // just the picked cells, NOT all cells). The label on a picked cell
+  // shows the index it'll get in the atlas frames array on commit, not
+  // its raw position in the grid. e.g. picking the 4 corners of an 8×8
+  // grid labels them 0/1/2/3 — not 0/7/56/63.
+  const pickedIndexByKey = (() => {
+    const m = new Map<string, number>()
+    const ordered = [...picked].sort((a, b) => {
+      const [aR, aC] = a.split(',').map(Number) as [number, number]
+      const [bR, bC] = b.split(',').map(Number) as [number, number]
+      if (aR !== bR) return aR - bR
+      return aC - bC
+    })
+    ordered.forEach((k, i) => m.set(k, i))
+    return m
+  })()
+
   const handleLinePointerDown = (axis: 'col' | 'row', index: number) =>
     (e: ReactPointerEvent<SVGElement>) => {
       e.stopPropagation()
@@ -315,7 +332,7 @@ export function GridSliceOverlay({
                     userSelect: 'none',
                   }}
                 >
-                  {r * cols + c}
+                  {pickedIndexByKey.get(key) ?? 0}
                 </text>
               ) : null}
             </g>
