@@ -26,3 +26,4 @@ export {
   AutoDetectOverlay,
   type AutoDetectOverlayProps,
 } from './AutoDetectOverlay'
+export { HoverFrameChip, type HoverFrameChipProps } from './HoverFrameChip'
