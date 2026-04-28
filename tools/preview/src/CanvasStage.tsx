@@ -22,6 +22,21 @@ export type CanvasStageProps = {
   /** Overlay layers rendered absolutely over the three.js canvas. */
   children?: ReactNode
   onImageReady?: (size: { w: number; h: number }) => void
+  /**
+   * When true, mounts a transparent capture layer above all overlay
+   * children that shows a grab cursor and routes left-mouse-drag to the
+   * pan handler. Disables interaction with the underlying overlays —
+   * effectively a "lock to zoom + pan" mode, matching the behaviour of
+   * the Move toolbar button (and Space-hold) in the Atlas tool. The
+   * cursor change is immediate (no need to click first).
+   */
+  panMode?: boolean
+  /**
+   * Fires when Space is pressed/released. App uses this to swap the
+   * active tool to 'move' for the duration of the hold so the toolbar
+   * reflects the temporary mode change.
+   */
+  onSpaceHold?: (down: boolean) => void
 }
 
 /**
@@ -128,6 +143,8 @@ export function CanvasStage({
   fitMargin = 1.15,
   children,
   onImageReady,
+  panMode = false,
+  onSpaceHold,
 }: CanvasStageProps) {
   const [baseViewport, setBaseViewport] = useState<Omit<Viewport, 'zoom' | 'panX' | 'panY'> | null>(null)
   const [imageData, setImageData] = useState<ImageData | null>(null)
@@ -324,16 +341,26 @@ export function CanvasStage({
   // -------------------------------------------------------------------------
 
   useEffect(() => {
+    const isEditable = (t: EventTarget | null) => {
+      if (!(t instanceof HTMLElement)) return false
+      const tag = t.tagName.toLowerCase()
+      return tag === 'input' || tag === 'textarea' || tag === 'select' || t.isContentEditable
+    }
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.code === 'Space' && !e.repeat) {
+      if (e.code === 'Space' && !e.repeat && !isEditable(e.target)) {
         spaceDownRef.current = true
         setIsSpaceDown(true)
+        onSpaceHold?.(true)
       }
     }
     const onKeyUp = (e: KeyboardEvent) => {
       if (e.code === 'Space') {
+        // Always release on key-up, even if down was suppressed (input was
+        // focused at down-time but blurred since). Idempotent.
+        const wasDown = spaceDownRef.current
         spaceDownRef.current = false
         setIsSpaceDown(false)
+        if (wasDown) onSpaceHold?.(false)
         // If a pan drag was active via space, end it
         if (panDragRef.current) {
           panDragRef.current = null
@@ -348,7 +375,7 @@ export function CanvasStage({
       window.removeEventListener('keydown', onKeyDown)
       window.removeEventListener('keyup', onKeyUp)
     }
-  }, [cursorStore])
+  }, [cursorStore, onSpaceHold])
 
   // -------------------------------------------------------------------------
   // Pan — pointer drag handlers
@@ -383,7 +410,8 @@ export function CanvasStage({
     (e: ReactPointerEvent<HTMLDivElement>) => {
       const isMiddle = e.button === 1
       const isSpaceDrag = spaceDownRef.current && e.button === 0
-      if (!isMiddle && !isSpaceDrag) return
+      const isPanModeDrag = panMode && e.button === 0
+      if (!isMiddle && !isSpaceDrag && !isPanModeDrag) return
       e.preventDefault()
       e.currentTarget.setPointerCapture(e.pointerId)
       panDragRef.current = {
@@ -395,7 +423,7 @@ export function CanvasStage({
       setIsPanning(true)
       cursorStore.freeze()
     },
-    [cursorStore],
+    [cursorStore, panMode],
   )
 
   const handlePointerMoveForPan = useCallback(
@@ -498,6 +526,7 @@ export function CanvasStage({
     [handlePointerMoveForPan, handlePointerMove],
   )
 
+  const inPanMode = panMode || isSpaceDown
   return (
     <div
       style={{
@@ -505,7 +534,7 @@ export function CanvasStage({
         width: '100%',
         height: '100%',
         minHeight: 0,
-        cursor: isPanning ? 'grabbing' : isSpaceDown ? 'grab' : undefined,
+        cursor: isPanning ? 'grabbing' : inPanMode ? 'grab' : undefined,
       }}
       onPointerMove={combinedPointerMove}
       onPointerLeave={handlePointerLeave}
@@ -547,6 +576,22 @@ export function CanvasStage({
           </ImageDataContext.Provider>
         </CursorStoreContext.Provider>
       </ViewportContext.Provider>
+      {inPanMode && viewport ? (
+        // Transparent capture layer above all overlays. Forces the grab/
+        // grabbing cursor regardless of what's underneath, and absorbs
+        // pointer events so child overlays (rect select/move, grid
+        // pick, autodetect pick) can't fire while pan-mode is active.
+        // Pointer events still bubble up to the wrapper div, which
+        // routes left-mouse-drag through to the pan handler.
+        <div
+          aria-hidden="true"
+          style={{
+            position: 'absolute',
+            inset: 0,
+            cursor: isPanning ? 'grabbing' : 'grab',
+          }}
+        />
+      ) : null}
     </div>
   )
 }

@@ -636,6 +636,24 @@ export function App() {
     [],
   )
 
+  // Space-hold temporarily switches to Move (pan-only) mode. Original
+  // tool is restored on release. The toolbar Move button reflects 'move'
+  // for the duration so the user has consistent feedback.
+  const toolBeforeSpaceRef = useRef<Tool | null>(null)
+  const handleSpaceHold = useCallback((down: boolean) => {
+    if (down) {
+      if (toolBeforeSpaceRef.current !== null) return // already held
+      toolBeforeSpaceRef.current = tool
+      setTool('move')
+    } else {
+      const prev = toolBeforeSpaceRef.current
+      if (prev !== null) {
+        setTool(prev)
+        toolBeforeSpaceRef.current = null
+      }
+    }
+  }, [tool])
+
   const clearSelection = useCallback(() => setSelectedIds(new Set()), [])
 
   const deleteSelected = useCallback(() => {
@@ -733,13 +751,49 @@ export function App() {
 
   const updateSliceParams = useCallback(
     (patch: Partial<SliceState>) => {
-      updateSlice((prev) => regenerateGrid({ ...prev, ...patch }))
+      updateSlice((prev) => {
+        const merged = { ...prev, ...patch }
+        // When toggling between input modes, derive the OTHER mode's
+        // values from the current state so both stay in sync. Without
+        // this, the freshly-shown fields (cols/rows or cellW/H) would
+        // display whatever stale value was last set in that mode.
+        if (patch.inputMode && patch.inputMode !== prev.inputMode && imageSize) {
+          const w = imageSize.w
+          const h = imageSize.h
+          if (patch.inputMode === 'cells') {
+            merged.cols = Math.max(
+              1,
+              Math.floor((w - merged.offsetX + merged.gutterX) / (merged.cellW + merged.gutterX)),
+            )
+            merged.rows = Math.max(
+              1,
+              Math.floor((h - merged.offsetY + merged.gutterY) / (merged.cellH + merged.gutterY)),
+            )
+          } else {
+            merged.cellW = Math.max(
+              1,
+              Math.floor((w - merged.offsetX - (merged.cols - 1) * merged.gutterX) / merged.cols),
+            )
+            merged.cellH = Math.max(
+              1,
+              Math.floor((h - merged.offsetY - (merged.rows - 1) * merged.gutterY) / merged.rows),
+            )
+          }
+        }
+        return regenerateGrid(merged)
+      })
     },
-    [updateSlice, regenerateGrid],
+    [updateSlice, regenerateGrid, imageSize],
   )
 
   const setCellPicked = useCallback(
     (row: number, col: number, picked: boolean) => {
+      // Starting a new pick session after a commit (picks empty, selection
+      // still showing the just-committed rects) → clear that selection so
+      // the user has a clean canvas to mark up.
+      if (mode.kind === 'slicing' && mode.state.picked.size === 0 && selectedIds.size > 0) {
+        setSelectedIds(new Set())
+      }
       updateSlice((prev) => {
         const key = cellKey(row, col)
         const has = prev.picked.has(key)
@@ -750,7 +804,7 @@ export function App() {
         return { ...prev, picked: next }
       })
     },
-    [updateSlice],
+    [updateSlice, mode, selectedIds],
   )
 
   const setSliceGrid = useCallback(
@@ -1078,6 +1132,8 @@ export function App() {
               imageUri={payload?.imageUri ?? null}
               background={editorBg}
               onImageReady={setImageSize}
+              panMode={tool === 'move' && !inTool}
+              onSpaceHold={handleSpaceHold}
             >
               <RectOverlay
                 rects={rects}
