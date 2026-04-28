@@ -609,7 +609,7 @@ export function CanvasStage({
             <path
               d={`M -1e6,-1e6 H 1e6 V 1e6 H -1e6 Z M 0,0 H ${viewport.imageW} V ${viewport.imageH} H 0 Z`}
               fillRule="evenodd"
-              fill="rgba(0, 0, 0, 0.5)"
+              fill="rgba(0, 0, 0, 0.25)"
               pointerEvents="none"
             />
           ) : null}

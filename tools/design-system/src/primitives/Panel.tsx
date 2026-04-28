@@ -46,10 +46,19 @@ const s = stylex.create({
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
   },
+  // Always-rendered slot at the right edge of the header. Reserves a
+  // 16×16 box (matching the AtlasMenu trigger) so a panel with no
+  // headerActions still has the same intrinsic header height as one
+  // that does — Atlas + Frames headers stay aligned even though only
+  // Atlas currently has an icon. Future per-panel config buttons drop
+  // into this same box without shifting layout.
   headerActions: {
     display: 'inline-flex',
     alignItems: 'center',
+    justifyContent: 'flex-end',
     flexShrink: 0,
+    minWidth: 16,
+    minHeight: 16,
   },
   body: {
     flex: 1,
@@ -89,9 +98,11 @@ export function Panel({ title, headerActions, children, style, ...rest }: PanelP
       {showHeader ? (
         <div {...stylex.props(s.header)}>
           <span {...stylex.props(s.headerTitle)}>{title}</span>
-          {headerActions != null ? (
-            <span {...stylex.props(s.headerActions)}>{headerActions}</span>
-          ) : null}
+          {/* Always render the actions slot — even empty — so panels
+              with and without headerActions share the same row height.
+              Drop one in later (e.g. a Frames config button) without
+              shifting the title bar. */}
+          <span {...stylex.props(s.headerActions)}>{headerActions}</span>
         </div>
       ) : null}
       <div {...stylex.props(s.body)}>{children}</div>
