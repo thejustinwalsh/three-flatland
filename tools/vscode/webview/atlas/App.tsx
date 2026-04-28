@@ -19,16 +19,23 @@ import {
   useCssVar,
 } from '@three-flatland/design-system'
 import {
+  AutoDetectOverlay,
   CanvasStage,
   GridSliceOverlay,
   InfoPanel,
   RectOverlay,
   cellExtent,
   cellKey,
+  connectedComponents,
   gridFromCellSize,
   gridFromRowCol,
+  useImageData,
+  useViewportController,
+  type CCLOptions,
+  type DetectedRect,
   type GridSpec,
   type Rect,
+  type ViewportController,
 } from '@three-flatland/preview'
 import * as stylex from '@stylexjs/stylex'
 import { vscode } from '@three-flatland/design-system/tokens/vscode-theme.stylex'
@@ -77,7 +84,21 @@ type SliceState = {
   prefix: string
 }
 
-type EditorMode = { kind: 'normal' } | { kind: 'slicing'; state: SliceState }
+type AutoDetectState = {
+  /** Set when the user has run a detection pass; null until then. */
+  detected: DetectedRect[]
+  /** Indices into `detected` the user has picked to commit. */
+  picked: Set<number>
+  /** Name prefix for committed cells; auto-numbered in reading order. */
+  prefix: string
+  /** Detection options (alpha threshold, connectivity, min size). */
+  options: Required<CCLOptions>
+}
+
+type EditorMode =
+  | { kind: 'normal' }
+  | { kind: 'slicing'; state: SliceState }
+  | { kind: 'autodetect'; state: AutoDetectState }
 
 function dumpThemeTokens() {
   const styles = getComputedStyle(document.body)
@@ -402,6 +423,10 @@ export function App() {
   // to default on remount.
   const [framesFrac, setFramesFrac] = useState(0.5)
   const sidebarRef = useRef<HTMLDivElement>(null)
+  // Viewport controller is owned by CanvasStage and exposed via context;
+  // a tiny <ViewportControllerSink> child captures it into this ref so the
+  // toolbar (rendered outside CanvasStage) can call zoom/fit methods.
+  const viewportControllerRef = useRef<ViewportController | null>(null)
   const [saveStatus, setSaveStatus] = useState<
     | { kind: 'idle' }
     | { kind: 'saving' }
@@ -496,6 +521,13 @@ export function App() {
     setRects((prev) => [...prev, r])
     setSelectedIds(new Set([r.id]))
   }, [])
+
+  const handleRectChange = useCallback(
+    (id: string, next: { x: number; y: number; w: number; h: number }) => {
+      setRects((prev) => prev.map((r) => (r.id === id ? { ...r, ...next } : r)))
+    },
+    [],
+  )
 
   const clearSelection = useCallback(() => setSelectedIds(new Set()), [])
 
@@ -651,6 +683,93 @@ export function App() {
     mode.state.picked.size > 0 &&
     mode.state.prefix.trim() !== ''
 
+  // ─── Autodetect (CCL) ──────────────────────────────────────────────────────
+
+  const autodetect = mode.kind === 'autodetect'
+
+  const updateAutoDetect = useCallback(
+    (updater: (prev: AutoDetectState) => AutoDetectState) => {
+      setMode((m) => (m.kind === 'autodetect' ? { kind: 'autodetect', state: updater(m.state) } : m))
+    },
+    [],
+  )
+
+  const enterAutoDetect = useCallback(() => {
+    if (!imageSize) return
+    setMode({
+      kind: 'autodetect',
+      state: {
+        detected: [],
+        picked: new Set(),
+        prefix: 'sprite',
+        options: { alphaThreshold: 1, minPixels: 4, minSize: 2, connectivity: 4 },
+      },
+    })
+    setSelectedIds(new Set())
+    setRenameMode({ kind: 'none' })
+  }, [imageSize])
+
+  const exitAutoDetect = useCallback(() => {
+    setMode({ kind: 'normal' })
+  }, [])
+
+  const setAutoDetectOption = useCallback(
+    <K extends keyof Required<CCLOptions>>(key: K, value: Required<CCLOptions>[K]) => {
+      updateAutoDetect((prev) => ({ ...prev, options: { ...prev.options, [key]: value } }))
+    },
+    [updateAutoDetect],
+  )
+
+  const setAutoDetectPrefix = useCallback(
+    (prefix: string) => updateAutoDetect((prev) => ({ ...prev, prefix })),
+    [updateAutoDetect],
+  )
+
+  const toggleAutoDetectPick = useCallback(
+    (i: number, additive: boolean) => {
+      updateAutoDetect((prev) => {
+        const next = new Set(prev.picked)
+        if (next.has(i)) next.delete(i)
+        else if (!additive) {
+          // non-additive single-toggle: still just toggles (consistent with slice)
+          next.add(i)
+        } else {
+          next.add(i)
+        }
+        return { ...prev, picked: next }
+      })
+    },
+    [updateAutoDetect],
+  )
+
+  const setAutoDetectPicked = useCallback(
+    (picked: Set<number>) => updateAutoDetect((prev) => ({ ...prev, picked })),
+    [updateAutoDetect],
+  )
+
+  const commitAutoDetect = useCallback(() => {
+    if (mode.kind !== 'autodetect') return
+    const { state } = mode
+    const prefix = state.prefix.trim()
+    if (prefix === '' || state.picked.size === 0) return
+    // Picked indices in detection order (already reading-order sorted by ccl).
+    const ordered = [...state.picked].sort((a, b) => a - b)
+    const newRects: Rect[] = ordered.map((i, idx) => {
+      const d = state.detected[i]!
+      return { id: crypto.randomUUID(), x: d.x, y: d.y, w: d.w, h: d.h, name: `${prefix}_${idx}` }
+    })
+    setRects((prev) => [...prev, ...newRects])
+    setSelectedIds(new Set(newRects.map((r) => r.id)))
+    updateAutoDetect((prev) => ({ ...prev, picked: new Set() }))
+  }, [mode, updateAutoDetect])
+
+  const autoDetectCanCommit =
+    mode.kind === 'autodetect' &&
+    mode.state.picked.size > 0 &&
+    mode.state.prefix.trim() !== ''
+
+  const inTool = slicing || autodetect
+
   // Keyboard — only consumes keys we handle.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -660,6 +779,11 @@ export function App() {
       if (e.key === 'Escape') {
         if (mode.kind === 'slicing') {
           exitSlice()
+          e.preventDefault()
+          return
+        }
+        if (mode.kind === 'autodetect') {
+          exitAutoDetect()
           e.preventDefault()
           return
         }
@@ -676,6 +800,13 @@ export function App() {
       if (e.key === 'Enter' && mode.kind === 'slicing') {
         if (sliceCanCommit) {
           commitSlice()
+          e.preventDefault()
+        }
+        return
+      }
+      if (e.key === 'Enter' && mode.kind === 'autodetect') {
+        if (autoDetectCanCommit) {
+          commitAutoDetect()
           e.preventDefault()
         }
         return
@@ -731,6 +862,9 @@ export function App() {
     sliceCanCommit,
     commitSlice,
     exitSlice,
+    autoDetectCanCommit,
+    commitAutoDetect,
+    exitAutoDetect,
   ])
 
   return (
@@ -746,57 +880,77 @@ export function App() {
           title="Grid Slice"
           toggleable
           checked={slicing}
+          disabled={autodetect}
           onClick={() => (slicing ? exitSlice() : enterSlice())}
         />
-        <ToolbarButton icon="wand" title="Auto Detect Sprites" disabled={slicing} />
+        <ToolbarButton
+          icon="wand"
+          title="Auto Detect Sprites"
+          toggleable
+          checked={autodetect}
+          disabled={slicing}
+          onClick={() => (autodetect ? exitAutoDetect() : enterAutoDetect())}
+        />
         <Divider />
         <ToolbarButton
           icon="add"
           title="Draw Rect  (R)"
           toggleable
-          checked={tool === 'rect' && !slicing}
-          disabled={slicing}
+          checked={tool === 'rect' && !inTool}
+          disabled={inTool}
           onClick={() => setTool('rect')}
         />
         <ToolbarButton
           icon="selection"
           title="Select  (S)"
           toggleable
-          checked={tool === 'select' && !slicing}
-          disabled={slicing}
+          checked={tool === 'select' && !inTool}
+          disabled={inTool}
           onClick={() => setTool('select')}
         />
         <ToolbarButton
           icon="move"
           title="Move  (M)"
           toggleable
-          checked={tool === 'move' && !slicing}
-          disabled={slicing}
+          checked={tool === 'move' && !inTool}
+          disabled={inTool}
           onClick={() => setTool('move')}
         />
         <Divider />
         <ToolbarButton
           icon="symbol-string"
           title="Rename / Auto-name  (N)"
-          disabled={slicing}
+          disabled={inTool}
           onClick={startRename}
         />
-        <ToolbarButton icon="run-all" title="Animations" disabled={slicing} />
+        <ToolbarButton icon="run-all" title="Animations" disabled={inTool} />
         <div {...stylex.props(s.toolbarSpacer)} />
-        <ToolbarButton icon="zoom-in" title="Zoom In" />
-        <ToolbarButton icon="zoom-out" title="Zoom Out" />
-        <ToolbarButton icon="screen-full" title="Fit" />
+        <ToolbarButton
+          icon="zoom-in"
+          title="Zoom In"
+          onClick={() => viewportControllerRef.current?.zoomIn()}
+        />
+        <ToolbarButton
+          icon="zoom-out"
+          title="Zoom Out"
+          onClick={() => viewportControllerRef.current?.zoomOut()}
+        />
+        <ToolbarButton
+          icon="screen-full"
+          title="Fit"
+          onClick={() => viewportControllerRef.current?.fitToView()}
+        />
         <Divider />
         <ToolbarButton
           icon="trash"
           title="Delete Selected  (Del)"
-          disabled={slicing}
+          disabled={inTool}
           onClick={deleteSelected}
         />
         <ToolbarButton
           icon="clear-all"
           title="Clear All Rects"
-          disabled={slicing}
+          disabled={inTool}
           onClick={() => {
             setRects([])
             setSelectedIds(new Set())
@@ -805,7 +959,7 @@ export function App() {
         <ToolbarButton
           icon={saveStatus.kind === 'saving' ? 'loading' : 'save'}
           title="Save Atlas  (⌘S)"
-          disabled={slicing}
+          disabled={inTool}
           onClick={() => void handleSave()}
         />
       </Toolbar>
@@ -820,11 +974,12 @@ export function App() {
             >
               <RectOverlay
                 rects={rects}
-                drawEnabled={tool === 'rect' && !slicing}
-                interactive={!slicing}
+                drawEnabled={tool === 'rect' && !inTool}
+                interactive={!inTool}
                 onRectCreate={handleRectCreate}
+                onRectChange={inTool ? undefined : handleRectChange}
                 selectedIds={selectedIds}
-                onSelectionChange={slicing ? undefined : setSelectedIds}
+                onSelectionChange={inTool ? undefined : setSelectedIds}
               />
               {mode.kind === 'slicing' ? (
                 <GridSliceOverlay
@@ -834,6 +989,15 @@ export function App() {
                   onCellSet={setCellPicked}
                 />
               ) : null}
+              {mode.kind === 'autodetect' ? (
+                <AutoDetectOverlay
+                  detected={mode.state.detected}
+                  picked={mode.state.picked}
+                  onToggle={toggleAutoDetectPick}
+                  onSetPicked={setAutoDetectPicked}
+                />
+              ) : null}
+              <ViewportControllerSink controllerRef={viewportControllerRef} />
               <InfoPanel />
             </CanvasStage>
           </div>
@@ -843,7 +1007,7 @@ export function App() {
           ref={sidebarRef}
           {...stylex.props(
             s.sidebarStack,
-            s.sidebarRows(slicing ? `${framesFrac}fr 4px ${1 - framesFrac}fr` : '1fr'),
+            s.sidebarRows(inTool ? `${framesFrac}fr 4px ${1 - framesFrac}fr` : '1fr'),
           )}
         >
         <Panel
@@ -863,8 +1027,8 @@ export function App() {
 
           {rects.length === 0 ? (
             <div {...stylex.props(s.emptyState)}>
-              {slicing
-                ? 'No frames yet. Pick cells in the Slice panel and Commit to add them.'
+              {inTool
+                ? 'No frames yet. Pick cells in the active tool panel and Commit to add them.'
                 : (
                   <>
                     Draw rects with the <i className="codicon codicon-add" /> tool{' '}
@@ -906,7 +1070,7 @@ export function App() {
           )}
         </Panel>
 
-        {slicing ? (
+        {inTool ? (
           <>
             <Splitter
               onDrag={(clientY) => {
@@ -917,16 +1081,37 @@ export function App() {
                 setFramesFrac(Math.max(0.15, Math.min(0.85, f)))
               }}
             />
-            <Panel title={`Slice (${mode.state.picked.size} picked)`}>
-              <SliceConfigPanel
-                state={mode.state}
-                onParamsChange={updateSliceParams}
-                onPrefixChange={(prefix) => updateSlice((p) => ({ ...p, prefix }))}
-                canCommit={sliceCanCommit}
-                onCommit={commitSlice}
-                onCancel={exitSlice}
-              />
-            </Panel>
+            {mode.kind === 'slicing' ? (
+              <Panel title={`Slice (${mode.state.picked.size} picked)`}>
+                <SliceConfigPanel
+                  state={mode.state}
+                  onParamsChange={updateSliceParams}
+                  onPrefixChange={(prefix) => updateSlice((p) => ({ ...p, prefix }))}
+                  canCommit={sliceCanCommit}
+                  onCommit={commitSlice}
+                  onCancel={exitSlice}
+                />
+              </Panel>
+            ) : null}
+            {mode.kind === 'autodetect' ? (
+              <Panel title={`Auto Detect (${mode.state.picked.size}/${mode.state.detected.length} picked)`}>
+                <AutoDetectConfigPanel
+                  state={mode.state}
+                  onOptionChange={setAutoDetectOption}
+                  onPrefixChange={setAutoDetectPrefix}
+                  onDetect={(detected) =>
+                    updateAutoDetect((prev) => ({
+                      ...prev,
+                      detected,
+                      picked: new Set(detected.map((_, i) => i)),
+                    }))
+                  }
+                  canCommit={autoDetectCanCommit}
+                  onCommit={commitAutoDetect}
+                  onCancel={exitAutoDetect}
+                />
+              </Panel>
+            ) : null}
           </>
         ) : null}
         </div>
@@ -1221,6 +1406,148 @@ function FramesView({
         )
       ) : null}
     </>
+  )
+}
+
+/**
+ * Captures the CanvasStage's ViewportController into an external ref so the
+ * Toolbar (rendered outside CanvasStage) can call zoomIn/zoomOut/fitToView.
+ * Renders nothing.
+ */
+function ViewportControllerSink({
+  controllerRef,
+}: {
+  controllerRef: React.MutableRefObject<ViewportController | null>
+}) {
+  const ctl = useViewportController()
+  controllerRef.current = ctl
+  return null
+}
+
+function AutoDetectConfigPanel({
+  state,
+  onOptionChange,
+  onPrefixChange,
+  onDetect,
+  canCommit,
+  onCommit,
+  onCancel,
+}: {
+  state: AutoDetectState
+  onOptionChange: <K extends keyof Required<CCLOptions>>(
+    key: K,
+    value: Required<CCLOptions>[K],
+  ) => void
+  onPrefixChange: (prefix: string) => void
+  onDetect: (detected: DetectedRect[]) => void
+  canCommit: boolean
+  onCommit: () => void
+  onCancel: () => void
+}) {
+  const imageData = useImageData()
+  const [running, setRunning] = useState(false)
+
+  const detect = () => {
+    if (!imageData) return
+    setRunning(true)
+    // Yield to the browser so the spinner can paint before the algorithm
+    // ties up the main thread.
+    setTimeout(() => {
+      try {
+        const detected = connectedComponents(imageData, state.options)
+        onDetect(detected)
+      } finally {
+        setRunning(false)
+      }
+    }, 0)
+  }
+
+  return (
+    <div {...stylex.props(s.slicePanel)}>
+      <div {...stylex.props(s.slicePairRow)}>
+        <div {...stylex.props(s.sliceFieldRow)}>
+          <span {...stylex.props(s.sliceLabel)}>Alpha ≥</span>
+          <SliceNumField
+            value={state.options.alphaThreshold}
+            min={1}
+            onChange={(n) => onOptionChange('alphaThreshold', Math.min(255, n))}
+          />
+        </div>
+        <div {...stylex.props(s.sliceFieldRow)}>
+          <span {...stylex.props(s.sliceLabel)}>Connect</span>
+          <SliceNumField
+            value={state.options.connectivity}
+            min={4}
+            onChange={(n) => onOptionChange('connectivity', n >= 8 ? 8 : 4)}
+          />
+        </div>
+      </div>
+      <div {...stylex.props(s.slicePairRow)}>
+        <div {...stylex.props(s.sliceFieldRow)}>
+          <span {...stylex.props(s.sliceLabel)}>Min px</span>
+          <SliceNumField
+            value={state.options.minPixels}
+            min={1}
+            onChange={(n) => onOptionChange('minPixels', n)}
+          />
+        </div>
+        <div {...stylex.props(s.sliceFieldRow)}>
+          <span {...stylex.props(s.sliceLabel)}>Min size</span>
+          <SliceNumField
+            value={state.options.minSize}
+            min={1}
+            onChange={(n) => onOptionChange('minSize', n)}
+          />
+        </div>
+      </div>
+
+      <div {...stylex.props(s.sliceDivider)} />
+
+      <div {...stylex.props(s.sliceCount)}>
+        Detected {state.detected.length} · Picked {state.picked.size}
+      </div>
+
+      <div {...stylex.props(s.sliceFieldRow)}>
+        <span {...stylex.props(s.sliceLabel)}>Name as</span>
+        <input
+          type="text"
+          value={state.prefix}
+          placeholder="sprite"
+          spellCheck={false}
+          onChange={(e: ChangeEvent<HTMLInputElement>) => onPrefixChange(e.target.value)}
+          {...stylex.props(s.sliceNumInput)}
+        />
+      </div>
+
+      <div {...stylex.props(s.sliceActions)}>
+        <button
+          type="button"
+          {...stylex.props(s.sliceBtn, s.sliceBtnGhost)}
+          disabled={running || !imageData}
+          onClick={detect}
+          title={imageData ? 'Run connected-component detection' : 'Image not loaded yet'}
+        >
+          {running ? 'Detecting…' : state.detected.length === 0 ? 'Detect' : 'Re-detect'}
+        </button>
+        <button
+          type="button"
+          {...stylex.props(s.sliceBtn)}
+          disabled={!canCommit}
+          onClick={onCommit}
+          title={canCommit ? 'Commit picked rects as atlas frames (Enter)' : 'Detect, pick rects, and set a name to commit'}
+        >
+          Commit
+        </button>
+        <button
+          type="button"
+          {...stylex.props(s.sliceBtn, s.sliceBtnGhost)}
+          onClick={onCancel}
+          title="Discard detection and exit (Esc)"
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
   )
 }
 
