@@ -43,7 +43,25 @@
           "when": "resourceExtname == .png || resourceFilename =~ /\\.atlas\\.json$/"
         }
       ]
-    }
+    },
+    "languages": [
+      {
+        "id": "fl-atlas",
+        "aliases": ["FL Atlas"],
+        "filenamePatterns": ["*.atlas.json"],
+        "icon": {
+          "light": "./icons/atlas-light.svg",
+          "dark": "./icons/atlas-dark.svg"
+        }
+      }
+    ],
+    "grammars": [
+      {
+        "language": "fl-atlas",
+        "scopeName": "source.fl-atlas",
+        "path": "./grammars/fl-atlas.tmLanguage.json"
+      }
+    ]
   },
   "scripts": {
     "build": "pnpm run build:webview && pnpm run build:host",
