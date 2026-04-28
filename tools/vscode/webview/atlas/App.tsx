@@ -306,11 +306,9 @@ const s = stylex.create({
   // VscodeBadge's counter variant has fixed 18px min-height / 11px
   // line-height inside its shadow DOM, taller than the collapsible's
   // header text. Visually shrink it via transform-scale (transform
-  // doesn't affect layout box, so the header row height stays unchanged)
-  // and inset from the right edge with a margin.
+  // doesn't affect layout box, so the header row height stays unchanged).
   collapsibleBadge: {
     marginInlineStart: space.md,
-    marginInlineEnd: space.md,
     transform: 'scale(0.85)',
     transformOrigin: 'center right',
   },
