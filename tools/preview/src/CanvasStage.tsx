@@ -37,6 +37,21 @@ export type CanvasStageProps = {
    * reflects the temporary mode change.
    */
   onSpaceHold?: (down: boolean) => void
+  /**
+   * Background style behind the image:
+   *   - 'solid': uses `background` (or transparent) — current behavior.
+   *   - 'checker': renders a theme-aware checkerboard pattern, useful for
+   *     spotting transparent pixels in the image. The three.js layer
+   *     renders transparent so the pattern shows through.
+   * Defaults to 'solid'.
+   */
+  backgroundStyle?: 'solid' | 'checker'
+  /**
+   * When true, paints a semi-transparent dark overlay everywhere outside
+   * the image's pixel rect — making the image's edges obvious without
+   * adding visible chrome to the image itself. Defaults to false.
+   */
+  dimOutOfBounds?: boolean
 }
 
 /**
@@ -145,6 +160,8 @@ export function CanvasStage({
   onImageReady,
   panMode = false,
   onSpaceHold,
+  backgroundStyle = 'solid',
+  dimOutOfBounds = false,
 }: CanvasStageProps) {
   const [baseViewport, setBaseViewport] = useState<Omit<Viewport, 'zoom' | 'panX' | 'panY'> | null>(null)
   const [imageData, setImageData] = useState<ImageData | null>(null)
@@ -268,17 +285,16 @@ export function CanvasStage({
       const local = pt.matrixTransform(m.inverse())
       const x = Math.floor(local.x)
       const y = Math.floor(local.y)
-      if (x < 0 || y < 0 || x >= viewport.imageW || y >= viewport.imageH) {
-        cursorStore.set(null)
-        return
-      }
-      const data = imageDataRef.current
+      const inBounds = x >= 0 && y >= 0 && x < viewport.imageW && y < viewport.imageH
       let rgba: [number, number, number, number] | null = null
-      if (data) {
-        const i = (y * data.width + x) * 4
-        rgba = [data.data[i]!, data.data[i + 1]!, data.data[i + 2]!, data.data[i + 3]!]
+      if (inBounds) {
+        const data = imageDataRef.current
+        if (data) {
+          const i = (y * data.width + x) * 4
+          rgba = [data.data[i]!, data.data[i + 1]!, data.data[i + 2]!, data.data[i + 3]!]
+        }
       }
-      cursorStore.set({ x, y, rgba })
+      cursorStore.set({ x, y, inBounds, rgba })
     },
     [cursorStore, viewport],
   )
@@ -527,6 +543,19 @@ export function CanvasStage({
   )
 
   const inPanMode = panMode || isSpaceDown
+
+  // Checker mode: render the pattern on the wrapper and let the three.js
+  // layer clear with alpha so it shows through. Solid mode keeps the
+  // legacy behavior — three.js owns the bg.
+  const isChecker = backgroundStyle === 'checker'
+  const wrapperBackground = isChecker
+    ? // 2×2 checker via conic-gradient. Two theme tokens give us automatic
+      // light/dark adaptation; ~24px tile is large enough to read but
+      // small enough to feel like a transparency grid rather than pixel art.
+      `conic-gradient(var(--vscode-editorWidget-background) 90deg, var(--vscode-editor-background) 0 180deg, var(--vscode-editorWidget-background) 0 270deg, var(--vscode-editor-background) 0)`
+    : undefined
+  const threeLayerBackground = isChecker ? undefined : background
+
   return (
     <div
       style={{
@@ -539,6 +568,9 @@ export function CanvasStage({
         // HoverFrameChip) can use `@container (max-width: …)` queries to
         // restack themselves when the canvas is narrow.
         containerType: 'inline-size',
+        backgroundColor: isChecker ? 'var(--vscode-editor-background)' : undefined,
+        backgroundImage: wrapperBackground,
+        backgroundSize: isChecker ? '24px 24px' : undefined,
       }}
       onPointerMove={combinedPointerMove}
       onPointerLeave={handlePointerLeave}
@@ -549,7 +581,7 @@ export function CanvasStage({
     >
       <ThreeLayer
         imageUri={imageUri}
-        background={background}
+        background={threeLayerBackground}
         fitMargin={fitMargin}
         zoom={zoom}
         panX={panX}
@@ -569,7 +601,19 @@ export function CanvasStage({
             pointerEvents: 'none',
           }}
           aria-hidden="true"
-        />
+        >
+          {dimOutOfBounds ? (
+            // Even-odd fill: outer huge rect minus the image rect, leaving
+            // a darkened ring around the image. Drawn under the children
+            // overlays so rect chrome / labels stay fully opaque.
+            <path
+              d={`M -1e6,-1e6 H 1e6 V 1e6 H -1e6 Z M 0,0 H ${viewport.imageW} V ${viewport.imageH} H 0 Z`}
+              fillRule="evenodd"
+              fill="rgba(0, 0, 0, 0.5)"
+              pointerEvents="none"
+            />
+          ) : null}
+        </svg>
       ) : null}
       <ViewportContext.Provider value={viewport}>
         <CursorStoreContext.Provider value={cursorStore}>

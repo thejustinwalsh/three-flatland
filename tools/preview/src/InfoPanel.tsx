@@ -7,8 +7,8 @@ import { useCursorStore } from './CanvasStage'
 import { useCursor, type CursorReading } from './cursorStore'
 import { useViewport } from './Viewport'
 
-type CoordMode = 'px' | 'uv+' | 'uv-'
-type ColorMode = 'hex' | 'rgba' | 'float'
+export type CoordMode = 'px' | 'uv+' | 'uv-'
+export type ColorMode = 'hex' | 'rgba' | 'float'
 
 const NEXT: Record<CoordMode, CoordMode> = { 'px': 'uv+', 'uv+': 'uv-', 'uv-': 'px' }
 const NEXT_COLOR: Record<ColorMode, ColorMode> = { 'hex': 'rgba', 'rgba': 'float', 'float': 'hex' }
@@ -97,18 +97,24 @@ const s = stylex.create({
     },
   },
   empty: { opacity: 0.5 },
+  // Out-of-bounds: render in dim foreground so the user can see the readout
+  // is positional / wrapped rather than a live sample.
+  oob: { color: vscode.descriptionFg },
 })
 
 function hex2(n: number): string {
   return n.toString(16).padStart(2, '0')
 }
 
+const ZERO_RGBA: [number, number, number, number] = [0, 0, 0, 0]
+
 function formatColor(
   rgba: [number, number, number, number] | null,
   mode: ColorMode,
 ): string {
-  if (!rgba) return '—'
-  const [r, g, b, a] = rgba
+  // Out-of-bounds / no sample: show 0s in the active format rather than `—`,
+  // so the panel still communicates the format without going blank.
+  const [r, g, b, a] = rgba ?? ZERO_RGBA
   if (mode === 'hex') {
     return a < 255
       ? `#${hex2(r)}${hex2(g)}${hex2(b)}${hex2(a)}`
@@ -121,18 +127,33 @@ function formatColor(
   return [r, g, b, a].map((v) => (v / 255).toFixed(3)).join(', ')
 }
 
+/** Modulo that wraps negative inputs into [0, m). JS `%` keeps the sign. */
+function wrap(v: number, m: number): number {
+  return ((v % m) + m) % m
+}
+
 function formatCoord(reading: CursorReading | null, mode: CoordMode, w: number, h: number): string {
   if (!reading) return mode === 'px' ? 'px: —, —' : `${mode}: —, —`
   if (mode === 'px') return `px: ${reading.x}, ${reading.y}`
   // UV: divide by image dimensions. uv+ has Y-up (WebGPU/three.js TSL); uv-
-  // matches the DOM/image convention.
-  const u = reading.x / w
-  const vRaw = reading.y / h
-  const v = mode === 'uv+' ? 1 - vRaw : vRaw
-  return `${mode}: ${u.toFixed(3)}, ${v.toFixed(3)}`
+  // matches the DOM/image convention. When out of bounds we wrap into [0,1)
+  // so the readout still shows a meaningful tile-space coord rather than
+  // values that march off the texture (useful when the user's cursor is
+  // floating in the dim margin around the image).
+  const ux = reading.inBounds ? reading.x / w : wrap(reading.x, w) / w
+  const vyRaw = reading.inBounds ? reading.y / h : wrap(reading.y, h) / h
+  const vy = mode === 'uv+' ? 1 - vyRaw : vyRaw
+  return `${mode}: ${ux.toFixed(3)}, ${vy.toFixed(3)}`
 }
 
-export type InfoPanelProps = Record<string, never>
+export type InfoPanelProps = {
+  /** Controlled color format. Falls back to local state if omitted. */
+  colorMode?: ColorMode
+  onColorModeChange?: (next: ColorMode) => void
+  /** Controlled coord format. Falls back to local state if omitted. */
+  coordMode?: CoordMode
+  onCoordModeChange?: (next: CoordMode) => void
+}
 
 /**
  * Bottom-of-viewport status bar showing the color and coordinates under
@@ -144,20 +165,40 @@ export type InfoPanelProps = Record<string, never>
  * Mount inside `<CanvasStage>` as a child so it has access to both
  * contexts and positions absolutely against the stage.
  */
-export function InfoPanel(_: InfoPanelProps = {} as InfoPanelProps) {
+export function InfoPanel({
+  colorMode: colorModeProp,
+  onColorModeChange,
+  coordMode: coordModeProp,
+  onCoordModeChange,
+}: InfoPanelProps = {}) {
   const store = useCursorStore()
   const reading = useCursor(store)
   const vp = useViewport()
-  const [coordMode, setCoordMode] = useState<CoordMode>('px')
-  const [colorMode, setColorMode] = useState<ColorMode>('hex')
+  const [coordModeLocal, setCoordModeLocal] = useState<CoordMode>('px')
+  const [colorModeLocal, setColorModeLocal] = useState<ColorMode>('hex')
 
   if (!vp) return null
 
-  const cycleCoord = () => setCoordMode((m) => NEXT[m])
-  const cycleColor = () => setColorMode((m) => NEXT_COLOR[m])
+  const coordMode = coordModeProp ?? coordModeLocal
+  const colorMode = colorModeProp ?? colorModeLocal
+
+  const cycleCoord = () => {
+    const next = NEXT[coordMode]
+    if (onCoordModeChange) onCoordModeChange(next)
+    else setCoordModeLocal(next)
+  }
+  const cycleColor = () => {
+    const next = NEXT_COLOR[colorMode]
+    if (onColorModeChange) onColorModeChange(next)
+    else setColorModeLocal(next)
+  }
 
   const colorMinWidth = colorMode === 'hex' ? s.colorHex : colorMode === 'rgba' ? s.colorRgba : s.colorFloat
   const coordMinWidth = coordMode === 'px' ? s.coordPx : s.coordUv
+
+  // Cursor over canvas but outside image: dim everything so it's visually
+  // distinct from a live in-bounds reading.
+  const oob = reading != null && !reading.inBounds
 
   return (
     <div {...stylex.props(s.bar)}>
@@ -173,7 +214,7 @@ export function InfoPanel(_: InfoPanelProps = {} as InfoPanelProps) {
           )}
         />
         <span
-          {...stylex.props(s.clickable, colorMinWidth, !reading && s.empty)}
+          {...stylex.props(s.clickable, colorMinWidth, !reading && s.empty, oob && s.oob)}
           onClick={cycleColor}
           title="Cycle hex → rgba → float rgba"
         >
@@ -181,7 +222,7 @@ export function InfoPanel(_: InfoPanelProps = {} as InfoPanelProps) {
         </span>
       </span>
       <span
-        {...stylex.props(s.coord, coordMinWidth, !reading && s.empty)}
+        {...stylex.props(s.coord, coordMinWidth, !reading && s.empty, oob && s.oob)}
         onClick={cycleCoord}
         title="Cycle px → uv+ → uv-"
       >
