@@ -1,0 +1,7 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "FL Atlas",
+  "scopeName": "source.fl-atlas",
+  "fileTypes": ["atlas.json"],
+  "patterns": [{ "include": "source.json" }]
+}
