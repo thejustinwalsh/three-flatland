@@ -47,25 +47,61 @@ export function registerAtlasTool(context: vscode.ExtensionContext): void {
 }
 
 /**
- * Map a click target to the image URI the atlas editor should open. Sidecar
- * inputs (`foo.atlas.json`) are resolved to the matching image by stripping
- * `.atlas.json` and trying each supported image extension in priority
- * order. Returns null when no matching image exists in the same directory.
+ * Map a click target to the image URI the atlas editor should open.
+ *
+ * For a sidecar input (`foo.atlas.json`) the sidecar IS the source of
+ * truth for which image it belongs to — `meta.image` carries the source
+ * filename (relative to the sidecar's directory). We read the JSON,
+ * resolve `meta.image` against the sidecar's parent dir, and open that.
+ *
+ * Filename-pattern fallback (strip `.atlas.json`, try `.png`) only kicks
+ * in when the sidecar is unreadable or its `meta.image` is missing — so
+ * a broken sidecar still has a chance of opening the right image, and a
+ * renamed image is found via the sidecar's recorded name (not via the
+ * sidecar filename, which may not match anymore).
  */
 async function resolveImageForCommand(uri: vscode.Uri): Promise<vscode.Uri | null> {
-  const path = uri.path
-  if (!path.endsWith('.atlas.json')) return uri
-  const base = path.slice(0, -'.atlas.json'.length)
+  if (!uri.path.endsWith('.atlas.json')) return uri
+
+  // Primary path: read meta.image from the sidecar.
+  try {
+    const bytes = await vscode.workspace.fs.readFile(uri)
+    const text = new TextDecoder().decode(bytes)
+    const parsed: unknown = JSON.parse(text)
+    const metaImage = readMetaImage(parsed)
+    if (metaImage) {
+      const resolved = vscode.Uri.joinPath(uri, '..', metaImage)
+      const stat = await statSafe(resolved)
+      if (stat?.type === vscode.FileType.File) return resolved
+    }
+  } catch {
+    // Unreadable / unparseable — fall through to the filename pattern.
+  }
+
+  // Fallback: derive image filename from the sidecar's name.
+  const base = uri.path.slice(0, -'.atlas.json'.length)
   // PNG only at v0; spec calls for WebP/AVIF/KTX2 in future passes.
   const exts = ['.png']
   for (const ext of exts) {
     const candidate = uri.with({ path: base + ext })
-    try {
-      const stat = await vscode.workspace.fs.stat(candidate)
-      if (stat.type === vscode.FileType.File) return candidate
-    } catch {
-      // ENOENT — try next extension
-    }
+    const stat = await statSafe(candidate)
+    if (stat?.type === vscode.FileType.File) return candidate
   }
   return null
+}
+
+function readMetaImage(parsed: unknown): string | null {
+  if (!parsed || typeof parsed !== 'object') return null
+  const meta = (parsed as { meta?: unknown }).meta
+  if (!meta || typeof meta !== 'object') return null
+  const image = (meta as { image?: unknown }).image
+  return typeof image === 'string' && image.length > 0 ? image : null
+}
+
+async function statSafe(uri: vscode.Uri): Promise<vscode.FileStat | null> {
+  try {
+    return await vscode.workspace.fs.stat(uri)
+  } catch {
+    return null
+  }
 }
