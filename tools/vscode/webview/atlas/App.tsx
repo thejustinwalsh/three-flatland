@@ -123,6 +123,63 @@ function isEditableTarget(t: EventTarget | null): boolean {
 }
 
 /**
+ * Compute the alpha-trimmed bounding box of a single rect: the smallest
+ * rect that fully contains every pixel inside `rect` whose alpha is > 0.
+ * Returns null when the rect is fully transparent (caller falls back to
+ * the raw rect for display purposes). O(rect.w * rect.h) — cheap enough
+ * to compute live for every frame in the panel.
+ */
+function trimAlphaBbox(
+  rect: { x: number; y: number; w: number; h: number },
+  imageData: ImageData,
+): { x: number; y: number; w: number; h: number } | null {
+  const { data, width } = imageData
+  let minX = rect.x + rect.w
+  let minY = rect.y + rect.h
+  let maxX = rect.x - 1
+  let maxY = rect.y - 1
+  for (let yy = rect.y; yy < rect.y + rect.h; yy++) {
+    for (let xx = rect.x; xx < rect.x + rect.w; xx++) {
+      const a = data[(yy * width + xx) * 4 + 3]!
+      if (a === 0) continue
+      if (xx < minX) minX = xx
+      if (yy < minY) minY = yy
+      if (xx > maxX) maxX = xx
+      if (yy > maxY) maxY = yy
+    }
+  }
+  if (maxX < minX || maxY < minY) return null
+  return { x: minX, y: minY, w: maxX - minX + 1, h: maxY - minY + 1 }
+}
+
+/**
+ * CSS background props for a sprite-sheet thumbnail. Renders the rect's
+ * (or trimmed bbox's) pixels centered inside a `boxW × boxH` element via
+ * `background-image` + `background-size` + `background-position`. The
+ * source image loads once (browser caches the URL); each thumb just
+ * scales/offsets the same image.
+ */
+function thumbStyle(
+  imageUri: string,
+  imageW: number,
+  imageH: number,
+  rect: { x: number; y: number; w: number; h: number },
+  boxW: number,
+  boxH: number,
+): { bgImage: string; bgSize: string; bgPos: string } {
+  const scale = Math.min(boxW / rect.w, boxH / rect.h)
+  const displayW = imageW * scale
+  const displayH = imageH * scale
+  const offsetX = -rect.x * scale + (boxW - rect.w * scale) / 2
+  const offsetY = -rect.y * scale + (boxH - rect.h * scale) / 2
+  return {
+    bgImage: `url("${imageUri}")`,
+    bgSize: `${displayW}px ${displayH}px`,
+    bgPos: `${offsetX}px ${offsetY}px`,
+  }
+}
+
+/**
  * Returns the prefix portion of a `<prefix>_<index>` name. Rects without
  * the suffix (or no name at all) return null and end up in the "Unnamed"
  * group.
@@ -224,8 +281,29 @@ const s = stylex.create({
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
-    gap: space.lg,
+    gap: space.md,
   },
+  thumb: {
+    width: 28,
+    height: 28,
+    flex: '0 0 auto',
+    backgroundColor: 'rgba(0, 0, 0, 0.25)',
+    backgroundRepeat: 'no-repeat',
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: vscode.panelBorder,
+    borderRadius: radius.sm,
+    imageRendering: 'pixelated',
+  },
+  thumbBg: (
+    bgImage: string,
+    bgSize: string,
+    bgPos: string,
+  ) => ({
+    backgroundImage: bgImage,
+    backgroundSize: bgSize,
+    backgroundPosition: bgPos,
+  }),
   frameItemSelected: {
     backgroundColor: vscode.listActiveSelectionBg,
     color: vscode.listActiveSelectionFg,
@@ -1044,6 +1122,9 @@ export function App() {
           ) : (
             <FramesView
               rects={rects}
+              imageUri={payload?.imageUri ?? null}
+              imageData={imageData}
+              imageSize={imageSize}
               selectedIds={selectedIds}
               renameMode={renameMode}
               onSelectRect={(id, additive) => {
@@ -1286,12 +1367,15 @@ function FrameRow({
   selected,
   editing,
   handlers,
+  thumbBg,
 }: {
   rect: Rect
   globalIndex: number
   selected: boolean
   editing: boolean
   handlers: FrameRowHandlers
+  /** Pre-computed thumb background props, or null while no source image. */
+  thumbBg: { bgImage: string; bgSize: string; bgPos: string } | null
 }) {
   const displayName = rect.name ?? `#${globalIndex}`
   return (
@@ -1303,6 +1387,14 @@ function FrameRow({
       onDoubleClick={() => handlers.onStartInlineRename(rect.id)}
       {...stylex.props(s.frameItem, selected && s.frameItemSelected, editing && s.frameItemEditing)}
     >
+      {thumbBg ? (
+        <span
+          aria-hidden="true"
+          {...stylex.props(s.thumb, s.thumbBg(thumbBg.bgImage, thumbBg.bgSize, thumbBg.bgPos))}
+        />
+      ) : (
+        <span aria-hidden="true" {...stylex.props(s.thumb)} />
+      )}
       {editing ? (
         <InlineRenameInput
           initial={rect.name ?? ''}
@@ -1320,8 +1412,13 @@ function FrameRow({
   )
 }
 
+const THUMB_PX = 28
+
 function FramesView({
   rects,
+  imageUri,
+  imageData,
+  imageSize,
   selectedIds,
   renameMode,
   onSelectRect,
@@ -1331,6 +1428,9 @@ function FramesView({
   onCancelInlineRename,
 }: {
   rects: Rect[]
+  imageUri: string | null
+  imageData: ImageData | null
+  imageSize: { w: number; h: number } | null
   selectedIds: ReadonlySet<string>
   renameMode: RenameMode
   onSelectRect: (id: string, additive: boolean) => void
@@ -1351,6 +1451,20 @@ function FramesView({
     return m
   }, [rects])
   const groups = useMemo(() => groupRectsByPrefix(rects), [rects])
+
+  // Pre-compute trimmed bboxes (when imageData is available) and the CSS
+  // background props for each rect's thumbnail. Trim falls back to the
+  // raw rect when the rect is fully transparent or imageData isn't ready.
+  const thumbsById = useMemo(() => {
+    const m = new Map<string, { bgImage: string; bgSize: string; bgPos: string }>()
+    if (!imageUri || !imageSize) return m
+    for (const r of rects) {
+      const bbox = imageData ? (trimAlphaBbox(r, imageData) ?? r) : r
+      m.set(r.id, thumbStyle(imageUri, imageSize.w, imageSize.h, bbox, THUMB_PX, THUMB_PX))
+    }
+    return m
+  }, [rects, imageUri, imageData, imageSize])
+
   const renderList = (list: Rect[]) => (
     <ul {...stylex.props(s.frameList)}>
       {list.map((r) => {
@@ -1364,6 +1478,7 @@ function FramesView({
             selected={sel}
             editing={editing}
             handlers={handlers}
+            thumbBg={thumbsById.get(r.id) ?? null}
           />
         )
       })}
