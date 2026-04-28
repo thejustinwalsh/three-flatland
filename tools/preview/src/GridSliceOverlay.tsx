@@ -33,6 +33,14 @@ export type GridSliceOverlayProps = {
    */
   onCellSet: (row: number, col: number, picked: boolean) => void
 
+  /**
+   * Number of frames already in the atlas before this slice session
+   * commits. Picked-cell labels show `frameOffset + pickOrderIndex` so
+   * the user sees the frameset index each cell will receive on commit
+   * (not its raw pick-order). Default 0.
+   */
+  frameOffset?: number
+
   /** Visual styling overrides — defaults read from VSCode theme. */
   lineColor?: string
   lineActiveColor?: string
@@ -83,6 +91,7 @@ export function GridSliceOverlay({
   picked,
   onGridChange,
   onCellSet,
+  frameOffset = 0,
   lineColor = DEFAULTS.lineColor,
   lineActiveColor = DEFAULTS.lineActiveColor,
 }: GridSliceOverlayProps) {
@@ -327,7 +336,7 @@ export function GridSliceOverlay({
                     userSelect: 'none',
                   }}
                 >
-                  {pickedIndexByKey.get(key) ?? 0}
+                  {(pickedIndexByKey.get(key) ?? 0) + frameOffset}
                 </text>
               ) : null}
             </g>

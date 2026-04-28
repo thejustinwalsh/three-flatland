@@ -1183,6 +1183,7 @@ export function App() {
                   picked={mode.state.picked}
                   onGridChange={setSliceGrid}
                   onCellSet={setCellPicked}
+                  frameOffset={rects.length}
                 />
               ) : null}
               {mode.kind === 'autodetect' ? (
