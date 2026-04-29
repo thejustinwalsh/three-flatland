@@ -275,6 +275,31 @@ export function AnimationTimeline({
 }: AnimationTimelineProps) {
   const groups = useMemo(() => groupCells(frames), [frames])
 
+  // Smooth-lerp playhead. Held here so the hook calls run on every
+  // render — early returns below for empty / collapsed / dots tracks
+  // would otherwise change the hook count between renders (React #310).
+  // The ref attaches to the line element only in detail mode, but the
+  // effect itself is harmless when the ref is null.
+  const lineRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const setLine = (frameIndex: number) => {
+      const el = lineRef.current
+      if (!el) return
+      el.style.transform = `translateX(${playheadFrameToPx(frameIndex, groups)}px)`
+    }
+    if (!isPlaying || !getSmoothPlayhead) {
+      setLine(playhead)
+      return
+    }
+    let raf = 0
+    const tick = () => {
+      setLine(getSmoothPlayhead())
+      raf = requestAnimationFrame(tick)
+    }
+    raf = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(raf)
+  }, [isPlaying, getSmoothPlayhead, groups, playhead])
+
   // Hover-highlight while a drag is over the timeline. Drives the
   // focus-ring border + tinted background on whichever sub-track
   // (detail / dots / empty) is currently rendering.
@@ -345,34 +370,9 @@ export function AnimationTimeline({
 
   if (density === 'collapsed') return null
 
-  // Static integer-snapped position (used for paused state + initial
-  // mount before the smooth rAF loop kicks in).
+  // Static integer-snapped position used for the initial mount
+  // before the rAF effect (declared at top) kicks in.
   const playheadPx = playheadFrameToPx(playhead, groups)
-
-  // Smooth lerp: when playing AND a sub-frame getter is provided,
-  // run an rAF loop that updates the line's transform directly via
-  // ref so it interpolates between integer frames without churning
-  // React state. When paused (or no getter), set transform to the
-  // integer position once and bail.
-  const lineRef = useRef<HTMLDivElement>(null)
-  useEffect(() => {
-    const setLine = (frameIndex: number) => {
-      const el = lineRef.current
-      if (!el) return
-      el.style.transform = `translateX(${playheadFrameToPx(frameIndex, groups)}px)`
-    }
-    if (!isPlaying || !getSmoothPlayhead) {
-      setLine(playhead)
-      return
-    }
-    let raf = 0
-    const tick = () => {
-      setLine(getSmoothPlayhead())
-      raf = requestAnimationFrame(tick)
-    }
-    raf = requestAnimationFrame(tick)
-    return () => cancelAnimationFrame(raf)
-  }, [isPlaying, getSmoothPlayhead, groups, playhead])
 
   if (density === 'dots') {
     return (
