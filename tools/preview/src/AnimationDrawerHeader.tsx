@@ -1,5 +1,6 @@
-import { useState, type ChangeEvent, type KeyboardEvent as ReactKeyboardEvent } from 'react'
+import { useState, type KeyboardEvent as ReactKeyboardEvent } from 'react'
 import * as stylex from '@stylexjs/stylex'
+import { Icon, NumberField, Option, SingleSelect } from '@three-flatland/design-system'
 import { vscode } from '@three-flatland/design-system/tokens/vscode-theme.stylex'
 import { space } from '@three-flatland/design-system/tokens/space.stylex'
 import { radius } from '@three-flatland/design-system/tokens/radius.stylex'
@@ -14,7 +15,7 @@ export type AnimationDrawerHeaderProps = {
   onSelectAnimation(name: string): void
   /** Called on +new click. Caller seeds the new animation from current selection. */
   onCreateAnimation(): void
-  /** Called on Delete in the ⋯ menu. */
+  /** Called on Delete in the more menu. */
   onDeleteAnimation(name: string): void
   /** Called on inline rename commit. */
   onRenameAnimation(oldName: string, newName: string): void
@@ -31,50 +32,91 @@ export type AnimationDrawerHeaderProps = {
 }
 
 const s = stylex.create({
+  // Mirrors design-system/Panel.header — same paddings, same uppercase
+  // title style, same panel-area background + bottom border. Spans the
+  // full width of the parent container (no inset).
   bar: {
     display: 'flex',
     alignItems: 'center',
     gap: space.sm,
-    paddingInline: space.md,
-    paddingBlock: space.xs,
-    color: vscode.fg,
+    paddingInline: space.xl,
+    paddingBlock: space.sm,
+    borderBottomWidth: 1,
+    borderBottomStyle: 'solid',
+    borderBottomColor: vscode.panelBorder,
+    backgroundColor: vscode.panelBg,
     fontFamily: vscode.fontFamily,
     fontSize: '11px',
+    color: vscode.panelTitleFg,
     flexShrink: 0,
   },
-  chev: {
+  chevBtn: {
     background: 'transparent',
     borderWidth: 0,
     color: vscode.panelTitleFg,
     cursor: 'pointer',
     padding: 0,
-    width: 14,
-    fontSize: '10px',
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: 16,
+    height: 16,
   },
   label: {
-    fontSize: '10px',
     textTransform: 'uppercase',
     letterSpacing: '0.04em',
-    color: vscode.panelTitleFg,
+    fontWeight: 600,
   },
   labelMuted: {
-    fontSize: '10px',
     textTransform: 'uppercase',
     letterSpacing: '0.04em',
     color: vscode.descriptionFg,
+    marginInlineStart: space.sm,
   },
-  select: {
-    backgroundColor: vscode.inputBg,
-    color: vscode.inputFg,
-    borderWidth: 1,
-    borderStyle: 'solid',
-    borderColor: vscode.inputBorder,
+  spacer: { flex: 1 },
+  // Right cluster — every interactive control sits here, never inline
+  // with the title.
+  controls: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: space.sm,
+    flexShrink: 0,
+  },
+  selectWrap: {
+    minWidth: 110,
+  },
+  // Hand-rolled icon button — matches AtlasMenu's trigger sizing so the
+  // header height stays consistent with sibling Panel headers.
+  iconBtn: {
+    background: 'transparent',
+    color: vscode.fg,
+    borderWidth: 0,
     borderRadius: radius.sm,
-    paddingInline: space.sm,
-    paddingBlock: '1px',
-    fontSize: '11px',
-    fontFamily: vscode.monoFontFamily,
-    minWidth: 80,
+    padding: 0,
+    width: 18,
+    height: 18,
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    cursor: 'pointer',
+    backgroundColor: { default: 'transparent', ':hover': vscode.bg },
+  },
+  iconBtnDisabled: {
+    opacity: 0.35,
+    cursor: 'not-allowed',
+    backgroundColor: 'transparent',
+  },
+  iconBtnOff: {
+    opacity: 0.45,
+  },
+  fpsField: {
+    width: 56,
+    flexShrink: 0,
+  },
+  fpsUnit: {
+    fontSize: '10px',
+    color: vscode.descriptionFg,
+    textTransform: 'lowercase',
   },
   renameInput: {
     backgroundColor: vscode.inputBg,
@@ -87,66 +129,20 @@ const s = stylex.create({
     paddingBlock: '1px',
     fontSize: '11px',
     fontFamily: vscode.monoFontFamily,
-    width: 100,
+    width: 110,
     outlineWidth: 0,
   },
-  chip: {
-    backgroundColor: vscode.bg,
-    color: vscode.fg,
-    borderWidth: 1,
-    borderStyle: 'solid',
-    borderColor: vscode.inputBorder,
-    borderRadius: radius.sm,
-    paddingInline: space.sm,
-    paddingBlock: '1px',
-    fontSize: '11px',
-    fontFamily: vscode.monoFontFamily,
-    cursor: 'pointer',
-    userSelect: 'none',
-  },
-  chipOff: {
-    opacity: 0.5,
-  },
-  chipDisabled: {
-    opacity: 0.35,
-    cursor: 'not-allowed',
-  },
-  fpsField: {
-    backgroundColor: vscode.inputBg,
-    color: vscode.inputFg,
-    borderWidth: 1,
-    borderStyle: 'solid',
-    borderColor: vscode.inputBorder,
-    borderRadius: radius.sm,
-    paddingInline: space.sm,
-    paddingBlock: '1px',
-    fontSize: '11px',
-    fontFamily: vscode.monoFontFamily,
-    width: 50,
-  },
-  iconBtn: {
-    background: 'transparent',
-    color: vscode.fg,
-    borderWidth: 0,
-    borderRadius: radius.sm,
-    paddingInline: space.xs,
-    paddingBlock: '1px',
-    cursor: 'pointer',
-    fontSize: '12px',
-    fontFamily: vscode.monoFontFamily,
-  },
-  iconBtnDisabled: {
-    opacity: 0.35,
-    cursor: 'not-allowed',
-  },
-  fpsUnit: {
-    fontSize: '10px',
-    color: vscode.descriptionFg,
-    marginInlineStart: -2,
-  },
-  spacer: { flex: 1 },
 })
 
+/**
+ * Panel-style header for the animation drawer. Always visible (even when
+ * the drawer body is collapsed). Spans the full width of the parent.
+ *
+ * Layout: chevron + title on the left; everything else right-aligned
+ * via a flex spacer. Dropdown uses VSCode SingleSelect; transport and
+ * toggles use codicons via Icon; fps uses our NumberField primitive so
+ * input chrome matches the rest of the design system.
+ */
 export function AnimationDrawerHeader(props: AnimationDrawerHeaderProps) {
   const {
     expanded, onToggleExpanded,
@@ -175,105 +171,128 @@ export function AnimationDrawerHeader(props: AnimationDrawerHeaderProps) {
     <div {...stylex.props(s.bar)}>
       <button
         type="button"
-        {...stylex.props(s.chev)}
+        {...stylex.props(s.chevBtn)}
         onClick={onToggleExpanded}
         aria-label={expanded ? 'Collapse animations' : 'Expand animations'}
       >
-        {expanded ? '▼' : '▶'}
+        <Icon name={expanded ? 'chevron-down' : 'chevron-right'} />
       </button>
       <span {...stylex.props(s.label)}>Animations</span>
-
       {animationNames.length === 0 ? (
         <span {...stylex.props(s.labelMuted)}>(none)</span>
-      ) : renameDraft != null ? (
-        <input
-          {...stylex.props(s.renameInput)}
-          autoFocus
-          value={renameDraft}
-          onChange={(e) => setRenameDraft(e.target.value)}
-          onBlur={() => setRenameDraft(null)}
-          onKeyDown={onRenameKey}
-        />
-      ) : (
-        <select
-          {...stylex.props(s.select)}
-          value={activeAnimation ?? ''}
-          onChange={(e: ChangeEvent<HTMLSelectElement>) => onSelectAnimation(e.target.value)}
-          onDoubleClick={() => activeAnimation && setRenameDraft(activeAnimation)}
-          title="Double-click to rename"
-        >
-          {animationNames.map((n) => <option key={n} value={n}>{n}</option>)}
-        </select>
-      )}
-
-      <button
-        type="button"
-        {...stylex.props(s.iconBtn, !hasActive && s.iconBtnDisabled)}
-        onClick={hasActive ? onTogglePlay : undefined}
-        disabled={!hasActive}
-        aria-label={isPlaying ? 'Pause' : 'Play'}
-      >
-        {isPlaying ? '⏸' : '▶'}
-      </button>
-
-      <input
-        type="number"
-        min={1}
-        max={60}
-        step={1}
-        {...stylex.props(s.fpsField, !hasActive && s.chipDisabled)}
-        value={fps}
-        onChange={(e) => {
-          const v = Number(e.target.value)
-          if (Number.isFinite(v)) onChangeFps(Math.max(1, Math.min(60, Math.round(v))))
-        }}
-        disabled={!hasActive}
-        title="Frames per second"
-      />
-      <span {...stylex.props(s.fpsUnit)}>fps</span>
-
-      <button
-        type="button"
-        {...stylex.props(s.chip, !loop && s.chipOff, !hasActive && s.chipDisabled)}
-        onClick={hasActive ? () => onChangeLoop(!loop) : undefined}
-        disabled={!hasActive}
-        title="Loop"
-      >
-        loop
-      </button>
-      <button
-        type="button"
-        {...stylex.props(s.chip, !pingPong && s.chipOff, !hasActive && s.chipDisabled)}
-        onClick={hasActive ? () => onChangePingPong(!pingPong) : undefined}
-        disabled={!hasActive}
-        title="Ping-pong"
-      >
-        ↺
-      </button>
+      ) : null}
 
       <span {...stylex.props(s.spacer)} />
 
-      <button
-        type="button"
-        {...stylex.props(s.iconBtn)}
-        onClick={onCreateAnimation}
-        title="New animation"
-      >
-        ＋
-      </button>
-      <button
-        type="button"
-        {...stylex.props(s.iconBtn, !hasActive && s.iconBtnDisabled)}
-        onClick={hasActive && activeAnimation ? () => {
-          if (window.confirm(`Delete "${activeAnimation}"? This cannot be undone.`)) {
-            onDeleteAnimation(activeAnimation)
-          }
-        } : undefined}
-        disabled={!hasActive}
-        title="Delete animation"
-      >
-        ⋯
-      </button>
+      <div {...stylex.props(s.controls)}>
+        {animationNames.length > 0 ? (
+          renameDraft != null ? (
+            <input
+              {...stylex.props(s.renameInput)}
+              autoFocus
+              value={renameDraft}
+              onChange={(e) => setRenameDraft(e.target.value)}
+              onBlur={() => setRenameDraft(null)}
+              onKeyDown={onRenameKey}
+            />
+          ) : (
+            <span {...stylex.props(s.selectWrap)}>
+              <SingleSelect
+                value={activeAnimation ?? ''}
+                onChange={(e: Event) => {
+                  const target = e.target as HTMLElement & { value?: string }
+                  if (typeof target.value === 'string') onSelectAnimation(target.value)
+                }}
+              >
+                {animationNames.map((n) => (
+                  <Option key={n} value={n}>{n}</Option>
+                ))}
+              </SingleSelect>
+            </span>
+          )
+        ) : null}
+
+        {hasActive ? (
+          <button
+            type="button"
+            {...stylex.props(s.iconBtn)}
+            onClick={() => activeAnimation && setRenameDraft(activeAnimation)}
+            title="Rename animation"
+            aria-label="Rename animation"
+          >
+            <Icon name="edit" />
+          </button>
+        ) : null}
+
+        <button
+          type="button"
+          {...stylex.props(s.iconBtn, !hasActive && s.iconBtnDisabled)}
+          onClick={hasActive ? onTogglePlay : undefined}
+          disabled={!hasActive}
+          aria-label={isPlaying ? 'Pause' : 'Play'}
+          title={isPlaying ? 'Pause' : 'Play'}
+        >
+          <Icon name={isPlaying ? 'debug-pause' : 'play'} />
+        </button>
+
+        <span {...stylex.props(s.fpsField)}>
+          <NumberField
+            value={fps}
+            onChange={onChangeFps}
+            min={1}
+            max={60}
+            step={1}
+            disabled={!hasActive}
+            aria-label="Frames per second"
+          />
+        </span>
+        <span {...stylex.props(s.fpsUnit)}>fps</span>
+
+        <button
+          type="button"
+          {...stylex.props(s.iconBtn, !hasActive && s.iconBtnDisabled, !loop && s.iconBtnOff)}
+          onClick={hasActive ? () => onChangeLoop(!loop) : undefined}
+          disabled={!hasActive}
+          title={loop ? 'Loop on' : 'Loop off'}
+          aria-label="Toggle loop"
+        >
+          <Icon name="sync" />
+        </button>
+        <button
+          type="button"
+          {...stylex.props(s.iconBtn, !hasActive && s.iconBtnDisabled, !pingPong && s.iconBtnOff)}
+          onClick={hasActive ? () => onChangePingPong(!pingPong) : undefined}
+          disabled={!hasActive}
+          title={pingPong ? 'Ping-pong on' : 'Ping-pong off'}
+          aria-label="Toggle ping-pong"
+        >
+          <Icon name="arrow-swap" />
+        </button>
+
+        <button
+          type="button"
+          {...stylex.props(s.iconBtn)}
+          onClick={onCreateAnimation}
+          title="New animation"
+          aria-label="New animation"
+        >
+          <Icon name="add" />
+        </button>
+        <button
+          type="button"
+          {...stylex.props(s.iconBtn, !hasActive && s.iconBtnDisabled)}
+          onClick={hasActive && activeAnimation ? () => {
+            if (window.confirm(`Delete "${activeAnimation}"? This cannot be undone.`)) {
+              onDeleteAnimation(activeAnimation)
+            }
+          } : undefined}
+          disabled={!hasActive}
+          title="Delete animation"
+          aria-label="Delete animation"
+        >
+          <Icon name="trash" />
+        </button>
+      </div>
     </div>
   )
 }

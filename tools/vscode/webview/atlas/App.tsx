@@ -1261,7 +1261,7 @@ export function App() {
         ref={workAreaRef}
         {...stylex.props(s.workArea, s.workAreaCols(framesPx))}
       >
-        <Panel title="Atlas" headerActions={<AtlasMenu prefs={prefs} />}>
+        <Panel title="Atlas" headerActions={<AtlasMenu prefs={prefs} />} bodyPadding="none">
           <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
           <div {...stylex.props(s.previewWrap)} style={{ flex: 1, minHeight: 0 }}>
             <CanvasStage
