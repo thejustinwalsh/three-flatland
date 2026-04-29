@@ -12,6 +12,15 @@ export type RectInput = {
   name?: string
 }
 
+/** Animation as serialized in `meta.animations`. Frames are post-duplication. */
+export type AnimationInput = {
+  frames: string[]
+  fps: number
+  loop: boolean
+  pingPong: boolean
+  events?: Record<string, string>
+}
+
 /**
  * SpriteSheetJSONHash shape (from `packages/three-flatland/src/sprites/
  * types.ts`) with our additive `meta.app` + `meta.version` markers. The
@@ -28,6 +37,7 @@ export type AtlasJson = {
     image: string
     size: { w: number; h: number }
     scale: string
+    animations?: Record<string, AnimationInput>
   }
   frames: Record<
     string,
@@ -44,6 +54,12 @@ export type AtlasJson = {
 export function buildAtlasJson(input: {
   image: { fileName: string; width: number; height: number }
   rects: readonly RectInput[]
+  /**
+   * Optional animation map (already in `meta.animations` shape). Empty
+   * animations (no frames) are filtered out before serialisation —
+   * Ajv's `frames` constraint requires at least one entry.
+   */
+  animations?: Record<string, AnimationInput>
 }): AtlasJson {
   const frames: AtlasJson['frames'] = {}
   const used = new Set<string>()
@@ -59,6 +75,23 @@ export function buildAtlasJson(input: {
     }
   })
 
+  // Strip empty animations (schema requires `frames` non-empty) so a
+  // user mid-edit can save without an empty in-progress anim blocking
+  // the write.
+  const animations: Record<string, AnimationInput> = {}
+  if (input.animations) {
+    for (const [name, a] of Object.entries(input.animations)) {
+      if (a.frames.length === 0) continue
+      animations[name] = {
+        frames: a.frames,
+        fps: a.fps,
+        loop: a.loop,
+        pingPong: a.pingPong,
+        ...(a.events ? { events: a.events } : {}),
+      }
+    }
+  }
+
   return {
     $schema: 'https://three-flatland.dev/schemas/atlas.v1.json',
     meta: {
@@ -67,6 +100,7 @@ export function buildAtlasJson(input: {
       image: input.image.fileName,
       size: { w: input.image.width, h: input.image.height },
       scale: '1',
+      ...(Object.keys(animations).length > 0 ? { animations } : {}),
     },
     frames,
   }
@@ -113,6 +147,7 @@ export async function writeAtlasSidecar(
 export type LoadedAtlas = {
   json: AtlasJson
   rects: RectInput[]
+  animations: Record<string, AnimationInput>
 }
 
 export async function readAtlasSidecar(imageUri: vscode.Uri): Promise<LoadedAtlas | null> {
@@ -135,7 +170,11 @@ export async function readAtlasSidecar(imageUri: vscode.Uri): Promise<LoadedAtla
     throw new Error(`Atlas sidecar is not valid JSON: ${msg}`)
   }
   assertValidAtlas(parsed)
-  return { json: parsed, rects: atlasToRects(parsed) }
+  return {
+    json: parsed,
+    rects: atlasToRects(parsed),
+    animations: parsed.meta.animations ?? {},
+  }
 }
 
 /**
