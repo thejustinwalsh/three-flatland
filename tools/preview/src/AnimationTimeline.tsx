@@ -275,46 +275,23 @@ export function AnimationTimeline({
 }: AnimationTimelineProps) {
   const groups = useMemo(() => groupCells(frames), [frames])
 
-  // Hold drag-edge state — declared up here so the playhead effect
-  // below can fold the in-flight count into its line position.
-  const dragRef = useRef<{ groupIndex: number; startX: number; startCount: number } | null>(null)
-  const [dragPreview, setDragPreview] = useState<{ groupIndex: number; count: number } | null>(null)
+  // Hold drag-edge state. We commit each pixel-step worth of count
+  // change LIVE through `onChangeHold` instead of buffering it
+  // locally — that way the tick loop in the App sees the real
+  // frame count and playback continues smoothly through the
+  // freshly-added (or freshly-removed) sub-frames. `lastCommitted`
+  // dedupes so we only fire when the integer count actually changed.
+  const dragRef = useRef<{
+    groupIndex: number
+    startX: number
+    startCount: number
+    lastCommitted: number
+  } | null>(null)
 
   // Hover-highlight while a drag is over the timeline. Drives the
   // focus-ring border + tinted background on whichever sub-track
   // (detail / dots / empty) is currently rendering.
   const [isDragOver, setIsDragOver] = useState(false)
-
-  // During a hold drag the visible cell width grows / shrinks but
-  // the underlying frames array hasn't changed yet — so the line's
-  // pixel position has to be projected through the PREVIEW layout,
-  // not the committed one. effectiveGroups = groups with the
-  // dragged cell's count overridden; effectivePlayhead = playhead
-  // re-mapped to its same logical (group, posInGroup) under the
-  // new layout (clamped if the dragged cell shrunk past it).
-  const effectiveGroups = useMemo(() => {
-    if (!dragPreview) return groups
-    return groups.map((g, i) =>
-      i === dragPreview.groupIndex
-        ? { ...g, count: dragPreview.count }
-        : i > dragPreview.groupIndex
-        ? { ...g, startIndex: g.startIndex + (dragPreview.count - groups[dragPreview.groupIndex]!.count) }
-        : g,
-    )
-  }, [groups, dragPreview])
-  const projectPlayhead = (frameIndex: number): number => {
-    if (!dragPreview) return frameIndex
-    const dragGroup = groups[dragPreview.groupIndex]
-    if (!dragGroup) return frameIndex
-    const oldCount = dragGroup.count
-    const groupStart = dragGroup.startIndex
-    if (frameIndex < groupStart) return frameIndex
-    if (frameIndex < groupStart + oldCount) {
-      const posInGroup = frameIndex - groupStart
-      return groupStart + Math.min(posInGroup, dragPreview.count - 1)
-    }
-    return frameIndex + (dragPreview.count - oldCount)
-  }
 
   // Smooth-lerp playhead. Held here (above any early returns) so the
   // hook calls run on every render — empty / collapsed / dots paths
@@ -326,7 +303,7 @@ export function AnimationTimeline({
     const setLine = (frameIndex: number) => {
       const el = lineRef.current
       if (!el) return
-      el.style.transform = `translateX(${playheadFrameToPx(projectPlayhead(frameIndex), effectiveGroups)}px)`
+      el.style.transform = `translateX(${playheadFrameToPx(frameIndex, groups)}px)`
     }
     if (!isPlaying || !getSmoothPlayhead) {
       setLine(playhead)
@@ -339,11 +316,7 @@ export function AnimationTimeline({
     }
     raf = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(raf)
-    // projectPlayhead is recreated each render but its identity
-    // change isn't meaningful — it closes over groups + dragPreview,
-    // both of which are in the deps below.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isPlaying, getSmoothPlayhead, effectiveGroups, playhead, dragPreview, groups])
+  }, [isPlaying, getSmoothPlayhead, groups, playhead])
   const dropTarget = useDragTarget({
     accept: ['frames-panel', 'canvas-rect'],
     onEnter: () => setIsDragOver(true),
@@ -355,43 +328,36 @@ export function AnimationTimeline({
     },
   })
 
-  // Hold drag-edge handlers. dragRef + dragPreview state are
-  // declared at the top of the component so the playhead effect
-  // can fold the in-flight count into its line position.
+  // Hold drag-edge handlers. Each pointer-step that crosses an
+  // integer cell-step boundary calls `onChangeHold` immediately so
+  // the underlying frames + the App's tick loop see the live count
+  // — playback flows through new sub-frames as you extend the cell.
   const onEdgePointerDown = (groupIndex: number, count: number) => (e: ReactPointerEvent<HTMLDivElement>) => {
     if (e.button !== 0) return
     e.stopPropagation()
     e.preventDefault()
     e.currentTarget.setPointerCapture(e.pointerId)
-    dragRef.current = { groupIndex, startX: e.clientX, startCount: count }
-    setDragPreview({ groupIndex, count })
+    dragRef.current = { groupIndex, startX: e.clientX, startCount: count, lastCommitted: count }
   }
   const onEdgePointerMove = (e: ReactPointerEvent<HTMLDivElement>) => {
-    if (!dragRef.current) return
-    const dx = e.clientX - dragRef.current.startX
-    const next = Math.max(1, dragRef.current.startCount + Math.round(dx / CELL_HOLD_PER_DUP))
-    setDragPreview((prev) =>
-      prev != null && prev.count === next
-        ? prev
-        : { groupIndex: dragRef.current!.groupIndex, count: next },
-    )
+    const drag = dragRef.current
+    if (!drag) return
+    const dx = e.clientX - drag.startX
+    const next = Math.max(1, drag.startCount + Math.round(dx / CELL_HOLD_PER_DUP))
+    if (next !== drag.lastCommitted) {
+      drag.lastCommitted = next
+      onChangeHold?.(drag.groupIndex, next)
+    }
   }
   const onEdgePointerUp = (e: ReactPointerEvent<HTMLDivElement>) => {
     if (!dragRef.current) return
     if (e.currentTarget.hasPointerCapture(e.pointerId)) {
       e.currentTarget.releasePointerCapture(e.pointerId)
     }
-    const dx = e.clientX - dragRef.current.startX
-    const next = Math.max(1, dragRef.current.startCount + Math.round(dx / CELL_HOLD_PER_DUP))
-    if (next !== dragRef.current.startCount) {
-      onChangeHold?.(dragRef.current.groupIndex, next)
-    }
     dragRef.current = null
-    setDragPreview(null)
   }
   const onEdgePointerCancel = () => {
     dragRef.current = null
-    setDragPreview(null)
   }
 
   if (frames.length === 0) {
@@ -431,8 +397,7 @@ export function AnimationTimeline({
     <div {...stylex.props(s.trackDetail, isDragOver && s.trackOver)} {...dropTarget}>
       {groups.map((g, idx) => {
         const rect = rectsByName[g.name]
-        const renderCount =
-          dragPreview && dragPreview.groupIndex === idx ? dragPreview.count : g.count
+        const renderCount = g.count
         // +2 = the cell's 1px L + 1px R border. With box-sizing:
         // border-box this means the inner content area is exactly
         // CELL_BASE * count wide so all tiles render at full size.
