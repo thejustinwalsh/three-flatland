@@ -143,6 +143,11 @@ const CELL_BASE = 40
 // model of "one cell == one frame".
 const CELL_HOLD_PER_DUP = CELL_BASE
 const TRACK_GAP = 2
+// While a drop is hovered, push the cells around the active gap
+// apart by this much to make the drop target unmistakable through
+// the floating drag stack. ½ a cell wide reads as "definitely a
+// gap, not a stray gutter".
+const GAP_PUSH_PX = 20
 
 const s = stylex.create({
   trackDetail: {
@@ -179,6 +184,9 @@ const s = stylex.create({
     cursor: 'pointer',
     overflow: 'hidden',
     display: 'flex',
+    transitionProperty: 'margin-left, margin-right',
+    transitionDuration: '120ms',
+    transitionTimingFunction: 'ease-out',
   },
   // Inner sprite tile — one of these per held duplicate. Width =
   // CELL_BASE; the cell's inner content area is exactly CELL_BASE *
@@ -822,7 +830,15 @@ export function AnimationTimeline({
           <div
             key={`${g.startIndex}-${g.name}`}
             {...stylex.props(s.cell, idx === playheadGroupIndex && s.cellPlayhead)}
-            style={{ width }}
+            style={{
+              width,
+              // Spread the cells around the active drop gap. The cell
+              // AT hoverGap (i.e. the one immediately AFTER the gap)
+              // gets pushed right by GAP_PUSH_PX so the visual gap
+              // grows from TRACK_GAP to TRACK_GAP + GAP_PUSH_PX —
+              // legible even through a 4-cell drag stack.
+              marginInlineStart: hoverGap === idx ? GAP_PUSH_PX : undefined,
+            }}
             onClick={() => onSeekGroup(idx)}
             onPointerDown={onCellPointerDown(idx)}
             onPointerMove={onCellPointerMove}
@@ -873,15 +889,30 @@ export function AnimationTimeline({
         style={{ left: 0, transform: `translateX(${playheadPx}px)`, willChange: 'transform' }}
         aria-hidden="true"
       />
+      {hoverGap != null && hoverGap === groups.length ? (
+        // End-of-track spread: cells map margin-left to push, but
+        // the gap AFTER the last cell has no cell to push, so render
+        // a spacer of the same width to materialise the gap visually.
+        <div
+          aria-hidden="true"
+          style={{
+            width: GAP_PUSH_PX,
+            flexShrink: 0,
+            transition: 'width 120ms ease-out',
+          }}
+        />
+      ) : null}
       {hoverGap != null ? (() => {
         // Gap pixel = sum of (cell-outer + TRACK_GAP) for cells
-        // before the gap, then back off half the TRACK_GAP so the
-        // line sits centered in the gutter.
+        // before the gap. Center the line in the spread space:
+        // visible gap = TRACK_GAP + GAP_PUSH_PX, so the line sits
+        // at x + (visible-gap)/2 - TRACK_GAP (back off the gutter
+        // we'd already counted toward x).
         let x = 0
         for (let i = 0; i < hoverGap && i < groups.length; i++) {
           x += groups[i]!.count * CELL_BASE + 2 + TRACK_GAP
         }
-        const left = Math.max(0, x - TRACK_GAP / 2)
+        const left = Math.max(0, x - TRACK_GAP / 2 + GAP_PUSH_PX / 2)
         return <div {...stylex.props(s.gapLine)} style={{ left }} aria-hidden="true" />
       })() : null}
       {eventPopover != null && onSetEvent ? (
