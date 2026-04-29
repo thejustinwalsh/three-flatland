@@ -36,7 +36,9 @@ export type AnimationStore = {
  * Pure-function helper, exported for any other callers that want to
  * derive the next frame given a current state. Forward by default;
  * `pingPong` ignored unless `loop` is also true (ping-pong implies
- * looping back-and-forth).
+ * looping back-and-forth). Tolerates arbitrarily large `step` values
+ * by reducing through a triangle wave for ping-pong and a modulo for
+ * straight loops — callers don't have to clamp step before calling.
  */
 export function advancePlayhead(
   current: number,
@@ -49,32 +51,41 @@ export function advancePlayhead(
 ): { playhead: number; direction: 1 | -1; ended: boolean } {
   if (frameCount <= 0) return { playhead: 0, direction, ended: true }
   if (frameCount === 1) return { playhead: 0, direction, ended: !loop }
-  let next = current + step * direction
-  let nextDir: 1 | -1 = direction
-  let ended = false
-  if (next >= frameCount) {
-    if (pingPong && loop) {
-      // Bounce: walk back from the last frame
-      next = frameCount - 2 - (next - frameCount)
-      nextDir = -1
-    } else if (loop) {
-      next = next % frameCount
-    } else {
-      next = frameCount - 1
-      ended = true
+  // Straight forward / loop / clamp paths — `step` is always positive
+  // and `direction` is the only signal of which way we're moving.
+  if (!pingPong || !loop) {
+    const raw = current + step * direction
+    if (raw >= 0 && raw < frameCount) {
+      return { playhead: raw, direction, ended: false }
     }
-  } else if (next < 0) {
-    // Only reachable in ping-pong reverse phase
-    if (pingPong && loop) {
-      next = -next
-      nextDir = 1
-    } else {
-      next = 0
-      ended = true
+    if (!loop) {
+      return raw >= frameCount
+        ? { playhead: frameCount - 1, direction, ended: true }
+        : { playhead: 0, direction, ended: true }
     }
+    // Plain loop wrap; ((x % n) + n) % n handles negatives if any caller
+    // passes a negative direction with !pingPong (defensive).
+    const wrapped = ((raw % frameCount) + frameCount) % frameCount
+    return { playhead: wrapped, direction, ended: false }
   }
-  return { playhead: next, direction: nextDir, ended }
+  // Ping-pong: parameterise the playhead by a monotonic "phase" walking
+  // a triangle wave of period `2 * (frameCount - 1)`. Going forward maps
+  // (frame F → phase F); going backward maps (frame F → phase period-F).
+  // Step in phase space is always +`step`; the new direction falls out
+  // of which half of the triangle we land on.
+  const period = 2 * (frameCount - 1)
+  const startPhase = direction === 1 ? current : period - current
+  const newPhase = ((startPhase + step) % period + period) % period
+  if (newPhase < frameCount) {
+    return { playhead: newPhase, direction: 1, ended: false }
+  }
+  return { playhead: period - newPhase, direction: -1, ended: false }
 }
+
+/** Stable empty snapshot — referenced by the hook fallback so React's
+ *  `useSyncExternalStore` tear-check doesn't see a fresh object on
+ *  every render when no store is wired. */
+const EMPTY_PLAYBACK: PlaybackSnapshot = { activeAnimation: null, playhead: 0, isPlaying: false }
 
 /**
  * Ref-backed store. Single tick loop driven externally — the consumer
@@ -82,7 +93,7 @@ export function advancePlayhead(
  * isPlaying transitions to true.
  */
 export function createAnimationStore(): AnimationStore {
-  let snapshot: PlaybackSnapshot = { activeAnimation: null, playhead: 0, isPlaying: false }
+  let snapshot: PlaybackSnapshot = { ...EMPTY_PLAYBACK }
   // Internal direction for ping-pong, hidden from snapshot.
   let direction: 1 | -1 = 1
   // Sub-frame accumulator so a slow rAF (16ms) still advances exactly
@@ -116,7 +127,11 @@ export function createAnimationStore(): AnimationStore {
       emit()
     },
     seek: (index) => {
+      // Reset direction so a seek during ping-pong reverse doesn't keep
+      // walking backward from the new index — scrubbing should hand
+      // control back to forward play.
       snapshot = { ...snapshot, playhead: Math.max(0, index) }
+      direction = 1
       accum = 0
       emit()
     },
@@ -147,7 +162,7 @@ export function createAnimationStore(): AnimationStore {
 export function useAnimationPlayback(store: AnimationStore | null): PlaybackSnapshot {
   return useSyncExternalStore(
     (fn) => (store ? store.subscribe(fn) : () => {}),
-    () => (store ? store.get() : { activeAnimation: null, playhead: 0, isPlaying: false }),
-    () => ({ activeAnimation: null, playhead: 0, isPlaying: false }),
+    () => (store ? store.get() : EMPTY_PLAYBACK),
+    () => EMPTY_PLAYBACK,
   )
 }
