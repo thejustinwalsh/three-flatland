@@ -108,13 +108,30 @@ const s = stylex.create({
     borderColor: vscode.inputBorder,
     borderRadius: radius.sm,
     backgroundColor: vscode.bg,
-    backgroundRepeat: 'no-repeat',
     position: 'relative',
     color: vscode.descriptionFg,
     fontFamily: vscode.monoFontFamily,
     fontSize: '8px',
     flexShrink: 0,
     cursor: 'pointer',
+    overflow: 'hidden',
+    display: 'flex',
+  },
+  // Inner sprite tile — one of these per held duplicate. Width =
+  // CELL_BASE; the cell's outer width is CELL_BASE * count, so the
+  // tiles fill the cell exactly. Sprite is centered inside each tile
+  // via background-position so a ×6 hold reads as 6 visible
+  // thumbnails of the same frame.
+  cellTile: {
+    width: CELL_BASE,
+    height: '100%',
+    backgroundRepeat: 'no-repeat',
+    flexShrink: 0,
+  },
+  cellTileBordered: {
+    borderLeftWidth: 1,
+    borderLeftStyle: 'solid',
+    borderLeftColor: vscode.panelBorder,
   },
   // Playhead cell: focus-ring border. Subtle on its own — the
   // primary "where am I in the animation" cue is the vertical
@@ -331,27 +348,35 @@ export function AnimationTimeline({
         const renderCount =
           dragPreview && dragPreview.groupIndex === idx ? dragPreview.count : g.count
         const width = CELL_BASE * renderCount
-        const bgStyle: CSSProperties = {}
+        // Pre-compute the per-tile sprite-sheet positioning. Each
+        // tile is its own background paint of the same frame so a
+        // ×6 hold renders as 6 visible thumbnails — the user reads
+        // the duplication count directly.
+        const tileBg: CSSProperties = {}
         if (rect && atlasImageUri && atlasSize) {
           const scale = Math.min(CELL_BASE / rect.w, CELL_BASE / rect.h)
-          bgStyle.backgroundImage = `url(${atlasImageUri})`
-          bgStyle.backgroundSize = `${atlasSize.w * scale}px ${atlasSize.h * scale}px`
-          // Center the sprite inside the FIRST sub-cell — the rest of
-          // the held cell stays an empty extension so the duplication
-          // reads as "this frame is held for N steps", not "N copies
-          // of the sprite".
+          tileBg.backgroundImage = `url(${atlasImageUri})`
+          tileBg.backgroundSize = `${atlasSize.w * scale}px ${atlasSize.h * scale}px`
           const offX = (CELL_BASE - rect.w * scale) / 2 - rect.x * scale
           const offY = (CELL_BASE - rect.h * scale) / 2 - rect.y * scale
-          bgStyle.backgroundPosition = `${offX}px ${offY}px`
+          tileBg.backgroundPosition = `${offX}px ${offY}px`
         }
         return (
           <div
             key={`${g.startIndex}-${g.name}`}
             {...stylex.props(s.cell, idx === playheadGroupIndex && s.cellPlayhead)}
-            style={{ width, ...bgStyle }}
+            style={{ width }}
             onClick={() => onSeekGroup(idx)}
             title={`${g.name}${renderCount > 1 ? ` ×${renderCount}` : ''}`}
           >
+            {Array.from({ length: renderCount }).map((_, tileIdx) => (
+              <span
+                key={tileIdx}
+                {...stylex.props(s.cellTile, tileIdx > 0 && s.cellTileBordered)}
+                style={tileBg}
+                aria-hidden="true"
+              />
+            ))}
             {renderCount > 1 ? <span {...stylex.props(s.badge)}>×{renderCount}</span> : null}
             {onChangeHold ? (
               <div
