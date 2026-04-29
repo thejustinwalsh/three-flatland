@@ -22,15 +22,15 @@ const s = stylex.create({
     display: 'flex',
     flexDirection: 'column',
     minHeight: 0,
-    backgroundColor: vscode.panelBg,
-    borderTopWidth: 1,
-    borderTopStyle: 'solid',
-    borderTopColor: vscode.panelBorder,
+    flexShrink: 0,
   },
+  // Splitter-style: 3px line above the header, hover/drag tints to the
+  // focus ring color. Matches the existing horizontal/vertical Splitter
+  // visual cues used in App.tsx.
   resizeHandle: {
-    height: 4,
+    height: 3,
     cursor: 'ns-resize',
-    backgroundColor: { default: 'transparent', ':hover': vscode.focusRing },
+    backgroundColor: { default: vscode.panelBorder, ':hover': vscode.focusRing },
     flexShrink: 0,
   },
   resizeHandleDragging: {
@@ -40,7 +40,8 @@ const s = stylex.create({
     flex: 1,
     minHeight: 0,
     overflow: 'hidden',
-    paddingInline: space.md,
+    backgroundColor: vscode.bg,
+    paddingInline: space.lg,
     paddingBlock: space.sm,
   },
 })
@@ -59,9 +60,11 @@ export type AnimationDrawerProps = {
 }
 
 /**
- * Collapsible drawer panel. Top-edge splitter resizes the body; chevron
- * inside the header (caller-provided) toggles `expanded`. Body density
- * derives from the current height — caller decides what to render.
+ * Collapsible drawer panel — peer of the canvas inside the Atlas pane.
+ * Header looks like a VSCode panel-area title bar (caller provides a
+ * full-width row, e.g. AnimationDrawerHeader). Top-edge splitter resizes
+ * the body. Body density derives from current height — caller decides
+ * what to render at each density.
  */
 export function AnimationDrawer({ expanded, height, header, body, onHeightChange }: AnimationDrawerProps) {
   const dragRef = useRef<{ startY: number; startHeight: number } | null>(null)
@@ -91,14 +94,18 @@ export function AnimationDrawer({ expanded, height, header, body, onHeightChange
 
   return (
     <div {...stylex.props(s.shell)}>
-      <div
-        {...stylex.props(s.resizeHandle, isDragging && s.resizeHandleDragging)}
-        onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={onPointerUp}
-        onPointerCancel={onPointerUp}
-        aria-hidden="true"
-      />
+      {/* Resize handle only when expanded — a collapsed drawer is just
+          a header strip and has nothing to resize. */}
+      {expanded ? (
+        <div
+          {...stylex.props(s.resizeHandle, isDragging && s.resizeHandleDragging)}
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={onPointerUp}
+          onPointerCancel={onPointerUp}
+          aria-hidden="true"
+        />
+      ) : null}
       {header}
       {expanded ? (
         <div {...stylex.props(s.body)} style={{ height }}>

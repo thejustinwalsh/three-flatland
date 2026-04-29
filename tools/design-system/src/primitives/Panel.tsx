@@ -66,12 +66,14 @@ const s = stylex.create({
     minWidth: 0,
     display: 'flex',
     flexDirection: 'column',
-    padding: space.lg,
     // Body owns the scroll for any overflowing content. Without this,
     // tall content (stacked collapsibles, long frame lists) overflows the
     // panel rect into adjacent grid rows / overlays. Use both axes — long
     // names without word-breaks would otherwise force horizontal overflow.
     overflow: 'auto',
+  },
+  bodyPadded: {
+    padding: space.lg,
   },
 })
 
@@ -83,6 +85,13 @@ export type PanelProps = Omit<HTMLAttributes<HTMLDivElement>, 'style' | 'classNa
    * rendered when this is provided, even if `title` is empty.
    */
   headerActions?: ReactNode
+  /**
+   * Body padding strategy. `'normal'` (default) applies `space.lg` on
+   * all sides. `'none'` lets children manage their own padding —
+   * useful when a panel hosts an edge-to-edge sub-element (e.g. the
+   * Atlas Panel hosts the AnimationDrawer flush with the panel edges).
+   */
+  bodyPadding?: 'normal' | 'none'
   style?: StyleXStyles
 }
 
@@ -91,7 +100,7 @@ export type PanelProps = Omit<HTMLAttributes<HTMLDivElement>, 'style' | 'classNa
  * doesn't ship a generic "Panel" primitive, so this is hand-built against
  * the same tokens VSCode uses for the editor/panel chrome.
  */
-export function Panel({ title, headerActions, children, style, ...rest }: PanelProps) {
+export function Panel({ title, headerActions, bodyPadding = 'normal', children, style, ...rest }: PanelProps) {
   const showHeader = title != null || headerActions != null
   return (
     <div {...rest} {...stylex.props(s.shell, style)}>
@@ -105,7 +114,7 @@ export function Panel({ title, headerActions, children, style, ...rest }: PanelP
           <span {...stylex.props(s.headerActions)}>{headerActions}</span>
         </div>
       ) : null}
-      <div {...stylex.props(s.body)}>{children}</div>
+      <div {...stylex.props(s.body, bodyPadding === 'normal' && s.bodyPadded)}>{children}</div>
     </div>
   )
 }
