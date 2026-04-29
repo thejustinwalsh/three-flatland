@@ -2229,16 +2229,6 @@ function FramesView({
             key={g.prefix}
             heading={g.prefix}
             open
-            onClick={(e: React.MouseEvent) => {
-              // Shift-click on the header selects the whole group as a
-              // plain individual selection (no folder chrome). The
-              // ⊞-all icon below is the discoverable path for the
-              // folder-as-set selection treatment.
-              if (!e.shiftKey) return
-              e.preventDefault()
-              e.stopPropagation()
-              onSelectGroup(groupIds, false)
-            }}
           >
             <span
               slot="decorations"
