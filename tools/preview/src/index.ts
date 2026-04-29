@@ -34,3 +34,12 @@ export {
   type AnimationStore,
   type PlaybackSnapshot,
 } from './animationStore'
+export {
+  DragProvider,
+  useDrag,
+  useDragSource,
+  useDragTarget,
+  type DragPayload,
+  type DragSourceKind,
+  type DragState,
+} from './dragKit'
