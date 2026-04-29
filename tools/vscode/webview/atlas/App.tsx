@@ -934,8 +934,14 @@ export function App() {
   //  2. If the floating PIP is hidden, un-hide it — the user
   //     pressed play, so they want to see the playback.
   const handleTogglePlay = useCallback(() => {
-    if (!playback.isPlaying && activeAnim && activeAnim.frames.length > 0) {
-      const atEnd = playback.playhead >= activeAnim.frames.length - 1
+    // Read live store state instead of the React `playback` snapshot —
+    // back-to-back clicks (or a click landing during a re-render) can
+    // bind a stale closure where isPlaying / playhead don't reflect
+    // what the store actually has, and the auto-rewind branch would
+    // silently skip itself. The store is the authoritative source.
+    const live = animationStore.get()
+    if (!live.isPlaying && activeAnim && activeAnim.frames.length > 0) {
+      const atEnd = live.playhead >= activeAnim.frames.length - 1
       if (atEnd && !activeAnim.loop) {
         animationStore.seek(0)
       }
@@ -944,7 +950,7 @@ export function App() {
       prefsStore.set({ animPipVisible: true })
     }
     animationStore.togglePlay()
-  }, [activeAnim, animationStore, playback.isPlaying, playback.playhead, prefs.animPipVisible])
+  }, [activeAnim, animationStore, prefs.animPipVisible])
 
   // Append one or more frames to the active animation (drop, or
   // Add-to-anim button). v1 always appends to the end; mid-track
