@@ -17,14 +17,24 @@ import { z } from '@three-flatland/design-system/tokens/z.stylex'
 /** Where the drag started — drives the floating element's border tint. */
 export type DragSourceKind = 'frames-panel' | 'canvas-rect' | 'timeline-cell'
 
+/** A single frame's atlas-pixel rect — used for thumbnail positioning. */
+export type DragAtlasFrame = {
+  name: string
+  x: number
+  y: number
+  w: number
+  h: number
+}
+
 /**
- * Payload carried by the drag. `frameName` is the single source of truth
- * for what's being dragged (matches the rect's `name`). `originIndex`
- * lets the timeline know which cell we lifted (for reorders).
+ * Payload carried by the drag. `frameNames` carries the full set —
+ * a single-frame drag is just `[name]`, a multi-frame drag carries the
+ * selection in order. `originIndex` lets the timeline know which cell
+ * we lifted (for reorders).
  */
 export type DragPayload = {
   kind: DragSourceKind
-  frameName: string
+  frameNames: string[]
   /** Defined when dragging from the timeline (cell index in the active animation). */
   originIndex?: number
 }
@@ -35,8 +45,8 @@ export type DragState = {
   clientY: number
   /** Source URL of the atlas image — needed to render the thumbnail. */
   atlasImageUri: string | null
-  /** Frame rect in atlas-image pixels — for sprite-sheet positioning. */
-  atlasFrame: { x: number; y: number; w: number; h: number } | null
+  /** Frame rects in atlas-image pixels — one per dragged frame. */
+  atlasFrames: DragAtlasFrame[] | null
   /** Atlas image natural size — needed for the background-size math. */
   atlasSize: { w: number; h: number } | null
 }
@@ -48,7 +58,7 @@ type DragApi = {
     clientX: number
     clientY: number
     atlasImageUri: string
-    atlasFrame: { x: number; y: number; w: number; h: number }
+    atlasFrames: DragAtlasFrame[]
     atlasSize: { w: number; h: number }
   }): void
   move(clientX: number, clientY: number): void
@@ -57,7 +67,7 @@ type DragApi = {
 
 const EMPTY_STATE: DragState = {
   payload: null, clientX: 0, clientY: 0,
-  atlasImageUri: null, atlasFrame: null, atlasSize: null,
+  atlasImageUri: null, atlasFrames: null, atlasSize: null,
 }
 
 const DragContext = createContext<DragApi | null>(null)
@@ -68,8 +78,8 @@ export function DragProvider({ children }: { children: ReactNode }) {
 
   const api = useMemo<DragApi>(() => ({
     state,
-    start: ({ payload, clientX, clientY, atlasImageUri, atlasFrame, atlasSize }) => {
-      setState({ payload, clientX, clientY, atlasImageUri, atlasFrame, atlasSize })
+    start: ({ payload, clientX, clientY, atlasImageUri, atlasFrames, atlasSize }) => {
+      setState({ payload, clientX, clientY, atlasImageUri, atlasFrames, atlasSize })
     },
     move: (clientX, clientY) => {
       setState((s) => (s.payload ? { ...s, clientX, clientY } : s))
@@ -121,9 +131,11 @@ export function useOptionalDrag(): DragApi | null {
 
 /**
  * Hook for source elements. Returns a pointerdown handler. Caller passes
- * the payload + the atlas info needed to render the thumbnail. When no
+ * the payload + the atlas info needed to render the thumbnails. When no
  * DragProvider is present, returns a no-op handler so consumers can
- * call this unconditionally at the top of a component.
+ * call this unconditionally at the top of a component. `atlasFrames`
+ * order matches `payload.frameNames` order — the floating drag layer
+ * renders them as a stack (or "+N" badge if many) in that order.
  */
 export function useDragSource() {
   const api = useOptionalDrag()
@@ -133,11 +145,12 @@ export function useDragSource() {
       args: {
         payload: DragPayload
         atlasImageUri: string
-        atlasFrame: { x: number; y: number; w: number; h: number }
+        atlasFrames: DragAtlasFrame[]
         atlasSize: { w: number; h: number }
       },
     ) => {
       if (!api) return
+      if (args.atlasFrames.length === 0) return
       e.preventDefault()
       api.start({ ...args, clientX: e.clientX, clientY: e.clientY })
     },
@@ -194,45 +207,100 @@ const SOURCE_BORDER: Record<DragSourceKind, string> = {
   'timeline-cell': 'var(--vscode-focusBorder)',
 }
 
+const CELL_SIZE = 32
+const STACK_OFFSET = 10
+const MAX_VISIBLE = 4
+
 const s = stylex.create({
+  // Wrapper sits at the cursor; individual cells are absolutely
+  // positioned around it so they read as a left→right stack with
+  // each card peeking past the previous.
   layer: {
     position: 'fixed',
     pointerEvents: 'none',
     zIndex: z.toast,
-    width: 32,
-    height: 32,
+    width: CELL_SIZE,
+    height: CELL_SIZE,
+    transform: 'translate(-50%, -50%)',
+  },
+  cell: {
+    position: 'absolute',
+    top: 0,
+    width: CELL_SIZE,
+    height: CELL_SIZE,
     borderWidth: 2,
     borderStyle: 'solid',
     borderRadius: radius.sm,
     backgroundColor: vscode.bg,
     backgroundRepeat: 'no-repeat',
-    transform: 'translate(-50%, -50%)',
     boxShadow: '0 4px 12px rgba(0, 0, 0, 0.5)',
+  },
+  countBadge: {
+    position: 'absolute',
+    top: -8,
+    right: -8,
+    minWidth: 18,
+    height: 18,
+    paddingInline: 4,
+    backgroundColor: vscode.focusRing,
+    color: vscode.bg,
+    borderRadius: 9,
+    fontFamily: vscode.monoFontFamily,
+    fontSize: '10px',
+    fontWeight: 700,
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    lineHeight: 1,
+    boxShadow: '0 2px 6px rgba(0, 0, 0, 0.5)',
   },
 })
 
 function DragLayer() {
   const { state } = useDrag()
-  if (!state.payload || !state.atlasImageUri || !state.atlasFrame || !state.atlasSize) return null
-  const { atlasImageUri, atlasFrame, atlasSize, payload } = state
-  const cellSize = 32
-  const scale = Math.min(cellSize / atlasFrame.w, cellSize / atlasFrame.h)
-  const bgW = atlasSize.w * scale
-  const bgH = atlasSize.h * scale
-  const offX = -atlasFrame.x * scale
-  const offY = -atlasFrame.y * scale
+  if (!state.payload || !state.atlasImageUri || !state.atlasFrames || !state.atlasSize) return null
+  const { atlasImageUri, atlasFrames, atlasSize, payload } = state
+  const total = atlasFrames.length
+  const visible = atlasFrames.slice(0, MAX_VISIBLE)
+  const overflow = total - visible.length
+
+  // We center the cluster on the cursor by offsetting the wrapper left
+  // by half the visible stack width.
+  const stackWidth = CELL_SIZE + STACK_OFFSET * (visible.length - 1)
+  const wrapperLeft = state.clientX - stackWidth / 2 + CELL_SIZE / 2
+
   return (
     <div
       {...stylex.props(s.layer)}
-      style={{
-        left: state.clientX,
-        top: state.clientY,
-        borderColor: SOURCE_BORDER[payload.kind],
-        backgroundImage: `url(${atlasImageUri})`,
-        backgroundSize: `${bgW}px ${bgH}px`,
-        backgroundPosition: `${offX}px ${offY}px`,
-      }}
+      style={{ left: wrapperLeft, top: state.clientY }}
       aria-hidden="true"
-    />
+    >
+      {visible.map((f, i) => {
+        const scale = Math.min(CELL_SIZE / f.w, CELL_SIZE / f.h)
+        const bgW = atlasSize.w * scale
+        const bgH = atlasSize.h * scale
+        const offX = (CELL_SIZE - f.w * scale) / 2 - f.x * scale
+        const offY = (CELL_SIZE - f.h * scale) / 2 - f.y * scale
+        return (
+          <div
+            key={`${f.name}-${i}`}
+            {...stylex.props(s.cell)}
+            style={{
+              left: i * STACK_OFFSET,
+              borderColor: SOURCE_BORDER[payload.kind],
+              backgroundImage: `url(${atlasImageUri})`,
+              backgroundSize: `${bgW}px ${bgH}px`,
+              backgroundPosition: `${offX}px ${offY}px`,
+              zIndex: i,
+            }}
+          />
+        )
+      })}
+      {total > 1 ? (
+        <span {...stylex.props(s.countBadge)} style={{ left: stackWidth - 8, zIndex: visible.length + 1 }}>
+          {total}
+        </span>
+      ) : null}
+    </div>
   )
 }

@@ -488,13 +488,25 @@ export function RectOverlay({
     e.stopPropagation()
 
     // Alt + pointer-down on a rect with a frame name → start a
-    // canvas-rect drag through the dragKit. Plain drag still falls
-    // through to the move / select branches below.
+    // canvas-rect drag through the dragKit. Multi-select aware: if
+    // the dragged rect is part of the current selection (and there's
+    // more than one), drag every selected named rect in selection
+    // order. Plain drag still falls through to the move / select
+    // branches below.
     if (e.altKey && r.name && atlasImageUri && atlasSize) {
+      const inSelection = selectedIds.has(r.id)
+      const dragSet =
+        inSelection && selectedIds.size > 1
+          ? Array.from(selectedIds)
+              .map((id) => rects.find((rr) => rr.id === id))
+              .filter((rr): rr is Rect => rr != null && rr.name != null)
+              .map((rr) => ({ name: rr.name!, x: rr.x, y: rr.y, w: rr.w, h: rr.h }))
+          : [{ name: r.name, x: r.x, y: r.y, w: r.w, h: r.h }]
+      if (dragSet.length === 0) return
       startFrameDrag(e, {
-        payload: { kind: 'canvas-rect', frameName: r.name },
+        payload: { kind: 'canvas-rect', frameNames: dragSet.map((d) => d.name) },
         atlasImageUri,
-        atlasFrame: { x: r.x, y: r.y, w: r.w, h: r.h },
+        atlasFrames: dragSet,
         atlasSize: { w: atlasSize.w, h: atlasSize.h },
       })
       return

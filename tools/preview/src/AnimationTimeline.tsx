@@ -26,11 +26,13 @@ export type AnimationTimelineProps = {
   /** Called with the new hold count for a group (Task 8). */
   onChangeHold?(groupIndex: number, nextCount: number): void
   /**
-   * Called when a frame is dropped onto the timeline. `insertIndex` is
-   * the position in the post-duplication frame array; v1 always
-   * appends at the end.
+   * Called when one or more frames are dropped onto the timeline.
+   * `insertIndex` is the position in the post-duplication frame
+   * array; v1 always appends at the end. `frameNames` carries the
+   * dragged set (one entry for a single drag, multiple for a
+   * multi-selection drag) — caller appends them in order.
    */
-  onDropFrame?(insertIndex: number, frameName: string): void
+  onDropFrames?(insertIndex: number, frameNames: readonly string[]): void
 }
 
 /**
@@ -161,7 +163,7 @@ export function AnimationTimeline({
   playheadGroupIndex,
   onSeekGroup,
   onChangeHold,
-  onDropFrame,
+  onDropFrames,
 }: AnimationTimelineProps) {
   const groups = useMemo(() => groupCells(frames), [frames])
 
@@ -171,7 +173,8 @@ export function AnimationTimeline({
   const dropTarget = useDragTarget({
     accept: ['frames-panel', 'canvas-rect'],
     onDrop: (payload) => {
-      onDropFrame?.(frames.length, payload.frameName)
+      if (payload.frameNames.length === 0) return
+      onDropFrames?.(frames.length, payload.frameNames)
     },
   })
 
