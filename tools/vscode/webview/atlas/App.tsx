@@ -28,6 +28,7 @@ import {
   AnimationTimeline,
   AutoDetectOverlay,
   CanvasStage,
+  DragProvider,
   GridSliceOverlay,
   HoverFrameChip,
   InfoPanel,
@@ -36,6 +37,7 @@ import {
   frameIndexToGroupIndex,
   groupCells,
   useAnimationPlayback,
+  useDragSource,
   cellExtent,
   cellKey,
   connectedComponents,
@@ -836,6 +838,36 @@ export function App() {
     })
   }, [activeAnimation])
 
+  // Append a frame to the active animation (drop, or Add-to-anim
+  // button). v1 always appends to the end; mid-track insertion is
+  // explicitly out-of-scope until cell-reorder is needed.
+  const handleAppendFrameToActiveAnim = useCallback((frameName: string) => {
+    if (!activeAnimation) return
+    setAnimations((prev) => {
+      const anim = prev[activeAnimation]
+      if (!anim) return prev
+      return { ...prev, [activeAnimation]: { ...anim, frames: [...anim.frames, frameName] } }
+    })
+  }, [activeAnimation])
+
+  // Append the current Frames-panel selection (in folder/visual order)
+  // to the active animation. No-op when no anim is active or no
+  // selection exists.
+  const handleAddSelectionToActiveAnim = useCallback(() => {
+    if (!activeAnimation) return
+    const names = Array.from(selectedIds)
+      .map((id) => rects.find((r) => r.id === id))
+      .filter((r): r is Rect => r != null)
+      .map((r) => r.name ?? '')
+      .filter((n) => n.length > 0)
+    if (names.length === 0) return
+    setAnimations((prev) => {
+      const anim = prev[activeAnimation]
+      if (!anim) return prev
+      return { ...prev, [activeAnimation]: { ...anim, frames: [...anim.frames, ...names] } }
+    })
+  }, [activeAnimation, rects, selectedIds])
+
   // Number-key 1..9 — set hold count on the playhead's group.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -1244,6 +1276,7 @@ export function App() {
   ])
 
   return (
+    <DragProvider>
     <div
       ref={rootRef}
       tabIndex={-1}
@@ -1465,6 +1498,7 @@ export function App() {
                     if (target) animationStore.seek(target.startIndex)
                   }}
                   onChangeHold={handleChangeHold}
+                  onDropFrame={(_idx, frameName) => handleAppendFrameToActiveAnim(frameName)}
                 />
               ) : (
                 <div style={{ color: 'var(--vscode-descriptionForeground)', fontFamily: 'monospace', fontSize: 10, padding: 8 }}>
@@ -1506,6 +1540,40 @@ export function App() {
         >
         <Panel
           title={`Frames (${rects.length}${selectedIds.size > 0 ? ` · ${selectedIds.size} sel` : ''})`}
+          headerActions={
+            <button
+              type="button"
+              onClick={handleAddSelectionToActiveAnim}
+              disabled={selectedIds.size === 0 || !activeAnimation}
+              title={
+                !activeAnimation
+                  ? 'Select an animation first'
+                  : selectedIds.size === 0
+                  ? 'Select frames to add'
+                  : `Add ${selectedIds.size} frame(s) to "${activeAnimation}"`
+              }
+              aria-label="Add selection to active animation"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: 16,
+                height: 16,
+                padding: 0,
+                border: 0,
+                borderRadius: 2,
+                background: 'transparent',
+                color:
+                  selectedIds.size > 0 && activeAnimation
+                    ? 'var(--vscode-panelTitle-activeForeground)'
+                    : 'var(--vscode-descriptionForeground)',
+                opacity: selectedIds.size > 0 && activeAnimation ? 1 : 0.4,
+                cursor: selectedIds.size > 0 && activeAnimation ? 'pointer' : 'not-allowed',
+              }}
+            >
+              <Icon name="add" />
+            </button>
+          }
         >
           {renameMode.kind === 'prefix' ? (
             <PrefixRenameBar
@@ -1615,6 +1683,7 @@ export function App() {
       <SaveStatusLine status={saveStatus} />
       <DevReloadToast />
     </div>
+    </DragProvider>
   )
 
   // Minor: keep indexById live even if it's not displayed directly —
@@ -1768,6 +1837,8 @@ type FrameRowHandlers = {
   onStartInlineRename: (id: string) => void
   onCommitInlineRename: (id: string, name: string) => void
   onCancelInlineRename: () => void
+  /** Called from the icon's pointerdown to start a frames-panel drag. */
+  onStartFrameDrag: (rect: Rect, e: ReactPointerEvent<HTMLSpanElement>) => void
 }
 
 type FolderHighlight = {
@@ -1839,6 +1910,11 @@ function FrameRow({
           <span
             aria-hidden="true"
             {...stylex.props(s.thumb, s.thumbBg(thumbBg.bgImage, thumbBg.bgSize, thumbBg.bgPos))}
+            onPointerDown={(e) => {
+              if (e.button !== 0 || !rect.name) return
+              handlers.onStartFrameDrag(rect, e)
+            }}
+            style={{ cursor: rect.name ? 'grab' : undefined }}
           />
         ) : (
           <span aria-hidden="true" {...stylex.props(s.thumb)} />
@@ -1893,11 +1969,21 @@ function FramesView({
   onCommitInlineRename: (id: string, name: string) => void
   onCancelInlineRename: () => void
 }) {
+  const startDrag = useDragSource()
   const handlers: FrameRowHandlers = {
     onSelectRect,
     onStartInlineRename,
     onCommitInlineRename,
     onCancelInlineRename,
+    onStartFrameDrag: (rect, e) => {
+      if (!rect.name || !imageUri || !imageSize) return
+      startDrag(e, {
+        payload: { kind: 'frames-panel', frameName: rect.name },
+        atlasImageUri: imageUri,
+        atlasFrame: { x: rect.x, y: rect.y, w: rect.w, h: rect.h },
+        atlasSize: { w: imageSize.w, h: imageSize.h },
+      })
+    },
   }
   const indexById = useMemo(() => {
     const m = new Map<string, number>()

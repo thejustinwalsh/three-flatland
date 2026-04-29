@@ -5,6 +5,7 @@ import { space } from '@three-flatland/design-system/tokens/space.stylex'
 import { radius } from '@three-flatland/design-system/tokens/radius.stylex'
 import type { Rect } from './RectOverlay'
 import type { AnimationDrawerDensity } from './AnimationDrawer'
+import { useDragTarget } from './dragKit'
 
 export type AnimationTimelineProps = {
   /** Frame names in playback order, with duplicates encoding hold counts. */
@@ -24,6 +25,12 @@ export type AnimationTimelineProps = {
   onSeekGroup(groupIndex: number): void
   /** Called with the new hold count for a group (Task 8). */
   onChangeHold?(groupIndex: number, nextCount: number): void
+  /**
+   * Called when a frame is dropped onto the timeline. `insertIndex` is
+   * the position in the post-duplication frame array; v1 always
+   * appends at the end.
+   */
+  onDropFrame?(insertIndex: number, frameName: string): void
 }
 
 /**
@@ -154,8 +161,19 @@ export function AnimationTimeline({
   playheadGroupIndex,
   onSeekGroup,
   onChangeHold,
+  onDropFrame,
 }: AnimationTimelineProps) {
   const groups = useMemo(() => groupCells(frames), [frames])
+
+  // Accept frames panel + canvas-rect drags. v1 always appends — gap
+  // insertion indicators / between-cell drops are deferred per the
+  // spec's out-of-scope list.
+  const dropTarget = useDragTarget({
+    accept: ['frames-panel', 'canvas-rect'],
+    onDrop: (payload) => {
+      onDropFrame?.(frames.length, payload.frameName)
+    },
+  })
 
   // Hold drag-edge state (Task 8). Lives here because the cell grab strip
   // needs access to the same `groups` array we're rendering.
@@ -183,7 +201,7 @@ export function AnimationTimeline({
 
   if (frames.length === 0) {
     return (
-      <div {...stylex.props(s.empty)}>
+      <div {...stylex.props(s.empty)} {...dropTarget}>
         Drag frames here, or select frames in the Frames panel and click + again to populate.
       </div>
     )
@@ -193,7 +211,7 @@ export function AnimationTimeline({
 
   if (density === 'dots') {
     return (
-      <div {...stylex.props(s.trackDots)}>
+      <div {...stylex.props(s.trackDots)} {...dropTarget}>
         {groups.map((g, idx) => (
           <span
             key={`${g.startIndex}-${g.name}`}
@@ -209,7 +227,7 @@ export function AnimationTimeline({
 
   // detail
   return (
-    <div {...stylex.props(s.trackDetail)}>
+    <div {...stylex.props(s.trackDetail)} {...dropTarget}>
       {groups.map((g, idx) => {
         const rect = rectsByName[g.name]
         const width = CELL_BASE + (g.count - 1) * CELL_HOLD_PER_DUP
