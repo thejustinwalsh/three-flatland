@@ -971,17 +971,53 @@ export function App() {
     animationStore.togglePlay()
   }, [activeAnim, animationStore, prefs.animPipVisible])
 
-  // Append one or more frames to the active animation (drop, or
-  // Add-to-anim button). v1 always appends to the end; mid-track
-  // insertion is explicitly out-of-scope until cell-reorder lands.
-  const handleAppendFramesToActiveAnim = useCallback((frameNames: readonly string[]) => {
-    if (!activeAnimation || frameNames.length === 0) return
+  // Insert one or more frames into the active animation at the
+  // given position. `insertIndex` is the post-duplication frame
+  // index (0 = before first frame; frames.length = append).
+  const handleInsertFramesIntoActiveAnim = useCallback(
+    (insertIndex: number, frameNames: readonly string[]) => {
+      if (!activeAnimation || frameNames.length === 0) return
+      setAnimations((prev) => {
+        const anim = prev[activeAnimation]
+        if (!anim) return prev
+        const next = [...anim.frames]
+        const clampedIndex = Math.max(0, Math.min(next.length, insertIndex))
+        next.splice(clampedIndex, 0, ...frameNames)
+        return { ...prev, [activeAnimation]: { ...anim, frames: next } }
+      })
+    },
+    [activeAnimation],
+  )
+
+  // Reorder a group within the active animation: remove the group
+  // at `fromGroupIndex` and re-insert it before `toGap`. The
+  // adjustment `toGap > fromGroupIndex ? toGap - 1 : toGap` handles
+  // the index shift caused by the removal so the dragged group
+  // lands in the visual slot the user actually targeted.
+  const handleReorderGroup = useCallback((fromGroupIndex: number, toGap: number) => {
+    if (!activeAnimation) return
     setAnimations((prev) => {
       const anim = prev[activeAnimation]
       if (!anim) return prev
-      return { ...prev, [activeAnimation]: { ...anim, frames: [...anim.frames, ...frameNames] } }
+      const next = groupCells(anim.frames)
+      if (fromGroupIndex < 0 || fromGroupIndex >= next.length) return prev
+      const moved = next.splice(fromGroupIndex, 1)[0]!
+      const adjusted = toGap > fromGroupIndex ? toGap - 1 : toGap
+      const clampedGap = Math.max(0, Math.min(next.length, adjusted))
+      next.splice(clampedGap, 0, moved)
+      const nextFrames: string[] = []
+      for (const g of next) for (let k = 0; k < g.count; k++) nextFrames.push(g.name)
+      return { ...prev, [activeAnimation]: { ...anim, frames: nextFrames } }
     })
   }, [activeAnimation])
+
+  // Convenience: append (Add-to-anim button). Equivalent to
+  // handleInsertFramesIntoActiveAnim(end, names).
+  const handleAppendFramesToActiveAnim = useCallback((frameNames: readonly string[]) => {
+    if (!activeAnimation) return
+    const anim = animations[activeAnimation]
+    handleInsertFramesIntoActiveAnim(anim?.frames.length ?? 0, frameNames)
+  }, [activeAnimation, animations, handleInsertFramesIntoActiveAnim])
 
   // Append the current Frames-panel selection (in selection-insertion
   // order) to the active animation. No-op when no anim is active or
@@ -1720,13 +1756,15 @@ export function App() {
                 }}
                 onClearHighlight={() => setManualAnimHighlight(false)}
                 onChangeHold={handleChangeHold}
-                onDropFrames={(_idx, names) => {
+                onDropFrames={(insertIndex, names) => {
                   // No active animation yet → auto-create one with the
                   // dropped frames; deducing a name from their shared
-                  // prefix(es). Otherwise append into the active anim.
-                  if (activeAnimation) handleAppendFramesToActiveAnim(names)
+                  // prefix(es). Otherwise insert into the active anim
+                  // at the cursor's projected gap (insertIndex).
+                  if (activeAnimation) handleInsertFramesIntoActiveAnim(insertIndex, names)
                   else handleCreateAnimationFromFrames(names)
                 }}
+                onReorderGroup={handleReorderGroup}
               />
             )}
           />
