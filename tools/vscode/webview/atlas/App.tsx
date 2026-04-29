@@ -14,6 +14,7 @@ import {
   Collapsible,
   DevReloadToast,
   Divider,
+  Icon,
   NumberField,
   Panel,
   Toolbar,
@@ -602,6 +603,19 @@ export function App() {
   // animation drawer header.
   const [animations, setAnimations] = useState<Record<string, Animation>>({})
   const [activeAnimation, setActiveAnimation] = useState<string | null>(null)
+
+  // When the user clicks a folder header's ⊞-all icon, this records
+  // which folder is currently selected as a *full set* (vs the
+  // independent rect selection in `selectedIds`). The Frames panel
+  // uses it to drive the gradient highlight + dim-others treatment.
+  // Reset to null on any individual rect selection or empty-space
+  // click so plain selections never trip the folder visual.
+  const [folderSelectionPrefix, setFolderSelectionPrefix] = useState<string | null>(null)
+  useEffect(() => {
+    if (folderSelectionPrefix != null && selectedIds.size === 0) {
+      setFolderSelectionPrefix(null)
+    }
+  }, [folderSelectionPrefix, selectedIds])
 
   // Auto-expand the drawer + select first animation the first time the
   // sidecar comes in with anims. Skips if the user has already touched
@@ -1523,6 +1537,7 @@ export function App() {
               imageData={imageData}
               imageSize={imageSize}
               selectedIds={selectedIds}
+              folderSelectionPrefix={folderSelectionPrefix}
               renameMode={renameMode}
               onSelectRect={(id, additive) => {
                 const next = new Set(selectedIds)
@@ -1534,11 +1549,17 @@ export function App() {
                   next.add(id)
                 }
                 setSelectedIds(next)
+                setFolderSelectionPrefix(null)
               }}
               onSelectGroup={(ids, additive) => {
                 const next = additive ? new Set(selectedIds) : new Set<string>()
                 for (const id of ids) next.add(id)
                 setSelectedIds(next)
+                setFolderSelectionPrefix(null)
+              }}
+              onSelectFolder={(prefix, ids) => {
+                setSelectedIds(new Set(ids))
+                setFolderSelectionPrefix(prefix)
               }}
               onStartInlineRename={(id) => {
                 setSelectedIds(new Set([id]))
@@ -1749,6 +1770,27 @@ type FrameRowHandlers = {
   onCancelInlineRename: () => void
 }
 
+type FolderHighlight = {
+  /** Position in the folder (0..count-1) — used to spread the gradient. */
+  index: number
+  count: number
+}
+
+/**
+ * Maps a folder-relative index to a hue along the green→cyan→blue→
+ * indigo→violet ramp. Returns hsl() with low alpha for backgrounds.
+ */
+function folderHueForIndex(index: number, count: number): { fg: string; bg: string } {
+  // Spread the gradient evenly across [130°, 270°]; single-frame
+  // folders get the middle hue (~200°, blue) instead of the green end.
+  const t = count <= 1 ? 0.5 : index / (count - 1)
+  const hue = 130 + t * 140
+  return {
+    fg: `hsl(${hue}, 60%, 55%)`,
+    bg: `hsla(${hue}, 60%, 55%, 0.12)`,
+  }
+}
+
 function FrameRow({
   rect,
   globalIndex,
@@ -1756,6 +1798,8 @@ function FrameRow({
   editing,
   handlers,
   thumbBg,
+  folderHighlight,
+  dimmed,
 }: {
   rect: Rect
   globalIndex: number
@@ -1764,8 +1808,19 @@ function FrameRow({
   handlers: FrameRowHandlers
   /** Pre-computed thumb background props, or null while no source image. */
   thumbBg: { bgImage: string; bgSize: string; bgPos: string } | null
+  /** When set, paints folder-selection chrome (gradient bg + accent stripe). */
+  folderHighlight: FolderHighlight | null
+  /** Reduced opacity when another folder is the active full-set selection. */
+  dimmed: boolean
 }) {
   const displayName = rect.name ?? `#${globalIndex}`
+  const hue = folderHighlight ? folderHueForIndex(folderHighlight.index, folderHighlight.count) : null
+  const folderStyle = hue
+    ? {
+        backgroundColor: hue.bg,
+        boxShadow: `inset 2px 0 0 0 ${hue.fg}`,
+      }
+    : undefined
   return (
     <li
       onClick={(e) => {
@@ -1774,6 +1829,10 @@ function FrameRow({
       }}
       onDoubleClick={() => handlers.onStartInlineRename(rect.id)}
       {...stylex.props(s.frameItem, selected && s.frameItemSelected, editing && s.frameItemEditing)}
+      style={{
+        opacity: dimmed ? 0.35 : 1,
+        ...folderStyle,
+      }}
     >
       <span {...stylex.props(s.frameItemLeft)}>
         {thumbBg ? (
@@ -1810,9 +1869,11 @@ function FramesView({
   imageData,
   imageSize,
   selectedIds,
+  folderSelectionPrefix,
   renameMode,
   onSelectRect,
   onSelectGroup,
+  onSelectFolder,
   onStartInlineRename,
   onCommitInlineRename,
   onCancelInlineRename,
@@ -1822,9 +1883,12 @@ function FramesView({
   imageData: ImageData | null
   imageSize: { w: number; h: number } | null
   selectedIds: ReadonlySet<string>
+  /** Active folder-as-full-set selection (drives the gradient chrome). */
+  folderSelectionPrefix: string | null
   renameMode: RenameMode
   onSelectRect: (id: string, additive: boolean) => void
   onSelectGroup: (ids: string[], additive: boolean) => void
+  onSelectFolder: (prefix: string, ids: string[]) => void
   onStartInlineRename: (id: string) => void
   onCommitInlineRename: (id: string, name: string) => void
   onCancelInlineRename: () => void
@@ -1855,11 +1919,18 @@ function FramesView({
     return m
   }, [rects, imageUri, imageData, imageSize])
 
-  const renderList = (list: Rect[]) => (
+  /**
+   * `groupPrefix === null` for the catch-all "Unnamed" group; rows
+   * there never opt into the folder-selection gradient (no shared
+   * prefix to pivot on) but still dim when another folder is active.
+   */
+  const renderList = (list: Rect[], groupPrefix: string | null) => (
     <ul {...stylex.props(s.frameList)}>
-      {list.map((r) => {
+      {list.map((r, idxInGroup) => {
         const sel = selectedIds.has(r.id)
         const editing = renameMode.kind === 'inline' && renameMode.id === r.id
+        const isThisFolderActive = groupPrefix !== null && groupPrefix === folderSelectionPrefix
+        const otherFolderActive = folderSelectionPrefix !== null && !isThisFolderActive
         return (
           <FrameRow
             key={r.id}
@@ -1869,6 +1940,8 @@ function FramesView({
             editing={editing}
             handlers={handlers}
             thumbBg={thumbsById.get(r.id) ?? null}
+            folderHighlight={isThisFolderActive ? { index: idxInGroup, count: list.length } : null}
+            dimmed={otherFolderActive}
           />
         )
       })}
@@ -1878,37 +1951,63 @@ function FramesView({
     <>
       {groups.named.map((g) => {
         const groupIds = g.rects.map((r) => r.id)
+        const isActiveFolder = folderSelectionPrefix === g.prefix
         return (
           <Collapsible
             key={g.prefix}
             heading={g.prefix}
             open
             onClick={(e: React.MouseEvent) => {
-              // Shift-click on the header selects the whole group without
-              // toggling collapsed state. The Lit collapsible's own
-              // toggle still fires on plain clicks.
+              // Shift-click on the header selects the whole group as a
+              // plain individual selection (no folder chrome). The
+              // ⊞-all icon below is the discoverable path for the
+              // folder-as-set selection treatment.
               if (!e.shiftKey) return
               e.preventDefault()
               e.stopPropagation()
               onSelectGroup(groupIds, false)
             }}
           >
+            <span
+              slot="actions"
+              role="button"
+              tabIndex={0}
+              title={isActiveFolder ? 'Folder selected' : 'Select all in folder'}
+              aria-label="Select all in folder"
+              onClick={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                onSelectFolder(g.prefix, groupIds)
+              }}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: 16,
+                height: 16,
+                borderRadius: 2,
+                cursor: 'pointer',
+                color: isActiveFolder ? 'var(--vscode-focusBorder)' : 'var(--vscode-descriptionForeground)',
+              }}
+            >
+              <Icon name="check-all" />
+            </span>
             <Badge slot="decorations" variant="counter" {...stylex.props(s.collapsibleBadge)}>
               {g.rects.length}
             </Badge>
-            {renderList(g.rects)}
+            {renderList(g.rects, g.prefix)}
           </Collapsible>
         )
       })}
       {groups.singles.length > 0 ? (
         groups.named.length === 0 ? (
-          renderList(groups.singles)
+          renderList(groups.singles, null)
         ) : (
           <Collapsible heading="Unnamed" open>
             <Badge slot="decorations" variant="counter" {...stylex.props(s.collapsibleBadge)}>
               {groups.singles.length}
             </Badge>
-            {renderList(groups.singles)}
+            {renderList(groups.singles, null)}
           </Collapsible>
         )
       ) : null}
