@@ -67,6 +67,12 @@ export type CanvasStageProps = {
    * automatically when the panel is resized.
    */
   pixelSnapZoom?: boolean
+  /**
+   * Pixel-art texture filtering. Forwarded to the three.js sprite so
+   * the atlas renders with nearest-neighbour scaling. Shared with the
+   * PIP preview through the cached texture instance.
+   */
+  pixelArt?: boolean
 }
 
 /**
@@ -301,6 +307,7 @@ export function CanvasStage({
   dimOutOfBounds = false,
   onBackgroundPointerDown,
   pixelSnapZoom = false,
+  pixelArt = false,
 }: CanvasStageProps) {
   const [baseViewport, setBaseViewport] = useState<Omit<Viewport, 'zoom' | 'panX' | 'panY'> | null>(null)
   const [imageData, setImageData] = useState<ImageData | null>(null)
@@ -756,6 +763,7 @@ export function CanvasStage({
         panX={panX}
         panY={panY}
         onImageReady={handleReady}
+        pixelArt={pixelArt}
       />
       {viewport ? (
         <svg

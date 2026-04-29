@@ -1339,6 +1339,7 @@ export function App() {
               backgroundStyle={prefs.background === 'checker' ? 'checker' : 'solid'}
               dimOutOfBounds={prefs.dimOutOfBounds}
               pixelSnapZoom={prefs.pixelSnapZoom}
+              pixelArt={prefs.pixelArt}
               onImageReady={setImageSize}
               panMode={tool === 'move' && !inTool}
               onSpaceHold={handleSpaceHold}
@@ -1392,18 +1393,21 @@ export function App() {
                   onCoordModeChange={(v) => prefsStore.set({ coordMode: v })}
                 />
               ) : null}
-              <AnimationPreviewPip
-                animationName={activeAnimation}
-                frames={activeAnim?.frames ?? []}
-                rectsByName={rectsByName}
-                atlasImageUri={payload?.imageUri ?? null}
-                atlasSize={imageSize}
-                playhead={playback.playhead}
-                isPlaying={playback.isPlaying}
-                onTogglePlay={() => animationStore.togglePlay()}
-                corner={prefs.animPipCorner}
-                onChangeCorner={(c) => prefsStore.set({ animPipCorner: c })}
-              />
+              {prefs.animPipVisible ? (
+                <AnimationPreviewPip
+                  animationName={activeAnimation}
+                  frames={activeAnim?.frames ?? []}
+                  rectsByName={rectsByName}
+                  atlasImageUri={payload?.imageUri ?? null}
+                  atlasSize={imageSize}
+                  playhead={playback.playhead}
+                  isPlaying={playback.isPlaying}
+                  onTogglePlay={() => animationStore.togglePlay()}
+                  corner={prefs.animPipCorner}
+                  onChangeCorner={(c) => prefsStore.set({ animPipCorner: c })}
+                  pixelArt={prefs.pixelArt}
+                />
+              ) : null}
             </CanvasStage>
           </div>
           <AnimationDrawer
@@ -1428,6 +1432,8 @@ export function App() {
                 onChangeFps={(v) => updateActiveAnimation({ fps: v })}
                 onChangeLoop={(v) => updateActiveAnimation({ loop: v })}
                 onChangePingPong={(v) => updateActiveAnimation({ pingPong: v })}
+                pipVisible={prefs.animPipVisible}
+                onTogglePipVisible={() => prefsStore.set({ animPipVisible: !prefs.animPipVisible })}
               />
             }
             body={(density) => (

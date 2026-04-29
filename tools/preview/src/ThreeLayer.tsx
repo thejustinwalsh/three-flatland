@@ -1,6 +1,6 @@
 import { Suspense, useEffect } from 'react'
 import { Canvas, extend, useLoader, useThree } from '@react-three/fiber/webgpu'
-import type { OrthographicCamera as ThreeOrthographicCamera } from 'three'
+import { LinearFilter, NearestFilter, type OrthographicCamera as ThreeOrthographicCamera, type Texture } from 'three'
 import { Sprite2D, TextureLoader } from 'three-flatland/react'
 
 extend({ Sprite2D })
@@ -27,6 +27,13 @@ export type ThreeLayerProps = {
   panY?: number
   /** Optional fallback while the texture suspends. R3F-compatible. */
   suspenseFallback?: React.ReactNode
+  /**
+   * Pixel-art filtering. Switches the atlas texture's min/mag filter to
+   * nearest-neighbour so source pixels stay crisp at any zoom level.
+   * Shared with the PIP preview through the cached texture instance —
+   * setting on either keeps both in sync.
+   */
+  pixelArt?: boolean
 }
 
 function OrthoFitCamera({
@@ -103,6 +110,7 @@ export function ThreeLayer({
   panX = 0,
   panY = 0,
   suspenseFallback = null,
+  pixelArt = false,
 }: ThreeLayerProps) {
   return (
     <Canvas
@@ -132,6 +140,7 @@ export function ThreeLayer({
             zoom={zoom}
             panX={panX}
             panY={panY}
+            pixelArt={pixelArt}
           />
         </Suspense>
       ) : null}
@@ -151,6 +160,7 @@ function SpriteWithCamera({
   zoom = 1,
   panX = 0,
   panY = 0,
+  pixelArt = false,
 }: {
   imageUri: string
   onReady?: (size: { w: number; h: number }) => void
@@ -158,18 +168,30 @@ function SpriteWithCamera({
   zoom?: number
   panX?: number
   panY?: number
+  pixelArt?: boolean
 }) {
-  const texture = useLoader(TextureLoader, imageUri)
+  const texture = useLoader(TextureLoader, imageUri) as Texture
   const img = texture.image as { width?: number; height?: number } | null | undefined
   const w = img?.width ?? 64
   const h = img?.height ?? 64
   useEffect(() => {
     onReady?.({ w, h })
   }, [w, h, onReady])
+  // Apply nearest / linear filter to the cached texture instance. The
+  // PIP preview shares this same instance via useLoader's URL cache,
+  // so changing it here propagates to both render contexts.
+  useEffect(() => {
+    const f = pixelArt ? NearestFilter : LinearFilter
+    if (texture.magFilter !== f || texture.minFilter !== f) {
+      texture.magFilter = f
+      texture.minFilter = f
+      texture.needsUpdate = true
+    }
+  }, [texture, pixelArt])
   return (
     <>
       <OrthoFitCamera imgW={w} imgH={h} margin={fitMargin} zoom={zoom} panX={panX} panY={panY} />
-      <sprite2D texture={texture} anchor={[0.5, 0.5]} scale={[w, h, 1]} />
+      <sprite2D texture={texture} anchor={[0.5, 0.5]} scale={[w, h, 1]} pixelPerfect={pixelArt} />
     </>
   )
 }

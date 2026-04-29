@@ -41,6 +41,16 @@ export type AtlasPrefs = {
   animDrawerHeight: number
   /** Last corner the floating preview PIP was parked in. */
   animPipCorner: 'tl' | 'tr' | 'br' | 'bl'
+  /** Whether the floating preview PIP is shown at all. */
+  animPipVisible: boolean
+  /**
+   * Pixel-art filtering for sprite rendering — nearest-neighbour
+   * scaling in both the main canvas (three.js texture filter) and the
+   * floating PIP preview (CSS `image-rendering: pixelated`). Off →
+   * smooth bilinear filtering. On by default since the tool's primary
+   * use case is hand-drawn pixel-art atlases where blur is wrong.
+   */
+  pixelArt: boolean
 }
 
 const DEFAULTS: AtlasPrefs = {
@@ -54,7 +64,9 @@ const DEFAULTS: AtlasPrefs = {
   pixelSnapZoom: false,
   animDrawerExpanded: false,
   animDrawerHeight: 140,
-  animPipCorner: 'br',
+  animPipCorner: 'tr',
+  animPipVisible: true,
+  pixelArt: true,
 }
 
 const STORAGE_KEY = 'fl-atlas-prefs:v1'
