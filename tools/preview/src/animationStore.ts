@@ -61,21 +61,24 @@ export function advancePlayhead(
   if (frameCount <= 0) return { playhead: 0, direction, ended: true }
   if (frameCount === 1) return { playhead: 0, direction, ended: !loop }
   // Straight forward / loop / clamp paths — `step` is always positive
-  // and `direction` is the only signal of which way we're moving.
+  // and direction is the only signal of which way we're moving. When
+  // ping-pong is off, force direction = 1 so a stale -1 from a
+  // previous ping-pong phase can't drag playback backward.
   if (!pingPong || !loop) {
-    const raw = current + step * direction
+    const dir: 1 | -1 = pingPong ? direction : 1
+    const raw = current + step * dir
     if (raw >= 0 && raw < frameCount) {
-      return { playhead: raw, direction, ended: false }
+      return { playhead: raw, direction: dir, ended: false }
     }
     if (!loop) {
       return raw >= frameCount
-        ? { playhead: frameCount - 1, direction, ended: true }
-        : { playhead: 0, direction, ended: true }
+        ? { playhead: frameCount - 1, direction: dir, ended: true }
+        : { playhead: 0, direction: dir, ended: true }
     }
     // Plain loop wrap; ((x % n) + n) % n handles negatives if any caller
     // passes a negative direction with !pingPong (defensive).
     const wrapped = ((raw % frameCount) + frameCount) % frameCount
-    return { playhead: wrapped, direction, ended: false }
+    return { playhead: wrapped, direction: dir, ended: false }
   }
   // Ping-pong: parameterise the playhead by a monotonic "phase" walking
   // a triangle wave of period `2 * (frameCount - 1)`. Going forward maps
@@ -156,6 +159,11 @@ export function createAnimationStore(): AnimationStore {
     },
     tick: (dtMs, frameCount, fps, loop, pingPong) => {
       if (!snapshot.isPlaying || frameCount === 0 || fps <= 0) return
+      // If ping-pong is off (or got toggled off mid-playback), drop
+      // any leftover reverse direction from a previous ping-pong
+      // phase so playback always proceeds forward. Also keeps
+      // getSmoothPlayhead's `fraction * direction` reading right.
+      if (!pingPong && direction !== 1) direction = 1
       accum += (dtMs / 1000) * fps
       // Advance whole frames; keep the remainder for next tick.
       const whole = Math.floor(accum)
