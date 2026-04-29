@@ -1655,8 +1655,6 @@ export function App() {
                   playhead={playback.playhead}
                   isPlaying={playback.isPlaying}
                   onTogglePlay={handleTogglePlay}
-                  corner={prefs.animPipCorner}
-                  onChangeCorner={(c) => prefsStore.set({ animPipCorner: c })}
                   pixelArt={prefs.pixelArt}
                   panMode={tool === 'move' && !inTool}
                 />
@@ -1763,6 +1761,7 @@ export function App() {
         >
         <Panel
           title={`Frames (${rects.length}${selectedIds.size > 0 ? ` · ${selectedIds.size} sel` : ''})`}
+          bodyPadding="none"
           headerActions={
             <button
               type="button"

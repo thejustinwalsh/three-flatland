@@ -5,7 +5,7 @@ import { space } from '@three-flatland/design-system/tokens/space.stylex'
 import { radius } from '@three-flatland/design-system/tokens/radius.stylex'
 import type { Rect } from './RectOverlay'
 import type { AnimationDrawerDensity } from './AnimationDrawer'
-import { useDragTarget } from './dragKit'
+import { useDragTarget, useOptionalDrag } from './dragKit'
 
 export type AnimationTimelineProps = {
   /** Frame names in playback order, with duplicates encoding hold counts. */
@@ -301,6 +301,81 @@ export function AnimationTimeline({
   // (detail / dots / empty) is currently rendering.
   const [isDragOver, setIsDragOver] = useState(false)
 
+  // Track ref + space-hold pan + edge auto-scroll. The track is the
+  // scrollable element for the detail / dots renders; we mutate its
+  // scrollLeft directly via ref so the scroll motion bypasses
+  // React's render loop. `holdResizeActive` flag is set by the
+  // edge-grab pointer handlers (declared further down) and read by
+  // the auto-scroll effect.
+  const trackRef = useRef<HTMLDivElement>(null)
+  const spaceHeldRef = useRef(false)
+  const panDragRef = useRef<{ startX: number; startScrollLeft: number } | null>(null)
+  const [holdResizeActive, setHoldResizeActive] = useState(false)
+  useEffect(() => {
+    const isEditable = (t: EventTarget | null): boolean => {
+      if (!(t instanceof HTMLElement)) return false
+      const tag = t.tagName.toLowerCase()
+      return tag === 'input' || tag === 'textarea' || tag === 'select' || t.isContentEditable
+    }
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.code !== 'Space' || isEditable(e.target)) return
+      spaceHeldRef.current = true
+    }
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (e.code !== 'Space') return
+      spaceHeldRef.current = false
+      panDragRef.current = null
+    }
+    window.addEventListener('keydown', onKeyDown)
+    window.addEventListener('keyup', onKeyUp)
+    return () => {
+      window.removeEventListener('keydown', onKeyDown)
+      window.removeEventListener('keyup', onKeyUp)
+    }
+  }, [])
+
+  // Edge-auto-scroll: while a drag is active (hold-edge resize OR an
+  // incoming frame drop from the dragKit), if the cursor sits within
+  // ~1 cell-width of the track's left/right edge, scroll the track
+  // toward that edge so the user can drop on / extend toward
+  // off-screen frames. Single rAF loop driven off the latest cursor
+  // position cached in a ref.
+  const dragApi = useOptionalDrag()
+  const cursorXRef = useRef<number | null>(null)
+  useEffect(() => {
+    const onMove = (e: PointerEvent) => { cursorXRef.current = e.clientX }
+    window.addEventListener('pointermove', onMove)
+    return () => window.removeEventListener('pointermove', onMove)
+  }, [])
+  // dragApi.state.payload non-null = an incoming-frame drop is in
+  // flight. Hold-edge gestures fall through this too because they
+  // also call window-level pointermove and our local edge-pointer-
+  // handlers manage scrollLeft via ref. We drive the auto-scroll
+  // any time EITHER condition holds.
+  const incomingDrop = dragApi?.state.payload != null
+  const autoScrollActive = incomingDrop || holdResizeActive
+  useEffect(() => {
+    if (!autoScrollActive) return
+    let raf = 0
+    const tick = () => {
+      const trk = trackRef.current
+      const x = cursorXRef.current
+      if (trk && x != null) {
+        const r = trk.getBoundingClientRect()
+        const TRIGGER = CELL_BASE
+        const SPEED = 8
+        if (x >= r.left && x < r.left + TRIGGER) {
+          trk.scrollLeft = Math.max(0, trk.scrollLeft - SPEED)
+        } else if (x <= r.right && x > r.right - TRIGGER) {
+          trk.scrollLeft += SPEED
+        }
+      }
+      raf = requestAnimationFrame(tick)
+    }
+    raf = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(raf)
+  }, [autoScrollActive])
+
   // Smooth-lerp playhead. Held here (above any early returns) so the
   // hook calls run on every render — empty / collapsed / dots paths
   // would otherwise change the hook count between renders (React
@@ -340,12 +415,15 @@ export function AnimationTimeline({
   // integer cell-step boundary calls `onChangeHold` immediately so
   // the underlying frames + the App's tick loop see the live count
   // — playback flows through new sub-frames as you extend the cell.
+  // `holdResizeActive` (declared at the top) is also flipped on so
+  // the edge-auto-scroll loop runs while the gesture is active.
   const onEdgePointerDown = (groupIndex: number, count: number) => (e: ReactPointerEvent<HTMLDivElement>) => {
     if (e.button !== 0) return
     e.stopPropagation()
     e.preventDefault()
     e.currentTarget.setPointerCapture(e.pointerId)
     dragRef.current = { groupIndex, startX: e.clientX, startCount: count, lastCommitted: count }
+    setHoldResizeActive(true)
   }
   const onEdgePointerMove = (e: ReactPointerEvent<HTMLDivElement>) => {
     const drag = dragRef.current
@@ -363,9 +441,11 @@ export function AnimationTimeline({
       e.currentTarget.releasePointerCapture(e.pointerId)
     }
     dragRef.current = null
+    setHoldResizeActive(false)
   }
   const onEdgePointerCancel = () => {
     dragRef.current = null
+    setHoldResizeActive(false)
   }
 
   if (frames.length === 0) {
@@ -384,9 +464,46 @@ export function AnimationTimeline({
   // before the rAF effect (declared at top) kicks in.
   const playheadPx = playheadFrameToPx(playhead, groups)
 
+  // Space-hold pan + drop-target handlers — composed so both the
+  // dragKit's enter/leave/up callbacks AND the pan gesture run on
+  // the same events without one clobbering the other (later spreads
+  // would otherwise override the dragKit's onPointerUp).
+  const trackHandlers = {
+    onPointerEnter: dropTarget.onPointerEnter,
+    onPointerLeave: dropTarget.onPointerLeave,
+    onPointerDown: (e: ReactPointerEvent<HTMLDivElement>) => {
+      if (!spaceHeldRef.current || e.button !== 0) return
+      e.preventDefault()
+      e.stopPropagation()
+      e.currentTarget.setPointerCapture(e.pointerId)
+      panDragRef.current = { startX: e.clientX, startScrollLeft: e.currentTarget.scrollLeft }
+    },
+    onPointerMove: (e: ReactPointerEvent<HTMLDivElement>) => {
+      if (!panDragRef.current) return
+      const dx = e.clientX - panDragRef.current.startX
+      e.currentTarget.scrollLeft = Math.max(0, panDragRef.current.startScrollLeft - dx)
+    },
+    onPointerUp: (e: ReactPointerEvent<HTMLDivElement>) => {
+      // Pan first — release pointer capture if we were panning.
+      if (panDragRef.current) {
+        if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+          e.currentTarget.releasePointerCapture(e.pointerId)
+        }
+        panDragRef.current = null
+        return
+      }
+      // Otherwise let the drop target handle it.
+      dropTarget.onPointerUp()
+    },
+  }
+
   if (density === 'dots') {
     return (
-      <div {...stylex.props(s.trackDots, isDragOver && s.trackOver)} {...dropTarget}>
+      <div
+        ref={trackRef}
+        {...stylex.props(s.trackDots, isDragOver && s.trackOver)}
+        {...trackHandlers}
+      >
         {groups.map((g, idx) => (
           <span
             key={`${g.startIndex}-${g.name}`}
@@ -403,8 +520,9 @@ export function AnimationTimeline({
   // detail
   return (
     <div
+      ref={trackRef}
       {...stylex.props(s.trackDetail, isDragOver && s.trackOver)}
-      {...dropTarget}
+      {...trackHandlers}
       onClick={(e) => {
         // Bubble-only — fires when user clicks empty space between
         // cells (cells handle their own clicks). Lets the App clear
