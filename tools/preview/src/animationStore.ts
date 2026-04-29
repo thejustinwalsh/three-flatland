@@ -14,6 +14,15 @@ export type PlaybackSnapshot = {
 
 export type AnimationStore = {
   get(): PlaybackSnapshot
+  /**
+   * Sub-frame smooth playhead — `snapshot.playhead + accum`, where
+   * accum is the fractional progress toward the next whole frame
+   * accumulated since the last `tick()` advanced an integer step.
+   * Useful for visual playhead indicators that should lerp smoothly
+   * between integer frame positions instead of stepping. Read from
+   * a render-loop (rAF), not from React state.
+   */
+  getSmoothPlayhead(): number
   /** Set active animation; resets playhead to 0 and pauses. */
   setActive(name: string | null): void
   /** Toggle play/pause. */
@@ -104,6 +113,10 @@ export function createAnimationStore(): AnimationStore {
 
   return {
     get: () => snapshot,
+    // Clamp accum into [0, 1) for the visual reading. Within a single
+    // tick `accum` is in frame units before the floor; we only ever
+    // store the post-floor remainder, so it's already 0..1.
+    getSmoothPlayhead: () => snapshot.playhead + Math.max(0, Math.min(0.999, accum)),
     setActive: (name) => {
       snapshot = { activeAnimation: name, playhead: 0, isPlaying: false }
       direction = 1
