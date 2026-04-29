@@ -24,17 +24,23 @@ const s = stylex.create({
     minHeight: 0,
     flexShrink: 0,
   },
-  // Splitter-style: 3px line above the header, hover/drag tints to the
-  // focus ring color. Matches the existing horizontal/vertical Splitter
-  // visual cues used in App.tsx.
+  // Visually a 1px panel-border line (matches every other header border
+  // in the app); 5px tall hit area for the resize gesture. On hover or
+  // active drag, the visible line thickens to 2px and tints to the
+  // focus ring color. Uses inset box-shadow rather than border so the
+  // thickness change doesn't shift surrounding layout by 1px.
   resizeHandle: {
-    height: 3,
+    height: 5,
     cursor: 'ns-resize',
-    backgroundColor: { default: vscode.panelBorder, ':hover': vscode.focusRing },
+    backgroundColor: 'transparent',
     flexShrink: 0,
+    boxShadow: {
+      default: `inset 0 -1px 0 0 ${vscode.panelBorder}`,
+      ':hover': `inset 0 -2px 0 0 ${vscode.focusRing}`,
+    },
   },
   resizeHandleDragging: {
-    backgroundColor: vscode.focusRing,
+    boxShadow: `inset 0 -2px 0 0 ${vscode.focusRing}`,
   },
   body: {
     flex: 1,
