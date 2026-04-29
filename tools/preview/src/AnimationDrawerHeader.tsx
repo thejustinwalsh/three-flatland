@@ -32,6 +32,13 @@ export type AnimationDrawerHeaderProps = {
   /** Floating preview window (PIP) visibility toggle. */
   pipVisible: boolean
   onTogglePipVisible(): void
+  /**
+   * Set when the active animation currently has zero frames. Surfaces
+   * a small warning icon next to the dropdown so the user knows the
+   * animation will be stripped on save (Ajv requires `frames` to be
+   * non-empty).
+   */
+  activeIsEmpty?: boolean
 }
 
 const s = stylex.create({
@@ -172,6 +179,7 @@ export function AnimationDrawerHeader(props: AnimationDrawerHeaderProps) {
     fps, loop, pingPong,
     onChangeFps, onChangeLoop, onChangePingPong,
     pipVisible, onTogglePipVisible,
+    activeIsEmpty = false,
   } = props
 
   const hasActive = activeAnimation != null
@@ -234,6 +242,16 @@ export function AnimationDrawerHeader(props: AnimationDrawerHeaderProps) {
             >
               <Icon name="edit" />
             </button>
+          ) : null}
+          {hasActive && activeIsEmpty ? (
+            <span
+              {...stylex.props(s.iconBtn)}
+              style={{ color: 'var(--vscode-inputValidation-errorForeground, #ffb3b3)', cursor: 'help' }}
+              title="Animation has no frames — it will be stripped on save"
+              aria-label="Animation is empty"
+            >
+              <Icon name="warning" />
+            </span>
           ) : null}
         </div>
       ) : null}

@@ -838,6 +838,23 @@ export function App() {
     })
   }, [activeAnimation])
 
+  // Remove a group from the active animation (cell-level delete via
+  // Backspace at the playhead). Strips every duplicate of that frame
+  // name belonging to the group.
+  const handleRemoveGroup = useCallback((groupIndex: number) => {
+    if (!activeAnimation) return
+    setAnimations((prev) => {
+      const anim = prev[activeAnimation]
+      if (!anim) return prev
+      const groups = groupCells(anim.frames)
+      if (groupIndex < 0 || groupIndex >= groups.length) return prev
+      groups.splice(groupIndex, 1)
+      const nextFrames: string[] = []
+      for (const g of groups) for (let k = 0; k < g.count; k++) nextFrames.push(g.name)
+      return { ...prev, [activeAnimation]: { ...anim, frames: nextFrames } }
+    })
+  }, [activeAnimation])
+
   // Append a frame to the active animation (drop, or Add-to-anim
   // button). v1 always appends to the end; mid-track insertion is
   // explicitly out-of-scope until cell-reorder is needed.
@@ -904,9 +921,25 @@ export function App() {
 
   const deleteSelected = useCallback(() => {
     if (selectedIds.size === 0) return
+    // Pull the names of removed rects up-front so we can prune any
+    // animation references in the same tick — keeps the sidecar
+    // self-consistent without waiting until save.
+    const removedNames = new Set<string>()
+    for (const r of rects) {
+      if (selectedIds.has(r.id) && r.name) removedNames.add(r.name)
+    }
     setRects((prev) => prev.filter((r) => !selectedIds.has(r.id)))
     setSelectedIds(new Set())
-  }, [selectedIds])
+    if (removedNames.size > 0) {
+      setAnimations((prev) => {
+        const next: Record<string, Animation> = {}
+        for (const [k, anim] of Object.entries(prev)) {
+          next[k] = { ...anim, frames: anim.frames.filter((f) => !removedNames.has(f)) }
+        }
+        return next
+      })
+    }
+  }, [rects, selectedIds])
 
   const selectAll = useCallback(() => {
     setSelectedIds(new Set(rects.map((r) => r.id)))
@@ -914,10 +947,29 @@ export function App() {
 
   const renameRect = useCallback((id: string, name: string) => {
     const trimmed = name.trim()
+    const oldName = rects.find((r) => r.id === id)?.name
+    const newName = trimmed === '' ? undefined : trimmed
     setRects((prev) =>
-      prev.map((r) => (r.id === id ? { ...r, name: trimmed === '' ? undefined : trimmed } : r))
+      prev.map((r) => (r.id === id ? { ...r, name: newName } : r))
     )
-  }, [])
+    // Propagate rename into every animation that references this frame.
+    // If the rect lost its name (newName === undefined), strip the
+    // entries — an unnamed rect can't appear in `meta.animations`.
+    if (oldName && oldName !== newName) {
+      setAnimations((prev) => {
+        const next: Record<string, Animation> = {}
+        for (const [k, anim] of Object.entries(prev)) {
+          next[k] = {
+            ...anim,
+            frames: newName == null
+              ? anim.frames.filter((f) => f !== oldName)
+              : anim.frames.map((f) => (f === oldName ? newName : f)),
+          }
+        }
+        return next
+      })
+    }
+  }, [rects])
 
   const applyPrefixToSelection = useCallback(
     (prefix: string) => {
@@ -927,12 +979,27 @@ export function App() {
       const selectedRects = rects.filter((r) => ids.has(r.id))
       const ordered = readingOrder(selectedRects)
       const nameById = new Map<string, string>()
+      const renames = new Map<string, string>() // oldName → newName for anim propagation
       ordered.forEach((r, i) => {
-        nameById.set(r.id, `${p}_${i}`)
+        const newName = `${p}_${i}`
+        nameById.set(r.id, newName)
+        if (r.name && r.name !== newName) renames.set(r.name, newName)
       })
       setRects((prev) =>
         prev.map((r) => (nameById.has(r.id) ? { ...r, name: nameById.get(r.id) } : r))
       )
+      if (renames.size > 0) {
+        setAnimations((prev) => {
+          const next: Record<string, Animation> = {}
+          for (const [k, anim] of Object.entries(prev)) {
+            next[k] = {
+              ...anim,
+              frames: anim.frames.map((f) => renames.get(f) ?? f),
+            }
+          }
+          return next
+        })
+      }
     },
     [rects, selectedIds]
   )
@@ -1220,9 +1287,20 @@ export function App() {
         return
       }
       if (e.key === 'Delete' || e.key === 'Backspace') {
-        if (selectedIds.size === 0) return
-        deleteSelected()
-        e.preventDefault()
+        if (selectedIds.size > 0) {
+          deleteSelected()
+          e.preventDefault()
+          return
+        }
+        // No rect selection — fall through to a timeline cell delete
+        // when the playhead points at a real group of the active
+        // animation. Lets the user clean up cells they just dropped
+        // without round-tripping through the mouse.
+        if (activeAnimation && activeAnim && activeAnim.frames.length > 0) {
+          const groupIdx = frameIndexToGroupIndex(activeAnim.frames, playback.playhead)
+          handleRemoveGroup(groupIdx)
+          e.preventDefault()
+        }
         return
       }
       if (mod && (e.key === 'a' || e.key === 'A')) {
@@ -1273,6 +1351,10 @@ export function App() {
     autoDetectCanCommit,
     commitAutoDetect,
     exitAutoDetect,
+    activeAnimation,
+    activeAnim,
+    handleRemoveGroup,
+    playback.playhead,
   ])
 
   return (
@@ -1483,6 +1565,7 @@ export function App() {
                 onChangePingPong={(v) => updateActiveAnimation({ pingPong: v })}
                 pipVisible={prefs.animPipVisible}
                 onTogglePipVisible={() => prefsStore.set({ animPipVisible: !prefs.animPipVisible })}
+                activeIsEmpty={activeAnim != null && activeAnim.frames.length === 0}
               />
             }
             body={(density) => (
