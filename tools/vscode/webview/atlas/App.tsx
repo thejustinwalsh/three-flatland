@@ -23,12 +23,17 @@ import {
 import {
   AnimationDrawer,
   AnimationDrawerHeader,
+  AnimationTimeline,
   AutoDetectOverlay,
   CanvasStage,
   GridSliceOverlay,
   HoverFrameChip,
   InfoPanel,
   RectOverlay,
+  createAnimationStore,
+  frameIndexToGroupIndex,
+  groupCells,
+  useAnimationPlayback,
   cellExtent,
   cellKey,
   connectedComponents,
@@ -767,6 +772,69 @@ export function App() {
     })
   }, [activeAnimation])
 
+  // ── Animation playback ──────────────────────────────────────────────────
+  const animationStore = useMemo(() => createAnimationStore(), [])
+  const playback = useAnimationPlayback(animationStore)
+
+  // One-way: app drives the store's active animation. Reset on switch.
+  useEffect(() => {
+    if (playback.activeAnimation !== activeAnimation) {
+      animationStore.setActive(activeAnimation)
+    }
+  }, [activeAnimation, animationStore, playback.activeAnimation])
+
+  // rAF tick loop — only spins when isPlaying. Reads frameCount/fps/loop
+  // from the live activeAnim so chip toggles take effect on the next tick.
+  useEffect(() => {
+    if (!playback.isPlaying || !activeAnim) return
+    let raf = 0
+    let last = performance.now()
+    const loop = (t: number) => {
+      const dt = t - last
+      last = t
+      animationStore.tick(dt, activeAnim.frames.length, activeAnim.fps, activeAnim.loop, activeAnim.pingPong)
+      raf = requestAnimationFrame(loop)
+    }
+    raf = requestAnimationFrame(loop)
+    return () => cancelAnimationFrame(raf)
+  }, [playback.isPlaying, activeAnim, animationStore])
+
+  // Lookup table for the timeline's thumbnail rendering.
+  const rectsByName = useMemo(() => {
+    const out: Record<string, Rect> = {}
+    for (const r of rects) if (r.name) out[r.name] = r
+    return out
+  }, [rects])
+
+  // Hold count change — rebuild frames[] from groups with the patched count.
+  const handleChangeHold = useCallback((groupIndex: number, nextCount: number) => {
+    if (!activeAnimation) return
+    setAnimations((prev) => {
+      const anim = prev[activeAnimation]
+      if (!anim) return prev
+      const groups = groupCells(anim.frames)
+      if (groupIndex < 0 || groupIndex >= groups.length) return prev
+      groups[groupIndex] = { ...groups[groupIndex]!, count: nextCount }
+      const nextFrames: string[] = []
+      for (const g of groups) for (let k = 0; k < g.count; k++) nextFrames.push(g.name)
+      return { ...prev, [activeAnimation]: { ...anim, frames: nextFrames } }
+    })
+  }, [activeAnimation])
+
+  // Number-key 1..9 — set hold count on the playhead's group.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!activeAnimation || !activeAnim) return
+      if (isEditableTarget(e.target)) return
+      const num = Number(e.key)
+      if (!Number.isInteger(num) || num < 1 || num > 9) return
+      const groupIdx = frameIndexToGroupIndex(activeAnim.frames, playback.playhead)
+      handleChangeHold(groupIdx, num)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [activeAnimation, activeAnim, playback.playhead, handleChangeHold])
+
   // Space-hold temporarily switches to Move (pan-only) mode. Original
   // tool is restored on release. The toolbar Move button reflects 'move'
   // for the duration so the user has consistent feedback.
@@ -1339,8 +1407,8 @@ export function App() {
                 onCreateAnimation={handleCreateAnimation}
                 onDeleteAnimation={handleDeleteAnimation}
                 onRenameAnimation={handleRenameAnimation}
-                isPlaying={false}
-                onTogglePlay={() => {}}
+                isPlaying={playback.isPlaying}
+                onTogglePlay={() => animationStore.togglePlay()}
                 fps={activeAnim?.fps ?? 12}
                 loop={activeAnim?.loop ?? true}
                 pingPong={activeAnim?.pingPong ?? false}
@@ -1350,13 +1418,28 @@ export function App() {
               />
             }
             body={(density) => (
-              <div style={{ color: 'var(--vscode-descriptionForeground)', fontFamily: 'monospace', fontSize: 10 }}>
-                {activeAnim
-                  ? `${activeAnimation} · ${activeAnim.frames.length} frames · density: ${density} (timeline body — Task 7)`
-                  : animationNames.length === 0
-                  ? 'Click ＋ to create an animation. Select frames first to seed it.'
-                  : 'Select an animation from the dropdown'}
-              </div>
+              activeAnim ? (
+                <AnimationTimeline
+                  frames={activeAnim.frames}
+                  rectsByName={rectsByName}
+                  atlasImageUri={payload?.imageUri ?? null}
+                  atlasSize={imageSize}
+                  density={density}
+                  playheadGroupIndex={frameIndexToGroupIndex(activeAnim.frames, playback.playhead)}
+                  onSeekGroup={(g) => {
+                    const groups = groupCells(activeAnim.frames)
+                    const target = groups[g]
+                    if (target) animationStore.seek(target.startIndex)
+                  }}
+                  onChangeHold={handleChangeHold}
+                />
+              ) : (
+                <div style={{ color: 'var(--vscode-descriptionForeground)', fontFamily: 'monospace', fontSize: 10, padding: 8 }}>
+                  {animationNames.length === 0
+                    ? 'Click ＋ to create an animation. Select frames first to seed it.'
+                    : 'Select an animation from the dropdown'}
+                </div>
+              )
             )}
           />
           </div>
