@@ -63,6 +63,19 @@ export type AnimationTimelineProps = {
    * removal-shift when toGap > fromGroupIndex).
    */
   onReorderGroup?(fromGroupIndex: number, toGap: number): void
+  /**
+   * Map of frame-index-as-string → event tag, sourced from the
+   * animation's `events` block. Cells whose group covers a tagged
+   * frame render a flag badge; the right-click popover edits the
+   * tag at the group's first frame.
+   */
+  events?: Record<string, string>
+  /**
+   * Set the event tag at a specific post-duplication frame index.
+   * Pass an empty / null tag to remove. Caller persists into
+   * `meta.animations[name].events`.
+   */
+  onSetEvent?(frameIndex: number, tag: string | null): void
 }
 
 /**
@@ -285,6 +298,69 @@ const s = stylex.create({
     pointerEvents: 'none',
     transform: 'translateX(-1px)',
   },
+  // Event flag badge — sits in the top-left corner of cells whose
+  // group covers a tagged frame. Yellow so it doesn't clash with
+  // the pink playhead chrome or focus-ring blue gap indicator.
+  eventBadge: {
+    position: 'absolute',
+    top: 1,
+    left: 1,
+    paddingInline: 3,
+    paddingBlock: 0,
+    borderRadius: radius.sm,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    color: '#ffd060',
+    fontSize: '8px',
+    lineHeight: 1.2,
+    fontFamily: vscode.monoFontFamily,
+    pointerEvents: 'none',
+    maxWidth: CELL_BASE - 6,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  },
+  eventPopover: {
+    position: 'fixed',
+    backgroundColor: vscode.panelBg,
+    color: vscode.fg,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: vscode.panelBorder,
+    borderRadius: radius.sm,
+    boxShadow: '0 4px 12px rgba(0, 0, 0, 0.45)',
+    paddingBlock: space.xs,
+    paddingInline: space.sm,
+    zIndex: 10000,
+    display: 'flex',
+    alignItems: 'center',
+    gap: space.xs,
+    fontFamily: vscode.fontFamily,
+    fontSize: '11px',
+  },
+  eventInput: {
+    backgroundColor: vscode.inputBg,
+    color: vscode.inputFg,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: vscode.inputBorder,
+    borderRadius: radius.sm,
+    paddingInline: space.sm,
+    paddingBlock: '1px',
+    fontFamily: vscode.monoFontFamily,
+    fontSize: '11px',
+    width: 120,
+    outlineWidth: 0,
+  },
+  eventBtn: {
+    backgroundColor: 'transparent',
+    color: vscode.fg,
+    borderWidth: 0,
+    borderRadius: radius.sm,
+    paddingInline: space.sm,
+    paddingBlock: '1px',
+    cursor: 'pointer',
+    fontSize: '11px',
+  },
 })
 
 export function AnimationTimeline({
@@ -302,6 +378,8 @@ export function AnimationTimeline({
   onChangeHold,
   onDropFrames,
   onReorderGroup,
+  events,
+  onSetEvent,
 }: AnimationTimelineProps) {
   const groups = useMemo(() => groupCells(frames), [frames])
 
@@ -330,6 +408,33 @@ export function AnimationTimeline({
   const [hoverGap, setHoverGap] = useState<number | null>(null)
   const hoverGapRef = useRef(hoverGap)
   hoverGapRef.current = hoverGap
+
+  // Right-click event-tag popover. `frameIndex` is the group's
+  // first frame (= where the tag is stored in events).
+  const [eventPopover, setEventPopover] = useState<{
+    frameIndex: number
+    x: number
+    y: number
+    draft: string
+  } | null>(null)
+  // Close on outside click / Escape.
+  useEffect(() => {
+    if (!eventPopover) return
+    const onDown = (e: MouseEvent) => {
+      const t = e.target as HTMLElement | null
+      if (t?.closest('[data-event-popover]')) return
+      setEventPopover(null)
+    }
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setEventPopover(null)
+    }
+    document.addEventListener('mousedown', onDown)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onDown)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [eventPopover])
 
   // Track ref + space-hold pan + edge auto-scroll. The track is the
   // scrollable element for the detail / dots renders; we mutate its
@@ -723,7 +828,19 @@ export function AnimationTimeline({
             onPointerMove={onCellPointerMove}
             onPointerUp={onCellPointerUpForReorder}
             onPointerCancel={onCellPointerUpForReorder}
-            title={`${g.name}${renderCount > 1 ? ` ×${renderCount}` : ''}`}
+            onContextMenu={onSetEvent ? (e) => {
+              e.preventDefault()
+              const existing = events?.[String(g.startIndex)] ?? ''
+              setEventPopover({
+                frameIndex: g.startIndex,
+                x: e.clientX,
+                y: e.clientY,
+                draft: existing,
+              })
+            } : undefined}
+            title={`${g.name}${renderCount > 1 ? ` ×${renderCount}` : ''}${
+              events?.[String(g.startIndex)] ? ` · event: ${events[String(g.startIndex)]}` : ''
+            }`}
           >
             {Array.from({ length: renderCount }).map((_, tileIdx) => (
               <span
@@ -734,6 +851,9 @@ export function AnimationTimeline({
               />
             ))}
             {renderCount > 1 ? <span {...stylex.props(s.badge)}>×{renderCount}</span> : null}
+            {events?.[String(g.startIndex)] ? (
+              <span {...stylex.props(s.eventBadge)}>⚑ {events[String(g.startIndex)]}</span>
+            ) : null}
             {onChangeHold ? (
               <div
                 data-edgegrab=""
@@ -764,6 +884,54 @@ export function AnimationTimeline({
         const left = Math.max(0, x - TRACK_GAP / 2)
         return <div {...stylex.props(s.gapLine)} style={{ left }} aria-hidden="true" />
       })() : null}
+      {eventPopover != null && onSetEvent ? (
+        <div
+          data-event-popover=""
+          {...stylex.props(s.eventPopover)}
+          style={{ left: eventPopover.x, top: eventPopover.y + 6 }}
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          <input
+            autoFocus
+            {...stylex.props(s.eventInput)}
+            placeholder="event tag"
+            value={eventPopover.draft}
+            onChange={(e) =>
+              setEventPopover((prev) => (prev ? { ...prev, draft: e.target.value } : prev))
+            }
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                onSetEvent(eventPopover.frameIndex, eventPopover.draft.trim() || null)
+                setEventPopover(null)
+              } else if (e.key === 'Escape') {
+                setEventPopover(null)
+              }
+            }}
+          />
+          <button
+            type="button"
+            {...stylex.props(s.eventBtn)}
+            onClick={() => {
+              onSetEvent(eventPopover.frameIndex, eventPopover.draft.trim() || null)
+              setEventPopover(null)
+            }}
+          >
+            Save
+          </button>
+          {events?.[String(eventPopover.frameIndex)] ? (
+            <button
+              type="button"
+              {...stylex.props(s.eventBtn)}
+              onClick={() => {
+                onSetEvent(eventPopover.frameIndex, null)
+                setEventPopover(null)
+              }}
+            >
+              Delete
+            </button>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   )
 }

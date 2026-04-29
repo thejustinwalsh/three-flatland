@@ -989,6 +989,23 @@ export function App() {
     [activeAnimation],
   )
 
+  // Set or clear an event tag at a specific post-duplication frame
+  // index of the active animation. Empty / null tag removes the
+  // entry. Persists into `meta.animations[name].events`.
+  const handleSetEvent = useCallback((frameIndex: number, tag: string | null) => {
+    if (!activeAnimation) return
+    setAnimations((prev) => {
+      const anim = prev[activeAnimation]
+      if (!anim) return prev
+      const key = String(frameIndex)
+      const nextEvents: Record<string, string> = { ...(anim.events ?? {}) }
+      if (tag == null || tag === '') delete nextEvents[key]
+      else nextEvents[key] = tag
+      const cleaned = Object.keys(nextEvents).length > 0 ? nextEvents : undefined
+      return { ...prev, [activeAnimation]: { ...anim, events: cleaned } }
+    })
+  }, [activeAnimation])
+
   // Reorder a group within the active animation: remove the group
   // at `fromGroupIndex` and re-insert it before `toGap`. The
   // adjustment `toGap > fromGroupIndex ? toGap - 1 : toGap` handles
@@ -1765,6 +1782,8 @@ export function App() {
                   else handleCreateAnimationFromFrames(names)
                 }}
                 onReorderGroup={handleReorderGroup}
+                events={activeAnim?.events}
+                onSetEvent={handleSetEvent}
               />
             )}
           />
