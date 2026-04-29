@@ -2382,7 +2382,11 @@ function FramesView({
             thumbBg={thumbsById.get(r.id) ?? null}
             folderHighlight={gradient}
             dimmed={otherFolderActive}
-            selectionOrder={sel ? order ?? null : null}
+            selectionOrder={
+              // Only render the order pill when there's a multi-select
+              // — a lone selection's "1" is noise.
+              sel && selectedIds.size > 1 ? order ?? null : null
+            }
           />
         )
       })}
