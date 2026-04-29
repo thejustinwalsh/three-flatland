@@ -1638,6 +1638,8 @@ export function App() {
                   activeAnim ? frameIndexToGroupIndex(activeAnim.frames, playback.playhead) : 0
                 }
                 playhead={playback.playhead}
+                isPlaying={playback.isPlaying}
+                getSmoothPlayhead={() => animationStore.getSmoothPlayhead()}
                 onSeekGroup={(g) => {
                   if (!activeAnim) return
                   const groups = groupCells(activeAnim.frames)

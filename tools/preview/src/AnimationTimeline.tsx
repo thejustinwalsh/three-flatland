@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { vscode } from '@three-flatland/design-system/tokens/vscode-theme.stylex'
 import { space } from '@three-flatland/design-system/tokens/space.stylex'
@@ -25,8 +25,19 @@ export type AnimationTimelineProps = {
    * Current playhead frame index (post-duplication). Drives the
    * vertical playhead-line overlay so the line moves through the
    * sub-frames of a held group, not just the group boundaries.
+   * When paused (or when `getSmoothPlayhead` isn't provided) the
+   * line snaps to this integer position.
    */
   playhead: number
+  /** Set true when the App's rAF loop is actively advancing the store. */
+  isPlaying?: boolean
+  /**
+   * Optional sub-frame getter. When provided AND `isPlaying`, the
+   * line drives off this every rAF for smooth interpolation between
+   * integer frame positions. Caller should supply the playback
+   * store's `getSmoothPlayhead` directly.
+   */
+  getSmoothPlayhead?: () => number
   /** Click a cell to scrub the playhead there. */
   onSeekGroup(groupIndex: number): void
   /** Called with the new hold count for a group (Task 8). */
@@ -58,6 +69,32 @@ export function groupCells(frames: readonly string[]): { name: string; count: nu
     i = j
   }
   return out
+}
+
+/**
+ * Map a fractional or integer post-duplication playhead to a pixel
+ * offset inside the detail track. Each cell is `count * CELL_BASE`
+ * inner content + 2px L/R border, separated by TRACK_GAP. Within
+ * the active cell, the offset advances by CELL_BASE per (fractional)
+ * sub-frame.
+ */
+function playheadFrameToPx(
+  frameIndex: number,
+  groups: readonly { name: string; count: number; startIndex: number }[],
+): number {
+  let x = 0
+  let consumed = 0
+  for (const g of groups) {
+    if (consumed + g.count > frameIndex) {
+      // playhead is inside this group — skip the cell's left border
+      // and walk into it by (frameIndex - consumed) cells.
+      return x + 1 + (frameIndex - consumed) * CELL_BASE
+    }
+    x += g.count * CELL_BASE + 2 + TRACK_GAP
+    consumed += g.count
+  }
+  // Past the last cell — clamp to its right edge.
+  return x
 }
 
 /** Map a playhead frame index (post-duplication) to the owning group index. */
@@ -230,6 +267,8 @@ export function AnimationTimeline({
   density,
   playheadGroupIndex,
   playhead,
+  isPlaying = false,
+  getSmoothPlayhead,
   onSeekGroup,
   onChangeHold,
   onDropFrames,
@@ -306,22 +345,34 @@ export function AnimationTimeline({
 
   if (density === 'collapsed') return null
 
-  // Playhead pixel offset within the detail track. Each cell's outer
-  // width is `count * CELL_BASE + 2` (inner tiles + L/R border).
-  // Stride between cells is outer + TRACK_GAP. Within the current
-  // cell, skip the 1px left border, then walk sub-frames at one
-  // CELL_BASE per frame.
-  const playheadPx = (() => {
-    let x = 0
-    for (let i = 0; i < playheadGroupIndex && i < groups.length; i++) {
-      x += groups[i]!.count * CELL_BASE + 2 + TRACK_GAP
+  // Static integer-snapped position (used for paused state + initial
+  // mount before the smooth rAF loop kicks in).
+  const playheadPx = playheadFrameToPx(playhead, groups)
+
+  // Smooth lerp: when playing AND a sub-frame getter is provided,
+  // run an rAF loop that updates the line's transform directly via
+  // ref so it interpolates between integer frames without churning
+  // React state. When paused (or no getter), set transform to the
+  // integer position once and bail.
+  const lineRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const setLine = (frameIndex: number) => {
+      const el = lineRef.current
+      if (!el) return
+      el.style.transform = `translateX(${playheadFrameToPx(frameIndex, groups)}px)`
     }
-    x += 1 // skip the playhead cell's left border to align with inner content
-    const groupStart = groups[playheadGroupIndex]?.startIndex ?? 0
-    const subFrame = Math.max(0, playhead - groupStart)
-    x += subFrame * CELL_BASE
-    return x
-  })()
+    if (!isPlaying || !getSmoothPlayhead) {
+      setLine(playhead)
+      return
+    }
+    let raf = 0
+    const tick = () => {
+      setLine(getSmoothPlayhead())
+      raf = requestAnimationFrame(tick)
+    }
+    raf = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(raf)
+  }, [isPlaying, getSmoothPlayhead, groups, playhead])
 
   if (density === 'dots') {
     return (
@@ -392,7 +443,12 @@ export function AnimationTimeline({
           </div>
         )
       })}
-      <div {...stylex.props(s.playheadLine)} style={{ left: playheadPx }} aria-hidden="true" />
+      <div
+        ref={lineRef}
+        {...stylex.props(s.playheadLine)}
+        style={{ left: 0, transform: `translateX(${playheadPx}px)`, willChange: 'transform' }}
+        aria-hidden="true"
+      />
     </div>
   )
 }
