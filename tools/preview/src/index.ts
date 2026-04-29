@@ -56,3 +56,8 @@ export {
   frameIndexToGroupIndex,
   type AnimationTimelineProps,
 } from './AnimationTimeline'
+export {
+  AnimationPreviewPip,
+  type AnimationPreviewPipProps,
+  type PipCorner,
+} from './AnimationPreviewPip'
