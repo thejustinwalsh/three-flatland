@@ -301,6 +301,11 @@ const s = stylex.create({
     padding: 0,
     fontFamily: vscode.monoFontFamily,
     fontSize: '12px',
+    // Shift-click to extend a selection was also dragging the browser's
+    // native text selection across rows. Frames panel rows are
+    // entirely interactive; the names + coords are never meant to be
+    // text-copied from here, so opt out of selection wholesale.
+    userSelect: 'none',
   },
   frameItem: {
     paddingInline: space.md,
@@ -315,6 +320,7 @@ const s = stylex.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     gap: space.md,
+    userSelect: 'none',
   },
   frameItemLeft: {
     display: 'flex',
@@ -2174,16 +2180,28 @@ function FramesView({
 
   /**
    * `groupPrefix === null` for the catch-all "Unnamed" group; rows
-   * there never opt into the folder-selection gradient (no shared
-   * prefix to pivot on) but still dim when another folder is active.
+   * there never opt into the folder-dim treatment (no shared prefix
+   * to pivot on) but still get the multi-select gradient.
    */
   const renderList = (list: Rect[], groupPrefix: string | null) => (
     <ul {...stylex.props(s.frameList)}>
-      {list.map((r, idxInGroup) => {
+      {list.map((r) => {
         const sel = selectedIds.has(r.id)
         const editing = renameMode.kind === 'inline' && renameMode.id === r.id
-        const isThisFolderActive = groupPrefix !== null && groupPrefix === folderSelectionPrefix
-        const otherFolderActive = folderSelectionPrefix !== null && !isThisFolderActive
+        const order = selectionOrderById.get(r.id)
+        // Gradient applies whenever 2+ frames are selected — uses
+        // selection order so the visual hue maps 1:1 to the numeric
+        // pill on each row. Folder-mode selection orders are seeded
+        // from the folder's render order, so this naturally gives the
+        // same green→violet sweep there too.
+        const gradient = sel && order != null && selectedIds.size > 1
+          ? { index: order - 1, count: selectedIds.size }
+          : null
+        // Dim others ONLY in folder mode — explicit "this is THE
+        // folder" intent. Plain multi-select keeps every other row at
+        // full opacity so you can keep extending the selection.
+        const otherFolderActive =
+          folderSelectionPrefix !== null && groupPrefix !== folderSelectionPrefix
         return (
           <FrameRow
             key={r.id}
@@ -2193,9 +2211,9 @@ function FramesView({
             editing={editing}
             handlers={handlers}
             thumbBg={thumbsById.get(r.id) ?? null}
-            folderHighlight={isThisFolderActive ? { index: idxInGroup, count: list.length } : null}
+            folderHighlight={gradient}
             dimmed={otherFolderActive}
-            selectionOrder={sel ? selectionOrderById.get(r.id) ?? null : null}
+            selectionOrder={sel ? order ?? null : null}
           />
         )
       })}

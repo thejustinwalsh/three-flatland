@@ -291,13 +291,18 @@ function DragLayer() {
               backgroundImage: `url(${atlasImageUri})`,
               backgroundSize: `${bgW}px ${bgH}px`,
               backgroundPosition: `${offX}px ${offY}px`,
-              zIndex: i,
+              // Leftmost on top so the playback order reads naturally
+              // (first frame in front, later frames peek behind it).
+              zIndex: visible.length - i,
             }}
           />
         )
       })}
       {total > 1 ? (
-        <span {...stylex.props(s.countBadge)} style={{ left: stackWidth - 8, zIndex: visible.length + 1 }}>
+        <span
+          {...stylex.props(s.countBadge)}
+          style={{ left: stackWidth - 8, zIndex: visible.length + 1 }}
+        >
           {total}
         </span>
       ) : null}
