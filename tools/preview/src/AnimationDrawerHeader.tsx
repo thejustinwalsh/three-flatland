@@ -32,15 +32,23 @@ export type AnimationDrawerHeaderProps = {
 }
 
 const s = stylex.create({
-  // Mirrors design-system/Panel.header — same paddings, same uppercase
-  // title style, same panel-area background + bottom border. Spans the
-  // full width of the parent container (no inset).
+  // Mirrors design-system/Panel.header — same uppercase title style,
+  // same panel-area background + bottom border. Spans the full width
+  // of the parent container (no inset).
+  //
+  // paddingBlock is intentionally thinner than Panel.header (1px vs
+  // space.sm/4px). The drawer header carries real form controls
+  // (SingleSelect, NumberField) that are each ~22px tall; matching
+  // Panel.header's 4+4 padding around them would push the header to
+  // ~30px and tower over the sibling Atlas/Frames headers. With 1+1
+  // the form controls drive the height (~24px), close to the
+  // text-only Panel.header (~23px).
   bar: {
     display: 'flex',
     alignItems: 'center',
     gap: space.sm,
     paddingInline: space.xl,
-    paddingBlock: space.sm,
+    paddingBlock: '1px',
     borderBottomWidth: 1,
     borderBottomStyle: 'solid',
     borderBottomColor: vscode.panelBorder,
