@@ -40,6 +40,13 @@ export type AnimationTimelineProps = {
   getSmoothPlayhead?: () => number
   /** Click a cell to scrub the playhead there. */
   onSeekGroup(groupIndex: number): void
+  /**
+   * Click on empty timeline space (not a cell) — clears any active
+   * cell-highlight state in the App. Wired to the
+   * AnimationRectHighlight overlay so the user can dismiss the
+   * focused-frame chrome without leaving the timeline.
+   */
+  onClearHighlight?(): void
   /** Called with the new hold count for a group (Task 8). */
   onChangeHold?(groupIndex: number, nextCount: number): void
   /**
@@ -270,6 +277,7 @@ export function AnimationTimeline({
   isPlaying = false,
   getSmoothPlayhead,
   onSeekGroup,
+  onClearHighlight,
   onChangeHold,
   onDropFrames,
 }: AnimationTimelineProps) {
@@ -394,7 +402,16 @@ export function AnimationTimeline({
 
   // detail
   return (
-    <div {...stylex.props(s.trackDetail, isDragOver && s.trackOver)} {...dropTarget}>
+    <div
+      {...stylex.props(s.trackDetail, isDragOver && s.trackOver)}
+      {...dropTarget}
+      onClick={(e) => {
+        // Bubble-only — fires when user clicks empty space between
+        // cells (cells handle their own clicks). Lets the App clear
+        // the active-frame highlight without leaving the timeline.
+        if (e.target === e.currentTarget) onClearHighlight?.()
+      }}
+    >
       {groups.map((g, idx) => {
         const rect = rectsByName[g.name]
         const renderCount = g.count

@@ -25,6 +25,7 @@ import {
   AnimationDrawer,
   AnimationDrawerHeader,
   AnimationPreviewPip,
+  AnimationRectHighlight,
   AnimationTimeline,
   AutoDetectOverlay,
   CanvasStage,
@@ -622,6 +623,15 @@ export function App() {
   // Reset to null on any individual rect selection or empty-space
   // click so plain selections never trip the folder visual.
   const [folderSelectionPrefix, setFolderSelectionPrefix] = useState<string | null>(null)
+
+  // Manual flag for the active-frame highlight overlay. The overlay
+  // is shown when the user explicitly clicked a timeline cell to
+  // focus a frame (or while playback is running, see derived
+  // `showAnimHighlight` below). Auto-clears on context shifts the
+  // user wouldn't expect to carry over: switching tools (slice /
+  // auto-detect / move), switching the active animation, or
+  // clicking empty timeline space.
+  const [manualAnimHighlight, setManualAnimHighlight] = useState(false)
   useEffect(() => {
     if (folderSelectionPrefix != null && selectedIds.size === 0) {
       setFolderSelectionPrefix(null)
@@ -639,6 +649,15 @@ export function App() {
     if (!prefs.animDrawerExpanded) prefsStore.set({ animDrawerExpanded: true })
     if (activeAnimation == null) setActiveAnimation(Object.keys(animations)[0] ?? null)
   }, [animations, prefs.animDrawerExpanded, activeAnimation])
+
+  // Clear the manual animation-frame highlight on any context shift
+  // the user wouldn't expect to carry over: switching the active
+  // animation, or entering a tool mode (slice / auto-detect) where
+  // the canvas is doing something else entirely.
+  useEffect(() => { setManualAnimHighlight(false) }, [activeAnimation])
+  useEffect(() => {
+    if (mode.kind !== 'normal') setManualAnimHighlight(false)
+  }, [mode.kind])
 
   // VSCode webviews only dispatch modifier-key keydowns (Cmd+A, Cmd+S, …)
   // to the DOM when something inside the webview has focus. Give the root
@@ -1616,6 +1635,16 @@ export function App() {
                   onCoordModeChange={(v) => prefsStore.set({ coordMode: v })}
                 />
               ) : null}
+              {(playback.isPlaying || manualAnimHighlight) && activeAnim && activeAnim.frames.length > 0 ? (
+                <AnimationRectHighlight
+                  rect={(() => {
+                    const name = activeAnim.frames[Math.min(playback.playhead, activeAnim.frames.length - 1)]
+                    if (!name) return null
+                    const r = rectsByName[name]
+                    return r ? { x: r.x, y: r.y, w: r.w, h: r.h } : null
+                  })()}
+                />
+              ) : null}
               {prefs.animPipVisible ? (
                 <AnimationPreviewPip
                   animationName={activeAnimation}
@@ -1629,6 +1658,7 @@ export function App() {
                   corner={prefs.animPipCorner}
                   onChangeCorner={(c) => prefsStore.set({ animPipCorner: c })}
                   pixelArt={prefs.pixelArt}
+                  panMode={tool === 'move' && !inTool}
                 />
               ) : null}
             </CanvasStage>
@@ -1685,7 +1715,12 @@ export function App() {
                   // previously-selected rects (deleteSelected).
                   if (selectedIds.size > 0) setSelectedIds(new Set())
                   setFolderSelectionPrefix(null)
+                  // Light up the active-frame highlight overlay so
+                  // the user can see which atlas rect this cell is
+                  // pointing at.
+                  setManualAnimHighlight(true)
                 }}
+                onClearHighlight={() => setManualAnimHighlight(false)}
                 onChangeHold={handleChangeHold}
                 onDropFrames={(_idx, names) => {
                   // No active animation yet → auto-create one with the

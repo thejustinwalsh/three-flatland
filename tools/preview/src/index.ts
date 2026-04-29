@@ -61,3 +61,7 @@ export {
   type AnimationPreviewPipProps,
   type PipCorner,
 } from './AnimationPreviewPip'
+export {
+  AnimationRectHighlight,
+  type AnimationRectHighlightProps,
+} from './AnimationRectHighlight'

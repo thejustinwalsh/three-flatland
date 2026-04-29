@@ -41,6 +41,12 @@ export type AnimationPreviewPipProps = {
    * single source pixel maps to an integer count of screen pixels.
    */
   pixelArt?: boolean
+  /**
+   * When true (canvas pan-mode active or space held), the PIP fades
+   * + drops pointer events so it doesn't eat the user's pan gesture
+   * over the area beneath it.
+   */
+  panMode?: boolean
 }
 
 const CORNERS: PipCorner[] = ['tl', 'tr', 'br', 'bl']
@@ -216,6 +222,7 @@ export function AnimationPreviewPip(props: AnimationPreviewPipProps) {
     playhead, isPlaying, onTogglePlay,
     corner, onChangeCorner,
     pixelArt = false,
+    panMode = false,
   } = props
 
   const onShellClickRef = useRef<((target: HTMLElement) => void) | null>(null)
@@ -240,8 +247,13 @@ export function AnimationPreviewPip(props: AnimationPreviewPipProps) {
   return (
     <div
       {...stylex.props(s.shell, cornerStyle)}
-      onClick={(e) => onShellClickRef.current?.(e.target as HTMLElement)}
-      title="Click to move corner"
+      onClick={panMode ? undefined : (e) => onShellClickRef.current?.(e.target as HTMLElement)}
+      title={panMode ? undefined : 'Click to move corner'}
+      style={{
+        opacity: panMode ? 0.25 : 1,
+        pointerEvents: panMode ? 'none' : undefined,
+        transition: 'opacity 120ms',
+      }}
     >
       <div {...stylex.props(s.body)}>
         {frame ? (
