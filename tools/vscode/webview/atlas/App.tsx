@@ -335,6 +335,9 @@ const s = stylex.create({
     borderRadius: radius.sm,
     imageRendering: 'pixelated',
   },
+  thumbDraggable: {
+    cursor: 'grab',
+  },
   // VscodeBadge's counter variant has fixed 18px min-height / 11px
   // line-height inside its shadow DOM, taller than the collapsible's
   // header text. Visually shrink it via transform-scale (transform
@@ -855,21 +858,42 @@ export function App() {
     })
   }, [activeAnimation])
 
-  // Append a frame to the active animation (drop, or Add-to-anim
-  // button). v1 always appends to the end; mid-track insertion is
-  // explicitly out-of-scope until cell-reorder is needed.
-  const handleAppendFrameToActiveAnim = useCallback((frameName: string) => {
-    if (!activeAnimation) return
+  // Wraps the store's togglePlay with two ergonomic side effects:
+  //  1. If we're transitioning paused→playing AND the playhead is
+  //     parked at the last frame of a non-loop animation (i.e. it
+  //     ran to the end and stopped), seek back to 0 first so "play
+  //     again" feels like restart-from-start instead of "the play
+  //     button is broken".
+  //  2. If the floating PIP is hidden, un-hide it — the user
+  //     pressed play, so they want to see the playback.
+  const handleTogglePlay = useCallback(() => {
+    if (!playback.isPlaying && activeAnim && activeAnim.frames.length > 0) {
+      const atEnd = playback.playhead >= activeAnim.frames.length - 1
+      if (atEnd && !activeAnim.loop) {
+        animationStore.seek(0)
+      }
+    }
+    if (!prefs.animPipVisible) {
+      prefsStore.set({ animPipVisible: true })
+    }
+    animationStore.togglePlay()
+  }, [activeAnim, animationStore, playback.isPlaying, playback.playhead, prefs.animPipVisible])
+
+  // Append one or more frames to the active animation (drop, or
+  // Add-to-anim button). v1 always appends to the end; mid-track
+  // insertion is explicitly out-of-scope until cell-reorder lands.
+  const handleAppendFramesToActiveAnim = useCallback((frameNames: readonly string[]) => {
+    if (!activeAnimation || frameNames.length === 0) return
     setAnimations((prev) => {
       const anim = prev[activeAnimation]
       if (!anim) return prev
-      return { ...prev, [activeAnimation]: { ...anim, frames: [...anim.frames, frameName] } }
+      return { ...prev, [activeAnimation]: { ...anim, frames: [...anim.frames, ...frameNames] } }
     })
   }, [activeAnimation])
 
-  // Append the current Frames-panel selection (in folder/visual order)
-  // to the active animation. No-op when no anim is active or no
-  // selection exists.
+  // Append the current Frames-panel selection (in selection-insertion
+  // order) to the active animation. No-op when no anim is active or
+  // no selection exists.
   const handleAddSelectionToActiveAnim = useCallback(() => {
     if (!activeAnimation) return
     const names = Array.from(selectedIds)
@@ -877,13 +901,8 @@ export function App() {
       .filter((r): r is Rect => r != null)
       .map((r) => r.name ?? '')
       .filter((n) => n.length > 0)
-    if (names.length === 0) return
-    setAnimations((prev) => {
-      const anim = prev[activeAnimation]
-      if (!anim) return prev
-      return { ...prev, [activeAnimation]: { ...anim, frames: [...anim.frames, ...names] } }
-    })
-  }, [activeAnimation, rects, selectedIds])
+    handleAppendFramesToActiveAnim(names)
+  }, [activeAnimation, rects, selectedIds, handleAppendFramesToActiveAnim])
 
   // Number-key 1..9 — set hold count on the playhead's group.
   useEffect(() => {
@@ -1533,7 +1552,7 @@ export function App() {
                   atlasSize={imageSize}
                   playhead={playback.playhead}
                   isPlaying={playback.isPlaying}
-                  onTogglePlay={() => animationStore.togglePlay()}
+                  onTogglePlay={handleTogglePlay}
                   corner={prefs.animPipCorner}
                   onChangeCorner={(c) => prefsStore.set({ animPipCorner: c })}
                   pixelArt={prefs.pixelArt}
@@ -1556,7 +1575,7 @@ export function App() {
                 onDeleteAnimation={handleDeleteAnimation}
                 onRenameAnimation={handleRenameAnimation}
                 isPlaying={playback.isPlaying}
-                onTogglePlay={() => animationStore.togglePlay()}
+                onTogglePlay={handleTogglePlay}
                 fps={activeAnim?.fps ?? 12}
                 loop={activeAnim?.loop ?? true}
                 pingPong={activeAnim?.pingPong ?? false}
@@ -1583,7 +1602,7 @@ export function App() {
                     if (target) animationStore.seek(target.startIndex)
                   }}
                   onChangeHold={handleChangeHold}
-                  onDropFrame={(_idx, frameName) => handleAppendFrameToActiveAnim(frameName)}
+                  onDropFrames={(_idx, names) => handleAppendFramesToActiveAnim(names)}
                 />
               ) : (
                 <div style={{ color: 'var(--vscode-descriptionForeground)', fontFamily: 'monospace', fontSize: 10, padding: 8 }}>
@@ -1956,6 +1975,7 @@ function FrameRow({
   thumbBg,
   folderHighlight,
   dimmed,
+  selectionOrder,
 }: {
   rect: Rect
   globalIndex: number
@@ -1968,6 +1988,12 @@ function FrameRow({
   folderHighlight: FolderHighlight | null
   /** Reduced opacity when another folder is the active full-set selection. */
   dimmed: boolean
+  /**
+   * 1-based position of this frame in the current selection. null when
+   * not selected. Surfaces a small numeric pill so the user can see
+   * the order their drag/Add-to-anim will land in.
+   */
+  selectionOrder: number | null
 }) {
   const displayName = rect.name ?? `#${globalIndex}`
   const hue = folderHighlight ? folderHueForIndex(folderHighlight.index, folderHighlight.count) : null
@@ -1991,19 +2017,50 @@ function FrameRow({
       }}
     >
       <span {...stylex.props(s.frameItemLeft)}>
-        {thumbBg ? (
-          <span
-            aria-hidden="true"
-            {...stylex.props(s.thumb, s.thumbBg(thumbBg.bgImage, thumbBg.bgSize, thumbBg.bgPos))}
-            onPointerDown={(e) => {
-              if (e.button !== 0 || !rect.name) return
-              handlers.onStartFrameDrag(rect, e)
-            }}
-            style={{ cursor: rect.name ? 'grab' : undefined }}
-          />
-        ) : (
-          <span aria-hidden="true" {...stylex.props(s.thumb)} />
-        )}
+        <span style={{ position: 'relative', display: 'inline-flex' }}>
+          {thumbBg ? (
+            <span
+              aria-hidden="true"
+              {...stylex.props(
+                s.thumb,
+                s.thumbBg(thumbBg.bgImage, thumbBg.bgSize, thumbBg.bgPos),
+                rect.name != null && s.thumbDraggable,
+              )}
+              onPointerDown={(e) => {
+                if (e.button !== 0 || !rect.name) return
+                handlers.onStartFrameDrag(rect, e)
+              }}
+            />
+          ) : (
+            <span aria-hidden="true" {...stylex.props(s.thumb)} />
+          )}
+          {selectionOrder != null ? (
+            <span
+              aria-hidden="true"
+              style={{
+                position: 'absolute',
+                top: -4,
+                left: -4,
+                minWidth: 14,
+                height: 14,
+                paddingInline: 3,
+                background: 'var(--vscode-focusBorder)',
+                color: 'var(--vscode-editor-background)',
+                borderRadius: 8,
+                fontFamily: 'var(--vscode-editor-font-family, monospace)',
+                fontSize: 9,
+                fontWeight: 700,
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                lineHeight: 1,
+                pointerEvents: 'none',
+              }}
+            >
+              {selectionOrder}
+            </span>
+          ) : null}
+        </span>
         {editing ? (
           <InlineRenameInput
             initial={rect.name ?? ''}
@@ -2062,10 +2119,23 @@ function FramesView({
     onCancelInlineRename,
     onStartFrameDrag: (rect, e) => {
       if (!rect.name || !imageUri || !imageSize) return
+      // Multi-select: when the dragged frame is part of the active
+      // selection, drag the entire selection (in selection-insertion
+      // order). Otherwise just the one. Skips selected rects without
+      // names since the dragKit payload requires a name per frame.
+      const inSelection = selectedIds.has(rect.id)
+      const setRects: { name: string; x: number; y: number; w: number; h: number }[] =
+        inSelection && selectedIds.size > 1
+          ? Array.from(selectedIds)
+              .map((id) => rects.find((r) => r.id === id))
+              .filter((r): r is Rect => r != null && r.name != null)
+              .map((r) => ({ name: r.name!, x: r.x, y: r.y, w: r.w, h: r.h }))
+          : [{ name: rect.name, x: rect.x, y: rect.y, w: rect.w, h: rect.h }]
+      if (setRects.length === 0) return
       startDrag(e, {
-        payload: { kind: 'frames-panel', frameName: rect.name },
+        payload: { kind: 'frames-panel', frameNames: setRects.map((r) => r.name) },
         atlasImageUri: imageUri,
-        atlasFrame: { x: rect.x, y: rect.y, w: rect.w, h: rect.h },
+        atlasFrames: setRects,
         atlasSize: { w: imageSize.w, h: imageSize.h },
       })
     },
@@ -2090,6 +2160,18 @@ function FramesView({
     return m
   }, [rects, imageUri, imageData, imageSize])
 
+  // Selection-order map: 1-based position in the order ids landed in
+  // selectedIds. Set preserves insertion order, so this is a free
+  // O(N) build per render.
+  const selectionOrderById = useMemo(() => {
+    const m = new Map<string, number>()
+    let i = 1
+    for (const id of selectedIds) {
+      m.set(id, i++)
+    }
+    return m
+  }, [selectedIds])
+
   /**
    * `groupPrefix === null` for the catch-all "Unnamed" group; rows
    * there never opt into the folder-selection gradient (no shared
@@ -2113,6 +2195,7 @@ function FramesView({
             thumbBg={thumbsById.get(r.id) ?? null}
             folderHighlight={isThisFolderActive ? { index: idxInGroup, count: list.length } : null}
             dimmed={otherFolderActive}
+            selectionOrder={sel ? selectionOrderById.get(r.id) ?? null : null}
           />
         )
       })}
@@ -2140,15 +2223,24 @@ function FramesView({
             }}
           >
             <span
-              slot="actions"
+              slot="decorations"
               role="button"
               tabIndex={0}
               title={isActiveFolder ? 'Folder selected' : 'Select all in folder'}
               aria-label="Select all in folder"
-              onClick={(e) => {
+              onPointerDown={(e) => {
+                // Stop pointerdown so VscodeCollapsible's own toggle
+                // doesn't fire on the same gesture (its bound listener
+                // runs on pointerdown via the Lit element, not click).
                 e.preventDefault()
                 e.stopPropagation()
                 onSelectFolder(g.prefix, groupIds)
+              }}
+              onClick={(e) => {
+                // Belt-and-suspenders: also stop the synthetic click so
+                // it never bubbles to the collapsible header.
+                e.preventDefault()
+                e.stopPropagation()
               }}
               style={{
                 display: 'inline-flex',
