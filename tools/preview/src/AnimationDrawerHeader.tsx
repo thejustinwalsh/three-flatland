@@ -29,6 +29,9 @@ export type AnimationDrawerHeaderProps = {
   onChangeFps(next: number): void
   onChangeLoop(next: boolean): void
   onChangePingPong(next: boolean): void
+  /** Floating preview window (PIP) visibility toggle. */
+  pipVisible: boolean
+  onTogglePipVisible(): void
 }
 
 const s = stylex.create({
@@ -168,6 +171,7 @@ export function AnimationDrawerHeader(props: AnimationDrawerHeaderProps) {
     isPlaying, onTogglePlay,
     fps, loop, pingPong,
     onChangeFps, onChangeLoop, onChangePingPong,
+    pipVisible, onTogglePipVisible,
   } = props
 
   const hasActive = activeAnimation != null
@@ -281,6 +285,15 @@ export function AnimationDrawerHeader(props: AnimationDrawerHeaderProps) {
           aria-label="Toggle ping-pong"
         >
           <Icon name="arrow-swap" />
+        </button>
+        <button
+          type="button"
+          {...stylex.props(s.iconBtn, !pipVisible && s.iconBtnOff)}
+          onClick={onTogglePipVisible}
+          title={pipVisible ? 'Hide preview window' : 'Show preview window'}
+          aria-label="Toggle preview window"
+        >
+          <Icon name={pipVisible ? 'eye' : 'eye-closed'} />
         </button>
       </div>
 
