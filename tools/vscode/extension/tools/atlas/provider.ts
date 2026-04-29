@@ -2,7 +2,13 @@ import * as vscode from 'vscode'
 import { createHostBridge } from '@three-flatland/bridge/host'
 import { composeToolHtml, setupDevReload } from '../../webview-host'
 import { log } from '../../log'
-import { buildAtlasJson, readAtlasSidecar, writeAtlasSidecar, type RectInput } from './sidecar'
+import {
+  buildAtlasJson,
+  readAtlasSidecar,
+  writeAtlasSidecar,
+  type AnimationInput,
+  type RectInput,
+} from './sidecar'
 
 const TOOL = 'atlas'
 
@@ -57,12 +63,17 @@ export class AtlasCustomEditorProvider implements vscode.CustomReadonlyEditorPro
       // Validation errors surface as a non-fatal warning so a broken
       // sidecar doesn't lock the user out of the editor entirely.
       let rects: RectInput[] = []
+      let animations: Record<string, AnimationInput> = {}
       let loadError: string | null = null
       try {
         const loaded = await readAtlasSidecar(document.uri)
         if (loaded) {
           rects = loaded.rects
-          log(`atlas/ready loaded ${rects.length} frame(s) from sidecar`)
+          animations = loaded.animations
+          log(
+            `atlas/ready loaded ${rects.length} frame(s) and ` +
+              `${Object.keys(animations).length} animation(s) from sidecar`,
+          )
         } else {
           log('atlas/ready no existing sidecar')
         }
@@ -70,7 +81,7 @@ export class AtlasCustomEditorProvider implements vscode.CustomReadonlyEditorPro
         loadError = err instanceof Error ? err.message : String(err)
         log(`atlas/ready sidecar load failed: ${loadError}`)
       }
-      bridge.emit('atlas/init', { imageUri, fileName, rects, loadError })
+      bridge.emit('atlas/init', { imageUri, fileName, rects, animations, loadError })
       return { ok: true }
     })
 
@@ -82,24 +93,27 @@ export class AtlasCustomEditorProvider implements vscode.CustomReadonlyEditorPro
     // atlas/save: webview hands us a snapshot of rects + the image's
     // native size; we project to SpriteSheetJSONHash and write
     // <basename>.atlas.json next to the image.
-    bridge.on<{ rects: RectInput[]; image: { width: number; height: number } }>(
-      'atlas/save',
-      async ({ rects, image }) => {
-        try {
-          const json = buildAtlasJson({
-            image: { ...image, fileName },
-            rects,
-          })
-          const out = await writeAtlasSidecar(document.uri, json)
-          log(`atlas/save wrote ${out.fsPath} (${rects.length} frames)`)
-          return { ok: true, sidecarUri: out.toString(), frameCount: rects.length }
-        } catch (err) {
-          const msg = err instanceof Error ? err.message : String(err)
-          log(`atlas/save failed: ${msg}`)
-          throw new Error(msg)
-        }
+    bridge.on<{
+      rects: RectInput[]
+      image: { width: number; height: number }
+      animations?: Record<string, AnimationInput>
+    }>('atlas/save', async ({ rects, image, animations }) => {
+      try {
+        const json = buildAtlasJson({
+          image: { ...image, fileName },
+          rects,
+          animations,
+        })
+        const out = await writeAtlasSidecar(document.uri, json)
+        const animCount = json.meta.animations ? Object.keys(json.meta.animations).length : 0
+        log(`atlas/save wrote ${out.fsPath} (${rects.length} frames, ${animCount} animations)`)
+        return { ok: true, sidecarUri: out.toString(), frameCount: rects.length }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err)
+        log(`atlas/save failed: ${msg}`)
+        throw new Error(msg)
       }
-    )
+    })
 
     // Toast "Reload" click → re-render the HTML from disk. VSCode webviews
     // can't location.reload() their inline HTML (ENOENT on the non-existent

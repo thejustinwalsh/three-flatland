@@ -22,6 +22,7 @@ import {
 } from '@three-flatland/design-system'
 import {
   AnimationDrawer,
+  AnimationDrawerHeader,
   AutoDetectOverlay,
   CanvasStage,
   GridSliceOverlay,
@@ -54,6 +55,8 @@ type InitPayload = {
   fileName: string
   /** Rects seeded from an existing sidecar, if one was found and valid. */
   rects?: readonly Rect[]
+  /** Animations seeded from an existing sidecar's `meta.animations`. */
+  animations?: Record<string, Animation>
   /** Populated when a sidecar existed but failed to parse/validate. */
   loadError?: string | null
 }
@@ -65,6 +68,15 @@ declare global {
 }
 
 type Tool = 'select' | 'rect' | 'move'
+
+type Animation = {
+  /** Frame names in playback order. Duplicates encode hold counts. */
+  frames: string[]
+  fps: number
+  loop: boolean
+  pingPong: boolean
+  events?: Record<string, string>
+}
 type RenameMode =
   | { kind: 'none' }
   | { kind: 'inline'; id: string }
@@ -579,6 +591,24 @@ export function App() {
   // the Atlas Panel header.
   const prefs = usePrefs()
 
+  // Map of animation name → animation. Initialised from the sidecar
+  // payload (see the bridge handler above); user edits via the
+  // animation drawer header.
+  const [animations, setAnimations] = useState<Record<string, Animation>>({})
+  const [activeAnimation, setActiveAnimation] = useState<string | null>(null)
+
+  // Auto-expand the drawer + select first animation the first time the
+  // sidecar comes in with anims. Skips if the user has already touched
+  // either knob this session.
+  const didAutoExpandRef = useRef(false)
+  useEffect(() => {
+    if (didAutoExpandRef.current) return
+    if (Object.keys(animations).length === 0) return
+    didAutoExpandRef.current = true
+    if (!prefs.animDrawerExpanded) prefsStore.set({ animDrawerExpanded: true })
+    if (activeAnimation == null) setActiveAnimation(Object.keys(animations)[0] ?? null)
+  }, [animations, prefs.animDrawerExpanded, activeAnimation])
+
   // VSCode webviews only dispatch modifier-key keydowns (Cmd+A, Cmd+S, …)
   // to the DOM when something inside the webview has focus. Give the root
   // div a tabindex, focus it on mount, and refocus on any pointerdown
@@ -613,6 +643,9 @@ export function App() {
         // share the array reference with the init payload.
         setRects([...p.rects])
       }
+      if (p.animations && Object.keys(p.animations).length > 0) {
+        setAnimations({ ...p.animations })
+      }
       if (p.loadError) {
         setSaveStatus({
           kind: 'error',
@@ -644,6 +677,7 @@ export function App() {
       }>('atlas/save', {
         rects: rects.map(({ id, x, y, w, h, name }) => ({ id, x, y, w, h, name })),
         image: { width: imageSize.w, height: imageSize.h },
+        animations: Object.keys(animations).length > 0 ? animations : undefined,
       })
       setSaveStatus({
         kind: 'saved',
@@ -657,7 +691,7 @@ export function App() {
         message: err instanceof Error ? err.message : String(err),
       })
     }
-  }, [rects, imageSize])
+  }, [rects, imageSize, animations])
 
   const handleRectCreate = useCallback((r: Rect) => {
     setRects((prev) => [...prev, r])
@@ -670,6 +704,68 @@ export function App() {
     },
     [],
   )
+
+  // ── Animation handlers ──────────────────────────────────────────────────
+  const animationNames = useMemo(() => Object.keys(animations).sort(), [animations])
+  const activeAnim = activeAnimation ? animations[activeAnimation] ?? null : null
+
+  const handleCreateAnimation = useCallback(() => {
+    // Use selected named frames if any, else seed empty.
+    const seedFrames = Array.from(selectedIds)
+      .map((id) => rects.find((r) => r.id === id))
+      .filter((r): r is Rect => r != null)
+      .map((r) => r.name ?? '')
+      .filter((n) => n.length > 0)
+
+    // Default name: single-folder prefix, else anim_N.
+    let name = 'anim_1'
+    if (seedFrames.length > 0) {
+      const prefixes = new Set(seedFrames.map((n) => n.replace(/_\d+$/, '')))
+      if (prefixes.size === 1) {
+        const prefix = [...prefixes][0]!
+        if (prefix.length > 0 && !animations[prefix]) name = prefix
+      }
+    }
+    if (animations[name]) {
+      let i = 1
+      while (animations[`anim_${i}`]) i++
+      name = `anim_${i}`
+    }
+    setAnimations((prev) => ({
+      ...prev,
+      [name]: { frames: seedFrames, fps: 12, loop: true, pingPong: false },
+    }))
+    setActiveAnimation(name)
+    if (!prefs.animDrawerExpanded) prefsStore.set({ animDrawerExpanded: true })
+  }, [animations, prefs.animDrawerExpanded, rects, selectedIds])
+
+  const handleDeleteAnimation = useCallback((name: string) => {
+    setAnimations((prev) => {
+      const next = { ...prev }
+      delete next[name]
+      return next
+    })
+    setActiveAnimation((cur) => (cur === name ? null : cur))
+  }, [])
+
+  const handleRenameAnimation = useCallback((oldName: string, newName: string) => {
+    setAnimations((prev) => {
+      if (!prev[oldName] || prev[newName]) return prev
+      const next: Record<string, Animation> = {}
+      for (const [k, v] of Object.entries(prev)) {
+        next[k === oldName ? newName : k] = v
+      }
+      return next
+    })
+    setActiveAnimation((cur) => (cur === oldName ? newName : cur))
+  }, [])
+
+  const updateActiveAnimation = useCallback((patch: Partial<Animation>) => {
+    setAnimations((prev) => {
+      if (!activeAnimation || !prev[activeAnimation]) return prev
+      return { ...prev, [activeAnimation]: { ...prev[activeAnimation]!, ...patch } }
+    })
+  }, [activeAnimation])
 
   // Space-hold temporarily switches to Move (pan-only) mode. Original
   // tool is restored on release. The toolbar Move button reflects 'move'
@@ -1234,23 +1330,32 @@ export function App() {
             height={prefs.animDrawerHeight}
             onHeightChange={(h) => prefsStore.set({ animDrawerHeight: h })}
             header={
-              <div style={{ padding: '4px 8px', fontSize: 11, color: 'var(--vscode-panelTitle-activeForeground)' }}>
-                <button
-                  type="button"
-                  onClick={() => prefsStore.set({ animDrawerExpanded: !prefs.animDrawerExpanded })}
-                  style={{ background: 'transparent', border: 0, color: 'inherit', cursor: 'pointer', padding: 0, marginRight: 6 }}
-                  aria-label={prefs.animDrawerExpanded ? 'Collapse animations' : 'Expand animations'}
-                >
-                  {prefs.animDrawerExpanded ? '▼' : '▶'}
-                </button>
-                <span style={{ textTransform: 'uppercase', letterSpacing: '0.04em', fontWeight: 600 }}>
-                  Animations (placeholder)
-                </span>
-              </div>
+              <AnimationDrawerHeader
+                expanded={prefs.animDrawerExpanded}
+                onToggleExpanded={() => prefsStore.set({ animDrawerExpanded: !prefs.animDrawerExpanded })}
+                animationNames={animationNames}
+                activeAnimation={activeAnimation}
+                onSelectAnimation={setActiveAnimation}
+                onCreateAnimation={handleCreateAnimation}
+                onDeleteAnimation={handleDeleteAnimation}
+                onRenameAnimation={handleRenameAnimation}
+                isPlaying={false}
+                onTogglePlay={() => {}}
+                fps={activeAnim?.fps ?? 12}
+                loop={activeAnim?.loop ?? true}
+                pingPong={activeAnim?.pingPong ?? false}
+                onChangeFps={(v) => updateActiveAnimation({ fps: v })}
+                onChangeLoop={(v) => updateActiveAnimation({ loop: v })}
+                onChangePingPong={(v) => updateActiveAnimation({ pingPong: v })}
+              />
             }
             body={(density) => (
               <div style={{ color: 'var(--vscode-descriptionForeground)', fontFamily: 'monospace', fontSize: 10 }}>
-                density: {density} · height: {prefs.animDrawerHeight}px (placeholder body — Task 7)
+                {activeAnim
+                  ? `${activeAnimation} · ${activeAnim.frames.length} frames · density: ${density} (timeline body — Task 7)`
+                  : animationNames.length === 0
+                  ? 'Click ＋ to create an animation. Select frames first to seed it.'
+                  : 'Select an animation from the dropdown'}
               </div>
             )}
           />

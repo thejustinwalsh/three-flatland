@@ -49,3 +49,4 @@ export {
   type AnimationDrawerProps,
   type AnimationDrawerDensity,
 } from './AnimationDrawer'
+export { AnimationDrawerHeader, type AnimationDrawerHeaderProps } from './AnimationDrawerHeader'
