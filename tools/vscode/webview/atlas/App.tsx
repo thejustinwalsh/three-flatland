@@ -866,20 +866,47 @@ export function App() {
     return out
   }, [rects])
 
-  // Hold count change — rebuild frames[] from groups with the patched count.
+  // Hold count change — rebuild frames[] from groups with the
+  // patched count AND fix up the store's playhead so it stays on the
+  // same logical frame:
+  //   - playhead in a group BEFORE the change → unchanged
+  //   - playhead IN the changed group → stays at its sub-position,
+  //     clamped to the new count's last index
+  //   - playhead AFTER the change → shifted by `nextCount - oldCount`
+  // Without this the store's integer index drifts: a frame that
+  // logically still pointed at "b" would suddenly point inside a
+  // re-extended "a" group, and the user would see the playhead jump.
   const handleChangeHold = useCallback((groupIndex: number, nextCount: number) => {
     if (!activeAnimation) return
-    setAnimations((prev) => {
-      const anim = prev[activeAnimation]
-      if (!anim) return prev
-      const groups = groupCells(anim.frames)
-      if (groupIndex < 0 || groupIndex >= groups.length) return prev
-      groups[groupIndex] = { ...groups[groupIndex]!, count: nextCount }
-      const nextFrames: string[] = []
-      for (const g of groups) for (let k = 0; k < g.count; k++) nextFrames.push(g.name)
-      return { ...prev, [activeAnimation]: { ...anim, frames: nextFrames } }
-    })
-  }, [activeAnimation])
+    const anim = animations[activeAnimation]
+    if (!anim) return
+    const oldGroups = groupCells(anim.frames)
+    if (groupIndex < 0 || groupIndex >= oldGroups.length) return
+    const oldCount = oldGroups[groupIndex]!.count
+    const groupStart = oldGroups[groupIndex]!.startIndex
+
+    const newGroups = oldGroups.map((g, i) =>
+      i === groupIndex ? { ...g, count: nextCount } : g,
+    )
+    const nextFrames: string[] = []
+    for (const g of newGroups) for (let k = 0; k < g.count; k++) nextFrames.push(g.name)
+
+    const oldPlayhead = animationStore.get().playhead
+    let newPlayhead = oldPlayhead
+    if (oldPlayhead >= groupStart && oldPlayhead < groupStart + oldCount) {
+      const posInGroup = oldPlayhead - groupStart
+      newPlayhead = groupStart + Math.min(posInGroup, nextCount - 1)
+    } else if (oldPlayhead >= groupStart + oldCount) {
+      newPlayhead = oldPlayhead + (nextCount - oldCount)
+    }
+    newPlayhead = Math.max(0, Math.min(nextFrames.length - 1, newPlayhead))
+
+    setAnimations((prev) => ({
+      ...prev,
+      [activeAnimation]: { ...prev[activeAnimation]!, frames: nextFrames },
+    }))
+    if (newPlayhead !== oldPlayhead) animationStore.seek(newPlayhead)
+  }, [activeAnimation, animations, animationStore])
 
   // Remove a group from the active animation (cell-level delete via
   // Backspace at the playhead). Strips every duplicate of that frame

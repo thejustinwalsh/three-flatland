@@ -113,10 +113,16 @@ export function createAnimationStore(): AnimationStore {
 
   return {
     get: () => snapshot,
-    // Clamp accum into [0, 1) for the visual reading. Within a single
-    // tick `accum` is in frame units before the floor; we only ever
-    // store the post-floor remainder, so it's already 0..1.
-    getSmoothPlayhead: () => snapshot.playhead + Math.max(0, Math.min(0.999, accum)),
+    // Smooth playhead = integer + fractional progress toward the
+    // NEXT frame in the current direction. accum is in frame units,
+    // post-floor (so 0..1). Multiply by direction so ping-pong's
+    // reverse phase reads as `playhead - fraction`, giving a line
+    // that lerps smoothly leftward instead of jumping backward
+    // every whole frame.
+    getSmoothPlayhead: () => {
+      const fraction = Math.max(0, Math.min(0.999, accum))
+      return snapshot.playhead + fraction * direction
+    },
     setActive: (name) => {
       snapshot = { activeAnimation: name, playhead: 0, isPlaying: false }
       direction = 1
