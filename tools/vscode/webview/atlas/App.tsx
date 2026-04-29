@@ -1637,6 +1637,7 @@ export function App() {
                 playheadGroupIndex={
                   activeAnim ? frameIndexToGroupIndex(activeAnim.frames, playback.playhead) : 0
                 }
+                playhead={playback.playhead}
                 onSeekGroup={(g) => {
                   if (!activeAnim) return
                   const groups = groupCells(activeAnim.frames)
@@ -1649,17 +1650,6 @@ export function App() {
                   // previously-selected rects (deleteSelected).
                   if (selectedIds.size > 0) setSelectedIds(new Set())
                   setFolderSelectionPrefix(null)
-                }}
-                onSeekFrameStart={() => animationStore.seek(0)}
-                onSeekFrameEnd={() => {
-                  if (!activeAnim) return
-                  animationStore.seek(activeAnim.frames.length - 1)
-                }}
-                onSeekFrameRel={(delta) => {
-                  if (!activeAnim) return
-                  const next = playback.playhead + delta
-                  const clamped = Math.max(0, Math.min(activeAnim.frames.length - 1, next))
-                  animationStore.seek(clamped)
                 }}
                 onChangeHold={handleChangeHold}
                 onDropFrames={(_idx, names) => {

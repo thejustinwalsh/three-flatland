@@ -6,7 +6,6 @@ import { radius } from '@three-flatland/design-system/tokens/radius.stylex'
 import type { Rect } from './RectOverlay'
 import type { AnimationDrawerDensity } from './AnimationDrawer'
 import { useDragTarget } from './dragKit'
-import { Icon } from '@three-flatland/design-system'
 
 export type AnimationTimelineProps = {
   /** Frame names in playback order, with duplicates encoding hold counts. */
@@ -22,14 +21,16 @@ export type AnimationTimelineProps = {
   density: AnimationDrawerDensity
   /** Current playhead index (group index — see `groupCells`). */
   playheadGroupIndex: number
+  /**
+   * Current playhead frame index (post-duplication). Drives the
+   * vertical playhead-line overlay so the line moves through the
+   * sub-frames of a held group, not just the group boundaries.
+   */
+  playhead: number
   /** Click a cell to scrub the playhead there. */
   onSeekGroup(groupIndex: number): void
   /** Called with the new hold count for a group (Task 8). */
   onChangeHold?(groupIndex: number, nextCount: number): void
-  /** Frame-by-frame transport — stepBack / stepForward / first / last. */
-  onSeekFrameStart?(): void
-  onSeekFrameEnd?(): void
-  onSeekFrameRel?(delta: number): void
   /**
    * Called when one or more frames are dropped onto the timeline.
    * `insertIndex` is the position in the post-duplication frame
@@ -74,16 +75,21 @@ export function frameIndexToGroupIndex(frames: readonly string[], frameIndex: nu
 }
 
 const CELL_BASE = 40
-const CELL_HOLD_PER_DUP = 16
+// Each held duplicate adds a full cell's width — so ×3 visually
+// occupies 3 cells worth of space, matching the user's mental
+// model of "one cell == one frame".
+const CELL_HOLD_PER_DUP = CELL_BASE
+const TRACK_GAP = 2
 
 const s = stylex.create({
   trackDetail: {
     display: 'flex',
     alignItems: 'flex-start',
-    gap: space.xs,
+    gap: '2px',
     height: '100%',
     overflowX: 'auto',
     overflowY: 'hidden',
+    position: 'relative',
   },
   trackDots: {
     display: 'flex',
@@ -92,6 +98,7 @@ const s = stylex.create({
     height: '100%',
     paddingInline: space.sm,
     overflowX: 'auto',
+    position: 'relative',
   },
   cell: {
     boxSizing: 'border-box',
@@ -109,13 +116,25 @@ const s = stylex.create({
     flexShrink: 0,
     cursor: 'pointer',
   },
-  // Playhead cell: 2px focus-ring border + a top-edge accent strip so
-  // the active group reads at a glance even at small sizes. Inset
-  // shadow paints the strip so it doesn't shift surrounding layout.
+  // Playhead cell: focus-ring border. Subtle on its own — the
+  // primary "where am I in the animation" cue is the vertical
+  // playhead line that travels through frames within the cell (see
+  // `playheadLine` below).
   cellPlayhead: {
     borderColor: vscode.focusRing,
-    borderWidth: 2,
-    boxShadow: `inset 0 3px 0 0 ${vscode.focusRing}`,
+  },
+  // Vertical line overlaid on the track at the playhead's pixel
+  // position. Travels through sub-frames of held groups (since each
+  // duplicate is a full CELL_BASE wide), so a ×3 hold visibly ticks
+  // 3 positions across the cell as it plays.
+  playheadLine: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    width: 2,
+    backgroundColor: vscode.focusRing,
+    pointerEvents: 'none',
+    boxShadow: `0 0 4px ${vscode.focusRing}`,
   },
   badge: {
     position: 'absolute',
@@ -187,47 +206,6 @@ const s = stylex.create({
     color: vscode.fg,
     fontStyle: 'normal',
   },
-  // Wrapper that combines the track + the transport bar so the body
-  // can render both at once. Track grows; transport stays compact.
-  bodyWrap: {
-    display: 'flex',
-    flexDirection: 'column',
-    height: '100%',
-    minHeight: 0,
-    gap: space.xs,
-  },
-  trackArea: {
-    flex: 1,
-    minHeight: 0,
-    overflow: 'hidden',
-  },
-  transport: {
-    flexShrink: 0,
-    height: 18,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: space.xs,
-    backgroundColor: vscode.panelBg,
-    borderTopWidth: 1,
-    borderTopStyle: 'solid',
-    borderTopColor: vscode.panelBorder,
-  },
-  transportBtn: {
-    display: 'inline-flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    width: 18,
-    height: 18,
-    padding: 0,
-    borderWidth: 0,
-    borderRadius: radius.sm,
-    backgroundColor: { default: 'transparent', ':hover': vscode.bg },
-    color: vscode.fg,
-    cursor: 'pointer',
-    fontFamily: vscode.monoFontFamily,
-    fontSize: '11px',
-  },
 })
 
 export function AnimationTimeline({
@@ -237,12 +215,10 @@ export function AnimationTimeline({
   atlasSize,
   density,
   playheadGroupIndex,
+  playhead,
   onSeekGroup,
   onChangeHold,
   onDropFrames,
-  onSeekFrameStart,
-  onSeekFrameEnd,
-  onSeekFrameRel,
 }: AnimationTimelineProps) {
   const groups = useMemo(() => groupCells(frames), [frames])
 
@@ -316,114 +292,80 @@ export function AnimationTimeline({
 
   if (density === 'collapsed') return null
 
-  // Transport bar — common video-editor frame nav. Only rendered when
-  // there's an animation present (we already returned early for
-  // empty/collapsed) so the bar doesn't sit alone with no track.
-  const transport = (
-    <div {...stylex.props(s.transport)}>
-      <button
-        type="button"
-        {...stylex.props(s.transportBtn)}
-        onClick={onSeekFrameStart}
-        title="Skip to start"
-        aria-label="Skip to start"
-      >
-        <Icon name="debug-reverse-continue" />
-      </button>
-      <button
-        type="button"
-        {...stylex.props(s.transportBtn)}
-        onClick={() => onSeekFrameRel?.(-1)}
-        title="Previous frame"
-        aria-label="Previous frame"
-      >
-        <Icon name="triangle-left" />
-      </button>
-      <button
-        type="button"
-        {...stylex.props(s.transportBtn)}
-        onClick={() => onSeekFrameRel?.(1)}
-        title="Next frame"
-        aria-label="Next frame"
-      >
-        <Icon name="triangle-right" />
-      </button>
-      <button
-        type="button"
-        {...stylex.props(s.transportBtn)}
-        onClick={onSeekFrameEnd}
-        title="Skip to end"
-        aria-label="Skip to end"
-      >
-        <Icon name="debug-continue" />
-      </button>
-    </div>
-  )
+  // Playhead pixel offset within the detail track. Sums the widths of
+  // every prior cell + the per-frame TRACK_GAP separator, then walks
+  // sub-frames inside the current group (each duplicate is one
+  // CELL_BASE wide so the line ticks one cell-step per frame).
+  const playheadPx = (() => {
+    let x = 0
+    for (let i = 0; i < playheadGroupIndex && i < groups.length; i++) {
+      x += groups[i]!.count * CELL_BASE + TRACK_GAP
+    }
+    const groupStart = groups[playheadGroupIndex]?.startIndex ?? 0
+    const subFrame = Math.max(0, playhead - groupStart)
+    x += subFrame * CELL_BASE
+    return x
+  })()
 
   if (density === 'dots') {
     return (
-      <div {...stylex.props(s.bodyWrap)}>
-        <div {...stylex.props(s.trackArea)}>
-          <div {...stylex.props(s.trackDots, isDragOver && s.trackOver)} {...dropTarget}>
-            {groups.map((g, idx) => (
-              <span
-                key={`${g.startIndex}-${g.name}`}
-                {...stylex.props(s.dot, g.count > 1 && s.dotHold, idx === playheadGroupIndex && s.dotPlayhead)}
-                style={g.count > 1 ? { width: 8 + (g.count - 1) * 6 } : undefined}
-                onClick={() => onSeekGroup(idx)}
-                title={`${g.name} ×${g.count}`}
-              />
-            ))}
-          </div>
-        </div>
-        {transport}
+      <div {...stylex.props(s.trackDots, isDragOver && s.trackOver)} {...dropTarget}>
+        {groups.map((g, idx) => (
+          <span
+            key={`${g.startIndex}-${g.name}`}
+            {...stylex.props(s.dot, g.count > 1 && s.dotHold, idx === playheadGroupIndex && s.dotPlayhead)}
+            style={g.count > 1 ? { width: 8 + (g.count - 1) * 6 } : undefined}
+            onClick={() => onSeekGroup(idx)}
+            title={`${g.name} ×${g.count}`}
+          />
+        ))}
       </div>
     )
   }
 
   // detail
   return (
-    <div {...stylex.props(s.bodyWrap)}>
-      <div {...stylex.props(s.trackArea)}>
-        <div {...stylex.props(s.trackDetail, isDragOver && s.trackOver)} {...dropTarget}>
-          {groups.map((g, idx) => {
-            const rect = rectsByName[g.name]
-            const renderCount =
-              dragPreview && dragPreview.groupIndex === idx ? dragPreview.count : g.count
-            const width = CELL_BASE + (renderCount - 1) * CELL_HOLD_PER_DUP
-            const bgStyle: CSSProperties = {}
-            if (rect && atlasImageUri && atlasSize) {
-              const scale = Math.min(CELL_BASE / rect.w, CELL_BASE / rect.h)
-              bgStyle.backgroundImage = `url(${atlasImageUri})`
-              bgStyle.backgroundSize = `${atlasSize.w * scale}px ${atlasSize.h * scale}px`
-              const offX = (CELL_BASE - rect.w * scale) / 2 - rect.x * scale
-              const offY = (CELL_BASE - rect.h * scale) / 2 - rect.y * scale
-              bgStyle.backgroundPosition = `${offX}px ${offY}px`
-            }
-            return (
+    <div {...stylex.props(s.trackDetail, isDragOver && s.trackOver)} {...dropTarget}>
+      {groups.map((g, idx) => {
+        const rect = rectsByName[g.name]
+        const renderCount =
+          dragPreview && dragPreview.groupIndex === idx ? dragPreview.count : g.count
+        const width = CELL_BASE * renderCount
+        const bgStyle: CSSProperties = {}
+        if (rect && atlasImageUri && atlasSize) {
+          const scale = Math.min(CELL_BASE / rect.w, CELL_BASE / rect.h)
+          bgStyle.backgroundImage = `url(${atlasImageUri})`
+          bgStyle.backgroundSize = `${atlasSize.w * scale}px ${atlasSize.h * scale}px`
+          // Center the sprite inside the FIRST sub-cell — the rest of
+          // the held cell stays an empty extension so the duplication
+          // reads as "this frame is held for N steps", not "N copies
+          // of the sprite".
+          const offX = (CELL_BASE - rect.w * scale) / 2 - rect.x * scale
+          const offY = (CELL_BASE - rect.h * scale) / 2 - rect.y * scale
+          bgStyle.backgroundPosition = `${offX}px ${offY}px`
+        }
+        return (
+          <div
+            key={`${g.startIndex}-${g.name}`}
+            {...stylex.props(s.cell, idx === playheadGroupIndex && s.cellPlayhead)}
+            style={{ width, ...bgStyle }}
+            onClick={() => onSeekGroup(idx)}
+            title={`${g.name}${renderCount > 1 ? ` ×${renderCount}` : ''}`}
+          >
+            {renderCount > 1 ? <span {...stylex.props(s.badge)}>×{renderCount}</span> : null}
+            {onChangeHold ? (
               <div
-                key={`${g.startIndex}-${g.name}`}
-                {...stylex.props(s.cell, idx === playheadGroupIndex && s.cellPlayhead)}
-                style={{ width, ...bgStyle }}
-                onClick={() => onSeekGroup(idx)}
-                title={`${g.name}${renderCount > 1 ? ` ×${renderCount}` : ''}`}
-              >
-                {renderCount > 1 ? <span {...stylex.props(s.badge)}>×{renderCount}</span> : null}
-                {onChangeHold ? (
-                  <div
-                    {...stylex.props(s.edgeGrab)}
-                    onPointerDown={onEdgePointerDown(idx, g.count)}
-                    onPointerMove={onEdgePointerMove}
-                    onPointerUp={onEdgePointerUp}
-                    onPointerCancel={onEdgePointerCancel}
-                  />
-                ) : null}
-              </div>
-            )
-          })}
-        </div>
-      </div>
-      {transport}
+                {...stylex.props(s.edgeGrab)}
+                onPointerDown={onEdgePointerDown(idx, g.count)}
+                onPointerMove={onEdgePointerMove}
+                onPointerUp={onEdgePointerUp}
+                onPointerCancel={onEdgePointerCancel}
+              />
+            ) : null}
+          </div>
+        )
+      })}
+      <div {...stylex.props(s.playheadLine)} style={{ left: playheadPx }} aria-hidden="true" />
     </div>
   )
 }
