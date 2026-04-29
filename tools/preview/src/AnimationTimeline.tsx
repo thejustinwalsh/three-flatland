@@ -1,4 +1,4 @@
-import { useMemo, useRef, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react'
+import { useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { vscode } from '@three-flatland/design-system/tokens/vscode-theme.stylex'
 import { space } from '@three-flatland/design-system/tokens/space.stylex'
@@ -151,6 +151,31 @@ const s = stylex.create({
     fontStyle: 'italic',
     paddingBlock: space.lg,
     paddingInline: space.md,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: '100%',
+    boxSizing: 'border-box',
+    textAlign: 'center',
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: 'transparent',
+    borderRadius: radius.sm,
+  },
+  // Drop-target hover treatment: focus-ring tint that wraps around
+  // whichever track the body's currently rendering. Applied to all
+  // three densities so the affordance reads no matter what mode the
+  // user has the drawer in.
+  trackOver: {
+    backgroundColor: 'rgba(108, 200, 255, 0.08)',
+    boxShadow: `inset 0 0 0 1px ${vscode.focusRing}`,
+    borderRadius: radius.sm,
+  },
+  emptyOver: {
+    borderColor: vscode.focusRing,
+    backgroundColor: 'rgba(108, 200, 255, 0.08)',
+    color: vscode.fg,
+    fontStyle: 'normal',
   },
 })
 
@@ -167,12 +192,16 @@ export function AnimationTimeline({
 }: AnimationTimelineProps) {
   const groups = useMemo(() => groupCells(frames), [frames])
 
-  // Accept frames panel + canvas-rect drags. v1 always appends — gap
-  // insertion indicators / between-cell drops are deferred per the
-  // spec's out-of-scope list.
+  // Hover-highlight while a drag is over the timeline. Drives the
+  // focus-ring border + tinted background on whichever sub-track
+  // (detail / dots / empty) is currently rendering.
+  const [isDragOver, setIsDragOver] = useState(false)
   const dropTarget = useDragTarget({
     accept: ['frames-panel', 'canvas-rect'],
+    onEnter: () => setIsDragOver(true),
+    onLeave: () => setIsDragOver(false),
     onDrop: (payload) => {
+      setIsDragOver(false)
       if (payload.frameNames.length === 0) return
       onDropFrames?.(frames.length, payload.frameNames)
     },
@@ -204,8 +233,10 @@ export function AnimationTimeline({
 
   if (frames.length === 0) {
     return (
-      <div {...stylex.props(s.empty)} {...dropTarget}>
-        Drag frames here, or select frames in the Frames panel and click + again to populate.
+      <div {...stylex.props(s.empty, isDragOver && s.emptyOver)} {...dropTarget}>
+        {isDragOver
+          ? 'Drop to create an animation'
+          : 'Drag frames here, or select frames in the Frames panel and click + again to populate.'}
       </div>
     )
   }
@@ -214,7 +245,7 @@ export function AnimationTimeline({
 
   if (density === 'dots') {
     return (
-      <div {...stylex.props(s.trackDots)} {...dropTarget}>
+      <div {...stylex.props(s.trackDots, isDragOver && s.trackOver)} {...dropTarget}>
         {groups.map((g, idx) => (
           <span
             key={`${g.startIndex}-${g.name}`}
@@ -230,7 +261,7 @@ export function AnimationTimeline({
 
   // detail
   return (
-    <div {...stylex.props(s.trackDetail)} {...dropTarget}>
+    <div {...stylex.props(s.trackDetail, isDragOver && s.trackOver)} {...dropTarget}>
       {groups.map((g, idx) => {
         const rect = rectsByName[g.name]
         const width = CELL_BASE + (g.count - 1) * CELL_HOLD_PER_DUP

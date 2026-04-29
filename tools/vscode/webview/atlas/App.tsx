@@ -740,35 +740,69 @@ export function App() {
   const animationNames = useMemo(() => Object.keys(animations).sort(), [animations])
   const activeAnim = activeAnimation ? animations[activeAnimation] ?? null : null
 
+  /**
+   * Pick a default name for a new animation from the seed frames'
+   * shared prefix(es). Single shared prefix → use it (e.g.
+   * `idle_*` → "idle"). Multiple distinct prefixes → join them with
+   * `_` (e.g. `idle_*` + `walk_*` → "idle_walk"). Fall back to
+   * `anim_N` when no prefix can be deduced or the deduced name
+   * collides with an existing animation.
+   */
+  const deduceAnimationName = useCallback(
+    (frameNames: readonly string[], existing: Record<string, Animation>): string => {
+      const prefixes: string[] = []
+      const seen = new Set<string>()
+      for (const n of frameNames) {
+        const p = n.replace(/_\d+$/, '')
+        if (p.length === 0) continue
+        if (seen.has(p)) continue
+        seen.add(p)
+        prefixes.push(p)
+      }
+      let name = ''
+      if (prefixes.length === 1) name = prefixes[0]!
+      else if (prefixes.length > 1) name = prefixes.join('_')
+      if (name === '' || existing[name]) {
+        let i = 1
+        while (existing[`anim_${i}`]) i++
+        name = `anim_${i}`
+      }
+      return name
+    },
+    [],
+  )
+
+  /**
+   * Create a new animation pre-populated with `frameNames`. Used by
+   * the drawer header `+` (seeds from current Frames-panel selection)
+   * and by the timeline's drop target when no animation exists yet.
+   * Switches the dropdown to the new animation and auto-expands the
+   * drawer. Returns the name that was created.
+   */
+  const handleCreateAnimationFromFrames = useCallback((frameNames: readonly string[]): string => {
+    let createdName = ''
+    setAnimations((prev) => {
+      createdName = deduceAnimationName(frameNames, prev)
+      return {
+        ...prev,
+        [createdName]: { frames: [...frameNames], fps: 12, loop: true, pingPong: false },
+      }
+    })
+    if (createdName) setActiveAnimation(createdName)
+    if (!prefs.animDrawerExpanded) prefsStore.set({ animDrawerExpanded: true })
+    return createdName
+  }, [deduceAnimationName, prefs.animDrawerExpanded])
+
   const handleCreateAnimation = useCallback(() => {
-    // Use selected named frames if any, else seed empty.
+    // Header `+` seeds from the current Frames-panel selection (in
+    // selection-insertion order). Empty selection → empty animation.
     const seedFrames = Array.from(selectedIds)
       .map((id) => rects.find((r) => r.id === id))
       .filter((r): r is Rect => r != null)
       .map((r) => r.name ?? '')
       .filter((n) => n.length > 0)
-
-    // Default name: single-folder prefix, else anim_N.
-    let name = 'anim_1'
-    if (seedFrames.length > 0) {
-      const prefixes = new Set(seedFrames.map((n) => n.replace(/_\d+$/, '')))
-      if (prefixes.size === 1) {
-        const prefix = [...prefixes][0]!
-        if (prefix.length > 0 && !animations[prefix]) name = prefix
-      }
-    }
-    if (animations[name]) {
-      let i = 1
-      while (animations[`anim_${i}`]) i++
-      name = `anim_${i}`
-    }
-    setAnimations((prev) => ({
-      ...prev,
-      [name]: { frames: seedFrames, fps: 12, loop: true, pingPong: false },
-    }))
-    setActiveAnimation(name)
-    if (!prefs.animDrawerExpanded) prefsStore.set({ animDrawerExpanded: true })
-  }, [animations, prefs.animDrawerExpanded, rects, selectedIds])
+    handleCreateAnimationFromFrames(seedFrames)
+  }, [rects, selectedIds, handleCreateAnimationFromFrames])
 
   const handleDeleteAnimation = useCallback((name: string) => {
     setAnimations((prev) => {
@@ -1594,29 +1628,30 @@ export function App() {
               />
             }
             body={(density) => (
-              activeAnim ? (
-                <AnimationTimeline
-                  frames={activeAnim.frames}
-                  rectsByName={rectsByName}
-                  atlasImageUri={payload?.imageUri ?? null}
-                  atlasSize={imageSize}
-                  density={density}
-                  playheadGroupIndex={frameIndexToGroupIndex(activeAnim.frames, playback.playhead)}
-                  onSeekGroup={(g) => {
-                    const groups = groupCells(activeAnim.frames)
-                    const target = groups[g]
-                    if (target) animationStore.seek(target.startIndex)
-                  }}
-                  onChangeHold={handleChangeHold}
-                  onDropFrames={(_idx, names) => handleAppendFramesToActiveAnim(names)}
-                />
-              ) : (
-                <div style={{ color: 'var(--vscode-descriptionForeground)', fontFamily: 'monospace', fontSize: 10, padding: 8 }}>
-                  {animationNames.length === 0
-                    ? 'Click ＋ to create an animation. Select frames first to seed it.'
-                    : 'Select an animation from the dropdown'}
-                </div>
-              )
+              <AnimationTimeline
+                frames={activeAnim?.frames ?? []}
+                rectsByName={rectsByName}
+                atlasImageUri={payload?.imageUri ?? null}
+                atlasSize={imageSize}
+                density={density}
+                playheadGroupIndex={
+                  activeAnim ? frameIndexToGroupIndex(activeAnim.frames, playback.playhead) : 0
+                }
+                onSeekGroup={(g) => {
+                  if (!activeAnim) return
+                  const groups = groupCells(activeAnim.frames)
+                  const target = groups[g]
+                  if (target) animationStore.seek(target.startIndex)
+                }}
+                onChangeHold={handleChangeHold}
+                onDropFrames={(_idx, names) => {
+                  // No active animation yet → auto-create one with the
+                  // dropped frames; deducing a name from their shared
+                  // prefix(es). Otherwise append into the active anim.
+                  if (activeAnimation) handleAppendFramesToActiveAnim(names)
+                  else handleCreateAnimationFromFrames(names)
+                }}
+              />
             )}
           />
           </div>
