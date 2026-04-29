@@ -43,3 +43,9 @@ export {
   type DragSourceKind,
   type DragState,
 } from './dragKit'
+export {
+  AnimationDrawer,
+  densityForHeight,
+  type AnimationDrawerProps,
+  type AnimationDrawerDensity,
+} from './AnimationDrawer'

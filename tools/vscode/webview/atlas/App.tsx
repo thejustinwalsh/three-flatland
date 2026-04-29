@@ -21,6 +21,7 @@ import {
   useCssVar,
 } from '@three-flatland/design-system'
 import {
+  AnimationDrawer,
   AutoDetectOverlay,
   CanvasStage,
   GridSliceOverlay,
@@ -1165,7 +1166,8 @@ export function App() {
         {...stylex.props(s.workArea, s.workAreaCols(framesPx))}
       >
         <Panel title="Atlas" headerActions={<AtlasMenu prefs={prefs} />}>
-          <div {...stylex.props(s.previewWrap)}>
+          <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
+          <div {...stylex.props(s.previewWrap)} style={{ flex: 1, minHeight: 0 }}>
             <CanvasStage
               imageUri={payload?.imageUri ?? null}
               background={editorBg}
@@ -1226,6 +1228,32 @@ export function App() {
                 />
               ) : null}
             </CanvasStage>
+          </div>
+          <AnimationDrawer
+            expanded={prefs.animDrawerExpanded}
+            height={prefs.animDrawerHeight}
+            onHeightChange={(h) => prefsStore.set({ animDrawerHeight: h })}
+            header={
+              <div style={{ padding: '4px 8px', fontSize: 11, color: 'var(--vscode-panelTitle-activeForeground)' }}>
+                <button
+                  type="button"
+                  onClick={() => prefsStore.set({ animDrawerExpanded: !prefs.animDrawerExpanded })}
+                  style={{ background: 'transparent', border: 0, color: 'inherit', cursor: 'pointer', padding: 0, marginRight: 6 }}
+                  aria-label={prefs.animDrawerExpanded ? 'Collapse animations' : 'Expand animations'}
+                >
+                  {prefs.animDrawerExpanded ? '▼' : '▶'}
+                </button>
+                <span style={{ textTransform: 'uppercase', letterSpacing: '0.04em', fontWeight: 600 }}>
+                  Animations (placeholder)
+                </span>
+              </div>
+            }
+            body={(density) => (
+              <div style={{ color: 'var(--vscode-descriptionForeground)', fontFamily: 'monospace', fontSize: 10 }}>
+                density: {density} · height: {prefs.animDrawerHeight}px (placeholder body — Task 7)
+              </div>
+            )}
+          />
           </div>
         </Panel>
 
