@@ -43,34 +43,6 @@ export function AnimationRectHighlight({ rect }: AnimationRectHighlightProps) {
         vectorEffect="non-scaling-stroke"
         shapeRendering="crispEdges"
       />
-      {/* Corner ticks — same color, placed just outside the corners.
-          Reads as a "marked frame" without obscuring the rect's edge
-          chrome from RectOverlay underneath. */}
-      {[
-        // top-left
-        { x1: rect.x - 2, y1: rect.y, x2: rect.x + 6, y2: rect.y, vert: false },
-        { x1: rect.x, y1: rect.y - 2, x2: rect.x, y2: rect.y + 6, vert: true },
-        // top-right
-        { x1: rect.x + rect.w - 6, y1: rect.y, x2: rect.x + rect.w + 2, y2: rect.y, vert: false },
-        { x1: rect.x + rect.w, y1: rect.y - 2, x2: rect.x + rect.w, y2: rect.y + 6, vert: true },
-        // bottom-right
-        { x1: rect.x + rect.w - 6, y1: rect.y + rect.h, x2: rect.x + rect.w + 2, y2: rect.y + rect.h, vert: false },
-        { x1: rect.x + rect.w, y1: rect.y + rect.h - 6, x2: rect.x + rect.w, y2: rect.y + rect.h + 2, vert: true },
-        // bottom-left
-        { x1: rect.x - 2, y1: rect.y + rect.h, x2: rect.x + 6, y2: rect.y + rect.h, vert: false },
-        { x1: rect.x, y1: rect.y + rect.h - 6, x2: rect.x, y2: rect.y + rect.h + 2, vert: true },
-      ].map((t, i) => (
-        <line
-          key={i}
-          x1={t.x1}
-          y1={t.y1}
-          x2={t.x2}
-          y2={t.y2}
-          stroke={stroke}
-          strokeWidth={2.5}
-          vectorEffect="non-scaling-stroke"
-        />
-      ))}
     </svg>
   )
 }
