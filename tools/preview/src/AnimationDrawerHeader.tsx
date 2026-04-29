@@ -80,7 +80,10 @@ const s = stylex.create({
     gap: space.sm,
     flexShrink: 0,
   },
-  clusterDestructive: {
+  // Same as `cluster` but with a section-break gap from the cluster
+  // before it. Used for the playback + destructive clusters so they
+  // both sit right-aligned with a consistent visual rhythm.
+  clusterSpaced: {
     display: 'inline-flex',
     alignItems: 'center',
     gap: space.sm,
@@ -227,10 +230,10 @@ export function AnimationDrawerHeader(props: AnimationDrawerHeaderProps) {
         </div>
       ) : null}
 
-      <span {...stylex.props(s.spacer)} />
-
-      {/* Playback cluster — transport, fps, loop, ping-pong. */}
-      <div {...stylex.props(s.cluster)}>
+      {/* Playback cluster — transport, fps, loop, ping-pong. Sits
+          beside the center cluster on the right, with a section break
+          gap matching the destructive cluster below. */}
+      <div {...stylex.props(s.clusterSpaced)}>
         <button
           type="button"
           {...stylex.props(s.iconBtn, !hasActive && s.iconBtnDisabled)}
@@ -280,7 +283,7 @@ export function AnimationDrawerHeader(props: AnimationDrawerHeaderProps) {
       {/* Destructive cluster — create / delete animations. Slightly more
           space from the playback cluster so the two read as separate
           intents. */}
-      <div {...stylex.props(s.clusterDestructive)}>
+      <div {...stylex.props(s.clusterSpaced)}>
         <button
           type="button"
           {...stylex.props(s.iconBtn)}
