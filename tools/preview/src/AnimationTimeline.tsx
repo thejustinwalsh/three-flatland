@@ -118,20 +118,17 @@ const s = stylex.create({
     display: 'flex',
   },
   // Inner sprite tile — one of these per held duplicate. Width =
-  // CELL_BASE; the cell's outer width is CELL_BASE * count, so the
-  // tiles fill the cell exactly. Sprite is centered inside each tile
-  // via background-position so a ×6 hold reads as 6 visible
-  // thumbnails of the same frame.
+  // CELL_BASE; the cell's inner content area is exactly CELL_BASE *
+  // count wide (we add the cell's 1px L+R border to the cell's
+  // declared width so the inner area matches), so the tiles fill the
+  // cell with no slack and the last tile is the same width as the
+  // rest. Sprite is centered inside each tile via background-position
+  // so a ×6 hold reads as 6 visible thumbnails of the same frame.
   cellTile: {
     width: CELL_BASE,
     height: '100%',
     backgroundRepeat: 'no-repeat',
     flexShrink: 0,
-  },
-  cellTileBordered: {
-    borderLeftWidth: 1,
-    borderLeftStyle: 'solid',
-    borderLeftColor: vscode.panelBorder,
   },
   // Playhead cell: focus-ring border. Subtle on its own — the
   // primary "where am I in the animation" cue is the vertical
@@ -309,15 +306,17 @@ export function AnimationTimeline({
 
   if (density === 'collapsed') return null
 
-  // Playhead pixel offset within the detail track. Sums the widths of
-  // every prior cell + the per-frame TRACK_GAP separator, then walks
-  // sub-frames inside the current group (each duplicate is one
-  // CELL_BASE wide so the line ticks one cell-step per frame).
+  // Playhead pixel offset within the detail track. Each cell's outer
+  // width is `count * CELL_BASE + 2` (inner tiles + L/R border).
+  // Stride between cells is outer + TRACK_GAP. Within the current
+  // cell, skip the 1px left border, then walk sub-frames at one
+  // CELL_BASE per frame.
   const playheadPx = (() => {
     let x = 0
     for (let i = 0; i < playheadGroupIndex && i < groups.length; i++) {
-      x += groups[i]!.count * CELL_BASE + TRACK_GAP
+      x += groups[i]!.count * CELL_BASE + 2 + TRACK_GAP
     }
+    x += 1 // skip the playhead cell's left border to align with inner content
     const groupStart = groups[playheadGroupIndex]?.startIndex ?? 0
     const subFrame = Math.max(0, playhead - groupStart)
     x += subFrame * CELL_BASE
@@ -347,7 +346,10 @@ export function AnimationTimeline({
         const rect = rectsByName[g.name]
         const renderCount =
           dragPreview && dragPreview.groupIndex === idx ? dragPreview.count : g.count
-        const width = CELL_BASE * renderCount
+        // +2 = the cell's 1px L + 1px R border. With box-sizing:
+        // border-box this means the inner content area is exactly
+        // CELL_BASE * count wide so all tiles render at full size.
+        const width = CELL_BASE * renderCount + 2
         // Pre-compute the per-tile sprite-sheet positioning. Each
         // tile is its own background paint of the same frame so a
         // ×6 hold renders as 6 visible thumbnails — the user reads
@@ -372,7 +374,7 @@ export function AnimationTimeline({
             {Array.from({ length: renderCount }).map((_, tileIdx) => (
               <span
                 key={tileIdx}
-                {...stylex.props(s.cellTile, tileIdx > 0 && s.cellTileBordered)}
+                {...stylex.props(s.cellTile)}
                 style={tileBg}
                 aria-hidden="true"
               />
