@@ -69,16 +69,26 @@ const s = stylex.create({
     fontWeight: 600,
   },
   spacer: { flex: 1 },
-  // Right cluster — every interactive control sits here, never inline
-  // with the title.
-  controls: {
+  // Cluster wrappers — header content sits in three groups separated by
+  // flex spacers so the visual rhythm reads "title · current animation
+  // · playback knobs · animation lifecycle". Each group has a tight
+  // internal gap; the larger gap between playback knobs and the
+  // destructive cluster is the only "section break" we need.
+  cluster: {
     display: 'inline-flex',
     alignItems: 'center',
     gap: space.sm,
     flexShrink: 0,
   },
+  clusterDestructive: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: space.sm,
+    flexShrink: 0,
+    marginInlineStart: space.lg,
+  },
   selectWrap: {
-    minWidth: 110,
+    width: 80,
   },
   // Hand-rolled icon button — matches AtlasMenu's trigger sizing so the
   // header height stays consistent with sibling Panel headers.
@@ -175,9 +185,11 @@ export function AnimationDrawerHeader(props: AnimationDrawerHeaderProps) {
 
       <span {...stylex.props(s.spacer)} />
 
-      <div {...stylex.props(s.controls)}>
-        {animationNames.length > 0 ? (
-          renameDraft != null ? (
+      {/* Center cluster — current animation + rename, only present when
+          there's something to select. */}
+      {animationNames.length > 0 ? (
+        <div {...stylex.props(s.cluster)}>
+          {renameDraft != null ? (
             <input
               {...stylex.props(s.renameInput)}
               autoFocus
@@ -200,21 +212,25 @@ export function AnimationDrawerHeader(props: AnimationDrawerHeaderProps) {
                 ))}
               </SingleSelect>
             </span>
-          )
-        ) : null}
+          )}
+          {hasActive ? (
+            <button
+              type="button"
+              {...stylex.props(s.iconBtn)}
+              onClick={() => activeAnimation && setRenameDraft(activeAnimation)}
+              title="Rename animation"
+              aria-label="Rename animation"
+            >
+              <Icon name="edit" />
+            </button>
+          ) : null}
+        </div>
+      ) : null}
 
-        {hasActive ? (
-          <button
-            type="button"
-            {...stylex.props(s.iconBtn)}
-            onClick={() => activeAnimation && setRenameDraft(activeAnimation)}
-            title="Rename animation"
-            aria-label="Rename animation"
-          >
-            <Icon name="edit" />
-          </button>
-        ) : null}
+      <span {...stylex.props(s.spacer)} />
 
+      {/* Playback cluster — transport, fps, loop, ping-pong. */}
+      <div {...stylex.props(s.cluster)}>
         <button
           type="button"
           {...stylex.props(s.iconBtn, !hasActive && s.iconBtnDisabled)}
@@ -259,7 +275,12 @@ export function AnimationDrawerHeader(props: AnimationDrawerHeaderProps) {
         >
           <Icon name="arrow-swap" />
         </button>
+      </div>
 
+      {/* Destructive cluster — create / delete animations. Slightly more
+          space from the playback cluster so the two read as separate
+          intents. */}
+      <div {...stylex.props(s.clusterDestructive)}>
         <button
           type="button"
           {...stylex.props(s.iconBtn)}
