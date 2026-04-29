@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import * as stylex from '@stylexjs/stylex'
 import { vscode } from '../tokens/vscode-theme.stylex'
 import { space } from '../tokens/space.stylex'
@@ -69,11 +70,11 @@ const s = stylex.create({
     display: 'inline-flex',
     alignItems: 'center',
   },
+  // Portaled to document.body and positioned via fixed coordinates so
+  // ancestor `overflow: hidden` (Panel.shell) and tight drawer bounds
+  // can't clip it.
   popover: {
-    position: 'absolute',
-    top: 'calc(100% + 2px)',
-    left: 0,
-    minWidth: '100%',
+    position: 'fixed',
     maxHeight: 240,
     overflow: 'auto',
     backgroundColor: vscode.panelBg,
@@ -110,29 +111,74 @@ const s = stylex.create({
  * input; click opens a small popover with the options list. Closes on
  * outside click, Escape, or selection.
  */
+/** Estimate the popover's max height before measure so the flip math
+ *  can still pick a side on first render. Matches `s.popover.maxHeight`. */
+const POPOVER_MAX_HEIGHT = 240
+const POPOVER_GAP = 2
+
+type PopoverPlacement = {
+  top: number
+  left: number
+  width: number
+  /** Above or below the trigger — used to mirror the visual gap. */
+  side: 'above' | 'below'
+}
+
 export function CompactSelect<V extends string = string>(props: CompactSelectProps<V>) {
   const { value, options, onChange, width, disabled = false } = props
   const ariaLabel = props['aria-label']
   const [open, setOpen] = useState(false)
+  const [placement, setPlacement] = useState<PopoverPlacement | null>(null)
   const anchorRef = useRef<HTMLDivElement>(null)
+  const popoverRef = useRef<HTMLDivElement>(null)
+
+  // Recompute fixed-coord placement against the trigger's screen rect,
+  // flipping above the trigger when there's no room below. Cheap; runs
+  // on open + on viewport scroll/resize while open.
+  const recompute = useCallback(() => {
+    const el = anchorRef.current
+    if (!el) return
+    const rect = el.getBoundingClientRect()
+    const popH = popoverRef.current?.offsetHeight ?? POPOVER_MAX_HEIGHT
+    const spaceBelow = window.innerHeight - rect.bottom
+    const spaceAbove = rect.top
+    const flip = spaceBelow < popH + POPOVER_GAP && spaceAbove > spaceBelow
+    setPlacement({
+      top: flip ? rect.top - popH - POPOVER_GAP : rect.bottom + POPOVER_GAP,
+      left: rect.left,
+      width: rect.width,
+      side: flip ? 'above' : 'below',
+    })
+  }, [])
+
+  useLayoutEffect(() => {
+    if (!open) return
+    recompute()
+  }, [open, recompute])
 
   useEffect(() => {
     if (!open) return
     const onDocClick = (e: MouseEvent) => {
-      if (!anchorRef.current) return
-      if (anchorRef.current.contains(e.target as Node)) return
+      const target = e.target as Node
+      if (anchorRef.current?.contains(target)) return
+      if (popoverRef.current?.contains(target)) return
       setOpen(false)
     }
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') setOpen(false)
     }
+    const onReflow = () => recompute()
     document.addEventListener('mousedown', onDocClick)
     document.addEventListener('keydown', onKey)
+    window.addEventListener('resize', onReflow)
+    window.addEventListener('scroll', onReflow, true)
     return () => {
       document.removeEventListener('mousedown', onDocClick)
       document.removeEventListener('keydown', onKey)
+      window.removeEventListener('resize', onReflow)
+      window.removeEventListener('scroll', onReflow, true)
     }
-  }, [open])
+  }, [open, recompute])
 
   const activeOption = options.find((o) => o.value === value)
   const activeLabel = activeOption?.label ?? activeOption?.value ?? ''
@@ -154,32 +200,44 @@ export function CompactSelect<V extends string = string>(props: CompactSelectPro
           <Icon name="chevron-down" />
         </span>
       </button>
-      {open && !disabled ? (
-        <div role="listbox" {...stylex.props(s.popover)}>
-          {options.map((opt) => (
+      {open && !disabled && placement
+        ? createPortal(
             <div
-              key={opt.value}
-              role="option"
-              aria-selected={opt.value === value}
-              tabIndex={0}
-              {...stylex.props(s.option, opt.value === value && s.optionActive)}
-              onClick={() => {
-                onChange(opt.value)
-                setOpen(false)
-              }}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                  e.preventDefault()
-                  onChange(opt.value)
-                  setOpen(false)
-                }
+              ref={popoverRef}
+              role="listbox"
+              {...stylex.props(s.popover)}
+              style={{
+                top: placement.top,
+                left: placement.left,
+                minWidth: placement.width,
               }}
             >
-              {opt.label ?? opt.value}
-            </div>
-          ))}
-        </div>
-      ) : null}
+              {options.map((opt) => (
+                <div
+                  key={opt.value}
+                  role="option"
+                  aria-selected={opt.value === value}
+                  tabIndex={0}
+                  {...stylex.props(s.option, opt.value === value && s.optionActive)}
+                  onClick={() => {
+                    onChange(opt.value)
+                    setOpen(false)
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault()
+                      onChange(opt.value)
+                      setOpen(false)
+                    }
+                  }}
+                >
+                  {opt.label ?? opt.value}
+                </div>
+              ))}
+            </div>,
+            document.body,
+          )
+        : null}
     </div>
   )
 }

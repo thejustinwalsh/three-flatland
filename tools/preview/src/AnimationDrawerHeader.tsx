@@ -38,16 +38,21 @@ const s = stylex.create({
   //
   // paddingBlock is intentionally thinner than Panel.header (1px vs
   // space.sm/4px). The drawer header carries real form controls
-  // (SingleSelect, NumberField) that are each ~22px tall; matching
-  // Panel.header's 4+4 padding around them would push the header to
-  // ~30px and tower over the sibling Atlas/Frames headers. With 1+1
-  // the form controls drive the height (~24px), close to the
-  // text-only Panel.header (~23px).
+  // (CompactSelect, NumberField) that are each up to ~22px tall;
+  // matching Panel.header's 4+4 padding around them would push the
+  // header to ~30px and tower over the sibling Atlas/Frames headers.
+  //
+  // paddingInline is asymmetric — left edge is tight (matches the
+  // VSCode pattern of toggleable panel headers where the chevron
+  // hugs the left edge with minimal inset), right edge keeps the
+  // standard space.xl so the destructive cluster doesn't clash with
+  // the rounded panel corner.
   bar: {
     display: 'flex',
     alignItems: 'center',
     gap: space.sm,
-    paddingInline: space.xl,
+    paddingInlineStart: space.sm,
+    paddingInlineEnd: space.xl,
     paddingBlock: '1px',
     borderBottomWidth: 1,
     borderBottomStyle: 'solid',
