@@ -1,4 +1,9 @@
 export { Button, type ButtonProps } from './primitives/Button'
+export {
+  CompactSelect,
+  type CompactSelectProps,
+  type CompactSelectOption,
+} from './primitives/CompactSelect'
 export { NumberField, type NumberFieldProps } from './primitives/NumberField'
 export { Panel, type PanelProps } from './primitives/Panel'
 export { Toolbar, type ToolbarProps } from './primitives/Toolbar'

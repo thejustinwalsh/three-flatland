@@ -1,6 +1,6 @@
 import { useState, type KeyboardEvent as ReactKeyboardEvent } from 'react'
 import * as stylex from '@stylexjs/stylex'
-import { Icon, NumberField, Option, SingleSelect } from '@three-flatland/design-system'
+import { CompactSelect, Icon, NumberField } from '@three-flatland/design-system'
 import { vscode } from '@three-flatland/design-system/tokens/vscode-theme.stylex'
 import { space } from '@three-flatland/design-system/tokens/space.stylex'
 import { radius } from '@three-flatland/design-system/tokens/radius.stylex'
@@ -97,9 +97,6 @@ const s = stylex.create({
     gap: space.sm,
     flexShrink: 0,
     marginInlineStart: space.lg,
-  },
-  selectWrap: {
-    width: 130,
   },
   // Hand-rolled icon button — matches AtlasMenu's trigger sizing so the
   // header height stays consistent with sibling Panel headers.
@@ -210,19 +207,13 @@ export function AnimationDrawerHeader(props: AnimationDrawerHeaderProps) {
               onKeyDown={onRenameKey}
             />
           ) : (
-            <span {...stylex.props(s.selectWrap)}>
-              <SingleSelect
-                value={activeAnimation ?? ''}
-                onChange={(e: Event) => {
-                  const target = e.target as HTMLElement & { value?: string }
-                  if (typeof target.value === 'string') onSelectAnimation(target.value)
-                }}
-              >
-                {animationNames.map((n) => (
-                  <Option key={n} value={n}>{n}</Option>
-                ))}
-              </SingleSelect>
-            </span>
+            <CompactSelect
+              value={activeAnimation ?? ''}
+              options={animationNames.map((n) => ({ value: n }))}
+              onChange={onSelectAnimation}
+              width={130}
+              aria-label="Active animation"
+            />
           )}
           {hasActive ? (
             <button
