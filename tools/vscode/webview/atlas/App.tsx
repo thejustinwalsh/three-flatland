@@ -1402,6 +1402,8 @@ export function App() {
                 onSelectionChange={inTool ? undefined : setSelectedIds}
                 onHoverChange={setHoveredRect}
                 showLabels={prefs.showFrameNumbers}
+                atlasImageUri={payload?.imageUri ?? null}
+                atlasSize={imageSize}
               />
               {mode.kind === 'slicing' ? (
                 <GridSliceOverlay

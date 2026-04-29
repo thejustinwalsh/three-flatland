@@ -110,11 +110,23 @@ export function useDrag(): DragApi {
 }
 
 /**
+ * Like `useDrag` but tolerates a missing DragProvider — returns null
+ * instead of throwing. Used by primitives (e.g. RectOverlay) that may
+ * be embedded in tools that don't host the drag kit yet, where the
+ * source behavior should silently no-op rather than blow up the tree.
+ */
+export function useOptionalDrag(): DragApi | null {
+  return useContext(DragContext)
+}
+
+/**
  * Hook for source elements. Returns a pointerdown handler. Caller passes
- * the payload + the atlas info needed to render the thumbnail.
+ * the payload + the atlas info needed to render the thumbnail. When no
+ * DragProvider is present, returns a no-op handler so consumers can
+ * call this unconditionally at the top of a component.
  */
 export function useDragSource() {
-  const api = useDrag()
+  const api = useOptionalDrag()
   return useCallback(
     (
       e: ReactPointerEvent<Element>,
@@ -125,6 +137,7 @@ export function useDragSource() {
         atlasSize: { w: number; h: number }
       },
     ) => {
+      if (!api) return
       e.preventDefault()
       api.start({ ...args, clientX: e.clientX, clientY: e.clientY })
     },
@@ -143,26 +156,27 @@ export function useDragTarget(opts: {
   onEnter?(payload: DragPayload): void
   onLeave?(): void
 }) {
-  const api = useDrag()
+  const api = useOptionalDrag()
   const isOverRef = useRef(false)
   const enter = useCallback(() => {
-    if (!api.state.payload) return
+    if (!api?.state.payload) return
     if (!opts.accept.includes(api.state.payload.kind)) return
     isOverRef.current = true
     opts.onEnter?.(api.state.payload)
-  }, [api.state.payload, opts])
+  }, [api?.state.payload, opts])
   const leave = useCallback(() => {
     if (!isOverRef.current) return
     isOverRef.current = false
     opts.onLeave?.()
   }, [opts])
   const drop = useCallback(() => {
-    if (!isOverRef.current || !api.state.payload) return
+    if (!api?.state.payload) return
+    if (!isOverRef.current) return
     if (!opts.accept.includes(api.state.payload.kind)) return
     isOverRef.current = false
     opts.onDrop(api.state.payload)
     opts.onLeave?.()
-  }, [api.state.payload, opts])
+  }, [api?.state.payload, opts])
   return {
     onPointerEnter: enter,
     onPointerLeave: leave,
