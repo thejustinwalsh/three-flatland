@@ -275,17 +275,58 @@ export function AnimationTimeline({
 }: AnimationTimelineProps) {
   const groups = useMemo(() => groupCells(frames), [frames])
 
-  // Smooth-lerp playhead. Held here so the hook calls run on every
-  // render — early returns below for empty / collapsed / dots tracks
-  // would otherwise change the hook count between renders (React #310).
-  // The ref attaches to the line element only in detail mode, but the
-  // effect itself is harmless when the ref is null.
+  // Hold drag-edge state — declared up here so the playhead effect
+  // below can fold the in-flight count into its line position.
+  const dragRef = useRef<{ groupIndex: number; startX: number; startCount: number } | null>(null)
+  const [dragPreview, setDragPreview] = useState<{ groupIndex: number; count: number } | null>(null)
+
+  // Hover-highlight while a drag is over the timeline. Drives the
+  // focus-ring border + tinted background on whichever sub-track
+  // (detail / dots / empty) is currently rendering.
+  const [isDragOver, setIsDragOver] = useState(false)
+
+  // During a hold drag the visible cell width grows / shrinks but
+  // the underlying frames array hasn't changed yet — so the line's
+  // pixel position has to be projected through the PREVIEW layout,
+  // not the committed one. effectiveGroups = groups with the
+  // dragged cell's count overridden; effectivePlayhead = playhead
+  // re-mapped to its same logical (group, posInGroup) under the
+  // new layout (clamped if the dragged cell shrunk past it).
+  const effectiveGroups = useMemo(() => {
+    if (!dragPreview) return groups
+    return groups.map((g, i) =>
+      i === dragPreview.groupIndex
+        ? { ...g, count: dragPreview.count }
+        : i > dragPreview.groupIndex
+        ? { ...g, startIndex: g.startIndex + (dragPreview.count - groups[dragPreview.groupIndex]!.count) }
+        : g,
+    )
+  }, [groups, dragPreview])
+  const projectPlayhead = (frameIndex: number): number => {
+    if (!dragPreview) return frameIndex
+    const dragGroup = groups[dragPreview.groupIndex]
+    if (!dragGroup) return frameIndex
+    const oldCount = dragGroup.count
+    const groupStart = dragGroup.startIndex
+    if (frameIndex < groupStart) return frameIndex
+    if (frameIndex < groupStart + oldCount) {
+      const posInGroup = frameIndex - groupStart
+      return groupStart + Math.min(posInGroup, dragPreview.count - 1)
+    }
+    return frameIndex + (dragPreview.count - oldCount)
+  }
+
+  // Smooth-lerp playhead. Held here (above any early returns) so the
+  // hook calls run on every render — empty / collapsed / dots paths
+  // would otherwise change the hook count between renders (React
+  // #310). The ref attaches in detail mode only; the effect is a
+  // no-op when ref.current is null.
   const lineRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
     const setLine = (frameIndex: number) => {
       const el = lineRef.current
       if (!el) return
-      el.style.transform = `translateX(${playheadFrameToPx(frameIndex, groups)}px)`
+      el.style.transform = `translateX(${playheadFrameToPx(projectPlayhead(frameIndex), effectiveGroups)}px)`
     }
     if (!isPlaying || !getSmoothPlayhead) {
       setLine(playhead)
@@ -298,12 +339,11 @@ export function AnimationTimeline({
     }
     raf = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(raf)
-  }, [isPlaying, getSmoothPlayhead, groups, playhead])
-
-  // Hover-highlight while a drag is over the timeline. Drives the
-  // focus-ring border + tinted background on whichever sub-track
-  // (detail / dots / empty) is currently rendering.
-  const [isDragOver, setIsDragOver] = useState(false)
+    // projectPlayhead is recreated each render but its identity
+    // change isn't meaningful — it closes over groups + dragPreview,
+    // both of which are in the deps below.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isPlaying, getSmoothPlayhead, effectiveGroups, playhead, dragPreview, groups])
   const dropTarget = useDragTarget({
     accept: ['frames-panel', 'canvas-rect'],
     onEnter: () => setIsDragOver(true),
@@ -315,13 +355,9 @@ export function AnimationTimeline({
     },
   })
 
-  // Hold drag-edge state. Lives here because the cell grab strip
-  // needs access to the same `groups` array we're rendering. Mirror
-  // into local state so the cell's width animates live during the
-  // drag — much clearer than waiting for commit on pointerup.
-  const dragRef = useRef<{ groupIndex: number; startX: number; startCount: number } | null>(null)
-  const [dragPreview, setDragPreview] = useState<{ groupIndex: number; count: number } | null>(null)
-
+  // Hold drag-edge handlers. dragRef + dragPreview state are
+  // declared at the top of the component so the playhead effect
+  // can fold the in-flight count into its line position.
   const onEdgePointerDown = (groupIndex: number, count: number) => (e: ReactPointerEvent<HTMLDivElement>) => {
     if (e.button !== 0) return
     e.stopPropagation()
