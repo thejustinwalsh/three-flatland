@@ -88,7 +88,7 @@ const s = stylex.create({
     marginInlineStart: space.lg,
   },
   selectWrap: {
-    width: 80,
+    width: 130,
   },
   // Hand-rolled icon button — matches AtlasMenu's trigger sizing so the
   // header height stays consistent with sibling Panel headers.
