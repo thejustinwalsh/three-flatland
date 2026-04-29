@@ -1,4 +1,4 @@
-import { Suspense, useEffect, useMemo, useRef } from 'react'
+import { Suspense, useEffect, useMemo } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { Canvas, extend, useLoader, useThree } from '@react-three/fiber/webgpu'
 import {
@@ -15,6 +15,7 @@ import type { Rect } from './RectOverlay'
 
 extend({ Sprite2D })
 
+/** Retained for back-compat callers; the PIP itself is pinned to TR. */
 export type PipCorner = 'tl' | 'tr' | 'br' | 'bl'
 
 export type AnimationPreviewPipProps = {
@@ -30,9 +31,6 @@ export type AnimationPreviewPipProps = {
   playhead: number
   isPlaying: boolean
   onTogglePlay(): void
-  /** Current corner; click anywhere = hop to next corner. */
-  corner: PipCorner
-  onChangeCorner(next: PipCorner): void
   /**
    * Pixel-art filtering. When true, the shared atlas texture's
    * min/mag filter switches to `NearestFilter` (which propagates to
@@ -47,11 +45,6 @@ export type AnimationPreviewPipProps = {
    * over the area beneath it.
    */
   panMode?: boolean
-}
-
-const CORNERS: PipCorner[] = ['tl', 'tr', 'br', 'bl']
-function nextCorner(c: PipCorner): PipCorner {
-  return CORNERS[(CORNERS.indexOf(c) + 1) % CORNERS.length]!
 }
 
 const PIP_SIZE = 120
@@ -77,10 +70,11 @@ const s = stylex.create({
     userSelect: 'none',
     zIndex: 3,
   },
-  cornerTl: { top: PIP_INSET, left: PIP_INSET },
+  // PIP is pinned to the top-right of the canvas — every other
+  // corner conflicts with existing UI (InfoPanel, HoverFrameChip,
+  // zoom badge). Kept as a stylex variant to make a future "user-
+  // movable" mode trivial to add back.
   cornerTr: { top: PIP_INSET, right: PIP_INSET },
-  cornerBr: { bottom: PIP_INSET, right: PIP_INSET },
-  cornerBl: { bottom: PIP_INSET, left: PIP_INSET },
   body: {
     flex: 1,
     backgroundImage:
@@ -220,23 +214,11 @@ export function AnimationPreviewPip(props: AnimationPreviewPipProps) {
   const {
     animationName, frames, rectsByName, atlasImageUri, atlasSize,
     playhead, isPlaying, onTogglePlay,
-    corner, onChangeCorner,
     pixelArt = false,
     panMode = false,
   } = props
 
-  const onShellClickRef = useRef<((target: HTMLElement) => void) | null>(null)
-  onShellClickRef.current = (target) => {
-    if (target.closest('[data-pip-transport]')) return
-    onChangeCorner(nextCorner(corner))
-  }
-
   if (!animationName || frames.length === 0 || !atlasImageUri || !atlasSize) return null
-
-  const cornerStyle =
-    corner === 'tl' ? s.cornerTl :
-    corner === 'tr' ? s.cornerTr :
-    corner === 'br' ? s.cornerBr : s.cornerBl
 
   const currentName = frames[Math.min(playhead, frames.length - 1)]!
   const rect = rectsByName[currentName]
@@ -246,9 +228,7 @@ export function AnimationPreviewPip(props: AnimationPreviewPipProps) {
 
   return (
     <div
-      {...stylex.props(s.shell, cornerStyle)}
-      onClick={panMode ? undefined : (e) => onShellClickRef.current?.(e.target as HTMLElement)}
-      title={panMode ? undefined : 'Click to move corner'}
+      {...stylex.props(s.shell, s.cornerTr)}
       style={{
         opacity: panMode ? 0.25 : 1,
         pointerEvents: panMode ? 'none' : undefined,
