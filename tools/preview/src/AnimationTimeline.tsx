@@ -6,6 +6,7 @@ import { radius } from '@three-flatland/design-system/tokens/radius.stylex'
 import type { Rect } from './RectOverlay'
 import type { AnimationDrawerDensity } from './AnimationDrawer'
 import { useDragTarget } from './dragKit'
+import { Icon } from '@three-flatland/design-system'
 
 export type AnimationTimelineProps = {
   /** Frame names in playback order, with duplicates encoding hold counts. */
@@ -25,6 +26,10 @@ export type AnimationTimelineProps = {
   onSeekGroup(groupIndex: number): void
   /** Called with the new hold count for a group (Task 8). */
   onChangeHold?(groupIndex: number, nextCount: number): void
+  /** Frame-by-frame transport — stepBack / stepForward / first / last. */
+  onSeekFrameStart?(): void
+  onSeekFrameEnd?(): void
+  onSeekFrameRel?(delta: number): void
   /**
    * Called when one or more frames are dropped onto the timeline.
    * `insertIndex` is the position in the post-duplication frame
@@ -104,8 +109,13 @@ const s = stylex.create({
     flexShrink: 0,
     cursor: 'pointer',
   },
+  // Playhead cell: 2px focus-ring border + a top-edge accent strip so
+  // the active group reads at a glance even at small sizes. Inset
+  // shadow paints the strip so it doesn't shift surrounding layout.
   cellPlayhead: {
     borderColor: vscode.focusRing,
+    borderWidth: 2,
+    boxShadow: `inset 0 3px 0 0 ${vscode.focusRing}`,
   },
   badge: {
     position: 'absolute',
@@ -177,6 +187,47 @@ const s = stylex.create({
     color: vscode.fg,
     fontStyle: 'normal',
   },
+  // Wrapper that combines the track + the transport bar so the body
+  // can render both at once. Track grows; transport stays compact.
+  bodyWrap: {
+    display: 'flex',
+    flexDirection: 'column',
+    height: '100%',
+    minHeight: 0,
+    gap: space.xs,
+  },
+  trackArea: {
+    flex: 1,
+    minHeight: 0,
+    overflow: 'hidden',
+  },
+  transport: {
+    flexShrink: 0,
+    height: 18,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: space.xs,
+    backgroundColor: vscode.panelBg,
+    borderTopWidth: 1,
+    borderTopStyle: 'solid',
+    borderTopColor: vscode.panelBorder,
+  },
+  transportBtn: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: 18,
+    height: 18,
+    padding: 0,
+    borderWidth: 0,
+    borderRadius: radius.sm,
+    backgroundColor: { default: 'transparent', ':hover': vscode.bg },
+    color: vscode.fg,
+    cursor: 'pointer',
+    fontFamily: vscode.monoFontFamily,
+    fontSize: '11px',
+  },
 })
 
 export function AnimationTimeline({
@@ -189,6 +240,9 @@ export function AnimationTimeline({
   onSeekGroup,
   onChangeHold,
   onDropFrames,
+  onSeekFrameStart,
+  onSeekFrameEnd,
+  onSeekFrameRel,
 }: AnimationTimelineProps) {
   const groups = useMemo(() => groupCells(frames), [frames])
 
@@ -207,9 +261,12 @@ export function AnimationTimeline({
     },
   })
 
-  // Hold drag-edge state (Task 8). Lives here because the cell grab strip
-  // needs access to the same `groups` array we're rendering.
+  // Hold drag-edge state. Lives here because the cell grab strip
+  // needs access to the same `groups` array we're rendering. Mirror
+  // into local state so the cell's width animates live during the
+  // drag — much clearer than waiting for commit on pointerup.
   const dragRef = useRef<{ groupIndex: number; startX: number; startCount: number } | null>(null)
+  const [dragPreview, setDragPreview] = useState<{ groupIndex: number; count: number } | null>(null)
 
   const onEdgePointerDown = (groupIndex: number, count: number) => (e: ReactPointerEvent<HTMLDivElement>) => {
     if (e.button !== 0) return
@@ -217,6 +274,17 @@ export function AnimationTimeline({
     e.preventDefault()
     e.currentTarget.setPointerCapture(e.pointerId)
     dragRef.current = { groupIndex, startX: e.clientX, startCount: count }
+    setDragPreview({ groupIndex, count })
+  }
+  const onEdgePointerMove = (e: ReactPointerEvent<HTMLDivElement>) => {
+    if (!dragRef.current) return
+    const dx = e.clientX - dragRef.current.startX
+    const next = Math.max(1, dragRef.current.startCount + Math.round(dx / CELL_HOLD_PER_DUP))
+    setDragPreview((prev) =>
+      prev != null && prev.count === next
+        ? prev
+        : { groupIndex: dragRef.current!.groupIndex, count: next },
+    )
   }
   const onEdgePointerUp = (e: ReactPointerEvent<HTMLDivElement>) => {
     if (!dragRef.current) return
@@ -229,6 +297,11 @@ export function AnimationTimeline({
       onChangeHold?.(dragRef.current.groupIndex, next)
     }
     dragRef.current = null
+    setDragPreview(null)
+  }
+  const onEdgePointerCancel = () => {
+    dragRef.current = null
+    setDragPreview(null)
   }
 
   if (frames.length === 0) {
@@ -243,58 +316,114 @@ export function AnimationTimeline({
 
   if (density === 'collapsed') return null
 
+  // Transport bar — common video-editor frame nav. Only rendered when
+  // there's an animation present (we already returned early for
+  // empty/collapsed) so the bar doesn't sit alone with no track.
+  const transport = (
+    <div {...stylex.props(s.transport)}>
+      <button
+        type="button"
+        {...stylex.props(s.transportBtn)}
+        onClick={onSeekFrameStart}
+        title="Skip to start"
+        aria-label="Skip to start"
+      >
+        <Icon name="debug-reverse-continue" />
+      </button>
+      <button
+        type="button"
+        {...stylex.props(s.transportBtn)}
+        onClick={() => onSeekFrameRel?.(-1)}
+        title="Previous frame"
+        aria-label="Previous frame"
+      >
+        <Icon name="triangle-left" />
+      </button>
+      <button
+        type="button"
+        {...stylex.props(s.transportBtn)}
+        onClick={() => onSeekFrameRel?.(1)}
+        title="Next frame"
+        aria-label="Next frame"
+      >
+        <Icon name="triangle-right" />
+      </button>
+      <button
+        type="button"
+        {...stylex.props(s.transportBtn)}
+        onClick={onSeekFrameEnd}
+        title="Skip to end"
+        aria-label="Skip to end"
+      >
+        <Icon name="debug-continue" />
+      </button>
+    </div>
+  )
+
   if (density === 'dots') {
     return (
-      <div {...stylex.props(s.trackDots, isDragOver && s.trackOver)} {...dropTarget}>
-        {groups.map((g, idx) => (
-          <span
-            key={`${g.startIndex}-${g.name}`}
-            {...stylex.props(s.dot, g.count > 1 && s.dotHold, idx === playheadGroupIndex && s.dotPlayhead)}
-            style={g.count > 1 ? { width: 8 + (g.count - 1) * 6 } : undefined}
-            onClick={() => onSeekGroup(idx)}
-            title={`${g.name} ×${g.count}`}
-          />
-        ))}
+      <div {...stylex.props(s.bodyWrap)}>
+        <div {...stylex.props(s.trackArea)}>
+          <div {...stylex.props(s.trackDots, isDragOver && s.trackOver)} {...dropTarget}>
+            {groups.map((g, idx) => (
+              <span
+                key={`${g.startIndex}-${g.name}`}
+                {...stylex.props(s.dot, g.count > 1 && s.dotHold, idx === playheadGroupIndex && s.dotPlayhead)}
+                style={g.count > 1 ? { width: 8 + (g.count - 1) * 6 } : undefined}
+                onClick={() => onSeekGroup(idx)}
+                title={`${g.name} ×${g.count}`}
+              />
+            ))}
+          </div>
+        </div>
+        {transport}
       </div>
     )
   }
 
   // detail
   return (
-    <div {...stylex.props(s.trackDetail, isDragOver && s.trackOver)} {...dropTarget}>
-      {groups.map((g, idx) => {
-        const rect = rectsByName[g.name]
-        const width = CELL_BASE + (g.count - 1) * CELL_HOLD_PER_DUP
-        const bgStyle: CSSProperties = {}
-        if (rect && atlasImageUri && atlasSize) {
-          const scale = Math.min(CELL_BASE / rect.w, CELL_BASE / rect.h)
-          bgStyle.backgroundImage = `url(${atlasImageUri})`
-          bgStyle.backgroundSize = `${atlasSize.w * scale}px ${atlasSize.h * scale}px`
-          // Center the sprite inside the cell.
-          const offX = (CELL_BASE - rect.w * scale) / 2 - rect.x * scale
-          const offY = (CELL_BASE - rect.h * scale) / 2 - rect.y * scale
-          bgStyle.backgroundPosition = `${offX}px ${offY}px`
-        }
-        return (
-          <div
-            key={`${g.startIndex}-${g.name}`}
-            {...stylex.props(s.cell, idx === playheadGroupIndex && s.cellPlayhead)}
-            style={{ width, ...bgStyle }}
-            onClick={() => onSeekGroup(idx)}
-            title={`${g.name}${g.count > 1 ? ` ×${g.count}` : ''}`}
-          >
-            {g.count > 1 ? <span {...stylex.props(s.badge)}>×{g.count}</span> : null}
-            {onChangeHold ? (
+    <div {...stylex.props(s.bodyWrap)}>
+      <div {...stylex.props(s.trackArea)}>
+        <div {...stylex.props(s.trackDetail, isDragOver && s.trackOver)} {...dropTarget}>
+          {groups.map((g, idx) => {
+            const rect = rectsByName[g.name]
+            const renderCount =
+              dragPreview && dragPreview.groupIndex === idx ? dragPreview.count : g.count
+            const width = CELL_BASE + (renderCount - 1) * CELL_HOLD_PER_DUP
+            const bgStyle: CSSProperties = {}
+            if (rect && atlasImageUri && atlasSize) {
+              const scale = Math.min(CELL_BASE / rect.w, CELL_BASE / rect.h)
+              bgStyle.backgroundImage = `url(${atlasImageUri})`
+              bgStyle.backgroundSize = `${atlasSize.w * scale}px ${atlasSize.h * scale}px`
+              const offX = (CELL_BASE - rect.w * scale) / 2 - rect.x * scale
+              const offY = (CELL_BASE - rect.h * scale) / 2 - rect.y * scale
+              bgStyle.backgroundPosition = `${offX}px ${offY}px`
+            }
+            return (
               <div
-                {...stylex.props(s.edgeGrab)}
-                onPointerDown={onEdgePointerDown(idx, g.count)}
-                onPointerUp={onEdgePointerUp}
-                onPointerCancel={() => { dragRef.current = null }}
-              />
-            ) : null}
-          </div>
-        )
-      })}
+                key={`${g.startIndex}-${g.name}`}
+                {...stylex.props(s.cell, idx === playheadGroupIndex && s.cellPlayhead)}
+                style={{ width, ...bgStyle }}
+                onClick={() => onSeekGroup(idx)}
+                title={`${g.name}${renderCount > 1 ? ` ×${renderCount}` : ''}`}
+              >
+                {renderCount > 1 ? <span {...stylex.props(s.badge)}>×{renderCount}</span> : null}
+                {onChangeHold ? (
+                  <div
+                    {...stylex.props(s.edgeGrab)}
+                    onPointerDown={onEdgePointerDown(idx, g.count)}
+                    onPointerMove={onEdgePointerMove}
+                    onPointerUp={onEdgePointerUp}
+                    onPointerCancel={onEdgePointerCancel}
+                  />
+                ) : null}
+              </div>
+            )
+          })}
+        </div>
+      </div>
+      {transport}
     </div>
   )
 }

@@ -1642,6 +1642,24 @@ export function App() {
                   const groups = groupCells(activeAnim.frames)
                   const target = groups[g]
                   if (target) animationStore.seek(target.startIndex)
+                  // Clicking a timeline cell shifts focus to the
+                  // timeline; clear any lingering rect/folder
+                  // selection so a follow-up Backspace targets the
+                  // cell (handleRemoveGroup) instead of the
+                  // previously-selected rects (deleteSelected).
+                  if (selectedIds.size > 0) setSelectedIds(new Set())
+                  setFolderSelectionPrefix(null)
+                }}
+                onSeekFrameStart={() => animationStore.seek(0)}
+                onSeekFrameEnd={() => {
+                  if (!activeAnim) return
+                  animationStore.seek(activeAnim.frames.length - 1)
+                }}
+                onSeekFrameRel={(delta) => {
+                  if (!activeAnim) return
+                  const next = playback.playhead + delta
+                  const clamped = Math.max(0, Math.min(activeAnim.frames.length - 1, next))
+                  animationStore.seek(clamped)
                 }}
                 onChangeHold={handleChangeHold}
                 onDropFrames={(_idx, names) => {
