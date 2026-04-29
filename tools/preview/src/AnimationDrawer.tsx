@@ -24,16 +24,23 @@ const s = stylex.create({
     minHeight: 0,
     flexShrink: 0,
   },
-  // Visually a 1px panel-border line (matches every other header border
-  // in the app); 5px tall hit area for the resize gesture. On hover or
-  // active drag, the visible line thickens to 2px and tints to the
-  // focus ring color. Uses inset box-shadow rather than border so the
-  // thickness change doesn't shift surrounding layout by 1px.
+  // Static 1px panel-border line — always rendered, even when the
+  // drawer is collapsed, so the canvas and header always have a clean
+  // visual separator. 5px tall hit area gives a draggable target when
+  // the drawer is expanded. Inset box-shadow draws the visible line so
+  // the thickness change on hover/drag doesn't shift surrounding
+  // layout.
   resizeHandle: {
     height: 5,
-    cursor: 'ns-resize',
     backgroundColor: 'transparent',
     flexShrink: 0,
+    boxShadow: `inset 0 -1px 0 0 ${vscode.panelBorder}`,
+  },
+  // Layered on top of `resizeHandle` when the drawer is expanded:
+  // turns the handle into a real ns-resize affordance with a hover /
+  // active-drag thickened bar in the focus-ring tint.
+  resizeHandleActive: {
+    cursor: 'ns-resize',
     boxShadow: {
       default: `inset 0 -1px 0 0 ${vscode.panelBorder}`,
       ':hover': `inset 0 -2px 0 0 ${vscode.focusRing}`,
@@ -100,18 +107,23 @@ export function AnimationDrawer({ expanded, height, header, body, onHeightChange
 
   return (
     <div {...stylex.props(s.shell)}>
-      {/* Resize handle only when expanded — a collapsed drawer is just
-          a header strip and has nothing to resize. */}
-      {expanded ? (
-        <div
-          {...stylex.props(s.resizeHandle, isDragging && s.resizeHandleDragging)}
-          onPointerDown={onPointerDown}
-          onPointerMove={onPointerMove}
-          onPointerUp={onPointerUp}
-          onPointerCancel={onPointerUp}
-          aria-hidden="true"
-        />
-      ) : null}
+      {/* Always-rendered: provides the static 1px header-border line
+          between the canvas and the drawer header. When expanded we
+          layer the active-drag styles + pointer handlers on top so the
+          line becomes a real resize gesture; collapsed it's purely
+          visual. */}
+      <div
+        {...stylex.props(
+          s.resizeHandle,
+          expanded && s.resizeHandleActive,
+          expanded && isDragging && s.resizeHandleDragging,
+        )}
+        onPointerDown={expanded ? onPointerDown : undefined}
+        onPointerMove={expanded ? onPointerMove : undefined}
+        onPointerUp={expanded ? onPointerUp : undefined}
+        onPointerCancel={expanded ? onPointerUp : undefined}
+        aria-hidden="true"
+      />
       {header}
       {expanded ? (
         <div {...stylex.props(s.body)} style={{ height }}>
