@@ -43,11 +43,14 @@
   },
   "peerDependencies": {
     "@vscode-elements/react-elements": "^2.4.0",
-    "react": "catalog:"
+    "react": "catalog:",
+    "react-dom": "catalog:"
   },
   "devDependencies": {
     "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
     "@vscode-elements/react-elements": "^2.4.0",
-    "react": "catalog:"
+    "react": "catalog:",
+    "react-dom": "catalog:"
   }
 }
