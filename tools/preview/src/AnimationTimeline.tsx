@@ -5,7 +5,7 @@ import { space } from '@three-flatland/design-system/tokens/space.stylex'
 import { radius } from '@three-flatland/design-system/tokens/radius.stylex'
 import type { Rect } from './RectOverlay'
 import type { AnimationDrawerDensity } from './AnimationDrawer'
-import { useDragTarget, useOptionalDrag } from './dragKit'
+import { useDragSource, useDragTarget, useOptionalDrag } from './dragKit'
 
 export type AnimationTimelineProps = {
   /** Frame names in playback order, with duplicates encoding hold counts. */
@@ -52,11 +52,17 @@ export type AnimationTimelineProps = {
   /**
    * Called when one or more frames are dropped onto the timeline.
    * `insertIndex` is the position in the post-duplication frame
-   * array; v1 always appends at the end. `frameNames` carries the
-   * dragged set (one entry for a single drag, multiple for a
-   * multi-selection drag) — caller appends them in order.
+   * array. `frameNames` carries the dragged set (one entry for a
+   * single drag, multiple for a multi-selection drag).
    */
   onDropFrames?(insertIndex: number, frameNames: readonly string[]): void
+  /**
+   * Called when a timeline cell was dragged to a new gap. App
+   * removes the group at `fromGroupIndex` and re-inserts it at
+   * `toGap` atomically (with a one-step adjustment to handle the
+   * removal-shift when toGap > fromGroupIndex).
+   */
+  onReorderGroup?(fromGroupIndex: number, toGap: number): void
 }
 
 /**
@@ -265,6 +271,20 @@ const s = stylex.create({
     color: vscode.fg,
     fontStyle: 'normal',
   },
+  // Insertion-gap indicator: a 2px focus-ring vertical line painted
+  // at the cursor's projected drop position while a drag is over
+  // the track. Width slightly thicker + a soft glow so the user can
+  // tell it apart from the playhead (pink).
+  gapLine: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    width: 3,
+    backgroundColor: vscode.focusRing,
+    boxShadow: `0 0 6px ${vscode.focusRing}`,
+    pointerEvents: 'none',
+    transform: 'translateX(-1px)',
+  },
 })
 
 export function AnimationTimeline({
@@ -281,6 +301,7 @@ export function AnimationTimeline({
   onClearHighlight,
   onChangeHold,
   onDropFrames,
+  onReorderGroup,
 }: AnimationTimelineProps) {
   const groups = useMemo(() => groupCells(frames), [frames])
 
@@ -301,6 +322,14 @@ export function AnimationTimeline({
   // focus-ring border + tinted background on whichever sub-track
   // (detail / dots / empty) is currently rendering.
   const [isDragOver, setIsDragOver] = useState(false)
+
+  // Gap that the in-flight drop will land at: an integer in
+  // [0, groups.length]. 0 = before the first cell; groups.length =
+  // after the last. Drives the gap-line indicator and the eventual
+  // insert position passed to onDropFrames.
+  const [hoverGap, setHoverGap] = useState<number | null>(null)
+  const hoverGapRef = useRef(hoverGap)
+  hoverGapRef.current = hoverGap
 
   // Track ref + space-hold pan + edge auto-scroll. The track is the
   // scrollable element for the detail / dots renders; we mutate its
@@ -355,6 +384,41 @@ export function AnimationTimeline({
   // any time EITHER condition holds.
   const incomingDrop = dragApi?.state.payload != null
   const autoScrollActive = incomingDrop || holdResizeActive
+
+  // Compute the insertion gap (an integer in [0, groups.length])
+  // from the cursor's local-X-with-scroll while a drop is in flight.
+  // 0 = before the first cell, groups.length = after the last.
+  // Drives the gap-line indicator + the insertion frame index
+  // passed to onDropFrames.
+  useEffect(() => {
+    if (!incomingDrop || !isDragOver) {
+      if (hoverGapRef.current !== null) setHoverGap(null)
+      return
+    }
+    let raf = 0
+    const tick = () => {
+      const trk = trackRef.current
+      const x = cursorXRef.current
+      if (trk && x != null) {
+        const r = trk.getBoundingClientRect()
+        const localX = x - r.left + trk.scrollLeft
+        let gap = groups.length
+        let cum = 0
+        for (let i = 0; i < groups.length; i++) {
+          const cellWidth = groups[i]!.count * CELL_BASE + 2
+          if (localX < cum + cellWidth / 2) {
+            gap = i
+            break
+          }
+          cum += cellWidth + TRACK_GAP
+        }
+        if (hoverGapRef.current !== gap) setHoverGap(gap)
+      }
+      raf = requestAnimationFrame(tick)
+    }
+    raf = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(raf)
+  }, [incomingDrop, isDragOver, groups])
   useEffect(() => {
     if (!autoScrollActive) return
     let raf = 0
@@ -434,15 +498,81 @@ export function AnimationTimeline({
     return () => cancelAnimationFrame(raf)
   }, [isPlaying, getSmoothPlayhead, groups, playhead])
   const dropTarget = useDragTarget({
-    accept: ['frames-panel', 'canvas-rect'],
+    accept: ['frames-panel', 'canvas-rect', 'timeline-cell'],
     onEnter: () => setIsDragOver(true),
-    onLeave: () => setIsDragOver(false),
+    onLeave: () => {
+      setIsDragOver(false)
+      setHoverGap(null)
+    },
     onDrop: (payload) => {
       setIsDragOver(false)
+      const gap = hoverGapRef.current ?? groups.length
+      setHoverGap(null)
+      // Timeline-cell source carries originIndex → it's a reorder,
+      // not an insert. Skip the no-op self-drops (gap ===
+      // originIndex / originIndex+1 both leave the group in place).
+      if (payload.kind === 'timeline-cell' && payload.originIndex != null) {
+        if (gap === payload.originIndex || gap === payload.originIndex + 1) return
+        onReorderGroup?.(payload.originIndex, gap)
+        return
+      }
       if (payload.frameNames.length === 0) return
-      onDropFrames?.(frames.length, payload.frameNames)
+      // Convert hovered gap (group index) → frame insertion index.
+      // Gap N inserts before group N: insertIndex = sum of counts
+      // for groups 0..N-1. Falls back to end-append if no gap was
+      // computed (drop fired without enough cursor data).
+      const insertIndex = groups.slice(0, gap).reduce((acc, g) => acc + g.count, 0)
+      onDropFrames?.(insertIndex, payload.frameNames)
     },
   })
+
+  // Cell-body drag for reorder. Pointerdown captures position; once
+  // the pointer moves past a small threshold we hand off to the
+  // dragKit so the floating-thumbnail visual takes over. A click
+  // (no movement past threshold) falls through to the cell's
+  // existing onClick (seek + highlight).
+  const startCellDrag = useDragSource()
+  const cellDragRef = useRef<{
+    groupIndex: number
+    startX: number
+    startY: number
+    started: boolean
+  } | null>(null)
+  const onCellPointerDown = (groupIndex: number) => (e: ReactPointerEvent<HTMLDivElement>) => {
+    if (e.button !== 0) return
+    // The edge-grab uses stopPropagation in its own handler so we
+    // shouldn't see its pointerdowns here, but defend anyway.
+    if ((e.target as HTMLElement).closest('[data-edgegrab]')) return
+    if (spaceHeldRef.current) return // space-pan owns the gesture
+    cellDragRef.current = { groupIndex, startX: e.clientX, startY: e.clientY, started: false }
+  }
+  const onCellPointerMove = (e: ReactPointerEvent<HTMLDivElement>) => {
+    const drag = cellDragRef.current
+    if (!drag || drag.started) return
+    const dx = e.clientX - drag.startX
+    const dy = e.clientY - drag.startY
+    if (dx * dx + dy * dy < 16) return // ~4px threshold
+    drag.started = true
+    const g = groups[drag.groupIndex]
+    if (!g || !atlasImageUri || !atlasSize) {
+      cellDragRef.current = null
+      return
+    }
+    const rect = rectsByName[g.name]
+    if (!rect) {
+      cellDragRef.current = null
+      return
+    }
+    startCellDrag(e, {
+      payload: { kind: 'timeline-cell', frameNames: [g.name], originIndex: drag.groupIndex },
+      atlasImageUri,
+      atlasFrames: [{ name: g.name, x: rect.x, y: rect.y, w: rect.w, h: rect.h }],
+      atlasSize,
+    })
+  }
+  const onCellPointerUpForReorder = () => {
+    cellDragRef.current = null
+  }
 
   // Hold drag-edge handlers. Each pointer-step that crosses an
   // integer cell-step boundary calls `onChangeHold` immediately so
@@ -589,6 +719,10 @@ export function AnimationTimeline({
             {...stylex.props(s.cell, idx === playheadGroupIndex && s.cellPlayhead)}
             style={{ width }}
             onClick={() => onSeekGroup(idx)}
+            onPointerDown={onCellPointerDown(idx)}
+            onPointerMove={onCellPointerMove}
+            onPointerUp={onCellPointerUpForReorder}
+            onPointerCancel={onCellPointerUpForReorder}
             title={`${g.name}${renderCount > 1 ? ` ×${renderCount}` : ''}`}
           >
             {Array.from({ length: renderCount }).map((_, tileIdx) => (
@@ -602,6 +736,7 @@ export function AnimationTimeline({
             {renderCount > 1 ? <span {...stylex.props(s.badge)}>×{renderCount}</span> : null}
             {onChangeHold ? (
               <div
+                data-edgegrab=""
                 {...stylex.props(s.edgeGrab)}
                 onPointerDown={onEdgePointerDown(idx, g.count)}
                 onPointerMove={onEdgePointerMove}
@@ -618,6 +753,17 @@ export function AnimationTimeline({
         style={{ left: 0, transform: `translateX(${playheadPx}px)`, willChange: 'transform' }}
         aria-hidden="true"
       />
+      {hoverGap != null ? (() => {
+        // Gap pixel = sum of (cell-outer + TRACK_GAP) for cells
+        // before the gap, then back off half the TRACK_GAP so the
+        // line sits centered in the gutter.
+        let x = 0
+        for (let i = 0; i < hoverGap && i < groups.length; i++) {
+          x += groups[i]!.count * CELL_BASE + 2 + TRACK_GAP
+        }
+        const left = Math.max(0, x - TRACK_GAP / 2)
+        return <div {...stylex.props(s.gapLine)} style={{ left }} aria-hidden="true" />
+      })() : null}
     </div>
   )
 }
