@@ -158,18 +158,23 @@ function PipScene({
     : Math.min(PIP_INNER_SIZE / frame.w, PIP_INNER_SIZE / frame.h)
   const viewSize = PIP_INNER_SIZE / scale
 
-  // Build the SpriteFrame in normalized atlas coords. The Sprite2D's
-  // `frame` setter consumes this per render, swapping which region of
-  // the atlas it samples without touching the underlying texture.
-  const spriteFrame = useMemo(() => ({
-    name: 'pip',
-    x: frame.x / frame.atlasW,
-    y: frame.y / frame.atlasH,
-    width: frame.w / frame.atlasW,
-    height: frame.h / frame.atlasH,
-    sourceWidth: frame.w,
-    sourceHeight: frame.h,
-  }), [frame.x, frame.y, frame.w, frame.h, frame.atlasW, frame.atlasH])
+  // Build the SpriteFrame in normalized atlas coords. SpriteFrame's
+  // y is in BOTTOM-LEFT origin (matches three.js texture UV convention
+  // — see SpriteSheetLoader.ts which does the same flip), but our
+  // editor-side rect coords are TOP-LEFT (DOM/image convention). Flip
+  // y on the way in so the sampled region lands on the right pixels.
+  const spriteFrame = useMemo(() => {
+    const normalizedHeight = frame.h / frame.atlasH
+    return {
+      name: 'pip',
+      x: frame.x / frame.atlasW,
+      y: 1 - (frame.y / frame.atlasH) - normalizedHeight,
+      width: frame.w / frame.atlasW,
+      height: normalizedHeight,
+      sourceWidth: frame.w,
+      sourceHeight: frame.h,
+    }
+  }, [frame.x, frame.y, frame.w, frame.h, frame.atlasW, frame.atlasH])
 
   return (
     <>
