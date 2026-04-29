@@ -23,6 +23,7 @@ import {
 import {
   AnimationDrawer,
   AnimationDrawerHeader,
+  AnimationPreviewPip,
   AnimationTimeline,
   AutoDetectOverlay,
   CanvasStage,
@@ -1391,6 +1392,18 @@ export function App() {
                   onCoordModeChange={(v) => prefsStore.set({ coordMode: v })}
                 />
               ) : null}
+              <AnimationPreviewPip
+                animationName={activeAnimation}
+                frames={activeAnim?.frames ?? []}
+                rectsByName={rectsByName}
+                atlasImageUri={payload?.imageUri ?? null}
+                atlasSize={imageSize}
+                playhead={playback.playhead}
+                isPlaying={playback.isPlaying}
+                onTogglePlay={() => animationStore.togglePlay()}
+                corner={prefs.animPipCorner}
+                onChangeCorner={(c) => prefsStore.set({ animPipCorner: c })}
+              />
             </CanvasStage>
           </div>
           <AnimationDrawer
