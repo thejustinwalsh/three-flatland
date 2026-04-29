@@ -51,27 +51,22 @@ const s = stylex.create({
     flexShrink: 0,
   },
   chevBtn: {
-    background: 'transparent',
-    borderWidth: 0,
-    color: vscode.panelTitleFg,
-    cursor: 'pointer',
-    padding: 0,
     display: 'inline-flex',
     alignItems: 'center',
     justifyContent: 'center',
     width: 16,
     height: 16,
+    padding: 0,
+    borderWidth: 0,
+    borderRadius: radius.sm,
+    backgroundColor: { default: 'transparent', ':hover': vscode.bg },
+    color: vscode.panelTitleFg,
+    cursor: 'pointer',
   },
   label: {
     textTransform: 'uppercase',
     letterSpacing: '0.04em',
     fontWeight: 600,
-  },
-  labelMuted: {
-    textTransform: 'uppercase',
-    letterSpacing: '0.04em',
-    color: vscode.descriptionFg,
-    marginInlineStart: space.sm,
   },
   spacer: { flex: 1 },
   // Right cluster — every interactive control sits here, never inline
@@ -88,18 +83,17 @@ const s = stylex.create({
   // Hand-rolled icon button — matches AtlasMenu's trigger sizing so the
   // header height stays consistent with sibling Panel headers.
   iconBtn: {
-    background: 'transparent',
-    color: vscode.fg,
-    borderWidth: 0,
-    borderRadius: radius.sm,
-    padding: 0,
-    width: 18,
-    height: 18,
     display: 'inline-flex',
     alignItems: 'center',
     justifyContent: 'center',
-    cursor: 'pointer',
+    width: 18,
+    height: 18,
+    padding: 0,
+    borderWidth: 0,
+    borderRadius: radius.sm,
     backgroundColor: { default: 'transparent', ':hover': vscode.bg },
+    color: vscode.fg,
+    cursor: 'pointer',
   },
   iconBtnDisabled: {
     opacity: 0.35,
@@ -178,9 +172,6 @@ export function AnimationDrawerHeader(props: AnimationDrawerHeaderProps) {
         <Icon name={expanded ? 'chevron-down' : 'chevron-right'} />
       </button>
       <span {...stylex.props(s.label)}>Animations</span>
-      {animationNames.length === 0 ? (
-        <span {...stylex.props(s.labelMuted)}>(none)</span>
-      ) : null}
 
       <span {...stylex.props(s.spacer)} />
 
