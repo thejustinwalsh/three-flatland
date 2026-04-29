@@ -1450,6 +1450,27 @@ export function App() {
         }
         return
       }
+      // Enter in normal mode → toggle play/pause for the active anim.
+      // Spacebar is reserved for grab/move (canvas pan + timeline
+      // pan), so we steer playback to a dedicated key. preventDefault
+      // first so a focused button doesn't also fire its click.
+      if (e.key === 'Enter' && mode.kind === 'normal' && activeAnim) {
+        e.preventDefault()
+        handleTogglePlay()
+        return
+      }
+      // Spacebar reserved for grab/move. Buttons in the drawer
+      // header (play, loop, etc) receive focus and would otherwise
+      // activate on Space — preventDefault here so the keypress
+      // only triggers the canvas + timeline pan handlers, never a
+      // button click. CanvasStage / AnimationTimeline track Space
+      // independently via their own window-level keydown listeners
+      // (this handler is on the capture phase so it doesn't block
+      // their bubble-phase state updates).
+      if (e.code === 'Space') {
+        e.preventDefault()
+        return
+      }
       if (e.key === 'Delete' || e.key === 'Backspace') {
         if (selectedIds.size > 0) {
           deleteSelected()
@@ -1518,6 +1539,7 @@ export function App() {
     activeAnimation,
     activeAnim,
     handleRemoveGroup,
+    handleTogglePlay,
     playback.playhead,
   ])
 
