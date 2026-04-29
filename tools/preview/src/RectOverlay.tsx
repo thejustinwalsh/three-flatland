@@ -7,6 +7,7 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from 'react'
 import { useViewport, viewBoxFor } from './Viewport'
+import { useDragSource } from './dragKit'
 
 export type Rect = {
   id: string
@@ -72,6 +73,18 @@ export type RectOverlayProps = {
    * every pointer-move.
    */
   onHoverChange?: (rect: Rect | null) => void
+
+  /**
+   * Atlas image URI + natural size — required to enable Alt+drag-as-frame
+   * via the dragKit. When present, holding Alt while pressing on a
+   * rect's body starts a `'canvas-rect'` drag carrying that rect's
+   * frame name; the floating drag visual paints the rect's region of
+   * the atlas. Plain drag (no Alt) keeps the existing move behavior.
+   * Drag is only started for rects that have a `name` (the dragKit
+   * payload requires one).
+   */
+  atlasImageUri?: string | null
+  atlasSize?: { w: number; h: number } | null
 }
 
 // ─── Draw drag (new rect creation) ───────────────────────────────────────────
@@ -351,6 +364,8 @@ export function RectOverlay({
   interactive = true,
   snapStep = 0,
   onHoverChange,
+  atlasImageUri,
+  atlasSize,
 }: RectOverlayProps) {
   // Round a number to the nearest multiple of `step`, with a 0/Shift-key
   // pass-through. The Shift check happens at call sites that have the
@@ -363,6 +378,7 @@ export function RectOverlay({
     h: Math.max(1, snap(r.h)),
   })
   const vp = useViewport()
+  const startFrameDrag = useDragSource()
   const svgRef = useRef<SVGSVGElement>(null)
   const [drag, setDrag] = useState<Drag | null>(null)
   const [hoveredId, setHoveredId] = useState<string | null>(null)
@@ -466,10 +482,23 @@ export function RectOverlay({
     }
   }
 
-  // ── Rect body pointerdown: move or select ─────────────────────────────────
+  // ── Rect body pointerdown: drag-as-frame, move, or select ────────────────
   const handleRectPointerDown = (r: Rect, e: ReactPointerEvent<SVGRectElement>) => {
     // Always stop so background catcher doesn't start a draw.
     e.stopPropagation()
+
+    // Alt + pointer-down on a rect with a frame name → start a
+    // canvas-rect drag through the dragKit. Plain drag still falls
+    // through to the move / select branches below.
+    if (e.altKey && r.name && atlasImageUri && atlasSize) {
+      startFrameDrag(e, {
+        payload: { kind: 'canvas-rect', frameName: r.name },
+        atlasImageUri,
+        atlasFrame: { x: r.x, y: r.y, w: r.w, h: r.h },
+        atlasSize: { w: atlasSize.w, h: atlasSize.h },
+      })
+      return
+    }
 
     if (onRectChange && selectedIds.has(r.id)) {
       // Capture pointer for move drag.
