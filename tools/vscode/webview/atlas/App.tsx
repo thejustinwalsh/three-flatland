@@ -1416,24 +1416,19 @@ export function App() {
       const mod = e.metaKey || e.ctrlKey
 
       if (e.key === 'Escape') {
-        if (mode.kind === 'slicing') {
-          exitSlice()
-          e.preventDefault()
-          return
-        }
-        if (mode.kind === 'autodetect') {
-          exitAutoDetect()
-          e.preventDefault()
-          return
-        }
-        if (renameMode.kind !== 'none') {
-          setRenameMode({ kind: 'none' })
-          e.preventDefault()
-          return
-        }
-        if (selectedIds.size === 0) return
-        clearSelection()
-        e.preventDefault()
+        // Universal "bail out": clear every transient selection /
+        // highlight state and exit any active mode. Single Esc
+        // press should always leave the editor in the default
+        // normal-mode, no-selection state regardless of how many
+        // things were active.
+        let consumed = false
+        if (mode.kind === 'slicing') { exitSlice(); consumed = true }
+        if (mode.kind === 'autodetect') { exitAutoDetect(); consumed = true }
+        if (renameMode.kind !== 'none') { setRenameMode({ kind: 'none' }); consumed = true }
+        if (selectedIds.size > 0) { clearSelection(); consumed = true }
+        if (folderSelectionPrefix !== null) { setFolderSelectionPrefix(null); consumed = true }
+        if (manualAnimHighlight) { setManualAnimHighlight(false); consumed = true }
+        if (consumed) e.preventDefault()
         return
       }
       if (e.key === 'Enter' && mode.kind === 'slicing') {
@@ -1541,6 +1536,8 @@ export function App() {
     handleRemoveGroup,
     handleTogglePlay,
     playback.playhead,
+    folderSelectionPrefix,
+    manualAnimHighlight,
   ])
 
   return (
