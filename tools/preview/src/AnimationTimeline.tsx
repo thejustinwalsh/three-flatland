@@ -174,25 +174,26 @@ const s = stylex.create({
     backgroundRepeat: 'no-repeat',
     flexShrink: 0,
   },
-  // Playhead cell: focus-ring border. Subtle on its own — the
-  // primary "where am I in the animation" cue is the vertical
-  // playhead line that travels through frames within the cell (see
-  // `playheadLine` below).
+  // Playhead cell: pink border, same as the playhead line and the
+  // canvas active-frame overlay. Three pieces of chrome (cell +
+  // line + canvas) all read as one cue: "this is the active frame".
   cellPlayhead: {
-    borderColor: vscode.focusRing,
+    borderColor: '#ff5c8a',
   },
   // Vertical line overlaid on the track at the playhead's pixel
   // position. Travels through sub-frames of held groups (since each
   // duplicate is a full CELL_BASE wide), so a ×3 hold visibly ticks
-  // 3 positions across the cell as it plays.
+  // 3 positions across the cell as it plays. Same pink as the
+  // active-cell border + the canvas highlight so the three pieces
+  // of chrome read as one unified "this is the active frame" cue.
   playheadLine: {
     position: 'absolute',
     top: 0,
     bottom: 0,
     width: 2,
-    backgroundColor: vscode.focusRing,
+    backgroundColor: '#ff5c8a',
     pointerEvents: 'none',
-    boxShadow: `0 0 4px ${vscode.focusRing}`,
+    boxShadow: '0 0 4px rgba(255, 92, 138, 0.7)',
   },
   badge: {
     position: 'absolute',
@@ -363,11 +364,17 @@ export function AnimationTimeline({
       if (trk && x != null) {
         const r = trk.getBoundingClientRect()
         const TRIGGER = CELL_BASE
-        const SPEED = 8
-        if (x >= r.left && x < r.left + TRIGGER) {
-          trk.scrollLeft = Math.max(0, trk.scrollLeft - SPEED)
-        } else if (x <= r.right && x > r.right - TRIGGER) {
-          trk.scrollLeft += SPEED
+        const SPEED_MAX = 24
+        // Speed scales with how close the cursor is to the edge —
+        // and ramps to MAX when cursor is past the edge entirely.
+        // Catches the common case of users dragging the edge grab
+        // beyond the visible track during a hold-resize.
+        if (x < r.left + TRIGGER) {
+          const intensity = Math.max(0, Math.min(1, (r.left + TRIGGER - x) / TRIGGER))
+          trk.scrollLeft = Math.max(0, trk.scrollLeft - SPEED_MAX * intensity)
+        } else if (x > r.right - TRIGGER) {
+          const intensity = Math.max(0, Math.min(1, (x - (r.right - TRIGGER)) / TRIGGER))
+          trk.scrollLeft += SPEED_MAX * intensity
         }
       }
       raf = requestAnimationFrame(tick)
@@ -375,6 +382,32 @@ export function AnimationTimeline({
     raf = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(raf)
   }, [autoScrollActive])
+
+  // Playback auto-scroll: while the animation is playing, keep the
+  // playhead in view with a 1-cell leading buffer on both sides.
+  // Only kicks in when the playhead is about to cross out — manual
+  // scrolling otherwise stays untouched.
+  useEffect(() => {
+    if (!isPlaying || !getSmoothPlayhead) return
+    let raf = 0
+    const tick = () => {
+      const trk = trackRef.current
+      if (trk) {
+        const px = playheadFrameToPx(getSmoothPlayhead(), groups)
+        const buffer = CELL_BASE
+        const visibleLeft = trk.scrollLeft
+        const visibleRight = trk.scrollLeft + trk.clientWidth
+        if (px < visibleLeft + buffer) {
+          trk.scrollLeft = Math.max(0, px - buffer)
+        } else if (px > visibleRight - buffer) {
+          trk.scrollLeft = px - trk.clientWidth + buffer
+        }
+      }
+      raf = requestAnimationFrame(tick)
+    }
+    raf = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(raf)
+  }, [isPlaying, getSmoothPlayhead, groups])
 
   // Smooth-lerp playhead. Held here (above any early returns) so the
   // hook calls run on every render — empty / collapsed / dots paths
