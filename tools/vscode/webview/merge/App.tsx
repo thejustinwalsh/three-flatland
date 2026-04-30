@@ -3,7 +3,7 @@ import { createClientBridge } from '@three-flatland/bridge/client'
 import type { AtlasJson } from '@three-flatland/io/atlas'
 import { compositePngBlob } from './composite'
 import { aliasFromUri, namespaceSource } from '@three-flatland/io/atlas'
-import { mergeActions, useMergeState } from './mergeStore'
+import { mergeActions, mergeHistory, useMergeState, useMergeStore } from './mergeStore'
 import { SourcesView } from './SourcesView'
 import { MergedView } from './MergedView'
 import { ConflictsPanel } from './ConflictsPanel'
@@ -19,8 +19,34 @@ type InitPayload = {
 export function App() {
   const [tab, setTab] = useState<Tab>('sources')
   const [initErrors, setInitErrors] = useState<InitPayload['errors']>([])
-  const [deleteOriginals, setDeleteOriginals] = useState(false)
+  const deleteOriginals = useMergeStore((s) => s.deleteOriginals)
   const state = useMergeState()
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey)) return
+      // Don't intercept when user is typing in an input/textarea.
+      const target = e.target as HTMLElement | null
+      if (
+        target &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.isContentEditable)
+      ) {
+        return
+      }
+      if (e.key === 'z' && !e.shiftKey) {
+        e.preventDefault()
+        mergeHistory.undo()
+      } else if ((e.key === 'z' && e.shiftKey) || e.key === 'y') {
+        e.preventDefault()
+        mergeHistory.redo()
+      }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [])
+
   useEffect(() => {
     const bridge = createClientBridge()
     const off = bridge.on<InitPayload>('merge/init', (p) => {
@@ -99,8 +125,6 @@ export function App() {
       <Toolbar
         onSave={handleSave}
         onNamespaceAll={handleNamespaceAll}
-        deleteOriginals={deleteOriginals}
-        onDeleteOriginalsChange={setDeleteOriginals}
       />
       <div style={{ display: 'flex', borderBottom: '1px solid var(--vscode-panel-border)' }}>
         <TabButton
