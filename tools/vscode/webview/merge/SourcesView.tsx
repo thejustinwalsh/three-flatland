@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useMergeState } from './mergeStore'
+import { mergeActions, useMergeState } from './mergeStore'
 
 const ARTBOARD_GAP = 32
 const MIN_ZOOM = 0.05
@@ -45,7 +45,7 @@ function layoutArtboards(sources: ReturnType<typeof useMergeState>['sources']): 
 }
 
 export function SourcesView() {
-  const { sources, result } = useMergeState()
+  const { sources, result, imageLoadFailed } = useMergeState()
   const { boards, total } = useMemo(() => layoutArtboards(sources), [sources])
 
   // Pan/zoom state. viewBox is computed as `${x} ${y} ${w} ${h}` where
@@ -146,56 +146,83 @@ export function SourcesView() {
         onPointerUp={onPointerUp}
         style={{ display: 'block', background: 'var(--vscode-editor-background)', userSelect: 'none' }}
       >
-        {boards.map((b) => (
-          <g key={b.src.uri} transform={`translate(${b.x} ${b.y})`}>
-            <rect
-              x={-1}
-              y={-1}
-              width={b.w + 2}
-              height={b.h + 2}
-              fill="none"
-              stroke="var(--vscode-panel-border)"
-              strokeWidth={1 / zoom}
-            />
-            <image
-              href={b.src.imageUri}
-              x={0}
-              y={0}
-              width={b.w}
-              height={b.h}
-              preserveAspectRatio="none"
-              style={{ imageRendering: 'pixelated' }}
-            />
-            {Object.entries(b.src.json.frames).map(([name, f]) => {
-              const isConflict = conflictSet.has(`${b.src.uri}::${name}`)
-              return (
-                <rect
-                  key={name}
-                  x={f.frame.x}
-                  y={f.frame.y}
-                  width={f.frame.w}
-                  height={f.frame.h}
-                  fill="none"
-                  stroke={
-                    isConflict
-                      ? 'var(--vscode-editorError-foreground)'
-                      : 'var(--vscode-focusBorder)'
-                  }
-                  strokeWidth={(isConflict ? 2 : 1) / zoom}
+        <defs>
+          <pattern id="fl-merge-checker" x={0} y={0} width={16} height={16} patternUnits="userSpaceOnUse">
+            <rect width={16} height={16} fill="var(--vscode-editor-background)" />
+            <rect width={8} height={8} fill="var(--vscode-panel-border)" />
+            <rect x={8} y={8} width={8} height={8} fill="var(--vscode-panel-border)" />
+          </pattern>
+        </defs>
+        {boards.map((b) => {
+          const failed = imageLoadFailed.has(b.src.uri)
+          return (
+            <g key={b.src.uri} transform={`translate(${b.x} ${b.y})`}>
+              <rect
+                x={-1}
+                y={-1}
+                width={b.w + 2}
+                height={b.h + 2}
+                fill="none"
+                stroke="var(--vscode-panel-border)"
+                strokeWidth={1 / zoom}
+              />
+              <rect x={0} y={0} width={b.w} height={b.h} fill="url(#fl-merge-checker)" />
+              {!failed && (
+                <image
+                  href={b.src.imageUri}
+                  x={0}
+                  y={0}
+                  width={b.w}
+                  height={b.h}
+                  preserveAspectRatio="none"
+                  style={{ imageRendering: 'pixelated' }}
+                  onError={() => mergeActions.markImageFailed(b.src.uri)}
+                  onLoad={() => mergeActions.clearImageFailed(b.src.uri)}
                 />
-              )
-            })}
-            <text
-              x={0}
-              y={-8}
-              fill="var(--vscode-foreground)"
-              fontSize={12 / zoom}
-              style={{ fontFamily: 'var(--vscode-font-family)' }}
-            >
-              {b.src.alias} — {Object.keys(b.src.json.frames).length} frames
-            </text>
-          </g>
-        ))}
+              )}
+              {failed && (
+                <text
+                  x={b.w / 2}
+                  y={b.h / 2}
+                  textAnchor="middle"
+                  fontSize={Math.max(12, Math.min(b.w, b.h) / 12) / zoom}
+                  fill="var(--vscode-editorError-foreground)"
+                  style={{ fontFamily: 'var(--vscode-font-family)' }}
+                >
+                  Image not found
+                </text>
+              )}
+              {Object.entries(b.src.json.frames).map(([name, f]) => {
+                const isConflict = conflictSet.has(`${b.src.uri}::${name}`)
+                return (
+                  <rect
+                    key={name}
+                    x={f.frame.x}
+                    y={f.frame.y}
+                    width={f.frame.w}
+                    height={f.frame.h}
+                    fill="none"
+                    stroke={
+                      isConflict
+                        ? 'var(--vscode-editorError-foreground)'
+                        : 'var(--vscode-focusBorder)'
+                    }
+                    strokeWidth={(isConflict ? 2 : 1) / zoom}
+                  />
+                )
+              })}
+              <text
+                x={0}
+                y={-8}
+                fill="var(--vscode-foreground)"
+                fontSize={12 / zoom}
+                style={{ fontFamily: 'var(--vscode-font-family)' }}
+              >
+                {b.src.alias} — {Object.keys(b.src.json.frames).length} frames
+              </text>
+            </g>
+          )
+        })}
       </svg>
     </div>
   )

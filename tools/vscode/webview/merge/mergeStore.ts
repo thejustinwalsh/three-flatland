@@ -14,6 +14,8 @@ export type MergeState = {
   }>
   knobs: { maxSize: number; padding: number; powerOfTwo: boolean }
   outputFileName: string
+  // UI state: URIs whose images failed to load. Not factored into derive().
+  imageLoadFailed: Set<string>
   // Derived (cached on each setState).
   result: MergeResult
 }
@@ -23,6 +25,7 @@ let state: MergeState = {
   sources: [],
   knobs: { maxSize: 4096, padding: 2, powerOfTwo: false },
   outputFileName: 'merged.png',
+  imageLoadFailed: new Set(),
   result: { kind: 'ok', atlas: emptyAtlas(), placements: [], utilization: 0 },
 }
 
@@ -63,7 +66,23 @@ export function useMergeState(): MergeState {
 // Convenience setters used by the UI.
 export const mergeActions = {
   setSources(sources: MergeState['sources']): void {
-    setMergeState((s) => ({ ...s, sources }))
+    setMergeState((s) => ({ ...s, sources, imageLoadFailed: new Set() }))
+  },
+  markImageFailed(uri: string): void {
+    setMergeState((s) => {
+      if (s.imageLoadFailed.has(uri)) return s
+      const next = new Set(s.imageLoadFailed)
+      next.add(uri)
+      return { ...s, imageLoadFailed: next }
+    })
+  },
+  clearImageFailed(uri: string): void {
+    setMergeState((s) => {
+      if (!s.imageLoadFailed.has(uri)) return s
+      const next = new Set(s.imageLoadFailed)
+      next.delete(uri)
+      return { ...s, imageLoadFailed: next }
+    })
   },
   setAlias(uri: string, alias: string): void {
     setMergeState((s) => ({
