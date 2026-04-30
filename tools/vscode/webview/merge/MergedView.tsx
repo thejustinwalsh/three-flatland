@@ -87,6 +87,7 @@ export function MergedView() {
   const lastUrlRef = useRef<string | null>(null)
   const rootRef = useRef<HTMLDivElement>(null)
   const animsPx = useMergeStore((s) => s.splits.mergedSidebarPx)
+  const activeTab = useMergeStore((s) => s.activeTab)
   const onAnimsDrag = (clientX: number) => {
     const el = rootRef.current
     if (!el) return
@@ -96,7 +97,9 @@ export function MergedView() {
   }
 
   useEffect(() => {
-    if (result.kind !== 'ok' || state.sources.length === 0) {
+    // Skip composite work entirely when the merged preview isn't visible.
+    // Saves PNG-encode CPU during conflict resolution / rename flows.
+    if (activeTab !== 'merged' || result.kind !== 'ok' || state.sources.length === 0) {
       if (lastUrlRef.current) {
         URL.revokeObjectURL(lastUrlRef.current)
         lastUrlRef.current = null
@@ -120,7 +123,7 @@ export function MergedView() {
     return () => {
       cancelled = true
     }
-  }, [result, state.sources])
+  }, [result, state.sources, activeTab])
 
   if (result.kind === 'conflicts') {
     return (
