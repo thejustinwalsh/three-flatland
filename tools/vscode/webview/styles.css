@@ -64,15 +64,17 @@ vscode-tab-panel[hidden] {
   display: none;
 }
 /*
- * The slotted child decides its own flex sizing via stylex/local CSS
- * (e.g. `flex: 1`, `height: 100%`). We just remove the intrinsic-size
- * floor so flex-shrink math doesn't get blocked by long names / large
- * SVGs and so the child can actually claim the panel's full width.
- * Don't set `flex: 1 1 auto` here — `auto` basis forces content-sized
- * flex math which ends up sizing some children to their min-content
- * width instead of the panel's width.
+ * The slotted child of <vscode-tab-panel> decides its own *main-axis*
+ * (vertical) sizing — typically `flex: 1` or `height: 100%` from local
+ * stylex. But cross-axis (horizontal) stretching through the Lit shadow
+ * is unreliable: the shadow renders as ` <slot></slot> ` with whitespace
+ * text nodes around the slot, which become anonymous flex items in the
+ * flex-column host and can interfere with align-items: stretch on the
+ * slotted child. Force it to fill width explicitly. Pair with min-* so
+ * shrink math isn't blocked by intrinsic content.
  */
 vscode-tab-panel > * {
+  width: 100%;
   min-height: 0;
   min-width: 0;
 }
