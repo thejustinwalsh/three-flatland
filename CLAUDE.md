@@ -30,6 +30,20 @@
 
 ## Workflow
 - Use Conventional Commits — releases are cut from changesets generated from the commit history
+- **Stage by exact path** — `git add tools/io/src/foo.ts`, never `git add -A` / `git add .` / `git commit -a`. This branch routinely has WIP modifications across many files; bundling them is a recoverable but disruptive mistake.
+
+## Editor tools (`tools/`)
+The VSCode extension and its supporting packages live under `tools/`. Each has its own agent-facing reference:
+
+| Package | Doc | Read this when |
+|---|---|---|
+| `tools/vscode` | [`tools/vscode/CLAUDE.md`](tools/vscode/CLAUDE.md) | adding/modifying a VSCode tool (host + webview) |
+| `tools/design-system` | [`tools/design-system/CLAUDE.md`](tools/design-system/CLAUDE.md) | building any tool UI — primitive inventory, StyleX token rules, Lit gotchas |
+| `tools/preview` | [`tools/preview/CLAUDE.md`](tools/preview/CLAUDE.md) | reusing canvas / animation / drag primitives |
+| `tools/bridge` | [`tools/bridge/CLAUDE.md`](tools/bridge/CLAUDE.md) | host ↔ webview messaging — `ClientBridge` vs `HostBridge` semantics |
+| `tools/io` | [`tools/io/CLAUDE.md`](tools/io/CLAUDE.md) | adding pure data helpers (image decode, atlas types/builders/packing/merge) |
+
+When dispatching a sub-agent for tool work, include the relevant `tools/<pkg>/CLAUDE.md` paths in the prompt — they encode hard-won API contracts (e.g. `ClientBridge.on()` returns an unsubscribe function, NOT a `dispose()` method) that aren't obvious from the source.
 
 ## Constraints
 - Performance is critical — minimize draw calls, batch sprites via SpriteGroup, watch frame budgets
