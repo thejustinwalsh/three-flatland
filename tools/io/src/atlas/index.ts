@@ -1,3 +1,18 @@
-// Pure, vscode-free atlas helpers. Both the VSCode atlas tool and the
-// merge tool import from here; a future CLI binary wraps these too.
-export {}
+export type {
+  AnimationInput,
+  AsepriteFrameTag,
+  AtlasJson,
+  AtlasMergeMeta,
+  RectInput,
+  WireAnimation,
+} from './types'
+
+export {
+  animationInputToWire,
+  atlasToRects,
+  buildAtlasJson,
+  importAsepriteFrameTags,
+  readAnimationsFromJson,
+  uniqueKey,
+  wireAnimationToInput,
+} from './build'
