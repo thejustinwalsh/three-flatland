@@ -110,6 +110,17 @@ import { useThemeKind, useCssVar } from '@three-flatland/design-system'
 - `useThemeKind()` returns `'light' | 'dark' | 'hc' | 'hc-light'`. Reads body class (`vscode-light`, `vscode-high-contrast`, etc.) and updates reactively via `MutationObserver`. Useful for branching three.js textures or icon variants.
 - `useCssVar('--vscode-editor-background')` returns the live computed value as a string. Use sparingly — most styling should go through StyleX tokens.
 
+## Bundle size & tree-shaking
+
+This package is wired so consumers can pay for what they import — but only if the wiring stays intact:
+
+- **Component re-exports use dedicated subpaths**, not the `@vscode-elements/react-elements` barrel. The barrel's `sideEffects` field is ambiguous and forces every Lit component into the bundle if imported. The current `tools/design-system/src/index.ts` follows this pattern (`'@vscode-elements/react-elements/dist/components/Vscode<Name>.js'`); preserve it when adding new primitives.
+- **`package.json` `sideEffects` field**: `["src/tokens/*.stylex.ts"]` — only the StyleX token files are side-effectful. Unused primitive imports tree-shake out of consumers cleanly. Don't add side-effectful top-level code outside the token files.
+- **Token imports use subpaths**, not the barrel — required by StyleX as documented above. As a side benefit, this avoids pulling all four token files into a consumer that only uses one.
+- **No top-level `@vscode-elements/elements` imports** in this package. The Lit web-component registration side-effects belong in the consumer's `main.tsx` for the specific elements it uses as raw JSX intrinsics (e.g. `<vscode-progress-ring />`). The React wrappers register their own elements transitively when imported.
+
+When introducing a primitive that needs more than one Lit element (e.g. a composite), still import each from its dedicated subpath. See `tools/vscode/CLAUDE.md` "Bundle size & loading" for the consumer-side picture (lazy chunks, Suspense boundaries, FOUC guard).
+
 ## Adding a primitive
 
 1. Create `tools/design-system/src/primitives/<Name>.tsx`.
