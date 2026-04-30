@@ -72,6 +72,9 @@ import {
   useAtlasAnimations,
   useAtlasHistoryStore,
   useAtlasRects,
+  useAtlasSelectedIds,
+  useAtlasStore,
+  type Tool,
 } from './atlasStore'
 import { AtlasMenu } from './AtlasMenu'
 import { prefsStore, usePrefs } from './prefs'
@@ -97,8 +100,6 @@ declare global {
     __FL_ATLAS__?: InitPayload
   }
 }
-
-type Tool = 'select' | 'rect' | 'move'
 
 type Animation = {
   /** Frame names in playback order. Duplicates encode hold counts. */
@@ -645,8 +646,10 @@ export function App() {
   const [payload, setPayload] = useState<InitPayload | null>(() => window.__FL_ATLAS__ ?? null)
   const rects = useAtlasRects()
   const setRects = atlasActions.setRects
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
-  const [tool, setTool] = useState<Tool>('rect')
+  const selectedIds = useAtlasSelectedIds()
+  const setSelectedIds = atlasActions.setSelectedIds
+  const tool = useAtlasStore((s) => s.tool)
+  const setTool = atlasActions.setTool
   const [renameMode, setRenameMode] = useState<RenameMode>({ kind: 'none' })
   const [prefixDraft, setPrefixDraft] = useState('')
   const [imageSize, setImageSize] = useState<{ w: number; h: number } | null>(null)
@@ -656,9 +659,10 @@ export function App() {
   // to default on remount.
   const [framesFrac, setFramesFrac] = useState(0.5)
   const sidebarRef = useRef<HTMLDivElement>(null)
-  // User-resizable width of the Frames sidebar. Clamped to 200px min on
-  // both columns; default 280px matches the prior fixed value.
-  const [framesPx, setFramesPx] = useState(280)
+  // User-resizable width of the Frames sidebar. Persisted to localStorage
+  // via the store so it survives panel close.
+  const framesPx = useAtlasStore((s) => s.framesPx)
+  const setFramesPx = atlasActions.setFramesPx
   const workAreaRef = useRef<HTMLDivElement>(null)
   // Viewport controller is owned by CanvasStage and exposed via context;
   // a tiny <ViewportControllerSink> child captures it into this ref so the
@@ -697,7 +701,8 @@ export function App() {
   const canUndo = historyState.pastStates.length > 0
   const canRedo = historyState.futureStates.length > 0
 
-  const [activeAnimation, setActiveAnimation] = useState<string | null>(null)
+  const activeAnimation = useAtlasStore((s) => s.activeAnimation)
+  const setActiveAnimation = atlasActions.setActiveAnimation
 
   // When the user clicks a folder header's ⊞-all icon, this records
   // which folder is currently selected as a *full set* (vs the
