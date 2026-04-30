@@ -18,6 +18,7 @@ export default defineConfig({
       'packages/*/src/**/*.test.tsx',
       'packages/starlight-theme/**/*.test.ts',
       'scripts/**/*.test.ts',
+      'tools/*/src/**/*.test.ts',
     ],
     exclude: ['packages/skia/**', 'packages/tweakpane/**', '**/node_modules/**'],
     setupFiles: ['./vitest.setup.ts'],
