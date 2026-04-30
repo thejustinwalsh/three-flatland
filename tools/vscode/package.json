@@ -102,7 +102,9 @@
     "react": "catalog:",
     "react-dom": "catalog:",
     "three": "catalog:",
-    "three-flatland": "workspace:*"
+    "three-flatland": "workspace:*",
+    "zundo": "catalog:",
+    "zustand": "catalog:"
   },
   "devDependencies": {
     "@stylexjs/unplugin": "catalog:",

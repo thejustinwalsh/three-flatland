@@ -10,7 +10,7 @@ export function registerAtlasTool(context: vscode.ExtensionContext): void {
       new AtlasCustomEditorProvider(context),
       {
         supportsMultipleEditorsPerDocument: false,
-        webviewOptions: { retainContextWhenHidden: false },
+        webviewOptions: { retainContextWhenHidden: true },
       }
     )
   )

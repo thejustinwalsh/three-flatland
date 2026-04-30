@@ -18,7 +18,7 @@ export async function openMergePanel(
     vscode.ViewColumn.Active,
     {
       enableScripts: true,
-      retainContextWhenHidden: false,
+      retainContextWhenHidden: true,
       localResourceRoots: [
         vscode.Uri.joinPath(context.extensionUri, 'dist'),
         ...sidecarUris.map((u) => vscode.Uri.joinPath(u, '..')),
