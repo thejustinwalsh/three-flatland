@@ -45,6 +45,36 @@ const s = stylex.create({
     width: px,
     flexShrink: 0,
   }),
+  sideBody: {
+    display: 'flex',
+    flexDirection: 'column',
+    height: '100%',
+    minHeight: 0,
+  },
+  sideStats: {
+    paddingBlock: space.lg,
+    paddingInline: space.lg,
+    flexShrink: 0,
+  },
+  sideAccordion: {
+    flex: 1,
+    minHeight: 0,
+    display: 'flex',
+    flexDirection: 'column',
+  },
+  animList: {
+    margin: 0,
+    padding: 0,
+    paddingInlineStart: space.xxxl,
+    paddingBlock: space.sm,
+    listStyle: 'disc',
+    fontSize: '12px',
+    overflow: 'auto',
+    minHeight: 0,
+  },
+  animItem: {
+    marginBottom: space.xs,
+  },
 })
 
 const ANIMS_MIN_PX = 220
@@ -158,27 +188,33 @@ export function MergedView() {
         </div>
       </Panel>
       <Splitter axis="vertical" onDrag={onAnimsDrag} />
-      <Panel title="Animations" style={s.sidePanel(animsPx)} bodyPadding="normal">
-        <div {...stylex.props(s.statsBlock)}>
-          <strong>Output</strong>: {w}×{h} · {(result.utilization * 100).toFixed(0)}% used
+      <Panel title="Animations" style={s.sidePanel(animsPx)} bodyPadding="none">
+        <div {...stylex.props(s.sideBody)}>
+          <div {...stylex.props(s.sideStats)}>
+            <div {...stylex.props(s.statsBlock)}>
+              <strong>Output</strong>: {w}×{h} · {(result.utilization * 100).toFixed(0)}% used
+            </div>
+            <div {...stylex.props(s.statsBlock)}>
+              <strong>{Object.keys(result.atlas.frames).length}</strong> frames ·{' '}
+              <strong>{animationCount}</strong> animations
+            </div>
+          </div>
+          {animationCount > 0 && (
+            <div {...stylex.props(s.sideAccordion)}>
+              <Collapsible title="Animations" open>
+                <ul {...stylex.props(s.animList)}>
+                  {Object.entries(animations).map(([name, anim]) => (
+                    <li key={name} {...stylex.props(s.animItem)}>
+                      <code>{name}</code> — {anim.frames.length} frames @ {anim.fps} fps
+                      {anim.loop ? '' : ' (no loop)'}
+                      {anim.pingPong ? ' (ping-pong)' : ''}
+                    </li>
+                  ))}
+                </ul>
+              </Collapsible>
+            </div>
+          )}
         </div>
-        <div {...stylex.props(s.statsBlock)}>
-          <strong>{Object.keys(result.atlas.frames).length}</strong> frames ·{' '}
-          <strong>{animationCount}</strong> animations
-        </div>
-        {animationCount > 0 && (
-          <Collapsible title="Animations" open>
-            <ul style={{ margin: '6px 0 0 16px', padding: 0, fontSize: '12px' }}>
-              {Object.entries(animations).map(([name, anim]) => (
-                <li key={name} style={{ marginBottom: 2 }}>
-                  <code>{name}</code> — {anim.frames.length} frames @ {anim.fps} fps
-                  {anim.loop ? '' : ' (no loop)'}
-                  {anim.pingPong ? ' (ping-pong)' : ''}
-                </li>
-              ))}
-            </ul>
-          </Collapsible>
-        )}
       </Panel>
     </div>
   )
