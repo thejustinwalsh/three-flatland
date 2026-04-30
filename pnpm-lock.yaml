@@ -54,6 +54,12 @@ catalogs:
     vite:
       specifier: ^6.4.1
       version: 6.4.1
+    zundo:
+      specifier: ^2.3.0
+      version: 2.3.0
+    zustand:
+      specifier: ^5.0.0
+      version: 5.0.10
 
 overrides:
   three-flatland: workspace:*
@@ -1332,6 +1338,12 @@ importers:
       three-flatland:
         specifier: workspace:*
         version: link:../../packages/three-flatland
+      zundo:
+        specifier: 'catalog:'
+        version: 2.3.0(zustand@5.0.10(@types/react@19.2.9)(react@19.2.3)(use-sync-external-store@1.6.0(react@19.2.3)))
+      zustand:
+        specifier: 'catalog:'
+        version: 5.0.10(@types/react@19.2.9)(react@19.2.3)(use-sync-external-store@1.6.0(react@19.2.3))
     devDependencies:
       '@stylexjs/unplugin':
         specifier: 'catalog:'
@@ -6121,6 +6133,11 @@ packages:
 
   zod@3.25.76:
     resolution: {integrity: sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ==}
+
+  zundo@2.3.0:
+    resolution: {integrity: sha512-4GXYxXA17SIKYhVbWHdSEU04P697IMyVGXrC2TnzoyohEAWytFNOKqOp5gTGvaW93F/PM5Y0evbGtOPF0PWQwQ==}
+    peerDependencies:
+      zustand: ^4.3.0 || ^5.0.0
 
   zustand@5.0.10:
     resolution: {integrity: sha512-U1AiltS1O9hSy3rul+Ub82ut2fqIAefiSuwECWt6jlMVUGejvf+5omLcRBSzqbRagSM3hQZbtzdeRc6QVScXTg==}
@@ -11365,6 +11382,10 @@ snapshots:
       zod: 3.25.76
 
   zod@3.25.76: {}
+
+  zundo@2.3.0(zustand@5.0.10(@types/react@19.2.9)(react@19.2.3)(use-sync-external-store@1.6.0(react@19.2.3))):
+    dependencies:
+      zustand: 5.0.10(@types/react@19.2.9)(react@19.2.3)(use-sync-external-store@1.6.0(react@19.2.3))
 
   zustand@5.0.10(@types/react@19.2.9)(react@19.2.3)(use-sync-external-store@1.6.0(react@19.2.3)):
     optionalDependencies:
