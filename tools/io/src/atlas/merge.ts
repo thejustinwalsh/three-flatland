@@ -58,6 +58,9 @@ export function computeMerge(input: MergeInput): MergeResult {
     src: MergeSource
     frameNameMap: Map<string, string> // original → merged
     animMap: Map<string, { name: string; anim: AnimationInput }>
+    // Pack order: animation frames first (in declaration/playback order),
+    // then any frames not referenced by any animation.
+    orderedMergedFrames: string[]
   }
   const resolved: Resolved[] = input.sources.map((src) => {
     const frameNameMap = new Map<string, string>()
@@ -75,7 +78,23 @@ export function computeMerge(input: MergeInput): MergeResult {
       }
       animMap.set(original, { name: merged, anim: rewritten })
     }
-    return { src, frameNameMap, animMap }
+    // Build pack order: animations first (declaration order, frames in
+    // playback order), then unanimated leftovers.
+    const orderedMergedFrames: string[] = []
+    const seen = new Set<string>()
+    for (const { anim } of animMap.values()) {
+      for (const merged of anim.frames) {
+        if (seen.has(merged)) continue
+        seen.add(merged)
+        orderedMergedFrames.push(merged)
+      }
+    }
+    for (const merged of frameNameMap.values()) {
+      if (seen.has(merged)) continue
+      seen.add(merged)
+      orderedMergedFrames.push(merged)
+    }
+    return { src, frameNameMap, animMap, orderedMergedFrames }
   })
 
   // Phase 2: detect conflicts.
@@ -107,10 +126,17 @@ export function computeMerge(input: MergeInput): MergeResult {
     return { kind: 'conflicts', frameConflicts, animationConflicts }
   }
 
-  // Phase 3: collect rects to pack. id = mergedFrameName.
+  // Phase 3: collect rects to pack, ordered by animation membership for
+  // spatial locality (frames from the same animation tend to pack near
+  // each other; helps cache locality and visual coherence).
   const packInput: Array<{ id: string; w: number; h: number }> = []
   for (const r of resolved) {
+    const mergedToOriginal = new Map<string, string>()
     for (const [original, merged] of r.frameNameMap) {
+      mergedToOriginal.set(merged, original)
+    }
+    for (const merged of r.orderedMergedFrames) {
+      const original = mergedToOriginal.get(merged)!
       const f = r.src.json.frames[original]!
       packInput.push({ id: merged, w: f.frame.w, h: f.frame.h })
     }
@@ -134,7 +160,12 @@ export function computeMerge(input: MergeInput): MergeResult {
   }> = []
   const rects: RectInput[] = []
   for (const r of resolved) {
+    const mergedToOriginal = new Map<string, string>()
     for (const [original, merged] of r.frameNameMap) {
+      mergedToOriginal.set(merged, original)
+    }
+    for (const merged of r.orderedMergedFrames) {
+      const original = mergedToOriginal.get(merged)!
       const f = r.src.json.frames[original]!
       const dst = packed.placements.get(merged)!
       placements.push({
