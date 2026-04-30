@@ -5,7 +5,7 @@ import { useSyncExternalStore } from 'react'
  * (current frame index), and the timeline (cursor position).
  */
 export type PlaybackSnapshot = {
-  /** Name of the active animation in `meta.animations`, or null. */
+  /** Name of the active animation in the sidecar's `meta.animations` map, or null. */
   activeAnimation: string | null
   /** Index into the active animation's `frames` array (after duplication). */
   playhead: number

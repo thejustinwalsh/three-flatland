@@ -28,7 +28,8 @@
         "background": {
           "activeOnStart": true,
           "beginsPattern": "^.*\\[host\\].*$",
-          "endsPattern": "^.*watching extension host.*$"
+          "//": "Match either esbuild's 'watching extension host' OR Vite's 'built in' — whichever comes first signals ready. We rely on vite.config.ts's `emptyOutDir: !isWatchMode` so launching before vite finishes is safe (previous build's chunks stay in dist/webview/ and the dev/reload path nudges the panel once the new build lands). Without the OR-pattern the launch hangs whenever one of the two output streams is buffered/styled in a way the regex doesn't catch.",
+          "endsPattern": "^.*(watching extension host|built in ).*$"
         }
       },
       "presentation": { "panel": "dedicated", "reveal": "always" }

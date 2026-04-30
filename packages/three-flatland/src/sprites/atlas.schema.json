@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://three-flatland.dev/schemas/atlas.v1.json",
   "title": "three-flatland Sprite Atlas",
-  "description": "Sidecar JSON for a sprite atlas image. Superset of TexturePacker's JSON-Hash format — every TexturePacker-emitted file validates; three-flatland additions (meta.app, meta.version, meta.sources, meta.normal, meta.animations) are all optional and additive.",
+  "description": "Sidecar JSON for a sprite atlas image. STRICT superset of TexturePacker's JSON-Hash format AND Aseprite's JSON export — every file emitted by either validates here. The root keys are `frames` + `meta` only (matching TP/Aseprite); all our additions live under `meta` because `meta` is the open extension bucket (`additionalProperties: true`). Aseprite's `meta.frameTags` / `meta.layers` / `meta.slices` validate as-is; we add `meta.animations` (richer than `frameTags` — explicit fps, arbitrary frame-name selection, per-frame events) without conflicting with the Aseprite shape. Tool-specific extensions (our `meta.app` / `meta.version` / `meta.sources` / `meta.normal`) ride along the same way.",
   "type": "object",
   "required": ["meta", "frames"],
   "additionalProperties": false,
@@ -27,7 +27,13 @@
         },
         "animations": {
           "type": "object",
+          "description": "Our richer animation map — named, references frame keys (not indices), explicit fps, optional events. Aseprite's `frameTags` lives alongside under `meta.frameTags`; readers prefer `meta.animations` when present and fall back to converting `frameTags` + per-frame `duration`.",
           "additionalProperties": { "$ref": "#/$defs/Animation" }
+        },
+        "frameTags": {
+          "type": "array",
+          "description": "Aseprite-emitted animation tags: integer ranges into the frames array with a direction. Validated explicitly so Aseprite files round-trip and our reader can normalize them into `meta.animations`.",
+          "items": { "$ref": "#/$defs/AsepriteFrameTag" }
         }
       }
     },
@@ -79,7 +85,12 @@
         "trimmed": { "type": "boolean" },
         "spriteSourceSize": { "$ref": "#/$defs/Rect" },
         "sourceSize": { "$ref": "#/$defs/Size" },
-        "pivot": { "$ref": "#/$defs/Vec2" }
+        "pivot": { "$ref": "#/$defs/Vec2" },
+        "duration": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "description": "Aseprite-style per-frame display time in milliseconds. Optional. Our atlas tool doesn't write this (we use a per-animation `fps` instead), but Aseprite-emitted files have it on every frame; the schema allows it through so Aseprite atlases validate as-is."
+        }
       }
     },
     "SourceEntry": {
@@ -96,23 +107,50 @@
     },
     "Animation": {
       "type": "object",
-      "required": ["frames"],
+      "required": ["frameSet", "frames"],
       "additionalProperties": false,
       "properties": {
+        "frameSet": {
+          "type": "array",
+          "items": { "type": "string" },
+          "uniqueItems": true,
+          "minItems": 1,
+          "description": "Unique frame names referenced by this animation. `frames` indexes into this array. Order is significant: `events` and `frames` both reference indices that depend on this ordering."
+        },
         "frames": {
           "type": "array",
-          "items": { "type": "string" }
+          "items": { "type": "integer", "minimum": 0 },
+          "minItems": 1,
+          "description": "Playback sequence as indices into `frameSet` — `frames[k]` is the k-th frame to display, looking up `frameSet[frames[k]]` for the frame name. Repeated indices encode hold counts (e.g. [0,0,1,2,2,2] = 2-frame hold of frameSet[0], then frameSet[1], then a 3-frame hold of frameSet[2])."
         },
         "fps": { "type": "number", "exclusiveMinimum": 0 },
         "loop": { "type": "boolean" },
         "pingPong": { "type": "boolean" },
         "events": {
           "type": "object",
+          "description": "Per-frame event tags keyed by index INTO `frames` (not into `frameSet`). I.e. event '3' fires when the playhead reaches `frames[3]`.",
           "patternProperties": {
             "^[0-9]+$": { "type": "string" }
           },
           "additionalProperties": false
         }
+      }
+    },
+    "AsepriteFrameTag": {
+      "type": "object",
+      "required": ["name", "from", "to"],
+      "additionalProperties": true,
+      "properties": {
+        "name": { "type": "string" },
+        "from": { "type": "integer", "minimum": 0 },
+        "to": { "type": "integer", "minimum": 0 },
+        "direction": {
+          "type": "string",
+          "enum": ["forward", "reverse", "pingpong", "pingpong_reverse"]
+        },
+        "color": { "type": "string" },
+        "repeat": { "type": "string" },
+        "data": { "type": "string" }
       }
     }
   }

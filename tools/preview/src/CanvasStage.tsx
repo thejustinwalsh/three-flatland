@@ -1,7 +1,8 @@
+/// <reference path="./vite-env.d.ts" />
 import {
-  createContext,
+  Suspense,
+  use,
   useCallback,
-  useContext,
   useEffect,
   useMemo,
   useRef,
@@ -13,7 +14,31 @@ import {
 import { loadImage } from '@three-flatland/io'
 import { ThreeLayer } from './ThreeLayer'
 import { ViewportContext, viewBoxFor, type Viewport } from './Viewport'
-import { createCursorStore, type CursorStore } from './cursorStore'
+import { createCursorStore } from './cursorStore'
+import { canvasBackgroundStyle } from './canvasBackground'
+// `?worker&inline` embeds the worker source in the bundle and instantiates
+// it via a runtime Blob URL. Required for VSCode webviews: a normal worker
+// chunk loads from the asset cdn (`https://file+.vscode-resource…`) which
+// is cross-origin to the panel's `vscode-webview://` document, so a
+// regular `new Worker(url)` is blocked with a SecurityError. Blob URLs are
+// same-origin to the host page, so the Worker constructor accepts them.
+import ImageDecoderWorker from './imageDecoderWorker?worker&inline'
+import {
+  CursorStoreContext,
+  ImageDataContext,
+  ViewportControllerContext,
+  type ViewportController,
+} from './CanvasContext'
+
+// Re-export so existing root-package consumers (`@three-flatland/preview`)
+// that imported these from `CanvasStage` keep working. The shell entry
+// (`./index.ts`) now sources them from `./CanvasContext` directly.
+export {
+  useCursorStore,
+  useImageData,
+  useViewportController,
+  type ViewportController,
+} from './CanvasContext'
 
 export type CanvasStageProps = {
   imageUri: string | null
@@ -40,12 +65,14 @@ export type CanvasStageProps = {
   /**
    * Background style behind the image:
    *   - 'solid': uses `background` (or transparent) — current behavior.
-   *   - 'checker': renders a theme-aware checkerboard pattern, useful for
-   *     spotting transparent pixels in the image. The three.js layer
+   *   - 'checker': theme-aware transparency-grid pattern. Useful for
+   *     spotting transparent pixels in the image. Three.js layer
    *     renders transparent so the pattern shows through.
+   *   - 'gradient': subtle diagonal wash between editor + widget theme
+   *     colors. Quieter than checker for non-pixel atlases.
    * Defaults to 'solid'.
    */
-  backgroundStyle?: 'solid' | 'checker'
+  backgroundStyle?: 'solid' | 'checker' | 'gradient'
   /**
    * When true, paints a semi-transparent dark overlay everywhere outside
    * the image's pixel rect — making the image's edges obvious without
@@ -75,25 +102,146 @@ export type CanvasStageProps = {
   pixelArt?: boolean
 }
 
-/**
- * Cursor store for the active stage. Provided by `<CanvasStage>`, consumed
- * by `<InfoPanel>` (and any other component that wants the live cursor
- * reading). Null when no stage is mounted.
- */
-const CursorStoreContext = createContext<CursorStore | null>(null)
-export function useCursorStore(): CursorStore | null {
-  return useContext(CursorStoreContext)
+// ---------------------------------------------------------------------------
+// Image caches — keyed by URI, all module-scope so StrictMode re-invocations
+// and remounts share the same in-flight promises rather than racing. Three
+// separate caches because the consumers want different resolution
+// granularity:
+//
+//   1. `imageCache` holds the raw `HTMLImageElement` promise. Both the size
+//      and decode caches chain off this so a single network fetch + img
+//      decode services everyone.
+//   2. `sizeCache` resolves as soon as `<img>.onload` fires — fast path
+//      for setting the canvas viewport BEFORE the GPU texture upload
+//      finishes. Gating overlay rendering on this signal (instead of the
+//      slower TextureLoader callback) keeps rects from popping in after
+//      the sprite renders.
+//   3. `decodeCache` runs the full pixel decode entirely off the main
+//      thread: `createImageBitmap` (browser worker pool) → transfer the
+//      bitmap into our worker → drawImage + getImageData inside the
+//      worker → transfer the ImageData buffer back. Used for cursor
+//      RGBA sampling + CCL auto-detect. Eager start at mount is fine
+//      because the only main-thread work is the worker postMessage
+//      itself (microsecond-scale).
+// ---------------------------------------------------------------------------
+
+const imageCache = new Map<string, Promise<HTMLImageElement>>()
+function getImage(uri: string): Promise<HTMLImageElement> {
+  let p = imageCache.get(uri)
+  if (!p) {
+    p = loadImage(uri)
+    imageCache.set(uri, p)
+  }
+  return p
+}
+
+const sizeCache = new Map<string, Promise<{ w: number; h: number }>>()
+function imageSize(uri: string): Promise<{ w: number; h: number }> {
+  let p = sizeCache.get(uri)
+  if (!p) {
+    p = getImage(uri).then((img) => ({ w: img.naturalWidth, h: img.naturalHeight }))
+    sizeCache.set(uri, p)
+  }
+  return p
+}
+
+// Decoder worker — single instance, spawned eagerly when this module is
+// evaluated. The module only loads when the (lazy) canvas chunk does,
+// which only happens when CanvasStage actually mounts — so spawning the
+// worker at parse time has no cost outside the panel-is-open case but
+// means the first decode hits a warm worker (no `new Worker` cold start
+// in the critical path). Subsequent decodes multiplex over the same
+// instance via the request-id + pending-promise table.
+type DecodeResponse =
+  | { id: number; data: ImageData }
+  | { id: number; error: string }
+
+let nextDecodeId = 1
+const pendingDecodes = new Map<
+  number,
+  { resolve: (d: ImageData) => void; reject: (e: Error) => void }
+>()
+
+const decoderWorker = new ImageDecoderWorker()
+decoderWorker.onmessage = (e: MessageEvent<DecodeResponse>) => {
+  const cb = pendingDecodes.get(e.data.id)
+  if (!cb) return
+  pendingDecodes.delete(e.data.id)
+  if ('error' in e.data) cb.reject(new Error(e.data.error))
+  else cb.resolve(e.data.data)
+}
+decoderWorker.onerror = (e) => {
+  // Worker-level error — reject all pending so we don't leak promises.
+  const err = new Error(`Image decoder worker error: ${e.message}`)
+  for (const cb of pendingDecodes.values()) cb.reject(err)
+  pendingDecodes.clear()
+}
+
+const decodeCache = new Map<string, Promise<ImageData>>()
+function decodeImage(uri: string): Promise<ImageData> {
+  let p = decodeCache.get(uri)
+  if (!p) {
+    p = getImage(uri)
+      // `createImageBitmap` decodes on the browser's internal worker
+      // pool — main thread never spends time on pixel decoding here.
+      .then((img) => createImageBitmap(img))
+      .then(
+        (bitmap) =>
+          new Promise<ImageData>((resolve, reject) => {
+            const id = nextDecodeId++
+            pendingDecodes.set(id, { resolve, reject })
+            // Transfer the bitmap into the worker (it leaves main
+            // thread). The worker does drawImage + getImageData on an
+            // OffscreenCanvas there and transfers the ImageData buffer
+            // back, so neither side spends main-thread time on pixels.
+            decoderWorker.postMessage({ id, bitmap }, [bitmap])
+          }),
+      )
+    decodeCache.set(uri, p)
+  }
+  return p
 }
 
 /**
- * Decoded image pixels for the loaded sprite, exposed for overlays that
- * need the full pixel buffer (auto-detect / connected-component labeling,
- * future histogram tooling). Null until the image finishes decoding or
- * when no image is loaded.
+ * Suspends on the cached size probe and surfaces `{w, h}` via `onChange`
+ * before the three.js TextureLoader has finished its GPU upload. This
+ * lets `<CanvasStage>` set its base viewport early — overlays mount on
+ * the same frame the sprite first renders rather than one frame after,
+ * killing the "sprite appears, then rects pop in" sequence.
  */
-const ImageDataContext = createContext<ImageData | null>(null)
-export function useImageData(): ImageData | null {
-  return useContext(ImageDataContext)
+function ImageSizeSink({
+  uri,
+  onChange,
+}: {
+  uri: string
+  onChange: (size: { w: number; h: number }) => void
+}) {
+  const size = use(imageSize(uri))
+  useEffect(() => {
+    onChange(size)
+  }, [size, onChange])
+  return null
+}
+
+/**
+ * Suspends on the cached decode promise for `uri` and surfaces the result
+ * to the parent via `onChange`. Sits behind a `<Suspense fallback={null}>`
+ * so the rest of the canvas (overlays, cursor handlers) renders immediately
+ * — the decoded `ImageData` is enrichment data used for cursor RGBA
+ * sampling and CCL auto-detect, not a render gate.
+ */
+function ImageDecodeSink({
+  uri,
+  onChange,
+}: {
+  uri: string
+  onChange: (data: ImageData) => void
+}) {
+  const data = use(decodeImage(uri))
+  useEffect(() => {
+    onChange(data)
+  }, [data, onChange])
+  return null
 }
 
 // ---------------------------------------------------------------------------
@@ -246,33 +394,6 @@ function clampPan(panX: number, panY: number, vp: Viewport): [number, number] {
   ]
 }
 
-export type ViewportController = {
-  zoom: number
-  panX: number
-  panY: number
-  /** Zoom in by 1.25× toward the current center. */
-  zoomIn(): void
-  /** Zoom out by 1.25× toward the current center. */
-  zoomOut(): void
-  /** Reset to zoom=1, pan=(0,0) — fit-to-canvas. */
-  fitToView(): void
-  /** Set zoom directly (clamped to [0.05, 50]). */
-  setZoom(z: number): void
-  /** Set pan directly (in image-pixel units). */
-  setPan(x: number, y: number): void
-}
-
-const ViewportControllerContext = createContext<ViewportController | null>(null)
-
-/**
- * Access the viewport controller from any descendant of `<CanvasStage>`.
- * Returns null when no stage is mounted. Use this in toolbar buttons to
- * wire zoomIn / zoomOut / fitToView.
- */
-export function useViewportController(): ViewportController | null {
-  return useContext(ViewportControllerContext)
-}
-
 // ---------------------------------------------------------------------------
 // CanvasStage
 // ---------------------------------------------------------------------------
@@ -377,6 +498,80 @@ export function CanvasStage({
     setPanYState(newPanY)
   }, [])
 
+  // -------------------------------------------------------------------------
+  // Pixel-snap zoom tween: scroll sets a *target* zoom (next snap step)
+  // and a per-frame lerp eases toward it. Without this, fast scrolls
+  // teleport the view because each notch fires its own snap and applies
+  // it instantly — uncontrollable on a high-DPI trackpad. Now multiple
+  // wheel events advance the target multiple steps; the tween catches
+  // up so the user can stop scrolling once their visual target is set.
+  // -------------------------------------------------------------------------
+  const zoomTargetRef = useRef<number>(1)
+  const tweenAnchorRef = useRef<
+    | {
+        imgX: number
+        imgY: number
+        baseZoom: number
+        basePanX: number
+        basePanY: number
+      }
+    | null
+  >(null)
+  const tweenRafRef = useRef<number | null>(null)
+
+  const computeZoomAtAnchor = useCallback(
+    (
+      zoom: number,
+      anchor: NonNullable<typeof tweenAnchorRef.current>,
+      vp: Viewport,
+    ): { panX: number; panY: number } => {
+      const oldCenterX = vp.imageW / 2 + anchor.basePanX
+      const oldCenterY = vp.imageH / 2 + anchor.basePanY
+      const newCenterX = anchor.imgX - (anchor.imgX - oldCenterX) * (anchor.baseZoom / zoom)
+      const newCenterY = anchor.imgY - (anchor.imgY - oldCenterY) * (anchor.baseZoom / zoom)
+      return {
+        panX: newCenterX - vp.imageW / 2,
+        panY: newCenterY - vp.imageH / 2,
+      }
+    },
+    [],
+  )
+
+  // Frame-by-frame zoom tween. Lerps current → target by 25% per frame
+  // (≈4-frame settle) and re-anchors pan so the cursor coord captured at
+  // wheel time stays fixed in screen space throughout the ease.
+  const tickZoomTween = useCallback(() => {
+    tweenRafRef.current = null
+    const vp = viewportRef.current
+    const anchor = tweenAnchorRef.current
+    if (!vp || !anchor) return
+    const target = zoomTargetRef.current
+    const current = zoomRef.current
+    const diff = target - current
+    if (Math.abs(diff) < target * 0.005) {
+      // Within 0.5% — snap and stop.
+      const { panX: pX, panY: pY } = computeZoomAtAnchor(target, anchor, vp)
+      const [cx, cy] = clampPan(pX, pY, { ...vp, zoom: target })
+      applyZoom(target, cx, cy)
+      tweenAnchorRef.current = null
+      return
+    }
+    const next = current + diff * 0.25
+    const { panX: pX, panY: pY } = computeZoomAtAnchor(next, anchor, vp)
+    const [cx, cy] = clampPan(pX, pY, { ...vp, zoom: next })
+    applyZoom(next, cx, cy)
+    tweenRafRef.current = requestAnimationFrame(tickZoomTween)
+  }, [applyZoom, computeZoomAtAnchor])
+
+  useEffect(() => {
+    return () => {
+      if (tweenRafRef.current !== null) {
+        cancelAnimationFrame(tweenRafRef.current)
+        tweenRafRef.current = null
+      }
+    }
+  }, [])
+
   // Clamp pan against current viewport when both are available. This runs
   // after every render but is cheap (just two Math.max/min calls).
   const viewportRef = useRef<Viewport | null>(null)
@@ -400,36 +595,13 @@ export function CanvasStage({
     [onImageReady, fitMargin],
   )
 
-  // Decode the image once for cursor color sampling. Uses the same
-  // `<Image>`-based load path as Three.js's TextureLoader (vscode-webview
-  // URIs play nicely with `<img>` but `fetch()` can fail for them with
-  // opaque CORS / CSP errors). Runs in parallel with the three.js
-  // texture load — the canvas can render before sampling is available.
-  useEffect(() => {
-    if (!imageUri) {
-      setImageData(null)
-      return
-    }
-    let cancelled = false
-    loadImage(imageUri)
-      .then((img) => {
-        if (cancelled) return
-        const w = img.naturalWidth
-        const h = img.naturalHeight
-        const canvas = new OffscreenCanvas(w, h)
-        const ctx = canvas.getContext('2d')
-        if (!ctx) throw new Error('2D context unavailable for image decode')
-        ctx.drawImage(img, 0, 0)
-        setImageData(ctx.getImageData(0, 0, w, h))
-      })
-      .catch((err) => {
-        console.error('[CanvasStage] image decode failed for cursor sampling', err)
-        if (!cancelled) setImageData(null)
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [imageUri])
+  // Reset stale decode result when the URI clears (file closed). Calling
+  // setState during render is allowed when guarded — React bailouts the
+  // re-render if the value is already null. Avoids an effect that would
+  // otherwise just sync derived state on a prop change.
+  if (!imageUri && imageData !== null) {
+    setImageData(null)
+  }
 
   // -------------------------------------------------------------------------
   // Cursor sampling
@@ -485,18 +657,60 @@ export function CanvasStage({
       const vp = viewportRef.current
       if (!svg || !vp) return
 
-      // Smooth continuous zoom: exp(-deltaY * k) gives ~1.1 per notch at 100px/notch
-      const factor = Math.exp(-e.deltaY * 0.001)
-      const oldZoom = zoomRef.current
-      const direction: 1 | -1 = e.deltaY < 0 ? 1 : -1
-      const rawNext = oldZoom * factor
-      const newZoom = clampZoom(stepSnap(oldZoom, direction, rawNext))
-
-      // Find the image-pixel coord under the cursor
+      // Find the image-pixel coord under the cursor — used for both
+      // the smooth and pixel-snap paths to anchor the zoom.
       const pt = svg.createSVGPoint()
       pt.x = e.clientX
       pt.y = e.clientY
       const m = svg.getScreenCTM()
+
+      const direction: 1 | -1 = e.deltaY < 0 ? 1 : -1
+
+      if (pixelSnapZoomRef.current) {
+        // Target-and-tween model. Each wheel notch advances the
+        // *target* zoom by one snap step from where it currently is
+        // (which may be mid-tween). The rAF tween handles the animation
+        // and pan re-anchoring. Multiple fast scrolls accumulate steps;
+        // letting go of the wheel lets the tween catch up.
+        const baseTarget = tweenAnchorRef.current
+          ? zoomTargetRef.current
+          : zoomRef.current
+        const newTarget = clampZoom(
+          stepSnap(baseTarget, direction, baseTarget * Math.exp(-e.deltaY * 0.001)),
+        )
+        zoomTargetRef.current = newTarget
+        if (m) {
+          const local = pt.matrixTransform(m.inverse())
+          tweenAnchorRef.current = {
+            imgX: local.x,
+            imgY: local.y,
+            baseZoom: zoomRef.current,
+            basePanX: panXRef.current,
+            basePanY: panYRef.current,
+          }
+        } else if (!tweenAnchorRef.current) {
+          tweenAnchorRef.current = {
+            imgX: vp.imageW / 2,
+            imgY: vp.imageH / 2,
+            baseZoom: zoomRef.current,
+            basePanX: panXRef.current,
+            basePanY: panYRef.current,
+          }
+        }
+        if (tweenRafRef.current === null) {
+          tweenRafRef.current = requestAnimationFrame(tickZoomTween)
+        }
+        return
+      }
+
+      // Smooth continuous zoom: exp(-deltaY * k) gives ~1.1 per notch
+      // at 100px/notch. Apply instantly — no tween, the per-event
+      // delta is small enough.
+      const factor = Math.exp(-e.deltaY * 0.001)
+      const oldZoom = zoomRef.current
+      const rawNext = oldZoom * factor
+      const newZoom = clampZoom(stepSnap(oldZoom, direction, rawNext))
+
       if (!m) {
         applyZoom(newZoom, panXRef.current, panYRef.current)
         return
@@ -522,7 +736,7 @@ export function CanvasStage({
       const [cx, cy] = clampPan(newPanX, newPanY, vpForClamp)
       applyZoom(newZoom, cx, cy)
     },
-    [applyZoom, stepSnap],
+    [applyZoom, stepSnap, tickZoomTween],
   )
 
   // -------------------------------------------------------------------------
@@ -719,17 +933,12 @@ export function CanvasStage({
 
   const inPanMode = panMode || isSpaceDown
 
-  // Checker mode: render the pattern on the wrapper and let the three.js
-  // layer clear with alpha so it shows through. Solid mode keeps the
-  // legacy behavior — three.js owns the bg.
-  const isChecker = backgroundStyle === 'checker'
-  const wrapperBackground = isChecker
-    ? // 2×2 checker via conic-gradient. Two theme tokens give us automatic
-      // light/dark adaptation; ~24px tile is large enough to read but
-      // small enough to feel like a transparency grid rather than pixel art.
-      `conic-gradient(var(--vscode-editorWidget-background) 90deg, var(--vscode-editor-background) 0 180deg, var(--vscode-editorWidget-background) 0 270deg, var(--vscode-editor-background) 0)`
-    : undefined
-  const threeLayerBackground = isChecker ? undefined : background
+  // 'checker' / 'gradient': wrapper paints the visible bg; let the
+  // three.js layer clear with alpha so the pattern shows through.
+  // 'solid': three.js owns the bg via `<color attach="background">` so
+  // the canvas paints opaque. The wrapper stays transparent.
+  const wrapperPaintsBg = backgroundStyle === 'checker' || backgroundStyle === 'gradient'
+  const threeLayerBackground = wrapperPaintsBg ? undefined : background
 
   return (
     <div
@@ -744,9 +953,9 @@ export function CanvasStage({
         // HoverFrameChip) can use `@container (max-width: …)` queries to
         // restack themselves when the canvas is narrow.
         containerType: 'inline-size',
-        backgroundColor: isChecker ? 'var(--vscode-editor-background)' : undefined,
-        backgroundImage: wrapperBackground,
-        backgroundSize: isChecker ? '24px 24px' : undefined,
+        ...(wrapperPaintsBg
+          ? canvasBackgroundStyle(backgroundStyle, 'var(--vscode-editor-background)')
+          : {}),
       }}
       onPointerMove={combinedPointerMove}
       onPointerLeave={handlePointerLeave}
@@ -765,6 +974,22 @@ export function CanvasStage({
         onImageReady={handleReady}
         pixelArt={pixelArt}
       />
+      {imageUri ? (
+        // Size probe sets the viewport early (img.onload only) so
+        // overlays mount on the same frame the sprite first renders.
+        // Decode probe runs eagerly because the actual pixel work
+        // happens off the main thread (createImageBitmap + worker
+        // postMessage) — there's no main-thread cost to starting it
+        // at mount. Both fallbacks are null so neither gates anything.
+        <>
+          <Suspense fallback={null}>
+            <ImageSizeSink uri={imageUri} onChange={handleReady} />
+          </Suspense>
+          <Suspense fallback={null}>
+            <ImageDecodeSink uri={imageUri} onChange={setImageData} />
+          </Suspense>
+        </>
+      ) : null}
       {viewport ? (
         <svg
           ref={anchorRef}

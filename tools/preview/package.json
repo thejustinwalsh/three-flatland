@@ -9,6 +9,11 @@
       "source": "./src/index.ts",
       "types": "./src/index.ts",
       "default": "./src/index.ts"
+    },
+    "./canvas": {
+      "source": "./src/canvas.ts",
+      "types": "./src/canvas.ts",
+      "default": "./src/canvas.ts"
     }
   },
   "module": "./src/index.ts",

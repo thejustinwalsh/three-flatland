@@ -3,7 +3,7 @@ import * as stylex from '@stylexjs/stylex'
 import { vscode } from '@three-flatland/design-system/tokens/vscode-theme.stylex'
 import { space } from '@three-flatland/design-system/tokens/space.stylex'
 import { radius } from '@three-flatland/design-system/tokens/radius.stylex'
-import { useCursorStore } from './CanvasStage'
+import { useCursorStore } from './CanvasContext'
 import { useCursor, type CursorReading } from './cursorStore'
 import { useViewport } from './Viewport'
 

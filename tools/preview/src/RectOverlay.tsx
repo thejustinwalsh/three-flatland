@@ -102,13 +102,26 @@ function normalized(d: Drag) {
 
 // ─── Move drag ───────────────────────────────────────────────────────────────
 
-type MoveDrag = {
+/**
+ * Per-rect entry for a (potentially multi-rect) move drag. The drag's
+ * primary `id` is the rect the user pressed on; every rect in the
+ * current selection gets moved by the same delta. `startRect` lets us
+ * recompute new positions from the original anchor each pointer-move
+ * (avoids drift from accumulating deltas under clamping).
+ */
+type MoveDragEntry = {
   id: string
+  startRect: { x: number; y: number; w: number; h: number }
+  preview: { x: number; y: number }
+}
+
+type MoveDrag = {
+  /** Rect the pointer landed on; the rest of `entries` rides along. */
+  primaryId: string
   pointerId: number
   startImg: { x: number; y: number }
-  startRect: { x: number; y: number; w: number; h: number }
-  /** Preview position while dragging (image-px). */
-  preview: { x: number; y: number }
+  /** All rects being moved. Length 1 for single-select, N for multi. */
+  entries: MoveDragEntry[]
   /** Has the pointer moved past the click-vs-drag threshold? */
   committed: boolean
 }
@@ -385,11 +398,13 @@ export function RectOverlay({
 
   // Move-drag state (stored in ref so pointermove handler always sees latest)
   const moveDragRef = useRef<MoveDrag | null>(null)
-  const [moveDragPreview, setMoveDragPreview] = useState<{
-    id: string
-    x: number
-    y: number
-  } | null>(null)
+  // Map from rect id → preview pos. Multi-rect drags fill in one
+  // entry per selected rect; single-select drags fill in one. Lookup
+  // by id during render so each rect renders at its preview position.
+  const [moveDragPreview, setMoveDragPreview] = useState<ReadonlyMap<
+    string,
+    { x: number; y: number }
+  > | null>(null)
 
   // Resize-drag state
   const resizeDragRef = useRef<ResizeDrag | null>(null)
@@ -427,11 +442,12 @@ export function RectOverlay({
       })
       return
     }
-    if (moveDragPreview && moveDragPreview.id === hoveredId) {
+    const movedHovered = hoveredId ? moveDragPreview?.get(hoveredId) : undefined
+    if (movedHovered) {
       onHoverChangeRef.current?.({
         ...base,
-        x: moveDragPreview.x,
-        y: moveDragPreview.y,
+        x: movedHovered.x,
+        y: movedHovered.y,
       })
       return
     }
@@ -517,12 +533,24 @@ export function RectOverlay({
       e.currentTarget.setPointerCapture(e.pointerId)
       const p = toImagePx(e)
       if (!p) return
+      // Multi-select: every selected rect rides along with the same
+      // delta. Single-select: just the one. We snapshot starting
+      // positions for all so subsequent pointermoves can recompute
+      // from anchor rather than accumulate (avoids drift under the
+      // image-bounds clamp when one rect hits an edge).
+      const entries: MoveDragEntry[] = (selectedIds.size > 1
+        ? rects.filter((rr) => selectedIds.has(rr.id))
+        : [r]
+      ).map((rr) => ({
+        id: rr.id,
+        startRect: { x: rr.x, y: rr.y, w: rr.w, h: rr.h },
+        preview: { x: rr.x, y: rr.y },
+      }))
       moveDragRef.current = {
-        id: r.id,
+        primaryId: r.id,
         pointerId: e.pointerId,
         startImg: p,
-        startRect: { x: r.x, y: r.y, w: r.w, h: r.h },
-        preview: { x: r.x, y: r.y },
+        entries,
         committed: false,
       }
       // Don't update preview yet — wait for threshold.
@@ -544,43 +572,71 @@ export function RectOverlay({
   // ── Rect body pointermove: update move drag preview ───────────────────────
   const handleRectPointerMove = (r: Rect, e: ReactPointerEvent<SVGRectElement>) => {
     const md = moveDragRef.current
-    if (!md || md.id !== r.id || e.pointerId !== md.pointerId) return
+    if (!md || md.primaryId !== r.id || e.pointerId !== md.pointerId) return
     const p = toImagePx(e)
     if (!p || !vp) return
 
-    const dx = p.x - md.startImg.x
-    const dy = p.y - md.startImg.y
+    const rawDx = p.x - md.startImg.x
+    const rawDy = p.y - md.startImg.y
 
     if (!md.committed) {
-      const dist = Math.sqrt(dx * dx + dy * dy)
+      const dist = Math.sqrt(rawDx * rawDx + rawDy * rawDy)
       if (dist < MOVE_THRESHOLD_PX) return
       md.committed = true
     }
 
-    // Clamp so rect stays within image bounds.
-    const newX = Math.max(0, Math.min(vp.imageW - md.startRect.w, md.startRect.x + dx))
-    const newY = Math.max(0, Math.min(vp.imageH - md.startRect.h, md.startRect.y + dy))
-    md.preview = { x: Math.round(newX), y: Math.round(newY) }
-    setMoveDragPreview({ id: r.id, x: md.preview.x, y: md.preview.y })
+    // Compute the largest delta the WHOLE selection can move without
+    // any single rect leaving the image bounds. Without this clamping
+    // the group, individual rects would clip independently and the
+    // multi-selection would deform (e.g. one rect glued to the right
+    // edge while the others kept moving). The group moves rigidly.
+    let minDx = rawDx
+    let minDy = rawDy
+    let maxDx = rawDx
+    let maxDy = rawDy
+    for (const ent of md.entries) {
+      const lowDx = -ent.startRect.x
+      const highDx = vp.imageW - ent.startRect.w - ent.startRect.x
+      const lowDy = -ent.startRect.y
+      const highDy = vp.imageH - ent.startRect.h - ent.startRect.y
+      if (lowDx > minDx) minDx = lowDx
+      if (highDx < maxDx) maxDx = highDx
+      if (lowDy > minDy) minDy = lowDy
+      if (highDy < maxDy) maxDy = highDy
+    }
+    const dx = Math.max(minDx, Math.min(maxDx, rawDx))
+    const dy = Math.max(minDy, Math.min(maxDy, rawDy))
+
+    const next = new Map<string, { x: number; y: number }>()
+    for (const ent of md.entries) {
+      const px = Math.round(ent.startRect.x + dx)
+      const py = Math.round(ent.startRect.y + dy)
+      ent.preview = { x: px, y: py }
+      next.set(ent.id, { x: px, y: py })
+    }
+    setMoveDragPreview(next)
   }
 
   // ── Rect body pointerup: commit move or do selection click ────────────────
   const handleRectPointerUp = (r: Rect, e: ReactPointerEvent<SVGRectElement>) => {
     const md = moveDragRef.current
-    if (md && md.id === r.id && e.pointerId === md.pointerId) {
+    if (md && md.primaryId === r.id && e.pointerId === md.pointerId) {
       if (e.currentTarget.hasPointerCapture(e.pointerId)) {
         e.currentTarget.releasePointerCapture(e.pointerId)
       }
       if (md.committed) {
-        // Committed drag — fire onRectChange with final (snapped if
-        // configured, raw if Shift was held during release).
-        const raw = {
-          x: md.preview.x,
-          y: md.preview.y,
-          w: md.startRect.w,
-          h: md.startRect.h,
+        // Committed drag — fire onRectChange for every rect in the
+        // drag set with its final (snapped if configured, raw if
+        // Shift was held during release) position.
+        for (const ent of md.entries) {
+          const raw = {
+            x: ent.preview.x,
+            y: ent.preview.y,
+            w: ent.startRect.w,
+            h: ent.startRect.h,
+          }
+          onRectChange!(ent.id, e.shiftKey ? raw : snapRect(raw))
         }
-        onRectChange!(r.id, e.shiftKey ? raw : snapRect(raw))
       } else {
         // Sub-threshold: treat as a click → selection.
         if (onSelectionChange) {
@@ -603,7 +659,7 @@ export function RectOverlay({
   // ── Rect body pointercancel: revert move drag ─────────────────────────────
   const handleRectPointerCancel = (r: Rect) => {
     const md = moveDragRef.current
-    if (md && md.id === r.id) {
+    if (md && md.primaryId === r.id) {
       moveDragRef.current = null
       setMoveDragPreview(null)
     }
@@ -744,11 +800,12 @@ export function RectOverlay({
       {rects.map((r, i) => {
         const sel = selectedIds.has(r.id)
 
-        // During move drag, show preview position for this rect.
-        const isMoving = moveDragPreview?.id === r.id && moveDragRef.current?.committed
+        // During move drag, show preview position for this rect (every
+        // rect in the multi-select drag has its own entry in the Map).
+        const movePreview = moveDragRef.current?.committed ? moveDragPreview?.get(r.id) : undefined
         const isResizing = resizeDragPreview?.id === r.id
-        const dispX = isMoving ? moveDragPreview!.x : isResizing ? resizeDragPreview!.x : r.x
-        const dispY = isMoving ? moveDragPreview!.y : isResizing ? resizeDragPreview!.y : r.y
+        const dispX = movePreview ? movePreview.x : isResizing ? resizeDragPreview!.x : r.x
+        const dispY = movePreview ? movePreview.y : isResizing ? resizeDragPreview!.y : r.y
         const dispW = isResizing ? resizeDragPreview!.w : r.w
         const dispH = isResizing ? resizeDragPreview!.h : r.h
 
@@ -758,7 +815,7 @@ export function RectOverlay({
         // Cursor for the rect body: show 'move' when onRectChange is set
         // and this rect is selected, otherwise pointer.
         const canMove = Boolean(onRectChange) && sel && interactive
-        const bodyCursor = isMoving ? 'grabbing' : canMove ? 'grab' : 'pointer'
+        const bodyCursor = movePreview ? 'grabbing' : canMove ? 'grab' : 'pointer'
 
         return (
           <g key={r.id}>
@@ -805,16 +862,23 @@ export function RectOverlay({
       })}
 
       {/* Resize handles — rendered above all rect chrome so they're always
-          on top and hittable. One <g> per selected rect. Only when
-          onRectChange is provided and overlay is interactive. */}
-      {interactive && onRectChange &&
+          on top and hittable. Only shown when EXACTLY ONE rect is
+          selected: a multi-select drag of all eight handles per rect
+          isn't a meaningful gesture (we'd have to define what
+          "multi-resize" even means — anchor-relative, group bbox,
+          per-rect deltas, …), so the cleanest UX is to suppress the
+          handles entirely above 1 selected. The user can still
+          marquee-move a multi-selection (handled separately) and pick
+          a single rect to resize. Only when onRectChange is provided
+          and the overlay is interactive. */}
+      {interactive && onRectChange && selectedIds.size === 1 &&
         rects.map((r) => {
           if (!selectedIds.has(r.id)) return null
 
           const isResizing = resizeDragPreview?.id === r.id
-          const isMoving = moveDragPreview?.id === r.id && moveDragRef.current?.committed
-          const gx = isMoving ? moveDragPreview!.x : isResizing ? resizeDragPreview!.x : r.x
-          const gy = isMoving ? moveDragPreview!.y : isResizing ? resizeDragPreview!.y : r.y
+          const movePreview = moveDragRef.current?.committed ? moveDragPreview?.get(r.id) : undefined
+          const gx = movePreview ? movePreview.x : isResizing ? resizeDragPreview!.x : r.x
+          const gy = movePreview ? movePreview.y : isResizing ? resizeDragPreview!.y : r.y
           const gw = isResizing ? resizeDragPreview!.w : r.w
           const gh = isResizing ? resizeDragPreview!.h : r.h
           const gr = { x: gx, y: gy, w: gw, h: gh }

@@ -1,5 +1,5 @@
 import type { ComponentProps } from 'react'
-import { VscodeButton } from '@vscode-elements/react-elements'
+import VscodeButton from '@vscode-elements/react-elements/dist/components/VscodeButton.js'
 
 /**
  * VSCode-native Button. Wraps vscode-button (Lit) with its React binding.

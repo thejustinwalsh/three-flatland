@@ -1,7 +1,7 @@
 import * as stylex from '@stylexjs/stylex'
 import type { StyleXStyles } from '@stylexjs/stylex'
 import type { ComponentProps } from 'react'
-import { VscodeToolbarContainer } from '@vscode-elements/react-elements'
+import VscodeToolbarContainer from '@vscode-elements/react-elements/dist/components/VscodeToolbarContainer.js'
 import { space } from '../tokens/space.stylex'
 
 const s = stylex.create({

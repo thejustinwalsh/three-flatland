@@ -22,21 +22,22 @@ export { radius } from './tokens/radius.stylex'
 export { z } from './tokens/z.stylex'
 
 // Re-export common VSCode Elements so tools don't need to depend on the
-// package directly. Add more as needed.
-export {
-  VscodeBadge as Badge,
-  VscodeDivider as Divider,
-  VscodeIcon as Icon,
-  VscodeLabel as Label,
-  VscodeScrollable as Scrollable,
-  VscodeSingleSelect as SingleSelect,
-  VscodeOption as Option,
-  VscodeTabs as Tabs,
-  VscodeTabHeader as TabHeader,
-  VscodeTabPanel as TabPanel,
-  VscodeTextfield as TextField,
-  VscodeTree as Tree,
-  VscodeTreeItem as TreeItem,
-  VscodeCheckbox as Checkbox,
-  VscodeCollapsible as Collapsible,
-} from '@vscode-elements/react-elements'
+// package directly. Imported from per-component subpaths (not the barrel)
+// so each consumer only pulls in the wrappers it actually names — without
+// this, `@vscode-elements/react-elements`'s ambiguous sideEffects field
+// forces the whole barrel into the bundle. Add more as needed.
+export { default as Badge } from '@vscode-elements/react-elements/dist/components/VscodeBadge.js'
+export { default as Divider } from '@vscode-elements/react-elements/dist/components/VscodeDivider.js'
+export { default as Icon } from '@vscode-elements/react-elements/dist/components/VscodeIcon.js'
+export { default as Label } from '@vscode-elements/react-elements/dist/components/VscodeLabel.js'
+export { default as Scrollable } from '@vscode-elements/react-elements/dist/components/VscodeScrollable.js'
+export { default as SingleSelect } from '@vscode-elements/react-elements/dist/components/VscodeSingleSelect.js'
+export { default as Option } from '@vscode-elements/react-elements/dist/components/VscodeOption.js'
+export { default as Tabs } from '@vscode-elements/react-elements/dist/components/VscodeTabs.js'
+export { default as TabHeader } from '@vscode-elements/react-elements/dist/components/VscodeTabHeader.js'
+export { default as TabPanel } from '@vscode-elements/react-elements/dist/components/VscodeTabPanel.js'
+export { default as TextField } from '@vscode-elements/react-elements/dist/components/VscodeTextfield.js'
+export { default as Tree } from '@vscode-elements/react-elements/dist/components/VscodeTree.js'
+export { default as TreeItem } from '@vscode-elements/react-elements/dist/components/VscodeTreeItem.js'
+export { default as Checkbox } from '@vscode-elements/react-elements/dist/components/VscodeCheckbox.js'
+export { default as Collapsible } from '@vscode-elements/react-elements/dist/components/VscodeCollapsible.js'

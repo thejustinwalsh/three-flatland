@@ -1,1 +1,20 @@
 @stylex;
+
+/*
+ * Hide the native scrollbar on opt-in containers. StyleX's pseudo-element
+ * support doesn't cover `::-webkit-scrollbar`, so this is the global
+ * fallback. Used by the AnimationTimeline track so the only visible
+ * scroll affordance is our custom overlay indicator — without all
+ * three rules below, some platforms (notably macOS with non-overlay
+ * scrollbars) still reserve a layout track for the bar even with
+ * `display: none`.
+ */
+[data-no-scrollbar] {
+  scrollbar-width: none; /* Firefox / standard */
+  -ms-overflow-style: none; /* IE / legacy Edge */
+}
+[data-no-scrollbar]::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}

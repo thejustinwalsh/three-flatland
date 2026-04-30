@@ -241,22 +241,37 @@ export function AtlasMenu({ prefs }: AtlasMenuProps) {
       </button>
       {open ? (
         <div role="menu" {...stylex.props(s.popover)}>
+          <div {...stylex.props(s.sectionLabel)}>Rendering</div>
+          {/* Filter mode is backed by the boolean `pixelArt` pref —
+              true ↔ 'pixel' (nearest-neighbour), false ↔ 'bilinear'.
+              Surfacing it as a segmented control mirrors how an
+              artist thinks about it ("which filter is on") and lets
+              us add e.g. trilinear in the future without flipping
+              another flag. */}
+          <Segmented
+            label="Filter"
+            value={prefs.pixelArt ? 'pixel' : 'bilinear'}
+            options={['pixel', 'bilinear'] as const}
+            onChange={(v) => prefsStore.set({ pixelArt: v === 'pixel' })}
+          />
+          <Toggle
+            label="Pixel snap zoom"
+            checked={prefs.pixelSnapZoom}
+            onChange={(v) => prefsStore.set({ pixelSnapZoom: v })}
+          />
+
+          <div {...stylex.props(s.divider)} />
           <div {...stylex.props(s.sectionLabel)}>Background</div>
           <Segmented
             label="Style"
             value={prefs.background}
-            options={['checker', 'theme'] as const}
+            options={['checker', 'theme', 'gradient'] as const}
             onChange={(v) => prefsStore.set({ background: v })}
           />
           <Toggle
             label="Dim outside image"
             checked={prefs.dimOutOfBounds}
             onChange={(v) => prefsStore.set({ dimOutOfBounds: v })}
-          />
-          <Toggle
-            label="Pixel-perfect zoom"
-            checked={prefs.pixelSnapZoom}
-            onChange={(v) => prefsStore.set({ pixelSnapZoom: v })}
           />
 
           <div {...stylex.props(s.divider)} />
