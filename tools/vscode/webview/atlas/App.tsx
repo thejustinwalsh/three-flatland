@@ -1233,17 +1233,20 @@ export function App() {
     for (const r of rects) {
       if (selectedIds.has(r.id) && r.name) removedNames.add(r.name)
     }
-    setRects((prev) => prev.filter((r) => !selectedIds.has(r.id)))
+    const ids = selectedIds
+    atlasActions.applyMulti(
+      (prev) => prev.filter((r) => !ids.has(r.id)),
+      removedNames.size === 0
+        ? (prev) => prev
+        : (prev) => {
+            const next: Record<string, Animation> = {}
+            for (const [k, anim] of Object.entries(prev)) {
+              next[k] = { ...anim, frames: anim.frames.filter((f) => !removedNames.has(f)) }
+            }
+            return next
+          },
+    )
     setSelectedIds(new Set())
-    if (removedNames.size > 0) {
-      setAnimations((prev) => {
-        const next: Record<string, Animation> = {}
-        for (const [k, anim] of Object.entries(prev)) {
-          next[k] = { ...anim, frames: anim.frames.filter((f) => !removedNames.has(f)) }
-        }
-        return next
-      })
-    }
   }, [rects, selectedIds])
 
   const selectAll = useCallback(() => {
@@ -1254,26 +1257,28 @@ export function App() {
     const trimmed = name.trim()
     const oldName = rects.find((r) => r.id === id)?.name
     const newName = trimmed === '' ? undefined : trimmed
-    setRects((prev) =>
-      prev.map((r) => (r.id === id ? { ...r, name: newName } : r))
-    )
     // Propagate rename into every animation that references this frame.
     // If the rect lost its name (newName === undefined), strip the
     // entries — an unnamed rect can't appear in the `meta.animations` map.
-    if (oldName && oldName !== newName) {
-      setAnimations((prev) => {
-        const next: Record<string, Animation> = {}
-        for (const [k, anim] of Object.entries(prev)) {
-          next[k] = {
-            ...anim,
-            frames: newName == null
-              ? anim.frames.filter((f) => f !== oldName)
-              : anim.frames.map((f) => (f === oldName ? newName : f)),
+    const needsAnimUpdate = oldName && oldName !== newName
+    const rectsUpdater = (prev: Rect[]): Rect[] =>
+      prev.map((r) => (r.id === id ? { ...r, name: newName } : r))
+    const animsUpdater = needsAnimUpdate
+      ? (prev: Record<string, Animation>): Record<string, Animation> => {
+          const next: Record<string, Animation> = {}
+          for (const [k, anim] of Object.entries(prev)) {
+            next[k] = {
+              ...anim,
+              frames:
+                newName == null
+                  ? anim.frames.filter((f) => f !== oldName)
+                  : anim.frames.map((f) => (f === oldName ? newName : f)),
+            }
           }
+          return next
         }
-        return next
-      })
-    }
+      : (prev: Record<string, Animation>) => prev
+    atlasActions.applyMulti(rectsUpdater, animsUpdater)
   }, [rects])
 
   const applyPrefixToSelection = useCallback(
@@ -1290,21 +1295,21 @@ export function App() {
         nameById.set(r.id, newName)
         if (r.name && r.name !== newName) renames.set(r.name, newName)
       })
-      setRects((prev) =>
-        prev.map((r) => (nameById.has(r.id) ? { ...r, name: nameById.get(r.id) } : r))
+      atlasActions.applyMulti(
+        (prev) => prev.map((r) => (nameById.has(r.id) ? { ...r, name: nameById.get(r.id) } : r)),
+        renames.size === 0
+          ? (prev) => prev
+          : (prev) => {
+              const next: Record<string, Animation> = {}
+              for (const [k, anim] of Object.entries(prev)) {
+                next[k] = {
+                  ...anim,
+                  frames: anim.frames.map((f) => renames.get(f) ?? f),
+                }
+              }
+              return next
+            },
       )
-      if (renames.size > 0) {
-        setAnimations((prev) => {
-          const next: Record<string, Animation> = {}
-          for (const [k, anim] of Object.entries(prev)) {
-            next[k] = {
-              ...anim,
-              frames: anim.frames.map((f) => renames.get(f) ?? f),
-            }
-          }
-          return next
-        })
-      }
     },
     [rects, selectedIds]
   )

@@ -29,6 +29,16 @@ export type AtlasStoreState = {
       | ((prev: Record<string, Animation>) => Record<string, Animation>),
   ) => void
 
+  // Atomic updater for both rects and animations in one set() call.
+  // Use this instead of calling setRects + setAnimations separately to
+  // ensure zundo records a single history entry for the combined edit.
+  applyMulti: (
+    rectsUpdater: Rect[] | ((prev: Rect[]) => Rect[]),
+    animsUpdater:
+      | Record<string, Animation>
+      | ((prev: Record<string, Animation>) => Record<string, Animation>),
+  ) => void
+
   // Initial-load helper — replace both at once. Used during the
   // atlas/init bridge handshake. Doesn't push history (we don't want
   // file-load to be undoable; the user can't have done anything yet).
@@ -57,6 +67,14 @@ export const useAtlasStore = create<AtlasStoreState>()(
         set((s) => ({
           ...s,
           animations: typeof next === 'function' ? next(s.animations) : next,
+        })),
+
+      applyMulti: (rectsUpdater, animsUpdater) =>
+        set((s) => ({
+          ...s,
+          rects: typeof rectsUpdater === 'function' ? rectsUpdater(s.rects) : rectsUpdater,
+          animations:
+            typeof animsUpdater === 'function' ? animsUpdater(s.animations) : animsUpdater,
         })),
 
       loadFromInit: (rects, animations) => {
@@ -100,6 +118,12 @@ export const atlasActions = {
       | Record<string, Animation>
       | ((prev: Record<string, Animation>) => Record<string, Animation>),
   ) => useAtlasStore.getState().setAnimations(next),
+  applyMulti: (
+    rectsUpdater: Rect[] | ((prev: Rect[]) => Rect[]),
+    animsUpdater:
+      | Record<string, Animation>
+      | ((prev: Record<string, Animation>) => Record<string, Animation>),
+  ) => useAtlasStore.getState().applyMulti(rectsUpdater, animsUpdater),
   loadFromInit: (rects: Rect[], animations: Record<string, Animation>) =>
     useAtlasStore.getState().loadFromInit(rects, animations),
 }
