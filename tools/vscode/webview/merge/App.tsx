@@ -5,6 +5,7 @@ import { aliasFromUri } from '@three-flatland/io/atlas'
 import { mergeActions, useMergeState } from './mergeStore'
 import { SourcesView } from './SourcesView'
 import { MergedView } from './MergedView'
+import { ConflictsPanel } from './ConflictsPanel'
 
 type Tab = 'sources' | 'merged'
 
@@ -71,7 +72,24 @@ export function App() {
         <TabButton active={tab === 'merged'} onClick={() => setTab('merged')} label="Merged" />
       </div>
       <div style={{ flex: 1, minHeight: 0 }}>
-        {tab === 'sources' ? <SourcesView /> : <MergedView />}
+        {tab === 'sources' ? (
+          <div style={{ display: 'flex', height: '100%' }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <SourcesView />
+            </div>
+            <div
+              style={{
+                width: 320,
+                borderLeft: '1px solid var(--vscode-panel-border)',
+                overflow: 'hidden',
+              }}
+            >
+              <ConflictsPanel />
+            </div>
+          </div>
+        ) : (
+          <MergedView />
+        )}
       </div>
     </div>
   )
