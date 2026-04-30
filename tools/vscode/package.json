@@ -17,6 +17,11 @@
         "command": "threeFlatland.atlas.openEditor",
         "title": "Open in FL Sprite Atlas",
         "category": "FL"
+      },
+      {
+        "command": "threeFlatland.merge.openMergeTool",
+        "title": "Merge atlases…",
+        "category": "FL"
       }
     ],
     "customEditors": [
@@ -35,12 +40,21 @@
           "command": "threeFlatland.atlas.openEditor",
           "when": "resourceExtname == .png || resourceFilename =~ /\\.atlas\\.json$/",
           "group": "navigation@10"
+        },
+        {
+          "command": "threeFlatland.merge.openMergeTool",
+          "when": "resourceFilename =~ /\\.atlas\\.json$/",
+          "group": "navigation@11"
         }
       ],
       "commandPalette": [
         {
           "command": "threeFlatland.atlas.openEditor",
           "when": "resourceExtname == .png || resourceFilename =~ /\\.atlas\\.json$/"
+        },
+        {
+          "command": "threeFlatland.merge.openMergeTool",
+          "when": "resourceFilename =~ /\\.atlas\\.json$/"
         }
       ]
     },
