@@ -1,4 +1,4 @@
-import { mergeActions, useMergeState } from './mergeStore'
+import { mergeActions, useMergeState, CANDIDATE_SIZES } from './mergeStore'
 
 export type ToolbarProps = {
   onSave: () => void
@@ -76,7 +76,16 @@ export function Toolbar(p: ToolbarProps) {
 }
 
 function SettingsPopover() {
-  const { knobs } = useMergeState()
+  const { knobs, viableSizes, sources, result } = useMergeState()
+  // When the merge has unresolvable conflicts, viableSizes is empty
+  // because every probe fell into the conflicts branch — show the full
+  // candidate list so the user can still pick. Otherwise show only sizes
+  // that actually fit. Always include the currently-selected size so
+  // the <select>'s value resolves to a real <option>.
+  const showAll = sources.length === 0 || result.kind === 'conflicts'
+  const sizeSet = new Set<number>(showAll ? CANDIDATE_SIZES : viableSizes)
+  sizeSet.add(knobs.maxSize)
+  const sizes = [...sizeSet].sort((a, b) => a - b)
   return (
     <div style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 12 }}>
       <label>
@@ -86,11 +95,15 @@ function SettingsPopover() {
           onChange={(e) => mergeActions.setKnobs({ maxSize: Number(e.target.value) })}
           style={{ marginLeft: 4 }}
         >
-          {[1024, 2048, 4096, 8192].map((n) => (
-            <option key={n} value={n}>
-              {n}
-            </option>
-          ))}
+          {sizes.map((n) => {
+            const fits = showAll || viableSizes.includes(n)
+            return (
+              <option key={n} value={n}>
+                {n}
+                {fits ? '' : " (doesn't fit)"}
+              </option>
+            )
+          })}
         </select>
       </label>
       <label>
