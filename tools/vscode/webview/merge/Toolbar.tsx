@@ -46,6 +46,12 @@ const s = stylex.create({
   selectWrap: {
     width: 80,
   },
+  potCheckbox: {
+    // Visual separation from the Pad number field — the rest of the
+    // settings group uses tight `space.sm` gaps, but POT is a distinct
+    // toggle and reads better with breathing room.
+    marginInlineStart: space.lg,
+  },
   checkboxWrap: {
     display: 'flex',
     alignItems: 'center',
@@ -89,9 +95,12 @@ export function Toolbar(p: ToolbarProps) {
       <Divider />
       <SettingsControls />
       <Divider />
-      <div {...stylex.props(s.checkboxWrap)}>
+      <div
+        {...stylex.props(s.checkboxWrap)}
+        title="Delete the original .atlas.json files after the merge saves successfully"
+      >
         <Checkbox
-          label="Delete originals on success"
+          label="Delete sources"
           checked={deleteOriginals}
           onChange={(e) => {
             const el = e.currentTarget as HTMLElement & { checked: boolean }
@@ -175,14 +184,16 @@ function SettingsControls() {
           aria-label="Padding"
         />
       </div>
-      <Checkbox
-        label="POT"
-        checked={knobs.powerOfTwo}
-        onChange={(e) => {
-          const el = e.currentTarget as HTMLElement & { checked: boolean }
-          mergeActions.setKnobs({ powerOfTwo: el.checked })
-        }}
-      />
+      <div {...stylex.props(s.potCheckbox)} title="Power of Two — round output dimensions to the next power of 2">
+        <Checkbox
+          label="PoT"
+          checked={knobs.powerOfTwo}
+          onChange={(e) => {
+            const el = e.currentTarget as HTMLElement & { checked: boolean }
+            mergeActions.setKnobs({ powerOfTwo: el.checked })
+          }}
+        />
+      </div>
     </div>
   )
 }
