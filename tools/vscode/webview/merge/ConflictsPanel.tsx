@@ -7,6 +7,11 @@ import { mergeActions, useMergeState } from './mergeStore'
 import type { NameConflict } from '@three-flatland/io/atlas'
 
 const s = stylex.create({
+  panelFill: {
+    flex: 1,
+    minWidth: 0,
+    minHeight: 0,
+  },
   emptyState: {
     padding: space.lg,
     color: vscode.descriptionFg,
@@ -51,14 +56,14 @@ export function ConflictsPanel() {
 
   if (result.kind === 'ok') {
     return (
-      <Panel title="Conflicts" bodyPadding="none">
+      <Panel title="Conflicts" bodyPadding="none" style={s.panelFill}>
         <div {...stylex.props(s.emptyState)}>No conflicts.</div>
       </Panel>
     )
   }
   if (result.kind === 'nofit') {
     return (
-      <Panel title="Conflicts" bodyPadding="none">
+      <Panel title="Conflicts" bodyPadding="none" style={s.panelFill}>
         <div {...stylex.props(s.errorState)}>
           Doesn't fit at current max size — try a larger size or reduce padding.
         </div>
@@ -66,7 +71,7 @@ export function ConflictsPanel() {
     )
   }
   return (
-    <Panel title="Conflicts" bodyPadding="none">
+    <Panel title="Conflicts" bodyPadding="none" style={s.panelFill}>
       <div {...stylex.props(s.body)}>
         {result.frameConflicts.length > 0 && (
           <Collapsible title={`Frame conflicts (${result.frameConflicts.length})`} open>
