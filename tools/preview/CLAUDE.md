@@ -8,7 +8,14 @@
   Exports: types, hooks, helpers, drag kit, animation timeline/drawer, etc.
 - `@three-flatland/preview/canvas` — heavyweight: pulls in `@react-three/fiber` + `three`.
   Exports: `CanvasStage`, `ThreeLayer`, `AnimationPreviewPip`, `SpritePreview`.
-  Lazy-load via `React.lazy(() => import('@three-flatland/preview/canvas'))`.
+  **Always** lazy-load (`React.lazy(() => import('@three-flatland/preview/canvas'))`) and warm
+  the chunk in `main.tsx` with `void import('@three-flatland/preview/canvas')`. Importing this
+  subpath at the top level of any module pulls three.js + R3F into the initial shell chunk,
+  which balloons it from ~30 KB to >1 MB. See `tools/vscode/CLAUDE.md` "Bundle size & loading"
+  for the canonical pattern (Suspense boundaries, FOUC guard, chunk warm-up).
+
+`tools/preview/package.json` ships `"sideEffects": false`, so unused exports tree-shake out of
+consumers — never write a side-effect at module top level here.
 
 Source of truth: `tools/preview/package.json` (exports map), `tools/preview/src/index.ts`
 (root surface), `tools/preview/src/canvas.ts` (canvas subpath surface).

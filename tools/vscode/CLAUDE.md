@@ -163,6 +163,102 @@ Do NOT write `style={{ background: 'var(--vscode-…)' }}`. Use `vscode.*` token
 - `localResourceRoots` on the panel must include `dist/` and every directory the webview needs to load resources from (e.g. the document's parent dir for images).
 - Asset URLs in `index.html` use `%FL_BASE%` tokens emitted by the Vite `tokenizeAssetBase` plugin. `composeToolHtml` substitutes them at render time. Do not bypass this mechanism.
 
+## Bundle size & loading
+
+The atlas tool is the reference. Apply the same patterns to any tool that pulls in heavy chunks (Three.js, R3F, large React subtrees).
+
+### Code-split heavy work
+
+- Anything that imports `@react-three/fiber` / `three` / `three-flatland` MUST be loaded via `@three-flatland/preview/canvas` (the heavy subpath), not the root `@three-flatland/preview`. Keeps the initial shell chunk small.
+- Wrap canvas components with `React.lazy(...)` so they ship in a separate chunk:
+
+```tsx
+const CanvasStage = lazy(() =>
+  import('@three-flatland/preview/canvas').then((m) => ({ default: m.CanvasStage })),
+)
+const AnimationPreviewPip = lazy(() =>
+  import('@three-flatland/preview/canvas').then((m) => ({ default: m.AnimationPreviewPip })),
+)
+```
+
+Vite's runtime dedupes by URL — multiple `lazy()` calls against the same module reuse one network roundtrip and one resolved chunk.
+
+### Warm the chunk in `main.tsx`
+
+So the canvas chunk fetch overlaps with the initial shell render rather than waiting for the `<Suspense>` boundary to mount, kick off a fire-and-forget import in the entry:
+
+```ts
+// tools/vscode/webview/<tool>/main.tsx
+import { App } from './App'
+void import('@three-flatland/preview/canvas')   // warm the lazy chunk
+```
+
+This is purely a performance prefetch. `React.lazy()` inside `App` resolves from the same in-flight promise.
+
+### Two Suspense boundaries
+
+- **Root boundary** in `main.tsx` — covers the whole tree before React mounts. Fallback should be cheap (a spinner or empty themed div).
+
+  ```tsx
+  createRoot(root).render(
+    <StrictMode>
+      <Suspense fallback={<vscode-progress-ring />}>
+        <App />
+      </Suspense>
+    </StrictMode>
+  )
+  ```
+
+- **Inner boundary** at the canvas mount — fallback must look identical to the eventual rendered surface. Otherwise the user sees a brief unthemed flash when the lazy chunk swaps in. Atlas reuses `canvasBackgroundStyle()` for this so the placeholder bg matches CanvasStage's bg exactly.
+
+### FOUC guard in `index.html`
+
+The webview's `index.html` paints a themed background **before** the JS bundle parses, using inline CSS that mirrors the StyleX `vscode.bg/fg/fontFamily/fontSize` tokens:
+
+```html
+<style>
+  html, body, #root { margin: 0; padding: 0; height: 100%; overflow: hidden; }
+  body {
+    background: var(--vscode-editor-background);
+    color: var(--vscode-foreground);
+    font-family: var(--vscode-font-family);
+    font-size: var(--vscode-font-size);
+  }
+</style>
+```
+
+Copy this verbatim into a new tool's `index.html`. Without it the user sees a white flash on first paint.
+
+### Subpath imports for tree-shaking
+
+`@vscode-elements/react-elements` has an ambiguous `sideEffects` field; importing from its barrel forces every component into the bundle. The design system already re-exports each component from its dedicated subpath, so consumers should always import primitives from `@three-flatland/design-system` (the barrel here is safe). For raw `<vscode-*>` web components used as JSX intrinsics in `main.tsx`, import the registration side-effect from the dedicated subpath:
+
+```ts
+import '@vscode-elements/elements/dist/vscode-progress-ring/index.js'
+```
+
+Never `import '@vscode-elements/elements'`.
+
+### Codicon CSS
+
+Codicons must be loaded via:
+
+```ts
+import '@vscode/codicons/dist/codicon.css'
+```
+
+The `tagCodiconStylesheet()` helper in atlas's main.tsx tags the emitted `<link>` so `<Icon>` can mirror the font rules into each Lit shadow root.
+
+### Inspect bundle output
+
+After `pnpm --filter @three-flatland/vscode build`, check the printed sizes:
+
+- `dist/webview/<tool>/index.html` — should be ~1 KB
+- `dist/webview/assets/<tool>-<hash>.js` — should be < 30 KB for the shell
+- `dist/webview/assets/canvas-<hash>.js` — heavy chunk, only loaded by tools that lazy-import it
+
+If a tool's shell chunk balloons, search for an accidental top-level import of `@three-flatland/preview/canvas`, `three`, or `@react-three/fiber`.
+
 ## State persistence
 
 Use `webviewStorage` (`webview/state/webviewStorage.ts`) as the Zustand `persist` storage adapter. It wraps VSCode's `acquireVsCodeApi().getState/setState` so state survives panel reloads and tab focus loss (when `retainContextWhenHidden: true`). State is lost when the panel is disposed.
