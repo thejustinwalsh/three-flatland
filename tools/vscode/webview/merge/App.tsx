@@ -75,20 +75,20 @@ const s = stylex.create({
 
 const CONFLICTS_MIN_PX = 240
 const CONFLICTS_MAX_PX = 600
-const CONFLICTS_DEFAULT_PX = 320
 
 export function App() {
   const [initErrors, setInitErrors] = useState<InitPayload['errors']>([])
   const deleteOriginals = useMergeStore((s) => s.deleteOriginals)
   const state = useMergeState()
   const splitRowRef = useRef<HTMLDivElement>(null)
-  const [conflictsPx, setConflictsPx] = useState(CONFLICTS_DEFAULT_PX)
+  const conflictsPx = useMergeStore((s) => s.splits.sourcesSidebarPx)
+  const activeTab = useMergeStore((s) => s.activeTab)
   const onConflictsDrag = (clientX: number) => {
     const el = splitRowRef.current
     if (!el) return
     const rect = el.getBoundingClientRect()
     const next = Math.max(CONFLICTS_MIN_PX, Math.min(CONFLICTS_MAX_PX, rect.right - clientX))
-    setConflictsPx(next)
+    mergeActions.setSplits({ sourcesSidebarPx: next })
   }
 
   useEffect(() => {
@@ -187,7 +187,12 @@ export function App() {
         </div>
       )}
       <div {...stylex.props(s.tabsWrap)}>
-        <Tabs>
+        <Tabs
+          selectedIndex={activeTab === 'merged' ? 1 : 0}
+          onVscTabsSelect={(e) => {
+            mergeActions.setActiveTab(e.detail.selectedIndex === 1 ? 'merged' : 'sources')
+          }}
+        >
           <TabHeader>{sourcesLabel}</TabHeader>
           <TabHeader>Merged</TabHeader>
           <TabPanel>

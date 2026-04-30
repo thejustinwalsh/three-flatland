@@ -8,7 +8,7 @@ import {
   type MergeSource,
 } from '@three-flatland/io/atlas'
 import type { AtlasJson } from '@three-flatland/io/atlas'
-import { localStorageStorage } from '../state'
+import { localStorageStorage, webviewStorage } from '../state'
 
 // Candidate output sizes the dropdown can offer. Probed for viability
 // on every state change so the UI hides sizes that won't fit.
@@ -28,6 +28,10 @@ export type MergeStoreState = {
   outputFileName: string
   deleteOriginals: boolean
 
+  // UI layout state — persisted across tab focus + session
+  splits: { sourcesSidebarPx: number; mergedSidebarPx: number }
+  activeTab: 'sources' | 'merged'
+
   // Derived state — recomputed inside actions. Tracked in undo history
   // so undoing a primary-state change also rewinds the derived view.
   result: MergeResult
@@ -44,6 +48,8 @@ export type MergeStoreState = {
   setKnobs: (knobs: Partial<MergeStoreState['knobs']>) => void
   setOutputFileName: (name: string) => void
   setDeleteOriginals: (next: boolean) => void
+  setSplits: (next: Partial<MergeStoreState['splits']>) => void
+  setActiveTab: (tab: MergeStoreState['activeTab']) => void
   markImageFailed: (uri: string) => void
   clearImageFailed: (uri: string) => void
 }
@@ -120,145 +126,183 @@ type PrimaryState = Pick<
 
 export const useMergeStore = create<MergeStoreState>()(
   temporal(
+    // Outer persist: localStorage — cross-session user prefs
     persist(
-      (set) => {
-        // Helper: apply a primary-state update + re-derive in one go.
-        const update = (
-          partial: Partial<
-            Pick<
-              MergeStoreState,
-              | 'sources'
-              | 'knobs'
-              | 'outputFileName'
-              | 'deleteOriginals'
-              | 'imageLoadFailed'
-            >
-          >,
-        ) => {
-          set((s) => {
-            const merged = { ...s, ...partial }
-            const needsDerive =
-              partial.sources !== undefined ||
-              partial.knobs !== undefined ||
-              partial.outputFileName !== undefined
-            if (!needsDerive) {
-              return { ...merged, result: s.result, viableSizes: s.viableSizes }
-            }
-            const derived = deriveOver(merged)
-            return {
-              ...merged,
-              result: derived.result,
-              viableSizes: derived.viableSizes,
-              ...(derived.bumpedKnobs ? { knobs: derived.bumpedKnobs } : {}),
-            }
-          })
-        }
+      // Inner persist: webviewStorage — session state (survives tab focus loss)
+      persist(
+        (set) => {
+          // Helper: apply a primary-state update + re-derive in one go.
+          const update = (
+            partial: Partial<
+              Pick<
+                MergeStoreState,
+                | 'sources'
+                | 'knobs'
+                | 'outputFileName'
+                | 'deleteOriginals'
+                | 'imageLoadFailed'
+              >
+            >,
+          ) => {
+            set((s) => {
+              const merged = { ...s, ...partial }
+              const needsDerive =
+                partial.sources !== undefined ||
+                partial.knobs !== undefined ||
+                partial.outputFileName !== undefined
+              if (!needsDerive) {
+                return { ...merged, result: s.result, viableSizes: s.viableSizes }
+              }
+              const derived = deriveOver(merged)
+              return {
+                ...merged,
+                result: derived.result,
+                viableSizes: derived.viableSizes,
+                ...(derived.bumpedKnobs ? { knobs: derived.bumpedKnobs } : {}),
+              }
+            })
+          }
 
-        return {
-          sources: [],
-          knobs: { maxSize: 512, padding: 2, powerOfTwo: false },
-          outputFileName: 'merged.png',
-          deleteOriginals: false,
-          result: { kind: 'ok', atlas: emptyAtlas(), placements: [], utilization: 0 },
-          viableSizes: [],
-          imageLoadFailed: new Set<string>(),
+          return {
+            sources: [],
+            knobs: { maxSize: 512, padding: 2, powerOfTwo: false },
+            outputFileName: 'merged.png',
+            deleteOriginals: false,
+            splits: { sourcesSidebarPx: 320, mergedSidebarPx: 280 },
+            activeTab: 'sources' as const,
+            result: { kind: 'ok', atlas: emptyAtlas(), placements: [], utilization: 0 },
+            viableSizes: [],
+            imageLoadFailed: new Set<string>(),
 
-          setSources: (sources) =>
-            update({ sources, imageLoadFailed: new Set<string>() }),
-          setAlias: (uri, alias) =>
-            set((s) => {
-              const sources = s.sources.map((src) =>
-                src.uri === uri ? { ...src, alias } : src,
-              )
-              const derived = deriveOver({ ...s, sources })
-              return {
-                ...s,
-                sources,
-                result: derived.result,
-                viableSizes: derived.viableSizes,
-                ...(derived.bumpedKnobs ? { knobs: derived.bumpedKnobs } : {}),
-              }
-            }),
-          setFrameRename: (uri, original, merged) =>
-            set((s) => {
-              const sources = s.sources.map((src) => {
-                if (src.uri !== uri) return src
-                const next = { ...(src.renames.frames ?? {}) }
-                if (merged === null) delete next[original]
-                else next[original] = merged
-                return { ...src, renames: { ...src.renames, frames: next } }
-              })
-              const derived = deriveOver({ ...s, sources })
-              return {
-                ...s,
-                sources,
-                result: derived.result,
-                viableSizes: derived.viableSizes,
-                ...(derived.bumpedKnobs ? { knobs: derived.bumpedKnobs } : {}),
-              }
-            }),
-          setAnimRename: (uri, original, merged) =>
-            set((s) => {
-              const sources = s.sources.map((src) => {
-                if (src.uri !== uri) return src
-                const next = { ...(src.renames.animations ?? {}) }
-                if (merged === null) delete next[original]
-                else next[original] = merged
-                return { ...src, renames: { ...src.renames, animations: next } }
-              })
-              const derived = deriveOver({ ...s, sources })
-              return {
-                ...s,
-                sources,
-                result: derived.result,
-                viableSizes: derived.viableSizes,
-                ...(derived.bumpedKnobs ? { knobs: derived.bumpedKnobs } : {}),
-              }
-            }),
-          setKnobs: (knobs) =>
-            set((s) => {
-              const nextKnobs = { ...s.knobs, ...knobs }
-              const derived = deriveOver({ ...s, knobs: nextKnobs })
-              return {
-                ...s,
-                knobs: derived.bumpedKnobs ?? nextKnobs,
-                result: derived.result,
-                viableSizes: derived.viableSizes,
-              }
-            }),
-          setOutputFileName: (name) => update({ outputFileName: name }),
-          setDeleteOriginals: (next) => update({ deleteOriginals: next }),
-          markImageFailed: (uri) =>
-            set((s) => {
-              if (s.imageLoadFailed.has(uri)) return s
-              const next = new Set(s.imageLoadFailed)
-              next.add(uri)
-              return { ...s, imageLoadFailed: next }
-            }),
-          clearImageFailed: (uri) =>
-            set((s) => {
-              if (!s.imageLoadFailed.has(uri)) return s
-              const next = new Set(s.imageLoadFailed)
-              next.delete(uri)
-              return { ...s, imageLoadFailed: next }
-            }),
-        }
-      },
+            setSources: (sources) =>
+              set((s) => {
+                // Preserve per-URI renames across bridge re-init (tab focus
+                // loss causes the webview to rebuild but the host re-emits
+                // init; smart-merge keeps existing renames intact).
+                const existingByUri = new Map(s.sources.map((src) => [src.uri, src.renames]))
+                const merged = sources.map((src) => ({
+                  ...src,
+                  renames: existingByUri.get(src.uri) ?? src.renames,
+                }))
+                const derived = deriveOver({ ...s, sources: merged })
+                return {
+                  ...s,
+                  sources: merged,
+                  imageLoadFailed: new Set<string>(),
+                  result: derived.result,
+                  viableSizes: derived.viableSizes,
+                  ...(derived.bumpedKnobs ? { knobs: derived.bumpedKnobs } : {}),
+                }
+              }),
+            setAlias: (uri, alias) =>
+              set((s) => {
+                const sources = s.sources.map((src) =>
+                  src.uri === uri ? { ...src, alias } : src,
+                )
+                const derived = deriveOver({ ...s, sources })
+                return {
+                  ...s,
+                  sources,
+                  result: derived.result,
+                  viableSizes: derived.viableSizes,
+                  ...(derived.bumpedKnobs ? { knobs: derived.bumpedKnobs } : {}),
+                }
+              }),
+            setFrameRename: (uri, original, merged) =>
+              set((s) => {
+                const sources = s.sources.map((src) => {
+                  if (src.uri !== uri) return src
+                  const next = { ...(src.renames.frames ?? {}) }
+                  if (merged === null) delete next[original]
+                  else next[original] = merged
+                  return { ...src, renames: { ...src.renames, frames: next } }
+                })
+                const derived = deriveOver({ ...s, sources })
+                return {
+                  ...s,
+                  sources,
+                  result: derived.result,
+                  viableSizes: derived.viableSizes,
+                  ...(derived.bumpedKnobs ? { knobs: derived.bumpedKnobs } : {}),
+                }
+              }),
+            setAnimRename: (uri, original, merged) =>
+              set((s) => {
+                const sources = s.sources.map((src) => {
+                  if (src.uri !== uri) return src
+                  const next = { ...(src.renames.animations ?? {}) }
+                  if (merged === null) delete next[original]
+                  else next[original] = merged
+                  return { ...src, renames: { ...src.renames, animations: next } }
+                })
+                const derived = deriveOver({ ...s, sources })
+                return {
+                  ...s,
+                  sources,
+                  result: derived.result,
+                  viableSizes: derived.viableSizes,
+                  ...(derived.bumpedKnobs ? { knobs: derived.bumpedKnobs } : {}),
+                }
+              }),
+            setKnobs: (knobs) =>
+              set((s) => {
+                const nextKnobs = { ...s.knobs, ...knobs }
+                const derived = deriveOver({ ...s, knobs: nextKnobs })
+                return {
+                  ...s,
+                  knobs: derived.bumpedKnobs ?? nextKnobs,
+                  result: derived.result,
+                  viableSizes: derived.viableSizes,
+                }
+              }),
+            setOutputFileName: (name) => update({ outputFileName: name }),
+            setDeleteOriginals: (next) => update({ deleteOriginals: next }),
+            setSplits: (next) =>
+              set((s) => ({ ...s, splits: { ...s.splits, ...next } })),
+            setActiveTab: (tab) =>
+              set((s) => ({ ...s, activeTab: tab })),
+            markImageFailed: (uri) =>
+              set((s) => {
+                if (s.imageLoadFailed.has(uri)) return s
+                const next = new Set(s.imageLoadFailed)
+                next.add(uri)
+                return { ...s, imageLoadFailed: next }
+              }),
+            clearImageFailed: (uri) =>
+              set((s) => {
+                if (!s.imageLoadFailed.has(uri)) return s
+                const next = new Set(s.imageLoadFailed)
+                next.delete(uri)
+                return { ...s, imageLoadFailed: next }
+              }),
+          }
+        },
+        {
+          // Session state: survives tab focus loss + dev reload, lost on panel close.
+          name: 'fl-merge-session',
+          storage: createJSONStorage(() => webviewStorage),
+          partialize: (s) => ({
+            sources: s.sources,
+            outputFileName: s.outputFileName,
+            activeTab: s.activeTab,
+          }),
+          onRehydrateStorage: () => (state) => {
+            if (!state) return
+            const derived = deriveOver(state)
+            state.result = derived.result
+            state.viableSizes = derived.viableSizes
+          },
+        },
+      ),
       {
-        name: 'fl-merge-store',
+        // Cross-session prefs: survive panel close + VSCode restart.
+        name: 'fl-merge-prefs',
         storage: createJSONStorage(() => localStorageStorage),
-        // Persist user prefs that should survive across sessions and
-        // across panel close/reopen: knob settings + delete-originals
-        // toggle. Per-merge-invocation state (sources, renames,
-        // outputFileName) is NOT persisted — those are seeded fresh by
-        // the host's `merge/init` payload every time the panel opens.
         partialize: (s) => ({
           knobs: s.knobs,
           deleteOriginals: s.deleteOriginals,
+          splits: s.splits,
         }),
-        // After rehydration, recompute derived state once. No sources
-        // yet at this point (those arrive via the bridge) — viableSizes
-        // is empty and result is the empty-atlas default.
         onRehydrateStorage: () => (state) => {
           if (!state) return
           const derived = deriveOver(state)
@@ -320,6 +364,10 @@ export const mergeActions = {
     useMergeStore.getState().setOutputFileName(name),
   setDeleteOriginals: (next: boolean) =>
     useMergeStore.getState().setDeleteOriginals(next),
+  setSplits: (next: Partial<MergeStoreState['splits']>) =>
+    useMergeStore.getState().setSplits(next),
+  setActiveTab: (tab: MergeStoreState['activeTab']) =>
+    useMergeStore.getState().setActiveTab(tab),
   markImageFailed: (uri: string) =>
     useMergeStore.getState().markImageFailed(uri),
   clearImageFailed: (uri: string) =>
