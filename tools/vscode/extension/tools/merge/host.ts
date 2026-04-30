@@ -44,6 +44,18 @@ export async function openMergePanel(
       json: unknown
     }> = []
     const errors: Array<{ uri: string; message: string }> = []
+    const seen = new Set<string>()
+    const dedupAlias = (raw: string): string => {
+      if (!seen.has(raw)) {
+        seen.add(raw)
+        return raw
+      }
+      let i = 2
+      while (seen.has(`${raw}_${i}`)) i++
+      const next = `${raw}_${i}`
+      seen.add(next)
+      return next
+    }
     for (const sidecar of sidecarUris) {
       try {
         const bytes = await vscode.workspace.fs.readFile(sidecar)
@@ -58,7 +70,7 @@ export async function openMergePanel(
         sources.push({
           uri: sidecar.toString(),
           imageUri: panel.webview.asWebviewUri(imageUri).toString(),
-          alias: labelFor(sidecar),
+          alias: dedupAlias(labelFor(sidecar)),
           json,
         })
       } catch (err) {
@@ -93,9 +105,11 @@ export async function openMergePanel(
       saveLabel: 'Save merged atlas',
     })
     if (!target) return { ok: false, cancelled: true }
-    const pngPath = target.path.endsWith('.png') ? target.path : `${target.path}.png`
+    const stripped = target.path.replace(/\.png$/i, '')
+    const pngPath = `${stripped}.png`
     const pngTarget = target.with({ path: pngPath })
-    const sidecarUri = pngTarget.with({ path: pngPath.replace(/\.png$/, '.atlas.json') })
+    const sidecarUri = pngTarget.with({ path: `${stripped}.atlas.json` })
+    ;(sidecar as { meta: { image: string } }).meta.image = pngPath.split('/').pop() ?? 'merged.png'
     const png = new Uint8Array(pngBytes)
     const sidecarText = JSON.stringify(sidecar, null, 2) + '\n'
     await vscode.workspace.fs.writeFile(pngTarget, png)
