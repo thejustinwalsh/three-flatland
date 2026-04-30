@@ -66,6 +66,13 @@ const CanvasStage = lazy(() =>
 const AnimationPreviewPip = lazy(() =>
   import('@three-flatland/preview/canvas').then((m) => ({ default: m.AnimationPreviewPip })),
 )
+import {
+  atlasActions,
+  atlasHistory,
+  useAtlasAnimations,
+  useAtlasHistoryStore,
+  useAtlasRects,
+} from './atlasStore'
 import { AtlasMenu } from './AtlasMenu'
 import { prefsStore, usePrefs } from './prefs'
 import * as stylex from '@stylexjs/stylex'
@@ -636,10 +643,8 @@ export function App() {
   // just `payload`) avoids the "rects pop in after the bridge handshake
   // round-trips" flash on initial load.
   const [payload, setPayload] = useState<InitPayload | null>(() => window.__FL_ATLAS__ ?? null)
-  const [rects, setRects] = useState<Rect[]>(() => {
-    const p = window.__FL_ATLAS__
-    return p?.rects ? [...p.rects] : []
-  })
+  const rects = useAtlasRects()
+  const setRects = atlasActions.setRects
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [tool, setTool] = useState<Tool>('rect')
   const [renameMode, setRenameMode] = useState<RenameMode>({ kind: 'none' })
@@ -679,14 +684,19 @@ export function App() {
   // the Atlas Panel header.
   const prefs = usePrefs()
 
-  // Map of animation name → animation. Seeded synchronously from
-  // window.__FL_ATLAS__ (the host injects it before the bundle parses),
-  // with the bridge `atlas/init` handler below as a fallback when the
-  // window injection isn't available.
-  const [animations, setAnimations] = useState<Record<string, Animation>>(() => {
-    const p = window.__FL_ATLAS__
-    return p?.animations ? { ...p.animations } : {}
-  })
+  // Map of animation name → animation. Seeded synchronously via
+  // atlasActions.loadFromInit (called in the mount effect below) or
+  // from the bridge `atlas/init` handler as a fallback when the
+  // window injection isn't available. Both paths go through the store
+  // so undo history starts clean.
+  const animations = useAtlasAnimations()
+  const setAnimations = atlasActions.setAnimations
+
+  // Reactive undo/redo availability for toolbar button disabled states.
+  const historyState = useAtlasHistoryStore()
+  const canUndo = historyState.pastStates.length > 0
+  const canRedo = historyState.futureStates.length > 0
+
   const [activeAnimation, setActiveAnimation] = useState<string | null>(null)
 
   // When the user clicks a folder header's ⊞-all icon, this records
@@ -749,31 +759,69 @@ export function App() {
     rootRef.current?.focus()
   }, [])
 
+  // Undo / redo hotkeys — Cmd/Ctrl+Z and Cmd/Ctrl+Shift+Z (also Cmd+Y).
+  // Skipped when focus is inside an editable element so Cmd+Z there
+  // means "undo typing", not "undo rect edit".
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey)) return
+      const target = e.target as HTMLElement | null
+      if (
+        target &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.isContentEditable)
+      ) {
+        return
+      }
+      if (e.key === 'z' && !e.shiftKey) {
+        e.preventDefault()
+        atlasHistory.undo()
+      } else if ((e.key === 'z' && e.shiftKey) || e.key === 'y') {
+        e.preventDefault()
+        atlasHistory.redo()
+      }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [])
+
   const indexById = useMemo(() => {
     const m = new Map<string, number>()
     rects.forEach((r, i) => m.set(r.id, i))
     return m
   }, [rects])
 
+  // Track whether we've already seeded the store from an init payload
+  // (window.__FL_ATLAS__ or bridge atlas/init) so the two paths can't
+  // stomp each other or push duplicate undo history entries.
+  const didLoadRef = useRef(false)
+
   useEffect(() => {
     dumpThemeTokens()
+
+    // Seed the store from the host-injected payload synchronously on
+    // mount. loadFromInit replaces both rects and animations atomically
+    // and clears undo history so the file-load isn't undoable.
+    const p0 = window.__FL_ATLAS__
+    if (p0 && !didLoadRef.current) {
+      didLoadRef.current = true
+      atlasActions.loadFromInit(p0.rects ? [...p0.rects] : [], p0.animations ? { ...p0.animations } : {})
+    }
+
     const bridge = createClientBridge()
     bridgeRef.current = bridge
     const off = bridge.on<InitPayload>('atlas/init', (p) => {
       setPayload(p)
-      // Seed-once: only fill rects/animations if they're still empty.
-      // When the host pre-injected window.__FL_ATLAS__, the useState
-      // initializers above already cloned the same arrays/maps, and a
-      // late bridge fire would otherwise stomp any local edits the user
+      // Only seed once. When the host pre-injected window.__FL_ATLAS__,
+      // the mount effect above already called loadFromInit; a late
+      // bridge fire would otherwise stomp any local edits the user
       // made between mount and the handshake completing.
-      const incomingRects = p.rects
-      if (incomingRects && incomingRects.length > 0) {
-        setRects((prev) => (prev.length === 0 ? [...incomingRects] : prev))
-      }
-      const incomingAnimations = p.animations
-      if (incomingAnimations && Object.keys(incomingAnimations).length > 0) {
-        setAnimations((prev) =>
-          Object.keys(prev).length === 0 ? { ...incomingAnimations } : prev,
+      if (!didLoadRef.current) {
+        didLoadRef.current = true
+        atlasActions.loadFromInit(
+          p.rects ? [...p.rects] : [],
+          p.animations ? { ...p.animations } : {},
         )
       }
       if (p.loadError) {
@@ -1744,6 +1792,19 @@ export function App() {
           icon="screen-full"
           title="Fit"
           onClick={() => viewportControllerRef.current?.fitToView()}
+        />
+        <Divider />
+        <ToolbarButton
+          icon="discard"
+          title="Undo  (⌘Z)"
+          disabled={!canUndo}
+          onClick={() => atlasHistory.undo()}
+        />
+        <ToolbarButton
+          icon="redo"
+          title="Redo  (⌘⇧Z)"
+          disabled={!canRedo}
+          onClick={() => atlasHistory.redo()}
         />
         <Divider />
         <ToolbarButton
