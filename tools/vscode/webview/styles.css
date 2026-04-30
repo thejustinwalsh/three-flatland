@@ -63,8 +63,16 @@ vscode-tab-panel {
 vscode-tab-panel[hidden] {
   display: none;
 }
+/*
+ * The slotted child decides its own flex sizing via stylex/local CSS
+ * (e.g. `flex: 1`, `height: 100%`). We just remove the intrinsic-size
+ * floor so flex-shrink math doesn't get blocked by long names / large
+ * SVGs and so the child can actually claim the panel's full width.
+ * Don't set `flex: 1 1 auto` here — `auto` basis forces content-sized
+ * flex math which ends up sizing some children to their min-content
+ * width instead of the panel's width.
+ */
 vscode-tab-panel > * {
-  flex: 1 1 auto;
   min-height: 0;
   min-width: 0;
 }
