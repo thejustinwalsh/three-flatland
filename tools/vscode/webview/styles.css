@@ -20,21 +20,26 @@
 }
 
 /*
- * VSCode Elements <vscode-tabs> defaults to block layout on its host, so it
- * doesn't fill a flex-column parent — the active <vscode-tab-panel> ends
- * up sized to its intrinsic content rather than the remaining viewport
- * height. Force the host elements into the flex layout we want everywhere
- * we use them. Tools that don't use Tabs are unaffected.
+ * VSCode Elements <vscode-tabs> and <vscode-tab-panel> default to inline
+ * intrinsic sizing on their hosts — they don't fill a flex-column parent,
+ * leaving the active panel sized to its content instead of the remaining
+ * viewport height. We don't force `display: flex` on <vscode-tabs> itself
+ * (its shadow DOM relies on the default block layout for the headers +
+ * panel stack); instead we just claim the available space via flex sizing
+ * and let the panels themselves act as flex containers for their own
+ * children. Tools that don't use Tabs are unaffected.
  */
 vscode-tabs {
-  display: flex;
-  flex-direction: column;
   flex: 1 1 auto;
   min-height: 0;
 }
 vscode-tab-panel {
   flex: 1 1 auto;
   min-height: 0;
+}
+vscode-tab-panel > * {
   display: flex;
-  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
 }
