@@ -16,3 +16,5 @@ export {
   uniqueKey,
   wireAnimationToInput,
 } from './build'
+
+export { packRects, type PackInput, type PackResult, type Placement } from './maxrects'

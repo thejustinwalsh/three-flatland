@@ -4,7 +4,7 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'node',
-    include: ['packages/*/src/**/*.test.ts', 'packages/*/src/**/*.test.tsx', 'scripts/**/*.test.ts'],
+    include: ['packages/*/src/**/*.test.ts', 'packages/*/src/**/*.test.tsx', 'scripts/**/*.test.ts', 'tools/*/src/**/*.test.ts'],
     exclude: ['packages/skia/**', 'packages/tweakpane/**'],
     setupFiles: ['./vitest.setup.ts'],
     coverage: {
