@@ -58,13 +58,46 @@ export interface Sprite2DOptions {
 }
 
 /**
+ * Named animation as exposed at runtime by the SpriteSheet. Frame
+ * names are post-duplication — repeating a name in `frames` encodes
+ * a hold (e.g. ['idle_0', 'idle_0', 'idle_1'] = 2-frame hold then
+ * 1-frame). This shape is the canonical runtime representation
+ * regardless of source format (TP / Aseprite / our atlas tool).
+ */
+export interface SpriteAnimation {
+  /** Frame names in playback order, with duplicates encoding hold counts. */
+  frames: readonly string[]
+  /** Frames per second. Default 12 when the source format leaves it unspecified. */
+  fps: number
+  /** Loop indefinitely? Default true. */
+  loop: boolean
+  /** Reverse direction at each end? Default false. */
+  pingPong: boolean
+  /** Optional per-frame-index event tags (frame index → tag name). */
+  events?: Record<string, string>
+}
+
+/**
  * Spritesheet data structure.
+ *
+ * Animation-related fields are optional: a sheet built by
+ * `SpriteSheetLoader` always populates them, but synthetic sheets
+ * (test fixtures, hand-built mocks, runtime-generated sheets without
+ * animation metadata) can omit them. Consumers should defensively
+ * check `sheet.animations?.size` rather than assume presence.
  */
 export interface SpriteSheet {
   /** The texture atlas */
   texture: Texture
   /** Map of frame name to frame data */
   frames: Map<string, SpriteFrame>
+  /**
+   * Named animations from the source JSON. Populated by
+   * `SpriteSheetLoader` from `meta.animations` (our shape) or
+   * normalized from `meta.frameTags` + per-frame `duration`
+   * (Aseprite shape). Optional to keep synthetic sheets simple.
+   */
+  animations?: Map<string, SpriteAnimation>
   /** Atlas width in pixels */
   width: number
   /** Atlas height in pixels */
@@ -73,10 +106,51 @@ export interface SpriteSheet {
   getFrame(name: string): SpriteFrame
   /** Get all frame names */
   getFrameNames(): string[]
+  /** Get an animation by name. Returns undefined if not present. */
+  getAnimation?(name: string): SpriteAnimation | undefined
+  /** Get all animation names. */
+  getAnimationNames?(): string[]
 }
 
 /**
- * JSON Hash format (TexturePacker default).
+ * Aseprite frame tag — a named integer range into the frames array
+ * with a playback direction. Validates against the corresponding
+ * `$defs/AsepriteFrameTag` in the atlas schema.
+ */
+export interface AsepriteFrameTag {
+  name: string
+  from: number
+  to: number
+  direction?: 'forward' | 'reverse' | 'pingpong' | 'pingpong_reverse'
+  color?: string
+  repeat?: string
+  data?: string
+}
+
+/**
+ * Our richer per-animation shape, stored under `meta.animations`.
+ * Read priority: this beats `meta.frameTags` when both are present.
+ *
+ * Wire format is indexed for compactness: `frameSet` lists each
+ * unique frame name once; `frames` is the playback sequence as
+ * integer indices into `frameSet`. The `SpriteSheetLoader`
+ * dereferences this into the flat name-based `SpriteAnimation` at
+ * load time, so runtime API consumers never see the indexed shape.
+ */
+export interface AtlasAnimation {
+  frameSet: string[]
+  frames: number[]
+  fps?: number
+  loop?: boolean
+  pingPong?: boolean
+  events?: Record<string, string>
+}
+
+/**
+ * JSON Hash format. TexturePacker is the base shape; Aseprite extends
+ * it with `meta.frameTags` + per-frame `duration`; we extend it with
+ * `meta.animations` (richer than `frameTags`). All three live under
+ * `meta` so the root keys stay TP-compatible.
  */
 export interface SpriteSheetJSONHash {
   frames: {
@@ -87,12 +161,19 @@ export interface SpriteSheetJSONHash {
       spriteSourceSize: { x: number; y: number; w: number; h: number }
       sourceSize: { w: number; h: number }
       pivot?: { x: number; y: number }
+      /** Aseprite-emitted per-frame display time (ms). */
+      duration?: number
     }
   }
   meta: {
     image: string
     size: { w: number; h: number }
     scale: string
+    /** Our richer animation map — preferred source on read. */
+    animations?: Record<string, AtlasAnimation>
+    /** Aseprite-emitted animation tags — fallback source on read. */
+    frameTags?: readonly AsepriteFrameTag[]
+    [k: string]: unknown
   }
 }
 
@@ -108,10 +189,14 @@ export interface SpriteSheetJSONArray {
     spriteSourceSize: { x: number; y: number; w: number; h: number }
     sourceSize: { w: number; h: number }
     pivot?: { x: number; y: number }
+    duration?: number
   }>
   meta: {
     image: string
     size: { w: number; h: number }
     scale: string
+    animations?: Record<string, AtlasAnimation>
+    frameTags?: readonly AsepriteFrameTag[]
+    [k: string]: unknown
   }
 }

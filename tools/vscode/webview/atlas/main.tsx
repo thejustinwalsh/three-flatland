@@ -6,12 +6,20 @@ import { createClientBridge, getVSCodeApi } from '@three-flatland/bridge/client'
 // any code path re-imports this module at runtime. Documented escape hatch.
 ;(globalThis as unknown as { __vscodeElements_disableRegistryWarning__?: boolean })
   .__vscodeElements_disableRegistryWarning__ = true
-// Side-effect import: registers every <vscode-*> custom element.
-import '@vscode-elements/elements'
+// Side-effect imports for <vscode-*> elements used as raw JSX intrinsics
+// in this entry. Every other element (toolbar-button, icon, badge, ...)
+// is registered transitively when its React wrapper is imported by the
+// design-system primitive that uses it — no blanket bundle needed.
+import '@vscode-elements/elements/dist/vscode-progress-ring/index.js'
 // Regular CSS import so Vite emits a <link> tag we can tag as the codicon
 // stylesheet below.
 import '@vscode/codicons/dist/codicon.css'
 import { App } from './App'
+// Warm the lazy canvas chunk (R3F + three + three-flatland) so its fetch
+// overlaps with the initial shell render instead of waiting for App to
+// reach the <Suspense> boundary. Vite's runtime dedupes by URL, so the
+// React.lazy() in App.tsx resolves from this same in-flight promise.
+void import('@three-flatland/preview/canvas')
 import * as stylex from '@stylexjs/stylex'
 import { vscode } from '@three-flatland/design-system/tokens/vscode-theme.stylex'
 

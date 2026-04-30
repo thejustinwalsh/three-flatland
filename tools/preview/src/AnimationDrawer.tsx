@@ -1,19 +1,35 @@
-import { useCallback, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { vscode } from '@three-flatland/design-system/tokens/vscode-theme.stylex'
 import { space } from '@three-flatland/design-system/tokens/space.stylex'
 
-export type AnimationDrawerDensity = 'detail' | 'dots' | 'collapsed'
+/**
+ * Density only existed when the drawer was user-resizable: tall =
+ * 'detail' (cells), short = 'dots'. The drawer is now a single
+ * fixed-height variant — kept as an alias so out-of-package consumers
+ * (and any vendored snapshots) don't break, but only `'detail'` and
+ * `'collapsed'` ever surface.
+ */
+export type AnimationDrawerDensity = 'detail' | 'collapsed'
 
-const DENSITY_DETAIL_MIN_PX = 80
-const DENSITY_DOTS_MIN_PX = 24
-const DRAWER_MIN_PX = 24
-const DRAWER_MAX_PX = 400
+/**
+ * Fixed body height: 4 px top padding + cell row + 4 px bottom slot
+ * for the horizontal scroll indicator. CELL_BASE in
+ * AnimationTimeline.tsx is 40 → 4 + 40 + 4 = 48. The bottom 4 px is
+ * not body padding — it lives inside the track's content area so the
+ * scroll indicator (absolutely positioned at the track's bottom) sits
+ * in it without overlapping the cells. Keep this in sync with
+ * `paddingTop` on `s.body` and `CELL_BASE`.
+ */
+const BODY_HEIGHT_PX = 48
 
-/** Pure helper — chosen by the resize handler and reflected to body. */
-export function densityForHeight(heightPx: number): AnimationDrawerDensity {
-  if (heightPx < DENSITY_DOTS_MIN_PX) return 'collapsed'
-  if (heightPx < DENSITY_DETAIL_MIN_PX) return 'dots'
+/**
+ * Retained for back-compat. The drawer no longer has a "small player"
+ * mode, so callers that used to derive density from a target height
+ * always get 'detail' when expanded (collapsed handled at the call
+ * site).
+ */
+export function densityForHeight(_heightPx: number): AnimationDrawerDensity {
   return 'detail'
 }
 
@@ -24,110 +40,64 @@ const s = stylex.create({
     minHeight: 0,
     flexShrink: 0,
   },
-  // Static 1px panel-border line — always rendered, even when the
-  // drawer is collapsed, so the canvas and header always have a clean
-  // visual separator. 5px tall hit area gives a draggable target when
-  // the drawer is expanded. Inset box-shadow draws the visible line so
-  // the thickness change on hover/drag doesn't shift surrounding
-  // layout.
-  resizeHandle: {
-    height: 5,
-    backgroundColor: 'transparent',
+  // Static 1px panel-border line between the canvas and the drawer
+  // header. No longer a drag handle — the drawer body is fixed-height
+  // and not user-resizable, so the only state the user controls via
+  // the drawer is expanded/collapsed (chevron in the header).
+  border: {
+    height: 1,
     flexShrink: 0,
-    boxShadow: `inset 0 -1px 0 0 ${vscode.panelBorder}`,
-  },
-  // Layered on top of `resizeHandle` when the drawer is expanded:
-  // turns the handle into a real ns-resize affordance with a hover /
-  // active-drag thickened bar in the focus-ring tint.
-  resizeHandleActive: {
-    cursor: 'ns-resize',
-    boxShadow: {
-      default: `inset 0 -1px 0 0 ${vscode.panelBorder}`,
-      ':hover': `inset 0 -2px 0 0 ${vscode.focusRing}`,
-    },
-  },
-  resizeHandleDragging: {
-    boxShadow: `inset 0 -2px 0 0 ${vscode.focusRing}`,
+    backgroundColor: vscode.panelBorder,
   },
   body: {
-    flex: 1,
+    // Strict fixed height — explicitly NOT a flex grow item. Combining
+    // `flex: 1` with `style={{ height }}` could let content size feed
+    // back into the resolved height and reflow the canvas above on
+    // changes inside the timeline.
+    //
+    // Asymmetric vertical padding by design: 4 px above the track for
+    // breathing room, 0 below — the bottom 4 px slot for the scroll
+    // indicator lives INSIDE the track (track height = body content
+    // = 44 px, cells fill the top 40, the indicator sits in the
+    // remaining 4 at track bottom). Body total = 48.
+    flexShrink: 0,
+    flexGrow: 0,
     minHeight: 0,
     overflow: 'hidden',
     backgroundColor: vscode.bg,
     paddingInline: space.lg,
-    paddingBlock: space.sm,
+    paddingTop: space.sm,
+    paddingBottom: 0,
   },
 })
 
 export type AnimationDrawerProps = {
   /** Drawer expanded? Comes from prefs.animDrawerExpanded. */
   expanded: boolean
-  /** Drawer body height in px when expanded. Comes from prefs.animDrawerHeight. */
-  height: number
   /** Header content; always rendered (even when collapsed). */
   header: ReactNode
-  /** Body content; rendered only when expanded. Receives current density. */
+  /** Body content; rendered only when expanded. */
   body: (density: AnimationDrawerDensity) => ReactNode
-  /** Caller persists the new height. */
-  onHeightChange(nextHeight: number): void
 }
 
 /**
  * Collapsible drawer panel — peer of the canvas inside the Atlas pane.
  * Header looks like a VSCode panel-area title bar (caller provides a
- * full-width row, e.g. AnimationDrawerHeader). Top-edge splitter resizes
- * the body. Body density derives from current height — caller decides
- * what to render at each density.
+ * full-width row, e.g. AnimationDrawerHeader). Body is a fixed
+ * cell-row height when expanded; toggling the chevron in the header
+ * collapses to just the header strip.
  */
-export function AnimationDrawer({ expanded, height, header, body, onHeightChange }: AnimationDrawerProps) {
-  const dragRef = useRef<{ startY: number; startHeight: number } | null>(null)
-  const [isDragging, setIsDragging] = useState(false)
-  const onPointerDown = useCallback((e: ReactPointerEvent<HTMLDivElement>) => {
-    if (e.button !== 0) return
-    e.currentTarget.setPointerCapture(e.pointerId)
-    dragRef.current = { startY: e.clientY, startHeight: height }
-    setIsDragging(true)
-  }, [height])
-  const onPointerMove = useCallback((e: ReactPointerEvent<HTMLDivElement>) => {
-    if (!dragRef.current) return
-    // Drawer grows as the splitter moves UP, so we subtract dy.
-    const dy = e.clientY - dragRef.current.startY
-    const next = Math.max(DRAWER_MIN_PX, Math.min(DRAWER_MAX_PX, dragRef.current.startHeight - dy))
-    onHeightChange(next)
-  }, [onHeightChange])
-  const onPointerUp = useCallback((e: ReactPointerEvent<HTMLDivElement>) => {
-    if (e.currentTarget.hasPointerCapture(e.pointerId)) {
-      e.currentTarget.releasePointerCapture(e.pointerId)
-    }
-    dragRef.current = null
-    setIsDragging(false)
-  }, [])
-
-  const density = expanded ? densityForHeight(height) : 'collapsed'
-
+export function AnimationDrawer({ expanded, header, body }: AnimationDrawerProps) {
   return (
     <div {...stylex.props(s.shell)}>
-      {/* Always-rendered: provides the static 1px header-border line
-          between the canvas and the drawer header. When expanded we
-          layer the active-drag styles + pointer handlers on top so the
-          line becomes a real resize gesture; collapsed it's purely
-          visual. */}
-      <div
-        {...stylex.props(
-          s.resizeHandle,
-          expanded && s.resizeHandleActive,
-          expanded && isDragging && s.resizeHandleDragging,
-        )}
-        onPointerDown={expanded ? onPointerDown : undefined}
-        onPointerMove={expanded ? onPointerMove : undefined}
-        onPointerUp={expanded ? onPointerUp : undefined}
-        onPointerCancel={expanded ? onPointerUp : undefined}
-        aria-hidden="true"
-      />
+      {/* 1px line between the canvas above and the header below.
+          Always rendered for visual continuity even when the drawer
+          body is collapsed. */}
+      <div {...stylex.props(s.border)} aria-hidden="true" />
       {header}
       {expanded ? (
-        <div {...stylex.props(s.body)} style={{ height }}>
-          {body(density)}
+        <div {...stylex.props(s.body)} style={{ height: BODY_HEIGHT_PX }}>
+          {body('detail')}
         </div>
       ) : null}
     </div>

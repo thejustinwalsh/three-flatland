@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { vscode } from '@three-flatland/design-system/tokens/vscode-theme.stylex'
 import { space } from '@three-flatland/design-system/tokens/space.stylex'
@@ -73,7 +73,7 @@ export type AnimationTimelineProps = {
   /**
    * Set the event tag at a specific post-duplication frame index.
    * Pass an empty / null tag to remove. Caller persists into
-   * `meta.animations[name].events`.
+   * the sidecar's `meta.animations[name].events`.
    */
   onSetEvent?(frameIndex: number, tag: string | null): void
 }
@@ -151,6 +151,12 @@ const GAP_PUSH_PX = 20
 
 const s = stylex.create({
   trackDetail: {
+    // Hide the native horizontal scrollbar — it would otherwise reserve
+    // ~14 px at the bottom of the track and read as asymmetric bottom
+    // padding below the cell row. Wheel + space-drag + drag-to-edge
+    // auto-scroll already cover scrolling, so the visible bar isn't
+    // doing anything we'd lose.
+    scrollbarWidth: 'none',
     display: 'flex',
     alignItems: 'flex-start',
     gap: '2px',
@@ -214,9 +220,13 @@ const s = stylex.create({
   // active-cell border + the canvas highlight so the three pieces
   // of chrome read as one unified "this is the active frame" cue.
   playheadLine: {
+    // Pin to the cell row exactly: top:0 (cells are flex-start aligned
+    // in the track) and height = CELL_BASE so the line is contained
+    // by the cell borders and overlaps the cell, rather than extending
+    // into the drawer body's padding above/below.
     position: 'absolute',
     top: 0,
-    bottom: 0,
+    height: CELL_BASE,
     width: 2,
     backgroundColor: '#ff5c8a',
     pointerEvents: 'none',
@@ -232,17 +242,25 @@ const s = stylex.create({
     borderRadius: radius.sm,
     fontSize: '8px',
   },
-  // 6px right-edge grab strip for the hold gesture (Task 8). Painted
-  // here so the visual affordance ships with v0; pointer handlers
-  // arrive in the next task.
+  // Right-edge grab strip for the hold-resize gesture. Wider than it
+  // looks (`width: 12`) so the cell-drag-vs-edge-resize disambiguation
+  // is forgiving — pressing within ~9 px of the right edge always
+  // resolves to "resize" rather than firing a dragKit reorder. The
+  // visible hover tint is still narrow because the strip is mostly
+  // transparent (the focus ring fills only the inner 4 px via inset
+  // box-shadow).
   edgeGrab: {
     position: 'absolute',
     top: 0,
-    right: -2,
-    width: 6,
+    right: -3,
+    width: 12,
     height: '100%',
     cursor: 'ew-resize',
-    backgroundColor: { default: 'transparent', ':hover': vscode.focusRing },
+    backgroundColor: 'transparent',
+    boxShadow: {
+      default: 'none',
+      ':hover': `inset -3px 0 0 0 ${vscode.focusRing}`,
+    },
     opacity: 0.6,
   },
   dot: {
@@ -261,14 +279,19 @@ const s = stylex.create({
     backgroundColor: vscode.fg,
   },
   empty: {
+    // Outer dimensions match `trackDetail` / `trackDots` exactly so the
+    // empty→populated transition doesn't perturb the drawer's layout.
+    // Previously the empty state had its own paddingBlock/paddingInline
+    // which, combined with `flex: 1` on the drawer body, could let
+    // content size feed back into the body's resolved height and
+    // reflow the canvas above on drop.
     color: vscode.descriptionFg,
     fontSize: '11px',
     fontStyle: 'italic',
-    paddingBlock: space.lg,
-    paddingInline: space.md,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
+    width: '100%',
     height: '100%',
     boxSizing: 'border-box',
     textAlign: 'center',
@@ -453,6 +476,12 @@ export function AnimationTimeline({
   const trackRef = useRef<HTMLDivElement>(null)
   const spaceHeldRef = useRef(false)
   const panDragRef = useRef<{ startX: number; startScrollLeft: number } | null>(null)
+  // Render-time mirror of `spaceHeldRef` so the cursor style can react
+  // to the hold (refs alone don't trigger a re-render). Keep both: the
+  // ref is read inside event handlers (always-fresh value, no stale
+  // closure), the state drives the inline cursor on the timeline div.
+  const [isSpaceDown, setIsSpaceDown] = useState(false)
+  const [isPanning, setIsPanning] = useState(false)
   const [holdResizeActive, setHoldResizeActive] = useState(false)
   useEffect(() => {
     const isEditable = (t: EventTarget | null): boolean => {
@@ -461,13 +490,16 @@ export function AnimationTimeline({
       return tag === 'input' || tag === 'textarea' || tag === 'select' || t.isContentEditable
     }
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.code !== 'Space' || isEditable(e.target)) return
+      if (e.code !== 'Space' || e.repeat || isEditable(e.target)) return
       spaceHeldRef.current = true
+      setIsSpaceDown(true)
     }
     const onKeyUp = (e: KeyboardEvent) => {
       if (e.code !== 'Space') return
       spaceHeldRef.current = false
       panDragRef.current = null
+      setIsSpaceDown(false)
+      setIsPanning(false)
     }
     window.addEventListener('keydown', onKeyDown)
     window.addEventListener('keyup', onKeyUp)
@@ -639,32 +671,68 @@ export function AnimationTimeline({
     },
   })
 
-  // Cell-body drag for reorder. Pointerdown captures position; once
-  // the pointer moves past a small threshold we hand off to the
-  // dragKit so the floating-thumbnail visual takes over. A click
-  // (no movement past threshold) falls through to the cell's
-  // existing onClick (seek + highlight).
+  // Cell-body drag for reorder. Pointerdown captures the pointer on
+  // the cell so all subsequent move/up events fire on the cell
+  // regardless of where the cursor travels — without capture, a drag
+  // that left the cell could leak `cellDragRef` (no pointerup would
+  // fire on the original cell) and the next hover would replay the
+  // drag against stale start coords. Once movement crosses the
+  // threshold we hand off to the dragKit so the floating-thumbnail
+  // visual takes over. A click (no movement past threshold) falls
+  // through to the cell's onClick (seek + highlight).
   const startCellDrag = useDragSource()
+  // 8 px threshold (64 squared) — high enough that accidental motion
+  // when missing the edge-grab strip doesn't trigger a reorder. The
+  // edgeGrab is 12 px so any drag within 9 px of the right edge is
+  // already absorbed by the resize handler.
+  const CELL_DRAG_THRESHOLD_SQ = 64
   const cellDragRef = useRef<{
     groupIndex: number
+    pointerId: number
     startX: number
     startY: number
     started: boolean
   } | null>(null)
+
+  const clearCellDrag = useCallback(() => {
+    cellDragRef.current = null
+  }, [])
+
+  // Window-level safety: if the pointer comes up anywhere (including
+  // outside the cell, after a drag aborted via Escape from the
+  // dragKit, etc.), drop the cell-drag ref. Otherwise a stale ref
+  // would survive into the next hover and replay the drag.
+  useEffect(() => {
+    const onWindowPointerUp = () => clearCellDrag()
+    window.addEventListener('pointerup', onWindowPointerUp)
+    window.addEventListener('pointercancel', onWindowPointerUp)
+    return () => {
+      window.removeEventListener('pointerup', onWindowPointerUp)
+      window.removeEventListener('pointercancel', onWindowPointerUp)
+    }
+  }, [clearCellDrag])
+
   const onCellPointerDown = (groupIndex: number) => (e: ReactPointerEvent<HTMLDivElement>) => {
     if (e.button !== 0) return
     // The edge-grab uses stopPropagation in its own handler so we
     // shouldn't see its pointerdowns here, but defend anyway.
     if ((e.target as HTMLElement).closest('[data-edgegrab]')) return
     if (spaceHeldRef.current) return // space-pan owns the gesture
-    cellDragRef.current = { groupIndex, startX: e.clientX, startY: e.clientY, started: false }
+    e.currentTarget.setPointerCapture(e.pointerId)
+    cellDragRef.current = {
+      groupIndex,
+      pointerId: e.pointerId,
+      startX: e.clientX,
+      startY: e.clientY,
+      started: false,
+    }
   }
   const onCellPointerMove = (e: ReactPointerEvent<HTMLDivElement>) => {
     const drag = cellDragRef.current
-    if (!drag || drag.started) return
+    if (!drag || drag.started || drag.pointerId !== e.pointerId) return
     const dx = e.clientX - drag.startX
     const dy = e.clientY - drag.startY
-    if (dx * dx + dy * dy < 16) return // ~4px threshold
+    if (dx * dx + dy * dy < CELL_DRAG_THRESHOLD_SQ) return
     drag.started = true
     const g = groups[drag.groupIndex]
     if (!g || !atlasImageUri || !atlasSize) {
@@ -676,6 +744,12 @@ export function AnimationTimeline({
       cellDragRef.current = null
       return
     }
+    // Hand off pointer ownership to the dragKit — release our capture
+    // first so the dragKit's window-level handlers can take over the
+    // gesture cleanly without fighting our captured listeners.
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+      e.currentTarget.releasePointerCapture(e.pointerId)
+    }
     startCellDrag(e, {
       payload: { kind: 'timeline-cell', frameNames: [g.name], originIndex: drag.groupIndex },
       atlasImageUri,
@@ -683,8 +757,11 @@ export function AnimationTimeline({
       atlasSize,
     })
   }
-  const onCellPointerUpForReorder = () => {
-    cellDragRef.current = null
+  const onCellPointerUpForReorder = (e: ReactPointerEvent<HTMLDivElement>) => {
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+      e.currentTarget.releasePointerCapture(e.pointerId)
+    }
+    clearCellDrag()
   }
 
   // Hold drag-edge handlers. Each pointer-step that crosses an
@@ -724,9 +801,44 @@ export function AnimationTimeline({
     setHoldResizeActive(false)
   }
 
+  // Window-level safety for the edge resize. Pointer capture should
+  // guarantee pointerup fires on the captured element, but if it
+  // somehow doesn't (focus loss, devtools intervention, ...) the
+  // cell would otherwise stay in the holdResizeActive state — which
+  // also keeps the edge-auto-scroll loop running. This belt-and-
+  // suspenders unwinds the gesture on any window-level pointer
+  // release.
+  useEffect(() => {
+    const onUp = () => {
+      if (dragRef.current) {
+        dragRef.current = null
+        setHoldResizeActive(false)
+      }
+    }
+    window.addEventListener('pointerup', onUp)
+    window.addEventListener('pointercancel', onUp)
+    return () => {
+      window.removeEventListener('pointerup', onUp)
+      window.removeEventListener('pointercancel', onUp)
+    }
+  }, [])
+
+  // Cursor variant applied to the timeline outer wrapper while space is
+  // held (mirrors the CanvasStage's pan-mode cursor). Computed once so
+  // every render path (empty / dots / detail) uses the same value.
+  const spaceCursor: 'grab' | 'grabbing' | undefined = isPanning
+    ? 'grabbing'
+    : isSpaceDown
+    ? 'grab'
+    : undefined
+
   if (frames.length === 0) {
     return (
-      <div {...stylex.props(s.empty, isDragOver && s.emptyOver)} {...dropTarget}>
+      <div
+        {...stylex.props(s.empty, isDragOver && s.emptyOver)}
+        {...dropTarget}
+        style={spaceCursor ? { cursor: spaceCursor } : undefined}
+      >
         {isDragOver
           ? 'Drop to create an animation'
           : 'Drag frames here, or select frames in the Frames panel and click + again to populate.'}
@@ -753,6 +865,7 @@ export function AnimationTimeline({
       e.stopPropagation()
       e.currentTarget.setPointerCapture(e.pointerId)
       panDragRef.current = { startX: e.clientX, startScrollLeft: e.currentTarget.scrollLeft }
+      setIsPanning(true)
     },
     onPointerMove: (e: ReactPointerEvent<HTMLDivElement>) => {
       if (!panDragRef.current) return
@@ -766,6 +879,7 @@ export function AnimationTimeline({
           e.currentTarget.releasePointerCapture(e.pointerId)
         }
         panDragRef.current = null
+        setIsPanning(false)
         return
       }
       // Otherwise let the drop target handle it.
@@ -773,25 +887,10 @@ export function AnimationTimeline({
     },
   }
 
-  if (density === 'dots') {
-    return (
-      <div
-        ref={trackRef}
-        {...stylex.props(s.trackDots, isDragOver && s.trackOver)}
-        {...trackHandlers}
-      >
-        {groups.map((g, idx) => (
-          <span
-            key={`${g.startIndex}-${g.name}`}
-            {...stylex.props(s.dot, g.count > 1 && s.dotHold, idx === playheadGroupIndex && s.dotPlayhead)}
-            style={g.count > 1 ? { width: 8 + (g.count - 1) * 6 } : undefined}
-            onClick={() => onSeekGroup(idx)}
-            title={`${g.name} ×${g.count}`}
-          />
-        ))}
-      </div>
-    )
-  }
+  // The 'dots' / small-player density was dropped in favor of the
+  // single fixed-height drawer. Anything non-collapsed renders the
+  // detail track below; the `density` prop is kept on the API surface
+  // for back-compat but only `'detail'` is exercised in practice.
 
   // detail
   return (
@@ -799,6 +898,11 @@ export function AnimationTimeline({
       ref={trackRef}
       {...stylex.props(s.trackDetail, isDragOver && s.trackOver)}
       {...trackHandlers}
+      // Suppress the native horizontal scrollbar (matches the global
+      // rule in styles.css). Wheel + space-drag + edge auto-scroll
+      // cover the scrolling UX without the visible bar.
+      data-no-scrollbar=""
+      style={spaceCursor ? { cursor: spaceCursor } : undefined}
       onClick={(e) => {
         // Bubble-only — fires when user clicks empty space between
         // cells (cells handle their own clicks). Lets the App clear
@@ -889,6 +993,7 @@ export function AnimationTimeline({
         style={{ left: 0, transform: `translateX(${playheadPx}px)`, willChange: 'transform' }}
         aria-hidden="true"
       />
+      <ScrollIndicator trackRef={trackRef} contentKey={frames.length} />
       {hoverGap != null && hoverGap === groups.length ? (
         // End-of-track spread: cells map margin-left to push, but
         // the gap AFTER the last cell has no cell to push, so render
@@ -964,5 +1069,116 @@ export function AnimationTimeline({
         </div>
       ) : null}
     </div>
+  )
+}
+
+/**
+ * Thin horizontal scroll indicator pinned to the bottom edge of the
+ * timeline track. Mostly transparent overlay (sits over the cell row's
+ * bottom few pixels) that surfaces only while the user is actively
+ * scrolling — wheel, drag-pan, edge auto-scroll, anything that moves
+ * `scrollLeft`. Width and X-translate are computed from the track's
+ * `scrollLeft / scrollWidth / clientWidth`. Hidden when there's no
+ * horizontal overflow at all.
+ *
+ * The user wanted "some kind of scroll indicator that fades in while
+ * updating scroll offsets" — this is the minimal version. Native
+ * `::-webkit-scrollbar` would clip oddly inside a 40 px track; an
+ * absolutely-positioned div lets us overlap the cells without
+ * eating layout space.
+ */
+function ScrollIndicator({
+  trackRef,
+  contentKey,
+}: {
+  trackRef: React.RefObject<HTMLDivElement | null>
+  /**
+   * Bumps whenever the timeline's cell content changes (e.g. frames
+   * added/removed, hold counts edited). Triggers a re-measure so the
+   * indicator hides when content shrinks back below the viewport
+   * (otherwise the scroll event never fires and the indicator stays
+   * visible at its last position).
+   */
+  contentKey: number
+}) {
+  const indicatorRef = useRef<HTMLDivElement>(null)
+  const fadeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const update = useCallback(() => {
+    const track = trackRef.current
+    const indicator = indicatorRef.current
+    if (!track || !indicator) return
+    const { scrollLeft, scrollWidth, clientWidth } = track
+    if (scrollWidth <= clientWidth + 1) {
+      // No overflow — hide and clear any pending fade so we don't
+      // re-emerge at low opacity later.
+      if (fadeTimeoutRef.current) {
+        clearTimeout(fadeTimeoutRef.current)
+        fadeTimeoutRef.current = null
+      }
+      indicator.style.opacity = '0'
+      return
+    }
+    const trackPx = clientWidth
+    const thumbPx = Math.max(16, (clientWidth / scrollWidth) * trackPx)
+    const maxThumbX = trackPx - thumbPx
+    const scrollFrac = scrollLeft / (scrollWidth - clientWidth || 1)
+    const thumbX = scrollFrac * maxThumbX
+    indicator.style.width = `${thumbPx}px`
+    indicator.style.transform = `translateX(${thumbX}px)`
+    indicator.style.opacity = '0.55'
+    if (fadeTimeoutRef.current) clearTimeout(fadeTimeoutRef.current)
+    fadeTimeoutRef.current = setTimeout(() => {
+      if (indicatorRef.current) indicatorRef.current.style.opacity = '0.18'
+    }, 800)
+  }, [trackRef])
+
+  // Re-measure on content changes (cells added/removed). The scroll
+  // event alone misses this — scrollLeft doesn't change when cells
+  // disappear, so without this branch the indicator would stay stuck
+  // at its last position after a delete or animation switch.
+  useEffect(() => {
+    update()
+  }, [contentKey, update])
+
+  useEffect(() => {
+    const track = trackRef.current
+    if (!track) return
+    track.addEventListener('scroll', update, { passive: true })
+    const raf = requestAnimationFrame(update)
+    // Track resizes covers panel-split / drawer-width changes; doesn't
+    // catch content-only changes, which `contentKey` handles above.
+    const ro = new ResizeObserver(update)
+    ro.observe(track)
+    return () => {
+      track.removeEventListener('scroll', update)
+      cancelAnimationFrame(raf)
+      ro.disconnect()
+      if (fadeTimeoutRef.current) clearTimeout(fadeTimeoutRef.current)
+    }
+  }, [trackRef, update])
+
+  return (
+    <div
+      ref={indicatorRef}
+      aria-hidden="true"
+      style={{
+        // 4 px tall and bottom: 0 puts the indicator flush against the
+        // cells' bottom edge — no gap, fills the bottom-of-track slot
+        // exactly. Mostly transparent so it overlaps the cells without
+        // obscuring them.
+        position: 'absolute',
+        left: 0,
+        bottom: 0,
+        height: 4,
+        width: 0,
+        backgroundColor: 'rgba(255, 255, 255, 0.65)',
+        borderRadius: 2,
+        opacity: 0,
+        transition: 'opacity 200ms ease-out',
+        pointerEvents: 'none',
+        willChange: 'transform, width, opacity',
+      }}
+    />
   )
 }

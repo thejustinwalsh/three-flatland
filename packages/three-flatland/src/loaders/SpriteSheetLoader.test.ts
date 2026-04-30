@@ -127,7 +127,7 @@ describe('SpriteSheetLoader', () => {
       ])
 
       // @ts-expect-error - accessing private method for testing
-      const sheet = SpriteSheetLoader.createSpriteSheet(null, frames, 64, 64)
+      const sheet = SpriteSheetLoader.createSpriteSheet(null, frames, new Map(), 64, 64)
 
       expect(sheet.width).toBe(64)
       expect(sheet.height).toBe(64)
@@ -139,7 +139,7 @@ describe('SpriteSheetLoader', () => {
       const frames = new Map()
 
       // @ts-expect-error - accessing private method for testing
-      const sheet = SpriteSheetLoader.createSpriteSheet(null, frames, 64, 64)
+      const sheet = SpriteSheetLoader.createSpriteSheet(null, frames, new Map(), 64, 64)
 
       expect(() => sheet.getFrame('nonexistent')).toThrow('Frame not found: nonexistent')
     })

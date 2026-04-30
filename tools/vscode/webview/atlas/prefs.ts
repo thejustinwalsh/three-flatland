@@ -14,8 +14,16 @@ export type AtlasPrefs = {
   colorMode: 'hex' | 'rgba' | 'float'
   /** Coordinate readout format in the cursor InfoPanel. */
   coordMode: 'px' | 'uv+' | 'uv-'
-  /** Canvas background — checker (transparency-aware) or solid theme bg. */
-  background: 'checker' | 'theme'
+  /**
+   * Canvas background style:
+   *   - 'checker' — transparency-aware diagonal grid pattern (good for
+   *     spotting transparent pixels in the atlas).
+   *   - 'theme' — flat editor background color.
+   *   - 'gradient' — subtle diagonal gradient between editor + widget
+   *     theme colors (a quieter alternative to checker for non-pixel
+   *     atlases where the grid feels noisy).
+   */
+  background: 'checker' | 'theme' | 'gradient'
   /** Dim region outside the image bounds (helps see the image's edges). */
   dimOutOfBounds: boolean
   /** Render the persistent corner index on each rect. */
@@ -33,16 +41,22 @@ export type AtlasPrefs = {
   /**
    * Whether the animation drawer (inside the Atlas pane) is expanded.
    * Persisted across sessions. The drawer mount auto-promotes this to
-   * true the first time a sidecar with non-empty `meta.animations`
+   * true the first time a sidecar with a non-empty `meta.animations` map
    * loads (see `tools/vscode/webview/atlas/App.tsx`).
    */
   animDrawerExpanded: boolean
-  /** Drawer body height in pixels when expanded. Persisted across sessions. */
-  animDrawerHeight: number
   /** Last corner the floating preview PIP was parked in. */
   animPipCorner: 'tl' | 'tr' | 'br' | 'bl'
   /** Whether the floating preview PIP is shown at all. */
   animPipVisible: boolean
+  /**
+   * Sprite display scale inside the PIP — N screen pixels per source
+   * pixel. Cycle through `1` → `2` → `4` via the toggle in the PIP
+   * transport bar. PIP box size derives from frame size × scale,
+   * floored at a minimum baseline so the box stays usable on tiny
+   * sprites.
+   */
+  animPipScale: 1 | 2 | 4
   /**
    * Pixel-art filtering for sprite rendering — nearest-neighbour
    * scaling in both the main canvas (three.js texture filter) and the
@@ -63,9 +77,9 @@ const DEFAULTS: AtlasPrefs = {
   showInfoPanel: true,
   pixelSnapZoom: false,
   animDrawerExpanded: false,
-  animDrawerHeight: 140,
   animPipCorner: 'tr',
   animPipVisible: true,
+  animPipScale: 1,
   pixelArt: true,
 }
 

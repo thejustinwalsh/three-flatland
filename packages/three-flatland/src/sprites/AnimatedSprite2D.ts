@@ -3,8 +3,9 @@ import { Sprite2D } from './Sprite2D'
 import { AnimationController } from '../animation/AnimationController'
 import type { Sprite2DMaterial } from '../materials/Sprite2DMaterial'
 import type { MaterialEffect } from '../materials/MaterialEffect'
-import type { SpriteSheet } from './types'
+import type { SpriteSheet, SpriteAnimation } from './types'
 import type { Animation, AnimationSetDefinition, PlayOptions } from '../animation/types'
+import { DeferredProps, deferredProps } from '../mixins/DeferredProps'
 
 /**
  * Options for creating an AnimatedSprite2D.
@@ -63,19 +64,31 @@ export interface AnimatedSprite2DOptions {
  * player.play('walk');
  * ```
  */
-export class AnimatedSprite2D extends Sprite2D {
+export class AnimatedSprite2D extends DeferredProps(Sprite2D) {
   /** Animation controller */
   readonly controller: AnimationController
 
-  /** Source spritesheet */
-  private _spriteSheet: SpriteSheet | null = null
+  /**
+   * Reactive props installed by the `DeferredProps` mixin's
+   * `deferredProps()` call below. `declare` keeps these in the type
+   * system without emitting class fields that would shadow the
+   * runtime accessors. R3F's `ThreeElement<typeof AnimatedSprite2D>`
+   * picks them up for JSX prop typing — `<animatedSprite2D
+   * spriteSheet={sheet} animation="idle" />` typechecks against
+   * these declarations.
+   */
+  declare spriteSheet:  SpriteSheet | null
+  declare animationSet: AnimationSetDefinition | null
+  declare animation:    string | null
 
   /**
    * Create a new AnimatedSprite2D.
-   * Can be called with no arguments for R3F compatibility - set spriteSheet via property.
+   * Can be called with no arguments for R3F compatibility — properties
+   * will be set via the mixin's reactive setters during reconciliation.
    */
   constructor(options?: AnimatedSprite2DOptions) {
-    // Get initial frame from spritesheet if available
+    // Initial frame seeded from the spritesheet if available; otherwise
+    // the deferred action picks the first frame on the first run.
     const firstFrame = options?.spriteSheet?.frames.values().next().value
 
     super({
@@ -95,96 +108,136 @@ export class AnimatedSprite2D extends Sprite2D {
     this.controller = new AnimationController()
     this.name = 'AnimatedSprite2D'
 
-    // If no options, we're being created by R3F - properties will be set via setters
-    if (!options) {
-      return
-    }
+    // Track which sheet/animationSet pair has already been loaded
+    // into the controller so changing only `animation` (e.g. swapping
+    // from 'idle' to 'run') doesn't re-build the controller's
+    // animation table on every prop tick.
+    let loadedSheet: SpriteSheet | null = null
+    let loadedSet: AnimationSetDefinition | null = null
+    const autoPlay = options?.autoPlay !== false
 
-    this._spriteSheet = options.spriteSheet
+    // Atomic group: `spriteSheet` + `animationSet` + `animation`.
+    // `deferredProps` installs reactive accessors on `this` for each
+    // key (so R3F's prop walk fires the action) and returns a typed
+    // proxy (`this._anim.foo` is equivalent to `this.foo` —
+    // both route through the same group state). The action fires
+    // eagerly on each setter call; the `DeferredProps` mixin's
+    // `updateMatrix` override forces a deferred-default settle pass
+    // on first frame for cases where no setter ever fires it.
+    this._anim = deferredProps(
+      this,
+      {
+        spriteSheet:  null as SpriteSheet | null,
+        animationSet: null as AnimationSetDefinition | null,
+        animation:    null as string | null,
+      },
+      (props, prev) => {
+        // 1. Sheet swap → swap texture and seed the initial frame.
+        if (props.spriteSheet !== prev?.spriteSheet) {
+          if (props.spriteSheet) {
+            this.texture = props.spriteSheet.texture
+            if (!this.frame) {
+              const first = props.spriteSheet.frames.values().next().value
+              if (first) this.setFrame(first)
+            }
+          }
+        }
 
-    // Add animations
-    if (options.animations) {
-      this.controller.addAnimations(options.animations)
-    }
+        // 2. Sheet OR animationSet change → re-load the controller.
+        //    `animationSet ?? sheet.animations` lets a caller pass an
+        //    explicit set OR rely on whatever the sheet ships with.
+        const sheet = props.spriteSheet
+        const setChanged =
+          sheet != null &&
+          (sheet !== loadedSheet || props.animationSet !== loadedSet)
+        if (setChanged) {
+          // Synthetic sheets (test fixtures, hand-built) may omit
+          // `animations` — guarded so the fallback stays safe.
+          const def =
+            props.animationSet ??
+            (sheet.animations && sheet.animations.size > 0
+              ? sheetAnimationsToDefinition(sheet.animations)
+              : null)
+          if (def) {
+            // Drop existing animations so a sheet swap can't leave
+            // stale entries from the previous source. `addAnimation`
+            // is a Map.set so same-name overwrites would be fine for
+            // a partial overlap, but a sheet with FEWER animations
+            // than the previous one would otherwise leave orphans.
+            for (const name of this.controller.getAnimationNames()) {
+              this.controller.removeAnimation(name)
+            }
+            this._loadAnimationSetInternal(sheet, def)
+            loadedSheet = sheet
+            loadedSet = props.animationSet
+          }
 
-    if (options.animationSet) {
-      this.loadAnimationSet(options.animationSet)
-    }
+          // Auto-play the first animation if no explicit `animation`
+          // prop has arrived yet — preserves the previous constructor
+          // behavior for `autoPlay !== false`.
+          if (autoPlay && !props.animation) {
+            const names = this.controller.getAnimationNames()
+            if (names.length > 0 && this.controller.currentAnimation == null) {
+              this.play(names[0]!)
+            }
+          }
+        }
 
-    // Play initial animation
-    if (options.animation) {
-      this.play(options.animation)
-    } else if (options.autoPlay !== false) {
-      // Auto-play first animation if available
-      const names = this.controller.getAnimationNames()
-      if (names.length > 0) {
-        this.play(names[0]!)
+        // 3. Animation prop change → play that animation. Defensive:
+        //    only `play()` if the name is already registered, so this
+        //    is no-op when the controller hasn't loaded yet (the next
+        //    cycle, after sheet/set arrive, will retry).
+        if (props.animation && props.animation !== prev?.animation) {
+          if (this.controller.getAnimationNames().includes(props.animation)) {
+            this.play(props.animation)
+          }
+        }
+      },
+    )
+
+    // Apply constructor options. Each assignment flows through the
+    // factory-installed reactive setter, which fires the action with
+    // the new values. Non-reactive options (animations[]) are
+    // applied separately.
+    if (options) {
+      if (options.animations) {
+        this.controller.addAnimations(options.animations)
       }
+      if (options.spriteSheet  !== undefined) this.spriteSheet  = options.spriteSheet
+      if (options.animationSet !== undefined) this.animationSet = options.animationSet
+      if (options.animation    !== undefined) this.animation    = options.animation
     }
   }
 
   /**
-   * Get the spritesheet.
+   * Typed proxy for the spriteSheet/animationSet/animation group.
+   * Internal class code can read/write through here for
+   * organizational clarity (`this._anim.spriteSheet = sheet` reads as
+   * "the animation group's sheet"). Equivalent to the auto-installed
+   * accessors on `this` — both paths route through the same group
+   * state.
    */
-  get spriteSheet(): SpriteSheet | null {
-    return this._spriteSheet
+  private _anim: {
+    spriteSheet:  SpriteSheet | null
+    animationSet: AnimationSetDefinition | null
+    animation:    string | null
   }
 
   /**
-   * Set a new spritesheet.
+   * Load an `AnimationSetDefinition` into the controller using the
+   * given sheet. Internal helper used by the deferred action; the
+   * public path is `this.spriteSheet = sheet; this.animationSet = set`.
    */
-  set spriteSheet(value: SpriteSheet | null) {
-    this._spriteSheet = value
-    if (value) {
-      this.texture = value.texture
-      // Set initial frame from spritesheet
-      const firstFrame = value.frames.values().next().value
-      if (firstFrame && !this.frame) {
-        this.setFrame(firstFrame)
-      }
-    }
-  }
-
-  /**
-   * Set animation set definition (R3F compatible).
-   * Loads animations from the definition.
-   */
-  set animationSet(value: AnimationSetDefinition | null) {
-    if (value) {
-      this.loadAnimationSet(value)
-    }
-  }
-
-  /**
-   * Set the current animation by name (R3F compatible).
-   * Plays the animation if found.
-   */
-  set animation(value: string | null) {
-    if (value && this.controller.getAnimationNames().includes(value)) {
-      this.play(value)
-    }
-  }
-
-  /**
-   * Load animations from an animation set definition.
-   */
-  loadAnimationSet(definition: AnimationSetDefinition): this {
-    if (!this._spriteSheet) {
-      console.warn('Cannot load animation set without a spritesheet')
-      return this
-    }
-
+  private _loadAnimationSetInternal(sheet: SpriteSheet, definition: AnimationSetDefinition): void {
     const defaultFps = definition.fps ?? 12
-
     for (const [name, animDef] of Object.entries(definition.animations)) {
       const frames = animDef.frames
         .map((frameName, index) => {
-          const spriteFrame = this._spriteSheet!.frames.get(frameName)
+          const spriteFrame = sheet.frames.get(frameName)
           if (!spriteFrame) {
             console.warn(`Frame not found in spritesheet: ${frameName}`)
             return null
           }
-
           return {
             frame: spriteFrame,
             duration: animDef.durations?.[index],
@@ -201,7 +254,20 @@ export class AnimatedSprite2D extends Sprite2D {
         pingPong: animDef.pingPong ?? false,
       })
     }
+  }
 
+  /**
+   * Imperative variant of the prop-driven path: load animations from
+   * an explicit definition. Useful when the caller wants to layer
+   * animations on top of what the sheet ships with, or replace them
+   * after construction. Requires `spriteSheet` to be set.
+   */
+  loadAnimationSet(definition: AnimationSetDefinition): this {
+    if (!this.spriteSheet) {
+      console.warn('Cannot load animation set without a spritesheet')
+      return this
+    }
+    this._loadAnimationSetInternal(this.spriteSheet, definition)
     return this
   }
 
@@ -221,12 +287,13 @@ export class AnimatedSprite2D extends Sprite2D {
     frameNames: string[],
     options: { fps?: number; loop?: boolean; pingPong?: boolean } = {}
   ): this {
-    if (!this._spriteSheet) {
+    const sheet = this.spriteSheet
+    if (!sheet) {
       throw new Error('Cannot add animation from frames without a spritesheet')
     }
 
     const frames = frameNames.map((frameName) => {
-      const frame = this._spriteSheet!.frames.get(frameName)
+      const frame = sheet.frames.get(frameName)
       if (!frame) {
         throw new Error(`Frame not found: ${frameName}`)
       }
@@ -358,7 +425,8 @@ export class AnimatedSprite2D extends Sprite2D {
     // Ignore recursive parameter - we create a fresh sprite
     void recursive
 
-    if (!this._spriteSheet) {
+    const sheet = this.spriteSheet
+    if (!sheet) {
       throw new Error('Cannot clone AnimatedSprite2D without a spritesheet')
     }
 
@@ -370,7 +438,7 @@ export class AnimatedSprite2D extends Sprite2D {
     }
 
     const cloned = new AnimatedSprite2D({
-      spriteSheet: this._spriteSheet,
+      spriteSheet: sheet,
       animations,
       animation: this.currentAnimation ?? undefined,
       anchor: this.anchor,
@@ -407,9 +475,48 @@ export class AnimatedSprite2D extends Sprite2D {
 
   /**
    * Dispose of resources.
+   *
+   * Chain: AnimatedSprite2D.dispose() → DeferredProps mixin's dispose
+   * (clears the reactive registration so the captured action closure
+   * is GC-eligible) → Sprite2D.dispose() (geometry/material teardown).
    */
   override dispose(): void {
     this.controller.dispose()
     super.dispose()
   }
+}
+
+/**
+ * Convert the runtime `SpriteSheet.animations` map into the
+ * `AnimationSetDefinition` shape the controller expects. Used by the
+ * deferred action's "no animationSet → fall back to sheet" branch.
+ */
+function sheetAnimationsToDefinition(
+  animations: ReadonlyMap<string, SpriteAnimation>,
+): AnimationSetDefinition {
+  const out: AnimationSetDefinition['animations'] = {}
+  for (const [name, anim] of animations) {
+    out[name] = {
+      frames: [...anim.frames],
+      fps: anim.fps,
+      loop: anim.loop,
+      pingPong: anim.pingPong,
+      ...(anim.events ? { events: stringKeysToNumberKeys(anim.events) } : {}),
+    }
+  }
+  return { animations: out }
+}
+
+/**
+ * `SpriteAnimation.events` is keyed by stringified frame index
+ * (matching the JSON schema), but `AnimationSetDefinition` keys
+ * events by number. Convert at the boundary.
+ */
+function stringKeysToNumberKeys(events: Record<string, string>): Record<number, string> {
+  const out: Record<number, string> = {}
+  for (const [k, v] of Object.entries(events)) {
+    const n = Number(k)
+    if (Number.isFinite(n)) out[n] = v
+  }
+  return out
 }

@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import { useViewport, viewBoxFor } from './Viewport'
-import { useCursorStore } from './CanvasStage'
+import { useCursorStore } from './CanvasContext'
 
 export type GridSpec = {
   /** Vertical line x-positions, length = cols + 1, monotonically increasing in [0, imageW]. */

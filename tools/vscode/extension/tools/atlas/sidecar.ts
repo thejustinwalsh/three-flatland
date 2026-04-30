@@ -12,7 +12,15 @@ export type RectInput = {
   name?: string
 }
 
-/** Animation as serialized in `meta.animations`. Frames are post-duplication. */
+/**
+ * API shape used by builders + the atlas tool's in-memory model.
+ * Frame names are post-duplication (holds = repeated names). The
+ * sidecar's wire format is the indexed `WireAnimation` shape — the
+ * writer converts on save and the reader converts on load, so this
+ * shape is what every caller of `buildAtlasJson` /
+ * `readAtlasSidecar` works with regardless of how the JSON happens
+ * to encode the data on disk.
+ */
 export type AnimationInput = {
   frames: string[]
   fps: number
@@ -22,12 +30,55 @@ export type AnimationInput = {
 }
 
 /**
+ * Wire shape stored under `meta.animations[name]`. `frameSet` lists
+ * the unique frame names referenced; `frames` is the playback
+ * sequence as integer indices into `frameSet`. Repeated indices
+ * encode hold counts. More compact than the flat-string-array form
+ * for animations with held frames, and matches the integer-indexed
+ * `events` keying for consistency.
+ */
+type WireAnimation = {
+  frameSet: string[]
+  frames: number[]
+  fps: number
+  loop: boolean
+  pingPong: boolean
+  events?: Record<string, string>
+}
+
+/**
+ * Aseprite frame-tag (= named animation) shape. Aseprite stores tags
+ * as integer ranges into the frames array; our reader normalizes
+ * these into our `animations` map by looking up frame names by index.
+ */
+export type AsepriteFrameTag = {
+  name: string
+  from: number
+  to: number
+  /** Newer Aseprite versions use these direction labels. */
+  direction?: 'forward' | 'reverse' | 'pingpong' | 'pingpong_reverse'
+  color?: string
+  /** "" = infinite, "N" = repeat N times. Newer Aseprite. */
+  repeat?: string
+  data?: string
+}
+
+/**
  * SpriteSheetJSONHash shape (from `packages/three-flatland/src/sprites/
- * types.ts`) with our additive `meta.app` + `meta.version` markers. The
- * sibling schema at `packages/three-flatland/src/sprites/atlas.schema.
- * json` validates this structure. We don't run ajv at save time today —
- * rects come from our own code and the shape is statically controlled —
- * but the schema is the publishable spec.
+ * types.ts`) with all our additions under `meta`. The root keys are
+ * `frames` + `meta` only — strict TP/Aseprite shape — so any TP- or
+ * Aseprite-emitted file validates here, and any consumer of TP- or
+ * Aseprite-shaped JSON can read our atlases (they'll just see the
+ * frames + textures they know about, and ignore our richer
+ * `meta.animations`).
+ *
+ * The sibling schema at `packages/three-flatland/src/sprites/
+ * atlas.schema.json` validates this structure. `meta` is intentionally
+ * loose (`additionalProperties: true`) so any future tool-specific
+ * extension can land there without schema edits. Running ajv at save
+ * time is cheap insurance: rects come from our own code, but the
+ * schema is the publishable spec so a drift would silently break
+ * downstream consumers.
  */
 export type AtlasJson = {
   $schema?: string
@@ -37,7 +88,22 @@ export type AtlasJson = {
     image: string
     size: { w: number; h: number }
     scale: string
-    animations?: Record<string, AnimationInput>
+    /**
+     * Our richer animation map. Lives under `meta` so the root keys
+     * stay TP/Aseprite-shaped (`frames` + `meta` only). Anyone with
+     * a TP/Aseprite loader still reads our atlases; consumers that
+     * want our animations look here. Wire shape (`WireAnimation`):
+     * indexed for compactness — `frameSet` lists unique names,
+     * `frames` is integer indices into `frameSet`. Use the
+     * `AnimationInput` API at the boundary (builder + reader); they
+     * convert.
+     */
+    animations?: Record<string, WireAnimation>
+    /** Aseprite-emitted animation tags — surfaced for typed access by the importer. */
+    frameTags?: readonly AsepriteFrameTag[]
+    layers?: readonly unknown[]
+    slices?: readonly unknown[]
+    // `meta` is `additionalProperties: true`; further extensions land here.
   }
   frames: Record<
     string,
@@ -47,6 +113,13 @@ export type AtlasJson = {
       trimmed: boolean
       spriteSourceSize: { x: number; y: number; w: number; h: number }
       sourceSize: { w: number; h: number }
+      /**
+       * Aseprite-only per-frame display time (ms). The reader uses it
+       * to derive an animation's fps when only `meta.frameTags` is
+       * present (no `meta.animations`). Our writer doesn't emit it
+       * today — fps is captured per-animation, not per-frame.
+       */
+      duration?: number
     }
   >
 }
@@ -55,9 +128,10 @@ export function buildAtlasJson(input: {
   image: { fileName: string; width: number; height: number }
   rects: readonly RectInput[]
   /**
-   * Optional animation map (already in `meta.animations` shape). Empty
-   * animations (no frames) are filtered out before serialisation —
-   * Ajv's `frames` constraint requires at least one entry.
+   * Optional animation map. Empty animations (no frames) are filtered
+   * out before serialisation — Ajv's `frames` constraint requires at
+   * least one entry, so a user mid-edit can save without an empty
+   * in-progress anim blocking the write.
    */
   animations?: Record<string, AnimationInput>
 }): AtlasJson {
@@ -75,20 +149,16 @@ export function buildAtlasJson(input: {
     }
   })
 
-  // Strip empty animations (schema requires `frames` non-empty) so a
-  // user mid-edit can save without an empty in-progress anim blocking
-  // the write.
-  const animations: Record<string, AnimationInput> = {}
+  // Convert each name-based AnimationInput → indexed WireAnimation
+  // for storage. Empty animations (no frames) are dropped — the
+  // schema requires `frameSet` and `frames` non-empty, and a user
+  // mid-edit shouldn't have an in-progress empty animation block
+  // the save.
+  const animations: Record<string, WireAnimation> = {}
   if (input.animations) {
     for (const [name, a] of Object.entries(input.animations)) {
       if (a.frames.length === 0) continue
-      animations[name] = {
-        frames: a.frames,
-        fps: a.fps,
-        loop: a.loop,
-        pingPong: a.pingPong,
-        ...(a.events ? { events: a.events } : {}),
-      }
+      animations[name] = animationInputToWire(a)
     }
   }
 
@@ -170,11 +240,126 @@ export async function readAtlasSidecar(imageUri: vscode.Uri): Promise<LoadedAtla
     throw new Error(`Atlas sidecar is not valid JSON: ${msg}`)
   }
   assertValidAtlas(parsed)
+  // Animation source priority on read:
+  //   1. `parsed.meta.animations` — our shape (the v1 location).
+  //      Dereferenced from indexed wire format to flat name-based
+  //      `AnimationInput` here so callers don't have to learn the
+  //      indexed shape.
+  //   2. `parsed.meta.frameTags` — Aseprite's animation tags;
+  //      converted to our model so an Aseprite-exported atlas opens
+  //      with named animations already populated.
+  //   3. {} — no animations.
+  // Step 2 is a normalization that's lossy where Aseprite's per-frame
+  // durations vary inside a tag (collapsed to a single fps via median).
+  let animations: Record<string, AnimationInput> = {}
+  if (parsed.meta.animations && Object.keys(parsed.meta.animations).length > 0) {
+    for (const [name, wire] of Object.entries(parsed.meta.animations)) {
+      animations[name] = wireAnimationToInput(wire)
+    }
+  } else if (parsed.meta.frameTags && parsed.meta.frameTags.length > 0) {
+    animations = importAsepriteFrameTags(parsed)
+  }
   return {
     json: parsed,
     rects: atlasToRects(parsed),
-    animations: parsed.meta.animations ?? {},
+    animations,
   }
+}
+
+/**
+ * Convert the API `AnimationInput` (flat name-based frames sequence)
+ * into the indexed wire `WireAnimation` (frameSet + indices). Builds
+ * `frameSet` by walking `frames` in order and recording each new name
+ * the first time it appears — preserves first-encounter order so the
+ * resulting `frameSet` reads naturally in JSON.
+ */
+function animationInputToWire(input: AnimationInput): WireAnimation {
+  const frameSet: string[] = []
+  const indexByName = new Map<string, number>()
+  const frames: number[] = []
+  for (const name of input.frames) {
+    let idx = indexByName.get(name)
+    if (idx === undefined) {
+      idx = frameSet.length
+      frameSet.push(name)
+      indexByName.set(name, idx)
+    }
+    frames.push(idx)
+  }
+  return {
+    frameSet,
+    frames,
+    fps: input.fps,
+    loop: input.loop,
+    pingPong: input.pingPong,
+    ...(input.events ? { events: input.events } : {}),
+  }
+}
+
+/**
+ * Convert the indexed wire shape back to a flat name-based
+ * `AnimationInput`. Out-of-bounds indices are skipped with a console
+ * warning — schema validation should catch these before they reach
+ * here, but defending so a malformed file doesn't blow up the
+ * reader entirely.
+ */
+function wireAnimationToInput(wire: WireAnimation): AnimationInput {
+  const frames: string[] = []
+  for (const idx of wire.frames) {
+    const name = wire.frameSet[idx]
+    if (name == null) {
+      console.warn(`Atlas: animation frame index ${idx} out of bounds for frameSet (length ${wire.frameSet.length})`)
+      continue
+    }
+    frames.push(name)
+  }
+  return {
+    frames,
+    fps: wire.fps,
+    loop: wire.loop,
+    pingPong: wire.pingPong,
+    ...(wire.events ? { events: wire.events } : {}),
+  }
+}
+
+/**
+ * Convert Aseprite's `meta.frameTags` (ranges into the frames array)
+ * into our `animations` map (named, frame-name based). Direction maps
+ * to our `loop` / `pingPong` flags; reverse-mode tags physically
+ * reverse the frame array on import. FPS is derived from the median
+ * `frames[].duration` of the tagged frames — variable per-frame
+ * timing within a tag is a lossy collapse, but Aseprite's typical
+ * use case has uniform timing within a tag.
+ */
+function importAsepriteFrameTags(json: AtlasJson): Record<string, AnimationInput> {
+  const frameNames = Object.keys(json.frames)
+  const out: Record<string, AnimationInput> = {}
+  const used = new Set<string>()
+  for (const tag of json.meta.frameTags ?? []) {
+    if (tag.from < 0 || tag.to >= frameNames.length || tag.from > tag.to) continue
+    const slice = frameNames.slice(tag.from, tag.to + 1)
+    if (slice.length === 0) continue
+    const dir = tag.direction ?? 'forward'
+    const reverseInPlace = dir === 'reverse' || dir === 'pingpong_reverse'
+    const isPingPong = dir === 'pingpong' || dir === 'pingpong_reverse'
+    const orderedFrames = reverseInPlace ? [...slice].reverse() : slice
+    // Median of the per-frame durations inside the tag's range. Falls
+    // back to 100ms (10 fps) when no frame carries a duration.
+    const durations = slice
+      .map((name) => json.frames[name]?.duration)
+      .filter((d): d is number => typeof d === 'number' && d > 0)
+      .sort((a, b) => a - b)
+    const medianMs = durations.length > 0 ? durations[Math.floor(durations.length / 2)]! : 100
+    const fps = Math.max(1, Math.round(1000 / medianMs))
+    const name = uniqueKey(tag.name, used)
+    out[name] = {
+      frames: orderedFrames,
+      fps,
+      loop: true,
+      pingPong: isPingPong,
+    }
+  }
+  return out
 }
 
 /**

@@ -27,3 +27,10 @@ export * from './GlobalUniforms'
 // Flatland
 export * from './Flatland'
 
+// Reactive utilities for class authors building custom Object3D
+// subclasses that participate in R3F's no-args + post-construction
+// property setter lifecycle. See `DeferredProps` (mixin) +
+// `deferredProps` (factory) for the deferred multi-prop dependency
+// system used by AnimatedSprite2D.
+export * from './mixins/DeferredProps'
+

@@ -7,7 +7,7 @@ import { radius } from '../tokens/radius.stylex'
 import { z } from '../tokens/z.stylex'
 // Use the underlying Lit binding directly so we don't create a
 // circular import with this package's barrel.
-import { VscodeIcon as Icon } from '@vscode-elements/react-elements'
+import Icon from '@vscode-elements/react-elements/dist/components/VscodeIcon.js'
 
 export type CompactSelectOption<V extends string = string> = {
   value: V
@@ -152,8 +152,16 @@ export function CompactSelect<V extends string = string>(props: CompactSelectPro
   }, [])
 
   useLayoutEffect(() => {
-    if (!open) return
-    recompute()
+    if (open) {
+      recompute()
+    } else {
+      // Drop the previous placement so the next open re-measures
+      // against the popover's freshly mounted DOM. setState bails out
+      // if already null, so this is safe to call unconditionally — and
+      // crucially we don't list `placement` as a dep, otherwise
+      // recompute → setPlacement → re-fire would loop.
+      setPlacement(null)
+    }
   }, [open, recompute])
 
   useEffect(() => {
@@ -200,16 +208,23 @@ export function CompactSelect<V extends string = string>(props: CompactSelectPro
           <Icon name="chevron-down" />
         </span>
       </button>
-      {open && !disabled && placement
+      {open && !disabled
         ? createPortal(
+            // Render the popover unconditionally on open and hide it
+            // until the layout effect has measured its real height —
+            // otherwise the first-render flip math falls back to
+            // POPOVER_MAX_HEIGHT (240) and forces an above-flip when
+            // the actual list is much shorter, making the menu appear
+            // in a "random" spot.
             <div
               ref={popoverRef}
               role="listbox"
               {...stylex.props(s.popover)}
               style={{
-                top: placement.top,
-                left: placement.left,
-                minWidth: placement.width,
+                top: placement?.top ?? -10000,
+                left: placement?.left ?? -10000,
+                minWidth: placement?.width,
+                visibility: placement ? 'visible' : 'hidden',
               }}
             >
               {options.map((opt) => (

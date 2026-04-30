@@ -1,14 +1,20 @@
+// Shell entry point — anything that does NOT pull in @react-three/fiber,
+// three, or three-flatland. Consumers that need the canvas (CanvasStage,
+// ThreeLayer, AnimationPreviewPip, SpritePreview) should import them
+// from `@three-flatland/preview/canvas` so they can be code-split via
+// `React.lazy()` and kept out of the initial paint critical path.
+
 export {
-  CanvasStage,
   useCursorStore,
   useImageData,
   useViewportController,
-  type CanvasStageProps,
   type ViewportController,
-} from './CanvasStage'
-export { ThreeLayer, type ThreeLayerProps } from './ThreeLayer'
+} from './CanvasContext'
+export {
+  canvasBackgroundStyle,
+  type CanvasBackgroundStyle,
+} from './canvasBackground'
 export { RectOverlay, type RectOverlayProps, type Rect } from './RectOverlay'
-export { SpritePreview, type SpritePreviewProps } from './SpritePreview'
 export { useViewport, viewBoxFor, ViewportContext, type Viewport } from './Viewport'
 export { InfoPanel, type InfoPanelProps, type ColorMode, type CoordMode } from './InfoPanel'
 export {
@@ -56,11 +62,6 @@ export {
   frameIndexToGroupIndex,
   type AnimationTimelineProps,
 } from './AnimationTimeline'
-export {
-  AnimationPreviewPip,
-  type AnimationPreviewPipProps,
-  type PipCorner,
-} from './AnimationPreviewPip'
 export {
   AnimationRectHighlight,
   type AnimationRectHighlightProps,

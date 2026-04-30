@@ -49,6 +49,13 @@ function tokenizeAssetBase(token = '%FL_BASE%'): Plugin {
   }
 }
 
+// In watch mode (`vite build --watch`) we deliberately keep the previous
+// build's output around: emptying dist/webview/ on every rebuild creates
+// a window where the panel can't load chunks if the user reloads while
+// Rollup is still writing. For one-shot prod builds (`vite build`) we
+// still want a clean output dir so stale hashed assets don't accumulate.
+const isWatchMode = process.argv.includes('--watch') || process.argv.includes('-w')
+
 export default defineConfig({
   plugins: [
     stylex.vite({ useCSSLayers: true }),
@@ -59,7 +66,7 @@ export default defineConfig({
   base: './',
   build: {
     outDir: resolve(__dirname, 'dist/webview'),
-    emptyOutDir: true,
+    emptyOutDir: !isWatchMode,
     sourcemap: true,
     target: 'esnext',
     assetsDir: 'assets',

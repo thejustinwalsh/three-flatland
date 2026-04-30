@@ -1,4 +1,7 @@
 import {
+  lazy,
+  startTransition,
+  Suspense,
   useCallback,
   useEffect,
   useMemo,
@@ -24,16 +27,15 @@ import {
 import {
   AnimationDrawer,
   AnimationDrawerHeader,
-  AnimationPreviewPip,
   AnimationRectHighlight,
   AnimationTimeline,
   AutoDetectOverlay,
-  CanvasStage,
   DragProvider,
   GridSliceOverlay,
   HoverFrameChip,
   InfoPanel,
   RectOverlay,
+  canvasBackgroundStyle,
   createAnimationStore,
   frameIndexToGroupIndex,
   groupCells,
@@ -52,6 +54,18 @@ import {
   type Rect,
   type ViewportController,
 } from '@three-flatland/preview'
+
+// Code-split the R3F + three.js + three-flatland chunk out of the initial
+// paint critical path. Both CanvasStage and AnimationPreviewPip live in
+// the same module, so the chunk-loader resolves them with one network
+// roundtrip; React.lazy()'s internal use(promise) keeps the resolution
+// stable across renders (no double-fetch under StrictMode).
+const CanvasStage = lazy(() =>
+  import('@three-flatland/preview/canvas').then((m) => ({ default: m.CanvasStage })),
+)
+const AnimationPreviewPip = lazy(() =>
+  import('@three-flatland/preview/canvas').then((m) => ({ default: m.AnimationPreviewPip })),
+)
 import { AtlasMenu } from './AtlasMenu'
 import { prefsStore, usePrefs } from './prefs'
 import * as stylex from '@stylexjs/stylex'
@@ -65,7 +79,7 @@ type InitPayload = {
   fileName: string
   /** Rects seeded from an existing sidecar, if one was found and valid. */
   rects?: readonly Rect[]
-  /** Animations seeded from an existing sidecar's `meta.animations`. */
+  /** Animations seeded from an existing sidecar's `meta.animations` map. */
   animations?: Record<string, Animation>
   /** Populated when a sidecar existed but failed to parse/validate. */
   loadError?: string | null
@@ -396,6 +410,8 @@ const s = stylex.create({
     fontFamily: vscode.monoFontFamily,
     fontSize: '12px',
   },
+  // Bottom-left transient toast for saving / saved states. Doesn't
+  // demand attention — auto-dismisses on success.
   saveStatusBase: {
     position: 'fixed',
     left: space.xxl,
@@ -416,10 +432,55 @@ const s = stylex.create({
     backgroundColor: vscode.panelBg,
     color: vscode.fg,
   },
-  saveStatusError: {
+  // Centered modal overlay used only for errors — they require user
+  // dismissal (close button) so they shouldn't sit in the corner
+  // where they read as ignorable.
+  errorModal: {
+    position: 'fixed',
+    top: '50%',
+    left: '50%',
+    transform: 'translate(-50%, -50%)',
+    zIndex: z.overlay,
+    minWidth: 320,
+    maxWidth: '70%',
+    paddingInline: space.xl,
+    paddingBlock: space.lg,
+    borderRadius: radius.md,
+    fontFamily: vscode.fontFamily,
+    fontSize: vscode.fontSize,
+    borderWidth: 1,
+    borderStyle: 'solid',
     backgroundColor: vscode.errorBg,
     color: vscode.errorFg,
     borderColor: vscode.errorBorder,
+    boxShadow: '0 6px 24px rgba(0, 0, 0, 0.5)',
+    display: 'flex',
+    alignItems: 'flex-start',
+    gap: space.md,
+  },
+  errorModalClose: {
+    flexShrink: 0,
+    marginInlineStart: 'auto',
+    width: 18,
+    height: 18,
+    padding: 0,
+    borderWidth: 0,
+    borderRadius: radius.sm,
+    backgroundColor: { default: 'transparent', ':hover': 'rgba(255, 255, 255, 0.18)' },
+    color: 'inherit',
+    cursor: 'pointer',
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  errorModalIcon: {
+    flexShrink: 0,
+    marginTop: '1px',
+  },
+  errorModalText: {
+    flex: 1,
+    minWidth: 0,
+    wordBreak: 'break-word',
   },
   prefixBar: {
     display: 'flex',
@@ -569,8 +630,16 @@ const s = stylex.create({
 })
 
 export function App() {
+  // The host pre-injects `window.__FL_ATLAS__` into the panel HTML before
+  // the bundle parses, so the payload + sidecar contents are available
+  // synchronously at first render. Seeding rects/animations from it (not
+  // just `payload`) avoids the "rects pop in after the bridge handshake
+  // round-trips" flash on initial load.
   const [payload, setPayload] = useState<InitPayload | null>(() => window.__FL_ATLAS__ ?? null)
-  const [rects, setRects] = useState<Rect[]>([])
+  const [rects, setRects] = useState<Rect[]>(() => {
+    const p = window.__FL_ATLAS__
+    return p?.rects ? [...p.rects] : []
+  })
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [tool, setTool] = useState<Tool>('rect')
   const [renameMode, setRenameMode] = useState<RenameMode>({ kind: 'none' })
@@ -610,10 +679,14 @@ export function App() {
   // the Atlas Panel header.
   const prefs = usePrefs()
 
-  // Map of animation name → animation. Initialised from the sidecar
-  // payload (see the bridge handler above); user edits via the
-  // animation drawer header.
-  const [animations, setAnimations] = useState<Record<string, Animation>>({})
+  // Map of animation name → animation. Seeded synchronously from
+  // window.__FL_ATLAS__ (the host injects it before the bundle parses),
+  // with the bridge `atlas/init` handler below as a fallback when the
+  // window injection isn't available.
+  const [animations, setAnimations] = useState<Record<string, Animation>>(() => {
+    const p = window.__FL_ATLAS__
+    return p?.animations ? { ...p.animations } : {}
+  })
   const [activeAnimation, setActiveAnimation] = useState<string | null>(null)
 
   // When the user clicks a folder header's ⊞-all icon, this records
@@ -688,18 +761,25 @@ export function App() {
     bridgeRef.current = bridge
     const off = bridge.on<InitPayload>('atlas/init', (p) => {
       setPayload(p)
-      if (p.rects && p.rects.length > 0) {
-        // Seed from the sidecar. Clone so later setRects mutations don't
-        // share the array reference with the init payload.
-        setRects([...p.rects])
+      // Seed-once: only fill rects/animations if they're still empty.
+      // When the host pre-injected window.__FL_ATLAS__, the useState
+      // initializers above already cloned the same arrays/maps, and a
+      // late bridge fire would otherwise stomp any local edits the user
+      // made between mount and the handshake completing.
+      const incomingRects = p.rects
+      if (incomingRects && incomingRects.length > 0) {
+        setRects((prev) => (prev.length === 0 ? [...incomingRects] : prev))
       }
-      if (p.animations && Object.keys(p.animations).length > 0) {
-        setAnimations({ ...p.animations })
+      const incomingAnimations = p.animations
+      if (incomingAnimations && Object.keys(incomingAnimations).length > 0) {
+        setAnimations((prev) =>
+          Object.keys(prev).length === 0 ? { ...incomingAnimations } : prev,
+        )
       }
       if (p.loadError) {
         setSaveStatus({
           kind: 'error',
-          message: `Sidecar exists but failed to load — ${p.loadError}`,
+          message: `Sidecar load failed: ${p.loadError}`,
         })
       }
     })
@@ -711,11 +791,11 @@ export function App() {
     const bridge = bridgeRef.current
     if (!bridge) return
     if (!imageSize) {
-      setSaveStatus({ kind: 'error', message: 'Image not loaded yet' })
+      setSaveStatus({ kind: 'error', message: 'Cannot save — image not loaded yet' })
       return
     }
     if (rects.length === 0) {
-      setSaveStatus({ kind: 'error', message: 'No rects to save' })
+      setSaveStatus({ kind: 'error', message: 'Cannot save — no rects to save' })
       return
     }
     setSaveStatus({ kind: 'saving' })
@@ -736,9 +816,10 @@ export function App() {
         count: res.frameCount,
       })
     } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
       setSaveStatus({
         kind: 'error',
-        message: err instanceof Error ? err.message : String(err),
+        message: `Save failed: ${msg}`,
       })
     }
   }, [rects, imageSize, animations])
@@ -799,18 +880,20 @@ export function App() {
    * drawer. Returns the name that was created.
    */
   const handleCreateAnimationFromFrames = useCallback((frameNames: readonly string[]): string => {
-    let createdName = ''
-    setAnimations((prev) => {
-      createdName = deduceAnimationName(frameNames, prev)
-      return {
-        ...prev,
-        [createdName]: { frames: [...frameNames], fps: 12, loop: true, pingPong: false },
-      }
-    })
-    if (createdName) setActiveAnimation(createdName)
+    // Compute the name from the render-time `animations` snapshot first,
+    // then queue both state updates with the resolved name. The previous
+    // pattern mutated `createdName` inside the setAnimations updater
+    // closure, which is fragile under React's batched dispatch — the
+    // outer setActiveAnimation call could fire before the updater ran.
+    const name = deduceAnimationName(frameNames, animations)
+    setAnimations((prev) => ({
+      ...prev,
+      [name]: { frames: [...frameNames], fps: 12, loop: true, pingPong: false },
+    }))
+    setActiveAnimation(name)
     if (!prefs.animDrawerExpanded) prefsStore.set({ animDrawerExpanded: true })
-    return createdName
-  }, [deduceAnimationName, prefs.animDrawerExpanded])
+    return name
+  }, [animations, deduceAnimationName, prefs.animDrawerExpanded])
 
   const handleCreateAnimation = useCallback(() => {
     // Header `+` seeds from the current Frames-panel selection (in
@@ -824,13 +907,23 @@ export function App() {
   }, [rects, selectedIds, handleCreateAnimationFromFrames])
 
   const handleDeleteAnimation = useCallback((name: string) => {
+    // Cascade: when deleting the active animation, switch to the next
+    // one in name order (or null when removing the last). Without this
+    // the dropdown lands on a stale empty value and the user has to
+    // re-pick manually after every delete.
     setAnimations((prev) => {
       const next = { ...prev }
       delete next[name]
       return next
     })
-    setActiveAnimation((cur) => (cur === name ? null : cur))
-  }, [])
+    setActiveAnimation((cur) => {
+      if (cur !== name) return cur
+      const remaining = Object.keys(animations)
+        .filter((n) => n !== name)
+        .sort()
+      return remaining[0] ?? null
+    })
+  }, [animations])
 
   const handleRenameAnimation = useCallback((oldName: string, newName: string) => {
     setAnimations((prev) => {
@@ -991,7 +1084,7 @@ export function App() {
 
   // Set or clear an event tag at a specific post-duplication frame
   // index of the active animation. Empty / null tag removes the
-  // entry. Persists into `meta.animations[name].events`.
+  // entry. Persists into the sidecar's `meta.animations[name].events`.
   const handleSetEvent = useCallback((frameIndex: number, tag: string | null) => {
     if (!activeAnimation) return
     setAnimations((prev) => {
@@ -1118,7 +1211,7 @@ export function App() {
     )
     // Propagate rename into every animation that references this frame.
     // If the rect lost its name (newName === undefined), strip the
-    // entries — an unnamed rect can't appear in `meta.animations`.
+    // entries — an unnamed rect can't appear in the `meta.animations` map.
     if (oldName && oldName !== newName) {
       setAnimations((prev) => {
         const next: Record<string, Animation> = {}
@@ -1498,6 +1591,43 @@ export function App() {
         return
       }
 
+      // Arrow keys — 1 px nudge for the current selection. Shift adds
+      // a 10× multiplier (common design-tool gesture). Group-clamps
+      // the delta so a multi-selection moves rigidly: any rect hitting
+      // an image edge stops the whole set in that axis. Mod/Alt are
+      // bailed out below so e.g. Cmd+Arrow stays available for future
+      // word-jump-style shortcuts.
+      const isArrow =
+        e.key === 'ArrowUp' || e.key === 'ArrowDown' ||
+        e.key === 'ArrowLeft' || e.key === 'ArrowRight'
+      if (isArrow && !mod && !e.altKey) {
+        if (selectedIds.size === 0 || !imageSize) return
+        const step = e.shiftKey ? 10 : 1
+        const baseDx = e.key === 'ArrowLeft' ? -step : e.key === 'ArrowRight' ? step : 0
+        const baseDy = e.key === 'ArrowUp' ? -step : e.key === 'ArrowDown' ? step : 0
+        e.preventDefault()
+        setRects((prev) => {
+          let dx = baseDx
+          let dy = baseDy
+          for (const r of prev) {
+            if (!selectedIds.has(r.id)) continue
+            const minDx = -r.x
+            const maxDx = imageSize.w - r.w - r.x
+            const minDy = -r.y
+            const maxDy = imageSize.h - r.h - r.y
+            if (dx < minDx) dx = minDx
+            if (dx > maxDx) dx = maxDx
+            if (dy < minDy) dy = minDy
+            if (dy > maxDy) dy = maxDy
+          }
+          if (dx === 0 && dy === 0) return prev
+          return prev.map((r) =>
+            selectedIds.has(r.id) ? { ...r, x: r.x + dx, y: r.y + dy } : r,
+          )
+        })
+        return
+      }
+
       if (mod || e.altKey || e.shiftKey) return
       const k = e.key.toLowerCase()
       if (k === 'r') setTool('rect')
@@ -1538,6 +1668,7 @@ export function App() {
     playback.playhead,
     folderSelectionPrefix,
     manualAnimHighlight,
+    imageSize,
   ])
 
   return (
@@ -1645,10 +1776,40 @@ export function App() {
         <Panel title="Atlas" headerActions={<AtlasMenu prefs={prefs} />} bodyPadding="none">
           <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
           <div {...stylex.props(s.previewWrap)} style={{ flex: 1, minHeight: 0 }}>
+            <Suspense
+              // Mirrors CanvasStage's wrapper bg exactly (via the shared
+              // canvasBackgroundStyle helper) so there's no bg transition
+              // when the lazy-loaded canvas chunk resolves and CanvasStage
+              // takes over rendering — without this, a user in checker
+              // mode would see solid → checker → image as the fallback
+              // hands off to the mounted stage.
+              fallback={
+                <div
+                  style={{
+                    width: '100%',
+                    height: '100%',
+                    ...canvasBackgroundStyle(
+                      prefs.background === 'checker'
+                        ? 'checker'
+                        : prefs.background === 'gradient'
+                        ? 'gradient'
+                        : 'solid',
+                      editorBg,
+                    ),
+                  }}
+                />
+              }
+            >
             <CanvasStage
               imageUri={payload?.imageUri ?? null}
               background={editorBg}
-              backgroundStyle={prefs.background === 'checker' ? 'checker' : 'solid'}
+              backgroundStyle={
+                prefs.background === 'checker'
+                  ? 'checker'
+                  : prefs.background === 'gradient'
+                  ? 'gradient'
+                  : 'solid'
+              }
               dimOutOfBounds={prefs.dimOutOfBounds}
               pixelSnapZoom={prefs.pixelSnapZoom}
               pixelArt={prefs.pixelArt}
@@ -1729,14 +1890,21 @@ export function App() {
                   onTogglePlay={handleTogglePlay}
                   pixelArt={prefs.pixelArt}
                   panMode={tool === 'move' && !inTool}
+                  pipScale={prefs.animPipScale}
+                  // Cycle 1× → 2× → 4× → 1×. Persisted via prefs so the
+                  // user's choice survives panel reload.
+                  onCycleScale={() => {
+                    const next = ({ 1: 2, 2: 4, 4: 1 } as const)[prefs.animPipScale]
+                    prefsStore.set({ animPipScale: next })
+                  }}
+                  events={activeAnim?.events}
                 />
               ) : null}
             </CanvasStage>
+            </Suspense>
           </div>
           <AnimationDrawer
             expanded={prefs.animDrawerExpanded}
-            height={prefs.animDrawerHeight}
-            onHeightChange={(h) => prefsStore.set({ animDrawerHeight: h })}
             header={
               <AnimationDrawerHeader
                 expanded={prefs.animDrawerExpanded}
@@ -1978,7 +2146,7 @@ export function App() {
         ) : null}
         </div>
       </div>
-      <SaveStatusLine status={saveStatus} />
+      <SaveStatusLine status={saveStatus} onDismiss={() => setSaveStatus({ kind: 'idle' })} />
       <DevReloadToast />
     </div>
     </DragProvider>
@@ -2034,12 +2202,18 @@ function InlineRenameInput({
 
 function SaveStatusLine({
   status,
+  onDismiss,
 }: {
   status:
     | { kind: 'idle' }
     | { kind: 'saving' }
     | { kind: 'saved'; at: number; path: string; count: number }
     | { kind: 'error'; message: string }
+  /**
+   * Called when the user closes the error modal (X button or Esc).
+   * Caller should reset its `saveStatus` state to `{ kind: 'idle' }`.
+   */
+  onDismiss(): void
 }) {
   const [visible, setVisible] = useState(false)
 
@@ -2056,6 +2230,19 @@ function SaveStatusLine({
     setVisible(status.kind === 'saving')
   }, [status])
 
+  // Esc dismisses the error modal — matches typical modal UX.
+  useEffect(() => {
+    if (status.kind !== 'error' || !visible) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.stopPropagation()
+        onDismiss()
+      }
+    }
+    window.addEventListener('keydown', onKey, { capture: true })
+    return () => window.removeEventListener('keydown', onKey, { capture: true })
+  }, [status, visible, onDismiss])
+
   if (!visible || status.kind === 'idle') return null
 
   if (status.kind === 'saving') {
@@ -2067,9 +2254,24 @@ function SaveStatusLine({
   }
 
   if (status.kind === 'error') {
+    // Centered modal with a real close affordance. Errors must be
+    // explicitly acknowledged — they shouldn't auto-dismiss like the
+    // success toast, and the user must be able to clear them.
+    // Message is rendered verbatim so the caller controls the
+    // prefix ("Save failed: …", "Sidecar load failed: …", etc.).
     return (
-      <div {...stylex.props(s.saveStatusBase, s.saveStatusError)}>
-        <i className="codicon codicon-error" /> &nbsp;Save failed: {status.message}
+      <div role="alertdialog" aria-modal="true" {...stylex.props(s.errorModal)}>
+        <i className="codicon codicon-error" {...stylex.props(s.errorModalIcon)} />
+        <span {...stylex.props(s.errorModalText)}>{status.message}</span>
+        <button
+          type="button"
+          aria-label="Dismiss"
+          title="Dismiss (Esc)"
+          {...stylex.props(s.errorModalClose)}
+          onClick={onDismiss}
+        >
+          <i className="codicon codicon-close" />
+        </button>
       </div>
     )
   }
@@ -2501,7 +2703,13 @@ function ViewportControllerSink({
 function ImageDataSink({ onChange }: { onChange: (data: ImageData | null) => void }) {
   const data = useImageData()
   useEffect(() => {
-    onChange(data)
+    // Mark the cascade triggered by `setImageData` as a transition so
+    // React treats the resulting re-render (and the trimAlphaBbox memo
+    // recomputation it kicks off across every rect) as low priority.
+    // Higher-priority work — pointer events, focus, scroll — can
+    // preempt the cascade so the decode landing never causes a hitch
+    // even on atlases with thousands of rects.
+    startTransition(() => onChange(data))
   }, [data, onChange])
   return null
 }

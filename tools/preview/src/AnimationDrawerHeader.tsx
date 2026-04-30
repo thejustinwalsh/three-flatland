@@ -331,11 +331,12 @@ export function AnimationDrawerHeader(props: AnimationDrawerHeaderProps) {
         <button
           type="button"
           {...stylex.props(s.iconBtn, !hasActive && s.iconBtnDisabled)}
-          onClick={hasActive && activeAnimation ? () => {
-            if (window.confirm(`Delete "${activeAnimation}"? This cannot be undone.`)) {
-              onDeleteAnimation(activeAnimation)
-            }
-          } : undefined}
+          // No confirm dialog: a synchronous `window.confirm` blocks the
+          // VSCode webview event loop and makes subsequent extension
+          // messages drop. Re-creating an animation from the same frame
+          // selection is a click away, so the destructive default is
+          // acceptable.
+          onClick={hasActive && activeAnimation ? () => onDeleteAnimation(activeAnimation) : undefined}
           disabled={!hasActive}
           title="Delete animation"
           aria-label="Delete animation"
