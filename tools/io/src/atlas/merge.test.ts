@@ -109,4 +109,42 @@ describe('computeMerge', () => {
     if (r.kind !== 'ok') throw new Error('expected ok')
     expect(r.atlas.meta.merge?.sources[0]).toMatchObject({ alias: 'knight', frames: 1 })
   })
+
+  it('orders pack input so animation frames are contiguous', () => {
+    // 5 frames; idle uses [a, b], walk uses [c, d, e]; JSON dict order
+    // intentionally interleaves them so arbitrary Map iteration would fail.
+    const src: MergeSource = {
+      uri: 'file:///x.atlas.json',
+      alias: 'x',
+      json: {
+        meta: {
+          app: 'x',
+          version: '1',
+          image: 'x.png',
+          size: { w: 64, h: 64 },
+          scale: '1',
+          animations: {
+            idle: { frameSet: ['a', 'b'], frames: [0, 1], fps: 12, loop: true, pingPong: false },
+            walk: { frameSet: ['c', 'd', 'e'], frames: [0, 1, 2], fps: 12, loop: true, pingPong: false },
+          },
+        },
+        frames: {
+          a: { frame: { x: 0, y: 0, w: 8, h: 8 }, rotated: false, trimmed: false, spriteSourceSize: { x: 0, y: 0, w: 8, h: 8 }, sourceSize: { w: 8, h: 8 } },
+          c: { frame: { x: 0, y: 0, w: 8, h: 8 }, rotated: false, trimmed: false, spriteSourceSize: { x: 0, y: 0, w: 8, h: 8 }, sourceSize: { w: 8, h: 8 } },
+          b: { frame: { x: 0, y: 0, w: 8, h: 8 }, rotated: false, trimmed: false, spriteSourceSize: { x: 0, y: 0, w: 8, h: 8 }, sourceSize: { w: 8, h: 8 } },
+          d: { frame: { x: 0, y: 0, w: 8, h: 8 }, rotated: false, trimmed: false, spriteSourceSize: { x: 0, y: 0, w: 8, h: 8 }, sourceSize: { w: 8, h: 8 } },
+          e: { frame: { x: 0, y: 0, w: 8, h: 8 }, rotated: false, trimmed: false, spriteSourceSize: { x: 0, y: 0, w: 8, h: 8 }, sourceSize: { w: 8, h: 8 } },
+        },
+      },
+      renames: {},
+    }
+    const r = computeMerge({ sources: [src], maxSize: 64, padding: 0, powerOfTwo: false })
+    if (r.kind !== 'ok') throw new Error('expected ok')
+    const order = r.placements.map((p) => p.mergedFrameName)
+    // idle's frames [a, b] should appear before walk's [c, d, e]
+    expect(order.indexOf('a')).toBeLessThan(order.indexOf('c'))
+    expect(order.indexOf('b')).toBeLessThan(order.indexOf('c'))
+    expect(order.indexOf('c')).toBeLessThan(order.indexOf('d'))
+    expect(order.indexOf('d')).toBeLessThan(order.indexOf('e'))
+  })
 })
