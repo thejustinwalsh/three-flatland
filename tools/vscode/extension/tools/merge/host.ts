@@ -2,6 +2,7 @@ import * as vscode from 'vscode'
 import { createHostBridge } from '@three-flatland/bridge/host'
 import { composeToolHtml, setupDevReload } from '../../webview-host'
 import { log } from '../../log'
+import { assertValidAtlas } from '../atlas/validateAtlas'
 
 const TOOL = 'merge'
 
@@ -36,9 +37,36 @@ export async function openMergePanel(
 
   bridge.on('merge/ready', async () => {
     log(`merge/ready (sources=${sidecarUris.length})`)
-    bridge.emit('merge/init', {
-      sources: sidecarUris.map((u) => ({ uri: u.toString() })),
-    })
+    const sources: Array<{
+      uri: string
+      imageUri: string
+      alias: string
+      json: unknown
+    }> = []
+    const errors: Array<{ uri: string; message: string }> = []
+    for (const sidecar of sidecarUris) {
+      try {
+        const bytes = await vscode.workspace.fs.readFile(sidecar)
+        const text = new TextDecoder('utf-8').decode(bytes)
+        const json = JSON.parse(text) as { meta?: { image?: string } }
+        assertValidAtlas(json)
+        const metaImage = json?.meta?.image
+        if (typeof metaImage !== 'string' || metaImage.length === 0) {
+          throw new Error('meta.image missing')
+        }
+        const imageUri = vscode.Uri.joinPath(sidecar, '..', metaImage)
+        sources.push({
+          uri: sidecar.toString(),
+          imageUri: panel.webview.asWebviewUri(imageUri).toString(),
+          alias: labelFor(sidecar),
+          json,
+        })
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err)
+        errors.push({ uri: sidecar.toString(), message })
+      }
+    }
+    bridge.emit('merge/init', { sources, errors })
     return { ok: true }
   })
 
