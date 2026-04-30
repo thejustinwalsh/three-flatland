@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { createClientBridge } from '@three-flatland/bridge/client'
 import type { AtlasJson } from '@three-flatland/io/atlas'
-import { Tabs, TabHeader, TabPanel } from '@three-flatland/design-system'
+import { DevReloadToast, Tabs, TabHeader, TabPanel } from '@three-flatland/design-system'
 import { vscode } from '@three-flatland/design-system/tokens/vscode-theme.stylex'
 import { space } from '@three-flatland/design-system/tokens/space.stylex'
 import { compositePngBlob } from './composite'
@@ -191,6 +191,7 @@ export function App() {
           </TabPanel>
         </Tabs>
       </div>
+      <DevReloadToast />
     </div>
   )
 }
