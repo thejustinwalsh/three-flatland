@@ -53,6 +53,16 @@ vscode-tab-panel {
   flex: 1 1 auto;
   min-height: 0;
 }
+/*
+ * The shadow's `:host([hidden]) { display: none }` is overridden by our
+ * outside `display: flex` rule above — outside CSS always wins over
+ * shadow CSS for host styling, regardless of specificity. Re-assert
+ * `display: none` here so inactive panels actually hide and tab
+ * switching works.
+ */
+vscode-tab-panel[hidden] {
+  display: none;
+}
 vscode-tab-panel > * {
   flex: 1 1 auto;
   min-height: 0;
