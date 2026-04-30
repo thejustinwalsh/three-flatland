@@ -1,9 +1,56 @@
+import * as stylex from '@stylexjs/stylex'
+import {
+  Checkbox,
+  CompactSelect,
+  Divider,
+  NumberField,
+  Toolbar as DesignToolbar,
+  ToolbarButton,
+} from '@three-flatland/design-system'
+import { vscode } from '@three-flatland/design-system/tokens/vscode-theme.stylex'
+import { space } from '@three-flatland/design-system/tokens/space.stylex'
 import { mergeActions, mergeHistory, useMergeHistoryStore, useMergeState, useMergeStore, CANDIDATE_SIZES } from './mergeStore'
 
 export type ToolbarProps = {
   onSave: () => void
   onNamespaceAll: () => void
 }
+
+const s = stylex.create({
+  spacer: {
+    flex: 1,
+  },
+  status: {
+    fontSize: '11px',
+    color: vscode.descriptionFg,
+    paddingInline: space.sm,
+  },
+  statusError: {
+    color: vscode.errorFg,
+    fontSize: '11px',
+    paddingInline: space.sm,
+  },
+  settingsGroup: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: space.sm,
+  },
+  settingsLabel: {
+    fontSize: '11px',
+    color: vscode.fg,
+    whiteSpace: 'nowrap',
+  },
+  numberWrap: {
+    width: 64,
+  },
+  selectWrap: {
+    width: 80,
+  },
+  checkboxWrap: {
+    display: 'flex',
+    alignItems: 'center',
+  },
+})
 
 export function Toolbar(p: ToolbarProps) {
   const state = useMergeState()
@@ -19,65 +66,58 @@ export function Toolbar(p: ToolbarProps) {
   const canSave = state.result.kind === 'ok' && state.sources.length > 0 && state.imageLoadFailed.size === 0
 
   return (
-    <div
-      style={{
-        display: 'flex',
-        gap: 8,
-        padding: 8,
-        borderBottom: '1px solid var(--vscode-panel-border)',
-        alignItems: 'center',
-        flexWrap: 'wrap',
-      }}
-    >
-      <button
-        onClick={() => mergeHistory.undo()}
+    <DesignToolbar>
+      <ToolbarButton
+        icon="discard"
+        title="Undo (⌘Z)"
         disabled={!canUndo}
-        title='Undo (Cmd/Ctrl+Z)'
-        aria-label='Undo'
-      >
-        ↩
-      </button>
-      <button
-        onClick={() => mergeHistory.redo()}
+        onClick={() => mergeHistory.undo()}
+      />
+      <ToolbarButton
+        icon="redo"
+        title="Redo (⌘⇧Z)"
         disabled={!canRedo}
-        title='Redo (Cmd/Ctrl+Shift+Z)'
-        aria-label='Redo'
-      >
-        ↪
-      </button>
-      <button onClick={p.onNamespaceAll} disabled={state.sources.length === 0}>
-        Namespace all
-      </button>
-      <SettingsPopover />
-      <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12 }}>
-        <input
-          type='checkbox'
+        onClick={() => mergeHistory.redo()}
+      />
+      <Divider />
+      <ToolbarButton
+        icon="symbol-namespace"
+        title="Namespace All"
+        disabled={state.sources.length === 0}
+        onClick={p.onNamespaceAll}
+      />
+      <Divider />
+      <SettingsControls />
+      <Divider />
+      <div {...stylex.props(s.checkboxWrap)}>
+        <Checkbox
+          label="Delete originals on success"
           checked={deleteOriginals}
-          onChange={(e) => mergeActions.setDeleteOriginals(e.target.checked)}
+          onChange={(e) => {
+            const el = e.currentTarget as HTMLElement & { checked: boolean }
+            mergeActions.setDeleteOriginals(el.checked)
+          }}
         />
-        Delete originals on success
-      </label>
-      <div style={{ flex: 1 }} />
+      </div>
+      <div {...stylex.props(s.spacer)} />
       {state.result.kind === 'ok' && state.sources.length > 0 && (
-        <span style={{ fontSize: 11, color: 'var(--vscode-descriptionForeground)' }}>
+        <span {...stylex.props(s.status)}>
           {state.result.atlas.meta.size.w}×{state.result.atlas.meta.size.h} ·{' '}
           {(state.result.utilization * 100).toFixed(0)}% used
         </span>
       )}
       {nofit && (
-        <span style={{ color: 'var(--vscode-editorError-foreground)', fontSize: 12 }}>
-          Doesn't fit
-        </span>
+        <span {...stylex.props(s.statusError)}>Doesn't fit</span>
       )}
       {conflicts > 0 && (
-        <span style={{ fontSize: 12 }}>Conflicts: {conflicts}</span>
+        <span {...stylex.props(s.status)}>Conflicts: {conflicts}</span>
       )}
-      <button
-        onClick={p.onSave}
-        disabled={!canSave}
+      <Divider />
+      <ToolbarButton
+        icon="save"
         title={
           canSave
-            ? 'Save'
+            ? 'Pack & Save…'
             : state.imageLoadFailed.size > 0
             ? 'Source image(s) failed to load — fix or remove sources before saving'
             : conflicts > 0
@@ -86,63 +126,63 @@ export function Toolbar(p: ToolbarProps) {
             ? "Output doesn't fit; adjust max size or padding"
             : 'Add at least one source to save'
         }
-      >
-        Pack &amp; Save…
-      </button>
-    </div>
+        disabled={!canSave}
+        onClick={p.onSave}
+      />
+    </DesignToolbar>
   )
 }
 
-function SettingsPopover() {
+function SettingsControls() {
   const { knobs, viableSizes, sources, result } = useMergeState()
   // When the merge has unresolvable conflicts, viableSizes is empty
   // because every probe fell into the conflicts branch — show the full
   // candidate list so the user can still pick. Otherwise show only sizes
   // that actually fit. Always include the currently-selected size so
-  // the <select>'s value resolves to a real <option>.
+  // the select's value resolves to a real option.
   const showAll = sources.length === 0 || result.kind === 'conflicts'
   const sizeSet = new Set<number>(showAll ? CANDIDATE_SIZES : viableSizes)
   sizeSet.add(knobs.maxSize)
   const sizes = [...sizeSet].sort((a, b) => a - b)
+
+  const sizeOptions = sizes.map((n) => {
+    const fits = showAll || viableSizes.includes(n)
+    return {
+      value: String(n),
+      label: fits ? String(n) : `${n} (doesn't fit)`,
+    }
+  })
+
   return (
-    <div style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 12 }}>
-      <label>
-        Max
-        <select
-          value={knobs.maxSize}
-          onChange={(e) => mergeActions.setKnobs({ maxSize: Number(e.target.value) })}
-          style={{ marginLeft: 4 }}
-        >
-          {sizes.map((n) => {
-            const fits = showAll || viableSizes.includes(n)
-            return (
-              <option key={n} value={n}>
-                {n}
-                {fits ? '' : " (doesn't fit)"}
-              </option>
-            )
-          })}
-        </select>
-      </label>
-      <label>
-        Pad
-        <input
-          type='number'
+    <div {...stylex.props(s.settingsGroup)}>
+      <span {...stylex.props(s.settingsLabel)}>Max</span>
+      <div {...stylex.props(s.selectWrap)}>
+        <CompactSelect
+          value={String(knobs.maxSize)}
+          options={sizeOptions}
+          onChange={(v) => mergeActions.setKnobs({ maxSize: Number(v) })}
+          aria-label="Max texture size"
+        />
+      </div>
+      <span {...stylex.props(s.settingsLabel)}>Pad</span>
+      <div {...stylex.props(s.numberWrap)}>
+        <NumberField
+          value={knobs.padding}
+          onChange={(v) => mergeActions.setKnobs({ padding: v })}
           min={0}
           max={16}
-          value={knobs.padding}
-          onChange={(e) => mergeActions.setKnobs({ padding: Number(e.target.value) })}
-          style={{ width: 48, marginLeft: 4 }}
+          step={1}
+          aria-label="Padding"
         />
-      </label>
-      <label>
-        <input
-          type='checkbox'
-          checked={knobs.powerOfTwo}
-          onChange={(e) => mergeActions.setKnobs({ powerOfTwo: e.target.checked })}
-        />
-        POT
-      </label>
+      </div>
+      <Checkbox
+        label="POT"
+        checked={knobs.powerOfTwo}
+        onChange={(e) => {
+          const el = e.currentTarget as HTMLElement & { checked: boolean }
+          mergeActions.setKnobs({ powerOfTwo: el.checked })
+        }}
+      />
     </div>
   )
 }

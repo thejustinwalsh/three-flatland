@@ -1,9 +1,31 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import * as stylex from '@stylexjs/stylex'
+import { Panel } from '@three-flatland/design-system'
+import { vscode } from '@three-flatland/design-system/tokens/vscode-theme.stylex'
+import { space } from '@three-flatland/design-system/tokens/space.stylex'
 import { mergeActions, useMergeState } from './mergeStore'
 
 const ARTBOARD_GAP = 32
 const MIN_ZOOM = 0.05
 const MAX_ZOOM = 16
+
+const s = stylex.create({
+  panelFill: {
+    flex: 1,
+    minWidth: 0,
+    minHeight: 0,
+  },
+  emptyState: {
+    padding: space.lg,
+    color: vscode.descriptionFg,
+    fontSize: '12px',
+  },
+  container: {
+    width: '100%',
+    height: '100%',
+    overflow: 'hidden',
+  },
+})
 
 type Layout = {
   x: number
@@ -128,102 +150,109 @@ export function SourcesView() {
   }
 
   if (boards.length === 0) {
-    return <div style={{ padding: 12 }}>No sources loaded.</div>
+    return (
+      <Panel title="Sources" bodyPadding="none" style={s.panelFill}>
+        <div {...stylex.props(s.emptyState)}>No sources loaded.</div>
+      </Panel>
+    )
   }
 
   return (
-    <div
-      ref={containerRef}
-      style={{ width: '100%', height: '100%', overflow: 'hidden', cursor: dragRef.current ? 'grabbing' : 'grab' }}
-    >
-      <svg
-        viewBox={viewBox}
-        width={containerSize.w}
-        height={containerSize.h}
-        onWheel={onWheel}
-        onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={onPointerUp}
-        style={{ display: 'block', background: 'var(--vscode-editor-background)', userSelect: 'none' }}
+    <Panel title="Sources" bodyPadding="none" style={s.panelFill}>
+      <div
+        ref={containerRef}
+        {...stylex.props(s.container)}
+        style={{ cursor: dragRef.current ? 'grabbing' : 'grab' }}
       >
-        <defs>
-          <pattern id="fl-merge-checker" x={0} y={0} width={16} height={16} patternUnits="userSpaceOnUse">
-            <rect width={16} height={16} fill="var(--vscode-editor-background)" />
-            <rect width={8} height={8} fill="var(--vscode-panel-border)" />
-            <rect x={8} y={8} width={8} height={8} fill="var(--vscode-panel-border)" />
-          </pattern>
-        </defs>
-        {boards.map((b) => {
-          const failed = imageLoadFailed.has(b.src.uri)
-          return (
-            <g key={b.src.uri} transform={`translate(${b.x} ${b.y})`}>
-              <rect
-                x={-1}
-                y={-1}
-                width={b.w + 2}
-                height={b.h + 2}
-                fill="none"
-                stroke="var(--vscode-panel-border)"
-                strokeWidth={1 / zoom}
-              />
-              <rect x={0} y={0} width={b.w} height={b.h} fill="url(#fl-merge-checker)" />
-              {!failed && (
-                <image
-                  href={b.src.imageUri}
-                  x={0}
-                  y={0}
-                  width={b.w}
-                  height={b.h}
-                  preserveAspectRatio="none"
-                  style={{ imageRendering: 'pixelated' }}
-                  onError={() => mergeActions.markImageFailed(b.src.uri)}
-                  onLoad={() => mergeActions.clearImageFailed(b.src.uri)}
+        <svg
+          viewBox={viewBox}
+          width={containerSize.w}
+          height={containerSize.h}
+          onWheel={onWheel}
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={onPointerUp}
+          style={{ display: 'block', background: 'var(--vscode-editor-background)', userSelect: 'none' }}
+        >
+          <defs>
+            <pattern id="fl-merge-checker" x={0} y={0} width={16} height={16} patternUnits="userSpaceOnUse">
+              <rect width={16} height={16} fill="var(--vscode-editor-background)" />
+              <rect width={8} height={8} fill="var(--vscode-panel-border)" />
+              <rect x={8} y={8} width={8} height={8} fill="var(--vscode-panel-border)" />
+            </pattern>
+          </defs>
+          {boards.map((b) => {
+            const failed = imageLoadFailed.has(b.src.uri)
+            return (
+              <g key={b.src.uri} transform={`translate(${b.x} ${b.y})`}>
+                <rect
+                  x={-1}
+                  y={-1}
+                  width={b.w + 2}
+                  height={b.h + 2}
+                  fill="none"
+                  stroke="var(--vscode-panel-border)"
+                  strokeWidth={1 / zoom}
                 />
-              )}
-              {failed && (
+                <rect x={0} y={0} width={b.w} height={b.h} fill="url(#fl-merge-checker)" />
+                {!failed && (
+                  <image
+                    href={b.src.imageUri}
+                    x={0}
+                    y={0}
+                    width={b.w}
+                    height={b.h}
+                    preserveAspectRatio="none"
+                    style={{ imageRendering: 'pixelated' }}
+                    onError={() => mergeActions.markImageFailed(b.src.uri)}
+                    onLoad={() => mergeActions.clearImageFailed(b.src.uri)}
+                  />
+                )}
+                {failed && (
+                  <text
+                    x={b.w / 2}
+                    y={b.h / 2}
+                    textAnchor="middle"
+                    fontSize={Math.max(12, Math.min(b.w, b.h) / 12) / zoom}
+                    fill="var(--vscode-editorError-foreground)"
+                    style={{ fontFamily: 'var(--vscode-font-family)' }}
+                  >
+                    Image not found
+                  </text>
+                )}
+                {Object.entries(b.src.json.frames).map(([name, f]) => {
+                  const isConflict = conflictSet.has(`${b.src.uri}::${name}`)
+                  return (
+                    <rect
+                      key={name}
+                      x={f.frame.x}
+                      y={f.frame.y}
+                      width={f.frame.w}
+                      height={f.frame.h}
+                      fill="none"
+                      stroke={
+                        isConflict
+                          ? 'var(--vscode-editorError-foreground)'
+                          : 'var(--vscode-focusBorder)'
+                      }
+                      strokeWidth={(isConflict ? 2 : 1) / zoom}
+                    />
+                  )
+                })}
                 <text
-                  x={b.w / 2}
-                  y={b.h / 2}
-                  textAnchor="middle"
-                  fontSize={Math.max(12, Math.min(b.w, b.h) / 12) / zoom}
-                  fill="var(--vscode-editorError-foreground)"
+                  x={0}
+                  y={-8}
+                  fill="var(--vscode-foreground)"
+                  fontSize={12 / zoom}
                   style={{ fontFamily: 'var(--vscode-font-family)' }}
                 >
-                  Image not found
+                  {b.src.alias} — {Object.keys(b.src.json.frames).length} frames
                 </text>
-              )}
-              {Object.entries(b.src.json.frames).map(([name, f]) => {
-                const isConflict = conflictSet.has(`${b.src.uri}::${name}`)
-                return (
-                  <rect
-                    key={name}
-                    x={f.frame.x}
-                    y={f.frame.y}
-                    width={f.frame.w}
-                    height={f.frame.h}
-                    fill="none"
-                    stroke={
-                      isConflict
-                        ? 'var(--vscode-editorError-foreground)'
-                        : 'var(--vscode-focusBorder)'
-                    }
-                    strokeWidth={(isConflict ? 2 : 1) / zoom}
-                  />
-                )
-              })}
-              <text
-                x={0}
-                y={-8}
-                fill="var(--vscode-foreground)"
-                fontSize={12 / zoom}
-                style={{ fontFamily: 'var(--vscode-font-family)' }}
-              >
-                {b.src.alias} — {Object.keys(b.src.json.frames).length} frames
-              </text>
-            </g>
-          )
-        })}
-      </svg>
-    </div>
+              </g>
+            )
+          })}
+        </svg>
+      </div>
+    </Panel>
   )
 }

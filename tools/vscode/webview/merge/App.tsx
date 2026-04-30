@@ -1,6 +1,10 @@
 import { useEffect, useState } from 'react'
+import * as stylex from '@stylexjs/stylex'
 import { createClientBridge } from '@three-flatland/bridge/client'
 import type { AtlasJson } from '@three-flatland/io/atlas'
+import { Tabs, TabHeader, TabPanel } from '@three-flatland/design-system'
+import { vscode } from '@three-flatland/design-system/tokens/vscode-theme.stylex'
+import { space } from '@three-flatland/design-system/tokens/space.stylex'
 import { compositePngBlob } from './composite'
 import { aliasFromUri, namespaceSource } from '@three-flatland/io/atlas'
 import { mergeActions, mergeHistory, useMergeState, useMergeStore } from './mergeStore'
@@ -9,15 +13,66 @@ import { MergedView } from './MergedView'
 import { ConflictsPanel } from './ConflictsPanel'
 import { Toolbar } from './Toolbar'
 
-type Tab = 'sources' | 'merged'
-
 type InitPayload = {
   sources: Array<{ uri: string; imageUri: string; alias: string; json: AtlasJson }>
   errors: Array<{ uri: string; message: string }>
 }
 
+const s = stylex.create({
+  root: {
+    display: 'flex',
+    flexDirection: 'column',
+    height: '100vh',
+    minHeight: 0,
+    overflow: 'hidden',
+  },
+  errorBanner: {
+    padding: space.md,
+    backgroundColor: vscode.errorBg,
+    color: vscode.errorFg,
+    borderBottomWidth: 1,
+    borderBottomStyle: 'solid',
+    borderBottomColor: vscode.errorBorder,
+    fontSize: '12px',
+    flexShrink: 0,
+  },
+  errorList: {
+    margin: '4px 0 0 16px',
+    padding: 0,
+  },
+  tabsWrap: {
+    flex: 1,
+    minHeight: 0,
+    display: 'flex',
+    flexDirection: 'column',
+  },
+  // The content area below the tab strip — fills remaining vertical space.
+  tabContent: {
+    flex: 1,
+    minHeight: 0,
+    display: 'flex',
+  },
+  splitRow: {
+    display: 'flex',
+    flex: 1,
+    minHeight: 0,
+    gap: 0,
+  },
+  sourcesMain: {
+    flex: 1,
+    minWidth: 0,
+    minHeight: 0,
+    display: 'flex',
+  },
+  conflictsSidebar: {
+    width: 320,
+    flexShrink: 0,
+    minHeight: 0,
+    display: 'flex',
+  },
+})
+
 export function App() {
-  const [tab, setTab] = useState<Tab>('sources')
   const [initErrors, setInitErrors] = useState<InitPayload['errors']>([])
   const deleteOriginals = useMergeStore((s) => s.deleteOriginals)
   const state = useMergeState()
@@ -100,20 +155,15 @@ export function App() {
       ? state.result.frameConflicts.length + state.result.animationConflicts.length
       : 0
 
+  const sourcesLabel = `Sources${conflictCount > 0 ? ` (${conflictCount})` : ''}`
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
+    <div {...stylex.props(s.root)}>
+      <Toolbar onSave={handleSave} onNamespaceAll={handleNamespaceAll} />
       {initErrors.length > 0 && (
-        <div
-          style={{
-            padding: 8,
-            background: 'var(--vscode-inputValidation-errorBackground)',
-            color: 'var(--vscode-inputValidation-errorForeground)',
-            borderBottom: '1px solid var(--vscode-inputValidation-errorBorder)',
-            fontSize: 12,
-          }}
-        >
+        <div {...stylex.props(s.errorBanner)}>
           {initErrors.length} source(s) failed to load:
-          <ul style={{ margin: '4px 0 0 16px' }}>
+          <ul {...stylex.props(s.errorList)}>
             {initErrors.map((e) => (
               <li key={e.uri}>
                 <code>{e.uri}</code>: {e.message}
@@ -122,58 +172,25 @@ export function App() {
           </ul>
         </div>
       )}
-      <Toolbar
-        onSave={handleSave}
-        onNamespaceAll={handleNamespaceAll}
-      />
-      <div style={{ display: 'flex', borderBottom: '1px solid var(--vscode-panel-border)' }}>
-        <TabButton
-          active={tab === 'sources'}
-          onClick={() => setTab('sources')}
-          label={`Sources${conflictCount > 0 ? ` (${conflictCount})` : ''}`}
-        />
-        <TabButton active={tab === 'merged'} onClick={() => setTab('merged')} label="Merged" />
-      </div>
-      <div style={{ flex: 1, minHeight: 0 }}>
-        {tab === 'sources' ? (
-          <div style={{ display: 'flex', height: '100%' }}>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <SourcesView />
+      <div {...stylex.props(s.tabsWrap)}>
+        <Tabs>
+          <TabHeader>{sourcesLabel}</TabHeader>
+          <TabHeader>Merged</TabHeader>
+          <TabPanel>
+            <div {...stylex.props(s.splitRow)}>
+              <div {...stylex.props(s.sourcesMain)}>
+                <SourcesView />
+              </div>
+              <div {...stylex.props(s.conflictsSidebar)}>
+                <ConflictsPanel />
+              </div>
             </div>
-            <div
-              style={{
-                width: 320,
-                borderLeft: '1px solid var(--vscode-panel-border)',
-                overflow: 'hidden',
-              }}
-            >
-              <ConflictsPanel />
-            </div>
-          </div>
-        ) : (
-          <MergedView />
-        )}
+          </TabPanel>
+          <TabPanel>
+            <MergedView />
+          </TabPanel>
+        </Tabs>
       </div>
     </div>
-  )
-}
-
-function TabButton(p: { active: boolean; onClick: () => void; label: string }) {
-  return (
-    <button
-      onClick={p.onClick}
-      style={{
-        background: p.active ? 'var(--vscode-tab-activeBackground)' : 'transparent',
-        color: 'var(--vscode-tab-activeForeground)',
-        border: 'none',
-        borderBottom: p.active
-          ? '2px solid var(--vscode-focusBorder)'
-          : '2px solid transparent',
-        padding: '8px 14px',
-        cursor: 'pointer',
-      }}
-    >
-      {p.label}
-    </button>
   )
 }
