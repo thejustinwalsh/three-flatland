@@ -11,6 +11,13 @@
         "types": "./dist/index.d.ts",
         "default": "./dist/index.js"
       }
+    },
+    "./atlas": {
+      "source": "./src/atlas/index.ts",
+      "import": {
+        "types": "./dist/atlas/index.d.ts",
+        "default": "./dist/atlas/index.js"
+      }
     }
   },
   "module": "./dist/index.js",
