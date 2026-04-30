@@ -18,3 +18,13 @@ export {
 } from './build'
 
 export { packRects, type PackInput, type PackResult, type Placement } from './maxrects'
+
+export {
+  aliasFromUri,
+  computeMerge,
+  namespaceSource,
+  type MergeInput,
+  type MergeResult,
+  type MergeSource,
+  type NameConflict,
+} from './merge'
