@@ -3,7 +3,7 @@ import * as stylex from '@stylexjs/stylex'
 import { Collapsible, Panel, Splitter } from '@three-flatland/design-system'
 import { vscode } from '@three-flatland/design-system/tokens/vscode-theme.stylex'
 import { space } from '@three-flatland/design-system/tokens/space.stylex'
-import { mergeActions, useMergeState } from './mergeStore'
+import { mergeActions, useMergeState, useMergeStore } from './mergeStore'
 import { compositePngBlob } from './composite'
 
 const s = stylex.create({
@@ -79,7 +79,6 @@ const s = stylex.create({
 
 const ANIMS_MIN_PX = 220
 const ANIMS_MAX_PX = 500
-const ANIMS_DEFAULT_PX = 280
 
 export function MergedView() {
   const state = useMergeState()
@@ -87,13 +86,13 @@ export function MergedView() {
   const [imageUrl, setImageUrl] = useState<string | null>(null)
   const lastUrlRef = useRef<string | null>(null)
   const rootRef = useRef<HTMLDivElement>(null)
-  const [animsPx, setAnimsPx] = useState(ANIMS_DEFAULT_PX)
+  const animsPx = useMergeStore((s) => s.splits.mergedSidebarPx)
   const onAnimsDrag = (clientX: number) => {
     const el = rootRef.current
     if (!el) return
     const rect = el.getBoundingClientRect()
     const next = Math.max(ANIMS_MIN_PX, Math.min(ANIMS_MAX_PX, rect.right - clientX))
-    setAnimsPx(next)
+    mergeActions.setSplits({ mergedSidebarPx: next })
   }
 
   useEffect(() => {
