@@ -1,8 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { createClientBridge } from '@three-flatland/bridge/client'
 import type { AtlasJson } from '@three-flatland/io/atlas'
-import { DevReloadToast, Tabs, TabHeader, TabPanel } from '@three-flatland/design-system'
+import { DevReloadToast, Splitter, Tabs, TabHeader, TabPanel } from '@three-flatland/design-system'
 import { vscode } from '@three-flatland/design-system/tokens/vscode-theme.stylex'
 import { space } from '@three-flatland/design-system/tokens/space.stylex'
 import { compositePngBlob } from './composite'
@@ -57,6 +57,7 @@ const s = stylex.create({
     flex: 1,
     minHeight: 0,
     gap: 0,
+    padding: space.sm,
   },
   sourcesMain: {
     flex: 1,
@@ -64,18 +65,31 @@ const s = stylex.create({
     minHeight: 0,
     display: 'flex',
   },
-  conflictsSidebar: {
-    width: 320,
+  conflictsSidebar: (px: number) => ({
+    width: px,
     flexShrink: 0,
     minHeight: 0,
     display: 'flex',
-  },
+  }),
 })
+
+const CONFLICTS_MIN_PX = 240
+const CONFLICTS_MAX_PX = 600
+const CONFLICTS_DEFAULT_PX = 320
 
 export function App() {
   const [initErrors, setInitErrors] = useState<InitPayload['errors']>([])
   const deleteOriginals = useMergeStore((s) => s.deleteOriginals)
   const state = useMergeState()
+  const splitRowRef = useRef<HTMLDivElement>(null)
+  const [conflictsPx, setConflictsPx] = useState(CONFLICTS_DEFAULT_PX)
+  const onConflictsDrag = (clientX: number) => {
+    const el = splitRowRef.current
+    if (!el) return
+    const rect = el.getBoundingClientRect()
+    const next = Math.max(CONFLICTS_MIN_PX, Math.min(CONFLICTS_MAX_PX, rect.right - clientX))
+    setConflictsPx(next)
+  }
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -177,11 +191,12 @@ export function App() {
           <TabHeader>{sourcesLabel}</TabHeader>
           <TabHeader>Merged</TabHeader>
           <TabPanel>
-            <div {...stylex.props(s.splitRow)}>
+            <div ref={splitRowRef} {...stylex.props(s.splitRow)}>
               <div {...stylex.props(s.sourcesMain)}>
                 <SourcesView />
               </div>
-              <div {...stylex.props(s.conflictsSidebar)}>
+              <Splitter axis="vertical" onDrag={onConflictsDrag} />
+              <div {...stylex.props(s.conflictsSidebar(conflictsPx))}>
                 <ConflictsPanel />
               </div>
             </div>
