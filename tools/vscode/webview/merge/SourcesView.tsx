@@ -166,13 +166,14 @@ export function SourcesView() {
       >
         <svg
           viewBox={viewBox}
-          width={containerSize.w}
-          height={containerSize.h}
+          width="100%"
+          height="100%"
           onWheel={onWheel}
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
           onPointerUp={onPointerUp}
           style={{ display: 'block', background: 'var(--vscode-editor-background)', userSelect: 'none' }}
+          preserveAspectRatio="xMidYMid meet"
         >
           <defs>
             <pattern id="fl-merge-checker" x={0} y={0} width={16} height={16} patternUnits="userSpaceOnUse">
