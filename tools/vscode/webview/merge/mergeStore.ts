@@ -18,7 +18,13 @@ export type MergeState = {
   imageLoadFailed: Set<string>
   // Derived (cached on each setState).
   result: MergeResult
+  /** Sizes (from CANDIDATE_SIZES) where the current sources/renames pack OK. */
+  viableSizes: number[]
 }
+
+const CANDIDATE_SIZES = [256, 512, 1024, 2048, 4096, 8192]
+
+export { CANDIDATE_SIZES }
 
 const listeners = new Set<() => void>()
 let state: MergeState = {
@@ -27,6 +33,7 @@ let state: MergeState = {
   outputFileName: 'merged.png',
   imageLoadFailed: new Set(),
   result: { kind: 'ok', atlas: emptyAtlas(), placements: [], utilization: 0 },
+  viableSizes: [],
 }
 
 function emptyAtlas(): AtlasJson {
@@ -44,7 +51,17 @@ function derive(next: MergeState): MergeState {
     renames: s.renames,
   }))
   const result = computeMerge({ ...next.knobs, sources, outputFileName: next.outputFileName })
-  return { ...next, result }
+  // Probe each candidate size for viability. Cheap (microseconds per pack
+  // on typical pixel-art rect counts) and lets the UI offer only sizes
+  // that will actually fit.
+  const viableSizes: number[] = []
+  if (sources.length > 0) {
+    for (const size of CANDIDATE_SIZES) {
+      const probe = computeMerge({ ...next.knobs, maxSize: size, sources, outputFileName: next.outputFileName })
+      if (probe.kind === 'ok') viableSizes.push(size)
+    }
+  }
+  return { ...next, result, viableSizes }
 }
 
 export function setMergeState(updater: (s: MergeState) => MergeState): void {
