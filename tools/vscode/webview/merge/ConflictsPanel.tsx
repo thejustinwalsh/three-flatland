@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { mergeActions, useMergeState } from './mergeStore'
 import type { NameConflict } from '@three-flatland/io/atlas'
 
@@ -76,6 +76,9 @@ function RenameRow(p: {
   const src = state.sources.find((s) => s.uri === p.sourceUri)
   const current = src?.renames[p.kind]?.[p.originalName] ?? p.originalName
   const [draft, setDraft] = useState(current)
+  useEffect(() => {
+    setDraft(current)
+  }, [current])
   return (
     <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginLeft: 8, marginBottom: 4 }}>
       <span style={{ minWidth: 60, color: 'var(--vscode-descriptionForeground)' }}>{p.alias}</span>

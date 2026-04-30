@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { useMergeState } from './mergeStore'
+import { mergeActions, useMergeState } from './mergeStore'
 import { compositePngBlob } from './composite'
 
 export function MergedView() {
@@ -18,13 +18,18 @@ export function MergedView() {
       return
     }
     let cancelled = false
-    void compositePngBlob(result, state.sources).then((blob) => {
-      if (cancelled || !blob) return
-      const url = URL.createObjectURL(blob)
-      if (lastUrlRef.current) URL.revokeObjectURL(lastUrlRef.current)
-      lastUrlRef.current = url
-      setImageUrl(url)
-    })
+    void compositePngBlob(result, state.sources)
+      .then((blob) => {
+        if (cancelled || !blob) return
+        const url = URL.createObjectURL(blob)
+        if (lastUrlRef.current) URL.revokeObjectURL(lastUrlRef.current)
+        lastUrlRef.current = url
+        setImageUrl(url)
+      })
+      .catch((err) => {
+        console.warn('merge composite failed', err)
+        for (const src of state.sources) mergeActions.markImageFailed(src.uri)
+      })
     return () => {
       cancelled = true
     }
