@@ -101,6 +101,8 @@ The VSCode Elements come from Lit and are wrapped via `@lit/react`. A few quirks
 
 5. **`TextField` event shape**: read `e.currentTarget.value`, not `e.target.value` — the Lit binding wraps the native event.
 
+6. **Outside CSS beats shadow CSS on the host, regardless of specificity.** When you override a property like `display` on a Lit host element from `tools/vscode/webview/styles.css`, you can break shadow rules that depend on the original value. Concrete example: `vscode-tab-panel`'s shadow has `:host([hidden]) { display: none }` to hide inactive tabs. Adding an outside rule like `vscode-tab-panel { display: flex }` overrides that — even though the shadow rule has higher specificity — and inactive panels stay visible. Fix: re-assert the conditional rule outside, e.g. `vscode-tab-panel[hidden] { display: none }`. Always check the shadow's `:host([…])` rules before overriding host display/visibility from outside.
+
 ## Theme detection
 
 ```ts
