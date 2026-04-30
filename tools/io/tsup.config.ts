@@ -1,7 +1,7 @@
 import { defineConfig } from 'tsup'
 
 export default defineConfig({
-  entry: ['src/index.ts', 'src/image.ts', 'src/atlas/index.ts'],
+  entry: ['src/index.ts', 'src/image.ts', 'src/atlas/index.ts', 'src/atlas/build.ts', 'src/atlas/types.ts'],
   format: ['esm'],
   dts: true,
   sourcemap: true,
