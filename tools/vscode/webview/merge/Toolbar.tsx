@@ -14,7 +14,7 @@ export function Toolbar(p: ToolbarProps) {
       ? state.result.frameConflicts.length + state.result.animationConflicts.length
       : 0
   const nofit = state.result.kind === 'nofit'
-  const canSave = state.result.kind === 'ok' && state.sources.length > 0
+  const canSave = state.result.kind === 'ok' && state.sources.length > 0 && state.imageLoadFailed.size === 0
 
   return (
     <div
@@ -60,6 +60,8 @@ export function Toolbar(p: ToolbarProps) {
         title={
           canSave
             ? 'Save'
+            : state.imageLoadFailed.size > 0
+            ? 'Source image(s) failed to load — fix or remove sources before saving'
             : conflicts > 0
             ? 'Resolve conflicts before saving'
             : nofit
