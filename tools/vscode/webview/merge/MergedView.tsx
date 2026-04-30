@@ -1,6 +1,50 @@
 import { useEffect, useRef, useState } from 'react'
+import * as stylex from '@stylexjs/stylex'
+import { Collapsible, Panel } from '@three-flatland/design-system'
+import { vscode } from '@three-flatland/design-system/tokens/vscode-theme.stylex'
+import { space } from '@three-flatland/design-system/tokens/space.stylex'
 import { mergeActions, useMergeState } from './mergeStore'
 import { compositePngBlob } from './composite'
+
+const s = stylex.create({
+  root: {
+    display: 'flex',
+    height: '100%',
+    minHeight: 0,
+  },
+  outputPanel: {
+    flex: 1,
+    minWidth: 0,
+  },
+  canvasWrap: {
+    flex: 1,
+    minWidth: 0,
+    overflow: 'auto',
+    padding: space.md,
+  },
+  svg: {
+    display: 'block',
+    imageRendering: 'pixelated',
+  },
+  emptyState: {
+    padding: space.lg,
+    color: vscode.descriptionFg,
+    fontSize: '12px',
+  },
+  errorState: {
+    padding: space.lg,
+    color: vscode.errorFg,
+    fontSize: '12px',
+  },
+  statsBlock: {
+    marginBottom: space.sm,
+    fontSize: '12px',
+  },
+  sidePanel: {
+    width: 280,
+    flexShrink: 0,
+  },
+})
 
 export function MergedView() {
   const state = useMergeState()
@@ -37,20 +81,20 @@ export function MergedView() {
 
   if (result.kind === 'conflicts') {
     return (
-      <div style={{ padding: 12, color: 'var(--vscode-descriptionForeground)' }}>
+      <div {...stylex.props(s.emptyState)}>
         Resolve conflicts to preview the merged atlas.
       </div>
     )
   }
   if (result.kind === 'nofit') {
     return (
-      <div style={{ padding: 12, color: 'var(--vscode-editorError-foreground)' }}>
+      <div {...stylex.props(s.errorState)}>
         Doesn't fit at current max size — try a larger size or reduce padding.
       </div>
     )
   }
   if (state.sources.length === 0) {
-    return <div style={{ padding: 12 }}>No sources loaded.</div>
+    return <div {...stylex.props(s.emptyState)}>No sources loaded.</div>
   }
 
   const w = result.atlas.meta.size.w
@@ -59,66 +103,57 @@ export function MergedView() {
   const animationCount = Object.keys(animations).length
 
   return (
-    <div style={{ display: 'flex', height: '100%' }}>
-      <div style={{ flex: 1, minWidth: 0, overflow: 'auto', padding: 12 }}>
-        <svg
-          width="100%"
-          viewBox={`0 0 ${w} ${h}`}
-          preserveAspectRatio="xMinYMin meet"
-          style={{
-            display: 'block',
-            background: 'var(--vscode-editor-background)',
-            border: '1px solid var(--vscode-panel-border)',
-            imageRendering: 'pixelated',
-          }}
-        >
-          {imageUrl && (
-            <image
-              href={imageUrl}
-              x={0}
-              y={0}
-              width={w}
-              height={h}
-              preserveAspectRatio="none"
-              style={{ imageRendering: 'pixelated' }}
-            />
-          )}
-          {Object.entries(result.atlas.frames).map(([name, f]) => (
-            <rect
-              key={name}
-              x={f.frame.x}
-              y={f.frame.y}
-              width={f.frame.w}
-              height={f.frame.h}
-              fill="none"
-              stroke="var(--vscode-focusBorder)"
-              strokeWidth={1}
-              vectorEffect="non-scaling-stroke"
-            />
-          ))}
-        </svg>
-      </div>
-      <aside
-        style={{
-          width: 280,
-          borderLeft: '1px solid var(--vscode-panel-border)',
-          padding: 12,
-          overflowY: 'auto',
-          fontSize: 12,
-        }}
-      >
-        <div style={{ marginBottom: 8 }}>
-          <strong>Output</strong>: {w}×{h} ·{' '}
-          {(result.utilization * 100).toFixed(0)}% used
+    <div {...stylex.props(s.root)}>
+      <Panel title="Output" bodyPadding="none" style={s.outputPanel}>
+        <div {...stylex.props(s.canvasWrap)}>
+          <svg
+            width="100%"
+            viewBox={`0 0 ${w} ${h}`}
+            preserveAspectRatio="xMinYMin meet"
+            {...stylex.props(s.svg)}
+            style={{
+              background: 'var(--vscode-editor-background)',
+              border: '1px solid var(--vscode-panel-border)',
+            }}
+          >
+            {imageUrl && (
+              <image
+                href={imageUrl}
+                x={0}
+                y={0}
+                width={w}
+                height={h}
+                preserveAspectRatio="none"
+                style={{ imageRendering: 'pixelated' }}
+              />
+            )}
+            {Object.entries(result.atlas.frames).map(([name, f]) => (
+              <rect
+                key={name}
+                x={f.frame.x}
+                y={f.frame.y}
+                width={f.frame.w}
+                height={f.frame.h}
+                fill="none"
+                stroke="var(--vscode-focusBorder)"
+                strokeWidth={1}
+                vectorEffect="non-scaling-stroke"
+              />
+            ))}
+          </svg>
         </div>
-        <div style={{ marginBottom: 12 }}>
+      </Panel>
+      <Panel title="Animations" style={s.sidePanel} bodyPadding="normal">
+        <div {...stylex.props(s.statsBlock)}>
+          <strong>Output</strong>: {w}×{h} · {(result.utilization * 100).toFixed(0)}% used
+        </div>
+        <div {...stylex.props(s.statsBlock)}>
           <strong>{Object.keys(result.atlas.frames).length}</strong> frames ·{' '}
           <strong>{animationCount}</strong> animations
         </div>
         {animationCount > 0 && (
-          <details open>
-            <summary style={{ cursor: 'pointer', fontWeight: 600 }}>Animations</summary>
-            <ul style={{ margin: '6px 0 0 16px', padding: 0 }}>
+          <Collapsible title="Animations" open>
+            <ul style={{ margin: '6px 0 0 16px', padding: 0, fontSize: '12px' }}>
               {Object.entries(animations).map(([name, anim]) => (
                 <li key={name} style={{ marginBottom: 2 }}>
                   <code>{name}</code> — {anim.frames.length} frames @ {anim.fps} fps
@@ -127,9 +162,9 @@ export function MergedView() {
                 </li>
               ))}
             </ul>
-          </details>
+          </Collapsible>
         )}
-      </aside>
+      </Panel>
     </div>
   )
 }
