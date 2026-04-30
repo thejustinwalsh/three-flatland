@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react'
 import { createClientBridge } from '@three-flatland/bridge/client'
 import type { AtlasJson } from '@three-flatland/io/atlas'
-import { aliasFromUri } from '@three-flatland/io/atlas'
+import { aliasFromUri, namespaceSource } from '@three-flatland/io/atlas'
 import { mergeActions, useMergeState } from './mergeStore'
 import { SourcesView } from './SourcesView'
 import { MergedView } from './MergedView'
 import { ConflictsPanel } from './ConflictsPanel'
+import { Toolbar } from './Toolbar'
 
 type Tab = 'sources' | 'merged'
 
@@ -17,6 +18,7 @@ type InitPayload = {
 export function App() {
   const [tab, setTab] = useState<Tab>('sources')
   const [initErrors, setInitErrors] = useState<InitPayload['errors']>([])
+  const [deleteOriginals, setDeleteOriginals] = useState(false)
   const state = useMergeState()
   useEffect(() => {
     const bridge = createClientBridge()
@@ -35,6 +37,22 @@ export function App() {
     void bridge.request('merge/ready')
     return () => off()
   }, [])
+
+  const handleNamespaceAll = () => {
+    for (const src of state.sources) {
+      const { frames, animations } = namespaceSource({ json: src.json, alias: src.alias })
+      for (const [orig, merged] of Object.entries(frames)) {
+        mergeActions.setFrameRename(src.uri, orig, merged)
+      }
+      for (const [orig, merged] of Object.entries(animations)) {
+        mergeActions.setAnimRename(src.uri, orig, merged)
+      }
+    }
+  }
+
+  const handleSave = () => {
+    // T15 wires this to the actual save flow.
+  }
 
   const conflictCount =
     state.result.kind === 'conflicts'
@@ -63,6 +81,12 @@ export function App() {
           </ul>
         </div>
       )}
+      <Toolbar
+        onSave={handleSave}
+        onNamespaceAll={handleNamespaceAll}
+        deleteOriginals={deleteOriginals}
+        onDeleteOriginalsChange={setDeleteOriginals}
+      />
       <div style={{ display: 'flex', borderBottom: '1px solid var(--vscode-panel-border)' }}>
         <TabButton
           active={tab === 'sources'}
