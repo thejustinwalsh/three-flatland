@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
-import { Collapsible, Panel } from '@three-flatland/design-system'
+import { Collapsible, Panel, Splitter } from '@three-flatland/design-system'
 import { vscode } from '@three-flatland/design-system/tokens/vscode-theme.stylex'
 import { space } from '@three-flatland/design-system/tokens/space.stylex'
 import { mergeActions, useMergeState } from './mergeStore'
@@ -11,6 +11,7 @@ const s = stylex.create({
     display: 'flex',
     height: '100%',
     minHeight: 0,
+    padding: space.sm,
   },
   outputPanel: {
     flex: 1,
@@ -40,17 +41,30 @@ const s = stylex.create({
     marginBottom: space.sm,
     fontSize: '12px',
   },
-  sidePanel: {
-    width: 280,
+  sidePanel: (px: number) => ({
+    width: px,
     flexShrink: 0,
-  },
+  }),
 })
+
+const ANIMS_MIN_PX = 220
+const ANIMS_MAX_PX = 500
+const ANIMS_DEFAULT_PX = 280
 
 export function MergedView() {
   const state = useMergeState()
   const result = state.result
   const [imageUrl, setImageUrl] = useState<string | null>(null)
   const lastUrlRef = useRef<string | null>(null)
+  const rootRef = useRef<HTMLDivElement>(null)
+  const [animsPx, setAnimsPx] = useState(ANIMS_DEFAULT_PX)
+  const onAnimsDrag = (clientX: number) => {
+    const el = rootRef.current
+    if (!el) return
+    const rect = el.getBoundingClientRect()
+    const next = Math.max(ANIMS_MIN_PX, Math.min(ANIMS_MAX_PX, rect.right - clientX))
+    setAnimsPx(next)
+  }
 
   useEffect(() => {
     if (result.kind !== 'ok' || state.sources.length === 0) {
@@ -103,7 +117,7 @@ export function MergedView() {
   const animationCount = Object.keys(animations).length
 
   return (
-    <div {...stylex.props(s.root)}>
+    <div ref={rootRef} {...stylex.props(s.root)}>
       <Panel title="Output" bodyPadding="none" style={s.outputPanel}>
         <div {...stylex.props(s.canvasWrap)}>
           <svg
@@ -143,7 +157,8 @@ export function MergedView() {
           </svg>
         </div>
       </Panel>
-      <Panel title="Animations" style={s.sidePanel} bodyPadding="normal">
+      <Splitter axis="vertical" onDrag={onAnimsDrag} />
+      <Panel title="Animations" style={s.sidePanel(animsPx)} bodyPadding="normal">
         <div {...stylex.props(s.statsBlock)}>
           <strong>Output</strong>: {w}×{h} · {(result.utilization * 100).toFixed(0)}% used
         </div>

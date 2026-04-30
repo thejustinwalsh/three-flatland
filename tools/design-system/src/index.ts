@@ -6,6 +6,7 @@ export {
 } from './primitives/CompactSelect'
 export { NumberField, type NumberFieldProps } from './primitives/NumberField'
 export { Panel, type PanelProps } from './primitives/Panel'
+export { Splitter, type SplitterProps } from './primitives/Splitter'
 export { Toolbar, type ToolbarProps } from './primitives/Toolbar'
 export { ToolbarButton, type ToolbarButtonProps } from './primitives/ToolbarButton'
 export { DevReloadToast } from './primitives/DevReloadToast'
