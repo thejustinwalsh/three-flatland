@@ -100,7 +100,7 @@ export function Toolbar(p: ToolbarProps) {
         title="Delete the original .atlas.json files after the merge saves successfully"
       >
         <Checkbox
-          label="Delete sources"
+          label="Delete on merge"
           checked={deleteOriginals}
           onChange={(e) => {
             const el = e.currentTarget as HTMLElement & { checked: boolean }

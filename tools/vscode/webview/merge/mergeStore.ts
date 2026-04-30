@@ -8,7 +8,7 @@ import {
   type MergeSource,
 } from '@three-flatland/io/atlas'
 import type { AtlasJson } from '@three-flatland/io/atlas'
-import { webviewStorage } from '../state'
+import { localStorageStorage } from '../state'
 
 // Candidate output sizes the dropdown can offer. Probed for viability
 // on every state change so the UI hides sizes that won't fit.
@@ -68,18 +68,13 @@ function emptyAtlas(): AtlasJson {
 // every action that touches primary state.
 function deriveOver<
   T extends Pick<MergeStoreState, 'sources' | 'knobs' | 'outputFileName'>,
->(next: T): { result: MergeResult; viableSizes: number[] } {
+>(next: T): { result: MergeResult; viableSizes: number[]; bumpedKnobs?: MergeStoreState['knobs'] } {
   const sources: MergeSource[] = next.sources.map((s) => ({
     uri: s.uri,
     alias: s.alias,
     json: s.json,
     renames: s.renames,
   }))
-  const result = computeMerge({
-    ...next.knobs,
-    sources,
-    outputFileName: next.outputFileName,
-  })
   const viableSizes: number[] = []
   if (sources.length > 0) {
     for (const size of CANDIDATE_SIZES) {
@@ -92,7 +87,30 @@ function deriveOver<
       if (probe.kind === 'ok') viableSizes.push(size)
     }
   }
-  return { result, viableSizes }
+  // Auto-bump: if the current maxSize doesn't fit but a larger one does,
+  // jump to the smallest viable size >= current. Never auto-shrink (a
+  // user explicitly choosing 4096 for a small atlas keeps that). If the
+  // current size is too SMALL and nothing larger fits either, leave it
+  // alone — the result will surface as `nofit` and the user can adjust
+  // padding or remove sources.
+  let knobs = next.knobs
+  if (
+    sources.length > 0 &&
+    viableSizes.length > 0 &&
+    !viableSizes.includes(knobs.maxSize) &&
+    knobs.maxSize < viableSizes[viableSizes.length - 1]!
+  ) {
+    const nextSize = viableSizes.find((s) => s >= knobs.maxSize) ?? viableSizes[viableSizes.length - 1]!
+    knobs = { ...knobs, maxSize: nextSize }
+  }
+  const result = computeMerge({
+    ...knobs,
+    sources,
+    outputFileName: next.outputFileName,
+  })
+  return knobs === next.knobs
+    ? { result, viableSizes }
+    : { result, viableSizes, bumpedKnobs: knobs }
 }
 
 type PrimaryState = Pick<
@@ -123,16 +141,22 @@ export const useMergeStore = create<MergeStoreState>()(
               partial.sources !== undefined ||
               partial.knobs !== undefined ||
               partial.outputFileName !== undefined
-            const derived = needsDerive
-              ? deriveOver(merged)
-              : { result: s.result, viableSizes: s.viableSizes }
-            return { ...merged, ...derived }
+            if (!needsDerive) {
+              return { ...merged, result: s.result, viableSizes: s.viableSizes }
+            }
+            const derived = deriveOver(merged)
+            return {
+              ...merged,
+              result: derived.result,
+              viableSizes: derived.viableSizes,
+              ...(derived.bumpedKnobs ? { knobs: derived.bumpedKnobs } : {}),
+            }
           })
         }
 
         return {
           sources: [],
-          knobs: { maxSize: 4096, padding: 2, powerOfTwo: false },
+          knobs: { maxSize: 512, padding: 2, powerOfTwo: false },
           outputFileName: 'merged.png',
           deleteOriginals: false,
           result: { kind: 'ok', atlas: emptyAtlas(), placements: [], utilization: 0 },
@@ -147,7 +171,13 @@ export const useMergeStore = create<MergeStoreState>()(
                 src.uri === uri ? { ...src, alias } : src,
               )
               const derived = deriveOver({ ...s, sources })
-              return { ...s, sources, ...derived }
+              return {
+                ...s,
+                sources,
+                result: derived.result,
+                viableSizes: derived.viableSizes,
+                ...(derived.bumpedKnobs ? { knobs: derived.bumpedKnobs } : {}),
+              }
             }),
           setFrameRename: (uri, original, merged) =>
             set((s) => {
@@ -159,7 +189,13 @@ export const useMergeStore = create<MergeStoreState>()(
                 return { ...src, renames: { ...src.renames, frames: next } }
               })
               const derived = deriveOver({ ...s, sources })
-              return { ...s, sources, ...derived }
+              return {
+                ...s,
+                sources,
+                result: derived.result,
+                viableSizes: derived.viableSizes,
+                ...(derived.bumpedKnobs ? { knobs: derived.bumpedKnobs } : {}),
+              }
             }),
           setAnimRename: (uri, original, merged) =>
             set((s) => {
@@ -171,13 +207,24 @@ export const useMergeStore = create<MergeStoreState>()(
                 return { ...src, renames: { ...src.renames, animations: next } }
               })
               const derived = deriveOver({ ...s, sources })
-              return { ...s, sources, ...derived }
+              return {
+                ...s,
+                sources,
+                result: derived.result,
+                viableSizes: derived.viableSizes,
+                ...(derived.bumpedKnobs ? { knobs: derived.bumpedKnobs } : {}),
+              }
             }),
           setKnobs: (knobs) =>
             set((s) => {
               const nextKnobs = { ...s.knobs, ...knobs }
               const derived = deriveOver({ ...s, knobs: nextKnobs })
-              return { ...s, knobs: nextKnobs, ...derived }
+              return {
+                ...s,
+                knobs: derived.bumpedKnobs ?? nextKnobs,
+                result: derived.result,
+                viableSizes: derived.viableSizes,
+              }
             }),
           setOutputFileName: (name) => update({ outputFileName: name }),
           setDeleteOriginals: (next) => update({ deleteOriginals: next }),
@@ -199,16 +246,19 @@ export const useMergeStore = create<MergeStoreState>()(
       },
       {
         name: 'fl-merge-store',
-        storage: createJSONStorage(() => webviewStorage),
-        // Only persist primary user-edited state. Derived state is
-        // recomputed on rehydrate; transient state is never persisted.
+        storage: createJSONStorage(() => localStorageStorage),
+        // Persist user prefs that should survive across sessions and
+        // across panel close/reopen: knob settings + delete-originals
+        // toggle. Per-merge-invocation state (sources, renames,
+        // outputFileName) is NOT persisted — those are seeded fresh by
+        // the host's `merge/init` payload every time the panel opens.
         partialize: (s) => ({
-          sources: s.sources,
           knobs: s.knobs,
-          outputFileName: s.outputFileName,
           deleteOriginals: s.deleteOriginals,
         }),
-        // After rehydration, recompute derived state once.
+        // After rehydration, recompute derived state once. No sources
+        // yet at this point (those arrive via the bridge) — viableSizes
+        // is empty and result is the empty-atlas default.
         onRehydrateStorage: () => (state) => {
           if (!state) return
           const derived = deriveOver(state)
