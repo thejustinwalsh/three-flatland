@@ -1,8 +1,10 @@
 import * as vscode from 'vscode'
+import { posix as posixPath } from 'node:path'
 import { createHostBridge } from '@three-flatland/bridge/host'
 import { composeToolHtml, setupDevReload } from '../../webview-host'
 import { log } from '../../log'
 import { assertValidAtlas } from '../atlas/validateAtlas'
+import type { AtlasJson } from '@three-flatland/io/atlas'
 
 const TOOL = 'merge'
 
@@ -110,6 +112,7 @@ export async function openMergePanel(
     const pngTarget = target.with({ path: pngPath })
     const sidecarUri = pngTarget.with({ path: `${stripped}.atlas.json` })
     ;(sidecar as { meta: { image: string } }).meta.image = pngPath.split('/').pop() ?? 'merged.png'
+    relativizeMergeSources(sidecar as AtlasJson, sidecarUri)
     const png = new Uint8Array(pngBytes)
     const sidecarText = JSON.stringify(sidecar, null, 2) + '\n'
     await vscode.workspace.fs.writeFile(pngTarget, png)
@@ -141,6 +144,33 @@ export async function openMergePanel(
     disposeReload.dispose()
     bridge.dispose()
   })
+}
+
+function relativizeMergeSources(sidecar: AtlasJson, anchorUri: vscode.Uri): void {
+  const sources = sidecar.meta.merge?.sources
+  if (!sources) return
+  const anchorDir = posixPath.dirname(anchorUri.path)
+  const anchorSegs = anchorDir.split('/').filter(Boolean)
+  for (const s of sources) {
+    let srcUri: vscode.Uri
+    try {
+      srcUri = vscode.Uri.parse(s.uri)
+    } catch {
+      continue
+    }
+    if (srcUri.scheme !== anchorUri.scheme || srcUri.authority !== anchorUri.authority) {
+      s.uri = srcUri.toString()
+      continue
+    }
+    const srcSegs = srcUri.path.split('/').filter(Boolean)
+    let n = 0
+    while (n < anchorSegs.length && n < srcSegs.length && anchorSegs[n] === srcSegs[n]) n++
+    if (n === 0) {
+      s.uri = srcUri.toString()
+      continue
+    }
+    s.uri = posixPath.relative(anchorDir, srcUri.path)
+  }
 }
 
 function labelFor(uri: vscode.Uri): string {
