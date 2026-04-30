@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { createClientBridge } from '@three-flatland/bridge/client'
 import type { AtlasJson } from '@three-flatland/io/atlas'
+import { compositePngBlob } from './composite'
 import { aliasFromUri, namespaceSource } from '@three-flatland/io/atlas'
 import { mergeActions, useMergeState } from './mergeStore'
 import { SourcesView } from './SourcesView'
@@ -50,8 +51,22 @@ export function App() {
     }
   }
 
-  const handleSave = () => {
-    // T15 wires this to the actual save flow.
+  const handleSave = async () => {
+    if (state.result.kind !== 'ok' || state.sources.length === 0) return
+    const blob = await compositePngBlob(state.result, state.sources)
+    if (!blob) return
+    const buf = new Uint8Array(await blob.arrayBuffer())
+    const bridge = createClientBridge()
+    try {
+      await bridge.request('merge/save', {
+        pngBytes: Array.from(buf),
+        sidecar: state.result.atlas,
+        defaultName: state.outputFileName,
+        sourcesToDelete: deleteOriginals ? state.sources.map((s) => s.uri) : [],
+      })
+    } catch (err) {
+      console.error('merge/save failed', err)
+    }
   }
 
   const conflictCount =
