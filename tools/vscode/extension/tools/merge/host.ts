@@ -75,6 +75,46 @@ export async function openMergePanel(
     return { ok: true }
   })
 
+  bridge.on<{
+    pngBytes: number[]
+    sidecar: unknown
+    defaultName: string
+    sourcesToDelete: string[]
+  }>('merge/save', async ({ pngBytes, sidecar, defaultName, sourcesToDelete }) => {
+    try {
+      assertValidAtlas(sidecar)
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      throw new Error(`Merged sidecar failed schema: ${msg}`)
+    }
+    const target = await vscode.window.showSaveDialog({
+      defaultUri: vscode.Uri.joinPath(sidecarUris[0]!, '..', defaultName),
+      filters: { Image: ['png'] },
+      saveLabel: 'Save merged atlas',
+    })
+    if (!target) return { ok: false, cancelled: true }
+    const pngPath = target.path.endsWith('.png') ? target.path : `${target.path}.png`
+    const pngTarget = target.with({ path: pngPath })
+    const sidecarUri = pngTarget.with({ path: pngPath.replace(/\.png$/, '.atlas.json') })
+    const png = new Uint8Array(pngBytes)
+    const sidecarText = JSON.stringify(sidecar, null, 2) + '\n'
+    await vscode.workspace.fs.writeFile(pngTarget, png)
+    await vscode.workspace.fs.writeFile(sidecarUri, Buffer.from(sidecarText, 'utf8'))
+    for (const uri of sourcesToDelete) {
+      try {
+        await vscode.workspace.fs.delete(vscode.Uri.parse(uri), { useTrash: true })
+      } catch (err) {
+        log(`merge/save: trash failed ${uri}: ${err instanceof Error ? err.message : err}`)
+        // Best-effort; don't fail the whole save if a delete fails.
+      }
+    }
+    return {
+      ok: true,
+      pngUri: pngTarget.toString(),
+      sidecarUri: sidecarUri.toString(),
+    }
+  })
+
   bridge.on('dev/reload-request', async () => {
     panel.webview.html = await renderHtml()
     return { ok: true }
