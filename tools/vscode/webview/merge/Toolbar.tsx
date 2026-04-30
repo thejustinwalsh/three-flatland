@@ -1,14 +1,16 @@
-import { mergeActions, useMergeState, CANDIDATE_SIZES } from './mergeStore'
+import { mergeActions, mergeHistory, useMergeHistoryStore, useMergeState, useMergeStore, CANDIDATE_SIZES } from './mergeStore'
 
 export type ToolbarProps = {
   onSave: () => void
   onNamespaceAll: () => void
-  deleteOriginals: boolean
-  onDeleteOriginalsChange: (next: boolean) => void
 }
 
 export function Toolbar(p: ToolbarProps) {
   const state = useMergeState()
+  const deleteOriginals = useMergeStore((s) => s.deleteOriginals)
+  const history = useMergeHistoryStore()
+  const canUndo = history.pastStates.length > 0
+  const canRedo = history.futureStates.length > 0
   const conflicts =
     state.result.kind === 'conflicts'
       ? state.result.frameConflicts.length + state.result.animationConflicts.length
@@ -27,6 +29,22 @@ export function Toolbar(p: ToolbarProps) {
         flexWrap: 'wrap',
       }}
     >
+      <button
+        onClick={() => mergeHistory.undo()}
+        disabled={!canUndo}
+        title='Undo (Cmd/Ctrl+Z)'
+        aria-label='Undo'
+      >
+        ↩
+      </button>
+      <button
+        onClick={() => mergeHistory.redo()}
+        disabled={!canRedo}
+        title='Redo (Cmd/Ctrl+Shift+Z)'
+        aria-label='Redo'
+      >
+        ↪
+      </button>
       <button onClick={p.onNamespaceAll} disabled={state.sources.length === 0}>
         Namespace all
       </button>
@@ -34,8 +52,8 @@ export function Toolbar(p: ToolbarProps) {
       <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12 }}>
         <input
           type='checkbox'
-          checked={p.deleteOriginals}
-          onChange={(e) => p.onDeleteOriginalsChange(e.target.checked)}
+          checked={deleteOriginals}
+          onChange={(e) => mergeActions.setDeleteOriginals(e.target.checked)}
         />
         Delete originals on success
       </label>
