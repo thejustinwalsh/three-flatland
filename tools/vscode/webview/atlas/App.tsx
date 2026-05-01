@@ -2040,6 +2040,21 @@ export function App() {
                 pipVisible={prefs.animPipVisible}
                 onTogglePipVisible={() => prefsStore.set({ animPipVisible: !prefs.animPipVisible })}
                 activeIsEmpty={activeAnim != null && activeAnim.frames.length === 0}
+                onDropFrames={(names) => {
+                  // Same logic as the timeline drop — append to the
+                  // active anim if there is one, otherwise create a
+                  // new animation from the dropped frames. This path
+                  // catches drops onto the header bar when the drawer
+                  // is collapsed (timeline isn't mounted as a target).
+                  if (activeAnimation) {
+                    const end = activeAnim ? activeAnim.frames.length : 0
+                    handleInsertFramesIntoActiveAnim(end, names)
+                  } else {
+                    handleCreateAnimationFromFrames(names)
+                  }
+                  // Auto-expand so the user immediately sees the result.
+                  if (!prefs.animDrawerExpanded) prefsStore.set({ animDrawerExpanded: true })
+                }}
               />
             }
             body={(density) => (
