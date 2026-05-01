@@ -1,7 +1,7 @@
-import type { EncodeFormat } from './types'
-import { decodePng } from './codecs/png'
-import { decodeWebp } from './codecs/webp'
-import { decodeAvif } from './codecs/avif'
+import type { EncodeFormat } from './types.js'
+import { decodePng } from './codecs/png.js'
+import { decodeWebp } from './codecs/webp.js'
+import { decodeAvif } from './codecs/avif.js'
 
 export async function decodeImage(bytes: Uint8Array, format: EncodeFormat): Promise<ImageData> {
   switch (format) {

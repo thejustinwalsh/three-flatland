@@ -1,5 +1,5 @@
-import decode, { init as initDecode } from '@jsquash/avif/decode'
-import encode, { init as initEncode } from '@jsquash/avif/encode'
+import decode, { init as initDecode } from '@jsquash/avif/decode.js'
+import encode, { init as initEncode } from '@jsquash/avif/encode.js'
 
 export interface AvifOptions {
   quality?: number

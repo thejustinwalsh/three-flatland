@@ -1,8 +1,8 @@
 import { readFile, writeFile, rename, stat } from 'node:fs/promises'
 import { extname, join, dirname, basename } from 'node:path'
-import { encodeImage } from './encode'
-import { decodeImage } from './decode'
-import type { EncodeFormat, ImageEncodeOptions } from './types'
+import { encodeImage } from './encode.js'
+import { decodeImage } from './decode.js'
+import type { EncodeFormat, ImageEncodeOptions } from './types.js'
 
 export interface FileWriteOptions {
   force?: boolean
