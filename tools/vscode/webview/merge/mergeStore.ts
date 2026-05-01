@@ -62,7 +62,7 @@ function emptyAtlas(): AtlasJson {
     meta: {
       app: 'fl-sprite-atlas',
       version: '1.0',
-      image: 'merged.png',
+      sources: [{ format: 'png', uri: 'merged.png' }],
       size: { w: 0, h: 0 },
       scale: '1',
     },
