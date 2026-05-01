@@ -75,9 +75,10 @@ export async function readAtlasSidecar(
     throw new Error(`Atlas sidecar is not valid JSON: ${msg}`)
   }
   assertValidAtlas(parsed)
+  const atlas = parsed as AtlasJson
   return {
-    json: parsed,
-    rects: atlasToRects(parsed),
-    animations: readAnimationsFromJson(parsed),
+    json: atlas,
+    rects: atlasToRects(atlas),
+    animations: readAnimationsFromJson(atlas),
   }
 }

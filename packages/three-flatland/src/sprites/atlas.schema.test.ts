@@ -8,6 +8,8 @@ const validate = ajv.compile(schema as object)
 const minimalFrames = {}
 const baseSize = { w: 64, h: 64 }
 
+import { validateAtlas, formatAtlasErrors } from './atlas.schema'
+
 describe('atlas.schema.json', () => {
   it('rejects sidecars missing meta.sources', () => {
     const json = { meta: { app: 'a', version: '1', size: baseSize, scale: '1' }, frames: minimalFrames }
@@ -35,5 +37,26 @@ describe('atlas.schema.json', () => {
       frames: minimalFrames,
     }
     expect(validate(json)).toBe(true)
+  })
+})
+
+describe('validateAtlas (format-uniqueness layer)', () => {
+  it('rejects duplicate formats in meta.sources', () => {
+    const json = {
+      meta: { app: 'a', version: '1', size: { w: 64, h: 64 }, scale: '1',
+        sources: [{ format: 'png', uri: 'a.png' }, { format: 'png', uri: 'b.png' }] },
+      frames: {},
+    }
+    expect(validateAtlas(json)).toBe(false)
+    expect(formatAtlasErrors()).toMatch(/duplicate format/i)
+  })
+
+  it('accepts unique formats', () => {
+    const json = {
+      meta: { app: 'a', version: '1', size: { w: 64, h: 64 }, scale: '1',
+        sources: [{ format: 'png', uri: 'a.png' }, { format: 'webp', uri: 'a.webp' }] },
+      frames: {},
+    }
+    expect(validateAtlas(json)).toBe(true)
   })
 })

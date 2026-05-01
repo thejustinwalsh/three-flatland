@@ -1184,6 +1184,9 @@ importers:
 
   packages/three-flatland:
     dependencies:
+      ajv:
+        specifier: ^8.17.1
+        version: 8.17.1
       koota:
         specifier: 'catalog:'
         version: 0.6.5(@types/react@19.2.9)(react@19.2.3)
