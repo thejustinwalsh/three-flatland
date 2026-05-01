@@ -266,13 +266,14 @@ function lastBoundary(name: string): number {
 
 /**
  * Returns the group prefix for a name — everything before the last
- * boundary. Names without a boundary (single-word like `tree`, or
- * empty) return null and end up ungrouped.
+ * boundary. A single-word name (no boundary) IS its own group. Empty
+ * / undefined names return null and fall into the "Unnamed" group.
  */
 function groupKey(name: string | undefined): string | null {
   if (!name) return null
   const split = lastBoundary(name)
-  if (split < 0) return null
+  // Single-word name (no boundary) → group named after itself.
+  if (split < 0) return name
   const c = name.charCodeAt(split)
   // Delimiter chars are NOT part of either side; case-boundary chars
   // belong to the variant.
