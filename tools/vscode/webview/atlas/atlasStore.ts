@@ -69,6 +69,55 @@ type HistorySlice = {
   animations: AtlasStoreState['animations']
 }
 
+// Shallow content equality for the partialized history slice. Reference
+// checks alone produce spurious entries because every setter returns
+// fresh arrays/objects even when content is identical (e.g. dropping a
+// rect at its original geometry, blurring a rename without editing).
+function rectsEqual(a: Rect[], b: Rect[]): boolean {
+  if (a === b) return true
+  if (a.length !== b.length) return false
+  for (let i = 0; i < a.length; i++) {
+    const ra = a[i]!
+    const rb = b[i]!
+    if (
+      ra.id !== rb.id ||
+      ra.x !== rb.x ||
+      ra.y !== rb.y ||
+      ra.w !== rb.w ||
+      ra.h !== rb.h ||
+      ra.name !== rb.name
+    ) {
+      return false
+    }
+  }
+  return true
+}
+
+function animationsEqual(
+  a: Record<string, Animation>,
+  b: Record<string, Animation>,
+): boolean {
+  if (a === b) return true
+  const ak = Object.keys(a)
+  if (ak.length !== Object.keys(b).length) return false
+  for (const key of ak) {
+    const aa = a[key]
+    const ba = b[key]
+    if (!aa || !ba) return false
+    if (aa.fps !== ba.fps || aa.loop !== ba.loop || aa.pingPong !== ba.pingPong) return false
+    if (aa.frames.length !== ba.frames.length) return false
+    for (let i = 0; i < aa.frames.length; i++) {
+      if (aa.frames[i] !== ba.frames[i]) return false
+    }
+    const ae = aa.events ?? {}
+    const be = ba.events ?? {}
+    const aek = Object.keys(ae)
+    if (aek.length !== Object.keys(be).length) return false
+    for (const ek of aek) if (ae[ek] !== be[ek]) return false
+  }
+  return true
+}
+
 export const useAtlasStore = create<AtlasStoreState>()(
   temporal(
     // Outer persist: localStorage — cross-session prefs
@@ -175,9 +224,23 @@ export const useAtlasStore = create<AtlasStoreState>()(
         animations: s.animations,
       }),
       limit: 100,
-      // Don't push a history entry when only the action identities change
-      // (only structural changes to rects or animations matter).
-      equality: (a, b) => a.rects === b.rects && a.animations === b.animations,
+      // Shallow content equality. Reference equality alone would push
+      // entries whenever a setter returns fresh references with
+      // identical content (e.g. dropping a rect at its original
+      // geometry, blurring a rename input unchanged).
+      equality: (a, b) => rectsEqual(a.rects, b.rects) && animationsEqual(a.animations, b.animations),
+      // Coalesce burst sets (drag, hot-key repeats) into one undo entry.
+      // 100 ms is below human undo-reaction latency.
+      handleSet: (handleSet) => {
+        let timer: ReturnType<typeof setTimeout> | null = null
+        return (pastState) => {
+          if (timer !== null) clearTimeout(timer)
+          timer = setTimeout(() => {
+            handleSet(pastState)
+            timer = null
+          }, 100)
+        }
+      },
     },
   ),
 )

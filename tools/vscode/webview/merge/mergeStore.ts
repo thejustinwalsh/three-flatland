@@ -124,6 +124,35 @@ type PrimaryState = Pick<
   'sources' | 'knobs' | 'outputFileName'
 >
 
+// Shallow content equality for the partialized state. Reference checks
+// alone fire history entries on every action because setters return
+// fresh objects/arrays even when nothing changed. Compare values.
+function shallowRecordEqual(a: Record<string, string>, b: Record<string, string>): boolean {
+  const ak = Object.keys(a)
+  if (ak.length !== Object.keys(b).length) return false
+  for (const k of ak) if (a[k] !== b[k]) return false
+  return true
+}
+
+function knobsEqual(a: MergeStoreState['knobs'], b: MergeStoreState['knobs']): boolean {
+  return a.maxSize === b.maxSize && a.padding === b.padding && a.powerOfTwo === b.powerOfTwo
+}
+
+function sourcesEqual(a: MergeStoreState['sources'], b: MergeStoreState['sources']): boolean {
+  if (a === b) return true
+  if (a.length !== b.length) return false
+  for (let i = 0; i < a.length; i++) {
+    const sa = a[i]!
+    const sb = b[i]!
+    if (sa.uri !== sb.uri) return false
+    if (sa.alias !== sb.alias) return false
+    // `json`, `imageUri` are bridge-supplied — not user-editable, skip.
+    if (!shallowRecordEqual(sa.renames.frames ?? {}, sb.renames.frames ?? {})) return false
+    if (!shallowRecordEqual(sa.renames.animations ?? {}, sb.renames.animations ?? {})) return false
+  }
+  return true
+}
+
 export const useMergeStore = create<MergeStoreState>()(
   temporal(
     // Outer persist: localStorage — cross-session user prefs
@@ -321,11 +350,15 @@ export const useMergeStore = create<MergeStoreState>()(
         outputFileName: s.outputFileName,
       }),
       limit: 50,
-      // Don't push history when only derived/transient fields change.
+      // Shallow content equality on the partialized state. Reference
+      // equality alone produces spurious history entries because every
+      // setter returns fresh references even when content is identical
+      // (e.g. clicking the dropdown's already-selected value, blurring
+      // a rename input without editing).
       equality: (a, b) =>
-        a.sources === b.sources &&
-        a.knobs === b.knobs &&
-        a.outputFileName === b.outputFileName,
+        knobsEqual(a.knobs, b.knobs) &&
+        a.outputFileName === b.outputFileName &&
+        sourcesEqual(a.sources, b.sources),
       // Coalesce bursts of rapid set calls (NumberField drag, hot-key
       // repeats) into a single undo entry. Trailing-edge debounce: the
       // history entry is recorded 100 ms after the last change in the
