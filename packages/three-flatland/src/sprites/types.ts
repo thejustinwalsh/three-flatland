@@ -166,7 +166,7 @@ export interface SpriteSheetJSONHash {
     }
   }
   meta: {
-    image: string
+    sources: { format: 'png' | 'webp' | 'avif' | 'ktx2'; uri: string }[]
     size: { w: number; h: number }
     scale: string
     /** Our richer animation map — preferred source on read. */
@@ -192,7 +192,7 @@ export interface SpriteSheetJSONArray {
     duration?: number
   }>
   meta: {
-    image: string
+    sources: { format: 'png' | 'webp' | 'avif' | 'ktx2'; uri: string }[]
     size: { w: number; h: number }
     scale: string
     animations?: Record<string, AtlasAnimation>

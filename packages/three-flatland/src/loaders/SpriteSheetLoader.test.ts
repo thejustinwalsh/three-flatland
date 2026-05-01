@@ -20,7 +20,7 @@ const mockJSONHash = {
     },
   },
   meta: {
-    image: 'player.png',
+    sources: [{ format: 'png' as const, uri: 'player.png' }],
     size: { w: 128, h: 128 },
     scale: '1',
   },
@@ -46,7 +46,7 @@ const mockJSONArray = {
     },
   ],
   meta: {
-    image: 'enemy.png',
+    sources: [{ format: 'png' as const, uri: 'enemy.png' }],
     size: { w: 256, h: 256 },
     scale: '1',
   },
