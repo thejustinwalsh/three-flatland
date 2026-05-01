@@ -45,6 +45,10 @@ The VSCode extension and its supporting packages live under `tools/`. Each has i
 
 When dispatching a sub-agent for tool work, include the relevant `tools/<pkg>/CLAUDE.md` paths in the prompt — they encode hard-won API contracts (e.g. `ClientBridge.on()` returns an unsubscribe function, NOT a `dispose()` method) that aren't obvious from the source.
 
+### Skills
+
+When authoring styles with `@stylexjs/stylex` — creating styles with `stylex.create`, applying with `stylex.props`, defining tokens with `defineVars`/`defineConsts`, building themes, or migrating CSS — invoke the **`stylex`** skill. It captures the Do/Don't rules and the authoring + installation references. The per-package CLAUDE.md files only call out the project-specific gotchas (subpath token imports, tools' design-system primitive inventory) and lean on the skill for everything else.
+
 ## Constraints
 - Performance is critical — minimize draw calls, batch sprites via SpriteGroup, watch frame budgets
 - All custom Three.js classes must work with R3F's no-arg construction + property-setting pattern

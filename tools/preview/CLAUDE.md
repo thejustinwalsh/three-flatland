@@ -55,6 +55,22 @@ Source of truth: `tools/preview/package.json` (exports map), `tools/preview/src/
 | `connectedComponents` | ImageData → connected-component bounding boxes | Auto-detect implementation |
 | `canvasBackgroundStyle` | Style helper for checker/gradient/solid bg | CanvasStage `backgroundStyle` |
 | `cellExtent` / `cellKey` / `gridFromCellSize` / `gridFromRowCol` | Grid math helpers | Grid slice tool |
+| `computeThumbStyle(uri, imgW, imgH, rect, boxW, boxH)` | CSS for a clipped sprite-sheet thumbnail | Frames panel, drag preview, animation timeline |
+
+### Sprite-sheet thumbnails — clip + chrome
+
+`computeThumbStyle()` returns `{ bgImage, bgSize, bgPos, clip }`. Apply with a fixed-size **outer chrome** (border, bg, hover state) and an **inner span** (`position: absolute; inset: 0`) carrying the bg-image + clip-path:
+
+```tsx
+<span style={{ width: BOX, height: BOX, position: 'relative', overflow: 'hidden', border: ... }}>
+  <span style={{ position: 'absolute', inset: 0,
+                 backgroundImage: t.bgImage, backgroundSize: t.bgSize,
+                 backgroundPosition: t.bgPos, clipPath: t.clip,
+                 backgroundRepeat: 'no-repeat', imageRendering: 'pixelated' }} />
+</span>
+```
+
+The `clip-path` is what stops neighboring atlas tiles bleeding into a non-square frame's letterbox margins. Applying clip to the same element as the border crops the border too — always nest.
 
 ## Key API contracts — the surprising ones
 

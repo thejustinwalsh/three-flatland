@@ -12,6 +12,7 @@ For any VSCode-themed chrome inside a webview, use the primitives from this pack
 | `ToolbarButton` | Icon button inside a toolbar | `icon` (codicon name), `title`, `onClick`, `disabled` |
 | `Button` | Standalone call-to-action | Full `ComponentProps<VscodeButton>` passthrough |
 | `Panel` | Titled region with a header bar | `title`, `headerActions`, `bodyPadding: 'normal'\|'none'` |
+| `Splitter` | Resizable divider between sibling panels | `axis: 'vertical'\|'horizontal'`, `onDrag(clientPx)` — parent owns the size state, clamps min/max |
 | `CompactSelect` | Inline 18px dropdown; fits in Panel headers | `value`, `options: {value, label?}[]`, `onChange`, `width`, `disabled` |
 | `NumberField` | Bounded number input with drag handle | `value`, `onChange`, `min`, `max`, `step`, `disabled` |
 | `Tabs` / `TabHeader` / `TabPanel` | Tab strip + content panels | Lit slot auto-promotion; no `slot=` needed on `TabHeader` children |
@@ -30,11 +31,23 @@ All of the above are re-exported from `@three-flatland/design-system`. Import fr
 
 ```ts
 import {
-  Toolbar, ToolbarButton, Panel, CompactSelect, NumberField,
+  Toolbar, ToolbarButton, Panel, Splitter, CompactSelect, NumberField,
   Checkbox, SingleSelect, Option, TextField, Icon, Divider,
   Scrollable, Badge, Collapsible, Tabs, TabHeader, TabPanel,
 } from '@three-flatland/design-system'
 ```
+
+### Panel layout & spacing rules
+
+- A `Panel` should fill its flex parent via `style={{ flex: 1, minWidth: 0, minHeight: 0 }}` (or stylex equivalent) — the shell sets `display: flex; flex-direction: column` but doesn't grow on its own.
+- Fixed-width sidebar panels: `style={{ width: <px>, flexShrink: 0 }}`.
+- Use `<Splitter>` between sibling panels; its 4 px width doubles as the visual gap. Do NOT add `gap` on the parent flex container in addition.
+- Persist splitter widths on the consumer side (Zustand store + `localStorageStorage` is the established pattern).
+- For an artboard / canvas surface: `<Panel bodyPadding="none">` and let the surface own its padding/scroll.
+
+## StyleX
+
+For all StyleX authoring (style creation, token definitions, theme building, migrations from CSS / styled-components / Tailwind / inline styles), invoke the **`stylex`** skill — it carries the upstream Do/Don't rules and authoring + installation references. The notes below cover only project-specific conventions.
 
 ## Tokens (StyleX)
 
