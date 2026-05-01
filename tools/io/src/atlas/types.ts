@@ -47,7 +47,7 @@ export type AtlasJson = {
   meta: {
     app: string
     version: string
-    image: string
+    sources: { format: 'png' | 'webp' | 'avif' | 'ktx2'; uri: string }[]
     size: { w: number; h: number }
     scale: string
     animations?: Record<string, WireAnimation>
