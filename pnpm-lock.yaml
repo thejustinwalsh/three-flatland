@@ -1335,6 +1335,9 @@ importers:
 
   tools/vscode:
     dependencies:
+      '@jsquash/webp':
+        specifier: 'catalog:'
+        version: 1.5.0
       '@react-three/fiber':
         specifier: 'catalog:'
         version: 10.0.0-alpha.2(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.183.1)
