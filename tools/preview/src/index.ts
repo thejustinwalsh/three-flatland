@@ -28,6 +28,7 @@ export {
 } from './GridSliceOverlay'
 export { createCursorStore, useCursor, type CursorReading, type CursorStore } from './cursorStore'
 export { connectedComponents, type DetectedRect, type CCLOptions } from './ccl'
+export { computeThumbStyle, type ThumbStyle } from './thumbStyle'
 export {
   AutoDetectOverlay,
   type AutoDetectOverlayProps,

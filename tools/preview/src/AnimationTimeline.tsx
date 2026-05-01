@@ -6,6 +6,7 @@ import { radius } from '@three-flatland/design-system/tokens/radius.stylex'
 import type { Rect } from './RectOverlay'
 import type { AnimationDrawerDensity } from './AnimationDrawer'
 import { useDragSource, useDragTarget, useOptionalDrag } from './dragKit'
+import { computeThumbStyle } from './thumbStyle'
 
 export type AnimationTimelineProps = {
   /** Frame names in playback order, with duplicates encoding hold counts. */
@@ -923,12 +924,15 @@ export function AnimationTimeline({
         // the duplication count directly.
         const tileBg: CSSProperties = {}
         if (rect && atlasImageUri && atlasSize) {
-          const scale = Math.min(CELL_BASE / rect.w, CELL_BASE / rect.h)
-          tileBg.backgroundImage = `url(${atlasImageUri})`
-          tileBg.backgroundSize = `${atlasSize.w * scale}px ${atlasSize.h * scale}px`
-          const offX = (CELL_BASE - rect.w * scale) / 2 - rect.x * scale
-          const offY = (CELL_BASE - rect.h * scale) / 2 - rect.y * scale
-          tileBg.backgroundPosition = `${offX}px ${offY}px`
+          const t = computeThumbStyle(atlasImageUri, atlasSize.w, atlasSize.h, rect, CELL_BASE, CELL_BASE)
+          tileBg.backgroundImage = t.bgImage
+          tileBg.backgroundSize = t.bgSize
+          tileBg.backgroundPosition = t.bgPos
+          // clip-path crops the tile's bg-image to the rect's
+          // letterbox area so non-square frames (tall trees, wide
+          // banners) don't bleed neighboring atlas tiles into the
+          // letterbox margins.
+          tileBg.clipPath = t.clip
         }
         return (
           <div
