@@ -43,6 +43,7 @@
     ],
     "overrides": {
       "three-flatland": "workspace:*",
+      "@three-flatland/bake": "workspace:*",
       "@three-flatland/nodes": "workspace:*",
       "@three-flatland/presets": "workspace:*",
       "@three-flatland/skia": "workspace:*",

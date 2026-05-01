@@ -1,0 +1,60 @@
+{
+  "name": "@three-flatland/bake",
+  "version": "0.1.0-alpha.1",
+  "description": "Shared bake pipeline infrastructure — CLI, discovery, and browser-safe loader utilities for assets with offline-baked siblings",
+  "type": "module",
+  "bin": {
+    "flatland-bake": "./dist/cli.js"
+  },
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "node": {
+        "types": "./dist/node.d.ts",
+        "import": "./dist/node.js"
+      },
+      "browser": {
+        "types": "./dist/index.d.ts",
+        "import": "./dist/index.js"
+      },
+      "default": {
+        "types": "./dist/index.d.ts",
+        "import": "./dist/index.js"
+      }
+    },
+    "./node": {
+      "source": "./src/node.ts",
+      "types": "./dist/node.d.ts",
+      "import": "./dist/node.js"
+    }
+  },
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "pngjs": "^7.0.0"
+  },
+  "devDependencies": {
+    "@types/pngjs": "^6.0.5"
+  },
+  "keywords": [
+    "three-flatland",
+    "bake",
+    "cli"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/thejustinwalsh/three-flatland.git",
+    "directory": "packages/bake"
+  }
+}
