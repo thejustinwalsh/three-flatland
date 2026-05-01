@@ -57,6 +57,8 @@ settings.local.json
 
 # Vendor Library for examples to pull from
 vendor/
+!packages/image/vendor/
+!packages/image/vendor/**
 
 # Profile traces
 traces/
