@@ -119,7 +119,7 @@ export function App() {
   useEffect(() => {
     const bridge = createClientBridge()
     const off = bridge.on<InitPayload>('merge/init', (p) => {
-      mergeActions.setSources(
+      mergeActions.loadInit(
         p.sources.map((s) => ({
           uri: s.uri,
           imageUri: s.imageUri,

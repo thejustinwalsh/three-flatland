@@ -326,6 +326,21 @@ export const useMergeStore = create<MergeStoreState>()(
         a.sources === b.sources &&
         a.knobs === b.knobs &&
         a.outputFileName === b.outputFileName,
+      // Coalesce bursts of rapid set calls (NumberField drag, hot-key
+      // repeats) into a single undo entry. Trailing-edge debounce: the
+      // history entry is recorded 100 ms after the last change in the
+      // burst, capturing the prior state so one undo rewinds the whole
+      // burst. 100 ms is below human-perceptible undo latency.
+      handleSet: (handleSet) => {
+        let timer: ReturnType<typeof setTimeout> | null = null
+        return (pastState) => {
+          if (timer !== null) clearTimeout(timer)
+          timer = setTimeout(() => {
+            handleSet(pastState)
+            timer = null
+          }, 100)
+        }
+      },
     },
   ),
 )
@@ -352,6 +367,15 @@ export function useMergeState(): MergeStoreState {
 export const mergeActions = {
   setSources: (sources: MergeStoreState['sources']) =>
     useMergeStore.getState().setSources(sources),
+  // Bridge `merge/init` should call this — sets sources via the
+  // smart-merge path AND clears any history accumulated from
+  // rehydration / earlier inits. The user's undo stack starts empty
+  // when they first see the panel content; only their actions push
+  // entries from there on.
+  loadInit: (sources: MergeStoreState['sources']) => {
+    useMergeStore.getState().setSources(sources)
+    useMergeStore.temporal.getState().clear()
+  },
   setAlias: (uri: string, alias: string) =>
     useMergeStore.getState().setAlias(uri, alias),
   setFrameRename: (uri: string, original: string, merged: string | null) =>
