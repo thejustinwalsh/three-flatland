@@ -51,12 +51,13 @@ export function registerAtlasTool(context: vscode.ExtensionContext): void {
  * Map a click target to the image URI the atlas editor should open.
  *
  * For a sidecar input (`foo.atlas.json`) the sidecar IS the source of
- * truth for which image it belongs to — `meta.image` carries the source
- * filename (relative to the sidecar's directory). We read the JSON,
- * resolve `meta.image` against the sidecar's parent dir, and open that.
+ * truth for which image it belongs to — `meta.sources[0].uri` carries the
+ * source filename (relative to the sidecar's directory). We read the JSON,
+ * resolve `meta.sources[0].uri` against the sidecar's parent dir, and open
+ * that.
  *
  * Filename-pattern fallback (strip `.atlas.json`, try `.png`) only kicks
- * in when the sidecar is unreadable or its `meta.image` is missing — so
+ * in when the sidecar is unreadable or its `meta.sources` is missing — so
  * a broken sidecar still has a chance of opening the right image, and a
  * renamed image is found via the sidecar's recorded name (not via the
  * sidecar filename, which may not match anymore).
@@ -64,14 +65,14 @@ export function registerAtlasTool(context: vscode.ExtensionContext): void {
 async function resolveImageForCommand(uri: vscode.Uri): Promise<vscode.Uri | null> {
   if (!uri.path.endsWith('.atlas.json')) return uri
 
-  // Primary path: read meta.image from the sidecar.
+  // Primary path: pick the first entry from meta.sources.
   try {
     const bytes = await vscode.workspace.fs.readFile(uri)
     const text = new TextDecoder().decode(bytes)
     const parsed: unknown = JSON.parse(text)
-    const metaImage = readMetaImage(parsed)
-    if (metaImage) {
-      const resolved = vscode.Uri.joinPath(uri, '..', metaImage)
+    const sourceUri = readMetaSourceUri(parsed)
+    if (sourceUri) {
+      const resolved = vscode.Uri.joinPath(uri, '..', sourceUri)
       const stat = await statSafe(resolved)
       if (stat?.type === vscode.FileType.File) return resolved
     }
@@ -91,12 +92,14 @@ async function resolveImageForCommand(uri: vscode.Uri): Promise<vscode.Uri | nul
   return null
 }
 
-function readMetaImage(parsed: unknown): string | null {
+function readMetaSourceUri(parsed: unknown): string | null {
   if (!parsed || typeof parsed !== 'object') return null
   const meta = (parsed as { meta?: unknown }).meta
   if (!meta || typeof meta !== 'object') return null
-  const image = (meta as { image?: unknown }).image
-  return typeof image === 'string' && image.length > 0 ? image : null
+  const sources = (meta as { sources?: unknown }).sources
+  if (!Array.isArray(sources) || sources.length === 0) return null
+  const first = sources[0] as { uri?: unknown }
+  return typeof first.uri === 'string' && first.uri.length > 0 ? first.uri : null
 }
 
 async function statSafe(uri: vscode.Uri): Promise<vscode.FileStat | null> {

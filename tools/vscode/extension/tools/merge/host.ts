@@ -63,13 +63,18 @@ export async function openMergePanel(
       try {
         const bytes = await vscode.workspace.fs.readFile(sidecar)
         const text = new TextDecoder('utf-8').decode(bytes)
-        const json = JSON.parse(text) as { meta?: { image?: string } }
-        assertValidAtlas(json)
-        const metaImage = json?.meta?.image
-        if (typeof metaImage !== 'string' || metaImage.length === 0) {
-          throw new Error('meta.image missing')
+        const json = JSON.parse(text) as {
+          meta?: { sources?: { format?: string; uri?: string }[] }
         }
-        const imageUri = vscode.Uri.joinPath(sidecar, '..', metaImage)
+        assertValidAtlas(json)
+        // Find the PNG entry in meta.sources (merge needs PNG input today).
+        const pngSource = json?.meta?.sources?.find((s) => s.format === 'png')
+        if (!pngSource?.uri) {
+          throw new Error(
+            'meta.sources[png] missing — atlas sidecar has no PNG source for merge input',
+          )
+        }
+        const imageUri = vscode.Uri.joinPath(sidecar, '..', pngSource.uri)
         sources.push({
           uri: sidecar.toString(),
           imageUri: panel.webview.asWebviewUri(imageUri).toString(),
@@ -112,7 +117,10 @@ export async function openMergePanel(
     const pngPath = `${stripped}.png`
     const pngTarget = target.with({ path: pngPath })
     const sidecarUri = pngTarget.with({ path: `${stripped}.atlas.json` })
-    ;(sidecar as { meta: { image: string } }).meta.image = pngPath.split('/').pop() ?? 'merged.png'
+    const fileName = pngPath.split('/').pop() ?? 'merged.png'
+    ;(sidecar as { meta: { sources: { format: string; uri: string }[] } }).meta.sources = [
+      { format: 'png', uri: fileName },
+    ]
     relativizeMergeSources(sidecar as AtlasJson, sidecarUri)
     const png = new Uint8Array(pngBytes)
     const sidecarText = JSON.stringify(sidecar, null, 2) + '\n'
