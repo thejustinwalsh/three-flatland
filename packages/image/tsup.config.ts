@@ -6,6 +6,9 @@ export default defineConfig({
   entry: [
     'src/index.ts',
     'src/types.ts',
+    'src/encode.ts',
+    'src/decode.ts',
+    'src/memory.ts',
     'src/codecs/png.ts',
     'src/codecs/webp.ts',
     'src/codecs/avif.ts',
