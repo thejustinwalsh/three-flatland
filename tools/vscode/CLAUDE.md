@@ -131,6 +131,7 @@ Do NOT write raw `<button>`, `<select>`, `<input>`, `<details>` for VSCode chrom
 |---|---|
 | Top toolbar | `Toolbar` + `ToolbarButton` (icon + title) |
 | Titled section / card | `Panel` (props: `title`, `headerActions`, `bodyPadding`) |
+| Resizable splits | `Splitter` (props: `axis`, `onDrag(clientPx)`) — parent owns the size state |
 | Tabs | `Tabs` + `TabHeader` + `TabPanel` |
 | Dropdown | `CompactSelect` or `SingleSelect` + `Option` |
 | Number input | `NumberField` |
@@ -144,7 +145,17 @@ For an artboard / canvas surface (custom rendering, SVG, Three.js canvas) — ha
 
 See `tools/design-system/src/index.ts` for the full export list.
 
+### Panel layout & spacing rules
+
+- A panel that should fill its flex parent needs `style={{ flex: 1, minWidth: 0, minHeight: 0 }}` (or a stylex equivalent) — `Panel`'s shell sets `display: flex; flex-direction: column` but doesn't grow on its own. Search the merge / atlas tools for `panelFill` for the canonical idiom.
+- A panel that should be a fixed-width sidebar needs `style={{ width: <px>, flexShrink: 0 }}`.
+- Inter-panel spacing comes from `<Splitter axis="vertical" onDrag={...} />` between sibling panels — the splitter's 4px width doubles as the visual gap. **Do not** add `gap` on the parent flex container in addition; you'll get a double-gap.
+- Persist splitter widths in the Zustand store under a `splits` slice (cross-session via `localStorageStorage`). Min/max clamping is the parent's job in `onDrag`.
+- Frame thumbnails (atlas, drag preview, animation timeline) — use `computeThumbStyle()` from `@three-flatland/preview` with a fixed-size **outer chrome** (border, bg) and an **inner span** (`position: absolute; inset: 0`) carrying the bg-image + clip-path. The clip is what prevents neighboring atlas tiles from bleeding into non-square frames' letterbox margins; applying the clip to the same element as the border crops the border too.
+
 ## StyleX token discipline
+
+Invoke the **`stylex`** skill for any StyleX authoring (style creation, token definitions, theme building, migrations). It carries the full Do/Don't rules and the upstream authoring reference. The project-specific notes below are layered on top:
 
 Always import tokens from the subpath — not from the barrel:
 
@@ -259,11 +270,52 @@ After `pnpm --filter @three-flatland/vscode build`, check the printed sizes:
 
 If a tool's shell chunk balloons, search for an accidental top-level import of `@three-flatland/preview/canvas`, `three`, or `@react-three/fiber`.
 
+## Undo / redo
+
+Both tools use Zustand + zundo for in-memory undo/redo. The merge and atlas stores are the canonical references — copy their middleware shape when adding a third tool.
+
+### Required pattern
+
+```ts
+create<State>()(
+  temporal(
+    persist(
+      persist(
+        (set) => ({ /* state + actions */ }),
+        { name: 'fl-<tool>-prefs',   storage: createJSONStorage(() => localStorageStorage),  partialize: prefsOnly },
+      ),
+      {   name: 'fl-<tool>-session', storage: createJSONStorage(() => webviewStorage),       partialize: sessionOnly },
+    ),
+    {
+      partialize: (s) => ({ /* only the document slice */ }),
+      limit: 50–100,
+      equality: shallowContentEqual,   // NOT reference equality
+      handleSet: debounce(handleSet, 100),
+    },
+  ),
+)
+```
+
+### Rules
+
+- **Partialize zundo to the document slice only.** UI / selection / mode / hover / save-status are NOT undoable. The merge store tracks `sources, knobs, outputFileName`; the atlas store tracks `rects, animations`.
+- **Equality must compare CONTENT, not references.** Setters return fresh objects/arrays even when content is identical (clicking the dropdown's already-selected value, blurring a rename input unchanged). Reference equality pushes spurious history entries; users undo 5+ times for a single edit. Implement a per-field shallow content compare — see `mergeStore.ts:knobsEqual / sourcesEqual` and `atlasStore.ts:rectsEqual / animationsEqual`.
+- **Debounce `handleSet` by 100 ms (trailing edge).** Burst sets (NumberField drag, hot-key repeat) coalesce into one history entry. 100 ms is below human undo-reaction latency; isolated actions don't notice the delay.
+- **Coalesce multi-set logical operations into a single `set()` call.** Example: renaming a frame must update both `rects` (the rect's `name`) and `animations` (every animation's `frames[]` referencing the old name). Two consecutive setters = two history entries; users have to press undo twice with a flashing mid-state. Atlas exposes `applyMulti(rectsUpdater, animsUpdater)` for this. Add a similar action when a new tool needs it.
+- **Provide a `loadInit` / `loadFromInit` action that does setState + `temporal.getState().clear()`.** File loads, bridge re-init, persist rehydrate are all "not user actions"; their entries in the undo stack would force the user to walk back through them before they reach their own edits. The action should also reconcile any persisted session state with the freshly loaded document — clear `selectedIds`, null out a stale `activeAnimation` whose name doesn't exist in the new animations map, etc. Otherwise persisted UI state from a previous session points at vanished entities and downstream handlers silently no-op.
+- **Cmd/Ctrl+Z and Cmd/Ctrl+Shift+Z hotkeys** mount once at App level via `useEffect` + `window.addEventListener('keydown', …)`. Skip when focus is in an `INPUT` / `TEXTAREA` / `contentEditable` so native input undo still works.
+- **Toolbar undo/redo buttons** subscribe to `useStore(useFooStore.temporal)` and read `pastStates.length` / `futureStates.length` for `canUndo`/`canRedo`. Reactive disabled state.
+
 ## State persistence
 
-Use `webviewStorage` (`webview/state/webviewStorage.ts`) as the Zustand `persist` storage adapter. It wraps VSCode's `acquireVsCodeApi().getState/setState` so state survives panel reloads and tab focus loss (when `retainContextWhenHidden: true`). State is lost when the panel is disposed.
+Two Zustand `persist` storage adapters available — pick by lifetime:
 
-For undo/redo, layer `zundo` on top. See `webview/atlas/atlasStore.ts` and `webview/merge/mergeStore.ts`.
+- **`localStorageStorage`** (`webview/state/localStorage.ts`) — survives panel close, panel reopen, and VSCode restart. Use for cross-session prefs (knobs, splitter widths, view options).
+- **`webviewStorage`** (`webview/state/webviewStorage.ts`) — wraps `acquireVsCodeApi().getState/setState`. Survives panel reload and tab-focus loss (with `retainContextWhenHidden: false`), lost on panel close. Use for in-session document state (sources, renames, selection, active mode).
+
+Layer two `persist` middlewares in one Zustand store with different `name` + `storage` + `partialize`. Both stores in the codebase use this pattern; copy it. **Always include `onRehydrateStorage` (or a custom `merge`) that re-derives any computed state and reconciles persisted refs with current data** (see merge tool's `deriveOver`, atlas tool's `merge` for selectedIds).
+
+`retainContextWhenHidden` MUST be `false` on every tool — `true` parks every hidden tab's webview in memory and scales badly with multiple open panels. Persistence is the right answer; the storage adapters above cover everything.
 
 ## `package.json` contributes reference
 
@@ -277,7 +329,8 @@ For undo/redo, layer `zundo` on top. See `webview/atlas/atlasStore.ts` and `webv
 
 - **Never** `git add -A` / `git add .` — this branch has WIP across many packages. Stage by exact path.
 - `bridge.on()` returns an unsubscribe function, not a Disposable. There is no `bridge.on(…).dispose()`.
-- `retainContextWhenHidden: true` is the default on all panels here. Flipping it to `false` resets all webview state on tab focus loss — use `webviewStorage` instead of fighting it.
+- `retainContextWhenHidden: false` is the standard. Hidden tabs dispose the webview (memory wins); state survives via `webviewStorage` + `localStorageStorage` rehydrate. Don't flip to `true`.
+- VSCode Element Lit hosts: outside CSS overrides shadow CSS. If you `display: flex` a Lit host (e.g. `vscode-tabs`), you also need to re-assert `[hidden] { display: none }` on the same host or its inactive subtree won't hide. See `tools/design-system/CLAUDE.md` for the full gotcha list.
 - Vite auto-discovers `webview/<tool>/index.html` — no `vite.config.ts` edit needed.
 - `composeToolHtml` may return a placeholder HTML page if the bundle is missing (not built yet). Run `pnpm --filter @three-flatland/vscode build` first.
 - `crossorigin` attributes are stripped from the HTML by `composeToolHtml` — don't rely on them.
