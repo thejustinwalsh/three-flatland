@@ -424,16 +424,29 @@ const s = stylex.create({
     minWidth: 0,
     flex: 1,
   },
+  // Outer chrome — fixed 28×28 box with border and checker bg. Stays
+  // uniform across all rows regardless of frame aspect ratio. The
+  // clipped image goes in a child element so border + box don't get
+  // cropped along with the bg-image.
   thumb: {
     width: 28,
     height: 28,
     flex: '0 0 auto',
     backgroundColor: 'rgba(0, 0, 0, 0.25)',
-    backgroundRepeat: 'no-repeat',
     borderWidth: 1,
     borderStyle: 'solid',
     borderColor: vscode.panelBorder,
     borderRadius: radius.sm,
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  // Inner layer that carries the background-image + clip-path. Filling
+  // the outer box via inset: 0; clip-path then crops the bg-image to
+  // exactly the rect's letterbox area without affecting the chrome.
+  thumbInner: {
+    position: 'absolute',
+    inset: 0,
+    backgroundRepeat: 'no-repeat',
     imageRendering: 'pixelated',
   },
   thumbDraggable: {
@@ -2553,16 +2566,20 @@ function FrameRow({
           {thumbBg ? (
             <span
               aria-hidden="true"
-              {...stylex.props(
-                s.thumb,
-                s.thumbBg(thumbBg.bgImage, thumbBg.bgSize, thumbBg.bgPos, thumbBg.clip),
-                rect.name != null && s.thumbDraggable,
-              )}
+              {...stylex.props(s.thumb, rect.name != null && s.thumbDraggable)}
               onPointerDown={(e) => {
                 if (e.button !== 0 || !rect.name) return
                 handlers.onStartFrameDrag(rect, e)
               }}
-            />
+            >
+              <span
+                aria-hidden="true"
+                {...stylex.props(
+                  s.thumbInner,
+                  s.thumbBg(thumbBg.bgImage, thumbBg.bgSize, thumbBg.bgPos, thumbBg.clip),
+                )}
+              />
+            </span>
           ) : (
             <span aria-hidden="true" {...stylex.props(s.thumb)} />
           )}
