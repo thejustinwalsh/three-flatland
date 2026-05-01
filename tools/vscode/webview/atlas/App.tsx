@@ -36,6 +36,7 @@ import {
   InfoPanel,
   RectOverlay,
   canvasBackgroundStyle,
+  computeThumbStyle,
   createAnimationStore,
   frameIndexToGroupIndex,
   groupCells,
@@ -202,46 +203,10 @@ function trimAlphaBbox(
   return { x: minX, y: minY, w: maxX - minX + 1, h: maxY - minY + 1 }
 }
 
-/**
- * CSS background props for a sprite-sheet thumbnail. Renders the rect's
- * (or trimmed bbox's) pixels centered inside a `boxW × boxH` element via
- * `background-image` + `background-size` + `background-position`. The
- * source image loads once (browser caches the URL); each thumb just
- * scales/offsets the same image.
- *
- * `clip` is a CSS `clip-path` that crops the box to the exact letterbox
- * area where the frame is rendered — without it, non-square frames
- * (tall trees, wide banners) show neighboring atlas tiles in the
- * letterbox margins because the bg image is the whole atlas scaled.
- */
-function thumbStyle(
-  imageUri: string,
-  imageW: number,
-  imageH: number,
-  rect: { x: number; y: number; w: number; h: number },
-  boxW: number,
-  boxH: number,
-): { bgImage: string; bgSize: string; bgPos: string; clip: string } {
-  const scale = Math.min(boxW / rect.w, boxH / rect.h)
-  const displayW = imageW * scale
-  const displayH = imageH * scale
-  const fitW = rect.w * scale
-  const fitH = rect.h * scale
-  const padX = (boxW - fitW) / 2
-  const padY = (boxH - fitH) / 2
-  const offsetX = -rect.x * scale + padX
-  const offsetY = -rect.y * scale + padY
-  // clip-path inset(top right bottom left) — keep only the rect's
-  // letterbox area inside the thumb box, hide the bleed strips on
-  // either side / top-bottom.
-  const clip = `inset(${padY}px ${padX}px ${padY}px ${padX}px)`
-  return {
-    bgImage: `url("${imageUri}")`,
-    bgSize: `${displayW}px ${displayH}px`,
-    bgPos: `${offsetX}px ${offsetY}px`,
-    clip,
-  }
-}
+// Re-exported helper from `@three-flatland/preview` so atlas, drag
+// preview, and animation timeline all share the same letterbox-clip
+// math. See `tools/preview/src/thumbStyle.ts` for the technique.
+const thumbStyle = computeThumbStyle
 
 /**
  * Find the position of the last "boundary" in a name — either a

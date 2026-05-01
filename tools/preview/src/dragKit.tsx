@@ -13,6 +13,7 @@ import * as stylex from '@stylexjs/stylex'
 import { vscode } from '@three-flatland/design-system/tokens/vscode-theme.stylex'
 import { radius } from '@three-flatland/design-system/tokens/radius.stylex'
 import { z } from '@three-flatland/design-system/tokens/z.stylex'
+import { computeThumbStyle } from './thumbStyle'
 
 /** Where the drag started — drives the floating element's border tint. */
 export type DragSourceKind = 'frames-panel' | 'canvas-rect' | 'timeline-cell'
@@ -232,8 +233,14 @@ const s = stylex.create({
     borderStyle: 'solid',
     borderRadius: radius.sm,
     backgroundColor: vscode.bg,
-    backgroundRepeat: 'no-repeat',
     boxShadow: '0 4px 12px rgba(0, 0, 0, 0.5)',
+    overflow: 'hidden',
+  },
+  cellInner: {
+    position: 'absolute',
+    inset: 0,
+    backgroundRepeat: 'no-repeat',
+    imageRendering: 'pixelated',
   },
   countBadge: {
     position: 'absolute',
@@ -276,11 +283,7 @@ function DragLayer() {
       aria-hidden="true"
     >
       {visible.map((f, i) => {
-        const scale = Math.min(CELL_SIZE / f.w, CELL_SIZE / f.h)
-        const bgW = atlasSize.w * scale
-        const bgH = atlasSize.h * scale
-        const offX = (CELL_SIZE - f.w * scale) / 2 - f.x * scale
-        const offY = (CELL_SIZE - f.h * scale) / 2 - f.y * scale
+        const t = computeThumbStyle(atlasImageUri, atlasSize.w, atlasSize.h, f, CELL_SIZE, CELL_SIZE)
         return (
           <div
             key={`${f.name}-${i}`}
@@ -288,14 +291,22 @@ function DragLayer() {
             style={{
               left: i * STACK_OFFSET,
               borderColor: SOURCE_BORDER[payload.kind],
-              backgroundImage: `url(${atlasImageUri})`,
-              backgroundSize: `${bgW}px ${bgH}px`,
-              backgroundPosition: `${offX}px ${offY}px`,
               // Leftmost on top so the playback order reads naturally
               // (first frame in front, later frames peek behind it).
               zIndex: visible.length - i,
             }}
-          />
+          >
+            <span
+              aria-hidden="true"
+              {...stylex.props(s.cellInner)}
+              style={{
+                backgroundImage: t.bgImage,
+                backgroundSize: t.bgSize,
+                backgroundPosition: t.bgPos,
+                clipPath: t.clip,
+              }}
+            />
+          </div>
         )
       })}
       {total > 1 ? (
