@@ -1,7 +1,7 @@
 import { defineConfig } from 'tsup'
 
 export default defineConfig({
-  entry: ['src/index.ts', 'src/types.ts', 'src/codecs/png.ts'],
+  entry: ['src/index.ts', 'src/types.ts', 'src/codecs/png.ts', 'src/codecs/webp.ts'],
   format: ['esm'],
   dts: true,
   sourcemap: true,
