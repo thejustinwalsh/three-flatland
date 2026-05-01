@@ -15,6 +15,7 @@ export default defineConfig({
     'src/codecs/ktx2.ts',
     'src/encode.node.ts',
     'src/node.ts',
+    'src/cli.ts',
   ],
   format: ['esm'],
   dts: true,

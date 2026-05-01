@@ -1,4 +1,4 @@
-import type { EncodeFormat, GpuMemoryEstimate } from './types'
+import type { EncodeFormat, GpuMemoryEstimate } from './types.js'
 
 export interface SourceShape {
   width: number

@@ -1,5 +1,5 @@
-import { decode, init as initDecode } from '@jsquash/png/decode'
-import encode, { init as initEncode } from '@jsquash/png/encode'
+import { decode, init as initDecode } from '@jsquash/png/decode.js'
+import encode, { init as initEncode } from '@jsquash/png/encode.js'
 
 let wasmReady: Promise<void> | null = null
 

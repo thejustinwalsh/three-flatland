@@ -1,8 +1,8 @@
-import type { ImageEncodeOptions } from './types'
-import { encodePng } from './codecs/png'
-import { encodeWebp } from './codecs/webp'
-import { encodeAvif } from './codecs/avif'
-import { encodeKtx2 } from './codecs/ktx2'
+import type { ImageEncodeOptions } from './types.js'
+import { encodePng } from './codecs/png.js'
+import { encodeWebp } from './codecs/webp.js'
+import { encodeAvif } from './codecs/avif.js'
+import { encodeKtx2 } from './codecs/ktx2.js'
 
 export async function encodeImage(pixels: ImageData, opts: ImageEncodeOptions): Promise<Uint8Array> {
   switch (opts.format) {

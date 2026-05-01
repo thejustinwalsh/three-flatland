@@ -1,5 +1,5 @@
-import decode, { init as initDecode } from '@jsquash/webp/decode'
-import encode, { init as initEncode } from '@jsquash/webp/encode'
+import decode, { init as initDecode } from '@jsquash/webp/decode.js'
+import encode, { init as initEncode } from '@jsquash/webp/encode.js'
 
 export interface WebpOptions {
   quality?: number
