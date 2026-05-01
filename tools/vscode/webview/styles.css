@@ -80,19 +80,19 @@ vscode-tab-panel > * {
 }
 
 /*
- * <vscode-collapsible> is `display: block` on its host. When mounted
- * inside a flex-column container that wants the accordion to fill the
- * remaining height, the host needs to participate in flex layout and
- * pass through height to its slotted content. Same outside-CSS pattern
- * as <vscode-tabs>: claim flex sizing, become a column, let the slot
- * children grow.
+ * <vscode-collapsible> is `display: block` by default — correct for the
+ * common case where multiple collapsibles stack inside a flex-column
+ * Panel body (atlas frames panel). Don't override globally — that gave
+ * every collapsible flex: 1 1 auto and caused them to claim equal
+ * shares of available height, opening big gaps between groups.
+ *
+ * Where a single collapsible needs to fill its parent (e.g. merge
+ * MergedView's Animations panel), apply the flex sizing inline via the
+ * Lit element's `style` prop on that specific instance.
+ *
+ * The `[hidden]` rule has to live outside the shadow because outside
+ * CSS overrides shadow CSS for host styling.
  */
-vscode-collapsible {
-  display: flex;
-  flex-direction: column;
-  flex: 1 1 auto;
-  min-height: 0;
-}
 vscode-collapsible[hidden] {
   display: none;
 }
