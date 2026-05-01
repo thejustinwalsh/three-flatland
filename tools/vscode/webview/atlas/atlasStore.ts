@@ -154,7 +154,22 @@ export const useAtlasStore = create<AtlasStoreState>()(
 
           loadFromInit: (rects, animations) => {
             // Replace state AND clear history — file load should not be undoable.
-            useAtlasStore.setState({ rects, animations })
+            // Also reset session-scoped state that won't make sense against a
+            // new sidecar: selection refers to old rect ids, and a persisted
+            // activeAnimation name from a previous session would point at an
+            // animation that doesn't exist in the new file (silent no-op when
+            // the user later tries to interact with it).
+            const current = useAtlasStore.getState()
+            const validActive =
+              current.activeAnimation && animations[current.activeAnimation]
+                ? current.activeAnimation
+                : null
+            useAtlasStore.setState({
+              rects,
+              animations,
+              activeAnimation: validActive,
+              selectedIds: new Set<string>(),
+            })
             useAtlasStore.temporal.getState().clear()
           },
 

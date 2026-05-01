@@ -2040,21 +2040,6 @@ export function App() {
                 pipVisible={prefs.animPipVisible}
                 onTogglePipVisible={() => prefsStore.set({ animPipVisible: !prefs.animPipVisible })}
                 activeIsEmpty={activeAnim != null && activeAnim.frames.length === 0}
-                onDropFrames={(names) => {
-                  // Same logic as the timeline drop — append to the
-                  // active anim if there is one, otherwise create a
-                  // new animation from the dropped frames. This path
-                  // catches drops onto the header bar when the drawer
-                  // is collapsed (timeline isn't mounted as a target).
-                  if (activeAnimation) {
-                    const end = activeAnim ? activeAnim.frames.length : 0
-                    handleInsertFramesIntoActiveAnim(end, names)
-                  } else {
-                    handleCreateAnimationFromFrames(names)
-                  }
-                  // Auto-expand so the user immediately sees the result.
-                  if (!prefs.animDrawerExpanded) prefsStore.set({ animDrawerExpanded: true })
-                }}
               />
             }
             body={(density) => (
@@ -2090,12 +2075,16 @@ export function App() {
                 onClearHighlight={() => setManualAnimHighlight(false)}
                 onChangeHold={handleChangeHold}
                 onDropFrames={(insertIndex, names) => {
-                  // No active animation yet → auto-create one with the
-                  // dropped frames; deducing a name from their shared
-                  // prefix(es). Otherwise insert into the active anim
-                  // at the cursor's projected gap (insertIndex).
-                  if (activeAnimation) handleInsertFramesIntoActiveAnim(insertIndex, names)
-                  else handleCreateAnimationFromFrames(names)
+                  // Insert into the active anim at the cursor's projected
+                  // gap if there is one. Otherwise (or if activeAnimation
+                  // points at a name that no longer exists in the current
+                  // animations map — e.g. a stale value persisted from a
+                  // previous panel session), create a new animation.
+                  if (activeAnimation && animations[activeAnimation]) {
+                    handleInsertFramesIntoActiveAnim(insertIndex, names)
+                  } else {
+                    handleCreateAnimationFromFrames(names)
+                  }
                 }}
                 onReorderGroup={handleReorderGroup}
                 events={activeAnim?.events}
