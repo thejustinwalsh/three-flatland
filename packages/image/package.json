@@ -33,7 +33,7 @@
   },
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
-  "files": ["dist"],
+  "files": ["dist", "vendor"],
   "sideEffects": false,
   "scripts": {
     "build": "tsup",
