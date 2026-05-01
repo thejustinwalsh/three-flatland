@@ -13,6 +13,8 @@ export default defineConfig({
     'src/codecs/webp.ts',
     'src/codecs/avif.ts',
     'src/codecs/ktx2.ts',
+    'src/encode.node.ts',
+    'src/node.ts',
   ],
   format: ['esm'],
   dts: true,
