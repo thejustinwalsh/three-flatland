@@ -854,31 +854,22 @@ export function App() {
     return m
   }, [rects])
 
-  // Track whether we've already seeded the store from an init payload
-  // (window.__FL_ATLAS__ or bridge atlas/init) so the two paths can't
-  // stomp each other or push duplicate undo history entries.
+  // Track whether the bridge has already seeded the store. A second
+  // atlas/init (e.g. on dev/reload) would otherwise stomp any local
+  // edits the user made between mount and the late re-fire.
   const didLoadRef = useRef(false)
 
   useEffect(() => {
     dumpThemeTokens()
 
-    // Seed the store from the host-injected payload synchronously on
-    // mount. loadFromInit replaces both rects and animations atomically
-    // and clears undo history so the file-load isn't undoable.
-    const p0 = window.__FL_ATLAS__
-    if (p0 && !didLoadRef.current) {
-      didLoadRef.current = true
-      atlasActions.loadFromInit(p0.rects ? [...p0.rects] : [], p0.animations ? { ...p0.animations } : {})
-    }
-
+    // The host injects `window.__FL_ATLAS__ = { imageUri, fileName }`
+    // for the image src — but the sidecar contents (rects, animations)
+    // come via the bridge `atlas/init` handshake below, which is the
+    // sole authority for document state.
     const bridge = createClientBridge()
     bridgeRef.current = bridge
     const off = bridge.on<InitPayload>('atlas/init', (p) => {
       setPayload(p)
-      // Only seed once. When the host pre-injected window.__FL_ATLAS__,
-      // the mount effect above already called loadFromInit; a late
-      // bridge fire would otherwise stomp any local edits the user
-      // made between mount and the handshake completing.
       if (!didLoadRef.current) {
         didLoadRef.current = true
         atlasActions.loadFromInit(
