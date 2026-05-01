@@ -203,7 +203,11 @@ export function MergedView() {
           </div>
           {animationCount > 0 && (
             <div {...stylex.props(s.sideAccordion)}>
-              <Collapsible title="Animations" open>
+              <Collapsible
+                title="Animations"
+                open
+                style={{ display: 'flex', flexDirection: 'column', flex: '1 1 auto', minHeight: 0 }}
+              >
                 <ul {...stylex.props(s.animList)}>
                   {Object.entries(animations).map(([name, anim]) => (
                     <li key={name} {...stylex.props(s.animItem)}>

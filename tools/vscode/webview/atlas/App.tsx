@@ -230,21 +230,69 @@ function thumbStyle(
 }
 
 /**
- * Returns the prefix portion of a `<prefix>_<index>` name. Rects without
- * the suffix (or no name at all) return null and end up in the "Unnamed"
- * group.
+ * Find the position of the last "boundary" in a name — either a
+ * delimiter char (`_` or `-`) or a case transition (lowercase or digit
+ * followed by uppercase). Used to split a name into a group prefix +
+ * variant suffix. Returns the index of the boundary character (the
+ * first char of the variant), or -1 if no boundary is found.
+ *
+ * Examples:
+ *   walk_0       → 5 (split at `_`, prefix `walk`, variant `0`)
+ *   tree_left    → 5 (split at `_`, prefix `tree`, variant `left`)
+ *   tree_hit_left → 9 (split at the LAST `_`, prefix `tree_hit`)
+ *   walkLeft     → 4 (camelCase, prefix `walk`, variant `Left`)
+ *   WalkBackLeft → 8 (last camel boundary, prefix `WalkBack`)
+ *   tree-hit-left → 9 (kebab, prefix `tree-hit`)
+ *   tree         → -1 (no boundary)
+ */
+function lastBoundary(name: string): number {
+  let last = -1
+  for (let i = 1; i < name.length; i++) {
+    const c = name.charCodeAt(i)
+    const prev = name.charCodeAt(i - 1)
+    // Underscore or hyphen as explicit delimiter.
+    if (c === 0x5f /* _ */ || c === 0x2d /* - */) {
+      last = i
+      continue
+    }
+    // Case boundary: prev is lowercase letter or digit, c is uppercase letter.
+    const prevIsLowerAlnum =
+      (prev >= 0x61 && prev <= 0x7a) /* a-z */ || (prev >= 0x30 && prev <= 0x39) /* 0-9 */
+    const cIsUpper = c >= 0x41 && c <= 0x5a /* A-Z */
+    if (prevIsLowerAlnum && cIsUpper) last = i
+  }
+  return last
+}
+
+/**
+ * Returns the group prefix for a name — everything before the last
+ * boundary. Names without a boundary (single-word like `tree`, or
+ * empty) return null and end up ungrouped.
  */
 function groupKey(name: string | undefined): string | null {
   if (!name) return null
-  const m = /^(.+)_\d+$/.exec(name)
-  return m ? m[1]! : null
+  const split = lastBoundary(name)
+  if (split < 0) return null
+  const c = name.charCodeAt(split)
+  // Delimiter chars are NOT part of either side; case-boundary chars
+  // belong to the variant.
+  if (c === 0x5f /* _ */ || c === 0x2d /* - */) return name.slice(0, split)
+  return name.slice(0, split)
 }
 
-/** Trailing numeric index from a `<prefix>_<index>` name, or 0 if absent. */
-function indexFromName(name: string | undefined): number {
-  if (!name) return 0
-  const m = /_(\d+)$/.exec(name)
-  return m ? Number(m[1]) : 0
+/**
+ * Variant suffix used for sort-within-group. Numeric variants sort
+ * numerically (so `walk_2` comes before `walk_10`); non-numeric
+ * variants sort lexicographically.
+ */
+function variantOf(name: string | undefined): { num: number | null; text: string } {
+  if (!name) return { num: null, text: '' }
+  const split = lastBoundary(name)
+  if (split < 0) return { num: null, text: name }
+  const c = name.charCodeAt(split)
+  const text = c === 0x5f /* _ */ || c === 0x2d /* - */ ? name.slice(split + 1) : name.slice(split)
+  const num = /^\d+$/.test(text) ? Number(text) : null
+  return { num, text }
 }
 
 type FrameGroup = { prefix: string; rects: Rect[] }
@@ -266,7 +314,16 @@ function groupRectsByPrefix(rects: readonly Rect[]): { named: FrameGroup[]; sing
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([prefix, rs]) => ({
       prefix,
-      rects: rs.slice().sort((a, b) => indexFromName(a.name) - indexFromName(b.name)),
+      rects: rs.slice().sort((a, b) => {
+        const va = variantOf(a.name)
+        const vb = variantOf(b.name)
+        // Numeric variants first, sorted numerically; mixed groups put
+        // numerics before text. Pure-text groups sort lexicographically.
+        if (va.num !== null && vb.num !== null) return va.num - vb.num
+        if (va.num !== null) return -1
+        if (vb.num !== null) return 1
+        return va.text.localeCompare(vb.text)
+      }),
     }))
   return { named, singles }
 }
