@@ -4,10 +4,20 @@ import { CompactSelect, Icon, NumberField } from '@three-flatland/design-system'
 import { vscode } from '@three-flatland/design-system/tokens/vscode-theme.stylex'
 import { space } from '@three-flatland/design-system/tokens/space.stylex'
 import { radius } from '@three-flatland/design-system/tokens/radius.stylex'
+import { useDragTarget } from './dragKit'
 
 export type AnimationDrawerHeaderProps = {
   expanded: boolean
   onToggleExpanded(): void
+  /**
+   * Optional drop target. When the user drags frames from the panel /
+   * canvas onto the header bar, this fires with the dropped frame
+   * names. Used to seed a new animation (or append to the active one)
+   * when the drawer is collapsed and the timeline isn't mounted as a
+   * drop target. Implementations typically also auto-expand the
+   * drawer so the user can immediately see/edit the result.
+   */
+  onDropFrames?(frameNames: readonly string[]): void
   /** Animation names in the current sidecar. May be empty. */
   animationNames: readonly string[]
   /** Currently selected animation, or null when none exists. */
@@ -180,10 +190,24 @@ export function AnimationDrawerHeader(props: AnimationDrawerHeaderProps) {
     onChangeFps, onChangeLoop, onChangePingPong,
     pipVisible, onTogglePipVisible,
     activeIsEmpty = false,
+    onDropFrames,
   } = props
 
   const hasActive = activeAnimation != null
   const [renameDraft, setRenameDraft] = useState<string | null>(null)
+
+  // The header itself is also a drop target so the user can drag
+  // frames into the drawer when it's collapsed (the timeline isn't
+  // mounted in that state). On drop, the parent typically creates a
+  // new animation from the frames (or appends to the active one) and
+  // auto-expands the drawer so the result is immediately visible.
+  const dropTarget = useDragTarget({
+    accept: ['frames-panel', 'canvas-rect'],
+    onDrop: (payload) => {
+      if (!onDropFrames || payload.frameNames.length === 0) return
+      onDropFrames(payload.frameNames)
+    },
+  })
 
   const onRenameKey = (e: ReactKeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
@@ -197,7 +221,12 @@ export function AnimationDrawerHeader(props: AnimationDrawerHeaderProps) {
   }
 
   return (
-    <div {...stylex.props(s.bar)}>
+    <div
+      {...stylex.props(s.bar)}
+      onPointerEnter={dropTarget.onPointerEnter}
+      onPointerLeave={dropTarget.onPointerLeave}
+      onPointerUp={dropTarget.onPointerUp}
+    >
       <button
         type="button"
         {...stylex.props(s.chevBtn)}
