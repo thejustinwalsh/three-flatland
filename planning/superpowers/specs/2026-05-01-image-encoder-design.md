@@ -279,6 +279,7 @@ All three call sites (webview, host, CLI) hit the same codec WASM. No duplicated
 ## 6. Risks
 
 1. **BasisU stock latency** — addressed by the explicit measurement gate before phase 2. Path B is pre-planned, not reactive.
+   **Measured 2026-05-01:** 8558ms for 2048² ETC1S+mipmaps quality 128 (stock BinomialLLC `basis_encoder.wasm` v1_50_0_2). Status: TRIGGER PATH B (exceeded 5000ms threshold by 3558ms).
 2. **WASM in webview CSP** — needs `wasm-unsafe-eval`; existing tools already set this. Test gate item 5 catches regressions.
 3. **AVIF in Node via @jsquash** — historically had gaps; verify current state during phase-1 codec wiring.
 4. **Worker_threads + WASM init** — known pattern (Skia work); init per-worker, keep warm.
