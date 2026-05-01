@@ -4,7 +4,7 @@ import { computeMerge, type MergeSource } from './merge'
 
 function makeSource(alias: string, frames: Record<string, [number, number, number, number]>): MergeSource {
   const json: AtlasJson = {
-    meta: { app: 'x', version: '1', image: `${alias}.png`, size: { w: 64, h: 64 }, scale: '1' },
+    meta: { app: 'x', version: '1', sources: [{ format: 'png' as const, uri: `${alias}.png` }], size: { w: 64, h: 64 }, scale: '1' },
     frames: Object.fromEntries(
       Object.entries(frames).map(([n, [x, y, w, h]]) => [
         n,
@@ -75,7 +75,7 @@ describe('computeMerge', () => {
         meta: {
           app: 'x',
           version: '1',
-          image: 'a.png',
+          sources: [{ format: 'png' as const, uri: 'a.png' }],
           size: { w: 64, h: 64 },
           scale: '1',
           animations: {
@@ -120,7 +120,7 @@ describe('computeMerge', () => {
         meta: {
           app: 'x',
           version: '1',
-          image: 'x.png',
+          sources: [{ format: 'png' as const, uri: 'x.png' }],
           size: { w: 64, h: 64 },
           scale: '1',
           animations: {

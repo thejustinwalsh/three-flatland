@@ -6,6 +6,13 @@ import type {
   WireAnimation,
 } from './types'
 
+function formatFromFileName(name: string): 'png' | 'webp' | 'avif' | 'ktx2' {
+  const lastDot = name.lastIndexOf('.')
+  const ext = lastDot >= 0 ? name.slice(lastDot + 1).toLowerCase() : ''
+  if (ext === 'png' || ext === 'webp' || ext === 'avif' || ext === 'ktx2') return ext
+  return 'png'
+}
+
 export function buildAtlasJson(input: {
   image: { fileName: string; width: number; height: number }
   rects: readonly RectInput[]
@@ -39,7 +46,7 @@ export function buildAtlasJson(input: {
     meta: {
       app: 'fl-sprite-atlas',
       version: '1.0',
-      image: input.image.fileName,
+      sources: [{ format: formatFromFileName(input.image.fileName), uri: input.image.fileName }],
       size: { w: input.image.width, h: input.image.height },
       scale: '1',
       ...(Object.keys(animations).length > 0 ? { animations } : {}),
