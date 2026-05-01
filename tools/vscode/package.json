@@ -22,6 +22,11 @@
         "command": "threeFlatland.merge.openMergeTool",
         "title": "Merge atlases…",
         "category": "FL"
+      },
+      {
+        "command": "threeFlatland.wasmTest.open",
+        "title": "WASM Contract Test",
+        "category": "FL"
       }
     ],
     "customEditors": [
@@ -89,6 +94,7 @@
     "package": "vsce package --no-dependencies"
   },
   "dependencies": {
+    "@jsquash/webp": "catalog:",
     "@stylexjs/stylex": "catalog:",
     "@three-flatland/bridge": "workspace:*",
     "@three-flatland/design-system": "workspace:*",
