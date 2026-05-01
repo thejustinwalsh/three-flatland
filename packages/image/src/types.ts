@@ -1,0 +1,17 @@
+export type EncodeFormat = 'png' | 'webp' | 'avif' | 'ktx2'
+
+export interface ImageEncodeOptions {
+  format: EncodeFormat
+  quality?: number
+  mode?: 'lossy' | 'lossless'
+  basis?: { mode?: 'etc1s' | 'uastc'; mipmaps?: boolean; uastcLevel?: 0 | 1 | 2 | 3 | 4 }
+  alpha?: boolean
+}
+
+export interface GpuMemoryEstimate {
+  loader: 'three-default' | 'three-ktx' | 'spark'
+  gpuFormat: string
+  bytes: number
+  mipBytes?: number
+  measured?: boolean
+}
