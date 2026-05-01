@@ -2683,7 +2683,7 @@ function FramesView({
   // background props for each rect's thumbnail. Trim falls back to the
   // raw rect when the rect is fully transparent or imageData isn't ready.
   const thumbsById = useMemo(() => {
-    const m = new Map<string, { bgImage: string; bgSize: string; bgPos: string }>()
+    const m = new Map<string, { bgImage: string; bgSize: string; bgPos: string; clip: string }>()
     if (!imageUri || !imageSize) return m
     for (const r of rects) {
       const bbox = imageData ? (trimAlphaBbox(r, imageData) ?? r) : r
