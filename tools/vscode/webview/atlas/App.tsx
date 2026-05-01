@@ -208,6 +208,11 @@ function trimAlphaBbox(
  * `background-image` + `background-size` + `background-position`. The
  * source image loads once (browser caches the URL); each thumb just
  * scales/offsets the same image.
+ *
+ * `clip` is a CSS `clip-path` that crops the box to the exact letterbox
+ * area where the frame is rendered — without it, non-square frames
+ * (tall trees, wide banners) show neighboring atlas tiles in the
+ * letterbox margins because the bg image is the whole atlas scaled.
  */
 function thumbStyle(
   imageUri: string,
@@ -216,16 +221,25 @@ function thumbStyle(
   rect: { x: number; y: number; w: number; h: number },
   boxW: number,
   boxH: number,
-): { bgImage: string; bgSize: string; bgPos: string } {
+): { bgImage: string; bgSize: string; bgPos: string; clip: string } {
   const scale = Math.min(boxW / rect.w, boxH / rect.h)
   const displayW = imageW * scale
   const displayH = imageH * scale
-  const offsetX = -rect.x * scale + (boxW - rect.w * scale) / 2
-  const offsetY = -rect.y * scale + (boxH - rect.h * scale) / 2
+  const fitW = rect.w * scale
+  const fitH = rect.h * scale
+  const padX = (boxW - fitW) / 2
+  const padY = (boxH - fitH) / 2
+  const offsetX = -rect.x * scale + padX
+  const offsetY = -rect.y * scale + padY
+  // clip-path inset(top right bottom left) — keep only the rect's
+  // letterbox area inside the thumb box, hide the bleed strips on
+  // either side / top-bottom.
+  const clip = `inset(${padY}px ${padX}px ${padY}px ${padX}px)`
   return {
     bgImage: `url("${imageUri}")`,
     bgSize: `${displayW}px ${displayH}px`,
     bgPos: `${offsetX}px ${offsetY}px`,
+    clip,
   }
 }
 
@@ -438,10 +452,12 @@ const s = stylex.create({
     bgImage: string,
     bgSize: string,
     bgPos: string,
+    clip: string,
   ) => ({
     backgroundImage: bgImage,
     backgroundSize: bgSize,
     backgroundPosition: bgPos,
+    clipPath: clip,
   }),
   frameItemSelected: {
     backgroundColor: vscode.listActiveSelectionBg,
@@ -2499,7 +2515,7 @@ function FrameRow({
   editing: boolean
   handlers: FrameRowHandlers
   /** Pre-computed thumb background props, or null while no source image. */
-  thumbBg: { bgImage: string; bgSize: string; bgPos: string } | null
+  thumbBg: { bgImage: string; bgSize: string; bgPos: string; clip: string } | null
   /** When set, paints folder-selection chrome (gradient bg + accent stripe). */
   folderHighlight: FolderHighlight | null
   /** Reduced opacity when another folder is the active full-set selection. */
@@ -2539,7 +2555,7 @@ function FrameRow({
               aria-hidden="true"
               {...stylex.props(
                 s.thumb,
-                s.thumbBg(thumbBg.bgImage, thumbBg.bgSize, thumbBg.bgPos),
+                s.thumbBg(thumbBg.bgImage, thumbBg.bgSize, thumbBg.bgPos, thumbBg.clip),
                 rect.name != null && s.thumbDraggable,
               )}
               onPointerDown={(e) => {
