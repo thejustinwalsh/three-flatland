@@ -1,30 +1,34 @@
 import { decode, init as initDecode } from '@jsquash/png/decode'
 import encode, { init as initEncode } from '@jsquash/png/encode'
-import { readFileSync } from 'node:fs'
-import { join, dirname } from 'node:path'
-import { fileURLToPath } from 'node:url'
 
 let wasmReady: Promise<void> | null = null
+
+function isNode(): boolean {
+  return typeof process !== 'undefined' && process.release?.name === 'node'
+}
+
+async function loadWasmFromDisk(relPath: string): Promise<WebAssembly.Module> {
+  // Node-only path. The dynamic imports keep `node:*` out of browser bundles.
+  const [{ readFileSync }, { join, dirname }, { fileURLToPath }] = await Promise.all([
+    import('node:fs'),
+    import('node:path'),
+    import('node:url'),
+  ])
+  const here = dirname(fileURLToPath(import.meta.url))
+  const wasmPath = join(here, relPath)
+  const bytes = readFileSync(wasmPath)
+  return new WebAssembly.Module(bytes)
+}
 
 function ensureWasm(): Promise<void> {
   if (wasmReady) return wasmReady
   wasmReady = (async () => {
-    // In Node (vitest), import.meta.url in the WASM loader points to a
-    // transformed virtual path that fetch() cannot resolve.  Pre-load the
-    // .wasm file from disk and compile it to a WebAssembly.Module, then
-    // hand the same module to both init() helpers (they share the
-    // squoosh_png.js singleton, so only one compile is actually needed).
-    if (typeof process !== 'undefined' && process.release?.name === 'node') {
-      const __dir = dirname(fileURLToPath(import.meta.url))
-      const wasmPath = join(
-        __dir,
-        '../../node_modules/@jsquash/png/codec/pkg/squoosh_png_bg.wasm',
-      )
-      const wasmBytes = readFileSync(wasmPath)
-      const wasmModule = new WebAssembly.Module(wasmBytes)
-      await initDecode(wasmModule)
-      await initEncode(wasmModule)
-    }
+    if (!isNode()) return // browser: @jsquash's default init via fetch() works
+    const wasmModule = await loadWasmFromDisk(
+      '../../node_modules/@jsquash/png/codec/pkg/squoosh_png_bg.wasm',
+    )
+    await initDecode(wasmModule)
+    await initEncode(wasmModule)
   })()
   return wasmReady
 }
