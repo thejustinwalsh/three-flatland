@@ -10,7 +10,7 @@ import {
   type Texture,
 } from 'three'
 import { MeshBasicNodeMaterial } from 'three/webgpu'
-import { texture, textureLevel, uv, select, uniform, mix, vec3, vec4, dot } from 'three/tsl'
+import { texture, textureLevel, uv, screenUV, select, uniform, mix, vec3, vec4, dot } from 'three/tsl'
 import { type ImageSource } from './ThreeLayer'
 
 export type { ImageSource }
@@ -264,7 +264,13 @@ function CompareScene({
     const bRGB = mix(bBase.rgb, grey, loadingNode.mul(0.75))
     const b = vec4(bRGB, bBase.a)
 
-    material.colorNode = select(uv().x.lessThan(splitUNode), a, b)
+    // Split decision uses screenUV (canvas-space), NOT uv() (geometry-relative).
+    // This keeps the shader split aligned with the HTML slider's screen-X
+    // regardless of letterbox / pillarbox / pan / zoom — the slider sits at
+    // `splitU * canvasWidth` and the shader splits at `screenUV.x === splitU`,
+    // so they always agree. Texture sampling still uses uv() so the image is
+    // mapped to the geometry correctly; only the SPLIT decision is screen-space.
+    material.colorNode = select(screenUV.x.lessThan(splitUNode), a, b)
     material.needsUpdate = true
   }, [primaryTex, compareTex, splitUNode, mipLevelBNode, loadingNode, material])
 
@@ -320,9 +326,11 @@ function CompareScene({
  * renders two textures — `imageSource` (primary/left) and `compareImageSource`
  * (secondary/right) — separated by a vertical split at `splitU` (0..1).
  *
- * The split is implemented as a TSL `select(uv().x.lessThan(splitU), a, b)`
- * node expression, where `splitU` is a uniform mutated in-place so slider
- * ticks don't rebuild the shader graph.
+ * The split is implemented as a TSL `select(screenUV.x.lessThan(splitU), a, b)`
+ * node expression — using `screenUV` (canvas-space) rather than `uv()`
+ * (geometry-relative) so the split always aligns with the HTML slider's
+ * screen-X regardless of letterbox / pan / zoom. `splitU` is a uniform
+ * mutated in-place so slider ticks don't rebuild the shader graph.
  *
  * `mipLevelB` selects the mip level for the compare texture via `textureLevel()`.
  */
