@@ -107,11 +107,18 @@ export function CompareSliderOverlay({ className, handleContent = '‖' }: Compa
     window.addEventListener('pointercancel', up)
   }
 
+  // Merge the StyleX-emitted className with the consumer-provided one. Spreading
+  // {...stylex.props(...)} AND passing className={className} produces duplicate
+  // className attrs at JSX, which esbuild rejects. Pull the StyleX result first
+  // and concatenate manually.
+  const hitAreaProps = stylex.props(styles.hitArea)
+  const mergedClass = [hitAreaProps.className, className].filter(Boolean).join(' ')
+
   return (
     <div
       ref={containerRef}
-      {...stylex.props(styles.hitArea)}
-      className={className}
+      {...hitAreaProps}
+      className={mergedClass || undefined}
       onPointerDown={startDrag}
     >
       <div {...stylex.props(styles.line)} style={{ left: `${splitU * 100}%` }} />

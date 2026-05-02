@@ -68,12 +68,16 @@ function useOriginalTexture(image: ImageData | null): THREE.Texture | null {
 
 function useEncodedTexture(setEncodedMipCount: (count: number) => void): THREE.Texture | null {
   const encodedBytes = useEncodeStore((s) => s.encodedBytes)
-  const format = useEncodeStore((s) => s.format)
+  // Use encodedFormat (the format the bytes were ACTUALLY produced with),
+  // NOT the doc-slice format. They diverge during in-flight re-encodes:
+  // the user can flip format mid-encode, and we'd otherwise feed stale
+  // bytes to the wrong decoder. See encodeStore.ts on `encodedFormat`.
+  const encodedFormat = useEncodeStore((s) => s.encodedFormat)
   const [tex, setTex] = useState<THREE.Texture | null>(null)
   const reqIdRef = useRef(0)
 
   useEffect(() => {
-    if (!encodedBytes || !format) {
+    if (!encodedBytes || !encodedFormat) {
       setTex((prev) => { prev?.dispose(); return null })
       return
     }
@@ -83,7 +87,7 @@ function useEncodedTexture(setEncodedMipCount: (count: number) => void): THREE.T
     void (async () => {
       try {
         let next: THREE.Texture
-        if (format === 'ktx2') {
+        if (encodedFormat === 'ktx2') {
           // Throwaway renderer — only needed for detectSupport(); the
           // CompressedTexture produced by parse() is renderer-independent.
           const probeRenderer = new THREE.WebGLRenderer()
@@ -108,7 +112,7 @@ function useEncodedTexture(setEncodedMipCount: (count: number) => void): THREE.T
             probeRenderer.dispose()
           }
         } else {
-          const image = await decodeImage(encodedBytes, format)
+          const image = await decodeImage(encodedBytes, encodedFormat)
           next = imageDataToTexture(image)
           setEncodedMipCount(1)
         }
@@ -123,7 +127,7 @@ function useEncodedTexture(setEncodedMipCount: (count: number) => void): THREE.T
     })()
 
     return () => { cancelled = true }
-  }, [encodedBytes, format, setEncodedMipCount])
+  }, [encodedBytes, encodedFormat, setEncodedMipCount])
 
   // Dispose on unmount
   // eslint-disable-next-line react-hooks/exhaustive-deps

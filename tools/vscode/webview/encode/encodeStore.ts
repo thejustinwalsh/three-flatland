@@ -2,6 +2,7 @@ import { create, useStore } from 'zustand'
 import { temporal } from 'zundo'
 import type { TemporalState } from 'zundo'
 import { createJSONStorage, persist } from 'zustand/middleware'
+import type { EncodeFormat } from '@three-flatland/image'
 import { localStorageStorage, webviewStorage } from '../state'
 
 // ─── Slice types ─────────────────────────────────────────────────────────────
@@ -36,6 +37,17 @@ interface RuntimeSlice {
   sourceBytes: Uint8Array | null
   sourceImage: ImageData | null
   encodedBytes: Uint8Array | null
+  // Format the encodedBytes were produced with. Tracked separately from the
+  // doc-slice `format` because a user can flip `format` while a slow encode
+  // is still in flight — the texture-decode hook in ComparePreview must use
+  // the format the bytes were ACTUALLY encoded with, not the doc-slice one
+  // (otherwise we hand WebP bytes to KTX2Loader and get "Missing KTX 2.0
+  // identifier" errors during the in-flight window).
+  //
+  // Wider than DocSlice['format'] because @three-flatland/image's EncodeFormat
+  // includes 'png' too — keeping the type aligned with what encodeImage()
+  // actually emits avoids a cast at the pipeline assignment site.
+  encodedFormat: EncodeFormat | null
   encodedImage: ImageData | null  // null when format=ktx2 (no decode support)
   encodedSize: number
   isEncoding: boolean
@@ -118,6 +130,7 @@ export const useEncodeStore = create<EncodeStoreState>()(
           sourceBytes: null,
           sourceImage: null,
           encodedBytes: null,
+          encodedFormat: null,
           encodedImage: null,
           encodedSize: 0,
           isEncoding: false,
@@ -157,6 +170,7 @@ export const useEncodeStore = create<EncodeStoreState>()(
               mode,
               // Reset encoded output whenever a new source arrives.
               encodedBytes: null,
+              encodedFormat: null,
               encodedImage: null,
               encodedSize: 0,
               isEncoding: false,

@@ -39,8 +39,15 @@ async function runEncode(): Promise<void> {
       decoded = await decodeImage(encoded, opts.format)
       if (useEncodeStore.getState().encodeReqId !== reqId) return
     }
+    // Pair the bytes with the format that produced them. Consumers (the
+    // texture-decode hook in ComparePreview) MUST read encodedFormat —
+    // not the doc-slice `format` — because the user can flip format
+    // mid-encode and we'd otherwise hand stale-format bytes to the wrong
+    // decoder (e.g., WebP bytes to KTX2Loader → "Missing KTX 2.0
+    // identifier").
     state.setRuntimeFields({
       encodedBytes: encoded,
+      encodedFormat: opts.format,
       encodedImage: decoded,
       encodedSize: encoded.length,
       isEncoding: false,
