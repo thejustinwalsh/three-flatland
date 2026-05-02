@@ -200,9 +200,14 @@ const html = `<!doctype html>
       ],
     })
 
-    // Layout presets keyed by name. fcose is compound-aware and avoids
-    // overlap; dagre is the directional-flow fallback.
-    const layouts = {
+    // ----- Layouts -----
+    // hybrid (default for file views): dagre lays out each cluster's interior
+    //   (tree shape preserved), then fcose runs on a meta-graph of clusters
+    //   only, so cluster *positions* relax without disturbing internals.
+    // fcose: relaxed compound-aware, full graph.
+    // dagre: directional, ignores compound boundaries (overlap-prone).
+    // cose:  classic force layout (used by overview).
+    const presetLayouts = {
       fcose: {
         name: 'fcose',
         quality: 'default',
@@ -213,9 +218,7 @@ const html = `<!doctype html>
         edgeElasticity: 0.45,
         nestingFactor: 0.1,
         gravity: 0.25,
-        gravityRange: 3.8,
         gravityCompound: 1.0,
-        gravityRangeCompound: 1.5,
         numIter: 2500,
         tile: true,
         packComponents: true,
@@ -225,15 +228,122 @@ const html = `<!doctype html>
       dagre: { name: 'dagre', rankDir: 'LR', nodeSep: 24, rankSep: 80, edgeSep: 8, animate: false },
       cose:  { name: 'cose',  animate: false, idealEdgeLength: 180, nodeRepulsion: 12000, padding: 40 },
     }
-    const order = ${isOverview ? `['cose', 'fcose']` : `['fcose', 'dagre']`}
+
+    // Two-tier layout: dagre per cluster + fcose between clusters.
+    // Children's relative positions stay (so each package keeps its tree),
+    // and clusters get re-placed so they don't overlap.
+    function runHybridLayout() {
+      const parents = cy.nodes(':parent').toArray()
+      if (parents.length === 0) {
+        cy.layout(presetLayouts.dagre).run()
+        return
+      }
+
+      cy.batch(() => {
+        // Step 1: per-cluster dagre on the children + intra-cluster edges.
+        for (const p of parents) {
+          const children = p.children()
+          if (children.length < 2) continue
+          const intraEdges = children.edgesWith(children)
+          children.union(intraEdges).layout({
+            name: 'dagre',
+            rankDir: 'LR',
+            nodeSep: 14,
+            rankSep: 32,
+            edgeSep: 6,
+            animate: false,
+          }).run()
+        }
+      })
+
+      // Step 2: build a meta-graph (one node per cluster, sized to its bbox)
+      // and run fcose on it to find non-overlapping cluster positions.
+      const meta = []
+      const oldCenters = new Map()
+      const padding = 40
+      for (const p of parents) {
+        const bb = p.boundingBox({ includeChildren: true, includeLabels: true })
+        oldCenters.set(p.id(), { x: (bb.x1 + bb.x2) / 2, y: (bb.y1 + bb.y2) / 2 })
+        meta.push({
+          group: 'nodes',
+          data: { id: p.id(), width: bb.w + padding, height: bb.h + padding },
+          position: { x: (bb.x1 + bb.x2) / 2, y: (bb.y1 + bb.y2) / 2 },
+        })
+      }
+      // Aggregate cross-cluster edges with weights so fcose pulls related
+      // clusters together.
+      const pairWeight = new Map()
+      cy.edges().forEach((e) => {
+        const sp = e.source().parent().id()
+        const tp = e.target().parent().id()
+        if (!sp || !tp || sp === tp) return
+        const k = sp < tp ? sp + '|' + tp : tp + '|' + sp
+        pairWeight.set(k, (pairWeight.get(k) || 0) + 1)
+      })
+      let mid = 0
+      for (const [k, w] of pairWeight) {
+        const [s, t] = k.split('|')
+        meta.push({ group: 'edges', data: { id: 'm' + (mid++), source: s, target: t, weight: w } })
+      }
+
+      const metaCy = cytoscape({
+        headless: true,
+        styleEnabled: true,
+        elements: meta,
+        style: [
+          {
+            selector: 'node',
+            style: { width: 'data(width)', height: 'data(height)', shape: 'rectangle' },
+          },
+        ],
+      })
+
+      metaCy.layout({
+        name: 'fcose',
+        animate: false,
+        randomize: false,
+        quality: 'proof',
+        nodeRepulsion: 50000,
+        idealEdgeLength: (e) => 80 + Math.sqrt(e.data('weight')) * 40,
+        gravity: 0.05,
+        numIter: 2000,
+        tile: false,
+        packComponents: true,
+      }).run()
+
+      // Step 3: translate each cluster's children by the delta from the
+      // pre-relax cluster center to the post-relax one.
+      cy.batch(() => {
+        for (const p of parents) {
+          const oldC = oldCenters.get(p.id())
+          const newC = metaCy.$id(p.id()).position()
+          const dx = newC.x - oldC.x
+          const dy = newC.y - oldC.y
+          if (dx === 0 && dy === 0) continue
+          p.descendants().forEach((d) => {
+            if (d.isParent()) return
+            const pos = d.position()
+            d.position({ x: pos.x + dx, y: pos.y + dy })
+          })
+        }
+      })
+
+      metaCy.destroy()
+    }
+
+    const order = ${isOverview ? `['cose', 'fcose']` : `['hybrid', 'fcose', 'dagre']`}
     let layoutIdx = 0
     const labelEl = document.getElementById('layout-name')
 
     function runLayout(animate = false) {
       const name = order[layoutIdx]
       labelEl.textContent = name
-      const cfg = { ...layouts[name], animate, animationDuration: 400 }
-      cy.layout(cfg).run()
+      if (name === 'hybrid') {
+        runHybridLayout()
+        if (animate) cy.fit(undefined, 30)
+      } else {
+        cy.layout({ ...presetLayouts[name], animate, animationDuration: 400 }).run()
+      }
     }
 
     runLayout(false)
