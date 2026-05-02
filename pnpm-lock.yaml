@@ -1354,6 +1354,9 @@ importers:
       '@three-flatland/design-system':
         specifier: workspace:*
         version: link:../design-system
+      '@three-flatland/image':
+        specifier: workspace:*
+        version: link:../../packages/image
       '@three-flatland/io':
         specifier: workspace:*
         version: link:../io
