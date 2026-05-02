@@ -508,11 +508,26 @@ Append a "Compare-slider + Panel chrome addendum" section to `2026-05-02-image-e
 
 Phase 2.1.1 wired KTX2 visual preview into the encode tool by leaning on three's stock `KTX2Loader` and the `basis_transcoder.{js,wasm}` shipped under `three/examples/jsm/libs/basis/`. That worked as a stopgap for one tool, one preview pane.
 
-But this loader work is **not just for the encode tool**. It's the loader stack the entire three-flatland runtime uses to ingest images. The contract we're building toward:
+But this loader work is **not just for the encode tool**. It's the loader stack the three-flatland runtime uses to ingest images. The contract we're building toward:
 
-> "Hand any image format (PNG / WebP / AVIF / KTX2 / future spark.js KTX2-X) to a three-flatland loader and it produces the right kind of three.js texture, lazy-loading whatever wasm + loader code it needs."
+> "Hand a three-flatland loader any image format (PNG / WebP / AVIF / KTX2 / future spark.js KTX2-X) and it produces the right three.js texture. Native browser decoders handle the formats they support; wasm only ships for the formats they don't (KTX2 today, future GPU-compressed variants tomorrow)."
 
-That's the design target. The encode tool happens to be the first consumer, but `SpriteSheetLoader`, `TextureLoader`, future PBR-material loaders, and animation-aware atlas loaders all compose against this base. **Nothing here lives on an island.** Phase 2.1.2 is the foundation for the entire three-flatland image-loading pipeline.
+The encode tool happens to be the first consumer, but `SpriteSheetLoader`, `TextureLoader`, future PBR-material loaders, and animation-aware atlas loaders all compose against this base.
+
+### Browser-native first, wasm only when necessary
+
+Critical scope constraint: **the runtime is browser-only.** Modern browsers natively decode PNG, WebP, and AVIF via `<img>` / `createImageBitmap` / `THREE.ImageBitmapLoader`. We do NOT ship wasm decoders for those formats in the runtime — that would duplicate the browser's built-in capability and bloat every page that uses three-flatland.
+
+The wasm-based decoders in `@three-flatland/image` exist for **tools** (encode tool, CLI bakers) where we need byte-level control or run outside a browser context. Those decoders stay where they are; runtime loaders stay light.
+
+That leaves exactly one format in the runtime that requires custom code: **KTX2**. Browsers can't decode it (it's a GPU container), and three's stock `KTX2Loader` is the only path today. We fork it (with our zig-built transcoder) so we own the binary, can extend the loader (spark.js variants, custom mip strategies), and don't drift with three's upstream.
+
+### Scope summary
+
+- **Build**: `BaseImageLoader<T>` abstraction, `Ktx2Loader` subclass, our zig-built `basis_transcoder.wasm`, lazy registry that defaults non-KTX2 to three's `ImageBitmapLoader` / `TextureLoader`
+- **Don't build**: `WebpLoader`, `AvifLoader`, `PngLoader` — browsers handle those
+- **Compose**: three-flatland's `SpriteSheetLoader` / `TextureLoader` route via the registry; KTX2 goes to our loader, everything else to native browser paths
+- **Encode-tool side**: ComparePreview swaps to our `Ktx2Loader`. The tool's WebP/AVIF preview path keeps using `@three-flatland/image`'s wasm decoders because the encoder side already loads them — no duplicate bloat in the tool, the wasm is already paid-for
 
 Two specific compromises Phase 2.1.1 inherited that we close out here:
 
@@ -617,14 +632,12 @@ export class LoaderRegistry {
 }
 
 // Default registry — opinionated for three-flatland's stack.
-// Loaders are LAZY: each registration adds a thin proxy that imports the
-// real loader on first parse() call, so the bundle stays small until
-// the format is actually encountered.
+// Ktx2Loader is lazy (a thin proxy that imports the real loader + wasm on
+// first parse()). The native bitmap fallback is eager (just wraps
+// THREE.ImageBitmapLoader, no wasm) and matches everything else.
 export const defaultLoaderRegistry = new LoaderRegistry()
-defaultLoaderRegistry.register(lazyKtx2Loader())
-defaultLoaderRegistry.register(lazyAvifLoader())
-defaultLoaderRegistry.register(lazyWebpLoader())
-defaultLoaderRegistry.register(lazyPngLoader())
+defaultLoaderRegistry.register(lazyKtx2Loader())          // matches *.ktx2
+defaultLoaderRegistry.register(new NativeBitmapLoader())  // matches png/webp/avif
 ```
 
 ### Compose into three-flatland's existing loaders
@@ -646,18 +659,17 @@ return texture
 
 Result: `SpriteSheetLoader` and `TextureLoader` accept any of the four formats transparently. KTX2 atlases just work. The wasm dependencies are pulled in ONLY for the formats actually encountered.
 
-### The full Phase 2.1.2 subclass list
+### The Phase 2.1.2 subclass list (deliberately narrow)
 
-- `Ktx2Loader<CompressedTexture>` — KTX2 / Basis Universal, lazy-loads our transcoder
-- `WebpLoader<CanvasTexture>` — wraps `@three-flatland/image`'s `decodeImage`, lazy-loads jsquash WebP
-- `AvifLoader<CanvasTexture>` — wraps `decodeImage`, lazy-loads jsquash AVIF
-- `PngLoader<CanvasTexture>` — wraps `decodeImage`, lazy-loads jsquash PNG (or three's default for browser-native decoding when available)
+- `Ktx2Loader<CompressedTexture>` — KTX2 / Basis Universal, lazy-loads our transcoder. **The only custom subclass we ship.**
+
+For PNG / WebP / AVIF, the registry returns a thin `NativeBitmapLoader` that wraps `THREE.ImageBitmapLoader` (or `TextureLoader` as a fallback). It contains no wasm — just the native browser decode path with a Texture wrapping the result. Counted as a "subclass" only because it satisfies the `BaseImageLoader` interface; conceptually it's the no-op fallback that says "browser handles this."
 
 ### Future subclasses (NOT in this phase, but the abstraction supports them)
 
 - `SparkKtx2Loader<CompressedTexture>` — when spark.js lands, register a higher-priority loader for KTX2 that uses spark.js's GPU transcoding path; falls through to our Ktx2Loader on unsupported devices
-- `AnimatedSpriteLoader<SpriteSheet>` — loads animated sprites from any of the four image formats with sidecar atlas JSON
-- `PbrTextureSetLoader<{ albedo, normal, mr }>` — loads multi-image PBR materials with shared format detection
+- `AnimatedSpriteLoader<SpriteSheet>` — loads animated sprites with sidecar atlas JSON; format-agnostic via the registry
+- `PbrTextureSetLoader<{ albedo, normal, mr }>` — loads multi-image PBR materials, registry handles per-channel format dispatch
 
 ### `Ktx2Loader` — forked from three.js
 
