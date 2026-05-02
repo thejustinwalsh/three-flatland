@@ -61,7 +61,7 @@ function useOriginalTexture(image: ImageData | null): THREE.Texture | null {
 
 // ─── Encoded texture hook ─────────────────────────────────────────────────────
 
-function useEncodedTexture(): THREE.Texture | null {
+function useEncodedTexture(setEncodedMipCount: (count: number) => void): THREE.Texture | null {
   const encodedBytes = useEncodeStore((s) => s.encodedBytes)
   const format = useEncodeStore((s) => s.format)
   const [tex, setTex] = useState<THREE.Texture | null>(null)
@@ -94,12 +94,15 @@ function useEncodedTexture(): THREE.Texture | null {
               // eslint-disable-next-line @typescript-eslint/no-unsafe-call
               loader.parse(buf, resolve, reject)
             })
+            const compressed = next as THREE.CompressedTexture
+            setEncodedMipCount(compressed.mipmaps?.length ?? 1)
           } finally {
             probeRenderer.dispose()
           }
         } else {
           const image = await decodeImage(encodedBytes, format)
           next = imageDataToTexture(image)
+          setEncodedMipCount(1)
         }
         if (cancelled || reqId !== reqIdRef.current) {
           next.dispose()
@@ -112,7 +115,7 @@ function useEncodedTexture(): THREE.Texture | null {
     })()
 
     return () => { cancelled = true }
-  }, [encodedBytes, format])
+  }, [encodedBytes, format, setEncodedMipCount])
 
   // Dispose on unmount
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -125,8 +128,11 @@ function useEncodedTexture(): THREE.Texture | null {
 
 export function ComparePreview() {
   const sourceImage = useEncodeStore((s) => s.sourceImage)
+  const splitU = useEncodeStore((s) => s.compareSplitU)
+  const setCompareSplitU = useEncodeStore((s) => s.setCompareSplitU)
+  const setEncodedMipCount = useEncodeStore((s) => s.setEncodedMipCount)
   const original = useOriginalTexture(sourceImage)
-  const encoded = useEncodedTexture()
+  const encoded = useEncodedTexture(setEncodedMipCount)
 
   if (!sourceImage || !original) {
     return <div style={{ padding: 24, opacity: 0.6 }}>loading…</div>
@@ -145,7 +151,8 @@ export function ComparePreview() {
       imageUri={null}
       imageSource={imageSource}
       compareImageSource={compareImageSource}
-      initialSplitU={0.5}
+      initialSplitU={splitU}
+      onSplitChange={setCompareSplitU}
       backgroundStyle="checker"
     >
       <CompareSliderOverlay />
