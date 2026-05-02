@@ -17,7 +17,9 @@ pub const encoder_files: []const []const u8 = &.{
     "basisu_etc.cpp",
     "basisu_frontend.cpp",
     "basisu_gpu_texture.cpp",
-    "basisu_kernels_sse.cpp", // entirely guarded by #if BASISU_SUPPORT_SSE — no-op with SSE=0
+    // basisu_kernels_sse.cpp is dropped on wasm; basisu_kernels_wasm.cpp provides the
+    // _sse41-suffixed kernels that callers expect.
+    "basisu_kernels_wasm.cpp", // wasm_simd128 kernels, gated by BASISU_SUPPORT_WASM_SIMD
     "basisu_pvrtc1_4.cpp",
     "basisu_resample_filters.cpp",
     "basisu_resampler.cpp",
@@ -41,4 +43,5 @@ pub const include_paths: []const []const u8 = &.{
     "vendor/basisu/encoder",
     "vendor/basisu/transcoder",
     "vendor/basisu/zstd",
+    "vendor/basisu_patches", // sse_to_wasm.h, basisu_simd_compat.h
 };
