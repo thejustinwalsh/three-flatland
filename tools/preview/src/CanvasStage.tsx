@@ -138,6 +138,11 @@ export type CanvasStageProps = {
    * localStorage). Ignored when compareImageSource is null.
    */
   onSplitChange?: (next: number) => void
+  /**
+   * Mip level to sample for the compare texture. Forwarded to CompareLayer
+   * when compareImageSource is set. Default 0 (full resolution).
+   */
+  mipLevelB?: number
 }
 
 // ---------------------------------------------------------------------------
@@ -471,6 +476,7 @@ export function CanvasStage({
   compareImageSource,
   initialSplitU,
   onSplitChange,
+  mipLevelB,
 }: CanvasStageProps) {
   const [baseViewport, setBaseViewport] = useState<Omit<Viewport, 'zoom' | 'panX' | 'panY'> | null>(null)
   const [imageData, setImageData] = useState<ImageData | null>(null)
@@ -1022,6 +1028,7 @@ export function CanvasStage({
           imageSource={effectiveImageSource}
           compareImageSource={compareImageSource}
           splitU={splitU}
+          mipLevelB={mipLevelB ?? 0}
           background={threeLayerBackground}
           fitMargin={fitMargin}
           zoom={zoom}

@@ -131,6 +131,7 @@ export function ComparePreview() {
   const splitU = useEncodeStore((s) => s.compareSplitU)
   const setCompareSplitU = useEncodeStore((s) => s.setCompareSplitU)
   const setEncodedMipCount = useEncodeStore((s) => s.setEncodedMipCount)
+  const mipLevel = useEncodeStore((s) => s.mipLevel)
   const original = useOriginalTexture(sourceImage)
   const encoded = useEncodedTexture(setEncodedMipCount)
 
@@ -153,6 +154,7 @@ export function ComparePreview() {
       compareImageSource={compareImageSource}
       initialSplitU={splitU}
       onSplitChange={setCompareSplitU}
+      mipLevelB={mipLevel}
       backgroundStyle="checker"
     >
       <CompareSliderOverlay />

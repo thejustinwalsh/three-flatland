@@ -3,12 +3,14 @@ import { Canvas, useLoader, useThree } from '@react-three/fiber/webgpu'
 import {
   LinearFilter,
   NearestFilter,
+  NearestMipmapNearestFilter,
   TextureLoader,
+  type CompressedTexture,
   type OrthographicCamera as ThreeOrthographicCamera,
   type Texture,
 } from 'three'
 import { MeshBasicNodeMaterial } from 'three/webgpu'
-import { texture, uv, select, uniform } from 'three/tsl'
+import { texture, textureLevel, uv, select, uniform } from 'three/tsl'
 import { type ImageSource } from './ThreeLayer'
 
 export type { ImageSource }
@@ -34,13 +36,9 @@ export type CompareLayerProps = {
   pixelArt?: boolean
   /**
    * KTX2 mip-level inspection. When the compare texture has a mip chain,
-   * sampling level B at this LOD lets the user inspect each downsampled
-   * resolution. Default 0 (full resolution).
-   *
-   * NOT YET WIRED in T5 — the prop is defined so consumers can start
-   * passing it, but the shader still samples at the default LOD. T11
-   * adds the textureLod() path. We accept the prop now so T11 doesn't
-   * have to break the public surface.
+   * the shader samples the compare side at this LOD via `textureLevel()`,
+   * letting the user inspect each downsampled resolution. Default 0
+   * (full resolution). Ignored for non-mipmapped textures.
    */
   mipLevelB?: number
   /**
@@ -141,6 +139,7 @@ function CompareScene({
   primary,
   compare,
   splitU,
+  mipLevelB,
   pixelArt,
   fitMargin,
   zoom,
@@ -151,6 +150,7 @@ function CompareScene({
   primary: ImageSource
   compare: ImageSource | null
   splitU: number
+  mipLevelB: number
   pixelArt: boolean
   fitMargin: number
   zoom: number
@@ -187,8 +187,16 @@ function CompareScene({
       primaryTex.needsUpdate = true
     }
     if (compareTex) {
-      compareTex.minFilter = filter
-      compareTex.magFilter = filter
+      // If the compare texture has a mip chain (CompressedTexture from KTX2),
+      // use NearestMipmapNearestFilter so textureLevel() picks each level crisply.
+      const compressed = compareTex as CompressedTexture
+      if (compressed.mipmaps && compressed.mipmaps.length > 1) {
+        compareTex.minFilter = NearestMipmapNearestFilter
+        compareTex.magFilter = NearestFilter
+      } else {
+        compareTex.minFilter = filter
+        compareTex.magFilter = filter
+      }
       compareTex.needsUpdate = true
     }
   }, [primaryTex, compareTex, pixelArt])
@@ -215,15 +223,23 @@ function CompareScene({
     splitUNode.value = splitU
   }, [splitU, splitUNode])
 
+  // mipLevelB lives as a TSL uniform so LOD changes don't rebuild the node graph.
+  const mipLevelBNode = useMemo(() => uniform(0), [])
+  useEffect(() => {
+    mipLevelBNode.value = mipLevelB
+  }, [mipLevelB, mipLevelBNode])
+
   // Rebuild colorNode whenever a texture changes.
   useEffect(() => {
     if (!primaryTex) return
     const a = texture(primaryTex)
-    // Fall back to primary when no compare texture is ready yet.
-    const b = compareTex ? texture(compareTex) : a
+    // For the compare texture, sample at the selected LOD using textureLevel().
+    // For non-CompressedTextures (CanvasTexture) the uniform is 0, so the
+    // result is equivalent to texture() at full resolution.
+    const b = compareTex ? textureLevel(compareTex, uv(), mipLevelBNode) : a
     material.colorNode = select(uv().x.lessThan(splitUNode), a, b)
     material.needsUpdate = true
-  }, [primaryTex, compareTex, splitUNode, material])
+  }, [primaryTex, compareTex, splitUNode, mipLevelBNode, material])
 
   const dims = primaryTex ? resolveDims(primary, primaryTex) : null
 
@@ -281,7 +297,7 @@ function CompareScene({
  * node expression, where `splitU` is a uniform mutated in-place so slider
  * ticks don't rebuild the shader graph.
  *
- * `mipLevelB` is accepted but not yet wired (T11 adds textureLod()).
+ * `mipLevelB` selects the mip level for the compare texture via `textureLevel()`.
  */
 export function CompareLayer({
   imageSource,
@@ -295,8 +311,7 @@ export function CompareLayer({
   pixelArt = false,
   suspenseFallback = null,
   onImageReady,
-  // mipLevelB unused in T5; T11 wires it
-  mipLevelB: _mipLevelB,
+  mipLevelB = 0,
 }: CompareLayerProps) {
   if (!imageSource) {
     return <div style={{ position: 'absolute', inset: 0 }} />
@@ -318,6 +333,7 @@ export function CompareLayer({
           primary={imageSource}
           compare={compareImageSource}
           splitU={splitU}
+          mipLevelB={mipLevelB}
           pixelArt={pixelArt}
           fitMargin={fitMargin}
           zoom={zoom}
