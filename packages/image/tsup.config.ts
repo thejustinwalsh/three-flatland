@@ -13,6 +13,8 @@ export default defineConfig({
     'src/codecs/webp.ts',
     'src/codecs/avif.ts',
     'src/codecs/ktx2.ts',
+    'src/runtime/wasi-shim.ts',
+    'src/runtime/basis-loader.ts',
     'src/encode.node.ts',
     'src/node.ts',
     'src/cli.ts',
