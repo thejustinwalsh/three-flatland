@@ -51,6 +51,7 @@ int fl_basis_encode(
 #define FL_BASIS_E_BAD_INPUT     -1
 #define FL_BASIS_E_NO_INIT       -2
 #define FL_BASIS_E_ENCODE_FAIL   -3
+#define FL_BASIS_E_ALREADY_ENCODED -4
 
 #ifdef __cplusplus
 }
