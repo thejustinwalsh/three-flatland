@@ -16,10 +16,12 @@
 
 ## Subset NOT taken
 
-- Transcoder `.cpp` files (we only encode)
 - `webgl/`, examples/, tests/
-- OpenCL build path (`encoder/basisu_opencl.{cpp,h}`)
+- OpenCL build path (original `encoder/basisu_opencl.cpp` is removed; replaced by `basisu_opencl_stub.cpp`)
 - PVRTC2 sources (we only target ETC1S + UASTC)
+- Transcoder `.cpp` files were originally NOT taken in Task 1 since we only encode, but
+  `basisu_transcoder.cpp` was added in Task 3 because the encoder calls
+  `basist::basisu_transcoder_init()` at init time. See "Additional files fetched (Task 3)" below.
 
 ## Additional files fetched (Task 3)
 
