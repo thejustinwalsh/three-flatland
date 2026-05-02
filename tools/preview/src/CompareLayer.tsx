@@ -261,17 +261,21 @@ function CompareScene({
     // For non-CompressedTextures (CanvasTexture) the uniform is 0, so the
     // result is equivalent to texture() at full resolution.
     const compareSample = compareTex ? textureLevel(compareTex, uv(), mipLevelBNode) : a
-    // When loading, force compare side to use primary so the user sees the
-    // original image with the loading treatment, not the stale encoded result.
-    const bBase = select(loadingNode.equal(1), a, compareSample)
 
-    // Desaturation + dim applied only when loading (loadingNode=1).
-    // luma = dot(rgb, [0.299, 0.587, 0.114])
-    const luma = dot(bBase.rgb, vec3(0.299, 0.587, 0.114))
+    // Loading-state visualization: while a re-encode is in flight, force
+    // the right side to the primary texture and apply a desaturation +
+    // dim. Build that variant separately and `select` between the raw
+    // sample and the desat'd one — avoiding the rgb→vec3→vec4 round-trip
+    // for the non-loading case (the round-trip subtly shifts color-space
+    // metadata vs. the direct texture sample on the left side, leading to
+    // a visible "phantom" desaturation even at mix-factor 0).
+    const luma = dot(a.rgb, vec3(0.299, 0.587, 0.114))
     const grey = vec3(luma).mul(0.55)
-    // Mix from full-color (loading=0) to dim-grey (loading=1) by 0.75 strength
-    const bRGB = mix(bBase.rgb, grey, loadingNode.mul(0.75))
-    const b = vec4(bRGB, bBase.a)
+    const desatRGB = mix(a.rgb, grey, 0.75)
+    const bLoading = vec4(desatRGB, a.a)
+
+    // When loadingNode === 1 → use the desat'd primary; else → raw compareSample.
+    const b = select(loadingNode.equal(1), bLoading, compareSample)
 
     // Split decision uses screenUV (canvas-space), NOT uv() (geometry-relative).
     // This keeps the shader split aligned with the HTML slider's screen-X
