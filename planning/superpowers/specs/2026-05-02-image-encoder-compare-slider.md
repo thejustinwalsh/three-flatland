@@ -21,6 +21,27 @@ Squoosh's UX is a single image with a draggable vertical slider. To the left of 
 
 ## Design
 
+### Evaluation: existing shared primitives
+
+Before designing the compare canvas from scratch, walk the inventory in `tools/preview/src/canvas/` and `tools/design-system/`. What's reusable, what's not, and why:
+
+| Primitive | Verdict | Reasoning |
+|---|---|---|
+| `Panel` (`@three-flatland/design-system`) | **REUSE** | The chrome wrapper — all tools mount their main canvas inside `<Panel bodyPadding="none">`. Phase 2.1.1 Task 6 wraps ComparePreview in one. |
+| `Splitter` (design-system) | **SKIP** | Phase 2.1 used a Splitter to divide left/right canvases. The compare slider IS the split — vertical Splitter would be redundant chrome. |
+| `CanvasStage` (`@three-flatland/preview/canvas`) | **SKIP for v1, evaluate for v2** | Documented as single-image: "Takes exactly one `imageUri`. For multi-image scenes, do NOT mount multiple CanvasStages — build a hand-rolled SVG or HTML layout." Compare needs two textures. The CanvasStage's pan/zoom + cursor + ImageData context machinery (`useViewport`, `useCursor`, `useImageData`) is rich; rebuilding it inside ComparePreview would be wasteful. **For v2 (when we add pan/zoom)** we extend CanvasStage to optionally accept a second image source for compare mode, OR ship a sibling `CompareCanvasStage` that reuses ThreeLayer + viewport context. We file that as Phase 2.1.3 and evaluate then. |
+| `ThreeLayer` (`@three-flatland/preview/canvas`) | **EVALUATE — alignment risk** | `tools/preview/src/ThreeLayer.tsx` imports from `@react-three/fiber/webgpu` (WebGPU path); our current ComparePreview uses `@react-three/fiber` (WebGL path). The rest of the project's three.js usage is WebGPU + TSL per `CLAUDE.md`. The Phase 2.1.1 Task 1 implementer used WebGL R3F because three's `KTX2Loader` is WebGL-shaped (`detectSupport(renderer)` reads `renderer.capabilities`). Action: leave ComparePreview on WebGL R3F until Phase 2.1.2's loader fork lands; once we own the loader we can target WebGPU's compressed-texture support directly and migrate ComparePreview to `@react-three/fiber/webgpu` for project consistency. Add this to Phase 2.1.2's done-criteria. |
+| `canvasBackgroundStyle` (preview/canvas) | **REUSE** | The themed checker / gradient / solid bg helper. The compare canvas's background should match atlas's choice (currently `'gradient'` for non-pixel atlases). Apply via the Panel body or an absolutely-positioned `<div>` behind the canvas. |
+| `Viewport` type + `useViewport` / `useViewportController` | **DEFER (v2)** | Pan/zoom infrastructure. We don't have pan/zoom in v1 (out of scope). When we add it in v2 we choose between (a) extending CanvasStage and (b) reusing the Viewport / useViewport abstraction inside a new `CompareCanvasStage`. |
+| `RectOverlay` | **DEFER (later phase)** | If we ever add a "compare a region of interest" mode (e.g., zoom to a 256×256 sub-image), this is the right primitive. Out of scope for v1. |
+| `useCursor` / cursor store | **DEFER (later phase)** | Showing the cursor's pixel coords + color sample while comparing would be useful. v2+. |
+| `Toolbar` / `ToolbarButton` (design-system) | **REUSE** | Already in use in Phase 2.1's encode toolbar. Phase 2.1.1 Task 6 moves these into the Panel's `headerActions`. |
+| `CompactSelect`, `NumberField`, `Checkbox` (design-system) | **REUSE** | Already in use in `Knobs.tsx`. The mip stepper (Phase 2.1.1 Task 5) and the settings menu (Task 6) reuse these. |
+
+**Net result:** the compare canvas's core (two textures + shader split + slider HTML overlay) is genuinely not covered by existing primitives. The chrome (Panel, Toolbar, knobs, settings menu, themed background) IS covered and we use it. Pan/zoom + cursor + region-of-interest are deferred to v2 where we'll have a clearer choice between extending CanvasStage or shipping a new sibling primitive.
+
+The "custom rabbit hole" risk the user flagged is real for v2; it's NOT a concern for v1 because v1's compare-canvas surface is just a textured quad with a slider. We're not re-implementing pan/zoom or cursor handling — we're reusing every shared primitive that fits and building only the genuinely new pieces.
+
 ### Approach: single R3F canvas, two textures, shader-based split
 
 One `<Canvas>` from `@react-three/fiber`. One full-screen quad. A custom material samples either `textureA` (original) or `textureB` (encoded) based on `uv.x < splitU`. An HTML overlay paints the slider line and a draggable handle at the same `splitU`-derived screen position.
@@ -186,6 +207,58 @@ interface SessionSlice {
 `mipLevel` lives in the session slice (not zundo-tracked — undoing a mip view change is annoying, not useful). It clamps to `[0, encodedMipCount - 1]` whenever `encodedMipCount` changes (e.g. after re-encoding to a different format), reset to 0 on format change.
 
 `encodedMipCount` is read from the loaded texture: `(texture as CompressedTexture).mipmaps?.length ?? 1`.
+
+## Panel chrome + custom-editor activation
+
+The current encode tool layout is a free-floating header line above a flex body. The user-facing convention across the existing VSCode tools (atlas, merge) is: the canvas lives inside a `<Panel>` with a single-line header that owns toolbar-style controls (settings menu, format quick-pick, etc.). Atlas's `AtlasMenu.tsx` is the canonical pattern.
+
+### Wrap ComparePreview in a Panel
+
+Replace the bare `<div>` body wrapper with `<Panel bodyPadding="none">` from the design system. The canvas + slider mount inside the panel body. Panel's flex shell handles the surrounding chrome.
+
+Two header-area slots used:
+- `title` — short label like `Compare`. Drop the source filename from the panel header (the file URI shows in the editor tab via the custom-editor activation, see below).
+- `headerActions` — settings menu (gear icon) + format dropdown + mip stepper + save button, all on a single row. The toolbar stops being a separate row above the panel; it merges into the panel's header.
+
+This gives us a proper VSCode-native chrome and matches the "single-line header, no redundant filename" ask.
+
+### Settings menu
+
+Mirror atlas's `AtlasMenu.tsx`: a `vscode-icon` (gear) that pops a dropdown menu of toggles. v0 entries:
+- "Show pixel grid at 1:1" — pixel-art toggle (deferred from compare-slider out-of-scope, but make the menu entry now and gate the implementation behind a follow-up)
+- "Reset slider to center"
+- "Open save folder" — reveals the source's parent directory in VSCode's explorer
+
+The menu is the place we accumulate future polish (per-channel diff, magnifier loupe, fit modes, etc.) without bloating the toolbar.
+
+### Custom-editor activation
+
+The current encode tool is registered as an ad-hoc `vscode.commands.registerCommand` plus an explorer/context menu entry. That activation pattern is fine for "encode this PNG", but it doesn't tie the panel to the file URI — the panel lives outside VSCode's document lifecycle and the tab title is hand-set ("Encode: foo.png").
+
+We register encode as a `vscode.window.registerCustomEditorProvider` on `*.png`, `*.webp`, `*.avif`, `*.ktx2`. With `priority: "option"` on PNG (atlas remains the primary option), and `priority: "default"` on WebP/AVIF/KTX2 since nothing else handles those.
+
+Outcome:
+- The tab shows the file path automatically (no hand-set title), no need for the filename in the panel header
+- "Reopen Editor With…" surfaces the encoder in the picker
+- Right-click → "Open With" picks up the encoder for the four extensions
+- The existing `threeFlatland.encode.open` command is kept as a thin wrapper that calls `vscode.commands.executeCommand('vscode.openWith', uri, 'threeFlatland.encode')` — backwards-compatible with menu entries that already invoke it
+
+Architecturally:
+- Replace `extension/tools/encode/host.ts`'s `openEncodePanel(context, target)` with a `EncodeCustomEditorProvider` class implementing `vscode.CustomReadonlyEditorProvider<vscode.CustomDocument>` (atlas's pattern verbatim).
+- `resolveCustomEditor(document, panel)` does the work the old `openEncodePanel` did: reads bytes via `vscode.workspace.fs.readFile(document.uri)`, sets up the bridge, emits `encode/init`.
+- The command `threeFlatland.encode.open` becomes a one-liner: `vscode.commands.executeCommand('vscode.openWith', uri, EncodeCustomEditorProvider.viewType)`.
+
+### Opening encoded outputs
+
+By registering on WebP/AVIF/KTX2 too, the tool becomes the primary inspector for encoded files, not just an encoder GUI. When opened on a `.ktx2`:
+- The "source" IS the encoded file — there's no original to compare against on the left side
+- The slider and format-knobs collapse to a single-pane view (slider hidden, both shader sides sample the same texture)
+- Save is disabled (you can't encode an already-encoded file in v1; recompressing KTX2 → KTX2 is out of scope)
+- The mip stepper still works (KTX2 with mips loads as a CompressedTexture from KTX2Loader)
+
+The encode tool's UI gracefully degrades when there's no source-format-to-encoded-format pair to compare. State-machine-wise: introduce a `mode: 'encode' | 'inspect'` derived from the source extension.
+
+This requires Phase 2.1.2's transcoder + KTX2Loader fork to land first for KTX2 inspection — until then, `.ktx2` files open in inspect-mode using three's vendored loader, identical to the encode-flow's KTX2 preview path.
 
 ## Out of scope (filed for later)
 
@@ -353,21 +426,335 @@ Verify: F5, open a PNG, switch through WebP/AVIF/KTX2/UASTC modes. Each shows vi
 
 Verify: encode a 1024²+ atlas to KTX2 ETC1S+mips. The toolbar shows `Mip: 0 / 10` (or however many levels). Step through levels — the right side of the slider re-renders at each downsampled resolution. Mip 0 = full res (matches the left side). Mip max = a few pixels (the GPU's "viewed from far away" sampling).
 
-### Task 6 — Whole-repo gate + bundle size measurement
+### Task 6 — Panel chrome + settings menu + single-line header
+
+Wrap `ComparePreview` in `<Panel bodyPadding="none">` with:
+- `title="Compare"`
+- `headerActions` carrying the format dropdown, mip stepper, save button, settings menu (gear icon)
+
+Drop the dedicated `<Toolbar>` row — it merges into the panel header. The standalone filename header line is removed (the editor tab carries the file URI now via Task 7's custom-editor activation).
+
+Settings menu: a new `EncodeMenu.tsx` mirroring `webview/atlas/AtlasMenu.tsx`. v0 entries:
+- "Reset slider to center" → calls `setSplits({ compareU: 0.5 })`
+- "Open save folder" → bridge call `encode/reveal-folder` → host runs `vscode.commands.executeCommand('revealFileInOS', target)`
+- "Show pixel grid at 1:1" — checkbox; implementation deferred (gates a CSS overlay we'll add in 2.1.2 or later)
+
+### Task 7 — Custom-editor activation on .png / .webp / .avif / .ktx2
+
+Replace `extension/tools/encode/host.ts`'s `openEncodePanel(...)` with an `EncodeCustomEditorProvider` class implementing `vscode.CustomReadonlyEditorProvider<vscode.CustomDocument>`. Atlas's `extension/tools/atlas/provider.ts` is the canonical reference.
+
+`extension/tools/encode/register.ts`:
+- Register the provider via `vscode.window.registerCustomEditorProvider`
+- Reduce the existing `threeFlatland.encode.open` command to a thin wrapper that calls `vscode.commands.executeCommand('vscode.openWith', uri, EncodeCustomEditorProvider.viewType)` — keeps the explorer/context menu and command palette entries working
+
+`package.json` `contributes.customEditors` (new section):
+```json
+{
+  "viewType": "threeFlatland.encode",
+  "displayName": "FL Image Encoder",
+  "selector": [
+    { "filenamePattern": "*.png" },
+    { "filenamePattern": "*.webp" },
+    { "filenamePattern": "*.avif" },
+    { "filenamePattern": "*.ktx2" }
+  ],
+  "priority": "option"
+}
+```
+
+Use `priority: "option"` everywhere for v1 — atlas owns the default-option for PNG and the encoder is a chooser pick. We re-evaluate if WebP/AVIF/KTX2 should default-to-encoder once it stabilizes.
+
+For `.ktx2`, `.webp`, `.avif` opened directly: the tool enters **inspect mode**:
+- The source IS the encoded file — both shader sides sample the same texture
+- The slider is hidden (no point comparing identical content)
+- Format / quality knobs disabled (you can't re-encode an encoded file in v1)
+- Save disabled
+- Mip stepper still works for `.ktx2` (multiple mip levels visible in the loaded CompressedTexture)
+
+The mode is derived from the source file's extension in App's bridge handler:
+```ts
+const isInspectOnly = ['ktx2', 'webp', 'avif'].includes(ext)
+loadInit({ ..., mode: isInspectOnly ? 'inspect' : 'encode' })
+```
+
+Add `mode: 'encode' | 'inspect'` to the SessionSlice with default `'encode'`.
+
+### Task 8 — Whole-repo gate + bundle size measurement
 
 - pnpm test / build / typecheck all green
 - Encode app chunk size measured (will grow from R3F + three.js + KTX2Loader; record numbers)
 - Encode entry shell stays small (the heavy chunk is lazy-loaded)
 - Empty-commit checkpoint with measurements
 
-### Task 7 — Test gate report addendum
+### Task 9 — Test gate report addendum
 
-Append a "Compare-slider addendum" section to `2026-05-02-image-encoder-tool-gate-report.md` covering the new criteria (1–9 above), updated chunk sizes, manual verification checklist (specifically: KTX2 visual works, slider drag is smooth, splitter persists).
+Append a "Compare-slider + Panel chrome addendum" section to `2026-05-02-image-encoder-tool-gate-report.md` covering the new criteria (compare slider, mip viewer, panel chrome, custom-editor activation, inspect-mode for encoded files), updated chunk sizes, manual verification checklist.
 
 ## Done when
 
 - KTX2 visually renders behind the slider — the original 9-step manual checklist works for KTX2 too
 - Slider drag produces pixel-perfect crossover with no flicker
 - Mip stepper shows `Mip: K / N` for KTX2+mips and disabled state for everything else; stepping changes the encoded view to the chosen level
+- The compare canvas lives inside `<Panel>` with single-line header; settings menu is functional
+- Right-clicking a .ktx2/.webp/.avif file opens the encoder in inspect mode; the editor tab shows the file URI; no panel-header filename
 - Bundle sizes recorded; entry shell unchanged
 - Whole-repo green
+
+---
+
+# Phase 2.1.2 — Owned image-loader hierarchy + zig-built basis transcoder
+
+## Why
+
+Phase 2.1.1 wired KTX2 visual preview by loading three's `KTX2Loader` and `basis_transcoder.{js,wasm}` directly from `three/examples/jsm/...`. That works for the encoder's preview pane but is two compromises:
+
+1. **We don't own the transcoder binary.** The basis transcoder shipped with three is BinomialLLC's reference binary. We've already vendored the same upstream sources at `packages/image/vendor/basisu/transcoder/` (Phase 1 needed `basisu_transcoder.cpp` to satisfy the encoder's link). It's a small step to compile our own `basis_transcoder.wasm` via the existing zig build, with the same `wasm_simd128` SIMD path our encoder already enables. Net effect: one transcoder binary, one toolchain, both halves of the codec under our control.
+
+2. **We don't own the loader.** Three's `KTX2Loader` is a single-purpose three.js loader: it reads KTX2 → returns a `CompressedTexture`. As we expand the toolset (spark.js KTX2-X variants, custom mip strategies, animation-aware sprite atlases), we'll need to extend the loader's behavior — and patching three's class via prototype monkey-patching is fragile. Forking it into our own `packages/image/loaders/` is a one-time cost that pays back forever.
+
+Phase 2.1.2 is the loader infrastructure pass. It does not change user-visible behavior (the encode tool's KTX2 preview still works the same way). It changes the underlying machinery so future work has a stable surface.
+
+## Architecture
+
+```
+packages/image/
+├── src/loaders/
+│   ├── BaseImageLoader.ts        // abstract Loader<T> with fetch/cache/error handling
+│   ├── Ktx2Loader.ts             // forked from three's KTX2Loader, parameterized over our transcoder
+│   └── (future) SpriteLoader.ts, SparkKtx2Loader.ts, …
+├── vendor/basisu/transcoder/
+│   └── (already vendored in Phase 1)
+├── src/zig/
+│   └── basis_transcoder_c_api.{h,cpp}   // flat C API for the transcoder, mirroring basis_c_api.h
+└── build.zig    // adds a SECOND target — basis_transcoder_encoder is the existing one,
+                 //                          basis_transcoder is the new one
+```
+
+### `BaseImageLoader<T>` — the abstraction
+
+```ts
+// packages/image/src/loaders/BaseImageLoader.ts
+export interface LoaderRequest {
+  bytes: Uint8Array | ArrayBuffer
+  // For loaders that need a renderer / GL context (KTX2 transcoder picks
+  // GPU format from the renderer's caps), pass it through:
+  renderer?: WebGLRenderer | null
+}
+
+export interface LoaderResult<T> {
+  texture: T
+  // Loader-specific metadata that callers can read after parse.
+  meta?: Record<string, unknown>
+}
+
+export abstract class BaseImageLoader<T = unknown> {
+  abstract readonly format: string
+  abstract supports(bytes: Uint8Array): boolean
+  abstract parse(req: LoaderRequest): Promise<LoaderResult<T>>
+  // Common path-resolution helpers: fetchBytes(uri), readBytes(file), etc.
+  // Subclasses use these or skip them — base methods are utilities, not lifecycle hooks.
+}
+```
+
+The abstraction is deliberately thin. We are NOT trying to imitate three's `Loader` class hierarchy — that's tied to three's URL/manager system and assumes a Three-Renderer context. Our `BaseImageLoader` is closer to "decode bytes → produce texture-ish thing"; the renderer dependency is opt-in via `req.renderer`.
+
+Future subclasses:
+- `Ktx2Loader<CompressedTexture>` — the meat of Phase 2.1.2
+- `SpriteLoader<SpriteSheet>` — when we re-do sprite loading on this surface (future phase)
+- `SparkKtx2Loader<CompressedTexture>` — when we add spark.js's KTX2 variants
+- `WebpLoader<CanvasTexture>`, `AvifLoader<CanvasTexture>` — wrappers around `decodeImage`
+
+### `Ktx2Loader` — forked from three.js
+
+Three's `KTX2Loader` source lives at `three/examples/jsm/loaders/KTX2Loader.js` (~600 LOC of vanilla JS). The fork:
+
+1. Copy the source verbatim into `packages/image/src/loaders/Ktx2Loader.three.ts`.
+2. Convert to TypeScript (return types, parameter types, class field types — should be a couple hours).
+3. Refactor: separate the "read KTX2 container" logic from the "transcode basis blocks via the transcoder JS" logic. Three's KTX2Loader has both wired together; we want them separable so future variants can reuse the container logic.
+4. Subclass `BaseImageLoader<CompressedTexture>` so it fits our hierarchy.
+5. Replace the transcoder-JS loading path: instead of `setTranscoderPath('three/examples/jsm/libs/basis/')`, read our own JS+WASM URLs (Vite `?url` imports of the artifacts the new zig target produces).
+6. Keep the renderer-dependent format selection logic (`detectSupport(renderer)`) — this is correct and we don't need to change it.
+
+The forked loader carries an attribution comment at the top citing three.js's MIT license.
+
+### Zig basis_transcoder target
+
+The current `packages/image/build.zig` builds `basis_encoder.wasm`. We add a second target:
+
+```zig
+// build.zig (additions)
+const transcoder = b.addExecutable(.{
+    .name = "basis_transcoder",
+    .root_module = b.createModule(.{ .target = target, .optimize = optimize }),
+})
+transcoder.entry = .disabled
+transcoder.rdynamic = true
+transcoder.export_table = true
+transcoder.initial_memory = 16 * 1024 * 1024  // smaller than encoder's 32 MB
+transcoder.max_memory = 256 * 1024 * 1024
+transcoder.wasi_exec_model = .reactor
+
+// Reuse the same vendor sources, with a different subset:
+transcoder.addCSourceFiles(.{
+    .root = b.path("vendor/basisu/transcoder"),
+    .files = &transcoder_files, // hand-listed: basisu_transcoder.cpp + needed deps
+    .flags = transcoder_cxx_flags, // same simd + WASM_SIMD flags as encoder
+})
+transcoder.addCSourceFile(.{
+    .file = b.path("src/zig/basis_transcoder_c_api.cpp"),
+    .flags = transcoder_cxx_flags,
+})
+// ... include paths, linkLibCpp, etc.
+
+// wasm-opt -Oz post-link, install to vendor/basis/basis_transcoder.wasm
+// (so it sits next to basis_encoder.wasm)
+```
+
+The transcoder source is much smaller than the encoder: `basisu_transcoder.cpp` (~5k LOC) plus a few headers. Build time is fast.
+
+### `basis_transcoder_c_api.cpp` — flat API
+
+Mirrors `basis_c_api.h`'s shape. Functions:
+
+```c
+// Memory helpers — same as encoder
+void* fl_basis_transcoder_alloc(size_t bytes)
+void  fl_basis_transcoder_free(void* p)
+
+// One-shot init
+int fl_basis_transcoder_init(void)
+
+// Open a KTX2 file in memory; returns an opaque handle or null on error.
+typedef struct fl_basis_ktx2_file fl_basis_ktx2_file
+fl_basis_ktx2_file* fl_basis_ktx2_open(const uint8_t* bytes, uint32_t len)
+void                fl_basis_ktx2_close(fl_basis_ktx2_file* f)
+
+// File metadata
+uint32_t fl_basis_ktx2_width(fl_basis_ktx2_file* f)
+uint32_t fl_basis_ktx2_height(fl_basis_ktx2_file* f)
+uint32_t fl_basis_ktx2_levels(fl_basis_ktx2_file* f)
+uint32_t fl_basis_ktx2_format(fl_basis_ktx2_file* f)  // ETC1S / UASTC enum
+uint32_t fl_basis_ktx2_has_alpha(fl_basis_ktx2_file* f)
+
+// Transcode level i to a target GPU format (caller picks based on GPU caps).
+// out_ptr/out_len are filled with the output block buffer.
+// Returns 0 on success, negative error code on failure.
+int fl_basis_ktx2_transcode_level(
+  fl_basis_ktx2_file* f,
+  uint32_t level,
+  uint32_t target_format,    // ETC2_RGBA, BC7_RGBA, ASTC_4x4, RGBA8 fallback, ...
+  uint8_t** out_ptr,
+  uint32_t* out_len
+)
+```
+
+JS wrapper (`Ktx2Loader.ts`) calls these to walk a KTX2 file's mip chain, picks a format the renderer's GL caps support, and copies out the transcoded bytes into a `CompressedTexture.image` array.
+
+### Replacing three's loader in ComparePreview
+
+ComparePreview's KTX2 path currently does:
+
+```ts
+const { KTX2Loader } = await import('three/examples/jsm/loaders/KTX2Loader.js')
+const loader = new KTX2Loader().setTranscoderPath(...).detectSupport(renderer)
+const tex = await new Promise(r => loader.parse(buffer, r))
+```
+
+After Phase 2.1.2 it becomes:
+
+```ts
+import { Ktx2Loader } from '@three-flatland/image/loaders/ktx2'
+const loader = new Ktx2Loader()  // or shared module-level singleton
+const result = await loader.parse({ bytes: encodedBytes, renderer })
+const tex = result.texture
+```
+
+The implementation work in 2.1.2 is invisible to ComparePreview — just a swap of the import. The reward shows up later when we extend the loader for spark.js or animation-aware sprites.
+
+## Risks
+
+| Risk | Mitigation |
+|---|---|
+| KTX2Loader's source is non-trivial; the TS port may take longer than expected | Time-box: if the port exceeds 1 day, ship the JS source verbatim with a `.d.ts` shim and TS-port incrementally. Functional parity beats type purity here. |
+| Three updates `KTX2Loader` and we drift | Acceptable. We update from upstream when we want a specific bugfix or feature; otherwise we stay on the fork. Document the upstream rev (commit SHA at fork time) in a `LOADER_FORK.md` or in the file header. |
+| Building the transcoder doubles the wasm size users download | One-time cost (~500 KB compressed). Both binaries are lazy-loaded — encoder when the user picks an encode format, transcoder when the user opens a `.ktx2` or previews KTX2 output. The pages that don't need them don't load them. |
+| Our zig-built transcoder produces different output than three's stock transcoder | Both compile from the same upstream source rev. Output should be byte-identical for a given KTX2 input. Validate with a single-byte-equivalence test (transcode the same KTX2 with both binaries; assert the output buffer matches). If it diverges, rev pin or build flag drift is the most likely cause. |
+
+## Tasks (Phase 2.1.2)
+
+### Task 1 — Vendor and TS-port three's KTX2Loader
+
+- Copy `node_modules/three/examples/jsm/loaders/KTX2Loader.js` to `packages/image/src/loaders/Ktx2Loader.ts`
+- Add upstream attribution + license header
+- Convert to TypeScript progressively: type the public surface first (Loader API), then internals
+- Add unit tests against a small fixture KTX2 file (asserts container metadata, level count, format byte)
+- Pin the upstream three.js rev in a comment header
+
+### Task 2 — Define `BaseImageLoader<T>` abstraction
+
+- New file `packages/image/src/loaders/BaseImageLoader.ts`
+- Abstract methods: `supports(bytes)`, `parse(req)`
+- Common helpers: `fetchBytes(uri)`, `readBytes(file)`
+- Update `Ktx2Loader` to extend it
+
+### Task 3 — Add `basis_transcoder_c_api.{h,cpp}`
+
+- Header at `packages/image/src/zig/basis_transcoder_c_api.h`
+- Implementation at `packages/image/src/zig/basis_transcoder_c_api.cpp` wrapping `basisu_transcoder.cpp`'s API (open, query metadata, transcode level)
+- All exports tagged with `__attribute__((export_name(...)))`
+
+### Task 4 — Add zig basis_transcoder target
+
+- Modify `packages/image/build.zig` to add a second `addExecutable` target alongside the encoder
+- Source list `packages/image/transcoder_files.zig` (or inline) — much smaller than encoder
+- Same flag set: `-msimd128`, `BASISU_SUPPORT_WASM_SIMD=1`, `BASISU_SUPPORT_SSE=1` (so wasm SIMD path takes effect)
+- wasm-opt -Oz post-link
+- Output: `packages/image/vendor/basis/basis_transcoder.wasm`
+
+### Task 5 — JS wrapper: `runtime/transcoder-loader.ts`
+
+- Mirror `basis-loader.ts` but for the transcoder
+- Vite `?url` imports for the new wasm + the (small) JS bridge
+- WASI Proxy shim shared with `basis-loader.ts` (extract into `runtime/wasi-shim.ts` if not already shared — Phase 1's basis-loader already used the shared shim, just re-use)
+
+### Task 6 — Update Ktx2Loader to use our transcoder
+
+- Replace three's `setTranscoderPath` calls with our flat-C-API calls via the transcoder JS wrapper
+- Container parsing logic from the forked loader stays
+- Format selection (`detectSupport(renderer)`) stays
+- Result shape (`CompressedTexture` with mipmaps) stays
+
+### Task 7 — ComparePreview swap
+
+- Replace `import { KTX2Loader } from 'three/examples/jsm/loaders/KTX2Loader.js'` with `import { Ktx2Loader } from '@three-flatland/image/loaders/ktx2'`
+- Drop the Vite `?url` imports of three's `basis_transcoder.{js,wasm}` — those assets stop being emitted
+- Verify the visual output is byte-identical to the pre-2.1.2 behavior
+
+### Task 8 — Equivalence test (our transcoder vs three's)
+
+- Build both binaries, transcode the same KTX2 fixture, assert byte-equality of the transcoded RGBA output
+- One-shot test in `packages/image/src/loaders/Ktx2Loader.equivalence.test.ts`
+- Skipped by default; run when the basis transcoder vendor sources are bumped
+
+### Task 9 — Whole-repo gate + bundle size
+
+- pnpm test / build / typecheck all green
+- Inspect `dist/webview/assets/` for the new `basis_transcoder-*.wasm` (replacing three's)
+- Compare bundle sizes pre/post 2.1.2: net change should be small (one wasm out, one wasm in; both ~500 KB)
+
+### Task 10 — Test gate report
+
+- New report: `planning/superpowers/specs/2026-05-02-image-loader-fork-gate-report.md`
+- Cover: TS port quality, transcoder build success, equivalence test result, bundle deltas
+- "What's next" — Phase 2.1.3 candidates: SpriteLoader on the new base; SparkKtx2Loader subclass; pre-emptive sparkbasis support
+
+## Done when (Phase 2.1.2)
+
+- `packages/image/src/loaders/Ktx2Loader.ts` exists and is the loader ComparePreview imports
+- `BaseImageLoader<T>` abstract base exists in `packages/image/src/loaders/`
+- `packages/image/build.zig` builds two targets: `basis_encoder.wasm` AND `basis_transcoder.wasm`
+- `vendor/basis/basis_transcoder.wasm` is git-tracked (just like `basis_encoder.wasm`)
+- ComparePreview no longer imports anything from `three/examples/jsm/...`
+- Three's `basis_transcoder.{js,wasm}` no longer appear in the dist output
+- pnpm test / build / typecheck all green
+- Bundle size delta ≤ +200 KB net (likely much less, since we replace three's transcoder JS+WASM with ours)
