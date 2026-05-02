@@ -16,17 +16,22 @@ Drop-in replacement `basis_encoder.wasm` for `packages/image/vendor/basis/`, bui
 
 ## Non-goals
 
-- Threading. WASM threads (SharedArrayBuffer + Web Workers) is a much larger undertaking. SIMD alone should hit the target; if not, threads is a separate phase.
+- Threading. WASM threads (SharedArrayBuffer + Web Workers) is a much larger undertaking. SIMD-port alone should hit the target; if not, threads is a separate phase.
 - Transcoder. We only need encoding. The 80KB-ish `basisu_transcoder.cpp` and friends stay out.
 - KTX2-Zstd supercompression on the encode side (it's already optional in BasisU and we don't use it). Zstd source still needed for the encoder's internal use.
 - Embind / Emscripten / glue JS. We're explicitly leaving that toolchain.
 - Replacing other codecs (PNG/WebP/AVIF). They stay on `@jsquash`.
+- Upstreaming our SIMD port to `BinomialLLC/basis_universal`. That's a separate effort with separate review concerns; we keep our port as a local patch.
 
 ## Why pure WASI (and not Emscripten)
 
 BasisU is bytes-in / bytes-out — no DOM, no GL, no filesystem, no threading required. That's the platonic case for `wasm32-wasi`: smaller binary, faster startup, no Emscripten runtime overhead, no JS glue file. Skia couldn't go this route because it needs WebGPU/WebGL bridges; BasisU has no such surface.
 
 The downside is we lose Embind's auto-generated class bindings, so we hand-write a flat C API and rewrite `codecs/ktx2.ts` to call it. The C API is roughly 8 functions; the JS rewrite is roughly the same line count as today.
+
+## Why we are doing the SIMD port
+
+BasisU's hot loops (mipmap resampling, ETC1S quantization, UASTC packing) are hand-written SSE2/SSE4.1 intrinsics gated by `BASISU_SUPPORT_SSE`. Upstream's Emscripten build disables that flag and falls back to scalar — that is almost certainly why the stock `basis_encoder.wasm` we measured at 8.5s is slow. `clang -msimd128` will not auto-translate `_mm_*` intrinsic source to `wasm_*` instructions; intrinsics are typed against `__m128i`, not generic vectors, and the compiler treats them as opaque builtins. To get SIMD on WASM we have to add a `BASISU_SUPPORT_WASM_SIMD` code path that mirrors `BASISU_SUPPORT_SSE` using `wasm_simd128.h`. This is the load-bearing engineering of Path B; the Zig build is the smaller part.
 
 ## Layout
 
@@ -153,7 +158,8 @@ pub fn build(b: *std.Build) void {
         "-fno-exceptions", "-fno-rtti",
         "-fno-math-errno", "-fno-signed-zeros", "-ffp-contract=fast",
         "-msimd128",
-        "-DBASISU_SUPPORT_SSE=0",      // disable x86 intrinsics paths
+        "-DBASISU_SUPPORT_SSE=0",      // SSE intrinsic source paths off
+        "-DBASISU_SUPPORT_WASM_SIMD=1",// our wasm_simd128 mirror
         "-DBASISD_SUPPORT_KTX2=1",
         "-DBASISD_SUPPORT_KTX2_ZSTD=0",// no zstd supercompression at encode
         "-DNDEBUG",
@@ -186,6 +192,32 @@ Build invocation: `zig build -Doptimize=ReleaseFast`. Dev iteration: `zig build 
 
 The encoder source list lives in a separate `encoder_files.zig` file so the main `build.zig` stays readable. ~30 entries; hand-curated by mirroring upstream's `webgl/encoder/CMakeLists.txt` minus transcoder-only files.
 
+## SIMD port (SSE → wasm_simd128)
+
+Source of truth in upstream is `encoder/basisu_kernels_sse.cpp` plus inline `_mm_*` calls in `basisu_resampler.cpp`, `basisu_etc.cpp`, and `basisu_uastc_enc.cpp`. The kernels file is the bulk; the inline ones are short and incidental.
+
+**Strategy:** add a parallel implementation file `encoder/basisu_kernels_wasm.cpp` (vendored alongside, not patched into existing files) and gate it via `BASISU_SUPPORT_WASM_SIMD`. For inline `_mm_*` calls in the other encoder files, we apply minimal patches that route through a small shim header `vendor/basisu_patches/basisu_simd_compat.h` providing a uniform `bu_v128_*` API that maps to either SSE intrinsics or `wasm_simd128.h` based on the build flag. The patches are line-counted in `README.flatland.md`.
+
+**Intrinsic mapping** (the common cases — full list emerges during port):
+
+| SSE | wasm_simd128 |
+|---|---|
+| `__m128i` | `v128_t` |
+| `_mm_loadu_si128` / `_mm_storeu_si128` | `wasm_v128_load` / `wasm_v128_store` |
+| `_mm_set1_epi8/16/32` | `wasm_i8x16_splat` / `wasm_i16x8_splat` / `wasm_i32x4_splat` |
+| `_mm_add_epi*` / `_mm_sub_epi*` | `wasm_i*x*_add` / `wasm_i*x*_sub` |
+| `_mm_mullo_epi16/32` | `wasm_i16x8_mul` / `wasm_i32x4_mul` |
+| `_mm_packus_epi16` | `wasm_u8x16_narrow_i16x8` |
+| `_mm_unpacklo/hi_epi*` | `wasm_v*x*_shuffle` (constant indices) |
+| `_mm_movemask_epi8` | `wasm_i8x16_bitmask` |
+| `_mm_min/max_epu8/16` | `wasm_u8x16_min` / `wasm_u16x8_max` etc. |
+| `_mm_cmpeq_epi*` | `wasm_i*x*_eq` |
+| `_mm_shuffle_epi8` (PSHUFB) | `wasm_i8x16_swizzle` |
+
+Two SSE operations have no clean WASM equivalent: `_mm_madd_epi16` (signed 16→32 horizontal multiply-add) and certain SSE4.1 `_mm_blend_epi*` constant-mask blends. These get implemented with 2-3 instruction sequences. The kernels we expect to need them are the SAD/SSE error-metric loops in ETC1S — measurable but not pathological.
+
+**Verification:** the SIMD path must be opt-out (env `FL_BASIS_NO_SIMD=1`) so we can A/B benchmark and make sure the SIMD kernels are actually executing. A test asserts that a known fixture encoded with SIMD vs scalar produces byte-identical output (the kernels do equivalent fixed-point math; outputs must match).
+
 ## Vendoring
 
 Source goes under `packages/image/vendor/basisu/` (no submodule, no fetch step). The vendored snapshot is committed to the branch. `README.flatland.md` records:
@@ -207,20 +239,23 @@ A new round-trip vs. KTX2 test compares output bytes-equal between Path A (curre
 
 | Risk | Mitigation |
 |---|---|
-| BasisU's SIMD paths are SSE/NEON only; `-msimd128` doesn't auto-translate. | Confirmed in upstream — `basisu_resampler.cpp`, `basisu_etc.cpp` etc. have manual SSE intrinsics gated by `BASISU_SUPPORT_SSE`. We disable that path and rely on the compiler auto-vectorizing the scalar path under `-msimd128`. If the gain is insufficient, the next step is hand-porting one or two hot loops to `wasm_simd128.h`. |
+| SIMD port is larger than expected once we count the inline `_mm_*` calls outside `basisu_kernels_sse.cpp`. | The shim-header approach means we patch call-sites, not full functions. Bound the work by enumerating hits with `grep -rn '_mm_' encoder/` during the implementation plan; if it exceeds ~30 distinct call-sites in non-kernel files, we bail back to scalar in those specific functions and only port the kernels. |
+| `_mm_madd_epi16` / SSE4.1 blends have no 1:1 wasm equivalent. | Implement with 2-3 instruction sequences. Cost is real but bounded; benchmark gates it. |
+| SIMD output diverges from scalar output (different rounding in fixed-point math). | The byte-identical SIMD-vs-scalar fixture test catches this. Each ported kernel is verified before the next. |
 | Zig 0.14's wasm32-wasi C++ toolchain has surprises (e.g., libc++ fragments). | Skia already proved this works for ~1MLOC of C++ on the same toolchain. BasisU is much smaller. |
 | BasisU asserts on input edge cases that the WASI shim no-ops. | Asserts go to `fd_write(2)`. Shim returns "wrote N bytes" without doing anything; encoder thinks the assert was logged. Behavior is identical to current. |
 | Encoder calls `clock()` for timing. | Provide real `clock_time_get` impl in shim; or pass `-DBASISU_NO_TIMING`. |
-| Output size regresses vs. stock encoder. | Round-trip equivalence test gates this. Both binaries compile from the same upstream rev; output should be byte-identical when SIMD doesn't change algorithm output (which it shouldn't for ETC1S/UASTC quantization). |
+| Output size regresses vs. stock encoder. | Equivalence test gates this. With the same upstream rev and equivalent SIMD kernels, output should be byte-identical to the stock encoder for ETC1S/UASTC at fixed quality. |
 
 ## Success criteria
 
 1. `zig build -Doptimize=ReleaseFast` produces `packages/image/vendor/basis/basis_encoder.wasm`.
 2. `pnpm --filter @three-flatland/image test` green; existing 17 image tests pass without modification (only the implementation under `ktx2.ts` changes).
-3. Round-trip equivalence test: Path A and Path B produce byte-identical output on 4×4 and 64×64 RGBA fixtures, ETC1S and UASTC modes.
-4. Benchmark gate: 2048² atlas, ETC1S + mipmaps, quality 128, **< 5000ms** wall-time, single run, measured the same way as the predecessor benchmark.
-5. `vendor/basis/basis_encoder.js`, `vendor/basis/package.json`, and the BinomialLLC `vendor/basis/basis_encoder.wasm` are deleted from the branch.
-6. Docs: `vendor/basisu/README.flatland.md` records source rev + import date.
+3. **SIMD-vs-scalar equivalence:** byte-identical output for ETC1S and UASTC on 4×4 and 64×64 fixtures, with `FL_BASIS_NO_SIMD=1` toggling the comparison.
+4. **Path A vs Path B equivalence:** stock and rebuilt encoders produce byte-identical output on the same fixtures. Once green, the BinomialLLC artifacts are deleted from `vendor/basis/`.
+5. **Benchmark gate:** 2048² atlas, ETC1S + mipmaps, quality 128, **< 5000ms** wall-time with SIMD on, measured the same way as the predecessor benchmark. The same benchmark is also run with `FL_BASIS_NO_SIMD=1` and the report records the speedup ratio so we have evidence the SIMD path is doing real work.
+6. `vendor/basis/basis_encoder.js`, `vendor/basis/package.json`, and the BinomialLLC `vendor/basis/basis_encoder.wasm` are deleted from the branch.
+7. Docs: `vendor/basisu/README.flatland.md` records source rev, import date, and the line count of every patch we apply (kernels-wasm file, shim header, call-site patches).
 
 ## Out of scope (filed for later)
 
