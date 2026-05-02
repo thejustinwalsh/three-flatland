@@ -21,6 +21,50 @@
 - OpenCL build path (`encoder/basisu_opencl.{cpp,h}`)
 - PVRTC2 sources (we only target ETC1S + UASTC)
 
+## Additional files fetched (Task 3)
+
+The following files were not part of the original vendor subset (Task 1) but are required by
+the encoder or transcoder. They were fetched from the same upstream commit `45d5f41015eecd9570d5a3f89ab9cc0037a25063`:
+
+**transcoder/:**
+- `basisu_transcoder.cpp` — encoder calls `basisu_transcoder_init()` at init time; linker requires the implementation
+- `basisu_transcoder_internal.h` — included by `basisu_transcoder.h` and `basisu_enc.h`
+- `basisu_transcoder_uastc.h` — included by encoder headers (`basisu_bc7enc.h`, `basisu_uastc_enc.h`, etc.)
+- `basisu_astc_helpers.h` — included by `basisu_gpu_texture.h`
+- `basisu_astc_hdr_core.h` — included by `basisu_uastc_hdr_4x4_enc.h`
+- `basisu_containers_impl.h` — included by `basisu_transcoder.cpp`
+- `basisu_idct.h` — included by `basisu_transcoder.cpp`
+- `basisu_transcoder_tables_dxt1_5.inc`, `basisu_transcoder_tables_dxt1_6.inc` — lookup tables
+- `basisu_transcoder_tables_bc7_m5_color.inc`, `basisu_transcoder_tables_bc7_m5_alpha.inc`
+- `basisu_transcoder_tables_astc.inc`, `basisu_transcoder_tables_astc_0_255.inc`
+- `basisu_transcoder_tables_pvrtc2_45.inc`, `basisu_transcoder_tables_pvrtc2_alpha_33.inc`
+- `basisu_transcoder_tables_atc_55.inc`, `basisu_transcoder_tables_atc_56.inc`
+- `basisu_astc_cfgs.inl`, `basisu_etc1_mods.inl` — inline data tables
+
+**encoder/ (stub/patch files created by flatland):**
+- `basisu_opencl.h` — fetched from upstream; the encoder `.cpp` files include it unconditionally
+- `basisu_opencl_stub.cpp` — no-op stub (all functions return false/nullptr); original `basisu_opencl.cpp` removed at vendor time
+- `basisu_thread_stubs.h` — no-op `std::mutex` / `std::condition_variable` stubs for WASI builds where `_LIBCPP_HAS_NO_THREADS` is defined
+
 ## Patches
 
-Currently zero. Patches added in later phases will be enumerated here with line counts.
+### `encoder/basisu_enc.h` — WASI thread stub integration (Task 3)
+
+Changed the unconditional `<mutex>`, `<condition_variable>`, `<thread>` includes to be
+guarded by `#ifndef _LIBCPP_HAS_NO_THREADS`, and added `#include "basisu_thread_stubs.h"`.
+Also patched `job_pool` class to use `#ifndef _LIBCPP_HAS_NO_THREADS` guards around the
+thread/mutex/cv members, replacing them with a single-threaded queue-only implementation.
+**~20 lines changed.**
+
+### `encoder/basisu_enc.cpp` — WASI single-threaded job_pool (Task 3)
+
+Wrapped the multi-threaded `job_pool` constructor/destructor/add_job/wait_for_all/job_thread
+implementations in `#ifndef _LIBCPP_HAS_NO_THREADS`. Added a `#else` block with single-
+threaded stubs that just queue and immediately drain jobs synchronously.
+**~50 lines changed.**
+
+### `zstd/zstd.c` — disable ZSTD_MULTITHREAD on WASI (Task 3)
+
+Changed the `#ifndef __EMSCRIPTEN__` guard around `#define ZSTD_MULTITHREAD` to also
+exclude `__wasi__`, so the amalgamated zstd does not pull in pthreads on WASI targets.
+**3 lines changed.**
