@@ -48,6 +48,9 @@ export function App() {
   const fileName = useEncodeStore((s) => s.fileName)
   const sourceImage = useEncodeStore((s) => s.sourceImage)
   const encodeError = useEncodeStore((s) => s.encodeError)
+  const encodedBytes = useEncodeStore((s) => s.encodedBytes)
+  const format = useEncodeStore((s) => s.format)
+  const isEncoding = useEncodeStore((s) => s.isEncoding)
   const loadInit = useEncodeStore((s) => s.loadInit)
   const setRuntimeFields = useEncodeStore((s) => s.setRuntimeFields)
 
@@ -127,7 +130,13 @@ export function App() {
       <Knobs />
       {encodeError && <div {...stylex.props(styles.errorBanner)}>{encodeError}</div>}
       <div {...stylex.props(styles.body)}>
-        <ComparePreview originalImage={sourceImage} encodeError={encodeError} />
+        <ComparePreview
+          originalImage={sourceImage}
+          encodedBytes={encodedBytes}
+          encodedFormat={encodedBytes ? format : null}
+          isEncoding={isEncoding}
+          encodeError={encodeError}
+        />
       </div>
     </div>
   )

@@ -1,7 +1,38 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Canvas, useFrame } from '@react-three/fiber'
+import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 import * as stylex from '@stylexjs/stylex'
+import { decodeImage } from '@three-flatland/image'
+
+import basisTranscoderJsUrl from 'three/examples/jsm/libs/basis/basis_transcoder.js?url'
+import basisTranscoderWasmUrl from 'three/examples/jsm/libs/basis/basis_transcoder.wasm?url'
+
+// ─── KTX2Loader singleton ─────────────────────────────────────────────────────
+
+let loaderPromise: Promise<unknown> | null = null
+let cachedLoader: unknown = null
+
+async function getKtx2Loader(renderer: THREE.WebGLRenderer | null): Promise<unknown | null> {
+  if (cachedLoader) return cachedLoader
+  if (!renderer) return null
+  if (!loaderPromise) {
+    loaderPromise = (async () => {
+      const { KTX2Loader } = await import('three/examples/jsm/loaders/KTX2Loader.js')
+      const loader = new KTX2Loader()
+      // setTranscoderPath wants a directory; strip the filename.
+      const transcoderDir = basisTranscoderJsUrl.replace(/\/[^/]+$/, '/')
+      loader.setTranscoderPath(transcoderDir)
+      loader.detectSupport(renderer)
+      // Ensure Vite includes the wasm asset by referencing its URL.
+      void basisTranscoderWasmUrl
+      cachedLoader = loader
+      return loader
+    })()
+  }
+  return loaderPromise
+}
+
+// ─── Shaders ──────────────────────────────────────────────────────────────────
 
 const VERT = /* glsl */ `
   varying vec2 vUv;
@@ -22,6 +53,8 @@ const FRAG = /* glsl */ `
     gl_FragColor = c;
   }
 `
+
+// ─── CompareQuad ──────────────────────────────────────────────────────────────
 
 interface QuadProps {
   textureA: THREE.Texture
@@ -59,6 +92,33 @@ function CompareQuad({ textureA, textureB, splitU }: QuadProps) {
     </mesh>
   )
 }
+
+// ─── RendererBridge ───────────────────────────────────────────────────────────
+
+function RendererBridge({ onReady }: { onReady: (gl: THREE.WebGLRenderer) => void }) {
+  const gl = useThree((s) => s.gl)
+  useEffect(() => {
+    onReady(gl as THREE.WebGLRenderer)
+  }, [gl, onReady])
+  return null
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function imageDataToTexture(image: ImageData): THREE.CanvasTexture {
+  const c = document.createElement('canvas')
+  c.width = image.width
+  c.height = image.height
+  c.getContext('2d')!.putImageData(image, 0, 0)
+  const t = new THREE.CanvasTexture(c)
+  t.colorSpace = THREE.SRGBColorSpace
+  t.minFilter = THREE.LinearFilter
+  t.magFilter = THREE.LinearFilter
+  t.needsUpdate = true
+  return t
+}
+
+// ─── Styles ───────────────────────────────────────────────────────────────────
 
 const styles = stylex.create({
   fill: {
@@ -118,25 +178,27 @@ const styles = stylex.create({
   empty: { padding: 24, opacity: 0.6 },
 })
 
+// ─── Props ────────────────────────────────────────────────────────────────────
+
+type EncodedFormat = 'png' | 'webp' | 'avif' | 'ktx2'
+
 interface ComparePreviewProps {
   originalImage: ImageData | null
+  encodedBytes: Uint8Array | null
+  encodedFormat: EncodedFormat | null
+  isEncoding: boolean
   encodeError: string | null
 }
 
-function imageDataToTexture(image: ImageData): THREE.CanvasTexture {
-  const c = document.createElement('canvas')
-  c.width = image.width
-  c.height = image.height
-  c.getContext('2d')!.putImageData(image, 0, 0)
-  const t = new THREE.CanvasTexture(c)
-  t.colorSpace = THREE.SRGBColorSpace
-  t.minFilter = THREE.LinearFilter
-  t.magFilter = THREE.LinearFilter
-  t.needsUpdate = true
-  return t
-}
+// ─── ComparePreview ───────────────────────────────────────────────────────────
 
-export function ComparePreview({ originalImage, encodeError }: ComparePreviewProps) {
+export function ComparePreview({
+  originalImage,
+  encodedBytes,
+  encodedFormat,
+  isEncoding: _isEncoding,
+  encodeError,
+}: ComparePreviewProps) {
   const original = useMemo(
     () => (originalImage ? imageDataToTexture(originalImage) : null),
     [originalImage],
@@ -147,6 +209,63 @@ export function ComparePreview({ originalImage, encodeError }: ComparePreviewPro
     },
     [original],
   )
+
+  // Renderer state — lifted from RendererBridge so encoded-texture effect can
+  // depend on it and re-run once the Canvas is ready.
+  const [renderer, setRenderer] = useState<THREE.WebGLRenderer | null>(null)
+
+  // Encoded-texture state
+  const [encoded, setEncoded] = useState<THREE.Texture | null>(null)
+  const reqIdRef = useRef(0)
+
+  useEffect(() => {
+    if (!encodedBytes || !encodedFormat) {
+      setEncoded((prev) => { prev?.dispose(); return null })
+      return
+    }
+    const reqId = ++reqIdRef.current
+    let cancelled = false
+
+    void (async () => {
+      try {
+        let texture: THREE.Texture
+        if (encodedFormat === 'ktx2') {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const loader = await getKtx2Loader(renderer) as any
+          if (!loader) {
+            // Renderer not ready yet — the renderer dep will trigger a re-run.
+            return
+          }
+          const buffer = encodedBytes.buffer.slice(
+            encodedBytes.byteOffset,
+            encodedBytes.byteOffset + encodedBytes.byteLength,
+          ) as ArrayBuffer
+          texture = await new Promise<THREE.CompressedTexture>((resolve, reject) => {
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-call
+            loader.parse(buffer, resolve, reject)
+          })
+        } else {
+          const image = await decodeImage(encodedBytes, encodedFormat)
+          texture = imageDataToTexture(image)
+        }
+        if (cancelled || reqId !== reqIdRef.current) {
+          texture.dispose()
+          return
+        }
+        setEncoded((prev) => { prev?.dispose(); return texture })
+      } catch (err) {
+        // The encode pipeline surfaces errors via store.encodeError.
+        // Log here so the canvas falls back to original-only rendering.
+        console.error('encoded texture decode failed', err)
+      }
+    })()
+
+    return () => { cancelled = true }
+  }, [encodedBytes, encodedFormat, renderer])
+
+  // Unmount cleanup
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => () => { encoded?.dispose() }, [])
 
   const [splitU, setSplitU] = useState(0.5)
   const stageRef = useRef<HTMLDivElement>(null)
@@ -177,6 +296,9 @@ export function ComparePreview({ originalImage, encodeError }: ComparePreviewPro
     )
   }
 
+  // Fall back to original on the right side when no encode result yet.
+  const textureB = encoded ?? original
+
   return (
     <div {...stylex.props(styles.fill)}>
       <div
@@ -193,8 +315,8 @@ export function ComparePreview({ originalImage, encodeError }: ComparePreviewPro
             flat
             style={{ display: 'block', width: '100%', height: '100%' }}
           >
-            {/* Use the SAME texture for both sides — Task 3 wires the encoded one. */}
-            <CompareQuad textureA={original} textureB={original} splitU={splitU} />
+            <RendererBridge onReady={setRenderer} />
+            <CompareQuad textureA={original} textureB={textureB} splitU={splitU} />
           </Canvas>
         </div>
         {/* Hit area for click-anywhere drag */}
