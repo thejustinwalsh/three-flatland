@@ -5,6 +5,7 @@ import { space } from '@three-flatland/design-system/tokens/space.stylex'
 import { decodeImage, type EncodeFormat } from '@three-flatland/image'
 import { createClientBridge } from '@three-flatland/bridge/client'
 import { useEncodeStore } from './encodeStore'
+import { scheduleEncode } from './encodePipeline'
 import { OriginalView } from './OriginalView'
 
 const styles = stylex.create({
@@ -74,6 +75,28 @@ export function App() {
       unsubInit()
     }
   }, [loadInit, setRuntimeFields])
+
+  useEffect(() => {
+    // Encode whenever sourceImage flips to non-null OR a knob changes.
+    // We compare a stringified summary to avoid a custom equality function;
+    // the slice is small.
+    let prevKey = ''
+    const unsub = useEncodeStore.subscribe((s) => {
+      if (!s.sourceImage) return
+      const key = JSON.stringify({
+        f: s.format,
+        w: s.webp.quality,
+        a: s.avif.quality,
+        k: { m: s.ktx2.mode, q: s.ktx2.quality, mp: s.ktx2.mipmaps, l: s.ktx2.uastcLevel },
+        // include sourceImage identity so we re-encode on a fresh source
+        img: s.sourceImage,
+      })
+      if (key === prevKey) return
+      prevKey = key
+      scheduleEncode(250)
+    })
+    return () => unsub()
+  }, [])
 
   return (
     <div {...stylex.props(styles.root)}>
