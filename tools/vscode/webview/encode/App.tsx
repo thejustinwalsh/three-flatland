@@ -1,14 +1,12 @@
-import { useEffect, useRef } from 'react'
+import { useEffect } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { vscode } from '@three-flatland/design-system/tokens/vscode-theme.stylex'
 import { space } from '@three-flatland/design-system/tokens/space.stylex'
-import { Splitter } from '@three-flatland/design-system'
 import { decodeImage, type EncodeFormat } from '@three-flatland/image'
 import { createClientBridge } from '@three-flatland/bridge/client'
 import { useEncodeStore } from './encodeStore'
 import { scheduleEncode } from './encodePipeline'
-import { OriginalView } from './OriginalView'
-import { EncodedView } from './EncodedView'
+import { ComparePreview } from './ComparePreview'
 import { Knobs } from './Knobs'
 import { Toolbar } from './Toolbar'
 
@@ -32,7 +30,6 @@ const styles = stylex.create({
     border: `1px solid ${vscode.errorBorder}`,
   },
   body: {
-    display: 'flex',
     flex: 1,
     minHeight: 0,
   },
@@ -47,27 +44,12 @@ function detectFormat(fileName: string): EncodeFormat {
   return 'png' // fallback for png and anything we mis-detect
 }
 
-const ENCODED_MIN_PX = 200
-const ENCODED_MAX_PX_MARGIN = 200
-
 export function App() {
   const fileName = useEncodeStore((s) => s.fileName)
   const sourceImage = useEncodeStore((s) => s.sourceImage)
   const encodeError = useEncodeStore((s) => s.encodeError)
   const loadInit = useEncodeStore((s) => s.loadInit)
   const setRuntimeFields = useEncodeStore((s) => s.setRuntimeFields)
-  const splits = useEncodeStore((s) => s.splits)
-  const setSplits = useEncodeStore((s) => s.setSplits)
-  const bodyRef = useRef<HTMLDivElement>(null)
-
-  const onDragSplitter = (clientX: number) => {
-    const el = bodyRef.current
-    if (!el) return
-    const rect = el.getBoundingClientRect()
-    const maxRight = Math.max(ENCODED_MIN_PX, rect.width - ENCODED_MAX_PX_MARGIN)
-    const next = Math.min(maxRight, Math.max(ENCODED_MIN_PX, rect.right - clientX))
-    setSplits({ encodedPanel: next })
-  }
 
   useEffect(() => {
     const bridge = createClientBridge()
@@ -144,14 +126,8 @@ export function App() {
       </div>
       <Knobs />
       {encodeError && <div {...stylex.props(styles.errorBanner)}>{encodeError}</div>}
-      <div ref={bodyRef} {...stylex.props(styles.body)}>
-        <div style={{ flex: 1, minWidth: 0, display: 'flex' }}>
-          <OriginalView />
-        </div>
-        <Splitter axis="vertical" onDrag={onDragSplitter} />
-        <div style={{ width: splits.encodedPanel || 480, flexShrink: 0, minWidth: 0, display: 'flex' }}>
-          <EncodedView />
-        </div>
+      <div {...stylex.props(styles.body)}>
+        <ComparePreview originalImage={sourceImage} encodeError={encodeError} />
       </div>
     </div>
   )

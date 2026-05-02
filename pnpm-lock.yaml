@@ -1406,6 +1406,9 @@ importers:
       '@types/react-dom':
         specifier: 'catalog:'
         version: 19.2.3(@types/react@19.2.9)
+      '@types/three':
+        specifier: 'catalog:'
+        version: 0.183.1
       '@types/vscode':
         specifier: ^1.94.0
         version: 1.116.0
