@@ -758,18 +758,17 @@ import { useEncodeStore } from './encodeStore'
 
 let timer: ReturnType<typeof setTimeout> | null = null
 
-function buildOpts(state: ReturnType<typeof useEncodeStore.getState>): { format: EncodeFormat; opts: ImageEncodeOptions } {
+function buildOpts(state: ReturnType<typeof useEncodeStore.getState>): ImageEncodeOptions {
   switch (state.format) {
     case 'webp':
-      return { format: 'webp', opts: { quality: state.webp.quality } }
+      return { format: 'webp', quality: state.webp.quality }
     case 'avif':
-      return { format: 'avif', opts: { quality: state.avif.quality } }
+      return { format: 'avif', quality: state.avif.quality }
     case 'ktx2':
       return {
         format: 'ktx2',
-        opts: {
+        basis: {
           mode: state.ktx2.mode,
-          quality: state.ktx2.quality,
           mipmaps: state.ktx2.mipmaps,
           uastcLevel: state.ktx2.uastcLevel,
         },
@@ -784,12 +783,18 @@ async function runEncode(): Promise<void> {
   state.setRuntimeFields({ isEncoding: true, encodeError: null })
 
   try {
-    const { format, opts } = buildOpts(state)
-    const encoded = await encodeImage(state.sourceImage, format, opts)
+    const opts = buildOpts(state)
+    const encoded = await encodeImage(state.sourceImage, opts)
     // race guard: if a newer request started, drop this result.
     if (useEncodeStore.getState().encodeReqId !== reqId) return
-    const decoded = await decodeImage(encoded, format)
-    if (useEncodeStore.getState().encodeReqId !== reqId) return
+    // KTX2 decode is NOT supported by @three-flatland/image (use three.js
+    // KTX2Loader at runtime). For visual preview we can only decode WebP/AVIF.
+    // For KTX2, we skip the decode and the EncodedView shows a placeholder.
+    let decoded: ImageData | null = null
+    if (opts.format !== 'ktx2') {
+      decoded = await decodeImage(encoded, opts.format)
+      if (useEncodeStore.getState().encodeReqId !== reqId) return
+    }
     state.setRuntimeFields({
       encodedBytes: encoded,
       encodedImage: decoded,
@@ -975,7 +980,16 @@ export function EncodedView(): JSX.Element {
       bodyPadding="none"
       style={{ flex: 1, minWidth: 0, minHeight: 0, position: 'relative' }}
     >
-      {encodedImage ? <canvas ref={ref} {...stylex.props(styles.canvas)} /> : <div>(encode pending)</div>}
+      {encodedImage ? (
+        <canvas ref={ref} {...stylex.props(styles.canvas)} />
+      ) : encodedSize > 0 && format === 'ktx2' ? (
+        <div style={{ padding: 24, fontSize: 13, opacity: 0.7 }}>
+          KTX2 preview unavailable — decode is provided by three.js KTX2Loader at runtime.
+          The encoded file is ready to save.
+        </div>
+      ) : (
+        <div style={{ padding: 24 }}>(encode pending)</div>
+      )}
       {isEncoding && <div {...stylex.props(styles.overlay)}>encoding…</div>}
       {encodeError && <div {...stylex.props(styles.overlay)} style={{ color: '#f88' }}>{encodeError}</div>}
     </Panel>
@@ -1077,12 +1091,6 @@ export function Knobs(): JSX.Element {
             <Option value="etc1s">ETC1S</Option>
             <Option value="uastc">UASTC</Option>
           </CompactSelect>
-          {ktx2.mode === 'etc1s' && (
-            <>
-              <label>Quality</label>
-              <NumberField value={ktx2.quality} min={1} max={255} step={1} onChange={setKtx2Quality} />
-            </>
-          )}
           {ktx2.mode === 'uastc' && (
             <>
               <label>Level</label>
@@ -1090,6 +1098,8 @@ export function Knobs(): JSX.Element {
             </>
           )}
           <Checkbox checked={ktx2.mipmaps} onChange={setKtx2Mipmaps}>Mipmaps</Checkbox>
+          {/* ETC1S quality is currently fixed at 128 in @three-flatland/image; if the
+              package later exposes opts.basis.quality, surface a NumberField here. */}
         </>
       )}
     </div>
