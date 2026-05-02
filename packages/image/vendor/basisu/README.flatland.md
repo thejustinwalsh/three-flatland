@@ -91,3 +91,45 @@ This shapes Phase 3 work:
   equivalent merge) translated together to `wasm_simd128.h`.
 - **Task 14** (patch non-kernel `_mm_*` call-sites) becomes a **no-op** and is skipped —
   the audit found zero non-kernel call-sites that need patching.
+
+## SIMD port (Task 13)
+
+To enable SSE-class SIMD on the wasm32 build, two new files were added alongside
+the existing SSE sources (which are excluded from the wasm build):
+
+**encoder/ (NEW):**
+- `cppspmd_wasm.h` — port of `cppspmd_sse.h` (~2100 LOC). The body is essentially
+  unchanged from upstream; the only differences are the include block (swapped from
+  `<emmintrin.h>` etc. to `sse_to_wasm.h`), the namespace/arch suffix selection
+  (forced to `cppspmd_sse41` / `_sse41` to keep symbol names compatible with all
+  SSE call sites in `basisu_etc.cpp` / `basisu_frontend.cpp` / `basisu_backend.cpp` /
+  `basisu_enc.h`), and the removal of MSVC-specific declspec attributes.
+- `basisu_kernels_wasm.cpp` (~40 LOC) — mirror of `basisu_kernels_sse.cpp`. Includes
+  `cppspmd_wasm.h` instead of `cppspmd_sse.h`, then includes the upstream
+  `basisu_kernels_imp.h` unchanged. Sets `g_cpu_supports_sse41 = true` from
+  `detect_sse41()` (wasm has no runtime CPU detection — SIMD128 is always present
+  when the module is built with `-msimd128`).
+
+**vendor/basisu_patches/ (NEW):**
+- `sse_to_wasm.h` (~360 LOC) — SSE / SSE2 / SSE3 / SSSE3 / SSE4.1 intrinsic shim
+  on top of `wasm_simd128.h`. Defines `__m128`, `__m128i`, `__m128d` as `v128_t`
+  and inline implementations of every `_mm_*` intrinsic referenced by
+  `cppspmd_sse.h` and `basisu_kernels_imp.h` (~124 distinct intrinsics). Notable
+  emulations:
+  - `_mm_madd_epi16` — extmul widen + shuffle/add (no native pairwise multiply-add)
+  - `_mm_sad_epu8` — scalar fallback (no native PSADBW)
+  - `_mm_mul_epu32` — scalar lane extract + recombine (we get full result this way)
+  - `_mm_shuffle_*` (immediate) — translated to `wasm_*_shuffle` macros so the lane
+    indices remain compile-time constants (required by `__builtin_wasm_*_shuffle`)
+  - `_mm_insert_ps` — macro form (lane idx must be constexpr); zero-mask path
+    elided since cppspmd never exercises it
+  - `_mm_castps_si128` / `_mm_castsi128_ps` — no-ops (wasm `v128_t` is type-erased)
+
+The wasm build flag matrix is:
+- `BASISU_SUPPORT_SSE=1` (so the call sites reference `*_sse41` symbols)
+- `BASISU_SUPPORT_WASM_SIMD=1` (gates `basisu_kernels_wasm.cpp`'s body)
+- `basisu_kernels_sse.cpp` is dropped from the source list (see `encoder_files.zig`),
+  so no x86 intrinsic header is ever compiled.
+
+No patches were applied to upstream files for this task — the integration is
+fully additive (new files, no edits to vendored sources).

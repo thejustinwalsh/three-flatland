@@ -37,8 +37,12 @@ pub fn build(b: *std.Build) void {
         "-fno-signed-zeros",
         "-ffp-contract=fast",
         "-msimd128",
-        "-DBASISU_SUPPORT_SSE=0",
-        "-DBASISU_SUPPORT_WASM_SIMD=0", // Phase 3 will enable this
+        // Path B Task 13: SSE=1 unlocks the `*_sse41` kernel call sites in basisu_enc.h /
+        // basisu_etc.cpp / basisu_backend.cpp / basisu_frontend.cpp; basisu_kernels_wasm.cpp
+        // provides those symbols backed by wasm_simd128 (via cppspmd_wasm.h + sse_to_wasm.h).
+        // basisu_kernels_sse.cpp itself is excluded from the wasm build (see encoder_files.zig).
+        "-DBASISU_SUPPORT_SSE=1",
+        "-DBASISU_SUPPORT_WASM_SIMD=1",
         "-DBASISD_SUPPORT_KTX2=1",
         "-DBASISD_SUPPORT_KTX2_ZSTD=0",
         "-DNDEBUG",
