@@ -70,3 +70,20 @@ threaded stubs that just queue and immediately drain jobs synchronously.
 Changed the `#ifndef __EMSCRIPTEN__` guard around `#define ZSTD_MULTITHREAD` to also
 exclude `__wasi__`, so the amalgamated zstd does not pull in pthreads on WASI targets.
 **3 lines changed.**
+
+## SIMD scope decision (Task 4)
+
+`_audit.txt` lists 440 raw `_mm_*` line matches in non-kernel encoder files,
+representing approximately 0 distinct call-sites across encoder business-logic files.
+
+All 440 lines originate from `cppspmd_sse.h` — the SPMD abstraction layer header
+that is included **exclusively** by `basisu_kernels_sse.cpp`. No other encoder `.cpp`
+or `.h` file contains any direct `_mm_*` usage.
+
+- `cppspmd_sse.h`: 440 raw lines, 0 independent call-sites (kernel-companion header only)
+
+**Decision:** port-all (under 30 budget)
+
+This shapes Phase 3 work: Task 14 will port `basisu_kernels_sse.cpp` and
+`cppspmd_sse.h` together as a single unit to wasm_simd128 — no non-kernel files
+require separate SIMD porting.
