@@ -10,6 +10,7 @@ import { scheduleEncode } from './encodePipeline'
 import { OriginalView } from './OriginalView'
 import { EncodedView } from './EncodedView'
 import { Knobs } from './Knobs'
+import { Toolbar } from './Toolbar'
 
 const styles = stylex.create({
   root: {
@@ -118,8 +119,9 @@ export function App() {
 
   return (
     <div {...stylex.props(styles.root)}>
+      <Toolbar />
       <div {...stylex.props(styles.headerLine)}>
-        FL Image Encoder · <strong>{fileName || '(no file)'}</strong>
+        <strong>{fileName || '(no file)'}</strong>
         {sourceImage ? ` · ${sourceImage.width}×${sourceImage.height}` : ' · loading…'}
       </div>
       <Knobs />
