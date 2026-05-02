@@ -64,6 +64,10 @@ export default defineConfig({
   ],
   root: resolve(__dirname, 'webview'),
   base: './',
+  // jsquash codec workers (avif_enc_mt.js etc.) are Emscripten IIFE bundles
+  // that Vite tries to re-bundle as Workers. IIFE is incompatible with
+  // code-splitting; switching worker output to ES modules avoids the error.
+  worker: { format: 'es' },
   build: {
     outDir: resolve(__dirname, 'dist/webview'),
     emptyOutDir: !isWatchMode,
