@@ -4,7 +4,7 @@
 // three-flatland chunk stays out of the shell bundle.
 
 export { CanvasStage, type CanvasStageProps } from './CanvasStage'
-export { ThreeLayer, type ThreeLayerProps } from './ThreeLayer'
+export { ThreeLayer, type ThreeLayerProps, type ImageSource } from './ThreeLayer'
 export {
   AnimationPreviewPip,
   type AnimationPreviewPipProps,
