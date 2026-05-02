@@ -12,8 +12,7 @@
 
 import madge from 'madge'
 import { writeFileSync, mkdirSync } from 'node:fs'
-import { execSync } from 'node:child_process'
-import { buildClusteredDot, pkgOf } from './lib/build-dot.ts'
+import { buildGraphData, pkgOf } from './lib/build-graph-data.ts'
 
 const TARGETS = ['packages', 'minis', 'tools']
 const BASE = {
@@ -99,9 +98,8 @@ const cycles = tarjan(typeOnly)
 const cyclicNodes = new Set<string>(cycles.flat())
 
 mkdirSync('graphs', { recursive: true })
-const dot = buildClusteredDot({ graph: typeOnly, cyclicNodes })
-writeFileSync('graphs/types.dot', dot)
-execSync('dot -Tsvg -o graphs/types.svg graphs/types.dot')
+const data = buildGraphData({ graph: typeOnly, cyclicNodes, cycleCount: cycles.length })
+writeFileSync('graphs/types.json', JSON.stringify(data))
 
 // Cross-package edge summary — the actionable view for declaring deps in package.json.
 type Edge = { from: string; to: string; fromPkg: string; toPkg: string }
@@ -123,11 +121,9 @@ for (const e of crossPkg) {
   byPair.set(k, list)
 }
 
-const fileCount = new Set(
-  Object.keys(typeOnly).concat(Object.values(typeOnly).flat()),
-).size
-const totalEdges = Object.values(typeOnly).reduce((n, ds) => n + ds.length, 0)
-console.log(`graphs/types.svg — ${fileCount} files, ${totalEdges} type-only edges`)
+console.log(
+  `graphs/types.json — ${data.meta.fileCount} files, ${data.meta.edgeCount} type-only edges`,
+)
 console.log(`\nCross-package type-only edges (${crossPkg.length} total, ${byPair.size} pkg pairs):`)
 for (const [pair, edges] of [...byPair.entries()].sort()) {
   console.log(`  ${pair}  (${edges.length})`)
