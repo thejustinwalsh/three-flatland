@@ -67,6 +67,14 @@ pub fn build(b: *std.Build) void {
         .flags = &.{ "-msimd128", "-DZSTD_DISABLE_ASM=1", "-DNDEBUG" },
     });
 
+    // Flat C ABI over basisu::basis_compressor — exports fl_* symbols.
+    // __attribute__((export_name(...))) on each function is sufficient for wasm-ld
+    // to surface them; no explicit --export linker flags needed.
+    exe.addCSourceFile(.{
+        .file = b.path("src/zig/basis_c_api.cpp"),
+        .flags = cxx_flags,
+    });
+
     for (enc.include_paths) |inc| {
         exe.addIncludePath(b.path(inc));
     }
