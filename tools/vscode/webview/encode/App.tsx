@@ -117,6 +117,24 @@ export function App() {
     return () => unsub()
   }, [])
 
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return
+      const cmdOrCtrl = e.metaKey || e.ctrlKey
+      if (!cmdOrCtrl) return
+      if (e.key === 'z' && !e.shiftKey) {
+        useEncodeStore.temporal.getState().undo()
+        e.preventDefault()
+      } else if ((e.key === 'z' && e.shiftKey) || e.key === 'Z') {
+        useEncodeStore.temporal.getState().redo()
+        e.preventDefault()
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
   return (
     <div {...stylex.props(styles.root)}>
       <Toolbar />
