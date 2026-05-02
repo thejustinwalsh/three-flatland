@@ -38,6 +38,8 @@
     "graph": "pnpm graph:sync && madge --image graphs/monorepo.svg packages minis tools",
     "graph:open": "pnpm graph && open graphs/monorepo.svg",
     "graph:circular": "pnpm graph:sync && madge --circular packages minis tools",
+    "graph:types": "pnpm graph:sync && tsx scripts/graph-types.ts",
+    "graph:types:open": "pnpm graph:types && open graphs/types.svg",
     "prepare": "lefthook install"
   },
   "pnpm": {
