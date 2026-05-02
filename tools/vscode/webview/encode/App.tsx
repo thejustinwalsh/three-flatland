@@ -39,7 +39,11 @@ const styles = stylex.create({
   },
 })
 
-type InitPayload = { fileName: string; sourceBytes: number[] | Uint8Array }
+type InitPayload = {
+  fileName: string
+  sourceBytes: number[] | Uint8Array
+  mode: 'encode' | 'inspect'
+}
 
 function detectFormat(fileName: string): EncodeFormat {
   const ext = fileName.split('.').pop()?.toLowerCase() ?? ''
@@ -55,14 +59,39 @@ export function App() {
 
   useEffect(() => {
     const bridge = createClientBridge()
-    const unsubInit = bridge.on<InitPayload>('encode/init', async ({ fileName: fn, sourceBytes }) => {
+    const unsubInit = bridge.on<InitPayload>('encode/init', async ({ fileName: fn, sourceBytes, mode }) => {
       try {
         const bytes = sourceBytes instanceof Uint8Array
           ? sourceBytes
           : new Uint8Array(sourceBytes)
-        const format = detectFormat(fn)
-        const image = await decodeImage(bytes, format)
-        loadInit({ fileName: fn, sourceBytes: bytes, sourceImage: image })
+
+        if (mode === 'inspect') {
+          // The source IS the encoded artifact. Skip the decode-then-encode
+          // pipeline. Store encodedBytes = sourceBytes so the existing encoded
+          // texture hook decodes it for display. The compare slider is hidden
+          // (no original to compare against) — ComparePreview uses the same
+          // texture on both sides with splitU=1 so mip stepping still works.
+          setRuntimeFields({ encodedBytes: bytes, isEncoding: false })
+          const ext = fn.split('.').pop()?.toLowerCase() ?? ''
+          if (ext === 'webp' || ext === 'avif') {
+            // Produce a source ImageData so the left/original side isn't empty
+            // (moot with slider hidden but prevents a stale loading state).
+            const format = detectFormat(fn)
+            const image = await decodeImage(bytes, format)
+            loadInit({ fileName: fn, sourceBytes: bytes, sourceImage: image, mode })
+          } else {
+            // KTX2: no JS-side ImageData decode. sourceImage = null;
+            // ComparePreview handles null source in inspect mode by using the
+            // encoded texture on both sides (see inspect-mode render path).
+            loadInit({ fileName: fn, sourceBytes: bytes, sourceImage: null, mode })
+          }
+        } else {
+          // Encode mode: decode source PNG for the original side; encode
+          // pipeline fires via the store subscription below.
+          const format = detectFormat(fn)
+          const image = await decodeImage(bytes, format)
+          loadInit({ fileName: fn, sourceBytes: bytes, sourceImage: image, mode })
+        }
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
         setRuntimeFields({ encodeError: `decode failed: ${msg}` })
@@ -82,9 +111,10 @@ export function App() {
   useEffect(() => {
     // Encode whenever sourceImage flips to non-null OR a knob changes.
     // We compare a stringified summary to avoid a custom equality function;
-    // the slice is small.
+    // the slice is small. Skip entirely in inspect mode — no encode pipeline.
     let prevKey = ''
     const unsub = useEncodeStore.subscribe((s) => {
+      if (s.mode === 'inspect') return
       if (!s.sourceImage) return
       const key = JSON.stringify({
         f: s.format,

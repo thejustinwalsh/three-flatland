@@ -33,6 +33,7 @@ export function Knobs() {
   const webp = useEncodeStore((s) => s.webp)
   const avif = useEncodeStore((s) => s.avif)
   const ktx2 = useEncodeStore((s) => s.ktx2)
+  const mode = useEncodeStore((s) => s.mode)
 
   const setFormat = useEncodeStore((s) => s.setFormat)
   const setWebpQuality = useEncodeStore((s) => s.setWebpQuality)
@@ -41,8 +42,13 @@ export function Knobs() {
   const setKtx2Mipmaps = useEncodeStore((s) => s.setKtx2Mipmaps)
   const setKtx2UastcLevel = useEncodeStore((s) => s.setKtx2UastcLevel)
 
+  const disabled = mode === 'inspect'
+
   return (
-    <div {...stylex.props(styles.row)}>
+    <div
+      {...stylex.props(styles.row)}
+      style={disabled ? { pointerEvents: 'none', opacity: 0.4 } : undefined}
+    >
       <div {...stylex.props(styles.group)}>
         <span {...stylex.props(styles.label)}>Format</span>
         <CompactSelect

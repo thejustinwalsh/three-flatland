@@ -11,6 +11,7 @@ export function Toolbar() {
   const format = useEncodeStore((s) => s.format)
   const mipLevel = useEncodeStore((s) => s.mipLevel)
   const encodedMipCount = useEncodeStore((s) => s.encodedMipCount)
+  const mode = useEncodeStore((s) => s.mode)
 
   const past = useStore(useEncodeStore.temporal, (s) => s.pastStates.length)
   const future = useStore(useEncodeStore.temporal, (s) => s.futureStates.length)
@@ -54,8 +55,8 @@ export function Toolbar() {
       />
       <ToolbarButton
         icon="save"
-        title={encodedBytes ? 'Save…' : 'Encode an image to save'}
-        disabled={!encodedBytes}
+        title={mode === 'inspect' ? 'Save disabled in inspect mode' : encodedBytes ? 'Save…' : 'Encode an image to save'}
+        disabled={!encodedBytes || mode === 'inspect'}
         onClick={onSave}
       />
       <ToolbarButton
