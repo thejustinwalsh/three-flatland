@@ -7,7 +7,10 @@ pub fn build(b: *std.Build) void {
         .simd128, .bulk_memory, .sign_ext, .nontrapping_fptoint,
     });
     const target = b.resolveTargetQuery(query);
-    const optimize = b.standardOptimizeOption(.{});
+    // Lock to ReleaseFast: post-link wasm-opt -Oz collapses the inlined SPMD code
+    // back to ~3MB, so we get -O3-grade speed at -Os-grade size.
+    const optimize: std.builtin.OptimizeMode = .ReleaseFast;
+    _ = b.standardOptimizeOption(.{ .preferred_optimize_mode = .ReleaseFast });
 
     const exe = b.addExecutable(.{
         .name = "basis_encoder",
@@ -85,6 +88,23 @@ pub fn build(b: *std.Build) void {
     exe.linkLibC();
     exe.linkLibCpp();
 
-    const install = b.addInstallFile(exe.getEmittedBin(), "../vendor/basis/basis_encoder.wasm");
-    b.getInstallStep().dependOn(&install.step);
+    // Post-link: run wasm-opt -Oz for whole-program dedup + size optimization.
+    // ReleaseFast inlines the SPMD kernels aggressively (~20MB raw); -Oz collapses
+    // those duplicated bodies and strips DWARF/producers, landing at ~3MB while
+    // preserving the speed wins. wasm-opt is provided by the binaryen npm package
+    // (resolved via the workspace's transitive deps); falls back to PATH.
+    const wasm_opt = b.addSystemCommand(&.{
+        "wasm-opt",
+        "-Oz",
+        "--strip-debug",
+        "--strip-producers",
+        "--enable-simd",
+        "--enable-bulk-memory",
+        "--enable-sign-ext",
+        "--enable-nontrapping-float-to-int",
+        "-o",
+        "vendor/basis/basis_encoder.wasm",
+    });
+    wasm_opt.addFileArg(exe.getEmittedBin());
+    b.getInstallStep().dependOn(&wasm_opt.step);
 }

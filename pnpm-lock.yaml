@@ -1120,6 +1120,10 @@ importers:
       '@three-flatland/bake':
         specifier: workspace:*
         version: link:../bake
+    devDependencies:
+      binaryen:
+        specifier: ^123.0.0
+        version: 123.0.0
 
   packages/nodes:
     devDependencies:

@@ -37,6 +37,7 @@
   "sideEffects": false,
   "scripts": {
     "build": "tsup",
+    "build:wasm": "PATH=\"$PWD/node_modules/.bin:$PATH\" zig build",
     "dev": "tsup --watch",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist"
@@ -46,6 +47,9 @@
     "@jsquash/png": "catalog:",
     "@jsquash/webp": "catalog:",
     "@jsquash/avif": "catalog:"
+  },
+  "devDependencies": {
+    "binaryen": "^123.0.0"
   },
   "flatland": {
     "bake": [
