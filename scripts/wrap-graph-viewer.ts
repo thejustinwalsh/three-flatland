@@ -1,12 +1,13 @@
 // Generates a self-contained HTML viewer for a graph JSON, rendered with
 // Cytoscape (canvas-based, virtualizes offscreen elements, infinite pan/zoom).
 //
-// Layout: cytoscape-dagre for the file-level views (compound parent nodes
-// = workspace packages); cose for the overview view (no parents, free
-// layout reads better for ~14 package nodes).
+// Layout for file-level views: cytoscape-fcose (Force-directed Compound
+// Spring Embedder). It's compound-node aware (so package clusters lay out
+// without overlap) and produces a clean relaxed layout. Dagre is also
+// available as a fallback (key L cycles layouts). Overview uses cose.
 //
-// Cytoscape, dagre, and cytoscape-dagre are copied to graphs/lib/ once and
-// referenced relatively so each viewer file stays small.
+// Lib files live in graphs/lib/ and are referenced relatively, so each
+// HTML stays small and the libs get shared/cached across views.
 
 import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { basename, extname, join } from 'node:path'
@@ -31,15 +32,10 @@ const libs = [
   ['node_modules/cytoscape/dist/cytoscape.min.js', 'cytoscape.min.js'],
   ['node_modules/dagre/dist/dagre.min.js', 'dagre.min.js'],
   ['node_modules/cytoscape-dagre/cytoscape-dagre.js', 'cytoscape-dagre.js'],
+  ['node_modules/cytoscape-fcose/cytoscape-fcose.js', 'cytoscape-fcose.js'],
 ] as const
-for (const [src, dest] of libs) {
-  const out = join('graphs/lib', dest)
-  if (!existsSync(out)) copyFileSync(src, out)
-}
-
-const layout = isOverview
-  ? `{ name: 'cose', animate: false, idealEdgeLength: 180, nodeRepulsion: 12000, padding: 40 }`
-  : `{ name: 'dagre', rankDir: 'LR', nodeSep: 18, rankSep: 60, edgeSep: 8, animate: false }`
+// Always overwrite — keeps libs in lockstep with the package version.
+for (const [src, dest] of libs) copyFileSync(src, join('graphs/lib', dest))
 
 const html = `<!doctype html>
 <html lang="en">
@@ -58,13 +54,15 @@ const html = `<!doctype html>
 </head>
 <body>
   <div id="cy"></div>
-  <div id="hud">drag = pan &nbsp;·&nbsp; wheel = zoom &nbsp;·&nbsp; <kbd>F</kbd> fit &nbsp;·&nbsp; <kbd>1</kbd> 100%</div>
+  <div id="hud">drag = pan &nbsp;·&nbsp; wheel = zoom &nbsp;·&nbsp; <kbd>F</kbd> fit &nbsp;·&nbsp; <kbd>1</kbd> 100% &nbsp;·&nbsp; <kbd>R</kbd> relax &nbsp;·&nbsp; <kbd>L</kbd> layout: <span id="layout-name">…</span></div>
   <div id="stats"></div>
   <script src="lib/cytoscape.min.js"></script>
   <script src="lib/dagre.min.js"></script>
   <script src="lib/cytoscape-dagre.js"></script>
+  <script src="lib/cytoscape-fcose.js"></script>
   <script>
     cytoscape.use(cytoscapeDagre)
+    cytoscape.use(cytoscapeFcose)
     const data = ${data}
 
     // Color lookup so individual nodes can match their cluster (overview
@@ -200,8 +198,46 @@ const html = `<!doctype html>
           style: { 'line-color': '#f7c93e', 'target-arrow-color': '#f7c93e', 'opacity': 1, 'width': 2 },
         },
       ],
-      layout: ${layout},
     })
+
+    // Layout presets keyed by name. fcose is compound-aware and avoids
+    // overlap; dagre is the directional-flow fallback.
+    const layouts = {
+      fcose: {
+        name: 'fcose',
+        quality: 'default',
+        animate: false,
+        randomize: true,
+        nodeRepulsion: 8000,
+        idealEdgeLength: 70,
+        edgeElasticity: 0.45,
+        nestingFactor: 0.1,
+        gravity: 0.25,
+        gravityRange: 3.8,
+        gravityCompound: 1.0,
+        gravityRangeCompound: 1.5,
+        numIter: 2500,
+        tile: true,
+        packComponents: true,
+        nodeSeparation: 75,
+        uniformNodeDimensions: false,
+      },
+      dagre: { name: 'dagre', rankDir: 'LR', nodeSep: 24, rankSep: 80, edgeSep: 8, animate: false },
+      cose:  { name: 'cose',  animate: false, idealEdgeLength: 180, nodeRepulsion: 12000, padding: 40 },
+    }
+    const order = ${isOverview ? `['cose', 'fcose']` : `['fcose', 'dagre']`}
+    let layoutIdx = 0
+    const labelEl = document.getElementById('layout-name')
+
+    function runLayout(animate = false) {
+      const name = order[layoutIdx]
+      labelEl.textContent = name
+      const cfg = { ...layouts[name], animate, animationDuration: 400 }
+      cy.layout(cfg).run()
+    }
+
+    runLayout(false)
+    setTimeout(() => cy.fit(undefined, 30), 0)
 
     // Click a node → highlight its incident edges and 1-hop neighborhood.
     cy.on('tap', 'node', (e) => {
@@ -217,6 +253,11 @@ const html = `<!doctype html>
     window.addEventListener('keydown', (e) => {
       if (e.key === 'f' || e.key === 'F') cy.fit(undefined, 30)
       else if (e.key === '1') cy.zoom(1).center()
+      else if (e.key === 'r' || e.key === 'R') runLayout(true)
+      else if (e.key === 'l' || e.key === 'L') {
+        layoutIdx = (layoutIdx + 1) % order.length
+        runLayout(true)
+      }
     })
 
     const m = data.meta
