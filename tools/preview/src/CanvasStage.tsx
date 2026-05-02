@@ -13,6 +13,8 @@ import {
 } from 'react'
 import { loadImage } from '@three-flatland/io'
 import { ThreeLayer, type ImageSource } from './ThreeLayer'
+import { CompareLayer } from './CompareLayer'
+import { CompareContext, type CompareController } from './CompareContext'
 import { ViewportContext, viewBoxFor, type Viewport } from './Viewport'
 import { createCursorStore } from './cursorStore'
 import { canvasBackgroundStyle } from './canvasBackground'
@@ -111,6 +113,31 @@ export type CanvasStageProps = {
    * PIP preview through the cached texture instance.
    */
   pixelArt?: boolean
+  /**
+   * Optional second image source for compare/A-B mode. When provided,
+   * the stage renders both images via CompareLayer with a slider-driven
+   * split. Mount <CompareSliderOverlay /> as a child to show the drag
+   * UI. Use useCompareController() in custom child components to read
+   * or drive splitU.
+   *
+   * Note: cursor color sampling (useImageData) samples the primary image
+   * only when imageUri is also set. When either source is
+   * `{ kind: 'texture' }` without a paired `imageUri`, cursor color
+   * sampling is disabled (useImageData returns null). Cursor coordinates
+   * still work.
+   */
+  compareImageSource?: ImageSource | null
+  /**
+   * Initial splitU for the managed compare slider state. 0..1.
+   * Defaults to 0.5. Ignored when compareImageSource is null.
+   */
+  initialSplitU?: number
+  /**
+   * Fires whenever the managed splitU changes. Useful for tools that
+   * want to persist the slider position to external state (zustand,
+   * localStorage). Ignored when compareImageSource is null.
+   */
+  onSplitChange?: (next: number) => void
 }
 
 // ---------------------------------------------------------------------------
@@ -441,6 +468,9 @@ export function CanvasStage({
   onBackgroundPointerDown,
   pixelSnapZoom = false,
   pixelArt = false,
+  compareImageSource,
+  initialSplitU,
+  onSplitChange,
 }: CanvasStageProps) {
   const [baseViewport, setBaseViewport] = useState<Omit<Viewport, 'zoom' | 'panX' | 'panY'> | null>(null)
   const [imageData, setImageData] = useState<ImageData | null>(null)
@@ -465,6 +495,33 @@ export function CanvasStage({
   const cursorStore = useMemo(() => createCursorStore(), [])
   const imageDataRef = useRef<ImageData | null>(null)
   imageDataRef.current = imageData
+
+  // -------------------------------------------------------------------------
+  // Compare-mode state
+  // -------------------------------------------------------------------------
+
+  const isCompareMode = compareImageSource != null
+  const [splitU, setSplitUState] = useState(initialSplitU ?? 0.5)
+
+  // Stable setter that clamps, updates state, and fires the callback.
+  const setSplitU = useCallback(
+    (next: number) => {
+      const clamped = Math.min(1, Math.max(0, next))
+      setSplitUState(clamped)
+      onSplitChange?.(clamped)
+    },
+    [onSplitChange],
+  )
+
+  // Re-clamp + sync when initialSplitU changes (handles cross-session restore).
+  useEffect(() => {
+    if (typeof initialSplitU === 'number') setSplitUState(initialSplitU)
+  }, [initialSplitU])
+
+  const compareController: CompareController = useMemo(
+    () => ({ splitU, setSplitU }),
+    [splitU, setSplitU],
+  )
 
   // Space-key pan tracking
   const spaceDownRef = useRef(false)
@@ -952,41 +1009,40 @@ export function CanvasStage({
   const wrapperPaintsBg = backgroundStyle === 'checker' || backgroundStyle === 'gradient'
   const threeLayerBackground = wrapperPaintsBg ? undefined : background
 
-  return (
-    <div
-      ref={wrapperRef}
-      style={{
-        position: 'relative',
-        width: '100%',
-        height: '100%',
-        minHeight: 0,
-        cursor: isPanning ? 'grabbing' : inPanMode ? 'grab' : undefined,
-        // Establishes a containment context so floating overlays (InfoPanel,
-        // HoverFrameChip) can use `@container (max-width: …)` queries to
-        // restack themselves when the canvas is narrow.
-        containerType: 'inline-size',
-        ...(wrapperPaintsBg
-          ? canvasBackgroundStyle(backgroundStyle, 'var(--vscode-editor-background)')
-          : {}),
-      }}
-      onPointerMove={combinedPointerMove}
-      onPointerLeave={handlePointerLeave}
-      onPointerDown={handlePointerDown}
-      onPointerUp={endPanDrag}
-      onPointerCancel={endPanDrag}
-      onWheel={handleWheel}
-    >
-      <ThreeLayer
-        imageSource={imageSource}
-        imageUri={imageUri}
-        background={threeLayerBackground}
-        fitMargin={fitMargin}
-        zoom={zoom}
-        panX={panX}
-        panY={panY}
-        onImageReady={handleReady}
-        pixelArt={pixelArt}
-      />
+  // When imageSource is not set but imageUri is, synthesize a url ImageSource
+  // so both branches receive a consistent effectiveImageSource value.
+  const effectiveImageSource: ImageSource | null =
+    imageSource ?? (imageUri ? { kind: 'url', url: imageUri } : null)
+
+  // Shared canvas + children tree, optionally wrapped in CompareContext.
+  const canvasAndChildren = (
+    <>
+      {isCompareMode ? (
+        <CompareLayer
+          imageSource={effectiveImageSource}
+          compareImageSource={compareImageSource}
+          splitU={splitU}
+          background={threeLayerBackground}
+          fitMargin={fitMargin}
+          zoom={zoom}
+          panX={panX}
+          panY={panY}
+          onImageReady={handleReady}
+          pixelArt={pixelArt}
+        />
+      ) : (
+        <ThreeLayer
+          imageSource={imageSource}
+          imageUri={imageUri}
+          background={threeLayerBackground}
+          fitMargin={fitMargin}
+          zoom={zoom}
+          panX={panX}
+          panY={panY}
+          onImageReady={handleReady}
+          pixelArt={pixelArt}
+        />
+      )}
       {imageUri ? (
         // Size probe sets the viewport early (img.onload only) so
         // overlays mount on the same frame the sprite first renders.
@@ -1052,7 +1108,13 @@ export function CanvasStage({
         <CursorStoreContext.Provider value={cursorStore}>
           <ImageDataContext.Provider value={imageData}>
             <ViewportControllerContext.Provider value={controller}>
-              {viewport ? children : null}
+              {isCompareMode ? (
+                <CompareContext.Provider value={compareController}>
+                  {viewport ? children : null}
+                </CompareContext.Provider>
+              ) : (
+                viewport ? children : null
+              )}
             </ViewportControllerContext.Provider>
           </ImageDataContext.Provider>
         </CursorStoreContext.Provider>
@@ -1081,6 +1143,34 @@ export function CanvasStage({
           }}
         />
       ) : null}
+    </>
+  )
+
+  return (
+    <div
+      ref={wrapperRef}
+      style={{
+        position: 'relative',
+        width: '100%',
+        height: '100%',
+        minHeight: 0,
+        cursor: isPanning ? 'grabbing' : inPanMode ? 'grab' : undefined,
+        // Establishes a containment context so floating overlays (InfoPanel,
+        // HoverFrameChip) can use `@container (max-width: …)` queries to
+        // restack themselves when the canvas is narrow.
+        containerType: 'inline-size',
+        ...(wrapperPaintsBg
+          ? canvasBackgroundStyle(backgroundStyle, 'var(--vscode-editor-background)')
+          : {}),
+      }}
+      onPointerMove={combinedPointerMove}
+      onPointerLeave={handlePointerLeave}
+      onPointerDown={handlePointerDown}
+      onPointerUp={endPanDrag}
+      onPointerCancel={endPanDrag}
+      onWheel={handleWheel}
+    >
+      {canvasAndChildren}
     </div>
   )
 }
