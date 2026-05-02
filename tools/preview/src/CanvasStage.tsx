@@ -12,7 +12,7 @@ import {
   type WheelEvent as ReactWheelEvent,
 } from 'react'
 import { loadImage } from '@three-flatland/io'
-import { ThreeLayer } from './ThreeLayer'
+import { ThreeLayer, type ImageSource } from './ThreeLayer'
 import { ViewportContext, viewBoxFor, type Viewport } from './Viewport'
 import { createCursorStore } from './cursorStore'
 import { canvasBackgroundStyle } from './canvasBackground'
@@ -42,6 +42,17 @@ export {
 
 export type CanvasStageProps = {
   imageUri: string | null
+  /**
+   * Optional pre-built texture source. When provided, takes precedence over
+   * `imageUri` for the three.js rendering layer. Supports both URL-based and
+   * direct `THREE.Texture` variants (e.g. `CompressedTexture` from KTX2Loader).
+   *
+   * Note: the ImageData-decoding worker path (cursor RGBA sampling) only runs
+   * when `imageUri` is also set. When using `imageSource: { kind: 'texture' }`
+   * without a paired `imageUri`, `useImageData()` returns `null` and cursor
+   * color sampling is disabled.
+   */
+  imageSource?: ImageSource | null
   background?: string
   fitMargin?: number
   /** Overlay layers rendered absolutely over the three.js canvas. */
@@ -418,6 +429,7 @@ function clampPan(panX: number, panY: number, vp: Viewport): [number, number] {
  */
 export function CanvasStage({
   imageUri,
+  imageSource,
   background,
   fitMargin = 1.15,
   children,
@@ -965,6 +977,7 @@ export function CanvasStage({
       onWheel={handleWheel}
     >
       <ThreeLayer
+        imageSource={imageSource}
         imageUri={imageUri}
         background={threeLayerBackground}
         fitMargin={fitMargin}
