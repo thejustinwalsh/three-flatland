@@ -1,5 +1,5 @@
-import { Suspense, useEffect, useMemo, useState } from 'react'
-import { Canvas, useLoader, useThree } from '@react-three/fiber/webgpu'
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react'
+import { Canvas, useFrame, useLoader, useThree } from '@react-three/fiber/webgpu'
 import {
   LinearFilter,
   NearestFilter,
@@ -224,25 +224,34 @@ function CompareScene({
     return mat
   }, [])
 
-  // splitU lives as a TSL uniform so we can mutate .value without rebuilding
-  // the node graph on every slider tick.
+  // splitU/mipLevelB/compareLoading live as TSL uniforms whose .value is
+  // pushed every R3F frame from refs. Why refs (not useEffect-driven writes
+  // off React state):
+  //
+  //   React commits the new prop → useEffect fires → sets .value.
+  //   But R3F's frame loop is independent — the uniform write may happen
+  //   AFTER the next frame's render started reading it, leaving the slider
+  //   visibly lagging behind the HTML drag handle by ≥1 frame.
+  //
+  // useFrame runs synchronously inside R3F's render loop, just before the
+  // GPU dispatch. Reading the latest ref values there guarantees the
+  // shader and the HTML overlay see the same splitU on every frame.
   const splitUNode = useMemo(() => uniform(0.5), [])
-  useEffect(() => {
-    splitUNode.value = splitU
-  }, [splitU, splitUNode])
-
-  // mipLevelB lives as a TSL uniform so LOD changes don't rebuild the node graph.
   const mipLevelBNode = useMemo(() => uniform(0), [])
-  useEffect(() => {
-    mipLevelBNode.value = mipLevelB
-  }, [mipLevelB, mipLevelBNode])
-
-  // compareLoading lives as a TSL uniform so toggling it doesn't rebuild
-  // the node graph — only the uniform value changes, the graph stays.
   const loadingNode = useMemo(() => uniform(0), [])
-  useEffect(() => {
-    loadingNode.value = compareLoading ? 1 : 0
-  }, [compareLoading, loadingNode])
+
+  const splitURef = useRef(splitU)
+  const mipLevelBRef = useRef(mipLevelB)
+  const compareLoadingRef = useRef(compareLoading)
+  splitURef.current = splitU
+  mipLevelBRef.current = mipLevelB
+  compareLoadingRef.current = compareLoading
+
+  useFrame(() => {
+    splitUNode.value = splitURef.current
+    mipLevelBNode.value = mipLevelBRef.current
+    loadingNode.value = compareLoadingRef.current ? 1 : 0
+  })
 
   // Rebuild colorNode whenever a texture changes.
   useEffect(() => {
@@ -355,6 +364,11 @@ export function CompareLayer({
   return (
     <Canvas
       dpr={1}
+      // Continuous render loop — required for the useFrame-driven uniform
+      // pushes inside CompareScene. With "demand" the canvas would freeze
+      // the moment the drag stops mutating React state, even though the
+      // refs hold a fresher splitU value.
+      frameloop="always"
       renderer={{ antialias: false }}
       style={{
         position: 'absolute',
