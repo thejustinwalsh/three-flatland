@@ -100,7 +100,10 @@ function useEncodedTexture(setEncodedMipCount: (count: number) => void): THREE.T
               loader.parse(buf, resolve, reject)
             })
             const compressed = next as THREE.CompressedTexture
-            setEncodedMipCount(compressed.mipmaps?.length ?? 1)
+            const mipCount = compressed.mipmaps?.length ?? 1
+            const dims = compressed.mipmaps?.map((m) => `${m.width}×${m.height}`).join(', ') ?? '?'
+            console.log(`[encode] KTX2 decoded: ${mipCount} mip level(s), format=${(compressed as unknown as { format?: number }).format}, dims=[${dims}]`)
+            setEncodedMipCount(mipCount)
           } finally {
             probeRenderer.dispose()
           }
