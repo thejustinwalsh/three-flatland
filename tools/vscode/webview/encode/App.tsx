@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { vscode } from '@three-flatland/design-system/tokens/vscode-theme.stylex'
 import { space } from '@three-flatland/design-system/tokens/space.stylex'
+import { Panel } from '@three-flatland/design-system'
 import { decodeImage, type EncodeFormat } from '@three-flatland/image'
 import { createClientBridge } from '@three-flatland/bridge/client'
 import { useEncodeStore } from './encodeStore'
@@ -9,6 +10,7 @@ import { scheduleEncode } from './encodePipeline'
 import { ComparePreview } from './ComparePreview'
 import { Knobs } from './Knobs'
 import { Toolbar } from './Toolbar'
+import { EncodeMenu } from './EncodeMenu'
 
 const styles = stylex.create({
   root: {
@@ -18,10 +20,6 @@ const styles = stylex.create({
     height: '100%',
     background: vscode.bg,
     color: vscode.fg,
-    gap: space.sm,
-  },
-  headerLine: {
-    padding: space.sm,
   },
   errorBanner: {
     padding: space.sm,
@@ -29,9 +27,15 @@ const styles = stylex.create({
     color: vscode.errorFg,
     border: `1px solid ${vscode.errorBorder}`,
   },
-  body: {
+  panelFill: {
     flex: 1,
+    minWidth: 0,
     minHeight: 0,
+  },
+  headerActions: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: space.sm,
   },
 })
 
@@ -45,8 +49,6 @@ function detectFormat(fileName: string): EncodeFormat {
 }
 
 export function App() {
-  const fileName = useEncodeStore((s) => s.fileName)
-  const sourceImage = useEncodeStore((s) => s.sourceImage)
   const encodeError = useEncodeStore((s) => s.encodeError)
   const loadInit = useEncodeStore((s) => s.loadInit)
   const setRuntimeFields = useEncodeStore((s) => s.setRuntimeFields)
@@ -119,16 +121,21 @@ export function App() {
 
   return (
     <div {...stylex.props(styles.root)}>
-      <Toolbar />
-      <div {...stylex.props(styles.headerLine)}>
-        <strong>{fileName || '(no file)'}</strong>
-        {sourceImage ? ` · ${sourceImage.width}×${sourceImage.height}` : ' · loading…'}
-      </div>
-      <Knobs />
       {encodeError && <div {...stylex.props(styles.errorBanner)}>{encodeError}</div>}
-      <div {...stylex.props(styles.body)}>
+      <Panel
+        title="Compare"
+        bodyPadding="none"
+        headerActions={
+          <div {...stylex.props(styles.headerActions)}>
+            <Knobs />
+            <Toolbar />
+            <EncodeMenu />
+          </div>
+        }
+        style={styles.panelFill}
+      >
         <ComparePreview />
-      </div>
+      </Panel>
     </div>
   )
 }

@@ -89,6 +89,13 @@ export async function openEncodePanel(
     },
   )
 
+  bridge.on('encode/reveal-folder', async () => {
+    // Open the platform file explorer at the source file's containing directory.
+    // `target` is the source file URI, captured in the panel-creation closure.
+    await vscode.commands.executeCommand('revealFileInOS', target)
+    return { ok: true }
+  })
+
   bridge.on<{ level: string; args: unknown[] }>('client/log', ({ level, args }) => {
     log(`[webview:${level}]`, ...args)
     return { ok: true }
