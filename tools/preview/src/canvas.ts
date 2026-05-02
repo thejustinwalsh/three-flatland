@@ -3,6 +3,7 @@
 // `import('@three-flatland/preview/canvas')` so the three.js + R3F +
 // three-flatland chunk stays out of the shell bundle.
 
+export { CompareContext, useCompareController, type CompareController } from './CompareContext'
 export { CanvasStage, type CanvasStageProps } from './CanvasStage'
 export { ThreeLayer, type ThreeLayerProps, type ImageSource } from './ThreeLayer'
 export { CompareLayer, type CompareLayerProps } from './CompareLayer'
