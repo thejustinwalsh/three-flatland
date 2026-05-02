@@ -1,9 +1,9 @@
-// Wraps a graph SVG in an HTML viewer with vanilla pan/zoom so macOS
-// Preview / Quick Look's lack of interactive viewing isn't a blocker.
-// Inlines the SVG to side-step file:// fetch CORS in browsers.
+// Wraps a graph SVG in an HTML viewer with smooth pan/zoom.
+// Uses CSS transform on a wrapper (GPU-accelerated, no SVG repaint) instead
+// of mutating viewBox (which forced a full SVG relayout per event and was
+// the source of the lag on large graphs).
 //
 // Usage: tsx scripts/wrap-graph-viewer.ts <svg-filename>     # relative to graphs/
-//        tsx scripts/wrap-graph-viewer.ts monorepo.svg
 
 import { readFileSync, writeFileSync } from 'node:fs'
 import { basename, extname, join } from 'node:path'
@@ -17,7 +17,6 @@ if (!svgArg) {
 const svgPath = join('graphs', svgArg)
 const htmlPath = join('graphs', basename(svgArg, extname(svgArg)) + '.html')
 const svg = readFileSync(svgPath, 'utf8')
-// Strip XML prolog so it inlines cleanly into HTML.
 const inline = svg.replace(/^<\?xml[^?]*\?>\s*/, '').replace(/<!DOCTYPE[^>]*>\s*/i, '')
 const title = `Graph: ${basename(svgArg, extname(svgArg))}`
 
@@ -28,69 +27,94 @@ const html = `<!doctype html>
   <title>${title}</title>
   <style>
     html, body { margin: 0; height: 100%; overflow: hidden; background: #00021c; color: #f0edd8; font: 12px ui-monospace, monospace; }
-    #stage { position: fixed; inset: 0; cursor: grab; }
+    #stage { position: fixed; inset: 0; cursor: grab; overflow: hidden; touch-action: none; }
     #stage.dragging { cursor: grabbing; }
-    #stage > svg { display: block; width: 100vw; height: 100vh; user-select: none; -webkit-user-select: none; }
-    #hud { position: fixed; top: 8px; left: 8px; padding: 6px 10px; background: rgba(28,40,77,0.9); border: 1px solid #732866; pointer-events: none; }
+    /* Wrapper carries the transform; GPU-accelerated, no SVG relayout */
+    #pan { position: absolute; top: 0; left: 0; transform-origin: 0 0; will-change: transform; }
+    #pan > svg { display: block; pointer-events: none; }
+    #hud, #zoom { position: fixed; padding: 6px 10px; background: rgba(28,40,77,0.9); border: 1px solid #732866; }
+    #hud { top: 8px; left: 8px; pointer-events: none; }
     #hud kbd { background: #1c284d; padding: 1px 5px; border: 1px solid #732866; }
-    #zoom { position: fixed; bottom: 8px; right: 8px; padding: 4px 8px; background: rgba(28,40,77,0.9); border: 1px solid #732866; }
+    #zoom { bottom: 8px; right: 8px; }
   </style>
 </head>
 <body>
-  <div id="hud">drag = pan &nbsp;·&nbsp; wheel = zoom &nbsp;·&nbsp; <kbd>R</kbd> reset &nbsp;·&nbsp; <kbd>F</kbd> fit</div>
-  <div id="stage">${inline}</div>
+  <div id="hud">drag = pan &nbsp;·&nbsp; wheel = zoom &nbsp;·&nbsp; <kbd>F</kbd> fit &nbsp;·&nbsp; <kbd>1</kbd> 100%</div>
+  <div id="stage"><div id="pan">${inline}</div></div>
   <div id="zoom">100%</div>
   <script>
     const stage = document.getElementById('stage')
-    const zoom = document.getElementById('zoom')
-    const svg = stage.querySelector('svg')
+    const pan   = document.getElementById('pan')
+    const zoom  = document.getElementById('zoom')
+    const svg   = pan.querySelector('svg')
 
-    // Force the SVG to fill the viewport regardless of generator output.
-    svg.removeAttribute('width')
-    svg.removeAttribute('height')
+    // Force the SVG to its intrinsic size so the wrapper transform decides
+    // what the viewport sees.
+    const intrinsicW = parseFloat(svg.getAttribute('width')) || svg.viewBox.baseVal.width
+    const intrinsicH = parseFloat(svg.getAttribute('height')) || svg.viewBox.baseVal.height
+    svg.setAttribute('width',  intrinsicW)
+    svg.setAttribute('height', intrinsicH)
 
-    // Establish a viewBox if graphviz emitted absolute width/height only.
-    if (!svg.hasAttribute('viewBox')) {
-      const bb = svg.getBBox()
-      svg.setAttribute('viewBox', \`\${bb.x} \${bb.y} \${bb.width} \${bb.height}\`)
+    let scale = 1, tx = 0, ty = 0
+    let dirty = false
+    const flush = () => {
+      pan.style.transform = \`translate(\${tx}px, \${ty}px) scale(\${scale})\`
+      zoom.textContent = (scale * 100).toFixed(0) + '%'
+      dirty = false
     }
-    const vb0 = (() => { const v = svg.viewBox.baseVal; return { x: v.x, y: v.y, w: v.width, h: v.height } })()
-    const fitVB = () => apply(vb0.x, vb0.y, vb0.w, vb0.h)
+    const schedule = () => { if (!dirty) { dirty = true; requestAnimationFrame(flush) } }
 
-    const apply = (x, y, w, h) => {
-      svg.setAttribute('viewBox', \`\${x} \${y} \${w} \${h}\`)
-      const ratio = vb0.w / w
-      zoom.textContent = (ratio * 100).toFixed(0) + '%'
+    const fit = () => {
+      const sw = stage.clientWidth, sh = stage.clientHeight
+      scale = Math.min(sw / intrinsicW, sh / intrinsicH) * 0.95
+      tx = (sw - intrinsicW * scale) / 2
+      ty = (sh - intrinsicH * scale) / 2
+      schedule()
     }
+
+    const reset = () => { scale = 1; tx = 0; ty = 0; schedule() }
 
     stage.addEventListener('wheel', (e) => {
       e.preventDefault()
-      const v = svg.viewBox.baseVal
-      const k = e.deltaY > 0 ? 1.15 : 1 / 1.15
-      const rect = svg.getBoundingClientRect()
-      const mx = v.x + (e.clientX - rect.left) * v.width / rect.width
-      const my = v.y + (e.clientY - rect.top) * v.height / rect.height
-      apply(mx - (mx - v.x) * k, my - (my - v.y) * k, v.width * k, v.height * k)
+      const k = e.deltaY > 0 ? 1 / 1.15 : 1.15
+      const rect = stage.getBoundingClientRect()
+      const px = e.clientX - rect.left
+      const py = e.clientY - rect.top
+      // Keep the cursor's world-point fixed under the pointer
+      tx = px - (px - tx) * k
+      ty = py - (py - ty) * k
+      scale *= k
+      schedule()
     }, { passive: false })
 
-    let dragging = false, lx = 0, ly = 0
-    stage.addEventListener('mousedown', (e) => { dragging = true; lx = e.clientX; ly = e.clientY; stage.classList.add('dragging') })
-    window.addEventListener('mouseup',   () => { dragging = false; stage.classList.remove('dragging') })
-    window.addEventListener('mousemove', (e) => {
-      if (!dragging) return
-      const v = svg.viewBox.baseVal
-      const rect = svg.getBoundingClientRect()
-      const dx = (e.clientX - lx) * v.width  / rect.width
-      const dy = (e.clientY - ly) * v.height / rect.height
-      apply(v.x - dx, v.y - dy, v.width, v.height)
-      lx = e.clientX; ly = e.clientY
+    let dragging = false, lx = 0, ly = 0, pid = -1
+    stage.addEventListener('pointerdown', (e) => {
+      dragging = true; lx = e.clientX; ly = e.clientY; pid = e.pointerId
+      stage.setPointerCapture(pid)
+      stage.classList.add('dragging')
     })
+    stage.addEventListener('pointermove', (e) => {
+      if (!dragging) return
+      tx += e.clientX - lx
+      ty += e.clientY - ly
+      lx = e.clientX; ly = e.clientY
+      schedule()
+    })
+    const endDrag = () => {
+      if (!dragging) return
+      dragging = false
+      if (pid >= 0) try { stage.releasePointerCapture(pid) } catch {}
+      stage.classList.remove('dragging')
+    }
+    stage.addEventListener('pointerup', endDrag)
+    stage.addEventListener('pointercancel', endDrag)
 
     window.addEventListener('keydown', (e) => {
-      if (e.key === 'r' || e.key === 'R' || e.key === 'f' || e.key === 'F') fitVB()
+      if (e.key === 'f' || e.key === 'F') fit()
+      else if (e.key === '1') reset()
     })
 
-    fitVB()
+    fit()
   </script>
 </body>
 </html>

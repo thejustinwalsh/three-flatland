@@ -13,6 +13,7 @@
 import madge from 'madge'
 import { writeFileSync, mkdirSync } from 'node:fs'
 import { execSync } from 'node:child_process'
+import { buildClusteredDot, pkgOf } from './lib/build-dot.ts'
 
 const TARGETS = ['packages', 'minis', 'tools']
 const BASE = {
@@ -95,46 +96,15 @@ function tarjan(graph: Record<string, string[]>): string[][] {
 }
 
 const cycles = tarjan(typeOnly)
-
-// Render with graphviz directly (we own the edge set, can't reuse madge image()).
-const nodes = new Set<string>()
-const edgeLines: string[] = []
-for (const [from, deps] of Object.entries(typeOnly)) {
-  nodes.add(from)
-  for (const to of deps) {
-    nodes.add(to)
-    edgeLines.push(`  "${from}" -> "${to}";`)
-  }
-}
-
-// Tag nodes that participate in a cycle for visual emphasis.
 const cyclicNodes = new Set<string>(cycles.flat())
 
-const dot = [
-  'digraph TypesOnly {',
-  '  bgcolor="#00021c";',
-  '  rankdir=LR;',
-  '  fontname="monospace";',
-  '  fontcolor="#f0edd8";',
-  '  node [shape=box, fontname="monospace", fontcolor="#f0edd8", color="#47cca9", style=filled, fillcolor="#1c284d"];',
-  '  edge [color="#732866"];',
-  ...[...nodes].sort().map((n) => {
-    const fill = cyclicNodes.has(n) ? '"#732866"' : '"#1c284d"'
-    const color = cyclicNodes.has(n) ? '"#d94c87"' : '"#47cca9"'
-    return `  "${n}" [fillcolor=${fill}, color=${color}];`
-  }),
-  ...edgeLines,
-  '}',
-  '',
-].join('\n')
-
 mkdirSync('graphs', { recursive: true })
+const dot = buildClusteredDot({ graph: typeOnly, cyclicNodes })
 writeFileSync('graphs/types.dot', dot)
 execSync('dot -Tsvg -o graphs/types.svg graphs/types.dot')
 
 // Cross-package edge summary — the actionable view for declaring deps in package.json.
 type Edge = { from: string; to: string; fromPkg: string; toPkg: string }
-const pkgOf = (p: string) => p.split('/').slice(0, 2).join('/')
 const crossPkg: Edge[] = []
 for (const [from, deps] of Object.entries(typeOnly)) {
   const fromPkg = pkgOf(from)
@@ -153,8 +123,11 @@ for (const e of crossPkg) {
   byPair.set(k, list)
 }
 
+const fileCount = new Set(
+  Object.keys(typeOnly).concat(Object.values(typeOnly).flat()),
+).size
 const totalEdges = Object.values(typeOnly).reduce((n, ds) => n + ds.length, 0)
-console.log(`graphs/types.svg — ${nodes.size} files, ${totalEdges} type-only edges`)
+console.log(`graphs/types.svg — ${fileCount} files, ${totalEdges} type-only edges`)
 console.log(`\nCross-package type-only edges (${crossPkg.length} total, ${byPair.size} pkg pairs):`)
 for (const [pair, edges] of [...byPair.entries()].sort()) {
   console.log(`  ${pair}  (${edges.length})`)
