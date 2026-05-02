@@ -22,6 +22,9 @@ interface SessionSlice {
   // mipLevel: which mip to inspect; persisted per-session so reopening the
   // panel for the same file returns to the inspected mip.
   mipLevel: number
+  // mode: 'encode' for PNG sources (full pipeline), 'inspect' for already-
+  // encoded files (.webp/.avif/.ktx2) — slider hidden, knobs+save disabled.
+  mode: 'encode' | 'inspect'
 }
 
 interface PrefsSlice {
@@ -61,10 +64,11 @@ export type EncodeStoreState = DocSlice &
     setCompareSplitU: (u: number) => void
     // Actions — session
     setMipLevel: (n: number) => void
+    setMode: (m: 'encode' | 'inspect') => void
     // Actions — runtime
     setEncodedMipCount: (count: number) => void
     // Actions — lifecycle
-    loadInit: (p: { fileName: string; sourceBytes: Uint8Array; sourceImage: ImageData | null }) => void
+    loadInit: (p: { fileName: string; sourceBytes: Uint8Array; sourceImage: ImageData | null; mode: 'encode' | 'inspect' }) => void
     // Actions — runtime
     setRuntimeFields: (p: Partial<RuntimeSlice>) => void
     bumpEncodeReqId: () => number
@@ -108,6 +112,7 @@ export const useEncodeStore = create<EncodeStoreState>()(
           // Session slice defaults
           fileName: 'image',
           mipLevel: 0,
+          mode: 'encode' as const,
 
           // Runtime slice defaults — never persisted
           sourceBytes: null,
@@ -135,6 +140,7 @@ export const useEncodeStore = create<EncodeStoreState>()(
           // Session actions
           setMipLevel: (n) =>
             set((s) => ({ ...s, mipLevel: Math.min(Math.max(0, s.encodedMipCount - 1), Math.max(0, n)) })),
+          setMode: (m) => set((s) => ({ ...s, mode: m })),
 
           // Runtime actions
           setEncodedMipCount: (count) =>
@@ -142,12 +148,13 @@ export const useEncodeStore = create<EncodeStoreState>()(
 
           // Lifecycle action — bridge `encode/init` calls this. Sets state and
           // clears undo history so the user's stack starts empty on each load.
-          loadInit: ({ fileName, sourceBytes, sourceImage }) => {
+          loadInit: ({ fileName, sourceBytes, sourceImage, mode }) => {
             set((s) => ({
               ...s,
               fileName,
               sourceBytes,
               sourceImage,
+              mode,
               // Reset encoded output whenever a new source arrives.
               encodedBytes: null,
               encodedImage: null,
@@ -180,6 +187,7 @@ export const useEncodeStore = create<EncodeStoreState>()(
             ktx2: s.ktx2,
             fileName: s.fileName,
             mipLevel: s.mipLevel,
+            mode: s.mode,
           }),
         },
       ),
@@ -255,7 +263,7 @@ export const encodeActions = {
   // Bridge `encode/init` should call this — sets source + fileName AND clears
   // any history accumulated from rehydration / earlier inits. The user's undo
   // stack starts empty when they first see the panel content.
-  loadInit: (p: { fileName: string; sourceBytes: Uint8Array; sourceImage: ImageData | null }) =>
+  loadInit: (p: { fileName: string; sourceBytes: Uint8Array; sourceImage: ImageData | null; mode: 'encode' | 'inspect' }) =>
     useEncodeStore.getState().loadInit(p),
   setRuntimeFields: (p: Partial<RuntimeSlice>) =>
     useEncodeStore.getState().setRuntimeFields(p),

@@ -42,6 +42,17 @@
           { "filenamePattern": "*.png" }
         ],
         "priority": "option"
+      },
+      {
+        "viewType": "threeFlatland.encode",
+        "displayName": "FL Image Encoder",
+        "selector": [
+          { "filenamePattern": "*.png" },
+          { "filenamePattern": "*.webp" },
+          { "filenamePattern": "*.avif" },
+          { "filenamePattern": "*.ktx2" }
+        ],
+        "priority": "option"
       }
     ],
     "menus": {
@@ -58,7 +69,7 @@
         },
         {
           "command": "threeFlatland.encode.open",
-          "when": "resourceExtname == .png || resourceExtname == .webp || resourceExtname == .avif",
+          "when": "resourceExtname == .png || resourceExtname == .webp || resourceExtname == .avif || resourceExtname == .ktx2",
           "group": "navigation@13"
         }
       ],
@@ -73,7 +84,7 @@
         },
         {
           "command": "threeFlatland.encode.open",
-          "when": "resourceExtname == .png || resourceExtname == .webp || resourceExtname == .avif"
+          "when": "resourceExtname == .png || resourceExtname == .webp || resourceExtname == .avif || resourceExtname == .ktx2"
         }
       ]
     },

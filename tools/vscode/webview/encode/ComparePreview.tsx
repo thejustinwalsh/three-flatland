@@ -132,9 +132,32 @@ export function ComparePreview() {
   const setCompareSplitU = useEncodeStore((s) => s.setCompareSplitU)
   const setEncodedMipCount = useEncodeStore((s) => s.setEncodedMipCount)
   const mipLevel = useEncodeStore((s) => s.mipLevel)
+  const mode = useEncodeStore((s) => s.mode)
   const original = useOriginalTexture(sourceImage)
   const encoded = useEncodedTexture(setEncodedMipCount)
 
+  // ── Inspect mode ──────────────────────────────────────────────────────────
+  // The source file IS the encoded artifact — there's nothing to compare.
+  // Use the encoded texture on both sides (same texture) with splitU pinned
+  // to 1 so the shader always samples the compare side. This makes mipLevelB
+  // control the LOD, so the mip stepper in the toolbar works for KTX2 files.
+  // No <CompareSliderOverlay> is mounted — the split is invisible.
+  if (mode === 'inspect') {
+    if (!encoded) return <div style={{ padding: 24, opacity: 0.6 }}>loading…</div>
+    const sameTexture: ImageSource = { kind: 'texture', texture: encoded }
+    return (
+      <CanvasStage
+        imageUri={null}
+        imageSource={sameTexture}
+        compareImageSource={sameTexture}
+        initialSplitU={1}
+        mipLevelB={mipLevel}
+        backgroundStyle="checker"
+      />
+    )
+  }
+
+  // ── Encode mode (existing logic) ──────────────────────────────────────────
   if (!sourceImage || !original) {
     return <div style={{ padding: 24, opacity: 0.6 }}>loading…</div>
   }
