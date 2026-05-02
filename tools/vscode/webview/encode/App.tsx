@@ -5,6 +5,7 @@ import { space } from '@three-flatland/design-system/tokens/space.stylex'
 import { decodeImage, type EncodeFormat } from '@three-flatland/image'
 import { createClientBridge } from '@three-flatland/bridge/client'
 import { useEncodeStore } from './encodeStore'
+import { OriginalView } from './OriginalView'
 
 const styles = stylex.create({
   root: {
@@ -14,14 +15,21 @@ const styles = stylex.create({
     height: '100%',
     background: vscode.bg,
     color: vscode.fg,
-    padding: space.md,
     gap: space.sm,
+  },
+  headerLine: {
+    padding: space.sm,
   },
   errorBanner: {
     padding: space.sm,
     background: vscode.errorBg,
     color: vscode.errorFg,
     border: `1px solid ${vscode.errorBorder}`,
+  },
+  body: {
+    display: 'flex',
+    flex: 1,
+    minHeight: 0,
   },
 })
 
@@ -69,11 +77,14 @@ export function App() {
 
   return (
     <div {...stylex.props(styles.root)}>
-      <div>
+      <div {...stylex.props(styles.headerLine)}>
         FL Image Encoder · <strong>{fileName || '(no file)'}</strong>
         {sourceImage ? ` · ${sourceImage.width}×${sourceImage.height}` : ' · loading…'}
       </div>
       {encodeError && <div {...stylex.props(styles.errorBanner)}>{encodeError}</div>}
+      <div {...stylex.props(styles.body)}>
+        <OriginalView />
+      </div>
     </div>
   )
 }
