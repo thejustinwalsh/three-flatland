@@ -1,0 +1,13 @@
+.{
+    .fingerprint = 0x3731d2c50686a927,
+    .name = .three_flatland_image_basis,
+    .version = "0.1.0",
+    .minimum_zig_version = "0.14.0",
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "encoder_files.zig",
+        "src/zig",
+        "vendor",
+    },
+}
