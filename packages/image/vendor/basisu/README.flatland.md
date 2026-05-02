@@ -84,6 +84,10 @@ or `.h` file contains any direct `_mm_*` usage.
 
 **Decision:** port-all (under 30 budget)
 
-This shapes Phase 3 work: Task 14 will port `basisu_kernels_sse.cpp` and
-`cppspmd_sse.h` together as a single unit to wasm_simd128 — no non-kernel files
-require separate SIMD porting.
+This shapes Phase 3 work:
+
+- **Task 13** absorbs `cppspmd_sse.h` into its scope — the kernels file is the only consumer,
+  so the wasm port produces a paired `basisu_kernels_wasm.cpp` + `cppspmd_wasm.h` (or an
+  equivalent merge) translated together to `wasm_simd128.h`.
+- **Task 14** (patch non-kernel `_mm_*` call-sites) becomes a **no-op** and is skipped —
+  the audit found zero non-kernel call-sites that need patching.
