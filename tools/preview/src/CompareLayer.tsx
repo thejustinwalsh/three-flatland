@@ -10,7 +10,7 @@ import {
   type Texture,
 } from 'three'
 import { MeshBasicNodeMaterial } from 'three/webgpu'
-import { texture, textureLevel, uv, screenUV, select, uniform, mix, vec3, vec4, dot } from 'three/tsl'
+import { texture, textureLevel, uv, screenUV, select, uniform, mix, vec2, vec3, vec4, float, dot } from 'three/tsl'
 import { type ImageSource } from './ThreeLayer'
 
 export type { ImageSource }
@@ -260,7 +260,19 @@ function CompareScene({
     // For the compare texture, sample at the selected LOD using textureLevel().
     // For non-CompressedTextures (CanvasTexture) the uniform is 0, so the
     // result is equivalent to texture() at full resolution.
-    const compareSample = compareTex ? textureLevel(compareTex, uv(), mipLevelBNode) : a
+    //
+    // Y-flip workaround for CompressedTexture: KTX2 stores image data with
+    // origin at bottom-left (OpenGL convention) while CanvasTexture from a
+    // 2D canvas has origin at top-left. `texture.flipY = true` is a no-op
+    // on CompressedTexture (compressed blocks can't be flipped on upload).
+    // So we flip the V coordinate in the shader instead, but only when the
+    // sampled texture is compressed — uncompressed comparisons still use
+    // the raw uv().
+    const isCompressed = (compareTex as CompressedTexture | null)?.mipmaps !== undefined
+    const compareUV = isCompressed
+      ? vec2(uv().x, float(1).sub(uv().y))
+      : uv()
+    const compareSample = compareTex ? textureLevel(compareTex, compareUV, mipLevelBNode) : a
 
     // Loading-state visualization: while a re-encode is in flight, force
     // the right side to the primary texture and apply a desaturation +
