@@ -22,6 +22,38 @@ This document is the research + design pass that decides:
 3. How its memory model compares to KTX2 and to the "deliver WebP and decode in browser" baseline — specifically the pixi.js-style "keep the decoded ImageData around for device-lost recovery" antipattern that balloons RAM
 4. Whether KTX2 still has a place once spark.js lands — when each format wins
 5. The integration shape against the `BaseImageLoader<T>` + `LoaderRegistry` abstraction from Phase 2.1.2
+6. **What licensing constraints affect distribution** — spoiler: this is the load-bearing finding. See "License audit" below before reading anything else.
+
+## License audit — read this first
+
+**spark.js has a mixed license that prevents us from shipping it as a default integration.**
+
+The repository's `LICENSE` file makes this explicit:
+
+- **JavaScript code: MIT.** The orchestration layer is permissive; we can fork, modify, redistribute.
+- **Spark Shaders: proprietary EULA.** The actual encoder logic (the WGSL + GLSL shaders that do the GPU compression) is governed by a custom EULA at `https://ludicon.com/sparkjs/eula.html`.
+
+Reading the EULA, the practical constraints are:
+
+| Concern | Spark.js EULA position |
+|---|---|
+| Commercial use | **Requires a paid license from Ludicon.** Non-commercial (personal / educational / hobbyist) use is free. |
+| Inclusion in middleware / engines / dev toolkits | **Prohibited except for evaluation.** "Cannot be distributed as part of game engines, development toolkits, or middleware." three-flatland is exactly that. |
+| Downstream propagation | **Viral.** Downstream users must be bound by the EULA and must obtain their own commercial licenses for paid use. |
+| Inclusion in MIT/Apache-2.0 open-source projects | **Not explicitly permitted** — the EULA notes that incorporating into permissively-licensed open-source work could create license-compatibility issues. |
+| Derivative works (modifying the shaders) | **Prohibited.** |
+| Contributions back | Ludicon gains a perpetual unrestricted license to anything we contribute. |
+| Attribution | Required: "Powered by spark.js⚡️" with hyperlink (non-commercial users). |
+
+**What this means for three-flatland:**
+
+- **We cannot ship spark.js as a default dependency in `@three-flatland/image`** without converting the package (and three-flatland as a whole) into something users can't freely use commercially. That's a non-starter for a permissively-licensed library.
+- **We probably cannot ship it as an opt-in subpath either** — including the EULA-bound shaders in our published npm package qualifies as "distributing as part of middleware," which the EULA prohibits even for evaluation distribution.
+- **The realistic options** are: (A) don't integrate spark.js at all; (B) provide loader-registry HOOKS so end-users can plug in their own licensed spark.js installation, where THEY take on the licensing burden, never us; (C) build our own GPU-side encoder with a permissive license.
+
+Option B (registry hooks, no shipped code) is the only way to reference spark.js without taking on its licensing obligations. The rest of this spec assumes that mode — we do NOT vendor or import spark.js anywhere in three-flatland.
+
+**The remainder of the spec is research that informs (a) what an opt-in B-mode integration would look like, and (b) what we'd need to build if we ever wanted a permissive equivalent.**
 
 ## What spark.js is
 
@@ -57,40 +89,82 @@ Either way: TSL is preserved. We don't have to commit to WebGPU to use spark.js.
 
 ## API shape
 
+### Initialization
+
 ```ts
 // WebGPU path
 const adapter = await navigator.gpu.requestAdapter()
 const required = Spark.getRequiredFeatures(adapter)  // e.g. ['texture-compression-bc', 'texture-compression-astc']
 const device = await adapter.requestDevice({ requiredFeatures: required })
-const spark = await Spark.create(device)
+const spark = await Spark.create(device)   // returns Promise<Spark>
 
 // WebGL2 path
 const gl = canvas.getContext('webgl2', { preserveDrawingBuffer: true })
-const spark = await SparkGL.create(gl)
-
-// Encode (both paths)
-const result = await spark.encodeTexture(source, {
-  format: 'rgba',          // channel mask or explicit format
-  generateMipmaps: true,
-  srgb: true,
-  flipY: false,
-  outputTexture: prevTex,  // reuse to avoid reallocation
-})
-
-// Result shape:
-// - WebGPU:    Promise<GPUTexture>
-// - WebGL2:    Promise<{ texture, format, sparkFormat, srgb, width, height, mipmapCount, byteLength }>
+const spark = SparkGL.create(gl)           // returns SparkGL synchronously
 ```
 
-`source` accepts a wide variety: URL string, `HTMLImageElement`, `ImageBitmap`, `HTMLCanvasElement`, `OffscreenCanvas`, `VideoFrame`, `GPUTexture`, `WebGLTexture`. When given a URL, spark loads the image internally (caller doesn't need to fetch + decode first). When given an already-decoded source, spark just reads from it.
+`Spark.getRequiredFeatures(adapter)` returns the WebGPU features needed given the GPU's capabilities — typically a subset of `['texture-compression-bc', 'texture-compression-astc', 'texture-compression-etc2']` depending on the adapter. The caller passes that array to `requestDevice({ requiredFeatures })`. Important: this means a Spark device requires explicit feature negotiation — we can't just hand it the standard R3F device without enabling the compression features first.
 
-### three.js integration helpers
+For WebGL2, extensions are auto-enabled inside `SparkGL.create`. We don't have to manage them.
+
+### encodeTexture options (full surface)
+
+| Option | Type | Default | Notes |
+|---|---|---|---|
+| `format` | `'rgba'` \| `'rgb'` \| `'rg'` \| `'r'` \| `'auto'` \| explicit name | `'rgb'` | Channel mask (auto-picks BC7/ASTC/ETC2 variant per device) or explicit (`'bc7-rgba'`, `'astc-4x4-rgb'`, `'etc2-rgb'`, `'eac-r'`, etc.) `'auto'` is WebGPU-only. |
+| `mips` / `generateMipmaps` | boolean | `false` | Mip chain generation. We'd typically set `true` for atlases. |
+| `mipmapFilter` | `'box'` \| `'magic'` | `'magic'` | Downsample filter. "magic" is a 4×4 with sharpening; "box" is plain box filter. |
+| `mipsAlphaScale` | `number[]` | undefined | Per-level alpha multipliers — useful when alpha changes meaning at lower mips (e.g., coverage). |
+| `srgb` | boolean | `false` | sRGB encoding. We'd set `true` for color textures (atlas, UI), `false` for normal maps and data textures. |
+| `normal` | boolean | `false` | Treat as normal map — favors BC5 / EAC-RG (2-channel high-quality formats). |
+| `flipY` | boolean | `false` | Vertical flip during encode. |
+| `preferLowQuality` | boolean | `false` | Use 8-bit formats when `format='rgb'`. Trades quality for size. |
+| `outputTexture` | GPUTexture / WebGLTexture | undefined | Reuse a previously-allocated texture — avoids realloc. Width / height / mipmap count / format must match exactly or a new texture is allocated. |
+| `preload` | boolean \| string[] | `false` | Precompile encoders for given formats up front (avoids first-encode latency). |
+| `cacheTempResources` | boolean | `false` | Cache scratch GPU resources between encodes. Faster batch encoding. Pair with `freeTempResources()` after batch. |
+| `verbose` | boolean | `false` | Debug logging. |
+| `useTimestampQueries` | boolean | `false` | WebGPU GPU profiling timestamps. Useful for our perf investigation. |
+
+### Source types
+
+| Source | Spark (WebGPU) | SparkGL (WebGL2) |
+|---|---|---|
+| URL string | yes (auto-fetches + decodes) | yes |
+| `HTMLImageElement` / `ImageBitmap` / `HTMLCanvasElement` / `OffscreenCanvas` | yes | yes |
+| `VideoFrame` | yes | yes |
+| `GPUTexture` | yes | — |
+| `WebGLTexture` | — | yes |
+
+When given a URL, spark.js owns the fetch + decode. When given a decoded source, spark just reads from it.
+
+### Output formats and their tradeoffs
+
+| Format | Channels | Block size | Compression ratio | Quality |
+|---|---|---|---|---|
+| `bc1-rgb` | 3 | 8B / 4×4 | 8:1 | Low |
+| `bc4-r` | 1 | 8B / 4×4 | 2:1 | High |
+| `bc5-rg` | 2 | 8B / 4×4 | 2:1 | High |
+| `bc7-rgb` / `bc7-rgba` | 3/4 | 16B / 4×4 | 4:1 | High |
+| `etc2-rgb` | 3 | 8B / 4×4 | 8:1 | Low |
+| `eac-r` / `eac-rg` | 1/2 | 8/16B / 4×4 | 2:1 | High |
+| `astc-rgb` / `astc-rgba` | 3/4 | 16B / 4×4 | 4:1 | High |
+
+For our common case (sRGB color atlas, 4-channel including alpha): BC7/ASTC-4×4/ETC2 RGBA chosen by device. Block size 16 bytes per 4×4 pixel block = 1 byte per pixel = 4:1 ratio vs RGBA8. So a 2048² atlas → 4 MB GPU.
+
+### Resource lifecycle
+
+- Caller owns the returned texture (`GPUTexture` or `WebGLTexture`). Caller's responsibility to dispose.
+- `outputTexture` reuse: only reused if width / height / mipCount / format all match. Otherwise spark allocates a new one and returns it.
+- `spark.dispose()` destroys the encoder instance and all retained GPU scratch resources.
+- `freeTempResources()` on the spark instance: drops cached scratch GPU resources between batches.
+
+### three.js integration helpers (NOT useful for us)
 
 spark.js ships:
 - `registerSparkLoader(GLTFLoader)` — extends GLTFLoader to spark-encode embedded textures during glTF parsing
 - `createSparkPlugins(...)` — for `3DTilesRenderer`
 
-Neither is wired for sprite atlases or our custom loader hierarchy. We'd write a `SparkLoader` extending `BaseImageLoader<CompressedTexture>` that consumes spark.js directly.
+Neither is wired for sprite atlases or our custom loader hierarchy. They also don't address our licensing problem — using these helpers still pulls the EULA-bound shaders into our distribution path.
 
 ## Memory model — the pixi.js antipattern
 
@@ -173,58 +247,53 @@ The TBD is the key risk. spark.js's docs don't specify whether it retains the so
 
 **Conclusion: KTX2 stays.** Even if spark.js delivers as advertised, KTX2 covers cases (pre-baked mips, predictable output across devices, smaller atlases for sprite content) that spark doesn't address well. The two are complementary; neither replaces the other.
 
-## Integration design
+## Integration design (option B: hooks-only, no shipped spark code)
 
-### Slot in the existing `LoaderRegistry`
+Given the licensing constraint, three-flatland does NOT vendor or `import` spark.js anywhere. Instead, the loader registry exposes hooks that an end-user app can plug their own (separately-licensed) spark.js installation into.
 
-Phase 2.1.2's registry pattern:
+### What three-flatland ships
 
-```ts
-defaultLoaderRegistry.register(lazyKtx2Loader())
-defaultLoaderRegistry.register(new NativeBitmapLoader())  // png/webp/avif via ImageBitmapLoader
-```
-
-Spark.js adds a third entry. Two design choices:
-
-**Option A: register `SparkKtx2Loader` AT HIGHER PRIORITY than Ktx2Loader.**
-- KTX2 inputs route to spark first; if spark can't transcode the basis blocks (which it doesn't natively support — it's an encoder, not a basis transcoder) it falls through to our Ktx2Loader.
-- We don't actually want this. Spark doesn't transcode existing GPU-compressed formats; it encodes raw images. KTX2-via-spark isn't a real thing.
-
-**Option B: register `SparkBitmapLoader` instead of `NativeBitmapLoader` for PNG/WebP/AVIF.**
-- PNG/WebP/AVIF inputs route to spark, which decodes (via browser) + encodes (via GPU) → CompressedTexture.
-- KTX2 inputs continue to route to Ktx2Loader (spark doesn't claim them).
-- Caller can opt out per-load via a hint: `loader.parse({ url, useSpark: false })` — falls through to NativeBitmapLoader.
-- Default policy is configurable: spark-on for performance-sensitive paths, native-bitmap for simplicity.
-
-**Option C: add as an opt-in via a new `policy` field.**
-- Loader registry exposes a global policy: `'native-bitmap' | 'spark' | 'auto'`.
-- `'auto'` chooses spark when supported (WebGPU + GPU compressed-texture extensions present), falls back to native-bitmap.
-- Tools / runtime consumers can override.
-
-**Recommendation: Option C.** Keeps the registry surface clean; consumers don't need to know what each loader does. The policy is a runtime concern, not a per-call decision.
-
-### `SparkBitmapLoader<CompressedTexture>` shape
+A `SparkBitmapLoader` SKELETON in `@three-flatland/image/loaders/SparkBitmapLoader` that:
+- Implements the `BaseImageLoader<CompressedTexture>` interface
+- Takes a user-provided `encodeTexture` function as a constructor argument — does NOT import spark.js itself
+- Owns the adapter from spark.js result → `THREE.CompressedTexture`
+- Owns memory hygiene (drops the input ImageBitmap reference; nulls blob URLs)
 
 ```ts
-import type { CompressedTexture } from 'three'
+// packages/image/src/loaders/SparkBitmapLoader.ts (in three-flatland)
+
+import type { CompressedTexture, WebGLRenderer } from 'three'
 import { BaseImageLoader, type LoaderRequest, type LoaderResult } from './BaseImageLoader'
 
-let sparkInstance: { encodeTexture: (...) => Promise<unknown> } | null = null
+// User-provided encoder function. Matches spark.js's encodeTexture signature
+// shape but is NOT imported from spark.js — the user wires their own
+// licensed instance up.
+export type SparkEncodeFn = (
+  source: string | ImageBitmap | HTMLCanvasElement | OffscreenCanvas,
+  options: SparkEncodeOptions,
+) => Promise<{
+  texture: unknown          // GPUTexture | WebGLTexture, opaque to us
+  format: number            // GL or WebGPU format constant
+  width: number
+  height: number
+  mipmapCount: number
+  byteLength: number
+}>
 
-async function getSpark(renderer: WebGLRenderer | WebGPURenderer) {
-  if (sparkInstance) return sparkInstance
-  if (isWebGPURenderer(renderer)) {
-    const { Spark } = await import('@spark/web')
-    sparkInstance = await Spark.create(renderer.getDevice())
-  } else {
-    const { SparkGL } = await import('@spark/web')
-    sparkInstance = await SparkGL.create(renderer.getContext())
-  }
-  return sparkInstance
+export interface SparkEncodeOptions {
+  format?: 'rgba' | 'rgb' | 'rg' | 'r' | 'auto' | string
+  mips?: boolean
+  srgb?: boolean
+  normal?: boolean
+  flipY?: boolean
+  preferLowQuality?: boolean
+  outputTexture?: unknown
 }
 
 export class SparkBitmapLoader extends BaseImageLoader<CompressedTexture> {
-  format = 'spark-bitmap'
+  readonly format = 'spark-bitmap'
+
+  constructor(private encode: SparkEncodeFn) { super() }
 
   supports(input: { bytes?: Uint8Array; url?: string }): boolean {
     const ext = (input.url ?? '').split('.').pop()?.toLowerCase()
@@ -233,30 +302,60 @@ export class SparkBitmapLoader extends BaseImageLoader<CompressedTexture> {
 
   async parse(req: LoaderRequest): Promise<LoaderResult<CompressedTexture>> {
     if (!req.renderer) throw new Error('SparkBitmapLoader requires a renderer')
-    const spark = await getSpark(req.renderer)
-    const result = await spark.encodeTexture(req.url ?? req.bytes, {
-      generateMipmaps: req.options?.mipmaps ?? true,
+    if (!req.url) throw new Error('SparkBitmapLoader currently requires a url source')
+
+    const result = await this.encode(req.url, {
+      format: 'rgba',
+      mips: req.options?.mipmaps ?? true,
       srgb: req.options?.srgb ?? true,
       flipY: false,
     })
-    // Wrap into a THREE.CompressedTexture our renderer can consume.
-    // Both Spark (WebGPU) and SparkGL (WebGL2) results need a small adapter
-    // because three's CompressedTexture expects mipmaps[] data, not a raw
-    // GPUTexture / WebGLTexture handle. The wrapper either (a) reads back
-    // the compressed bytes from the GPU once into mipmaps[], or (b) builds
-    // a custom texture subclass that owns the GPU handle directly and
-    // bypasses three's normal upload path.
-    //
-    // (a) keeps compatibility with three's renderer; (b) saves the readback
-    // cost. Pick (a) for v1 — measure the readback overhead, evaluate (b)
-    // if it's a hotspot.
-    const tex = adaptToCompressedTexture(result)
-    return { texture: tex, meta: { sparkFormat: result.sparkFormat } }
+
+    // Adapter: spark gives us a GPU-resident handle; three wants a
+    // CompressedTexture. See "adapter strategy" below for the two
+    // compatible paths.
+    const texture = adaptSparkResultToCompressedTexture(result)
+
+    return {
+      texture,
+      meta: { sparkFormat: result.format, byteLength: result.byteLength },
+      recovery: { kind: 'url', url: req.url, format: 'png' /* or detected */ },
+    }
   }
 }
 ```
 
-The `adaptToCompressedTexture(result)` helper is the load-bearing piece. It's not free — three's renderer expects to manage texture uploads itself, and spark gives us a GPU-resident texture that's already uploaded. Three options:
+### What the end-user does
+
+In their own application code (where they've signed Ludicon's commercial license, or they're using it non-commercially):
+
+```ts
+// User's own app code — this is where spark.js is actually imported
+import { Spark } from '@spark/web'                 // user pays for this
+import { SparkBitmapLoader, defaultLoaderRegistry } from '@three-flatland/image/loaders'
+
+const adapter = await navigator.gpu.requestAdapter()
+const required = Spark.getRequiredFeatures(adapter)
+const device = await adapter.requestDevice({ requiredFeatures: required })
+const spark = await Spark.create(device)
+
+defaultLoaderRegistry.register(
+  new SparkBitmapLoader((src, opts) => spark.encodeTexture(src, opts)),
+  { priority: 'before-native-bitmap' },
+)
+```
+
+three-flatland's package.json never lists `@spark/web` as a dependency. We don't pull it. The end-user does, under their own license.
+
+### Why this works for the licensing
+
+- Our `SparkBitmapLoader` ships with no shader code, no imports of `@spark/web`, no compiled spark output.
+- It's a typed adapter that calls a function the caller provides. Functionally indistinguishable from any other "you bring the encoder" plugin pattern.
+- The Ludicon EULA's "cannot be distributed as part of middleware" clause doesn't bite us because we don't distribute spark.js. The user does, in their own app, where their license applies.
+
+### Adapter strategy (spark output → CompressedTexture)
+
+The `adaptSparkResultToCompressedTexture` helper is the load-bearing piece. It's not free — three's renderer expects to manage texture uploads itself, and spark gives us a GPU-resident texture that's already uploaded. Three options:
 
 1. **Read back compressed bytes** from the spark-encoded texture into JS, then build a `CompressedTexture` with `mipmaps[]` populated. The renderer re-uploads. Ugly but compatible.
 2. **Subclass `CompressedTexture` to override the upload** — we tell three "the texture is already on the GPU at this handle; don't re-upload, just bind."
@@ -264,55 +363,76 @@ The `adaptToCompressedTexture(result)` helper is the load-bearing piece. It's no
 
 Option 2 is the win if it works. Option 1 is the safe fallback. Phase 2.1.2's `Ktx2Loader` already does option 1 (KTX2Loader's parse output is a CompressedTexture with mipmaps[]). Following that pattern is the lowest-risk first step; we evaluate option 2 if measurements show readback is a bottleneck.
 
-### Memory residency policy
+### Registry policy
 
-Once we have `SparkBitmapLoader`, the registry adds a `retainSource: boolean` policy:
+Loader registry exposes a per-extension preference list. With the user's spark loader registered:
 
 ```ts
-loaderRegistry.setPolicy({
-  retainSource: false,  // CRITICAL: drop the ImageBitmap after encode
+defaultLoaderRegistry.setPreference({
+  png: ['spark-bitmap', 'native-bitmap'],
+  webp: ['spark-bitmap', 'native-bitmap'],
+  avif: ['spark-bitmap', 'native-bitmap'],
+  // ktx2 is unaffected — only Ktx2Loader handles it.
 })
 ```
 
-Implementation: after `encodeTexture` resolves, our wrapper explicitly nulls the input's reference + revokes any blob URLs. We do NOT trust spark.js to clean up; we own that.
+Without spark registered, the preference list silently falls through to native-bitmap. Apps that don't license spark just don't get the GPU-compressed path.
 
-### `Ktx2Loader` mipmaps[] cleanup
+### Memory residency policy (applies to BOTH spark and Ktx2)
 
-Same policy. Phase 2.1.2's Ktx2Loader is currently following three's default which retains `mipmaps[]`. We add a post-upload cleanup pass for textures the user marks as "won't need re-upload":
+The registry exposes a `retainSource: boolean` policy:
 
 ```ts
-loader.parse({ url, options: { releaseMips: true } })
-// → after upload, texture.mipmaps = null
-// → device-lost recovery requires re-fetching the URL
+loaderRegistry.setPolicy({
+  retainSource: false,  // drop ImageBitmap after encode; drop mipmaps[] after upload
+})
 ```
 
-This is the explicit opt-in to skip the pixi-style retention. Default is `false` (keep the safety net). Tools / asset pipelines that know they have re-fetch capability flip this to `true` and save the CPU residual.
+Implementation:
+- `SparkBitmapLoader` after `encode()` resolves: explicitly null any input bitmap reference and revoke blob URLs.
+- `Ktx2Loader` after upload: null the `texture.mipmaps[]` array if `retainSource: false`.
+- Re-creation on device-lost: drives the `recovery: RecoveryDescriptor` field on `LoaderResult` (see Phase 2.1.2 spec addendum on device-lost recovery).
 
-## Open questions for the user / further research
+Default for v1: `retainSource: true` (pixi-like safe). Apps that opt out of the safety net get the lean memory model + must rely on their `RecoveryDescriptor` (URL refetch / SW cache / explicit retain) when device-lost fires.
 
-1. **Does spark.js retain the source `ImageBitmap` after encoding?** Test required: profile heap before/after `encodeTexture`, force GC, see if the bitmap is collected. If retained, we either work around it (decode externally, pass the result, then null our reference) or report upstream. Do this BEFORE committing to spark.js as a default.
-2. **What's spark.js's bundle size?** Not documented. Guess: ~50–100 KB JS + WGSL/GLSL shaders. Acceptable for the runtime if it's lazy-loaded only when needed.
-3. **License terms.** spark.js references "external EULA" — need to confirm this is compatible with our MIT/Apache-2.0 stack BEFORE writing integration code. If it's a proprietary or restrictive license, fall back to our own GPU-side encoder (much bigger project) or stick with KTX2.
-4. **Animated content support.** Not documented. Sprite-sheet atlases work fine (one big texture, frame indexing in the shader), but real animated formats (GIF / animated WebP / animated AVIF) are out of scope for both spark and KTX2. We accept that.
-5. **Per-device output quality.** Spark picks the GPU format based on caps. The same WebP might be BC7 on Mac, ETC2 on mobile, ASTC on phones with the extension. Same source, slightly different output. We need to communicate this in any tooling that previews "what the runtime will look like."
+## Permissive alternatives if the EULA stays a blocker
 
-## Phase plan
+If Option B's "user brings their own spark" is too high-friction for the runtime story (most users won't deal with the licensing dance), the alternatives are:
 
-Spark.js is **Phase 3.x** material — strictly after Phase 2.1.2's loader infrastructure lands. The right order:
+1. **Build our own GPU-side encoder.** A WebGPU compute shader that compresses to BC7/ETC2/ASTC. This is non-trivial — block compression algorithms are gnarly — but it's bounded scope (each format is a few hundred lines of WGSL). Open-source references exist (basis_universal's encoder, libastc, NVIDIA's Texture Tools Exporter). 2-3 weeks of dedicated work for a competent implementer per format. We'd start with BC7 (Apple/Mac/PC) and add ETC2 / ASTC for mobile coverage later. **Permissively licensed by us; full control.**
 
-1. **Phase 2.1.2** (committed) — `BaseImageLoader<T>`, `LoaderRegistry`, our own `Ktx2Loader` + zig-built `basis_transcoder.wasm`. PNG/WebP/AVIF route to `NativeBitmapLoader`. **No spark.js yet.**
-2. **Phase 3.0** — `mipmaps[]` cleanup policy. The pixi-antipattern fix for KTX2. Lets us measure baseline memory residency before spark adds noise.
-3. **Phase 3.1** — research-mode spark.js integration. Build a `SparkBitmapLoader` against a real spark.js install, verify the memory model claim, decide if we want it as an opt-in or as default for some content classes.
-4. **Phase 3.2** — wire spark policy into the registry. Tools / runtime consumers configure `'native-bitmap' | 'spark' | 'auto'`.
+2. **Stay on KTX2 + native-bitmap forever.** No GPU-side encoder in the runtime. PNG/WebP/AVIF stay on the browser's native decode path; sprite atlases get pre-baked KTX2 via our CLI baker. The sparkjs use case (one-off photo content compressed at load time) just doesn't get covered. For most asset workflows this is actually fine — game assets are baked anyway.
 
-Phase 3.1's verdict can also be "no" — if the EULA is bad, the bundle is huge, or the memory claim doesn't hold. Then we just stay with native-bitmap for non-KTX2 content.
+3. **Add a different GPU encoder library.** Compressonator-WASM and a few others exist. License audit each. None we found at research time has both (a) GPU-shader-based encoding and (b) a permissive license. If one shows up, evaluate it.
 
-## Success criteria (when each phase lands)
+For now, option 2 is what three-flatland already does (Phase 2.1.2). We can revisit option 1 once we have a real demand for it (someone shipping user-uploaded photo content at scale who needs better than browser-native decode).
 
-- **Phase 3.0 (mipmaps cleanup)**: 2048² atlas via Ktx2Loader with `releaseMips: true` shows ≤ 5 MB CPU residual after upload (measured in DevTools heap snapshot). Default behavior unchanged.
-- **Phase 3.1 (spark research)**: Document confirms or refutes the post-encode memory model. If retained, document the workaround we use; if discarded, document the measured savings.
-- **Phase 3.2 (spark policy)**: Loader registry policy `'spark'` produces a working pipeline for PNG/WebP/AVIF → CompressedTexture with measured memory in line with the spark-discards-bitmap row of the comparison table above. `'auto'` picks correctly per device.
+## Open questions
+
+1. **Is the EULA's "cannot be distributed as part of middleware" interpretation correct?** Email Ludicon (`spark@ludicon.com`) and ask explicitly: "Can we ship a SparkBitmapLoader CLASS in our open-source library that calls a user-provided function — without bundling any spark.js code ourselves — without violating the EULA?" If yes (which is our reading), the hooks-only Option B integration is fine. If no, we drop spark.js entirely.
+2. **Is there a non-commercial-only redistribution path?** The EULA distinguishes commercial vs non-commercial. If we ship the hooks-only adapter and clearly mark it as "spark.js integration provided for non-commercial use; commercial users must obtain their own license," it might be a cleaner story.
+3. **Does spark.js retain the source `ImageBitmap` after encoding?** Test on a real install (whoever does the integration runs this): profile heap before/after `encodeTexture`, force GC, see if the bitmap is collected. If retained, our adapter wraps the encode call to null the input reference after.
+4. **What's the bundle size of `@spark/web`?** Not documented. Out of scope for us since we don't ship it; the user who licenses it deals with the bundle cost.
+5. **Per-device output quality** — spark picks BC7/ASTC/ETC2 based on adapter caps. Same source, different output per device. Tooling that previews "what the runtime will look like" needs to communicate the chosen format. Our existing encode tool's preview is for KTX2; spark's preview would be a separate Phase 3.x feature if we ever build it.
+6. **Does our existing Phase 2.1.2 LoaderRegistry actually need the `setPreference()` API now**, or is it fine to add later when someone ships a SparkBitmapLoader? Our call: add the field shape now (so we don't break consumers), wire the implementation when needed.
+
+## Phase plan (revised after license audit)
+
+The license audit changes the previous plan. Spark.js integration is no longer a phase we proactively ship — it's a hooks-only seam that lets users plug their own licensed install in if they want.
+
+1. **Phase 2.1.2** (committed) — `BaseImageLoader<T>`, `LoaderRegistry`, our own `Ktx2Loader` + zig-built `basis_transcoder.wasm`. PNG/WebP/AVIF route to `NativeBitmapLoader`. **No spark.js code anywhere.**
+2. **Phase 3.0** — `retainSource: false` policy + Ktx2Loader's `mipmaps[]` cleanup + the `recovery: RecoveryDescriptor` field on `LoaderResult`. The memory-conservative path for KTX2 + the device-lost recovery seam (sibling spec on device-lost recovery covers this).
+3. **Phase 3.1** — `SparkBitmapLoader` skeleton: the typed adapter class that takes a user-provided `encodeTexture` function. Ships in `@three-flatland/image/loaders/SparkBitmapLoader`. NO `@spark/web` import, NO shader code. Just the interface + the spark-result → CompressedTexture adapter. ~150 LOC of TS, no licensing burden.
+4. **Phase 3.2** — opt-in registry preference API + docs for end-users wanting to plug spark in. Tools that want to preview spark output (the existing encode tool's "spark column") would live in a separate `@three-flatland-tools-spark` package the user opts into — not in `@three-flatland/image`.
+
+If Ludicon's response to the open-question email is "no, even hooks count as redistribution," skip Phase 3.1. Drop spark.js entirely and document that the runtime supports KTX2 + native-bitmap; users wanting GPU-side encoding can either bake KTX2 ahead of time or implement their own loader against `BaseImageLoader<T>`.
+
+## Success criteria (revised)
+
+- **Phase 3.0 (memory + recovery)**: 2048² atlas via Ktx2Loader with `retainSource: false` shows ≤ 5 MB CPU residual after upload (measured in DevTools heap snapshot). Device-lost simulation (via `WEBGL_lose_context.loseContext()`) triggers the registered `RecoveryDescriptor` and re-uploads the texture. Default behavior unchanged for users who don't opt in.
+- **Phase 3.1 (spark hooks)**: A `SparkBitmapLoader` class exists in `@three-flatland/image/loaders/`. It compiles, typechecks, has unit tests with a mock `encode` function. End-user docs walk through how to wire `Spark.create(device)` from a separately-installed `@spark/web`. **Three-flatland's package.json doesn't list `@spark/web` anywhere.**
+- **Phase 3.2 (registry preference)**: Loader registry `setPreference()` works; mock-spark loader registered with priority over native-bitmap routes PNG/WebP/AVIF correctly. Without spark registered, fallthrough to native-bitmap is invisible.
 
 ## What we ARE committing to now
 
-Nothing. This document is research + design only. The Phase 2.1.2 spec is the next thing to ship. After that lands and we have measured memory baselines, we re-read this and decide phase 3 next steps.
+Nothing. This document is research + design only. **The license audit's headline finding is the load-bearing decision: we treat spark.js as an end-user-managed dependency, not as a default piece of three-flatland's runtime.** Phase 2.1.2 (already specced) is the next thing to ship; spark hooks (Phase 3.1+) come later if and only if (a) Ludicon confirms the hooks-only model is fine, and (b) someone actually wants the integration enough to drive it.
