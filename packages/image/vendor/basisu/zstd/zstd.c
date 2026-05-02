@@ -43,7 +43,8 @@
 #undef  XXH_INLINE_ALL
 #define XXH_INLINE_ALL
 #define ZSTD_LEGACY_SUPPORT 0
-#ifndef __EMSCRIPTEN__
+/* flatland-patch: also skip ZSTD_MULTITHREAD on WASI (no pthread support) */
+#if !defined(__EMSCRIPTEN__) && !defined(__wasi__)
 #define ZSTD_MULTITHREAD
 #endif
 #define ZSTD_TRACE 0

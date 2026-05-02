@@ -2239,7 +2239,11 @@ namespace basisu
 		}
 	}
 
-	job_pool::job_pool(uint32_t num_threads) : 
+// flatland-patch: WASI libc++ has no thread support (_LIBCPP_HAS_NO_THREADS).
+// Provide single-threaded stubs for job_pool so the encoder compiles.
+#ifndef _LIBCPP_HAS_NO_THREADS
+
+	job_pool::job_pool(uint32_t num_threads) :
 		m_num_active_jobs(0)
 	{
 		m_kill_flag.store(false);
@@ -2261,13 +2265,13 @@ namespace basisu
 	job_pool::~job_pool()
 	{
 		debug_printf("job_pool::~job_pool\n");
-		
+
 		// Notify all workers that they need to die right now.
 		{
 			std::lock_guard<std::mutex> lk(m_mutex);
 			m_kill_flag.store(true);
 		}
-		
+
 		m_has_work.notify_all();
 
 #ifdef __EMSCRIPTEN__
@@ -2277,7 +2281,7 @@ namespace basisu
 				break;
 			std::this_thread::sleep_for(std::chrono::milliseconds(50));
 		}
-		
+
 		// At this point all worker threads should be exiting or exited.
 		// We could call detach(), but this seems to just call join() anyway.
 #endif
@@ -2286,7 +2290,7 @@ namespace basisu
 		for (uint32_t i = 0; i < m_threads.size(); i++)
 			m_threads[i].join();
 	}
-				
+
 	void job_pool::add_job(const std::function<void()>& job)
 	{
 		std::unique_lock<std::mutex> lock(m_mutex);
@@ -2306,7 +2310,7 @@ namespace basisu
 		std::unique_lock<std::mutex> lock(m_mutex);
 
 		m_queue.emplace_back(std::move(job));
-						
+
 		const size_t queue_size = m_queue.size();
 
 		lock.unlock();
@@ -2355,7 +2359,7 @@ namespace basisu
 		//debug_printf("job_pool::job_thread: starting %u\n", index);
 
 		m_num_active_workers.fetch_add(1);
-		
+
 		while (!m_kill_flag)
 		{
 			std::unique_lock<std::mutex> lock(m_mutex);
@@ -2391,9 +2395,9 @@ namespace basisu
 
 			--m_num_active_jobs;
 
-			// Now check if there are no more jobs remaining. 
+			// Now check if there are no more jobs remaining.
 			const bool all_done = m_queue.empty() && !m_num_active_jobs;
-			
+
 			lock.unlock();
 
 			if (all_done)
@@ -2404,6 +2408,41 @@ namespace basisu
 
 		//debug_printf("job_pool::job_thread: exiting\n");
 	}
+
+#else // _LIBCPP_HAS_NO_THREADS — single-threaded WASI stubs
+
+	job_pool::job_pool(uint32_t num_threads)
+	{
+		(void)num_threads;
+		debug_printf("job_pool::job_pool: single-threaded (WASI)\n");
+	}
+
+	job_pool::~job_pool()
+	{
+		debug_printf("job_pool::~job_pool\n");
+	}
+
+	void job_pool::add_job(const std::function<void()>& job)
+	{
+		m_queue.emplace_back(job);
+	}
+
+	void job_pool::add_job(std::function<void()>&& job)
+	{
+		m_queue.emplace_back(std::move(job));
+	}
+
+	void job_pool::wait_for_all()
+	{
+		while (!m_queue.empty())
+		{
+			std::function<void()> job(m_queue.back());
+			m_queue.pop_back();
+			job();
+		}
+	}
+
+#endif // _LIBCPP_HAS_NO_THREADS
 
 	// .TGA image loading
 	#pragma pack(push)

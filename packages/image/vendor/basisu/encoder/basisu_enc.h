@@ -16,14 +16,19 @@
 #include "../transcoder/basisu.h"
 #include "../transcoder/basisu_transcoder_internal.h"
 
-#include <mutex>
 #include <atomic>
-#include <condition_variable>
 #include <functional>
-#include <thread>
 #include <unordered_map>
 #include <map>
 #include <ostream>
+// flatland-patch: WASI libc++ has no thread support (_LIBCPP_HAS_NO_THREADS).
+// Guard threading headers so the encoder still compiles; job_pool becomes single-threaded.
+#ifndef _LIBCPP_HAS_NO_THREADS
+#  include <mutex>
+#  include <condition_variable>
+#  include <thread>
+#endif
+#include "basisu_thread_stubs.h"
 
 #if !defined(_WIN32) || defined(__MINGW32__)
 #include <libgen.h>
@@ -807,29 +812,37 @@ namespace basisu
 		// num_threads is the TOTAL number of job pool threads, including the calling thread! So 2=1 new thread, 3=2 new threads, etc.
 		job_pool(uint32_t num_threads);
 		~job_pool();
-				
+
 		void add_job(const std::function<void()>& job);
 		void add_job(std::function<void()>&& job);
 
 		void wait_for_all();
 
+#ifndef _LIBCPP_HAS_NO_THREADS
 		size_t get_total_threads() const { return 1 + m_threads.size(); }
-		
+#else
+		size_t get_total_threads() const { return 1; }
+#endif
+
 	private:
+#ifndef _LIBCPP_HAS_NO_THREADS
 		std::vector<std::thread> m_threads;
 		std::vector<std::function<void()> > m_queue;
-		
+
 		std::mutex m_mutex;
 		std::condition_variable m_has_work;
 		std::condition_variable m_no_more_jobs;
-		
-		uint32_t m_num_active_jobs;
-		
-		std::atomic<bool> m_kill_flag;
 
+		uint32_t m_num_active_jobs;
+
+		std::atomic<bool> m_kill_flag;
 		std::atomic<int> m_num_active_workers;
 
 		void job_thread(uint32_t index);
+#else
+		// flatland-patch: single-threaded stub for WASI (no thread support)
+		std::vector<std::function<void()> > m_queue;
+#endif
 	};
 
 	// Simple 64-bit color class
