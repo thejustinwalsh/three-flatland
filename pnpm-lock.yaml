@@ -4,72 +4,6 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
-catalogs:
-  default:
-    '@jsquash/avif':
-      specifier: ^2.1.1
-      version: 2.1.1
-    '@jsquash/png':
-      specifier: ^3.1.1
-      version: 3.1.1
-    '@jsquash/webp':
-      specifier: ^1.5.0
-      version: 1.5.0
-    '@react-three/fiber':
-      specifier: ^10.0.0-alpha.2
-      version: 10.0.0-alpha.2
-    '@stylexjs/stylex':
-      specifier: ^0.18.3
-      version: 0.18.3
-    '@stylexjs/unplugin':
-      specifier: ^0.18.3
-      version: 0.18.3
-    '@tweakpane/core':
-      specifier: ^2.0.5
-      version: 2.0.5
-    '@tweakpane/plugin-essentials':
-      specifier: ^0.2.1
-      version: 0.2.1
-    '@types/react':
-      specifier: ^19.0.2
-      version: 19.2.9
-    '@types/react-dom':
-      specifier: ^19.0.2
-      version: 19.2.3
-    '@types/three':
-      specifier: ^0.183.1
-      version: 0.183.1
-    '@vitejs/plugin-react':
-      specifier: ^4.3.4
-      version: 4.7.0
-    koota:
-      specifier: ^0.6.5
-      version: 0.6.5
-    react:
-      specifier: ^19.0.0
-      version: 19.2.3
-    react-dom:
-      specifier: ^19.0.0
-      version: 19.2.3
-    three:
-      specifier: ^0.183.1
-      version: 0.183.1
-    tweakpane:
-      specifier: ^4.0.5
-      version: 4.0.5
-    typescript:
-      specifier: ^5.7.3
-      version: 5.9.3
-    vite:
-      specifier: ^6.4.1
-      version: 6.4.1
-    zundo:
-      specifier: ^2.3.0
-      version: 2.3.0
-    zustand:
-      specifier: ^5.0.0
-      version: 5.0.10
-
 overrides:
   three-flatland: workspace:*
   '@three-flatland/bake': workspace:*
@@ -97,12 +31,24 @@ importers:
       '@size-limit/preset-small-lib':
         specifier: ^12.0.0
         version: 12.0.0(size-limit@12.0.0)
+      '@types/dagre':
+        specifier: ^0.7.54
+        version: 0.7.54
       '@types/node':
         specifier: ^22.10.5
         version: 22.19.7
       '@vitest/coverage-v8':
         specifier: ^2.1.9
         version: 2.1.9(vitest@2.1.9(@types/node@22.19.7)(happy-dom@15.11.7)(lightningcss@1.32.0)(terser@5.46.1))
+      cytoscape:
+        specifier: ^3.33.3
+        version: 3.33.3
+      cytoscape-dagre:
+        specifier: ^2.5.0
+        version: 2.5.0(cytoscape@3.33.3)
+      dagre:
+        specifier: ^0.8.5
+        version: 0.8.5
       eslint:
         specifier: ^9.18.0
         version: 9.39.2
@@ -126,7 +72,7 @@ importers:
         version: 12.0.0
       tsup:
         specifier: ^8.3.5
-        version: 8.5.1(jiti@1.21.7)(postcss@8.5.12)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.2)
+        version: 8.5.1(postcss@8.5.12)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.2)
       tsx:
         specifier: ^4.19.2
         version: 4.21.0
@@ -3201,6 +3147,9 @@ packages:
   '@types/babel__traverse@7.28.0':
     resolution: {integrity: sha512-8PvcXf70gTDZBgt9ptxJ8elBeBjcLOAcOtoO/mPJjtji1+CdGbHgm77om1GrsPxsiE+uXIpNSK64UYaIwQXd4Q==}
 
+  '@types/dagre@0.7.54':
+    resolution: {integrity: sha512-QjcRY+adGbYvBFS7cwv5txhVIwX1XXIUswWl+kSQTbI6NjgZydrZkEKX/etzVd7i+bCsCb40Z/xlBY5eoFuvWQ==}
+
   '@types/debug@4.1.12':
     resolution: {integrity: sha512-vIChWdVG3LG1SMxEvI/AK+FWJthlrqlTu7fbrlywTkkaONwk/UAGaULXRlf8vkzFBLVm0zkMdCquhL5aOjhXPQ==}
 
@@ -3875,6 +3824,18 @@ packages:
   csstype@3.2.3:
     resolution: {integrity: sha512-z1HGKcYy2xA8AGQfwrn0PAy+PB7X/GSj3UVJW9qKyn43xWa+gl5nXmU4qqLMRzWVLFC8KusUX8T/0kCiOYpAIQ==}
 
+  cytoscape-dagre@2.5.0:
+    resolution: {integrity: sha512-VG2Knemmshop4kh5fpLO27rYcyUaaDkRw+6PiX4bstpB+QFt0p2oauMrsjVbUamGWQ6YNavh7x2em2uZlzV44g==}
+    peerDependencies:
+      cytoscape: ^3.2.22
+
+  cytoscape@3.33.3:
+    resolution: {integrity: sha512-Gej7U+OKR+LZ8kvX7rb2HhCYJ0IhvEFsnkud4SB1PR+BUY/TsSO0dmOW59WEVLu51b1Rm+gQRKoz4bLYxGSZ2g==}
+    engines: {node: '>=0.10'}
+
+  dagre@0.8.5:
+    resolution: {integrity: sha512-/aTqmnRta7x7MCCpExk7HQL2O4owCT2h8NT//9I1OQ9vt29Pa0BzSAkR5lwFUcQ7491yVi/3CXU9jQ5o0Mn2Sw==}
+
   debug@4.4.3:
     resolution: {integrity: sha512-RGwwWnwQvkVfavKVt22FGLw+xYSdzARwm0ru6DhTVA3umU5hZc28V3kO4stgYryrTlLpuvgI9GiijltAjNbcqA==}
     engines: {node: '>=6.0'}
@@ -4352,6 +4313,9 @@ packages:
 
   graceful-fs@4.2.11:
     resolution: {integrity: sha512-RbJ5/jmFcNNCcDV5o9eTnBLJ/HszWV0P73bc+Ff4nS/rJj+YaS6IGyiOL0VoBYX+l1Wrl3k63h/KrH+nhJ0XvQ==}
+
+  graphlib@2.1.8:
+    resolution: {integrity: sha512-jcLLfkpoVGmH7/InMC/1hIvOPSUh38oJtGhvrOFGzioE1DZ+0YW16RgmOJhHiuWTvGiJQ9Z1Ik43JvkRPRvE+A==}
 
   h3@1.15.5:
     resolution: {integrity: sha512-xEyq3rSl+dhGX2Lm0+eFQIAzlDN6Fs0EcC4f7BNUmzaRX/PTzeuM+Tr2lHB8FoXggsQIeXLj8EDVgs5ywxyxmg==}
@@ -8236,6 +8200,8 @@ snapshots:
     dependencies:
       '@babel/types': 7.28.6
 
+  '@types/dagre@0.7.54': {}
+
   '@types/debug@4.1.12':
     dependencies:
       '@types/ms': 2.1.0
@@ -9078,6 +9044,18 @@ snapshots:
 
   csstype@3.2.3: {}
 
+  cytoscape-dagre@2.5.0(cytoscape@3.33.3):
+    dependencies:
+      cytoscape: 3.33.3
+      dagre: 0.8.5
+
+  cytoscape@3.33.3: {}
+
+  dagre@0.8.5:
+    dependencies:
+      graphlib: 2.1.8
+      lodash: 4.17.21
+
   debug@4.4.3:
     dependencies:
       ms: 2.1.3
@@ -9680,6 +9658,10 @@ snapshots:
       minimist: 1.2.8
 
   graceful-fs@4.2.11: {}
+
+  graphlib@2.1.8:
+    dependencies:
+      lodash: 4.17.21
 
   h3@1.15.5:
     dependencies:
@@ -11103,6 +11085,14 @@ snapshots:
       tsx: 4.21.0
       yaml: 2.8.2
 
+  postcss-load-config@6.0.1(postcss@8.5.12)(tsx@4.21.0)(yaml@2.8.2):
+    dependencies:
+      lilconfig: 3.1.3
+    optionalDependencies:
+      postcss: 8.5.12
+      tsx: 4.21.0
+      yaml: 2.8.2
+
   postcss-nested@6.2.0(postcss@8.5.6):
     dependencies:
       postcss: 8.5.6
@@ -11834,6 +11824,34 @@ snapshots:
       joycon: 3.1.1
       picocolors: 1.1.1
       postcss-load-config: 6.0.1(jiti@1.21.7)(postcss@8.5.12)(tsx@4.21.0)(yaml@2.8.2)
+      resolve-from: 5.0.0
+      rollup: 4.56.0
+      source-map: 0.7.6
+      sucrase: 3.35.1
+      tinyexec: 0.3.2
+      tinyglobby: 0.2.15
+      tree-kill: 1.2.2
+    optionalDependencies:
+      postcss: 8.5.12
+      typescript: 5.9.3
+    transitivePeerDependencies:
+      - jiti
+      - supports-color
+      - tsx
+      - yaml
+
+  tsup@8.5.1(postcss@8.5.12)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.2):
+    dependencies:
+      bundle-require: 5.1.0(esbuild@0.27.2)
+      cac: 6.7.14
+      chokidar: 4.0.3
+      consola: 3.4.2
+      debug: 4.4.3
+      esbuild: 0.27.2
+      fix-dts-default-cjs-exports: 1.0.1
+      joycon: 3.1.1
+      picocolors: 1.1.1
+      postcss-load-config: 6.0.1(postcss@8.5.12)(tsx@4.21.0)(yaml@2.8.2)
       resolve-from: 5.0.0
       rollup: 4.56.0
       source-map: 0.7.6
