@@ -63,8 +63,9 @@ vendor/
 # Profile traces
 traces/
 
-# Madge dependency graphs
+# Madge dependency graphs (and the generated tsconfig)
 graphs/
+tsconfig.madge.json
 
 # Restruct
 .restruct/

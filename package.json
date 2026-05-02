@@ -34,8 +34,10 @@
     "sync:react:verify": "tsx scripts/sync-react-subpaths.ts --verify",
     "validate:skills": "pnpm --filter @three-flatland/skills validate",
     "size": "size-limit",
-    "graph:tf": "madge --image graphs/three-flatland.svg packages/three-flatland/src/index.ts",
-    "graph:tf:open": "pnpm graph:tf && open graphs/three-flatland.svg",
+    "graph:sync": "tsx scripts/generate-madge-tsconfig.ts",
+    "graph": "pnpm graph:sync && madge --image graphs/monorepo.svg packages minis tools",
+    "graph:open": "pnpm graph && open graphs/monorepo.svg",
+    "graph:circular": "pnpm graph:sync && madge --circular packages minis tools",
     "prepare": "lefthook install"
   },
   "pnpm": {
