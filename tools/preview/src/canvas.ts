@@ -14,3 +14,4 @@ export {
   type PipCorner,
 } from './AnimationPreviewPip'
 export { SpritePreview, type SpritePreviewProps } from './SpritePreview'
+export { CompareSliderOverlay, type CompareSliderOverlayProps } from './CompareSliderOverlay'
