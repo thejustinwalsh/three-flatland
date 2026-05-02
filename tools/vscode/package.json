@@ -27,6 +27,11 @@
         "command": "threeFlatland.wasmTest.open",
         "title": "WASM Contract Test",
         "category": "FL"
+      },
+      {
+        "command": "threeFlatland.encode.open",
+        "title": "Open Image Encoder",
+        "category": "FL"
       }
     ],
     "customEditors": [
@@ -50,6 +55,11 @@
           "command": "threeFlatland.merge.openMergeTool",
           "when": "resourceFilename =~ /\\.atlas\\.json$/",
           "group": "navigation@11"
+        },
+        {
+          "command": "threeFlatland.encode.open",
+          "when": "resourceExtname == .png || resourceExtname == .webp || resourceExtname == .avif",
+          "group": "navigation@13"
         }
       ],
       "commandPalette": [
@@ -60,6 +70,10 @@
         {
           "command": "threeFlatland.merge.openMergeTool",
           "when": "resourceFilename =~ /\\.atlas\\.json$/"
+        },
+        {
+          "command": "threeFlatland.encode.open",
+          "when": "resourceExtname == .png || resourceExtname == .webp || resourceExtname == .avif"
         }
       ]
     },
@@ -97,6 +111,7 @@
     "@jsquash/webp": "catalog:",
     "@stylexjs/stylex": "catalog:",
     "@three-flatland/bridge": "workspace:*",
+    "@three-flatland/image": "workspace:*",
     "@three-flatland/design-system": "workspace:*",
     "@three-flatland/io": "workspace:*",
     "@three-flatland/preview": "workspace:*",
