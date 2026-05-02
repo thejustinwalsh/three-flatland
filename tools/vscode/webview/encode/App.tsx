@@ -14,6 +14,6 @@ const styles = stylex.create({
   },
 })
 
-export function App(): JSX.Element {
+export function App() {
   return <div {...stylex.props(styles.root)}>FL Image Encoder — initializing…</div>
 }

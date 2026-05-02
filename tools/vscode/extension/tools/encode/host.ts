@@ -19,7 +19,7 @@ export async function openEncodePanel(
     return
   }
 
-  const stat = await vscode.workspace.fs.stat(target).catch(() => null)
+  const stat = await statSafe(target)
   if (!stat) {
     void vscode.window.showErrorMessage(`FL Image Encoder: cannot read ${fileName}`)
     return
@@ -71,7 +71,7 @@ export async function openEncodePanel(
     'encode/save',
     async ({ format, bytes, suggestedFilename }) => {
       const dest = vscode.Uri.joinPath(target, '..', suggestedFilename)
-      const existing = await vscode.workspace.fs.stat(dest).catch(() => null)
+      const existing = await statSafe(dest)
       if (existing) {
         const choice = await vscode.window.showWarningMessage(
           `${suggestedFilename} already exists. Overwrite?`,
@@ -106,4 +106,12 @@ export async function openEncodePanel(
     disposeReload.dispose()
     bridge.dispose()
   })
+}
+
+async function statSafe(uri: vscode.Uri): Promise<vscode.FileStat | null> {
+  try {
+    return await vscode.workspace.fs.stat(uri)
+  } catch {
+    return null
+  }
 }
