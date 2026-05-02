@@ -22,7 +22,7 @@ interface SessionSlice {
 }
 
 interface PrefsSlice {
-  splits: { encodedPanel: number }
+  splits: { compareU: number }
 }
 
 interface RuntimeSlice {
@@ -95,7 +95,7 @@ export const useEncodeStore = create<EncodeStoreState>()(
           fileName: 'image',
 
           // Prefs slice defaults
-          splits: { encodedPanel: 320 },
+          splits: { compareU: 0.5 },
 
           // Runtime slice defaults — never persisted
           sourceBytes: null,
