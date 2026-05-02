@@ -5,6 +5,7 @@
 
 export { CanvasStage, type CanvasStageProps } from './CanvasStage'
 export { ThreeLayer, type ThreeLayerProps, type ImageSource } from './ThreeLayer'
+export { CompareLayer, type CompareLayerProps } from './CompareLayer'
 export {
   AnimationPreviewPip,
   type AnimationPreviewPipProps,
