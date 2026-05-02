@@ -1,8 +1,9 @@
 import { defineConfig, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import stylex from '@stylexjs/unplugin'
-import { resolve } from 'node:path'
-import { readdirSync, statSync } from 'node:fs'
+import { dirname, resolve } from 'node:path'
+import { readdirSync, readFileSync, statSync } from 'node:fs'
+import { createRequire } from 'node:module'
 
 // Multi-tool webview bundle. Each tool lives at webview/<tool>/index.html
 // and gets its own rollup input entry auto-discovered. Adding a new tool is
@@ -49,6 +50,43 @@ function tokenizeAssetBase(token = '%FL_BASE%'): Plugin {
   }
 }
 
+/**
+ * Three's KTX2Loader fetches its transcoder via `setTranscoderPath(dir) +
+ * 'basis_transcoder.js'` literally — it appends the unhashed filename to
+ * a directory URL. Vite's normal `?url` import would emit a hashed asset
+ * name (basis_transcoder-<hash>.js) which the loader can't find. This
+ * plugin emits both files unhashed at `dist/webview/assets/basis_transcoder.js`
+ * and `.wasm` so KTX2Loader's internal fetch resolves under the webview's
+ * `vscode-webview://` origin.
+ *
+ * Replaced by Phase 2.1.2's owned KTX2Loader fork which decouples from
+ * three's URL-loader machinery.
+ */
+function copyBasisTranscoder(): Plugin {
+  return {
+    name: 'fl-copy-basis-transcoder',
+    apply: 'build',
+    generateBundle() {
+      // Resolve via Node's module resolution so it works with pnpm's virtual
+      // store layout (the file lives under node_modules/.pnpm/three@.../node_modules/three/...
+      // not directly at node_modules/three/...).
+      const require = createRequire(import.meta.url)
+      const jsPath = require.resolve('three/examples/jsm/libs/basis/basis_transcoder.js')
+      const basisDir = dirname(jsPath)
+      this.emitFile({
+        type: 'asset',
+        fileName: 'assets/basis_transcoder.js',
+        source: readFileSync(jsPath),
+      })
+      this.emitFile({
+        type: 'asset',
+        fileName: 'assets/basis_transcoder.wasm',
+        source: readFileSync(resolve(basisDir, 'basis_transcoder.wasm')),
+      })
+    },
+  }
+}
+
 // In watch mode (`vite build --watch`) we deliberately keep the previous
 // build's output around: emptying dist/webview/ on every rebuild creates
 // a window where the panel can't load chunks if the user reloads while
@@ -61,6 +99,7 @@ export default defineConfig({
     stylex.vite({ useCSSLayers: true }),
     react(),
     tokenizeAssetBase(),
+    copyBasisTranscoder(),
   ],
   root: resolve(__dirname, 'webview'),
   base: './',
