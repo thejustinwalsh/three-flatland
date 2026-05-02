@@ -41,6 +41,8 @@ struct fl_basis_encoder {
     fl_basis_encoder() : jpool(1) {}
 };
 
+// Single-use: call fl_basis_encoder_destroy then fl_basis_encoder_create
+// for each new image. Reuse is rejected with FL_BASIS_E_ALREADY_ENCODED.
 __attribute__((export_name("fl_basis_encoder_create")))
 fl_basis_encoder* fl_basis_encoder_create(void) {
     if (!g_initialized) return nullptr;
@@ -63,6 +65,12 @@ int fl_basis_encode(
         return FL_BASIS_E_BAD_INPUT;
     }
     if (!g_initialized) return FL_BASIS_E_NO_INIT;
+
+    // Single-use guard: basisu::basis_compressor is documented as single-shot
+    // (see vendor/basisu/encoder/basisu_comp.h's comment on init()). Reuse
+    // would silently corrupt internal state. Caller must destroy and recreate
+    // the encoder per image.
+    if (!enc->last_output.empty()) return FL_BASIS_E_ALREADY_ENCODED;
 
     auto& p = enc->params;
     p = basis_compressor_params(); // reset to defaults
@@ -119,6 +127,9 @@ int fl_basis_encode(
     auto rc = enc->comp.process();
     if (rc != basis_compressor::cECSuccess) return FL_BASIS_E_ENCODE_FAIL;
 
+    // Copy out the encoder's KTX2 buffer. enc->last_output is declared after
+    // enc->comp in the struct, so it is destroyed first on `delete enc` —
+    // *out_ptr remains valid until fl_basis_encoder_destroy is called.
     enc->last_output = enc->comp.get_output_ktx2_file();
     *out_ptr = enc->last_output.data();
     *out_len = (uint32_t)enc->last_output.size();
