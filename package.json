@@ -34,6 +34,8 @@
     "sync:react:verify": "tsx scripts/sync-react-subpaths.ts --verify",
     "validate:skills": "pnpm --filter @three-flatland/skills validate",
     "size": "size-limit",
+    "graph:tf": "madge --image graphs/three-flatland.svg packages/three-flatland/src/index.ts",
+    "graph:tf:open": "pnpm graph:tf && open graphs/three-flatland.svg",
     "prepare": "lefthook install"
   },
   "pnpm": {
@@ -64,6 +66,7 @@
     "eslint-plugin-react-hooks": "^7.0.1",
     "globals": "^15.14.0",
     "lefthook": "^2.1.5",
+    "madge": "^8.0.0",
     "prettier": "^3.4.2",
     "size-limit": "^12.0.0",
     "tsup": "^8.3.5",

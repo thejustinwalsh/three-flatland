@@ -1,0 +1,25 @@
+{
+  "fileExtensions": ["ts", "tsx"],
+  "tsConfig": "tsconfig.base.json",
+  "detectiveOptions": {
+    "ts": { "skipTypeImports": true },
+    "tsx": { "skipTypeImports": true }
+  },
+  "backgroundColor": "#00021c",
+  "nodeColor": "#47cca9",
+  "noDependencyColor": "#f7c93e",
+  "cyclicNodeColor": "#d94c87",
+  "edgeColor": "#732866",
+  "fontName": "monospace",
+  "fontSize": "12px",
+  "graphVizOptions": {
+    "G": {
+      "rankdir": "LR",
+      "splines": "spline",
+      "fontcolor": "#f0edd8"
+    },
+    "N": {
+      "fontcolor": "#f0edd8"
+    }
+  }
+}

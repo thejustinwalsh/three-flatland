@@ -63,6 +63,9 @@ vendor/
 # Profile traces
 traces/
 
+# Madge dependency graphs
+graphs/
+
 # Restruct
 .restruct/
 !.restruct/verify.yaml
