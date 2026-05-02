@@ -4,6 +4,72 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+catalogs:
+  default:
+    '@jsquash/avif':
+      specifier: ^2.1.1
+      version: 2.1.1
+    '@jsquash/png':
+      specifier: ^3.1.1
+      version: 3.1.1
+    '@jsquash/webp':
+      specifier: ^1.5.0
+      version: 1.5.0
+    '@react-three/fiber':
+      specifier: ^10.0.0-alpha.2
+      version: 10.0.0-alpha.2
+    '@stylexjs/stylex':
+      specifier: ^0.18.3
+      version: 0.18.3
+    '@stylexjs/unplugin':
+      specifier: ^0.18.3
+      version: 0.18.3
+    '@tweakpane/core':
+      specifier: ^2.0.5
+      version: 2.0.5
+    '@tweakpane/plugin-essentials':
+      specifier: ^0.2.1
+      version: 0.2.1
+    '@types/react':
+      specifier: ^19.0.2
+      version: 19.2.9
+    '@types/react-dom':
+      specifier: ^19.0.2
+      version: 19.2.3
+    '@types/three':
+      specifier: ^0.183.1
+      version: 0.183.1
+    '@vitejs/plugin-react':
+      specifier: ^4.3.4
+      version: 4.7.0
+    koota:
+      specifier: ^0.6.5
+      version: 0.6.5
+    react:
+      specifier: ^19.0.0
+      version: 19.2.3
+    react-dom:
+      specifier: ^19.0.0
+      version: 19.2.3
+    three:
+      specifier: ^0.183.1
+      version: 0.183.1
+    tweakpane:
+      specifier: ^4.0.5
+      version: 4.0.5
+    typescript:
+      specifier: ^5.7.3
+      version: 5.9.3
+    vite:
+      specifier: ^6.4.1
+      version: 6.4.1
+    zundo:
+      specifier: ^2.3.0
+      version: 2.3.0
+    zustand:
+      specifier: ^5.0.0
+      version: 5.0.10
+
 overrides:
   three-flatland: workspace:*
   '@three-flatland/bake': workspace:*
@@ -46,6 +112,9 @@ importers:
       cytoscape-dagre:
         specifier: ^2.5.0
         version: 2.5.0(cytoscape@3.33.3)
+      cytoscape-fcose:
+        specifier: ^2.2.0
+        version: 2.2.0(cytoscape@3.33.3)
       dagre:
         specifier: ^0.8.5
         version: 0.8.5
@@ -72,7 +141,7 @@ importers:
         version: 12.0.0
       tsup:
         specifier: ^8.3.5
-        version: 8.5.1(postcss@8.5.12)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.2)
+        version: 8.5.1(jiti@1.21.7)(postcss@8.5.12)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.2)
       tsx:
         specifier: ^4.19.2
         version: 4.21.0
@@ -3784,6 +3853,9 @@ packages:
     resolution: {integrity: sha512-ei8Aos7ja0weRpFzJnEA9UHJ/7XQmqglbRwnf2ATjcB9Wq874VKH9kfjjirM6UhU2/E5fFYadylyhFldcqSidQ==}
     engines: {node: '>=18'}
 
+  cose-base@2.2.0:
+    resolution: {integrity: sha512-AzlgcsCbUMymkADOJtQm3wO9S3ltPfYOFD5033keQn9NJzIbtnZj+UdBJe7DYml/8TdbtHJW3j58SOnKhWY/5g==}
+
   cross-spawn@7.0.6:
     resolution: {integrity: sha512-uV2QOWP2nWzsy2aMp8aRibhi9dlzF5Hgh5SHaB9OiTGEyDTiJJyx0uy51QXdyWbtAHNua4XJzUKca3OzKUd3vA==}
     engines: {node: '>= 8'}
@@ -3828,6 +3900,11 @@ packages:
     resolution: {integrity: sha512-VG2Knemmshop4kh5fpLO27rYcyUaaDkRw+6PiX4bstpB+QFt0p2oauMrsjVbUamGWQ6YNavh7x2em2uZlzV44g==}
     peerDependencies:
       cytoscape: ^3.2.22
+
+  cytoscape-fcose@2.2.0:
+    resolution: {integrity: sha512-ki1/VuRIHFCzxWNrsshHYPs6L7TvLu3DL+TyIGEsRcvVERmxokbf5Gdk7mFxZnTdiGtnA4cfSmjZJMviqSuZrQ==}
+    peerDependencies:
+      cytoscape: ^3.2.0
 
   cytoscape@3.33.3:
     resolution: {integrity: sha512-Gej7U+OKR+LZ8kvX7rb2HhCYJ0IhvEFsnkud4SB1PR+BUY/TsSO0dmOW59WEVLu51b1Rm+gQRKoz4bLYxGSZ2g==}
@@ -4659,6 +4736,9 @@ packages:
         optional: true
       react:
         optional: true
+
+  layout-base@2.0.1:
+    resolution: {integrity: sha512-dp3s92+uNI1hWIpPGH3jK2kxE2lMjdXdr+DH8ynZHpd6PUlH6x6cbuXnoMmiNumznqaNO31xu9e79F0uuZ0JFg==}
 
   lefthook-darwin-arm64@2.1.5:
     resolution: {integrity: sha512-VITTaw8PxxyE26gkZ8UcwIa5ZrWnKNRGLeeSrqri40cQdXvLTEoMq2tjjw7eiL9UcB0waRReDdzydevy9GOPUQ==}
@@ -8099,7 +8179,7 @@ snapshots:
       '@babel/core': 7.28.6
       '@babel/helper-module-imports': 7.28.6
       '@babel/traverse': 7.28.6
-      '@babel/types': 7.28.6
+      '@babel/types': 7.29.0
       '@dual-bundle/import-meta-resolve': 4.2.1
       '@stylexjs/shared': 0.18.3
       '@stylexjs/stylex': 0.18.3
@@ -9002,6 +9082,10 @@ snapshots:
 
   cookie@1.1.1: {}
 
+  cose-base@2.2.0:
+    dependencies:
+      layout-base: 2.0.1
+
   cross-spawn@7.0.6:
     dependencies:
       path-key: 3.1.1
@@ -9048,6 +9132,11 @@ snapshots:
     dependencies:
       cytoscape: 3.33.3
       dagre: 0.8.5
+
+  cytoscape-fcose@2.2.0(cytoscape@3.33.3):
+    dependencies:
+      cose-base: 2.2.0
+      cytoscape: 3.33.3
 
   cytoscape@3.33.3: {}
 
@@ -10079,6 +10168,8 @@ snapshots:
       '@types/react': 19.2.9
       react: 19.2.3
 
+  layout-base@2.0.1: {}
+
   lefthook-darwin-arm64@2.1.5:
     optional: true
 
@@ -11085,14 +11176,6 @@ snapshots:
       tsx: 4.21.0
       yaml: 2.8.2
 
-  postcss-load-config@6.0.1(postcss@8.5.12)(tsx@4.21.0)(yaml@2.8.2):
-    dependencies:
-      lilconfig: 3.1.3
-    optionalDependencies:
-      postcss: 8.5.12
-      tsx: 4.21.0
-      yaml: 2.8.2
-
   postcss-nested@6.2.0(postcss@8.5.6):
     dependencies:
       postcss: 8.5.6
@@ -11824,34 +11907,6 @@ snapshots:
       joycon: 3.1.1
       picocolors: 1.1.1
       postcss-load-config: 6.0.1(jiti@1.21.7)(postcss@8.5.12)(tsx@4.21.0)(yaml@2.8.2)
-      resolve-from: 5.0.0
-      rollup: 4.56.0
-      source-map: 0.7.6
-      sucrase: 3.35.1
-      tinyexec: 0.3.2
-      tinyglobby: 0.2.15
-      tree-kill: 1.2.2
-    optionalDependencies:
-      postcss: 8.5.12
-      typescript: 5.9.3
-    transitivePeerDependencies:
-      - jiti
-      - supports-color
-      - tsx
-      - yaml
-
-  tsup@8.5.1(postcss@8.5.12)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.2):
-    dependencies:
-      bundle-require: 5.1.0(esbuild@0.27.2)
-      cac: 6.7.14
-      chokidar: 4.0.3
-      consola: 3.4.2
-      debug: 4.4.3
-      esbuild: 0.27.2
-      fix-dts-default-cjs-exports: 1.0.1
-      joycon: 3.1.1
-      picocolors: 1.1.1
-      postcss-load-config: 6.0.1(postcss@8.5.12)(tsx@4.21.0)(yaml@2.8.2)
       resolve-from: 5.0.0
       rollup: 4.56.0
       source-map: 0.7.6
