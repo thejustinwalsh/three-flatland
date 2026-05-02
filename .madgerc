@@ -1,6 +1,6 @@
 {
   "fileExtensions": ["ts", "tsx"],
-  "tsConfig": "tsconfig.base.json",
+  "tsConfig": "tsconfig.madge.json",
   "detectiveOptions": {
     "ts": { "skipTypeImports": true },
     "tsx": { "skipTypeImports": true }
