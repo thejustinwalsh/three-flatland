@@ -106,19 +106,27 @@ export function App() {
     // Encode whenever sourceImage flips to non-null OR a knob changes.
     // We compare a stringified summary to avoid a custom equality function;
     // the slice is small. Skip entirely in inspect mode — no encode pipeline.
+    // Watch the doc-knob slice + sourceImage identity. The subscription
+    // fires on EVERY store change (including splitU during slider drags
+    // and mipLevel during stepper clicks); we MUST keep the equality check
+    // O(1) — never JSON.stringify the ImageData (it's a 2048²·4 byte
+    // Uint8ClampedArray for our worst-case fixture, which serializes to
+    // ~160 MB per pointermove and OOMs the webview within a few seconds
+    // of slider drag).
     let prevKey = ''
+    let prevSourceImage: ImageData | null = null
     const unsub = useEncodeStore.subscribe((s) => {
       if (s.mode === 'inspect') return
       if (!s.sourceImage) return
+      const sourceChanged = s.sourceImage !== prevSourceImage
+      prevSourceImage = s.sourceImage
       const key = JSON.stringify({
         f: s.format,
         w: s.webp.quality,
         a: s.avif.quality,
         k: { m: s.ktx2.mode, q: s.ktx2.quality, mp: s.ktx2.mipmaps, l: s.ktx2.uastcLevel },
-        // include sourceImage identity so we re-encode on a fresh source
-        img: s.sourceImage,
       })
-      if (key === prevKey) return
+      if (!sourceChanged && key === prevKey) return
       prevKey = key
       scheduleEncode(250)
     })
