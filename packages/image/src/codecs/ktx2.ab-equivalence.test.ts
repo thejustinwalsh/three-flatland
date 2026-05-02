@@ -77,11 +77,19 @@ function encodeKtx2PathA(opts: Ktx2Options): Uint8Array {
 }
 
 describe('Path A vs Path B byte-equivalence', () => {
-  it.each<[string, Ktx2Options]>([
+  // Skipped: BasisU v1.50.0.2 (Path A, BinomialLLC) and v2.1.0 (Path B, our build)
+  // produce structurally valid KTX2 of identical length (389 bytes for the 64×64
+  // checker fixture) but content diverges at byte offset 118 (4-byte delta) due
+  // to encoder algorithmic changes between major versions. We track v2.x going
+  // forward, so byte-equivalence with v1.50 is not achievable. The SIMD-vs-scalar
+  // equivalence test (ktx2.simd-equivalence.test.ts) covers the load-bearing claim:
+  // our wasm-SIMD port is numerically identical to the scalar fallback within
+  // the v2.x encoder. Path A artifacts are removed in Task 19; this test goes
+  // with them.
+  it.skip.each<[string, Ktx2Options]>([
     ['ETC1S q=128', { mode: 'etc1s', quality: 128, mipmaps: false }],
   ])('Path A and Path B produce byte-identical KTX2 for %s', async (_label, opts) => {
     const a = encodeKtx2PathA(opts)
-    // Reset Path B's loader so it picks up no env override.
     delete process.env.FL_BASIS_NO_SIMD
     __resetForTest()
     const image: ImageData = { width: W, height: H, data: rgba, colorSpace: 'srgb' } as ImageData
