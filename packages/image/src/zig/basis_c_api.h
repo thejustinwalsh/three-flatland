@@ -19,6 +19,10 @@ void  fl_basis_free(void* ptr);
 // Process-wide one-shot init. Idempotent. Returns 0 on success.
 int fl_basis_init(void);
 
+// Disables the SIMD code paths at runtime. Default is enabled when built with
+// BASISU_SUPPORT_WASM_SIMD=1. Effective for subsequent encode() calls.
+void fl_basis_set_simd(int enabled);
+
 // Opaque encoder handle.
 typedef struct fl_basis_encoder fl_basis_encoder;
 
