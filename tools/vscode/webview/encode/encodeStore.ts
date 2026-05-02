@@ -21,9 +21,11 @@ interface SessionSlice {
   // session; storing it in the RuntimeSlice keeps JSON persistence clean.
 }
 
-interface PrefsSlice {
-  splits: { compareU: number }
-}
+// PrefsSlice is intentionally empty for now — compareU was removed in T9
+// (slider position is managed by CanvasStage's internal state). T10 will
+// re-add cross-session prefs here (e.g., pixel grid toggle).
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type
+interface PrefsSlice {}
 
 interface RuntimeSlice {
   sourceBytes: Uint8Array | null
@@ -50,8 +52,6 @@ export type EncodeStoreState = DocSlice &
     setKtx2Quality: (quality: number) => void
     setKtx2Mipmaps: (mipmaps: boolean) => void
     setKtx2UastcLevel: (level: DocSlice['ktx2']['uastcLevel']) => void
-    // Actions — prefs
-    setSplits: (next: Partial<PrefsSlice['splits']>) => void
     // Actions — lifecycle
     loadInit: (p: { fileName: string; sourceBytes: Uint8Array; sourceImage: ImageData | null }) => void
     // Actions — runtime
@@ -94,9 +94,6 @@ export const useEncodeStore = create<EncodeStoreState>()(
           // Session slice defaults
           fileName: 'image',
 
-          // Prefs slice defaults
-          splits: { compareU: 0.5 },
-
           // Runtime slice defaults — never persisted
           sourceBytes: null,
           sourceImage: null,
@@ -115,9 +112,6 @@ export const useEncodeStore = create<EncodeStoreState>()(
           setKtx2Quality: (quality) => set((s) => ({ ...s, ktx2: { ...s.ktx2, quality } })),
           setKtx2Mipmaps: (mipmaps) => set((s) => ({ ...s, ktx2: { ...s.ktx2, mipmaps } })),
           setKtx2UastcLevel: (uastcLevel) => set((s) => ({ ...s, ktx2: { ...s.ktx2, uastcLevel } })),
-
-          // Prefs actions
-          setSplits: (next) => set((s) => ({ ...s, splits: { ...s.splits, ...next } })),
 
           // Lifecycle action — bridge `encode/init` calls this. Sets state and
           // clears undo history so the user's stack starts empty on each load.
@@ -163,11 +157,12 @@ export const useEncodeStore = create<EncodeStoreState>()(
       ),
       {
         // Cross-session prefs: survive panel close + VSCode restart.
+        // Currently persists {} — T10 will add new prefs here (e.g., pixel
+        // grid toggle). The middleware is kept so future additions don't need
+        // a store migration — the key already exists in localStorage.
         name: 'fl-encode-prefs',
         storage: createJSONStorage(() => localStorageStorage),
-        partialize: (s) => ({
-          splits: s.splits,
-        }),
+        partialize: (_s) => ({}),
       },
     ),
     {
@@ -226,8 +221,6 @@ export const encodeActions = {
     useEncodeStore.getState().setKtx2Mipmaps(mipmaps),
   setKtx2UastcLevel: (level: DocSlice['ktx2']['uastcLevel']) =>
     useEncodeStore.getState().setKtx2UastcLevel(level),
-  setSplits: (next: Partial<PrefsSlice['splits']>) =>
-    useEncodeStore.getState().setSplits(next),
   // Bridge `encode/init` should call this — sets source + fileName AND clears
   // any history accumulated from rehydration / earlier inits. The user's undo
   // stack starts empty when they first see the panel content.
