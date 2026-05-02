@@ -8,7 +8,6 @@ import { createClientBridge } from '@three-flatland/bridge/client'
 import { useEncodeStore } from './encodeStore'
 import { scheduleEncode } from './encodePipeline'
 import { ComparePreview } from './ComparePreview'
-import { Knobs } from './Knobs'
 import { Toolbar } from './Toolbar'
 import { EncodeMenu } from './EncodeMenu'
 
@@ -31,11 +30,6 @@ const styles = stylex.create({
     flex: 1,
     minWidth: 0,
     minHeight: 0,
-  },
-  headerActions: {
-    display: 'inline-flex',
-    alignItems: 'center',
-    gap: space.sm,
   },
 })
 
@@ -151,17 +145,12 @@ export function App() {
 
   return (
     <div {...stylex.props(styles.root)}>
+      <Toolbar />
       {encodeError && <div {...stylex.props(styles.errorBanner)}>{encodeError}</div>}
       <Panel
         title="Compare"
         bodyPadding="none"
-        headerActions={
-          <div {...stylex.props(styles.headerActions)}>
-            <Knobs />
-            <Toolbar />
-            <EncodeMenu />
-          </div>
-        }
+        headerActions={<EncodeMenu />}
         style={styles.panelFill}
       >
         <ComparePreview />

@@ -5,16 +5,13 @@ import { useEncodeStore, type EncodeStoreState } from './encodeStore'
 
 type Format = EncodeStoreState['format']
 
+// Inline knob groups — rendered as Toolbar children alongside the buttons.
+// Each group is a small flex row with a label + control. The Toolbar's own
+// padding handles the surrounding spacing; we contribute groups, not a row.
 const styles = stylex.create({
-  row: {
-    display: 'flex',
-    gap: space.md,
-    padding: space.sm,
-    alignItems: 'center',
-    flexWrap: 'wrap',
-  },
-  label: { fontSize: 12, opacity: 0.85 },
   group: { display: 'flex', gap: space.sm, alignItems: 'center' },
+  groupDisabled: { display: 'flex', gap: space.sm, alignItems: 'center', pointerEvents: 'none', opacity: 0.4 },
+  label: { fontSize: 12, opacity: 0.85 },
 })
 
 const FORMAT_OPTIONS = [
@@ -42,14 +39,14 @@ export function Knobs() {
   const setKtx2Mipmaps = useEncodeStore((s) => s.setKtx2Mipmaps)
   const setKtx2UastcLevel = useEncodeStore((s) => s.setKtx2UastcLevel)
 
-  const disabled = mode === 'inspect'
+  const groupStyle = mode === 'inspect' ? styles.groupDisabled : styles.group
 
+  // Returns fragment children — rendered inside the global <Toolbar>
+  // alongside button groups. No outer wrapping div; each group is a
+  // standalone flex row that lays out next to other Toolbar children.
   return (
-    <div
-      {...stylex.props(styles.row)}
-      style={disabled ? { pointerEvents: 'none', opacity: 0.4 } : undefined}
-    >
-      <div {...stylex.props(styles.group)}>
+    <>
+      <div {...stylex.props(groupStyle)}>
         <span {...stylex.props(styles.label)}>Format</span>
         <CompactSelect
           value={format}
@@ -60,7 +57,7 @@ export function Knobs() {
       </div>
 
       {format === 'webp' && (
-        <div {...stylex.props(styles.group)}>
+        <div {...stylex.props(groupStyle)}>
           <span {...stylex.props(styles.label)}>Quality</span>
           <NumberField
             value={webp.quality}
@@ -74,7 +71,7 @@ export function Knobs() {
       )}
 
       {format === 'avif' && (
-        <div {...stylex.props(styles.group)}>
+        <div {...stylex.props(groupStyle)}>
           <span {...stylex.props(styles.label)}>Quality</span>
           <NumberField
             value={avif.quality}
@@ -89,7 +86,7 @@ export function Knobs() {
 
       {format === 'ktx2' && (
         <>
-          <div {...stylex.props(styles.group)}>
+          <div {...stylex.props(groupStyle)}>
             <span {...stylex.props(styles.label)}>Mode</span>
             <CompactSelect
               value={ktx2.mode}
@@ -99,7 +96,7 @@ export function Knobs() {
             />
           </div>
           {ktx2.mode === 'uastc' && (
-            <div {...stylex.props(styles.group)}>
+            <div {...stylex.props(groupStyle)}>
               <span {...stylex.props(styles.label)}>Level</span>
               <NumberField
                 value={ktx2.uastcLevel}
@@ -111,7 +108,7 @@ export function Knobs() {
               />
             </div>
           )}
-          <div {...stylex.props(styles.group)}>
+          <div {...stylex.props(groupStyle)}>
             <Checkbox
               label="Mipmaps"
               checked={ktx2.mipmaps}
@@ -123,6 +120,6 @@ export function Knobs() {
           </div>
         </>
       )}
-    </div>
+    </>
   )
 }

@@ -1,7 +1,8 @@
 import { useStore } from 'zustand'
-import { Toolbar as DSToolbar, ToolbarButton } from '@three-flatland/design-system'
+import { Toolbar as DSToolbar, ToolbarButton, Divider } from '@three-flatland/design-system'
 import { createClientBridge } from '@three-flatland/bridge/client'
 import { useEncodeStore, encodeHistory, encodeActions } from './encodeStore'
+import { Knobs } from './Knobs'
 
 interface SaveResult { ok: boolean; cancelled?: boolean; savedUri?: string }
 
@@ -41,24 +42,10 @@ export function Toolbar() {
 
   return (
     <DSToolbar>
-      <ToolbarButton
-        icon="discard"
-        title="Undo (⌘Z)"
-        disabled={past === 0}
-        onClick={() => encodeHistory.undo()}
-      />
-      <ToolbarButton
-        icon="redo"
-        title="Redo (⌘⇧Z)"
-        disabled={future === 0}
-        onClick={() => encodeHistory.redo()}
-      />
-      <ToolbarButton
-        icon="save"
-        title={mode === 'inspect' ? 'Save disabled in inspect mode' : encodedBytes ? 'Save…' : 'Encode an image to save'}
-        disabled={!encodedBytes || mode === 'inspect'}
-        onClick={onSave}
-      />
+      {/* Format / quality knobs — fragment children */}
+      <Knobs />
+      <Divider />
+      {/* Mip stepper */}
       <ToolbarButton
         icon="chevron-left"
         title="Previous mip level"
@@ -73,6 +60,27 @@ export function Toolbar() {
         title="Next mip level"
         disabled={!hasMips || mipLevel >= encodedMipCount - 1}
         onClick={incMip}
+      />
+      <Divider />
+      {/* Edit + persist actions */}
+      <ToolbarButton
+        icon="discard"
+        title="Undo (⌘Z)"
+        disabled={past === 0}
+        onClick={() => encodeHistory.undo()}
+      />
+      <ToolbarButton
+        icon="redo"
+        title="Redo (⌘⇧Z)"
+        disabled={future === 0}
+        onClick={() => encodeHistory.redo()}
+      />
+      <Divider />
+      <ToolbarButton
+        icon="save"
+        title={mode === 'inspect' ? 'Save disabled in inspect mode' : encodedBytes ? 'Save…' : 'Encode an image to save'}
+        disabled={!encodedBytes || mode === 'inspect'}
+        onClick={onSave}
       />
     </DSToolbar>
   )
