@@ -318,9 +318,8 @@ export function CompareLayer({
   }
   return (
     <Canvas
-      orthographic
-      gl={{ antialias: false, alpha: true, preserveDrawingBuffer: false }}
-      flat
+      dpr={1}
+      renderer={{ antialias: false }}
       style={{
         position: 'absolute',
         inset: 0,
