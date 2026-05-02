@@ -21,37 +21,140 @@ Squoosh's UX is a single image with a draggable vertical slider. To the left of 
 
 ## Design
 
-### Evaluation: existing shared primitives
+### Architecture: extend the shared canvas primitives, not the encode tool
 
-Before designing the compare canvas from scratch, walk the inventory in `tools/preview/src/canvas/` and `tools/design-system/`. What's reusable, what's not, and why:
+The compare slider belongs in `@three-flatland/preview/canvas` as a reusable primitive. Concrete near-term consumers we anticipate:
 
-| Primitive | Verdict | Reasoning |
-|---|---|---|
-| `Panel` (`@three-flatland/design-system`) | **REUSE** | The chrome wrapper — all tools mount their main canvas inside `<Panel bodyPadding="none">`. Phase 2.1.1 Task 6 wraps ComparePreview in one. |
-| `Splitter` (design-system) | **SKIP** | Phase 2.1 used a Splitter to divide left/right canvases. The compare slider IS the split — vertical Splitter would be redundant chrome. |
-| `CanvasStage` (`@three-flatland/preview/canvas`) | **SKIP for v1, evaluate for v2** | Documented as single-image: "Takes exactly one `imageUri`. For multi-image scenes, do NOT mount multiple CanvasStages — build a hand-rolled SVG or HTML layout." Compare needs two textures. The CanvasStage's pan/zoom + cursor + ImageData context machinery (`useViewport`, `useCursor`, `useImageData`) is rich; rebuilding it inside ComparePreview would be wasteful. **For v2 (when we add pan/zoom)** we extend CanvasStage to optionally accept a second image source for compare mode, OR ship a sibling `CompareCanvasStage` that reuses ThreeLayer + viewport context. We file that as Phase 2.1.3 and evaluate then. |
-| `ThreeLayer` (`@three-flatland/preview/canvas`) | **EVALUATE — alignment risk** | `tools/preview/src/ThreeLayer.tsx` imports from `@react-three/fiber/webgpu` (WebGPU path); our current ComparePreview uses `@react-three/fiber` (WebGL path). The rest of the project's three.js usage is WebGPU + TSL per `CLAUDE.md`. The Phase 2.1.1 Task 1 implementer used WebGL R3F because three's `KTX2Loader` is WebGL-shaped (`detectSupport(renderer)` reads `renderer.capabilities`). Action: leave ComparePreview on WebGL R3F until Phase 2.1.2's loader fork lands; once we own the loader we can target WebGPU's compressed-texture support directly and migrate ComparePreview to `@react-three/fiber/webgpu` for project consistency. Add this to Phase 2.1.2's done-criteria. |
-| `canvasBackgroundStyle` (preview/canvas) | **REUSE** | The themed checker / gradient / solid bg helper. The compare canvas's background should match atlas's choice (currently `'gradient'` for non-pixel atlases). Apply via the Panel body or an absolutely-positioned `<div>` behind the canvas. |
-| `Viewport` type + `useViewport` / `useViewportController` | **DEFER (v2)** | Pan/zoom infrastructure. We don't have pan/zoom in v1 (out of scope). When we add it in v2 we choose between (a) extending CanvasStage and (b) reusing the Viewport / useViewport abstraction inside a new `CompareCanvasStage`. |
-| `RectOverlay` | **DEFER (later phase)** | If we ever add a "compare a region of interest" mode (e.g., zoom to a 256×256 sub-image), this is the right primitive. Out of scope for v1. |
-| `useCursor` / cursor store | **DEFER (later phase)** | Showing the cursor's pixel coords + color sample while comparing would be useful. v2+. |
-| `Toolbar` / `ToolbarButton` (design-system) | **REUSE** | Already in use in Phase 2.1's encode toolbar. Phase 2.1.1 Task 6 moves these into the Panel's `headerActions`. |
-| `CompactSelect`, `NumberField`, `Checkbox` (design-system) | **REUSE** | Already in use in `Knobs.tsx`. The mip stepper (Phase 2.1.1 Task 5) and the settings menu (Task 6) reuse these. |
+- **encode** — original vs encoded (the immediate driver of this spec)
+- **atlas** — sprite-sheet PNG vs its KTX2-compressed build, useful for spotting block-coding artifacts in the atlas tool
+- **merge** — two source atlases at the same coordinates, useful when reconciling overlapping atlases
+- **slug-text** (future) — typesetting before/after a parameter change
+- **skia-based tools** (future) — render before/after with different filters / render passes
 
-**Net result:** the compare canvas's core (two textures + shader split + slider HTML overlay) is genuinely not covered by existing primitives. The chrome (Panel, Toolbar, knobs, settings menu, themed background) IS covered and we use it. Pan/zoom + cursor + region-of-interest are deferred to v2 where we'll have a clearer choice between extending CanvasStage or shipping a new sibling primitive.
+Building it inside `tools/vscode/webview/encode/` ships one feature, one consumer, and the immediate-debt of extracting it later when the second tool wants compare. The cost differential between "ship in tools/preview now" and "ship in encode/ now and extract later" is small — and the extraction-later case has a real risk of never happening if the encode-tool version diverges enough that pulling it out becomes its own project. **One set of canvas components, owned by `@three-flatland/preview/canvas`, used by every tool that wants compare.** No duplication.
 
-The "custom rabbit hole" risk the user flagged is real for v2; it's NOT a concern for v1 because v1's compare-canvas surface is just a textured quad with a slider. We're not re-implementing pan/zoom or cursor handling — we're reusing every shared primitive that fits and building only the genuinely new pieces.
+We compose against the existing canvas stack — `CanvasStage` for the chrome, `ThreeLayer` for the rendering — and add what's missing rather than rebuilding what's there.
 
-### Approach: single R3F canvas, two textures, shader-based split
+#### Generalization needed in `ThreeLayer`
 
-One `<Canvas>` from `@react-three/fiber`. One full-screen quad. A custom material samples either `textureA` (original) or `textureB` (encoded) based on `uv.x < splitU`. An HTML overlay paints the slider line and a draggable handle at the same `splitU`-derived screen position.
+`ThreeLayer.tsx` currently takes `imageUri: string` and uses `useLoader(TextureLoader, imageUri)` internally. That works for any format the browser decodes natively — but blocks KTX2 (which needs `Ktx2Loader` to produce a `CompressedTexture` from bytes).
 
-Why this beats "two stacked canvases with `clip-path`":
-- One GL context, not two. No sync drift, no double init cost.
-- The split is sub-pixel exact via shader lookup; CSS `clip-path` is rounded to the nearest CSS pixel.
-- Future: easy to add a fade transition, magnifier loupe, or per-channel diff overlay — all just shader edits.
+Generalize the source prop:
 
-WebGL via R3F's standard `<Canvas>`, NOT WebGPU. Reasoning: KTX2Loader plus the basis transcoder is well-tested on WebGL; mixing in WebGPU's `detectSupport()` path is unnecessary complexity for a tool that doesn't render anything but a quad. If we later move every tool to WebGPU we'll re-evaluate as part of that effort.
+```ts
+type ImageSource =
+  | { kind: 'url'; url: string }
+  | { kind: 'texture'; texture: THREE.Texture }
+
+type ThreeLayerProps = {
+  imageSource: ImageSource | null
+  // ...rest unchanged: zoom, panX, panY, fitMargin, pixelArt, onImageReady
+}
+```
+
+The `'texture'` path skips `useLoader` and uses the provided texture directly. Existing consumers that pass `imageUri: string` keep working through a backwards-compatible adapter (the prop becomes `imageUri?: string | ImageSource | null` — see Migration below).
+
+This unblocks every loader that produces a Texture without going through three's URL-based loader system: KTX2, future spark.js variants, programmatically-generated textures, etc.
+
+#### New: `CompareLayer` (sibling to `ThreeLayer`)
+
+`CompareLayer` is the two-texture analog of ThreeLayer. Same WebGPU `<Canvas>` from `@react-three/fiber/webgpu`, same orthographic camera + pan/zoom math, but renders BOTH textures via a custom NodeMaterial that samples the appropriate texture based on `uv.x < splitU`. The pan/zoom math is shared — both textures move together (the slider only reveals one or the other; it doesn't pan them independently).
+
+```ts
+type CompareLayerProps = {
+  imageSource: ImageSource | null         // "left" / original
+  compareImageSource: ImageSource | null  // "right" / encoded
+  splitU: number                          // 0..1, 0 = all original, 1 = all encoded
+  // ... pan/zoom props inherited from ThreeLayer's signature
+  mipLevelB?: number                      // KTX2 mip-level inspection (default 0)
+}
+```
+
+The shader is TSL (`MeshBasicNodeMaterial` with `select(...)` per uv condition) — the project rule is TSL-only for any code that runs inside `@react-three/fiber/webgpu`, and a shared primitive in `@three-flatland/preview` is squarely under that rule. `CompareLayer` does NOT take vanilla GLSL.
+
+#### `CanvasStage` extension
+
+`CanvasStage` is the chrome (pan/zoom + cursor + viewport context + background). It currently takes `imageUri` and pipes it to ThreeLayer. Add an optional `compareImageSource` prop:
+
+```ts
+type CanvasStageProps = {
+  // EXISTING (kept for back-compat):
+  imageUri?: string | null
+  // NEW:
+  imageSource?: ImageSource | null            // primary image; preferred over imageUri
+  compareImageSource?: ImageSource | null     // when set, switches the inner layer to CompareLayer
+  // ...rest unchanged
+}
+```
+
+When `compareImageSource` is null/undefined, CanvasStage routes to `ThreeLayer` (current behavior, no change for atlas/merge consumers). When set, it routes to `CompareLayer`. The pan/zoom + cursor context that CanvasStage already manages is shared with both layer types.
+
+#### `CompareContext` + `useCompareController()`
+
+The slider's `splitU` is mounted-component state, not document state, so it doesn't need to be in zustand. But it needs to be readable by both the CompareLayer (consumer) and the slider HTML overlay (producer). We expose it via React context, exactly mirroring `ViewportContext` / `useViewportController`:
+
+```ts
+type CompareController = {
+  splitU: number
+  setSplitU: (next: number) => void
+}
+
+const CompareContext = createContext<CompareController | null>(null)
+export function useCompareController(): CompareController { ... }
+```
+
+CanvasStage owns the state and provides the context when `compareImageSource` is set. CompareLayer consumes it internally; child overlays consume via the hook.
+
+#### New: `CompareSliderOverlay`
+
+HTML overlay that mounts as a CHILD of CanvasStage, alongside other overlays like `RectOverlay` / `InfoPanel` / `HoverFrameChip`. Reads `splitU` via `useCompareController()`, draws the vertical line + handle at the corresponding screen X, writes back on drag.
+
+```tsx
+<CanvasStage imageSource={original} compareImageSource={encoded}>
+  <CompareSliderOverlay />
+</CanvasStage>
+```
+
+The slider is theme-aware (line color / handle color from VSCode tokens) and can be styled by the consumer via a className/style prop. Pan/zoom doesn't move the slider — it's a screen-space control.
+
+#### Pan/zoom + cursor in v1
+
+Because CanvasStage owns these, the encode tool gets pan + zoom + cursor coord/color readout for free. The encode tool's `<InfoPanel>` (mounted as a CanvasStage child) can show the cursor's pixel coords + sampled color at the original side OR the encoded side based on which side of the slider the cursor is on. v1 implementation: read both samples, show both in the InfoPanel ("Orig: rgba(...), Enc: rgba(...)"). This is genuinely useful for spotting compression artifacts.
+
+#### Encode-tool consumer (the simple result)
+
+```tsx
+function EncodeApp() {
+  const original = useEncodeStore((s) => s.sourceImage)
+  const encoded = useEncodedTexture()  // adapter that decodes encodedBytes via the right loader
+  return (
+    <Panel title="Compare" bodyPadding="none">
+      <CanvasStage
+        imageSource={original ? { kind: 'texture', texture: makeOriginalTex(original) } : null}
+        compareImageSource={encoded ? { kind: 'texture', texture: encoded } : null}
+        backgroundStyle="checker"
+      >
+        <CompareSliderOverlay />
+        <InfoPanel />
+      </CanvasStage>
+    </Panel>
+  )
+}
+```
+
+The encode tool becomes a ~30-LOC composer. Atlas and merge can adopt the same primitive whenever they need an A/B view (e.g., atlas comparing a sprite-sheet against its KTX2 build, merge comparing input vs output atlases).
+
+### Migration plan for the existing ComparePreview work
+
+Phase 2.1.1's Tasks 1–3 (DONE) wired a hand-rolled R3F canvas inside `tools/vscode/webview/encode/ComparePreview.tsx`. Their **logic** carries forward (texture creation from ImageData, KTX2 decode via three's loader as the stopgap), but their **mounting** moves into the new shared primitives:
+
+- The texture-creation effects (`imageDataToTexture`, the encoded-texture useEffect with the reqId race-guard) move to the encode tool's adapter (a small hook that turns store state into ThreeLayer-shaped sources)
+- The slider state moves into CompareContext (managed by CanvasStage)
+- The shader moves into CompareLayer's TSL material
+- The HTML overlay moves to CompareSliderOverlay
+- ComparePreview.tsx becomes the small composer above; or the file is deleted and its contents fold directly into App.tsx
+
+Net effect on the encode tool: less code, more capability (pan/zoom + cursor + InfoPanel show up for free).
 
 ### Texture pipeline
 
