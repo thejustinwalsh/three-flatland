@@ -1,6 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import * as THREE from 'three'
-import { CanvasStage, CompareSliderOverlay, type ImageSource } from '@three-flatland/preview/canvas'
+import {
+  CanvasStage,
+  CompareSliderOverlay,
+  CompareLoadingOverlay,
+  type ImageSource,
+} from '@three-flatland/preview/canvas'
 import { decodeImage } from '@three-flatland/image'
 import basisTranscoderJsUrl from 'three/examples/jsm/libs/basis/basis_transcoder.js?url'
 import basisTranscoderWasmUrl from 'three/examples/jsm/libs/basis/basis_transcoder.wasm?url'
@@ -133,6 +138,7 @@ export function ComparePreview() {
   const setEncodedMipCount = useEncodeStore((s) => s.setEncodedMipCount)
   const mipLevel = useEncodeStore((s) => s.mipLevel)
   const mode = useEncodeStore((s) => s.mode)
+  const isEncoding = useEncodeStore((s) => s.isEncoding)
   const original = useOriginalTexture(sourceImage)
   const encoded = useEncodedTexture(setEncodedMipCount)
 
@@ -179,8 +185,10 @@ export function ComparePreview() {
       onSplitChange={setCompareSplitU}
       mipLevelB={mipLevel}
       backgroundStyle="checker"
+      compareLoading={isEncoding}
     >
       <CompareSliderOverlay />
+      <CompareLoadingOverlay />
     </CanvasStage>
   )
 }

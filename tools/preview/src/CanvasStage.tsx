@@ -143,6 +143,13 @@ export type CanvasStageProps = {
    * when compareImageSource is set. Default 0 (full resolution).
    */
   mipLevelB?: number
+  /**
+   * When true, the compare side shows the primary image with a
+   * desaturation + dim treatment to signal that a new encoded result is
+   * in-flight. Use alongside <CompareLoadingOverlay /> to show a spinner.
+   * Defaults to false. Ignored when compareImageSource is null.
+   */
+  compareLoading?: boolean
 }
 
 // ---------------------------------------------------------------------------
@@ -477,6 +484,7 @@ export function CanvasStage({
   initialSplitU,
   onSplitChange,
   mipLevelB,
+  compareLoading,
 }: CanvasStageProps) {
   const [baseViewport, setBaseViewport] = useState<Omit<Viewport, 'zoom' | 'panX' | 'panY'> | null>(null)
   const [imageData, setImageData] = useState<ImageData | null>(null)
@@ -525,8 +533,8 @@ export function CanvasStage({
   }, [initialSplitU])
 
   const compareController: CompareController = useMemo(
-    () => ({ splitU, setSplitU }),
-    [splitU, setSplitU],
+    () => ({ splitU, setSplitU, loading: compareLoading ?? false }),
+    [splitU, setSplitU, compareLoading],
   )
 
   // Space-key pan tracking
@@ -1036,6 +1044,7 @@ export function CanvasStage({
           panY={panY}
           onImageReady={handleReady}
           pixelArt={pixelArt}
+          compareLoading={compareLoading ?? false}
         />
       ) : (
         <ThreeLayer

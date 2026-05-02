@@ -15,3 +15,4 @@ export {
 } from './AnimationPreviewPip'
 export { SpritePreview, type SpritePreviewProps } from './SpritePreview'
 export { CompareSliderOverlay, type CompareSliderOverlayProps } from './CompareSliderOverlay'
+export { CompareLoadingOverlay } from './CompareLoadingOverlay'

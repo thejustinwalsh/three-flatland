@@ -13,6 +13,7 @@ import { createContext, useContext } from 'react'
 export type CompareController = {
   splitU: number
   setSplitU: (next: number) => void
+  loading: boolean
 }
 
 /**

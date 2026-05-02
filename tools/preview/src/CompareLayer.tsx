@@ -10,7 +10,7 @@ import {
   type Texture,
 } from 'three'
 import { MeshBasicNodeMaterial } from 'three/webgpu'
-import { texture, textureLevel, uv, select, uniform } from 'three/tsl'
+import { texture, textureLevel, uv, select, uniform, mix, vec3, vec4, dot } from 'three/tsl'
 import { type ImageSource } from './ThreeLayer'
 
 export type { ImageSource }
@@ -46,6 +46,12 @@ export type CompareLayerProps = {
    * CanvasStage to expose the viewport). Mirrors ThreeLayer.onImageReady.
    */
   onImageReady?: (size: { w: number; h: number }) => void
+  /**
+   * When true, the shader shows the primary texture on both sides and
+   * applies a desaturation + dim to the compare (right) side, signalling
+   * that a new encoded result is in-flight.
+   */
+  compareLoading?: boolean
 }
 
 // ---------------------------------------------------------------------------
@@ -145,6 +151,7 @@ function CompareScene({
   zoom,
   panX,
   panY,
+  compareLoading,
   onPrimaryReady,
 }: {
   primary: ImageSource
@@ -156,6 +163,7 @@ function CompareScene({
   zoom: number
   panX: number
   panY: number
+  compareLoading: boolean
   onPrimaryReady?: (size: { w: number; h: number }) => void
 }) {
   const [primaryTex, setPrimaryTex] = useState<Texture | null>(
@@ -229,6 +237,13 @@ function CompareScene({
     mipLevelBNode.value = mipLevelB
   }, [mipLevelB, mipLevelBNode])
 
+  // compareLoading lives as a TSL uniform so toggling it doesn't rebuild
+  // the node graph — only the uniform value changes, the graph stays.
+  const loadingNode = useMemo(() => uniform(0), [])
+  useEffect(() => {
+    loadingNode.value = compareLoading ? 1 : 0
+  }, [compareLoading, loadingNode])
+
   // Rebuild colorNode whenever a texture changes.
   useEffect(() => {
     if (!primaryTex) return
@@ -236,10 +251,22 @@ function CompareScene({
     // For the compare texture, sample at the selected LOD using textureLevel().
     // For non-CompressedTextures (CanvasTexture) the uniform is 0, so the
     // result is equivalent to texture() at full resolution.
-    const b = compareTex ? textureLevel(compareTex, uv(), mipLevelBNode) : a
+    const compareSample = compareTex ? textureLevel(compareTex, uv(), mipLevelBNode) : a
+    // When loading, force compare side to use primary so the user sees the
+    // original image with the loading treatment, not the stale encoded result.
+    const bBase = select(loadingNode.equal(1), a, compareSample)
+
+    // Desaturation + dim applied only when loading (loadingNode=1).
+    // luma = dot(rgb, [0.299, 0.587, 0.114])
+    const luma = dot(bBase.rgb, vec3(0.299, 0.587, 0.114))
+    const grey = vec3(luma).mul(0.55)
+    // Mix from full-color (loading=0) to dim-grey (loading=1) by 0.75 strength
+    const bRGB = mix(bBase.rgb, grey, loadingNode.mul(0.75))
+    const b = vec4(bRGB, bBase.a)
+
     material.colorNode = select(uv().x.lessThan(splitUNode), a, b)
     material.needsUpdate = true
-  }, [primaryTex, compareTex, splitUNode, mipLevelBNode, material])
+  }, [primaryTex, compareTex, splitUNode, mipLevelBNode, loadingNode, material])
 
   const dims = primaryTex ? resolveDims(primary, primaryTex) : null
 
@@ -312,6 +339,7 @@ export function CompareLayer({
   suspenseFallback = null,
   onImageReady,
   mipLevelB = 0,
+  compareLoading = false,
 }: CompareLayerProps) {
   if (!imageSource) {
     return <div style={{ position: 'absolute', inset: 0 }} />
@@ -338,6 +366,7 @@ export function CompareLayer({
           zoom={zoom}
           panX={panX}
           panY={panY}
+          compareLoading={compareLoading}
           onPrimaryReady={onImageReady}
         />
       </Suspense>
