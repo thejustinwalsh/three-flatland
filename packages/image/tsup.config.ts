@@ -15,8 +15,6 @@ export default defineConfig({
     'src/codecs/ktx2.ts',
     'src/runtime/wasi-shim.ts',
     'src/runtime/basis-loader.ts',
-    'src/loaders/index.ts',
-    'src/loaders/BaseImageLoader.ts',
     'src/encode.node.ts',
     'src/node.ts',
     'src/cli.ts',

@@ -29,11 +29,6 @@
       "source": "./src/cli.ts",
       "types": "./dist/cli.d.ts",
       "import": "./dist/cli.js"
-    },
-    "./loaders": {
-      "source": "./src/loaders/index.ts",
-      "types": "./dist/loaders/index.d.ts",
-      "import": "./dist/loaders/index.js"
     }
   },
   "module": "./dist/index.js",
@@ -53,16 +48,8 @@
     "@jsquash/webp": "catalog:",
     "@jsquash/avif": "catalog:"
   },
-  "peerDependencies": {
-    "three": "catalog:"
-  },
-  "peerDependenciesMeta": {
-    "three": { "optional": true }
-  },
   "devDependencies": {
-    "binaryen": "^123.0.0",
-    "three": "catalog:",
-    "@types/three": "catalog:"
+    "binaryen": "^123.0.0"
   },
   "flatland": {
     "bake": [
