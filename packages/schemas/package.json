@@ -1,0 +1,29 @@
+{
+  "name": "@three-flatland/schemas",
+  "version": "0.0.0",
+  "private": true,
+  "description": "JSON Schemas + Ajv validators for three-flatland data formats. Tool/dev-time only — no runtime consumers in three-flatland.",
+  "type": "module",
+  "exports": {
+    "./atlas": {
+      "source": "./src/atlas/index.ts",
+      "import": {
+        "types": "./dist/atlas/index.d.ts",
+        "default": "./dist/atlas/index.js"
+      }
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "ajv": "^8.17.1"
+  }
+}

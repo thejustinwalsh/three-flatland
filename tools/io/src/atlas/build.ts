@@ -106,11 +106,13 @@ export function wireAnimationToInput(wire: WireAnimation): AnimationInput {
     }
     frames.push(name)
   }
+  // The schema makes fps/loop/pingPong optional on the wire — in-memory model
+  // requires them, so default here. fps=12 matches the SpriteSheetLoader default.
   return {
     frames,
-    fps: wire.fps,
-    loop: wire.loop,
-    pingPong: wire.pingPong,
+    fps: wire.fps ?? 12,
+    loop: wire.loop ?? true,
+    pingPong: wire.pingPong ?? false,
     ...(wire.events ? { events: wire.events } : {}),
   }
 }
