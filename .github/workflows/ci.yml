@@ -114,6 +114,9 @@ jobs:
       - name: Verify react subpath wrappers
         run: pnpm sync:react:verify
 
+      - name: Verify generated schema types
+        run: pnpm gen:types:verify
+
       - name: Build
         run: pnpm build
 

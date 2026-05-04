@@ -10,7 +10,7 @@
   },
   "scripts": {
     "build": "turbo run build",
-    "dev": "echo '\\n  ➜  Dev server: http://localhost:5173\\n' && turbo run dev --filter=docs --filter=examples",
+    "dev": "echo '\\n  ➜  Dev server: http://localhost:5173\\n' && turbo run dev --filter=docs --filter=examples --filter=@three-flatland/schemas",
     "typecheck": "turbo run typecheck --filter='*'",
     "lint": "eslint packages/*/src minis/*/src",
     "lint:fix": "eslint packages/*/src minis/*/src --fix",
@@ -27,7 +27,7 @@
     "changeset": "changeset",
     "changeset:generate": "tsx scripts/generate-changesets.ts",
     "changeset:version": "changeset version",
-    "release": "turbo run build && changeset publish",
+    "release": "pnpm gen:types:verify && turbo run build && changeset publish",
     "sync:pack": "tsx scripts/sync-pack.ts",
     "sync:pack:verify": "tsx scripts/sync-pack.ts --verify",
     "sync:react": "tsx scripts/sync-react-subpaths.ts",

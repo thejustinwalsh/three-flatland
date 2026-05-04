@@ -25,6 +25,14 @@ pre-commit:
       glob: "{packages/three-flatland/src/index.ts,packages/three-flatland/src/*/index.ts,packages/skia/src/ts/three/index.ts}"
       run: pnpm exec tsx scripts/sync-react-subpaths.ts
       stage_fixed: true
+    gen-schema-types:
+      # Schema or codegen-script edits regenerate the .gen.ts type files in
+      # three-flatland and tools/io. Explicit `git add` mirrors sync-pack-full
+      # — stage_fixed only re-stages files matching this glob, not the
+      # cross-package outputs.
+      glob: "{packages/schemas/src/**/schema.json,scripts/gen-schema-types.ts}"
+      run: pnpm gen:types && git add packages/three-flatland/src/sprites/*.types.gen.ts tools/io/src/atlas/*.types.gen.ts
+      stage_fixed: true
     check-skia-pin:
       glob: "packages/skia/third_party/skia"
       run: pnpm exec tsx scripts/check-skia-pin.ts
