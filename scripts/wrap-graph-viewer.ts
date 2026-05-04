@@ -6,11 +6,12 @@
 // without overlap) and produces a clean relaxed layout. Dagre is also
 // available as a fallback (key L cycles layouts). Overview uses cose.
 //
-// Lib files live in graphs/lib/ and are referenced relatively, so each
-// HTML stays small and the libs get shared/cached across views.
+// Lib files live in .reports/graphs/lib/ and are referenced relatively, so
+// each HTML stays small and the libs get shared/cached across views.
 
 import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { basename, extname, join } from 'node:path'
+import { basename, dirname, extname, join } from 'node:path'
+import { createRequire } from 'node:module'
 
 const jsonArg = process.argv[2]
 if (!jsonArg) {
@@ -18,24 +19,35 @@ if (!jsonArg) {
   process.exit(1)
 }
 
-const jsonPath = join('graphs', jsonArg)
+const OUT_DIR = '.reports/graphs'
+const jsonPath = join(OUT_DIR, jsonArg)
 const stem = basename(jsonArg, extname(jsonArg))
-const htmlPath = join('graphs', stem + '.html')
+const htmlPath = join(OUT_DIR, stem + '.html')
 const isOverview = stem === 'overview'
 
 const data = readFileSync(jsonPath, 'utf8')
 
-// Mirror the cytoscape libs into graphs/lib/ so the viewer can load them
-// over file:// without bundling them into every HTML.
-mkdirSync('graphs/lib', { recursive: true })
+// Mirror the cytoscape libs into .reports/graphs/lib/ so the viewer can load
+// them over file:// without bundling them into every HTML.
+mkdirSync(join(OUT_DIR, 'lib'), { recursive: true })
+// cytoscape-fcose needs coseBase as a global, which in turn needs layoutBase.
+// Load order in the HTML: layout-base → cose-base → cytoscape-fcose.
+// These two transitive deps live deep under .pnpm/, so walk the resolution
+// chain from cytoscape-fcose to find their UMD bundles (the `main` field).
+const require_ = createRequire(import.meta.url)
+const fcose = require_.resolve('cytoscape-fcose')
+const coseBase = require_.resolve('cose-base', { paths: [dirname(fcose)] })
+const layoutBase = require_.resolve('layout-base', { paths: [dirname(coseBase)] })
 const libs = [
   ['node_modules/cytoscape/dist/cytoscape.min.js', 'cytoscape.min.js'],
   ['node_modules/dagre/dist/dagre.min.js', 'dagre.min.js'],
   ['node_modules/cytoscape-dagre/cytoscape-dagre.js', 'cytoscape-dagre.js'],
-  ['node_modules/cytoscape-fcose/cytoscape-fcose.js', 'cytoscape-fcose.js'],
+  [layoutBase, 'layout-base.js'],
+  [coseBase, 'cose-base.js'],
+  [fcose, 'cytoscape-fcose.js'],
 ] as const
 // Always overwrite — keeps libs in lockstep with the package version.
-for (const [src, dest] of libs) copyFileSync(src, join('graphs/lib', dest))
+for (const [src, dest] of libs) copyFileSync(src, join(OUT_DIR, 'lib', dest))
 
 const html = `<!doctype html>
 <html lang="en">
@@ -59,6 +71,8 @@ const html = `<!doctype html>
   <script src="lib/cytoscape.min.js"></script>
   <script src="lib/dagre.min.js"></script>
   <script src="lib/cytoscape-dagre.js"></script>
+  <script src="lib/layout-base.js"></script>
+  <script src="lib/cose-base.js"></script>
   <script src="lib/cytoscape-fcose.js"></script>
   <script>
     cytoscape.use(cytoscapeDagre)

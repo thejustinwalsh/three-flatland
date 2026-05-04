@@ -97,9 +97,9 @@ function tarjan(graph: Record<string, string[]>): string[][] {
 const cycles = tarjan(typeOnly)
 const cyclicNodes = new Set<string>(cycles.flat())
 
-mkdirSync('graphs', { recursive: true })
+mkdirSync('.reports/graphs', { recursive: true })
 const data = buildGraphData({ graph: typeOnly, cyclicNodes, cycleCount: cycles.length })
-writeFileSync('graphs/types.json', JSON.stringify(data))
+writeFileSync('.reports/graphs/types.json', JSON.stringify(data))
 
 // Cross-package edge summary — the actionable view for declaring deps in package.json.
 type Edge = { from: string; to: string; fromPkg: string; toPkg: string }
@@ -122,7 +122,7 @@ for (const e of crossPkg) {
 }
 
 console.log(
-  `graphs/types.json — ${data.meta.fileCount} files, ${data.meta.edgeCount} type-only edges`,
+  `.reports/graphs/types.json — ${data.meta.fileCount} files, ${data.meta.edgeCount} type-only edges`,
 )
 console.log(`\nCross-package type-only edges (${crossPkg.length} total, ${byPair.size} pkg pairs):`)
 for (const [pair, edges] of [...byPair.entries()].sort()) {
