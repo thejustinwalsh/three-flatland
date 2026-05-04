@@ -3,23 +3,33 @@ import * as stylex from '@stylexjs/stylex'
 import { useCompareController } from './CompareContext'
 
 const styles = stylex.create({
-  // Pointer-events container that captures clicks/drags anywhere on the
-  // canvas surface and seeks the slider to the cursor X. The line +
-  // handle render relative to this absolute-positioned container.
+  // Container fills the canvas area but is pointer-transparent — pan,
+  // zoom, and other CanvasStage interactions need to reach the layers
+  // below. Only the line + handle (children) opt back in to pointer
+  // events, so dragging the slider requires explicitly grabbing one of
+  // them. (Click-anywhere-to-seek would conflict with pan/zoom + cause
+  // slider jumps on every click; if we want it back, gate it on a
+  // modifier key.)
   hitArea: {
     position: 'absolute',
     inset: 0,
-    cursor: 'ew-resize',
+    pointerEvents: 'none',
   },
+  // Wider invisible drag affordance on top of the visible 2px line so
+  // the user doesn't have to pixel-aim. ~12px feels right; cursor ew-resize
+  // signals "draggable" when hovering near the line.
   line: {
     position: 'absolute',
     top: 0,
     bottom: 0,
-    width: 2,
-    background: 'rgba(255, 255, 255, 0.85)',
-    boxShadow: '0 0 0 1px rgba(0, 0, 0, 0.5)',
+    width: 12,
+    background: 'transparent',
+    cursor: 'ew-resize',
+    pointerEvents: 'auto',
     transform: 'translateX(-50%)',
-    pointerEvents: 'none',
+    // Inner visible 2px line, drawn via box-shadow so it stays centered
+    // within the wider hit affordance without changing layout.
+    boxShadow: 'inset 5px 0 0 rgba(255, 255, 255, 0.85), inset 6px 0 0 rgba(0, 0, 0, 0.5), inset 7px 0 0 rgba(255, 255, 255, 0.85)',
   },
   handle: {
     position: 'absolute',
