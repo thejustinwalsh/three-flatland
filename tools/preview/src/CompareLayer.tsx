@@ -2,6 +2,7 @@ import { Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { Canvas, useFrame, useLoader, useThree } from '@react-three/fiber/webgpu'
 import {
   LinearFilter,
+  LinearMipmapLinearFilter,
   NearestFilter,
   NearestMipmapNearestFilter,
   TextureLoader,
@@ -186,25 +187,27 @@ function CompareScene({
     // url kind arrives via UrlLoaded callback
   }, [compare])
 
-  // Configure filtering on both textures.
+  // Configure filtering on both textures. Both sides MUST use the same
+  // sampler, otherwise the compare looks misleading (left smooth / right
+  // crunchy made the encoded side seem worse than it is). pixelArt mode
+  // forces nearest on both; otherwise both go linear, with mipmap-linear
+  // for compare textures that ship a mip chain (so the mip stepper smoothly
+  // interpolates through levels rather than popping between nearest mips).
   useEffect(() => {
     const filter = pixelArt ? NearestFilter : LinearFilter
+    const minFilterWithMips = pixelArt
+      ? NearestMipmapNearestFilter
+      : LinearMipmapLinearFilter
     if (primaryTex) {
       primaryTex.minFilter = filter
       primaryTex.magFilter = filter
       primaryTex.needsUpdate = true
     }
     if (compareTex) {
-      // If the compare texture has a mip chain (CompressedTexture from KTX2),
-      // use NearestMipmapNearestFilter so textureLevel() picks each level crisply.
       const compressed = compareTex as CompressedTexture
-      if (compressed.mipmaps && compressed.mipmaps.length > 1) {
-        compareTex.minFilter = NearestMipmapNearestFilter
-        compareTex.magFilter = NearestFilter
-      } else {
-        compareTex.minFilter = filter
-        compareTex.magFilter = filter
-      }
+      const hasMipmaps = compressed.mipmaps && compressed.mipmaps.length > 1
+      compareTex.minFilter = hasMipmaps ? minFilterWithMips : filter
+      compareTex.magFilter = filter
       compareTex.needsUpdate = true
     }
   }, [primaryTex, compareTex, pixelArt])
