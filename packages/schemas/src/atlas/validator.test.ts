@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import Ajv2020 from 'ajv/dist/2020'
-import schema from './atlas.schema.json' with { type: 'json' }
+import schema from './schema.json' with { type: 'json' }
 
 const ajv = new Ajv2020({ allErrors: true, strict: false })
 const validate = ajv.compile(schema as object)
@@ -8,7 +8,7 @@ const validate = ajv.compile(schema as object)
 const minimalFrames = {}
 const baseSize = { w: 64, h: 64 }
 
-import { validateAtlas, formatAtlasErrors } from './atlas.schema'
+import { validateAtlas, formatAtlasErrors } from './validator'
 
 describe('atlas.schema.json', () => {
   it('rejects sidecars missing meta.sources', () => {

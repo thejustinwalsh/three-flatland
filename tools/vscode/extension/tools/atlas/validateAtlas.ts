@@ -1,9 +1,9 @@
 // Re-export of the centralized atlas validator. The authoritative
-// implementation lives in packages/three-flatland/src/sprites/atlas.schema.ts
-// so the runtime, future tools, and this extension all share one ajv compile
-// and one format-uniqueness check.
+// implementation lives in packages/schemas/src/atlas/validator.ts — schema +
+// Ajv are siloed there so they never leak into the three-flatland runtime
+// bundle. Tools and CI share one ajv compile and one format-uniqueness check.
 export {
   validateAtlas,
   assertValidAtlas,
   formatAtlasErrors,
-} from 'three-flatland/sprites/atlas'
+} from '@three-flatland/schemas/atlas'

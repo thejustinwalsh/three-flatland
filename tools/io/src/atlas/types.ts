@@ -1,14 +1,9 @@
 // Wire format stored under meta.animations[name]. frameSet lists unique
 // frame names; frames is a playback sequence of integer indices into
-// frameSet (repeated indices encode hold counts).
-export type WireAnimation = {
-  frameSet: string[]
-  frames: number[]
-  fps: number
-  loop: boolean
-  pingPong: boolean
-  events?: Record<string, string>
-}
+// frameSet (repeated indices encode hold counts). This is the schema's
+// `Animation` shape — fps/loop/pingPong are optional on the wire (consumers
+// supply defaults), required on the in-memory `AnimationInput` model below.
+export type { Animation as WireAnimation } from './atlas.types.gen'
 
 // API shape used by builders + in-memory tool models. Frame names are
 // post-duplication (holds = repeated names). Converters in build.ts
@@ -40,36 +35,9 @@ export type AsepriteFrameTag = {
   data?: string
 }
 
-// Strict superset of TexturePacker JSON-Hash + Aseprite shapes — see
-// packages/three-flatland/src/sprites/atlas.schema.json.
-export type AtlasJson = {
-  $schema?: string
-  meta: {
-    app: string
-    version: string
-    sources: { format: 'png' | 'webp' | 'avif' | 'ktx2'; uri: string }[]
-    size: { w: number; h: number }
-    scale: string
-    animations?: Record<string, WireAnimation>
-    frameTags?: readonly AsepriteFrameTag[]
-    layers?: readonly unknown[]
-    slices?: readonly unknown[]
-    merge?: AtlasMergeMeta
-    [k: string]: unknown
-  }
-  frames: Record<
-    string,
-    {
-      frame: { x: number; y: number; w: number; h: number }
-      rotated: boolean
-      trimmed: boolean
-      spriteSourceSize: { x: number; y: number; w: number; h: number }
-      sourceSize: { w: number; h: number }
-      pivot?: { x: number; y: number }
-      duration?: number
-    }
-  >
-}
+// AtlasJson is generated from packages/schemas/src/atlas/schema.json — see
+// scripts/gen-schema-types.ts. Hand-edits here will be overwritten.
+export type { AtlasJson } from './atlas.types.gen'
 
 // Informational record of the sources a merged atlas was built from.
 // Lives under meta because the existing schema's meta is

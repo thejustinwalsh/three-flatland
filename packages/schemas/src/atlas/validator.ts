@@ -1,5 +1,5 @@
 import Ajv2020, { type ValidateFunction } from 'ajv/dist/2020'
-import schema from './atlas.schema.json' with { type: 'json' }
+import schema from './schema.json' with { type: 'json' }
 
 const ajv = new Ajv2020({ allErrors: true, strict: false })
 const ajvValidate: ValidateFunction = ajv.compile(schema as object)

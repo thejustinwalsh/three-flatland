@@ -4,7 +4,7 @@ import { createHostBridge } from '@three-flatland/bridge/host'
 import { composeToolHtml, setupDevReload } from '../../webview-host'
 import { log } from '../../log'
 import { assertValidAtlas } from '../atlas/validateAtlas'
-import type { AtlasJson } from '@three-flatland/io/atlas'
+import type { AtlasJson, AtlasMergeMeta } from '@three-flatland/io/atlas'
 
 const TOOL = 'merge'
 
@@ -156,7 +156,9 @@ export async function openMergePanel(
 }
 
 function relativizeMergeSources(sidecar: AtlasJson, anchorUri: vscode.Uri): void {
-  const sources = sidecar.meta.merge?.sources
+  // meta.merge is an extension property — schema permits additionalProperties
+  // on meta but doesn't model the merge shape. AtlasMergeMeta carries it.
+  const sources = (sidecar.meta.merge as AtlasMergeMeta | undefined)?.sources
   if (!sources) return
   const anchorDir = posixPath.dirname(anchorUri.path)
   const anchorSegs = anchorDir.split('/').filter(Boolean)
