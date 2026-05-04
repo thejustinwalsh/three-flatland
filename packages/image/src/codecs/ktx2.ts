@@ -1,4 +1,4 @@
-import { loadBasisWasm, type BasisExports } from '../runtime/basis-loader.js'
+import { type BasisExports } from '../runtime/basis-runtime.js'
 
 export interface Ktx2Options {
   mode?: 'etc1s' | 'uastc'
@@ -25,8 +25,15 @@ function writeOpts(exports: BasisExports, opts: Ktx2Options): number {
  * inline (main-thread) path. Worker callers MUST use
  * `encodeKtx2WithExports` after instantiating their own encoder from
  * postMessage'd bytes.
+ *
+ * `loadBasisWasm` is dynamically imported so this module's static graph
+ * stays URL-free — Vite's `?worker&inline` plugin warns when it walks
+ * a worker's deps and finds `new URL(..., import.meta.url)` patterns.
+ * The worker only uses `encodeKtx2WithExports`; this lazy import
+ * ensures the URL-fetching code is never in its graph.
  */
 export async function encodeKtx2(image: ImageData, opts: Ktx2Options = {}): Promise<Uint8Array> {
+  const { loadBasisWasm } = await import('../runtime/basis-loader.js')
   return encodeKtx2WithExports(image, opts, await loadBasisWasm())
 }
 

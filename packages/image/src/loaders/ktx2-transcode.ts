@@ -7,7 +7,6 @@
 // memory so each Uint8Array owns its own ArrayBuffer).
 
 import {
-  loadTranscoderWasm,
   readKtx2Header,
   readKtx2LevelInfo,
   HEADER_SIZE_BYTES,
@@ -16,7 +15,7 @@ import {
   type Ktx2Header,
   type Ktx2LevelInfo,
   type TranscoderExports,
-} from '../runtime/transcoder-loader.js'
+} from '../runtime/transcoder-runtime.js'
 
 // Capability flags surfaced from a renderer's WebGL extensions or WebGPU
 // device features. Drives format selection. Mirrors three's
@@ -252,11 +251,18 @@ function selectFormat(
  *
  * Worker callers MUST use `transcodeKtx2WithExports` after they've
  * instantiated their own transcoder from postMessage'd bytes.
+ *
+ * The `loadTranscoderWasm` import is dynamic so this module's static
+ * import graph stays URL-free — Vite's `?worker&inline` plugin would
+ * otherwise warn about the `new URL(..., import.meta.url)` pattern in
+ * `transcoder-loader.ts` even though the worker only uses
+ * `transcodeKtx2WithExports`.
  */
 export async function transcodeKtx2(
   buffer: ArrayBuffer,
   caps: Ktx2Capabilities,
 ): Promise<Ktx2TranscodeResult> {
+  const { loadTranscoderWasm } = await import('../runtime/transcoder-loader.js')
   return transcodeKtx2WithExports(buffer, caps, await loadTranscoderWasm())
 }
 
