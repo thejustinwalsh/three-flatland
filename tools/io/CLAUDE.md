@@ -1,6 +1,8 @@
 # @three-flatland/io
 
 > Agent-facing reference for shared, vscode-free data-layer helpers.
+>
+> **Related**: `.library/three-flatland/loader-architecture.md` is the canonical reference for runtime loaders (texture, atlas, tilemap, font, image format). `tools/io` covers tools-side image decode + atlas data plumbing; if you're adding a runtime loader (consumed by `three-flatland`'s `TextureLoader`/`SpriteSheetLoader`), it does NOT belong here — read the loader architecture first.
 
 ## What's here
 
