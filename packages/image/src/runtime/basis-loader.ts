@@ -28,7 +28,13 @@ function isNode(): boolean {
   return typeof process !== 'undefined' && process.release?.name === 'node'
 }
 
-async function loadBytes(): Promise<Uint8Array<ArrayBuffer>> {
+/**
+ * Fetch the encoder wasm bytes from the bundler-resolved URL (browser) or
+ * the package's libs/ directory (Node). The returned ArrayBuffer is owned
+ * by the caller — transfer it to a worker via postMessage if you don't
+ * need it on the main thread. Mirrors `fetchTranscoderBytes`.
+ */
+export async function fetchBasisBytes(): Promise<ArrayBuffer> {
   if (isNode()) {
     const [{ readFileSync }, { dirname, join }, { fileURLToPath }] = await Promise.all([
       import('node:fs'),
@@ -39,40 +45,56 @@ async function loadBytes(): Promise<Uint8Array<ArrayBuffer>> {
     // dist/runtime/basis-loader.js -> ../../libs/basis/basis_encoder.wasm
     // src/runtime/basis-loader.ts (vitest) -> ../../libs/basis/basis_encoder.wasm
     const wasmPath = join(here, '../../libs/basis/basis_encoder.wasm')
-    return readFileSync(wasmPath)
+    const buf = readFileSync(wasmPath)
+    return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer
   }
-  // Browser: rely on the bundler (Vite) resolving the asset URL.
+  // Browser: bundler (Vite/esbuild/webpack/rollup) resolves the asset URL.
   const url = new URL('../../libs/basis/basis_encoder.wasm', import.meta.url).href
   const res = await fetch(url)
   if (!res.ok) throw new Error(`basis_encoder.wasm fetch failed: ${res.status}`)
-  return new Uint8Array(await res.arrayBuffer())
+  return res.arrayBuffer()
 }
 
+/**
+ * Instantiate the wasm encoder from a byte buffer. Used by both the
+ * inline (main-thread) path AND by the encoder worker after it receives
+ * bytes via the init postMessage.
+ */
+export async function instantiateBasis(bytes: ArrayBuffer): Promise<BasisExports> {
+  const memoryRef: { current: WebAssembly.Memory | null } = { current: null }
+  const imports: WebAssembly.Imports = {
+    wasi_snapshot_preview1: createWasiImports(() => {
+      if (!memoryRef.current) throw new Error('memory not yet bound')
+      return memoryRef.current
+    }),
+  }
+  const result = await (WebAssembly.instantiate as (
+    bytes: BufferSource,
+    imports: WebAssembly.Imports,
+  ) => Promise<WebAssembly.WebAssemblyInstantiatedSource>)(bytes, imports)
+  const instance = result.instance
+  const exports = instance.exports as unknown as BasisExports
+  memoryRef.current = exports.memory
+  // Reactor model: _initialize runs C++ global ctors before any fl_* call.
+  const init = (instance.exports as unknown as { _initialize?: () => void })._initialize
+  if (typeof init === 'function') init()
+  const rc = exports.fl_basis_init()
+  if (rc !== 0) throw new Error(`fl_basis_init failed: ${rc}`)
+  return exports
+}
+
+/**
+ * Convenience: fetch bytes + instantiate. Module-level cached for the
+ * inline (main-thread) path. Worker callers should use
+ * `instantiateBasis(bytes)` directly after receiving bytes via
+ * postMessage init — never `loadBasisWasm()` (which would try to fetch
+ * via `import.meta.url` against the blob URL the worker runs from).
+ */
 export function loadBasisWasm(): Promise<BasisExports> {
   if (modPromise) return modPromise
   modPromise = (async () => {
-    const bytes = await loadBytes()
-    const memoryRef: { current: WebAssembly.Memory | null } = { current: null }
-    const imports: WebAssembly.Imports = {
-      wasi_snapshot_preview1: createWasiImports(() => {
-        if (!memoryRef.current) throw new Error('memory not yet bound')
-        return memoryRef.current
-      }),
-    }
-    const result = await (WebAssembly.instantiate as (
-      bytes: BufferSource,
-      imports: WebAssembly.Imports,
-    ) => Promise<WebAssembly.WebAssemblyInstantiatedSource>)(bytes, imports)
-    const instance = result.instance
-    const exports = instance.exports as unknown as BasisExports
-    memoryRef.current = exports.memory
-    // Reactor model: the wasm has _initialize as the entry; calling it before
-    // any fl_* function ensures global ctors and basisu_encoder_init have run.
-    const init = (instance.exports as unknown as { _initialize?: () => void })._initialize
-    if (typeof init === 'function') init()
-    const rc = exports.fl_basis_init()
-    if (rc !== 0) throw new Error(`fl_basis_init failed: ${rc}`)
-    return exports
+    const bytes = await fetchBasisBytes()
+    return instantiateBasis(bytes)
   })()
   return modPromise
 }

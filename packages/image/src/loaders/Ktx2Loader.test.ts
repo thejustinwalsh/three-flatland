@@ -6,7 +6,7 @@ import { afterAll, describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { CompressedTexture, RGBAFormat } from 'three'
+import { DataTexture, RGBAFormat } from 'three'
 import { decodePng } from '../codecs/png.js'
 import { encodeKtx2 } from '../codecs/ktx2.js'
 import { __resetForTest as resetTranscoder } from '../runtime/transcoder-loader.js'
@@ -30,7 +30,7 @@ afterAll(() => {
 })
 
 describe('Ktx2Loader (Node fallback path)', () => {
-  it('parses a Basis-encoded KTX2 buffer into a CompressedTexture', async () => {
+  it('parses a Basis-encoded KTX2 buffer into a DataTexture (RGBA32 fallback)', async () => {
     const png = readFileSync(join(__dirname, '../__fixtures__/tiny.png'))
     const decoded = await decodePng(new Uint8Array(png))
     const ktx2 = await encodeKtx2(decoded, { mode: 'etc1s', quality: 128, mipmaps: false })
@@ -41,13 +41,14 @@ describe('Ktx2Loader (Node fallback path)', () => {
     const buf = ktx2.buffer.slice(ktx2.byteOffset, ktx2.byteOffset + ktx2.byteLength) as ArrayBuffer
     const texture = await loader.parse(buf)
 
-    expect(texture).toBeInstanceOf(CompressedTexture)
-    expect(texture.image.width).toBeGreaterThanOrEqual(decoded.width)
-    expect(texture.image.height).toBeGreaterThanOrEqual(decoded.height)
-    // No-caps fallback should land on RGBAFormat / UnsignedByteType.
+    // No-caps fallback transcodes to RGBA32 → DataTexture (uncompressed
+    // upload path). Wrapping uncompressed RGBA in CompressedTexture stalls
+    // three's WebGPU upload — see buildTexture for rationale.
+    expect(texture).toBeInstanceOf(DataTexture)
+    expect((texture as DataTexture).image.width).toBeGreaterThanOrEqual(decoded.width)
+    expect((texture as DataTexture).image.height).toBeGreaterThanOrEqual(decoded.height)
     expect(texture.format).toBe(RGBAFormat)
-    // texture.needsUpdate is a write-only setter in three; we set it but
-    // can't read it back. Skip that assertion.
+    // texture.needsUpdate is a write-only setter in three; can't read back.
     expect(texture.mipmaps?.length).toBe(1)
 
     loader.dispose()
