@@ -106,7 +106,13 @@ function isNode(): boolean {
   return typeof process !== 'undefined' && process.release?.name === 'node'
 }
 
-async function loadBytes(): Promise<Uint8Array<ArrayBuffer>> {
+/**
+ * Fetch the wasm bytes from the bundler-resolved URL (browser) or the
+ * package's libs/ directory (Node). The returned ArrayBuffer is owned by
+ * the caller — transfer it to a worker via postMessage if you don't need
+ * it on the main thread.
+ */
+export async function fetchTranscoderBytes(): Promise<ArrayBuffer> {
   if (isNode()) {
     const [{ readFileSync }, { dirname, join }, { fileURLToPath }] = await Promise.all([
       import('node:fs'),
@@ -117,39 +123,58 @@ async function loadBytes(): Promise<Uint8Array<ArrayBuffer>> {
     // dist/runtime/transcoder-loader.js -> ../../libs/basis/basis_transcoder.wasm
     // src/runtime/transcoder-loader.ts (vitest) -> ../../libs/basis/basis_transcoder.wasm
     const wasmPath = join(here, '../../libs/basis/basis_transcoder.wasm')
-    return readFileSync(wasmPath)
+    const buf = readFileSync(wasmPath)
+    // Slice into a fresh ArrayBuffer so the caller can transfer it.
+    return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer
   }
-  // Browser: rely on the bundler (Vite) resolving the asset URL.
+  // Browser: bundler (Vite/esbuild/webpack/rollup) resolves the asset URL.
   const url = new URL('../../libs/basis/basis_transcoder.wasm', import.meta.url).href
   const res = await fetch(url)
   if (!res.ok) throw new Error(`basis_transcoder.wasm fetch failed: ${res.status}`)
-  return new Uint8Array(await res.arrayBuffer())
+  return res.arrayBuffer()
 }
 
+/**
+ * Instantiate the wasm transcoder from a byte buffer. Used by the inline
+ * (main-thread) path AND by the worker after it receives bytes via the
+ * init postMessage.
+ */
+export async function instantiateTranscoder(bytes: ArrayBuffer): Promise<TranscoderExports> {
+  const memoryRef: { current: WebAssembly.Memory | null } = { current: null }
+  const imports: WebAssembly.Imports = {
+    wasi_snapshot_preview1: createWasiImports(() => {
+      if (!memoryRef.current) throw new Error('memory not yet bound')
+      return memoryRef.current
+    }),
+  }
+  const result = await (WebAssembly.instantiate as (
+    bytes: BufferSource,
+    imports: WebAssembly.Imports,
+  ) => Promise<WebAssembly.WebAssemblyInstantiatedSource>)(bytes, imports)
+  const instance = result.instance
+  const exports = instance.exports as unknown as TranscoderExports
+  memoryRef.current = exports.memory
+  // Reactor model: _initialize runs C++ global ctors before any fl_* call.
+  const init = (instance.exports as unknown as { _initialize?: () => void })._initialize
+  if (typeof init === 'function') init()
+  const rc = exports.fl_transcoder_init()
+  if (rc !== 0) throw new Error(`fl_transcoder_init failed: ${rc}`)
+  return exports
+}
+
+/**
+ * Convenience: fetch bytes + instantiate. Module-level cached. Used by:
+ *  - the worker (`ktx2-worker.ts`) — Vite's `?worker&inline` plugin walks
+ *    the worker's import graph; this function fetches the wasm via
+ *    `import.meta.url`-relative URL inside the worker context
+ *  - the main-thread fallback (`Ktx2Loader.parse()` when Worker is
+ *    unavailable, e.g. in Node)
+ */
 export function loadTranscoderWasm(): Promise<TranscoderExports> {
   if (modPromise) return modPromise
   modPromise = (async () => {
-    const bytes = await loadBytes()
-    const memoryRef: { current: WebAssembly.Memory | null } = { current: null }
-    const imports: WebAssembly.Imports = {
-      wasi_snapshot_preview1: createWasiImports(() => {
-        if (!memoryRef.current) throw new Error('memory not yet bound')
-        return memoryRef.current
-      }),
-    }
-    const result = await (WebAssembly.instantiate as (
-      bytes: BufferSource,
-      imports: WebAssembly.Imports,
-    ) => Promise<WebAssembly.WebAssemblyInstantiatedSource>)(bytes, imports)
-    const instance = result.instance
-    const exports = instance.exports as unknown as TranscoderExports
-    memoryRef.current = exports.memory
-    // Reactor model: _initialize runs C++ global ctors before any fl_* call.
-    const init = (instance.exports as unknown as { _initialize?: () => void })._initialize
-    if (typeof init === 'function') init()
-    const rc = exports.fl_transcoder_init()
-    if (rc !== 0) throw new Error(`fl_transcoder_init failed: ${rc}`)
-    return exports
+    const bytes = await fetchTranscoderBytes()
+    return instantiateTranscoder(bytes)
   })()
   return modPromise
 }

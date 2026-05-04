@@ -2,10 +2,17 @@
 // from the main thread (transferred), runs the full transcode pipeline,
 // posts mipmap data back as transferable ArrayBuffers.
 //
-// Loaded by Ktx2Loader.ts via `new Worker(new URL('./ktx2-worker.js',
-// import.meta.url), { type: 'module' })`. Vite/Rollup recognize this
-// pattern and split it into its own chunk; the main thread never imports
-// `transcoder-loader.ts` (and therefore never instantiates the wasm).
+// Imported by Ktx2Loader.ts via `import('./ktx2-worker.js?worker&inline')`.
+// Vite recognizes that query, walks this file's import graph, and bundles
+// everything into a single base64-encoded blob URL Worker constructor —
+// CSP-friendly under VSCode webview's `worker-src blob:` rule.
+//
+// At runtime inside the worker, transcoder-loader.ts fetches the wasm via
+// `new URL('../../libs/basis/basis_transcoder.wasm', import.meta.url)`.
+// In a Vite-bundled worker chunk, that URL resolves to the dist'd asset
+// path; in source mode (vitest, dev), Vite's worker plugin handles
+// it the same way. No bytes go over postMessage — the worker fetches its
+// own wasm, just like any other module worker.
 
 /// <reference lib="webworker" />
 
@@ -17,29 +24,25 @@ interface TranscodeRequest {
   buffer: ArrayBuffer
   caps: Ktx2Capabilities
 }
-
 type WorkerRequest = TranscodeRequest
+
+const scope = self as unknown as DedicatedWorkerGlobalScope
 
 // Promise-chain queue: messages arrive in order, the chain serializes
 // transcodes. The wasm transcoder isn't internally reentrant; queueing
 // keeps the implementation simple while preserving response ordering.
 let busy: Promise<void> = Promise.resolve()
 
-self.addEventListener('message', (event: MessageEvent<WorkerRequest>) => {
+scope.addEventListener('message', (event: MessageEvent<WorkerRequest>) => {
   const msg = event.data
   if (msg.type !== 'transcode') return
 
   busy = busy.then(async () => {
     try {
       const result = await transcodeKtx2(msg.buffer, msg.caps)
-      // Transfer all mipmap ArrayBuffers back to the main thread. They
-      // detach in worker scope on send.
-      ;(self as unknown as DedicatedWorkerGlobalScope).postMessage(
-        { type: 'transcode-done', id: msg.id, result },
-        transferablesOf(result),
-      )
+      scope.postMessage({ type: 'transcode-done', id: msg.id, result }, transferablesOf(result))
     } catch (err) {
-      ;(self as unknown as DedicatedWorkerGlobalScope).postMessage({
+      scope.postMessage({
         type: 'transcode-error',
         id: msg.id,
         message: err instanceof Error ? err.message : String(err),

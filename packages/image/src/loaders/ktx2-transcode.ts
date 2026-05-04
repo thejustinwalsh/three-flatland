@@ -15,6 +15,7 @@ import {
   FL_TRANSCODER_E_OK,
   type Ktx2Header,
   type Ktx2LevelInfo,
+  type TranscoderExports,
 } from '../runtime/transcoder-loader.js'
 
 // Capability flags surfaced from a renderer's WebGL extensions or WebGPU
@@ -245,11 +246,31 @@ function selectFormat(
 
 // ── Main transcode function ───────────────────────────────────────────────
 
+/**
+ * Convenience: lazy-instantiate the wasm transcoder via `loadTranscoderWasm()`
+ * and run a transcode. Used by the inline (main-thread) fallback path.
+ *
+ * Worker callers MUST use `transcodeKtx2WithExports` after they've
+ * instantiated their own transcoder from postMessage'd bytes.
+ */
 export async function transcodeKtx2(
   buffer: ArrayBuffer,
   caps: Ktx2Capabilities,
 ): Promise<Ktx2TranscodeResult> {
-  const t = await loadTranscoderWasm()
+  return transcodeKtx2WithExports(buffer, caps, await loadTranscoderWasm())
+}
+
+/**
+ * Run a transcode against a caller-provided wasm transcoder instance. This
+ * is the worker-friendly entry point — the worker holds its own
+ * TranscoderExports (instantiated once at init time) and reuses it across
+ * many transcodes.
+ */
+export async function transcodeKtx2WithExports(
+  buffer: ArrayBuffer,
+  caps: Ktx2Capabilities,
+  t: TranscoderExports,
+): Promise<Ktx2TranscodeResult> {
   const memory = t.memory
 
   // Allocate input buffer in wasm memory and copy bytes in.
