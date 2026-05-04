@@ -44,7 +44,7 @@
   },
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
-  "files": ["dist", "vendor"],
+  "files": ["dist", "libs"],
   "sideEffects": false,
   "scripts": {
     "build": "tsup",

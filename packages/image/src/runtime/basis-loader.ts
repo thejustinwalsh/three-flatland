@@ -37,13 +37,13 @@ async function loadBytes(): Promise<Uint8Array<ArrayBuffer>> {
       import('node:url'),
     ])
     const here = dirname(fileURLToPath(import.meta.url))
-    // dist/runtime/basis-loader.js -> ../../vendor/basis/basis_encoder.wasm
-    // src/runtime/basis-loader.ts (vitest) -> ../../vendor/basis/basis_encoder.wasm
-    const wasmPath = join(here, '../../vendor/basis/basis_encoder.wasm')
+    // dist/runtime/basis-loader.js -> ../../libs/basis/basis_encoder.wasm
+    // src/runtime/basis-loader.ts (vitest) -> ../../libs/basis/basis_encoder.wasm
+    const wasmPath = join(here, '../../libs/basis/basis_encoder.wasm')
     return readFileSync(wasmPath)
   }
   // Browser: rely on the bundler (Vite) resolving the asset URL.
-  const url = new URL('../../vendor/basis/basis_encoder.wasm', import.meta.url).href
+  const url = new URL('../../libs/basis/basis_encoder.wasm', import.meta.url).href
   const res = await fetch(url)
   if (!res.ok) throw new Error(`basis_encoder.wasm fetch failed: ${res.status}`)
   return new Uint8Array(await res.arrayBuffer())
