@@ -263,12 +263,20 @@ function CompareScene({
     //
     // Y-flip workaround for CompressedTexture: KTX2 stores image data with
     // origin at bottom-left (OpenGL convention) while CanvasTexture from a
-    // 2D canvas has origin at top-left. `texture.flipY = true` is a no-op
-    // on CompressedTexture (compressed blocks can't be flipped on upload).
-    // So we flip the V coordinate in the shader instead, but only when the
-    // sampled texture is compressed — uncompressed comparisons still use
-    // the raw uv().
-    const isCompressed = (compareTex as CompressedTexture | null)?.mipmaps !== undefined
+    // 2D canvas has origin at top-left. CompressedTexture upload ignores
+    // `flipY` (compressed blocks can't be flipped at upload), and our owned
+    // Ktx2Loader explicitly sets flipY=false even for the RGBA32 fallback so
+    // the data is uniformly bottom-up regardless of basis target. We flip
+    // the V coordinate in the shader to compensate, but ONLY when the
+    // texture is compressed — CanvasTexture's flipY=true upload already
+    // got the data right-side-up.
+    //
+    // Detection uses `isCompressedTexture` flag (only set on CompressedTexture
+    // and its subclasses). Earlier check via `mipmaps !== undefined` was
+    // unreliable: three's Texture base initializes `mipmaps = []` (empty
+    // array, not undefined), so the check would pass for ANY texture and
+    // V-flip CanvasTextures too — WebP/AVIF previews displayed upside-down.
+    const isCompressed = !!(compareTex as { isCompressedTexture?: boolean } | null)?.isCompressedTexture
     const compareUV = isCompressed
       ? vec2(uv().x, float(1).sub(uv().y))
       : uv()
