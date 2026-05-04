@@ -5,7 +5,6 @@ export interface BasisExports {
   fl_basis_alloc: (bytes: number) => number
   fl_basis_free: (ptr: number) => void
   fl_basis_init: () => number
-  fl_basis_set_simd: (enabled: number) => void
   fl_basis_encoder_create: () => number
   fl_basis_encoder_destroy: (enc: number) => void
   fl_basis_encode: (
@@ -73,9 +72,6 @@ export function loadBasisWasm(): Promise<BasisExports> {
     if (typeof init === 'function') init()
     const rc = exports.fl_basis_init()
     if (rc !== 0) throw new Error(`fl_basis_init failed: ${rc}`)
-    // Runtime A/B switch: lets benchmarks compare SIMD vs scalar without rebuilding.
-    const noSimd = typeof process !== 'undefined' && process.env?.FL_BASIS_NO_SIMD === '1'
-    exports.fl_basis_set_simd(noSimd ? 0 : 1)
     return exports
   })()
   return modPromise

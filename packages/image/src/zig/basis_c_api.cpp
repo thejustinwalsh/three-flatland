@@ -31,14 +31,6 @@ int fl_basis_init(void) {
     return FL_BASIS_E_OK;
 }
 
-// g_cpu_supports_sse41 is declared in basisu_enc.h (inside namespace basisu)
-// and defined in basisu_enc.cpp. basisu_kernels_wasm.cpp sets it to true at
-// TU init. Flipping it here gates all SIMD branches in the encoder.
-__attribute__((export_name("fl_basis_set_simd")))
-void fl_basis_set_simd(int enabled) {
-    g_cpu_supports_sse41 = (enabled != 0);
-}
-
 struct fl_basis_encoder {
     basis_compressor_params params;
     basis_compressor        comp;
