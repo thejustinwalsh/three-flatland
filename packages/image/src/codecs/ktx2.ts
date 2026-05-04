@@ -20,8 +20,26 @@ function writeOpts(exports: BasisExports, opts: Ktx2Options): number {
   return ptr
 }
 
+/**
+ * Convenience: lazy-load the wasm encoder + run an encode. Used by the
+ * inline (main-thread) path. Worker callers MUST use
+ * `encodeKtx2WithExports` after instantiating their own encoder from
+ * postMessage'd bytes.
+ */
 export async function encodeKtx2(image: ImageData, opts: Ktx2Options = {}): Promise<Uint8Array> {
-  const exports = await loadBasisWasm()
+  return encodeKtx2WithExports(image, opts, await loadBasisWasm())
+}
+
+/**
+ * Run a KTX2/Basis encode against a caller-provided wasm encoder
+ * instance. Worker-friendly: the worker holds its own BasisExports
+ * (instantiated once at init time) and reuses it across many encodes.
+ */
+export async function encodeKtx2WithExports(
+  image: ImageData,
+  opts: Ktx2Options,
+  exports: BasisExports,
+): Promise<Uint8Array> {
   const w = image.width
   const h = image.height
   const inLen = w * h * 4
