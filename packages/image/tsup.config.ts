@@ -18,6 +18,7 @@ export default defineConfig({
     'src/encode.node.ts',
     'src/node.ts',
     'src/cli.ts',
+    'src/loaders/Ktx2Loader.ts',
   ],
   format: ['esm'],
   dts: true,

@@ -29,7 +29,18 @@
       "source": "./src/cli.ts",
       "types": "./dist/cli.d.ts",
       "import": "./dist/cli.js"
+    },
+    "./loaders/ktx2": {
+      "source": "./src/loaders/Ktx2Loader.ts",
+      "types": "./dist/loaders/Ktx2Loader.d.ts",
+      "import": "./dist/loaders/Ktx2Loader.js"
     }
+  },
+  "peerDependencies": {
+    "three": "catalog:"
+  },
+  "peerDependenciesMeta": {
+    "three": { "optional": true }
   },
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -49,7 +60,9 @@
     "@jsquash/avif": "catalog:"
   },
   "devDependencies": {
-    "binaryen": "^123.0.0"
+    "binaryen": "^123.0.0",
+    "three": "catalog:",
+    "@types/three": "catalog:"
   },
   "flatland": {
     "bake": [
