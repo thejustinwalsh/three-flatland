@@ -44,6 +44,7 @@ import {
   type Ktx2Capabilities,
   type Ktx2TranscodeResult,
 } from './ktx2-transcode.js'
+import { fetchTranscoderBytes } from '../runtime/transcoder-loader.js'
 
 // KHR Data Format Descriptor constants from the KTX2 spec.
 const KHR_DF_TRANSFER_SRGB = 2
@@ -227,8 +228,8 @@ class Ktx2Loader extends Loader<AnyCompressedTexture> {
     if (!this.workerPromise) {
       this.workerPromise = (async () => {
         // Vite (and rolldown-based bundlers like the upcoming tsdown) recognize
-        // `?worker&inline` and bundle the worker source + all its imports into a
-        // base64-encoded blob URL Worker constructor — CSP-friendly under
+        // `?worker&inline` and bundle the worker source + all its imports into
+        // a base64-encoded blob URL Worker constructor — CSP-friendly under
         // VSCode webview's `worker-src blob:` rule. In source mode (vitest,
         // dev) the same plugin path runs.
         //
@@ -236,11 +237,18 @@ class Ktx2Loader extends Loader<AnyCompressedTexture> {
         // resolution; the caller's try/catch in parse() drops back to the
         // inline transcode path so KTX2 still loads, just on the main thread.
         const mod = await import('./ktx2-worker.js?worker&inline')
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const WorkerCtor = (mod as { default: new () => Worker }).default
         const w = new WorkerCtor()
         w.addEventListener('message', (e: MessageEvent<WorkerResponse>) => this.onWorkerMessage(e))
         w.addEventListener('error', (e) => this.onWorkerError(e))
+        // Bootstrap: fetch the wasm bytes on the main thread (where
+        // `import.meta.url` resolves to a real URL — inside a `?worker&inline`
+        // blob URL Worker, `import.meta.url` IS the blob URL with no valid
+        // base path, so URL-relative wasm fetches throw "Invalid URL"). Send
+        // bytes via init message; transfer to detach from main thread and
+        // hand ownership to the worker.
+        const wasmBytes = await fetchTranscoderBytes()
+        w.postMessage({ type: 'init', wasmBytes }, [wasmBytes])
         return w
       })()
     }
@@ -273,7 +281,14 @@ class Ktx2Loader extends Loader<AnyCompressedTexture> {
     const id = this.nextId++
     return new Promise<Ktx2TranscodeResult>((resolve, reject) => {
       this.pending.set(id, { resolve, reject })
-      worker.postMessage({ type: 'transcode', id, buffer, caps }, [buffer])
+      // Note: NO transferable list. We let structured clone copy the
+      // KTX2 input buffer so that if the worker rejects (or crashes)
+      // and we fall back to inline `transcodeKtx2(buffer, ...)`, the
+      // main-thread buffer remains intact. KTX2 inputs are typically a
+      // few MB at most; the copy overhead is sub-millisecond. Mipmap
+      // results going the other way DO transfer (worker → main, see
+      // ktx2-worker.ts) since main thread becomes the new owner.
+      worker.postMessage({ type: 'transcode', id, buffer, caps })
     })
   }
 
@@ -340,6 +355,15 @@ function buildTexture(result: Ktx2TranscodeResult): AnyCompressedTexture {
   texture.generateMipmaps = false
   texture.colorSpace = colorSpace
   texture.premultiplyAlpha = premultiply
+  // KTX2 stores image data origin-bottom-left (OpenGL convention). For
+  // compressed formats three's GL backend ignores `flipY` (compressed
+  // blocks can't be flipped at upload), so the data stays bottom-up and
+  // the consumer flips at sample time. For uncompressed `RGBAFormat`
+  // (our caps-all-false fallback), three WOULD honor `flipY = true` at
+  // upload — which double-flips when the consumer also V-flips at
+  // sample time. Setting it false ensures uniform behavior across
+  // compressed + uncompressed: data stays bottom-up, consumer flips.
+  texture.flipY = false
   texture.needsUpdate = true
   return texture
 }
