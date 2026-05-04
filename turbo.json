@@ -3,8 +3,15 @@
   "ui": "stream",
   "concurrency": "20",
   "tasks": {
+    "//#gen:types": {
+      "inputs": ["packages/schemas/src/**/schema.json", "scripts/gen-schema-types.ts"],
+      "outputs": [
+        "packages/three-flatland/src/sprites/*.types.gen.ts",
+        "tools/io/src/atlas/*.types.gen.ts"
+      ]
+    },
     "build": {
-      "dependsOn": ["^build", "three-flatland#build", "@three-flatland/nodes#build", "@three-flatland/presets#build", "@three-flatland/skia#build"],
+      "dependsOn": ["//#gen:types", "^build", "three-flatland#build", "@three-flatland/nodes#build", "@three-flatland/presets#build", "@three-flatland/skia#build"],
       "outputs": ["dist/**"]
     },
     "@three-flatland/skia#build": {
@@ -13,7 +20,11 @@
       "inputs": ["src/**", "wit/**", "build.zig", "build.zig.zon", "tsup.config.ts", "tsconfig.json", "package.json"]
     },
     "three-flatland#build": {
-      "dependsOn": ["^build"],
+      "dependsOn": ["//#gen:types", "^build"],
+      "outputs": ["dist/**"]
+    },
+    "@three-flatland/io#build": {
+      "dependsOn": ["//#gen:types", "^build"],
       "outputs": ["dist/**"]
     },
     "@three-flatland/nodes#build": {
