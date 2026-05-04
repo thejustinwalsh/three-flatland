@@ -95,7 +95,12 @@ const resolveSkia = {
 
 const corePeerDeps = ['three', 'react', '@react-three/fiber', 'koota']
 
-module.exports = [
+// SIZE_FILTER (substring match on check.name) scopes down which checks run.
+// Used by `pnpm size:why`, which writes one esbuild-visualizer HTML per check
+// and auto-opens each — running it across all ~20 checks is unusable.
+const filter = process.env.SIZE_FILTER
+
+const allChecks = [
   // ── three-flatland (core) ──
   {
     name: 'three-flatland (full)',
@@ -189,3 +194,7 @@ module.exports = [
     return entries
   })(),
 ]
+
+module.exports = filter
+  ? allChecks.filter((c) => c.name.toLowerCase().includes(filter.toLowerCase()))
+  : allChecks

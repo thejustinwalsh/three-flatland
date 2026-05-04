@@ -63,8 +63,9 @@ vendor/
 # Profile traces
 traces/
 
-# Madge dependency graphs (and the generated tsconfig)
-graphs/
+# Local-only emitted artifacts: madge graph viewer HTML, size-limit --why
+# bundle reports (per-branch). Single hidden dir keeps the repo root clean.
+.reports/
 tsconfig.madge.json
 
 # Restruct

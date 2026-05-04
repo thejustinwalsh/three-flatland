@@ -16,16 +16,16 @@ const result = await madge(TARGETS, {
 })
 const graph = result.obj() as Record<string, string[]>
 
-mkdirSync('graphs', { recursive: true })
+mkdirSync('.reports/graphs', { recursive: true })
 
 const detail = buildGraphData({ graph })
-writeFileSync('graphs/monorepo.json', JSON.stringify(detail))
+writeFileSync('.reports/graphs/monorepo.json', JSON.stringify(detail))
 console.log(
-  `graphs/monorepo.json — ${detail.meta.fileCount} files, ${detail.meta.edgeCount} edges (${detail.meta.crossCount} cross-package)`,
+  `.reports/graphs/monorepo.json — ${detail.meta.fileCount} files, ${detail.meta.edgeCount} edges (${detail.meta.crossCount} cross-package)`,
 )
 
 const overview = buildOverviewData(graph)
-writeFileSync('graphs/overview.json', JSON.stringify(overview))
+writeFileSync('.reports/graphs/overview.json', JSON.stringify(overview))
 console.log(
-  `graphs/overview.json — ${overview.meta.fileCount} packages, ${overview.meta.edgeCount} cross-package edges`,
+  `.reports/graphs/overview.json — ${overview.meta.fileCount} packages, ${overview.meta.edgeCount} cross-package edges`,
 )
