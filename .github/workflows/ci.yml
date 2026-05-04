@@ -117,6 +117,9 @@ jobs:
       - name: Verify generated schema types
         run: pnpm gen:types:verify
 
+      - name: Verify staged schema docs
+        run: pnpm sync:schemas:verify
+
       - name: Build
         run: pnpm build
 

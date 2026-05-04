@@ -1,45 +1,76 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://three-flatland.dev/schemas/atlas.v1.json",
   "title": "three-flatland Sprite Atlas",
   "description": "Sidecar JSON for a sprite atlas image. STRICT superset of TexturePacker's JSON-Hash format AND Aseprite's JSON export — every file emitted by either validates here. The root keys are `frames` + `meta` only (matching TP/Aseprite); all our additions live under `meta` because `meta` is the open extension bucket (`additionalProperties: true`). Aseprite's `meta.frameTags` / `meta.layers` / `meta.slices` validate as-is; we add `meta.animations` (richer than `frameTags` — explicit fps, arbitrary frame-name selection, per-frame events) without conflicting with the Aseprite shape. Tool-specific extensions (our `meta.app` / `meta.version` / `meta.sources` / `meta.normal`) ride along the same way. `meta.sources` (required, minItems 1) replaces the old `meta.image` string — each entry names a format + URI so atlases can ship multiple encodings (png, webp, avif, ktx2).",
   "type": "object",
-  "required": ["meta", "frames"],
+  "required": [
+    "meta",
+    "frames"
+  ],
   "additionalProperties": false,
   "properties": {
-    "$schema": { "type": "string" },
+    "$schema": {
+      "type": "string"
+    },
     "meta": {
       "type": "object",
-      "required": ["sources", "size"],
+      "required": [
+        "sources",
+        "size"
+      ],
       "additionalProperties": true,
       "properties": {
-        "app": { "type": "string" },
-        "version": { "type": "string" },
-        "size": { "$ref": "#/$defs/Size" },
-        "scale": { "type": "string" },
-        "format": { "type": "string" },
-        "pivot": { "$ref": "#/$defs/Vec2" },
-        "normal": { "type": "string" },
+        "app": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        },
+        "size": {
+          "$ref": "#/$defs/Size"
+        },
+        "scale": {
+          "type": "string"
+        },
+        "format": {
+          "type": "string"
+        },
+        "pivot": {
+          "$ref": "#/$defs/Vec2"
+        },
+        "normal": {
+          "type": "string"
+        },
         "sources": {
           "type": "array",
           "minItems": 1,
-          "items": { "$ref": "#/$defs/SourceEntry" }
+          "items": {
+            "$ref": "#/$defs/SourceEntry"
+          }
         },
         "animations": {
           "type": "object",
           "description": "Our richer animation map — named, references frame keys (not indices), explicit fps, optional events. Aseprite's `frameTags` lives alongside under `meta.frameTags`; readers prefer `meta.animations` when present and fall back to converting `frameTags` + per-frame `duration`.",
-          "additionalProperties": { "$ref": "#/$defs/Animation" }
+          "additionalProperties": {
+            "$ref": "#/$defs/Animation"
+          }
         },
         "frameTags": {
           "type": "array",
           "description": "Aseprite-emitted animation tags: integer ranges into the frames array with a direction. Validated explicitly so Aseprite files round-trip and our reader can normalize them into `meta.animations`.",
-          "items": { "$ref": "#/$defs/AsepriteFrameTag" }
+          "items": {
+            "$ref": "#/$defs/AsepriteFrameTag"
+          }
         }
       }
     },
     "frames": {
       "type": "object",
       "patternProperties": {
-        "^.+$": { "$ref": "#/$defs/Frame" }
+        "^.+$": {
+          "$ref": "#/$defs/Frame"
+        }
       },
       "additionalProperties": false
     }
@@ -47,44 +78,95 @@
   "$defs": {
     "Size": {
       "type": "object",
-      "required": ["w", "h"],
+      "required": [
+        "w",
+        "h"
+      ],
       "additionalProperties": false,
       "properties": {
-        "w": { "type": "integer", "minimum": 1 },
-        "h": { "type": "integer", "minimum": 1 }
+        "w": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "h": {
+          "type": "integer",
+          "minimum": 1
+        }
       }
     },
     "Rect": {
       "type": "object",
-      "required": ["x", "y", "w", "h"],
+      "required": [
+        "x",
+        "y",
+        "w",
+        "h"
+      ],
       "additionalProperties": false,
       "properties": {
-        "x": { "type": "integer", "minimum": 0 },
-        "y": { "type": "integer", "minimum": 0 },
-        "w": { "type": "integer", "minimum": 0 },
-        "h": { "type": "integer", "minimum": 0 }
+        "x": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "y": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "w": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "h": {
+          "type": "integer",
+          "minimum": 0
+        }
       }
     },
     "Vec2": {
       "type": "object",
-      "required": ["x", "y"],
+      "required": [
+        "x",
+        "y"
+      ],
       "additionalProperties": false,
       "properties": {
-        "x": { "type": "number" },
-        "y": { "type": "number" }
+        "x": {
+          "type": "number"
+        },
+        "y": {
+          "type": "number"
+        }
       }
     },
     "Frame": {
       "type": "object",
-      "required": ["frame", "rotated", "trimmed", "spriteSourceSize", "sourceSize"],
+      "required": [
+        "frame",
+        "rotated",
+        "trimmed",
+        "spriteSourceSize",
+        "sourceSize"
+      ],
       "additionalProperties": false,
       "properties": {
-        "frame": { "$ref": "#/$defs/Rect" },
-        "rotated": { "type": "boolean" },
-        "trimmed": { "type": "boolean" },
-        "spriteSourceSize": { "$ref": "#/$defs/Rect" },
-        "sourceSize": { "$ref": "#/$defs/Size" },
-        "pivot": { "$ref": "#/$defs/Vec2" },
+        "frame": {
+          "$ref": "#/$defs/Rect"
+        },
+        "rotated": {
+          "type": "boolean"
+        },
+        "trimmed": {
+          "type": "boolean"
+        },
+        "spriteSourceSize": {
+          "$ref": "#/$defs/Rect"
+        },
+        "sourceSize": {
+          "$ref": "#/$defs/Size"
+        },
+        "pivot": {
+          "$ref": "#/$defs/Vec2"
+        },
         "duration": {
           "type": "number",
           "exclusiveMinimum": 0,
@@ -94,42 +176,69 @@
     },
     "SourceEntry": {
       "type": "object",
-      "required": ["format", "uri"],
+      "required": [
+        "format",
+        "uri"
+      ],
       "additionalProperties": false,
       "properties": {
         "format": {
           "type": "string",
-          "enum": ["png", "webp", "avif", "ktx2"]
+          "enum": [
+            "png",
+            "webp",
+            "avif",
+            "ktx2"
+          ]
         },
-        "uri": { "type": "string" }
+        "uri": {
+          "type": "string"
+        }
       }
     },
     "Animation": {
       "type": "object",
-      "required": ["frameSet", "frames"],
+      "required": [
+        "frameSet",
+        "frames"
+      ],
       "additionalProperties": false,
       "properties": {
         "frameSet": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "uniqueItems": true,
           "minItems": 1,
           "description": "Unique frame names referenced by this animation. `frames` indexes into this array. Order is significant: `events` and `frames` both reference indices that depend on this ordering."
         },
         "frames": {
           "type": "array",
-          "items": { "type": "integer", "minimum": 0 },
+          "items": {
+            "type": "integer",
+            "minimum": 0
+          },
           "minItems": 1,
           "description": "Playback sequence as indices into `frameSet` — `frames[k]` is the k-th frame to display, looking up `frameSet[frames[k]]` for the frame name. Repeated indices encode hold counts (e.g. [0,0,1,2,2,2] = 2-frame hold of frameSet[0], then frameSet[1], then a 3-frame hold of frameSet[2])."
         },
-        "fps": { "type": "number", "exclusiveMinimum": 0 },
-        "loop": { "type": "boolean" },
-        "pingPong": { "type": "boolean" },
+        "fps": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "loop": {
+          "type": "boolean"
+        },
+        "pingPong": {
+          "type": "boolean"
+        },
         "events": {
           "type": "object",
           "description": "Per-frame event tags keyed by index INTO `frames` (not into `frameSet`). I.e. event '3' fires when the playhead reaches `frames[3]`.",
           "patternProperties": {
-            "^[0-9]+$": { "type": "string" }
+            "^[0-9]+$": {
+              "type": "string"
+            }
           },
           "additionalProperties": false
         }
@@ -137,19 +246,42 @@
     },
     "AsepriteFrameTag": {
       "type": "object",
-      "required": ["name", "from", "to"],
+      "required": [
+        "name",
+        "from",
+        "to"
+      ],
       "additionalProperties": true,
       "properties": {
-        "name": { "type": "string" },
-        "from": { "type": "integer", "minimum": 0 },
-        "to": { "type": "integer", "minimum": 0 },
+        "name": {
+          "type": "string"
+        },
+        "from": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "to": {
+          "type": "integer",
+          "minimum": 0
+        },
         "direction": {
           "type": "string",
-          "enum": ["forward", "reverse", "pingpong", "pingpong_reverse"]
+          "enum": [
+            "forward",
+            "reverse",
+            "pingpong",
+            "pingpong_reverse"
+          ]
         },
-        "color": { "type": "string" },
-        "repeat": { "type": "string" },
-        "data": { "type": "string" }
+        "color": {
+          "type": "string"
+        },
+        "repeat": {
+          "type": "string"
+        },
+        "data": {
+          "type": "string"
+        }
       }
     }
   }

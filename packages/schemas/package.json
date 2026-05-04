@@ -1,6 +1,6 @@
 {
   "name": "@three-flatland/schemas",
-  "version": "0.0.0",
+  "version": "1.0.0",
   "private": true,
   "description": "JSON Schemas + Ajv validators for three-flatland data formats. Tool/dev-time only — no runtime consumers in three-flatland.",
   "type": "module",
