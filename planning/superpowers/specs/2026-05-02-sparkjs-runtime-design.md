@@ -1,13 +1,23 @@
 ---
 date: 2026-05-02
+last-updated: 2026-05-04
 topic: sparkjs-runtime
-phase: 3.x (planning)
-status: research-design
+phase: 3.x (deferred)
+status: tabled — license incompatible with three-flatland's middleware position
 branch: feat-vscode-tools
 predecessors:
   - planning/superpowers/specs/2026-05-02-image-encoder-compare-slider.md  (Phase 2.1.2 BaseImageLoader + LoaderRegistry)
   - planning/vscode-tools/tool-image-encoder.md  (early notes on three loader / KTX2 / spark candidates)
 ---
+
+> **TABLED 2026-05-04.** The license audit (see "License audit" section) found the
+> spark.js shaders are EULA-bound and prohibited from inclusion in middleware /
+> dev toolkits. Three-flatland is exactly that, so we cannot ship a default
+> integration. Hooks-only Option B is described below for posterity but is
+> NOT being built. If this changes (Ludicon's terms relax, someone licenses
+> commercially and contributes the integration, or we build a permissive
+> alternative), reopen this spec.
+
 
 # spark.js runtime — what it is, what we need, what it costs
 

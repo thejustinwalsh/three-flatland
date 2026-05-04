@@ -54,7 +54,7 @@ type ThreeLayerProps = {
 
 The `'texture'` path skips `useLoader` and uses the provided texture directly. Existing consumers that pass `imageUri: string` keep working through a backwards-compatible adapter (the prop becomes `imageUri?: string | ImageSource | null` — see Migration below).
 
-This unblocks every loader that produces a Texture without going through three's URL-based loader system: KTX2, future spark.js variants, programmatically-generated textures, etc.
+This unblocks every loader that produces a Texture without going through three's URL-based loader system: KTX2, future GPU-side encoders, programmatically-generated textures, etc.
 
 #### New: `CompareLayer` (sibling to `ThreeLayer`)
 
@@ -613,7 +613,7 @@ Phase 2.1.1 wired KTX2 visual preview into the encode tool by leaning on three's
 
 But this loader work is **not just for the encode tool**. It's the loader stack the three-flatland runtime uses to ingest images. The contract we're building toward:
 
-> "Hand a three-flatland loader any image format (PNG / WebP / AVIF / KTX2 / future spark.js KTX2-X) and it produces the right three.js texture. Native browser decoders handle the formats they support; wasm only ships for the formats they don't (KTX2 today, future GPU-compressed variants tomorrow)."
+> "Hand a three-flatland loader any image format (PNG / WebP / AVIF / KTX2) and it produces the right three.js texture. Native browser decoders handle the formats they support; wasm only ships for the formats they don't (KTX2 today)."
 
 The encode tool happens to be the first consumer, but `SpriteSheetLoader`, `TextureLoader`, future PBR-material loaders, and animation-aware atlas loaders all compose against this base.
 
@@ -623,7 +623,7 @@ Critical scope constraint: **the runtime is browser-only.** Modern browsers nati
 
 The wasm-based decoders in `@three-flatland/image` exist for **tools** (encode tool, CLI bakers) where we need byte-level control or run outside a browser context. Those decoders stay where they are; runtime loaders stay light.
 
-That leaves exactly one format in the runtime that requires custom code: **KTX2**. Browsers can't decode it (it's a GPU container), and three's stock `KTX2Loader` is the only path today. We fork it (with our zig-built transcoder) so we own the binary, can extend the loader (spark.js variants, custom mip strategies), and don't drift with three's upstream.
+That leaves exactly one format in the runtime that requires custom code: **KTX2**. Browsers can't decode it (it's a GPU container), and three's stock `KTX2Loader` is the only path today. We fork it (with our zig-built transcoder) so we own the binary, can extend the loader (custom mip strategies, future format variants, animation-aware sprite atlases), and don't drift with three's upstream.
 
 ### Scope summary
 
@@ -636,7 +636,7 @@ Two specific compromises Phase 2.1.1 inherited that we close out here:
 
 1. **We don't own the transcoder binary.** The basis transcoder shipped with three is BinomialLLC's reference binary, built with whatever flags Emscripten uses. We've already vendored the same upstream sources at `packages/image/vendor/basisu/transcoder/` — the encoder's link needed `basisu_transcoder.cpp`. Adding a parallel zig target that builds `basis_transcoder.wasm` with our `-msimd128` + WASM SIMD path is a small additional cost; the payoff is one toolchain, one set of SIMD paths, both halves of the codec under our control.
 
-2. **We don't own the loader.** Three's `KTX2Loader` is single-purpose: read KTX2 → return a `CompressedTexture`. Future work — spark.js KTX2-X variants, custom mip strategies, animation-aware sprite atlases, format-agnostic SpriteSheetLoader, lazy-everything texture loaders — needs a loader hierarchy we can extend. Monkey-patching three's class is fragile; forking is a one-time cost that pays back across every future loader.
+2. **We don't own the loader.** Three's `KTX2Loader` is single-purpose: read KTX2 → return a `CompressedTexture`. Future work — custom mip strategies, animation-aware sprite atlases, format-agnostic SpriteSheetLoader, lazy-everything texture loaders, eventual GPU-side encoder integrations — needs a loader hierarchy we can extend. Monkey-patching three's class is fragile; forking is a one-time cost that pays back across every future loader.
 
 Phase 2.1.2 builds:
 - The owned transcoder binary (zig build)
@@ -654,7 +654,7 @@ packages/image/
 ├── src/loaders/
 │   ├── BaseImageLoader.ts        // abstract Loader<T> with fetch/cache/error handling
 │   ├── Ktx2Loader.ts             // forked from three's KTX2Loader, parameterized over our transcoder
-│   └── (future) SpriteLoader.ts, SparkKtx2Loader.ts, …
+│   └── (future) SpriteLoader.ts, …
 ├── vendor/basisu/transcoder/
 │   └── (already vendored in Phase 1)
 ├── src/zig/
@@ -692,7 +692,33 @@ export interface LoaderResult<T> {
   texture: T
   // Loader-specific metadata that callers can read after parse.
   meta?: Record<string, unknown>
+  // How to re-create this texture if the GPU device is lost. Populated by
+  // each loader subclass at parse time (it's the cheapest place — the URL
+  // / generator / cache key is already known). Stored by the registry; a
+  // future Phase 3.x RecoveryCoordinator will walk the registry and call
+  // each descriptor's recovery path on `webglcontextrestored` / `device.lost`
+  // → `requestDevice()`. Without this field, we'd have to retain CPU-side
+  // copies of every texture (the pixi-style antipattern that doubles RAM)
+  // for device-lost recovery to work — capturing the descriptor instead
+  // lets the runtime drop CPU copies and re-fetch / re-generate on demand.
+  // See sibling spec on device-lost recovery for the coordinator design.
+  recovery?: RecoveryDescriptor
 }
+
+export type RecoveryDescriptor =
+  // Re-fetch + re-decode/re-encode from a URL — most common path. The
+  // default for any URL-sourced load.
+  | { kind: 'url'; url: string; format: string; options?: unknown }
+  // Re-run a pure generator function. Used for procedural / canvas /
+  // VideoFrame textures. Must be re-runnable: no closures over disposed
+  // textures, no dependencies on game state that may have advanced.
+  | { kind: 'generator'; generate: () => Promise<{ bytes: Uint8Array; format: string }> }
+  // Caller takes responsibility — used for tools where the host extension
+  // has the source and we round-trip via the bridge to recover.
+  | { kind: 'external'; onRecover: () => Promise<{ bytes: Uint8Array; format: string }> }
+  // Explicit retain — caller asked for the pixi-style fast path. Bytes
+  // live in CPU memory until disposal. Caller paid the cost willingly.
+  | { kind: 'retained'; bytes: Uint8Array; format: string }
 
 export abstract class BaseImageLoader<T extends Texture = Texture> {
   abstract readonly format: string
@@ -722,7 +748,7 @@ Key design decisions:
 
 - **Renderer parameter accepts WebGL OR WebGPU.** Three has two renderer classes, and three-flatland's roadmap is WebGPU-first while still supporting WebGL. The `KTX2Loader` fork adapts internally: WebGL path uses `renderer.capabilities`/`extensions`; WebGPU path uses the WebGPU `device.features` (the BC/ASTC/ETC GPU format support flags). Loaders that don't need a renderer (PNG/WebP/AVIF) accept `null`.
 - **Lazy-load wasm INSIDE `parse()`.** `BaseImageLoader.ts` and `Ktx2Loader.ts` do not statically import the transcoder JS or WASM. The transcoder bytes are fetched + instantiated on first `parse()` call (and cached at the module level for subsequent calls). This means: `import { Ktx2Loader } from '@three-flatland/image/loaders'` is cheap — it brings in maybe 2 KB of class definition. The 500 KB transcoder WASM only ships when someone actually loads a KTX2 file. Same pattern for the JPEG-decode path inside any future JpegLoader, etc.
-- **Format dispatch via a registry, not a switch.** The runtime exposes a `LoaderRegistry` that holds a list of loaders and walks them in order. Adding a new format is a register call, not a code edit on a central switch. This is what unblocks SparkKtx2Loader to slot in next to Ktx2Loader without touching the dispatcher.
+- **Format dispatch via a registry, not a switch.** The runtime exposes a `LoaderRegistry` that holds a list of loaders and walks them in order. Adding a new format is a register call, not a code edit on a central switch. This is what unblocks future loaders (custom KTX2 variants, GPU-side encoder integrations) to slot in next to Ktx2Loader without touching the dispatcher.
 
 ```ts
 // packages/image/src/loaders/registry.ts
@@ -770,9 +796,9 @@ For PNG / WebP / AVIF, the registry returns a thin `NativeBitmapLoader` that wra
 
 ### Future subclasses (NOT in this phase, but the abstraction supports them)
 
-- `SparkKtx2Loader<CompressedTexture>` — when spark.js lands, register a higher-priority loader for KTX2 that uses spark.js's GPU transcoding path; falls through to our Ktx2Loader on unsupported devices
 - `AnimatedSpriteLoader<SpriteSheet>` — loads animated sprites with sidecar atlas JSON; format-agnostic via the registry
 - `PbrTextureSetLoader<{ albedo, normal, mr }>` — loads multi-image PBR materials, registry handles per-channel format dispatch
+- A user-provided GPU-side encoder loader (e.g., a hooks-only spark.js adapter — see `2026-05-02-sparkjs-runtime-design.md`, currently tabled) would slot in here without changing the abstraction
 
 ### `Ktx2Loader` — forked from three.js
 
@@ -879,7 +905,7 @@ const result = await loader.parse({ bytes: encodedBytes, renderer })
 const tex = result.texture
 ```
 
-The implementation work in 2.1.2 is invisible to ComparePreview — just a swap of the import. The reward shows up later when we extend the loader for spark.js or animation-aware sprites.
+The implementation work in 2.1.2 is invisible to ComparePreview — just a swap of the import. The reward shows up later when we extend the loader for animation-aware sprites, custom KTX2 variants, or future GPU-side encoder integrations.
 
 ## Risks
 
@@ -956,7 +982,7 @@ The implementation work in 2.1.2 is invisible to ComparePreview — just a swap 
 
 - New report: `planning/superpowers/specs/2026-05-02-image-loader-fork-gate-report.md`
 - Cover: TS port quality, transcoder build success, equivalence test result, bundle deltas
-- "What's next" — Phase 2.1.3 candidates: SpriteLoader on the new base; SparkKtx2Loader subclass; pre-emptive sparkbasis support
+- "What's next" — Phase 3.0 candidates: SpriteLoader on the new base; `retainSource: false` policy + `mipmaps[]` cleanup on Ktx2Loader; RecoveryCoordinator that walks `LoaderResult.recovery` descriptors on device-lost
 
 ## Done when (Phase 2.1.2)
 
