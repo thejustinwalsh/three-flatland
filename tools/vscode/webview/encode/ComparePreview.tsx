@@ -7,33 +7,39 @@ import {
   type ImageSource,
 } from '@three-flatland/preview/canvas'
 import { decodeImage } from '@three-flatland/image'
-import basisTranscoderJsUrl from 'three/examples/jsm/libs/basis/basis_transcoder.js?url'
-import basisTranscoderWasmUrl from 'three/examples/jsm/libs/basis/basis_transcoder.wasm?url'
+import type { Ktx2Loader as Ktx2LoaderType } from '@three-flatland/image/loaders/ktx2'
 import { useEncodeStore } from './encodeStore'
 
-// Reference to ensure Vite emits the wasm asset.
-void basisTranscoderWasmUrl
-
-// ─── KTX2Loader singleton ─────────────────────────────────────────────────────
+// ─── Ktx2Loader singleton ─────────────────────────────────────────────────────
 //
-// Known limitation: KTX2Loader.detectSupport() requires a WebGLRenderer.
-// CanvasStage's internal renderer isn't accessible outside the R3F context,
-// so we spin up a throwaway renderer purely for format detection, then dispose
-// it. Phase 2.1.2's own KTX2Loader fork makes the renderer dependency optional.
+// Lazy-imports `@three-flatland/image/loaders/ktx2` on first KTX2 file. The
+// chunk + the basis_transcoder.wasm only ship if the user actually previews a
+// KTX2-encoded artifact.
+//
+// We force the RGBA32 fallback target via `setSupportedFormats({ all false })`
+// — for the encode preview, visual fidelity matters but GPU memory does not,
+// and uncompressed RGBA uploads work on any GPU regardless of the renderer's
+// WebGPU feature negotiation. Proper cap detection (BC7 / ASTC / ETC2 paths)
+// will land when three-flatland's TextureLoader composes against this loader
+// (Phase 2.1.2 T13, deferred until the lighting branch merges).
 
-let loaderPromise: Promise<unknown> | null = null
-let cachedLoader: unknown = null
+let loaderPromise: Promise<Ktx2LoaderType> | null = null
+let cachedLoader: Ktx2LoaderType | null = null
 
-async function getKtx2Loader(renderer: THREE.WebGLRenderer | null): Promise<unknown | null> {
+async function getKtx2Loader(): Promise<Ktx2LoaderType> {
   if (cachedLoader) return cachedLoader
-  if (!renderer) return null
   if (!loaderPromise) {
     loaderPromise = (async () => {
-      const { KTX2Loader } = await import('three/examples/jsm/loaders/KTX2Loader.js')
-      const loader = new KTX2Loader()
-      const transcoderDir = basisTranscoderJsUrl.replace(/\/[^/]+$/, '/')
-      loader.setTranscoderPath(transcoderDir)
-      loader.detectSupport(renderer)
+      const { Ktx2Loader } = await import('@three-flatland/image/loaders/ktx2')
+      const loader = new Ktx2Loader().setSupportedFormats({
+        astcSupported: false,
+        astcHDRSupported: false,
+        etc1Supported: false,
+        etc2Supported: false,
+        dxtSupported: false,
+        bptcSupported: false,
+        pvrtcSupported: false,
+      })
       cachedLoader = loader
       return loader
     })()
@@ -88,29 +94,17 @@ function useEncodedTexture(setEncodedMipCount: (count: number) => void): THREE.T
       try {
         let next: THREE.Texture
         if (encodedFormat === 'ktx2') {
-          // Throwaway renderer — only needed for detectSupport(); the
-          // CompressedTexture produced by parse() is renderer-independent.
-          const probeRenderer = new THREE.WebGLRenderer()
-          try {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const loader = await getKtx2Loader(probeRenderer) as any
-            if (!loader) throw new Error('KTX2Loader unavailable')
-            const buf = encodedBytes.buffer.slice(
-              encodedBytes.byteOffset,
-              encodedBytes.byteOffset + encodedBytes.byteLength,
-            ) as ArrayBuffer
-            next = await new Promise<THREE.CompressedTexture>((resolve, reject) => {
-              // eslint-disable-next-line @typescript-eslint/no-unsafe-call
-              loader.parse(buf, resolve, reject)
-            })
-            const compressed = next as THREE.CompressedTexture
-            const mipCount = compressed.mipmaps?.length ?? 1
-            const dims = compressed.mipmaps?.map((m) => `${m.width}×${m.height}`).join(', ') ?? '?'
-            console.log(`[encode] KTX2 decoded: ${mipCount} mip level(s), format=${(compressed as unknown as { format?: number }).format}, dims=[${dims}]`)
-            setEncodedMipCount(mipCount)
-          } finally {
-            probeRenderer.dispose()
-          }
+          const loader = await getKtx2Loader()
+          const buf = encodedBytes.buffer.slice(
+            encodedBytes.byteOffset,
+            encodedBytes.byteOffset + encodedBytes.byteLength,
+          ) as ArrayBuffer
+          next = (await loader.parse(buf)) as THREE.CompressedTexture
+          const compressed = next as THREE.CompressedTexture
+          const mipCount = compressed.mipmaps?.length ?? 1
+          const dims = compressed.mipmaps?.map((m) => `${m.width}×${m.height}`).join(', ') ?? '?'
+          console.log(`[encode] KTX2 decoded: ${mipCount} mip level(s), format=${(compressed as unknown as { format?: number }).format}, dims=[${dims}]`)
+          setEncodedMipCount(mipCount)
         } else {
           const image = await decodeImage(encodedBytes, encodedFormat)
           next = imageDataToTexture(image)

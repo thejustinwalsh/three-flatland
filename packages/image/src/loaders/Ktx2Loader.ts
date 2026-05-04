@@ -73,8 +73,7 @@ type AnyCompressedTexture =
 
 class Ktx2Loader extends Loader<AnyCompressedTexture> {
   private workerConfig: Ktx2Capabilities | null = null
-  private worker: Worker | null = null
-  private workerLoadAttempted = false
+  private workerPromise: Promise<Worker> | null = null
   private nextId = 0
   private pending = new Map<
     number,
@@ -202,26 +201,50 @@ class Ktx2Loader extends Loader<AnyCompressedTexture> {
     buffer: ArrayBuffer,
     caps: Ktx2Capabilities,
   ): Promise<Ktx2TranscodeResult> {
-    const worker = this.getWorker()
-    if (worker) return this.transcodeViaWorker(worker, buffer, caps)
-    // Fallback: Node + vitest — run on the calling thread. Production
-    // browser code always takes the worker path.
+    // Browser path: lazy-spawn a worker on first use, reuse across calls.
+    // The factory creates a CSP-friendly blob URL Worker (works under
+    // VSCode webview's `worker-src blob:` rule) and pre-initializes the
+    // wasm transcoder before returning.
+    if (typeof Worker !== 'undefined') {
+      try {
+        const worker = await this.getOrCreateWorker()
+        return await this.transcodeViaWorker(worker, buffer, caps)
+      } catch (err) {
+        // If worker creation/use fails (e.g., CSP regression, fetch
+        // failure), drop the cached promise so a future parse() retries,
+        // and fall through to the inline path so this call still returns
+        // a result.
+        this.workerPromise = null
+        console.warn('Ktx2Loader: worker path failed, falling back to inline transcode:', err)
+      }
+    }
+    // Inline path: Node, vitest, or worker-creation failure. Runs on the
+    // calling thread.
     return transcodeKtx2(buffer, caps)
   }
 
-  private getWorker(): Worker | null {
-    if (this.workerLoadAttempted) return this.worker
-    this.workerLoadAttempted = true
-    if (typeof Worker === 'undefined') return null
-    try {
-      const w = new Worker(new URL('./ktx2-worker.js', import.meta.url), { type: 'module' })
-      w.addEventListener('message', (e: MessageEvent<WorkerResponse>) => this.onWorkerMessage(e))
-      w.addEventListener('error', (e) => this.onWorkerError(e))
-      this.worker = w
-      return w
-    } catch {
-      return null
+  private async getOrCreateWorker(): Promise<Worker> {
+    if (!this.workerPromise) {
+      this.workerPromise = (async () => {
+        // Vite (and rolldown-based bundlers like the upcoming tsdown) recognize
+        // `?worker&inline` and bundle the worker source + all its imports into a
+        // base64-encoded blob URL Worker constructor — CSP-friendly under
+        // VSCode webview's `worker-src blob:` rule. In source mode (vitest,
+        // dev) the same plugin path runs.
+        //
+        // Bundlers that don't recognize the suffix will throw at module
+        // resolution; the caller's try/catch in parse() drops back to the
+        // inline transcode path so KTX2 still loads, just on the main thread.
+        const mod = await import('./ktx2-worker.js?worker&inline')
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const WorkerCtor = (mod as { default: new () => Worker }).default
+        const w = new WorkerCtor()
+        w.addEventListener('message', (e: MessageEvent<WorkerResponse>) => this.onWorkerMessage(e))
+        w.addEventListener('error', (e) => this.onWorkerError(e))
+        return w
+      })()
     }
+    return this.workerPromise
   }
 
   private onWorkerMessage(e: MessageEvent<WorkerResponse>): void {
@@ -234,11 +257,12 @@ class Ktx2Loader extends Loader<AnyCompressedTexture> {
   }
 
   private onWorkerError(_e: ErrorEvent): void {
-    // Reject all pending — worker is unrecoverable.
+    // Reject all pending — worker is unrecoverable. Drop the cached
+    // promise so the next parse() spawns a fresh one.
     const err = new Error('Ktx2Loader: worker crashed')
     for (const h of this.pending.values()) h.reject(err)
     this.pending.clear()
-    this.worker = null
+    this.workerPromise = null
   }
 
   private transcodeViaWorker(
@@ -254,18 +278,17 @@ class Ktx2Loader extends Loader<AnyCompressedTexture> {
   }
 
   /**
-   * Releases the worker. Pending transcodes reject. Re-running `parse()`
-   * after dispose spawns a new worker.
+   * Releases the worker (if one was spawned). Pending transcodes reject.
+   * Subsequent `parse()` calls spawn a fresh worker on demand.
    */
   dispose(): this {
-    if (this.worker) {
+    if (this.workerPromise) {
       const err = new Error('Ktx2Loader: disposed')
       for (const h of this.pending.values()) h.reject(err)
       this.pending.clear()
-      this.worker.terminate()
-      this.worker = null
+      void this.workerPromise.then((w) => w.terminate()).catch(() => {})
+      this.workerPromise = null
     }
-    this.workerLoadAttempted = false
     return this
   }
 }
