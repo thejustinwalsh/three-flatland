@@ -103,7 +103,7 @@ pub fn build(b: *std.Build) void {
         "--enable-sign-ext",
         "--enable-nontrapping-float-to-int",
         "-o",
-        "vendor/basis/basis_encoder.wasm",
+        "libs/basis/basis_encoder.wasm",
     });
     wasm_opt.addFileArg(exe.getEmittedBin());
     b.getInstallStep().dependOn(&wasm_opt.step);

@@ -27,10 +27,10 @@ export default defineConfig({
   bundle: false,
   shims: true,
   onSuccess: async () => {
-    const dest = 'dist/vendor/basis'
+    const dest = 'dist/libs/basis'
     mkdirSync(dest, { recursive: true })
-    for (const f of readdirSync('vendor/basis')) {
-      copyFileSync(join('vendor/basis', f), join(dest, f))
+    for (const f of readdirSync('libs/basis')) {
+      copyFileSync(join('libs/basis', f), join(dest, f))
     }
   },
 })
