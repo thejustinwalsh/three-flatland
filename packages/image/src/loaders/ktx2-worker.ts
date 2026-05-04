@@ -22,7 +22,7 @@ import {
   transferablesOf,
   type Ktx2Capabilities,
 } from './ktx2-transcode.js'
-import { instantiateTranscoder, type TranscoderExports } from '../runtime/transcoder-loader.js'
+import { instantiateTranscoder, type TranscoderExports } from '../runtime/transcoder-runtime.js'
 
 interface InitRequest {
   type: 'init'

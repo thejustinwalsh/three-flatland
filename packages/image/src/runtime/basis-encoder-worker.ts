@@ -18,7 +18,7 @@
 /// <reference lib="webworker" />
 
 import { encodeKtx2WithExports, type Ktx2Options } from '../codecs/ktx2.js'
-import { instantiateBasis, type BasisExports } from './basis-loader.js'
+import { instantiateBasis, type BasisExports } from './basis-runtime.js'
 
 interface InitRequest {
   type: 'init'
