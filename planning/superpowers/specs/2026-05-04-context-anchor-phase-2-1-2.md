@@ -25,7 +25,7 @@ Key rules from the canonical reference:
 1. Every loader extends `three.Loader<T>` directly. NO `BaseImageLoader`, NO `LoaderRegistry`, NO shared loader-kit package.
 2. Format dispatch inside Tier 1 wrappers is inline `if (ext === 'fmt') await import(...)`, not a registry.
 3. Format-I/O loaders (Ktx2Loader) live in `@three-flatland/image/loaders/<fmt>` — standalone-publishable.
-4. Wasm artifacts live in `packages/<owner>/libs/<artifact-name>/` (NOT `vendor/`).
+4. Wasm artifacts live in `packages/<owner>/libs/<library-family>/` (NOT `vendor/`). Group by upstream library, not per artifact (e.g. `libs/basis/` holds both encoder + transcoder).
 5. `three-flatland → siblings` is a hard `dependencies`. `siblings → three` is an optional peer (subpath-level dep). Changesets locks co-versioning; bundler dedupe handles bundle correctness.
 
 Commit `9fba867` (BaseImageLoader in image package) was reverted by `20e5fd5`. Do NOT recreate that abstraction.
@@ -57,7 +57,7 @@ Spec: `planning/superpowers/specs/2026-05-02-image-encoder-compare-slider.md` (t
 Replace Phase-2.1.1 stopgaps with our own KTX2 loader stack:
 
 - `packages/image/src/loaders/Ktx2Loader.ts` — TS-port of three's KTX2Loader, extends `three.Loader<CompressedTexture>` directly. Subpath-exported as `@three-flatland/image/loaders/ktx2`. Standalone-publishable.
-- `packages/image/src/zig/basis_transcoder_c_api.{h,cpp}` + `packages/image/build.zig` second target → `packages/image/libs/basis-transcoder/basis_transcoder.{js,wasm}`
+- `packages/image/src/zig/basis_transcoder_c_api.{h,cpp}` + `packages/image/build.zig` second target → `packages/image/libs/basis/basis_transcoder.wasm` (alongside the existing `basis_encoder.wasm`)
 - `packages/image/src/runtime/transcoder-loader.ts` — JS wrapper around our transcoder wasm
 - `tools/vscode/webview/encode/ComparePreview.tsx` swaps to our Ktx2Loader; drops the WebGLRenderer hack and the Vite copy plugin
 
@@ -76,7 +76,7 @@ Replace Phase-2.1.1 stopgaps with our own KTX2 loader stack:
 | 91 | T0 — Revert `9fba867` (BaseImageLoader/registry wrong turn) — **DONE (`20e5fd5`)** |
 | 67 | T1 — TS-port three's KTX2Loader to `packages/image/src/loaders/Ktx2Loader.ts` |
 | 69 | T3 — `basis_transcoder_c_api.{h,cpp}` flat C API |
-| 70 | T4 — Add `basis_transcoder` zig build target → `packages/image/libs/basis-transcoder/` |
+| 70 | T4 — Add `basis_transcoder` zig build target → `packages/image/libs/basis/basis_transcoder.wasm` |
 | 71 | T5 — Transcoder JS wrapper at `packages/image/src/runtime/transcoder-loader.ts` |
 | 72 | T6 — Wire Ktx2Loader to use our transcoder |
 | 73 | T7 — `ComparePreview` swap; remove `copyBasisTranscoder` Vite plugin + WebGLRenderer hack |

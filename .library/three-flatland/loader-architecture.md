@@ -128,19 +128,19 @@ Packages that own asset formats (currently `@three-flatland/image`) follow this 
 │   ├── codecs/{png,webp,avif,ktx2}.ts             // per-format codecs
 │   ├── loaders/Ktx2Loader.ts                      // three.Loader<CompressedTexture>
 │   └── runtime/transcoder-loader.ts               // wasm wrapper used by Ktx2Loader
-├── libs/basis-transcoder/
-│   └── basis_transcoder.{js,wasm}                 // built artifact (our bespoke output)
+├── libs/basis/
+│   ├── basis_encoder.wasm                         // built artifact (our bespoke output)
+│   └── basis_transcoder.wasm                      // built artifact (same library family)
 └── package.json exports:
     ".":                       // encode/decode (Node + browser, no three required)
     "./node":                  // Node-side encoder entry
     "./cli":                   // bake CLI entry
     "./loaders/ktx2":          // Ktx2Loader (browser, peerdeps three)
-    "./libs/basis-transcoder": // wasm wrapper (browser, no three)
 ```
 
 ### Naming conventions
 
-- **`libs/`**, NOT `vendor/`. Vendor is for upstream sources we copy in (basisu C++ source). `libs/` is for OUR bespoke build artifacts (compiled wasm, generated JS bridges). One folder per artifact: `libs/basis-transcoder/`, future `libs/draco-decoder/`, etc.
+- **`libs/`**, NOT `vendor/`. Vendor is for upstream sources we copy in (basisu C++ source). `libs/` is for OUR bespoke build artifacts (compiled wasm, generated JS bridges). **Group by library family**, not per-artifact: `libs/basis/` holds both `basis_encoder.wasm` and `basis_transcoder.wasm` (they share basisu sources); a future Draco integration would land in `libs/draco/` with all its artifacts. Mirrors three.js's `three/examples/jsm/libs/{basis,draco,…}/` layout.
 - **`loaders/`** for `three.Loader<T>` subclasses. One file per loader. Subpath-exported per-loader for fine-grained tree-shaking.
 - **`runtime/`** for wasm wrappers and other browser-runtime glue used INSIDE loaders. Internal-ish; not subpath-exported unless a non-loader consumer needs it.
 
@@ -234,7 +234,7 @@ When you DO need it, copy the 30-line shape in the planning doc. Do not abstract
 | Domain baker (e.g. light occlusion bake) | New `@three-flatland/<domain>` sibling package | Baked → runtime pattern |
 | Format dispatch inside `TextureLoader` | `packages/three-flatland/src/loaders/TextureLoader.ts` | Inline `if (ext === 'fmt') await import(...)` |
 | Composes multiple sibling packages | `packages/three-flatland/src/loaders/` | Tier 1 wrapper, depends on siblings |
-| Wasm artifact for a loader | `packages/<owner>/libs/<artifact-name>/` | Built by zig/cmake; subpath-exported |
+| Wasm artifact for a loader | `packages/<owner>/libs/<library-family>/` | Built by zig/cmake; folder shared with sibling artifacts from the same upstream library |
 | Shared loader helper across siblings | **DON'T**. Inline 30 lines per loader. | See rule 1. |
 
 ---

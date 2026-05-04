@@ -116,7 +116,7 @@ pub fn build(b: *std.Build) void {
     encoder_opt.addFileArg(encoder.getEmittedBin());
     b.getInstallStep().dependOn(&encoder_opt.step);
 
-    // ── Target 2: basis_transcoder.wasm (transcode-side, libs/basis-transcoder/) ──
+    // ── Target 2: basis_transcoder.wasm (transcode-side, libs/basis/) ──
     //
     // KTX2-only transcoder consumed by Ktx2Loader. Smaller than the encoder
     // (no SPMD kernels, no jpgd, no PNG/EXR loaders). Initial memory 16MB —
@@ -175,7 +175,7 @@ pub fn build(b: *std.Build) void {
         "--enable-sign-ext",
         "--enable-nontrapping-float-to-int",
         "-o",
-        "libs/basis-transcoder/basis_transcoder.wasm",
+        "libs/basis/basis_transcoder.wasm",
     });
     transcoder_opt.addFileArg(transcoder.getEmittedBin());
     b.getInstallStep().dependOn(&transcoder_opt.step);
