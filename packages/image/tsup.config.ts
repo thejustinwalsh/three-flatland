@@ -20,6 +20,8 @@ export default defineConfig({
     'src/node.ts',
     'src/cli.ts',
     'src/loaders/Ktx2Loader.ts',
+    'src/loaders/ktx2-transcode.ts',
+    'src/loaders/ktx2-worker.ts',
   ],
   format: ['esm'],
   dts: true,
