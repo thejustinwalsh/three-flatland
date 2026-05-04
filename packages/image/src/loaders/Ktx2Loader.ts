@@ -29,12 +29,14 @@ import {
   CompressedArrayTexture,
   CompressedCubeTexture,
   CompressedTexture,
+  DataTexture,
   FileLoader,
   LinearFilter,
   LinearMipmapLinearFilter,
   LinearSRGBColorSpace,
   Loader,
   NoColorSpace,
+  RGBAFormat,
   SRGBColorSpace,
 } from 'three'
 import type { LoadingManager } from 'three'
@@ -71,6 +73,7 @@ type AnyCompressedTexture =
   | CompressedTexture
   | CompressedCubeTexture
   | InstanceType<typeof CompressedArrayTexture>
+  | DataTexture
 
 class Ktx2Loader extends Loader<AnyCompressedTexture> {
   private workerConfig: Ktx2Capabilities | null = null
@@ -324,7 +327,25 @@ function buildTexture(result: Ktx2TranscodeResult): AnyCompressedTexture {
   const fmt = result.format as never
   const typ = result.type as never
 
-  if (result.faceCount === 6) {
+  // Uncompressed-format fallback (RGBAFormat from cTFRGBA32 / cTFRGBA_HALF
+  // transcoder targets) MUST use DataTexture, not CompressedTexture.
+  // Three's WebGPU renderer dispatches on the texture class — a
+  // CompressedTexture takes the `compressedTexImage` upload path, which
+  // expects a block-compressed GPU format. Wrapping uncompressed RGBA in
+  // CompressedTexture stalls the render loop (the upload errors,
+  // useFrame stops firing on subsequent frames). DataTexture takes the
+  // standard `texImage` path and works with mipmaps as a regular array.
+  const isUncompressed = result.format === RGBAFormat
+
+  if (isUncompressed && result.faceCount === 1 && result.layerCount <= 1) {
+    // 2D uncompressed — DataTexture. Mipmaps land on `texture.mipmaps`
+    // (same field as CompressedTexture) so consumer detection works.
+    const base = result.faces[0]!.mipmaps[0]!
+    const dataTex = new DataTexture(base.data, base.width, base.height, fmt, typ)
+    dataTex.mipmaps = result.faces[0]!.mipmaps as never
+    dataTex.generateMipmaps = false
+    texture = dataTex
+  } else if (result.faceCount === 6) {
     // Cubemap — three's CompressedCubeTexture takes the array of faces.
     texture = new CompressedCubeTexture(
       result.faces as unknown as CompressedTexture[],
