@@ -28,6 +28,11 @@
 - Save superpowers specs to planning/superpowers/specs.
 - Save superpowers plans to planning/superpowers/plans.
 
+## Architectural references (`.library/`)
+- `.library/threejs/` — three.js + TSL reference patterns
+- `.library/react-three-fiber/` — R3F idioms and helpers
+- `.library/three-flatland/loader-architecture.md` — **must-read** before designing or refactoring any loader (texture, atlas, tilemap, font, normal map, image format). Defines package layering, the no-registry rule, three-tier surface (everyday/direct/preload), and cross-package dependency policy. Companion: `planning/bake/loader-pattern.md` (baked → runtime fallback shape).
+
 ## Workflow
 - Use Conventional Commits — releases are cut from changesets generated from the commit history
 - **Stage by exact path** — `git add tools/io/src/foo.ts`, never `git add -A` / `git add .` / `git commit -a`. This branch routinely has WIP modifications across many files; bundling them is a recoverable but disruptive mistake.

@@ -1,6 +1,8 @@
 # @three-flatland/preview
 
 > Agent-facing reference for shared editor-tool UI primitives.
+>
+> **Related**: `.library/three-flatland/loader-architecture.md` — when a CanvasStage consumer needs to load a texture/atlas/tilemap, use `three-flatland`'s `TextureLoader` / `SpriteSheetLoader` (Tier 1) or import the format-specific loader directly (Tier 2, e.g. `@three-flatland/image/loaders/ktx2`). Do NOT introduce a new "preview-side" loader abstraction.
 
 ## Two entry points
 
