@@ -14,6 +14,7 @@ export default defineConfig({
   entry: {
     'atlas/index': 'src/atlas/index.ts',
     'atlas/validator': 'src/atlas/validator.ts',
+    version: 'src/version.ts',
   },
   format: ['esm'],
   dts: true,

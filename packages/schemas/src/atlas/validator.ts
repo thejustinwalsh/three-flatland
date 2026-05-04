@@ -1,12 +1,16 @@
 import Ajv2020, { type ValidateFunction } from 'ajv/dist/2020'
-import schema from './schema.json' with { type: 'json' }
+import sourceSchema from './schema.json' with { type: 'json' }
+import { schemaIdFor } from '../version'
+
+// Inject $id from the schemas package version (single source of truth) so the
+// in-memory schema knows its own public URL. Schema source intentionally omits
+// $id; changesets-managed package version dictates the value.
+export const atlasSchema = { $id: schemaIdFor('atlas'), ...sourceSchema }
 
 const ajv = new Ajv2020({ allErrors: true, strict: false })
-const ajvValidate: ValidateFunction = ajv.compile(schema as object)
+const ajvValidate: ValidateFunction = ajv.compile(atlasSchema as object)
 
 let lastErrors: string[] = []
-
-export const atlasSchema = schema
 
 export function validateAtlas(json: unknown): boolean {
   lastErrors = []
