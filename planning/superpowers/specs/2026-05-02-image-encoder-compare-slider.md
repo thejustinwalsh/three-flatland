@@ -621,7 +621,7 @@ Phase 2.1.1 wired KTX2 preview into the encode tool by leaning on three's stock 
 Phase 2.1.2 replaces all of that with our own owned KTX2 stack:
 
 - `Ktx2Loader.ts` in `@three-flatland/image/loaders/` — TS-ported fork of three's KTX2Loader that extends `three.Loader<CompressedTexture>` directly. Standalone-publishable, R3F `useLoader`-compatible, the canonical loader pattern.
-- `basis_transcoder.wasm` built by our zig pipeline (alongside Phase 1's `basis_encoder.wasm`), output to `packages/image/libs/basis-transcoder/`.
+- `basis_transcoder.wasm` built by our zig pipeline (alongside Phase 1's `basis_encoder.wasm`), output to `packages/image/libs/basis/` (same library family — both are basisu artifacts).
 - `transcoder-loader.ts` JS wrapper colocated with the wasm.
 
 The encode tool's `ComparePreview` is the first consumer (it swaps three's KTX2Loader for ours). The runtime side — `three-flatland/loaders/TextureLoader` adding an inline KTX2 branch via `await import('@three-flatland/image/loaders/ktx2')` — is **deferred** to a follow-up after `lighting-stochastic-adoption` lands its rewritten TextureLoader/SpriteSheetLoader.
@@ -632,7 +632,7 @@ The hard rules from the canonical reference:
 
 1. `Ktx2Loader` extends `three.Loader<CompressedTexture>` **directly**. No `BaseImageLoader`, no `LoaderRegistry`, no shared base class.
 2. Standalone-publishable from `@three-flatland/image/loaders/ktx2` subpath. A vanilla three.js / R3F user installs `@three-flatland/image` and `useLoader(Ktx2Loader, url)` works.
-3. Wasm artifact lives at `packages/image/libs/basis-transcoder/` (NOT `vendor/` — `libs/` is for our bespoke build outputs; `vendor/` is for upstream sources we copy in).
+3. Wasm artifact lives at `packages/image/libs/basis/basis_transcoder.wasm`, alongside `libs/basis/basis_encoder.wasm` (NOT `vendor/` — `libs/` is for our bespoke build outputs; folder grouped by library family, mirroring three's `examples/jsm/libs/basis/` layout).
 4. `@three-flatland/image` declares `three` as an **optional peer** (`peerDependenciesMeta.three.optional: true`). Main entries (encode/decode/CLI) don't need three; only the `loaders/*` subpath does.
 5. Tier 1 dispatch (TextureLoader/SpriteSheetLoader doing inline `if (ext === 'ktx2') await import(...)`) is deferred — see "Deferred work" below.
 
@@ -651,11 +651,10 @@ packages/image/
 │       ├── basis_c_api.{h,cpp}              // existing — encoder
 │       └── basis_transcoder_c_api.{h,cpp}   // NEW — transcoder
 ├── libs/
-│   ├── basis/                               // existing — basis_encoder.wasm
-│   └── basis-transcoder/                    // NEW — basis_transcoder.{js,wasm}
+│   └── basis/                               // basis_encoder.wasm + basis_transcoder.wasm (same library family)
 ├── build.zig                                // EDITED — second target for transcoder
 ├── transcoder_files.zig                     // NEW — transcoder source list
-├── package.json                             // EDITED — three optional peer, ./loaders/ktx2 + ./libs/basis-transcoder subpath exports
+├── package.json                             // EDITED — three optional peer, ./loaders/ktx2 subpath export
 └── tsup.config.ts                           // EDITED — add loaders/Ktx2Loader, runtime/transcoder-loader entries
 
 tools/vscode/
@@ -674,7 +673,7 @@ Task IDs map to current TaskList entries.
 | 91 | T0 — Revert commit `9fba867` (BaseImageLoader/registry wrong turn) — **DONE** |
 | 67 | T1 — Vendor + TS-port three's KTX2Loader to `packages/image/src/loaders/Ktx2Loader.ts`, extending `three.Loader<CompressedTexture>` |
 | 69 | T3 — `basis_transcoder_c_api.{h,cpp}` — flat C API mirroring `basis_c_api.h` shape |
-| 70 | T4 — Add `basis_transcoder` zig build target, output to `packages/image/libs/basis-transcoder/` |
+| 70 | T4 — Add `basis_transcoder` zig build target, output to `packages/image/libs/basis/basis_transcoder.wasm` |
 | 71 | T5 — Transcoder JS wrapper at `packages/image/src/runtime/transcoder-loader.ts` |
 | 72 | T6 — Wire `Ktx2Loader` to use our transcoder |
 | 73 | T7 — `ComparePreview` swap to `@three-flatland/image/loaders/ktx2`; remove `copyBasisTranscoder` Vite plugin and the throwaway WebGLRenderer hack |
@@ -706,8 +705,8 @@ Until T13 lands, three-flatland users who want KTX2 import `Ktx2Loader` directly
 
 - `packages/image/src/loaders/Ktx2Loader.ts` exists, extends `three.Loader<CompressedTexture>`, is the loader `ComparePreview` imports
 - `packages/image/build.zig` builds two targets: `basis_encoder.wasm` AND `basis_transcoder.wasm`
-- `packages/image/libs/basis-transcoder/basis_transcoder.{js,wasm}` are git-tracked
-- `@three-flatland/image` exports `./loaders/ktx2` and `./libs/basis-transcoder` subpaths
+- `packages/image/libs/basis/basis_transcoder.wasm` is git-tracked alongside `libs/basis/basis_encoder.wasm`
+- `@three-flatland/image` exports `./loaders/ktx2` subpath
 - `@three-flatland/image` declares `three` as `peerDependenciesMeta.three.optional: true`
 - `tools/vscode/webview/encode/ComparePreview.tsx` no longer imports anything from `three/examples/jsm/...`
 - `tools/vscode/vite.config.ts` no longer contains `copyBasisTranscoder()`
