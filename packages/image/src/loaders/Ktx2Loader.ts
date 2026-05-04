@@ -1,1172 +1,339 @@
 /**
- * Ktx2Loader — three-flatland fork of three.js KTX2Loader.
+ * Ktx2Loader — three-flatland's owned KTX2 loader.
  *
- * Adapted from three.js r0.183.1 (`three/examples/jsm/loaders/KTX2Loader.js`),
- * MIT licensed. © 2010-2024 three.js authors.
+ * Originally adapted from three.js r0.183.1 KTX2Loader (MIT, © 2010-2024
+ * three.js authors). Phase 2.1.2 simplified it heavily:
  *
- * Phase 2.1.2 (this commit): TS port. Transcoder-path integration (replacing
- * `setTranscoderPath()` with our owned wasm) lands in T6.
+ * - One long-lived Worker (no pool); falls back to inline main-thread
+ *   transcode when Worker is unavailable (Node, vitest).
+ * - Transcoder runs inside the worker. Main thread never instantiates
+ *   the wasm, never sees transcoder-loader.js — the worker owns it.
+ * - Uses our `@three-flatland/image` zig-built basis_transcoder.wasm
+ *   instead of three's vendored transcoder.
+ * - Only Basis-encoded KTX2 (ETC1S / UASTC / UASTC HDR). Raw KTX2 paths
+ *   (vkFormat≠UNDEFINED, ZSTD supercompression) deferred — re-add behind
+ *   a flag if needed.
+ * - 2D, cubemap (faceCount=6), and array (layerCount>1) textures all
+ *   supported.
+ *
+ * TODO(future-pass-on-recovery): mipmap CPU copies are currently retained
+ * for device-lost recovery (three's standard texture lifecycle). A later
+ * pass on the recovery story may transfer mipmap buffers back to the
+ * worker on `texture.dispose()` to offload main-thread GC. Today's
+ * `RecoveryDescriptor.url` path also handles recovery via re-fetch +
+ * re-transcode, so this optimization is a performance refinement, not a
+ * correctness requirement. See `.library/three-flatland/loader-architecture.md`.
  */
 
 import {
   CompressedArrayTexture,
   CompressedCubeTexture,
   CompressedTexture,
-  Data3DTexture,
-  DataTexture,
   FileLoader,
-  FloatType,
-  HalfFloatType,
   LinearFilter,
   LinearMipmapLinearFilter,
-  NearestFilter,
-  NearestMipmapNearestFilter,
   LinearSRGBColorSpace,
   Loader,
   NoColorSpace,
-  RGBAFormat,
-  RGBA_ASTC_4x4_Format,
-  RGBA_ASTC_6x6_Format,
-  RGBA_BPTC_Format,
-  RGBA_ETC2_EAC_Format,
-  R11_EAC_Format,
-  SIGNED_R11_EAC_Format,
-  RG11_EAC_Format,
-  SIGNED_RG11_EAC_Format,
-  RGBA_PVRTC_4BPPV1_Format,
-  RGBA_PVRTC_2BPPV1_Format,
-  RGBA_S3TC_DXT1_Format,
-  RGBA_S3TC_DXT5_Format,
-  RGB_BPTC_UNSIGNED_Format,
-  RGB_ETC1_Format,
-  RGB_ETC2_Format,
-  RGB_PVRTC_4BPPV1_Format,
-  RGB_S3TC_DXT1_Format,
-  SIGNED_RED_GREEN_RGTC2_Format,
-  SIGNED_RED_RGTC1_Format,
-  RED_GREEN_RGTC2_Format,
-  RED_RGTC1_Format,
-  RGBFormat,
-  RGFormat,
-  RedFormat,
   SRGBColorSpace,
-  UnsignedByteType,
-  UnsignedInt5999Type,
-  UnsignedInt101111Type,
 } from 'three'
 import type { LoadingManager } from 'three'
-import { WorkerPool } from 'three/examples/jsm/utils/WorkerPool.js'
-import {
-  DisplayP3ColorSpace,
-  LinearDisplayP3ColorSpace,
-} from 'three/examples/jsm/math/ColorSpaces.js'
 
-// ktx-parse and zstddec ship from three's examples/jsm/libs/ as un-typed
-// vendored modules. Three's source consumes them as opaque values; we follow
-// suit. Ambient `declare module` shims live in `three-jsm-shims.d.ts`.
-// Real types arrive when T6 wires up our owned transcoder/zstd path.
 import {
-  read,
-  KHR_DF_FLAG_ALPHA_PREMULTIPLIED,
-  KHR_DF_PRIMARIES_BT709,
-  KHR_DF_PRIMARIES_DISPLAYP3,
-  KHR_DF_PRIMARIES_UNSPECIFIED,
-  KHR_DF_TRANSFER_SRGB,
-  KHR_SUPERCOMPRESSION_NONE,
-  KHR_SUPERCOMPRESSION_ZSTD,
-  VK_FORMAT_ASTC_4x4_SFLOAT_BLOCK_EXT,
-  VK_FORMAT_ASTC_6x6_SFLOAT_BLOCK_EXT,
-  VK_FORMAT_ASTC_4x4_SRGB_BLOCK,
-  VK_FORMAT_ASTC_4x4_UNORM_BLOCK,
-  VK_FORMAT_ASTC_6x6_SRGB_BLOCK,
-  VK_FORMAT_ASTC_6x6_UNORM_BLOCK,
-  VK_FORMAT_BC1_RGBA_SRGB_BLOCK,
-  VK_FORMAT_BC1_RGBA_UNORM_BLOCK,
-  VK_FORMAT_BC1_RGB_SRGB_BLOCK,
-  VK_FORMAT_BC1_RGB_UNORM_BLOCK,
-  VK_FORMAT_BC3_SRGB_BLOCK,
-  VK_FORMAT_BC3_UNORM_BLOCK,
-  VK_FORMAT_BC4_SNORM_BLOCK,
-  VK_FORMAT_BC4_UNORM_BLOCK,
-  VK_FORMAT_BC5_SNORM_BLOCK,
-  VK_FORMAT_BC5_UNORM_BLOCK,
-  VK_FORMAT_BC7_SRGB_BLOCK,
-  VK_FORMAT_BC7_UNORM_BLOCK,
-  VK_FORMAT_ETC2_R8G8B8_SRGB_BLOCK,
-  VK_FORMAT_ETC2_R8G8B8A8_SRGB_BLOCK,
-  VK_FORMAT_EAC_R11_UNORM_BLOCK,
-  VK_FORMAT_EAC_R11_SNORM_BLOCK,
-  VK_FORMAT_EAC_R11G11_UNORM_BLOCK,
-  VK_FORMAT_EAC_R11G11_SNORM_BLOCK,
-  VK_FORMAT_PVRTC1_4BPP_SRGB_BLOCK_IMG,
-  VK_FORMAT_PVRTC1_4BPP_UNORM_BLOCK_IMG,
-  VK_FORMAT_PVRTC1_2BPP_SRGB_BLOCK_IMG,
-  VK_FORMAT_PVRTC1_2BPP_UNORM_BLOCK_IMG,
-  VK_FORMAT_R16G16B16A16_SFLOAT,
-  VK_FORMAT_R16G16_SFLOAT,
-  VK_FORMAT_R16_SFLOAT,
-  VK_FORMAT_R32G32B32A32_SFLOAT,
-  VK_FORMAT_R32G32_SFLOAT,
-  VK_FORMAT_R32_SFLOAT,
-  VK_FORMAT_R8G8B8A8_SRGB,
-  VK_FORMAT_R8G8B8A8_UNORM,
-  VK_FORMAT_R8G8_SRGB,
-  VK_FORMAT_R8G8_UNORM,
-  VK_FORMAT_R8_SRGB,
-  VK_FORMAT_R8_UNORM,
-  VK_FORMAT_E5B9G9R9_UFLOAT_PACK32,
-  VK_FORMAT_B10G11R11_UFLOAT_PACK32,
-  VK_FORMAT_UNDEFINED,
-} from 'three/examples/jsm/libs/ktx-parse.module.js'
-import { ZSTDDecoder } from 'three/examples/jsm/libs/zstddec.module.js'
+  transcodeKtx2,
+  type Ktx2Capabilities,
+  type Ktx2TranscodeResult,
+} from './ktx2-transcode.js'
 
-export interface KTX2LoaderWorkerConfig {
-  astcSupported: boolean
-  astcHDRSupported: boolean
-  etc1Supported: boolean
-  etc2Supported: boolean
-  dxtSupported: boolean
-  bptcSupported: boolean
-  pvrtcSupported: boolean
+// KHR Data Format Descriptor constants from the KTX2 spec.
+const KHR_DF_TRANSFER_SRGB = 2
+const KHR_DF_FLAG_ALPHA_PREMULTIPLIED = 1
+
+// Worker message types — keep in sync with ktx2-worker.ts.
+interface TranscodeDone {
+  type: 'transcode-done'
+  id: number
+  result: Ktx2TranscodeResult
 }
+interface TranscodeError {
+  type: 'transcode-error'
+  id: number
+  message: string
+}
+type WorkerResponse = TranscodeDone | TranscodeError
 
-const _taskCache: WeakMap<ArrayBuffer, { promise: Promise<any> }> = new WeakMap()
+// Three's @types narrow the generic on CompressedTexture vs CompressedArrayTexture
+// (the array variant accepts `CompressedTextureImageData[]` per layer);
+// widening here so the union can hold any of the three variants without
+// per-call casts at consumer code.
+type AnyCompressedTexture =
+  | CompressedTexture
+  | CompressedCubeTexture
+  | InstanceType<typeof CompressedArrayTexture>
 
-let _activeLoaders = 0
-
-let _zstd: Promise<any> | undefined
-
-/**
- * A loader for KTX 2.0 GPU Texture containers.
- *
- * KTX 2.0 is a container format for various GPU texture formats. The loader supports Basis Universal GPU textures,
- * which can be quickly transcoded to a wide variety of GPU texture compression formats. While KTX 2.0 also allows
- * other hardware-specific formats, this loader does not yet parse them.
- *
- * This loader parses the KTX 2.0 container and transcodes to a supported GPU compressed texture format.
- * The required WASM transcoder and JS wrapper are available from the `examples/jsm/libs/basis` directory.
- *
- * This loader relies on Web Assembly which is not supported in older browsers.
- */
-class Ktx2Loader extends Loader<CompressedTexture> {
-  transcoderPath: string
-  transcoderBinary: ArrayBuffer | null
-  transcoderPending: Promise<void> | null
-
-  workerPool: any
-  workerSourceURL: string
-  workerConfig: KTX2LoaderWorkerConfig | null
-
-  static BasisFormat: { ETC1S: number; UASTC: number; UASTC_HDR: number }
-  static TranscoderFormat: Record<string, number>
-  static EngineFormat: Record<string, number>
-  static EngineType: Record<string, number>
-  static BasisWorker: () => void
+class Ktx2Loader extends Loader<AnyCompressedTexture> {
+  private workerConfig: Ktx2Capabilities | null = null
+  private worker: Worker | null = null
+  private workerLoadAttempted = false
+  private nextId = 0
+  private pending = new Map<
+    number,
+    { resolve: (r: Ktx2TranscodeResult) => void; reject: (e: Error) => void }
+  >()
 
   constructor(manager?: LoadingManager) {
     super(manager)
-
-    this.transcoderPath = ''
-    this.transcoderBinary = null
-    this.transcoderPending = null
-
-    this.workerPool = new WorkerPool()
-    this.workerSourceURL = ''
-    this.workerConfig = null
-
-    if (typeof (globalThis as any).MSC_TRANSCODER !== 'undefined') {
-      console.warn(
-        'THREE.KTX2Loader: Please update to latest "basis_transcoder".' +
-          ' "msc_basis_transcoder" is no longer supported in three.js r125+.',
-      )
-    }
   }
 
   /**
-   * Sets the transcoder path.
-   */
-  setTranscoderPath(path: string): this {
-    this.transcoderPath = path
-
-    return this
-  }
-
-  /**
-   * Sets the maximum number of Web Workers to be allocated by this instance.
-   */
-  setWorkerLimit(workerLimit: number): this {
-    this.workerPool.setWorkerLimit(workerLimit)
-
-    return this
-  }
-
-  /**
-   * Async version of {@link Ktx2Loader#detectSupport}.
+   * Detects hardware support for compressed texture formats. Must be
+   * called with a renderer before `load()` / `parse()` so we can pick a
+   * transcoder target the GPU can actually upload.
    *
-   * @deprecated
+   * Accepts WebGLRenderer or WebGPURenderer (duck-typed via
+   * `isWebGPURenderer`). For renderer-less use (e.g., Node tests), call
+   * `setSupportedFormats(...)` instead.
    */
-  async detectSupportAsync(renderer: any): Promise<this> {
-    console.warn(
-      'KTX2Loader: "detectSupportAsync()" has been deprecated. Use "detectSupport()" and "await renderer.init();" when creating the renderer.',
-    ) // @deprecated r181
-
-    await renderer.init()
-
-    return this.detectSupport(renderer)
-  }
-
-  /**
-   * Detects hardware support for available compressed texture formats, to determine
-   * the output format for the transcoder. Must be called before loading a texture.
-   */
-  detectSupport(renderer: any): this {
+  detectSupport(renderer: { isWebGPURenderer?: boolean } & Record<string, any>): this {
     if (renderer.isWebGPURenderer === true) {
       this.workerConfig = {
         astcSupported: renderer.hasFeature('texture-compression-astc'),
-        astcHDRSupported: false, // https://github.com/gpuweb/gpuweb/issues/3856
+        astcHDRSupported: false, // gpuweb/gpuweb#3856
         etc1Supported: renderer.hasFeature('texture-compression-etc1'),
         etc2Supported: renderer.hasFeature('texture-compression-etc2'),
         dxtSupported: renderer.hasFeature('texture-compression-s3tc'),
         bptcSupported: renderer.hasFeature('texture-compression-bc'),
         pvrtcSupported: renderer.hasFeature('texture-compression-pvrtc'),
       }
-    } else {
-      this.workerConfig = {
-        astcSupported: renderer.extensions.has('WEBGL_compressed_texture_astc'),
-        astcHDRSupported:
-          renderer.extensions.has('WEBGL_compressed_texture_astc') &&
-          renderer.extensions
-            .get('WEBGL_compressed_texture_astc')
-            .getSupportedProfiles()
-            .includes('hdr'),
-        etc1Supported: renderer.extensions.has('WEBGL_compressed_texture_etc1'),
-        etc2Supported: renderer.extensions.has('WEBGL_compressed_texture_etc'),
-        dxtSupported: renderer.extensions.has('WEBGL_compressed_texture_s3tc'),
-        bptcSupported: renderer.extensions.has('EXT_texture_compression_bptc'),
-        pvrtcSupported:
-          renderer.extensions.has('WEBGL_compressed_texture_pvrtc') ||
-          renderer.extensions.has('WEBKIT_WEBGL_compressed_texture_pvrtc'),
-      }
-
-      if (
-        typeof navigator !== 'undefined' &&
-        typeof navigator.platform !== 'undefined' &&
-        typeof navigator.userAgent !== 'undefined' &&
-        navigator.platform.indexOf('Linux') >= 0 &&
-        navigator.userAgent.indexOf('Firefox') >= 0 &&
-        this.workerConfig.astcSupported &&
-        this.workerConfig.etc2Supported &&
-        this.workerConfig.bptcSupported &&
-        this.workerConfig.dxtSupported
-      ) {
-        // On Linux, Mesa drivers for AMD and Intel GPUs expose ETC2 and ASTC even though the hardware doesn't support these.
-        // Using these extensions will result in expensive software decompression on the main thread inside the driver, causing performance issues.
-        // When using ANGLE (e.g. via Chrome), these extensions are not exposed except for some specific Intel GPU models - however, Firefox doesn't perform this filtering.
-        // Since a granular filter is a little too fragile and we can transcode into other GPU formats, disable formats that are likely to be emulated.
-
-        this.workerConfig.astcSupported = false
-        this.workerConfig.etc2Supported = false
-      }
+      return this
     }
 
+    const exts = renderer.extensions as { has(n: string): boolean; get(n: string): any }
+    const caps: Ktx2Capabilities = {
+      astcSupported: exts.has('WEBGL_compressed_texture_astc'),
+      astcHDRSupported:
+        exts.has('WEBGL_compressed_texture_astc') &&
+        exts.get('WEBGL_compressed_texture_astc').getSupportedProfiles().includes('hdr'),
+      etc1Supported: exts.has('WEBGL_compressed_texture_etc1'),
+      etc2Supported: exts.has('WEBGL_compressed_texture_etc'),
+      dxtSupported: exts.has('WEBGL_compressed_texture_s3tc'),
+      bptcSupported: exts.has('EXT_texture_compression_bptc'),
+      pvrtcSupported:
+        exts.has('WEBGL_compressed_texture_pvrtc') ||
+        exts.has('WEBKIT_WEBGL_compressed_texture_pvrtc'),
+    }
+
+    // Linux/Mesa workaround copied from three's KTX2Loader: ETC2 + ASTC
+    // are exposed by Mesa drivers but software-decompressed at upload,
+    // causing main-thread stalls. Disabling them forces the transcoder
+    // to pick BC/uncompressed instead.
+    if (
+      typeof navigator !== 'undefined' &&
+      navigator.platform?.includes('Linux') &&
+      navigator.userAgent?.includes('Firefox') &&
+      caps.astcSupported &&
+      caps.etc2Supported &&
+      caps.bptcSupported &&
+      caps.dxtSupported
+    ) {
+      caps.astcSupported = false
+      caps.etc2Supported = false
+    }
+
+    this.workerConfig = caps
     return this
   }
 
-  // TODO: Make this method private
-
-  init(): Promise<void> {
-    if (!this.transcoderPending) {
-      // Load transcoder wrapper.
-      const jsLoader = new FileLoader(this.manager)
-      jsLoader.setPath(this.transcoderPath)
-      jsLoader.setWithCredentials(this.withCredentials)
-      const jsContent = jsLoader.loadAsync('basis_transcoder.js')
-
-      // Load transcoder WASM binary.
-      const binaryLoader = new FileLoader(this.manager)
-      binaryLoader.setPath(this.transcoderPath)
-      binaryLoader.setResponseType('arraybuffer')
-      binaryLoader.setWithCredentials(this.withCredentials)
-      const binaryContent = binaryLoader.loadAsync('basis_transcoder.wasm')
-
-      this.transcoderPending = Promise.all([jsContent, binaryContent]).then(
-        ([jsContent, binaryContent]) => {
-          const fn = Ktx2Loader.BasisWorker.toString()
-
-          const body = [
-            '/* constants */',
-            'let _EngineFormat = ' + JSON.stringify(Ktx2Loader.EngineFormat),
-            'let _EngineType = ' + JSON.stringify(Ktx2Loader.EngineType),
-            'let _TranscoderFormat = ' + JSON.stringify(Ktx2Loader.TranscoderFormat),
-            'let _BasisFormat = ' + JSON.stringify(Ktx2Loader.BasisFormat),
-            '/* basis_transcoder.js */',
-            jsContent,
-            '/* worker */',
-            fn.substring(fn.indexOf('{') + 1, fn.lastIndexOf('}')),
-          ].join('\n')
-
-          this.workerSourceURL = URL.createObjectURL(new Blob([body as any]))
-          this.transcoderBinary = binaryContent as ArrayBuffer
-
-          this.workerPool.setWorkerCreator(() => {
-            const worker = new Worker(this.workerSourceURL)
-            const transcoderBinary = (this.transcoderBinary as ArrayBuffer).slice(0)
-
-            worker.postMessage(
-              { type: 'init', config: this.workerConfig, transcoderBinary },
-              [transcoderBinary],
-            )
-
-            return worker
-          })
-        },
-      )
-
-      if (_activeLoaders > 0) {
-        // Each instance loads a transcoder and allocates workers, increasing network and memory cost.
-
-        console.warn(
-          'THREE.KTX2Loader: Multiple active KTX2 loaders may cause performance issues.' +
-            ' Use a single KTX2Loader instance, or call .dispose() on old instances.',
-        )
-      }
-
-      _activeLoaders++
-    }
-
-    return this.transcoderPending as Promise<void>
+  /**
+   * Bypass renderer-based detection. Useful for inspect-mode (where the
+   * renderer is a throwaway) or testing.
+   */
+  setSupportedFormats(caps: Ktx2Capabilities): this {
+    this.workerConfig = caps
+    return this
   }
 
-  /**
-   * Starts loading from the given URL and passes the loaded KTX2 texture
-   * to the `onLoad()` callback.
-   */
   load(
     url: string,
-    onLoad: (texture: CompressedTexture) => void,
+    onLoad: (texture: AnyCompressedTexture) => void,
     onProgress?: (event: ProgressEvent) => void,
     onError?: (err: unknown) => void,
   ): void {
     if (this.workerConfig === null) {
-      throw new Error('THREE.KTX2Loader: Missing initialization with `.detectSupport( renderer )`.')
+      throw new Error('Ktx2Loader: call detectSupport() or setSupportedFormats() before load()')
     }
-
-    const loader = new FileLoader(this.manager)
-
-    loader.setPath(this.path)
-    loader.setCrossOrigin(this.crossOrigin)
-    loader.setWithCredentials(this.withCredentials)
-    loader.setRequestHeader(this.requestHeader)
-    loader.setResponseType('arraybuffer')
-
-    loader.load(
+    const fileLoader = new FileLoader(this.manager)
+    fileLoader.setPath(this.path)
+    fileLoader.setCrossOrigin(this.crossOrigin)
+    fileLoader.setWithCredentials(this.withCredentials)
+    fileLoader.setRequestHeader(this.requestHeader)
+    fileLoader.setResponseType('arraybuffer')
+    fileLoader.load(
       url,
       (buffer) => {
-        this.parse(buffer as ArrayBuffer, onLoad, onError)
+        this.parse(buffer as ArrayBuffer)
+          .then(onLoad)
+          .catch(onError ?? ((err) => console.error('Ktx2Loader:', err)))
       },
       onProgress,
       onError,
     )
   }
 
+  loadAsync(url: string, onProgress?: (event: ProgressEvent) => void): Promise<AnyCompressedTexture> {
+    return new Promise((resolve, reject) => {
+      this.load(url, resolve, onProgress, reject)
+    })
+  }
+
   /**
-   * Parses the given KTX2 data.
+   * Transcode raw KTX2 bytes into a CompressedTexture. The input buffer
+   * is transferred to the worker (caller loses ownership).
    */
-  parse(
-    buffer: ArrayBuffer,
-    onLoad?: (texture: CompressedTexture) => void,
-    onError?: (err: unknown) => void,
-  ): any {
+  async parse(buffer: ArrayBuffer): Promise<AnyCompressedTexture> {
     if (this.workerConfig === null) {
-      throw new Error('THREE.KTX2Loader: Missing initialization with `.detectSupport( renderer )`.')
+      throw new Error('Ktx2Loader: call detectSupport() or setSupportedFormats() before parse()')
     }
-
-    // Check for an existing task using this buffer. A transferred buffer cannot be transferred
-    // again from this thread.
-    if (_taskCache.has(buffer)) {
-      const cachedTask = _taskCache.get(buffer)!
-
-      return cachedTask.promise.then(onLoad).catch(onError)
-    }
-
-    this._createTexture(buffer)
-      .then((texture) => (onLoad ? onLoad(texture) : null))
-      .catch(onError)
+    const result = await this.runTranscode(buffer, this.workerConfig)
+    return buildTexture(result)
   }
 
-  _createTextureFrom(transcodeResult: any, container: any): any {
-    const {
-      type: messageType,
-      error,
-      data: { faces, width, height, format, type, dfdFlags },
-    } = transcodeResult
-
-    if (messageType === 'error') return Promise.reject(error)
-
-    let texture: any
-
-    if (container.faceCount === 6) {
-      texture = new CompressedCubeTexture(faces, format, type)
-    } else {
-      const mipmaps = faces[0].mipmaps
-
-      texture =
-        container.layerCount > 1
-          ? new CompressedArrayTexture(mipmaps, width, height, container.layerCount, format, type)
-          : new CompressedTexture(mipmaps, width, height, format, type)
-    }
-
-    texture.minFilter = faces[0].mipmaps.length === 1 ? LinearFilter : LinearMipmapLinearFilter
-    texture.magFilter = LinearFilter
-    texture.generateMipmaps = false
-
-    texture.needsUpdate = true
-    texture.colorSpace = parseColorSpace(container)
-    texture.premultiplyAlpha = !!(dfdFlags & KHR_DF_FLAG_ALPHA_PREMULTIPLIED)
-
-    return texture
+  private async runTranscode(
+    buffer: ArrayBuffer,
+    caps: Ktx2Capabilities,
+  ): Promise<Ktx2TranscodeResult> {
+    const worker = this.getWorker()
+    if (worker) return this.transcodeViaWorker(worker, buffer, caps)
+    // Fallback: Node + vitest — run on the calling thread. Production
+    // browser code always takes the worker path.
+    return transcodeKtx2(buffer, caps)
   }
 
-  /**
-   * @private
-   */
-  async _createTexture(buffer: ArrayBuffer, config: any = {}): Promise<any> {
-    const container = read(new Uint8Array(buffer))
-
-    // Basis UASTC HDR is a subset of ASTC, which can be transcoded efficiently
-    // to BC6H. To detect whether a KTX2 file uses Basis UASTC HDR, or default
-    // ASTC, inspect the DFD color model.
-    //
-    // Source: https://github.com/BinomialLLC/basis_universal/issues/381
-    const isBasisHDR =
-      container.vkFormat === VK_FORMAT_ASTC_4x4_SFLOAT_BLOCK_EXT &&
-      container.dataFormatDescriptor[0].colorModel === 0xa7
-
-    // If the device supports ASTC, Basis UASTC HDR requires no transcoder.
-    const needsTranscoder =
-      container.vkFormat === VK_FORMAT_UNDEFINED ||
-      (isBasisHDR && !this.workerConfig!.astcHDRSupported)
-
-    if (!needsTranscoder) {
-      return createRawTexture(container)
+  private getWorker(): Worker | null {
+    if (this.workerLoadAttempted) return this.worker
+    this.workerLoadAttempted = true
+    if (typeof Worker === 'undefined') return null
+    try {
+      const w = new Worker(new URL('./ktx2-worker.js', import.meta.url), { type: 'module' })
+      w.addEventListener('message', (e: MessageEvent<WorkerResponse>) => this.onWorkerMessage(e))
+      w.addEventListener('error', (e) => this.onWorkerError(e))
+      this.worker = w
+      return w
+    } catch {
+      return null
     }
+  }
 
-    //
-    const taskConfig = config
-    const texturePending = this.init()
-      .then(() => {
-        return this.workerPool.postMessage(
-          { type: 'transcode', buffer, taskConfig: taskConfig },
-          [buffer],
-        )
-      })
-      .then((e: any) => this._createTextureFrom(e.data, container))
+  private onWorkerMessage(e: MessageEvent<WorkerResponse>): void {
+    const msg = e.data
+    const handlers = this.pending.get(msg.id)
+    if (!handlers) return
+    this.pending.delete(msg.id)
+    if (msg.type === 'transcode-done') handlers.resolve(msg.result)
+    else handlers.reject(new Error(msg.message))
+  }
 
-    // Cache the task result.
-    _taskCache.set(buffer, { promise: texturePending })
+  private onWorkerError(_e: ErrorEvent): void {
+    // Reject all pending — worker is unrecoverable.
+    const err = new Error('Ktx2Loader: worker crashed')
+    for (const h of this.pending.values()) h.reject(err)
+    this.pending.clear()
+    this.worker = null
+  }
 
-    return texturePending
+  private transcodeViaWorker(
+    worker: Worker,
+    buffer: ArrayBuffer,
+    caps: Ktx2Capabilities,
+  ): Promise<Ktx2TranscodeResult> {
+    const id = this.nextId++
+    return new Promise<Ktx2TranscodeResult>((resolve, reject) => {
+      this.pending.set(id, { resolve, reject })
+      worker.postMessage({ type: 'transcode', id, buffer, caps }, [buffer])
+    })
   }
 
   /**
-   * Frees internal resources. This method should be called
-   * when the loader is no longer required.
+   * Releases the worker. Pending transcodes reject. Re-running `parse()`
+   * after dispose spawns a new worker.
    */
   dispose(): this {
-    this.workerPool.dispose()
-    if (this.workerSourceURL) URL.revokeObjectURL(this.workerSourceURL)
-
-    _activeLoaders--
-
+    if (this.worker) {
+      const err = new Error('Ktx2Loader: disposed')
+      for (const h of this.pending.values()) h.reject(err)
+      this.pending.clear()
+      this.worker.terminate()
+      this.worker = null
+    }
+    this.workerLoadAttempted = false
     return this
   }
 }
 
-/* CONSTANTS */
+// ── Texture construction ───────────────────────────────────────────────────
 
-Ktx2Loader.BasisFormat = {
-  ETC1S: 0,
-  UASTC: 1,
-  UASTC_HDR: 2,
-}
+function buildTexture(result: Ktx2TranscodeResult): AnyCompressedTexture {
+  const colorSpace = parseColorSpace(result)
+  const premultiply = !!(result.dfdFlags & KHR_DF_FLAG_ALPHA_PREMULTIPLIED)
+  const minFilter =
+    result.faces[0]!.mipmaps.length === 1 ? LinearFilter : LinearMipmapLinearFilter
 
-// Source: https://github.com/BinomialLLC/basis_universal/blob/master/webgl/texture_test/index.html
-Ktx2Loader.TranscoderFormat = {
-  ETC1: 0,
-  ETC2: 1,
-  BC1: 2,
-  BC3: 3,
-  BC4: 4,
-  BC5: 5,
-  BC7_M6_OPAQUE_ONLY: 6,
-  BC7_M5: 7,
-  PVRTC1_4_RGB: 8,
-  PVRTC1_4_RGBA: 9,
-  ASTC_4x4: 10,
-  ATC_RGB: 11,
-  ATC_RGBA_INTERPOLATED_ALPHA: 12,
-  RGBA32: 13,
-  RGB565: 14,
-  BGR565: 15,
-  RGBA4444: 16,
-  BC6H: 22,
-  RGB_HALF: 24,
-  RGBA_HALF: 25,
-}
+  let texture: AnyCompressedTexture
 
-Ktx2Loader.EngineFormat = {
-  RGBAFormat: RGBAFormat,
-  RGBA_ASTC_4x4_Format: RGBA_ASTC_4x4_Format,
-  RGB_BPTC_UNSIGNED_Format: RGB_BPTC_UNSIGNED_Format,
-  RGBA_BPTC_Format: RGBA_BPTC_Format,
-  RGBA_ETC2_EAC_Format: RGBA_ETC2_EAC_Format,
-  RGBA_PVRTC_4BPPV1_Format: RGBA_PVRTC_4BPPV1_Format,
-  RGBA_S3TC_DXT5_Format: RGBA_S3TC_DXT5_Format,
-  RGB_ETC1_Format: RGB_ETC1_Format,
-  RGB_ETC2_Format: RGB_ETC2_Format,
-  RGB_PVRTC_4BPPV1_Format: RGB_PVRTC_4BPPV1_Format,
-  RGBA_S3TC_DXT1_Format: RGBA_S3TC_DXT1_Format,
-}
+  // Three's @types use narrow union enums for format/type that can't see
+  // through our numeric pass-through. The runtime accepts any number; we
+  // cast to keep the JS contract explicit rather than fight the types.
+  const fmt = result.format as never
+  const typ = result.type as never
 
-Ktx2Loader.EngineType = {
-  UnsignedByteType: UnsignedByteType,
-  HalfFloatType: HalfFloatType,
-  FloatType: FloatType,
-}
-
-/* WEB WORKER */
-
-// NOTE: This function is serialized via `.toString()` and the body is concatenated
-// with the basis_transcoder.js source to form the worker source. It runs in
-// worker scope (no access to imports), so internal references like `_EngineFormat`
-// are populated by the wrapping init body. Treat the contents as opaque JS.
-Ktx2Loader.BasisWorker = function (): void {
-  let config: any
-  let transcoderPending: Promise<void>
-  let BasisModule: any
-
-  // The constants below are injected at the top of the worker source string by
-  // `init()` — they are NOT real ES module bindings and intentionally trip
-  // `no-undef` in lint, mirroring three's source.
-  // @ts-expect-error - injected by worker source assembly.
-  const EngineFormat = _EngineFormat // eslint-disable-line no-undef
-  // @ts-expect-error - injected by worker source assembly.
-  const EngineType = _EngineType // eslint-disable-line no-undef
-  // @ts-expect-error - injected by worker source assembly.
-  const TranscoderFormat = _TranscoderFormat // eslint-disable-line no-undef
-  // @ts-expect-error - injected by worker source assembly.
-  const BasisFormat = _BasisFormat // eslint-disable-line no-undef
-
-  self.addEventListener('message', function (e: MessageEvent) {
-    const message = e.data
-
-    switch (message.type) {
-      case 'init':
-        config = message.config
-        init(message.transcoderBinary)
-        break
-
-      case 'transcode':
-        transcoderPending.then(() => {
-          try {
-            const { faces, buffers, width, height, hasAlpha, format, type, dfdFlags } = transcode(
-              message.buffer,
-            )
-
-            self.postMessage(
-              {
-                type: 'transcode',
-                id: message.id,
-                data: { faces, width, height, hasAlpha, format, type, dfdFlags },
-              },
-              buffers,
-            )
-          } catch (error: any) {
-            console.error(error)
-
-            self.postMessage({ type: 'error', id: message.id, error: error.message })
-          }
-        })
-        break
-    }
-  })
-
-  function init(wasmBinary: ArrayBuffer): void {
-    transcoderPending = new Promise<void>((resolve) => {
-      BasisModule = { wasmBinary, onRuntimeInitialized: resolve }
-      // @ts-expect-error - BASIS is a global injected by basis_transcoder.js.
-      BASIS(BasisModule) // eslint-disable-line no-undef
-    }).then(() => {
-      BasisModule.initializeBasis()
-
-      if (BasisModule.KTX2File === undefined) {
-        console.warn('THREE.KTX2Loader: Please update Basis Universal transcoder.')
-      }
-    })
-  }
-
-  function transcode(buffer: ArrayBuffer): any {
-    const ktx2File = new BasisModule.KTX2File(new Uint8Array(buffer))
-
-    function cleanup(): void {
-      ktx2File.close()
-      ktx2File.delete()
-    }
-
-    if (!ktx2File.isValid()) {
-      cleanup()
-      throw new Error('THREE.KTX2Loader:	Invalid or unsupported .ktx2 file')
-    }
-
-    let basisFormat: number
-
-    if (ktx2File.isUASTC()) {
-      basisFormat = BasisFormat.UASTC
-    } else if (ktx2File.isETC1S()) {
-      basisFormat = BasisFormat.ETC1S
-    } else if (ktx2File.isHDR()) {
-      basisFormat = BasisFormat.UASTC_HDR
-    } else {
-      throw new Error('THREE.KTX2Loader: Unknown Basis encoding')
-    }
-
-    const width = ktx2File.getWidth()
-    const height = ktx2File.getHeight()
-    const layerCount = ktx2File.getLayers() || 1
-    const levelCount = ktx2File.getLevels()
-    const faceCount = ktx2File.getFaces()
-    const hasAlpha = ktx2File.getHasAlpha()
-    const dfdFlags = ktx2File.getDFDFlags()
-
-    const { transcoderFormat, engineFormat, engineType } = getTranscoderFormat(
-      basisFormat,
-      width,
-      height,
-      hasAlpha,
+  if (result.faceCount === 6) {
+    // Cubemap — three's CompressedCubeTexture takes the array of faces.
+    texture = new CompressedCubeTexture(
+      result.faces as unknown as CompressedTexture[],
+      fmt,
+      typ,
     )
-
-    if (!width || !height || !levelCount) {
-      cleanup()
-      throw new Error('THREE.KTX2Loader:	Invalid texture')
-    }
-
-    if (!ktx2File.startTranscoding()) {
-      cleanup()
-      throw new Error('THREE.KTX2Loader: .startTranscoding failed')
-    }
-
-    const faces: any[] = []
-    const buffers: ArrayBuffer[] = []
-
-    for (let face = 0; face < faceCount; face++) {
-      const mipmaps: any[] = []
-
-      for (let mip = 0; mip < levelCount; mip++) {
-        const layerMips: any[] = []
-
-        let mipWidth: number = 0
-        let mipHeight: number = 0
-
-        for (let layer = 0; layer < layerCount; layer++) {
-          const levelInfo = ktx2File.getImageLevelInfo(mip, layer, face)
-
-          if (
-            face === 0 &&
-            mip === 0 &&
-            layer === 0 &&
-            (levelInfo.origWidth % 4 !== 0 || levelInfo.origHeight % 4 !== 0)
-          ) {
-            console.warn(
-              'THREE.KTX2Loader: ETC1S and UASTC textures should use multiple-of-four dimensions.',
-            )
-          }
-
-          if (levelCount > 1) {
-            mipWidth = levelInfo.origWidth
-            mipHeight = levelInfo.origHeight
-          } else {
-            // Handles non-multiple-of-four dimensions in textures without mipmaps. Textures with
-            // mipmaps must use multiple-of-four dimensions, for some texture formats and APIs.
-            // See mrdoob/three.js#25908.
-            mipWidth = levelInfo.width
-            mipHeight = levelInfo.height
-          }
-
-          let dst: any = new Uint8Array(
-            ktx2File.getImageTranscodedSizeInBytes(mip, layer, 0, transcoderFormat),
-          )
-          const status = ktx2File.transcodeImage(
-            dst,
-            mip,
-            layer,
-            face,
-            transcoderFormat,
-            0,
-            -1,
-            -1,
-          )
-
-          if (engineType === EngineType.HalfFloatType) {
-            dst = new Uint16Array(
-              dst.buffer,
-              dst.byteOffset,
-              dst.byteLength / Uint16Array.BYTES_PER_ELEMENT,
-            )
-          }
-
-          if (!status) {
-            cleanup()
-            throw new Error('THREE.KTX2Loader: .transcodeImage failed.')
-          }
-
-          layerMips.push(dst)
-        }
-
-        const mipData = concat(layerMips)
-
-        mipmaps.push({ data: mipData, width: mipWidth, height: mipHeight })
-        buffers.push(mipData.buffer as ArrayBuffer)
-      }
-
-      faces.push({ mipmaps, width, height, format: engineFormat, type: engineType })
-    }
-
-    cleanup()
-
-    return { faces, buffers, width, height, hasAlpha, dfdFlags, format: engineFormat, type: engineType }
-  }
-
-  //
-
-  // Optimal choice of a transcoder target format depends on the Basis format (ETC1S, UASTC, or
-  // UASTC HDR), device capabilities, and texture dimensions. The list below ranks the formats
-  // separately for each format. Currently, priority is assigned based on:
-  //
-  //   high quality > low quality > uncompressed
-  //
-  // Prioritization may be revisited, or exposed for configuration, in the future.
-  //
-  // Reference: https://github.com/KhronosGroup/3D-Formats-Guidelines/blob/main/KTXDeveloperGuide.md
-  const FORMAT_OPTIONS: any[] = [
-    {
-      if: 'astcSupported',
-      basisFormat: [BasisFormat.UASTC],
-      transcoderFormat: [TranscoderFormat.ASTC_4x4, TranscoderFormat.ASTC_4x4],
-      engineFormat: [EngineFormat.RGBA_ASTC_4x4_Format, EngineFormat.RGBA_ASTC_4x4_Format],
-      engineType: [EngineType.UnsignedByteType],
-      priorityETC1S: Infinity,
-      priorityUASTC: 1,
-      needsPowerOfTwo: false,
-    },
-    {
-      if: 'bptcSupported',
-      basisFormat: [BasisFormat.ETC1S, BasisFormat.UASTC],
-      transcoderFormat: [TranscoderFormat.BC7_M5, TranscoderFormat.BC7_M5],
-      engineFormat: [EngineFormat.RGBA_BPTC_Format, EngineFormat.RGBA_BPTC_Format],
-      engineType: [EngineType.UnsignedByteType],
-      priorityETC1S: 3,
-      priorityUASTC: 2,
-      needsPowerOfTwo: false,
-    },
-    {
-      if: 'dxtSupported',
-      basisFormat: [BasisFormat.ETC1S, BasisFormat.UASTC],
-      transcoderFormat: [TranscoderFormat.BC1, TranscoderFormat.BC3],
-      engineFormat: [EngineFormat.RGBA_S3TC_DXT1_Format, EngineFormat.RGBA_S3TC_DXT5_Format],
-      engineType: [EngineType.UnsignedByteType],
-      priorityETC1S: 4,
-      priorityUASTC: 5,
-      needsPowerOfTwo: false,
-    },
-    {
-      if: 'etc2Supported',
-      basisFormat: [BasisFormat.ETC1S, BasisFormat.UASTC],
-      transcoderFormat: [TranscoderFormat.ETC1, TranscoderFormat.ETC2],
-      engineFormat: [EngineFormat.RGB_ETC2_Format, EngineFormat.RGBA_ETC2_EAC_Format],
-      engineType: [EngineType.UnsignedByteType],
-      priorityETC1S: 1,
-      priorityUASTC: 3,
-      needsPowerOfTwo: false,
-    },
-    {
-      if: 'etc1Supported',
-      basisFormat: [BasisFormat.ETC1S, BasisFormat.UASTC],
-      transcoderFormat: [TranscoderFormat.ETC1],
-      engineFormat: [EngineFormat.RGB_ETC1_Format],
-      engineType: [EngineType.UnsignedByteType],
-      priorityETC1S: 2,
-      priorityUASTC: 4,
-      needsPowerOfTwo: false,
-    },
-    {
-      if: 'pvrtcSupported',
-      basisFormat: [BasisFormat.ETC1S, BasisFormat.UASTC],
-      transcoderFormat: [TranscoderFormat.PVRTC1_4_RGB, TranscoderFormat.PVRTC1_4_RGBA],
-      engineFormat: [EngineFormat.RGB_PVRTC_4BPPV1_Format, EngineFormat.RGBA_PVRTC_4BPPV1_Format],
-      engineType: [EngineType.UnsignedByteType],
-      priorityETC1S: 5,
-      priorityUASTC: 6,
-      needsPowerOfTwo: true,
-    },
-    {
-      if: 'bptcSupported',
-      basisFormat: [BasisFormat.UASTC_HDR],
-      transcoderFormat: [TranscoderFormat.BC6H],
-      engineFormat: [EngineFormat.RGB_BPTC_UNSIGNED_Format],
-      engineType: [EngineType.HalfFloatType],
-      priorityHDR: 1,
-      needsPowerOfTwo: false,
-    },
-
-    // Uncompressed fallbacks.
-
-    {
-      basisFormat: [BasisFormat.ETC1S, BasisFormat.UASTC],
-      transcoderFormat: [TranscoderFormat.RGBA32, TranscoderFormat.RGBA32],
-      engineFormat: [EngineFormat.RGBAFormat, EngineFormat.RGBAFormat],
-      engineType: [EngineType.UnsignedByteType, EngineType.UnsignedByteType],
-      priorityETC1S: 100,
-      priorityUASTC: 100,
-      needsPowerOfTwo: false,
-    },
-    {
-      basisFormat: [BasisFormat.UASTC_HDR],
-      transcoderFormat: [TranscoderFormat.RGBA_HALF],
-      engineFormat: [EngineFormat.RGBAFormat],
-      engineType: [EngineType.HalfFloatType],
-      priorityHDR: 100,
-      needsPowerOfTwo: false,
-    },
-  ]
-
-  const OPTIONS: any = {
-    [BasisFormat.ETC1S]: FORMAT_OPTIONS.filter((opt) =>
-      opt.basisFormat.includes(BasisFormat.ETC1S),
-    ).sort((a, b) => a.priorityETC1S - b.priorityETC1S),
-
-    [BasisFormat.UASTC]: FORMAT_OPTIONS.filter((opt) =>
-      opt.basisFormat.includes(BasisFormat.UASTC),
-    ).sort((a, b) => a.priorityUASTC - b.priorityUASTC),
-
-    [BasisFormat.UASTC_HDR]: FORMAT_OPTIONS.filter((opt) =>
-      opt.basisFormat.includes(BasisFormat.UASTC_HDR),
-    ).sort((a, b) => a.priorityHDR - b.priorityHDR),
-  }
-
-  function getTranscoderFormat(
-    basisFormat: number,
-    width: number,
-    height: number,
-    hasAlpha: boolean,
-  ): any {
-    const options = OPTIONS[basisFormat]
-
-    for (let i = 0; i < options.length; i++) {
-      const opt = options[i]
-
-      if (opt.if && !config[opt.if]) continue
-      if (!opt.basisFormat.includes(basisFormat)) continue
-      if (hasAlpha && opt.transcoderFormat.length < 2) continue
-      if (opt.needsPowerOfTwo && !(isPowerOfTwo(width) && isPowerOfTwo(height))) continue
-
-      const transcoderFormat = opt.transcoderFormat[hasAlpha ? 1 : 0]
-      const engineFormat = opt.engineFormat[hasAlpha ? 1 : 0]
-      const engineType = opt.engineType[0]
-
-      return { transcoderFormat, engineFormat, engineType }
-    }
-
-    throw new Error('THREE.KTX2Loader: Failed to identify transcoding target.')
-  }
-
-  function isPowerOfTwo(value: number): boolean {
-    if (value <= 2) return true
-
-    return (value & (value - 1)) === 0 && value !== 0
-  }
-
-  /**
-   * Concatenates N byte arrays.
-   */
-  function concat(arrays: Uint8Array[]): Uint8Array {
-    if (arrays.length === 1) return arrays[0]!
-
-    let totalByteLength = 0
-
-    for (let i = 0; i < arrays.length; i++) {
-      const array = arrays[i]!
-      totalByteLength += array.byteLength
-    }
-
-    const result = new Uint8Array(totalByteLength)
-
-    let byteOffset = 0
-
-    for (let i = 0; i < arrays.length; i++) {
-      const array = arrays[i]!
-      result.set(array, byteOffset)
-
-      byteOffset += array.byteLength
-    }
-
-    return result
-  }
-}
-
-// Parsing for non-Basis textures. These textures may have supercompression
-// like Zstd, but they do not require transcoding.
-
-const UNCOMPRESSED_FORMATS = new Set<number>([RGBAFormat, RGBFormat, RGFormat, RedFormat])
-
-const FORMAT_MAP: Record<number, number> = {
-  [VK_FORMAT_R32G32B32A32_SFLOAT]: RGBAFormat,
-  [VK_FORMAT_R32G32_SFLOAT]: RGFormat,
-  [VK_FORMAT_R32_SFLOAT]: RedFormat,
-
-  [VK_FORMAT_R16G16B16A16_SFLOAT]: RGBAFormat,
-  [VK_FORMAT_R16G16_SFLOAT]: RGFormat,
-  [VK_FORMAT_R16_SFLOAT]: RedFormat,
-
-  [VK_FORMAT_R8G8B8A8_SRGB]: RGBAFormat,
-  [VK_FORMAT_R8G8B8A8_UNORM]: RGBAFormat,
-  [VK_FORMAT_R8G8_SRGB]: RGFormat,
-  [VK_FORMAT_R8G8_UNORM]: RGFormat,
-  [VK_FORMAT_R8_SRGB]: RedFormat,
-  [VK_FORMAT_R8_UNORM]: RedFormat,
-
-  [VK_FORMAT_E5B9G9R9_UFLOAT_PACK32]: RGBFormat,
-  [VK_FORMAT_B10G11R11_UFLOAT_PACK32]: RGBFormat,
-
-  [VK_FORMAT_ETC2_R8G8B8A8_SRGB_BLOCK]: RGBA_ETC2_EAC_Format,
-  [VK_FORMAT_ETC2_R8G8B8_SRGB_BLOCK]: RGB_ETC2_Format,
-  [VK_FORMAT_EAC_R11_UNORM_BLOCK]: R11_EAC_Format,
-  [VK_FORMAT_EAC_R11_SNORM_BLOCK]: SIGNED_R11_EAC_Format,
-  [VK_FORMAT_EAC_R11G11_UNORM_BLOCK]: RG11_EAC_Format,
-  [VK_FORMAT_EAC_R11G11_SNORM_BLOCK]: SIGNED_RG11_EAC_Format,
-
-  [VK_FORMAT_ASTC_4x4_SFLOAT_BLOCK_EXT]: RGBA_ASTC_4x4_Format,
-  [VK_FORMAT_ASTC_4x4_SRGB_BLOCK]: RGBA_ASTC_4x4_Format,
-  [VK_FORMAT_ASTC_4x4_UNORM_BLOCK]: RGBA_ASTC_4x4_Format,
-  [VK_FORMAT_ASTC_6x6_SFLOAT_BLOCK_EXT]: RGBA_ASTC_6x6_Format,
-  [VK_FORMAT_ASTC_6x6_SRGB_BLOCK]: RGBA_ASTC_6x6_Format,
-  [VK_FORMAT_ASTC_6x6_UNORM_BLOCK]: RGBA_ASTC_6x6_Format,
-
-  [VK_FORMAT_BC1_RGBA_SRGB_BLOCK]: RGBA_S3TC_DXT1_Format,
-  [VK_FORMAT_BC1_RGBA_UNORM_BLOCK]: RGBA_S3TC_DXT1_Format,
-  [VK_FORMAT_BC1_RGB_SRGB_BLOCK]: RGB_S3TC_DXT1_Format,
-  [VK_FORMAT_BC1_RGB_UNORM_BLOCK]: RGB_S3TC_DXT1_Format,
-
-  [VK_FORMAT_BC3_SRGB_BLOCK]: RGBA_S3TC_DXT5_Format,
-  [VK_FORMAT_BC3_UNORM_BLOCK]: RGBA_S3TC_DXT5_Format,
-
-  [VK_FORMAT_BC4_SNORM_BLOCK]: SIGNED_RED_RGTC1_Format,
-  [VK_FORMAT_BC4_UNORM_BLOCK]: RED_RGTC1_Format,
-
-  [VK_FORMAT_BC5_SNORM_BLOCK]: SIGNED_RED_GREEN_RGTC2_Format,
-  [VK_FORMAT_BC5_UNORM_BLOCK]: RED_GREEN_RGTC2_Format,
-
-  [VK_FORMAT_BC7_SRGB_BLOCK]: RGBA_BPTC_Format,
-  [VK_FORMAT_BC7_UNORM_BLOCK]: RGBA_BPTC_Format,
-
-  [VK_FORMAT_PVRTC1_4BPP_SRGB_BLOCK_IMG]: RGBA_PVRTC_4BPPV1_Format,
-  [VK_FORMAT_PVRTC1_4BPP_UNORM_BLOCK_IMG]: RGBA_PVRTC_4BPPV1_Format,
-  [VK_FORMAT_PVRTC1_2BPP_SRGB_BLOCK_IMG]: RGBA_PVRTC_2BPPV1_Format,
-  [VK_FORMAT_PVRTC1_2BPP_UNORM_BLOCK_IMG]: RGBA_PVRTC_2BPPV1_Format,
-}
-
-const TYPE_MAP: Record<number, number> = {
-  [VK_FORMAT_R32G32B32A32_SFLOAT]: FloatType,
-  [VK_FORMAT_R32G32_SFLOAT]: FloatType,
-  [VK_FORMAT_R32_SFLOAT]: FloatType,
-
-  [VK_FORMAT_R16G16B16A16_SFLOAT]: HalfFloatType,
-  [VK_FORMAT_R16G16_SFLOAT]: HalfFloatType,
-  [VK_FORMAT_R16_SFLOAT]: HalfFloatType,
-
-  [VK_FORMAT_R8G8B8A8_SRGB]: UnsignedByteType,
-  [VK_FORMAT_R8G8B8A8_UNORM]: UnsignedByteType,
-  [VK_FORMAT_R8G8_SRGB]: UnsignedByteType,
-  [VK_FORMAT_R8G8_UNORM]: UnsignedByteType,
-  [VK_FORMAT_R8_SRGB]: UnsignedByteType,
-  [VK_FORMAT_R8_UNORM]: UnsignedByteType,
-
-  [VK_FORMAT_E5B9G9R9_UFLOAT_PACK32]: UnsignedInt5999Type,
-  [VK_FORMAT_B10G11R11_UFLOAT_PACK32]: UnsignedInt101111Type,
-
-  [VK_FORMAT_ETC2_R8G8B8A8_SRGB_BLOCK]: UnsignedByteType,
-  [VK_FORMAT_ETC2_R8G8B8_SRGB_BLOCK]: UnsignedByteType,
-  [VK_FORMAT_EAC_R11_UNORM_BLOCK]: UnsignedByteType,
-  [VK_FORMAT_EAC_R11_SNORM_BLOCK]: UnsignedByteType,
-  [VK_FORMAT_EAC_R11G11_UNORM_BLOCK]: UnsignedByteType,
-  [VK_FORMAT_EAC_R11G11_SNORM_BLOCK]: UnsignedByteType,
-
-  [VK_FORMAT_ASTC_4x4_SFLOAT_BLOCK_EXT]: HalfFloatType,
-  [VK_FORMAT_ASTC_4x4_SRGB_BLOCK]: UnsignedByteType,
-  [VK_FORMAT_ASTC_4x4_UNORM_BLOCK]: UnsignedByteType,
-  [VK_FORMAT_ASTC_6x6_SFLOAT_BLOCK_EXT]: HalfFloatType,
-  [VK_FORMAT_ASTC_6x6_SRGB_BLOCK]: UnsignedByteType,
-  [VK_FORMAT_ASTC_6x6_UNORM_BLOCK]: UnsignedByteType,
-
-  [VK_FORMAT_BC1_RGBA_SRGB_BLOCK]: UnsignedByteType,
-  [VK_FORMAT_BC1_RGBA_UNORM_BLOCK]: UnsignedByteType,
-  [VK_FORMAT_BC1_RGB_SRGB_BLOCK]: UnsignedByteType,
-  [VK_FORMAT_BC1_RGB_UNORM_BLOCK]: UnsignedByteType,
-
-  [VK_FORMAT_BC3_SRGB_BLOCK]: UnsignedByteType,
-  [VK_FORMAT_BC3_UNORM_BLOCK]: UnsignedByteType,
-
-  [VK_FORMAT_BC4_SNORM_BLOCK]: UnsignedByteType,
-  [VK_FORMAT_BC4_UNORM_BLOCK]: UnsignedByteType,
-
-  [VK_FORMAT_BC5_SNORM_BLOCK]: UnsignedByteType,
-  [VK_FORMAT_BC5_UNORM_BLOCK]: UnsignedByteType,
-
-  [VK_FORMAT_BC7_SRGB_BLOCK]: UnsignedByteType,
-  [VK_FORMAT_BC7_UNORM_BLOCK]: UnsignedByteType,
-
-  [VK_FORMAT_PVRTC1_4BPP_SRGB_BLOCK_IMG]: UnsignedByteType,
-  [VK_FORMAT_PVRTC1_4BPP_UNORM_BLOCK_IMG]: UnsignedByteType,
-  [VK_FORMAT_PVRTC1_2BPP_SRGB_BLOCK_IMG]: UnsignedByteType,
-  [VK_FORMAT_PVRTC1_2BPP_UNORM_BLOCK_IMG]: UnsignedByteType,
-}
-
-async function createRawTexture(container: any): Promise<any> {
-  const { vkFormat } = container
-
-  if (FORMAT_MAP[vkFormat] === undefined) {
-    throw new Error('THREE.KTX2Loader: Unsupported vkFormat: ' + vkFormat)
-  }
-
-  // TODO: Merge the TYPE_MAP warning into the thrown error above, after r190.
-  if (TYPE_MAP[vkFormat] === undefined) {
-    console.warn('THREE.KTX2Loader: Missing ".type" for vkFormat: ' + vkFormat)
-  }
-
-  //
-
-  let zstd: any
-
-  if (container.supercompressionScheme === KHR_SUPERCOMPRESSION_ZSTD) {
-    if (!_zstd) {
-      _zstd = new Promise<any>(async (resolve) => {
-        const zstd = new ZSTDDecoder()
-        await zstd.init()
-        resolve(zstd)
-      })
-    }
-
-    zstd = await _zstd
-  }
-
-  //
-
-  const mipmaps: any[] = []
-
-  for (let levelIndex = 0; levelIndex < container.levels.length; levelIndex++) {
-    const levelWidth = Math.max(1, container.pixelWidth >> levelIndex)
-    const levelHeight = Math.max(1, container.pixelHeight >> levelIndex)
-    const levelDepth = container.pixelDepth ? Math.max(1, container.pixelDepth >> levelIndex) : 0
-
-    const level = container.levels[levelIndex]
-
-    let levelData: any
-
-    if (container.supercompressionScheme === KHR_SUPERCOMPRESSION_NONE) {
-      levelData = level.levelData
-    } else if (container.supercompressionScheme === KHR_SUPERCOMPRESSION_ZSTD) {
-      levelData = zstd.decode(level.levelData, level.uncompressedByteLength)
-    } else {
-      throw new Error('THREE.KTX2Loader: Unsupported supercompressionScheme.')
-    }
-
-    let data: any
-
-    if (TYPE_MAP[vkFormat] === FloatType) {
-      data = new Float32Array(
-        levelData.buffer,
-        levelData.byteOffset,
-        levelData.byteLength / Float32Array.BYTES_PER_ELEMENT,
-      )
-    } else if (TYPE_MAP[vkFormat] === HalfFloatType) {
-      data = new Uint16Array(
-        levelData.buffer,
-        levelData.byteOffset,
-        levelData.byteLength / Uint16Array.BYTES_PER_ELEMENT,
-      )
-    } else if (
-      TYPE_MAP[vkFormat] === UnsignedInt5999Type ||
-      TYPE_MAP[vkFormat] === UnsignedInt101111Type
-    ) {
-      data = new Uint32Array(
-        levelData.buffer,
-        levelData.byteOffset,
-        levelData.byteLength / Uint32Array.BYTES_PER_ELEMENT,
-      )
-    } else {
-      data = levelData
-    }
-
-    mipmaps.push({
-      data: data,
-      width: levelWidth,
-      height: levelHeight,
-      depth: levelDepth,
-    })
-  }
-
-  // levelCount = 0 implies runtime-generated mipmaps.
-  const useMipmaps = container.levelCount === 0 || mipmaps.length > 1
-
-  let texture: any
-
-  if (UNCOMPRESSED_FORMATS.has(FORMAT_MAP[vkFormat]!)) {
-    texture =
-      container.pixelDepth === 0
-        ? new DataTexture(mipmaps[0].data, container.pixelWidth, container.pixelHeight)
-        : new Data3DTexture(
-            mipmaps[0].data,
-            container.pixelWidth,
-            container.pixelHeight,
-            container.pixelDepth,
-          )
-    texture.minFilter = useMipmaps ? NearestMipmapNearestFilter : NearestFilter
-    texture.magFilter = NearestFilter
-    texture.generateMipmaps = container.levelCount === 0
+  } else if (result.layerCount > 1) {
+    texture = new CompressedArrayTexture(
+      result.faces[0]!.mipmaps as never,
+      result.width,
+      result.height,
+      result.layerCount,
+      fmt,
+      typ,
+    )
   } else {
-    if (container.pixelDepth > 0) throw new Error('THREE.KTX2Loader: Unsupported pixelDepth.')
-
-    texture = new CompressedTexture(mipmaps, container.pixelWidth, container.pixelHeight)
-    texture.minFilter = useMipmaps ? LinearMipmapLinearFilter : LinearFilter
-    texture.magFilter = LinearFilter
+    texture = new CompressedTexture(
+      result.faces[0]!.mipmaps as never,
+      result.width,
+      result.height,
+      fmt,
+      typ,
+    ) as CompressedTexture
   }
 
-  texture.mipmaps = mipmaps
-
-  texture.type = TYPE_MAP[vkFormat]
-  texture.format = FORMAT_MAP[vkFormat]
-  texture.colorSpace = parseColorSpace(container)
+  texture.minFilter = minFilter
+  texture.magFilter = LinearFilter
+  texture.generateMipmaps = false
+  texture.colorSpace = colorSpace
+  texture.premultiplyAlpha = premultiply
   texture.needsUpdate = true
-
-  //
-
-  return Promise.resolve(texture)
+  return texture
 }
 
-function parseColorSpace(container: any): string {
-  const dfd = container.dataFormatDescriptor[0]
-
-  if (dfd.colorPrimaries === KHR_DF_PRIMARIES_BT709) {
-    return dfd.transferFunction === KHR_DF_TRANSFER_SRGB ? SRGBColorSpace : LinearSRGBColorSpace
-  } else if (dfd.colorPrimaries === KHR_DF_PRIMARIES_DISPLAYP3) {
-    return dfd.transferFunction === KHR_DF_TRANSFER_SRGB
-      ? DisplayP3ColorSpace
-      : LinearDisplayP3ColorSpace
-  } else if (dfd.colorPrimaries === KHR_DF_PRIMARIES_UNSPECIFIED) {
-    return NoColorSpace
-  } else {
-    console.warn(`THREE.KTX2Loader: Unsupported color primaries, "${dfd.colorPrimaries}"`)
-    return NoColorSpace
-  }
+function parseColorSpace(result: Ktx2TranscodeResult): string {
+  // For Basis-encoded KTX2, the color primaries field on the DFD isn't
+  // directly exposed by our flat C API (basist::ktx2_transcoder doesn't
+  // surface it as a getter). The transfer function IS exposed — that's
+  // sufficient to distinguish sRGB-encoded vs linear data, which is what
+  // three's color management actually branches on for sprite-style work.
+  // BT709 primaries are assumed; Display P3 primaries would need a future
+  // C API addition (`fl_ktx2_get_dfd_primaries`) if a real consumer needs
+  // it.
+  if (result.dfdTransferFunc === KHR_DF_TRANSFER_SRGB) return SRGBColorSpace
+  if (result.dfdTransferFunc === 0) return NoColorSpace // unspecified → leave alone
+  return LinearSRGBColorSpace
 }
 
 export { Ktx2Loader }
+export type { Ktx2Capabilities }
