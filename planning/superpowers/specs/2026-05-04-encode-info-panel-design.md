@@ -144,7 +144,6 @@ Inside `RuntimeSlice`:
 gpuStats: {
   format: number | null     // THREE format constant or null for RGBA8 fallback
   formatLabel: string       // human label
-  bytesPerBlock: number     // for sanity / future use
   mips: { width: number; height: number; bytes: number }[]
 } | null
 ```

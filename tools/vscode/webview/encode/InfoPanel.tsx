@@ -115,7 +115,12 @@ function detectSourceFormat(fileName: string): string {
   return ext || '?'
 }
 
-function describeQuality(format: string, webp: { quality: number }, avif: { quality: number }, ktx2: { mode: string; quality: number; uastcLevel: number }): string {
+function describeQuality(
+  format: string,
+  webp: { quality: number },
+  avif: { quality: number },
+  ktx2: { mode: string; quality: number; uastcLevel: number },
+): string {
   if (format === 'webp') return `WebP q=${webp.quality}`
   if (format === 'avif') return `AVIF q=${avif.quality}`
   if (format === 'ktx2' && ktx2.mode === 'etc1s') return `KTX2 ETC1S q=${ktx2.quality}`
@@ -187,7 +192,7 @@ export function InfoPanel() {
           <div {...stylex.props(s.row)}>
             <span {...stylex.props(s.rowLabel)}>Encoded</span>
             <span {...stylex.props(s.rowValue)}>
-              {formatBytes(encodedLen)} · {describeQuality(format, webp, avif, ktx2)}
+              {formatBytes(encodedLen)} · {describeQuality(encodedFormat ?? format, webp, avif, ktx2)}
             </span>
           </div>
           <div {...stylex.props(s.barWrap)}>
