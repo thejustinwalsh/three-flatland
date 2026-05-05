@@ -50,6 +50,33 @@ pub fn build(b: *std.Build) void {
         // below). Required for round-tripping UASTC+zstd files; ETC1S is
         // unaffected (uses VAQ codebooks, not zstd).
         "-DBASISD_SUPPORT_KTX2_ZSTD=1",
+        // Strip miniz subsystems we never reach. basisu's embedded miniz
+        // ships ZIP archive APIs and time/locale helpers we never call —
+        // we only encode KTX2, never produce/consume zip files. The zlib
+        // (deflate) APIs stay because basisu_comp.cpp uses them inside an
+        // m_compute_stats sanity check; can't gate that without patching.
+        "-DMINIZ_NO_ARCHIVE_APIS=1",
+        "-DMINIZ_NO_ARCHIVE_WRITING_APIS=1",
+        "-DMINIZ_NO_TIME=1",
+        // tinyexr's PIZ codec isn't reachable from anything we call into
+        // (we never pass EXR data to basisu). Disabling it removes the
+        // PIZ codebook tables + Huffman decoder.
+        "-DTINYEXR_USE_PIZ=0",
+        // Match emscripten's transcoder configuration. The upstream
+        // basisu_transcoder.cpp checks `__EMSCRIPTEN__` and switches
+        // ASTC_HIGHER_OPAQUE_QUALITY to 0 ("size matters more than
+        // quality when compiling with emscripten") — drops a 64 KB
+        // lookup table at the cost of slightly lower BC1-tier ASTC
+        // quality on grayscale opaque blocks. We're targeting wasm32-
+        // wasi which doesn't define __EMSCRIPTEN__, so the table was
+        // staying in. Force the emscripten value.
+        "-DBASISD_SUPPORT_ASTC_HIGHER_OPAQUE_QUALITY=0",
+        // Disable FXT1 transcode (3dfx Voodoo era — no modern GPU
+        // supports it). Other format toggles (ATC/PVRTC2/ETC2_EAC_RG11/
+        // UASTC_HDR/XUASTC) trigger build errors when disabled because
+        // the encoder side has internal dependencies on them; would
+        // require source patches to drop them safely.
+        "-DBASISD_SUPPORT_FXT1=0",
         "-DNDEBUG",
     };
 
