@@ -45,14 +45,11 @@
       },
       {
         "viewType": "threeFlatland.encode",
-        "displayName": "FL Image Encoder",
+        "displayName": "FL KTX2 Viewer",
         "selector": [
-          { "filenamePattern": "*.png" },
-          { "filenamePattern": "*.webp" },
-          { "filenamePattern": "*.avif" },
           { "filenamePattern": "*.ktx2" }
         ],
-        "priority": "option"
+        "priority": "default"
       }
     ],
     "menus": {

@@ -1,8 +1,11 @@
 import * as vscode from 'vscode'
-import { EncodeCustomEditorProvider } from './host'
+import { EncodeCustomEditorProvider, openEncodePanel } from './host'
 
 export function registerEncodeTool(context: vscode.ExtensionContext): void {
-  // Register the custom editor provider.
+  // Register the custom editor for *.ktx2 (priority "default" in
+  // package.json so double-clicking a KTX2 file opens our viewer in
+  // inspect mode). PNG/WebP/AVIF have no customEditor entry — they
+  // open in VSCode's built-in image preview.
   context.subscriptions.push(
     vscode.window.registerCustomEditorProvider(
       EncodeCustomEditorProvider.viewType,
@@ -14,8 +17,9 @@ export function registerEncodeTool(context: vscode.ExtensionContext): void {
     ),
   )
 
-  // Keep the existing command as a thin wrapper. Lets the explorer/context
-  // menu and palette continue working — they invoke this command.
+  // Right-click "Open Image Encoder" — bypasses the customEditor so the
+  // selected file always loads in encode mode (KTX2 sources decode to
+  // RGBA on the webview side via the Ktx2Loader RGBA32 fallback).
   context.subscriptions.push(
     vscode.commands.registerCommand(
       'threeFlatland.encode.open',
@@ -31,11 +35,7 @@ export function registerEncodeTool(context: vscode.ExtensionContext): void {
           void vscode.window.showErrorMessage('FL Image Encoder: no file selected.')
           return
         }
-        await vscode.commands.executeCommand(
-          'vscode.openWith',
-          target,
-          EncodeCustomEditorProvider.viewType,
-        )
+        await openEncodePanel(context, target)
       },
     ),
   )

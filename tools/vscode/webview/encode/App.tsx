@@ -11,6 +11,7 @@ import { ComparePreview } from './ComparePreview'
 import { Toolbar } from './Toolbar'
 import { EncodeMenu } from './EncodeMenu'
 import { InfoPanel } from './InfoPanel'
+import { decodeKtx2ToImageData } from './decodeKtx2'
 
 const styles = stylex.create({
   root: {
@@ -104,10 +105,17 @@ export function App() {
             isEncoding: false,
           })
         } else {
-          // Encode mode: decode source PNG for the original side; encode
-          // pipeline fires via the store subscription below.
+          // Encode mode: decode source for the original side; encode
+          // pipeline fires via the store subscription below. KTX2 sources
+          // need the dedicated transcoder→RGBA path (jsquash decodeImage
+          // doesn't handle KTX2). Slow-ish but only runs once per panel
+          // open so the user can stage a re-encode of an already-encoded
+          // file.
           const format = detectFormat(fn)
-          const image = await decodeImage(bytes, format)
+          const image =
+            format === 'ktx2'
+              ? await decodeKtx2ToImageData(bytes)
+              : await decodeImage(bytes, format)
           loadInit({ fileName: fn, sourceBytes: bytes, sourceImage: image, mode })
         }
       } catch (err) {
