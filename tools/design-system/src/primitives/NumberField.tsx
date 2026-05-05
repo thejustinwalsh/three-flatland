@@ -254,14 +254,31 @@ export function NumberField({
     // Drag UP = positive delta = increase (Tweakpane convention).
     const rawDelta = dragStartY.current - e.clientY
     const cappedDelta = clamp(rawDelta, -MAX_DRAG_PX, MAX_DRAG_PX)
-    const isCapped = Math.abs(rawDelta) >= MAX_DRAG_PX
-    setAtCap(isCapped)
-    setDragDelta(cappedDelta / MAX_DRAG_PX)
 
     const steps = Math.round(cappedDelta / STEP_PX)
     const next = clamp(dragStartValue.current + steps * step, min, max)
     onChange(next)
     setText(String(next))
+
+    // Visualizer fill ratio. When the bound in the drag direction is
+    // finite, derive fill from VALUE progress toward that bound — so the
+    // bar pins at 100% the moment the value caps, instead of continuing
+    // to grow as the user drags further. Unbounded fields fall back to
+    // raw pixel-ratio for a useful indicator with no reference point.
+    const dir = Math.sign(rawDelta) || 1
+    const bound = dir > 0 ? max : min
+    const finite = Number.isFinite(bound)
+    let normalized: number
+    if (finite) {
+      const span = bound - dragStartValue.current
+      normalized = span === 0 ? 0 : (next - dragStartValue.current) / span
+      normalized = clamp(normalized, 0, 1)
+    } else {
+      normalized = Math.abs(cappedDelta) / MAX_DRAG_PX
+    }
+    setDragDelta(dir * normalized)
+    // "At cap" now correlates with hitting the actual value bound.
+    setAtCap(finite && next === bound)
   }
 
   const endDrag = (e: ReactPointerEvent<HTMLDivElement>) => {
