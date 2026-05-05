@@ -56,6 +56,7 @@ function detectFormat(fileName: string): EncodeFormat {
   const ext = fileName.split('.').pop()?.toLowerCase() ?? ''
   if (ext === 'webp') return 'webp'
   if (ext === 'avif') return 'avif'
+  if (ext === 'ktx2') return 'ktx2'
   return 'png' // fallback for png and anything we mis-detect
 }
 
@@ -78,11 +79,16 @@ export function App() {
 
         if (mode === 'inspect') {
           // The source IS the encoded artifact. Skip the decode-then-encode
-          // pipeline. Store encodedBytes = sourceBytes so the existing encoded
-          // texture hook decodes it for display. The compare slider is hidden
-          // (no original to compare against) — ComparePreview uses the same
+          // pipeline. Store encodedBytes = sourceBytes AND encodedFormat so
+          // the texture hook picks the right decoder (KTX2Loader for ktx2,
+          // decodeImage otherwise). The compare slider is hidden (no
+          // original to compare against) — ComparePreview uses the same
           // texture on both sides with splitU=1 so mip stepping still works.
-          setRuntimeFields({ encodedBytes: bytes, isEncoding: false })
+          setRuntimeFields({
+            encodedBytes: bytes,
+            encodedFormat: detectFormat(fn),
+            isEncoding: false,
+          })
           const ext = fn.split('.').pop()?.toLowerCase() ?? ''
           if (ext === 'webp' || ext === 'avif') {
             // Produce a source ImageData so the left/original side isn't empty
