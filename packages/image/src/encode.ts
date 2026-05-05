@@ -4,7 +4,11 @@ import { encodePng } from './codecs/png.js'
 import { encodeWebp } from './codecs/webp.js'
 import { encodeAvif } from './codecs/avif.js'
 import { encodeKtx2 } from './codecs/ktx2.js'
-import { fetchBasisBytes } from './runtime/basis-loader.js'
+// `basis-loader` is dynamically imported at the call site below (not
+// statically imported) so its module — and the wasm URL it owns — can
+// move into a separate chunk. `codecs/ktx2.ts` already dynamic-imports
+// the same module; if encode.ts were to static-import it too, Vite
+// can't split it out and warns about the conflict.
 
 // ─── KTX2 encoder worker — auto-routed off main thread ───────────────────────
 //
@@ -83,6 +87,7 @@ async function getOrCreateEncoderWorker(): Promise<Worker> {
       w.addEventListener('error', onWorkerError)
       // Bootstrap: fetch wasm on main thread (where import.meta.url
       // resolves to a real URL), transfer to worker via init.
+      const { fetchBasisBytes } = await import('./runtime/basis-loader.js')
       const wasmBytes = await fetchBasisBytes()
       w.postMessage({ type: 'init', wasmBytes }, [wasmBytes])
       return w
