@@ -71,12 +71,22 @@ pub fn build(b: *std.Build) void {
         // wasi which doesn't define __EMSCRIPTEN__, so the table was
         // staying in. Force the emscripten value.
         "-DBASISD_SUPPORT_ASTC_HIGHER_OPAQUE_QUALITY=0",
-        // Disable FXT1 transcode (3dfx Voodoo era — no modern GPU
-        // supports it). Other format toggles (ATC/PVRTC2/ETC2_EAC_RG11/
-        // UASTC_HDR/XUASTC) trigger build errors when disabled because
-        // the encoder side has internal dependencies on them; would
-        // require source patches to drop them safely.
+        // Match upstream basisu's emscripten transcode-target subset
+        // exactly (webgl/{encoder,transcoder}/CMakeLists.txt). Each
+        // disabled target removes its codebook tables + transcode
+        // kernel from the wasm. We previously tried a wider set
+        // (UASTC_HDR=0 / XUASTC=0) and the encoder TUs failed to
+        // compile — emscripten's reference build keeps both ON, so
+        // we mirror that exactly to stay on a known-good path.
+        //   FXT1: 3dfx Voodoo. No modern GPU supports it.
+        //   ATC: legacy Adreno (modern Adreno uses ASTC).
+        //   PVRTC2: almost no real-world support; depends on ATC.
+        //   ETC2 EAC RG11: 2-channel format used for normal maps,
+        //     not relevant to sprite work or our gpuCaps surface.
         "-DBASISD_SUPPORT_FXT1=0",
+        "-DBASISD_SUPPORT_ATC=0",
+        "-DBASISD_SUPPORT_PVRTC2=0",
+        "-DBASISD_SUPPORT_ETC2_EAC_RG11=0",
         "-DNDEBUG",
     };
 
