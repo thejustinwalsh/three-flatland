@@ -113,7 +113,12 @@ function describeQuality(
   webp: { quality: number },
   avif: { quality: number },
   ktx2: { mode: string; quality: number; uastcLevel: number },
+  // In inspect mode the doc-slice quality fields don't reflect how the
+  // file we're inspecting was actually encoded (we have no way to know);
+  // showing them would be misleading, so fall back to the format alone.
+  inspect = false,
 ): string {
+  if (inspect) return format.toUpperCase()
   if (format === 'webp') return `WebP q=${webp.quality}`
   if (format === 'avif') return `AVIF q=${avif.quality}`
   if (format === 'ktx2' && ktx2.mode === 'etc1s') return `KTX2 ETC1S q=${ktx2.quality}`
@@ -133,21 +138,32 @@ export function InfoPanel() {
   const avif = useEncodeStore((st) => st.avif)
   const ktx2 = useEncodeStore((st) => st.ktx2)
   const gpuStats = useEncodeStore((st) => st.gpuStats)
+  const mode = useEncodeStore((st) => st.mode)
 
   const caps = getKtx2Caps()
+  const isInspect = mode === 'inspect'
 
   const sourceLen = sourceBytes?.length ?? 0
   const encodedLen = encodedBytes?.length ?? 0
-  const sw = sourceImage?.width ?? 0
-  const sh = sourceImage?.height ?? 0
+  // In inspect mode (especially KTX2) sourceImage is null — fall back to
+  // gpuStats's mip-0 dimensions. They agree with sourceImage in encode mode
+  // since extractGpuStats writes the same w/h for the non-mip case.
+  const sw = sourceImage?.width ?? gpuStats?.mips[0]?.width ?? 0
+  const sh = sourceImage?.height ?? gpuStats?.mips[0]?.height ?? 0
 
   const wireRatio = sourceLen > 0 ? encodedLen / sourceLen : 0
   const wireSavedBytes = Math.max(0, sourceLen - encodedLen)
   const wireRegressed = encodedLen > sourceLen
 
+  // In encode mode `encodedImage` is the decoded WebP/AVIF (null for KTX2).
+  // In inspect mode we never set `encodedImage`, but the artifact IS the
+  // source — for WebP/AVIF the host pre-decoded into `sourceImage`, so its
+  // dims tell us the RGBA size that would be allocated.
   const cpuDecodedRgba = encodedImage
     ? encodedImage.width * encodedImage.height * 4
-    : null
+    : isInspect && sourceImage
+      ? sourceImage.width * sourceImage.height * 4
+      : null
   const cpuKtx2 = encodedFormat === 'ktx2'
 
   const totalGpuBytes = gpuStats
@@ -183,28 +199,32 @@ export function InfoPanel() {
             <div {...stylex.props(s.row)}>
               <span {...stylex.props(s.rowLabel)}>Encoded</span>
               <span {...stylex.props(s.rowValue)}>
-                {formatBytes(encodedLen)} · {describeQuality(encodedFormat ?? format, webp, avif, ktx2)}
+                {formatBytes(encodedLen)} · {describeQuality(encodedFormat ?? format, webp, avif, ktx2, isInspect)}
               </span>
             </div>
-            <div {...stylex.props(s.barWrap)}>
-              <InfoBar ratio={wireRatio} />
-              <span
-                {...stylex.props(
-                  s.barCaption,
-                  wireRegressed && s.rowValueOver,
-                )}
-              >
-                {sourceLen > 0 ? `${(wireRatio * 100).toFixed(0)}% of original` : ''}
-              </span>
-            </div>
-            <div {...stylex.props(s.row)}>
-              <span {...stylex.props(s.rowLabel)}>
-                {wireRegressed ? 'Grew' : 'Saved'}
-              </span>
-              <span {...stylex.props(s.rowValue, wireRegressed && s.rowValueOver)}>
-                {formatBytes(wireRegressed ? encodedLen - sourceLen : wireSavedBytes)}
-              </span>
-            </div>
+            {!isInspect && (
+              <>
+                <div {...stylex.props(s.barWrap)}>
+                  <InfoBar ratio={wireRatio} />
+                  <span
+                    {...stylex.props(
+                      s.barCaption,
+                      wireRegressed && s.rowValueOver,
+                    )}
+                  >
+                    {sourceLen > 0 ? `${(wireRatio * 100).toFixed(0)}% of original` : ''}
+                  </span>
+                </div>
+                <div {...stylex.props(s.row)}>
+                  <span {...stylex.props(s.rowLabel)}>
+                    {wireRegressed ? 'Grew' : 'Saved'}
+                  </span>
+                  <span {...stylex.props(s.rowValue, wireRegressed && s.rowValueOver)}>
+                    {formatBytes(wireRegressed ? encodedLen - sourceLen : wireSavedBytes)}
+                  </span>
+                </div>
+              </>
+            )}
           </div>
         </InfoSection>
 
