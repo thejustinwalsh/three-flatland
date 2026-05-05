@@ -79,16 +79,9 @@ export function App() {
 
         if (mode === 'inspect') {
           // The source IS the encoded artifact. Skip the decode-then-encode
-          // pipeline. Store encodedBytes = sourceBytes AND encodedFormat so
-          // the texture hook picks the right decoder (KTX2Loader for ktx2,
-          // decodeImage otherwise). The compare slider is hidden (no
-          // original to compare against) — ComparePreview uses the same
-          // texture on both sides with splitU=1 so mip stepping still works.
-          setRuntimeFields({
-            encodedBytes: bytes,
-            encodedFormat: detectFormat(fn),
-            isEncoding: false,
-          })
+          // pipeline. The compare slider is hidden (no original to compare
+          // against) — ComparePreview uses the same texture on both sides
+          // with splitU=1 so mip stepping still works.
           const ext = fn.split('.').pop()?.toLowerCase() ?? ''
           if (ext === 'webp' || ext === 'avif') {
             // Produce a source ImageData so the left/original side isn't empty
@@ -102,6 +95,15 @@ export function App() {
             // encoded texture on both sides (see inspect-mode render path).
             loadInit({ fileName: fn, sourceBytes: bytes, sourceImage: null, mode })
           }
+          // MUST run AFTER loadInit. loadInit clears encodedBytes/Format/etc.
+          // (correct for encode mode — new source means a new encode is
+          // needed), but in inspect mode the source IS the encoded artifact
+          // and we need both fields populated so useEncodedTexture decodes.
+          setRuntimeFields({
+            encodedBytes: bytes,
+            encodedFormat: detectFormat(fn),
+            isEncoding: false,
+          })
         } else {
           // Encode mode: decode source PNG for the original side; encode
           // pipeline fires via the store subscription below.
