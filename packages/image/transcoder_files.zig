@@ -5,10 +5,12 @@
 // implementation through `.inc` file inclusion (see basisu_transcoder.h's
 // header for the dependency map). One source file is enough.
 //
-// Note: zstd.c is intentionally NOT compiled in. Three's KTX2Loader handles
-// zstd-supercompressed KTX2 files at the JS layer (zstddec.module.js); we
-// match that contract. BASISD_SUPPORT_KTX2_ZSTD=0 in build.zig makes the
-// transcoder reject zstd files, matching three's basis_transcoder.wasm.
+// Note: zstd supercompression IS supported. `build.zig` sets
+// BASISD_SUPPORT_KTX2_ZSTD=1 and compiles `vendor/basisu/zstd/zstddeclib.c`
+// (decoder-only amalgamation) as a separate compile unit for the transcoder.
+// `zstd.c` (full encoder+decoder) is intentionally NOT in this list — it is
+// compiled with its own narrower flags directly in `build.zig` for the encoder
+// target only.
 
 pub const transcoder_files: []const []const u8 = &.{
     "basisu_transcoder.cpp",
