@@ -278,7 +278,9 @@ export function NumberField({
     }
     setDragDelta(dir * normalized)
     // "At cap" now correlates with hitting the actual value bound.
-    setAtCap(finite && next === bound)
+    // Epsilon comparison so float-step callers (e.g. step=0.1) still
+    // register "at bound" correctly; integer steps trivially pass.
+    setAtCap(finite && Math.abs(next - bound) < 1e-9)
   }
 
   const endDrag = (e: ReactPointerEvent<HTMLDivElement>) => {
