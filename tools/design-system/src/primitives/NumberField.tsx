@@ -162,6 +162,8 @@ export type NumberFieldProps = {
   id?: string
   /** Disabled state — text input read-only, decorator inert. */
   disabled?: boolean
+  /** Override default 100% width with a fixed pixel width. */
+  width?: number
 }
 
 export function NumberField({
@@ -174,6 +176,7 @@ export function NumberField({
   placeholder,
   id,
   disabled = false,
+  width,
 }: NumberFieldProps) {
   // Local text state lets the user type empty/`-` mid-edit without the
   // controlled value clamping every keystroke.
@@ -272,7 +275,10 @@ export function NumberField({
   }
 
   return (
-    <div {...stylex.props(s.container, disabled && s.containerDisabled)}>
+    <div
+      {...stylex.props(s.container, disabled && s.containerDisabled)}
+      style={width !== undefined ? { width } : undefined}
+    >
       <input
         id={id}
         type="text"
