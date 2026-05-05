@@ -46,7 +46,12 @@ import {
   type Ktx2Capabilities,
   type Ktx2TranscodeResult,
 } from './ktx2-transcode.js'
-import { fetchTranscoderBytes } from '../runtime/transcoder-loader.js'
+// `transcoder-loader` is dynamically imported at the call site below
+// (not statically imported) so its module — and the wasm URL it owns —
+// can move into a separate chunk. `ktx2-transcode.ts` already
+// dynamic-imports the same module for the inline-fallback path; if
+// Ktx2Loader.ts were to static-import it too, Vite can't split it out
+// and warns about the conflict.
 
 // KHR Data Format Descriptor constants from the KTX2 spec.
 const KHR_DF_TRANSFER_SRGB = 2
@@ -250,6 +255,7 @@ class Ktx2Loader extends Loader<AnyCompressedTexture> {
         // base path, so URL-relative wasm fetches throw "Invalid URL"). Send
         // bytes via init message; transfer to detach from main thread and
         // hand ownership to the worker.
+        const { fetchTranscoderBytes } = await import('../runtime/transcoder-loader.js')
         const wasmBytes = await fetchTranscoderBytes()
         w.postMessage({ type: 'init', wasmBytes }, [wasmBytes])
         return w
