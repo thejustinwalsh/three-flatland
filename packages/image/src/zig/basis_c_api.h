@@ -33,6 +33,11 @@ typedef struct {
     uint32_t quality;          // 1..255 (ETC1S)
     uint32_t uastc_level;      // 0..4
     uint32_t check_for_alpha;  // 0 / 1
+    // KTX2 supercompression: 0 = none, 1 = zstd (basist::KTX2_SS_ZSTANDARD).
+    // Only meaningful with uastc=1 (the encoder ignores supercompression
+    // for ETC1S — that mode already uses VAQ codebooks). Pass 0 for the
+    // historical behavior.
+    uint32_t supercompression;
 } fl_basis_opts;
 
 // One-shot encode. Caller passes raw RGBA8. On success the encoder

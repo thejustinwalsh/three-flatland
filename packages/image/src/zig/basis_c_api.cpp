@@ -111,8 +111,14 @@ int fl_basis_encode(
     // m_ktx2_and_basis_srgb_transfer_function (also gates basis sRGB flag).
     p.m_ktx2_and_basis_srgb_transfer_function = true;
 
-    // KTX2 supercompression: keep at KTX2_SS_NONE (ZSTD disabled at compile time).
-    p.m_ktx2_uastc_supercompression = basist::KTX2_SS_NONE;
+    // KTX2 supercompression: caller-controlled. zstd is gated to UASTC
+    // (basisu's encoder ignores supercompression for ETC1S — that mode
+    // already uses VAQ codebooks). For ETC1S inputs we always pass NONE
+    // regardless of opts->supercompression.
+    p.m_ktx2_uastc_supercompression =
+        (opts->uastc != 0 && opts->supercompression == 1)
+            ? basist::KTX2_SS_ZSTANDARD
+            : basist::KTX2_SS_NONE;
 
     // Single-threaded: WASI has no pthreads. job_pool(1) uses only the calling thread.
     p.m_multithreading = false;
