@@ -5,6 +5,15 @@ import { createJSONStorage, persist } from 'zustand/middleware'
 import type { EncodeFormat } from '@three-flatland/image'
 import { localStorageStorage, webviewStorage } from '../state'
 
+export interface GpuStats {
+  /** THREE format constant, or null when the texture is uncompressed (RGBA8 fallback / CanvasTexture). */
+  format: number | null
+  /** Human-readable label, e.g. "BC7", "ASTC 4×4", "RGBA8". */
+  formatLabel: string
+  /** Per-mip dimensions + uploaded byte counts. Single entry for non-mipmapped textures. */
+  mips: { width: number; height: number; bytes: number }[]
+}
+
 // ─── Slice types ─────────────────────────────────────────────────────────────
 
 interface DocSlice {
@@ -36,6 +45,9 @@ interface PrefsSlice {
   // bilinear. Mirrors the atlas tool's `pixelArt` pref shape so the
   // EncodeMenu's Segmented control behaves the same way.
   pixelArt: boolean
+  // Resizable info-panel sidebar width (px). Persisted cross-session
+  // alongside the other splitter prefs in atlas/merge.
+  splits: { infoPanelWidth: number }
 }
 
 interface RuntimeSlice {
@@ -61,6 +73,9 @@ interface RuntimeSlice {
   // Derived from the loaded CompressedTexture's mipmap chain; used by T11's
   // mip-stepper for upper-bound clamping.
   encodedMipCount: number
+  // GPU-side breakdown of the currently-displayed encoded texture. Null
+  // until the encode resolves (or whenever the encode is restarted).
+  gpuStats: GpuStats | null
 }
 
 // ─── Full store state ─────────────────────────────────────────────────────────
@@ -84,7 +99,8 @@ export type EncodeStoreState = DocSlice &
     setMipLevel: (n: number) => void
     setMode: (m: 'encode' | 'inspect') => void
     // Actions — runtime
-    setEncodedMipCount: (count: number) => void
+    setGpuStats: (stats: GpuStats) => void
+    setInfoPanelWidth: (px: number) => void
     // Actions — lifecycle
     loadInit: (p: { fileName: string; sourceBytes: Uint8Array; sourceImage: ImageData | null; mode: 'encode' | 'inspect' }) => void
     // Actions — runtime
@@ -127,6 +143,7 @@ export const useEncodeStore = create<EncodeStoreState>()(
           // Prefs slice defaults
           compareSplitU: 0.5,
           pixelArt: true,
+          splits: { infoPanelWidth: 320 },
 
           // Session slice defaults
           fileName: 'image',
@@ -144,6 +161,7 @@ export const useEncodeStore = create<EncodeStoreState>()(
           encodeError: null,
           encodeReqId: 0,
           encodedMipCount: 1,
+          gpuStats: null,
 
           // Doc actions
           setFormat: (format) => set((s) => ({ ...s, format })),
@@ -164,8 +182,18 @@ export const useEncodeStore = create<EncodeStoreState>()(
           setMode: (m) => set((s) => ({ ...s, mode: m })),
 
           // Runtime actions
-          setEncodedMipCount: (count) =>
-            set((s) => ({ ...s, encodedMipCount: count, mipLevel: 0 })),
+          setGpuStats: (stats) =>
+            set((s) => ({
+              ...s,
+              gpuStats: stats,
+              encodedMipCount: stats.mips.length,
+              mipLevel: 0,
+            })),
+          setInfoPanelWidth: (px) =>
+            set((s) => ({
+              ...s,
+              splits: { ...s.splits, infoPanelWidth: Math.max(240, Math.min(480, px)) },
+            })),
 
           // Lifecycle action — bridge `encode/init` calls this. Sets state and
           // clears undo history so the user's stack starts empty on each load.
@@ -183,6 +211,7 @@ export const useEncodeStore = create<EncodeStoreState>()(
               encodedSize: 0,
               isEncoding: false,
               encodeError: null,
+              gpuStats: null,
             }))
             useEncodeStore.temporal.getState().clear()
           },
@@ -217,7 +246,11 @@ export const useEncodeStore = create<EncodeStoreState>()(
         // Cross-session prefs: survive panel close + VSCode restart.
         name: 'fl-encode-prefs',
         storage: createJSONStorage(() => localStorageStorage),
-        partialize: (s) => ({ compareSplitU: s.compareSplitU, pixelArt: s.pixelArt }),
+        partialize: (s) => ({
+          compareSplitU: s.compareSplitU,
+          pixelArt: s.pixelArt,
+          splits: s.splits,
+        }),
       },
     ),
     {
@@ -282,8 +315,10 @@ export const encodeActions = {
     useEncodeStore.getState().setPixelArt(v),
   setMipLevel: (n: number) =>
     useEncodeStore.getState().setMipLevel(n),
-  setEncodedMipCount: (count: number) =>
-    useEncodeStore.getState().setEncodedMipCount(count),
+  setGpuStats: (stats: GpuStats) =>
+    useEncodeStore.getState().setGpuStats(stats),
+  setInfoPanelWidth: (px: number) =>
+    useEncodeStore.getState().setInfoPanelWidth(px),
   // Bridge `encode/init` should call this — sets source + fileName AND clears
   // any history accumulated from rehydration / earlier inits. The user's undo
   // stack starts empty when they first see the panel content.
