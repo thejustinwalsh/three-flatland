@@ -1,8 +1,8 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { vscode } from '@three-flatland/design-system/tokens/vscode-theme.stylex'
 import { space } from '@three-flatland/design-system/tokens/space.stylex'
-import { Panel } from '@three-flatland/design-system'
+import { Panel, Splitter } from '@three-flatland/design-system'
 import { decodeImage, type EncodeFormat } from '@three-flatland/image'
 import { createClientBridge } from '@three-flatland/bridge/client'
 import { useEncodeStore } from './encodeStore'
@@ -10,6 +10,7 @@ import { scheduleEncode } from './encodePipeline'
 import { ComparePreview } from './ComparePreview'
 import { Toolbar } from './Toolbar'
 import { EncodeMenu } from './EncodeMenu'
+import { InfoPanel } from './InfoPanel'
 
 const styles = stylex.create({
   root: {
@@ -26,8 +27,20 @@ const styles = stylex.create({
     color: vscode.errorFg,
     border: `1px solid ${vscode.errorBorder}`,
   },
-  panelFill: {
+  workArea: {
     flex: 1,
+    minWidth: 0,
+    minHeight: 0,
+    display: 'flex',
+    flexDirection: 'row',
+  },
+  comparePanel: {
+    flex: 1,
+    minWidth: 0,
+    minHeight: 0,
+  },
+  infoPanel: {
+    flexShrink: 0,
     minWidth: 0,
     minHeight: 0,
   },
@@ -50,6 +63,10 @@ export function App() {
   const encodeError = useEncodeStore((s) => s.encodeError)
   const loadInit = useEncodeStore((s) => s.loadInit)
   const setRuntimeFields = useEncodeStore((s) => s.setRuntimeFields)
+  const mode = useEncodeStore((s) => s.mode)
+  const infoPanelWidth = useEncodeStore((s) => s.splits.infoPanelWidth)
+  const setInfoPanelWidth = useEncodeStore((s) => s.setInfoPanelWidth)
+  const workAreaRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     const bridge = createClientBridge()
@@ -155,14 +172,40 @@ export function App() {
     <div {...stylex.props(styles.root)}>
       <Toolbar />
       {encodeError && <div {...stylex.props(styles.errorBanner)}>{encodeError}</div>}
-      <Panel
-        title="Compare"
-        bodyPadding="none"
-        headerActions={<EncodeMenu />}
-        style={styles.panelFill}
-      >
-        <ComparePreview />
-      </Panel>
+      <div ref={workAreaRef} {...stylex.props(styles.workArea)}>
+        <Panel
+          title="Compare"
+          bodyPadding="none"
+          headerActions={<EncodeMenu />}
+          style={styles.comparePanel}
+        >
+          <ComparePreview />
+        </Panel>
+        {mode === 'encode' && (
+          <>
+            <Splitter
+              axis="vertical"
+              onDrag={(clientX) => {
+                const el = workAreaRef.current
+                if (!el) return
+                const rect = el.getBoundingClientRect()
+                // Sidebar width = distance from cursor to right edge.
+                // setInfoPanelWidth clamps to 240–480 inside the store.
+                setInfoPanelWidth(rect.right - clientX)
+              }}
+            />
+            <Panel
+              title="Info"
+              bodyPadding="none"
+              style={styles.infoPanel}
+            >
+              <div style={{ width: infoPanelWidth, height: '100%' }}>
+                <InfoPanel />
+              </div>
+            </Panel>
+          </>
+        )}
+      </div>
     </div>
   )
 }
