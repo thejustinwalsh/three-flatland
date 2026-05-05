@@ -691,7 +691,7 @@ Task IDs map to current TaskList entries.
 
 | ID | Task |
 |---|---|
-| 92 | T13 — `three-flatland/loaders/TextureLoader.ts` adds inline `if (ext === 'ktx2') await import('@three-flatland/image/loaders/ktx2')`. Same for `SpriteSheetLoader` image-load step. Adds `@three-flatland/image` as a hard `dependencies` entry in `packages/three-flatland/package.json`. **Blocked on `lighting-stochastic-adoption` merging** — that branch rewrites TextureLoader/SpriteSheetLoader and we need to graft the KTX2 branch onto its shape, not the current one. |
+| 92 | T13 — `three-flatland/loaders/TextureLoader.ts` adds inline `if (ext === 'ktx2') await import('@three-flatland/image/loaders/ktx2')`. Same for `SpriteSheetLoader` image-load step. Adds `@three-flatland/image` as a hard `dependencies` entry in `packages/three-flatland/package.json`. **Blocked on `lighting-stochastic-adoption` merging** — that branch rewrites TextureLoader/SpriteSheetLoader and we need to graft the KTX2 branch onto its shape, not the current one. **Full spec:** `planning/superpowers/specs/2026-05-04-three-flatland-textureloader-ktx2.md`. |
 
 Until T13 lands, three-flatland users who want KTX2 import `Ktx2Loader` directly from `@three-flatland/image/loaders/ktx2` (Tier 2). The encode tool ships through this path in T7.
 

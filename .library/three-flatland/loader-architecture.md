@@ -239,7 +239,16 @@ When you DO need it, copy the 30-line shape in the planning doc. Do not abstract
 
 ---
 
-## 8. References
+## 8. Open follow-ups
+
+- **TextureLoader / SpriteSheetLoader inline KTX2 dispatch** —
+  `Ktx2Loader` ships at `@three-flatland/image/loaders/ktx2` (Tier 2 / direct
+  use). Tier 1 (calling `TextureLoader.load('foo.ktx2')` and having it Just
+  Work) is deferred until the `lighting-stochastic-adoption` branch lands
+  its TextureLoader/SpriteSheetLoader rewrite. Spec:
+  `planning/superpowers/specs/2026-05-04-three-flatland-textureloader-ktx2.md`.
+
+## 9. References
 
 - `planning/bake/loader-pattern.md` — the canonical bake/runtime shape (must-read when implementing a baker-fallback loader).
 - `packages/three-flatland/src/loaders/TextureLoader.ts` — Tier 1 wrapper reference (preset hierarchy, R3F compat).
