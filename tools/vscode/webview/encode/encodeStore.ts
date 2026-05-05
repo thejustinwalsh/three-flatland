@@ -31,6 +31,11 @@ interface SessionSlice {
 interface PrefsSlice {
   // Slider position is a per-machine preference — saved cross-session.
   compareSplitU: number
+  // Filter style for the canvas. true → nearest (pixel-art friendly,
+  // crisp at any zoom level — the default for sprite work). false →
+  // bilinear. Mirrors the atlas tool's `pixelArt` pref shape so the
+  // EncodeMenu's Segmented control behaves the same way.
+  pixelArt: boolean
 }
 
 interface RuntimeSlice {
@@ -74,6 +79,7 @@ export type EncodeStoreState = DocSlice &
     setKtx2UastcLevel: (level: DocSlice['ktx2']['uastcLevel']) => void
     // Actions — prefs
     setCompareSplitU: (u: number) => void
+    setPixelArt: (v: boolean) => void
     // Actions — session
     setMipLevel: (n: number) => void
     setMode: (m: 'encode' | 'inspect') => void
@@ -120,6 +126,7 @@ export const useEncodeStore = create<EncodeStoreState>()(
 
           // Prefs slice defaults
           compareSplitU: 0.5,
+          pixelArt: true,
 
           // Session slice defaults
           fileName: 'image',
@@ -149,6 +156,7 @@ export const useEncodeStore = create<EncodeStoreState>()(
 
           // Prefs actions
           setCompareSplitU: (u) => set((s) => ({ ...s, compareSplitU: Math.min(1, Math.max(0, u)) })),
+          setPixelArt: (v) => set((s) => ({ ...s, pixelArt: v })),
 
           // Session actions
           setMipLevel: (n) =>
@@ -209,7 +217,7 @@ export const useEncodeStore = create<EncodeStoreState>()(
         // Cross-session prefs: survive panel close + VSCode restart.
         name: 'fl-encode-prefs',
         storage: createJSONStorage(() => localStorageStorage),
-        partialize: (s) => ({ compareSplitU: s.compareSplitU }),
+        partialize: (s) => ({ compareSplitU: s.compareSplitU, pixelArt: s.pixelArt }),
       },
     ),
     {
@@ -270,6 +278,8 @@ export const encodeActions = {
     useEncodeStore.getState().setKtx2UastcLevel(level),
   setCompareSplitU: (u: number) =>
     useEncodeStore.getState().setCompareSplitU(u),
+  setPixelArt: (v: boolean) =>
+    useEncodeStore.getState().setPixelArt(v),
   setMipLevel: (n: number) =>
     useEncodeStore.getState().setMipLevel(n),
   setEncodedMipCount: (count: number) =>

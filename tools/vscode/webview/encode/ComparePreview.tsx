@@ -187,6 +187,7 @@ export function ComparePreview() {
   const mipLevel = useEncodeStore((s) => s.mipLevel)
   const mode = useEncodeStore((s) => s.mode)
   const isEncoding = useEncodeStore((s) => s.isEncoding)
+  const pixelArt = useEncodeStore((s) => s.pixelArt)
   const original = useOriginalTexture(sourceImage)
   const encoded = useEncodedTexture(setEncodedMipCount)
 
@@ -207,6 +208,7 @@ export function ComparePreview() {
         initialSplitU={1}
         mipLevelB={mipLevel}
         backgroundStyle="checker"
+        pixelArt={pixelArt}
       />
     )
   }
@@ -234,6 +236,7 @@ export function ComparePreview() {
       mipLevelB={mipLevel}
       backgroundStyle="checker"
       compareLoading={isEncoding}
+      pixelArt={pixelArt}
     >
       <CompareSliderOverlay />
       <CompareLoadingOverlay />

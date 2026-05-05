@@ -6,7 +6,36 @@ import { space } from '@three-flatland/design-system/tokens/space.stylex'
 import { radius } from '@three-flatland/design-system/tokens/radius.stylex'
 import { z } from '@three-flatland/design-system/tokens/z.stylex'
 import { createClientBridge } from '@three-flatland/bridge/client'
-import { encodeActions } from './encodeStore'
+import { useEncodeStore, encodeActions } from './encodeStore'
+
+type SegmentedProps<V extends string> = {
+  label: React.ReactNode
+  value: V
+  options: readonly V[]
+  onChange: (next: V) => void
+}
+
+function Segmented<V extends string>({ label, value, options, onChange }: SegmentedProps<V>) {
+  return (
+    <div {...stylex.props(s.segRow)}>
+      <span>{label}</span>
+      <span role="radiogroup" {...stylex.props(s.segGroup)}>
+        {options.map((opt) => (
+          <button
+            key={opt}
+            type="button"
+            role="radio"
+            aria-checked={value === opt}
+            {...stylex.props(s.segBtn, value === opt && s.segBtnActive)}
+            onClick={() => onChange(opt)}
+          >
+            {opt}
+          </button>
+        ))}
+      </span>
+    </div>
+  )
+}
 
 const s = stylex.create({
   // Anchor: the wrapper around the trigger button + popover. Position:
@@ -101,6 +130,45 @@ const s = stylex.create({
     color: vscode.btnFg,
   },
   checkOn: { backgroundColor: vscode.btnBg, borderColor: vscode.btnBg },
+  // Segmented control — mirrors AtlasMenu's pattern (label on left,
+  // pill-style segmented buttons on right). Same shape across both
+  // tools so the user-visible affordance is consistent.
+  segRow: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: space.md,
+    paddingInline: space.lg,
+    paddingBlock: space.sm,
+  },
+  segGroup: {
+    display: 'inline-flex',
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: vscode.inputBorder,
+    borderRadius: radius.sm,
+    overflow: 'hidden',
+  },
+  segBtn: {
+    paddingInline: space.md,
+    paddingBlock: space.xs,
+    fontFamily: vscode.monoFontFamily,
+    fontSize: '11px',
+    backgroundColor: { default: 'transparent', ':hover': vscode.bg },
+    color: vscode.fg,
+    borderWidth: 0,
+    cursor: 'pointer',
+    userSelect: 'none',
+  },
+  segBtnActive: {
+    backgroundColor: vscode.btnBg,
+    color: vscode.btnFg,
+  },
+  divider: {
+    height: 1,
+    backgroundColor: vscode.inputBorder,
+    marginBlock: space.xs,
+  },
 })
 
 /**
@@ -116,6 +184,7 @@ export function EncodeMenu() {
   // Show pixel grid toggle — placeholder; no implementation yet.
   // TODO(T16): wire to actual pixel-grid overlay once ComparePreview supports it.
   const [pixelGrid, setPixelGrid] = useState(false)
+  const pixelArt = useEncodeStore((s) => s.pixelArt)
   const anchorRef = useRef<HTMLDivElement>(null)
 
   // Close on outside click + Escape.
@@ -167,6 +236,19 @@ export function EncodeMenu() {
       </button>
       {open ? (
         <div role="menu" {...stylex.props(s.popover)}>
+          <div {...stylex.props(s.sectionLabel)}>Rendering</div>
+          {/* Filter mode — mirrors atlas tool's pref. true ↔ 'pixel'
+              (nearest), false ↔ 'bilinear'. Default is 'pixel' (nearest)
+              because sprite work is the primary use case for this tool;
+              users encoding photographic content can flip to bilinear. */}
+          <Segmented
+            label="Filter"
+            value={pixelArt ? 'pixel' : 'bilinear'}
+            options={['pixel', 'bilinear'] as const}
+            onChange={(v) => encodeActions.setPixelArt(v === 'pixel')}
+          />
+          <div {...stylex.props(s.divider)} />
+
           <div {...stylex.props(s.sectionLabel)}>Compare</div>
           <button
             type="button"
