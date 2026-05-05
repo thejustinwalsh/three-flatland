@@ -147,7 +147,6 @@ export function InfoPanel() {
   const encodedLen = encodedBytes?.length ?? 0
   const sw = sourceImage?.width ?? 0
   const sh = sourceImage?.height ?? 0
-  const sourceRgba = sw * sh * 4
 
   const wireRatio = sourceLen > 0 ? encodedLen / sourceLen : 0
   const wireSavedBytes = Math.max(0, sourceLen - encodedLen)
@@ -219,12 +218,6 @@ export function InfoPanel() {
         {/* ─── CPU memory after decode ─────────────────────────── */}
         <section {...stylex.props(s.section)}>
           <div {...stylex.props(s.sectionTitle)}>CPU memory after decode</div>
-          <div {...stylex.props(s.row)}>
-            <span {...stylex.props(s.rowLabel)}>Original RGBA</span>
-            <span {...stylex.props(s.rowValue)}>
-              {formatBytes(sourceRgba)} (kept for compare)
-            </span>
-          </div>
           <div {...stylex.props(s.row)}>
             <span {...stylex.props(s.rowLabel)}>Compressed bytes</span>
             <span {...stylex.props(s.rowValue)}>{formatBytes(encodedLen)}</span>

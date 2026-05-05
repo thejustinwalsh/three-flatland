@@ -70,24 +70,23 @@ Saved         1.9 MB
 
 ### 3. CPU memory after decode
 
-Plain rows. The win is in what's *not* allocated.
+Plain rows. The win is in what's *not* allocated. The section answers "if I shipped this format, what does the consuming app pay on CPU after decode?" — only the encoded artifact's footprint, not anything tool-internal.
 
 ```
-Original RGBA       16.0 MB  (kept for compare)
-Encoded artifact:
-  Compressed bytes  412 KB
-  Decoded RGBA      16.0 MB    ← WebP / AVIF
-  — or —
-  Decoded RGBA      not allocated  ← KTX2
+Compressed bytes  412 KB
+Decoded RGBA      16.0 MB    ← WebP / AVIF
+— or —
+Decoded RGBA      not allocated  ← KTX2
 
 KTX2 transcoder writes GPU-native blocks directly. No RGBA round-trip.
 ```
 
-- "Original RGBA" = `sourceImage.width * sourceImage.height * 4` (always present in encode mode).
 - "Compressed bytes" = `encodedBytes.length`.
 - "Decoded RGBA" branch is conditional on `encodedFormat`:
   - WebP / AVIF → show the size, computed from `encodedImage.width * encodedImage.height * 4`.
   - KTX2 → show "not allocated" + the trailing one-line note explaining why. Keep the note within the section so the absence of an allocation is *the point*, not a confusing blank.
+
+The original `sourceImage` RGBA buffer DOES exist in this tool's runtime (the compare slider needs it), but that's a property of *the tool*, not *the encode choice*. Showing it here would force the reader to mentally subtract one RGBA buffer from another to get the answer they came for.
 
 ### 4. GPU representation (format + memory merged)
 
