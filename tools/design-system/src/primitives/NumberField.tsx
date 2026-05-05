@@ -291,6 +291,28 @@ export function NumberField({
     setAtCap(false)
   }
 
+  // Safety net for VSCode webview iframes: pointer events released
+  // outside the iframe boundary can be dropped, leaving the field
+  // stuck in `dragging`. While dragging, mirror pointerup/cancel
+  // from the window so we always clean up.
+  useEffect(() => {
+    if (!dragging) return
+    const onUp = (e: PointerEvent) => {
+      setDragging(false)
+      setDragDelta(0)
+      setAtCap(false)
+      if (decoratorRef.current?.hasPointerCapture(e.pointerId)) {
+        decoratorRef.current.releasePointerCapture(e.pointerId)
+      }
+    }
+    window.addEventListener('pointerup', onUp)
+    window.addEventListener('pointercancel', onUp)
+    return () => {
+      window.removeEventListener('pointerup', onUp)
+      window.removeEventListener('pointercancel', onUp)
+    }
+  }, [dragging])
+
   return (
     <div
       {...stylex.props(s.container, disabled && s.containerDisabled)}
@@ -320,6 +342,7 @@ export function NumberField({
         onPointerMove={handleDecoratorPointerMove}
         onPointerUp={endDrag}
         onPointerCancel={endDrag}
+        onLostPointerCapture={endDrag}
         {...stylex.props(
           s.decorator,
           dragging && s.decoratorActive,
