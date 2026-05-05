@@ -353,19 +353,18 @@ export type { MiniGameProps, ZzFXParams } from './types'
   "name": "@three-flatland/mini-breakout",
   "exports": {
     ".": {
-      "import": "./dist/index.js",
-      "require": "./dist/index.cjs"
+      "import": "./dist/index.js"
     }
   },
   "scripts": {
-    "dev": "tsup src/index.ts --format esm,cjs --dts --external react --external three --external @react-three/fiber --external koota --watch",
+    "dev": "tsdown --watch",
     "dev:app": "vite dev --port ${TURBO_MFE_PORT:-5200}",
-    "build": "tsup src/index.ts --format esm,cjs --dts --external react --external three --external @react-three/fiber --external koota"
+    "build": "tsdown"
   }
 }
 ```
 
-**Important:** The `dev` script runs tsup in watch mode so that `pnpm dev` at the root automatically rebuilds the library when source files change. Use `dev:app` for the standalone vite dev server.
+**Important:** The `dev` script runs tsdown in watch mode so that `pnpm dev` at the root automatically rebuilds the library when source files change. Use `dev:app` for the standalone vite dev server.
 
 ---
 

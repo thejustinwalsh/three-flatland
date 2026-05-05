@@ -18,9 +18,9 @@
   ],
   "sideEffects": false,
   "scripts": {
-    "dev": "tsup src/index.ts --format esm --dts --external react --external three --external @react-three/fiber --external koota --external three-flatland --external @three-flatland/nodes --watch",
+    "dev": "tsdown --watch",
     "dev:app": "vite dev --port ${TURBO_MFE_PORT:-5200}",
-    "build": "tsup src/index.ts --format esm --dts --external react --external three --external @react-three/fiber --external koota --external three-flatland --external @three-flatland/nodes",
+    "build": "tsdown",
     "build:app": "vite build",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src",
@@ -47,7 +47,7 @@
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "three": "^0.183.1",
-    "tsup": "^8.0.0",
+    "tsdown": "catalog:",
     "typescript": "^5.7.3",
     "vite": "^6.4.1"
   },

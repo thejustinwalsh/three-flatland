@@ -6,6 +6,7 @@ packages:
   - skills
 
 catalog:
+  tsdown: ^0.21.10
   '@tweakpane/core': ^2.0.5
   '@tweakpane/plugin-essentials': ^0.2.1
   tweakpane: ^4.0.5

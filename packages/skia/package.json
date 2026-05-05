@@ -9,10 +9,6 @@
       "import": {
         "types": "./dist/index.d.ts",
         "default": "./dist/index.js"
-      },
-      "require": {
-        "types": "./dist/index.d.cts",
-        "default": "./dist/index.cjs"
       }
     },
     "./three": {
@@ -20,10 +16,6 @@
       "import": {
         "types": "./dist/three/index.d.ts",
         "default": "./dist/three/index.js"
-      },
-      "require": {
-        "types": "./dist/three/index.d.cts",
-        "default": "./dist/three/index.cjs"
       }
     },
     "./three/*": {
@@ -31,10 +23,6 @@
       "import": {
         "types": "./dist/three/*.d.ts",
         "default": "./dist/three/*.js"
-      },
-      "require": {
-        "types": "./dist/three/*.d.cts",
-        "default": "./dist/three/*.cjs"
       }
     },
     "./react": {
@@ -42,10 +30,6 @@
       "import": {
         "types": "./dist/react/index.d.ts",
         "default": "./dist/react/index.js"
-      },
-      "require": {
-        "types": "./dist/react/index.d.cts",
-        "default": "./dist/react/index.cjs"
       }
     },
     "./react/*": {
@@ -53,17 +37,13 @@
       "import": {
         "types": "./dist/react/*.d.ts",
         "default": "./dist/react/*.js"
-      },
-      "require": {
-        "types": "./dist/react/*.d.cts",
-        "default": "./dist/react/*.cjs"
       }
     },
     "./wasm": "./dist/skia-gl/skia-gl.wasm",
     "./wasm/gl": "./dist/skia-gl/skia-gl.wasm",
     "./wasm/wgpu": "./dist/skia-wgpu/skia-wgpu.wasm"
   },
-  "main": "./dist/index.cjs",
+  "main": "./dist/index.js",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "bin": {
@@ -84,11 +64,11 @@
     "skia:setup": "node scripts/setup.mjs",
     "skia:check": "node scripts/setup.mjs --check",
     "skia:tools": "node scripts/setup.mjs --tools",
-    "build": "node scripts/setup.mjs --ensure && tsup",
+    "build": "node scripts/setup.mjs --ensure && tsdown",
     "build:wasm": "node scripts/build-wasm.mjs",
     "build:wasm:gl": "node scripts/build-wasm.mjs --gl-only",
     "build:wasm:wgpu": "node scripts/build-wasm.mjs --wgpu-only",
-    "dev": "tsup --watch",
+    "dev": "tsdown --watch",
     "test": "vitest run",
     "test:gl": "vitest run --project gl",
     "test:wgpu": "vitest run --project wgpu",

@@ -65,7 +65,7 @@ function extractImports(entryPoint, pkg) {
 
 /**
  * esbuild plugin for @three-flatland/skia:
- * - Resolves .json imports from src/ (tsup doesn't copy them to dist/)
+ * - Resolves .json imports from src/ (tsdown copies them to dist/ via hooks['build:done'])
  * - Stubs .wasm imports (measured separately as raw file sizes)
  */
 const resolveSkia = {

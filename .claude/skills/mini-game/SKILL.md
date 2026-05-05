@@ -166,9 +166,9 @@ minis/{name}/
 ```json
 {
   "scripts": {
-    "dev": "tsup src/index.ts --format esm,cjs --dts --external react --external three --external @react-three/fiber --external koota --watch",
+    "dev": "tsdown --watch",
     "dev:app": "vite dev --port ${TURBO_MFE_PORT:-5200}",
-    "build": "tsup src/index.ts --format esm,cjs --dts --external react --external three --external @react-three/fiber --external koota"
+    "build": "tsdown"
   }
 }
 ```
