@@ -52,7 +52,12 @@ pub fn build(b: *std.Build) void {
         .root_module = b.createModule(.{ .target = target, .optimize = optimize }),
     });
     encoder.entry = .disabled;
-    encoder.rdynamic = true;
+    // rdynamic = false — see the matching comment on the transcoder target.
+    // Without this, wasm-ld retains every zstd public API export, libc++
+    // allocator overloads, locale helpers, etc., as live roots, defeating
+    // DCE. The fl_basis_* exports are tagged via __attribute__((export_name(...)))
+    // in basis_c_api.cpp; wasm-ld keeps those + their transitive callees.
+    encoder.rdynamic = false;
     encoder.export_table = true;
     encoder.initial_memory = 32 * 1024 * 1024;
     encoder.max_memory = 512 * 1024 * 1024;
@@ -135,7 +140,15 @@ pub fn build(b: *std.Build) void {
         .root_module = b.createModule(.{ .target = target, .optimize = optimize }),
     });
     transcoder.entry = .disabled;
-    transcoder.rdynamic = true;
+    // rdynamic = false — without this, wasm-ld treats every visible C++
+    // symbol as a live root and skips DCE, dragging in the entire zstd
+    // public API (ZSTD_compress*/ZSTD_decompress* family, error tables,
+    // version query helpers) plus libc++ allocator overloads + libc
+    // locale helpers. We only need ~13 fl_* exports which are already
+    // tagged with __attribute__((export_name(...))) in
+    // basis_transcoder_c_api.cpp, so wasm-ld will keep those + their
+    // transitive call graph and DCE the rest.
+    transcoder.rdynamic = false;
     transcoder.export_table = true;
     // Static data alone (basisu_transcoder_tables_*.inc) is ~17MB, so 16MB is
     // not enough for initial. Bumped to 32MB; max stays at 256MB since the
