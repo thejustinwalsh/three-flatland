@@ -83,7 +83,7 @@ Replace Phase-2.1.1 stopgaps with our own KTX2 loader stack:
 | 74 | T8 — Equivalence test (our transcoder vs three's, byte-equality of transcoded RGBA on a fixture) |
 | 75 | T9 — Whole-repo gate + bundle size delta |
 | 76 | T10 — Test gate report |
-| 92 | T13 — *(deferred until lighting-stochastic-adoption merges)* — three-flatland `TextureLoader` inline KTX2 branch |
+| 92 | T13 — *(deferred until lighting-stochastic-adoption merges)* — three-flatland `TextureLoader` inline KTX2 branch. Full spec: `2026-05-04-three-flatland-textureloader-ktx2.md`. |
 
 (IDs 68 / 77 / 78 — BaseImageLoader / LoaderRegistry / registry-migration — were **deleted**.)
 

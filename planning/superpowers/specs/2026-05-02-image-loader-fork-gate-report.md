@@ -26,7 +26,7 @@ The encode tool now ships through a fully-owned KTX2 stack: TS-ported KTX2Loader
 | T8 | ✅ Equivalence test (skip-by-default) | Compares our `transcodeKtx2` RGBA32 output against three's vendored `basis_transcoder` for an ETC1S fixture. Run when basisu sources bump. |
 | T9 | ✅ Whole-repo gate + bundle size delta | This report. |
 | T10 | ✅ Gate report | This document. |
-| T13 | ⏸️ *(deferred)* Three-flatland TextureLoader inline KTX2 branch | Blocked on `lighting-stochastic-adoption` rewriting `TextureLoader`/`SpriteSheetLoader`. Will graft onto its shape, not the current one. |
+| T13 | ⏸️ *(deferred)* Three-flatland TextureLoader inline KTX2 branch | Blocked on `lighting-stochastic-adoption` rewriting `TextureLoader`/`SpriteSheetLoader`. Full spec at `planning/superpowers/specs/2026-05-04-three-flatland-textureloader-ktx2.md`. |
 | T94 | ✅ Encoder worker symmetry | KTX2 encode now off-main-thread; PNG/WebP/AVIF stay inline (sub-second; AVIF already uses jsquash's internal workers). |
 
 (Original T2/T11/T12 — `BaseImageLoader`, `LoaderRegistry`, registry-migration — were **deleted** during the architecture review. The canonical pattern at `.library/three-flatland/loader-architecture.md` rejects them.)
