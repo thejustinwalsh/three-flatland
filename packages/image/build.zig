@@ -35,7 +35,13 @@ pub fn build(b: *std.Build) void {
         "-DBASISU_SUPPORT_SSE=1",
         "-DBASISU_SUPPORT_WASM_SIMD=1",
         "-DBASISD_SUPPORT_KTX2=1",
-        "-DBASISD_SUPPORT_KTX2_ZSTD=0",
+        // Enable Zstd supercompression for KTX2 — basisu's UASTC + zstd
+        // pipeline (highest-quality, smallest-output basis variant; ~20-30%
+        // smaller files than raw UASTC). Encoder side compiles
+        // vendor/basisu/zstd/zstd.c; transcoder side now does too (added
+        // below). Required for round-tripping UASTC+zstd files; ETC1S is
+        // unaffected (uses VAQ codebooks, not zstd).
+        "-DBASISD_SUPPORT_KTX2_ZSTD=1",
         "-DNDEBUG",
     };
 
@@ -150,6 +156,16 @@ pub fn build(b: *std.Build) void {
         .root = b.path("vendor/basisu/transcoder"),
         .files = trans.transcoder_files,
         .flags = cxx_flags,
+    });
+
+    // Zstd (single amalgamated C file) — required at link time when
+    // BASISD_SUPPORT_KTX2_ZSTD=1 so the transcoder can decompress zstd-
+    // supercompressed UASTC level data. Same source patch as the encoder
+    // side guards ZSTD_MULTITHREAD with !__wasi__ to skip pthreads.
+    transcoder.addCSourceFiles(.{
+        .root = b.path("vendor/basisu/zstd"),
+        .files = &.{"zstd.c"},
+        .flags = &.{ "-msimd128", "-DZSTD_DISABLE_ASM=1", "-DNDEBUG" },
     });
 
     // Flat C ABI over basist::ktx2_transcoder — exports fl_transcoder_* /

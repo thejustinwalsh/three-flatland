@@ -5,18 +5,37 @@ export interface Ktx2Options {
   quality?: number
   mipmaps?: boolean
   uastcLevel?: 0 | 1 | 2 | 3 | 4
+  /**
+   * KTX2 supercompression for UASTC. zstd is the default — basisu's
+   * UASTC + zstd pipeline yields the smallest basis output at any given
+   * quality. Set to `'none'` to opt out (uncommon — typically only for
+   * compatibility with consumers that can't decode zstd-supercompressed
+   * KTX2). Ignored for ETC1S (basisu refuses to combine zstd with VAQ).
+   * The transcoder reads the scheme from the KTX2 header at decode time,
+   * so no decode-side setting is needed.
+   */
+  supercompression?: 'none' | 'zstd'
 }
 
-const OPTS_BYTES = 5 * 4 // 5 × uint32
+const OPTS_BYTES = 6 * 4 // 6 × uint32
+
+function resolveSupercompression(opts: Ktx2Options): 0 | 1 {
+  // ETC1S never uses zstd — basisu rejects the combination, so we always
+  // pass 0 regardless of caller intent. For UASTC: explicit `'none'` wins;
+  // any other value (including unset) defaults to zstd.
+  if (opts.mode !== 'uastc') return 0
+  return opts.supercompression === 'none' ? 0 : 1
+}
 
 function writeOpts(exports: BasisExports, opts: Ktx2Options): number {
   const ptr = exports.fl_basis_alloc(OPTS_BYTES)
   const view = new DataView(exports.memory.buffer, ptr, OPTS_BYTES)
-  view.setUint32(0, opts.mode === 'uastc' ? 1 : 0, true)         // uastc
-  view.setUint32(4, opts.mipmaps ? 1 : 0, true)                  // mipmaps
-  view.setUint32(8, opts.quality ?? 128, true)                   // quality
-  view.setUint32(12, opts.uastcLevel ?? 2, true)                 // uastc_level
-  view.setUint32(16, 1, true)                                    // check_for_alpha
+  view.setUint32(0, opts.mode === 'uastc' ? 1 : 0, true)   // uastc
+  view.setUint32(4, opts.mipmaps ? 1 : 0, true)            // mipmaps
+  view.setUint32(8, opts.quality ?? 128, true)             // quality
+  view.setUint32(12, opts.uastcLevel ?? 2, true)           // uastc_level
+  view.setUint32(16, 1, true)                              // check_for_alpha
+  view.setUint32(20, resolveSupercompression(opts), true)  // supercompression
   return ptr
 }
 
