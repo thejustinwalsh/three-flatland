@@ -78,7 +78,7 @@ Decoded RGBA      16.0 MB    ← WebP / AVIF
 — or —
 Decoded RGBA      not allocated  ← KTX2
 
-KTX2 transcoder writes GPU-native blocks directly. No RGBA round-trip.
+KTX2 transcoder writes GPU-native blocks directly.
 ```
 
 - "Compressed bytes" = `encodedBytes.length`.

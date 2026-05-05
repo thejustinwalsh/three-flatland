@@ -234,7 +234,7 @@ export function InfoPanel() {
           </div>
           {cpuKtx2 && (
             <div {...stylex.props(s.cpuNote)}>
-              KTX2 transcoder writes GPU-native blocks directly. No RGBA round-trip.
+              KTX2 transcoder writes GPU-native blocks directly.
             </div>
           )}
         </section>
