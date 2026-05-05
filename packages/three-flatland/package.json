@@ -9,10 +9,6 @@
       "import": {
         "types": "./dist/index.d.ts",
         "default": "./dist/index.js"
-      },
-      "require": {
-        "types": "./dist/index.d.cts",
-        "default": "./dist/index.cjs"
       }
     },
     "./react": {
@@ -20,10 +16,6 @@
       "import": {
         "types": "./dist/react.d.ts",
         "default": "./dist/react.js"
-      },
-      "require": {
-        "types": "./dist/react.d.cts",
-        "default": "./dist/react.cjs"
       }
     },
     "./sprites": {
@@ -31,10 +23,6 @@
       "import": {
         "types": "./dist/sprites/index.d.ts",
         "default": "./dist/sprites/index.js"
-      },
-      "require": {
-        "types": "./dist/sprites/index.d.cts",
-        "default": "./dist/sprites/index.cjs"
       }
     },
     "./sprites/*": {
@@ -42,10 +30,6 @@
       "import": {
         "types": "./dist/sprites/*.d.ts",
         "default": "./dist/sprites/*.js"
-      },
-      "require": {
-        "types": "./dist/sprites/*.d.cts",
-        "default": "./dist/sprites/*.cjs"
       }
     },
     "./animation": {
@@ -53,10 +37,6 @@
       "import": {
         "types": "./dist/animation/index.d.ts",
         "default": "./dist/animation/index.js"
-      },
-      "require": {
-        "types": "./dist/animation/index.d.cts",
-        "default": "./dist/animation/index.cjs"
       }
     },
     "./animation/*": {
@@ -64,10 +44,6 @@
       "import": {
         "types": "./dist/animation/*.d.ts",
         "default": "./dist/animation/*.js"
-      },
-      "require": {
-        "types": "./dist/animation/*.d.cts",
-        "default": "./dist/animation/*.cjs"
       }
     },
     "./materials": {
@@ -75,10 +51,6 @@
       "import": {
         "types": "./dist/materials/index.d.ts",
         "default": "./dist/materials/index.js"
-      },
-      "require": {
-        "types": "./dist/materials/index.d.cts",
-        "default": "./dist/materials/index.cjs"
       }
     },
     "./materials/*": {
@@ -86,10 +58,6 @@
       "import": {
         "types": "./dist/materials/*.d.ts",
         "default": "./dist/materials/*.js"
-      },
-      "require": {
-        "types": "./dist/materials/*.d.cts",
-        "default": "./dist/materials/*.cjs"
       }
     },
     "./loaders": {
@@ -97,10 +65,6 @@
       "import": {
         "types": "./dist/loaders/index.d.ts",
         "default": "./dist/loaders/index.js"
-      },
-      "require": {
-        "types": "./dist/loaders/index.d.cts",
-        "default": "./dist/loaders/index.cjs"
       }
     },
     "./loaders/*": {
@@ -108,10 +72,6 @@
       "import": {
         "types": "./dist/loaders/*.d.ts",
         "default": "./dist/loaders/*.js"
-      },
-      "require": {
-        "types": "./dist/loaders/*.d.cts",
-        "default": "./dist/loaders/*.cjs"
       }
     },
     "./pipeline": {
@@ -119,10 +79,6 @@
       "import": {
         "types": "./dist/pipeline/index.d.ts",
         "default": "./dist/pipeline/index.js"
-      },
-      "require": {
-        "types": "./dist/pipeline/index.d.cts",
-        "default": "./dist/pipeline/index.cjs"
       }
     },
     "./pipeline/*": {
@@ -130,10 +86,6 @@
       "import": {
         "types": "./dist/pipeline/*.d.ts",
         "default": "./dist/pipeline/*.js"
-      },
-      "require": {
-        "types": "./dist/pipeline/*.d.cts",
-        "default": "./dist/pipeline/*.cjs"
       }
     },
     "./tilemap": {
@@ -141,10 +93,6 @@
       "import": {
         "types": "./dist/tilemap/index.d.ts",
         "default": "./dist/tilemap/index.js"
-      },
-      "require": {
-        "types": "./dist/tilemap/index.d.cts",
-        "default": "./dist/tilemap/index.cjs"
       }
     },
     "./tilemap/*": {
@@ -152,10 +100,6 @@
       "import": {
         "types": "./dist/tilemap/*.d.ts",
         "default": "./dist/tilemap/*.js"
-      },
-      "require": {
-        "types": "./dist/tilemap/*.d.cts",
-        "default": "./dist/tilemap/*.cjs"
       }
     },
     "./react/*": {
@@ -163,14 +107,10 @@
       "import": {
         "types": "./dist/react/*.d.ts",
         "default": "./dist/react/*.js"
-      },
-      "require": {
-        "types": "./dist/react/*.d.cts",
-        "default": "./dist/react/*.cjs"
       }
     }
   },
-  "main": "./dist/index.cjs",
+  "main": "./dist/index.js",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "files": [
@@ -178,8 +118,8 @@
   ],
   "sideEffects": false,
   "scripts": {
-    "build": "tsup",
-    "dev": "tsup --watch",
+    "build": "tsdown",
+    "dev": "tsdown --watch",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist"
   },

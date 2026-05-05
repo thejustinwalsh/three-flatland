@@ -9,10 +9,6 @@
       "import": {
         "types": "./dist/index.d.ts",
         "default": "./dist/index.js"
-      },
-      "require": {
-        "types": "./dist/index.d.cts",
-        "default": "./dist/index.cjs"
       }
     },
     "./react": {
@@ -20,10 +16,6 @@
       "import": {
         "types": "./dist/react.d.ts",
         "default": "./dist/react.js"
-      },
-      "require": {
-        "types": "./dist/react.d.cts",
-        "default": "./dist/react.cjs"
       }
     },
     "./react/*": {
@@ -31,14 +23,10 @@
       "import": {
         "types": "./dist/react/*.d.ts",
         "default": "./dist/react/*.js"
-      },
-      "require": {
-        "types": "./dist/react/*.d.cts",
-        "default": "./dist/react/*.cjs"
       }
     }
   },
-  "main": "./dist/index.cjs",
+  "main": "./dist/index.js",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "files": [
@@ -46,8 +34,8 @@
   ],
   "sideEffects": false,
   "scripts": {
-    "build": "tsup",
-    "dev": "tsup --watch",
+    "build": "tsdown",
+    "dev": "tsdown --watch",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
