@@ -259,28 +259,34 @@ function CompareScene({
   // Rebuild colorNode whenever a texture changes.
   useEffect(() => {
     if (!primaryTex) return
-    const a = texture(primaryTex)
-    // For the compare texture, sample at the selected LOD using textureLevel().
-    // For non-CompressedTextures (CanvasTexture) the uniform is 0, so the
-    // result is equivalent to texture() at full resolution.
-    //
     // Y-flip workaround for CompressedTexture: KTX2 stores image data with
     // origin at bottom-left (OpenGL convention) while CanvasTexture from a
     // 2D canvas has origin at top-left. CompressedTexture upload ignores
     // `flipY` (compressed blocks can't be flipped at upload), and our owned
     // Ktx2Loader explicitly sets flipY=false even for the RGBA32 fallback so
     // the data is uniformly bottom-up regardless of basis target. We flip
-    // the V coordinate in the shader to compensate, but ONLY when the
-    // texture is compressed — CanvasTexture's flipY=true upload already
-    // got the data right-side-up.
+    // the V coordinate in the shader to compensate, but ONLY for compressed
+    // textures — CanvasTexture's flipY=true upload already got its data
+    // right-side-up.
     //
     // Detection uses `isCompressedTexture` flag (only set on CompressedTexture
     // and its subclasses). Earlier check via `mipmaps !== undefined` was
     // unreliable: three's Texture base initializes `mipmaps = []` (empty
     // array, not undefined), so the check would pass for ANY texture and
     // V-flip CanvasTextures too — WebP/AVIF previews displayed upside-down.
-    const isCompressed = !!(compareTex as { isCompressedTexture?: boolean } | null)?.isCompressedTexture
-    const compareUV = isCompressed
+    //
+    // Each side flips independently. Originally only the compare side
+    // flipped; that left the primary side displaying upside-down whenever
+    // the user passed a CompressedTexture as primary (inspect mode for
+    // KTX2 — primary === compare === KTX2 — surfaced this).
+    const isPrimaryCompressed = !!(primaryTex as { isCompressedTexture?: boolean }).isCompressedTexture
+    const primaryUV = isPrimaryCompressed ? vec2(uv().x, float(1).sub(uv().y)) : uv()
+    const a = texture(primaryTex, primaryUV)
+    // For the compare texture, sample at the selected LOD using textureLevel().
+    // For non-CompressedTextures (CanvasTexture) the uniform is 0, so the
+    // result is equivalent to texture() at full resolution.
+    const isCompareCompressed = !!(compareTex as { isCompressedTexture?: boolean } | null)?.isCompressedTexture
+    const compareUV = isCompareCompressed
       ? vec2(uv().x, float(1).sub(uv().y))
       : uv()
     const compareSample = compareTex ? textureLevel(compareTex, compareUV, mipLevelBNode) : a

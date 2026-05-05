@@ -64,7 +64,6 @@ export function App() {
   const encodeError = useEncodeStore((s) => s.encodeError)
   const loadInit = useEncodeStore((s) => s.loadInit)
   const setRuntimeFields = useEncodeStore((s) => s.setRuntimeFields)
-  const mode = useEncodeStore((s) => s.mode)
   const infoPanelWidth = useEncodeStore((s) => s.splits.infoPanelWidth)
   const setInfoPanelWidth = useEncodeStore((s) => s.setInfoPanelWidth)
   const workAreaRef = useRef<HTMLDivElement>(null)
@@ -189,30 +188,26 @@ export function App() {
         >
           <ComparePreview />
         </Panel>
-        {mode === 'encode' && (
-          <>
-            <Splitter
-              axis="vertical"
-              onDrag={(clientX) => {
-                const el = workAreaRef.current
-                if (!el) return
-                const rect = el.getBoundingClientRect()
-                // Sidebar width = distance from cursor to right edge.
-                // setInfoPanelWidth clamps to 240–480 inside the store.
-                setInfoPanelWidth(rect.right - clientX)
-              }}
-            />
-            <Panel
-              title="Info"
-              bodyPadding="none"
-              style={styles.infoPanel}
-            >
-              <div style={{ width: infoPanelWidth, height: '100%' }}>
-                <InfoPanel />
-              </div>
-            </Panel>
-          </>
-        )}
+        <Splitter
+          axis="vertical"
+          onDrag={(clientX) => {
+            const el = workAreaRef.current
+            if (!el) return
+            const rect = el.getBoundingClientRect()
+            // Sidebar width = distance from cursor to right edge.
+            // setInfoPanelWidth clamps to 240–480 inside the store.
+            setInfoPanelWidth(rect.right - clientX)
+          }}
+        />
+        <Panel
+          title="Info"
+          bodyPadding="none"
+          style={styles.infoPanel}
+        >
+          <div style={{ width: infoPanelWidth, height: '100%' }}>
+            <InfoPanel />
+          </div>
+        </Panel>
       </div>
     </div>
   )
