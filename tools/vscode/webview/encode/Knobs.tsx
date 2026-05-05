@@ -9,8 +9,20 @@ type Format = EncodeStoreState['format']
 // Each group is a small flex row with a label + control. The Toolbar's own
 // padding handles the surrounding spacing; we contribute groups, not a row.
 const styles = stylex.create({
-  group: { display: 'flex', gap: space.sm, alignItems: 'center' },
-  groupDisabled: { display: 'flex', gap: space.sm, alignItems: 'center', pointerEvents: 'none', opacity: 0.4 },
+  group: {
+    display: 'flex',
+    gap: space.sm,
+    alignItems: 'center',
+    paddingInline: space.xs,
+  },
+  groupDisabled: {
+    display: 'flex',
+    gap: space.sm,
+    alignItems: 'center',
+    paddingInline: space.xs,
+    pointerEvents: 'none',
+    opacity: 0.4,
+  },
   label: { fontSize: 12, opacity: 0.85 },
 })
 
@@ -36,6 +48,7 @@ export function Knobs() {
   const setWebpQuality = useEncodeStore((s) => s.setWebpQuality)
   const setAvifQuality = useEncodeStore((s) => s.setAvifQuality)
   const setKtx2Mode = useEncodeStore((s) => s.setKtx2Mode)
+  const setKtx2Quality = useEncodeStore((s) => s.setKtx2Quality)
   const setKtx2Mipmaps = useEncodeStore((s) => s.setKtx2Mipmaps)
   const setKtx2UastcLevel = useEncodeStore((s) => s.setKtx2UastcLevel)
 
@@ -64,6 +77,7 @@ export function Knobs() {
             min={0}
             max={100}
             step={1}
+            width={64}
             onChange={setWebpQuality}
             aria-label="WebP quality"
           />
@@ -78,6 +92,7 @@ export function Knobs() {
             min={0}
             max={100}
             step={1}
+            width={64}
             onChange={setAvifQuality}
             aria-label="AVIF quality"
           />
@@ -95,6 +110,20 @@ export function Knobs() {
               aria-label="KTX2 mode"
             />
           </div>
+          {ktx2.mode === 'etc1s' && (
+            <div {...stylex.props(groupStyle)}>
+              <span {...stylex.props(styles.label)}>Quality</span>
+              <NumberField
+                value={ktx2.quality}
+                min={1}
+                max={255}
+                step={1}
+                width={64}
+                onChange={setKtx2Quality}
+                aria-label="ETC1S quality"
+              />
+            </div>
+          )}
           {ktx2.mode === 'uastc' && (
             <div {...stylex.props(groupStyle)}>
               <span {...stylex.props(styles.label)}>Level</span>
@@ -103,6 +132,7 @@ export function Knobs() {
                 min={0}
                 max={4}
                 step={1}
+                width={56}
                 onChange={(v) => setKtx2UastcLevel(v as 0 | 1 | 2 | 3 | 4)}
                 aria-label="UASTC level"
               />
