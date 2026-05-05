@@ -26,14 +26,22 @@ pub const encoder_files: []const []const u8 = &.{
     "basisu_ssim.cpp",
     "basisu_uastc_enc.cpp",
     "basisu_uastc_hdr_4x4_enc.cpp",
-    // WASM API (encoder side — provides bu_* exports; transcoder side compiled separately)
-    "basisu_wasm_api.cpp",
+    // basisu_wasm_api.cpp removed — defined 13 `bu_*` exports tagged with
+    // __attribute__((export_name)) which made them DCE-live roots, keeping
+    // their transitive call graph alive. We never call them; our flat C ABI
+    // lives in basis_c_api.cpp (fl_basis_* exports). Dropping this file
+    // lets wasm-ld DCE the unreached basisu compressor entry points.
+    // "basisu_wasm_api.cpp",
     // OpenCL stub — provides no-op implementations; original basisu_opencl.cpp was removed at vendor time
     "basisu_opencl_stub.cpp",
-    // Image loaders used by the encoder
+    // Image loaders kept compiled in: basisu_enc.cpp directly references
+    // jpgd::decompress_jpeg_image_from_file and the tinyexr API surface.
+    // Removing these from the compile list trips wasm-ld with undefined
+    // symbols. Replacing them with no-op stub TUs is a viable next step
+    // (the consumer never reaches those code paths) but out of scope for
+    // the current size-tuning pass.
     "jpgd.cpp",
     "pvpngreader.cpp",
-    // 3rdparty image libs
     "3rdparty/android_astc_decomp.cpp",
     "3rdparty/tinyexr.cpp",
 };
