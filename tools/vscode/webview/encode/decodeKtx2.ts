@@ -52,13 +52,11 @@ export async function decodeKtx2ToImageData(bytes: Uint8Array): Promise<ImageDat
       `decodeKtx2ToImageData: expected ${width * height * 4} bytes (RGBA32), got ${data.length}`,
     )
   }
-  // KTX2 stores image data bottom-up; ImageData expects top-down rows.
-  const stride = width * 4
-  const flipped = new Uint8ClampedArray(data.length)
-  for (let y = 0; y < height; y++) {
-    const srcOff = (height - 1 - y) * stride
-    const dstOff = y * stride
-    flipped.set(data.subarray(srcOff, srcOff + stride), dstOff)
-  }
-  return new ImageData(flipped, width, height)
+  // No row flip. Our basis encoder leaves `m_y_flip = false`, so KTX2
+  // files we produce store top-down data, and the transcoder returns
+  // top-down RGBA. Wrapping it directly as ImageData (which expects
+  // top-down) and then through `CanvasTexture` (default `flipY = true`
+  // at GPU upload) lands the right way up — matching the existing
+  // PNG→ImageData→CanvasTexture path used for non-KTX2 sources.
+  return new ImageData(new Uint8ClampedArray(data.buffer, data.byteOffset, data.byteLength), width, height)
 }
