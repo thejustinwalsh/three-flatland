@@ -6,31 +6,24 @@ import { space } from '@three-flatland/design-system/tokens/space.stylex'
 import { useEncodeStore } from './encodeStore'
 import { getKtx2Caps } from './gpuCaps'
 import { InfoBar } from './InfoPanel.bar'
+import { InfoSection } from './InfoSection'
 
 const s = stylex.create({
   body: {
     display: 'flex',
     flexDirection: 'column',
-    gap: space.lg,
-    padding: space.lg,
     fontFamily: vscode.fontFamily,
     fontSize: '12px',
     color: vscode.fg,
   },
-  section: {
+  // Padding inside each Collapsible body. The Collapsible owns the
+  // header bar + outer chrome; this wrapper just adds breathing room
+  // to the rows inside.
+  sectionBody: {
     display: 'flex',
     flexDirection: 'column',
     gap: space.xs,
-  },
-  sectionTitle: {
-    textTransform: 'uppercase',
-    letterSpacing: '0.04em',
-    fontSize: '10px',
-    color: vscode.descriptionFg,
-    paddingBottom: space.xs,
-    borderBottomWidth: 1,
-    borderBottomStyle: 'solid',
-    borderBottomColor: vscode.inputBorder,
+    padding: space.lg,
   },
   row: {
     display: 'flex',
@@ -166,116 +159,116 @@ export function InfoPanel() {
   return (
     <Scrollable>
       <div {...stylex.props(s.body)}>
-        {/* ─── Source ─────────────────────────────────────────────── */}
-        <section {...stylex.props(s.section)}>
-          <div {...stylex.props(s.sectionTitle)}>Source</div>
-          <div {...stylex.props(s.row)}>
-            <span {...stylex.props(s.rowLabel)}>File</span>
-            <span {...stylex.props(s.rowValue)}>{fileName}</span>
-          </div>
-          <div {...stylex.props(s.row)}>
-            <span {...stylex.props(s.rowLabel)}>Dimensions</span>
-            <span {...stylex.props(s.rowValue)}>{sw} × {sh}</span>
-          </div>
-          <div {...stylex.props(s.row)}>
-            <span {...stylex.props(s.rowLabel)}>Original</span>
-            <span {...stylex.props(s.rowValue)}>
-              {formatBytes(sourceLen)} · {detectSourceFormat(fileName)}
-            </span>
-          </div>
-        </section>
-
-        {/* ─── Wire ─────────────────────────────────────────────── */}
-        <section {...stylex.props(s.section)}>
-          <div {...stylex.props(s.sectionTitle)}>Wire</div>
-          <div {...stylex.props(s.row)}>
-            <span {...stylex.props(s.rowLabel)}>Encoded</span>
-            <span {...stylex.props(s.rowValue)}>
-              {formatBytes(encodedLen)} · {describeQuality(encodedFormat ?? format, webp, avif, ktx2)}
-            </span>
-          </div>
-          <div {...stylex.props(s.barWrap)}>
-            <InfoBar ratio={wireRatio} />
-            <span
-              {...stylex.props(
-                s.barCaption,
-                wireRegressed && s.rowValueOver,
-              )}
-            >
-              {sourceLen > 0 ? `${(wireRatio * 100).toFixed(0)}% of original` : ''}
-            </span>
-          </div>
-          <div {...stylex.props(s.row)}>
-            <span {...stylex.props(s.rowLabel)}>
-              {wireRegressed ? 'Grew' : 'Saved'}
-            </span>
-            <span {...stylex.props(s.rowValue, wireRegressed && s.rowValueOver)}>
-              {formatBytes(wireRegressed ? encodedLen - sourceLen : wireSavedBytes)}
-            </span>
-          </div>
-        </section>
-
-        {/* ─── CPU memory after decode ─────────────────────────── */}
-        <section {...stylex.props(s.section)}>
-          <div {...stylex.props(s.sectionTitle)}>CPU memory after decode</div>
-          <div {...stylex.props(s.row)}>
-            <span {...stylex.props(s.rowLabel)}>Compressed bytes</span>
-            <span {...stylex.props(s.rowValue)}>{formatBytes(encodedLen)}</span>
-          </div>
-          <div {...stylex.props(s.row)}>
-            <span {...stylex.props(s.rowLabel)}>Decoded RGBA</span>
-            <span {...stylex.props(s.rowValue)}>
-              {cpuKtx2
-                ? 'not allocated'
-                : cpuDecodedRgba !== null
-                  ? formatBytes(cpuDecodedRgba)
-                  : '—'}
-            </span>
-          </div>
-          {cpuKtx2 && (
-            <div {...stylex.props(s.cpuNote)}>
-              KTX2 transcoder writes GPU-native blocks directly.
+        <InfoSection id="source" heading="Source">
+          <div {...stylex.props(s.sectionBody)}>
+            <div {...stylex.props(s.row)}>
+              <span {...stylex.props(s.rowLabel)}>File</span>
+              <span {...stylex.props(s.rowValue)}>{fileName}</span>
             </div>
-          )}
-        </section>
-
-        {/* ─── GPU representation (format + memory) ─────────── */}
-        <section {...stylex.props(s.section)}>
-          <div {...stylex.props(s.sectionTitle)}>GPU representation</div>
-          <div {...stylex.props(s.row)}>
-            <span {...stylex.props(s.rowLabel)}>Format</span>
-            <span {...stylex.props(s.rowValue)}>
-              {gpuStats?.formatLabel ?? '—'}
-            </span>
-          </div>
-          {gpuStats && gpuStats.mips.length > 0 && (
-            <div {...stylex.props(s.mipsTable)}>
-              {gpuStats.mips.map((m, i) => (
-                <MipRow key={i} index={i} m={m} />
-              ))}
+            <div {...stylex.props(s.row)}>
+              <span {...stylex.props(s.rowLabel)}>Dimensions</span>
+              <span {...stylex.props(s.rowValue)}>{sw} × {sh}</span>
             </div>
-          )}
-          <div {...stylex.props(s.totalRow)}>
-            <span>{gpuStats ? `${gpuStats.mips.length} level${gpuStats.mips.length === 1 ? '' : 's'}` : '—'}</span>
-            <span>{formatBytes(totalGpuBytes)}</span>
+            <div {...stylex.props(s.row)}>
+              <span {...stylex.props(s.rowLabel)}>Original</span>
+              <span {...stylex.props(s.rowValue)}>
+                {formatBytes(sourceLen)} · {detectSourceFormat(fileName)}
+              </span>
+            </div>
           </div>
-          <div {...stylex.props(s.barWrap)}>
-            <InfoBar ratio={gpuRatio} />
-            <span {...stylex.props(s.barCaption)}>
-              {gpuBaseline > 0 ? `${(gpuRatio * 100).toFixed(0)}% of RGBA8 baseline` : ''}
-            </span>
-          </div>
-        </section>
+        </InfoSection>
 
-        {/* ─── Host GPU support ─────────────────────────── */}
-        <section {...stylex.props(s.section)}>
-          <div {...stylex.props(s.sectionTitle)}>Host GPU support</div>
-          <CapRow label="BPTC (BC7)" supported={caps.bptcSupported} />
-          <CapRow label="ASTC" supported={caps.astcSupported} />
-          <CapRow label="ETC2" supported={caps.etc2Supported} />
-          <CapRow label="S3TC (DXT)" supported={caps.dxtSupported} />
-          <CapRow label="PVRTC" supported={caps.pvrtcSupported} />
-        </section>
+        <InfoSection id="wire" heading="Wire">
+          <div {...stylex.props(s.sectionBody)}>
+            <div {...stylex.props(s.row)}>
+              <span {...stylex.props(s.rowLabel)}>Encoded</span>
+              <span {...stylex.props(s.rowValue)}>
+                {formatBytes(encodedLen)} · {describeQuality(encodedFormat ?? format, webp, avif, ktx2)}
+              </span>
+            </div>
+            <div {...stylex.props(s.barWrap)}>
+              <InfoBar ratio={wireRatio} />
+              <span
+                {...stylex.props(
+                  s.barCaption,
+                  wireRegressed && s.rowValueOver,
+                )}
+              >
+                {sourceLen > 0 ? `${(wireRatio * 100).toFixed(0)}% of original` : ''}
+              </span>
+            </div>
+            <div {...stylex.props(s.row)}>
+              <span {...stylex.props(s.rowLabel)}>
+                {wireRegressed ? 'Grew' : 'Saved'}
+              </span>
+              <span {...stylex.props(s.rowValue, wireRegressed && s.rowValueOver)}>
+                {formatBytes(wireRegressed ? encodedLen - sourceLen : wireSavedBytes)}
+              </span>
+            </div>
+          </div>
+        </InfoSection>
+
+        <InfoSection id="cpu" heading="CPU memory after decode">
+          <div {...stylex.props(s.sectionBody)}>
+            <div {...stylex.props(s.row)}>
+              <span {...stylex.props(s.rowLabel)}>Compressed bytes</span>
+              <span {...stylex.props(s.rowValue)}>{formatBytes(encodedLen)}</span>
+            </div>
+            <div {...stylex.props(s.row)}>
+              <span {...stylex.props(s.rowLabel)}>Decoded RGBA</span>
+              <span {...stylex.props(s.rowValue)}>
+                {cpuKtx2
+                  ? 'not allocated'
+                  : cpuDecodedRgba !== null
+                    ? formatBytes(cpuDecodedRgba)
+                    : '—'}
+              </span>
+            </div>
+            {cpuKtx2 && (
+              <div {...stylex.props(s.cpuNote)}>
+                KTX2 transcoder writes GPU-native blocks directly.
+              </div>
+            )}
+          </div>
+        </InfoSection>
+
+        <InfoSection id="gpu" heading="GPU representation">
+          <div {...stylex.props(s.sectionBody)}>
+            <div {...stylex.props(s.row)}>
+              <span {...stylex.props(s.rowLabel)}>Format</span>
+              <span {...stylex.props(s.rowValue)}>
+                {gpuStats?.formatLabel ?? '—'}
+              </span>
+            </div>
+            {gpuStats && gpuStats.mips.length > 0 && (
+              <div {...stylex.props(s.mipsTable)}>
+                {gpuStats.mips.map((m, i) => (
+                  <MipRow key={i} index={i} m={m} />
+                ))}
+              </div>
+            )}
+            <div {...stylex.props(s.totalRow)}>
+              <span>{gpuStats ? `${gpuStats.mips.length} level${gpuStats.mips.length === 1 ? '' : 's'}` : '—'}</span>
+              <span>{formatBytes(totalGpuBytes)}</span>
+            </div>
+            <div {...stylex.props(s.barWrap)}>
+              <InfoBar ratio={gpuRatio} />
+              <span {...stylex.props(s.barCaption)}>
+                {gpuBaseline > 0 ? `${(gpuRatio * 100).toFixed(0)}% of RGBA8 baseline` : ''}
+              </span>
+            </div>
+          </div>
+        </InfoSection>
+
+        <InfoSection id="hostGpu" heading="Host GPU support">
+          <div {...stylex.props(s.sectionBody)}>
+            <CapRow label="BPTC (BC7)" supported={caps.bptcSupported} />
+            <CapRow label="ASTC" supported={caps.astcSupported} />
+            <CapRow label="ETC2" supported={caps.etc2Supported} />
+            <CapRow label="S3TC (DXT)" supported={caps.dxtSupported} />
+            <CapRow label="PVRTC" supported={caps.pvrtcSupported} />
+          </div>
+        </InfoSection>
       </div>
     </Scrollable>
   )
