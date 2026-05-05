@@ -48,7 +48,19 @@ interface PrefsSlice {
   // Resizable info-panel sidebar width (px). Persisted cross-session
   // alongside the other splitter prefs in atlas/merge.
   splits: { infoPanelWidth: number }
+  // Per-section accordion state for the info panel. Persisted so the
+  // user can collapse sections they don't care about (e.g. host GPU)
+  // and have that state survive panel close + restart.
+  infoSections: {
+    source: boolean
+    wire: boolean
+    cpu: boolean
+    gpu: boolean
+    hostGpu: boolean
+  }
 }
+
+export type InfoSectionKey = keyof PrefsSlice['infoSections']
 
 interface RuntimeSlice {
   sourceBytes: Uint8Array | null
@@ -95,6 +107,7 @@ export type EncodeStoreState = DocSlice &
     // Actions — prefs
     setCompareSplitU: (u: number) => void
     setPixelArt: (v: boolean) => void
+    setInfoSection: (key: InfoSectionKey, open: boolean) => void
     // Actions — session
     setMipLevel: (n: number) => void
     setMode: (m: 'encode' | 'inspect') => void
@@ -144,6 +157,9 @@ export const useEncodeStore = create<EncodeStoreState>()(
           compareSplitU: 0.5,
           pixelArt: true,
           splits: { infoPanelWidth: 320 },
+          // First-run: every section open. The user can collapse what
+          // they don't care about and the choice survives.
+          infoSections: { source: true, wire: true, cpu: true, gpu: true, hostGpu: true },
 
           // Session slice defaults
           fileName: 'image',
@@ -175,6 +191,8 @@ export const useEncodeStore = create<EncodeStoreState>()(
           // Prefs actions
           setCompareSplitU: (u) => set((s) => ({ ...s, compareSplitU: Math.min(1, Math.max(0, u)) })),
           setPixelArt: (v) => set((s) => ({ ...s, pixelArt: v })),
+          setInfoSection: (key, open) =>
+            set((s) => ({ ...s, infoSections: { ...s.infoSections, [key]: open } })),
 
           // Session actions
           setMipLevel: (n) =>
@@ -250,6 +268,7 @@ export const useEncodeStore = create<EncodeStoreState>()(
           compareSplitU: s.compareSplitU,
           pixelArt: s.pixelArt,
           splits: s.splits,
+          infoSections: s.infoSections,
         }),
       },
     ),
@@ -313,6 +332,8 @@ export const encodeActions = {
     useEncodeStore.getState().setCompareSplitU(u),
   setPixelArt: (v: boolean) =>
     useEncodeStore.getState().setPixelArt(v),
+  setInfoSection: (key: InfoSectionKey, open: boolean) =>
+    useEncodeStore.getState().setInfoSection(key, open),
   setMipLevel: (n: number) =>
     useEncodeStore.getState().setMipLevel(n),
   setGpuStats: (stats: GpuStats) =>
