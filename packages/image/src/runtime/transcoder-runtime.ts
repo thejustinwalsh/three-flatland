@@ -12,7 +12,7 @@
 // Main-thread callers should keep importing from `transcoder-loader.ts`,
 // which re-exports these symbols and adds the URL-using helpers.
 
-import { createWasiImports } from './wasi-shim.js'
+import { instantiateWithWasi } from './wasi-shim.js'
 
 // Flat C ABI surface — one-to-one with basis_transcoder_c_api.h. All numeric
 // arguments are i32 unless flagged otherwise; pointers are i32 wasm offsets.
@@ -116,23 +116,9 @@ export const LEVEL_INFO_OFFSETS = {
  * init postMessage.
  */
 export async function instantiateTranscoder(bytes: ArrayBuffer): Promise<TranscoderExports> {
-  const memoryRef: { current: WebAssembly.Memory | null } = { current: null }
-  const imports: WebAssembly.Imports = {
-    wasi_snapshot_preview1: createWasiImports(() => {
-      if (!memoryRef.current) throw new Error('memory not yet bound')
-      return memoryRef.current
-    }),
-  }
-  const result = await (WebAssembly.instantiate as (
-    bytes: BufferSource,
-    imports: WebAssembly.Imports,
-  ) => Promise<WebAssembly.WebAssemblyInstantiatedSource>)(bytes, imports)
-  const instance = result.instance
-  const exports = instance.exports as unknown as TranscoderExports
-  memoryRef.current = exports.memory
-  // Reactor model: _initialize runs C++ global ctors before any fl_* call.
-  const init = (instance.exports as unknown as { _initialize?: () => void })._initialize
-  if (typeof init === 'function') init()
+  // wasi-shim's instantiateWithWasi runs `_initialize` (C++ global ctors)
+  // before returning, then we run basisu's library-level transcoder init.
+  const exports = await instantiateWithWasi<TranscoderExports>(bytes)
   const rc = exports.fl_transcoder_init()
   if (rc !== 0) throw new Error(`fl_transcoder_init failed: ${rc}`)
   return exports

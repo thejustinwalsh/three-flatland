@@ -57,7 +57,8 @@
     "@three-flatland/bake": "workspace:*",
     "@jsquash/png": "catalog:",
     "@jsquash/webp": "catalog:",
-    "@jsquash/avif": "catalog:"
+    "@jsquash/avif": "catalog:",
+    "uwasi": "catalog:"
   },
   "devDependencies": {
     "binaryen": "^123.0.0",

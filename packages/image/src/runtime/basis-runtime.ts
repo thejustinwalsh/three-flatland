@@ -9,7 +9,7 @@
 // Main-thread callers should keep importing from `basis-loader.ts`,
 // which re-exports these symbols and adds the URL-using helpers.
 
-import { createWasiImports } from './wasi-shim.js'
+import { instantiateWithWasi } from './wasi-shim.js'
 
 export interface BasisExports {
   memory: WebAssembly.Memory
@@ -32,26 +32,11 @@ export interface BasisExports {
 /**
  * Instantiate the wasm encoder from a byte buffer. Used by both the
  * inline (main-thread) path AND by the encoder worker after it
- * receives bytes via the init postMessage.
+ * receives bytes via the init postMessage. The wasi-shim helper
+ * runs `_initialize` (C++ global ctors) before returning.
  */
 export async function instantiateBasis(bytes: ArrayBuffer): Promise<BasisExports> {
-  const memoryRef: { current: WebAssembly.Memory | null } = { current: null }
-  const imports: WebAssembly.Imports = {
-    wasi_snapshot_preview1: createWasiImports(() => {
-      if (!memoryRef.current) throw new Error('memory not yet bound')
-      return memoryRef.current
-    }),
-  }
-  const result = await (WebAssembly.instantiate as (
-    bytes: BufferSource,
-    imports: WebAssembly.Imports,
-  ) => Promise<WebAssembly.WebAssemblyInstantiatedSource>)(bytes, imports)
-  const instance = result.instance
-  const exports = instance.exports as unknown as BasisExports
-  memoryRef.current = exports.memory
-  // Reactor model: _initialize runs C++ global ctors before any fl_* call.
-  const init = (instance.exports as unknown as { _initialize?: () => void })._initialize
-  if (typeof init === 'function') init()
+  const exports = await instantiateWithWasi<BasisExports>(bytes)
   const rc = exports.fl_basis_init()
   if (rc !== 0) throw new Error(`fl_basis_init failed: ${rc}`)
   return exports
