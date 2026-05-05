@@ -26,6 +26,14 @@ pub fn build(b: *std.Build) void {
         "-fno-signed-zeros",
         "-ffp-contract=fast",
         "-msimd128",
+        // Force-include a header that no-ops C stdio in every basisu TU.
+        // basisu uses printf/fprintf for diagnostics that we never read
+        // (no console in the wasm runtime); leaving them live drags in
+        // libc's printf format-parser, locale init, FILE* state, and
+        // the WASI fd_write/path_open/environ_* imports. The header
+        // turns each call into ((int)0); cuts ~6 WASI imports + several
+        // hundred KB of libc machinery from the encoder graph.
+        "-includesrc/zig/no_stdio.h",
         // BASISU_SUPPORT_SSE=1 unlocks the *_sse41 kernel call sites in
         // basisu_enc.h / basisu_etc.cpp / basisu_backend.cpp / basisu_frontend.cpp
         // (encoder side) and basisu_transcoder.cpp (transcoder side, via
