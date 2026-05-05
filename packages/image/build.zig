@@ -216,13 +216,17 @@ pub fn build(b: *std.Build) void {
         .flags = cxx_flags,
     });
 
-    // Zstd (single amalgamated C file) — required at link time when
-    // BASISD_SUPPORT_KTX2_ZSTD=1 so the transcoder can decompress zstd-
-    // supercompressed UASTC level data. Same source patch as the encoder
-    // side guards ZSTD_MULTITHREAD with !__wasi__ to skip pthreads.
+    // Zstd DECODER ONLY — required at link time when BASISD_SUPPORT_KTX2_ZSTD=1
+    // so the transcoder can decompress zstd-supercompressed UASTC level data.
+    // The transcoder never COMPRESSES zstd, so we use basisu's `zstddeclib.c`
+    // (the decoder-only amalgamation, ~927 KB source) instead of `zstd.c`
+    // (the full encoder+decoder library, ~2 MB source). Matches upstream
+    // basisu's emscripten transcoder build (webgl/transcoder/CMakeLists.txt).
+    // The encoder side keeps the full `zstd.c` because basisu's stats path
+    // verify-roundtrips its zstd output (encode then decode).
     transcoder.addCSourceFiles(.{
         .root = b.path("vendor/basisu/zstd"),
-        .files = &.{"zstd.c"},
+        .files = &.{"zstddeclib.c"},
         .flags = &.{ "-msimd128", "-DZSTD_DISABLE_ASM=1", "-DNDEBUG" },
     });
 
