@@ -140,43 +140,62 @@
         }
     }
 
+    /* Heading hierarchy: Public Sans for display, with bigger jumps between
+     * levels than lucode default so the docs read more like Linear/Radix
+     * (Design Context). Tracking tightens at larger sizes. */
     .sl-markdown-content :is(h1, h2, h3, h4, h5, h6) {
-        font-weight: 500;
+        font-family: 'Public Sans', system-ui, sans-serif;
+        font-weight: 600;
         letter-spacing: var(--tracking-tight);
         color: var(--foreground);
     }
 
     .sl-markdown-content h1 {
-        font-size: 1.875rem;
-        line-height: 2.25rem;
-        font-weight: 600;
+        font-size: clamp(1.875rem, 2.6vw, 2.375rem);
+        line-height: 1.15;
+        font-weight: 700;
+        letter-spacing: -0.025em;
+        margin-top: 0;
     }
 
     .sl-markdown-content h2 {
-        font-size: 1.25rem;
-        line-height: 1.75rem;
+        font-size: clamp(1.375rem, 1.85vw, 1.625rem);
+        line-height: 1.25;
+        font-weight: 600;
+        letter-spacing: -0.018em;
         padding-top: calc(var(--spacing) * 6);
         margin-top: calc(var(--spacing) * 12);
     }
 
     .sl-markdown-content h3 {
-        font-size: 1.125rem;
-        line-height: 1.75rem;
+        font-size: 1.1875rem;
+        line-height: 1.4;
+        font-weight: 600;
+        letter-spacing: -0.012em;
+        margin-top: calc(var(--spacing) * 8);
     }
 
     .sl-markdown-content h4 {
         font-size: 1rem;
-        line-height: 1.5rem;
+        line-height: 1.5;
+        font-weight: 600;
+        margin-top: calc(var(--spacing) * 6);
     }
 
     .sl-markdown-content h5 {
-        font-size: 0.875rem;
-        line-height: 1.25rem;
+        font-size: 0.9375rem;
+        line-height: 1.4;
+        font-weight: 600;
+        text-transform: none;
     }
 
     .sl-markdown-content h6 {
-        font-size: 0.875rem;
-        line-height: 1.25rem;
+        font-size: 0.8125rem;
+        line-height: 1.4;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: var(--muted-foreground);
     }
 
     .sl-markdown-content .sl-heading-wrapper {
