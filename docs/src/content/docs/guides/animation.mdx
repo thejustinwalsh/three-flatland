@@ -5,7 +5,16 @@ description: Animate sprites using spritesheets and frame-based animation.
 
 import { Tabs, TabItem } from '@astrojs/starlight/components';
 
+**What you'll learn**
+- How to load a spritesheet (TexturePacker / Aseprite JSON) and define an `animationSet`
+- How to drive playback with `play / pause / resume / stop` plus `onFrame` and `onComplete` callbacks
+- How `update(deltaMs)` fits into your render loop and how `speed` scales it
+
+---
+
 three-flatland supports frame-based animation using spritesheets. The `AnimatedSprite2D` class works with `SpriteSheetLoader` to load and play animations.
+
+If you've ever wired up sprite animation by hand — frame timers, wraparound math, swap textures on each tick — this is the part you don't have to write anymore.
 
 <Tabs syncKey="framework">
   <TabItem label="Three.js" icon="seti:javascript">
@@ -182,7 +191,7 @@ console.log(frame); // { x, y, width, height, sourceWidth, sourceHeight, ... }
 ```
 
 :::tip[Texture Configuration]
-See the [Loaders guide](../loaders#texture-presets/) to configure presets for smooth or pixel-art rendering.
+See the [Loaders guide](../loaders/#texture-presets) to configure presets for smooth or pixel-art rendering.
 :::
 
 ## Update Loop

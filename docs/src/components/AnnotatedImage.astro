@@ -1,0 +1,151 @@
+---
+/**
+ * <AnnotatedImage> — numbered hotspots over a screenshot.
+ *
+ * Pure CSS + a tiny script for keyboard activation. NO heavy deps.
+ * First paint shows the image and visible numbered dots immediately.
+ *
+ * MDX usage:
+ *   import AnnotatedImage from '../../../components/AnnotatedImage.astro'
+ *
+ *   <AnnotatedImage
+ *     src="/three-flatland/diagrams/devtools-dashboard.png"
+ *     alt="three-flatland devtools dashboard with stats, batches, buffers, and texture panels"
+ *     hotspots={[
+ *       { x: 12, y: 8, label: 'Stats panel — FPS, CPU, GPU, draws, geometries, textures' },
+ *       { x: 65, y: 22, label: 'Batches panel — live list of active sprite batches by material' },
+ *       { x: 12, y: 60, label: 'Buffers panel — registered CPU arrays with histograms' },
+ *       { x: 65, y: 60, label: 'Texture registry — DataTexture and RenderTarget previews' },
+ *     ]}
+ *   />
+ *
+ * Coordinates are percentages of the image (0-100). Numbers auto-assigned.
+ */
+
+interface Hotspot {
+  /** Percent from left edge (0-100). */
+  x: number
+  /** Percent from top edge (0-100). */
+  y: number
+  /** Annotation text. Becomes both visible caption and a11y label. */
+  label: string
+}
+
+interface Props {
+  src: string
+  /** Required for a11y — describe the image as a whole. */
+  alt: string
+  hotspots: Hotspot[]
+  /** Optional caption shown below the image. */
+  caption?: string
+}
+
+const { src, alt, hotspots, caption } = Astro.props
+---
+
+<figure class="tf-annot not-content">
+  <div class="tf-annot__frame">
+    <img src={src} alt={alt} loading="lazy" decoding="async" class="tf-annot__img" />
+    {hotspots.map((spot, i) => (
+      <button
+        class="tf-annot__hotspot"
+        style={`left: ${spot.x}%; top: ${spot.y}%`}
+        type="button"
+        aria-label={`Annotation ${i + 1}: ${spot.label}`}
+        data-tf-hotspot-num={i + 1}
+      >
+        <span class="tf-annot__num" aria-hidden="true">{i + 1}</span>
+      </button>
+    ))}
+  </div>
+  <ol class="tf-annot__legend">
+    {hotspots.map((spot) => (
+      <li class="tf-annot__legend-item">{spot.label}</li>
+    ))}
+  </ol>
+  {caption && <figcaption class="tf-annot__caption">{caption}</figcaption>}
+</figure>
+
+<style>
+  .tf-annot {
+    margin: 1.5rem 0;
+  }
+  .tf-annot__frame {
+    position: relative;
+    border-radius: 0.5rem;
+    overflow: hidden;
+    background: var(--sl-color-gray-6);
+    line-height: 0;
+  }
+  .tf-annot__img {
+    width: 100%;
+    height: auto;
+    display: block;
+  }
+  .tf-annot__hotspot {
+    position: absolute;
+    /* Center the hotspot on the (x, y) coordinate. */
+    transform: translate(-50%, -50%);
+    width: 2rem;
+    height: 2rem;
+    border-radius: 50%;
+    border: 2px solid var(--sl-color-bg);
+    background: var(--sl-color-accent, #b65fff);
+    cursor: pointer;
+    padding: 0;
+    box-shadow:
+      0 0 0 2px var(--sl-color-accent, #b65fff),
+      0 4px 12px rgba(0, 0, 0, 0.5);
+    transition: transform 120ms ease;
+    z-index: 1;
+  }
+  .tf-annot__hotspot:hover,
+  .tf-annot__hotspot:focus-visible {
+    transform: translate(-50%, -50%) scale(1.15);
+    outline: none;
+  }
+  .tf-annot__num {
+    color: var(--sl-color-white, #fff);
+    font-weight: 700;
+    font-size: 0.95rem;
+    line-height: 1;
+    font-family: var(--sl-font-system-mono, monospace);
+  }
+  .tf-annot__legend {
+    list-style: none;
+    counter-reset: tf-annot;
+    padding: 0;
+    margin: 1rem 0 0;
+    display: grid;
+    gap: 0.5rem;
+  }
+  .tf-annot__legend-item {
+    counter-increment: tf-annot;
+    padding-left: 2.25rem;
+    position: relative;
+    font-size: 0.9rem;
+    line-height: 1.4;
+    color: var(--sl-color-gray-2);
+  }
+  .tf-annot__legend-item::before {
+    content: counter(tf-annot);
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 1.5rem;
+    height: 1.5rem;
+    border-radius: 50%;
+    background: var(--sl-color-accent, #b65fff);
+    color: var(--sl-color-white, #fff);
+    font-weight: 700;
+    font-size: 0.8rem;
+    display: grid;
+    place-items: center;
+    font-family: var(--sl-font-system-mono, monospace);
+  }
+  .tf-annot__caption {
+    margin-top: 0.75rem;
+    font-size: 0.875rem;
+    color: var(--sl-color-gray-3);
+  }
+</style>

@@ -7,6 +7,8 @@ import { Tabs, TabItem } from '@astrojs/starlight/components';
 
 `Flatland` is the high-level entry point for three-flatland. It wraps a `SpriteGroup` with an orthographic camera, global uniforms, post-processing pipeline, and render target support into a single object.
 
+If you're new and not sure whether you need `Flatland` or `SpriteGroup` — start here. The table below tells you when to graduate.
+
 ## When to Use Flatland vs SpriteGroup
 
 | | Flatland | SpriteGroup |
@@ -24,7 +26,7 @@ Use `Flatland` when you want a complete 2D rendering setup. Use `SpriteGroup` wh
 <Tabs syncKey="framework">
   <TabItem label="Three.js" icon="seti:javascript">
     ```typescript
-    import WebGPURenderer from 'three/addons/renderers/webgpu/WebGPURenderer.js'
+    import { WebGPURenderer } from 'three/webgpu'
     import { Flatland, Sprite2D, TextureLoader } from 'three-flatland'
 
     const renderer = new WebGPURenderer()
@@ -46,7 +48,7 @@ Use `Flatland` when you want a complete 2D rendering setup. Use `SpriteGroup` wh
   </TabItem>
   <TabItem label="React" icon="seti:react">
     ```tsx
-    import { useRef } from 'react'
+    import { useRef, useEffect } from 'react'
     import { Canvas, extend, useFrame, useThree } from '@react-three/fiber/webgpu'
     import { Flatland, Sprite2D, Sprite2DMaterial } from 'three-flatland/react'
     import type { Flatland as FlatlandType } from 'three-flatland/react'
@@ -56,15 +58,15 @@ Use `Flatland` when you want a complete 2D rendering setup. Use `SpriteGroup` wh
 
     function Scene() {
       const flatlandRef = useRef<FlatlandType>(null)
-      const gl = useThree((s) => s.gl)
-      const size = useThree((s) => s.size)
+      const { renderer, size } = useThree()
+
+      useEffect(() => {
+        flatlandRef.current?.resize(size.width, size.height)
+      }, [size.width, size.height])
 
       // Render in the 'render' phase so R3F skips its own render
       useFrame(() => {
-        const flatland = flatlandRef.current
-        if (!flatland) return
-        flatland.resize(size.width, size.height)
-        flatland.render(gl as unknown as WebGPURenderer)
+        flatlandRef.current?.render(renderer as unknown as WebGPURenderer)
       }, { phase: 'render' })
 
       return (
@@ -106,17 +108,22 @@ const flatland = new Flatland({
 
 See the [FlatlandOptions API reference](/three-flatland/api/interfaces/flatlandoptions/) for full type details.
 
-## Adding Sprites
+## Adding Objects
 
 `flatland.add()` routes objects automatically:
 
 - **Sprite2D** instances go to the internal `SpriteGroup` for batched rendering
+- **Light2D** instances are tracked for the lighting system
 - **Other Object3D** instances are added directly to the internal scene
 
 ```typescript
 // Sprite2D → batched via SpriteGroup
 const sprite = new Sprite2D({ texture, anchor: [0.5, 0.5] })
 flatland.add(sprite)
+
+// Light2D → tracked by lighting system
+const light = new Light2D({ type: 'point', position: [50, 50], color: 0xff6600 })
+flatland.add(light)
 
 // Other Three.js objects → added to internal scene
 const mesh = new Mesh(geometry, material)
@@ -125,7 +132,79 @@ flatland.add(mesh)
 
 Global uniforms are automatically wired to each sprite's material on `add()`.
 
+## Lighting
+
+Flatland manages 2D lighting with `Light2D` sources and a `LightEffect` pipeline. Activate lighting by calling `setLighting()` with a preset:
+
+```typescript
+import { DefaultLightEffect } from '@three-flatland/presets'
+
+flatland.setLighting(new DefaultLightEffect())
+```
+
+All sprites receive lighting by default. Set `lit: false` to opt out:
+
+```typescript
+const indicator = new Sprite2D({ texture, lit: false }) // always full brightness
+```
+
+| Method / Property | Description |
+|--------|-------------|
+| `setLighting(effect)` | Set the active LightEffect (or `null` to disable) |
+| `lighting` | Current LightEffect (read-only) |
+| `lights` | All tracked Light2D instances (read-only) |
+
+See the [2D Lighting guide](../lighting/) for preset comparisons, Light2D types, and custom effects.
+
 ## Render Loop
+
+import Mermaid from '../../../components/Mermaid.astro';
+
+<Mermaid caption="Per-frame render pipeline">{`
+flowchart LR
+  Start([flatland.render]) --> ECS
+
+  subgraph ECS [ECS systems]
+    direction TB
+    Transform[transformSyncSystem<br/>transforms → batch]
+    Anim[animationSystem<br/>frame cursors]
+    Batch[batchSystem<br/>group by material]
+    Light[lightSystem<br/>Light2D → LightStore]
+    Transform --> Anim --> Batch --> Light
+  end
+
+  ECS --> Pre
+
+  subgraph Pre [Pre-passes — LightEffect only]
+    direction TB
+    Occlusion[OcclusionPass<br/>caster silhouettes]
+    SDF[SDFGenerator<br/>JFA → SDF]
+    Tile[ForwardPlusLighting<br/>tile-bin lights]
+    Occlusion --> SDF --> Tile
+  end
+
+  Pre --> Main
+
+  subgraph Main [Main scene]
+    direction TB
+    Sprites[Sprite2DMaterial<br/>draw call / batch]
+    MatEff[MaterialEffect chain<br/>per-instance:<br/>tint, outline, dissolve<br/>NormalMapProvider]
+    LightEff[LightEffect<br/>Default / Simple /<br/>Direct / Radiance<br/>reads tiles + SDF]
+    Sprites --> MatEff --> LightEff
+  end
+
+  Main --> Post
+
+  subgraph Post [Post-process]
+    direction TB
+    PassN[PassEffect chain<br/>posterize → lcdGrid<br/>→ vignette → …<br/>insertion order]
+  end
+
+  Post --> Canvas([canvas])
+
+  classDef group fill:#1a1a22,stroke:#444,color:#aaa
+  class ECS,Pre,Main,Post group
+`}</Mermaid>
 
 Each frame, call `resize()` to sync the aspect ratio, then `render()` to draw:
 
@@ -261,7 +340,8 @@ This destroys the ECS world, sprite batches, render pipeline, and all pass effec
 
 ## Next Steps
 
+- [2D Lighting](../lighting/) — Light2D sources and LightEffect presets
 - [Pass Effects](../pass-effects/) — Full-screen post-processing effects
 - [Batch Rendering](../batch-rendering/) — How sprite batching works under the hood
 - [TSL Nodes](../tsl-nodes/) — Per-sprite material effects and low-level TSL usage
-- [Breakout Showcase](../showcases/breakout/) — A complete game built with Flatland
+- [Breakout Showcase](../../showcases/breakout/) — A complete game built with Flatland

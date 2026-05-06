@@ -1,7 +1,7 @@
 import { WebGPURenderer } from 'three/webgpu'
 import { Scene, OrthographicCamera, Color, NearestFilter } from 'three'
-import { AnimatedSprite2D, SpriteSheetLoader, Layers } from 'three-flatland'
-import { createPane } from '@three-flatland/tweakpane'
+import { AnimatedSprite2D, SpriteSheetLoader, Layers, createDevtoolsProvider } from 'three-flatland'
+import { createPane } from '@three-flatland/devtools'
 
 async function main() {
   // Scene setup
@@ -112,8 +112,9 @@ async function main() {
   knight.position.set(0, 0, 0)
   scene.add(knight)
 
-  // Tweakpane UI — pass `scene` so draws/triangles are auto-wired
-  const { pane, stats } = createPane({ scene })
+  // Tweakpane UI
+  const { pane, update: updateDevtools } = createPane({ driver: 'manual' })
+  const devtools = createDevtoolsProvider({ name: 'animation' })
 
   const animFolder = pane.addFolder({ title: 'Animation' })
 
@@ -177,14 +178,13 @@ async function main() {
     const deltaMs = now - lastTime
     lastTime = now
 
-    stats.begin()
-
     // Update sprite animation
     knight.update(deltaMs)
 
+    devtools.beginFrame(performance.now(), renderer)
     renderer.render(scene, camera)
-
-    stats.end()
+    devtools.endFrame(renderer)
+    updateDevtools()
   }
 
   animate()

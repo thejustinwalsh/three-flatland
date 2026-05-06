@@ -1,8 +1,18 @@
 import { trait, relation } from 'koota'
-import type { Entity } from 'koota'
+import type { Entity, Trait } from 'koota'
+import type { Group, Object3D, OrthographicCamera, Scene, Vector2 } from 'three'
+import type { WebGPURenderer } from 'three/webgpu'
 import type { Sprite2D } from '../sprites/Sprite2D'
 import type { SpriteBatch } from '../pipeline/SpriteBatch'
-import type { Sprite2DMaterial } from '../materials/Sprite2DMaterial'
+import type { Sprite2DMaterial, ColorTransformFn } from '../materials/Sprite2DMaterial'
+import type { MaterialEffect } from '../materials/MaterialEffect'
+import type { LightEffect } from '../lights/LightEffect'
+import type { LightStore } from '../lights/LightStore'
+import type { Light2D } from '../lights/Light2D'
+import type { SDFGenerator } from '../lights/SDFGenerator'
+import type { OcclusionPass } from '../lights/OcclusionPass'
+import type { ChannelName } from '../materials/channels'
+import type { SystemSchedule } from './SystemSchedule'
 import type Node from 'three/src/nodes/core/Node.js'
 
 // ============================================
@@ -131,6 +141,36 @@ export const BatchRegistry = trait(() => ({
   /** Flat array of Sprite2D refs indexed by entity SoA index (eid).
    *  Pure array indexing — same O(1) pattern as other SoA stores. */
   spriteArr: [] as (Sprite2D | null)[],
+  /** Cached effect traits across all materials. Populated by materialVersionSystem. */
+  effectTraits: new Map() as Map<Trait, typeof MaterialEffect>,
+  /** Entities whose destruction is deferred to the top of the next frame. */
+  pendingDestroy: [] as Entity[],
+  /** The SpriteGroup (parent Group) for scene graph sync. */
+  parentGroup: null as Group | null,
+  /** Bound Group.prototype.add bypassing SpriteGroup override. */
+  parentAdd: null as ((...objects: Object3D[]) => Group) | null,
+  /** Bound Group.prototype.remove bypassing SpriteGroup override. */
+  parentRemove: null as ((...objects: Object3D[]) => Group) | null,
+  /** Whether auto-invalidate transforms is enabled. */
+  autoInvalidateTransforms: true as boolean,
+  /** The SystemSchedule for this world. */
+  schedule: null as SystemSchedule | null,
+  /**
+   * Monotonic counter of how many times `schedule.run` has executed
+   * for this registry. Entry points (`SpriteGroup.update`,
+   * `SpriteGroup.updateMatrixWorld`, `Flatland.render`) consult the
+   * counter against their own last-seen value so that multiple
+   * triggers inside one logical frame collapse to a single run.
+   *
+   * `Flatland.render` bumps a private "this frame runs allowed"
+   * counter before running the schedule the first time; the second
+   * and third entry points see that a run has already happened and
+   * skip. Without this, `shadowPipelineSystem` fires three times per
+   * frame (direct schedule.run + spriteGroup.update + scene
+   * updateMatrixWorld) and the whole shadow pipeline gets paid for
+   * 3× the cost.
+   */
+  scheduleRuns: 0,
 }))
 
 // ============================================
@@ -147,4 +187,82 @@ export const PostPassTrait = trait(() => ({
 /** World-level singleton for post-processing pass dirty tracking. */
 export const PostPassRegistry = trait(() => ({
   dirty: false as boolean,
+}))
+
+// ============================================
+// Lighting effect traits
+// ============================================
+
+/** AoS — holds a lighting ColorTransformFn and enabled state. */
+export const LightEffectTrait = trait(() => ({
+  fn: null as
+    | ((ctx: { color: Node<'vec4'>; atlasUV: Node<'vec2'>; worldPosition: Node<'vec2'> }) => Node<'vec4'>)
+    | null,
+  enabled: true,
+}))
+
+/**
+ * World-level singleton holding all lighting state.
+ * Spawned by Flatland.setLighting(); lighting ECS systems read from this.
+ * Replaces the scattered private fields on Flatland.
+ */
+/**
+ * World-level singleton owning the shared shadow pipeline infrastructure.
+ *
+ * Multiple LightEffects can depend on SDF data (DefaultLightEffect for
+ * shadows, RadianceLightEffect for GI). Rather than each effect owning
+ * its own SDFGenerator, the pipeline is shared at the world level.
+ *
+ * Lifecycle: `shadowPipelineSystem` owns this trait end-to-end — it
+ * allocates the generators when the active effect declares
+ * `needsShadows`, resizes them as the viewport changes, runs the
+ * per-frame pre-pass, and disposes on detach. Flatland does not touch
+ * these fields.
+ *
+ * Fast-path contract: every field here is either a nullable object
+ * reference or a small scalar. Consumers read via `entity.get(ShadowPipeline)`
+ * (O(1) pointer deref in Koota) and mutate in place. No per-frame
+ * allocation.
+ */
+export const ShadowPipeline = trait(() => ({
+  /** JFA SDF generator. Null while inactive. */
+  sdfGenerator: null as SDFGenerator | null,
+  /** Occluder silhouette pre-pass. Null while inactive. */
+  occlusionPass: null as OcclusionPass | null,
+  /** Last SDF render-target width (post-resolution-scale). */
+  width: 0,
+  /** Last SDF render-target height (post-resolution-scale). */
+  height: 0,
+  /** True once the first-frame init() has allocated GPU resources. */
+  initialized: false,
+}))
+
+export const LightingContext = trait(() => ({
+  /** Active LightEffect instance. */
+  effect: null as LightEffect | null,
+  /** LightStore providing light data textures. */
+  lightStore: null as LightStore | null,
+  /** Active Light2D objects. */
+  lights: [] as Light2D[],
+  /** Wrapped light fn with per-instance lit-bit check (for batched sprites). */
+  wrappedLightFn: null as ColorTransformFn | null,
+  /** Per-fragment channels required by the active LightEffect. */
+  requiredChannels: new Set() as ReadonlySet<ChannelName>,
+  /** All tracked sprite materials for colorTransform assignment. */
+  materials: new Set<Sprite2DMaterial>(),
+  /** Whether the lighting colorTransform needs reassigning to materials. */
+  dirty: false as boolean,
+  /** Whether the effect has been initialized (init() called). */
+  initialized: false as boolean,
+  // Runtime context (set each frame before systems run)
+  /** Renderer reference for GPU passes. */
+  renderer: null as WebGPURenderer | null,
+  /** Camera for world bounds computation. */
+  camera: null as OrthographicCamera | null,
+  /** Scene containing the sprites being lit — needed by the shadow pre-pass. */
+  scene: null as Scene | null,
+  /** World size in units (computed from camera frustum). */
+  worldSize: null as Vector2 | null,
+  /** World offset (camera left/bottom). */
+  worldOffset: null as Vector2 | null,
 }))

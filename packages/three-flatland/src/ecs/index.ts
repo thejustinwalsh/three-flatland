@@ -19,6 +19,8 @@ export {
   type BatchRun,
   PostPassTrait,
   PostPassRegistry,
+  LightEffectTrait,
+  LightingContext,
 } from './traits'
 
 // World management
@@ -46,11 +48,15 @@ export {
   freeBatchIdx,
 } from './batchUtils'
 
+// SystemSchedule
+export { SystemSchedule, type SystemFn } from './SystemSchedule'
+
 // Systems
 export {
   batchAssignSystem,
   batchReassignSystem,
   batchRemoveSystem,
+  deferredDestroySystem,
   bufferSyncColorSystem,
   bufferSyncUVSystem,
   bufferSyncFlipSystem,
@@ -58,4 +64,12 @@ export {
   transformSyncSystem,
   sceneGraphSyncSystem,
   postPassSystem,
+  lightSyncSystem,
+  lightEffectSystem,
+  lightMaterialAssignSystem,
+  materialVersionSystem,
+  effectTraitsSystem,
+  conditionalTransformSyncSystem,
+  lateAssignSystem,
+  flushDirtyRangesSystem,
 } from './systems'

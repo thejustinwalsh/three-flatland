@@ -1,7 +1,7 @@
 import { WebGPURenderer } from 'three/webgpu'
 import { Scene, OrthographicCamera, Color } from 'three'
-import { Sprite2D, TextureLoader } from 'three-flatland'
-import { createPane } from '@three-flatland/tweakpane'
+import { Sprite2D, TextureLoader, createDevtoolsProvider } from 'three-flatland'
+import { createPane } from '@three-flatland/devtools'
 
 async function main() {
   const scene = new Scene()
@@ -36,8 +36,9 @@ async function main() {
   sprite.scale.set(150, 150, 1)
   scene.add(sprite)
 
-  // Tweakpane UI — pass `scene` so draws/triangles are auto-wired
-  const { pane, stats } = createPane({ scene })
+  // Tweakpane UI
+  const { pane, update: updateDevtools } = createPane({ driver: 'manual' })
+  const devtools = createDevtoolsProvider({ name: 'template' })
   const params = { tint: '#ffffff' }
   pane.addBinding(params, 'tint', {
     label: 'tint',
@@ -60,9 +61,10 @@ async function main() {
   // Render loop
   function animate() {
     requestAnimationFrame(animate)
-    stats.begin()
+    devtools.beginFrame(performance.now(), renderer)
     renderer.render(scene, camera)
-    stats.end()
+    devtools.endFrame(renderer)
+    updateDevtools()
   }
 
   animate()

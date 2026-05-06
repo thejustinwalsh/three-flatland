@@ -5,7 +5,16 @@ description: GPU-accelerated 2D vector graphics with Skia WASM — shapes, text,
 
 import { Tabs, TabItem } from '@astrojs/starlight/components';
 
+**What you'll learn**
+- How to initialize Skia, mount a `SkiaCanvas` in texture or overlay mode, and render shapes
+- How to load fonts and apply custom paints (gradients, blend modes, blur, drop shadow)
+- How to perform programmatic path operations — `union`, `intersect`, `difference`, `xor`
+
+---
+
 `@three-flatland/skia` brings Skia's GPU-accelerated vector rendering to Three.js via WASM, built with Zig. It auto-detects WebGPU or WebGL from your renderer and supports both Three.js and React Three Fiber.
+
+You probably don't need this page yet. Skia earns its WASM weight when you need real vector graphics in 3D — UI overlays, dynamic text, path operations, gradients. For static images and animated sprites, plain `Sprite2D` is the right answer.
 
 Includes a native WebGPU backend (Graphite/Dawn) — CanvasKit's npm package ships WebGL only. At **857 KB** (WebGPU) / **1 MB** (WebGL) brotli vs CanvasKit's 2.2 MB.
 
@@ -306,7 +315,11 @@ Uses standard Object3D `position`, `scale`, and `rotation.z` (radians). The `deg
 
 ## Font Loading
 
-`SkiaFontLoader` loads a `SkiaTypeface` — the font data independent of size. Call `.atSize(n)` to get a sized `SkiaFont`. The typeface is cached by URL, and sized fonts are cached internally — so multiple `.atSize()` calls are cheap.
+:::tip[Performance note]
+The typeface is cached by URL, and sized fonts are cached internally on the typeface — so calling `.atSize(14)` and `.atSize(32)` from many components shares a single font fetch and a single set of size objects. No need to memoize.
+:::
+
+`SkiaFontLoader` loads a `SkiaTypeface` — the font data independent of size. Call `.atSize(n)` to get a sized `SkiaFont`.
 
 <Tabs syncKey="framework">
   <TabItem label="Three.js" icon="seti:javascript">

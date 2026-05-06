@@ -5,7 +5,14 @@ description: Learn how to create and customize 2D sprites.
 
 import { Tabs, TabItem } from '@astrojs/starlight/components';
 
-The `Sprite2D` class is the foundation for 2D rendering in three-flatland.
+**What you'll learn**
+- How to create, position, anchor, and scale a `Sprite2D`
+- How to opt sprites into the lighting and shadow pipeline (`lit`, `castsShadow`, `shadowRadius`)
+- How layers and z-index control render order independently of scene-graph order
+
+---
+
+The `Sprite2D` class is the foundation for 2D rendering in three-flatland. If your scene only ever needs static images on screen, this is the only class you need to learn.
 
 <Tabs syncKey="framework">
   <TabItem label="Three.js" icon="seti:javascript">
@@ -126,6 +133,60 @@ For simple cases with few sprites, you can add them directly to the scene withou
 
 :::tip[Flatland]
 For a complete 2D pipeline with camera, post-processing, and global uniforms, use [Flatland](../flatland/) instead of adding a SpriteGroup to your scene manually.
+:::
+
+## Lighting and shadows
+
+Sprites integrate with the active `LightEffect` and the SDF shadow pipeline through four properties. All four are also accepted as constructor options and as JSX props on `<sprite2D>`.
+
+| Property | Type | Default | Purpose |
+|----------|------|---------|---------|
+| `lit` | `boolean` | `true` | Receive lighting from the attached `LightEffect`. |
+| `receiveShadows` | `boolean` | `true` | Allow lit fragments to be darkened by the SDF shadow trace. |
+| `castsShadow` | `boolean` | `false` | Contribute the sprite's silhouette to the SDF occlusion pre-pass. |
+| `shadowRadius` | `number \| undefined` | `undefined` (auto) | Per-instance occluder radius in world units. |
+
+```typescript
+const hero = new Sprite2D({ texture, castsShadow: true })
+hero.lit = true              // (default) reacts to lights
+hero.receiveShadows = false  // opt out of being darkened by shadow zones
+```
+
+In React:
+
+```tsx
+<animatedSprite2D
+  texture={knightSheet.texture}
+  spriteSheet={knightSheet}
+  animationSet={knightAnimations}
+  scale={[KNIGHT_SCALE, KNIGHT_SCALE, 1]}
+  castsShadow
+  lit
+/>
+```
+
+`lit`, `receiveShadows`, and `castsShadow` are bit flags packed into `instanceSystem.z` of the interleaved instance buffer (see [Batch Rendering](../batch-rendering/) for material authors).
+
+:::tip[Performance note]
+Flipping `lit`, `receiveShadows`, or `castsShadow` at runtime takes effect on the next frame with no shader rebuild. Toggle them per frame if you need to — they're zero-cost runtime knobs, not compile-time decisions.
+:::
+
+### shadowRadius
+
+`shadowRadius` is the world-space size of the sprite as a shadow occluder. It's consumed by SDF shadow tracers as the **self-silhouette escape distance** — the value the trace steps "out of" when the sample point starts on top of the caster.
+
+When left `undefined` (the default), `transformSyncSystem` auto-derives it each frame from `max(|scale.x|, |scale.y|)` so it tracks scale changes (including animation frames whose source sizes differ). Set it explicitly when:
+
+- The visible body is tighter than the quad's bounds (e.g., a sprite with transparent padding shouldn't use its full bounding-box scale as the silhouette radius).
+- The anchor pushes the silhouette off-center and you need a different effective size.
+
+```typescript
+sprite.shadowRadius = 12   // override
+sprite.shadowRadius = undefined  // back to auto
+```
+
+:::tip[Shadow internals]
+For the full occlusion pipeline — caster pre-pass, SDF generation, and how the trace consumes `shadowRadius` — see the [Shadows guide](../shadows/).
 :::
 
 ## Layers

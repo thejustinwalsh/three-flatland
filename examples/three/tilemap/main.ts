@@ -12,8 +12,8 @@ import {
   Plane,
   Vector3,
 } from 'three'
-import { TileMap2D, type TileMapData, type TilesetData, type TileLayerData } from 'three-flatland'
-import { createPane } from '@three-flatland/tweakpane'
+import { TileMap2D, type TileMapData, type TilesetData, type TileLayerData, createDevtoolsProvider } from 'three-flatland'
+import { createPane } from '@three-flatland/devtools'
 
 // Tile IDs for our procedural tileset
 const TILES = {
@@ -542,9 +542,9 @@ async function main() {
     pane.refresh()
   }
 
-  // Tweakpane UI — pass `scene` so draws/triangles and GPU timestamps are
-  // auto-wired via scene.onAfterRender.
-  const { pane, stats: globalStats } = createPane({ scene })
+  // Tweakpane UI
+  const { pane, update: updateDevtools } = createPane({ driver: 'manual' })
+  const devtools = createDevtoolsProvider({ name: 'tilemap' })
 
   // Layers folder
   const layerFolder = pane.addFolder({ title: 'Layers', expanded: false })
@@ -752,8 +752,6 @@ async function main() {
     const deltaMs = now - lastTime
     lastTime = now
 
-    globalStats.begin()
-
     // Lerp zoom toward target
     const lerpRate = 1 - Math.pow(0.001, deltaMs / 1000) // ~6x per second smoothing
     zoom += (targetZoom - zoom) * lerpRate
@@ -775,8 +773,10 @@ async function main() {
     // Update animated tiles
     tilemap.update(deltaMs)
 
+    devtools.beginFrame(performance.now(), renderer)
     renderer.render(scene, camera)
-    globalStats.end()
+    devtools.endFrame(renderer)
+    updateDevtools()
 
     // Update tile stats periodically
     statsTime += deltaMs

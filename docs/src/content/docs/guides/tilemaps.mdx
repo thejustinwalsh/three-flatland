@@ -5,7 +5,16 @@ description: Render tile-based maps efficiently with three-flatland.
 
 import { Tabs, TabItem } from '@astrojs/starlight/components';
 
+**What you'll learn**
+- How to load a Tiled or LDtk map and render it via `TileMap2D` with chunked rendering
+- How to mark wall tiles as shadow occluders with `markOccluders(['collision'])`
+- How to read and modify tiles at runtime, and convert between world / tile coordinates
+
+---
+
 Tilemaps allow you to render large tile-based environments efficiently using chunked rendering. The `TileMap2D` class handles maps with multiple layers and automatic chunking for performance.
+
+For your first map, you don't need to think about chunks, layers, or culling. Drop a Tiled or LDtk file in, point the loader at it, you have a level.
 
 ## Creating a Tilemap
 
@@ -170,7 +179,7 @@ Load maps created with [LDtk](https://ldtk.io/):
 </Tabs>
 
 :::tip[Texture Configuration]
-See the [Loaders guide](../loaders#texture-presets/) to configure texture filtering for pixel-art or smooth rendering.
+See the [Loaders guide](../loaders/#texture-presets) to configure texture filtering for pixel-art or smooth rendering.
 :::
 
 ## Working with Layers
@@ -203,6 +212,60 @@ const tileGid = layer.getTileAt(x, y);
 // Set tile at position
 layer.setTileAt(x, y, newTileGid);
 ```
+
+## Shadow Casting
+
+Tilemaps participate in the lighting pipeline as shadow occluders. Rather than tagging tiles one by one, you mark whole categories of tiles by their LDtk `obj.type` — typically the `'collision'` IntGrid identifier that LDtk assigns to wall tiles by default.
+
+Call `tilemap.markOccluders(typeNames, layerIndex?)` after the map data is loaded. It walks every object layer, finds objects whose `type` is in `typeNames`, and flips the per-tile cast-shadow bit for the matching tile in the target layer (default: layer `0`).
+
+<Tabs syncKey="framework">
+  <TabItem label="Three.js" icon="seti:javascript">
+    ```typescript
+    import { TileMap2D, LDtkLoader } from 'three-flatland'
+
+    const mapData = await LDtkLoader.load('/maps/dungeon.ldtk', 'Level_0')
+    const tilemap = new TileMap2D({ data: mapData })
+    scene.add(tilemap)
+
+    // Mark all 'collision' IntGrid tiles as shadow casters
+    tilemap.markOccluders(['collision'])
+    ```
+  </TabItem>
+  <TabItem label="React" icon="seti:react">
+    ```tsx
+    import { useEffect, useRef } from 'react'
+    import { useLoader } from '@react-three/fiber/webgpu'
+    import { LDtkLoader, TileMap2D } from 'three-flatland/react'
+
+    function Level() {
+      const mapData = useLoader(LDtkLoader, './maps/dungeon.ldtk')
+      const tilemapRef = useRef<TileMap2D>(null)
+
+      useEffect(() => {
+        // Mark all 'collision' IntGrid tiles as shadow casters
+        tilemapRef.current?.markOccluders(['collision'])
+      }, [mapData])
+
+      return <tileMap2D ref={tilemapRef} data={mapData} />
+    }
+    ```
+  </TabItem>
+</Tabs>
+
+Marked tiles get the `CAST_SHADOW_MASK` bit set in their interleaved `instanceSystem.z` attribute. The OcclusionPass picks this up during the SDF pre-pass — flagged tiles render into the shadow silhouette mask and produce real shadows in lit fragments.
+
+You can pass multiple type names to mark several categories at once, e.g. `markOccluders(['collision', 'pillar'])`. Pass a `layerIndex` if your wall geometry lives on a layer other than the first:
+
+```typescript
+tilemap.markOccluders(['collision'], 1) // mark layer index 1
+```
+
+:::tip[Per-tile bits survive layer toggles]
+Per-tile cast-shadow flags are preserved when you toggle layer-level state like `layer.lit` or `layer.receiveShadows`. The layer flag-sync only writes its own bits and merges them into each tile's existing flag word, so toggling lit/receiveShadows after `markOccluders` won't silently un-mark wall tiles.
+:::
+
+For the broader story on how the SDF pre-pass, occlusion mask, and shadow tracing fit together, see the [Shadows guide](../shadows/). For the per-sprite analogue (`Sprite2D` instances opting in/out as occluders), see the [Sprites guide](../sprites/).
 
 ## Coordinate Conversion
 

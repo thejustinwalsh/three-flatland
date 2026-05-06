@@ -4,13 +4,78 @@ description: Full-screen post-processing with composable pass effects.
 ---
 
 import { Tabs, TabItem } from '@astrojs/starlight/components';
+import Compare from '../../../components/Compare.astro';
+
+<Compare
+  beforeSrc="/three-flatland/diagrams/passfx-off.webm"
+  afterSrc="/three-flatland/diagrams/passfx-on.webm"
+  beforePoster="/three-flatland/diagrams/passfx-off-poster.jpg"
+  afterPoster="/three-flatland/diagrams/passfx-on-poster.jpg"
+  beforeLabel="Raw scene"
+  afterLabel="CRT pass applied"
+  aspectRatio="1351 / 1001"
+  zoom={1.0}
+  alt="Same scene with no post-process vs a single CRT pass — barrel curvature, scanlines, and vignette all from one chain."
+/>
+
+**What you'll learn**
+- The three effect layers (MaterialEffect / LightEffect / PassEffect) and which job each owns
+- How to author a `PassEffect` with `createPassEffect` and chain multiple in insertion order
+- The full `DefaultLightEffect` schema — uniforms vs compile-time constants, removed fields, `categoryQuotas`
+
+---
 
 Pass Effects are full-screen post-processing effects applied after sprite rendering. They transform the entire scene output — CRT curvature, scanlines, color quantization, VHS distortion, and more. Pass effects require a [Flatland](../flatland/) instance.
 
-:::note[Pass Effects vs Material Effects]
-**Material Effects** (`createMaterialEffect`) run per-sprite in the fragment shader — damage flash, outlines, dissolve. See the [TSL Nodes guide](../tsl-nodes/).
+## The Three Effect Layers
 
-**Pass Effects** (`createPassEffect`) run on the full rendered scene as post-processing — CRT monitors, LCD grids, chromatic aberration.
+import Mermaid from '../../../components/Mermaid.astro';
+
+<Mermaid caption="Three effect layers in the render pipeline">{`
+flowchart LR
+  Atlas[Sprite atlas] --> Sample[sampleSprite<br/>diffuse rgba]
+  Sample --> MatChain
+  subgraph MatChain [MaterialEffect chain]
+    direction TB
+    M1[Effect 1<br/>tint • outline<br/>dissolve]
+    M2[Effect 2]
+    M3[Effect N<br/>NormalMapProvider<br/>→ normal + elevation]
+    M1 --> M2 --> M3
+  end
+  MatChain --> LightFn
+  subgraph LightFn [LightEffect — singleton]
+    direction TB
+    Lights[LightStore<br/>tile bins + SDF]
+    Shade[N·L + attenuation<br/>+ shadow trace]
+    Lights --> Shade
+  end
+  LightFn --> SceneRT[Scene RT<br/>composited lit color]
+  SceneRT --> PassChain
+  subgraph PassChain [PassEffect chain]
+    direction TB
+    P1[posterize]
+    P2[lcdGrid]
+    P3[vignette / vhs<br/>/ crt]
+    P1 --> P2 --> P3
+  end
+  PassChain --> Canvas([canvas])
+
+  classDef group fill:#1a1a22,stroke:#444,color:#aaa
+  class MatChain,LightFn,PassChain group
+`}</Mermaid>
+
+three-flatland's effect system is layered, and the layers are easy to conflate because they share a factory shape (`createXEffect`) and a schema-driven API. Pick the right one for the job:
+
+| Layer | Factory | Scope | When to Reach For It |
+|-------|---------|-------|----------------------|
+| **MaterialEffect** | `createMaterialEffect` | Per-sprite fragment shader | Damage flash, outline, dissolve, hue shift — anything that transforms one sprite's color. Channel providers (`NormalMapProvider`, `AutoNormalProvider`) are also MaterialEffects — see the [Baked Normal Pipeline](../loaders/#baked-normal-pipeline) for how to get a normal-map texture into `NormalMapProvider`. |
+| **LightEffect** | `createLightEffect` | Scene singleton — drives every lit sprite | Choose or author the lighting model: tiled Forward+, GI, banded cel, etc. Exactly one is bound to a Flatland instance via `setLighting()`. See the [Lighting guide](../lighting/). |
+| **PassEffect** | `createPassEffect` | Full-screen post-process | CRT, LCD grid, scanlines, VHS, chromatic aberration. Chained on the rendered scene after lighting. |
+
+The rest of this guide focuses on PassEffect; for LightEffect authoring see the Lighting guide, and for MaterialEffect see the [TSL Nodes guide](../tsl-nodes/).
+
+:::note[Quick disambiguation]
+**MaterialEffects** and **PassEffects** both transform color, but at different scales: a MaterialEffect runs once per sprite fragment with access to that sprite's UVs and atlas frame, a PassEffect runs once per screen fragment with access to the composited scene texture. **LightEffects** are different again — they're not a transform, they're the lighting model itself, consumed by every lit sprite's MaterialEffect chain.
 :::
 
 ## Creating a Pass Effect
@@ -136,7 +201,9 @@ flatland.addPass(backlight)   // 3. Add backlight bleed
 flatland.addPass(vignette)    // 4. Darken edges
 ```
 
-Passes that only do color math (posterize, quantize, scanlines, vignette) merge into a single shader — TSL compiles the chain into one GPU program. Passes that call `convertToTexture(input)` internally (CRT curvature, VHS distortion, chromatic aberration) introduce an intermediate texture sample because they need to read at different UVs.
+:::tip[Performance note]
+Passes that only do color math (posterize, quantize, scanlines, vignette) merge into a single shader — TSL compiles the chain into one GPU program. Passes that call `convertToTexture(input)` internally (CRT curvature, VHS distortion, chromatic aberration) introduce an intermediate texture sample because they need to read at different UVs. Stack the cheap ones freely; reach for the texture-sampling ones with intent.
+:::
 
 ### Dynamic Switching
 
@@ -249,7 +316,86 @@ All post-processing nodes are exported from `@three-flatland/nodes`:
 | `ntscComposite` | NTSC signal artifacts |
 | `analogGlitch` | Random glitch bands |
 
+## DefaultLightEffect Schema
+
+`DefaultLightEffect` is a LightEffect, not a PassEffect — but it's the most heavily-customized effect in the preset set, and its schema is documented here as the canonical place readers will look for "what knobs does the recommended lighting actually have?". For an introduction to LightEffects in general, see the [Lighting guide](../lighting/#how-it-works).
+
+The schema splits cleanly into two flavors: **uniforms** that update at zero cost, and **compile-time constants** that trigger a shader rebuild when assigned.
+
+### Uniforms (live-tunable, no rebuild)
+
+Assigning these is a `.value =` write on a TSL uniform node — costs nothing. Animate them in your render loop without thinking about cost.
+
+| Uniform | Default | Description |
+|---------|---------|-------------|
+| `shadowStrength` | `0.6` | Lerp factor from lit → traced shadow. `0` disables shadow contribution; `1` is full opacity. |
+| `shadowBias` | `0.5` | Hit epsilon (world units) — SDF samples below this count as an occluder strike, terminating the trace. |
+| `shadowStartOffsetScale` | `1` | Multiplier on each sprite's per-instance `shadowRadius` when the trace origin sits inside that caster's silhouette. Nudge above 1.0 if you see residual self-shadow on elongated sprites. |
+| `shadowMaxDistance` | `0` | Max world-space distance a shadow extends from the receiver before fading. `0` disables falloff (binary shadow at any distance). Typical: 100–300 — keeps near-caster shadows solid while hiding cone-fan artifacts far from the caster. |
+| `shadowPixelSize` | `0` | Snap the shadow trace's surface position to a world-unit block grid (1/2/4/8). Purely aesthetic — does NOT reduce GPU cost. |
+| `bands` | `8` | Cel-band count for the direct-light contribution. |
+| `pixelSize` | `0` | Surface-position snap cell width for the lighting math. |
+| `glowRadius` | `0` | Broad secondary falloff radius (multiplied into per-light effective distance). |
+| `glowIntensity` | `0` | Strength of the broad glow added to point/spot attenuation. |
+| `lightHeight` | `0.75` | Universal +Z component added to every light's direction — higher reads as more top-lit. |
+| `rimIntensity` | `0` | Strength of the rim-lighting accumulator. Rim power is fixed at `(1 − N·L)²`. |
+
+### Compile-Time Constants (writable, but each write rebuilds)
+
+These are stored as primitive constants on the effect instance. Setting them is legal at runtime, but each assignment triggers a shader rebuild and emits a dev-mode warning:
+
+```
+[three-flatland] defaultLight.glowEnabled changed at runtime — triggers shader rebuild
+```
+
+The payoff: when off, the gated branch never reaches the GPU, so a scene that doesn't use glow / rim / snap pays zero ops for those features.
+
+| Constant | Default | What it gates |
+|----------|---------|---------------|
+| `glowEnabled` | `false` | Broad-falloff "glow" added to point/spot attenuation. ~9 ops per light per fragment when on. |
+| `rimEnabled` | `false` | Rim-lighting accumulator + the inner `(1 − N·L)²` per-light term. ~6 ops per light per fragment when on. |
+| `pixelSnapEnabled` | `false` | Surface-position snap for the lighting math (chunky cel cells). |
+| `shadowPixelSnapEnabled` | `false` | Surface-position snap for the shadow trace origin (blocky shadow silhouettes). |
+| `bandsEnabled` | `true` | Cel-band quantization of the direct-light contribution. |
+
+Pattern in the example: derive the boolean from the uniform crossing zero, so the shader rebuilds on the 0 → N transition and live-updates while the slider stays above 0.
+
+```typescript
+const bandsEnabled = bands > 0
+const pixelSnapEnabled = pixelSize > 0
+const shadowPixelSnapEnabled = shadowPixelSize > 0
+const glowEnabled = glowRadius > 0
+const rimEnabled = rimIntensity > 0
+```
+
+:::caution[Cel quantization is mean-preserving but visually inflates mid-tones]
+The cel formula `floor(x*N + 0.5)/N` rounds mid-tones up to the next quantization step — the boost is visible, while the compensating darkenings happen at very low values where they read as "still black." Net effect: cel mode looks BRIGHTER than smooth mode for the same physical scene values. **Disabling `bandsEnabled` may make a calibrated scene look dimmer** until you retune intensities (torches, fills, ambient) upward to compensate. The smooth branch is doing nothing wrong — the cel branch was inflating mid-tones.
+:::
+
+### Removed Fields
+
+The following fields existed in earlier versions and have been removed. If you're migrating, delete the assignments — they'll be silently undefined now.
+
+- **`rimPower`** — rim sharpness is now hardcoded as `(1 − N·L)²`. Saves a per-light `pow()` (an SFU instruction) for the case nobody actually slid at runtime. Fork the effect if you need a different curve.
+- **`capShadowStrength`** / **`capShadowThreshold`** — the manual wall-cap darkening hack is replaced by elevation-aware N·L. Walls whose elevation exceeds `lightHeight` physically receive a negative L.z, clamp N·L to zero, and end up with only ambient — no special-case uniform required.
+
+### `categoryQuotas` — JSX-Only Sugar
+
+`DefaultLightEffect` instances expose a `categoryQuotas` accessor that proxies to the underlying `forwardPlus.setFillQuota(category, quota)` API. It's purely a declarative convenience for JSX users who don't want to grab a ref and reach into `forwardPlus`:
+
+```tsx
+<defaultLightEffect
+  attach={attachLighting}
+  categoryQuotas={{ slime: 4 }}
+/>
+```
+
+Each set RESETS all buckets to default first, then applies the record — so removing a key between renders correctly clears that bucket's quota override (rather than leaving it stuck at the previous value).
+
+For the full story on what these buckets are and how `category` maps onto them — including the per-category quota tuning APIs — see [Shadow Casting, Importance & Categories](../lighting/#shadow-casting-importance--categories) in the Lighting guide.
+
 ## Next Steps
 
 - [Pass Effects Example](../../examples/pass-effects/) — Interactive demo with 5 presets
+- [Lighting Guide](../lighting/) — What a LightEffect actually is, plus Light2D fields
 - [TSL Nodes Guide](../tsl-nodes/) — Per-sprite material effects and low-level TSL usage

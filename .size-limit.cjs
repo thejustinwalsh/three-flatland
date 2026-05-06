@@ -124,10 +124,10 @@ module.exports = [
     import: '*',
   },
 
-  // ── @three-flatland/tweakpane ──
+  // ── @three-flatland/devtools ──
   {
-    name: '@three-flatland/tweakpane (full)',
-    path: 'packages/tweakpane/dist/index.js',
+    name: '@three-flatland/devtools (full)',
+    path: 'packages/devtools/dist/index.js',
     import: '*',
     ignore: [
       'tweakpane',
@@ -137,8 +137,8 @@ module.exports = [
     ],
   },
   {
-    name: '@three-flatland/tweakpane/react (full)',
-    path: 'packages/tweakpane/dist/react.js',
+    name: '@three-flatland/devtools/react (full)',
+    path: 'packages/devtools/dist/react.js',
     import: '*',
     ignore: [
       'tweakpane',

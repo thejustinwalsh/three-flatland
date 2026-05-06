@@ -1,0 +1,1149 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>three-flatland devtools</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0e1016;
+      --bg-elev: #14171e;
+      --bg-elev-2: #1b1f29;
+      --border: #2a2e37;
+      --fg: #e4e6eb;
+      --fg-dim: #9aa0ab;
+      --accent: #5eb0ff;
+      --live: #5ed38a;
+    }
+    html, body { height: 100%; margin: 0; overflow: hidden; }
+    body {
+      background: var(--bg);
+      color: var(--fg);
+      font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+    }
+    button { font: inherit; color: inherit; }
+
+    /* Shared scroll styling across every scrollable region in the
+     * dashboard — thin scrollbars, muted thumbs, contain-by-default so
+     * wheel events don't chain into ancestor containers. */
+    .dashboard-root * {
+      scrollbar-width: thin;
+      scrollbar-color: rgba(255, 255, 255, 0.12) transparent;
+    }
+    .dashboard-root *::-webkit-scrollbar { width: 8px; height: 8px; }
+    .dashboard-root *::-webkit-scrollbar-track { background: transparent; }
+    .dashboard-root *::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.12);
+      border-radius: 4px;
+    }
+    .dashboard-root *::-webkit-scrollbar-thumb:hover {
+      background: rgba(255, 255, 255, 0.2);
+    }
+
+    /* Lock the root to the viewport — no page-level scrolling, each
+     * panel owns its own scroll region. `100dvh` (with a `100vh`
+     * fallback) keeps mobile Safari's dynamic toolbar from clipping the
+     * bottom panel. `min-height: 0` lets descendant flex items shrink
+     * below their content. */
+    .dashboard-root {
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      height: 100dvh;
+      min-height: 0;
+    }
+    .dashboard-header {
+      padding: 6px 12px;
+      border-bottom: 1px solid var(--border);
+      background: var(--bg-elev);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .brand { font-weight: 600; letter-spacing: 0.02em; flex: 0 0 auto; }
+    .dashboard-main { flex: 1; display: flex; min-height: 0; }
+    .dashboard-content {
+      flex: 1;
+      padding: 8px;
+      min-width: 0;
+      min-height: 0;
+      /* Column flex so the stats strip sits on top and the split grows
+       * to absorb the remaining vertical space. No outer overflow —
+       * each panel manages its own scrolling so the page doesn't
+       * expand past the viewport. */
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      overflow: hidden;
+    }
+    /*
+     * Main content split: on wide viewports, buffers + registry live in
+     * a left column while protocol takes the right. Below ~1150px (too
+     * narrow for both a fullscreen canvas and a usable protocol list)
+     * they fall back into one stacked column.
+     */
+    .dashboard-split {
+      display: flex;
+      gap: 8px;
+      min-height: 0;
+      /* Let the split stretch vertically so the protocol column can
+       * actually grow — otherwise it just hugs its min-height. */
+      flex: 1;
+    }
+    .dashboard-split-col {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      min-width: 0;
+      min-height: 0;
+      flex: 1;
+    }
+    .producer-select { position: relative; }
+    .producer-button {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 4px 10px;
+      background: var(--bg);
+      color: var(--fg);
+      border: 1px solid var(--border);
+      border-radius: 3px;
+      cursor: pointer;
+      min-width: 220px;
+    }
+    .producer-button:disabled { opacity: 0.5; cursor: default; }
+    .producer-button-open { border-color: var(--accent); }
+    .producer-button .producer-label {
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      text-align: left;
+    }
+    .producer-button .producer-kind {
+      font-size: 9px;
+      text-transform: uppercase;
+      color: var(--fg-dim);
+      letter-spacing: 0.06em;
+    }
+    .producer-caret { color: var(--fg-dim); font-size: 8px; }
+    .producer-menu {
+      position: absolute;
+      top: calc(100% + 4px);
+      left: 0;
+      right: 0;
+      margin: 0;
+      padding: 4px 0;
+      list-style: none;
+      background: var(--bg-elev-2);
+      border: 1px solid var(--border);
+      border-radius: 3px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+      z-index: 100;
+      max-height: 320px;
+      overflow-y: auto;
+    }
+    .producer-option {
+      display: grid;
+      grid-template-columns: 16px 1fr auto;
+      gap: 8px;
+      align-items: center;
+      width: 100%;
+      padding: 4px 10px;
+      background: transparent;
+      color: var(--fg);
+      border: none;
+      cursor: pointer;
+      text-align: left;
+    }
+    .producer-option:hover { background: rgba(255, 255, 255, 0.04); }
+    .producer-option-active { color: var(--accent); }
+    .producer-check { text-align: center; color: var(--accent); }
+
+    .header-stats {
+      display: inline-flex;
+      gap: 12px;
+      margin-left: auto;
+      color: var(--fg-dim);
+      font-variant-numeric: tabular-nums;
+      font-size: 11px;
+    }
+    .header-stats span[title] { cursor: help; }
+    /* Match protocol-log direction arrow palette: green in, amber out. */
+    .header-arrow-in { color: #5ed38a; font-weight: 700; }
+    .header-arrow-out { color: #f0b429; font-weight: 700; }
+
+    .panel {
+      background: var(--bg-elev-2);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      /* Gap-based spacing is owned by the layout containers now; the
+       * per-panel margin would stack with `gap` and push total height
+       * past the viewport, causing the log to grow the page down. */
+    }
+    .panel-header {
+      padding: 6px 10px;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--fg-dim);
+      border-bottom: 1px solid var(--border);
+      background: rgba(255, 255, 255, 0.02);
+    }
+    .panel-body { padding: 8px 10px; }
+    .panel-empty { margin: 4px 0; color: var(--fg-dim); }
+
+    .producers-list { list-style: none; margin: 0; padding: 0; }
+    .producers-list li + li { margin-top: 2px; }
+    .producer-row {
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      gap: 8px;
+      align-items: center;
+      width: 100%;
+      padding: 6px 8px;
+      background: transparent;
+      border: 1px solid transparent;
+      border-radius: 3px;
+      cursor: pointer;
+      text-align: left;
+    }
+    .producer-row:hover { background: rgba(255, 255, 255, 0.03); }
+    .producer-row-selected {
+      background: rgba(94, 176, 255, 0.08);
+      border-color: rgba(94, 176, 255, 0.3);
+    }
+    .producer-kind {
+      font-size: 10px;
+      text-transform: uppercase;
+      color: var(--fg-dim);
+    }
+    .producer-label { color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #3a3f4b;
+    }
+    .dot-live { background: var(--live); box-shadow: 0 0 6px rgba(94, 211, 138, 0.6); }
+
+    .stats-strip {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+      gap: 4px;
+      /* Keep top/bottom padding in line with other panels so the gap
+       * between Stats and the panel beneath doesn't read larger than
+       * the inter-panel gap elsewhere. */
+      padding: 4px 10px;
+    }
+    .stat {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      padding: 6px 10px;
+      background: var(--bg);
+      border: 1px solid transparent;
+      border-radius: 3px;
+      overflow: hidden;
+      min-height: 52px;
+      cursor: pointer;
+      text-align: left;
+      color: inherit;
+      font: inherit;
+      appearance: none;
+      -webkit-appearance: none;
+    }
+    .stat:focus { outline: none; }
+    .stat:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
+    .stat-canvas {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      opacity: 0.6;
+    }
+    .stat-label {
+      position: relative;
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--stat-color, var(--fg-dim));
+    }
+    .stat-value {
+      position: relative;
+      font-size: 15px;
+      font-variant-numeric: tabular-nums;
+      font-weight: 500;
+    }
+    .stat:hover { background: rgba(255, 255, 255, 0.02); }
+    .stat-selected { box-shadow: inset 0 0 0 1px var(--stat-color, var(--accent)); }
+
+    .stat-detail {
+      margin: 0 10px 8px;
+      padding: 8px 10px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-top: 2px solid var(--stat-color, var(--accent));
+      border-radius: 3px;
+    }
+    .stat-detail-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 6px;
+    }
+    .stat-detail-label {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--stat-color, var(--fg));
+    }
+    .stat-detail-samples { font-size: 10px; color: var(--fg-dim); }
+    .stat-detail-close {
+      margin-left: auto;
+      background: transparent;
+      border: none;
+      color: var(--fg-dim);
+      cursor: pointer;
+      font-size: 16px;
+      line-height: 1;
+      padding: 0 4px;
+    }
+    .stat-detail-close:hover { color: var(--fg); }
+    .stat-detail-metrics {
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+      gap: 4px;
+      margin-bottom: 6px;
+    }
+    .stat-metric {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      padding: 4px 6px;
+      background: var(--bg-elev-2);
+      border-radius: 2px;
+    }
+    .stat-metric-label {
+      font-size: 9px;
+      text-transform: uppercase;
+      color: var(--fg-dim);
+      letter-spacing: 0.06em;
+    }
+    .stat-metric-value {
+      font-size: 13px;
+      font-variant-numeric: tabular-nums;
+    }
+    .stat-histo {
+      display: block;
+      width: 100%;
+      height: 80px;
+    }
+
+    .protocol-panel {
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      /* Fill the column; scroll internally via .protocol-body so the
+       * log can't push the page taller as messages accumulate. */
+      flex: 1;
+    }
+    .protocol-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      text-transform: none;
+      letter-spacing: 0;
+    }
+    .protocol-header > span:first-child {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      flex: 0 0 auto;
+    }
+    .protocol-filter {
+      flex: 1;
+      min-width: 0;
+      background: var(--bg);
+      color: var(--fg);
+      border: 1px solid var(--border);
+      border-radius: 3px;
+      padding: 3px 6px;
+      font: inherit;
+    }
+    .protocol-btn {
+      background: var(--bg);
+      color: var(--fg-dim);
+      border: 1px solid var(--border);
+      border-radius: 3px;
+      padding: 3px 8px;
+      cursor: pointer;
+    }
+    .protocol-btn:hover { color: var(--fg); }
+    .protocol-btn-on { color: var(--accent); border-color: rgba(94, 176, 255, 0.5); }
+    .protocol-btn[disabled] { opacity: 0.4; cursor: default; }
+    .protocol-match-count {
+      font-size: 10px;
+      color: var(--fg-dim);
+      font-variant-numeric: tabular-nums;
+      padding: 0 6px;
+      background: rgba(94, 176, 255, 0.1);
+      border: 1px solid rgba(94, 176, 255, 0.3);
+      border-radius: 3px;
+      line-height: 18px;
+    }
+
+    .protocol-layout { flex: 1; display: flex; min-height: 0; }
+    .protocol-body {
+      flex: 1;
+      min-width: 0;
+      /* `min-height: 0` lets the flex item contract below its
+       * virtualization spacer and actually activate the scroll. */
+      min-height: 0;
+      overflow: auto;
+      padding: 0;
+      position: relative;
+      /* `auto` so scroll gestures chain to the page when the log is
+       * already at its top / bottom edge — matches how native mobile
+       * nested scroll containers behave. */
+      overscroll-behavior: auto;
+      scrollbar-width: thin;
+      scrollbar-color: var(--border) transparent;
+    }
+    .protocol-body::-webkit-scrollbar { width: 8px; height: 8px; }
+    .protocol-body::-webkit-scrollbar-track { background: transparent; }
+    .protocol-body::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.12);
+      border-radius: 4px;
+    }
+    .protocol-body::-webkit-scrollbar-thumb:hover {
+      background: rgba(255, 255, 255, 0.2);
+    }
+    .protocol-spacer { position: relative; width: 100%; }
+    .protocol-row {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      display: grid;
+      grid-template-columns: 14px 90px 60px 120px 1fr 56px;
+      gap: 8px;
+      padding: 0 10px;
+      background: transparent;
+      border: none;
+      cursor: pointer;
+      text-align: left;
+      font-size: 11px;
+      font-variant-numeric: tabular-nums;
+      align-items: center;
+      white-space: nowrap;
+      will-change: transform;
+    }
+    .protocol-frame { color: var(--fg-dim); font-size: 10px; }
+    .protocol-size { color: var(--fg-dim); text-align: right; }
+    .protocol-row-hover { background: rgba(255, 255, 255, 0.04); }
+    .protocol-row-selected {
+      background: rgba(94, 176, 255, 0.1) !important;
+      box-shadow: inset 2px 0 0 var(--accent);
+    }
+    .protocol-row-placeholder {
+      color: rgba(255, 255, 255, 0.2);
+    }
+    .protocol-dir { font-weight: 700; }
+    .protocol-row-in .protocol-dir { color: #5ed38a; }
+    .protocol-row-out .protocol-dir { color: #f0b429; }
+    .protocol-time { color: var(--fg-dim); }
+    .protocol-type { color: var(--fg); }
+    .protocol-tag {
+      color: var(--fg-dim);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .protocol-detail {
+      flex: 0 0 420px;
+      display: flex;
+      flex-direction: column;
+      border-left: 1px solid var(--border);
+      background: var(--bg);
+      min-width: 0;
+    }
+    .protocol-detail-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 6px 10px;
+      border-bottom: 1px solid var(--border);
+    }
+    .protocol-detail-title {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .protocol-detail-meta {
+      display: flex;
+      gap: 12px;
+      padding: 4px 10px;
+      font-size: 10px;
+      color: var(--fg-dim);
+      border-bottom: 1px solid var(--border);
+    }
+    .protocol-detail-body {
+      flex: 1;
+      margin: 0;
+      padding: 8px 10px;
+      overflow: auto;
+      font-size: 11px;
+      color: var(--fg-dim);
+      white-space: pre;
+    }
+    .json-key { color: #8ab4ff; }
+    .json-str { color: #c3e88d; }
+    .json-num { color: #f78c6c; }
+    .json-bool { color: #c792ea; }
+    .json-null { color: #89ddff; font-style: italic; }
+
+    .registry-panel {
+      display: flex;
+      flex-direction: column;
+      flex: 2;
+      min-height: 0;
+    }
+    .registry-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      text-transform: none;
+      letter-spacing: 0;
+    }
+    .registry-header > span:first-child {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+    .registry-count {
+      font-size: 10px;
+      color: var(--fg-dim);
+      font-variant-numeric: tabular-nums;
+    }
+    .registry-layout { flex: 1; display: flex; min-height: 0; min-width: 0; }
+    .registry-list {
+      list-style: none;
+      margin: 0;
+      padding: 4px 0;
+      overflow-y: auto;
+      flex: 0 0 260px;
+      border-right: 1px solid var(--border);
+      background: var(--bg-elev-2);
+    }
+    .registry-row {
+      display: grid;
+      grid-template-columns: auto 1fr auto auto;
+      gap: 8px;
+      align-items: center;
+      width: 100%;
+      padding: 4px 10px;
+      background: transparent;
+      border: none;
+      cursor: pointer;
+      text-align: left;
+      font-size: 11px;
+      color: var(--fg);
+    }
+    .registry-sparkline { image-rendering: pixelated; }
+    .registry-viz-wrap {
+      /* Wrapper supplies the horizontal breathing room; the canvas
+       * below expands to fill it. Previous version applied `margin: 0
+       * 10px` directly to the canvas alongside `width: 100%`, which
+       * added up to `100% + 20px` and pushed the graph past the panel
+       * border on every render. */
+      padding: 0 10px;
+      box-sizing: border-box;
+      width: 100%;
+    }
+    .registry-viz-stack {
+      position: relative;
+      width: 100%;
+      height: 80px;
+    }
+    .registry-viz {
+      display: block;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 2, 28, 0.35);
+      border-radius: 2px;
+    }
+    .registry-viz-stack { cursor: crosshair; }
+    .registry-viz-cursor-line {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      width: 1px;
+      background: rgba(255, 255, 255, 0.9);
+      pointer-events: none;
+      display: none;
+      /* Imperative positioning driven directly by mousemove — no React
+       * re-render per frame, just a style.left update. */
+      will-change: left;
+    }
+    .registry-row:hover { background: rgba(255, 255, 255, 0.03); }
+    .registry-row-selected {
+      background: rgba(94, 176, 255, 0.1);
+      box-shadow: inset 2px 0 0 var(--accent);
+    }
+    .registry-kind {
+      font-size: 9px;
+      text-transform: uppercase;
+      color: var(--fg-dim);
+      letter-spacing: 0.04em;
+    }
+    .registry-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .registry-count-pill {
+      color: var(--fg-dim);
+      font-variant-numeric: tabular-nums;
+      font-size: 10px;
+    }
+
+    .registry-detail {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      background: var(--bg);
+    }
+    .registry-detail-header {
+      display: flex;
+      gap: 8px;
+      padding: 6px 10px;
+      border-bottom: 1px solid var(--border);
+      align-items: baseline;
+    }
+    .registry-detail-name { font-weight: 600; }
+    .registry-detail-label { color: var(--fg-dim); font-size: 11px; }
+    .registry-detail-meta {
+      display: flex;
+      gap: 12px;
+      padding: 4px 10px;
+      font-size: 10px;
+      color: var(--fg-dim);
+      border-bottom: 1px solid var(--border);
+    }
+    /* Flex-column so the inner `.sample-grid-scroller` can `flex: 1` +
+     * overflow inside. Previously `overflow: auto` on this element
+     * itself made it the scroller, while the inner scroller had no
+     * flex context and sized to content — `scrollTo` on the inner was
+     * a no-op because the outer was what actually scrolled. */
+    .registry-detail-body {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      padding: 6px 10px;
+      font-size: 11px;
+    }
+
+    .sample-grid-scroller {
+      flex: 1;
+      min-height: 0;
+      overflow: auto;
+    }
+    .sample-grid {
+      position: relative;
+      /* Fixed-width decimal "hex-viewer"-style grid — monospace font,
+       * tabular figures, and each cell padded to the same char count by
+       * the formatter. Raw value lives in each cell's `title` so hover
+       * shows full precision. */
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-variant-numeric: tabular-nums;
+      white-space: pre;
+    }
+    .sample-row {
+      position: absolute;
+      left: 0;
+      right: 0;
+      display: grid;
+      /* 8-char cell + 1 char padding via ch units so columns line up
+       * regardless of zoom / font-size. */
+      grid-template-columns: 5ch repeat(8, 9ch);
+      gap: 6px;
+      align-items: center;
+      will-change: transform;
+    }
+    .sample-index { color: var(--fg-dim); font-size: 10px; text-align: right; padding-right: 4px; }
+    .sample-cell {
+      text-align: right;
+      color: var(--fg);
+      padding: 1px 4px;
+      border-radius: 2px;
+      cursor: pointer;
+    }
+    .sample-cell:hover { background: rgba(255, 255, 255, 0.04); }
+    .sample-cell-cursor {
+      background: rgba(255, 255, 255, 0.12);
+      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.3);
+    }
+    .registry-cursor-label {
+      color: var(--fg);
+      background: rgba(255, 255, 255, 0.08);
+      border-radius: 2px;
+      padding: 0 4px;
+    }
+
+    .buffers-panel {
+      display: flex;
+      flex-direction: column;
+      /* Share the column with Registry — 3:2 split is a good default
+       * for the canvas/preview + entry list rhythm. Both need
+       * `min-height: 0` so their internal overflow containers can
+       * actually scroll instead of expanding the panel. */
+      flex: 3;
+      min-height: 0;
+    }
+    .buffers-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      text-transform: none;
+      letter-spacing: 0;
+    }
+    .buffers-header > span:first-child {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+    .buffers-layout { flex: 1; display: flex; min-height: 0; min-width: 0; }
+    .buffers-list {
+      list-style: none;
+      margin: 0;
+      padding: 4px 0;
+      overflow-y: auto;
+      flex: 0 0 260px;
+      border-right: 1px solid var(--border);
+      background: var(--bg-elev-2);
+    }
+    .buffers-row {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      width: 100%;
+      padding: 6px 10px;
+      background: transparent;
+      border: none;
+      cursor: pointer;
+      text-align: left;
+      font-size: 11px;
+      color: var(--fg);
+    }
+    .buffers-row:hover { background: rgba(255, 255, 255, 0.03); }
+    .buffers-row-selected {
+      background: rgba(94, 176, 255, 0.1);
+      box-shadow: inset 2px 0 0 var(--accent);
+    }
+    .buffers-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .buffers-meta {
+      color: var(--fg-dim);
+      font-size: 10px;
+      font-variant-numeric: tabular-nums;
+    }
+    .buffers-stage {
+      flex: 1;
+      min-width: 0;
+      position: relative;
+      background: var(--bg);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 8px;
+      overflow: hidden;
+    }
+    .buffers-canvas {
+      image-rendering: pixelated;
+      display: block;
+      background: rgba(0, 2, 28, 0.6);
+      border-radius: 2px;
+    }
+    .buffers-info {
+      position: absolute;
+      bottom: 8px;
+      left: 12px;
+      right: 12px;
+      display: flex;
+      gap: 12px;
+      font-size: 10px;
+      color: var(--fg-dim);
+      background: rgba(0, 0, 0, 0.5);
+      border-radius: 3px;
+      padding: 3px 8px;
+      pointer-events: none;
+    }
+    .buffers-warn { color: #f0b429; }
+    .buffers-close {
+      position: absolute;
+      top: 6px;
+      right: 8px;
+      background: rgba(0, 0, 0, 0.5);
+      color: var(--fg-dim);
+      border: 1px solid var(--border);
+      border-radius: 3px;
+      cursor: pointer;
+      padding: 0 6px;
+      line-height: 18px;
+      font-size: 14px;
+    }
+    .buffers-close:hover { color: var(--fg); background: rgba(0, 0, 0, 0.7); }
+
+    .env-popover { position: relative; }
+    .env-trigger {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      background: var(--bg);
+      color: var(--fg);
+      border: 1px solid var(--border);
+      border-radius: 3px;
+      cursor: pointer;
+      font-size: 11px;
+    }
+    .env-trigger-open { border-color: var(--accent); }
+    .env-trigger-summary { color: var(--fg-dim); }
+    .env-caret { color: var(--fg-dim); font-size: 8px; }
+    .env-menu {
+      position: absolute;
+      top: calc(100% + 6px);
+      right: 0;
+      min-width: 280px;
+      padding: 8px 12px;
+      background: var(--bg-elev-2);
+      border: 1px solid var(--border);
+      border-radius: 3px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+      z-index: 100;
+    }
+    .env-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 2px 0;
+      font-size: 11px;
+    }
+    .env-label { color: var(--fg-dim); }
+    .env-value { font-variant-numeric: tabular-nums; color: var(--fg); }
+
+    .buffers-canvas {
+      transform-origin: center center;
+      will-change: transform;
+    }
+    .buffers-zoom { margin-left: auto; color: var(--fg-dim); }
+    .buffers-probe {
+      position: absolute;
+      top: 6px;
+      left: 8px;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 3px 8px;
+      background: rgba(0, 0, 0, 0.6);
+      border: 1px solid var(--border);
+      border-radius: 3px;
+      color: var(--fg);
+      font-size: 10px;
+      font-variant-numeric: tabular-nums;
+      pointer-events: none;
+    }
+    .probe-chip {
+      width: 10px;
+      height: 10px;
+      border-radius: 2px;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+    .buffers-reset {
+      position: absolute;
+      top: 6px;
+      right: 38px;
+      background: rgba(0, 0, 0, 0.5);
+      color: var(--fg-dim);
+      border: 1px solid var(--border);
+      border-radius: 3px;
+      cursor: pointer;
+      padding: 0 6px;
+      line-height: 18px;
+      font-size: 14px;
+    }
+    .buffers-reset:hover { color: var(--fg); background: rgba(0, 0, 0, 0.7); }
+    .buffers-stage { user-select: none; }
+
+    .protocol-dir-toggle { display: inline-flex; gap: 2px; }
+    .protocol-filter-menu-wrap { position: relative; }
+    .protocol-filter-menu {
+      position: absolute;
+      top: calc(100% + 6px);
+      right: 0;
+      min-width: 260px;
+      padding: 8px;
+      background: var(--bg-elev-2);
+      border: 1px solid var(--border);
+      border-radius: 3px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+      z-index: 100;
+    }
+    .protocol-filter-menu-section { margin-bottom: 10px; }
+    .protocol-filter-menu-section:last-child { margin-bottom: 0; }
+    .protocol-filter-menu-title {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 10px;
+      text-transform: uppercase;
+      color: var(--fg-dim);
+      letter-spacing: 0.06em;
+      margin-bottom: 4px;
+    }
+    .protocol-filter-menu-clear {
+      padding: 0 6px;
+      font-size: 10px;
+    }
+    .protocol-filter-menu-value {
+      display: inline-block;
+      margin-left: 8px;
+      font-size: 11px;
+      color: var(--fg-dim);
+      font-variant-numeric: tabular-nums;
+    }
+    .protocol-filter-menu input[type="range"] {
+      vertical-align: middle;
+      width: 160px;
+    }
+    .protocol-filter-types {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      max-height: 240px;
+      overflow-y: auto;
+    }
+    .protocol-filter-type {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 2px 4px;
+      font-size: 11px;
+      cursor: pointer;
+    }
+    .protocol-filter-type:hover { background: rgba(255, 255, 255, 0.03); }
+    .protocol-filter-type input { margin: 0; }
+
+    /*
+     * Narrow viewports (<= 1150px): give up the viewport-bound layout.
+     * Stacking four panels in one column squeezes everything below
+     * the usable threshold — canvas previews, registry graphs, and
+     * protocol rows all need real height. Let the page scroll with
+     * per-panel fixed heights so cascading doesn't un-do them.
+     *
+     * NOTE: This block sits at the very end of the stylesheet on
+     * purpose — the cascade goes top-down at equal specificity, so
+     * placing panel height overrides above the default `.buffers-panel
+     * { flex: 3 }` / `.registry-panel { flex: 2 }` rules means those
+     * rules win and the narrow-mode sizes get discarded. Keep it last.
+     */
+    /* ── Batches panel ──────────────────────────────────────────────── */
+    .batches-panel {
+      display: flex;
+      flex-direction: column;
+      flex: 2;
+      min-height: 0;
+      overflow: hidden;
+    }
+    .batches-header {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 8px;
+      text-transform: none;
+      letter-spacing: 0;
+    }
+    .batches-header > span:first-child {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+    .batches-header-meta {
+      font-size: 10px;
+      color: var(--fg-dim);
+      font-variant-numeric: tabular-nums;
+    }
+    /* Single scroll container for both sections so the panel scrolls
+     * naturally inside `.dashboard-split-col` without nested scrollers. */
+    .batches-scroll { flex: 1; overflow-y: auto; min-height: 0; }
+    .batches-section { border-top: 1px solid var(--border); }
+    .batches-section:first-of-type { border-top: none; }
+    .batches-section-title {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      width: 100%;
+      padding: 4px 10px;
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--fg-dim);
+      /* Solid fill — sticky headers mask scrolling content beneath.
+       * Layering the subtle highlight over the panel base color keeps
+       * the existing shade while blocking the rows behind. */
+      background: var(--bg-elev-2);
+      background-image: linear-gradient(rgba(255, 255, 255, 0.02), rgba(255, 255, 255, 0.02));
+      position: sticky;
+      top: 0;
+      z-index: 2;
+      border-bottom: 1px solid var(--border);
+    }
+    .batches-section-count {
+      margin-left: auto;
+      color: var(--fg-dim);
+      font-variant-numeric: tabular-nums;
+      text-transform: none;
+      letter-spacing: 0;
+    }
+    /* Per-pass collapse caret in the tree. Styled as a tiny inline
+     * button; `--leaf` variant is an invisible placeholder so leaf
+     * and parent rows share the same label x-offset. */
+    .batches-tree-caret {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 12px;
+      height: 12px;
+      margin-right: 2px;
+      padding: 0;
+      border: 0;
+      background: transparent;
+      box-shadow: none;
+      -webkit-appearance: none;
+      appearance: none;
+      color: var(--fg-dim);
+      font: inherit;
+      font-size: 9px;
+      line-height: 1;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+    .batches-tree-caret:hover { color: var(--fg); }
+    .batches-tree-caret:focus { outline: none; }
+    .batches-tree-caret:focus-visible { outline: 1px dotted var(--fg-dim); outline-offset: 1px; }
+    .batches-tree-caret--leaf { cursor: default; visibility: hidden; }
+    .batches-pass-label {
+      display: flex;
+      align-items: center;
+      gap: 2px;
+      min-width: 0;
+    }
+    .batches-pass-label > span:last-child {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .batches-pass-row--parent { font-weight: 500; }
+    .batches-table-head,
+    .batches-pass-row,
+    .batches-total-row,
+    .batches-run-head,
+    .batches-batch-row {
+      display: grid;
+      gap: 8px;
+      padding: 3px 10px;
+      font-size: 11px;
+      font-variant-numeric: tabular-nums;
+      align-items: center;
+    }
+    /* Passes section: label | calls | tris | ms (4 columns). */
+    .batches-table-head--passes,
+    .batches-pass-row,
+    .batches-total-row {
+      grid-template-columns: 1fr 60px 70px 60px;
+    }
+    /* Runs section: label | layer | sprites (3 columns). Header + run
+     * rows + per-batch rows all use the same template so labels line up. */
+    .batches-table-head--runs,
+    .batches-run-head,
+    .batches-batch-row {
+      grid-template-columns: 1fr 60px 70px;
+    }
+    .batches-batch-row {
+      padding-left: 22px;
+    }
+    .batches-table-head {
+      color: var(--fg-dim);
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      border-bottom: 1px solid var(--border);
+      padding-top: 4px;
+      padding-bottom: 4px;
+    }
+    .batches-col-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .batches-col-num { text-align: right; color: var(--fg); }
+    .batches-table-head .batches-col-num { color: var(--fg-dim); }
+    .batches-pass-list,
+    .batches-run-list { list-style: none; margin: 0; padding: 0; }
+    .batches-pass-row:nth-child(even) { background: rgba(255, 255, 255, 0.02); }
+    .batches-total-row {
+      border-top: 1px solid var(--border);
+      background: rgba(255, 255, 255, 0.03);
+      color: var(--fg);
+      font-weight: 600;
+    }
+    .batches-run { border-bottom: 1px dotted rgba(255, 255, 255, 0.06); }
+    .batches-run-label { display: flex; gap: 6px; align-items: baseline; }
+    .batches-kind {
+      display: inline-block;
+      padding: 0 5px;
+      margin-right: 4px;
+      border-radius: 3px;
+      font-size: 9px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      line-height: 14px;
+      color: var(--fg-dim);
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .batches-kind--sprite    { color: #47cc6a; border-color: rgba(71, 204, 106, 0.35); }
+    .batches-kind--tilechunk { color: #9d7aff; border-color: rgba(157, 122, 255, 0.35); }
+    .batches-kind--mesh      { color: #ffa347; border-color: rgba(255, 163, 71, 0.35); }
+    .batches-mat { color: var(--fg); }
+    .batches-run-sub {
+      font-size: 10px;
+      color: var(--fg-dim);
+      font-variant-numeric: tabular-nums;
+    }
+    .batches-run-children { list-style: none; margin: 0; padding: 0; }
+    .batches-batch-label { color: var(--fg-dim); }
+    .batches-empty { padding: 8px 10px; color: var(--fg-dim); font-size: 11px; }
+
+    @media (max-width: 1150px) {
+      html, body { overflow: auto; }
+      .dashboard-root {
+        height: auto;
+        min-height: 100vh;
+        min-height: 100dvh;
+      }
+      .dashboard-content { overflow: visible; min-height: 0; }
+      .dashboard-split { flex-direction: column; flex: initial; }
+      .dashboard-split-col { flex: initial; }
+      .buffers-panel { flex: initial; height: 340px; }
+      .batches-panel { flex: initial; height: 360px; }
+      .registry-panel { flex: initial; height: 300px; }
+      .protocol-panel { flex: initial; height: 420px; }
+    }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="module" src="./index.tsx"></script>
+</body>
+</html>

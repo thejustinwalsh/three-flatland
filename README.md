@@ -172,7 +172,7 @@ flash.intensity = 0.8 // Animate per frame
 | [`three-flatland/react`](https://www.npmjs.com/package/three-flatland) | React Three Fiber subpath — re-exports core + JSX type augmentation |
 | [`@three-flatland/nodes`](https://www.npmjs.com/package/@three-flatland/nodes) | TSL shader nodes for effects (per-category subpaths) |
 | [`@three-flatland/skia`](https://www.npmjs.com/package/@three-flatland/skia) | Skia GPU rendering via WASM — text, paths, and image filters |
-| [`@three-flatland/tweakpane`](https://www.npmjs.com/package/@three-flatland/tweakpane) | Tweakpane v4 integration — theme, helpers, and React hooks |
+| [`@three-flatland/devtools`](https://www.npmjs.com/package/@three-flatland/devtools) | Tweakpane v4 integration — theme, helpers, and React hooks |
 | [`@three-flatland/presets`](https://www.npmjs.com/package/@three-flatland/presets) | Pre-configured effect combinations (coming soon) |
 
 ## Requirements

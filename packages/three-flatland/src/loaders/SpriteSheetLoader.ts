@@ -1,15 +1,41 @@
 import { Loader } from 'three'
 import type { Texture } from 'three'
 import type { SpriteSheet, SpriteFrame, SpriteSheetJSONHash, SpriteSheetJSONArray } from '../sprites/types'
+import type { BakedAssetLoaderOptions } from '@three-flatland/bake'
+import {
+  resolveNormalMap,
+  type NormalSourceDescriptor,
+  type NormalRegion,
+} from '@three-flatland/normals'
 import { type TexturePreset, type TextureOptions, resolveTextureOptions } from './texturePresets'
 import { TextureLoader } from './TextureLoader'
 
 /**
+ * Shape accepted by `SpriteSheetLoaderOptions.normals`.
+ *
+ * - `false` — no normals generated.
+ * - `true` — auto-synthesize one region per frame.
+ * - `NormalSourceDescriptor` — user provides defaults (and optionally
+ *   regions). Frame-derived regions fill in when `regions` is absent.
+ */
+export type SpriteSheetNormalsOption = false | true | NormalSourceDescriptor
+
+/**
  * Options for loading a spritesheet.
  */
-export interface SpriteSheetLoaderOptions {
+export interface SpriteSheetLoaderOptions extends BakedAssetLoaderOptions {
   /** Texture preset or custom options. Overrides loader and global defaults. */
   texture?: TexturePreset | TextureOptions
+  /**
+   * Normal-map generation. When truthy, the loader synthesizes one
+   * region per sprite frame (pixel rects from the sheet JSON), probes
+   * for a baked `<sheet-image>.normal.png` sibling with a matching
+   * descriptor hash, and falls back to an in-memory bake.
+   *
+   * The resulting texture is attached to `SpriteSheet.normalMap`,
+   * 1:1 co-registered with the atlas.
+   */
+  normals?: SpriteSheetNormalsOption
 }
 
 /**
@@ -61,12 +87,27 @@ export class SpriteSheetLoader extends Loader<SpriteSheet> {
   preset: TexturePreset | TextureOptions | undefined = undefined
 
   /**
+   * Normal-map generation. See {@link SpriteSheetLoaderOptions.normals}.
+   */
+  normals: SpriteSheetNormalsOption = false
+
+  /**
+   * Skip probing for a baked `.normal.png` sibling. Forces the
+   * in-memory bake path when `normals` is truthy.
+   */
+  skipBakedProbe = false
+
+  /**
    * Load a spritesheet asynchronously (for R3F useLoader compatibility).
    * Presets are automatically applied.
    */
   loadAsync(url: string): Promise<SpriteSheet> {
     const resolved = resolveTextureOptions(this.preset, SpriteSheetLoader.options)
-    return SpriteSheetLoader.loadUncached(url, { texture: resolved })
+    return SpriteSheetLoader.loadUncached(url, {
+      texture: resolved,
+      normals: this.normals,
+      skipBakedProbe: this.skipBakedProbe,
+    })
   }
 
   // ==========================================
@@ -128,7 +169,62 @@ export class SpriteSheetLoader extends Loader<SpriteSheet> {
     const texture = await this.loadTexture(textureUrl, resolved)
 
     // Create SpriteSheet
-    return this.createSpriteSheet(texture, parsed.frames, parsed.width, parsed.height)
+    const sheet = this.createSpriteSheet(texture, parsed.frames, parsed.width, parsed.height)
+
+    // Resolve normal map — probe baked sibling, fall back to in-memory bake.
+    if (options?.normals) {
+      sheet.normalMap = await this.resolveSheetNormals(
+        textureUrl,
+        parsed.frames,
+        parsed.width,
+        parsed.height,
+        options.normals,
+        options.skipBakedProbe ?? false,
+        texture.flipY
+      )
+    }
+
+    return sheet
+  }
+
+  /**
+   * Synthesize a descriptor from the sheet's frame rects and hand it
+   * to `resolveNormalMap`. One region per frame — region-local alpha
+   * clamping keeps adjacent frames from bleeding gradients into each
+   * other.
+   */
+  private static async resolveSheetNormals(
+    textureUrl: string,
+    frames: Map<string, SpriteFrame>,
+    atlasWidth: number,
+    atlasHeight: number,
+    optionDescriptor: true | NormalSourceDescriptor,
+    skipBakedProbe: boolean,
+    diffuseFlipY: boolean
+  ): Promise<Texture> {
+    // Convert each frame's normalized UV back to pixel coords. Frames
+    // parsed via `parseJSONHash` store Y flipped (0 = bottom) — undo
+    // that here so regions stay in image-space (0 = top).
+    const regions: NormalRegion[] = []
+    for (const frame of frames.values()) {
+      const x = Math.round(frame.x * atlasWidth)
+      const w = Math.round(frame.width * atlasWidth)
+      const h = Math.round(frame.height * atlasHeight)
+      const yImage = Math.round((1 - frame.y - frame.height) * atlasHeight)
+      regions.push({ x, y: yImage, w, h })
+    }
+
+    const base: NormalSourceDescriptor =
+      optionDescriptor === true ? {} : optionDescriptor
+    const descriptor: NormalSourceDescriptor = {
+      ...base,
+      regions: base.regions && base.regions.length > 0 ? base.regions : regions,
+    }
+
+    return resolveNormalMap(textureUrl, descriptor, {
+      skipBakedProbe,
+      flipY: diffuseFlipY,
+    })
   }
 
   /**

@@ -5,7 +5,7 @@ description: Get up and running with three-flatland in minutes.
 
 import { Tabs, TabItem } from '@astrojs/starlight/components';
 
-This guide shows you how to create your first sprite using three-flatland.
+This guide shows you how to create your first sprite using three-flatland. Two minutes from copy-paste to "there's a thing on the screen."
 
 ## Create a Sprite
 
@@ -78,9 +78,15 @@ This guide shows you how to create your first sprite using three-flatland.
   </TabItem>
 </Tabs>
 
+:::caution[The `await renderer.init()` line is not optional]
+WebGPU initialization is async. Forgetting `await renderer.init()` before the first render is the single most common bug in fresh three-flatland projects. If you see a blank canvas with no errors, this is almost always why.
+:::
+
 ## Next Steps
 
 - [Learn about sprites](../../guides/sprites/) - Position, scale, and customize sprites
 - [Add animation](../../guides/animation/) - Animate sprites with spritesheets
 - [Batch rendering](../../guides/batch-rendering/) - Optimize for thousands of sprites
 - [Browse examples](../../examples/basic-sprite/) - Interactive code examples
+
+Want a live performance dashboard during development? See the [Devtools guide](../../guides/devtools/).

@@ -93,5 +93,21 @@ export function transformSyncSystem(world: World): void {
 
     mesh.markMatrixDirty(slot)
     mesh.writeUV(slot, uvXArr[eid]!, uvYArr[eid]!, uvWArr[eid]!, uvHArr[eid]!)
+
+    // Per-instance shadow radius — either the sprite's explicit override
+    // or auto-derived `max(|sx|, |sy|)` so the default tracks scale
+    // changes (incl. AnimatedSprite2D frame-source-size swaps).
+    // Written into `instanceExtras.x`; consumed by shadow-casting
+    // LightEffects via `readShadowRadius()`.
+    const override = sprite.shadowRadius
+    let radius: number
+    if (override !== undefined) {
+      radius = override
+    } else {
+      const asx = sx < 0 ? -sx : sx
+      const asy = sy < 0 ? -sy : sy
+      radius = asx > asy ? asx : asy
+    }
+    mesh.writeShadowRadius(slot, radius)
   }
 }

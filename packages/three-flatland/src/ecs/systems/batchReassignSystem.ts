@@ -37,11 +37,10 @@ const Changed = createChanged()
  *
  * zIndex changes within the same (layer, material) do NOT require
  * batch movement — Z-offset handles depth sorting.
+ *
+ * Reads effectTraits from BatchRegistry. Takes only (world).
  */
-export function batchReassignSystem(
-  world: World,
-  effectTraits: ReadonlyMap<Trait, typeof MaterialEffect>
-): void {
+export function batchReassignSystem(world: World): void {
   const layerChanged = world.query(Changed(SpriteLayer), IsBatched)
   const matChanged = world.query(Changed(SpriteMaterialRef), IsBatched)
 
@@ -53,6 +52,8 @@ export function batchReassignSystem(
   if (registryEntities.length === 0) return
   const registry = registryEntities[0]!.get(BatchRegistry) as RegistryData | undefined
   if (!registry) return
+
+  const effectTraits = registry.effectTraits
 
   for (const entity of toReassign) {
     const sprite = registry.spriteArr[(entity as unknown as number) & ENTITY_ID_MASK]
@@ -160,7 +161,9 @@ function syncAllBuffers(
 function writePackedEffects(slot: number, mesh: SpriteBatch, sprite: Sprite2D): void {
   const material = sprite.material
 
-  mesh.writeEffectSlot(slot, 0, 0, sprite._effectFlags)
+  // System flags + enable bits live on `instanceSystem` now.
+  mesh.writeSystemFlags(slot, sprite._effectFlags)
+  mesh.writeEnableBits(slot, sprite._effectEnableBits)
 
   for (const effect of sprite._effects) {
     const EffectClass = effect.constructor as typeof MaterialEffect

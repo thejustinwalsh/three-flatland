@@ -1,14 +1,4 @@
 // @three-flatland/presets
-// Pre-configured setups for common use cases
+// Pre-configured effects and setups for three-flatland
 
-// TODO: Export preset configurations
-// export { pixelArtPreset } from './pixel-art'
-// export { neonPreset } from './neon'
-// export { particlePreset } from './particle'
-// export { uiPreset } from './ui'
-
-/**
- * Placeholder export for package validation
- * TODO: Remove when actual presets are implemented
- */
-export const VERSION = '0.0.0'
+export * from './lighting'

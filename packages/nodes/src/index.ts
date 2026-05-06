@@ -36,3 +36,6 @@ export * from './analog'
 
 // Upscale nodes
 export * from './upscale'
+
+// Lighting nodes
+export * from './lighting'

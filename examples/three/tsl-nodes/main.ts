@@ -19,6 +19,7 @@ import {
   AnimatedSprite2D,
   Sprite2DMaterial,
   SpriteSheetLoader,
+  createDevtoolsProvider,
   createMaterialEffect,
 } from 'three-flatland'
 import type { MaterialEffect, AnimationSetDefinition } from 'three-flatland'
@@ -31,7 +32,7 @@ import {
   dissolvePixelated,
   tint,
 } from '@three-flatland/nodes'
-import { createPane } from '@three-flatland/tweakpane'
+import { createPane } from '@three-flatland/devtools'
 
 // ========================================
 // Types
@@ -328,7 +329,8 @@ async function main() {
   // Tweakpane UI
   // ========================================
 
-  const { pane, stats } = createPane({ scene })
+  const { pane, update: updateDevtools } = createPane({ driver: 'manual' })
+  const devtools = createDevtoolsProvider({ name: 'tsl-nodes' })
 
   const effectNames: EffectType[] = ['normal', 'damage', 'dissolve', 'powerup', 'petrify', 'select', 'shadow', 'pixelate']
   const effectLabels = ['Normal', 'Damage', 'Dissolve', 'Rainbow', 'Stone', 'Outline', 'Shadow', 'Pixelate']
@@ -378,7 +380,6 @@ async function main() {
 
   function animate() {
     requestAnimationFrame(animate)
-    stats.begin()
 
     const now = performance.now()
     const deltaMs = now - lastTime
@@ -412,8 +413,10 @@ async function main() {
         Math.min(1, effectElapsed / 1.0)
     }
 
+    devtools.beginFrame(performance.now(), renderer)
     renderer.render(scene, camera)
-    stats.end()
+    devtools.endFrame(renderer)
+    updateDevtools()
   }
 
   animate()

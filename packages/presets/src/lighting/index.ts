@@ -1,0 +1,5 @@
+export { DefaultLightEffect } from './DefaultLightEffect'
+export { DirectLightEffect } from './DirectLightEffect'
+export { SimpleLightEffect } from './SimpleLightEffect'
+export { RadianceLightEffect } from './RadianceLightEffect'
+export { NormalMapProvider } from './NormalMapProvider'

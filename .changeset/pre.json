@@ -26,7 +26,7 @@
     "example-three-skia": "0.0.1-alpha.0",
     "@three-flatland/mini-breakout": "0.0.1-alpha.0",
     "@three-flatland/skia": "0.0.1-alpha.1",
-    "@three-flatland/tweakpane": "0.1.0-alpha.1",
+    "@three-flatland/devtools": "0.1.0-alpha.1",
     "@three-flatland/skills": "0.1.0-alpha.1"
   },
   "changesets": [
@@ -39,7 +39,7 @@
     "auto-three-flatland-presets-3s2qcns",
     "auto-three-flatland-skia-3s0he14",
     "auto-three-flatland-skia-3s0vwmh",
-    "auto-three-flatland-tweakpane-3s0he14",
+    "auto-three-flatland-devtools-3s0he14",
     "three-flatland-skills-initial"
   ]
 }

@@ -15,23 +15,65 @@ import {
   pass,
   uv as uvNode,
   convertToTexture,
+  uniform,
 } from 'three/tsl'
 import type { World, Entity } from 'koota'
 import { SpriteGroup } from './pipeline/SpriteGroup'
 import { GlobalUniforms } from './GlobalUniforms'
-import type { RenderStats } from './pipeline/types'
 import { Sprite2D } from './sprites/Sprite2D'
+import { TileMap2D } from './tilemap/TileMap2D'
+import type { Sprite2DMaterial, ColorTransformFn } from './materials/Sprite2DMaterial'
+import type { MaterialEffect } from './materials/MaterialEffect'
 import type Node from 'three/src/nodes/core/Node.js'
 import type PassNode from 'three/src/nodes/display/PassNode.js'
 import type { WorldProvider } from './ecs/world'
-import { PostPassTrait, PostPassRegistry } from './ecs/traits'
+import { PostPassTrait, PostPassRegistry, LightEffectTrait, LightingContext, ShadowPipeline, BatchRegistry } from './ecs/traits'
+import { SDFGenerator } from './lights/SDFGenerator'
+import { OcclusionPass } from './lights/OcclusionPass'
 import { postPassSystem } from './ecs/systems/postPassSystem'
+import { lightSyncSystem } from './ecs/systems/lightSyncSystem'
+import { lightEffectSystem } from './ecs/systems/lightEffectSystem'
+import { lightMaterialAssignSystem } from './ecs/systems/lightMaterialAssignSystem'
+import { shadowPipelineSystem } from './ecs/systems/shadowPipelineSystem'
 import type { PassEffect } from './pipeline/PassEffect'
+import { Light2D } from './lights/Light2D'
+import { LightStore } from './lights/LightStore'
+import type { LightEffect } from './lights/LightEffect'
+import { wrapWithLightFlags } from './lights/wrapWithLightFlags'
+import type { ChannelName } from './materials/channels'
+import type { RegistryData } from './ecs/batchUtils'
+import { DEVTOOLS_BUNDLED, isDevtoolsActive } from './debug-protocol'
+import { DevtoolsProvider } from './debug/DevtoolsProvider'
+import { beginDebugPass, endDebugPass } from './debug/debug-sink'
+
+/** Shape of the LightingContext trait data. */
+interface LightingContextData {
+  effect: LightEffect | null
+  lightStore: LightStore | null
+  lights: Light2D[]
+  wrappedLightFn: ColorTransformFn | null
+  requiredChannels: ReadonlySet<ChannelName>
+  materials: Set<Sprite2DMaterial>
+  dirty: boolean
+  initialized: boolean
+  renderer: WebGPURenderer | null
+  camera: OrthographicCamera | null
+  scene: Scene | null
+  worldSize: Vector2 | null
+  worldOffset: Vector2 | null
+}
 
 /**
  * Options for creating a Flatland instance.
  */
 export interface FlatlandOptions {
+  /**
+   * Human-readable name shown in the devtools consumer UI. Useful to
+   * distinguish multiple Flatland instances (e.g. `name: 'main-game'`
+   * vs `name: 'minimap'`) or a custom engine's provider from the
+   * default. Default: `'flatland'`.
+   */
+  name?: string
   /** Render target (null = render to viewport) */
   renderTarget?: RenderTarget | null
   /** Camera to use (null = use internal orthographic camera) */
@@ -166,11 +208,18 @@ export class Flatland extends Group implements WorldProvider {
   /** Whether the render pipeline was auto-initialized (vs. manual setRenderPipeline) */
   private _autoRenderPipeline = false
 
-  /** Draw calls captured from renderer.info after last render */
-  private _drawCalls = 0
 
   /** Reusable Vector2 to avoid per-frame allocations */
   private _tempVec2 = new Vector2()
+
+  /**
+   * Camera frustum bounds as TSL uniform nodes. Created once per Flatland
+   * instance so effect shaders can capture stable references at build
+   * time. Updated in render() from the camera bounds each frame;
+   * `.value` mutation doesn't require a shader rebuild.
+   */
+  private _worldSizeUniform = uniform(new Vector2(1, 1))
+  private _worldOffsetUniform = uniform(new Vector2(0, 0))
 
   /** Active PassEffect instances */
   private _passes: PassEffect[] = []
@@ -181,13 +230,44 @@ export class Flatland extends Group implements WorldProvider {
   /** ECS: registry singleton entity */
   private _postPassRegistryEntity: Entity | null = null
 
+  /** Active Light2D objects */
+  private _lights: Light2D[] = []
+
+  /** Light data storage (lazy — created when first LightEffect is attached) */
+  private _lightStore: LightStore | null = null
+
+  /**
+   * Shadow pipeline lives on the ECS `ShadowPipeline` singleton trait and
+   * is managed end-to-end by `shadowPipelineSystem`. Flatland does not
+   * hold SDFGenerator / OcclusionPass references — it only bootstraps
+   * the singleton entity and registers the system in the schedule.
+   */
+  private _shadowPipelineEntity: Entity | null = null
+
+  /** Active LightEffect instance */
+  private _lightEffect: LightEffect | null = null
+
+  /** ECS: LightingContext singleton entity */
+  private _lightingContextEntity: Entity | null = null
+
+  /** All sprite materials tracked for colorTransform assignment */
+  private _spriteMaterials = new Set<Sprite2DMaterial>()
+
+  /** Whether lighting systems are registered on the schedule */
+  private _lightingSystemsRegistered = false
+
   constructor(options: FlatlandOptions = {}) {
     super()
 
     this.name = 'Flatland'
 
     // Create internal scene (separate from this Group for proper camera/rendering)
+    // Disable automatic matrixWorld updates — Flatland manages transforms via
+    // ECS systems and calls updateMatrixWorld explicitly. This prevents
+    // renderer.render(scene) from re-running the ECS schedule through
+    // SpriteGroup.updateMatrixWorld during internal passes (occlusion, SDF).
     this.scene = new Scene()
+    this.scene.matrixWorldAutoUpdate = false
 
     // Create sprite group
     this.spriteGroup = new SpriteGroup()
@@ -219,6 +299,27 @@ export class Flatland extends Group implements WorldProvider {
 
     // Render pipeline
     this._renderPipelineEnabled = options.postProcessing ?? false
+
+    // Devtools producer — two-layer gate:
+    //   1. `DEVTOOLS_BUNDLED` (build-time const) — folded to `false` in
+    //      prod builds with no flags set, so the entire branch is dead
+    //      code and tree-shakes out.
+    //   2. `isDevtoolsActive()` (runtime, only read when bundled) — lets
+    //      a user disable devtools on specific pages by setting
+    //      `window.__FLATLAND_DEVTOOLS__ = false` before Flatland loads.
+    //
+    // Construction is pure (no I/O, no listeners, no announce). The
+    // provider activates lazily on first `render()` call (see render()),
+    // which works for both vanilla three.js (Flatland is the scene root,
+    // never added to a parent) and React/R3F (discarded renders never
+    // reach `render()`, so orphan Flatland instances stay inert and GC).
+    // Cleanup happens in `dispose()` below.
+    if (DEVTOOLS_BUNDLED && isDevtoolsActive()) {
+      this._devtools = new DevtoolsProvider({
+        name: options.name ?? 'flatland',
+        kind: 'system',
+      })
+    }
   }
 
   /**
@@ -352,7 +453,52 @@ export class Flatland extends Group implements WorldProvider {
         if (!child.material.globalUniforms) {
           child.material.globalUniforms = this.globals
         }
+        // Track all sprite materials
+        this._spriteMaterials.add(child.material)
+        // Apply wrapped lighting transform + channels from LightingContext
+        const lctx = this._getLightingContext()
+        if (lctx?.wrappedLightFn) {
+          child.material.requiredChannels = lctx.requiredChannels
+          child.material.colorTransform = lctx.wrappedLightFn
+        }
+        // Update LightingContext materials set
+        if (lctx) {
+          lctx.materials.add(child.material)
+        }
         this.spriteGroup.add(child)
+        // Defer validation to `render()` — by the time that runs, R3F has
+        // mounted any MaterialEffect children (AutoNormalProvider, etc.)
+        // and imperative callers have finished their `addEffect` chain, so
+        // we won't warn about effects that simply haven't landed yet.
+        // We don't touch `child.onBeforeRender` — that callback slot
+        // belongs to the user.
+        this._pendingChannelValidation.add(child)
+      } else if (child instanceof TileMap2D) {
+        // Track tilemap layer materials for lighting
+        const lctx = this._getLightingContext()
+        for (const layer of child.getLayers()) {
+          const mat = layer.material
+          this._spriteMaterials.add(mat)
+          if (lctx?.wrappedLightFn) {
+            mat.requiredChannels = lctx.requiredChannels
+            mat.colorTransform = lctx.wrappedLightFn
+          }
+          if (lctx) {
+            lctx.materials.add(mat)
+          }
+        }
+        this.scene.add(child)
+      } else if (child instanceof Light2D) {
+        // Track lights separately for the lighting system
+        if (!this._lights.includes(child)) {
+          this._lights.push(child)
+        }
+        // Update LightingContext lights array
+        const lctx = this._getLightingContext()
+        if (lctx) {
+          lctx.lights = this._lights
+        }
+        this.scene.add(child)
       } else {
         // Add other objects directly to the internal scene
         this.scene.add(child)
@@ -368,7 +514,31 @@ export class Flatland extends Group implements WorldProvider {
   remove(...objects: Object3D[]): this {
     for (const child of objects) {
       if (child instanceof Sprite2D) {
+        this._spriteMaterials.delete(child.material)
+        // Update LightingContext materials set
+        const lctx = this._getLightingContext()
+        if (lctx) {
+          lctx.materials.delete(child.material)
+        }
         this.spriteGroup.remove(child)
+      } else if (child instanceof TileMap2D) {
+        const lctx = this._getLightingContext()
+        for (const layer of child.getLayers()) {
+          this._spriteMaterials.delete(layer.material)
+          if (lctx) {
+            lctx.materials.delete(layer.material)
+          }
+        }
+        this.scene.remove(child)
+      } else if (child instanceof Light2D) {
+        const idx = this._lights.indexOf(child)
+        if (idx !== -1) this._lights.splice(idx, 1)
+        // Update LightingContext lights array
+        const lctx = this._getLightingContext()
+        if (lctx) {
+          lctx.lights = this._lights
+        }
+        this.scene.remove(child)
       } else {
         this.scene.remove(child)
       }
@@ -567,15 +737,484 @@ export class Flatland extends Group implements WorldProvider {
     }
   }
 
+  // ============================================
+  // Lighting
+  // ============================================
+
+  /**
+   * Get the active Light2D instances.
+   */
+  get lights(): readonly Light2D[] {
+    return this._lights
+  }
+
+  /**
+   * Get the active LightEffect.
+   */
+  get lighting(): LightEffect | null {
+    return this._lightEffect
+  }
+
+  /**
+   * Set the lighting effect for this Flatland instance.
+   * The LightEffect produces a ColorTransformFn that is applied to all lit sprites.
+   *
+   * @param lightEffect - LightEffect instance (or null to disable lighting)
+   * @returns this (for chaining)
+   *
+   * @example
+   * ```typescript
+   * import { DefaultLightEffect } from '@three-flatland/presets'
+   *
+   * const lighting = new DefaultLightEffect()
+   * flatland.setLighting(lighting)
+   * lighting.ambientIntensity = 0.4  // zero-cost uniform update
+   * ```
+   */
+  setLighting(lightEffect: LightEffect | null): this {
+    // Detach previous
+    if (this._lightEffect) {
+      if (this._lightEffect._entity) {
+        this._lightEffect._entity.destroy()
+      }
+      this._lightEffect._detach()
+    }
+
+    this._lightEffect = lightEffect
+
+    if (lightEffect) {
+      // Lazy-init LightStore
+      if (!this._lightStore) {
+        this._lightStore = new LightStore()
+      }
+
+      // Attach effect with dirty callback
+      lightEffect._attach(this, () => {
+        this._markLightingDirty()
+      })
+
+      // Store required channels from the effect class
+      const ctor = lightEffect.constructor as typeof LightEffect
+
+      // Ensure the ShadowPipeline singleton entity exists. For effects that
+      // declare `needsShadows`, eagerly allocate the SDFGenerator +
+      // OcclusionPass NOW (not on first system tick) so the sdfTexture
+      // reference is bindable in buildLightFn's TSL `texture()` call. The
+      // RTs are 1×1 placeholders at this point; shadowPipelineSystem
+      // resizes them to the viewport on first frame.
+      this._ensureShadowPipelineEntity()
+      let sdfTexture: Texture | null = null
+      if (ctor.needsShadows && this._shadowPipelineEntity) {
+        const pipeline = this._shadowPipelineEntity.get(ShadowPipeline)
+        if (pipeline) {
+          if (!pipeline.sdfGenerator) pipeline.sdfGenerator = new SDFGenerator()
+          if (!pipeline.occlusionPass) pipeline.occlusionPass = new OcclusionPass()
+          sdfTexture = pipeline.sdfGenerator.sdfTexture
+        }
+      }
+
+      // Build the colorTransform and wrap with per-instance lit-bit check.
+      // The SDF texture reference passed here is stable — safe to close over
+      // in TSL. World-bound uniforms are Flatland-owned so every effect
+      // shares one update-path.
+      const fn = lightEffect._buildLightFn(
+        this._lightStore,
+        this._worldSizeUniform,
+        this._worldOffsetUniform,
+        sdfTexture
+      )
+      const wrappedLightFn = wrapWithLightFlags(fn)
+
+      const requiredChannels: ReadonlySet<ChannelName> = new Set(ctor.requires ?? [])
+
+      // Spawn ECS entity for the effect
+      const entity = this.world.spawn(
+        LightEffectTrait({ fn, enabled: lightEffect.enabled })
+      )
+
+      // Add class-specific trait if schema has fields
+      if (ctor._fields.length > 0) {
+        const traitValues: Record<string, number> = {}
+        for (const field of ctor._fields) {
+          if (field.size === 1) {
+            traitValues[field.name] = lightEffect._defaults[field.name] as number
+          } else {
+            const arr = lightEffect._defaults[field.name] as number[]
+            for (let i = 0; i < field.size; i++) {
+              traitValues[`${field.name}_${i}`] = arr[i]!
+            }
+          }
+        }
+        entity.add(ctor._trait(traitValues))
+      }
+
+      lightEffect._entity = entity
+
+      // Spawn or update LightingContext singleton
+      this._ensureLightingContext()
+      const lctxEntity = this._lightingContextEntity!
+      // Get existing context to preserve runtime fields
+      const existingCtx = lctxEntity.get(LightingContext) as LightingContextData | undefined
+      lctxEntity.set(LightingContext, {
+        effect: lightEffect,
+        lightStore: this._lightStore,
+        lights: this._lights,
+        wrappedLightFn,
+        requiredChannels,
+        materials: this._spriteMaterials,
+        dirty: true,
+        initialized: false,
+        renderer: existingCtx?.renderer ?? null,
+        camera: existingCtx?.camera ?? null,
+        scene: existingCtx?.scene ?? null,
+        worldSize: existingCtx?.worldSize ?? null,
+        worldOffset: existingCtx?.worldOffset ?? null,
+      })
+
+      // Register lighting systems on the schedule (before sprite systems)
+      this._ensureLightingSystems()
+
+      // Dev-time: warn on any already-added lit sprite whose MaterialEffects
+      // don't cover the lighting's declared channel `requires`. Without this,
+      // missing providers silently fall back to channelDefaults (flat
+      // normals, etc.) and "why does my lighting look wrong" takes an hour.
+      this._validateLightingChannels()
+    } else {
+      // Clearing lighting
+      if (this._lightingContextEntity) {
+        const existingCtx = this._lightingContextEntity.get(LightingContext) as LightingContextData | undefined
+        this._lightingContextEntity.set(LightingContext, {
+          effect: null,
+          lightStore: existingCtx?.lightStore ?? null,
+          lights: existingCtx?.lights ?? [],
+          wrappedLightFn: null,
+          requiredChannels: new Set<ChannelName>(),
+          materials: existingCtx?.materials ?? new Set(),
+          dirty: true,
+          initialized: false,
+          renderer: existingCtx?.renderer ?? null,
+          camera: existingCtx?.camera ?? null,
+          scene: existingCtx?.scene ?? null,
+          worldSize: existingCtx?.worldSize ?? null,
+          worldOffset: existingCtx?.worldOffset ?? null,
+        })
+      }
+    }
+
+    return this
+  }
+
+  /**
+   * Mark lighting as structurally dirty (effect enabled/disabled).
+   * @internal Called by LightEffect.enabled setter and _onDirty callback.
+   */
+  _markLightingDirty(): void {
+    if (this._lightingContextEntity) {
+      const lctx = this._lightingContextEntity.get(LightingContext)
+      if (lctx) {
+        lctx.dirty = true
+      }
+    }
+  }
+
+  // ─── Shader rebuild ────────────────────────────────────────────────
+  /**
+   * Pending-rebuild guard. Coalesces multiple synchronous setter
+   * calls inside one tick into a single `_doRebuildLightFn` run.
+   * Without this, flipping N constants at once would trigger N
+   * full TSL graph rebuilds.
+   */
+  private _shaderRebuildPending = false
+
+  /**
+   * Re-run the attached LightEffect's `_buildLightFn` and push the
+   * fresh closure to every tracked lit material. Called from a
+   * writable LightEffect constant setter when a compile-time toggle
+   * changes (e.g. `glowEnabled`, `bandsEnabled`).
+   *
+   * Coalesces via microtask: the first call schedules, subsequent
+   * synchronous calls are no-ops, the microtask runs once and reads
+   * the latest constant values.
+   *
+   * @internal
+   */
+  _rebuildLightFn(): void {
+    if (this._shaderRebuildPending) return
+    this._shaderRebuildPending = true
+    queueMicrotask(() => {
+      this._shaderRebuildPending = false
+      this._doRebuildLightFn()
+    })
+  }
+
+  private _doRebuildLightFn(): void {
+    const lightEffect = this._lightEffect
+    if (!lightEffect || !this._lightStore || !this._lightingContextEntity) return
+    const lctx = this._lightingContextEntity.get(LightingContext)
+    if (!lctx) return
+
+    let sdfTexture: Texture | null = null
+    const ctor = lightEffect.constructor as typeof LightEffect
+    if (ctor.needsShadows && this._shadowPipelineEntity) {
+      const pipeline = this._shadowPipelineEntity.get(ShadowPipeline)
+      if (pipeline?.sdfGenerator) sdfTexture = pipeline.sdfGenerator.sdfTexture
+    }
+
+    const fn = lightEffect._buildLightFn(
+      this._lightStore,
+      this._worldSizeUniform,
+      this._worldOffsetUniform,
+      sdfTexture,
+    )
+    const wrappedLightFn = wrapWithLightFlags(fn)
+    lctx.wrappedLightFn = wrappedLightFn
+    // requiredChannels is `ctor.requires`, static readonly — never
+    // changes between rebuilds. Don't reassign or the
+    // `requiredChannels` setter on each material runs an extra
+    // `_rebuildColorNode` (paired with the `colorTransform` setter's
+    // own rebuild = double TSL build per material per push).
+    lctx.dirty = true
+  }
+
+  /**
+   * Ensure the LightingContext singleton entity exists.
+   */
+  private _ensureLightingContext(): void {
+    if (!this._lightingContextEntity) {
+      this._lightingContextEntity = this.world.spawn(
+        LightingContext({
+          effect: null,
+          lightStore: null,
+          lights: [],
+          wrappedLightFn: null,
+          requiredChannels: new Set(),
+          materials: new Set(),
+          dirty: false,
+          initialized: false,
+          renderer: null,
+          camera: null,
+          scene: null,
+          worldSize: null,
+          worldOffset: null,
+        })
+      )
+    }
+  }
+
+  /**
+   * Register lighting systems on the world's SystemSchedule.
+   * Adds a `prepend()` to insert them before existing sprite systems.
+   */
+  private _ensureLightingSystems(): void {
+    if (this._lightingSystemsRegistered) return
+    this._lightingSystemsRegistered = true
+
+    // Get the schedule from BatchRegistry
+    const registry = this._getRegistry()
+    if (!registry?.schedule) return
+
+    // Prepend lighting systems before sprite systems. shadowPipelineSystem
+    // runs after lightEffectSystem (so the effect's `update` — which may
+    // stage per-frame data the shadow pass consumes — has already run) but
+    // before sprite systems render, so the SDF texture is fresh when the
+    // main render kicks off.
+    registry.schedule
+      .prepend(shadowPipelineSystem)
+      .prepend(lightMaterialAssignSystem)
+      .prepend(lightEffectSystem)
+      .prepend(lightSyncSystem)
+  }
+
+  /**
+   * Ensure the ShadowPipeline singleton entity exists. `shadowPipelineSystem`
+   * owns the rest of its lifecycle — Flatland only bootstraps the trait so
+   * the system has something to find on first run.
+   */
+  private _ensureShadowPipelineEntity(): void {
+    if (this._shadowPipelineEntity) return
+    this._shadowPipelineEntity = this.world.spawn(ShadowPipeline)
+  }
+
+  /**
+   * WeakSet of sprites already warned about, so the same gap doesn't spam
+   * the console every time a sprite is re-added or lighting is re-attached.
+   */
+  private _channelWarnedSprites: WeakSet<Sprite2D> = new WeakSet()
+  private _pendingChannelValidation: Set<Sprite2D> = new Set()
+
+  /**
+   * Devtools producer — owns the BroadcastChannel, subscribers, stats,
+   * env, scratch message buffers, and the tick-building logic.
+   * Flatland coordinates timing (begin/end around render) but doesn't
+   * hold the data.
+   *
+   * `null` outside of `DEVTOOLS_BUNDLED && isDevtoolsActive()`. Prod
+   * builds with no flags have this as a single `null` field and the
+   * entire subsystem tree-shakes out. See `debug-protocol.ts` for the
+   * gate contract.
+   */
+  private _devtools: DevtoolsProvider | null = null
+
+  /**
+   * Dev-only check: for the currently attached lighting effect's declared
+   * channel `requires`, ensure every lit sprite has at least one
+   * MaterialEffect with `provides` covering it.
+   *
+   * Missing providers silently fall back to `channelDefaults` at runtime
+   * (flat normals, etc.) which makes lighting look "off" without any
+   * actionable signal. This helper logs a focused warning per sprite
+   * identifying the specific missing channels.
+   *
+   * @param sprite If provided, validate only this sprite; otherwise walk
+   *               every sprite currently parented to the SpriteGroup.
+   */
+  /**
+   * Drain `_pendingChannelValidation` — runs sprite-by-sprite validation for
+   * everything queued by `add()`. Called from `render()` so by the time
+   * validation runs, R3F has finished mounting MaterialEffect children and
+   * imperative callers have completed their `addEffect` chain.
+   *
+   * Public-by-name (with leading `_` to mark internal) so tests and headless
+   * use cases can drain without a renderer. Production code never needs to
+   * call this directly — `render()` handles it.
+   * @internal
+   */
+  _flushPendingChannelValidation(): void {
+    if (this._pendingChannelValidation.size === 0) return
+    for (const sprite of this._pendingChannelValidation) {
+      this._validateLightingChannels(sprite)
+    }
+    this._pendingChannelValidation.clear()
+  }
+
+  private _validateLightingChannels(sprite?: Sprite2D): void {
+    const proc = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process
+    if (proc?.env?.['NODE_ENV'] === 'production') return
+    const effect = this._lightEffect
+    if (!effect) return
+    const ctor = effect.constructor as typeof LightEffect
+    const required = ctor.requires ?? []
+    if (required.length === 0) return
+
+    const check = (s: Sprite2D): void => {
+      if (!s.lit) return
+      if (this._channelWarnedSprites.has(s)) return
+
+      const provided = new Set<ChannelName>()
+      for (const eff of s._effects) {
+        const effCtor = eff.constructor as typeof MaterialEffect
+        for (const ch of effCtor.provides ?? []) provided.add(ch)
+      }
+
+      const missing = required.filter((ch) => !provided.has(ch))
+      if (missing.length === 0) return
+
+      this._channelWarnedSprites.add(s)
+      const name = s.name || '<unnamed>'
+      const lightName = (ctor as { lightName?: string }).lightName ?? ctor.name
+      console.warn(
+        `[flatland] Lit sprite "${name}" is missing channel provider(s) for: ${missing.join(', ')}. ` +
+          `The active LightEffect "${lightName}" declares requires: [${required.join(', ')}]. ` +
+          `Add a MaterialEffect that provides these channels (e.g. AutoNormalProvider for 'normal'). ` +
+          `Forcing lit = false on this sprite so it renders unlit instead of falling back to ` +
+          `zeroed channelDefaults and poisoning the scene's lighting shader.`
+      )
+      // Self-disable so the sprite renders unlit. Better a visibly-flat
+      // sprite than a scene-wide lighting blowout from zeroed defaults.
+      s.lit = false
+    }
+
+    if (sprite) {
+      check(sprite)
+      return
+    }
+    // Enumerate sprites via the ECS BatchRegistry — the canonical source of
+    // sprite membership. Sprites enroll into the batch rather than becoming
+    // scene-graph children, so spriteGroup.children is empty by design.
+    const registry = this._getRegistry()
+    if (!registry) return
+    for (const s of registry.spriteArr) {
+      if (s) check(s)
+    }
+  }
+
+  /**
+   * Get the LightingContext data from the world singleton.
+   */
+  private _getLightingContext() {
+    if (!this._lightingContextEntity) return null
+    return this._lightingContextEntity.get(LightingContext) as LightingContextData | undefined ?? null
+  }
+
+  /**
+   * Get the BatchRegistry data from the world singleton.
+   */
+  private _getRegistry(): RegistryData | null {
+    const registryEntities = this.world.query(BatchRegistry)
+    if (registryEntities.length === 0) return null
+    return registryEntities[0]!.get(BatchRegistry) as RegistryData | undefined ?? null
+  }
+
   /**
    * Render Flatland.
    */
   render(renderer: WebGPURenderer): void {
+    // Drain pending lighting-channel validation before doing any real work.
+    // Anything missing gets logged once and has `lit` force-cleared on that
+    // sprite so it can't fall back to zeroed channelDefaults and poison the
+    // lighting shader for the rest of the scene.
+    this._flushPendingChannelValidation()
+
+    // Devtools: lazy-start on first render(). Both vanilla three.js
+    // (where Flatland is the scene root and 'added' never fires) and
+    // React/R3F (where discarded renders never reach `render()`) get
+    // safe activation here. `start()` is idempotent — no-op every
+    // subsequent frame.
+    this._devtools?.start()
+    // Mark frame start before ANY renderer.render() calls this frame.
+    // Flatland runs multiple internal render passes (SDF pass, occlusion
+    // pass, main render, post-processing) — `beginFrame` + `endFrame`
+    // aggregates them as ONE logical frame so FPS, cpuMs, draw calls and
+    // triangles all report the actual user-visible frame stats, not
+    // multiplied by pass count.
+    this._devtools?.beginFrame(performance.now(), renderer)
+
     // Auto-sync global uniforms from renderer
     this._syncGlobals(renderer)
 
-    // Update sprite batches (ECS systems run in updateMatrixWorld)
-    this.spriteGroup.update()
+    // Update LightingContext runtime fields before systems run
+    const lctx = this._getLightingContext()
+    if (lctx) {
+      lctx.renderer = renderer
+      lctx.camera = this._camera
+      lctx.scene = this.scene
+      // Reuse or create Vector2s for world bounds
+      if (!lctx.worldSize) lctx.worldSize = new Vector2()
+      if (!lctx.worldOffset) lctx.worldOffset = new Vector2()
+    }
+
+    // Sync the Flatland-owned world uniform nodes from the current camera
+    // bounds so shader-side shadow / radiance math has live values. Mutation
+    // on `.value` is free — no shader rebuild. The uniform references were
+    // captured by effect shaders at setLighting time.
+    const cam = this._camera
+    this._worldSizeUniform.value.set(cam.right - cam.left, cam.top - cam.bottom)
+    this._worldOffsetUniform.value.set(cam.left, cam.bottom)
+
+    // ONE canonical trigger for the ECS schedule + matrix update per
+    // frame. `scene.updateMatrixWorld(true)` walks into
+    // `SpriteGroup.updateMatrixWorld`, which runs the schedule (all
+    // lighting + sprite systems) exactly once, then recurses into
+    // three.js matrix propagation. `scene.matrixWorldAutoUpdate` is
+    // disabled at construction so internal passes (OcclusionPass, SDF)
+    // don't trigger extra schedule runs.
+    //
+    // The `scheduleRuns` counter on the registry is kept as a defensive
+    // guard — if any future path (user code, new internal pass) calls
+    // `scene.updateMatrixWorld` or `spriteGroup.update` again in the
+    // same frame, `SpriteGroup` observes the advanced counter and
+    // short-circuits.
+    this.scene.updateMatrixWorld(true)
 
     // Store renderer reference
     if (!this._renderer || this._renderer.deref() !== renderer) {
@@ -588,12 +1227,11 @@ export class Flatland extends Group implements WorldProvider {
     // Save current render target
     const currentRenderTarget = renderer.getRenderTarget()
 
-    // Snapshot draw calls before render so we can compute the delta
-    const callsBefore = renderer.info.render.calls
-
     if (this._renderPipeline && this._renderPipelineEnabled) {
       // Render pipeline handles its own render target
+      beginDebugPass('main.post', renderer)
       this._renderPipeline.render()
+      endDebugPass(renderer)
     } else {
       // Direct rendering
       if (this._renderTarget) {
@@ -609,7 +1247,9 @@ export class Flatland extends Group implements WorldProvider {
       if (this.autoClear) {
         renderer.setClearColor(this.clearAlpha < 1 ? 0x000000 : this.clearColor, this.clearAlpha)
       }
+      beginDebugPass('main', renderer)
       renderer.render(this.scene, this._camera)
+      endDebugPass(renderer)
       renderer.autoClear = prevAutoClear
 
       // Restore render target
@@ -618,8 +1258,13 @@ export class Flatland extends Group implements WorldProvider {
       }
     }
 
-    // Capture real draw calls from renderer.info (delta = only our render pass)
-    this._drawCalls = renderer.info.render.calls - callsBefore
+    // Devtools: mark frame end after ALL renderer.render() calls have
+    // completed this frame. Aggregates draw calls / triangles across
+    // internal passes, computes real cpuMs and FPS at the logical
+    // frame boundary, emits the data packet (or idle ping). The batch
+    // registry snapshot is pulled via the sink source Flatland
+    // registered in its constructor — no explicit capture call needed.
+    this._devtools?.endFrame(renderer)
   }
 
   /**
@@ -698,16 +1343,11 @@ export class Flatland extends Group implements WorldProvider {
     if (this._renderTarget) {
       this._renderTarget.setSize(width, height)
     }
-  }
 
-  /**
-   * Get render statistics.
-   * Draw calls are derived from Three.js renderer.info, not estimated internally.
-   */
-  get stats(): RenderStats {
-    const s = this.spriteGroup.stats
-    s.drawCalls = this._drawCalls
-    return s
+    // Forward resize to LightEffect (Forward+, RadianceCascades, etc.)
+    if (this._lightEffect?.enabled) {
+      this._lightEffect.resize(width, height)
+    }
   }
 
   /**
@@ -734,12 +1374,46 @@ export class Flatland extends Group implements WorldProvider {
    * Dispose of all resources.
    */
   dispose(): void {
+    // Tear down debug producers first — releases the scene.onAfterRender
+    // hook so subsequent renders during dispose don't try to dispatch.
+    this._devtools?.dispose()
+    this._devtools = null
+
     // Clear ECS pass entities before world destruction
     this.clearPasses()
     if (this._postPassRegistryEntity) {
       this._postPassRegistryEntity.destroy()
       this._postPassRegistryEntity = null
     }
+
+    // Clear lighting
+    if (this._lightEffect) {
+      this._lightEffect.dispose()
+      if (this._lightEffect._entity) {
+        this._lightEffect._entity.destroy()
+      }
+      this._lightEffect._detach()
+      this._lightEffect = null
+    }
+    if (this._lightingContextEntity) {
+      this._lightingContextEntity.destroy()
+      this._lightingContextEntity = null
+    }
+    this._lightStore?.dispose()
+    this._lightStore = null
+    // ShadowPipeline trait data is disposed by shadowPipelineSystem when
+    // the effect detaches. Destroying the world during Flatland.dispose()
+    // drops the singleton entity with it.
+    if (this._shadowPipelineEntity) {
+      const pipeline = this._shadowPipelineEntity.get(ShadowPipeline)
+      pipeline?.sdfGenerator?.dispose()
+      pipeline?.occlusionPass?.dispose()
+      this._shadowPipelineEntity.destroy()
+      this._shadowPipelineEntity = null
+    }
+    this._lights.length = 0
+    this._spriteMaterials.clear()
+    this._lightingSystemsRegistered = false
 
     this.spriteGroup.dispose()
 

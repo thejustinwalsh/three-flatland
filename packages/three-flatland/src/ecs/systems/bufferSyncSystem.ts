@@ -1,5 +1,5 @@
 import { createChanged } from 'koota'
-import type { World, Entity, Trait } from 'koota'
+import type { World, Entity } from 'koota'
 import {
   SpriteColor,
   SpriteUV,
@@ -106,17 +106,16 @@ export function bufferSyncFlipSystem(world: World): void {
  * Sync changed effect data to batch GPU buffers.
  *
  * Each entity is processed at most once per frame, even if multiple
- * effect traits changed.
+ * effect traits changed. Reads effectTraits from BatchRegistry.
  */
-export function bufferSyncEffectSystem(
-  world: World,
-  effectTraits: ReadonlyMap<Trait, typeof MaterialEffect>
-): void {
+export function bufferSyncEffectSystem(world: World): void {
   const registryEntities = world.query(BatchRegistry)
   if (registryEntities.length === 0) return
   const registry = registryEntities[0]!.get(BatchRegistry) as RegistryData | undefined
   if (!registry) return
   const batchSlots = registry.batchSlots
+  const effectTraits = registry.effectTraits
+  if (effectTraits.size === 0) return
 
   const processed = new Set<Entity>()
 
@@ -139,11 +138,16 @@ export function bufferSyncEffectSystem(
 
 function writePackedEffects(slot: number, mesh: SpriteBatch, sprite: Sprite2D): void {
   const material = sprite.material
+
+  // System flags + enable bits live on the interleaved `instanceSystem`
+  // attribute now, not in effectBuf0. Write them unconditionally — even
+  // for materials with no effects (tier == 0), lit sprites still need
+  // their flags to reach the shader.
+  mesh.writeSystemFlags(slot, sprite._effectFlags)
+  mesh.writeEnableBits(slot, sprite._effectEnableBits)
+
   const tier = material._effectTier
   if (tier === 0) return
-
-  // Write flags
-  mesh.writeEffectSlot(slot, 0, 0, sprite._effectFlags)
 
   // Write active effect fields
   for (const effect of sprite._effects) {

@@ -24,6 +24,23 @@
       "dependsOn": ["^build"],
       "outputs": ["dist/**"]
     },
+    "@three-flatland/bake#build": {
+      "dependsOn": ["^build"],
+      "outputs": ["dist/**"]
+    },
+    "@three-flatland/normals#build": {
+      "dependsOn": ["^build"],
+      "outputs": ["dist/**"]
+    },
+    "@three-flatland/devtools#build:bundle": {
+      "dependsOn": ["^build"],
+      "outputs": ["bundle/**"],
+      "inputs": [
+        "src/dashboard/**",
+        "vite.config.bundle.ts",
+        "package.json"
+      ]
+    },
     "dev": {
       "cache": false,
       "persistent": true
@@ -56,7 +73,10 @@
         "example-react-tilemap#build",
         "example-react-tsl-nodes#build",
         "example-three-skia#build",
-        "example-react-skia#build"
+        "example-react-skia#build",
+        "example-three-lighting#build",
+        "example-react-lighting#build",
+        "@three-flatland/devtools#build:bundle"
       ],
       "outputs": ["dist/**"],
       "inputs": [

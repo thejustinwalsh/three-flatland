@@ -1,5 +1,5 @@
 import { Canvas, extend, useLoader, useFrame, useThree } from '@react-three/fiber/webgpu'
-import { useRef, useEffect, useState } from 'react'
+import { useRef, useEffect } from 'react'
 import { convertToTexture } from 'three/tsl'
 import type { WebGPURenderer } from 'three/webgpu'
 import type TextureNode from 'three/src/nodes/accessors/TextureNode.js'
@@ -22,8 +22,7 @@ import {
   staticNoise,
   chromaticAberration,
 } from '@three-flatland/nodes'
-import { usePane, useStatsMonitor } from '@three-flatland/tweakpane/react'
-import type { StatsHandle } from '@three-flatland/tweakpane/react'
+import { usePane, usePaneInput } from '@three-flatland/devtools/react'
 
 extend({ Flatland, Sprite2D })
 
@@ -211,13 +210,11 @@ function SpriteScene() {
 
 // ─── FlatlandScene (receives preset as prop, matches original architecture) ─
 
-function FlatlandScene({ preset, stats }: { preset: PresetName; stats: StatsHandle }) {
+function FlatlandScene({ preset }: { preset: PresetName }) {
   const flatlandRef = useRef<Flatland>(null)
   const gl = useThree((s) => s.gl)
   const presetRef = useRef<ActivePreset>({ passes: [], timeDriven: [] })
   const elapsedRef = useRef(0)
-  const statsRef = useRef(stats)
-  statsRef.current = stats
 
   // Apply preset when it changes (effect fires after mount, flatlandRef is ready)
   useEffect(() => {
@@ -239,27 +236,12 @@ function FlatlandScene({ preset, stats }: { preset: PresetName; stats: StatsHand
   })
 
   // Render in the 'render' phase so R3F skips its own render.
-  // Since we take over rendering, useStatsMonitor's scene.onAfterRender
-  // hook never fires (R3F's state.scene isn't rendered) — read the draw
-  // counts directly from renderer.info.render immediately after our render
-  // call, while the values are still valid and before three.js's next
-  // autoReset.
   const size = useThree((s) => s.size)
   useFrame(() => {
     const flatland = flatlandRef.current
     if (!flatland) return
     flatland.resize(size.width, size.height)
     flatland.render(gl as unknown as WebGPURenderer)
-    const render = gl.info.render as unknown as { drawCalls: number; triangles: number; lines: number; points: number }
-    const memory = gl.info.memory as unknown as { geometries: number; textures: number }
-    statsRef.current.update({
-      drawCalls: render.drawCalls,
-      triangles: render.triangles,
-      lines: render.lines,
-      points: render.points,
-      geometries: memory.geometries,
-      textures: memory.textures,
-    })
   }, { phase: 'render' })
 
   return (
@@ -269,36 +251,21 @@ function FlatlandScene({ preset, stats }: { preset: PresetName; stats: StatsHand
   )
 }
 
-// ─── StatsTracker (inside Canvas for useFrame access) ───────────────────────
-
-function StatsTracker({ stats }: { stats: StatsHandle }) {
-  useStatsMonitor(stats)
-  return null
-}
-
 // ─── App ────────────────────────────────────────────────────────────────────
 
 export default function App() {
-  const { pane, stats } = usePane()
-  const [preset, setPreset] = useState<PresetName>('clean')
+  const { pane } = usePane()
 
-  // Preset selector (synchronous init, no effect)
-  const initRef = useRef(false)
-  if (!initRef.current) {
-    initRef.current = true
-    pane.addBinding({ preset: 'clean' as string }, 'preset', {
-      label: 'Preset',
-      options: {
-        Clean: 'clean',
-        'CRT Arcade': 'crt',
-        Handheld: 'lcd',
-        'VHS Tape': 'vhs',
-        'Retro PC': 'retro',
-      },
-    }).on('change', (ev) => {
-      setPreset(ev.value as PresetName)
-    })
-  }
+  const [preset] = usePaneInput<string>(pane, 'preset', 'clean', {
+    label: 'Preset',
+    options: {
+      Clean: 'clean',
+      'CRT Arcade': 'crt',
+      Handheld: 'lcd',
+      'VHS Tape': 'vhs',
+      'Retro PC': 'retro',
+    },
+  })
 
   return (
     <Canvas
@@ -310,8 +277,7 @@ export default function App() {
         gl.domElement.style.imageRendering = 'pixelated'
       }}
     >
-      <StatsTracker stats={stats} />
-      <FlatlandScene preset={preset} stats={stats} />
+      <FlatlandScene preset={preset as PresetName} />
     </Canvas>
   )
 }

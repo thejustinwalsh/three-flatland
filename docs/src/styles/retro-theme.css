@@ -322,7 +322,7 @@
 /* =============================================================================
    LIGHT MODE BUTTONS - Clear, high contrast
    ============================================================================= */
-:root[data-theme='light'] button:not(.theme-toggle):not(.sound-toggle),
+:root[data-theme='light'] button:not(.theme-toggle):not(.sound-toggle):not(.tf-annot__hotspot):not(.tf-mermaid__btn),
 :root[data-theme='light'] .sl-link-button,
 :root[data-theme='light'] .action {
   background: #e8e5d0 !important;
@@ -331,7 +331,7 @@
   box-shadow: 3px 3px 0 #a8a593;
 }
 
-:root[data-theme='light'] button:not(.theme-toggle):not(.sound-toggle):hover,
+:root[data-theme='light'] button:not(.theme-toggle):not(.sound-toggle):not(.tf-annot__hotspot):not(.tf-mermaid__btn):hover,
 :root[data-theme='light'] .sl-link-button:hover,
 :root[data-theme='light'] .action:hover {
   background: var(--retro-purple) !important;
@@ -747,7 +747,7 @@ pre:has(code) {
 /* -----------------------------------------------------------------------------
    BUTTONS
    ----------------------------------------------------------------------------- */
-button:not(.theme-toggle):not(.sound-toggle):not(.preview-btn),
+button:not(.theme-toggle):not(.sound-toggle):not(.preview-btn):not(.tf-annot__hotspot):not(.tf-mermaid__btn),
 .sl-link-button,
 .action {
   font-family: var(--font-pixel) !important;
@@ -779,7 +779,7 @@ button:not(.theme-toggle):not(.sound-toggle):not(.preview-btn),
   color: var(--retro-cyan) !important;
 }
 
-button:not(.preview-btn):hover,
+button:not(.preview-btn):not(.tf-annot__hotspot):not(.tf-mermaid__btn):hover,
 .sl-link-button:hover,
 .action:hover {
   background: var(--retro-purple) !important;

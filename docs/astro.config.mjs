@@ -6,6 +6,7 @@ import starlightTypeDoc, { typeDocSidebarGroup } from 'starlight-typedoc';
 import react from '@astrojs/react';
 import { watchExamples } from './vite-plugins/watch-examples.js';
 import { copyExamples } from './vite-plugins/copy-examples.js';
+import { copyDevtools } from './vite-plugins/copy-devtools.js';
 import { rehypeExternalLinks } from './rehype-plugins/external-links.js';
 
 const isProd = process.env.NODE_ENV === 'production';
@@ -226,19 +227,33 @@ export default defineConfig({
             { label: 'Quick Start', slug: 'getting-started/quick-start' },
           ],
         },
+        // Concepts — pages whose primary purpose is to build the reader's
+        // mental model. Less "do X," more "understand why X works the way it
+        // does." Slugs stay under /guides/ to preserve URL stability; the
+        // IA split is sidebar-level only.
+        {
+          label: 'Concepts',
+          items: [
+            { label: 'The Flatland Pipeline', slug: 'guides/flatland' },
+            { label: 'Batch Rendering', slug: 'guides/batch-rendering' },
+            { label: '2D Lighting', slug: 'guides/lighting' },
+            { label: 'Shadows & Occlusion', slug: 'guides/shadows' },
+          ],
+        },
+        // Guides — task-oriented how-tos. "I want to do X." Each page should
+        // get the reader from zero to a working result with their own asset.
         {
           label: 'Guides',
           items: [
             { label: 'Sprites', slug: 'guides/sprites' },
             { label: 'Animation', slug: 'guides/animation' },
-            { label: 'Batch Rendering', slug: 'guides/batch-rendering' },
-            { label: 'Flatland', slug: 'guides/flatland' },
             { label: 'Loaders', slug: 'guides/loaders' },
+            { label: 'Tilemaps', slug: 'guides/tilemaps' },
+            { label: 'Baking', slug: 'guides/baking' },
             { label: 'TSL Nodes', slug: 'guides/tsl-nodes' },
             { label: 'Pass Effects', slug: 'guides/pass-effects' },
-            { label: 'Tilemaps', slug: 'guides/tilemaps' },
             { label: 'Skia', slug: 'guides/skia' },
-            { label: 'Debug Controls', slug: 'guides/debug-controls' },
+            { label: 'Devtools', slug: 'guides/devtools' },
           ],
         },
         {
@@ -250,6 +265,7 @@ export default defineConfig({
             { label: 'TSL Nodes', slug: 'examples/tsl-nodes' },
             { label: 'Tilemap', slug: 'examples/tilemap' },
             { label: 'Pass Effects', slug: 'examples/pass-effects' },
+            { label: 'Lighting', slug: 'examples/lighting' },
             { label: 'Knightmark', slug: 'examples/knightmark' },
             { label: 'Skia', slug: 'examples/skia' },
           ],
@@ -261,7 +277,7 @@ export default defineConfig({
           ],
         },
         {
-          label: 'Project',
+          label: 'Resources',
           items: [
             { label: 'Branding', slug: 'branding' },
             { label: 'LLMs', slug: 'llm-prompts' },
@@ -279,7 +295,7 @@ export default defineConfig({
     resolve: {
       conditions: ['source'],
     },
-    plugins: [watchExamples(), copyExamples()],
+    plugins: [watchExamples(), copyExamples(), copyDevtools()],
     optimizeDeps: {
       include: ['react-dom/client'],
     },
@@ -291,6 +307,20 @@ export default defineConfig({
         'Cross-Origin-Embedder-Policy': 'require-corp',
         'Cross-Origin-Opener-Policy': 'same-origin',
       },
+      // Vite/chokidar already ignores node_modules, .git, dist, etc. by
+      // default. The previous `'**/.claude/worktrees/**'` pattern was
+      // meant to skip *other* worktrees but its leading `**/` matched the
+      // CURRENT worktree too — when this repo is checked out under
+      // `~/.claude/worktrees/<branch>/`, Vite stopped watching the entire
+      // working tree, so every edit required a `pnpm dev` restart.
+      // If you re-add a worktree-ignore pattern, scope it explicitly to
+      // sibling worktrees, e.g.:
+      //   import { fileURLToPath } from 'node:url'
+      //   import { dirname, resolve } from 'node:path'
+      //   const ROOT = dirname(fileURLToPath(import.meta.url))
+      //   watch: { ignored: [resolve(ROOT, '../.claude/worktrees/**'), ...] }
+      // Or use chokidar's `ignored` predicate to skip everything but the
+      // current path.
     },
   },
 });

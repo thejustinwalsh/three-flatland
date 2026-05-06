@@ -2,7 +2,12 @@ import { Canvas, extend, useFrame, useLoader, useThree } from '@react-three/fibe
 import { useRef, useState, useCallback } from 'react'
 import { Color, type OrthographicCamera as ThreeOrthographicCamera } from 'three'
 import { Sprite2D, TextureLoader } from 'three-flatland/react'
-import { usePane, usePaneFolder, usePaneInput, useStatsMonitor } from '@three-flatland/tweakpane/react'
+import {
+  DevtoolsProvider,
+  usePane,
+  usePaneFolder,
+  usePaneInput,
+} from '@three-flatland/devtools/react'
 
 // Register Sprite2D with R3F (tree-shakeable)
 extend({ Sprite2D })
@@ -117,7 +122,7 @@ function InteractiveSprite({
 }
 
 function Scene() {
-  const { pane, stats } = usePane()
+  const { pane } = usePane()
 
   const spriteFolder = usePaneFolder(pane, 'Sprite')
   const [baseScale] = usePaneInput(spriteFolder, 'baseScale', 150, { min: 10, max: 300 })
@@ -130,8 +135,6 @@ function Scene() {
 
   const colorFolder = usePaneFolder(pane, 'Color')
   const [hoverTint] = usePaneInput(colorFolder, 'hoverTint', '#99d9ef')
-
-  useStatsMonitor(stats)
 
   return (
     <>
@@ -158,6 +161,7 @@ export default function App() {
       }}
     >
       <OrthoCamera viewSize={400} />
+      <DevtoolsProvider name="basic-sprite" />
       <Scene />
     </Canvas>
   )

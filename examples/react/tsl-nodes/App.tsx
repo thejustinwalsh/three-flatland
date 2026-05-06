@@ -32,7 +32,7 @@ import {
   dissolvePixelated,
   tint,
 } from '@three-flatland/nodes'
-import { usePane, usePaneFolder, useStatsMonitor } from '@three-flatland/tweakpane/react'
+import { DevtoolsProvider, usePane, usePaneFolder } from '@three-flatland/devtools/react'
 
 extend({ AnimatedSprite2D })
 
@@ -378,7 +378,7 @@ const effectNames: EffectType[] = ['normal', 'damage', 'dissolve', 'powerup', 'p
 const effectLabels = ['Normal', 'Damage', 'Dissolve', 'Rainbow', 'Stone', 'Outline', 'Shadow', 'Pixelate']
 
 function Scene() {
-  const { pane, stats } = usePane()
+  const { pane } = usePane()
   const effectFolder = usePaneFolder(pane, 'Effects', { expanded: true })
 
   const [effect, setEffect] = useState('normal')
@@ -416,8 +416,6 @@ function Scene() {
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [])
-
-  useStatsMonitor(stats)
 
   return (
     <>
@@ -470,6 +468,7 @@ export default function App() {
         }}
       >
         <OrthoCamera viewSize={200} />
+        <DevtoolsProvider name="tsl-nodes" />
         <Scene />
       </Canvas>
     </>
