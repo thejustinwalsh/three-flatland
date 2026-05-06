@@ -68,6 +68,9 @@ function isCollapsableGroup(label: string, collapsed: boolean): boolean {
                             stroke-linecap="round" stroke-linejoin="round" fill="none" />
                     </svg>
                 </summary>
+                {/* Caret renders AFTER the title so the title's left edge
+                    sits at the same x as static-group titles — no visible
+                    indent from a leading icon. */}
                 <div class="container-group-link">
                     <Astro.self sublist={entry.entries} nested />
                 </div>
@@ -105,8 +108,13 @@ function isCollapsableGroup(label: string, collapsed: boolean): boolean {
     }
 
     .entry-title-row {
+        /* Title at left edge (matches static groups), caret pushed to right
+         * via justify-content: space-between. No leading icon to indent
+         * the title text. Padding matches the static .entry-title rule
+         * (padding-inline: var(--spacing) * 2) for x-alignment parity. */
         display: flex;
         align-items: center;
+        justify-content: space-between;
         gap: calc(var(--spacing) * 1.5);
         cursor: pointer;
         list-style: none;
