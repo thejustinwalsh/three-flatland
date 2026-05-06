@@ -44,6 +44,51 @@ import AutoNameSelected from 'astro-vtbot/components/AutoNameSelected.astro';
   import '../scripts/motion'
 </script>
 
+{/* Inline SVG filter library for the gem material model. CSS rules
+    reference these by id (`filter: url(#tf-gem-perturb)`). Inline (not
+    via data: URL) because Chrome/Safari require the filter to live in a
+    fragment document context, not embedded in the stylesheet. The svg is
+    aria-hidden and zero-sized so it doesn't affect layout. */}
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  width="0"
+  height="0"
+  style="position:absolute;width:0;height:0;pointer-events:none"
+  aria-hidden="true"
+>
+  <defs>
+    {/* Gem perturb — fine fractal noise displacing the source image to
+        fake a normal-mapped polished gem surface. Subtle (scale 3) so
+        the linear-gradient on top reads as "polished surface with
+        micro-roughness," not a wavy distortion. */}
+    <filter id="tf-gem-perturb" x="-5%" y="-5%" width="110%" height="110%">
+      <feTurbulence
+        type="fractalNoise"
+        baseFrequency="0.7"
+        numOctaves="2"
+        seed="3"
+        stitchTiles="stitch"
+        result="noise"
+      />
+      <feDisplacementMap in="SourceGraphic" in2="noise" scale="3" />
+    </filter>
+    {/* Foil perturb — coarser, anisotropic noise (different x/y freq) so
+        gold catches a "metallic streak" quality rather than uniform
+        scatter. Used by data-gem="gold" surfaces. */}
+    <filter id="tf-foil-perturb" x="-5%" y="-5%" width="110%" height="110%">
+      <feTurbulence
+        type="fractalNoise"
+        baseFrequency="0.3 0.9"
+        numOctaves="2"
+        seed="7"
+        stitchTiles="stitch"
+        result="noise"
+      />
+      <feDisplacementMap in="SourceGraphic" in2="noise" scale="6" />
+    </filter>
+  </defs>
+</svg>
+
 <!-- Self hosted metrics -->
 {import.meta.env.PROD && (
   <>

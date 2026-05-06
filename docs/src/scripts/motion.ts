@@ -27,17 +27,19 @@
 
 interface MotionTarget {
     el: HTMLElement
-    /** Last commanded center (target the noise wanders around), 0..1 in element-local coords. */
+    /** Cursor target position, 0..1 in element-local coords. */
     cx: number
     cy: number
-    /** Currently rendered light position with inertia toward target. */
+    /** Mouse light's currently rendered position, with inertia toward (cx,cy). */
     lx: number
     ly: number
-    /** Time offset so each surface's noise has an independent phase. */
+    /** Hover-active scalar 0..1; smoothed toward 1 on enter, 0 on leave. */
+    active: number
+    /** Phase seeds — separate streams for scene-light vs holo position. */
     seed: number
     /** Whether the cursor is currently over this surface. */
     hovering: boolean
-    /** Phase accumulator, advanced per frame. */
+    /** Phase accumulator (seconds), advanced per frame. */
     t: number
 }
 
@@ -95,6 +97,7 @@ function registerTarget(el: HTMLElement) {
         cy: 0.5,
         lx: 0.5,
         ly: 0.5,
+        active: 0,
         seed: Math.random() * 1000,
         hovering: false,
         t: 0,
@@ -110,16 +113,19 @@ function registerTarget(el: HTMLElement) {
     el.addEventListener('pointerenter', setTarget)
     el.addEventListener('pointermove', setTarget)
     el.addEventListener('pointerleave', () => {
-        t.cx = 0.5
-        t.cy = 0.5
         t.hovering = false
     })
 
     // Reduced-motion: pin once and skip the loop entirely for this element.
     if (REDUCED_MOTION) {
-        // Static "spotlight from upper-left" — surfaces still read as lit.
+        // Static "scene light from upper-left" — surfaces still read as lit.
+        el.style.setProperty('--scene-angle', '135deg')
+        el.style.setProperty('--scene-x', '30%')
+        el.style.setProperty('--scene-y', '25%')
         el.style.setProperty('--mx', '30%')
         el.style.setProperty('--my', '25%')
+        el.style.setProperty('--light-angle', '135deg')
+        el.style.setProperty('--mouse-active', '0')
         el.style.setProperty('--tilt-x', '0deg')
         el.style.setProperty('--tilt-y', '0deg')
     }
@@ -136,42 +142,61 @@ function frame(now: number) {
 
     for (const t of targets) {
         t.t = time
-        // Cursor steers the noise center with ~100ms inertia.
-        const targetCx = t.cx
-        const targetCy = t.cy
-        // Smoothed center — approximates by easing the rendered position
-        // toward the target each frame; the noise wanders around it.
-        t.lx = inertia(t.lx, targetCx, dt, 100)
-        t.ly = inertia(t.ly, targetCy, dt, 100)
 
-        // Noise wander, scaled to ~6% of element dimensions.
-        const ampl = 0.06
-        const nx = noiseAt(time, t.seed, 0) * ampl
-        const ny = noiseAt(time, t.seed, 1) * ampl
+        /* SCENE LIGHT — always on; position drifts via low-frequency
+         * perlin so surfaces are always softly lit even when nobody's
+         * interacting. The scene light is the "ambient room key" — the
+         * surface knows it's in a scene with a slowly drifting source. */
+        const sceneAmpl = 0.18 // wider drift than mouse-noise; scene moves more
+        const sx = 0.5 + noiseAt(time * 0.6, t.seed, 0) * sceneAmpl
+        const sy = 0.5 + noiseAt(time * 0.6, t.seed + 333, 1) * sceneAmpl
+        const sceneAngle =
+            (Math.atan2(sy - 0.5, sx - 0.5) * 180) / Math.PI + 90
+        t.el.style.setProperty('--scene-x', `${(sx * 100).toFixed(2)}%`)
+        t.el.style.setProperty('--scene-y', `${(sy * 100).toFixed(2)}%`)
+        t.el.style.setProperty('--scene-angle', `${sceneAngle.toFixed(1)}deg`)
 
-        const mx = Math.max(0, Math.min(1, t.lx + nx))
-        const my = Math.max(0, Math.min(1, t.ly + ny))
+        /* MOUSE LIGHT — cursor-driven with inertia. When cursor is over
+         * the surface, --mouse-active eases toward 1 (CSS scales the
+         * mouse-light layer's opacity by this). On leave, --mouse-active
+         * eases back toward 0 and the mouse position relaxes to center. */
+        const targetActive = t.hovering ? 1 : 0
+        t.active = inertia(t.active, targetActive, dt, 180)
+        // When not hovering, mouse position drifts back to center over time.
+        const targetCx = t.hovering ? t.cx : 0.5
+        const targetCy = t.hovering ? t.cy : 0.5
+        t.lx = inertia(t.lx, targetCx, dt, 110)
+        t.ly = inertia(t.ly, targetCy, dt, 110)
 
+        // Tiny perlin jitter on top of mouse position for material feel.
+        const mAmpl = 0.04
+        const mx = Math.max(
+            0,
+            Math.min(1, t.lx + noiseAt(time, t.seed + 711, 0) * mAmpl),
+        )
+        const my = Math.max(
+            0,
+            Math.min(1, t.ly + noiseAt(time, t.seed + 911, 1) * mAmpl),
+        )
         t.el.style.setProperty('--mx', `${(mx * 100).toFixed(2)}%`)
         t.el.style.setProperty('--my', `${(my * 100).toFixed(2)}%`)
+        t.el.style.setProperty('--mouse-active', t.active.toFixed(3))
 
-        // Tilt amplitude depends on the surface type: u-light surfaces (cards,
-        // most interactive) get a *very* subtle tilt (~1.5° max), u-holo
-        // surfaces (premium opt-in) get more material weight (~6° max).
+        // Light angle from mouse position offset (used by gradient rotation).
+        const dx = mx - 0.5
+        const dy = my - 0.5
+        const lightAngle = (Math.atan2(dy, dx) * 180) / Math.PI + 90
+        t.el.style.setProperty('--light-angle', `${lightAngle.toFixed(1)}deg`)
+
+        /* TILT — cursor-driven. Scaled by --mouse-active so idle surfaces
+         * sit flat and tilt only kicks in once the cursor enters. */
         const isHolo = t.el.matches('.u-holo, [data-holo]')
         const ampX = isHolo ? 8 : 1.5
         const ampY = isHolo ? 12 : 2
-        const tiltY = (mx - 0.5) * ampY
-        const tiltX = (0.5 - my) * ampX
+        const tiltY = (mx - 0.5) * ampY * t.active
+        const tiltX = (0.5 - my) * ampX * t.active
         t.el.style.setProperty('--tilt-x', `${tiltX.toFixed(2)}deg`)
         t.el.style.setProperty('--tilt-y', `${tiltY.toFixed(2)}deg`)
-        // Cursor-direction angle in degrees, used by the conic facet
-        // gradients to rotate the facet planes with the light. 0° at the
-        // top, sweeping clockwise — same convention as conic-gradient.
-        const dx = mx - 0.5
-        const dy = my - 0.5
-        const angle = (Math.atan2(dy, dx) * 180) / Math.PI + 90
-        t.el.style.setProperty('--light-angle', `${angle.toFixed(1)}deg`)
     }
 
     requestAnimationFrame(frame)

@@ -76,11 +76,17 @@ const accentStyle = resolvedGem ? `--card-accent: var(--${resolvedGem});` : unde
 
 <style>
   .feature-card {
-    /* The .u-rim primitive owns the border + background-clip layering, so
-     * we don't set a `background-color` here directly — it'd paint over
-     * the rim's padding-box layer. Instead, we override the rim's
-     * padding-box layer with a gem-tinted card surface via --card. */
-    --card: color-mix(in oklab, oklch(20% 0.008 250) 92%, var(--card-accent, var(--primary)));
+    /* Cards CARRY their gem identity at rest — not a neutral surface that
+     * lights up to a jewel. The base color is the gem's `*-soft` variant
+     * (dark hue-tinted surface defined in theme.css), so even idle the
+     * card reads as "this is a ruby card." Light effects layer on top to
+     * amplify, not to create the tint from neutral.
+     *
+     * Default: --card-soft falls back to a darker amethyst tint when no
+     * gem prop is passed. Each `data-gem="<name>"` selector below sets
+     * --card-soft to that gem's soft variant. */
+    --card-soft: color-mix(in oklab, var(--gray-7) 60%, var(--card-accent, var(--primary)));
+    --card: var(--card-soft);
     position: relative;
     display: flex;
     flex-direction: column;
@@ -93,9 +99,17 @@ const accentStyle = resolvedGem ? `--card-accent: var(--${resolvedGem});` : unde
       box-shadow 180ms ease;
   }
 
-  :root[data-theme='light'] .feature-card {
-    --card: color-mix(in oklab, oklch(98% 0.008 80) 92%, var(--card-accent, var(--primary)));
-  }
+  /* Per-gem resting tint — pulls from the dedicated gem-soft tokens
+   * defined in theme.css (each is a low-chroma dark surface with the
+   * gem's hue baked in, designed for exactly this). */
+  .feature-card[data-gem='gold'] { --card-soft: var(--gold-soft); }
+  .feature-card[data-gem='ruby'] { --card-soft: var(--ruby-soft); }
+  .feature-card[data-gem='emerald'] { --card-soft: var(--emerald-soft); }
+  .feature-card[data-gem='diamond'] { --card-soft: var(--diamond-soft); }
+  .feature-card[data-gem='amethyst'] { --card-soft: var(--amethyst-soft); }
+  .feature-card[data-gem='pink'] { --card-soft: var(--pink-soft); }
+  .feature-card[data-gem='salmon'] { --card-soft: var(--salmon-soft); }
+  .feature-card[data-gem='turquoize'] { --card-soft: var(--turquoize-soft); }
 
   .feature-card:hover {
     transform: translateY(-2px);

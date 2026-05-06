@@ -1118,6 +1118,19 @@
         transition: transform 120ms ease-out;
         will-change: transform;
     }
+    /* Gem material — TWO LIGHT SOURCES:
+     *   1. Scene light (`::before`)  — always on; slow perlin-driven drift
+     *      via `--scene-angle`. Provides the resting "lit by a slowly
+     *      moving room key" quality so surfaces aren't black-then-jewel.
+     *   2. Mouse light (`::after`)   — opacity scaled by `--mouse-active`
+     *      (0..1, eased by JS); position via `--mx`/`--my`, direction via
+     *      `--light-angle`. Adds a brighter directional highlight when
+     *      cursor is over the surface; fades to zero when not.
+     *
+     * Both layers use a linear gradient (PBR plane lighting) warped by
+     * SVG `feDisplacementMap` to simulate normal-mapped micro-roughness.
+     * No conic facet rings — the gem is a smooth planar surface, the
+     * displacement filter handles the micro-bump roughness scatter. */
     .u-light::before,
     [data-light]::before {
         content: '';
@@ -1125,41 +1138,25 @@
         inset: 0;
         border-radius: inherit;
         pointer-events: none;
-        background:
-            /* Top layer: VERY subtle faceted highlight — conic gradient
-             * with hard stops simulating gem facets, rotated to track
-             * cursor angle. Peak ~22% so the light reads as a hint, not
-             * a spotlight. */
-            conic-gradient(
-                from var(--light-angle, 0deg) at var(--mx, 50%) var(--my, 50%),
-                color-mix(in oklab, var(--card-accent, var(--primary)) 22%, transparent) 0deg,
-                transparent 18deg,
-                color-mix(in oklab, var(--card-accent, var(--primary)) 14%, transparent) 60deg,
-                transparent 90deg,
-                color-mix(in oklab, var(--card-accent, var(--primary)) 10%, transparent) 130deg,
-                transparent 165deg,
-                color-mix(in oklab, var(--card-accent, var(--primary)) 12%, transparent) 220deg,
-                transparent 260deg,
-                color-mix(in oklab, var(--card-accent, var(--primary)) 16%, transparent) 300deg,
-                transparent 340deg,
-                color-mix(in oklab, var(--card-accent, var(--primary)) 22%, transparent) 360deg
-            ),
-            /* Bottom layer: faint diffuse linear gradient reading "lit
-             * from cursor side" without a centered hot spot. */
-            linear-gradient(
-                calc(var(--light-angle, 0deg) + 90deg),
-                color-mix(in oklab, var(--card-accent, var(--primary)) 7%, transparent),
-                transparent 60%
-            );
-        opacity: 0;
-        transition: opacity 280ms ease;
+        /* Scene light layer — always visible, drifts slowly via perlin. */
+        background: linear-gradient(
+            calc(var(--scene-angle, 135deg) + 90deg),
+            color-mix(in oklab, var(--card-accent, var(--primary)) 32%, transparent) 0%,
+            color-mix(in oklab, var(--card-accent, var(--primary)) 14%, transparent) 35%,
+            transparent 65%,
+            color-mix(in oklab, var(--background) 20%, transparent) 100%
+        );
+        filter: url(#tf-gem-perturb);
+        opacity: 0.85;
         z-index: 1;
         mix-blend-mode: screen;
     }
-    /* Roughness — fine noise overlay applied via a separate ::after layer
-     * so the facet conic doesn't have to fight a mask. ~5% peak alpha,
-     * blended in overlay so it scatters the conic highlights into "micro
-     * facet" specks rather than smooth bands. */
+    /* Mouse light layer — secondary specular highlight. Opacity scales with
+     * --mouse-active (0 idle / 1 hover). Direction is FIXED to the scene-
+     * angle so the gradient doesn't spin around cursor center; instead the
+     * bright BAND TRANSLATES toward the cursor via `background-position`.
+     * Combined with the surface's 3D tilt (also cursor-driven), this reads
+     * as a polished surface catching a moving spec — not a rotating effect. */
     .u-light::after,
     [data-light]::after {
         content: '';
@@ -1167,47 +1164,74 @@
         inset: 0;
         border-radius: inherit;
         pointer-events: none;
-        background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='r'><feTurbulence type='fractalNoise' baseFrequency='1.2' numOctaves='1' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 0.18 -0.05'/></filter><rect width='160' height='160' filter='url(%23r)'/></svg>");
-        opacity: 0;
-        transition: opacity 200ms ease;
-        mix-blend-mode: overlay;
+        background: linear-gradient(
+            calc(var(--scene-angle, 135deg) + 90deg),
+            transparent 0%,
+            color-mix(in oklab, var(--card-accent, var(--primary)) 60%, transparent) 30%,
+            color-mix(in oklab, var(--card-accent, var(--primary)) 30%, transparent) 50%,
+            transparent 80%
+        );
+        background-size: 220% 220%;
+        background-position: calc(var(--mx, 50%) * 1.8 - 40%)
+            calc(var(--my, 50%) * 1.8 - 40%);
+        filter: url(#tf-gem-perturb);
+        opacity: calc(var(--mouse-active, 0) * 0.9);
         z-index: 2;
-    }
-    .u-light:hover::before,
-    [data-light]:hover::before,
-    .u-light:focus-within::before,
-    [data-light]:focus-within::before {
-        opacity: 1;
-    }
-    .u-light:hover::after,
-    [data-light]:hover::after,
-    .u-light:focus-within::after,
-    [data-light]:focus-within::after {
-        opacity: 0.4;
+        mix-blend-mode: screen;
     }
 
-    /* Ambient border lighting — surfaces with `.u-light` (or .u-rim)
-     * carry a low-opacity gradient ring on the border that rotates with
-     * --light-angle. The perlin loop is always running, so even idle
-     * surfaces have a subtle traveling glint along their edges. The
-     * gradient is applied via `background-clip: border-box` so it
-     * doesn't require an extra pseudo-element. Surfaces that want this
-     * effect must apply both `.u-light` AND `.u-rim`, since not every
-     * u-light surface should have a visible border. */
+    /* Foil treatment — gold gets a metallic anisotropic streak instead of
+     * the polished gem plane. Replaces the gem-perturb with foil-perturb
+     * and ramps the gradient through a metallic warm/cool sequence so
+     * gold reads as foil, not paint. (Per Design Context.) */
+    .u-light[data-gem='gold']::before,
+    [data-light][data-gem='gold']::before {
+        background: linear-gradient(
+            calc(var(--scene-angle, 135deg) + 90deg),
+            color-mix(in oklab, var(--gold-high) 45%, transparent),
+            color-mix(in oklab, var(--gold) 22%, transparent) 30%,
+            color-mix(in oklab, var(--orange) 22%, transparent) 60%,
+            color-mix(in oklab, var(--gold-low) 18%, transparent) 100%
+        );
+        filter: url(#tf-foil-perturb);
+    }
+    .u-light[data-gem='gold']::after,
+    [data-light][data-gem='gold']::after {
+        background: linear-gradient(
+            calc(var(--scene-angle, 135deg) + 90deg),
+            transparent 0%,
+            color-mix(in oklab, var(--gold-high) 80%, transparent) 30%,
+            color-mix(in oklab, var(--orange) 45%, transparent) 55%,
+            transparent 90%
+        );
+        background-size: 220% 220%;
+        background-position: calc(var(--mx, 50%) * 1.8 - 40%)
+            calc(var(--my, 50%) * 1.8 - 40%);
+        filter: url(#tf-foil-perturb);
+    }
+
+    /* Rim light — conic gradient ring at the border that rotates with the
+     * SCENE light direction (perlin-driven, NOT cursor-driven, so it doesn't
+     * spin around as the mouse moves). Visually it catches light along the
+     * lit side of the surface like a real rim light, brightest where the
+     * scene is "facing." Doubles as an edge mask hiding any displacement-
+     * filter artifacts at the surface boundary.
+     *
+     * Applied via `background-clip: padding-box / border-box` so no extra
+     * element is needed; the conic gradient renders ONLY in the border
+     * region, the padding-box keeps the card's surface tint underneath. */
     .u-rim {
-        border: 1px solid transparent;
+        border: 1.5px solid transparent;
         background-image:
             linear-gradient(var(--card, var(--background)), var(--card, var(--background)))
                 padding-box,
             conic-gradient(
-                from var(--light-angle, 0deg),
-                color-mix(in oklab, var(--card-accent, var(--primary)) 55%, transparent) 0deg,
-                color-mix(in oklab, var(--border) 100%, transparent) 60deg,
-                color-mix(in oklab, var(--card-accent, var(--primary)) 30%, transparent) 130deg,
-                color-mix(in oklab, var(--border) 100%, transparent) 200deg,
-                color-mix(in oklab, var(--card-accent, var(--primary)) 45%, transparent) 280deg,
-                color-mix(in oklab, var(--border) 100%, transparent) 350deg,
-                color-mix(in oklab, var(--card-accent, var(--primary)) 55%, transparent) 360deg
+                from calc(var(--scene-angle, 135deg) - 90deg),
+                color-mix(in oklab, var(--card-accent, var(--primary)) 90%, transparent) 0deg,
+                color-mix(in oklab, var(--card-accent, var(--primary)) 35%, var(--border)) 80deg,
+                color-mix(in oklab, var(--border) 90%, transparent) 180deg,
+                color-mix(in oklab, var(--card-accent, var(--primary)) 35%, var(--border)) 280deg,
+                color-mix(in oklab, var(--card-accent, var(--primary)) 90%, transparent) 360deg
             ) border-box;
         background-origin: border-box;
     }
@@ -1323,13 +1347,13 @@
         z-index: 0;
     }
 
-    /* Faceted specular layer — multiple stacked conic-gradients with hard
-     * color stops simulate gem-cut facet planes catching light. Subtle
-     * (peak ≤ 35% specular) so the highlight reads as polished gem, not
-     * spotlit plastic. The primary conic rotates with cursor angle
-     * (`--light-angle`); a second conic offset by 30° adds a second
-     * facet ring; an iridescent rainbow conic at low opacity gives the
-     * foil quality without overpowering. */
+    /* Faceted specular layer (u-holo, big-impact only) — stacked conic
+     * gradients with hard color stops simulate gem-cut facet planes
+     * catching light. The primary conic uses `--scene-angle` (perlin-
+     * driven, not cursor) so the facet planes don't spin around the
+     * cursor; the secondary conic offset by 30° adds a second facet
+     * ring; an iridescent rainbow conic at low opacity gives the foil
+     * quality. 3D tilt + scene drift do the visual work. */
     .u-holo::after,
     [data-holo]::after {
         content: '';
@@ -1340,7 +1364,7 @@
         background:
             /* Primary facet ring — sharp transitions between specular bands. */
             conic-gradient(
-                from var(--light-angle, 0deg) at var(--mx, 50%) var(--my, 50%),
+                from var(--scene-angle, 0deg) at var(--mx, 50%) var(--my, 50%),
                 color-mix(in oklab, var(--gem-spec) 38%, transparent) 0deg,
                 transparent 18deg,
                 color-mix(in oklab, var(--gem-spec) 22%, transparent) 50deg,
@@ -1356,7 +1380,7 @@
             /* Secondary facet ring — offset 30° so facet edges read as
              * a polished cut, not a single rotation. */
             conic-gradient(
-                from calc(var(--light-angle, 0deg) + 30deg) at var(--mx, 50%) var(--my, 50%),
+                from calc(var(--scene-angle, 0deg) + 30deg) at var(--mx, 50%) var(--my, 50%),
                 transparent 0deg,
                 color-mix(in oklab, var(--gem-spec) 14%, transparent) 30deg,
                 transparent 60deg,
@@ -1367,7 +1391,7 @@
             ),
             /* Iridescent foil rainbow at very low opacity — holo flecks. */
             conic-gradient(
-                from calc(var(--light-angle, 0deg) * 1.5) at var(--mx, 50%) var(--my, 50%),
+                from calc(var(--scene-angle, 0deg) * 1.5) at var(--mx, 50%) var(--my, 50%),
                 color-mix(in oklab, var(--gold) 18%, transparent),
                 color-mix(in oklab, var(--emerald) 18%, transparent),
                 color-mix(in oklab, var(--diamond) 18%, transparent),
