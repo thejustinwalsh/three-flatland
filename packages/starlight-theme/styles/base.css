@@ -9,8 +9,8 @@
         --spacing: 0.25rem;
         --radius: 0.625rem;
         --header-height: calc(var(--spacing) * 14);
-        --sidebar-width: 18rem;
-        --container-max-width: 1600px;
+        --sidebar-width: 15rem;
+        --container-max-width: 1760px;
 
         /* starlight color mappings */
         --sl-color-text-accent: var(--foreground);
@@ -1449,18 +1449,28 @@
         }
     }
 
-    /* Sidebar + content width tokens — Starlight overrides scoped to
-     * pages that actually have a sidebar. Splash pages are unaffected. */
+    /* Sidebar + content width tokens — give significantly more room to
+     * the main content per stakeholder direction. The previous 18rem
+     * sidebars + 45rem content wasted horizontal real estate; now the
+     * sidebars are 15rem each and the content stretches to ~60rem so
+     * docs prose breathes at typical reading widths. */
     @media (min-width: 50rem) {
         :root:has(.sidebar) {
-            --sl-content-inline-start: 18rem;
-            --sl-sidebar-width: 18rem;
+            --sl-content-inline-start: 15rem;
+            --sl-sidebar-width: 15rem;
+            --sidebar-width: 15rem;
         }
     }
     @media (min-width: 72rem) {
         :root,
         [data-has-toc] {
-            --sl-content-width: 45rem;
+            --sl-content-width: 60rem;
+        }
+    }
+    @media (min-width: 84rem) {
+        :root,
+        [data-has-toc] {
+            --sl-content-width: 64rem;
         }
     }
 }
