@@ -59,12 +59,14 @@ const accentStyle = resolvedGem ? `--card-accent: var(--${resolvedGem});` : unde
 ---
 
 <article class="feature-card u-light u-reveal" data-sound="card" data-gem={resolvedGem} style={accentStyle}>
-  {icon && (
-    <span class="icon-wrap" aria-hidden="true">
-      <Icon name={icon} size="1.5rem" />
-    </span>
-  )}
-  <h3 class="title" set:html={title} />
+  <header class="head">
+    {icon && (
+      <span class="icon-wrap" aria-hidden="true">
+        <Icon name={icon} size="1.5rem" />
+      </span>
+    )}
+    <h3 class="title" set:html={title} />
+  </header>
   {stat && (
     <div class="stat-block">
       <span class="stat-value">{stat}</span>
@@ -159,12 +161,23 @@ const accentStyle = resolvedGem ? `--card-accent: var(--${resolvedGem});` : unde
     box-shadow: 0 8px 24px -12px color-mix(in oklab, var(--card-accent, var(--primary)) 30%, transparent);
   }
 
+  /* Header row — icon + title sit inline, vertically centered. Replaces
+   * the previous stacked icon-on-top-of-title layout so the title can
+   * breathe at a larger display size. */
+  .head {
+    display: flex;
+    align-items: center;
+    gap: calc(var(--spacing) * 3);
+    margin-bottom: calc(var(--spacing) * 1);
+  }
+
   .icon-wrap {
+    flex-shrink: 0;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 2.25rem;
-    height: 2.25rem;
+    width: 2.5rem;
+    height: 2.5rem;
     border-radius: calc(var(--radius) - 4px);
     background-color: color-mix(in oklab, var(--card-accent, var(--primary)) 18%, transparent);
     color: var(--card-accent, var(--primary));
@@ -173,9 +186,9 @@ const accentStyle = resolvedGem ? `--card-accent: var(--${resolvedGem});` : unde
   .title {
     font-family: 'Public Sans', system-ui, sans-serif;
     font-weight: 600;
-    font-size: 1.0625rem;
-    line-height: 1.35;
-    letter-spacing: -0.01em;
+    font-size: 1.375rem;
+    line-height: 1.2;
+    letter-spacing: -0.018em;
     color: var(--foreground);
     margin: 0;
   }
@@ -209,6 +222,10 @@ const accentStyle = resolvedGem ? `--card-accent: var(--${resolvedGem});` : unde
   }
 
   .description {
+    /* flex: 1 inside the column-flex .feature-card claims remaining
+     * height so cards in a grid row settle to a consistent height
+     * regardless of how much body copy each carries. */
+    flex: 1;
     font-size: 0.9375rem;
     line-height: 1.55;
     color: var(--muted-foreground);
