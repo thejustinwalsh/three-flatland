@@ -6,11 +6,22 @@ interface Props {
     nested?: boolean;
 }
 
-const { sublist } = Astro.props;
+const { sublist, nested } = Astro.props;
+
+/**
+ * Top-level sidebar groups cycle through gem accents from the
+ * `--sidebar-section-{1..7}` token series so each section reads as its own
+ * color identity (Design Context: color-as-taxonomy). Nested levels inherit
+ * the parent group's `--section-accent` via CSS variable inheritance.
+ */
+const sectionGems = 7;
+function sectionAccent(idx: number): string {
+    return `--section-accent: var(--sidebar-section-${(idx % sectionGems) + 1});`;
+}
 ---
 
 {
-    sublist.map((entry) =>
+    sublist.map((entry, idx) =>
         entry.type === 'link' ? (
             <a
                 href={entry.href}
@@ -33,7 +44,10 @@ const { sublist } = Astro.props;
                 </span>
             </a>
         ) : (
-            <div class="container-sidebar-entry">
+            <div
+                class="container-sidebar-entry"
+                style={!nested ? sectionAccent(idx) : undefined}
+            >
                 <h4 class="entry-title">{entry.label}</h4>
                 <div class="container-group-link">
                     <Astro.self sublist={entry.entries} nested />
@@ -51,7 +65,9 @@ const { sublist } = Astro.props;
     }
 
     .entry-title {
-        /* Linear/Radix-leaning group label: small caps, tracked, muted. */
+        /* Group label gets the section's gem accent — color-as-taxonomy
+         * (Design Context). Tracked uppercase reads as section identity,
+         * the gem hue tells you *which* section without reading the label. */
         font-family: 'Inter', system-ui, sans-serif;
         font-weight: 600;
         font-size: 0.6875rem;
@@ -62,7 +78,7 @@ const { sublist } = Astro.props;
         padding-bottom: calc(var(--spacing) * 1);
         padding-left: calc(var(--spacing) * 2);
         padding-right: calc(var(--spacing) * 2);
-        color: color-mix(in oklab, var(--muted-foreground) 78%, var(--foreground));
+        color: var(--section-accent, color-mix(in oklab, var(--muted-foreground) 78%, var(--foreground)));
     }
 
     .container-group-link {
@@ -103,11 +119,11 @@ const { sublist } = Astro.props;
         font-weight: 500;
     }
 
-    /* Active state: refined to a left-edge indicator + lighter tinted bg.
-     * Linear-signature treatment — the active item is unmistakable but the
-     * sidebar overall stays quiet. */
+    /* Active state: gem-accented left-edge indicator + tinted bg pulled
+     * from the section's accent. Hover state previews the same gem at a
+     * lower intensity so the section's identity reads through interaction. */
     .entry-link[aria-current='page'] .entry-link-inner {
-        background-color: color-mix(in oklab, var(--accent) 22%, transparent);
+        background-color: color-mix(in oklab, var(--section-accent, var(--accent)) 18%, transparent);
         color: var(--foreground);
     }
 
@@ -119,12 +135,13 @@ const { sublist } = Astro.props;
         bottom: 0.3rem;
         width: 2px;
         border-radius: 1px;
-        background-color: var(--primary);
+        background-color: var(--section-accent, var(--primary));
+        box-shadow: 0 0 6px color-mix(in oklab, var(--section-accent, var(--primary)) 60%, transparent);
     }
 
     .entry-link:hover:not([aria-current='page']) .entry-link-inner {
-        background-color: var(--secondary);
-        color: var(--secondary-foreground);
+        background-color: color-mix(in oklab, var(--section-accent, var(--accent)) 10%, var(--secondary));
+        color: var(--foreground);
     }
 
     .entry-icon {
@@ -139,13 +156,13 @@ const { sublist } = Astro.props;
     }
 
     .entry-link[aria-current='page'] .entry-icon {
-        color: var(--primary);
+        color: var(--section-accent, var(--primary));
         opacity: 1;
     }
 
     .entry-link:hover:not([aria-current='page']) .entry-icon {
-        color: var(--foreground);
-        opacity: 0.9;
+        color: color-mix(in oklab, var(--section-accent, var(--foreground)) 70%, var(--foreground));
+        opacity: 1;
     }
 
     .entry-badge {

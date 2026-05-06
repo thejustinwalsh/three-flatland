@@ -133,6 +133,9 @@ importers:
       '@fontsource/public-sans':
         specifier: ^5.2.7
         version: 5.2.7
+      '@fontsource/silkscreen':
+        specifier: ^5.2.5
+        version: 5.2.8
       '@iconify-json/lucide':
         specifier: ^1.2.105
         version: 1.2.105
@@ -2157,6 +2160,9 @@ packages:
 
   '@fontsource/public-sans@5.2.7':
     resolution: {integrity: sha512-pVttDr3HvhVIt2x6sZJfZKksNEpq23C1JCHTQwT9KWJdmFRdNeRM8gQftq8uP72sPW+p3Ku9x8HPk2E392DFvg==}
+
+  '@fontsource/silkscreen@5.2.8':
+    resolution: {integrity: sha512-PfVe2BRZdjY/UIEXsrpzCo/W8FIGo6jEEMHuQiKfma+E5LXb6WfFFBfCEsO89ZWOSwl2mLE1Yq0d8gagmcaBpQ==}
 
   '@gerrit0/mini-shiki@3.23.0':
     resolution: {integrity: sha512-bEMORlG0cqdjVyCEuU0cDQbORWX+kYCeo0kV1lbxF5bt4r7SID2l9bqsxJEM0zndaxpOUT7riCyIVEuqq/Ynxg==}
@@ -7324,6 +7330,8 @@ snapshots:
   '@fontsource/jetbrains-mono@5.2.8': {}
 
   '@fontsource/public-sans@5.2.7': {}
+
+  '@fontsource/silkscreen@5.2.8': {}
 
   '@gerrit0/mini-shiki@3.23.0':
     dependencies:

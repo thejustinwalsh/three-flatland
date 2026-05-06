@@ -115,22 +115,101 @@
         border-color: var(--border);
     }
 
+    /* Site-wide font-family application.
+     *
+     * IMPORTANT: presetWind4 is configured with `preflights: { reset: false }`
+     * (see docs/uno.config.ts) to avoid double-resetting alongside lucode's
+     * own reset. That flag also disables Tailwind v4's body-level
+     * `font-family: var(--default-font-family)` injection, so utility classes
+     * like `font-sans` exist but the body itself never picks up Public Sans
+     * unless we set it explicitly here. Without these rules, every surface
+     * falls back to system-ui — which is the typography bug Phase 3 fixes.
+     *
+     * Per Design Context: Inter for nav / sidebar / UI labels, JetBrains Mono
+     * for prose, Public Sans for headings, Commit Mono for code, Silkscreen
+     * reserved for the wordmark only. Body defaults to Inter so the chrome of
+     * the site (header, search, theme select, etc.) reads as humanist UI sans.
+     */
+    /* Sub-perceptual grain overlay — the "ghost hack" texture from the
+     * Design Context. SVG fractal noise tiled at 200×200, layered as a
+     * fixed background-image on body so it doesn't repaint with content
+     * scroll and stays behind every interactive surface (no z-index games).
+     *
+     * Verification rule: if you can see the texture at normal viewing
+     * distance, it's wrong — lower opacity until you can't. The point is
+     * depth you don't notice but feel. The opacity is baked into the SVG's
+     * feColorMatrix alpha so we don't need to fight z-stacking with a
+     * pseudo-element overlay. */
     body {
+        font-family: 'Inter', system-ui, sans-serif;
         -webkit-font-smoothing: antialiased;
         -moz-osx-font-smoothing: grayscale;
+        background-color: var(--background);
+        background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 0.04 0'/></filter><rect width='200' height='200' filter='url(%23n)'/></svg>");
+        background-attachment: fixed;
+        background-blend-mode: screen;
+    }
+    :root[data-theme='light'] body {
+        background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.025 0'/></filter><rect width='200' height='200' filter='url(%23n)'/></svg>");
+        background-blend-mode: multiply;
+    }
+    /* Honor accessibility preferences — texture vanishes when users prefer
+     * reduced transparency/translucency. */
+    @media (prefers-reduced-transparency: reduce) {
+        body {
+            background-image: none;
+        }
     }
 
-    /* link styles for markdown content */
+    /* Header / navigation / UI chrome — Inter at UI weights. */
+    :is(.header, .sidebar, nav, .pagination-links, [data-slot='footer-text']) {
+        font-family: 'Inter', system-ui, sans-serif;
+    }
+
+    /* Prose-as-mono — JetBrains Mono is the body reading typeface inside
+     * markdown content. Reads as "engineering log" without overpowering. */
+    .sl-markdown-content {
+        font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
+    }
+
+    /* Code blocks + inline code — Commit Mono with JetBrains Mono fallback. */
+    :is(pre, code, kbd, samp, .expressive-code) {
+        font-family: 'Commit Mono', 'JetBrains Mono', ui-monospace, SFMono-Regular,
+            monospace;
+    }
+
+    /* Form inputs inherit the surface's font to avoid system-ui leak. */
+    :is(input, textarea, select, button) {
+        font-family: inherit;
+    }
+
+    /* Site-wide link colors — use the dedicated `--link` / `--link-hover`
+     * tokens (gem-tinted by default) so links read as a distinct affordance
+     * from prose, not the same color underlined. */
+    a:not([class]):not([data-slot]) {
+        color: var(--link);
+        text-decoration: none;
+        transition: color 0.15s;
+    }
+    a:not([class]):not([data-slot]):hover {
+        color: var(--link-hover);
+    }
+
+    /* Markdown body links keep the underline affordance (prose convention)
+     * but use the gem link color. The decoration pulls from the link hue at
+     * lower opacity so the line reads quieter than the text. */
     .sl-markdown-content a:not([class]) {
         text-decoration: underline;
+        text-decoration-thickness: 1px;
         text-underline-offset: calc(var(--spacing) * 1);
-        text-decoration-color: var(--muted-foreground);
-        color: var(--foreground);
+        text-decoration-color: color-mix(in oklab, var(--link) 45%, transparent);
+        color: var(--link);
         font-weight: 500;
     }
 
     .sl-markdown-content a:not([class]):hover {
-        text-decoration-color: var(--foreground);
+        color: var(--link-hover);
+        text-decoration-color: var(--link-hover);
     }
 
     /* paragraph styles */

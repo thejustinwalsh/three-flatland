@@ -1,92 +1,157 @@
 /*
- * starlight-theme tokens — base16 Materia (dark) paired with a cool-warm light variant.
+ * starlight-theme tokens — bearded-theme-inspired technicolor on near-black,
+ * with a paper-toned light variant. Gem-named accent palette is the design-
+ * system primitive; semantic tokens (primary, link, aside-*, sidebar-section-*)
+ * compose the gems for color-as-taxonomy.
  *
- * Token shape preserved from the lucode-starlight fork (foreground / gray-1..7 /
- * background / accent hues with low/regular/high variants). Values are the only
- * thing that changed. Colors are OKLCH for Tailwind v4 / wide-gamut compatibility.
+ * Palette inspiration: https://github.com/BeardedBear/bearded-theme/blob/master/src/variations/black.ts
  *
- * Reference for dark palette: https://github.com/Defman21/base16-materia-scheme
- *   base16 slot      role                       Materia hex   →  this token
- *   ─────────────────────────────────────────────────────────────────────────
- *   base00           default background          #263238           --background
- *   base01           lighter background          #2C393F           --gray-7
- *   base02           selection background        #37474F           --gray-6
- *   base03           comments / line-highlight   #707880           --gray-5
- *   base04           dark foreground             #C9CCD3           --gray-4
- *   base05           default foreground          #CDD3DE           --gray-3 / --foreground
- *   base06           light foreground            #D5D9E0           --gray-2
- *   base07           light background            #FFFFFF           --gray-1
- *   base08 (red)     errors / variables          #EC5F67           --red
- *   base09 (orange)  numerics / attrs            #EA9560           --orange
- *   base0A (yellow)  classes / matches           #FFCC00           (used for warning)
- *   base0B (green)   strings                     #8BD649           --green
- *   base0C (cyan)    regex / escape              #80CBC4           teal accent
- *   base0D (blue)    functions                   #89DDFF           --blue
- *   base0E (purple)  keywords                    #82AAFF           --purple
+ * Gem accents (dark mode) — OKLCH tuned for vibrance on near-black bg:
+ *   slot         hex source   lch              role
+ *   ─────────────────────────────────────────────────────────────────────
+ *   gold         #c7910c      72% 0.16 85      warm metallic — warning, foil moments
+ *   ruby         #c62f52      63% 0.21 12      deep saturated red — danger/key alerts
+ *   emerald      #00a884      72% 0.16 165     cool saturated green — success
+ *   diamond      #11b7d4      75% 0.15 215     bright cyan-blue — note/info, primary cool
+ *   amethyst     #a85ff1      63% 0.24 295     vibrant purple — primary accent
+ *   pink         #d46ec0      72% 0.17 340     hot pink — tip alt, special
+ *   salmon       #e35535      66% 0.20 35      warm coral — danger alt
+ *   turquoize    #38c7bd      78% 0.13 185     soft teal — secondary cool
+ *
+ * Each gem also has -low (background tint) and -high (emphasis) variants.
+ * Conventional names (blue/green/orange/red/yellow/purple) alias to the gem
+ * closest to that role so existing Starlight `--sl-color-*` token consumers
+ * pick up vibrant equivalents automatically.
  */
 
 @layer theme {
   :root[data-theme='dark'] {
-    /* base16 Materia gray scale (dark mode default) */
-    --foreground: oklch(86% 0.013 250);     /* base05 #CDD3DE */
-    --gray-1: oklch(99% 0 0);               /* base07 #FFFFFF */
-    --gray-2: oklch(87% 0.008 240);         /* base06 #D5D9E0 */
-    --gray-3: oklch(84% 0.013 250);         /* base05 #CDD3DE */
-    --gray-4: oklch(81% 0.011 250);         /* base04 #C9CCD3 */
-    --gray-5: oklch(54% 0.013 240);         /* base03 #707880 */
-    --gray-6: oklch(36% 0.014 222);         /* base02 #37474F */
-    --gray-7: oklch(31% 0.013 222);         /* base01 #2C393F */
-    --background: oklch(28% 0.014 222);     /* base00 #263238 */
+    /* Near-black background scale */
+    --background: oklch(18% 0.006 250);     /* ≈ #111418 */
+    --foreground: oklch(92% 0.008 250);     /* near-white, slight cool */
+    --gray-1: oklch(99% 0 0);
+    --gray-2: oklch(88% 0.008 240);
+    --gray-3: oklch(80% 0.010 245);
+    --gray-4: oklch(68% 0.011 250);
+    --gray-5: oklch(52% 0.012 245);
+    --gray-6: oklch(34% 0.012 245);
+    --gray-7: oklch(24% 0.010 250);
+    --gray-8: oklch(20% 0.008 250);
 
-    /* Materia accent hues — keyword color (base0E) is the primary accent */
-    --orange-low: oklch(38% 0.085 50);
-    --orange: oklch(73% 0.13 50);            /* base09 #EA9560 */
-    --orange-high: oklch(82% 0.10 50);
-    --green-low: oklch(38% 0.12 135);
-    --green: oklch(78% 0.17 135);            /* base0B #8BD649 */
-    --green-high: oklch(86% 0.12 135);
-    --blue-low: oklch(50% 0.08 220);
-    --blue: oklch(86% 0.07 220);             /* base0D #89DDFF */
-    --blue-high: oklch(91% 0.05 220);
-    --purple-low: oklch(38% 0.10 260);
-    --purple: oklch(72% 0.10 260);           /* base0E #82AAFF — primary accent */
-    --purple-high: oklch(82% 0.07 260);
-    --red-low: oklch(40% 0.13 18);
-    --red: oklch(68% 0.18 18);               /* base08 #EC5F67 */
-    --red-high: oklch(80% 0.10 18);
+    /* Gem-tinted soft surface backgrounds — for asides, cards, hovers.
+     * Each is the gem's hue at very low chroma, very low lightness,
+     * mixed near the base background so it reads as "this surface knows
+     * what color it is" without shouting. */
+    --gold-soft: oklch(20% 0.024 80);
+    --ruby-soft: oklch(20% 0.030 12);
+    --emerald-soft: oklch(20% 0.026 165);
+    --diamond-soft: oklch(20% 0.026 215);
+    --amethyst-soft: oklch(20% 0.030 295);
+    --pink-soft: oklch(20% 0.026 340);
+    --salmon-soft: oklch(20% 0.028 35);
+    --turquoize-soft: oklch(20% 0.022 185);
 
-    /* Yellow (base0A #FFCC00) used for warnings / heading badges */
-    --yellow: oklch(85% 0.16 88);
-    --yellow-low: oklch(40% 0.10 88);
-    --yellow-high: oklch(90% 0.13 88);
+    /* Gem accents — base / -low / -high triplets */
+    --gold-low: oklch(34% 0.10 80);
+    --gold: oklch(72% 0.16 85);
+    --gold-high: oklch(82% 0.17 88);
 
-    /* Teal (base0C #80CBC4) for secondary accent / regex / escape highlight */
-    --teal: oklch(78% 0.06 178);
-    --teal-low: oklch(40% 0.05 178);
-    --teal-high: oklch(85% 0.05 178);
+    --ruby-low: oklch(32% 0.13 12);
+    --ruby: oklch(63% 0.21 12);
+    --ruby-high: oklch(72% 0.20 14);
 
-    /* Semantic tokens — what components actually consume */
-    --primary: var(--purple);              /* primary accent: Materia keyword purple */
-    --primary-foreground: var(--gray-7);
-    --secondary: var(--gray-6);
+    --emerald-low: oklch(32% 0.10 165);
+    --emerald: oklch(72% 0.16 165);
+    --emerald-high: oklch(82% 0.16 168);
+
+    --diamond-low: oklch(36% 0.10 215);
+    --diamond: oklch(75% 0.15 215);
+    --diamond-high: oklch(85% 0.13 215);
+
+    --amethyst-low: oklch(34% 0.16 295);
+    --amethyst: oklch(63% 0.24 295);
+    --amethyst-high: oklch(75% 0.20 295);
+
+    --pink-low: oklch(34% 0.12 340);
+    --pink: oklch(72% 0.17 340);
+    --pink-high: oklch(82% 0.16 340);
+
+    --salmon-low: oklch(34% 0.12 35);
+    --salmon: oklch(66% 0.20 35);
+    --salmon-high: oklch(76% 0.18 35);
+
+    --turquoize-low: oklch(36% 0.08 185);
+    --turquoize: oklch(78% 0.13 185);
+    --turquoize-high: oklch(86% 0.11 185);
+
+    /* Conventional aliases — saturated blue/green/orange/red/yellow/purple
+     * map to the gem closest to that role so legacy --sl-color-* consumers
+     * inherit vibrance automatically. */
+    --blue-low: var(--diamond-low);
+    --blue: var(--diamond);
+    --blue-high: var(--diamond-high);
+    --green-low: var(--emerald-low);
+    --green: var(--emerald);
+    --green-high: var(--emerald-high);
+    --orange-low: var(--gold-low);
+    --orange: oklch(67% 0.18 60);          /* warmer than gold for orange semantics */
+    --orange-high: oklch(78% 0.17 62);
+    --red-low: var(--ruby-low);
+    --red: var(--ruby);
+    --red-high: var(--ruby-high);
+    --yellow-low: var(--gold-low);
+    --yellow: var(--gold);
+    --yellow-high: var(--gold-high);
+    --purple-low: var(--amethyst-low);
+    --purple: var(--amethyst);
+    --purple-high: var(--amethyst-high);
+    --teal: var(--turquoize);
+    --teal-low: var(--turquoize-low);
+    --teal-high: var(--turquoize-high);
+
+    /* Semantic tokens — what components consume. The gem palette is the
+     * design system primitive; these compose gems for specific roles. */
+    --primary: var(--amethyst);
+    --primary-foreground: var(--gray-1);
+    --secondary: var(--gray-7);
     --secondary-foreground: var(--foreground);
-    --muted: var(--gray-6);
+    --muted: var(--gray-7);
     --muted-foreground: var(--gray-4);
-    --accent: var(--purple-high);
-    --accent-foreground: var(--gray-7);
-    --border: var(--gray-6);
-    --input: var(--gray-6);
-    --ring: var(--purple);
-    --card: var(--background);
+    --accent: var(--amethyst-high);
+    --accent-foreground: var(--gray-1);
+    --border: oklch(28% 0.008 245);
+    --input: var(--gray-7);
+    --ring: var(--amethyst);
+    --card: oklch(20% 0.008 250);
     --card-foreground: var(--foreground);
     --popover-background: var(--gray-7);
     --popover-foreground: var(--foreground);
 
-    /* Starlight built-in color tokens — bridge into our Materia space so
-     * Starlight's own components (Asides, Cards, code blocks, link accents)
-     * inherit Materia hues instead of falling back to Starlight defaults. */
+    /* Distinct link tokens — links are NOT just foreground-with-underline. */
+    --link: var(--diamond);
+    --link-hover: var(--diamond-high);
+    --link-visited: var(--amethyst-high);
+
+    /* Sidebar section accents — top-level groups cycle through gems for
+     * section identity. The Sidebar override reads `--sidebar-section-{i}`
+     * via inline style or CSS counter; falls back to `--primary` if a
+     * deeper level is encountered. */
+    --sidebar-section-1: var(--amethyst);
+    --sidebar-section-2: var(--diamond);
+    --sidebar-section-3: var(--emerald);
+    --sidebar-section-4: var(--gold);
+    --sidebar-section-5: var(--pink);
+    --sidebar-section-6: var(--turquoize);
+    --sidebar-section-7: var(--salmon);
+
+    /* Card accent default — FeatureCard's `color="<gem>"` prop overrides
+     * via inline `--card-accent: var(--<gem>)`. */
+    --card-accent: var(--amethyst);
+
+    /* Starlight built-in color tokens — bridge the gem palette into
+     * Starlight's --sl-color-* system so its own components inherit vibrance. */
     --sl-color-text: var(--foreground);
-    --sl-color-text-accent: var(--primary);
+    --sl-color-text-accent: var(--link);
     --sl-color-bg: var(--background);
     --sl-color-bg-nav: var(--background);
     --sl-color-bg-sidebar: var(--background);
@@ -94,8 +159,8 @@
     --sl-color-hairline: var(--border);
     --sl-color-hairline-light: var(--gray-6);
     --sl-color-accent: var(--primary);
-    --sl-color-accent-low: var(--purple-low);
-    --sl-color-accent-high: var(--purple-high);
+    --sl-color-accent-low: var(--amethyst-low);
+    --sl-color-accent-high: var(--amethyst-high);
     --sl-color-blue: var(--blue);
     --sl-color-blue-low: var(--blue-low);
     --sl-color-blue-high: var(--blue-high);
@@ -117,64 +182,119 @@
   }
 
   :root[data-theme='light'] {
-    /* Materia is dark-only upstream; light variant pairs Materia accents
-     * with a cool-warm neutral scale. Background sits warmer than pure white
-     * to feel paper-like; accents desaturate slightly for WCAG AA contrast. */
-    --foreground: oklch(28% 0.014 222);     /* base00 #263238 */
-    --gray-1: oklch(20% 0.012 222);
-    --gray-2: oklch(28% 0.014 222);          /* base00 */
-    --gray-3: oklch(36% 0.014 222);          /* base02 */
-    --gray-4: oklch(45% 0.013 230);
-    --gray-5: oklch(60% 0.012 240);
-    --gray-6: oklch(82% 0.008 250);
-    --gray-7: oklch(94% 0.005 250);
-    --background: oklch(98.5% 0.003 240);   /* cool-warm paper */
+    /* Paper-toned background — slightly warm so saturated accents feel like
+     * pigment on paper, not pixels on a flat plane. */
+    --background: oklch(98% 0.008 80);
+    --foreground: oklch(20% 0.010 250);
+    --gray-1: oklch(15% 0.010 250);
+    --gray-2: oklch(22% 0.012 250);
+    --gray-3: oklch(34% 0.012 245);
+    --gray-4: oklch(48% 0.012 245);
+    --gray-5: oklch(62% 0.011 240);
+    --gray-6: oklch(82% 0.010 240);
+    --gray-7: oklch(94% 0.008 80);
+    --gray-8: oklch(96% 0.006 80);
 
-    /* Same hues, deeper saturation/darker for contrast on light bg */
-    --orange-low: oklch(95% 0.05 50);
-    --orange: oklch(58% 0.16 50);
-    --orange-high: oklch(48% 0.18 50);
-    --green-low: oklch(95% 0.06 135);
-    --green: oklch(48% 0.17 135);
-    --green-high: oklch(40% 0.18 135);
-    --blue-low: oklch(95% 0.04 220);
-    --blue: oklch(50% 0.16 220);
-    --blue-high: oklch(40% 0.18 220);
-    --purple-low: oklch(96% 0.04 260);
-    --purple: oklch(50% 0.18 260);          /* primary accent */
-    --purple-high: oklch(40% 0.20 260);
-    --red-low: oklch(95% 0.05 18);
-    --red: oklch(50% 0.20 18);
-    --red-high: oklch(42% 0.22 18);
+    /* Gem-tinted soft surface backgrounds — subtle tints on warm paper. */
+    --gold-soft: oklch(96% 0.040 85);
+    --ruby-soft: oklch(96% 0.030 12);
+    --emerald-soft: oklch(96% 0.030 165);
+    --diamond-soft: oklch(96% 0.028 215);
+    --amethyst-soft: oklch(96% 0.034 295);
+    --pink-soft: oklch(96% 0.030 340);
+    --salmon-soft: oklch(96% 0.032 35);
+    --turquoize-soft: oklch(96% 0.026 185);
 
-    --yellow-low: oklch(95% 0.10 88);
-    --yellow: oklch(58% 0.18 88);
-    --yellow-high: oklch(48% 0.20 88);
+    /* Gem accents — same hues, deeper saturation/darker for paper bg */
+    --gold-low: oklch(94% 0.06 85);
+    --gold: oklch(58% 0.18 80);
+    --gold-high: oklch(48% 0.20 78);
 
-    --teal-low: oklch(95% 0.04 178);
-    --teal: oklch(45% 0.10 178);
-    --teal-high: oklch(38% 0.12 178);
+    --ruby-low: oklch(94% 0.05 12);
+    --ruby: oklch(50% 0.22 12);
+    --ruby-high: oklch(42% 0.24 14);
+
+    --emerald-low: oklch(94% 0.05 165);
+    --emerald: oklch(54% 0.18 165);
+    --emerald-high: oklch(45% 0.20 168);
+
+    --diamond-low: oklch(94% 0.05 215);
+    --diamond: oklch(56% 0.18 215);
+    --diamond-high: oklch(46% 0.20 215);
+
+    --amethyst-low: oklch(94% 0.06 295);
+    --amethyst: oklch(50% 0.26 295);
+    --amethyst-high: oklch(42% 0.28 295);
+
+    --pink-low: oklch(94% 0.05 340);
+    --pink: oklch(58% 0.20 340);
+    --pink-high: oklch(48% 0.22 340);
+
+    --salmon-low: oklch(94% 0.05 35);
+    --salmon: oklch(56% 0.22 35);
+    --salmon-high: oklch(48% 0.24 35);
+
+    --turquoize-low: oklch(94% 0.04 185);
+    --turquoize: oklch(54% 0.14 185);
+    --turquoize-high: oklch(44% 0.16 185);
+
+    /* Conventional aliases */
+    --blue-low: var(--diamond-low);
+    --blue: var(--diamond);
+    --blue-high: var(--diamond-high);
+    --green-low: var(--emerald-low);
+    --green: var(--emerald);
+    --green-high: var(--emerald-high);
+    --orange-low: var(--gold-low);
+    --orange: oklch(56% 0.20 60);
+    --orange-high: oklch(46% 0.22 60);
+    --red-low: var(--ruby-low);
+    --red: var(--ruby);
+    --red-high: var(--ruby-high);
+    --yellow-low: var(--gold-low);
+    --yellow: var(--gold);
+    --yellow-high: var(--gold-high);
+    --purple-low: var(--amethyst-low);
+    --purple: var(--amethyst);
+    --purple-high: var(--amethyst-high);
+    --teal: var(--turquoize);
+    --teal-low: var(--turquoize-low);
+    --teal-high: var(--turquoize-high);
 
     /* Semantic tokens, light variants */
-    --primary: var(--purple);
+    --primary: var(--amethyst);
     --primary-foreground: var(--background);
     --secondary: var(--gray-7);
     --secondary-foreground: var(--gray-1);
     --muted: var(--gray-7);
     --muted-foreground: var(--gray-4);
-    --accent: var(--purple-high);
+    --accent: var(--amethyst-high);
     --accent-foreground: var(--background);
-    --border: var(--gray-6);
-    --input: var(--gray-6);
-    --ring: var(--purple);
+    --border: oklch(88% 0.008 240);
+    --input: var(--gray-7);
+    --ring: var(--amethyst);
     --card: var(--background);
     --card-foreground: var(--foreground);
     --popover-background: var(--background);
     --popover-foreground: var(--foreground);
 
-    /* Starlight built-in color tokens — same bridge as dark, light values */
+    --link: var(--diamond);
+    --link-hover: var(--diamond-high);
+    --link-visited: var(--amethyst-high);
+
+    --sidebar-section-1: var(--amethyst);
+    --sidebar-section-2: var(--diamond);
+    --sidebar-section-3: var(--emerald);
+    --sidebar-section-4: var(--gold);
+    --sidebar-section-5: var(--pink);
+    --sidebar-section-6: var(--turquoize);
+    --sidebar-section-7: var(--salmon);
+
+    --card-accent: var(--amethyst);
+
+    /* Starlight built-in color tokens — light mode bridge */
     --sl-color-text: var(--foreground);
-    --sl-color-text-accent: var(--primary);
+    --sl-color-text-accent: var(--link);
     --sl-color-bg: var(--background);
     --sl-color-bg-nav: var(--background);
     --sl-color-bg-sidebar: var(--background);
@@ -182,8 +302,8 @@
     --sl-color-hairline: var(--border);
     --sl-color-hairline-light: var(--gray-6);
     --sl-color-accent: var(--primary);
-    --sl-color-accent-low: var(--purple-low);
-    --sl-color-accent-high: var(--purple-high);
+    --sl-color-accent-low: var(--amethyst-low);
+    --sl-color-accent-high: var(--amethyst-high);
     --sl-color-blue: var(--blue);
     --sl-color-blue-low: var(--blue-low);
     --sl-color-blue-high: var(--blue-high);

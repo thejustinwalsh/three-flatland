@@ -1,30 +1,44 @@
 ---
 /**
- * FeatureCard — restrained, token-driven card for the landing page feature
- * grid. Distilled from the original retro-themed variant explosion to a
- * single quiet treatment that lets the icon + title carry the differentiation
- * (Design Context principle: density without noise; quiet layout, expressive
- * details).
+ * FeatureCard — gem-accented card for the landing page feature grid.
  *
- * The legacy `color` prop is accepted but ignored; existing MDX call sites
- * that still pass it continue to compile, and we remove the prop from call
- * sites incrementally without an MDX-wide sweep.
+ * Pass `color="<gem>"` to anchor the card to a specific accent from the
+ * design system's gem palette: gold, ruby, emerald, diamond, amethyst,
+ * pink, salmon, turquoize. The accent drives the icon hue, hover border,
+ * and a soft tint behind the surface (per Design Context: color-as-taxonomy,
+ * cards opt into the palette).
+ *
+ * Without `color`, the card falls back to `--primary` (amethyst) so plain
+ * `<FeatureCard title="…">` calls render coherently against the rest of
+ * the design system without forcing every author to pick a gem.
  */
 import Icon from './Icon.astro'
+
+type Gem =
+  | 'gold'
+  | 'ruby'
+  | 'emerald'
+  | 'diamond'
+  | 'amethyst'
+  | 'pink'
+  | 'salmon'
+  | 'turquoize'
 
 interface Props {
   icon?: string
   title: string
-  /** @deprecated Retained for backward-compat with existing MDX. Ignored. */
-  color?: string
+  /** Gem accent — picks from the design-system palette. Defaults to `--primary`. */
+  color?: Gem
   stat?: string
   statLabel?: string
 }
 
-const { icon, title, stat, statLabel } = Astro.props
+const { icon, title, color, stat, statLabel } = Astro.props
+
+const accentStyle = color ? `--card-accent: var(--${color});` : undefined
 ---
 
-<article class="feature-card" data-sound="card">
+<article class="feature-card" data-sound="card" data-gem={color} style={accentStyle}>
   {icon && (
     <span class="icon-wrap" aria-hidden="true">
       <Icon name={icon} size="1.5rem" />
@@ -48,18 +62,20 @@ const { icon, title, stat, statLabel } = Astro.props
     gap: calc(var(--spacing) * 3);
     padding: calc(var(--spacing) * 5) calc(var(--spacing) * 5)
       calc(var(--spacing) * 6);
-    background-color: color-mix(in oklab, var(--card) 96%, var(--primary));
+    background-color: color-mix(in oklab, var(--card) 92%, var(--card-accent, var(--primary)));
     border: 1px solid var(--border);
     border-radius: calc(var(--radius) - 2px);
     transition:
       border-color 180ms ease,
       transform 180ms ease,
-      background-color 180ms ease;
+      background-color 180ms ease,
+      box-shadow 180ms ease;
   }
 
   .feature-card:hover {
-    border-color: color-mix(in oklab, var(--primary) 35%, var(--border));
+    border-color: color-mix(in oklab, var(--card-accent, var(--primary)) 45%, var(--border));
     transform: translateY(-2px);
+    box-shadow: 0 8px 24px -12px color-mix(in oklab, var(--card-accent, var(--primary)) 35%, transparent);
   }
 
   .icon-wrap {
@@ -69,8 +85,8 @@ const { icon, title, stat, statLabel } = Astro.props
     width: 2.25rem;
     height: 2.25rem;
     border-radius: calc(var(--radius) - 4px);
-    background-color: color-mix(in oklab, var(--primary) 12%, transparent);
-    color: var(--primary);
+    background-color: color-mix(in oklab, var(--card-accent, var(--primary)) 18%, transparent);
+    color: var(--card-accent, var(--primary));
   }
 
   .title {

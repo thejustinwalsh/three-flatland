@@ -43,7 +43,11 @@ export default defineConfig({
       codeblock: true,
       extractSafelist: true,
       starlight: {
-        title: 'three-flatland',
+        // Visual brand is "flatland" (set in Silkscreen by SiteTitle override).
+        // The npm package, README, and install commands stay "three-flatland"
+        // for SEO and Three.js / R3F ecosystem discoverability — see Design
+        // Context (CLAUDE.md > Naming).
+        title: 'flatland',
         logo: {
           src: './src/assets/icon.svg',
         },
@@ -221,8 +225,11 @@ export default defineConfig({
           Head: './src/components/Head.astro',
         },
         customCss: [
-          // Fontsource fonts per Design Context — Public Sans / Inter /
-          // JetBrains Mono / Commit Mono. All bundled locally.
+          // Fontsource fonts per Design Context — Silkscreen (wordmark only),
+          // Public Sans (headings), Inter (UI/nav), JetBrains Mono (prose),
+          // Commit Mono (code). All bundled locally.
+          '@fontsource/silkscreen/400.css',
+          '@fontsource/silkscreen/700.css',
           '@fontsource/public-sans/400.css',
           '@fontsource/public-sans/500.css',
           '@fontsource/public-sans/600.css',

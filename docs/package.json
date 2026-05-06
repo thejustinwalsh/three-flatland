@@ -16,6 +16,7 @@
     "@fontsource/inter": "^5.2.8",
     "@fontsource/jetbrains-mono": "^5.2.8",
     "@fontsource/public-sans": "^5.2.7",
+    "@fontsource/silkscreen": "^5.2.5",
     "@iconify-json/lucide": "^1.2.105",
     "@iconify-json/material-icon-theme": "^1.2.62",
     "@iconify/utils": "^3.1.1",

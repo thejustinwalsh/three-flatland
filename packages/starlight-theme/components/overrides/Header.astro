@@ -45,15 +45,19 @@ const shouldRenderSearch =
         }
     }
 
-    /* Wordmark — Public Sans display weight, slightly tinted toward the
-     * primary accent for subconscious cohesion (Design Context principle).
-     * Letter-spacing tightened so the wordmark feels designed, not pasted. */
+    /* Wordmark — Silkscreen pixel font for the "flatland" brand mark.
+     * Sit slightly raised so the pixel baseline aligns with the icon's
+     * visual center, not its em box. Color leans toward the primary gem
+     * accent so the wordmark feels of-a-piece with the link/CTA palette. */
     .site-title-wrapper :global(.title-text) {
-        font-family: 'Public Sans', system-ui, sans-serif;
-        font-weight: 600;
-        font-size: 0.95rem;
-        letter-spacing: -0.01em;
-        color: color-mix(in oklab, var(--foreground) 92%, var(--primary));
+        font-family: 'Silkscreen', system-ui, sans-serif;
+        font-weight: 400;
+        font-size: 1rem;
+        letter-spacing: 0;
+        color: var(--foreground);
+        line-height: 1;
+        position: relative;
+        top: 1px;
     }
 
     .header-right {
