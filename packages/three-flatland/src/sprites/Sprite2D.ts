@@ -234,6 +234,20 @@ export class Sprite2D extends Mesh {
    */
   private _shadowRadius: number | undefined = undefined
 
+  /**
+   * Per-sprite occluder radius (world units) consumed by shadow-casting
+   * LightEffects — e.g. {@link DefaultLightEffect}'s SDF sphere-tracer
+   * uses it as the self-silhouette escape distance so a tracer launched
+   * from inside the caster steps out cleanly.
+   *
+   * Returns `undefined` while in auto-resolve mode (default), in which
+   * case `transformSyncSystem` writes `max(|scale.x|, |scale.y|)` into
+   * the per-instance attribute each frame — covering animation frames
+   * and runtime scale changes without manual updates. Assign a number
+   * to override (useful when the visible body is tighter than the
+   * quad's bounds, or when an off-center anchor pushes the silhouette).
+   * Assign `undefined` to return to auto-resolve.
+   */
   get shadowRadius(): number | undefined {
     return this._shadowRadius
   }
@@ -287,7 +301,7 @@ export class Sprite2D extends Mesh {
   // ============================================
 
   /**
-   * System-flag bitmask written to `effectBuf0.x`.
+   * System-flag bitmask written to `instanceSystem.z`.
    *
    * Bits:
    *   0 — lit             (default on)
@@ -296,13 +310,13 @@ export class Sprite2D extends Mesh {
    *   3..23 — reserved for future system flags
    *
    * MaterialEffect enable bits live in a separate field
-   * ({@link _effectEnableBits}) written to `effectBuf0.y`.
+   * ({@link _effectEnableBits}) written to `instanceSystem.w`.
    * @internal
    */
   _effectFlags: number = LIT_FLAG_MASK | RECEIVE_SHADOWS_MASK
 
   /**
-   * MaterialEffect enable-bit bitmask written to `effectBuf0.y`.
+   * MaterialEffect enable-bit bitmask written to `instanceSystem.w`.
    *
    * Bit N is set while the Nth registered MaterialEffect on this sprite's
    * material is currently active. 24 slots, bits 0..23. Separate from
@@ -586,8 +600,8 @@ export class Sprite2D extends Mesh {
 
   /**
    * Push the resolved shadow radius to the enrolled SpriteBatch's
-   * `effectBuf0.z`. Used when `shadowRadius` is imperatively set by
-   * user code; the per-frame `transformSyncSystem` also writes this
+   * `instanceExtras.x`. Used when `shadowRadius` is imperatively set
+   * by user code; the per-frame `transformSyncSystem` also writes this
    * value as part of the transform sync so scale-driven auto values
    * stay in lockstep with `instanceMatrix`.
    * @internal
@@ -1117,7 +1131,7 @@ export class Sprite2D extends Mesh {
         }
       }
 
-      // Set enable bit (lives in effectBuf0.y, indexed from bit 0)
+      // Set enable bit (lives in instanceSystem.w, indexed from bit 0)
       const bitIndex = this.material._effectBitIndex.get(EffectClass.effectName)!
       this._effectEnableBits |= (1 << bitIndex)
 
@@ -1150,7 +1164,7 @@ export class Sprite2D extends Mesh {
     // 2. Link effect to this sprite's entity
     effect._attach(this)
 
-    // 3. Set enable bit (effectBuf0.y)
+    // 3. Set enable bit (instanceSystem.w)
     const bitIndex = material._effectBitIndex.get(EffectClass.effectName)!
     this._effectEnableBits |= (1 << bitIndex)
 
@@ -1190,7 +1204,7 @@ export class Sprite2D extends Mesh {
     const effectIndex = this._effects.indexOf(effect)
     if (effectIndex === -1) return this
 
-    // 1. Clear enable bit (effectBuf0.y)
+    // 1. Clear enable bit (instanceSystem.w)
     const bitIndex = material._effectBitIndex.get(EffectClass.effectName)!
     this._effectEnableBits &= ~(1 << bitIndex)
 

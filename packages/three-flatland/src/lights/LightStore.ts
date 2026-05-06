@@ -67,8 +67,26 @@ export class LightStore {
   private _lightsTextureNode: Node<'vec4'>
   private _countNode: UniformNode<'float', number>
 
+  /**
+   * @param options - Optional configuration.
+   * @param options.maxLights - Maximum lights this store can hold.
+   *   Default `1024` (raised from the previous `256`). The Forward+
+   *   tile-assignment path indexes the lights array directly, so any
+   *   light past this cap reads zeros in the shader and contributes
+   *   nothing — bump it for scenes with more concurrent lights than
+   *   the default. Memory cost is `maxLights × 64` bytes CPU + GPU.
+   */
   constructor(options?: { maxLights?: number }) {
-    this.maxLights = options?.maxLights ?? 256
+    // 1024 covers a 1000-slime cosmetic-fill scene plus the ~tens of
+    // hero lights typical of a level. Bumped from 256 because Forward+
+    // tile assignment uses the lights array's index directly — any
+    // light past `maxLights` gets assigned to tiles by index but reads
+    // out-of-bounds in the shader (WebGPU returns 0, so the fragment
+    // sees `lightEnabled = 0` and contributes nothing). Symptom: tiles
+    // whose slot winners happen to land on those high-index lights go
+    // dark in dense fill scenes. Memory cost: 1024 × 4 rows × 16 bytes
+    // = 64 KB CPU + 64 KB GPU, trivial.
+    this.maxLights = options?.maxLights ?? 1024
 
     // DataTexture: width=maxLights, height=4 rows, RGBA float
     const dataSize = this.maxLights * 4 * 4 // 4 rows x 4 channels x maxLights

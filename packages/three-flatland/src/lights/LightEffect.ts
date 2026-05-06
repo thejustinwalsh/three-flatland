@@ -79,6 +79,15 @@ export interface LightEffectRuntimeContext {
 // Forward-declare Flatland to avoid circular import
 interface FlatlandLike {
   _markLightingDirty(): void
+  /**
+   * Re-run the attached LightEffect's `_buildLightFn` to capture
+   * fresh constant values, re-wrap the result, and push it to every
+   * lit material. Called from a writable LightEffect constant's
+   * setter — does nothing if no LightEffect is currently attached.
+   * Coalesced (one rebuild per microtask flush) inside the
+   * implementation.
+   */
+  _rebuildLightFn?: () => void
 }
 
 // Uniform node storage type — union of all possible uniform node types
@@ -292,15 +301,56 @@ export abstract class LightEffect {
       }
     }
 
-    // Initialize constant fields — call factory, store value, define read-only property
+    // Initialize constant fields — call factory, store value, define
+    // property accessor.
+    //
+    // Primitive (boolean/number/string) constants get a writable
+    // accessor so dev UIs can drive shader-graph rebuilds at
+    // runtime. Setting clears the cached `_lightFn` and asks
+    // Flatland to re-run `_buildLightFn`. Object/function constants
+    // (e.g. `forwardPlus: () => new ForwardPlusLighting()`) stay
+    // read-only — replacing them would orphan GPU resources.
     for (const [name, factory] of Object.entries(ctor._constantFactories)) {
       const value = factory()
       this._constants[name] = value
-      Object.defineProperty(this, name, {
-        get: () => this._constants[name],
-        enumerable: true,
-        configurable: true,
-      })
+      const t = typeof value
+      const isWritable = t === 'boolean' || t === 'number' || t === 'string'
+      if (isWritable) {
+        Object.defineProperty(this, name, {
+          get: () => this._constants[name],
+          set: (v: unknown) => {
+            if (this._constants[name] === v) return
+            this._constants[name] = v
+            this._dirty = true
+            // Cached `_lightFn` captures the previous constants by
+            // closure. Without invalidation, the rebuild would hand
+            // the stale closure back to every material and the
+            // identity-equal `colorTransform` setter would early-out.
+            this._lightFn = null
+            // Dev signal: lighting compile-time constants change the
+            // shader graph and trigger a WebGPU pipeline recompile
+            // (~50-500ms on first frame after the change). For
+            // runtime-tuned values, prefer uniform schema fields.
+            // One warn per actual change — synchronous batches
+            // coalesce into a single rebuild via Flatland but each
+            // setter still logs so the source is traceable.
+            // eslint-disable-next-line no-console
+            console.warn(
+              `[three-flatland] ${ctor.lightName}.${name} changed at runtime — triggers shader rebuild`
+            )
+            this._onDirty?.()
+            this._flatland?._rebuildLightFn?.()
+          },
+          enumerable: true,
+          configurable: true,
+        })
+      } else {
+        Object.defineProperty(this, name, {
+          get: () => this._constants[name],
+          enumerable: true,
+          configurable: true,
+        })
+      }
     }
   }
 

@@ -164,28 +164,45 @@ export class TileLayer extends Group {
     if (!mapping) return
     const chunk = this.chunks.get(mapping.chunkKey)
     if (!chunk) return
-    const eb0 = chunk.effectBufs.get('effectBuf0')
-    if (!eb0) return
-    const off = mapping.instanceIndex * 4
-    if (value) {
-      eb0[off] = (eb0[off] ?? 0) | CAST_SHADOW_MASK
-    } else {
-      eb0[off] = (eb0[off] ?? 0) & ~CAST_SHADOW_MASK
-    }
-    const attr = chunk.mesh.geometry.getAttribute('effectBuf0') as InstancedBufferAttribute
-    attr.needsUpdate = true
+    // System flags live in the interleaved core buffer at
+    // `instanceSystem.z` (offset 10 within the 16-float stride). The
+    // post-interleaved-refactor shader (`readCastShadowFlag`) reads
+    // them from there; writing into `effectBuf0` is a no-op the
+    // shader can't see, and `effectBuf0` may not even exist on the
+    // chunk's geometry (only allocated when an effect needs it).
+    const off = mapping.instanceIndex * 16 + 10
+    const prev = chunk.instanceData[off] ?? 0
+    chunk.instanceData[off] = value
+      ? prev | CAST_SHADOW_MASK
+      : prev & ~CAST_SHADOW_MASK
+    // Mark the underlying InstancedInterleavedBuffer dirty — every
+    // interleaved attribute (instanceUV/Color/System/Extras) shares
+    // the same buffer, so one needsUpdate flag covers all of them.
+    const attr = chunk.mesh.geometry.getAttribute('instanceSystem') as InterleavedBufferAttribute
+    attr.data.needsUpdate = true
   }
 
   private _syncEffectFlagsToChunks(): void {
-    const flags = this._effectFlags
+    // Only touch the bits the layer actually owns (`lit` /
+    // `receiveShadows`). `castsShadow` is set per-tile by
+    // `setCastsShadowAt` (driven by `markOccluders`) and would be
+    // wiped if we did a wholesale write of the layer-level flags
+    // word — toggling `layer.lit` after marking wall occluders
+    // would silently un-mark them. Mask carves out the layer's
+    // bits and merges them into each tile's existing flag word so
+    // per-tile state survives layer-level toggles.
+    const layerMask = LIT_FLAG_MASK | RECEIVE_SHADOWS_MASK
+    const layerBits = this._effectFlags & layerMask
+    const preserveMask = ~layerMask
     for (const chunk of this.chunks.values()) {
-      const eb0 = chunk.effectBufs.get('effectBuf0')
-      if (!eb0) continue
+      const data = chunk.instanceData
       for (let i = 0; i < chunk.instanceCount; i++) {
-        eb0[i * 4] = flags
+        const off = i * 16 + 10
+        const prev = data[off] ?? 0
+        data[off] = (prev & preserveMask) | layerBits
       }
-      const attr = chunk.mesh.geometry.getAttribute('effectBuf0') as InstancedBufferAttribute
-      attr.needsUpdate = true
+      const attr = chunk.mesh.geometry.getAttribute('instanceSystem') as InterleavedBufferAttribute
+      attr.data.needsUpdate = true
     }
   }
 

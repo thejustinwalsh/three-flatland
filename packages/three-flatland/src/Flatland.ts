@@ -917,6 +917,65 @@ export class Flatland extends Group implements WorldProvider {
     }
   }
 
+  // ─── Shader rebuild ────────────────────────────────────────────────
+  /**
+   * Pending-rebuild guard. Coalesces multiple synchronous setter
+   * calls inside one tick into a single `_doRebuildLightFn` run.
+   * Without this, flipping N constants at once would trigger N
+   * full TSL graph rebuilds.
+   */
+  private _shaderRebuildPending = false
+
+  /**
+   * Re-run the attached LightEffect's `_buildLightFn` and push the
+   * fresh closure to every tracked lit material. Called from a
+   * writable LightEffect constant setter when a compile-time toggle
+   * changes (e.g. `glowEnabled`, `bandsEnabled`).
+   *
+   * Coalesces via microtask: the first call schedules, subsequent
+   * synchronous calls are no-ops, the microtask runs once and reads
+   * the latest constant values.
+   *
+   * @internal
+   */
+  _rebuildLightFn(): void {
+    if (this._shaderRebuildPending) return
+    this._shaderRebuildPending = true
+    queueMicrotask(() => {
+      this._shaderRebuildPending = false
+      this._doRebuildLightFn()
+    })
+  }
+
+  private _doRebuildLightFn(): void {
+    const lightEffect = this._lightEffect
+    if (!lightEffect || !this._lightStore || !this._lightingContextEntity) return
+    const lctx = this._lightingContextEntity.get(LightingContext)
+    if (!lctx) return
+
+    let sdfTexture: Texture | null = null
+    const ctor = lightEffect.constructor as typeof LightEffect
+    if (ctor.needsShadows && this._shadowPipelineEntity) {
+      const pipeline = this._shadowPipelineEntity.get(ShadowPipeline)
+      if (pipeline?.sdfGenerator) sdfTexture = pipeline.sdfGenerator.sdfTexture
+    }
+
+    const fn = lightEffect._buildLightFn(
+      this._lightStore,
+      this._worldSizeUniform,
+      this._worldOffsetUniform,
+      sdfTexture,
+    )
+    const wrappedLightFn = wrapWithLightFlags(fn)
+    lctx.wrappedLightFn = wrappedLightFn
+    // requiredChannels is `ctor.requires`, static readonly — never
+    // changes between rebuilds. Don't reassign or the
+    // `requiredChannels` setter on each material runs an extra
+    // `_rebuildColorNode` (paired with the `colorTransform` setter's
+    // own rebuild = double TSL build per material per push).
+    lctx.dirty = true
+  }
+
   /**
    * Ensure the LightingContext singleton entity exists.
    */

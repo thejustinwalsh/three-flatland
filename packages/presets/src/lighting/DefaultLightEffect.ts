@@ -35,7 +35,7 @@ import { shadowSDF2D } from '@three-flatland/nodes/lighting'
  * lighting.bands = 4 // cel-shading
  * ```
  */
-export const DefaultLightEffect = createLightEffect({
+const _DefaultLightEffect = createLightEffect({
   name: 'defaultLight',
   schema: {
     // Uniforms (runtime-settable, TSL nodes)
@@ -71,12 +71,62 @@ export const DefaultLightEffect = createLightEffect({
     glowIntensity: 0,
     lightHeight: 0.75,
     rimIntensity: 0,
-    rimPower: 2,
-    // How strongly the direct-light contribution is attenuated for
-    // "camera-facing" fragments (where normal.z ≈ 1).
-    capShadowStrength: 0,
-    // Threshold above which a fragment counts as a "cap" for the gate.
-    capShadowThreshold: 0.9,
+    // ── Scene-style compile-time constants ──────────────────────────
+    // These gate optional shader code paths via JS-time `if`s in the
+    // build function. Setting them re-emits the lighting shader, so
+    // toggling at runtime is fine for dev tuning but hitchy. The
+    // payoff is real: the dead branches never reach the GPU, so a
+    // scene that doesn't use glow/rim/snap pays zero ops for them.
+    /**
+     * Enable broad-falloff "glow" added to point/spot attenuation.
+     * Off by default — saves ~9 ops per light per fragment when off
+     * (no `useGlow.select`, no broad-atten chain). When on, the
+     * `glowRadius` and `glowIntensity` uniforms tune the look.
+     */
+    glowEnabled: () => false,
+    /**
+     * Enable rim-lighting accumulator. Off by default — saves ~6 ops
+     * per light per fragment plus drops the `pow(1-NdotL, 2)` from
+     * the inner loop. When on, `rimIntensity` tunes the strength.
+     * Rim power is fixed at 2 (a single multiply); the prior
+     * `rimPower` uniform was removed because no realistic project
+     * needs to slide it at runtime.
+     */
+    rimEnabled: () => false,
+    /**
+     * Enable surface-position snapping for the lighting math (cel-
+     * style chunky cells). Off by default — saves ~4 ops per
+     * fragment when off. When on, the `pixelSize` uniform sets the
+     * cell width.
+     */
+    pixelSnapEnabled: () => false,
+    /**
+     * Enable surface-position snapping for the shadow trace origin.
+     * Off by default — saves ~4 ops per shadow trace when off. When
+     * on, the `shadowPixelSize` uniform sets the cell width.
+     */
+    shadowPixelSnapEnabled: () => false,
+    /**
+     * Enable cel-band quantization of the direct-light contribution.
+     * On by default (matches typical Flatland aesthetic). Saves ~5
+     * ops per fragment when off. When on, the `bands` uniform sets
+     * the count.
+     *
+     * **Brightness perception note**: the cel formula
+     * `floor(x*N + 0.5)/N` is mean-preserving over `[0,1]` but
+     * specifically rounds mid-tones up to the next quantization step.
+     * That boost is *visible* (mid-tones popping) while the
+     * compensating darkenings happen at very low values where they
+     * read as "still black." Net perceptual effect: cel mode looks
+     * BRIGHTER than smooth mode for the same physical scene values.
+     * Disabling cel reveals the actual physical math, which can read
+     * as "dimmer" — that's the calibration you implicitly built up
+     * with cel on. If you want intensity parity across the toggle,
+     * raise scene intensities (torches, slime fills, ambient) to
+     * compensate; the smooth branch is doing nothing wrong, the cel
+     * branch was just inflating mid-tones.
+     */
+    bandsEnabled: () => true,
     // Constants (per-instance, read-only reference, mutable internals)
     forwardPlus: () => new ForwardPlusLighting(),
   } as const,
@@ -91,12 +141,17 @@ export const DefaultLightEffect = createLightEffect({
     const bands = uniforms.bands
     const pixelSize = uniforms.pixelSize
     const glowRadius = uniforms.glowRadius
-    const capShadowStrength = uniforms.capShadowStrength
-    const capShadowThreshold = uniforms.capShadowThreshold
     const glowIntensity = uniforms.glowIntensity
     const lightHeight = uniforms.lightHeight
     const rimIntensity = uniforms.rimIntensity
-    const rimPower = uniforms.rimPower
+
+    // Compile-time toggles — bind once here so the build function's
+    // JS branches read the same values throughout.
+    const glowEnabled = constants.glowEnabled
+    const rimEnabled = constants.rimEnabled
+    const pixelSnapEnabled = constants.pixelSnapEnabled
+    const shadowPixelSnapEnabled = constants.shadowPixelSnapEnabled
+    const bandsEnabled = constants.bandsEnabled
 
     const fp = constants.forwardPlus
     const tileLookup = fp.createTileLookup()
@@ -112,9 +167,23 @@ export const DefaultLightEffect = createLightEffect({
     return (ctx) => {
       return Fn(() => {
         const rawPos = ctx.worldPosition
-        const usePixelSnap = pixelSize.greaterThan(float(0))
-        const snappedPos = vec2(rawPos).div(pixelSize).floor().mul(pixelSize)
-        const surfacePos = usePixelSnap.select(snappedPos, vec2(rawPos))
+        // JS-time gate. When `pixelSnapEnabled` is false, the snap
+        // math doesn't reach the shader at all — a scene without
+        // pixel-snapped lighting pays zero ops here.
+        //
+        // `pixelSize.max(1)` guards against a transitional frame
+        // where the slider has hit 0 (driving the JS gate to false)
+        // but the old pipeline (still gated true) is still bound on
+        // the GPU. Without the guard, `div(0)` produces NaN for the
+        // few frames before WebGPU finishes compiling the new
+        // pipeline, and NaN on dynamically-buffered meshes (sprites)
+        // sticks bind state black even after the new pipeline lands.
+        // Same pattern below for `shadowPixelSize`, `bands`, and
+        // `glowRadius` — all divisors that the slider can drive to
+        // zero exactly when the gate flips.
+        const surfacePos = pixelSnapEnabled
+          ? vec2(rawPos).div(pixelSize.max(float(1))).floor().mul(pixelSize)
+          : vec2(rawPos)
         // Two direct-light accumulators. `totalLightLit` ignores shadow
         // (so `bands` quantization below can stair-step the direct
         // gradient without stepping the shadow edge); `totalLightShaded`
@@ -122,7 +191,10 @@ export const DefaultLightEffect = createLightEffect({
         // shadow scalar that is applied AFTER cel-band quantization.
         const totalLightLit = vec3(0, 0, 0).toVar('totalLightLit')
         const totalLightShaded = vec3(0, 0, 0).toVar('totalLightShaded')
-        const totalRim = vec3(0, 0, 0).toVar('totalRim')
+        // Rim accumulator is only needed when rim is enabled at build
+        // time. Skipping the var when off avoids both the per-light
+        // accumulation and the final `useRim.select` mix.
+        const totalRim = rimEnabled ? vec3(0, 0, 0).toVar('totalRim') : null
 
         // Compute tile index from world position
         const screenPos = surfacePos
@@ -163,14 +235,24 @@ export const DefaultLightEffect = createLightEffect({
           const normalizedDist = dist.div(effectiveDistance).clamp(0, 1)
           const sharpAtten = float(1).sub(normalizedDist.pow(lightDecay)).clamp(0, 1)
 
-          // Broad glow
-          const useGlow = glowRadius.greaterThan(float(0))
-          const glowDist = dist.div(effectiveDistance.mul(glowRadius)).clamp(0, 1)
-          const broadAtten = float(1).sub(glowDist).clamp(0, 1)
-          const pointAtten = useGlow.select(
-            sharpAtten.add(broadAtten.mul(glowIntensity)).clamp(0, 1),
-            sharpAtten
-          )
+          // Broad glow — JS-time gate. When disabled, the entire
+          // broad-falloff chain (div, sub, clamps, the select) is
+          // dropped from the shader — biggest single per-light win
+          // when off because it's ~9 ops × N lights × every fragment.
+          // `glowRadius.max(1e-3)` keeps the divisor non-zero across
+          // the transitional frame where the slider has hit 0 but
+          // the old pipeline (with glowEnabled=true baked in) is
+          // still bound. See the pixelSnap comment above for full
+          // context on the NaN-window failure mode.
+          let pointAtten: typeof sharpAtten
+          if (glowEnabled) {
+            const safeGlowRadius = glowRadius.max(float(1e-3))
+            const glowDist = dist.div(effectiveDistance.mul(safeGlowRadius)).clamp(0, 1)
+            const broadAtten = float(1).sub(glowDist).clamp(0, 1)
+            pointAtten = sharpAtten.add(broadAtten.mul(glowIntensity)).clamp(0, 1)
+          } else {
+            pointAtten = sharpAtten
+          }
 
           // Spot light cone. `lightDir` is already normalized at the
           // JS layer (Light2D `_direction` is normalized on every set,
@@ -228,16 +310,16 @@ export const DefaultLightEffect = createLightEffect({
               .and(atten.greaterThan(float(0.01)))
               .and(lightCastsShadow.greaterThan(float(0.5)))
             If(shouldTrace, () => {
-              // Optional block-snap on the shadow trace origin.
-              const useShadowSnap = shadowPixelSize.greaterThan(float(0))
-              const shadowSnappedPos = vec2(surfacePos)
-                .div(shadowPixelSize)
-                .floor()
-                .mul(shadowPixelSize)
-              const shadowSurfacePos = useShadowSnap.select(
-                shadowSnappedPos,
-                vec2(surfacePos)
-              )
+              // Optional block-snap on the shadow trace origin —
+              // JS-time gate, see `shadowPixelSnapEnabled` schema doc.
+              // `.max(1)` divisor guard, same NaN-window rationale
+              // as `pixelSnapEnabled` above.
+              const shadowSurfacePos = shadowPixelSnapEnabled
+                ? vec2(surfacePos)
+                    .div(shadowPixelSize.max(float(1)))
+                    .floor()
+                    .mul(shadowPixelSize)
+                : vec2(surfacePos)
               const trace = shadowSDF2D(
                 shadowSurfacePos,
                 lightPos,
@@ -276,9 +358,20 @@ export const DefaultLightEffect = createLightEffect({
           totalLightLit.addAssign(baseContribution)
           totalLightShaded.addAssign(baseContribution.mul(shadow))
 
-          // Rim lighting — edge highlight from inverse normal dot
-          const rimFactor = isAmbient.select(float(0), float(1).sub(NdotL).pow(rimPower))
-          totalRim.addAssign(contribution.mul(atten).mul(rimFactor))
+          // Rim lighting — JS-time gate. When disabled, the entire
+          // rim accumulator + the `pow` (SFU instruction) drops out
+          // of the shader. When enabled, `rimPower` is hardcoded to 2
+          // — a single multiply instead of `pow(x, 2)` — because no
+          // realistic project sliders this at runtime. If you need a
+          // different curve, fork the effect.
+          if (rimEnabled && totalRim) {
+            const oneMinusNdotL = float(1).sub(NdotL)
+            const rimFactor = isAmbient.select(
+              float(0),
+              oneMinusNdotL.mul(oneMinusNdotL),
+            )
+            totalRim.addAssign(contribution.mul(atten).mul(rimFactor))
+          }
         })
 
         // Build the unshadowed direct contribution (lit + rim). This
@@ -292,19 +385,22 @@ export const DefaultLightEffect = createLightEffect({
         // Previously rim was unshadowed. Rim is opt-in (default
         // `rimIntensity = 0`), so this change is only visible in
         // scenes that explicitly enable it.
-        const useRim = rimIntensity.greaterThan(float(0))
-        const directLit = useRim.select(
-          vec3(totalLightLit).add(vec3(totalRim).mul(rimIntensity)),
-          vec3(totalLightLit)
-        )
+        // JS-time gate on rim — when disabled, no rim accumulator
+        // exists so the mix collapses to a passthrough.
+        const directLit = rimEnabled && totalRim
+          ? vec3(totalLightLit).add(vec3(totalRim).mul(rimIntensity))
+          : vec3(totalLightLit)
 
-        // Quantize the unshadowed direct to discrete bands. Ambient is
-        // added AFTER quantization so it acts as a continuous floor;
-        // shadow is applied AFTER quantization so the shadow gradient
-        // stays smooth even with `bands > 0`.
-        const useBands = bands.greaterThan(float(0))
-        const quantized = directLit.mul(bands).add(float(0.5)).floor().div(bands)
-        const shapedDirect = useBands.select(quantized, directLit)
+        // Quantize the unshadowed direct to discrete bands. Ambient
+        // is added AFTER quantization so it acts as a continuous
+        // floor; shadow is applied AFTER quantization so the shadow
+        // gradient stays smooth even with `bands > 0`. JS-time gate —
+        // off-builds skip the entire mul/add/floor/div chain.
+        // `bands.max(1)` divisor guard, same NaN-window rationale
+        // as `pixelSnapEnabled` above.
+        const shapedDirect = bandsEnabled
+          ? directLit.mul(bands).add(float(0.5)).floor().div(bands.max(float(1)))
+          : directLit
 
         // Per-pixel shadow scalar, recovered as the ratio of shadowed
         // to unshadowed per-light direct light. Weighted by each
@@ -317,16 +413,7 @@ export const DefaultLightEffect = createLightEffect({
           .clamp(0, 1)
         const shadedDirect = shapedDirect.mul(shadowRatio)
 
-        // Cap-shadow gate — attenuate direct light on fragments whose
-        // normal is ≈ (0, 0, 1). See schema comment for details.
-        const capness = ctx.normal.z
-          .sub(capShadowThreshold)
-          .div(float(1).sub(capShadowThreshold).max(float(0.0001)))
-          .clamp(0, 1)
-        const capGate = float(1).sub(capShadowStrength.mul(capness))
-        const gatedDirect = shadedDirect.mul(capGate)
-
-        const litColor = gatedDirect.add(fp.ambientNode).mul(ctx.color.rgb)
+        const litColor = shadedDirect.add(fp.ambientNode).mul(ctx.color.rgb)
         return vec4(litColor, ctx.color.a)
       })() as Node<'vec4'>
     }
@@ -337,7 +424,7 @@ export const DefaultLightEffect = createLightEffect({
   },
   update(ctx) {
     this.forwardPlus.setWorldBounds(ctx.worldSize, ctx.worldOffset)
-    this.forwardPlus.update(ctx.lights as Light2D[])
+    this.forwardPlus.update(ctx.lights as Light2D[], ctx.lightStore.maxLights)
   },
   resize(w, h) {
     this.forwardPlus.resize(w, h)
@@ -346,3 +433,65 @@ export const DefaultLightEffect = createLightEffect({
     this.forwardPlus.dispose()
   },
 })
+
+/**
+ * Per-instance backing for the `categoryQuotas` accessor below. Held
+ * off-instance via `WeakMap` so we don't trample the schema-driven
+ * property layout the factory installs on the prototype.
+ */
+const _categoryQuotas = new WeakMap<object, Record<string, number>>()
+
+/**
+ * Declarative per-category fill-light quota. Property accessor on
+ * every `DefaultLightEffect` instance — assigning a record proxies
+ * each `[category, quota]` pair through to
+ * `forwardPlus.setFillQuota(category, quota)`. Lets JSX consumers
+ * write
+ *
+ * ```tsx
+ * <defaultLightEffect categoryQuotas={{ slime: 4 }} />
+ * ```
+ *
+ * instead of grabbing a ref and reaching into `forwardPlus`.
+ *
+ * Each set RESETS all buckets to default first, then applies the
+ * record. Without this, removing a key between renders (e.g.
+ * `{ slime: 4 }` → `{}`) would leave the previous quota stuck — the
+ * surprise is way worse than the cost of one extra `Uint8Array.fill`.
+ */
+Object.defineProperty(_DefaultLightEffect.prototype, 'categoryQuotas', {
+  get(this: object): Record<string, number> {
+    return _categoryQuotas.get(this) ?? {}
+  },
+  set(
+    this: { forwardPlus: ForwardPlusLighting },
+    value: Record<string, number> | undefined,
+  ): void {
+    const next = value ?? {}
+    _categoryQuotas.set(this as unknown as object, next)
+    this.forwardPlus.resetFillQuotas()
+    for (const k of Object.keys(next)) {
+      this.forwardPlus.setFillQuota(k, next[k]!)
+    }
+  },
+  enumerable: true,
+  configurable: true,
+})
+
+/**
+ * Public class type — augments the factory-generated class with the
+ * `categoryQuotas` instance field so JSX (`LightEffectElement<...>`)
+ * sees it as a settable prop and TypeScript users get a typed setter.
+ *
+ * Only the constructor return type needs to carry the addition;
+ * `InstanceType<typeof DefaultLightEffect>` is what R3F's
+ * `ThreeElement<T>` reads to surface props in JSX. The `prototype`
+ * field on `LightEffectClass<S>` is implicit `any` (the factory
+ * doesn't declare it), so intersecting it would leave us with
+ * `any & { categoryQuotas }` — the lint rule rightfully flags that
+ * as redundant. Augmenting only the construct signature avoids it.
+ */
+type DefaultLightEffectClass = typeof _DefaultLightEffect & {
+  new (): InstanceType<typeof _DefaultLightEffect> & { categoryQuotas: Record<string, number> }
+}
+export const DefaultLightEffect = _DefaultLightEffect as DefaultLightEffectClass

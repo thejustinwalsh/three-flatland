@@ -129,7 +129,7 @@ export const SimpleLightEffect = createLightEffect({
   },
   update(ctx) {
     this.forwardPlus.setWorldBounds(ctx.worldSize, ctx.worldOffset)
-    this.forwardPlus.update(ctx.lights as Light2D[])
+    this.forwardPlus.update(ctx.lights as Light2D[], ctx.lightStore.maxLights)
   },
   resize(w, h) {
     this.forwardPlus.resize(w, h)
