@@ -51,15 +51,18 @@ const { sublist } = Astro.props;
     }
 
     .entry-title {
+        /* Linear/Radix-leaning group label: small caps, tracked, muted. */
+        font-family: 'Inter', system-ui, sans-serif;
         font-weight: 600;
-        font-size: 0.75rem;
+        font-size: 0.6875rem;
         line-height: 1rem;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
         padding-top: calc(var(--spacing) * 1);
         padding-bottom: calc(var(--spacing) * 1);
         padding-left: calc(var(--spacing) * 2);
         padding-right: calc(var(--spacing) * 2);
-        border-radius: calc(var(--radius) - 2px);
-        color: var(--muted-foreground);
+        color: color-mix(in oklab, var(--muted-foreground) 78%, var(--foreground));
     }
 
     .container-group-link {
@@ -90,6 +93,7 @@ const { sublist } = Astro.props;
         padding-right: calc(var(--spacing) * 2);
         border-radius: calc(var(--radius) - 2px);
         height: 100%;
+        position: relative;
         transition:
             color 0.15s,
             background-color 0.15s;
@@ -99,9 +103,23 @@ const { sublist } = Astro.props;
         font-weight: 500;
     }
 
+    /* Active state: refined to a left-edge indicator + lighter tinted bg.
+     * Linear-signature treatment — the active item is unmistakable but the
+     * sidebar overall stays quiet. */
     .entry-link[aria-current='page'] .entry-link-inner {
-        background-color: var(--accent);
-        color: var(--accent-foreground);
+        background-color: color-mix(in oklab, var(--accent) 22%, transparent);
+        color: var(--foreground);
+    }
+
+    .entry-link[aria-current='page'] .entry-link-inner::before {
+        content: '';
+        position: absolute;
+        left: calc(var(--spacing) * -0.75);
+        top: 0.3rem;
+        bottom: 0.3rem;
+        width: 2px;
+        border-radius: 1px;
+        background-color: var(--primary);
     }
 
     .entry-link:hover:not([aria-current='page']) .entry-link-inner {
@@ -111,17 +129,23 @@ const { sublist } = Astro.props;
 
     .entry-icon {
         display: inline-block;
-        width: 1rem;
-        height: 1rem;
-        margin-right: calc(var(--spacing) * 1.5);
+        width: 0.875rem;
+        height: 0.875rem;
+        margin-right: calc(var(--spacing) * 2);
         flex-shrink: 0;
         vertical-align: middle;
         color: var(--muted-foreground);
+        opacity: 0.7;
     }
 
-    .entry-link[aria-current='page'] .entry-icon,
+    .entry-link[aria-current='page'] .entry-icon {
+        color: var(--primary);
+        opacity: 1;
+    }
+
     .entry-link:hover:not([aria-current='page']) .entry-icon {
-        color: inherit;
+        color: var(--foreground);
+        opacity: 0.9;
     }
 
     .entry-badge {
