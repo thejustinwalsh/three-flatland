@@ -133,18 +133,26 @@ let lastFrame = 0
 let running = false
 
 /* GLOBAL DAY-CYCLE STATE — the scene light arcs across the page like a
- * sun moving from dawn to dusk and back, ping-ponging. Perlin noise
- * modulates the LERP RATE so the arc's speed varies subtly (the sun
- * doesn't move at a metronome's pace). One full ping-pong takes ~60s
- * with rate jitter of ±40%.
+ * sun moving across the sky, ping-ponging. Perlin noise modulates the
+ * LERP RATE so the arc's speed varies subtly (the sun doesn't move at
+ * a metronome's pace). One full ping-pong takes ~60s with rate jitter
+ * of ±40%.
  *
  *   cyclePos ∈ [0, 1] is the normalized position along the arc.
  *   cycleDir ∈ {+1, -1} is the current direction (advancing or retreating).
+ *
+ * Angle range: 30° → 150°. Mapped through `gradient-angle = scene-angle
+ * + 90°` and then through CSS's "first stop = bright" convention, this
+ * keeps the bright side in the UPPER half of every surface throughout
+ * the cycle (sunrise upper-right → noon top → sunset upper-left). Going
+ * past 0° or 180° in scene-angle would dip the light below the horizon
+ * (bright lower-half), which is unphysical for a sun-arc and reads as
+ * "weird" — was the bug in the first pass.
  */
 let cyclePos = Math.random() // start somewhere in the cycle so reloads aren't synchronized
 let cycleDir: 1 | -1 = 1
-const ARC_MIN_DEG = 100 // dawn-side angle (light comes from a lower-east-ish direction)
-const ARC_MAX_DEG = 260 // dusk-side angle (light comes from a lower-west-ish direction)
+const ARC_MIN_DEG = 30 // sunset-side: bright upper-right with slight horizon lean
+const ARC_MAX_DEG = 150 // sunrise-side: bright upper-left with slight horizon lean
 const CYCLE_BASE_RATE = 1 / 30 // 1 unit / 30s → full ping-pong in 60s nominal
 
 function frame(now: number) {
