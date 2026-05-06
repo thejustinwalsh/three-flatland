@@ -53,6 +53,32 @@ const ACCENT_CSS = `
 .tp-radv_i:hover + .tp-radv_b { background-color: rgba(28, 40, 77, 0.9) !important; color: #f0edd8 !important; }
 .tp-radv_i:checked + .tp-radv_b { background-color: #1c284d !important; color: #d94c87 !important; }
 .tp-radv_i:active + .tp-radv_b { background-color: #343473 !important; color: #f0edd8 !important; }
+/* Checkbox — default background blends with the container, so bump to
+   the same surface as the select/button controls for a visible hit
+   target, and accent the check stroke on :checked. Markup:
+   <input.tp-ckbv_i> + <div.tp-ckbv_w><svg><path/></svg></div>
+
+   Tweakpane's hidden input ships at browser-default size (~13×13) at
+   top-left of the label, relying on <label>→<input> click forwarding
+   to toggle from clicks on the visible box. That forwarding is flaky
+   under some pointer-events + z-index combinations (reports: clicks
+   sometimes register, sometimes don't). Stretching the input to cover
+   the entire visible box puts the hit target directly on the pointer,
+   no label forwarding required. */
+.tp-ckbv_i {
+  /* Absolute positioning + zero opacity is Tweakpane's default; we
+     just add explicit size + cursor so the click area matches the
+     visible affordance exactly. */
+  width: var(--cnt-usz) !important;
+  height: var(--cnt-usz) !important;
+  margin: 0 !important;
+  cursor: pointer !important;
+}
+.tp-ckbv_w { background-color: rgba(28, 40, 77, 0.6) !important; }
+.tp-ckbv_i:hover + .tp-ckbv_w { background-color: rgba(28, 40, 77, 0.9) !important; }
+.tp-ckbv_i:focus + .tp-ckbv_w { background-color: rgba(28, 40, 77, 0.9) !important; }
+.tp-ckbv_i:active + .tp-ckbv_w { background-color: #343473 !important; }
+.tp-ckbv_i:checked + .tp-ckbv_w svg path { stroke: #d94c87 !important; }
 
 /* Dimmable pane — slightly translucent when idle, opaque on hover or when pinned.
    Hover-promotion is gated on devices that actually have a pointer (desktop),

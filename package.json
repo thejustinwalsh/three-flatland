@@ -47,6 +47,7 @@
       "@three-flatland/presets": "workspace:*",
       "@three-flatland/skia": "workspace:*",
       "@three-flatland/skills": "workspace:*",
+      "@three-flatland/slug": "workspace:*",
       "@three-flatland/tweakpane": "workspace:*"
     }
   },
