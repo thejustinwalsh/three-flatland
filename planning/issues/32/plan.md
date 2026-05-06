@@ -281,24 +281,65 @@ Run **at the end of Phase 2**:
 >
 > The previous agent shipped partial Phase 3 work through commit `889a894` (astro-vtbot, reinit-glue audit, Header/Sidebar polish, landing-component re-skin, brand-mark `icon.svg`, partial MarkdownContent), then unilaterally relabeled the remainder as "Phase 3 (core) — deferred to sub-issues #50/#51/#52" and marked PR #33 ready. That was a unilateral scope cut: 5 of 8 acceptance criteria were unmet and no stakeholder authorization for deferral existed. Sub-issues #50/#51/#52 were closed; the work has been pulled back in-scope as the punch list below; PR #33 is back in draft. The `implementing-github-issues` skill (Phase 9 + Phase 10) was updated with an explicit acceptance gate to prevent recurrence. See `decisions.md` "PR #33 returned to draft; Phase 3 remainder pulled back in-scope".
 
+> ### ⚠️ Direction pivot 2026-05-06 — gem palette + typography fix + restored wordmark
+>
+> Stakeholder feedback during PR #33 review: "the color theme is weak. Materia is too pastel and too low contrast … technicolor vibrant high contrast vibe … rich vibration color variation for contrast elements from the gold and gems on black colors." Plus a typography bug: the `presetWind4` configuration disables Tailwind's `body { font-family: … }` preflight, so Public Sans / Inter / JetBrains Mono only render where `base.css` explicitly sets them (h1–h6 in markdown). Body, sidebar, header, asides, cards all fall back to `system-ui` — i.e., the typography swap shipped in CSS but never reached most surfaces.
+>
+> **Changes to direction:**
+> 1. **Replace base16 Materia with a bearded-theme-inspired technicolor gem palette.** New named tokens: `gold`, `ruby`, `emerald`, `diamond`, `amethyst`, `pink`, `salmon`, `turquoize`, plus the existing blue / green / orange / red / yellow / purple raised to bearded vibrance. Backgrounds shift to near-black `#111418` with gem-tinted soft variants for surface differentiation.
+> 2. **Expand color taxonomy beyond primary/secondary.** Sidebar sections pick up gem accents per top-level group; hover and active states inherit. Cards accept `color="gem"` prop. Distinct `--link` and `--link-hover` tokens. Asides retype to gems (note→diamond, tip→amethyst, success→emerald, warning→gold, danger→ruby).
+> 3. **Fix typography application** site-wide — explicit `font-family` rules on body, header, sidebar, asides, panels in `base.css`.
+> 4. **Restore Silkscreen as the wordmark font.** Header `<SiteTitle>` renders **flatland** (lowercase, internal brand) in Silkscreen alongside the geometric FL icon. Package name `three-flatland` stays for npm and SEO; visual brand is `flatland`.
+> 5. **Revert the brand mark to the original retro pixel-art icon.** The geometric FL refresh (`e71f17d`) was the wrong direction; the original 1865-line pixel-art `icon.svg` is the established mark and it's what users associate with the project. Restored via `git checkout e71f17d~1 -- docs/src/assets/icon.svg`. **Do NOT redesign the icon itself.** The icon + Silkscreen wordmark "flatland" are the brand identity; both stay.
+> 6. **Brand assets** (banner / OG / wide / social-x in `BrandAsset.astro`) DO get a fresh design, but only the surrounding compositions — the retro pixel icon and Silkscreen wordmark sit inside those new layouts. Compositions take cues from the new theme: gem palette, near-black backgrounds, subtle texture. Inspired by where the website + brand identity land through this theme phase.
+> 7. **Add a subtle grain/noise texture overlay** on the near-black background. Sub-perceptual (≤ 4% opacity); the ghost hack — depth you don't consciously see but feel the absence of.
+> 8. **Embrace motion as a craft layer** — pointer-driven lighting glints on cards/buttons, reveal-on-scroll for sections/cards/figures, scroll-driven choreography for premium moments. All respect `prefers-reduced-motion`. Subtle — top-notch without overdoing it.
+> 9. **Updated CLAUDE.md Design Context** captures the new direction (color-as-taxonomy, naming dichotomy, gem palette, sub-perceptual texture, retro icon + Silkscreen wordmark, motion-as-craft).
+>
+> See `decisions.md` "Phase 3 direction pivot — bearded-theme gem palette + typography fix" for full reasoning.
+
 **Goal:** drive the actual visual redesign through the design system Phase 2 stood up. Each component override gets a Flatland-aligned design pass; the landing page is rebuilt; SPA polish is added; visualizations get embedded in selected guide pages.
 
 ### Phase 3 punch list (remaining)
 
-Order: top-to-bottom, with (3) and (5) able to interleave with (1) since they don't share files.
+Numbered roughly by execution order; some items naturally interleave.
+
+**Substrate (do first — everything downstream depends on these):**
+
+0. **Theme substrate redo** (added by 2026-05-06 pivot — supersedes the original Phase 2 token decisions):
+   - [ ] Replace base16 Materia tokens in `packages/starlight-theme/styles/theme.css` and `docs/uno.config.ts` with bearded-theme-inspired gem palette (gold / ruby / emerald / diamond / amethyst / pink / salmon / turquoize + saturated blue/green/orange/red/yellow/purple). Near-black `#111418` background with gem-tinted soft variants. Light mode: same gem names, deeper saturation for paper-toned bg.
+   - [ ] Expand semantic-token taxonomy: `--link`, `--link-hover`, `--sidebar-section-1..N` (one per gem), `--card-accent` consumed by FeatureCard's color prop.
+   - [ ] Fix site-wide typography: explicit `font-family` rules on `body`, `header`, `nav`, `aside`, `.sidebar`, `.feature-card`, etc. in `base.css`. Re-verify Public Sans / Inter / JetBrains Mono / Commit Mono actually render via agent-browser.
+   - [ ] Restore `@fontsource/silkscreen` to `docs/package.json` + `customCss` array; add `font-display` to uno.config.ts.
+   - [ ] Update `<SiteTitle>` override to render **flatland** in Silkscreen alongside the icon. Site title config in `astro.config.mjs` switches from "three-flatland" to "flatland". Package name + README + npm metadata stay `three-flatland`.
+   - [ ] **Revert the brand mark**: `git checkout e71f17d~1 -- docs/src/assets/icon.svg` to restore the original retro pixel-art icon. The geometric refresh from `e71f17d` was the wrong direction; the pixel mark is the established brand.
+   - [ ] **Subtle texture overlay** — barely-perceptible grain/noise on the near-black background (≤ 4% opacity SVG fractal-noise filter or tiny tiled PNG). Implementation as a `body::before` or fixed pseudo-element so it doesn't repaint with content. Honors `prefers-reduced-transparency` if requested. Goal: depth you don't see, only feel. Verify it stays sub-perceptual via agent-browser screenshots — if visible at normal viewing distance, lower opacity until it isn't.
+   - [ ] **Motion-as-craft substrate** (asymmetric — quiet ambient, expressive interaction):
+     - **Ambient: reveal-on-scroll** — `animation-timeline: view()` with IntersectionObserver fallback. Translate ≤ 16px, opacity 0→1, 240–360ms. Stagger by `nth-child`. Utility class `u-reveal` + attribute hook `data-reveal`.
+     - **Interaction: pointer-tracking light** — CSS custom properties `--mx`, `--my` driven by JS `pointermove` handler, consumed by surfaces for radial-gradient highlights tinted by local gem accent. ≤ 15% luminance over base. Utility class `u-light` + attribute hook `data-light`.
+     - **Interaction: living-breathing foil sheen (`u-holo` / `data-holo` + `data-gem="<name>"`)** — sells *living, breathing 3D*; CSS-first if it carries, escalate to SVG filter normal-map pipeline if it doesn't. Three layers required regardless of impl:
+       - **3D depth** — `perspective` + layered conic/linear gradients with parallax (deeper layers translate less than surface layers), `transform: rotate3d` driven by pointer xy. Surface bends toward cursor.
+       - **Ambient motion (perlin-driven light)** — light source xy is sampled from 2D Perlin/simplex noise per frame; low spatial + temporal frequency (≤ 8% of surface dims, ~0.05–0.1 Hz) so the wander reads organic. No `@keyframes` oscillation. Continuous; the light is always alive.
+       - **Dynamic light** — pointer position sets the *center* the perlin noise wanders around, with ~80–120ms inertia ease on the center. Cursor steers; noise jitters around the steered point. One animation loop drives both ambient + interactive — they're the same light with a moving target.
+     - **CSS-first impl**: layered conic + radial gradients with `mix-blend-mode: color-dodge`/`screen`, perspective transforms, idle `@keyframes`, JS handler sets `--mx`/`--my`/`--tilt-x`/`--tilt-y` custom properties. Per-gem CSS variables (`--gem-h`, `--gem-spec`, `--gem-diffuse`) parameterize the layer stack so each gem feels distinct.
+     - **SVG-filter escalation** (only if CSS doesn't sell): `<feImage>` samples a baked normal map (`packages/starlight-theme/assets/holo-normal.png`, ~256×256, low-res grain) → `<feDiffuseLighting>` + `<feSpecularLighting>` with `<fePointLight>` whose xyz tracks pointer → `<feTurbulence>` + `<feDisplacementMap>` for holo flecks. Per-gem filter graphs (`#mat-gold` = high spec / warm diffuse / narrow lobe; `#mat-diamond` = broad spec / cool / RGB-offset dispersion; etc.). Likely escalation candidates: gold (specular weight), diamond (dispersion), ruby (saturated specular lobe).
+     - **TSL/WebGPU escalation** (only for THE premium moments — landing hero, brand-mark touchpoint): canvas overlay with a real shader. Dogfoods three-flatland. Reserved.
+     - All three primitives collapse instantly (or to static-but-still-lit fallback) under `prefers-reduced-motion: reduce`. Verification: agent-browser screenshots in both motion states; spot-check that holo's static-fallback still shows the gem material (not a flat gradient), and that idle-breathing actually breathes (animated screenshot or video frame diff).
+
+**Component-level (impeccable loop per component):**
 
 1. **Component overrides through impeccable loop** (priority order from original plan + completion status):
-   - ✅ Header (shipped `d1edfc1`)
-   - ✅ Sidebar (shipped `35dadfa`)
+   - ⚠️ Header — shipped `d1edfc1` against the OLD palette/typography substrate; will need a re-pass after item 0 lands so wordmark, search, theme select, and divider colors track the new tokens.
+   - ⚠️ Sidebar — shipped `35dadfa`; needs section-coloring pass once `--sidebar-section-*` tokens exist.
    - [ ] Hero (Starlight marketing-page hero — used by landing)
    - [ ] ContentPanel
-   - [ ] MarkdownContent — heading hierarchy partial (`889a894`); finish prose / list / blockquote / table / inline-code / link treatments
+   - [ ] MarkdownContent — heading hierarchy partial (`889a894`); finish prose / list / blockquote / table / inline-code / link treatments. Link styling now uses the new `--link` / `--link-hover` tokens.
    - [ ] PageSidebar (TOC)
    - [ ] Search modal interior + suggestions list (compact button done with Header)
    - [ ] Pagination
    - [ ] Footer
-2. **Landing-page rebuild** — beyond the FeatureCard/StatsBanner/ValueProp re-skin (`ae6db57`), compose the page around embedded three-flatland scenes per the plan brief ("creative design aesthetic … interactivity and visuals"). `/impeccable:onboard` → `/impeccable:frontend-design`.
-3. **BrandAsset compositions** — the new mark exists (`e71f17d`); the 5 larger compositions still render the retro pixel-art treatment: `banner` (1280×640), `og` (1200×630), `wide` (3000×1000 Bluesky), `social-x` (1200×628), `icon-only` (512×512). Regenerate `docs/public/social/og-image.png` + `x-card-image.png` afterward.
+2. **Landing-page rebuild** — beyond the FeatureCard/StatsBanner/ValueProp re-skin (`ae6db57`), compose the page around embedded three-flatland scenes per the plan brief ("creative design aesthetic … interactivity and visuals"). `/impeccable:onboard` → `/impeccable:frontend-design`. FeatureCard accepts `color="gem"` prop after item 0; landing demonstrates the gem taxonomy by deliberately using multiple.
+3. **BrandAsset compositions** — the icon reverts to the original retro pixel-art mark (substrate item 0 covers that revert). The 4 compositional artifacts get fresh designs inspired by the new theme: `banner` (1280×640), `og` (1200×630), `wide` (3000×1000 Bluesky), `social-x` (1200×628). The `icon-only` (512×512) artifact is just the retro pixel mark at 512×512 — no composition needed beyond bg + scale. Compositional approach: retro pixel icon + Silkscreen "flatland" wordmark composed against near-black backgrounds with gem-palette accents and subtle texture (i.e., the new theme aesthetic). Regenerate `docs/public/social/og-image.png` + `x-card-image.png` afterward.
 4. **Per-page interactive scenes** — embed a bespoke scene in 2–3 high-value guides:
    - `guides/tsl-nodes.mdx` — node-graph editor showing live shader composition
    - `guides/pass-effects.mdx` — toggleable pass stack with side-by-side preview
@@ -309,7 +350,7 @@ Order: top-to-bottom, with (3) and (5) able to interleave with (1) since they do
 7. **`/impeccable:audit` final pass** — capture as `planning/issues/32/phase-3-audit.md`; compare against `phase-2-audit.md` baseline (regression delta + improvements).
 8. **`/impeccable:optimize` final pass** — bundle size, image optimization, font loading, animation cost.
 
-When all 8 are met, run the Phase 10 acceptance gate (per `implementing-github-issues` skill) — render the acceptance-evidence table in the PR description, then `gh pr ready 33`.
+When all are met, run the Phase 10 acceptance gate (per `implementing-github-issues` skill) — render the acceptance-evidence table in the PR description, then `gh pr ready 33`.
 
 ### Original Phase 3 scope (preserved for reference)
 
