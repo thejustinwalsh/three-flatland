@@ -7,6 +7,7 @@ import starlightTypeDoc, { typeDocSidebarGroup } from 'starlight-typedoc';
 import starlightHeadingBadges from 'starlight-heading-badges';
 import starlightLlmsTxt from 'starlight-llms-txt';
 import starlightTheme from 'starlight-theme';
+import { viewTransitions as starlightVtbot } from 'astro-vtbot/starlight-view-transitions';
 import react from '@astrojs/react';
 import { watchExamples } from './vite-plugins/watch-examples.js';
 import { copyExamples } from './vite-plugins/copy-examples.js';
@@ -202,6 +203,11 @@ export default defineConfig({
             // and raw source is what LLMs actually want anyway.
             rawContent: true,
           }),
+          // Vtbot Starlight integration — wires the route middleware + CSS for
+          // sidebar-aware view-transition direction (the bag-of-tricks runtime).
+          // Components composed in Head.astro: VtBotBase, PageOrder,
+          // LoadingIndicator, AutoNameSelected.
+          starlightVtbot(),
           // Theme last so its component overrides win over earlier plugins.
           // Provides Hero, SiteTitle, ThemeSelect, SocialIcons, PageFrame, …
           // and registers starlight-theme/styles/{layers,theme,base}.css.

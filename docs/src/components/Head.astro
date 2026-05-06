@@ -1,17 +1,27 @@
 ---
 /**
- * Custom Head component that enables View Transitions for SPA-like navigation.
- * This preserves audio context and sound state across page navigations.
+ * Custom Head component. Composes Starlight's Head with astro-vtbot for SPA
+ * navigation polish (sidebar-aware page-order morphs, loading indicator,
+ * auto-named heading transitions). Vtbot's `Base` includes the ClientRouter
+ * + ReplacementSwap + StarlightConnector so we don't need a bare ClientRouter.
  */
 import StarlightHead from '@astrojs/starlight/components/Head.astro';
-import { ClientRouter } from 'astro:transitions';
+import VtBotBase from 'astro-vtbot/components/starlight/Base.astro';
+import PageOrder from 'astro-vtbot/components/starlight/PageOrder.astro';
+import LoadingIndicator from 'astro-vtbot/components/LoadingIndicator.astro';
+import AutoNameSelected from 'astro-vtbot/components/AutoNameSelected.astro';
 
 const isDev = import.meta.env.DEV;
 const baseUrl = import.meta.env.BASE_URL;
 ---
 
 <StarlightHead {...Astro.props}><slot /></StarlightHead>
-<ClientRouter />
+<VtBotBase replaceSidebarContent retainCurrentPageMarker />
+<PageOrder />
+<LoadingIndicator />
+{/* Auto-assign view-transition-names to top-level page headings so they
+    morph between pages instead of fading. */}
+<AutoNameSelected selector="main h1, main h2[id]" />
 
 <!-- Self hosted metrics  -->
 {import.meta.env.PROD && (

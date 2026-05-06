@@ -24,6 +24,7 @@
     "@unocss/astro": "^66.6.8",
     "@three-flatland/mini-breakout": "workspace:*",
     "astro": "^6.2.1",
+    "astro-vtbot": "^2.1.12",
     "koota": "catalog:",
     "react": "catalog:",
     "react-dom": "catalog:",
