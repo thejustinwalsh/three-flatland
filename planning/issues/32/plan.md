@@ -29,13 +29,13 @@ Out-of-band cleanup deferred from Phase 1 (small, focused PRs):
 
 ---
 
-## Phase 2 — Design system: fork `lucode-starlight` → `packages/starlight-flatland`
+## Phase 2 — Design system: fork `lucode-starlight` → `packages/starlight-theme`
 
-**Goal:** stand up a self-maintained design system as a workspace-local Starlight plugin. End of phase: docs site renders via `plugins: [starlightFlatland()]` with our tokens; visual style is shadcn-leaning but already wearing the base16 Materia palette and the new typography. No bespoke component redesigns yet — that's Phase 3.
+**Goal:** stand up a self-maintained design system as a workspace-local Starlight plugin (private; package name `starlight-theme`). End of phase: docs site renders via `plugins: [starlightTheme()]` with our tokens; visual style is shadcn-leaning but already wearing the base16 Materia palette and the new typography, with utility-class authoring everywhere via UnoCSS's Tailwind v4–spec preset. No bespoke component redesigns yet — that's Phase 3.
 
 ### Why fork instead of `npm install`
 
-| | `npm install lucode-starlight` | Fork into `packages/starlight-flatland` |
+| | `npm install lucode-starlight` | Fork into `packages/starlight-theme` |
 |---|---|---|
 | Upstream churn risk | High — lucode is `0.1.x`, breaking changes likely | None |
 | Customization surface | Limited to plugin's options + CSS overrides | Full control of every token, override, and Astro file |
@@ -47,11 +47,11 @@ The issue brief explicitly wants "sleek, minimal, clean … Ableton/Bitwig … c
 
 ### Vendoring approach
 
-1. Add a workspace package under `packages/starlight-flatland/` (private, never published — name-spaced for clarity, e.g. `@three-flatland/starlight-theme`).
+1. Add a workspace package under `packages/starlight-theme/` — private, never published. `package.json` carries `"name": "starlight-theme"` and `"private": true`. Workspace consumers reference it via `"starlight-theme": "workspace:*"`.
 2. Copy lucode source verbatim from `lucas-labs/lucode-starlight-theme@master:packages/lucode-starlight/` into our new package. Preserve their git history reference in the package README under "Attribution" (lucode is MIT; lucode itself credits `adrian-ub/starlight-theme-black`).
 3. Match lucode's structure exactly so we can compare diffs against upstream when we want to pull a fix:
    ```
-   packages/starlight-flatland/
+   packages/starlight-theme/
      core/
        plugin.ts               (Starlight plugin entry)
        config/
@@ -75,7 +75,7 @@ The issue brief explicitly wants "sleek, minimal, clean … Ableton/Bitwig … c
    ```
 4. Wire it into the docs site's astro.config.mjs:
    ```js
-   import starlightFlatland from '@three-flatland/starlight-theme'
+   import starlightTheme from 'starlight-theme'
    // …
    Icons({
      starlight: {
@@ -83,12 +83,53 @@ The issue brief explicitly wants "sleek, minimal, clean … Ableton/Bitwig … c
          starlightTypeDoc(...),
          starlightHeadingBadges(),
          starlightLlmsTxt({ rawContent: true }),
-         starlightFlatland(),
+         starlightTheme(),
        ],
      },
    })
    ```
-   Order matters: Flatland goes last so its overrides win.
+   Order matters: `starlight-theme` goes last so its overrides win.
+
+### Authoring substrate: UnoCSS + Tailwind v4 spec via `presetWind4`
+
+We already run UnoCSS (peer-dep behind `starlight-plugin-icons`). Phase 2 also enables `@unocss/preset-wind4` (already in the installed tree at `66.6.8`) so component overrides can author with the Tailwind v4 utility vocabulary instead of bespoke CSS in `<style>` blocks. Same authoring experience as adopting Tailwind, single runtime, keeps the iconify integration we set up in Phase 1.
+
+```ts
+// docs/uno.config.ts (post-phase-2)
+import { defineConfig, presetWind4 } from 'unocss'
+import { presetStarlightIcons } from 'starlight-plugin-icons/uno'
+
+export default defineConfig({
+  presets: [
+    presetStarlightIcons(),
+    presetWind4(),
+  ],
+  theme: {
+    // base16 Materia tokens — single source of truth for the design system.
+    // Mirrored to Starlight's --sl-color-* CSS vars in starlight-theme/styles/theme.css
+    // so Starlight's own components also pick them up.
+    colors: { /* base16 Materia */ },
+    fontFamily: {
+      sans: ['Public Sans', 'system-ui', 'sans-serif'],
+      nav: ['Inter', 'system-ui', 'sans-serif'],
+      prose: ['JetBrains Mono', 'ui-monospace', 'monospace'],
+      code: ['Commit Mono', 'JetBrains Mono', 'ui-monospace', 'monospace'],
+    },
+  },
+})
+```
+
+**Why UnoCSS-with-Wind4 instead of `@astrojs/starlight-tailwind`:**
+
+| | UnoCSS + `presetWind4` | `@astrojs/starlight-tailwind` v5 + Tailwind v4 |
+|---|---|---|
+| Runtime systems | One (UnoCSS, already installed) | Two (Tailwind + still need UnoCSS for `starlight-plugin-icons`) OR replace iconify wiring |
+| Tailwind vocabulary fluency | Same — `presetWind4` is spec-compatible | Same |
+| AI / agent fluency | Slightly lower than vanilla Tailwind | Highest |
+| Build size | Smaller (one runtime) | Larger (or icon-system rework to drop UnoCSS) |
+| Phase 1 churn | None | Significant — rewires the icon system |
+
+Trading "vanilla Tailwind ecosystem" for "no Phase 1 rework + single utility runtime" is the right call here. Lucode's existing structure (cascade layers in `layers.css`, design tokens in `theme.css`) already aligns with Tailwind v4's mental model — this is a substrate swap, not a rewrite.
 
 ### Token layer (base16 Materia + typography)
 
@@ -107,7 +148,7 @@ Drop existing `@fontsource/silkscreen`, `@fontsource/ibm-plex-sans`, `@fontsourc
 
 ### Files this phase deletes from `docs/src/`
 
-Once `starlight-flatland` lands, these become dead code:
+Once `starlight-theme` lands, these become dead code:
 - `docs/src/styles/retro-theme.css` (1605 lines — replaced by `theme.css` in the plugin)
 - `docs/src/styles/patterns.css` (137 lines of dithering — incompatible with the new aesthetic; some patterns may migrate to a `patterns/` subset if we want subtle texture)
 - `docs/src/styles/global.css`, `docs/src/styles/custom.css` (folded into `base.css` in the plugin)
@@ -130,11 +171,12 @@ Run **at the end of Phase 2**:
 
 ### Phase 2 acceptance
 
-- [ ] `packages/starlight-flatland/` exists as a workspace package, registered in `pnpm-workspace.yaml`
+- [ ] `packages/starlight-theme/` exists as a workspace package (private, name `starlight-theme`), registered in `pnpm-workspace.yaml`
 - [ ] Plugin registers cleanly in `astro.config.mjs`, build passes, type check passes
-- [ ] base16 Materia tokens drive light + dark modes; verified in browser
+- [ ] `@unocss/preset-wind4` enabled in `docs/uno.config.ts`; sample utility classes (`px-4`, `bg-bg-2`, `font-prose`) resolve in built CSS
+- [ ] base16 Materia tokens are the single source in `uno.config.ts` `theme` field, mirrored to Starlight's `--sl-color-*` vars in `starlight-theme/styles/theme.css`; light + dark modes verified in browser
 - [ ] Public Sans / Inter / JetBrains Mono / Commit Mono load locally (no external font requests)
-- [ ] All five `docs/src/styles/*.css` files deleted; the `customCss` array in `astro.config.mjs` no longer references them
+- [ ] All four `docs/src/styles/*.css` files deleted; the `customCss` array in `astro.config.mjs` no longer references them
 - [ ] Six component overrides removed from `components: { … }` map (provided by the plugin instead)
 - [ ] `impeccable:audit` report captured in `planning/issues/32/phase-2-audit.md` for Phase 3 to act on
 
@@ -146,7 +188,7 @@ Run **at the end of Phase 2**:
 
 ### Component-by-component redesign
 
-For each Starlight component override in `packages/starlight-flatland/components/overrides/`, apply this loop:
+For each Starlight component override in `packages/starlight-theme/components/overrides/`, apply this loop:
 
 ```
 1. /impeccable:critique     — UX evaluation of the current (lucode-derived) state
@@ -204,7 +246,7 @@ Pick this up after the design system + components are stable so we're not chasin
 
 ### Phase 3 acceptance
 
-- [ ] Each component override in `packages/starlight-flatland/components/overrides/` has been through the impeccable loop and reflects the new aesthetic
+- [ ] Each component override in `packages/starlight-theme/components/overrides/` has been through the impeccable loop and reflects the new aesthetic
 - [ ] Landing page rebuilt; embedded scenes render on supported browsers, fall back gracefully otherwise (proper UI, not `return null`)
 - [ ] At least 2 guide pages have an embedded interactive visualization beyond `<ExamplePreview />`
 - [ ] `astro-vtbot` integrated; smooth navigation verified between Guides ↔ Examples ↔ Showcases; reduced-motion respected
@@ -225,7 +267,7 @@ The current `Head.astro` carries five hand-rolled scripts that survive view tran
 | GPU/WebGL feature detection (`window.__gpuSupported`) | Head.astro:46–56 | Replace with a `useGPUSupport()` hook + proper fallback UI in HeroGame/ShowcaseGame. Tracked separately (see Phase 1 follow-up note). |
 | Pagefind reinit + suggestions | Head.astro:58–130 | Comment out reinit branch, navigate with search panel open. Suggestions injection stays site-specific. |
 | HMR `astro:page-load` re-dispatch | Head.astro:132–141 | Comment out, verify dev HMR doesn't break ClientRouter state. May be fixed in Astro 6. |
-| Table-scroll wrapper enhancement | Head.astro:143–202 | Stays — site-specific UX. May move into `starlight-flatland`'s MarkdownContent override if widely useful. |
+| Table-scroll wrapper enhancement | Head.astro:143–202 | Stays — site-specific UX. May move into `starlight-theme`'s MarkdownContent override if widely useful. |
 
 File any that are still required as proper utilities under `docs/src/utils/`; remove the others.
 

@@ -25,6 +25,34 @@
 
 ---
 
+## Tailwind authoring via UnoCSS `presetWind4`, not `@astrojs/starlight-tailwind`
+**Files:** `docs/uno.config.ts` (Phase 2 update); future `packages/starlight-theme/`
+**Date:** 2026-05-06
+
+**Decision:** Phase 2 enables `@unocss/preset-wind4` on top of our existing UnoCSS configuration. We do NOT install `@astrojs/starlight-tailwind` or the `tailwindcss` package.
+
+**Why:**
+- We already run UnoCSS (it's the peer-dep behind `starlight-plugin-icons` from Phase 1).
+- `@unocss/preset-wind4@66.6.8` is in the installed tree and is spec-compatible with Tailwind v4 — same vocabulary, same `theme` semantics, same `@apply` support.
+- Switching to `@astrojs/starlight-tailwind` (v5, peer-deps `tailwindcss: ^4.0.0`) would either: (a) run two utility-class runtimes side-by-side, OR (b) require replacing `starlight-plugin-icons` with a different icon system to drop UnoCSS entirely. Both are net-negative — the first adds bundle size and maintenance, the second throws away Phase 1's icon wiring.
+- The user's underlying concern — "Tailwind is easier to maintain for a theme than custom CSS" — is real and addressed by adopting the Tailwind utility vocabulary. Whether the runtime is named "Tailwind" or "UnoCSS+presetWind4" is irrelevant for the authoring experience.
+
+**Trade-off accepted:** AI/agent fluency is slightly lower with UnoCSS than with vanilla Tailwind (less corpus). Mitigation: lucode's structure already pre-organizes the theme into tokens + cascade layers + component overrides, so authoring is mostly utility-class application within a fixed scaffold — even an agent unfamiliar with UnoCSS specifics can work productively because the surface area is small (`presetWind4` + iconify; that's it).
+
+**Evidence:** `npm view @unocss/preset-wind4` → `66.6.8`; `ls node_modules/.pnpm/@unocss+preset-wind4*` → installed.
+
+---
+
+## Phase 2 package naming: `starlight-theme` (private workspace package)
+**Files:** `packages/starlight-theme/package.json` (Phase 2)
+**Date:** 2026-05-06
+
+**Decision:** The forked Starlight theme plugin is named `starlight-theme` (unscoped, `private: true`) and lives at `packages/starlight-theme/`. Workspace consumers reference it as `"starlight-theme": "workspace:*"`.
+
+**Why:** User preference. Convention-wise the repo has both unscoped (`three-flatland`) and scoped (`@three-flatland/nodes`, `@three-flatland/mini-breakout`) names; for a private theme package that's never published, the unscoped form is shorter and reads cleanly in `astro.config.mjs` imports.
+
+---
+
 # Phase 1 decisions
 
 
