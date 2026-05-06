@@ -1,4 +1,33 @@
-# Decisions log — Issue #32 Phase 1
+# Decisions log — Issue #32
+
+## Phase 2/3 strategy: fork lucode-starlight as our internal design system, not `npm install` it
+**Files:** `planning/issues/32/plan.md` (revised); future `packages/starlight-flatland/`
+**Date:** 2026-05-06
+
+**Decision:** Phase 2 vendors [`lucode-starlight`](https://github.com/lucas-labs/lucode-starlight-theme) into `packages/starlight-flatland/` as a private workspace package and reskins it. Phase 3 then drives a component-by-component redesign through the `/impeccable:*` skill family and adds `astro-vtbot` for SPA polish.
+
+**Why:**
+- The original Phase 2/3 split (typography → theme) was still framed as "edit `retro-theme.css` + the existing component overrides" — i.e., more of the same hand-patched CSS approach the issue is asking us to escape.
+- Lucode is a Starlight plugin already shaped exactly the way our design system should be: token layers in `styles/{base,layers,theme}.css`, 17 component overrides registered through Starlight's plugin API, expressive-code config, vite config, schema extension. It's MIT-licensed; peer-dep is `@astrojs/starlight >=0.38.3` (we land on 0.38.4 in Phase 1, so already aligned).
+- Forking instead of installing trades upstream-update-for-free against full ownership. Given (a) lucode is at `0.1.x` and likely to break, (b) the issue brief's design direction (Ableton/Bitwig minimalism, base16 Materia, Dieter Rams) is a different language than lucode's shadcn-derivative starting point, and (c) we want this to be "our design system, self-maintained," fork wins on every axis except getting upstream bug fixes for free.
+- Restructuring the phases also lets Phase 2 land *infrastructure* (the plugin scaffold + tokens) and Phase 3 land *design work* (the actual aesthetic). That's a much cleaner review boundary than the previous "typography PR + theme PR" split that artificially separated two halves of the same change.
+
+**How to apply:**
+- Phase 2: copy lucode source verbatim, retheme tokens to base16 Materia + the new typography stack, swap out the existing `docs/src/styles/*.css` and the six theme-shaped component overrides (Hero, PageFrame, ThemeSelect, SiteTitle, SocialIcons, Head). Run `/impeccable:teach-impeccable` once at the start, `/impeccable:extract` and `/impeccable:normalize` during, `/impeccable:audit` to baseline at the end.
+- Phase 3: per-component redesign loop (`critique → distill → frontend-design → harden → polish → adapt`) through every override. Add astro-vtbot for SPA polish (`<VtbotStarlight />`, `<PageOrder />`, `<AutoNameSelected />`, `<LoadingIndicator />`, `<BorderControl />` for MFE realm boundaries). Sidebar-state preservation comes for free with vtbot — currently lost on every nav.
+
+**Why astro-vtbot specifically and not just `<ClientRouter />`:**
+- `<ClientRouter />` alone gives SPA navigation but no Starlight-aware niceties.
+- vtbot is the canonical "Starlight + view transitions polish" library — it knows about Starlight's component shape, sidebar structure, and realm boundaries.
+- It does NOT replace per-feature reinit glue (Pagefind, theme, table-scroll). Those problems are app-specific and stay hand-rolled — but get audited and pruned in Phase 3 since Starlight 0.38 may have closed some of those gaps natively.
+
+**Evidence:** lucode `package.json` exports list 17 component overrides + 3 styles + a schema extension; peerDeps `{ @astrojs/starlight: '>=0.38.3' }`; MIT license. Repo: https://github.com/lucas-labs/lucode-starlight-theme.
+
+---
+
+# Phase 1 decisions
+
+
 
 ## Astro 5 → 6 migration is mandatory, not optional
 **File(s):** `docs/package.json`
