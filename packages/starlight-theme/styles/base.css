@@ -350,12 +350,97 @@
         color: color-mix(in oklab, var(--foreground) 40%, transparent);
     }
 
-    /* code inline */
+    /* code inline — gem-tinted background so inline code reads distinct
+     * from prose without screaming. */
     .sl-markdown-content :not(pre) > code {
-        background: var(--muted);
+        background: color-mix(in oklab, var(--muted) 70%, var(--diamond));
+        color: color-mix(in oklab, var(--foreground) 92%, var(--diamond));
         border-radius: calc(var(--radius) - 4px);
-        padding: 0.25rem 0.5rem;
+        padding: 0.15rem 0.4rem;
         font-size: 0.875em;
+        font-weight: 500;
+    }
+
+    /* Lists — generous indent, restrained markers. */
+    .sl-markdown-content :is(ul, ol) {
+        padding-inline-start: calc(var(--spacing) * 6);
+    }
+    .sl-markdown-content li {
+        padding-inline-start: calc(var(--spacing) * 1);
+    }
+    .sl-markdown-content li::marker {
+        color: var(--muted-foreground);
+    }
+    .sl-markdown-content ul > li::marker {
+        color: color-mix(in oklab, var(--diamond) 60%, var(--muted-foreground));
+    }
+
+    /* Blockquote — gem-accented left rule, italic prose, slight inset. */
+    .sl-markdown-content blockquote {
+        border-inline-start: 3px solid color-mix(in oklab, var(--amethyst) 60%, var(--border));
+        padding: calc(var(--spacing) * 2) calc(var(--spacing) * 4);
+        margin-inline: 0;
+        background: color-mix(in oklab, var(--amethyst-soft) 60%, transparent);
+        border-radius: 0 calc(var(--radius) - 2px) calc(var(--radius) - 2px) 0;
+        color: color-mix(in oklab, var(--foreground) 90%, var(--muted-foreground));
+        font-style: italic;
+    }
+    .sl-markdown-content blockquote > :first-child { margin-top: 0; }
+    .sl-markdown-content blockquote > :last-child { margin-bottom: 0; }
+
+    /* Tables — clean hairlines, gem header tint, monospace numerics. */
+    .sl-markdown-content table {
+        width: 100%;
+        border-collapse: collapse;
+        font-family: inherit;
+        font-size: 0.875rem;
+        margin-block: calc(var(--spacing) * 4);
+    }
+    .sl-markdown-content thead th {
+        text-align: start;
+        font-family: 'Inter', system-ui, sans-serif;
+        font-weight: 600;
+        color: color-mix(in oklab, var(--foreground) 92%, var(--diamond));
+        background: color-mix(in oklab, var(--diamond-soft) 60%, transparent);
+        padding: calc(var(--spacing) * 2.5) calc(var(--spacing) * 3);
+        border-bottom: 1px solid color-mix(in oklab, var(--diamond) 30%, var(--border));
+    }
+    .sl-markdown-content tbody td {
+        padding: calc(var(--spacing) * 2.5) calc(var(--spacing) * 3);
+        border-bottom: 1px solid color-mix(in oklab, var(--border) 70%, transparent);
+        color: var(--foreground);
+    }
+    .sl-markdown-content tbody tr:last-child td {
+        border-bottom: 0;
+    }
+    .sl-markdown-content tbody tr:hover td {
+        background: color-mix(in oklab, var(--diamond) 4%, transparent);
+    }
+
+    /* Horizontal rule — hairline gem fade rather than a flat line. */
+    .sl-markdown-content hr {
+        border: 0;
+        height: 1px;
+        background-image: linear-gradient(
+            to right,
+            transparent 0%,
+            color-mix(in oklab, var(--border) 80%, transparent) 30%,
+            color-mix(in oklab, var(--diamond) 35%, var(--border)) 50%,
+            color-mix(in oklab, var(--border) 80%, transparent) 70%,
+            transparent 100%
+        );
+        margin-block: calc(var(--spacing) * 8);
+    }
+
+    /* Strong — pulls foreground to true white for emphasis. */
+    .sl-markdown-content strong {
+        color: var(--foreground);
+        font-weight: 600;
+    }
+
+    /* Images get the same border-radius rhythm as cards. */
+    .sl-markdown-content img {
+        border-radius: calc(var(--radius) - 2px);
     }
 
     /* code blocks */
