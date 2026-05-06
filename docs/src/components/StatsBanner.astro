@@ -1,80 +1,55 @@
 ---
 /**
- * StatsBanner - Bold performance stats in SNES style.
- * Big numbers that grab attention and sell the performance story.
+ * StatsBanner — performance stats strip on the landing page. Distilled
+ * from the original "rainbow stripe + cream box + Silkscreen big numbers"
+ * treatment to a single quiet horizontal rhythm with monospace numerals,
+ * tracked uppercase labels, and a hairline frame.
+ *
+ * The legacy `color` prop on each stat is accepted but ignored; existing
+ * MDX call sites continue to compile.
  */
 interface StatItem {
-  value: string;
-  label: string;
-  color: 'cyan' | 'pink' | 'yellow' | 'blue';
+  value: string
+  label: string
+  /** @deprecated Retained for backward-compat with existing MDX. Ignored. */
+  color?: string
 }
 
 interface Props {
-  stats: StatItem[];
+  stats: StatItem[]
 }
 
-const { stats } = Astro.props;
-
-const colorMap = {
-  cyan: { dark: 'var(--retro-cyan)', light: 'var(--retro-dark-cyan)' },
-  pink: { dark: 'var(--retro-pink)', light: 'var(--retro-dark-pink)' },
-  yellow: { dark: 'var(--retro-yellow)', light: 'var(--retro-dark-yellow)' },
-  blue: { dark: 'var(--retro-blue)', light: 'var(--retro-dark-blue)' },
-};
+const { stats } = Astro.props
 ---
 
-<div class="stats-banner">
+<aside class="stats-banner" aria-label="Performance highlights">
   <div class="stats-grid">
     {stats.map((stat) => (
-      <div class="stat-item" style={`--stat-color: ${colorMap[stat.color].dark}; --stat-color-light: ${colorMap[stat.color].light};`}>
+      <div class="stat-item">
         <span class="stat-value">{stat.value}</span>
         <span class="stat-label">{stat.label}</span>
       </div>
     ))}
   </div>
-  <div class="banner-border top"></div>
-  <div class="banner-border bottom"></div>
-</div>
+</aside>
 
 <style>
   .stats-banner {
     position: relative;
-    background: var(--retro-navy);
-    padding: 3rem 2rem;
-    margin: 4rem 0;
+    margin: clamp(2.5rem, 5vw, 4rem) 0;
+    padding: clamp(1.5rem, 3vw, 2.25rem) clamp(1rem, 3vw, 2rem);
+    border-block: 1px solid color-mix(in oklab, var(--border) 65%, transparent);
+    /* Subtle tinted band — not a solid bg block. Reads as "highlight"
+     * without forming a card. */
+    background-color: color-mix(in oklab, var(--card) 96%, var(--primary));
   }
-
-  .banner-border {
-    position: absolute;
-    left: 0;
-    right: 0;
-    height: 4px;
-    background: linear-gradient(
-      90deg,
-      var(--retro-cyan) 0%,
-      var(--retro-cyan) 16%,
-      var(--retro-blue) 16%,
-      var(--retro-blue) 33%,
-      var(--retro-purple) 33%,
-      var(--retro-purple) 50%,
-      var(--retro-pink) 50%,
-      var(--retro-pink) 66%,
-      var(--retro-orange) 66%,
-      var(--retro-orange) 83%,
-      var(--retro-yellow) 83%
-    );
-  }
-
-  .banner-border.top { top: 0; }
-  .banner-border.bottom { bottom: 0; }
 
   .stats-grid {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
-    gap: 2rem;
-    max-width: 1000px;
+    gap: clamp(1rem, 3vw, 2rem);
+    max-width: 1100px;
     margin: 0 auto;
-    text-align: center;
   }
 
   @media (max-width: 768px) {
@@ -92,41 +67,30 @@ const colorMap = {
   .stat-item {
     display: flex;
     flex-direction: column;
-    gap: 0.5rem;
+    gap: calc(var(--spacing) * 1);
+    /* Asymmetric: not centered. Left-aligned reads more designed
+     * (Design Context principle). */
+    align-items: flex-start;
   }
 
   .stat-value {
-    font-family: var(--font-pixel);
-    font-size: clamp(2.5rem, 5vw, 4rem);
-    color: var(--stat-color);
-    text-shadow:
-      3px 3px 0 var(--retro-midnight),
-      -1px -1px 0 var(--retro-midnight),
-      1px -1px 0 var(--retro-midnight),
-      -1px 1px 0 var(--retro-midnight);
+    font-family: 'Commit Mono', 'JetBrains Mono', ui-monospace, monospace;
+    font-feature-settings:
+      'tnum' 1,
+      'ss01' 1;
+    font-size: clamp(1.75rem, 3.2vw, 2.75rem);
+    font-weight: 500;
+    color: var(--foreground);
     line-height: 1;
+    letter-spacing: -0.025em;
   }
 
   .stat-label {
-    font-family: var(--font-pixel);
-    font-size: 0.875rem;
-    color: var(--retro-white);
+    font-family: 'Inter', system-ui, sans-serif;
+    font-weight: 500;
+    font-size: 0.6875rem;
+    color: var(--muted-foreground);
     text-transform: uppercase;
-    letter-spacing: 0.1em;
-    opacity: 0.8;
-  }
-
-  /* Light mode */
-  :global([data-theme='light']) .stats-banner {
-    background: #e8e5d0;
-  }
-
-  :global([data-theme='light']) .stat-value {
-    color: var(--stat-color-light);
-    text-shadow: 2px 2px 0 rgba(0, 0, 0, 0.15);
-  }
-
-  :global([data-theme='light']) .stat-label {
-    color: var(--retro-black);
+    letter-spacing: 0.08em;
   }
 </style>

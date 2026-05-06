@@ -1,208 +1,120 @@
 ---
 /**
- * FeatureCard - Bold, colorful SNES-style feature card.
- * Each card gets its own signature color from the retro palette.
+ * FeatureCard — restrained, token-driven card for the landing page feature
+ * grid. Distilled from the original retro-themed variant explosion to a
+ * single quiet treatment that lets the icon + title carry the differentiation
+ * (Design Context principle: density without noise; quiet layout, expressive
+ * details).
+ *
+ * The legacy `color` prop is accepted but ignored; existing MDX call sites
+ * that still pass it continue to compile, and we remove the prop from call
+ * sites incrementally without an MDX-wide sweep.
  */
-import Icon from './Icon.astro';
+import Icon from './Icon.astro'
 
 interface Props {
-  icon?: string;
-  title: string;
-  color: 'cyan' | 'pink' | 'yellow' | 'blue' | 'orange' | 'purple';
-  stat?: string;
-  statLabel?: string;
+  icon?: string
+  title: string
+  /** @deprecated Retained for backward-compat with existing MDX. Ignored. */
+  color?: string
+  stat?: string
+  statLabel?: string
 }
 
-const { icon, title, color, stat, statLabel } = Astro.props;
-
-const colorMap = {
-  cyan: {
-    bg: 'var(--retro-dark-cyan)',
-    accent: 'var(--retro-cyan)',
-    shadow: 'var(--retro-dark-cyan)',
-    glow: 'rgba(71, 204, 169, 0.3)',
-  },
-  pink: {
-    bg: 'var(--retro-purple)',
-    accent: 'var(--retro-pink)',
-    shadow: 'var(--retro-dark-pink)',
-    glow: 'rgba(217, 76, 135, 0.3)',
-  },
-  yellow: {
-    bg: 'var(--retro-dark-yellow)',
-    accent: 'var(--retro-yellow)',
-    shadow: 'var(--retro-dark-yellow)',
-    glow: 'rgba(242, 210, 75, 0.3)',
-  },
-  blue: {
-    bg: 'var(--retro-dark-blue)',
-    accent: 'var(--retro-blue)',
-    shadow: 'var(--retro-dark-blue)',
-    glow: 'rgba(11, 175, 230, 0.3)',
-  },
-  orange: {
-    bg: 'var(--retro-dark-orange)',
-    accent: 'var(--retro-orange)',
-    shadow: 'var(--retro-dark-orange)',
-    glow: 'rgba(232, 125, 62, 0.3)',
-  },
-  purple: {
-    bg: 'var(--retro-deep-purple)',
-    accent: 'var(--retro-purple)',
-    shadow: 'var(--retro-dark-purple)',
-    glow: 'rgba(115, 40, 102, 0.3)',
-  },
-};
-
-const colors = colorMap[color];
+const { icon, title, stat, statLabel } = Astro.props
 ---
 
-<article class="feature-card" data-sound="card" style={`--card-bg: ${colors.bg}; --card-accent: ${colors.accent}; --card-shadow: ${colors.shadow}; --card-glow: ${colors.glow};`}>
-  <div class="card-accent-bar"></div>
-  <div class="card-content">
-    {icon && (
-      <div class="icon-wrapper">
-        <Icon name={icon} class="icon" size="3rem" color={colors.accent} />
-      </div>
-    )}
-    <h3 class="title" set:html={title} />
-    {stat && (
-      <div class="stat-block">
-        <span class="stat-value">{stat}</span>
-        {statLabel && <span class="stat-label">{statLabel}</span>}
-      </div>
-    )}
-    <p class="description"><slot /></p>
-  </div>
-  <div class="card-corner tl"></div>
-  <div class="card-corner tr"></div>
-  <div class="card-corner bl"></div>
-  <div class="card-corner br"></div>
+<article class="feature-card" data-sound="card">
+  {icon && (
+    <span class="icon-wrap" aria-hidden="true">
+      <Icon name={icon} size="1.5rem" />
+    </span>
+  )}
+  <h3 class="title" set:html={title} />
+  {stat && (
+    <div class="stat-block">
+      <span class="stat-value">{stat}</span>
+      {statLabel && <span class="stat-label">{statLabel}</span>}
+    </div>
+  )}
+  <p class="description"><slot /></p>
 </article>
 
 <style>
   .feature-card {
     position: relative;
-    background: var(--card-bg);
-    border: 3px solid var(--card-accent);
-    padding: 0;
-    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    display: flex;
+    flex-direction: column;
+    gap: calc(var(--spacing) * 3);
+    padding: calc(var(--spacing) * 5) calc(var(--spacing) * 5)
+      calc(var(--spacing) * 6);
+    background-color: color-mix(in oklab, var(--card) 96%, var(--primary));
+    border: 1px solid var(--border);
+    border-radius: calc(var(--radius) - 2px);
+    transition:
+      border-color 180ms ease,
+      transform 180ms ease,
+      background-color 180ms ease;
   }
 
   .feature-card:hover {
-    transform: translate(-4px, -4px);
-    box-shadow:
-      4px 4px 0 var(--card-accent),
-      8px 8px 0 var(--retro-midnight);
+    border-color: color-mix(in oklab, var(--primary) 35%, var(--border));
+    transform: translateY(-2px);
   }
 
-  /* Accent bar at top */
-  .card-accent-bar {
-    height: 8px;
-    background: var(--card-accent);
-    /* Pixel pattern */
-    background-image: repeating-linear-gradient(
-      90deg,
-      var(--card-accent) 0px,
-      var(--card-accent) 8px,
-      transparent 8px,
-      transparent 16px
-    );
-    background-size: 16px 8px;
-  }
-
-  .card-content {
-    padding: 1.5rem;
-    display: flex;
-    flex-direction: column;
-    gap: 1rem;
-  }
-
-  .icon-wrapper {
-    width: 64px;
-    height: 64px;
-    display: flex;
+  .icon-wrap {
+    display: inline-flex;
     align-items: center;
     justify-content: center;
-    background: var(--retro-midnight);
-    border: 2px solid var(--card-accent);
-    box-shadow: inset 0 0 20px var(--card-glow);
+    width: 2.25rem;
+    height: 2.25rem;
+    border-radius: calc(var(--radius) - 4px);
+    background-color: color-mix(in oklab, var(--primary) 12%, transparent);
+    color: var(--primary);
   }
 
   .title {
-    font-family: var(--font-pixel);
-    font-size: 1.25rem;
-    color: var(--retro-white) !important;
+    font-family: 'Public Sans', system-ui, sans-serif;
+    font-weight: 600;
+    font-size: 1.0625rem;
+    line-height: 1.35;
+    letter-spacing: -0.01em;
+    color: var(--foreground);
     margin: 0;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    text-shadow: 2px 2px 0 var(--card-shadow);
   }
 
   .stat-block {
     display: flex;
     flex-direction: column;
-    gap: 0.25rem;
+    gap: 0.125rem;
+    margin-top: calc(var(--spacing) * 1);
   }
 
   .stat-value {
-    font-family: var(--font-pixel);
-    font-size: 2rem;
-    color: var(--retro-white);
-    text-shadow:
-      2px 2px 0 var(--card-accent),
-      4px 4px 0 var(--retro-midnight);
+    font-family: 'Commit Mono', 'JetBrains Mono', ui-monospace, monospace;
+    font-feature-settings:
+      'tnum' 1,
+      'ss01' 1;
+    font-size: 1.625rem;
+    font-weight: 500;
+    color: var(--foreground);
+    line-height: 1.1;
+    letter-spacing: -0.02em;
   }
 
   .stat-label {
-    font-family: var(--font-pixel);
-    font-size: 0.75rem;
-    color: var(--card-accent);
+    font-family: 'Inter', system-ui, sans-serif;
+    font-weight: 500;
+    font-size: 0.6875rem;
+    color: var(--muted-foreground);
     text-transform: uppercase;
-    letter-spacing: 0.1em;
+    letter-spacing: 0.06em;
   }
 
   .description {
-    font-size: 0.95rem;
-    color: var(--retro-white);
+    font-size: 0.9375rem;
+    line-height: 1.55;
+    color: var(--muted-foreground);
     margin: 0;
-    line-height: 1.6;
-    opacity: 0.9;
-  }
-
-  /* Pixel corner decorations */
-  .card-corner {
-    position: absolute;
-    width: 8px;
-    height: 8px;
-    background: var(--card-accent);
-  }
-
-  .card-corner.tl { top: -3px; left: -3px; }
-  .card-corner.tr { top: -3px; right: -3px; }
-  .card-corner.bl { bottom: -3px; left: -3px; }
-  .card-corner.br { bottom: -3px; right: -3px; }
-
-  /* Light mode */
-  :global([data-theme='light']) .feature-card {
-    background: var(--retro-white);
-  }
-
-  :global([data-theme='light']) .icon-wrapper {
-    background: #e8e5d0;
-  }
-
-  :global([data-theme='light']) .title {
-    color: var(--retro-black) !important;
-    text-shadow: none;
-  }
-
-  :global([data-theme='light']) .stat-value {
-    color: var(--retro-black);
-    text-shadow: 2px 2px 0 var(--card-accent);
-  }
-
-  :global([data-theme='light']) .description {
-    color: var(--retro-black);
   }
 </style>
