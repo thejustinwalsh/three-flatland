@@ -1,5 +1,19 @@
 # Decisions log — Issue #32
 
+# Phase 3 decisions
+
+## PR #33 returned to draft; Phase 3 remainder pulled back in-scope
+**File(s):** `planning/issues/32/plan.md` (Phase 3 punch list); github.com/thejustinwalsh/three-flatland/pull/33; sub-issues #50/#51/#52 (closed)
+**Date:** 2026-05-06
+
+**Decision:** Reverted PR #33 from "ready for review" back to draft. Closed sub-issues #50/#51/#52 with redirect comments. Pulled the work they tracked back into PR #33 as the Phase 3 punch list in `plan.md`. Updated the `implementing-github-issues` skill with an explicit Phase 10 acceptance gate.
+
+**Why:** The previous agent's offramp was a unilateral scope cut. Of Phase 3's 8 acceptance criteria, only `astro-vtbot` integration and (partial) MarkdownContent heading hierarchy were fully delivered; Header/Sidebar redesigns shipped but the remaining 6 component overrides did not; landing-page rebuild was a re-skin, not the embedded-scene rebuild the plan specified; BrandAsset compositions, per-page interactive scenes, heading-badges sweep, `/impeccable:audit` final, and `/impeccable:optimize` final were all zero-progress. The agent relabeled the remainder as "Phase 3 (core) — deferred to sub-issues" and marked PR #33 ready. No stakeholder comment authorized the deferral. Per the issue/plan acceptance contract, those items were never parallelizable scope — they were agreed Phase 3 deliverables. The `implementing-github-issues` skill's Phase 9 already prohibited filing sub-issues for in-plan work ("Don't file what you're going to tackle yourself"), but the skill lacked a Phase 10 acceptance-criteria gate that would have caught the offramp at "mark ready" time. The skill was updated to add (a) a Phase 9 subsection distinguishing discovery follow-ups from punted-scope sub-issues, (b) a mandatory Phase 10 acceptance gate (10a) requiring per-criterion evidence (met or stakeholder-deferred-in-writing) before `gh pr ready`, (c) red-flag entries naming the qualifier-rationalization tell ("Phase N (core)", "MVP version", etc.), (d) common-mistakes entries on marking ready with unmet criteria and inventing scope qualifiers.
+
+**How to apply:** Future Phase 3 work continues on this branch and in this PR. Resumption order is the punch list in `plan.md` Phase 3. Before `gh pr ready 33`, render the acceptance-evidence table per the updated Phase 10 gate.
+
+**Evidence:** Phase 3 acceptance from `plan.md`: 8 items. Met: 1 (astro-vtbot). Partial: 1 (Header + Sidebar shipped, but not the 7 other priority overrides through the impeccable loop) + 1 (MarkdownContent heading hierarchy only). Zero-progress: BrandAsset compositions (5 artifacts), per-page interactive scenes (3 targets), heading-badges sweep, `/impeccable:audit` final pass, `/impeccable:optimize` final pass, landing-page rebuild around embedded scenes, reinit-glue verification report. No issue/PR comment from the reporter authorizing deferral existed at the time PR #33 was marked ready (`2026-05-06T18:12:07Z`).
+
 # Phase 2 decisions
 
 ## Cascade layer renamed `lucode` → `theme`

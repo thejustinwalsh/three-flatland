@@ -277,7 +277,41 @@ Run **at the end of Phase 2**:
 
 ## Phase 3 — Redesign + polish
 
+> ### ⚠️ Reset 2026-05-06 — PR #33 returned to draft
+>
+> The previous agent shipped partial Phase 3 work through commit `889a894` (astro-vtbot, reinit-glue audit, Header/Sidebar polish, landing-component re-skin, brand-mark `icon.svg`, partial MarkdownContent), then unilaterally relabeled the remainder as "Phase 3 (core) — deferred to sub-issues #50/#51/#52" and marked PR #33 ready. That was a unilateral scope cut: 5 of 8 acceptance criteria were unmet and no stakeholder authorization for deferral existed. Sub-issues #50/#51/#52 were closed; the work has been pulled back in-scope as the punch list below; PR #33 is back in draft. The `implementing-github-issues` skill (Phase 9 + Phase 10) was updated with an explicit acceptance gate to prevent recurrence. See `decisions.md` "PR #33 returned to draft; Phase 3 remainder pulled back in-scope".
+
 **Goal:** drive the actual visual redesign through the design system Phase 2 stood up. Each component override gets a Flatland-aligned design pass; the landing page is rebuilt; SPA polish is added; visualizations get embedded in selected guide pages.
+
+### Phase 3 punch list (remaining)
+
+Order: top-to-bottom, with (3) and (5) able to interleave with (1) since they don't share files.
+
+1. **Component overrides through impeccable loop** (priority order from original plan + completion status):
+   - ✅ Header (shipped `d1edfc1`)
+   - ✅ Sidebar (shipped `35dadfa`)
+   - [ ] Hero (Starlight marketing-page hero — used by landing)
+   - [ ] ContentPanel
+   - [ ] MarkdownContent — heading hierarchy partial (`889a894`); finish prose / list / blockquote / table / inline-code / link treatments
+   - [ ] PageSidebar (TOC)
+   - [ ] Search modal interior + suggestions list (compact button done with Header)
+   - [ ] Pagination
+   - [ ] Footer
+2. **Landing-page rebuild** — beyond the FeatureCard/StatsBanner/ValueProp re-skin (`ae6db57`), compose the page around embedded three-flatland scenes per the plan brief ("creative design aesthetic … interactivity and visuals"). `/impeccable:onboard` → `/impeccable:frontend-design`.
+3. **BrandAsset compositions** — the new mark exists (`e71f17d`); the 5 larger compositions still render the retro pixel-art treatment: `banner` (1280×640), `og` (1200×630), `wide` (3000×1000 Bluesky), `social-x` (1200×628), `icon-only` (512×512). Regenerate `docs/public/social/og-image.png` + `x-card-image.png` afterward.
+4. **Per-page interactive scenes** — embed a bespoke scene in 2–3 high-value guides:
+   - `guides/tsl-nodes.mdx` — node-graph editor showing live shader composition
+   - `guides/pass-effects.mdx` — toggleable pass stack with side-by-side preview
+   - `guides/tilemaps.mdx` — small interactive tilemap with brush controls
+   Live under `docs/src/components/scenes/` with `<ClientOnly>`-style guards + `useGPUSupport` fallback.
+5. **Heading-badges sweep** — apply `## Heading :badge[v0.X]` / `:badge[WebGPU only]` / `:badge[New]` annotations to version-tied or platform-divergent sections (API ref pages, `WebGPU initialization` headings, anything tied to a specific package version).
+6. **Reinit-glue verification** — explicit verification report (in `phase-3-audit.md`) that pagefind + theme + table-scroll glue still works correctly post-vtbot pruning. The pruning shipped (`1f6be23`); the *verification* of the pruning hasn't been captured.
+7. **`/impeccable:audit` final pass** — capture as `planning/issues/32/phase-3-audit.md`; compare against `phase-2-audit.md` baseline (regression delta + improvements).
+8. **`/impeccable:optimize` final pass** — bundle size, image optimization, font loading, animation cost.
+
+When all 8 are met, run the Phase 10 acceptance gate (per `implementing-github-issues` skill) — render the acceptance-evidence table in the PR description, then `gh pr ready 33`.
+
+### Original Phase 3 scope (preserved for reference)
 
 ### Component-by-component redesign
 
