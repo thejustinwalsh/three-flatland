@@ -1,0 +1,41 @@
+{
+  "name": "starlight-theme",
+  "version": "0.0.1-alpha.0",
+  "type": "module",
+  "private": true,
+  "description": "three-flatland's internal Starlight theme — base16 Materia tokens, Linear/Radix-leaning aesthetic. Forked from lucode-starlight (MIT, lucas-labs).",
+  "license": "MIT",
+  "exports": {
+    ".": "./index.ts",
+    "./schema": "./schema.ts",
+    "./styles/base": "./styles/base.css",
+    "./styles/layers": "./styles/layers.css",
+    "./styles/theme": "./styles/theme.css",
+    "./components": "./user-components.ts",
+    "./components/overrides/ContentPanel.astro": "./components/overrides/ContentPanel.astro",
+    "./components/overrides/Footer.astro": "./components/overrides/Footer.astro",
+    "./components/overrides/Header.astro": "./components/overrides/Header.astro",
+    "./components/overrides/ThemeSelect.astro": "./components/overrides/ThemeSelect.astro",
+    "./components/overrides/SiteTitle.astro": "./components/overrides/SiteTitle.astro",
+    "./components/overrides/Search.astro": "./components/overrides/Search.astro",
+    "./components/overrides/SocialIcons.astro": "./components/overrides/SocialIcons.astro",
+    "./components/overrides/PageFrame.astro": "./components/overrides/PageFrame.astro",
+    "./components/overrides/TwoColumnContent.astro": "./components/overrides/TwoColumnContent.astro",
+    "./components/overrides/PageTitle.astro": "./components/overrides/PageTitle.astro",
+    "./components/overrides/TableOfContents.astro": "./components/overrides/TableOfContents.astro",
+    "./components/overrides/PageSidebar.astro": "./components/overrides/PageSidebar.astro",
+    "./components/overrides/Sidebar.astro": "./components/overrides/Sidebar.astro",
+    "./components/overrides/MarkdownContent.astro": "./components/overrides/MarkdownContent.astro",
+    "./components/overrides/Hero.astro": "./components/overrides/Hero.astro",
+    "./components/overrides/Pagination.astro": "./components/overrides/Pagination.astro",
+    "./package.json": "./package.json"
+  },
+  "peerDependencies": {
+    "@astrojs/starlight": ">=0.38.3"
+  },
+  "dependencies": {
+    "@pagefind/default-ui": "^1.5.2",
+    "marked": "^18.0.2",
+    "zod": "^3.23.8"
+  }
+}
