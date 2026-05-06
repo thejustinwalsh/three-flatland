@@ -157,16 +157,18 @@ function frame(now: number) {
         t.el.style.setProperty('--scene-angle', `${sceneAngle.toFixed(1)}deg`)
 
         /* MOUSE LIGHT — cursor-driven with inertia. When cursor is over
-         * the surface, --mouse-active eases toward 1 (CSS scales the
-         * mouse-light layer's opacity by this). On leave, --mouse-active
-         * eases back toward 0 and the mouse position relaxes to center. */
+         * the surface, --mouse-active eases toward 1 and position eases
+         * toward (cx, cy). On leave, --mouse-active eases back toward 0
+         * BUT the position freezes at its last value so the highlight
+         * fades in place rather than sliding back to center. */
         const targetActive = t.hovering ? 1 : 0
         t.active = inertia(t.active, targetActive, dt, 180)
-        // When not hovering, mouse position drifts back to center over time.
-        const targetCx = t.hovering ? t.cx : 0.5
-        const targetCy = t.hovering ? t.cy : 0.5
-        t.lx = inertia(t.lx, targetCx, dt, 110)
-        t.ly = inertia(t.ly, targetCy, dt, 110)
+        if (t.hovering) {
+            t.lx = inertia(t.lx, t.cx, dt, 110)
+            t.ly = inertia(t.ly, t.cy, dt, 110)
+        }
+        // else: lx/ly retain last hovered value; the fading --mouse-active
+        // takes the highlight to zero opacity at that location.
 
         // Tiny perlin jitter on top of mouse position for material feel.
         const mAmpl = 0.04
