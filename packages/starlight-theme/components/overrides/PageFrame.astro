@@ -17,7 +17,7 @@ const base = (import.meta.env.BASE_URL || '/').replace(/\/$/, '');
 const isLanding = path === base || path === '';
 ---
 
-<div data-slot="layout">
+<div data-slot="layout" data-landing={isLanding ? '' : undefined}>
     {isLanding && (
         <aside class="alpha-ribbon" aria-label="Early alpha release" data-light data-gem="gold">
             <a class="alpha-ribbon-tape" href="https://github.com/thejustinwalsh/three-flatland/issues">
@@ -67,23 +67,24 @@ const isLanding = path === base || path === '';
      * to whatever's underneath; only the rotated tape is clickable. */
     .alpha-ribbon {
         position: fixed;
-        top: 5.5rem;
+        top: 0;
         left: 0;
         width: 13rem;
         height: 13rem;
         pointer-events: none;
-        z-index: 30;
+        z-index: 60;
         overflow: hidden;
     }
     /* Standard corner-ribbon geometry: tape rotated -45° about its center,
      * positioned so its center lands on the wrapper's diagonal midpoint;
      * width is generous (~24rem) so the rotated stripe fully spans
      * corner-to-corner of the wrapper, leaving only a clean diagonal band
-     * visible after overflow:hidden clips the rest. */
+     * visible after overflow:hidden clips the rest. Tighter offsets so
+     * the stripe sits near the corner — sticker stuck flush. */
     .alpha-ribbon-tape {
         position: absolute;
-        top: 3.5rem;
-        left: -5.5rem;
+        top: 2rem;
+        left: -7rem;
         width: 24rem;
         padding: 0.5rem 0;
         text-align: center;
@@ -188,6 +189,16 @@ const isLanding = path === base || path === '';
         }
     }
 
+    /* Landing: header floats over the hero canvas with a glass alpha
+     * background so the shader peeks through. Backdrop-blur softens the
+     * canvas behind the header text without obscuring the gem flow. */
+    [data-slot='layout'][data-landing] > header {
+        background: color-mix(in oklab, var(--background) 50%, transparent);
+        backdrop-filter: saturate(140%) blur(10px);
+        -webkit-backdrop-filter: saturate(140%) blur(10px);
+        border-bottom: 1px solid color-mix(in oklab, var(--border) 40%, transparent);
+    }
+
     [data-slot='layout'] {
         /* group/layout relative z-10 flex min-h-svh flex-col bg-background */
         position: relative;
@@ -204,6 +215,7 @@ const isLanding = path === base || path === '';
             z-index: 50;
             width: 100%;
             background: var(--background);
+            transition: background-color 200ms ease, backdrop-filter 200ms ease;
 
             .container-wrapper {
                 padding-inline: calc(var(--spacing) * 6);

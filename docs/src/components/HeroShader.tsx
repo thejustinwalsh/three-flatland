@@ -89,24 +89,37 @@ void main() {
 
   float t = u_time * 0.05;
 
-  // Domain-warp layer — pushes the gem "flow" around the surface so
-  // colors morph across each other smoothly.
+  // MOUSE-AS-DISTURBANCE — instead of adding a hot-light radial, the
+  // cursor PERTURBS the gem-flow noise field. Conceptually: a finger
+  // pressing into water. We push sample points away from the cursor
+  // (radial-falloff), warping the sampled fbm so the gems flow around
+  // and away from the cursor as it moves. No additive light, just
+  // displacement — the scene reacts.
+  vec2 m = u_mouse * 2.0 - 1.0;
+  m.x *= u_res.x / u_res.y;
+  vec2 mouseOffset = p - m;
+  float md = length(mouseOffset);
+  float disturb = smoothstep(0.85, 0.0, md) * u_mouse_active * 0.45;
+  // Push p away from the mouse along the radial direction.
+  vec2 pp = p + (md > 0.0001 ? normalize(mouseOffset) : vec2(0.0)) * disturb;
+
+  // Domain-warp layer (sampled at PERTURBED pp) — gems flow around
+  // the cursor naturally because subsequent fbm() calls sample from pp.
   vec2 q = vec2(
-    fbm(p + vec2(0.0, t)),
-    fbm(p + vec2(5.2, t * 1.3 + 1.3))
+    fbm(pp + vec2(0.0, t)),
+    fbm(pp + vec2(5.2, t * 1.3 + 1.3))
   );
   vec2 r = vec2(
-    fbm(p + 4.0 * q + vec2(1.7, 9.2 + t * 0.6)),
-    fbm(p + 4.0 * q + vec2(8.3, 2.8 - t * 0.4))
+    fbm(pp + 4.0 * q + vec2(1.7, 9.2 + t * 0.6)),
+    fbm(pp + 4.0 * q + vec2(8.3, 2.8 - t * 0.4))
   );
-  float n = fbm(p + 4.0 * r);
 
-  // Layered gem masks — each gem has a different noise frequency offset
-  // so they bleed in/out at different cadences.
-  float m1 = smoothstep(0.20, 0.55, fbm(p * 1.2 + r * 0.5 + vec2(t,  t * 0.7)));
-  float m2 = smoothstep(0.25, 0.60, fbm(p * 1.6 - r * 0.4 + vec2(-t, t * 0.4)));
-  float m3 = smoothstep(0.30, 0.65, fbm(p * 0.9 + r * 0.7 + vec2(t * 0.6, -t)));
-  float m4 = smoothstep(0.35, 0.70, fbm(p * 2.1 - r * 0.3 + vec2(-t * 1.2, t * 0.5)));
+  // Layered gem masks — each at different freq offset, all sampling pp
+  // so the cursor disturbance propagates through every layer.
+  float m1 = smoothstep(0.20, 0.55, fbm(pp * 1.2 + r * 0.5 + vec2(t,  t * 0.7)));
+  float m2 = smoothstep(0.25, 0.60, fbm(pp * 1.6 - r * 0.4 + vec2(-t, t * 0.4)));
+  float m3 = smoothstep(0.30, 0.65, fbm(pp * 0.9 + r * 0.7 + vec2(t * 0.6, -t)));
+  float m4 = smoothstep(0.35, 0.70, fbm(pp * 2.1 - r * 0.3 + vec2(-t * 1.2, t * 0.5)));
 
   // Composite gems on near-black background.
   vec3 col = C_BG;
@@ -116,20 +129,11 @@ void main() {
   col = mix(col, C_PINK,     m4 * 0.42);
 
   // Scene-light directional sheen — gem accent shifts by the global
-  // scene-angle so the surface reads as "lit from the same source as
-  // the cards." Aligned to the scene-angle vector projected onto p.
+  // scene-angle. Aligned to the scene-angle vector projected onto p.
   vec2 ldir = vec2(sin(u_scene_angle), cos(u_scene_angle));
   float dirShade = dot(p, ldir) * 0.18 + 0.5;
   col += C_GOLD * smoothstep(0.55, 0.95, dirShade) * 0.35;
   col -= 0.10 * smoothstep(0.0, 0.5, 1.0 - dirShade);
-
-  // Mouse-driven hot light — radial in NDC space, gold/salmon glow.
-  vec2 m = u_mouse * 2.0 - 1.0;
-  m.x *= u_res.x / u_res.y;
-  float md = length(p - m);
-  float hot = smoothstep(0.85, 0.0, md) * u_mouse_active;
-  col += mix(C_SALMON, C_GOLD, 0.5) * hot * 0.55;
-  col += C_RUBY * smoothstep(0.45, 0.0, md) * u_mouse_active * 0.25;
 
   // Vignette so the edges fade into the page bg cleanly.
   float v = smoothstep(1.4, 0.55, length(p));

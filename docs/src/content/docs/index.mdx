@@ -181,35 +181,31 @@ function Game() {
 
 <style>
 {`
-  /* Fullscreen parallax hero — HeroGame canvas is sticky-pinned to the
-     viewport for the duration of the hero section, with title/tagline/
-     CTAs overlaid on top. As the user scrolls, the title block slides
-     up and away while the canvas stays put for the parallax effect.
-     Section is min-height: 100vh + a bit so there's a real "scroll past
-     the hero" gesture before the canvas releases. */
+  /* Half-viewport hero — canvas occupies the area below the site
+     header (which renders with an alpha bg on landing so the canvas
+     shows through). 60vh keeps the StatsBanner above the fold. */
   .hero-fullscreen {
     position: relative;
     width: 100%;
-    min-height: 100vh;
+    height: 60vh;
+    min-height: 24rem;
     margin: 0;
-    /* Pull edge-to-edge: splash main has no padding, but other ancestor
-       wrappers may add one — neutralize the negative margin if needed. */
+    overflow: hidden;
   }
   .hero-canvas {
-    position: sticky;
-    top: 0;
-    height: 100vh;
-    width: 100%;
+    position: absolute;
+    inset: 0;
     overflow: hidden;
     background: var(--background);
+    z-index: 0;
   }
   .hero-canvas > :global(*) {
     position: absolute;
     inset: 0;
   }
 
-  /* Overlay sits ON TOP of the canvas, scrolls naturally with the page,
-     centered horizontally and vertically in the visible viewport. */
+  /* Overlay sits ON TOP of the canvas, fills the hero area, centers
+     the title/tagline/CTAs vertically. */
   .hero-overlay {
     position: absolute;
     inset: 0;
@@ -218,6 +214,7 @@ function Game() {
     align-items: center;
     justify-content: center;
     padding: clamp(1.5rem, 4vw, 3rem);
+    padding-top: var(--header-height, 3.5rem);
     pointer-events: none;
     z-index: 2;
   }
@@ -249,22 +246,22 @@ function Game() {
 
   .hero-title {
     font-family: 'Public Sans', system-ui, sans-serif;
-    font-size: clamp(3rem, 7vw, 5.5rem);
+    font-size: clamp(2.5rem, 5.5vw, 4.5rem);
     font-weight: 200;
     line-height: 1.02;
     letter-spacing: -0.04em;
     color: var(--foreground);
-    margin: 0 0 calc(var(--spacing) * 5);
+    margin: 0 0 calc(var(--spacing) * 4);
     text-shadow: 0 2px 32px color-mix(in oklab, var(--background) 75%, transparent);
   }
   .hero-tagline {
     font-family: 'Public Sans', system-ui, sans-serif;
-    font-size: clamp(1rem, 1.5vw, 1.125rem);
+    font-size: clamp(0.95rem, 1.4vw, 1.0625rem);
     font-weight: 400;
     line-height: 1.55;
     color: color-mix(in oklab, var(--foreground) 88%, var(--muted-foreground));
-    max-width: 44rem;
-    margin: 0 auto calc(var(--spacing) * 8);
+    max-width: 42rem;
+    margin: 0 auto calc(var(--spacing) * 6);
     text-shadow: 0 1px 12px color-mix(in oklab, var(--background) 80%, transparent);
   }
   .hero-actions {
@@ -275,7 +272,7 @@ function Game() {
   }
   .hero-scrollcue {
     position: absolute;
-    bottom: calc(var(--spacing) * 8);
+    bottom: calc(var(--spacing) * 4);
     left: 50%;
     transform: translateX(-50%);
     display: flex;
