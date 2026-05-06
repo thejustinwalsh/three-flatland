@@ -311,42 +311,71 @@ export function addStatsGraph(
     const t = Math.min(1, Math.max(0, (now - lastBatchAt) / STATS_BATCH_MS))
 
     // Slide the display window through the ring so newest samples fade
-    // in. At t=0 the right edge sits `batchCount` samples behind the
-    // ring's write head; at t=1 it has caught up.
+    // in at 60 Hz between the producer's 4 Hz batches.
+    //
+    // **Don't blend sample VALUES across the slide.** Earlier the
+    // sample at each pixel was `a*(1-frac) + b*frac` for a
+    // continuously-changing `frac` — that means a single peak at
+    // ring slot K shows different *heights* at different sub-batch
+    // times (full height only when frac=0; lower whenever it's
+    // blended with a neighbor). Visible as peaks "changing shape as
+    // they scroll." Sample each ring slot at its INTEGER index — the
+    // height never moves — and shift the entire polyline's X by the
+    // fractional sub-sample offset. The line slides smoothly across
+    // the canvas; each sample's height is the same in every frame
+    // that contains it.
     const ring = seriesFor(mode)
     const size = ring.data.length
     const max = graphMax[mode] || 1
-    const rightOffset = batchCount * (1 - t)
-    const startFloat = ring.write - rightOffset - BUFFER_SIZE + size * 2
+    const phase = batchCount * (1 - t)            // continuous 0..batchCount
+    const intPhase = Math.floor(phase)             // integer slide steps remaining
+    const fracPhase = phase - intPhase             // 0..1 sub-step (sub-pixel scroll)
 
     const w = cachedW
     const h = cachedH
     gfx.clearRect(0, 0, w, h)
 
-    // Build the polyline directly into a path. Track first point so we
-    // can close the fill polygon by lining back to the bottom corners.
     const color = MODE_COLORS[mode]
-    gfx.beginPath()
+    const samplePixelW = w / (BUFFER_SIZE - 1)
+
+    // Draw BUFFER_SIZE + 1 samples — one extra at i=-1 so the leftmost
+    // visible pixel always has a polyline endpoint, no matter where
+    // fracPhase sits between integer steps. Without this extra, the
+    // line would have a visible gap at the canvas's left edge during
+    // sub-pixel slide.
+    //
+    // Two passes (fill polygon, then crisp stroke) over the same
+    // points; computing each point in a tight inner loop keeps allocs
+    // at zero. The values cache `mn`/`mx` are session-min/max trackers,
+    // populated from the ring (not the rendered polyline) — they
+    // bypass the integer-index loop and read raw ring values.
     let mn = Infinity
     let mx = 0
-    for (let i = 0; i < BUFFER_SIZE; i++) {
-      const fi = startFloat + i
-      const aIdx = Math.floor(fi) % size
-      const bIdx = (aIdx + 1) % size
-      const frac = fi - Math.floor(fi)
-      const a = ring.data[aIdx]!
-      const b = ring.data[bIdx]!
-      const v = a * (1 - frac) + b * frac
-      if (v < mn) mn = v
-      if (v > mx) mx = v
-      const x = (i / (BUFFER_SIZE - 1)) * w
-      const y = h - (v / max) * h * 0.85 - h * 0.05
-      if (i === 0) gfx.moveTo(x, y)
+    // Walk the same range we render to compute mn/mx — no separate
+    // pass. Adds an `if` per sample but skips a second loop.
+    const baseRingIdx = ring.write - intPhase - BUFFER_SIZE + size * 2
+
+    gfx.beginPath()
+    for (let i = -1; i < BUFFER_SIZE; i++) {
+      const ringIdx = (baseRingIdx + i) % size
+      const v = ring.data[ringIdx]!
+      if (i >= 0) {
+        if (v < mn) mn = v
+        if (v > mx) mx = v
+      }
+      const x = (i + fracPhase) * samplePixelW
+      // Clamp y to the canvas top so over-budget samples (v > graphMax)
+      // saturate at the top edge instead of drawing above the canvas.
+      const yRaw = h - (v / max) * h * 0.85 - h * 0.05
+      const y = yRaw < h * 0.05 ? h * 0.05 : yRaw
+      if (i === -1) gfx.moveTo(x, y)
       else gfx.lineTo(x, y)
     }
 
-    // Translucent fill under the line. Closing the path by lining to
-    // bottom-right then bottom-left.
+    // Translucent fill under the line. Close to bottom-right then
+    // bottom-left of the canvas — the polyline's leftmost x may be
+    // slightly negative during sub-pixel slide, but the canvas crops
+    // off-edge pixels for free, so the polygon closes cleanly.
     gfx.lineTo(w, h)
     gfx.lineTo(0, h)
     gfx.closePath()
@@ -356,19 +385,14 @@ export function addStatsGraph(
     gfx.globalAlpha = 1
 
     // Re-stroke the line over the fill so the top edge is sharp.
-    // Re-traversing the polyline path keeps allocations to zero.
     gfx.beginPath()
-    for (let i = 0; i < BUFFER_SIZE; i++) {
-      const fi = startFloat + i
-      const aIdx = Math.floor(fi) % size
-      const bIdx = (aIdx + 1) % size
-      const frac = fi - Math.floor(fi)
-      const a = ring.data[aIdx]!
-      const b = ring.data[bIdx]!
-      const v = a * (1 - frac) + b * frac
-      const x = (i / (BUFFER_SIZE - 1)) * w
-      const y = h - (v / max) * h * 0.85 - h * 0.05
-      if (i === 0) gfx.moveTo(x, y)
+    for (let i = -1; i < BUFFER_SIZE; i++) {
+      const ringIdx = (baseRingIdx + i) % size
+      const v = ring.data[ringIdx]!
+      const x = (i + fracPhase) * samplePixelW
+      const yRaw = h - (v / max) * h * 0.85 - h * 0.05
+      const y = yRaw < h * 0.05 ? h * 0.05 : yRaw
+      if (i === -1) gfx.moveTo(x, y)
       else gfx.lineTo(x, y)
     }
     gfx.strokeStyle = color

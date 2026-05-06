@@ -273,32 +273,44 @@ function drawHistogram(
 }
 
 /**
- * Axis hysteresis via power-of-two buckets.
+ * Axis hysteresis via power-of-two buckets + trimmed max.
  *
- * The earlier attempt used continuous exponential smoothing — grow
- * fast, decay slow. It hides scroll-out pops but introduces a new
- * problem: the axis is *always* drifting, so the same stable sample
- * value renders at a different height on every draw. Under a noisy
- * series like `gpuMs` the continuous drift reads as "the line
- * reshapes" — peaks get sharper or flatter even for frozen historic
- * data as it scrolls across the canvas.
+ * Earlier iterations:
+ *  - Continuous EMA: peaks/troughs decayed smoothly, but the axis
+ *    was *always* drifting — the same stable value rendered at a
+ *    different height each draw, so the line "reshaped" as it
+ *    scrolled.
+ *  - Bucket-only: snaps to next 2^n. Stable for steady data, but a
+ *    single spike crossing the bucket boundary doubles the axis
+ *    immediately; when that one spike scrolls out, the axis snaps
+ *    back. With a noisy series like `gpuMs` the bucket flips
+ *    constantly — visible as the "dance."
  *
- * The bucket approach pins max to the next 2^n above the observed
- * value (1, 2, 4, 8, 16, 32, 64, …). The axis snaps cleanly between
- * discrete steps instead of drifting continuously; most of the time
- * max sits in the SAME bucket frame after frame, so renders are
- * pixel-stable. Shrink only when observed drops well below the
- * bucket (the `* 2.5` threshold) so we don't oscillate at bucket
- * boundaries.
+ * Bucket + trimmed max: rank the visible window's samples and use
+ * the K-th largest (K = 3) as the input to `bucketUp`, instead of
+ * raw max. The top 2 outliers no longer drive the axis, so a single
+ * spike still draws on the canvas (clipped at the top edge if
+ * extreme) but doesn't flip the bucket. Sustained peaks (3+ samples
+ * at the high level) still grow the axis correctly. Shrink hysteresis
+ * (`* 2.5` below) is unchanged.
  *
- * Min is anchored at 0. For ms / count metrics, 0 is the
- * meaningful floor; auto-smoothing the min just adds another
- * variable axis we don't need.
+ * Min is anchored at 0. For ms / count metrics, 0 is the meaningful
+ * floor; auto-smoothing the min just adds another variable axis we
+ * don't need.
  */
 function bucketUp(v: number): number {
   if (v <= 1) return 1
   return Math.pow(2, Math.ceil(Math.log2(v)))
 }
+
+/**
+ * Number of top-end samples ignored when computing the axis-driving
+ * max. K=3 means the top 2 outliers are clipped (to the canvas top
+ * edge); the 3rd-largest sets the bucket. Tuned for 60Hz, ~256-sample
+ * windows: a 2-frame spike doesn't move the axis, but a sustained
+ * 3+-frame elevation does.
+ */
+const AXIS_TRIM_K = 3
 
 /**
  * Draw a muted sparkline of the ring's samples. Uses a bucketed
@@ -320,16 +332,24 @@ function drawSeries(
   const size = series.data.length
   if (len === 0 || size === 0) return
 
-  let observedMax = 0
   // Walk the last `len` samples, oldest → newest, so the sparkline
   // reads left-to-right. `series.write` is the next-to-write slot, so
   // the oldest valid sample is at `(write - len + size) % size`.
   const start = (series.write - len + size) % size
+
+  // Track the top-K largest with a tiny ascending sort (K=3 → 3
+  // compares per sample, no allocation). Top1 is the max; topK is
+  // the K-th-largest = our trimmed observedMax. When fewer than K
+  // samples exist (window still warming up), fall back to top1.
+  let top1 = -Infinity, top2 = -Infinity, top3 = -Infinity
   for (let i = 0; i < len; i++) {
     const v = series.data[(start + i) % size]!
-    if (v > observedMax) observedMax = v
+    if (v > top1) { top3 = top2; top2 = top1; top1 = v }
+    else if (v > top2) { top3 = top2; top2 = v }
+    else if (v > top3) { top3 = v }
   }
-  if (!Number.isFinite(observedMax)) return
+  const observedMax = len < AXIS_TRIM_K ? top1 : top3
+  if (!Number.isFinite(observedMax) || observedMax < 0) return
 
   // Bucket the max to next 2^n with hysteresis.
   if (rangeRef.current === null) {
@@ -350,6 +370,19 @@ function drawSeries(
   const range = max - min
   const useCenter = range < 1e-6
 
+  // Y for a sample, clamped to the canvas's top edge (h*0.075). With
+  // the trimmed-max bucket, raw `max` ignores the top 1–2 outliers —
+  // so spikes can have `v > max`, which would compute `y < 0` and
+  // draw the polyline above the canvas (visible as peaks stretching
+  // up past the graph box). Saturating at the top edge keeps spikes
+  // visible without bleeding past the card.
+  const TOP = h * 0.075
+  const sampleY = (v: number): number => {
+    if (useCenter) return h * 0.5
+    const yRaw = h - ((v - min) / range) * (h * 0.85) - TOP
+    return yRaw < TOP ? TOP : yRaw
+  }
+
   // Translucent fill under the line so it reads as a muted band.
   // Anchor the fill polygon at the bottom-left regardless of where the
   // first sample lands — without this the leading edge floats up/down
@@ -359,10 +392,7 @@ function drawSeries(
   for (let i = 0; i < len; i++) {
     const v = series.data[(start + i) % size]!
     const x = (i / Math.max(1, len - 1)) * w
-    const y = useCenter
-      ? h * 0.5
-      : h - ((v - min) / range) * (h * 0.85) - h * 0.075
-    ctx.lineTo(x, y)
+    ctx.lineTo(x, sampleY(v))
   }
   ctx.lineTo(w, h)
   ctx.closePath()
@@ -374,9 +404,7 @@ function drawSeries(
   for (let i = 0; i < len; i++) {
     const v = series.data[(start + i) % size]!
     const x = (i / Math.max(1, len - 1)) * w
-    const y = useCenter
-      ? h * 0.5
-      : h - ((v - min) / range) * (h * 0.85) - h * 0.075
+    const y = sampleY(v)
     if (i === 0) ctx.moveTo(x, y)
     else ctx.lineTo(x, y)
   }
