@@ -58,15 +58,15 @@ const resolvedGem: Gem | undefined = color
 const accentStyle = resolvedGem ? `--card-accent: var(--${resolvedGem});` : undefined
 ---
 
-<article class="feature-card u-light u-reveal" data-sound="card" data-gem={resolvedGem} style={accentStyle}>
-  <header class="head">
+<article class="not-content feature-card u-light u-reveal" data-sound="card" data-gem={resolvedGem} style={accentStyle}>
+  <div class="head">
     {icon && (
       <span class="icon-wrap" aria-hidden="true">
         <Icon name={icon} size="1.5rem" />
       </span>
     )}
     <h3 class="title" set:html={title} />
-  </header>
+  </div>
   {stat && (
     <div class="stat-block">
       <span class="stat-value">{stat}</span>
