@@ -782,25 +782,56 @@
     }
 
     .sl-link-button.primary {
+        position: relative;
         color: var(--primary-foreground);
-        background-color: var(--primary);
-        border-color: transparent;
+        background:
+            linear-gradient(
+                calc(var(--scene-angle, 135deg) + 90deg),
+                color-mix(in oklab, var(--primary) 100%, transparent) 0%,
+                color-mix(in oklab, var(--primary) 80%, var(--background)) 100%
+            );
+        border-color: color-mix(in oklab, var(--primary) 60%, transparent);
+        overflow: hidden;
+        isolation: isolate;
+    }
+
+    .sl-link-button.primary::before {
+        content: '';
+        position: absolute;
+        inset: 0;
+        border-radius: inherit;
+        pointer-events: none;
+        background: linear-gradient(
+            calc(var(--scene-angle, 135deg) + 90deg),
+            color-mix(in oklab, var(--primary) 30%, transparent) 0%,
+            transparent 60%
+        );
+        z-index: 0;
+        mix-blend-mode: screen;
     }
 
     .sl-link-button.primary:hover {
         color: var(--primary-foreground);
-        background-color: color-mix(in oklab, var(--primary) 88%, var(--background));
+        box-shadow: 0 4px 14px -6px color-mix(in oklab, var(--primary) 55%, transparent);
+    }
+
+    .sl-link-button.secondary {
+        background:
+            linear-gradient(
+                calc(var(--scene-angle, 135deg) + 90deg),
+                color-mix(in oklab, var(--diamond) 25%, var(--background)) 0%,
+                color-mix(in oklab, var(--background) 90%, var(--diamond)) 100%
+            );
+        border-color: color-mix(in oklab, var(--diamond) 35%, var(--border));
     }
 
     .sl-link-button.secondary {
         color: var(--foreground);
-        background-color: color-mix(in oklab, var(--background) 82%, var(--secondary));
-        border-color: var(--border);
     }
 
     .sl-link-button.secondary:hover {
         color: var(--foreground);
-        background-color: var(--accent);
+        box-shadow: 0 4px 14px -6px color-mix(in oklab, var(--diamond) 35%, transparent);
     }
 
     .sl-link-button.minimal {
