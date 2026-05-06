@@ -1167,11 +1167,11 @@
         pointer-events: none;
         background: radial-gradient(
             circle at var(--mx, 50%) var(--my, 50%),
-            color-mix(in oklab, var(--card-accent, var(--primary)) 38%, transparent) 0%,
-            color-mix(in oklab, var(--card-accent, var(--primary)) 14%, transparent) 12%,
+            color-mix(in oklab, var(--card-accent, var(--primary)) 22%, transparent) 0%,
+            color-mix(in oklab, var(--card-accent, var(--primary)) 8%, transparent) 12%,
             transparent 32%
         );
-        opacity: calc(var(--mouse-active, 0) * 0.55);
+        opacity: calc(var(--mouse-active, 0) * 0.4);
         z-index: 2;
         mix-blend-mode: screen;
     }
@@ -1195,8 +1195,8 @@
     [data-light][data-gem='gold']::after {
         background: radial-gradient(
             circle at var(--mx, 50%) var(--my, 50%),
-            color-mix(in oklab, var(--gold-high) 48%, transparent) 0%,
-            color-mix(in oklab, var(--orange) 18%, transparent) 14%,
+            color-mix(in oklab, var(--gold-high) 28%, transparent) 0%,
+            color-mix(in oklab, var(--orange) 10%, transparent) 14%,
             transparent 32%
         );
     }
