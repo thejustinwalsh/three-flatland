@@ -2,16 +2,6 @@
 title: three-flatland
 description: The complete 2D solution for Three.js and React Three Fiber. Built for WebGPU with composable TSL shaders.
 template: splash
-hero:
-  tagline: Sprite-first 2D for Three.js + React Three Fiber. WebGPU-native. TSL-composable. Designed to render thousands of things at 60fps without you having to think about it.
-  actions:
-    - text: Get Started
-      link: /three-flatland/getting-started/introduction/
-      icon: right-arrow
-      variant: primary
-    - text: View on GitHub
-      link: https://github.com/thejustinwalsh/three-flatland
-      icon: external
 ---
 
 import FeatureCard from '../../components/FeatureCard.astro';
@@ -20,15 +10,40 @@ import ValueProp from '../../components/ValueProp.astro';
 import HeroGame from '../../components/HeroGame.tsx';
 import { Tabs, TabItem, Aside } from '@astrojs/starlight/components';
 
-<div class="hero-stage not-content u-light" data-gem="amethyst">
-  <div class="hero-stage-frame">
+<section class="hero-fullscreen not-content">
+  <div class="hero-canvas" aria-hidden="true">
     <HeroGame client:visible />
   </div>
-  <p class="hero-stage-caption">
-    Live demo. Instanced sprites, batched draws, WebGPU shaders. Move your mouse over it — interact with it.
-  </p>
-  <span class="card-edge" aria-hidden="true"></span>
-</div>
+  <div class="hero-overlay">
+    <div class="hero-overlay-inner">
+      <h1 class="hero-title">three-flatland</h1>
+      <p class="hero-tagline">
+        Sprite-first 2D for Three.js + React Three Fiber. WebGPU-native.
+        TSL-composable. Designed to render thousands of things at 60fps without you having to think about it.
+      </p>
+      <div class="hero-actions">
+        <a href="/three-flatland/getting-started/introduction/" class="sl-link-button primary">
+          Get Started
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M5 12h14M12 5l7 7-7 7" />
+          </svg>
+        </a>
+        <a href="https://github.com/thejustinwalsh/three-flatland" class="sl-link-button secondary">
+          View on GitHub
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M7 17l9.2-9.2M17 17V7H7" />
+          </svg>
+        </a>
+      </div>
+    </div>
+    <div class="hero-scrollcue" aria-hidden="true">
+      <span>Scroll</span>
+      <svg viewBox="0 0 16 16" width="14" height="14"><path d="M4 6l4 4 4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
+    </div>
+  </div>
+</section>
+
+<div class="page-body not-content">
 
 <Aside type="note" title="Early Alpha">
   three-flatland is in active development. We're exploring performant, maintainable, and extensible patterns for GPU-driven 2D rendering with WebGPU. The API will evolve as we refine these systems. [Follow along on GitHub](https://github.com/thejustinwalsh/three-flatland) — your feedback shapes what we build.
@@ -41,7 +56,7 @@ import { Tabs, TabItem, Aside } from '@astrojs/starlight/components';
   { value: "100%", label: "TypeScript", color: "amethyst" },
 ]} />
 
-## What ships in the box
+<h2 class="section-heading">What ships in the box</h2>
 
 <div class="feature-grid">
   <FeatureCard
@@ -105,7 +120,7 @@ import { Tabs, TabItem, Aside } from '@astrojs/starlight/components';
   </FeatureCard>
 </div>
 
-## Quick Start
+<h2 class="section-heading">Quick Start</h2>
 
 <Tabs>
   <TabItem label="Three.js" icon="seti:javascript">
@@ -146,7 +161,7 @@ function Game() {
   </TabItem>
 </Tabs>
 
-## Why three-flatland?
+<h2 class="section-heading">Why three-flatland?</h2>
 
 <ValueProp title="Built for the Future" color="diamond">
   three-flatland is designed **exclusively** for Three.js WebGPU renderer. No legacy code, no WebGL baggage. By targeting WebGPU from day one, we leverage **TSL (Three Shader Language)** for shader composition that simply isn't possible with GLSL strings.
@@ -166,63 +181,156 @@ function Game() {
   No configuration hell. No boilerplate. Import, create, render. **Ship your game, not your build config.**
 </ValueProp>
 
+</div>
+
 <style>
 {`
-  /* Hero stage — the embedded HeroGame mini-breakout sits in a gem-lit
-     frame matching the FeatureCard system, with the same .u-light tilt,
-     gem-tinted scene-light gradient, and rim-glint border ring. The
-     "live demo" caption underneath grounds it as a real sample. */
-  .hero-stage {
+  /* Fullscreen parallax hero — HeroGame canvas is sticky-pinned to the
+     viewport for the duration of the hero section, with title/tagline/
+     CTAs overlaid on top. As the user scrolls, the title block slides
+     up and away while the canvas stays put for the parallax effect.
+     Section is min-height: 100vh + a bit so there's a real "scroll past
+     the hero" gesture before the canvas releases. */
+  .hero-fullscreen {
     position: relative;
-    margin: 0 auto 2rem;
-    max-width: 920px;
-    border-radius: calc(var(--radius) + 0.25rem);
-    background: var(--amethyst-soft);
-    overflow: hidden;
-    isolation: isolate;
-  }
-  .hero-stage-frame {
-    aspect-ratio: 16 / 9;
     width: 100%;
-    position: relative;
-    z-index: 3;
+    min-height: 100vh;
+    margin: 0;
+    /* Pull edge-to-edge: splash main has no padding, but other ancestor
+       wrappers may add one — neutralize the negative margin if needed. */
+  }
+  .hero-canvas {
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    width: 100%;
+    overflow: hidden;
     background: var(--background);
   }
-  .hero-stage-caption {
-    font-family: 'Inter', system-ui, sans-serif;
-    font-size: 0.8125rem;
-    text-align: center;
-    color: var(--muted-foreground);
-    margin: 0;
-    padding: 0.875rem 1rem;
-    border-top: 1px solid color-mix(in oklab, var(--amethyst) 30%, var(--border));
-    background: color-mix(in oklab, var(--amethyst-soft) 80%, transparent);
-    position: relative;
-    z-index: 3;
-  }
-  .hero-stage > .card-edge {
+  .hero-canvas > :global(*) {
     position: absolute;
     inset: 0;
-    border-radius: inherit;
+  }
+
+  /* Overlay sits ON TOP of the canvas, scrolls naturally with the page,
+     centered horizontally and vertically in the visible viewport. */
+  .hero-overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: clamp(1.5rem, 4vw, 3rem);
     pointer-events: none;
-    z-index: 4;
-    padding: 1.5px;
-    background: conic-gradient(
-      from calc(var(--effective-light-angle, var(--scene-angle, 135deg)) - 90deg),
-      color-mix(in oklab, var(--amethyst) 90%, transparent) 0deg,
-      color-mix(in oklab, var(--amethyst) 35%, var(--border)) 90deg,
-      color-mix(in oklab, var(--border) 90%, transparent) 180deg,
-      color-mix(in oklab, var(--amethyst) 35%, var(--border)) 270deg,
-      color-mix(in oklab, var(--amethyst) 90%, transparent) 360deg
+    z-index: 2;
+  }
+  /* Bottom-fade gradient masks the canvas to the page background so the
+     transition into the .page-body content reads as a soft horizon. */
+  .hero-overlay::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 33%;
+    background: linear-gradient(
+      to bottom,
+      transparent 0%,
+      color-mix(in oklab, var(--background) 70%, transparent) 60%,
+      var(--background) 100%
     );
-    -webkit-mask:
-      linear-gradient(#000, #000) content-box,
-      linear-gradient(#000, #000);
-    -webkit-mask-composite: xor;
-    mask:
-      linear-gradient(#000, #000) content-box,
-      linear-gradient(#000, #000);
-    mask-composite: exclude;
+    pointer-events: none;
+  }
+  .hero-overlay-inner {
+    position: relative;
+    z-index: 3;
+    pointer-events: auto;
+    text-align: center;
+    max-width: 56rem;
+    backdrop-filter: blur(0.5px);
+  }
+
+  .hero-title {
+    font-family: 'Public Sans', system-ui, sans-serif;
+    font-size: clamp(3rem, 7vw, 5.5rem);
+    font-weight: 200;
+    line-height: 1.02;
+    letter-spacing: -0.04em;
+    color: var(--foreground);
+    margin: 0 0 calc(var(--spacing) * 5);
+    text-shadow: 0 2px 32px color-mix(in oklab, var(--background) 75%, transparent);
+  }
+  .hero-tagline {
+    font-family: 'Public Sans', system-ui, sans-serif;
+    font-size: clamp(1rem, 1.5vw, 1.125rem);
+    font-weight: 400;
+    line-height: 1.55;
+    color: color-mix(in oklab, var(--foreground) 88%, var(--muted-foreground));
+    max-width: 44rem;
+    margin: 0 auto calc(var(--spacing) * 8);
+    text-shadow: 0 1px 12px color-mix(in oklab, var(--background) 80%, transparent);
+  }
+  .hero-actions {
+    display: flex;
+    justify-content: center;
+    gap: calc(var(--spacing) * 3);
+    flex-wrap: wrap;
+  }
+  .hero-scrollcue {
+    position: absolute;
+    bottom: calc(var(--spacing) * 8);
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: calc(var(--spacing) * 1);
+    font-family: 'Inter', system-ui, sans-serif;
+    font-size: 0.6875rem;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: color-mix(in oklab, var(--muted-foreground) 80%, transparent);
+    z-index: 4;
+    pointer-events: none;
+    animation: scroll-cue-bob 2.4s ease-in-out infinite;
+  }
+  @keyframes scroll-cue-bob {
+    0%, 100% { transform: translateX(-50%) translateY(0); opacity: 0.55; }
+    50% { transform: translateX(-50%) translateY(4px); opacity: 0.95; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .hero-scrollcue { animation: none; }
+  }
+
+  /* Page body — everything below the hero gets reasonable horizontal
+     padding so content isn't edge-to-edge on splash pages. The hero
+     stays edge-to-edge for the fullscreen vibe. */
+  .page-body {
+    padding-inline: clamp(1.5rem, 4vw, 3rem);
+    padding-block: calc(var(--spacing) * 16) calc(var(--spacing) * 12);
+    max-width: 90rem;
+    margin: 0 auto;
+    position: relative;
+    z-index: 1;
+    background: var(--background);
+  }
+
+  /* Section headings inside .page-body — Public Sans display, smaller
+     than h1 and at semi weight for structural clarity, with consistent
+     vertical rhythm between sections. */
+  .section-heading {
+    font-family: 'Public Sans', system-ui, sans-serif;
+    font-size: clamp(1.625rem, 2.6vw, 2rem);
+    font-weight: 600;
+    line-height: 1.15;
+    letter-spacing: -0.02em;
+    color: var(--foreground);
+    margin: calc(var(--spacing) * 16) 0 calc(var(--spacing) * 6);
+  }
+  .section-heading:first-child {
+    margin-top: 0;
   }
 
   .feature-grid {
@@ -230,22 +338,19 @@ function Game() {
     grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
     grid-auto-rows: 1fr;
     gap: 1.5rem;
-    margin: 2rem 0 4rem;
+    margin: 0 0 calc(var(--spacing) * 4);
     align-items: stretch;
   }
-
   .feature-grid > :global(article) {
     height: 100%;
     display: flex;
     flex-direction: column;
   }
-
   @media (min-width: 900px) {
     .feature-grid {
       grid-template-columns: repeat(3, 1fr);
     }
   }
-
   @media (min-width: 600px) and (max-width: 899px) {
     .feature-grid {
       grid-template-columns: repeat(2, 1fr);
