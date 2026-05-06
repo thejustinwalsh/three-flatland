@@ -6,12 +6,11 @@ import Icons from 'starlight-plugin-icons';
 import starlightTypeDoc, { typeDocSidebarGroup } from 'starlight-typedoc';
 import starlightHeadingBadges from 'starlight-heading-badges';
 import starlightLlmsTxt from 'starlight-llms-txt';
+import starlightTheme from 'starlight-theme';
 import react from '@astrojs/react';
 import { watchExamples } from './vite-plugins/watch-examples.js';
 import { copyExamples } from './vite-plugins/copy-examples.js';
 import { rehypeExternalLinks } from './rehype-plugins/external-links.js';
-
-const isProd = process.env.NODE_ENV === 'production';
 
 // Read examples server port from microfrontends.json (single source of truth)
 const mfe = JSON.parse(readFileSync('../microfrontends.json', 'utf-8'));
@@ -203,30 +202,32 @@ export default defineConfig({
             // and raw source is what LLMs actually want anyway.
             rawContent: true,
           }),
+          // Theme last so its component overrides win over earlier plugins.
+          // Provides Hero, SiteTitle, ThemeSelect, SocialIcons, PageFrame, …
+          // and registers starlight-theme/styles/{layers,theme,base}.css.
+          starlightTheme(),
         ],
         components: {
-          SiteTitle: './src/components/SiteTitle.astro',
-          SocialIcons: './src/components/SocialIcons.astro',
-          Hero: './src/components/Hero.astro',
-          PageFrame: './src/components/PageFrame.astro',
-          ThemeSelect: './src/components/ThemeSelect.astro',
+          // Docs-side overrides for site-specific concerns the theme can't own:
+          // `Head` carries our vtbot wiring + remaining reinit-glue scripts
+          // (theme persistence, pagefind reinit, table-scroll enhancement).
+          // Site-specific salvage migrates here from the deleted styles/*.css.
           Head: './src/components/Head.astro',
         },
         customCss: [
-          // Fontsource fonts (bundled locally, no external requests)
-          '@fontsource/silkscreen/400.css',
-          '@fontsource/silkscreen/700.css',
-          '@fontsource/ibm-plex-sans/400.css',
-          '@fontsource/ibm-plex-sans/500.css',
-          '@fontsource/ibm-plex-sans/600.css',
-          '@fontsource/ibm-plex-sans/700.css',
-          '@fontsource/ibm-plex-mono/400.css',
-          '@fontsource/ibm-plex-mono/500.css',
-          // Custom styles
-          './src/styles/global.css',
-          './src/styles/patterns.css',
-          './src/styles/retro-theme.css',
-          './src/styles/custom.css',
+          // Fontsource fonts per Design Context — Public Sans / Inter /
+          // JetBrains Mono / Commit Mono. All bundled locally.
+          '@fontsource/public-sans/400.css',
+          '@fontsource/public-sans/500.css',
+          '@fontsource/public-sans/600.css',
+          '@fontsource/public-sans/700.css',
+          '@fontsource/inter/400.css',
+          '@fontsource/inter/500.css',
+          '@fontsource/inter/600.css',
+          '@fontsource/jetbrains-mono/400.css',
+          '@fontsource/jetbrains-mono/500.css',
+          '@fontsource/commit-mono/400.css',
+          '@fontsource/commit-mono/500.css',
         ],
         tableOfContents: { minHeadingLevel: 2, maxHeadingLevel: 2 },
         social: [
@@ -236,9 +237,9 @@ export default defineConfig({
           {
             label: 'Getting Started',
             items: [
-              { label: 'Introduction', slug: 'getting-started/introduction', icon: 'i-pixelarticons:lightbulb' },
-              { label: 'Installation', slug: 'getting-started/installation', icon: 'i-pixelarticons:download' },
-              { label: 'Quick Start', slug: 'getting-started/quick-start', icon: 'i-pixelarticons:play' },
+              { label: 'Introduction', slug: 'getting-started/introduction', icon: 'i-lucide:lightbulb' },
+              { label: 'Installation', slug: 'getting-started/installation', icon: 'i-lucide:download' },
+              { label: 'Quick Start', slug: 'getting-started/quick-start', icon: 'i-lucide:play' },
             ],
           },
           {
@@ -278,8 +279,8 @@ export default defineConfig({
           {
             label: 'Project',
             items: [
-              { label: 'Branding', slug: 'branding', icon: 'i-pixelarticons:image' },
-              { label: 'LLMs', slug: 'llm-prompts', icon: 'i-pixelarticons:terminal' },
+              { label: 'Branding', slug: 'branding', icon: 'i-lucide:image' },
+              { label: 'LLMs', slug: 'llm-prompts', icon: 'i-lucide:terminal' },
             ],
           },
           typeDocSidebarGroup,

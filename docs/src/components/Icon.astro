@@ -9,11 +9,13 @@ interface Props {
 
 const { name, label, size = '1.5em', color = 'currentColor', class: className } = Astro.props
 
-const fullName = name.includes(':') ? name : `pixelarticons:${name}`
+// Default to the `lucide` collection per the Design Context. Pass a prefixed
+// name (`tf:logo`, `material-icon-theme:typescript`) to use another collection.
+const fullName = name.includes(':') ? name : `lucide:${name}`
 ---
 
 <span
-  class:list={[`i-${fullName}`, 'pixel-icon', className]}
+  class:list={[`i-${fullName}`, 'icon', className]}
   style={`width: ${size}; height: ${size}; color: ${color};`}
   role={label ? 'img' : undefined}
   aria-hidden={label ? undefined : 'true'}
@@ -21,7 +23,7 @@ const fullName = name.includes(':') ? name : `pixelarticons:${name}`
 ></span>
 
 <style>
-  .pixel-icon {
+  .icon {
     display: inline-block;
     vertical-align: middle;
     flex-shrink: 0;
