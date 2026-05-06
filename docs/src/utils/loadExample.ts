@@ -1,13 +1,12 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import {
   transformPackageJson,
   loadDirectoryFiles,
   loadPublicFiles,
 } from './loadHelpers';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const repoRoot = path.resolve(process.cwd(), '..');
 
 /**
  * Load an example from examples/{type}/{name} and transform for StackBlitz
@@ -16,7 +15,7 @@ export function loadExample(
   type: 'three' | 'react',
   name: string
 ): Record<string, string> {
-  const exampleDir = path.resolve(__dirname, `../../../examples/${type}/${name}`);
+  const exampleDir = path.resolve(repoRoot, `examples/${type}/${name}`);
   const files: Record<string, string> = {};
 
   // Transform package.json
