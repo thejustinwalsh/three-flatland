@@ -51,39 +51,42 @@ const { prev, next } = pagination;
     .pagination-links {
         display: flex;
         justify-content: space-between;
-        align-items: center;
+        align-items: stretch;
         flex-direction: row;
-        padding-top: calc(var(--spacing) * 4);
-        margin-top: calc(var(--spacing) * 8);
+        gap: calc(var(--spacing) * 3);
+        padding-top: calc(var(--spacing) * 6);
+        margin-top: calc(var(--spacing) * 10);
+        border-top: 1px solid color-mix(in oklab, var(--border) 70%, transparent);
     }
 
+    /* Pagination links — gem-tinted hover, larger feel matching the
+     * card system. The label sits in nav-style Inter; SVG arrows align
+     * to gem accent on hover so the affordance reads at a glance. */
     a {
-        color: var(--secondary-foreground);
-        text-decoration: inherit;
-        background-color: var(--secondary);
+        font-family: 'Inter', system-ui, sans-serif;
+        color: var(--foreground);
+        text-decoration: none;
+        background-color: transparent;
+        border: 1px solid color-mix(in oklab, var(--border) 80%, transparent);
 
-        transition-property:
-            color, background-color, border-color, text-decoration-color, fill, stroke;
-        transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
-        transition-duration: 0.15s;
+        transition: color 0.15s, background-color 0.15s, border-color 0.15s, transform 0.15s;
         font-weight: 500;
         font-size: 0.875rem;
-        line-height: 1.25rem;
-        padding-top: calc(var(--spacing) * 2);
-        padding-bottom: calc(var(--spacing) * 2);
-        padding-left: calc(var(--spacing) * 3);
-        padding-right: calc(var(--spacing) * 3);
+        line-height: 1.4;
+        padding: calc(var(--spacing) * 3) calc(var(--spacing) * 4);
         border-radius: calc(var(--radius) - 2px);
         white-space: nowrap;
-        gap: 0.375rem;
-        justify-content: center;
+        gap: calc(var(--spacing) * 2);
         align-items: center;
-        height: 2rem;
         display: inline-flex;
+        flex: 1 1 0;
+        max-width: 50%;
     }
 
     a:hover {
-        background-color: color-mix(in srgb, var(--secondary) 80%, transparent);
+        background-color: color-mix(in oklab, var(--diamond) 8%, transparent);
+        border-color: color-mix(in oklab, var(--diamond) 40%, var(--border));
+        color: var(--foreground);
     }
 
     a > svg {
@@ -92,10 +95,28 @@ const { prev, next } = pagination;
         height: 1rem;
         pointer-events: none;
         display: block;
-        vertical-align: middle;
+        color: var(--muted-foreground);
+        transition: color 0.15s, transform 0.15s;
+    }
+
+    a:hover > svg {
+        color: var(--diamond);
+    }
+
+    .prev:hover > svg {
+        transform: translateX(-2px);
+    }
+    .next:hover > svg {
+        transform: translateX(2px);
     }
 
     .next {
         margin-left: auto;
+        justify-content: flex-end;
+        text-align: right;
+    }
+    .prev {
+        justify-content: flex-start;
+        text-align: left;
     }
 </style>

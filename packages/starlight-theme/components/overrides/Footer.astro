@@ -35,14 +35,25 @@ const showEditLink = editLink?.baseUrl ? true : false;
     }
 
     [data-slot='doc-footer-meta'] {
+        font-family: 'Inter', system-ui, sans-serif;
         display: flex;
-        gap: calc(var(--spacing) * 4);
+        gap: calc(var(--spacing) * 5);
         align-items: center;
         justify-content: end;
-        font-size: 0.875em;
+        font-size: 0.8125rem;
         color: var(--muted-foreground);
-        margin-top: calc(var(--spacing) * 8);
-        opacity: 0.75;
+        margin-top: calc(var(--spacing) * 6);
+        padding-top: calc(var(--spacing) * 4);
+        border-top: 1px solid color-mix(in oklab, var(--border) 50%, transparent);
+        opacity: 0.85;
+    }
+    [data-slot='doc-footer-meta'] :global(a) {
+        color: var(--muted-foreground);
+        text-decoration: none;
+        transition: color 0.15s;
+    }
+    [data-slot='doc-footer-meta'] :global(a:hover) {
+        color: var(--diamond);
     }
 </style>
 
