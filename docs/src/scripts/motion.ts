@@ -223,27 +223,31 @@ function frame(now: number) {
         const lightAngle = (Math.atan2(dy, dx) * 180) / Math.PI + 90
         t.el.style.setProperty('--light-angle', `${lightAngle.toFixed(1)}deg`)
 
-        /* TILT — cursor-driven. Scaled by --mouse-active so idle surfaces
-         * sit flat and tilt only kicks in once the cursor enters. */
+        /* TILT — cursor-driven, card leans TOWARD the cursor (the side the
+         * cursor is on rises toward the viewer, mimicking Pokemon-foil-card
+         * physics). Scaled by --mouse-active so idle surfaces sit flat.
+         *
+         * Sign convention:
+         *   cursor right (mx > 0.5)  → right edge forward → rotateY negative
+         *   cursor down  (my > 0.5)  → bottom edge forward → rotateX positive
+         * Amplitudes inspired by simeydotme/pokemon-cards-css (~14°). */
         const isHolo = t.el.matches('.u-holo, [data-holo]')
-        const ampX = isHolo ? 12 : 4
-        const ampY = isHolo ? 16 : 5
-        const tiltY = (mx - 0.5) * ampY * t.active
-        const tiltX = (0.5 - my) * ampX * t.active
+        const ampX = isHolo ? 18 : 14
+        const ampY = isHolo ? 18 : 12
+        const tiltY = (0.5 - mx) * ampY * t.active
+        const tiltX = (my - 0.5) * ampX * t.active
         t.el.style.setProperty('--tilt-x', `${tiltX.toFixed(2)}deg`)
         t.el.style.setProperty('--tilt-y', `${tiltY.toFixed(2)}deg`)
 
         /* TILT-COUPLED LIGHT DIRECTION — when the surface tilts, the
-         * apparent direction of the global scene light (in the surface's
-         * own frame) shifts by approximately the tilt angle. We model
-         * this by subtracting tilt-y from scene-angle (rotation around Y
-         * axis maps to gradient angle rotation) and use a multiplier of
-         * 2.5 to make the response visually clear without being unphysical
-         * at small tilts. tilt-x's contribution is folded into the same
-         * effective angle as a smaller rotation factor (rotation around
-         * X axis affects the apparent vertical position of the lit band). */
+         * apparent direction of the global scene light shifts in the
+         * surface's local frame. With the new tilt sign convention
+         * (cursor toward → that edge rises), positive tilt-y now means
+         * the LEFT edge has risen, so the apparent scene angle shifts
+         * RIGHT relative to the surface. Multiplier 2.5× keeps the
+         * response visually clear at modest tilts. */
         const tiltMul = 2.5
-        const effective = sceneAngle - tiltY * tiltMul + tiltX * tiltMul * 0.4
+        const effective = sceneAngle + tiltY * tiltMul - tiltX * tiltMul * 0.4
         t.el.style.setProperty(
             '--effective-light-angle',
             `${effective.toFixed(1)}deg`,
