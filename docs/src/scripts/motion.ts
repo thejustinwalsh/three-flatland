@@ -232,8 +232,8 @@ function frame(now: number) {
          *   cursor down  (my > 0.5)  → bottom edge forward → rotateX positive
          * Amplitudes inspired by simeydotme/pokemon-cards-css (~14°). */
         const isHolo = t.el.matches('.u-holo, [data-holo]')
-        const ampX = isHolo ? 18 : 14
-        const ampY = isHolo ? 18 : 12
+        const ampX = isHolo ? 14 : 9
+        const ampY = isHolo ? 14 : 8
         const tiltY = (0.5 - mx) * ampY * t.active
         const tiltX = (my - 0.5) * ampX * t.active
         t.el.style.setProperty('--tilt-x', `${tiltX.toFixed(2)}deg`)

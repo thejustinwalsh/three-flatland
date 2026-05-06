@@ -19,7 +19,7 @@ const { title, align = 'left' } = Astro.props
 ---
 
 <section
-  class:list={['value-prop', { 'align-right': align === 'right' }]}
+  class:list={['not-content', 'value-prop', { 'align-right': align === 'right' }]}
 >
   <div class="vp-rule" aria-hidden="true"></div>
   <div class="vp-content">

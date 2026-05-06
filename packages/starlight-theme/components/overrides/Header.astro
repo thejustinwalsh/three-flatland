@@ -36,7 +36,10 @@ const shouldRenderSearch =
 <style>
     .site-title-wrapper {
         display: none;
-        margin-right: calc(var(--spacing) * 4);
+        align-items: center;
+        gap: calc(var(--spacing) * 3);
+        margin-right: auto;
+        min-width: 0;
     }
 
     @media (min-width: 768px) {
@@ -46,18 +49,18 @@ const shouldRenderSearch =
     }
 
     /* Wordmark — Silkscreen pixel font for the "flatland" brand mark.
-     * Sit slightly raised so the pixel baseline aligns with the icon's
-     * visual center, not its em box. Color leans toward the primary gem
-     * accent so the wordmark feels of-a-piece with the link/CTA palette. */
+     * Sized to balance with the 32px FL icon. Sits slightly raised so
+     * the pixel baseline aligns with the icon's visual center, not its
+     * em box. Tight to the icon (controlled by SiteTitle.astro's gap). */
     .site-title-wrapper :global(.title-text) {
         font-family: 'Silkscreen', system-ui, sans-serif;
         font-weight: 400;
-        font-size: 1rem;
-        letter-spacing: 0;
+        font-size: 1.125rem;
+        letter-spacing: 0.02em;
         color: var(--foreground);
         line-height: 1;
         position: relative;
-        top: 1px;
+        top: 2px;
     }
 
     .header-right {
