@@ -2,6 +2,7 @@ import type { StatsPayload } from '../debug-protocol'
 import { FEATURE_STALE_MS, STATS_RING_SIZE } from '../debug-protocol'
 import type { BufferCursor } from './bus-pool'
 import { copyTypedTo } from './bus-pool'
+import { detectGpuTimingActive } from './detectGpuTiming'
 
 interface RenderInfo {
   calls?: number
@@ -56,7 +57,6 @@ export class StatsCollector {
   private _linesBefore = 0
   private _pointsBefore = 0
 
-  private _gpuChecked = false
   private _gpuCapable = false
   private _gpuResolveInFlight = false
   private _gpuMs: number | undefined
@@ -200,15 +200,16 @@ export class StatsCollector {
     const renderer = this._latestRenderer
     if (!renderer) return
 
-    if (!this._gpuChecked) {
-      this._gpuChecked = true
-      const backend = renderer.backend
-      if (backend?.trackTimestamp === true) {
-        const isWebGL = backend.constructor?.name === 'WebGLBackend'
-        this._gpuCapable = !isWebGL || backend.disjoint != null
-      }
-    }
-    if (!this._gpuCapable) return
+    // The feature probe is a cheap gate, not proof of capability:
+    // backends like Safari WebGPU may expose `timestamp-query` yet
+    // never return a non-zero `info.render.timestamp` in practice. So
+    // we use the probe only to skip the API call on hopeless backends
+    // (WebGL2 without disjoint, etc) and let `_gpuCapable` flip true
+    // ONLY after we observe a real positive timestamp below. That
+    // verified flag drives both `drainBatch`'s payload gate and the
+    // env's `gpuModeEnabled` signal — consumers therefore hide the
+    // GPU graph until data has actually arrived.
+    if (!detectGpuTimingActive(renderer.backend)) return
     // One resolve in flight at a time. three.js's internal
     // `pendingResolve` guard would coalesce extra calls into the same
     // promise anyway, but calling `resolveTimestampsAsync` still
@@ -227,6 +228,10 @@ export class StatsCollector {
         this._gpuResolveInFlight = false
         const gpuMs = renderer.info?.render?.timestamp
         if (typeof gpuMs !== 'number' || gpuMs <= 0) return
+        // First positive timestamp confirms the renderer actually emits
+        // GPU timing — flip `_gpuCapable` here, not at probe time. Once
+        // verified it stays verified for the session.
+        this._gpuCapable = true
         // Keep the cached "latest value" for any consumer that still
         // wants a live single-sample readout (e.g. a big-number tile)
         // — but the ring gets per-frame attribution below, not this

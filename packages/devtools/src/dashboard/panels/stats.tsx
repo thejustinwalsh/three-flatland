@@ -52,12 +52,23 @@ const STATS: StatDef[] = [
 export function StatsStrip() {
   const s = useDevtoolsState()
   const [expandedKey, setExpandedKey] = useState<string | null>(null)
-  const expandedDef = STATS.find((d) => d.label === expandedKey) ?? null
+  // Hide stats the active producer can't actually emit. Without this
+  // gate, the GPU card on Safari (or anywhere `timestamp-query` is
+  // missing) renders as flat-zero — same shape as the heap card on
+  // browsers without `performance.memory`. Both signals are propagated
+  // explicitly: `gpuModeEnabled` from the env payload, `heapUsedMB`
+  // from the stats payload (omitted when no `performance.memory`).
+  const visibleStats = STATS.filter((def) => {
+    if (def.label === 'gpu') return s.gpuModeEnabled === true
+    if (def.label === 'heap') return s.heapUsedMB !== undefined
+    return true
+  })
+  const expandedDef = visibleStats.find((d) => d.label === expandedKey) ?? null
   return (
     <section class="panel">
       <header class="panel-header">Stats</header>
       <div class="stats-strip">
-        {STATS.map((def) => (
+        {visibleStats.map((def) => (
           <StatCard
             key={def.label}
             def={def}
