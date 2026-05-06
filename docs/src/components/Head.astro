@@ -35,6 +35,15 @@ import AutoNameSelected from 'astro-vtbot/components/AutoNameSelected.astro';
     morph between pages instead of fading. */}
 <AutoNameSelected selector="main h1, main h2[id]" />
 
+{/* Motion-as-craft runtime — drives `--mx`/`--my`/`--tilt-x`/`--tilt-y`
+    on `.u-light`/`.u-holo` surfaces via pointer + perlin-noise loop, and
+    handles the `.u-reveal` IntersectionObserver fallback for browsers
+    without scroll-driven CSS animations. See Design Context (CLAUDE.md)
+    and the Phase 3 substrate punch list. */}
+<script>
+  import '../scripts/motion'
+</script>
+
 <!-- Self hosted metrics -->
 {import.meta.env.PROD && (
   <>

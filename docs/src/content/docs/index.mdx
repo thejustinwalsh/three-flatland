@@ -24,10 +24,10 @@ import { Tabs, TabItem, Aside } from '@astrojs/starlight/components';
 </Aside>
 
 <StatsBanner stats={[
-  { value: "10,000+", label: "Sprites at 60fps", color: "cyan" },
+  { value: "10,000+", label: "Sprites at 60fps", color: "diamond" },
   { value: "1", label: "Draw Call", color: "pink" },
-  { value: "0", label: "CPU Overhead", color: "yellow" },
-  { value: "100%", label: "TypeScript", color: "blue" },
+  { value: "0", label: "CPU Overhead", color: "gold" },
+  { value: "100%", label: "TypeScript", color: "amethyst" },
 ]} />
 
 ## Power Features
@@ -36,7 +36,7 @@ import { Tabs, TabItem, Aside } from '@astrojs/starlight/components';
   <FeatureCard
     icon="lightbulb"
     title="WebGPU Native"
-    color="cyan"
+    color="diamond"
     stat="Next-Gen"
     statLabel="Graphics API"
   >
@@ -46,7 +46,7 @@ import { Tabs, TabItem, Aside } from '@astrojs/starlight/components';
   <FeatureCard
     icon="list"
     title="Batch Rendering"
-    color="pink"
+    color="emerald"
     stat="10,000+"
     statLabel="Sprites per batch"
   >
@@ -56,7 +56,7 @@ import { Tabs, TabItem, Aside } from '@astrojs/starlight/components';
   <FeatureCard
     icon="user"
     title="React Three Fiber"
-    color="yellow"
+    color="amethyst"
     stat="R3F v10"
     statLabel="WebGPU Support"
   >
@@ -66,7 +66,7 @@ import { Tabs, TabItem, Aside } from '@astrojs/starlight/components';
   <FeatureCard
     icon="play-circle"
     title="Animation System"
-    color="blue"
+    color="gold"
     stat="60fps"
     statLabel="Frame-perfect timing"
   >
@@ -76,7 +76,7 @@ import { Tabs, TabItem, Aside } from '@astrojs/starlight/components';
   <FeatureCard
     icon="sparkles"
     title="TSL Shader Nodes"
-    color="orange"
+    color="salmon"
     stat="Composable"
     statLabel="Effect pipeline"
   >
@@ -86,7 +86,7 @@ import { Tabs, TabItem, Aside } from '@astrojs/starlight/components';
   <FeatureCard
     icon="map"
     title="Tilemap Support"
-    color="purple"
+    color="pink"
     stat="Tiled"
     statLabel="JSON format"
   >
@@ -137,19 +137,19 @@ function Game() {
 
 ## Why three-flatland?
 
-<ValueProp title="Built for the Future" color="cyan">
+<ValueProp title="Built for the Future" color="diamond">
   three-flatland is designed **exclusively** for Three.js WebGPU renderer. No legacy code, no WebGL baggage. By targeting WebGPU from day one, we leverage **TSL (Three Shader Language)** for shader composition that simply isn't possible with GLSL strings.
 
   This means **real-time shader effects** that would tank performance on WebGL run buttery smooth. Palette cycling, CRT effects, per-sprite distortion — all composable, all fast.
 </ValueProp>
 
-<ValueProp title="Performance Obsessed" color="pink" align="right">
+<ValueProp title="Performance Obsessed" color="emerald" align="right">
   Every sprite in your scene shares the same geometry and materials through **automatic batching**. Whether you have 10 sprites or 10,000, three-flatland keeps your draw calls minimal and your frame rate high.
 
   The GPU does what GPUs do best. Your CPU stays free for game logic. **Zero per-sprite overhead** in your render loop.
 </ValueProp>
 
-<ValueProp title="Developer Joy" color="yellow">
+<ValueProp title="Developer Joy" color="gold">
   Full **TypeScript** support with types that actually help. React Three Fiber users get JSX components that integrate seamlessly. Three.js users get a clean, intuitive API.
 
   No configuration hell. No boilerplate. Import, create, render. **Ship your game, not your build config.**

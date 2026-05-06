@@ -230,6 +230,7 @@ export default defineConfig({
           // Commit Mono (code). All bundled locally.
           '@fontsource/silkscreen/400.css',
           '@fontsource/silkscreen/700.css',
+          '@fontsource/public-sans/200.css',
           '@fontsource/public-sans/400.css',
           '@fontsource/public-sans/500.css',
           '@fontsource/public-sans/600.css',

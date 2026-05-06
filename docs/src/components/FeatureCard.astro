@@ -24,21 +24,41 @@ type Gem =
   | 'salmon'
   | 'turquoize'
 
+/** Conventional color names accepted for transitional compat with existing
+ * MDX call sites — mapped to the closest gem at render time. */
+type LegacyColor = 'cyan' | 'blue' | 'green' | 'orange' | 'red' | 'yellow' | 'purple'
+
+const legacyToGem: Record<LegacyColor, Gem> = {
+  cyan: 'diamond',
+  blue: 'diamond',
+  green: 'emerald',
+  orange: 'gold',
+  red: 'ruby',
+  yellow: 'gold',
+  purple: 'amethyst',
+}
+
 interface Props {
   icon?: string
   title: string
-  /** Gem accent — picks from the design-system palette. Defaults to `--primary`. */
-  color?: Gem
+  /** Gem accent — picks from the design-system palette. Defaults to `--primary`.
+   *  Conventional names (cyan, blue, green, orange, red, yellow, purple) are
+   *  accepted for compat and mapped to gems. */
+  color?: Gem | LegacyColor
   stat?: string
   statLabel?: string
 }
 
 const { icon, title, color, stat, statLabel } = Astro.props
 
-const accentStyle = color ? `--card-accent: var(--${color});` : undefined
+const resolvedGem: Gem | undefined = color
+  ? (color in legacyToGem ? legacyToGem[color as LegacyColor] : (color as Gem))
+  : undefined
+
+const accentStyle = resolvedGem ? `--card-accent: var(--${resolvedGem});` : undefined
 ---
 
-<article class="feature-card" data-sound="card" data-gem={color} style={accentStyle}>
+<article class="feature-card u-light u-rim u-reveal" data-sound="card" data-gem={resolvedGem} style={accentStyle}>
   {icon && (
     <span class="icon-wrap" aria-hidden="true">
       <Icon name={icon} size="1.5rem" />
@@ -56,26 +76,30 @@ const accentStyle = color ? `--card-accent: var(--${color});` : undefined
 
 <style>
   .feature-card {
+    /* The .u-rim primitive owns the border + background-clip layering, so
+     * we don't set a `background-color` here directly — it'd paint over
+     * the rim's padding-box layer. Instead, we override the rim's
+     * padding-box layer with a gem-tinted card surface via --card. */
+    --card: color-mix(in oklab, oklch(20% 0.008 250) 92%, var(--card-accent, var(--primary)));
     position: relative;
     display: flex;
     flex-direction: column;
     gap: calc(var(--spacing) * 3);
     padding: calc(var(--spacing) * 5) calc(var(--spacing) * 5)
       calc(var(--spacing) * 6);
-    background-color: color-mix(in oklab, var(--card) 92%, var(--card-accent, var(--primary)));
-    border: 1px solid var(--border);
     border-radius: calc(var(--radius) - 2px);
     transition:
-      border-color 180ms ease,
       transform 180ms ease,
-      background-color 180ms ease,
       box-shadow 180ms ease;
   }
 
+  :root[data-theme='light'] .feature-card {
+    --card: color-mix(in oklab, oklch(98% 0.008 80) 92%, var(--card-accent, var(--primary)));
+  }
+
   .feature-card:hover {
-    border-color: color-mix(in oklab, var(--card-accent, var(--primary)) 45%, var(--border));
     transform: translateY(-2px);
-    box-shadow: 0 8px 24px -12px color-mix(in oklab, var(--card-accent, var(--primary)) 35%, transparent);
+    box-shadow: 0 8px 24px -12px color-mix(in oklab, var(--card-accent, var(--primary)) 30%, transparent);
   }
 
   .icon-wrap {
@@ -119,7 +143,7 @@ const accentStyle = color ? `--card-accent: var(--${color});` : undefined
   }
 
   .stat-label {
-    font-family: 'Inter', system-ui, sans-serif;
+    font-family: 'Public Sans', system-ui, sans-serif;
     font-weight: 500;
     font-size: 0.6875rem;
     color: var(--muted-foreground);

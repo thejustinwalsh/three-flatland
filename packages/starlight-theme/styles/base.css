@@ -139,9 +139,16 @@
      * distance, it's wrong — lower opacity until you can't. The point is
      * depth you don't notice but feel. The opacity is baked into the SVG's
      * feColorMatrix alpha so we don't need to fight z-stacking with a
-     * pseudo-element overlay. */
+     * pseudo-element overlay.
+     *
+     * Typography stack — Public Sans is the everything-default sans;
+     * Inter is reserved for navigation elements only (sidebar links,
+     * header nav, pagination, TOC, footer links); JetBrains Mono is the
+     * prose face inside markdown; Commit Mono is for code; Silkscreen is
+     * the wordmark only. (See Design Context > Substrate > Typography.) */
     body {
-        font-family: 'Inter', system-ui, sans-serif;
+        font-family: 'Public Sans', system-ui, sans-serif;
+        font-weight: 400;
         -webkit-font-smoothing: antialiased;
         -moz-osx-font-smoothing: grayscale;
         background-color: var(--background);
@@ -161,8 +168,18 @@
         }
     }
 
-    /* Header / navigation / UI chrome — Inter at UI weights. */
-    :is(.header, .sidebar, nav, .pagination-links, [data-slot='footer-text']) {
+    /* Inter — reserved for navigation elements ONLY: sidebar entry links,
+     * header nav, pagination, TOC links, footer links. The sidebar group
+     * label (`.entry-title`) explicitly inherits Inter from `.sidebar`. */
+    :is(
+            .sidebar,
+            .header-nav,
+            nav,
+            .pagination-links,
+            [data-slot='footer-text'],
+            [data-slot='toc'] a,
+            .right-sidebar a
+        ) {
         font-family: 'Inter', system-ui, sans-serif;
     }
 
@@ -219,9 +236,11 @@
         }
     }
 
-    /* Heading hierarchy: Public Sans for display, with bigger jumps between
-     * levels than lucode default so the docs read more like Linear/Radix
-     * (Design Context). Tracking tightens at larger sizes. */
+    /* Heading hierarchy: Public Sans display + structural inversion — h1
+     * uses Thin (200) so the largest size carries on size alone, not weight,
+     * giving display headers an editorial feel. Section headers (h2–h6)
+     * stay at semi (600) so structure reads loudly against the airy h1.
+     * (Design Context: editorial-leaning display typography.) */
     .sl-markdown-content :is(h1, h2, h3, h4, h5, h6) {
         font-family: 'Public Sans', system-ui, sans-serif;
         font-weight: 600;
@@ -230,10 +249,10 @@
     }
 
     .sl-markdown-content h1 {
-        font-size: clamp(1.875rem, 2.6vw, 2.375rem);
-        line-height: 1.15;
-        font-weight: 700;
-        letter-spacing: -0.025em;
+        font-size: clamp(2.25rem, 3.2vw, 3rem);
+        line-height: 1.1;
+        font-weight: 200;
+        letter-spacing: -0.03em;
         margin-top: 0;
     }
 
@@ -1015,7 +1034,7 @@
         outline-offset: 2px;
     }
 
-    /* Honor prefers-reduced-motion (Design Context principle 4). */
+    /* Honor prefers-reduced-motion (Design Context principle). */
     @media (prefers-reduced-motion: reduce) {
         *,
         *::before,
@@ -1024,6 +1043,361 @@
             animation-iteration-count: 1 !important;
             transition-duration: 0.01ms !important;
             scroll-behavior: auto !important;
+        }
+    }
+
+    /* ─────────────────────────────────────────────────────────────────────
+     * Motion-as-craft primitives — see Design Context (CLAUDE.md).
+     * Asymmetric: ambient layers (texture, scroll-reveal) stay quiet so the
+     * interactive moments (light, holo) can land hard. JS runtime in
+     * `docs/src/scripts/motion.ts` drives `--mx`/`--my`/`--tilt-x`/`--tilt-y`
+     * via pointer + perlin-noise loop.
+     * ───────────────────────────────────────────────────────────────────── */
+
+    /* `u-reveal` — fade-rise into view. Prefer CSS scroll-driven animation
+     * (`animation-timeline: view()`) so it's GPU-driven and reads buttery on
+     * browsers that support it; fall back to a JS-toggled `data-revealed`
+     * for older browsers. */
+    .u-reveal,
+    [data-reveal] {
+        opacity: 0;
+        transform: translateY(16px);
+        transition: opacity 320ms cubic-bezier(0.2, 0, 0.1, 1),
+            transform 320ms cubic-bezier(0.2, 0, 0.1, 1);
+        will-change: opacity, transform;
+    }
+    .u-reveal[data-revealed],
+    [data-reveal][data-revealed] {
+        opacity: 1;
+        transform: none;
+    }
+    @supports (animation-timeline: view()) {
+        @media (prefers-reduced-motion: no-preference) {
+            .u-reveal,
+            [data-reveal] {
+                opacity: 0;
+                transform: translateY(16px);
+                animation: u-reveal-in 360ms cubic-bezier(0.2, 0, 0.1, 1) both;
+                animation-timeline: view();
+                animation-range: entry 0% cover 35%;
+                transition: none;
+            }
+            @keyframes u-reveal-in {
+                to {
+                    opacity: 1;
+                    transform: none;
+                }
+            }
+        }
+    }
+    @media (prefers-reduced-motion: reduce) {
+        .u-reveal,
+        [data-reveal] {
+            opacity: 1;
+            transform: none;
+            animation: none;
+            transition: none;
+        }
+    }
+
+    /* `u-light` — pointer-driven gem-faceted gradient lighting. Real gems
+     * scatter light across their cut facets, not a single soft radial; we
+     * approximate that with a stacked conic-gradient (rotational facets)
+     * masked over a fine noise overlay (PBR-flavored roughness) and a
+     * subtle tilt that tracks the cursor (≤1.5°). Pointer position drives
+     * --mx/--my; angle is computed in motion.ts.
+     *
+     * The gem hue comes from `--card-accent` / `--section-accent` /
+     * `data-gem` — resolution falls back to `--primary` if none provided. */
+    .u-light,
+    [data-light] {
+        position: relative;
+        isolation: isolate;
+        transform: perspective(900px) rotateX(var(--tilt-x, 0deg))
+            rotateY(var(--tilt-y, 0deg));
+        transition: transform 120ms ease-out;
+        will-change: transform;
+    }
+    .u-light::before,
+    [data-light]::before {
+        content: '';
+        position: absolute;
+        inset: 0;
+        border-radius: inherit;
+        pointer-events: none;
+        background:
+            /* Top layer: VERY subtle faceted highlight — conic gradient
+             * with hard stops simulating gem facets, rotated to track
+             * cursor angle. Peak ~22% so the light reads as a hint, not
+             * a spotlight. */
+            conic-gradient(
+                from var(--light-angle, 0deg) at var(--mx, 50%) var(--my, 50%),
+                color-mix(in oklab, var(--card-accent, var(--primary)) 22%, transparent) 0deg,
+                transparent 18deg,
+                color-mix(in oklab, var(--card-accent, var(--primary)) 14%, transparent) 60deg,
+                transparent 90deg,
+                color-mix(in oklab, var(--card-accent, var(--primary)) 10%, transparent) 130deg,
+                transparent 165deg,
+                color-mix(in oklab, var(--card-accent, var(--primary)) 12%, transparent) 220deg,
+                transparent 260deg,
+                color-mix(in oklab, var(--card-accent, var(--primary)) 16%, transparent) 300deg,
+                transparent 340deg,
+                color-mix(in oklab, var(--card-accent, var(--primary)) 22%, transparent) 360deg
+            ),
+            /* Bottom layer: faint diffuse linear gradient reading "lit
+             * from cursor side" without a centered hot spot. */
+            linear-gradient(
+                calc(var(--light-angle, 0deg) + 90deg),
+                color-mix(in oklab, var(--card-accent, var(--primary)) 7%, transparent),
+                transparent 60%
+            );
+        opacity: 0;
+        transition: opacity 280ms ease;
+        z-index: 1;
+        mix-blend-mode: screen;
+    }
+    /* Roughness — fine noise overlay applied via a separate ::after layer
+     * so the facet conic doesn't have to fight a mask. ~5% peak alpha,
+     * blended in overlay so it scatters the conic highlights into "micro
+     * facet" specks rather than smooth bands. */
+    .u-light::after,
+    [data-light]::after {
+        content: '';
+        position: absolute;
+        inset: 0;
+        border-radius: inherit;
+        pointer-events: none;
+        background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='r'><feTurbulence type='fractalNoise' baseFrequency='1.2' numOctaves='1' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 0.18 -0.05'/></filter><rect width='160' height='160' filter='url(%23r)'/></svg>");
+        opacity: 0;
+        transition: opacity 200ms ease;
+        mix-blend-mode: overlay;
+        z-index: 2;
+    }
+    .u-light:hover::before,
+    [data-light]:hover::before,
+    .u-light:focus-within::before,
+    [data-light]:focus-within::before {
+        opacity: 1;
+    }
+    .u-light:hover::after,
+    [data-light]:hover::after,
+    .u-light:focus-within::after,
+    [data-light]:focus-within::after {
+        opacity: 0.4;
+    }
+
+    /* Ambient border lighting — surfaces with `.u-light` (or .u-rim)
+     * carry a low-opacity gradient ring on the border that rotates with
+     * --light-angle. The perlin loop is always running, so even idle
+     * surfaces have a subtle traveling glint along their edges. The
+     * gradient is applied via `background-clip: border-box` so it
+     * doesn't require an extra pseudo-element. Surfaces that want this
+     * effect must apply both `.u-light` AND `.u-rim`, since not every
+     * u-light surface should have a visible border. */
+    .u-rim {
+        border: 1px solid transparent;
+        background-image:
+            linear-gradient(var(--card, var(--background)), var(--card, var(--background)))
+                padding-box,
+            conic-gradient(
+                from var(--light-angle, 0deg),
+                color-mix(in oklab, var(--card-accent, var(--primary)) 55%, transparent) 0deg,
+                color-mix(in oklab, var(--border) 100%, transparent) 60deg,
+                color-mix(in oklab, var(--card-accent, var(--primary)) 30%, transparent) 130deg,
+                color-mix(in oklab, var(--border) 100%, transparent) 200deg,
+                color-mix(in oklab, var(--card-accent, var(--primary)) 45%, transparent) 280deg,
+                color-mix(in oklab, var(--border) 100%, transparent) 350deg,
+                color-mix(in oklab, var(--card-accent, var(--primary)) 55%, transparent) 360deg
+            ) border-box;
+        background-origin: border-box;
+    }
+    @media (prefers-reduced-motion: reduce) {
+        .u-rim {
+            background-image: none;
+            border-color: var(--border);
+        }
+    }
+    @media (prefers-reduced-motion: reduce) {
+        .u-light,
+        [data-light] {
+            transform: none;
+        }
+    }
+
+    /* `u-holo` — living-breathing 3D foil sheen. Layered backgrounds
+     * compose the appearance: a gem-tinted base (diffuse), a moving
+     * radial highlight (specular), an iridescent conic sweep (foil), and
+     * an SVG noise overlay for sparkle. Per-gem material parameters come
+     * from `data-gem="<name>"` selectors below.
+     *
+     * The pointer / perlin loop drives `--mx`, `--my`, `--tilt-x`, `--tilt-y`
+     * via JS (motion.ts). When idle, perlin keeps the light wandering. */
+    .u-holo,
+    [data-holo] {
+        position: relative;
+        isolation: isolate;
+        transform-style: preserve-3d;
+        perspective: 800px;
+        transform: rotateX(var(--tilt-x, 0deg)) rotateY(var(--tilt-y, 0deg));
+        transition: transform 80ms ease-out;
+        --gem-base: var(--card-accent, var(--primary));
+        --gem-spec: var(--gold);
+        --gem-low: var(--card-accent, var(--primary));
+    }
+
+    /* Per-gem material tuning — each gem has its own diffuse / specular
+     * pairing so the surface FEELS different. */
+    .u-holo[data-gem='gold'],
+    [data-holo][data-gem='gold'] {
+        --gem-base: var(--gold);
+        --gem-spec: var(--gold-high);
+        --gem-low: var(--gold-low);
+    }
+    .u-holo[data-gem='ruby'],
+    [data-holo][data-gem='ruby'] {
+        --gem-base: var(--ruby);
+        --gem-spec: var(--pink-high);
+        --gem-low: var(--ruby-low);
+    }
+    .u-holo[data-gem='emerald'],
+    [data-holo][data-gem='emerald'] {
+        --gem-base: var(--emerald);
+        --gem-spec: var(--turquoize-high);
+        --gem-low: var(--emerald-low);
+    }
+    .u-holo[data-gem='diamond'],
+    [data-holo][data-gem='diamond'] {
+        --gem-base: var(--diamond);
+        --gem-spec: var(--gray-1);
+        --gem-low: var(--diamond-low);
+    }
+    .u-holo[data-gem='amethyst'],
+    [data-holo][data-gem='amethyst'] {
+        --gem-base: var(--amethyst);
+        --gem-spec: var(--pink-high);
+        --gem-low: var(--amethyst-low);
+    }
+    .u-holo[data-gem='pink'],
+    [data-holo][data-gem='pink'] {
+        --gem-base: var(--pink);
+        --gem-spec: var(--amethyst-high);
+        --gem-low: var(--pink-low);
+    }
+    .u-holo[data-gem='salmon'],
+    [data-holo][data-gem='salmon'] {
+        --gem-base: var(--salmon);
+        --gem-spec: var(--gold-high);
+        --gem-low: var(--salmon-low);
+    }
+    .u-holo[data-gem='turquoize'],
+    [data-holo][data-gem='turquoize'] {
+        --gem-base: var(--turquoize);
+        --gem-spec: var(--diamond-high);
+        --gem-low: var(--turquoize-low);
+    }
+
+    /* Diffuse layer — gem-tinted base. Linear gradient follows the cursor
+     * angle so the surface reads as "lit from this side" without a centered
+     * radial hot spot. Real gems don't have radial highlights; their cut
+     * facets distribute light at planar angles. */
+    .u-holo::before,
+    [data-holo]::before {
+        content: '';
+        position: absolute;
+        inset: 0;
+        border-radius: inherit;
+        pointer-events: none;
+        background:
+            linear-gradient(
+                calc(var(--light-angle, 135deg)),
+                color-mix(in oklab, var(--gem-base) 75%, transparent) 0%,
+                color-mix(in oklab, var(--gem-base) 50%, transparent) 30%,
+                color-mix(in oklab, var(--gem-low) 80%, transparent) 70%,
+                color-mix(in oklab, var(--gem-low) 90%, var(--background)) 100%
+            ),
+            linear-gradient(
+                135deg,
+                color-mix(in oklab, var(--gem-low) 70%, var(--background)) 0%,
+                color-mix(in oklab, var(--gem-base) 22%, var(--background)) 100%
+            );
+        z-index: 0;
+    }
+
+    /* Faceted specular layer — multiple stacked conic-gradients with hard
+     * color stops simulate gem-cut facet planes catching light. Subtle
+     * (peak ≤ 35% specular) so the highlight reads as polished gem, not
+     * spotlit plastic. The primary conic rotates with cursor angle
+     * (`--light-angle`); a second conic offset by 30° adds a second
+     * facet ring; an iridescent rainbow conic at low opacity gives the
+     * foil quality without overpowering. */
+    .u-holo::after,
+    [data-holo]::after {
+        content: '';
+        position: absolute;
+        inset: 0;
+        border-radius: inherit;
+        pointer-events: none;
+        background:
+            /* Primary facet ring — sharp transitions between specular bands. */
+            conic-gradient(
+                from var(--light-angle, 0deg) at var(--mx, 50%) var(--my, 50%),
+                color-mix(in oklab, var(--gem-spec) 38%, transparent) 0deg,
+                transparent 18deg,
+                color-mix(in oklab, var(--gem-spec) 22%, transparent) 50deg,
+                transparent 80deg,
+                color-mix(in oklab, var(--gem-base) 18%, transparent) 130deg,
+                transparent 170deg,
+                color-mix(in oklab, var(--gem-spec) 20%, transparent) 220deg,
+                transparent 255deg,
+                color-mix(in oklab, var(--gem-spec) 30%, transparent) 300deg,
+                transparent 340deg,
+                color-mix(in oklab, var(--gem-spec) 38%, transparent) 360deg
+            ),
+            /* Secondary facet ring — offset 30° so facet edges read as
+             * a polished cut, not a single rotation. */
+            conic-gradient(
+                from calc(var(--light-angle, 0deg) + 30deg) at var(--mx, 50%) var(--my, 50%),
+                transparent 0deg,
+                color-mix(in oklab, var(--gem-spec) 14%, transparent) 30deg,
+                transparent 60deg,
+                color-mix(in oklab, var(--gem-base) 12%, transparent) 120deg,
+                transparent 150deg,
+                color-mix(in oklab, var(--gem-spec) 13%, transparent) 240deg,
+                transparent 270deg
+            ),
+            /* Iridescent foil rainbow at very low opacity — holo flecks. */
+            conic-gradient(
+                from calc(var(--light-angle, 0deg) * 1.5) at var(--mx, 50%) var(--my, 50%),
+                color-mix(in oklab, var(--gold) 18%, transparent),
+                color-mix(in oklab, var(--emerald) 18%, transparent),
+                color-mix(in oklab, var(--diamond) 18%, transparent),
+                color-mix(in oklab, var(--amethyst) 18%, transparent),
+                color-mix(in oklab, var(--pink) 18%, transparent),
+                color-mix(in oklab, var(--gold) 18%, transparent)
+            );
+        mix-blend-mode: color-dodge;
+        opacity: 0.6;
+        z-index: 1;
+        /* PBR-flavored roughness mask — fine SVG noise scatters the
+         * faceted highlights into micro-spec specks rather than smooth
+         * bands. Gems are smooth; their micro-roughness diffuses spec. */
+        -webkit-mask-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='1.6' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 1.6 -0.35'/></filter><rect width='240' height='240' filter='url(%23n)'/></svg>");
+        mask-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='1.6' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 1.6 -0.35'/></filter><rect width='240' height='240' filter='url(%23n)'/></svg>");
+        -webkit-mask-size: 240px 240px;
+        mask-size: 240px 240px;
+    }
+
+    /* Reduced motion: holo flattens to a static "lit-from-upper-left"
+     * pose. Surface still reads as gem-tinted and highlighted, just frozen. */
+    @media (prefers-reduced-motion: reduce) {
+        .u-holo,
+        [data-holo] {
+            transform: none;
+            transition: none;
+        }
+        .u-holo::after,
+        [data-holo]::after {
+            opacity: 0.35;
         }
     }
 
