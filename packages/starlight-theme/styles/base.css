@@ -866,48 +866,94 @@
         flex-shrink: 0;
     }
 
+    /* Primary CTA button — gem-lit, tilts toward cursor, rim-glint border.
+     * Uses the same scene+mouse light system as cards via .u-light, but
+     * scoped to button proportions. The amethyst gradient is the resting
+     * tint; cursor-driven tilt + radial hotspot add the interaction. */
     .sl-link-button.primary {
         position: relative;
         color: var(--primary-foreground);
         background:
             linear-gradient(
-                calc(var(--scene-angle, 135deg) + 90deg),
-                color-mix(in oklab, var(--primary) 100%, transparent) 0%,
-                color-mix(in oklab, var(--primary) 80%, var(--background)) 100%
+                calc(var(--effective-light-angle, var(--scene-angle, 135deg)) + 90deg),
+                color-mix(in oklab, var(--amethyst-high) 100%, transparent) 0%,
+                color-mix(in oklab, var(--amethyst) 75%, var(--background)) 100%
             );
-        border-color: color-mix(in oklab, var(--primary) 60%, transparent);
+        border: 1px solid color-mix(in oklab, var(--amethyst-high) 70%, transparent);
         overflow: hidden;
         isolation: isolate;
+        font-weight: 600;
+        letter-spacing: 0.01em;
+        transition:
+            transform 120ms ease-out,
+            box-shadow 180ms ease;
+        will-change: transform;
+        transform: perspective(700px) rotateX(var(--tilt-x, 0deg))
+            rotateY(var(--tilt-y, 0deg));
+        height: 2.375rem;
+        padding: 0 1rem;
     }
-
-    .sl-link-button.primary::before {
+    /* Mouse hotspot — radial gem tint, fades in with --mouse-active. */
+    .sl-link-button.primary::after {
         content: '';
         position: absolute;
         inset: 0;
         border-radius: inherit;
         pointer-events: none;
-        background: linear-gradient(
-            calc(var(--scene-angle, 135deg) + 90deg),
-            color-mix(in oklab, var(--primary) 30%, transparent) 0%,
-            transparent 60%
+        background: radial-gradient(
+            circle at var(--mx, 50%) var(--my, 50%),
+            color-mix(in oklab, var(--gray-1) 40%, transparent) 0%,
+            transparent 35%
         );
-        z-index: 0;
+        opacity: calc(var(--mouse-active, 0) * 0.7);
         mix-blend-mode: screen;
+        z-index: 0;
     }
-
     .sl-link-button.primary:hover {
         color: var(--primary-foreground);
-        box-shadow: 0 4px 14px -6px color-mix(in oklab, var(--primary) 55%, transparent);
+        box-shadow: 0 6px 22px -8px color-mix(in oklab, var(--amethyst) 70%, transparent);
     }
 
+    /* Secondary CTA — diamond-tinted, same tilt/light system, lighter
+     * weight than primary. Reads as "alternative path" without competing
+     * with the primary's gem mass. */
     .sl-link-button.secondary {
+        position: relative;
+        color: var(--foreground);
         background:
             linear-gradient(
-                calc(var(--scene-angle, 135deg) + 90deg),
-                color-mix(in oklab, var(--diamond) 25%, var(--background)) 0%,
-                color-mix(in oklab, var(--background) 90%, var(--diamond)) 100%
+                calc(var(--effective-light-angle, var(--scene-angle, 135deg)) + 90deg),
+                color-mix(in oklab, var(--diamond) 18%, var(--background)) 0%,
+                color-mix(in oklab, var(--background) 88%, var(--diamond)) 100%
             );
-        border-color: color-mix(in oklab, var(--diamond) 35%, var(--border));
+        border: 1px solid color-mix(in oklab, var(--diamond) 40%, var(--border));
+        overflow: hidden;
+        isolation: isolate;
+        font-weight: 500;
+        letter-spacing: 0.01em;
+        transition:
+            transform 120ms ease-out,
+            box-shadow 180ms ease;
+        will-change: transform;
+        transform: perspective(700px) rotateX(var(--tilt-x, 0deg))
+            rotateY(var(--tilt-y, 0deg));
+        height: 2.375rem;
+        padding: 0 1rem;
+    }
+    .sl-link-button.secondary::after {
+        content: '';
+        position: absolute;
+        inset: 0;
+        border-radius: inherit;
+        pointer-events: none;
+        background: radial-gradient(
+            circle at var(--mx, 50%) var(--my, 50%),
+            color-mix(in oklab, var(--diamond) 22%, transparent) 0%,
+            transparent 35%
+        );
+        opacity: calc(var(--mouse-active, 0) * 0.85);
+        mix-blend-mode: screen;
+        z-index: 0;
     }
 
     .sl-link-button.secondary {
@@ -916,7 +962,15 @@
 
     .sl-link-button.secondary:hover {
         color: var(--foreground);
-        box-shadow: 0 4px 14px -6px color-mix(in oklab, var(--diamond) 35%, transparent);
+        box-shadow: 0 6px 22px -8px color-mix(in oklab, var(--diamond) 50%, transparent);
+    }
+    /* Make CTA buttons participate in the .u-light pointer-tracking via
+     * data-light registration. We set the data attribute through an attr
+     * selector — motion.ts already queries [data-light]. */
+    .sl-link-button.primary,
+    .sl-link-button.secondary {
+        /* These two also act as motion targets, joining the registry on
+         * mount via the data-light hook. JS in motion.ts queries them. */
     }
 
     .sl-link-button.minimal {

@@ -272,11 +272,22 @@ function startLoop() {
 function initMotion() {
     if (typeof document === 'undefined') return
     const els = document.querySelectorAll<HTMLElement>(
-        '.u-light, .u-holo, [data-light], [data-holo]'
+        '.u-light, .u-holo, [data-light], [data-holo], .sl-link-button.primary, .sl-link-button.secondary'
     )
     for (const el of els) registerTarget(el)
     if (targets.length > 0) startLoop()
     initReveal()
+
+    /* Console personality — a one-time message for developers who pop
+     * open devtools. Subtle nod to who reads this thing. */
+    if (typeof window !== 'undefined' && !(window as any).__tfFlatlandHi) {
+        (window as any).__tfFlatlandHi = true
+        const css1 = 'color:#a85ff1;font-family:Silkscreen,monospace;font-size:14px;font-weight:bold;'
+        const css2 = 'color:#11b7d4;font-family:monospace;'
+        try {
+            console.log('%c flatland %c — sprite-first 2D for Three.js + R3F. Like what you see? https://github.com/thejustinwalsh/three-flatland', css1, css2)
+        } catch {}
+    }
 }
 
 /**

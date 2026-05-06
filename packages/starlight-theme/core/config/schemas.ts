@@ -49,7 +49,7 @@ export const StarlightThemeConfigSchema = z.object({
         .string()
         .optional()
         .default(
-            'Inspired by the [shadcn/ui](https://ui.shadcn.com/) documentation theme and based on [starlight-theme-black](https://github.com/adrian-ub/starlight-theme-black). Ported to Astro Starlight by [lucas-labs](https://github.com/lucas-labs).'
+            'This documentation was created with AI assistance. AI can make mistakes — please verify claims and test code examples. Submit corrections [here](https://github.com/thejustinwalsh/three-flatland/issues).'
         ),
 });
 
