@@ -863,7 +863,7 @@ export default function App() {
     max: 0.15,
     step: 0.001,
   })
-  const [outlineColor] = usePaneInput<string>(outline, 'color', '#000000')
+  const [outlineColor] = usePaneInput<string>(outline, 'color', '#999999')
 
   const mode = usePaneFolder(pane, 'Mode')
   const [compareMode] = usePaneInput<CompareMode>(mode, 'compare', 'onion', {

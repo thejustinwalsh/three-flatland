@@ -218,7 +218,7 @@ async function main() {
     icons: false,
     outlineStyle: 'fill' as 'fill' | 'outline' | 'both',
     outlineWidth: 0.025,
-    outlineColor: '#000000',
+    outlineColor: '#999999',
   }
 
   // Hover state drives the measure overlay only. No click-to-style —
