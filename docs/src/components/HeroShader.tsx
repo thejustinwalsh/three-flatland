@@ -19,8 +19,13 @@ export default function HeroShader() {
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
-    const gl = canvas.getContext('webgl2', { antialias: false, premultipliedAlpha: false })
-    if (!gl) return
+    const ctx = canvas.getContext('webgl2', { antialias: false, premultipliedAlpha: false })
+    if (!ctx) return
+    /* Narrowed non-null aliases — TypeScript can't always carry narrowing
+     * through closures defined later in this useEffect, so we capture
+     * post-null-check references that the helpers and rAF loop close over. */
+    const gl: WebGL2RenderingContext = ctx
+    const cvs: HTMLCanvasElement = canvas
 
     const vertSrc = `#version 300 es
 in vec2 a_pos;
@@ -208,13 +213,13 @@ void main() {
 
     function resize() {
       const dpr = Math.min(window.devicePixelRatio || 1, 2)
-      const w = canvas.clientWidth | 0
-      const h = canvas.clientHeight | 0
+      const w = cvs.clientWidth | 0
+      const h = cvs.clientHeight | 0
       const W = (w * dpr) | 0
       const H = (h * dpr) | 0
-      if (canvas.width !== W || canvas.height !== H) {
-        canvas.width = W
-        canvas.height = H
+      if (cvs.width !== W || cvs.height !== H) {
+        cvs.width = W
+        cvs.height = H
       }
       gl.viewport(0, 0, W, H)
     }
@@ -222,7 +227,7 @@ void main() {
     resize()
 
     function onMove(e: PointerEvent) {
-      const r = canvas.getBoundingClientRect()
+      const r = cvs.getBoundingClientRect()
       mouse.x = (e.clientX - r.left) / r.width
       mouse.y = 1 - (e.clientY - r.top) / r.height // flip Y
       mouseTarget = 1
@@ -230,9 +235,9 @@ void main() {
     function onLeave() {
       mouseTarget = 0
     }
-    canvas.addEventListener('pointermove', onMove, { passive: true })
-    canvas.addEventListener('pointerenter', () => { mouseTarget = 1 })
-    canvas.addEventListener('pointerleave', onLeave)
+    cvs.addEventListener('pointermove', onMove, { passive: true })
+    cvs.addEventListener('pointerenter', () => { mouseTarget = 1 })
+    cvs.addEventListener('pointerleave', onLeave)
 
     gl.useProgram(prog)
 
@@ -245,7 +250,7 @@ void main() {
       const k = 1 - Math.pow(0.5, dt / 0.15)
       mouseActive += (mouseTarget - mouseActive) * k
 
-      gl.uniform2f(uRes, canvas.width, canvas.height)
+      gl.uniform2f(uRes, cvs.width, cvs.height)
       gl.uniform1f(uTime, (now - start) / 1000)
       gl.uniform2f(uMouse, mouse.x, mouse.y)
       gl.uniform1f(uMouseActive, mouseActive)
@@ -259,8 +264,8 @@ void main() {
       alive = false
       cancelAnimationFrame(raf)
       window.removeEventListener('resize', resize)
-      canvas.removeEventListener('pointermove', onMove)
-      canvas.removeEventListener('pointerleave', onLeave)
+      cvs.removeEventListener('pointermove', onMove)
+      cvs.removeEventListener('pointerleave', onLeave)
       gl.deleteProgram(prog)
       gl.deleteShader(vs)
       gl.deleteShader(fs)

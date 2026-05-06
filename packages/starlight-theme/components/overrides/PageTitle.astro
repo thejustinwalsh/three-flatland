@@ -10,8 +10,9 @@ const {
     pagination: { prev, next },
 } = Astro.locals.starlightRoute;
 
-const { title, description } = data;
+const { title, description, template } = data;
 const incudeAIMenu = userConfig.docs?.includeAiUtilities ?? false;
+const isSplash = template === 'splash';
 
 const encode = (url: string, text: string) => `https://${url}=${encodeURIComponent(text)}`;
 const aiText = `I'm looking at: ${Astro.url}.\nHelp me understand how to use it. Be ready to explain concepts, give examples, or help debug based on it.`;
@@ -19,6 +20,7 @@ const openAIUrl = encode('chatgpt.com?q', aiText);
 const claudeUrl = encode('claude.ai/new?q', aiText);
 ---
 
+{!isSplash && (
 <div data-slot="doc-title">
     <div data-slot="doc-title-header">
         <h1 id={PAGE_TITLE_ID}>{title}</h1>
@@ -81,6 +83,7 @@ const claudeUrl = encode('claude.ai/new?q', aiText);
 
     <!--  -->
 </div>
+)}
 
 <style>
     div[data-slot='doc-title'] {

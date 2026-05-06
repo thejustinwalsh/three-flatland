@@ -10,15 +10,9 @@ import ValueProp from '../../components/ValueProp.astro';
 import HeroShader from '../../components/HeroShader.tsx';
 import { Tabs, TabItem, Aside } from '@astrojs/starlight/components';
 
-<aside class="alpha-ribbon not-content" aria-label="Early alpha release" data-light data-gem="gold">
-  <a class="alpha-ribbon-tape" href="https://github.com/thejustinwalsh/three-flatland/issues">
-    <span class="alpha-ribbon-text">Early Alpha</span>
-  </a>
-</aside>
-
 <section class="hero-fullscreen not-content">
   <div class="hero-canvas" aria-hidden="true">
-    <HeroShader client:visible />
+    <HeroShader client:only="react" />
   </div>
   <div class="hero-overlay">
     <div class="hero-overlay-inner">

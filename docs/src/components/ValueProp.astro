@@ -1,12 +1,11 @@
 ---
 /**
- * ValueProp — section-block for the landing's "Why three-flatland?" rhythm.
- * Each block can opt into a gem accent via `color="<gem>"`; the gem hue
- * drives the left rule, strong-text accent, and title-side glow so each
- * value-prop reads as its own color identity.
- *
- * Conventional names (cyan, blue, green, etc.) are accepted for compat
- * with existing MDX call sites; mapped to the closest gem at render time.
+ * ValueProp — section-block for the landing's "Why three-flatland?"
+ * rhythm. Each block opts into a gem accent via `color="<gem>"`; the
+ * gem hue drives the resting card surface tint AND the lit material
+ * treatment (.u-light scene+mouse light + ambient rim) so each
+ * value-prop reads as a polished gem-faceted card matching the
+ * FeatureCard system, just wider and at section scale.
  */
 
 type Gem =
@@ -33,7 +32,7 @@ const legacyToGem: Record<LegacyColor, Gem> = {
 
 interface Props {
   title: string
-  /** Gem accent for the left rule, strong-text emphasis, and title glow. */
+  /** Gem accent — picks from the design-system palette. */
   color?: Gem | LegacyColor
   align?: 'left' | 'right'
 }
@@ -46,66 +45,65 @@ const resolvedGem: Gem | undefined = color
     : (color as Gem)
   : undefined
 
-const accentStyle = resolvedGem ? `--vp-accent: var(--${resolvedGem});` : undefined
+const accentStyle = resolvedGem ? `--card-accent: var(--${resolvedGem});` : undefined
 ---
 
 <section
-  class:list={['not-content', 'value-prop', { 'align-right': align === 'right' }]}
+  class:list={['not-content', 'value-prop', 'u-light', { 'align-right': align === 'right' }]}
   data-gem={resolvedGem}
   style={accentStyle}
 >
-  <div class="vp-rule" aria-hidden="true"></div>
   <div class="vp-content">
     <h3 class="vp-title" set:html={title} />
     <div class="vp-body"><slot /></div>
   </div>
+  {/* Top-layer rim ring — same pattern as FeatureCard's card-edge:
+      sits above the .u-light pseudos so displacement-filter edge
+      artifacts are masked, doubles as the rim light catching
+      --effective-light-angle. */}
+  <span class="vp-edge" aria-hidden="true"></span>
 </section>
 
 <style>
   .value-prop {
-    --vp-accent: var(--primary);
-    display: grid;
-    grid-template-columns: auto 1fr;
-    gap: clamp(1.25rem, 3vw, 2.25rem);
-    /* Whitespace handles separation between value-props — no horizontal
-     * rule between sections. The vertical gem rule + title underline
-     * already carry the gem identity for each block. */
-    margin-block: clamp(3rem, 6vw, 5rem);
-    padding-block: 0;
+    --card-soft: color-mix(in oklab, var(--gray-7) 60%, var(--card-accent, var(--primary)));
+    --card: var(--card-soft);
+    position: relative;
+    background: var(--card-soft);
+    padding: clamp(2rem, 4vw, 3rem) clamp(1.5rem, 3vw, 2.5rem);
+    border-radius: calc(var(--radius) + 0.25rem);
+    margin-block: clamp(1.75rem, 3vw, 2.5rem);
+    /* Section width — wider than a feature card; full row on the
+     * landing, with a gentle skew left/right via margin-inline-end/
+     * start so the column doesn't read as a flat stack. */
+    max-width: 56rem;
   }
+
+  /* Per-gem resting tint — pulls from the dedicated *-soft tokens
+   * defined in theme.css so the resting surface IS gem-toned, not
+   * black with gem accents. */
+  .value-prop[data-gem='gold'] { --card-soft: var(--gold-soft); }
+  .value-prop[data-gem='ruby'] { --card-soft: var(--ruby-soft); }
+  .value-prop[data-gem='emerald'] { --card-soft: var(--emerald-soft); }
+  .value-prop[data-gem='diamond'] { --card-soft: var(--diamond-soft); }
+  .value-prop[data-gem='amethyst'] { --card-soft: var(--amethyst-soft); }
+  .value-prop[data-gem='pink'] { --card-soft: var(--pink-soft); }
+  .value-prop[data-gem='salmon'] { --card-soft: var(--salmon-soft); }
+  .value-prop[data-gem='turquoize'] { --card-soft: var(--turquoize-soft); }
 
   .value-prop.align-right {
-    grid-template-columns: 1fr auto;
+    margin-inline-start: auto;
   }
-
-  .value-prop.align-right .vp-rule {
-    order: 2;
-  }
-
   .value-prop.align-right .vp-content {
     text-align: right;
   }
 
-  /* Vertical rule is gem-tinted with a soft glow that intensifies the
-   * accent's color identity without overpowering the prose. */
-  .vp-rule {
-    width: 2px;
-    align-self: stretch;
-    background: linear-gradient(
-      to bottom,
-      transparent 0%,
-      var(--vp-accent) 18%,
-      var(--vp-accent) 82%,
-      transparent 100%
-    );
-    border-radius: 1px;
-    box-shadow: 0 0 16px color-mix(in oklab, var(--vp-accent) 35%, transparent);
-  }
-
   .vp-content {
+    position: relative;
+    z-index: 5;
     display: flex;
     flex-direction: column;
-    gap: calc(var(--spacing) * 3);
+    gap: calc(var(--spacing) * 4);
     max-width: 60ch;
   }
 
@@ -115,18 +113,12 @@ const accentStyle = resolvedGem ? `--vp-accent: var(--${resolvedGem});` : undefi
 
   .vp-title {
     font-family: 'Public Sans', system-ui, sans-serif;
-    font-weight: 700;
-    font-size: clamp(1.125rem, 2vw, 1.5rem);
-    line-height: 1.2;
-    letter-spacing: -0.015em;
+    font-weight: 600;
+    font-size: clamp(1.375rem, 2.4vw, 1.75rem);
+    line-height: 1.15;
+    letter-spacing: -0.018em;
     color: var(--foreground);
     margin: 0;
-    text-transform: none;
-    align-self: start;
-  }
-
-  .value-prop.align-right .vp-title {
-    align-self: end;
   }
 
   .vp-body {
@@ -138,14 +130,45 @@ const accentStyle = resolvedGem ? `--vp-accent: var(--${resolvedGem});` : undefi
   .vp-body :global(p) {
     margin: 0 0 0.75rem 0;
   }
-
   .vp-body :global(p:last-child) {
     margin-bottom: 0;
   }
 
-  /* Strong becomes the accent moment — gem-tinted text emphasis. */
+  /* Strong becomes the gem accent moment in the body copy. */
   .vp-body :global(strong) {
-    color: var(--vp-accent);
+    color: var(--card-accent, var(--primary));
     font-weight: 600;
+  }
+
+  /* Top-layer rim ring — gem-tinted gradient border that catches the
+   * scene light direction. Same pattern as FeatureCard's .card-edge. */
+  .value-prop > .vp-edge {
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    z-index: 4;
+    padding: 1.5px;
+    background: conic-gradient(
+      from calc(var(--effective-light-angle, var(--scene-angle, 135deg)) - 90deg),
+      color-mix(in oklab, var(--card-accent, var(--primary)) 75%, transparent) 0deg,
+      color-mix(in oklab, var(--card-accent, var(--primary)) 28%, var(--border)) 90deg,
+      color-mix(in oklab, var(--border) 90%, transparent) 180deg,
+      color-mix(in oklab, var(--card-accent, var(--primary)) 28%, var(--border)) 270deg,
+      color-mix(in oklab, var(--card-accent, var(--primary)) 75%, transparent) 360deg
+    );
+    -webkit-mask:
+      linear-gradient(#000, #000) content-box,
+      linear-gradient(#000, #000);
+    -webkit-mask-composite: xor;
+    mask:
+      linear-gradient(#000, #000) content-box,
+      linear-gradient(#000, #000);
+    mask-composite: exclude;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .value-prop > .vp-edge {
+      background: var(--border);
+    }
   }
 </style>

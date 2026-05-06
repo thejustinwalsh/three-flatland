@@ -4,9 +4,27 @@ import userConfig from 'virtual:starlight-theme-config';
 import Drawer from './parts/Drawer.astro';
 
 const { hasSidebar } = Astro.locals.starlightRoute;
+
+/**
+ * Landing-only check — the early-alpha ribbon stuck to the corner only
+ * makes sense on the marketing landing page. Detect via path: landing
+ * is the root of the Starlight base (with or without trailing slash).
+ * Path-based instead of entry-id-based because Astro 6 + Starlight
+ * docsLoader normalizes ids in ways that vary across builds.
+ */
+const path = Astro.url.pathname.replace(/\/$/, '');
+const base = (import.meta.env.BASE_URL || '/').replace(/\/$/, '');
+const isLanding = path === base || path === '';
 ---
 
 <div data-slot="layout">
+    {isLanding && (
+        <aside class="alpha-ribbon" aria-label="Early alpha release" data-light data-gem="gold">
+            <a class="alpha-ribbon-tape" href="https://github.com/thejustinwalsh/three-flatland/issues">
+                <span class="alpha-ribbon-text">Early Alpha</span>
+            </a>
+        </aside>
+    )}
     <header>
         <div class="container-wrapper px-6">
             <div class="container">
@@ -41,26 +59,37 @@ const { hasSidebar } = Astro.locals.starlightRoute;
 <Drawer />
 
 <style>
-    /* ────────── Early-alpha corner ribbon ────────── */
+    /* ────────── Early-alpha corner ribbon (landing-only) ──────────
+     * Pinned to the viewport top-left, inset from the real corner so it
+     * sits clear of the header/logo and reads like a sticker placed on
+     * the page rather than crammed in the very corner. Wrapper has
+     * pointer-events: none so empty triangle space passes clicks through
+     * to whatever's underneath; only the rotated tape is clickable. */
     .alpha-ribbon {
         position: fixed;
-        top: 0;
+        top: 5.5rem;
         left: 0;
-        width: 11rem;
-        height: 11rem;
+        width: 13rem;
+        height: 13rem;
         pointer-events: none;
-        z-index: 60;
+        z-index: 30;
         overflow: hidden;
     }
+    /* Standard corner-ribbon geometry: tape rotated -45° about its center,
+     * positioned so its center lands on the wrapper's diagonal midpoint;
+     * width is generous (~24rem) so the rotated stripe fully spans
+     * corner-to-corner of the wrapper, leaving only a clean diagonal band
+     * visible after overflow:hidden clips the rest. */
     .alpha-ribbon-tape {
         position: absolute;
-        top: 1.7rem;
-        left: -3.6rem;
-        width: 13rem;
-        padding: 0.4rem 0;
+        top: 3.5rem;
+        left: -5.5rem;
+        width: 24rem;
+        padding: 0.5rem 0;
         text-align: center;
         text-decoration: none;
         transform: rotate(-45deg);
+        transform-origin: 50% 50%;
         pointer-events: auto;
         cursor: pointer;
         /* Gold foil — base linear gradient tracking the scene light, plus
@@ -85,9 +114,7 @@ const { hasSidebar } = Astro.locals.starlightRoute;
         text-transform: uppercase;
         box-shadow:
             inset 0 1px 0 color-mix(in oklab, var(--gold-high) 80%, white),
-            inset 0 -1px 0 color-mix(in oklab, var(--gold) 30%, black),
-            0 4px 14px color-mix(in oklab, var(--gold) 35%, transparent),
-            0 2px 0 color-mix(in oklab, oklch(15% 0 0) 60%, transparent);
+            inset 0 -1px 0 color-mix(in oklab, var(--gold) 30%, black);
         transition:
             transform 180ms cubic-bezier(0.2, 0, 0.1, 1),
             box-shadow 180ms ease,
@@ -145,12 +172,12 @@ const { hasSidebar } = Astro.locals.starlightRoute;
         text-shadow: 0 1px 0 color-mix(in oklab, var(--gold-high) 90%, white);
     }
     @media (max-width: 50rem) {
-        .alpha-ribbon { width: 8.5rem; height: 8.5rem; }
+        .alpha-ribbon { width: 11rem; height: 11rem; top: 4rem; }
         .alpha-ribbon-tape {
-            top: 1.3rem;
-            left: -3rem;
-            width: 10rem;
-            font-size: 0.625rem;
+            top: 1.8rem;
+            left: -3.6rem;
+            width: 13rem;
+            font-size: 0.65rem;
         }
     }
     @media (prefers-reduced-motion: reduce) {
