@@ -5,6 +5,7 @@ import type {
   EnvPayload,
 } from '../debug-protocol'
 import { VERSION as THREE_FLATLAND_VERSION } from '../index'
+import type { GpuTimingProbeBackend } from './detectGpuTiming'
 
 /**
  * Subset of `WebGPURenderer` we inspect. Fields are all optional /
@@ -75,22 +76,24 @@ export class EnvCollector {
    * this as the baseline should call `resetDelta()` first and then
    * `fillEnv(out)` on the next tick to synchronise.
    */
-  snapshot(renderer: RendererLike | undefined): EnvPayload {
+  snapshot(renderer: RendererLike | undefined, gpuVerified = false): EnvPayload {
     const out: EnvPayload = {}
     out.threeFlatlandVersion = THREE_FLATLAND_VERSION
     out.threeRevision = REVISION
 
     if (renderer?.backend) {
-      const b = renderer.backend as {
-        trackTimestamp?: boolean
-        constructor?: { name?: string }
-        disjoint?: unknown
-      }
+      const b = renderer.backend as GpuTimingProbeBackend
       const name = b.constructor?.name ?? null
       const trackTimestamp = b.trackTimestamp === true
       const isWebGL = name === 'WebGLBackend'
       const disjoint = isWebGL ? b.disjoint != null : null
-      const gpuModeEnabled = trackTimestamp && (!isWebGL || disjoint === true)
+      // `gpuModeEnabled` reflects empirical truth: the producer has
+      // actually observed at least one valid GPU timestamp. Feature
+      // probes (`device.features.has('timestamp-query')`, WebGL2
+      // disjoint) returned false-positives on Safari WebGPU — they
+      // expose the feature but never deliver a non-zero timestamp.
+      // So the consumer-visible flag waits for verified data.
+      const gpuModeEnabled = gpuVerified
       const backend: EnvBackendDelta = { name, trackTimestamp, disjoint, gpuModeEnabled }
       out.backend = backend
     }
@@ -117,7 +120,7 @@ export class EnvCollector {
    * unchanged fields as `undefined` (meaning "no change" on the wire)
    * and sets changed fields to their new value or `null`.
    */
-  fillEnv(out: EnvPayload, renderer: RendererLike | undefined): boolean {
+  fillEnv(out: EnvPayload, renderer: RendererLike | undefined, gpuVerified = false): boolean {
     const prev = this._prev
     let changed = false
 
@@ -132,18 +135,18 @@ export class EnvCollector {
       changed = true
     }
 
-    // Backend (effectively static once renderer is created).
+    // Backend fields are mostly static, but `trackTimestamp` flips
+    // during three's async init and `gpuModeEnabled` flips when the
+    // producer first verifies a real GPU timestamp arrived. Re-derive
+    // every call — the diff below decides whether anything actually
+    // changed.
     if (renderer?.backend) {
-      const b = renderer.backend as {
-        trackTimestamp?: boolean
-        constructor?: { name?: string }
-        disjoint?: unknown
-      }
+      const b = renderer.backend as GpuTimingProbeBackend
       const name = b.constructor?.name ?? null
       const trackTimestamp = b.trackTimestamp === true
       const isWebGL = name === 'WebGLBackend'
       const disjoint = isWebGL ? b.disjoint != null : null
-      const gpuModeEnabled = trackTimestamp && (!isWebGL || disjoint === true)
+      const gpuModeEnabled = gpuVerified
 
       const backendDelta: EnvBackendDelta = {}
       let backendChanged = false
@@ -221,10 +224,10 @@ export class EnvCollector {
    * `snapshot()` is used for bootstrap so subsequent `fillEnv` calls
    * compute deltas relative to what the consumer already has.
    */
-  recordSnapshotAsPrev(renderer: RendererLike | undefined): void {
+  recordSnapshotAsPrev(renderer: RendererLike | undefined, gpuVerified = false): void {
     this.resetDelta()
     // Throwaway output — we just want `fillEnv` to update `_prev`.
     const throwaway: EnvPayload = {}
-    this.fillEnv(throwaway, renderer)
+    this.fillEnv(throwaway, renderer, gpuVerified)
   }
 }

@@ -364,7 +364,7 @@ export class DevtoolsProvider {
       delete envOut.threeRevision
       delete envOut.backend
       delete envOut.canvas
-      if (this._env.fillEnv(envOut, this._latestRenderer)) {
+      if (this._env.fillEnv(envOut, this._latestRenderer, this._stats.gpuCapable)) {
         features.env = envOut
         anyFeature = true
       }
@@ -609,8 +609,9 @@ export class DevtoolsProvider {
   private _sendSubscribeAck(id: string, _requested: readonly DebugFeature[]): void {
     if (this._dataTransport === null) return
     const r = this._latestRenderer as unknown as Parameters<typeof this._env.snapshot>[0]
-    const env = this._env.snapshot(r)
-    this._env.recordSnapshotAsPrev(r)
+    const gpuVerified = this._stats.gpuCapable
+    const env = this._env.snapshot(r, gpuVerified)
+    this._env.recordSnapshotAsPrev(r, gpuVerified)
 
     const echoed = this._subs.featuresFor(id) ?? []
     this._dataTransport.post(stampMessage({
