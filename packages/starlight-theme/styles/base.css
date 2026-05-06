@@ -1113,6 +1113,7 @@
     [data-light] {
         position: relative;
         isolation: isolate;
+        overflow: hidden;
         transform: perspective(900px) rotateX(var(--tilt-x, 0deg))
             rotateY(var(--tilt-y, 0deg));
         transition: transform 120ms ease-out;
@@ -1151,12 +1152,12 @@
         z-index: 1;
         mix-blend-mode: screen;
     }
-    /* Mouse light layer — secondary specular highlight. Opacity scales with
-     * --mouse-active (0 idle / 1 hover). Direction is FIXED to the scene-
-     * angle so the gradient doesn't spin around cursor center; instead the
-     * bright BAND TRANSLATES toward the cursor via `background-position`.
-     * Combined with the surface's 3D tilt (also cursor-driven), this reads
-     * as a polished surface catching a moving spec — not a rotating effect. */
+    /* Mouse light layer — secondary specular HOTSPOT. Tight radial at
+     * cursor position, additively blended (screen) on top of the scene-lit
+     * gem surface. NOT the primary lighting — just a closer practical
+     * light source adding a small bright spot where the cursor is.
+     * Opacity scaled by --mouse-active so the hotspot fades in/out on
+     * hover; no filter (radial doesn't need warp), no rotation. */
     .u-light::after,
     [data-light]::after {
         content: '';
@@ -1164,18 +1165,13 @@
         inset: 0;
         border-radius: inherit;
         pointer-events: none;
-        background: linear-gradient(
-            calc(var(--scene-angle, 135deg) + 90deg),
-            transparent 0%,
-            color-mix(in oklab, var(--card-accent, var(--primary)) 60%, transparent) 30%,
-            color-mix(in oklab, var(--card-accent, var(--primary)) 30%, transparent) 50%,
-            transparent 80%
+        background: radial-gradient(
+            circle at var(--mx, 50%) var(--my, 50%),
+            color-mix(in oklab, var(--card-accent, var(--primary)) 38%, transparent) 0%,
+            color-mix(in oklab, var(--card-accent, var(--primary)) 14%, transparent) 12%,
+            transparent 32%
         );
-        background-size: 220% 220%;
-        background-position: calc(var(--mx, 50%) * 1.8 - 40%)
-            calc(var(--my, 50%) * 1.8 - 40%);
-        filter: url(#tf-gem-perturb);
-        opacity: calc(var(--mouse-active, 0) * 0.9);
+        opacity: calc(var(--mouse-active, 0) * 0.55);
         z-index: 2;
         mix-blend-mode: screen;
     }
@@ -1197,29 +1193,20 @@
     }
     .u-light[data-gem='gold']::after,
     [data-light][data-gem='gold']::after {
-        background: linear-gradient(
-            calc(var(--scene-angle, 135deg) + 90deg),
-            transparent 0%,
-            color-mix(in oklab, var(--gold-high) 80%, transparent) 30%,
-            color-mix(in oklab, var(--orange) 45%, transparent) 55%,
-            transparent 90%
+        background: radial-gradient(
+            circle at var(--mx, 50%) var(--my, 50%),
+            color-mix(in oklab, var(--gold-high) 48%, transparent) 0%,
+            color-mix(in oklab, var(--orange) 18%, transparent) 14%,
+            transparent 32%
         );
-        background-size: 220% 220%;
-        background-position: calc(var(--mx, 50%) * 1.8 - 40%)
-            calc(var(--my, 50%) * 1.8 - 40%);
-        filter: url(#tf-foil-perturb);
     }
 
-    /* Rim light — conic gradient ring at the border that rotates with the
-     * SCENE light direction (perlin-driven, NOT cursor-driven, so it doesn't
-     * spin around as the mouse moves). Visually it catches light along the
-     * lit side of the surface like a real rim light, brightest where the
-     * scene is "facing." Doubles as an edge mask hiding any displacement-
-     * filter artifacts at the surface boundary.
-     *
-     * Applied via `background-clip: padding-box / border-box` so no extra
-     * element is needed; the conic gradient renders ONLY in the border
-     * region, the padding-box keeps the card's surface tint underneath. */
+    /* Rim primitive — kept for non-card opt-ins that need a gradient
+     * border without a wrapper child. FeatureCard uses its own
+     * `.card-edge` top-layer ring instead, which sits above the
+     * .u-light pseudos and masks displacement-filter edge artifacts.
+     * Background-clip-based: limited to elements whose own background
+     * isn't otherwise needed. */
     .u-rim {
         border: 1.5px solid transparent;
         background-image:

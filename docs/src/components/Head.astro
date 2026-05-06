@@ -58,10 +58,10 @@ import AutoNameSelected from 'astro-vtbot/components/AutoNameSelected.astro';
 >
   <defs>
     {/* Gem perturb — fine fractal noise displacing the source image to
-        fake a normal-mapped polished gem surface. Subtle (scale 3) so
-        the linear-gradient on top reads as "polished surface with
-        micro-roughness," not a wavy distortion. */}
-    <filter id="tf-gem-perturb" x="-5%" y="-5%" width="110%" height="110%">
+        fake a normal-mapped polished gem surface. Subtle (scale 3).
+        Filter region tightened to 0/0/100/100 so the warp doesn't leak
+        past the element's bounding box and create visible edge seams. */}
+    <filter id="tf-gem-perturb" x="0" y="0" width="100%" height="100%">
       <feTurbulence
         type="fractalNoise"
         baseFrequency="0.7"
@@ -75,7 +75,7 @@ import AutoNameSelected from 'astro-vtbot/components/AutoNameSelected.astro';
     {/* Foil perturb — coarser, anisotropic noise (different x/y freq) so
         gold catches a "metallic streak" quality rather than uniform
         scatter. Used by data-gem="gold" surfaces. */}
-    <filter id="tf-foil-perturb" x="-5%" y="-5%" width="110%" height="110%">
+    <filter id="tf-foil-perturb" x="0" y="0" width="100%" height="100%">
       <feTurbulence
         type="fractalNoise"
         baseFrequency="0.3 0.9"

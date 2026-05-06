@@ -58,7 +58,7 @@ const resolvedGem: Gem | undefined = color
 const accentStyle = resolvedGem ? `--card-accent: var(--${resolvedGem});` : undefined
 ---
 
-<article class="feature-card u-light u-rim u-reveal" data-sound="card" data-gem={resolvedGem} style={accentStyle}>
+<article class="feature-card u-light u-reveal" data-sound="card" data-gem={resolvedGem} style={accentStyle}>
   {icon && (
     <span class="icon-wrap" aria-hidden="true">
       <Icon name={icon} size="1.5rem" />
@@ -72,6 +72,11 @@ const accentStyle = resolvedGem ? `--card-accent: var(--${resolvedGem});` : unde
     </div>
   )}
   <p class="description"><slot /></p>
+  {/* Top-layer rim ring — sits above the .u-light pseudos to mask any
+      displacement-filter edge artifacts AND act as the rim light. The
+      rim catches the scene light direction (perlin-driven) so it
+      glints organically. */}
+  <span class="card-edge" aria-hidden="true"></span>
 </article>
 
 <style>
@@ -93,10 +98,46 @@ const accentStyle = resolvedGem ? `--card-accent: var(--${resolvedGem});` : unde
     gap: calc(var(--spacing) * 3);
     padding: calc(var(--spacing) * 5) calc(var(--spacing) * 5)
       calc(var(--spacing) * 6);
+    background: var(--card-soft);
     border-radius: calc(var(--radius) - 2px);
     transition:
       transform 180ms ease,
       box-shadow 180ms ease;
+  }
+
+  /* Top-layer rim ring — last child of .feature-card, absolutely positioned
+   * with z-index above the .u-light pseudos so it masks any displacement-
+   * filter edge artifacts. The ring is 1.5px thick, gradient-colored via
+   * conic-gradient anchored at --scene-angle (perlin-drifted), brighter on
+   * the lit side. Mask makes it ring-shaped without an extra wrapper. */
+  .feature-card > .card-edge {
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    z-index: 4;
+    padding: 1.5px;
+    background: conic-gradient(
+      from calc(var(--scene-angle, 135deg) - 90deg),
+      color-mix(in oklab, var(--card-accent, var(--primary)) 80%, transparent) 0deg,
+      color-mix(in oklab, var(--card-accent, var(--primary)) 30%, var(--border)) 90deg,
+      color-mix(in oklab, var(--border) 90%, transparent) 180deg,
+      color-mix(in oklab, var(--card-accent, var(--primary)) 30%, var(--border)) 270deg,
+      color-mix(in oklab, var(--card-accent, var(--primary)) 80%, transparent) 360deg
+    );
+    -webkit-mask:
+      linear-gradient(#000, #000) content-box,
+      linear-gradient(#000, #000);
+    -webkit-mask-composite: xor;
+    mask:
+      linear-gradient(#000, #000) content-box,
+      linear-gradient(#000, #000);
+    mask-composite: exclude;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .feature-card > .card-edge {
+      background: var(--border);
+    }
   }
 
   /* Per-gem resting tint — pulls from the dedicated gem-soft tokens
