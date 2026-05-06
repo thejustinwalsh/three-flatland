@@ -1,0 +1,150 @@
+---
+title: Baking
+description: Offline asset-baking pipeline — flatland-bake CLI, sidecar files, hash stamps, and dev-time staleness warnings.
+---
+
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
+**What you'll learn**
+- How `flatland-bake` produces sidecar PNGs (`<asset>.normal.png`) with stamped content hashes
+- How the runtime probe decides between the baked sidecar and an in-memory bake fallback
+- How to wire baking into a CI / build script so production never pays runtime bake cost
+
+---
+
+`@three-flatland/bake` is a generic asset-pipeline framework: discovery, sidecar PNGs with stamped hashes, and dev-time staleness warnings. It ships standalone today with one consumer — `@three-flatland/normals`, which contributes the offline normal-map baker via the `flatland-bake normal` subcommand. Future bake types (lightmap atlases, font SDFs, occlusion atlases) plug into the same machinery.
+
+You only need this page when you're ready to *ship*. During development, the runtime bake fallback handles everything — no CLI step, no extra files. Read on when first-paint cost shows up in production.
+
+For the runtime side of the same pipeline — how `SpriteSheetLoader` and `LDtkLoader` consume baked siblings via `normals: true` — see the [Baked Normal Pipeline](../loaders/#baked-normal-pipeline) section of the Loaders guide. This page is the *workflow* counterpart: how to run the baker offline, integrate it into CI, and reason about staleness.
+
+## The Bake Pipeline at a Glance
+
+- **Source asset** — a sprite sheet PNG (plus its TexturePacker JSON), an LDtk tileset, or any other texture the runtime wants enriched. Lives in your project's `public/` (or equivalent) directory.
+- **Bake step** — `flatland-bake <type> <source>` runs the registered baker (currently `normal`) and writes a sidecar file (`<source>.normal.png`) next to the source. The sidecar carries the descriptor's content hash stamped into a PNG `tEXt` chunk under the `flatland` keyword.
+- **Runtime** — a sidecar-aware loader (`SpriteSheetLoader` / `LDtkLoader` with `normals: true`, or `resolveNormalMap` directly) hashes the descriptor it would have used, range-fetches the sidecar's first ~4 KB to read the stamp, and uses the baked file when the hashes match. On miss it falls back to an in-memory bake and emits a dev-time warning.
+
+The pipeline is fully renderer-agnostic — the baker doesn't depend on Three.js, and the sidecar is a plain RGBA PNG with metadata. Any 2D engine can consume the same files.
+
+## CLI
+
+The `flatland-bake` binary is the entry point. It walks `node_modules` (and the cwd package), discovers any package with a `flatland.bake` manifest in its `package.json`, and dispatches `<subcommand>` to the matching baker.
+
+```bash
+# List every baker installed in the current project
+npx flatland-bake --list
+
+# Run the normal-map baker on a single PNG
+npx flatland-bake normal ./public/sprites/knight.png
+
+# Per-baker help (forwards `--help` to the registered baker)
+npx flatland-bake normal --help
+```
+
+### `flatland-bake normal`
+
+Contributed by `@three-flatland/normals`. Reads an RGBA PNG, derives a tangent-space normal map, and writes `<input>.normal.png` (or the second positional path) stamped with the descriptor hash.
+
+```bash
+npx flatland-bake normal <input.png> [output.png] [options]
+
+# Flat-tilt convenience flags (whole-image)
+--direction <dir>      flat | up | down | left | right | north | … (default: flat)
+--pitch <radians>      tilt angle from flat (default: π/4)
+--bump <mode>          alpha | none (default: alpha)
+--strength <n>         gradient multiplier (default: 1)
+
+# Region-aware baking
+--descriptor <path>    JSON descriptor — frames, tiles, cap/face splits, per-region tilt
+```
+
+Use the flat flags for simple per-frame work. For tilemaps where each tile carries different cap/face geometry, write a JSON descriptor and pass it via `--descriptor`. The `scripts/bake-dungeon-normals.ts` script in the repo is a worked example: it reads tile `customData` out of an LDtk project, synthesizes a region-aware descriptor with `tilesetToRegions`, and bakes the tileset PNG.
+
+## Sidecar Files & Hash Stamping
+
+The baker writes a sibling PNG next to the source. Naming follows a fixed convention per baker type:
+
+| Source | Sidecar |
+|--------|---------|
+| `knight.png` | `knight.normal.png` |
+| `Dungeon_Tileset.png` | `Dungeon_Tileset.normal.png` |
+
+The hash lives **inside the PNG itself** as a `tEXt` chunk under the keyword `flatland`. The chunk's value is JSON: `{"hash":"<fnv1a64 of the descriptor>","v":1}`. Placement is intentional — the chunk is injected immediately after `IHDR`, near the head of the file, so a runtime probe can range-fetch the first ~4 KB and read the stamp without downloading the whole image.
+
+The hash itself (`hashDescriptor` in the public API) is an FNV-1a 64-bit hash over a canonical (sorted-keys) JSON stringification of the descriptor. Stable across browser and node, no dependencies, no cryptographic guarantees — just a cheap content fingerprint for invalidation.
+
+When the runtime probes the sidecar:
+
+1. `HEAD` request to confirm the sibling exists.
+2. `Range: bytes=0-4095` to read the PNG header chunks.
+3. Parse the `flatland` `tEXt` chunk and compare its `hash` to what the loader would have used.
+4. **Match** → load the baked PNG directly. **Mismatch** → re-bake in memory and warn.
+
+## Dev-Time Staleness Warnings
+
+`devtimeWarn` is the shared warning channel — gated on `NODE_ENV !== 'production'` and deduped per `(category, url)` so the same message never fires twice. Sidecar-aware loaders use it uniformly across the ecosystem (currently just `normal`; future bakers slot into the same surface).
+
+Two warning shapes you'll see while iterating:
+
+```
+[normal] /sprites/knight.normal.png exists but its descriptor hash is stale — re-baking in memory.
+         Run `npx flatland-bake normal /sprites/knight.png --descriptor <descriptor>.json` to refresh.
+
+[normal] No baked sibling at /sprites/knight.normal.png — baking in memory.
+         Run `npx flatland-bake normal` in production to skip this path.
+```
+
+Two ways to silence them:
+
+- **Re-bake** — the canonical fix. Run `flatland-bake` with the same descriptor your loader is using, the hash matches, the warning goes away.
+- **`skipBakedProbe: true`** — passed on the loader. Skips the sibling probe entirely and goes straight to the in-memory bake. Useful while iterating on tile metadata when you know the sidecar is stale and don't care to refresh it on every change.
+
+```typescript
+// Skip the probe (and the warning) during iteration
+const sheet = await SpriteSheetLoader.load('./sprites/knight.json', {
+  normals: { skipBakedProbe: true },
+})
+```
+
+## CI / Build Integration
+
+`flatland-bake` is CLI-only today — there's no Vite or Rollup plugin yet. The recommended pattern is a `package.json` script that runs ahead of your main build:
+
+```json
+{
+  "scripts": {
+    "bake:assets": "flatland-bake normal ./public/sprites/knight.png && flatland-bake normal ./public/sprites/enemies.png",
+    "build": "pnpm bake:assets && vite build"
+  }
+}
+```
+
+For tilemaps and other multi-region descriptors, drive the bake from a small `tsx` script that synthesizes the descriptor and calls `bakeNormalMapFile` directly — see `scripts/bake-dungeon-normals.ts` in the repo for a worked LDtk example. Commit the resulting `*.normal.png` (and the `*.normal.json` descriptor, if you keep one) alongside your source assets so deploys don't have to re-bake.
+
+The output PNGs are deterministic for a given descriptor — same input, same hash stamp, same bytes. Re-running the bake is a no-op when nothing changed, which makes incremental builds and `git diff` review straightforward.
+
+## When to Bake Offline vs Runtime
+
+:::tip[Performance note]
+Both paths produce identical pixel data — the in-memory bake and `flatland-bake` share the same `bakeNormalMap` core. The choice is about *when* the work happens, not what comes out. Iterate runtime; ship offline.
+:::
+
+The choice is about *when* the work happens:
+
+| Mode | Cost | Best For |
+|------|------|----------|
+| **Offline** (`flatland-bake` in CI) | Zero startup cost, deterministic, ships a slightly larger asset bundle (the sidecar) | Production builds, demos, anything user-facing |
+| **Runtime** (in-memory fallback) | Burns first-load CPU on `fetch` + decode + bake; non-deterministic timing | Development iteration, tweaking descriptors, experimenting with custom data |
+| **Forced runtime** (`skipBakedProbe: true`) | Same as runtime, plus no probe round-trip and no warning | Tightening the iteration loop when you know the sidecar is stale |
+
+In production, ship baked siblings and the loader becomes a single-image-fetch with no decode overhead. In development, skip the bake step entirely and let the runtime regenerate — much faster than re-running the CLI on every descriptor tweak.
+
+## Adding a New Bake Type
+
+`@three-flatland/bake` is the generic framework; `@three-flatland/normals` is the model implementation. A new bake type lives in its own package, declares a `flatland.bake` manifest entry in its `package.json` pointing at a default-exported `Baker`, and reuses `hashDescriptor` + `writeSidecarPng` from `@three-flatland/bake/node` to stamp its outputs. On the runtime side it imports `bakedSiblingURL`, `probeBakedSibling`, and `devtimeWarn` from `@three-flatland/bake` to wire up the same probe-then-fallback flow. Once published, `flatland-bake --list` picks up the subcommand automatically — no central registry, no version coupling.
+
+## Related Reading
+
+- **Runtime side of the normal pipeline** — [Loaders → Baked Normal Pipeline](../loaders/#baked-normal-pipeline)
+- **Wiring baked normals into lighting** — [Lighting → NormalMapProvider](../lighting/#normalmapprovider)
+- **Elevation channel and elevation-aware shadows** — [Shadows → Elevation-Aware Shadows](../shadows/#elevation-aware-shadows)

@@ -7,6 +7,10 @@ dist/
 
 # Generated demo builds for docs
 docs/public/examples/
+docs/public/devtools/
+
+# Standalone dashboard bundle (devtools static site)
+packages/devtools/bundle/
 
 # Generated API docs (starlight-typedoc)
 docs/src/content/docs/api/

@@ -58,11 +58,12 @@
   "sideEffects": false,
   "scripts": {
     "build": "tsup",
+    "build:bundle": "vite build --config vite.config.bundle.ts",
     "dev": "tsup --watch",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit && tsc --noEmit -p src/dashboard/tsconfig.json",
-    "clean": "rm -rf dist"
+    "clean": "rm -rf dist bundle"
   },
   "peerDependencies": {
     "@react-three/fiber": "^10.0.0-alpha.2",

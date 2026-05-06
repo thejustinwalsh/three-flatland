@@ -5,7 +5,16 @@ description: Create custom shader effects using Three Shader Language.
 
 import { Tabs, TabItem } from '@astrojs/starlight/components';
 
+**What you'll learn**
+- How to author a `MaterialEffect` with typed per-instance parameters (`createMaterialEffect`)
+- The catalog of effect nodes from `@three-flatland/nodes` — color, retro, dissolve, outline, dithering
+- How to compose multiple effects on a single sprite via `addEffect()` / `removeEffect()`
+
+---
+
 TSL (Three Shader Language) is a node-based shader system in Three.js that enables custom GPU effects without writing raw WGSL/GLSL code.
+
+If you've been writing GLSL strings or `onBeforeCompile` hacks for years, this page is the unlearning. Composition replaces concatenation; the type system catches you.
 
 three-flatland provides two ways to use TSL:
 
@@ -352,11 +361,14 @@ material.colorNode = Fn(() => {
 
 ## Performance Tips
 
+:::tip[Performance note]
+Material Effects pack per-sprite data into fixed-size GPU buffers, so adding effects to thousands of sprites doesn't cost extra draw calls — it costs shader ops per fragment. Reach for `addEffect()` freely. Compose, don't worry.
+:::
+
 - Complex node graphs increase shader compile time
 - Use `uniform()` for values that change frequently
 - Cache compiled materials when reusing effects
 - Avoid dynamic branching in hot paths
-- Material Effects pack per-sprite data into fixed-size GPU buffers, avoiding per-effect draw calls
 
 ## Next Steps
 

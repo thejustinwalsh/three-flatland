@@ -4,8 +4,23 @@ description: Dynamic lighting with Light2D, LightEffect presets, and the Flatlan
 ---
 
 import { Tabs, TabItem } from '@astrojs/starlight/components';
+import Compare from '../../../components/Compare.astro';
+
+<Compare
+  beforeSrc="/three-flatland/diagrams/lighting-off.webm"
+  afterSrc="/three-flatland/diagrams/lighting-on.webm"
+  beforePoster="/three-flatland/diagrams/lighting-off-poster.jpg"
+  afterPoster="/three-flatland/diagrams/lighting-on-poster.jpg"
+  beforeLabel="Lighting off"
+  afterLabel="DefaultLightEffect on"
+  aspectRatio="1497 / 807"
+  zoom={1.5}
+  alt="Two synchronized recordings of the dungeon scene — same animations, same point in time, with and without DefaultLightEffect bound."
+/>
 
 three-flatland provides a complete 2D lighting system. Add `Light2D` instances as light sources, choose a `LightEffect` preset to control how lights affect sprites, and all sprites receive lighting by default.
+
+You don't need to understand Forward+, SDF tracing, or per-tile slot allocation to make a torch work — drop a `DefaultLightEffect` in, add a `Light2D`, your sprite gets lit. The deep stuff lower on this page is for the day you decide to put 1000 glowing slimes in a single room.
 
 ## How It Works
 
@@ -209,19 +224,20 @@ const lighting = new DefaultLightEffect()
 flatland.setLighting(lighting)
 
 // Optional stylization (zero-cost uniform updates)
-lighting.bands = 4           // Cel-shading bands (0 = smooth)
-lighting.pixelSize = 4       // Pixel-snap light sampling
-lighting.glowRadius = 2      // Broad secondary falloff
+lighting.bands = 4              // Cel-shading bands
+lighting.pixelSize = 4          // Pixel-snap light sampling
+lighting.glowRadius = 2         // Broad secondary falloff
 lighting.glowIntensity = 0.3
-lighting.lightHeight = 0.75  // Simulated Z-height for diffuse (0-1)
-lighting.rimIntensity = 0.3  // Edge highlights from light direction
-lighting.rimPower = 2        // Rim sharpness
+lighting.lightHeight = 0.75     // Simulated Z-height for diffuse (0-2)
+lighting.rimIntensity = 0.3     // Edge highlights from light direction
 
-// Shadow parameters (SDF pipeline in progress)
-lighting.shadowStrength = 0.6
-lighting.shadowSoftness = 8.0
-lighting.shadowBias = 0.04
+// Shadow parameters (SDF pipeline)
+lighting.shadowStrength = 0.8
+lighting.shadowBias = 0.5
+lighting.shadowMaxDistance = 300
 ```
+
+For the full `DefaultLightEffect` schema (uniforms vs compile-time constants, removed fields, the `categoryQuotas` accessor), see the [Pass Effects guide](../pass-effects/#defaultlighteffect-schema).
 
 ### DirectLightEffect
 
@@ -332,7 +348,148 @@ canvas.addEventListener('mouseup', () => {
 | `angle` | `number` | `Math.PI/4` | Cone angle in radians (spot) |
 | `penumbra` | `number` | `0` | Soft edge 0-1 (spot) |
 | `enabled` | `boolean` | `true` | Toggle without removing |
+| `castsShadow` | `boolean` | `true` | Whether this light traces shadows |
+| `importance` | `number` | `1` | Tile-rank score multiplier (Forward+) |
+| `category` | `string \| undefined` | `undefined` | Bucket tag for fill-light quotas |
 | `position2D` | `Vector2` | `(0, 0)` | 2D position helper |
+
+## Shadow Casting, Importance & Categories
+
+`DefaultLightEffect` and `SimpleLightEffect` both use Forward+ tiled lighting: the screen is divided into tiles and each tile holds at most `MAX_LIGHTS_PER_TILE` (default `16`) light slots. In a sparsely lit room that ceiling is invisible — every torch fits in every tile and ranking doesn't matter. Pack the same room with 1000 glowing slimes and the picture changes: the tile budget becomes the bottleneck, and a misallocation will visibly push hero torches out of slots, dropping rooms into darkness despite the physical light still being present (the natural failure mode is a checkerboard of dark tiles where fills won and lit tiles where they didn't).
+
+Three Light2D fields tame this together. **Split** lights into heroes and fills, **bias** the rank score for hero lights, and **bucket** fills by category for independent per-tile quotas. They do nothing in small scenes; they make dense scenes readable.
+
+:::tip[Performance note]
+For scenes with under ~20 lights total, the defaults are fine — every light fits in every tile and ranking doesn't matter. `importance` and `category` start to pay off once cosmetic fills (slimes, particles, water) outnumber the slot budget per tile. **You will not need any of this on your first scene.**
+:::
+
+### `castsShadow` — the hero / fill split
+
+```typescript
+// Hero — full per-light SDF shadow trace, never evicted by fills
+const torch = new Light2D({
+  type: 'point',
+  color: 0xff6600,
+  intensity: 1.8,
+  distance: 140,
+  decay: 2,
+  // castsShadow defaults to true
+})
+
+// Fill — skips the SDF trace, competes only inside its category quota
+const slimeGlow = new Light2D({
+  type: 'point',
+  color: 0x33ff66,
+  intensity: 0.25,
+  distance: 40,
+  decay: 2,
+  castsShadow: false,
+})
+```
+
+**Heroes** (`castsShadow: true`, the default) compete only with each other for tile slots. Forward+ runs the hero pass first and reserves slots before fills are even considered — they can't be evicted by fills regardless of count.
+
+**Fills** (`castsShadow: false`) skip the per-light SDF sphere-trace entirely on the GPU and compete only within their own category bucket. The 32-tap trace is the dominant per-light cost in dense scenes; flipping cosmetic lights to fills is often the single biggest perf win available.
+
+**Recommendation:** torches, key lights, and anything where the *shape* of the shadow matters → heroes. Slime auras, particle glows, magic VFX, ambient shimmer → fills.
+
+### `importance` — bias tile-slot allocation
+
+```typescript
+const torch = new Light2D({
+  /* ... */
+  importance: 10,   // 10× weight against importance-1 fills in slot ranking
+})
+```
+
+`importance: number` defaults to `1` (neutral). It's a multiplicative bias on the tile-rank score during slot allocation. Use `importance: 10` on hero lights you want resilient to dense fill clusters; `10` is plenty in practice, numbers above ~50 don't measurably improve outcomes.
+
+`importance` is **score-only** — it never appears in the fragment shader's illuminance math. A light's appearance once it's in a tile slot is identical regardless of its importance value.
+
+:::tip[Performance note]
+Heroes claim slots in a separate pass before fills are allocated, so a hero can't be evicted by a fill regardless of importance. `importance` only matters when *heroes* compete with *heroes* — which only happens when more than `MAX_LIGHTS_PER_TILE` (16) hero lights overlap one tile. For most scenes that's a fallback safety, not a routine knob.
+:::
+
+### `category` — independent quotas for fill clusters
+
+`Light2D.category: string | undefined` is an opaque tag, hashed via djb2 to one of `FILL_CATEGORY_COUNT` (4) buckets at the property setter — no per-frame hash cost; the cost is paid once per unique string and cached for every Light2D that shares it.
+
+```typescript
+// 1000 slime fills, all sharing one quota bucket
+for (const slime of slimes) {
+  flatland.add(new Light2D({
+    type: 'point',
+    color: 0x33ff66,
+    intensity: 0.25,
+    distance: 40,
+    decay: 2,
+    castsShadow: false,
+    category: 'slime',
+  }))
+}
+```
+
+In React the same fields are JSX props:
+
+```tsx
+<light2D
+  lightType="point"
+  color={0xff6600}
+  intensity={1.8}
+  distance={140}
+  decay={2}
+  importance={10}
+/>
+
+<light2D
+  lightType="point"
+  color={0x33ff66}
+  intensity={0.25}
+  distance={40}
+  decay={2}
+  castsShadow={false}
+  category="slime"
+/>
+```
+
+Each unique category string maps to one of 4 buckets, and Forward+ enforces a per-tile, per-category quota — 200 slime lights in one tile can't crowd out the water shimmer next to them. Lights without a category share bucket 0 with all other un-tagged fills. Heroes (`castsShadow: true`) ignore `category` entirely.
+
+**Bucket count is 4.** A 5th distinct category collides into one of the first 4 — graceful degradation, not an error. If you have more than 4 cosmetic light types, pick the 4 most visually distinct ones to bucket separately and let the rest collide.
+
+### Per-category quota tuning
+
+The default per-category quota is `MAX_FILL_LIGHTS_PER_TILE` (2) slots per tile. To raise or lower it:
+
+```typescript
+// Imperative — direct call on the ForwardPlusLighting instance
+lighting.forwardPlus.setFillQuota('slime', 4)
+console.log(lighting.forwardPlus.getFillQuota('slime')) // → 4
+lighting.forwardPlus.resetFillQuotas()                  // back to default 2
+```
+
+`DefaultLightEffect` exposes a declarative sugar accessor that's nicer for JSX:
+
+```tsx
+<defaultLightEffect
+  attach={attachLighting}
+  categoryQuotas={{ slime: 4 }}
+/>
+```
+
+Setting `categoryQuotas` is the **authoritative quota state**, not a delta. Each assignment first calls `forwardPlus.resetFillQuotas()` to clear all four buckets back to default, then re-applies the record. Going from `{ slime: 4 }` → `{}` actually drops the slime quota back to 2 — without the reset, stale per-bucket overrides would leak across re-renders in surprising ways.
+
+**Range:** `0..MAX_LIGHTS_PER_TILE` (clamped). Setting a quota to `0` disables that bucket entirely (those fills contribute nothing). Setting it above `16` doesn't help — `16` is the per-tile slot total.
+
+In the `examples/react/lighting/` demo, the slime-quota slider drives `categoryQuotas={{ slime: props.slimeQuota }}` — drag it from `0` (slime lights dark) through `2` (default — visible checkerboarding in dense clusters) up to `16` (every slime in range contributes, at a per-fragment cost) and watch the artifact shift in real time.
+
+### Tuning notes
+
+- **Slime-quota above ~6 hits diminishing returns.** At `4` the visible "fill got evicted" checkerboard is already rare; at `6` it's basically gone. Going higher costs shader iterations per fragment in saturated tiles without meaningfully improving the picture.
+- **Torch importance `10` is plenty.** Numbers above ~50 don't matter unless your fills also have non-1 importance, in which case the relative ratio is what matters, not the absolute value.
+- **Score-ranked eviction within a quota is intuitive.** When a category's quota is full and another fill of that category enters range, the closer / brighter one wins the slot. Tweaking individual fill `intensity` indirectly affects who survives in saturated tiles.
+- **Fills are cheap to leave on.** `light.enabled = false` is a zero-cost cull (rejected before per-tile upload), but a `castsShadow: false` fill that's just dim and far away is also nearly free — Forward+ won't even rank it into a tile it can't reach. Don't over-engineer toggling.
+
+For the full `DefaultLightEffect` schema (including the `categoryQuotas` accessor), see the [Pass Effects guide](../pass-effects/). For the SDF shadow pipeline that `castsShadow: false` opts out of, see [Shadows](../shadows/).
 
 ## Normal Providers
 
@@ -379,6 +536,8 @@ provider.normalMap = myNormalMapTexture
 sprite.addEffect(provider)
 ```
 
+To produce a normal-map texture from a sprite sheet or LDtk tileset, see the [Baked Normal Pipeline](../loaders/#baked-normal-pipeline) — `SpriteSheetLoader` and `LDtkLoader` both accept `normals: true` to expose a co-registered `normalMap` on the loaded asset. The atlas's blue channel encodes per-fragment elevation, which `DefaultLightEffect` consumes for elevation-aware lighting. (See [Loaders](../loaders/#baked-normal-pipeline) for the runtime side and the [Baking guide](../baking/) for the offline `flatland-bake` workflow.)
+
 Without a normal provider, lighting still works — surfaces are treated as flat (facing the camera).
 
 ## Performance Tips
@@ -418,6 +577,7 @@ See the [preset source code](https://github.com/thejustinwalsh/three-flatland/tr
 
 ## Next Steps
 
-- [Lighting Example](../examples/lighting) — Interactive demo with draggable lights
-- [Pass Effects](../guides/pass-effects) — Post-processing after lighting
-- [TSL Nodes](../guides/tsl-nodes) — Per-sprite shader effects
+- [Lighting Example](../../examples/lighting/) — Interactive demo with draggable lights
+- [Shadows](../shadows/) — How the SDF occlusion pass and per-light tracing fit together
+- [Pass Effects](../pass-effects/) — Post-processing, plus the full `DefaultLightEffect` schema
+- [TSL Nodes](../tsl-nodes/) — Per-sprite shader effects

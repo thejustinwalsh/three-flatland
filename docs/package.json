@@ -19,6 +19,7 @@
     "@stackblitz/sdk": "^1.11.0",
     "@three-flatland/mini-breakout": "workspace:*",
     "astro": "^5.17.3",
+    "mermaid": "^11.4.1",
     "koota": "catalog:",
     "pixelarticons": "^1.8.1",
     "react": "catalog:",

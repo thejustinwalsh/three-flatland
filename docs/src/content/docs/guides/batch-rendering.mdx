@@ -7,6 +7,8 @@ import { Tabs, TabItem } from '@astrojs/starlight/components';
 
 SpriteGroup automatically batches sprites that share the same material into single draw calls. You don't need to do anything special—just add sprites and the batching happens behind the scenes.
 
+The defaults are tuned for the common case (thousands of sprites, one or two materials). You almost never need to think about batching — but on the day you do, this page is the map.
+
 ## How It Works
 
 When you add sprites to a `SpriteGroup`, they're grouped by material and layer into efficient GPU batches. Systems run automatically during Three.js rendering — no manual `update()` call needed.
@@ -110,7 +112,9 @@ console.log(`Visible: ${stats.visibleSprites}`);
 
 ### Share Materials
 
-Sprites only batch together when they share the **same material instance**:
+:::tip[Performance note]
+Sprites only batch together when they share the **same material instance** — not just the same texture, the same `new Sprite2DMaterial(...)` reference. Allocating a fresh material per sprite is the easiest way to silently tank batching.
+:::
 
 ```typescript
 // Good: One material, one batch
@@ -152,7 +156,115 @@ backgrounds.forEach(s => s.layer = Layers.BACKGROUND);
 entities.forEach(s => s.layer = Layers.ENTITIES);
 ```
 
+## Custom Materials
+
+If you're authoring a custom `Sprite2DMaterial` subclass — or a stand-alone TSL shader that consumes the same per-instance data — you read from the interleaved instance buffer that every batch shares.
+
+### Interleaved instance buffer layout
+
+import Mermaid from '../../../components/Mermaid.astro';
+
+<Mermaid caption="Per-instance data flow: CPU → GPU → TSL accessors">{`
+flowchart LR
+  subgraph cpu [CPU — Sprite2D]
+    direction TB
+    Setter[sprite.tint = #5544ff<br/>sprite.lit = false<br/>sprite.frame = idle_3]
+    Trait[ECS traits — Color, Frame, EffectFlags]
+    Setter --> Trait
+  end
+  Trait --> Sync[batchSystem<br/>writes 16 floats per instance]
+  subgraph gpu [GPU — InstancedInterleavedBuffer, stride 16]
+    direction TB
+    UV[instanceUV vec4<br/>floats 0..3<br/>atlas x, y, w, h]
+    Color[instanceColor vec4<br/>floats 4..7<br/>r, g, b, a]
+    System[instanceSystem vec4<br/>floats 8..11<br/>flipX, flipY, sysFlags, enableBits]
+    Extras[instanceExtras vec4<br/>floats 12..15<br/>shadowRadius, reserved...]
+  end
+  Sync --> UV
+  Sync --> Color
+  Sync --> System
+  Sync --> Extras
+  subgraph tsl [TSL accessors in Sprite2DMaterial]
+    direction TB
+    ReadFlip[readFlip → vec2]
+    ReadFlags[readSystemFlags → int]
+    ReadEnable[readEnableBits → int]
+    ReadShadow[readShadowRadius → float]
+    ReadLit[readLitFlag → bool]
+  end
+  System --> ReadFlip
+  System --> ReadFlags
+  System --> ReadEnable
+  System --> ReadLit
+  Extras --> ReadShadow
+
+  classDef group fill:#1a1a22,stroke:#444,color:#aaa
+  class cpu,gpu,tsl group
+`}</Mermaid>
+
+Each `SpriteBatch` allocates a single `InstancedInterleavedBuffer` with **stride = 16 floats per instance**. Four named attribute views look into that buffer:
+
+| Attribute | Type | Floats | Contents |
+|-----------|------|--------|----------|
+| `instanceUV` | `vec4` | 0..3 | Atlas UV rect — `x, y, w, h` for the sprite's frame in the atlas. |
+| `instanceColor` | `vec4` | 4..7 | Per-instance tint and alpha — `r, g, b, a`. |
+| `instanceSystem` | `vec4` | 8..11 | `[flipX, flipY, systemFlags, enableBits]`. |
+| `instanceExtras` | `vec4` | 12..15 | `[shadowRadius, reserved, reserved, reserved]`. |
+
+`flipX` and `flipY` are `+1` (unflipped) or `-1` (flipped). `systemFlags` is an integer bitfield:
+
+| Bit | Mask | Meaning |
+|-----|------|---------|
+| 0 | `LIT_FLAG_MASK` | Sprite receives lighting. |
+| 1 | `RECEIVE_SHADOWS_MASK` | Sprite's lit fragments may be darkened by the shadow trace. |
+| 2 | `CAST_SHADOW_MASK` | Sprite contributes to the occlusion pre-pass. |
+| 3..23 | reserved | — |
+
+`enableBits` is the active-MaterialEffect bitmask: bit `N` is set while the `N`th registered effect is active on the instance (24 slots, see `EFFECT_BIT_OFFSET`). System bits and effect-enable bits live in different vec4 components on purpose so adding system flags never costs an effect slot.
+
+Effect-specific data — the per-instance uniform fields declared in a `MaterialEffect` schema — lives on **separate** instanced attributes named `effectBuf0`, `effectBuf1`, … allocated only when at least one registered effect declares per-instance fields. This is a change from the previous layout where system data and effect data shared `effectBuf0`.
+
+### TSL helpers
+
+`packages/three-flatland/src/materials/instanceAttributes.ts` exports the recommended accessors for use inside TSL nodes. They hide the packed layout and stay forward-compatible if the buffer is rearranged:
+
+| Helper | Returns | Reads |
+|--------|---------|-------|
+| `readFlip()` | `vec2` | `instanceSystem.xy` (±1 per axis) |
+| `readSystemFlags()` | `int` | `instanceSystem.z` (raw bitfield) |
+| `readEnableBits()` | `int` | `instanceSystem.w` (effect-active mask) |
+| `readShadowRadius()` | `float` | `instanceExtras.x` |
+| `readLitFlag()` | `bool` | bit 0 of system flags |
+| `readReceiveShadowsFlag()` | `bool` | bit 1 of system flags |
+| `readCastShadowFlag()` | `bool` | bit 2 of system flags |
+
+Don't call `attribute('instanceSystem', 'vec4')` directly unless you specifically need the raw vec4 — the helpers keep the call site readable and survive layout changes.
+
+### Example — fade unlit sprites with `colorTransform`
+
+A custom `colorTransform` that crossfades between two tints based on each sprite's `lit` flag, applied per-instance from the same batch:
+
+```typescript
+import { Fn, vec4 } from 'three/tsl'
+import { Sprite2DMaterial, readLitFlag } from 'three-flatland'
+
+const material = new Sprite2DMaterial({
+  map: atlas,
+  colorTransform: Fn(([base]) => {
+    const litColor = base.rgb
+    const dimColor = base.rgb.mul(0.4)
+    const isLit = readLitFlag()
+    return vec4(isLit.select(litColor, dimColor), base.a)
+  }),
+})
+```
+
+Lit sprites in this batch render at full color; sprites with `lit = false` render dimmed — all from the same draw call.
+
+For the broader `colorTransform` / `MaterialEffect` API and where it sits in the pipeline, see the [Pass Effects guide](../pass-effects/). For the Sprite2D-side accessors that drive these flags (`lit`, `receiveShadows`, `castsShadow`, `shadowRadius`), see the [Sprites guide](../sprites/).
+
 ## Next Steps
 
 - [Flatland Guide](../flatland/) — Wrap SpriteGroup with camera, post-processing, and global uniforms
 - [Sprites Guide](../sprites/) — Sprite2D properties and configuration
+- [Pass Effects Guide](../pass-effects/) — MaterialEffect / colorTransform reference

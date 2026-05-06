@@ -1,0 +1,472 @@
+---
+/**
+ * <Mermaid> — version-controlled diagrams in MDX with pan + zoom.
+ *
+ * - Lazy-loads mermaid only when the host scrolls into view.
+ * - Renders the source as a static <pre> so JS-off / pre-load users still
+ *   see the diagram text.
+ * - Wraps the rendered SVG in a fixed-height viewport with drag-to-pan,
+ *   wheel-to-zoom, and a +/-/reset toolbar (GitHub-style).
+ * - Re-initializes on `astro:page-load` (Starlight View Transitions).
+ *
+ * MDX usage:
+ *   import Mermaid from '../../../components/Mermaid.astro'
+ *   <Mermaid caption="caption text">{`
+ *     flowchart TD
+ *       A --> B
+ *   `}</Mermaid>
+ */
+
+interface Props {
+  caption?: string
+  theme?: 'dark' | 'default' | 'forest' | 'neutral'
+  /** Max viewport height in CSS units. Default '480px'. */
+  maxHeight?: string
+}
+
+const { caption, theme = 'dark', maxHeight = '480px' } = Astro.props
+const source = await Astro.slots.render('default')
+---
+
+<figure
+  class="tf-mermaid not-content"
+  data-tf-mermaid
+  data-tf-mermaid-theme={theme}
+  style={`--max-height: ${maxHeight};`}
+>
+  <div class="tf-mermaid__viewport" data-tf-mermaid-viewport>
+    {/* Static fallback — visible until mermaid renders. */}
+    <pre class="tf-mermaid__source" data-tf-mermaid-source set:html={source}></pre>
+    {/* Toolbar lives INSIDE the viewport so its absolute positioning
+        anchors to the diagram's bottom-right (viewport is position:
+        relative). Pointer events are explicitly auto on the toolbar so
+        clicks land on the buttons even though the viewport itself
+        captures pointer events for drag-to-pan. */}
+    <div class="tf-mermaid__toolbar" data-tf-mermaid-toolbar>
+      <button type="button" class="tf-mermaid__btn" data-tf-mermaid-act="zoom-out" aria-label="Zoom out" title="Zoom out">−</button>
+      <button type="button" class="tf-mermaid__btn" data-tf-mermaid-act="reset" aria-label="Reset view" title="Reset view">⌂</button>
+      <button type="button" class="tf-mermaid__btn" data-tf-mermaid-act="zoom-in" aria-label="Zoom in" title="Zoom in">+</button>
+    </div>
+  </div>
+  {caption && <figcaption class="tf-mermaid__caption">{caption}</figcaption>}
+</figure>
+
+<script>
+  import { lazyOnView } from './lazyOnView.ts'
+
+  let mermaidPromise: Promise<typeof import('mermaid').default> | null = null
+  function loadMermaid() {
+    if (!mermaidPromise) {
+      mermaidPromise = import('mermaid').then((m) => m.default)
+    }
+    return mermaidPromise
+  }
+
+  let counter = 0
+
+  /**
+   * Pan + zoom controller for an SVG element. Translates and scales via
+   * CSS transform on a stage element wrapping the SVG. Drag-to-pan with
+   * pointer events, wheel-to-zoom anchored on cursor, double-click to
+   * reset, plus +/-/reset toolbar buttons.
+   */
+  function bindPanZoom(
+    viewport: HTMLElement,
+    stage: HTMLElement,
+    toolbar: HTMLElement,
+  ): () => void {
+    let scale = 1
+    let tx = 0
+    let ty = 0
+    const MIN_SCALE = 0.4
+    const MAX_SCALE = 6
+
+    const apply = (): void => {
+      stage.style.transform = `translate(${tx}px, ${ty}px) scale(${scale})`
+    }
+
+    const reset = (): void => {
+      scale = 1
+      tx = 0
+      ty = 0
+      apply()
+    }
+
+    const zoomBy = (factor: number, originX?: number, originY?: number): void => {
+      const next = Math.min(MAX_SCALE, Math.max(MIN_SCALE, scale * factor))
+      if (next === scale) return
+      // Anchor zoom at cursor position (default to viewport center).
+      const rect = viewport.getBoundingClientRect()
+      const cx = originX ?? rect.width / 2
+      const cy = originY ?? rect.height / 2
+      // Convert cursor to pre-transform coordinates so it stays put.
+      const ratio = next / scale
+      tx = cx - (cx - tx) * ratio
+      ty = cy - (cy - ty) * ratio
+      scale = next
+      apply()
+    }
+
+    let dragging = false
+    let pid = -1
+    let lastX = 0
+    let lastY = 0
+
+    const onDown = (e: PointerEvent): void => {
+      dragging = true
+      pid = e.pointerId
+      lastX = e.clientX
+      lastY = e.clientY
+      try {
+        viewport.setPointerCapture(e.pointerId)
+      } catch {}
+      viewport.style.cursor = 'grabbing'
+      // Stop the browser from starting a text selection inside the SVG.
+      e.preventDefault()
+    }
+    const onMove = (e: PointerEvent): void => {
+      if (!dragging || e.pointerId !== pid) return
+      tx += e.clientX - lastX
+      ty += e.clientY - lastY
+      lastX = e.clientX
+      lastY = e.clientY
+      apply()
+    }
+    const onUp = (e: PointerEvent): void => {
+      if (!dragging) return
+      dragging = false
+      pid = -1
+      try {
+        viewport.releasePointerCapture(e.pointerId)
+      } catch {}
+      viewport.style.cursor = ''
+    }
+    const onWheel = (e: WheelEvent): void => {
+      // Only intercept when a modifier is held — bare wheel scroll should
+      // continue to scroll the page, not get hijacked the moment the
+      // cursor passes over the diagram. Trackpad pinch-to-zoom on macOS
+      // automatically sets `ctrlKey`, so pinch still zooms without the
+      // user pressing anything.
+      if (!e.ctrlKey && !e.metaKey) return
+      e.preventDefault()
+      // Trackpad pinch and mouse wheel come through with very different
+      // deltaY magnitudes — pinch is ~1-5 per event, wheel ticks ~100.
+      // Derive factor from deltaY so both feel similar; clamp so a fast
+      // scroll doesn't blast past the limits in one tick.
+      const raw = Math.pow(1.0015, -e.deltaY)
+      const factor = Math.max(0.7, Math.min(1.4, raw))
+      const rect = viewport.getBoundingClientRect()
+      zoomBy(factor, e.clientX - rect.left, e.clientY - rect.top)
+    }
+    const onDouble = (): void => reset()
+    const onToolbar = (e: MouseEvent): void => {
+      const target = e.target as HTMLElement
+      const act = target.dataset.tfMermaidAct
+      if (act === 'zoom-in') zoomBy(1.25)
+      else if (act === 'zoom-out') zoomBy(1 / 1.25)
+      else if (act === 'reset') reset()
+    }
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === '+' || e.key === '=') {
+        zoomBy(1.25)
+        e.preventDefault()
+      } else if (e.key === '-' || e.key === '_') {
+        zoomBy(1 / 1.25)
+        e.preventDefault()
+      } else if (e.key === '0') {
+        reset()
+        e.preventDefault()
+      }
+    }
+
+    // Stop toolbar interactions from triggering the viewport's drag.
+    const stopBubble = (e: Event): void => e.stopPropagation()
+    toolbar.addEventListener('pointerdown', stopBubble)
+    toolbar.addEventListener('pointerup', stopBubble)
+    toolbar.addEventListener('dblclick', stopBubble)
+
+    viewport.addEventListener('pointerdown', onDown)
+    viewport.addEventListener('pointermove', onMove)
+    viewport.addEventListener('pointerup', onUp)
+    viewport.addEventListener('pointercancel', onUp)
+    viewport.addEventListener('wheel', onWheel, { passive: false })
+    viewport.addEventListener('dblclick', onDouble)
+    viewport.addEventListener('keydown', onKey)
+    toolbar.addEventListener('click', onToolbar)
+    viewport.style.cursor = 'grab'
+    viewport.tabIndex = 0
+
+    return () => {
+      viewport.removeEventListener('pointerdown', onDown)
+      viewport.removeEventListener('pointermove', onMove)
+      viewport.removeEventListener('pointerup', onUp)
+      viewport.removeEventListener('pointercancel', onUp)
+      viewport.removeEventListener('wheel', onWheel)
+      viewport.removeEventListener('dblclick', onDouble)
+      viewport.removeEventListener('keydown', onKey)
+      toolbar.removeEventListener('click', onToolbar)
+      toolbar.removeEventListener('pointerdown', stopBubble)
+      toolbar.removeEventListener('pointerup', stopBubble)
+      toolbar.removeEventListener('dblclick', stopBubble)
+      viewport.style.cursor = ''
+      viewport.removeAttribute('tabIndex')
+    }
+  }
+
+  function bindMermaid(host: HTMLElement): () => void {
+    let stopPanZoom: (() => void) | null = null
+    let stage: HTMLElement | null = null
+
+    const handle = lazyOnView({
+      target: host,
+      loader: loadMermaid,
+      async mount(mermaid) {
+        const viewport = host.querySelector<HTMLElement>('[data-tf-mermaid-viewport]')
+        const sourceEl = host.querySelector<HTMLElement>('[data-tf-mermaid-source]')
+        const toolbar = host.querySelector<HTMLElement>('[data-tf-mermaid-toolbar]')
+        if (!viewport || !sourceEl || !toolbar) return
+
+        // Decode HTML entities back to source text.
+        const tmp = document.createElement('div')
+        tmp.innerHTML = sourceEl.innerHTML
+        const source = (tmp.textContent ?? '').trim()
+        if (!source) return
+
+        const theme = (host.dataset.tfMermaidTheme ?? 'base') as
+          | 'default'
+          | 'base'
+          | 'dark'
+          | 'forest'
+          | 'neutral'
+        // Retro palette pulled from docs/src/styles/retro-theme.css.
+        // `look: 'handDrawn'` uses Rough.js for the sketchy aesthetic
+        // (think Excalidraw / fly.io / Tailscale docs vibe).
+        // Mermaid 11+ supports this out of the box, no extra deps.
+        mermaid.initialize({
+          startOnLoad: false,
+          theme,
+          look: 'handDrawn',
+          handDrawnSeed: 1,
+          themeVariables: {
+            // Foreground / background palette
+            background: '#00021c',
+            mainBkg: '#1a0f2e',
+            primaryColor: '#1a0f2e',
+            secondaryColor: '#2a1f3d',
+            tertiaryColor: '#0d0617',
+            // Text
+            primaryTextColor: '#f0edd8',
+            secondaryTextColor: '#f0edd8',
+            tertiaryTextColor: '#f0edd8',
+            textColor: '#f0edd8',
+            // Borders
+            primaryBorderColor: '#47cca9',
+            secondaryBorderColor: '#d94c87',
+            tertiaryBorderColor: '#732866',
+            // Edges / arrows
+            lineColor: '#47cca9',
+            arrowheadColor: '#47cca9',
+            edgeLabelBackground: '#00021c',
+            // Cluster (subgraph) styling
+            clusterBkg: '#0a071a',
+            clusterBorder: '#732866',
+            // Notes
+            noteBkgColor: '#2a1f3d',
+            noteBorderColor: '#d94c87',
+            noteTextColor: '#f0edd8',
+            // Typography — Silkscreen matches the rest of the docs chrome,
+            // but it's a pixel font so tiny diagram labels can be unreadable.
+            // Using IBM Plex Sans (Starlight body font) keeps labels legible
+            // while the hand-drawn line work carries the retro feel.
+            fontFamily:
+              '"IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif',
+            fontSize: '14px',
+          },
+        })
+
+        const id = `tf-mermaid-${++counter}`
+        try {
+          const { svg } = await mermaid.render(id, source)
+          stage = document.createElement('div')
+          stage.className = 'tf-mermaid__stage'
+          stage.innerHTML = svg
+          // Make the SVG fluid inside the stage. Mermaid emits explicit
+          // width/height — strip them so our viewport sizes the SVG.
+          const svgEl = stage.querySelector('svg')
+          if (svgEl) {
+            // Size the SVG to its viewBox-derived aspect ratio so it
+            // takes only the space it actually needs. The stage's flex
+            // centering (CSS) then puts it dead center, both axes.
+            svgEl.removeAttribute('width')
+            svgEl.removeAttribute('height')
+            svgEl.setAttribute('preserveAspectRatio', 'xMidYMid meet')
+            const vb = svgEl.getAttribute('viewBox')?.trim().split(/\s+/).map(Number)
+            if (vb && vb.length === 4 && vb[2] > 0 && vb[3] > 0) {
+              svgEl.style.aspectRatio = `${vb[2]} / ${vb[3]}`
+            }
+            svgEl.style.width = '100%'
+            svgEl.style.height = 'auto'
+            svgEl.style.maxWidth = '100%'
+            svgEl.style.maxHeight = '100%'
+          }
+          sourceEl.style.display = 'none'
+          viewport.appendChild(stage)
+          stopPanZoom = bindPanZoom(viewport, stage, toolbar)
+        } catch (err) {
+          console.error('[tf-mermaid] render error', err)
+          return
+        }
+
+        return () => {
+          stopPanZoom?.()
+          stopPanZoom = null
+          stage?.remove()
+          stage = null
+          sourceEl.style.display = ''
+        }
+      },
+    })
+
+    return () => handle.destroy()
+  }
+
+  const teardowns = new WeakMap<HTMLElement, () => void>()
+
+  function initAll(): void {
+    document.querySelectorAll<HTMLElement>('[data-tf-mermaid]').forEach((host) => {
+      if (host.dataset.tfMermaidInit === '1') return
+      host.dataset.tfMermaidInit = '1'
+      teardowns.set(host, bindMermaid(host))
+    })
+  }
+
+  function teardownAll(): void {
+    document.querySelectorAll<HTMLElement>('[data-tf-mermaid]').forEach((host) => {
+      teardowns.get(host)?.()
+      teardowns.delete(host)
+      host.dataset.tfMermaidInit = ''
+      host.querySelector('.tf-mermaid__stage')?.remove()
+      const sourceEl = host.querySelector<HTMLElement>('[data-tf-mermaid-source]')
+      if (sourceEl) sourceEl.style.display = ''
+    })
+  }
+
+  initAll()
+  document.addEventListener('astro:page-load', initAll)
+  document.addEventListener('astro:before-swap', teardownAll)
+</script>
+
+<style>
+  figure.tf-mermaid {
+    margin: 1.5rem 0;
+    padding: 0;
+    background: var(--sl-color-gray-6, #1a1a22);
+    border-radius: 0.5rem;
+    overflow: hidden;
+  }
+  figure.tf-mermaid .tf-mermaid__viewport {
+    position: relative;
+    height: var(--max-height, 480px);
+    overflow: hidden;
+    cursor: grab;
+    touch-action: none;
+    /* Avoid focus outline interfering with grab cursor. */
+    outline-offset: -2px;
+    /* Stop the SVG's text from being selected during pan drags. */
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  figure.tf-mermaid .tf-mermaid__stage,
+  figure.tf-mermaid .tf-mermaid__stage * {
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  figure.tf-mermaid .tf-mermaid__viewport:focus-visible {
+    outline: 2px solid var(--sl-color-accent, #b65fff);
+  }
+  figure.tf-mermaid .tf-mermaid__source {
+    font-family: var(--sl-font-system-mono, monospace);
+    font-size: 0.85rem;
+    line-height: 1.4;
+    margin: 0;
+    padding: 1rem;
+    white-space: pre-wrap;
+    color: var(--sl-color-gray-3);
+    overflow: auto;
+    max-height: 100%;
+  }
+  /*
+   * Stage fills the viewport. The SVG inside is sized to its intrinsic
+   * fit-to-contain via aspect-ratio + max-width/height. Flex centering
+   * places the SVG dead center on both axes — relying on CSS rather
+   * than SVG's preserveAspectRatio because mermaid's diagram-type-
+   * specific output doesn't always honor the latter consistently.
+   */
+  figure.tf-mermaid .tf-mermaid__stage {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    transform-origin: 0 0;
+    will-change: transform;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  figure.tf-mermaid .tf-mermaid__stage > svg {
+    display: block;
+    /* Width/height are set inline by the bind script using the SVG's
+       viewBox aspect — leaving these unset here lets the script win. */
+  }
+  /*
+   * Toolbar — small overlay in the bottom-right of the viewport. Lives
+   * inside the viewport so its absolute positioning anchors there.
+   * Pointer events are explicitly enabled because the viewport itself
+   * captures pointerdown for drag-to-pan and the buttons need to win.
+   */
+  figure.tf-mermaid .tf-mermaid__toolbar {
+    position: absolute;
+    bottom: 0.5rem;
+    right: 0.5rem;
+    display: flex;
+    gap: 0.25rem;
+    background: rgba(0, 0, 0, 0.6);
+    border-radius: 0.25rem;
+    padding: 0.125rem;
+    z-index: 2;
+    backdrop-filter: blur(4px);
+    pointer-events: auto;
+  }
+  figure.tf-mermaid .tf-mermaid__toolbar button {
+    appearance: none;
+    background: transparent;
+    border: 0;
+    color: white;
+    width: 1.75rem;
+    height: 1.75rem;
+    font-size: 1rem;
+    font-family: var(--sl-font-system, sans-serif);
+    cursor: pointer;
+    border-radius: 0.25rem;
+    line-height: 1;
+    padding: 0;
+    margin: 0;
+    transition: background 100ms ease;
+  }
+  figure.tf-mermaid .tf-mermaid__toolbar button:hover {
+    background: rgba(255, 255, 255, 0.15);
+  }
+  figure.tf-mermaid .tf-mermaid__toolbar button:focus-visible {
+    outline: 2px solid var(--sl-color-accent, #b65fff);
+    outline-offset: 1px;
+  }
+  figure.tf-mermaid .tf-mermaid__caption {
+    margin: 0;
+    padding: 0.5rem 0.75rem 0.75rem;
+    font-size: 0.875rem;
+    color: var(--sl-color-gray-3, #aaa);
+    text-align: center;
+    font-style: normal;
+  }
+</style>

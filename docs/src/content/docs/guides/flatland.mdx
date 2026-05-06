@@ -7,6 +7,8 @@ import { Tabs, TabItem } from '@astrojs/starlight/components';
 
 `Flatland` is the high-level entry point for three-flatland. It wraps a `SpriteGroup` with an orthographic camera, global uniforms, post-processing pipeline, and render target support into a single object.
 
+If you're new and not sure whether you need `Flatland` or `SpriteGroup` — start here. The table below tells you when to graduate.
+
 ## When to Use Flatland vs SpriteGroup
 
 | | Flatland | SpriteGroup |
@@ -152,9 +154,57 @@ const indicator = new Sprite2D({ texture, lit: false }) // always full brightnes
 | `lighting` | Current LightEffect (read-only) |
 | `lights` | All tracked Light2D instances (read-only) |
 
-See the [2D Lighting guide](../guides/lighting) for preset comparisons, Light2D types, and custom effects.
+See the [2D Lighting guide](../lighting/) for preset comparisons, Light2D types, and custom effects.
 
 ## Render Loop
+
+import Mermaid from '../../../components/Mermaid.astro';
+
+<Mermaid caption="Per-frame render pipeline">{`
+flowchart LR
+  Start([flatland.render]) --> ECS
+
+  subgraph ECS [ECS systems]
+    direction TB
+    Transform[transformSyncSystem<br/>transforms → batch]
+    Anim[animationSystem<br/>frame cursors]
+    Batch[batchSystem<br/>group by material]
+    Light[lightSystem<br/>Light2D → LightStore]
+    Transform --> Anim --> Batch --> Light
+  end
+
+  ECS --> Pre
+
+  subgraph Pre [Pre-passes — LightEffect only]
+    direction TB
+    Occlusion[OcclusionPass<br/>caster silhouettes]
+    SDF[SDFGenerator<br/>JFA → SDF]
+    Tile[ForwardPlusLighting<br/>tile-bin lights]
+    Occlusion --> SDF --> Tile
+  end
+
+  Pre --> Main
+
+  subgraph Main [Main scene]
+    direction TB
+    Sprites[Sprite2DMaterial<br/>draw call / batch]
+    MatEff[MaterialEffect chain<br/>per-instance:<br/>tint, outline, dissolve<br/>NormalMapProvider]
+    LightEff[LightEffect<br/>Default / Simple /<br/>Direct / Radiance<br/>reads tiles + SDF]
+    Sprites --> MatEff --> LightEff
+  end
+
+  Main --> Post
+
+  subgraph Post [Post-process]
+    direction TB
+    PassN[PassEffect chain<br/>posterize → lcdGrid<br/>→ vignette → …<br/>insertion order]
+  end
+
+  Post --> Canvas([canvas])
+
+  classDef group fill:#1a1a22,stroke:#444,color:#aaa
+  class ECS,Pre,Main,Post group
+`}</Mermaid>
 
 Each frame, call `resize()` to sync the aspect ratio, then `render()` to draw:
 
@@ -294,4 +344,4 @@ This destroys the ECS world, sprite batches, render pipeline, and all pass effec
 - [Pass Effects](../pass-effects/) — Full-screen post-processing effects
 - [Batch Rendering](../batch-rendering/) — How sprite batching works under the hood
 - [TSL Nodes](../tsl-nodes/) — Per-sprite material effects and low-level TSL usage
-- [Breakout Showcase](../showcases/breakout/) — A complete game built with Flatland
+- [Breakout Showcase](../../showcases/breakout/) — A complete game built with Flatland
