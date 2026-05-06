@@ -235,8 +235,8 @@ function selectFormat(
     if (opt.needsPowerOfTwo && !(isPowerOfTwo(width) && isPowerOfTwo(height))) continue
     const idx = hasAlpha ? 1 : 0
     return {
-      transcoderFormat: opt.transcoder[idx] ?? opt.transcoder[0]!,
-      engineFormat: opt.engine[idx] ?? opt.engine[0]!,
+      transcoderFormat: opt.transcoder[idx] ?? opt.transcoder[0],
+      engineFormat: opt.engine[idx] ?? opt.engine[0],
       engineType: opt.type,
     }
   }
@@ -272,7 +272,7 @@ export async function transcodeKtx2(
  * TranscoderExports (instantiated once at init time) and reuses it across
  * many transcodes.
  */
-export async function transcodeKtx2WithExports(
+export function transcodeKtx2WithExports(
   buffer: ArrayBuffer,
   caps: Ktx2Capabilities,
   t: TranscoderExports,
