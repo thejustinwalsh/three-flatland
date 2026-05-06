@@ -215,7 +215,14 @@ export default defineConfig({
           // Theme last so its component overrides win over earlier plugins.
           // Provides Hero, SiteTitle, ThemeSelect, SocialIcons, PageFrame, …
           // and registers starlight-theme/styles/{layers,theme,base}.css.
-          starlightTheme(),
+          //
+          // Explicit footerText (instead of relying on the schema default)
+          // ensures the value is part of the user-config virtual module
+          // and re-evaluates cleanly across dev-server reloads.
+          starlightTheme({
+            footerText:
+              'This documentation was created with AI assistance. AI can make mistakes — please verify claims and test code examples. Submit corrections [here](https://github.com/thejustinwalsh/three-flatland/issues).',
+          }),
         ],
         components: {
           // Docs-side overrides for site-specific concerns the theme can't own:

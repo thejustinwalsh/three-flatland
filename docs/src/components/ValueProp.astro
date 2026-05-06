@@ -67,9 +67,11 @@ const accentStyle = resolvedGem ? `--vp-accent: var(--${resolvedGem});` : undefi
     display: grid;
     grid-template-columns: auto 1fr;
     gap: clamp(1.25rem, 3vw, 2.25rem);
-    margin-block: clamp(2rem, 4vw, 3rem);
-    padding-block: clamp(1.25rem, 3vw, 2rem);
-    border-top: 1px solid color-mix(in oklab, var(--vp-accent) 25%, var(--border));
+    /* Whitespace handles separation between value-props — no horizontal
+     * rule between sections. The vertical gem rule + title underline
+     * already carry the gem identity for each block. */
+    margin-block: clamp(3rem, 6vw, 5rem);
+    padding-block: 0;
   }
 
   .value-prop.align-right {
@@ -111,8 +113,6 @@ const accentStyle = resolvedGem ? `--vp-accent: var(--${resolvedGem});` : undefi
     margin-left: auto;
   }
 
-  /* Title gets a subtle gem-side underline accent — a hairline tinted
-   * by the value-prop's gem, just below the title text. */
   .vp-title {
     font-family: 'Public Sans', system-ui, sans-serif;
     font-weight: 700;
@@ -122,9 +122,6 @@ const accentStyle = resolvedGem ? `--vp-accent: var(--${resolvedGem});` : undefi
     color: var(--foreground);
     margin: 0;
     text-transform: none;
-    position: relative;
-    padding-bottom: calc(var(--spacing) * 2);
-    border-bottom: 1px solid color-mix(in oklab, var(--vp-accent) 35%, transparent);
     align-self: start;
   }
 
