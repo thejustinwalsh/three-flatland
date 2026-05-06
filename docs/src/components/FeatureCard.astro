@@ -152,8 +152,10 @@ const accentStyle = resolvedGem ? `--card-accent: var(--${resolvedGem});` : unde
   .feature-card[data-gem='salmon'] { --card-soft: var(--salmon-soft); }
   .feature-card[data-gem='turquoize'] { --card-soft: var(--turquoize-soft); }
 
+  /* No `transform` override on hover — that would clobber the .u-light
+   * primitive's perspective/rotateX/rotateY tilt. Box-shadow alone gives
+   * the elevated feel; the 3D tilt provides the cursor-reactive motion. */
   .feature-card:hover {
-    transform: translateY(-2px);
     box-shadow: 0 8px 24px -12px color-mix(in oklab, var(--card-accent, var(--primary)) 30%, transparent);
   }
 
