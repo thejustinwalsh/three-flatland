@@ -116,12 +116,10 @@ function registerTarget(el: HTMLElement) {
         t.hovering = false
     })
 
-    // Reduced-motion: pin once and skip the loop entirely for this element.
+    // Reduced-motion: pin per-target cursor vars to a static pose. The
+    // global --scene-* vars are pinned by `startLoop` (or the reduced-
+    // motion early-return below) on :root.
     if (REDUCED_MOTION) {
-        // Static "scene light from upper-left" — surfaces still read as lit.
-        el.style.setProperty('--scene-angle', '135deg')
-        el.style.setProperty('--scene-x', '30%')
-        el.style.setProperty('--scene-y', '25%')
         el.style.setProperty('--mx', '30%')
         el.style.setProperty('--my', '25%')
         el.style.setProperty('--light-angle', '135deg')
@@ -140,21 +138,22 @@ function frame(now: number) {
     lastFrame = now
     const time = now / 1000
 
+    /* GLOBAL SCENE LIGHT — one source for the whole page. Computed once per
+     * frame and applied to :root so every surface reading var(--scene-*)
+     * picks up the same value, the way a single distant light source would.
+     * Small amplitude + slow freq = "far away light with small atmospheric
+     * drift," not per-card spotlights. */
+    const sceneAmpl = 0.08
+    const sx = 0.5 + noiseAt(time * 0.4, 0, 0) * sceneAmpl
+    const sy = 0.5 + noiseAt(time * 0.4, 333, 1) * sceneAmpl
+    const sceneAngle = (Math.atan2(sy - 0.5, sx - 0.5) * 180) / Math.PI + 90
+    const root = document.documentElement.style
+    root.setProperty('--scene-x', `${(sx * 100).toFixed(2)}%`)
+    root.setProperty('--scene-y', `${(sy * 100).toFixed(2)}%`)
+    root.setProperty('--scene-angle', `${sceneAngle.toFixed(1)}deg`)
+
     for (const t of targets) {
         t.t = time
-
-        /* SCENE LIGHT — always on; position drifts via low-frequency
-         * perlin so surfaces are always softly lit even when nobody's
-         * interacting. The scene light is the "ambient room key" — the
-         * surface knows it's in a scene with a slowly drifting source. */
-        const sceneAmpl = 0.18 // wider drift than mouse-noise; scene moves more
-        const sx = 0.5 + noiseAt(time * 0.6, t.seed, 0) * sceneAmpl
-        const sy = 0.5 + noiseAt(time * 0.6, t.seed + 333, 1) * sceneAmpl
-        const sceneAngle =
-            (Math.atan2(sy - 0.5, sx - 0.5) * 180) / Math.PI + 90
-        t.el.style.setProperty('--scene-x', `${(sx * 100).toFixed(2)}%`)
-        t.el.style.setProperty('--scene-y', `${(sy * 100).toFixed(2)}%`)
-        t.el.style.setProperty('--scene-angle', `${sceneAngle.toFixed(1)}deg`)
 
         /* MOUSE LIGHT — cursor-driven with inertia. When cursor is over
          * the surface, --mouse-active eases toward 1 and position eases
@@ -205,7 +204,15 @@ function frame(now: number) {
 }
 
 function startLoop() {
-    if (running || REDUCED_MOTION) return
+    if (REDUCED_MOTION) {
+        // Pin a static global scene light pose so surfaces still read as lit.
+        const root = document.documentElement.style
+        root.setProperty('--scene-x', '30%')
+        root.setProperty('--scene-y', '25%')
+        root.setProperty('--scene-angle', '135deg')
+        return
+    }
+    if (running) return
     running = true
     requestAnimationFrame(frame)
 }
