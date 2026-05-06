@@ -1,5 +1,60 @@
 # Decisions log — Issue #32
 
+# Phase 2 decisions
+
+## Cascade layer renamed `lucode` → `theme`
+**File(s):** `packages/starlight-theme/styles/{layers,theme,base}.css`, `core/plugin.ts`
+**Date:** 2026-05-06
+
+**Decision:** The cascade layer that wraps every rule in the theme package is named `theme`, not `lucode`.
+
+**Why:** Diffability against upstream lucode is a small win; clarity for every developer reading the CSS is bigger. Naming the layer after another project's identity in our own design-system package would be a maintenance smell. Renaming during the fork is a one-time cost; future upstream pulls do a global search-and-replace.
+
+## `astro/zod` re-export dropped in Astro 6 → direct `zod` import
+**File(s):** `packages/starlight-theme/core/config/schemas.ts`, `package.json`
+**Date:** 2026-05-06
+
+**Decision:** Schema parsing imports `z` from the `zod` package directly; `zod` is added as a dep of `starlight-theme`.
+
+**Why:** Lucode-starlight's `schemas.ts` does `import { z } from 'astro/zod'`. Astro 6 removed that re-export — the build fails with `Cannot find module 'astro/zod'`. Upstream lucode hasn't fixed this yet (their main is still on Astro 5). Direct `zod` import is forward-compatible and works on both Astro 5 and 6.
+
+**Evidence:** Build error during initial Phase 2 verification: `Cannot find module 'astro/zod' imported from .../starlight-theme/core/config/schemas.ts`.
+
+## Light mode for base16 Materia pairs accents with cool-warm neutrals
+**File(s):** `packages/starlight-theme/styles/theme.css`
+**Date:** 2026-05-06
+
+**Decision:** base16 Materia is a dark-only scheme upstream. Our light mode keeps the Materia accent hues (orange/green/blue/purple/red/yellow/teal) but desaturates and darkens them for WCAG AA contrast on a cool-warm paper-like background, with neutrals running cooler-warm rather than pure-gray.
+
+**Why:** Producing a faithful "Materia light" doesn't exist as a base16 scheme. Inventing one preserves the brand identity (Materia keyword purple stays the primary accent in both modes) without forcing a different palette in light mode.
+
+**How to apply:** Phase 3's `/impeccable:audit` will check WCAG AA on every accent against both backgrounds. If specific hues fail, lower the OKLCH lightness on the `*-high` variants until they pass.
+
+## Sidebar icon composition without replacing the plugin's SidebarSublist
+**File(s):** `packages/starlight-theme/components/overrides/parts/SidebarSublist.astro`
+**Date:** 2026-05-06
+
+**Decision:** The theme's local `SidebarSublist.astro` reads `entry.attrs['data-icon']` directly and renders it as a `<span class:list={[entry.attrs['data-icon'], 'entry-icon']}>`. We do NOT swap our import for `starlight-plugin-icons/components/starlight/SidebarSublist.astro`.
+
+**Why:** The plugin's SidebarSublist has its own styling (Tailwind utility classes for layout, plus Starlight's Badge/Icon components). Replacing our local one would cost the theme's bespoke entry-link styling (which Phase 3 will iterate on). Reading `data-icon` directly is the minimum work to honor the plugin's icon-resolution contract while keeping all our styling in our package.
+
+**Evidence:** Verified visually via agent-browser — Getting Started sidebar entries render with `i-lucide:lightbulb`, `i-lucide:download`, `i-lucide:play` icons in both modes; rest of theme styling preserved.
+
+## docs/package.json devDeps slimmed for changeset graph validity
+**File(s):** `docs/package.json`, `.changeset/config.json`
+**Date:** 2026-05-06
+
+**Decision:** Removed all `example-*` workspace devDeps from `docs/package.json`. Removed `@three-flatland/mini-breakout` from changesets `ignore` array.
+
+**Why:** User wanted `docs` and `starlight-theme` linked in changesets so they version together. Changesets refuses to ignore a parent package that depends on ignored packages — the dep graph must be consistent. Two paths to consistency: (a) ignore the parent (loses the linked-versioning), (b) un-ignore the deps. Approach (b) is cleaner because:
+- The `example-*` deps in `docs/package.json` were redundant — turbo's `docs#build` `dependsOn` enforces build order regardless. Examples are still ignored since docs no longer needs them.
+- `@three-flatland/mini-breakout` IS imported by docs (HeroGame, ShowcaseGame), so it has to be tracked. It joins docs/starlight-theme as a tracked-private package.
+
+**Evidence:** `pnpm changeset status` validates after the change; both `docs` and `starlight-theme` appear in "Packages to be bumped at minor" via the linked group.
+
+# Phase 1 decisions
+
+
 ## Phase 2/3 strategy: fork lucode-starlight as our internal design system, not `npm install` it
 **Files:** `planning/issues/32/plan.md` (revised); future `packages/starlight-flatland/`
 **Date:** 2026-05-06

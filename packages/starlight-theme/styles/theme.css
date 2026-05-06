@@ -81,6 +81,39 @@
     --card-foreground: var(--foreground);
     --popover-background: var(--gray-7);
     --popover-foreground: var(--foreground);
+
+    /* Starlight built-in color tokens — bridge into our Materia space so
+     * Starlight's own components (Asides, Cards, code blocks, link accents)
+     * inherit Materia hues instead of falling back to Starlight defaults. */
+    --sl-color-text: var(--foreground);
+    --sl-color-text-accent: var(--primary);
+    --sl-color-bg: var(--background);
+    --sl-color-bg-nav: var(--background);
+    --sl-color-bg-sidebar: var(--background);
+    --sl-color-bg-inline-code: var(--gray-7);
+    --sl-color-hairline: var(--border);
+    --sl-color-hairline-light: var(--gray-6);
+    --sl-color-accent: var(--primary);
+    --sl-color-accent-low: var(--purple-low);
+    --sl-color-accent-high: var(--purple-high);
+    --sl-color-blue: var(--blue);
+    --sl-color-blue-low: var(--blue-low);
+    --sl-color-blue-high: var(--blue-high);
+    --sl-color-green: var(--green);
+    --sl-color-green-low: var(--green-low);
+    --sl-color-green-high: var(--green-high);
+    --sl-color-orange: var(--orange);
+    --sl-color-orange-low: var(--orange-low);
+    --sl-color-orange-high: var(--orange-high);
+    --sl-color-purple: var(--purple);
+    --sl-color-purple-low: var(--purple-low);
+    --sl-color-purple-high: var(--purple-high);
+    --sl-color-red: var(--red);
+    --sl-color-red-low: var(--red-low);
+    --sl-color-red-high: var(--red-high);
+    --sl-color-yellow: var(--yellow);
+    --sl-color-yellow-low: var(--yellow-low);
+    --sl-color-yellow-high: var(--yellow-high);
   }
 
   :root[data-theme='light'] {
@@ -138,5 +171,36 @@
     --card-foreground: var(--foreground);
     --popover-background: var(--background);
     --popover-foreground: var(--foreground);
+
+    /* Starlight built-in color tokens — same bridge as dark, light values */
+    --sl-color-text: var(--foreground);
+    --sl-color-text-accent: var(--primary);
+    --sl-color-bg: var(--background);
+    --sl-color-bg-nav: var(--background);
+    --sl-color-bg-sidebar: var(--background);
+    --sl-color-bg-inline-code: var(--gray-7);
+    --sl-color-hairline: var(--border);
+    --sl-color-hairline-light: var(--gray-6);
+    --sl-color-accent: var(--primary);
+    --sl-color-accent-low: var(--purple-low);
+    --sl-color-accent-high: var(--purple-high);
+    --sl-color-blue: var(--blue);
+    --sl-color-blue-low: var(--blue-low);
+    --sl-color-blue-high: var(--blue-high);
+    --sl-color-green: var(--green);
+    --sl-color-green-low: var(--green-low);
+    --sl-color-green-high: var(--green-high);
+    --sl-color-orange: var(--orange);
+    --sl-color-orange-low: var(--orange-low);
+    --sl-color-orange-high: var(--orange-high);
+    --sl-color-purple: var(--purple);
+    --sl-color-purple-low: var(--purple-low);
+    --sl-color-purple-high: var(--purple-high);
+    --sl-color-red: var(--red);
+    --sl-color-red-low: var(--red-low);
+    --sl-color-red-high: var(--red-high);
+    --sl-color-yellow: var(--yellow);
+    --sl-color-yellow-low: var(--yellow-low);
+    --sl-color-yellow-high: var(--yellow-high);
   }
 }
