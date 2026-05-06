@@ -21,7 +21,7 @@ three-flatland is a library for rendering 2D sprites, animated spritesheets, til
 - [Pass Effects](https://thejustinwalsh.com/three-flatland/guides/pass-effects/): createPassEffect, full-screen post-processing, TSL uniforms, schema-driven
 - [Tilemaps](https://thejustinwalsh.com/three-flatland/guides/tilemaps/): TileMap2D, TiledLoader, LDtkLoader, animated tiles, TileLayer, Tileset
 - [Skia](https://thejustinwalsh.com/three-flatland/guides/skia/): GPU-accelerated 2D vector graphics, shapes, text, gradients, paths, WebGPU/WebGL backends
-- [Debug Controls](https://thejustinwalsh.com/three-flatland/guides/debug-controls/): Tweakpane helpers — createPane, usePane, useStatsMonitor, wireSceneStats, GPU timing, Flatland theme
+- [Devtools](https://thejustinwalsh.com/three-flatland/guides/devtools/): Vite plugin + browser dashboard, Tweakpane in-page pane, register* APIs for custom CPU/GPU instrumentation
 
 ## Examples
 

@@ -1,0 +1,519 @@
+---
+/**
+ * <Compare> — before/after seam slider.
+ *
+ * Custom, dependency-free, intentionally minimal. Two media elements stack
+ * with identical absolute positioning. The "after" element is clipped via
+ * CSS clip-path; the seam is moved by dragging a handle. That is it.
+ *
+ * Style isolation: every selector is `figure.tf-compare ...`, NEVER bare
+ * element selectors, so Starlight's prose styles for `<figure>`,
+ * `<button>`, `<figcaption>`, etc. don't bleed in. We also reset the
+ * <button> chrome aggressively because Starlight's button styles are
+ * aggressive themselves.
+ *
+ * Interaction model: drag the handle. That's it. No click-to-jump on the
+ * viewport (was causing pointer capture conflicts). No keyboard yet (can
+ * add later if needed). Touch and mouse both go through pointer events.
+ *
+ * Video sync: kicks autoplay on both, then re-pins after.currentTime to
+ * before.currentTime via rAF if they drift by more than 50ms.
+ *
+ * MDX usage:
+ *   import Compare from '../../../components/Compare.astro'
+ *   <Compare
+ *     beforeSrc="/three-flatland/diagrams/lighting-off.webm"
+ *     afterSrc="/three-flatland/diagrams/lighting-on.webm"
+ *     beforeLabel="Lighting off"
+ *     afterLabel="DefaultLightEffect on"
+ *     aspectRatio="1511 / 723"
+ *     alt="Two synchronized takes of the same scene"
+ *   />
+ */
+
+interface Props {
+  beforeSrc: string
+  afterSrc: string
+  beforeLabel?: string
+  afterLabel?: string
+  alt: string
+  /** width / height of the source media (e.g. "1511 / 723"). Default 16/9. */
+  aspectRatio?: string
+  /** Initial seam position (0–100). Default 50. */
+  initialSeam?: number
+  /** Force-treat sources as video. Auto-detected from extension by default. */
+  asVideo?: boolean
+  /**
+   * Optional still-frame posters shown before/instead of the video. When
+   * provided, the poster is the *initial* paint — videos load on top and
+   * fade in once they actually start playing. If autoplay is blocked, the
+   * posters stay visible until the user drags the seam (which calls
+   * play() on first interaction).
+   */
+  beforePoster?: string
+  afterPoster?: string
+  /**
+   * Multiplier applied to both media via CSS transform: scale(...). Use
+   * when the source canvas was pixel-doubled (or larger) and the docs
+   * compare needs to crop into the action. Both layers scale identically
+   * from center; the seam still cuts at the same visual point because
+   * the clip-path lives on the wrapping layer, not the scaled media.
+   * Default 1 (no zoom).
+   */
+  zoom?: number
+}
+
+const {
+  beforeSrc,
+  afterSrc,
+  beforeLabel = 'Before',
+  afterLabel = 'After',
+  alt,
+  aspectRatio = '16 / 9',
+  initialSeam = 50,
+  asVideo,
+  beforePoster,
+  afterPoster,
+  zoom = 1,
+} = Astro.props
+
+const VIDEO_RE = /\.(webm|mp4|mov|m4v)(\?.*)?$/i
+const isVideo = asVideo ?? (VIDEO_RE.test(beforeSrc) && VIDEO_RE.test(afterSrc))
+---
+
+<figure
+  class="tf-compare not-content"
+  data-tf-compare
+  data-tf-mode={isVideo ? 'video' : 'image'}
+  style={`--aspect: ${aspectRatio}; --seam: ${initialSeam}%; --zoom: ${zoom};`}
+>
+  <div class="tf-compare__viewport" data-tf-viewport>
+    {/*
+      Each side is a "layer" that fills the viewport and clips its own
+      contents. The layer holds the optional poster (image, fades out on
+      autoplay) and the actual media (video or image). Putting clip-path
+      on the LAYER (not the media) means the scale transform on the media
+      doesn't fight the clip — the seam reveal stays pixel-aligned even
+      when zoom > 1.
+    */}
+    <div class="tf-compare__layer tf-compare__layer--before">
+      {isVideo && beforePoster && (
+        <img
+          class="tf-compare__media tf-compare__poster"
+          src={beforePoster}
+          alt={`${alt} — ${beforeLabel} (still)`}
+          loading="eager"
+          decoding="async"
+          data-tf-poster="before"
+        />
+      )}
+      {isVideo && (
+        <video
+          class="tf-compare__media"
+          src={beforeSrc}
+          loop muted playsinline preload="auto"
+          autoplay
+          poster={beforePoster}
+          aria-label={`${alt} — ${beforeLabel}`}
+          data-tf-video="before"
+        ></video>
+      )}
+      {!isVideo && (
+        <img
+          class="tf-compare__media"
+          src={beforeSrc}
+          alt={`${alt} — ${beforeLabel}`}
+          loading="lazy"
+          decoding="async"
+        />
+      )}
+    </div>
+    <div class="tf-compare__layer tf-compare__layer--after">
+      {isVideo && afterPoster && (
+        <img
+          class="tf-compare__media tf-compare__poster"
+          src={afterPoster}
+          alt={`${alt} — ${afterLabel} (still)`}
+          loading="eager"
+          decoding="async"
+          data-tf-poster="after"
+        />
+      )}
+      {isVideo && (
+        <video
+          class="tf-compare__media"
+          src={afterSrc}
+          loop muted playsinline preload="auto"
+          autoplay
+          poster={afterPoster}
+          aria-label={`${alt} — ${afterLabel}`}
+          data-tf-video="after"
+        ></video>
+      )}
+      {!isVideo && (
+        <img
+          class="tf-compare__media"
+          src={afterSrc}
+          alt={`${alt} — ${afterLabel}`}
+          loading="lazy"
+          decoding="async"
+        />
+      )}
+    </div>
+    <span class="tf-compare__label tf-compare__label--before">{beforeLabel}</span>
+    <span class="tf-compare__label tf-compare__label--after">{afterLabel}</span>
+    <div class="tf-compare__handle" data-tf-handle aria-hidden="true">
+      <div class="tf-compare__handle-line"></div>
+      <div class="tf-compare__handle-grip"></div>
+    </div>
+  </div>
+  <figcaption class="tf-compare__caption">{alt}</figcaption>
+</figure>
+
+<script>
+  /**
+   * One-time per-host wiring. Returns a teardown closure for the view-
+   * transition lifecycle.
+   */
+  function bindCompare(host: HTMLElement): () => void {
+    const viewport = host.querySelector<HTMLElement>('[data-tf-viewport]')
+    const handle = host.querySelector<HTMLElement>('[data-tf-handle]')
+    if (!viewport || !handle) return () => {}
+
+    const setSeam = (pct: number): void => {
+      const clamped = Math.max(0, Math.min(100, pct))
+      host.style.setProperty('--seam', `${clamped}%`)
+    }
+    const seamFromX = (clientX: number): number => {
+      const rect = viewport.getBoundingClientRect()
+      return ((clientX - rect.left) / rect.width) * 100
+    }
+
+    let dragging = false
+    let pointerId = -1
+
+    const onDown = (e: PointerEvent): void => {
+      dragging = true
+      pointerId = e.pointerId
+      try {
+        handle.setPointerCapture(e.pointerId)
+      } catch {}
+      setSeam(seamFromX(e.clientX))
+      e.preventDefault()
+    }
+    const onMove = (e: PointerEvent): void => {
+      if (!dragging || e.pointerId !== pointerId) return
+      setSeam(seamFromX(e.clientX))
+    }
+    const onUp = (e: PointerEvent): void => {
+      if (!dragging || e.pointerId !== pointerId) return
+      dragging = false
+      pointerId = -1
+      try {
+        handle.releasePointerCapture(e.pointerId)
+      } catch {}
+    }
+
+    handle.addEventListener('pointerdown', onDown)
+    handle.addEventListener('pointermove', onMove)
+    handle.addEventListener('pointerup', onUp)
+    handle.addEventListener('pointercancel', onUp)
+
+    // Video sync + progressive enhancement.
+    //
+    // Initial state: posters (if provided) are visible; videos load
+    // underneath. We try to autoplay both. If both succeed, we fade the
+    // posters out and start the rAF currentTime sync. If autoplay is
+    // blocked, posters stay visible and we wire the seam-handle pointerdown
+    // to force-start playback on first interaction.
+    let raf = 0
+    let stopped = false
+    if (host.dataset.tfMode === 'video') {
+      const a = host.querySelector<HTMLVideoElement>('[data-tf-video="before"]')
+      const b = host.querySelector<HTMLVideoElement>('[data-tf-video="after"]')
+
+      const showVideos = (): void => {
+        host.dataset.tfPlaying = '1'
+      }
+
+      // Wait until both videos have decoded enough data to seek precisely
+      // and play frame-perfect. readyState >= HAVE_METADATA (1) means the
+      // duration is known; >= HAVE_FUTURE_DATA (3) means we can play
+      // without buffering.
+      const ready = (v: HTMLVideoElement): Promise<void> => {
+        if (v.readyState >= 3) return Promise.resolve()
+        return new Promise<void>((resolve) => {
+          const onReady = (): void => {
+            v.removeEventListener('canplay', onReady)
+            v.removeEventListener('loadeddata', onReady)
+            resolve()
+          }
+          v.addEventListener('canplay', onReady)
+          v.addEventListener('loadeddata', onReady)
+        })
+      }
+
+      const startSync = (va: HTMLVideoElement, vb: HTMLVideoElement): void => {
+        // Tight tolerance — at zoom > 1, drift is magnified visually.
+        // We re-pin every rAF: vb.currentTime ← va.currentTime if drift
+        // exceeds one frame (~16ms at 60fps).
+        const TOL = 0.016
+        const tick = (): void => {
+          if (stopped) return
+          if (Math.abs(va.currentTime - vb.currentTime) > TOL) {
+            vb.currentTime = va.currentTime
+          }
+          raf = requestAnimationFrame(tick)
+        }
+        raf = requestAnimationFrame(tick)
+      }
+
+      // Synchronized start: pause both, seek to 0, then play() back-to-back
+      // on the same microtask so they share a starting moment.
+      const startTogether = async (
+        va: HTMLVideoElement,
+        vb: HTMLVideoElement,
+      ): Promise<boolean> => {
+        try {
+          va.pause()
+          vb.pause()
+          await Promise.all([ready(va), ready(vb)])
+          va.currentTime = 0
+          vb.currentTime = 0
+          // play() returns a Promise<void> in modern browsers; if either
+          // rejects (autoplay blocked) we report blocked.
+          const results = await Promise.allSettled([va.play(), vb.play()])
+          return results.every((r) => r.status === 'fulfilled')
+        } catch {
+          return false
+        }
+      }
+
+      // Force play on the first user interaction, in case autoplay was
+      // blocked. Wired against the SAME pointerdown the seam drag uses,
+      // so dragging the handle wakes the videos up.
+      const forcePlayOnce = (): void => {
+        handle.removeEventListener('pointerdown', forcePlayOnce, true)
+        if (!a || !b) return
+        void startTogether(a, b).then((ok) => {
+          if (ok) {
+            showVideos()
+            startSync(a, b)
+          }
+        })
+      }
+
+      if (a && b) {
+        void startTogether(a, b).then((ok) => {
+          if (ok) {
+            showVideos()
+            startSync(a, b)
+          } else {
+            handle.addEventListener('pointerdown', forcePlayOnce, true)
+          }
+        })
+      }
+    }
+
+    return () => {
+      handle.removeEventListener('pointerdown', onDown)
+      handle.removeEventListener('pointermove', onMove)
+      handle.removeEventListener('pointerup', onUp)
+      handle.removeEventListener('pointercancel', onUp)
+      stopped = true
+      if (raf) cancelAnimationFrame(raf)
+      if (host.dataset.tfMode === 'video') {
+        host.querySelectorAll('video').forEach((v) => v.pause())
+      }
+    }
+  }
+
+  const teardowns = new WeakMap<HTMLElement, () => void>()
+
+  function initAll(): void {
+    document.querySelectorAll<HTMLElement>('[data-tf-compare]').forEach((host) => {
+      if (host.dataset.tfCompareInit === '1') return
+      host.dataset.tfCompareInit = '1'
+      teardowns.set(host, bindCompare(host))
+    })
+  }
+
+  function teardownAll(): void {
+    document.querySelectorAll<HTMLElement>('[data-tf-compare]').forEach((host) => {
+      teardowns.get(host)?.()
+      teardowns.delete(host)
+      host.dataset.tfCompareInit = ''
+    })
+  }
+
+  initAll()
+  document.addEventListener('astro:page-load', initAll)
+  document.addEventListener('astro:before-swap', teardownAll)
+</script>
+
+<style>
+  /*
+   * Every selector is class-prefixed under .tf-compare. NEVER bare element
+   * selectors — Starlight's prose CSS would fight us otherwise.
+   *
+   * The figure margin is set explicitly. Starlight's `<figure>` rule has
+   * its own margin we don't want to inherit.
+   */
+  figure.tf-compare {
+    /* Reset Starlight's figure margins, take ours. */
+    all: revert;
+    display: block;
+    margin: 1.5rem 0;
+    padding: 0;
+    /* Custom props consumed below. */
+  }
+  figure.tf-compare .tf-compare__viewport {
+    position: relative;
+    aspect-ratio: var(--aspect, 16 / 9);
+    width: 100%;
+    overflow: hidden;
+    border-radius: 0.5rem;
+    background: var(--sl-color-gray-6, #1a1a22);
+    user-select: none;
+    -webkit-user-select: none;
+    /* Touch panning vertical, our handle handles horizontal. */
+    touch-action: pan-y;
+  }
+  /*
+   * Layers fill the viewport. The "after" layer is clipped to the right
+   * of the seam (clip-path on the layer means the scale-transformed
+   * media inside still aligns pixel-perfectly across the seam).
+   *
+   * !important on inset/position is defensive — Starlight's markdown CSS
+   * likes to add margin/padding to media descendants and we want our
+   * positioning to be authoritative.
+   */
+  figure.tf-compare .tf-compare__layer {
+    position: absolute !important;
+    inset: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: hidden;
+    pointer-events: none;
+  }
+  figure.tf-compare .tf-compare__layer--after {
+    clip-path: inset(0 0 0 var(--seam));
+  }
+  /*
+   * Media (image / video / poster) inside each layer fills it and is
+   * scaled by `--zoom` from center. With overflow:hidden on the layer,
+   * scale > 1 crops into the action symmetrically.
+   *
+   * `!important` margin/padding overrides Starlight's prose styles for
+   * `<img>` and `<video>` — those inject vertical spacing that, combined
+   * with absolute-positioning quirks, can shift the second layer down by
+   * the spacing amount on some browsers/builds.
+   */
+  figure.tf-compare .tf-compare__media,
+  figure.tf-compare video.tf-compare__media,
+  figure.tf-compare img.tf-compare__media {
+    position: absolute !important;
+    inset: 0 !important;
+    top: 0 !important;
+    left: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    object-fit: cover;
+    display: block;
+    transform: scale(var(--zoom, 1));
+    transform-origin: center;
+    /* Block any inherited line-height that could add baseline spacing. */
+    vertical-align: top;
+  }
+  /*
+   * Progressive enhancement: when posters are present, they sit above
+   * the videos initially. Once JS confirms both videos are playing, it
+   * sets data-tf-playing="1" on the host, fading the posters out.
+   */
+  figure.tf-compare .tf-compare__poster {
+    z-index: 1;
+    transition: opacity 200ms ease;
+  }
+  figure.tf-compare[data-tf-playing="1"] .tf-compare__poster {
+    opacity: 0;
+  }
+  figure.tf-compare .tf-compare__label {
+    position: absolute;
+    top: 0.5rem;
+    background: rgba(0, 0, 0, 0.65);
+    color: white;
+    padding: 0.25rem 0.5rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    border-radius: 0.25rem;
+    pointer-events: none;
+    line-height: 1.2;
+    letter-spacing: 0;
+  }
+  figure.tf-compare .tf-compare__label--before {
+    left: 0.5rem;
+  }
+  figure.tf-compare .tf-compare__label--after {
+    right: 0.5rem;
+  }
+  /*
+   * Handle: a thin vertical line (top to bottom) with a circular grip in
+   * the middle. Reset all button-like defaults aggressively because
+   * Starlight's UI styles are everywhere.
+   */
+  figure.tf-compare .tf-compare__handle {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: var(--seam);
+    width: 2.5rem;
+    transform: translateX(-50%);
+    cursor: ew-resize;
+    /* The handle is a bare div — no Starlight button styles to fight. */
+    background: transparent;
+    border: 0;
+    padding: 0;
+    margin: 0;
+    /* Pointer events are on this div only — children inherit via children pe-auto. */
+    touch-action: none;
+  }
+  figure.tf-compare .tf-compare__handle-line {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 50%;
+    width: 2px;
+    transform: translateX(-50%);
+    background: rgba(255, 255, 255, 0.85);
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.4);
+    pointer-events: none;
+  }
+  figure.tf-compare .tf-compare__handle-grip {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 1.75rem;
+    height: 1.75rem;
+    transform: translate(-50%, -50%);
+    border-radius: 50%;
+    background: rgba(0, 0, 0, 0.7);
+    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.85), 0 4px 12px rgba(0, 0, 0, 0.5);
+    pointer-events: none;
+    /* Render a left/right arrows pictogram via a background SVG mask. */
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M5 4 L1 8 L5 12 M11 4 L15 8 L11 12'/></svg>");
+    background-repeat: no-repeat;
+    background-position: center;
+    background-size: 1rem 1rem;
+  }
+  figure.tf-compare .tf-compare__caption {
+    margin: 0.5rem 0 0;
+    padding: 0;
+    font-size: 0.875rem;
+    color: var(--sl-color-gray-3, #aaa);
+    font-style: normal;
+    text-align: left;
+  }
+</style>
