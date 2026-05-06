@@ -14,20 +14,27 @@ const { lastUpdated: showLastUpdated, editLink } = config;
 const showEditLink = editLink?.baseUrl ? true : false;
 ---
 
-<!-- footer -->{
-    template === 'doc' && (
-        <footer>
+<footer>
+    {template === 'doc' && (
+        <>
             {(showEditLink || showLastUpdated) && (
                 <div data-slot="doc-footer-meta">
                     <LastUpdated />
                     <EditLink />
                 </div>
             )}
-
             <Pagination />
-        </footer>
-    )
-}
+        </>
+    )}
+
+    <div data-slot="site-footer-attribution" aria-label="AI-assisted disclaimer">
+        <p>
+            This documentation was created with AI assistance. AI can make mistakes —
+            please verify claims and test code examples. Submit corrections{' '}
+            <a href="https://github.com/thejustinwalsh/three-flatland/issues">here</a>.
+        </p>
+    </div>
+</footer>
 
 <style>
     .padding-negative {
@@ -54,6 +61,35 @@ const showEditLink = editLink?.baseUrl ? true : false;
     }
     [data-slot='doc-footer-meta'] :global(a:hover) {
         color: var(--diamond);
+    }
+
+    /* Site-wide AI-assistance attribution — quiet hairline footer that
+     * appears on every page. Sits below any doc-specific footer meta. */
+    [data-slot='site-footer-attribution'] {
+        font-family: 'Inter', system-ui, sans-serif;
+        font-size: 0.75rem;
+        line-height: 1.55;
+        text-align: center;
+        color: color-mix(in oklab, var(--muted-foreground) 80%, transparent);
+        max-width: 40rem;
+        margin: calc(var(--spacing) * 12) auto calc(var(--spacing) * 6);
+        padding-top: calc(var(--spacing) * 4);
+        border-top: 1px solid color-mix(in oklab, var(--border) 50%, transparent);
+        opacity: 0.85;
+    }
+    [data-slot='site-footer-attribution'] p {
+        margin: 0;
+    }
+    [data-slot='site-footer-attribution'] a {
+        color: var(--muted-foreground);
+        text-decoration: underline;
+        text-decoration-color: color-mix(in oklab, var(--muted-foreground) 40%, transparent);
+        text-underline-offset: 2px;
+        transition: color 0.15s, text-decoration-color 0.15s;
+    }
+    [data-slot='site-footer-attribution'] a:hover {
+        color: var(--diamond);
+        text-decoration-color: var(--diamond);
     }
 </style>
 
