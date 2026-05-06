@@ -132,24 +132,50 @@ function registerTarget(el: HTMLElement) {
 let lastFrame = 0
 let running = false
 
+/* GLOBAL DAY-CYCLE STATE — the scene light arcs across the page like a
+ * sun moving from dawn to dusk and back, ping-ponging. Perlin noise
+ * modulates the LERP RATE so the arc's speed varies subtly (the sun
+ * doesn't move at a metronome's pace). One full ping-pong takes ~60s
+ * with rate jitter of ±40%.
+ *
+ *   cyclePos ∈ [0, 1] is the normalized position along the arc.
+ *   cycleDir ∈ {+1, -1} is the current direction (advancing or retreating).
+ */
+let cyclePos = Math.random() // start somewhere in the cycle so reloads aren't synchronized
+let cycleDir: 1 | -1 = 1
+const ARC_MIN_DEG = 100 // dawn-side angle (light comes from a lower-east-ish direction)
+const ARC_MAX_DEG = 260 // dusk-side angle (light comes from a lower-west-ish direction)
+const CYCLE_BASE_RATE = 1 / 30 // 1 unit / 30s → full ping-pong in 60s nominal
+
 function frame(now: number) {
     if (!running) return
     const dt = lastFrame ? Math.min(50, now - lastFrame) : 16
     lastFrame = now
     const time = now / 1000
 
-    /* GLOBAL SCENE LIGHT — one source for the whole page. Computed once per
-     * frame and applied to :root so every surface reading var(--scene-*)
-     * picks up the same value, the way a single distant light source would.
-     * Small amplitude + slow freq = "far away light with small atmospheric
-     * drift," not per-card spotlights. */
-    const sceneAmpl = 0.08
-    const sx = 0.5 + noiseAt(time * 0.4, 0, 0) * sceneAmpl
-    const sy = 0.5 + noiseAt(time * 0.4, 333, 1) * sceneAmpl
-    const sceneAngle = (Math.atan2(sy - 0.5, sx - 0.5) * 180) / Math.PI + 90
+    /* GLOBAL SCENE LIGHT — one source for the whole page that arcs back
+     * and forth like a slow ping-pong day cycle. Position computed once
+     * per frame and written to :root so every surface picks up the same
+     * direction via cascade.
+     *
+     * Rate is perlin-modulated (≤±40% of base) so the arc isn't perfectly
+     * uniform — atmospheric variation, not a metronome. */
+    const dtSec = dt / 1000
+    const rateJitter = noiseAt(time * 0.1, 0, 0) // -1..1, slow temporal noise
+    const rateMul = 1 + rateJitter * 0.4
+    cyclePos += cycleDir * dtSec * CYCLE_BASE_RATE * rateMul
+    if (cyclePos > 1) {
+        cyclePos = 2 - cyclePos
+        cycleDir = -1
+    } else if (cyclePos < 0) {
+        cyclePos = -cyclePos
+        cycleDir = 1
+    }
+    // Soften endpoints with a smoothstep so the light eases at horizons
+    // rather than reversing abruptly.
+    const eased = cyclePos * cyclePos * (3 - 2 * cyclePos)
+    const sceneAngle = ARC_MIN_DEG + eased * (ARC_MAX_DEG - ARC_MIN_DEG)
     const root = document.documentElement.style
-    root.setProperty('--scene-x', `${(sx * 100).toFixed(2)}%`)
-    root.setProperty('--scene-y', `${(sy * 100).toFixed(2)}%`)
     root.setProperty('--scene-angle', `${sceneAngle.toFixed(1)}deg`)
 
     for (const t of targets) {
@@ -223,8 +249,6 @@ function startLoop() {
     if (REDUCED_MOTION) {
         // Pin a static global scene light pose so surfaces still read as lit.
         const root = document.documentElement.style
-        root.setProperty('--scene-x', '30%')
-        root.setProperty('--scene-y', '25%')
         root.setProperty('--scene-angle', '135deg')
         return
     }
