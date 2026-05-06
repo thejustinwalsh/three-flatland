@@ -151,9 +151,6 @@ importers:
       astro:
         specifier: ^5.17.3
         version: 5.17.3(@types/node@22.19.7)(jiti@1.21.7)(rollup@4.56.0)(terser@5.46.1)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.2)
-      img-comparison-slider:
-        specifier: ^8.0.6
-        version: 8.0.7
       koota:
         specifier: 'catalog:'
         version: 0.6.5(@types/react@19.2.9)(react@19.2.3)
@@ -4341,9 +4338,6 @@ packages:
   ignore@7.0.5:
     resolution: {integrity: sha512-Hs59xBNfUIunMFgWAbGX5cq6893IbWg4KnrjbYwX3tx0ztorVgTDA6B2sxf8ejHJ4wz8BqGUMYlnzNBer5NvGg==}
     engines: {node: '>= 4'}
-
-  img-comparison-slider@8.0.7:
-    resolution: {integrity: sha512-BALViPtL2FgcCa9K8KkrmhWuyeDkVu6XVwBoRm9pU8Y6P1rjw31zujuEMBWTz2w6W30zzdQZNTccvg7J9Gf/LQ==}
 
   import-fresh@3.3.1:
     resolution: {integrity: sha512-TR3KfrTZTYLPB6jUjfx6MF9WcWrHL9su5TObK4ZkYgBdWKPOFoSoQIdEuTuR82pmtxH2spWG9h6etwfr1pLBqQ==}
@@ -9550,8 +9544,6 @@ snapshots:
   ignore@5.3.2: {}
 
   ignore@7.0.5: {}
-
-  img-comparison-slider@8.0.7: {}
 
   import-fresh@3.3.1:
     dependencies:
