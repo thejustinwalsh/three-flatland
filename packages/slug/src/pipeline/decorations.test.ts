@@ -2,12 +2,15 @@ import { describe, it, expect, beforeAll } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import opentype from 'opentype.js'
-import { parseFont } from './fontParser.js'
-import { shapeText } from './textShaper.js'
-import { emitDecorations } from './decorations.js'
-import type { SlugGlyphData } from '../types.js'
+import { parseFont } from './fontParser'
+import { shapeText } from './textShaper'
+import { emitDecorations } from './decorations'
+import type { SlugGlyphData } from '../types'
 
-const FONT_PATH = resolve(__dirname, '../../../../examples/three/slug-text/public/Inter-Regular.ttf')
+const FONT_PATH = resolve(
+  __dirname,
+  '../../../../examples/three/slug-text/public/Inter-Regular.ttf'
+)
 const buf = readFileSync(FONT_PATH)
 const arrayBuffer = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength)
 
@@ -42,7 +45,9 @@ describe('emitDecorations', () => {
   })
 
   it('returns empty when no positioned glyphs', () => {
-    expect(emitDecorations('', [], [{ start: 0, end: 1, underline: true }], 48, metrics, advances)).toEqual([])
+    expect(
+      emitDecorations('', [], [{ start: 0, end: 1, underline: true }], 48, metrics, advances)
+    ).toEqual([])
   })
 
   it('emits one underline rect for a single styled run on one line', () => {
@@ -53,7 +58,7 @@ describe('emitDecorations', () => {
       [{ start: 0, end: 5, underline: true }],
       48,
       metrics,
-      advances,
+      advances
     )
     expect(rects).toHaveLength(1)
     const r = rects[0]!
@@ -71,7 +76,7 @@ describe('emitDecorations', () => {
       [{ start: 0, end: 5, strike: true }],
       48,
       metrics,
-      advances,
+      advances
     )
     expect(rects).toHaveLength(1)
     expect(rects[0]!.height).toBeCloseTo(metrics.strikethroughThickness * 48, 3)
@@ -83,10 +88,13 @@ describe('emitDecorations', () => {
     const rects = emitDecorations(
       'Foo bar baz',
       positioned,
-      [{ start: 0, end: 3, underline: true }, { start: 8, end: 11, underline: true }],
+      [
+        { start: 0, end: 3, underline: true },
+        { start: 8, end: 11, underline: true },
+      ],
       48,
       metrics,
-      advances,
+      advances
     )
     expect(rects).toHaveLength(2)
     // Rects must be ordered left-to-right by x.
@@ -101,7 +109,7 @@ describe('emitDecorations', () => {
       [{ start: 0, end: 1, underline: true, strike: true }],
       48,
       metrics,
-      advances,
+      advances
     )
     expect(rects).toHaveLength(2)
   })
@@ -109,7 +117,7 @@ describe('emitDecorations', () => {
   it('emits one rect per line for a run that wraps', () => {
     const positioned = shapeText(font, 'Lorem ipsum dolor sit amet', 48, { maxWidth: 200 })
     // Get how many lines were produced
-    const lineYs = new Set(positioned.map(p => p.y))
+    const lineYs = new Set(positioned.map((p) => p.y))
     expect(lineYs.size).toBeGreaterThan(1)
     const rects = emitDecorations(
       'Lorem ipsum dolor sit amet',
@@ -117,7 +125,7 @@ describe('emitDecorations', () => {
       [{ start: 0, end: 26, underline: true }],
       48,
       metrics,
-      advances,
+      advances
     )
     // One rect per line containing styled glyphs.
     expect(rects.length).toBe(lineYs.size)

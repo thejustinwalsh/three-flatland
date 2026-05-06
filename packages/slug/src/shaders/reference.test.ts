@@ -223,11 +223,14 @@ describe('slugDilate', () => {
     const dim: [number, number] = [800, 600]
 
     const result = refSlugDilate(
-      [0, 0],      // vertex at origin
-      [1, 0],      // normal pointing right
-      [0.5, 0.5],  // em-space center
+      [0, 0], // vertex at origin
+      [1, 0], // normal pointing right
+      [0.5, 0.5], // em-space center
       [1, 0, 0, 1], // identity Jacobian
-      m0, m1, m3, dim,
+      m0,
+      m1,
+      m3,
+      dim
     )
 
     // Vertex should move right (positive x)
@@ -242,12 +245,24 @@ describe('slugDilate', () => {
     const m3: [number, number, number, number] = [0, 0, 0, 1]
 
     const resultLarge = refSlugDilate(
-      [0, 0], [1, 0], [0.5, 0.5], [1, 0, 0, 1],
-      m0, m1, m3, [1920, 1080],
+      [0, 0],
+      [1, 0],
+      [0.5, 0.5],
+      [1, 0, 0, 1],
+      m0,
+      m1,
+      m3,
+      [1920, 1080]
     )
     const resultSmall = refSlugDilate(
-      [0, 0], [1, 0], [0.5, 0.5], [1, 0, 0, 1],
-      m0, m1, m3, [320, 240],
+      [0, 0],
+      [1, 0],
+      [0.5, 0.5],
+      [1, 0, 0, 1],
+      m0,
+      m1,
+      m3,
+      [320, 240]
     )
 
     // Smaller viewport → larger dilation (more object-space displacement needed per pixel)
@@ -259,10 +274,7 @@ describe('slugDilate', () => {
     const m1: [number, number, number, number] = [0, 1, 0, 0]
     const m3: [number, number, number, number] = [0, 0, 0, 1]
 
-    const result = refSlugDilate(
-      [0, 0], [0, 0], [0.5, 0.5], [1, 0, 0, 1],
-      m0, m1, m3, [800, 600],
-    )
+    const result = refSlugDilate([0, 0], [0, 0], [0.5, 0.5], [1, 0, 0, 1], m0, m1, m3, [800, 600])
 
     expect(result.vpos[0]).toBe(0)
     expect(result.vpos[1]).toBe(0)
@@ -274,10 +286,7 @@ describe('slugDilate', () => {
     const m3: [number, number, number, number] = [0, 0, 0, 1]
 
     // Jacobian that scales x by 2
-    const result = refSlugDilate(
-      [0, 0], [1, 0], [0.5, 0.5], [2, 0, 0, 1],
-      m0, m1, m3, [800, 600],
-    )
+    const result = refSlugDilate([0, 0], [1, 0], [0.5, 0.5], [2, 0, 0, 1], m0, m1, m3, [800, 600])
 
     // The em-space displacement should be 2x the object-space displacement
     const objDisp = result.vpos[0]

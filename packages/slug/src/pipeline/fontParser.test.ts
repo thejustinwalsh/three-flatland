@@ -3,7 +3,10 @@ import { readFileSync } from 'fs'
 import { resolve } from 'path'
 import { parseFont } from './fontParser'
 
-const FONT_PATH = resolve(__dirname, '../../../../examples/three/slug-text/public/Inter-Regular.ttf')
+const FONT_PATH = resolve(
+  __dirname,
+  '../../../../examples/three/slug-text/public/Inter-Regular.ttf'
+)
 
 function loadTestFont() {
   const buf = readFileSync(FONT_PATH)

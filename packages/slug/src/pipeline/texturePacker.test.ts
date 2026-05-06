@@ -5,7 +5,10 @@ import { DataUtils } from 'three'
 import { parseFont } from './fontParser'
 import { packTextures } from './texturePacker'
 
-const FONT_PATH = resolve(__dirname, '../../../../examples/three/slug-text/public/Inter-Regular.ttf')
+const FONT_PATH = resolve(
+  __dirname,
+  '../../../../examples/three/slug-text/public/Inter-Regular.ttf'
+)
 
 function loadAndPack() {
   const buf = readFileSync(FONT_PATH)

@@ -1,6 +1,6 @@
-import { cmapLookup, kernLookup } from '../baked.js'
-import type { BakedFontData } from '../baked.js'
-import type { SlugGlyphData } from '../types.js'
+import { cmapLookup, kernLookup } from '../baked'
+import type { BakedFontData } from '../baked'
+import type { SlugGlyphData } from '../types'
 
 /**
  * Wrap a string into lines using the same word-boundary + hard-break-fallback
@@ -15,7 +15,7 @@ export function wrapLinesBaked(
   unitsPerEm: number,
   text: string,
   fontSize: number,
-  maxWidth: number | undefined,
+  maxWidth: number | undefined
 ): string[] {
   const scale = fontSize / unitsPerEm
   const { cmapCodes, cmapGlyphs, kernData, kernCount } = bakedData

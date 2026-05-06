@@ -18,9 +18,12 @@ describe('subdivideForOffset — straight segments', () => {
   it('returns a straight (degenerate) quad unchanged — single element', () => {
     // p1 on the chord midpoint = perfectly flat
     const line: QuadCurve = {
-      p0x: 0, p0y: 0,
-      p1x: 5, p1y: 0,
-      p2x: 10, p2y: 0,
+      p0x: 0,
+      p0y: 0,
+      p1x: 5,
+      p1y: 0,
+      p2x: 10,
+      p2y: 0,
     }
     const out = subdivideForOffset(line, 0.05)
     expect(out).toHaveLength(1)
@@ -30,9 +33,12 @@ describe('subdivideForOffset — straight segments', () => {
   it('preserves endpoints across a split', () => {
     // Curve with extreme turn — force subdivision
     const curve: QuadCurve = {
-      p0x: 0, p0y: 0,
-      p1x: 1, p1y: 2,
-      p2x: 2, p2y: 0,
+      p0x: 0,
+      p0y: 0,
+      p1x: 1,
+      p1y: 2,
+      p2x: 2,
+      p2y: 0,
     }
     const out = subdivideForOffset(curve, 0.05, { epsilon: 0.001 })
     expect(out.length).toBeGreaterThan(1)
@@ -55,9 +61,12 @@ describe('subdivideForOffset — subdivision behavior', () => {
   it('subdivides a quarter-arc-ish curve into a few segments at tight tolerance', () => {
     // Approximation of a quarter arc
     const arc: QuadCurve = {
-      p0x: 1, p0y: 0,
-      p1x: 1, p1y: 1,
-      p2x: 0, p2y: 1,
+      p0x: 1,
+      p0y: 0,
+      p1x: 1,
+      p1y: 1,
+      p2x: 0,
+      p2y: 1,
     }
     const looseOut = subdivideForOffset(arc, 0.05, { epsilon: 0.005 })
     const tightOut = subdivideForOffset(arc, 0.05, { epsilon: 0.0001 })
@@ -67,9 +76,12 @@ describe('subdivideForOffset — subdivision behavior', () => {
 
   it('honors maxDepth — never exceeds 2^maxDepth leaves', () => {
     const wildCurve: QuadCurve = {
-      p0x: 0, p0y: 0,
-      p1x: 5, p1y: 20,
-      p2x: 10, p2y: 0,
+      p0x: 0,
+      p0y: 0,
+      p1x: 5,
+      p1y: 20,
+      p2x: 10,
+      p2y: 0,
     }
     const out = subdivideForOffset(wildCurve, 0.1, {
       epsilon: 1e-9,
@@ -83,9 +95,12 @@ describe('subdivideForOffset — subdivision behavior', () => {
     // Same curve, bigger offset → offset curve deviates more from a
     // single quadratic approx → more splits needed to stay within ε.
     const curve: QuadCurve = {
-      p0x: 0, p0y: 0,
-      p1x: 5, p1y: 5,
-      p2x: 10, p2y: 0,
+      p0x: 0,
+      p0y: 0,
+      p1x: 5,
+      p1y: 5,
+      p2x: 10,
+      p2y: 0,
     }
     const thin = subdivideForOffset(curve, 0.01)
     const thick = subdivideForOffset(curve, 0.5)
@@ -96,9 +111,12 @@ describe('subdivideForOffset — subdivision behavior', () => {
 describe('subdivideForOffset — numerical stability', () => {
   it('handles degenerate point (p0 = p2) without splitting', () => {
     const dot: QuadCurve = {
-      p0x: 0, p0y: 0,
-      p1x: 0.01, p1y: 0.01,
-      p2x: 0, p2y: 0,
+      p0x: 0,
+      p0y: 0,
+      p1x: 0.01,
+      p1y: 0.01,
+      p2x: 0,
+      p2y: 0,
     }
     const out = subdivideForOffset(dot, 0.05)
     // Degenerate curves aren't recoverable via offsetting; return
@@ -108,9 +126,12 @@ describe('subdivideForOffset — numerical stability', () => {
 
   it('zero halfWidth is clamped so epsilon stays positive', () => {
     const curve: QuadCurve = {
-      p0x: 0, p0y: 0,
-      p1x: 1, p1y: 1,
-      p2x: 2, p2y: 0,
+      p0x: 0,
+      p0y: 0,
+      p1x: 1,
+      p1y: 1,
+      p2x: 2,
+      p2y: 0,
     }
     const out = subdivideForOffset(curve, 0)
     // Not expected to throw / infinite-loop; returns at least one
@@ -258,7 +279,8 @@ describe('insertJoin', () => {
   // Left-hand normal of +x is +y; of +y is -x.
   // So endA = (0, 1) and startB = (-1, 0).
   const corner90: JoinContext = {
-    cornerX: 0, cornerY: 0,
+    cornerX: 0,
+    cornerY: 0,
     tangentA: [1, 0],
     tangentB: [0, 1],
     endA: { x: 0, y: 1 },
@@ -271,8 +293,10 @@ describe('insertJoin', () => {
   it('smooth join (coincident endpoints) emits nothing', () => {
     const smooth: JoinContext = {
       ...corner90,
-      tangentA: [1, 0], tangentB: [1, 0],
-      endA: { x: 0, y: 1 }, startB: { x: 0, y: 1 },
+      tangentA: [1, 0],
+      tangentB: [1, 0],
+      endA: { x: 0, y: 1 },
+      startB: { x: 0, y: 1 },
     }
     expect(insertJoin(smooth)).toEqual([])
   })
@@ -310,9 +334,13 @@ describe('insertJoin', () => {
   it('miter falls back to bevel when miter length exceeds miterLimit × halfWidth', () => {
     // Very acute angle — 10° turn. Miter length blows up.
     const acute: JoinContext = {
-      cornerX: 0, cornerY: 0,
+      cornerX: 0,
+      cornerY: 0,
       tangentA: [1, 0],
-      tangentB: [Math.cos(Math.PI - 10 * Math.PI / 180), Math.sin(Math.PI - 10 * Math.PI / 180)],
+      tangentB: [
+        Math.cos(Math.PI - (10 * Math.PI) / 180),
+        Math.sin(Math.PI - (10 * Math.PI) / 180),
+      ],
       endA: { x: 0, y: 1 },
       startB: { x: 0, y: 0 }, // placeholder; miter calc doesn't use this directly
       halfWidth: 1,
@@ -349,7 +377,8 @@ describe('insertJoin', () => {
     // A U-turn: endA at +x axis, startB at -x axis, corner at origin,
     // tangentA = +y, tangentB = -y.
     const uturn: JoinContext = {
-      cornerX: 0, cornerY: 0,
+      cornerX: 0,
+      cornerY: 0,
       tangentA: [0, 1],
       tangentB: [0, -1],
       endA: { x: 1, y: 0 },
@@ -371,7 +400,8 @@ describe('insertCap', () => {
   //   innerEnd = (0, -1)  — right-hand offset
   //   tangent  = (1, 0)   — out of the contour
   const endCap: CapContext = {
-    endpointX: 0, endpointY: 0,
+    endpointX: 0,
+    endpointY: 0,
     tangent: [1, 0],
     outerEnd: { x: 0, y: 1 },
     innerEnd: { x: 0, y: -1 },
@@ -395,20 +425,26 @@ describe('insertCap', () => {
     const quads = insertCap({ ...endCap, capStyle: 'square' })
     expect(quads).toHaveLength(3)
     // Outer edge extends along tangent from (0,1) to (1,1)
-    expect(quads[0]!.p0x).toBeCloseTo(0, 10); expect(quads[0]!.p0y).toBeCloseTo(1, 10)
-    expect(quads[0]!.p2x).toBeCloseTo(1, 10); expect(quads[0]!.p2y).toBeCloseTo(1, 10)
+    expect(quads[0]!.p0x).toBeCloseTo(0, 10)
+    expect(quads[0]!.p0y).toBeCloseTo(1, 10)
+    expect(quads[0]!.p2x).toBeCloseTo(1, 10)
+    expect(quads[0]!.p2y).toBeCloseTo(1, 10)
     // Across: (1,1) → (1,-1)
-    expect(quads[1]!.p2x).toBeCloseTo(1, 10); expect(quads[1]!.p2y).toBeCloseTo(-1, 10)
+    expect(quads[1]!.p2x).toBeCloseTo(1, 10)
+    expect(quads[1]!.p2y).toBeCloseTo(-1, 10)
     // Back to inner: (1,-1) → (0,-1)
-    expect(quads[2]!.p2x).toBeCloseTo(0, 10); expect(quads[2]!.p2y).toBeCloseTo(-1, 10)
+    expect(quads[2]!.p2x).toBeCloseTo(0, 10)
+    expect(quads[2]!.p2y).toBeCloseTo(-1, 10)
   })
 
   it('triangle cap: 2 straight quads meeting at apex half-width past endpoint', () => {
     const quads = insertCap({ ...endCap, capStyle: 'triangle' })
     expect(quads).toHaveLength(2)
     // Apex at (1, 0) — endpoint + tangent·halfWidth.
-    expect(quads[0]!.p2x).toBeCloseTo(1, 10); expect(quads[0]!.p2y).toBeCloseTo(0, 10)
-    expect(quads[1]!.p0x).toBeCloseTo(1, 10); expect(quads[1]!.p0y).toBeCloseTo(0, 10)
+    expect(quads[0]!.p2x).toBeCloseTo(1, 10)
+    expect(quads[0]!.p2y).toBeCloseTo(0, 10)
+    expect(quads[1]!.p0x).toBeCloseTo(1, 10)
+    expect(quads[1]!.p0y).toBeCloseTo(0, 10)
     // Endpoints match outer/inner.
     expect(quads[0]!.p0y).toBeCloseTo(1, 10)
     expect(quads[1]!.p2y).toBeCloseTo(-1, 10)
@@ -440,13 +476,18 @@ describe('reverseContour', () => {
     const rev = reverseContour(curves)
     expect(rev).toHaveLength(2)
     // First reversed curve starts at the original last curve's p2.
-    expect(rev[0]!.p0x).toBe(4); expect(rev[0]!.p0y).toBe(0)
-    expect(rev[0]!.p2x).toBe(2); expect(rev[0]!.p2y).toBe(0)
+    expect(rev[0]!.p0x).toBe(4)
+    expect(rev[0]!.p0y).toBe(0)
+    expect(rev[0]!.p2x).toBe(2)
+    expect(rev[0]!.p2y).toBe(0)
     // p1 (control point) stays in place — just re-labeled.
-    expect(rev[0]!.p1x).toBe(3); expect(rev[0]!.p1y).toBe(-1)
+    expect(rev[0]!.p1x).toBe(3)
+    expect(rev[0]!.p1y).toBe(-1)
     // Second reversed curve picks up where the first left off.
-    expect(rev[1]!.p0x).toBe(2); expect(rev[1]!.p0y).toBe(0)
-    expect(rev[1]!.p2x).toBe(0); expect(rev[1]!.p2y).toBe(0)
+    expect(rev[1]!.p0x).toBe(2)
+    expect(rev[1]!.p0y).toBe(0)
+    expect(rev[1]!.p2x).toBe(0)
+    expect(rev[1]!.p2y).toBe(0)
   })
 
   it('round-trip: reverse twice = identity', () => {
@@ -462,10 +503,10 @@ describe('reverseContour', () => {
 describe('strokeOffsetter — closed contours', () => {
   // Unit square going CCW (each edge is a degenerate straight quad)
   const unitSquare: QuadCurve[] = [
-    { p0x: 0, p0y: 0, p1x: 0.5, p1y: 0, p2x: 1, p2y: 0 },   // bottom: +x
-    { p0x: 1, p0y: 0, p1x: 1, p1y: 0.5, p2x: 1, p2y: 1 },   // right: +y
-    { p0x: 1, p0y: 1, p1x: 0.5, p1y: 1, p2x: 0, p2y: 1 },   // top: -x
-    { p0x: 0, p0y: 1, p1x: 0, p1y: 0.5, p2x: 0, p2y: 0 },   // left: -y
+    { p0x: 0, p0y: 0, p1x: 0.5, p1y: 0, p2x: 1, p2y: 0 }, // bottom: +x
+    { p0x: 1, p0y: 0, p1x: 1, p1y: 0.5, p2x: 1, p2y: 1 }, // right: +y
+    { p0x: 1, p0y: 1, p1x: 0.5, p1y: 1, p2x: 0, p2y: 1 }, // top: -x
+    { p0x: 0, p0y: 1, p1x: 0, p1y: 0.5, p2x: 0, p2y: 0 }, // left: -y
   ]
 
   it('emits outer + inner closed contours', () => {
@@ -506,9 +547,16 @@ describe('strokeOffsetter — closed contours', () => {
   it('outer at halfWidth=0.1 grows the square by 0.1 on each side', () => {
     const out = strokeOffsetter(unitSquare, true, { halfWidth: 0.1, joinStyle: 'miter' })
     // Find extreme x and y values in the outer contour.
-    let xMin = Infinity, xMax = -Infinity, yMin = Infinity, yMax = -Infinity
+    let xMin = Infinity,
+      xMax = -Infinity,
+      yMin = Infinity,
+      yMax = -Infinity
     for (const c of out[0]!.curves) {
-      for (const p of [[c.p0x, c.p0y], [c.p1x, c.p1y], [c.p2x, c.p2y]]) {
+      for (const p of [
+        [c.p0x, c.p0y],
+        [c.p1x, c.p1y],
+        [c.p2x, c.p2y],
+      ]) {
         if (p[0]! < xMin) xMin = p[0]!
         if (p[0]! > xMax) xMax = p[0]!
         if (p[1]! < yMin) yMin = p[1]!
@@ -620,9 +668,10 @@ describe('bakeStrokeForGlyph', () => {
     expect(stroked!.curves.length).toBeGreaterThan(0)
     for (let i = 0; i < stroked!.contourStarts.length; i++) {
       const start = stroked!.contourStarts[i]!
-      const end = i + 1 < stroked!.contourStarts.length
-        ? stroked!.contourStarts[i + 1]!
-        : stroked!.curves.length
+      const end =
+        i + 1 < stroked!.contourStarts.length
+          ? stroked!.contourStarts[i + 1]!
+          : stroked!.curves.length
       // Adjacent curves in each contour share endpoints (p2 of one
       // equals p0 of the next).
       for (let j = start; j < end - 1; j++) {

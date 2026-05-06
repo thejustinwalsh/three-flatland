@@ -1,7 +1,7 @@
-import type { PositionedGlyph, SlugGlyphData } from '../types.js'
-import type { SlugFont } from '../SlugFont.js'
-import type { SlugFontStack } from '../SlugFontStack.js'
-import { cmapLookup, kernLookup } from '../baked.js'
+import type { PositionedGlyph, SlugGlyphData } from '../types'
+import type { SlugFont } from '../SlugFont'
+import type { SlugFontStack } from '../SlugFontStack'
+import { cmapLookup, kernLookup } from '../baked'
 
 /**
  * Output of `shapeStackText` — positioned glyphs grouped by which font
@@ -74,7 +74,7 @@ export function shapeStackText(
     align?: 'left' | 'center' | 'right'
     lineHeight?: number
     maxWidth?: number
-  } = {},
+  } = {}
 ): StackShapeResult {
   const { align = 'left', lineHeight = 1.2, maxWidth } = options
   const lineHeightPx = fontSize * lineHeight
@@ -97,9 +97,9 @@ export function shapeStackText(
   let currentLine = lines[0]!
   let cursorX = 0
 
-  let lastSpaceIdx = -1          // text index of the last space
-  let lastSpaceLineLen = 0       // currentLine.length when the space was seen
-  let lastSpaceCursorX = 0       // cursorX after the space's advance
+  let lastSpaceIdx = -1 // text index of the last space
+  let lastSpaceLineLen = 0 // currentLine.length when the space was seen
+  let lastSpaceCursorX = 0 // cursorX after the space's advance
 
   for (let i = 0; i < text.length; i++) {
     const code = text.charCodeAt(i)
@@ -151,9 +151,8 @@ export function shapeStackText(
       }
     }
 
-    const visible = glyphData != null
-      && glyphId !== 0
-      && glyphData.bounds.xMax > glyphData.bounds.xMin
+    const visible =
+      glyphData != null && glyphId !== 0 && glyphData.bounds.xMax > glyphData.bounds.xMin
 
     if (visible) {
       currentLine.push({

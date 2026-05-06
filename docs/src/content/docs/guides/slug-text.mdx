@@ -3,9 +3,13 @@ title: Slug Text
 description: GPU-accelerated, resolution-independent text rendering using the Slug algorithm.
 ---
 
-import { Tabs, TabItem } from '@astrojs/starlight/components';
+import { Tabs, TabItem } from '@astrojs/starlight/components'
 
 The `@three-flatland/slug` package renders crisp, resolution-independent text on the GPU using the [Slug algorithm](https://jcgt.org/published/0006/02/02/). Font outlines are rasterized per-pixel from quadratic Bezier curves — no texture atlases, no SDF approximations, no blurry edges at any zoom level.
+
+:::note[Alpha pre-release]
+`@three-flatland/slug` is in alpha. Public APIs may shift before `1.0`. Active feature work is tracked in [#37 — Vector Graphics](https://github.com/thejustinwalsh/three-flatland/issues/37) and [#38 — Rich Text](https://github.com/thejustinwalsh/three-flatland/issues/38).
+:::
 
 <Tabs syncKey="framework">
   <TabItem label="Three.js" icon="seti:javascript">
@@ -31,6 +35,7 @@ The `@three-flatland/slug` package renders crisp, resolution-independent text on
       renderer.render(scene, camera);
     }
     ```
+
   </TabItem>
   <TabItem label="React" icon="seti:react">
     ```tsx
@@ -64,6 +69,7 @@ The `@three-flatland/slug` package renders crisp, resolution-independent text on
       );
     }
     ```
+
   </TabItem>
 </Tabs>
 
@@ -82,6 +88,7 @@ Slug text works with both the WebGPU renderer and its WebGL2 fallback. The TSL s
 
     const font = await SlugFontLoader.load('/fonts/MyFont.ttf');
     ```
+
   </TabItem>
   <TabItem label="React" icon="seti:react">
     ```tsx
@@ -91,34 +98,41 @@ Slug text works with both the WebGPU renderer and its WebGL2 fallback. The TSL s
     // Inside a component within <Canvas>, with <Suspense> boundary
     const font = useLoader(SlugFontLoader, '/fonts/MyFont.ttf');
     ```
+
   </TabItem>
 </Tabs>
 
 After loading, the font provides:
+
 - `font.glyphs` — parsed glyph data (`Map<number, SlugGlyphData>`)
 - `font.curveTexture` — GPU texture with Bezier control points
 - `font.bandTexture` — GPU texture with spatial acceleration data
 - `font.unitsPerEm`, `font.ascender`, `font.descender`, `font.capHeight` — font metrics
+- `font.measureText(text, fontSize)`, `font.measureParagraph(text, fontSize, opts)`, `font.wrapText(text, fontSize, maxWidth)` — measurement helpers
 
 ## SlugText Properties
 
 `SlugText` extends `InstancedMesh` — each glyph is an instanced quad evaluated per-pixel by the Slug fragment shader.
 
-| Property | Type | Default | Description |
-|----------|------|---------|-------------|
-| `font` | `SlugFont \| null` | `null` | Font to render with |
-| `text` | `string` | `''` | Text content |
-| `fontSize` | `number` | `16` | Font size in scene units |
-| `color` | `Color \| number` | `0xffffff` | Text color |
-| `align` | `'left' \| 'center' \| 'right'` | `'left'` | Horizontal alignment |
-| `lineHeight` | `number` | `1.2` | Line height multiplier |
-| `maxWidth` | `number \| undefined` | `undefined` | Max width for word wrapping |
+| Property     | Type                            | Default     | Description                                      |
+| ------------ | ------------------------------- | ----------- | ------------------------------------------------ |
+| `font`       | `SlugFont \| null`              | `null`      | Font to render with                              |
+| `text`       | `string`                        | `''`        | Text content                                     |
+| `fontSize`   | `number`                        | `16`        | Font size in scene units                         |
+| `color`      | `Color \| number`               | `0xffffff`  | Text color                                       |
+| `opacity`    | `number`                        | `1.0`       | Fill opacity                                     |
+| `align`      | `'left' \| 'center' \| 'right'` | `'left'`    | Horizontal alignment                             |
+| `lineHeight` | `number`                        | `1.2`       | Line height multiplier                           |
+| `maxWidth`   | `number \| undefined`           | `undefined` | Max width for word wrapping                      |
+| `styles`     | `StyleSpan[]`                   | `[]`        | Underline / strike / super-sub spans (see below) |
+| `outline`    | `SlugOutlineOptions \| null`    | `null`      | Optional stroke outline (see below)              |
 
 All properties can be set after construction. Changes are applied on the next `update()` call.
 
 ## Per-Frame Updates
 
 `SlugText.update(camera)` does two things:
+
 1. **Rebuilds geometry** if any property changed (dirty flag)
 2. **Updates the MVP matrix** for vertex dilation — this must happen every frame since the camera or object may move
 
@@ -154,6 +168,7 @@ For correct edge dilation (half-pixel anti-aliasing at quad boundaries), call `s
       text.setViewportSize(window.innerWidth, window.innerHeight);
     });
     ```
+
   </TabItem>
   <TabItem label="React" icon="seti:react">
     ```tsx
@@ -163,6 +178,7 @@ For correct edge dilation (half-pixel anti-aliasing at quad boundaries), call `s
       ref.current?.setViewportSize(size.width, size.height);
     }, [size]);
     ```
+
   </TabItem>
 </Tabs>
 
@@ -171,10 +187,10 @@ For correct edge dilation (half-pixel anti-aliasing at quad boundaries), call `s
 Change any property and the text rebuilds on the next `update()`:
 
 ```typescript
-text.text = 'New content';
-text.fontSize = 96;
-text.align = 'right';
-text.color = 0xff0000;
+text.text = 'New content'
+text.fontSize = 96
+text.align = 'right'
+text.color = 0xff0000
 // Geometry rebuilds automatically on next update() call
 ```
 
@@ -189,19 +205,150 @@ const text = new SlugText({
   fontSize: 24,
   maxWidth: 400,
   lineHeight: 1.4,
-});
+})
 ```
+
+## Measurement
+
+`SlugFont` exposes a measurement API mirroring `CanvasRenderingContext2D.measureText` for layouts that don't need GPU geometry — overlays, hit-testing, fitting text inside a box.
+
+```typescript
+const m = font.measureText('Hello, Slug!', 48)
+// m.width
+// m.actualBoundingBoxLeft / .actualBoundingBoxRight
+// m.actualBoundingBoxAscent / .actualBoundingBoxDescent
+// m.fontBoundingBoxAscent / .fontBoundingBoxDescent
+```
+
+For wrapped paragraphs:
+
+```typescript
+const para = font.measureParagraph(longText, 24, {
+  maxWidth: 400,
+  lineHeight: 1.4, // matches SlugText's default — measurements agree with rendering
+})
+// para.width (widest line), para.height (block height)
+// para.lines: [{ text, width }, ...]
+```
+
+`font.wrapText(text, fontSize, maxWidth)` exposes the same wrap policy `SlugText` uses internally — useful when you need to compare line breaks against another renderer (Canvas2D, DOM).
+
+## Decorations (underline, strikethrough, super/sub)
+
+Apply `StyleSpan[]` over half-open `[start, end)` UTF-16 ranges:
+
+```typescript
+const text = new SlugText({
+  font,
+  text: 'Bold and underlined and ²',
+  fontSize: 48,
+  styles: [
+    { start: 9, end: 21, underline: true }, // "underlined"
+    { start: 24, end: 25, scriptLevel: 2 }, // superscript "2"
+  ],
+})
+```
+
+| Field          | Type      | Description                                                                                        |
+| -------------- | --------- | -------------------------------------------------------------------------------------------------- |
+| `start`, `end` | `number`  | Half-open code-unit range.                                                                         |
+| `underline`    | `boolean` | Underline rect at the font's `underlinePosition`.                                                  |
+| `strike`       | `boolean` | Strikethrough rect at the font's `strikethroughPosition`.                                          |
+| `scriptLevel`  | `number`  | Slug `script(n)` level. Positive = superscript, negative = sub. Magnitude ∈ `[1, 3]` is the depth. |
+
+Decoration rects render through the same instance pipeline as glyphs (no second draw call) — they short-circuit the fragment shader to solid coverage via a sentinel bit on the instance attributes.
+
+## Multi-font fallback (`SlugFontStack` / `SlugStackText`)
+
+Render strings whose codepoints span multiple loaded fonts. The first font in the stack with a non-zero glyphId for a given codepoint wins (per-character, automatic — authors don't tag runs).
+
+<Tabs syncKey="framework">
+  <TabItem label="Three.js" icon="seti:javascript">
+    ```typescript
+    import { SlugFontLoader, SlugFontStack, SlugStackText } from '@three-flatland/slug';
+
+    const [inter, fa] = await Promise.all([
+      SlugFontLoader.load('/fonts/Inter-Regular.ttf'),
+      SlugFontLoader.load('/fonts/FontAwesome-Regular.ttf'),
+    ]);
+
+    const stack = new SlugFontStack([inter, fa]);
+
+    const text = new SlugStackText({
+      fontStack: stack,
+      text: 'Lorem  search',  // last char is an FA icon
+      fontSize: 48,
+    });
+    scene.add(text);
+    ```
+
+  </TabItem>
+  <TabItem label="React" icon="seti:react">
+    ```tsx
+    import { extend } from '@react-three/fiber/webgpu';
+    import { SlugStackText, SlugFontStack } from '@three-flatland/slug/react';
+
+    extend({ SlugStackText });
+
+    function StackedText({ fonts }: { fonts: SlugFont[] }) {
+      const stack = useMemo(() => new SlugFontStack(fonts), [fonts]);
+      return <slugStackText fontStack={stack} text="Lorem  search" fontSize={48} />;
+    }
+    ```
+
+  </TabItem>
+</Tabs>
+
+`SlugStackText` renders one `InstancedMesh` per backing font — one extra draw call per fallback font. It has full `SlugText` parity (`styles`, `outline`, `setOpacity`, `dispose`).
+
+:::caution[Color emoji not supported]
+COLR / CPAL / CBDT (color-glyph tables) are out of scope. Emoji glyphs render as their outline if present, otherwise notdef. A roadmap entry tracks this.
+:::
+
+## Outline
+
+Add a stroked outline behind the fill:
+
+```typescript
+const text = new SlugText({
+  font,
+  text: 'Hello, Slug!',
+  fontSize: 96,
+  color: 0xffffff,
+  outline: {
+    width: 0.025, // em-space half-width (~5% em total stroke width)
+    color: 0x000000,
+  },
+})
+```
+
+Width and color update at runtime via uniforms — no rebuild:
+
+```typescript
+text.setOutlineWidth(0.05)
+text.setOutlineColor(0xff0000)
+```
+
+Outline-only text:
+
+```typescript
+text.setOpacity(0) // hide fill, keep outline visible
+```
+
+The current dynamic shader uses `min(distance)` over the glyph's curves, producing a clean **bevel** at exterior corners. Interior corners stay crisp by construction. Miter / round joins, caps, dashing, and a 1× fill cost baked path are landing in [Phase 5 (#37)](https://github.com/thejustinwalsh/three-flatland/issues/37); the dynamic shader will stay as `outline.mode = 'dynamic'` for live width scrubbing.
 
 ## Material Options
 
-`SlugText` creates a `SlugMaterial` internally. Two shader-level options are available at construction time:
+`SlugText` creates a `SlugMaterial` internally. Several shader-level options are available at construction time (some compile-time constants, some runtime uniforms):
 
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `evenOdd` | `boolean` | `false` | Use even-odd fill rule instead of non-zero winding |
-| `weightBoost` | `boolean` | `false` | Apply `sqrt()` to coverage for bolder appearance |
-
-These are compile-time shader constants and cannot be changed after construction.
+| Option        | Type      | Default | Description                              |
+| ------------- | --------- | ------- | ---------------------------------------- |
+| `evenOdd`     | `boolean` | `false` | Even-odd fill rule (compile-time).       |
+| `weightBoost` | `boolean` | `false` | `sqrt()` coverage boost (compile-time).  |
+| `stemDarken`  | `number`  | `0`     | Stem darkening strength; ~0.4 is subtle. |
+| `thicken`     | `number`  | `0`     | Coverage thickening at low ppem.         |
+| `pixelSnap`   | `boolean` | `true`  | Snap glyph positions to pixel grid.      |
+| `supersample` | `boolean` | `false` | 2×2 supersampling (expensive).           |
 
 ## Pre-baking Fonts
 
@@ -221,13 +368,13 @@ npx slug-bake Inter-Regular.ttf --range latin
 npx slug-bake Inter-Regular.ttf -r latin -r 0x2000-0x206F
 ```
 
-Place the `.slug.json` + `.slug.bin` files alongside the font. `SlugFont.fromURL()` detects them automatically — no code changes needed. The `.ttf` is never fetched when baked data is present.
+Place the `.slug.json` + `.slug.bin` files alongside the font. `SlugFontLoader.load()` detects them automatically — no code changes needed. The `.ttf` is never fetched when baked data is present, and opentype.js never enters the bundle.
 
-| Range | Glyphs | Raw | Brotli |
-|-------|--------|-----|--------|
-| All | 2,849 | 12.78 MB | 724 KB |
-| `latin` | 523 | 2.15 MB | 208 KB |
-| `ascii` | 95 | 412 KB | 32 KB |
+| Range   | Glyphs | Raw      | Brotli |
+| ------- | ------ | -------- | ------ |
+| All     | 2,849  | 12.78 MB | 724 KB |
+| `latin` | 523    | 2.15 MB  | 208 KB |
+| `ascii` | 95     | 412 KB   | 32 KB  |
 
 :::tip[CDN Compression]
 Rely on your CDN's gzip/brotli — the browser decompresses automatically with zero JS cost. ASCII-only Inter with Brotli is **32 KB** for resolution-independent text at any zoom level.
@@ -238,6 +385,7 @@ Missing glyphs render as a fallback rectangle. Named ranges: `ascii`, `latin`, `
 ## How It Works
 
 The Slug algorithm renders each pixel by:
+
 1. Casting dual rays (horizontal + vertical) from the pixel center
 2. Solving quadratic equations to find Bezier curve intersections
 3. Computing winding number from intersection results

@@ -1,4 +1,4 @@
-import type { QuadCurve, GlyphBounds, GlyphBands, Band } from '../types.js'
+import type { QuadCurve, GlyphBounds, GlyphBands, Band } from '../types'
 
 /**
  * Default number of bands per axis. Doubled from 8 → 16 as a pure-data
@@ -19,7 +19,7 @@ const BAND_EPSILON = 1 / 1024
 export function buildBands(
   curves: QuadCurve[],
   bounds: GlyphBounds,
-  bandCount: number = DEFAULT_BAND_COUNT,
+  bandCount: number = DEFAULT_BAND_COUNT
 ): GlyphBands {
   const hBands = buildAxisBands(curves, bounds, bandCount, 'horizontal')
   const vBands = buildAxisBands(curves, bounds, bandCount, 'vertical')
@@ -30,7 +30,7 @@ function buildAxisBands(
   curves: QuadCurve[],
   bounds: GlyphBounds,
   bandCount: number,
-  axis: 'horizontal' | 'vertical',
+  axis: 'horizontal' | 'vertical'
 ): Band[] {
   const isHorizontal = axis === 'horizontal'
 
@@ -71,7 +71,10 @@ function buildAxisBands(
 
     // Assign curve to all overlapping bands (with epsilon overlap)
     const startBand = Math.max(0, Math.floor((curveMin - bandMin - BAND_EPSILON) / bandSize))
-    const endBand = Math.min(bandCount - 1, Math.floor((curveMax - bandMin + BAND_EPSILON) / bandSize))
+    const endBand = Math.min(
+      bandCount - 1,
+      Math.floor((curveMax - bandMin + BAND_EPSILON) / bandSize)
+    )
 
     for (let b = startBand; b <= endBand; b++) {
       bands[b]!.curveIndices.push(i)

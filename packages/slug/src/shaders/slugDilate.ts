@@ -29,7 +29,7 @@ export function slugDilate(
   mvpRow0: Node<'vec4'>,
   mvpRow1: Node<'vec4'>,
   mvpRow3: Node<'vec4'>,
-  viewport: Node<'vec2'>,
+  viewport: Node<'vec2'>
 ) {
   // Pixel-AA dilation only. Stroke-width quad expansion is now the
   // caller's responsibility (applied axis-aligned to posXY/texXY before
@@ -52,13 +52,15 @@ export function slugDilate(
   const t = dot(mvpRow3.xy, n)
 
   // Pixel-space projected normal components
-  const u = s.mul(dot(mvpRow0.xy, n)).sub(
-    t.mul(dot(mvpRow0.xy, posXY).add(mvpRow0.w)),
-  ).mul(viewport.x)
+  const u = s
+    .mul(dot(mvpRow0.xy, n))
+    .sub(t.mul(dot(mvpRow0.xy, posXY).add(mvpRow0.w)))
+    .mul(viewport.x)
 
-  const v = s.mul(dot(mvpRow1.xy, n)).sub(
-    t.mul(dot(mvpRow1.xy, posXY).add(mvpRow1.w)),
-  ).mul(viewport.y)
+  const v = s
+    .mul(dot(mvpRow1.xy, n))
+    .sub(t.mul(dot(mvpRow1.xy, posXY).add(mvpRow1.w)))
+    .mul(viewport.y)
 
   // Dilation distance along the unit normal for half-pixel AA coverage.
   const s2 = s.mul(s)
@@ -75,10 +77,7 @@ export function slugDilate(
   const vpos = vec2(posXY.x.add(dx), posXY.y.add(dy))
 
   // Adjusted em-space texcoord: displacement * invScale (uniform scaling)
-  const texcoord = vec2(
-    texXY.x.add(dx.mul(invScale)),
-    texXY.y.add(dy.mul(invScale)),
-  )
+  const texcoord = vec2(texXY.x.add(dx.mul(invScale)), texXY.y.add(dy.mul(invScale)))
 
   return { vpos, texcoord }
 }

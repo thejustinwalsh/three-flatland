@@ -1,6 +1,7 @@
 import type { DataTexture } from 'three'
-import type { BakedFontData } from './baked.js'
-import { cmapLookup } from './baked.js'
+import type { Font as OpenTypeFont } from 'opentype.js'
+import type { BakedFontData } from './baked'
+import { cmapLookup } from './baked'
 import type {
   SlugGlyphData,
   PositionedGlyph,
@@ -10,8 +11,16 @@ import type {
   MeasureParagraphOptions,
   StyleSpan,
   DecorationRect,
-} from './types.js'
-import { emitDecorations } from './pipeline/decorations.js'
+  ShapeTextOptions,
+  ShapingBackend,
+  BakedShapeTextFn,
+  BakedMeasureTextFn,
+  BakedWrapLinesFn,
+  RuntimeShapeTextFn,
+  RuntimeMeasureTextFn,
+  RuntimeWrapLinesFn,
+} from './types'
+import { emitDecorations } from './pipeline/decorations'
 
 /**
  * Per-font metrics passed into `SlugFont`. Mirrors `parseFont`'s output and
@@ -89,11 +98,14 @@ export class SlugFont {
   /** Per-font superscript offset (x, y), em-space. Y is positive — raises. */
   readonly superscriptOffset: { x: number; y: number }
 
-  // --- Shaping backends (one or the other is set by the loader) ---
-  /** @internal */ _opentypeFont: import('opentype.js').Font | null = null
-  /** @internal */ _shapeTextOT: typeof import('./pipeline/textShaper.js').shapeText | null = null
-  /** @internal */ _wrapLinesOT: typeof import('./pipeline/wrapLines.js').wrapLines | null = null
-  /** @internal */ _measureTextOT: typeof import('./pipeline/textMeasure.js').measureText | null = null
+  // --- Shaping state ---
+  // The backend is a strategy object built once at load time by
+  // `SlugFontLoader` (or the test-friendly `_create*` factories below).
+  // Dispatchers forward straight to it without knowing which backend is
+  // active. Data fields (`_opentypeFont`, `_bakedData`) stay as
+  // structural state because `SlugFontStack` reads them directly.
+  /** @internal */ _backend: ShapingBackend | null = null
+  /** @internal */ _opentypeFont: OpenTypeFont | null = null
   /** @internal */ _bakedData: BakedFontData | null = null
   /**
    * Pre-baked stroke sets keyed by `(width, joinStyle, capStyle,
@@ -109,15 +121,12 @@ export class SlugFont {
     miterLimit: number
     glyphIdOffset: number
   }> = []
-  /** @internal */ _shapeTextBaked: typeof import('./pipeline/textShaperBaked.js').shapeTextBaked | null = null
-  /** @internal */ _wrapLinesBaked: typeof import('./pipeline/wrapLinesBaked.js').wrapLinesBaked | null = null
-  /** @internal */ _measureTextBaked: typeof import('./pipeline/textMeasureBaked.js').measureTextBaked | null = null
 
   /** @internal — Use SlugFontLoader to create instances. */
   constructor(
     glyphs: Map<number, SlugGlyphData>,
     textures: SlugTextureData,
-    metrics: SlugFontMetrics,
+    metrics: SlugFontMetrics
   ) {
     this.glyphs = glyphs
     this.curveTexture = textures.curveTexture
@@ -143,15 +152,28 @@ export class SlugFont {
     textures: SlugTextureData,
     metrics: SlugFontMetrics,
     bakedData: BakedFontData,
-    shapeTextBaked: typeof import('./pipeline/textShaperBaked.js').shapeTextBaked,
-    wrapLinesBaked: typeof import('./pipeline/wrapLinesBaked.js').wrapLinesBaked,
-    measureTextBaked: typeof import('./pipeline/textMeasureBaked.js').measureTextBaked,
+    shapeTextBaked: BakedShapeTextFn,
+    wrapLinesBaked: BakedWrapLinesFn,
+    measureTextBaked: BakedMeasureTextFn
   ): SlugFont {
     const font = new SlugFont(glyphs, textures, metrics)
     font._bakedData = bakedData
-    font._shapeTextBaked = shapeTextBaked
-    font._wrapLinesBaked = wrapLinesBaked
-    font._measureTextBaked = measureTextBaked
+    font._backend = {
+      shapeText: (text, fontSize, options) =>
+        shapeTextBaked(bakedData, font.glyphs, font.unitsPerEm, text, fontSize, options),
+      measureText: (text, fontSize) =>
+        measureTextBaked(
+          bakedData,
+          font.glyphs,
+          font.unitsPerEm,
+          font.ascender,
+          font.descender,
+          text,
+          fontSize
+        ),
+      wrapLines: (text, fontSize, maxWidth) =>
+        wrapLinesBaked(bakedData, font.glyphs, font.unitsPerEm, text, fontSize, maxWidth),
+    }
     return font
   }
 
@@ -160,40 +182,30 @@ export class SlugFont {
     glyphs: Map<number, SlugGlyphData>,
     textures: SlugTextureData,
     metrics: SlugFontMetrics,
-    otFont: import('opentype.js').Font,
-    shapeText: typeof import('./pipeline/textShaper.js').shapeText,
-    wrapLines: typeof import('./pipeline/wrapLines.js').wrapLines,
-    measureText: typeof import('./pipeline/textMeasure.js').measureText,
+    otFont: OpenTypeFont,
+    shapeText: RuntimeShapeTextFn,
+    wrapLines: RuntimeWrapLinesFn,
+    measureText: RuntimeMeasureTextFn
   ): SlugFont {
     const font = new SlugFont(glyphs, textures, metrics)
     font._opentypeFont = otFont
-    font._shapeTextOT = shapeText
-    font._wrapLinesOT = wrapLines
-    font._measureTextOT = measureText
+    font._backend = {
+      shapeText: (text, fontSize, options) => shapeText(otFont, text, fontSize, options),
+      measureText: (text, fontSize) => measureText(otFont, font.glyphs, text, fontSize),
+      wrapLines: (text, fontSize, maxWidth) => wrapLines(otFont, text, fontSize, maxWidth),
+    }
     return font
   }
 
   /**
-   * Shape a text string into positioned glyphs.
-   * Uses baked shaper (no opentype.js) when loaded from baked data,
-   * or opentype.js shaper when loaded from .ttf at runtime.
+   * Shape a text string into positioned glyphs. Dispatches to the
+   * baked-data shaper or the opentype.js shaper depending on which
+   * backend was bound at load time.
    */
-  shapeText(
-    text: string,
-    fontSize: number,
-    options?: {
-      align?: 'left' | 'center' | 'right'
-      lineHeight?: number
-      maxWidth?: number
-    },
-  ): PositionedGlyph[] {
-    if (this._bakedData && this._shapeTextBaked) {
-      return this._shapeTextBaked(this._bakedData, this.glyphs, this.unitsPerEm, text, fontSize, options)
-    }
-    if (this._opentypeFont && this._shapeTextOT) {
-      return this._shapeTextOT(this._opentypeFont, text, fontSize, options)
-    }
-    throw new Error('SlugFont: text shaping not available — load via SlugFontLoader')
+  shapeText(text: string, fontSize: number, options?: ShapeTextOptions): PositionedGlyph[] {
+    if (!this._backend)
+      throw new Error('SlugFont: text shaping not available — load via SlugFontLoader')
+    return this._backend.shapeText(text, fontSize, options)
   }
 
   /**
@@ -207,21 +219,9 @@ export class SlugFont {
    * widths agree across all three APIs.
    */
   measureText(text: string, fontSize: number): TextMetrics {
-    if (this._bakedData && this._measureTextBaked) {
-      return this._measureTextBaked(
-        this._bakedData,
-        this.glyphs,
-        this.unitsPerEm,
-        this.ascender,
-        this.descender,
-        text,
-        fontSize,
-      )
-    }
-    if (this._opentypeFont && this._measureTextOT) {
-      return this._measureTextOT(this._opentypeFont, this.glyphs, text, fontSize)
-    }
-    throw new Error('SlugFont: text measurement not available — load via SlugFontLoader')
+    if (!this._backend)
+      throw new Error('SlugFont: text measurement not available — load via SlugFontLoader')
+    return this._backend.measureText(text, fontSize)
   }
 
   /**
@@ -239,7 +239,7 @@ export class SlugFont {
   measureParagraph(
     text: string,
     fontSize: number,
-    options: MeasureParagraphOptions = {},
+    options: MeasureParagraphOptions = {}
   ): ParagraphMetrics {
     const lineHeight = options.lineHeight ?? 1.2
     const lines = this.wrapText(text, fontSize, options.maxWidth)
@@ -280,16 +280,23 @@ export class SlugFont {
     text: string,
     positioned: readonly PositionedGlyph[],
     styles: readonly StyleSpan[],
-    fontSize: number,
+    fontSize: number
   ): DecorationRect[] {
     const advances = new Map<number, number>()
     for (const [id, g] of this.glyphs) advances.set(id, g.advanceWidth)
-    return emitDecorations(text, positioned, styles, fontSize, {
-      underlinePosition: this.underlinePosition,
-      underlineThickness: this.underlineThickness,
-      strikethroughPosition: this.strikethroughPosition,
-      strikethroughThickness: this.strikethroughThickness,
-    }, advances)
+    return emitDecorations(
+      text,
+      positioned,
+      styles,
+      fontSize,
+      {
+        underlinePosition: this.underlinePosition,
+        underlineThickness: this.underlineThickness,
+        strikethroughPosition: this.strikethroughPosition,
+        strikethroughThickness: this.strikethroughThickness,
+      },
+      advances
+    )
   }
 
   /**
@@ -302,13 +309,9 @@ export class SlugFont {
    * breaks are deterministic across baked and runtime paths.
    */
   wrapText(text: string, fontSize: number, maxWidth?: number): string[] {
-    if (this._bakedData && this._wrapLinesBaked) {
-      return this._wrapLinesBaked(this._bakedData, this.glyphs, this.unitsPerEm, text, fontSize, maxWidth)
-    }
-    if (this._opentypeFont && this._wrapLinesOT) {
-      return this._wrapLinesOT(this._opentypeFont, text, fontSize, maxWidth)
-    }
-    throw new Error('SlugFont: wrapText not available — load via SlugFontLoader')
+    if (!this._backend)
+      throw new Error('SlugFont: wrapText not available — load via SlugFontLoader')
+    return this._backend.wrapLines(text, fontSize, maxWidth)
   }
 
   /**
@@ -346,7 +349,7 @@ export class SlugFont {
     width: number,
     joinStyle: 'miter' | 'round' | 'bevel' = 'miter',
     capStyle: 'flat' | 'square' | 'round' | 'triangle' = 'flat',
-    miterLimit = 4,
+    miterLimit = 4
   ): SlugGlyphData | null {
     for (const s of this.strokeSets) {
       if (

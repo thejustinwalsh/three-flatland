@@ -1,16 +1,16 @@
 // @three-flatland/slug
 // GPU-accelerated resolution-independent font rendering via the Slug algorithm
 
-export { SlugFont } from './SlugFont.js'
-export { SlugFontLoader } from './SlugFontLoader.js'
-export { SlugFontStack } from './SlugFontStack.js'
-export { SlugText } from './SlugText.js'
-export { SlugStackText } from './SlugStackText.js'
-export type { SlugStackTextOptions } from './SlugStackText.js'
-export { SlugMaterial } from './SlugMaterial.js'
-export { SlugStrokeMaterial } from './SlugStrokeMaterial.js'
-export type { SlugStrokeMaterialOptions } from './SlugStrokeMaterial.js'
-export { SlugGeometry } from './SlugGeometry.js'
+export { SlugFont } from './SlugFont'
+export { SlugFontLoader } from './SlugFontLoader'
+export { SlugFontStack } from './SlugFontStack'
+export { SlugText } from './SlugText'
+export { SlugStackText } from './SlugStackText'
+export type { SlugStackTextOptions } from './SlugStackText'
+export { SlugMaterial } from './SlugMaterial'
+export { SlugStrokeMaterial } from './SlugStrokeMaterial'
+export type { SlugStrokeMaterialOptions } from './SlugStrokeMaterial'
+export { SlugGeometry } from './SlugGeometry'
 
 export type {
   QuadCurve,
@@ -28,9 +28,9 @@ export type {
   StyleSpan,
   DecorationRect,
   SlugOutlineOptions,
-} from './types.js'
+} from './types'
 
-export type { SlugMaterialOptions } from './SlugMaterial.js'
+export type { SlugMaterialOptions } from './SlugMaterial'
 
-export { bakedURLs } from './baked.js'
-export type { BakedJSON } from './baked.js'
+export { bakedURLs } from './baked'
+export type { BakedJSON } from './baked'

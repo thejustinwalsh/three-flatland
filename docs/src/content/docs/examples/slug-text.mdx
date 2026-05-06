@@ -3,49 +3,49 @@ title: Slug Text
 description: GPU-accelerated resolution-independent text rendering.
 ---
 
-import { Tabs, TabItem } from '@astrojs/starlight/components';
-import ExamplePreview from '../../../components/ExamplePreview';
-import StackBlitzEmbed from '../../../components/StackBlitzEmbed';
-import ExampleTabs from '../../../components/ExampleTabs.astro';
-import { loadExample } from '../../../utils/loadExample';
+import { Tabs, TabItem } from '@astrojs/starlight/components'
+import ExamplePreview from '../../../components/ExamplePreview'
+import StackBlitzEmbed from '../../../components/StackBlitzEmbed'
+import ExampleTabs from '../../../components/ExampleTabs.astro'
+import { loadExample } from '../../../utils/loadExample'
 
-export const threeFiles = loadExample('three', 'slug-text');
-export const reactFiles = loadExample('react', 'slug-text');
+export const threeFiles = loadExample('three', 'slug-text')
+export const reactFiles = loadExample('react', 'slug-text')
 
 <ExampleTabs>
-<Tabs>
-  <TabItem label="Preview" icon="rocket">
-    <ExamplePreview client:load type="three" name="slug-text" />
-  </TabItem>
-  <TabItem label="Three.js" icon="seti:javascript">
-    <StackBlitzEmbed
-      client:load
-      title="Slug Text - Three.js"
-      files={threeFiles}
-      openFile="main.ts"
-      height={600}
-    />
-  </TabItem>
-  <TabItem label="React" icon="seti:react">
-    <StackBlitzEmbed
-      client:load
-      title="Slug Text - React"
-      files={reactFiles}
-      openFile="App.tsx"
-      height={600}
-    />
-  </TabItem>
-</Tabs>
+  <Tabs>
+    <TabItem label="Preview" icon="rocket">
+      <ExamplePreview client:load type="three" name="slug-text" />
+    </TabItem>
+    <TabItem label="Three.js" icon="seti:javascript">
+      <StackBlitzEmbed
+        client:load
+        title="Slug Text - Three.js"
+        files={threeFiles}
+        openFile="main.ts"
+        height={600}
+      />
+    </TabItem>
+    <TabItem label="React" icon="seti:react">
+      <StackBlitzEmbed
+        client:load
+        title="Slug Text - React"
+        files={reactFiles}
+        openFile="App.tsx"
+        height={600}
+      />
+    </TabItem>
+  </Tabs>
 </ExampleTabs>
 
-## SlugFont
+## SlugFontLoader
 
-`SlugFont` loads a TTF/OTF/WOFF font and packs glyph outlines into GPU textures for the Slug rendering algorithm:
+`SlugFontLoader.load()` is the single entry point. It tries baked data (`.slug.json` + `.slug.bin`) first and falls back to runtime parsing of TTF/OTF/WOFF — opentype.js is dynamic-imported only on the runtime path:
 
 ```typescript
-import { SlugFont } from '@three-flatland/slug';
+import { SlugFontLoader } from '@three-flatland/slug'
 
-const font = await SlugFont.fromURL('/fonts/Inter-Regular.ttf');
+const font = await SlugFontLoader.load('/fonts/Inter-Regular.ttf')
 ```
 
 ## SlugText
@@ -59,8 +59,8 @@ const text = new SlugText({
   fontSize: 48,
   color: 0xffffff,
   align: 'center',
-});
-scene.add(text);
+})
+scene.add(text)
 ```
 
 Call `text.update(camera)` every frame to keep the MVP matrix current for dilation.

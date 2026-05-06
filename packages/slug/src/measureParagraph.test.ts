@@ -2,12 +2,12 @@ import { describe, it, expect, beforeAll } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import opentype from 'opentype.js'
-import { parseFont } from './pipeline/fontParser.js'
-import { packTextures } from './pipeline/texturePacker.js'
-import { shapeText } from './pipeline/textShaper.js'
-import { wrapLines } from './pipeline/wrapLines.js'
-import { measureText } from './pipeline/textMeasure.js'
-import { SlugFont } from './SlugFont.js'
+import { parseFont } from './pipeline/fontParser'
+import { packTextures } from './pipeline/texturePacker'
+import { shapeText } from './pipeline/textShaper'
+import { wrapLines } from './pipeline/wrapLines'
+import { measureText } from './pipeline/textMeasure'
+import { SlugFont } from './SlugFont'
 
 const FONT_PATH = resolve(__dirname, '../../../examples/three/slug-text/public/Inter-Regular.ttf')
 const buf = readFileSync(FONT_PATH)
@@ -31,7 +31,7 @@ beforeAll(() => {
     otFont,
     shapeText,
     wrapLines,
-    measureText,
+    measureText
   )
 })
 
@@ -79,6 +79,6 @@ describe('SlugFont.measureParagraph', () => {
 
   it('preserves explicit newlines as line breaks', () => {
     const para = font.measureParagraph('foo\nbar', 48)
-    expect(para.lines.map(l => l.text)).toEqual(['foo', 'bar'])
+    expect(para.lines.map((l) => l.text)).toEqual(['foo', 'bar'])
   })
 })

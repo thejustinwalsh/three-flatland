@@ -25,9 +25,18 @@ const FA_FONT_URL = './fa-solid.ttf'
 /** PUA codepoints for the baked FA icons. Keep in sync with the `-r` args
  *  in the slug-bake command that produced `fa-solid.slug.*`. */
 const ICON = {
-  heart: '\uf004', star: '\uf005', home: '\uf015', user: '\uf007',
-  gear: '\uf013', bolt: '\uf0e7', thumbsUp: '\uf164', paperPlane: '\uf1d8',
-  code: '\uf121', coffee: '\uf0f4', rocket: '\uf135', book: '\uf02d',
+  heart: '\uf004',
+  star: '\uf005',
+  home: '\uf015',
+  user: '\uf007',
+  gear: '\uf013',
+  bolt: '\uf0e7',
+  thumbsUp: '\uf164',
+  paperPlane: '\uf1d8',
+  code: '\uf121',
+  coffee: '\uf0f4',
+  rocket: '\uf135',
+  book: '\uf02d',
 } as const
 const ICON_DEMO =
   `Built with ${ICON.code} and ${ICON.heart}\n` +
@@ -48,8 +57,17 @@ const MODE_LABELS: Record<CompareMode, string> = {
 }
 
 const FONT_SIZE_OPTIONS = {
-  '6': 6, '8': 8, '10': 10, '12': 12, '16': 16, '24': 24,
-  '32': 32, '48': 48, '72': 72, '96': 96, '200': 200,
+  '6': 6,
+  '8': 8,
+  '10': 10,
+  '12': 12,
+  '16': 16,
+  '24': 24,
+  '32': 32,
+  '48': 48,
+  '72': 72,
+  '96': 96,
+  '200': 200,
 }
 
 const COMPARE_MODE_OPTIONS = {
@@ -93,7 +111,7 @@ function drawCompareText(
   lineHeight: number,
   mode: CompareMode,
   fontFamily: string = 'Inter-Slug, sans-serif',
-  preWrappedLines: string[] | null = null,
+  preWrappedLines: string[] | null = null
 ) {
   const dpr = window.devicePixelRatio
   const w = ctx.canvas.width / dpr
@@ -135,12 +153,22 @@ function drawDiff(
   maxWidth: number,
   lineHeight: number,
   fontFamily: string = 'Inter-Slug, sans-serif',
-  preWrappedLines: string[] | null = null,
+  preWrappedLines: string[] | null = null
 ) {
   const cw = compareCtx.canvas.width
   const ch = compareCtx.canvas.height
 
-  drawCompareText(compareCtx, font, text, fontSize, maxWidth, lineHeight, 'diff', fontFamily, preWrappedLines)
+  drawCompareText(
+    compareCtx,
+    font,
+    text,
+    fontSize,
+    maxWidth,
+    lineHeight,
+    'diff',
+    fontFamily,
+    preWrappedLines
+  )
   const canvasPixels = compareCtx.getImageData(0, 0, cw, ch)
 
   const tempCanvas = document.createElement('canvas')
@@ -391,11 +419,12 @@ function useWindowSize() {
     // viewport has actually settled. Reading live from window on every
     // event keeps the canvas DPR-aware on multi-monitor setups and
     // correct after fullscreen enter/exit.
-    const measure = () => setSize({
-      w: window.innerWidth,
-      h: window.innerHeight,
-      dpr: window.devicePixelRatio,
-    })
+    const measure = () =>
+      setSize({
+        w: window.innerWidth,
+        h: window.innerHeight,
+        dpr: window.devicePixelRatio,
+      })
 
     // The `resolution` media query fires whenever DPR changes — covers
     // moving the window between monitors with different scale factors,
@@ -479,16 +508,12 @@ function CompareCanvas({
     const ctx = canvas.getContext('2d')
     if (!ctx) return
     const maxWidth = windowSize.w * MAX_WIDTH_FRACTION
-    const fontFamily = iconsMode
-      ? 'Inter-Slug, FA-Solid, sans-serif'
-      : 'Inter-Slug, sans-serif'
+    const fontFamily = iconsMode ? 'Inter-Slug, FA-Solid, sans-serif' : 'Inter-Slug, sans-serif'
     // In icons mode, wrap via the stack so line breaks agree with
     // `SlugStackText` (which uses per-codepoint FA advance widths). The
     // primary-only `font.wrapText` would diverge as soon as FA glyphs
     // push a line over the limit.
-    const preWrappedLines = iconsMode && stack
-      ? stack.wrapText(text, fontSize, maxWidth)
-      : null
+    const preWrappedLines = iconsMode && stack ? stack.wrapText(text, fontSize, maxWidth) : null
 
     // Defer Canvas2D draws so the Slug WebGPU canvas has a chance to
     // render the new content before the compare overlay updates.
@@ -505,9 +530,22 @@ function CompareCanvas({
     if (mode === 'diff') {
       if (!gpuCanvas) return
       setComputing(true)
-      const idleId = requestIdleCallback(() => {
-        drawDiff(ctx, gpuCanvas, font, text, fontSize, maxWidth, LINE_HEIGHT, fontFamily, preWrappedLines)
-      }, { timeout: 32 })
+      const idleId = requestIdleCallback(
+        () => {
+          drawDiff(
+            ctx,
+            gpuCanvas,
+            font,
+            text,
+            fontSize,
+            maxWidth,
+            LINE_HEIGHT,
+            fontFamily,
+            preWrappedLines
+          )
+        },
+        { timeout: 32 }
+      )
       const t = setTimeout(() => setComputing(false), 1000)
       return () => {
         cancelIdleCallback(idleId)
@@ -516,9 +554,22 @@ function CompareCanvas({
     }
 
     setComputing(false)
-    const idleId = requestIdleCallback(() => {
-      drawCompareText(ctx, font, text, fontSize, maxWidth, LINE_HEIGHT, mode, fontFamily, preWrappedLines)
-    }, { timeout: 32 })
+    const idleId = requestIdleCallback(
+      () => {
+        drawCompareText(
+          ctx,
+          font,
+          text,
+          fontSize,
+          maxWidth,
+          LINE_HEIGHT,
+          mode,
+          fontFamily,
+          preWrappedLines
+        )
+      },
+      { timeout: 32 }
+    )
     return () => cancelIdleCallback(idleId)
   }, [font, stack, text, fontSize, mode, stemDarken, thicken, windowSize, gpuCanvas, iconsMode])
 
@@ -654,12 +705,15 @@ function MeasureOverlay({
   windowSize: { w: number; h: number }
   onMetrics: (m: TextMetrics | null) => void
 }) {
-  const shapedLines = useMemo(() => font.wrapText(text, fontSize, maxWidth), [font, text, fontSize, maxWidth])
+  const shapedLines = useMemo(
+    () => font.wrapText(text, fontSize, maxWidth),
+    [font, text, fontSize, maxWidth]
+  )
   const lineCount = shapedLines.length
 
   const lineMetrics = useMemo(
     () => shapedLines.map((line) => font.measureText(line, fontSize)),
-    [font, shapedLines, fontSize],
+    [font, shapedLines, fontSize]
   )
 
   const [hoveredLine, setHoveredLine] = useState<number | null>(null)
@@ -672,7 +726,7 @@ function MeasureOverlay({
   }, [overlayMetrics, onMetrics])
 
   const lineHeightPx = fontSize * LINE_HEIGHT
-  const firstBaselineY = windowSize.h / 2 - (lineCount - 1) * lineHeightPx / 2
+  const firstBaselineY = windowSize.h / 2 - ((lineCount - 1) * lineHeightPx) / 2
   const centerX = windowSize.w / 2
 
   const baselineFor = (lineIndex: number) => firstBaselineY + lineIndex * lineHeightPx
@@ -721,7 +775,8 @@ function MeasureOverlay({
               left: centerX - overlayMetrics.width / 2 - overlayMetrics.actualBoundingBoxLeft,
               top: baselineFor(overlayLine) - overlayMetrics.actualBoundingBoxAscent,
               width: overlayMetrics.actualBoundingBoxLeft + overlayMetrics.actualBoundingBoxRight,
-              height: overlayMetrics.actualBoundingBoxAscent + overlayMetrics.actualBoundingBoxDescent,
+              height:
+                overlayMetrics.actualBoundingBoxAscent + overlayMetrics.actualBoundingBoxDescent,
               border: '1px solid rgba(102, 217, 239, 0.9)',
               pointerEvents: 'none',
               zIndex: 6,
@@ -750,7 +805,14 @@ function ComputingIndicator() {
           viewBox="0 0 24 24"
           style={{ animation: 'slug-spin 0.7s linear infinite' }}
         >
-          <circle cx="12" cy="12" r="10" stroke="rgba(255,255,255,0.15)" strokeWidth="3" fill="none" />
+          <circle
+            cx="12"
+            cy="12"
+            r="10"
+            stroke="rgba(255,255,255,0.15)"
+            strokeWidth="3"
+            fill="none"
+          />
           <path
             d="M12 2a10 10 0 0 1 10 10"
             stroke="#fff"
@@ -797,17 +859,16 @@ export default function App() {
     options: { Fill: 'fill', Outline: 'outline', Both: 'both' },
   })
   const [outlineWidth] = usePaneInput<number>(outline, 'width', 0.025, {
-    min: 0.001, max: 0.15, step: 0.001,
+    min: 0.001,
+    max: 0.15,
+    step: 0.001,
   })
   const [outlineColor] = usePaneInput<string>(outline, 'color', '#000000')
 
   const mode = usePaneFolder(pane, 'Mode')
-  const [compareMode] = usePaneInput<CompareMode>(
-    mode,
-    'compare',
-    'onion',
-    { options: COMPARE_MODE_OPTIONS },
-  )
+  const [compareMode] = usePaneInput<CompareMode>(mode, 'compare', 'onion', {
+    options: COMPARE_MODE_OPTIONS,
+  })
   const [forceRuntime] = usePaneInput<boolean>(mode, 'forceRuntime', false, {
     label: 'runtime',
   })
@@ -830,30 +891,65 @@ export default function App() {
   const measure = usePaneFolder(pane, 'Measure')
   const numFmt = (v: number) => v.toFixed(1)
   const intFmt = (v: number) => v.toFixed(0)
-  const [, setParaWidth] = usePaneInput<number>(measure, 'paraWidth', 0, { label: 'block w', readonly: true, format: numFmt })
-  const [, setParaHeight] = usePaneInput<number>(measure, 'paraHeight', 0, { label: 'block h', readonly: true, format: numFmt })
-  const [, setParaLines] = usePaneInput<number>(measure, 'paraLines', 0, { label: 'lines', readonly: true, format: intFmt })
-  const [, setWidth] = usePaneInput<number>(measure, 'width', 0, { label: 'line w', readonly: true, format: numFmt })
-  const [, setActualAscent] = usePaneInput<number>(measure, 'actualAscent', 0, { label: 'actual ↑', readonly: true, format: numFmt })
-  const [, setActualDescent] = usePaneInput<number>(measure, 'actualDescent', 0, { label: 'actual ↓', readonly: true, format: numFmt })
-  const [, setFontAscent] = usePaneInput<number>(measure, 'fontAscent', 0, { label: 'font ↑', readonly: true, format: numFmt })
-  const [, setFontDescent] = usePaneInput<number>(measure, 'fontDescent', 0, { label: 'font ↓', readonly: true, format: numFmt })
+  const [, setParaWidth] = usePaneInput<number>(measure, 'paraWidth', 0, {
+    label: 'block w',
+    readonly: true,
+    format: numFmt,
+  })
+  const [, setParaHeight] = usePaneInput<number>(measure, 'paraHeight', 0, {
+    label: 'block h',
+    readonly: true,
+    format: numFmt,
+  })
+  const [, setParaLines] = usePaneInput<number>(measure, 'paraLines', 0, {
+    label: 'lines',
+    readonly: true,
+    format: intFmt,
+  })
+  const [, setWidth] = usePaneInput<number>(measure, 'width', 0, {
+    label: 'line w',
+    readonly: true,
+    format: numFmt,
+  })
+  const [, setActualAscent] = usePaneInput<number>(measure, 'actualAscent', 0, {
+    label: 'actual ↑',
+    readonly: true,
+    format: numFmt,
+  })
+  const [, setActualDescent] = usePaneInput<number>(measure, 'actualDescent', 0, {
+    label: 'actual ↓',
+    readonly: true,
+    format: numFmt,
+  })
+  const [, setFontAscent] = usePaneInput<number>(measure, 'fontAscent', 0, {
+    label: 'font ↑',
+    readonly: true,
+    format: numFmt,
+  })
+  const [, setFontDescent] = usePaneInput<number>(measure, 'fontDescent', 0, {
+    label: 'font ↓',
+    readonly: true,
+    format: numFmt,
+  })
 
-  const handleMetrics = useCallback((m: TextMetrics | null) => {
-    if (!m) {
-      setWidth(0)
-      setActualAscent(0)
-      setActualDescent(0)
-      setFontAscent(0)
-      setFontDescent(0)
-      return
-    }
-    setWidth(m.width)
-    setActualAscent(m.actualBoundingBoxAscent)
-    setActualDescent(m.actualBoundingBoxDescent)
-    setFontAscent(m.fontBoundingBoxAscent)
-    setFontDescent(m.fontBoundingBoxDescent)
-  }, [setWidth, setActualAscent, setActualDescent, setFontAscent, setFontDescent])
+  const handleMetrics = useCallback(
+    (m: TextMetrics | null) => {
+      if (!m) {
+        setWidth(0)
+        setActualAscent(0)
+        setActualDescent(0)
+        setFontAscent(0)
+        setFontDescent(0)
+        return
+      }
+      setWidth(m.width)
+      setActualAscent(m.actualBoundingBoxAscent)
+      setActualDescent(m.actualBoundingBoxDescent)
+      setFontAscent(m.fontBoundingBoxAscent)
+      setFontDescent(m.fontBoundingBoxDescent)
+    },
+    [setWidth, setActualAscent, setActualDescent, setFontAscent, setFontDescent]
+  )
 
   const [font, setFont] = useState<SlugFont | null>(null)
   const [iconFont, setIconFont] = useState<SlugFont | null>(null)
@@ -862,11 +958,11 @@ export default function App() {
   const [splitX, setSplitX] = useState(() => Math.round(window.innerWidth / 2))
   const text = useMemo(
     () => (iconsMode ? ICON_DEMO : getLoremText(wordCount)),
-    [iconsMode, wordCount],
+    [iconsMode, wordCount]
   )
   const stack = useMemo(
     () => (font && iconFont ? new SlugFontStack([font, iconFont]) : null),
-    [font, iconFont],
+    [font, iconFont]
   )
 
   // Compute the demo span [start, end) from the chosen scope. Falls back
@@ -892,12 +988,14 @@ export default function App() {
   const styles = useMemo<StyleSpan[]>(() => {
     if (!styleUnderline && !styleStrike) return []
     if (styleRange.start === styleRange.end) return []
-    return [{
-      start: styleRange.start,
-      end: styleRange.end,
-      underline: styleUnderline,
-      strike: styleStrike,
-    }]
+    return [
+      {
+        start: styleRange.start,
+        end: styleRange.end,
+        underline: styleUnderline,
+        strike: styleStrike,
+      },
+    ]
   }, [styleRange, styleUnderline, styleStrike])
 
   useEffect(() => {
@@ -927,12 +1025,16 @@ export default function App() {
       document.fonts.load('48px FA-Solid'),
     ]).finally(() => {
       SlugFontLoader.load(FONT_URL, { forceRuntime })
-        .then((f) => { if (!cancelled) setFont(f) })
+        .then((f) => {
+          if (!cancelled) setFont(f)
+        })
         .catch((err) => {
           if (!cancelled) console.error('[slug-text] Inter load failed:', err)
         })
     })
-    return () => { cancelled = true }
+    return () => {
+      cancelled = true
+    }
   }, [forceRuntime])
 
   // Icon fallback font — baked-only (no .ttf on disk), independent of
@@ -940,11 +1042,15 @@ export default function App() {
   useEffect(() => {
     let cancelled = false
     SlugFontLoader.load(FA_FONT_URL)
-      .then((f) => { if (!cancelled) setIconFont(f) })
+      .then((f) => {
+        if (!cancelled) setIconFont(f)
+      })
       .catch((err) => {
         if (!cancelled) console.error('[slug-text] FA load failed:', err)
       })
-    return () => { cancelled = true }
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   return (

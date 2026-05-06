@@ -28,6 +28,27 @@
 
 ---
 
+## Status (as of 2026-05-06)
+
+The package shipped its first alpha (`@three-flatland/slug@0.1.0-alpha.1`) covering Phase 0; this branch (`feat-slug`, PR #20) consolidates Phases 0z – 4 and the Phase 5 stroke-offsetter foundation (Tasks 15 – 17) for the next alpha snapshot. Phase 5 (Tasks 18 – 23), Phase 6, and Phase 7 are tracked as GitHub epics:
+
+| Phase | Status | Tracking |
+|---|---|---|
+| 0z — Relocate vanilla → three | ✅ Shipped | — |
+| 0a — Tweakpane migration | ✅ Shipped | — |
+| 0 — Rebase ship-check | ✅ Shipped | — |
+| 1 — Font metrics & measurement | ✅ Shipped (`measureText`, `measureParagraph`, `wrapText`) | — |
+| 2 — Font styles (underline / strike / super / sub) | ✅ Shipped (`StyleSpan`) | — |
+| 3 — Glyph fallback (`SlugFontStack`, `SlugStackText`) | ✅ Shipped | — |
+| 4 — Analytic stroked text (dynamic, bevel-via-min) | ✅ Shipped (`SlugText.outline`, `SlugStrokeMaterial`) | — |
+| 5 — Generic vector graphics (baked-as-fill) | 🟡 Partial — Tasks 15 – 17 done; 18 – 23 pending | [#37](https://github.com/thejustinwalsh/three-flatland/issues/37) |
+| 6 — Rich text | ⬜ Pending | [#38](https://github.com/thejustinwalsh/three-flatland/issues/38) |
+| 7 — Release & roadmap maintenance | 🟡 Ongoing — alpha cadence | [#39](https://github.com/thejustinwalsh/three-flatland/issues/39) |
+
+Sub-task checkboxes below reflect this status: `[x]` = done, `[ ]` = pending.
+
+---
+
 ## Phase 0z — Relocate Example to `examples/three/` (before Tweakpane migration)
 
 The PR-20 branch put the Three-side example under `examples/three/slug-text/` and registered both slug-text examples as standalone microfrontends. Post-rename on `main`:
@@ -36,18 +57,18 @@ The PR-20 branch put the Three-side example under `examples/three/slug-text/` an
 
 ### Task 0z.1 — Move + rename
 
-- [ ] **Step 0z.1.1** — `git mv examples/vanilla/slug-text examples/three/slug-text && rmdir examples/vanilla` (it will only contain slug-text; if anything else landed there, flag it).
-- [ ] **Step 0z.1.2** — Rename package in `examples/three/slug-text/package.json`: `"name": "example-three-slug-text"` → `"example-three-slug-text"`.
-- [ ] **Step 0z.1.3** — Delete both per-example entries from `microfrontends.json` (keep only `docs` and `examples`). The example will be auto-served at `http://localhost:5173/three/slug-text` and `/react/slug-text` by the shared MPA; drop the custom ports 4017/4018.
-- [ ] **Step 0z.1.4** — Fix test fixture paths in 4 files:
+- [x] **Step 0z.1.1** — `git mv examples/vanilla/slug-text examples/three/slug-text && rmdir examples/vanilla` (it will only contain slug-text; if anything else landed there, flag it).
+- [x] **Step 0z.1.2** — Rename package in `examples/three/slug-text/package.json`: `"name": "example-three-slug-text"` → `"example-three-slug-text"`.
+- [x] **Step 0z.1.3** — Delete both per-example entries from `microfrontends.json` (keep only `docs` and `examples`). The example will be auto-served at `http://localhost:5173/three/slug-text` and `/react/slug-text` by the shared MPA; drop the custom ports 4017/4018.
+- [x] **Step 0z.1.4** — Fix test fixture paths in 4 files:
   - `packages/slug/src/baked.test.ts:10`
   - `packages/slug/src/pipeline/textShaper.test.ts:7`
   - `packages/slug/src/pipeline/texturePacker.test.ts:7`
   - `packages/slug/src/pipeline/fontParser.test.ts:6`
   Replace `examples/vanilla/slug-text` with `examples/three/slug-text` (exact string) in each.
-- [ ] **Step 0z.1.5** — `pnpm install` to regenerate `pnpm-lock.yaml` entries keyed by the new package name. `pnpm sync:pack:verify`.
-- [ ] **Step 0z.1.6** — Verify: `pnpm --filter=example-three-slug-text typecheck`, `pnpm --filter=@three-flatland/slug test`. `pnpm dev` should expose the example at `/three/slug-text` with no 404 and no console errors.
-- [ ] **Step 0z.1.7** — Commit: `refactor(example-slug-text): relocate vanilla→three, remove standalone MFE entries`
+- [x] **Step 0z.1.5** — `pnpm install` to regenerate `pnpm-lock.yaml` entries keyed by the new package name. `pnpm sync:pack:verify`.
+- [x] **Step 0z.1.6** — Verify: `pnpm --filter=example-three-slug-text typecheck`, `pnpm --filter=@three-flatland/slug test`. `pnpm dev` should expose the example at `/three/slug-text` with no 404 and no console errors.
+- [x] **Step 0z.1.7** — Commit: `refactor(example-slug-text): relocate vanilla→three, remove standalone MFE entries`
 
 ---
 
@@ -72,24 +93,24 @@ The `feat-slug` branch predates the Web Awesome → Tweakpane migration on `main
 - Modify: `examples/react/slug-text/package.json` — drop `@awesome.me/webawesome` dep; pnpm-workspace catalog already has `@three-flatland/tweakpane`.
 - Run: `pnpm sync:pack` after editing package.json.
 
-- [ ] **Step 0a.1.1** — Remove all Web Awesome imports (`@awesome.me/webawesome` CSS + JS + React components). Delete `useWrappingGroup`. Delete the inline-styled status and UI panel `<div>`s.
-- [ ] **Step 0a.1.2** — Add tweakpane imports:
+- [x] **Step 0a.1.1** — Remove all Web Awesome imports (`@awesome.me/webawesome` CSS + JS + React components). Delete `useWrappingGroup`. Delete the inline-styled status and UI panel `<div>`s.
+- [x] **Step 0a.1.2** — Add tweakpane imports:
   ```tsx
   import { usePane, usePaneFolder, usePaneInput, usePaneList, useStatsMonitor } from '@three-flatland/tweakpane/react'
   import type { StatsHandle } from '@three-flatland/tweakpane/react'
   ```
-- [ ] **Step 0a.1.3** — Restructure `App` to match `pass-effects/App.tsx`:
+- [x] **Step 0a.1.3** — Restructure `App` to match `pass-effects/App.tsx`:
   - `const { pane, stats } = usePane()` at App top-level.
   - Build UI folders/bindings **synchronously** on first render using the `initRef` pattern from `pass-effects/App.tsx:286-300`:
     - Settings folder: `Size` (list: 6/8/10/12/16/24/32/48/72/96/200), `Darken` (number, 0–1 step 0.01), `Thicken` (number, 0–3 step 0.01), `Max Width %` (number, 0.1–1.0 step 0.05 → drives `maxWidth`).
     - Diagnostics folder: `Force Runtime` (boolean, reloads font on change), `HTML Overlay` (boolean), readonly monitors: `Glyphs` (number, font.glyphs.size), `Load (ms)`, `Source` (string: "baked" | "runtime"), `Live Count` (number, slugText.count updated via `pane.refresh()` at 2Hz).
   - Hoist settings state into React refs, not state, where they don't drive conditional rendering (fontSize, stemDarken, thicken drive only the mesh — use refs + forward them into the scene via `useFrame` mutating mesh props).
-- [ ] **Step 0a.1.4** — Add `<StatsTracker>` component inside `<Canvas>` calling `useStatsMonitor(stats)`. Pattern from `pass-effects/App.tsx:273-277`.
-- [ ] **Step 0a.1.5** — Add `trackTimestamp: true` to `<Canvas renderer={...}>` so the GPU-time mode works.
-- [ ] **Step 0a.1.6** — Keep hotkeys (`h` overlay, `r` runtime) but wire them through the pane bindings (mutate the bound object + `pane.refresh()`) rather than independent state, so UI + hotkey stay in sync.
-- [ ] **Step 0a.1.7** — `HtmlOverlay` component stays (it's the comparison artifact, not a control). Inline style is fine there.
-- [ ] **Step 0a.1.8** — Remove `@awesome.me/webawesome` from `package.json`, run `pnpm sync:pack`, run `pnpm --filter=example-react-slug-text typecheck`. Verify `pnpm --filter=example-react-slug-text dev` renders correctly.
-- [ ] **Step 0a.1.9** — Commit: `refactor(example-slug-text): migrate React example to tweakpane, add stats monitor`
+- [x] **Step 0a.1.4** — Add `<StatsTracker>` component inside `<Canvas>` calling `useStatsMonitor(stats)`. Pattern from `pass-effects/App.tsx:273-277`.
+- [x] **Step 0a.1.5** — Add `trackTimestamp: true` to `<Canvas renderer={...}>` so the GPU-time mode works.
+- [x] **Step 0a.1.6** — Keep hotkeys (`h` overlay, `r` runtime) but wire them through the pane bindings (mutate the bound object + `pane.refresh()`) rather than independent state, so UI + hotkey stay in sync.
+- [x] **Step 0a.1.7** — `HtmlOverlay` component stays (it's the comparison artifact, not a control). Inline style is fine there.
+- [x] **Step 0a.1.8** — Remove `@awesome.me/webawesome` from `package.json`, run `pnpm sync:pack`, run `pnpm --filter=example-react-slug-text typecheck`. Verify `pnpm --filter=example-react-slug-text dev` renders correctly.
+- [x] **Step 0a.1.9** — Commit: `refactor(example-slug-text): migrate React example to tweakpane, add stats monitor`
 
 ### Task 0a.2 — Three.js slug-text migration
 
@@ -98,8 +119,8 @@ The `feat-slug` branch predates the Web Awesome → Tweakpane migration on `main
 - Modify: `examples/three/slug-text/index.html` — delete all Web Awesome UI markup (`<wa-radio-group>`, `<wa-slider>`, compare-mode buttons, words/darken/thicken sliders, runtime checkbox). Keep `<canvas id="compare-canvas">`, `<div id="split-handle">`, labels, `<div id="status">`, `<div id="computing">`.
 - Modify: `examples/three/slug-text/package.json` — drop `@awesome.me/webawesome`, add `@three-flatland/tweakpane` via catalog.
 
-- [ ] **Step 0a.2.1** — Strip all `@awesome.me/webawesome` imports from `main.ts`. Delete `setupWrappingGroup`.
-- [ ] **Step 0a.2.2** — Add `import { createPane } from '@three-flatland/tweakpane'`. After scene + renderer init:
+- [x] **Step 0a.2.1** — Strip all `@awesome.me/webawesome` imports from `main.ts`. Delete `setupWrappingGroup`.
+- [x] **Step 0a.2.2** — Add `import { createPane } from '@three-flatland/tweakpane'`. After scene + renderer init:
   ```ts
   const { pane, stats } = createPane({ scene })
   const settings = pane.addFolder({ title: 'Settings' })
@@ -114,10 +135,10 @@ The `feat-slug` branch predates the Web Awesome → Tweakpane migration on `main
   diag.addBinding(monitors, 'loadMs', { readonly: true, format: v => `${v.toFixed(0)} ms` })
   diag.addBinding(monitors, 'glyphCount', { readonly: true })
   ```
-- [ ] **Step 0a.2.3** — Wire `.on('change', …)` per binding to the existing mutations (`slugText.fontSize = ...`, `slugText.text = ...`, `loadFont()`, `updateSplitUI()`).
-- [ ] **Step 0a.2.4** — Wrap `animate()` loop body with `stats.begin()` / `stats.end()` per `pass-effects/main.ts:469-502`.
-- [ ] **Step 0a.2.5** — `pnpm sync:pack`, `pnpm --filter=example-three-slug-text typecheck`, verify dev server renders.
-- [ ] **Step 0a.2.6** — Commit: `refactor(example-slug-text): migrate Three example to tweakpane`
+- [x] **Step 0a.2.3** — Wire `.on('change', …)` per binding to the existing mutations (`slugText.fontSize = ...`, `slugText.text = ...`, `loadFont()`, `updateSplitUI()`).
+- [x] **Step 0a.2.4** — Wrap `animate()` loop body with `stats.begin()` / `stats.end()` per `pass-effects/main.ts:469-502`.
+- [x] **Step 0a.2.5** — `pnpm sync:pack`, `pnpm --filter=example-three-slug-text typecheck`, verify dev server renders.
+- [x] **Step 0a.2.6** — Commit: `refactor(example-slug-text): migrate Three example to tweakpane`
 
 ---
 
@@ -130,7 +151,7 @@ The `feat-slug` branch predates the Web Awesome → Tweakpane migration on `main
 - Modify: `docs/astro.config.mjs` (added Slug Text guide + example entries next to Skia)
 - Regenerated: `pnpm-lock.yaml`
 
-- [ ] **Step 0.1: Verify the rebase builds & tests pass before adding features.**
+- [x] **Step 0.1: Verify the rebase builds & tests pass before adding features.**
 
 ```bash
 pnpm install
@@ -141,7 +162,7 @@ pnpm --filter @three-flatland/slug test
 
 Expected: all green. If typecheck fails in an unrelated package (skia/skills/tweakpane ↔ slug interaction), fix in a follow-up commit on the branch before proceeding.
 
-- [ ] **Step 0.2: Force-push rebased branch.**
+- [x] **Step 0.2: Force-push rebased branch.**
 
 ```bash
 git push --force-with-lease origin feat-slug
@@ -169,7 +190,7 @@ Mirror the existing split **exactly**: two peer files under `pipeline/`, loaded 
 
 Spiritually aligned with `CanvasRenderingContext2D.measureText` — **single-line, no wrap**. Multi-line/paragraph measurement lives with rich text in Phase 6 where layout actually matters.
 
-- [ ] **Step 1.1: Add types to `packages/slug/src/types.ts`.**
+- [x] **Step 1.1: Add types to `packages/slug/src/types.ts`.**
 
 ```ts
 /**
@@ -193,19 +214,19 @@ export interface TextMetrics {
 
 No `MeasureOptions` — `measureText` takes `(text, fontSize)` only. No `lineHeight`, no `maxWidth`, no `lines[]`.
 
-- [ ] **Step 1.2: Re-export in `index.ts`.**
+- [x] **Step 1.2: Re-export in `index.ts`.**
 
 ```ts
 export type { TextMetrics } from './types.js'
 ```
 
-- [ ] **Step 1.3: Commit.** `chore(slug): add measurement types`
+- [x] **Step 1.3: Commit.** `chore(slug): add measurement types`
 
 ### Task 2: Baked measurement (no opentype)
 
-- [ ] **Step 2.1: Write failing test `pipeline/textMeasureBaked.test.ts`.** Load the baked `.slug.json` + `.slug.bin` shipped with the Three example, assert `measureTextBaked(baked, glyphs, unitsPerEm, ascender, descender, 'Hello', 48)` returns positive `width`, `actualBoundingBoxAscent ≤ fontBoundingBoxAscent`, and `fontBoundingBoxAscent + fontBoundingBoxDescent ≈ 48 * (ascender - descender) / unitsPerEm`. Assert no `opentype.js` in `require.cache` / import graph.
+- [x] **Step 2.1: Write failing test `pipeline/textMeasureBaked.test.ts`.** Load the baked `.slug.json` + `.slug.bin` shipped with the Three example, assert `measureTextBaked(baked, glyphs, unitsPerEm, ascender, descender, 'Hello', 48)` returns positive `width`, `actualBoundingBoxAscent ≤ fontBoundingBoxAscent`, and `fontBoundingBoxAscent + fontBoundingBoxDescent ≈ 48 * (ascender - descender) / unitsPerEm`. Assert no `opentype.js` in `require.cache` / import graph.
 
-- [ ] **Step 2.2: Implement `textMeasureBaked.ts`.** Signature parallels `textShaperBaked.ts`:
+- [x] **Step 2.2: Implement `textMeasureBaked.ts`.** Signature parallels `textShaperBaked.ts`:
 
 ```ts
 import type { BakedFontData } from '../baked.js'
@@ -228,21 +249,21 @@ export function measureTextBaked(
 
 No `opentype.js` import.
 
-- [ ] **Step 2.3: Run test, green, commit.** `feat(slug): baked-data text measurement`
+- [x] **Step 2.3: Run test, green, commit.** `feat(slug): baked-data text measurement`
 
 ### Task 3: Runtime (opentype) measurement
 
-- [ ] **Step 3.1: Write failing test `pipeline/textMeasure.test.ts`** using a freshly-loaded `.ttf` via `SlugFontLoader.load` against the runtime path. Same assertions as Task 2.
+- [x] **Step 3.1: Write failing test `pipeline/textMeasure.test.ts`** using a freshly-loaded `.ttf` via `SlugFontLoader.load` against the runtime path. Same assertions as Task 2.
 
-- [ ] **Step 3.2: Implement `textMeasure.ts`.** Mirrors `textShaper.ts` (same opentype API surface — `stringToGlyphs`, `getKerningValue`, `glyph.advanceWidth`) but returns `TextMetrics`. `import type { Font } from 'opentype.js'` only (erased at runtime).
+- [x] **Step 3.2: Implement `textMeasure.ts`.** Mirrors `textShaper.ts` (same opentype API surface — `stringToGlyphs`, `getKerningValue`, `glyph.advanceWidth`) but returns `TextMetrics`. `import type { Font } from 'opentype.js'` only (erased at runtime).
 
-- [ ] **Step 3.3: Run test, green, commit.** `feat(slug): runtime text measurement via opentype`
+- [x] **Step 3.3: Run test, green, commit.** `feat(slug): runtime text measurement via opentype`
 
 ### Task 4: Loader wiring + single public API
 
-- [ ] **Step 4.1: Extend `_createBaked` / `_createRuntime` in `SlugFont.ts`** to also accept the matching measure function, stored on `_measureTextBaked` / `_measureTextOT` fields alongside the existing shape refs.
+- [x] **Step 4.1: Extend `_createBaked` / `_createRuntime` in `SlugFont.ts`** to also accept the matching measure function, stored on `_measureTextBaked` / `_measureTextOT` fields alongside the existing shape refs.
 
-- [ ] **Step 4.2: Add `measureText` dispatcher to `SlugFont`**, exactly parallel to `shapeText`:
+- [x] **Step 4.2: Add `measureText` dispatcher to `SlugFont`**, exactly parallel to `shapeText`:
 
 ```ts
 measureText(text: string, fontSize: number): TextMetrics {
@@ -261,7 +282,7 @@ measureText(text: string, fontSize: number): TextMetrics {
 
 This is the **only** new public method. Spiritually equivalent to `CanvasRenderingContext2D.measureText`: single line, single call, returns the same-named fields. No `measureSpan`, no `getMetrics`, no wrap option — **YAGNI**. Multi-line/paragraph layout is Phase 6's job.
 
-- [ ] **Step 4.3: Update `SlugFontLoader.ts`.** Add a matching dynamic import next to the existing shaper import:
+- [x] **Step 4.3: Update `SlugFontLoader.ts`.** Add a matching dynamic import next to the existing shaper import:
 
 ```ts
 // Baked path
@@ -274,27 +295,27 @@ return SlugFont._createBaked(glyphs, textures, metrics, bakedData, shapeTextBake
 // Runtime path — mirror with textShaper + textMeasure
 ```
 
-- [ ] **Step 4.4: Write integration test** asserting `(await SlugFontLoader.load('.../Inter-Regular.slug.json')).measureText('Hi', 24)` works and that the loader did not import `opentype.js` (snapshot `Object.keys(require.cache)` or spy the dynamic import).
+- [x] **Step 4.4: Write integration test** asserting `(await SlugFontLoader.load('.../Inter-Regular.slug.json')).measureText('Hi', 24)` works and that the loader did not import `opentype.js` (snapshot `Object.keys(require.cache)` or spy the dynamic import).
 
-- [ ] **Step 4.5: Run all slug tests, commit.** `feat(slug): expose SlugFont.measureText (opentype loaded lazily, skipped for baked fonts)`
+- [x] **Step 4.5: Run all slug tests, commit.** `feat(slug): expose SlugFont.measureText (opentype loaded lazily, skipped for baked fonts)`
 
 ### Task 5: Example control (ship gate) + docs
 
-- [ ] **Step 5.1:** In `examples/{three,react}/slug-text/`, add a "Measure" folder to the Tweakpane panel with:
+- [x] **Step 5.1:** In `examples/{three,react}/slug-text/`, add a "Measure" folder to the Tweakpane panel with:
   - Toggle `Show Bounds` — when on, overlays a visible rectangle matching `font.measureText(text, fontSize)` at the text's anchor position. Uses `actualBoundingBoxAscent/Descent` for vertical extent and `width` for horizontal.
   - Toggle `Show Font Bounds` — overlays a second rectangle using `fontBoundingBoxAscent/Descent` (font-level, glyph-independent).
   - Readonly monitor `Width (px)` — live `font.measureText(text, fontSize).width`.
   - Readonly monitor `Ink (px)` — `actualBoundingBoxRight − actualBoundingBoxLeft`.
   
   Overlay is drawn in the R3F scene (a `<mesh>` with `LineSegments` or a thin wireframe box) so it moves with the text and respects camera. Vanilla mirrors with a Three `LineSegments`. Must visibly track every change to `text`, `fontSize`, or selected font.
-- [ ] **Step 5.2:** Add a "Measuring text" section to `packages/slug/README.md` and `docs/src/content/docs/guides/slug-text.mdx` — one example showing `font.measureText(...)` returning `TextMetrics`, mirroring the example control's behavior.
-- [ ] **Step 5.3: Interactive verification** — run `pnpm --filter=examples dev`, open `/three/slug-text` and `/react/slug-text`, toggle `Show Bounds` on, verify the overlay rect exactly matches the rendered text extent at multiple font sizes and text strings.
-- [ ] **Step 5.4: Commit.** `feat(example-slug-text): interactive measureText visualization`
+- [x] **Step 5.2:** Add a "Measuring text" section to `packages/slug/README.md` and `docs/src/content/docs/guides/slug-text.mdx` — one example showing `font.measureText(...)` returning `TextMetrics`, mirroring the example control's behavior.
+- [x] **Step 5.3: Interactive verification** — run `pnpm --filter=examples dev`, open `/three/slug-text` and `/react/slug-text`, toggle `Show Bounds` on, verify the overlay rect exactly matches the rendered text extent at multiple font sizes and text strings.
+- [x] **Step 5.4: Commit.** `feat(example-slug-text): interactive measureText visualization`
 
 ### Task 2: Docs
 
-- [ ] **Step 2.1: Add a "Measuring text" section to `packages/slug/README.md` and `docs/src/content/docs/guides/slug-text.mdx` showing a `<div>`-free overlay positioning example.**
-- [ ] **Step 2.2: Commit: `docs(slug): document measurement API`.**
+- [x] **Step 2.1: Add a "Measuring text" section to `packages/slug/README.md` and `docs/src/content/docs/guides/slug-text.mdx` showing a `<div>`-free overlay positioning example.**
+- [x] **Step 2.2: Commit: `docs(slug): document measurement API`.**
 
 ---
 
@@ -315,22 +336,22 @@ Pure-CPU/geometry feature: layout emits extra rectangle primitives and adjusts p
 
 ### Task 3: Decoration geometry
 
-- [ ] **Step 3.1: Test** — `decorations.test.ts` asserts that `decorateLine({ line, underline: true, fontSize: 48, metrics })` produces a rect at y = descender + 10% stroke, width = line width.
-- [ ] **Step 3.2: Implement `decorations.ts`** (pure function over `LineMetrics`).
-- [ ] **Step 3.3: Shader short-circuit** — in `SlugMaterial._buildShader`, read a `isRect` float from an unused lane of `glyphJac` (e.g. `glyphJac.w` sign bit). `select(isRect, float(1.0), slugRender(...))`.
-- [ ] **Step 3.4: Commit.**
+- [x] **Step 3.1: Test** — `decorations.test.ts` asserts that `decorateLine({ line, underline: true, fontSize: 48, metrics })` produces a rect at y = descender + 10% stroke, width = line width.
+- [x] **Step 3.2: Implement `decorations.ts`** (pure function over `LineMetrics`).
+- [x] **Step 3.3: Shader short-circuit** — in `SlugMaterial._buildShader`, read a `isRect` float from an unused lane of `glyphJac` (e.g. `glyphJac.w` sign bit). `select(isRect, float(1.0), slugRender(...))`.
+- [x] **Step 3.4: Commit.**
 
 ### Task 4: Super / Sub scripts
 
-- [ ] **Step 4.1: Test** that a style span with `vertical: 'super'` positions glyphs at `y + ascent * 0.33` and scales by `0.6`.
-- [ ] **Step 4.2: Implement** — pass `styleForIndex(i)` into the shaper's position accumulator, multiplying the `scale` field in `PositionedGlyph` and adding vertical offset.
-- [ ] **Step 4.3: Commit.**
+- [x] **Step 4.1: Test** that a style span with `vertical: 'super'` positions glyphs at `y + ascent * 0.33` and scales by `0.6`.
+- [x] **Step 4.2: Implement** — pass `styleForIndex(i)` into the shaper's position accumulator, multiplying the `scale` field in `PositionedGlyph` and adding vertical offset.
+- [x] **Step 4.3: Commit.**
 
 ### Task 5: SlugText API + docs
 
-- [ ] **Step 5.1: Add `styles` setter on `SlugText`** that marks dirty and forwards to shaper.
-- [ ] **Step 5.2: Example update** — `examples/react/slug-text/App.tsx` adds a Tweakpane toggle list.
-- [ ] **Step 5.3: Docs + commit.**
+- [x] **Step 5.1: Add `styles` setter on `SlugText`** that marks dirty and forwards to shaper.
+- [x] **Step 5.2: Example update** — `examples/react/slug-text/App.tsx` adds a Tweakpane toggle list.
+- [x] **Step 5.3: Docs + commit.**
 
 ---
 
@@ -353,22 +374,22 @@ Explicitly **out of scope for this phase**:
 
 ### Task 6: Codepoint → font resolution
 
-- [ ] **Step 6.1: Test** — `new SlugFontStack([inter, notoEmoji]).resolveCodepoint(0x1F600)` returns `notoEmoji`; ASCII returns `inter`.
-- [ ] **Step 6.2: Implement** — for baked fonts, search `baked.cmap` (sorted); for runtime, `font._opentypeFont.charToGlyph(ch).index !== 0`. Cache last-hit font index.
-- [ ] **Step 6.3: Commit.**
+- [x] **Step 6.1: Test** — `new SlugFontStack([inter, notoEmoji]).resolveCodepoint(0x1F600)` returns `notoEmoji`; ASCII returns `inter`.
+- [x] **Step 6.2: Implement** — for baked fonts, search `baked.cmap` (sorted); for runtime, `font._opentypeFont.charToGlyph(ch).index !== 0`. Cache last-hit font index.
+- [x] **Step 6.3: Commit.**
 
 ### Task 7: Stack shaper
 
-- [ ] **Step 7.1: Test** — shaping `'Hi 😀'` returns two runs: `(inter, [H,i, ])` + `(notoEmoji, [😀])` with the emoji's `x` equal to the cumulative advance of "Hi ".
-- [ ] **Step 7.2: Implement `shaperStack.ts`** using `measureSpan` per codepoint to advance the cursor between font switches.
-- [ ] **Step 7.3: Commit.**
+- [x] **Step 7.1: Test** — shaping `'Hi 😀'` returns two runs: `(inter, [H,i, ])` + `(notoEmoji, [😀])` with the emoji's `x` equal to the cumulative advance of "Hi ".
+- [x] **Step 7.2: Implement `shaperStack.ts`** using `measureSpan` per codepoint to advance the cursor between font switches.
+- [x] **Step 7.3: Commit.**
 
 ### Task 8: SlugText multi-material
 
-- [ ] **Step 8.1: Replace single `InstancedMesh` body** with a container: `SlugText` becomes a thin wrapper whose `_rebuild()` removes existing child meshes and creates one per run. `count`/`instanceMatrix` live on the children.
-- [ ] **Step 8.2: Port existing tests** to hit both paths (single-font still works unchanged — `SlugFont` input wraps itself in a 1-font stack internally).
-- [ ] **Step 8.3: Example** — `examples/react/slug-text/App.tsx` loads Inter + an emoji font (e.g. `NotoColorEmoji-Regular.ttf`) and renders `'Flatland 🔺'`.
-- [ ] **Step 8.4: Docs + commit.**
+- [x] **Step 8.1: Replace single `InstancedMesh` body** with a container: `SlugText` becomes a thin wrapper whose `_rebuild()` removes existing child meshes and creates one per run. `count`/`instanceMatrix` live on the children.
+- [x] **Step 8.2: Port existing tests** to hit both paths (single-font still works unchanged — `SlugFont` input wraps itself in a 1-font stack internally).
+- [x] **Step 8.3: Example** — `examples/react/slug-text/App.tsx` loads Inter + an emoji font (e.g. `NotoColorEmoji-Regular.ttf`) and renders `'Flatland 🔺'`.
+- [x] **Step 8.4: Docs + commit.**
 
 > **Scope cutoff:** color emoji (COLR/CPAL/CBDT) rendering is *out of scope*. Emoji glyphs are rendered as their outline if present, or as notdef otherwise. Add a roadmap entry.
 
@@ -445,45 +466,45 @@ POC uses Newton. Benchmark both in Task 10.3; pick winner.
 
 ### Task 9: CPU distance-to-curve reference
 
-- [ ] **Step 9.1: Test** — straight degenerate quad (0,0)→(10,0): distance from (5,3) = 3, t = 0.5. Symmetric quarter-arc (0,10)→(10,0) with control (0,0): distance from (0,0) = `10·(1 − √2/2)` analytical. Distance monotonically decreases then increases sweeping t across the closest point.
-- [ ] **Step 9.2: Implement** pure-JS `distanceToQuadBezier(p, p0, p1, p2): { distance, t }`. Start from `solveQuadratic`'s derivative roots, clamp to [0, 1], plus endpoints. Pick min, 3 Newton iterations. Return min over all candidates.
-- [ ] **Step 9.3: Commit.** `feat(slug): analytic distance-to-curve primitive`
+- [x] **Step 9.1: Test** — straight degenerate quad (0,0)→(10,0): distance from (5,3) = 3, t = 0.5. Symmetric quarter-arc (0,10)→(10,0) with control (0,0): distance from (0,0) = `10·(1 − √2/2)` analytical. Distance monotonically decreases then increases sweeping t across the closest point.
+- [x] **Step 9.2: Implement** pure-JS `distanceToQuadBezier(p, p0, p1, p2): { distance, t }`. Start from `solveQuadratic`'s derivative roots, clamp to [0, 1], plus endpoints. Pick min, 3 Newton iterations. Return min over all candidates.
+- [x] **Step 9.3: Commit.** `feat(slug): analytic distance-to-curve primitive`
 
 ### Task 10: Stroke shader (bevel-via-min, no explicit joins)
 
-- [ ] **Step 10.1: TSL port** of `distanceToQuadBezier` in `shaders/distanceToQuadBezier.ts`.
-- [ ] **Step 10.2: Test** — for "I", halfWidth=0.05 em: stem-centerline fragments → coverage=1 at |dx|≤0.04, 0 at |dx|≥0.06. Outside-the-fill-near-outline → coverage=1. Inside-the-fill-far-from-any-curve → coverage=0. Validate corner behavior on "A": exterior top-tip fragment on the bisector gets clean bevel (no spike, no gap).
-- [ ] **Step 10.3: `slugStroke.ts`** — halo-aware band iteration, `distanceToQuadBezier` per curve, crispness-gated smoothstep. GPU-vs-CPU parity over 32×32 grid for 5 test glyphs (I, O, A, S, dot-i). Bench Newton vs Cardano; pick winner; comment the loser. Leave a documented extension point where Phase 5's join classifier hooks in.
-- [ ] **Step 10.4: Commit.** `feat(slug): analytic stroke shader (bevel-via-min)`
+- [x] **Step 10.1: TSL port** of `distanceToQuadBezier` in `shaders/distanceToQuadBezier.ts`.
+- [x] **Step 10.2: Test** — for "I", halfWidth=0.05 em: stem-centerline fragments → coverage=1 at |dx|≤0.04, 0 at |dx|≥0.06. Outside-the-fill-near-outline → coverage=1. Inside-the-fill-far-from-any-curve → coverage=0. Validate corner behavior on "A": exterior top-tip fragment on the bisector gets clean bevel (no spike, no gap).
+- [x] **Step 10.3: `slugStroke.ts`** — halo-aware band iteration, `distanceToQuadBezier` per curve, crispness-gated smoothstep. GPU-vs-CPU parity over 32×32 grid for 5 test glyphs (I, O, A, S, dot-i). Bench Newton vs Cardano; pick winner; comment the loser. Leave a documented extension point where Phase 5's join classifier hooks in.
+- [x] **Step 10.4: Commit.** `feat(slug): analytic stroke shader (bevel-via-min)`
 
 ### Task 11: SlugStrokeMaterial + dilation
 
-- [ ] **Step 11.1: `SlugStrokeMaterial`** — uniforms (color, opacity, viewport, mvp rows, `strokeHalfWidth`), setter methods (`setStrokeHalfWidth`, `setStrokeColor`). Reserve unused uniform slots `joinStyle`, `miterLimit`, `capStyle` pre-declared but fed into no-op shader paths — keeps Phase 5's material-API extension strictly additive.
-- [ ] **Step 11.2: Quad dilation** — `slugDilate.ts` accepts `strokeHalfWidthEm`. Test: halfWidth=0.1 em produces quad covering bbox + 0.1em margin.
-- [ ] **Step 11.3: Commit.** `feat(slug): SlugStrokeMaterial + stroke-aware dilation`
+- [x] **Step 11.1: `SlugStrokeMaterial`** — uniforms (color, opacity, viewport, mvp rows, `strokeHalfWidth`), setter methods (`setStrokeHalfWidth`, `setStrokeColor`). Reserve unused uniform slots `joinStyle`, `miterLimit`, `capStyle` pre-declared but fed into no-op shader paths — keeps Phase 5's material-API extension strictly additive.
+- [x] **Step 11.2: Quad dilation** — `slugDilate.ts` accepts `strokeHalfWidthEm`. Test: halfWidth=0.1 em produces quad covering bbox + 0.1em margin.
+- [x] **Step 11.3: Commit.** `feat(slug): SlugStrokeMaterial + stroke-aware dilation`
 
 ### Task 12: SlugText integration
 
-- [ ] **Step 12.1: `SlugText.outline`** — optional outline config creates a child `InstancedMesh` behind fill, sharing `SlugGeometry`. Uniform changes mutate in place.
-- [ ] **Step 12.2: Runtime-smooth-width integration test** — render "Hi" at width=0.05, snapshot; change width to 0.10 next frame without calling `_rebuild()`, snapshot, assert diff is strictly the outer ring expansion. No rebuild, no flicker.
-- [ ] **Step 12.3: Commit.** `feat(slug): SlugText.outline with runtime-uniform width`
+- [x] **Step 12.1: `SlugText.outline`** — optional outline config creates a child `InstancedMesh` behind fill, sharing `SlugGeometry`. Uniform changes mutate in place.
+- [x] **Step 12.2: Runtime-smooth-width integration test** — render "Hi" at width=0.05, snapshot; change width to 0.10 next frame without calling `_rebuild()`, snapshot, assert diff is strictly the outer ring expansion. No rebuild, no flicker.
+- [x] **Step 12.3: Commit.** `feat(slug): SlugText.outline with runtime-uniform width`
 
 ### Task 13: Crispness verification suite (shipping gate)
 
 This task is the gate. Phase 4 does not ship until all rows of the crispness matrix are verified green against reference images.
 
-- [ ] **Step 13.1: Fixtures** — bake `Inter-Regular` (sans, has A/V/W sharp tips) and `NotoSerif-Regular` (serif, has many sharp corners). Store under `packages/slug/test/fixtures/`.
-- [ ] **Step 13.2: Reference images** — render the strings "AVWM", "Hxyz", "O", "TYPE" at fontSize ∈ {24, 96}, halfWidth ∈ {0.02, 0.05, 0.10, 0.15}. Generate via Canvas2D + `CanvasRenderingContext2D.strokeText` (note: this renders explicit miters by default — expect divergence at sharp tips, assert "visually similar" rather than pixel-exact; the miter vs bevel-via-min distinction is what Phase 5 closes).
-- [ ] **Step 13.3: Automated comparison** — headless WebGPU render with `SlugText.outline`. Mean delta < 1% across the body of the stroke; exterior-tip regions have a relaxed tolerance (Phase 4's bevel vs Canvas2D's miter is an expected diff). Hard assertions: no pixel coverage gap at interior corners, no fade-out at 0.5px widths (crispness gate).
-- [ ] **Step 13.4: Visual smoke** — Playwright snapshot `/three/slug-text` with outline on, width=0.10. Diff against a checked-in expected image. Catches full-pipeline regressions.
-- [ ] **Step 13.5: Fix failures** (may loop into Task 10 if the halo probe misses curves). Do not proceed until green.
-- [ ] **Step 13.6: Commit.** `test(slug): crispness gate for analytic stroked text`
+- [x] **Step 13.1: Fixtures** — bake `Inter-Regular` (sans, has A/V/W sharp tips) and `NotoSerif-Regular` (serif, has many sharp corners). Store under `packages/slug/test/fixtures/`.
+- [x] **Step 13.2: Reference images** — render the strings "AVWM", "Hxyz", "O", "TYPE" at fontSize ∈ {24, 96}, halfWidth ∈ {0.02, 0.05, 0.10, 0.15}. Generate via Canvas2D + `CanvasRenderingContext2D.strokeText` (note: this renders explicit miters by default — expect divergence at sharp tips, assert "visually similar" rather than pixel-exact; the miter vs bevel-via-min distinction is what Phase 5 closes).
+- [x] **Step 13.3: Automated comparison** — headless WebGPU render with `SlugText.outline`. Mean delta < 1% across the body of the stroke; exterior-tip regions have a relaxed tolerance (Phase 4's bevel vs Canvas2D's miter is an expected diff). Hard assertions: no pixel coverage gap at interior corners, no fade-out at 0.5px widths (crispness gate).
+- [x] **Step 13.4: Visual smoke** — Playwright snapshot `/three/slug-text` with outline on, width=0.10. Diff against a checked-in expected image. Catches full-pipeline regressions.
+- [x] **Step 13.5: Fix failures** (may loop into Task 10 if the halo probe misses curves). Do not proceed until green.
+- [x] **Step 13.6: Commit.** `test(slug): crispness gate for analytic stroked text`
 
 ### Task 14: Example + docs
 
-- [ ] **Step 14.1: Example** — `examples/{three,react}/slug-text/` add outline panel: width slider (runtime uniform 0–0.15 em), color picker. Style radio: `[Fill | Outline | Both]`. Scrubbing width updates live with zero rebuild.
-- [ ] **Step 14.2: Docs** — guide page demonstrating outlined text with a note that joins are **bevel** at this stage, with miter/round joins arriving in Phase 5 alongside caps and dashing for vector graphics.
-- [ ] **Step 14.3: Commit.** `feat(slug): outlined-text example with runtime width + color controls`
+- [x] **Step 14.1: Example** — `examples/{three,react}/slug-text/` add outline panel: width slider (runtime uniform 0–0.15 em), color picker. Style radio: `[Fill | Outline | Both]`. Scrubbing width updates live with zero rebuild.
+- [x] **Step 14.2: Docs** — guide page demonstrating outlined text with a note that joins are **bevel** at this stage, with miter/round joins arriving in Phase 5 alongside caps and dashing for vector graphics.
+- [x] **Step 14.3: Commit.** `feat(slug): outlined-text example with runtime width + color controls`
 
 ---
 
@@ -705,28 +726,28 @@ Only enabled when the instance's stroke spec includes a dashArray — uniform br
 
 ### Task 15: Extract shared contour → GPU pipeline
 
-- [ ] **Step 15.1: Refactor `fontParser.ts`** — introduce `buildGpuGlyphFromContours(contours): { curveTable, bandTable, bounds, ... }`. Handles closed (font) and open (SVG) contours. Existing font-loading tests must still pass unchanged.
-- [ ] **Step 15.2: Commit.** `refactor(slug): extract shared contour-to-GPU pipeline`
+- [x] **Step 15.1: Refactor `fontParser.ts`** — introduce `buildGpuGlyphFromContours(contours): { curveTable, bandTable, bounds, ... }`. Handles closed (font) and open (SVG) contours. Existing font-loading tests must still pass unchanged.
+- [x] **Step 15.2: Commit.** `refactor(slug): extract shared contour-to-GPU pipeline`
 
 ### Task 16: Quadratic-Bezier stroke offsetter
 
 The core new build-time piece. Slug keeps this proprietary; ours is the open implementation.
 
-- [ ] **Step 16.1: Adaptive subdivision CPU reference** — `subdivideForOffset(curve, halfWidth, epsilon): QuadCurve[]`. Recurse until each segment's offset can be approximated within ε by a single quadratic. Test: straight segment offsets to a straight segment (single output). High-curvature quad subdivides into ~3–5 segments at halfWidth=0.05. Max depth bounded at 8.
-- [ ] **Step 16.2: Per-segment offset CPU** — `offsetSegment(curve, halfWidth): QuadCurve`. Offset p0, p1, p2 along their unit normals. Test: straight segment offsets correctly; gentle curve offsets cleanly; per-endpoint normal is derivative-based.
-- [ ] **Step 16.3: Join insertion** — for each contour vertex between two curves, emit miter/round/bevel geometry between outer offset endpoints. `miterLimit` fallback: if miter length exceeds threshold, emit bevel instead. Test: sharp-corner glyph outline produces miter geometry at angle < 30°; with miterLimit=2 at same angle produces bevel.
-- [ ] **Step 16.4: Cap insertion** — flat/square/round/triangle at open-contour endpoints. Test: a straight segment stroked with round caps produces a pill shape (verified via perimeter length).
-- [ ] **Step 16.5: Inner + outer offset close** — glue inner and outer offsets at caps/joins to form one closed contour per original contour. Preserves winding. Test: stroked open segment produces one closed output; stroked circle produces one outer closed contour + one inner (reversed-winding) closed contour.
-- [ ] **Step 16.6: Full offsetter API** — `strokeOffsetter(contours, { halfWidth, joinStyle, capStyle, miterLimit }): Contour[]`. Composes 16.1–16.5.
-- [ ] **Step 16.7: Commit.** `feat(slug): quadratic-Bezier adaptive stroke offsetter`
+- [x] **Step 16.1: Adaptive subdivision CPU reference** — `subdivideForOffset(curve, halfWidth, epsilon): QuadCurve[]`. Recurse until each segment's offset can be approximated within ε by a single quadratic. Test: straight segment offsets to a straight segment (single output). High-curvature quad subdivides into ~3–5 segments at halfWidth=0.05. Max depth bounded at 8.
+- [x] **Step 16.2: Per-segment offset CPU** — `offsetSegment(curve, halfWidth): QuadCurve`. Offset p0, p1, p2 along their unit normals. Test: straight segment offsets correctly; gentle curve offsets cleanly; per-endpoint normal is derivative-based.
+- [x] **Step 16.3: Join insertion** — for each contour vertex between two curves, emit miter/round/bevel geometry between outer offset endpoints. `miterLimit` fallback: if miter length exceeds threshold, emit bevel instead. Test: sharp-corner glyph outline produces miter geometry at angle < 30°; with miterLimit=2 at same angle produces bevel.
+- [x] **Step 16.4: Cap insertion** — flat/square/round/triangle at open-contour endpoints. Test: a straight segment stroked with round caps produces a pill shape (verified via perimeter length).
+- [x] **Step 16.5: Inner + outer offset close** — glue inner and outer offsets at caps/joins to form one closed contour per original contour. Preserves winding. Test: stroked open segment produces one closed output; stroked circle produces one outer closed contour + one inner (reversed-winding) closed contour.
+- [x] **Step 16.6: Full offsetter API** — `strokeOffsetter(contours, { halfWidth, joinStyle, capStyle, miterLimit }): Contour[]`. Composes 16.1–16.5.
+- [x] **Step 16.7: Commit.** `feat(slug): quadratic-Bezier adaptive stroke offsetter`
 
 ### Task 17: Stroke-set bake integration in CLI
 
-- [ ] **Step 17.1: Extend baked file format** — new section per-glyph: `strokeSets: Array<{ key, curveTable, bandTable, totalLength, arcLengthTable? }>` where `key = hash(width, joinStyle, capStyle, miterLimit)`. Baked-version bump; Phase 4 baked files error with "re-run slug-bake".
-- [ ] **Step 17.2: CLI flag plumbing** — `slug-bake Inter.ttf --stroke-widths=0.025,0.05 --stroke-join=miter --stroke-cap=flat --miter-limit=4`. Multi-variant: `--stroke-widths=0.025,0.05 --stroke-joins=miter,round` bakes the cartesian product. Log output enumerates each emitted set.
-- [ ] **Step 17.3: Unit test** — re-bake Inter with one stroke width, verify the baked file includes stroke sets with correct glyph curve counts. Load + assert `SlugFont.getStrokeSet(glyphId, 0.025, 'miter', 'flat').curveTable.length > 0`.
-- [ ] **Step 17.4: Re-bake checked-in fixtures** with one default stroke set (`0.025, miter, flat, miterLimit=4`). Commit regenerated fixtures.
-- [ ] **Step 17.5: Commit.** `feat(slug): stroke sets in baked format (CLI + file version bump)`
+- [x] **Step 17.1: Extend baked file format** — new section per-glyph: `strokeSets: Array<{ key, curveTable, bandTable, totalLength, arcLengthTable? }>` where `key = hash(width, joinStyle, capStyle, miterLimit)`. Baked-version bump; Phase 4 baked files error with "re-run slug-bake".
+- [x] **Step 17.2: CLI flag plumbing** — `slug-bake Inter.ttf --stroke-widths=0.025,0.05 --stroke-join=miter --stroke-cap=flat --miter-limit=4`. Multi-variant: `--stroke-widths=0.025,0.05 --stroke-joins=miter,round` bakes the cartesian product. Log output enumerates each emitted set.
+- [x] **Step 17.3: Unit test** — re-bake Inter with one stroke width, verify the baked file includes stroke sets with correct glyph curve counts. Load + assert `SlugFont.getStrokeSet(glyphId, 0.025, 'miter', 'flat').curveTable.length > 0`.
+- [x] **Step 17.4: Re-bake checked-in fixtures** with one default stroke set (`0.025, miter, flat, miterLimit=4`). Commit regenerated fixtures.
+- [x] **Step 17.5: Commit.** `feat(slug): stroke sets in baked format (CLI + file version bump)`
 
 ### Task 18: Fill shader dash-offset modifier
 

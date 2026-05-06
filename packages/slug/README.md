@@ -4,14 +4,16 @@ GPU-accelerated, resolution-independent text rendering for [Three.js](https://th
 
 Slug evaluates quadratic Bezier curves directly in the fragment shader. No SDF atlas, no bitmap textures, no resolution ceiling. Text stays sharp at any size, any zoom, any perspective.
 
+> **Alpha pre-release.** Public APIs may shift before `1.0`. Active feature work tracked in [#37 — Vector Graphics](https://github.com/thejustinwalsh/three-flatland/issues/37) and [#38 — Rich Text](https://github.com/thejustinwalsh/three-flatland/issues/38). Feedback welcome.
+
 ## Highlights
 
 - **Pixel-perfect at every scale** -- glyphs are mathematically evaluated per-pixel, not sampled from a texture
-- **WebGPU + WebGL2** -- Ported reference HLSL to TSL (Three Shader Language) targeting WGSL and GLSL
+- **WebGPU + WebGL2** -- TSL (Three Shader Language) targeting WGSL and GLSL ES 3.0
 - **Instanced rendering** -- thousands of glyphs in a single draw call
 - **Zero precomputation** -- load a TTF/OTF font, render immediately
 - **Offline baking** -- `slug-bake` pre-processes fonts, eliminating opentype.js at runtime
-- **Tiny API surface** -- `SlugFont`, `SlugText`, done
+- **Measurement, decorations, multi-font fallback, runtime-uniform outlines** -- ship-ready text features built on the same shader path
 
 ## Quick Start
 
@@ -79,12 +81,16 @@ For the full algorithm walkthrough, see [docs/ARCHITECTURE.md](docs/ARCHITECTURE
 
 ## API
 
-| Export | Description |
-|--------|-------------|
-| `SlugFont` | Font data container. Holds parsed glyphs, GPU textures, and text shaping. |
-| `SlugText` | High-level `InstancedMesh` subclass. Set `.text`, `.fontSize`, `.align` and call `.update()`. |
-| `SlugMaterial` | `MeshBasicNodeMaterial` with Slug vertex + fragment TSL shaders. |
-| `SlugGeometry` | Instanced quad geometry with 5x vec4 per-glyph instance attributes. |
+| Export               | Description                                                                                                                        |
+| -------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `SlugFontLoader`     | Loads `.slug.json` + `.slug.bin` (baked) or `.ttf`/`.otf`/`.woff` (runtime). Single entry point for fonts.                         |
+| `SlugFont`           | Font data container. Glyphs, GPU textures, text shaping, `measureText`, `measureParagraph`, `wrapText`.                            |
+| `SlugText`           | High-level `InstancedMesh` subclass. `.text`, `.fontSize`, `.align`, `.styles`, `.outline`.                                        |
+| `SlugFontStack`      | Ordered fallback chain across multiple `SlugFont`s. Per-codepoint resolution.                                                      |
+| `SlugStackText`      | Multi-font renderable (`Group`). One `InstancedMesh` per backing font. Full `SlugText` parity (`styles`, `outline`, `setOpacity`). |
+| `SlugMaterial`       | `MeshBasicNodeMaterial` with Slug vertex + fragment TSL shaders.                                                                   |
+| `SlugStrokeMaterial` | Stroke shader for outlined text — analytic distance-to-curve, runtime-uniform half-width.                                          |
+| `SlugGeometry`       | Instanced quad geometry with 5× vec4 per-glyph instance attributes.                                                                |
 
 For full API docs with all options and types, see [docs/REFERENCE.md](docs/REFERENCE.md).
 
@@ -99,23 +105,23 @@ npx slug-bake Inter-Regular.ttf --range latin       # Latin Extended
 npx slug-bake Inter-Regular.ttf -r latin -r 0x2000-0x206F  # Multiple ranges
 ```
 
-Place the baked files alongside the font. `SlugFont.fromURL()` detects them automatically — no code changes needed. The original `.ttf` is not fetched when baked data is present.
+Place the baked files alongside the font. `SlugFontLoader.load()` detects them automatically — no code changes needed. The original `.ttf` is not fetched when baked data is present, and opentype.js never enters the bundle.
 
 ### Predefined ranges
 
-| Name | Unicode Range | Description |
-|------|---------------|-------------|
-| `ascii` | U+0020–U+007E | Printable ASCII (95 glyphs) |
-| `latin` | U+0000–U+024F | Basic Latin + Extended A/B (~525 glyphs) |
+| Name     | Unicode Range   | Description                              |
+| -------- | --------------- | ---------------------------------------- |
+| `ascii`  | U+0020–U+007E   | Printable ASCII (95 glyphs)              |
+| `latin`  | U+0000–U+024F   | Basic Latin + Extended A/B (~525 glyphs) |
 | `latin+` | Multiple blocks | Latin + punctuation + currency + symbols |
 
 ### Size comparison (Inter Regular)
 
-| Range | Glyphs | Raw | Gzip | Brotli |
-|-------|--------|-----|------|--------|
-| All | 2,849 | 12.78 MB | 1.0 MB | 724 KB |
-| `latin` | 523 | 2.15 MB | 208 KB | 208 KB |
-| `ascii` | 95 | 412 KB | 44 KB | 32 KB |
+| Range   | Glyphs | Raw      | Gzip   | Brotli |
+| ------- | ------ | -------- | ------ | ------ |
+| All     | 2,849  | 12.78 MB | 1.0 MB | 724 KB |
+| `latin` | 523    | 2.15 MB  | 208 KB | 208 KB |
+| `ascii` | 95     | 412 KB   | 44 KB  | 32 KB  |
 
 Gzip/Brotli compression is handled by your CDN — no JS decompression needed. ASCII-only with Brotli is **32 KB** for resolution-independent text.
 
@@ -123,33 +129,50 @@ Missing glyphs at runtime render as a fallback rectangle (notdef).
 
 ## Supported Font Formats
 
-| Format | Support | Notes |
-|--------|---------|-------|
-| TTF (TrueType) | Full | Native quadratic Bezier outlines |
-| OTF (OpenType/CFF) | Full | Cubic curves auto-converted to quadratics |
-| WOFF | Full | Decompressed by opentype.js |
-| WOFF2 | Not yet | Requires opentype.js 2.x (planned) |
+| Format             | Support | Notes                                     |
+| ------------------ | ------- | ----------------------------------------- |
+| TTF (TrueType)     | Full    | Native quadratic Bezier outlines          |
+| OTF (OpenType/CFF) | Full    | Cubic curves auto-converted to quadratics |
+| WOFF               | Full    | Decompressed by opentype.js               |
+| WOFF2              | Not yet | Requires opentype.js 2.x (planned)        |
 
 ## Compatibility
 
-| Renderer | Status |
-|----------|--------|
-| `WebGPURenderer` (WebGPU) | Supported |
-| `WebGPURenderer` (WebGL2 fallback) | Supported |
-| `WebGLRenderer` (legacy) | Not supported -- use `WebGPURenderer` |
+| Renderer                           | Status                                |
+| ---------------------------------- | ------------------------------------- |
+| `WebGPURenderer` (WebGPU)          | Supported                             |
+| `WebGPURenderer` (WebGL2 fallback) | Supported                             |
+| `WebGLRenderer` (legacy)           | Not supported -- use `WebGPURenderer` |
 
 TSL compiles to WGSL for WebGPU and GLSL ES 3.0 for WebGL2. All features used (bitwise ops, `textureLoad`, `fwidth`, `Loop`) are available in both backends.
 
 ## Roadmap
 
+**Shipped in alpha:**
+
 - [x] Dynamic vertex dilation for edge-pixel coverage
-- [x] React Three Fiber `<slugText>` component
+- [x] React Three Fiber `<slugText>` / `<slugStackText>` components
 - [x] Offline font baking with glyph subsetting
+- [x] Stem darkening for thin strokes
+- [x] Pixel-grid snapping for crisp small text
+- [x] Font measurement (`measureText`, `measureParagraph`, `wrapText`)
+- [x] Text decorations (underline, strikethrough, super/sub via `StyleSpan`)
+- [x] Multi-font glyph fallback (`SlugFontStack`, `SlugStackText`)
+- [x] Analytic stroked text (`SlugText.outline` — runtime-uniform width, bevel-via-min joins)
+- [x] Stroke-set bake CLI (`slug-bake --stroke-widths`, `--stroke-join`, `--stroke-cap`)
+
+**In progress:**
+
+- [ ] [#37](https://github.com/thejustinwalsh/three-flatland/issues/37) — General shape rendering (`SlugShapeBatch`, SVG paths)
+- [ ] [#37](https://github.com/thejustinwalsh/three-flatland/issues/37) — Baked-as-fill stroked text (1× fill cost) + dash arrays
+- [ ] [#38](https://github.com/thejustinwalsh/three-flatland/issues/38) — Rich text (`SlugRichText`)
+
+**Planned:**
+
 - [ ] Adaptive MSAA for small text (ppem < 16)
-- [ ] Stem darkening for thin strokes
-- [ ] Pixel-grid snapping for crisp small text
-- [ ] General shape rendering (SVG paths, icons)
 - [ ] WOFF2 support via opentype.js 2.x
+- [ ] Color emoji (COLR/CPAL/CBDT)
+- [ ] Variable-width strokes along a path
 
 ## Deep Dive
 

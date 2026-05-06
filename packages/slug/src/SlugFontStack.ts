@@ -1,7 +1,7 @@
-import { wrapLinesStack } from './pipeline/wrapLinesStack.js'
-import { emitDecorations as emitDecorationsCore } from './pipeline/decorations.js'
-import type { SlugFont } from './SlugFont.js'
-import type { DecorationRect, PositionedGlyph, StyleSpan } from './types.js'
+import { wrapLinesStack } from './pipeline/wrapLinesStack'
+import { emitDecorations as emitDecorationsCore } from './pipeline/decorations'
+import type { SlugFont } from './SlugFont'
+import type { DecorationRect, PositionedGlyph, StyleSpan } from './types'
 
 /**
  * Ordered chain of fonts used by `SlugText` for per-codepoint glyph
@@ -95,7 +95,7 @@ export class SlugFontStack {
     positioned: readonly PositionedGlyph[],
     glyphFontIdx: readonly number[],
     styles: readonly StyleSpan[],
-    fontSize: number,
+    fontSize: number
   ): DecorationRect[] {
     const primary = this.primary
     // Build an index from each positioned glyph object to its font.
@@ -115,7 +115,7 @@ export class SlugFontStack {
         strikethroughPosition: primary.strikethroughPosition,
         strikethroughThickness: primary.strikethroughThickness,
       },
-      (pg) => fontByGlyph.get(pg)?.glyphs.get(pg.glyphId)?.advanceWidth ?? 0,
+      (pg) => fontByGlyph.get(pg)?.glyphs.get(pg.glyphId)?.advanceWidth ?? 0
     )
   }
 }

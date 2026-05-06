@@ -1,12 +1,5 @@
 import { MeshBasicNodeMaterial } from 'three/webgpu'
-import {
-  Vector2,
-  Vector4,
-  Color,
-  Matrix4,
-  FrontSide,
-  NormalBlending,
-} from 'three'
+import { Vector2, Vector4, Color, Matrix4, FrontSide, NormalBlending } from 'three'
 import type { Camera, Object3D } from 'three'
 import {
   Fn,
@@ -24,9 +17,9 @@ import {
   varyingProperty,
 } from 'three/tsl'
 import type Node from 'three/src/nodes/core/Node.js'
-import { slugRender } from './shaders/slugFragment.js'
-import { slugDilate } from './shaders/slugDilate.js'
-import type { SlugFont } from './SlugFont.js'
+import { slugRender } from './shaders/slugFragment'
+import { slugDilate } from './shaders/slugDilate'
+import type { SlugFont } from './SlugFont'
 
 export interface SlugMaterialOptions {
   color?: number | Color
@@ -77,9 +70,8 @@ export class SlugMaterial extends MeshBasicNodeMaterial {
     this._supersample = options.supersample ?? false
     this._pixelSnap = options.pixelSnap ?? true
 
-    const color = options.color instanceof Color
-      ? options.color
-      : new Color(options.color ?? 0xffffff)
+    const color =
+      options.color instanceof Color ? options.color : new Color(options.color ?? 0xffffff)
 
     this._colorUniform = uniform(color)
     this._opacityUniform = uniform(options.opacity ?? 1.0)
@@ -139,14 +131,11 @@ export class SlugMaterial extends MeshBasicNodeMaterial {
       // Object-space position for this quad vertex
       const objPos = vec2(
         center.x.add(basePos.x.mul(halfSize.x.mul(2.0))),
-        center.y.add(basePos.y.mul(halfSize.y.mul(2.0))),
+        center.y.add(basePos.y.mul(halfSize.y.mul(2.0)))
       )
 
       // Outward normal: points from center toward this corner
-      const normal = vec2(
-        basePos.x.mul(halfSize.x.mul(2.0)),
-        basePos.y.mul(halfSize.y.mul(2.0)),
-      )
+      const normal = vec2(basePos.x.mul(halfSize.x.mul(2.0)), basePos.y.mul(halfSize.y.mul(2.0)))
 
       // Em-space coordinate at this vertex (before dilation)
       const emCenter = vec2(glyphTex.x, glyphTex.y)
@@ -155,13 +144,19 @@ export class SlugMaterial extends MeshBasicNodeMaterial {
       const emHalfH = halfSize.y.mul(invScale)
       const emCoord = vec2(
         emCenter.x.add(basePos.x.mul(emHalfW.mul(2.0))),
-        emCenter.y.add(basePos.y.mul(emHalfH.mul(2.0))),
+        emCenter.y.add(basePos.y.mul(emHalfH.mul(2.0)))
       )
 
       // Dynamic dilation — expands quad by half a pixel in screen space
       const dilated = slugDilate(
-        objPos, normal, emCoord, invScale,
-        mvpRow0, mvpRow1, mvpRow3, viewportUniform,
+        objPos,
+        normal,
+        emCoord,
+        invScale,
+        mvpRow0,
+        mvpRow1,
+        mvpRow3,
+        viewportUniform
       )
 
       let finalPos = dilated.vpos
@@ -191,7 +186,10 @@ export class SlugMaterial extends MeshBasicNodeMaterial {
         const objDeltaY = snapDeltaY.div(halfVP.y).mul(clipW).div(mvpRow1.y)
 
         finalPos = vec2(finalPos.x.add(objDeltaX), finalPos.y.add(objDeltaY))
-        finalTex = vec2(finalTex.x.add(objDeltaX.mul(invScale)), finalTex.y.add(objDeltaY.mul(invScale)))
+        finalTex = vec2(
+          finalTex.x.add(objDeltaX.mul(invScale)),
+          finalTex.y.add(objDeltaY.mul(invScale))
+        )
       }
 
       // Write em-space coordinate to varying for fragment shader
@@ -204,7 +202,7 @@ export class SlugMaterial extends MeshBasicNodeMaterial {
       vNumVBands.assign(glyphJac.w)
 
       return vec3(finalPos.x, finalPos.y, float(0.0))
-    })()
+    })() as typeof this.positionNode
 
     // --- Fragment shader ---
 
@@ -223,7 +221,7 @@ export class SlugMaterial extends MeshBasicNodeMaterial {
         evenOddNode,
         weightBoostNode,
         stemDarkenUniform,
-        thickenUniform,
+        thickenUniform
       )
     }
 
@@ -261,9 +259,9 @@ export class SlugMaterial extends MeshBasicNodeMaterial {
         colorUniform.x.mul(glyphColorAttr.x),
         colorUniform.y.mul(glyphColorAttr.y),
         colorUniform.z.mul(glyphColorAttr.z),
-        coverage.mul(glyphColorAttr.w).mul(opacityUniform),
+        coverage.mul(glyphColorAttr.w).mul(opacityUniform)
       )
-    })()
+    })() as typeof this.colorNode
   }
 
   /**
@@ -275,18 +273,18 @@ export class SlugMaterial extends MeshBasicNodeMaterial {
     _mvp.multiply(object.matrixWorld)
 
     const e = _mvp.elements
-    ;(this._mvpRow0Uniform.value as Vector4).set(e[0]!, e[4]!, e[8]!, e[12]!)
-    ;(this._mvpRow1Uniform.value as Vector4).set(e[1]!, e[5]!, e[9]!, e[13]!)
-    ;(this._mvpRow3Uniform.value as Vector4).set(e[3]!, e[7]!, e[11]!, e[15]!)
+    this._mvpRow0Uniform.value.set(e[0], e[4], e[8], e[12])
+    this._mvpRow1Uniform.value.set(e[1], e[5], e[9], e[13])
+    this._mvpRow3Uniform.value.set(e[3], e[7], e[11], e[15])
   }
 
   setViewportSize(width: number, height: number): void {
-    ;(this._viewportUniform.value as Vector2).set(width, height)
+    this._viewportUniform.value.set(width, height)
   }
 
   setColor(value: Color | number): void {
     const c = value instanceof Color ? value : new Color(value)
-    ;(this._colorUniform.value as Color).copy(c)
+    this._colorUniform.value.copy(c)
   }
 
   setOpacity(value: number): void {

@@ -1,4 +1,4 @@
-import type { DecorationRect, PositionedGlyph, StyleSpan } from '../types.js'
+import type { DecorationRect, PositionedGlyph, StyleSpan } from '../types'
 
 export interface DecorationFontMetrics {
   underlinePosition: number
@@ -40,7 +40,7 @@ export function emitDecorations(
   styles: readonly StyleSpan[],
   fontSize: number,
   metrics: DecorationFontMetrics,
-  glyphAdvances: Map<number, number> | GlyphAdvanceLookup,
+  glyphAdvances: Map<number, number> | GlyphAdvanceLookup
 ): DecorationRect[] {
   if (styles.length === 0 || positioned.length === 0) return []
 
@@ -62,20 +62,22 @@ export function emitDecorations(
   const linesByY = new Map<number, PositionedGlyph[]>()
   for (const pg of positioned) {
     let arr = linesByY.get(pg.y)
-    if (!arr) { arr = []; linesByY.set(pg.y, arr) }
+    if (!arr) {
+      arr = []
+      linesByY.set(pg.y, arr)
+    }
     arr.push(pg)
   }
 
   // Decoration metrics in object-space (em-space metric × fontSize).
-  const ulY = metrics.underlinePosition * fontSize       // bottom edge of underline (typically negative)
+  const ulY = metrics.underlinePosition * fontSize // bottom edge of underline (typically negative)
   const ulH = metrics.underlineThickness * fontSize
-  const stY = metrics.strikethroughPosition * fontSize   // bottom edge of strike (typically positive)
+  const stY = metrics.strikethroughPosition * fontSize // bottom edge of strike (typically positive)
   const stH = metrics.strikethroughThickness * fontSize
 
   const rects: DecorationRect[] = []
-  const advanceOf: GlyphAdvanceLookup = typeof glyphAdvances === 'function'
-    ? glyphAdvances
-    : (pg) => glyphAdvances.get(pg.glyphId) ?? 0
+  const advanceOf: GlyphAdvanceLookup =
+    typeof glyphAdvances === 'function' ? glyphAdvances : (pg) => glyphAdvances.get(pg.glyphId) ?? 0
 
   for (const [lineY, lineGlyphs] of linesByY) {
     for (const kind of ['underline', 'strike'] as const) {

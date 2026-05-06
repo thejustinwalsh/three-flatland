@@ -1,6 +1,6 @@
-import { cmapLookup, kernLookup } from '../baked.js'
-import type { SlugFont } from '../SlugFont.js'
-import type { SlugFontStack } from '../SlugFontStack.js'
+import { cmapLookup, kernLookup } from '../baked'
+import type { SlugFont } from '../SlugFont'
+import type { SlugFontStack } from '../SlugFontStack'
 
 /**
  * Wrap text into lines using per-codepoint font resolution from a
@@ -17,7 +17,7 @@ export function wrapLinesStack(
   stack: SlugFontStack,
   text: string,
   fontSize: number,
-  maxWidth: number | undefined,
+  maxWidth: number | undefined
 ): string[] {
   const lines: string[] = []
   let lineStart = 0

@@ -16,9 +16,9 @@ import {
   If,
 } from 'three/tsl'
 import type Node from 'three/src/nodes/core/Node.js'
-import { calcRootCode } from './calcRootCode.js'
-import { solveHorizPoly, solveVertPoly } from './solveQuadratic.js'
-import { calcCoverage } from './calcCoverage.js'
+import { calcRootCode } from './calcRootCode'
+import { solveHorizPoly, solveVertPoly } from './solveQuadratic'
+import { calcCoverage } from './calcCoverage'
 
 import type { DataTexture } from 'three'
 
@@ -70,7 +70,7 @@ export function slugRender(
   evenOdd: Node<'bool'>,
   weightBoost: Node<'bool'>,
   stemDarken?: Node<'float'>,
-  thicken?: Node<'float'>,
+  thicken?: Node<'float'>
 ) {
   // Compute pixel footprint in em-space for coverage scaling
   const emsPerPixel = fwidth(renderCoord)
@@ -92,12 +92,12 @@ export function slugRender(
   const bandIdxX = clamp(
     renderCoord.x.mul(bandTransform.x).add(bandTransform.z),
     0,
-    numVBands.sub(1),
+    numVBands.sub(1)
   )
   const bandIdxY = clamp(
     renderCoord.y.mul(bandTransform.y).add(bandTransform.w),
     0,
-    numHBands.sub(1),
+    numHBands.sub(1)
   )
 
   const glyphLocXi = int(glyphLocX)
@@ -118,7 +118,9 @@ export function slugRender(
 
   Loop(MAX_CURVES_PER_BAND, ({ i }) => {
     // Early exit when past curve count
-    If(i.greaterThanEqual(hCurveCount), () => { Break() })
+    If(i.greaterThanEqual(hCurveCount), () => {
+      Break()
+    })
 
     // Read curve reference with row wrapping
     const refCoord = wrapTexCoord(glyphLocXi, glyphLocYi, hCurveListOffset.add(i))
@@ -138,7 +140,9 @@ export function slugRender(
     // Early exit on sorted max-X: curves are sorted descending by max X,
     // so if this curve's max X is left of pixel, all remaining are too
     const maxX = max(max(p0.x, p1.x), p2.x).mul(pixelsPerEmX)
-    If(maxX.lessThan(-0.5), () => { Break() })
+    If(maxX.lessThan(-0.5), () => {
+      Break()
+    })
 
     // Root eligibility — if both roots are ineligible (rootCode == 0) the
     // curve doesn't cross the horizontal ray at all and contributes nothing.
@@ -161,10 +165,7 @@ export function slugRender(
       // Weight: proximity to pixel center
       const w1 = saturate(float(1.0).sub(abs(rpxX).mul(2.0)))
       const w2 = saturate(float(1.0).sub(abs(rpxY).mul(2.0)))
-      const curveWgt = max(
-        select(hasRoot1, w1, 0.0),
-        select(hasRoot2, w2, 0.0),
-      )
+      const curveWgt = max(select(hasRoot1, w1, 0.0), select(hasRoot2, w2, 0.0))
       xwgt.assign(max(xwgt, curveWgt))
     })
   })
@@ -177,7 +178,9 @@ export function slugRender(
   const vCurveListOffset = int(vBandHeader.y)
 
   Loop(MAX_CURVES_PER_BAND, ({ i }) => {
-    If(i.greaterThanEqual(vCurveCount), () => { Break() })
+    If(i.greaterThanEqual(vCurveCount), () => {
+      Break()
+    })
 
     const refCoord = wrapTexCoord(glyphLocXi, glyphLocYi, vCurveListOffset.add(i))
     const refData = textureLoad(bandTexture, refCoord)
@@ -193,7 +196,9 @@ export function slugRender(
 
     // Early exit on sorted max-Y
     const maxY = max(max(p0.y, p1.y), p2.y).mul(pixelsPerEmY)
-    If(maxY.lessThan(-0.5), () => { Break() })
+    If(maxY.lessThan(-0.5), () => {
+      Break()
+    })
 
     const rootCode = calcRootCode(p0.x, p1.x, p2.x)
 
@@ -211,10 +216,7 @@ export function slugRender(
 
       const w1 = saturate(float(1.0).sub(abs(rpyX).mul(2.0)))
       const w2 = saturate(float(1.0).sub(abs(rpyY).mul(2.0)))
-      const curveWgt = max(
-        select(hasRoot1, w1, 0.0),
-        select(hasRoot2, w2, 0.0),
-      )
+      const curveWgt = max(select(hasRoot1, w1, 0.0), select(hasRoot2, w2, 0.0))
       ywgt.assign(max(ywgt, curveWgt))
     })
   })

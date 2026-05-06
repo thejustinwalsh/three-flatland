@@ -1,10 +1,18 @@
-import { DataTexture, FloatType, HalfFloatType, Loader, NearestFilter, RGBAFormat, RGFormat } from 'three'
-import { SlugFont } from './SlugFont.js'
-import { bakedURLs, unpackBaked } from './baked.js'
-import { shapeTextBaked } from './pipeline/textShaperBaked.js'
-import { wrapLinesBaked } from './pipeline/wrapLinesBaked.js'
-import { measureTextBaked } from './pipeline/textMeasureBaked.js'
-import type { BakedJSON } from './baked.js'
+import {
+  DataTexture,
+  FloatType,
+  HalfFloatType,
+  Loader,
+  NearestFilter,
+  RGBAFormat,
+  RGFormat,
+} from 'three'
+import { SlugFont } from './SlugFont'
+import { bakedURLs, unpackBaked } from './baked'
+import { shapeTextBaked } from './pipeline/textShaperBaked'
+import { wrapLinesBaked } from './pipeline/wrapLinesBaked'
+import { measureTextBaked } from './pipeline/textMeasureBaked'
+import type { BakedJSON } from './baked'
 
 /**
  * The single entry point for loading SlugFont data.
@@ -48,13 +56,15 @@ export class SlugFontLoader extends Loader<SlugFont> {
     url: string,
     onLoad?: (font: SlugFont) => void,
     onProgress?: (event: ProgressEvent) => void,
-    onError?: (err: unknown) => void,
+    onError?: (err: unknown) => void
   ): SlugFont {
     const resolvedURL = this.manager.resolveURL(url)
     const placeholder = {} as SlugFont
 
     SlugFontLoader._loadImpl(resolvedURL, this.forceRuntime)
-      .then((font) => { onLoad?.(font) })
+      .then((font) => {
+        onLoad?.(font)
+      })
       .catch((err) => {
         if (onError) {
           onError(err)
@@ -67,7 +77,7 @@ export class SlugFontLoader extends Loader<SlugFont> {
     return placeholder
   }
 
-  loadAsync(url: string, onProgress?: (event: ProgressEvent) => void): Promise<SlugFont> {
+  loadAsync(url: string, _onProgress?: (event: ProgressEvent) => void): Promise<SlugFont> {
     return SlugFontLoader._loadImpl(this.manager.resolveURL(url), this.forceRuntime)
   }
 
@@ -104,7 +114,9 @@ export class SlugFontLoader extends Loader<SlugFont> {
     }
 
     if (typeof process !== 'undefined' && process.env?.['NODE_ENV'] !== 'production') {
-      console.warn(`[slug] Generating font data at runtime. Bake with \`npx slug-bake\` for production.`)
+      console.warn(
+        `[slug] Generating font data at runtime. Bake with \`npx slug-bake\` for production.`
+      )
     }
     return this._loadRuntime(url)
   }
@@ -113,20 +125,20 @@ export class SlugFontLoader extends Loader<SlugFont> {
     const urls = bakedURLs(fontURL)
 
     try {
-      const [jsonResp, binResp] = await Promise.all([
-        fetch(urls.json),
-        fetch(urls.bin),
-      ])
+      const [jsonResp, binResp] = await Promise.all([fetch(urls.json), fetch(urls.bin)])
 
       if (!jsonResp.ok || !binResp.ok) return null
 
-      const meta: BakedJSON = await jsonResp.json()
+      const meta = (await jsonResp.json()) as BakedJSON
       const binBuffer = await binResp.arrayBuffer()
 
       // Curve texture: RGBA16F — 2 bytes per channel × 4 channels = 8 bytes/texel
       const curveTexture = new DataTexture(
         new Uint16Array(binBuffer, meta.curveTexture.byteOffset, meta.curveTexture.byteLength / 2),
-        meta.textureWidth, meta.curveTexture.height, RGBAFormat, HalfFloatType,
+        meta.textureWidth,
+        meta.curveTexture.height,
+        RGBAFormat,
+        HalfFloatType
       )
       curveTexture.minFilter = NearestFilter
       curveTexture.magFilter = NearestFilter
@@ -135,7 +147,10 @@ export class SlugFontLoader extends Loader<SlugFont> {
       // Band texture: RG32F — 4 bytes per channel × 2 channels = 8 bytes/texel
       const bandTexture = new DataTexture(
         new Float32Array(binBuffer, meta.bandTexture.byteOffset, meta.bandTexture.byteLength / 4),
-        meta.textureWidth, meta.bandTexture.height, RGFormat, FloatType,
+        meta.textureWidth,
+        meta.bandTexture.height,
+        RGFormat,
+        FloatType
       )
       bandTexture.minFilter = NearestFilter
       bandTexture.magFilter = NearestFilter
@@ -150,7 +165,7 @@ export class SlugFontLoader extends Loader<SlugFont> {
         bakedData,
         shapeTextBaked,
         wrapLinesBaked,
-        measureTextBaked,
+        measureTextBaked
       )
       if (meta.strokeSets && meta.strokeSets.length > 0) {
         font.strokeSets = meta.strokeSets
@@ -173,11 +188,11 @@ export class SlugFontLoader extends Loader<SlugFont> {
     ] = await Promise.all([
       fetch(url),
       import('opentype.js'),
-      import('./pipeline/fontParser.js'),
-      import('./pipeline/texturePacker.js'),
-      import('./pipeline/textShaper.js'),
-      import('./pipeline/wrapLines.js'),
-      import('./pipeline/textMeasure.js'),
+      import('./pipeline/fontParser'),
+      import('./pipeline/texturePacker'),
+      import('./pipeline/textShaper'),
+      import('./pipeline/wrapLines'),
+      import('./pipeline/textMeasure'),
     ])
 
     const buffer = await response.arrayBuffer()
@@ -206,7 +221,7 @@ export class SlugFontLoader extends Loader<SlugFont> {
       otFont,
       shapeText,
       wrapLines,
-      measureText,
+      measureText
     )
   }
 }

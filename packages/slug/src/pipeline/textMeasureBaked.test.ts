@@ -2,15 +2,18 @@ import { describe, it, expect, beforeAll } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import opentype from 'opentype.js'
-import { parseFont } from './fontParser.js'
-import { packTextures } from './texturePacker.js'
-import { measureText } from './textMeasure.js'
-import { measureTextBaked } from './textMeasureBaked.js'
-import { packBaked, unpackBaked } from '../baked.js'
-import type { BakedFontData, BakedJSON } from '../baked.js'
-import type { SlugGlyphData } from '../types.js'
+import { parseFont } from './fontParser'
+import { packTextures } from './texturePacker'
+import { measureText } from './textMeasure'
+import { measureTextBaked } from './textMeasureBaked'
+import { packBaked, unpackBaked } from '../baked'
+import type { BakedFontData, BakedJSON } from '../baked'
+import type { SlugGlyphData } from '../types'
 
-const FONT_PATH = resolve(__dirname, '../../../../examples/three/slug-text/public/Inter-Regular.ttf')
+const FONT_PATH = resolve(
+  __dirname,
+  '../../../../examples/three/slug-text/public/Inter-Regular.ttf'
+)
 const buf = readFileSync(FONT_PATH)
 const arrayBuffer = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength)
 
@@ -32,7 +35,7 @@ beforeAll(() => {
   // Build a minimal BakedFontData with just cmap + kern lookups.
   const cmapCodes: number[] = []
   const cmapGlyphs: number[] = []
-  for (let c = 0x20; c <= 0x7E; c++) {
+  for (let c = 0x20; c <= 0x7e; c++) {
     const g = otFont.charToGlyph(String.fromCharCode(c))
     if (g && g.index !== 0) {
       cmapCodes.push(c)
@@ -51,14 +54,24 @@ beforeAll(() => {
 describe('measureTextBaked', () => {
   it('width matches the opentype path to within half-float precision', () => {
     const runtime = measureText(otFont, glyphs, 'Hello', 48)
-    const bakedMeasured = measureTextBaked(baked, glyphs, unitsPerEm, ascender, descender, 'Hello', 48)
+    const bakedMeasured = measureTextBaked(
+      baked,
+      glyphs,
+      unitsPerEm,
+      ascender,
+      descender,
+      'Hello',
+      48
+    )
     expect(bakedMeasured.width).toBeCloseTo(runtime.width, 2)
   })
 
   it('fontBoundingBoxAscent + Descent = fontSize * (asc − desc)', () => {
     const m = measureTextBaked(baked, glyphs, unitsPerEm, ascender, descender, 'x', 48)
-    expect(m.fontBoundingBoxAscent + m.fontBoundingBoxDescent)
-      .toBeCloseTo(48 * (ascender - descender), 3)
+    expect(m.fontBoundingBoxAscent + m.fontBoundingBoxDescent).toBeCloseTo(
+      48 * (ascender - descender),
+      3
+    )
   })
 
   it('empty string returns zero width + zero ink bounds', () => {
@@ -90,7 +103,7 @@ describe('measureTextBaked', () => {
 
     // Build a minimal cmap so the roundtrip has something to index.
     const cmap: [number, number][] = []
-    for (let c = 0x20; c <= 0x7E; c++) {
+    for (let c = 0x20; c <= 0x7e; c++) {
       const g = otFont.charToGlyph(String.fromCharCode(c))
       if (g && g.index !== 0) cmap.push([c, g.index])
     }
@@ -106,7 +119,10 @@ describe('measureTextBaked', () => {
       cmap,
       kern: [],
     })
-    const roundtripped = unpackBaked(bin.buffer.slice(bin.byteOffset, bin.byteOffset + bin.byteLength) as ArrayBuffer, json as BakedJSON)
+    const roundtripped = unpackBaked(
+      bin.buffer.slice(bin.byteOffset, bin.byteOffset + bin.byteLength) as ArrayBuffer,
+      json as BakedJSON
+    )
 
     const m = measureTextBaked(
       roundtripped,
@@ -115,7 +131,7 @@ describe('measureTextBaked', () => {
       ascender,
       descender,
       'Hello',
-      48,
+      48
     )
     expect(m.width).toBeGreaterThan(0)
     // Real ink bounds — cap-height is ~73% of em, should be nonzero

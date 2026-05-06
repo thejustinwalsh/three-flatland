@@ -4,8 +4,8 @@ import {
   InstancedBufferAttribute,
   Uint16BufferAttribute,
 } from 'three'
-import type { SlugFont } from './SlugFont.js'
-import type { DecorationRect, PositionedGlyph, SlugGlyphData } from './types.js'
+import type { SlugFont } from './SlugFont'
+import type { DecorationRect, PositionedGlyph, SlugGlyphData } from './types'
 
 /** Default initial capacity for glyph instances. */
 const DEFAULT_CAPACITY = 256
@@ -44,17 +44,20 @@ export class SlugGeometry extends BufferGeometry {
     // Base quad geometry (unit square centered at origin)
     // Vertices: 4 corners of [-0.5, 0.5] quad
     const positions = new Float32Array([
-      -0.5, -0.5, 0, // bottom-left
-      0.5, -0.5, 0, // bottom-right
-      0.5, 0.5, 0, // top-right
-      -0.5, 0.5, 0, // top-left
+      -0.5,
+      -0.5,
+      0, // bottom-left
+      0.5,
+      -0.5,
+      0, // bottom-right
+      0.5,
+      0.5,
+      0, // top-right
+      -0.5,
+      0.5,
+      0, // top-left
     ])
-    const uvs = new Float32Array([
-      0, 0,
-      1, 0,
-      1, 1,
-      0, 1,
-    ])
+    const uvs = new Float32Array([0, 0, 1, 0, 1, 1, 0, 1])
     const indices = new Uint16Array([0, 1, 2, 0, 2, 3])
 
     this.setAttribute('position', new Float32BufferAttribute(positions, 3))
@@ -96,7 +99,7 @@ export class SlugGeometry extends BufferGeometry {
     glyphs: PositionedGlyph[],
     font: SlugFont,
     color: { r: number; g: number; b: number; a: number } = { r: 1, g: 1, b: 1, a: 1 },
-    decorations: readonly DecorationRect[] = [],
+    decorations: readonly DecorationRect[] = []
   ): void {
     const total = glyphs.length + decorations.length
     if (total > this._capacity) this._grow(total)
@@ -136,7 +139,7 @@ export class SlugGeometry extends BufferGeometry {
   private _writeDecorationInstance(
     index: number,
     rect: DecorationRect,
-    color: { r: number; g: number; b: number; a: number },
+    color: { r: number; g: number; b: number; a: number }
   ): void {
     const i4 = index * 4
     this._glyphPos[i4] = rect.x
@@ -173,7 +176,7 @@ export class SlugGeometry extends BufferGeometry {
     pg: PositionedGlyph,
     glyph: SlugGlyphData,
     font: SlugFont,
-    color: { r: number; g: number; b: number; a: number },
+    color: { r: number; g: number; b: number; a: number }
   ): void {
     const { bounds, bandLocation, bands } = glyph
 

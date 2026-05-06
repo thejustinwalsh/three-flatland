@@ -1,5 +1,5 @@
 import type { Font } from 'opentype.js'
-import type { PositionedGlyph } from '../types.js'
+import type { PositionedGlyph } from '../types'
 
 /**
  * Shape a text string into positioned glyphs using an opentype.js Font.
@@ -13,7 +13,7 @@ export function shapeText(
     align?: 'left' | 'center' | 'right'
     lineHeight?: number
     maxWidth?: number
-  } = {},
+  } = {}
 ): PositionedGlyph[] {
   const { align = 'left', lineHeight = 1.2, maxWidth } = options
   const scale = fontSize / font.unitsPerEm
@@ -28,7 +28,12 @@ export function shapeText(
   // collapse at wrap points and newline handling skips the wrong cursor
   // advance. The baked shaper doesn't apply GSUB at all; pass an empty
   // features list to keep the two paths aligned.
-  const openGlyphs = (font.stringToGlyphs as (s: string, opts?: { features?: unknown[] }) => ReturnType<Font['stringToGlyphs']>)(text, { features: [] })
+  const openGlyphs = (
+    font.stringToGlyphs as (
+      s: string,
+      opts?: { features?: unknown[] }
+    ) => ReturnType<Font['stringToGlyphs']>
+  )(text, { features: [] })
   const positioned: PositionedGlyph[] = []
 
   const lines: PositionedGlyph[][] = [[]]
@@ -36,9 +41,9 @@ export function shapeText(
   let cursorX = 0
 
   // Track the last word boundary for wrap-back
-  let lastSpaceIdx = -1       // index into openGlyphs where last space was
+  let lastSpaceIdx = -1 // index into openGlyphs where last space was
   let lastSpaceGlyphCount = 0 // currentLine.length at last space
-  let lastSpaceCursorX = 0    // cursorX right after the space
+  let lastSpaceCursorX = 0 // cursorX right after the space
 
   for (let i = 0; i < openGlyphs.length; i++) {
     const glyph = openGlyphs[i]!
@@ -66,7 +71,7 @@ export function shapeText(
         // Rewind: move glyphs after the space to a new line
         const overflow = currentLine.splice(lastSpaceGlyphCount)
         const baseX = lastSpaceCursorX
-        lines.push(overflow.map(g => ({ ...g, x: g.x - baseX })))
+        lines.push(overflow.map((g) => ({ ...g, x: g.x - baseX })))
         currentLine = lines[lines.length - 1]!
         cursorX = cursorX - baseX
       } else {

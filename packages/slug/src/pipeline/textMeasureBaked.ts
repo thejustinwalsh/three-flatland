@@ -1,6 +1,6 @@
-import { cmapLookup, kernLookup } from '../baked.js'
-import type { BakedFontData } from '../baked.js'
-import type { SlugGlyphData, TextMetrics } from '../types.js'
+import { cmapLookup, kernLookup } from '../baked'
+import type { BakedFontData } from '../baked'
+import type { SlugGlyphData, TextMetrics } from '../types'
 
 /**
  * Measure a single unwrapped line of text using baked font data.
@@ -17,7 +17,7 @@ export function measureTextBaked(
   ascender: number,
   descender: number,
   text: string,
-  fontSize: number,
+  fontSize: number
 ): TextMetrics {
   const scale = fontSize / unitsPerEm
   const { cmapCodes, cmapGlyphs, kernData, kernCount } = bakedData
@@ -43,7 +43,7 @@ export function measureTextBaked(
   }
 
   for (let i = 0; i < glyphIds.length; i++) {
-    let glyphId = glyphIds[i]!
+    const glyphId = glyphIds[i]!
     let glyphData = glyphs.get(glyphId)
 
     // Distinguish "unmapped codepoint" (fall back to notdef for a visible

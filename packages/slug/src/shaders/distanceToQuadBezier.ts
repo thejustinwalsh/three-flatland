@@ -55,10 +55,14 @@ export interface DistanceResult {
  *     all t give the same distance. We return t = 0.
  */
 export function refDistanceToQuadBezier(
-  px: number, py: number,
-  p0x: number, p0y: number,
-  p1x: number, p1y: number,
-  p2x: number, p2y: number,
+  px: number,
+  py: number,
+  p0x: number,
+  p0y: number,
+  p1x: number,
+  p1y: number,
+  p2x: number,
+  p2y: number
 ): DistanceResult {
   const Ax = p2x - 2 * p1x + p0x
   const Ay = p2y - 2 * p1y + p0y
@@ -88,10 +92,8 @@ export function refDistanceToQuadBezier(
   // Clamping each step into [0, 1] prevents runaway and keeps the
   // critical point inside the curve segment. (Slug's fill-side solver
   // uses the same clamp pattern in `solveQuadratic`.)
-  const fPrime = (t: number) =>
-    3 * AA * t * t + 2 * (3 * AD) * t + (2 * DD + MA)
-  const f = (t: number) =>
-    AA * t * t * t + 3 * AD * t * t + (2 * DD + MA) * t + MD
+  const fPrime = (t: number) => 3 * AA * t * t + 2 * (3 * AD) * t + (2 * DD + MA)
+  const f = (t: number) => AA * t * t * t + 3 * AD * t * t + (2 * DD + MA) * t + MD
 
   const refine = (seed: number): number => {
     let t = seed
@@ -156,7 +158,7 @@ export function distanceToQuadBezier(
   p: Node<'vec2'>,
   p0: Node<'vec2'>,
   p1: Node<'vec2'>,
-  p2: Node<'vec2'>,
+  p2: Node<'vec2'>
 ) {
   const A = p2.sub(p1.mul(2.0)).add(p0)
   const D = p1.sub(p0)
@@ -174,14 +176,9 @@ export function distanceToQuadBezier(
   const c0 = MD
 
   const fEval = (t: Node<'float'>) =>
-    c3.mul(t).mul(t).mul(t)
-      .add(c2.mul(t).mul(t))
-      .add(c1.mul(t))
-      .add(c0)
+    c3.mul(t).mul(t).mul(t).add(c2.mul(t).mul(t)).add(c1.mul(t)).add(c0)
   const fPrime = (t: Node<'float'>) =>
-    float(3.0).mul(c3).mul(t).mul(t)
-      .add(float(2.0).mul(c2).mul(t))
-      .add(c1)
+    float(3.0).mul(c3).mul(t).mul(t).add(float(2.0).mul(c2).mul(t)).add(c1)
 
   const denomFloor = float(1.0 / (1 << 20))
   const newton = (t: Node<'float'>) => {
@@ -198,12 +195,8 @@ export function distanceToQuadBezier(
   // Evaluate candidate distances at the refined seed + both endpoints.
   const evalDistSq = (t: Node<'float'>) => {
     const ct = float(1.0).sub(t)
-    const bx = ct.mul(ct).mul(p0.x)
-      .add(float(2.0).mul(ct).mul(t).mul(p1.x))
-      .add(t.mul(t).mul(p2.x))
-    const by = ct.mul(ct).mul(p0.y)
-      .add(float(2.0).mul(ct).mul(t).mul(p1.y))
-      .add(t.mul(t).mul(p2.y))
+    const bx = ct.mul(ct).mul(p0.x).add(float(2.0).mul(ct).mul(t).mul(p1.x)).add(t.mul(t).mul(p2.x))
+    const by = ct.mul(ct).mul(p0.y).add(float(2.0).mul(ct).mul(t).mul(p1.y)).add(t.mul(t).mul(p2.y))
     const dx = bx.sub(p.x)
     const dy = by.sub(p.y)
     return dx.mul(dx).add(dy.mul(dy))
@@ -217,10 +210,7 @@ export function distanceToQuadBezier(
   // a native argmin.
   const pick = (ta: Node<'float'>, da: Node<'float'>, tb: Node<'float'>, db: Node<'float'>) => {
     const aWins = da.lessThanEqual(db)
-    return vec2(
-      aWins.select(ta, tb),
-      aWins.select(da, db),
-    )
+    return vec2(aWins.select(ta, tb), aWins.select(da, db))
   }
 
   const mid0 = pick(tMid, dM, float(0.0), d0)
@@ -228,4 +218,3 @@ export function distanceToQuadBezier(
 
   return vec2(sqrt(best.y), best.x)
 }
-

@@ -1,5 +1,5 @@
 import type { Font } from 'opentype.js'
-import type { SlugGlyphData, TextMetrics } from '../types.js'
+import type { SlugGlyphData, TextMetrics } from '../types'
 
 /**
  * Measure a single unwrapped line of text via opentype.js Font.
@@ -18,7 +18,7 @@ export function measureText(
   font: Font,
   glyphs: Map<number, SlugGlyphData>,
   text: string,
-  fontSize: number,
+  fontSize: number
 ): TextMetrics {
   const scale = fontSize / font.unitsPerEm
 
@@ -33,7 +33,12 @@ export function measureText(
 
   // Features off — see textShaper.ts. Ligature substitution would shorten
   // the array vs `text.length` and misalign the '\n' skip check.
-  const openGlyphs = (font.stringToGlyphs as (s: string, opts?: { features?: unknown[] }) => ReturnType<Font['stringToGlyphs']>)(text, { features: [] })
+  const openGlyphs = (
+    font.stringToGlyphs as (
+      s: string,
+      opts?: { features?: unknown[] }
+    ) => ReturnType<Font['stringToGlyphs']>
+  )(text, { features: [] })
 
   for (let i = 0; i < openGlyphs.length; i++) {
     const glyph = openGlyphs[i]!

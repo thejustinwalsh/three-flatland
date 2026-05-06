@@ -22,25 +22,25 @@
 import { readFileSync, writeFileSync } from 'node:fs'
 import { basename, dirname, join, extname } from 'node:path'
 import opentype from 'opentype.js'
-import { parseFont } from './pipeline/fontParser.js'
-import { packTextures } from './pipeline/texturePacker.js'
-import { bakeStrokeForGlyph } from './pipeline/strokeOffsetter.js'
-import type { CapStyle, JoinStyle } from './pipeline/strokeOffsetter.js'
-import { packBaked } from './baked.js'
-import type { BakedJSON } from './baked.js'
-import type { SlugGlyphData } from './types.js'
+import { parseFont } from './pipeline/fontParser'
+import { packTextures } from './pipeline/texturePacker'
+import { bakeStrokeForGlyph } from './pipeline/strokeOffsetter'
+import type { CapStyle, JoinStyle } from './pipeline/strokeOffsetter'
+import { packBaked } from './baked'
+import type { BakedJSON } from './baked'
+import type { SlugGlyphData } from './types'
 
 // --- Predefined Unicode ranges ---
 
 const NAMED_RANGES: Record<string, [number, number][]> = {
-  ascii: [[0x0020, 0x007E]],
-  latin: [[0x0000, 0x024F]],
+  ascii: [[0x0020, 0x007e]],
+  latin: [[0x0000, 0x024f]],
   'latin+': [
-    [0x0000, 0x024F],   // Basic Latin + Latin Extended-A/B
-    [0x1E00, 0x1EFF],   // Latin Extended Additional
-    [0x2000, 0x206F],   // General Punctuation
-    [0x20A0, 0x20CF],   // Currency Symbols
-    [0x2100, 0x214F],   // Letterlike Symbols
+    [0x0000, 0x024f], // Basic Latin + Latin Extended-A/B
+    [0x1e00, 0x1eff], // Latin Extended Additional
+    [0x2000, 0x206f], // General Punctuation
+    [0x20a0, 0x20cf], // Currency Symbols
+    [0x2100, 0x214f], // Letterlike Symbols
   ],
 }
 
@@ -58,7 +58,9 @@ function parseRanges(rangeArgs: string[]): [number, number][] | null {
     // Parse "0x20-0x7E" or "32-126"
     const match = arg.match(/^(0x[\da-f]+|\d+)-(0x[\da-f]+|\d+)$/i)
     if (!match) {
-      console.error(`Invalid range: "${arg}". Use named ranges (ascii, latin, latin+) or hex/decimal ranges (0x20-0x7E).`)
+      console.error(
+        `Invalid range: "${arg}". Use named ranges (ascii, latin, latin+) or hex/decimal ranges (0x20-0x7E).`
+      )
       process.exit(1)
     }
     const lo = parseInt(match[1]!, match[1]!.startsWith('0x') ? 16 : 10)
@@ -74,10 +76,7 @@ function charInRanges(charCode: number, ranges: [number, number][]): boolean {
 
 // --- Extraction ---
 
-function extractCmap(
-  font: opentype.Font,
-  ranges: [number, number][] | null,
-): [number, number][] {
+function extractCmap(font: opentype.Font, ranges: [number, number][] | null): [number, number][] {
   const cmap: [number, number][] = []
   const scanEnd = 0x10000 // BMP
 
@@ -88,14 +87,11 @@ function extractCmap(
       cmap.push([charCode, glyph.index])
     }
   }
-  cmap.sort((a, b) => a[0]! - b[0]!)
+  cmap.sort((a, b) => a[0] - b[0])
   return cmap
 }
 
-function extractKerning(
-  font: opentype.Font,
-  glyphIds: Set<number>,
-): [number, number, number][] {
+function extractKerning(font: opentype.Font, glyphIds: Set<number>): [number, number, number][] {
   const kern: [number, number, number][] = []
   const ids = [...glyphIds]
 
@@ -127,10 +123,13 @@ function bakeFont(
   fontPath: string,
   ranges: [number, number][] | null,
   outputBase?: string,
-  strokeConfigs: StrokeSetConfig[] = [],
+  strokeConfigs: StrokeSetConfig[] = []
 ): void {
   const fileBuffer = readFileSync(fontPath)
-  const arrayBuffer = fileBuffer.buffer.slice(fileBuffer.byteOffset, fileBuffer.byteOffset + fileBuffer.byteLength)
+  const arrayBuffer = fileBuffer.buffer.slice(
+    fileBuffer.byteOffset,
+    fileBuffer.byteOffset + fileBuffer.byteLength
+  )
 
   console.log(`Parsing ${basename(fontPath)}...`)
   const parsed = parseFont(arrayBuffer)
@@ -217,8 +216,8 @@ function bakeFont(
       })
       console.log(
         `  stroke set #${si}: width=${cfg.width} join=${cfg.joinStyle} ` +
-        `cap=${cfg.capStyle} miterLimit=${cfg.miterLimit} → ${bakedCount} glyphs ` +
-        `(offset +${glyphIdOffset})`,
+          `cap=${cfg.capStyle} miterLimit=${cfg.miterLimit} → ${bakedCount} glyphs ` +
+          `(offset +${glyphIdOffset})`
       )
     }
   }
@@ -246,19 +245,31 @@ function bakeFont(
   if (overBudgetBands > 0) {
     console.warn(
       `  WARNING: ${overBudgetBands} bands exceed MAX_CURVES_PER_BAND (${SHADER_MAX_CURVES_PER_BAND}); ` +
-      `max observed ${maxBandFill}. Those glyphs will render incorrectly. ` +
-      `Increase the shader bound or drop the affected glyphs from the subset.`,
+        `max observed ${maxBandFill}. Those glyphs will render incorrectly. ` +
+        `Increase the shader bound or drop the affected glyphs from the subset.`
     )
   } else {
     console.log(`  max band fill: ${maxBandFill} / ${SHADER_MAX_CURVES_PER_BAND}`)
   }
 
   // Curve data is Uint16Array (half-float RGBA). Band data is Float32Array (RG).
-  const curveData = (textures.curveTexture as any).image.data as Uint16Array
-  const bandData = (textures.bandTexture as any).image.data as Float32Array
-  const curveWidth = (textures.curveTexture as any).image.width as number
-  const curveHeight = (textures.curveTexture as any).image.height as number
-  const bandHeight = (textures.bandTexture as any).image.height as number
+  // Three's `DataTexture.image` is `{ data, width, height }` but typed as the
+  // generic `Texture['image']` union. Narrow once for downstream packing.
+  const curveImage = textures.curveTexture.image as {
+    data: Uint16Array
+    width: number
+    height: number
+  }
+  const bandImage = textures.bandTexture.image as {
+    data: Float32Array
+    width: number
+    height: number
+  }
+  const curveData = curveImage.data
+  const bandData = bandImage.data
+  const curveWidth = curveImage.width
+  const curveHeight = curveImage.height
+  const bandHeight = bandImage.height
 
   console.log(`  ${cmap.length} cmap entries`)
 
@@ -266,9 +277,7 @@ function bakeFont(
   // Stroke glyphs live at offset IDs that opentype.js doesn't know
   // about — filter to source IDs only so extractKerning can look
   // each up in the font's hmtx.
-  const maxSourceIdForKern = strokeSets.length > 0
-    ? strokeSets[0]!.glyphIdOffset
-    : Infinity
+  const maxSourceIdForKern = strokeSets.length > 0 ? strokeSets[0]!.glyphIdOffset : Infinity
   const glyphIds = new Set<number>()
   for (const id of glyphs.keys()) if (id < maxSourceIdForKern) glyphIds.add(id)
   const kern = extractKerning(otFont, glyphIds)

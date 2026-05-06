@@ -6,7 +6,8 @@ import { createPane } from '@three-flatland/tweakpane'
 
 // --- Lorem ipsum generator ---
 
-const LOREM = 'Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.'
+const LOREM =
+  'Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.'
 const LOREM_WORDS = LOREM.split(' ')
 
 function getLoremText(wordCount: number): string {
@@ -20,9 +21,18 @@ function getLoremText(wordCount: number): string {
 // Font Awesome PUA codepoints — keep in sync with the bake command that
 // produced `fa-solid.slug.{json,bin}`.
 const ICON = {
-  heart: '\uf004', star: '\uf005', home: '\uf015', user: '\uf007',
-  gear: '\uf013', bolt: '\uf0e7', thumbsUp: '\uf164', paperPlane: '\uf1d8',
-  code: '\uf121', coffee: '\uf0f4', rocket: '\uf135', book: '\uf02d',
+  heart: '\uf004',
+  star: '\uf005',
+  home: '\uf015',
+  user: '\uf007',
+  gear: '\uf013',
+  bolt: '\uf0e7',
+  thumbsUp: '\uf164',
+  paperPlane: '\uf1d8',
+  code: '\uf121',
+  coffee: '\uf0f4',
+  rocket: '\uf135',
+  book: '\uf02d',
 }
 const ICON_DEMO =
   `Built with ${ICON.code} and ${ICON.heart}\n` +
@@ -52,7 +62,7 @@ function drawCompareText(
   lineHeight: number,
   mode: CompareMode,
   fontFamily: string = 'Inter-Slug, sans-serif',
-  preWrappedLines: string[] | null = null,
+  preWrappedLines: string[] | null = null
 ) {
   const dpr = window.devicePixelRatio
   const w = ctx.canvas.width / dpr
@@ -94,12 +104,22 @@ function drawDiff(
   maxWidth: number,
   lineHeight: number,
   fontFamily: string = 'Inter-Slug, sans-serif',
-  preWrappedLines: string[] | null = null,
+  preWrappedLines: string[] | null = null
 ) {
   const cw = compareCtx.canvas.width
   const ch = compareCtx.canvas.height
 
-  drawCompareText(compareCtx, font, text, fontSize, maxWidth, lineHeight, 'diff', fontFamily, preWrappedLines)
+  drawCompareText(
+    compareCtx,
+    font,
+    text,
+    fontSize,
+    maxWidth,
+    lineHeight,
+    'diff',
+    fontFamily,
+    preWrappedLines
+  )
   const canvasPixels = compareCtx.getImageData(0, 0, cw, ch)
 
   const tempCanvas = document.createElement('canvas')
@@ -157,7 +177,9 @@ function setupSplitHandle(handle: HTMLElement, onDrag: (x: number) => void) {
     onDrag(Math.max(0, Math.min(e.clientX, window.innerWidth)))
   })
 
-  window.addEventListener('pointerup', () => { dragging = false })
+  window.addEventListener('pointerup', () => {
+    dragging = false
+  })
 }
 
 // --- Main ---
@@ -374,21 +396,21 @@ async function main() {
     if (params.compare === 'off') {
       compareCtx.clearRect(0, 0, compareCanvas.width, compareCanvas.height)
       computingEl.removeAttribute('data-visible')
-      if (computingTimer) { clearTimeout(computingTimer); computingTimer = null }
+      if (computingTimer) {
+        clearTimeout(computingTimer)
+        computingTimer = null
+      }
       return
     }
 
     const compareText = getCompareText()
-    const fontFamily = params.icons
-      ? 'Inter-Slug, FA-Solid, sans-serif'
-      : 'Inter-Slug, sans-serif'
+    const fontFamily = params.icons ? 'Inter-Slug, FA-Solid, sans-serif' : 'Inter-Slug, sans-serif'
     const maxWidth = window.innerWidth * maxWidthFraction
     // In icons mode, pre-wrap through the stack so Canvas2D breaks
     // exactly where `SlugStackText` does — `font.wrapText` uses the
     // primary only and can't account for FA advance widths.
-    const preWrappedLines = params.icons && stack
-      ? stack.wrapText(compareText, params.size, maxWidth)
-      : null
+    const preWrappedLines =
+      params.icons && stack ? stack.wrapText(compareText, params.size, maxWidth) : null
 
     if (params.compare === 'diff') {
       computingEl.setAttribute('data-visible', '')
@@ -398,7 +420,17 @@ async function main() {
         slugText.update(camera)
         stackText.update(camera)
         renderer.render(scene, camera)
-        drawDiff(compareCtx, renderer.domElement, font, compareText, params.size, maxWidth, 1.2, fontFamily, preWrappedLines)
+        drawDiff(
+          compareCtx,
+          renderer.domElement,
+          font,
+          compareText,
+          params.size,
+          maxWidth,
+          1.2,
+          fontFamily,
+          preWrappedLines
+        )
 
         computingTimer = setTimeout(() => {
           computingEl.removeAttribute('data-visible')
@@ -407,8 +439,21 @@ async function main() {
       })
     } else {
       computingEl.removeAttribute('data-visible')
-      if (computingTimer) { clearTimeout(computingTimer); computingTimer = null }
-      drawCompareText(compareCtx, font, compareText, params.size, maxWidth, 1.2, params.compare, fontFamily, preWrappedLines)
+      if (computingTimer) {
+        clearTimeout(computingTimer)
+        computingTimer = null
+      }
+      drawCompareText(
+        compareCtx,
+        font,
+        compareText,
+        params.size,
+        maxWidth,
+        1.2,
+        params.compare,
+        fontFamily,
+        preWrappedLines
+      )
     }
   }
 
@@ -466,7 +511,7 @@ async function main() {
     const lineMetrics = lines.map((line) => font.measureText(line, params.size))
 
     const lineHeightPx = params.size * 1.2
-    const firstBaselineY = window.innerHeight / 2 - (lines.length - 1) * lineHeightPx / 2
+    const firstBaselineY = window.innerHeight / 2 - ((lines.length - 1) * lineHeightPx) / 2
     const centerX = window.innerWidth / 2
 
     // Emit per-line hit-rects (transparent, pointer-events: auto).
@@ -515,7 +560,7 @@ async function main() {
     setSelectedMetrics(metrics)
 
     const lineHeightPx = params.size * 1.2
-    const firstBaselineY = window.innerHeight / 2 - (lines.length - 1) * lineHeightPx / 2
+    const firstBaselineY = window.innerHeight / 2 - ((lines.length - 1) * lineHeightPx) / 2
     const by = firstBaselineY + hoveredLine * lineHeightPx
     const centerX = window.innerWidth / 2
     const penOriginX = centerX - metrics.width / 2
@@ -533,7 +578,15 @@ async function main() {
     boundsActual.style.height = `${metrics.actualBoundingBoxAscent + metrics.actualBoundingBoxDescent}px`
   }
 
-  function setSelectedMetrics(m: { width: number; actualBoundingBoxAscent: number; actualBoundingBoxDescent: number; fontBoundingBoxAscent: number; fontBoundingBoxDescent: number } | null) {
+  function setSelectedMetrics(
+    m: {
+      width: number
+      actualBoundingBoxAscent: number
+      actualBoundingBoxDescent: number
+      fontBoundingBoxAscent: number
+      fontBoundingBoxDescent: number
+    } | null
+  ) {
     monitors.width = m?.width ?? 0
     monitors.actualAscent = m?.actualBoundingBoxAscent ?? 0
     monitors.actualDescent = m?.actualBoundingBoxDescent ?? 0
@@ -571,35 +624,52 @@ async function main() {
   // Top-of-pane scene toggle — inline radiogrid (essentials). Mirrors
   // React's `usePaneRadioGrid`. 'lorem' → SlugText + wrap-aware compare;
   // 'icons' → SlugStackText + stack-wrap compare.
-  ;(pane as unknown as { addBlade: (opts: Record<string, unknown>) => {
-    on: (ev: string, fn: (e: { value: 'lorem' | 'icons' }) => void) => unknown
-  } }).addBlade({
-    view: 'radiogrid',
-    groupName: 'scene',
-    size: [2, 1],
-    cells: (x: number, _y: number) => ({
-      title: ['Lorem', 'Icons'][x],
-      value: (['lorem', 'icons'] as const)[x],
-    }),
-    value: 'lorem',
-  }).on('change', async (ev) => {
-    params.icons = ev.value === 'icons'
-    if (params.icons) await ensureStack()
-    applyIconsMode()
-  })
+  ;(
+    pane as unknown as {
+      addBlade: (opts: Record<string, unknown>) => {
+        on: (ev: string, fn: (e: { value: 'lorem' | 'icons' }) => void) => unknown
+      }
+    }
+  )
+    .addBlade({
+      view: 'radiogrid',
+      groupName: 'scene',
+      size: [2, 1],
+      cells: (x: number, _y: number) => ({
+        title: ['Lorem', 'Icons'][x],
+        value: (['lorem', 'icons'] as const)[x],
+      }),
+      value: 'lorem',
+    })
+    .on('change', async (ev) => {
+      params.icons = ev.value === 'icons'
+      if (params.icons) await ensureStack()
+      applyIconsMode()
+    })
 
   const settings = pane.addFolder({ title: 'Settings', expanded: false })
-  settings.addBinding(params, 'size', {
-    options: {
-      '6': 6, '8': 8, '10': 10, '12': 12, '16': 16, '24': 24,
-      '32': 32, '48': 48, '72': 72, '96': 96, '200': 200,
-    },
-  }).on('change', () => {
-    slugText.fontSize = params.size
-    stackText.fontSize = params.size
-    applyStyles()
-    updateSplitUI()
-  })
+  settings
+    .addBinding(params, 'size', {
+      options: {
+        '6': 6,
+        '8': 8,
+        '10': 10,
+        '12': 12,
+        '16': 16,
+        '24': 24,
+        '32': 32,
+        '48': 48,
+        '72': 72,
+        '96': 96,
+        '200': 200,
+      },
+    })
+    .on('change', () => {
+      slugText.fontSize = params.size
+      stackText.fontSize = params.size
+      applyStyles()
+      updateSplitUI()
+    })
   settings.addBinding(params, 'words', { min: 5, max: 200, step: 1 }).on('change', () => {
     text = getLoremText(params.words)
     slugText.text = text
@@ -616,43 +686,57 @@ async function main() {
   })
 
   const mode = pane.addFolder({ title: 'Mode', expanded: false })
-  mode.addBinding(params, 'compare', {
-    options: { Off: 'off', Onion: 'onion', Diff: 'diff', Split: 'split' },
-  }).on('change', () => {
-    updateSplitUI()
-  })
+  mode
+    .addBinding(params, 'compare', {
+      options: { Off: 'off', Onion: 'onion', Diff: 'diff', Split: 'split' },
+    })
+    .on('change', () => {
+      updateSplitUI()
+    })
   mode.addBinding(params, 'forceRuntime', { label: 'runtime' }).on('change', () => {
     loadFont()
   })
   mode.addBinding(monitors, 'source', { readonly: true })
   mode.addBinding(monitors, 'glyphs', { readonly: true, format: (v: number) => v.toFixed(0) })
-  mode.addBinding(monitors, 'loadMs', { readonly: true, label: 'load (ms)', format: (v: number) => v.toFixed(0) })
+  mode.addBinding(monitors, 'loadMs', {
+    readonly: true,
+    label: 'load (ms)',
+    format: (v: number) => v.toFixed(0),
+  })
 
   // Styles folder — applies underline / strike to a preset character
   // range (first word / first sentence / first line). Demonstrates the
   // public StyleSpan API; arbitrary span editing is rich-text territory.
   const stylesFolder = pane.addFolder({ title: 'Styles', expanded: false })
   const outlineFolder = pane.addFolder({ title: 'Outline', expanded: false })
-  outlineFolder.addBinding(params, 'outlineStyle', {
-    label: 'style',
-    options: { Fill: 'fill', Outline: 'outline', Both: 'both' },
-  }).on('change', () => applyOutline())
-  outlineFolder.addBinding(params, 'outlineWidth', {
-    label: 'width',
-    min: 0.001, max: 0.15, step: 0.001,
-  }).on('change', () => {
-    slugText.setOutlineWidth(params.outlineWidth)
-    stackText.setOutlineWidth(params.outlineWidth)
-  })
+  outlineFolder
+    .addBinding(params, 'outlineStyle', {
+      label: 'style',
+      options: { Fill: 'fill', Outline: 'outline', Both: 'both' },
+    })
+    .on('change', () => applyOutline())
+  outlineFolder
+    .addBinding(params, 'outlineWidth', {
+      label: 'width',
+      min: 0.001,
+      max: 0.15,
+      step: 0.001,
+    })
+    .on('change', () => {
+      slugText.setOutlineWidth(params.outlineWidth)
+      stackText.setOutlineWidth(params.outlineWidth)
+    })
   outlineFolder.addBinding(params, 'outlineColor', { label: 'color' }).on('change', () => {
     slugText.setOutlineColor(params.outlineColor)
     stackText.setOutlineColor(params.outlineColor)
   })
 
-  stylesFolder.addBinding(params, 'styleScope', {
-    label: 'scope',
-    options: { 'First word': 'word', 'First sentence': 'sentence', 'First line': 'line' },
-  }).on('change', applyStyles)
+  stylesFolder
+    .addBinding(params, 'styleScope', {
+      label: 'scope',
+      options: { 'First word': 'word', 'First sentence': 'sentence', 'First line': 'line' },
+    })
+    .on('change', applyStyles)
   stylesFolder.addBinding(params, 'underline').on('change', applyStyles)
   stylesFolder.addBinding(params, 'strike').on('change', applyStyles)
 
@@ -662,13 +746,33 @@ async function main() {
   const fmt = (v: number) => v.toFixed(1)
   const intFmt = (v: number) => v.toFixed(0)
   measureFolder.addBinding(monitors, 'paraWidth', { label: 'block w', readonly: true, format: fmt })
-  measureFolder.addBinding(monitors, 'paraHeight', { label: 'block h', readonly: true, format: fmt })
-  measureFolder.addBinding(monitors, 'paraLines', { label: 'lines', readonly: true, format: intFmt })
+  measureFolder.addBinding(monitors, 'paraHeight', {
+    label: 'block h',
+    readonly: true,
+    format: fmt,
+  })
+  measureFolder.addBinding(monitors, 'paraLines', {
+    label: 'lines',
+    readonly: true,
+    format: intFmt,
+  })
   measureFolder.addBinding(monitors, 'width', { label: 'line w', readonly: true, format: fmt })
-  measureFolder.addBinding(monitors, 'actualAscent', { label: 'actual ↑', readonly: true, format: fmt })
-  measureFolder.addBinding(monitors, 'actualDescent', { label: 'actual ↓', readonly: true, format: fmt })
+  measureFolder.addBinding(monitors, 'actualAscent', {
+    label: 'actual ↑',
+    readonly: true,
+    format: fmt,
+  })
+  measureFolder.addBinding(monitors, 'actualDescent', {
+    label: 'actual ↓',
+    readonly: true,
+    format: fmt,
+  })
   measureFolder.addBinding(monitors, 'fontAscent', { label: 'font ↑', readonly: true, format: fmt })
-  measureFolder.addBinding(monitors, 'fontDescent', { label: 'font ↓', readonly: true, format: fmt })
+  measureFolder.addBinding(monitors, 'fontDescent', {
+    label: 'font ↓',
+    readonly: true,
+    format: fmt,
+  })
 
   await Promise.allSettled([
     document.fonts.load('48px Inter-Slug'),
@@ -728,7 +832,10 @@ async function main() {
     stackText.update(camera)
     renderer.render(scene, camera)
     const render = renderer.info.render as unknown as {
-      drawCalls: number; triangles: number; lines: number; points: number
+      drawCalls: number
+      triangles: number
+      lines: number
+      points: number
     }
     const memory = renderer.info.memory as unknown as { geometries: number; textures: number }
     stats.update({

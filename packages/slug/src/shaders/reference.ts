@@ -16,7 +16,7 @@ export function refCalcRootCode(y1: number, y2: number, y3: number): number {
   const s3 = y3 < 0 ? 1 : 0
 
   const shift = s1 | (s2 << 1) | (s3 << 2)
-  return (0x2E74 >>> shift) & 0x0101
+  return (0x2e74 >>> shift) & 0x0101
 }
 
 /**
@@ -24,9 +24,12 @@ export function refCalcRootCode(y1: number, y2: number, y3: number): number {
  * Returns [x1, x2] intersection coordinates for a horizontal ray at y=0.
  */
 export function refSolveHorizPoly(
-  p0x: number, p0y: number,
-  p1x: number, p1y: number,
-  p2x: number, p2y: number,
+  p0x: number,
+  p0y: number,
+  p1x: number,
+  p1y: number,
+  p2x: number,
+  p2y: number
 ): [number, number] {
   const a = p0y - 2 * p1y + p2y
   const b = p0y - p1y
@@ -59,9 +62,12 @@ export function refSolveHorizPoly(
  * Returns [y1, y2] intersection coordinates for a vertical ray at x=0.
  */
 export function refSolveVertPoly(
-  p0x: number, p0y: number,
-  p1x: number, p1y: number,
-  p2x: number, p2y: number,
+  p0x: number,
+  p0y: number,
+  p1x: number,
+  p1y: number,
+  p2x: number,
+  p2y: number
 ): [number, number] {
   const a = p0x - 2 * p1x + p2x
   const b = p0x - p1x
@@ -101,7 +107,7 @@ export function refCalcCoverage(
   evenOdd: boolean = false,
   weightBoost: boolean = false,
   stemDarken: number = 0,
-  ppem: number = Infinity,
+  ppem: number = Infinity
 ): number {
   const epsilon = 1.0 / 65536.0
 
@@ -153,7 +159,7 @@ export function refSlugDilate(
   m0: [number, number, number, number],
   m1: [number, number, number, number],
   m3: [number, number, number, number],
-  dim: [number, number],
+  dim: [number, number]
 ): { vpos: [number, number]; texcoord: [number, number] } {
   // Normalize the outward normal
   const nLen = Math.sqrt(posZW[0] * posZW[0] + posZW[1] * posZW[1])
@@ -166,8 +172,10 @@ export function refSlugDilate(
   const t = m3[0] * nx + m3[1] * ny
 
   // Pixel-space projected normal components
-  const u = (s * (m0[0] * nx + m0[1] * ny) - t * (m0[0] * posXY[0] + m0[1] * posXY[1] + m0[3])) * dim[0]
-  const v = (s * (m1[0] * nx + m1[1] * ny) - t * (m1[0] * posXY[0] + m1[1] * posXY[1] + m1[3])) * dim[1]
+  const u =
+    (s * (m0[0] * nx + m0[1] * ny) - t * (m0[0] * posXY[0] + m0[1] * posXY[1] + m0[3])) * dim[0]
+  const v =
+    (s * (m1[0] * nx + m1[1] * ny) - t * (m1[0] * posXY[0] + m1[1] * posXY[1] + m1[3])) * dim[1]
 
   const s2 = s * s
   const st = s * t
@@ -175,7 +183,7 @@ export function refSlugDilate(
 
   // Dilation factor along the unnormalized normal direction
   const denom = uv - st * st
-  const factor = denom !== 0 ? s2 * (st + Math.sqrt(uv)) / denom : 0
+  const factor = denom !== 0 ? (s2 * (st + Math.sqrt(uv))) / denom : 0
 
   const dx = posZW[0] * factor
   const dy = posZW[1] * factor

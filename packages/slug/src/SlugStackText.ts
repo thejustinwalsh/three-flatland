@@ -1,12 +1,12 @@
 import { Color, Group, InstancedBufferAttribute, InstancedMesh } from 'three'
 import type { Camera } from 'three'
-import { SlugFontStack } from './SlugFontStack.js'
-import { SlugMaterial } from './SlugMaterial.js'
-import { SlugStrokeMaterial } from './SlugStrokeMaterial.js'
-import { SlugGeometry } from './SlugGeometry.js'
-import { shapeStackText } from './pipeline/textShaperStack.js'
-import type { SlugFont } from './SlugFont.js'
-import type { PositionedGlyph, SlugOutlineOptions, StyleSpan } from './types.js'
+import type { SlugFontStack } from './SlugFontStack'
+import { SlugMaterial } from './SlugMaterial'
+import { SlugStrokeMaterial } from './SlugStrokeMaterial'
+import { SlugGeometry } from './SlugGeometry'
+import { shapeStackText } from './pipeline/textShaperStack'
+import type { SlugFont } from './SlugFont'
+import type { PositionedGlyph, SlugOutlineOptions, StyleSpan } from './types'
 
 export interface SlugStackTextOptions {
   font?: SlugFontStack
@@ -84,7 +84,9 @@ export class SlugStackText extends Group {
   // -- Styles --
 
   /** Underline / strikethrough spans applied to character ranges. */
-  get styles(): readonly StyleSpan[] { return this._styles }
+  get styles(): readonly StyleSpan[] {
+    return this._styles
+  }
   set styles(value: readonly StyleSpan[]) {
     if (this._styles !== value) {
       this._styles = value
@@ -95,9 +97,7 @@ export class SlugStackText extends Group {
   // -- Outline --
 
   get outline(): { width: number; color: Color } | null {
-    return this._outlineEnabled
-      ? { width: this._outlineWidth, color: this._outlineColor }
-      : null
+    return this._outlineEnabled ? { width: this._outlineWidth, color: this._outlineColor } : null
   }
   set outline(value: SlugOutlineOptions | null) {
     if (value === null) {
@@ -192,7 +192,9 @@ export class SlugStackText extends Group {
 
   // -- Font (stack) --
 
-  get font(): SlugFontStack | null { return this._font }
+  get font(): SlugFontStack | null {
+    return this._font
+  }
   set font(value: SlugFontStack | null) {
     if (this._font !== value) this._setFont(value)
   }
@@ -237,13 +239,29 @@ export class SlugStackText extends Group {
 
   // -- Text + visual properties (mirror SlugText) --
 
-  get text(): string { return this._text }
-  set text(v: string) { if (this._text !== v) { this._text = v; this._dirty = true } }
+  get text(): string {
+    return this._text
+  }
+  set text(v: string) {
+    if (this._text !== v) {
+      this._text = v
+      this._dirty = true
+    }
+  }
 
-  get fontSize(): number { return this._fontSize }
-  set fontSize(v: number) { if (this._fontSize !== v) { this._fontSize = v; this._dirty = true } }
+  get fontSize(): number {
+    return this._fontSize
+  }
+  set fontSize(v: number) {
+    if (this._fontSize !== v) {
+      this._fontSize = v
+      this._dirty = true
+    }
+  }
 
-  get color(): Color { return this._color }
+  get color(): Color {
+    return this._color
+  }
   set color(v: Color | number) {
     const c = v instanceof Color ? v : new Color(v)
     if (!this._color.equals(c)) {
@@ -253,18 +271,42 @@ export class SlugStackText extends Group {
     }
   }
 
-  get align(): 'left' | 'center' | 'right' { return this._align }
-  set align(v: 'left' | 'center' | 'right') { if (this._align !== v) { this._align = v; this._dirty = true } }
+  get align(): 'left' | 'center' | 'right' {
+    return this._align
+  }
+  set align(v: 'left' | 'center' | 'right') {
+    if (this._align !== v) {
+      this._align = v
+      this._dirty = true
+    }
+  }
 
-  get lineHeight(): number { return this._lineHeight }
-  set lineHeight(v: number) { if (this._lineHeight !== v) { this._lineHeight = v; this._dirty = true } }
+  get lineHeight(): number {
+    return this._lineHeight
+  }
+  set lineHeight(v: number) {
+    if (this._lineHeight !== v) {
+      this._lineHeight = v
+      this._dirty = true
+    }
+  }
 
-  get maxWidth(): number | undefined { return this._maxWidth }
-  set maxWidth(v: number | undefined) { if (this._maxWidth !== v) { this._maxWidth = v; this._dirty = true } }
+  get maxWidth(): number | undefined {
+    return this._maxWidth
+  }
+  set maxWidth(v: number | undefined) {
+    if (this._maxWidth !== v) {
+      this._maxWidth = v
+      this._dirty = true
+    }
+  }
 
   /** Per-frame update. Re-shapes only when dirty; always refreshes per-mesh MVP. */
   update(camera?: Camera): void {
-    if (this._dirty) { this._rebuild(); this._dirty = false }
+    if (this._dirty) {
+      this._rebuild()
+      this._dirty = false
+    }
     if (camera) {
       for (const mesh of this._meshes) {
         const mat = mesh.material as SlugMaterial
@@ -277,7 +319,10 @@ export class SlugStackText extends Group {
   private _rebuild(): void {
     const stack = this._font
     if (!stack || !this._text) {
-      for (const mesh of this._meshes) { mesh.count = 0; mesh.visible = false }
+      for (const mesh of this._meshes) {
+        mesh.count = 0
+        mesh.visible = false
+      }
       this._syncOutlines()
       return
     }
@@ -303,16 +348,25 @@ export class SlugStackText extends Group {
     }
     // Stable-sort by srcCharIndex so the `runStart/runEnd` walk inside
     // emitDecorations sees glyphs in the order the shaper emitted them.
-    const order = flat.map((_, i) => i).sort((a, b) => {
-      const da = flat[a]!.srcCharIndex - flat[b]!.srcCharIndex
-      return da
-    })
+    const order = flat
+      .map((_, i) => i)
+      .sort((a, b) => {
+        const da = flat[a]!.srcCharIndex - flat[b]!.srcCharIndex
+        return da
+      })
     const flatSorted: PositionedGlyph[] = order.map((i) => flat[i]!)
     const flatFontSorted: number[] = order.map((i) => flatFontIdx[i]!)
 
-    const decorations = this._styles.length > 0
-      ? stack.emitDecorations(this._text, flatSorted, flatFontSorted, this._styles, this._fontSize)
-      : []
+    const decorations =
+      this._styles.length > 0
+        ? stack.emitDecorations(
+            this._text,
+            flatSorted,
+            flatFontSorted,
+            this._styles,
+            this._fontSize
+          )
+        : []
 
     const colorRGBA = { r: this._color.r, g: this._color.g, b: this._color.b, a: 1 }
 
@@ -344,7 +398,10 @@ export class SlugStackText extends Group {
         const buf = new Float32Array(capacity * 16)
         for (let i = 0; i < capacity; i++) {
           const o = i * 16
-          buf[o] = 1; buf[o + 5] = 1; buf[o + 10] = 1; buf[o + 15] = 1
+          buf[o] = 1
+          buf[o + 5] = 1
+          buf[o + 10] = 1
+          buf[o + 15] = 1
         }
         mesh.instanceMatrix = new InstancedBufferAttribute(buf, 16)
       }

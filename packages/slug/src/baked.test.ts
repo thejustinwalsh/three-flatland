@@ -1,15 +1,18 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { parseFont } from './pipeline/fontParser.js'
-import { packTextures } from './pipeline/texturePacker.js'
-import { packBaked, unpackBaked, bakedURLs, cmapLookup, kernLookup } from './baked.js'
-import type { BakeInput, BakedJSON } from './baked.js'
+import { parseFont } from './pipeline/fontParser'
+import { packTextures } from './pipeline/texturePacker'
+import { packBaked, unpackBaked, bakedURLs, cmapLookup, kernLookup } from './baked'
+import type { BakeInput, BakedJSON } from './baked'
 
 // Load Inter for tests
 const fontPath = resolve(__dirname, '../../../examples/three/slug-text/public/Inter-Regular.ttf')
 const fontBuffer = readFileSync(fontPath)
-const arrayBuffer = fontBuffer.buffer.slice(fontBuffer.byteOffset, fontBuffer.byteOffset + fontBuffer.byteLength)
+const arrayBuffer = fontBuffer.buffer.slice(
+  fontBuffer.byteOffset,
+  fontBuffer.byteOffset + fontBuffer.byteLength
+)
 
 const parsed = parseFont(arrayBuffer)
 const textures = packTextures(parsed.glyphs)
@@ -21,7 +24,7 @@ const otFont = opentype.parse(arrayBuffer)
 function extractTestCmap(): [number, number][] {
   const cmap: [number, number][] = []
   // Just ASCII for test speed
-  for (let c = 0x20; c <= 0x7E; c++) {
+  for (let c = 0x20; c <= 0x7e; c++) {
     const g = otFont.charToGlyph(String.fromCharCode(c))
     if (g && g.index !== 0) cmap.push([c, g.index])
   }
@@ -78,8 +81,20 @@ describe('packBaked — strokeSets', () => {
 
   it('round-trips strokeSets metadata through the JSON header', () => {
     const strokeSets = [
-      { width: 0.025, joinStyle: 'miter' as const, capStyle: 'flat' as const, miterLimit: 4, glyphIdOffset: 3000 },
-      { width: 0.05, joinStyle: 'round' as const, capStyle: 'round' as const, miterLimit: 4, glyphIdOffset: 6000 },
+      {
+        width: 0.025,
+        joinStyle: 'miter' as const,
+        capStyle: 'flat' as const,
+        miterLimit: 4,
+        glyphIdOffset: 3000,
+      },
+      {
+        width: 0.05,
+        joinStyle: 'round' as const,
+        capStyle: 'round' as const,
+        miterLimit: 4,
+        glyphIdOffset: 6000,
+      },
     ]
     const { json } = packBaked({ ...input, strokeSets })
     expect(json.strokeSets).toEqual(strokeSets)
@@ -130,7 +145,9 @@ describe('packBaked', () => {
   it('curve texture data round-trips correctly', () => {
     // Half-float data — 2 bytes per element.
     const restored = new Uint16Array(
-      bin.buffer, bin.byteOffset + json.curveTexture.byteOffset, json.curveTexture.byteLength / 2,
+      bin.buffer,
+      bin.byteOffset + json.curveTexture.byteOffset,
+      json.curveTexture.byteLength / 2
     )
     for (let i = 0; i < Math.min(100, restored.length); i++) {
       expect(restored[i]).toBe(curveData[i])
@@ -139,7 +156,9 @@ describe('packBaked', () => {
 
   it('band texture data round-trips correctly', () => {
     const restored = new Float32Array(
-      bin.buffer, bin.byteOffset + json.bandTexture.byteOffset, json.bandTexture.byteLength / 4,
+      bin.buffer,
+      bin.byteOffset + json.bandTexture.byteOffset,
+      json.bandTexture.byteLength / 4
     )
     for (let i = 0; i < Math.min(100, restored.length); i++) {
       expect(restored[i]).toBe(bandData[i])
@@ -149,7 +168,10 @@ describe('packBaked', () => {
 
 describe('unpackBaked', () => {
   const { json, bin } = packBaked(input)
-  const unpacked = unpackBaked(bin.buffer.slice(bin.byteOffset, bin.byteOffset + bin.byteLength), json)
+  const unpacked = unpackBaked(
+    bin.buffer.slice(bin.byteOffset, bin.byteOffset + bin.byteLength),
+    json
+  )
 
   it('restores correct number of glyphs', () => {
     expect(unpacked.glyphs.size).toBe(parsed.glyphs.size)
@@ -188,10 +210,14 @@ describe('unpackBaked', () => {
       if (checked > 10) break
       const restored = unpacked.glyphs.get(id)!
       for (let b = 0; b < original.bands.hBands.length; b++) {
-        expect(restored.bands.hBands[b]!.curveIndices).toEqual(original.bands.hBands[b]!.curveIndices)
+        expect(restored.bands.hBands[b]!.curveIndices).toEqual(
+          original.bands.hBands[b]!.curveIndices
+        )
       }
       for (let b = 0; b < original.bands.vBands.length; b++) {
-        expect(restored.bands.vBands[b]!.curveIndices).toEqual(original.bands.vBands[b]!.curveIndices)
+        expect(restored.bands.vBands[b]!.curveIndices).toEqual(
+          original.bands.vBands[b]!.curveIndices
+        )
       }
       checked++
     }
@@ -209,7 +235,10 @@ describe('unpackBaked', () => {
 
 describe('cmapLookup', () => {
   const { json, bin } = packBaked(input)
-  const unpacked = unpackBaked(bin.buffer.slice(bin.byteOffset, bin.byteOffset + bin.byteLength), json)
+  const unpacked = unpackBaked(
+    bin.buffer.slice(bin.byteOffset, bin.byteOffset + bin.byteLength),
+    json
+  )
 
   it('finds known character mappings', () => {
     // 'A' = 0x41 should map to a valid glyph
@@ -218,14 +247,17 @@ describe('cmapLookup', () => {
   })
 
   it('returns 0 for unmapped characters', () => {
-    const glyphId = cmapLookup(0xFFFF, unpacked.cmapCodes, unpacked.cmapGlyphs)
+    const glyphId = cmapLookup(0xffff, unpacked.cmapCodes, unpacked.cmapGlyphs)
     expect(glyphId).toBe(0)
   })
 })
 
 describe('kernLookup', () => {
   const { json, bin } = packBaked(input)
-  const unpacked = unpackBaked(bin.buffer.slice(bin.byteOffset, bin.byteOffset + bin.byteLength), json)
+  const unpacked = unpackBaked(
+    bin.buffer.slice(bin.byteOffset, bin.byteOffset + bin.byteLength),
+    json
+  )
 
   it('finds known kerning pairs', () => {
     if (kern.length === 0) return // skip if no kerning

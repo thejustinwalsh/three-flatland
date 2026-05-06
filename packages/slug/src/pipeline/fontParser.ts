@@ -1,7 +1,7 @@
 import opentype from 'opentype.js'
 import type { PathCommand } from 'opentype.js'
-import type { QuadCurve, SlugGlyphData } from '../types.js'
-import { buildAdvanceOnlyGlyph, buildGpuGlyphData } from './buildGpuGlyph.js'
+import type { QuadCurve, SlugGlyphData } from '../types'
+import { buildAdvanceOnlyGlyph, buildGpuGlyphData } from './buildGpuGlyph'
 
 /**
  * Epsilon for converting straight lines to degenerate quadratics.
@@ -43,28 +43,31 @@ export function parseFont(buffer: ArrayBuffer): {
   const descender = font.descender / unitsPerEm
 
   // OpenType post + OS/2 tables. Values are in font units; normalize to em.
-  const os2 = font.tables['os2'] as {
-    sCapHeight?: number
-    yStrikeoutPosition?: number
-    yStrikeoutSize?: number
-    ySubscriptXSize?: number
-    ySubscriptYSize?: number
-    ySubscriptXOffset?: number
-    ySubscriptYOffset?: number
-    ySuperscriptXSize?: number
-    ySuperscriptYSize?: number
-    ySuperscriptXOffset?: number
-    ySuperscriptYOffset?: number
-  } | undefined
-  const post = font.tables['post'] as {
-    underlinePosition?: number
-    underlineThickness?: number
-  } | undefined
+  const os2 = font.tables['os2'] as
+    | {
+        sCapHeight?: number
+        yStrikeoutPosition?: number
+        yStrikeoutSize?: number
+        ySubscriptXSize?: number
+        ySubscriptYSize?: number
+        ySubscriptXOffset?: number
+        ySubscriptYOffset?: number
+        ySuperscriptXSize?: number
+        ySuperscriptYSize?: number
+        ySuperscriptXOffset?: number
+        ySuperscriptYOffset?: number
+      }
+    | undefined
+  const post = font.tables['post'] as
+    | {
+        underlinePosition?: number
+        underlineThickness?: number
+      }
+    | undefined
 
   const capHeight = os2?.sCapHeight ? os2.sCapHeight / unitsPerEm : ascender
 
-  const norm = (v: number | undefined, fallback: number) =>
-    v != null ? v / unitsPerEm : fallback
+  const norm = (v: number | undefined, fallback: number) => (v != null ? v / unitsPerEm : fallback)
 
   // OpenType defaults that ship in nearly every font. Strikethrough position
   // typically sits around half cap-height; underline sits ~10% below baseline.
@@ -115,7 +118,10 @@ export function parseFont(buffer: ArrayBuffer): {
     const { curves, contourStarts } = extractCurves(glyph.path.commands, unitsPerEm)
     if (curves.length === 0) continue
 
-    glyphs.set(glyph.index, buildGpuGlyphData(glyph.index, curves, contourStarts, advanceWidthEm, lsbEm))
+    glyphs.set(
+      glyph.index,
+      buildGpuGlyphData(glyph.index, curves, contourStarts, advanceWidthEm, lsbEm)
+    )
   }
 
   return {
@@ -143,7 +149,10 @@ export async function loadFont(url: string): Promise<ReturnType<typeof parseFont
 }
 
 /** Extract quadratic Bezier curves from an opentype.js path, tracking contour boundaries. */
-function extractCurves(commands: PathCommand[], unitsPerEm: number): { curves: QuadCurve[]; contourStarts: number[] } {
+function extractCurves(
+  commands: PathCommand[],
+  unitsPerEm: number
+): { curves: QuadCurve[]; contourStarts: number[] } {
   const curves: QuadCurve[] = []
   const contourStarts: number[] = []
   let cx = 0
@@ -223,7 +232,7 @@ function lineToQuadratic(
   y0: number,
   x1: number,
   y1: number,
-  emScale: number,
+  emScale: number
 ): QuadCurve {
   const mx = (x0 + x1) * 0.5
   const my = (y0 + y1) * 0.5
@@ -269,7 +278,7 @@ function cubicToQuadratics(
   c2x: number,
   c2y: number,
   x3: number,
-  y3: number,
+  y3: number
 ): QuadCurve[] {
   // De Casteljau at t=0.5
   const m01x = (x0 + c1x) * 0.5
@@ -307,4 +316,3 @@ function cubicToQuadratics(
     },
   ]
 }
-

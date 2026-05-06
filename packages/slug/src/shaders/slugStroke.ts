@@ -15,7 +15,7 @@ import {
 } from 'three/tsl'
 import type Node from 'three/src/nodes/core/Node.js'
 import type { DataTexture } from 'three'
-import { distanceToQuadBezier } from './distanceToQuadBezier.js'
+import { distanceToQuadBezier } from './distanceToQuadBezier'
 
 /**
  * Phase 4 stroke fragment shader — analytic distance-to-curve, runtime-
@@ -77,7 +77,7 @@ export function slugStroke(
   numHBands: Node<'float'>,
   numVBands: Node<'float'>,
   bandTransform: Node<'vec4'>,
-  strokeHalfWidth: Node<'float'>,
+  strokeHalfWidth: Node<'float'>
 ) {
   // Pixel footprint in em-space. The AA window scales with this so a
   // 0.5px stroke still appears as a visible 1px outline — the "crispness
@@ -97,12 +97,12 @@ export function slugStroke(
   const bandIdxX = clamp(
     renderCoord.x.mul(bandTransform.x).add(bandTransform.z),
     0,
-    numVBands.sub(1),
+    numVBands.sub(1)
   )
   const bandIdxY = clamp(
     renderCoord.y.mul(bandTransform.y).add(bandTransform.w),
     0,
-    numHBands.sub(1),
+    numHBands.sub(1)
   )
 
   const glyphLocXi = int(glyphLocX)
@@ -119,7 +119,9 @@ export function slugStroke(
   const hCurveListOffset = int(hBandHeader.y)
 
   Loop(MAX_CURVES_PER_BAND, ({ i }) => {
-    If(i.greaterThanEqual(hCurveCount), () => { Break() })
+    If(i.greaterThanEqual(hCurveCount), () => {
+      Break()
+    })
 
     const refCoord = wrapTexCoord(glyphLocXi, glyphLocYi, hCurveListOffset.add(i))
     const refData = textureLoad(bandTexture, refCoord)
@@ -152,7 +154,9 @@ export function slugStroke(
   const vCurveListOffset = int(vBandHeader.y)
 
   Loop(MAX_CURVES_PER_BAND, ({ i }) => {
-    If(i.greaterThanEqual(vCurveCount), () => { Break() })
+    If(i.greaterThanEqual(vCurveCount), () => {
+      Break()
+    })
 
     const refCoord = wrapTexCoord(glyphLocXi, glyphLocYi, vCurveListOffset.add(i))
     const refData = textureLoad(bandTexture, refCoord)

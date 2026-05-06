@@ -1,5 +1,5 @@
-import { buildBands } from './bandBuilder.js'
-import type { QuadCurve, GlyphBands, GlyphBounds, SlugGlyphData } from '../types.js'
+import { buildBands } from './bandBuilder'
+import type { QuadCurve, GlyphBands, GlyphBounds, SlugGlyphData } from '../types'
 
 /**
  * Shared curves → GPU-glyph pipeline. Takes em-space quadratic Beziers
@@ -18,7 +18,7 @@ import type { QuadCurve, GlyphBands, GlyphBounds, SlugGlyphData } from '../types
  */
 export function buildGpuGlyphFromCurves(
   curves: QuadCurve[],
-  contourStarts: number[],
+  contourStarts: number[]
 ): { curves: QuadCurve[]; contourStarts: number[]; bands: GlyphBands; bounds: GlyphBounds } {
   const bounds = computeBounds(curves)
   const bands = buildBands(curves, bounds)
@@ -36,7 +36,7 @@ export function buildGpuGlyphData(
   curves: QuadCurve[],
   contourStarts: number[],
   advanceWidthEm: number,
-  lsbEm: number,
+  lsbEm: number
 ): SlugGlyphData {
   const gpu = buildGpuGlyphFromCurves(curves, contourStarts)
   return {
@@ -61,7 +61,7 @@ export function buildGpuGlyphData(
 export function buildAdvanceOnlyGlyph(
   glyphId: number,
   advanceWidthEm: number,
-  lsbEm: number,
+  lsbEm: number
 ): SlugGlyphData {
   return {
     glyphId,
@@ -84,7 +84,10 @@ export function buildAdvanceOnlyGlyph(
  * what the fill shader's band math already assumes.
  */
 function computeBounds(curves: QuadCurve[]): GlyphBounds {
-  let xMin = Infinity, yMin = Infinity, xMax = -Infinity, yMax = -Infinity
+  let xMin = Infinity,
+    yMin = Infinity,
+    xMax = -Infinity,
+    yMax = -Infinity
   for (const c of curves) {
     if (c.p0x < xMin) xMin = c.p0x
     if (c.p1x < xMin) xMin = c.p1x

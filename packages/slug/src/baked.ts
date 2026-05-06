@@ -9,7 +9,7 @@
  * When baked data is present, opentype.js is never loaded at runtime.
  */
 
-import type { SlugGlyphData, GlyphBounds } from './types.js'
+import type { SlugGlyphData } from './types'
 
 /** JSON header stored in the .slug.json file. */
 export interface BakedJSON {
@@ -110,10 +110,15 @@ export interface BakeOutput {
 /** Pack all data into baked format. */
 export function packBaked(input: BakeInput): BakeOutput {
   const {
-    metrics, textureWidth,
-    curveTextureHeight, curveData,
-    bandTextureHeight, bandData,
-    glyphs, cmap, kern,
+    metrics,
+    textureWidth,
+    curveTextureHeight,
+    curveData,
+    bandTextureHeight,
+    bandData,
+    glyphs,
+    cmap,
+    kern,
   } = input
 
   // --- Calculate sizes ---
@@ -134,18 +139,24 @@ export function packBaked(input: BakeInput): BakeOutput {
   bandSectionSize = Math.ceil(bandSectionSize / 4) * 4
 
   const cmapByteLength = cmap.length * 4 // 2x uint16
-  const kernByteLength = kern.length * 6  // 2x uint16 + 1x int16
+  const kernByteLength = kern.length * 6 // 2x uint16 + 1x int16
   // Align kern to 4 bytes
   const kernByteLengthAligned = Math.ceil(kernByteLength / 4) * 4
 
   // --- Calculate offsets ---
   let offset = 0
-  const curveOffset = offset; offset += curveByteLength
-  const bandTexOffset = offset; offset += bandByteLength
-  const glyphOffset = offset; offset += glyphByteLength
-  const bandsOffset = offset; offset += bandSectionSize
-  const cmapOffset = offset; offset += cmapByteLength
-  const kernOffset = offset; offset += kernByteLengthAligned
+  const curveOffset = offset
+  offset += curveByteLength
+  const bandTexOffset = offset
+  offset += bandByteLength
+  const glyphOffset = offset
+  offset += glyphByteLength
+  const bandsOffset = offset
+  offset += bandSectionSize
+  const cmapOffset = offset
+  offset += cmapByteLength
+  const kernOffset = offset
+  offset += kernByteLengthAligned
 
   // --- Build binary ---
   const totalSize = offset
@@ -180,24 +191,30 @@ export function packBaked(input: BakeInput): BakeOutput {
   let bOff = 0
   for (const g of glyphs.values()) {
     const { hBands, vBands } = g.bands
-    bandView.setUint16(bOff, hBands.length, true); bOff += 2
-    bandView.setUint16(bOff, vBands.length, true); bOff += 2
+    bandView.setUint16(bOff, hBands.length, true)
+    bOff += 2
+    bandView.setUint16(bOff, vBands.length, true)
+    bOff += 2
     // H band counts + indices
     for (const band of hBands) {
-      bandView.setUint16(bOff, band.curveIndices.length, true); bOff += 2
+      bandView.setUint16(bOff, band.curveIndices.length, true)
+      bOff += 2
     }
     for (const band of hBands) {
       for (const idx of band.curveIndices) {
-        bandView.setUint16(bOff, idx, true); bOff += 2
+        bandView.setUint16(bOff, idx, true)
+        bOff += 2
       }
     }
     // V band counts + indices
     for (const band of vBands) {
-      bandView.setUint16(bOff, band.curveIndices.length, true); bOff += 2
+      bandView.setUint16(bOff, band.curveIndices.length, true)
+      bOff += 2
     }
     for (const band of vBands) {
       for (const idx of band.curveIndices) {
-        bandView.setUint16(bOff, idx, true); bOff += 2
+        bandView.setUint16(bOff, idx, true)
+        bOff += 2
       }
     }
   }
@@ -205,24 +222,32 @@ export function packBaked(input: BakeInput): BakeOutput {
   // Cmap: [charCode(u16), glyphId(u16)]
   const cmapView = new DataView(buffer, cmapOffset, cmapByteLength)
   for (let i = 0; i < cmap.length; i++) {
-    cmapView.setUint16(i * 4, cmap[i]![0]!, true)
-    cmapView.setUint16(i * 4 + 2, cmap[i]![1]!, true)
+    cmapView.setUint16(i * 4, cmap[i]![0], true)
+    cmapView.setUint16(i * 4 + 2, cmap[i]![1], true)
   }
 
   // Kern: [glyphId1(u16), glyphId2(u16), value(i16)]
   const kernView = new DataView(buffer, kernOffset, kernByteLengthAligned)
   for (let i = 0; i < kern.length; i++) {
-    kernView.setUint16(i * 6, kern[i]![0]!, true)
-    kernView.setUint16(i * 6 + 2, kern[i]![1]!, true)
-    kernView.setInt16(i * 6 + 4, kern[i]![2]!, true)
+    kernView.setUint16(i * 6, kern[i]![0], true)
+    kernView.setUint16(i * 6 + 2, kern[i]![1], true)
+    kernView.setInt16(i * 6 + 4, kern[i]![2], true)
   }
 
   // --- Build JSON header ---
   const json: BakedJSON = {
     metrics,
     textureWidth,
-    curveTexture: { height: curveTextureHeight, byteOffset: curveOffset, byteLength: curveByteLength },
-    bandTexture: { height: bandTextureHeight, byteOffset: bandTexOffset, byteLength: bandByteLength },
+    curveTexture: {
+      height: curveTextureHeight,
+      byteOffset: curveOffset,
+      byteLength: curveByteLength,
+    },
+    bandTexture: {
+      height: bandTextureHeight,
+      byteOffset: bandTexOffset,
+      byteLength: bandByteLength,
+    },
     glyphs: { byteOffset: glyphOffset, count: glyphCount },
     bands: { byteOffset: bandsOffset, byteLength: bandSectionSize },
     cmap: { byteOffset: cmapOffset, count: cmap.length },
@@ -259,22 +284,25 @@ export function unpackBaked(bin: ArrayBuffer, json: BakedJSON): BakedFontData {
   for (let gi = 0; gi < json.glyphs.count; gi++) {
     const base = gi * GLYPH_FLOATS
     const glyphId = glyphTable[base]!
-    const hasOutline = glyphTable[base + 9]! > 0
 
     // Read bands
-    const numH = bandView.getUint16(bOff, true); bOff += 2
-    const numV = bandView.getUint16(bOff, true); bOff += 2
+    const numH = bandView.getUint16(bOff, true)
+    bOff += 2
+    const numV = bandView.getUint16(bOff, true)
+    bOff += 2
 
     // H band counts
     const hCounts: number[] = []
     for (let b = 0; b < numH; b++) {
-      hCounts.push(bandView.getUint16(bOff, true)); bOff += 2
+      hCounts.push(bandView.getUint16(bOff, true))
+      bOff += 2
     }
     // H band indices
     const hBands = hCounts.map((count) => {
       const curveIndices: number[] = []
       for (let j = 0; j < count; j++) {
-        curveIndices.push(bandView.getUint16(bOff, true)); bOff += 2
+        curveIndices.push(bandView.getUint16(bOff, true))
+        bOff += 2
       }
       return { curveIndices }
     })
@@ -282,13 +310,15 @@ export function unpackBaked(bin: ArrayBuffer, json: BakedJSON): BakedFontData {
     // V band counts
     const vCounts: number[] = []
     for (let b = 0; b < numV; b++) {
-      vCounts.push(bandView.getUint16(bOff, true)); bOff += 2
+      vCounts.push(bandView.getUint16(bOff, true))
+      bOff += 2
     }
     // V band indices
     const vBands = vCounts.map((count) => {
       const curveIndices: number[] = []
       for (let j = 0; j < count; j++) {
-        curveIndices.push(bandView.getUint16(bOff, true)); bOff += 2
+        curveIndices.push(bandView.getUint16(bOff, true))
+        bOff += 2
       }
       return { curveIndices }
     })

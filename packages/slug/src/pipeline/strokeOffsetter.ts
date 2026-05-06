@@ -1,5 +1,5 @@
-import type { QuadCurve, SlugGlyphData } from '../types.js'
-import { buildGpuGlyphData } from './buildGpuGlyph.js'
+import type { QuadCurve, SlugGlyphData } from '../types'
+import { buildGpuGlyphData } from './buildGpuGlyph'
 
 /**
  * Quadratic-Bezier adaptive stroke offsetter (Phase 5 Task 16).
@@ -73,7 +73,7 @@ export interface SubdivideOptions {
 export function subdivideForOffset(
   curve: QuadCurve,
   halfWidth: number,
-  options: SubdivideOptions = {},
+  options: SubdivideOptions = {}
 ): QuadCurve[] {
   const hw = Math.max(halfWidth, MIN_HALF_WIDTH)
   const epsilon = options.epsilon ?? 0.01 * hw
@@ -84,7 +84,7 @@ export function subdivideForOffset(
   // proxy for the local offset radius; if the curve's true radius of
   // curvature is tighter, subdivision proceeds further automatically
   // because the per-split tangent change grows as curvature grows.
-  const angleMax = Math.sqrt(8 * epsilon / hw)
+  const angleMax = Math.sqrt((8 * epsilon) / hw)
 
   return subdivideRec(curve, angleMax, epsilon, 0, maxDepth)
 }
@@ -94,7 +94,7 @@ function subdivideRec(
   angleMax: number,
   epsilonEm: number,
   depth: number,
-  maxDepth: number,
+  maxDepth: number
 ): QuadCurve[] {
   // Flatness: perpendicular distance from p1 to the p0→p2 chord.
   // Zero (or near-zero) means the curve is essentially a line
@@ -135,14 +135,20 @@ function subdivideRec(
   const midy = (m01y + m12y) * 0.5
 
   const left: QuadCurve = {
-    p0x: curve.p0x, p0y: curve.p0y,
-    p1x: m01x, p1y: m01y,
-    p2x: midx, p2y: midy,
+    p0x: curve.p0x,
+    p0y: curve.p0y,
+    p1x: m01x,
+    p1y: m01y,
+    p2x: midx,
+    p2y: midy,
   }
   const right: QuadCurve = {
-    p0x: midx, p0y: midy,
-    p1x: m12x, p1y: m12y,
-    p2x: curve.p2x, p2y: curve.p2y,
+    p0x: midx,
+    p0y: midy,
+    p1x: m12x,
+    p1y: m12y,
+    p2x: curve.p2x,
+    p2y: curve.p2y,
   }
 
   return [
@@ -203,10 +209,7 @@ function clamp(v: number, lo: number, hi: number): number {
  * fits within epsilon of the true offset. Calling this directly on
  * a highly-curved source will produce visibly off offsets.
  */
-export function offsetQuadraticBezier(
-  curve: QuadCurve,
-  offset: number,
-): QuadCurve {
+export function offsetQuadraticBezier(curve: QuadCurve, offset: number): QuadCurve {
   // Unit tangents at both endpoints.
   const [t0x, t0y] = unitTangentAt(curve, 0)
   const [t1x, t1y] = unitTangentAt(curve, 1)
@@ -315,8 +318,14 @@ export function insertJoin(ctx: JoinContext): QuadCurve[] {
 
   if (joinStyle === 'miter') {
     const miter = intersectLines(
-      endA.x, endA.y, tangentA[0], tangentA[1],
-      startB.x, startB.y, -tangentB[0], -tangentB[1],
+      endA.x,
+      endA.y,
+      tangentA[0],
+      tangentA[1],
+      startB.x,
+      startB.y,
+      -tangentB[0],
+      -tangentB[1]
     )
     if (!miter) {
       // Near-parallel offset tangents — no meaningful miter point. SVG
@@ -387,9 +396,12 @@ export function insertJoin(ctx: JoinContext): QuadCurve[] {
 /** Single straight quadratic (p1 at chord midpoint). */
 function straightQuad(ax: number, ay: number, bx: number, by: number): QuadCurve {
   return {
-    p0x: ax, p0y: ay,
-    p1x: (ax + bx) * 0.5, p1y: (ay + by) * 0.5,
-    p2x: bx, p2y: by,
+    p0x: ax,
+    p0y: ay,
+    p1x: (ax + bx) * 0.5,
+    p1y: (ay + by) * 0.5,
+    p2x: bx,
+    p2y: by,
   }
 }
 
@@ -401,8 +413,14 @@ function straightQuad(ax: number, ay: number, bx: number, by: number): QuadCurve
  *   line B: (bx, by) + t · (bdx, bdy)
  */
 function intersectLines(
-  ax: number, ay: number, adx: number, ady: number,
-  bx: number, by: number, bdx: number, bdy: number,
+  ax: number,
+  ay: number,
+  adx: number,
+  ady: number,
+  bx: number,
+  by: number,
+  bdx: number,
+  bdy: number
 ): { x: number; y: number } | null {
   const det = adx * bdy - ady * bdx
   if (Math.abs(det) < 1e-10) return null
@@ -541,8 +559,6 @@ export function insertCap(ctx: CapContext): QuadCurve[] {
   return out
 }
 
-
-
 // ─── Contour stitching + full offsetter API (Task 16.5 + 16.6) ──────
 
 /** A contour — ordered list of quadratic Beziers with a closed flag. */
@@ -574,9 +590,12 @@ export function reverseContour(curves: readonly QuadCurve[]): QuadCurve[] {
   for (let i = curves.length - 1; i >= 0; i--) {
     const c = curves[i]!
     out.push({
-      p0x: c.p2x, p0y: c.p2y,
-      p1x: c.p1x, p1y: c.p1y,
-      p2x: c.p0x, p2y: c.p0y,
+      p0x: c.p2x,
+      p0y: c.p2y,
+      p1x: c.p1x,
+      p1y: c.p1y,
+      p2x: c.p0x,
+      p2y: c.p0y,
     })
   }
   return out
@@ -594,13 +613,14 @@ function offsetOneSide(
   joinStyle: JoinStyle,
   miterLimit: number,
   closed: boolean,
-  subdivide?: SubdivideOptions,
+  subdivide?: SubdivideOptions
 ): QuadCurve[] {
   // Pre-compute the offset subs for each source curve so we can look
   // up adjacent ends cheaply when inserting joins.
   const perSource: QuadCurve[][] = source.map((c) =>
-    subdivideForOffset(c, Math.abs(signedHalfWidth), subdivide)
-      .map((sub) => offsetQuadraticBezier(sub, signedHalfWidth)),
+    subdivideForOffset(c, Math.abs(signedHalfWidth), subdivide).map((sub) =>
+      offsetQuadraticBezier(sub, signedHalfWidth)
+    )
   )
 
   const out: QuadCurve[] = []
@@ -611,7 +631,7 @@ function offsetOneSide(
     // Emit a join between this curve and the next. For closed
     // contours we wrap around to index 0; for open we skip the
     // last-to-nothing step.
-    const nextIdx = i + 1 < source.length ? i + 1 : (closed ? 0 : -1)
+    const nextIdx = i + 1 < source.length ? i + 1 : closed ? 0 : -1
     if (nextIdx < 0) continue
 
     const current = source[i]!
@@ -657,15 +677,9 @@ function offsetOneSide(
 export function strokeOffsetter(
   source: readonly QuadCurve[],
   closed: boolean,
-  options: StrokeOffsetOptions,
+  options: StrokeOffsetOptions
 ): Contour[] {
-  const {
-    halfWidth,
-    joinStyle = 'miter',
-    capStyle = 'flat',
-    miterLimit = 4,
-    subdivide,
-  } = options
+  const { halfWidth, joinStyle = 'miter', capStyle = 'flat', miterLimit = 4, subdivide } = options
 
   if (source.length === 0) return []
   const hw = Math.abs(halfWidth)
@@ -720,10 +734,12 @@ export function strokeOffsetter(
     capStyle,
   })
 
-  return [{
-    curves: [...outer, ...endCap, ...innerReversed, ...startCap],
-    closed: true,
-  }]
+  return [
+    {
+      curves: [...outer, ...endCap, ...innerReversed, ...startCap],
+      closed: true,
+    },
+  ]
 }
 
 // ─── Glyph-level stroke bake helper (Phase 5 Task 17 prep) ───────────
@@ -747,7 +763,7 @@ export function strokeOffsetter(
  */
 export function bakeStrokeForGlyph(
   source: SlugGlyphData,
-  options: StrokeOffsetOptions,
+  options: StrokeOffsetOptions
 ): SlugGlyphData | null {
   if (source.curves.length === 0) return null
   if (source.contourStarts.length === 0) return null
@@ -758,9 +774,8 @@ export function bakeStrokeForGlyph(
 
   for (let i = 0; i < source.contourStarts.length; i++) {
     const start = source.contourStarts[i]!
-    const end = i + 1 < source.contourStarts.length
-      ? source.contourStarts[i + 1]!
-      : source.curves.length
+    const end =
+      i + 1 < source.contourStarts.length ? source.contourStarts[i + 1]! : source.curves.length
     const sourceContour = source.curves.slice(start, end)
 
     // Font contours are closed by convention (TrueType + OpenType
@@ -782,6 +797,6 @@ export function bakeStrokeForGlyph(
     allOffsetCurves,
     newContourStarts,
     source.advanceWidth,
-    source.lsb,
+    source.lsb
   )
 }

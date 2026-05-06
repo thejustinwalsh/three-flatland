@@ -1,6 +1,6 @@
-import { cmapLookup, kernLookup } from '../baked.js'
-import type { BakedFontData } from '../baked.js'
-import type { SlugGlyphData, PositionedGlyph } from '../types.js'
+import { cmapLookup, kernLookup } from '../baked'
+import type { BakedFontData } from '../baked'
+import type { SlugGlyphData, PositionedGlyph } from '../types'
 
 /**
  * Shape text using baked font data — no opentype.js dependency.
@@ -17,7 +17,7 @@ export function shapeTextBaked(
     align?: 'left' | 'center' | 'right'
     lineHeight?: number
     maxWidth?: number
-  } = {},
+  } = {}
 ): PositionedGlyph[] {
   const { align = 'left', lineHeight = 1.2, maxWidth } = options
   const scale = fontSize / unitsPerEm
@@ -77,7 +77,7 @@ export function shapeTextBaked(
       if (lastSpaceIdx >= 0 && lastSpaceGlyphCount > 0) {
         const overflow = currentLine.splice(lastSpaceGlyphCount)
         const baseX = lastSpaceCursorX
-        lines.push(overflow.map(g => ({ ...g, x: g.x - baseX })))
+        lines.push(overflow.map((g) => ({ ...g, x: g.x - baseX })))
         currentLine = lines[lines.length - 1]!
         cursorX = cursorX - baseX
       } else {
@@ -95,7 +95,7 @@ export function shapeTextBaked(
     }
 
     // Skip glyphs with no outline (spaces, control chars)
-    if (glyphId !== 0 && glyphData && (glyphData.bounds.xMax - glyphData.bounds.xMin) > 0) {
+    if (glyphId !== 0 && glyphData && glyphData.bounds.xMax - glyphData.bounds.xMin > 0) {
       currentLine.push({
         glyphId,
         srcCharIndex: i,

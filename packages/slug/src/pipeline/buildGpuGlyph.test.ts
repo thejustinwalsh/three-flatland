@@ -1,9 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import {
-  buildGpuGlyphData,
-  buildGpuGlyphFromCurves,
-  buildAdvanceOnlyGlyph,
-} from './buildGpuGlyph'
+import { buildGpuGlyphData, buildGpuGlyphFromCurves, buildAdvanceOnlyGlyph } from './buildGpuGlyph'
 import type { QuadCurve } from '../types'
 
 /**
@@ -82,8 +78,7 @@ describe('buildAdvanceOnlyGlyph', () => {
     // space renders nothing), but outline records answer true even for
     // narrow glyphs.
     const advance = buildAdvanceOnlyGlyph(3, 0.3, 0.02)
-    const hasInk = (g: { bounds: { xMin: number; xMax: number } }) =>
-      g.bounds.xMax > g.bounds.xMin
+    const hasInk = (g: { bounds: { xMin: number; xMax: number } }) => g.bounds.xMax > g.bounds.xMin
     expect(hasInk(advance)).toBe(false)
 
     const outline = buildGpuGlyphData(4, unitSquare, [0], 1, 0)

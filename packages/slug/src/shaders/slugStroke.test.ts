@@ -18,21 +18,17 @@ interface Curve {
 
 function refStrokeCoverage(
   curves: readonly Curve[],
-  px: number, py: number,
+  px: number,
+  py: number,
   strokeHalfWidth: number,
-  pixelEm: number,
+  pixelEm: number
 ): number {
   const aaHalf = pixelEm * 0.5
   const effHalf = Math.max(strokeHalfWidth, aaHalf)
 
   let minDist = 1.0
   for (const c of curves) {
-    const r = refDistanceToQuadBezier(
-      px, py,
-      c.p0[0], c.p0[1],
-      c.p1[0], c.p1[1],
-      c.p2[0], c.p2[1],
-    )
+    const r = refDistanceToQuadBezier(px, py, c.p0[0], c.p0[1], c.p1[0], c.p1[1], c.p2[0], c.p2[1])
     if (r.distance < minDist) minDist = r.distance
   }
 
@@ -45,11 +41,13 @@ function refStrokeCoverage(
 }
 
 describe('refStrokeCoverage — single straight segment', () => {
-  const curves: Curve[] = [{
-    p0: [0, 0],
-    p1: [5, 0],
-    p2: [10, 0],
-  }]
+  const curves: Curve[] = [
+    {
+      p0: [0, 0],
+      p1: [5, 0],
+      p2: [10, 0],
+    },
+  ]
 
   it('full coverage at the center of a 0.1-em wide stroke', () => {
     // halfWidth = 0.05, fragment on the curve, pixelEm tiny (no AA blur)
@@ -84,10 +82,10 @@ describe('refStrokeCoverage — closed square contour (bevel-via-min)', () => {
   // Four line-like quads. Exterior corner fragments should get min
   // distance to adjacent curves → clean bevel, no extended tip, no gap.
   const curves: Curve[] = [
-    { p0: [0, 0], p1: [0.5, 0], p2: [1, 0] },     // bottom
-    { p0: [1, 0], p1: [1, 0.5], p2: [1, 1] },     // right
-    { p0: [1, 1], p1: [0.5, 1], p2: [0, 1] },     // top
-    { p0: [0, 1], p1: [0, 0.5], p2: [0, 0] },     // left
+    { p0: [0, 0], p1: [0.5, 0], p2: [1, 0] }, // bottom
+    { p0: [1, 0], p1: [1, 0.5], p2: [1, 1] }, // right
+    { p0: [1, 1], p1: [0.5, 1], p2: [0, 1] }, // top
+    { p0: [0, 1], p1: [0, 0.5], p2: [0, 0] }, // left
   ]
 
   it('full coverage on a stroke segment midpoint', () => {

@@ -2,14 +2,14 @@ import { describe, it, expect, beforeAll } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import opentype from 'opentype.js'
-import { parseFont } from './pipeline/fontParser.js'
-import { packTextures } from './pipeline/texturePacker.js'
-import { shapeText } from './pipeline/textShaper.js'
-import { wrapLines } from './pipeline/wrapLines.js'
-import { measureText } from './pipeline/textMeasure.js'
-import { shapeStackText } from './pipeline/textShaperStack.js'
-import { SlugFont } from './SlugFont.js'
-import { SlugFontStack } from './SlugFontStack.js'
+import { parseFont } from './pipeline/fontParser'
+import { packTextures } from './pipeline/texturePacker'
+import { shapeText } from './pipeline/textShaper'
+import { wrapLines } from './pipeline/wrapLines'
+import { measureText } from './pipeline/textMeasure'
+import { shapeStackText } from './pipeline/textShaperStack'
+import { SlugFont } from './SlugFont'
+import { SlugFontStack } from './SlugFontStack'
 
 const FONT_PATH = resolve(__dirname, '../../../examples/three/slug-text/public/Inter-Regular.ttf')
 const buf = readFileSync(FONT_PATH)
@@ -42,7 +42,7 @@ beforeAll(() => {
     otFont,
     shapeText,
     wrapLines,
-    measureText,
+    measureText
   )
 })
 
@@ -63,7 +63,7 @@ describe('SlugFontStack', () => {
 
   it('returns 0 (notdef-on-primary) for an unmapped codepoint', () => {
     const stack = new SlugFontStack([inter])
-    expect(stack.resolveCodepoint(0x1F600)).toBe(0)
+    expect(stack.resolveCodepoint(0x1f600)).toBe(0)
   })
 
   it('walks a string into per-character font assignments', () => {
@@ -107,7 +107,7 @@ describe('shapeStackText (single-font, parity with shapeText)', () => {
     const stack = new SlugFontStack([inter])
     const result = shapeStackText(stack, 'Lorem ipsum dolor sit amet', 48, { maxWidth: 200 })
     const glyphs = result.byFont.get(0)!
-    const uniqueYs = new Set(glyphs.map(g => g.y))
+    const uniqueYs = new Set(glyphs.map((g) => g.y))
     expect(uniqueYs.size).toBeGreaterThan(1)
   })
 })

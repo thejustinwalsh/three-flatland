@@ -7,7 +7,7 @@ import {
   RGBAFormat,
   RGFormat,
 } from 'three'
-import type { SlugGlyphData, SlugTextureData } from '../types.js'
+import type { SlugGlyphData, SlugTextureData } from '../types'
 
 /** Default texture width in texels (must be power of 2). */
 const TEXTURE_WIDTH = 4096
@@ -81,7 +81,7 @@ export function packTextures(glyphs: Map<number, SlugGlyphData>): SlugTextureDat
   // Curve texture: 4 channels × 2 bytes (half-float) = 8 bytes/texel.
   // Band texture: 2 channels × 4 bytes (float) = 8 bytes/texel.
   const curveData = new Uint16Array(TEXTURE_WIDTH * curveHeight * 4) // RGBA half-float
-  const bandData = new Float32Array(TEXTURE_WIDTH * bandHeight * 2)  // RG float
+  const bandData = new Float32Array(TEXTURE_WIDTH * bandHeight * 2) // RG float
 
   let curveOffset = 0 // texel offset into curve texture
   let bandOffset = 0 // texel offset into band texture
@@ -105,7 +105,7 @@ export function packTextures(glyphs: Map<number, SlugGlyphData>): SlugTextureDat
     // The shader reads texel[i] and texel[i+1] — works identically.
     //
     // curveTexelMap[curveIndex] = texel offset of that curve's first texel
-    const curveTexelMap: number[] = new Array(glyph.curves.length)
+    const curveTexelMap = new Array<number>(glyph.curves.length)
     const starts = glyph.contourStarts
 
     for (let c = 0; c < starts.length; c++) {
@@ -199,7 +199,7 @@ export function packTextures(glyphs: Map<number, SlugGlyphData>): SlugTextureDat
     TEXTURE_WIDTH,
     curveHeight,
     RGBAFormat,
-    HalfFloatType,
+    HalfFloatType
   )
   curveTexture.minFilter = NearestFilter
   curveTexture.magFilter = NearestFilter
@@ -208,13 +208,7 @@ export function packTextures(glyphs: Map<number, SlugGlyphData>): SlugTextureDat
   // Band texture — RG32F. Values are always small non-negative integers
   // (counts up to ~40, offsets up to a few thousand) which are exactly
   // representable as float32. Halves texel width vs the old RGBA32F.
-  const bandTexture = new DataTexture(
-    bandData,
-    TEXTURE_WIDTH,
-    bandHeight,
-    RGFormat,
-    FloatType,
-  )
+  const bandTexture = new DataTexture(bandData, TEXTURE_WIDTH, bandHeight, RGFormat, FloatType)
   bandTexture.minFilter = NearestFilter
   bandTexture.magFilter = NearestFilter
   bandTexture.needsUpdate = true

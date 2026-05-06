@@ -1,10 +1,10 @@
 import { InstancedMesh, InstancedBufferAttribute, Color } from 'three'
 import type { Camera } from 'three'
-import { SlugFont } from './SlugFont.js'
-import { SlugMaterial } from './SlugMaterial.js'
-import { SlugStrokeMaterial } from './SlugStrokeMaterial.js'
-import { SlugGeometry } from './SlugGeometry.js'
-import type { SlugOutlineOptions, SlugTextOptions, StyleSpan } from './types.js'
+import type { SlugFont } from './SlugFont'
+import { SlugMaterial } from './SlugMaterial'
+import { SlugStrokeMaterial } from './SlugStrokeMaterial'
+import { SlugGeometry } from './SlugGeometry'
+import type { SlugOutlineOptions, SlugTextOptions, StyleSpan } from './types'
 
 /**
  * High-level text rendering object using the Slug algorithm.
@@ -49,7 +49,7 @@ export class SlugText extends InstancedMesh {
   constructor(options?: SlugTextOptions) {
     const geometry = new SlugGeometry()
     // Construct with a placeholder material — replaced when font is set
-    super(geometry, undefined!, 0)
+    super(geometry, undefined, 0)
 
     this._slugGeometry = geometry
     this.frustumCulled = false
@@ -88,9 +88,7 @@ export class SlugText extends InstancedMesh {
    * place, so scrubbing width in a tweakpane slider is instant.
    */
   get outline(): { width: number; color: Color } | null {
-    return this._outlineEnabled
-      ? { width: this._outlineWidth, color: this._outlineColor }
-      : null
+    return this._outlineEnabled ? { width: this._outlineWidth, color: this._outlineColor } : null
   }
   set outline(value: SlugOutlineOptions | null) {
     if (value === null) {
@@ -404,16 +402,22 @@ export class SlugText extends InstancedMesh {
       return
     }
 
-    const decorations = this._styles.length > 0
-      ? this._font.emitDecorations(this._text, positionedGlyphs, this._styles, this._fontSize)
-      : []
+    const decorations =
+      this._styles.length > 0
+        ? this._font.emitDecorations(this._text, positionedGlyphs, this._styles, this._fontSize)
+        : []
 
-    this._slugGeometry.setGlyphs(positionedGlyphs, this._font, {
-      r: this._color.r,
-      g: this._color.g,
-      b: this._color.b,
-      a: 1,
-    }, decorations)
+    this._slugGeometry.setGlyphs(
+      positionedGlyphs,
+      this._font,
+      {
+        r: this._color.r,
+        g: this._color.g,
+        b: this._color.b,
+        a: 1,
+      },
+      decorations
+    )
 
     // Ensure instanceMatrix is large enough with identity matrices.
     // InstancedMesh multiplies each vertex by instanceMatrix — zeros = invisible.
@@ -424,10 +428,10 @@ export class SlugText extends InstancedMesh {
       // Fill with identity matrices (1 on diagonal)
       for (let i = 0; i < capacity; i++) {
         const o = i * 16
-        buf[o] = 1       // m[0][0]
-        buf[o + 5] = 1   // m[1][1]
-        buf[o + 10] = 1  // m[2][2]
-        buf[o + 15] = 1  // m[3][3]
+        buf[o] = 1 // m[0][0]
+        buf[o + 5] = 1 // m[1][1]
+        buf[o + 10] = 1 // m[2][2]
+        buf[o + 15] = 1 // m[3][3]
       }
       this.instanceMatrix = new InstancedBufferAttribute(buf, 16)
     }

@@ -1,4 +1,4 @@
-import { vec2, float, select, abs, sqrt, max } from 'three/tsl'
+import { vec2, select, abs, sqrt, max } from 'three/tsl'
 import type Node from 'three/src/nodes/core/Node.js'
 
 /**
@@ -9,11 +9,7 @@ import type Node from 'three/src/nodes/core/Node.js'
  *
  * Must be called inside a Fn() TSL context.
  */
-export function solveHorizPoly(
-  p0: Node<'vec2'>,
-  p1: Node<'vec2'>,
-  p2: Node<'vec2'>,
-) {
+export function solveHorizPoly(p0: Node<'vec2'>, p1: Node<'vec2'>, p2: Node<'vec2'>) {
   const a = p0.y.sub(p1.y.mul(2.0)).add(p2.y)
   const b = p0.y.sub(p1.y)
   const c = p0.y
@@ -45,11 +41,7 @@ export function solveHorizPoly(
  *
  * Must be called inside a Fn() TSL context.
  */
-export function solveVertPoly(
-  p0: Node<'vec2'>,
-  p1: Node<'vec2'>,
-  p2: Node<'vec2'>,
-) {
+export function solveVertPoly(p0: Node<'vec2'>, p1: Node<'vec2'>, p2: Node<'vec2'>) {
   const a = p0.x.sub(p1.x.mul(2.0)).add(p2.x)
   const b = p0.x.sub(p1.x)
   const c = p0.x

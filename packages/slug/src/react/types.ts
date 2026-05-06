@@ -3,6 +3,7 @@ import type { SlugText } from '../SlugText'
 import type { SlugStackText } from '../SlugStackText'
 import type { SlugMaterial } from '../SlugMaterial'
 import type { SlugGeometry } from '../SlugGeometry'
+import type { SlugFontStack } from '../SlugFontStack'
 
 /**
  * R3F ThreeElements type augmentation for @three-flatland/slug.
@@ -30,6 +31,6 @@ declare module '@react-three/fiber' {
     slugStackText: ThreeElement<typeof SlugStackText>
     slugMaterial: ThreeElement<typeof SlugMaterial>
     slugGeometry: ThreeElement<typeof SlugGeometry>
-    slugFontStack: ThreeElement<typeof import('../SlugFontStack').SlugFontStack>
+    slugFontStack: ThreeElement<typeof SlugFontStack>
   }
 }

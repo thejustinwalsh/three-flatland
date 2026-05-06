@@ -1,4 +1,7 @@
-import type { Color, DataTexture, Vector2 } from 'three'
+import type { Color, DataTexture } from 'three'
+import type { Font as OpenTypeFont } from 'opentype.js'
+import type { SlugFont } from './SlugFont'
+import type { BakedFontData } from './baked'
 
 /** A quadratic Bezier curve defined by three control points in em-space. */
 export interface QuadCurve {
@@ -111,17 +114,17 @@ export interface DecorationRect {
 
 /** Packed GPU textures for all glyphs in a font. */
 export interface SlugTextureData {
-  /** RGBA32Float — Bezier control points (2 texels per curve) */
+  /** RGBA16F — Bezier control points (2 texels per curve, with endpoint sharing). */
   curveTexture: DataTexture
-  /** RG32Uint — Band headers + curve reference lists */
+  /** RG32F — Band headers + curve reference lists. */
   bandTexture: DataTexture
-  /** Width of the textures in texels */
+  /** Width of the textures in texels. */
   textureWidth: number
 }
 
 /** Options for SlugText construction. All optional for R3F compatibility. */
 export interface SlugTextOptions {
-  font?: import('./SlugFont.js').SlugFont
+  font?: SlugFont
   text?: string
   fontSize?: number
   color?: number
@@ -213,3 +216,79 @@ export interface ParagraphMetrics {
   fontBoundingBoxAscent: number
   fontBoundingBoxDescent: number
 }
+
+/** Options accepted by `SlugFont.shapeText` and the underlying shaper backends. */
+export interface ShapeTextOptions {
+  align?: 'left' | 'center' | 'right'
+  lineHeight?: number
+  maxWidth?: number
+}
+
+/**
+ * Strategy interface for shaping/measuring/wrapping text. Bound at load
+ * time by `SlugFontLoader` from either the baked or runtime backend; the
+ * `SlugFont` dispatchers (`shapeText`, `measureText`, `wrapText`) just
+ * forward to this. Closure-captures `bakedData` / `opentypeFont` /
+ * font-level metrics so the dispatchers don't need to know which backend
+ * is active.
+ */
+export interface ShapingBackend {
+  shapeText(text: string, fontSize: number, options?: ShapeTextOptions): PositionedGlyph[]
+  measureText(text: string, fontSize: number): TextMetrics
+  wrapLines(text: string, fontSize: number, maxWidth?: number): string[]
+}
+
+// --- Backend-implementation function signatures ---
+// These are the "raw" function shapes that ship as named exports from
+// `pipeline/textShaper.ts` etc. The loader passes them to SlugFont's
+// factories, which build a `ShapingBackend` by binding the font-level
+// state into closures.
+
+export type BakedShapeTextFn = (
+  baked: BakedFontData,
+  glyphs: Map<number, SlugGlyphData>,
+  unitsPerEm: number,
+  text: string,
+  fontSize: number,
+  options?: ShapeTextOptions
+) => PositionedGlyph[]
+
+export type BakedMeasureTextFn = (
+  baked: BakedFontData,
+  glyphs: Map<number, SlugGlyphData>,
+  unitsPerEm: number,
+  ascender: number,
+  descender: number,
+  text: string,
+  fontSize: number
+) => TextMetrics
+
+export type BakedWrapLinesFn = (
+  baked: BakedFontData,
+  glyphs: Map<number, SlugGlyphData>,
+  unitsPerEm: number,
+  text: string,
+  fontSize: number,
+  maxWidth?: number
+) => string[]
+
+export type RuntimeShapeTextFn = (
+  font: OpenTypeFont,
+  text: string,
+  fontSize: number,
+  options?: ShapeTextOptions
+) => PositionedGlyph[]
+
+export type RuntimeMeasureTextFn = (
+  font: OpenTypeFont,
+  glyphs: Map<number, SlugGlyphData>,
+  text: string,
+  fontSize: number
+) => TextMetrics
+
+export type RuntimeWrapLinesFn = (
+  font: OpenTypeFont,
+  text: string,
+  fontSize: number,
+  maxWidth?: number
+) => string[]

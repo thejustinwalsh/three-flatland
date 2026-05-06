@@ -4,9 +4,15 @@ import { readFileSync } from 'node:fs'
 import opentype from 'opentype.js'
 import { shapeText } from './textShaper'
 
-const FONT_PATH = resolve(__dirname, '../../../../examples/three/slug-text/public/Inter-Regular.ttf')
+const FONT_PATH = resolve(
+  __dirname,
+  '../../../../examples/three/slug-text/public/Inter-Regular.ttf'
+)
 const fontBuffer = readFileSync(FONT_PATH)
-const arrayBuffer = fontBuffer.buffer.slice(fontBuffer.byteOffset, fontBuffer.byteOffset + fontBuffer.byteLength)
+const arrayBuffer = fontBuffer.buffer.slice(
+  fontBuffer.byteOffset,
+  fontBuffer.byteOffset + fontBuffer.byteLength
+)
 const font = opentype.parse(arrayBuffer)
 
 describe('textShaper', () => {
@@ -40,7 +46,7 @@ describe('textShaper', () => {
   it('breaks on newline characters', () => {
     const glyphs = shapeText(font, 'AB\nCD', 48)
     // A and B on line 0 (y=0), C and D on line 1 (y < 0)
-    const lineYs = [...new Set(glyphs.map(g => g.y))]
+    const lineYs = [...new Set(glyphs.map((g) => g.y))]
     expect(lineYs.length).toBe(2)
     expect(lineYs[0]).toBeGreaterThan(lineYs[1]!) // first line above second
   })
@@ -48,14 +54,14 @@ describe('textShaper', () => {
   it('word-wraps at maxWidth on word boundaries', () => {
     // Use a narrow maxWidth to force wrapping
     const glyphs = shapeText(font, 'Hello World Test', 48, { maxWidth: 200 })
-    const lineYs = [...new Set(glyphs.map(g => g.y))]
+    const lineYs = [...new Set(glyphs.map((g) => g.y))]
     // Should produce multiple lines
     expect(lineYs.length).toBeGreaterThan(1)
   })
 
   it('does not wrap when text fits within maxWidth', () => {
     const glyphs = shapeText(font, 'Hi', 48, { maxWidth: 1000 })
-    const lineYs = [...new Set(glyphs.map(g => g.y))]
+    const lineYs = [...new Set(glyphs.map((g) => g.y))]
     expect(lineYs.length).toBe(1)
   })
 

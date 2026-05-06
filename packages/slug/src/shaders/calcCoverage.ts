@@ -21,21 +21,17 @@ export function calcCoverage(
   evenOdd: Node<'bool'>,
   weightBoost: Node<'bool'>,
   stemDarken?: Node<'float'>,
-  ppem?: Node<'float'>,
+  ppem?: Node<'float'>
 ) {
   const epsilon = float(1.0 / 65536.0)
 
-  const weighted = abs(
-    xcov.mul(xwgt).add(ycov.mul(ywgt)),
-  ).div(max(xwgt.add(ywgt), epsilon))
+  const weighted = abs(xcov.mul(xwgt).add(ycov.mul(ywgt))).div(max(xwgt.add(ywgt), epsilon))
 
   const fallback = min(abs(xcov), abs(ycov))
   const rawCoverage = max(weighted, fallback)
 
   const nonzeroCov = saturate(rawCoverage)
-  const evenOddCov = float(1.0).sub(
-    abs(float(1.0).sub(rawCoverage.mul(0.5).fract().mul(2.0))),
-  )
+  const evenOddCov = float(1.0).sub(abs(float(1.0).sub(rawCoverage.mul(0.5).fract().mul(2.0))))
 
   let filledCov = select(evenOdd, evenOddCov, nonzeroCov)
   filledCov = select(weightBoost, sqrt(filledCov), filledCov)

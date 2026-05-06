@@ -3,9 +3,12 @@ import { buildBands } from './bandBuilder'
 import type { QuadCurve, GlyphBounds } from '../types'
 
 function makeCurve(
-  p0x: number, p0y: number,
-  p1x: number, p1y: number,
-  p2x: number, p2y: number,
+  p0x: number,
+  p0y: number,
+  p1x: number,
+  p1y: number,
+  p2x: number,
+  p2y: number
 ): QuadCurve {
   return { p0x, p0y, p1x, p1y, p2x, p2y }
 }
@@ -45,7 +48,7 @@ describe('bandBuilder', () => {
     expect(hIndices.length).toBe(3)
 
     // First curve in sorted order should have highest max-X (index 1: max 0.9)
-    const maxXs = hIndices.map(i => {
+    const maxXs = hIndices.map((i) => {
       const c = curves[i]!
       return Math.max(c.p0x, c.p1x, c.p2x)
     })
@@ -57,7 +60,7 @@ describe('bandBuilder', () => {
   it('skips purely horizontal curves from h-bands', () => {
     const curves = [
       makeCurve(0, 0.5, 0.5, 0.5, 1, 0.5), // purely horizontal (all y = 0.5)
-      makeCurve(0, 0, 0.5, 0.5, 1, 1),       // diagonal
+      makeCurve(0, 0, 0.5, 0.5, 1, 1), // diagonal
     ]
     const bands = buildBands(curves, bounds, 2)
 
@@ -66,14 +69,14 @@ describe('bandBuilder', () => {
       expect(band.curveIndices).not.toContain(0)
     }
     // But the diagonal curve should be present
-    const hasIndex1 = bands.hBands.some(b => b.curveIndices.includes(1))
+    const hasIndex1 = bands.hBands.some((b) => b.curveIndices.includes(1))
     expect(hasIndex1).toBe(true)
   })
 
   it('skips purely vertical curves from v-bands', () => {
     const curves = [
       makeCurve(0.5, 0, 0.5, 0.5, 0.5, 1), // purely vertical (all x = 0.5)
-      makeCurve(0, 0, 0.5, 0.5, 1, 1),       // diagonal
+      makeCurve(0, 0, 0.5, 0.5, 1, 1), // diagonal
     ]
     const bands = buildBands(curves, bounds, 2)
 

@@ -1,9 +1,4 @@
-import {
-  attribute,
-  uniform,
-  vec2,
-} from 'three/tsl'
-import type Node from 'three/src/nodes/core/Node.js'
+import { attribute, uniform, vec2 } from 'three/tsl'
 
 import { Vector2 } from 'three'
 

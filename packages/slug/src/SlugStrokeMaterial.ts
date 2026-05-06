@@ -1,27 +1,10 @@
 import { MeshBasicNodeMaterial } from 'three/webgpu'
-import {
-  Vector2,
-  Vector4,
-  Color,
-  Matrix4,
-  FrontSide,
-  NormalBlending,
-} from 'three'
+import { Vector2, Vector4, Color, Matrix4, FrontSide, NormalBlending } from 'three'
 import type { Camera, Object3D } from 'three'
-import {
-  Fn,
-  float,
-  sign,
-  vec2,
-  vec3,
-  vec4,
-  attribute,
-  uniform,
-  varyingProperty,
-} from 'three/tsl'
-import { slugStroke } from './shaders/slugStroke.js'
-import { slugDilate } from './shaders/slugDilate.js'
-import type { SlugFont } from './SlugFont.js'
+import { Fn, float, sign, vec2, vec3, vec4, attribute, uniform, varyingProperty } from 'three/tsl'
+import { slugStroke } from './shaders/slugStroke'
+import { slugDilate } from './shaders/slugDilate'
+import type { SlugFont } from './SlugFont'
 
 export interface SlugStrokeMaterialOptions {
   color?: number | Color
@@ -63,9 +46,8 @@ export class SlugStrokeMaterial extends MeshBasicNodeMaterial {
 
     this._font = font
 
-    const color = options.color instanceof Color
-      ? options.color
-      : new Color(options.color ?? 0x000000)
+    const color =
+      options.color instanceof Color ? options.color : new Color(options.color ?? 0x000000)
 
     this._colorUniform = uniform(color)
     this._opacityUniform = uniform(options.opacity ?? 1.0)
@@ -116,7 +98,7 @@ export class SlugStrokeMaterial extends MeshBasicNodeMaterial {
       // Object-space corner position before stroke expansion.
       const baseObjPos = vec2(
         center.x.add(basePos.x.mul(halfSize.x.mul(2.0))),
-        center.y.add(basePos.y.mul(halfSize.y.mul(2.0))),
+        center.y.add(basePos.y.mul(halfSize.y.mul(2.0)))
       )
 
       const emCenter = vec2(glyphTex.x, glyphTex.y)
@@ -125,7 +107,7 @@ export class SlugStrokeMaterial extends MeshBasicNodeMaterial {
       const emHalfH = halfSize.y.mul(invScale)
       const baseEmCoord = vec2(
         emCenter.x.add(basePos.x.mul(emHalfW.mul(2.0))),
-        emCenter.y.add(basePos.y.mul(emHalfH.mul(2.0))),
+        emCenter.y.add(basePos.y.mul(emHalfH.mul(2.0)))
       )
 
       // Axis-aligned stroke expansion. Every vertex pushes outward by
@@ -143,11 +125,11 @@ export class SlugStrokeMaterial extends MeshBasicNodeMaterial {
 
       const expandedObjPos = vec2(
         baseObjPos.x.add(signX.mul(strokeObj)),
-        baseObjPos.y.add(signY.mul(strokeObj)),
+        baseObjPos.y.add(signY.mul(strokeObj))
       )
       const expandedEmCoord = vec2(
         baseEmCoord.x.add(signX.mul(strokeEm)),
-        baseEmCoord.y.add(signY.mul(strokeEm)),
+        baseEmCoord.y.add(signY.mul(strokeEm))
       )
 
       // Outward normal from center to the expanded corner — used by
@@ -155,12 +137,18 @@ export class SlugStrokeMaterial extends MeshBasicNodeMaterial {
       // stroke expansion.
       const expandedNormal = vec2(
         basePos.x.mul(halfSize.x.mul(2.0).add(signX.mul(strokeObj))),
-        basePos.y.mul(halfSize.y.mul(2.0).add(signY.mul(strokeObj))),
+        basePos.y.mul(halfSize.y.mul(2.0).add(signY.mul(strokeObj)))
       )
 
       const dilated = slugDilate(
-        expandedObjPos, expandedNormal, expandedEmCoord, invScale,
-        mvpRow0, mvpRow1, mvpRow3, viewportUniform,
+        expandedObjPos,
+        expandedNormal,
+        expandedEmCoord,
+        invScale,
+        mvpRow0,
+        mvpRow1,
+        mvpRow3,
+        viewportUniform
       )
 
       vRenderCoord.assign(dilated.texcoord)
@@ -170,7 +158,7 @@ export class SlugStrokeMaterial extends MeshBasicNodeMaterial {
       vNumVBands.assign(glyphJac.w)
 
       return vec3(dilated.vpos.x, dilated.vpos.y, float(0.0))
-    })()
+    })() as typeof this.positionNode
 
     this.colorNode = Fn(() => {
       const renderCoord = vRenderCoord
@@ -190,7 +178,7 @@ export class SlugStrokeMaterial extends MeshBasicNodeMaterial {
         vNumHBands,
         vNumVBands,
         glyphBand,
-        strokeHalfWidthUniform,
+        strokeHalfWidthUniform
       )
 
       const finalCoverage = isRect.select(float(0.0), coverage)
@@ -199,9 +187,9 @@ export class SlugStrokeMaterial extends MeshBasicNodeMaterial {
         colorUniform.x.mul(glyphColorAttr.x),
         colorUniform.y.mul(glyphColorAttr.y),
         colorUniform.z.mul(glyphColorAttr.z),
-        finalCoverage.mul(glyphColorAttr.w).mul(opacityUniform),
+        finalCoverage.mul(glyphColorAttr.w).mul(opacityUniform)
       )
-    })()
+    })() as typeof this.colorNode
   }
 
   /** Update the MVP matrix uniforms — call every frame before render. */
@@ -210,18 +198,18 @@ export class SlugStrokeMaterial extends MeshBasicNodeMaterial {
     _mvp.multiply(object.matrixWorld)
 
     const e = _mvp.elements
-    ;(this._mvpRow0Uniform.value as Vector4).set(e[0]!, e[4]!, e[8]!, e[12]!)
-    ;(this._mvpRow1Uniform.value as Vector4).set(e[1]!, e[5]!, e[9]!, e[13]!)
-    ;(this._mvpRow3Uniform.value as Vector4).set(e[3]!, e[7]!, e[11]!, e[15]!)
+    this._mvpRow0Uniform.value.set(e[0], e[4], e[8], e[12])
+    this._mvpRow1Uniform.value.set(e[1], e[5], e[9], e[13])
+    this._mvpRow3Uniform.value.set(e[3], e[7], e[11], e[15])
   }
 
   setViewportSize(width: number, height: number): void {
-    ;(this._viewportUniform.value as Vector2).set(width, height)
+    this._viewportUniform.value.set(width, height)
   }
 
   setColor(value: Color | number): void {
     const c = value instanceof Color ? value : new Color(value)
-    ;(this._colorUniform.value as Color).copy(c)
+    this._colorUniform.value.copy(c)
   }
 
   setOpacity(value: number): void {
