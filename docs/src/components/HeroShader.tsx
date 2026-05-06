@@ -89,19 +89,28 @@ void main() {
 
   float t = u_time * 0.05;
 
-  // MOUSE-AS-DISTURBANCE — instead of adding a hot-light radial, the
-  // cursor PERTURBS the gem-flow noise field. Conceptually: a finger
-  // pressing into water. We push sample points away from the cursor
-  // (radial-falloff), warping the sampled fbm so the gems flow around
-  // and away from the cursor as it moves. No additive light, just
-  // displacement — the scene reacts.
+  // MOUSE-AS-FORCE-FIELD — cursor acts like a soft repulsive field.
+  // We sample noise from a position INWARD of p (toward the mouse), so
+  // the gem pattern that "would have been" near the cursor appears
+  // pushed OUT to where p is — visually the gems flow away from the
+  // cursor like particles fleeing a force field. Wider falloff (1.1
+  // NDC radius) and lower amplitude (0.22) for a gentler, slower
+  // displacement than the previous suck behavior.
   vec2 m = u_mouse * 2.0 - 1.0;
   m.x *= u_res.x / u_res.y;
   vec2 mouseOffset = p - m;
   float md = length(mouseOffset);
-  float disturb = smoothstep(0.85, 0.0, md) * u_mouse_active * 0.45;
-  // Push p away from the mouse along the radial direction.
-  vec2 pp = p + (md > 0.0001 ? normalize(mouseOffset) : vec2(0.0)) * disturb;
+  // Inverse-quadratic-ish falloff — strongest right at the cursor,
+  // tapering very gradually to zero by ~1.1 units. Easing keeps the
+  // edge soft, no sharp boundary.
+  float falloff = 1.0 - smoothstep(0.0, 1.1, md);
+  falloff = falloff * falloff; // soften further
+  float push = falloff * u_mouse_active * 0.22;
+  // SAMPLE FROM CLOSER TO CURSOR than p — this is the inverse of
+  // pushing pp away. Effect: noise that "lives" near the cursor gets
+  // sampled at p (further out), so visually the gem pattern is
+  // displaced away from the cursor.
+  vec2 pp = p - (md > 0.0001 ? normalize(mouseOffset) : vec2(0.0)) * push;
 
   // Domain-warp layer (sampled at PERTURBED pp) — gems flow around
   // the cursor naturally because subsequent fbm() calls sample from pp.

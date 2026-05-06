@@ -46,10 +46,10 @@ import { Tabs, TabItem, Aside } from '@astrojs/starlight/components';
 <div class="page-body not-content">
 
 <StatsBanner stats={[
-  { value: "10,000+", label: "Sprites at 60fps", color: "diamond" },
-  { value: "1", label: "Draw Call", color: "pink" },
-  { value: "0", label: "CPU Overhead", color: "gold" },
-  { value: "100%", label: "TypeScript", color: "amethyst" },
+  { value: "20K+", label: "Sprites at 60fps (M2 Pro)", color: "diamond" },
+  { value: "Per group", label: "Instanced GPU batches", color: "pink" },
+  { value: "TSL", label: "Composable shader nodes", color: "gold" },
+  { value: "WebGPU", label: "Native renderer", color: "amethyst" },
 ]} />
 
 <h2 class="section-heading">What ships in the box</h2>
@@ -244,24 +244,30 @@ function Game() {
     backdrop-filter: blur(0.5px);
   }
 
+  /* Editorial nameplate — uppercase, lightly tracked, Thin weight.
+     The size carries the visual mass; tracking opens it up so 'three-
+     flatland' reads as a wordmark, not a sentence. */
   .hero-title {
     font-family: 'Public Sans', system-ui, sans-serif;
-    font-size: clamp(2.5rem, 5.5vw, 4.5rem);
+    font-size: clamp(2.25rem, 5vw, 4rem);
     font-weight: 200;
-    line-height: 1.02;
-    letter-spacing: -0.04em;
+    line-height: 1.05;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
     color: var(--foreground);
-    margin: 0 0 calc(var(--spacing) * 4);
+    margin: 0 0 calc(var(--spacing) * 6);
     text-shadow: 0 2px 32px color-mix(in oklab, var(--background) 75%, transparent);
   }
   .hero-tagline {
     font-family: 'Public Sans', system-ui, sans-serif;
     font-size: clamp(0.95rem, 1.4vw, 1.0625rem);
     font-weight: 400;
-    line-height: 1.55;
+    line-height: 1.6;
     color: color-mix(in oklab, var(--foreground) 88%, var(--muted-foreground));
     max-width: 42rem;
-    margin: 0 auto calc(var(--spacing) * 6);
+    /* Bigger gap between tagline and CTAs so the buttons read as a
+       distinct call-to-action, not a continuation of the prose. */
+    margin: 0 auto calc(var(--spacing) * 10);
     text-shadow: 0 1px 12px color-mix(in oklab, var(--background) 80%, transparent);
   }
   .hero-actions {

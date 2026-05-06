@@ -195,7 +195,11 @@ function frame(now: number) {
          * BUT the position freezes at its last value so the highlight
          * fades in place rather than sliding back to center. */
         const targetActive = t.hovering ? 1 : 0
-        t.active = inertia(t.active, targetActive, dt, 180)
+        // Slower easing on enter/leave (was 180ms half-life) so the
+        // mouse-light effect ramps in/out gracefully rather than
+        // snapping. Especially important for the shader's force-field
+        // perturbation which wants a deliberate, slow build.
+        t.active = inertia(t.active, targetActive, dt, 320)
         if (t.hovering) {
             t.lx = inertia(t.lx, t.cx, dt, 110)
             t.ly = inertia(t.ly, t.cy, dt, 110)

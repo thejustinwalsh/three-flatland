@@ -69,23 +69,29 @@ const isLanding = path === base || path === '';
         position: fixed;
         top: 0;
         left: 0;
-        width: 13rem;
-        height: 13rem;
+        width: 22rem;
+        height: 22rem;
         pointer-events: none;
-        z-index: 60;
-        overflow: hidden;
+        z-index: 40;
+        /* Clip to the diagonal stripe shape exactly — no surrounding
+         * 'gold square' visible because the wrapper is masked to the
+         * stripe polygon. The polygon spans corner-to-corner with the
+         * tape's thickness, so only the actual ribbon is rendered. */
+        clip-path: polygon(
+            0 6.5rem,
+            6.5rem 0,
+            22rem 15.5rem,
+            15.5rem 22rem
+        );
     }
-    /* Standard corner-ribbon geometry: tape rotated -45° about its center,
-     * positioned so its center lands on the wrapper's diagonal midpoint;
-     * width is generous (~24rem) so the rotated stripe fully spans
-     * corner-to-corner of the wrapper, leaving only a clean diagonal band
-     * visible after overflow:hidden clips the rest. Tighter offsets so
-     * the stripe sits near the corner — sticker stuck flush. */
+    /* Larger banner — sweeps from top edge across to the right side,
+     * crossing more of the upper-left quadrant. FLATLAND wordmark is
+     * positioned in the header to clear the ribbon's diagonal. */
     .alpha-ribbon-tape {
         position: absolute;
-        top: 2rem;
-        left: -7rem;
-        width: 24rem;
+        top: 9rem;
+        left: -10rem;
+        width: 42rem;
         padding: 0.5rem 0;
         text-align: center;
         text-decoration: none;
@@ -173,12 +179,21 @@ const isLanding = path === base || path === '';
         text-shadow: 0 1px 0 color-mix(in oklab, var(--gold-high) 90%, white);
     }
     @media (max-width: 50rem) {
-        .alpha-ribbon { width: 11rem; height: 11rem; top: 4rem; }
+        .alpha-ribbon {
+            width: 14rem;
+            height: 14rem;
+            clip-path: polygon(
+                0 4rem,
+                4rem 0,
+                14rem 10rem,
+                10rem 14rem
+            );
+        }
         .alpha-ribbon-tape {
-            top: 1.8rem;
-            left: -3.6rem;
-            width: 13rem;
-            font-size: 0.65rem;
+            top: 5.5rem;
+            left: -6rem;
+            width: 26rem;
+            font-size: 0.7rem;
         }
     }
     @media (prefers-reduced-motion: reduce) {
@@ -189,14 +204,22 @@ const isLanding = path === base || path === '';
         }
     }
 
-    /* Landing: header floats over the hero canvas with a glass alpha
-     * background so the shader peeks through. Backdrop-blur softens the
-     * canvas behind the header text without obscuring the gem flow. */
+    /* Landing: header is FULLY transparent (no glass backdrop) so the
+     * canvas reads as a single uninterrupted plane behind the wordmark.
+     * The header content (FL icon + FLATLAND + nav + search) floats
+     * over the canvas. The site-title wrapper gets pushed right past
+     * the ribbon's diagonal cutoff so the wordmark sits clear of it. */
     [data-slot='layout'][data-landing] > header {
-        background: color-mix(in oklab, var(--background) 50%, transparent);
-        backdrop-filter: saturate(140%) blur(10px);
-        -webkit-backdrop-filter: saturate(140%) blur(10px);
-        border-bottom: 1px solid color-mix(in oklab, var(--border) 40%, transparent);
+        background: transparent;
+        border-bottom: none;
+    }
+    [data-slot='layout'][data-landing] > header :global(.site-title-wrapper) {
+        margin-left: 7rem;
+    }
+    @media (max-width: 50rem) {
+        [data-slot='layout'][data-landing] > header :global(.site-title-wrapper) {
+            margin-left: 4rem;
+        }
     }
 
     [data-slot='layout'] {
