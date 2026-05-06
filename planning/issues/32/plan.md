@@ -157,6 +157,95 @@ Once `starlight-theme` lands, these become dead code:
 
 Site-specific components stay in `docs/src/components/` (they're content/page concerns, not theme concerns): `BrandAsset`, `BrandIcon`, `Card`, `CardGrid`, `CaptureModal`, `ExamplePreview`, `ExampleTabs`, `FeatureCard`, `FeatureList`, `HeroGame`, `HeroGradient`, `LinkButton`, `ShowcaseGame`, `SoundToggle`, `StackBlitzEmbed`, `StatsBanner`, `ValueProp`, `Icon`.
 
+### Custom icon strategy (cross-phase)
+
+The previous pain — "hard time overriding icons in components" — came from a specific architectural fact: Starlight's built-in `<Icon />` from `@astrojs/starlight/components` resolves names against Starlight's internal SVG registry, and many Starlight components hardcode that resolution path. The only effective override route was monkey-patching Starlight's Icon, which is what `docs/src/components/Icon.astro` was doing pre-Phase-1.
+
+The new architecture eliminates that pain by owning the component layer (`starlight-theme` fork) and routing all icon rendering through one substrate (UnoCSS + iconify). Three layered concerns, one per layer:
+
+#### Layer 1 — Token-driven sizing & color
+Icons receive size and color from utility classes, not from props. Once `presetWind4` is enabled in Phase 2, this is uniform with the rest of the design system:
+
+```astro
+<span class="i-lucide:rocket w-6 h-6 text-accent" />
+```
+
+No `size="1.5em"`, no `color="currentColor"` props. The same tokens (`text-accent`, `text-fg-muted`, `bg-bg-2`, etc.) drive icon color and component color from the same source. **This is the soundness guarantee:** an icon's color cannot drift from its surrounding component's color because they read the same theme variable.
+
+#### Layer 2 — Resolution (which SVG renders)
+Two collections in the project, owned in `docs/uno.config.ts`:
+
+- `lucide` (`@iconify-json/lucide`) — UI / general iconography. Default collection. Aligned with the Ableton/Bitwig/Dieter Rams direction.
+- `tf` — workspace-local custom collection, registered via UnoCSS's `presetIcons({ collections: { tf: FileSystemIconLoader('./src/icons/tf') } })`. Drop SVGs in `docs/src/icons/tf/sprite.svg` → reference as `i-tf:sprite`. No mapping tables, no build-time SVG injection — UnoCSS reads the SVG at build time and emits a CSS rule.
+
+Code-block language icons stay on `material-icon-theme` (auto-resolved by Expressive Code via `starlight-plugin-icons`). `pixelarticons` is dropped — Phase 1 used it for visual continuity through the foundation upgrade; the redesign aesthetic doesn't tolerate pixel art.
+
+#### Layer 3 — Components vs icons (the line that prevents future override pain)
+
+Hard rule for the design system: **icons are slot-shaped (single SVG used at small/medium sizes, color-driven by the surrounding context); components are compositional (layout, sizing variants, animation, multi-layer, brand identity).** Decide once, never blur.
+
+| Stays a component (themed via tokens, not iconified) | Resolves through the icon system |
+|---|---|
+| `BrandAsset.astro`, `BrandIcon.astro` — logo, brand mark, identity composition | UI affordances (chevrons, arrows, close, search, sun/moon) |
+| `Hero.astro`, `HeroGradient.astro` — composition + animation | Sidebar item icons, breadcrumb separators |
+| Animated/interactive marks (sound toggle, theme switcher state) | Code-block language indicators |
+| Anything that needs gradient, multi-layer fill, or runtime state | Inline content icons in MDX (`<Icon name="lucide:rocket" />`) |
+
+Components consume tokens directly (`bg-accent`, `text-fg`, etc.); they do NOT inline `<Icon />` to draw their own visual identity. If a piece of UI needs an "icon-shaped thing" plus animation/gradient, it's a component, and it lives in `docs/src/components/` (site-specific) or `packages/starlight-theme/components/custom/` (theme-system primitive).
+
+#### The Sidebar collision (architecturally important)
+
+`starlight-plugin-icons` and our forked theme both want to override Starlight's `Sidebar.astro`. The plugin checks for an existing override and **defers gracefully** — it warns and skips its own Sidebar override, telling the consumer to compose its `SidebarSublist` into the custom Sidebar to retain icon resolution.
+
+The fork's `packages/starlight-theme/components/overrides/Sidebar.astro` MUST therefore import `SidebarSublist` from `starlight-plugin-icons` rather than hand-rolling the sidebar tree:
+
+```astro
+---
+// packages/starlight-theme/components/overrides/Sidebar.astro
+import SidebarSublist from 'starlight-plugin-icons/components/starlight/SidebarSublist.astro'
+import type { Props } from '@astrojs/starlight/props'
+---
+
+<nav aria-label="Documentation">
+  <!-- our custom layout / styling around the sidebar -->
+  <div class="sidebar-frame">
+    <SidebarSublist sublist={Astro.props.sidebar} />
+  </div>
+</nav>
+```
+
+This is the canonical composition pattern — the plugin owns icon resolution, the theme owns layout. Forgetting this loses sidebar icons silently (no build error; the icons just stop rendering). Document it in `packages/starlight-theme/README.md` for future maintainers.
+
+#### `Icon.astro` shrinks to a one-liner (or disappears)
+
+Once `presetWind4` is in place and call sites use `class="..."`, the wrapper has near-zero value:
+
+```astro
+---
+// docs/src/components/Icon.astro (Phase 2 form)
+const { name, label, class: className } = Astro.props
+const fullName = name.includes(':') ? name : `lucide:${name}`
+---
+<span class:list={[`i-${fullName}`, className]}
+      role={label ? 'img' : undefined}
+      aria-hidden={label ? undefined : 'true'}
+      aria-label={label} />
+```
+
+Or skip the wrapper entirely and use `<span class="i-lucide:rocket w-5 h-5" />` at call sites — the wrapper's only remaining job is the default-collection prefix (`name → lucide:name`). Decide during Phase 3 component redesign; not a Phase 2 blocker.
+
+#### Soundness check
+
+Three failure modes the previous architecture had, and how the new one closes each:
+
+| Past failure | New architecture |
+|---|---|
+| Couldn't change Starlight's built-in icon style without monkey-patching `<Icon />` | We own all 17 Starlight component overrides via the fork; their icon usage is ours to control. |
+| Icon color drifted from surrounding component because of independent prop systems | Tokens flow through `text-*` / `bg-*` utilities to both icon and component; same source, same value. |
+| Custom icons required a hardcoded mapping table in `Icon.astro` | `FileSystemIconLoader` reads `src/icons/tf/*.svg` automatically; new icons are drop-in. |
+
+The remaining seam — Starlight's built-in `<Icon />` from `@astrojs/starlight/components` used by Starlight components we *don't* override — is small (mostly `<TabItem icon="seti:react">` in MDX content). Those use Starlight's own icon registry; they're not ours to redesign and they sit at small inline sizes where the visual delta is acceptable.
+
 ### Skill choreography for Phase 2
 
 Run **before any code**:
@@ -178,6 +267,10 @@ Run **at the end of Phase 2**:
 - [ ] Public Sans / Inter / JetBrains Mono / Commit Mono load locally (no external font requests)
 - [ ] All four `docs/src/styles/*.css` files deleted; the `customCss` array in `astro.config.mjs` no longer references them
 - [ ] Six component overrides removed from `components: { … }` map (provided by the plugin instead)
+- [ ] `Sidebar.astro` override in the fork composes `SidebarSublist` from `starlight-plugin-icons` so sidebar icon resolution survives our override (see Custom icon strategy)
+- [ ] `pixelarticons` collection dropped from `docs/package.json`; `lucide` becomes default; `tf` custom collection registered via `FileSystemIconLoader('./src/icons/tf')`
+- [ ] `Icon.astro` simplified (or retired); call sites use utility classes for sizing/color
+- [ ] **Folded in from closed standalone issues:** deprecated `Props` import in `PageFrame.astro` resolved as part of the override rewrite (was #35, closed); unused `isProd` constant in `astro.config.mjs` removed as part of the config rewrite (was #36, closed)
 - [ ] `impeccable:audit` report captured in `planning/issues/32/phase-2-audit.md` for Phase 3 to act on
 
 ---
