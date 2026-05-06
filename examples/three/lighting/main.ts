@@ -335,16 +335,21 @@ async function main() {
   }
 
   // ─── Tweakpane params ───────────────────────────────────────────
+  // `paused` and `stationary` are NOT exposed in the pane — they exist
+  // only so the `__captureScene` / `__endCapture` console helpers can
+  // freeze the scene during recording. If you want them back on the
+  // UI, add `pane.addBinding(params, 'paused')` etc. below.
+  //   paused     — full freeze: rawDelta zeroed, no animation, no motion
+  //   stationary — animations and torch flicker keep ticking, but
+  //                entities don't move. Used by the synchronized
+  //                pair-capture recorder so two takes share identical
+  //                entity positions.
   const params = {
     paused: false,
-    // `stationary` keeps animations playing in place — slimes don't wander,
-    // knight idles in place, but every sprite's frame cursor still advances
-    // and torch flicker still updates. Used by the synchronized pair-capture
-    // recorder so two takes share identical entity positions.
     stationary: false,
     lightingEnabled: true,
     bands: 4,
-    pixelSize: 0,
+    pixelSize: 4,
     ambient: 0.6,
     lightHeight: 0.75,
     glowRadius: 0,
@@ -449,16 +454,6 @@ async function main() {
   // ─── Tweakpane UI ───────────────────────────────────────────────
   const { pane, update: updateDevtools } = createPane({ driver: 'manual' })
 
-  // Top-level: pause everything. Useful for inspecting state, taking
-  // screenshots, or comparing two parameter settings on identical entity
-  // positions.
-  pane.addBinding(params, 'paused', { label: 'pause' })
-  // `stationary`: animations keep playing, entities don't move. Pair this
-  // with `window.__lightingCapturePair(durationMs)` from the console to
-  // record two synchronized .webm files (lighting on / off) for the docs
-  // <Compare> seam slider.
-  pane.addBinding(params, 'stationary', { label: 'stationary' })
-
   const lightFolder = pane.addFolder({ title: 'Lighting', expanded: true })
   lightFolder.addBinding(params, 'lightingEnabled', { label: 'enabled' })
     .on('change', () => {
@@ -479,7 +474,7 @@ async function main() {
   lightFolder.addBinding(params, 'rimIntensity', { min: 0, max: 2, step: 0.05 })
     .on('change', () => { pushUniforms(); pushConstants() })
 
-  const shadowFolder = pane.addFolder({ title: 'Shadows' })
+  const shadowFolder = pane.addFolder({ title: 'Shadows', expanded: false })
   shadowFolder.addBinding(params, 'shadowStrength', { min: 0, max: 1, step: 0.05, label: 'strength' })
     .on('change', () => pushUniforms())
   shadowFolder.addBinding(params, 'shadowBias', { min: 0, max: 2, step: 0.05, label: 'bias' })
@@ -491,11 +486,11 @@ async function main() {
   shadowFolder.addBinding(params, 'shadowPixelSize', { min: 0, max: 8, step: 1, label: 'pixelSize' })
     .on('change', () => { pushUniforms(); pushConstants() })
 
-  const torchFolder = pane.addFolder({ title: 'Torches' })
+  const torchFolder = pane.addFolder({ title: 'Torches', expanded: false })
   torchFolder.addBinding(params, 'torchIntensity', { min: 0, max: 3, step: 0.05, label: 'intensity' })
   torchFolder.addBinding(params, 'torchDistance', { min: 40, max: 400, step: 10, label: 'distance' })
 
-  const slimeFolder = pane.addFolder({ title: 'Slimes' })
+  const slimeFolder = pane.addFolder({ title: 'Slimes', expanded: false })
   slimeFolder.addBinding(params, 'slimeCount', { min: 0, max: 1000, step: 1, label: 'count' })
     .on('change', (ev) => setSlimeCount(ev.value))
   slimeFolder.addBinding(params, 'slimeLights', { label: 'lights' })
@@ -840,11 +835,10 @@ async function main() {
     }
     // Always pause = false (rendering must continue), always stationary
     // = true (entities frozen, animations still play). We do NOT restore
-    // these on exit — successive captures stay aligned. Sync the
-    // Tweakpane UI so the checkboxes visibly reflect the forced state.
+    // these on exit — successive captures stay aligned. The state lives
+    // only in `params`; there are no Tweakpane checkboxes for it.
     params.paused = false
     params.stationary = true
-    pane.refresh()
 
     const mainCanvas = renderer.domElement as HTMLCanvasElement
 
@@ -937,7 +931,6 @@ async function main() {
   // Resume normal entity motion after a capture session.
   ;(window as Window & { __endCapture?: () => void }).__endCapture = function endCapture(): void {
     params.stationary = false
-    pane.refresh()
     console.log('[endCapture] motion resumed')
   }
 }

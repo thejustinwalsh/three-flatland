@@ -1009,7 +1009,7 @@ export default function App() {
   const light = usePaneFolder(pane, 'Lighting', { expanded: true })
   const [lightingEnabled] = usePaneInput(light, 'enabled', true)
   const [bands] = usePaneInput(light, 'bands', 4, { min: 0, max: 8, step: 1 })
-  const [pixelSize] = usePaneInput(light, 'pixelSize', 0, { min: 0, max: 8, step: 1 })
+  const [pixelSize] = usePaneInput(light, 'pixelSize', 4, { min: 0, max: 8, step: 1 })
   const [ambient] = usePaneInput(light, 'ambient', 0.6, { min: 0, max: 3, step: 0.05 })
   // lightHeight: the universal +Z component added to every light's
   // direction. Higher values make flat surfaces (floors, wall caps)
