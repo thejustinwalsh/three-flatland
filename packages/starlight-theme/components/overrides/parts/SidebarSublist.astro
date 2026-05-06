@@ -44,24 +44,65 @@ function sectionAccent(idx: number): string {
                 </span>
             </a>
         ) : (
-            <div
+            <details
                 class="container-sidebar-entry"
                 style={!nested ? sectionAccent(idx) : undefined}
+                open={!entry.collapsed}
             >
-                <h4 class="entry-title">{entry.label}</h4>
+                <summary class="entry-title-row">
+                    <span class="entry-title">{entry.label}</span>
+                    <svg class="caret" viewBox="0 0 16 16" aria-hidden="true">
+                        <path d="M4 6l4 4 4-4" stroke="currentColor" stroke-width="2"
+                            stroke-linecap="round" stroke-linejoin="round" fill="none" />
+                    </svg>
+                </summary>
                 <div class="container-group-link">
                     <Astro.self sublist={entry.entries} nested />
                 </div>
-            </div>
+            </details>
         )
     )
 }
 
 <style>
+    /* Sidebar group is now a real <details>/<summary> so groups are
+     * collapsable by clicking the title — restores the tree-nature
+     * stakeholder asked for. The caret rotates 90° when open. */
     .container-sidebar-entry {
-        gap: 0.25rem;
-        flex-direction: column;
+        display: block;
+    }
+    .container-sidebar-entry .container-group-link {
+        margin-top: calc(var(--spacing) * 1);
+    }
+
+    .entry-title-row {
         display: flex;
+        align-items: center;
+        gap: calc(var(--spacing) * 1.5);
+        cursor: pointer;
+        list-style: none;
+        padding-block: calc(var(--spacing) * 1);
+        padding-inline: calc(var(--spacing) * 2);
+        border-radius: calc(var(--radius) - 4px);
+        transition: background-color 0.15s;
+    }
+    .entry-title-row::-webkit-details-marker {
+        display: none;
+    }
+    .entry-title-row:hover {
+        background-color: color-mix(in oklab, var(--section-accent, var(--secondary)) 8%, transparent);
+    }
+
+    .caret {
+        width: 0.75rem;
+        height: 0.75rem;
+        flex-shrink: 0;
+        color: color-mix(in oklab, var(--section-accent, var(--muted-foreground)) 65%, var(--muted-foreground));
+        transform: rotate(-90deg);
+        transition: transform 0.18s ease, color 0.15s;
+    }
+    .container-sidebar-entry[open] > .entry-title-row > .caret {
+        transform: rotate(0);
     }
 
     /* Tree-nesting visual — nested groups indent and carry a thin vertical
