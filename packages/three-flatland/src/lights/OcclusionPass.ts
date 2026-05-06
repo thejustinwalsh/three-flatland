@@ -108,9 +108,10 @@ export class OcclusionPass {
 
   /**
    * Meshes hidden for the duration of the occlusion pass because their
-   * geometry lacks the `effectBuf0` instance attribute the occlusion shader
-   * needs (e.g. tilemap chunks, which share Sprite2DMaterial but don't
-   * allocate effect buffers). They can't per-instance cast shadows anyway.
+   * geometry lacks the `instanceSystem` interleaved attribute the
+   * occlusion shader reads for the per-instance castsShadow bit. In
+   * practice this is only ever a custom mesh that hijacked the
+   * material class without going through SpriteBatch / TileLayer.
    */
   private _hiddenMeshes: Mesh[] = []
 
@@ -193,7 +194,7 @@ export class OcclusionPass {
    * material is a {@link Sprite2DMaterial} has its material temporarily
    * swapped to a per-texture occlusion variant that samples the sprite's
    * alpha and masks it by the per-instance `castsShadow` bit in
-   * `effectBuf0.x`. Non-casters contribute alpha = 0 to the SDF seed;
+   * `instanceSystem.z`. Non-casters contribute alpha = 0 to the SDF seed;
    * casters contribute their silhouette alpha unchanged.
    *
    * Non-sprite meshes render with their own materials. That's usually
@@ -263,13 +264,22 @@ export class OcclusionPass {
     if (Array.isArray(current)) return
     if (!(current instanceof Sprite2DMaterial)) return
 
-    // The occlusion shader reads `effectBuf0` per instance. Meshes that
-    // share Sprite2DMaterial but bypass the EffectMaterial attribute setup
-    // (notably TileLayer chunks) don't have effectBuf0 on their geometry
-    // — rendering them here triggers a TSL "attribute not found" warning
-    // and can't contribute meaningful shadow data anyway. Hide them for
-    // the duration of the pass and restore afterwards.
-    if (!mesh.geometry.getAttribute('effectBuf0')) {
+    // The occlusion shader reads `instanceUV` (frame UV) and
+    // `instanceSystem` (flip + system flags incl. castsShadow). Both
+    // are part of the standard interleaved core buffer that every
+    // Sprite2DMaterial-rendered mesh allocates — sprite batches and
+    // tilemap chunks alike. If a custom mesh somehow shares the
+    // material class but skipped that setup, hide it for the pass
+    // (it can't contribute meaningful silhouette data anyway).
+    //
+    // Pre-interleaved code checked for `effectBuf0` here, which broke
+    // tilemap occluders: tile chunks only allocate `effectBufN`
+    // attributes when an attached effect declares per-instance
+    // uniform fields (e.g. NormalMapProvider has only a `normalMap`
+    // *constant*, so no per-instance buffer is allocated). The check
+    // hid every such tile chunk → wall tops marked via
+    // `markOccluders(...)` never made it into the occlusion mask.
+    if (!mesh.geometry.getAttribute('instanceSystem')) {
       if (mesh.visible) {
         mesh.visible = false
         this._hiddenMeshes.push(mesh)
@@ -309,7 +319,7 @@ export class OcclusionPass {
  *   1. Replicate Sprite2DMaterial's instance-UV flip + atlas remap so each
  *      sprite samples its own frame out of the shared atlas.
  *   2. Sample the alpha channel of the atlas at the remapped UV.
- *   3. Read `castsShadow` (bit 2 of `effectBuf0.x`) per instance; multiply
+ *   3. Read `castsShadow` (bit 2 of `instanceSystem.z`) per instance; multiply
  *      sampled alpha by 1 when set, 0 when clear.
  *   4. Output `vec4(0, 0, 0, alpha * castMask)`.
  *

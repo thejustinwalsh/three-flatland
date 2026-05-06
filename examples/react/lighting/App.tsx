@@ -248,21 +248,32 @@ function updateWanderer(w: Wanderer, delta: number, speed: number, halfW: number
 // ============================================
 
 interface SceneProps {
+  paused: boolean
+  lightingEnabled: boolean
   bands: number
-  quantize: boolean
   shadowStrength: number
   shadowBias: number
   shadowStartOffsetScale: number
   shadowMaxDistance: number
   shadowPixelSize: number
+  pixelSize: number
   ambient: number
   slimeCount: number
   slimeLights: boolean
+  slimeQuota: number
   torchIntensity: number
   torchDistance: number
   lightHeight: number
-  capShadowStrength: number
-  capShadowThreshold: number
+  glowRadius: number
+  glowIntensity: number
+  rimIntensity: number
+  // Compile-time toggles. Each flip triggers a shader rebuild on
+  // the LightEffect so the dead branches actually leave the graph.
+  bandsEnabled: boolean
+  pixelSnapEnabled: boolean
+  shadowPixelSnapEnabled: boolean
+  glowEnabled: boolean
+  rimEnabled: boolean
 }
 
 function FlatlandScene(props: SceneProps) {
@@ -394,8 +405,11 @@ function FlatlandScene(props: SceneProps) {
     if (slimesRef.current.length > props.slimeCount) slimesRef.current.length = props.slimeCount
   }
 
-  // Push uniform values each frame via refs — effect instance updates are
-  // zero-cost `.value =` writes on the underlying uniform nodes.
+  // Push uniform values each frame via refs — effect instance updates
+  // for *uniform* fields are zero-cost `.value =` writes on the
+  // underlying TSL uniform nodes. The compile-time toggles
+  // (`*Enabled`) below are different: assigning them re-runs the
+  // LightEffect's `_buildLightFn` and triggers a shader recompile.
   useEffect(() => {
     const e = defaultLightRef.current as unknown as {
       bands: number
@@ -404,32 +418,64 @@ function FlatlandScene(props: SceneProps) {
       shadowStartOffsetScale: number
       shadowMaxDistance: number
       shadowPixelSize: number
+      pixelSize: number
       lightHeight: number
-      capShadowStrength: number
-      capShadowThreshold: number
+      glowRadius: number
+      glowIntensity: number
+      rimIntensity: number
     } | null
     if (!e) return
-    e.bands = props.quantize ? props.bands : 0
+    e.bands = props.bands
     e.shadowStrength = props.shadowStrength
     e.shadowBias = props.shadowBias
     e.shadowStartOffsetScale = props.shadowStartOffsetScale
     e.shadowMaxDistance = props.shadowMaxDistance
     e.shadowPixelSize = props.shadowPixelSize
+    e.pixelSize = props.pixelSize
     e.lightHeight = props.lightHeight
-    e.capShadowStrength = props.capShadowStrength
-    e.capShadowThreshold = props.capShadowThreshold
+    e.glowRadius = props.glowRadius
+    e.glowIntensity = props.glowIntensity
+    e.rimIntensity = props.rimIntensity
   }, [
     props.bands,
-    props.quantize,
     props.shadowStrength,
     props.shadowBias,
     props.shadowStartOffsetScale,
     props.shadowMaxDistance,
     props.shadowPixelSize,
+    props.pixelSize,
     props.lightHeight,
-    props.capShadowStrength,
-    props.capShadowThreshold,
+    props.glowRadius,
+    props.glowIntensity,
+    props.rimIntensity,
   ])
+
+  // Compile-time toggle pushes — separate from the uniform pushes
+  // above so a uniform tweak never accidentally bumps a constant.
+  // Each setter call here triggers `_rebuildLightFn` if the value
+  // actually changed (early-out on identity).
+  useEffect(() => {
+    const e = defaultLightRef.current as unknown as {
+      bandsEnabled: boolean
+      pixelSnapEnabled: boolean
+      shadowPixelSnapEnabled: boolean
+      glowEnabled: boolean
+      rimEnabled: boolean
+    } | null
+    if (!e) return
+    e.bandsEnabled = props.bandsEnabled
+    e.pixelSnapEnabled = props.pixelSnapEnabled
+    e.shadowPixelSnapEnabled = props.shadowPixelSnapEnabled
+    e.glowEnabled = props.glowEnabled
+    e.rimEnabled = props.rimEnabled
+  }, [
+    props.bandsEnabled,
+    props.pixelSnapEnabled,
+    props.shadowPixelSnapEnabled,
+    props.glowEnabled,
+    props.rimEnabled,
+  ])
+
 
   useEffect(() => {
     // torch_switch tiles hold a torch Light2D at their center — treating
@@ -561,7 +607,12 @@ function FlatlandScene(props: SceneProps) {
     }
   }, [gl, fixedLightPositions.length, switchPositions])
 
-  useFrame((_, delta) => {
+  useFrame((_, rawDelta) => {
+    // When paused, freeze the simulation. Rendering still happens, so the
+    // canvas continues to update — useful for capturing comparison
+    // screenshots on identical entity positions.
+    if (props.paused) return
+    const delta = rawDelta
     flickerTimer.current += delta
     const t = flickerTimer.current
 
@@ -814,16 +865,20 @@ function FlatlandScene(props: SceneProps) {
     <>
       <OrthoCamera viewSize={VIEW_SIZE} />
       <flatland ref={flatlandRef} viewSize={VIEW_SIZE} clearColor={0x06060c}>
-        <defaultLightEffect
-          ref={defaultLightRef}
-          attach={attachLighting}
-          bands={props.quantize ? props.bands : 0}
-          shadowStrength={props.shadowStrength}
-          shadowBias={props.shadowBias}
-          shadowStartOffsetScale={props.shadowStartOffsetScale}
-          shadowMaxDistance={props.shadowMaxDistance}
-          shadowPixelSize={props.shadowPixelSize}
-        />
+        {props.lightingEnabled && (
+          <defaultLightEffect
+            ref={defaultLightRef}
+            attach={attachLighting}
+            bands={props.bands}
+            shadowStrength={props.shadowStrength}
+            shadowBias={props.shadowBias}
+            shadowStartOffsetScale={props.shadowStartOffsetScale}
+            shadowMaxDistance={props.shadowMaxDistance}
+            shadowPixelSize={props.shadowPixelSize}
+            pixelSize={props.pixelSize}
+            categoryQuotas={{ slime: props.slimeQuota }}
+          />
+        )}
 
         {/* Floor + walls. Tileset's baked normalMap (synthesized by
             LDtkLoader from per-tile `tileDir` / `tileCap*` custom data)
@@ -942,21 +997,28 @@ function FlatlandScene(props: SceneProps) {
 export default function App() {
   const { pane } = usePane()
 
+  // ── Lighting ─────────────────────────────────────────────────────
+  // Sliders here split into two flavors: live uniforms (no rebuild
+  // cost on change — ambient, lightHeight, glowIntensity) and
+  // compile-time gates derived from value > 0 (bands, pixelSize,
+  // glowRadius, rimIntensity). The gates trigger a shader rebuild
+  // only when crossing the 0/N boundary; tuning the slider above 0
+  // updates the in-shader uniform at zero rebuild cost.
+  const [paused] = usePaneInput(pane, 'pause', false)
+
   const light = usePaneFolder(pane, 'Lighting', { expanded: true })
-  const [quantize] = usePaneInput(light, 'quantize', true)
+  const [lightingEnabled] = usePaneInput(light, 'enabled', true)
   const [bands] = usePaneInput(light, 'bands', 4, { min: 0, max: 8, step: 1 })
+  const [pixelSize] = usePaneInput(light, 'pixelSize', 0, { min: 0, max: 8, step: 1 })
   const [ambient] = usePaneInput(light, 'ambient', 0.6, { min: 0, max: 3, step: 0.05 })
   // lightHeight: the universal +Z component added to every light's
   // direction. Higher values make flat surfaces (floors, wall caps)
   // read as more "top-lit" — classic 2.5D look. Lower values push the
   // light toward a side-lit feel where tilted faces dominate.
   const [lightHeight] = usePaneInput(light, 'lightHeight', 0.75, { min: 0, max: 2, step: 0.05 })
-  // capShadowStrength: attenuate direct light on fragments whose
-  // normal is ≈ (0, 0, 1). 0 = caps lit normally; 1 = caps only pick
-  // up ambient. Uses `normal.z` as a proxy — floors are also
-  // attenuated (tilt them slightly if you want floors lit + caps dark).
-  const [capShadowStrength] = usePaneInput(light, 'capShadow', 0, { min: 0, max: 1, step: 0.05 })
-  const [capShadowThreshold] = usePaneInput(light, 'capShadowThresh', 0.9, { min: 0, max: 1, step: 0.01 })
+  const [glowRadius] = usePaneInput(light, 'glowRadius', 0, { min: 0, max: 2, step: 0.05 })
+  const [glowIntensity] = usePaneInput(light, 'glowIntensity', 0.6, { min: 0, max: 2, step: 0.05 })
+  const [rimIntensity] = usePaneInput(light, 'rimIntensity', 0, { min: 0, max: 2, step: 0.05 })
 
   const shadows = usePaneFolder(pane, 'Shadows')
   const [shadowStrength] = usePaneInput(shadows, 'strength', 0.8, { min: 0, max: 1, step: 0.05 })
@@ -969,30 +1031,55 @@ export default function App() {
   const [torchIntensity] = usePaneInput(torches, 'intensity', 1.8, { min: 0, max: 3, step: 0.05 })
   const [torchDistance] = usePaneInput(torches, 'distance', 140, { min: 40, max: 400, step: 10 })
 
-  const lights = usePaneFolder(pane, 'Slimes')
-  const [slimeCount] = usePaneInput(lights, 'count', 5, { min: 0, max: 1000, step: 1 })
-  const [slimeLights] = usePaneInput(lights, 'lights', true)
+  const slimes = usePaneFolder(pane, 'Slimes')
+  const [slimeCount] = usePaneInput(slimes, 'count', 5, { min: 0, max: 1000, step: 1 })
+  const [slimeLights] = usePaneInput(slimes, 'lights', true)
+  // Per-tile quota for the "slime" fill bucket. Default 2 keeps hero
+  // lights uncontested in dense scenes; bumping to 4–8 reduces the
+  // tile-checkerboard artifact in 1000-slime clusters at the cost of
+  // a few more shader iterations per fragment in saturated tiles.
+  const [slimeQuota] = usePaneInput(slimes, 'quota', 4, { min: 0, max: 16, step: 1 })
+
+  // Compile-time gates derived from slider values. The boolean is
+  // what drives the shader rebuild — when the slider crosses 0/N,
+  // the gate flips and the LightEffect's `_rebuildLightFn` fires.
+  // While the slider stays above 0, the numeric value flows through
+  // as a live uniform with no rebuild cost.
+  const bandsEnabled = bands > 0
+  const pixelSnapEnabled = pixelSize > 0
+  const shadowPixelSnapEnabled = shadowPixelSize > 0
+  const glowEnabled = glowRadius > 0
+  const rimEnabled = rimIntensity > 0
 
   return (
     <Canvas renderer={{ antialias: false, trackTimestamp: true }}>
       <color attach="background" args={['#06060c']} />
       <Suspense fallback={null}>
         <FlatlandScene
+          paused={paused}
+          lightingEnabled={lightingEnabled}
           bands={bands}
-          quantize={quantize}
           shadowStrength={shadowStrength}
           shadowBias={shadowBias}
           shadowStartOffsetScale={shadowStartOffsetScale}
           shadowMaxDistance={shadowMaxDistance}
           shadowPixelSize={shadowPixelSize}
+          pixelSize={pixelSize}
           ambient={ambient}
           slimeCount={slimeCount}
           slimeLights={slimeLights}
+          slimeQuota={slimeQuota}
           torchIntensity={torchIntensity}
           torchDistance={torchDistance}
           lightHeight={lightHeight}
-          capShadowStrength={capShadowStrength}
-          capShadowThreshold={capShadowThreshold}
+          glowRadius={glowRadius}
+          glowIntensity={glowIntensity}
+          rimIntensity={rimIntensity}
+          bandsEnabled={bandsEnabled}
+          pixelSnapEnabled={pixelSnapEnabled}
+          shadowPixelSnapEnabled={shadowPixelSnapEnabled}
+          glowEnabled={glowEnabled}
+          rimEnabled={rimEnabled}
         />
       </Suspense>
     </Canvas>

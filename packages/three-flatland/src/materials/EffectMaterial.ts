@@ -541,8 +541,16 @@ export class EffectMaterial extends MeshBasicNodeMaterial {
 
       // ─── Phase 3: Chain color-transforming MaterialEffects ───────────
       if (effectData.length > 0) {
-        // Enable bits live in effectBuf0.y (slot 1); system flags occupy x.
-        const enableFlags = getPackedComponent(bufNodes, 1)
+        // Enable bits live in `instanceSystem.w` after the interleaved-
+        // buffer refactor — the writers (`Sprite2D._writeEffectDataOwn`,
+        // `SpriteBatch.writeEnableBits`) put them there. Reading from
+        // `effectBuf0.y` (the pre-refactor slot) lands on
+        // never-written-to data, so every chained MaterialEffect's
+        // enable bit reads as 0 and the effect's color contribution
+        // is mixed in at zero weight — visually a no-op. Provider
+        // effects skip this gate entirely (they bypass via `isProvider`),
+        // which is why the lighting example never tripped on this.
+        const enableFlags = attribute<'vec4'>('instanceSystem', 'vec4').w
 
         for (const { effectClass, bitIndex, attrs, constants, isProvider } of effectData) {
           // Skip provider-only effects (they only produce channel data)

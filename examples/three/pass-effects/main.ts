@@ -498,6 +498,96 @@ async function main() {
   }
 
   animate()
+
+  // ─── Single-shot scene recorder ──────────────────────────────────
+  //
+  // Console-callable:
+  //   await window.__captureScene('passfx-off', 3000)
+  //   await window.__captureScene('passfx-on', 3000)
+  //
+  // Records the *current* visual state. Two files land in Downloads:
+  //   <name>.webm         — durationMs of canvas video
+  //   <name>-poster.jpg   — first-frame still
+  //
+  // Manual workflow:
+  //   1. Pick the "off" preset (Clean) via Tweakpane.
+  //   2. Run `await __captureScene('passfx-off', 3000)`.
+  //   3. Switch to the "on" preset (e.g. CRT Arcade).
+  //   4. Run `await __captureScene('passfx-on', 3000)`.
+  //   5. Drop the four files into docs/public/diagrams/.
+  //
+  // To keep both videos animation-phase-aligned, the capture resets
+  // `elapsed` (which drives sprite float + VHS/static pass time) so
+  // both clips start at t=0.
+  ;(window as Window & {
+    __captureScene?: (name: string, durationMs?: number) => Promise<void>
+  }).__captureScene = async function captureScene(name: string, durationMs = 3000): Promise<void> {
+    if (!name || typeof name !== 'string') {
+      console.error('[captureScene] usage: __captureScene("passfx-off", 3000)')
+      return
+    }
+
+    const mainCanvas = renderer.domElement as HTMLCanvasElement
+
+    function pickMimeType(): string {
+      const candidates = [
+        'video/webm;codecs=vp9',
+        'video/webm;codecs=vp8',
+        'video/webm',
+        'video/mp4',
+      ]
+      for (const m of candidates) {
+        if (typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported(m)) return m
+      }
+      return ''
+    }
+
+    function downloadBlob(blob: Blob, filename: string): void {
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = filename
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      setTimeout(() => URL.revokeObjectURL(url), 1000)
+    }
+
+    async function capturePoster(filename: string): Promise<void> {
+      const dataUrl = mainCanvas.toDataURL('image/jpeg', 0.9)
+      const blob = await (await fetch(dataUrl)).blob()
+      downloadBlob(blob, filename)
+    }
+
+    async function recordVideo(filename: string): Promise<void> {
+      const stream = mainCanvas.captureStream(60)
+      const mimeType = pickMimeType()
+      const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined)
+      const chunks: Blob[] = []
+      recorder.ondataavailable = (e: BlobEvent) => {
+        if (e.data && e.data.size > 0) chunks.push(e.data)
+      }
+      return new Promise<void>((resolve) => {
+        recorder.onstop = () => {
+          const blob = new Blob(chunks, { type: mimeType || 'video/webm' })
+          downloadBlob(blob, filename)
+          resolve()
+        }
+        recorder.start()
+        setTimeout(() => recorder.stop(), durationMs)
+      })
+    }
+
+    // Reset animation phase so back-to-back captures start at t=0.
+    elapsed = 0
+    for (const { pass } of activePreset.timeDriven) pass.time = 0
+    await new Promise((r) => requestAnimationFrame(r))
+
+    console.log(`[captureScene] poster + ${durationMs}ms video → ${name}.webm + ${name}-poster.jpg`)
+    await capturePoster(`${name}-poster.jpg`)
+    await recordVideo(`${name}.webm`)
+    console.log(`[captureScene] done — ${name}.webm + ${name}-poster.jpg in Downloads.`)
+  }
 }
 
 main()

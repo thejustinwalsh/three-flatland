@@ -6,7 +6,7 @@ import { Light2D } from './Light2D'
 describe('LightStore', () => {
   it('should construct with default maxLights', () => {
     const store = new LightStore()
-    expect(store.maxLights).toBe(256)
+    expect(store.maxLights).toBe(1024)
   })
 
   it('should construct with custom maxLights', () => {

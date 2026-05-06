@@ -1,6 +1,7 @@
 import { DataTexture, FloatType, RGBAFormat, NearestFilter, Vector2, Vector3 } from 'three'
 import { uniform, int, ivec2, textureLoad } from 'three/tsl'
 import type { Light2D } from './Light2D'
+import { categoryToBucket } from './categoryHash'
 import {
   registerDebugArray,
   registerDebugTexture,
@@ -42,13 +43,15 @@ export const TILE_SIZE = 16
 export const MAX_LIGHTS_PER_TILE = 16
 
 /**
- * Per-tile fill-light quota (sprites with `castsShadow: false`, e.g.
- * slime glows, atmospheric ambience). Fill lights saturating a tile
- * get deduplicated to the top-K by score; remaining in-range fills
- * are compensated via a luminance-preserving scale factor written to
- * the tile meta texel and applied in the shader. Keeps 1000-slime
- * scenes from drowning hero lights (torches) in tile competition
- * while preserving the "lots of soft fill" visual read.
+ * Default per-tile fill-light quota (sprites with `castsShadow: false`,
+ * e.g. slime glows, atmospheric ambience). Fill lights saturating a
+ * tile get deduplicated to the top-K by score within their category
+ * bucket. Keeps 1000-slime scenes from drowning hero lights (torches)
+ * in tile competition while preserving the "lots of soft fill"
+ * visual read.
+ *
+ * Per-category overrides via `ForwardPlusLighting.setFillQuota(category,
+ * n)`. This constant is the value all 4 buckets initialize to.
  */
 export const MAX_FILL_LIGHTS_PER_TILE = 2
 
@@ -103,6 +106,32 @@ export const TILE_STRIDE = 8
  */
 export const TILE_TEXTURE_DIM = 512
 
+/**
+ * Forward+ tiled light culler for 2D scenes.
+ *
+ * Subdivides the screen into {@link TILE_SIZE}-pixel tiles and assigns
+ * each light to every tile its bounding box overlaps. Per-fragment
+ * shading then iterates only the lights bound to its tile (capped at
+ * {@link MAX_LIGHTS_PER_TILE}) instead of every light in the scene —
+ * the cost flips from O(total_lights) to O(lights_per_tile).
+ *
+ * Tile data is uploaded each frame via a single {@link DataTexture}
+ * (light indices + per-tile meta scalars). Sprite-friendly extras:
+ *
+ * - **Reservoir eviction** — when a tile saturates, lower-scored lights
+ *   lose slots to higher-scored newcomers, keeping the visible set
+ *   close to the "would-be-brightest-K" ideal.
+ * - **Per-category fill quotas** — `castsShadow: false` lights compete
+ *   only within their own {@link Light2D.category} bucket, so a
+ *   thousand cosmetic slime glows can't drown out hero torches. Tunable
+ *   per-bucket via {@link setFillQuota} / {@link getFillQuota} /
+ *   {@link resetFillQuotas}.
+ * - **Importance bias** — {@link Light2D.importance} multiplies the
+ *   tile-rank score, letting hero lights resist eviction.
+ *
+ * Owned by {@link DefaultLightEffect} (and other tiled-Forward+ effects);
+ * end users rarely instantiate this directly.
+ */
 export class ForwardPlusLighting {
   private _tileCountX = 0
   private _tileCountY = 0
@@ -151,6 +180,19 @@ export class ForwardPlusLighting {
    * Length = `_tileCount * FILL_CATEGORY_COUNT`.
    */
   private _tileFillInRange: Uint32Array = new Uint32Array(0)
+  /**
+   * Per-bucket quota for fill lights — each category's max
+   * concurrent slots in any single tile. Initialized to
+   * `MAX_FILL_LIGHTS_PER_TILE` (2) for all four buckets. Tunable at
+   * runtime via {@link setFillQuota}; readable via
+   * {@link getFillQuota}.
+   *
+   * Range: `[0, MAX_LIGHTS_PER_TILE]`. Setting to 0 disables that
+   * bucket entirely (no fills in that category claim slots).
+   */
+  private _fillQuotas: Uint8Array = new Uint8Array(FILL_CATEGORY_COUNT).fill(
+    MAX_FILL_LIGHTS_PER_TILE
+  )
 
   private _screenSize = new Vector2()
   private _worldSize = new Vector2()
@@ -259,8 +301,70 @@ export class ForwardPlusLighting {
     this.worldOffsetNode.value.copy(worldOffset)
   }
 
-  update(lights: Light2D[]): void {
+  /**
+   * Set the per-tile quota for a fill-light category. Lights in this
+   * bucket will be capped at `quota` concurrent slots per tile; the
+   * `(quota + 1)`-th and later in-range fills lose to score-based
+   * eviction (or get rejected if the tile is otherwise full).
+   *
+   * Raising a quota lets more fills of that type contribute exact
+   * lighting in dense clusters at the cost of more shader-loop
+   * iterations per fragment in saturated tiles. Lowering tightens
+   * the cap (cheaper, dimmer dense areas). Setting to 0 disables
+   * fills in that bucket entirely.
+   *
+   * @param category - Either a category string (hashed via the same
+   *   djb2 used by `Light2D.category`) or a raw bucket index 0..3.
+   * @param quota - Slots per tile, clamped to `[0, MAX_LIGHTS_PER_TILE]`.
+   *
+   * @example
+   * ```typescript
+   * forwardPlus.setFillQuota('slime', 4) // up to 4 slime fills per tile
+   * forwardPlus.setFillQuota('water', 0) // disable water fills entirely
+   * ```
+   */
+  setFillQuota(category: string | number, quota: number): void {
+    const bucket = typeof category === 'string'
+      ? categoryToBucket(category)
+      : (category | 0) & (FILL_CATEGORY_COUNT - 1)
+    const clamped = quota < 0 ? 0 : quota > MAX_LIGHTS_PER_TILE ? MAX_LIGHTS_PER_TILE : quota
+    this._fillQuotas[bucket] = clamped | 0
+  }
+
+  /**
+   * Reset every per-bucket fill quota back to the default
+   * (`MAX_FILL_LIGHTS_PER_TILE`). Used by the declarative
+   * `categoryQuotas` prop on light effects so that removing a key
+   * from the prop record actually clears that bucket's override
+   * (otherwise stale per-bucket values would linger across
+   * re-renders).
+   */
+  resetFillQuotas(): void {
+    this._fillQuotas.fill(MAX_FILL_LIGHTS_PER_TILE)
+  }
+
+  /**
+   * Read the per-tile quota currently configured for a fill-light
+   * category. Mirrors {@link setFillQuota} — accepts either a string
+   * (hashed) or a raw bucket index.
+   */
+  getFillQuota(category: string | number): number {
+    const bucket = typeof category === 'string'
+      ? categoryToBucket(category)
+      : (category | 0) & (FILL_CATEGORY_COUNT - 1)
+    return this._fillQuotas[bucket]!
+  }
+
+  update(lights: Light2D[], maxLights: number = lights.length): void {
     if (this._tileCount === 0) return
+    // The shader looks up each tile slot's `lightIdx` in the lights
+    // DataTexture (LightStore). LightStore writes only the first
+    // `maxLights` entries; any higher index reads zero in the shader
+    // and contributes nothing. If we assigned those phantom indices to
+    // tile slots, fragments in those tiles would render dark even
+    // though the eviction loop "succeeded." Clamp here so the mapping
+    // CPU-side never produces a slot pointing past LightStore's edge.
+    const lightLimit = Math.min(lights.length, maxLights)
 
     // Buffers are over-allocated vs. the current tile count — zero only
     // the portion we'll write to so per-frame cost doesn't scale with the
@@ -324,7 +428,7 @@ export class ForwardPlusLighting {
     const tileWorldWidthInv = 1 / tileWorldWidth
     const tileWorldHeightInv = 1 / tileWorldHeight
 
-    for (let lightIdx = 0; lightIdx < lights.length; lightIdx++) {
+    for (let lightIdx = 0; lightIdx < lightLimit; lightIdx++) {
       const light = lights[lightIdx]!
       if (!light.enabled) continue
       if (light.lightType === 'ambient') continue
@@ -438,12 +542,14 @@ export class ForwardPlusLighting {
 
           if (isFill) {
             // Per-tile per-category counters drive both the quota and
-            // the compensation-scaling math downstream.
+            // the compensation-scaling math downstream. Quota is a
+            // per-bucket runtime value (see `setFillQuota`); default 2.
             const fillKey = tileIdx * FILL_CATEGORY_COUNT + categoryBucket
             tileFillInRange[fillKey] = tileFillInRange[fillKey]! + 1
             const fillCountOfCat = tileFillCount[fillKey]!
+            const categoryQuota = this._fillQuotas[categoryBucket]!
 
-            if (fillCountOfCat < MAX_FILL_LIGHTS_PER_TILE) {
+            if (fillCountOfCat < categoryQuota) {
               // This category's quota not met. Try to claim any
               // remaining tile slot. Fills never evict heroes or
               // other categories — they only fill empty space.

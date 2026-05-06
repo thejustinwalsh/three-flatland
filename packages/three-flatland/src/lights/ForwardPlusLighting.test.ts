@@ -448,6 +448,107 @@ describe('ForwardPlusLighting', () => {
     }
   })
 
+  it('should default fill quota to 2 per category', () => {
+    const fp = new ForwardPlusLighting()
+    expect(fp.getFillQuota(0)).toBe(2)
+    expect(fp.getFillQuota('slime')).toBe(2)
+    expect(fp.getFillQuota('water')).toBe(2)
+  })
+
+  it('should let setFillQuota tune per-category fill caps', () => {
+    const fp = new ForwardPlusLighting()
+    fp.init(16, 16)
+    fp.setWorldBounds(new Vector2(16, 16), new Vector2(0, 0))
+
+    // Bump 'slime' quota to 4. With 6 overlapping slimes in one
+    // tile, 4 should claim slots instead of the default 2.
+    fp.setFillQuota('slime', 4)
+
+    const lights: Light2D[] = []
+    for (let i = 0; i < 6; i++) {
+      lights.push(
+        new Light2D({ type: 'point', position: [8, 8], intensity: 1, castsShadow: false, category: 'slime' })
+      )
+    }
+    fp.update(lights)
+
+    const data = fp.tileTexture!.image.data as Float32Array
+    let slotsUsed = 0
+    for (let i = 0; i < MAX_LIGHTS_PER_TILE; i++) if (data[i] !== 0) slotsUsed++
+    expect(slotsUsed).toBe(4)
+    expect(fp.getFillQuota('slime')).toBe(4)
+  })
+
+  it('should clamp fill quota to [0, MAX_LIGHTS_PER_TILE]', () => {
+    const fp = new ForwardPlusLighting()
+    fp.setFillQuota(0, -5)
+    expect(fp.getFillQuota(0)).toBe(0)
+    fp.setFillQuota(0, 999)
+    expect(fp.getFillQuota(0)).toBe(MAX_LIGHTS_PER_TILE)
+  })
+
+  it('should disable fills entirely for a bucket when quota is 0', () => {
+    const fp = new ForwardPlusLighting()
+    fp.init(16, 16)
+    fp.setWorldBounds(new Vector2(16, 16), new Vector2(0, 0))
+
+    fp.setFillQuota('slime', 0)
+    const lights: Light2D[] = []
+    for (let i = 0; i < 5; i++) {
+      lights.push(
+        new Light2D({ type: 'point', position: [8, 8], intensity: 1, castsShadow: false, category: 'slime' })
+      )
+    }
+    fp.update(lights)
+
+    const data = fp.tileTexture!.image.data as Float32Array
+    let slotsUsed = 0
+    for (let i = 0; i < MAX_LIGHTS_PER_TILE; i++) if (data[i] !== 0) slotsUsed++
+    expect(slotsUsed).toBe(0)
+  })
+
+  it('should reset every fill bucket to the default via resetFillQuotas', () => {
+    const fp = new ForwardPlusLighting()
+    fp.init(16, 16)
+
+    fp.setFillQuota('slime', 6)
+    fp.setFillQuota(1, 0)
+    fp.setFillQuota(2, 12)
+
+    fp.resetFillQuotas()
+    // All four buckets should be back at the MAX_FILL_LIGHTS_PER_TILE default.
+    for (let i = 0; i < 4; i++) expect(fp.getFillQuota(i)).toBe(2)
+  })
+
+  it('should clamp tile assignment to maxLights so phantom indices never reach the shader', () => {
+    // Regression: with > maxLights total lights, ForwardPlus used to
+    // assign light indices past LightStore's texture edge into tile
+    // slots. The shader's `textureLoad` then returned 0 for those
+    // entries — `lightEnabled = 0`, contribution = 0 — so any tile
+    // whose winning fills happened to land on those phantom indices
+    // rendered dark. Visible as a checkerboard of "no fill light"
+    // tiles in dense scenes (e.g., 1000-slime demos with default
+    // `maxLights = 1024` would still trip the same bug at 2000).
+    const fp = new ForwardPlusLighting()
+    fp.init(16, 16)
+    fp.setWorldBounds(new Vector2(16, 16), new Vector2(0, 0))
+
+    // 5 lights total, but caller advertises capacity for only 3.
+    // Lights at indices 3 and 4 must NEVER appear in any tile slot.
+    const lights: Light2D[] = []
+    for (let i = 0; i < 5; i++) {
+      lights.push(new Light2D({ type: 'point', position: [8, 8], intensity: 1, castsShadow: true }))
+    }
+    fp.update(lights, 3)
+
+    const data = fp.tileTexture!.image.data as Float32Array
+    for (let s = 0; s < MAX_LIGHTS_PER_TILE; s++) {
+      const id = data[s] as number
+      // 0 = empty, otherwise lightIndex+1 must be in [1, 3].
+      expect(id).toBeLessThanOrEqual(3)
+    }
+  })
+
   it('should leave all per-category fillScales at 1.0 when no fills reach a tile', () => {
     const fp = new ForwardPlusLighting()
     fp.init(16, 16)
