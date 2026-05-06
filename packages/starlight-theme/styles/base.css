@@ -1141,7 +1141,7 @@
         pointer-events: none;
         /* Scene light layer — always visible, drifts slowly via perlin. */
         background: linear-gradient(
-            calc(var(--scene-angle, 135deg) + 90deg),
+            calc(var(--effective-light-angle, var(--scene-angle, 135deg)) + 90deg),
             color-mix(in oklab, var(--card-accent, var(--primary)) 32%, transparent) 0%,
             color-mix(in oklab, var(--card-accent, var(--primary)) 14%, transparent) 35%,
             transparent 65%,
@@ -1183,7 +1183,7 @@
     .u-light[data-gem='gold']::before,
     [data-light][data-gem='gold']::before {
         background: linear-gradient(
-            calc(var(--scene-angle, 135deg) + 90deg),
+            calc(var(--effective-light-angle, var(--scene-angle, 135deg)) + 90deg),
             color-mix(in oklab, var(--gold-high) 45%, transparent),
             color-mix(in oklab, var(--gold) 22%, transparent) 30%,
             color-mix(in oklab, var(--orange) 22%, transparent) 60%,
@@ -1213,7 +1213,7 @@
             linear-gradient(var(--card, var(--background)), var(--card, var(--background)))
                 padding-box,
             conic-gradient(
-                from calc(var(--scene-angle, 135deg) - 90deg),
+                from calc(var(--effective-light-angle, var(--scene-angle, 135deg)) - 90deg),
                 color-mix(in oklab, var(--card-accent, var(--primary)) 90%, transparent) 0deg,
                 color-mix(in oklab, var(--card-accent, var(--primary)) 35%, var(--border)) 80deg,
                 color-mix(in oklab, var(--border) 90%, transparent) 180deg,
@@ -1351,7 +1351,7 @@
         background:
             /* Primary facet ring — sharp transitions between specular bands. */
             conic-gradient(
-                from var(--scene-angle, 0deg) at var(--mx, 50%) var(--my, 50%),
+                from var(--effective-light-angle, var(--scene-angle, 0deg)) at var(--mx, 50%) var(--my, 50%),
                 color-mix(in oklab, var(--gem-spec) 38%, transparent) 0deg,
                 transparent 18deg,
                 color-mix(in oklab, var(--gem-spec) 22%, transparent) 50deg,
@@ -1367,7 +1367,7 @@
             /* Secondary facet ring — offset 30° so facet edges read as
              * a polished cut, not a single rotation. */
             conic-gradient(
-                from calc(var(--scene-angle, 0deg) + 30deg) at var(--mx, 50%) var(--my, 50%),
+                from calc(var(--effective-light-angle, var(--scene-angle, 0deg)) + 30deg) at var(--mx, 50%) var(--my, 50%),
                 transparent 0deg,
                 color-mix(in oklab, var(--gem-spec) 14%, transparent) 30deg,
                 transparent 60deg,
@@ -1378,7 +1378,7 @@
             ),
             /* Iridescent foil rainbow at very low opacity — holo flecks. */
             conic-gradient(
-                from calc(var(--scene-angle, 0deg) * 1.5) at var(--mx, 50%) var(--my, 50%),
+                from calc(var(--effective-light-angle, var(--scene-angle, 0deg)) * 1.5) at var(--mx, 50%) var(--my, 50%),
                 color-mix(in oklab, var(--gold) 18%, transparent),
                 color-mix(in oklab, var(--emerald) 18%, transparent),
                 color-mix(in oklab, var(--diamond) 18%, transparent),

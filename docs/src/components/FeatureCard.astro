@@ -118,7 +118,7 @@ const accentStyle = resolvedGem ? `--card-accent: var(--${resolvedGem});` : unde
     z-index: 4;
     padding: 1.5px;
     background: conic-gradient(
-      from calc(var(--scene-angle, 135deg) - 90deg),
+      from calc(var(--effective-light-angle, var(--scene-angle, 135deg)) - 90deg),
       color-mix(in oklab, var(--card-accent, var(--primary)) 80%, transparent) 0deg,
       color-mix(in oklab, var(--card-accent, var(--primary)) 30%, var(--border)) 90deg,
       color-mix(in oklab, var(--border) 90%, transparent) 180deg,

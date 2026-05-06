@@ -192,12 +192,28 @@ function frame(now: number) {
         /* TILT — cursor-driven. Scaled by --mouse-active so idle surfaces
          * sit flat and tilt only kicks in once the cursor enters. */
         const isHolo = t.el.matches('.u-holo, [data-holo]')
-        const ampX = isHolo ? 8 : 1.5
-        const ampY = isHolo ? 12 : 2
+        const ampX = isHolo ? 12 : 4
+        const ampY = isHolo ? 16 : 5
         const tiltY = (mx - 0.5) * ampY * t.active
         const tiltX = (0.5 - my) * ampX * t.active
         t.el.style.setProperty('--tilt-x', `${tiltX.toFixed(2)}deg`)
         t.el.style.setProperty('--tilt-y', `${tiltY.toFixed(2)}deg`)
+
+        /* TILT-COUPLED LIGHT DIRECTION — when the surface tilts, the
+         * apparent direction of the global scene light (in the surface's
+         * own frame) shifts by approximately the tilt angle. We model
+         * this by subtracting tilt-y from scene-angle (rotation around Y
+         * axis maps to gradient angle rotation) and use a multiplier of
+         * 2.5 to make the response visually clear without being unphysical
+         * at small tilts. tilt-x's contribution is folded into the same
+         * effective angle as a smaller rotation factor (rotation around
+         * X axis affects the apparent vertical position of the lit band). */
+        const tiltMul = 2.5
+        const effective = sceneAngle - tiltY * tiltMul + tiltX * tiltMul * 0.4
+        t.el.style.setProperty(
+            '--effective-light-angle',
+            `${effective.toFixed(1)}deg`,
+        )
     }
 
     requestAnimationFrame(frame)
