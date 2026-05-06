@@ -1,25 +1,58 @@
 ---
 /**
- * ValueProp — section-block for "BUILT FOR THE FUTURE / PERFORMANCE OBSESSED
- * / DEVELOPER JOY" landing rhythm. Distilled from the original color-blocked
- * variants to a single quiet treatment with a left accent rule and section-y
- * typography. Differentiation between the three blocks comes from copy +
- * the staggered alignment, not from per-block color.
+ * ValueProp — section-block for the landing's "Why three-flatland?" rhythm.
+ * Each block can opt into a gem accent via `color="<gem>"`; the gem hue
+ * drives the left rule, strong-text accent, and title-side glow so each
+ * value-prop reads as its own color identity.
  *
- * The legacy `color` prop is accepted but ignored.
+ * Conventional names (cyan, blue, green, etc.) are accepted for compat
+ * with existing MDX call sites; mapped to the closest gem at render time.
  */
+
+type Gem =
+  | 'gold'
+  | 'ruby'
+  | 'emerald'
+  | 'diamond'
+  | 'amethyst'
+  | 'pink'
+  | 'salmon'
+  | 'turquoize'
+
+type LegacyColor = 'cyan' | 'blue' | 'green' | 'orange' | 'red' | 'yellow' | 'purple'
+
+const legacyToGem: Record<LegacyColor, Gem> = {
+  cyan: 'diamond',
+  blue: 'diamond',
+  green: 'emerald',
+  orange: 'gold',
+  red: 'ruby',
+  yellow: 'gold',
+  purple: 'amethyst',
+}
+
 interface Props {
   title: string
-  /** @deprecated Retained for back-compat with existing MDX. Ignored. */
-  color?: string
+  /** Gem accent for the left rule, strong-text emphasis, and title glow. */
+  color?: Gem | LegacyColor
   align?: 'left' | 'right'
 }
 
-const { title, align = 'left' } = Astro.props
+const { title, color, align = 'left' } = Astro.props
+
+const resolvedGem: Gem | undefined = color
+  ? color in legacyToGem
+    ? legacyToGem[color as LegacyColor]
+    : (color as Gem)
+  : undefined
+
+const accentStyle = resolvedGem ? `--vp-accent: var(--${resolvedGem});` : undefined
 ---
 
 <section
   class:list={['not-content', 'value-prop', { 'align-right': align === 'right' }]}
+  data-gem={resolvedGem}
+  style={accentStyle}
 >
   <div class="vp-rule" aria-hidden="true"></div>
   <div class="vp-content">
@@ -30,14 +63,13 @@ const { title, align = 'left' } = Astro.props
 
 <style>
   .value-prop {
+    --vp-accent: var(--primary);
     display: grid;
     grid-template-columns: auto 1fr;
     gap: clamp(1.25rem, 3vw, 2.25rem);
     margin-block: clamp(2rem, 4vw, 3rem);
     padding-block: clamp(1.25rem, 3vw, 2rem);
-    /* Subtle hairline above only — sections accumulate vertical rhythm
-     * without each one becoming its own card. */
-    border-top: 1px solid color-mix(in oklab, var(--border) 70%, transparent);
+    border-top: 1px solid color-mix(in oklab, var(--vp-accent) 25%, var(--border));
   }
 
   .value-prop.align-right {
@@ -52,11 +84,20 @@ const { title, align = 'left' } = Astro.props
     text-align: right;
   }
 
+  /* Vertical rule is gem-tinted with a soft glow that intensifies the
+   * accent's color identity without overpowering the prose. */
   .vp-rule {
     width: 2px;
     align-self: stretch;
-    background-color: var(--primary);
+    background: linear-gradient(
+      to bottom,
+      transparent 0%,
+      var(--vp-accent) 18%,
+      var(--vp-accent) 82%,
+      transparent 100%
+    );
     border-radius: 1px;
+    box-shadow: 0 0 16px color-mix(in oklab, var(--vp-accent) 35%, transparent);
   }
 
   .vp-content {
@@ -70,6 +111,8 @@ const { title, align = 'left' } = Astro.props
     margin-left: auto;
   }
 
+  /* Title gets a subtle gem-side underline accent — a hairline tinted
+   * by the value-prop's gem, just below the title text. */
   .vp-title {
     font-family: 'Public Sans', system-ui, sans-serif;
     font-weight: 700;
@@ -79,6 +122,14 @@ const { title, align = 'left' } = Astro.props
     color: var(--foreground);
     margin: 0;
     text-transform: none;
+    position: relative;
+    padding-bottom: calc(var(--spacing) * 2);
+    border-bottom: 1px solid color-mix(in oklab, var(--vp-accent) 35%, transparent);
+    align-self: start;
+  }
+
+  .value-prop.align-right .vp-title {
+    align-self: end;
   }
 
   .vp-body {
@@ -95,9 +146,9 @@ const { title, align = 'left' } = Astro.props
     margin-bottom: 0;
   }
 
-  /* Strong becomes the accent moment — primary-tinted, not bolder weight. */
+  /* Strong becomes the accent moment — gem-tinted text emphasis. */
   .vp-body :global(strong) {
-    color: var(--primary);
+    color: var(--vp-accent);
     font-weight: 600;
   }
 </style>
