@@ -36,6 +36,13 @@ const { siteTitle, siteTitleHref } = Astro.locals.starlightRoute;
 
 <style>
     .logo {
+        /* The icon.svg has an explicit width="384" attribute; without a
+         * matching CSS width constraint the IMG renders at 384×32 with
+         * the actual icon content centered in 176px of empty SVG on each
+         * side, leaving a giant gap before the wordmark. Force the
+         * rendered size to the icon's intended display size. */
+        width: 32px;
+        height: 32px;
         max-height: 32px;
         flex-shrink: 0;
     }
