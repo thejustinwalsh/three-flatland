@@ -16,11 +16,11 @@ import { SkiaPaint, SkiaPath } from '@three-flatland/skia'
 import type { SkiaCanvas as SkiaCanvasInstance } from '@three-flatland/skia/three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import {
-  reflector, color as tslColor, positionWorld, float as tslFloat,
+  reflector, color as tslColor, positionWorld, float as tslFloat, smoothstep as tslSmoothstep, uv,
 } from 'three/tsl'
 import { gaussianBlur } from 'three/addons/tsl/display/GaussianBlurNode.js'
-import { Color, DoubleSide, Fog, type Mesh, type MeshBasicMaterial } from 'three'
-import { MeshStandardNodeMaterial } from 'three/webgpu'
+import { Color, DoubleSide, Fog, Mesh, PlaneGeometry, type MeshBasicMaterial } from 'three'
+import { MeshBasicNodeMaterial, MeshStandardNodeMaterial } from 'three/webgpu'
 import { usePane, useStatsMonitor } from '@three-flatland/tweakpane/react'
 import { gemGradientNode } from './GemBackground'
 import { GEM } from './gem'
@@ -463,17 +463,35 @@ export default function App() {
     <Canvas
       camera={{ position: [0, 0.9, 4.5], fov: 40, near: 0.1, far: 100 }}
       renderer={{ antialias: true, trackTimestamp: true }}
-      onCreated={({ scene }) => {
-        // Gem identity carried by the L2 background plane — three.js
-        // renders it as a fullscreen quad behind everything, ignoring
-        // fog. Foreground 3D meshes (floor, panels) fade into the fog
-        // haze with distance; the gem backdrop reads through.
-        ;(scene as any).backgroundNode = gemGradientNode({ gem: GEM })
-        // Soft warm haze, pulled back so foreground stays clear.
-        // Neutral fog (not gem-tinted) — the gem belongs to the
-        // backdrop; tinting fog as well doubles up and reads as a
-        // colored cloud.
-        scene.fog = new Fog(0xb8bbc4, 6, 18)
+      onCreated={({ scene, gl }) => {
+        // Black clear so alpha-faded plane edges reveal the void at
+        // the horizon. Fog is also black, fading foreground meshes
+        // (floor, panel) toward the same void as the bg plane fades
+        // to. Smooth atmospheric blend, no hard backdrop cutoff.
+        gl.setClearColor(new Color(0x000000))
+        scene.background = new Color(0x000000)
+        scene.fog = new Fog(0x000000, 6, 18)
+
+        // Gem-gradient backdrop as a real 3D plane (L2). Sits at z=-15
+        // behind the panel/floor; uses screen-space gem gradient as
+        // colorNode (anchored to viewport regardless of camera angle)
+        // and a vertical alpha fade (top opaque → bottom transparent
+        // via uv.y smoothstep) so the floor's fog falloff and the
+        // plane's faded bottom dissolve into the same black void.
+        // depthWrite:false so it doesn't occlude transparency tests;
+        // fog:false so the plane itself isn't fog-tinted (it IS the
+        // backdrop).
+        const bgMat = new MeshBasicNodeMaterial({
+          transparent: true,
+          depthWrite: false,
+          fog: false,
+        })
+        bgMat.colorNode = gemGradientNode({ gem: GEM })
+        bgMat.opacityNode = tslSmoothstep(tslFloat(0.3), tslFloat(0.6), uv().y)
+        const bgPlane = new Mesh(new PlaneGeometry(40, 25), bgMat)
+        bgPlane.position.set(0, 0.9, -15)
+        bgPlane.renderOrder = -100
+        scene.add(bgPlane)
       }}
     >
       <Suspense fallback={null}>

@@ -5,9 +5,9 @@ import {
   AmbientLight, DirectionalLight, Color, DoubleSide,
 } from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
-import { reflector, color as tslColor, positionWorld, cameraPosition, uv, vec2, hash, float as tslFloat, mx_worley_noise_float } from 'three/tsl'
+import { reflector, color as tslColor, positionWorld, cameraPosition, uv, vec2, hash, float as tslFloat, mx_worley_noise_float, smoothstep as tslSmoothstep } from 'three/tsl'
 import { gaussianBlur } from 'three/addons/tsl/display/GaussianBlurNode.js'
-import { MeshStandardNodeMaterial } from 'three/webgpu'
+import { MeshBasicNodeMaterial, MeshStandardNodeMaterial } from 'three/webgpu'
 import { Skia, SkiaPaint, SkiaPath } from '@three-flatland/skia'
 import { gemGradientNode } from './GemBackground'
 import { GEM } from './gem'
@@ -56,18 +56,15 @@ async function main() {
   document.body.appendChild(renderer.domElement)
   await renderer.init()
 
-  // Gem identity carried by the L2 background plane (scene.backgroundNode
-  // below) — three.js renders it as a fullscreen quad behind everything,
-  // ignoring fog. Fog itself is a neutral atmospheric haze that only
-  // affects in-scene 3D meshes (floor, panels, etc.) — they fade into
-  // the haze with distance, then the gem backdrop reads through.
+  // Black clear so alpha-faded plane edges reveal the void at the
+  // horizon. Fog is also black, fading foreground 3D meshes (floor,
+  // panel) toward the same void as the bg plane fades to. Result:
+  // smooth atmospheric blend across the whole scene, no hard
+  // backdrop cutoff.
+  renderer.setClearColor(new Color(0x000000))
   const scene = new Scene()
-  ;(scene as any).backgroundNode = gemGradientNode({ gem: GEM })
-  // Soft warm haze, pulled back so foreground stays clear and distance
-  // fades subtly. White-ish atmospheric fog rather than gem-tinted
-  // because the gem belongs to the *backdrop*; tinting fog as well
-  // doubles the gem and reads as a colored cloud.
-  scene.fog = new Fog(0xb8bbc4, 6, 18)
+  scene.background = new Color(0x000000)
+  scene.fog = new Fog(0x000000, 6, 18)
   const camera = new PerspectiveCamera(40, window.innerWidth / window.innerHeight, 0.1, 100)
   camera.position.set(0, 0.9, 4.5)
   camera.lookAt(0, 0.9, 0)
@@ -86,6 +83,30 @@ async function main() {
   const dirLight = new DirectionalLight(0xffffff, 0.8)
   dirLight.position.set(2, 4, 3)
   scene.add(dirLight)
+
+  // ── Gem-gradient backdrop (L2 as a real 3D plane, not scene.background) ──
+  // Plane positioned behind the panel/floor at z=-15, sized to fill the
+  // camera frustum from there. Color: gem gradient (screen-space, so the
+  // gradient stays anchored to viewport regardless of camera angle).
+  // Opacity: vertical fade — top opaque, bottom transparent — so the
+  // alpha-faded edge meets the floor's fog falloff smoothly. Renderer
+  // clear is black; fog is black; the plane's faded bottom dissolves
+  // into the void where the floor's distance also fades.
+  const bgGeo = new PlaneGeometry(40, 25)
+  const bgMat = new MeshBasicNodeMaterial({
+    transparent: true,
+    depthWrite: false,
+    fog: false, // backdrop plane shouldn't be fog-tinted; it IS the backdrop
+  })
+  bgMat.colorNode = gemGradientNode({ gem: GEM })
+  // uv.y goes 0 (bottom of plane) → 1 (top). Fade alpha so the bottom
+  // 30% is transparent, the top 60%+ is fully opaque, with a soft
+  // smoothstep in the middle.
+  bgMat.opacityNode = tslSmoothstep(tslFloat(0.3), tslFloat(0.6), uv().y)
+  const bgPlane = new Mesh(bgGeo, bgMat)
+  bgPlane.position.set(0, 0.9, -15)
+  bgPlane.renderOrder = -100 // before everything else in the scene
+  scene.add(bgPlane)
 
   // ── Initialize Skia ──
   setStatus('Loading Skia WASM...', true)
