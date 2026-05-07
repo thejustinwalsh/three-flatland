@@ -33,12 +33,12 @@
     "koota": "^0.6.5"
   },
   "peerDependencies": {
-    "@react-three/fiber": "^10.0.0-alpha.2",
+    "@react-three/fiber": "10.0.0-alpha.2",
     "react": "^19.0.0",
     "three": "^0.183.1"
   },
   "devDependencies": {
-    "@react-three/fiber": "^10.0.0-alpha.2",
+    "@react-three/fiber": "10.0.0-alpha.2",
     "@types/react": "^19.0.2",
     "@types/react-dom": "^19.0.2",
     "@types/three": "^0.183.1",

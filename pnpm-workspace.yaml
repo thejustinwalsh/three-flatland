@@ -9,7 +9,14 @@ catalog:
   '@tweakpane/core': ^2.0.5
   '@tweakpane/plugin-essentials': ^0.2.1
   tweakpane: ^4.0.5
-  '@react-three/fiber': ^10.0.0-alpha.2
+  # Pinned (no caret) — `^10.0.0-alpha.2` semver-matches `10.0.0-canary.X`
+  # because canary > alpha alphabetically on the same 10.0.0 base. Our
+  # local pnpm lockfile holds alpha.2, but a fresh `npm install` (e.g. in
+  # StackBlitz) resolves to the latest matching, which picks up canary
+  # builds — and the current canary imports `WebGLCubeRenderTarget` from
+  # `three/webgpu` which no released three.js exports. Pin until alpha.3+
+  # ships and Renovate can propose the bump.
+  '@react-three/fiber': 10.0.0-alpha.2
   '@types/react': ^19.0.2
   '@types/react-dom': ^19.0.2
   '@types/three': ^0.183.1
