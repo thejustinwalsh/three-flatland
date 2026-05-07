@@ -66,12 +66,19 @@ const CARD_HEX = 0x16191e
 
 export type Gem = keyof typeof GEM_HEX
 
-const BG = vec3(((BG_HEX >> 16) & 0xff) / 255, ((BG_HEX >> 8) & 0xff) / 255, (BG_HEX & 0xff) / 255)
-const CARD = vec3(
-  ((CARD_HEX >> 16) & 0xff) / 255,
-  ((CARD_HEX >> 8) & 0xff) / 255,
-  (CARD_HEX & 0xff) / 255,
-)
+// Convert surface colors through `three.Color` so they end up in
+// linear-sRGB — the same space `new Color(GEM_HEX[gem])` produces for
+// the gem (post-r155 Color management). The shader mixes vec3s in
+// linear, the renderer's output pipeline does the final linear→sRGB
+// encode for display. Earlier this file used raw hex/255 (sRGB-
+// encoded) values for BG/CARD while the gem path used linear-sRGB,
+// mixing two color spaces and producing visibly brighter output than
+// the CSS card gradient. Pulling everything through Color keeps all
+// three constants consistent.
+const _bg = new Color(BG_HEX)
+const _card = new Color(CARD_HEX)
+const BG = vec3(_bg.r, _bg.g, _bg.b)
+const CARD = vec3(_card.r, _card.g, _card.b)
 
 /**
  * L1 primitive — flat color tinted by the gem.

@@ -61,12 +61,14 @@ const CARD_HEX = 0x16191e
 
 export type Gem = keyof typeof GEM_HEX
 
-const BG = vec3(((BG_HEX >> 16) & 0xff) / 255, ((BG_HEX >> 8) & 0xff) / 255, (BG_HEX & 0xff) / 255)
-const CARD = vec3(
-  ((CARD_HEX >> 16) & 0xff) / 255,
-  ((CARD_HEX >> 8) & 0xff) / 255,
-  (CARD_HEX & 0xff) / 255,
-)
+// All surface colors run through `three.Color` so they end up in
+// linear-sRGB, matching the gem path. See the matching note in
+// examples/three/template/GemBackground.ts on the color-space mismatch
+// that produced visibly brighter-than-CSS output.
+const _bg = new Color(BG_HEX)
+const _card = new Color(CARD_HEX)
+const BG = vec3(_bg.r, _bg.g, _bg.b)
+const CARD = vec3(_card.r, _card.g, _card.b)
 
 /**
  * L1 primitive — flat color tinted by the gem.
