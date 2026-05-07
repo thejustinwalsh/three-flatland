@@ -5,16 +5,18 @@
 > Branch: docs-refresh-foundation
 > PR: https://github.com/thejustinwalsh/three-flatland/pull/33
 
-## docs: StatsBanner gem color support
+### StatsBanner: gem-accented stats (`docs/src/components/StatsBanner.astro`)
 
-**`StatsBanner` — `color` prop re-enabled with gem accent rendering**
+- Re-enabled the `color` prop on each `StatItem` — was previously marked `@deprecated` and silently ignored, causing all four stats to render in `--foreground` regardless of the gem name passed from MDX
+- `color` now accepts gem names (`gold`, `ruby`, `emerald`, `diamond`, `amethyst`, `pink`, `salmon`, `turquoize`) or legacy color names (`cyan`, `blue`, `green`, `orange`, `red`, `yellow`, `purple`) — legacy names are mapped to the nearest gem via the same `legacyToGem` table used by `FeatureCard` and `ValueProp`
+- Resolved gem sets a `--stat-accent` CSS custom property inline on each stat container; fallback is `--primary`
+- Stat value text colored as `color-mix(in oklab, --stat-accent 65%, --foreground)` with a soft `text-shadow` glow so values are legible while carrying the gem hue
+- Gem-tinted hairline underline drawn via `background-image` gradient (fades to transparent at 70–100%) beneath each stat, creating a colored chord across the row
 
-- `color` prop on `StatItem` is no longer deprecated or ignored; passing a gem name (e.g. `color="diamond"`) now actively tints the stat
-- Legacy color names (`cyan`, `blue`, `green`, `orange`, `red`, `yellow`, `purple`) are mapped to their gem equivalents via the same `legacyToGem` table used by `FeatureCard` and `ValueProp` — no MDX call-site changes required
-- Each stat's value text is colored at 65% gem + 35% foreground for legibility, with a soft gem-tinted `text-shadow` glow
-- A 1.5px gem-tinted hairline underline (linear gradient fading right to transparent) is drawn beneath each stat item, making the four stats read as a colored chord across the row
-- `--stat-accent` CSS custom property is set inline per stat from the resolved gem token
-- `data-gem` attribute added to each `.stat-item` for CSS or JS targeting
-- README: heading updated from "Why three-flatland?" to "Why Flatland?"
+### README: section heading rename (`packages/three-flatland/README.md`)
 
-Re-enables intentional per-stat gem coloring in `StatsBanner`, replacing the previous flat `--foreground` fallback.
+- Renamed "Why three-flatland?" to "Why Flatland?" to align with the visual brand name
+
+---
+
+Re-enables `color` prop on `StatsBanner` stats so gem accents (and legacy color aliases) are applied to value text and underline decoration. README heading updated to use the short "Flatland" brand name.
