@@ -1,0 +1,328 @@
+---
+/**
+ * GalleryTile — single masonry cell. Displays a poster still by
+ * default; on hover, lazily loads + autoplays a webm capture of the
+ * running example. Whole tile is the click target into the detail
+ * page; view-transition names on the tile + the detail-page hero
+ * morph the tile geometry into the preview area on navigation.
+ *
+ * Capture conventions:
+ *   - Still : `/captures/<slug>.webp` (or `.png` fallback)
+ *   - Video : `/captures/<slug>.webm` (autoplaying, muted, looped)
+ *   The capture script (`scripts/capture-examples.mjs`, planned)
+ *   produces both from a Playwright headless run of each example.
+ *
+ * Tiles without captures (fresh examples not yet recorded) fall back
+ * to a gem-tinted gradient poster so the grid stays visually whole.
+ */
+type Gem =
+  | 'gold'
+  | 'ruby'
+  | 'emerald'
+  | 'diamond'
+  | 'amethyst'
+  | 'pink'
+  | 'salmon'
+  | 'turquoize'
+
+interface Props {
+  /** URL slug — `/examples/<slug>/` or `/showcases/<slug>/`. */
+  slug: string
+  /** Display title above the tile (or overlaid). */
+  title: string
+  /** Short tag-line shown beneath the title in the tile body. */
+  description: string
+  /** Top-level surface — `examples` or `showcases`. Used for the
+   *  detail-page link and for the view-transition name namespace. */
+  surface: 'examples' | 'showcases'
+  /** Gem accent for fallback poster + hover affordance. Cycles by
+   *  default if the page lays tiles out via index. */
+  color?: Gem
+  /** Aspect ratio for the tile (CSS aspect-ratio value). Variable
+   *  ratios in a masonry grid let landscape vs portrait examples
+   *  size naturally. Default `4 / 3` for compact landscape. */
+  aspect?: string
+}
+
+const { slug, title, description, surface, color = 'diamond', aspect = '4 / 3' } = Astro.props
+
+const baseURL = (import.meta.env.BASE_URL || '/').replace(/\/$/, '')
+const detailHref = `${baseURL}/${surface}/${slug}/`
+const posterHref = `${baseURL}/captures/${slug}.webp`
+const videoHref = `${baseURL}/captures/${slug}.webm`
+
+// Fallback path — `<picture>` with `.webp` first, `.png` fallback.
+const posterPngHref = `${baseURL}/captures/${slug}.png`
+---
+
+<a
+  href={detailHref}
+  class:list={['gallery-tile', 'not-content']}
+  data-gem={color}
+  data-slug={slug}
+  style={{
+    '--tile-accent': `var(--${color})`,
+    '--tile-aspect': aspect,
+    'view-transition-name': `tile-${surface}-${slug}`,
+  }}
+  aria-label={`Open ${title} example`}
+>
+  <div class="gallery-tile-media" aria-hidden="true">
+    {/* Poster as <picture> so a missing webp falls through to png,
+       which falls through to the gem-gradient backdrop on the
+       wrapper. data-poster attribute lets the JS hover handler
+       restore the still after pointerleave. */}
+    <picture>
+      <source srcset={posterHref} type="image/webp" />
+      <img
+        class="gallery-tile-poster"
+        src={posterPngHref}
+        alt=""
+        loading="lazy"
+        decoding="async"
+      />
+    </picture>
+    {/* Video lazy-loaded on first pointer enter (handled by the JS
+       below). data-src is read into src on hover-in; preload="none"
+       keeps initial bandwidth at zero on first paint. */}
+    <video
+      class="gallery-tile-video"
+      data-src={videoHref}
+      muted
+      loop
+      playsinline
+      preload="none"
+      aria-hidden="true"
+    ></video>
+    <span class="gallery-tile-cta" aria-hidden="true">Click to interact</span>
+  </div>
+  <div class="gallery-tile-body">
+    <h3 class="gallery-tile-title">{title}</h3>
+    <p class="gallery-tile-desc">{description}</p>
+  </div>
+</a>
+
+<style>
+  .gallery-tile {
+    --tile-accent: var(--diamond);
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    text-decoration: none;
+    color: var(--foreground);
+    border-radius: calc(var(--radius) + 0.25rem);
+    background: color-mix(in oklab, var(--card) 92%, var(--tile-accent));
+    box-shadow: 0 0 0 1px color-mix(in oklab, var(--border) 75%, transparent);
+    overflow: hidden;
+    cursor: pointer;
+    transition:
+      box-shadow 200ms cubic-bezier(0.2, 0, 0.1, 1),
+      transform 200ms cubic-bezier(0.2, 0, 0.1, 1);
+    will-change: transform, box-shadow;
+  }
+
+  .gallery-tile:hover {
+    box-shadow:
+      0 0 0 1px color-mix(in oklab, var(--tile-accent) 50%, transparent),
+      0 12px 30px -10px color-mix(in oklab, var(--tile-accent) 35%, transparent);
+    transform: translateY(-2px);
+  }
+
+  .gallery-tile:focus-visible {
+    outline: 2px solid var(--tile-accent);
+    outline-offset: 2px;
+  }
+
+  /* Media wrapper — fixed aspect ratio. The gem-gradient backdrop
+   * shows through when no poster is captured yet, so the grid reads
+   * as deliberate even before the capture run completes. */
+  .gallery-tile-media {
+    position: relative;
+    width: 100%;
+    aspect-ratio: var(--tile-aspect, 4 / 3);
+    background:
+      radial-gradient(
+        circle at 30% 30%,
+        color-mix(in oklab, var(--tile-accent) 40%, var(--card)) 0%,
+        color-mix(in oklab, var(--tile-accent) 12%, var(--background)) 60%,
+        var(--background) 100%
+      );
+    overflow: hidden;
+  }
+
+  .gallery-tile-poster,
+  .gallery-tile-video {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: opacity 200ms ease-out;
+  }
+
+  /* Video sits on top of the poster; opacity flip on hover swaps
+   * the two without a layout shift. */
+  .gallery-tile-video {
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .gallery-tile[data-video-active='true'] .gallery-tile-video {
+    opacity: 1;
+  }
+  .gallery-tile[data-video-active='true'] .gallery-tile-poster {
+    opacity: 0;
+  }
+
+  /* "Click to interact" affordance — appears on hover so the user
+   * understands the tile is more than a passive thumbnail. */
+  .gallery-tile-cta {
+    position: absolute;
+    right: 0.625rem;
+    bottom: 0.625rem;
+    padding: 0.25rem 0.5rem;
+    border-radius: calc(var(--radius) - 4px);
+    background: color-mix(in oklab, var(--background) 78%, transparent);
+    backdrop-filter: blur(0.25rem);
+    -webkit-backdrop-filter: blur(0.25rem);
+    color: color-mix(in oklab, var(--tile-accent) 65%, var(--foreground));
+    font-family: 'Inter', system-ui, sans-serif;
+    font-size: 0.6875rem;
+    font-weight: 500;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    opacity: 0;
+    transition: opacity 180ms ease-out;
+    pointer-events: none;
+  }
+
+  .gallery-tile:hover .gallery-tile-cta,
+  .gallery-tile:focus-visible .gallery-tile-cta {
+    opacity: 1;
+  }
+
+  .gallery-tile-body {
+    padding: 0.875rem 1rem 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+
+  .gallery-tile-title {
+    font-family: 'Public Sans', system-ui, sans-serif;
+    font-size: 1rem;
+    font-weight: 600;
+    color: color-mix(in oklab, var(--tile-accent) 50%, var(--foreground));
+    margin: 0;
+    line-height: 1.25;
+    letter-spacing: -0.01em;
+  }
+
+  .gallery-tile-desc {
+    font-family: 'Inter', system-ui, sans-serif;
+    font-size: 0.8125rem;
+    line-height: 1.4;
+    color: var(--muted-foreground);
+    margin: 0;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .gallery-tile,
+    .gallery-tile-poster,
+    .gallery-tile-video,
+    .gallery-tile-cta {
+      transition: none;
+    }
+    .gallery-tile:hover {
+      transform: none;
+    }
+  }
+</style>
+
+<script>
+  /**
+   * Lazy hover-video loader. Each tile's <video> has its real src
+   * stored in `data-src`; on first pointerenter we copy it onto
+   * `src`, kick the load, and play once `loadeddata` fires. After
+   * the first hover, the video is in the document and subsequent
+   * hovers just toggle play/pause.
+   *
+   * Reduced-motion: skip autoplay entirely, leave the poster.
+   *
+   * Astro view-transitions: re-bind on `astro:page-load` so tiles
+   * rendered after a SPA navigation still wire up.
+   */
+  function bindGalleryTiles() {
+    const reduce =
+      typeof window !== 'undefined' &&
+      window.matchMedia &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    if (reduce) return
+
+    const tiles = document.querySelectorAll<HTMLElement>('.gallery-tile')
+    tiles.forEach((tile) => {
+      if (tile.dataset.bound === '1') return
+      tile.dataset.bound = '1'
+
+      // Hide poster img on load error so the gem-gradient backdrop on
+      // the .gallery-tile-media wrapper shows through cleanly. Tiles
+      // without a captured poster (newly-added examples not yet run
+      // through the capture script) gracefully degrade to the
+      // gradient instead of a broken-image icon.
+      const poster = tile.querySelector<HTMLImageElement>('.gallery-tile-poster')
+      if (poster) {
+        poster.addEventListener('error', () => {
+          poster.style.display = 'none'
+        })
+      }
+
+      const video = tile.querySelector<HTMLVideoElement>('.gallery-tile-video')
+      if (!video) return
+
+      const ensureLoaded = () => {
+        if (video.src) return
+        const src = video.dataset.src
+        if (!src) return
+        video.src = src
+      }
+
+      const onEnter = () => {
+        ensureLoaded()
+        // Show the video frame once it has data, even if play() is
+        // blocked by autoplay policies — at least the first frame
+        // becomes visible vs the poster.
+        const swap = () => tile.setAttribute('data-video-active', 'true')
+        if (video.readyState >= 2) {
+          swap()
+        } else {
+          video.addEventListener('loadeddata', swap, { once: true })
+        }
+        // Best-effort play. If browser blocks (no user gesture
+        // policy), the video still shows its first frame via swap.
+        const p = video.play()
+        if (p && typeof p.catch === 'function') p.catch(() => {})
+      }
+
+      const onLeave = () => {
+        tile.removeAttribute('data-video-active')
+        if (!video.paused) video.pause()
+        // Reset to the start so the next hover plays from frame 0.
+        try { video.currentTime = 0 } catch {}
+      }
+
+      tile.addEventListener('pointerenter', onEnter)
+      tile.addEventListener('focus', onEnter)
+      tile.addEventListener('pointerleave', onLeave)
+      tile.addEventListener('blur', onLeave)
+    })
+  }
+
+  if (typeof document !== 'undefined') {
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', bindGalleryTiles, { once: true })
+    } else {
+      bindGalleryTiles()
+    }
+    document.addEventListener('astro:page-load', bindGalleryTiles)
+  }
+</script>

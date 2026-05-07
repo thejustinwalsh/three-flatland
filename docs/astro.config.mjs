@@ -222,6 +222,22 @@ export default defineConfig({
           starlightTheme({
             footerText:
               'This documentation was created with AI assistance. AI can make mistakes — please verify claims and test code examples. Submit corrections [here](https://github.com/thejustinwalsh/three-flatland/issues).',
+            // Top-of-page navigation. Three top-level surfaces:
+            //   - Docs       → introduction (the entry point into the
+            //                  prose docs; subsequent pages flow from
+            //                  the sidebar)
+            //   - Examples   → masonry grid of focused single-feature
+            //                  demos (sprites, animation, batch, TSL,
+            //                  pass effects, tilemaps, skia)
+            //   - Showcases  → masonry grid of larger app/game demos
+            //                  (currently just `breakout`)
+            // Minis (e.g. mini-breakout) are implementation packages,
+            // not user-facing — they don't get a top-level surface.
+            navLinks: [
+              { label: 'Docs', link: '/getting-started/introduction/' },
+              { label: 'Examples', link: '/examples/' },
+              { label: 'Showcases', link: '/showcases/' },
+            ],
           }),
         ],
         components: {
@@ -278,25 +294,11 @@ export default defineConfig({
               { label: 'Debug Controls', slug: 'guides/debug-controls' },
             ],
           },
-          {
-            label: 'Examples',
-            items: [
-              { label: 'Basic Sprite', slug: 'examples/basic-sprite' },
-              { label: 'Animation', slug: 'examples/animation' },
-              { label: 'Batches', slug: 'examples/batch-demo' },
-              { label: 'TSL Nodes', slug: 'examples/tsl-nodes' },
-              { label: 'Tilemap', slug: 'examples/tilemap' },
-              { label: 'Pass Effects', slug: 'examples/pass-effects' },
-              { label: 'Knightmark', slug: 'examples/knightmark' },
-              { label: 'Skia', slug: 'examples/skia' },
-            ],
-          },
-          {
-            label: 'Showcases',
-            items: [
-              { label: 'Breakout', slug: 'showcases/breakout' },
-            ],
-          },
+          // Examples + Showcases are now top-level surfaces with their
+          // own masonry index pages reached via the header's nav links
+          // (Docs / Examples / Showcases). The detail pages remain
+          // routed under `/examples/<slug>/` and `/showcases/<slug>/`
+          // — they're just no longer rendered in the docs sidebar.
           {
             label: 'Project',
             items: [

@@ -37,18 +37,38 @@ export function getTranslation(
     {
         userConfig.navLinks?.map((nav) => {
             const absoluteLinkRegex = /^https?:\/\//;
+            const isExternal = absoluteLinkRegex.test(nav.link);
 
-            const link =
-                !absoluteLinkRegex.test(nav.link) && Astro.currentLocale
-                    ? getRelativeLocaleUrl(Astro.currentLocale, nav.link)
-                    : nav.link;
+            // Resolve relative links against the site's base URL so the
+            // generated href works under a non-root deploy (e.g. GitHub
+            // Pages serving from /three-flatland/). External links pass
+            // through unchanged.
+            const baseURL = (import.meta.env.BASE_URL || '/').replace(/\/$/, '');
+            const link = isExternal
+                ? nav.link
+                : Astro.currentLocale
+                  ? getRelativeLocaleUrl(Astro.currentLocale, nav.link)
+                  : `${baseURL}${nav.link}`;
+
+            // Active = exact match OR currentPath sits under this link's
+            // top-level prefix. Plain equality misses nested pages (e.g.
+            // /examples/basic-sprite/ would never light up the Examples
+            // nav item under exact-match alone).
+            const linkNoTrail = link.replace(/\/$/, '');
+            const currentNoTrail = currentPath.replace(/\/$/, '');
+            const isActive =
+                !isExternal &&
+                linkNoTrail.length > 0 &&
+                (currentNoTrail === linkNoTrail ||
+                    currentNoTrail.startsWith(linkNoTrail + '/'));
+
             const label =
                 typeof nav.label === 'string'
                     ? nav.label
                     : getTranslation(nav.label, nav.link, 'label');
 
             return (
-                <a class:list={[{ active: currentPath === link }]} href={link} {...nav.attrs}>
+                <a class:list={[{ active: isActive }]} href={link} {...nav.attrs}>
                     {label}
                     {nav.badge && <span class="badge">{nav.badge}</span>}
                 </a>
@@ -90,6 +110,18 @@ export function getTranslation(
     .nav-bar a:hover {
         color: var(--accent-foreground);
         background-color: color-mix(in oklab, var(--accent) 80%, transparent);
+    }
+
+    /* Active nav item — diamond gem accent (compass / "you are here" gem,
+     * matches the TOC + sidebar active-marker treatment). Subtle background
+     * so the active state reads through hover transitions cleanly. */
+    .nav-bar a.active {
+        color: color-mix(in oklab, var(--diamond) 70%, var(--foreground));
+        background-color: color-mix(in oklab, var(--diamond) 12%, transparent);
+        font-weight: 600;
+    }
+    .nav-bar a.active:hover {
+        background-color: color-mix(in oklab, var(--diamond) 20%, transparent);
     }
 
     .badge {
