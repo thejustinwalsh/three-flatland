@@ -29,6 +29,7 @@ import { mkdir, writeFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import sharp from 'sharp'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
@@ -130,9 +131,18 @@ for (const { slug, path } of targets) {
     // animation systems warm up, etc.
     await page.waitForTimeout(CANVAS_SETTLE_MS)
 
-    // ─── Still (PNG) ──────────────────────────────────────────
+    // ─── Still (PNG + WEBP) ───────────────────────────────────
+    // Playwright's screenshot writes PNG; we additionally encode a
+    // WEBP via sharp because the GalleryTile <picture> prefers webp
+    // (smaller payload, ~30% under PNG for these screenshots) and
+    // falls back to png. Without the webp on disk, the <source>
+    // 404s and the network panel logs noise on every tile load.
     const pngPath = resolve(OUT_DIR, `${slug}.png`)
-    await canvas.screenshot({ path: pngPath, omitBackground: false })
+    const webpPath = resolve(OUT_DIR, `${slug}.webp`)
+    const pngBuffer = await canvas.screenshot({ omitBackground: false })
+    await writeFile(pngPath, pngBuffer)
+    const webpBuffer = await sharp(pngBuffer).webp({ quality: 82 }).toBuffer()
+    await writeFile(webpPath, webpBuffer)
 
     // ─── Video (WEBM via MediaRecorder + canvas.captureStream) ─
     const webmPath = resolve(OUT_DIR, `${slug}.webm`)
@@ -172,7 +182,11 @@ for (const { slug, path } of targets) {
     const webmBuffer = Buffer.from(blobBytes, 'base64')
     await writeFile(webmPath, webmBuffer)
 
-    process.stdout.write(`✓ png ${(await fileSize(pngPath)).padStart(7)}  webm ${(await fileSize(webmPath)).padStart(8)}\n`)
+    process.stdout.write(
+      `✓ png ${(await fileSize(pngPath)).padStart(7)}  ` +
+        `webp ${(await fileSize(webpPath)).padStart(7)}  ` +
+        `webm ${(await fileSize(webmPath)).padStart(8)}\n`
+    )
     totalOk++
   } catch (err) {
     process.stdout.write(`✗ ${(err && err.message) || err}\n`)
