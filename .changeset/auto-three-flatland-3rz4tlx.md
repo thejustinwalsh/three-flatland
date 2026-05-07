@@ -5,18 +5,18 @@
 > Branch: docs-refresh-foundation
 > PR: https://github.com/thejustinwalsh/three-flatland/pull/33
 
-## StatsBanner: gem-accented values and underlines
+### StatsBanner: gem color prop re-enabled
 
 **`docs/src/components/StatsBanner.astro`**
 
-- Re-enabled the `color` prop on `StatItem` — was previously accepted but silently ignored, causing all stats to render in `--foreground`
-- `color` now accepts gem names (`gold`, `ruby`, `emerald`, `diamond`, `amethyst`, `pink`, `salmon`, `turquoize`) or legacy color aliases (`cyan`, `blue`, `green`, `orange`, `red`, `yellow`, `purple`) mapped via a `legacyToGem` lookup table consistent with `FeatureCard` / `ValueProp`
-- Resolved gem sets `--stat-accent` inline; stat value text is mixed 65% gem + 35% foreground for legibility, with a soft gem-tinted `text-shadow` glow
-- Each stat gets a thin gem-tinted gradient underline (fades right to transparent) so the row reads as a colored chord rather than a flat band
-- `data-gem` attribute added to `.stat-item` for CSS/JS targeting
+- `color` prop on `StatItem` was previously accepted but silently ignored; all four stats rendered in `--foreground`. Now fully active.
+- Gem names (`gold`, `ruby`, `emerald`, `diamond`, `amethyst`, `pink`, `salmon`, `turquoize`) resolve directly; legacy color names (`cyan`, `blue`, `green`, `orange`, `red`, `yellow`, `purple`) map to gems via the same `legacyToGem` table used by `FeatureCard` and `ValueProp` — no MDX call-site changes required.
+- Per-stat `--stat-accent` CSS custom property set inline from the resolved gem.
+- Stat value text color mixed 65% gem + 35% foreground for legibility, plus a soft gem-tinted `text-shadow` glow.
+- Thin gem-tinted gradient hairline underline (fades right to transparent) added beneath each stat via `background-image`; the four stats now read as a colored chord across the row.
 
 **`packages/three-flatland/README.md`**
 
-- Renamed "Why three-flatland?" section heading to "Why Flatland?" for consistency with the brand wordmark
+- Section heading renamed from "Why three-flatland?" to "Why Flatland?" for consistency with the brand wordmark.
 
-StatsBanner now renders each stat in its own gem accent color, turning the previously flat stats row into a visually distinct, color-coded performance chord.
+Re-enabling the `color` prop restores intentional per-stat gem accents on the landing-page stats strip and aligns `StatsBanner` with the gem-color taxonomy used across all other doc-site components.
