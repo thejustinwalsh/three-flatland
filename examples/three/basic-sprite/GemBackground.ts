@@ -154,6 +154,21 @@ export function gemClearColor(gem: Gem): Color {
 }
 
 /**
+ * Dark-gem fog/distance color. 10% gem mixed with pure black in OKLab
+ * — barely-perceptible gem tint that works as a fog color or scene
+ * backdrop for 3D demos (skia, etc.) where a full gemClearColor reads
+ * as flat gem at the horizon. Use for `scene.fog` / `scene.background`
+ * / renderer clear when you want the distance to fade dark with just
+ * a hint of identity.
+ */
+export function gemFogColor(gem: Gem): Color {
+  const [r, g, b] = oklabMix(GEM_HEX[gem], 0x000000, 0.1)
+  const hex =
+    (Math.round(r * 255) << 16) | (Math.round(g * 255) << 8) | Math.round(b * 255)
+  return new Color(hex)
+}
+
+/**
  * L2 / L3 primitive — TSL fragment node returning vec4 of the gem-
  * tinted radial gradient.
  *

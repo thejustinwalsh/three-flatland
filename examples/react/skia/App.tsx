@@ -23,7 +23,7 @@ import { mix as tslMix } from 'three/tsl'
 import { Color, DoubleSide, Fog, type Mesh, type MeshBasicMaterial } from 'three'
 import { MeshStandardNodeMaterial } from 'three/webgpu'
 import { usePane, useStatsMonitor } from '@three-flatland/tweakpane/react'
-import { gemGradientNode } from './GemBackground'
+import { gemFogColor, gemGradientNode } from './GemBackground'
 import { GEM } from './gem'
 
 extend({ SkiaRect, SkiaCircle, SkiaLine, SkiaPathNode, SkiaTextNode, SkiaGroup })
@@ -465,15 +465,15 @@ export default function App() {
       camera={{ position: [0, 0.9, 4.5], fov: 40, near: 0.1, far: 100 }}
       renderer={{ antialias: true, trackTimestamp: true }}
       onCreated={({ scene, gl }) => {
-        // Dark neutral clear color so distant geometry (and fog) fades
-        // to black, not the gem. Gem identity carries through the
-        // floor's colorNode (L3) inside ReflectiveGround. A gem-tinted
-        // clear was making the whole horizon read as the gem (e.g.
-        // flat pink for `pink` gem) instead of the dark moody backdrop
-        // the scene is composed against.
-        gl.setClearColor(new Color(0x000000))
-        scene.background = new Color(0x000000)
-        scene.fog = new Fog(0x000000, 0, 15)
+        // Dark-gem fog color — 10% gem mixed into pure black via
+        // OKLab. Barely-perceptible tint so the distance carries a
+        // hint of gem identity (matching the L3 floor) without going
+        // full gem like gemClearColor did, and without flatly black
+        // out the backdrop. Precomputed dark midpoint.
+        const fogBg = gemFogColor(GEM)
+        gl.setClearColor(fogBg)
+        scene.background = fogBg
+        scene.fog = new Fog(fogBg.getHex(), 0, 15)
       }}
     >
       <Suspense fallback={null}>

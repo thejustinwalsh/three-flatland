@@ -9,7 +9,7 @@ import { reflector, color as tslColor, positionWorld, cameraPosition, uv, vec2, 
 import { gaussianBlur } from 'three/addons/tsl/display/GaussianBlurNode.js'
 import { MeshStandardNodeMaterial } from 'three/webgpu'
 import { Skia, SkiaPaint, SkiaPath } from '@three-flatland/skia'
-import { gemGradientNode } from './GemBackground'
+import { gemFogColor, gemGradientNode } from './GemBackground'
 import { GEM } from './gem'
 import {
   SkiaCanvas,
@@ -53,19 +53,19 @@ async function main() {
   const renderer = new WebGPURenderer({ antialias: true, trackTimestamp: true })
   renderer.setSize(window.innerWidth, window.innerHeight)
   renderer.setPixelRatio(dpr)
-  // Use a dark neutral clear color so distant geometry (and fog)
-  // fades to black, not the gem. Gem identity carries through the
-  // floor's colorNode (L3 composition further down). A gem-tinted
-  // clear was making the entire distance/horizon read as the gem
-  // (e.g. flat pink for `pink` gem) rather than the dark moody
-  // backdrop the scene is composed against.
-  renderer.setClearColor(new Color(0x000000))
+  // Dark-gem fog color — 10% gem mixed into pure black in OKLab.
+  // Barely-perceptible tint so the distance carries a hint of gem
+  // identity (matching the L3 floor composition) without going full
+  // gem like `gemClearColor` did. Pure black was too aggressive of a
+  // backout; a precomputed dark midpoint reads as moody-with-color.
+  const fogBg = gemFogColor(GEM)
+  renderer.setClearColor(fogBg)
   document.body.appendChild(renderer.domElement)
   await renderer.init()
 
   const scene = new Scene()
-  scene.background = new Color(0x000000)
-  scene.fog = new Fog(0x000000, 0, 15)
+  scene.background = fogBg
+  scene.fog = new Fog(fogBg.getHex(), 0, 15)
   const camera = new PerspectiveCamera(40, window.innerWidth / window.innerHeight, 0.1, 100)
   camera.position.set(0, 0.9, 4.5)
   camera.lookAt(0, 0.9, 0)
