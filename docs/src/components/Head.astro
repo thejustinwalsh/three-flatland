@@ -30,10 +30,31 @@ import AutoNameSelected from 'astro-vtbot/components/AutoNameSelected.astro';
 <StarlightHead {...Astro.props}><slot /></StarlightHead>
 <VtBotBase replaceSidebarContent retainCurrentPageMarker />
 <PageOrder />
-<LoadingIndicator />
+<LoadingIndicator top="0.75rem" right="0.75rem" />
 {/* Auto-assign view-transition-names to top-level page headings so they
     morph between pages instead of fading. */}
 <AutoNameSelected selector="main h1, main h2[id]" />
+
+{/* vtbot's <LoadingIndicator/> default behavior fetches the favicon (our
+    pixel-art FL mark, ~384px native) and inlines it as <svg> — but the
+    library's CSS only constrains `img` children, leaving the svg at its
+    intrinsic size and overlaying the page corner. It also doesn't set
+    pointer-events: none, so it eats clicks on anything beneath it
+    (notably the example detail page's StackBlitz / fullscreen toolbar
+    buttons in the same corner). Patch both with a global override. */}
+<style is:global>
+  #vtbot-loading-indicator {
+    pointer-events: none;
+    width: clamp(28px, 4vw, 40px);
+    height: auto;
+  }
+  #vtbot-loading-indicator svg,
+  #vtbot-loading-indicator img {
+    width: 100%;
+    height: auto;
+    display: block;
+  }
+</style>
 
 {/* Motion-as-craft runtime — drives `--mx`/`--my`/`--tilt-x`/`--tilt-y`
     on `.u-light`/`.u-holo` surfaces via pointer + perlin-noise loop, and

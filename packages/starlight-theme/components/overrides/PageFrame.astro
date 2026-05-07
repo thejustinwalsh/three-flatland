@@ -213,7 +213,10 @@ const isLanding = path === base || path === '';
         min-height: 100svh;
         background: var(--background);
 
-        header {
+        /* Direct-child selector — without `>`, this descendant selector catches
+         * any nested <header> in slotted content (e.g., the example detail
+         * page's title/back-link header) and sticks it to the viewport too. */
+        > header {
             /* sticky top-0 z-50 w-full bg-background */
             position: sticky;
             top: 0;
