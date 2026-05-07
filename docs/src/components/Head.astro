@@ -114,6 +114,12 @@ import PageOrder from 'astro-vtbot/components/starlight/PageOrder.astro';
     ) return 'amethyst';
     return 'diamond';
   }
+  // Show-delay: don't reveal the bar for navigations that resolve
+  // faster than 150ms — those usually finish from cache before the
+  // bar would be visually meaningful, and a sub-150ms flash reads
+  // as jitter, not progress. Track the pending timeout so after-swap
+  // can cancel it for fast-cached navigations.
+  let showTimer: number | null = null;
   const bar = () => document.getElementById('tf-progress');
   document.addEventListener('astro:before-preparation', (e: Event) => {
     const el = bar();
@@ -124,12 +130,26 @@ import PageOrder from 'astro-vtbot/components/starlight/PageOrder.astro';
     el.style.setProperty('--progress-gem-low', `var(--${gem}-low)`);
     el.style.setProperty('--progress-gem-high', `var(--${gem}-high)`);
     el.dataset.state = '';
-    void el.offsetWidth; // force reflow so the reset takes
-    el.dataset.state = 'loading';
+    if (showTimer !== null) clearTimeout(showTimer);
+    showTimer = window.setTimeout(() => {
+      showTimer = null;
+      if (!el.isConnected) return;
+      void el.offsetWidth; // force reflow so the reset → loading transition takes
+      el.dataset.state = 'loading';
+    }, 150);
   });
   document.addEventListener('astro:after-swap', () => {
     const el = bar();
     if (!el) return;
+    if (showTimer !== null) {
+      // Cached/fast nav resolved before the show-delay fired — bail
+      // out without ever revealing the bar. Avoids flashing a tiny
+      // sliver that reads as jitter.
+      clearTimeout(showTimer);
+      showTimer = null;
+      el.dataset.state = '';
+      return;
+    }
     el.dataset.state = 'done';
     setTimeout(() => { if (el.dataset.state === 'done') el.dataset.state = ''; }, 400);
   });
