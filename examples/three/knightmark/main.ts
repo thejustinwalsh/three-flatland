@@ -1,5 +1,7 @@
 import { WebGPURenderer } from 'three/webgpu'
-import { Scene, OrthographicCamera, Color, NearestFilter } from 'three'
+import { Scene, OrthographicCamera, NearestFilter } from 'three'
+import { gemClearColor } from './GemBackground'
+import { GEM } from './gem'
 import {
   AnimatedSprite2D,
   SpriteGroup,
@@ -174,8 +176,11 @@ async function main() {
   await renderer.init()
 
   // Scene
+  // L1-only gem clear color — knightmark's sprites fill the viewport, so
+  // an L2 fullscreen-quad backdrop would just be hidden. Clear color
+  // remains as a safety backstop and tints any margins.
   const scene = new Scene()
-  scene.background = new Color(0x1a1a2e)
+  scene.background = gemClearColor(GEM)
 
   // Wire the pane's stats hooks to this scene — captures draws/tris/etc
   // on each render and drains the GPU timestamp query pool.

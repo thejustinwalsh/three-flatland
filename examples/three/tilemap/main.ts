@@ -2,7 +2,6 @@ import { WebGPURenderer } from 'three/webgpu'
 import {
   Scene,
   OrthographicCamera,
-  Color,
   DataTexture,
   RGBAFormat,
   NearestFilter,
@@ -14,6 +13,8 @@ import {
 } from 'three'
 import { TileMap2D, type TileMapData, type TilesetData, type TileLayerData } from 'three-flatland'
 import { createPane } from '@three-flatland/tweakpane'
+import { gemClearColor, gemGradientNode } from './GemBackground'
+import { GEM } from './gem'
 
 // Tile IDs for our procedural tileset
 const TILES = {
@@ -430,7 +431,9 @@ async function main() {
 
   // Scene setup
   const scene = new Scene()
-  scene.background = new Color(0x0a0a12)
+  // Gem-tinted backdrop (L1 + L2). See GemBackground.ts.
+  scene.background = gemClearColor(GEM)
+  ;(scene as any).backgroundNode = gemGradientNode({ gem: GEM, lit: true })
 
   // Orthographic camera
   const frustumSize = 800

@@ -5,10 +5,12 @@ import {
   AmbientLight, DirectionalLight, Color, DoubleSide,
 } from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
-import { reflector, color as tslColor, positionWorld, cameraPosition, uv, vec2, hash, float as tslFloat, mx_worley_noise_float } from 'three/tsl'
+import { reflector, color as tslColor, positionWorld, cameraPosition, uv, vec2, hash, float as tslFloat, mx_worley_noise_float, mix } from 'three/tsl'
 import { gaussianBlur } from 'three/addons/tsl/display/GaussianBlurNode.js'
 import { MeshStandardNodeMaterial } from 'three/webgpu'
 import { Skia, SkiaPaint, SkiaPath } from '@three-flatland/skia'
+import { gemClearColor, gemGradientNode } from './GemBackground'
+import { GEM } from './gem'
 import {
   SkiaCanvas,
   SkiaRect,
@@ -51,13 +53,17 @@ async function main() {
   const renderer = new WebGPURenderer({ antialias: true, trackTimestamp: true })
   renderer.setSize(window.innerWidth, window.innerHeight)
   renderer.setPixelRatio(dpr)
-  renderer.setClearColor(new Color(0x191920))
+  // L1 gem-tinted clear color so the canvas edges match the masonry tile.
+  // Skia paints its own surface across most of the viewport — we pick up
+  // L3 below by composing the gem fragment into the floor's colorNode.
+  const gemBg = gemClearColor(GEM)
+  renderer.setClearColor(gemBg)
   document.body.appendChild(renderer.domElement)
   await renderer.init()
 
   const scene = new Scene()
-  scene.background = new Color(0x191920)
-  scene.fog = new Fog(0x191920, 0, 15)
+  scene.background = gemBg
+  scene.fog = new Fog(gemBg.getHex(), 0, 15)
   const camera = new PerspectiveCamera(40, window.innerWidth / window.innerHeight, 0.1, 100)
   camera.position.set(0, 0.9, 4.5)
   camera.lookAt(0, 0.9, 0)
@@ -276,7 +282,14 @@ async function main() {
   const fadeFactor = dist.div(3.0).clamp(0.0, 1.0).oneMinus()
   const fadeSharp = fadeFactor.mul(fadeFactor).mul(fadeFactor) // cubic
 
-  groundMat.colorNode = tslColor(new Color(0x050505))
+  // L3 — compose the gem gradient into the floor's base color so the
+  // ground tonally aligns with the masonry tile. Sample the gradient as
+  // a screen-space fragment, mix it into the dim base at low intensity
+  // (0.35) so the gem reads as ambient lighting rather than overpowering
+  // the reflective character of the surface.
+  const gemFragment = gemGradientNode({ gem: GEM, lit: true })
+  const baseColor = mix(tslColor(new Color(0x050505)), (gemFragment as any).rgb, tslFloat(0.35))
+  groundMat.colorNode = baseColor
     .add((blurredReflection as any).rgb.mul(fadeSharp).mul(0.5))
   // Roughness: sharper under panel, rougher outward
   groundMat.roughnessNode = tslFloat(0.5)

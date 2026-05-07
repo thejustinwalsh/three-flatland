@@ -10,11 +10,12 @@ import {
 import {
   Scene,
   OrthographicCamera,
-  Color,
   NearestFilter,
   CanvasTexture,
   RepeatWrapping,
 } from 'three'
+import { gemClearColor, gemGradientNode } from './GemBackground'
+import { GEM } from './gem'
 import {
   AnimatedSprite2D,
   Sprite2DMaterial,
@@ -152,8 +153,10 @@ function createNoiseTexture(size = 256): CanvasTexture {
 
 async function main() {
   // Scene setup
+  // Gem-tinted backdrop (L1 + L2). See GemBackground.ts.
   const scene = new Scene()
-  scene.background = new Color(0x1a1a2e)
+  scene.background = gemClearColor(GEM)
+  ;(scene as any).backgroundNode = gemGradientNode({ gem: GEM, lit: true })
 
   // Orthographic camera for 2D rendering
   const frustumSize = 200

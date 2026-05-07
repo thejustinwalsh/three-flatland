@@ -8,6 +8,8 @@ import {
   TextureLoader,
   createPassEffect,
 } from 'three-flatland'
+import { gemClearColor, gemGradientNode } from './GemBackground'
+import { GEM } from './gem'
 import type { PassEffect } from 'three-flatland'
 import {
   // CRT display nodes
@@ -273,10 +275,13 @@ const SPRITE_LAYOUT = [
 ]
 
 async function main() {
+  // Gem-tinted backdrop (L1 + L2). Flatland's clearColor is the L1 fallback;
+  // L2 is set on flatland.scene.backgroundNode below.
   const flatland = new Flatland({
     viewSize: 400,
-    clearColor: 0x1a1a2e,
+    clearColor: gemClearColor(GEM).getHex(),
   })
+  ;(flatland.scene as any).backgroundNode = gemGradientNode({ gem: GEM, lit: true })
 
   const renderer = new WebGPURenderer({ antialias: false, trackTimestamp: true })
   renderer.setSize(window.innerWidth, window.innerHeight)
