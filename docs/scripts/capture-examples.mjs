@@ -156,7 +156,15 @@ for (const { slug, path } of targets) {
     const webpPath = resolve(OUT_DIR, `${slug}.webp`)
     const pngBuffer = await canvas.screenshot({ omitBackground: false })
     await writeFile(pngPath, pngBuffer)
-    const webpBuffer = await sharp(pngBuffer).webp({ quality: 82 }).toBuffer()
+    // Smooth radial gradients band hard at WEBP's default quality
+    // (75) and even at 82 — the gem backdrop is mostly broad gradients
+    // of similar luminance, exactly the worst case for chroma-
+    // subsampled lossy. Bump to q=95 + smartSubsample so chroma stays
+    // accurate across the gradient. File-size cost is small for these
+    // 1280×800 stills (still typically < 100k).
+    const webpBuffer = await sharp(pngBuffer)
+      .webp({ quality: 95, smartSubsample: true })
+      .toBuffer()
     await writeFile(webpPath, webpBuffer)
 
     // ─── Video (WEBM via MediaRecorder + canvas.captureStream) ─
@@ -170,7 +178,12 @@ for (const { slug, path } of targets) {
           const mimes = ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm']
           const mimeType = mimes.find((m) => MediaRecorder.isTypeSupported(m)) || 'video/webm'
           const stream = canvas.captureStream(fps)
-          const recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 4_000_000 })
+          // 12 Mbps — the gem backdrop's smooth radial gradient bands
+          // visibly at lower bitrates (4 Mbps was OK for the prior
+          // dark-flat backgrounds, not for broad smooth gradients).
+          // 12 Mbps keeps the gradient banding-free while staying
+          // reasonable for 6s clips at 1280×800.
+          const recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 12_000_000 })
           const chunks = /** @type {Blob[]} */ ([])
           recorder.ondataavailable = (e) => {
             if (e.data && e.data.size > 0) chunks.push(e.data)
