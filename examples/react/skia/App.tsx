@@ -16,7 +16,7 @@ import { SkiaPaint, SkiaPath } from '@three-flatland/skia'
 import type { SkiaCanvas as SkiaCanvasInstance } from '@three-flatland/skia/three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import {
-  reflector, color as tslColor, positionWorld, float as tslFloat, smoothstep as tslSmoothstep, uv,
+  reflector, color as tslColor, positionWorld, float as tslFloat, smoothstep as tslSmoothstep, uv, vec2, length as tslLength,
 } from 'three/tsl'
 import { gaussianBlur } from 'three/addons/tsl/display/GaussianBlurNode.js'
 import { Color, DoubleSide, Fog, Mesh, PlaneGeometry, type MeshBasicMaterial } from 'three'
@@ -464,34 +464,46 @@ export default function App() {
       camera={{ position: [0, 0.9, 4.5], fov: 40, near: 0.1, far: 100 }}
       renderer={{ antialias: true, trackTimestamp: true }}
       onCreated={({ scene, gl }) => {
-        // Black clear so alpha-faded plane edges reveal the void at
-        // the horizon. Fog is also black, fading foreground meshes
-        // (floor, panel) toward the same void as the bg plane fades
-        // to. Smooth atmospheric blend, no hard backdrop cutoff.
+        // Pure-black clear + fog so foreground 3D meshes (floor, panels)
+        // fade to the same void the floor's distant edges dissolve into.
         gl.setClearColor(new Color(0x000000))
         scene.background = new Color(0x000000)
         scene.fog = new Fog(0x000000, 6, 18)
 
         // Gem-gradient backdrop as a real 3D plane (L2). Sits at z=-15
-        // behind the panel/floor; uses screen-space gem gradient as
-        // colorNode (anchored to viewport regardless of camera angle)
-        // and a vertical alpha fade (top opaque → bottom transparent
-        // via uv.y smoothstep) so the floor's fog falloff and the
-        // plane's faded bottom dissolve into the same black void.
-        // depthWrite:false so it doesn't occlude transparency tests;
-        // fog:false so the plane itself isn't fog-tinted (it IS the
-        // backdrop).
-        const bgMat = new MeshBasicNodeMaterial({
-          transparent: true,
-          depthWrite: false,
-          fog: false,
-        })
-        bgMat.colorNode = gemGradientNode({ gem: GEM })
-        bgMat.opacityNode = tslSmoothstep(tslFloat(0.3), tslFloat(0.6), uv().y)
+        // behind the panel/floor; opaque, with a tightened gradient
+        // radius (0.4) so the gem identity stays in the upper-left
+        // and the visible top portion of the screen reads mostly as
+        // outer-ring BG (dark). Atmospheric blend into the floor is
+        // handled by the FloorEdgeFade quad below, not by alpha here.
+        const bgMat = new MeshBasicNodeMaterial({ depthWrite: false, fog: false })
+        bgMat.colorNode = gemGradientNode({ gem: GEM, radius: 0.4 })
         const bgPlane = new Mesh(new PlaneGeometry(40, 25), bgMat)
         bgPlane.position.set(0, 0.9, -15)
         bgPlane.renderOrder = -100
         scene.add(bgPlane)
+
+        // Floor edge fade — horizontal sibling quad just above the
+        // ground plane that paints the scene fog/clear color (black)
+        // over the floor's hard rectangular silhouette via a radial
+        // alpha smoothstep — opaque at the corners, transparent in
+        // the center where reflections show through. Floor's distant
+        // edge dissolves smoothly into the void instead of cutting
+        // hard against the bg plane behind it.
+        // Ported from remotion-studio-monorepo's FloorEdgeFade.tsx.
+        const edgeMat = new MeshBasicNodeMaterial({
+          transparent: true,
+          depthWrite: false,
+          fog: false,
+        })
+        edgeMat.colorNode = tslColor(new Color(0x000000))
+        const edgeDist = tslLength(uv().sub(vec2(0.5))).mul(tslFloat(2))
+        edgeMat.opacityNode = tslSmoothstep(tslFloat(0.35), tslFloat(0.7), edgeDist)
+        const floorEdge = new Mesh(new PlaneGeometry(50, 50), edgeMat)
+        floorEdge.rotation.x = -Math.PI / 2
+        floorEdge.position.y = 0 // just above ground (at -0.01)
+        floorEdge.renderOrder = 1 // after the floor (default 0)
+        scene.add(floorEdge)
       }}
     >
       <Suspense fallback={null}>

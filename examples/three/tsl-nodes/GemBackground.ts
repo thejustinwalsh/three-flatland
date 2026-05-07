@@ -187,13 +187,23 @@ export function gemFogColor(gem: Gem): Color {
  * a slow perlin-noise drift adds sub-perceptual ambient motion (≤4%
  * of viewport, no mouse coupling — the masonry tiles don't use mouse
  * influence on the gradient itself either).
+ *
+ * `radius` (default 0.7) controls how far the gradient extends across
+ * the screen diagonal — the smoothstep stops are normalized against
+ * `radius * length(screenPx)`. Lower values pull the falloff in
+ * faster (most of the screen reads as outer-ring `BG`). Used by
+ * examples where only part of the canvas is visible behind a 3D
+ * scene (skia: ~0.4) so the gem identity stays in a corner instead
+ * of dominating the visible viewport.
  */
 export function gemGradientNode({
   gem,
   lit = false,
+  radius = 0.7,
 }: {
   gem: Gem
   lit?: boolean
+  radius?: number
 }) {
   // Pre-compute the three gradient stops in JS using OKLab mixing,
   // matching CSS `color-mix(in oklab, ...)` exactly. The resulting
@@ -227,7 +237,7 @@ export function gemGradientNode({
       : float(0.3)
     const centerPx = vec2(cx, cy).mul(screenPx)
     const fragPx = screenUV.mul(screenPx)
-    const d = length(fragPx.sub(centerPx)).div(length(screenPx).mul(0.7))
+    const d = length(fragPx.sub(centerPx)).div(length(screenPx).mul(float(radius)))
 
     // Stop interpolation in sRGB-encoded space (matches CSS default
     // for `radial-gradient` without an explicit `in <space>` keyword).

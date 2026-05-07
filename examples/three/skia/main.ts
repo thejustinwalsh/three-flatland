@@ -5,7 +5,7 @@ import {
   AmbientLight, DirectionalLight, Color, DoubleSide,
 } from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
-import { reflector, color as tslColor, positionWorld, cameraPosition, uv, vec2, hash, float as tslFloat, mx_worley_noise_float, smoothstep as tslSmoothstep } from 'three/tsl'
+import { reflector, color as tslColor, positionWorld, cameraPosition, uv, vec2, hash, float as tslFloat, mx_worley_noise_float, smoothstep as tslSmoothstep, length as tslLength } from 'three/tsl'
 import { gaussianBlur } from 'three/addons/tsl/display/GaussianBlurNode.js'
 import { MeshBasicNodeMaterial, MeshStandardNodeMaterial } from 'three/webgpu'
 import { Skia, SkiaPaint, SkiaPath } from '@three-flatland/skia'
@@ -86,23 +86,14 @@ async function main() {
 
   // ── Gem-gradient backdrop (L2 as a real 3D plane, not scene.background) ──
   // Plane positioned behind the panel/floor at z=-15, sized to fill the
-  // camera frustum from there. Color: gem gradient (screen-space, so the
-  // gradient stays anchored to viewport regardless of camera angle).
-  // Opacity: vertical fade — top opaque, bottom transparent — so the
-  // alpha-faded edge meets the floor's fog falloff smoothly. Renderer
-  // clear is black; fog is black; the plane's faded bottom dissolves
-  // into the void where the floor's distance also fades.
+  // camera frustum from there. Color: gem gradient with a tight radius
+  // (0.4) so the gem identity stays in the upper-left and the visible
+  // top portion of the screen reads mostly as outer-ring BG (dark).
+  // Opaque — atmospheric blend into the floor is handled by the
+  // horizontal FloorEdgeFade mask below, not by alpha on this plane.
   const bgGeo = new PlaneGeometry(40, 25)
-  const bgMat = new MeshBasicNodeMaterial({
-    transparent: true,
-    depthWrite: false,
-    fog: false, // backdrop plane shouldn't be fog-tinted; it IS the backdrop
-  })
-  bgMat.colorNode = gemGradientNode({ gem: GEM })
-  // uv.y goes 0 (bottom of plane) → 1 (top). Fade alpha so the bottom
-  // 30% is transparent, the top 60%+ is fully opaque, with a soft
-  // smoothstep in the middle.
-  bgMat.opacityNode = tslSmoothstep(tslFloat(0.3), tslFloat(0.6), uv().y)
+  const bgMat = new MeshBasicNodeMaterial({ depthWrite: false, fog: false })
+  bgMat.colorNode = gemGradientNode({ gem: GEM, radius: 0.4 })
   const bgPlane = new Mesh(bgGeo, bgMat)
   bgPlane.position.set(0, 0.9, -15)
   bgPlane.renderOrder = -100 // before everything else in the scene
@@ -324,6 +315,29 @@ async function main() {
   ground.position.y = -0.01
   ground.add(groundReflector.target)
   scene.add(ground)
+
+  // ── Floor edge fade ──
+  // Horizontal sibling quad just above the ground plane that paints the
+  // scene fog/clear color (black) over the floor's hard rectangular
+  // silhouette via a radial alpha smoothstep — opaque at the corners,
+  // transparent in the center where reflections show through. The
+  // floor's distant edge dissolves smoothly into the void instead of
+  // cutting hard against the bg plane behind it.
+  // Ported from remotion-studio-monorepo's FloorEdgeFade.tsx (GLSL → TSL).
+  const edgeGeo = new PlaneGeometry(50, 50)
+  const edgeMat = new MeshBasicNodeMaterial({
+    transparent: true,
+    depthWrite: false,
+    fog: false,
+  })
+  edgeMat.colorNode = tslColor(new Color(0x000000))
+  const edgeDist = tslLength(uv().sub(vec2(0.5))).mul(tslFloat(2))
+  edgeMat.opacityNode = tslSmoothstep(tslFloat(0.35), tslFloat(0.7), edgeDist)
+  const floorEdge = new Mesh(edgeGeo, edgeMat)
+  floorEdge.rotation.x = -Math.PI / 2
+  floorEdge.position.y = 0 // just above ground (at -0.01)
+  floorEdge.renderOrder = 1 // after the floor (default 0)
+  scene.add(floorEdge)
 
   // ── TweakPane debug controls ──
   const { pane, stats } = createPane({ scene })

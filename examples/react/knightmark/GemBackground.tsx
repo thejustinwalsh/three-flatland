@@ -164,13 +164,21 @@ export function gemFogColor(gem: Gem): Color {
  * docs masonry tile (`radial-gradient(circle at 30% 30%, ...)`).
  * `lit: true` adds slow perlin-noise drift on the light position
  * (≤4% of viewport, sub-perceptual ambient motion).
+ *
+ * `radius` (default 0.7) — gradient extent across the screen
+ * diagonal. Smaller values pull the falloff in faster (most of the
+ * screen reads outer-ring `BG`). Used by skia (~0.4) where only
+ * part of the canvas is visible behind a 3D scene, so the gem
+ * identity stays in a corner instead of dominating the viewport.
  */
 export function gemGradientNode({
   gem,
   lit = false,
+  radius = 0.7,
 }: {
   gem: Gem
   lit?: boolean
+  radius?: number
 }) {
   // Pre-compute the three gradient stops in JS using OKLab mixing
   // (matches CSS `color-mix(in oklab, ...)` exactly). The sRGB-encoded
@@ -195,7 +203,7 @@ export function gemGradientNode({
       : float(0.3)
     const centerPx = vec2(cx, cy).mul(screenPx)
     const fragPx = screenUV.mul(screenPx)
-    const d = length(fragPx.sub(centerPx)).div(length(screenPx).mul(0.7))
+    const d = length(fragPx.sub(centerPx)).div(length(screenPx).mul(float(radius)))
 
     // Stop interpolation in sRGB-encoded space (matches CSS).
     const t0 = smoothstep(float(0), float(0.6), d)
@@ -213,16 +221,16 @@ export function gemGradientNode({
 }
 
 /**
- * Hook returning a TSL gem gradient node. Memoized per gem/lit combo
- * so the same node instance is reused across renders.
+ * Hook returning a TSL gem gradient node. Memoized per gem/lit/radius
+ * combo so the same node instance is reused across renders.
  *
  * For L3 composition:
  *   const gem = useGemGradient('emerald')
  *   const finalColor = useMemo(() => mix(myNode, gem, 0.4), [gem])
  *   <meshBasicNodeMaterial colorNode={finalColor} />
  */
-export function useGemGradient(gem: Gem, lit = false) {
-  return useMemo(() => gemGradientNode({ gem, lit }), [gem, lit])
+export function useGemGradient(gem: Gem, lit = false, radius = 0.7) {
+  return useMemo(() => gemGradientNode({ gem, lit, radius }), [gem, lit, radius])
 }
 
 /**
