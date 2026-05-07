@@ -9,7 +9,7 @@ import { reflector, color as tslColor, positionWorld, cameraPosition, uv, vec2, 
 import { gaussianBlur } from 'three/addons/tsl/display/GaussianBlurNode.js'
 import { MeshStandardNodeMaterial } from 'three/webgpu'
 import { Skia, SkiaPaint, SkiaPath } from '@three-flatland/skia'
-import { gemClearColor, gemGradientNode } from './GemBackground'
+import { gemGradientNode } from './GemBackground'
 import { GEM } from './gem'
 import {
   SkiaCanvas,
@@ -53,17 +53,19 @@ async function main() {
   const renderer = new WebGPURenderer({ antialias: true, trackTimestamp: true })
   renderer.setSize(window.innerWidth, window.innerHeight)
   renderer.setPixelRatio(dpr)
-  // L1 gem-tinted clear color so the canvas edges match the masonry tile.
-  // Skia paints its own surface across most of the viewport — we pick up
-  // L3 below by composing the gem fragment into the floor's colorNode.
-  const gemBg = gemClearColor(GEM)
-  renderer.setClearColor(gemBg)
+  // Use a dark neutral clear color so distant geometry (and fog)
+  // fades to black, not the gem. Gem identity carries through the
+  // floor's colorNode (L3 composition further down). A gem-tinted
+  // clear was making the entire distance/horizon read as the gem
+  // (e.g. flat pink for `pink` gem) rather than the dark moody
+  // backdrop the scene is composed against.
+  renderer.setClearColor(new Color(0x000000))
   document.body.appendChild(renderer.domElement)
   await renderer.init()
 
   const scene = new Scene()
-  scene.background = gemBg
-  scene.fog = new Fog(gemBg.getHex(), 0, 15)
+  scene.background = new Color(0x000000)
+  scene.fog = new Fog(0x000000, 0, 15)
   const camera = new PerspectiveCamera(40, window.innerWidth / window.innerHeight, 0.1, 100)
   camera.position.set(0, 0.9, 4.5)
   camera.lookAt(0, 0.9, 0)

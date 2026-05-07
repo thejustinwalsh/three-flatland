@@ -23,7 +23,7 @@ import { mix as tslMix } from 'three/tsl'
 import { Color, DoubleSide, Fog, type Mesh, type MeshBasicMaterial } from 'three'
 import { MeshStandardNodeMaterial } from 'three/webgpu'
 import { usePane, useStatsMonitor } from '@three-flatland/tweakpane/react'
-import { gemClearColor, gemGradientNode } from './GemBackground'
+import { gemGradientNode } from './GemBackground'
 import { GEM } from './gem'
 
 extend({ SkiaRect, SkiaCircle, SkiaLine, SkiaPathNode, SkiaTextNode, SkiaGroup })
@@ -465,12 +465,15 @@ export default function App() {
       camera={{ position: [0, 0.9, 4.5], fov: 40, near: 0.1, far: 100 }}
       renderer={{ antialias: true, trackTimestamp: true }}
       onCreated={({ scene, gl }) => {
-        // L1 — gem-tinted clear color & fog so canvas margins match the
-        // masonry tile. L3 lives inside ReflectiveGround's colorNode.
-        const bg = gemClearColor(GEM)
-        gl.setClearColor(bg)
-        scene.background = bg
-        scene.fog = new Fog(bg.getHex(), 0, 15)
+        // Dark neutral clear color so distant geometry (and fog) fades
+        // to black, not the gem. Gem identity carries through the
+        // floor's colorNode (L3) inside ReflectiveGround. A gem-tinted
+        // clear was making the whole horizon read as the gem (e.g.
+        // flat pink for `pink` gem) instead of the dark moody backdrop
+        // the scene is composed against.
+        gl.setClearColor(new Color(0x000000))
+        scene.background = new Color(0x000000)
+        scene.fog = new Fog(0x000000, 0, 15)
       }}
     >
       <Suspense fallback={null}>
