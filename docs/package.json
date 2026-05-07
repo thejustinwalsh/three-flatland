@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "astro dev --port $TURBO_MFE_PORT",
     "build": "astro check && astro build",
-    "preview": "astro preview"
+    "preview": "astro preview",
+    "capture:examples": "node scripts/capture-examples.mjs"
   },
   "dependencies": {
     "@astrojs/check": "^0.9.9",
