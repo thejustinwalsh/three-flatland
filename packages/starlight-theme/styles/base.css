@@ -466,13 +466,57 @@
         border-radius: calc(var(--radius) - 2px);
     }
 
-    /* code blocks */
+    /* code blocks
+     *
+     * Re-apply expressive-code's syntax-highlighting token colors here
+     * in the `theme` cascade layer. EC's own rules live in the
+     * `starlight.components` layer (lower priority than `theme` per
+     * `@layer starlight,theme`), and Starlight's markdown.css ships a
+     * `.sl-markdown-content pre code:not(:where(.not-content *)){all:unset}`
+     * rule in `starlight.content` that wipes the inherited color cascade
+     * — between layer order + the all:unset reset, the token spans end
+     * up rendering as inherited foreground (broken syntax highlighting)
+     * for any code block that doesn't explicitly carry the data-theme
+     * attribute (i.e. all markdown fenced blocks site-wide; only the
+     * `<Code showLineNumbers>` paths in ExampleSplitView happened to
+     * hit a more-specific selector that survived).
+     *
+     * The rules below mirror the public expressive-code color cascade
+     * verbatim, just hoisted into the `theme` layer so they're not
+     * shadowed by anything Starlight ships. font-size:0.933em stays.
+     *
+     * Reference: https://expressive-code.com/reference/style-overrides/
+     * The `--0` / `--1` custom properties are written by EC onto each
+     * token span as inline style; the rules pick whichever based on
+     * the active theme. */
     .expressive-code .ec-line :where(span[style^='--']:not([class])),
     :root:not([data-theme='dark'])
         .expressive-code[data-theme='dark']
         .ec-line
         :where(span[style^='--']:not([class])) {
+        color: var(--0, inherit);
+        background-color: var(--0bg, transparent);
+        font-style: var(--0fs, inherit);
+        font-weight: var(--0fw, inherit);
+        text-decoration: var(--0td, inherit);
         font-size: 0.933em;
+    }
+    :root:not([data-theme='dark'])
+        .expressive-code
+        .ec-line
+        :where(span[style^='--']:not([class])),
+    :root[data-theme='light']
+        .expressive-code:not([data-theme='dark'])
+        .ec-line
+        :where(span[style^='--']:not([class])),
+    .expressive-code[data-theme='light']
+        .ec-line
+        :where(span[style^='--']:not([class])) {
+        color: var(--1, inherit);
+        background-color: var(--1bg, transparent);
+        font-style: var(--1fs, inherit);
+        font-weight: var(--1fw, inherit);
+        text-decoration: var(--1td, inherit);
     }
 
     /* External link icon — the rehype plugin appends a span+SVG to
