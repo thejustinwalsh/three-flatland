@@ -5,12 +5,13 @@
 > Branch: docs-refresh-foundation
 > PR: https://github.com/thejustinwalsh/three-flatland/pull/33
 
-### StatsBanner: gem-accented values and hairline underlines
+## Docs: StatsBanner gem accent colors
 
-- `color` prop on `StatItem` is fully re-enabled (was silently ignored); accepts gem names (`gold`, `ruby`, `emerald`, `diamond`, `amethyst`, `pink`, `salmon`, `turquoize`) and legacy color aliases (`cyan`, `blue`, `green`, `orange`, `red`, `yellow`, `purple` — mapped to gems via the same `legacyToGem` table used by `FeatureCard`/`ValueProp`)
-- Each stat now sets `--stat-accent` from its resolved gem, so accent color is scoped per stat
-- Stat value text color is `color-mix(in oklab, var(--stat-accent) 65%, var(--foreground))` with a soft gem-tinted `text-shadow` glow — legible but visually distinct per gem
-- Each stat item gets a gem-tinted hairline underline rendered as a `background-image` linear gradient (100% → 70% → transparent), creating a colored chord across the four-stat row
-- README: section heading updated from "Why three-flatland?" to "Why Flatland?"
+- Re-enabled the `color` prop on `StatsBanner` stat items — it was previously marked `@deprecated` and silently ignored, causing all stats to render in `--foreground`
+- `color` now accepts gem names (`diamond`, `pink`, `gold`, `amethyst`, etc.) or legacy color aliases (`cyan`, `blue`, `green`, …) resolved via the shared `legacyToGem` table
+- Each stat sets `--stat-accent` inline from the resolved gem token; value text is color-mixed 65% gem + 35% foreground for legibility, with a soft gem-tinted `text-shadow` glow
+- Gem-tinted hairline underline added per stat via `background-image` gradient (fades to transparent at 100%), creating a colored chord across the stats row
+- `data-gem` attribute set on each stat item for CSS/JS targeting
+- Minor README heading update: "Why three-flatland?" → "Why Flatland?"
 
-Restores per-stat gem colorization to `StatsBanner` so landing-page statistics render with the intended palette accent rather than a flat foreground color.
+Restores per-stat gem accent coloring to `StatsBanner`, making the four stats visually distinct with colored values and underlines matching the site's gem palette.
