@@ -128,46 +128,15 @@ const githubBase = 'https://github.com/thejustinwalsh/three-flatland/tree/main'
 const threeGithubHref = `${githubBase}/examples/three/${slug}`
 const reactGithubHref = `${githubBase}/examples/react/${slug}`
 
-// StackBlitz payloads — JSON-serialized file maps that the toolbar's
-// StackBlitz button reads at click time and feeds into
-// `sdk.openProject(payload, { newWindow: true })`. We base64-encode them
-// into root data attributes (one per variant) for two reasons:
-//  1. `<template>` content is HTML-parsed by the browser. Any `<`/`>`/`&`
-//     in source code (TS, JSX, MDX) gets parsed as tags or auto-closed,
-//     so reading back via `template.innerHTML` mangles the JSON and
-//     `JSON.parse` throws — the click handler then falls through to the
-//     GitHub-clone fallback, which is what the user was seeing.
-//  2. Data-attribute *values* are opaque CDATA — the browser doesn't
-//     re-parse them as HTML. Base64 keeps the value ASCII-safe for any
-//     binary or unicode payload (e.g. em-dash in titles).
-// Decoding side: the click handler does
-// `new TextDecoder().decode(Uint8Array.from(atob(b64), c => c.charCodeAt(0)))`
-// to handle UTF-8 correctly (raw `atob` returns latin-1 bytes).
-const stackblitzPayloads = {
-    three: {
-        title: `${slug} — Three.js`,
-        description: 'three-flatland example',
-        template: 'node' as const,
-        files: threeFiles,
-        openFile: threePrimary,
-    },
-    react: {
-        title: `${slug} — React`,
-        description: 'three-flatland example (R3F)',
-        template: 'node' as const,
-        files: reactFiles,
-        openFile: reactPrimary,
-    },
-}
-
-const stackblitzThreeB64 = Buffer.from(
-    JSON.stringify(stackblitzPayloads.three),
-    'utf-8'
-).toString('base64')
-const stackblitzReactB64 = Buffer.from(
-    JSON.stringify(stackblitzPayloads.react),
-    'utf-8'
-).toString('base64')
+// StackBlitz import — uses the GitHub bridge URL
+// (stackblitz.com/github/<repo>/tree/<branch>/<subdir>) so StackBlitz
+// forks the example directly from GitHub. Slower than `sdk.openProject`
+// with an inline payload, but doesn't require bundling the SDK and
+// works reliably in dev where the SDK's dynamic import was choking on
+// Vite optimizeDeps cache pollution. Variant-aware: the button picks
+// the right /three/ or /react/ subdir based on the active variant.
+const threeStackblitzHref = `https://stackblitz.com/github/thejustinwalsh/three-flatland/tree/main/examples/three/${slug}`
+const reactStackblitzHref = `https://stackblitz.com/github/thejustinwalsh/three-flatland/tree/main/examples/react/${slug}`
 
 const transitionName = `tile-examples-${slug}`
 ---
@@ -176,8 +145,6 @@ const transitionName = `tile-examples-${slug}`
     class="example-split"
     data-slug={slug}
     data-variant="three"
-    data-stackblitz-three={stackblitzThreeB64}
-    data-stackblitz-react={stackblitzReactB64}
     style={`--split: 55%;`}
 >
     <div class="example-split-toolbar">
@@ -214,15 +181,18 @@ const transitionName = `tile-examples-${slug}`
             >
                 <span class="i-lucide:github" aria-hidden="true"></span>
             </a>
-            <button
-                type="button"
+            <a
                 class="toolbar-btn stackblitz-btn"
-                data-stackblitz
+                href={threeStackblitzHref}
+                data-three-href={threeStackblitzHref}
+                data-react-href={reactStackblitzHref}
+                target="_blank"
+                rel="noopener noreferrer"
                 aria-label="Open in StackBlitz"
                 title="Open in StackBlitz"
             >
                 <span class="i-simple-icons:stackblitz" aria-hidden="true"></span>
-            </button>
+            </a>
             <button type="button" class="toolbar-btn" data-fullscreen aria-label="Fullscreen preview" title="Fullscreen preview">
                 <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
                     <path
@@ -698,7 +668,7 @@ const transitionName = `tile-examples-${slug}`
             )
             const iframe = root.querySelector<HTMLIFrameElement>('.example-split-preview iframe')
             const githubLink = root.querySelector<HTMLAnchorElement>('a.github-btn')
-            const stackblitzBtn = root.querySelector<HTMLButtonElement>('button[data-stackblitz]')
+            const stackblitzLink = root.querySelector<HTMLAnchorElement>('a.stackblitz-btn')
             const STORAGE_VARIANT = 'flatland-example-type'
 
             // Active variant — the StackBlitz click handler reads this
@@ -731,6 +701,10 @@ const transitionName = `tile-examples-${slug}`
                 if (githubLink) {
                     const href = githubLink.dataset[`${variant}Href`]
                     if (href) githubLink.href = href
+                }
+                if (stackblitzLink) {
+                    const href = stackblitzLink.dataset[`${variant}Href`]
+                    if (href) stackblitzLink.href = href
                 }
                 try { localStorage.setItem(STORAGE_VARIANT, variant) } catch {}
             }
@@ -888,43 +862,10 @@ const transitionName = `tile-examples-${slug}`
                 req?.call(target)
             })
 
-            // ─── StackBlitz: open the embed payload in a new tab ──
-            // Reads the base64-encoded JSON payload for the active
-            // variant from `data-stackblitz-{three,react}` on the root,
-            // dynamically imports the SDK (only when needed), and calls
-            // `sdk.openProject(payload, { newWindow: true })`. The opened
-            // project mirrors the same files/openFile the inline preview
-            // ran from — full IDE access in StackBlitz, source-on-disk
-            // via the page's loadExample() output.
-            stackblitzBtn?.addEventListener('click', async () => {
-                try {
-                    const b64 =
-                        activeVariant === 'three'
-                            ? root.dataset.stackblitzThree
-                            : root.dataset.stackblitzReact
-                    if (!b64) throw new Error('missing payload attribute')
-                    // atob returns a latin-1 byte string. Walk it back to
-                    // a Uint8Array and TextDecoder over it so non-ASCII
-                    // characters in titles/descriptions (e.g. em-dash in
-                    // "basic-sprite — Three.js") survive the round-trip.
-                    const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0))
-                    const json = new TextDecoder().decode(bytes)
-                    const payload = JSON.parse(json)
-                    const { default: sdk } = await import('@stackblitz/sdk')
-                    await sdk.openProject(payload, {
-                        newWindow: true,
-                        openFile: payload.openFile,
-                    })
-                } catch (err) {
-                    // Surface the failure so we can debug instead of
-                    // silently swallowing it. The GitHub-bridge fallback
-                    // is intentionally NOT used: cloning the entire
-                    // monorepo from a feature branch hangs StackBlitz
-                    // ("stuck on cloning repo"), so the user is better
-                    // served by a clear error than a broken redirect.
-                    console.error('[ExampleSplitView] StackBlitz SDK failed:', err)
-                }
-            })
+            // StackBlitz button — anchor with variant-aware href; no
+            // click handler needed. URL-based fork import is slower
+            // than the SDK's inline payload but works without bundling
+            // the SDK and survives Vite optimizeDeps cache pollution.
         })
     }
 
