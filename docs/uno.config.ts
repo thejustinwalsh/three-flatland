@@ -129,5 +129,6 @@ export default defineConfig({
     'i-simple-icons:stackblitz', 'i-simple-icons:github',
     'i-lucide:sparkles', 'i-lucide:wand-sparkles', 'i-lucide:bot',
     'i-lucide:volume-2', 'i-lucide:volume-x',
+    'i-lucide:chevrons-left', 'i-lucide:chevrons-right',
   ]),
 })

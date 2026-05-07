@@ -246,6 +246,15 @@ const transitionName = `tile-examples-${slug}`
         <div class="example-split-pane example-split-code">
             <div class="code-pane" data-variant-pane="three">
                 <div class="file-tabs" role="tablist" aria-label="Files">
+                    <button
+                        type="button"
+                        class="expand-btn"
+                        data-expand-toggle
+                        aria-label="Expand code panel"
+                        title="Expand code panel"
+                    >
+                        <span class="i-lucide:chevrons-left expand-icon" aria-hidden="true"></span>
+                    </button>
                     {threeOrdered.map(([filename], i) => (
                         <button
                             type="button"
@@ -270,6 +279,15 @@ const transitionName = `tile-examples-${slug}`
             </div>
             <div class="code-pane" data-variant-pane="react">
                 <div class="file-tabs" role="tablist" aria-label="Files">
+                    <button
+                        type="button"
+                        class="expand-btn"
+                        data-expand-toggle
+                        aria-label="Expand code panel"
+                        title="Expand code panel"
+                    >
+                        <span class="i-lucide:chevrons-left expand-icon" aria-hidden="true"></span>
+                    </button>
                     {reactOrdered.map(([filename], i) => (
                         <button
                             type="button"
@@ -398,6 +416,42 @@ const transitionName = `tile-examples-${slug}`
         box-shadow:
             0 0 0 1px color-mix(in oklab, var(--border) 75%, transparent),
             0 24px 60px -20px color-mix(in oklab, var(--diamond) 25%, transparent);
+        /* No transition by default — drag updates `--split` per
+         * pointermove and any grid-template-columns transition would
+         * make every drag frame visibly lag through the easing curve.
+         * Transition is opted in by `is-toggling` (set by the chevron
+         * click handler for the duration of the expand/collapse
+         * animation only). */
+    }
+
+    /* Expanded mode — code panel takes the full grid width. The
+     * iframe column collapses to 0 (still in DOM, just zero size,
+     * no remount). Click chevron again to animate back to the
+     * previous split position. */
+    .example-split[data-expanded='true'] .example-split-grid {
+        grid-template-columns: 0px 0px 1fr;
+    }
+
+    /* Transition window — the JS adds `is-toggling` to the root for
+     * ~350ms around an expand/collapse click, then removes it. Drag
+     * gestures (which mutate `--split` directly) never see this
+     * transition, so resize stays 60fps. Browsers (Chrome 117+,
+     * Firefox 96+, Safari 16+) interpolate grid-template-columns
+     * when track sizes are length-percentage pairs. */
+    .example-split.is-toggling .example-split-grid {
+        transition: grid-template-columns 320ms cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .example-split.is-toggling .example-split-handle {
+        transition: opacity 200ms ease-out;
+    }
+
+    .example-split[data-expanded='true'] .example-split-handle {
+        pointer-events: none;
+        opacity: 0;
+    }
+
+    .example-split[data-expanded='true'] .example-split-preview {
+        pointer-events: none;
     }
 
     .example-split-pane {
@@ -501,6 +555,54 @@ const transitionName = `tile-examples-${slug}`
         cursor: pointer;
         white-space: nowrap;
         transition: color 0.15s, background-color 0.15s;
+    }
+
+    /* Expand-collapse chevron — first item in the file-tabs strip,
+     * controls the whole split (visible from either pane). Icon
+     * rotates 180° in expanded state so it always points "back to
+     * where you came from": chevrons-left in split mode (push to
+     * left, expand right), chevrons-right in expanded mode (return
+     * to split). Hairline divider on the right separates it from
+     * the file tabs. */
+    .expand-btn {
+        appearance: none;
+        background: transparent;
+        border: 0;
+        padding: 0.375rem 0.5rem;
+        margin-right: 0.25rem;
+        color: color-mix(in oklab, var(--diamond) 55%, var(--muted-foreground));
+        border-radius: calc(var(--radius) - 4px);
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        transition: color 0.15s, background-color 0.15s;
+        position: relative;
+    }
+
+    .expand-btn:hover {
+        color: var(--diamond);
+        background-color: color-mix(in oklab, var(--diamond) 10%, transparent);
+    }
+
+    .expand-btn::after {
+        content: '';
+        position: absolute;
+        right: -0.125rem;
+        top: 25%;
+        bottom: 25%;
+        width: 1px;
+        background-color: color-mix(in oklab, var(--border) 70%, transparent);
+    }
+
+    .expand-icon {
+        width: 0.875rem;
+        height: 0.875rem;
+        transition: transform 240ms cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    .example-split[data-expanded='true'] .expand-icon {
+        transform: rotate(180deg);
     }
 
     .file-tab:hover {
@@ -716,6 +818,50 @@ const transitionName = `tile-examples-${slug}`
                     try { localStorage.setItem(STORAGE_SPLIT, next.toFixed(1)) } catch {}
                 })
             }
+
+            // ─── Expand-collapse code panel ───────────────────────
+            // Both panes carry an `expand-btn` (so the affordance is
+            // visible whichever variant is active); they toggle the
+            // SAME root[data-expanded] attribute. The grid-template-
+            // columns transition handles the smooth shrink/grow of
+            // the iframe column and handle width. State is persisted
+            // so the user's choice sticks across navigations.
+            const expandBtns = root.querySelectorAll<HTMLButtonElement>('.expand-btn[data-expand-toggle]')
+            const STORAGE_EXPANDED = 'flatland-example-expanded'
+
+            try {
+                if (localStorage.getItem(STORAGE_EXPANDED) === '1') {
+                    root.setAttribute('data-expanded', 'true')
+                }
+            } catch {}
+
+            // `animate` controls whether the .is-toggling class is
+            // applied during the state change. We pass `false` on
+            // initial-load restore so the page doesn't animate on
+            // mount, and `true` for the user clicks so the transition
+            // fires only then.
+            const setExpanded = (expanded: boolean, animate: boolean) => {
+                if (animate) {
+                    root.classList.add('is-toggling')
+                    setTimeout(() => root.classList.remove('is-toggling'), 360)
+                }
+                if (expanded) root.setAttribute('data-expanded', 'true')
+                else root.removeAttribute('data-expanded')
+                expandBtns.forEach((b) => {
+                    b.setAttribute('aria-label', expanded ? 'Restore split view' : 'Expand code panel')
+                    b.setAttribute('title', expanded ? 'Restore split view' : 'Expand code panel')
+                })
+                try { localStorage.setItem(STORAGE_EXPANDED, expanded ? '1' : '0') } catch {}
+            }
+
+            // Sync labels with restored state — no animation on mount.
+            setExpanded(root.getAttribute('data-expanded') === 'true', false)
+
+            expandBtns.forEach((btn) => {
+                btn.addEventListener('click', () => {
+                    setExpanded(root.getAttribute('data-expanded') !== 'true', true)
+                })
+            })
 
             // ─── Fullscreen ────────────────────────────────────────
             const fsBtn = root.querySelector<HTMLButtonElement>('[data-fullscreen]')
