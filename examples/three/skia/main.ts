@@ -283,12 +283,12 @@ async function main() {
   const fadeSharp = fadeFactor.mul(fadeFactor).mul(fadeFactor) // cubic
 
   // L3 — compose the gem gradient into the floor's base color so the
-  // ground tonally aligns with the masonry tile. Sample the gradient as
-  // a screen-space fragment, mix it into the dim base at low intensity
-  // (0.35) so the gem reads as ambient lighting rather than overpowering
-  // the reflective character of the surface.
+  // ground tonally aligns with the masonry tile. The gradient outputs
+  // linear-sRGB after the option-B color-space fix, so mix at a low
+  // weight (0.15) to keep the floor's reflective character dominant
+  // while still letting the gem read as ambient surface tone.
   const gemFragment = gemGradientNode({ gem: GEM })
-  const baseColor = mix(tslColor(new Color(0x050505)), (gemFragment as any).rgb, tslFloat(0.35))
+  const baseColor = mix(tslColor(new Color(0x050505)), (gemFragment as any).rgb, tslFloat(0.15))
   groundMat.colorNode = baseColor
     .add((blurredReflection as any).rgb.mul(fadeSharp).mul(0.5))
   // Roughness: sharper under panel, rougher outward

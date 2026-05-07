@@ -293,11 +293,12 @@ function ReflectiveGround() {
     const dist = positionWorld.xz.length()
     const fadeFactor = dist.div(3.0).clamp(0.0, 1.0).oneMinus()
     const fadeSharp = fadeFactor.mul(fadeFactor).mul(fadeFactor)
-    // L3 — compose the gem gradient into the floor's base color so the
-    // ground tonally aligns with the masonry tile. Mix at 0.35 so gem
-    // reads as ambient lighting without overpowering reflectivity.
-    const gemFragment = gemGradientNode({ gem: GEM, lit: true })
-    const baseColor = tslMix(tslColor(new Color(0x050505)), (gemFragment as any).rgb, tslFloat(0.35))
+    // L3 — compose the gem gradient into the floor's base color. The
+    // gradient outputs linear-sRGB after the option-B color-space fix,
+    // so mix at a low weight (0.15) to keep the floor's reflective
+    // character dominant while still letting the gem read as tone.
+    const gemFragment = gemGradientNode({ gem: GEM })
+    const baseColor = tslMix(tslColor(new Color(0x050505)), (gemFragment as any).rgb, tslFloat(0.15))
     mat.colorNode = baseColor.add((blurredReflection as any).rgb.mul(fadeSharp).mul(0.5))
     mat.roughnessNode = tslFloat(0.5).add(dist.div(5.0).clamp(0.0, 0.5))
     mat.metalness = 0.5
