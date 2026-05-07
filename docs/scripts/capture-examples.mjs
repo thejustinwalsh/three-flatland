@@ -131,6 +131,21 @@ for (const { slug, path } of targets) {
     // animation systems warm up, etc.
     await page.waitForTimeout(CANVAS_SETTLE_MS)
 
+    // Hide the Tweakpane control panel before any frame is captured.
+    // The panel renders into `.tp-dfwv` (tweakpane's standard wrapper,
+    // appended to <body>) and otherwise intrudes on the captured frame
+    // — breaks the masonry tile aesthetic where tiles should read as
+    // pure scene posters. Belt + suspenders: [hidden] for semantics,
+    // display:none for cases where global CSS overrides [hidden]. Done
+    // here once so both the PNG/WEBP still and the WEBM recording come
+    // out clean.
+    await page.evaluate(() => {
+      for (const el of document.querySelectorAll('.tp-dfwv')) {
+        el.setAttribute('hidden', '')
+        el.style.display = 'none'
+      }
+    })
+
     // ─── Still (PNG + WEBP) ───────────────────────────────────
     // Playwright's screenshot writes PNG; we additionally encode a
     // WEBP via sharp because the GalleryTile <picture> prefers webp
