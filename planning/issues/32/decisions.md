@@ -2,6 +2,176 @@
 
 # Phase 3 decisions
 
+## Site-title position parity between landing and docs
+**File(s):** `packages/starlight-theme/components/overrides/PageFrame.astro` (removed `[data-landing] > header :global(.site-title-wrapper) { margin-left }` overrides)
+**Date:** 2026-05-07
+
+**Decision:** The wordmark + FL icon sit at the same x position on landing as on every docs page. Removed the landing-only `margin-left: 5rem` (3rem mobile) push that previously cleared the alpha ribbon's diagonal cutoff.
+
+**Why:** Stakeholder feedback — the brand mark moving between views read as accidental, broke the sense of a stable site frame. The ribbon's diagonal tape passes through the area to the RIGHT of the wordmark; with z-index ordering (ribbon at 70, header at 50) the ribbon paints on top of the area it covers, but the wordmark and FL icon don't actually intersect the tape's painted path. Visually verified post-removal: no overlap, identical brand position landing ↔ docs.
+
+**How to apply:** If the ribbon design changes such that it does overlap the logo column, prefer adjusting the ribbon (move it up, shrink it, or relocate to top-right) over re-introducing a landing-only logo offset. Brand-position consistency wins over ribbon placement.
+
+---
+
+## Tabs / TabItem: custom component replacement, not Starlight override (Option B)
+**File(s):** `packages/starlight-theme/components/custom/Tabs.astro`, `packages/starlight-theme/components/custom/TabItem.astro`, `packages/starlight-theme/components/custom/rehype-tabs.ts`, `packages/starlight-theme/user-components.ts`, all `docs/src/content/docs/**/*.mdx` imports
+**Date:** 2026-05-07
+
+**Decision:** Tabs and TabItem are replaced (not overridden) via custom components in `packages/starlight-theme/components/custom/`, re-exported from `starlight-theme/components` alongside Starlight's user-components via `export *`. MDX imports were bulk-rewritten from `@astrojs/starlight/components` → `starlight-theme/components`. The local `Tabs.astro` mirrors Starlight 0.38.4's behaviour exactly except for icon rendering: colon-prefixed Iconify names (`material-icon-theme:npm`, `lucide:sparkles`, `simple-icons:react`) render as a UnoCSS class span (`<span class="i-${icon}">`) instead of going through Starlight's built-in `<Icon>` (which only knows `BuiltInIcons` and renders empty SVGs for anything else).
+
+**Why:** Tabs / TabItem are NOT on Starlight's `components` config allow-list — that config map only covers layout/structural components (Header, Sidebar, PageFrame, etc.). Three other approaches were tried and rejected before landing on this one:
+- **Vite `resolveId` plugin** to redirect `@astrojs/starlight/user-components/Tabs.astro` to a local override — failed because the import resolves to an absolute filesystem path before the plugin sees it; the alias never matched.
+- **Vite `resolve.alias`** with a regex matching the absolute node_modules path — Astro's resolver pipeline appears to short-circuit before the alias fires; build artifacts confirmed the original Tabs was still loaded.
+- **`pnpm patch @astrojs/starlight`** — pins us to a specific Starlight version with a permanent diff; rejected as too brittle for what's effectively cosmetic.
+
+The custom-component approach is the cleanest non-hack: ~270 lines of Tabs.astro + minimal TabItem.astro + an inlined `rehype-tabs.ts` (the upstream `processPanels` is a private export, so we copy it verbatim with attribution). When Starlight bumps Tabs.astro behaviour, we mirror the relevant changes here. The `export *` from `@astrojs/starlight/components` followed by named `Tabs` / `TabItem` exports shadows just those two — every other user-component (`Aside`, `Card`, `Code`, `Steps`, `LinkCard`, etc.) flows through unchanged.
+
+**Evidence:** `dist/` HTML inspection confirms tab icons render as `<span class="i-simple-icons:npm tab-icon">` post-migration vs empty `<svg>` pre-migration. Build green at `pnpm --filter=docs build`.
+
+**How to apply:** Future work that needs to extend Starlight user-components beyond Starlight's prop surface should follow the same pattern (custom in `components/custom/`, re-export from `user-components.ts` shadowing the upstream name). Don't reach for Vite aliasing — it doesn't work against Astro's resolver chain.
+
+---
+
+## UnoCSS preset-icons: `mode: 'mask'` for universal monochrome
+**File(s):** `docs/uno.config.ts:14-18`
+**Date:** 2026-05-07
+
+**Decision:** `presetIcons({ mode: 'mask', ... })` forces every icon (regardless of source iconset) to render via CSS `mask` + `background-color: currentColor`. Multi-color brand glyphs (material-icon-theme's npm/pnpm/yarn/bun colored logos) collapse to single-color silhouettes that inherit from the surrounding text color.
+
+**Why:** Default `mode: 'auto'` lets multi-color icons render in their original palette, which clashed visibly with the gem-tinted theme — colored brand logos sat next to monochrome lucide icons in the same tab strip and the typography. Forcing mask mode trades brand-color fidelity for whole-system color consistency. Brand icons now respect dark/light mode, gem hover tints, and figcaption tints automatically.
+
+**Evidence:** Built CSS at `dist/_astro/common.*.css` shows `.i-material-icon-theme\:npm{--un-icon:url(...);mask:var(--un-icon) no-repeat;background-color:currentColor;...}` — confirms mask mode is active in production.
+
+**How to apply:** When picking icons, prefer monochrome-designed iconsets (lucide, simple-icons) over multi-color ones (material-icon-theme) — under mask mode the multi-color glyphs lose visual detail and may become hard to read at small sizes (the bun icon was the trigger here).
+
+---
+
+## Tab brand icons: `simple-icons` over `material-icon-theme`
+**File(s):** `docs/package.json` (`@iconify-json/simple-icons` dep), `docs/src/content/docs/**/*.mdx` (TabItem `icon=` props), `docs/uno.config.ts` (safelist)
+**Date:** 2026-05-07
+
+**Decision:** Tab icons for npm/pnpm/yarn/bun/react/threedotjs use `simple-icons:*` rather than `material-icon-theme:*`. Generic UI icons (sparkles for the agents tab) stay on `lucide`.
+
+**Why:** Material-icon-theme glyphs are designed for VS Code's file explorer at small sizes with full color — they read as flat colored boxes when masked, especially `bun` which is a stylized cream blob that becomes an unreadable silhouette in mono. Simple-icons is the official monochrome brand icon set; npm/pnpm/yarn/bun all have official-brand-shape silhouettes there that survive masking cleanly.
+
+**How to apply:** New tab/badge icons for branded products should resolve from `@iconify-json/simple-icons`. UI affordances (chevrons, sparkles, info, warning, etc.) stay on lucide.
+
+---
+
+## `.header` selector scope: site header animation must exclude figcaption
+**File(s):** `packages/starlight-theme/components/overrides/Header.astro:128-160`
+**Date:** 2026-05-07
+
+**Decision:** The scroll-driven `hdr-compact` animation is selector-scoped to `[data-slot='layout'] > header` — NOT the bare `.header` class. The animation also excludes `[data-landing]` so the landing's transparent header keeps its hero-canvas backdrop on scroll.
+
+**Why:** Expressive-code renders codeblock titles as `<figcaption class="header">`. Starlight's layout uses `<header class="header">` for the site chrome. A bare `:global(.header)` selector matched both — every codeblock figcaption inherited the scroll-tied background-color cross-fade, producing a phantom alpha fade on captions that the user reported repeatedly across multiple sessions before the cause was identified. The data-slot anchor sidesteps the class collision entirely.
+
+The landing exclusion (`:not([data-landing])`) is separate and addresses a different bug: the hero canvas extends UP behind the transparent header. The compact-fade keyframe sets `background-color` to opaque-ish, which clobbers the intentional transparency on scroll.
+
+**How to apply:** Any future header-targeting CSS should use `[data-slot='layout'] > header` (or scope to the override's hashed class via Astro's component scoping). NEVER use bare `.header` — too many third-party components use that class name.
+
+---
+
+## Header height parity: paint-only animation, no layout shift
+**File(s):** `packages/starlight-theme/components/overrides/Header.astro:128-160`
+**Date:** 2026-05-07
+
+**Decision:** The `hdr-compact` keyframe ONLY changes paint-time properties (`background-color`, `backdrop-filter`, `border-bottom-color`). The header's `padding-block` is constant across all states and pages. Header height is dictated solely by the inner `.container { height: var(--header-height) }` rule.
+
+**Why:** The previous implementation transitioned `padding-block` from `0.625rem` → `0.25rem` on scroll, which felt right per-page but broke view-transitions between landing ↔ docs. The landing's then-zero padding-block landed on a docs page with non-zero padding, briefly painting an opaque slab above the hero canvas during morph (the "black bar artifact"). Constant header bounding box across pages = no vertical layout shift to cross-fade through.
+
+The visual "compact" feel still lands via the bg/backdrop-filter/border cross-fade — those properties are paint-only and don't affect the canvas's `top: calc(var(--header-height) * -1)` extension calc.
+
+**How to apply:** Keep `--header-height` static. Header chrome animations should be paint-only (color, filter, shadow, border-color) — never padding/margin/height — so view-transitions can cross-fade safely between landing and docs pages.
+
+---
+
+## Tab + codeblock: outer card vertical inset, children horizontal inset
+**File(s):** `packages/starlight-theme/styles/base.css` (`.starlight-tabs` + `.tablist-wrapper` + `.tablist-wrapper ~ [role='tabpanel']` + scoped `--ec-codePadInl`)
+**Date:** 2026-05-07
+
+**Decision:** `<starlight-tabs>` carries vertical inset (`padding-block: 0.8rem`) and the rounded shape + background. The two children (`.tablist-wrapper`, `[role='tabpanel']`) carry horizontal inset (`padding-inline: 0.5rem`). Inside the panel, the codeblock's `--ec-codePadInl` is overridden to `0.5rem` so the code's first column aligns vertically with the tab strip's first pill on the same `1rem`-from-card-edge baseline.
+
+**Why:** The first attempt put both vertical and horizontal padding on the outer card, but expressive-code's `--ec-codePadInl` (default `1rem`) compounded on top of the outer 0.5rem horizontal, pushing code content too far in (`1.5rem` from card edge vs `1rem` for tab pills). Splitting the inset between outer (vertical) and children (horizontal) lets each child reset its inner content padding independently. Then matching `--ec-codePadInl` to the children's `0.5rem` puts code text and tab text on the same baseline.
+
+The figcaption's `padding-inline` is matched to the same `0.5rem` so caption text and code lines line up too.
+
+**How to apply:** When stacking layout shells inside a card-shaped container, put the chrome (background, radius) on one container and split inset axes between the layers — don't double-pad. For codeblocks specifically, override `--ec-codePadInl` (not `padding`) when changing inline padding so expressive-code's gutter calc stays consistent.
+
+---
+
+## Figcaption styling: pure typography, no chrome
+**File(s):** `packages/starlight-theme/styles/base.css` (`.expressive-code .frame.has-title .header` etc.)
+**Date:** 2026-05-07
+
+**Decision:** Codeblock titles (`<figcaption class="header">`) render as plain italic gem-toned text with `padding-inline` matching the codeblock's content baseline. All expressive-code chrome — tab-bar background, active-tab indicator pseudo, terminal traffic-light dots, terminal title-bar bottom-border — is suppressed via `display: none` / transparent overrides. Same treatment for `has-title` and `is-terminal` frames. Empty terminal headers (no `title=` meta) are fully hidden so they don't reserve placeholder height.
+
+**Why:** Expressive-code paints two competing variants of the same concept: a tabbed editor look (file titles) and a simulated macOS terminal window (shell blocks). Both reduce the figcaption to a "UI bar" pasted on the codeblock. Stripping the chrome and treating the title as a typographic caption gives one solid figure shape with a quiet gem-italic label — same vibe whether the snippet is TypeScript or shell.
+
+Figcaption color is `color-mix(in oklab, var(--diamond) 65%, var(--muted-foreground))` — gem-tinted but mixed toward muted so the caption reads as label, not headline.
+
+**How to apply:** Don't reach for figcaption when you want emphasis — it's intentionally muted. For "this is the file" semantics use `~~~lang title="..."`. Empty terminal frames should never render a title bar — the `:not(.has-title)` rule covers the `is-terminal` case explicitly because expressive-code adds `has-title` only when the meta is present.
+
+---
+
+## Container width: 60rem main + TOC at 1280px+ only + 180px TOC
+**File(s):** `packages/starlight-theme/components/overrides/TwoColumnContent.astro`
+**Date:** 2026-05-07
+
+**Decision:** Main content `max-width: 60rem` (~120 col). TOC right-rail visible only at `1280px+` (was 1024px+; pulled one breakpoint further out). TOC track narrowed from 240px → 180px. Container left padding scales: `4 * spacing` at 1024–1279, `8 * spacing` at 1280+.
+
+**Why:** Original 40rem (~80 col) was too tight with prose set in JetBrains Mono — long code lines forced horizontal scroll and aside callouts felt cramped. 60rem gives more breathing room without breaking line-length-as-readability convention badly. Pulling TOC to 1280px+ is the bigger win at the 13–15" laptop range where left sidebar (240px) + TOC (180px) + gaps were leaving the main column at ~508px on a 1024px viewport. Now at 1024–1279, it's left sidebar + main only with no right rail; main column gets ~720px instead.
+
+180px TOC vs 240px reflects that headings on this site are short — the wider track was wasted whitespace.
+
+**How to apply:** When tightening layouts further, look at what each grid track is actually displaying at the smallest breakpoint where it appears. Track widths set for 1440px+ are usually overprovisioned for 1280px.
+
+---
+
+## Inline-code chip: scoped color theming via `--code-chip-*` tokens
+**File(s):** `packages/starlight-theme/styles/base.css` (`:not(pre) > code` + scoped overrides for asides / cards / value-props / stat-items)
+**Date:** 2026-05-07
+
+**Decision:** Inline `<code>` chips use generic `--code-chip-accent` and `--code-chip-bg` tokens (default to `var(--diamond)` and `var(--muted)` respectively). Scoped rules inside asides, FeatureCards, ValueProps, and StatItems override those tokens to inherit the local accent — caution aside → orange chip, emerald card → emerald chip, etc.
+
+**Why:** Default global diamond-tinted chips broke the color cohesion of caution asides (orange aside with a blue chip looked accidental). Token-driven scoping means the chip always belongs to its surrounding container's color system without having to author per-context CSS rules.
+
+**How to apply:** New container components with their own gem accent should set `--code-chip-accent: var(--<their-accent>)` and `--code-chip-bg: var(--<their-bg>)` in their `:scope > * :not(pre) > code` rule. The fallback token chain (`var(--card-accent, var(--vp-accent, var(--stat-accent, var(--diamond))))`) covers the existing components.
+
+---
+
+## Safari JSX dev runtime: prebundle via `optimizeDeps.include`
+**File(s):** `docs/astro.config.mjs` (`vite.optimizeDeps.include`)
+**Date:** 2026-05-07
+
+**Decision:** `optimizeDeps.include` extended from `['react-dom/client']` to `['react-dom/client', 'react/jsx-dev-runtime', 'react/jsx-runtime']`.
+
+**Why:** Safari was throwing `TypeError: jsxDEV is not a function` on the HeroShader's React `client:only="react"` hydration in dev mode. Vite lazy-resolves `react/jsx-dev-runtime` on first hydration; Chrome handles it but Safari occasionally commits the component before the runtime module finishes loading. Pre-bundling forces the runtimes into the initial dep graph so JSX call sites always have their renderer.
+
+**Evidence:** Reproduced in Safari, fixed by the include change after dev server restart. Production build was always fine (uses `react/jsx-runtime` which is already bundled in the prod chunk).
+
+**How to apply:** Any new React component loaded via `client:*` directives in dev should not trigger this — but if a future Safari-only hydration timing bug surfaces, this is the first place to check.
+
+---
+
+## WebGPU/WebGL marketing copy: TSL + hand-rolled paths, koota-managed batching
+**File(s):** `docs/src/content/docs/index.mdx` (FeatureCard + ValueProp + StatsBanner copy), `docs/src/content/docs/getting-started/introduction.mdx` (FeatureList copy)
+**Date:** 2026-05-07
+
+**Decision:** All "WebGPU Native / no WebGL fallbacks / impossible on WebGL" framing was replaced. New framing acknowledges:
+- TSL targets BOTH WebGPU and WebGL2 — same shader graph compiles for both renderers
+- Parity is earned, not free — dedicated WebGL paths in TSL are hand-rolled where they earn real performance gains
+- WebGPU is the ceiling, not the floor — opt-in for compute, storage buffers
+- Sprite batching state is managed by `koota` (an expressive ECS) — not "custom ECS"
+- The ECS-to-GPU shared layout is the additional speed unlock, beyond the usual ECS-CPU-cache wins
+
+**Why:** Previous copy claimed exclusivity ("designed exclusively for WebGPU renderer", "no WebGL baggage", "effects impossible on WebGL"). Stakeholder corrected: that's not what the library is. Marketing was promising a different product than what ships. Honest framing also lets the engineering work behind 1:1 parity be visible — the value isn't free magic, it's deliberate dual-path implementation.
+
+**How to apply:** Future feature copy should resist the temptation to position WebGPU as the only way the library works. The framing is "WebGPU + WebGL, same API, hand-tuned where the renderers diverge." Mentions of `koota` should not call it "custom ECS" — it's a third-party ECS we use; the custom layer is the batching system built on top.
+
+---
+
 ## Phase 3 direction pivot — bearded-theme gem palette + typography fix + restored wordmark + sub-perceptual texture
 **File(s):** `CLAUDE.md` (Design Context); `planning/issues/32/plan.md` (Phase 3 substrate item 0); `packages/starlight-theme/styles/theme.css`; `docs/uno.config.ts`; `packages/starlight-theme/styles/base.css`; `packages/starlight-theme/components/overrides/SiteTitle.astro`; `docs/astro.config.mjs`; `docs/package.json`
 **Date:** 2026-05-06
