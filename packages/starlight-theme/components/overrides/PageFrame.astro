@@ -21,7 +21,13 @@ const isLanding = path === base || path === '';
     {isLanding && (
         <aside class="alpha-ribbon" aria-label="Early alpha release">
             <a class="alpha-ribbon-tape" href="https://github.com/thejustinwalsh/three-flatland/issues">
-                <span class="alpha-ribbon-text">Early Alpha</span>
+                {/* Inline margin-left avoids a FOUC text-jump — the ribbon
+                    paints from cached CSS before the .alpha-ribbon-text
+                    rule resolves, so the text would briefly render at
+                    margin-left: 0 then snap to its padded position.
+                    Mobile margin-left is overridden by the @media rule
+                    in the <style> block via !important. */}
+                <span class="alpha-ribbon-text" style="margin-left: 5.5rem">Early Alpha</span>
             </a>
         </aside>
     )}
@@ -88,12 +94,12 @@ const isLanding = path === base || path === '';
     .alpha-ribbon-tape {
         position: absolute;
         top: 5.5rem;
-        left: -5rem;
+        left: -15rem;
         width: 46rem;
         padding: 0.55rem 0;
         text-align: center;
         text-decoration: none;
-        transform: rotate(22deg);
+        transform: rotate(-30deg);
         transform-origin: 50% 50%;
         pointer-events: auto;
         cursor: pointer;
@@ -149,32 +155,39 @@ const isLanding = path === base || path === '';
         mask-size: 240px 240px;
         opacity: 0.55;
     }
-    /* Hover handled by the rule below the @media for the new angle. */
     .alpha-ribbon-text {
         position: relative;
         z-index: 1;
         text-shadow: 0 1px 0 color-mix(in oklab, var(--gold-high) 90%, white);
     }
+    /* Mobile breakpoint — scale the tape geometry down proportionally
+     * to the wrapper. Desktop wrapper is 36×13 with tape positioned
+     * top:5.5 left:-15 width:46 (text padded margin-left:5.5).
+     * Mobile wrapper is 22×9 — scale ratios ~0.611 horizontal, ~0.692
+     * vertical. Rounded for clean rems. */
     @media (max-width: 50rem) {
         .alpha-ribbon {
             width: 22rem;
             height: 9rem;
         }
         .alpha-ribbon-tape {
-            top: 3rem;
-            left: -2rem;
-            width: 26rem;
-            font-size: 0.7rem;
+            top: 3.8rem;
+            left: -9rem;
+            width: 28rem;
+            font-size: 0.65rem;
+        }
+        .alpha-ribbon-text {
+            margin-left: 3.4rem !important;
         }
     }
     .alpha-ribbon-tape:hover {
-        transform: rotate(22deg) scale(1.03);
+        transform: rotate(-30deg) scale(1.03);
         filter: saturate(1.1);
     }
     @media (prefers-reduced-motion: reduce) {
         .alpha-ribbon-tape,
         .alpha-ribbon-tape:hover {
-            transform: rotate(22deg);
+            transform: rotate(-30deg);
             transition: none;
         }
     }
