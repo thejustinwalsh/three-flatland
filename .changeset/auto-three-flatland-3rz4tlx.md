@@ -5,13 +5,18 @@
 > Branch: docs-refresh-foundation
 > PR: https://github.com/thejustinwalsh/three-flatland/pull/33
 
-## StatsBanner: gem accent on value text and underline
+## Changes
 
-- Re-enabled the `color` prop on `StatItem` — was accepted but silently ignored; all stats now render with their declared gem accent
-- Conventional color names (`cyan`, `blue`, `green`, `orange`, `red`, `yellow`, `purple`) are mapped to gem equivalents via the shared `legacyToGem` table; existing MDX call sites require no changes
-- Stat value text is colored `65% gem + 35% foreground` for legibility, with a soft gem-tinted `text-shadow` glow
-- Each stat receives a `--stat-accent` CSS custom property set inline; the CSS fallback is `--primary` when no gem is specified
-- Thin gem-tinted hairline underline added per stat via `background-image` gradient (fades to transparent at the right edge), so multiple stats read as a colored chord across the row rather than a flat band
-- Minor README heading update: "Why three-flatland?" → "Why Flatland?"
+**StatsBanner — gem color prop restored (`docs/src/components/StatsBanner.astro`)**
 
-`StatsBanner` now correctly applies gem accent colors to value text and underlines for each stat, matching the behavior of `FeatureCard` and `ValueProp`.
+- Re-enabled the `color` prop on each `StatItem`; was previously accepted but silently ignored, causing all stats to render in `--foreground`
+- `color` accepts gem names (`gold`, `ruby`, `emerald`, `diamond`, `amethyst`, `pink`, `salmon`, `turquoize`) or conventional color aliases (`cyan`, `blue`, `green`, `orange`, `red`, `yellow`, `purple`) mapped to their nearest gem via `legacyToGem`
+- Each stat now sets `--stat-accent` inline from the resolved gem token
+- Stat value text rendered with `color-mix(in oklab, var(--stat-accent) 65%, var(--foreground))` for legibility, plus a soft gem-tinted `text-shadow` glow
+- Gem-tinted hairline underline added per stat (linear gradient fading right to transparent), making the four stats read as a colored chord across the row rather than a flat band
+
+**README (`packages/three-flatland/README.md`)**
+
+- Section heading renamed from "Why three-flatland?" to "Why Flatland?" to align with the brand naming convention (short human-facing name in prose)
+
+StatsBanner's `color` prop is fully functional again; any MDX call sites that previously passed gem names will now see the correct per-stat accent colors without any changes to their markup.
