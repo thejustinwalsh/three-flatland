@@ -40,7 +40,14 @@ export default defineConfig({
   integrations: [
     UnoCSS({ injectReset: false }),
     ...Icons({
-      codeblock: true,
+      // codeblock: false — disables starlight-plugin-icons' inline
+      // injection of pluginIcon into Starlight's expressiveCode config.
+      // That inline registration made the EC config non-JSON-serializable
+      // (plugins are functions), which broke the standalone <Code>
+      // component used by ExampleSplitView's multi-file code panel.
+      // Codeblock language icons on titled fenced blocks are forfeit
+      // until the plugin ships compiled JS (see ec.config.mjs comment).
+      codeblock: false,
       extractSafelist: true,
       starlight: {
         // Visual brand is "flatland" (set in Silkscreen by SiteTitle override).

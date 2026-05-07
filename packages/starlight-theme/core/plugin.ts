@@ -1,12 +1,13 @@
 import type { StarlightPlugin } from '@astrojs/starlight/types';
 import { override, COMPONENT_OVERRIDES } from './config/override';
-import { expressiveCode } from './config/expresive-code';
 import { vitePlugin } from './config/vite';
 import {
     StarlightThemeConfigSchema,
     type StarlightThemeConfig,
     type StarlightThemeUserConfig,
 } from './config/schemas';
+// Expressive Code config moved to `docs/ec.config.mjs` — see comment
+// inside plugin's `config:setup` below.
 
 const parseConfig = (userConfig?: StarlightThemeUserConfig): StarlightThemeConfig => {
     const parsedConfig = StarlightThemeConfigSchema.safeParse(userConfig ?? {});
@@ -25,6 +26,15 @@ const plugin = (userConfig?: StarlightThemeUserConfig): StarlightPlugin =>
         name: 'starlight-theme',
         hooks: {
             'config:setup': ({ config, logger, updateConfig, addIntegration }) => {
+                // Expressive Code config moved to `docs/ec.config.mjs`.
+                // Reason: Starlight's `<Code>` component (used by
+                // ExampleSplitView's multi-file code panel) requires
+                // a serializable EC config. Passing options inline
+                // through `updateConfig({ expressiveCode })` failed
+                // the JSON-serialization check at build time. Astro
+                // resolves both at runtime — ec.config.mjs is the
+                // single source for fenced code blocks AND the
+                // standalone <Code> component.
                 updateConfig({
                     components: override(config, COMPONENT_OVERRIDES, logger),
                     customCss: [
@@ -33,7 +43,6 @@ const plugin = (userConfig?: StarlightThemeUserConfig): StarlightPlugin =>
                         'starlight-theme/styles/theme',
                         'starlight-theme/styles/base',
                     ],
-                    expressiveCode: expressiveCode(config),
                 });
 
                 addIntegration({

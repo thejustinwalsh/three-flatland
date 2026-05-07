@@ -125,6 +125,9 @@ export default defineConfig({
     'i-simple-icons:npm', 'i-simple-icons:pnpm',
     'i-simple-icons:yarn', 'i-simple-icons:bun',
     'i-simple-icons:react', 'i-simple-icons:threedotjs',
+    // ExampleSplitView toolbar
+    'i-simple-icons:stackblitz', 'i-simple-icons:github',
     'i-lucide:sparkles', 'i-lucide:wand-sparkles', 'i-lucide:bot',
+    'i-lucide:volume-2', 'i-lucide:volume-x',
   ]),
 })
