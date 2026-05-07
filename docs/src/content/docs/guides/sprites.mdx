@@ -3,12 +3,12 @@ title: Sprites
 description: Learn how to create and customize 2D sprites.
 ---
 
-import { Tabs, TabItem } from '@astrojs/starlight/components';
+import { Tabs, TabItem } from 'starlight-theme/components';
 
 The `Sprite2D` class is the foundation for 2D rendering in three-flatland.
 
 <Tabs syncKey="framework">
-  <TabItem label="Three.js" icon="seti:javascript">
+  <TabItem label="Three.js" icon="simple-icons:threedotjs">
     ```typescript
     import { Sprite2D, SpriteGroup } from 'three-flatland';
 
@@ -20,7 +20,7 @@ The `Sprite2D` class is the foundation for 2D rendering in three-flatland.
     spriteGroup.add(sprite);
     ```
   </TabItem>
-  <TabItem label="React" icon="seti:react">
+  <TabItem label="React" icon="simple-icons:react">
     ```tsx
     import { extend } from '@react-three/fiber/webgpu';
     import { Sprite2D, SpriteGroup } from 'three-flatland/react';
@@ -89,7 +89,7 @@ const sprite = new Sprite2D({
 For batched rendering with many sprites, use `SpriteGroup`:
 
 <Tabs syncKey="framework">
-  <TabItem label="Three.js" icon="seti:javascript">
+  <TabItem label="Three.js" icon="simple-icons:threedotjs">
     ```typescript
     import { SpriteGroup } from 'three-flatland';
 
@@ -103,7 +103,7 @@ For batched rendering with many sprites, use `SpriteGroup`:
     renderer.render(scene, camera);
     ```
   </TabItem>
-  <TabItem label="React" icon="seti:react">
+  <TabItem label="React" icon="simple-icons:react">
     ```tsx
     import { extend } from '@react-three/fiber/webgpu';
     import { Sprite2D, SpriteGroup } from 'three-flatland/react';

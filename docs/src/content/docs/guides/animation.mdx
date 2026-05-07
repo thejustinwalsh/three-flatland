@@ -3,12 +3,12 @@ title: Animation
 description: Animate sprites using spritesheets and frame-based animation.
 ---
 
-import { Tabs, TabItem } from '@astrojs/starlight/components';
+import { Tabs, TabItem } from 'starlight-theme/components';
 
 three-flatland supports frame-based animation using spritesheets. The `AnimatedSprite2D` class works with `SpriteSheetLoader` to load and play animations.
 
 <Tabs syncKey="framework">
-  <TabItem label="Three.js" icon="seti:javascript">
+  <TabItem label="Three.js" icon="simple-icons:threedotjs">
     ```typescript
     import { AnimatedSprite2D, SpriteSheetLoader, Layers } from 'three-flatland';
 
@@ -53,7 +53,7 @@ three-flatland supports frame-based animation using spritesheets. The `AnimatedS
     }
     ```
   </TabItem>
-  <TabItem label="React" icon="seti:react">
+  <TabItem label="React" icon="simple-icons:react">
     ```tsx
     import { Suspense, useRef } from 'react';
     import { extend, useFrame, useLoader } from '@react-three/fiber/webgpu';

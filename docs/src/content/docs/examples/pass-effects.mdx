@@ -3,7 +3,7 @@ title: Pass Effects
 description: Dynamic post-processing with composable PassEffects.
 ---
 
-import { Tabs, TabItem } from '@astrojs/starlight/components';
+import { Tabs, TabItem } from 'starlight-theme/components';
 import ExamplePreview from '../../../components/ExamplePreview';
 import StackBlitzEmbed from '../../../components/StackBlitzEmbed';
 import ExampleTabs from '../../../components/ExampleTabs.astro';
@@ -17,7 +17,7 @@ export const reactFiles = loadExample('react', 'pass-effects');
   <TabItem label="Preview" icon="rocket">
     <ExamplePreview client:load type="three" name="pass-effects" />
   </TabItem>
-  <TabItem label="Three.js" icon="seti:javascript">
+  <TabItem label="Three.js" icon="simple-icons:threedotjs">
     <StackBlitzEmbed
       client:load
       title="Pass Effects - Three.js"
@@ -26,7 +26,7 @@ export const reactFiles = loadExample('react', 'pass-effects');
       height={600}
     />
   </TabItem>
-  <TabItem label="React" icon="seti:react">
+  <TabItem label="React" icon="simple-icons:react">
     <StackBlitzEmbed
       client:load
       title="Pass Effects - React"
@@ -55,7 +55,7 @@ This example demonstrates the **Pass Effect** system for full-screen post-proces
 Use `createPassEffect` with a schema for parameters and a TSL node builder:
 
 <Tabs syncKey="framework">
-  <TabItem label="Three.js" icon="seti:javascript">
+  <TabItem label="Three.js" icon="simple-icons:threedotjs">
     ```typescript
     import { createPassEffect } from 'three-flatland'
     import { crtComplete } from '@three-flatland/nodes'
@@ -83,7 +83,7 @@ Use `createPassEffect` with a schema for parameters and a TSL node builder:
     })
     ```
   </TabItem>
-  <TabItem label="React" icon="seti:react">
+  <TabItem label="React" icon="simple-icons:react">
     ```tsx
     import { createPassEffect } from 'three-flatland/react'
     import { crtComplete } from '@three-flatland/nodes'
@@ -118,7 +118,7 @@ Use `createPassEffect` with a schema for parameters and a TSL node builder:
 Instantiate a pass and add it to Flatland. Passes chain in order — each receives the previous output:
 
 <Tabs syncKey="framework">
-  <TabItem label="Three.js" icon="seti:javascript">
+  <TabItem label="Three.js" icon="simple-icons:threedotjs">
     ```typescript
     const crt = new CRTPass()
     flatland.addPass(crt)
@@ -131,7 +131,7 @@ Instantiate a pass and add it to Flatland. Passes chain in order — each receiv
     flatland.addPass(new PosterizePass()).addPass(new VignettePass())
     ```
   </TabItem>
-  <TabItem label="React" icon="seti:react">
+  <TabItem label="React" icon="simple-icons:react">
     ```tsx
     import { useEffect, useRef } from 'react'
     import { useFrame } from '@react-three/fiber/webgpu'

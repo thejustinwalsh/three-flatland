@@ -214,8 +214,10 @@
 
     /* Markdown body links keep the underline affordance (prose convention)
      * but use the gem link color. The decoration pulls from the link hue at
-     * lower opacity so the line reads quieter than the text. */
-    .sl-markdown-content a:not([class]) {
+     * lower opacity so the line reads quieter than the text. UI affordances
+     * inside markdown — tab anchors, notably — match `a:not([class])` too,
+     * so we exclude them by role to keep them looking like tabs not links. */
+    .sl-markdown-content a:not([class]):not([role='tab']) {
         text-decoration: underline;
         text-decoration-thickness: 1px;
         text-underline-offset: calc(var(--spacing) * 1);
@@ -224,7 +226,7 @@
         font-weight: 500;
     }
 
-    .sl-markdown-content a:not([class]):hover {
+    .sl-markdown-content a:not([class]):not([role='tab']):hover {
         color: var(--link-hover);
         text-decoration-color: var(--link-hover);
     }
@@ -351,14 +353,35 @@
     }
 
     /* code inline — gem-tinted background so inline code reads distinct
-     * from prose without screaming. */
+     * from prose without screaming. The chip uses a generic `--code-chip-*`
+     * token that downstream context (asides, cards, value-props) overrides
+     * to match its surrounding color theme — see the rules below. */
     .sl-markdown-content :not(pre) > code {
-        background: color-mix(in oklab, var(--muted) 70%, var(--diamond));
-        color: color-mix(in oklab, var(--foreground) 92%, var(--diamond));
+        --code-chip-accent: var(--diamond);
+        --code-chip-bg: var(--muted);
+        background: color-mix(in oklab, var(--code-chip-bg) 70%, var(--code-chip-accent));
+        color: color-mix(in oklab, var(--foreground) 92%, var(--code-chip-accent));
         border-radius: calc(var(--radius) - 4px);
         padding: 0.15rem 0.4rem;
         font-size: 0.875em;
         font-weight: 500;
+    }
+    /* Inline code inside an aside, card, value-prop, or stat-item picks
+     * up the surrounding color theme. Each container defines its own
+     * accent token (`--aside-title`, `--card-accent`, `--vp-accent`,
+     * `--stat-accent`); the chip pulls the local accent for the tint
+     * and its low-chroma surface for the background, so the chip
+     * visually belongs to the callout instead of always falling back
+     * to global diamond. */
+    .sl-markdown-content .starlight-aside :not(pre) > code {
+        --code-chip-accent: var(--aside-title);
+        --code-chip-bg: var(--aside-background);
+    }
+    .sl-markdown-content .feature-card :not(pre) > code,
+    .sl-markdown-content .value-prop :not(pre) > code,
+    .sl-markdown-content .stat-item :not(pre) > code {
+        --code-chip-accent: var(--card-accent, var(--vp-accent, var(--stat-accent, var(--diamond))));
+        --code-chip-bg: var(--card, var(--background));
     }
 
     /* Lists — generous indent, restrained markers. */
@@ -450,6 +473,107 @@
         .ec-line
         :where(span[style^='--']:not([class])) {
         font-size: 0.933em;
+    }
+
+    /* External link icon — the rehype plugin appends a span+SVG to
+     * every external link. Inline-block keeps the SVG's box flowing
+     * with the text baseline; the plugin pairs this with a leading
+     * NBSP so a wrap can't split the icon away from the last word.
+     * Color is slightly muted so the icon reads as a marker, not a
+     * second underline. */
+    .external-link-icon {
+        display: inline-block;
+        margin-inline-start: 0.05em;
+        vertical-align: -0.125em;
+        color: color-mix(in oklab, currentcolor 70%, transparent);
+    }
+    .external-link-icon svg {
+        display: block;
+    }
+
+    /* Code-block title (figcaption) — pure text styling, no chrome.
+     * Expressive-code paints two competing variants of the same
+     * concept: a tabbed editor look (file titles) with its own
+     * background + border + active-tab indicator, and a simulated
+     * macOS terminal window (shell blocks) with traffic-light dots
+     * and a bottom rule. Both reduce the figcaption to a "UI bar"
+     * pasted on the codeblock. We collapse all of it — chrome,
+     * pseudos, backgrounds, borders — and render the title as a
+     * gem-italic typographic caption flowing into the code. The
+     * figure reads as one solid shape. Treatment is identical
+     * whether the frame is a source file (`has-title`) or a shell
+     * snippet (`is-terminal`). */
+    .expressive-code .frame.has-title .header,
+    .expressive-code .frame.is-terminal .header {
+        display: block;
+        background: transparent;
+        background-image: none;
+        border: none;
+        padding: 0;
+    }
+    .expressive-code .frame.has-title .header::before,
+    .expressive-code .frame.has-title .header::after,
+    .expressive-code .frame.is-terminal .header::before,
+    .expressive-code .frame.is-terminal .header::after {
+        display: none;
+    }
+    .expressive-code .frame.has-title .title,
+    .expressive-code .frame.is-terminal .title {
+        background: transparent;
+        border: none;
+        border-radius: 0;
+        margin: 0;
+        /* Inline padding only — aligns the caption with the code's
+         * left padding. No vertical padding; the pre's own padding-top
+         * provides the breathing room beneath the caption. */
+        padding-block: 0;
+        padding-inline: 1rem;
+        color: color-mix(in oklab, var(--diamond) 65%, var(--muted-foreground));
+        font-style: italic;
+        font-weight: 400;
+        font-size: 0.8125rem;
+        letter-spacing: 0.005em;
+        text-align: start;
+        line-height: 1.4;
+    }
+    .expressive-code .frame.has-title .title::before,
+    .expressive-code .frame.has-title .title::after,
+    .expressive-code .frame.is-terminal .title::before,
+    .expressive-code .frame.is-terminal .title::after {
+        display: none;
+    }
+    /* Empty title (no `title=` meta) — expressive-code still renders an
+     * empty figcaption + a `.title:empty:before` non-breaking-space
+     * placeholder to reserve the title bar's height. We don't want a
+     * title bar at all in that case; collapse the figcaption to zero.
+     * Belt-and-suspenders: hide the header AND zero the title's pseudo
+     * placeholder, in case `:has()` isn't supported. */
+    .expressive-code .frame.is-terminal:not(.has-title) .header,
+    .expressive-code .frame:not(.has-title):not(.is-terminal) .header {
+        display: none;
+    }
+    .expressive-code .frame .title:empty,
+    .expressive-code .frame .title:empty::before {
+        display: none;
+        padding: 0;
+        margin: 0;
+        content: none;
+    }
+    /* Clip the figure to its rounded corners. With no internal borders
+     * on the pre and no header chrome, content (the pre's background)
+     * runs full-bleed; without overflow:hidden the square pre corners
+     * poke past the figure's rounded box-shadow. Box-shadow is rendered
+     * outside the box and is unaffected by overflow:hidden. */
+    .expressive-code .frame {
+        overflow: hidden;
+    }
+    /* Strip the pre's internal borders on titled / terminal frames so
+     * the figure reads as one shape. The figure's box-shadow defines
+     * the outline; without this, the title region (no border) and
+     * the pre (L/R/B border) don't visually align. */
+    .expressive-code .frame.has-title pre,
+    .expressive-code .frame.is-terminal pre {
+        border: none;
     }
 
     /* kbd styles */
@@ -1053,18 +1177,31 @@
         margin-top: 0;
     }
 
-    /* built-in Starlight Tabs */
+    /* built-in Starlight Tabs — `<starlight-tabs>` is the outer card.
+     * It owns the rounded rectangle, the background, and the *vertical*
+     * inset (0.8rem). Horizontal inset is delegated to the children
+     * (`.tablist-wrapper` and `[role='tabpanel']`, each 0.5rem) so the
+     * codeblock's intrinsic inline padding (`--ec-codePadInl` default
+     * 1rem) doesn't compound on top of an outer horizontal padding
+     * pushing ec-line content too far right. The split model: outer
+     * vertical, inner horizontal, codeblock keeps its own 1rem inline
+     * baseline so figcaption + code lines stay aligned with each
+     * other on a single column. */
     .sl-markdown-content starlight-tabs {
         display: block;
         margin-block: calc(var(--spacing) * 6) calc(var(--spacing) * 8);
+        padding-block: 0.8rem;
+        padding-inline: 0;
+        background-color: var(--code-background);
+        border-radius: calc(var(--radius) + 0.25rem);
     }
 
     .sl-markdown-content starlight-tabs .tablist-wrapper {
         overflow-x: auto;
-        padding: 0.25rem 0.75rem;
-        border-radius: calc(var(--radius) + 0.25rem) calc(var(--radius) + 0.25rem) 0 0;
-        background-color: var(--code-background);
-        box-shadow: inset 0 -1px 0 color-mix(in oklab, var(--border) 85%, transparent);
+        padding-block: 0;
+        padding-inline: 0.5rem;
+        background: none;
+        border-radius: 0;
     }
 
     .sl-markdown-content starlight-tabs [role='tablist'] {
@@ -1074,6 +1211,16 @@
         min-width: max-content;
         border-bottom: 0;
         padding: 0;
+        /* Strip the default `<li>` disc markers — the tab strip is
+         * a navigation list visually, not a bulleted list. */
+        list-style: none;
+        margin: 0;
+    }
+    .sl-markdown-content starlight-tabs .tab {
+        list-style: none;
+    }
+    .sl-markdown-content starlight-tabs .tab::marker {
+        content: '';
     }
 
     .sl-markdown-content starlight-tabs .tab > [role='tab'] {
@@ -1083,10 +1230,15 @@
         min-height: 1.75rem;
         padding: 0.125rem 0.5rem 0.25rem;
         border-radius: calc(var(--radius) - 2px);
+        /* Tab labels are UI affordances, not prose — use the Inter
+         * navigation typeface so they don't pick up JetBrains Mono
+         * from the surrounding markdown context. */
+        font-family: 'Inter', system-ui, sans-serif;
         color: color-mix(in oklab, var(--foreground) 60%, transparent);
         font-size: 0.875rem;
         font-weight: 500;
         line-height: 1.25rem;
+        text-decoration: none;
         box-shadow: none;
         transition-property: color, background-color, box-shadow;
         transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
@@ -1115,11 +1267,19 @@
         color: currentColor;
     }
 
+    /* Panel — same horizontal inset as the tab strip (0.5rem each side)
+     * so the panel content's left edge aligns vertically with the tab
+     * strip's left edge. The outer `<starlight-tabs>` card owns the
+     * vertical inset, background, and rounded shape. Codeblock pre
+     * + figcaption padding-inline is dialed to 0 below so the only
+     * horizontal inset for code text comes from the panel's 0.5rem,
+     * matching the tabs above and producing one continuous baseline. */
     .sl-markdown-content starlight-tabs .tablist-wrapper ~ [role='tabpanel'] {
         margin-top: 0;
-        padding: 1rem;
-        border-radius: 0 0 calc(var(--radius) + 0.25rem) calc(var(--radius) + 0.25rem);
-        background-color: var(--code-background);
+        padding-block: 0;
+        padding-inline: 0.5rem;
+        background: none;
+        border-radius: 0;
     }
 
     .sl-markdown-content starlight-tabs .tablist-wrapper ~ [role='tabpanel'] > :first-child {
@@ -1134,36 +1294,25 @@
         margin: 0;
     }
 
-    .sl-markdown-content starlight-tabs .tablist-wrapper ~ [role='tabpanel'] > .expressive-code {
-        margin: -1rem;
+    /* Codeblock inside a tab panel — strip its own outline so it doesn't
+     * double-up the card shape, and dial its intrinsic horizontal
+     * padding to 0 so the panel's 0.5rem inline inset is the *only*
+     * horizontal margin between code text and the card edge. That's
+     * what makes the figcaption + code lines align with the tab strip
+     * above on a single vertical baseline. Block padding is also
+     * tightened so single-line commands sit close to the tabs. */
+    .sl-markdown-content starlight-tabs .tablist-wrapper ~ [role='tabpanel'] .expressive-code .frame {
+        box-shadow: none;
+        border-radius: var(--radius);
     }
-
-    .sl-markdown-content
-        starlight-tabs
-        .tablist-wrapper
-        ~ [role='tabpanel']
-        > .expressive-code
-        .frame {
-        border: 0;
-        border-radius: 0 0 calc(var(--radius) + 0.25rem) calc(var(--radius) + 0.25rem);
+    .sl-markdown-content starlight-tabs .tablist-wrapper ~ [role='tabpanel'] .expressive-code pre {
+        --ec-codePadBlk: 0.5rem;
+        --ec-codePadInl: 0.5rem;
     }
-
-    .sl-markdown-content
-        starlight-tabs
-        .tablist-wrapper
-        ~ [role='tabpanel']
-        > .expressive-code
-        .header {
-        display: none;
-    }
-
-    .sl-markdown-content
-        starlight-tabs
-        .tablist-wrapper
-        ~ [role='tabpanel']
-        > .expressive-code
-        pre {
-        border-radius: 0 0 calc(var(--radius) + 0.25rem) calc(var(--radius) + 0.25rem);
+    .sl-markdown-content starlight-tabs .tablist-wrapper ~ [role='tabpanel'] .expressive-code .frame.has-title .title,
+    .sl-markdown-content starlight-tabs .tablist-wrapper ~ [role='tabpanel'] .expressive-code .frame.is-terminal .title {
+        padding-block: 0.25rem 0;
+        padding-inline: 0.5rem;
     }
 
     .sl-markdown-content starlight-tabs .tablist-wrapper ~ [role='tabpanel'] p {

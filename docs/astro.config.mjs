@@ -319,7 +319,14 @@ export default defineConfig({
     },
     plugins: [watchExamples(), copyExamples()],
     optimizeDeps: {
-      include: ['react-dom/client'],
+      // Pre-bundle the React JSX runtimes alongside `react-dom/client`.
+      // Without this, dev mode lazy-resolves `react/jsx-dev-runtime` on
+      // first hydration; Chrome handles that fine, but Safari occasionally
+      // commits the component before the runtime module finishes loading
+      // and `jsxDEV` ends up undefined ("TypeError: jsxDEV is not a
+      // function"). Pre-bundling forces the runtimes into the initial
+      // dep graph so the JSX call sites always have their renderer.
+      include: ['react-dom/client', 'react/jsx-dev-runtime', 'react/jsx-runtime'],
     },
     define: {
       'import.meta.env.VITE_EXAMPLES_PORT': JSON.stringify(examplesPort),

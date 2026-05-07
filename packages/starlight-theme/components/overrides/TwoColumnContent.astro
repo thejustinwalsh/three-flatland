@@ -25,24 +25,44 @@ const { toc } = Astro.locals.starlightRoute;
         position: relative;
     }
 
+    /* Container left padding scales by viewport — tighter at the
+     * 1024–1279 range so the (newly TOC-less) main area gets the
+     * pixels back, fuller at xl+ where there's room to breathe. */
     @media (min-width: 1024px) {
+        .container-main {
+            padding-top: calc(var(--spacing) * 8);
+            padding-bottom: calc(var(--spacing) * 8);
+            padding-left: calc(var(--spacing) * 4);
+        }
+    }
+    @media (min-width: 1280px) {
         .container-main {
             padding-left: calc(var(--spacing) * 8);
         }
     }
 
+    /* TOC only appears at xl+ (1280px and up). At 1024–1279 the main
+     * column sits without a right-rail because cramming a 180px TOC
+     * + 240px sidebar + content on a 13–15" laptop leaves prose
+     * uncomfortably narrow. Headings on this site are short enough
+     * that the loss of an in-page TOC at that width is acceptable —
+     * users at that size still have access to it via the top-of-page
+     * meta dropdown if needed. */
     @media (min-width: 1280px) {
         .container-main {
-            grid-template-columns: 1fr 240px;
+            grid-template-columns: 1fr 180px;
             display: grid;
-            gap: 2.5rem;
-            padding-top: calc(var(--spacing) * 8);
-            padding-bottom: calc(var(--spacing) * 8);
+            gap: 2rem;
         }
     }
 
     .main {
-        max-width: 40rem;
+        /* 60rem ≈ 120-column reading width with the JetBrains Mono prose
+         * stack — gives prose more horizontal breathing room than the
+         * conventional 40rem (~80 col) book-style width. Long code lines,
+         * tab strips, and aside callouts sit better at this width
+         * without forcing horizontal scroll. */
+        max-width: 60rem;
         min-width: 0;
         width: 100%;
         margin-inline: auto;

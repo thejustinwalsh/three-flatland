@@ -35,7 +35,10 @@
   },
   "dependencies": {
     "@pagefind/default-ui": "^1.5.2",
+    "hast-util-select": "^6.0.4",
     "marked": "^18.0.2",
+    "rehype": "^13.0.2",
+    "unist-util-visit": "^5.1.0",
     "zod": "^3.23.8"
   }
 }

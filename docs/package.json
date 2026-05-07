@@ -20,6 +20,8 @@
     "@iconify-json/lucide": "^1.2.105",
     "@iconify-json/material-icon-theme": "^1.2.62",
     "@iconify/utils": "^3.1.1",
+    "hast-util-select": "^6.0.4",
+    "rehype": "^13.0.2",
     "@react-three/fiber": "catalog:",
     "@stackblitz/sdk": "^1.11.0",
     "@unocss/astro": "^66.6.8",

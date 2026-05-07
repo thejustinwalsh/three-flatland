@@ -3,7 +3,7 @@ title: Animation
 description: Animate sprites using spritesheets with three-flatland.
 ---
 
-import { Tabs, TabItem } from '@astrojs/starlight/components';
+import { Tabs, TabItem } from 'starlight-theme/components';
 import ExamplePreview from '../../../components/ExamplePreview';
 import StackBlitzEmbed from '../../../components/StackBlitzEmbed';
 import ExampleTabs from '../../../components/ExampleTabs.astro';
@@ -17,7 +17,7 @@ export const reactFiles = loadExample('react', 'animation');
   <TabItem label="Preview" icon="rocket">
     <ExamplePreview client:load type="three" name="animation" />
   </TabItem>
-  <TabItem label="Three.js" icon="seti:javascript">
+  <TabItem label="Three.js" icon="simple-icons:threedotjs">
     <StackBlitzEmbed
       client:load
       title="Animation - Three.js"
@@ -26,7 +26,7 @@ export const reactFiles = loadExample('react', 'animation');
       height={600}
     />
   </TabItem>
-  <TabItem label="React" icon="seti:react">
+  <TabItem label="React" icon="simple-icons:react">
     <StackBlitzEmbed
       client:load
       title="Animation - React"

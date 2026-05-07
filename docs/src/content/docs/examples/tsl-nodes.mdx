@@ -3,7 +3,7 @@ title: TSL Nodes
 description: Create custom shader effects using Three Shader Language nodes.
 ---
 
-import { Tabs, TabItem } from '@astrojs/starlight/components';
+import { Tabs, TabItem } from 'starlight-theme/components';
 import ExamplePreview from '../../../components/ExamplePreview';
 import StackBlitzEmbed from '../../../components/StackBlitzEmbed';
 import ExampleTabs from '../../../components/ExampleTabs.astro';
@@ -17,7 +17,7 @@ export const reactFiles = loadExample('react', 'tsl-nodes');
   <TabItem label="Preview" icon="rocket">
     <ExamplePreview client:load type="three" name="tsl-nodes" />
   </TabItem>
-  <TabItem label="Three.js" icon="seti:javascript">
+  <TabItem label="Three.js" icon="simple-icons:threedotjs">
     <StackBlitzEmbed
       client:load
       title="TSL Nodes - Three.js"
@@ -26,7 +26,7 @@ export const reactFiles = loadExample('react', 'tsl-nodes');
       height={600}
     />
   </TabItem>
-  <TabItem label="React" icon="seti:react">
+  <TabItem label="React" icon="simple-icons:react">
     <StackBlitzEmbed
       client:load
       title="TSL Nodes - React"
@@ -58,7 +58,7 @@ This example demonstrates the **Material Effect** system — the recommended way
 Effects are defined with `createMaterialEffect`, which takes a schema for per-sprite data and a TSL node builder:
 
 <Tabs syncKey="framework">
-  <TabItem label="Three.js" icon="seti:javascript">
+  <TabItem label="Three.js" icon="simple-icons:threedotjs">
     ```typescript
     import { createMaterialEffect } from 'three-flatland'
     import { tintAdditive, hueShift } from '@three-flatland/nodes'
@@ -80,7 +80,7 @@ Effects are defined with `createMaterialEffect`, which takes a schema for per-sp
     })
     ```
   </TabItem>
-  <TabItem label="React" icon="seti:react">
+  <TabItem label="React" icon="simple-icons:react">
     ```tsx
     import { createMaterialEffect } from 'three-flatland/react'
     import { tintAdditive, hueShift } from '@three-flatland/nodes'
@@ -109,7 +109,7 @@ Effects are defined with `createMaterialEffect`, which takes a schema for per-sp
 Instantiate an effect, add it to a sprite, and animate its properties:
 
 <Tabs syncKey="framework">
-  <TabItem label="Three.js" icon="seti:javascript">
+  <TabItem label="Three.js" icon="simple-icons:threedotjs">
     ```typescript
     const flash = new DamageFlash()
     sprite.addEffect(flash)
@@ -121,7 +121,7 @@ Instantiate an effect, add it to a sprite, and animate its properties:
     sprite.removeEffect(flash)
     ```
   </TabItem>
-  <TabItem label="React" icon="seti:react">
+  <TabItem label="React" icon="simple-icons:react">
     ```tsx
     const flash = useMemo(() => new DamageFlash(), [])
 

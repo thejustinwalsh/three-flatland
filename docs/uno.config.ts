@@ -12,6 +12,14 @@ export default defineConfig({
   presets: [
     presetStarlightIcons(),
     presetIcons({
+      // Force every icon to render via CSS mask + currentColor. Default
+      // mode='auto' lets multi-color icons (material-icon-theme brand
+      // glyphs, etc.) render in their original palette, which clashes
+      // with the gem theme. Mask mode resolves to a single-color
+      // silhouette that inherits from the surrounding text color, so
+      // brand icons read as monochrome chips and respect dark/light
+      // mode, hover gem tints, etc.
+      mode: 'mask',
       collections: {
         // Workspace-local custom icon collection. Drop SVGs in `docs/src/icons/tf/`
         // to use them as `<span class="i-tf:name" />` anywhere in the site.
@@ -109,5 +117,14 @@ export default defineConfig({
     // Sidebar group icons (also referenced statically in astro.config.mjs)
     'i-lucide:download', 'i-lucide:play', 'i-lucide:rocket', 'i-lucide:palette',
     'i-lucide:terminal', 'i-lucide:image', 'i-lucide:book-open',
+    // Package-manager / framework tabs — TabItem `icon=` prop produces
+    // dynamic class names UnoCSS can't statically extract (`i-${icon}`).
+    // simple-icons gives us proper monochrome brand silhouettes that
+    // resolve cleanly through `mode: 'mask'` (material-icon-theme's
+    // multi-color glyphs lose detail when masked, especially `bun`).
+    'i-simple-icons:npm', 'i-simple-icons:pnpm',
+    'i-simple-icons:yarn', 'i-simple-icons:bun',
+    'i-simple-icons:react', 'i-simple-icons:threedotjs',
+    'i-lucide:sparkles', 'i-lucide:wand-sparkles', 'i-lucide:bot',
   ]),
 })

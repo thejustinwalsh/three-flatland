@@ -8,7 +8,7 @@ import FeatureCard from '../../components/FeatureCard.astro';
 import StatsBanner from '../../components/StatsBanner.astro';
 import ValueProp from '../../components/ValueProp.astro';
 import HeroShader from '../../components/HeroShader.tsx';
-import { Tabs, TabItem, Aside } from '@astrojs/starlight/components';
+import { Tabs, TabItem, Aside } from 'starlight-theme/components';
 
 <section class="hero-fullscreen not-content">
   <div class="hero-canvas" aria-hidden="true">
@@ -49,7 +49,7 @@ import { Tabs, TabItem, Aside } from '@astrojs/starlight/components';
   { value: "20K+", label: "Sprites at 60fps", color: "diamond" },
   { value: "Auto", label: "Instanced GPU batches", color: "pink" },
   { value: "TSL", label: "Composable shader nodes", color: "gold" },
-  { value: "WebGPU", label: "Native renderer", color: "amethyst" },
+  { value: "WebGPU", label: "And WebGL rendering", color: "amethyst" },
 ]} />
 
 <h2 class="section-heading">What ships in the box</h2>
@@ -57,12 +57,12 @@ import { Tabs, TabItem, Aside } from '@astrojs/starlight/components';
 <div class="feature-grid">
   <FeatureCard
     icon="lightbulb"
-    title="WebGPU Native"
+    title="WebGPU + WebGL"
     color="diamond"
-    stat="Next-Gen"
-    statLabel="Graphics API"
+    stat="Both"
+    statLabel="Graphics APIs"
   >
-    Built from the ground up for WebGPU. No WebGL fallbacks, no compromises. Pure TSL shader power for effects that weren't possible before.
+    TSL compiles to both WebGPU and WebGL — and where it counts we hand-roll dedicated WebGL paths so the 1:1 experience is real under load, not aspirational.
   </FeatureCard>
 
   <FeatureCard
@@ -72,7 +72,7 @@ import { Tabs, TabItem, Aside } from '@astrojs/starlight/components';
     stat="10,000+"
     statLabel="Sprites per batch"
   >
-    Automatic batching and GPU instancing. Every sprite shares geometry and materials. Your GPU does the heavy lifting.
+    Per-sprite effects and z-sort without ever rebatching. Flash one sprite, outline another, dissolve a third — all packed into the same GPU buffer, all shipped in a single draw call.
   </FeatureCard>
 
   <FeatureCard
@@ -119,7 +119,7 @@ import { Tabs, TabItem, Aside } from '@astrojs/starlight/components';
 <h2 class="section-heading">Quick Start</h2>
 
 <Tabs>
-  <TabItem label="Three.js" icon="seti:javascript">
+  <TabItem label="Three.js" icon="simple-icons:threedotjs">
 ```typescript
 import { Sprite2D, SpriteGroup } from 'three-flatland'
 
@@ -136,7 +136,7 @@ enemy.position.set(2, 0, 0)
 spriteGroup.add(player, enemy)
 ```
   </TabItem>
-  <TabItem label="React" icon="seti:react">
+  <TabItem label="React" icon="simple-icons:react">
 ```tsx
 import { Canvas, extend } from '@react-three/fiber/webgpu'
 import { Sprite2D, SpriteGroup } from 'three-flatland/react'
@@ -159,16 +159,16 @@ function Game() {
 
 <h2 class="section-heading">Why three-flatland?</h2>
 
-<ValueProp title="Built for the Future" color="diamond">
-  three-flatland is designed **exclusively** for Three.js WebGPU renderer. No legacy code, no WebGL baggage. By targeting WebGPU from day one, we leverage **TSL (Three Shader Language)** for shader composition that simply isn't possible with GLSL strings.
+<ValueProp title="WebGPU and WebGL, Same API" color="diamond">
+  three-flatland is authored in **TSL (Three Shader Language)** — Three.js's renderer-agnostic shader graph that compiles to **both WebGPU and WebGL2**. Parity isn't free, though — we hand-roll dedicated WebGL paths in TSL where they earn real performance gains, so the **1:1 experience** holds up under load. Same scenes, same effects, both renderers.
 
-  This means **real-time shader effects** that would tank performance on WebGL run buttery smooth. Palette cycling, CRT effects, per-sprite distortion — all composable, all fast.
+  Where WebGPU genuinely unlocks new ground — compute passes, storage buffers, effects WebGL can't reach — three-flatland exposes that ceiling cleanly so you can opt in. **Consistent baseline, expressive ceiling.** No GLSL strings, no per-renderer forks for users.
 </ValueProp>
 
 <ValueProp title="Performance Obsessed" color="emerald" align="right">
   Every sprite in your scene shares the same geometry and materials through **automatic batching**. Whether you have 10 sprites or 10,000, three-flatland keeps your draw calls minimal and your frame rate high.
 
-  The GPU does what GPUs do best. Your CPU stays free for game logic. **Zero per-sprite overhead** in your render loop.
+  Sprite batching state is managed by **[koota](https://github.com/pmndrs/koota)**, an expressive ECS. Per-frame work runs as tight, cache-friendly batch updates over only what actually changed — and because the same component layout that makes the CPU side fast also defines the GPU buffer layout, the upload to the renderer is a packed memcpy, not a scattered rebuild.
 </ValueProp>
 
 <ValueProp title="Developer Joy" color="gold">

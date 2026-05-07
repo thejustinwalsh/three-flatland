@@ -76,7 +76,13 @@ export function rehypeExternalLinks() {
           node.properties.className = [node.properties.className, 'external-link'];
         }
 
-        // Append the icon SVG as a child of the link
+        // Append a non-breaking space before the icon so the line
+        // cannot break between the link's last word and the icon
+        // (otherwise a wrapping link drops the icon to a new line
+        // alone, or pulls the last word down with it). The icon
+        // span itself is inline-block so a wrap inside the icon's
+        // glyph box can't happen either.
+        node.children.push({ type: 'text', value: ' ' });
         node.children.push(structuredClone(EXTERNAL_ICON));
       }
     });

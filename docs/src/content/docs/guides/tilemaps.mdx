@@ -3,14 +3,14 @@ title: Tilemaps
 description: Render tile-based maps efficiently with three-flatland.
 ---
 
-import { Tabs, TabItem } from '@astrojs/starlight/components';
+import { Tabs, TabItem } from 'starlight-theme/components';
 
 Tilemaps allow you to render large tile-based environments efficiently using chunked rendering. The `TileMap2D` class handles maps with multiple layers and automatic chunking for performance.
 
 ## Creating a Tilemap
 
 <Tabs syncKey="framework">
-  <TabItem label="Three.js" icon="seti:javascript">
+  <TabItem label="Three.js" icon="simple-icons:threedotjs">
     ```typescript
     import { TileMap2D, TiledLoader } from 'three-flatland';
 
@@ -32,7 +32,7 @@ Tilemaps allow you to render large tile-based environments efficiently using chu
     }
     ```
   </TabItem>
-  <TabItem label="React" icon="seti:react">
+  <TabItem label="React" icon="simple-icons:react">
     ```tsx
     import { Suspense, useRef } from 'react';
     import { extend, useFrame, useLoader } from '@react-three/fiber/webgpu';
@@ -91,7 +91,7 @@ interface TileMapData {
 Load maps created with the [Tiled Map Editor](https://www.mapeditor.org/):
 
 <Tabs syncKey="framework">
-  <TabItem label="Three.js" icon="seti:javascript">
+  <TabItem label="Three.js" icon="simple-icons:threedotjs">
     ```typescript
     import { TileMap2D, TiledLoader } from 'three-flatland';
 
@@ -100,7 +100,7 @@ Load maps created with the [Tiled Map Editor](https://www.mapeditor.org/):
     scene.add(tilemap);
     ```
   </TabItem>
-  <TabItem label="React" icon="seti:react">
+  <TabItem label="React" icon="simple-icons:react">
     ```tsx
     import { Suspense } from 'react';
     import { extend, useLoader } from '@react-three/fiber/webgpu';
@@ -126,7 +126,7 @@ Load maps created with the [Tiled Map Editor](https://www.mapeditor.org/):
 Load maps created with [LDtk](https://ldtk.io/):
 
 <Tabs syncKey="framework">
-  <TabItem label="Three.js" icon="seti:javascript">
+  <TabItem label="Three.js" icon="simple-icons:threedotjs">
     ```typescript
     import { TileMap2D, LDtkLoader } from 'three-flatland';
 
@@ -139,7 +139,7 @@ Load maps created with [LDtk](https://ldtk.io/):
     const levelIds = await LDtkLoader.getLevelIds('/maps/world.ldtk');
     ```
   </TabItem>
-  <TabItem label="React" icon="seti:react">
+  <TabItem label="React" icon="simple-icons:react">
     ```tsx
     import { Suspense } from 'react';
     import { extend, useLoader } from '@react-three/fiber/webgpu';

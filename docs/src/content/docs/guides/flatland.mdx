@@ -3,7 +3,7 @@ title: Flatland
 description: Self-contained 2D rendering pipeline with camera, post-processing, and global uniforms.
 ---
 
-import { Tabs, TabItem } from '@astrojs/starlight/components';
+import { Tabs, TabItem } from 'starlight-theme/components';
 
 `Flatland` is the high-level entry point for three-flatland. It wraps a `SpriteGroup` with an orthographic camera, global uniforms, post-processing pipeline, and render target support into a single object.
 
@@ -22,7 +22,7 @@ Use `Flatland` when you want a complete 2D rendering setup. Use `SpriteGroup` wh
 ## Basic Setup
 
 <Tabs syncKey="framework">
-  <TabItem label="Three.js" icon="seti:javascript">
+  <TabItem label="Three.js" icon="simple-icons:threedotjs">
     ```typescript
     import WebGPURenderer from 'three/addons/renderers/webgpu/WebGPURenderer.js'
     import { Flatland, Sprite2D, TextureLoader } from 'three-flatland'
@@ -44,7 +44,7 @@ Use `Flatland` when you want a complete 2D rendering setup. Use `SpriteGroup` wh
     animate()
     ```
   </TabItem>
-  <TabItem label="React" icon="seti:react">
+  <TabItem label="React" icon="simple-icons:react">
     ```tsx
     import { useRef } from 'react'
     import { Canvas, extend, useFrame, useThree } from '@react-three/fiber/webgpu'

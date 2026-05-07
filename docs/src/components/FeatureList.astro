@@ -1,45 +1,78 @@
 ---
 /**
- * FeatureList - Simple styled list for feature callouts.
- * Compact and scannable for documentation pages.
+ * FeatureList — compact, scannable feature callout list. Each row carries
+ * a gem accent (icon + title + a hairline left-rule) so the list reads
+ * as a colored chord, matching the gem taxonomy used by FeatureCard,
+ * ValueProp, and StatsBanner.
  */
+import Icon from './Icon.astro'
+
+type Gem =
+  | 'gold'
+  | 'ruby'
+  | 'emerald'
+  | 'diamond'
+  | 'amethyst'
+  | 'pink'
+  | 'salmon'
+  | 'turquoize'
+
+type LegacyColor = 'cyan' | 'blue' | 'green' | 'orange' | 'red' | 'yellow' | 'purple'
+
+const legacyToGem: Record<LegacyColor, Gem> = {
+  cyan: 'diamond',
+  blue: 'diamond',
+  green: 'emerald',
+  orange: 'gold',
+  red: 'ruby',
+  yellow: 'gold',
+  purple: 'amethyst',
+}
+
 interface Feature {
-  icon: string;
-  title: string;
-  description: string;
-  color?: string;
+  icon: string
+  title: string
+  description: string
+  /** Per-row gem override. Omit to cycle through the default gem ladder. */
+  color?: Gem | LegacyColor
 }
 
 interface Props {
-  features: Feature[];
+  features: Feature[]
 }
 
-import Icon from './Icon.astro';
+const { features } = Astro.props
 
-const { features } = Astro.props;
+/** Default gem cycle — mirrors the FeatureCard grid's defaults so a list
+ *  and a card grid on the same topic read in the same color order. */
+const defaultGems: Gem[] = [
+  'diamond',
+  'emerald',
+  'amethyst',
+  'gold',
+  'salmon',
+  'pink',
+]
 
-const defaultColors = [
-  'var(--retro-cyan)',
-  'var(--retro-pink)',
-  'var(--retro-yellow)',
-  'var(--retro-blue)',
-  'var(--retro-orange)',
-  'var(--retro-purple)',
-];
+function resolveGem(c: Feature['color'], idx: number): Gem {
+  if (!c) return defaultGems[idx % defaultGems.length]
+  if (c in legacyToGem) return legacyToGem[c as LegacyColor]
+  return c as Gem
+}
 ---
 
 <ul class="not-content feature-list">
   {features.map((feature, i) => {
-    const color = feature.color || defaultColors[i % defaultColors.length];
+    const gem = resolveGem(feature.color, i)
     return (
-      <li class="feature-item" style={`--accent: ${color};`}>
+      <li class="feature-item" data-gem={gem} style={`--feature-accent: var(--${gem});`}>
         <span class="feature-name">
-          <Icon name={feature.icon} size="1.25rem" color={color} />
+          <Icon name={feature.icon} size="1.125rem" color="var(--feature-accent)" />
           <span class="feature-title">{feature.title}</span>
         </span>
         <span class="feature-desc">{feature.description}</span>
       </li>
-    );
+    )
   })}
 </ul>
 
@@ -47,53 +80,75 @@ const defaultColors = [
   .feature-list {
     list-style: none;
     padding: 0;
-    margin: 1rem 0;
+    margin: calc(var(--spacing) * 4) 0;
     display: flex;
     flex-direction: column;
-    gap: 0.4rem;
+    gap: 0.25rem;
   }
 
   .feature-item {
+    --feature-accent: var(--diamond);
     display: grid;
     grid-template-columns: 14rem 1fr;
     align-items: center;
     gap: 1rem;
     line-height: 1.5;
+    padding: 0.5rem 0 0.5rem 0.75rem;
+    /* Thin gem-tinted left rule — fades top to bottom so the row reads
+     * as accented, not boxed. Matches ValueProp's vertical foil rule
+     * treatment at smaller scale. */
+    background-image: linear-gradient(
+      180deg,
+      color-mix(in oklab, var(--feature-accent) 25%, transparent) 0%,
+      var(--feature-accent) 50%,
+      color-mix(in oklab, var(--feature-accent) 25%, transparent) 100%
+    );
+    background-size: 2px 100%;
+    background-repeat: no-repeat;
+    background-position: 0 0;
+    border-radius: 0;
   }
 
   .feature-name {
-    display: flex;
+    display: inline-flex;
     align-items: center;
     gap: 0.5rem;
     line-height: 1.5;
   }
 
   .feature-title {
-    font-family: var(--font-pixel);
-    font-size: 0.875rem;
-    color: var(--accent);
+    font-family: 'Inter', system-ui, sans-serif;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: color-mix(in oklab, var(--feature-accent) 65%, var(--foreground));
     text-transform: uppercase;
     letter-spacing: 0.05em;
     line-height: 1.5;
+    text-shadow: 0 0 14px color-mix(in oklab, var(--feature-accent) 30%, transparent);
   }
 
   .feature-desc {
+    font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
     font-size: 0.875rem;
-    color: var(--retro-white);
-    opacity: 0.8;
+    color: color-mix(in oklab, var(--foreground) 80%, var(--muted-foreground));
     line-height: 1.5;
   }
 
-  /* Light mode */
-  :global([data-theme='light']) .feature-desc {
-    color: var(--retro-black);
-  }
-
-  /* Mobile: stack vertically */
+  /* Mobile: stack vertically, drop the rule to a top edge so it doesn't
+   * fight the stacked layout. */
   @media (max-width: 600px) {
     .feature-item {
       grid-template-columns: 1fr;
       gap: 0.25rem;
+      padding: 0.5rem 0 0.5rem 0;
+      background-image: linear-gradient(
+        90deg,
+        var(--feature-accent) 0%,
+        color-mix(in oklab, var(--feature-accent) 30%, transparent) 70%,
+        transparent 100%
+      );
+      background-size: 100% 1.5px;
+      background-position: 0 0;
     }
   }
 </style>

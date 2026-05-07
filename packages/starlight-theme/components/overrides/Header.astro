@@ -124,17 +124,32 @@ const shouldRenderSearch =
 
     /* Compact-on-scroll — single craft moment for the header.
      * CSS-only via scroll-driven animation; honors prefers-reduced-motion.
-     * Targets Starlight's `.header` class (the surrounding layout element). */
+     * Anchored on the layout slot (not the bare `.header` class — that
+     * collides with expressive-code's `<figcaption class="header">` for
+     * codeblock titles, which would otherwise inherit the scroll-tied
+     * background fade and read as a phantom alpha fade on captions).
+     *
+     * The animation only changes paint-time properties (background,
+     * backdrop-filter, border-bottom). Layout properties (padding,
+     * height) stay constant so the header's bounding box is identical
+     * between landing and docs pages — that prevents the view-transition
+     * cross-fade from showing a "black bar" slab above the landing
+     * canvas when navigating back from a docs page (the slab was the
+     * height delta between a padded docs header and the previously
+     * unpadded landing header, briefly painted opaque during morph).
+     *
+     * Excluded on `[data-landing]` so the landing's transparent header
+     * stays transparent on scroll — keyframe's bg-color clobber would
+     * otherwise opacify it and hide the canvas. */
     @supports (animation-timeline: scroll()) {
         @media (prefers-reduced-motion: no-preference) {
-            :global(.header) {
+            :global([data-slot='layout']:not([data-landing]) > header) {
                 animation: hdr-compact linear both;
                 animation-timeline: scroll(root);
                 animation-range: 0 96px;
             }
             @keyframes hdr-compact {
                 to {
-                    --__hdr-pad: 0.25rem;
                     background-color: color-mix(in oklab, var(--background) 88%, transparent);
                     backdrop-filter: saturate(140%);
                     -webkit-backdrop-filter: saturate(140%);
@@ -144,13 +159,6 @@ const shouldRenderSearch =
                         transparent
                     );
                 }
-            }
-
-            /* Tighten internal vertical padding alongside the keyframe so the
-             * compact state feels intentional, not just smaller. */
-            :global(.header) {
-                padding-block: var(--__hdr-pad, 0.625rem);
-                transition: padding-block 100ms ease-out;
             }
         }
     }
