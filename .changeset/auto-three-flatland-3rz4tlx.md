@@ -5,15 +5,13 @@
 > Branch: docs-refresh-foundation
 > PR: https://github.com/thejustinwalsh/three-flatland/pull/33
 
-## docs: StatsBanner gem color support
+### StatsBanner: re-enabled gem color accents (`docs`)
 
-- Re-enabled the `color` prop on `StatsBanner` stats — previously marked deprecated and silently ignored, causing all stats to render in `--foreground`
-- `color` now resolves to a gem token (e.g. `diamond`, `pink`, `gold`, `amethyst`) via the same `legacyToGem` mapping used by `FeatureCard` and `ValueProp`
-- Each stat item gets a scoped `--stat-accent` CSS custom property driven by the resolved gem
-- Stat value text uses `color-mix(in oklab, --stat-accent 65%, --foreground)` so values read their gem hue while staying legible
-- Soft gem-tinted `text-shadow` glow added to stat values
-- Thin gem-tinted hairline underline (gradient fading right to transparent) applied to each stat via `background-image` trick, giving the stats row a colored chord visual
-- Removed stale deprecation comment from background tinted-band rule
-- Minor README heading update: "Why three-flatland?" → "Why Flatland?"
+- `color` prop on `StatsBanner` stat items is now active; was previously accepted but silently ignored, causing all stats to render in `--foreground`
+- Conventional color names (`cyan`, `blue`, `green`, `orange`, `red`, `yellow`, `purple`) are mapped to their gem equivalents via a `legacyToGem` table — existing MDX call sites require no changes
+- Each stat resolves its gem and sets `--stat-accent` inline; the stat value color is a 65/35 blend of gem + foreground for legibility
+- Stat value gains a soft `text-shadow` glow tinted by the gem accent
+- A 1.5px hairline underline rendered via `background-image` (linear-gradient fading right to transparent) runs beneath each stat, so the four stats read as a colored chord across the row
+- README: section heading updated from "Why three-flatland?" to "Why Flatland?" to match brand naming
 
-StatsBanner stat items now render their declared gem color end-to-end — value text, glow, and underline accent all derive from a single `color` prop, consistent with the rest of the gem-taxonomy component system.
+Stats previously appearing in a flat monochrome row now render each value and underline in its designated gem color (diamond, pink, gold, amethyst, etc.) without requiring any changes to existing MDX content.
