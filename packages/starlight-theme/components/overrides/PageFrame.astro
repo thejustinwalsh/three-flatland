@@ -69,29 +69,31 @@ const isLanding = path === base || path === '';
         position: fixed;
         top: 0;
         left: 0;
-        /* Non-square wrapper — wider than tall — so a steep-angled
-         * stripe naturally terminates at the TOP edge of the wrapper
-         * rather than running off the RIGHT side. */
-        width: 28rem;
+        /* Wider non-square wrapper so the stripe spans further. */
+        width: 36rem;
         height: 13rem;
         pointer-events: none;
-        z-index: 40;
+        /* Above the header (z:50) so the FL+FLATLAND logo passes
+         * BEHIND the ribbon. Hero h1 in our face below — the wordmark
+         * being clipped at the top doesn't matter. */
+        z-index: 70;
         overflow: hidden;
     }
-    /* Steeper sash (-50°) — sweeps from the left edge UP to the top
-     * edge of the wrapper, so the stripe's right end terminates at
-     * the page-top edge rather than extending horizontally to the
-     * right side. Reads like a banner pinned to the corner with the
-     * far end naturally tucking under the page-top edge. */
+    /* Stripe enters at the LEFT edge (lower portion) and runs UP-RIGHT
+     * across the wrapper, terminating at the TOP edge near the right
+     * side. Negative rotation = / direction (text reads bottom-left
+     * to upper-right). Wider tape so the diagonal extends well past
+     * the wrapper corners — overflow:hidden clips to the visible
+     * stripe shape. */
     .alpha-ribbon-tape {
         position: absolute;
-        top: 4.2rem;
-        left: -7rem;
-        width: 34rem;
+        top: 5.5rem;
+        left: -5rem;
+        width: 46rem;
         padding: 0.55rem 0;
         text-align: center;
         text-decoration: none;
-        transform: rotate(-50deg);
+        transform: rotate(22deg);
         transform-origin: 50% 50%;
         pointer-events: auto;
         cursor: pointer;
@@ -155,24 +157,24 @@ const isLanding = path === base || path === '';
     }
     @media (max-width: 50rem) {
         .alpha-ribbon {
-            width: 18rem;
+            width: 22rem;
             height: 9rem;
         }
         .alpha-ribbon-tape {
             top: 3rem;
-            left: -5rem;
-            width: 22rem;
+            left: -2rem;
+            width: 26rem;
             font-size: 0.7rem;
         }
     }
     .alpha-ribbon-tape:hover {
-        transform: rotate(-50deg) scale(1.03);
+        transform: rotate(22deg) scale(1.03);
         filter: saturate(1.1);
     }
     @media (prefers-reduced-motion: reduce) {
         .alpha-ribbon-tape,
         .alpha-ribbon-tape:hover {
-            transform: rotate(-50deg);
+            transform: rotate(22deg);
             transition: none;
         }
     }

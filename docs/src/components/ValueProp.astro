@@ -1,11 +1,10 @@
 ---
 /**
- * ValueProp — section-block for the landing's "Why three-flatland?"
- * rhythm. Each block opts into a gem accent via `color="<gem>"`; the
- * gem hue drives the resting card surface tint AND the lit material
- * treatment (.u-light scene+mouse light + ambient rim) so each
- * value-prop reads as a polished gem-faceted card matching the
- * FeatureCard system, just wider and at section scale.
+ * ValueProp — text-heavy section block with a gem-foil border ring.
+ * Pulled back from the full lit-card treatment: now just a rounded
+ * rectangle with a transparent interior and a gem-accented foil
+ * border that rotates with the global scene-light. The text carries
+ * the section, the border carries the gem identity.
  */
 
 type Gem =
@@ -45,11 +44,11 @@ const resolvedGem: Gem | undefined = color
     : (color as Gem)
   : undefined
 
-const accentStyle = resolvedGem ? `--card-accent: var(--${resolvedGem});` : undefined
+const accentStyle = resolvedGem ? `--vp-accent: var(--${resolvedGem});` : undefined
 ---
 
 <section
-  class:list={['not-content', 'value-prop', 'u-light', { 'align-right': align === 'right' }]}
+  class:list={['not-content', 'value-prop', { 'align-right': align === 'right' }]}
   data-gem={resolvedGem}
   style={accentStyle}
 >
@@ -57,50 +56,41 @@ const accentStyle = resolvedGem ? `--card-accent: var(--${resolvedGem});` : unde
     <h3 class="vp-title" set:html={title} />
     <div class="vp-body"><slot /></div>
   </div>
-  {/* Top-layer rim ring — same pattern as FeatureCard's card-edge:
-      sits above the .u-light pseudos so displacement-filter edge
-      artifacts are masked, doubles as the rim light catching
-      --effective-light-angle. */}
-  <span class="vp-edge" aria-hidden="true"></span>
 </section>
 
 <style>
   .value-prop {
-    --card-soft: color-mix(in oklab, var(--gray-7) 60%, var(--card-accent, var(--primary)));
-    --card: var(--card-soft);
+    --vp-accent: var(--primary);
     position: relative;
-    background: var(--card-soft);
-    padding: clamp(2rem, 4vw, 3rem) clamp(1.5rem, 3vw, 2.5rem);
-    border-radius: calc(var(--radius) + 0.25rem);
+    padding: clamp(2rem, 4vw, 3rem) clamp(1.75rem, 3vw, 2.75rem);
     margin-block: clamp(1.75rem, 3vw, 2.5rem);
-    /* Section width — wider than a feature card; full row on the
-     * landing, with a gentle skew left/right via margin-inline-end/
-     * start so the column doesn't read as a flat stack. */
     max-width: 56rem;
+    /* Foil border ring — transparent interior, gem-tinted gradient ring
+     * around the entire perimeter via background-clip padding-box +
+     * border-box trick. The conic gradient rotates with --scene-angle
+     * so the border catches the global scene light direction (perlin-
+     * driven), making the border read as foil rather than flat color. */
+    border: 1.5px solid transparent;
+    border-radius: calc(var(--radius) + 0.5rem);
+    background:
+      linear-gradient(var(--background), var(--background)) padding-box,
+      conic-gradient(
+        from calc(var(--scene-angle, 135deg) - 90deg),
+        color-mix(in oklab, var(--vp-accent) 90%, transparent) 0deg,
+        color-mix(in oklab, var(--vp-accent) 30%, var(--border)) 90deg,
+        color-mix(in oklab, var(--border) 80%, transparent) 180deg,
+        color-mix(in oklab, var(--vp-accent) 30%, var(--border)) 270deg,
+        color-mix(in oklab, var(--vp-accent) 90%, transparent) 360deg
+      ) border-box;
+    background-origin: border-box;
   }
-
-  /* Per-gem resting tint — pulls from the dedicated *-soft tokens
-   * defined in theme.css so the resting surface IS gem-toned, not
-   * black with gem accents. */
-  .value-prop[data-gem='gold'] { --card-soft: var(--gold-soft); }
-  .value-prop[data-gem='ruby'] { --card-soft: var(--ruby-soft); }
-  .value-prop[data-gem='emerald'] { --card-soft: var(--emerald-soft); }
-  .value-prop[data-gem='diamond'] { --card-soft: var(--diamond-soft); }
-  .value-prop[data-gem='amethyst'] { --card-soft: var(--amethyst-soft); }
-  .value-prop[data-gem='pink'] { --card-soft: var(--pink-soft); }
-  .value-prop[data-gem='salmon'] { --card-soft: var(--salmon-soft); }
-  .value-prop[data-gem='turquoize'] { --card-soft: var(--turquoize-soft); }
 
   .value-prop.align-right {
     margin-inline-start: auto;
-  }
-  .value-prop.align-right .vp-content {
     text-align: right;
   }
 
   .vp-content {
-    position: relative;
-    z-index: 5;
     display: flex;
     flex-direction: column;
     gap: calc(var(--spacing) * 4);
@@ -114,8 +104,8 @@ const accentStyle = resolvedGem ? `--card-accent: var(--${resolvedGem});` : unde
   .vp-title {
     font-family: 'Public Sans', system-ui, sans-serif;
     font-weight: 600;
-    font-size: clamp(1.375rem, 2.4vw, 1.75rem);
-    line-height: 1.15;
+    font-size: clamp(1.25rem, 2.2vw, 1.625rem);
+    line-height: 1.2;
     letter-spacing: -0.018em;
     color: var(--foreground);
     margin: 0;
@@ -134,41 +124,18 @@ const accentStyle = resolvedGem ? `--card-accent: var(--${resolvedGem});` : unde
     margin-bottom: 0;
   }
 
-  /* Strong becomes the gem accent moment in the body copy. */
+  /* Strong is the gem accent moment in the body. */
   .vp-body :global(strong) {
-    color: var(--card-accent, var(--primary));
+    color: var(--vp-accent);
     font-weight: 600;
   }
 
-  /* Top-layer rim ring — gem-tinted gradient border that catches the
-   * scene light direction. Same pattern as FeatureCard's .card-edge. */
-  .value-prop > .vp-edge {
-    position: absolute;
-    inset: 0;
-    border-radius: inherit;
-    pointer-events: none;
-    z-index: 4;
-    padding: 1.5px;
-    background: conic-gradient(
-      from calc(var(--effective-light-angle, var(--scene-angle, 135deg)) - 90deg),
-      color-mix(in oklab, var(--card-accent, var(--primary)) 75%, transparent) 0deg,
-      color-mix(in oklab, var(--card-accent, var(--primary)) 28%, var(--border)) 90deg,
-      color-mix(in oklab, var(--border) 90%, transparent) 180deg,
-      color-mix(in oklab, var(--card-accent, var(--primary)) 28%, var(--border)) 270deg,
-      color-mix(in oklab, var(--card-accent, var(--primary)) 75%, transparent) 360deg
-    );
-    -webkit-mask:
-      linear-gradient(#000, #000) content-box,
-      linear-gradient(#000, #000);
-    -webkit-mask-composite: xor;
-    mask:
-      linear-gradient(#000, #000) content-box,
-      linear-gradient(#000, #000);
-    mask-composite: exclude;
-  }
   @media (prefers-reduced-motion: reduce) {
-    .value-prop > .vp-edge {
-      background: var(--border);
+    .value-prop {
+      background:
+        linear-gradient(var(--background), var(--background)) padding-box,
+        var(--vp-accent) border-box;
+      background-origin: border-box;
     }
   }
 </style>
