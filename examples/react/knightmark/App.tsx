@@ -16,6 +16,8 @@ import {
 } from 'three-flatland/react'
 import { usePane, usePaneFolder, usePaneInput, useStatsMonitor } from '@three-flatland/tweakpane/react'
 import type { StatsHandle } from '@three-flatland/tweakpane/react'
+import { gemClearColor } from './GemBackground'
+import { GEM } from './gem'
 
 extend({ SpriteGroup, TileMap2D })
 
@@ -517,7 +519,10 @@ export default function App() {
         }}
       >
         <OrthoCamera viewSize={VIEW_SIZE} />
-        <color attach="background" args={['#1a1a2e']} />
+        {/* L1 only — knightmark's sprites fill the viewport, so an L2
+           backdrop quad would just be hidden. Clear color tints any
+           margins and matches the masonry tile. */}
+        <color attach="background" args={[gemClearColor(GEM).getHex()]} />
         <Suspense fallback={null}>
           <KnightmarkScene
             addKnightsRef={addKnightsRef}

@@ -32,6 +32,7 @@ import {
   length,
   mix,
   mx_noise_float,
+  screenSize,
   screenUV,
   smoothstep,
   time,
@@ -62,14 +63,17 @@ const CARD = vec3(0x16 / 255, 0x19 / 255, 0x1f / 255)
 /**
  * L1 primitive — flat color tinted by the gem.
  *
- * Returns a `Color` matching the tile gradient's outer-ring tone
- * (gem mixed at 12% into the page background). Useful as a fallback
- * clear color when the L2 backdrop is opted out.
+ * Returns a `Color` mixed at ~25% gem into the page background. A
+ * direct CSS-mirror at 12% (the tile gradient's outer-ring stop)
+ * collapses every gem to "near-#00021c with a hint" — nothing reads
+ * as the gem visually. 25% lifts the color enough that the L1-only
+ * case (e.g. knightmark) and the canvas margins of L2-rendered
+ * examples retain a recognizable gem identity.
  */
 export function gemClearColor(gem: Gem): Color {
   const gemColor = new Color(GEM_HEX[gem])
   const bg = new Color(0x00021c)
-  return new Color().lerpColors(bg, gemColor, 0.12)
+  return new Color().lerpColors(bg, gemColor, 0.25)
 }
 
 /**
@@ -93,16 +97,25 @@ export function gemGradientNode({
   const gemColor = uniform(new Color(GEM_HEX[gem]))
 
   return Fn(() => {
-    const uv = screenUV
-    const cx = lit ? float(0.3).add(mx_noise_float(time.mul(0.05).add(vec2(0))).mul(0.04)) : float(0.3)
+    // Replicate CSS `radial-gradient(circle at 30% 30%, ...)` exactly.
+    // Pixel-space distance + farthest-corner normalization keeps the
+    // gradient circular regardless of viewport aspect ratio. See
+    // examples/three/template/GemBackground.ts for the full rationale.
+    const screenPx = screenSize
+    const centerNorm = vec2(float(0.3), float(0.3))
+    const cx = lit ? centerNorm.x.add(mx_noise_float(time.mul(0.05).add(vec2(0))).mul(0.04)) : centerNorm.x
     const cy = lit
-      ? float(0.3).add(mx_noise_float(time.mul(0.05).add(vec2(100))).mul(0.04))
-      : float(0.3)
-    const center = vec2(cx, cy)
-    const d = length(uv.sub(center))
+      ? centerNorm.y.add(mx_noise_float(time.mul(0.05).add(vec2(100))).mul(0.04))
+      : centerNorm.y
+    const centerPx = vec2(cx, cy).mul(screenPx)
+    const fragPx = screenUV.mul(screenPx)
+    const dPx = length(fragPx.sub(centerPx))
+    const d = dPx.div(length(screenPx).mul(0.7))
 
-    const c0 = mix(CARD, gemColor, float(0.4))
-    const c1 = mix(BG, gemColor, float(0.12))
+    // Slightly more gem-dominant than the literal CSS values so the
+    // gem reads at example viewport scale.
+    const c0 = mix(CARD, gemColor, float(0.6))
+    const c1 = mix(BG, gemColor, float(0.2))
     const c2 = BG
 
     const t0 = smoothstep(float(0), float(0.6), d)
@@ -138,14 +151,9 @@ export function GemBackground({ gem, lit = false }: { gem: Gem; lit?: boolean })
   const node = useGemGradient(gem, lit)
 
   useEffect(() => {
-    // @ts-expect-error - backgroundNode exists on Scene in WebGPU mode
-    // but isn't always declared on the public Scene type. The runtime
-    // path checks for it explicitly in the renderer.
     const previous = scene.backgroundNode
-    // @ts-expect-error - see above
     scene.backgroundNode = node
     return () => {
-      // @ts-expect-error - see above
       scene.backgroundNode = previous
     }
   }, [scene, node])

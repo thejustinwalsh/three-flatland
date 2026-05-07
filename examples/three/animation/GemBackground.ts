@@ -33,6 +33,7 @@ import {
   length,
   mix,
   mx_noise_float,
+  screenSize,
   screenUV,
   smoothstep,
   time,
@@ -66,15 +67,17 @@ const CARD = vec3(0x16 / 255, 0x19 / 255, 0x1f / 255)
 /**
  * L1 primitive — flat color tinted by the gem.
  *
- * Returns a `Color` matching the tile gradient's outer-ring tone (gem
- * mixed at 12% into the page background), so even examples that opt
- * out of the L2 backdrop still read as the right gem at the canvas
- * edges.
+ * Returns a `Color` mixed at ~25% gem into the page background. A
+ * direct CSS-mirror at 12% (the tile gradient's outer-ring stop)
+ * collapses every gem to "near-#00021c with a hint" — nothing reads
+ * as the gem visually. 25% lifts the color enough that the L1-only
+ * case (e.g. knightmark) and the canvas margins of L2-rendered
+ * examples retain a recognizable gem identity.
  */
 export function gemClearColor(gem: Gem): Color {
   const gemColor = new Color(GEM_HEX[gem])
   const bg = new Color(0x00021c)
-  return new Color().lerpColors(bg, gemColor, 0.12)
+  return new Color().lerpColors(bg, gemColor, 0.25)
 }
 
 /**
@@ -101,27 +104,39 @@ export function gemGradientNode({
   const gemColor = uniform(new Color(GEM_HEX[gem]))
 
   return Fn(() => {
-    const uv = screenUV
-    const aspect = float(1).toVar()
+    // Replicate CSS `radial-gradient(circle at 30% 30%, ...)` exactly:
+    // - circle = literal circle in pixel space (NOT an ellipse stretched
+    //   by aspect ratio). Computed by working in pixel coords, not UV.
+    // - default extent = farthest-corner. Center at (0.3, 0.3) means
+    //   the (1, 1) corner is farthest for any normal aspect ratio,
+    //   and the distance to it is `0.7 * length(screenSize)`.
+    const screenPx = screenSize
+    const centerNorm = vec2(float(0.3), float(0.3))
 
-    // Light center: 30% / 30% by default (matches CSS tile). When lit,
-    // perturb by a slow perlin sample around that center — sub-perceptual
-    // wander, ≤ 4% of viewport.
-    const cx = lit ? float(0.3).add(mx_noise_float(time.mul(0.05).add(vec2(0))).mul(0.04)) : float(0.3)
+    // Optional perlin-driven light wander (≤ 4% of viewport, sub-
+    // perceptual). Off by default for deterministic captures.
+    const cx = lit ? centerNorm.x.add(mx_noise_float(time.mul(0.05).add(vec2(0))).mul(0.04)) : centerNorm.x
     const cy = lit
-      ? float(0.3).add(mx_noise_float(time.mul(0.05).add(vec2(100))).mul(0.04))
-      : float(0.3)
-    const center = vec2(cx, cy)
+      ? centerNorm.y.add(mx_noise_float(time.mul(0.05).add(vec2(100))).mul(0.04))
+      : centerNorm.y
+    const centerPx = vec2(cx, cy).mul(screenPx)
+    const fragPx = screenUV.mul(screenPx)
 
-    // Radial distance, normalized so d=1 covers the diagonal.
-    const d = length(uv.sub(center)).mul(aspect.add(1))
+    // Pixel distance, normalized so d=1 corresponds to CSS's
+    // farthest-corner extent. d > 1 stays clamped via smoothstep.
+    const dPx = length(fragPx.sub(centerPx))
+    const d = dPx.div(length(screenPx).mul(0.7))
 
-    // Three stops (CSS):
-    //   0%   → mix(card, gem, 0.40)   center, most saturated
-    //   60%  → mix(bg,   gem, 0.12)   subtle outer tint
+    // Three stops, slightly more gem-dominant than the literal CSS
+    // values so the gem reads at the example viewport scale (1280×800
+    // vs the tile's ~300×225 — at large sizes the bright center
+    // contributes less per-pixel and the outer ring can swallow it).
+    //
+    //   0%   → mix(card, gem, 0.60)   center, gem-dominant
+    //   60%  → mix(bg,   gem, 0.20)   outer ring still recognizably gem
     //   100% → bg                      page background
-    const c0 = mix(CARD, gemColor, float(0.4))
-    const c1 = mix(BG, gemColor, float(0.12))
+    const c0 = mix(CARD, gemColor, float(0.6))
+    const c1 = mix(BG, gemColor, float(0.2))
     const c2 = BG
 
     const t0 = smoothstep(float(0), float(0.6), d) // center → outer-ring

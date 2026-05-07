@@ -8,6 +8,8 @@ import {
   type AnimationSetDefinition,
 } from 'three-flatland/react'
 import { usePane, usePaneFolder, useStatsMonitor } from '@three-flatland/tweakpane/react'
+import { GemBackground, gemClearColor } from './GemBackground'
+import { GEM } from './gem'
 
 // Register AnimatedSprite2D with R3F (tree-shakeable)
 extend({ AnimatedSprite2D })
@@ -165,7 +167,9 @@ function Scene() {
 
   return (
     <>
-      <color attach="background" args={['#1a1a2e']} />
+      {/* L1 + L2 — gem-tinted clear color + lit radial gradient. */}
+      <color attach="background" args={[gemClearColor(GEM).getHex()]} />
+      <GemBackground gem={GEM} lit />
       <Suspense fallback={null}>
         <Knight
           animation={animation}

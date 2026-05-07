@@ -19,9 +19,12 @@ import {
   reflector, color as tslColor, positionWorld, float as tslFloat,
 } from 'three/tsl'
 import { gaussianBlur } from 'three/addons/tsl/display/GaussianBlurNode.js'
+import { mix as tslMix } from 'three/tsl'
 import { Color, DoubleSide, Fog, type Mesh, type MeshBasicMaterial } from 'three'
 import { MeshStandardNodeMaterial } from 'three/webgpu'
 import { usePane, useStatsMonitor } from '@three-flatland/tweakpane/react'
+import { gemClearColor, gemGradientNode } from './GemBackground'
+import { GEM } from './gem'
 
 extend({ SkiaRect, SkiaCircle, SkiaLine, SkiaPathNode, SkiaTextNode, SkiaGroup })
 
@@ -290,7 +293,12 @@ function ReflectiveGround() {
     const dist = positionWorld.xz.length()
     const fadeFactor = dist.div(3.0).clamp(0.0, 1.0).oneMinus()
     const fadeSharp = fadeFactor.mul(fadeFactor).mul(fadeFactor)
-    mat.colorNode = tslColor(new Color(0x050505)).add((blurredReflection as any).rgb.mul(fadeSharp).mul(0.5))
+    // L3 — compose the gem gradient into the floor's base color so the
+    // ground tonally aligns with the masonry tile. Mix at 0.35 so gem
+    // reads as ambient lighting without overpowering reflectivity.
+    const gemFragment = gemGradientNode({ gem: GEM, lit: true })
+    const baseColor = tslMix(tslColor(new Color(0x050505)), (gemFragment as any).rgb, tslFloat(0.35))
+    mat.colorNode = baseColor.add((blurredReflection as any).rgb.mul(fadeSharp).mul(0.5))
     mat.roughnessNode = tslFloat(0.5).add(dist.div(5.0).clamp(0.0, 0.5))
     mat.metalness = 0.5
     return { mat, groundReflector }
@@ -455,9 +463,13 @@ export default function App() {
     <Canvas
       camera={{ position: [0, 0.9, 4.5], fov: 40, near: 0.1, far: 100 }}
       renderer={{ antialias: true, trackTimestamp: true }}
-      onCreated={({ scene }) => {
-        scene.background = new Color(0x191920)
-        scene.fog = new Fog(0x191920, 0, 15)
+      onCreated={({ scene, gl }) => {
+        // L1 — gem-tinted clear color & fog so canvas margins match the
+        // masonry tile. L3 lives inside ReflectiveGround's colorNode.
+        const bg = gemClearColor(GEM)
+        gl.setClearColor(bg)
+        scene.background = bg
+        scene.fog = new Fog(bg.getHex(), 0, 15)
       }}
     >
       <Suspense fallback={null}>

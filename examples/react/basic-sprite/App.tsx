@@ -3,6 +3,8 @@ import { useRef, useState, useCallback } from 'react'
 import { Color, type OrthographicCamera as ThreeOrthographicCamera } from 'three'
 import { Sprite2D, TextureLoader } from 'three-flatland/react'
 import { usePane, usePaneFolder, usePaneInput, useStatsMonitor } from '@three-flatland/tweakpane/react'
+import { GemBackground, gemClearColor } from './GemBackground'
+import { GEM } from './gem'
 
 // Register Sprite2D with R3F (tree-shakeable)
 extend({ Sprite2D })
@@ -135,7 +137,10 @@ function Scene() {
 
   return (
     <>
-      <color attach="background" args={['#1a1a2e']} />
+      {/* L1 + L2 — gem-tinted clear color + lit radial gradient
+         matching the masonry tile poster. See GemBackground.tsx. */}
+      <color attach="background" args={[gemClearColor(GEM).getHex()]} />
+      <GemBackground gem={GEM} lit />
       <InteractiveSprite
         baseScale={baseScale}
         hoverScale={hoverScale}

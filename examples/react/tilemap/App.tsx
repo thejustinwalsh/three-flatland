@@ -14,6 +14,8 @@ import {
   type TileLayerData,
 } from 'three-flatland/react'
 import { usePane, usePaneFolder, usePaneInput, usePaneButton, useStatsMonitor } from '@three-flatland/tweakpane/react'
+import { GemBackground, gemClearColor } from './GemBackground'
+import { GEM } from './gem'
 
 // Register TileMap2D with R3F
 extend({ TileMap2D })
@@ -687,7 +689,9 @@ export default function App() {
       }}
     >
       <OrthoCamera viewSize={800} />
-      <color attach="background" args={['#0a0a12']} />
+      {/* L1 + L2 — gem-tinted clear color + lit radial gradient. */}
+      <color attach="background" args={[gemClearColor(GEM).getHex()]} />
+      <GemBackground gem={GEM} lit />
       <StatsTracker stats={stats} />
       <CameraController mapSize={mapSize} zoomRef={zoomRef} zoomSlider={zoomSlider} setZoomSlider={setZoomSlider} />
       <Suspense fallback={null}>
