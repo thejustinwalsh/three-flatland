@@ -1041,17 +1041,24 @@
      * tint; cursor-driven tilt + radial hotspot add the interaction. */
     .sl-link-button.primary {
         position: relative;
-        color: var(--primary-foreground);
+        /* Dark warm-tinted text reads high-contrast on the bright gold
+         * gradient in both light and dark mode. The default
+         * --primary-foreground (gray-1 / dark theme; --background /
+         * light theme) is tuned for amethyst surfaces and goes
+         * unreadable on gold. */
+        color: oklch(0.18 0.04 80);
         background:
             linear-gradient(
                 calc(var(--effective-light-angle, var(--scene-angle, 135deg)) + 90deg),
-                color-mix(in oklab, var(--amethyst-high) 100%, transparent) 0%,
-                color-mix(in oklab, var(--amethyst) 75%, var(--background)) 100%
+                color-mix(in oklab, var(--gold-high) 100%, transparent) 0%,
+                color-mix(in oklab, var(--gold) 75%, var(--background)) 100%
             );
-        /* Foil rim base — scene-angle conic ring on a ::before pseudo
-         * (see below). Border kept transparent so the rim ring is the
-         * only outer affordance. */
-        border: 1px solid transparent;
+        /* No border — the ::before foil rim sits at inset:0 of the
+         * button's border box. A 1px transparent border would push
+         * the ring 1px inward, exposing the page bg as a thin black
+         * inner edge artifact. Border-zero means the ring sits at
+         * the very outer pixel of the button. */
+        border: 0;
         overflow: hidden;
         isolation: isolate;
         font-weight: 600;
@@ -1080,17 +1087,17 @@
             conic-gradient(
                 from calc(var(--light-angle, 135deg) - 22deg),
                 transparent 0deg,
-                color-mix(in oklab, white 60%, var(--amethyst-high)) 22deg,
+                color-mix(in oklab, white 60%, var(--gold-high)) 22deg,
                 transparent 45deg,
                 transparent 360deg
             ),
             conic-gradient(
                 from calc(var(--scene-angle, 135deg) - 90deg),
-                color-mix(in oklab, var(--amethyst-high) 80%, transparent) 0deg,
-                color-mix(in oklab, var(--amethyst) 35%, var(--border)) 90deg,
+                color-mix(in oklab, var(--gold-high) 80%, transparent) 0deg,
+                color-mix(in oklab, var(--gold) 35%, var(--border)) 90deg,
                 color-mix(in oklab, var(--border) 90%, transparent) 180deg,
-                color-mix(in oklab, var(--amethyst) 35%, var(--border)) 270deg,
-                color-mix(in oklab, var(--amethyst-high) 80%, transparent) 360deg
+                color-mix(in oklab, var(--gold) 35%, var(--border)) 270deg,
+                color-mix(in oklab, var(--gold-high) 80%, transparent) 360deg
             );
         background-blend-mode: screen, normal;
         -webkit-mask:
@@ -1121,7 +1128,7 @@
         z-index: 0;
     }
     .sl-link-button.primary:hover {
-        color: var(--primary-foreground);
+        color: oklch(0.16 0.04 80);
     }
 
     /* Secondary CTA — diamond-tinted, same tilt/light system, lighter
@@ -1136,9 +1143,10 @@
                 color-mix(in oklab, var(--diamond) 18%, var(--background)) 0%,
                 color-mix(in oklab, var(--background) 88%, var(--diamond)) 100%
             );
-        /* Foil rim on ::before; transparent border so the rim is the
-         * only outer affordance. */
-        border: 1px solid transparent;
+        /* No border — same reasoning as .primary: a 1px transparent
+         * border would expose the page bg as a black inner ring
+         * inside the foil. */
+        border: 0;
         overflow: hidden;
         isolation: isolate;
         font-weight: 500;
