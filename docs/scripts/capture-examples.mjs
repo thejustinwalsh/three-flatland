@@ -21,7 +21,10 @@
  * `pnpm --filter=examples dev` in another terminal, or use the root
  * `pnpm dev` which boots both docs + examples behind microfrontends.
  */
-import { chromium } from 'playwright'
+// `@playwright/test` re-exports the chromium browser type and is
+// already a workspace devDependency (used by e2e/smoke-examples.spec.ts).
+// Importing from there avoids a separate `playwright` install.
+import { chromium } from '@playwright/test'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { resolve, dirname } from 'node:path'

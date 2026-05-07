@@ -1,0 +1,124 @@
+---
+/**
+ * ExampleDetailLayout — full-bleed detail page for a single example.
+ *
+ * Renders a header (back link + title + description) on top of an
+ * `<ExampleSplitView>` — side-by-side preview + code with a
+ * draggable resizer, variant toggle (Three.js / React), and
+ * fullscreen affordance. The split view's iframe carries the
+ * slug-derived `view-transition-name` so the masonry tile on
+ * `/examples/` morphs into the preview pane on navigation.
+ *
+ * The hosting MDX file should set `template: splash` in frontmatter
+ * so the docs sidebar + TOC + auto-rendered page title don't fight
+ * for attention with this layout. Title + description are sourced
+ * from `Astro.locals.starlightRoute.entry.data` (frontmatter).
+ *
+ * Slot below the split view — for per-example prose / API notes.
+ * Wrapped in `.sl-markdown-content` so headings, links, code blocks
+ * pick up the same gem-themed prose typography as docs pages.
+ */
+import ExampleSplitView from './ExampleSplitView.astro'
+
+interface Props {
+    slug: string
+    threeFiles: Record<string, string>
+    reactFiles: Record<string, string>
+    /** Optional override; defaults to the page's frontmatter title. */
+    title?: string
+    /** Optional override; defaults to the page's frontmatter description. */
+    description?: string
+}
+
+const { slug, threeFiles, reactFiles } = Astro.props
+const entryData = Astro.locals.starlightRoute?.entry?.data
+const title = Astro.props.title ?? entryData?.title ?? slug
+const description = Astro.props.description ?? entryData?.description ?? ''
+
+const baseURL = (import.meta.env.BASE_URL || '/').replace(/\/$/, '')
+const examplesHref = `${baseURL}/examples/`
+---
+
+<div class="example-detail not-content">
+    <header class="example-detail-header">
+        <a class="example-detail-back" href={examplesHref}>
+            <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+                <path d="M10 4l-4 4 4 4" stroke="currentColor" stroke-width="2"
+                    stroke-linecap="round" stroke-linejoin="round" fill="none" />
+            </svg>
+            <span>Back to Examples</span>
+        </a>
+        <h1 class="example-detail-title">{title}</h1>
+        {description && <p class="example-detail-description">{description}</p>}
+    </header>
+
+    <ExampleSplitView slug={slug} threeFiles={threeFiles} reactFiles={reactFiles} />
+
+    <div class="example-detail-prose sl-markdown-content">
+        <slot />
+    </div>
+</div>
+
+<style>
+    .example-detail {
+        max-width: 90rem;
+        margin: 0 auto;
+        padding-inline: clamp(1rem, 4vw, 2rem);
+        padding-block: clamp(1.5rem, 3vw, 2.5rem) clamp(2rem, 4vw, 3rem);
+        display: flex;
+        flex-direction: column;
+        gap: clamp(1.5rem, 3vw, 2.5rem);
+    }
+
+    .example-detail-header {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+        max-width: 56rem;
+    }
+
+    .example-detail-back {
+        align-self: flex-start;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        padding: 0.25rem 0.5rem 0.25rem 0.4rem;
+        margin-block-end: 0.25rem;
+        margin-inline-start: -0.5rem;
+        border-radius: calc(var(--radius) - 4px);
+        color: color-mix(in oklab, var(--diamond) 60%, var(--muted-foreground));
+        font-family: 'Inter', system-ui, sans-serif;
+        font-size: 0.75rem;
+        font-weight: 500;
+        text-decoration: none;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        transition: color 0.15s, background-color 0.15s;
+    }
+
+    .example-detail-back:hover {
+        color: var(--diamond);
+        background-color: color-mix(in oklab, var(--diamond) 10%, transparent);
+    }
+
+    .example-detail-title {
+        font-family: 'Public Sans', system-ui, sans-serif;
+        font-size: clamp(1.75rem, 4vw, 2.75rem);
+        font-weight: 200;
+        letter-spacing: -0.025em;
+        line-height: 1.1;
+        color: var(--foreground);
+        margin: 0;
+        text-wrap: balance;
+    }
+
+    .example-detail-description {
+        font-family: 'Public Sans', system-ui, sans-serif;
+        font-size: clamp(0.9375rem, 1.5vw, 1.0625rem);
+        line-height: 1.55;
+        color: var(--muted-foreground);
+        margin: 0;
+        max-width: 48rem;
+        text-wrap: balance;
+    }
+</style>

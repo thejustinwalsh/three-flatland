@@ -1,0 +1,503 @@
+---
+/**
+ * ExampleSplitView — side-by-side preview + code with a draggable
+ * resizer between them. Built from a vanilla iframe + Astro `<Code>`
+ * blocks (Starlight's expressive-code re-export) so syntax-highlighted
+ * code is rendered at build time and the only client-side JS is the
+ * variant toggle + drag handle.
+ *
+ * Variant toggle (Three.js / React) drives:
+ *   - The iframe `src` (swaps `/examples/three/<slug>/` ↔ `/examples/react/<slug>/`)
+ *   - The visible `.code-pane` (CSS attribute selector on `data-variant`)
+ *   - Persisted to localStorage as `flatland-example-type` (matches the
+ *     pre-existing key used by the legacy ExamplePreview React widget)
+ *
+ * Drag handle (8px wide column) drags the split point between
+ * 25%–80% of the container width. Position persisted to localStorage
+ * as `flatland-example-split` so the layout sticks across navigations.
+ *
+ * Reduced-motion: instant transitions, drag still works.
+ */
+interface Props {
+    slug: string
+    threeFiles: Record<string, string>
+    reactFiles: Record<string, string>
+}
+
+const { slug, threeFiles, reactFiles } = Astro.props
+
+// Pick the most-likely entry file for each variant. `loadExample`
+// always includes these names if present.
+const threeMain = threeFiles['main.ts'] ?? threeFiles['main.tsx'] ?? Object.values(threeFiles)[0] ?? ''
+const reactMain = reactFiles['App.tsx'] ?? reactFiles['main.tsx'] ?? Object.values(reactFiles)[0] ?? ''
+const threeFile = 'main.ts' in threeFiles ? 'main.ts' : 'main.tsx' in threeFiles ? 'main.tsx' : Object.keys(threeFiles)[0] ?? ''
+const reactFile = 'App.tsx' in reactFiles ? 'App.tsx' : 'main.tsx' in reactFiles ? 'main.tsx' : Object.keys(reactFiles)[0] ?? ''
+
+const baseURL = (import.meta.env.BASE_URL || '/').replace(/\/$/, '')
+const examplesPort = (import.meta.env.VITE_EXAMPLES_PORT as string) || ''
+const isDev = import.meta.env.DEV
+
+// Initial src: the toggle script will update this on first paint
+// based on the user's persisted variant choice.
+const threeSrc = isDev
+    ? `http://localhost:${examplesPort}/three/${slug}/`
+    : `${baseURL}/examples/three/${slug}/`
+const reactSrc = isDev
+    ? `http://localhost:${examplesPort}/react/${slug}/`
+    : `${baseURL}/examples/react/${slug}/`
+
+// view-transition-name pairs with the masonry tile so the iframe
+// morphs into place from `/examples/`.
+const transitionName = `tile-examples-${slug}`
+---
+
+<div class="example-split" data-slug={slug} data-variant="three" style={`--split: 55%;`}>
+    <div class="example-split-toolbar">
+        <div class="variant-toggle" role="tablist" aria-label="Source variant">
+            <button
+                type="button"
+                role="tab"
+                aria-selected="true"
+                data-variant-target="three"
+            >
+                <span class="i-simple-icons:threedotjs variant-icon" aria-hidden="true"></span>
+                Three.js
+            </button>
+            <button
+                type="button"
+                role="tab"
+                aria-selected="false"
+                data-variant-target="react"
+            >
+                <span class="i-simple-icons:react variant-icon" aria-hidden="true"></span>
+                React
+            </button>
+        </div>
+        <button type="button" class="fullscreen-btn" data-fullscreen aria-label="Fullscreen preview">
+            <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+                <path
+                    d="M3 6V3h3M13 6V3h-3M3 10v3h3M13 10v3h-3"
+                    stroke="currentColor"
+                    stroke-width="1.5"
+                    stroke-linecap="round"
+                    fill="none"
+                />
+            </svg>
+        </button>
+    </div>
+
+    <div class="example-split-grid">
+        <div class="example-split-pane example-split-preview">
+            <iframe
+                data-three-src={threeSrc}
+                data-react-src={reactSrc}
+                src={threeSrc}
+                title={`${slug} preview`}
+                allow="cross-origin-isolated"
+                style={`view-transition-name: ${transitionName};`}
+            ></iframe>
+        </div>
+        <div
+            class="example-split-handle"
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="Resize preview and code panels"
+            tabindex="0"
+        ></div>
+        <div class="example-split-pane example-split-code">
+            <div class="code-pane" data-variant-pane="three">
+                <div class="code-pane-header">
+                    <span class="code-pane-filename">{threeFile}</span>
+                </div>
+                <pre class="code-pane-pre"><code>{threeMain}</code></pre>
+            </div>
+            <div class="code-pane" data-variant-pane="react">
+                <div class="code-pane-header">
+                    <span class="code-pane-filename">{reactFile}</span>
+                </div>
+                <pre class="code-pane-pre"><code>{reactMain}</code></pre>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .example-split {
+        --split: 55%;
+        --handle: 8px;
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+    }
+
+    /* Toolbar — variant toggle on the left, fullscreen on the right.
+     * Sits above the split grid so its controls aren't competing with
+     * the resizable divider for pointer real estate. */
+    .example-split-toolbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.5rem;
+    }
+
+    .variant-toggle {
+        display: inline-flex;
+        align-items: center;
+        gap: 0;
+        padding: 0.1875rem;
+        border-radius: calc(var(--radius) - 2px);
+        background: color-mix(in oklab, var(--card) 92%, var(--background));
+        box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--border) 70%, transparent);
+    }
+
+    .variant-toggle button {
+        appearance: none;
+        background: transparent;
+        border: 0;
+        padding: 0.3125rem 0.625rem;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        font-family: 'Inter', system-ui, sans-serif;
+        font-size: 0.8125rem;
+        font-weight: 500;
+        color: var(--muted-foreground);
+        border-radius: calc(var(--radius) - 4px);
+        cursor: pointer;
+        transition: color 0.15s, background-color 0.15s;
+    }
+
+    .variant-toggle button:hover {
+        color: var(--foreground);
+    }
+
+    .variant-toggle button[aria-selected='true'] {
+        background-color: var(--background);
+        color: color-mix(in oklab, var(--diamond) 65%, var(--foreground));
+        box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--diamond) 30%, var(--border));
+    }
+
+    .variant-icon {
+        width: 0.875rem;
+        height: 0.875rem;
+    }
+
+    .fullscreen-btn {
+        appearance: none;
+        background: transparent;
+        border: 0;
+        padding: 0.375rem 0.5rem;
+        color: var(--muted-foreground);
+        border-radius: calc(var(--radius) - 4px);
+        cursor: pointer;
+        transition: color 0.15s, background-color 0.15s;
+    }
+
+    .fullscreen-btn:hover {
+        color: var(--diamond);
+        background-color: color-mix(in oklab, var(--diamond) 10%, transparent);
+    }
+
+    /* Split grid — three columns: preview | handle | code. The handle's
+     * width is fixed (8px); the two panes share the rest based on the
+     * --split CSS variable, which the drag script updates. */
+    .example-split-grid {
+        display: grid;
+        grid-template-columns: var(--split) var(--handle) 1fr;
+        gap: 0;
+        height: 70vh;
+        min-height: 32rem;
+        max-height: 56rem;
+        border-radius: calc(var(--radius) + 0.25rem);
+        overflow: hidden;
+        background: var(--card);
+        box-shadow:
+            0 0 0 1px color-mix(in oklab, var(--border) 75%, transparent),
+            0 24px 60px -20px color-mix(in oklab, var(--diamond) 25%, transparent);
+    }
+
+    .example-split-pane {
+        position: relative;
+        overflow: hidden;
+        min-width: 0;
+    }
+
+    .example-split-preview iframe {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        border: 0;
+        background: #1a1a2e;
+        color-scheme: dark;
+    }
+
+    /* Handle — thin gem-tinted strip with a draggable target zone wider
+     * than its visual stripe (still 8px in the grid, the cursor target
+     * is 100% of that 8px). Hover + drag highlight states give the
+     * affordance without extra DOM. */
+    .example-split-handle {
+        cursor: col-resize;
+        background: color-mix(in oklab, var(--border) 70%, transparent);
+        transition: background-color 0.15s;
+        position: relative;
+    }
+
+    .example-split-handle::before {
+        content: '';
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        width: 2px;
+        height: 2.5rem;
+        transform: translate(-50%, -50%);
+        background: color-mix(in oklab, var(--diamond) 50%, var(--muted-foreground));
+        border-radius: 1px;
+        pointer-events: none;
+    }
+
+    .example-split-handle:hover,
+    .example-split-handle:focus-visible,
+    .example-split[data-dragging='true'] .example-split-handle {
+        background: color-mix(in oklab, var(--diamond) 25%, var(--border));
+    }
+    .example-split-handle:focus-visible {
+        outline: 2px solid var(--diamond);
+        outline-offset: -2px;
+    }
+
+    /* Code pane — file header on top + scrollable source below.
+     * Plain <pre><code> rendering for v1 (no syntax highlighting yet —
+     * adding expressive-code's <Code> component requires extracting
+     * the EC config to ec.config.mjs first; deferred). The Commit
+     * Mono font does most of the visual work. */
+    .example-split-code {
+        background: var(--code-background);
+    }
+
+    .code-pane {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+    }
+
+    /* Variant visibility — selector toggles which code pane shows. */
+    .example-split[data-variant='three'] .code-pane[data-variant-pane='react'],
+    .example-split[data-variant='react'] .code-pane[data-variant-pane='three'] {
+        display: none;
+    }
+
+    .code-pane-header {
+        flex: 0 0 auto;
+        padding: 0.5rem 0.875rem;
+        background: color-mix(in oklab, var(--card) 92%, var(--code-background));
+        border-bottom: 1px solid color-mix(in oklab, var(--border) 60%, transparent);
+        font-family: 'Inter', system-ui, sans-serif;
+        font-size: 0.75rem;
+        font-style: italic;
+        color: color-mix(in oklab, var(--diamond) 50%, var(--muted-foreground));
+    }
+
+    .code-pane-filename {
+        letter-spacing: 0.005em;
+    }
+
+    .code-pane-pre {
+        flex: 1 1 auto;
+        margin: 0;
+        padding: 0.75rem 1rem 1rem;
+        overflow: auto;
+        background: var(--code-background);
+        color: var(--foreground);
+        font-family: 'Commit Mono', 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
+        font-size: 0.8125rem;
+        line-height: 1.6;
+    }
+
+    .code-pane-pre code {
+        font: inherit;
+        background: transparent;
+        padding: 0;
+        white-space: pre;
+    }
+
+    /* Mobile: stack vertically (preview on top, code below). The
+     * handle becomes a horizontal divider; the drag still works on
+     * touch but we constrain the resize to the inline (horizontal)
+     * axis only at desktop. */
+    @media (max-width: 768px) {
+        .example-split-grid {
+            grid-template-columns: 1fr;
+            grid-template-rows: 50vh var(--handle) 1fr;
+            height: auto;
+            min-height: 0;
+            max-height: none;
+        }
+        .example-split-handle {
+            cursor: row-resize;
+        }
+        .example-split-handle::before {
+            width: 2.5rem;
+            height: 2px;
+        }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        .variant-toggle button,
+        .fullscreen-btn,
+        .example-split-handle {
+            transition: none;
+        }
+    }
+</style>
+
+<script>
+    /**
+     * Wire up the split view's interactivity:
+     *   - Variant toggle (Three / React) — flips data-variant on the
+     *     container, swaps iframe src, persists choice to localStorage.
+     *   - Drag handle — pointer-driven resize of --split between 25%–80%.
+     *   - Fullscreen — requests fullscreen on the iframe.
+     *
+     * Re-binds on `astro:page-load` so SPA navigations work.
+     */
+    function bindSplitViews() {
+        const splits = document.querySelectorAll<HTMLElement>('.example-split:not([data-bound])')
+        splits.forEach((root) => {
+            root.dataset.bound = '1'
+
+            // ─── Variant toggle ────────────────────────────────────
+            const toggleButtons = root.querySelectorAll<HTMLButtonElement>(
+                '.variant-toggle button[data-variant-target]'
+            )
+            const iframe = root.querySelector<HTMLIFrameElement>(
+                '.example-split-preview iframe'
+            )
+            const STORAGE_VARIANT = 'flatland-example-type'
+
+            const restoreVariant = (): 'three' | 'react' => {
+                try {
+                    const v = localStorage.getItem(STORAGE_VARIANT)
+                    return v === 'react' || v === 'three' ? v : 'three'
+                } catch {
+                    return 'three'
+                }
+            }
+
+            const setVariant = (variant: 'three' | 'react') => {
+                root.dataset.variant = variant
+                toggleButtons.forEach((b) => {
+                    b.setAttribute(
+                        'aria-selected',
+                        b.dataset.variantTarget === variant ? 'true' : 'false'
+                    )
+                })
+                if (iframe) {
+                    const next = iframe.dataset[`${variant}Src`] || iframe.src
+                    if (iframe.src !== next) iframe.src = next
+                }
+                try { localStorage.setItem(STORAGE_VARIANT, variant) } catch {}
+            }
+
+            // Restore saved variant on first bind.
+            setVariant(restoreVariant())
+
+            toggleButtons.forEach((btn) => {
+                btn.addEventListener('click', () => {
+                    const v = btn.dataset.variantTarget
+                    if (v === 'three' || v === 'react') setVariant(v)
+                })
+            })
+
+            // ─── Drag handle ──────────────────────────────────────
+            const handle = root.querySelector<HTMLElement>('.example-split-handle')
+            const grid = root.querySelector<HTMLElement>('.example-split-grid')
+            const STORAGE_SPLIT = 'flatland-example-split'
+
+            // Restore saved split position.
+            try {
+                const saved = parseFloat(localStorage.getItem(STORAGE_SPLIT) || '')
+                if (Number.isFinite(saved) && saved >= 25 && saved <= 80) {
+                    root.style.setProperty('--split', `${saved}%`)
+                }
+            } catch {}
+
+            if (handle && grid) {
+                let dragging = false
+                const isHorizontal = () => window.matchMedia('(min-width: 769px)').matches
+
+                const onMove = (e: PointerEvent) => {
+                    if (!dragging) return
+                    const rect = grid.getBoundingClientRect()
+                    const isHoriz = isHorizontal()
+                    const total = isHoriz ? rect.width : rect.height
+                    const offset = isHoriz ? e.clientX - rect.left : e.clientY - rect.top
+                    const pct = Math.max(25, Math.min(80, (offset / total) * 100))
+                    root.style.setProperty('--split', `${pct}%`)
+                    try { localStorage.setItem(STORAGE_SPLIT, pct.toFixed(1)) } catch {}
+                }
+
+                const onUp = () => {
+                    if (!dragging) return
+                    dragging = false
+                    root.removeAttribute('data-dragging')
+                    document.body.style.removeProperty('user-select')
+                    document.body.style.removeProperty('cursor')
+                    window.removeEventListener('pointermove', onMove)
+                    window.removeEventListener('pointerup', onUp)
+                }
+
+                handle.addEventListener('pointerdown', (e) => {
+                    e.preventDefault()
+                    dragging = true
+                    root.setAttribute('data-dragging', 'true')
+                    document.body.style.userSelect = 'none'
+                    document.body.style.cursor = isHorizontal() ? 'col-resize' : 'row-resize'
+                    window.addEventListener('pointermove', onMove)
+                    window.addEventListener('pointerup', onUp)
+                })
+
+                // Keyboard resize for accessibility — left/right arrow
+                // (or up/down on mobile-stack) bumps the split point
+                // by 5% each press.
+                handle.addEventListener('keydown', (e) => {
+                    const cur = parseFloat(getComputedStyle(root).getPropertyValue('--split')) || 55
+                    let next = cur
+                    if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') next = cur - 5
+                    else if (e.key === 'ArrowRight' || e.key === 'ArrowDown') next = cur + 5
+                    else if (e.key === 'Home') next = 30
+                    else if (e.key === 'End') next = 75
+                    else return
+                    e.preventDefault()
+                    next = Math.max(25, Math.min(80, next))
+                    root.style.setProperty('--split', `${next}%`)
+                    try { localStorage.setItem(STORAGE_SPLIT, next.toFixed(1)) } catch {}
+                })
+            }
+
+            // ─── Fullscreen ────────────────────────────────────────
+            const fsBtn = root.querySelector<HTMLButtonElement>('[data-fullscreen]')
+            fsBtn?.addEventListener('click', () => {
+                const target = iframe as any
+                if (!target) return
+                const req =
+                    target.requestFullscreen ||
+                    target.webkitRequestFullscreen ||
+                    target.mozRequestFullScreen ||
+                    target.msRequestFullscreen
+                req?.call(target)
+            })
+        })
+    }
+
+    if (typeof document !== 'undefined') {
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', bindSplitViews, { once: true })
+        } else {
+            bindSplitViews()
+        }
+        document.addEventListener('astro:page-load', bindSplitViews)
+    }
+</script>
