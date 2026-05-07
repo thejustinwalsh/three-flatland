@@ -98,11 +98,6 @@ const accentStyle = resolvedGem ? `--vp-accent: var(--${resolvedGem});` : undefi
       color-mix(in oklab, var(--vp-accent) 25%, transparent) 100%
     );
     border-radius: 2px;
-    box-shadow:
-      calc(cos(var(--scene-angle, 135deg)) * 3px)
-      calc(sin(var(--scene-angle, 135deg)) * 3px)
-      14px
-      color-mix(in oklab, var(--vp-accent) 55%, transparent);
   }
 
   .vp-content {
@@ -145,9 +140,4 @@ const accentStyle = resolvedGem ? `--vp-accent: var(--${resolvedGem});` : undefi
     font-weight: 600;
   }
 
-  @media (prefers-reduced-motion: reduce) {
-    .vp-rule {
-      box-shadow: 0 0 14px color-mix(in oklab, var(--vp-accent) 50%, transparent);
-    }
-  }
 </style>

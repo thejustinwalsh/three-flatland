@@ -107,11 +107,23 @@ const accentStyle = resolvedGem ? `--card-accent: var(--${resolvedGem});` : unde
       box-shadow 180ms ease;
   }
 
-  /* Top-layer rim ring — last child of .feature-card, absolutely positioned
-   * with z-index above the .u-light pseudos so it masks any displacement-
-   * filter edge artifacts. The ring is 1.5px thick, gradient-colored via
-   * conic-gradient anchored at --scene-angle (perlin-drifted), brighter on
-   * the lit side. Mask makes it ring-shaped without an extra wrapper. */
+  /* ── Foil rim system ──
+   *
+   * Three layers stacked on the .card-edge ring (1.5px thick, masked).
+   * All three respond to the same motion.ts vars (--scene-angle for
+   * ambient day-cycle, --light-angle for cursor angle, --mx/--my for
+   * cursor position, --mouse-active 0..1 for hover scalar):
+   *
+   *   1. Base conic — broad scene-angle rim. The ambient lit half.
+   *   2. ::before  — narrow cursor-driven HOTSPOT on the rim. Tracks
+   *                  --light-angle. Fades in with --mouse-active.
+   *   3. ::after   — star-shaped lens flare anchored to (--mx, --my)
+   *                  with mix-blend-mode: screen. Fades in with
+   *                  --mouse-active.
+   *
+   * Together they read as a foil card: ambient scene light bathes the
+   * lit half, the cursor drags a sharp glint along the rim, and a
+   * star flare blooms where the eye is looking. */
   .feature-card > .card-edge {
     position: absolute;
     inset: 0;
@@ -136,9 +148,81 @@ const accentStyle = resolvedGem ? `--card-accent: var(--${resolvedGem});` : unde
       linear-gradient(#000, #000);
     mask-composite: exclude;
   }
+
+  /* Cursor hotspot: 30°-wide bright peak at --light-angle, riding the
+   * same ring mask. mix-blend-mode: screen lifts the color into a
+   * glint above the base rim. Opacity tracks --mouse-active. */
+  .feature-card > .card-edge::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    padding: 1.5px;
+    background: conic-gradient(
+      from calc(var(--light-angle, 135deg) - 105deg),
+      transparent 0deg,
+      color-mix(in oklab, white 70%, var(--card-accent, var(--primary))) 22deg,
+      transparent 45deg,
+      transparent 360deg
+    );
+    -webkit-mask:
+      linear-gradient(#000, #000) content-box,
+      linear-gradient(#000, #000);
+    -webkit-mask-composite: xor;
+    mask:
+      linear-gradient(#000, #000) content-box,
+      linear-gradient(#000, #000);
+    mask-composite: exclude;
+    opacity: calc(var(--mouse-active, 0) * 0.85);
+    mix-blend-mode: screen;
+    pointer-events: none;
+  }
+
+  /* Lens-flare star: small radial bloom + star burst, anchored at
+   * the cursor (--mx/--my). mix-blend-mode: screen so it brightens
+   * the rim where the eye is. Sized as a fraction of the card so it
+   * scales with viewport. The outer rays come from a radial-gradient
+   * with mask so they read as a soft 4-point star, not a literal
+   * polygon. */
+  .feature-card > .card-edge::after {
+    content: '';
+    position: absolute;
+    left: var(--mx, 50%);
+    top: var(--my, 50%);
+    width: 7rem;
+    height: 7rem;
+    transform: translate(-50%, -50%);
+    background:
+      /* Center hot-point */
+      radial-gradient(
+        closest-side,
+        color-mix(in oklab, white 80%, var(--card-accent, var(--primary))) 0%,
+        color-mix(in oklab, var(--card-accent, var(--primary)) 60%, transparent) 12%,
+        transparent 35%
+      );
+    /* Star rays via mask: cross-shape brightens orthogonal axes */
+    -webkit-mask:
+      linear-gradient(0deg, transparent 42%, #000 50%, transparent 58%),
+      linear-gradient(90deg, transparent 42%, #000 50%, transparent 58%),
+      radial-gradient(closest-side, #000 0%, #000 30%, transparent 60%);
+    -webkit-mask-composite: source-over;
+    mask:
+      linear-gradient(0deg, transparent 42%, #000 50%, transparent 58%),
+      linear-gradient(90deg, transparent 42%, #000 50%, transparent 58%),
+      radial-gradient(closest-side, #000 0%, #000 30%, transparent 60%);
+    mask-composite: add;
+    opacity: calc(var(--mouse-active, 0) * 0.55);
+    mix-blend-mode: screen;
+    pointer-events: none;
+  }
+
   @media (prefers-reduced-motion: reduce) {
     .feature-card > .card-edge {
       background: var(--border);
+    }
+    .feature-card > .card-edge::before,
+    .feature-card > .card-edge::after {
+      display: none;
     }
   }
 

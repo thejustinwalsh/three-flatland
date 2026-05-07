@@ -64,7 +64,7 @@ const posterPngHref = `${baseURL}/captures/${slug}.png`
 
 <a
   href={detailHref}
-  class:list={['gallery-tile', 'not-content']}
+  class:list={['gallery-tile', 'not-content', 'u-light']}
   data-gem={resolvedColor}
   data-slug={slug}
   style={{
@@ -107,6 +107,9 @@ const posterPngHref = `${baseURL}/captures/${slug}.png`
     <h3 class="gallery-tile-title">{title}</h3>
     <p class="gallery-tile-desc">{description}</p>
   </div>
+  {/* Foil rim — base scene-angle ring + ::before cursor hotspot +
+      ::after lens flare. Mirrors FeatureCard.card-edge. */}
+  <span class="tile-edge" aria-hidden="true"></span>
 </a>
 
 <style>
@@ -129,10 +132,116 @@ const posterPngHref = `${baseURL}/captures/${slug}.png`
   }
 
   .gallery-tile:hover {
-    box-shadow:
-      0 0 0 1px color-mix(in oklab, var(--tile-accent) 50%, transparent),
-      0 12px 30px -10px color-mix(in oklab, var(--tile-accent) 35%, transparent);
+    /* Hover lift via translate + tightened gem-tinted ring on the
+     * border. No tinted drop shadow — restraint over generic glow.
+     * Foil/glint reactivity comes from the cursor-tracked rim
+     * (.tile-edge below), not a soft halo. */
+    box-shadow: 0 0 0 1px color-mix(in oklab, var(--tile-accent) 60%, transparent);
     transform: translateY(-2px);
+  }
+
+  /* ── Foil rim ──
+   * Three-layer system mirroring FeatureCard:
+   *   1. Base conic — broad scene-angle rim (ambient).
+   *   2. ::before  — narrow cursor hotspot at --light-angle.
+   *   3. ::after   — lens-flare star at (--mx, --my).
+   * No tilt: a grid of tilting tiles would feel jittery. The rim
+   * lights and flare provide enough cursor reactivity. */
+  .tile-edge {
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    z-index: 4;
+    padding: 1.5px;
+    background: conic-gradient(
+      from calc(var(--scene-angle, 135deg) - 90deg),
+      color-mix(in oklab, var(--tile-accent) 75%, transparent) 0deg,
+      color-mix(in oklab, var(--tile-accent) 25%, var(--border)) 90deg,
+      color-mix(in oklab, var(--border) 90%, transparent) 180deg,
+      color-mix(in oklab, var(--tile-accent) 25%, var(--border)) 270deg,
+      color-mix(in oklab, var(--tile-accent) 75%, transparent) 360deg
+    );
+    -webkit-mask:
+      linear-gradient(#000, #000) content-box,
+      linear-gradient(#000, #000);
+    -webkit-mask-composite: xor;
+    mask:
+      linear-gradient(#000, #000) content-box,
+      linear-gradient(#000, #000);
+    mask-composite: exclude;
+    /* Idle: low-key rim. On hover the cursor hotspot + flare layers
+     * brighten things significantly. */
+    opacity: 0.5;
+    transition: opacity 200ms ease;
+  }
+  .gallery-tile:hover .tile-edge {
+    opacity: 1;
+  }
+
+  .tile-edge::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    padding: 1.5px;
+    background: conic-gradient(
+      from calc(var(--light-angle, 135deg) - 105deg),
+      transparent 0deg,
+      color-mix(in oklab, white 70%, var(--tile-accent)) 22deg,
+      transparent 45deg,
+      transparent 360deg
+    );
+    -webkit-mask:
+      linear-gradient(#000, #000) content-box,
+      linear-gradient(#000, #000);
+    -webkit-mask-composite: xor;
+    mask:
+      linear-gradient(#000, #000) content-box,
+      linear-gradient(#000, #000);
+    mask-composite: exclude;
+    opacity: calc(var(--mouse-active, 0) * 0.85);
+    mix-blend-mode: screen;
+    pointer-events: none;
+  }
+
+  .tile-edge::after {
+    content: '';
+    position: absolute;
+    left: var(--mx, 50%);
+    top: var(--my, 50%);
+    width: 5rem;
+    height: 5rem;
+    transform: translate(-50%, -50%);
+    background: radial-gradient(
+      closest-side,
+      color-mix(in oklab, white 80%, var(--tile-accent)) 0%,
+      color-mix(in oklab, var(--tile-accent) 60%, transparent) 12%,
+      transparent 35%
+    );
+    -webkit-mask:
+      linear-gradient(0deg, transparent 42%, #000 50%, transparent 58%),
+      linear-gradient(90deg, transparent 42%, #000 50%, transparent 58%),
+      radial-gradient(closest-side, #000 0%, #000 30%, transparent 60%);
+    mask:
+      linear-gradient(0deg, transparent 42%, #000 50%, transparent 58%),
+      linear-gradient(90deg, transparent 42%, #000 50%, transparent 58%),
+      radial-gradient(closest-side, #000 0%, #000 30%, transparent 60%);
+    mask-composite: add;
+    opacity: calc(var(--mouse-active, 0) * 0.55);
+    mix-blend-mode: screen;
+    pointer-events: none;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .tile-edge {
+      background: var(--border);
+      opacity: 0.6;
+    }
+    .tile-edge::before,
+    .tile-edge::after {
+      display: none;
+    }
   }
 
   .gallery-tile:focus-visible {
