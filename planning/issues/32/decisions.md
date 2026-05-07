@@ -2,6 +2,28 @@
 
 # Phase 3 decisions
 
+## Phase 3.x: Examples + Showcases as top-level masonry surfaces
+**File(s):** `docs/src/components/gallery/{GalleryGrid,GalleryTile}.astro`; `docs/src/content/docs/{examples,showcases}/index.mdx`; `docs/scripts/capture-examples.mjs`; `docs/astro.config.mjs` (`navLinks` + sidebar trim); `packages/starlight-theme/components/overrides/parts/NavBar.astro` (active-state); `docs/src/components/ExamplePreview.tsx` (view-transition pairing)
+**Date:** 2026-05-07
+
+**Decision:** Lift Examples and Showcases out of the docs sidebar into their own `template: splash` index pages reachable from new top-of-page nav links (Docs / Examples / Showcases). Replace the sidebar lists with masonry grids of tiles that lazy-load a poster + a hover-played `<video>` (recorded from each example's `<canvas>` buffer). Pair the tile to its detail page via a slug-derived `view-transition-name` so the browser morphs the tile geometry into the preview iframe on click.
+
+**Why:** Stakeholder ask — the existing examples/showcases sidebar entries felt like docs pages but the experience is interactive demos, not prose. A masonry surface with hover-preview tiles is the right read for that content. Three top-level surfaces (Docs / Examples / Showcases) match how users mentally split the content too.
+
+**Terminology:** "Examples" stays for focused single-feature demos; "Showcases" stays for full app/game demos. Minis (e.g. `mini-breakout`) are implementation packages — not user-facing — and don't get a top-level surface.
+
+**Capture path:** Playwright headless (path A from the design intake), recording from `canvas.captureStream(30)` + `MediaRecorder`. Skips devtools overlays AND the example's stats/Tweakpane chrome, so the recording is clean canvas only. Trigger: `pnpm --filter=docs capture:examples`. Captures go to `docs/public/captures/<slug>.{png,webm}` and are gitignored as runtime-regenerable artifacts (`.gitkeep` keeps the directory present for the build).
+
+**Hover-video model:** Lazy (path b). The `<video>` element ships with `data-src` only; on first `pointerenter` we copy it onto `src` and call `play()`. First-frame swap fires on `loadeddata`, so even if autoplay is blocked the tile still flips from poster → video frame. Subsequent hovers just toggle play/pause. Reduced-motion skips the swap entirely.
+
+**View transitions:** Tile carries `view-transition-name: tile-examples-<slug>`; ExamplePreview's iframe carries the same name. On click, the browser pair-morphs the tile's bounding box into the iframe's bounding box. Page-content alpha blends are the browser's default root cross-fade — no explicit choreography needed.
+
+**PR:** Lands on `docs-refresh-foundation` (#33) as Phase 3.x — keeps the workstream consolidated rather than fragmenting into a parallel PR.
+
+**How to apply:** Future example/showcase additions need (a) an entry in the masonry index MDX, (b) the example to exist at `examples/three/<slug>/`, (c) a capture run to populate posters + videos. The Playwright script's inventory at `docs/scripts/capture-examples.mjs` should be kept in sync with the masonry tiles.
+
+---
+
 ## Site-title position parity between landing and docs
 **File(s):** `packages/starlight-theme/components/overrides/PageFrame.astro` (removed `[data-landing] > header :global(.site-title-wrapper) { margin-left }` overrides)
 **Date:** 2026-05-07
