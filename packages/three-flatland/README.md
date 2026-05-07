@@ -11,7 +11,7 @@ High-performance 2D sprites, tilemaps, and effects for [Three.js](https://threej
 [![npm](https://img.shields.io/npm/v/three-flatland)](https://www.npmjs.com/package/three-flatland)
 [![license](https://img.shields.io/npm/l/three-flatland)](https://github.com/thejustinwalsh/three-flatland/blob/main/LICENSE)
 
-## Why three-flatland?
+## Why Flatland?
 
 Three.js is a 3D engine. Building 2D games on top of it means fighting the renderer — no batching, no sprite sheets, no layer ordering, no pixel-perfect rendering. three-flatland fixes all of that.
 
