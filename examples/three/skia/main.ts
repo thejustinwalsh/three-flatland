@@ -270,18 +270,26 @@ async function main() {
   })
   const panelCenter = new Mesh(panelGeo, panelMat)
   panelCenter.position.set(0, 1.2, -0.4)
+  // renderOrder=10 forces the skia panels to draw LAST (after bgPlane,
+  // ground, and floorEdge). When the panel's transparent skia regions
+  // composite, the framebuffer already contains the gem-tinted bg
+  // plane behind them — so transparency reveals the gradient instead
+  // of opaque black.
+  panelCenter.renderOrder = 10
   scene.add(panelCenter)
 
   const panelMatL = new MeshBasicMaterial({ color: 0xffffff, side: DoubleSide, transparent: true, premultipliedAlpha: true })
   const panelLeft = new Mesh(panelGeo, panelMatL)
   panelLeft.position.set(-2.6, 1.2, 0.3)
   panelLeft.rotation.y = 0.35
+  panelLeft.renderOrder = 10
   scene.add(panelLeft)
 
   const panelMatR = new MeshBasicMaterial({ color: 0xffffff, side: DoubleSide, transparent: true, premultipliedAlpha: true })
   const panelRight = new Mesh(panelGeo, panelMatR)
   panelRight.position.set(2.6, 1.2, 0.3)
   panelRight.rotation.y = -0.35
+  panelRight.renderOrder = 10
   scene.add(panelRight)
 
 

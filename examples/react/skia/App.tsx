@@ -387,8 +387,13 @@ function Panels() {
     canvasRef.current?.render(true)
   }, { before: 'render' })
 
+  // renderOrder=10 forces the skia panels to draw LAST (after bgPlane,
+  // ground, and floorEdge). When the panel's transparent skia regions
+  // composite, the framebuffer already contains the gem-tinted bg
+  // plane behind them — so transparency reveals the gradient instead
+  // of opaque black.
   return <>
-    <mesh ref={centerRef} position={[0, 1.2, -0.4]}>
+    <mesh ref={centerRef} position={[0, 1.2, -0.4]} renderOrder={10}>
       <planeGeometry args={[panelW, panelH]} />
       <meshBasicMaterial color={0xffffff} side={DoubleSide} transparent premultipliedAlpha>
         <SkiaCanvas ref={canvasRef as any} attach={attachSkiaTexture} renderer={renderer} width={TEX_W} height={TEX_H}>
@@ -406,11 +411,11 @@ function Panels() {
         </SkiaCanvas>
       </meshBasicMaterial>
     </mesh>
-    <mesh ref={leftRef} position={[-2.6, 1.2, 0.3]} rotation-y={0.35}>
+    <mesh ref={leftRef} position={[-2.6, 1.2, 0.3]} rotation-y={0.35} renderOrder={10}>
       <planeGeometry args={[panelW, panelH]} />
       <meshBasicMaterial ref={leftMatRef} color={0xffffff} side={DoubleSide} transparent premultipliedAlpha />
     </mesh>
-    <mesh ref={rightRef} position={[2.6, 1.2, 0.3]} rotation-y={-0.35}>
+    <mesh ref={rightRef} position={[2.6, 1.2, 0.3]} rotation-y={-0.35} renderOrder={10}>
       <planeGeometry args={[panelW, panelH]} />
       <meshBasicMaterial ref={rightMatRef} color={0xffffff} side={DoubleSide} transparent premultipliedAlpha />
     </mesh>
