@@ -181,20 +181,25 @@ function Game() {
 
 <style>
 {`
-  /* Half-viewport hero — canvas occupies the area below the site
-     header (which renders with an alpha bg on landing so the canvas
-     shows through). 60vh keeps the StatsBanner above the fold. */
+  /* Half-viewport hero — canvas extends UP behind the transparent
+     site header so the gem flow reads as one uninterrupted plane
+     from the very top of the viewport down to the hero's end.
+     60vh hero keeps the StatsBanner above the fold. */
   .hero-fullscreen {
     position: relative;
     width: 100%;
     height: 60vh;
     min-height: 24rem;
     margin: 0;
-    overflow: hidden;
   }
   .hero-canvas {
     position: absolute;
-    inset: 0;
+    /* Extend up past the hero's top edge by the header height so the
+       canvas covers the area BEHIND the (transparent) site header. */
+    top: calc(var(--header-height, 3.5rem) * -1);
+    left: 0;
+    right: 0;
+    bottom: 0;
     overflow: hidden;
     background: var(--background);
     z-index: 0;
