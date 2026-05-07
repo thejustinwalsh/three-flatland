@@ -400,3 +400,47 @@ The issue explicitly says "Update to the latest starlight version, ensure all pl
 **Why:** The plugin uses unocss to ship icons via `@iconify-json/*` collections. Stated peer deps: `unocss: '>=0.58.0'`. Without it, the plugin won't function.
 
 **Evidence:** `npm view starlight-plugin-icons@1.1.6 peerDependencies` lists unocss as required.
+
+
+## Gem-background system: helper lives in example templates, not in `@three-flatland/presets`
+**File(s):** `examples/three/template/GemBackground.ts`, `examples/react/template/GemBackground.tsx`, `scripts/sync-examples.ts` (new)
+**Date:** 2026-05-07
+
+**Decision:** The gem-background helper that renders a gem-tinted radial-gradient backdrop (matching the tile fallback poster) lives in the example **templates**, copied per-example by a sync script — not in `@three-flatland/presets` as a published preset.
+
+**Why:** The presets package holds full opinionated *pipeline presets* (lighting setups, etc.), not utility primitives. Shipping a "draw a tinted background quad" helper there muddles that contract. Examples are also explicitly designed to be standalone copy-paste-able sandboxes (StackBlitz fork target), so a sync-from-source pattern fits the existing examples ergonomic better than a runtime dependency. Same approach `sync-pack` already uses for package.json catalog mirroring.
+
+**Evidence:** Existing `scripts/sync-pack.ts` + `lefthook.yml` `sync-pack-full` / `sync-pack-files` entries demonstrate the precedent. Examples already duplicate code by design (per `examples/CLAUDE.md`).
+
+**How to apply:** `examples/_shared/gems.config.ts` is the single source for gem order + per-slug overrides + hex values. `scripts/sync-examples.ts` reads it, walks `examples/{three,react}/*` (minus `template`), copies the appropriate helper file, writes `gem.ts` per example, and regenerates `docs/src/data/example-gems.ts` for the GalleryTile component. Lefthook re-runs on edits to either template or the config.
+
+## Gem-background: index-based assignment with override map (not hardcoded)
+**File(s):** `examples/_shared/gems.config.ts`
+**Date:** 2026-05-07
+
+**Decision:** `gem = OVERRIDES[slug] ?? GEM_ORDER[sortedIndex % GEM_ORDER.length]`. Examples sorted alphabetically, gems cycle through the canonical `GEM_ORDER` list (diamond → emerald → gold → amethyst → ruby → pink → salmon → turquoize). Per-slug overrides only when the auto-assignment vibes wrong.
+
+**Why:** Hardcoding `{ basic-sprite: 'diamond', animation: 'emerald', … }` becomes a maintenance burden as examples are added. Index-based with optional overrides lets new examples slot in without manual mapping; explicit overrides remain available for taste.
+
+**How to apply:** When adding a new example, no config change needed unless its auto-assigned gem feels wrong. If it does, add to `GEM_OVERRIDES`. `null` in OVERRIDES = no gem treatment at all (currently no examples need this — knightmark/skia just call different layers, not opt out entirely).
+
+## Gem-background: three-layer architecture (clear / quad / composed fragment)
+**File(s):** `examples/three/template/GemBackground.ts`, `examples/react/template/GemBackground.tsx`
+**Date:** 2026-05-07
+
+**Decision:** The helper exposes three primitives that examples compose individually:
+
+1. `gemClearColor(gem)` — returns a `Color`. Always applied (renderer clear color or scene.background) so even examples that don't render a backdrop quad still read as the right gem at the edges.
+2. `createGemBackground({ gem, lit })` — returns a fullscreen-quad `Mesh` with a TSL fragment matching the CSS tile gradient. Default for most examples.
+3. `gemGradientFragment({ gem, uv })` — returns a TSL `Node<vec4>` consumable in any colorNode / output graph. Required for skia (composes the gem into the skia floor + canvas surfaces); available for future custom-render demos.
+
+**Why:** Different examples need different layer combinations:
+- Default examples: L1 + L2 (clear color as backstop, lit gradient quad as backdrop)
+- knightmark: L1 only (sprites fill viewport, a backdrop quad would just be hidden)
+- skia: L1 + L3 (skia paints its own surface; the gem must be **inside** the rendering, not behind it, so the floor and canvas backdrop carry the same tonal identity as the tile poster)
+
+A single monolithic component would force opt-out flags or branching logic. Three discrete primitives let each example's entry file express its layer choice naturally with regular function calls — no config needed beyond the gem name.
+
+**Evidence:** Tile poster is currently a CSS radial gradient (`circle at 30% 30%, gem-40%-card → gem-12%-bg → bg`). Replicating that as a TSL fragment with the same color stops produces a matching screenshot. skia's existing pipeline composes its surface via TSL, so a TSL-Node export is the right shape for that integration.
+
+**How to apply:** Each example author picks the layers that fit. Default = L1 + L2. Sync only handles file copy + `gem.ts` codegen — wiring layer calls into entry files is manual content editing per example (deliberately, to avoid invasive entry-file rewrites).

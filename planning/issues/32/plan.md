@@ -425,6 +425,49 @@ Pick this up after the design system + components are stable so we're not chasin
 
 ---
 
+## Phase 3.x — Gem-background system (examples ↔ tile coherence)
+
+**Why:** When an example tile in the masonry grid loads, the tile's fallback poster is a gem-tinted radial gradient (matches the design-system gem taxonomy — diamond, emerald, gold, …). Once the captured screenshot loads, the tile's background and the screenshot's background read as different scenes — visual seam. Goal: the example itself renders the same gem gradient so the captured poster matches the tile, and the masonry grid reads as one coherent system before/during/after capture.
+
+**Architecture — three layers per example:**
+1. **L1 — clear color.** `renderer.setClearColor(gemClearColor(GEM))` / `scene.background`. Always applied. Maps to the tile gradient's outer-ring tone (`gem 12% + #00021c`) so even examples that opt out of L2 read as the right gem.
+2. **L2 — fullscreen radial-gradient quad.** `scene.add(createGemBackground({ gem: GEM }))`. Default for most examples. TSL fragment matches the CSS tile gradient (circle at 30%/30%, three color stops). Skipped for examples that fill the viewport (knightmark).
+3. **L3 — composable TSL fragment.** `gemGradientFragment({ gem })` returns a TSL `Node` that any example can sample inside its own pipeline. **Required for skia** so its floor and background are tonally aligned with the tile via the same gradient. Optional for future custom-render demos.
+
+**Source of truth + sync** (mirroring `sync-pack` pattern):
+- `examples/_shared/gems.config.ts` — gem order list, per-slug overrides, GEM_COLORS hex map.
+- `examples/three/template/GemBackground.ts` — Three.js helper (exports all 3 layers).
+- `examples/react/template/GemBackground.tsx` — R3F wrapper (exports component + hook forms).
+- `scripts/sync-examples.ts` — copies helpers into every example, writes per-example `gem.ts`, regenerates `docs/src/data/example-gems.ts` for the tile.
+- `lefthook.yml` — pre-commit triggers re-sync on changes to source-of-truth files.
+
+**Index-based gem assignment.** Examples sorted alphabetically; `gem = OVERRIDES[slug] ?? GEM_ORDER[i % GEM_ORDER.length]`. Adding a new example slots in automatically; collision overrides via the OVERRIDES map.
+
+### Phase 3.x sub-phases
+
+- [ ] **Phase 1 (foundation)** — gems.config.ts, both helper files in templates, sync script + lefthook, GalleryGrid wired to generated map. Run sync once; helpers + gem.ts populate every example dir. No example behavior changes yet.
+- [ ] **Phase 2 (Three.js entries)** — wire 8 `examples/three/<slug>/main.ts`:
+  - 6 default: L1 + L2
+  - knightmark: L1 only
+  - skia: L1 + L3 (gem fragment composed into skia floor + canvas backdrop)
+  - Re-capture posters; visual sweep tile ↔ screenshot.
+- [ ] **Phase 3 (React entries)** — same matrix in JSX for `examples/react/<slug>/App.tsx`. Re-capture; verify.
+- [ ] **Phase 4 (polish)** — `prefers-reduced-motion` pins light position; WebGL2 fallback render verified; `pnpm sync:examples --verify` in CI; document in `examples/CLAUDE.md` + per-variant CLAUDE.md.
+
+### Phase 3.x acceptance
+
+- [ ] `gems.config.ts` is the only place gem order or color hex is authored
+- [ ] `pnpm sync:examples` is idempotent and `--verify` flag exits 1 on drift
+- [ ] Lefthook re-stages drifted files on commit (matching sync-pack-full behavior)
+- [ ] Every `examples/{three,react}/<slug>/` (except null-overridden) contains identical `GemBackground.{ts,tsx}` to its template
+- [ ] Every example's captured poster matches its tile's pre-capture gem fallback gradient (visual review)
+- [ ] skia example's floor and background visibly share the gem tone — not just clear color, the gradient itself
+- [ ] knightmark uses L1 only; sprites still fill the viewport (no visual regression)
+- [ ] `prefers-reduced-motion` test: light position pinned, no idle drift
+- [ ] WebGL2 fallback renders the gem background correctly (TSL node graph compiles in WebGL too)
+
+---
+
 ## Cross-cutting: reinit-glue audit (do once, before Phase 3 finishes)
 
 The current `Head.astro` carries five hand-rolled scripts that survive view transitions. After Phase 1 + Phase 2 land, probe each to see if it's still required (Astro 6 / Starlight 0.38 may have closed some gaps):
