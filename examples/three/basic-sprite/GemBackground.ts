@@ -37,7 +37,6 @@ import {
   screenUV,
   smoothstep,
   time,
-  uniform,
   vec2,
   vec3,
   vec4,
@@ -101,7 +100,15 @@ export function gemGradientNode({
   gem: Gem
   lit?: boolean
 }) {
-  const gemColor = uniform(new Color(GEM_HEX[gem]))
+  // Bake the gem color in as a vec3 constant rather than a uniform.
+  // `scene.backgroundNode` builds its shader independently from the
+  // main render pass; uniforms wrapped via `uniform(new Color(...))`
+  // didn't reliably bind in the background pass on at least Chrome
+  // 127 + WebGPU, producing dark/blue output regardless of gem. A
+  // baked vec3 sidesteps the binding entirely and matches identical
+  // output across all callsites (background, scene-graph, L3 mixins).
+  const c = new Color(GEM_HEX[gem])
+  const gemColor = vec3(float(c.r), float(c.g), float(c.b))
 
   return Fn(() => {
     // Replicate CSS `radial-gradient(circle at 30% 30%, ...)` exactly:
@@ -127,16 +134,12 @@ export function gemGradientNode({
     const dPx = length(fragPx.sub(centerPx))
     const d = dPx.div(length(screenPx).mul(0.7))
 
-    // Three stops, slightly more gem-dominant than the literal CSS
-    // values so the gem reads at the example viewport scale (1280×800
-    // vs the tile's ~300×225 — at large sizes the bright center
-    // contributes less per-pixel and the outer ring can swallow it).
-    //
-    //   0%   → mix(card, gem, 0.60)   center, gem-dominant
-    //   60%  → mix(bg,   gem, 0.20)   outer ring still recognizably gem
+    // Three stops mirroring the CSS tile gradient exactly:
+    //   0%   → mix(card, gem, 0.40)   center, most saturated
+    //   60%  → mix(bg,   gem, 0.12)   subtle outer tint
     //   100% → bg                      page background
-    const c0 = mix(CARD, gemColor, float(0.6))
-    const c1 = mix(BG, gemColor, float(0.2))
+    const c0 = mix(CARD, gemColor, float(0.4))
+    const c1 = mix(BG, gemColor, float(0.12))
     const c2 = BG
 
     const t0 = smoothstep(float(0), float(0.6), d) // center → outer-ring

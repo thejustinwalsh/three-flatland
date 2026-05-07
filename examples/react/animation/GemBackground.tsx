@@ -36,7 +36,6 @@ import {
   screenUV,
   smoothstep,
   time,
-  uniform,
   vec2,
   vec3,
   vec4,
@@ -94,7 +93,12 @@ export function gemGradientNode({
   gem: Gem
   lit?: boolean
 }) {
-  const gemColor = uniform(new Color(GEM_HEX[gem]))
+  // Bake the gem color in as a vec3 constant (not a uniform). See the
+  // matching note in examples/three/template/GemBackground.ts — the
+  // uniform path didn't reliably bind in the scene.backgroundNode
+  // pass, producing dark/blue output regardless of gem.
+  const c = new Color(GEM_HEX[gem])
+  const gemColor = vec3(float(c.r), float(c.g), float(c.b))
 
   return Fn(() => {
     // Replicate CSS `radial-gradient(circle at 30% 30%, ...)` exactly.
@@ -112,10 +116,9 @@ export function gemGradientNode({
     const dPx = length(fragPx.sub(centerPx))
     const d = dPx.div(length(screenPx).mul(0.7))
 
-    // Slightly more gem-dominant than the literal CSS values so the
-    // gem reads at example viewport scale.
-    const c0 = mix(CARD, gemColor, float(0.6))
-    const c1 = mix(BG, gemColor, float(0.2))
+    // Three stops mirroring the CSS tile gradient exactly.
+    const c0 = mix(CARD, gemColor, float(0.4))
+    const c1 = mix(BG, gemColor, float(0.12))
     const c2 = BG
 
     const t0 = smoothstep(float(0), float(0.6), d)
