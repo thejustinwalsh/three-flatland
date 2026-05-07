@@ -24,13 +24,20 @@ interface Props {
     slug: string
     threeFiles: Record<string, string>
     reactFiles: Record<string, string>
+    /** Per-variant + shared file whitelists — passed through to
+     *  ExampleSplitView. See its docs for default behavior (entry
+     *  file only) and the showCommonFiles use case (atlas/ldtk/
+     *  sprite-sheet shared assets). */
+    showThreeFiles?: string[]
+    showReactFiles?: string[]
+    showCommonFiles?: string[]
     /** Optional override; defaults to the page's frontmatter title. */
     title?: string
     /** Optional override; defaults to the page's frontmatter description. */
     description?: string
 }
 
-const { slug, threeFiles, reactFiles } = Astro.props
+const { slug, threeFiles, reactFiles, showThreeFiles, showReactFiles, showCommonFiles } = Astro.props
 const entryData = Astro.locals.starlightRoute?.entry?.data
 const title = Astro.props.title ?? entryData?.title ?? slug
 const description = Astro.props.description ?? entryData?.description ?? ''
@@ -52,7 +59,14 @@ const examplesHref = `${baseURL}/examples/`
         {description && <p class="example-detail-description">{description}</p>}
     </header>
 
-    <ExampleSplitView slug={slug} threeFiles={threeFiles} reactFiles={reactFiles} />
+    <ExampleSplitView
+        slug={slug}
+        threeFiles={threeFiles}
+        reactFiles={reactFiles}
+        showThreeFiles={showThreeFiles}
+        showReactFiles={showReactFiles}
+        showCommonFiles={showCommonFiles}
+    />
 
     <div class="example-detail-prose sl-markdown-content">
         <slot />
