@@ -1048,7 +1048,10 @@
                 color-mix(in oklab, var(--amethyst-high) 100%, transparent) 0%,
                 color-mix(in oklab, var(--amethyst) 75%, var(--background)) 100%
             );
-        border: 1px solid color-mix(in oklab, var(--amethyst-high) 70%, transparent);
+        /* Foil rim base — scene-angle conic ring on a ::before pseudo
+         * (see below). Border kept transparent so the rim ring is the
+         * only outer affordance. */
+        border: 1px solid transparent;
         overflow: hidden;
         isolation: isolate;
         font-weight: 600;
@@ -1061,6 +1064,45 @@
             rotateY(var(--tilt-y, 0deg));
         height: 2.375rem;
         padding: 0 1rem;
+    }
+    /* Foil rim — scene-angle conic ring + cursor hotspot stop layered
+     * via two-pass conic in multi-bg. Mirrors the FeatureCard/GalleryTile
+     * rim system at button scale. The cursor hotspot stop is always
+     * partially visible (not gated by --mouse-active to keep buttons
+     * one-pseudo); brightness tracks --light-angle. */
+    .sl-link-button.primary::before {
+        content: '';
+        position: absolute;
+        inset: 0;
+        border-radius: inherit;
+        padding: 1px;
+        background:
+            conic-gradient(
+                from calc(var(--light-angle, 135deg) - 22deg),
+                transparent 0deg,
+                color-mix(in oklab, white 60%, var(--amethyst-high)) 22deg,
+                transparent 45deg,
+                transparent 360deg
+            ),
+            conic-gradient(
+                from calc(var(--scene-angle, 135deg) - 90deg),
+                color-mix(in oklab, var(--amethyst-high) 80%, transparent) 0deg,
+                color-mix(in oklab, var(--amethyst) 35%, var(--border)) 90deg,
+                color-mix(in oklab, var(--border) 90%, transparent) 180deg,
+                color-mix(in oklab, var(--amethyst) 35%, var(--border)) 270deg,
+                color-mix(in oklab, var(--amethyst-high) 80%, transparent) 360deg
+            );
+        background-blend-mode: screen, normal;
+        -webkit-mask:
+            linear-gradient(#000, #000) content-box,
+            linear-gradient(#000, #000);
+        -webkit-mask-composite: xor;
+        mask:
+            linear-gradient(#000, #000) content-box,
+            linear-gradient(#000, #000);
+        mask-composite: exclude;
+        pointer-events: none;
+        z-index: 1;
     }
     /* Mouse hotspot — radial gem tint, fades in with --mouse-active. */
     .sl-link-button.primary::after {
@@ -1094,7 +1136,9 @@
                 color-mix(in oklab, var(--diamond) 18%, var(--background)) 0%,
                 color-mix(in oklab, var(--background) 88%, var(--diamond)) 100%
             );
-        border: 1px solid color-mix(in oklab, var(--diamond) 40%, var(--border));
+        /* Foil rim on ::before; transparent border so the rim is the
+         * only outer affordance. */
+        border: 1px solid transparent;
         overflow: hidden;
         isolation: isolate;
         font-weight: 500;
@@ -1107,6 +1151,40 @@
             rotateY(var(--tilt-y, 0deg));
         height: 2.375rem;
         padding: 0 1rem;
+    }
+    .sl-link-button.secondary::before {
+        content: '';
+        position: absolute;
+        inset: 0;
+        border-radius: inherit;
+        padding: 1px;
+        background:
+            conic-gradient(
+                from calc(var(--light-angle, 135deg) - 22deg),
+                transparent 0deg,
+                color-mix(in oklab, white 60%, var(--diamond)) 22deg,
+                transparent 45deg,
+                transparent 360deg
+            ),
+            conic-gradient(
+                from calc(var(--scene-angle, 135deg) - 90deg),
+                color-mix(in oklab, var(--diamond) 65%, transparent) 0deg,
+                color-mix(in oklab, var(--diamond) 25%, var(--border)) 90deg,
+                color-mix(in oklab, var(--border) 90%, transparent) 180deg,
+                color-mix(in oklab, var(--diamond) 25%, var(--border)) 270deg,
+                color-mix(in oklab, var(--diamond) 65%, transparent) 360deg
+            );
+        background-blend-mode: screen, normal;
+        -webkit-mask:
+            linear-gradient(#000, #000) content-box,
+            linear-gradient(#000, #000);
+        -webkit-mask-composite: xor;
+        mask:
+            linear-gradient(#000, #000) content-box,
+            linear-gradient(#000, #000);
+        mask-composite: exclude;
+        pointer-events: none;
+        z-index: 1;
     }
     .sl-link-button.secondary::after {
         content: '';

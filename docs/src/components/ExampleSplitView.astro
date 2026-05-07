@@ -395,9 +395,10 @@ const transitionName = `tile-examples-${slug}`
         border-radius: calc(var(--radius) + 0.25rem);
         overflow: hidden;
         background: var(--card);
-        box-shadow:
-            0 0 0 1px color-mix(in oklab, var(--border) 75%, transparent),
-            0 24px 60px -20px color-mix(in oklab, var(--diamond) 25%, transparent);
+        /* 1px gem-tinted border ring only — the diamond-tinted drop glow
+         * underneath read as generic decorative halo, not lift. The border
+         * defines the surface; restraint over chroma. */
+        box-shadow: 0 0 0 1px color-mix(in oklab, var(--border) 75%, transparent);
         /* No transition by default — drag updates `--split` per
          * pointermove and any grid-template-columns transition would
          * make every drag frame visibly lag through the easing curve.

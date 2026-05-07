@@ -315,8 +315,8 @@ export default defineConfig({
           {
             label: 'Project',
             items: [
-              { label: 'Branding', slug: 'branding', icon: 'i-lucide:image' },
-              { label: 'LLMs', slug: 'llm-prompts', icon: 'i-lucide:terminal' },
+              { label: 'Branding', slug: 'branding' },
+              { label: 'LLMs', slug: 'llm-prompts' },
             ],
           },
           typeDocSidebarGroup,
