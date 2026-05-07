@@ -61,14 +61,71 @@ const CARD_HEX = 0x16191e
 
 export type Gem = keyof typeof GEM_HEX
 
-// All surface colors run through `three.Color` so they end up in
-// linear-sRGB, matching the gem path. See the matching note in
-// examples/three/template/GemBackground.ts on the color-space mismatch
-// that produced visibly brighter-than-CSS output.
-const _bg = new Color(BG_HEX)
-const _card = new Color(CARD_HEX)
-const BG = vec3(_bg.r, _bg.g, _bg.b)
-const CARD = vec3(_card.r, _card.g, _card.b)
+// ───────── OKLab color-mix ─────────
+// Mirrors CSS `color-mix(in oklab, A pct, B)`. We precompute the three
+// gradient stops in JS using OKLab interpolation (perceptually uniform,
+// what CSS uses), bake the resulting sRGB-encoded values as vec3
+// constants, and let the shader smoothstep between them in sRGB-encoded
+// space (matching CSS's default radial-gradient stop interpolation),
+// with a final sRGB→linear conversion before output so the renderer's
+// gamma encode produces the intended display values.
+// Reference: https://bottosson.github.io/posts/oklab/
+
+function srgbToLinear(c: number): number {
+  return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4)
+}
+function linearToSrgb(c: number): number {
+  return c <= 0.0031308 ? 12.92 * c : 1.055 * Math.pow(c, 1 / 2.4) - 0.055
+}
+function rgbToOklab(r: number, g: number, b: number) {
+  const l = 0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b
+  const m = 0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b
+  const s = 0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b
+  const l_ = Math.cbrt(l)
+  const m_ = Math.cbrt(m)
+  const s_ = Math.cbrt(s)
+  return [
+    0.2104542553 * l_ + 0.793617785 * m_ - 0.0040720468 * s_,
+    1.9779984951 * l_ - 2.428592205 * m_ + 0.4505937099 * s_,
+    0.0259040371 * l_ + 0.7827717662 * m_ - 0.808675766 * s_,
+  ] as const
+}
+function oklabToRgb(L: number, a: number, b: number) {
+  const l_ = L + 0.3963377774 * a + 0.2158037573 * b
+  const m_ = L - 0.1055613458 * a - 0.0638541728 * b
+  const s_ = L - 0.0894841775 * a - 1.291485548 * b
+  const l = l_ ** 3
+  const m = m_ ** 3
+  const s = s_ ** 3
+  return [
+    +4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s,
+    -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s,
+    -0.0041960863 * l - 0.7034186147 * m + 1.707614701 * s,
+  ] as const
+}
+function hexToSrgbTriple(hex: number) {
+  return [((hex >> 16) & 0xff) / 255, ((hex >> 8) & 0xff) / 255, (hex & 0xff) / 255] as const
+}
+
+/** Mimics CSS `color-mix(in oklab, hexA pct, hexB)`. Returns the
+ *  result in sRGB-encoded space (0..1 floats per channel). */
+function oklabMix(hexA: number, hexB: number, mixA: number) {
+  const [aR, aG, aB] = hexToSrgbTriple(hexA).map(srgbToLinear) as [number, number, number]
+  const [bR, bG, bB] = hexToSrgbTriple(hexB).map(srgbToLinear) as [number, number, number]
+  const [aL, aA, aB_] = rgbToOklab(aR, aG, aB)
+  const [bL, bA, bB_] = rgbToOklab(bR, bG, bB)
+  const L = aL * mixA + bL * (1 - mixA)
+  const a_ = aA * mixA + bA * (1 - mixA)
+  const b_ = aB_ * mixA + bB_ * (1 - mixA)
+  const [lr, lg, lb] = oklabToRgb(L, a_, b_)
+  return [
+    Math.max(0, Math.min(1, linearToSrgb(lr))),
+    Math.max(0, Math.min(1, linearToSrgb(lg))),
+    Math.max(0, Math.min(1, linearToSrgb(lb))),
+  ] as const
+}
+
+const BG_SRGB = hexToSrgbTriple(BG_HEX)
 
 /**
  * L1 primitive — flat color tinted by the gem.
@@ -88,14 +145,10 @@ export function gemClearColor(gem: Gem): Color {
 
 /**
  * L2 / L3 primitive — TSL fragment node returning vec4 of the gem-
- * tinted radial gradient.
- *
- * Used internally by `<GemBackground>` and exposed via the
- * `useGemGradient` hook for L3 composition (e.g. blending into a
- * custom material's colorNode).
- *
- * `lit` opt-in adds perlin-driven light-center wander. Off by default
- * for deterministic captures.
+ * tinted radial gradient. Static center at (0.30, 0.30) matching the
+ * docs masonry tile (`radial-gradient(circle at 30% 30%, ...)`).
+ * `lit: true` adds slow perlin-noise drift on the light position
+ * (≤4% of viewport, sub-perceptual ambient motion).
  */
 export function gemGradientNode({
   gem,
@@ -104,41 +157,43 @@ export function gemGradientNode({
   gem: Gem
   lit?: boolean
 }) {
-  // Bake the gem color in as a vec3 constant (not a uniform). See the
-  // matching note in examples/three/template/GemBackground.ts — the
-  // uniform path didn't reliably bind in the scene.backgroundNode
-  // pass, producing dark/blue output regardless of gem.
-  const c = new Color(GEM_HEX[gem])
-  const gemColor = vec3(float(c.r), float(c.g), float(c.b))
+  // Pre-compute the three gradient stops in JS using OKLab mixing
+  // (matches CSS `color-mix(in oklab, ...)` exactly). The sRGB-encoded
+  // results are baked as vec3 constants in the shader; smoothstep then
+  // blends them in sRGB-encoded space (matching CSS's default
+  // radial-gradient stop interpolation), with sRGB→linear at output.
+  const [c0r, c0g, c0b] = oklabMix(GEM_HEX[gem], CARD_HEX, 0.4)
+  const [c1r, c1g, c1b] = oklabMix(GEM_HEX[gem], BG_HEX, 0.12)
+  const [c2r, c2g, c2b] = BG_SRGB
+
+  const c0 = vec3(c0r, c0g, c0b)
+  const c1 = vec3(c1r, c1g, c1b)
+  const c2 = vec3(c2r, c2g, c2b)
 
   return Fn(() => {
-    // Replicate CSS `radial-gradient(circle at 30% 30%, ...)` exactly.
-    // Pixel-space distance + farthest-corner normalization keeps the
-    // gradient circular regardless of viewport aspect ratio. See
-    // examples/three/template/GemBackground.ts for the full rationale.
     const screenPx = screenSize
-    const centerNorm = vec2(float(0.3), float(0.3))
-    const cx = lit ? centerNorm.x.add(mx_noise_float(time.mul(0.05).add(vec2(0))).mul(0.04)) : centerNorm.x
+    const cx = lit
+      ? float(0.3).add(mx_noise_float(time.mul(0.05).add(vec2(0))).mul(0.04))
+      : float(0.3)
     const cy = lit
-      ? centerNorm.y.add(mx_noise_float(time.mul(0.05).add(vec2(100))).mul(0.04))
-      : centerNorm.y
+      ? float(0.3).add(mx_noise_float(time.mul(0.05).add(vec2(100))).mul(0.04))
+      : float(0.3)
     const centerPx = vec2(cx, cy).mul(screenPx)
     const fragPx = screenUV.mul(screenPx)
-    const dPx = length(fragPx.sub(centerPx))
-    const d = dPx.div(length(screenPx).mul(0.7))
+    const d = length(fragPx.sub(centerPx)).div(length(screenPx).mul(0.7))
 
-    // Two-stop gradient, both gem-tinted. See note in the Three.js
-    // template — at example viewport scale the CSS's third stop (bg
-    // fadeout) makes the outer 40% of the screen read as flat dark
-    // blue regardless of gem. Drop the fadeout, both stops carry gem.
-    //
-    //   0%   → mix(card, gem, 0.50)   center, gem-saturated
-    //   85%  → mix(bg,   gem, 0.30)   ambient, still recognizably gem
-    const c0 = mix(CARD, gemColor, float(0.5))
-    const c1 = mix(BG, gemColor, float(0.3))
+    // Stop interpolation in sRGB-encoded space (matches CSS).
+    const t0 = smoothstep(float(0), float(0.6), d)
+    const t1 = smoothstep(float(0.6), float(1), d)
+    const inner = mix(c0, c1, t0)
+    const outer = mix(c1, c2, t1)
+    const blend = smoothstep(float(0.55), float(0.65), d)
+    const sRGB = mix(inner, outer, blend)
 
-    const t = smoothstep(float(0), float(0.85), d)
-    return vec4(mix(c0, c1, t), float(1))
+    // sRGB-encoded → linear-sRGB. The renderer's output gamma encode
+    // (linear → sRGB) then produces the intended display value.
+    const linear = sRGB.pow(vec3(float(2.2)))
+    return vec4(linear, float(1))
   })()
 }
 

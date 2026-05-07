@@ -16,8 +16,10 @@ import {
 } from 'three-flatland/react'
 import { usePane, usePaneFolder, usePaneInput, useStatsMonitor } from '@three-flatland/tweakpane/react'
 import type { StatsHandle } from '@three-flatland/tweakpane/react'
-import { gemClearColor } from './GemBackground'
-import { GEM } from './gem'
+// Knightmark doesn't render any gem-background layer — its sprites
+// fill the viewport. The body bg (#16191e) shows through during
+// initial sprite load. GEM/GemBackground imports intentionally
+// omitted; the per-example `gem.ts` is still synced for consistency.
 
 extend({ SpriteGroup, TileMap2D })
 
@@ -519,10 +521,9 @@ export default function App() {
         }}
       >
         <OrthoCamera viewSize={VIEW_SIZE} />
-        {/* L1 only — knightmark's sprites fill the viewport, so an L2
-           backdrop quad would just be hidden. Clear color tints any
-           margins and matches the masonry tile. */}
-        <color attach="background" args={[gemClearColor(GEM).getHex()]} />
+        {/* No L1/L2/L3 — knightmark's sprites fill the viewport, so a
+           backdrop wouldn't be visible anyway. Body bg (#16191e) shows
+           through during initial sprite load, no color jump. */}
         <Suspense fallback={null}>
           <KnightmarkScene
             addKnightsRef={addKnightsRef}

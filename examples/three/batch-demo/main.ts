@@ -2,7 +2,7 @@ import { WebGPURenderer } from 'three/webgpu'
 import { Scene, OrthographicCamera, Vector2, Raycaster, Plane, Vector3 } from 'three'
 import { Sprite2D, Sprite2DMaterial, SpriteGroup, Layers, TextureLoader } from 'three-flatland'
 import { createPane } from '@three-flatland/tweakpane'
-import { gemClearColor, gemGradientNode } from './GemBackground'
+import { gemGradientNode } from './GemBackground'
 import { GEM } from './gem'
 
 // Configuration
@@ -42,10 +42,8 @@ interface PlacedEntity {
 
 async function main() {
   // Scene setup
-  // Scene with gem-tinted backdrop (L1 + L2). See GemBackground.ts.
   const scene = new Scene()
-  scene.background = gemClearColor(GEM)
-  ;(scene as any).backgroundNode = gemGradientNode({ gem: GEM, lit: true })
+  ;(scene as any).backgroundNode = gemGradientNode({ gem: GEM })
 
   // Calculate view size based on grid
   const viewWidth = TILE_SIZE * (GRID_WIDTH + 2)

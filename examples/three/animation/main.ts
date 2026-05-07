@@ -2,14 +2,12 @@ import { WebGPURenderer } from 'three/webgpu'
 import { Scene, OrthographicCamera, NearestFilter } from 'three'
 import { AnimatedSprite2D, SpriteSheetLoader, Layers } from 'three-flatland'
 import { createPane } from '@three-flatland/tweakpane'
-import { gemClearColor, gemGradientNode } from './GemBackground'
+import { gemGradientNode } from './GemBackground'
 import { GEM } from './gem'
 
 async function main() {
-  // Scene with gem-tinted backdrop (L1 + L2). See GemBackground.ts.
   const scene = new Scene()
-  scene.background = gemClearColor(GEM)
-  ;(scene as any).backgroundNode = gemGradientNode({ gem: GEM, lit: true })
+  ;(scene as any).backgroundNode = gemGradientNode({ gem: GEM })
 
   // Orthographic camera for 2D rendering
   const frustumSize = 200

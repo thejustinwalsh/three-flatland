@@ -14,7 +14,7 @@ import {
   CanvasTexture,
   RepeatWrapping,
 } from 'three'
-import { gemClearColor, gemGradientNode } from './GemBackground'
+import { gemGradientNode } from './GemBackground'
 import { GEM } from './gem'
 import {
   AnimatedSprite2D,
@@ -153,10 +153,8 @@ function createNoiseTexture(size = 256): CanvasTexture {
 
 async function main() {
   // Scene setup
-  // Gem-tinted backdrop (L1 + L2). See GemBackground.ts.
   const scene = new Scene()
-  scene.background = gemClearColor(GEM)
-  ;(scene as any).backgroundNode = gemGradientNode({ gem: GEM, lit: true })
+  ;(scene as any).backgroundNode = gemGradientNode({ gem: GEM })
 
   // Orthographic camera for 2D rendering
   const frustumSize = 200

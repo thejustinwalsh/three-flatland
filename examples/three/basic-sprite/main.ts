@@ -2,18 +2,17 @@ import { WebGPURenderer } from 'three/webgpu'
 import { Scene, OrthographicCamera, Color } from 'three'
 import { Sprite2D, TextureLoader } from 'three-flatland'
 import { createPane } from '@three-flatland/tweakpane'
-import { gemClearColor, gemGradientNode } from './GemBackground'
+import { gemGradientNode } from './GemBackground'
 import { GEM } from './gem'
 
 async function main() {
-  // Scene setup with gem-tinted backdrop matching the masonry tile poster.
-  // L1 (gemClearColor): flat fallback color so the canvas edges read as the
-  // right gem even before backgroundNode renders.
-  // L2 (gemGradientNode): TSL fragment that paints the lit radial gradient
-  // matching the tile fallback.
+  // Gem-tinted backdrop matching the masonry tile poster. The TSL
+  // gradient paints the entire viewport via scene.backgroundNode (L2);
+  // no separate L1 clear color so there's no flash of color before
+  // the shader compiles — body bg (#16191e, see index.html) shows
+  // through any uncovered pixels.
   const scene = new Scene()
-  scene.background = gemClearColor(GEM)
-  ;(scene as any).backgroundNode = gemGradientNode({ gem: GEM, lit: true })
+  ;(scene as any).backgroundNode = gemGradientNode({ gem: GEM })
 
   // Orthographic camera for 2D rendering
   const frustumSize = 400

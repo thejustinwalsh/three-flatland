@@ -287,7 +287,7 @@ async function main() {
   // a screen-space fragment, mix it into the dim base at low intensity
   // (0.35) so the gem reads as ambient lighting rather than overpowering
   // the reflective character of the surface.
-  const gemFragment = gemGradientNode({ gem: GEM, lit: true })
+  const gemFragment = gemGradientNode({ gem: GEM })
   const baseColor = mix(tslColor(new Color(0x050505)), (gemFragment as any).rgb, tslFloat(0.35))
   groundMat.colorNode = baseColor
     .add((blurredReflection as any).rgb.mul(fadeSharp).mul(0.5))

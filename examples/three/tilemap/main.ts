@@ -13,7 +13,7 @@ import {
 } from 'three'
 import { TileMap2D, type TileMapData, type TilesetData, type TileLayerData } from 'three-flatland'
 import { createPane } from '@three-flatland/tweakpane'
-import { gemClearColor, gemGradientNode } from './GemBackground'
+import { gemGradientNode } from './GemBackground'
 import { GEM } from './gem'
 
 // Tile IDs for our procedural tileset
@@ -431,9 +431,7 @@ async function main() {
 
   // Scene setup
   const scene = new Scene()
-  // Gem-tinted backdrop (L1 + L2). See GemBackground.ts.
-  scene.background = gemClearColor(GEM)
-  ;(scene as any).backgroundNode = gemGradientNode({ gem: GEM, lit: true })
+  ;(scene as any).backgroundNode = gemGradientNode({ gem: GEM })
 
   // Orthographic camera
   const frustumSize = 800
