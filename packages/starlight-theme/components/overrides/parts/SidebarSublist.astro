@@ -119,30 +119,19 @@ function isCollapsableGroup(label: string, collapsed: boolean, forced: boolean):
     }
 
     .entry-title-row {
-        /* Caret leads, then title — typical folder-tree affordance.
-         * Padding matches the static .entry-title rule for x-alignment
-         * parity. */
+        /* Caret leads, then title — folder-tree affordance. No padding,
+         * no rounded hover rect: the chevron + indent guide line do the
+         * affordance work; a hover-fill on top reads as overactive
+         * chrome and breaks visual continuity with the indent line. */
         display: flex;
         align-items: center;
         gap: calc(var(--spacing) * 1);
         cursor: pointer;
         list-style: none;
-        padding-block: calc(var(--spacing) * 1);
-        padding-inline: calc(var(--spacing) * 2);
-        border-radius: calc(var(--radius) - 4px);
-        transition: background-color 0.15s;
-    }
-    /* Nested rows have a tighter title — shrink the inline padding so
-     * the caret + label align with the parent group's left edge instead
-     * of indenting twice (group margin already pads us in). */
-    .container-sidebar-entry .entry-title-row {
-        padding-inline: 0;
+        padding: 0;
     }
     .entry-title-row::-webkit-details-marker {
         display: none;
-    }
-    .entry-title-row:hover {
-        background-color: color-mix(in oklab, var(--section-accent, var(--secondary)) 8%, transparent);
     }
 
     .caret {
@@ -182,11 +171,19 @@ function isCollapsableGroup(label: string, collapsed: boolean, forced: boolean):
         line-height: 1rem;
         text-transform: uppercase;
         letter-spacing: 0.06em;
-        padding-top: calc(var(--spacing) * 1);
-        padding-bottom: calc(var(--spacing) * 1);
-        padding-left: calc(var(--spacing) * 2);
-        padding-right: calc(var(--spacing) * 2);
         color: var(--section-accent, color-mix(in oklab, var(--muted-foreground) 78%, var(--foreground)));
+    }
+    /* Static group label (h4 outside <summary>) keeps an inset so the
+     * top-level section heading has breathing room above its links. */
+    h4.entry-title {
+        padding-block: calc(var(--spacing) * 1);
+        padding-inline: calc(var(--spacing) * 2);
+    }
+    /* Collapsable group label (span inside <summary>) is flush — the
+     * chevron + row gap define the spacing; an extra inline pad here
+     * would push the label past the indent guide line. */
+    .entry-title-row .entry-title {
+        padding: 0;
     }
 
     .container-group-link {
