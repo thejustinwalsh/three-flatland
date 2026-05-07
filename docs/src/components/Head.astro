@@ -57,9 +57,13 @@ import PageOrder from 'astro-vtbot/components/starlight/PageOrder.astro';
 <PageOrder />
 
 {/* Custom top-edge progress bar — replaces vtbot's <ProgressBar/>
-    which depended on an unpkg-hosted swup plugin (intermittent
-    visibility, runtime fetch failures). Pure CSS animation driven
-    by Astro's view-transition lifecycle events. */}
+    which depended on an unpkg-hosted swup plugin. Bar gradient is
+    derived from the DESTINATION page's section gem (Examples →
+    diamond, Showcases → ruby, Docs/Guides → amethyst, landing →
+    gold). Picked at nav-start time when we know `event.to`. The
+    gradient runs gem-low → gem-high so the bar reads as the
+    destination color illuminating from dim to bright as it
+    grows. */}
 <div id="tf-progress" aria-hidden="true"></div>
 <style is:global>
   #tf-progress {
@@ -71,9 +75,8 @@ import PageOrder from 'astro-vtbot/components/starlight/PageOrder.astro';
     z-index: 9999;
     background: linear-gradient(
       90deg,
-      var(--emerald),
-      var(--gold),
-      var(--emerald)
+      var(--progress-gem-low, var(--diamond-low)),
+      var(--progress-gem-high, var(--diamond-high))
     );
     transition: width 200ms ease-out, opacity 250ms ease;
     opacity: 0;
@@ -91,16 +94,35 @@ import PageOrder from 'astro-vtbot/components/starlight/PageOrder.astro';
   }
 </style>
 <script>
-  // Custom progress-bar driver — CSS does the visual; this just flips
-  // the data-state at the right view-transition lifecycle moments.
-  // before-preparation: fires before new page fetched → start
-  // after-swap:        fires after DOM committed → finish
-  // Idempotent across navigation; reattaches if the bar element is
-  // ever swapped out (it shouldn't be — sits at end of body).
+  // Map a path to a section gem — same convention as NavBar.astro.
+  // landing → gold (CTA energy, matches primary button); Examples →
+  // diamond; Showcases → ruby; everything in the docs cluster →
+  // amethyst (primary section identity).
+  function gemForPath(pathname: string): string {
+    const baseEl = document.querySelector('base') as HTMLBaseElement | null;
+    const base = (baseEl ? new URL(baseEl.href).pathname : '') || '/three-flatland/';
+    const rel = pathname.replace(base.replace(/\/$/, ''), '').replace(/^\/+/, '/');
+    if (rel === '/' || rel === '') return 'gold';
+    if (rel.startsWith('/examples')) return 'diamond';
+    if (rel.startsWith('/showcases')) return 'ruby';
+    if (
+      rel.startsWith('/getting-started') ||
+      rel.startsWith('/guides') ||
+      rel.startsWith('/branding') ||
+      rel.startsWith('/llm-prompts') ||
+      rel.startsWith('/api')
+    ) return 'amethyst';
+    return 'diamond';
+  }
   const bar = () => document.getElementById('tf-progress');
-  document.addEventListener('astro:before-preparation', () => {
+  document.addEventListener('astro:before-preparation', (e: Event) => {
     const el = bar();
     if (!el) return;
+    const ev = e as Event & { to?: URL };
+    const to = ev.to?.pathname ?? location.pathname;
+    const gem = gemForPath(to);
+    el.style.setProperty('--progress-gem-low', `var(--${gem}-low)`);
+    el.style.setProperty('--progress-gem-high', `var(--${gem}-high)`);
     el.dataset.state = '';
     void el.offsetWidth; // force reflow so the reset takes
     el.dataset.state = 'loading';
