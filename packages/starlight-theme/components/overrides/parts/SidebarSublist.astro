@@ -212,11 +212,15 @@ function isCollapsableGroup(label: string, collapsed: boolean): boolean {
         font-weight: 500;
     }
 
-    /* Active state: gem-accented left-edge indicator + tinted bg pulled
-     * from the section's accent. Hover state previews the same gem at a
-     * lower intensity so the section's identity reads through interaction. */
-    .entry-link[aria-current='page'] .entry-link-inner {
-        background-color: color-mix(in oklab, var(--section-accent, var(--accent)) 18%, transparent);
+    /* Single-indicator system: section-gem left-edge bar carries
+     * BOTH active and hover states (full intensity active, faint
+     * hover preview). Previously paired this with a rounded-pill
+     * background fill — the two indicators read as competing systems,
+     * so the pill was dropped. The section gem still surfaces via
+     * the entry-icon color change and the font-weight bump. */
+    .entry-link[aria-current='page'] .entry-link-inner,
+    .entry-link:hover:not([aria-current='page']) .entry-link-inner {
+        background-color: transparent;
         color: var(--foreground);
     }
 
@@ -232,9 +236,19 @@ function isCollapsableGroup(label: string, collapsed: boolean): boolean {
         box-shadow: 0 0 6px color-mix(in oklab, var(--section-accent, var(--primary)) 60%, transparent);
     }
 
-    .entry-link:hover:not([aria-current='page']) .entry-link-inner {
-        background-color: color-mix(in oklab, var(--section-accent, var(--accent)) 10%, var(--secondary));
-        color: var(--foreground);
+    /* Hover preview: same left-bar geometry as the active marker, at
+     * ~35% intensity. Hover→active is positionally continuous; the
+     * cursor's affordance reads as "here's where the marker would
+     * land." */
+    .entry-link:hover:not([aria-current='page']) .entry-link-inner::before {
+        content: '';
+        position: absolute;
+        left: calc(var(--spacing) * -0.75);
+        top: 0.4rem;
+        bottom: 0.4rem;
+        width: 2px;
+        border-radius: 1px;
+        background-color: color-mix(in oklab, var(--section-accent, var(--primary)) 35%, transparent);
     }
 
     .entry-icon {
