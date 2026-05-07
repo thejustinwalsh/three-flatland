@@ -257,6 +257,7 @@ if (project.trailingSlash === 'never') dataAttributes['data-strip-trailing-slash
         transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
         transition-duration: 0.15s;
         opacity: 1;
+        font-family: 'Inter', system-ui, sans-serif;
         font-weight: 500;
         font-size: 10px;
         padding-left: calc(var(--spacing) * 1.5);
@@ -293,24 +294,33 @@ if (project.trailingSlash === 'never') dataAttributes['data-strip-trailing-slash
         background-color: color-mix(in oklab, var(--accent) 92%, var(--background));
     }
 
+    /* Search dialog — gem-themed surface. Card background, diamond-tinted
+     * border (matches the TOC's compass identity), heavier backdrop blur
+     * + saturate so the page behind reads de-emphasized without going
+     * fully opaque. The diamond accent surfaces consistently in the
+     * input border on focus, the result hover/focus outline, the
+     * mark highlight, and the cancel button — all the "you found it"
+     * affordances inherit one gem. */
     dialog {
         margin: 0;
-        background-color: var(--sl-color-gray-6);
-        border: 1px solid var(--sl-color-gray-5);
+        background-color: var(--card);
+        border: 1px solid color-mix(in oklab, var(--diamond) 18%, var(--border));
         width: 100%;
         max-width: 100%;
         height: 100%;
         max-height: 100%;
-        box-shadow: var(--sl-shadow-lg);
+        box-shadow:
+            0 20px 50px -10px rgb(0 0 0 / 0.5),
+            0 0 0 1px color-mix(in oklab, var(--diamond) 8%, transparent);
     }
     dialog[open] {
         display: flex;
     }
 
     dialog::backdrop {
-        background-color: var(--sl-color-backdrop-overlay);
-        -webkit-backdrop-filter: blur(0.25rem);
-        backdrop-filter: blur(0.25rem);
+        background-color: color-mix(in oklab, var(--background) 65%, transparent);
+        -webkit-backdrop-filter: blur(0.5rem) saturate(120%);
+        backdrop-filter: blur(0.5rem) saturate(120%);
     }
 
     .dialog-frame {
@@ -332,15 +342,22 @@ if (project.trailingSlash === 'never') dataAttributes['data-strip-trailing-slash
         border: 0;
         background: transparent;
         cursor: pointer;
-        color: var(--sl-color-text-accent);
+        color: var(--diamond);
+        font-family: 'Inter', system-ui, sans-serif;
+        font-weight: 500;
+        font-size: 0.875rem;
     }
 
+    /* Pagefind UI variables — bind the third-party UI's color/typography
+     * to our semantic tokens. Diamond is the accent gem (compass role,
+     * matches the TOC's active-state choice). Public Sans for headings
+     * within results, Inter falls through via the dialog frame. */
     #starlight__search {
-        --pagefind-ui-primary: var(--sl-color-accent-light);
-        --pagefind-ui-text: var(--sl-color-gray-2);
-        --pagefind-ui-font: var(--__sl-font);
-        --pagefind-ui-background: var(--sl-color-black);
-        --pagefind-ui-border: var(--sl-color-gray-5);
+        --pagefind-ui-primary: var(--diamond);
+        --pagefind-ui-text: var(--foreground);
+        --pagefind-ui-font: 'Inter', system-ui, sans-serif;
+        --pagefind-ui-background: var(--card);
+        --pagefind-ui-border: var(--border);
         --pagefind-ui-border-width: 1px;
         --sl-search-cancel-space: 5rem;
     }
@@ -389,18 +406,19 @@ if (project.trailingSlash === 'never') dataAttributes['data-strip-trailing-slash
     }
 
     #starlight__search .pagefind-ui__form::before {
-        --pagefind-ui-text: var(--sl-color-gray-1);
-        opacity: 1;
+        --pagefind-ui-text: var(--muted-foreground);
+        opacity: 0.7;
     }
 
     #starlight__search .pagefind-ui__search-input {
-        color: var(--sl-color-white);
+        color: var(--foreground);
+        font-family: 'Inter', system-ui, sans-serif;
         font-weight: 400;
         width: calc(100% - var(--sl-search-cancel-space));
     }
 
     #starlight__search input:focus {
-        --pagefind-ui-border: var(--sl-color-accent);
+        --pagefind-ui-border: var(--diamond);
     }
 
     #starlight__search .pagefind-ui__search-clear {
@@ -411,7 +429,7 @@ if (project.trailingSlash === 'never') dataAttributes['data-strip-trailing-slash
         overflow: hidden;
     }
     #starlight__search .pagefind-ui__search-clear:focus {
-        outline: 1px solid var(--sl-color-accent);
+        outline: 1px solid var(--diamond);
     }
     #starlight__search .pagefind-ui__search-clear::before {
         content: '';
@@ -419,7 +437,7 @@ if (project.trailingSlash === 'never') dataAttributes['data-strip-trailing-slash
             center / 50% no-repeat;
         mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='m13.41 12 6.3-6.29a1 1 0 1 0-1.42-1.42L12 10.59l-6.29-6.3a1 1 0 0 0-1.42 1.42l6.3 6.29-6.3 6.29a1 1 0 0 0 .33 1.64 1 1 0 0 0 1.09-.22l6.29-6.3 6.29 6.3a1 1 0 0 0 1.64-.33 1 1 0 0 0-.22-1.09L13.41 12Z'/%3E%3C/svg%3E")
             center / 50% no-repeat;
-        background-color: var(--sl-color-text-accent);
+        background-color: var(--diamond);
         display: block;
         width: 100%;
         height: 100%;
@@ -442,7 +460,7 @@ if (project.trailingSlash === 'never') dataAttributes['data-strip-trailing-slash
     #starlight__search .pagefind-ui__result-title:not(:where(.pagefind-ui__result-nested *)),
     #starlight__search .pagefind-ui__result-nested {
         position: relative;
-        background-color: var(--sl-color-black);
+        background-color: var(--background);
     }
 
     #starlight__search .pagefind-ui__result-title:not(:where(.pagefind-ui__result-nested *)):hover,
@@ -450,13 +468,13 @@ if (project.trailingSlash === 'never') dataAttributes['data-strip-trailing-slash
         .pagefind-ui__result-title:not(:where(.pagefind-ui__result-nested *)):focus-within,
     #starlight__search .pagefind-ui__result-nested:hover,
     #starlight__search .pagefind-ui__result-nested:focus-within {
-        outline: 1px solid var(--sl-color-accent-high);
+        outline: 1px solid color-mix(in oklab, var(--diamond) 60%, transparent);
     }
 
     #starlight__search
         .pagefind-ui__result-title:not(:where(.pagefind-ui__result-nested *)):focus-within,
     #starlight__search .pagefind-ui__result-nested:focus-within {
-        background-color: var(--sl-color-accent-low);
+        background-color: color-mix(in oklab, var(--diamond-soft) 60%, var(--background));
     }
 
     #starlight__search .pagefind-ui__result-thumb,
@@ -481,7 +499,7 @@ if (project.trailingSlash === 'never') dataAttributes['data-strip-trailing-slash
         inset-block: 0;
         inset-inline-start: var(--sl-search-page-icon-inline-start);
         width: var(--sl-search-page-icon-size);
-        background: var(--sl-color-gray-3);
+        background: color-mix(in oklab, var(--diamond) 50%, var(--muted-foreground));
         -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='currentColor' viewBox='0 0 24 24'%3E%3Cpath d='M9 10h1a1 1 0 1 0 0-2H9a1 1 0 0 0 0 2Zm0 2a1 1 0 0 0 0 2h6a1 1 0 0 0 0-2H9Zm11-3V8l-6-6a1 1 0 0 0-1 0H7a3 3 0 0 0-3 3v14a3 3 0 0 0 3 3h10a3 3 0 0 0 3-3V9Zm-6-4 3 3h-2a1 1 0 0 1-1-1V5Zm4 14a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h5v3a3 3 0 0 0 3 3h3v9Zm-3-3H9a1 1 0 0 0 0 2h6a1 1 0 0 0 0-2Z'/%3E%3C/svg%3E")
             center no-repeat;
         mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='currentColor' viewBox='0 0 24 24'%3E%3Cpath d='M9 10h1a1 1 0 1 0 0-2H9a1 1 0 0 0 0 2Zm0 2a1 1 0 0 0 0 2h6a1 1 0 0 0 0-2H9Zm11-3V8l-6-6a1 1 0 0 0-1 0H7a3 3 0 0 0-3 3v14a3 3 0 0 0 3 3h10a3 3 0 0 0 3-3V9Zm-6-4 3 3h-2a1 1 0 0 1-1-1V5Zm4 14a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h5v3a3 3 0 0 0 3 3h3v9Zm-3-3H9a1 1 0 0 0 0 2h6a1 1 0 0 0 0-2Z'/%3E%3C/svg%3E")
@@ -495,7 +513,8 @@ if (project.trailingSlash === 'never') dataAttributes['data-strip-trailing-slash
 
     #starlight__search .pagefind-ui__result-link {
         position: unset;
-        --pagefind-ui-text: var(--sl-color-white);
+        --pagefind-ui-text: var(--foreground);
+        font-family: 'Public Sans', system-ui, sans-serif;
         font-weight: 600;
     }
 
@@ -513,7 +532,7 @@ if (project.trailingSlash === 'never') dataAttributes['data-strip-trailing-slash
         inset-block: 0;
         inset-inline-start: var(--sl-search-tree-diagram-inline-start);
         width: var(--sl-search-tree-diagram-size);
-        background: var(--sl-color-gray-4);
+        background: color-mix(in oklab, var(--diamond) 25%, var(--border));
         -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' stroke='currentColor' stroke-linecap='round' viewBox='0 0 16 1000' preserveAspectRatio='xMinYMin slice'%3E%3Cpath d='M8 0v1000m6-988H8'/%3E%3C/svg%3E")
             0% 0% / 100% no-repeat;
         mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' stroke='currentColor' stroke-linecap='round' viewBox='0 0 16 1000' preserveAspectRatio='xMinYMin slice'%3E%3Cpath d='M8 0v1000m6-988H8'/%3E%3C/svg%3E")
@@ -541,9 +560,15 @@ if (project.trailingSlash === 'never') dataAttributes['data-strip-trailing-slash
         overflow-wrap: anywhere;
     }
 
+    /* Highlighted match in result excerpts — diamond text on a faint
+     * diamond-tinted backplate, so the matched substring reads as a
+     * "found it" marker that ties to the same gem the input border
+     * + result outline use on focus. */
     #starlight__search mark {
-        color: var(--sl-color-gray-2);
-        background-color: transparent;
+        color: color-mix(in oklab, var(--diamond) 70%, var(--foreground));
+        background-color: color-mix(in oklab, var(--diamond) 18%, transparent);
+        border-radius: 0.15rem;
+        padding: 0 0.15rem;
         font-weight: 600;
     }
 </style>
