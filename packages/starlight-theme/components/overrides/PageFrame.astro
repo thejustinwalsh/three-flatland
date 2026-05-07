@@ -1,0 +1,302 @@
+---
+import { marked } from 'marked';
+import userConfig from 'virtual:starlight-theme-config';
+import Drawer from './parts/Drawer.astro';
+
+const { hasSidebar } = Astro.locals.starlightRoute;
+
+/**
+ * Landing-only check — the early-alpha ribbon stuck to the corner only
+ * makes sense on the marketing landing page. Detect via path: landing
+ * is the root of the Starlight base (with or without trailing slash).
+ * Path-based instead of entry-id-based because Astro 6 + Starlight
+ * docsLoader normalizes ids in ways that vary across builds.
+ */
+const path = Astro.url.pathname.replace(/\/$/, '');
+const base = (import.meta.env.BASE_URL || '/').replace(/\/$/, '');
+const isLanding = path === base || path === '';
+---
+
+<div data-slot="layout" data-landing={isLanding ? '' : undefined}>
+    {isLanding && (
+        <aside class="alpha-ribbon" aria-label="Early alpha release">
+            <a class="alpha-ribbon-tape" href="https://github.com/thejustinwalsh/three-flatland/issues">
+                {/* Inline margin-left avoids a FOUC text-jump — the ribbon
+                    paints from cached CSS before the .alpha-ribbon-text
+                    rule resolves, so the text would briefly render at
+                    margin-left: 0 then snap to its padded position.
+                    Mobile margin-left is overridden by the @media rule
+                    in the <style> block via !important. */}
+                <span class="alpha-ribbon-text" style="margin-left: 5.5rem">Early Alpha</span>
+            </a>
+        </aside>
+    )}
+    <header>
+        <div class="container-wrapper px-6">
+            <div class="container">
+                <slot name="header" />
+            </div>
+        </div>
+    </header>
+
+    <main>
+        {!hasSidebar && <slot />}
+
+        {
+            hasSidebar && (
+                <div class="container-wrapper">
+                    <div class="container container-wrapper-main">
+                        <aside class="aside">
+                            <slot name="sidebar" />
+                        </aside>
+
+                        <slot />
+                    </div>
+                </div>
+            )
+        }
+    </main>
+
+    <footer>
+        <div data-slot="footer-text" set:html={marked.parseInline(userConfig.footerText)} />
+    </footer>
+</div>
+
+<Drawer />
+
+<style>
+    /* ────────── Early-alpha corner ribbon (landing-only) ──────────
+     * Pinned to the viewport top-left, inset from the real corner so it
+     * sits clear of the header/logo and reads like a sticker placed on
+     * the page rather than crammed in the very corner. Wrapper has
+     * pointer-events: none so empty triangle space passes clicks through
+     * to whatever's underneath; only the rotated tape is clickable. */
+    .alpha-ribbon {
+        position: fixed;
+        top: 0;
+        left: 0;
+        /* Wider non-square wrapper so the stripe spans further. */
+        width: 36rem;
+        height: 13rem;
+        pointer-events: none;
+        /* Above the header (z:50) so the FL+FLATLAND logo passes
+         * BEHIND the ribbon. Hero h1 in our face below — the wordmark
+         * being clipped at the top doesn't matter. */
+        z-index: 70;
+        overflow: hidden;
+    }
+    /* Stripe enters at the LEFT edge (lower portion) and runs UP-RIGHT
+     * across the wrapper, terminating at the TOP edge near the right
+     * side. Negative rotation = / direction (text reads bottom-left
+     * to upper-right). Wider tape so the diagonal extends well past
+     * the wrapper corners — overflow:hidden clips to the visible
+     * stripe shape. */
+    .alpha-ribbon-tape {
+        position: absolute;
+        top: 5.5rem;
+        left: -15rem;
+        width: 46rem;
+        padding: 0.55rem 0;
+        text-align: center;
+        text-decoration: none;
+        transform: rotate(-30deg);
+        transform-origin: 50% 50%;
+        pointer-events: auto;
+        cursor: pointer;
+        /* Gold foil — base linear gradient tracking the scene light, plus
+         * a soft inner hairline at the top/bottom edges for the
+         * sticker-stuck-on look. Box-shadow tucks slight darkness into
+         * the corners that disappear under the .alpha-ribbon overflow,
+         * giving the impression it's been physically applied. */
+        background:
+            linear-gradient(
+                calc(var(--scene-angle, 135deg) - 45deg),
+                var(--gold-high) 0%,
+                var(--gold) 25%,
+                var(--orange) 55%,
+                var(--gold) 80%,
+                var(--gold-high) 100%
+            );
+        color: oklch(18% 0.025 65);
+        font-family: 'Silkscreen', system-ui, sans-serif;
+        font-size: 0.7rem;
+        font-weight: 700;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        box-shadow:
+            inset 0 1px 0 color-mix(in oklab, var(--gold-high) 80%, white),
+            inset 0 -1px 0 color-mix(in oklab, var(--gold) 30%, black);
+        transition:
+            transform 180ms cubic-bezier(0.2, 0, 0.1, 1),
+            box-shadow 180ms ease,
+            filter 180ms ease;
+        will-change: transform, filter;
+        isolation: isolate;
+    }
+    /* Sparkle/foil texture overlay scoped to the rotated tape ONLY
+     * (so it doesn't bleed into the wrapper area like the previous
+     * .u-light pseudos did). Fine SVG noise mask + iridescent sweep
+     * for the "this is foil, not paint" texture. */
+    .alpha-ribbon-tape::before {
+        content: '';
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        background: linear-gradient(
+            90deg,
+            transparent 0%,
+            color-mix(in oklab, white 25%, transparent) 50%,
+            transparent 100%
+        );
+        mix-blend-mode: screen;
+        -webkit-mask-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='1.3' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 1.5 -0.4'/></filter><rect width='240' height='240' filter='url(%23n)'/></svg>");
+        mask-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='1.3' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 1.5 -0.4'/></filter><rect width='240' height='240' filter='url(%23n)'/></svg>");
+        -webkit-mask-size: 240px 240px;
+        mask-size: 240px 240px;
+        opacity: 0.55;
+    }
+    .alpha-ribbon-text {
+        position: relative;
+        z-index: 1;
+        text-shadow: 0 1px 0 color-mix(in oklab, var(--gold-high) 90%, white);
+    }
+    /* Mobile breakpoint — scale the tape geometry down proportionally
+     * to the wrapper. Desktop wrapper is 36×13 with tape positioned
+     * top:5.5 left:-15 width:46 (text padded margin-left:5.5).
+     * Mobile wrapper is 22×9 — scale ratios ~0.611 horizontal, ~0.692
+     * vertical. Rounded for clean rems. */
+    @media (max-width: 50rem) {
+        .alpha-ribbon {
+            width: 22rem;
+            height: 9rem;
+        }
+        .alpha-ribbon-tape {
+            top: 3.8rem;
+            left: -9rem;
+            width: 28rem;
+            font-size: 0.65rem;
+        }
+        .alpha-ribbon-text {
+            margin-left: 3.4rem !important;
+        }
+    }
+    .alpha-ribbon-tape:hover {
+        transform: rotate(-30deg) scale(1.03);
+        filter: saturate(1.1);
+    }
+    @media (prefers-reduced-motion: reduce) {
+        .alpha-ribbon-tape,
+        .alpha-ribbon-tape:hover {
+            transform: rotate(-30deg);
+            transition: none;
+        }
+    }
+
+    /* Landing: header is FULLY transparent (no glass backdrop) so the
+     * canvas reads as a single uninterrupted plane behind the wordmark.
+     * The header content (FL icon + FLATLAND + nav + search) floats
+     * over the canvas, in the SAME horizontal position as on docs pages
+     * — the wordmark stays anchored to the natural header-left so the
+     * brand position doesn't shift between views. The alpha ribbon
+     * floats above the wordmark on z-index instead of pushing it aside. */
+    [data-slot='layout'][data-landing] > header {
+        background: transparent;
+        border-bottom: none;
+    }
+
+    [data-slot='layout'] {
+        /* group/layout relative z-10 flex min-h-svh flex-col bg-background */
+        position: relative;
+        z-index: 10;
+        display: flex;
+        flex-direction: column;
+        min-height: 100svh;
+        background: var(--background);
+
+        header {
+            /* sticky top-0 z-50 w-full bg-background */
+            position: sticky;
+            top: 0;
+            z-index: 50;
+            width: 100%;
+            background: var(--background);
+            transition: background-color 200ms ease, backdrop-filter 200ms ease;
+
+            .container-wrapper {
+                padding-inline: calc(var(--spacing) * 6);
+
+                .container {
+                    /* flex h-(--header-height) items-center **:data-[slot=separator]:h-4! group-has-data-[slot=designer]/layout:fixed:max-w-none 3xl:fixed:container */
+                    display: flex;
+                    height: var(--header-height);
+                    align-items: center;
+                    max-width: none;
+                }
+            }
+        }
+
+        > main {
+            /* flex min-h-0 flex-1 flex-col */
+            display: flex;
+            flex-direction: column;
+            flex: 1;
+            min-height: 0;
+        }
+
+        > footer {
+            border-top: none;
+            height: 6rem;
+            display: flex;
+            align-items: center;
+
+            [data-slot='footer-text'] {
+                /* Footer text — Inter at a smaller size, muted grey
+                 * pulled from gray-5 (more muted than --muted-foreground).
+                 * Reads as quiet attribution, not page content. */
+                width: 100%;
+                max-width: var(--container-max-width);
+                margin-inline: auto;
+                padding-inline: calc(var(--spacing) * 6);
+                font-family: 'Inter', system-ui, sans-serif;
+                font-size: 0.75rem;
+                line-height: 1.45;
+                font-weight: 400;
+                letter-spacing: 0.005em;
+                color: var(--gray-5);
+                text-wrap: balance;
+                text-align: center;
+            }
+            [data-slot='footer-text'] :global(a) {
+                color: color-mix(in oklab, var(--gray-5) 80%, var(--diamond));
+                text-decoration: underline;
+                text-decoration-color: color-mix(in oklab, var(--gray-5) 50%, transparent);
+                text-underline-offset: 2px;
+                transition: color 0.15s, text-decoration-color 0.15s;
+            }
+            [data-slot='footer-text'] :global(a:hover) {
+                color: var(--diamond);
+                text-decoration-color: var(--diamond);
+            }
+
+            &:is(:where(body):has(*[data-slot='docs']) *) {
+                display: none;
+            }
+
+            &:is(:where(body):has(.docs-nav)) {
+                padding-bottom: calc(var(--spacing) * 20);
+
+                @media (min-width: 640px) {
+                    padding-bottom: 0;
+                }
+            }
+
+            &:is(:where(body):has(.section-soft)) {
+                background: var(--surface-40);
+            }
+
+            &:is(:where(body):has(*[data-slot='designer']) *) {
+                display: none;
+            }
+        }
+    }
+</style>

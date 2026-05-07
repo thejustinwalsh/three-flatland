@@ -1,0 +1,165 @@
+---
+import config from 'virtual:starlight/user-config';
+import Search from './Search.astro';
+import SocialIcons from './SocialIcons.astro';
+
+import ThemeSelect from './ThemeSelect.astro';
+import SiteTitle from './SiteTitle.astro';
+import NavBar from './parts/NavBar.astro';
+import MobileMenuToggle from './parts/MobileMenuToggle.astro';
+
+/** render the `Search` component if Pagefind is enabled or the default search component has been overridden. */
+const shouldRenderSearch =
+    config.pagefind || config.components.Search !== '@astrojs/starlight/components/Search.astro';
+---
+
+<MobileMenuToggle />
+
+<div class="site-title-wrapper">
+    <SiteTitle />
+    <NavBar />
+</div>
+
+<div class="header-right">
+    {shouldRenderSearch && <Search />}
+
+    <nav class="header-nav">
+        <div>
+            <SocialIcons />
+        </div>
+        <div>
+            <ThemeSelect />
+        </div>
+    </nav>
+</div>
+
+<style>
+    .site-title-wrapper {
+        display: none;
+        align-items: center;
+        gap: calc(var(--spacing) * 3);
+        margin-right: auto;
+        min-width: 0;
+    }
+
+    @media (min-width: 768px) {
+        .site-title-wrapper {
+            display: flex;
+        }
+    }
+
+    /* Wordmark — Silkscreen pixel font for the "flatland" brand mark.
+     * Sized to balance with the 32px FL icon. Sits slightly raised so
+     * the pixel baseline aligns with the icon's visual center, not its
+     * em box. Tight to the icon (controlled by SiteTitle.astro's gap). */
+    .site-title-wrapper :global(.title-text) {
+        font-family: 'Silkscreen', system-ui, sans-serif;
+        font-weight: 400;
+        font-size: 1.125rem;
+        letter-spacing: 0.02em;
+        color: var(--foreground);
+        line-height: 1;
+        position: relative;
+        top: 2px;
+    }
+
+    .header-right {
+        gap: 0.75rem;
+        justify-content: space-between;
+        align-items: center;
+        flex: 1 1 0%;
+        display: flex;
+    }
+
+    @media (min-width: 768px) {
+        .header-right {
+            justify-content: flex-end;
+            gap: 1rem;
+        }
+    }
+
+    /* Search button: constrain to a compact pill — devs use ⌘K, the wide
+     * input was visual weight without function. The kbd hint stays as the
+     * primary affordance signal. */
+    .header-right :global(site-search button[data-open-modal]) {
+        width: auto;
+        min-width: 0;
+        max-width: 14rem;
+    }
+    @media (min-width: 768px) {
+        .header-right :global(site-search button[data-open-modal]) {
+            max-width: 12rem;
+        }
+    }
+
+    .header-nav {
+        gap: 0.125rem;
+        align-items: center;
+        display: flex;
+    }
+
+    .header-nav > div:has(> :not(script)) {
+        display: flex;
+        align-items: center;
+    }
+
+    .header-nav > div:has(> :not(script)) + div:has(> :not(script)) {
+        position: relative;
+        margin-left: calc(var(--spacing) * 1);
+        padding-left: calc(var(--spacing) * 3);
+    }
+
+    /* Vertical divider between nav groups — slightly bolder than lucode default
+     * (1.25rem vs 1rem) and steadier opacity so the rhythm reads. */
+    .header-nav > div:has(> :not(script)) + div:has(> :not(script))::before {
+        content: '';
+        position: absolute;
+        top: 50%;
+        left: 0;
+        width: 1px;
+        height: 1.25rem;
+        background-color: color-mix(in oklab, var(--border) 75%, transparent);
+        transform: translateY(-50%);
+    }
+
+    /* Compact-on-scroll — single craft moment for the header.
+     * CSS-only via scroll-driven animation; honors prefers-reduced-motion.
+     * Anchored on the layout slot (not the bare `.header` class — that
+     * collides with expressive-code's `<figcaption class="header">` for
+     * codeblock titles, which would otherwise inherit the scroll-tied
+     * background fade and read as a phantom alpha fade on captions).
+     *
+     * The animation only changes paint-time properties (background,
+     * backdrop-filter, border-bottom). Layout properties (padding,
+     * height) stay constant so the header's bounding box is identical
+     * between landing and docs pages — that prevents the view-transition
+     * cross-fade from showing a "black bar" slab above the landing
+     * canvas when navigating back from a docs page (the slab was the
+     * height delta between a padded docs header and the previously
+     * unpadded landing header, briefly painted opaque during morph).
+     *
+     * Excluded on `[data-landing]` so the landing's transparent header
+     * stays transparent on scroll — keyframe's bg-color clobber would
+     * otherwise opacify it and hide the canvas. */
+    @supports (animation-timeline: scroll()) {
+        @media (prefers-reduced-motion: no-preference) {
+            :global([data-slot='layout']:not([data-landing]) > header) {
+                animation: hdr-compact linear both;
+                animation-timeline: scroll(root);
+                animation-range: 0 96px;
+            }
+            @keyframes hdr-compact {
+                to {
+                    background-color: color-mix(in oklab, var(--background) 88%, transparent);
+                    backdrop-filter: saturate(140%);
+                    -webkit-backdrop-filter: saturate(140%);
+                    border-bottom-color: color-mix(
+                        in oklab,
+                        var(--border) 70%,
+                        transparent
+                    );
+                }
+            }
+        }
+    }
+</style>

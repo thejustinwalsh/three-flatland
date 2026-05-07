@@ -1,80 +1,83 @@
 ---
 /**
- * StatsBanner - Bold performance stats in SNES style.
- * Big numbers that grab attention and sell the performance story.
+ * StatsBanner — performance stats strip on the landing page.
+ * Each stat opts into a gem accent via `color="<gem>"`; the gem
+ * tints the value text and a thin underline beneath the stat,
+ * so the four stats read as a colored chord rather than a flat row.
  */
+
+type Gem =
+  | 'gold'
+  | 'ruby'
+  | 'emerald'
+  | 'diamond'
+  | 'amethyst'
+  | 'pink'
+  | 'salmon'
+  | 'turquoize'
+
+type LegacyColor = 'cyan' | 'blue' | 'green' | 'orange' | 'red' | 'yellow' | 'purple'
+
+const legacyToGem: Record<LegacyColor, Gem> = {
+  cyan: 'diamond',
+  blue: 'diamond',
+  green: 'emerald',
+  orange: 'gold',
+  red: 'ruby',
+  yellow: 'gold',
+  purple: 'amethyst',
+}
+
 interface StatItem {
-  value: string;
-  label: string;
-  color: 'cyan' | 'pink' | 'yellow' | 'blue';
+  value: string
+  label: string
+  /** Gem accent — tints the value + underline. */
+  color?: Gem | LegacyColor
 }
 
 interface Props {
-  stats: StatItem[];
+  stats: StatItem[]
 }
 
-const { stats } = Astro.props;
+const { stats } = Astro.props
 
-const colorMap = {
-  cyan: { dark: 'var(--retro-cyan)', light: 'var(--retro-dark-cyan)' },
-  pink: { dark: 'var(--retro-pink)', light: 'var(--retro-dark-pink)' },
-  yellow: { dark: 'var(--retro-yellow)', light: 'var(--retro-dark-yellow)' },
-  blue: { dark: 'var(--retro-blue)', light: 'var(--retro-dark-blue)' },
-};
+function resolveGem(c: StatItem['color']): Gem | undefined {
+  if (!c) return undefined
+  if (c in legacyToGem) return legacyToGem[c as LegacyColor]
+  return c as Gem
+}
 ---
 
-<div class="stats-banner">
+<aside class="not-content stats-banner" aria-label="Performance highlights">
   <div class="stats-grid">
-    {stats.map((stat) => (
-      <div class="stat-item" style={`--stat-color: ${colorMap[stat.color].dark}; --stat-color-light: ${colorMap[stat.color].light};`}>
-        <span class="stat-value">{stat.value}</span>
-        <span class="stat-label">{stat.label}</span>
-      </div>
-    ))}
+    {stats.map((stat) => {
+      const gem = resolveGem(stat.color)
+      const accentStyle = gem ? `--stat-accent: var(--${gem});` : undefined
+      return (
+        <div class="stat-item" data-gem={gem} style={accentStyle}>
+          <span class="stat-value">{stat.value}</span>
+          <span class="stat-label">{stat.label}</span>
+        </div>
+      )
+    })}
   </div>
-  <div class="banner-border top"></div>
-  <div class="banner-border bottom"></div>
-</div>
+</aside>
 
 <style>
   .stats-banner {
     position: relative;
-    background: var(--retro-navy);
-    padding: 3rem 2rem;
-    margin: 4rem 0;
+    margin: clamp(2.5rem, 5vw, 4rem) 0;
+    padding: clamp(1.5rem, 3vw, 2.25rem) clamp(1rem, 3vw, 2rem);
+    border-block: 1px solid color-mix(in oklab, var(--border) 65%, transparent);
+    background-color: color-mix(in oklab, var(--card) 96%, var(--primary));
   }
-
-  .banner-border {
-    position: absolute;
-    left: 0;
-    right: 0;
-    height: 4px;
-    background: linear-gradient(
-      90deg,
-      var(--retro-cyan) 0%,
-      var(--retro-cyan) 16%,
-      var(--retro-blue) 16%,
-      var(--retro-blue) 33%,
-      var(--retro-purple) 33%,
-      var(--retro-purple) 50%,
-      var(--retro-pink) 50%,
-      var(--retro-pink) 66%,
-      var(--retro-orange) 66%,
-      var(--retro-orange) 83%,
-      var(--retro-yellow) 83%
-    );
-  }
-
-  .banner-border.top { top: 0; }
-  .banner-border.bottom { bottom: 0; }
 
   .stats-grid {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
-    gap: 2rem;
-    max-width: 1000px;
+    gap: clamp(1rem, 3vw, 2rem);
+    max-width: 1100px;
     margin: 0 auto;
-    text-align: center;
   }
 
   @media (max-width: 768px) {
@@ -82,7 +85,6 @@ const colorMap = {
       grid-template-columns: repeat(2, 1fr);
     }
   }
-
   @media (max-width: 480px) {
     .stats-grid {
       grid-template-columns: 1fr;
@@ -90,43 +92,50 @@ const colorMap = {
   }
 
   .stat-item {
+    --stat-accent: var(--primary);
+    position: relative;
     display: flex;
     flex-direction: column;
-    gap: 0.5rem;
+    gap: calc(var(--spacing) * 1.5);
+    align-items: flex-start;
+    padding-bottom: calc(var(--spacing) * 2);
+    /* Gem-tinted underline — thin foil hairline beneath each stat
+     * that catches the global scene light direction (cosmetic shadow
+     * shifts with --scene-angle). */
+    border-bottom: 1.5px solid transparent;
+    background-image: linear-gradient(
+      90deg,
+      var(--stat-accent) 0%,
+      color-mix(in oklab, var(--stat-accent) 70%, transparent) 70%,
+      transparent 100%
+    );
+    background-size: 100% 1.5px;
+    background-repeat: no-repeat;
+    background-position: 0 100%;
   }
 
   .stat-value {
-    font-family: var(--font-pixel);
-    font-size: clamp(2.5rem, 5vw, 4rem);
-    color: var(--stat-color);
-    text-shadow:
-      3px 3px 0 var(--retro-midnight),
-      -1px -1px 0 var(--retro-midnight),
-      1px -1px 0 var(--retro-midnight),
-      -1px 1px 0 var(--retro-midnight);
+    font-family: 'Commit Mono', 'JetBrains Mono', ui-monospace, monospace;
+    font-feature-settings:
+      'tnum' 1,
+      'ss01' 1;
+    font-size: clamp(1.75rem, 3.2vw, 2.75rem);
+    font-weight: 500;
+    /* Value pulls from the gem accent so each stat reads its own
+     * color; mixed slightly with the foreground so the value stays
+     * legible on the banner background. */
+    color: color-mix(in oklab, var(--stat-accent) 65%, var(--foreground));
     line-height: 1;
+    letter-spacing: -0.025em;
+    text-shadow: 0 0 18px color-mix(in oklab, var(--stat-accent) 35%, transparent);
   }
 
   .stat-label {
-    font-family: var(--font-pixel);
-    font-size: 0.875rem;
-    color: var(--retro-white);
+    font-family: 'Inter', system-ui, sans-serif;
+    font-weight: 500;
+    font-size: 0.6875rem;
+    color: var(--muted-foreground);
     text-transform: uppercase;
-    letter-spacing: 0.1em;
-    opacity: 0.8;
-  }
-
-  /* Light mode */
-  :global([data-theme='light']) .stats-banner {
-    background: #e8e5d0;
-  }
-
-  :global([data-theme='light']) .stat-value {
-    color: var(--stat-color-light);
-    text-shadow: 2px 2px 0 rgba(0, 0, 0, 0.15);
-  }
-
-  :global([data-theme='light']) .stat-label {
-    color: var(--retro-black);
+    letter-spacing: 0.08em;
   }
 </style>

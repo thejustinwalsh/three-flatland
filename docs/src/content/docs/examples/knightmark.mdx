@@ -3,7 +3,7 @@ title: Knightmark
 description: Sprite benchmark with animated knights, collisions, and spatial hashing.
 ---
 
-import { Tabs, TabItem } from '@astrojs/starlight/components';
+import { Tabs, TabItem } from 'starlight-theme/components';
 import ExamplePreview from '../../../components/ExamplePreview';
 import StackBlitzEmbed from '../../../components/StackBlitzEmbed';
 import ExampleTabs from '../../../components/ExampleTabs.astro';
@@ -17,7 +17,7 @@ export const reactFiles = loadExample('react', 'knightmark');
   <TabItem label="Preview" icon="rocket">
     <ExamplePreview client:load type="three" name="knightmark" />
   </TabItem>
-  <TabItem label="Three.js" icon="seti:javascript">
+  <TabItem label="Three.js" icon="simple-icons:threedotjs">
     <StackBlitzEmbed
       client:load
       title="Knightmark - Three.js"
@@ -26,7 +26,7 @@ export const reactFiles = loadExample('react', 'knightmark');
       height={600}
     />
   </TabItem>
-  <TabItem label="React" icon="seti:react">
+  <TabItem label="React" icon="simple-icons:react">
     <StackBlitzEmbed
       client:load
       title="Knightmark - React"

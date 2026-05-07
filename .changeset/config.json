@@ -4,14 +4,13 @@
   "commit": false,
   "fixed": [],
   "linked": [
-    ["three-flatland", "@three-flatland/nodes", "@three-flatland/presets"]
+    ["three-flatland", "@three-flatland/nodes", "@three-flatland/presets"],
+    ["docs", "starlight-theme"]
   ],
   "access": "public",
   "baseBranch": "main",
   "updateInternalDependencies": "patch",
   "ignore": [
-    "docs",
-    "@three-flatland/mini-breakout",
     "example-react-animation",
     "example-react-basic-sprite",
     "example-react-batch-demo",

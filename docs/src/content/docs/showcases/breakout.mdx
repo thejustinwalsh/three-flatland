@@ -3,7 +3,7 @@ title: Breakout
 description: A complete Breakout arcade game built with three-flatland and Koota ECS.
 ---
 
-import { Tabs, TabItem } from '@astrojs/starlight/components';
+import { Tabs, TabItem } from 'starlight-theme/components';
 import ShowcaseGame from '../../../components/ShowcaseGame';
 import StackBlitzEmbed from '../../../components/StackBlitzEmbed';
 import ExampleTabs from '../../../components/ExampleTabs.astro';
@@ -16,7 +16,7 @@ export const breakoutFiles = loadMini('breakout');
   <TabItem label="Preview" icon="rocket">
     <ShowcaseGame client:load />
   </TabItem>
-  <TabItem label="React" icon="seti:react">
+  <TabItem label="React" icon="simple-icons:react">
     <StackBlitzEmbed
       client:load
       title="Breakout - three-flatland"

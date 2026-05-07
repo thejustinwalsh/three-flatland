@@ -1,15 +1,10 @@
 import { lazy, Suspense, useState, useEffect, useRef, useCallback } from 'react'
 import { initAudio } from '../scripts/sounds'
 import type { PlaySoundFn } from '../scripts/sounds'
+import { useGPUSupport } from '../utils/useGPUSupport'
 
 // Lazy load the mini-game
 const MiniBreakout = lazy(() => import('@three-flatland/mini-breakout'))
-
-declare global {
-  interface Window {
-    __gpuSupported?: boolean
-  }
-}
 
 // Corner size as % of container
 const C = '15%'
@@ -134,8 +129,32 @@ function HeroGameInner() {
   )
 }
 
-/** Gate: reads window.__gpuSupported set by Head inline script. No GPU → render nothing. */
+/** Gate: WebGPU/WebGL2 required. Pre-mount: render nothing (avoids SSR mismatch).
+ * Unsupported browsers: render a small notice instead of an empty hole. */
 export default function HeroGame() {
-  if (typeof window !== 'undefined' && window.__gpuSupported === false) return null
+  const gpu = useGPUSupport()
+  if (gpu === null) return null
+  if (gpu === false) {
+    return (
+      <div
+        role="note"
+        style={{
+          width: '100%',
+          height: '100%',
+          minHeight: '12rem',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '2rem',
+          textAlign: 'center',
+          color: 'var(--muted-foreground, currentColor)',
+          fontSize: '0.875rem',
+          lineHeight: 1.5,
+        }}
+      >
+        Interactive demo requires a browser with WebGPU or WebGL2 support.
+      </div>
+    )
+  }
   return <HeroGameInner />
 }

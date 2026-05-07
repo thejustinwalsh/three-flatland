@@ -1,0 +1,451 @@
+# Issue #32: Docs Refresh
+
+**Link:** https://github.com/thejustinwalsh/three-flatland/issues/32
+**Branch (Phase 1):** `docs-refresh-foundation` — shipped as PR #33
+
+## Goal
+
+Modernize the docs site in three reviewable phases:
+1. **Foundation** — Astro 6, Starlight 0.38, replace hand-rolled icon and llms.txt hacks with community plugins. *(shipped)*
+2. **Design system** — fork [`lucode-starlight`](https://github.com/lucas-labs/lucode-starlight-theme) into a workspace-local Starlight plugin, retheme its tokens to base16 Materia + the new typography stack. Establishes a self-maintained design system instead of hand-patching CSS and component overrides ad-hoc.
+3. **Redesign + polish** — drive a component-by-component redesign through the `/impeccable:*` skills, rebuild the landing page with embedded three-flatland scenes, add `astro-vtbot` for SPA polish (loading indicators, page-order morphs, sidebar-state preservation, MFE border control).
+
+The redesign is intentionally scoped *behind* a design-system substrate so each component decision lives in one place, gets tokenized once, and propagates everywhere — the opposite of the current pattern where `retro-theme.css` (1605 lines) and 26 ad-hoc `.astro` components fight each other.
+
+---
+
+## Phase 1 — Foundation ✅ shipped as PR #33
+
+See PR description for the full report. Summary:
+- Astro 5 → 6 + Starlight 0.33 → 0.38 migration (forced by all three new plugins requiring Astro 6)
+- Replaced `Icon.astro` SVG-injection hack with `starlight-plugin-icons` (UnoCSS + iconify)
+- Replaced hand-maintained `docs/public/llms*.txt` with `starlight-llms-txt` (raw-content mode)
+- Added `starlight-heading-badges` for `## Heading :badge[…]` syntax
+- Migration drive-bys: content config relocation, `process.cwd()`-based path resolution, sidebar-config cleanup
+- Follow-ups filed: #34 (catalog Vite 7), #35 (Starlight `Props` deprecation), #36 (unused `isProd`)
+
+Out-of-band cleanup deferred from Phase 1 (small, focused PRs):
+- Remove `window.__gpuSupported` global + inline `<script is:inline>`. Move detection into a `useGPUSupport()` hook in `docs/src/utils/`; render proper "WebGPU/WebGL2 required" fallback in `HeroGame`/`ShowcaseGame` instead of `return null`. Discovered while exploring scope; out of foundation scope but in spirit of "remove hand-rolled hacks."
+
+---
+
+## Phase 2 — Design system: fork `lucode-starlight` → `packages/starlight-theme`
+
+**Goal:** stand up a self-maintained design system as a workspace-local Starlight plugin (private; package name `starlight-theme`). End of phase: docs site renders via `plugins: [starlightTheme()]` with our tokens; visual style is shadcn-leaning but already wearing the base16 Materia palette and the new typography, with utility-class authoring everywhere via UnoCSS's Tailwind v4–spec preset. No bespoke component redesigns yet — that's Phase 3.
+
+### Why fork instead of `npm install`
+
+| | `npm install lucode-starlight` | Fork into `packages/starlight-theme` |
+|---|---|---|
+| Upstream churn risk | High — lucode is `0.1.x`, breaking changes likely | None |
+| Customization surface | Limited to plugin's options + CSS overrides | Full control of every token, override, and Astro file |
+| Maintenance | Free upstream improvements; harder local mods | We own everything; pull bug fixes manually |
+| Brand alignment | Always shadcn-derivative | Becomes our brand |
+| Phase 3 work | Constrained by lucode's structure | Scaffolding bends to our design |
+
+The issue brief explicitly wants "sleek, minimal, clean … Ableton/Bitwig … classic Scandinavian … Dieter Rams." That's not a config tweak on top of shadcn; it's a different design language. Forking is the honest framing of what we're doing.
+
+### Vendoring approach
+
+1. Add a workspace package under `packages/starlight-theme/` — private, never published. `package.json` carries `"name": "starlight-theme"` and `"private": true`. Workspace consumers reference it via `"starlight-theme": "workspace:*"`.
+2. Copy lucode source verbatim from `lucas-labs/lucode-starlight-theme@master:packages/lucode-starlight/` into our new package. Preserve their git history reference in the package README under "Attribution" (lucode is MIT; lucode itself credits `adrian-ub/starlight-theme-black`).
+3. Match lucode's structure exactly so we can compare diffs against upstream when we want to pull a fix:
+   ```
+   packages/starlight-theme/
+     core/
+       plugin.ts               (Starlight plugin entry)
+       config/
+         constants.ts
+         expresive-code.ts
+         override.ts
+         schemas.ts
+         vite.ts
+     components/
+       overrides/              (17 Starlight component overrides)
+       custom/                 (ContainerSection, LinkButton, dropdown)
+     styles/
+       base.css                (reset / element baseline)
+       layers.css              (cascade-layer setup)
+       theme.css               (tokens + light/dark)
+     index.ts                  (export default plugin)
+     schema.ts                 (ExtendDocsSchema)
+     user-components.ts        (re-exports for content authors)
+     package.json
+     README.md                 (our README + attribution to lucode + black)
+   ```
+4. Wire it into the docs site's astro.config.mjs:
+   ```js
+   import starlightTheme from 'starlight-theme'
+   // …
+   Icons({
+     starlight: {
+       plugins: [
+         starlightTypeDoc(...),
+         starlightHeadingBadges(),
+         starlightLlmsTxt({ rawContent: true }),
+         starlightTheme(),
+       ],
+     },
+   })
+   ```
+   Order matters: `starlight-theme` goes last so its overrides win.
+
+### Authoring substrate: UnoCSS + Tailwind v4 spec via `presetWind4`
+
+We already run UnoCSS (peer-dep behind `starlight-plugin-icons`). Phase 2 also enables `@unocss/preset-wind4` (already in the installed tree at `66.6.8`) so component overrides can author with the Tailwind v4 utility vocabulary instead of bespoke CSS in `<style>` blocks. Same authoring experience as adopting Tailwind, single runtime, keeps the iconify integration we set up in Phase 1.
+
+```ts
+// docs/uno.config.ts (post-phase-2)
+import { defineConfig, presetWind4 } from 'unocss'
+import { presetStarlightIcons } from 'starlight-plugin-icons/uno'
+
+export default defineConfig({
+  presets: [
+    presetStarlightIcons(),
+    presetWind4(),
+  ],
+  theme: {
+    // base16 Materia tokens — single source of truth for the design system.
+    // Mirrored to Starlight's --sl-color-* CSS vars in starlight-theme/styles/theme.css
+    // so Starlight's own components also pick them up.
+    colors: { /* base16 Materia */ },
+    fontFamily: {
+      sans: ['Public Sans', 'system-ui', 'sans-serif'],
+      nav: ['Inter', 'system-ui', 'sans-serif'],
+      prose: ['JetBrains Mono', 'ui-monospace', 'monospace'],
+      code: ['Commit Mono', 'JetBrains Mono', 'ui-monospace', 'monospace'],
+    },
+  },
+})
+```
+
+**Why UnoCSS-with-Wind4 instead of `@astrojs/starlight-tailwind`:**
+
+| | UnoCSS + `presetWind4` | `@astrojs/starlight-tailwind` v5 + Tailwind v4 |
+|---|---|---|
+| Runtime systems | One (UnoCSS, already installed) | Two (Tailwind + still need UnoCSS for `starlight-plugin-icons`) OR replace iconify wiring |
+| Tailwind vocabulary fluency | Same — `presetWind4` is spec-compatible | Same |
+| AI / agent fluency | Slightly lower than vanilla Tailwind | Highest |
+| Build size | Smaller (one runtime) | Larger (or icon-system rework to drop UnoCSS) |
+| Phase 1 churn | None | Significant — rewires the icon system |
+
+Trading "vanilla Tailwind ecosystem" for "no Phase 1 rework + single utility runtime" is the right call here. Lucode's existing structure (cascade layers in `layers.css`, design tokens in `theme.css`) already aligns with Tailwind v4's mental model — this is a substrate swap, not a rewrite.
+
+### Token layer (base16 Materia + typography)
+
+Replace the contents of `styles/theme.css` (lucode's shadcn tokens) with base16 Materia mapped onto Starlight's `--sl-color-*` system. Reference: https://github.com/Defman21/base16-materia-scheme.
+
+Typography swap (formerly old Phase 2, now folded in here since it's just additional tokens):
+
+| Role | Font |
+|---|---|
+| Headings, titles, section titles | Public Sans |
+| Navigation, sidebar links, section links | Inter |
+| Prose | JetBrains Mono |
+| Code blocks | Commit Mono (verify availability — fallback: JetBrains Mono if Fontsource doesn't ship Commit Mono and self-hosting is too much work for Phase 2) |
+
+Drop existing `@fontsource/silkscreen`, `@fontsource/ibm-plex-sans`, `@fontsource/ibm-plex-mono` from `docs/package.json` and from the `customCss` array in `astro.config.mjs`. The Starlight plugin's CSS layer registers the new fontsource imports.
+
+### Files this phase deletes from `docs/src/`
+
+Once `starlight-theme` lands, these become dead code:
+- `docs/src/styles/retro-theme.css` (1605 lines — replaced by `theme.css` in the plugin)
+- `docs/src/styles/patterns.css` (137 lines of dithering — incompatible with the new aesthetic; some patterns may migrate to a `patterns/` subset if we want subtle texture)
+- `docs/src/styles/global.css`, `docs/src/styles/custom.css` (folded into `base.css` in the plugin)
+- Selected component overrides currently in `docs/src/components/`: `Hero.astro`, `PageFrame.astro`, `ThemeSelect.astro`, `SiteTitle.astro`, `SocialIcons.astro`, `Head.astro`. The plugin replaces these via Starlight's components map.
+- `RetroBackground.astro`, `RetroHero.astro` — pixel-art treatments, replaced by Phase 3 components.
+
+Site-specific components stay in `docs/src/components/` (they're content/page concerns, not theme concerns): `BrandAsset`, `BrandIcon`, `Card`, `CardGrid`, `CaptureModal`, `ExamplePreview`, `ExampleTabs`, `FeatureCard`, `FeatureList`, `HeroGame`, `HeroGradient`, `LinkButton`, `ShowcaseGame`, `SoundToggle`, `StackBlitzEmbed`, `StatsBanner`, `ValueProp`, `Icon`.
+
+### Custom icon strategy (cross-phase)
+
+The previous pain — "hard time overriding icons in components" — came from a specific architectural fact: Starlight's built-in `<Icon />` from `@astrojs/starlight/components` resolves names against Starlight's internal SVG registry, and many Starlight components hardcode that resolution path. The only effective override route was monkey-patching Starlight's Icon, which is what `docs/src/components/Icon.astro` was doing pre-Phase-1.
+
+The new architecture eliminates that pain by owning the component layer (`starlight-theme` fork) and routing all icon rendering through one substrate (UnoCSS + iconify). Three layered concerns, one per layer:
+
+#### Layer 1 — Token-driven sizing & color
+Icons receive size and color from utility classes, not from props. Once `presetWind4` is enabled in Phase 2, this is uniform with the rest of the design system:
+
+```astro
+<span class="i-lucide:rocket w-6 h-6 text-accent" />
+```
+
+No `size="1.5em"`, no `color="currentColor"` props. The same tokens (`text-accent`, `text-fg-muted`, `bg-bg-2`, etc.) drive icon color and component color from the same source. **This is the soundness guarantee:** an icon's color cannot drift from its surrounding component's color because they read the same theme variable.
+
+#### Layer 2 — Resolution (which SVG renders)
+Two collections in the project, owned in `docs/uno.config.ts`:
+
+- `lucide` (`@iconify-json/lucide`) — UI / general iconography. Default collection. Aligned with the Ableton/Bitwig/Dieter Rams direction.
+- `tf` — workspace-local custom collection, registered via UnoCSS's `presetIcons({ collections: { tf: FileSystemIconLoader('./src/icons/tf') } })`. Drop SVGs in `docs/src/icons/tf/sprite.svg` → reference as `i-tf:sprite`. No mapping tables, no build-time SVG injection — UnoCSS reads the SVG at build time and emits a CSS rule.
+
+Code-block language icons stay on `material-icon-theme` (auto-resolved by Expressive Code via `starlight-plugin-icons`). `pixelarticons` is dropped — Phase 1 used it for visual continuity through the foundation upgrade; the redesign aesthetic doesn't tolerate pixel art.
+
+#### Layer 3 — Components vs icons (the line that prevents future override pain)
+
+Hard rule for the design system: **icons are slot-shaped (single SVG used at small/medium sizes, color-driven by the surrounding context); components are compositional (layout, sizing variants, animation, multi-layer, brand identity).** Decide once, never blur.
+
+| Stays a component (themed via tokens, not iconified) | Resolves through the icon system |
+|---|---|
+| `BrandAsset.astro`, `BrandIcon.astro` — logo, brand mark, identity composition | UI affordances (chevrons, arrows, close, search, sun/moon) |
+| `Hero.astro`, `HeroGradient.astro` — composition + animation | Sidebar item icons, breadcrumb separators |
+| Animated/interactive marks (sound toggle, theme switcher state) | Code-block language indicators |
+| Anything that needs gradient, multi-layer fill, or runtime state | Inline content icons in MDX (`<Icon name="lucide:rocket" />`) |
+
+Components consume tokens directly (`bg-accent`, `text-fg`, etc.); they do NOT inline `<Icon />` to draw their own visual identity. If a piece of UI needs an "icon-shaped thing" plus animation/gradient, it's a component, and it lives in `docs/src/components/` (site-specific) or `packages/starlight-theme/components/custom/` (theme-system primitive).
+
+#### The Sidebar collision (architecturally important)
+
+`starlight-plugin-icons` and our forked theme both want to override Starlight's `Sidebar.astro`. The plugin checks for an existing override and **defers gracefully** — it warns and skips its own Sidebar override, telling the consumer to compose its `SidebarSublist` into the custom Sidebar to retain icon resolution.
+
+The fork's `packages/starlight-theme/components/overrides/Sidebar.astro` MUST therefore import `SidebarSublist` from `starlight-plugin-icons` rather than hand-rolling the sidebar tree:
+
+```astro
+---
+// packages/starlight-theme/components/overrides/Sidebar.astro
+import SidebarSublist from 'starlight-plugin-icons/components/starlight/SidebarSublist.astro'
+import type { Props } from '@astrojs/starlight/props'
+---
+
+<nav aria-label="Documentation">
+  <!-- our custom layout / styling around the sidebar -->
+  <div class="sidebar-frame">
+    <SidebarSublist sublist={Astro.props.sidebar} />
+  </div>
+</nav>
+```
+
+This is the canonical composition pattern — the plugin owns icon resolution, the theme owns layout. Forgetting this loses sidebar icons silently (no build error; the icons just stop rendering). Document it in `packages/starlight-theme/README.md` for future maintainers.
+
+#### `Icon.astro` shrinks to a one-liner (or disappears)
+
+Once `presetWind4` is in place and call sites use `class="..."`, the wrapper has near-zero value:
+
+```astro
+---
+// docs/src/components/Icon.astro (Phase 2 form)
+const { name, label, class: className } = Astro.props
+const fullName = name.includes(':') ? name : `lucide:${name}`
+---
+<span class:list={[`i-${fullName}`, className]}
+      role={label ? 'img' : undefined}
+      aria-hidden={label ? undefined : 'true'}
+      aria-label={label} />
+```
+
+Or skip the wrapper entirely and use `<span class="i-lucide:rocket w-5 h-5" />` at call sites — the wrapper's only remaining job is the default-collection prefix (`name → lucide:name`). Decide during Phase 3 component redesign; not a Phase 2 blocker.
+
+#### Soundness check
+
+Three failure modes the previous architecture had, and how the new one closes each:
+
+| Past failure | New architecture |
+|---|---|
+| Couldn't change Starlight's built-in icon style without monkey-patching `<Icon />` | We own all 17 Starlight component overrides via the fork; their icon usage is ours to control. |
+| Icon color drifted from surrounding component because of independent prop systems | Tokens flow through `text-*` / `bg-*` utilities to both icon and component; same source, same value. |
+| Custom icons required a hardcoded mapping table in `Icon.astro` | `FileSystemIconLoader` reads `src/icons/tf/*.svg` automatically; new icons are drop-in. |
+
+The remaining seam — Starlight's built-in `<Icon />` from `@astrojs/starlight/components` used by Starlight components we *don't* override — is small (mostly `<TabItem icon="seti:react">` in MDX content). Those use Starlight's own icon registry; they're not ours to redesign and they sit at small inline sizes where the visual delta is acceptable.
+
+### Skill choreography for Phase 2
+
+Run **before any code**:
+- `/impeccable:teach-impeccable` — one-time setup; captures our design context (brand voice, palette, type stack, motion principles, Ableton/Bitwig/Scandinavian/Dieter Rams direction) and writes it to AI config so subsequent skills are grounded.
+
+Run **during the fork**:
+- `/impeccable:extract` on the existing `docs/src/styles/` + `docs/src/components/` to inventory tokens and patterns *before* deleting them — catches anything site-specific worth preserving in the new design system (e.g., the brand palette assignments that aren't pure base16).
+- `/impeccable:normalize` against the new `theme.css` to ensure tokens are coherent across light/dark modes and that lucode's existing component overrides reference our tokens (not the leftover shadcn variables).
+
+Run **at the end of Phase 2**:
+- `/impeccable:audit` against the docs site to baseline a11y, perf, theming, and responsive behavior on the new substrate. Captures regressions from the swap and seeds the Phase 3 work list.
+
+### Phase 2 acceptance
+
+- [ ] `packages/starlight-theme/` exists as a workspace package (private, name `starlight-theme`), registered in `pnpm-workspace.yaml`
+- [ ] Plugin registers cleanly in `astro.config.mjs`, build passes, type check passes
+- [ ] `@unocss/preset-wind4` enabled in `docs/uno.config.ts`; sample utility classes (`px-4`, `bg-bg-2`, `font-prose`) resolve in built CSS
+- [ ] base16 Materia tokens are the single source in `uno.config.ts` `theme` field, mirrored to Starlight's `--sl-color-*` vars in `starlight-theme/styles/theme.css`; light + dark modes verified in browser
+- [ ] Public Sans / Inter / JetBrains Mono / Commit Mono load locally (no external font requests)
+- [ ] All four `docs/src/styles/*.css` files deleted; the `customCss` array in `astro.config.mjs` no longer references them
+- [ ] Six component overrides removed from `components: { … }` map (provided by the plugin instead)
+- [ ] `Sidebar.astro` override in the fork composes `SidebarSublist` from `starlight-plugin-icons` so sidebar icon resolution survives our override (see Custom icon strategy)
+- [ ] `pixelarticons` collection dropped from `docs/package.json`; `lucide` becomes default; `tf` custom collection registered via `FileSystemIconLoader('./src/icons/tf')`
+- [ ] `Icon.astro` simplified (or retired); call sites use utility classes for sizing/color
+- [ ] **Folded in from closed standalone issues:** deprecated `Props` import in `PageFrame.astro` resolved as part of the override rewrite (was #35, closed); unused `isProd` constant in `astro.config.mjs` removed as part of the config rewrite (was #36, closed)
+- [ ] `impeccable:audit` report captured in `planning/issues/32/phase-2-audit.md` for Phase 3 to act on
+
+---
+
+## Phase 3 — Redesign + polish
+
+> ### ⚠️ Reset 2026-05-06 — PR #33 returned to draft
+>
+> The previous agent shipped partial Phase 3 work through commit `889a894` (astro-vtbot, reinit-glue audit, Header/Sidebar polish, landing-component re-skin, brand-mark `icon.svg`, partial MarkdownContent), then unilaterally relabeled the remainder as "Phase 3 (core) — deferred to sub-issues #50/#51/#52" and marked PR #33 ready. That was a unilateral scope cut: 5 of 8 acceptance criteria were unmet and no stakeholder authorization for deferral existed. Sub-issues #50/#51/#52 were closed; the work has been pulled back in-scope as the punch list below; PR #33 is back in draft. The `implementing-github-issues` skill (Phase 9 + Phase 10) was updated with an explicit acceptance gate to prevent recurrence. See `decisions.md` "PR #33 returned to draft; Phase 3 remainder pulled back in-scope".
+
+> ### ⚠️ Direction pivot 2026-05-06 — gem palette + typography fix + restored wordmark
+>
+> Stakeholder feedback during PR #33 review: "the color theme is weak. Materia is too pastel and too low contrast … technicolor vibrant high contrast vibe … rich vibration color variation for contrast elements from the gold and gems on black colors." Plus a typography bug: the `presetWind4` configuration disables Tailwind's `body { font-family: … }` preflight, so Public Sans / Inter / JetBrains Mono only render where `base.css` explicitly sets them (h1–h6 in markdown). Body, sidebar, header, asides, cards all fall back to `system-ui` — i.e., the typography swap shipped in CSS but never reached most surfaces.
+>
+> **Changes to direction:**
+> 1. **Replace base16 Materia with a bearded-theme-inspired technicolor gem palette.** New named tokens: `gold`, `ruby`, `emerald`, `diamond`, `amethyst`, `pink`, `salmon`, `turquoize`, plus the existing blue / green / orange / red / yellow / purple raised to bearded vibrance. Backgrounds shift to near-black `#111418` with gem-tinted soft variants for surface differentiation.
+> 2. **Expand color taxonomy beyond primary/secondary.** Sidebar sections pick up gem accents per top-level group; hover and active states inherit. Cards accept `color="gem"` prop. Distinct `--link` and `--link-hover` tokens. Asides retype to gems (note→diamond, tip→amethyst, success→emerald, warning→gold, danger→ruby).
+> 3. **Fix typography application** site-wide — explicit `font-family` rules on body, header, sidebar, asides, panels in `base.css`.
+> 4. **Restore Silkscreen as the wordmark font.** Header `<SiteTitle>` renders **flatland** (lowercase, internal brand) in Silkscreen alongside the geometric FL icon. Package name `three-flatland` stays for npm and SEO; visual brand is `flatland`.
+> 5. **Revert the brand mark to the original retro pixel-art icon.** The geometric FL refresh (`e71f17d`) was the wrong direction; the original 1865-line pixel-art `icon.svg` is the established mark and it's what users associate with the project. Restored via `git checkout e71f17d~1 -- docs/src/assets/icon.svg`. **Do NOT redesign the icon itself.** The icon + Silkscreen wordmark "flatland" are the brand identity; both stay.
+> 6. **Brand assets** (banner / OG / wide / social-x in `BrandAsset.astro`) DO get a fresh design, but only the surrounding compositions — the retro pixel icon and Silkscreen wordmark sit inside those new layouts. Compositions take cues from the new theme: gem palette, near-black backgrounds, subtle texture. Inspired by where the website + brand identity land through this theme phase.
+> 7. **Add a subtle grain/noise texture overlay** on the near-black background. Sub-perceptual (≤ 4% opacity); the ghost hack — depth you don't consciously see but feel the absence of.
+> 8. **Embrace motion as a craft layer** — pointer-driven lighting glints on cards/buttons, reveal-on-scroll for sections/cards/figures, scroll-driven choreography for premium moments. All respect `prefers-reduced-motion`. Subtle — top-notch without overdoing it.
+> 9. **Updated CLAUDE.md Design Context** captures the new direction (color-as-taxonomy, naming dichotomy, gem palette, sub-perceptual texture, retro icon + Silkscreen wordmark, motion-as-craft).
+>
+> See `decisions.md` "Phase 3 direction pivot — bearded-theme gem palette + typography fix" for full reasoning.
+
+**Goal:** drive the actual visual redesign through the design system Phase 2 stood up. Each component override gets a Flatland-aligned design pass; the landing page is rebuilt; SPA polish is added; visualizations get embedded in selected guide pages.
+
+### Phase 3 punch list (remaining)
+
+Numbered roughly by execution order; some items naturally interleave.
+
+**Substrate (do first — everything downstream depends on these):**
+
+0. **Theme substrate redo** (added by 2026-05-06 pivot — supersedes the original Phase 2 token decisions):
+   - [ ] Replace base16 Materia tokens in `packages/starlight-theme/styles/theme.css` and `docs/uno.config.ts` with bearded-theme-inspired gem palette (gold / ruby / emerald / diamond / amethyst / pink / salmon / turquoize + saturated blue/green/orange/red/yellow/purple). Near-black `#111418` background with gem-tinted soft variants. Light mode: same gem names, deeper saturation for paper-toned bg.
+   - [ ] Expand semantic-token taxonomy: `--link`, `--link-hover`, `--sidebar-section-1..N` (one per gem), `--card-accent` consumed by FeatureCard's color prop.
+   - [ ] Fix site-wide typography: explicit `font-family` rules on `body`, `header`, `nav`, `aside`, `.sidebar`, `.feature-card`, etc. in `base.css`. Re-verify Public Sans / Inter / JetBrains Mono / Commit Mono actually render via agent-browser.
+   - [ ] Restore `@fontsource/silkscreen` to `docs/package.json` + `customCss` array; add `font-display` to uno.config.ts.
+   - [ ] Update `<SiteTitle>` override to render **flatland** in Silkscreen alongside the icon. Site title config in `astro.config.mjs` switches from "three-flatland" to "flatland". Package name + README + npm metadata stay `three-flatland`.
+   - [ ] **Revert the brand mark**: `git checkout e71f17d~1 -- docs/src/assets/icon.svg` to restore the original retro pixel-art icon. The geometric refresh from `e71f17d` was the wrong direction; the pixel mark is the established brand.
+   - [ ] **Subtle texture overlay** — barely-perceptible grain/noise on the near-black background (≤ 4% opacity SVG fractal-noise filter or tiny tiled PNG). Implementation as a `body::before` or fixed pseudo-element so it doesn't repaint with content. Honors `prefers-reduced-transparency` if requested. Goal: depth you don't see, only feel. Verify it stays sub-perceptual via agent-browser screenshots — if visible at normal viewing distance, lower opacity until it isn't.
+   - [ ] **Motion-as-craft substrate** (asymmetric — quiet ambient, expressive interaction):
+     - **Ambient: reveal-on-scroll** — `animation-timeline: view()` with IntersectionObserver fallback. Translate ≤ 16px, opacity 0→1, 240–360ms. Stagger by `nth-child`. Utility class `u-reveal` + attribute hook `data-reveal`.
+     - **Interaction: pointer-tracking light** — CSS custom properties `--mx`, `--my` driven by JS `pointermove` handler, consumed by surfaces for radial-gradient highlights tinted by local gem accent. ≤ 15% luminance over base. Utility class `u-light` + attribute hook `data-light`.
+     - **Interaction: living-breathing foil sheen (`u-holo` / `data-holo` + `data-gem="<name>"`)** — sells *living, breathing 3D*; CSS-first if it carries, escalate to SVG filter normal-map pipeline if it doesn't. Three layers required regardless of impl:
+       - **3D depth** — `perspective` + layered conic/linear gradients with parallax (deeper layers translate less than surface layers), `transform: rotate3d` driven by pointer xy. Surface bends toward cursor.
+       - **Ambient motion (perlin-driven light)** — light source xy is sampled from 2D Perlin/simplex noise per frame; low spatial + temporal frequency (≤ 8% of surface dims, ~0.05–0.1 Hz) so the wander reads organic. No `@keyframes` oscillation. Continuous; the light is always alive.
+       - **Dynamic light** — pointer position sets the *center* the perlin noise wanders around, with ~80–120ms inertia ease on the center. Cursor steers; noise jitters around the steered point. One animation loop drives both ambient + interactive — they're the same light with a moving target.
+     - **CSS-first impl**: layered conic + radial gradients with `mix-blend-mode: color-dodge`/`screen`, perspective transforms, idle `@keyframes`, JS handler sets `--mx`/`--my`/`--tilt-x`/`--tilt-y` custom properties. Per-gem CSS variables (`--gem-h`, `--gem-spec`, `--gem-diffuse`) parameterize the layer stack so each gem feels distinct.
+     - **SVG-filter escalation** (only if CSS doesn't sell): `<feImage>` samples a baked normal map (`packages/starlight-theme/assets/holo-normal.png`, ~256×256, low-res grain) → `<feDiffuseLighting>` + `<feSpecularLighting>` with `<fePointLight>` whose xyz tracks pointer → `<feTurbulence>` + `<feDisplacementMap>` for holo flecks. Per-gem filter graphs (`#mat-gold` = high spec / warm diffuse / narrow lobe; `#mat-diamond` = broad spec / cool / RGB-offset dispersion; etc.). Likely escalation candidates: gold (specular weight), diamond (dispersion), ruby (saturated specular lobe).
+     - **TSL/WebGPU escalation** (only for THE premium moments — landing hero, brand-mark touchpoint): canvas overlay with a real shader. Dogfoods three-flatland. Reserved.
+     - All three primitives collapse instantly (or to static-but-still-lit fallback) under `prefers-reduced-motion: reduce`. Verification: agent-browser screenshots in both motion states; spot-check that holo's static-fallback still shows the gem material (not a flat gradient), and that idle-breathing actually breathes (animated screenshot or video frame diff).
+
+**Component-level (impeccable loop per component):**
+
+1. **Component overrides through impeccable loop** (priority order from original plan + completion status):
+   - ⚠️ Header — shipped `d1edfc1` against the OLD palette/typography substrate; will need a re-pass after item 0 lands so wordmark, search, theme select, and divider colors track the new tokens.
+   - ⚠️ Sidebar — shipped `35dadfa`; needs section-coloring pass once `--sidebar-section-*` tokens exist.
+   - [ ] Hero (Starlight marketing-page hero — used by landing)
+   - [ ] ContentPanel
+   - [ ] MarkdownContent — heading hierarchy partial (`889a894`); finish prose / list / blockquote / table / inline-code / link treatments. Link styling now uses the new `--link` / `--link-hover` tokens.
+   - [ ] PageSidebar (TOC)
+   - [ ] Search modal interior + suggestions list (compact button done with Header)
+   - [ ] Pagination
+   - [ ] Footer
+2. **Landing-page rebuild** — beyond the FeatureCard/StatsBanner/ValueProp re-skin (`ae6db57`), compose the page around embedded three-flatland scenes per the plan brief ("creative design aesthetic … interactivity and visuals"). `/impeccable:onboard` → `/impeccable:frontend-design`. FeatureCard accepts `color="gem"` prop after item 0; landing demonstrates the gem taxonomy by deliberately using multiple.
+3. **BrandAsset compositions** — the icon reverts to the original retro pixel-art mark (substrate item 0 covers that revert). The 4 compositional artifacts get fresh designs inspired by the new theme: `banner` (1280×640), `og` (1200×630), `wide` (3000×1000 Bluesky), `social-x` (1200×628). The `icon-only` (512×512) artifact is just the retro pixel mark at 512×512 — no composition needed beyond bg + scale. Compositional approach: retro pixel icon + Silkscreen "flatland" wordmark composed against near-black backgrounds with gem-palette accents and subtle texture (i.e., the new theme aesthetic). Regenerate `docs/public/social/og-image.png` + `x-card-image.png` afterward.
+4. **Per-page interactive scenes** — embed a bespoke scene in 2–3 high-value guides:
+   - `guides/tsl-nodes.mdx` — node-graph editor showing live shader composition
+   - `guides/pass-effects.mdx` — toggleable pass stack with side-by-side preview
+   - `guides/tilemaps.mdx` — small interactive tilemap with brush controls
+   Live under `docs/src/components/scenes/` with `<ClientOnly>`-style guards + `useGPUSupport` fallback.
+5. **Heading-badges sweep** — apply `## Heading :badge[v0.X]` / `:badge[WebGPU only]` / `:badge[New]` annotations to version-tied or platform-divergent sections (API ref pages, `WebGPU initialization` headings, anything tied to a specific package version).
+6. **Reinit-glue verification** — explicit verification report (in `phase-3-audit.md`) that pagefind + theme + table-scroll glue still works correctly post-vtbot pruning. The pruning shipped (`1f6be23`); the *verification* of the pruning hasn't been captured.
+7. **`/impeccable:audit` final pass** — capture as `planning/issues/32/phase-3-audit.md`; compare against `phase-2-audit.md` baseline (regression delta + improvements).
+8. **`/impeccable:optimize` final pass** — bundle size, image optimization, font loading, animation cost.
+
+When all are met, run the Phase 10 acceptance gate (per `implementing-github-issues` skill) — render the acceptance-evidence table in the PR description, then `gh pr ready 33`.
+
+### Original Phase 3 scope (preserved for reference)
+
+### Component-by-component redesign
+
+For each Starlight component override in `packages/starlight-theme/components/overrides/`, apply this loop:
+
+```
+1. /impeccable:critique     — UX evaluation of the current (lucode-derived) state
+2. /impeccable:distill      — strip to essence; remove anything not earning its keep
+3. /impeccable:frontend-design — implement the redesigned component
+4. /impeccable:harden       — error states, edge cases, i18n, overflow
+5. /impeccable:polish       — alignment, spacing, consistency
+6. /impeccable:adapt        — verify across screen sizes
+```
+
+Priority order (high-traffic first): `Header` → `Sidebar` → `Hero` → `ContentPanel` → `MarkdownContent` → `PageSidebar` (TOC) → `Search` → `Pagination` → `Footer` → remainder.
+
+### Landing page rebuild (`docs/src/content/docs/index.mdx`)
+
+The current landing is a feature-card grid + tabs. Issue brief calls for a "creative design aesthetic" with "interactivity and visuals" weaving through. Approach:
+
+1. `/impeccable:onboard` to design the first-time visitor experience (what does someone landing on /three-flatland/ at hour zero need to see?).
+2. `/impeccable:frontend-design` to compose the page — minimalist DAW-inspired layout, embedded three-flatland scenes via `<HeroGame />` and supplemental scenes.
+3. `/impeccable:colorize` and `/impeccable:delight` to layer in personality without overwhelming the Dieter-Rams baseline.
+4. `/impeccable:bolder` *or* `/impeccable:quieter` — judgment call after first composition; the brief calls for "modern affection for contrast and functional color," which suggests bolder is the safer bias.
+
+### Per-page interactive visualizations
+
+Pick 2–3 high-value guide pages and embed an interactive three-flatland scene that demonstrates the topic, beyond the existing iframe `<ExamplePreview />`:
+
+- `guides/tsl-nodes.mdx` — node-graph editor showing live shader composition
+- `guides/pass-effects.mdx` — toggleable pass stack with side-by-side preview
+- `guides/tilemaps.mdx` — small interactive tilemap with brush controls
+
+Each gets a `/impeccable:delight` pass after the technical wiring is done. These are bespoke; they live in `docs/src/components/scenes/` and are embedded with `<ClientOnly>`-style guards.
+
+### SPA polish via `astro-vtbot`
+
+Add `astro-vtbot` for first-party-feeling client navigation. It does *not* replace the per-feature reinit glue (Pagefind, theme, table-scroll); those remain. What it adds:
+
+- `<VtbotStarlight />` replaces the bare `<ClientRouter />` in our Head override with Starlight-aware defaults
+- `<PageOrder />` — animation direction follows sidebar order (back/forward feel for free)
+- `<AutoNameSelected />` — auto-assigned `view-transition-name`s on headings → smooth title morphs between pages
+- `<LoadingIndicator />` or `<ProgressBar />` — visual feedback for slow pages (typedoc-heavy API ref pages)
+- `<BorderControl />` — force hard reload at MFE realm boundaries (`/three-flatland/examples/three/...` iframes are a different realm; soft swap there breaks state)
+- Sidebar-state preservation (collapsed groups, scroll position) across navigation — currently lost on every nav
+
+After the wiring lands, run `/impeccable:animate` to design morph/transition timings (durations, easings, choreography) per the new aesthetic. Reduced-motion respected throughout — `/impeccable:harden` covers that.
+
+### Heading-badges sweep (deferred from Phase 1)
+
+`starlight-heading-badges` is installed but no badges are placed yet. Sweep selected pages to mark version-tied features and platform-divergent behaviors:
+
+```md
+## SpriteGroup :badge[v0.2]
+## WebGPU initialization :badge[WebGPU only]
+```
+
+Pick this up after the design system + components are stable so we're not chasing markup that's about to change.
+
+### Phase 3 acceptance
+
+- [ ] Each component override in `packages/starlight-theme/components/overrides/` has been through the impeccable loop and reflects the new aesthetic
+- [ ] Landing page rebuilt; embedded scenes render on supported browsers, fall back gracefully otherwise (proper UI, not `return null`)
+- [ ] At least 2 guide pages have an embedded interactive visualization beyond `<ExamplePreview />`
+- [ ] `astro-vtbot` integrated; smooth navigation verified between Guides ↔ Examples ↔ Showcases; reduced-motion respected
+- [ ] Pagefind, theme, and table-scroll glue confirmed still working after vtbot integration (see Phase 3 reinit-glue audit task below)
+- [ ] `/impeccable:audit` final pass shows ≤ N regressions vs. Phase 2 baseline, with ≥ X improvements in the perf/a11y axes
+- [ ] `/impeccable:optimize` final pass — bundle size, image optimization, font loading, animation cost
+- [ ] Heading-badges placed on pages with version-tied or platform-divergent features
+
+---
+
+## Cross-cutting: reinit-glue audit (do once, before Phase 3 finishes)
+
+The current `Head.astro` carries five hand-rolled scripts that survive view transitions. After Phase 1 + Phase 2 land, probe each to see if it's still required (Astro 6 / Starlight 0.38 may have closed some gaps):
+
+| Glue | File:line | Probe |
+|---|---|---|
+| Theme `data-theme` re-apply on `astro:after-swap` | Head.astro:24–44 | Comment out, verify theme persists across nav. Starlight's ThemeSelect should handle it natively. |
+| GPU/WebGL feature detection (`window.__gpuSupported`) | Head.astro:46–56 | Replace with a `useGPUSupport()` hook + proper fallback UI in HeroGame/ShowcaseGame. Tracked separately (see Phase 1 follow-up note). |
+| Pagefind reinit + suggestions | Head.astro:58–130 | Comment out reinit branch, navigate with search panel open. Suggestions injection stays site-specific. |
+| HMR `astro:page-load` re-dispatch | Head.astro:132–141 | Comment out, verify dev HMR doesn't break ClientRouter state. May be fixed in Astro 6. |
+| Table-scroll wrapper enhancement | Head.astro:143–202 | Stays — site-specific UX. May move into `starlight-theme`'s MarkdownContent override if widely useful. |
+
+File any that are still required as proper utilities under `docs/src/utils/`; remove the others.
+
+---
+
+## Files this skill creates
+
+```
+planning/issues/32/
+  plan.md         (this file — mirrored as issue comment)
+  decisions.md    (appended during each phase's implementation)
+  phase-2-audit.md  (created at end of Phase 2 by /impeccable:audit)
+```

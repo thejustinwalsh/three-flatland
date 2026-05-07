@@ -1,203 +1,98 @@
 ---
 /**
- * Custom Head component that enables View Transitions for SPA-like navigation.
- * This preserves audio context and sound state across page navigations.
+ * Custom Head component. Composes Starlight's Head with astro-vtbot for SPA
+ * navigation polish.
+ *
+ * Vtbot's `Base` includes the ClientRouter + ReplacementSwap + StarlightConnector
+ * — `ReplacementSwap rootAttributesToPreserve="data-theme"` keeps the active
+ * theme across page swaps, so we no longer need a hand-rolled
+ * `astro:after-swap` listener for theme persistence.
+ *
+ * Removed scripts (per planning/issues/32/phase-2-extract.md probe in Phase 3.2):
+ * - Theme persistence on `astro:after-swap` — vtbot Base preserves data-theme.
+ * - HMR `astro:page-load` re-dispatch — Astro 6's HMR fires page-load itself.
+ * - Pagefind reinit + search-suggestions injection — the suggestion-list CSS
+ *   was deleted with the retro stylesheets in Phase 2; reinit becomes useful
+ *   again when Search override is redesigned in Phase 3.x.
+ * - Table-scroll wrapper — its CSS was deleted in Phase 2; revisit when
+ *   MarkdownContent override is redesigned in Phase 3.x.
+ * - GPU/WebGL detection global — moved to `useGPUSupport` hook used by
+ *   HeroGame.tsx + ShowcaseGame.tsx with proper "WebGPU/WebGL2 required"
+ *   fallback UI instead of `return null`.
  */
 import StarlightHead from '@astrojs/starlight/components/Head.astro';
-import { ClientRouter } from 'astro:transitions';
-
-const isDev = import.meta.env.DEV;
-const baseUrl = import.meta.env.BASE_URL;
+import VtBotBase from 'astro-vtbot/components/starlight/Base.astro';
+import PageOrder from 'astro-vtbot/components/starlight/PageOrder.astro';
+import LoadingIndicator from 'astro-vtbot/components/LoadingIndicator.astro';
+import AutoNameSelected from 'astro-vtbot/components/AutoNameSelected.astro';
 ---
 
 <StarlightHead {...Astro.props}><slot /></StarlightHead>
-<ClientRouter />
+<VtBotBase replaceSidebarContent retainCurrentPageMarker />
+<PageOrder />
+<LoadingIndicator />
+{/* Auto-assign view-transition-names to top-level page headings so they
+    morph between pages instead of fading. */}
+<AutoNameSelected selector="main h1, main h2[id]" />
 
-<!-- Self hosted metrics  -->
+{/* Motion-as-craft runtime — drives `--mx`/`--my`/`--tilt-x`/`--tilt-y`
+    on `.u-light`/`.u-holo` surfaces via pointer + perlin-noise loop, and
+    handles the `.u-reveal` IntersectionObserver fallback for browsers
+    without scroll-driven CSS animations. See Design Context (CLAUDE.md)
+    and the Phase 3 substrate punch list. */}
+<script>
+  import '../scripts/motion'
+</script>
+
+{/* Inline SVG filter library for the gem material model. CSS rules
+    reference these by id (`filter: url(#tf-gem-perturb)`). Inline (not
+    via data: URL) because Chrome/Safari require the filter to live in a
+    fragment document context, not embedded in the stylesheet. The svg is
+    aria-hidden and zero-sized so it doesn't affect layout. */}
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  width="0"
+  height="0"
+  style="position:absolute;width:0;height:0;pointer-events:none"
+  aria-hidden="true"
+>
+  <defs>
+    {/* Gem perturb — fine fractal noise displacing the source image to
+        fake a normal-mapped polished gem surface. Subtle (scale 3).
+        Filter region tightened to 0/0/100/100 so the warp doesn't leak
+        past the element's bounding box and create visible edge seams. */}
+    <filter id="tf-gem-perturb" x="0" y="0" width="100%" height="100%">
+      <feTurbulence
+        type="fractalNoise"
+        baseFrequency="0.7"
+        numOctaves="2"
+        seed="3"
+        stitchTiles="stitch"
+        result="noise"
+      />
+      <feDisplacementMap in="SourceGraphic" in2="noise" scale="3" />
+    </filter>
+    {/* Foil perturb — coarser, anisotropic noise (different x/y freq) so
+        gold catches a "metallic streak" quality rather than uniform
+        scatter. Used by data-gem="gold" surfaces. */}
+    <filter id="tf-foil-perturb" x="0" y="0" width="100%" height="100%">
+      <feTurbulence
+        type="fractalNoise"
+        baseFrequency="0.3 0.9"
+        numOctaves="2"
+        seed="7"
+        stitchTiles="stitch"
+        result="noise"
+      />
+      <feDisplacementMap in="SourceGraphic" in2="noise" scale="6" />
+    </filter>
+  </defs>
+</svg>
+
+<!-- Self hosted metrics -->
 {import.meta.env.PROD && (
   <>
     <link rel="preconnect" href="https://metrics.tjw.dev" />
     <script is:inline defer src="https://metrics.tjw.dev/metrics.js" data-website-id="345cb050-cdc9-4278-8502-70825fdd4c2b"></script>
   </>
 )}
-
-<!-- Theme persistence across view transitions -->
-<script is:inline>
-(function() {
-  function applyTheme() {
-    const stored = localStorage.getItem('starlight-theme');
-    if (stored === 'light' || stored === 'dark') {
-      document.documentElement.dataset.theme = stored;
-    } else {
-      // Auto mode - use system preference
-      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-      document.documentElement.dataset.theme = prefersDark ? 'dark' : 'light';
-    }
-  }
-
-  // Apply immediately on script load (handles initial page load)
-  applyTheme();
-
-  // Re-apply after view transitions swap in new content
-  document.addEventListener('astro:after-swap', applyTheme);
-})();
-</script>
-
-<!-- GPU / WebGL feature detection — sets window.__gpuSupported for client components -->
-<script is:inline>
-(function() {
-  try {
-    var c = document.createElement('canvas');
-    window.__gpuSupported = !!(c.getContext('webgpu') || c.getContext('webgl2'));
-  } catch(e) {
-    window.__gpuSupported = false;
-  }
-})();
-</script>
-
-<!-- Reinitialize Pagefind search after view transitions -->
-<script is:inline set:html={`
-(function() {
-  const BASE_URL = ${JSON.stringify(baseUrl)};
-  let pagefindInitialized = false;
-  let pagefindLoading = null;
-
-  function loadPagefindUI() {
-    if (window.PagefindUI) return Promise.resolve();
-    if (pagefindLoading) return pagefindLoading;
-    pagefindLoading = new Promise((resolve, reject) => {
-      const script = document.createElement('script');
-      script.src = BASE_URL + 'pagefind/pagefind-ui.js';
-      script.onload = () => resolve();
-      script.onerror = () => reject(new Error('Failed to load pagefind-ui.js'));
-      document.head.appendChild(script);
-    });
-    return pagefindLoading;
-  }
-
-  function injectSuggestions() {
-    const container = document.getElementById('starlight__search');
-    if (!container || container.querySelector('.search-suggestions')) return;
-    const div = document.createElement('div');
-    div.className = 'search-suggestions';
-    div.innerHTML = \`
-      <div class="search-suggestions__label">Popular pages</div>
-      <ul class="search-suggestions__list">
-        <li><a href="\${BASE_URL}getting-started/quick-start/">Quick Start</a></li>
-        <li><a href="\${BASE_URL}guides/sprites/">Sprites</a></li>
-        <li><a href="\${BASE_URL}guides/animation/">Animation</a></li>
-        <li><a href="\${BASE_URL}guides/batch-rendering/">Batch Rendering</a></li>
-        <li><a href="\${BASE_URL}guides/tsl-nodes/">TSL Nodes</a></li>
-        <li><a href="\${BASE_URL}guides/pass-effects/">Pass Effects</a></li>
-        <li><a href="\${BASE_URL}examples/basic-sprite/">Basic Sprite Example</a></li>
-        <li><a href="\${BASE_URL}llm-prompts/">LLM Prompts</a></li>
-      </ul>
-    \`;
-    container.appendChild(div);
-  }
-
-  async function initSearch() {
-    const searchContainer = document.getElementById('starlight__search');
-    if (!searchContainer) return;
-
-    // Only reinitialize if container is empty (after view transition swap)
-    if (searchContainer.children.length === 0 && pagefindInitialized) {
-      await loadPagefindUI();
-
-      new window.PagefindUI({
-        ranking: { pageLength: 0.1, termFrequency: 0.1, termSaturation: 2, termSimilarity: 9 },
-        element: '#starlight__search',
-        baseUrl: BASE_URL,
-        bundlePath: BASE_URL.replace(/\\/$/, '') + '/pagefind/',
-        showImages: false,
-        showSubResults: true,
-      });
-      injectSuggestions();
-    }
-  }
-
-  // First load: don't reinit search (Starlight does that). Just inject the
-  // suggestions list once Starlight's PagefindUI is mounted.
-  document.addEventListener('DOMContentLoaded', () => {
-    pagefindInitialized = true;
-    // Wait a tick for Starlight's idle-callback PagefindUI init
-    setTimeout(injectSuggestions, 100);
-  });
-
-  // After view transitions, the container is empty — reinit and inject
-  document.addEventListener('astro:after-swap', initSearch);
-})();
-`}></script>
-
-{/* In dev mode, re-dispatch astro:page-load after HMR to fix ClientRouter state */}
-{isDev && (
-  <script>
-    if (import.meta.hot) {
-      import.meta.hot.on('vite:afterUpdate', () => {
-        document.dispatchEvent(new Event('astro:page-load'));
-      });
-    }
-  </script>
-)}
-
-<!-- Table scroll enhancement script -->
-<script is:inline>
-(function() {
-  function enhanceTables() {
-    // Find all tables in markdown content
-    /** @type {NodeListOf<HTMLTableElement>} */
-    const tables = document.querySelectorAll('.sl-markdown-content table');
-
-    tables.forEach(table => {
-      // Skip if already wrapped
-      if (table.parentElement?.classList.contains('table-scroll-wrapper')) return;
-
-      // Create outer container for positioning
-      // 'not-content' exempts from Starlight's adjacent sibling margins
-      const container = document.createElement('div');
-      container.className = 'table-scroll-container not-content';
-
-      // Create scroll wrapper
-      const wrapper = document.createElement('div');
-      wrapper.className = 'table-scroll-wrapper';
-
-      // Create scroll indicator overlay
-      const indicator = document.createElement('div');
-      indicator.className = 'table-scroll-indicator';
-      indicator.setAttribute('aria-hidden', 'true');
-
-      // Build structure: container > (wrapper > table) + indicator
-      if (table.parentNode) table.parentNode.insertBefore(container, table);
-      wrapper.appendChild(table);
-      container.appendChild(wrapper);
-      container.appendChild(indicator);
-
-      // Check if scrollable and update indicator position
-      function updateScrollIndicator() {
-        const isScrollable = wrapper.scrollWidth > wrapper.clientWidth;
-        const isScrolledToEnd = wrapper.scrollLeft + wrapper.clientWidth >= wrapper.scrollWidth - 2;
-        const showIndicator = isScrollable && !isScrolledToEnd;
-        container.classList.toggle('is-scrollable', showIndicator);
-
-        // Calculate scrollbar height (wrapper height - table height)
-        if (showIndicator) {
-          const scrollbarHeight = wrapper.offsetHeight - table.offsetHeight;
-          const borderWidth = 2; // table border
-          indicator.style.top = borderWidth + 'px';
-          indicator.style.bottom = (scrollbarHeight + borderWidth) + 'px';
-        }
-      }
-
-      wrapper.addEventListener('scroll', updateScrollIndicator, { passive: true });
-      window.addEventListener('resize', updateScrollIndicator, { passive: true });
-
-      // Initial check
-      setTimeout(updateScrollIndicator, 100);
-    });
-  }
-
-  // Run on page load and after view transitions
-  document.addEventListener('DOMContentLoaded', enhanceTables);
-  document.addEventListener('astro:page-load', enhanceTables);
-})();
-</script>

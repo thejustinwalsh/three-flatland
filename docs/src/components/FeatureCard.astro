@@ -1,208 +1,234 @@
 ---
 /**
- * FeatureCard - Bold, colorful SNES-style feature card.
- * Each card gets its own signature color from the retro palette.
+ * FeatureCard — gem-accented card for the landing page feature grid.
+ *
+ * Pass `color="<gem>"` to anchor the card to a specific accent from the
+ * design system's gem palette: gold, ruby, emerald, diamond, amethyst,
+ * pink, salmon, turquoize. The accent drives the icon hue, hover border,
+ * and a soft tint behind the surface (per Design Context: color-as-taxonomy,
+ * cards opt into the palette).
+ *
+ * Without `color`, the card falls back to `--primary` (amethyst) so plain
+ * `<FeatureCard title="…">` calls render coherently against the rest of
+ * the design system without forcing every author to pick a gem.
  */
-import Icon from './Icon.astro';
+import Icon from './Icon.astro'
 
-interface Props {
-  icon?: string;
-  title: string;
-  color: 'cyan' | 'pink' | 'yellow' | 'blue' | 'orange' | 'purple';
-  stat?: string;
-  statLabel?: string;
+type Gem =
+  | 'gold'
+  | 'ruby'
+  | 'emerald'
+  | 'diamond'
+  | 'amethyst'
+  | 'pink'
+  | 'salmon'
+  | 'turquoize'
+
+/** Conventional color names accepted for transitional compat with existing
+ * MDX call sites — mapped to the closest gem at render time. */
+type LegacyColor = 'cyan' | 'blue' | 'green' | 'orange' | 'red' | 'yellow' | 'purple'
+
+const legacyToGem: Record<LegacyColor, Gem> = {
+  cyan: 'diamond',
+  blue: 'diamond',
+  green: 'emerald',
+  orange: 'gold',
+  red: 'ruby',
+  yellow: 'gold',
+  purple: 'amethyst',
 }
 
-const { icon, title, color, stat, statLabel } = Astro.props;
+interface Props {
+  icon?: string
+  title: string
+  /** Gem accent — picks from the design-system palette. Defaults to `--primary`.
+   *  Conventional names (cyan, blue, green, orange, red, yellow, purple) are
+   *  accepted for compat and mapped to gems. */
+  color?: Gem | LegacyColor
+  stat?: string
+  statLabel?: string
+}
 
-const colorMap = {
-  cyan: {
-    bg: 'var(--retro-dark-cyan)',
-    accent: 'var(--retro-cyan)',
-    shadow: 'var(--retro-dark-cyan)',
-    glow: 'rgba(71, 204, 169, 0.3)',
-  },
-  pink: {
-    bg: 'var(--retro-purple)',
-    accent: 'var(--retro-pink)',
-    shadow: 'var(--retro-dark-pink)',
-    glow: 'rgba(217, 76, 135, 0.3)',
-  },
-  yellow: {
-    bg: 'var(--retro-dark-yellow)',
-    accent: 'var(--retro-yellow)',
-    shadow: 'var(--retro-dark-yellow)',
-    glow: 'rgba(242, 210, 75, 0.3)',
-  },
-  blue: {
-    bg: 'var(--retro-dark-blue)',
-    accent: 'var(--retro-blue)',
-    shadow: 'var(--retro-dark-blue)',
-    glow: 'rgba(11, 175, 230, 0.3)',
-  },
-  orange: {
-    bg: 'var(--retro-dark-orange)',
-    accent: 'var(--retro-orange)',
-    shadow: 'var(--retro-dark-orange)',
-    glow: 'rgba(232, 125, 62, 0.3)',
-  },
-  purple: {
-    bg: 'var(--retro-deep-purple)',
-    accent: 'var(--retro-purple)',
-    shadow: 'var(--retro-dark-purple)',
-    glow: 'rgba(115, 40, 102, 0.3)',
-  },
-};
+const { icon, title, color, stat, statLabel } = Astro.props
 
-const colors = colorMap[color];
+const resolvedGem: Gem | undefined = color
+  ? (color in legacyToGem ? legacyToGem[color as LegacyColor] : (color as Gem))
+  : undefined
+
+const accentStyle = resolvedGem ? `--card-accent: var(--${resolvedGem});` : undefined
 ---
 
-<article class="feature-card" data-sound="card" style={`--card-bg: ${colors.bg}; --card-accent: ${colors.accent}; --card-shadow: ${colors.shadow}; --card-glow: ${colors.glow};`}>
-  <div class="card-accent-bar"></div>
-  <div class="card-content">
+<article class="not-content feature-card u-light u-reveal" data-sound="card" data-gem={resolvedGem} style={accentStyle}>
+  <div class="head">
     {icon && (
-      <div class="icon-wrapper">
-        <Icon name={icon} class="icon" size="3rem" color={colors.accent} />
-      </div>
+      <span class="icon-wrap" aria-hidden="true">
+        <Icon name={icon} size="1.5rem" />
+      </span>
     )}
     <h3 class="title" set:html={title} />
-    {stat && (
-      <div class="stat-block">
-        <span class="stat-value">{stat}</span>
-        {statLabel && <span class="stat-label">{statLabel}</span>}
-      </div>
-    )}
-    <p class="description"><slot /></p>
   </div>
-  <div class="card-corner tl"></div>
-  <div class="card-corner tr"></div>
-  <div class="card-corner bl"></div>
-  <div class="card-corner br"></div>
+  {stat && (
+    <div class="stat-block">
+      <span class="stat-value">{stat}</span>
+      {statLabel && <span class="stat-label">{statLabel}</span>}
+    </div>
+  )}
+  <p class="description"><slot /></p>
+  {/* Top-layer rim ring — sits above the .u-light pseudos to mask any
+      displacement-filter edge artifacts AND act as the rim light. The
+      rim catches the scene light direction (perlin-driven) so it
+      glints organically. */}
+  <span class="card-edge" aria-hidden="true"></span>
 </article>
 
 <style>
   .feature-card {
+    /* Cards CARRY their gem identity at rest — not a neutral surface that
+     * lights up to a jewel. The base color is the gem's `*-soft` variant
+     * (dark hue-tinted surface defined in theme.css), so even idle the
+     * card reads as "this is a ruby card." Light effects layer on top to
+     * amplify, not to create the tint from neutral.
+     *
+     * Default: --card-soft falls back to a darker amethyst tint when no
+     * gem prop is passed. Each `data-gem="<name>"` selector below sets
+     * --card-soft to that gem's soft variant. */
+    --card-soft: color-mix(in oklab, var(--gray-7) 60%, var(--card-accent, var(--primary)));
+    --card: var(--card-soft);
     position: relative;
-    background: var(--card-bg);
-    border: 3px solid var(--card-accent);
-    padding: 0;
-    transition: transform 0.2s ease, box-shadow 0.2s ease;
-  }
-
-  .feature-card:hover {
-    transform: translate(-4px, -4px);
-    box-shadow:
-      4px 4px 0 var(--card-accent),
-      8px 8px 0 var(--retro-midnight);
-  }
-
-  /* Accent bar at top */
-  .card-accent-bar {
-    height: 8px;
-    background: var(--card-accent);
-    /* Pixel pattern */
-    background-image: repeating-linear-gradient(
-      90deg,
-      var(--card-accent) 0px,
-      var(--card-accent) 8px,
-      transparent 8px,
-      transparent 16px
-    );
-    background-size: 16px 8px;
-  }
-
-  .card-content {
-    padding: 1.5rem;
     display: flex;
     flex-direction: column;
-    gap: 1rem;
+    gap: calc(var(--spacing) * 3);
+    padding: calc(var(--spacing) * 5) calc(var(--spacing) * 5)
+      calc(var(--spacing) * 6);
+    background: var(--card-soft);
+    border-radius: calc(var(--radius) - 2px);
+    transition:
+      transform 180ms ease,
+      box-shadow 180ms ease;
   }
 
-  .icon-wrapper {
-    width: 64px;
-    height: 64px;
+  /* Top-layer rim ring — last child of .feature-card, absolutely positioned
+   * with z-index above the .u-light pseudos so it masks any displacement-
+   * filter edge artifacts. The ring is 1.5px thick, gradient-colored via
+   * conic-gradient anchored at --scene-angle (perlin-drifted), brighter on
+   * the lit side. Mask makes it ring-shaped without an extra wrapper. */
+  .feature-card > .card-edge {
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    z-index: 4;
+    padding: 1.5px;
+    background: conic-gradient(
+      from calc(var(--effective-light-angle, var(--scene-angle, 135deg)) - 90deg),
+      color-mix(in oklab, var(--card-accent, var(--primary)) 80%, transparent) 0deg,
+      color-mix(in oklab, var(--card-accent, var(--primary)) 30%, var(--border)) 90deg,
+      color-mix(in oklab, var(--border) 90%, transparent) 180deg,
+      color-mix(in oklab, var(--card-accent, var(--primary)) 30%, var(--border)) 270deg,
+      color-mix(in oklab, var(--card-accent, var(--primary)) 80%, transparent) 360deg
+    );
+    -webkit-mask:
+      linear-gradient(#000, #000) content-box,
+      linear-gradient(#000, #000);
+    -webkit-mask-composite: xor;
+    mask:
+      linear-gradient(#000, #000) content-box,
+      linear-gradient(#000, #000);
+    mask-composite: exclude;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .feature-card > .card-edge {
+      background: var(--border);
+    }
+  }
+
+  /* Per-gem resting tint — pulls from the dedicated gem-soft tokens
+   * defined in theme.css (each is a low-chroma dark surface with the
+   * gem's hue baked in, designed for exactly this). */
+  .feature-card[data-gem='gold'] { --card-soft: var(--gold-soft); }
+  .feature-card[data-gem='ruby'] { --card-soft: var(--ruby-soft); }
+  .feature-card[data-gem='emerald'] { --card-soft: var(--emerald-soft); }
+  .feature-card[data-gem='diamond'] { --card-soft: var(--diamond-soft); }
+  .feature-card[data-gem='amethyst'] { --card-soft: var(--amethyst-soft); }
+  .feature-card[data-gem='pink'] { --card-soft: var(--pink-soft); }
+  .feature-card[data-gem='salmon'] { --card-soft: var(--salmon-soft); }
+  .feature-card[data-gem='turquoize'] { --card-soft: var(--turquoize-soft); }
+
+  /* No `transform` override on hover — that would clobber the .u-light
+   * primitive's perspective/rotateX/rotateY tilt. Box-shadow alone gives
+   * the elevated feel; the 3D tilt provides the cursor-reactive motion. */
+  .feature-card:hover {
+    box-shadow: 0 8px 24px -12px color-mix(in oklab, var(--card-accent, var(--primary)) 30%, transparent);
+  }
+
+  /* Header row — icon + title sit inline, vertically centered. Replaces
+   * the previous stacked icon-on-top-of-title layout so the title can
+   * breathe at a larger display size. */
+  .head {
     display: flex;
     align-items: center;
+    gap: calc(var(--spacing) * 3);
+    margin-bottom: calc(var(--spacing) * 1);
+  }
+
+  .icon-wrap {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
     justify-content: center;
-    background: var(--retro-midnight);
-    border: 2px solid var(--card-accent);
-    box-shadow: inset 0 0 20px var(--card-glow);
+    width: 2.5rem;
+    height: 2.5rem;
+    border-radius: calc(var(--radius) - 4px);
+    background-color: color-mix(in oklab, var(--card-accent, var(--primary)) 18%, transparent);
+    color: var(--card-accent, var(--primary));
   }
 
   .title {
-    font-family: var(--font-pixel);
-    font-size: 1.25rem;
-    color: var(--retro-white) !important;
+    font-family: 'Public Sans', system-ui, sans-serif;
+    font-weight: 600;
+    font-size: 1.375rem;
+    line-height: 1.2;
+    letter-spacing: -0.018em;
+    color: var(--foreground);
     margin: 0;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    text-shadow: 2px 2px 0 var(--card-shadow);
   }
 
   .stat-block {
     display: flex;
     flex-direction: column;
-    gap: 0.25rem;
+    gap: 0.125rem;
+    margin-top: calc(var(--spacing) * 1);
   }
 
   .stat-value {
-    font-family: var(--font-pixel);
-    font-size: 2rem;
-    color: var(--retro-white);
-    text-shadow:
-      2px 2px 0 var(--card-accent),
-      4px 4px 0 var(--retro-midnight);
+    font-family: 'Commit Mono', 'JetBrains Mono', ui-monospace, monospace;
+    font-feature-settings:
+      'tnum' 1,
+      'ss01' 1;
+    font-size: 1.625rem;
+    font-weight: 500;
+    color: var(--foreground);
+    line-height: 1.1;
+    letter-spacing: -0.02em;
   }
 
   .stat-label {
-    font-family: var(--font-pixel);
-    font-size: 0.75rem;
-    color: var(--card-accent);
+    font-family: 'Public Sans', system-ui, sans-serif;
+    font-weight: 500;
+    font-size: 0.6875rem;
+    color: var(--muted-foreground);
     text-transform: uppercase;
-    letter-spacing: 0.1em;
+    letter-spacing: 0.06em;
   }
 
   .description {
-    font-size: 0.95rem;
-    color: var(--retro-white);
+    /* flex: 1 inside the column-flex .feature-card claims remaining
+     * height so cards in a grid row settle to a consistent height
+     * regardless of how much body copy each carries. */
+    flex: 1;
+    font-size: 0.9375rem;
+    line-height: 1.55;
+    color: var(--muted-foreground);
     margin: 0;
-    line-height: 1.6;
-    opacity: 0.9;
-  }
-
-  /* Pixel corner decorations */
-  .card-corner {
-    position: absolute;
-    width: 8px;
-    height: 8px;
-    background: var(--card-accent);
-  }
-
-  .card-corner.tl { top: -3px; left: -3px; }
-  .card-corner.tr { top: -3px; right: -3px; }
-  .card-corner.bl { bottom: -3px; left: -3px; }
-  .card-corner.br { bottom: -3px; right: -3px; }
-
-  /* Light mode */
-  :global([data-theme='light']) .feature-card {
-    background: var(--retro-white);
-  }
-
-  :global([data-theme='light']) .icon-wrapper {
-    background: #e8e5d0;
-  }
-
-  :global([data-theme='light']) .title {
-    color: var(--retro-black) !important;
-    text-shadow: none;
-  }
-
-  :global([data-theme='light']) .stat-value {
-    color: var(--retro-black);
-    text-shadow: 2px 2px 0 var(--card-accent);
-  }
-
-  :global([data-theme='light']) .description {
-    color: var(--retro-black);
   }
 </style>

@@ -3,7 +3,7 @@ title: Pass Effects
 description: Full-screen post-processing with composable pass effects.
 ---
 
-import { Tabs, TabItem } from '@astrojs/starlight/components';
+import { Tabs, TabItem } from 'starlight-theme/components';
 
 Pass Effects are full-screen post-processing effects applied after sprite rendering. They transform the entire scene output — CRT curvature, scanlines, color quantization, VHS distortion, and more. Pass effects require a [Flatland](../flatland/) instance.
 
@@ -44,7 +44,7 @@ Schema fields become typed properties on instances with zero-cost uniform update
 ## Using Pass Effects
 
 <Tabs syncKey="framework">
-  <TabItem label="Three.js" icon="seti:javascript">
+  <TabItem label="Three.js" icon="simple-icons:threedotjs">
     ```typescript
     import { Flatland, createPassEffect } from 'three-flatland'
     import { posterize, crtVignette } from '@three-flatland/nodes'
@@ -74,7 +74,7 @@ Schema fields become typed properties on instances with zero-cost uniform update
     vig.intensity = 0.25
     ```
   </TabItem>
-  <TabItem label="React" icon="seti:react">
+  <TabItem label="React" icon="simple-icons:react">
     ```tsx
     import { useEffect, useRef } from 'react'
     import { extend, useFrame, useThree } from '@react-three/fiber/webgpu'

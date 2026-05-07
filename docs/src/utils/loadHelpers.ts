@@ -1,18 +1,19 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import yaml from 'yaml';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
+// Resolve from process.cwd() (always docs/ when astro runs) so the path is
+// stable regardless of where Vite bundles this module at build time.
+const repoRoot = path.resolve(process.cwd(), '..');
 
 // Read catalog versions once at build time
-const workspaceYamlPath = path.resolve(__dirname, '../../../pnpm-workspace.yaml');
+const workspaceYamlPath = path.resolve(repoRoot, 'pnpm-workspace.yaml');
 const workspaceYaml = yaml.parse(fs.readFileSync(workspaceYamlPath, 'utf-8'));
 export const catalog = (workspaceYaml.catalog ?? {}) as Record<string, string>;
 
 // Read package versions for workspace:* resolution
 function getPackageVersion(packageName: string): string {
-  const pkgPath = path.resolve(__dirname, `../../../packages/${packageName}/package.json`);
+  const pkgPath = path.resolve(repoRoot, `packages/${packageName}/package.json`);
   if (fs.existsSync(pkgPath)) {
     return JSON.parse(fs.readFileSync(pkgPath, 'utf-8')).version;
   }

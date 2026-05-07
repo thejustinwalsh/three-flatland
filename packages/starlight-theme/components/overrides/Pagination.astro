@@ -1,0 +1,122 @@
+---
+const { pagination } = Astro.locals.starlightRoute;
+const { prev, next } = pagination;
+---
+
+<div class="pagination-links print:hidden">
+    {
+        prev && (
+            <a class="prev" href={prev.href} rel="prev">
+                <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="24"
+                    height="24"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                >
+                    <path d="m15 18-6-6 6-6" />
+                </svg>
+                {prev.label}
+            </a>
+        )
+    }
+    {
+        next && (
+            <a class="next" href={next.href} rel="next">
+                {next.label}
+
+                <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="24"
+                    height="24"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                >
+                    <path d="m9 18 6-6-6-6" />
+                </svg>
+            </a>
+        )
+    }
+</div>
+
+<style>
+    .pagination-links {
+        display: flex;
+        justify-content: space-between;
+        align-items: stretch;
+        flex-direction: row;
+        gap: calc(var(--spacing) * 3);
+        padding-top: calc(var(--spacing) * 6);
+        margin-top: calc(var(--spacing) * 10);
+        border-top: 1px solid color-mix(in oklab, var(--border) 70%, transparent);
+    }
+
+    /* Pagination links — gem-tinted hover, larger feel matching the
+     * card system. The label sits in nav-style Inter; SVG arrows align
+     * to gem accent on hover so the affordance reads at a glance. */
+    a {
+        font-family: 'Inter', system-ui, sans-serif;
+        color: var(--foreground);
+        text-decoration: none;
+        background-color: transparent;
+        border: 1px solid color-mix(in oklab, var(--border) 80%, transparent);
+
+        transition: color 0.15s, background-color 0.15s, border-color 0.15s, transform 0.15s;
+        font-weight: 500;
+        font-size: 0.875rem;
+        line-height: 1.4;
+        padding: calc(var(--spacing) * 3) calc(var(--spacing) * 4);
+        border-radius: calc(var(--radius) - 2px);
+        white-space: nowrap;
+        gap: calc(var(--spacing) * 2);
+        align-items: center;
+        display: inline-flex;
+        flex: 1 1 0;
+        max-width: 50%;
+    }
+
+    a:hover {
+        background-color: color-mix(in oklab, var(--diamond) 8%, transparent);
+        border-color: color-mix(in oklab, var(--diamond) 40%, var(--border));
+        color: var(--foreground);
+    }
+
+    a > svg {
+        flex-shrink: 0;
+        width: 1rem;
+        height: 1rem;
+        pointer-events: none;
+        display: block;
+        color: var(--muted-foreground);
+        transition: color 0.15s, transform 0.15s;
+    }
+
+    a:hover > svg {
+        color: var(--diamond);
+    }
+
+    .prev:hover > svg {
+        transform: translateX(-2px);
+    }
+    .next:hover > svg {
+        transform: translateX(2px);
+    }
+
+    .next {
+        margin-left: auto;
+        justify-content: flex-end;
+        text-align: right;
+    }
+    .prev {
+        justify-content: flex-start;
+        text-align: left;
+    }
+</style>

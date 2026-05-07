@@ -1,134 +1,153 @@
 ---
 /**
- * ValueProp - Color-blocked value proposition panel.
- * Each panel has its own color theme for visual drama.
+ * ValueProp — text-heavy section block with a gem-tinted left/right
+ * vertical rule (foil-reactive). Pulled back further from the full
+ * border ring: just a thin vertical accent bar that catches the
+ * global scene light via a directional glow shadow, plus tight
+ * whitespace so the prose carries the section.
  */
-interface Props {
-  title: string;
-  color: 'cyan' | 'pink' | 'yellow' | 'blue' | 'orange';
-  align?: 'left' | 'right';
+
+type Gem =
+  | 'gold'
+  | 'ruby'
+  | 'emerald'
+  | 'diamond'
+  | 'amethyst'
+  | 'pink'
+  | 'salmon'
+  | 'turquoize'
+
+type LegacyColor = 'cyan' | 'blue' | 'green' | 'orange' | 'red' | 'yellow' | 'purple'
+
+const legacyToGem: Record<LegacyColor, Gem> = {
+  cyan: 'diamond',
+  blue: 'diamond',
+  green: 'emerald',
+  orange: 'gold',
+  red: 'ruby',
+  yellow: 'gold',
+  purple: 'amethyst',
 }
 
-const { title, color, align = 'left' } = Astro.props;
+interface Props {
+  title: string
+  /** Gem accent — picks from the design-system palette. */
+  color?: Gem | LegacyColor
+  align?: 'left' | 'right'
+}
 
-const colorMap = {
-  cyan: {
-    bg: 'var(--retro-dark-cyan)',
-    accent: 'var(--retro-cyan)',
-    shadow: 'var(--retro-dark-cyan)',
-    border: 'var(--retro-cyan)',
-  },
-  pink: {
-    bg: 'var(--retro-purple)',
-    accent: 'var(--retro-pink)',
-    shadow: 'var(--retro-dark-pink)',
-    border: 'var(--retro-pink)',
-  },
-  yellow: {
-    bg: 'var(--retro-dark-yellow)',
-    accent: 'var(--retro-yellow)',
-    shadow: 'var(--retro-dark-yellow)',
-    border: 'var(--retro-yellow)',
-  },
-  blue: {
-    bg: 'var(--retro-dark-blue)',
-    accent: 'var(--retro-blue)',
-    shadow: 'var(--retro-dark-blue)',
-    border: 'var(--retro-blue)',
-  },
-  orange: {
-    bg: 'var(--retro-dark-orange)',
-    accent: 'var(--retro-orange)',
-    shadow: 'var(--retro-dark-orange)',
-    border: 'var(--retro-orange)',
-  },
-};
+const { title, color, align = 'left' } = Astro.props
 
-const colors = colorMap[color];
+const resolvedGem: Gem | undefined = color
+  ? color in legacyToGem
+    ? legacyToGem[color as LegacyColor]
+    : (color as Gem)
+  : undefined
+
+const accentStyle = resolvedGem ? `--vp-accent: var(--${resolvedGem});` : undefined
 ---
 
-<div
-  class:list={['value-prop', { 'align-right': align === 'right' }]}
-  style={`--vp-bg: ${colors.bg}; --vp-accent: ${colors.accent}; --vp-shadow: ${colors.shadow}; --vp-border: ${colors.border};`}
+<section
+  class:list={['not-content', 'value-prop', { 'align-right': align === 'right' }]}
+  data-gem={resolvedGem}
+  style={accentStyle}
 >
-  <div class="vp-accent-side"></div>
+  <div class="vp-rule" aria-hidden="true"></div>
   <div class="vp-content">
     <h3 class="vp-title" set:html={title} />
     <div class="vp-body"><slot /></div>
   </div>
-</div>
+</section>
 
 <style>
   .value-prop {
-    display: flex;
-    background: var(--vp-bg);
-    margin: 2rem 0;
-    position: relative;
+    --vp-accent: var(--primary);
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: calc(var(--spacing) * 4);
+    padding-block: calc(var(--spacing) * 1);
+    margin-block: calc(var(--spacing) * 6);
+    max-width: 56rem;
   }
 
   .value-prop.align-right {
-    flex-direction: row-reverse;
+    grid-template-columns: 1fr auto;
+    margin-inline-start: auto;
+    text-align: right;
   }
 
-  .vp-accent-side {
-    width: 8px;
-    min-height: 100%;
-    background: var(--vp-accent);
-    flex-shrink: 0;
+  .value-prop.align-right .vp-rule {
+    order: 2;
+  }
+
+  /* Vertical foil rule — gem-tinted gradient bar (dim → bright →
+   * dim along its length) with a directional gem-tinted glow whose
+   * offset shifts with --scene-angle. The bar reads like a polished
+   * gem stripe being lit from the global scene-light direction; as
+   * the light arcs through the day-cycle, the glow's position drifts
+   * around the bar — quiet but alive. */
+  .vp-rule {
+    width: 3px;
+    align-self: stretch;
+    background: linear-gradient(
+      180deg,
+      color-mix(in oklab, var(--vp-accent) 25%, transparent) 0%,
+      var(--vp-accent) 28%,
+      color-mix(in oklab, var(--vp-accent) 92%, white) 50%,
+      var(--vp-accent) 72%,
+      color-mix(in oklab, var(--vp-accent) 25%, transparent) 100%
+    );
+    border-radius: 2px;
+    box-shadow:
+      calc(cos(var(--scene-angle, 135deg)) * 3px)
+      calc(sin(var(--scene-angle, 135deg)) * 3px)
+      14px
+      color-mix(in oklab, var(--vp-accent) 55%, transparent);
   }
 
   .vp-content {
-    padding: 2rem;
-    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: calc(var(--spacing) * 2);
+    max-width: 60ch;
+  }
+
+  .value-prop.align-right .vp-content {
+    margin-left: auto;
   }
 
   .vp-title {
-    font-family: var(--font-pixel);
-    font-size: 1.5rem;
-    color: var(--retro-white) !important;
-    margin: 0 0 1rem 0;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    text-shadow:
-      2px 2px 0 var(--vp-shadow);
+    font-family: 'Public Sans', system-ui, sans-serif;
+    font-weight: 600;
+    font-size: clamp(1.125rem, 2vw, 1.375rem);
+    line-height: 1.2;
+    letter-spacing: -0.018em;
+    color: var(--foreground);
+    margin: 0;
   }
 
   .vp-body {
-    color: var(--retro-white);
-    font-size: 1.1rem;
-    line-height: 1.7;
+    font-size: 0.9375rem;
+    line-height: 1.6;
+    color: color-mix(in oklab, var(--foreground) 88%, var(--muted-foreground));
   }
 
   .vp-body :global(p) {
-    margin: 0 0 1rem 0;
+    margin: 0 0 0.5rem 0;
   }
-
   .vp-body :global(p:last-child) {
     margin-bottom: 0;
   }
 
+  /* Strong is the gem accent moment in the body. */
   .vp-body :global(strong) {
     color: var(--vp-accent);
+    font-weight: 600;
   }
 
-  /* Light mode */
-  :global([data-theme='light']) .value-prop {
-    background: #e8e5d0;
-    border: 2px solid var(--vp-border);
-    border-left: none;
-  }
-
-  :global([data-theme='light']) .value-prop.align-right {
-    border-left: 2px solid var(--vp-border);
-    border-right: none;
-  }
-
-  :global([data-theme='light']) .vp-title {
-    color: var(--retro-black) !important;
-    text-shadow: none;
-  }
-
-  :global([data-theme='light']) .vp-body {
-    color: var(--retro-black);
+  @media (prefers-reduced-motion: reduce) {
+    .vp-rule {
+      box-shadow: 0 0 14px color-mix(in oklab, var(--vp-accent) 50%, transparent);
+    }
   }
 </style>

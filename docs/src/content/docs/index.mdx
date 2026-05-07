@@ -2,61 +2,83 @@
 title: three-flatland
 description: The complete 2D solution for Three.js and React Three Fiber. Built for WebGPU with composable TSL shaders.
 template: splash
-hero:
-  tagline: The complete 2D solution for Three.js and React Three Fiber. Built for WebGPU with composable TSL shaders.
-  actions:
-    - text: Get Started
-      link: /three-flatland/getting-started/introduction/
-      icon: right-arrow
-      variant: primary
-    - text: View on GitHub
-      link: https://github.com/thejustinwalsh/three-flatland
-      icon: external
 ---
 
 import FeatureCard from '../../components/FeatureCard.astro';
 import StatsBanner from '../../components/StatsBanner.astro';
 import ValueProp from '../../components/ValueProp.astro';
-import { Tabs, TabItem, Aside } from '@astrojs/starlight/components';
+import HeroShader from '../../components/HeroShader.tsx';
+import { Tabs, TabItem, Aside } from 'starlight-theme/components';
 
-<Aside type="note" title="Early Alpha">
-  three-flatland is in active development. We're exploring performant, maintainable, and extensible patterns for GPU-driven 2D rendering with WebGPU. The API will evolve as we refine these systems. [Follow along on GitHub](https://github.com/thejustinwalsh/three-flatland) — your feedback shapes what we build.
-</Aside>
+<section class="hero-fullscreen not-content">
+  <div class="hero-canvas" aria-hidden="true">
+    <HeroShader client:only="react" />
+  </div>
+  <div class="hero-overlay">
+    <div class="hero-overlay-inner">
+      <h1 class="hero-title">three-flatland</h1>
+      <p class="hero-tagline">
+        Sprite-first 2D for Three.js + React Three Fiber. WebGPU-native.
+        TSL-composable. Designed to render thousands of things at 60fps without you having to think about it.
+      </p>
+      <div class="hero-actions">
+        <a href="/three-flatland/getting-started/introduction/" class="sl-link-button primary">
+          Get Started
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M5 12h14M12 5l7 7-7 7" />
+          </svg>
+        </a>
+        <a href="https://github.com/thejustinwalsh/three-flatland" class="sl-link-button secondary">
+          View on GitHub
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M7 17l9.2-9.2M17 17V7H7" />
+          </svg>
+        </a>
+      </div>
+    </div>
+    <div class="hero-scrollcue" aria-hidden="true">
+      <span>Scroll</span>
+      <svg viewBox="0 0 16 16" width="14" height="14"><path d="M4 6l4 4 4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
+    </div>
+  </div>
+</section>
+
+<div class="page-body not-content">
 
 <StatsBanner stats={[
-  { value: "10,000+", label: "Sprites at 60fps", color: "cyan" },
-  { value: "1", label: "Draw Call", color: "pink" },
-  { value: "0", label: "CPU Overhead", color: "yellow" },
-  { value: "100%", label: "TypeScript", color: "blue" },
+  { value: "20K+", label: "Sprites at 60fps", color: "diamond" },
+  { value: "Auto", label: "Instanced GPU batches", color: "pink" },
+  { value: "TSL", label: "Composable shader nodes", color: "gold" },
+  { value: "WebGPU", label: "And WebGL rendering", color: "amethyst" },
 ]} />
 
-## Power Features
+<h2 class="section-heading">What ships in the box</h2>
 
 <div class="feature-grid">
   <FeatureCard
-    icon="rocket"
-    title="WebGPU Native"
-    color="cyan"
-    stat="Next-Gen"
-    statLabel="Graphics API"
+    icon="lightbulb"
+    title="WebGPU + WebGL"
+    color="diamond"
+    stat="Both"
+    statLabel="Graphics APIs"
   >
-    Built from the ground up for WebGPU. No WebGL fallbacks, no compromises. Pure TSL shader power for effects that weren't possible before.
+    TSL compiles to both WebGPU and WebGL — and where it counts we hand-roll dedicated WebGL paths so the 1:1 experience is real under load, not aspirational.
   </FeatureCard>
 
   <FeatureCard
-    icon="list-format"
+    icon="list"
     title="Batch Rendering"
-    color="pink"
+    color="emerald"
     stat="10,000+"
     statLabel="Sprites per batch"
   >
-    Automatic batching and GPU instancing. Every sprite shares geometry and materials. Your GPU does the heavy lifting.
+    Per-sprite effects and z-sort without ever rebatching. Flash one sprite, outline another, dissolve a third — all packed into the same GPU buffer, all shipped in a single draw call.
   </FeatureCard>
 
   <FeatureCard
-    icon="puzzle"
+    icon="user"
     title="React Three Fiber"
-    color="yellow"
+    color="amethyst"
     stat="R3F v10"
     statLabel="WebGPU Support"
   >
@@ -64,9 +86,9 @@ import { Tabs, TabItem, Aside } from '@astrojs/starlight/components';
   </FeatureCard>
 
   <FeatureCard
-    icon="forward-slash"
+    icon="play-circle"
     title="Animation System"
-    color="blue"
+    color="gold"
     stat="60fps"
     statLabel="Frame-perfect timing"
   >
@@ -74,9 +96,9 @@ import { Tabs, TabItem, Aside } from '@astrojs/starlight/components';
   </FeatureCard>
 
   <FeatureCard
-    icon="star"
+    icon="sparkles"
     title="TSL Shader Nodes"
-    color="orange"
+    color="salmon"
     stat="Composable"
     statLabel="Effect pipeline"
   >
@@ -86,7 +108,7 @@ import { Tabs, TabItem, Aside } from '@astrojs/starlight/components';
   <FeatureCard
     icon="map"
     title="Tilemap Support"
-    color="purple"
+    color="pink"
     stat="Tiled"
     statLabel="JSON format"
   >
@@ -94,10 +116,10 @@ import { Tabs, TabItem, Aside } from '@astrojs/starlight/components';
   </FeatureCard>
 </div>
 
-## Quick Start
+<h2 class="section-heading">Quick Start</h2>
 
 <Tabs>
-  <TabItem label="Three.js" icon="seti:javascript">
+  <TabItem label="Three.js" icon="simple-icons:threedotjs">
 ```typescript
 import { Sprite2D, SpriteGroup } from 'three-flatland'
 
@@ -114,7 +136,7 @@ enemy.position.set(2, 0, 0)
 spriteGroup.add(player, enemy)
 ```
   </TabItem>
-  <TabItem label="React" icon="seti:react">
+  <TabItem label="React" icon="simple-icons:react">
 ```tsx
 import { Canvas, extend } from '@react-three/fiber/webgpu'
 import { Sprite2D, SpriteGroup } from 'three-flatland/react'
@@ -135,80 +157,205 @@ function Game() {
   </TabItem>
 </Tabs>
 
-## Why three-flatland?
+<h2 class="section-heading">Why three-flatland?</h2>
 
-<ValueProp title="Built for the Future" color="cyan">
-  three-flatland is designed **exclusively** for Three.js WebGPU renderer. No legacy code, no WebGL baggage. By targeting WebGPU from day one, we leverage **TSL (Three Shader Language)** for shader composition that simply isn't possible with GLSL strings.
+<ValueProp title="WebGPU and WebGL, Same API" color="diamond">
+  three-flatland is authored in **TSL (Three Shader Language)** — Three.js's renderer-agnostic shader graph that compiles to **both WebGPU and WebGL2**. Parity isn't free, though — we hand-roll dedicated WebGL paths in TSL where they earn real performance gains, so the **1:1 experience** holds up under load. Same scenes, same effects, both renderers.
 
-  This means **real-time shader effects** that would tank performance on WebGL run buttery smooth. Palette cycling, CRT effects, per-sprite distortion — all composable, all fast.
+  Where WebGPU genuinely unlocks new ground — compute passes, storage buffers, effects WebGL can't reach — three-flatland exposes that ceiling cleanly so you can opt in. **Consistent baseline, expressive ceiling.** No GLSL strings, no per-renderer forks for users.
 </ValueProp>
 
-<ValueProp title="Performance Obsessed" color="pink" align="right">
+<ValueProp title="Performance Obsessed" color="emerald" align="right">
   Every sprite in your scene shares the same geometry and materials through **automatic batching**. Whether you have 10 sprites or 10,000, three-flatland keeps your draw calls minimal and your frame rate high.
 
-  The GPU does what GPUs do best. Your CPU stays free for game logic. **Zero per-sprite overhead** in your render loop.
+  Sprite batching state is managed by **[koota](https://github.com/pmndrs/koota)**, an expressive ECS. Per-frame work runs as tight, cache-friendly batch updates over only what actually changed — and because the same component layout that makes the CPU side fast also defines the GPU buffer layout, the upload to the renderer is a packed memcpy, not a scattered rebuild.
 </ValueProp>
 
-<ValueProp title="Developer Joy" color="yellow">
+<ValueProp title="Developer Joy" color="gold">
   Full **TypeScript** support with types that actually help. React Three Fiber users get JSX components that integrate seamlessly. Three.js users get a clean, intuitive API.
 
   No configuration hell. No boilerplate. Import, create, render. **Ship your game, not your build config.**
 </ValueProp>
 
-<div class="ai-disclaimer">
-  <p>This documentation was created with AI assistance. AI can make mistakes — please verify claims and test code examples. Submit corrections <a href="https://github.com/thejustinwalsh/three-flatland/issues">here</a>.</p>
 </div>
 
 <style>
 {`
-  .ai-disclaimer {
-    margin: 4rem auto 2rem;
-    padding: 1rem 1.5rem;
-    max-width: 600px;
-    text-align: center;
-    font-size: 0.8rem;
-    color: var(--sl-color-gray-4);
-    border-top: 1px solid var(--sl-color-gray-6);
-  }
-
-  .ai-disclaimer p {
+  /* Half-viewport hero — canvas extends UP behind the transparent
+     site header so the gem flow reads as one uninterrupted plane
+     from the very top of the viewport down to the hero's end.
+     60vh hero keeps the StatsBanner above the fold. */
+  .hero-fullscreen {
+    position: relative;
+    width: 100%;
+    height: 60vh;
+    min-height: 24rem;
     margin: 0;
-    opacity: 0.8;
+  }
+  .hero-canvas {
+    position: absolute;
+    /* Extend up past the hero's top edge by the header height so the
+       canvas covers the area BEHIND the (transparent) site header. */
+    top: calc(var(--header-height, 3.5rem) * -1);
+    left: 0;
+    right: 0;
+    bottom: 0;
+    overflow: hidden;
+    background: var(--background);
+    z-index: 0;
+  }
+  .hero-canvas > :global(*) {
+    position: absolute;
+    inset: 0;
   }
 
-  .ai-disclaimer a {
-    color: inherit;
-    text-decoration: underline;
+  /* Overlay sits ON TOP of the canvas, fills the hero area, centers
+     the title/tagline/CTAs vertically. */
+  .hero-overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: clamp(1.5rem, 4vw, 3rem);
+    padding-top: var(--header-height, 3.5rem);
+    pointer-events: none;
+    z-index: 2;
+  }
+  /* Bottom-fade gradient masks the canvas to the page background so the
+     transition into the .page-body content reads as a soft horizon. */
+  .hero-overlay::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 33%;
+    background: linear-gradient(
+      to bottom,
+      transparent 0%,
+      color-mix(in oklab, var(--background) 70%, transparent) 60%,
+      var(--background) 100%
+    );
+    pointer-events: none;
+  }
+  .hero-overlay-inner {
+    position: relative;
+    z-index: 3;
+    pointer-events: auto;
+    text-align: center;
+    max-width: 56rem;
+    backdrop-filter: blur(0.5px);
   }
 
-  .ai-disclaimer a:hover {
-    opacity: 1;
+  /* Editorial nameplate — uppercase, lightly tracked, Thin weight.
+     The size carries the visual mass; tracking opens it up so 'three-
+     flatland' reads as a wordmark, not a sentence. */
+  .hero-title {
+    font-family: 'Public Sans', system-ui, sans-serif;
+    font-size: clamp(2.25rem, 5vw, 4rem);
+    font-weight: 200;
+    line-height: 1.05;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--foreground);
+    margin: 0 0 calc(var(--spacing) * 6);
+    text-shadow: 0 2px 32px color-mix(in oklab, var(--background) 75%, transparent);
+  }
+  .hero-tagline {
+    font-family: 'Public Sans', system-ui, sans-serif;
+    font-size: clamp(0.95rem, 1.4vw, 1.0625rem);
+    font-weight: 400;
+    line-height: 1.6;
+    color: color-mix(in oklab, var(--foreground) 88%, var(--muted-foreground));
+    max-width: 42rem;
+    /* Bigger gap between tagline and CTAs so the buttons read as a
+       distinct call-to-action, not a continuation of the prose. */
+    margin: 0 auto calc(var(--spacing) * 10);
+    text-shadow: 0 1px 12px color-mix(in oklab, var(--background) 80%, transparent);
+  }
+  .hero-actions {
+    display: flex;
+    justify-content: center;
+    gap: calc(var(--spacing) * 3);
+    flex-wrap: wrap;
+    margin: calc(var(--spacing) * 3) auto;
+  }
+  .hero-scrollcue {
+    position: absolute;
+    bottom: calc(var(--spacing) * 4);
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: calc(var(--spacing) * 1);
+    font-family: 'Inter', system-ui, sans-serif;
+    font-size: 0.6875rem;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: color-mix(in oklab, var(--muted-foreground) 80%, transparent);
+    z-index: 4;
+    pointer-events: none;
+    animation: scroll-cue-bob 2.4s ease-in-out infinite;
+  }
+  @keyframes scroll-cue-bob {
+    0%, 100% { transform: translateX(-50%) translateY(0); opacity: 0.55; }
+    50% { transform: translateX(-50%) translateY(4px); opacity: 0.95; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .hero-scrollcue { animation: none; }
+  }
+
+  /* Page body — everything below the hero gets reasonable horizontal
+     padding so content isn't edge-to-edge on splash pages. The hero
+     stays edge-to-edge for the fullscreen vibe. */
+  .page-body {
+    padding-inline: clamp(1.5rem, 4vw, 3rem);
+    padding-block: calc(var(--spacing) * 16) calc(var(--spacing) * 12);
+    max-width: 90rem;
+    margin: 0 auto;
+    position: relative;
+    z-index: 1;
+    background: var(--background);
+  }
+
+  /* Section headings inside .page-body — Public Sans display, smaller
+     than h1 and at semi weight for structural clarity, with consistent
+     vertical rhythm between sections. */
+  .section-heading {
+    font-family: 'Public Sans', system-ui, sans-serif;
+    font-size: clamp(1.625rem, 2.6vw, 2rem);
+    font-weight: 600;
+    line-height: 1.15;
+    letter-spacing: -0.02em;
+    color: var(--foreground);
+    margin: calc(var(--spacing) * 16) 0 calc(var(--spacing) * 6);
+  }
+  .section-heading:first-child {
+    margin-top: 0;
   }
 
   .feature-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
+    grid-auto-rows: 1fr;
     gap: 1.5rem;
-    margin: 2rem 0;
+    margin: 0 0 calc(var(--spacing) * 4);
     align-items: stretch;
   }
-
   .feature-grid > :global(article) {
     height: 100%;
     display: flex;
     flex-direction: column;
   }
-
-  .feature-grid > :global(article) :global(.card-content) {
-    flex: 1;
-  }
-
   @media (min-width: 900px) {
     .feature-grid {
       grid-template-columns: repeat(3, 1fr);
     }
   }
-
   @media (min-width: 600px) and (max-width: 899px) {
     .feature-grid {
       grid-template-columns: repeat(2, 1fr);
