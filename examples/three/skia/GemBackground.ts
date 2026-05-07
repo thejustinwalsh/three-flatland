@@ -42,8 +42,14 @@ import {
   vec4,
 } from 'three/tsl'
 
-// Gem hex values mirror packages/starlight-theme/styles/theme.css dark
-// theme tokens, OKLCH→sRGB. Kept in sync via gems.config.ts.
+// Gem + surface hex values mirror packages/starlight-theme/styles/theme.css
+// dark theme tokens, OKLCH→sRGB. Kept in sync via gems.config.ts.
+//
+// The previous BG/CARD values (0x00021c / 0x16191f) were wrong — the
+// real --background and --card tokens are oklch(18%) / oklch(20%) on the
+// 250 hue, which converts to ~0x111418 / ~0x16191e (medium gray-blue,
+// not near-black blue). With the wrong constants, every example
+// rendered noticeably darker than the surrounding docs page.
 const GEM_HEX = {
   diamond: 0x00c4e9,
   emerald: 0x00c38b,
@@ -55,13 +61,17 @@ const GEM_HEX = {
   turquoize: 0x2bd2c2,
 } as const
 
+const BG_HEX = 0x111418
+const CARD_HEX = 0x16191e
+
 export type Gem = keyof typeof GEM_HEX
 
-// Background color (matches example default `#00021c`) and card surface
-// color (gray-7-ish, matches CSS `--card`). The tile gradient mixes gem
-// into both, with stops at 0% / 60% / 100%.
-const BG = vec3(0x00 / 255, 0x02 / 255, 0x1c / 255)
-const CARD = vec3(0x16 / 255, 0x19 / 255, 0x1f / 255)
+const BG = vec3(((BG_HEX >> 16) & 0xff) / 255, ((BG_HEX >> 8) & 0xff) / 255, (BG_HEX & 0xff) / 255)
+const CARD = vec3(
+  ((CARD_HEX >> 16) & 0xff) / 255,
+  ((CARD_HEX >> 8) & 0xff) / 255,
+  (CARD_HEX & 0xff) / 255,
+)
 
 /**
  * L1 primitive — flat color tinted by the gem.
@@ -75,7 +85,7 @@ const CARD = vec3(0x16 / 255, 0x19 / 255, 0x1f / 255)
  */
 export function gemClearColor(gem: Gem): Color {
   const gemColor = new Color(GEM_HEX[gem])
-  const bg = new Color(0x00021c)
+  const bg = new Color(BG_HEX)
   return new Color().lerpColors(bg, gemColor, 0.25)
 }
 
