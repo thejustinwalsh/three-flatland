@@ -198,22 +198,18 @@ const transitionName = `tile-examples-${slug}`
         </div>
     </div>
 
-    {/* StackBlitz payloads — JSON-serialized file maps consumed by
-       the StackBlitz button's click handler. `is:inline` so Astro
-       doesn't transform these as bundled-JS modules; with
-       `type='application/json'` browsers treat them as inert data
-       blocks, never visible in the page. Same files map + openFile
-       that an in-page <StackBlitzEmbed> would have used, just opened
-       in a fresh StackBlitz tab via sdk.openProject. */}
-    <script
-        is:inline
-        type="application/json"
+    {/* StackBlitz payloads — `<template>` is invisible by spec
+       (browsers never render template content), avoiding any chance
+       of the JSON payload leaking into the layout. The button click
+       handler reads `template.content.textContent` to get the JSON
+       string. Same files map + openFile that an in-page
+       <StackBlitzEmbed> would have used, just opened in a fresh
+       StackBlitz tab via sdk.openProject. */}
+    <template
         data-stackblitz-payload="three"
         set:html={JSON.stringify(stackblitzPayloads.three)}
     />
-    <script
-        is:inline
-        type="application/json"
+    <template
         data-stackblitz-payload="react"
         set:html={JSON.stringify(stackblitzPayloads.react)}
     />
@@ -736,11 +732,12 @@ const transitionName = `tile-examples-${slug}`
             // loadExample() output.
             stackblitzBtn?.addEventListener('click', async () => {
                 try {
-                    const script = root.querySelector<HTMLScriptElement>(
-                        `script[data-stackblitz-payload="${activeVariant}"]`
+                    const tpl = root.querySelector<HTMLTemplateElement>(
+                        `template[data-stackblitz-payload="${activeVariant}"]`
                     )
-                    if (!script || !script.textContent) return
-                    const payload = JSON.parse(script.textContent)
+                    const json = tpl?.innerHTML
+                    if (!json) return
+                    const payload = JSON.parse(json)
                     const { default: sdk } = await import('@stackblitz/sdk')
                     sdk.openProject(payload, { newWindow: true, openFile: payload.openFile })
                 } catch (err) {
