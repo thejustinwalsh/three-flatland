@@ -195,19 +195,13 @@ const isLanding = path === base || path === '';
     /* Landing: header is FULLY transparent (no glass backdrop) so the
      * canvas reads as a single uninterrupted plane behind the wordmark.
      * The header content (FL icon + FLATLAND + nav + search) floats
-     * over the canvas. The site-title wrapper gets pushed right past
-     * the ribbon's diagonal cutoff so the wordmark sits clear of it. */
+     * over the canvas, in the SAME horizontal position as on docs pages
+     * — the wordmark stays anchored to the natural header-left so the
+     * brand position doesn't shift between views. The alpha ribbon
+     * floats above the wordmark on z-index instead of pushing it aside. */
     [data-slot='layout'][data-landing] > header {
         background: transparent;
         border-bottom: none;
-    }
-    [data-slot='layout'][data-landing] > header :global(.site-title-wrapper) {
-        margin-left: 5rem;
-    }
-    @media (max-width: 50rem) {
-        [data-slot='layout'][data-landing] > header :global(.site-title-wrapper) {
-            margin-left: 3rem;
-        }
     }
 
     [data-slot='layout'] {
