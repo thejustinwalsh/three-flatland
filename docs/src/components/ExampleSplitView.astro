@@ -128,11 +128,21 @@ const githubBase = 'https://github.com/thejustinwalsh/three-flatland/tree/main'
 const threeGithubHref = `${githubBase}/examples/three/${slug}`
 const reactGithubHref = `${githubBase}/examples/react/${slug}`
 
-// StackBlitz payloads — JSON-serialized file maps are written into
-// `<script type='application/json'>` blocks; the toolbar's StackBlitz
-// button reads them at click time and calls `sdk.openProject(payload,
-// { newWindow: true })`. This opens the SAME embed payload we serve
-// inline (file maps + entry file) in a fresh StackBlitz tab.
+// StackBlitz payloads — JSON-serialized file maps that the toolbar's
+// StackBlitz button reads at click time and feeds into
+// `sdk.openProject(payload, { newWindow: true })`. We base64-encode them
+// into root data attributes (one per variant) for two reasons:
+//  1. `<template>` content is HTML-parsed by the browser. Any `<`/`>`/`&`
+//     in source code (TS, JSX, MDX) gets parsed as tags or auto-closed,
+//     so reading back via `template.innerHTML` mangles the JSON and
+//     `JSON.parse` throws — the click handler then falls through to the
+//     GitHub-clone fallback, which is what the user was seeing.
+//  2. Data-attribute *values* are opaque CDATA — the browser doesn't
+//     re-parse them as HTML. Base64 keeps the value ASCII-safe for any
+//     binary or unicode payload (e.g. em-dash in titles).
+// Decoding side: the click handler does
+// `new TextDecoder().decode(Uint8Array.from(atob(b64), c => c.charCodeAt(0)))`
+// to handle UTF-8 correctly (raw `atob` returns latin-1 bytes).
 const stackblitzPayloads = {
     three: {
         title: `${slug} — Three.js`,
@@ -150,10 +160,26 @@ const stackblitzPayloads = {
     },
 }
 
+const stackblitzThreeB64 = Buffer.from(
+    JSON.stringify(stackblitzPayloads.three),
+    'utf-8'
+).toString('base64')
+const stackblitzReactB64 = Buffer.from(
+    JSON.stringify(stackblitzPayloads.react),
+    'utf-8'
+).toString('base64')
+
 const transitionName = `tile-examples-${slug}`
 ---
 
-<div class="example-split" data-slug={slug} data-variant="three" style={`--split: 55%;`}>
+<div
+    class="example-split"
+    data-slug={slug}
+    data-variant="three"
+    data-stackblitz-three={stackblitzThreeB64}
+    data-stackblitz-react={stackblitzReactB64}
+    style={`--split: 55%;`}
+>
     <div class="example-split-toolbar">
         <div class="variant-toggle" role="tablist" aria-label="Source variant">
             <button
@@ -210,20 +236,6 @@ const transitionName = `tile-examples-${slug}`
             </button>
         </div>
     </div>
-
-    {/* StackBlitz payloads — `<template>` is invisible by spec
-       (browsers never render template content), avoiding any chance
-       of the JSON payload leaking into the layout. The button click
-       handler reads `template.innerHTML` to get the JSON string.
-       EXPLICIT close tags are mandatory: `<template>` is NOT a void
-       element, so a self-closing `<template/>` form leaves the tag
-       open in the HTML parser and swallows every subsequent sibling
-       as template content (the iframe, the second template, the
-       split grid — all eaten). Lesson learned. Same files map +
-       openFile that an in-page <StackBlitzEmbed> would have used,
-       just opened in a fresh StackBlitz tab via sdk.openProject. */}
-    <template data-stackblitz-payload="three" set:html={JSON.stringify(stackblitzPayloads.three)}></template>
-    <template data-stackblitz-payload="react" set:html={JSON.stringify(stackblitzPayloads.react)}></template>
 
     <div class="example-split-grid">
         <div class="example-split-pane example-split-preview">
@@ -877,29 +889,40 @@ const transitionName = `tile-examples-${slug}`
             })
 
             // ─── StackBlitz: open the embed payload in a new tab ──
-            // Reads the JSON payload for the active variant from
-            // `<script type='application/json' data-stackblitz-payload>`,
-            // dynamically imports the SDK (only when needed), and
-            // calls `sdk.openProject(payload, { newWindow: true })`.
-            // The opened project mirrors the same files/openFile that
-            // the inline preview ran from — full IDE access in
-            // StackBlitz, with the source-on-disk via the page's
-            // loadExample() output.
+            // Reads the base64-encoded JSON payload for the active
+            // variant from `data-stackblitz-{three,react}` on the root,
+            // dynamically imports the SDK (only when needed), and calls
+            // `sdk.openProject(payload, { newWindow: true })`. The opened
+            // project mirrors the same files/openFile the inline preview
+            // ran from — full IDE access in StackBlitz, source-on-disk
+            // via the page's loadExample() output.
             stackblitzBtn?.addEventListener('click', async () => {
                 try {
-                    const tpl = root.querySelector<HTMLTemplateElement>(
-                        `template[data-stackblitz-payload="${activeVariant}"]`
-                    )
-                    const json = tpl?.innerHTML
-                    if (!json) return
+                    const b64 =
+                        activeVariant === 'three'
+                            ? root.dataset.stackblitzThree
+                            : root.dataset.stackblitzReact
+                    if (!b64) throw new Error('missing payload attribute')
+                    // atob returns a latin-1 byte string. Walk it back to
+                    // a Uint8Array and TextDecoder over it so non-ASCII
+                    // characters in titles/descriptions (e.g. em-dash in
+                    // "basic-sprite — Three.js") survive the round-trip.
+                    const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0))
+                    const json = new TextDecoder().decode(bytes)
                     const payload = JSON.parse(json)
                     const { default: sdk } = await import('@stackblitz/sdk')
-                    sdk.openProject(payload, { newWindow: true, openFile: payload.openFile })
+                    await sdk.openProject(payload, {
+                        newWindow: true,
+                        openFile: payload.openFile,
+                    })
                 } catch (err) {
-                    // Fall back to the GitHub bridge URL on any SDK
-                    // failure (network blocked, popup blocked, etc.).
-                    const fallback = `https://stackblitz.com/github/thejustinwalsh/three-flatland/tree/main/examples/${activeVariant}/${root.dataset.slug}`
-                    window.open(fallback, '_blank', 'noopener')
+                    // Surface the failure so we can debug instead of
+                    // silently swallowing it. The GitHub-bridge fallback
+                    // is intentionally NOT used: cloning the entire
+                    // monorepo from a feature branch hangs StackBlitz
+                    // ("stuck on cloning repo"), so the user is better
+                    // served by a clear error than a broken redirect.
+                    console.error('[ExampleSplitView] StackBlitz SDK failed:', err)
                 }
             })
         })
