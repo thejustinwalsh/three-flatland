@@ -5,11 +5,11 @@ import {
   AmbientLight, DirectionalLight, Color, DoubleSide,
 } from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
-import { reflector, color as tslColor, positionWorld, cameraPosition, uv, vec2, hash, float as tslFloat, mx_worley_noise_float, mix } from 'three/tsl'
+import { reflector, color as tslColor, positionWorld, cameraPosition, uv, vec2, hash, float as tslFloat, mx_worley_noise_float } from 'three/tsl'
 import { gaussianBlur } from 'three/addons/tsl/display/GaussianBlurNode.js'
 import { MeshStandardNodeMaterial } from 'three/webgpu'
 import { Skia, SkiaPaint, SkiaPath } from '@three-flatland/skia'
-import { gemFogColor, gemGradientNode } from './GemBackground'
+import { gemGradientNode } from './GemBackground'
 import { GEM } from './gem'
 import {
   SkiaCanvas,
@@ -53,19 +53,21 @@ async function main() {
   const renderer = new WebGPURenderer({ antialias: true, trackTimestamp: true })
   renderer.setSize(window.innerWidth, window.innerHeight)
   renderer.setPixelRatio(dpr)
-  // Dark-gem fog color — 10% gem mixed into pure black in OKLab.
-  // Barely-perceptible tint so the distance carries a hint of gem
-  // identity (matching the L3 floor composition) without going full
-  // gem like `gemClearColor` did. Pure black was too aggressive of a
-  // backout; a precomputed dark midpoint reads as moody-with-color.
-  const fogBg = gemFogColor(GEM)
-  renderer.setClearColor(fogBg)
   document.body.appendChild(renderer.domElement)
   await renderer.init()
 
+  // Gem identity carried by the L2 background plane (scene.backgroundNode
+  // below) — three.js renders it as a fullscreen quad behind everything,
+  // ignoring fog. Fog itself is a neutral atmospheric haze that only
+  // affects in-scene 3D meshes (floor, panels, etc.) — they fade into
+  // the haze with distance, then the gem backdrop reads through.
   const scene = new Scene()
-  scene.background = fogBg
-  scene.fog = new Fog(fogBg.getHex(), 0, 15)
+  ;(scene as any).backgroundNode = gemGradientNode({ gem: GEM })
+  // Soft warm haze, pulled back so foreground stays clear and distance
+  // fades subtly. White-ish atmospheric fog rather than gem-tinted
+  // because the gem belongs to the *backdrop*; tinting fog as well
+  // doubles the gem and reads as a colored cloud.
+  scene.fog = new Fog(0xb8bbc4, 6, 18)
   const camera = new PerspectiveCamera(40, window.innerWidth / window.innerHeight, 0.1, 100)
   camera.position.set(0, 0.9, 4.5)
   camera.lookAt(0, 0.9, 0)
@@ -284,14 +286,13 @@ async function main() {
   const fadeFactor = dist.div(3.0).clamp(0.0, 1.0).oneMinus()
   const fadeSharp = fadeFactor.mul(fadeFactor).mul(fadeFactor) // cubic
 
-  // L3 — compose the gem gradient into the floor's base color so the
-  // ground tonally aligns with the masonry tile. The gradient outputs
-  // linear-sRGB after the option-B color-space fix, so mix at a low
-  // weight (0.15) to keep the floor's reflective character dominant
-  // while still letting the gem read as ambient surface tone.
-  const gemFragment = gemGradientNode({ gem: GEM })
-  const baseColor = mix(tslColor(new Color(0x050505)), (gemFragment as any).rgb, tslFloat(0.15))
-  groundMat.colorNode = baseColor
+  // Floor base color stays dark — the gem identity now lives on the
+  // L2 background plane (scene.backgroundNode above) rather than
+  // composed into the floor surface itself. Reflections of the lit
+  // foreground (sprite panel, etc.) carry the surface character; the
+  // dark base lets those reflections pop without competing with a
+  // gem-tinted floor.
+  groundMat.colorNode = tslColor(new Color(0x050505))
     .add((blurredReflection as any).rgb.mul(fadeSharp).mul(0.5))
   // Roughness: sharper under panel, rougher outward
   groundMat.roughnessNode = tslFloat(0.5)
