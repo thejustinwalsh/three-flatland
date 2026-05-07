@@ -40,13 +40,19 @@ export default defineConfig({
   integrations: [
     UnoCSS({ injectReset: false }),
     ...Icons({
-      // codeblock: false — disables starlight-plugin-icons' inline
-      // injection of pluginIcon into Starlight's expressiveCode config.
-      // That inline registration made the EC config non-JSON-serializable
-      // (plugins are functions), which broke the standalone <Code>
-      // component used by ExampleSplitView's multi-file code panel.
-      // Codeblock language icons on titled fenced blocks are forfeit
-      // until the plugin ships compiled JS (see ec.config.mjs comment).
+      // codeblock: false — mutually exclusive with the standalone
+      // <Code> component used by ExampleSplitView. Starlight-plugin-
+      // icons' codeblock=true injects `pluginIcon` (a function) into
+      // Starlight's expressiveCode option, which fails Astro EC's
+      // JSON-serialization check at <Code> render time — the error
+      // says "move options to ec.config.mjs" but the inline plugin
+      // is also picked up by <Code>'s renderer setup, not just the
+      // markdown integration. Bringing the auto-language icons back
+      // (the JSON glyph on atlas files, TS on main.ts, etc.) requires
+      // either upstream shipping a compiled JS dist (so we could
+      // re-register pluginIcon inside ec.config.mjs) or vendoring
+      // ~300 lines of icon-detection logic + a runtime GitHub
+      // material-icon fetch. Worth revisiting; not invested today.
       codeblock: false,
       extractSafelist: true,
       starlight: {
