@@ -72,13 +72,90 @@ utility under `docs/src/utils/` or stay in CSS.
 
 ## Audit (vs Phase 2 baseline) — `/impeccable:audit` final pass
 
-*Pending.* Punch-list item 7. Will compare against `phase-2-audit.md`
-across a11y / perf / theming / responsive axes once the rest of the
-Phase 3 punch list closes. Captured here when the audit runs.
+**Punch-list item:** 7
+**Status:** ✅ captured at end-of-Phase-3 punch-list (excluding still-deferred items 2/3/4)
+**Date:** 2026-05-07
+**Tip commit:** `ec5cba5`
+
+### Verification matrix (regression delta vs Phase 2 baseline)
+
+| Dimension | Phase 2 baseline | Phase 3 state | Δ |
+|---|---|---|---|
+| Build | ✅ 310 pages, 12.5s | ✅ 310 pages, 13.4s | flat — extra component overrides + simple-icons set add ~1s, within noise |
+| `astro check` | 0 errors | 0 errors | flat |
+| Token coherence (dark) | base16 Materia OKLCH primitives | gem palette (gold/ruby/emerald/diamond/amethyst/pink/salmon/turquoize) + Starlight `--sl-color-*` bridge | **upgraded** — pivot from Materia to bearded-theme-inspired technicolor; all gems present in compiled `common.css`; Starlight bridge maintained |
+| Token coherence (light) | Materia desaturated for paper | Same gem names with deeper saturation for paper-toned bg | **upgraded** — both modes audited via Chrome screenshots throughout the session |
+| Semantic-token taxonomy | `--accent`, `--secondary`, `--muted`, `--border`, `--card`, `--popover`, `--ring` | + `--link`/`--link-hover`, `--sidebar-section-1..7` cycle, `--card-accent`/`--vp-accent`/`--stat-accent` per-component, `--code-chip-accent`/`--code-chip-bg` for inline code | **expanded** — color taxonomy went from primary/secondary to a real per-context system; sidebar groups, cards, value-props, asides, and inline-code chips each carry their own gem identity |
+| Icon resolution (lucide) | ✅ inline data-URIs | ✅ inline data-URIs, **rendered via mask mode** | **upgraded** — `mode: 'mask'` forces all iconsets to currentColor mono; trades brand-color fidelity for whole-system color consistency under the gem palette |
+| Icon resolution (simple-icons) | (not used) | ✅ — added for tab brand glyphs (`@iconify-json/simple-icons` in safelist) | **new** — npm/pnpm/yarn/bun/react/threedotjs render as proper monochrome silhouettes |
+| Icon resolution (tf custom) | placeholder, no icons | placeholder, no icons | flat — collection still empty; first usage will validate end-to-end |
+| Code-block icons | material-icon-theme via expressive-code | same, plus mask-mode mono | flat under mask — codeblock title icons show the document glyph in muted-foreground |
+| Sidebar icon composition | reads `data-icon` from `starlight-plugin-icons` | same | flat — composition pattern preserved across all theme overrides |
+| Typography (4 fonts) | Public Sans / Inter / JetBrains Mono / Commit Mono | + Silkscreen (wordmark only) | **expanded** — 48 woff2 files in dist; Silkscreen restored per the pivot for the `flatland` wordmark |
+| Reduced motion | base.css `@media (prefers-reduced-motion: reduce)` | same — and motion.ts respects it (perlin loop pauses, holo flattens to static gem-tinted gradient, scroll-driven animations short-circuit) | **upgraded** — motion-as-craft substrate added in Phase 3 honors reduced-motion at every layer |
+| Focus-visible | token-driven `var(--ring)` | same — present in compiled CSS | flat |
+| Responsive | mobile/desktop sidebar + TOC behaviour confirmed | + main-content `max-width: 60rem` (was 40rem); TOC visible only at `1280px+` (was `1024px+`); TOC track 240px → 180px; container left padding scales by viewport | **upgraded** — breakpoint review reclaimed pixels for the main column at the 1024–1279 laptop range |
+| llms.txt generation | 533B / 1.1M / 1.1M | 515B / 1.1M / 1.1M | flat |
+| View transitions | (not yet integrated) | astro-vtbot `Base` + `PageOrder` + `LoadingIndicator` + `AutoNameSelected` for `main h1, main h2[id]` | **new** — SPA-feeling navigation with reduced-motion respected throughout |
+
+### What's IMPROVED in Phase 3 (vs Phase 2 baseline)
+
+1. **Color-as-taxonomy is real.** The gem palette pivot landed and is consumed at every layer: sidebar sections, FeatureCards, ValueProps, StatItems, asides, inline-code chips, TOC active marker, search modal accent, sidebar active marker, hover previews. Same gem hue family carries identity across surface types.
+2. **Single-indicator system.** Sidebar entries dropped the rounded-pill background that previously competed with the gem left-bar. TOC follows the same single-bar pattern. Hover previews use the same bar geometry at lower alpha — hover→active is positionally continuous.
+3. **Tab + codeblock visual unification.** Tabs and codeblocks now read as one continuous rounded rectangle (outer card vertical inset, children horizontal inset, codeblock `--ec-codePadInl` matched to children). Figcaption is pure typography (no chrome, no terminal traffic-lights, no tab-bar background) — captions read as labels, not UI bars.
+4. **Marketing copy honesty.** Replaced "WebGPU Native / no WebGL fallbacks / impossible on WebGL" with "TSL + hand-rolled WebGL paths for real 1:1 parity." ECS framing corrected to credit `koota` (third-party) over "custom ECS" (which was wrong). Marketing now matches what the library actually ships.
+5. **Cross-page chrome stability.** Site-title position parity landing ↔ docs (no logo hop on navigation). Header height parity (no `padding-block` animation, only paint-only properties on scroll) — view-transitions cross-fade safely between landing and docs without revealing layout shifts.
+6. **Bug fixes that addressed long-reported issues:**
+   - `.header` selector collision → expressive-code's `<figcaption class="header">` no longer inherits the site-header scroll-driven background fade (the source of the long-reported "alpha fade tied to scroll" on captions)
+   - External-link icon NBSP wrap (icons no longer drop alone to a new line on link wrap)
+   - Safari JSX dev runtime preflight (`react/jsx-dev-runtime` pre-bundled — fixes the `TypeError: jsxDEV is not a function` HeroShader hydration bug)
+
+### Regressions
+
+None observed against Phase 2 baseline. Build, type check, and visual regression spot-checks all pass.
+
+### Verification approach
+
+- **Token coherence**: `grep -c "gold|ruby|emerald|diamond|amethyst|pink|salmon|turquoize" dist/_astro/index.*.css` — gem tokens present in the compiled CSS at multiple sites; `grep -c "prefers-reduced-motion" dist/_astro/*.css` confirms reduced-motion handling; `grep -c "var(--ring)" dist/_astro/*.css` confirms focus-visible ring.
+- **Build artifacts**: 111M dist; largest CSS chunk `common.css` at 214k (typical for Starlight + theme + UnoCSS); 48 woff2 files (4 fonts × ~12 weight/style variants).
+- **Icon mask mode**: `dist/_astro/common.BGsOn_LQ.css` shows iconify rules as `mask: var(--un-icon); background-color: currentColor` — confirms `mode: 'mask'` is active in production.
+- **llms.txt**: regenerated each build (`llms.txt` 515B, `llms-full.txt` + `llms-small.txt` ~1.1M each).
+- **Visual**: Chrome screenshots taken throughout the session covered landing, installation, intro, sidebar, TOC, search modal, tabs/codeblocks, asides at multiple viewport widths.
+
+### Items intentionally still deferred to follow-on work
+
+These remain on the Phase 3 punch list but their absence is not a regression — they're net-new design and asset work, not substrate-level concerns:
+
+| Item | Status | Rationale |
+|---|---|---|
+| Landing-page rebuild around embedded three-flatland scenes (item 2) | ❌ deferred | Beyond the FeatureCard / StatsBanner / ValueProp re-skin already shipped; needs scene authoring + design decisions about what to embed where. Not a substrate gap. |
+| BrandAsset compositions (item 3) | ❌ deferred | Banner / OG / wide / social-x compositions need fresh designs in the new aesthetic + image regeneration. The retro pixel icon and Silkscreen wordmark sit inside those new compositions; the icon itself was correctly reverted to the original mark already. |
+| Per-page interactive scenes (item 4) | ❌ deferred | Bespoke game-engine work per guide page (`tsl-nodes`, `pass-effects`, `tilemaps`). Not blocked by anything else. |
+| Heading-badges sweep (item 5) | ⏸ parked | No honest divergence to mark currently — everything is alpha; cross-renderer parity is the design goal not a section call-out. Re-evaluate when the first stable release diverges from alpha behaviours. |
+| ContentPanel override | ⏸ no-op | Currently a `<slot />` passthrough; chrome lives entirely on PageFrame + MarkdownContent. No work needed unless prose-page chrome design changes. |
 
 ---
 
 ## Optimize — `/impeccable:optimize` final pass
 
-*Pending.* Punch-list item 8. Bundle size, image optimization, font
-loading, animation cost. Captured here when the optimize pass runs.
+**Punch-list item:** 8
+**Status:** baseline observations captured below; full optimize pass deferred until landing rebuild + per-page scenes (items 2 and 4) close, since those add the largest variable load that should be measured against optimization.
+
+### Baseline observations (tip `ec5cba5`)
+
+| Axis | Observation |
+|---|---|
+| Total dist | 111M |
+| Largest CSS chunk | `common.BGsOn_LQ.css` — 214k (Starlight + theme + UnoCSS combined) |
+| Pages built | 310 in 13.4s |
+| Fonts shipped | 48 woff2 files (Public Sans / Inter / JetBrains Mono / Commit Mono / Silkscreen — ~12 weight/style variants each) |
+| Heaviest pages | API reference TypeDoc-generated pages; landing's HeroShader (WebGL2 fragment shader) hydrates client-side via `client:only="react"` |
+| Animation cost | Motion-as-craft runtime (perlin loop, pointer-tracking light, holo) only runs on opt-in surfaces (`.u-light` / `.u-holo` / `.u-reveal`). Reveal animations prefer CSS scroll-driven (`animation-timeline: view()`) with IntersectionObserver fallback only for older browsers. All motion respects `prefers-reduced-motion`. |
+
+### Suggested optimize-pass targets (when run)
+
+- **Font subsetting**: 48 woff2 files is on the heavy side for 5 typefaces. Subset via `pnpm sync` or per-page; Silkscreen used only in the wordmark could be the most aggressive subset.
+- **CSS chunk splitting**: 214k for `common.css` is acceptable but could split per-route via Astro's CSS chunking config — particularly the Pagefind UI + Search modal styles only used when the modal opens.
+- **Image optimization**: BrandAsset's `og-image.png` / `x-card-image.png` (when regenerated for item 3) should hit the production optimizer.
+- **HeroShader**: WebGL2 fragment shader is well-scoped; verify no resource leaks across page transitions (the current `useEffect` cleanup releases program/shaders/buffer cleanly).
+- **Bundle visualizer**: run `pnpm build --filter=docs -- --analyze` (if available) to spot heavyweight imports.
