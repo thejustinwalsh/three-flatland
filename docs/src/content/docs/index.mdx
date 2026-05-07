@@ -46,8 +46,8 @@ import { Tabs, TabItem, Aside } from '@astrojs/starlight/components';
 <div class="page-body not-content">
 
 <StatsBanner stats={[
-  { value: "20K+", label: "Sprites at 60fps (M2 Pro)", color: "diamond" },
-  { value: "Per group", label: "Instanced GPU batches", color: "pink" },
+  { value: "20K+", label: "Sprites at 60fps", color: "diamond" },
+  { value: "Auto", label: "Instanced GPU batches", color: "pink" },
   { value: "TSL", label: "Composable shader nodes", color: "gold" },
   { value: "WebGPU", label: "Native renderer", color: "amethyst" },
 ]} />
@@ -280,6 +280,7 @@ function Game() {
     justify-content: center;
     gap: calc(var(--spacing) * 3);
     flex-wrap: wrap;
+    margin: calc(var(--spacing) * 3) auto;
   }
   .hero-scrollcue {
     position: absolute;

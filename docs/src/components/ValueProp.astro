@@ -1,10 +1,10 @@
 ---
 /**
- * ValueProp — text-heavy section block with a gem-foil border ring.
- * Pulled back from the full lit-card treatment: now just a rounded
- * rectangle with a transparent interior and a gem-accented foil
- * border that rotates with the global scene-light. The text carries
- * the section, the border carries the gem identity.
+ * ValueProp — text-heavy section block with a gem-tinted left/right
+ * vertical rule (foil-reactive). Pulled back further from the full
+ * border ring: just a thin vertical accent bar that catches the
+ * global scene light via a directional glow shadow, plus tight
+ * whitespace so the prose carries the section.
  */
 
 type Gem =
@@ -52,6 +52,7 @@ const accentStyle = resolvedGem ? `--vp-accent: var(--${resolvedGem});` : undefi
   data-gem={resolvedGem}
   style={accentStyle}
 >
+  <div class="vp-rule" aria-hidden="true"></div>
   <div class="vp-content">
     <h3 class="vp-title" set:html={title} />
     <div class="vp-body"><slot /></div>
@@ -61,39 +62,53 @@ const accentStyle = resolvedGem ? `--vp-accent: var(--${resolvedGem});` : undefi
 <style>
   .value-prop {
     --vp-accent: var(--primary);
-    position: relative;
-    padding: clamp(2rem, 4vw, 3rem) clamp(1.75rem, 3vw, 2.75rem);
-    margin-block: clamp(1.75rem, 3vw, 2.5rem);
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: calc(var(--spacing) * 4);
+    padding-block: calc(var(--spacing) * 1);
+    margin-block: calc(var(--spacing) * 6);
     max-width: 56rem;
-    /* Foil border ring — transparent interior, gem-tinted gradient ring
-     * around the entire perimeter via background-clip padding-box +
-     * border-box trick. The conic gradient rotates with --scene-angle
-     * so the border catches the global scene light direction (perlin-
-     * driven), making the border read as foil rather than flat color. */
-    border: 1.5px solid transparent;
-    border-radius: calc(var(--radius) + 0.5rem);
-    background:
-      linear-gradient(var(--background), var(--background)) padding-box,
-      conic-gradient(
-        from calc(var(--scene-angle, 135deg) - 90deg),
-        color-mix(in oklab, var(--vp-accent) 90%, transparent) 0deg,
-        color-mix(in oklab, var(--vp-accent) 30%, var(--border)) 90deg,
-        color-mix(in oklab, var(--border) 80%, transparent) 180deg,
-        color-mix(in oklab, var(--vp-accent) 30%, var(--border)) 270deg,
-        color-mix(in oklab, var(--vp-accent) 90%, transparent) 360deg
-      ) border-box;
-    background-origin: border-box;
   }
 
   .value-prop.align-right {
+    grid-template-columns: 1fr auto;
     margin-inline-start: auto;
     text-align: right;
+  }
+
+  .value-prop.align-right .vp-rule {
+    order: 2;
+  }
+
+  /* Vertical foil rule — gem-tinted gradient bar (dim → bright →
+   * dim along its length) with a directional gem-tinted glow whose
+   * offset shifts with --scene-angle. The bar reads like a polished
+   * gem stripe being lit from the global scene-light direction; as
+   * the light arcs through the day-cycle, the glow's position drifts
+   * around the bar — quiet but alive. */
+  .vp-rule {
+    width: 3px;
+    align-self: stretch;
+    background: linear-gradient(
+      180deg,
+      color-mix(in oklab, var(--vp-accent) 25%, transparent) 0%,
+      var(--vp-accent) 28%,
+      color-mix(in oklab, var(--vp-accent) 92%, white) 50%,
+      var(--vp-accent) 72%,
+      color-mix(in oklab, var(--vp-accent) 25%, transparent) 100%
+    );
+    border-radius: 2px;
+    box-shadow:
+      calc(cos(var(--scene-angle, 135deg)) * 3px)
+      calc(sin(var(--scene-angle, 135deg)) * 3px)
+      14px
+      color-mix(in oklab, var(--vp-accent) 55%, transparent);
   }
 
   .vp-content {
     display: flex;
     flex-direction: column;
-    gap: calc(var(--spacing) * 4);
+    gap: calc(var(--spacing) * 2);
     max-width: 60ch;
   }
 
@@ -104,7 +119,7 @@ const accentStyle = resolvedGem ? `--vp-accent: var(--${resolvedGem});` : undefi
   .vp-title {
     font-family: 'Public Sans', system-ui, sans-serif;
     font-weight: 600;
-    font-size: clamp(1.25rem, 2.2vw, 1.625rem);
+    font-size: clamp(1.125rem, 2vw, 1.375rem);
     line-height: 1.2;
     letter-spacing: -0.018em;
     color: var(--foreground);
@@ -112,13 +127,13 @@ const accentStyle = resolvedGem ? `--vp-accent: var(--${resolvedGem});` : undefi
   }
 
   .vp-body {
-    font-size: 1rem;
-    line-height: 1.65;
+    font-size: 0.9375rem;
+    line-height: 1.6;
     color: color-mix(in oklab, var(--foreground) 88%, var(--muted-foreground));
   }
 
   .vp-body :global(p) {
-    margin: 0 0 0.75rem 0;
+    margin: 0 0 0.5rem 0;
   }
   .vp-body :global(p:last-child) {
     margin-bottom: 0;
@@ -131,11 +146,8 @@ const accentStyle = resolvedGem ? `--vp-accent: var(--${resolvedGem});` : undefi
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .value-prop {
-      background:
-        linear-gradient(var(--background), var(--background)) padding-box,
-        var(--vp-accent) border-box;
-      background-origin: border-box;
+    .vp-rule {
+      box-shadow: 0 0 14px color-mix(in oklab, var(--vp-accent) 50%, transparent);
     }
   }
 </style>
