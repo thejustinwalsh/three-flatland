@@ -134,19 +134,22 @@ export function gemGradientNode({
     const dPx = length(fragPx.sub(centerPx))
     const d = dPx.div(length(screenPx).mul(0.7))
 
-    // Three stops mirroring the CSS tile gradient exactly:
-    //   0%   → mix(card, gem, 0.40)   center, most saturated
-    //   60%  → mix(bg,   gem, 0.12)   subtle outer tint
-    //   100% → bg                      page background
-    const c0 = mix(CARD, gemColor, float(0.4))
-    const c1 = mix(BG, gemColor, float(0.12))
-    const c2 = BG
+    // Two stops, both gem-tinted — the CSS tile uses three stops with
+    // the third fading to pure page background, but at example viewport
+    // scale that "fade to bg" makes the entire outer 40% of the screen
+    // read as flat dark blue regardless of which gem is assigned. The
+    // user complaint was "gemtone blue on the outside of the gradient
+    // while inner gradient is correct gem color" — i.e. the outer ring
+    // wasn't carrying gem identity. Boost outer stop to 30% gem mix
+    // (vs. CSS's 12%) and drop the bg fadeout so every visible pixel
+    // reads as gem.
+    //
+    //   0%   → mix(card, gem, 0.50)   center, gem-saturated
+    //   85%  → mix(bg,   gem, 0.30)   ambient, still recognizably gem
+    const c0 = mix(CARD, gemColor, float(0.5))
+    const c1 = mix(BG, gemColor, float(0.3))
 
-    const t0 = smoothstep(float(0), float(0.6), d) // center → outer-ring
-    const t1 = smoothstep(float(0.6), float(1), d) // outer-ring → bg
-    const inner = mix(c0, c1, t0)
-    const outer = mix(c1, c2, t1)
-    const blend = smoothstep(float(0.55), float(0.65), d)
-    return vec4(mix(inner, outer, blend), float(1))
+    const t = smoothstep(float(0), float(0.85), d)
+    return vec4(mix(c0, c1, t), float(1))
   })()
 }

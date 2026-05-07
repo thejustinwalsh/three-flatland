@@ -116,17 +116,18 @@ export function gemGradientNode({
     const dPx = length(fragPx.sub(centerPx))
     const d = dPx.div(length(screenPx).mul(0.7))
 
-    // Three stops mirroring the CSS tile gradient exactly.
-    const c0 = mix(CARD, gemColor, float(0.4))
-    const c1 = mix(BG, gemColor, float(0.12))
-    const c2 = BG
+    // Two-stop gradient, both gem-tinted. See note in the Three.js
+    // template — at example viewport scale the CSS's third stop (bg
+    // fadeout) makes the outer 40% of the screen read as flat dark
+    // blue regardless of gem. Drop the fadeout, both stops carry gem.
+    //
+    //   0%   → mix(card, gem, 0.50)   center, gem-saturated
+    //   85%  → mix(bg,   gem, 0.30)   ambient, still recognizably gem
+    const c0 = mix(CARD, gemColor, float(0.5))
+    const c1 = mix(BG, gemColor, float(0.3))
 
-    const t0 = smoothstep(float(0), float(0.6), d)
-    const t1 = smoothstep(float(0.6), float(1), d)
-    const inner = mix(c0, c1, t0)
-    const outer = mix(c1, c2, t1)
-    const blend = smoothstep(float(0.55), float(0.65), d)
-    return vec4(mix(inner, outer, blend), float(1))
+    const t = smoothstep(float(0), float(0.85), d)
+    return vec4(mix(c0, c1, t), float(1))
   })()
 }
 
