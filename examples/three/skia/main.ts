@@ -318,19 +318,23 @@ async function main() {
 
   // ── Floor edge fade ──
   // Horizontal sibling quad just above the ground plane that paints the
-  // scene fog/clear color (black) over the floor's hard rectangular
-  // silhouette via a radial alpha smoothstep — opaque at the corners,
-  // transparent in the center where reflections show through. The
-  // floor's distant edge dissolves smoothly into the void instead of
-  // cutting hard against the bg plane behind it.
-  // Ported from remotion-studio-monorepo's FloorEdgeFade.tsx (GLSL → TSL).
+  // SAME gem gradient as the bg plane over the floor's hard rectangular
+  // silhouette — opaque at the corners, transparent in the center
+  // where reflections show through. Because gemGradientNode is
+  // screen-space, the floor-edge quad and the bg plane sample the same
+  // colors at any given screen pixel — the floor's edges dissolve
+  // seamlessly into the bg plane (no color discontinuity).
+  // Ported from remotion-studio-monorepo's FloorEdgeFade.tsx (GLSL → TSL),
+  // adapted: their version paints scene.background color (a flat color);
+  // ours paints the same screen-space gem gradient as the bg plane so
+  // the match holds against a non-flat backdrop.
   const edgeGeo = new PlaneGeometry(50, 50)
   const edgeMat = new MeshBasicNodeMaterial({
     transparent: true,
     depthWrite: false,
     fog: false,
   })
-  edgeMat.colorNode = tslColor(new Color(0x000000))
+  edgeMat.colorNode = gemGradientNode({ gem: GEM, radius: 0.4 })
   const edgeDist = tslLength(uv().sub(vec2(0.5))).mul(tslFloat(2))
   edgeMat.opacityNode = tslSmoothstep(tslFloat(0.35), tslFloat(0.7), edgeDist)
   const floorEdge = new Mesh(edgeGeo, edgeMat)
