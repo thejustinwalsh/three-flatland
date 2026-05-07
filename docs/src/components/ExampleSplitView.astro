@@ -201,18 +201,16 @@ const transitionName = `tile-examples-${slug}`
     {/* StackBlitz payloads — `<template>` is invisible by spec
        (browsers never render template content), avoiding any chance
        of the JSON payload leaking into the layout. The button click
-       handler reads `template.content.textContent` to get the JSON
-       string. Same files map + openFile that an in-page
-       <StackBlitzEmbed> would have used, just opened in a fresh
-       StackBlitz tab via sdk.openProject. */}
-    <template
-        data-stackblitz-payload="three"
-        set:html={JSON.stringify(stackblitzPayloads.three)}
-    />
-    <template
-        data-stackblitz-payload="react"
-        set:html={JSON.stringify(stackblitzPayloads.react)}
-    />
+       handler reads `template.innerHTML` to get the JSON string.
+       EXPLICIT close tags are mandatory: `<template>` is NOT a void
+       element, so a self-closing `<template/>` form leaves the tag
+       open in the HTML parser and swallows every subsequent sibling
+       as template content (the iframe, the second template, the
+       split grid — all eaten). Lesson learned. Same files map +
+       openFile that an in-page <StackBlitzEmbed> would have used,
+       just opened in a fresh StackBlitz tab via sdk.openProject. */}
+    <template data-stackblitz-payload="three" set:html={JSON.stringify(stackblitzPayloads.three)}></template>
+    <template data-stackblitz-payload="react" set:html={JSON.stringify(stackblitzPayloads.react)}></template>
 
     <div class="example-split-grid">
         <div class="example-split-pane example-split-preview">
