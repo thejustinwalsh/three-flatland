@@ -22,7 +22,7 @@ const buttonStyle: React.CSSProperties = {
   lineHeight: 1,
 };
 
-function ExamplePreview({ type, name, height = 600, bg = '#1a1a2e' }: Props) {
+function ExamplePreview({ type, name, height = 720, bg = '#1a1a2e' }: Props) {
   const isDev = import.meta.env.DEV;
   const base = (import.meta.env.BASE_URL || '/').replace(/\/?$/, '/');
 
@@ -34,6 +34,11 @@ function ExamplePreview({ type, name, height = 600, bg = '#1a1a2e' }: Props) {
     ? `http://localhost:${EXAMPLES_PORT}/${type}/${name}/`
     : `${base}examples/${type}/${name}/`;
 
+  // View-transition name is derived from the slug so it pairs with
+  // the masonry tile on `/examples/`. The browser morphs the tile's
+  // bounding box into the iframe's bounding box on navigation.
+  const transitionName = `tile-examples-${name}`;
+
   return (
     <iframe
       src={src}
@@ -41,10 +46,10 @@ function ExamplePreview({ type, name, height = 600, bg = '#1a1a2e' }: Props) {
         width: '100%',
         height,
         border: 'none',
-        borderRadius: '8px',
+        borderRadius: '12px',
         background: bg,
         colorScheme: 'dark',
-        viewTransitionName: 'example-preview',
+        viewTransitionName: transitionName,
       }}
       title={`${type}/${name} preview`}
       allow="cross-origin-isolated"
@@ -94,22 +99,27 @@ function DevExamplePreview(props: Props) {
     e.currentTarget.style.color = buttonStyle.color as string;
   };
 
+  // Same slug-derived transition name as the production iframe — keeps
+  // the morph from the masonry tile target consistent across both
+  // dev and prod views.
+  const transitionName = `tile-examples-${props.name}`;
+
   if (activeType === null) {
     return (
       <div
         style={{
           width: '100%',
-          height: props.height ?? 600,
+          height: props.height ?? 720,
           background: props.bg ?? '#1a1a2e',
-          borderRadius: '8px',
-          viewTransitionName: 'example-preview',
+          borderRadius: '12px',
+          viewTransitionName: transitionName,
         }}
       />
     );
   }
 
   return (
-    <div ref={containerRef} style={{ position: 'relative', viewTransitionName: 'example-preview-wrapper' }}>
+    <div ref={containerRef} style={{ position: 'relative' }}>
       <ExamplePreview {...props} type={activeType} />
       <div
         style={{
