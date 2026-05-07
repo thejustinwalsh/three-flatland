@@ -59,16 +59,21 @@ import ProgressBar from 'astro-vtbot/components/ProgressBar.astro';
 <ProgressBar />
 
 <style is:global>
-  /* swup-progress-bar: thin top edge accent that tracks the gem
-     palette. Stays at 2px so it reads as chrome, not noise. */
+  /* swup-progress-bar: thin top-edge gem-tone gradient — emerald
+     and gold so it doesn't sit in the cool-blue / purple band that
+     already saturates the rest of the chrome (header, sidebar,
+     active markers). 3px high so it reads at a glance during nav,
+     z-index above any view-transition snapshots so flashes can't
+     hide it. */
   .swup-progress-bar {
     background: linear-gradient(
       90deg,
-      var(--diamond),
-      var(--amethyst),
-      var(--diamond)
+      var(--emerald),
+      var(--gold),
+      var(--emerald)
     );
-    height: 2px;
+    height: 3px;
+    z-index: 9999;
   }
 </style>
 

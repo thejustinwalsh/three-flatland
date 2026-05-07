@@ -281,6 +281,7 @@ function initMotion() {
     for (const el of els) registerTarget(el)
     if (targets.length > 0) startLoop()
     initReveal()
+    initSidebarDetailsPersistence()
 
     /* Console personality — a one-time message for developers who pop
      * open devtools. Subtle nod to who reads this thing. */
@@ -291,6 +292,37 @@ function initMotion() {
         try {
             console.log('%c flatland %c — sprite-first 2D for Three.js + R3F. Like what you see? https://github.com/thejustinwalsh/three-flatland', css1, css2)
         } catch {}
+    }
+}
+
+/**
+ * Sidebar collapsable group <details> state — persisted across page
+ * navigations via localStorage. Astro view-transitions preserve the
+ * sidebar DOM (we set vtbot's `replaceSidebarContent: false`), but
+ * Starlight server-side renders each page with `<details open={!entry.collapsed}>`,
+ * which can clobber user-toggled state when the new page's sidebar
+ * markup arrives. localStorage gives us a per-group source of truth
+ * that survives both navigation and full reload.
+ */
+function initSidebarDetailsPersistence() {
+    if (typeof window === 'undefined' || !('localStorage' in window)) return
+    const detailsEls = document.querySelectorAll<HTMLDetailsElement>(
+        'details.container-sidebar-entry.collapsable',
+    )
+    for (const d of detailsEls) {
+        const label = d.querySelector('.entry-title')?.textContent?.trim()
+        if (!label) continue
+        const key = `tf:sidebar-open:${label}`
+        // Restore stored state on page-load. Default-open groups stay
+        // open if no key exists (preserves Starlight's auto-open of
+        // the active page's ancestor chain).
+        const stored = localStorage.getItem(key)
+        if (stored !== null) d.open = stored === 'true'
+        // Persist on user toggle. `toggle` fires after the open state
+        // flips, so reading d.open here gives us the new value.
+        d.addEventListener('toggle', () => {
+            localStorage.setItem(key, String(d.open))
+        })
     }
 }
 

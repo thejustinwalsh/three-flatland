@@ -50,17 +50,58 @@ export function getTranslation(
                   ? getRelativeLocaleUrl(Astro.currentLocale, nav.link)
                   : `${baseURL}${nav.link}`;
 
-            // Active = exact match OR currentPath sits under this link's
-            // top-level prefix. Plain equality misses nested pages (e.g.
-            // /examples/basic-sprite/ would never light up the Examples
-            // nav item under exact-match alone).
+            // Active = current path is in this nav item's section.
+            // Plain prefix-against-link misses sibling pages of the
+            // landing page (e.g. clicking "Docs" → /getting-started/
+            // introduction/ keeps Docs active, but /getting-started/
+            // installation/ wouldn't match the introduction prefix).
+            //
+            // Resolution: match by FIRST PATH SEGMENT of the link's URL
+            // (e.g. /getting-started, /examples, /showcases). Then one
+            // additional rule: the Docs nav item is the catch-all for
+            // anything in the docs sections (/getting-started, /guides,
+            // /branding, /llm-prompts, /api). Anything not in
+            // Examples/Showcases/Landing lights up Docs.
             const linkNoTrail = link.replace(/\/$/, '');
             const currentNoTrail = currentPath.replace(/\/$/, '');
-            const isActive =
-                !isExternal &&
-                linkNoTrail.length > 0 &&
-                (currentNoTrail === linkNoTrail ||
-                    currentNoTrail.startsWith(linkNoTrail + '/'));
+
+            const linkSegments = linkNoTrail
+                .replace(baseURL, '')
+                .split('/')
+                .filter(Boolean);
+            const linkFirstSegment = linkSegments[0] || '';
+            const currentRel = currentNoTrail.replace(baseURL, '');
+
+            const docsPrefixes = [
+                '/getting-started',
+                '/guides',
+                '/branding',
+                '/llm-prompts',
+                '/api',
+            ];
+            const isExamplesPath = currentRel.startsWith('/examples');
+            const isShowcasesPath = currentRel.startsWith('/showcases');
+            const isLandingPath = currentRel === '' || currentRel === '/';
+            const isDocsPath = docsPrefixes.some((p) => currentRel.startsWith(p));
+
+            let isActive = false;
+            if (!isExternal) {
+                if (linkFirstSegment === 'examples') {
+                    isActive = isExamplesPath;
+                } else if (linkFirstSegment === 'showcases') {
+                    isActive = isShowcasesPath;
+                } else if (linkFirstSegment === 'getting-started') {
+                    // Docs catch-all — any of the docs-section prefixes.
+                    isActive = isDocsPath && !isExamplesPath && !isShowcasesPath && !isLandingPath;
+                } else {
+                    // Fallback to the original prefix match for any
+                    // future nav links.
+                    isActive =
+                        linkNoTrail.length > 0 &&
+                        (currentNoTrail === linkNoTrail ||
+                            currentNoTrail.startsWith(linkNoTrail + '/'));
+                }
+            }
 
             const label =
                 typeof nav.label === 'string'

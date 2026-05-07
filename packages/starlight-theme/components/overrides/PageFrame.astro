@@ -96,8 +96,13 @@ const isLanding = path === base || path === '';
         padding: 0.55rem 0;
         text-align: center;
         text-decoration: none;
+        /* Static rotation — kept off the `transition` list so initial
+         * page load doesn't animate from rotate(0) → rotate(-45deg).
+         * The hover scale uses the individual `scale` property below
+         * so it can animate independently without involving transform. */
         transform: rotate(-45deg);
         transform-origin: 50% 50%;
+        scale: 1;
         pointer-events: auto;
         cursor: pointer;
         /* Gold foil — base linear gradient tracking the scene light, plus
@@ -124,10 +129,10 @@ const isLanding = path === base || path === '';
             inset 0 1px 0 color-mix(in oklab, var(--gold-high) 80%, white),
             inset 0 -1px 0 color-mix(in oklab, var(--gold) 30%, black);
         transition:
-            transform 180ms cubic-bezier(0.2, 0, 0.1, 1),
+            scale 180ms cubic-bezier(0.2, 0, 0.1, 1),
             box-shadow 180ms ease,
             filter 180ms ease;
-        will-change: transform, filter;
+        will-change: scale, filter;
         isolation: isolate;
     }
     /* Sparkle/foil texture overlay scoped to the rotated tape ONLY
@@ -158,13 +163,13 @@ const isLanding = path === base || path === '';
         text-shadow: 0 1px 0 color-mix(in oklab, var(--gold-high) 90%, white);
     }
     .alpha-ribbon-tape:hover {
-        transform: rotate(-45deg) scale(1.03);
+        scale: 1.03;
         filter: saturate(1.1);
     }
     @media (prefers-reduced-motion: reduce) {
         .alpha-ribbon-tape,
         .alpha-ribbon-tape:hover {
-            transform: rotate(-45deg);
+            scale: 1;
             transition: none;
         }
     }
@@ -201,14 +206,6 @@ const isLanding = path === base || path === '';
             width: 100%;
             background: var(--background);
             transition: background-color 200ms ease, backdrop-filter 200ms ease;
-            /* Stable view-transition pair across page swaps. Without this
-             * the browser treats landing's <header> and docs's <header>
-             * as different elements and cross-fades them, which causes
-             * a visible flash where the transparent-on-landing bg
-             * overlaps the solid-on-docs bg. With the same name on both
-             * pages, the browser pair-morphs the element — its bounding
-             * box and bg interpolate smoothly. */
-            view-transition-name: site-header;
 
             .container-wrapper {
                 padding-inline: calc(var(--spacing) * 6);

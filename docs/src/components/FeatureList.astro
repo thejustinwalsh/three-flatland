@@ -88,18 +88,13 @@ function resolveGem(c: Feature['color'], idx: number): Gem {
 
   .feature-item {
     --feature-accent: var(--diamond);
-    /* The .u-light pseudo-element gem facet reads --card-accent. Without
-     * this alias, every row's bg falls back to --primary (amethyst) since
-     * the only per-gem override in base.css is for `[data-gem='gold']`.
-     * Aliasing --card-accent to the row's gem makes the gem-faceted
-     * gradient track each row's accent. */
-    --card-accent: var(--feature-accent);
     display: grid;
     grid-template-columns: 14rem 1fr;
     align-items: center;
     gap: 1rem;
     line-height: 1.5;
     padding: 0.5rem 0 0.5rem 0.75rem;
+    position: relative;
     /* Thin gem-tinted left rule — fades top to bottom so the row reads
      * as accented, not boxed. Matches ValueProp's vertical foil rule
      * treatment at smaller scale. */
@@ -113,6 +108,19 @@ function resolveGem(c: Feature['color'], idx: number): Gem {
     background-repeat: no-repeat;
     background-position: 0 0;
     border-radius: 0;
+  }
+  /* Disable the .u-light gem-faceted bg pseudo on FeatureList rows.
+   * The global scene-angle was rotating the gradient across the full
+   * row width, which read as wonky on a 1-row strip. The deliberate
+   * left-rule background-image above carries the row's color
+   * identity; cursor tracking via .u-light stays active so the
+   * holographic icon treatment still receives --light-angle / --mx
+   * / --my / --mouse-active vars. */
+  .feature-list .feature-item.u-light::before,
+  .feature-list .feature-item.u-light::after,
+  .feature-list .feature-item[data-light]::before,
+  .feature-list .feature-item[data-light]::after {
+    display: none;
   }
 
   .feature-name {

@@ -872,6 +872,20 @@
         color: var(--aside-title);
     }
 
+    /* Links inside asides inherit the aside's accent (--aside-title) so
+     * a link in a warning callout reads in the warning's hue, not the
+     * default global link blue. Underline color softens to the accent
+     * mixed with transparency so it doesn't fight the body text. */
+    .sl-markdown-content .starlight-aside a {
+        color: var(--aside-title);
+        text-decoration-color: color-mix(in oklab, var(--aside-title) 50%, transparent);
+        transition: color 0.15s, text-decoration-color 0.15s;
+    }
+    .sl-markdown-content .starlight-aside a:hover {
+        color: color-mix(in oklab, var(--aside-title) 85%, var(--foreground));
+        text-decoration-color: var(--aside-title);
+    }
+
     .sl-markdown-content .starlight-aside__title + .starlight-aside__content {
         margin-top: calc(var(--spacing) * 1.5);
     }
