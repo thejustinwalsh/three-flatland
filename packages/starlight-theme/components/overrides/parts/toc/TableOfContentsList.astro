@@ -60,10 +60,28 @@ const { toc, depth = 0 } = Astro.props;
         color: var(--foreground);
     }
 
-    /* Active TOC link — gem-tinted via the global --primary, with a
-     * subtle left-edge marker. Reads the active heading without shouting. */
+    /* Hover marker — faint diamond-tinted left edge that previews the
+     * active-marker placement. Lower opacity than the active state so
+     * the cursor's affordance is felt without competing with the
+     * actual current-section indicator. */
+    a:hover::before {
+        content: '';
+        position: absolute;
+        left: calc(var(--spacing) * -2);
+        top: 0.5rem;
+        bottom: 0.5rem;
+        width: 2px;
+        border-radius: 1px;
+        background-color: color-mix(in oklab, var(--diamond) 35%, transparent);
+    }
+
+    /* Active TOC link — diamond accent (TOC = compass; diamond is the
+     * neutral high-contrast gem for "you are here"). Left-edge marker
+     * with a soft diamond glow, plus the link text gem-mixed toward
+     * foreground for legibility. The hover marker (above) inherits
+     * the same geometry so hover→active is positionally continuous. */
     a[aria-current] {
-        color: var(--primary);
+        color: color-mix(in oklab, var(--diamond) 70%, var(--foreground));
         font-weight: 500;
     }
 
@@ -75,17 +93,19 @@ const { toc, depth = 0 } = Astro.props;
         bottom: 0.4rem;
         width: 2px;
         border-radius: 1px;
-        background-color: var(--primary);
-        box-shadow: 0 0 5px color-mix(in oklab, var(--primary) 50%, transparent);
+        background-color: var(--diamond);
+        box-shadow: 0 0 6px color-mix(in oklab, var(--diamond) 55%, transparent);
     }
 
-    /* Nested TOC items indent + thin guide line, mirroring the sidebar. */
+    /* Nested TOC items indent + thin guide line, mirroring the sidebar.
+     * Guide line is diamond-tinted at low alpha so it reads warmer
+     * than a bare border-color and ties to the active marker's hue. */
     ul > li > ul {
         --pad-inline: calc(var(--spacing) * 3);
         margin-top: calc(var(--spacing) * 1.5);
         padding-inline: calc((1rem - var(--pad-inline)) / var(--depth) + var(--pad-inline))
             var(--pad-inline);
-        border-left: 1px solid color-mix(in oklab, var(--border) 80%, transparent);
+        border-left: 1px solid color-mix(in oklab, var(--diamond) 18%, var(--border));
         margin-left: calc(var(--spacing) * 1);
     }
 </style>
