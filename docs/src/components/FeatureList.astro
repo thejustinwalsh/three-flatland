@@ -65,7 +65,7 @@ function resolveGem(c: Feature['color'], idx: number): Gem {
   {features.map((feature, i) => {
     const gem = resolveGem(feature.color, i)
     return (
-      <li class="feature-item u-light" data-gem={gem} style={`--feature-accent: var(--${gem});`}>
+      <li class="feature-item u-light u-reveal" data-gem={gem} style={`--feature-accent: var(--${gem}); --reveal-delay: ${i * 60}ms;`}>
         <span class="feature-name">
           <Icon name={feature.icon} size="1.125rem" color="var(--feature-accent)" class="feature-icon-holo" />
           <span class="feature-title">{feature.title}</span>

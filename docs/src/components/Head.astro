@@ -97,7 +97,12 @@ import ProgressBar from 'astro-vtbot/components/ProgressBar.astro';
     {/* Gem perturb — fine fractal noise displacing the source image to
         fake a normal-mapped polished gem surface. Subtle (scale 3).
         Filter region tightened to 0/0/100/100 so the warp doesn't leak
-        past the element's bounding box and create visible edge seams. */}
+        past the element's bounding box.
+
+        feComposite operator="in" at the end clips the displaced result
+        through the source's alpha — pixels displaced beyond the original
+        shape (e.g. at rounded corners) get cut off instead of rendering
+        as transparent black bleed onto the page bg. */}
     <filter id="tf-gem-perturb" x="0" y="0" width="100%" height="100%">
       <feTurbulence
         type="fractalNoise"
@@ -107,11 +112,14 @@ import ProgressBar from 'astro-vtbot/components/ProgressBar.astro';
         stitchTiles="stitch"
         result="noise"
       />
-      <feDisplacementMap in="SourceGraphic" in2="noise" scale="3" />
+      <feDisplacementMap in="SourceGraphic" in2="noise" scale="3" result="displaced" />
+      <feComposite in="displaced" in2="SourceGraphic" operator="in" />
     </filter>
     {/* Foil perturb — coarser, anisotropic noise (different x/y freq) so
         gold catches a "metallic streak" quality rather than uniform
-        scatter. Used by data-gem="gold" surfaces. */}
+        scatter. Used by data-gem="gold" surfaces. Scale dropped from 6
+        to 4 to reduce edge headroom needed; feComposite clips any
+        residual leak through the source alpha. */}
     <filter id="tf-foil-perturb" x="0" y="0" width="100%" height="100%">
       <feTurbulence
         type="fractalNoise"
@@ -121,7 +129,8 @@ import ProgressBar from 'astro-vtbot/components/ProgressBar.astro';
         stitchTiles="stitch"
         result="noise"
       />
-      <feDisplacementMap in="SourceGraphic" in2="noise" scale="6" />
+      <feDisplacementMap in="SourceGraphic" in2="noise" scale="4" result="displaced" />
+      <feComposite in="displaced" in2="SourceGraphic" operator="in" />
     </filter>
   </defs>
 </svg>

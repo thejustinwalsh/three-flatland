@@ -50,11 +50,14 @@ function resolveGem(c: StatItem['color']): Gem | undefined {
 
 <aside class="not-content stats-banner" aria-label="Performance highlights">
   <div class="stats-grid">
-    {stats.map((stat) => {
+    {stats.map((stat, i) => {
       const gem = resolveGem(stat.color)
-      const accentStyle = gem ? `--stat-accent: var(--${gem});` : undefined
+      const accentParts = []
+      if (gem) accentParts.push(`--stat-accent: var(--${gem})`)
+      accentParts.push(`--reveal-delay: ${i * 80}ms`)
+      const accentStyle = accentParts.join('; ')
       return (
-        <div class="stat-item" data-gem={gem} style={accentStyle}>
+        <div class="stat-item u-reveal" data-gem={gem} style={accentStyle}>
           <span class="stat-value">{stat.value}</span>
           <span class="stat-label">{stat.label}</span>
         </div>

@@ -501,6 +501,7 @@
         text-decoration: var(--0td, inherit);
         font-size: 0.933em;
     }
+
     :root:not([data-theme='dark'])
         .expressive-code
         .ec-line
@@ -1079,7 +1080,6 @@
     }
     .sl-link-button.primary:hover {
         color: var(--primary-foreground);
-        box-shadow: 0 6px 22px -8px color-mix(in oklab, var(--amethyst) 70%, transparent);
     }
 
     /* Secondary CTA — diamond-tinted, same tilt/light system, lighter
@@ -1130,7 +1130,6 @@
 
     .sl-link-button.secondary:hover {
         color: var(--foreground);
-        box-shadow: 0 6px 22px -8px color-mix(in oklab, var(--diamond) 50%, transparent);
     }
     /* Make CTA buttons participate in the .u-light pointer-tracking via
      * data-light registration. We set the data attribute through an attr
@@ -1433,6 +1432,7 @@
         translate: 0 16px;
         transition: opacity 320ms cubic-bezier(0.2, 0, 0.1, 1),
             translate 320ms cubic-bezier(0.2, 0, 0.1, 1);
+        transition-delay: var(--reveal-delay, 0ms);
         will-change: opacity, translate;
     }
     .u-reveal[data-revealed],
@@ -1447,6 +1447,7 @@
                 opacity: 0;
                 translate: 0 16px;
                 animation: u-reveal-in 360ms cubic-bezier(0.2, 0, 0.1, 1) both;
+                animation-delay: var(--reveal-delay, 0ms);
                 animation-timeline: view();
                 animation-range: entry 0% cover 35%;
                 transition: none;

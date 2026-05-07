@@ -185,8 +185,9 @@ const posterPngHref = `${baseURL}/captures/${slug}.png`
     inset: 0;
     border-radius: inherit;
     padding: 1.5px;
+    /* Glint on SAME side as cursor — see FeatureCard.card-edge::before */
     background: conic-gradient(
-      from calc(var(--light-angle, 135deg) - 105deg),
+      from calc(var(--light-angle, 135deg) - 22deg),
       transparent 0deg,
       color-mix(in oklab, white 70%, var(--tile-accent)) 22deg,
       transparent 45deg,
@@ -264,6 +265,14 @@ const posterPngHref = `${baseURL}/captures/${slug}.png`
         var(--background) 100%
       );
     overflow: hidden;
+    /* Round only the TOP corners of the media area — matches the
+     * tile's top while leaving a hard bottom edge where the body's
+     * info text starts. clip-path enforces this even under the
+     * parent's transformed 3D context (.u-light), so hover-state
+     * video swaps stay inside the rounded top corners and don't
+     * bleed past during the opacity flip. */
+    border-radius: calc(var(--radius) + 0.25rem) calc(var(--radius) + 0.25rem) 0 0;
+    clip-path: inset(0 round calc(var(--radius) + 0.25rem) calc(var(--radius) + 0.25rem) 0 0);
   }
 
   .gallery-tile-poster,

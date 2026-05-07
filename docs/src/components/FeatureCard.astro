@@ -149,9 +149,13 @@ const accentStyle = resolvedGem ? `--card-accent: var(--${resolvedGem});` : unde
     mask-composite: exclude;
   }
 
-  /* Cursor hotspot: 30°-wide bright peak at --light-angle, riding the
-   * same ring mask. mix-blend-mode: screen lifts the color into a
-   * glint above the base rim. Opacity tracks --mouse-active. */
+  /* Cursor hotspot: 45°-wide bright peak centered AT --light-angle
+   * (the cursor's angular position from card center). mix-blend-mode:
+   * screen lifts the color into a glint above the base rim. The
+   * `from` offset is `--light-angle - 22deg` so that the gradient's
+   * peak (22deg into the cycle) lands exactly at light-angle — i.e.
+   * the rim glint is on the SAME side as the cursor, not opposite.
+   * Opacity tracks --mouse-active. */
   .feature-card > .card-edge::before {
     content: '';
     position: absolute;
@@ -159,7 +163,7 @@ const accentStyle = resolvedGem ? `--card-accent: var(--${resolvedGem});` : unde
     border-radius: inherit;
     padding: 1.5px;
     background: conic-gradient(
-      from calc(var(--light-angle, 135deg) - 105deg),
+      from calc(var(--light-angle, 135deg) - 22deg),
       transparent 0deg,
       color-mix(in oklab, white 70%, var(--card-accent, var(--primary))) 22deg,
       transparent 45deg,
@@ -238,12 +242,10 @@ const accentStyle = resolvedGem ? `--card-accent: var(--${resolvedGem});` : unde
   .feature-card[data-gem='salmon'] { --card-soft: var(--salmon-soft); }
   .feature-card[data-gem='turquoize'] { --card-soft: var(--turquoize-soft); }
 
-  /* No `transform` override on hover — that would clobber the .u-light
-   * primitive's perspective/rotateX/rotateY tilt. Box-shadow alone gives
-   * the elevated feel; the 3D tilt provides the cursor-reactive motion. */
-  .feature-card:hover {
-    box-shadow: 0 8px 24px -12px color-mix(in oklab, var(--card-accent, var(--primary)) 30%, transparent);
-  }
+  /* No transform override on hover — that would clobber .u-light's
+   * perspective tilt. The foil rim (.card-edge + ::before glint +
+   * ::after star flare) carries the cursor-reactive feedback; we
+   * don't need a gem-tinted halo lift on top of it. */
 
   /* Header row — icon + title sit inline, vertically centered. Replaces
    * the previous stacked icon-on-top-of-title layout so the title can
