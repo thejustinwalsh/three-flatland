@@ -154,18 +154,22 @@ export function gemClearColor(gem: Gem): Color {
 }
 
 /**
- * Dark-gem fog/distance color. 10% gem mixed with pure black in OKLab
- * — barely-perceptible gem tint that works as a fog color or scene
- * backdrop for 3D demos (skia, etc.) where a full gemClearColor reads
- * as flat gem at the horizon. Use for `scene.fog` / `scene.background`
- * / renderer clear when you want the distance to fade dark with just
- * a hint of identity.
+ * Dark-gem fog/distance color. Linear-RGB lerp from the page background
+ * (BG_HEX, ≈ #111418) toward the gem at 0.12. Sits between pure black
+ * and `gemClearColor` (25%) — recognizably tinted but firmly in the
+ * dark moody zone. Use for `scene.fog` / `scene.background` / renderer
+ * clear on 3D demos (skia, etc.) where the horizon should fade dark
+ * with a hint of identity.
+ *
+ * Linear-RGB lerp rather than OKLab because OKLab at low proportions
+ * (e.g. 10% of pink's L=0.72) gives L≈0.07 which displays as near-
+ * black — the perceptual uniformity collapses very quickly toward
+ * zero. Linear lerp keeps the result recognizable.
  */
 export function gemFogColor(gem: Gem): Color {
-  const [r, g, b] = oklabMix(GEM_HEX[gem], 0x000000, 0.1)
-  const hex =
-    (Math.round(r * 255) << 16) | (Math.round(g * 255) << 8) | Math.round(b * 255)
-  return new Color(hex)
+  const gemColor = new Color(GEM_HEX[gem])
+  const bg = new Color(BG_HEX)
+  return new Color().lerpColors(bg, gemColor, 0.12)
 }
 
 /**

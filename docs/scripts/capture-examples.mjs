@@ -29,6 +29,7 @@ import { mkdir, writeFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { spawn } from 'node:child_process'
 import sharp from 'sharp'
 
 const __filename = fileURLToPath(import.meta.url)
@@ -76,20 +77,113 @@ if (targets.length === 0) {
   process.exit(1)
 }
 
-async function ensureServer() {
+/**
+ * Spawn the examples MFE dev server as a child of this script and tear
+ * it down on completion (or failure / Ctrl-C). Avoids leaking a vite
+ * process across capture runs — previously the script assumed an
+ * already-running `pnpm dev`, which often left stale servers behind
+ * and caused mysterious "old content" loads on subsequent runs.
+ *
+ * If a server is already listening on PORT (e.g. user has `pnpm dev`
+ * up in another terminal), reuse it and skip the spawn — running
+ * captures should not interfere with their workflow.
+ */
+const EXAMPLES_PKG_DIR = resolve(__dirname, '..', '..', 'examples')
+const SERVER_READY_TIMEOUT_MS = 60_000
+const SERVER_POLL_INTERVAL_MS = 500
+let spawnedServer = null
+
+async function probeServer() {
   try {
-    const res = await fetch(`${BASE_URL}/three/basic-sprite/`)
-    if (!res.ok) throw new Error(`status ${res.status}`)
-  } catch (err) {
-    console.error(
-      `[capture] examples dev server not reachable at ${BASE_URL}.\n` +
-        `Start it with \`pnpm --filter=examples dev\` (or root \`pnpm dev\`),\n` +
-        `then re-run this script.`
-    )
-    console.error(`         underlying error: ${(err && err.message) || err}`)
-    process.exit(1)
+    const res = await fetch(`${BASE_URL}/three/basic-sprite/`, {
+      signal: AbortSignal.timeout(2_000),
+    })
+    return res.ok
+  } catch {
+    return false
   }
 }
+
+async function ensureServer() {
+  if (await probeServer()) {
+    process.stdout.write(`[capture] reusing existing server at ${BASE_URL}\n`)
+    return
+  }
+  process.stdout.write(`[capture] spawning examples dev server on ${PORT}...\n`)
+  const child = spawn('pnpm', ['--filter=examples', 'dev'], {
+    cwd: resolve(__dirname, '..', '..'),
+    stdio: ['ignore', 'pipe', 'pipe'],
+    detached: false,
+  })
+  spawnedServer = child
+  // Pipe child output through with a prefix so server logs are visible
+  // but distinguishable from capture output.
+  const pipe = (stream, label) => {
+    stream.on('data', (chunk) => {
+      const text = chunk.toString().replace(/\n$/, '')
+      if (text.length > 0) process.stdout.write(`[${label}] ${text}\n`)
+    })
+  }
+  pipe(child.stdout, 'examples')
+  pipe(child.stderr, 'examples!')
+  child.on('exit', (code, signal) => {
+    if (spawnedServer) {
+      // Crashed before our explicit teardown.
+      console.error(`[capture] examples server exited unexpectedly (code=${code} signal=${signal})`)
+    }
+    spawnedServer = null
+  })
+  // Poll until the server responds.
+  const deadline = Date.now() + SERVER_READY_TIMEOUT_MS
+  while (Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, SERVER_POLL_INTERVAL_MS))
+    if (await probeServer()) {
+      process.stdout.write(`[capture] server ready at ${BASE_URL}\n`)
+      return
+    }
+  }
+  await teardownServer()
+  console.error(`[capture] examples server did not become ready within ${SERVER_READY_TIMEOUT_MS}ms`)
+  process.exit(1)
+}
+
+async function teardownServer() {
+  if (!spawnedServer) return
+  const child = spawnedServer
+  spawnedServer = null
+  process.stdout.write(`[capture] tearing down examples server (pid=${child.pid})...\n`)
+  // Send SIGTERM to the pnpm wrapper; vite is its child and exits with it.
+  // If the tree doesn't exit within 5s, fall back to SIGKILL.
+  child.kill('SIGTERM')
+  await new Promise((res) => {
+    let settled = false
+    child.once('exit', () => {
+      if (settled) return
+      settled = true
+      res()
+    })
+    setTimeout(() => {
+      if (settled) return
+      settled = true
+      try {
+        child.kill('SIGKILL')
+      } catch {}
+      res()
+    }, 5_000)
+  })
+}
+
+// Always tear down on signal / unhandled exit, so a Ctrl-C doesn't
+// orphan the server and leave port 5174 stuck in TIME_WAIT.
+const teardownAndExit = (code) => {
+  teardownServer().finally(() => process.exit(code))
+}
+process.on('SIGINT', () => teardownAndExit(130))
+process.on('SIGTERM', () => teardownAndExit(143))
+process.on('uncaughtException', (err) => {
+  console.error('[capture] uncaught exception:', err)
+  teardownAndExit(1)
+})
 
 await ensureServer()
 if (!existsSync(OUT_DIR)) await mkdir(OUT_DIR, { recursive: true })
@@ -228,6 +322,11 @@ await browser.close()
 
 console.log(`\n[capture] done — ${totalOk} ok, ${totalFail} failed (out of ${targets.length}).`)
 console.log(`[capture] output: ${OUT_DIR}`)
+
+// Tear down the spawned examples server (no-op if we reused an
+// existing one) before exiting so capture runs are self-contained
+// and don't leak vite processes between invocations.
+await teardownServer()
 process.exit(totalFail === 0 ? 0 : 1)
 
 async function fileSize(path) {
