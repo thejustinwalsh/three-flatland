@@ -109,16 +109,30 @@ function resolveGem(c: Feature['color'], idx: number): Gem {
     background-position: 0 0;
     border-radius: 0;
   }
-  /* Disable the .u-light gem-faceted bg pseudo on FeatureList rows.
-   * The global scene-angle was rotating the gradient across the full
-   * row width, which read as wonky on a 1-row strip. The deliberate
-   * left-rule background-image above carries the row's color
-   * identity; cursor tracking via .u-light stays active so the
-   * holographic icon treatment still receives --light-angle / --mx
-   * / --my / --mouse-active vars. */
+  /* FeatureList uses a heavily-damped scene-angle on its .u-light
+   * background pseudo. The default .u-light::before reads
+   * --effective-light-angle (which arcs from 30°-150° via
+   * --scene-angle); on a thin 1-row strip, full-arc rotation flipped
+   * the gradient across the row each cycle. Bias to 90deg (light
+   * from left) with only 12% scene-angle drift so the lit edge stays
+   * heavily on the left where the gem rule lives, with just enough
+   * subtle motion to read alive. Override the background entirely so
+   * we can use --feature-accent (not --card-accent) and skip the
+   * displacement filter (visible at this row scale). */
   .feature-list .feature-item.u-light::before,
+  .feature-list .feature-item[data-light]::before {
+    background: linear-gradient(
+      calc(90deg + (var(--scene-angle, 135deg) - 90deg) * 0.12),
+      color-mix(in oklab, var(--feature-accent) 32%, transparent) 0%,
+      color-mix(in oklab, var(--feature-accent) 14%, transparent) 35%,
+      transparent 65%,
+      transparent 100%
+    );
+    filter: none;
+  }
+  /* Drop the cursor-radial hotspot — too busy on a thin row. The
+   * holographic icon's filter already responds to cursor presence. */
   .feature-list .feature-item.u-light::after,
-  .feature-list .feature-item[data-light]::before,
   .feature-list .feature-item[data-light]::after {
     display: none;
   }

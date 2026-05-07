@@ -23,7 +23,6 @@
 import StarlightHead from '@astrojs/starlight/components/Head.astro';
 import VtBotBase from 'astro-vtbot/components/starlight/Base.astro';
 import PageOrder from 'astro-vtbot/components/starlight/PageOrder.astro';
-import ProgressBar from 'astro-vtbot/components/ProgressBar.astro';
 ---
 
 {/*
@@ -56,26 +55,63 @@ import ProgressBar from 'astro-vtbot/components/ProgressBar.astro';
 <StarlightHead {...Astro.props}><slot /></StarlightHead>
 <VtBotBase retainCurrentPageMarker />
 <PageOrder />
-<ProgressBar />
 
+{/* Custom top-edge progress bar — replaces vtbot's <ProgressBar/>
+    which depended on an unpkg-hosted swup plugin (intermittent
+    visibility, runtime fetch failures). Pure CSS animation driven
+    by Astro's view-transition lifecycle events. */}
+<div id="tf-progress" aria-hidden="true"></div>
 <style is:global>
-  /* swup-progress-bar: thin top-edge gem-tone gradient — emerald
-     and gold so it doesn't sit in the cool-blue / purple band that
-     already saturates the rest of the chrome (header, sidebar,
-     active markers). 3px high so it reads at a glance during nav,
-     z-index above any view-transition snapshots so flashes can't
-     hide it. */
-  .swup-progress-bar {
+  #tf-progress {
+    position: fixed;
+    top: 0;
+    left: 0;
+    height: 3px;
+    width: 0;
+    z-index: 9999;
     background: linear-gradient(
       90deg,
       var(--emerald),
       var(--gold),
       var(--emerald)
     );
-    height: 3px;
-    z-index: 9999;
+    transition: width 200ms ease-out, opacity 250ms ease;
+    opacity: 0;
+    pointer-events: none;
+  }
+  #tf-progress[data-state='loading'] {
+    width: 92%;
+    opacity: 1;
+    transition: width 9s cubic-bezier(0.05, 0.4, 0.4, 0.95), opacity 100ms ease;
+  }
+  #tf-progress[data-state='done'] {
+    width: 100%;
+    opacity: 0;
+    transition: width 200ms ease-out, opacity 350ms ease;
   }
 </style>
+<script>
+  // Custom progress-bar driver — CSS does the visual; this just flips
+  // the data-state at the right view-transition lifecycle moments.
+  // before-preparation: fires before new page fetched → start
+  // after-swap:        fires after DOM committed → finish
+  // Idempotent across navigation; reattaches if the bar element is
+  // ever swapped out (it shouldn't be — sits at end of body).
+  const bar = () => document.getElementById('tf-progress');
+  document.addEventListener('astro:before-preparation', () => {
+    const el = bar();
+    if (!el) return;
+    el.dataset.state = '';
+    void el.offsetWidth; // force reflow so the reset takes
+    el.dataset.state = 'loading';
+  });
+  document.addEventListener('astro:after-swap', () => {
+    const el = bar();
+    if (!el) return;
+    el.dataset.state = 'done';
+    setTimeout(() => { if (el.dataset.state === 'done') el.dataset.state = ''; }, 400);
+  });
+</script>
 
 {/* Motion-as-craft runtime — drives `--mx`/`--my`/`--tilt-x`/`--tilt-y`
     on `.u-light`/`.u-holo` surfaces via pointer + perlin-noise loop, and

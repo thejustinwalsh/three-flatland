@@ -146,6 +146,28 @@
      * header nav, pagination, TOC, footer links); JetBrains Mono is the
      * prose face inside markdown; Commit Mono is for code; Silkscreen is
      * the wordmark only. (See Design Context > Substrate > Typography.) */
+    /* html element gets the same bg as body so view-transitions
+     * don't reveal the browser-default white during the cross-fade
+     * (the html element shows through under the
+     * `::view-transition-old(root)` / `::view-transition-new(root)`
+     * pseudo snapshots — without an explicit bg, that's white in
+     * dark mode = a full-screen white flash on every nav).
+     *
+     * Hex fallback ensures the bg lands even before custom-property
+     * tokens resolve at first paint. `--background` is defined on
+     * `:root[data-theme='dark']` (and `:root[data-theme='light']`),
+     * so before the StarlightThemeProvider script applies the data
+     * attribute, an unfallback'd `var(--background)` would resolve
+     * empty (= transparent = browser white). */
+    html {
+        background-color: #111418;
+        background-color: var(--background, #111418);
+    }
+    :root[data-theme='light'] html,
+    html:has(:root[data-theme='light']) {
+        background-color: #f6f5f1;
+        background-color: var(--background, #f6f5f1);
+    }
     body {
         font-family: 'Public Sans', system-ui, sans-serif;
         font-weight: 400;

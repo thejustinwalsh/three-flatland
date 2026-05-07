@@ -298,14 +298,35 @@ function initMotion() {
 /**
  * Sidebar collapsable group <details> state — persisted across page
  * navigations via localStorage. Astro view-transitions preserve the
- * sidebar DOM (we set vtbot's `replaceSidebarContent: false`), but
- * Starlight server-side renders each page with `<details open={!entry.collapsed}>`,
- * which can clobber user-toggled state when the new page's sidebar
- * markup arrives. localStorage gives us a per-group source of truth
- * that survives both navigation and full reload.
+ * sidebar DOM, but Starlight server-side renders each page with
+ * `<details open={!entry.collapsed}>`, which clobbers user-toggled
+ * state when the new page's sidebar markup arrives. localStorage gives
+ * us a per-group source of truth that survives both navigation and
+ * full reload.
+ *
+ * Pre-empt the flash: mutate the NEW document's <details> open
+ * attributes BEFORE Astro commits the swap (astro:before-swap fires
+ * after the new doc is parsed but before it's swapped into place).
+ * This way the new DOM paints with the user's preferred state, never
+ * with the SSR-rendered default.
  */
+function applyStoredDetailsState(root: Document | HTMLElement = document) {
+    if (typeof window === 'undefined' || !('localStorage' in window)) return
+    const detailsEls = root.querySelectorAll<HTMLDetailsElement>(
+        'details.container-sidebar-entry.collapsable',
+    )
+    for (const d of detailsEls) {
+        const label = d.querySelector('.entry-title')?.textContent?.trim()
+        if (!label) continue
+        const key = `tf:sidebar-open:${label}`
+        const stored = localStorage.getItem(key)
+        if (stored !== null) d.open = stored === 'true'
+    }
+}
+
 function initSidebarDetailsPersistence() {
     if (typeof window === 'undefined' || !('localStorage' in window)) return
+    applyStoredDetailsState(document)
     const detailsEls = document.querySelectorAll<HTMLDetailsElement>(
         'details.container-sidebar-entry.collapsable',
     )
@@ -313,11 +334,6 @@ function initSidebarDetailsPersistence() {
         const label = d.querySelector('.entry-title')?.textContent?.trim()
         if (!label) continue
         const key = `tf:sidebar-open:${label}`
-        // Restore stored state on page-load. Default-open groups stay
-        // open if no key exists (preserves Starlight's auto-open of
-        // the active page's ancestor chain).
-        const stored = localStorage.getItem(key)
-        if (stored !== null) d.open = stored === 'true'
         // Persist on user toggle. `toggle` fires after the open state
         // flips, so reading d.open here gives us the new value.
         d.addEventListener('toggle', () => {
@@ -371,5 +387,12 @@ if (typeof document !== 'undefined') {
         // Drop stale targets and re-scan; old DOM nodes were swapped out.
         targets.length = 0
         initMotion()
+    })
+    // Pre-empt the sidebar <details> state flash: apply stored state
+    // to the about-to-be-swapped document BEFORE Astro commits the
+    // swap, so the new DOM paints in the user's preferred state.
+    document.addEventListener('astro:before-swap', (e) => {
+        const ev = e as Event & { newDocument?: Document }
+        if (ev.newDocument) applyStoredDetailsState(ev.newDocument)
     })
 }
