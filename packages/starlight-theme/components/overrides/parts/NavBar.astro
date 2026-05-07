@@ -108,8 +108,28 @@ export function getTranslation(
                     ? nav.label
                     : getTranslation(nav.label, nav.link, 'label');
 
+            // Per-link gem accent — each top-nav section carries its
+            // own gem so hover + active states match the section's
+            // identity (Examples = diamond/blue, Showcases = ruby/red,
+            // Docs claims amethyst as the "primary" section).
+            // Falls back to diamond for any future link.
+            const navGem =
+                linkFirstSegment === 'examples'
+                    ? 'diamond'
+                    : linkFirstSegment === 'showcases'
+                      ? 'ruby'
+                      : linkFirstSegment === 'getting-started'
+                        ? 'amethyst'
+                        : 'diamond';
+            const navStyle = `--nav-gem: var(--${navGem});`;
+
             return (
-                <a class:list={[{ active: isActive }]} href={link} {...nav.attrs}>
+                <a
+                    class:list={[{ active: isActive }]}
+                    href={link}
+                    style={navStyle}
+                    {...nav.attrs}
+                >
                     {label}
                     {nav.badge && <span class="badge">{nav.badge}</span>}
                 </a>
@@ -148,21 +168,22 @@ export function getTranslation(
         color: var(--foreground);
     }
 
+    /* Hover + active states pull from --nav-gem (set inline per link
+     * in the JSX above). Each top-nav section carries its own gem so
+     * the chrome reads as section-identity, not generic accent.
+     * Default fallback is diamond for any unknown future link. */
     .nav-bar a:hover {
-        color: var(--accent-foreground);
-        background-color: color-mix(in oklab, var(--accent) 80%, transparent);
+        color: color-mix(in oklab, var(--nav-gem, var(--diamond)) 70%, var(--foreground));
+        background-color: color-mix(in oklab, var(--nav-gem, var(--diamond)) 14%, transparent);
     }
 
-    /* Active nav item — diamond gem accent (compass / "you are here" gem,
-     * matches the TOC + sidebar active-marker treatment). Subtle background
-     * so the active state reads through hover transitions cleanly. */
     .nav-bar a.active {
-        color: color-mix(in oklab, var(--diamond) 70%, var(--foreground));
-        background-color: color-mix(in oklab, var(--diamond) 12%, transparent);
+        color: color-mix(in oklab, var(--nav-gem, var(--diamond)) 70%, var(--foreground));
+        background-color: color-mix(in oklab, var(--nav-gem, var(--diamond)) 12%, transparent);
         font-weight: 600;
     }
     .nav-bar a.active:hover {
-        background-color: color-mix(in oklab, var(--diamond) 20%, transparent);
+        background-color: color-mix(in oklab, var(--nav-gem, var(--diamond)) 22%, transparent);
     }
 
     .badge {
