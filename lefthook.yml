@@ -21,6 +21,14 @@ pre-commit:
       glob: "{packages/three-flatland/src/index.ts,packages/three-flatland/src/*/index.ts,packages/skia/src/ts/three/index.ts}"
       run: pnpm exec tsx scripts/sync-react-subpaths.ts
       stage_fixed: true
+    sync-examples:
+      # Re-sync gem-background helpers + per-example gem.ts whenever the
+      # source-of-truth files change. Mirrors sync-pack-full pattern: an
+      # explicit `git add` because the command writes to many files
+      # outside the staged glob.
+      glob: "{examples/_shared/gems.config.ts,examples/three/template/GemBackground.ts,examples/react/template/GemBackground.tsx}"
+      run: pnpm sync:examples && git add examples docs/src/data/example-gems.ts
+      stage_fixed: true
     check-skia-pin:
       glob: "packages/skia/third_party/skia"
       run: pnpm exec tsx scripts/check-skia-pin.ts

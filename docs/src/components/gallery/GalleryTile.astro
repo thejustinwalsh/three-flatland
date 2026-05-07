@@ -44,7 +44,14 @@ interface Props {
   aspect?: string
 }
 
-const { slug, title, description, surface, color = 'diamond', aspect = '4 / 3' } = Astro.props
+// Default gem comes from the generated `example-gems.ts` (sync'd from
+// `examples/_shared/gems.config.ts`). Explicit `color` prop overrides
+// the lookup — useful for showcases or one-off tiles whose slug isn't
+// in the examples table.
+import { EXAMPLE_GEMS } from '../../data/example-gems'
+
+const { slug, title, description, surface, color, aspect = '4 / 3' } = Astro.props
+const resolvedColor = color ?? EXAMPLE_GEMS[slug] ?? 'diamond'
 
 const baseURL = (import.meta.env.BASE_URL || '/').replace(/\/$/, '')
 const detailHref = `${baseURL}/${surface}/${slug}/`
@@ -58,10 +65,10 @@ const posterPngHref = `${baseURL}/captures/${slug}.png`
 <a
   href={detailHref}
   class:list={['gallery-tile', 'not-content']}
-  data-gem={color}
+  data-gem={resolvedColor}
   data-slug={slug}
   style={{
-    '--tile-accent': `var(--${color})`,
+    '--tile-accent': `var(--${resolvedColor})`,
     '--tile-aspect': aspect,
     'view-transition-name': `tile-${surface}-${slug}`,
   }}
