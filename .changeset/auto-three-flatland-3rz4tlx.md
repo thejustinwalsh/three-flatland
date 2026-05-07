@@ -5,18 +5,18 @@
 > Branch: docs-refresh-foundation
 > PR: https://github.com/thejustinwalsh/three-flatland/pull/33
 
-## Changes
+## Docs — StatsBanner gem accents
 
-**StatsBanner**
+**`StatsBanner`** (`docs/src/components/StatsBanner.astro`)
 
-- Re-enabled the previously deprecated `color` prop on `StatItem`; stat values now render in their assigned gem accent instead of a flat `--foreground`
-- Added `legacyToGem` mapping so conventional color names (`cyan`, `blue`, `green`, `orange`, `red`, `yellow`, `purple`) resolve to the gem palette without breaking existing MDX call sites
-- Stat value text is now `color-mix(gem 65%, foreground 35%)` for legibility, plus a soft gem-tinted `text-shadow` glow
-- Each stat item gets a thin hairline underline via a `background-image` gradient that fades from the gem accent to transparent — the four stats read as a colored chord across the row
-- `--stat-accent` CSS custom property and `data-gem` attribute set inline per stat item for downstream styling hooks
+- Re-enabled the `color` prop on each stat item — was previously deprecated and silently ignored, causing all four stats to render in `--foreground`
+- `color` now accepts any gem name (`diamond`, `gold`, `ruby`, `amethyst`, …) or a legacy conventional color (`cyan`, `blue`, `green`, etc.) mapped through the shared `legacyToGem` table
+- Each stat item sets a scoped `--stat-accent` CSS custom property at render time from the resolved gem token
+- Stat value text uses a `color-mix` of 65% gem + 35% foreground, keeping values legible while visually distinct; a soft `text-shadow` glow reinforces the gem tint
+- Each stat carries a gem-tinted hairline underline (1.5 px linear gradient fading right to transparent) so the row of stats reads as a colored chord rather than a flat band
 
-**README**
+**`README.md`** (`packages/three-flatland/README.md`)
 
-- Renamed section heading from "Why three-flatland?" to "Why Flatland?" for consistency with the visual brand
+- Renamed section heading "Why three-flatland?" → "Why Flatland?" to align with brand naming conventions
 
-Restores gem-color differentiation to the docs landing page stats strip and aligns the README section heading with the established brand name.
+StatsBanner now correctly applies the gem color passed in MDX, restoring the intended visual taxonomy across the docs landing page stats row.
