@@ -88,6 +88,12 @@ function resolveGem(c: Feature['color'], idx: number): Gem {
 
   .feature-item {
     --feature-accent: var(--diamond);
+    /* The .u-light pseudo-element gem facet reads --card-accent. Without
+     * this alias, every row's bg falls back to --primary (amethyst) since
+     * the only per-gem override in base.css is for `[data-gem='gold']`.
+     * Aliasing --card-accent to the row's gem makes the gem-faceted
+     * gradient track each row's accent. */
+    --card-accent: var(--feature-accent);
     display: grid;
     grid-template-columns: 14rem 1fr;
     align-items: center;

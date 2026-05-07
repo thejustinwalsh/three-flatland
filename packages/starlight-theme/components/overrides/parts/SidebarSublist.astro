@@ -120,11 +120,16 @@ function isCollapsableGroup(label: string, collapsed: boolean, forced: boolean):
     }
     /* Continuous indent guide — one absolutely-positioned line per
      * collapsable folder, spanning the full vertical range of its
-     * children. Aligned with the chevron's center (chevron is 0.75rem
-     * wide, so center sits at 0.375rem from the row's left edge).
-     * Single element per group ⇒ no gaps where individual sibling
-     * borders used to break. */
-    .container-sidebar-entry.collapsable > .container-group-link::before {
+     * children. Aligned with the chevron's center (0.375rem). Single
+     * element per group ⇒ no gaps where individual sibling borders
+     * used to break.
+     *
+     * `:has(.container-sidebar-entry)` scopes the guide to folders that
+     * contain MORE nested folders. The deepest level (entry-links only,
+     * no sub-folders) skips the guide — at that level, the chevron of
+     * the parent folder + the entry's own active/hover pip already
+     * communicate the structure; an extra guide reads as redundant. */
+    .container-sidebar-entry.collapsable > .container-group-link:has(.container-sidebar-entry)::before {
         content: '';
         position: absolute;
         top: 0;

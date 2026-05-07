@@ -21,13 +21,11 @@ const isLanding = path === base || path === '';
     {isLanding && (
         <aside class="alpha-ribbon" aria-label="Early alpha release">
             <a class="alpha-ribbon-tape" href="https://github.com/thejustinwalsh/three-flatland/issues">
-                {/* Inline margin-left avoids a FOUC text-jump — the ribbon
-                    paints from cached CSS before the .alpha-ribbon-text
-                    rule resolves, so the text would briefly render at
-                    margin-left: 0 then snap to its padded position.
-                    Mobile margin-left is overridden by the @media rule
-                    in the <style> block via !important. */}
-                <span class="alpha-ribbon-text" style="margin-left: 5.5rem">Early Alpha</span>
+                {/* Square 45° ribbon: tape spans the wrapper's diagonal
+                    exactly, so `text-align: center` on the tape lands
+                    the text at the visible center of the diagonal —
+                    no margin offset needed. */}
+                <span class="alpha-ribbon-text">Early Alpha</span>
             </a>
         </aside>
     )}
@@ -75,31 +73,30 @@ const isLanding = path === base || path === '';
         position: fixed;
         top: 0;
         left: 0;
-        /* Wider non-square wrapper so the stripe spans further. */
-        width: 36rem;
-        height: 13rem;
+        /* Strict 45° square canvas — sticker placed flat on the
+         * corner. Allowed to overlap the flatland wordmark
+         * underneath (z-index 70 is above the header at 50). */
+        width: 12rem;
+        height: 12rem;
         pointer-events: none;
-        /* Above the header (z:50) so the FL+FLATLAND logo passes
-         * BEHIND the ribbon. Hero h1 in our face below — the wordmark
-         * being clipped at the top doesn't matter. */
         z-index: 70;
         overflow: hidden;
     }
-    /* Stripe enters at the LEFT edge (lower portion) and runs UP-RIGHT
-     * across the wrapper, terminating at the TOP edge near the right
-     * side. Negative rotation = / direction (text reads bottom-left
-     * to upper-right). Wider tape so the diagonal extends well past
-     * the wrapper corners — overflow:hidden clips to the visible
-     * stripe shape. */
+    /* Tape: rotated -45° so it reads bottom-left to upper-right (`/`).
+     * Width spans well past the wrapper's 12rem diagonal (≈ 17rem)
+     * plus overrun on each side that overflow:hidden clips. Tape
+     * vertical center sits at the wrapper's diagonal midpoint (6, 6)
+     * so `text-align: center` lands the text exactly on the visible
+     * ribbon stripe's center. */
     .alpha-ribbon-tape {
         position: absolute;
-        top: 5.5rem;
-        left: -15rem;
-        width: 46rem;
+        top: 4.9rem;
+        left: -4.5rem;
+        width: 21rem;
         padding: 0.55rem 0;
         text-align: center;
         text-decoration: none;
-        transform: rotate(-30deg);
+        transform: rotate(-45deg);
         transform-origin: 50% 50%;
         pointer-events: auto;
         cursor: pointer;
@@ -160,34 +157,29 @@ const isLanding = path === base || path === '';
         z-index: 1;
         text-shadow: 0 1px 0 color-mix(in oklab, var(--gold-high) 90%, white);
     }
-    /* Mobile breakpoint — scale the tape geometry down proportionally
-     * to the wrapper. Desktop wrapper is 36×13 with tape positioned
-     * top:5.5 left:-15 width:46 (text padded margin-left:5.5).
-     * Mobile wrapper is 22×9 — scale ratios ~0.611 horizontal, ~0.692
-     * vertical. Rounded for clean rems. */
+    /* Mobile breakpoint — scale the square wrapper proportionally;
+     * tape geometry inherits proportions because both width and
+     * positioning scale by the same factor. */
     @media (max-width: 50rem) {
         .alpha-ribbon {
-            width: 22rem;
-            height: 9rem;
+            width: 8rem;
+            height: 8rem;
         }
         .alpha-ribbon-tape {
-            top: 3.8rem;
-            left: -9rem;
-            width: 28rem;
+            top: 3.2rem;
+            left: -3rem;
+            width: 14rem;
             font-size: 0.65rem;
-        }
-        .alpha-ribbon-text {
-            margin-left: 3.4rem !important;
         }
     }
     .alpha-ribbon-tape:hover {
-        transform: rotate(-30deg) scale(1.03);
+        transform: rotate(-45deg) scale(1.03);
         filter: saturate(1.1);
     }
     @media (prefers-reduced-motion: reduce) {
         .alpha-ribbon-tape,
         .alpha-ribbon-tape:hover {
-            transform: rotate(-30deg);
+            transform: rotate(-45deg);
             transition: none;
         }
     }
@@ -224,6 +216,14 @@ const isLanding = path === base || path === '';
             width: 100%;
             background: var(--background);
             transition: background-color 200ms ease, backdrop-filter 200ms ease;
+            /* Stable view-transition pair across page swaps. Without this
+             * the browser treats landing's <header> and docs's <header>
+             * as different elements and cross-fades them, which causes
+             * a visible flash where the transparent-on-landing bg
+             * overlaps the solid-on-docs bg. With the same name on both
+             * pages, the browser pair-morphs the element — its bounding
+             * box and bg interpolate smoothly. */
+            view-transition-name: site-header;
 
             .container-wrapper {
                 padding-inline: calc(var(--spacing) * 6);
