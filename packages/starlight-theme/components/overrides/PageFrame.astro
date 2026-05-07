@@ -90,8 +90,8 @@ const isLanding = path === base || path === '';
      * ribbon stripe's center. */
     .alpha-ribbon-tape {
         position: absolute;
-        top: 4.9rem;
-        left: -4.5rem;
+        top: 2.5rem;
+        left: -6rem;
         width: 21rem;
         padding: 0.55rem 0;
         text-align: center;
@@ -156,21 +156,6 @@ const isLanding = path === base || path === '';
         position: relative;
         z-index: 1;
         text-shadow: 0 1px 0 color-mix(in oklab, var(--gold-high) 90%, white);
-    }
-    /* Mobile breakpoint — scale the square wrapper proportionally;
-     * tape geometry inherits proportions because both width and
-     * positioning scale by the same factor. */
-    @media (max-width: 50rem) {
-        .alpha-ribbon {
-            width: 8rem;
-            height: 8rem;
-        }
-        .alpha-ribbon-tape {
-            top: 3.2rem;
-            left: -3rem;
-            width: 14rem;
-            font-size: 0.65rem;
-        }
     }
     .alpha-ribbon-tape:hover {
         transform: rotate(-45deg) scale(1.03);
