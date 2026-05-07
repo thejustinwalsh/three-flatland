@@ -5,16 +5,13 @@
 > Branch: docs-refresh-foundation
 > PR: https://github.com/thejustinwalsh/three-flatland/pull/33
 
-**StatsBanner: gem-accented stat values and underlines**
+### StatsBanner: gem accent on stat values and underlines
 
-- `color` prop on `StatsBanner` stat items is now active — was previously accepted but silently ignored, causing all stats to render in `--foreground`
-- Gem names (`gold`, `ruby`, `emerald`, `diamond`, `amethyst`, `pink`, `salmon`, `turquoize`) resolve directly; legacy color names (`cyan`, `blue`, `green`, `orange`, `red`, `yellow`, `purple`) map to the nearest gem via the shared `legacyToGem` table
-- Each stat item sets `--stat-accent` from its resolved gem; stat value text renders as 65% gem + 35% foreground with a soft gem-tinted `text-shadow` glow
-- A thin hairline underline (1.5px, gem-tinted linear gradient fading to transparent) is drawn beneath each stat via `background-image`, giving the four stats a colored chord appearance
-- `data-gem` attribute set on each stat item for future CSS/JS targeting
+- Re-enabled the previously no-op `color` prop on each `StatItem` — gem names (`gold`, `ruby`, `emerald`, `diamond`, `amethyst`, `pink`, `salmon`, `turquoize`) now take effect
+- Legacy color names (`cyan`, `blue`, `green`, `orange`, `red`, `yellow`, `purple`) are mapped to their gem equivalents via `legacyToGem`, preserving backward-compat with existing MDX call sites
+- Each stat sets `--stat-accent` from its resolved gem; the value text is color-mixed 65% gem / 35% foreground with a soft gem-tinted glow
+- A thin gem-tinted hairline underline (gradient fading right to transparent) is rendered beneath each stat via `background-image`, making the four stats read as a colored chord across the row
+- `data-gem` attribute is set on each stat item for potential CSS / JS targeting
+- README: section heading updated from "Why three-flatland?" to "Why Flatland?" for consistency with the visual brand
 
-**README**
-
-- Section heading updated from "Why three-flatland?" to "Why Flatland?"
-
-`StatsBanner` now renders per-stat gem accents end-to-end; existing MDX call sites with legacy color names continue to work without changes.
+The `StatsBanner` component now visually expresses per-stat gem identity through tinted value text and underline accents, bringing it in line with `FeatureCard` and `ValueProp`.
