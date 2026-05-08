@@ -5,19 +5,22 @@
 > Branch: mini-game-showcase
 > PR: https://github.com/thejustinwalsh/three-flatland/pull/59
 
-## New Features
+### New features
 
-- `usePaneRadioGrid` hook (react subpath) — inline button-bar selector backed by `@tweakpane/plugin-essentials` `radiogrid` blade; deferred disposal and synchronous creation mirror `usePaneButton`/`usePaneInput`
-- `PaneInputOptions` extended with `readonly` and `format` — create readonly monitor inputs with custom formatters from React hooks
+- `usePaneRadioGrid` hook (react subpath) — inline button-bar selector backed by Tweakpane Essentials `radiogrid` blade; active-state affordance suited for scene/mode toggles; deferred disposal + synchronous creation match existing `usePaneButton` / `usePaneInput` pattern
+- `PaneInputOptions.readonly` + `PaneInputOptions.format` — React hook users can create read-only monitors with custom formatters
+- Migrate slug-text examples (React + Three) from Web Awesome to Tweakpane; Settings + Mode folders (collapsed by default), stats monitor, GPU-time support via `trackTimestamp: true`
 
-## Bug Fixes
+### Bug fixes
 
-- z-index: 1000 now applied to the `.tp-dfwv` body-sibling wrapper created by Tweakpane, not the inner pane root; previously had no effect on stacking against other overlays
-- Checkbox hit target fixed: `.tp-ckbv_i` hidden input stretched to the full `var(--cnt-usz)` box; clicks land on the input directly without relying on flaky `<label>` forwarding
-- Checkbox box surface now visible with `rgba(28,40,77,0.6)` background matching other controls; previously blended with the container making the hit target invisible
-- Checkbox check stroke turns accent pink on `:checked` with hover/focus/active state parity
+- Checkbox hit target stretched to full `var(--cnt-usz)` box via explicit `width`/`height` on `.tp-ckbv_i`; input now covers the entire visible area, removing reliance on flaky `<label>→<input>` click forwarding
+- Checkbox box surface styled to `rgba(28,40,77,0.6)` with hover/focus/active parity; check stroke turns accent pink on `:checked`; was previously invisible against container background
+- `z-index: 1000` applied to `.tp-dfwv` body-level wrapper (not inner `pane.element`), correctly placing the pane above other overlays
+- DPR + fullscreen tracking: `useWindowSize` now tracks `{ w, h, dpr }` and subscribes to a `(resolution: Ndppx)` media query, keeping the compare canvas in sync after monitor swaps
+- Fullscreen-return layout: `fullscreenchange` event re-measures immediately + one RAF tick later, catching post-transition layout settles
+- `<DprSync>` component calls `gl.setPixelRatio` whenever tracked DPR changes, keeping the R3F canvas sharp after monitor swaps and OS-zoom transitions
 
-This release improves checkbox reliability across browsers and adds a `usePaneRadioGrid` hook and monitor-formatter support for the React subpath.
+Adds `usePaneRadioGrid`, readonly/format input options, and fixes checkbox hit-target, checkbox styling, pane z-index, and DPR/fullscreen sync.
 
 ### b90509fa9cec75766d96e36d7f3b11126f70839f
 fix: DPR + fullscreen tracking, checkbox hit target
