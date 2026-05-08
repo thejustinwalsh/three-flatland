@@ -156,6 +156,15 @@ export function hazardTickSystem(world: World): void {
   if (!grid) return
   const { cols, rows, tiles, flags } = grid
 
+  // Once the driller enters the free-fall void, nothing that was
+  // already in flight should chase them through it. Despawn all
+  // active hazards (warning + falling) so the void stays gem-only.
+  const drillerVoid = world.queryFirst(Driller)
+  if (drillerVoid && isFreeFall(drillerVoid.get(Driller)!.row)) {
+    world.query(Hazard).forEach((e) => e.destroy())
+    return
+  }
+
   world.query(Hazard).forEach((entity) => {
     const h = entity.get(Hazard)!
 
@@ -266,6 +275,11 @@ export function rockAvalancheSystem(world: World): void {
   const gs = world.get(GameState)
   const grid = world.get(Grid)
   if (!gs || !grid) return
+  // Once the driller enters the free-fall void band, the world above
+  // is "behind" — no in-flight mass should chase them through. Halt
+  // avalanche entirely.
+  const driller0 = world.queryFirst(Driller)
+  if (driller0 && isFreeFall(driller0.get(Driller)!.row)) return
   // Run cluster detection EVERY tick so the shake telegraph updates
   // smoothly. The fall step itself is throttled below so cluster
   // descent reads as a heavy crash, not a single-tick teleport.

@@ -26,6 +26,7 @@ const SCAN_WINDOW_ROWS_ABOVE = 96  // ~3 chunks of history
 const SCAN_WINDOW_ROWS_BELOW = 192 // ~6 chunks streamed-ahead
 import { detectChunks, type SoilChunk, unstableCells } from '../lib/chunk-detect'
 import { markCellAndNeighborsDirty } from './autotile-pass'
+import { isFreeFall } from '../biomes'
 
 /**
  * Connectivity-based sag detection.
@@ -159,6 +160,21 @@ export function tickSagging(world: World): void {
   const { cols, tiles, flags } = grid
   const tick = gs.tick
 
+  // In the void: sag is inert. Despawn any in-progress wobbles and
+  // strip the SAGGING / SHAKING flags so the cells stop signalling.
+  const drillerVoid = world.queryFirst(Driller)
+  if (drillerVoid && isFreeFall(drillerVoid.get(Driller)!.row)) {
+    world.query(SaggingChunk).forEach((entity) => {
+      const sag = entity.get(SaggingChunk)!
+      for (const cell of sag.cells) {
+        const idx = cell.row * cols + cell.col
+        flags[idx] = (flags[idx] ?? 0) & ~FLAG_SAGGING & ~FLAG_SHAKING
+      }
+      entity.destroy()
+    })
+    return
+  }
+
   world.query(SaggingChunk).forEach((entity) => {
     const sag = entity.get(SaggingChunk)!
     if (tick < sag.bracedUntilTick) return
@@ -216,6 +232,14 @@ export function tickFalling(world: World): void {
   const grid = world.get(Grid)
   if (!grid) return
   const { cols, rows, tiles, flags } = grid
+
+  // In the void: in-flight chunks are inert. Despawn so they don't
+  // chase the driller into the gem shower.
+  const drillerVoid = world.queryFirst(Driller)
+  if (drillerVoid && isFreeFall(drillerVoid.get(Driller)!.row)) {
+    world.query(FallingChunk).forEach((e) => e.destroy())
+    return
+  }
 
   world.query(FallingChunk).forEach((entity) => {
     const fall = entity.get(FallingChunk)!
