@@ -3,6 +3,7 @@ import {
   Driller,
   FLAG_AUTOTILE_DIRTY,
   FLAG_DISTURBED,
+  FLAG_FALLING,
   FLAG_SHAKING,
   GameState,
   Grid,
@@ -345,26 +346,43 @@ export function rockAvalancheSystem(world: World): void {
         }
       }
     }
-    if (cells.length < AVALANCHE_THRESHOLD) {
-      // Cluster too small to fall — drop any stale shake bookkeeping
-      // for these cells so a future grow-back-to-4 starts a fresh
-      // telegraph.
+    // Rock codex: a cluster currently in motion (FLAG_FALLING set on
+    // any cell) bypasses the threshold and disturbance gates — once
+    // started, it must resolve fully. This is what makes rocks
+    // dangerous: they don't stop and reconsider mid-fall the way
+    // soil sag does. Cluster shrinks (via break-offs) → still falls.
+    // Cluster splits → each piece keeps falling rigidly.
+    let inMotion = false
+    for (const idx of cells) {
+      if ((flags[idx]! & FLAG_FALLING) !== 0) {
+        inMotion = true
+        break
+      }
+    }
+
+    if (!inMotion && cells.length < AVALANCHE_THRESHOLD) {
+      // Cluster too small to INITIATE a fall — drop any stale shake
+      // bookkeeping so a future grow-back-to-4 starts a fresh
+      // telegraph. (A sub-4 inert cluster is allowed to float as
+      // soil support, per rule 6.)
       for (const idx of cells) shakeStartTick.delete(idx)
       continue
     }
 
-    // Stability rule: a cluster only falls if it has been DISTURBED
-    // (a fresh rock landed on/near it, or the driller drilled an
-    // adjacent tile). Untouched 4+ piles from world generation are
-    // inert until the player actually destabilises them.
-    let disturbed = false
-    for (const idx of cells) {
-      if ((flags[idx]! & FLAG_DISTURBED) !== 0) {
-        disturbed = true
-        break
+    // Stability rule: a cluster only INITIATES a fall if it has been
+    // DISTURBED (a fresh rock landed on/near it, or another cluster
+    // commit nearby). Untouched 4+ piles from world generation are
+    // inert until the player or another rock disturbs them.
+    if (!inMotion) {
+      let disturbed = false
+      for (const idx of cells) {
+        if ((flags[idx]! & FLAG_DISTURBED) !== 0) {
+          disturbed = true
+          break
+        }
       }
+      if (!disturbed) continue
     }
-    if (!disturbed) continue
 
     // The cluster can fall iff every cell directly under the cluster's
     // bottom edge (not part of the cluster) is AIR or SOIL — anything
@@ -389,44 +407,58 @@ export function rockAvalancheSystem(world: World): void {
       bottomEdge.push(idx)
     }
     if (!canFall) {
-      // Cluster is disturbed but blocked. Clear any in-flight shake
-      // state so the player isn't lied to with a permanent rumble.
-      for (const idx of cells) {
-        shakeStartTick.delete(idx)
-        flags[idx]! &= ~FLAG_SHAKING
+      // Cluster is blocked. Two cases:
+      //   - inMotion: this is LANDING. The cluster has resolved its
+      //     full fall loop; it goes inert. Clear FLAG_FALLING (no
+      //     longer moving), FLAG_DISTURBED (per rule 7: needs fresh
+      //     disturbance + 4+ to move again), FLAG_SHAKING.
+      //   - !inMotion: cluster is disturbed-but-blocked. Drop any
+      //     stale shake bookkeeping but keep DISTURBED so a future
+      //     change (drilled rock below) lets it fall.
+      if (inMotion) {
+        for (const idx of cells) {
+          shakeStartTick.delete(idx)
+          flags[idx]! &= ~FLAG_SHAKING & ~FLAG_FALLING & ~FLAG_DISTURBED
+        }
+      } else {
+        for (const idx of cells) {
+          shakeStartTick.delete(idx)
+          flags[idx]! &= ~FLAG_SHAKING
+        }
       }
       continue
     }
 
-    // Pre-fall telegraph: shake → settle → commit. The cluster has to
-    // visibly rumble before its first descent step so the player has
-    // time to react. Subsequent fall steps (after the cluster has
-    // already moved at least once) skip this — once it's falling,
-    // it just keeps falling at AVALANCHE_FALL_INTERVAL_TICKS.
-    let earliestShake = Infinity
-    let anyNew = false
-    for (const idx of cells) {
-      let t = shakeStartTick.get(idx)
-      if (t === undefined) {
-        t = gs.tick
-        shakeStartTick.set(idx, t)
-        anyNew = true
+    // Pre-fall telegraph: shake → settle → commit. ONLY for clusters
+    // entering motion this tick (`!inMotion`). An already-falling
+    // cluster (`inMotion`) skips the telegraph entirely — once
+    // started, rocks resolve their full fall loop without pausing.
+    if (!inMotion) {
+      let earliestShake = Infinity
+      let anyNew = false
+      for (const idx of cells) {
+        let t = shakeStartTick.get(idx)
+        if (t === undefined) {
+          t = gs.tick
+          shakeStartTick.set(idx, t)
+          anyNew = true
+        }
+        if (t < earliestShake) earliestShake = t
       }
-      if (t < earliestShake) earliestShake = t
-    }
-    void anyNew
-    const shakeElapsed = gs.tick - earliestShake
-    const inShakePhase = shakeElapsed < AVALANCHE_SHAKE_TICKS
-    const stillTelegraphing = shakeElapsed < AVALANCHE_SHAKE_TICKS + AVALANCHE_SETTLE_TICKS
-    for (const idx of cells) {
-      if (inShakePhase) {
-        flags[idx]! |= FLAG_SHAKING
-        shakingDirtyIdxs.push(idx)
-      } else {
-        flags[idx]! &= ~FLAG_SHAKING
+      void anyNew
+      const shakeElapsed = gs.tick - earliestShake
+      const inShakePhase = shakeElapsed < AVALANCHE_SHAKE_TICKS
+      const stillTelegraphing = shakeElapsed < AVALANCHE_SHAKE_TICKS + AVALANCHE_SETTLE_TICKS
+      for (const idx of cells) {
+        if (inShakePhase) {
+          flags[idx]! |= FLAG_SHAKING
+          shakingDirtyIdxs.push(idx)
+        } else {
+          flags[idx]! &= ~FLAG_SHAKING
+        }
       }
+      if (stillTelegraphing) continue
     }
-    if (stillTelegraphing) continue
     // Throttle subsequent descent steps after the telegraph completes.
     if (gs.tick - lastAvalancheTick < AVALANCHE_FALL_INTERVAL_TICKS) continue
     // Commit fall — clear the shake bookkeeping for these cells.
@@ -482,15 +514,16 @@ export function rockAvalancheSystem(world: World): void {
         continue
       }
       // Otherwise translate stone + carry its hit count to new cell.
-      // The DISTURBED bit travels with the moving stone so the cluster
-      // keeps falling. We also sentinel the new cell's shake-start
-      // entry to -1, meaning "already telegraphed" — subsequent fall
-      // steps after the first commit go straight to descent without
-      // replaying the shake every interval.
+      // FLAG_FALLING marks the new cell as in-motion: next tick the
+      // cluster bypasses the threshold/disturbance gates and the
+      // shake telegraph (rule: rocks resolve fully once started).
+      // DISTURBED also travels so the cluster keeps falling. The -1
+      // sentinel on shake-start means "already telegraphed" — extra
+      // safety in case a non-inMotion path re-enters here.
       tiles[idx] = TILE_AIR
       flags[idx] = (flags[idx] ?? 0) | FLAG_AUTOTILE_DIRTY
       tiles[newIdx] = TILE_STONE
-      flags[newIdx] = (flags[newIdx] ?? 0) | FLAG_AUTOTILE_DIRTY | FLAG_DISTURBED
+      flags[newIdx] = (flags[newIdx] ?? 0) | FLAG_AUTOTILE_DIRTY | FLAG_DISTURBED | FLAG_FALLING
       hits[newIdx] = rockHits
       hits[idx] = 0
       shakeStartTick.set(newIdx, -1)

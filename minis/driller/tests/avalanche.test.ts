@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { rockAvalancheSystem, resetAvalanche } from '../src/systems/hazard'
 import {
   FLAG_DISTURBED,
+  FLAG_FALLING,
   GameState,
   Grid,
   Hazard,
@@ -109,6 +110,96 @@ describe('avalanche cluster rules', () => {
     // top-most STONE has shifted DOWN by at least one row.
     const grid = world.get(Grid)!
     expect(grid.tiles[0 * grid.cols + 6]).toBe(TILE_AIR) // top vacated
+  })
+
+  it('rock codex: in-motion cluster keeps falling even when shrunk below threshold', () => {
+    // 4-stack on a deep soil column. The cluster starts falling
+    // (4+, disturbed, AIR/SOIL below), crushes through soil, and
+    // each crush stacks a hit on the bottom rock. After 4 hits the
+    // bottom rock breaks off → cluster has 3 stones. Per the rock
+    // codex, the surviving 3-stone unit MUST keep falling until it
+    // lands; it doesn't stop because it dropped below threshold.
+    const world = makeWorldFromGrid([
+      '......S.......',
+      '......S.......',
+      '......S.......',
+      '......S.......',
+      '......#.......',
+      '......#.......',
+      '......#.......',
+      '......#.......',
+      '......#.......',
+      '......#.......',
+      '......#.......',
+      'SSSSSSSSSSSSSS',
+    ])
+    disturbAllStones(world)
+    resetAvalanche()
+    let lastFallingCount = 0
+    let sawShrunkInMotion = false
+    for (let i = 0; i < 400; i++) {
+      tickWorld(world, 1)
+      rockAvalancheSystem(world)
+      const grid = world.get(Grid)!
+      // Count cells with FLAG_FALLING set on stone.
+      let fallingCount = 0
+      for (let j = 0; j < grid.tiles.length; j++) {
+        if (grid.tiles[j] === TILE_STONE && (grid.flags[j]! & FLAG_FALLING) !== 0) {
+          fallingCount++
+        }
+      }
+      // Did we ever observe the cluster mid-motion with <4 stones?
+      // That's the rule we're pinning: shrinking mid-flight doesn't
+      // stop the fall.
+      if (fallingCount > 0 && fallingCount < 4) sawShrunkInMotion = true
+      lastFallingCount = fallingCount
+    }
+    expect(
+      sawShrunkInMotion,
+      'Cluster never observed mid-motion below threshold — either it never shrunk (no breaks) or it stopped on shrink (rule violated).',
+    ).toBe(true)
+    // After 400 ticks the cluster should be fully landed (FLAG_FALLING
+    // cleared on all cells).
+    expect(lastFallingCount).toBe(0)
+  })
+
+  it('rock codex: landed cluster requires fresh disturbance to fall again', () => {
+    // 4-stack lands on bedrock with no soil to crush. Cluster never
+    // moves (canFall=false from the start), DISTURBED stays sticky
+    // (covered by an earlier test). Now the codex case: a cluster
+    // that DID complete a fall loop must clear DISTURBED on land.
+    // Setup: 4-stack above 1 soil, above bedrock. Cluster falls 1
+    // row, crushes 1 soil, lands. After landing FLAG_DISTURBED MUST
+    // be cleared on all stones — they need fresh disturbance to
+    // move again.
+    const world = makeWorldFromGrid([
+      '......S.......',
+      '......S.......',
+      '......S.......',
+      '......S.......',
+      '......#.......',
+      'SSSSSSSSSSSSSS',
+    ])
+    disturbAllStones(world)
+    resetAvalanche()
+    for (let i = 0; i < 200; i++) {
+      tickWorld(world, 1)
+      rockAvalancheSystem(world)
+    }
+    const grid = world.get(Grid)!
+    let disturbedAfter = 0
+    let stoneAfter = 0
+    for (let i = 0; i < grid.tiles.length; i++) {
+      if (grid.tiles[i] === TILE_STONE) {
+        stoneAfter++
+        if ((grid.flags[i]! & FLAG_DISTURBED) !== 0) disturbedAfter++
+      }
+    }
+    expect(stoneAfter).toBeGreaterThan(0)
+    expect(
+      disturbedAfter,
+      'After a completed fall loop, the landed cluster must clear FLAG_DISTURBED (rule 7: requires fresh disturbance + 4+ to move again).',
+    ).toBe(0)
   })
 
   it('broken-rock Hazard from avalanche carries isDebris=true', () => {
