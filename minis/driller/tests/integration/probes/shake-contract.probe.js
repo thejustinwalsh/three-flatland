@@ -25,7 +25,9 @@ const tracker = new Map()
 const t0 = performance.now()
 const SAMPLE_MS = 33
 const RUN_MS = 90_000
+const PROGRESS_MS = 10_000
 
+let lastProgressAt = 0
 const interval = setInterval(() => {
   const grid = w.get(traits.Grid)
   const tNow = performance.now() - t0
@@ -57,6 +59,20 @@ const interval = setInterval(() => {
       entry.finalTile = tile
       if (tile === 0) entry.fellToAir = true
     }
+  }
+  if (tNow - lastProgressAt >= PROGRESS_MS) {
+    lastProgressAt = tNow
+    let honest = 0, pending = 0
+    for (const [, e] of tracker) {
+      if (e.fellToAir) honest++
+      else pending++
+    }
+    const driller = w.queryFirst(traits.Driller)
+    const dRow = driller ? driller.get(traits.Driller).row : '?'
+    console.log(
+      `[progress] shake-contract t=${Math.round(tNow / 1000)}s/${RUN_MS / 1000}s ` +
+        `dRow=${dRow} cellsTracked=${tracker.size} honest=${honest} pending=${pending}`,
+    )
   }
 }, SAMPLE_MS)
 

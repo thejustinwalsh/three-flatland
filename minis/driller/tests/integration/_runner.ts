@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process'
 import { readFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
-import { dirname, resolve } from 'node:path'
+import { basename, dirname, resolve } from 'node:path'
 
 /**
  * Shared runner for integration probes. Each probe is a
@@ -79,6 +79,12 @@ export async function runProbe<T>(
     code,
   ]
 
+  const probeLabelOuter = `[${basename(probePath, '.probe.js')}]`
+  process.stderr.write(
+    `${probeLabelOuter} starting (probe budget ${opts.timeoutSec}s, hard timeout ${(opts.timeoutSec + 60)}s)\n`,
+  )
+  const startedAt = Date.now()
+
   return new Promise<ProbeResult<T>>((resolveResult, reject) => {
     const proc = spawn('pnpm', args, {
       cwd: resolve(here, '../../'),
@@ -87,11 +93,21 @@ export async function runProbe<T>(
     let stdout = ''
     let stderr = ''
     let killedByTimeout = false
+
+    // Stream vitexec output to OUR stderr in real time so the user
+    // sees the probe working during a 60–180s run. Vitest's reporter
+    // writes test results on stdout; using stderr keeps the channels
+    // separated. The runner ALSO buffers stdout so the sentinel
+    // parser still works after the process exits.
     proc.stdout.on('data', (chunk: Buffer) => {
-      stdout += chunk.toString('utf-8')
+      const s = chunk.toString('utf-8')
+      stdout += s
+      forwardLines(s, probeLabelOuter)
     })
     proc.stderr.on('data', (chunk: Buffer) => {
-      stderr += chunk.toString('utf-8')
+      const s = chunk.toString('utf-8')
+      stderr += s
+      forwardLines(s, probeLabelOuter)
     })
     const hardTimer = setTimeout(() => {
       killedByTimeout = true
@@ -145,6 +161,10 @@ export async function runProbe<T>(
       }
       try {
         const data = JSON.parse(sentinelMatch[1]!) as T
+        const elapsedSec = Math.round((Date.now() - startedAt) / 1000)
+        process.stderr.write(
+          `${probeLabelOuter} probe complete (${elapsedSec}s elapsed, sentinel parsed)\n`,
+        )
         resolveResult({ data, log: trimmedLog })
       } catch (err) {
         reject(
@@ -163,4 +183,27 @@ function limitLines(s: string, max: number): string {
   const lines = s.split('\n')
   if (lines.length <= max) return s
   return ['…(truncated)…', ...lines.slice(-max)].join('\n')
+}
+
+/**
+ * Forward streamed output to process.stderr, prefixed with the probe
+ * label, only for lines that carry signal. We skip:
+ *   - empty lines
+ *   - vitexec's own bootstrap noise that the reader can't act on
+ *     (the React DevTools nag, R3F alpha banner, etc.)
+ * Probes that want their own progress visible should use the
+ * `[progress]` prefix in their console.log calls — those always pass.
+ */
+const NOISE_PATTERNS: RegExp[] = [
+  /Download the React DevTools/,
+  /React Three Fiber v\d+ is in ALPHA/,
+  /https?:\/\/github\.com\/pmndrs\/react-three-fiber/,
+  /^\s*$/,
+]
+function forwardLines(chunk: string, label: string): void {
+  for (const line of chunk.split('\n')) {
+    if (!line.trim()) continue
+    if (NOISE_PATTERNS.some((p) => p.test(line))) continue
+    process.stderr.write(`${label} ${line}\n`)
+  }
 }

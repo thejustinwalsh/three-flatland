@@ -20,7 +20,9 @@ const ABOVE_PLAYFIELD_ROWS = 18 // a hair beyond the scan window — anything pa
 const violations = []
 const t0 = performance.now()
 const RUN_MS = 120_000
+const PROGRESS_MS = 10_000
 
+let lastProgressAt = 0
 const interval = setInterval(() => {
   const grid = w.get(traits.Grid)
   const driller = w.queryFirst(traits.Driller)
@@ -41,6 +43,13 @@ const interval = setInterval(() => {
         tile: grid.tiles[i],
       })
     }
+  }
+  if (tNow - lastProgressAt >= PROGRESS_MS) {
+    lastProgressAt = tNow
+    console.log(
+      `[progress] offscreen-shake t=${Math.round(tNow / 1000)}s/${RUN_MS / 1000}s ` +
+        `drillerRow=${dRow} violations=${violations.length}`,
+    )
   }
 }, 33)
 

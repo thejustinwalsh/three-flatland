@@ -42,5 +42,11 @@ export default defineConfig({
     fileParallelism: false,
     pool: 'forks',
     poolOptions: { forks: { singleFork: true } },
+    // Verbose reporter prints each test name as it starts and
+    // emits ✓ / ✗ as it completes. Without this, slow integration
+    // tests show no output for 90+ seconds — the user can't tell if
+    // the suite is alive. Probes also emit `[progress] …` markers
+    // every ~5s through the runner's stderr forwarder.
+    reporters: ['verbose'],
   },
 })

@@ -27,7 +27,9 @@ const FLAG_SHAKING = 1 << 5
 const tracker = new Map()
 const t0 = performance.now()
 const RUN_MS = 90_000
+const PROGRESS_MS = 10_000
 
+let lastProgressAt = 0
 const interval = setInterval(() => {
   const grid = w.get(traits.Grid)
   const tNow = performance.now() - t0
@@ -54,6 +56,20 @@ const interval = setInterval(() => {
         e.releaseAt = tNow
       }
     }
+  }
+  if (tNow - lastProgressAt >= PROGRESS_MS) {
+    lastProgressAt = tNow
+    let withPrec = 0, withSag = 0, withShake = 0, withRelease = 0
+    for (const [, e] of tracker) {
+      if (e.precOn !== null) withPrec++
+      if (e.sagOn !== null) withSag++
+      if (e.shakeOn !== null) withShake++
+      if (e.releaseAt !== null) withRelease++
+    }
+    console.log(
+      `[progress] 3phase t=${Math.round(tNow / 1000)}s/${RUN_MS / 1000}s ` +
+        `cells=${tracker.size} prec=${withPrec} sag=${withSag} shake=${withShake} released=${withRelease}`,
+    )
   }
 }, 16)
 
