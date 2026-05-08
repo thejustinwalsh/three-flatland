@@ -51,6 +51,14 @@ export const FLAG_PRECARIOUS = 1 << 3
 export const FLAG_DISTURBED = 1 << 4
 
 /**
+ * Pre-fall telegraph: a disturbed avalanche cluster shakes for a few
+ * hundred ms before committing to its first descent step. The
+ * renderer adds a small oscillating offset to cells with this bit so
+ * the player has a clear "this is about to fall" visual.
+ */
+export const FLAG_SHAKING = 1 << 5
+
+/**
  * Singleton tile grid. The world is 18 columns wide (matches `PLAY_COLS`)
  * and grows vertically as chunks stream in. `topRow` and `bottomRow` are
  * absolute row indices in world space (a chunk near the surface has a

@@ -8,6 +8,7 @@ import {
   FLAG_FALLING,
   FLAG_PRECARIOUS,
   FLAG_SAGGING,
+  FLAG_SHAKING,
   Grid,
   TILE_AIR,
   TILE_EXPLOSIVE,
@@ -151,10 +152,20 @@ export function TileRenderer({ material }: TileRendererProps) {
         const sagging = (flags[idx]! & FLAG_SAGGING) !== 0
         const falling = (flags[idx]! & FLAG_FALLING) !== 0
         const precarious = (flags[idx]! & FLAG_PRECARIOUS) !== 0
+        const shaking = (flags[idx]! & FLAG_SHAKING) !== 0
         const litExplosive = tile === TILE_EXPLOSIVE && triggeredExplosives.has(idx) && pulse
         const palette = biomeAt(r).palette
         const tint = pickTint(tile, frameIndex[idx]!, sagging, falling, precarious, litExplosive, now, palette)
-        sprite.position.set(c * TILE_PX + TILE_PX / 2, -(r * TILE_PX + TILE_PX / 2), 0)
+        // Shake telegraph for avalanche clusters: small horizontal +
+        // vertical jitter at ~30Hz so it reads as a quick rumble.
+        let jitterX = 0
+        let jitterY = 0
+        if (shaking) {
+          const phase = (now / 1000) * Math.PI * 2 * 30
+          jitterX = Math.sin(phase + (idx * 0.31)) * 1.2
+          jitterY = Math.cos(phase * 1.3 + (idx * 0.17)) * 0.6
+        }
+        sprite.position.set(c * TILE_PX + TILE_PX / 2 + jitterX, -(r * TILE_PX + TILE_PX / 2) + jitterY, 0)
         sprite.scale.set(TILE_PX, TILE_PX, 1)
         sprite.tint.r = tint[0]
         sprite.tint.g = tint[1]

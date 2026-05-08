@@ -3,6 +3,7 @@ import {
   Driller,
   FLAG_AUTOTILE_DIRTY,
   FLAG_DISTURBED,
+  FLAG_SHAKING,
   GameState,
   Grid,
   Hazard,
@@ -249,13 +250,25 @@ export function hazardTickSystem(world: World): void {
 const AVALANCHE_THRESHOLD = 4
 const AVALANCHE_HITS_TO_BREAK = 4
 const AVALANCHE_FALL_INTERVAL_TICKS = 12 // ~200ms at 60Hz
+const AVALANCHE_SHAKE_TICKS = 18  // ~300ms quick rumble
+const AVALANCHE_SETTLE_TICKS = 6  // ~100ms steady pause before commit
 let lastAvalancheTick = 0
+/**
+ * For each cluster cell currently in the pre-fall telegraph, this
+ * holds the tick the shake started. A cell is "shaking" while
+ * elapsed < SHAKE_TICKS, "settled" while < SHAKE_TICKS+SETTLE_TICKS,
+ * and commits to falling beyond that. Cleared on commit, on cluster
+ * blockage, or on world reset.
+ */
+const shakeStartTick = new Map<number, number>()
 
 export function rockAvalancheSystem(world: World): void {
   const gs = world.get(GameState)
   const grid = world.get(Grid)
   if (!gs || !grid) return
-  if (gs.tick - lastAvalancheTick < AVALANCHE_FALL_INTERVAL_TICKS) return
+  // Run cluster detection EVERY tick so the shake telegraph updates
+  // smoothly. The fall step itself is throttled below so cluster
+  // descent reads as a heavy crash, not a single-tick teleport.
   const { cols, rows, tiles, flags, hits } = grid
 
   // 4-connected flood-fill over TILE_STONE to find each cluster.
@@ -331,7 +344,48 @@ export function rockAvalancheSystem(world: World): void {
       }
       bottomEdge.push(idx)
     }
-    if (!canFall) continue
+    if (!canFall) {
+      // Cluster is disturbed but blocked. Clear any in-flight shake
+      // state so the player isn't lied to with a permanent rumble.
+      for (const idx of cells) {
+        shakeStartTick.delete(idx)
+        flags[idx]! &= ~FLAG_SHAKING
+      }
+      continue
+    }
+
+    // Pre-fall telegraph: shake → settle → commit. The cluster has to
+    // visibly rumble before its first descent step so the player has
+    // time to react. Subsequent fall steps (after the cluster has
+    // already moved at least once) skip this — once it's falling,
+    // it just keeps falling at AVALANCHE_FALL_INTERVAL_TICKS.
+    let earliestShake = Infinity
+    let anyNew = false
+    for (const idx of cells) {
+      let t = shakeStartTick.get(idx)
+      if (t === undefined) {
+        t = gs.tick
+        shakeStartTick.set(idx, t)
+        anyNew = true
+      }
+      if (t < earliestShake) earliestShake = t
+    }
+    void anyNew
+    const shakeElapsed = gs.tick - earliestShake
+    const inShakePhase = shakeElapsed < AVALANCHE_SHAKE_TICKS
+    const stillTelegraphing = shakeElapsed < AVALANCHE_SHAKE_TICKS + AVALANCHE_SETTLE_TICKS
+    for (const idx of cells) {
+      if (inShakePhase) flags[idx]! |= FLAG_SHAKING
+      else flags[idx]! &= ~FLAG_SHAKING
+    }
+    if (stillTelegraphing) continue
+    // Throttle subsequent descent steps after the telegraph completes.
+    if (gs.tick - lastAvalancheTick < AVALANCHE_FALL_INTERVAL_TICKS) continue
+    // Commit fall — clear the shake bookkeeping for these cells.
+    for (const idx of cells) {
+      shakeStartTick.delete(idx)
+      flags[idx]! &= ~FLAG_SHAKING
+    }
 
     // Crush soil under the bottom edge (each crush = +1 hit on the
     // rock that did the crushing). Then physically translate the
@@ -418,6 +472,7 @@ export function rockAvalancheSystem(world: World): void {
 /** Reset avalanche timer on world rotation / restart. */
 export function resetAvalanche(): void {
   lastAvalancheTick = 0
+  shakeStartTick.clear()
 }
 
 /** Reset module-level state on world rotation / restart. */
