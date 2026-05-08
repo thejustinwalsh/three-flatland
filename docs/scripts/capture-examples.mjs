@@ -241,23 +241,58 @@ for (const { slug, path } of targets) {
     })
 
     // ─── Still (PNG + WEBP) ───────────────────────────────────
-    // Playwright's screenshot writes PNG; we additionally encode a
-    // WEBP via sharp because the GalleryTile <picture> prefers webp
-    // (smaller payload, ~30% under PNG for these screenshots) and
-    // falls back to png. Without the webp on disk, the <source>
-    // 404s and the network panel logs noise on every tile load.
+    // Read the canvas's pixel buffer directly via the Canvas API
+    // in page context — NOT Playwright's locator.screenshot, which
+    // captures the rendered region of the page including any DOM
+    // that overlaps the canvas (dev overlay, vtbot scripts, etc).
+    // `drawImage(canvas, 0, 0)` into a fresh 2D canvas reads the
+    // source canvas's contents directly. Done inside
+    // requestAnimationFrame so we read right after a frame draws —
+    // works for r3f canvases without `preserveDrawingBuffer: true`.
+    // Alpha preserved end-to-end (2D canvas + PNG natively support
+    // alpha). Same mechanism as the video below (canvas.captureStream
+    // also reads the buffer directly), so still and video are
+    // identical content.
+    const canvasPngBase64 = await page.evaluate(
+      () =>
+        new Promise((resolve, reject) => {
+          requestAnimationFrame(() => {
+            try {
+              const c = document.querySelector('canvas')
+              if (!c) return reject(new Error('canvas missing at capture time'))
+              const snap = document.createElement('canvas')
+              snap.width = c.width
+              snap.height = c.height
+              const ctx = snap.getContext('2d')
+              if (!ctx) return reject(new Error('2d context unavailable'))
+              ctx.drawImage(c, 0, 0)
+              snap.toBlob(async (blob) => {
+                if (!blob) return reject(new Error('toBlob returned null'))
+                const ab = await blob.arrayBuffer()
+                const buf = new Uint8Array(ab)
+                let bin = ''
+                for (let i = 0; i < buf.length; i++) bin += String.fromCharCode(buf[i])
+                resolve(btoa(bin))
+              }, 'image/png')
+            } catch (e) {
+              reject(e)
+            }
+          })
+        }),
+    )
+    const pngBuffer = Buffer.from(/** @type {string} */ (canvasPngBase64), 'base64')
     const pngPath = resolve(OUT_DIR, `${slug}.png`)
     const webpPath = resolve(OUT_DIR, `${slug}.webp`)
-    const pngBuffer = await canvas.screenshot({ omitBackground: false })
     await writeFile(pngPath, pngBuffer)
     // Smooth radial gradients band hard at WEBP's default quality
     // (75) and even at 82 — the gem backdrop is mostly broad gradients
     // of similar luminance, exactly the worst case for chroma-
     // subsampled lossy. Bump to q=95 + smartSubsample so chroma stays
-    // accurate across the gradient. File-size cost is small for these
+    // accurate across the gradient. alphaQuality: 100 keeps
+    // transparent edges clean. File-size cost is small for these
     // 1280×800 stills (still typically < 100k).
     const webpBuffer = await sharp(pngBuffer)
-      .webp({ quality: 95, smartSubsample: true })
+      .webp({ quality: 95, smartSubsample: true, alphaQuality: 100 })
       .toBuffer()
     await writeFile(webpPath, webpBuffer)
 
