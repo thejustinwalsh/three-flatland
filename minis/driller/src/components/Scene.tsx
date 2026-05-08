@@ -18,6 +18,7 @@ import {
 import { TILE_PX } from '../constants'
 import { cameraSystem } from '../systems/camera'
 import { autotilePass } from '../systems/autotile-pass'
+import { collapseTick } from '../systems/collapse'
 import { streamChunks } from '../systems/generation'
 import { TILE_COLORS, useDrillerMaterial } from '../materials'
 
@@ -82,6 +83,7 @@ export function Scene() {
       streamChunks(world, cameraRow)
     }
 
+    collapseTick(world)
     autotilePass(world)
 
     // Apply camera trait to Flatland's internal orthographic camera.
