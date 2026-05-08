@@ -707,3 +707,113 @@ Done inside `requestAnimationFrame` so the capture happens right after a frame d
 **Why:** A silent hang in a long-running capture script is much harder to debug than an explicit error. Per-stage logging surfaces the failure point. The specific-route probe prevents the "probe says reuse, capture says hang" trap.
 
 **How to apply:** Capture scripts that probe an existing dev server should always probe a route specific to the test target, not just `/`. Long-running scripts should log per-stage so silent hangs become visible failures.
+
+---
+
+# Session 2026-05-08 (post-compaction) — Component overrides catch-up + heading-badges sweep
+
+## Heading-badges sweep — 6 tasteful badges across guides
+**File(s):** `docs/src/content/docs/guides/skia.mdx`, `docs/src/content/docs/guides/tsl-nodes.mdx`, `docs/src/content/docs/guides/pass-effects.mdx`
+**Date:** 2026-05-08
+
+**Decision:** Activate `starlight-heading-badges` (configured but unused) on a tasteful set of 6 sections that signal status / experience-level:
+- Skia API surface (SkiaCanvas / Drawing Nodes / SkiaGroup) → `:badge[Alpha]{variant=caution}`
+- TSL Nodes Material Effects → `:badge[Recommended]{variant=success}` paired with Low-Level TSL Usage → `:badge[Advanced]{variant=note}`
+- Pass Effects Pass Chaining → `:badge[Advanced]{variant=note}`
+
+Skipped blanket `:badge[v0.X]` placement — every package is at `0.1.x-alpha`, so version stamps would just be noise across the board.
+
+**Why:** The badges plugin had been wired in Phase 1 but never used. The point of the system is to create meaningful distinctions where status / readiness / depth differ. Skia's API is the newest and most volatile (Alpha warrants the caution variant); TSL Nodes has a clear high-level vs low-level distinction the docs already articulate. Six placements demonstrates the system without decorating every heading.
+
+**How to apply:** Future badge placements should mark a meaningful semantic distinction (status, platform, version) — not be a decoration. If most readers don't gain new information from a badge, it's noise.
+
+## TOC badge deserialization — inlined parser instead of plugin internal import
+**File(s):** `packages/starlight-theme/components/overrides/parts/toc/TableOfContentsList.astro`
+**Date:** 2026-05-08
+
+**Decision:** When we override Starlight's `TableOfContents` component, we displace `starlight-heading-badges`'s own override that handles badge serialization in TOC links. Without intervention, raw `__SHB__caution__SHB__Alpha__SHB__` markers leak into `aria-current` link text and on-this-page navigation. Two paths considered:
+1. Import `deserializeBadges` from `starlight-heading-badges/libs/badge`
+2. Inline the deserializer in our `TableOfContentsList`
+
+Chose 2 because (a) the plugin's `package.json` `exports` field doesn't expose `./libs/badge`; (b) the serialization format is small (~25 lines) and stable; (c) avoiding a private-internals import keeps us insulated from upstream refactors.
+
+**Why:** Plugin-private API access is fragile. The format is documented in the plugin's `libs/badge.ts` and the round-trip is symmetrical (serialize on remark side, deserialize on render side). Copying the deserializer is ~one screen of code and locks in our resilience.
+
+**How to apply:** When composing with another Starlight plugin's overrides, prefer (a) composing the plugin's components directly via its public exports (b) inlining a small deserializer if (a) isn't accessible — avoid dot-dot-slash through node_modules paths or undocumented internal imports.
+
+## Pagination: per-destination gem + foil-rim + restored eyebrow/title layout
+**File(s):** `packages/starlight-theme/components/overrides/Pagination.astro`
+**Date:** 2026-05-08
+
+**Decision:** Full impeccable loop on Pagination. The prior override flattened Starlight's eyebrow/title two-line layout to bare titles, dropped translations support, didn't tie into the gem-per-section taxonomy, and didn't apply the foil rim system. Rewrote with:
+- Two-line eyebrow + title (Starlight-default information design)
+- Per-destination gem accent via `gemForHref` (mirrors Head.astro's `gemForPath` and NavBar's per-link mapping)
+- Foil rim: `::before` gem gradient ring + `::after` soft hotspot wash, both pointer-tracked via the global `--mx`/`--my` from `data-light`
+- Chevron lifts into a gem-tinted chip with spring-eased translate on hover
+- Responsive: 1-col stack at narrow widths, 2-col grid at ≥48rem
+- Restored RTL via `dir` + isRtl chevron path swap
+- Reveal-on-scroll via `u-reveal`
+
+**Why:** Pagination sits at the foot of every doc page and was the loudest gap in the design-system fidelity sweep. Per-destination gem accents make the navigation purposeful — the user can see at a glance whether they're heading further into the same section (matching gem) or jumping to a different cluster (different gem).
+
+**How to apply:** Any link that implies destination should consider per-destination gem accent, mirroring `gemForPath`. Hover affordances should follow the foil-rim convention (`::before` ring driven by cursor `--mx/--my`).
+
+## Footer: meta below pagination, single divider
+**File(s):** `packages/starlight-theme/components/overrides/Footer.astro`
+**Date:** 2026-05-08
+
+**Decision:** Reorder `<EditLink>` + `<LastUpdated>` meta row to sit BELOW Pagination, matching Starlight's default ordering. Pagination owns the divider (border-top) for the "leaving this page" affordance; meta sits below as quiet attribution. Drops the redundant border-top on the meta row that was creating a double horizontal rule.
+
+**Why:** With Pagination's own divider in the redesign, the prior layout had two stacked rules (meta border-top + pagination border-top). Single divider per page is cleaner; meta-as-attribution-below-pagination matches Starlight default plus reads naturally as "more about THIS page" after the "go to NEXT page" cue.
+
+**How to apply:** When two adjacent components both want a divider, pick one as the canonical divider-owner (typically the more semantically-loaded one) and have the other suppress its own.
+
+## ContentPanel: documented passthrough intent
+**File(s):** `packages/starlight-theme/components/overrides/ContentPanel.astro`
+**Date:** 2026-05-08
+
+**Decision:** ContentPanel stays a passthrough — `<div class="content-panel" style="display:contents"><slot /></div>`. The structural class is preserved for selector stability but no padding/max-width/divider rules carry over from Starlight default. An inline comment documents which override owns each layout responsibility (TwoColumnContent / PageTitle / MarkdownContent / Pagination / Footer).
+
+**Why:** The previous bare `<slot />` invited a future agent to "complete" the override by adding padding or max-width — which would fight the framing rules in the actual layout components. The comment + structural class is the smallest valuable diff that prevents that misread.
+
+**How to apply:** When an override is intentionally a passthrough or near-passthrough, document the intent inline. Empty / minimal overrides without context read as incomplete and invite well-meaning regressions.
+
+## Search modal: result hover lift + accent rail + kbd cleanup
+**File(s):** `packages/starlight-theme/components/overrides/Search.astro`
+**Date:** 2026-05-08
+
+**Decision:** Polish the search modal interior (Pagefind UI integration). Two changes:
+1. Each result gets a 2px diamond-tinted left accent rail on hover/focus (`::after` since Pagefind owns `::before` for page/tree icons). Mirrors the sidebar pip pattern. Scales 0.5 → 1 over 200ms; reduced-motion strips the transition.
+2. Cleaned up the `kbd` shortcut indicator's tangled CSS — was `display: none !important` plus a media-query override, plus an inline script that used `setProperty('display', 'flex', 'important')`. Visibility is now fully script-driven; CSS only handles appearance.
+
+**Why:** The "you've selected this" affordance via left accent rail is consistent across docs surfaces (sidebar pip, TOC active marker, search results). Kbd cleanup removed a silent-bug-magnet — the duplicated declarations had different values across paths.
+
+**How to apply:** "You've selected this" affordance should always be a left accent rail, gem-tinted, that wakes up via scaleY transition. Don't mix CSS visibility logic with script-driven visibility — pick one source of truth.
+
+## Mobile TOC restored — narrow viewports get badges-aware on-this-page nav
+**File(s):** `packages/starlight-theme/components/overrides/PageSidebar.astro`, `packages/starlight-theme/components/overrides/TwoColumnContent.astro`
+**Date:** 2026-05-08
+
+**Decision:** Render `MobileTableOfContents` (resolves to `starlight-heading-badges`'s plugin override since we don't override it ourselves) alongside our desktop `TableOfContents` in PageSidebar. Mobile wrapper uses `display: contents` at <1280px so the inner `<details>`'s `position: fixed` actually escapes the layout. Desktop wrapper hidden at <1280px to avoid double-TOC.
+
+Updated `TwoColumnContent`'s `.toc` slot from `display: none` → `display: contents` at narrow widths so fixed-positioned children can render. `display: none` cascades to children regardless of `position: fixed`.
+
+Themed mobile TOC: diamond-tinted border, card-toned bg, blur+saturate backdrop, Inter font stack, smooth state transitions, badge sizing tightened in the "you are here" indicator.
+
+**Why:** Pre-fix, narrow viewports (<1280px) got NO TOC at all — we'd dropped the mobile component when forking from lucode and never re-added it. Long doc pages on tablet were uncomfortable to scan. Adopting the plugin's `HeadingBadgesMobileTableOfContents.astro` gives badges-aware mobile nav for free.
+
+**How to apply:** When overriding a Starlight component that has a mobile-vs-desktop split (TableOfContents has `MobileTableOfContents`), check both. `display: none` on a layout slot hides ALL children including position-fixed ones — `display: contents` is the escape hatch when you need fixed-positioned children to render but don't want the slot to take flow space.
+
+## Hero: dormant override brought to design-system fidelity
+**File(s):** `packages/starlight-theme/components/overrides/Hero.astro`
+**Date:** 2026-05-08
+
+**Decision:** No pages currently use `hero:` frontmatter (landing uses `template: splash` with custom hero composition). The Starlight Hero override is dormant. Brought it to design-system fidelity so the moment it's adopted it lands fully formed:
+- On-load entrance via `hero-enter` class — staggered fade-rise with 80ms steps, CSS animation (not `u-reveal` because hero is at top-of-page where IntersectionObserver fires immediately, defeating the reveal discipline)
+- Hero image picks up gem-tinted outline + soft drop with per-instance override via `--hero-image-gem` custom prop
+- Tighter mobile padding (16/10 → 24/16 at ≥768px) so hero doesn't push everything below the fold on narrow viewports
+- Reduced motion strips the entrance animation
+
+**Why:** Dormant overrides decay if they don't track the design system, and adoption is a future event we can't predict. Bringing it up to fidelity now keeps the option of "drop a hero: in frontmatter" alive without per-page bespoke composition.
+
+**How to apply:** For top-of-page elements, prefer CSS keyframe entrance animations to scroll-driven reveals — IntersectionObserver fires immediately when the element is already in view, defeating the staggered choreography you'd get from scroll triggers further down the page.
