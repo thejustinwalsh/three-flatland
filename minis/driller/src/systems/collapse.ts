@@ -80,6 +80,29 @@ export function detectAndSag(world: World): void {
       MAX_CHUNK_HEIGHT,
     )
     if (chosen.length === 0) continue
+
+    // Guard: would these cells actually fall? At least one cell in
+    // the candidate sag must have AIR directly below (and that AIR
+    // can't itself be another candidate cell — interior cells don't
+    // help). Without this guard we'd spawn sag entities on chunks
+    // that are cantilever-unstable but already resting on bedrock —
+    // they'd shake, "release", land 0px away, and look like a stuck
+    // shake to the player.
+    const chosenSet = new Set(chosen)
+    let willFall = false
+    for (const idx of chosen) {
+      const c = idx % cols
+      const r = Math.floor(idx / cols)
+      const belowIdx = (r + 1) * cols + c
+      if (chosenSet.has(belowIdx)) continue // interior, not a bottom edge
+      if (r + 1 >= rows) continue // world bottom blocks
+      if (tiles[belowIdx] === TILE_AIR) {
+        willFall = true
+        break
+      }
+    }
+    if (!willFall) continue
+
     for (const idx of chosen) flags[idx] = (flags[idx] ?? 0) | FLAG_SAGGING
     world.spawn(
       SaggingChunk({
