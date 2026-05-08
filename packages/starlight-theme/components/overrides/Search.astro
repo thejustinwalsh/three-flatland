@@ -252,37 +252,32 @@ if (project.trailingSlash === 'never') dataAttributes['data-strip-trailing-slash
         display: inline-flex;
     }
 
+    /* Keyboard shortcut indicator — Cmd/Ctrl+K. The inline script
+     * (above) sets the display via element style based on a viewport
+     * matchMedia query so we avoid both a flash of the wrong shortcut
+     * and the previous mess of duplicate `display: none !important`
+     * + a media query overriding it. The CSS below is purely the
+     * appearance; visibility is fully script-driven. */
     button[data-open-modal] > kbd {
-        transition-property: color, background-color, border-color;
-        transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
-        transition-duration: 0.15s;
-        opacity: 1;
+        position: absolute;
+        top: 0.3rem;
+        right: 0.3rem;
+        height: 1.25rem;
+        align-items: center;
+        gap: 0.25rem;
+        padding-inline: calc(var(--spacing) * 1.5);
         font-family: 'Inter', system-ui, sans-serif;
         font-weight: 500;
         font-size: 10px;
-        padding-left: calc(var(--spacing) * 1.5);
-        padding-right: calc(var(--spacing) * 1.5);
-        background-color: color-mix(in oklab, var(--muted) 78%, var(--background));
-        border-width: 1px;
-        border-style: solid;
-        border-color: transparent;
-        border-radius: 0.25rem;
         color: var(--muted-foreground);
-        gap: 0.25rem;
-        align-items: center;
-        height: 1.25rem;
-        display: none;
-        top: 0.3rem;
-        right: 0.3rem;
-        position: absolute;
+        background-color: color-mix(in oklab, var(--muted) 78%, var(--background));
+        border: 1px solid transparent;
+        border-radius: 0.25rem;
         pointer-events: none;
-        display: none !important;
-    }
-
-    @media (min-width: 640px) {
-        button > kbd {
-            display: flex !important;
-        }
+        transition:
+            color 0.15s cubic-bezier(0.4, 0, 0.2, 1),
+            background-color 0.15s cubic-bezier(0.4, 0, 0.2, 1),
+            border-color 0.15s cubic-bezier(0.4, 0, 0.2, 1);
     }
 
     button[data-open-modal] kbd {
@@ -461,6 +456,32 @@ if (project.trailingSlash === 'never') dataAttributes['data-strip-trailing-slash
     #starlight__search .pagefind-ui__result-nested {
         position: relative;
         background-color: var(--background);
+        transition:
+            outline-color 180ms cubic-bezier(0.2, 0.8, 0.2, 1),
+            background-color 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
+        outline: 1px solid transparent;
+    }
+
+    /* Left accent rail — appears on hover/focus, gem-tinted, mirrors the
+     * sidebar pip pattern so docs-wide "you've selected this" affordance
+     * is consistent. ::after rather than ::before because Pagefind UI
+     * already uses ::before for the page/tree icons. */
+    #starlight__search .pagefind-ui__result-title:not(:where(.pagefind-ui__result-nested *))::after,
+    #starlight__search .pagefind-ui__result-nested::after {
+        content: '';
+        position: absolute;
+        inset-block: 0.25rem;
+        inset-inline-start: 0;
+        width: 2px;
+        border-radius: 1px;
+        background-color: var(--diamond);
+        opacity: 0;
+        transform: scaleY(0.5);
+        transform-origin: center;
+        transition:
+            opacity 200ms cubic-bezier(0.2, 0.8, 0.2, 1),
+            transform 200ms cubic-bezier(0.2, 0.8, 0.2, 1);
+        pointer-events: none;
     }
 
     #starlight__search .pagefind-ui__result-title:not(:where(.pagefind-ui__result-nested *)):hover,
@@ -468,13 +489,32 @@ if (project.trailingSlash === 'never') dataAttributes['data-strip-trailing-slash
         .pagefind-ui__result-title:not(:where(.pagefind-ui__result-nested *)):focus-within,
     #starlight__search .pagefind-ui__result-nested:hover,
     #starlight__search .pagefind-ui__result-nested:focus-within {
-        outline: 1px solid color-mix(in oklab, var(--diamond) 60%, transparent);
+        outline-color: color-mix(in oklab, var(--diamond) 60%, transparent);
+    }
+
+    #starlight__search .pagefind-ui__result-title:not(:where(.pagefind-ui__result-nested *)):hover::after,
+    #starlight__search
+        .pagefind-ui__result-title:not(:where(.pagefind-ui__result-nested *)):focus-within::after,
+    #starlight__search .pagefind-ui__result-nested:hover::after,
+    #starlight__search .pagefind-ui__result-nested:focus-within::after {
+        opacity: 1;
+        transform: scaleY(1);
     }
 
     #starlight__search
         .pagefind-ui__result-title:not(:where(.pagefind-ui__result-nested *)):focus-within,
     #starlight__search .pagefind-ui__result-nested:focus-within {
         background-color: color-mix(in oklab, var(--diamond-soft) 60%, var(--background));
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        #starlight__search .pagefind-ui__result-title:not(:where(.pagefind-ui__result-nested *)),
+        #starlight__search .pagefind-ui__result-nested,
+        #starlight__search
+            .pagefind-ui__result-title:not(:where(.pagefind-ui__result-nested *))::after,
+        #starlight__search .pagefind-ui__result-nested::after {
+            transition: none;
+        }
     }
 
     #starlight__search .pagefind-ui__result-thumb,
