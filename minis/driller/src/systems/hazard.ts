@@ -527,6 +527,14 @@ export function rockAvalancheSystem(world: World): void {
       hits[newIdx] = rockHits
       hits[idx] = 0
       shakeStartTick.set(newIdx, -1)
+      // Mark the newly-occupied cell as already-visited so the outer
+      // flood-fill loop doesn't re-process it as a "new" cluster in
+      // the same tick. Without this, the cascade processes the same
+      // cluster multiple times per tick (bottom-up scan picks up each
+      // translated stone in turn) — the cluster effectively teleports
+      // through soil layers in one frame instead of falling at the
+      // throttled cadence. See decisions log: "Plan 1 / item B".
+      seen[newIdx] = 1
       markCellAndNeighborsDirty(world, c, r)
       markCellAndNeighborsDirty(world, c, r + 1)
     }

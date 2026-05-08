@@ -209,3 +209,26 @@ Hard rules:
 **Why:** Adjacent latent bug found while auditing fixture handling — fixing it in the same item is cheaper than filing a separate ticket. The codex rule is now codified in code AND test, so a future refactor that broadens the consumed-tiles set will fail the suite immediately. The named helper makes "is this cell consumable?" the same question everywhere.
 
 **Verification:** 102/102 unit tests pass (was 98/98; +4 new). Typecheck clean.
+
+## Plan 1 / item B — glom-fix: avalanche cascade in a single tick
+**File:** `minis/driller/src/systems/hazard.ts:529`, `tests/glom-fix.test.ts`
+**Date:** 2026-05-08
+
+**Decision:** Mark each newly-translated cluster cell as `seen[newIdx] = 1` immediately after writing the new tile, so the outer flood-fill loop doesn't re-process it as a "new" cluster within the same tick.
+
+**Bug surfaced by writing the codex test:** the falling cluster `[r0..r3]` would commit on tick 31 and translate to `[r1..r4]`. The outer scan continued from i=startIdx upward and re-encountered `r4` (now STONE, not yet `seen`) — flood-fill picked it up as a 1-cell cluster with FLAG_FALLING, and the throttle check `gs.tick - lastAvalancheTick < 12` was false (lastAvalancheTick wasn't bumped until end-of-function), so the system committed AGAIN. Then again. Then again. Result: in a single tick the cluster cascaded down through soil layers, crushing 4+ soil cells and depositing a stone at the world floor with FLAG_FALLING then immediately stripping it via the inMotion+blocked branch. From outside the system the falling cluster *teleported through soil* in one frame.
+
+**Why this fix (vs. alternatives):**
+- *snapshot tiles at fn entry*: heavier (Uint8Array clone every tick).
+- *bump lastAvalancheTick inline after commit*: would correctly throttle but breaks the design intent that all clusters should commit on the same throttled cadence (multiple independent clusters should still fall together).
+- *flood-fill all clusters before any mutation*: correct but a larger refactor; deferred until the Phase 2 RockCluster entities work, which already requires a two-pass restructure.
+
+**Why this matters for the codex:**
+- Rule 5 ("rocks resolve fully once started, no stop-shake-continue") is now actually observable in unit tests — previously it was being honored *too aggressively* via the cascade bug.
+- Rule 4 ("survivors keep falling until they land") now works because the cluster is treated as one cluster that grows via flood-fill across ticks. The merged cluster (falling + static stone it lands on) keeps falling at the throttled cadence — single cell, grows to 5, falls together.
+
+**Tests pinning the rule:**
+- `glom-fix.test.ts: falling 4-cluster lands on a static stone above SOIL → merged cluster keeps falling` — observes `everSawMerge` (5 simultaneous FLAG_FALLING cells) and the cluster ending up below the original static row.
+- `glom-fix.test.ts: ... no support → merged cluster lands inert` — pins rule 7 (FLAG_DISTURBED clears on landing inert).
+
+**Verification:** 104/104 unit tests pass (was 102/102; +2 new). All existing avalanche tests still pass; typecheck clean.
