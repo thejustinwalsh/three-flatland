@@ -194,3 +194,18 @@ Hard rules:
 **Why:** Unit tests cover deterministic invariants; the codex enforcement only emerges in full-system play with active AI + streaming chunks + cascading falls. Integration tests caught real bugs unit tests couldn't reach. Game-side counters (`window.__drillerStats`) are the cleanest live signal — grid-state scraping can't distinguish "chunk landed at its release row" (rule-1 violation) from "sibling chunk landed on top of a freshly-released cell" (legitimate).
 
 **Evidence:** `tests/integration/README.md` is the canonical convention doc.
+
+## Plan 1 / item A — fixture indestructibility codified + latent bug fix
+**File:** `minis/driller/src/traits/grid-traits.ts`, `src/systems/explosive.ts`, `src/systems/driller.ts`, `src/systems/ai-planner.ts`, `tests/fixture-indestructible.test.ts`
+**Date:** 2026-05-08
+
+**Decision:** Promote the implicit fixture-survives rule into a named, testable invariant. Steps:
+
+1. Added `isFixtureTile(t)` to `grid-traits.ts` with the proper bound `[TILE_FIXTURE_BASE, TILE_FIXTURE_BASE+5)`. Doc comment now declares the codex rule explicitly: *"fixtures are mother nature's safe haven — INDESTRUCTIBLE by drill / fall-crush / avalanche-crush / explosive blast."*
+2. `explosive.ts` now uses `isFixtureTile(t)` as an explicit early-continue rather than relying on a SOIL/ROCK whitelist accidentally sparing fixtures. Same behavior; intent is unambiguous and grep-friendly.
+3. `driller.ts` and `ai-planner.ts` had local `isFixture` helpers using `< TILE_FIXTURE_BASE + 8` — this was a latent bug treating TILE_ROCK (8) and TILE_EXPLOSIVE (9) as fixtures. Both helpers deleted; both files import the canonical `isFixtureTile`. As a side effect, rocks and explosives now correctly classify as drillable / pathable (the multi-hit `completeDrill` path was previously unreachable from `pickAction`).
+4. Pinned with `tests/fixture-indestructible.test.ts` (4 cases): explosive blast leaves a fixture cell intact; all 5 fixture variants (+0..+4) survive; STONE within radius also survives (other-anchor sanity); SOIL outside radius is untouched (radius bound sanity).
+
+**Why:** Adjacent latent bug found while auditing fixture handling — fixing it in the same item is cheaper than filing a separate ticket. The codex rule is now codified in code AND test, so a future refactor that broadens the consumed-tiles set will fail the suite immediately. The named helper makes "is this cell consumable?" the same question everywhere.
+
+**Verification:** 102/102 unit tests pass (was 98/98; +4 new). Typecheck clean.

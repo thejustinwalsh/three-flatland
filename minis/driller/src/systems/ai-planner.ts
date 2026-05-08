@@ -10,10 +10,10 @@ import {
   type PlannerName,
   PlannerTarget,
   TILE_AIR,
-  TILE_FIXTURE_BASE,
   TILE_ROCK,
   TILE_SOIL,
   TILE_STONE,
+  isFixtureTile,
 } from '../traits'
 
 void TILE_SOIL // import kept for clarity in passability rules
@@ -31,7 +31,7 @@ export function planGreedy(world: World, d: DrillerCell): [number, number] | nul
   if (!grid) return null
   const { cols, rows, tiles } = grid
   const below = (d.row + 1) * cols + d.col
-  if (d.row + 1 < rows && tiles[below] !== TILE_STONE && !isFixture(tiles[below] ?? TILE_AIR)) {
+  if (d.row + 1 < rows && tiles[below] !== TILE_STONE && !isFixtureTile(tiles[below] ?? TILE_AIR)) {
     return [d.col, d.row + 1]
   }
   for (const dc of [-1, 1]) {
@@ -39,7 +39,7 @@ export function planGreedy(world: World, d: DrillerCell): [number, number] | nul
     if (nc < 0 || nc >= cols) continue
     const idx = d.row * cols + nc
     const t = tiles[idx]
-    if (t !== undefined && t !== TILE_STONE && !isFixture(t)) {
+    if (t !== undefined && t !== TILE_STONE && !isFixtureTile(t)) {
       return [nc, d.row]
     }
   }
@@ -128,7 +128,7 @@ export function planSeeker(world: World, d: DrillerCell): [number, number] | nul
       if (t === undefined) return false
       // Stone, rock and fixtures block the path entirely.
       if (t === TILE_STONE || t === TILE_ROCK) return false
-      if (isFixture(t)) return false
+      if (isFixtureTile(t)) return false
       // Gravity-strict: the driller never walks up. Reject any upward
       // step. (Drilling-up is a separate tactical action, not a pathing
       // primitive.)
@@ -146,7 +146,7 @@ export function planCautious(world: World, d: DrillerCell): [number, number] | n
 
   const isShelter = (c: number, r: number): boolean => {
     const t = tiles[r * cols + c]
-    if (t === undefined || t === TILE_STONE || isFixture(t)) return false
+    if (t === undefined || t === TILE_STONE || isFixtureTile(t)) return false
     for (const [dc, dr] of [
       [-1, 0],
       [1, 0],
@@ -157,7 +157,7 @@ export function planCautious(world: World, d: DrillerCell): [number, number] | n
       const nr = r + dr
       if (nc < 0 || nc >= cols || nr < 0 || nr >= rows) continue
       const nt = tiles[nr * cols + nc]
-      if (nt === TILE_STONE || (nt !== undefined && isFixture(nt))) return true
+      if (nt === TILE_STONE || (nt !== undefined && isFixtureTile(nt))) return true
     }
     return false
   }
@@ -173,10 +173,6 @@ export function planCautious(world: World, d: DrillerCell): [number, number] | n
   const next = bfsNextStep(d.col, d.row, cols, rows, isShelter, isPassable, 6)
   if (next) return next
   return planGreedy(world, d)
-}
-
-function isFixture(t: number): boolean {
-  return t >= TILE_FIXTURE_BASE && t < TILE_FIXTURE_BASE + 8
 }
 
 /**
@@ -303,7 +299,7 @@ export function planEvadeHazard(world: World, d: { col: number; row: number }): 
       const t = tiles[idx]
       if (t === undefined) continue
       if (t === TILE_STONE || t === TILE_ROCK) continue
-      if (t >= TILE_FIXTURE_BASE && t < TILE_FIXTURE_BASE + 5) continue
+      if (isFixtureTile(t)) continue
       return [c, d.row]
     }
   }
@@ -366,7 +362,7 @@ export function planEvadeFallingChunk(
       const t = tiles[idx]
       if (t === undefined) continue
       if (t === TILE_STONE || t === TILE_ROCK) continue
-      if (t >= TILE_FIXTURE_BASE && t < TILE_FIXTURE_BASE + 5) continue
+      if (isFixtureTile(t)) continue
       return [c, d.row]
     }
   }

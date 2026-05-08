@@ -12,10 +12,10 @@ import {
   Mood,
   PlannerTarget,
   TILE_AIR,
-  TILE_FIXTURE_BASE,
   TILE_ROCK,
   TILE_SOIL,
   TILE_STONE,
+  isFixtureTile,
 } from '../traits'
 import {
   DEPTH_AT_FULL_SPEED,
@@ -105,7 +105,7 @@ function pickAction(
     const drillRow = snappedRow + 1
     if (drillRow >= rows) return { kind: 'idle', facing }
     const t = tiles[drillRow * cols + snappedCol]
-    if (t === undefined || t === TILE_STONE || (t !== undefined && isFixture(t))) return { kind: 'idle', facing }
+    if (t === undefined || t === TILE_STONE || (t !== undefined && isFixtureTile(t))) return { kind: 'idle', facing }
     return { kind: 'drill', drillCol: snappedCol, drillRow, facing, animState: 'drillDown' }
   }
   if (stepCol !== 0) {
@@ -115,7 +115,7 @@ function pickAction(
     if (sideTile === TILE_AIR) {
       return { kind: 'walk', destCol: sideCol, destRow: snappedRow, facing, animState: 'walk' }
     }
-    if (sideTile === TILE_STONE || (sideTile !== undefined && isFixture(sideTile))) {
+    if (sideTile === TILE_STONE || (sideTile !== undefined && isFixtureTile(sideTile))) {
       return { kind: 'idle', facing }
     }
     return {
@@ -130,7 +130,7 @@ function pickAction(
   const upRow = snappedRow - 1
   if (upRow < 0) return { kind: 'idle', facing }
   const t = tiles[upRow * cols + snappedCol]
-  if (t === undefined || t === TILE_STONE || (t !== undefined && isFixture(t))) return { kind: 'idle', facing }
+  if (t === undefined || t === TILE_STONE || (t !== undefined && isFixtureTile(t))) return { kind: 'idle', facing }
   return { kind: 'drill', drillCol: snappedCol, drillRow: upRow, facing, animState: 'drillUp' }
 }
 
@@ -363,10 +363,6 @@ function disturbAdjacentStones(grid: { cols: number; rows: number; tiles: Uint8A
       flags[nIdx] = (flags[nIdx] ?? 0) | FLAG_DISTURBED
     }
   }
-}
-
-function isFixture(t: number): boolean {
-  return t >= TILE_FIXTURE_BASE && t < TILE_FIXTURE_BASE + 8
 }
 
 /**

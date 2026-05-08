@@ -8,6 +8,9 @@ import {
   Grid,
   TILE_AIR,
   TILE_EXPLOSIVE,
+  TILE_ROCK,
+  TILE_SOIL,
+  isFixtureTile,
 } from '../traits'
 import {
   EXPLOSIVE_FUSE_TICKS,
@@ -102,16 +105,11 @@ function detonate(
       if (c < 0 || c >= cols || r < 0 || r >= rows) continue
       const idx = r * cols + c
       const t = tiles[idx]!
-      // STONE and FIXTURE survive explosions; ROCK and SOIL and EXPLOSIVE go.
+      // Codex: fixtures are indestructible — bombs cannot consume them.
+      // STONE also survives. SOIL, ROCK, and chained EXPLOSIVE vaporize.
       if (t === TILE_AIR) continue
-      if (t === TILE_EXPLOSIVE) {
-        tiles[idx] = TILE_AIR
-        flags[idx] = (flags[idx] ?? 0) | FLAG_AUTOTILE_DIRTY
-        markCellAndNeighborsDirty(world, c, r)
-        continue
-      }
-      // SOIL, ROCK → vaporized
-      if (t === 1 /* TILE_SOIL */ || t === 8 /* TILE_ROCK */) {
+      if (isFixtureTile(t)) continue
+      if (t === TILE_SOIL || t === TILE_ROCK || t === TILE_EXPLOSIVE) {
         tiles[idx] = TILE_AIR
         flags[idx] = (flags[idx] ?? 0) | FLAG_AUTOTILE_DIRTY
         markCellAndNeighborsDirty(world, c, r)

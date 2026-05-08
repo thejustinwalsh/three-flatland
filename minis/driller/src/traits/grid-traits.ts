@@ -7,6 +7,13 @@ import { trait } from 'koota'
  * (bone, mushroom shelf, crystal cluster, etc.). All fixture variants behave
  * identically as anchors; only the rendered sprite differs.
  *
+ * Fixture codex (mother nature's safe haven): fixtures are INDESTRUCTIBLE.
+ * Drill / fall-crush / avalanche-crush / explosive blast all leave fixture
+ * cells intact. They block soil falls, block rock falls, and survive bombs.
+ * Use `isFixtureTile` everywhere a system has to decide "can I consume this
+ * cell?" — never re-derive the range inline (8 ≠ TILE_FIXTURE_BASE+5; the
+ * range is exactly +0..+4).
+ *
  * `TILE_ROCK` is a multi-hit breakable hard tile — anchors soil while intact.
  * `TILE_EXPLOSIVE` triggers on driller adjacency, blows a 5×5 hole.
  */
@@ -17,13 +24,14 @@ export const TILE_FIXTURE_BASE = 3
 export const TILE_ROCK = 8
 export const TILE_EXPLOSIVE = 9
 
+/** True if `t` is one of the 5 fixture variants (TILE_FIXTURE_BASE+0..+4). */
+export function isFixtureTile(t: number): boolean {
+  return t >= TILE_FIXTURE_BASE && t < TILE_FIXTURE_BASE + 5
+}
+
 /** Helper — true if the tile anchors adjacent SOIL (used by collapse). */
 export function isAnchorTile(t: number): boolean {
-  return (
-    t === TILE_STONE ||
-    t === TILE_ROCK ||
-    (t >= TILE_FIXTURE_BASE && t < TILE_FIXTURE_BASE + 5)
-  )
+  return t === TILE_STONE || t === TILE_ROCK || isFixtureTile(t)
 }
 
 /** Reserved bits in `Grid.flags`. */
