@@ -23,11 +23,24 @@ import { createRng } from '../lib/rng'
 import { markCellAndNeighborsDirty } from './autotile-pass'
 import { setHazardSafeMinRow } from './hazard'
 
-let deathPhase: 'idle' | 'scatter' | 'ghost' | 'respawn' = 'idle'
+/**
+ * Death sequence:
+ *   idle       — driller is alive, no death in progress
+ *   settle     — driller just got squished. Body is rendered as a
+ *                corpse on the death cell; camera continues to track
+ *                it. Lasts SETTLE_TICKS so the player sees WHERE they
+ *                died and the world acknowledges the failure before
+ *                the spectacle starts.
+ *   scatter    — corpse despawns, gems scatter, brief beat
+ *   ghost      — sine-wave ghost beam rises, clearing the column
+ *   respawn    — new driller spawned at the death cell
+ */
+let deathPhase: 'idle' | 'settle' | 'scatter' | 'ghost' | 'respawn' = 'idle'
 let deathTick = 0
 let deathCol = 9
 let deathRow = 0
 let ghostRow = 0
+const SETTLE_TICKS = 36 // ~600ms — body lies there before the ghost
 
 const SCATTER_RADIUS = 6
 /**
@@ -59,18 +72,42 @@ export function deathSystem(world: World): void {
   if (gs.runState !== 'dying' && deathPhase === 'idle') return
 
   if (deathPhase === 'idle' && gs.runState === 'dying') {
+    // Driller just got squished. KEEP the entity alive (in 'trip'
+    // animation) so the camera continues to track the body lying on
+    // the earth where it died. Don't scatter gems yet, don't spawn
+    // the ghost yet — the player needs a moment to read "yep, I
+    // died here". After SETTLE_TICKS the corpse is removed and
+    // scatter / ghost run.
     const drillerEntity = world.queryFirst(Driller)
     if (drillerEntity) {
       const d = drillerEntity.get(Driller)!
       deathCol = d.col
       deathRow = d.row
-      drillerEntity.set(Animation, { state: 'fall' })
-      scatterGems(world, gs.gems, deathCol, deathRow, gs.tick)
-      drillerEntity.destroy()
+      drillerEntity.set(Animation, { state: 'trip' })
+      // Pin destination to current cell so the corpse doesn't try to
+      // move under any leftover planner target.
+      drillerEntity.set(Driller, { destCol: d.col, destRow: d.row })
+      drillerEntity.set(PlannerTarget, { col: d.col, row: d.row, reservedAtTick: gs.tick })
     }
-    deathPhase = 'scatter'
+    deathPhase = 'settle'
     deathTick = gs.tick
     ghostRow = deathRow
+    return
+  }
+
+  if (deathPhase === 'settle') {
+    // Corpse lies on the earth; camera tracks it. After SETTLE_TICKS
+    // we transition to scatter (which despawns the corpse + spawns
+    // scatter gems).
+    if (gs.tick - deathTick >= SETTLE_TICKS) {
+      const drillerEntity = world.queryFirst(Driller)
+      if (drillerEntity) {
+        scatterGems(world, gs.gems, deathCol, deathRow, gs.tick)
+        drillerEntity.destroy()
+      }
+      deathPhase = 'scatter'
+      deathTick = gs.tick
+    }
     return
   }
 
