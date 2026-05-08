@@ -5,22 +5,31 @@
 > Branch: mini-game-showcase
 > PR: https://github.com/thejustinwalsh/three-flatland/pull/59
 
-## New APIs
+## New Features
 
-- `usePaneRadioGrid` hook (react subpath) — inline button-bar selector backed by the Tweakpane essentials `radiogrid` blade; deferred disposal and synchronous creation mirror `usePaneButton`/`usePaneInput`
-- `PaneInputOptions` extended with `readonly` and `format` — create readonly monitors with custom formatters from the React hook
+- `usePaneRadioGrid` hook (react subpath) — inline button-bar selector backed by Tweakpane essentials' `radiogrid` blade; deferred disposal and synchronous creation match `usePaneButton`/`usePaneInput` pattern
+- `PaneInputOptions` extended with `readonly` and `format` — allows readonly monitor bindings with custom value formatters
 
 ## Bug Fixes
 
-- Checkbox hit target: `.tp-ckbv_i` stretched to full box size via `width/height: var(--cnt-usz)` — clicks now land directly on the input without relying on flaky `<label>` forwarding
-- `z-index: 1000` applied to the `.tp-dfwv` body-sibling wrapper instead of the inner pane element — pane now correctly stacks above other page overlays
-- Checkbox theme: box surface uses `rgba(28,40,77,0.6)` with hover/focus/active parity; check stroke turns accent on `:checked` — was nearly invisible against the container background
+- Checkbox hit target stretched to full 20×20 box: `.tp-ckbv_i` now has `width/height: var(--cnt-usz)`; input covers the visible area directly, no unreliable `<label>` click forwarding
+- `z-index: 1000` applied to `.tp-dfwv` wrapper (the body-sibling stacking context) instead of the inner pane element; previously setting z-index on the inner root had no effect on overlay stacking
+- DPR re-sync: `<DprSync dpr={windowSize.dpr} />` component calls `gl.setPixelRatio(min(dpr, 2))` on monitor swap, OS zoom, and fullscreen transitions; eliminates sub-pixel drift between the Slug canvas and compare overlay
 
-## Changes
+## Theme
 
-- slug-text examples migrated from Web Awesome (`@awesome.me/webawesome`) to `@three-flatland/tweakpane`; all `wa-*` controls replaced with Tweakpane folders and inputs
+- Checkbox box surface matches other controls: `rgba(28,40,77,0.6)` with hover/focus/active parity
+- Check stroke turns accent pink on `:checked`; default tweakpane checkbox was effectively invisible against the panel background
 
-This release adds the `usePaneRadioGrid` hook for scene/mode toggles and fixes long-standing checkbox usability and z-index stacking issues.
+## Examples Migration
+
+- Both slug-text examples (React + Three) migrated from Web Awesome to `@three-flatland/tweakpane`
+- React: `usePane` + `usePaneFolder` + `usePaneInput` + `useStatsMonitor` via a `<StatsTracker>` child inside `<Canvas>`; `trackTimestamp: true` enables GPU-time mode
+- Three: `createPane` with stats; render loop wrapped with `stats.begin()` / `stats.end()`, `stats.update(renderer.info)` each frame
+- All `@awesome.me/webawesome` imports, CSS, and `wa-*` selectors removed
+- Computing spinner moved from top-right to top-left to avoid z-index conflict with the tweakpane corner
+
+`@three-flatland/tweakpane` gains a radio-grid hook, monitor-capable input options, and a corrected checkbox interaction model, while the slug-text examples fully adopt it as the sole UI layer.
 
 ### b90509fa9cec75766d96e36d7f3b11126f70839f
 fix: DPR + fullscreen tracking, checkbox hit target
