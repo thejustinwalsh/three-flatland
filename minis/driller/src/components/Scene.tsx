@@ -21,6 +21,7 @@ import { autotilePass } from '../systems/autotile-pass'
 import { collapseTick } from '../systems/collapse'
 import { deathSystem, heroWorldFallSystem, scatteredGemsSystem } from '../systems/death'
 import { resetStreaming, streamChunks } from '../systems/generation'
+import { particlesSystem } from '../systems/particles'
 import { drillerSystem, moodDriftSystem } from '../systems/driller'
 import { plannerTick } from '../systems/ai-planner'
 import { TILE_COLORS, useDrillerMaterial } from '../materials'
@@ -110,6 +111,7 @@ export function Scene() {
       drillerSystem(world, deltaMs)
     }
     collapseTick(world)
+    particlesSystem(world, deltaMs)
     autotilePass(world)
 
     // Apply camera trait to Flatland's internal orthographic camera.
