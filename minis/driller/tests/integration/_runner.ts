@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process'
 import { readFile } from 'node:fs/promises'
+import { createServer } from 'node:net'
 import { fileURLToPath } from 'node:url'
 import { basename, dirname, resolve } from 'node:path'
 
@@ -46,6 +47,39 @@ export interface ProbeResult<T> {
 
 const here = dirname(fileURLToPath(import.meta.url))
 
+/**
+ * Ask the OS for a free TCP port by binding to port 0 on the loopback
+ * interface, reading the assigned port back, then releasing the
+ * socket. Used so the integration suite never collides with whatever
+ * dev servers the user has running (e.g. a workspace `pnpm dev`
+ * holding port 5173).
+ *
+ * The bind/release is racey by definition — between this returning
+ * and vite actually starting, another process could grab the same
+ * port. The runner handles that case via PORT_RETRY_LIMIT below; the
+ * vite.integration.config has `strictPort: false` so vite itself can
+ * also fall back.
+ */
+async function findFreePort(): Promise<number> {
+  return new Promise((resolveP, rejectP) => {
+    const srv = createServer()
+    srv.unref()
+    srv.once('error', rejectP)
+    srv.listen(0, '127.0.0.1', () => {
+      const addr = srv.address()
+      if (addr && typeof addr === 'object') {
+        const port = addr.port
+        srv.close((err) => (err ? rejectP(err) : resolveP(port)))
+      } else {
+        srv.close()
+        rejectP(new Error('Could not determine free port'))
+      }
+    })
+  })
+}
+
+const PORT_RETRY_LIMIT = 3
+
 export async function runProbe<T>(
   probeRelativePath: string,
   opts: RunProbeOptions,
@@ -61,6 +95,47 @@ export async function runProbe<T>(
   const HARD_TIMEOUT_MARGIN_SEC = 60
   const hardTimeoutMs = (opts.timeoutSec + HARD_TIMEOUT_MARGIN_SEC) * 1000
 
+  const probeLabelOuter = `[${basename(probePath, '.probe.js')}]`
+  let lastErr: unknown
+  for (let attempt = 1; attempt <= PORT_RETRY_LIMIT; attempt++) {
+    const port = await findFreePort()
+    process.stderr.write(
+      `${probeLabelOuter} attempt ${attempt}/${PORT_RETRY_LIMIT} on port ${port}\n`,
+    )
+    try {
+      return await runOnce<T>(probePath, code, opts, hardTimeoutMs, port, probeLabelOuter)
+    } catch (err) {
+      lastErr = err
+      // Retry only on port-collision-style failures. Any other failure
+      // (sentinel missing, JSON parse error, hard timeout) is a real
+      // probe issue — surface immediately.
+      const msg = err instanceof Error ? err.message : String(err)
+      if (!isPortCollision(msg)) throw err
+      process.stderr.write(
+        `${probeLabelOuter} port ${port} appears to have been stolen between bind & vite — retrying\n`,
+      )
+    }
+  }
+  throw lastErr ?? new Error('runProbe exhausted retries with no recorded error')
+}
+
+function isPortCollision(msg: string): boolean {
+  return (
+    /EADDRINUSE/i.test(msg) ||
+    /Port \d+ is already in use/i.test(msg) ||
+    /strictPort/i.test(msg)
+  )
+}
+
+async function runOnce<T>(
+  probePath: string,
+  code: string,
+  opts: RunProbeOptions,
+  hardTimeoutMs: number,
+  port: number,
+  probeLabelOuter: string,
+): Promise<ProbeResult<T>> {
+  const HARD_TIMEOUT_MARGIN_SEC = 60
   // --gpu uses Chromium's new headless mode with GPU-friendly flags.
   // Without this the headless browser throttles requestAnimationFrame,
   // the simulation tick rate drops, and wall-clock-sensitive probes
@@ -70,7 +145,7 @@ export async function runProbe<T>(
     'exec',
     'vitexec',
     '--config',
-    'vite.config.ts',
+    'vite.integration.config.ts',
     '--gpu',
     '--path',
     opts.path ?? '/',
@@ -78,17 +153,19 @@ export async function runProbe<T>(
     String(opts.timeoutSec),
     code,
   ]
-
-  const probeLabelOuter = `[${basename(probePath, '.probe.js')}]`
   process.stderr.write(
-    `${probeLabelOuter} starting (probe budget ${opts.timeoutSec}s, hard timeout ${(opts.timeoutSec + 60)}s)\n`,
+    `${probeLabelOuter} starting (probe budget ${opts.timeoutSec}s, hard timeout ${(opts.timeoutSec + 60)}s, port ${port})\n`,
   )
   const startedAt = Date.now()
 
   return new Promise<ProbeResult<T>>((resolveResult, reject) => {
     const proc = spawn('pnpm', args, {
       cwd: resolve(here, '../../'),
-      env: { ...process.env, FORCE_COLOR: '0' },
+      env: {
+        ...process.env,
+        FORCE_COLOR: '0',
+        DRILLER_INTEGRATION_PORT: String(port),
+      },
     })
     let stdout = ''
     let stderr = ''
