@@ -269,6 +269,12 @@ let lastAvalancheTick = 0
  * blockage, or on world reset.
  */
 const shakeStartTick = new Map<number, number>()
+/**
+ * Phase 0 perf: dirty list of cell indices that received FLAG_SHAKING
+ * via the avalanche pipeline. Cleared at the start of the next
+ * `rockAvalancheSystem` pass instead of a window-wide scan.
+ */
+const shakingDirtyIdxs: number[] = []
 
 export function rockAvalancheSystem(world: World): void {
   const gs = world.get(GameState)
@@ -294,17 +300,16 @@ export function rockAvalancheSystem(world: World): void {
   const startIdx = winTop * cols
   const endIdx = winBot * cols
 
-  // Universal pre-pass: clear FLAG_SHAKING from every TILE_STONE in
-  // the scan window. The cluster iteration below re-sets it ONLY for
-  // cells in clusters that are actively shaking this tick. Without
-  // this, a cluster that shrinks below 4 cells (because a rock
-  // broke) leaves the surviving cells with stuck SHAKING flags —
-  // the cluster is no longer eligible so the iteration's continue
-  // never reaches its cleanup, and the cells rumble forever with no
-  // intent to fall.
-  for (let i = startIdx; i < endIdx; i++) {
-    if (tiles[i] === TILE_STONE) flags[i]! &= ~FLAG_SHAKING
+  // Phase 0 perf: dirty-list pre-pass. We track every cell index
+  // we set FLAG_SHAKING on (`shakingDirtyIdxs`) at the bottom of
+  // this function. This pass clears just those, instead of
+  // window-wide scanning ~3.7k cells per tick.
+  for (const idx of shakingDirtyIdxs) {
+    if (idx < flags.length && tiles[idx] === TILE_STONE) {
+      flags[idx]! &= ~FLAG_SHAKING
+    }
   }
+  shakingDirtyIdxs.length = 0
 
   const seen = new Uint8Array(tiles.length)
   const stack: number[] = []
@@ -407,8 +412,12 @@ export function rockAvalancheSystem(world: World): void {
     const inShakePhase = shakeElapsed < AVALANCHE_SHAKE_TICKS
     const stillTelegraphing = shakeElapsed < AVALANCHE_SHAKE_TICKS + AVALANCHE_SETTLE_TICKS
     for (const idx of cells) {
-      if (inShakePhase) flags[idx]! |= FLAG_SHAKING
-      else flags[idx]! &= ~FLAG_SHAKING
+      if (inShakePhase) {
+        flags[idx]! |= FLAG_SHAKING
+        shakingDirtyIdxs.push(idx)
+      } else {
+        flags[idx]! &= ~FLAG_SHAKING
+      }
     }
     if (stillTelegraphing) continue
     // Throttle subsequent descent steps after the telegraph completes.

@@ -19,6 +19,7 @@ import { hazardSpawnSystem, hazardTickSystem, resetAvalanche, resetHazardSpawn, 
 import { particlesSystem } from '../systems/particles'
 import { useDrillerMaterial } from '../materials'
 import { AIDebugPanel, shouldShowAIDebug } from './AIDebugPanel'
+import { PerfDebugPanel, shouldShowPerfDebug } from './PerfDebugPanel'
 import { DrillerView } from './DrillerView'
 import { FallingChunkView } from './FallingChunkView'
 import { GemRenderer } from './GemRenderer'
@@ -114,6 +115,7 @@ export function Scene({ onShellStateChange }: SceneProps) {
       <GhostBeam material={material} />
       <PlayfieldOverlay material={material} />
       {shouldShowAIDebug() && <AIDebugPanel />}
+      {shouldShowPerfDebug() && <PerfDebugPanel />}
     </flatland>
   )
 }

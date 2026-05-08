@@ -110,19 +110,42 @@ export function detectAndSag(world: World): void {
   const winTop = Math.max(0, dRow - SCAN_WINDOW_ROWS_ABOVE)
   const winBot = Math.min(rows, dRow + SCAN_WINDOW_ROWS_BELOW)
 
+  // PERF — Phase 0: short-circuit the entire BFS if no cells in the
+  // window have FLAG_SAG_RECHECK set. The flag is only written by
+  // markCellAndNeighborsDirty / markCellAndNeighborsDirtyExcept, both
+  // called on player-driven mutations (drill, hazard land, explosion,
+  // sag release, fall land). On quiet ticks (no recent disturbance)
+  // we skip detectChunks + unstableCells entirely.
+  let anyRecheck = false
+  {
+    const startIdx = winTop * cols
+    const endIdx = Math.min(flags.length, winBot * cols)
+    for (let i = startIdx; i < endIdx; i++) {
+      if ((flags[i]! & FLAG_SAG_RECHECK) !== 0) {
+        anyRecheck = true
+        break
+      }
+    }
+  }
+  if (!anyRecheck) {
+    // Still need to clear JUST_LANDED for cells in the window so
+    // the grace period expires deterministically. (Cheap: most ticks
+    // there's nothing to clear.)
+    clearJustLandedInWindow(flags, winTop, winBot, cols)
+    return
+  }
+
   // Cantilever sag detection — gated by FLAG_SAG_RECHECK so we only
   // re-evaluate chunks the player has actually disturbed this tick.
-  // Without the gate, fresh worldgen-loaded chunks would immediately
-  // sag for the natural overhangs in their cellular-automata caves,
-  // and stable chunks across the loaded world would re-trigger every
-  // frame.
+  // PERF — Phase 0: hoist unstableCells out of the per-chunk loop.
+  // It's a flood-fill BFS over the entire window (~3.7k cells); doing
+  // it per-chunk multiplied that by N. Single tick-cached query now.
   const allChunks = detectChunks(tiles, cols, rows, winTop, winBot)
+  const unstable = unstableCells(tiles, cols, rows, MAX_REACH)
   for (const ch of allChunks) {
     if (chunkHasFlag(ch, flags, FLAG_SAGGING | FLAG_FALLING)) continue
     if (!chunkHasFlag(ch, flags, FLAG_SAG_RECHECK)) continue
 
-    // Compute unstable cells once we know this chunk needs it.
-    const unstable = unstableCells(tiles, cols, rows, MAX_REACH)
     // JUST_LANDED grace: cells stamped by a FallingChunk this tick
     // are excluded from the unstable set for one detect pass. They
     // still drive cascades (the impact tagged SAG_RECHECK on
@@ -181,17 +204,42 @@ export function detectAndSag(world: World): void {
     )
   }
 
-  // Clear JUST_LANDED for all cells in the scan window. The grace
-  // is one detect pass — by the next tick, the just-settled cells
-  // are full participants and the standard story applies
-  // (PRECARIOUS → SAGGING → SHAKING → fall) if they're
-  // cantilever-unstable.
+  clearJustLandedInWindow(flags, winTop, winBot, cols)
+}
+
+/**
+ * Per-tick JUST_LANDED clear. Phase 0 follow-up: the dirty cells
+ * are explicitly tracked in `recentlyLandedIdxs` so this becomes
+ * an O(1)-per-cell loop over a tiny list (typically 0–30 entries)
+ * rather than an O(window) scan over ~3.7k cells. Falls back to a
+ * windowed scan only if the dirty list is unavailable.
+ */
+function clearJustLandedInWindow(
+  flags: Uint8Array,
+  winTop: number,
+  winBot: number,
+  cols: number,
+): void {
+  if (recentlyLandedIdxs.length > 0) {
+    for (const idx of recentlyLandedIdxs) {
+      if (idx >= 0 && idx < flags.length) flags[idx]! &= ~FLAG_JUST_LANDED
+    }
+    recentlyLandedIdxs.length = 0
+    return
+  }
   const jlClearStart = winTop * cols
   const jlClearEnd = Math.min(flags.length, winBot * cols)
   for (let i = jlClearStart; i < jlClearEnd; i++) {
     if ((flags[i]! & FLAG_JUST_LANDED) !== 0) flags[i]! &= ~FLAG_JUST_LANDED
   }
 }
+
+/**
+ * Module-level dirty list of cells that were stamped JUST_LANDED
+ * this tick. Pushed by `landAndReattach`, drained by `detectAndSag`
+ * via `clearJustLandedInWindow`. Avoids a per-tick window-wide scan.
+ */
+const recentlyLandedIdxs: number[] = []
 
 function chunkHasFlag(chunk: SoilChunk, flags: Uint8Array, mask: number): boolean {
   for (const idx of chunk.cells) {
@@ -257,19 +305,19 @@ function sagAllBottomEdgesAir(
  * either becomes truly clear, in which case we proceed; or becomes
  * blocked, in which case we cancel) or it has moved on.
  */
-function inFlightConflictAbove(
-  world: World,
-  cells: ReadonlyArray<{ col: number; row: number }>,
-): boolean {
-  let topRow = Infinity
-  const ourCols = new Set<number>()
-  for (const c of cells) {
-    ourCols.add(c.col)
-    if (c.row < topRow) topRow = c.row
-  }
-  let conflict = false
+/**
+ * Per-tick cache: for each grid column, the LOWEST current-row of any
+ * in-flight FallingChunk in that column. `Infinity` if no chunk is in
+ * that column. Used by the SAGGING→SHAKING commit gate to detect a
+ * sibling about to seal our path. Built once at the top of
+ * `tickSagging` so the boundary check is an O(1) array read instead
+ * of a per-call query+nested-loop.
+ */
+const inFlightTopRowByCol = new Int32Array(64) // grown lazily; PLAY_COLS=18 fits
+
+function rebuildInFlightTopRowByCol(world: World, cols: number): void {
+  for (let i = 0; i < cols; i++) inFlightTopRowByCol[i] = 0x7fffffff
   world.query(FallingChunk).forEach((entity) => {
-    if (conflict) return
     const fall = entity.get(FallingChunk)
     if (!fall) return
     const baseRow = Math.floor(fall.py / TILE_PX)
@@ -277,13 +325,24 @@ function inFlightConflictAbove(
     for (const c of fall.cells) {
       const fc = baseCol + c.col
       const fr = baseRow + c.row
-      if (ourCols.has(fc) && fr <= topRow) {
-        conflict = true
-        return
-      }
+      if (fc < 0 || fc >= cols) continue
+      if (fr < inFlightTopRowByCol[fc]!) inFlightTopRowByCol[fc] = fr
     }
   })
-  return conflict
+}
+
+function inFlightConflictAbove(
+  cells: ReadonlyArray<{ col: number; row: number }>,
+): boolean {
+  let topRow = Infinity
+  for (const c of cells) {
+    if (c.row < topRow) topRow = c.row
+  }
+  for (const c of cells) {
+    const inFlightTop = inFlightTopRowByCol[c.col]
+    if (inFlightTop !== undefined && inFlightTop <= topRow) return true
+  }
+  return false
 }
 
 /**
@@ -374,6 +433,34 @@ export function tickSagging(world: World): void {
     })
     return
   }
+
+  // Phase 0 perf: build the per-column in-flight FallingChunk lookup
+  // once. Used by the SAGGING→SHAKING commit gate below.
+  rebuildInFlightTopRowByCol(world, cols)
+
+  // Phase 0 correctness: cull SaggingChunk entities whose cells have
+  // drifted well above the playfield top — they can no longer affect
+  // the player and (when their elapsed-tick crosses the SHAKE phase
+  // boundary) they paint FLAG_SHAKING on cells that are far above
+  // the camera but still in the rendered out-of-play history. The
+  // offscreen-shake integration test catches this.
+  const dRow = drillerVoid ? drillerVoid.get(Driller)!.row : 0
+  const cullAboveRow = dRow - SCAN_WINDOW_ROWS_ABOVE
+  world.query(SaggingChunk).forEach((entity) => {
+    const sag = entity.get(SaggingChunk)
+    if (!sag) return
+    let maxRow = -Infinity
+    for (const c of sag.cells) if (c.row > maxRow) maxRow = c.row
+    if (maxRow < cullAboveRow) {
+      for (const c of sag.cells) {
+        const idx = c.row * cols + c.col
+        if (idx >= 0 && idx < flags.length) {
+          flags[idx]! &= ~FLAG_PRECARIOUS & ~FLAG_SAGGING & ~FLAG_SHAKING
+        }
+      }
+      entity.destroy()
+    }
+  })
 
   world.query(SaggingChunk).forEach((entity) => {
     const sag = entity.get(SaggingChunk)!
@@ -469,7 +556,7 @@ export function tickSagging(world: World): void {
     if (phase === 'shaking' && elapsed === PHASE_SHAKE_START) {
       if (
         !sagAllBottomEdgesAir(sag.cells, cols, rows, tiles) ||
-        inFlightConflictAbove(world, sag.cells)
+        inFlightConflictAbove(sag.cells)
       ) {
         // Reverse one tick so we re-enter the SAGGING-end check
         // next tick; bracedUntilTick freezes elapsed-tick advance
@@ -673,6 +760,9 @@ function landAndReattach(
   // SOIL cells that are NOT also landed cells. Result: surrounding
   // terrain destabilises through the standard story (darken → shake
   // → fall) while the just-settled cells get one tick to breathe.
+  // Phase 0 perf: push each idx onto recentlyLandedIdxs so the next
+  // detectAndSag pass clears JUST_LANDED via a tiny dirty list
+  // instead of a window-wide scan.
   for (const c of fall.cells) {
     const r = baseCellRow + c.row
     const cc = baseCellCol + c.col
@@ -681,6 +771,7 @@ function landAndReattach(
     if (idx >= tiles.length) continue
     tiles[idx] = c.tile
     flags[idx] = ((flags[idx]! & ~FLAG_FALLING) | FLAG_AUTOTILE_DIRTY | FLAG_JUST_LANDED) as number
+    recentlyLandedIdxs.push(idx)
     markCellAndNeighborsDirtyExcept(world, cc, r, landedSet)
   }
 
