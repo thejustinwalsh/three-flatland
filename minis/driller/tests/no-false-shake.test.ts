@@ -82,7 +82,7 @@ describe('no-false-shake invariant', () => {
     }
     detectAndSag(world)
 
-    const tracker = trackShakes(world, 80)
+    const tracker = trackShakes(world, 140)
     let stuck = 0
     for (const [, entry] of tracker) {
       // Honest shake: cell ended up AIR (the chunk fell).
@@ -109,7 +109,7 @@ describe('no-false-shake invariant', () => {
       if (grid.tiles[i] === TILE_STONE) grid.flags[i]! |= FLAG_DISTURBED
     }
     resetAvalanche()
-    const tracker = trackShakes(world, 80)
+    const tracker = trackShakes(world, 140)
     // Every shaking cell at end is either AIR (rock disintegrated /
     // moved) OR stopped shaking AND moved to a new row (the cluster
     // commits successive fall steps). What MUST NOT happen: a cell
@@ -181,7 +181,7 @@ describe('no-false-shake invariant', () => {
     }
     // Tick well past SAG_DURATION_TICKS (42) — through the entire
     // shake window AND the release point.
-    for (let t = 0; t < 80; t++) {
+    for (let t = 0; t < 140; t++) {
       tickWorld(world, 1)
       tickSagging(world)
     }
@@ -279,7 +279,7 @@ describe('no-false-shake invariant', () => {
     // Drill out the leftmost cell of the sag chunk.
     grid.tiles[2 * grid.cols + 2] = TILE_AIR
     // Tick past the release window.
-    for (let t = 0; t < 80; t++) {
+    for (let t = 0; t < 140; t++) {
       tickWorld(world, 1)
       tickSagging(world)
     }

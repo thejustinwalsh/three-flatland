@@ -12,11 +12,17 @@ import {
   FLAG_SHAKING,
   GameState,
   Grid,
-  PlannerTarget,
   SaggingChunk,
   TILE_AIR,
 } from '../traits'
-import { MAX_CHUNK_HEIGHT, MAX_REACH, SAG_DURATION_TICKS, TILE_PX } from '../constants'
+import {
+  MAX_CHUNK_HEIGHT,
+  MAX_REACH,
+  SAG_DURATION_TICKS,
+  SAG_PRECARIOUS_TICKS,
+  SAG_SAGGING_TICKS,
+  TILE_PX,
+} from '../constants'
 
 /**
  * How far above and below the driller's row we run the chunk-detect
@@ -141,52 +147,13 @@ export function detectAndSag(world: World): void {
 
   // Clear JUST_LANDED for all cells in the scan window. The grace
   // is one detect pass — by the next tick, the just-settled cells
-  // are full participants and the standard story applies (detect →
-  // darken → shake → fall) if they're cantilever-unstable.
+  // are full participants and the standard story applies
+  // (PRECARIOUS → SAGGING → SHAKING → fall) if they're
+  // cantilever-unstable.
   const jlClearStart = winTop * cols
   const jlClearEnd = Math.min(flags.length, winBot * cols)
   for (let i = jlClearStart; i < jlClearEnd; i++) {
     if ((flags[i]! & FLAG_JUST_LANDED) !== 0) flags[i]! &= ~FLAG_JUST_LANDED
-  }
-
-  // Second pass: PRECARIOUS prediction — "if the driller drills its
-  // current planner target, what would become unsupported?". Re-runs
-  // chunk detection on a temp tile array with the target cell punched
-  // to AIR and flags any newly-unsupported chunk's cells with
-  // FLAG_PRECARIOUS so the renderer can flash a "danger ahead" tint.
-  // Always cleared first — the warning is per-tick and per-target.
-  // Bound the clear sweep to the same scan window as the detection.
-  const clearStart = winTop * cols
-  const clearEnd = Math.min(flags.length, winBot * cols)
-  for (let i = clearStart; i < clearEnd; i++) {
-    if ((flags[i]! & FLAG_PRECARIOUS) !== 0) flags[i]! &= ~FLAG_PRECARIOUS
-  }
-  if (!driller) return
-  const d = driller.get(Driller)!
-  const target = driller.get(PlannerTarget)
-  if (!target) return
-  // Predict only if the target cell currently holds something
-  // diggable (SOIL/ROCK). Driller's already-AIR moves don't change
-  // support topology.
-  const tIdx = target.row * cols + target.col
-  const tTile = tiles[tIdx]
-  if (tTile === undefined || tTile === TILE_AIR) return
-  if (target.col === d.col && target.row === d.row) return
-
-  const sim = new Uint8Array(tiles)
-  sim[tIdx] = TILE_AIR
-  const simUnstable = unstableCells(sim, cols, rows, MAX_REACH)
-  const simChunks = detectChunks(sim, cols, rows, winTop, winBot)
-  for (const ch of simChunks) {
-    if (chunkHasFlag(ch, flags, FLAG_SAGGING | FLAG_FALLING)) continue
-    let anyUnstable = false
-    for (const idx of ch.cells) {
-      if (simUnstable.has(idx)) {
-        flags[idx] = (flags[idx] ?? 0) | FLAG_PRECARIOUS
-        anyUnstable = true
-      }
-    }
-    void anyUnstable
   }
 }
 
@@ -202,14 +169,6 @@ function filterBottomRows(chunk: SoilChunk, cols: number, maxHeight: number): nu
   const minRowKept = chunk.maxRow - maxHeight + 1
   return chunk.cells.filter((idx) => Math.floor(idx / cols) >= minRowKept)
 }
-
-/**
- * Final-window ticks during which a sagging chunk gets FLAG_SHAKING
- * set on its cells — the lock-in rumble right before release. Tuned
- * to roughly match the avalanche shake duration so soil and rock
- * telegraph at the same cadence.
- */
-const SAG_SHAKE_LEAD_TICKS = 18
 
 /**
  * Returns true iff at least one cell on the sag chunk's bottom edge
@@ -256,7 +215,7 @@ export function clearAllChunkEntities(world: World): void {
       for (const cell of sag.cells) {
         const idx = cell.row * cols + cell.col
         if (idx >= 0 && idx < flags.length) {
-          flags[idx]! &= ~FLAG_SAGGING & ~FLAG_SHAKING
+          flags[idx]! &= ~FLAG_PRECARIOUS & ~FLAG_SAGGING & ~FLAG_SHAKING
         }
       }
     }
@@ -318,7 +277,7 @@ export function tickSagging(world: World): void {
       const sag = entity.get(SaggingChunk)!
       for (const cell of sag.cells) {
         const idx = cell.row * cols + cell.col
-        flags[idx] = (flags[idx] ?? 0) & ~FLAG_SAGGING & ~FLAG_SHAKING
+        flags[idx] = (flags[idx] ?? 0) & ~FLAG_PRECARIOUS & ~FLAG_SAGGING & ~FLAG_SHAKING
       }
       entity.destroy()
     })
@@ -348,46 +307,73 @@ export function tickSagging(world: World): void {
       for (const cell of sag.cells) {
         const idx = cell.row * cols + cell.col
         if (idx >= 0 && idx < flags.length) {
-          flags[idx]! &= ~FLAG_SAGGING & ~FLAG_SHAKING
+          flags[idx]! &= ~FLAG_PRECARIOUS & ~FLAG_SAGGING & ~FLAG_SHAKING
         }
       }
       entity.destroy()
       return
     }
 
-    // Final-window shake: in the last SAG_SHAKE_LEAD_TICKS before
-    // release, mark cells as SHAKING so the renderer rumbles them.
-    // Re-checked against current world: if the path below got sealed
-    // (a falling chunk landed under us during the wobble), we cancel
-    // the sag entirely. Contract: shake = will fall by ≥1 tile.
-    if (elapsed >= sag.durationTicks - SAG_SHAKE_LEAD_TICKS) {
+    // 3-phase state machine driven by elapsed-tick arithmetic. One
+    // entity, three visual tiers — each well above the human change-
+    // detection threshold (~300ms) so the player reads them as
+    // distinct beats, not a blur.
+    //
+    //   [0, SAG_PRECARIOUS_TICKS)              → PRECARIOUS only
+    //   [SAG_PRECARIOUS_TICKS, +SAG_SAGGING)   → SAGGING only
+    //   […, durationTicks)                     → SAGGING + SHAKING
+    //   elapsed >= durationTicks               → release (fall)
+    const PHASE_SAG_START = SAG_PRECARIOUS_TICKS
+    const PHASE_SHAKE_START = SAG_PRECARIOUS_TICKS + SAG_SAGGING_TICKS
+    const phase: 'precarious' | 'sagging' | 'shaking' | 'release' =
+      elapsed < PHASE_SAG_START ? 'precarious'
+      : elapsed < PHASE_SHAKE_START ? 'sagging'
+      : elapsed < sag.durationTicks ? 'shaking'
+      : 'release'
+
+    // Path re-check at every phase boundary AND on the release tick.
+    // If the chunk's path closed (another fall sealed the gap), we
+    // cancel — never display a tier without a real promise of motion.
+    const isFirstTickOfPhase =
+      (phase === 'sagging' && elapsed === PHASE_SAG_START) ||
+      (phase === 'shaking' && elapsed === PHASE_SHAKE_START) ||
+      (phase === 'release' && elapsed === sag.durationTicks)
+    if (isFirstTickOfPhase || phase === 'release') {
       if (!sagBottomEdgeStillClear(sag.cells, cols, rows, tiles)) {
         for (const cell of sag.cells) {
           const idx = cell.row * cols + cell.col
-          flags[idx] = (flags[idx] ?? 0) & ~FLAG_SAGGING & ~FLAG_SHAKING
+          flags[idx] = (flags[idx] ?? 0) & ~FLAG_PRECARIOUS & ~FLAG_SAGGING & ~FLAG_SHAKING
         }
         entity.destroy()
         return
       }
-      for (const cell of sag.cells) {
-        const idx = cell.row * cols + cell.col
-        flags[idx] = (flags[idx] ?? 0) | FLAG_SHAKING
-      }
     }
-    if (elapsed < sag.durationTicks) return
 
-    // Release-time re-check. Even if shake started cleanly, the gap
-    // can close in the final 18 ticks. Releasing into a sealed floor
-    // produces a 0-tile fall — the player sees a shake with no
-    // movement. Cancel instead.
-    if (!sagBottomEdgeStillClear(sag.cells, cols, rows, tiles)) {
+    if (phase === 'precarious') {
       for (const cell of sag.cells) {
         const idx = cell.row * cols + cell.col
-        flags[idx] = (flags[idx] ?? 0) & ~FLAG_SAGGING & ~FLAG_SHAKING
+        const f = flags[idx] ?? 0
+        flags[idx] = (((f & ~FLAG_SAGGING) & ~FLAG_SHAKING) | FLAG_PRECARIOUS) as number
       }
-      entity.destroy()
       return
     }
+    if (phase === 'sagging') {
+      for (const cell of sag.cells) {
+        const idx = cell.row * cols + cell.col
+        const f = flags[idx] ?? 0
+        flags[idx] = (((f & ~FLAG_PRECARIOUS) & ~FLAG_SHAKING) | FLAG_SAGGING) as number
+      }
+      return
+    }
+    if (phase === 'shaking') {
+      for (const cell of sag.cells) {
+        const idx = cell.row * cols + cell.col
+        const f = flags[idx] ?? 0
+        flags[idx] = ((f & ~FLAG_PRECARIOUS) | FLAG_SAGGING | FLAG_SHAKING) as number
+      }
+      return
+    }
+    // phase === 'release' — fall through to the release block below.
 
     for (const cell of sag.cells) {
       const idx = cell.row * cols + cell.col

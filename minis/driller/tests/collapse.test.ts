@@ -159,9 +159,11 @@ describe('collapseTick (sag → fall release)', () => {
     world.query(SaggingChunk).forEach(() => initialSag++)
     expect(initialSag).toBeGreaterThan(0)
 
-    // Tick the world forward enough ticks to clear the sag countdown.
+    // Tick the world forward past SAG_DURATION_TICKS (90 = PRECARIOUS
+    // 36 + SAGGING 36 + SHAKING 18). Use a generous window so the
+    // FallingChunk can also resolve.
     const gs = world.get(GameState)!
-    for (let i = 0; i < 60; i++) {
+    for (let i = 0; i < 130; i++) {
       world.set(GameState, { tick: gs.tick + i + 1 })
       collapseTick(world)
     }

@@ -33,8 +33,27 @@ export const CHUNK_ROWS = 32
 /** Maximum number of chunks active in the simulation at once. */
 export const ACTIVE_CHUNK_CAP = 8
 
-/** Sag telegraph duration in 60Hz ticks (~0.7s). */
-export const SAG_DURATION_TICKS = 42
+/**
+ * Sag lifecycle phases (consistent timing, perfect synchronization).
+ * The 700ms total budget read as "darken and shake at the same
+ * time" because the SAG→SHAKE delta (~200ms) sits below human
+ * change-detection threshold. Three-phase state machine restores
+ * legibility:
+ *
+ *   PRECARIOUS  ──── 36 ticks (~600ms) ──── slight darken
+ *   SAGGING     ──── 36 ticks (~600ms) ──── heavy darken
+ *   SHAKING     ──── 18 ticks (~300ms) ──── darken + jitter
+ *   ──── release (fall) ────
+ *
+ * Total ~1.5s from detect to fall. Each phase is well above the
+ * ~300ms change-detection threshold, so the player reads the tells
+ * as distinct beats instead of one blur.
+ */
+export const SAG_PRECARIOUS_TICKS = 36
+export const SAG_SAGGING_TICKS = 36
+export const SAG_SHAKING_TICKS = 18
+export const SAG_DURATION_TICKS =
+  SAG_PRECARIOUS_TICKS + SAG_SAGGING_TICKS + SAG_SHAKING_TICKS
 
 /** Maximum height of a falling chunk; taller unsupported chunks split. */
 export const MAX_CHUNK_HEIGHT = 12

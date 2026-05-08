@@ -31,10 +31,11 @@ export const FLAG_SAGGING = 1 << 0
 export const FLAG_FALLING = 1 << 1
 export const FLAG_AUTOTILE_DIRTY = 1 << 2
 /**
- * Predictive: this cell is part of a SOIL chunk that becomes
- * unsupported the moment the driller drills its current planner
- * target. A "your next move makes this fall" warning bit. Recomputed
- * each tick by `detectAndSag` (the same system that produces SAGGING).
+ * First phase of the sag lifecycle — set by tickSagging on cells of
+ * a SaggingChunk while elapsed < SAG_PRECARIOUS_TICKS. The renderer
+ * applies a slight darken (lighter than FLAG_SAGGING) so the player
+ * reads "this area is becoming unstable". Cleared at the
+ * PRECARIOUS→SAGGING phase transition.
  */
 export const FLAG_PRECARIOUS = 1 << 3
 

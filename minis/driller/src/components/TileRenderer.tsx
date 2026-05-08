@@ -6,6 +6,7 @@ import {
   Camera,
   Explosive,
   FLAG_FALLING,
+  FLAG_PRECARIOUS,
   FLAG_SAGGING,
   FLAG_SHAKING,
   Grid,
@@ -36,9 +37,12 @@ const TINT_EXPLOSIVE_LIT = [1.0, 0.55, 0.20] as const // pulsing when triggered
 const TINT_FIXTURE_BONE = [0.91, 0.90, 0.83] as const
 const TINT_FIXTURE_MUSHROOM = [0.66, 0.55, 0.98] as const
 const TINT_FIXTURE_CRYSTAL = [0.49, 0.23, 0.93] as const
-// Sag = subtle darken on the biome's regular soil tint. Just enough
-// of a hue shift that the player can spot a wobbling chunk; the
-// SHAKE jitter does the louder "this is about to fall" signalling.
+// Sag lifecycle visual tiers. PRECARIOUS reads as "this is becoming
+// unstable", SAG reads as "this WILL fall", and SHAKE adds rumble on
+// top of the SAG tint. The constants are tuned so each tier is
+// visually distinct at a glance — a SHAKE'ing block looks like a
+// SAGGING block plus motion, not a separate colour.
+const PRECARIOUS_DARKEN = 0.86
 const SAG_DARKEN = 0.72
 const TINT_FALL = [0.85, 0.48, 0.24] as const
 
@@ -75,6 +79,7 @@ function pickBaseTint(
 function pickTint(
   tile: number,
   frame: number,
+  precarious: boolean,
   sagging: boolean,
   falling: boolean,
   triggeredExplosive: boolean,
@@ -84,8 +89,14 @@ function pickTint(
   void now
   if (falling) return TINT_FALL
   const base = pickBaseTint(tile, frame, triggeredExplosive, palette)
+  // SAGGING dominates PRECARIOUS — by the time the second phase
+  // begins, the visual escalates. SHAKE shares the SAGGING tint and
+  // adds jitter via the position offset elsewhere.
   if (sagging) {
     return [base[0] * SAG_DARKEN, base[1] * SAG_DARKEN, base[2] * SAG_DARKEN] as const
+  }
+  if (precarious) {
+    return [base[0] * PRECARIOUS_DARKEN, base[1] * PRECARIOUS_DARKEN, base[2] * PRECARIOUS_DARKEN] as const
   }
   return base
 }
@@ -148,12 +159,13 @@ export function TileRenderer({ material }: TileRendererProps) {
           sprite.scale.set(0, 0, 1)
           continue
         }
+        const precarious = (flags[idx]! & FLAG_PRECARIOUS) !== 0
         const sagging = (flags[idx]! & FLAG_SAGGING) !== 0
         const falling = (flags[idx]! & FLAG_FALLING) !== 0
         const shaking = (flags[idx]! & FLAG_SHAKING) !== 0
         const litExplosive = tile === TILE_EXPLOSIVE && triggeredExplosives.has(idx) && pulse
         const palette = biomeAt(r).palette
-        const tint = pickTint(tile, frameIndex[idx]!, sagging, falling, litExplosive, now, palette)
+        const tint = pickTint(tile, frameIndex[idx]!, precarious, sagging, falling, litExplosive, now, palette)
         // Shake telegraph: deliberate "crack" rather than a buzz. A
         // few wide shudders at ~6 Hz (1 cycle ≈ 170 ms) so over the
         // ~300 ms window the player sees roughly two heavy lurches
