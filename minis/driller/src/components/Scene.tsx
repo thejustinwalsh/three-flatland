@@ -19,6 +19,7 @@ import { particlesSystem } from '../systems/particles'
 import { useDrillerMaterial } from '../materials'
 import { AIDebugPanel, shouldShowAIDebug } from './AIDebugPanel'
 import { DrillerView } from './DrillerView'
+import { FallingChunkView } from './FallingChunkView'
 import { GemRenderer } from './GemRenderer'
 import { HazardView } from './HazardView'
 import { PlayfieldOverlay } from './PlayfieldOverlay'
@@ -145,6 +146,7 @@ export function Scene({ onShellStateChange }: SceneProps) {
       clearAlpha={0}
     >
       <TileRenderer material={material} />
+      <FallingChunkView material={material} />
       <GemRenderer material={material} />
       <HazardView material={material} />
       <DrillerView material={material} />

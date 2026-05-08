@@ -159,14 +159,10 @@ export function hazardTickSystem(world: World): void {
       return
     }
 
-    // Crush check at the cell the hazard occupies this tick.
-    const driller = world.queryFirst(Driller)
-    if (driller) {
-      const d = driller.get(Driller)!
-      if (d.col === h.col && d.row === newRow) {
-        world.set(GameState, { runState: 'dying' })
-      }
-    }
+    // No mid-flight kills. A rock falling through the driller's cell
+    // is a near miss — the driller is itself falling and the rock
+    // simply passes through. Squish only happens at LANDING, and only
+    // if the driller is on solid ground at the rock's resting cell.
 
     const idx = newRow * cols + h.col
     const tileHere = tiles[idx]!
@@ -174,18 +170,30 @@ export function hazardTickSystem(world: World): void {
     // STOP on first non-AIR cell. Drop a STONE in the cell immediately
     // above (the last AIR cell the rock occupied). The new stone is
     // born DISTURBED — a freshly-landed rock counts as destabilising
-    // any adjacent stone cluster, which is precisely how "rocks fall
-    // when a 4th joins them" works.
+    // any adjacent stone cluster.
     if (tileHere !== TILE_AIR) {
       const restRow = newRow - 1
       if (restRow >= 0) {
+        // Squish check: driller IS the resting cell AND has ground
+        // below them (no escape downward). If they're floating mid-
+        // descent the rock just thuds past — see comment above.
+        const driller = world.queryFirst(Driller)
+        if (driller) {
+          const d = driller.get(Driller)!
+          if (d.col === h.col && d.row === restRow) {
+            const supportRow = d.row + 1
+            const supportIdx = supportRow * cols + d.col
+            const onGround =
+              supportRow >= rows ||
+              (tiles[supportIdx] !== undefined && tiles[supportIdx] !== TILE_AIR)
+            if (onGround) world.set(GameState, { runState: 'dying' })
+          }
+        }
         const restIdx = restRow * cols + h.col
         if (tiles[restIdx] === TILE_AIR) {
           tiles[restIdx] = TILE_STONE
           flags[restIdx] = (flags[restIdx] ?? 0) | FLAG_AUTOTILE_DIRTY | FLAG_DISTURBED
           markCellAndNeighborsDirty(world, h.col, restRow)
-          // Disturb any STONE in the 4-neighbourhood — the impact
-          // shakes the existing pile.
           for (const [dc, dr] of [[-1, 0], [1, 0], [0, -1], [0, 1]] as const) {
             const nc = h.col + dc
             const nr = restRow + dr
@@ -330,13 +338,26 @@ export function rockAvalancheSystem(world: World): void {
       const r = (idx - c) / cols
       const newIdx = (r + 1) * cols + c
       const rockHits = hits[idx] ?? 0
-      // Disintegrate this rock if it's accumulated enough hits to
-      // break — leaves AIR behind, no descent.
+      // Rock has accumulated enough hits to break apart from the
+      // cluster — but it shouldn't just vanish in mid-air. Detach as
+      // a single falling Hazard so the existing hazard physics carries
+      // it the rest of the way to the earth (where it'll deposit a
+      // STONE on landing). The cluster cell becomes AIR; the cluster
+      // itself shrinks by one rock.
       if (rockHits >= AVALANCHE_HITS_TO_BREAK) {
         tiles[idx] = TILE_AIR
         flags[idx] = (flags[idx] ?? 0) | FLAG_AUTOTILE_DIRTY
         hits[idx] = 0
         markCellAndNeighborsDirty(world, c, r)
+        world.spawn(
+          Hazard({
+            col: c,
+            py: r * TILE_PX + TILE_PX / 2,
+            vy: HAZARD_TERMINAL_PX,
+            phase: 'falling',
+            fallAtTick: gs.tick,
+          }),
+        )
         continue
       }
       // Otherwise translate stone + carry its hit count to new cell.

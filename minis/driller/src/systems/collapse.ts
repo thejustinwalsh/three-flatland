@@ -250,17 +250,28 @@ function landAndReattach(
   const baseCellRow = Math.round(fall.py / TILE_PX)
   const baseCellCol = Math.round(fall.px / TILE_PX)
 
-  // Crush check
+  // Squish check. A falling chunk only KILLS if the driller is in a
+  // cell the chunk lands on AND the driller is on ground (can't
+  // escape further down). A driller mid-fall in the same column is
+  // a near miss — the chunk and driller fall together; both end up on
+  // the same surface but the chunk doesn't pin them.
   const driller = world.queryFirst(Driller)
   let crushed = false
   if (driller) {
     const d = driller.get(Driller)!
-    for (const c of fall.cells) {
-      const r = baseCellRow + c.row
-      const cc = baseCellCol + c.col
-      if (r === d.row && cc === d.col) {
-        crushed = true
-        break
+    const supportRow = d.row + 1
+    const supportIdx = supportRow * cols + d.col
+    const drillerOnGround =
+      supportRow * cols >= tiles.length ||
+      (tiles[supportIdx] !== undefined && tiles[supportIdx] !== TILE_AIR)
+    if (drillerOnGround) {
+      for (const c of fall.cells) {
+        const r = baseCellRow + c.row
+        const cc = baseCellCol + c.col
+        if (r === d.row && cc === d.col) {
+          crushed = true
+          break
+        }
       }
     }
   }
