@@ -1,5 +1,6 @@
 ---
 import type { MarkdownHeading } from 'astro';
+import { Badge } from '@astrojs/starlight/components';
 
 interface TocItem extends MarkdownHeading {
     children: TocItem[];
@@ -12,18 +13,81 @@ interface Props {
 }
 
 const { toc, depth = 0 } = Astro.props;
+
+/**
+ * Deserialize starlight-heading-badges markers from TOC heading text.
+ * Inlined here because we override Starlight's `TableOfContents` instead
+ * of letting the plugin do it — without this the raw `__SHB__…__SHB__`
+ * markers leak into the on-this-page links. Format mirrors the plugin:
+ * `<text>__SHB__<variant>__SHB__<text>__SHB__` with spaces in badge
+ * text encoded as `__SHB_SPACE__`.
+ */
+const SHB_DELIM = '__SHB__';
+const SHB_SPACE = '__SHB_SPACE__';
+const SHB_VARIANTS = [
+    'caution',
+    'danger',
+    'default',
+    'note',
+    'success',
+    'tip',
+] as const;
+type ShbVariant = (typeof SHB_VARIANTS)[number];
+
+interface ParsedHeading {
+    title: string;
+    badges: { text: string; variant: ShbVariant }[];
+}
+
+function parseHeading(text: string): ParsedHeading {
+    const parts = text.split(' ').toReversed();
+    const badges: ParsedHeading['badges'] = [];
+    for (const part of parts) {
+        const segments = part.split(SHB_DELIM);
+        const variant = segments[1];
+        const badgeText = segments[2];
+        if (
+            !variant ||
+            !badgeText ||
+            !SHB_VARIANTS.includes(variant as ShbVariant)
+        ) {
+            break;
+        }
+        badges.unshift({
+            text: badgeText.replaceAll(SHB_SPACE, ' '),
+            variant: variant as ShbVariant,
+        });
+    }
+    if (badges.length === 0) return { title: text, badges: [] };
+    const title = text
+        .replace(new RegExp(`${SHB_DELIM}.*${SHB_DELIM}`), '')
+        .trim();
+    return { title, badges };
+}
 ---
 
 <ul>
     {
-        toc.map((heading) => (
-            <li>
-                <a href={'#' + heading.slug}>{heading.text}</a>
-                {heading.children.length > 0 && (
-                    <Astro.self toc={heading.children} depth={depth + 1} />
-                )}
-            </li>
-        ))
+        toc.map((heading) => {
+            const parsed = parseHeading(heading.text);
+            return (
+                <li>
+                    <a href={'#' + heading.slug}>
+                        {parsed.title}
+                        {parsed.badges.map((b) => (
+                            <Badge
+                                size="small"
+                                text={b.text}
+                                variant={b.variant}
+                            />
+                        ))}
+                    </a>
+                    {heading.children.length > 0 && (
+                        <Astro.self toc={heading.children} depth={depth + 1} />
+                    )}
+                </li>
+            );
+        })
     }
 </ul>
 
@@ -48,12 +112,24 @@ const { toc, depth = 0 } = Astro.props;
         font-family: 'Inter', system-ui, sans-serif;
         text-decoration: none;
         color: var(--muted-foreground);
-        display: inline-block;
+        display: inline-flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 0.4em;
         font-size: 0.8125rem;
         font-weight: 400;
         line-height: 1.4;
         padding-block: calc(var(--spacing) * 0.5);
         transition: color 0.15s;
+    }
+
+    /* Inline TOC badges sit alongside the heading title — Starlight's
+     * default Badge sizing is too loud for the compass column. */
+    a :global(.sl-badge) {
+        font-size: 0.625rem;
+        line-height: 1.2;
+        padding: 0.0625rem 0.3rem;
+        font-weight: 500;
     }
 
     a:hover {
