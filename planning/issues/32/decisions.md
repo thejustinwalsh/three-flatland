@@ -817,3 +817,51 @@ Themed mobile TOC: diamond-tinted border, card-toned bg, blur+saturate backdrop,
 **Why:** Dormant overrides decay if they don't track the design system, and adoption is a future event we can't predict. Bringing it up to fidelity now keeps the option of "drop a hero: in frontmatter" alive without per-page bespoke composition.
 
 **How to apply:** For top-of-page elements, prefer CSS keyframe entrance animations to scroll-driven reveals — IntersectionObserver fires immediately when the element is already in view, defeating the staggered choreography you'd get from scroll triggers further down the page.
+
+---
+
+# Session 2026-05-08 (continued) — BrandAsset final form
+
+## BrandAsset final form — Gauntlet v3 + composability content
+**File(s):** `docs/src/components/BrandAsset.astro`
+**Date:** 2026-05-08
+
+**Decision:** After dispatching 7 parallel design agents (4 single-gem variants + 2 lore-aligned gem-pair combos + 1 full-gauntlet), each iterating through 3 revisions (v1 direct hit / v2 impeccable critique + frontend-design / v3 polish + adapt), the user picked **Gauntlet v3** as the winner. Folded that variant into canonical `BrandAsset.astro` and tuned content per stakeholder direction.
+
+Final composition language (Gauntlet v3-derived):
+- Gold structural lead — vertical foil spine + wordmark glow + tally
+- Amethyst/diamond emphasis stripes in the lower signal rail
+- 5 ambient gem stripes (emerald / ruby / turquoize / salmon / pink) with library-capability roles
+- Wreath halo of all 8 gems for icon-only format
+- Asymmetric ambient (amethyst upper-right, emerald counter-light lower-left, deliberately not rainbow)
+
+Content tuned for social engagement + brand-investigation insights:
+- Tagline: `Composable 2D for Three.js + R3F. Sprites, tilemaps, skia, TSL — small and fast.` Captures composability (the underspoken value), the audience, the modules, and the perf-care close. After review, dropped "rebuilt" close from earlier draft; "small and fast" stands without the verb.
+- Eyebrow: `v0.1.0-α · COMPOSABLE · LEAN`. WEBGPU keeps prime billing as an emphasis stripe in the rail rather than competing for eyebrow space.
+- Signal rail labels: TSL · WEBGPU · R3F · BATCH · SPRITES · SKIA · TILES (each = a real package or feature, "take what you need"). ANIM rotated out for SKIA — skia in three.js is rarer + a stronger differentiation hook.
+- TODO comment in code flags post-SLUG-merge rotation (TILES → SLUG candidate; pink stays as warm-soft text gem).
+
+Logo framing: switched all non-icon-only formats from stacked (icon-on-top, text below) to horizontal lockup (icon left, text right). Aspect ratios are 1.9:1 to 3:1 so horizontal is the natural read; stacked made the icon look like a card-header element rather than part of the brand mark, and at 18cqi was clipping at the top edge. Final icon size: 15cqi for og/banner/social-x, 11cqi for wide.
+
+**Why:** The brand investigation surfaced that **composability** was the underspoken value (drei-of-2D positioning) and **performance care** wasn't legible (we reimplement small + fast, not just wrap things). The final form integrates both into the asset's primary surfaces (eyebrow + tagline + rail). The horizontal lockup framing reads as a unified brand mark instead of a card with a logo on top.
+
+**Evidence:** All 5 PNGs (og 100k, x-card 105k, bk-banner 276k, repo-banner 120k, icon-512 25k) captured + palette-quantized, total 634k vs prior 3.5M (-82%). Build green at 312 pages / 15s. Variant scratchpad (21 v1/v2/v3 explorations) deleted.
+
+**How to apply:** When the canonical brand asset evolves to mention a new package (SLUG, etc.), rotate one ambient stripe in the signal rail rather than expanding to 8+ stripes — the rail's hierarchy depends on 2 emphasis + 5 ambient with the gold spine carrying the 8th gem. Re-run `pnpm --filter=docs capture:brand && pnpm --filter=docs optimize:social` after any content change.
+
+## Marketing strategy notes (for future README / launch copy)
+**File(s):** brand strategy (notebook entry, not code)
+**Date:** 2026-05-08
+
+**Decision:** Position flatland as **"the drei of 2D — composable Three.js building blocks, rebuilt small and fast"** in conversation copy. The drei reference is the strongest marketing hook for the target audience because it instantly communicates: ecosystem-style, opt-in, R3F-friendly, well-maintained. Extends past R3F-only positioning by noting "Three.js or R3F" — flatland works in plain Three.js too, drei does not.
+
+Tagline ladder (longer to shorter, by surface):
+- README first line: "The composable 2D toolkit for Three.js + R3F. Sprites, tilemaps, skia, TSL — small and fast."
+- Tweet / OG card (current): same as tagline above
+- GitHub repo description: "The drei of 2D — composable Three.js building blocks."
+- HN/Reddit submission title: "flatland — composable 2D for Three.js, with TSL shaders + skia + tilemaps"
+- One-liner in conversation: "TanStack-style for Three.js 2D."
+
+**Why:** Concrete byte counts (skia 857KB vs CanvasKit 2.2MB), per-package READMEs as independent SEO surfaces, and the "you ship sprites; we'll keep skia compiling" framing of maintenance-as-feature are the high-leverage marketing surfaces. Marketing hyperbole + "platform" language are explicit anti-patterns.
+
+**How to apply:** When drafting README or launch copy, lead with composability, support with concrete byte counts, close with maintenance-as-feature. Do not pitch the gem palette / design system to devs — they care about code; the visual identity is what they remember after deciding to try it.

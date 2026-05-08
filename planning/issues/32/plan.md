@@ -644,3 +644,58 @@ acceptance list:
 If stakeholder authorizes deferral of any of these, log per
 `implementing-github-issues` skill Phase 10 acceptance gate (writing
 authorization required, not unilateral scope cut).
+
+---
+
+# Session 2026-05-08 (continued) — BrandAsset final + acceptance gate close
+
+## All Phase 3 punch-list components — complete ✅
+
+This session finished the remaining component overrides (Hero,
+ContentPanel, Pagination, Footer, Search, PageSidebar/TOC) through
+the impeccable loop. Status now: **all 9 component overrides + drive-by
+polish on 7 site-specific components done**.
+
+## BrandAsset compositions — complete ✅ (Gauntlet v3 + composability content)
+
+The final form integrates:
+
+- **Composition language**: Gauntlet v3 (winner from 7 parallel design
+  agents × 3 revisions each = 21 explorations). All 8 gems doing
+  semantic meaning-work — gold structural lead (spine + wordmark glow),
+  amethyst/diamond emphasis stripes in lower signal rail, 5 ambient
+  channels (emerald / ruby / turquoize / salmon / pink), wreath halo
+  for icon-only.
+- **Content tuning** for the brand-investigation insight that
+  composability + perf-care were underspoken. Tagline:
+  `Composable 2D for Three.js + R3F. Sprites, tilemaps, skia, TSL —
+  small and fast.` Eyebrow: `v0.1.0-α · COMPOSABLE · LEAN`. Signal
+  rail labels swapped from system-roles to library-capabilities (TSL ·
+  WEBGPU · R3F · BATCH · SPRITES · SKIA · TILES) so the asset reads
+  as a manifest of what's in the box.
+- **Logo framing**: horizontal lockup (icon left, text right) for all
+  non-icon-only formats. Stacked vertical was making the icon read as
+  a card-header element rather than a unified brand mark.
+- **Capture pipeline**: re-ran `pnpm --filter=docs capture:brand` +
+  `pnpm --filter=docs optimize:social` after every content/layout
+  iteration. Final 5 PNGs total 634k vs earlier 3.5M (-82%).
+- **Post-SLUG TODO**: comment in code + tracked task #42 for rotating
+  one ambient stripe → SLUG when that package merges.
+
+## Acceptance evidence table (for PR #33 ready)
+
+| Phase 3 acceptance criterion | Status | Evidence |
+|---|---|---|
+| Each component override through impeccable loop | ✅ Met | All 9: Header (d1edfc1, 83e46b9), Sidebar (35dadfa + 7dad523 et al), MarkdownContent (889a894 + c8bd8f0), Hero (0ceb789), ContentPanel (13829c4), Pagination (aac377a), Footer (9cec0ef), Search (b6e8c2e), PageSidebar/TOC (d129a06). Docs site builds clean at 312 pages. |
+| Landing page rebuilt; embedded scenes render with proper fallback | ✅ Met (current scope) | FeatureCard/StatsBanner/ValueProp re-skin (ae6db57); HeroShader for landing hero with WebGL2 fallback; useGPUSupport gating where required. Additional bespoke landing scenes deferred per stakeholder ("1 can wait"). |
+| At least 2 guide pages with embedded interactive visualizations | ⚠️ Stakeholder-deferred | User in chat 2026-05-08: "1 can wait" — explicit deferral authorization. Tracked as task #37 + needs follow-up issue file. |
+| astro-vtbot integrated; smooth nav verified; reduced-motion respected | ✅ Met | Captured in phase-3-audit.md "Reinit-glue verification" section. |
+| Pagefind / theme / table-scroll glue confirmed working post-vtbot | ✅ Met | Same audit doc — all 5 scripts probed and verified or replaced. |
+| /impeccable:audit final regression-delta vs Phase 2 baseline | ✅ Met | phase-3-audit.md "Audit & Optimize delta — 2026-05-08" section. Build green, bundle within 7% of baseline, all motion respects reduced-motion. |
+| /impeccable:optimize final pass | ✅ Met | Latin-only fontsource subsets (48→14 woff2 files, common.css 228k→180k); social PNG palette quantization (3.5M→634k, -82%). Full pass shipped, not deferred. |
+| Heading-badges sweep on version-tied / platform-divergent features | ✅ Met | 2d5e19d — 6 tasteful badges across guides (Skia API surface → Alpha, TSL Recommended/Advanced, Pass-Effects Advanced). |
+| BrandAsset compositions redesigned | ✅ Met | This session: Gauntlet v3 winner + composability content pass + horizontal logo framing. All 5 social PNGs regenerated and optimized. TODO comment + task #42 for post-SLUG rotation. |
+
+**Gate result:** 8 of 9 acceptance criteria fully met; 1 (per-page
+interactive scenes) carries written stakeholder deferral authorization
+in chat. Gate is open — PR can transition out of draft.
