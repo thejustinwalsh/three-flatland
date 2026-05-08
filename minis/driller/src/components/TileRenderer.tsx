@@ -79,9 +79,9 @@ export function TileRenderer({ material }: TileRendererProps) {
     refs.current = new Array<Sprite2DType | null>(POOL_SIZE).fill(null)
   }
 
-  // Initial: hide everything until the first useFrame reads the grid.
+  // Initial: hide everything (zero-scale) until the first useFrame reads the grid.
   useEffect(() => {
-    for (const s of refs.current) if (s) s.visible = false
+    for (const s of refs.current) if (s) s.scale.set(0, 0, 1)
   }, [])
 
   useFrame(() => {
@@ -111,14 +111,16 @@ export function TileRenderer({ material }: TileRendererProps) {
         const sprite = pool[slot++]
         if (!sprite) continue
         if (tile === TILE_AIR) {
-          sprite.visible = false
+          // Hide via zero-scale: SpriteBatch's transformSyncSystem writes
+          // the instance matrix from sprite.scale; Object3D.visible flag
+          // is ignored at the per-instance level.
+          sprite.scale.set(0, 0, 1)
           continue
         }
         const sagging = (flags[idx]! & FLAG_SAGGING) !== 0
         const falling = (flags[idx]! & FLAG_FALLING) !== 0
         const litExplosive = tile === TILE_EXPLOSIVE && triggeredExplosives.has(idx) && pulse
         const tint = pickTint(tile, frameIndex[idx]!, sagging, falling, litExplosive)
-        sprite.visible = true
         sprite.position.set(c * TILE_PX + TILE_PX / 2, -(r * TILE_PX + TILE_PX / 2), 0)
         sprite.scale.set(TILE_PX, TILE_PX, 1)
         sprite.tint.r = tint[0]
@@ -126,10 +128,10 @@ export function TileRenderer({ material }: TileRendererProps) {
         sprite.tint.b = tint[2]
       }
     }
-    // Hide any leftover slots
+    // Hide leftover slots that didn't get assigned a cell this frame.
     for (; slot < POOL_SIZE; slot++) {
       const s = pool[slot]
-      if (s) s.visible = false
+      if (s) s.scale.set(0, 0, 1)
     }
   })
 
