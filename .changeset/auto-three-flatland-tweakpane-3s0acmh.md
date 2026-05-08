@@ -5,15 +5,20 @@
 > Branch: mini-game-showcase
 > PR: https://github.com/thejustinwalsh/three-flatland/pull/59
 
-## New features
+## Changelog
 
-- `usePaneRadioGrid` hook (react subpath) — inline button-bar selector backed by the essentials radiogrid blade; active-state affordance reads better than a dropdown for mode toggles
-- `PaneInputOptions` extended with `readonly` and `format` — create readonly monitors with custom formatters from the React hook
+### New features
 
-## Bug fixes
+- `usePaneRadioGrid` hook (react subpath) — inline button-bar selector backed by the Tweakpane essentials `radiogrid` blade; deferred disposal and synchronous creation match the `usePaneButton`/`usePaneInput` pattern
+- `PaneInputOptions` extended with `readonly` and `format` fields so React hook users can create read-only monitors with custom formatters
 
-- Checkbox hit target: `.tp-ckbv_i` input stretched to full box size so clicks register directly on the input, eliminating flaky label-forwarding failures
-- Checkbox theme: box surface now matches other controls (`rgba(28,40,77,0.6)`) with hover/focus/active parity; check stroke turns accent on `:checked`
-- `z-index: 1000` applied to the `.tp-dfwv` wrapper element (not the inner pane root) so tweakpane stacks correctly above other overlays when no custom container is provided
+### Bug fixes
 
-`usePaneRadioGrid` and the `readonly`/`format` monitor options are additive; all existing hooks and pane setup are unaffected.
+- Fix: z-index applied to the `.tp-dfwv` body-sibling wrapper instead of the inner pane root; the pane now correctly stacks above overlays when no container is provided
+- Fix: `.tp-ckbv_i` checkbox input stretched to full box size via `width/height: var(--cnt-usz)`; clicks land on the input directly without requiring label-forwarding, fixing multi-click behavior across browser/pointer-events combinations
+- Fix: `useWindowSize` now tracks `{ w, h, dpr }` and subscribes to a `(resolution: Ndppx)` media query; monitor swaps that change DPR without changing dimensions now trigger canvas resizing
+- Fix: fullscreen-change listener added alongside the resize listener; canvas re-measures immediately and once more in the next RAF to catch post-transition layout settles
+- Theme: checkbox box surface updated to `rgba(28,40,77,0.6)` with hover/focus/active parity matching other controls; check stroke turns accent pink on `:checked`
+
+This release adds the `usePaneRadioGrid` hook, read-only monitor support, and fixes z-index stacking, checkbox hit targets, and DPR/fullscreen tracking.
+
