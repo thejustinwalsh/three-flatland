@@ -21,7 +21,16 @@ function initWorld(world: World): void {
   world.add(GameState({ mode: 'hero', runState: 'playing', tick: 0, gems: 0, lives: 3, depthM: 0, deepestM: 0, worldNumber: 0 }))
   world.add(Seed({ value: (Date.now() & 0xffff) ^ 0x1234 }))
   world.add(Camera({ y: 0, targetY: 0, scale: 4, rows: 22 }))
-  world.add(Grid({ cols: 18, rows: 0, topRow: 0, bottomRow: 0 }))
+  world.add(Grid({
+    cols: 18,
+    rows: 0,
+    topRow: 0,
+    bottomRow: 0,
+    tiles: new Uint8Array(0),
+    flags: new Uint8Array(0),
+    frameIndex: new Uint8Array(0),
+    hits: new Uint8Array(0),
+  }))
   world.add(Pointer({ px: 0, py: 0, active: false, hoverAction: 'none', hoverTargetCol: 0, hoverTargetRow: 0, hoverGemEntity: 0 }))
 
   // Driller entity — single instance, replaced on respawn (Phase 10).

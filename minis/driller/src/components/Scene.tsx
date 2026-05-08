@@ -10,12 +10,15 @@ import { cameraSystem } from '../systems/camera'
 import { collapseTick } from '../systems/collapse'
 import { deathSystem, heroWorldFallSystem, scatteredGemsSystem } from '../systems/death'
 import { drillerSystem, moodDriftSystem } from '../systems/driller'
+import { explosiveSystem } from '../systems/explosive'
 import { plannerTick } from '../systems/ai-planner'
 import { resetStreaming, streamChunks } from '../systems/generation'
+import { hazardSpawnSystem, hazardTickSystem, resetHazardSpawn } from '../systems/hazard'
 import { particlesSystem } from '../systems/particles'
 import { useDrillerMaterial } from '../materials'
 import { DrillerView } from './DrillerView'
 import { GemRenderer } from './GemRenderer'
+import { HazardView } from './HazardView'
 import { TileRenderer } from './TileRenderer'
 import { shallowEqual } from '../shallow'
 
@@ -65,11 +68,13 @@ export function Scene({ onShellStateChange }: SceneProps) {
     const gsAfterFall = world.get(GameState)
     if (gsAfterFall && gsAfterFall.worldNumber !== prevWorldNumber) {
       resetStreaming()
+      resetHazardSpawn()
       const grid = world.get(Grid)
       if (grid) {
         grid.tiles.fill(0)
         grid.flags.fill(0)
         grid.frameIndex.fill(0)
+        grid.hits.fill(0)
       }
     }
 
@@ -78,7 +83,10 @@ export function Scene({ onShellStateChange }: SceneProps) {
       moodDriftSystem(world, gsNow.tick)
       plannerTick(world)
       drillerSystem(world, deltaMs)
+      hazardSpawnSystem(world)
     }
+    hazardTickSystem(world)
+    explosiveSystem(world)
     collapseTick(world)
     particlesSystem(world, deltaMs)
     autotilePass(world)
@@ -132,6 +140,7 @@ export function Scene({ onShellStateChange }: SceneProps) {
     >
       <TileRenderer material={material} />
       <GemRenderer material={material} />
+      <HazardView material={material} />
       <DrillerView material={material} />
     </flatland>
   )

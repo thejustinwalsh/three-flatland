@@ -5,15 +5,18 @@ import {
   type DrillerAnimState,
   FLAG_AUTOTILE_DIRTY,
   GameState,
+  Gem,
   Grid,
+  Hazard,
   Mood,
   PlannerTarget,
   TILE_AIR,
   TILE_FIXTURE_BASE,
+  TILE_ROCK,
   TILE_SOIL,
   TILE_STONE,
 } from '../traits'
-import { TILE_PX } from '../constants'
+import { ROCK_HITS, TILE_PX } from '../constants'
 import { markCellAndNeighborsDirty } from './autotile-pass'
 import { driftMood, moodTarget } from './ai-mood'
 
@@ -75,12 +78,39 @@ export function drillerSystem(world: World, deltaMs: number): void {
     return
   }
 
+  // Multi-hit ROCK: decrement hit counter without moving until broken.
+  if (tile === TILE_ROCK) {
+    const hitsRemaining = (grid.hits[idx] ?? ROCK_HITS) - 1
+    grid.hits[idx] = Math.max(0, hitsRemaining)
+    if (hitsRemaining <= 0) {
+      grid.tiles[idx] = TILE_AIR
+      grid.flags[idx] = FLAG_AUTOTILE_DIRTY
+      markCellAndNeighborsDirty(world, nc, nr)
+      // ROCK broke — driller still doesn't move this tick (chip then advance next).
+    }
+    drillerEntity.set(Driller, { digCooldownMs: DIG_INTERVAL_MS, px, py })
+    return
+  }
+
   // Dig if SOIL.
   if (tile === TILE_SOIL) {
     grid.tiles[idx] = TILE_AIR
     grid.flags[idx] = FLAG_AUTOTILE_DIRTY
     markCellAndNeighborsDirty(world, nc, nr)
   }
+
+  // Auto-collect gem on entered cell.
+  let collectedGem = false
+  world.query(Gem).forEach((entity) => {
+    if (collectedGem) return
+    const g = entity.get(Gem)
+    if (!g || g.collected) return
+    if (g.col === nc && g.row === nr && g.scatteredUntilTick === 0) {
+      world.set(GameState, { gems: gs.gems + 1 })
+      entity.destroy()
+      collectedGem = true
+    }
+  })
 
   // Move + animate.
   const facing = stepCol !== 0 ? (stepCol > 0 ? 1 : -1) : d.facing
@@ -118,16 +148,52 @@ function isFixture(t: number): boolean {
 }
 
 /**
- * Tick the mood drift system: target from world signals, lerp current toward it.
+ * Tick the mood drift system. Reads world signals (visible gems, overhead
+ * sag, falling-rock hazards) and lerps current mood toward the target.
  */
 export function moodDriftSystem(world: World, ticksSinceLastTap: number): void {
   const drillerEntity = world.queryFirst(Mood)
   if (!drillerEntity) return
+  const driller = world.queryFirst(Driller)
   const m = drillerEntity.get(Mood)!
 
+  let visibleGemCount = 0
+  let sagOverhead = false
+  let hazardOverhead = false
+
+  if (driller) {
+    const d = driller.get(Driller)!
+    const grid = world.get(Grid)
+
+    world.query(Gem).forEach((entity) => {
+      const g = entity.get(Gem)
+      if (!g || g.collected) return
+      if (Math.abs(g.col - d.col) + Math.abs(g.row - d.row) <= 6) visibleGemCount++
+    })
+
+    if (grid) {
+      for (let dr = 1; dr <= 3; dr++) {
+        const r = d.row - dr
+        if (r < 0) break
+        const idx = r * grid.cols + d.col
+        if ((grid.flags[idx] ?? 0) & 1) {
+          sagOverhead = true
+          break
+        }
+      }
+    }
+
+    world.query(Hazard).forEach((entity) => {
+      const h = entity.get(Hazard)
+      if (!h) return
+      if (h.col === d.col && h.phase !== 'landed') hazardOverhead = true
+    })
+  }
+
   const target = moodTarget({
-    visibleGemCount: 0,
-    sagOverhead: false,
+    visibleGemCount,
+    sagOverhead,
+    hazardOverhead,
     ticksSinceLastTap,
   })
   const drifted = driftMood({ greed: m.greed, fear: m.fear, drive: m.drive }, target)

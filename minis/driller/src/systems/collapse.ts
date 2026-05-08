@@ -15,6 +15,17 @@ import { MAX_CHUNK_HEIGHT, SAG_DURATION_TICKS, TILE_PX } from '../constants'
 import { detectChunks, isSupported, type SoilChunk } from '../lib/chunk-detect'
 import { markCellAndNeighborsDirty } from './autotile-pass'
 
+/**
+ * Connectivity-based sag detection.
+ *
+ * Scans 4-connected SOIL components; any chunk with zero anchor connections
+ * (stone / rock / fixture / world-edge) becomes a SaggingChunk.
+ *
+ * The cantilever variant (distance-from-anchor) was tried and reverted: in
+ * soil-dominated biomes (especially topsoil with no stones) it cascaded
+ * the entire field. Pressure now comes from falling-rock hazards
+ * (`hazard.ts`) and explosives (`explosive.ts`) instead.
+ */
 export function detectAndSag(world: World): void {
   const grid = world.get(Grid)
   const gs = world.get(GameState)
@@ -27,6 +38,7 @@ export function detectAndSag(world: World): void {
     if (isSupported(ch, tiles, cols, rows)) continue
 
     const chosen = filterBottomRows(ch, cols, MAX_CHUNK_HEIGHT)
+    if (chosen.length === 0) continue
     for (const idx of chosen) flags[idx] = (flags[idx] ?? 0) | FLAG_SAGGING
     world.spawn(
       SaggingChunk({
@@ -51,9 +63,9 @@ function chunkHasFlag(chunk: SoilChunk, flags: Uint8Array, mask: number): boolea
   return false
 }
 
-function filterBottomRows(chunk: SoilChunk, _cols: number, maxHeight: number): number[] {
+function filterBottomRows(chunk: SoilChunk, cols: number, maxHeight: number): number[] {
   const minRowKept = chunk.maxRow - maxHeight + 1
-  return chunk.cells.filter((idx) => Math.floor(idx / _cols) >= minRowKept)
+  return chunk.cells.filter((idx) => Math.floor(idx / cols) >= minRowKept)
 }
 
 export function tickSagging(world: World): void {

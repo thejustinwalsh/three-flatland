@@ -2,14 +2,18 @@ import type { World } from 'koota'
 import {
   CHUNK_ROWS,
   PLAY_COLS,
+  ROCK_HITS,
 } from '../constants'
 import {
+  Explosive,
   FLAG_AUTOTILE_DIRTY,
   Gem,
   Grid,
   Seed,
   TILE_AIR,
+  TILE_EXPLOSIVE,
   TILE_FIXTURE_BASE,
+  TILE_ROCK,
   TILE_SOIL,
   TILE_STONE,
 } from '../traits'
@@ -26,6 +30,8 @@ export interface GeneratedChunk {
   /** Cell array sized PLAY_COLS × CHUNK_ROWS, row-major. */
   tiles: Uint8Array
   gems: GeneratedGem[]
+  /** Explosive placements (col, rowInChunk) — Explosive entities spawned at load. */
+  explosives: { col: number; rowInChunk: number }[]
 }
 
 export interface GeneratedGem {
@@ -125,6 +131,40 @@ export function generateChunk(seed: number, chunkY: number): GeneratedChunk {
     }
   }
 
+  // Multi-hit ROCK clusters — speed bumps that slow the driller.
+  // Increase density with depth.
+  if (biome.name !== 'topsoil') {
+    const rockBudget =
+      biome.name === 'deep-dirt'
+        ? rng.intRange(1, 3)
+        : biome.name === 'stoneworks'
+          ? rng.intRange(2, 5)
+          : rng.intRange(1, 4)
+    for (let i = 0; i < rockBudget; i++) {
+      const x = rng.intRange(1, cols - 2)
+      const y = rng.intRange(2, rows - 2)
+      const idx = y * cols + x
+      if (tiles[idx] === TILE_SOIL) tiles[idx] = TILE_ROCK
+    }
+  }
+
+  // EXPLOSIVE — sparse in stoneworks+, denser in core. Always inside soil.
+  let explosiveBudget = 0
+  if (biome.name === 'stoneworks') explosiveBudget = rng.intRange(0, 2)
+  else if (biome.name === 'crystal-caverns') explosiveBudget = rng.intRange(1, 2)
+  else if (biome.name === 'core') explosiveBudget = rng.intRange(1, 3)
+  const explosivePlacements: { col: number; rowInChunk: number }[] = []
+  for (let i = 0; i < explosiveBudget; i++) {
+    const x = rng.intRange(1, cols - 2)
+    const y = rng.intRange(3, rows - 3)
+    const idx = y * cols + x
+    if (tiles[idx] === TILE_SOIL) {
+      tiles[idx] = TILE_EXPLOSIVE
+      explosivePlacements.push({ col: x, rowInChunk: y })
+    }
+  }
+  void TILE_STONE  // keep import alive
+
   // Fixtures — placed along cave roofs/floors as anchors + shelter
   const fixtureCount = rng.intRange(biome.fixtureCount[0], biome.fixtureCount[1])
   for (let i = 0; i < fixtureCount; i++) {
@@ -155,7 +195,7 @@ export function generateChunk(seed: number, chunkY: number): GeneratedChunk {
     }
   }
 
-  return { tiles, gems }
+  return { tiles, gems, explosives: explosivePlacements }
 }
 
 /* ------------------------------------------------------------------ */
@@ -186,10 +226,12 @@ function ensureRows(world: World, neededRows: number): void {
   const tiles = new Uint8Array(newSize)
   const flags = new Uint8Array(newSize)
   const frameIndex = new Uint8Array(newSize)
+  const hits = new Uint8Array(newSize)
   tiles.set(grid.tiles)
   flags.set(grid.flags)
   frameIndex.set(grid.frameIndex)
-  world.set(Grid, { ...grid, tiles, flags, frameIndex, rows: newRows })
+  hits.set(grid.hits)
+  world.set(Grid, { ...grid, tiles, flags, frameIndex, hits, rows: newRows })
 }
 
 /** Splice a generated chunk's tiles into the live grid at chunkY × CHUNK_ROWS. */
@@ -202,15 +244,18 @@ function loadChunk(world: World, chunkY: number, seed: number): void {
   ensureRows(world, baseRow + CHUNK_ROWS)
 
   const refreshed = world.get(Grid)!
-  const { cols, tiles, flags, frameIndex } = refreshed
+  const { cols, tiles, flags, frameIndex, hits } = refreshed
   const generated = generateChunk(seed, chunkY)
 
   for (let r = 0; r < CHUNK_ROWS; r++) {
     for (let c = 0; c < cols; c++) {
       const dst = (baseRow + r) * cols + c
-      tiles[dst] = generated.tiles[r * cols + c]!
+      const t = generated.tiles[r * cols + c]!
+      tiles[dst] = t
       flags[dst] = FLAG_AUTOTILE_DIRTY
       frameIndex[dst] = 0
+      // Initialize hit counter for ROCK tiles; non-rocks stay 0.
+      hits[dst] = t === TILE_ROCK ? ROCK_HITS : 0
     }
   }
 
@@ -229,6 +274,18 @@ function loadChunk(world: World, chunkY: number, seed: number): void {
         size: g.size,
         collected: false,
         scatteredUntilTick: 0,
+      }),
+    )
+  }
+
+  // Spawn explosive entities.
+  for (const e of generated.explosives) {
+    world.spawn(
+      Explosive({
+        col: e.col,
+        row: baseRow + e.rowInChunk,
+        triggered: false,
+        fuseRemaining: 0,
       }),
     )
   }
@@ -257,6 +314,14 @@ function unloadChunk(world: World, chunkY: number): void {
   world.query(Gem).forEach((entity) => {
     const g = entity.get(Gem)!
     if (g.row >= baseRow && g.row < baseRow + CHUNK_ROWS) {
+      entity.destroy()
+    }
+  })
+
+  // Despawn explosive entities in this chunk.
+  world.query(Explosive).forEach((entity) => {
+    const e = entity.get(Explosive)!
+    if (e.row >= baseRow && e.row < baseRow + CHUNK_ROWS) {
       entity.destroy()
     }
   })

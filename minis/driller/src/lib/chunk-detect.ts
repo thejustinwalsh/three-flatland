@@ -1,4 +1,4 @@
-import { TILE_FIXTURE_BASE, TILE_SOIL, TILE_STONE } from '../traits'
+import { isAnchorTile, TILE_SOIL } from '../traits'
 
 /**
  * A connected-component of SOIL cells, plus its bounding box and cell list.
@@ -45,7 +45,6 @@ export function detectChunks(tiles: Uint8Array, cols: number, rows: number): Soi
       if (c < minC) minC = c
       if (c > maxC) maxC = c
 
-      // 4-neighbors
       if (c > 0) {
         const ni = idx - 1
         if (!seen[ni] && tiles[ni] === TILE_SOIL) {
@@ -82,14 +81,92 @@ export function detectChunks(tiles: Uint8Array, cols: number, rows: number): Soi
 }
 
 /**
- * Whether a SOIL chunk is supported. A chunk is supported if any cell:
+ * Cantilever collapse rule.
  *
- *   - touches the world's left or right edge (column 0 or cols-1)
- *   - touches the world's bottom edge (row rows-1)
- *   - is 4-adjacent to a STONE or FIXTURE_* tile
+ * Multi-source BFS over SOIL from anchor seeds (STONE / ROCK / FIXTURE
+ * cells, plus left/right/bottom world edges). Returns a Set of SOIL cell
+ * indices whose Manhattan-along-soil distance to the nearest anchor
+ * exceeds `maxReach` (or which are unreachable).
  *
- * Note: top-edge anchoring is intentionally NOT included — soil at the
- * top of the world should fall if nothing holds it.
+ * These cells are "unstable" — they should sag and fall. As cells fall,
+ * the new tile arrangement is re-evaluated next tick; cells that used to
+ * be safely chained to an anchor through their neighbors may now be
+ * stranded → cascading sags.
+ *
+ * Top edge does NOT anchor (sky).
+ */
+export function unstableCells(
+  tiles: Uint8Array,
+  cols: number,
+  rows: number,
+  maxReach: number,
+): Set<number> {
+  const dist = new Int32Array(tiles.length)
+  dist.fill(-1)
+  const queue: number[] = []
+
+  // Seed: anchor tiles themselves are at distance 0
+  for (let i = 0; i < tiles.length; i++) {
+    if (isAnchorTile(tiles[i]!)) {
+      dist[i] = 0
+      queue.push(i)
+    }
+  }
+  // Seed: SOIL cells touching a world edge (left/right/bottom only)
+  // are themselves anchored at distance 0.
+  for (let r = 0; r < rows; r++) {
+    for (const c of [0, cols - 1]) {
+      const idx = r * cols + c
+      if (tiles[idx] === TILE_SOIL && dist[idx] === -1) {
+        dist[idx] = 0
+        queue.push(idx)
+      }
+    }
+  }
+  for (let c = 0; c < cols; c++) {
+    const idx = (rows - 1) * cols + c
+    if (tiles[idx] === TILE_SOIL && dist[idx] === -1) {
+      dist[idx] = 0
+      queue.push(idx)
+    }
+  }
+
+  // Relaxed BFS — propagate distance through SOIL cells only.
+  // FIFO via queue index pointer (avoids shift O(n)).
+  let head = 0
+  while (head < queue.length) {
+    const idx = queue[head++]!
+    const c = idx % cols
+    const r = (idx - c) / cols
+    const d = dist[idx]!
+    for (let k = 0; k < 4; k++) {
+      const dc = k === 0 ? -1 : k === 1 ? 1 : 0
+      const dr = k === 2 ? -1 : k === 3 ? 1 : 0
+      const nc = c + dc
+      const nr = r + dr
+      if (nc < 0 || nc >= cols || nr < 0 || nr >= rows) continue
+      const ni = nr * cols + nc
+      if (tiles[ni] !== TILE_SOIL) continue
+      const nd = d + 1
+      if (dist[ni] !== -1 && dist[ni]! <= nd) continue
+      dist[ni] = nd
+      queue.push(ni)
+    }
+  }
+
+  const out = new Set<number>()
+  for (let i = 0; i < tiles.length; i++) {
+    if (tiles[i] !== TILE_SOIL) continue
+    const d = dist[i]!
+    if (d === -1 || d > maxReach) out.add(i)
+  }
+  return out
+}
+
+/**
+ * Legacy support — kept so existing tests pass. Returns true if the
+ * chunk has *any* anchor connection (zero-tolerance rule). New code
+ * should use `unstableCells` with a `maxReach` value.
  */
 export function isSupported(
   chunk: SoilChunk,
@@ -107,8 +184,7 @@ export function isSupported(
     for (const ni of ns) {
       if (ni < 0 || ni >= tiles.length) continue
       const t = tiles[ni]!
-      if (t === TILE_STONE) return true
-      if (t >= TILE_FIXTURE_BASE && t < TILE_FIXTURE_BASE + 8) return true
+      if (isAnchorTile(t)) return true
     }
   }
   return false

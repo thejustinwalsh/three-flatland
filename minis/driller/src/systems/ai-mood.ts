@@ -68,16 +68,29 @@ export function applyMoodEvent(m: MoodVec, ev: MoodEvent): MoodVec {
 
 /**
  * Default mood-target heuristic given a sketch of the current world. Real
- * AI runtime will compose this with applyMoodEvent for one-shots.
+ * AI runtime composes this with applyMoodEvent for one-shots.
+ *
+ * Greed is bumped harder than the original spec — a single visible gem
+ * pulls greed up to ~0.5 (enough to compete with default Drive=0.5).
+ * Multiple gems push greed toward 1.0 so the seeker planner takes over.
+ *
+ * Fear spikes on either sag overhead OR an active falling-rock hazard
+ * above the driller's column.
  */
 export function moodTarget(input: {
   visibleGemCount: number
   sagOverhead: boolean
+  hazardOverhead: boolean
   ticksSinceLastTap: number
 }): MoodVec {
+  const greedBase = input.visibleGemCount > 0
+    ? Math.min(1, 0.35 + input.visibleGemCount * 0.18)
+    : 0.05
+  const danger = input.sagOverhead || input.hazardOverhead
   return {
-    greed: input.visibleGemCount > 0 ? Math.min(1, 0.2 + input.visibleGemCount * 0.1) : 0.1,
-    fear: input.sagOverhead ? 0.85 : 0.1,
-    drive: Math.min(1, 0.5 + input.ticksSinceLastTap / 600),
+    greed: greedBase,
+    fear: danger ? 0.9 : 0.08,
+    // Drive ramps with idle but is dampened when greed/fear pull elsewhere.
+    drive: Math.min(1, 0.45 + input.ticksSinceLastTap / 600 - greedBase * 0.3),
   }
 }

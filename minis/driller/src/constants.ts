@@ -42,3 +42,36 @@ export const BRACE_COST = 1
 /** Pet over-pet flaw — sliding window length and threshold count. */
 export const OVER_PET_WINDOW_TICKS = 240
 export const OVER_PET_THRESHOLD = 3
+
+/** Cantilever collapse — SOIL cells more than this many cells from any anchor sag. */
+export const MAX_REACH = 5
+
+/** Multi-hit ROCK tile — number of dig actions to break. */
+export const ROCK_HITS = 3
+
+/** Explosive fuse — ticks from trigger to detonation (~0.5s @ 60Hz). */
+export const EXPLOSIVE_FUSE_TICKS = 30
+
+/** Explosion radius in cells (Chebyshev / king-move distance). 2 = 5×5 area. */
+export const EXPLOSION_RADIUS = 2
+
+/** Driller radius for explosive adjacency trigger (1 = 8-neighbor). */
+export const EXPLOSIVE_TRIGGER_RADIUS = 1
+
+/** Falling-rock hazard — telegraphed warning before drop. */
+export const HAZARD_WARNING_TICKS = 60       // ~1.0s @ 60Hz
+export const HAZARD_GRAVITY_PX = 0.8
+export const HAZARD_TERMINAL_PX = 18
+
+/** Spawn cadence — one hazard every N ticks (when conditions met). */
+export const HAZARD_SPAWN_INTERVAL_TICKS = 240   // ~4s baseline
+/** Per-biome multiplier (deeper biomes spawn more). Index by biome name. */
+export const HAZARD_DEPTH_BOOST = {
+  topsoil: 0,
+  'deep-dirt': 0.5,
+  stoneworks: 1,
+  'crystal-caverns': 1.2,
+  core: 1.5,
+} as const
+/** Spawn skipped if a hazard already exists in this column. */
+export const HAZARD_SPAWN_COL_RANGE = 3        // ±3 columns from driller

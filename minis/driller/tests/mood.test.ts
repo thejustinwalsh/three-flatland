@@ -50,20 +50,26 @@ describe('applyMoodEvent', () => {
 
 describe('moodTarget', () => {
   it('boosts greed when gems are visible', () => {
-    const empty = moodTarget({ visibleGemCount: 0, sagOverhead: false, ticksSinceLastTap: 0 })
-    const some = moodTarget({ visibleGemCount: 3, sagOverhead: false, ticksSinceLastTap: 0 })
+    const empty = moodTarget({ visibleGemCount: 0, sagOverhead: false, hazardOverhead: false, ticksSinceLastTap: 0 })
+    const some = moodTarget({ visibleGemCount: 3, sagOverhead: false, hazardOverhead: false, ticksSinceLastTap: 0 })
     expect(some.greed).toBeGreaterThan(empty.greed)
   })
 
   it('spikes fear when sag is overhead', () => {
-    const calm = moodTarget({ visibleGemCount: 0, sagOverhead: false, ticksSinceLastTap: 0 })
-    const danger = moodTarget({ visibleGemCount: 0, sagOverhead: true, ticksSinceLastTap: 0 })
+    const calm = moodTarget({ visibleGemCount: 0, sagOverhead: false, hazardOverhead: false, ticksSinceLastTap: 0 })
+    const danger = moodTarget({ visibleGemCount: 0, sagOverhead: true, hazardOverhead: false, ticksSinceLastTap: 0 })
     expect(danger.fear).toBeGreaterThan(calm.fear)
   })
 
+  it('spikes fear when hazard is overhead', () => {
+    const calm = moodTarget({ visibleGemCount: 0, sagOverhead: false, hazardOverhead: false, ticksSinceLastTap: 0 })
+    const haz = moodTarget({ visibleGemCount: 0, sagOverhead: false, hazardOverhead: true, ticksSinceLastTap: 0 })
+    expect(haz.fear).toBeGreaterThan(calm.fear)
+  })
+
   it('raises drive over time without user input', () => {
-    const fresh = moodTarget({ visibleGemCount: 0, sagOverhead: false, ticksSinceLastTap: 0 })
-    const stale = moodTarget({ visibleGemCount: 0, sagOverhead: false, ticksSinceLastTap: 1200 })
+    const fresh = moodTarget({ visibleGemCount: 0, sagOverhead: false, hazardOverhead: false, ticksSinceLastTap: 0 })
+    const stale = moodTarget({ visibleGemCount: 0, sagOverhead: false, hazardOverhead: false, ticksSinceLastTap: 1200 })
     expect(stale.drive).toBeGreaterThan(fresh.drive)
   })
 })
