@@ -7,16 +7,16 @@
 
 **New hooks and options**
 
-- `usePaneRadioGrid` (react subpath) — inline button-bar selector backed by essentials' radiogrid blade; deferred disposal + synchronous creation mirror `usePaneButton` / `usePaneInput`
-- `PaneInputOptions` extended with `readonly` and `format` — enables readonly monitors with custom formatters via the existing `usePaneInput` hook
+- `usePaneRadioGrid` hook (react subpath) — inline button-bar selector backed by the essentials `radiogrid` blade; deferred disposal and synchronous creation match the `usePaneButton`/`usePaneInput` pattern
+- `PaneInputOptions` gains `readonly` and `format` fields so hook users can create readonly monitors with custom formatters
+
+**Theme fixes**
+
+- Checkbox surface now matches other controls (`rgba(28,40,77,0.6)`) with hover/focus/active parity; check stroke turns accent pink on `:checked`
+- Checkbox hit target expanded to full 20×20 box (`width/height: var(--cnt-usz)` on `.tp-ckbv_i`) — no longer relies on flaky label-forwarding
 
 **Bug fixes**
 
-- Fix: `createPane` now applies `z-index: 1000` to the `.tp-dfwv` outer wrapper (the actual stacking-context element) instead of the inner `pane.element`, so the pane reliably overlays other content
-- Fix: checkbox `.tp-ckbv_i` input stretched to full `var(--cnt-usz)` box — eliminates multi-click failures caused by flaky `<label>` → `<input>` click forwarding under certain pointer-events / z-index combinations
+- `z-index: 1000` now applied to the `.tp-dfwv` outer wrapper instead of the inner pane root, so the pane correctly stacks above other overlays when no custom container is provided
 
-**Theme**
-
-- Checkbox box surface updated to `rgba(28,40,77,0.6)` matching other controls; hover/focus/active parity added; check stroke turns accent pink on `:checked`
-
-Adds `usePaneRadioGrid`, readonly monitor support, and fixes stacking and checkbox interaction reliability.
+`usePaneRadioGrid` and `PaneInputOptions.readonly`/`format` are the primary user-facing additions; checkbox hit-target and z-index fixes eliminate interaction reliability issues across all uses of the pane.
