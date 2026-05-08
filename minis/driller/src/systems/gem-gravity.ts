@@ -33,7 +33,7 @@ export function gemGravitySystem(world: World, deltaMs: number): void {
 
   world.query(Gem).forEach((entity) => {
     const g = entity.get(Gem)
-    if (!g || g.collected || g.scatteredUntilTick !== 0) return
+    if (!g || g.collected) return
 
     // Smooth-py lerp from prevRow → row across the active fall step.
     const fromPy = g.prevRow * TILE_PX + TILE_PX / 2

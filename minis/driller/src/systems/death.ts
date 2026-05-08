@@ -25,10 +25,16 @@ let deathPhase: 'idle' | 'scatter' | 'ghost' | 'respawn' = 'idle'
 let deathTick = 0
 let deathCol = 9
 let deathRow = 0
+let ghostRow = 0
 
 const SCATTER_RADIUS = 6
-const GHOST_TICKS = 24
-const SCATTER_LIFETIME_TICKS = 180
+/**
+ * How many ticks per row of ghost ascent. Lower = faster rise. The
+ * ghost rises GHOST_HEIGHT rows total before the respawn fires.
+ */
+const GHOST_TICKS_PER_ROW = 2
+const GHOST_HEIGHT = 12
+const GHOST_TICKS = GHOST_TICKS_PER_ROW * GHOST_HEIGHT
 
 export function deathSystem(world: World): void {
   const gs = world.get(GameState)
@@ -48,6 +54,7 @@ export function deathSystem(world: World): void {
     }
     deathPhase = 'scatter'
     deathTick = gs.tick
+    ghostRow = deathRow
     return
   }
 
@@ -55,13 +62,27 @@ export function deathSystem(world: World): void {
     if (gs.tick - deathTick >= 12) {
       deathPhase = 'ghost'
       deathTick = gs.tick
-      clearGhostHalo(world, deathCol, deathRow)
+      ghostRow = deathRow
+      // Clear the death cell itself immediately — the rest rises on
+      // a per-tick schedule below.
+      clearGhostRow(world, deathCol, ghostRow)
     }
     return
   }
 
   if (deathPhase === 'ghost') {
-    if (gs.tick - deathTick >= GHOST_TICKS) {
+    // Sine-wave ghost beam rises one row at a time, clearing a 3-wide
+    // chute as it goes. Anything in those cells (soil, rock, stone,
+    // explosive) is wiped INSTANTLY; gems are left alone, so they
+    // free-fall through the cleared chute and the player keeps any
+    // they manage to land on the next surface.
+    const elapsed = gs.tick - deathTick
+    const targetRow = deathRow - Math.floor(elapsed / GHOST_TICKS_PER_ROW)
+    while (ghostRow > targetRow && ghostRow > 0) {
+      ghostRow--
+      clearGhostRow(world, deathCol, ghostRow)
+    }
+    if (elapsed >= GHOST_TICKS) {
       deathPhase = 'respawn'
     }
     return
@@ -95,56 +116,60 @@ function scatterGems(world: World, count: number, col: number, row: number, tick
   const rng = createRng(((tick * 9301) ^ (col * 49297) ^ row) >>> 0)
   const colors: GemColor[] = ['emerald', 'topaz', 'ruby', 'amethyst']
 
+  // Death scatter: spawn FALLING gems around the death cell. They
+  // aren't frozen-in-air markers any more — gem-gravity processes
+  // them as regular gems, so they tumble down the now-cleared ghost
+  // chute and pile up on whatever surface catches them. Some will
+  // scroll off the playfield top during the rise; that's fine.
   for (let i = 0; i < Math.min(count, 8); i++) {
     const angle = rng.next() * Math.PI * 2
-    const dist = (1 + rng.next() * (SCATTER_RADIUS - 1)) * TILE_PX
-    const px = col * TILE_PX + Math.cos(angle) * dist
-    const py = row * TILE_PX + Math.sin(angle) * dist
+    const dist = (1 + rng.next() * (SCATTER_RADIUS - 1))
+    const dCol = col + Math.round(Math.cos(angle) * dist)
+    const dRow = row + Math.round(Math.sin(angle) * dist)
     const color = colors[rng.intRange(0, colors.length - 1)]!
     const sizes: GemSize[] = ['small', 'medium', 'large']
     const size = sizes[rng.intRange(0, sizes.length - 1)]!
     world.spawn(
       Gem({
-        col: Math.floor(px / TILE_PX),
-        row: Math.floor(py / TILE_PX),
+        col: dCol,
+        row: dRow,
+        prevRow: dRow,
         color,
         size,
         collected: false,
-        scatteredUntilTick: tick + SCATTER_LIFETIME_TICKS,
-        px,
-        py,
+        scatteredUntilTick: 0,
+        px: dCol * TILE_PX + TILE_PX / 2,
+        py: dRow * TILE_PX + TILE_PX / 2,
+        collectProgress: 0,
+        fallCooldownMs: 0,
+        stepDurationMs: 0,
       }),
     )
   }
+  void tick
 }
 
 /**
- * Ghost rises through the death position and clears a 3-wide × 4-tall
- * bubble: the death cell itself plus 3 rows above, ±1 column. ANY
- * non-AIR tile in this region is cleared (soil, rock, stone, even
- * explosives). The bubble guarantees the driller respawns into open
- * space — without it, a chunk that crushed the driller would leave
- * the respawn cell stamped as solid soil/stone and the new driller
- * would spawn inside material.
+ * Per-row clear used by the rising ghost beam. Wipes a 3-wide strip
+ * (deathCol-1, deathCol, deathCol+1) at the given row to AIR. Any
+ * tile present is destroyed instantly — soil, stone, rock,
+ * explosive, fixture. Gems are left in place; they end up in AIR
+ * cells and gem-gravity will tumble them down the chute.
  */
-function clearGhostHalo(world: World, deathCol: number, deathRow: number): void {
+function clearGhostRow(world: World, deathCol: number, row: number): void {
   const grid = world.get(Grid)
   if (!grid) return
   const { cols, rows, tiles, flags } = grid
-  for (let dr = 0; dr <= 3; dr++) {
-    const r = deathRow - dr
-    if (r < 0) continue
-    if (r >= rows) continue
-    for (let dc = -1; dc <= 1; dc++) {
-      const c = deathCol + dc
-      if (c < 0 || c >= cols) continue
-      const idx = r * cols + c
-      if (idx >= tiles.length) continue
-      if (tiles[idx] === TILE_AIR) continue
-      tiles[idx] = TILE_AIR
-      flags[idx] = (flags[idx] ?? 0) | FLAG_AUTOTILE_DIRTY
-      markCellAndNeighborsDirty(world, c, r)
-    }
+  if (row < 0 || row >= rows) return
+  for (let dc = -1; dc <= 1; dc++) {
+    const c = deathCol + dc
+    if (c < 0 || c >= cols) continue
+    const idx = row * cols + c
+    if (idx >= tiles.length) continue
+    if (tiles[idx] === TILE_AIR) continue
+    tiles[idx] = TILE_AIR
+    flags[idx] = (flags[idx] ?? 0) | FLAG_AUTOTILE_DIRTY
+    markCellAndNeighborsDirty(world, c, row)
   }
 }
 
