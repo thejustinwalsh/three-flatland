@@ -1,62 +1,113 @@
 ---
-import EditLink from 'virtual:starlight/components/EditLink';
-import LastUpdated from 'virtual:starlight/components/LastUpdated';
-import Pagination from 'virtual:starlight/components/Pagination';
-import config from 'virtual:starlight/user-config';
+import EditLink from 'virtual:starlight/components/EditLink'
+import LastUpdated from 'virtual:starlight/components/LastUpdated'
+import Pagination from 'virtual:starlight/components/Pagination'
+import config from 'virtual:starlight/user-config'
 
 const {
     entry: {
         data: { template },
     },
-} = Astro.locals.starlightRoute;
+} = Astro.locals.starlightRoute
 
-const { lastUpdated: showLastUpdated, editLink } = config;
-const showEditLink = editLink?.baseUrl ? true : false;
+const { lastUpdated: showLastUpdated, editLink } = config
+const showEditLink = editLink?.baseUrl ? true : false
+const showMeta = showLastUpdated || showEditLink
 ---
 
 {
     template === 'doc' && (
-        <footer>
-            {(showEditLink || showLastUpdated) && (
-                <div data-slot="doc-footer-meta">
+        <footer class="doc-footer">
+            <Pagination />
+            {showMeta && (
+                <div class="doc-footer-meta" data-slot="doc-footer-meta">
                     <LastUpdated />
                     <EditLink />
                 </div>
             )}
-            <Pagination />
         </footer>
     )
 }
 
 <style>
-    .padding-negative {
-        margin-bottom: -3vh;
+    .doc-footer {
+        display: flex;
+        flex-direction: column;
+        gap: calc(var(--spacing) * 4);
     }
 
-    [data-slot='doc-footer-meta'] {
+    /* Quiet attribution sits below pagination — last-updated on the
+     * left, edit-link on the right. Pagination owns the divider above
+     * it so we don't double-rule the footer block. */
+    .doc-footer-meta {
         font-family: 'Inter', system-ui, sans-serif;
         display: flex;
-        gap: calc(var(--spacing) * 5);
+        flex-wrap: wrap;
         align-items: center;
-        justify-content: end;
-        font-size: 0.8125rem;
+        justify-content: space-between;
+        gap: calc(var(--spacing) * 2) calc(var(--spacing) * 5);
+        font-size: 0.75rem;
+        line-height: 1.4;
         color: var(--muted-foreground);
-        margin-top: calc(var(--spacing) * 6);
-        padding-top: calc(var(--spacing) * 4);
-        border-top: 1px solid color-mix(in oklab, var(--border) 50%, transparent);
         opacity: 0.85;
     }
-    [data-slot='doc-footer-meta'] :global(a) {
+    .doc-footer-meta :global(a) {
         color: var(--muted-foreground);
         text-decoration: none;
-        transition: color 0.15s;
+        text-decoration-color: color-mix(
+            in oklab,
+            var(--muted-foreground) 35%,
+            transparent
+        );
+        text-underline-offset: 2px;
+        transition:
+            color 180ms cubic-bezier(0.2, 0.8, 0.2, 1),
+            text-decoration-color 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4em;
     }
-    [data-slot='doc-footer-meta'] :global(a:hover) {
+    .doc-footer-meta :global(a:hover) {
         color: var(--diamond);
+        text-decoration: underline;
+        text-decoration-color: color-mix(
+            in oklab,
+            var(--diamond) 60%,
+            transparent
+        );
+    }
+    .doc-footer-meta :global(a:focus-visible) {
+        outline: 2px solid color-mix(in oklab, var(--diamond) 80%, transparent);
+        outline-offset: 2px;
+        border-radius: 2px;
+    }
+
+    /* Solo case — just last-updated or just edit-link — push to the
+     * end so it reads as quiet attribution rather than orphaned text. */
+    .doc-footer-meta:has(> :global(:only-child)) {
+        justify-content: flex-end;
+    }
+
+    /* Stack on narrow widths so we don't squeeze long labels. */
+    @media (max-width: 32rem) {
+        .doc-footer-meta {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: calc(var(--spacing) * 1);
+        }
     }
 </style>
 
 <style is:global>
+    /* Starlight wraps EditLink/LastUpdated paragraphs at a high cascade
+     * layer; reset their margin so they sit cleanly in our flex row. */
+    .doc-footer-meta > p {
+        margin: 0;
+    }
+
+    /* Starlight's default footer.sl-flex would add a top border between
+     * the doc content and the footer — we own that divider now via
+     * Pagination's border-top, so suppress the default one. */
     footer.sl-flex {
         border-top: none !important;
         display: flex !important;
