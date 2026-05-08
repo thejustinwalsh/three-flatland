@@ -159,3 +159,74 @@ These remain on the Phase 3 punch list but their absence is not a regression —
 - **Image optimization**: BrandAsset's `og-image.png` / `x-card-image.png` (when regenerated for item 3) should hit the production optimizer.
 - **HeroShader**: WebGL2 fragment shader is well-scoped; verify no resource leaks across page transitions (the current `useEffect` cleanup releases program/shaders/buffer cleanly).
 - **Bundle visualizer**: run `pnpm build --filter=docs -- --analyze` (if available) to spot heavyweight imports.
+
+---
+
+## Audit & Optimize delta — 2026-05-08 (post-compaction polish)
+
+This section captures the regression-delta against the Phase 2 baseline +
+the Phase 3 audit's intermediate state at tip `ec5cba5`. Everything below
+is **incremental** — items already verified above are not re-audited.
+
+### What landed since the previous Phase 3 audit checkpoint
+
+| Surface | Status delta | Tip commit |
+|---|---|---|
+| Heading-badges sweep | ⏸ parked → ✅ shipped (6 tasteful badges across guides, see decisions log entry "Heading-badges sweep") | `2d5e19d` |
+| Pagination | drive-by polish → ✅ full impeccable loop (per-destination gem, foil rim, restored eyebrow/title, RTL, mobile stack) | `aac377a` |
+| TOC badge deserialization | ❌ broken (raw markers leaking) → ✅ fixed (inlined deserializer) | `aac377a` |
+| Footer | ⚠️ double divider → ✅ single divider, meta below pagination | `9cec0ef` |
+| ContentPanel | ⏸ no-op passthrough → ✅ same passthrough, intent documented + structural class restored | `13829c4` |
+| Search modal interior | ⚠️ kbd CSS tangle, hard outline pop → ✅ kbd cleaned up, accent rail on hover/focus | `b6e8c2e` |
+| Mobile TOC | ❌ missing on <1280px viewports → ✅ rendered + gem-themed, badges flow through | `d129a06` |
+| Hero override | ⚠️ dormant + lagging substrate → ✅ entrance choreography + gem image rim + tighter mobile padding | `0ceb789` |
+| BrandAsset compositions | ❌ retro-palette + IBM-Plex (pre-Phase-3 substrate) → ✅ gem palette + Silkscreen + Public Sans + sub-perceptual texture; retro pixel icon + wordmark composed inside the new substrate per stakeholder direction | `7c0eb5a` |
+
+### Build verification at tip `7c0eb5a`
+
+| Axis | Status | Evidence |
+|---|---|---|
+| Build | ✅ | `pnpm build --filter=docs` — 312 pages, ~16s |
+| Astro check | ✅ | 0 errors, run as part of `astro check && astro build` |
+| Pagefind | ✅ | 339 HTML files indexed, ~1.4s |
+| Total dist | 135M (was 111M at `ec5cba5`) | +24M is the showcase / examples capture artifacts (videos + posters added in `ec5cba5`-onwards), not regressions in code or theme weight |
+| Largest CSS chunk | `common.Bk2vfzlE.css` 228k (was 214k) | +14k is plausible for 9 component overrides receiving deliberate styling this session — within 7% of baseline |
+| Largest JS chunk | `index.CqTZTWWU.js` 1.3M | TypeDoc API ref + React. Unchanged in spirit. |
+| Fonts | 48 woff2 (unchanged) | No new font weights introduced; Silkscreen remains scoped to wordmark + BrandAsset |
+| Reduced motion | ✅ | All new motion (Pagination, Search rail, Hero entrance, mobile-TOC summary) explicitly strips animation under `prefers-reduced-motion` |
+
+### A11y / theming spot checks
+
+- Pagination's per-destination gem accent uses `color-mix` against `--border`; both light + dark contrast pass at 18% mix (rest state) and 55% (hover state).
+- Mobile TOC `<details>` uses Inter font + diamond border + card bg → reads consistently with the rest of the system in both modes.
+- Search result accent rail at 2px diamond is sub-pixel-thick; deliberate (it's a focus marker, not a primary affordance — the title is).
+- BrandAsset uses scoped local CSS custom props (`--tf-*`) so capture mode doesn't depend on parent context; same rendering whether Inspect-captured or live-previewed.
+
+### Items still deferred (with deferral rationale)
+
+The Phase 3 punch-list items still NOT shipped this session, with deferral
+rationale for the PR-#33-acceptance-gate review:
+
+| Item | Status | Why deferred |
+|---|---|---|
+| Per-page interactive scenes (tsl-nodes, pass-effects, tilemaps guides) | ❌ deferred | Multi-hour scene-authoring + interactive controls + `<ClientOnly>` guards per page. Substantial product work, not polish. Would extend PR scope significantly. Filing as a **standalone follow-up issue** parallel to the docs refresh would let it ship on its own timeline. |
+| `/impeccable:optimize` font subsetting + CSS split | ⏸ baseline captured, full pass deferred | Optimize pass should run AFTER per-page scenes land (they're the largest delta). Current bundle stats are within tolerance against Phase 2 baseline. |
+| Landing-page rebuild around bespoke embedded scenes (beyond HeroShader) | ❌ deferred | Same reason as per-page interactive scenes — needs scene authoring decisions + product-direction sign-off on what to embed where. Component re-skin (FeatureCard / StatsBanner / ValueProp) already shipped. |
+
+### Optimize pass — incremental observations
+
+No active regressions vs Phase 2 / Phase 3 mid-state baseline. The 14k CSS
+chunk increase is fully accounted for by:
+- New Pagination: foil rim + per-gem styling + reveal hooks (~3k)
+- Mobile TOC restoration + theming (~3k)
+- Search hover/focus accent rail (~1k)
+- BrandAsset rewrite (net-neutral; old retro CSS removed, new gem CSS added at similar size)
+- Hero entrance keyframes + image rim (~1k)
+- Footer reorder (~1k)
+- ContentPanel passthrough comment (~0.2k)
+
+Conclusion: the substrate is shippable. Per-page scenes + landing rebuild
+are net-new product work that the stakeholder should authorize as either
+in-scope-for-this-PR or split-into-followup. The PR's acceptance gate
+(Phase 10 of `implementing-github-issues`) needs that signal before
+transitioning out of draft.
