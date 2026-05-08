@@ -82,10 +82,15 @@ const { toc } = Astro.locals.starlightRoute;
         }
     }
 
+    /* `display: contents` at narrow widths so PageSidebar's
+     * MobileTableOfContents (a position: fixed `<details>`) can render
+     * without the .toc slot itself taking flow space. PageSidebar
+     * handles per-variant visibility internally. At xl+ the slot becomes
+     * a real grid track. */
     .toc {
         font-size: 0.875rem;
         line-height: 1.25rem;
-        display: none;
+        display: contents;
     }
     @media (min-width: 1280px) {
         .toc {

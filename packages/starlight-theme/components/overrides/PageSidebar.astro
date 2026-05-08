@@ -1,20 +1,134 @@
 ---
-import TableOfContents from './TableOfContents.astro';
+/**
+ * Renders the on-this-page TOC. Two variants live here:
+ *
+ * 1. **Desktop (≥1280px)** — sticky right-rail TOC, our own
+ *    `TableOfContents.astro` override. Visible inside the
+ *    `.container-main` grid track.
+ *
+ * 2. **Mobile / tablet (<1280px)** — `<details>`-based collapsible TOC
+ *    pinned below the header via `position: fixed`. Resolves to
+ *    `starlight-heading-badges`'s override (`HeadingBadgesMobileTableOfContents.astro`)
+ *    since we don't override `MobileTableOfContents` ourselves —
+ *    that intentionally gives badges support to mobile users too.
+ *
+ * Why both: prior to this, narrow viewports got NO TOC at all (the
+ * `.toc` slot in TwoColumnContent had `display: none` until 1280px and
+ * we only rendered the desktop variant). Long doc pages on tablet were
+ * uncomfortable to scan.
+ *
+ * The `.toc` slot in TwoColumnContent now uses `display: contents` at
+ * narrow widths so the fixed-positioned mobile nav can escape the
+ * layout without the slot itself stealing flow space.
+ */
+import MobileTableOfContents from 'virtual:starlight/components/MobileTableOfContents'
+import TableOfContents from './TableOfContents.astro'
 ---
 
 {
     Astro.locals.starlightRoute.toc && (
-        <div>
-            <TableOfContents />
-        </div>
+        <>
+            <div class="page-sidebar-mobile">
+                <MobileTableOfContents />
+            </div>
+            <div class="page-sidebar-desktop">
+                <TableOfContents />
+            </div>
+        </>
     )
 }
 
 <style>
-    div {
-        padding-top: calc(var(--spacing) * 4);
-        max-height: calc(100vh - var(--header-height) - 1px);
-        top: calc(var(--header-height) + 1px);
-        position: sticky;
+    /* Mobile wrapper is `display: contents` — the inner
+     * `<mobile-starlight-toc>` is `position: fixed`, so the wrapper
+     * just needs to allow it to render. The wrapper is hidden at xl+
+     * to avoid double-TOC. */
+    .page-sidebar-mobile {
+        display: contents;
+    }
+    @media (min-width: 1280px) {
+        .page-sidebar-mobile {
+            display: none;
+        }
+    }
+
+    .page-sidebar-desktop {
+        display: none;
+    }
+    @media (min-width: 1280px) {
+        .page-sidebar-desktop {
+            display: block;
+            padding-top: calc(var(--spacing) * 4);
+            max-height: calc(100vh - var(--header-height) - 1px);
+            top: calc(var(--header-height) + 1px);
+            position: sticky;
+        }
+    }
+</style>
+
+<style is:global>
+    /* ────────── Mobile TOC theming ──────────
+     * The plugin's MobileTableOfContents ships Starlight's default
+     * styling (uses --sl-color-*, --sl-nav-height, etc). Most of those
+     * resolve to our card / border tokens via the theme.css mapping,
+     * but the surface needs gem-tinting and our font stack. */
+
+    mobile-starlight-toc nav {
+        top: calc(var(--header-height) - 1px);
+        background-color: color-mix(
+            in oklab,
+            var(--card) 92%,
+            var(--diamond-soft)
+        );
+        border-top: 1px solid
+            color-mix(in oklab, var(--diamond) 18%, var(--border));
+        backdrop-filter: blur(8px) saturate(120%);
+        -webkit-backdrop-filter: blur(8px) saturate(120%);
+    }
+
+    mobile-starlight-toc summary {
+        font-family: 'Inter', system-ui, sans-serif;
+        color: var(--muted-foreground);
+    }
+
+    mobile-starlight-toc .toggle {
+        font-weight: 500;
+        color: var(--foreground);
+        background-color: color-mix(
+            in oklab,
+            var(--background) 80%,
+            var(--card)
+        );
+        border: 1px solid
+            color-mix(in oklab, var(--diamond) 16%, var(--border));
+        border-radius: var(--radius);
+        transition:
+            color 180ms cubic-bezier(0.2, 0.8, 0.2, 1),
+            border-color 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
+    }
+
+    mobile-starlight-toc details[open] .toggle,
+    mobile-starlight-toc details .toggle:hover {
+        color: var(--foreground);
+        border-color: color-mix(in oklab, var(--diamond) 50%, var(--border));
+    }
+
+    mobile-starlight-toc .display-current {
+        color: color-mix(in oklab, var(--diamond) 60%, var(--foreground));
+        font-weight: 500;
+    }
+
+    mobile-starlight-toc .dropdown {
+        background-color: var(--card);
+        border-color: color-mix(in oklab, var(--border) 70%, transparent);
+        border-top-color: color-mix(in oklab, var(--diamond) 14%, var(--border));
+    }
+
+    /* Inline badges in the mobile TOC's "you are here" indicator —
+     * keep them tiny so they don't crowd the truncating text. */
+    mobile-starlight-toc .display-current span[data-shb-badge] {
+        margin-inline-start: 0.4em;
+        font-size: 0.625rem;
+        padding: 0.0625rem 0.3rem;
     }
 </style>
