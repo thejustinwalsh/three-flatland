@@ -58,6 +58,9 @@ export const DEPTH_AT_FULL_SPEED = 250     // depth row at which interval = DEEP
 export const PONDER_GEM_RADIUS = 3
 export const PONDER_GEM_MS = 140
 
+/** Time per cell while falling under gravity (ms). */
+export const FALL_INTERVAL_MS = 70
+
 /** Multi-hit ROCK tile — number of dig actions to break. */
 export const ROCK_HITS = 3
 

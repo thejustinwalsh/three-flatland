@@ -20,6 +20,7 @@ import {
   DEPTH_AT_FULL_SPEED,
   DIG_INTERVAL_MS_DEEP,
   DIG_INTERVAL_MS_SHALLOW,
+  FALL_INTERVAL_MS,
   PONDER_GEM_MS,
   PONDER_GEM_RADIUS,
   ROCK_HITS,
@@ -50,25 +51,61 @@ export function drillerSystem(world: World, deltaMs: number): void {
   const gs = world.get(GameState)
   if (!grid || !gs) return
 
-  // Safety: if the driller's current cell is not AIR (e.g., a chunk
-  // landed on the cell after respawn), force-clear it. Without this,
-  // the driller appears to dig but stays atop a SOIL cell that never
-  // gets cleared (the dig branch only runs for the *next* cell).
-  const hereIdx = d.row * grid.cols + d.col
+  const cols = grid.cols
+  const rows = grid.rows
+
+  // Safety: the driller's own cell must always be AIR. If a chunk landed
+  // on the driller's cell after respawn, force-clear it so the sprite
+  // isn't drawn over solid soil.
+  const hereIdx = d.row * cols + d.col
   if (grid.tiles[hereIdx] !== undefined && grid.tiles[hereIdx] !== TILE_AIR) {
     grid.tiles[hereIdx] = TILE_AIR
     grid.flags[hereIdx] = FLAG_AUTOTILE_DIRTY
     markCellAndNeighborsDirty(world, d.col, d.row)
   }
 
-  // Cooldown
-  const cooldown = Math.max(0, d.digCooldownMs - deltaMs)
-
-  // Smooth pixel chase
+  // Smooth pixel chase toward the target cell.
   const targetPx = d.col * TILE_PX + TILE_PX / 2
   const targetPy = d.row * TILE_PX + TILE_PX / 2
   const px = d.px + (targetPx - d.px) * 0.4
   const py = d.py + (targetPy - d.py) * 0.4
+
+  // ----- Gravity --------------------------------------------------------
+  // The driller stands ON the cell directly below them. If that cell is
+  // AIR (or off the world), they fall one row per FALL_INTERVAL_MS until
+  // they land on a solid tile. While falling, no dig/move actions.
+  const supportRow = d.row + 1
+  const supportIdx = supportRow * cols + d.col
+  const onGround = supportRow >= rows || (grid.tiles[supportIdx] !== undefined && grid.tiles[supportIdx] !== TILE_AIR)
+
+  const fallCD = Math.max(0, d.fallCooldownMs - deltaMs)
+
+  if (!onGround) {
+    if (fallCD > 0) {
+      drillerEntity.set(Driller, { fallCooldownMs: fallCD, px, py })
+      return
+    }
+    // Drop one row.
+    const newRow = d.row + 1
+    drillerEntity.set(Driller, {
+      row: newRow,
+      px,
+      py,
+      fallCooldownMs: FALL_INTERVAL_MS,
+    })
+    if (newRow > gs.depthM) {
+      world.set(GameState, { depthM: newRow, deepestM: Math.max(gs.deepestM, newRow) })
+    }
+    // Auto-collect gem at the cell we fell into.
+    collectGemAt(world, gs, d.col, newRow)
+    // Animation: continue 'fall' state visually.
+    const animFall = drillerEntity.get(Animation)
+    if (animFall) drillerEntity.set(Animation, { state: 'fall' })
+    return
+  }
+
+  // ----- On the ground: dig / move -------------------------------------
+  const cooldown = Math.max(0, d.digCooldownMs - deltaMs)
 
   if (cooldown > 0) {
     drillerEntity.set(Driller, { digCooldownMs: cooldown, px, py })
@@ -81,90 +118,107 @@ export function drillerSystem(world: World, deltaMs: number): void {
     return
   }
 
-  // One-step move toward target.
   const stepCol = Math.sign(target.col - d.col)
   const stepRow = Math.sign(target.row - d.row)
-  let nc = d.col
-  let nr = d.row
-  if (stepCol !== 0) nc = d.col + stepCol
-  else if (stepRow !== 0) nr = d.row + stepRow
-  else {
+  if (stepCol === 0 && stepRow === 0) {
     drillerEntity.set(Driller, { digCooldownMs: cooldown, px, py })
     return
   }
 
-  if (nc < 0 || nc >= grid.cols || nr < 0 || nr >= grid.rows) {
-    drillerEntity.set(Driller, { digCooldownMs: cooldown, px, py })
-    return
-  }
-  const idx = nr * grid.cols + nc
-  const tile = grid.tiles[idx]
-  if (tile === undefined) return
-  if (tile === TILE_STONE || isFixture(tile)) {
-    drillerEntity.set(Driller, { digCooldownMs: cooldown, px, py })
-    return
-  }
+  // ----- Resolve action ------------------------------------------------
+  // Down step → dig the support cell (driller stays put; gravity will
+  // drop them on a subsequent tick when the cell becomes AIR).
+  // Side step → dig the side cell if needed, then move into it (gravity
+  // tick will continue the fall if the side has no support either).
+  // Up step → only allowed if cell above is AIR; you can't dig upward.
 
-  // Multi-hit ROCK: decrement hit counter without moving until broken.
-  if (tile === TILE_ROCK) {
-    const hitsRemaining = (grid.hits[idx] ?? ROCK_HITS) - 1
-    grid.hits[idx] = Math.max(0, hitsRemaining)
-    if (hitsRemaining <= 0) {
-      grid.tiles[idx] = TILE_AIR
-      grid.flags[idx] = FLAG_AUTOTILE_DIRTY
-      markCellAndNeighborsDirty(world, nc, nr)
-      // ROCK broke — driller still doesn't move this tick (chip then advance next).
-    }
-    drillerEntity.set(Driller, { digCooldownMs: digIntervalForDepth(d.row), px, py })
-    return
-  }
-
-  // Dig if SOIL.
-  if (tile === TILE_SOIL) {
-    grid.tiles[idx] = TILE_AIR
-    grid.flags[idx] = FLAG_AUTOTILE_DIRTY
-    markCellAndNeighborsDirty(world, nc, nr)
-  }
-
-  // Auto-collect gem on entered cell + measure gem proximity for ponder.
-  let collectedGem = false
-  let nearbyGem = false
-  world.query(Gem).forEach((entity) => {
-    const g = entity.get(Gem)
-    if (!g || g.collected) return
-    if (g.col === nc && g.row === nr && g.scatteredUntilTick === 0) {
-      if (!collectedGem) {
-        world.set(GameState, { gems: gs.gems + 1 })
-        entity.destroy()
-        collectedGem = true
-      }
+  let actionCell: { col: number; row: number } | null = null
+  let nextDrillerCell: { col: number; row: number } = { col: d.col, row: d.row }
+  let isSideMove = false
+  if (stepRow > 0) {
+    actionCell = { col: d.col, row: d.row + 1 }
+  } else if (stepCol !== 0) {
+    actionCell = { col: d.col + stepCol, row: d.row }
+    nextDrillerCell = { col: d.col + stepCol, row: d.row }
+    isSideMove = true
+  } else if (stepRow < 0) {
+    const upIdx = (d.row - 1) * cols + d.col
+    if (d.row - 1 >= 0 && grid.tiles[upIdx] === TILE_AIR) {
+      nextDrillerCell = { col: d.col, row: d.row - 1 }
+    } else {
+      // Blocked — can't dig up. Fall back to drive-greedy behavior on
+      // next planner tick; for now just absorb the cooldown.
+      drillerEntity.set(Driller, { digCooldownMs: cooldown, px, py })
       return
     }
-    // Gem within PONDER_GEM_RADIUS (Manhattan) → driller hesitates a beat.
-    if (g.scatteredUntilTick === 0 && Math.abs(g.col - nc) + Math.abs(g.row - nr) <= PONDER_GEM_RADIUS) {
-      nearbyGem = true
-    }
-  })
+  }
 
-  // Move + animate.
+  if (actionCell) {
+    const ac = actionCell.col
+    const ar = actionCell.row
+    if (ac < 0 || ac >= cols || ar < 0 || ar >= rows) {
+      drillerEntity.set(Driller, { digCooldownMs: cooldown, px, py })
+      return
+    }
+    const tIdx = ar * cols + ac
+    const tile = grid.tiles[tIdx]
+    if (tile === undefined) return
+
+    if (tile === TILE_STONE || isFixture(tile)) {
+      drillerEntity.set(Driller, { digCooldownMs: cooldown, px, py })
+      return
+    }
+
+    if (tile === TILE_ROCK) {
+      const remaining = (grid.hits[tIdx] ?? ROCK_HITS) - 1
+      grid.hits[tIdx] = Math.max(0, remaining)
+      if (remaining <= 0) {
+        grid.tiles[tIdx] = TILE_AIR
+        grid.flags[tIdx] = FLAG_AUTOTILE_DIRTY
+        markCellAndNeighborsDirty(world, ac, ar)
+      }
+      // Driller does NOT move/fall this tick — chip + cooldown.
+      drillerEntity.set(Driller, { digCooldownMs: digIntervalForDepth(d.row), px, py })
+      return
+    }
+
+    if (tile === TILE_SOIL) {
+      grid.tiles[tIdx] = TILE_AIR
+      grid.flags[tIdx] = FLAG_AUTOTILE_DIRTY
+      markCellAndNeighborsDirty(world, ac, ar)
+    }
+    // For TILE_AIR (already open) or TILE_EXPLOSIVE (will trigger via
+    // adjacency), proceed to the move/fall state machine below.
+  }
+
+  // Apply movement (side moves only — down moves are handled by gravity
+  // next tick).
   const facing = stepCol !== 0 ? (stepCol > 0 ? 1 : -1) : d.facing
-  const baseCooldown = digIntervalForDepth(nr)
+
+  let nearbyGem = false
+  if (isSideMove) {
+    collectGemAt(world, gs, nextDrillerCell.col, nextDrillerCell.row)
+    nearbyGem = gemNearby(world, nextDrillerCell.col, nextDrillerCell.row)
+  } else if (stepRow > 0) {
+    nearbyGem = gemNearby(world, d.col, d.row + 1)
+  }
+
+  const baseCooldown = digIntervalForDepth(nextDrillerCell.row)
   const cooldownAfter = nearbyGem ? baseCooldown + PONDER_GEM_MS : baseCooldown
+
   drillerEntity.set(Driller, {
-    col: nc,
-    row: nr,
+    col: nextDrillerCell.col,
+    row: nextDrillerCell.row,
     px,
     py,
     facing,
     digCooldownMs: cooldownAfter,
   })
 
-  // Update depth tracking.
-  if (nr > gs.depthM) {
-    world.set(GameState, { depthM: nr, deepestM: Math.max(gs.deepestM, nr) })
+  if (nextDrillerCell.row > gs.depthM) {
+    world.set(GameState, { depthM: nextDrillerCell.row, deepestM: Math.max(gs.deepestM, nextDrillerCell.row) })
   }
 
-  // Animation.
   const anim = drillerEntity.get(Animation)
   if (anim) {
     const animState: DrillerAnimState =
@@ -177,6 +231,39 @@ export function drillerSystem(world: World, deltaMs: number): void {
             : 'drillLeft'
     drillerEntity.set(Animation, { state: animState })
   }
+}
+
+function collectGemAt(
+  world: World,
+  gs: { gems: number },
+  col: number,
+  row: number,
+): void {
+  let collected = false
+  world.query(Gem).forEach((entity) => {
+    if (collected) return
+    const g = entity.get(Gem)
+    if (!g || g.collected) return
+    if (g.scatteredUntilTick !== 0) return
+    if (g.col === col && g.row === row) {
+      world.set(GameState, { gems: gs.gems + 1 })
+      entity.destroy()
+      collected = true
+    }
+  })
+}
+
+function gemNearby(world: World, col: number, row: number): boolean {
+  let nearby = false
+  world.query(Gem).forEach((entity) => {
+    if (nearby) return
+    const g = entity.get(Gem)
+    if (!g || g.collected || g.scatteredUntilTick !== 0) return
+    if (Math.abs(g.col - col) + Math.abs(g.row - row) <= PONDER_GEM_RADIUS) {
+      nearby = true
+    }
+  })
+  return nearby
 }
 
 function isFixture(t: number): boolean {

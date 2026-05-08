@@ -8,16 +8,23 @@ export type DrillerAnimState = 'idle' | 'walk' | 'drillDown' | 'drillUp' | 'dril
  * during respawn the old entity despawns and a new one spawns at the surface.
  */
 export const Driller = trait({
-  /** Current cell (col, row) — integer. */
+  /**
+   * Current cell (col, row) — integer. The driller occupies this cell as
+   * AIR; the cell directly below (col, row+1) is the SUPPORT they're
+   * standing on. If the support cell becomes AIR, gravity drops the
+   * driller one row per FALL_INTERVAL_MS.
+   */
   col: 9,
   row: 0,
-  /** Floating-point world-pixel position; used during smooth dig animation. */
+  /** Floating-point world-pixel position; used during smooth animation. */
   px: 0,
   py: 0,
   /** 1 = facing right, -1 = facing left. Determines walk-cycle flip. */
   facing: 1 as 1 | -1,
   /** Cooldown until the next dig action is allowed (ms). */
   digCooldownMs: 0,
+  /** Cooldown until next gravity step when falling (ms). */
+  fallCooldownMs: 0,
 })
 
 /**
