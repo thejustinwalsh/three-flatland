@@ -75,3 +75,122 @@ Append entries as decisions are made. Distilled into PR review comments at Phase
 **Decision:** World rotates when `depthM > 250`, hardcoded. No detection of "actually crossed the bottom of the core biome".
 
 **Why:** Simpler. The 250 threshold lives in code where it can be tuned. The biome table's `core.maxDepth = 9999` is a sentinel for "infinite", not a literal world bottom; using a separate constant for "rotate the world" keeps the two concerns separate.
+
+## Sag is a 3-phase state machine, not a 2-phase elapsed-tick decision
+**File:** `minis/driller/src/systems/collapse.ts:tickSagging`, `minis/driller/src/constants.ts`
+**Date:** 2026-05-08
+
+**Decision:** SaggingChunk lifecycle is now PRECARIOUS (36t / ~600ms) → SAGGING (36t / ~600ms) → SHAKING (24t / ~400ms) → release. Single SaggingChunk entity drives all three phases via elapsed-tick arithmetic; transitions are flag-stamped on the cells (`FLAG_PRECARIOUS / FLAG_SAGGING / FLAG_SHAKING`).
+
+**Why:** The earlier 2-phase budget (700ms total, darken transitions to shake at ~400ms) read as "darken and shake at the same time" because the SAG→SHAKE delta (~200ms p50 verified by `tests/integration/probes/three-phase-timing.probe.js`) sits below the human ~300ms change-detection threshold. Three phases at ≥400ms each give the player perceptibly distinct beats — PRECARIOUS = "this is becoming unstable", SAGGING = "this WILL fall", SHAKING = "fall is happening NOW".
+
+**Why 24-tick SHAKING (not 18):** drill cooldown (180ms) + shallow step (280ms) = 460ms total drill+step. The chunk's first fall-cell impact takes ~100ms after release. With SHAKING=400ms, a player can drill the right block AND step into the new hole 60ms before the chunk lands → narrow escape becomes possible. With 300ms it was physically impossible.
+
+**Evidence:** `tests/integration/three-phase-timing.integration.test.ts` pins each phase to its target ±60ms p50.
+
+## Simulation runs at fixed 60Hz regardless of monitor refresh rate
+**File:** `minis/driller/src/components/Scene.tsx`
+**Date:** 2026-05-08
+
+**Decision:** Scene.tsx uses an accumulator-based fixed-timestep loop (TICK_HZ=60, MAX_STEPS_PER_FRAME=8) with the simulation extracted into `runSimulationTick()`. Render-side sync (shell setState + camera→Flatland transform) runs once per render frame, decoupled from simulation.
+
+**Why:** The previous per-frame `world.set(GameState, tick+1)` coupled tick rate to refresh rate. On a 120Hz monitor every tick-counted budget (sag, hazard, avalanche) executed at HALF the documented wall-clock duration — sag phase 600ms → 300ms, etc. Live probe verified the new accumulator restores phase timings to within ±60ms of design targets on a 120Hz machine.
+
+## Codex enforcement: shake = real fall by ≥1 cell, anything that falls shook first, shake at most once per incarnation
+**File:** `minis/driller/src/systems/collapse.ts`, `minis/driller/src/traits/chunk-traits.ts`
+**Date:** 2026-05-08
+
+**Decision:** Three rules govern the soil-side codex:
+1. Anything that visually shakes must fall by ≥1 cell. Same-grid-location landing is forbidden.
+2. Anything that falls (chunk path) must shake first.
+3. A cell shakes at most once per incarnation. PRECARIOUS / SAGGING can re-enter freely; SHAKE is the commit signal.
+
+Enforced via three checks at the SAGGING→SHAKING boundary:
+- `sagAllBottomEdgesAir`: ALL bottom-edge cells must have AIR directly below (not "at least one"). The earlier "any" check let through 0-displacement landings when 1 of N bottom edges had non-AIR below.
+- `inFlightConflictAbove`: any in-flight FallingChunk in our columns at row ≤ our top row defers our SHAKE (extends `bracedUntilTick` by 6 ticks). Catches the same-tick race where a sibling lands in row+1 between our release and our first physics tick.
+- `releaseRow` field on FallingChunk + belt-and-suspenders restore in `landAndReattach`: if landing row equals release row despite the pre-checks, restore cells silently rather than re-stamp at the same grid location.
+
+**Evidence:** `tests/integration/shake-or-stay.integration.test.ts` pins rule 1 via `__drillerStats.zeroDisplacementRestores == 0`; `tests/integration/single-shake.integration.test.ts` pins rule 3 via per-cell shake-edge counting.
+
+## Cascade entity-handoff: JUST_LANDED grace + markCellAndNeighborsDirtyExcept
+**File:** `minis/driller/src/systems/collapse.ts:landAndReattach`, `minis/driller/src/systems/autotile-pass.ts`
+**Date:** 2026-05-08
+
+**Decision:** When a FallingChunk lands, its cells get `FLAG_JUST_LANDED` set for one detect pass; `detectAndSag` filters JUST_LANDED cells out of the unstable set. The cascade IS propagated (chain reactions are part of the genre): `markCellAndNeighborsDirtyExcept` tags `SAG_RECHECK` on neighboring SOIL cells that are NOT also landed cells.
+
+**Why:** Earlier "no cascade" defense was too restrictive — Mr. Driller's signature is chain reactions. This restores them while breaking the same-tick perpetual loop. The grace flag is cleared at the end of `detectAndSag` so just-settled cells become full participants on the NEXT tick with the standard story (PRECARIOUS → SAGGING → SHAKING → fall).
+
+## Stale chunk entities die at lifecycle boundaries
+**File:** `minis/driller/src/systems/collapse.ts`, `minis/driller/src/systems/death.ts`, `minis/driller/src/systems/generation.ts:unloadChunk`
+**Date:** 2026-05-08
+
+**Decision:** SaggingChunk and FallingChunk entities die via `clearAllChunkEntities` at death entry, and via `clearChunkEntitiesInRowRange` when a streamed chunk gets unloaded. Plus a per-tick `tickSagging` cull for sag entities whose cells have drifted >SCAN_WINDOW_ROWS_ABOVE above the driller (out-of-play history is anchored).
+
+**Why:** Three real bugs surfaced — death-replay (a chunk that killed the driller kept ticking through respawn), off-screen perpetual shake (entities orphaned by `unloadChunk` re-evaluated against now-AIR rows), off-screen reactivation (a legitimately-spawned sag persisted after the camera scrolled past).
+
+**Evidence:** `tests/integration/offscreen-shake.integration.test.ts` pins the "no shaking blocks more than 18 rows above driller" rule.
+
+## Partial-drill semantics: re-evaluate, don't cancel (option C)
+**File:** `minis/driller/src/systems/collapse.ts:tickSagging`
+**Date:** 2026-05-08
+
+**Decision:** When the driller drills a cell that's part of an in-progress sag, the surviving cells re-evaluate in place rather than the entire sag canceling:
+1. Filter to cells whose grid tile still matches their reserved tile.
+2. If survivors still satisfy `sagAllBottomEdgesAir`: shrink the entity, preserve current PRECARIOUS / SAGGING / SHAKING phase. Drilling a non-support → telegraph continues without the drilled cell.
+3. If survivors no longer satisfy: cancel. Drilling a support → cells revert to inert SOIL.
+
+**Why:** "Drilling part of an unstable chunk should make MORE of it fall, not less." Predictability for both AI driller and human user. (a) Cancel — wrong, makes drilling DEFUSE the chunk. (b) Force-release — too dramatic, doesn't account for non-load-bearing drills. (c) Re-evaluate — physically correct, predictable, matches genre.
+
+**Evidence:** `tests/no-false-shake.test.ts` "partial-drill of a sag (1 cell) shrinks the chunk and the rest still falls" + sibling "drilling all cells of a sag cancels".
+
+## Rock codex: 4+ initiates, falls as rigid unit, fully resolves once started
+**File:** `minis/driller/src/systems/hazard.ts:rockAvalancheSystem`
+**Date:** 2026-05-08
+
+**Decision:** Rocks are NOT soil — distinct lifecycle:
+1. 4+ connected stones to INITIATE a fall.
+2. Fall damages stones (each soil-crush below = +1 hit; ≥4 hits = rock breaks off as a Hazard debris).
+3. Cluster falls as a rigid unit, fixed shape per fall step.
+4. Once falling, the cluster MUST resolve fully — even when rocks break off mid-flight and survivors drop below 4, the unit keeps falling until it lands.
+5. No stop-shake-continue. Rocks resolve fully once started.
+6. Inert clusters of any size (including <4) float as supports for soil.
+7. Once landed, the cluster goes inert; needs fresh disturbance + 4+ to move again.
+
+Implementation: repurposed `FLAG_FALLING` (was declared but never set) to mark in-motion stone cells. Set on each translate-down; cleared when the cluster blocks. New `inMotion` check at the top of cluster eval bypasses threshold + disturbance gates AND the entire shake telegraph for already-moving clusters.
+
+**Evidence:** `tests/avalanche.test.ts` "in-motion cluster keeps falling even when shrunk below threshold" + "landed cluster requires fresh disturbance to fall again".
+
+## Fixture rule: indestructible permanent shelter
+**Date:** 2026-05-08
+
+**Decision:** Fixtures (`TILE_FIXTURE_BASE+0..4`) are mother nature's safe haven. Indestructible by ANY means: drill, fall-crush, avalanche-crush, explosive blast. Block soil falls. Block rock falls.
+
+**Why:** The "third tile type" the codex needs — a guaranteed-safe surface that bounds worst-case collapse scenarios. Rocks plus the planned 4×4 max cap give bounded danger; fixtures give bounded safety. Together they let world-gen produce hard-but-fair scenarios.
+
+**Status:** Locked. Implementation in Plan 1 item A.
+
+## Combined rock decision and 4×4 max cluster cap
+**Date:** 2026-05-08
+
+**Decision:** Merge `TILE_ROCK` and `TILE_STONE` into one tile type. Shared rules: 4+ avalanche clusters AND multi-hit health. Drilling = +1 hit, fall-crush = +1 hit, hits ≥ 4 destroys the cell. Cluster bounding box capped at 4 wide × 4 tall (Kirby's-Avalanche-style); once max in either axis, cluster locks and new touching rocks form independent clusters.
+
+**Why:** Three reviewers (art, engineering, designer) converged. Rocks autotile cleanly into deterministic shapes — player predicts cluster behavior visually. Fixtures' artistic variation makes a unified rock-glom visual language hard, so fixtures stay decorative. The 4×4 cap bounds worst-case danger to a recognizable "doom block" — fairness primitive without relying on level-design constraints alone.
+
+**Status:** Locked. Implementation in Phase 2 (G + H + I); placeholder atlas already shipped at `minis/driller/src/assets/rock-autotile.svg`.
+
+## Integration tests via vitexec are evidence-of-completeness alongside unit tests
+**File:** `minis/driller/tests/integration/`, `minis/driller/vitest.integration.config.ts`
+**Date:** 2026-05-08
+
+**Decision:** Live-browser integration tests using vitexec are required evidence alongside unit tests for any item that touches the simulation pipeline (collapse, hazard, scene loop, tick budgets). Each probe is a browser-runnable JS file that ends with `console.log('INTEGRATION_RESULT: ' + JSON.stringify(result))`; the matching `*.integration.test.ts` parses that with vitest and asserts against the structured result.
+
+Hard rules:
+- Probes use `--gpu` (without it headless Chromium throttles RAF and timing-sensitive assertions report ~2× their expected durations).
+- Runner enforces a hard timeout (`timeoutSec + 60s`) and SIGKILLs vitexec on overshoot — silence is never green.
+- Failure messages MUST name (a) what was expected, (b) likely root causes with file paths, (c) sample offending data, (d) vitexec stdout tail.
+- Excluded from default `pnpm test` (slow); run via `pnpm test:integration`.
+- Verbose vitest reporter + per-probe progress markers every 10s so a 90s test doesn't look like a hang.
+
+**Why:** Unit tests cover deterministic invariants; the codex enforcement only emerges in full-system play with active AI + streaming chunks + cascading falls. Integration tests caught real bugs unit tests couldn't reach. Game-side counters (`window.__drillerStats`) are the cleanest live signal — grid-state scraping can't distinguish "chunk landed at its release row" (rule-1 violation) from "sibling chunk landed on top of a freshly-released cell" (legitimate).
+
+**Evidence:** `tests/integration/README.md` is the canonical convention doc.

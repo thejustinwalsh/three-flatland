@@ -32,12 +32,31 @@
 - Use Conventional Commits — releases are cut from changesets generated from the commit history
 
 ## Verification
-- **Unit tests** (`pnpm test` per package): fast deterministic invariants. Always run before committing simulation/system code.
-- **Integration tests** (`pnpm test:integration` per package): live-browser observation via vitexec. Slow (60–180s each). Run after changes to a mini's simulation pipeline (collapse, hazard, scene loop, tick budgets).
-- **vitexec probes**: never accumulate one-off probes in `/tmp/`. If a probe surfaced a real bug, fold it into the integration suite under `tests/integration/`. Each probe is browser-runnable JS that ends with `console.log('INTEGRATION_RESULT: ' + JSON.stringify(result))`; the matching `*.integration.test.ts` parses that and asserts.
-- **Failure messages are part of the contract**: every integration test must throw a custom Error on failure that names (a) what was expected, (b) likely root causes with file paths, (c) sample offending data. See `minis/driller/tests/integration/shake-contract.integration.test.ts` for the canonical pattern.
-- **Timeouts are failures**: the runner SIGKILLs vitexec at `timeoutSec + 60s` and surfaces a clear timeout error. Never let a hung browser show as green.
-- See `minis/driller/tests/integration/README.md` for full conventions when adding new integration tests or probes.
+
+Two test surfaces. Both are evidence-of-completeness for changes that touch simulation pipelines, full-system invariants, or wall-clock-dependent behavior.
+
+- **Unit tests** (`pnpm test` per package): fast deterministic invariants. Always run before committing.
+- **Integration tests** (`pnpm test:integration` per package): live-browser observation via vitexec. Slow (60–180s each). Required after changes to a mini's simulation pipeline (collapse, hazard, scene loop, tick budgets, animation timing). Excluded from the default `pnpm test` so the inner loop stays fast.
+
+### vitexec — live debugging + integration suite
+
+`vitexec` boots a headless Chromium against the dev server, runs a code snippet inside the page, and pipes browser console output back. Two uses:
+
+1. **Live debugging (inner loop).** When mid-implementation and you need to inspect runtime state, write a probe in `/tmp` and run `pnpm exec vitexec --gpu --path / --timeout <seconds> "$(cat /tmp/probe.js)"`. **`--gpu` is non-negotiable** — without it headless Chromium throttles `requestAnimationFrame` and timing assertions drift ~2× off the design target.
+2. **Suite (regression layer).** Disposable probes get folded into `tests/integration/` once they surface a real bug. The probe is now the regression test.
+
+### Suite contracts (driller is the canonical example)
+
+- A *probe* is browser-runnable JS that ends with `console.log('INTEGRATION_RESULT: ' + JSON.stringify(result))`. Probes emit `[progress] ...` markers every ~10s during long runs so a 90s test isn't indistinguishable from a hang.
+- A *harness* (`*.integration.test.ts`) calls `runProbe(probePath, { timeoutSec })`, parses the sentinel, asserts on the structured result.
+- **Failure messages are part of the contract**: every harness must throw a custom Error naming (a) what was expected, (b) likely root causes with file paths, (c) sample offending data, (d) vitexec stdout tail. See `minis/driller/tests/integration/shake-contract.integration.test.ts` for the canonical pattern.
+- **Timeouts are failures**: `_runner.ts` enforces a hard timeout (`timeoutSec + 60s`) and SIGKILLs vitexec on overshoot. Silence is never green.
+- **Game-side counters** exposed via `window.__<app>Stats` are the cleanest signal when grid-state scraping can't distinguish two scenarios that look identical externally (e.g., "rule violation" vs "legitimate similar-looking event"). Increment from inside the system; probe samples deltas.
+- See `minis/driller/tests/integration/README.md` for full conventions; the user-level `implementing-github-issues` skill has the complete bootstrap guide at `references/vitexec-integration-suite.md`.
+
+### Fold-back rule
+
+Never accumulate one-off probes in `/tmp/`. If a debugging probe surfaced a real bug worth pinning, move it to `tests/integration/probes/`, write a vitest harness, ship the probe + harness + fix in the same commit. The diff reads like a coherent story: "I broke this; here's the regression test that catches it; here's the fix."
 
 ## Constraints
 - Performance is critical — minimize draw calls, batch sprites via SpriteGroup, watch frame budgets
