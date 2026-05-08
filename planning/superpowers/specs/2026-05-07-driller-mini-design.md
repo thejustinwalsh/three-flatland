@@ -60,8 +60,67 @@ Four tile classes occupy the dig grid:
 ### 4.3 Coordinate model
 
 - Cell `(col, row)` integer grid; `row` increases downward; `row=0` is surface.
-- World-space tile size: 16 px logical (rendered at integer pixel scale).
+- World-space tile size: 16 px **source** (1×). Rendered at integer-multiple pixel scale (see §4.4).
 - Sprite positions are *floating-point* world coordinates so falling chunks animate sub-tile smoothly. The cell grid and sprite positions decouple during a fall and re-snap on landing.
+
+### 4.4 Sizing & scale-to-fit (responsive, integer-pixel only)
+
+The gameplay area is a **fixed-column, minimum-row** play field that scales to the host viewport in integer steps. This guarantees pixel-perfect sprites at every breakpoint and a consistent gameplay window across desktop hero embeds and mobile devices.
+
+**Constants:**
+
+| Constant         | Value     | Notes                                                              |
+|------------------|-----------|--------------------------------------------------------------------|
+| `TILE_PX`        | 16        | Source tile size; never changes.                                   |
+| `PLAY_COLS`      | 18        | Fixed gameplay column count. Independent of viewport width.        |
+| `MIN_PLAY_ROWS`  | 22        | Minimum visible rows; taller viewports show more.                  |
+| `SCALE_STEPS`    | [1, 2, 4, 8] | Allowed integer scales.                                          |
+
+**Pick algorithm (run on mount + on resize, debounced):**
+
+1. Measure host viewport `(vw, vh)` in CSS pixels (DPR-aware via `devicePixelRatio`).
+2. Compute the **largest integer scale `S` from `SCALE_STEPS`** such that `PLAY_COLS × TILE_PX × S ≤ vw` AND `MIN_PLAY_ROWS × TILE_PX × S ≤ vh`. If even `S=1` doesn't fit, clamp to `S=1` and let the play field be cropped (mobile portrait edge case).
+3. Compute the visible row count: `playRows = floor(vh / (TILE_PX × S))`. Always `≥ MIN_PLAY_ROWS` if the algorithm picked a fitting scale.
+4. The play canvas pixel size is `(PLAY_COLS × TILE_PX × S, playRows × TILE_PX × S)`.
+5. Center horizontally; anchor vertically to top of host element.
+
+**Examples:**
+
+| Host viewport       | Scale | Play canvas        | Play rows |
+|---------------------|-------|--------------------|-----------|
+| 1920×1080 (desktop) | 4×    | 1152×1024 px       | 16 → 22 (clamps) |
+| 1280×720 (laptop)   | 2×    | 576×704 px         | 22 |
+| 414×896 (mobile)    | 1×    | 288×880 px → cropped to fit width; rows = `floor(896/16) = 56` |
+| 768×1024 (tablet)   | 2×    | 576×1024 px        | 32 |
+
+**Implications:**
+
+- Visible row count is variable, but `PLAY_COLS` is fixed — generation, AI, and physics treat the world as 18 columns wide always.
+- The streaming window adapts: more rows visible → more chunks live in the simulation. The cap (e.g. 8 chunks) is enforced regardless.
+- The depth bar and gem counter UI are sized in CSS pixels independent of game scale; they scale with the host page typography.
+- All sprite art is authored at 1× and never resampled — the scale step is applied at the canvas level (`canvas.style.imageRendering = 'pixelated'`), not in the GPU pipeline.
+
+### 4.5 Decorative background
+
+A non-interactive background fills the host element behind the play canvas. It exists outside the game simulation entirely.
+
+- **Wide viewports** (host width > play canvas width): a horizontally-tiled or anchor-extended background covers the gap. Two strategies, mode-pick by host config:
+  - **Tiled fill** — repeating soil/sky pattern that scrolls vertically with the camera (slower than gameplay for parallax).
+  - **Anchor extension** — left and right "frame" elements (decorative rock walls, or themed dividers) anchored to the play canvas edges; the area beyond fades to a solid color or gradient.
+- **Tall viewports** (host taller than `playRows × TILE_PX × S`): vertical filler above and/or below; default is a sky-fade above and a deep-earth gradient below.
+- The background does **not** use the dynamic Renderer2D — it's a separate, lighter-weight TileMap2D layer (or plain CSS for non-tiled fills). It does not collapse, glow, or react to gameplay events.
+- Background scrolls with depth at parallax factors (e.g. far layer 0.2, near layer 0.5) so descent feels meaningful even outside the play canvas.
+
+### 4.6 Target hosts
+
+Two primary embedding contexts; the engine is identical in both:
+
+| Host                            | Mode     | Typical scale | Notes                                                  |
+|---------------------------------|----------|---------------|--------------------------------------------------------|
+| `apps/docs` landing hero        | hero     | 4× / 8×       | Full-bleed background, ghosted hint on first visit.    |
+| `/play` standalone route        | full     | 4×            | Centered play canvas with title attract & leaderboard. |
+| Mobile (portrait)               | hero or full | 1× / 2×   | Play canvas fills width; background frames top/bottom. |
+| Mobile (landscape)              | hero or full | 2× / 4×   | Play canvas centers; background fills sides.           |
 
 ---
 
@@ -407,6 +466,8 @@ minis/driller/
 │   │   └── sounds.ts              # ZzFX dispatch on game events
 │   ├── components/
 │   │   ├── Scene.tsx              # Renderer2D batches, camera, lights
+│   │   ├── PlayCanvas.tsx         # Sized canvas with integer-scale picker (§4.4)
+│   │   ├── Background.tsx         # Decorative parallax background layer (§4.5)
 │   │   ├── DepthBar.tsx           # Right-edge UI
 │   │   ├── GemCounter.tsx         # Top-left UI
 │   │   ├── HeroHint.tsx           # Ghosted "tap to help" hint
@@ -465,6 +526,9 @@ Per `feedback_acceptance_criteria_gate`, every item below must be met or carry s
 9. Full mode: title attract, 3-life run, leaderboard with `localStorage` persistence.
 10. Generation: 5 biomes, 32-row chunks, seedable, URL-param replay.
 11. Depth bar + gem counter UI, no other HUD.
+12. Responsive scale-to-fit: integer pixel scaling (1×/2×/4×/8×), fixed `PLAY_COLS=18`, `MIN_PLAY_ROWS=22`. Scale chosen on mount + resize; sprites pixel-perfect at every step.
+13. Decorative background layer (parallax-scrolling, separate from play canvas) with anchor-extension or tiled-fill strategies for wide viewports.
+14. Verified rendering on desktop (1920×1080, 1280×720), tablet (768×1024), and mobile portrait (414×896) viewports.
 
 ### 15.2 Polish (must, after core lands)
 
@@ -510,3 +574,5 @@ Per `feedback_acceptance_criteria_gate`, every item below must be met or carry s
 | Pre-cut caves yielding gems that the AI can't reach                                        | Generation-time reachability check (BFS from chunk top); orphaned gems are deleted.                              |
 | Lighting pass introduces frame-rate cliff at high gem density                              | Aggressive culling; gem-light count cap (e.g. 64 active); LOD for distant gems.                                  |
 | Visitors don't notice the interactive layer                                                | Ghosted "tap anywhere to help" hint on first visit; cursor changes color on hover over actionable zones.         |
+| Mobile viewports too narrow for `PLAY_COLS=18` at 1× scale                                 | Fallback: at 1× crop the canvas to the available width; gameplay continues with reduced visible columns; all systems still treat the world as 18-wide internally (rare edge case on very small devices). |
+| HiDPI screens render fuzzy due to canvas resampling                                        | Use `imageRendering: pixelated` on the canvas element; render at `S × playPixelDimensions`, never resample.      |
