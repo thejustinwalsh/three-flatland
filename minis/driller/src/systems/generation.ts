@@ -18,7 +18,7 @@ import {
   TILE_STONE,
 } from '../traits'
 import type { GemColor, GemSize } from '../atlas-regions'
-import { biomeAt, isFreeFall, WORLD_LENGTH_ROWS } from '../biomes'
+import { biomeAt, isFreeFall, WORLD_BODY_ROWS, WORLD_LENGTH_ROWS, WORLD_VOID_ROWS } from '../biomes'
 import { createRng, type Rng } from '../lib/rng'
 
 /**
@@ -292,23 +292,29 @@ export function generateChunk(seed: number, chunkY: number): GeneratedChunk {
     }
   }
 
-  // Void band bonus: void rows get extra gems of all colours and
-  // sizes. Density is sparse — falling through the void should feel
-  // like a generous reward without becoming a soup of sprites that
-  // hides the driller.
+  // Void band reward: thicker at the TOP of the void (just below the
+  // last solid biome row) and thinning out toward the bottom. The
+  // driller scrolls past the dense top portion first; gems that
+  // aren't caught fast scroll up through the playfield-top death
+  // tween. By the bottom of the void there are very few gems left,
+  // so very few land on the next biome's surface — most must be
+  // grabbed during the scroll-by, making free fall a skill phase.
   //
-  // Progressive jackpot: deeper worlds add a small bonus per world
-  // index, capped so the screen never overflows.
+  // Progressive jackpot: deeper worlds add +1 bonus to the top
+  // density, capped so the screen never overflows.
   const voidColors: GemColor[] = ['emerald', 'topaz', 'ruby', 'amethyst']
   for (let r = 0; r < rows; r++) {
     const absRow = chunkY * rows + r
     if (!isFreeFall(absRow)) continue
     const worldIndex = Math.floor(absRow / WORLD_LENGTH_ROWS)
-    // 1 attempt every other row at world 0; up to 2 attempts at deep
-    // worlds. With 55 void rows total that yields ~30–60 gems per
-    // free fall, not 100+.
+    const voidRow = ((absRow % WORLD_LENGTH_ROWS) - WORLD_BODY_ROWS)
+    const t = voidRow / Math.max(1, WORLD_VOID_ROWS - 1) // 0 at top, 1 at bottom
+    // Density falls quadratically from top to bottom of the void —
+    // top rows ≈ 95% chance, middle ≈ 25%, bottom rows < 5%.
+    const density = Math.max(0, (1 - t) * (1 - t))
+    if (!rng.chance(density * 0.95)) continue
     const bonus = Math.min(1, Math.floor(worldIndex / 2))
-    const attempts = rng.chance(0.6) ? 1 + bonus : 0
+    const attempts = 1 + (rng.chance(0.3) ? bonus : 0)
     for (let i = 0; i < attempts; i++) {
       const x = rng.intRange(0, cols - 1)
       const idx = r * cols + x
