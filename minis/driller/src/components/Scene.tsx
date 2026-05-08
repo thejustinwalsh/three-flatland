@@ -19,6 +19,7 @@ import { TILE_PX } from '../constants'
 import { cameraSystem } from '../systems/camera'
 import { autotilePass } from '../systems/autotile-pass'
 import { collapseTick } from '../systems/collapse'
+import { deathSystem, scatteredGemsSystem } from '../systems/death'
 import { drillerSystem, moodDriftSystem } from '../systems/driller'
 import { plannerTick } from '../systems/ai-planner'
 import { streamChunks } from '../systems/generation'
@@ -86,9 +87,14 @@ export function Scene() {
       streamChunks(world, cameraRow)
     }
 
-    moodDriftSystem(world, gs.tick)
-    plannerTick(world)
-    drillerSystem(world, deltaMs)
+    deathSystem(world)
+    scatteredGemsSystem(world)
+
+    if (gs.runState === 'playing') {
+      moodDriftSystem(world, gs.tick)
+      plannerTick(world)
+      drillerSystem(world, deltaMs)
+    }
     collapseTick(world)
     autotilePass(world)
 
