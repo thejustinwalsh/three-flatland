@@ -180,11 +180,36 @@ function filterBottomRows(chunk: SoilChunk, cols: number, maxHeight: number): nu
  */
 const SAG_SHAKE_LEAD_TICKS = 18
 
+/**
+ * Returns true iff at least one cell on the sag chunk's bottom edge
+ * still has AIR directly below it RIGHT NOW. The sag's spawn-time
+ * willFall guard can go stale: another chunk lands in the gap during
+ * the 700ms wobble, sealing the path. We re-check before shaking and
+ * before releasing — the rule is "if it shakes, it WILL fall by ≥1
+ * tile."
+ */
+function sagBottomEdgeStillClear(
+  cells: ReadonlyArray<{ col: number; row: number }>,
+  cols: number,
+  rows: number,
+  tiles: Uint8Array,
+): boolean {
+  const occupied = new Set<number>()
+  for (const c of cells) occupied.add(c.row * cols + c.col)
+  for (const c of cells) {
+    if (c.row + 1 >= rows) continue
+    const belowIdx = (c.row + 1) * cols + c.col
+    if (occupied.has(belowIdx)) continue
+    if (tiles[belowIdx] === TILE_AIR) return true
+  }
+  return false
+}
+
 export function tickSagging(world: World): void {
   const grid = world.get(Grid)
   const gs = world.get(GameState)
   if (!grid || !gs) return
-  const { cols, tiles, flags } = grid
+  const { cols, rows, tiles, flags } = grid
   const tick = gs.tick
 
   // In the void: sag is inert. Despawn any in-progress wobbles and
@@ -209,16 +234,37 @@ export function tickSagging(world: World): void {
 
     // Final-window shake: in the last SAG_SHAKE_LEAD_TICKS before
     // release, mark cells as SHAKING so the renderer rumbles them.
-    // Sag chunks that get braced or never reach this window stay
-    // mid-wobble (color tint) without the rumble — only chunks that
-    // are ABOUT to drop get the shake telegraph.
+    // Re-checked against current world: if the path below got sealed
+    // (a falling chunk landed under us during the wobble), we cancel
+    // the sag entirely. Contract: shake = will fall by ≥1 tile.
     if (elapsed >= sag.durationTicks - SAG_SHAKE_LEAD_TICKS) {
+      if (!sagBottomEdgeStillClear(sag.cells, cols, rows, tiles)) {
+        for (const cell of sag.cells) {
+          const idx = cell.row * cols + cell.col
+          flags[idx] = (flags[idx] ?? 0) & ~FLAG_SAGGING & ~FLAG_SHAKING
+        }
+        entity.destroy()
+        return
+      }
       for (const cell of sag.cells) {
         const idx = cell.row * cols + cell.col
         flags[idx] = (flags[idx] ?? 0) | FLAG_SHAKING
       }
     }
     if (elapsed < sag.durationTicks) return
+
+    // Release-time re-check. Even if shake started cleanly, the gap
+    // can close in the final 18 ticks. Releasing into a sealed floor
+    // produces a 0-tile fall — the player sees a shake with no
+    // movement. Cancel instead.
+    if (!sagBottomEdgeStillClear(sag.cells, cols, rows, tiles)) {
+      for (const cell of sag.cells) {
+        const idx = cell.row * cols + cell.col
+        flags[idx] = (flags[idx] ?? 0) & ~FLAG_SAGGING & ~FLAG_SHAKING
+      }
+      entity.destroy()
+      return
+    }
 
     for (const cell of sag.cells) {
       const idx = cell.row * cols + cell.col

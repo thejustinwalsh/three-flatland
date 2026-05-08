@@ -7,6 +7,7 @@ import {
   FLAG_SHAKING,
   GameState,
   Grid,
+  SaggingChunk,
   TILE_AIR,
   TILE_SOIL,
   TILE_STONE,
@@ -139,6 +140,51 @@ describe('no-false-shake invariant', () => {
       if ((grid.flags[i]! & FLAG_SHAKING) !== 0) stuckShakes++
     }
     expect(stuckShakes).toBe(0)
+  })
+
+  it('a sag whose path gets sealed mid-wobble cancels — no shake, no 0-tile release', () => {
+    // Cantilever over an AIR pocket. detectAndSag spawns a sag entity
+    // because the bottom row has AIR below it. THEN we slam the gap
+    // shut (simulating another falling chunk landing under us). The
+    // sag's shake window arrives — but with no AIR below, the contract
+    // says: do NOT shake, do NOT release a 0-tile fall, just cancel.
+    const world = makeWorldFromGrid([
+      '..............',
+      '..............',
+      '..######......',
+      '..............',
+      'SSSSSSSSSSSSSS',
+    ])
+    const grid = world.get(Grid)!
+    for (let i = 0; i < grid.tiles.length; i++) {
+      if (grid.tiles[i] === TILE_SOIL) grid.flags[i]! |= FLAG_SAG_RECHECK
+    }
+    detectAndSag(world)
+    // Confirm a sag entity actually spawned (otherwise the test isn't
+    // exercising what it claims to).
+    let sagCount = 0
+    world.query(SaggingChunk).forEach(() => sagCount++)
+    expect(sagCount).toBeGreaterThan(0)
+    // Now seal the path: fill the AIR row directly under the sag
+    // chunk with SOIL. This is what a landing FallingChunk does.
+    for (let c = 0; c < grid.cols; c++) {
+      grid.tiles[3 * grid.cols + c] = TILE_SOIL
+    }
+    // Tick well past SAG_DURATION_TICKS (42) — through the entire
+    // shake window AND the release point.
+    for (let t = 0; t < 80; t++) {
+      tickWorld(world, 1)
+      tickSagging(world)
+    }
+    // No cell should still carry SAGGING or SHAKING.
+    for (let i = 0; i < grid.flags.length; i++) {
+      expect(grid.flags[i]! & FLAG_SHAKING).toBe(0)
+    }
+    // The chunk must NOT have released — its cells are still SOIL,
+    // not AIR. (A 0-tile "release" is the bug we're forbidding.)
+    for (let c = 2; c < 8; c++) {
+      expect(grid.tiles[2 * grid.cols + c]).toBe(TILE_SOIL)
+    }
   })
 
   it('tickSagging does not set SHAKING on cells that are no longer SOIL', () => {
