@@ -5,23 +5,24 @@
 > Branch: mini-game-showcase
 > PR: https://github.com/thejustinwalsh/three-flatland/pull/59
 
-### New hooks
-- `usePaneRadioGrid` (react subpath) — inline button-bar selector backed by Tweakpane essentials' radiogrid blade; active-state affordance well-suited for scene/mode toggles
+## @three-flatland/tweakpane
 
-### API enhancements
-- `PaneInputOptions` extended with `readonly` and `format` fields — create readonly monitors with custom value formatters
+### New features
+
+- `usePaneRadioGrid` React hook (react subpath) — inline button-bar selector backed by the Tweakpane Essentials `RadioGrid` blade; better affordance than a dropdown for scene/mode toggles; deferred disposal and synchronous creation match the existing `usePaneButton` / `usePaneInput` pattern
+- `PaneInputOptions` extended with `readonly` and `format` so `usePaneInput` can create read-only monitors with custom formatters
 
 ### Bug fixes
-- Fix: z-index applied to `.tp-dfwv` wrapper element (the actual stacking context) instead of the inner pane root — pane now correctly floats above page overlays
-- Fix: checkbox hit target stretched to full box size via `width/height: var(--cnt-usz)` — clicks land directly on the input without unreliable `<label>` forwarding
-- Fix: DPR tracked as `{ w, h, dpr }` in `useWindowSize`, subscribing to a `(resolution: Ndppx)` media query — monitor swaps no longer desync the canvas size
-- Fix: listen to `document.fullscreenchange` in addition to `resize` to catch layout changes that settle after the resize event fires
+
+- Fixed checkbox hit-target too small: stretched `.tp-ckbv_i` to the full 20×20 box (`width/height: var(--cnt-usz)`); clicks now land directly on the input instead of relying on flaky `<label>` forwarding
+- Fixed `z-index: 1000` being applied to the inner pane element instead of the outer `.tp-dfwv` wrapper; the pane now correctly stacks above other overlays when no container is provided
 
 ### Theme
-- Checkbox box surface matches other controls (`rgba(28,40,77,0.6)`) with hover/focus/active state parity
-- Check stroke turns accent pink on `:checked`
 
-`usePaneRadioGrid` requires `@tweakpane/plugin-essentials` registered on the pane instance.
+- Checkbox surface now matches other controls (`rgba(28,40,77,0.6)`) with hover/focus/active parity
+- Check stroke turns accent pink on `:checked`; previously the hit target was essentially invisible against the container background
+
+This release adds a radio-grid hook for compact multi-option selectors, readonly monitor support, and fixes checkbox usability and pane stacking.
 
 ### b90509fa9cec75766d96e36d7f3b11126f70839f
 fix: DPR + fullscreen tracking, checkbox hit target
