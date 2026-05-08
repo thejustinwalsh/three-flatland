@@ -263,21 +263,25 @@ export default defineConfig({
         customCss: [
           // Fontsource fonts per Design Context — Silkscreen (wordmark only),
           // Public Sans (headings), Inter (UI/nav), JetBrains Mono (prose),
-          // Commit Mono (code). All bundled locally.
-          '@fontsource/silkscreen/400.css',
-          '@fontsource/silkscreen/700.css',
-          '@fontsource/public-sans/200.css',
-          '@fontsource/public-sans/400.css',
-          '@fontsource/public-sans/500.css',
-          '@fontsource/public-sans/600.css',
-          '@fontsource/public-sans/700.css',
-          '@fontsource/inter/400.css',
-          '@fontsource/inter/500.css',
-          '@fontsource/inter/600.css',
-          '@fontsource/jetbrains-mono/400.css',
-          '@fontsource/jetbrains-mono/500.css',
-          '@fontsource/commit-mono/400.css',
-          '@fontsource/commit-mono/500.css',
+          // Commit Mono (code). All bundled locally, latin-only subsets to
+          // keep the woff2 ship count tight (24 → ~14 files): docs are
+          // English-only, so cyrillic / greek / vietnamese / latin-ext
+          // subsets shipped by the default `<weight>.css` imports were
+          // never being loaded in practice.
+          '@fontsource/silkscreen/latin-400.css',
+          '@fontsource/silkscreen/latin-700.css',
+          '@fontsource/public-sans/latin-200.css',
+          '@fontsource/public-sans/latin-400.css',
+          '@fontsource/public-sans/latin-500.css',
+          '@fontsource/public-sans/latin-600.css',
+          '@fontsource/public-sans/latin-700.css',
+          '@fontsource/inter/latin-400.css',
+          '@fontsource/inter/latin-500.css',
+          '@fontsource/inter/latin-600.css',
+          '@fontsource/jetbrains-mono/latin-400.css',
+          '@fontsource/jetbrains-mono/latin-500.css',
+          '@fontsource/commit-mono/latin-400.css',
+          '@fontsource/commit-mono/latin-500.css',
         ],
         tableOfContents: { minHeadingLevel: 2, maxHeadingLevel: 2 },
         social: [

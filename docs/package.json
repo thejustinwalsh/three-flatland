@@ -9,7 +9,8 @@
     "preview": "astro preview",
     "capture:examples": "node scripts/capture-examples.mjs",
     "capture:minis": "node scripts/capture-minis.mjs",
-    "capture:brand": "node scripts/capture-brand.mjs"
+    "capture:brand": "node scripts/capture-brand.mjs",
+    "optimize:social": "node scripts/optimize-social.mjs"
   },
   "dependencies": {
     "@astrojs/check": "^0.9.9",
