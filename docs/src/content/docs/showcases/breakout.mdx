@@ -1,32 +1,16 @@
 ---
 title: Breakout
 description: A complete Breakout arcade game built with three-flatland and Koota ECS.
+template: splash
 ---
 
-import { Tabs, TabItem } from 'starlight-theme/components';
+import ShowcaseDetailLayout from '../../../components/ShowcaseDetailLayout.astro';
 import ShowcaseGame from '../../../components/ShowcaseGame';
-import StackBlitzEmbed from '../../../components/StackBlitzEmbed';
-import ExampleTabs from '../../../components/ExampleTabs.astro';
-import { loadMini } from '../../../utils/loadMini';
 
-export const breakoutFiles = loadMini('breakout');
+<ShowcaseDetailLayout slug="breakout" sourcePath="minis/breakout" gem="ruby">
+  <ShowcaseGame slot="preview" client:load />
 
-<ExampleTabs>
-<Tabs>
-  <TabItem label="Preview" icon="rocket">
-    <ShowcaseGame client:load />
-  </TabItem>
-  <TabItem label="React" icon="simple-icons:react">
-    <StackBlitzEmbed
-      client:load
-      title="Breakout - three-flatland"
-      files={breakoutFiles}
-      openFile="src/Game.tsx"
-      height={600}
-    />
-  </TabItem>
-</Tabs>
-</ExampleTabs>
+## Architecture
 
 ## Architecture
 
@@ -149,3 +133,5 @@ The mini-game is designed to be importable by the docs site as a library package
 - [Flatland Guide](../../guides/flatland/) — Deep dive into the Flatland API used by this game
 - [TSL Nodes Guide](../../guides/tsl-nodes/) — Custom material effects like the flash and dissolve
 - [Pass Effects Guide](../../guides/pass-effects/) — Full-screen post-processing
+
+</ShowcaseDetailLayout>

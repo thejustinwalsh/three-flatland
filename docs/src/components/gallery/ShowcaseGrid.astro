@@ -1,0 +1,56 @@
+---
+/**
+ * ShowcaseGrid — 2-col max grid for the Showcases index. Differs from
+ * GalleryGrid (used for Examples):
+ *
+ *   - Examples have many small tiles (3-col) for scannable discovery.
+ *   - Showcases are featured apps; each tile is bigger and more
+ *     cinematic. 2-col max gives them space to read as feature-cards
+ *     without competing for the eye.
+ *
+ * Single-item behavior: when there's only one showcase (current state
+ * — Breakout), `:only-child` spans both columns but caps at a natural
+ * single-tile width (30rem) and centers, so the lone item sits at
+ * "half-grid" size rather than stretching across the full container.
+ *
+ * Children should be GalleryTile components — the existing foil rim
+ * + cursor hotspot + lens-flare treatment carries the per-showcase
+ * branding pop on hover; richer per-tile theming hooks can layer on
+ * later via additional data attributes without touching this grid.
+ */
+---
+
+<div class="showcase-grid not-content">
+  <slot />
+</div>
+
+<style>
+  .showcase-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 1.5rem;
+    margin-block: calc(var(--spacing) * 6) calc(var(--spacing) * 8);
+    max-width: 64rem;
+    margin-inline: auto;
+    align-items: start;
+  }
+
+  @media (min-width: 768px) {
+    .showcase-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 2rem;
+    }
+  }
+
+  /* Single showcase (Breakout today) sits at one-tile width and
+   * centers inside the 2-col container — visually as if it were
+   * one of two tiles, with the other slot empty. Caps at a natural
+   * max so it doesn't read as "ad" billboard-large at high
+   * resolutions. */
+  .showcase-grid > *:only-child {
+    grid-column: 1 / -1;
+    justify-self: center;
+    width: 100%;
+    max-width: 30rem;
+  }
+</style>

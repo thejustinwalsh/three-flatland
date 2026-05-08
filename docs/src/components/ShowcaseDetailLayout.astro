@@ -1,0 +1,235 @@
+---
+/**
+ * ShowcaseDetailLayout — full-bleed detail page for a single showcase.
+ *
+ * Differs from `ExampleDetailLayout`:
+ *   - No inline SplitView code editor. Showcases are full apps; their
+ *     source is best read on GitHub. Inline editing was added for
+ *     example tinkering, which doesn't apply here.
+ *   - External "Open in StackBlitz" + "View on GitHub" buttons in the
+ *     header so the source is one click away without leaving prose
+ *     real estate to a code panel.
+ *   - Default slot becomes the abstract / design-story / controls
+ *     section, rendered inside `.sl-markdown-content` so headings,
+ *     lists, code blocks pick up the docs-site prose typography.
+ *   - `<slot name="preview" />` carries the live game (ShowcaseGame)
+ *     at full panel width.
+ *
+ * The hosting MDX file should set `template: splash` in frontmatter
+ * so the docs sidebar + auto-rendered page title don't fight for
+ * attention. Title + description are pulled from frontmatter.
+ *
+ * `gem` styles the header accent + back-link tint per showcase. The
+ * default ('ruby') matches the index tile's gem assignment for
+ * Breakout.
+ */
+
+interface Props {
+    slug: string
+    /** Repo subdirectory holding the showcase source (e.g. `minis/breakout`). */
+    sourcePath: string
+    /** Per-showcase gem accent — drives header chrome + cta tints. */
+    gem?:
+        | 'gold'
+        | 'ruby'
+        | 'emerald'
+        | 'diamond'
+        | 'amethyst'
+        | 'pink'
+        | 'salmon'
+        | 'turquoize'
+    /** Optional override for frontmatter title. */
+    title?: string
+    /** Optional override for frontmatter description. */
+    description?: string
+    /** Branch to link source from. Defaults to `main`. */
+    branch?: string
+}
+
+const { slug, sourcePath, gem = 'ruby', branch = 'main' } = Astro.props
+const entryData = Astro.locals.starlightRoute?.entry?.data
+const title = Astro.props.title ?? entryData?.title ?? slug
+const description = Astro.props.description ?? entryData?.description ?? ''
+
+const baseURL = (import.meta.env.BASE_URL || '/').replace(/\/$/, '')
+const showcasesHref = `${baseURL}/showcases/`
+
+const repo = 'thejustinwalsh/three-flatland'
+const githubHref = `https://github.com/${repo}/tree/${branch}/${sourcePath}`
+const stackblitzHref = `https://stackblitz.com/github/${repo}/tree/${branch}/${sourcePath}`
+
+const accentStyle = `--showcase-accent: var(--${gem});`
+---
+
+<div class="showcase-detail-shell" style={accentStyle}>
+    <div class="showcase-detail not-content" data-gem={gem}>
+        <header class="showcase-detail-header">
+            <a class="showcase-detail-back" href={showcasesHref}>
+                <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+                    <path d="M10 4l-4 4 4 4" stroke="currentColor" stroke-width="2"
+                        stroke-linecap="round" stroke-linejoin="round" fill="none" />
+                </svg>
+                <span>Back to Showcases</span>
+            </a>
+            <h1 class="showcase-detail-title">{title}</h1>
+            {description && <p class="showcase-detail-description">{description}</p>}
+            <div class="showcase-detail-cta">
+                <a class="showcase-detail-cta-btn primary" href={stackblitzHref} target="_blank" rel="noreferrer noopener">
+                    <span class="i-simple-icons:stackblitz" aria-hidden="true"></span>
+                    Open in StackBlitz
+                </a>
+                <a class="showcase-detail-cta-btn secondary" href={githubHref} target="_blank" rel="noreferrer noopener">
+                    <span class="i-simple-icons:github" aria-hidden="true"></span>
+                    View on GitHub
+                </a>
+            </div>
+        </header>
+
+        <div class="showcase-detail-stage">
+            <slot name="preview" />
+        </div>
+    </div>
+
+    <div class="showcase-detail-prose sl-markdown-content">
+        <slot />
+    </div>
+</div>
+
+<style>
+    .showcase-detail-shell {
+        --showcase-accent: var(--ruby);
+        max-width: 90rem;
+        margin: 0 auto;
+        padding-inline: clamp(1rem, 4vw, 2rem);
+        padding-block: clamp(1.5rem, 3vw, 2.5rem) clamp(2rem, 4vw, 3rem);
+    }
+
+    .showcase-detail {
+        display: flex;
+        flex-direction: column;
+        gap: clamp(1.5rem, 3vw, 2.5rem);
+    }
+
+    .showcase-detail-prose {
+        max-width: 56rem;
+        margin-block-start: clamp(2.5rem, 5vw, 4rem);
+    }
+
+    .showcase-detail-header {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+        max-width: 56rem;
+    }
+
+    .showcase-detail-back {
+        align-self: flex-start;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        padding: 0.25rem 0.5rem 0.25rem 0.4rem;
+        margin-block-end: 0.25rem;
+        margin-inline-start: -0.5rem;
+        border-radius: calc(var(--radius) - 4px);
+        color: color-mix(in oklab, var(--showcase-accent) 60%, var(--muted-foreground));
+        font-family: 'Inter', system-ui, sans-serif;
+        font-size: 0.75rem;
+        font-weight: 500;
+        text-decoration: none;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        transition: color 0.15s, background-color 0.15s;
+    }
+    .showcase-detail-back:hover {
+        color: var(--showcase-accent);
+        background-color: color-mix(in oklab, var(--showcase-accent) 10%, transparent);
+    }
+
+    .showcase-detail-title {
+        font-family: 'Public Sans', system-ui, sans-serif;
+        font-size: clamp(1.75rem, 4vw, 2.75rem);
+        font-weight: 200;
+        letter-spacing: -0.025em;
+        line-height: 1.1;
+        color: var(--foreground);
+        margin: 0;
+        text-wrap: balance;
+    }
+
+    .showcase-detail-description {
+        font-family: 'Public Sans', system-ui, sans-serif;
+        font-size: clamp(0.9375rem, 1.5vw, 1.0625rem);
+        line-height: 1.55;
+        color: var(--muted-foreground);
+        margin: 0;
+        max-width: 48rem;
+        text-wrap: balance;
+    }
+
+    /* External CTAs — stacked layout on small viewports, inline on
+     * tablet+. Primary uses the showcase's gem; secondary stays
+     * neutral so the visual hierarchy reads "play first, source
+     * second." */
+    .showcase-detail-cta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.625rem;
+        margin-block-start: 0.75rem;
+    }
+
+    .showcase-detail-cta-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        height: 2.375rem;
+        padding: 0 1rem;
+        border-radius: calc(var(--radius) - 2px);
+        font-family: 'Inter', system-ui, sans-serif;
+        font-size: 0.875rem;
+        font-weight: 500;
+        letter-spacing: 0.01em;
+        text-decoration: none;
+        transition: transform 120ms ease-out, background-color 150ms ease;
+    }
+
+    .showcase-detail-cta-btn.primary {
+        color: oklch(0.18 0.04 80);
+        background: linear-gradient(
+            calc(var(--scene-angle, 135deg) + 90deg),
+            color-mix(in oklab, var(--showcase-accent) 90%, white) 0%,
+            color-mix(in oklab, var(--showcase-accent) 70%, var(--background)) 100%
+        );
+    }
+    .showcase-detail-cta-btn.primary:hover {
+        transform: translateY(-1px);
+    }
+
+    .showcase-detail-cta-btn.secondary {
+        color: var(--foreground);
+        background: color-mix(in oklab, var(--card) 92%, var(--showcase-accent));
+        border: 1px solid color-mix(in oklab, var(--showcase-accent) 30%, var(--border));
+    }
+    .showcase-detail-cta-btn.secondary:hover {
+        background: color-mix(in oklab, var(--card) 84%, var(--showcase-accent));
+        transform: translateY(-1px);
+    }
+
+    .showcase-detail-cta-btn span {
+        width: 1rem;
+        height: 1rem;
+        font-size: 1rem;
+    }
+
+    /* Stage — full-width preview frame. The slot child carries its
+     * own aspect ratio (ShowcaseGame uses 3/2 internally). The
+     * gem-tinted ring + soft inset bg signal "this is the live
+     * artifact." No drop shadow per the no-glow restraint pass. */
+    .showcase-detail-stage {
+        position: relative;
+        width: 100%;
+        border-radius: calc(var(--radius) + 0.25rem);
+        overflow: hidden;
+        background: color-mix(in oklab, var(--card) 94%, var(--showcase-accent));
+        box-shadow: 0 0 0 1px color-mix(in oklab, var(--showcase-accent) 32%, var(--border));
+    }
+</style>
