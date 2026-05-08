@@ -49,6 +49,42 @@ import {
 import { isFreeFall } from '../biomes'
 
 /**
+ * Game-side counters exposed to integration probes via
+ * `window.__drillerStats`. The shake-codex tests read these to
+ * distinguish "0-displacement landing actually happened in the
+ * sim" from "a cell happened to be re-solidified by a sibling
+ * chunk landing on top". Probes that scrape grid state can't
+ * reliably tell the two apart.
+ *
+ * Counters are monotonically increasing for the life of the page.
+ * Tests sample (after, before) deltas around their observation
+ * window to get an accurate count.
+ */
+interface DrillerStats {
+  /** A FallingChunk landed at its release row (rule 1 violation;
+   *  the restore branch fired). Should be 0 in healthy play. */
+  zeroDisplacementRestores: number
+  /** A FallingChunk landed at row > release row (the normal
+   *  case). For sanity-checking that the suite is exercising the
+   *  feature at all. */
+  properLandings: number
+}
+
+declare global {
+  interface Window {
+    __drillerStats?: DrillerStats
+  }
+}
+
+function bumpStat(key: keyof DrillerStats): void {
+  if (typeof window === 'undefined') return
+  if (!window.__drillerStats) {
+    window.__drillerStats = { zeroDisplacementRestores: 0, properLandings: 0 }
+  }
+  window.__drillerStats[key]++
+}
+
+/**
  * Connectivity-based sag detection.
  *
  * Scans 4-connected SOIL components; any chunk with zero anchor connections
@@ -572,6 +608,7 @@ function landAndReattach(
   // SOIL at the same location. This is a belt-and-suspenders fallback;
   // the test suite asserts the count stays at zero in real play.
   if (baseCellRow === fall.releaseRow) {
+    bumpStat('zeroDisplacementRestores')
     for (const c of fall.cells) {
       const r = baseCellRow + c.row
       const cc = baseCellCol + c.col
@@ -588,6 +625,7 @@ function landAndReattach(
     entity.destroy()
     return
   }
+  bumpStat('properLandings')
 
   // Squish check. A falling chunk only KILLS if the driller is in a
   // cell the chunk lands on AND the driller is on ground (can't
