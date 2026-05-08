@@ -32,6 +32,9 @@
   "dependencies": {
     "three-flatland": "^0.1.0-alpha.4",
     "@three-flatland/nodes": "^0.1.0-alpha.3",
+    "@three-flatland/tweakpane": "^0.1.0-alpha.2",
+    "@tweakpane/plugin-essentials": "^0.2.1",
+    "tweakpane": "^4.0.5",
     "koota": "^0.6.5"
   },
   "peerDependencies": {

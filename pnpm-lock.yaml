@@ -1075,12 +1075,21 @@ importers:
       '@three-flatland/nodes':
         specifier: workspace:*
         version: link:../../packages/nodes
+      '@three-flatland/tweakpane':
+        specifier: workspace:*
+        version: link:../../packages/tweakpane
+      '@tweakpane/plugin-essentials':
+        specifier: ^0.2.1
+        version: 0.2.1(tweakpane@4.0.5)
       koota:
         specifier: ^0.6.5
         version: 0.6.5(@types/react@19.2.9)(react@19.2.3)
       three-flatland:
         specifier: workspace:*
         version: link:../../packages/three-flatland
+      tweakpane:
+        specifier: ^4.0.5
+        version: 4.0.5
     devDependencies:
       '@react-three/fiber':
         specifier: ^10.0.0-alpha.2

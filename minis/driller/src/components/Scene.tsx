@@ -17,6 +17,7 @@ import { resetStreaming, streamChunks } from '../systems/generation'
 import { hazardSpawnSystem, hazardTickSystem, resetHazardSpawn } from '../systems/hazard'
 import { particlesSystem } from '../systems/particles'
 import { useDrillerMaterial } from '../materials'
+import { AIDebugPanel, shouldShowAIDebug } from './AIDebugPanel'
 import { DrillerView } from './DrillerView'
 import { GemRenderer } from './GemRenderer'
 import { HazardView } from './HazardView'
@@ -144,6 +145,7 @@ export function Scene({ onShellStateChange }: SceneProps) {
       <GemRenderer material={material} />
       <HazardView material={material} />
       <DrillerView material={material} />
+      {shouldShowAIDebug() && <AIDebugPanel />}
     </flatland>
   )
 }
