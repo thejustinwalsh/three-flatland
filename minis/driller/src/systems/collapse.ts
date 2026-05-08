@@ -13,7 +13,7 @@ import {
   SaggingChunk,
   TILE_AIR,
 } from '../traits'
-import { MAX_CHUNK_HEIGHT, SAG_DURATION_TICKS, TILE_PX } from '../constants'
+import { MAX_CHUNK_HEIGHT, MAX_REACH, SAG_DURATION_TICKS, TILE_PX } from '../constants'
 
 /**
  * How far above and below the driller's row we run the chunk-detect
@@ -23,7 +23,7 @@ import { MAX_CHUNK_HEIGHT, SAG_DURATION_TICKS, TILE_PX } from '../constants'
  */
 const SCAN_WINDOW_ROWS_ABOVE = 96  // ~3 chunks of history
 const SCAN_WINDOW_ROWS_BELOW = 192 // ~6 chunks streamed-ahead
-import { detectChunks, isSupported, type SoilChunk } from '../lib/chunk-detect'
+import { detectChunks, type SoilChunk, unstableCells } from '../lib/chunk-detect'
 import { markCellAndNeighborsDirty } from './autotile-pass'
 
 /**
@@ -52,27 +52,41 @@ export function detectAndSag(world: World): void {
   const winTop = Math.max(0, dRow - SCAN_WINDOW_ROWS_ABOVE)
   const winBot = Math.min(rows, dRow + SCAN_WINDOW_ROWS_BELOW)
 
-  // First pass: regular sag detection on the live tile grid.
-  const allChunks = detectChunks(tiles, cols, rows, winTop, winBot)
-  for (const ch of allChunks) {
-    if (chunkHasFlag(ch, flags, FLAG_SAGGING | FLAG_FALLING)) continue
-    if (isSupported(ch, tiles, cols, rows)) continue
+  // First pass: cantilever sag detection. Cells too far from any
+  // anchor (STONE, ROCK, fixture, or world bottom — left/right walls
+  // are NO LONGER anchors so wide soil bands above wall-to-wall
+  // tunnels can become unsupported overhangs that fall on the
+  // driller). Returns a Set of cell indices flagged unstable.
+  const unstable = unstableCells(tiles, cols, rows, MAX_REACH)
+  if (unstable.size > 0) {
+    // Group unstable cells into chunks via the same flood-fill as
+    // detectChunks but limited to the unstable set.
+    const allChunks = detectChunks(tiles, cols, rows, winTop, winBot)
+    for (const ch of allChunks) {
+      if (chunkHasFlag(ch, flags, FLAG_SAGGING | FLAG_FALLING)) continue
+      const unstableIdxs = ch.cells.filter((idx) => unstable.has(idx))
+      if (unstableIdxs.length === 0) continue
 
-    const chosen = filterBottomRows(ch, cols, MAX_CHUNK_HEIGHT)
-    if (chosen.length === 0) continue
-    for (const idx of chosen) flags[idx] = (flags[idx] ?? 0) | FLAG_SAGGING
-    world.spawn(
-      SaggingChunk({
-        cells: chosen.map((idx) => ({
-          col: idx % cols,
-          row: Math.floor(idx / cols),
-          tile: tiles[idx]!,
-        })),
-        startTick: gs.tick,
-        durationTicks: SAG_DURATION_TICKS,
-        bracedUntilTick: 0,
-      }),
-    )
+      const chosen = filterBottomRows(
+        { ...ch, cells: unstableIdxs, maxRow: Math.max(...unstableIdxs.map((i) => Math.floor(i / cols))) },
+        cols,
+        MAX_CHUNK_HEIGHT,
+      )
+      if (chosen.length === 0) continue
+      for (const idx of chosen) flags[idx] = (flags[idx] ?? 0) | FLAG_SAGGING
+      world.spawn(
+        SaggingChunk({
+          cells: chosen.map((idx) => ({
+            col: idx % cols,
+            row: Math.floor(idx / cols),
+            tile: tiles[idx]!,
+          })),
+          startTick: gs.tick,
+          durationTicks: SAG_DURATION_TICKS,
+          bracedUntilTick: 0,
+        }),
+      )
+    }
   }
 
   // Second pass: PRECARIOUS prediction — "if the driller drills its
@@ -101,12 +115,18 @@ export function detectAndSag(world: World): void {
 
   const sim = new Uint8Array(tiles)
   sim[tIdx] = TILE_AIR
+  const simUnstable = unstableCells(sim, cols, rows, MAX_REACH)
   const simChunks = detectChunks(sim, cols, rows, winTop, winBot)
   for (const ch of simChunks) {
-    // Skip chunks already in flight — they'd be flagged anyway.
     if (chunkHasFlag(ch, flags, FLAG_SAGGING | FLAG_FALLING)) continue
-    if (isSupported(ch, sim, cols, rows)) continue
-    for (const idx of ch.cells) flags[idx] = (flags[idx] ?? 0) | FLAG_PRECARIOUS
+    let anyUnstable = false
+    for (const idx of ch.cells) {
+      if (simUnstable.has(idx)) {
+        flags[idx] = (flags[idx] ?? 0) | FLAG_PRECARIOUS
+        anyUnstable = true
+      }
+    }
+    void anyUnstable
   }
 }
 

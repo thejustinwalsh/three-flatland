@@ -12,6 +12,14 @@ export interface Biome {
   maxDepth: number
   /** Pre-cut cave count range per chunk [min, max]. */
   caveCount: [number, number]
+  /**
+   * Wide horizontal tunnel count range per chunk [min, max]. Tunnels
+   * are 1–2 rows tall and span most of the chunk's width; they
+   * create overhangs above/below that the cantilever-sag system can
+   * pick up. Topsoil uses these heavily to introduce the "sag"
+   * concept early without high crush risk.
+   */
+  tunnelCount: [number, number]
   /** Fixture count range per chunk [min, max]. */
   fixtureCount: [number, number]
   fixtureKinds: ('bone' | 'mushroom' | 'crystal' | 'stone-pillar')[]
@@ -46,7 +54,7 @@ export interface Biome {
  * takes over. Biomes therefore only change AFTER a free fall — never
  * mid-descent through a single world.
  */
-export const WORLD_BODY_ROWS = 100
+export const WORLD_BODY_ROWS = 150
 /**
  * Tuned so plenty of gems escape the top of the playfield before the
  * driller lands. Driller free-fall ≈ 245 ms/cell, gems ≈ 320 ms/cell;
@@ -62,12 +70,13 @@ export const BIOMES: Biome[] = [
     name: 'topsoil',
     minDepth: 0,
     maxDepth: WORLD_BODY_ROWS,
-    caveCount: [2, 3],
+    caveCount: [3, 4],
+    tunnelCount: [3, 5],
     fixtureCount: [0, 1],
     fixtureKinds: ['bone'],
     gemCount: [4, 6],
     gemPalette: ['emerald', 'topaz', 'ruby', 'amethyst'],
-    soilDensity: 0.85,
+    soilDensity: 0.65,
     palette: {
       grass: [0.37, 0.66, 0.28],
       edge: [0.42, 0.29, 0.17],
@@ -80,12 +89,13 @@ export const BIOMES: Biome[] = [
     name: 'deep-dirt',
     minDepth: 0,
     maxDepth: WORLD_BODY_ROWS,
-    caveCount: [1, 2],
-    fixtureCount: [0, 1],
+    caveCount: [3, 5],
+    tunnelCount: [2, 3],
+    fixtureCount: [1, 2],
     fixtureKinds: ['bone'],
-    gemCount: [3, 4],
+    gemCount: [4, 6],
     gemPalette: ['emerald', 'topaz', 'ruby'],
-    soilDensity: 0.92,
+    soilDensity: 0.7,
     palette: {
       grass: [0.32, 0.45, 0.22],
       edge: [0.34, 0.21, 0.13],
@@ -98,12 +108,13 @@ export const BIOMES: Biome[] = [
     name: 'stoneworks',
     minDepth: 0,
     maxDepth: WORLD_BODY_ROWS,
-    caveCount: [2, 3],
-    fixtureCount: [1, 3],
+    caveCount: [4, 6],
+    tunnelCount: [1, 2],
+    fixtureCount: [2, 3],
     fixtureKinds: ['stone-pillar', 'bone', 'mushroom'],
     gemCount: [4, 6],
     gemPalette: ['emerald', 'topaz', 'ruby', 'amethyst'],
-    soilDensity: 0.78,
+    soilDensity: 0.6,
     palette: {
       grass: [0.30, 0.40, 0.45],
       edge: [0.40, 0.40, 0.46],
@@ -116,12 +127,13 @@ export const BIOMES: Biome[] = [
     name: 'crystal-caverns',
     minDepth: 0,
     maxDepth: WORLD_BODY_ROWS,
-    caveCount: [3, 4],
-    fixtureCount: [2, 3],
+    caveCount: [5, 7],
+    tunnelCount: [1, 2],
+    fixtureCount: [2, 4],
     fixtureKinds: ['crystal', 'stone-pillar'],
     gemCount: [3, 5],
     gemPalette: ['amethyst', 'topaz'],
-    soilDensity: 0.5,
+    soilDensity: 0.45,
     palette: {
       grass: [0.55, 0.40, 0.85],
       edge: [0.40, 0.28, 0.55],
@@ -134,12 +146,13 @@ export const BIOMES: Biome[] = [
     name: 'core',
     minDepth: 0,
     maxDepth: WORLD_BODY_ROWS,
-    caveCount: [4, 5],
-    fixtureCount: [2, 3],
+    caveCount: [6, 8],
+    tunnelCount: [1, 2],
+    fixtureCount: [3, 4],
     fixtureKinds: ['crystal'],
     gemCount: [2, 3],
     gemPalette: ['amethyst', 'topaz'],
-    soilDensity: 0.3,
+    soilDensity: 0.35,
     palette: {
       grass: [0.85, 0.40, 0.20],
       edge: [0.50, 0.20, 0.12],

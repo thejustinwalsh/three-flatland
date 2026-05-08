@@ -90,6 +90,36 @@ export function carveCaves(
 }
 
 /**
+ * Carve `count` wide horizontal tunnels into the chunk. Each tunnel
+ * is 1–2 rows tall and spans most of the chunk's width with random
+ * length. These leave broad SOIL spans above/below that the
+ * cantilever-sag rule can mark as unstable — the "introduce sag"
+ * lever for early biomes.
+ */
+export function carveTunnels(
+  chunk: Uint8Array,
+  cols: number,
+  rows: number,
+  count: number,
+  rng: Rng,
+): void {
+  for (let i = 0; i < count; i++) {
+    const y = rng.intRange(3, rows - 4)
+    const h = rng.intRange(1, 2)
+    const startX = rng.intRange(0, 3)
+    const endX = rng.intRange(cols - 4, cols - 1)
+    for (let dy = 0; dy < h; dy++) {
+      const r = y + dy
+      if (r <= 0 || r >= rows - 1) continue
+      for (let x = startX; x <= endX; x++) {
+        if (x < 0 || x >= cols) continue
+        chunk[r * cols + x] = TILE_AIR
+      }
+    }
+  }
+}
+
+/**
  * Tetris-style stone shapes for cluster generation. Each shape is a
  * list of (col-offset, row-offset) cells relative to an anchor. The
  * shape pool mixes singles, dominoes, triominoes and tetrominoes so
@@ -207,6 +237,13 @@ export function generateChunk(seed: number, chunkY: number): GeneratedChunk {
   // Pre-cut caves
   const caves = rng.intRange(biome.caveCount[0], biome.caveCount[1])
   carveCaves(tiles, cols, rows, caves, rng)
+
+  // Wide horizontal tunnels — fragment the soil mass into bands so
+  // overhangs naturally form. The cantilever-sag rule picks up cells
+  // too far from any anchor, so longer tunnels = more potential
+  // "soil chunks that want to fall on the driller".
+  const tunnels = rng.intRange(biome.tunnelCount[0], biome.tunnelCount[1])
+  carveTunnels(tiles, cols, rows, tunnels, rng)
 
   // Stone clusters — tetris-like shapes embedded in soil. Most are
   // small (1–3 tiles, just an obstacle to drill around); occasional

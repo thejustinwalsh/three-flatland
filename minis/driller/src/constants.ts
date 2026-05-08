@@ -55,8 +55,15 @@ export const BRACE_COST = 1
 export const OVER_PET_WINDOW_TICKS = 240
 export const OVER_PET_THRESHOLD = 3
 
-/** Cantilever collapse — SOIL cells more than this many cells from any anchor sag. */
-export const MAX_REACH = 5
+/**
+ * Cantilever collapse — SOIL cells whose Manhattan-along-soil distance
+ * to the nearest anchor (STONE / ROCK / fixture / world side+bottom
+ * walls) exceeds this become unstable and sag. Higher values are more
+ * forgiving (fewer overhangs fall). Tuned so a wide horizontal tunnel
+ * carved across the chunk's middle leaves the strip's CENTER unstable
+ * while the cells nearest each side wall stay stable.
+ */
+export const MAX_REACH = 7
 
 /**
  * Two-phase per-cell cadence — Mr. Driller-style drill THEN step:
