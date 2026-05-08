@@ -53,12 +53,19 @@ describe('generateChunk', () => {
     expect(air).toBeGreaterThan(0)
   })
 
-  it('topsoil chunkY=0 outside the void band has no stone scatter', () => {
-    // World 0 (topsoil) only emits SOIL + AIR. Skip the sky rows.
+  it('topsoil chunkY=0 stays mostly SOIL/AIR with light stone/rock scatter', () => {
+    // The first biome was previously absurdly empty; it now allows a
+    // small budget of TILE_STONE clusters and TILE_ROCK speed bumps so
+    // it isn't a straight-down boring drill. Floor the count so the
+    // assertion still catches accidental flooding.
     const c = generateChunk(42, 0)
+    let stones = 0, rocks = 0
     for (let i = 4 * PLAY_COLS; i < c.tiles.length; i++) {
-      expect([TILE_AIR, TILE_SOIL]).toContain(c.tiles[i])
+      const t = c.tiles[i]
+      if (t === 2 /* TILE_STONE */) stones++
+      else if (t === 8 /* TILE_ROCK */) rocks++
     }
+    expect(stones + rocks).toBeLessThan(15)
   })
 
   it('produces a gem-count range matching the chunk biome', () => {
@@ -73,10 +80,11 @@ describe('generateChunk', () => {
     expect(deeper.gems.length).toBeLessThanOrEqual(deeperBiome.gemCount[1])
   })
 
-  it('topsoil gems are emerald only', () => {
+  it('topsoil gems use the full 4-color palette', () => {
     const c = generateChunk(7, CHUNK_TOPSOIL)
+    const allowed = new Set(['emerald', 'topaz', 'ruby', 'amethyst'])
     for (const g of c.gems) {
-      expect(g.color).toBe('emerald')
+      expect(allowed).toContain(g.color)
     }
   })
 })

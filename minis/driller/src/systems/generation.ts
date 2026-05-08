@@ -211,34 +211,33 @@ export function generateChunk(seed: number, chunkY: number): GeneratedChunk {
   // Stone clusters — tetris-like shapes embedded in soil. Most are
   // small (1–3 tiles, just an obstacle to drill around); occasional
   // 4+ piles become avalanche threats once disturbed by the player.
-  // Skipped in topsoil so the surface always feels safe.
-  if (biome.name !== 'topsoil') {
-    const clusterBudget =
-      biome.name === 'stoneworks'
+  const clusterBudget =
+    biome.name === 'topsoil'
+      ? rng.intRange(1, 2)
+      : biome.name === 'stoneworks'
         ? rng.intRange(2, 5)
         : biome.name === 'crystal-caverns' || biome.name === 'core'
           ? rng.intRange(3, 6)
           : rng.intRange(1, 3)
-    for (let i = 0; i < clusterBudget; i++) {
-      placeStoneCluster(tiles, cols, rows, rng, biome.name)
-    }
+  for (let i = 0; i < clusterBudget; i++) {
+    placeStoneCluster(tiles, cols, rows, rng, biome.name)
   }
 
   // Multi-hit ROCK clusters — speed bumps that slow the driller.
   // Increase density with depth.
-  if (biome.name !== 'topsoil') {
-    const rockBudget =
-      biome.name === 'deep-dirt'
+  const rockBudget =
+    biome.name === 'topsoil'
+      ? rng.intRange(0, 2)
+      : biome.name === 'deep-dirt'
         ? rng.intRange(1, 3)
         : biome.name === 'stoneworks'
           ? rng.intRange(2, 5)
           : rng.intRange(1, 4)
-    for (let i = 0; i < rockBudget; i++) {
-      const x = rng.intRange(1, cols - 2)
-      const y = rng.intRange(2, rows - 2)
-      const idx = y * cols + x
-      if (tiles[idx] === TILE_SOIL) tiles[idx] = TILE_ROCK
-    }
+  for (let i = 0; i < rockBudget; i++) {
+    const x = rng.intRange(1, cols - 2)
+    const y = rng.intRange(2, rows - 2)
+    const idx = y * cols + x
+    if (tiles[idx] === TILE_SOIL) tiles[idx] = TILE_ROCK
   }
 
   // EXPLOSIVE — sparse in stoneworks+, denser in core. Always inside soil.
