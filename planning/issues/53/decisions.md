@@ -279,3 +279,24 @@ Hard rules:
 - `... returns null when driller is well away`
 
 **Verification:** 114/114 unit tests pass (was 108/108; +6 new). Typecheck clean.
+
+## Plan 1 / item E — drill / sag-release / explosion / hazard land disturbs adjacent stones
+**File:** `minis/driller/src/systems/autotile-pass.ts:markCellAndNeighborsDirty`, `:markCellAndNeighborsDirtyExcept`
+**Date:** 2026-05-08
+
+**Decision:** Extend the support-topology dirty-marker functions to set `FLAG_DISTURBED` on 4-neighbor `TILE_STONE` cells, in addition to the existing `FLAG_SAG_RECHECK` on 4-neighbor `TILE_SOIL` cells.
+
+**Bug this fixes:** world-gen rock piles never fall unless a hazard happens to land DIRECTLY adjacent to one. Drilling adjacent to a 4-stack does nothing — the stones don't get FLAG_DISTURBED, so the avalanche disturbance gate refuses to initiate the fall. From the player's perspective, "I drilled the support next to this rock pile and nothing happened" feels broken.
+
+**Why now:** the canonical "destabilizing event" set is captured in the existing comment on `markCellAndNeighborsDirty`: "PLAYER-driven mutations (drilling, hazard land, explosion)". Sag-release is a downstream effect (chain reactions through `…Except`). All four use the same dirty-marker. Extending the marker to disturb stones in addition to soil is the smallest change that captures every destabilizing event.
+
+**Side cleanup:** Removed the duplicate `disturbAdjacentStones` helper from `driller.ts` — it did exactly the same work in `completeDrill` after `markCellAndNeighborsDirty`. With the extension, the second call is redundant.
+
+**Tests pinning the rule:**
+- `disturb-stones.test.ts: drilled cell sets FLAG_DISTURBED on adjacent TILE_STONE`
+- `... sets FLAG_SAG_RECHECK on adjacent TILE_SOIL (existing behavior, regression guard)`
+- `… the Except variant also disturbs adjacent stones`
+- `… the Except variant respects the exclude set`
+- `… non-stone non-soil neighbors (fixture, AIR) are untouched`
+
+**Verification:** 119/119 unit tests pass (was 114/114; +5 new). Typecheck clean.

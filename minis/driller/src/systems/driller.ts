@@ -4,7 +4,6 @@ import {
   Driller,
   type DrillerAnimState,
   FLAG_AUTOTILE_DIRTY,
-  FLAG_DISTURBED,
   GameState,
   Gem,
   Grid,
@@ -148,13 +147,11 @@ function completeDrill(world: World, grid: { cols: number; rows: number; tiles: 
       grid.tiles[idx] = TILE_AIR
       grid.flags[idx] = FLAG_AUTOTILE_DIRTY
       markCellAndNeighborsDirty(world, col, row)
-      disturbAdjacentStones(grid, col, row)
     }
   } else if (tile === TILE_SOIL) {
     grid.tiles[idx] = TILE_AIR
     grid.flags[idx] = FLAG_AUTOTILE_DIRTY
     markCellAndNeighborsDirty(world, col, row)
-    disturbAdjacentStones(grid, col, row)
   }
 }
 
@@ -343,26 +340,6 @@ function collectGemAt(
       collected = true
     }
   })
-}
-
-/**
- * Mark any TILE_STONE in the 4-neighbourhood of (col, row) with
- * FLAG_DISTURBED. Drilling adjacent to a rock cluster is one of the
- * three destabilising events that lets the avalanche system kick in
- * (the others: a fresh hazard landing on a cluster, and the cluster
- * itself already mid-fall).
- */
-function disturbAdjacentStones(grid: { cols: number; rows: number; tiles: Uint8Array; flags: Uint8Array }, col: number, row: number): void {
-  const { cols, rows, tiles, flags } = grid
-  for (const [dc, dr] of [[-1, 0], [1, 0], [0, -1], [0, 1]] as const) {
-    const nc = col + dc
-    const nr = row + dr
-    if (nc < 0 || nc >= cols || nr < 0 || nr >= rows) continue
-    const nIdx = nr * cols + nc
-    if (tiles[nIdx] === TILE_STONE) {
-      flags[nIdx] = (flags[nIdx] ?? 0) | FLAG_DISTURBED
-    }
-  }
 }
 
 /**

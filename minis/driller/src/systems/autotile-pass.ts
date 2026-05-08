@@ -1,10 +1,12 @@
 import type { World } from 'koota'
 import {
   FLAG_AUTOTILE_DIRTY,
+  FLAG_DISTURBED,
   FLAG_SAG_RECHECK,
   Grid,
   TILE_AIR,
   TILE_SOIL,
+  TILE_STONE,
 } from '../traits'
 import { autotileMask, maskToAtlasIndex } from '../lib/autotile'
 
@@ -46,15 +48,21 @@ export function autotilePass(world: World): void {
 }
 
 /**
- * Mark a cell and its 8-neighbor halo as autotile-dirty AND tag
- * 4-neighbor SOIL cells with FLAG_SAG_RECHECK so the cantilever
- * sag detector re-evaluates them. Use this for PLAYER-driven
- * mutations (drilling, hazard land, explosion) — events that
- * actually destabilise the world.
+ * Mark a cell and its 8-neighbor halo as autotile-dirty AND propagate
+ * support-topology disturbance into the 4-neighbor halo:
+ *   - SOIL gets `FLAG_SAG_RECHECK` so the cantilever sag detector
+ *     re-evaluates the cell on the next tick.
+ *   - STONE gets `FLAG_DISTURBED` so otherwise-inert clusters wake up
+ *     when a neighboring cell changes (drill, sag-release, explosion,
+ *     hazard land). Without this, world-gen rock piles would never
+ *     fall unless a hazard happened to land directly adjacent.
+ *
+ * Use this for PLAYER-driven mutations and the natural cascades they
+ * create — events that actually destabilise the world.
  */
 export function markCellAndNeighborsDirty(world: World, col: number, row: number): void {
   markAutotileDirty(world, col, row)
-  // Tag the 4-neighbor SOIL cells for sag re-check.
+  // Tag the 4-neighbor cells for support-topology re-check.
   const grid = world.get(Grid)
   if (!grid) return
   const { cols, rows, tiles, flags } = grid
@@ -63,8 +71,11 @@ export function markCellAndNeighborsDirty(world: World, col: number, row: number
     const nr = row + dr
     if (nc < 0 || nc >= cols || nr < 0 || nr >= rows) continue
     const nIdx = nr * cols + nc
-    if (tiles[nIdx] === TILE_SOIL) {
+    const nTile = tiles[nIdx]
+    if (nTile === TILE_SOIL) {
       flags[nIdx]! |= FLAG_SAG_RECHECK
+    } else if (nTile === TILE_STONE) {
+      flags[nIdx]! |= FLAG_DISTURBED
     }
   }
 }
@@ -99,8 +110,11 @@ export function markCellAndNeighborsDirtyExcept(
     if (nc < 0 || nc >= cols || nr < 0 || nr >= rows) continue
     const nIdx = nr * cols + nc
     if (excludeSet.has(nIdx)) continue
-    if (tiles[nIdx] === TILE_SOIL) {
+    const nTile = tiles[nIdx]
+    if (nTile === TILE_SOIL) {
       flags[nIdx]! |= FLAG_SAG_RECHECK
+    } else if (nTile === TILE_STONE) {
+      flags[nIdx]! |= FLAG_DISTURBED
     }
   }
 }
