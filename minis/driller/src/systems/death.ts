@@ -114,6 +114,14 @@ export function deathSystem(world: World): void {
     const hitCeiling = deathRow - ghostRow >= GHOST_MAX_ROWS
     const atWorldTop = ghostRow <= 0
     if (escapedViewport || hitCeiling || atWorldTop) {
+      // Final pass: instant-clear all remaining rows up to row 0 in
+      // the column. The user shouldn't be hit by something from the
+      // "ancient past" falling back down through the cleared chute
+      // after respawn — the entire column above the death cell is
+      // sterilised before the driller comes back.
+      for (let r = ghostRow - 1; r >= 0; r--) {
+        clearGhostRow(world, deathCol, r)
+      }
       ghostBeam.active = false
       deathPhase = 'respawn'
     }

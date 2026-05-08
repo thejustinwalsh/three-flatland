@@ -58,12 +58,12 @@ export const OVER_PET_THRESHOLD = 3
 /**
  * Cantilever collapse — SOIL cells whose Manhattan-along-soil distance
  * to the nearest anchor (STONE / ROCK / fixture / world side+bottom
- * walls) exceeds this become unstable and sag. Higher values are more
- * forgiving (fewer overhangs fall). Tuned so a wide horizontal tunnel
- * carved across the chunk's middle leaves the strip's CENTER unstable
- * while the cells nearest each side wall stay stable.
+ * walls) exceeds this become unstable and sag. Higher = more forgiving
+ * (fewer overhangs fall). At 10 a wall-to-wall tunnel of one row
+ * leaves only the deepest center-of-overhang cells unstable, so
+ * sagging happens but doesn't cascade across the whole chunk.
  */
-export const MAX_REACH = 7
+export const MAX_REACH = 10
 
 /**
  * Two-phase per-cell cadence — Mr. Driller-style drill THEN step:
