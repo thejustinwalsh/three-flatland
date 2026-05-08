@@ -4,11 +4,13 @@ import {
   GameState,
   Gem,
   Grid,
+  Hazard,
   Mood,
   type PlannerName,
   PlannerTarget,
   TILE_AIR,
   TILE_FIXTURE_BASE,
+  TILE_ROCK,
   TILE_SOIL,
   TILE_STONE,
 } from '../traits'
@@ -136,23 +138,71 @@ export function selectPlanner(world: World): PlannerName {
   return candidate
 }
 
+/**
+ * Hazard evade — find the nearest LATERAL cell that's not under any
+ * active falling rock. Highest-priority response; runs before any
+ * mood-driven planner. Returns null if no hazard threat or driller
+ * already safe.
+ *
+ * The driller's column is "threatened" if any non-landed Hazard is in
+ * column ±1. Evasion target: a SOIL or AIR cell at the same row in
+ * the closest non-threatened column.
+ */
+export function planEvadeHazard(world: World, d: { col: number; row: number }): [number, number] | null {
+  const grid = world.get(Grid)
+  if (!grid) return null
+  const { cols, tiles } = grid
+
+  const threatenedCols = new Set<number>()
+  let threatened = false
+  world.query(Hazard).forEach((entity) => {
+    const h = entity.get(Hazard)
+    if (!h || h.phase === 'landed') return
+    for (let dc = -1; dc <= 1; dc++) threatenedCols.add(h.col + dc)
+    if (Math.abs(h.col - d.col) <= 1) threatened = true
+  })
+  if (!threatened) return null
+
+  // Search outward from driller for the closest passable column not under threat.
+  for (let dist = 1; dist < cols; dist++) {
+    for (const sign of [-1, 1] as const) {
+      const c = d.col + dist * sign
+      if (c < 0 || c >= cols) continue
+      if (threatenedCols.has(c)) continue
+      // Ensure stepping there is feasible (next-cell SOIL or AIR, not stone/rock/fixture).
+      const idx = d.row * cols + c
+      const t = tiles[idx]
+      if (t === undefined) continue
+      if (t === TILE_STONE || t === TILE_ROCK) continue
+      if (t >= TILE_FIXTURE_BASE && t < TILE_FIXTURE_BASE + 5) continue
+      return [c, d.row]
+    }
+  }
+  return null
+}
+
 export function plannerTick(world: World): void {
   const drillerEntity = world.queryFirst(Driller)
   if (!drillerEntity) return
   const d = drillerEntity.get(Driller)!
 
-  const which = selectPlanner(world)
-  let next: [number, number] | null = null
-  switch (which) {
-    case 'greedy':
-      next = planGreedy(world, d)
-      break
-    case 'seeker':
-      next = planSeeker(world, d)
-      break
-    case 'cautious':
-      next = planCautious(world, d)
-      break
+  // Highest-priority override: evade falling rocks regardless of mood.
+  const evade = planEvadeHazard(world, d)
+  let next: [number, number] | null = evade
+
+  if (!next) {
+    const which = selectPlanner(world)
+    switch (which) {
+      case 'greedy':
+        next = planGreedy(world, d)
+        break
+      case 'seeker':
+        next = planSeeker(world, d)
+        break
+      case 'cautious':
+        next = planCautious(world, d)
+        break
+    }
   }
   if (!next) return
 
@@ -160,13 +210,17 @@ export function plannerTick(world: World): void {
   const gs = world.get(GameState)
   if (!gs) return
 
-  if (target) {
+  // Evade overrides the sunk-cost commit window.
+  if (target && !evade) {
     if (
       gs.tick - target.reservedAtTick < PLAN_COMMIT_TICKS &&
       (target.col !== d.col || target.row !== d.row)
     ) {
       return
     }
+  }
+
+  if (target) {
     drillerEntity.set(PlannerTarget, { col: next[0], row: next[1], reservedAtTick: gs.tick })
   } else {
     drillerEntity.add(PlannerTarget({ col: next[0], row: next[1], reservedAtTick: gs.tick }))

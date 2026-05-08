@@ -183,10 +183,13 @@ export function moodDriftSystem(world: World, ticksSinceLastTap: number): void {
       }
     }
 
+    // Hazard overhead = active rock in driller's column or 1 either side.
+    // Falling rocks may chip the column slightly; ±1 covers near-misses.
     world.query(Hazard).forEach((entity) => {
       const h = entity.get(Hazard)
       if (!h) return
-      if (h.col === d.col && h.phase !== 'landed') hazardOverhead = true
+      if (h.phase === 'landed') return
+      if (Math.abs(h.col - d.col) <= 1) hazardOverhead = true
     })
   }
 
