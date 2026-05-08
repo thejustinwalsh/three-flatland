@@ -6,6 +6,9 @@ import { PlayCanvas } from './components/PlayCanvas'
 import { Background } from './components/Background'
 import { Scene } from './components/Scene'
 import { HoverCursor } from './components/HoverCursor'
+import { DepthBar } from './components/DepthBar'
+import { GemCounter } from './components/GemCounter'
+import { HeroHint } from './components/HeroHint'
 import { commitAction, pointerWorldCell, resolveHoverAction } from './systems/input'
 import type { DrillerProps } from './types'
 import type { PlayCanvasMetrics } from './lib/scale'
@@ -156,6 +159,9 @@ export default function Driller({
         <PlayCanvas hostRef={hostRef} onMetrics={onMetricsCombined}>
           <Scene />
         </PlayCanvas>
+        <DepthBar />
+        <GemCounter />
+        {mode === 'hero' && <HeroHint />}
         <HoverCursor />
       </WorldProvider>
     </div>
