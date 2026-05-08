@@ -5,6 +5,10 @@ template: doc
 ---
 
 import BrandAsset from '../../components/BrandAsset.astro';
+import BrandAssetA from '../../components/brand-variants/BrandAssetA-Holo.astro';
+import BrandAssetB from '../../components/brand-variants/BrandAssetB-Prism.astro';
+import BrandAssetC from '../../components/brand-variants/BrandAssetC-Editorial.astro';
+import BrandAssetD from '../../components/brand-variants/BrandAssetD-Cosmic.astro';
 import CaptureModal from '../../components/CaptureModal.astro';
 
 This page provides live-rendered versions of the `three-flatland` marketing assets.
@@ -39,6 +43,81 @@ This page provides live-rendered versions of the `three-flatland` marketing asse
 
 <div className="asset-preview-link" data-type="social-x">
   <BrandAsset id="preview-social-x" type="social-x" />
+</div>
+
+---
+
+## Variant Explorations
+
+Four parallel design directions for the BrandAsset compositions. Each variant
+keeps the retro pixel-art icon and Silkscreen wordmark intact (those are the
+established brand) but reimagines the surrounding canvas with a different
+aesthetic vocabulary. Each variant is shown at the OG card size (1200×630),
+the Bluesky banner size (3000×1000), and the icon-only size (512×512) so you
+can judge how the language scales across aspect ratios.
+
+### Variant A — Holographic Foil
+
+*Layered conic gradients + chromatic-aberration ghosts on the wordmark + per-gem SVG specular filters in `<defs>`. Reads as a foil-stamped trading card; the wordmark literally is the foil.*
+
+<div className="asset-preview-link" data-type="og">
+  <BrandAssetA id="variant-a-og" type="og" />
+</div>
+
+<div className="asset-preview-link" data-type="wide">
+  <BrandAssetA id="variant-a-wide" type="wide" />
+</div>
+
+<div className="asset-preview-link" data-type="icon-only">
+  <BrandAssetA id="variant-a-icon" type="icon-only" />
+</div>
+
+### Variant B — Crystalline Prism
+
+*Clip-path facet shards at 30°/60° angles + chromatic dispersion on the wordmark (R/G/B color-channel offsets) + concentric prism rings around the icon + caustic streaks. Reads as light bending through cut glass.*
+
+<div className="asset-preview-link" data-type="og">
+  <BrandAssetB id="variant-b-og" type="og" />
+</div>
+
+<div className="asset-preview-link" data-type="wide">
+  <BrandAssetB id="variant-b-wide" type="wide" />
+</div>
+
+<div className="asset-preview-link" data-type="icon-only">
+  <BrandAssetB id="variant-b-icon" type="icon-only" />
+</div>
+
+### Variant C — Editorial Gold-Leaf
+
+*Gold-leaf gradient `background-clip: text` on Silkscreen + ornamental SVG double-rules + wax-stamp seal with `<textPath>` perimeter text + thin-weight Public Sans watermark. Penguin Classics meets Linear meets a Moleskine.*
+
+<div className="asset-preview-link" data-type="og">
+  <BrandAssetC id="variant-c-og" type="og" />
+</div>
+
+<div className="asset-preview-link" data-type="wide">
+  <BrandAssetC id="variant-c-wide" type="wide" />
+</div>
+
+<div className="asset-preview-link" data-type="icon-only">
+  <BrandAssetC id="variant-c-icon" type="icon-only" />
+</div>
+
+### Variant D — Cosmic Nebula
+
+*Six layered radial-gradient gem-cloud blooms + deterministic 150-star field + SVG aurora streaks via cubic-bezier paths + 4-stop drop-shadow corona on the icon. Brand mark drifting through gem dust.*
+
+<div className="asset-preview-link" data-type="og">
+  <BrandAssetD id="variant-d-og" type="og" />
+</div>
+
+<div className="asset-preview-link" data-type="wide">
+  <BrandAssetD id="variant-d-wide" type="wide" />
+</div>
+
+<div className="asset-preview-link" data-type="icon-only">
+  <BrandAssetD id="variant-d-icon" type="icon-only" />
 </div>
 
 <div className="hidden-capture-targets">

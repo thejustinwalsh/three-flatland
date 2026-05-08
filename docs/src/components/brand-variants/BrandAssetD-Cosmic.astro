@@ -1,0 +1,619 @@
+---
+import BrandIcon from '../BrandIcon.astro'
+
+interface Props {
+    id: string
+    type: 'banner' | 'og' | 'wide' | 'social-x' | 'icon-only'
+    title?: string
+    tagline?: string
+    info?: boolean
+    isCapture?: boolean
+}
+
+const {
+    id,
+    type,
+    title = 'flatland',
+    tagline = 'Sprite-first 2D for Three.js + R3F. WebGPU-native.',
+    info = true,
+    isCapture = false,
+} = Astro.props
+
+interface Dimensions {
+    w: number
+    h: number
+}
+
+const dimensions: Record<Props['type'], Dimensions> = {
+    banner: { w: 1280, h: 640 },
+    og: { w: 1200, h: 630 },
+    wide: { w: 3000, h: 1000 },
+    'social-x': { w: 1200, h: 628 },
+    'icon-only': { w: 512, h: 512 },
+}
+
+const { w: width, h: height } = dimensions[type] ?? dimensions['og']
+const showInfo = info && type !== 'icon-only'
+const isWide = type === 'wide'
+
+const repoLine = 'thejustinwalsh/three-flatland'
+const installLine = '# npm i three-flatland@alpha'
+
+// ---- Deterministic star field generation ----
+// Mulberry32 PRNG — small, deterministic, decent distribution.
+function rng(seed: number) {
+    let s = seed >>> 0
+    return () => {
+        s = (s + 0x6d2b79f5) >>> 0
+        let t = s
+        t = Math.imul(t ^ (t >>> 15), t | 1)
+        t ^= t + Math.imul(t ^ (t >>> 7), t | 61)
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+    }
+}
+
+interface Star {
+    x: number // % across viewBox
+    y: number // % across viewBox
+    r: number // px
+    o: number // opacity 0..1
+    c: string // hex color
+}
+
+const starColors = [
+    '#ffffff',
+    '#ffffff',
+    '#ffffff',
+    '#e8efff', // diamond-tinted white
+    '#cfe1ff', // diamond
+    '#f7e7ff', // amethyst-tinted
+    '#fff1d4', // gold-tinted
+    '#d6fff5', // turquoize-tinted
+]
+
+const heroStars: Star[] = [
+    // 1-3 hero gold stars near the icon area; positions chosen by aspect.
+    { x: isWide ? 18 : 50, y: isWide ? 38 : 36, r: 2.4, o: 1.0, c: '#f1c45f' },
+    { x: isWide ? 22 : 56, y: isWide ? 30 : 28, r: 1.6, o: 0.9, c: '#ffd97a' },
+]
+
+// "Icon-only" gets a tighter star bubble — fewer, denser around center.
+const starCount = type === 'icon-only' ? 70 : isWide ? 220 : 150
+const rand = rng(type === 'wide' ? 7 : type === 'banner' ? 11 : type === 'og' ? 13 : type === 'social-x' ? 17 : 23)
+
+const stars: Star[] = []
+for (let i = 0; i < starCount; i++) {
+    const x = rand() * 100
+    const y = rand() * 100
+    // Cluster brighter stars near the icon focal point.
+    const cx = isWide ? 20 : 50
+    const cy = isWide ? 50 : 42
+    const dx = (x - cx) / 50
+    const dy = (y - cy) / 50
+    const dist = Math.sqrt(dx * dx + dy * dy) // 0 near focal, ~1+ far
+    const proximity = Math.max(0, 1 - dist) // 0..1 (near focal = high)
+
+    // Most stars small + dim. Occasional bright ones near focal.
+    const bright = rand() < 0.06 + proximity * 0.18
+    const r = bright ? 1.2 + rand() * 1.0 : 0.4 + rand() * 0.7
+    const o = bright ? 0.75 + rand() * 0.25 : 0.25 + rand() * 0.45
+    const c = starColors[Math.floor(rand() * starColors.length)] ?? '#ffffff'
+    stars.push({ x, y, r, o, c })
+}
+---
+
+<div
+    class:list={['brand-asset-root', 'brand-asset-cosmic', 'not-content', type, { 'capture-mode': isCapture }]}
+    id={id}
+    style={`--asset-width: ${width}; --asset-height: ${height};`}
+>
+    {/* Deep-space gradient base — dominant chroma comes from layered clouds above. */}
+    <div class="cosmic-base" aria-hidden="true"></div>
+
+    {/* Nebula clouds — multiple radial gradients screen-blended for volumetric color. */}
+    <div class="cosmic-clouds" aria-hidden="true"></div>
+
+    {/* Aurora streaks — long gem-tinted curved tendrils, blurred + screened. */}
+    <svg class="cosmic-aurora" viewBox="0 0 1000 1000" preserveAspectRatio="none" aria-hidden="true">
+        <defs>
+            <linearGradient id={`aurora-amethyst-${id}`} x1="0%" y1="0%" x2="100%" y2="50%">
+                <stop offset="0%" stop-color="#b88af7" stop-opacity="0" />
+                <stop offset="40%" stop-color="#b88af7" stop-opacity="0.55" />
+                <stop offset="60%" stop-color="#ec4ec5" stop-opacity="0.45" />
+                <stop offset="100%" stop-color="#ec4ec5" stop-opacity="0" />
+            </linearGradient>
+            <linearGradient id={`aurora-turquoize-${id}`} x1="0%" y1="0%" x2="100%" y2="0%">
+                <stop offset="0%" stop-color="#5fe3d2" stop-opacity="0" />
+                <stop offset="50%" stop-color="#5fe3d2" stop-opacity="0.45" />
+                <stop offset="100%" stop-color="#6cb8ff" stop-opacity="0" />
+            </linearGradient>
+            <linearGradient id={`aurora-pink-${id}`} x1="0%" y1="0%" x2="100%" y2="0%">
+                <stop offset="0%" stop-color="#ff6fa8" stop-opacity="0" />
+                <stop offset="50%" stop-color="#ff6fa8" stop-opacity="0.4" />
+                <stop offset="100%" stop-color="#b88af7" stop-opacity="0" />
+            </linearGradient>
+            <filter id={`aurora-blur-${id}`} x="-10%" y="-10%" width="120%" height="120%">
+                <feGaussianBlur stdDeviation="18" />
+            </filter>
+            <filter id={`cloud-grain-${id}`} x="0" y="0" width="100%" height="100%">
+                <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" seed="4" stitchTiles="stitch" />
+                <feColorMatrix values="0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 0.35 0" />
+                <feComposite in2="SourceGraphic" operator="in" />
+            </filter>
+        </defs>
+        <g filter={`url(#aurora-blur-${id})`}>
+            {/* Amethyst → pink tendril sweeping from upper-left to mid-right. */}
+            <path
+                d="M -100 280 C 200 120, 480 360, 720 200 S 1200 380, 1200 240"
+                fill="none"
+                stroke={`url(#aurora-amethyst-${id})`}
+                stroke-width="120"
+                stroke-linecap="round"
+            />
+            {/* Turquoize wisp lower band. */}
+            <path
+                d="M -50 700 C 240 820, 520 580, 780 740 S 1100 660, 1200 700"
+                fill="none"
+                stroke={`url(#aurora-turquoize-${id})`}
+                stroke-width="90"
+                stroke-linecap="round"
+            />
+            {/* Pink soft drift across center. */}
+            <path
+                d="M -80 480 C 260 540, 520 380, 800 500 S 1100 460, 1200 520"
+                fill="none"
+                stroke={`url(#aurora-pink-${id})`}
+                stroke-width="160"
+                stroke-linecap="round"
+                opacity="0.7"
+            />
+        </g>
+    </svg>
+
+    {/* God-rays — two soft cones angled across the focal anchor. */}
+    <div class="cosmic-rays" aria-hidden="true"></div>
+
+    {/* Star field — deterministic SVG circles. */}
+    <svg class="cosmic-stars" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+        {stars.map((s) => (
+            <circle cx={s.x} cy={s.y} r={s.r * 0.06} fill={s.c} opacity={s.o} />
+        ))}
+        {heroStars.map((s) => (
+            <Fragment>
+                {/* Halo */}
+                <circle cx={s.x} cy={s.y} r={s.r * 0.3} fill={s.c} opacity="0.18" />
+                <circle cx={s.x} cy={s.y} r={s.r * 0.18} fill={s.c} opacity="0.35" />
+                <circle cx={s.x} cy={s.y} r={s.r * 0.08} fill={s.c} opacity={s.o} />
+            </Fragment>
+        ))}
+    </svg>
+
+    {/* Sub-perceptual fractal grain — same texture spirit as the site. */}
+    <div class="cosmic-noise" aria-hidden="true"></div>
+
+    <div class="brand-content">
+        {type === 'icon-only' ? (
+            <div class="icon-only-frame">
+                <BrandIcon size="58%" />
+            </div>
+        ) : (
+            <Fragment>
+                <div class:list={['brand-stack', { 'brand-stack-wide': isWide }]}>
+                    <div class="brand-mark">
+                        <BrandIcon size={isWide ? '14cqi' : '22cqi'} />
+                    </div>
+                    <div class="brand-text">
+                        <h1 class="brand-wordmark">{title}</h1>
+                        <p class="brand-tagline">{tagline}</p>
+                        {isWide && showInfo && (
+                            <div class="brand-info-inline">
+                                <span class="info-chip github">{repoLine}</span>
+                                <span class="info-chip npm">{installLine}</span>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            </Fragment>
+        )}
+
+        {showInfo && !isWide && (
+            <div class="brand-info-row">
+                <span class="info-chip github">{repoLine}</span>
+                <span class="info-chip npm">{installLine}</span>
+            </div>
+        )}
+    </div>
+</div>
+
+<style>
+    .brand-asset-cosmic {
+        --tf-bg: #05060c;
+        --tf-fg: #f5f6f9;
+        --tf-fg-muted: #c7cbe0;
+
+        --tf-gold: #f1c45f;
+        --tf-diamond: #6cb8ff;
+        --tf-amethyst: #b88af7;
+        --tf-pink: #ff6fa8;
+        --tf-turquoize: #5fe3d2;
+        --tf-emerald: #4fd99a;
+        --tf-ruby: #ff5d7a;
+
+        --tf-gold-soft: rgba(241, 196, 95, 0.22);
+        --tf-diamond-soft: rgba(108, 184, 255, 0.20);
+        --tf-amethyst-soft: rgba(184, 138, 247, 0.22);
+        --tf-pink-soft: rgba(255, 111, 168, 0.20);
+        --tf-turquoize-soft: rgba(95, 227, 210, 0.18);
+
+        position: relative;
+        overflow: hidden;
+        color: var(--tf-fg);
+        background: radial-gradient(120% 90% at 50% 55%, #0a0d1a 0%, #05060c 60%, #03040a 100%);
+        container-type: inline-size;
+
+        font-family: 'Public Sans', system-ui, sans-serif;
+        font-feature-settings: 'ss01';
+
+        width: calc(var(--asset-width) * 1px);
+        height: calc(var(--asset-height) * 1px);
+        aspect-ratio: var(--asset-width) / var(--asset-height);
+    }
+
+    /* Preview mode — fluid for the branding page. */
+    :not(.capture-mode).brand-asset-cosmic {
+        width: 100%;
+        height: auto;
+    }
+
+    /* ---------- Layer: cosmic base ---------- */
+    /* A second deep gradient layer that adds a faint chromatic vignette
+     * (cool corners, warm-violet center) before the nebula clouds. */
+    .cosmic-base {
+        position: absolute;
+        inset: 0;
+        background:
+            radial-gradient(60% 70% at 30% 30%, rgba(45, 25, 80, 0.55) 0%, transparent 70%),
+            radial-gradient(70% 60% at 78% 70%, rgba(15, 50, 80, 0.45) 0%, transparent 70%),
+            radial-gradient(140% 100% at 50% 110%, rgba(0, 0, 0, 0.7) 0%, transparent 60%);
+        z-index: 0;
+        pointer-events: none;
+    }
+
+    /* ---------- Layer: nebula clouds (screen-blended) ---------- */
+    /* Stack of 5 large soft radial gradients in jewel hues. mix-blend-mode:
+     * screen so they additively bloom into volumetric color clouds. */
+    .cosmic-clouds {
+        position: absolute;
+        inset: -8%;
+        background:
+            radial-gradient(45% 55% at 22% 38%, var(--tf-amethyst-soft) 0%, transparent 60%),
+            radial-gradient(38% 48% at 70% 32%, var(--tf-pink-soft) 0%, transparent 65%),
+            radial-gradient(55% 60% at 50% 70%, var(--tf-diamond-soft) 0%, transparent 70%),
+            radial-gradient(30% 40% at 82% 78%, var(--tf-turquoize-soft) 0%, transparent 65%),
+            radial-gradient(28% 32% at 12% 82%, rgba(184, 138, 247, 0.18) 0%, transparent 70%),
+            radial-gradient(20% 22% at 60% 50%, rgba(255, 111, 168, 0.14) 0%, transparent 70%);
+        mix-blend-mode: screen;
+        filter: blur(0.8cqi) saturate(1.15);
+        z-index: 1;
+        pointer-events: none;
+    }
+
+    /* Wide variant — panoramic cloud sweep, brand mark anchored left. */
+    .wide .cosmic-clouds {
+        background:
+            radial-gradient(28% 70% at 15% 50%, var(--tf-amethyst-soft) 0%, transparent 60%),
+            radial-gradient(22% 55% at 38% 35%, var(--tf-pink-soft) 0%, transparent 65%),
+            radial-gradient(35% 70% at 60% 65%, var(--tf-diamond-soft) 0%, transparent 70%),
+            radial-gradient(20% 50% at 82% 40%, var(--tf-turquoize-soft) 0%, transparent 65%),
+            radial-gradient(18% 45% at 92% 70%, rgba(184, 138, 247, 0.18) 0%, transparent 70%);
+    }
+
+    /* Icon-only — tight contained nebula bubble. */
+    .icon-only .cosmic-clouds {
+        background:
+            radial-gradient(55% 55% at 35% 35%, var(--tf-amethyst-soft) 0%, transparent 65%),
+            radial-gradient(50% 50% at 70% 60%, var(--tf-diamond-soft) 0%, transparent 70%),
+            radial-gradient(45% 45% at 50% 80%, var(--tf-pink-soft) 0%, transparent 70%),
+            radial-gradient(35% 35% at 75% 25%, var(--tf-turquoize-soft) 0%, transparent 70%);
+    }
+
+    /* ---------- Layer: aurora svg streaks ---------- */
+    .cosmic-aurora {
+        position: absolute;
+        inset: -5%;
+        width: 110%;
+        height: 110%;
+        mix-blend-mode: screen;
+        opacity: 0.85;
+        z-index: 2;
+        pointer-events: none;
+    }
+
+    /* ---------- Layer: god rays ---------- */
+    .cosmic-rays {
+        position: absolute;
+        inset: 0;
+        background:
+            /* Gold ray, narrow, angled from upper-right. */
+            conic-gradient(
+                from 200deg at 50% 38%,
+                transparent 0deg,
+                color-mix(in oklab, var(--tf-gold) 28%, transparent) 6deg,
+                transparent 18deg,
+                transparent 360deg
+            ),
+            /* Amethyst ray, wider, angled from lower-left. */
+                conic-gradient(
+                    from 30deg at 50% 38%,
+                    transparent 0deg,
+                    color-mix(in oklab, var(--tf-amethyst) 22%, transparent) 10deg,
+                    transparent 30deg,
+                    transparent 360deg
+                );
+        opacity: 0.45;
+        mix-blend-mode: screen;
+        filter: blur(1.5cqi);
+        z-index: 2;
+        pointer-events: none;
+    }
+    .wide .cosmic-rays {
+        background:
+            conic-gradient(
+                from 195deg at 18% 50%,
+                transparent 0deg,
+                color-mix(in oklab, var(--tf-gold) 26%, transparent) 5deg,
+                transparent 16deg,
+                transparent 360deg
+            ),
+            conic-gradient(
+                from 25deg at 18% 50%,
+                transparent 0deg,
+                color-mix(in oklab, var(--tf-amethyst) 22%, transparent) 8deg,
+                transparent 26deg,
+                transparent 360deg
+            );
+    }
+    .icon-only .cosmic-rays {
+        background:
+            conic-gradient(
+                from 200deg at 50% 50%,
+                transparent 0deg,
+                color-mix(in oklab, var(--tf-gold) 30%, transparent) 6deg,
+                transparent 18deg,
+                transparent 360deg
+            ),
+            conic-gradient(
+                from 30deg at 50% 50%,
+                transparent 0deg,
+                color-mix(in oklab, var(--tf-amethyst) 22%, transparent) 10deg,
+                transparent 30deg,
+                transparent 360deg
+            );
+    }
+
+    /* ---------- Layer: star field svg ---------- */
+    .cosmic-stars {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        z-index: 3;
+        pointer-events: none;
+    }
+    .cosmic-stars circle {
+        /* Subtle outer halo via SVG paint — drop-shadow filter is too costly
+         * across hundreds of nodes. Rely on density + brightness instead. */
+    }
+
+    /* ---------- Layer: sub-perceptual grain ---------- */
+    .cosmic-noise {
+        position: absolute;
+        inset: 0;
+        opacity: 0.05;
+        background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0.6 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+        background-size: 220px 220px;
+        mix-blend-mode: overlay;
+        z-index: 4;
+        pointer-events: none;
+    }
+
+    /* ---------- Content stack ---------- */
+    .brand-content {
+        position: relative;
+        z-index: 5;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        padding: 6cqi;
+        box-sizing: border-box;
+        gap: 4cqi;
+    }
+
+    /* icon-only — pixel mark anchored as the luminous body. */
+    .icon-only .brand-content {
+        padding: 8cqi;
+        justify-content: center;
+        align-items: center;
+        gap: 0;
+    }
+    .icon-only-frame {
+        position: relative;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 70cqi;
+        max-width: 100%;
+        aspect-ratio: 1;
+    }
+    /* Outer cool diamond glow — biggest, softest. */
+    .icon-only-frame::before {
+        content: '';
+        position: absolute;
+        inset: -10cqi;
+        border-radius: 50%;
+        background: radial-gradient(
+            circle,
+            color-mix(in oklab, var(--tf-diamond) 32%, transparent) 0%,
+            color-mix(in oklab, var(--tf-amethyst) 18%, transparent) 35%,
+            transparent 65%
+        );
+        filter: blur(3cqi);
+        z-index: -2;
+    }
+    /* Inner warm gold corona — tight, bright. */
+    .icon-only-frame::after {
+        content: '';
+        position: absolute;
+        inset: -2cqi;
+        border-radius: 50%;
+        background: radial-gradient(
+            circle,
+            color-mix(in oklab, var(--tf-gold) 38%, transparent) 0%,
+            color-mix(in oklab, var(--tf-pink) 18%, transparent) 35%,
+            transparent 60%
+        );
+        filter: blur(1cqi);
+        z-index: -1;
+    }
+
+    .brand-stack {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+        gap: 3cqi;
+    }
+
+    .brand-stack-wide {
+        flex-direction: row;
+        align-items: center;
+        text-align: left;
+        gap: 4cqi;
+        width: 100%;
+        justify-content: flex-start;
+        padding-inline: 6cqi;
+    }
+    .wide .brand-content {
+        justify-content: center;
+        align-items: stretch;
+        padding: 4cqi 6cqi;
+    }
+    .wide .brand-mark {
+        flex-shrink: 0;
+    }
+    .wide .brand-text {
+        flex: 1;
+        min-width: 0;
+    }
+
+    /* Pixel icon as luminous body — multi-layer drop-shadow corona. */
+    .brand-mark {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        line-height: 0;
+        position: relative;
+        filter:
+            drop-shadow(0 0 1.2cqi color-mix(in oklab, var(--tf-gold) 55%, transparent))
+            drop-shadow(0 0 3cqi color-mix(in oklab, var(--tf-pink) 35%, transparent))
+            drop-shadow(0 0 6cqi color-mix(in oklab, var(--tf-diamond) 40%, transparent))
+            drop-shadow(0 0 10cqi color-mix(in oklab, var(--tf-amethyst) 25%, transparent));
+    }
+
+    .brand-text {
+        display: flex;
+        flex-direction: column;
+        gap: 2cqi;
+        align-items: center;
+    }
+    .brand-stack-wide .brand-text {
+        align-items: flex-start;
+    }
+
+    /* Silkscreen wordmark — emerges from the cosmic dust via gem-tinted glow. */
+    .brand-wordmark {
+        font-family: 'Silkscreen', monospace;
+        font-weight: 700;
+        font-size: clamp(36px, 11cqi, 168px);
+        line-height: 0.95;
+        letter-spacing: -0.04em;
+        color: #ffffff;
+        margin: 0;
+        text-shadow:
+            0 0 0.3cqi rgba(255, 255, 255, 0.95),
+            0 0 1cqi color-mix(in oklab, var(--tf-diamond) 55%, transparent),
+            0 0 2.5cqi color-mix(in oklab, var(--tf-amethyst) 50%, transparent),
+            0 0 5cqi color-mix(in oklab, var(--tf-pink) 35%, transparent);
+    }
+    .banner .brand-wordmark,
+    .wide .brand-wordmark {
+        font-size: clamp(36px, 8cqi, 124px);
+    }
+    .social-x .brand-wordmark {
+        font-size: clamp(36px, 12cqi, 156px);
+    }
+
+    /* Public Sans tagline — quiet, gem-cool register. */
+    .brand-tagline {
+        font-family: 'Public Sans', system-ui, sans-serif;
+        font-weight: 400;
+        font-size: clamp(12px, 2.4cqi, 32px);
+        line-height: 1.5;
+        color: var(--tf-fg-muted);
+        margin: 0;
+        max-width: 70cqi;
+        letter-spacing: -0.005em;
+        text-shadow: 0 0 1.2cqi rgba(5, 6, 12, 0.85);
+    }
+    .wide .brand-tagline {
+        font-size: clamp(11px, 1.8cqi, 22px);
+        max-width: none;
+    }
+    .banner .brand-tagline {
+        font-size: clamp(11px, 2cqi, 26px);
+    }
+
+    /* Info row — JetBrains Mono, gem-mapped chips. */
+    .brand-info-row,
+    .brand-info-inline {
+        display: flex;
+        gap: 4cqi;
+        font-family: 'JetBrains Mono', ui-monospace, monospace;
+        font-size: clamp(9px, 1.4cqi, 16px);
+        font-weight: 500;
+        opacity: 0.95;
+    }
+    .brand-info-row {
+        margin-top: 2cqi;
+    }
+    .wide .brand-info-inline {
+        margin-top: 1.5cqi;
+        font-size: clamp(9px, 1cqi, 14px);
+        gap: 3cqi;
+    }
+    .info-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.6em;
+        white-space: nowrap;
+        letter-spacing: 0.01em;
+        text-shadow: 0 0 1cqi rgba(5, 6, 12, 0.9);
+    }
+    .info-chip.github {
+        color: var(--tf-diamond);
+    }
+    .info-chip.github::before {
+        content: '↗';
+        opacity: 0.7;
+    }
+    .info-chip.npm {
+        color: var(--tf-gold);
+    }
+
+    .asset-preview-link:hover .brand-asset-cosmic {
+        outline: 1px solid color-mix(in oklab, var(--tf-amethyst) 50%, transparent);
+        outline-offset: 4px;
+    }
+</style>

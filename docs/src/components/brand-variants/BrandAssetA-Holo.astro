@@ -1,0 +1,759 @@
+---
+import BrandIcon from '../BrandIcon.astro'
+
+interface Props {
+    id: string
+    type: 'banner' | 'og' | 'wide' | 'social-x' | 'icon-only'
+    title?: string
+    tagline?: string
+    info?: boolean
+    isCapture?: boolean
+}
+
+const {
+    id,
+    type,
+    title = 'flatland',
+    tagline = 'Sprite-first 2D for Three.js + R3F. WebGPU-native.',
+    info = true,
+    isCapture = false,
+} = Astro.props
+
+interface Dimensions {
+    w: number
+    h: number
+}
+
+const dimensions: Record<Props['type'], Dimensions> = {
+    banner: { w: 1280, h: 640 },
+    og: { w: 1200, h: 630 },
+    wide: { w: 3000, h: 1000 },
+    'social-x': { w: 1200, h: 628 },
+    'icon-only': { w: 512, h: 512 },
+}
+
+const { w: width, h: height } = dimensions[type] ?? dimensions['og']
+const showInfo = info && type !== 'icon-only'
+const isWide = type === 'wide'
+
+const repoLine = 'thejustinwalsh/three-flatland'
+const installLine = '# npm i three-flatland@alpha'
+
+// Per-component scoping suffix so multiple instances on a page don't
+// collide on the SVG <defs> filter ids that we reference via filter: url(#…).
+const sid = id
+
+// Pre-compute a static array of holo-fleck sparkles. These are baked
+// into the composition (no JS, no runtime cursor) so the foil reads
+// the same in capture and preview modes.
+const fleckCount = 42
+const flecks = Array.from({ length: fleckCount }, (_, i) => {
+    // Deterministic pseudo-random from index → repeatable across renders.
+    const r = (n: number) => {
+        const x = Math.sin((i + 1) * (n + 0.137)) * 43758.5453
+        return x - Math.floor(x)
+    }
+    const x = r(1) * 100
+    const y = r(2) * 100
+    const size = 0.4 + r(3) * 1.6
+    const rot = r(4) * 360
+    const hue = r(5)
+    // 70% gold, 25% diamond, 5% amethyst.
+    const color =
+        hue < 0.7
+            ? 'var(--tf-gold)'
+            : hue < 0.95
+                ? 'var(--tf-diamond)'
+                : 'var(--tf-amethyst)'
+    const opacity = 0.35 + r(6) * 0.55
+    return { x, y, size, rot, color, opacity }
+})
+---
+
+<div
+    class:list={['brand-asset-root', 'brand-asset-holo', 'not-content', type, { 'capture-mode': isCapture }]}
+    id={id}
+    style={`--asset-width: ${width}; --asset-height: ${height};`}
+>
+    {/* Inline SVG <defs> — filters are baked at a fixed light position
+        so the sheen reads as "frozen mid-tilt." No runtime cursor.
+        Each filter uses feSpecularLighting + a baked fePointLight for
+        material-specific gem behavior. */}
+    <svg class="brand-defs" aria-hidden="true" width="0" height="0">
+        <defs>
+            {/* Gold material — narrow specular lobe, warm spec color, mild
+                bump from low-frequency turbulence. */}
+            <filter id={`mat-gold-${sid}`} x="-10%" y="-10%" width="120%" height="120%">
+                <feTurbulence
+                    type="fractalNoise"
+                    baseFrequency="0.014"
+                    numOctaves="2"
+                    seed="3"
+                    result="bump"
+                />
+                <feSpecularLighting
+                    in="bump"
+                    surfaceScale="3.2"
+                    specularConstant="1.6"
+                    specularExponent="36"
+                    lighting-color="#fff1c2"
+                    result="spec"
+                >
+                    <fePointLight x="280" y="120" z="180" />
+                </feSpecularLighting>
+                <feComposite in="spec" in2="SourceGraphic" operator="in" result="gated" />
+                <feComposite in="SourceGraphic" in2="gated" operator="arithmetic" k1="0" k2="1" k3="0.85" k4="0" />
+            </filter>
+
+            {/* Diamond material — broad specular, cool blue-white, a hint
+                of dispersion via slight RGB stagger on the spec layer. */}
+            <filter id={`mat-diamond-${sid}`} x="-10%" y="-10%" width="120%" height="120%">
+                <feTurbulence
+                    type="fractalNoise"
+                    baseFrequency="0.02"
+                    numOctaves="2"
+                    seed="7"
+                    result="bump"
+                />
+                <feSpecularLighting
+                    in="bump"
+                    surfaceScale="2.6"
+                    specularConstant="1.4"
+                    specularExponent="22"
+                    lighting-color="#e6f2ff"
+                    result="spec"
+                >
+                    <fePointLight x="200" y="80" z="220" />
+                </feSpecularLighting>
+                <feComposite in="spec" in2="SourceGraphic" operator="in" result="gated" />
+                <feComposite in="SourceGraphic" in2="gated" operator="arithmetic" k1="0" k2="1" k3="0.7" k4="0" />
+            </filter>
+
+            {/* Sheen sweep — used by the wordmark "stamp" overlay.
+                Higher specular constant + tight lobe + warm color = the
+                glint of foil-stamped lettering caught at an angle. */}
+            <filter id={`sheen-${sid}`} x="-5%" y="-5%" width="110%" height="110%">
+                <feTurbulence
+                    type="fractalNoise"
+                    baseFrequency="0.012 0.04"
+                    numOctaves="2"
+                    seed="11"
+                    result="bump"
+                />
+                <feSpecularLighting
+                    in="bump"
+                    surfaceScale="2.4"
+                    specularConstant="2.2"
+                    specularExponent="48"
+                    lighting-color="#fff8de"
+                    result="spec"
+                >
+                    <fePointLight x="320" y="60" z="160" />
+                </feSpecularLighting>
+                <feComposite in="spec" in2="SourceGraphic" operator="in" />
+            </filter>
+
+            {/* Holo-fleck noise — turbulence + threshold for the sparkle
+                grain that scatters across the surface beneath the foil. */}
+            <filter id={`fleck-noise-${sid}`} x="0%" y="0%" width="100%" height="100%">
+                <feTurbulence
+                    type="fractalNoise"
+                    baseFrequency="1.6"
+                    numOctaves="1"
+                    seed="2"
+                    result="t"
+                />
+                <feColorMatrix
+                    in="t"
+                    type="matrix"
+                    values="0 0 0 0 1
+                            0 0 0 0 0.85
+                            0 0 0 0 0.4
+                            0 0 0 9 -7"
+                />
+            </filter>
+
+            {/* Reusable rainbow conic-style gradient for the foil base.
+                Implemented as a stack of <stop>s in a linear gradient that
+                we then rotate via patternTransform. We keep this as a
+                spectral sweep so it reads "lenticular" across the sheen
+                band. */}
+            <linearGradient id={`spectral-${sid}`} x1="0%" y1="0%" x2="100%" y2="0%">
+                <stop offset="0%" stop-color="#f1c45f" />
+                <stop offset="18%" stop-color="#ff8aa1" />
+                <stop offset="36%" stop-color="#b88af7" />
+                <stop offset="55%" stop-color="#6cb8ff" />
+                <stop offset="74%" stop-color="#5fe3c6" />
+                <stop offset="92%" stop-color="#f1c45f" />
+                <stop offset="100%" stop-color="#f1c45f" />
+            </linearGradient>
+        </defs>
+    </svg>
+
+    {/* L0 — base substrate. Near-black with a subtle bottom-up vignette so
+        the upper foil reads as catching ambient room light. */}
+    <div class="brand-bg-substrate" aria-hidden="true"></div>
+
+    {/* L1 — foil base. Layered conic gradients with mix-blend-mode for the
+        spectral-rainbow shimmer characteristic of holo foil. Two stacked
+        conic layers at offset centers + one diagonal sheen band. */}
+    <div class="brand-foil" aria-hidden="true">
+        <div class="foil-layer foil-conic-a"></div>
+        <div class="foil-layer foil-conic-b"></div>
+        <div class="foil-layer foil-band"></div>
+    </div>
+
+    {/* L2 — holo flecks. Statically-placed sparkle dots, sized + tinted
+        from the gem palette, with random rotation for variety. */}
+    <div class="brand-flecks" aria-hidden="true">
+        {flecks.map((f) => (
+            <span
+                class="fleck"
+                style={`left: ${f.x}%; top: ${f.y}%; width: ${f.size}cqi; height: ${f.size * 0.18}cqi; transform: translate(-50%, -50%) rotate(${f.rot}deg); background: ${f.color}; opacity: ${f.opacity};`}
+            ></span>
+        ))}
+    </div>
+
+    {/* L3 — fractal noise grain. Sub-perceptual texture, additive blend. */}
+    <div class="brand-bg-noise" aria-hidden="true"></div>
+
+    {/* L4 — vignette / edge falloff. Frames the centerpiece and keeps the
+        foil from feeling like it bleeds off the edges. */}
+    <div class="brand-vignette" aria-hidden="true"></div>
+
+    <div class="brand-content">
+        {type === 'icon-only' ? (
+            <div class="icon-only-frame">
+                {/* Gem-outline glow ring — diamond inner, gold outer. */}
+                <div class="icon-ring" aria-hidden="true"></div>
+                <div class="icon-card">
+                    <BrandIcon size="64%" />
+                </div>
+            </div>
+        ) : (
+            <Fragment>
+                <div class:list={['brand-stack', { 'brand-stack-wide': isWide }]}>
+                    <div class="brand-mark">
+                        <div class="mark-card">
+                            <BrandIcon size={isWide ? '14cqi' : '22cqi'} />
+                        </div>
+                    </div>
+                    <div class="brand-text">
+                        {/* Foil-stamped wordmark — three layered copies:
+                            (1) chromatic-aberration ghost (cyan, offset -1px),
+                            (2) chromatic-aberration ghost (red, offset +1px),
+                            (3) the sheen-filtered foil stamp itself. */}
+                        <h1 class="brand-wordmark" style={`--sheen-filter: url(#sheen-${sid});`}>
+                            <span class="wm-ghost wm-ghost-c" aria-hidden="true">{title}</span>
+                            <span class="wm-ghost wm-ghost-m" aria-hidden="true">{title}</span>
+                            <span class="wm-stamp">{title}</span>
+                        </h1>
+                        <p class="brand-tagline">{tagline}</p>
+                        {isWide && showInfo && (
+                            <div class="brand-info-inline">
+                                <span class="info-chip github">{repoLine}</span>
+                                <span class="info-chip npm">{installLine}</span>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            </Fragment>
+        )}
+
+        {showInfo && !isWide && (
+            <div class="brand-info-row">
+                <span class="info-chip github">{repoLine}</span>
+                <span class="info-chip npm">{installLine}</span>
+            </div>
+        )}
+    </div>
+</div>
+
+<style>
+    /* All gem tokens mirrored locally so capture mode is hermetic.
+     * No reliance on parent :root variables. */
+    .brand-asset-root {
+        --tf-bg: #111418;
+        --tf-bg-deep: #0a0c10;
+        --tf-fg: #f5f6f9;
+        --tf-fg-muted: #b3b8c4;
+        --tf-gold: #f1c45f;
+        --tf-gold-deep: #c8983c;
+        --tf-gold-soft: rgba(241, 196, 95, 0.18);
+        --tf-diamond: #6cb8ff;
+        --tf-diamond-deep: #4a8fd6;
+        --tf-diamond-soft: rgba(108, 184, 255, 0.16);
+        --tf-amethyst: #b88af7;
+        --tf-pink: #ff8aa1;
+        --tf-emerald: #5fe3c6;
+        --tf-border: rgba(255, 255, 255, 0.08);
+
+        position: relative;
+        overflow: hidden;
+        color: var(--tf-fg);
+        background: radial-gradient(120% 120% at 50% 0%, #1a1f2a 0%, #0a0c10 70%);
+        container-type: inline-size;
+        isolation: isolate;
+
+        font-family: 'Public Sans', system-ui, sans-serif;
+        font-feature-settings: 'ss01';
+
+        width: calc(var(--asset-width) * 1px);
+        height: calc(var(--asset-height) * 1px);
+        aspect-ratio: var(--asset-width) / var(--asset-height);
+    }
+
+    /* Preview mode — fluid; capture mode pins exact dimensions. */
+    :not(.capture-mode).brand-asset-root {
+        width: 100%;
+        height: auto;
+    }
+
+    /* Off-screen <defs> carrier — must remain in DOM but invisible. */
+    .brand-defs {
+        position: absolute;
+        width: 0;
+        height: 0;
+        overflow: hidden;
+        pointer-events: none;
+    }
+
+    /* L0 — substrate. Subtle warm-cool diagonal so the foil sits on a
+     * surface that already has a sense of light direction. */
+    .brand-bg-substrate {
+        position: absolute;
+        inset: 0;
+        background:
+            radial-gradient(80% 60% at 22% 18%, rgba(241, 196, 95, 0.07) 0%, transparent 60%),
+            radial-gradient(90% 70% at 82% 88%, rgba(108, 184, 255, 0.06) 0%, transparent 65%),
+            linear-gradient(135deg, #11151c 0%, #0a0c10 100%);
+        z-index: 0;
+        pointer-events: none;
+    }
+
+    /* L1 — the foil itself. Three stacked layers with mix-blend-mode
+     * compositing; the conic sweeps deliver the lenticular spectrum,
+     * the diagonal band deposits the sheen. */
+    .brand-foil {
+        position: absolute;
+        inset: 0;
+        z-index: 1;
+        pointer-events: none;
+        overflow: hidden;
+    }
+    .foil-layer {
+        position: absolute;
+        inset: -10%;
+    }
+
+    /* Layer A — conic sweep centered upper-right. Spectral rainbow with
+     * the gem palette; blended through "color-dodge" gives the bright,
+     * lifted-off-the-surface glow that sells holo. */
+    .foil-conic-a {
+        background: conic-gradient(
+            from 220deg at 70% 30%,
+            rgba(241, 196, 95, 0.35) 0deg,
+            rgba(255, 138, 161, 0.30) 60deg,
+            rgba(184, 138, 247, 0.32) 120deg,
+            rgba(108, 184, 255, 0.34) 180deg,
+            rgba(95, 227, 198, 0.28) 240deg,
+            rgba(241, 196, 95, 0.35) 360deg
+        );
+        mix-blend-mode: color-dodge;
+        opacity: 0.55;
+        filter: blur(1.2cqi);
+    }
+
+    /* Layer B — second conic at the opposite center, blended with
+     * "soft-light" so the spectrum reads doubled-and-shifted, like the
+     * iridescent layer of a real holo card. */
+    .foil-conic-b {
+        background: conic-gradient(
+            from 40deg at 25% 75%,
+            rgba(108, 184, 255, 0.32) 0deg,
+            rgba(184, 138, 247, 0.28) 80deg,
+            rgba(255, 138, 161, 0.30) 160deg,
+            rgba(241, 196, 95, 0.34) 240deg,
+            rgba(95, 227, 198, 0.26) 320deg,
+            rgba(108, 184, 255, 0.32) 360deg
+        );
+        mix-blend-mode: soft-light;
+        opacity: 0.85;
+        filter: blur(0.8cqi);
+    }
+
+    /* Diagonal sheen band — the high-luminance streak that says "caught
+     * at an angle." Linear gradient with a hot white core and gem-tinted
+     * shoulders, blended "screen" so it lifts highlights without
+     * desaturating the conic layers. */
+    .foil-band {
+        background: linear-gradient(
+            115deg,
+            transparent 30%,
+            rgba(241, 196, 95, 0.12) 42%,
+            rgba(255, 248, 222, 0.55) 49%,
+            rgba(255, 255, 255, 0.65) 50%,
+            rgba(255, 248, 222, 0.55) 51%,
+            rgba(108, 184, 255, 0.12) 58%,
+            transparent 70%
+        );
+        mix-blend-mode: screen;
+        opacity: 0.55;
+    }
+
+    /* Wide / banner aspects benefit from the sheen sweeping more
+     * horizontally, social-x and og want a tighter centered flare,
+     * icon-only wants a single warm flare top-left → bottom-right. */
+    .wide .foil-band {
+        background: linear-gradient(
+            100deg,
+            transparent 15%,
+            rgba(241, 196, 95, 0.10) 30%,
+            rgba(255, 248, 222, 0.45) 49.5%,
+            rgba(255, 255, 255, 0.6) 50%,
+            rgba(255, 248, 222, 0.45) 50.5%,
+            rgba(108, 184, 255, 0.10) 70%,
+            transparent 85%
+        );
+    }
+    .icon-only .foil-band {
+        background: linear-gradient(
+            135deg,
+            transparent 25%,
+            rgba(241, 196, 95, 0.18) 40%,
+            rgba(255, 255, 255, 0.55) 50%,
+            rgba(108, 184, 255, 0.18) 60%,
+            transparent 75%
+        );
+        opacity: 0.5;
+    }
+    .icon-only .foil-conic-a,
+    .icon-only .foil-conic-b {
+        opacity: 0.7;
+    }
+
+    /* L2 — holo flecks. Static SVG-ish dots sprinkled across the surface.
+     * Screen-blended so they read as light, not paint. */
+    .brand-flecks {
+        position: absolute;
+        inset: 0;
+        z-index: 2;
+        pointer-events: none;
+        mix-blend-mode: screen;
+    }
+    .fleck {
+        position: absolute;
+        display: block;
+        border-radius: 999px;
+        box-shadow: 0 0 0.4cqi currentColor;
+        filter: blur(0.05cqi);
+    }
+
+    /* L3 — sub-perceptual fractal noise. Same recipe as the canonical
+     * BrandAsset, kept additive so the foil retains its lift. */
+    .brand-bg-noise {
+        position: absolute;
+        inset: 0;
+        opacity: 0.05;
+        background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0.6 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+        background-size: 220px 220px;
+        mix-blend-mode: overlay;
+        z-index: 3;
+        pointer-events: none;
+    }
+
+    /* L4 — vignette. Tames the foil at the edges so the centerpiece
+     * sits in a frame. Multiplies the corners darker. */
+    .brand-vignette {
+        position: absolute;
+        inset: 0;
+        z-index: 4;
+        pointer-events: none;
+        background: radial-gradient(
+            120% 90% at 50% 50%,
+            transparent 40%,
+            rgba(10, 12, 16, 0.55) 90%,
+            rgba(10, 12, 16, 0.85) 100%
+        );
+    }
+
+    /* Content layer — sits above the foil. */
+    .brand-content {
+        position: relative;
+        z-index: 5;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        padding: 6cqi;
+        box-sizing: border-box;
+        gap: 4cqi;
+    }
+
+    /* icon-only — the foil substrate is the whole card; the icon is
+     * mounted on it with a thin gem outline. */
+    .icon-only .brand-content {
+        padding: 8cqi;
+        justify-content: center;
+        align-items: center;
+        gap: 0;
+    }
+    .icon-only-frame {
+        position: relative;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 78cqi;
+        max-width: 100%;
+        aspect-ratio: 1;
+    }
+    /* The "gem outline" — diamond-blue inner stroke + gold outer halo,
+     * suggesting the icon is a small enameled medallion mounted onto
+     * the holographic substrate. */
+    .icon-ring {
+        position: absolute;
+        inset: 0;
+        border-radius: 6cqi;
+        background:
+            linear-gradient(
+                135deg,
+                color-mix(in oklab, var(--tf-gold) 65%, transparent) 0%,
+                color-mix(in oklab, var(--tf-diamond) 55%, transparent) 50%,
+                color-mix(in oklab, var(--tf-amethyst) 60%, transparent) 100%
+            );
+        padding: 0.6cqi;
+        z-index: 0;
+        box-shadow:
+            0 0 4cqi color-mix(in oklab, var(--tf-gold) 35%, transparent),
+            0 1.5cqi 5cqi color-mix(in oklab, var(--tf-diamond) 25%, transparent);
+        /* Use mask to cut a hole in the middle so it reads as a frame,
+         * not a fill. */
+        -webkit-mask:
+            linear-gradient(#000 0 0) content-box,
+            linear-gradient(#000 0 0);
+        -webkit-mask-composite: xor;
+                mask-composite: exclude;
+    }
+    .icon-card {
+        position: relative;
+        z-index: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: calc(100% - 4cqi);
+        height: calc(100% - 4cqi);
+        background: rgba(10, 12, 16, 0.55);
+        border-radius: 5cqi;
+        backdrop-filter: blur(1cqi);
+        box-shadow:
+            inset 0 0 0 0.15cqi rgba(255, 255, 255, 0.08),
+            inset 0 -2cqi 4cqi rgba(0, 0, 0, 0.45);
+    }
+
+    /* Stacked composition for banner / og / social-x. */
+    .brand-stack {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+        gap: 3cqi;
+    }
+    .brand-stack-wide {
+        flex-direction: row;
+        align-items: center;
+        text-align: left;
+        gap: 4cqi;
+        width: 100%;
+        justify-content: flex-start;
+        padding-inline: 6cqi;
+    }
+    .wide .brand-content {
+        justify-content: center;
+        align-items: stretch;
+        padding: 4cqi 6cqi;
+    }
+    .wide .brand-mark {
+        flex-shrink: 0;
+    }
+    .wide .brand-text {
+        flex: 1;
+        min-width: 0;
+    }
+
+    .brand-mark {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        line-height: 0;
+    }
+    /* The icon's "mounted" card — same enameled-medallion treatment as
+     * the icon-only variant, but smaller. Inner shadow + gem rim. */
+    .mark-card {
+        position: relative;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 1.5cqi;
+        background: rgba(10, 12, 16, 0.45);
+        border-radius: 2cqi;
+        box-shadow:
+            inset 0 0 0 0.12cqi color-mix(in oklab, var(--tf-gold) 35%, transparent),
+            0 1.5cqi 3cqi color-mix(in oklab, var(--tf-gold) 28%, transparent),
+            0 0 2cqi color-mix(in oklab, var(--tf-diamond) 18%, transparent);
+    }
+
+    .brand-text {
+        display: flex;
+        flex-direction: column;
+        gap: 2cqi;
+        align-items: center;
+    }
+    .brand-stack-wide .brand-text {
+        align-items: flex-start;
+    }
+
+    /* Silkscreen wordmark — STAMPED in foil. We render three layered
+     * copies of the text:
+     *   (1) cyan ghost, offset -1px x / -0.5px y
+     *   (2) magenta-red ghost, offset +1px x / +0.5px y
+     *   (3) sheen-filtered foreground stamp, sitting on top
+     * The first two ghosts are blended through "screen" so they read
+     * as chromatic aberration in the highlight, not stacked tints in
+     * the shadow. The stamp itself uses a clipped spectral gradient
+     * fill so the type IS the holographic surface.
+     */
+    .brand-wordmark {
+        position: relative;
+        font-family: 'Silkscreen', monospace;
+        font-weight: 700;
+        font-size: clamp(36px, 11cqi, 168px);
+        line-height: 0.95;
+        letter-spacing: -0.04em;
+        margin: 0;
+        color: var(--tf-fg);
+        /* Drop shadow gives the stamp physical lift off the substrate. */
+        filter:
+            drop-shadow(0 0.2cqi 0.4cqi rgba(0, 0, 0, 0.6))
+            drop-shadow(0 0 0.6cqi color-mix(in oklab, var(--tf-gold) 45%, transparent));
+    }
+    .banner .brand-wordmark,
+    .wide .brand-wordmark {
+        font-size: clamp(36px, 8cqi, 124px);
+    }
+    .social-x .brand-wordmark {
+        font-size: clamp(36px, 12cqi, 156px);
+    }
+
+    /* The three stacked text copies share absolute centering on the h1
+     * baseline; only the stamp (third) participates in layout flow. */
+    .wm-ghost {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        display: block;
+        white-space: nowrap;
+        mix-blend-mode: screen;
+    }
+    /* Cyan-shifted ghost — channel offset to the upper-left. */
+    .wm-ghost-c {
+        color: #4ad6ff;
+        transform: translate(-0.12cqi, -0.06cqi);
+        opacity: 0.8;
+    }
+    /* Magenta-red ghost — channel offset to the lower-right. */
+    .wm-ghost-m {
+        color: #ff5f9c;
+        transform: translate(0.12cqi, 0.06cqi);
+        opacity: 0.8;
+    }
+    /* The foil stamp itself — a clipped spectral gradient gives every
+     * letter the lenticular shimmer; the sheen filter (when supported)
+     * adds the specular highlight on top. background-clip: text is the
+     * key — the type IS the foil. */
+    .wm-stamp {
+        position: relative;
+        display: inline-block;
+        background: linear-gradient(
+            105deg,
+            #f1c45f 0%,
+            #fff8de 18%,
+            #ff8aa1 32%,
+            #b88af7 48%,
+            #6cb8ff 64%,
+            #fff8de 80%,
+            #f1c45f 100%
+        );
+        background-size: 220% 100%;
+        background-position: 30% 50%;
+        -webkit-background-clip: text;
+                background-clip: text;
+        -webkit-text-fill-color: transparent;
+                color: transparent;
+        /* Subtle inner gold glow on the stamp itself. */
+        text-shadow: none;
+    }
+
+    /* Public Sans tagline — engineering-log register. */
+    .brand-tagline {
+        font-family: 'Public Sans', system-ui, sans-serif;
+        font-weight: 400;
+        font-size: clamp(12px, 2.4cqi, 32px);
+        line-height: 1.5;
+        color: var(--tf-fg-muted);
+        margin: 0;
+        max-width: 70cqi;
+        letter-spacing: -0.005em;
+        text-shadow: 0 0.1cqi 0.4cqi rgba(0, 0, 0, 0.65);
+    }
+    .wide .brand-tagline {
+        font-size: clamp(11px, 1.8cqi, 22px);
+        max-width: none;
+    }
+    .banner .brand-tagline {
+        font-size: clamp(11px, 2cqi, 26px);
+    }
+
+    /* Info row — JetBrains Mono dev register with gem mapping. */
+    .brand-info-row,
+    .brand-info-inline {
+        display: flex;
+        gap: 4cqi;
+        font-family: 'JetBrains Mono', ui-monospace, monospace;
+        font-size: clamp(9px, 1.4cqi, 16px);
+        font-weight: 500;
+        opacity: 0.95;
+    }
+    .brand-info-row {
+        margin-top: 2cqi;
+    }
+    .wide .brand-info-inline {
+        margin-top: 1.5cqi;
+        font-size: clamp(9px, 1cqi, 14px);
+        gap: 3cqi;
+    }
+    .info-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.6em;
+        white-space: nowrap;
+        letter-spacing: 0.01em;
+        text-shadow: 0 0.1cqi 0.3cqi rgba(0, 0, 0, 0.7);
+    }
+    .info-chip.github {
+        color: var(--tf-diamond);
+    }
+    .info-chip.github::before {
+        content: '↗';
+        opacity: 0.7;
+    }
+    .info-chip.npm {
+        color: var(--tf-gold);
+    }
+
+    /* Hover affordance for branding-page preview links. */
+    .asset-preview-link:hover .brand-asset-root {
+        outline: 1px solid color-mix(in oklab, var(--tf-gold) 40%, transparent);
+        outline-offset: 4px;
+    }
+</style>
