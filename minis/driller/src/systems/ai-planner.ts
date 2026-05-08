@@ -18,6 +18,7 @@ import {
 void TILE_SOIL // import kept for clarity in passability rules
 import { MOOD_SWITCH_THRESHOLD, PLAN_COMMIT_TICKS } from '../constants'
 import { bfsNextStep } from '../lib/bfs'
+import { isFreeFall } from '../biomes'
 
 interface DrillerCell {
   col: number
@@ -209,6 +210,20 @@ export function selectPlanner(world: World): PlannerName {
   const grid = world.get(Grid)
   if (driller && grid) {
     const d = driller.get(Driller)!
+
+    // FREE-FALL OVERRIDE: while in the void band the driller is on a
+    // gem-collection sortie — max greed, force seeker, ignore mood
+    // hysteresis. The seeker's BFS already handles diagonal-fall
+    // pathing through AIR.
+    if (isFreeFall(d.row)) {
+      moodEntity.set(Mood, {
+        planner: 'seeker',
+        switchAtTick: gs.tick,
+        greed: 1.0,
+      })
+      return 'seeker'
+    }
+
     let gemVisible = false
     world.query(Gem).forEach((entity) => {
       if (gemVisible) return

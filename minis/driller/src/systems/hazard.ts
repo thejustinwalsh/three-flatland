@@ -88,16 +88,21 @@ export function hazardSpawnSystem(world: World): void {
     const col = Math.max(0, Math.min(PLAY_COLS - 1, d.col + dc))
     // Need topRow itself to be AIR (the rock spawns there visibly).
     if (tiles[topRow * cols + col] !== TILE_AIR) continue
-    // Walk down from topRow+1 — need at least MIN_FALL_CELLS AIR before any solid.
-    let airCells = 0
-    for (let r = topRow + 1; r < rows; r++) {
-      if (tiles[r * cols + col] === TILE_AIR) {
-        airCells++
-        continue
+    // Strict hole rule: the column must be CONTINUOUS AIR from playfield
+    // top all the way down to at least `driller.row + MIN_FALL_CELLS`.
+    // This guarantees the rock has somewhere to actually fall — right
+    // after a void, the driller is at the new biome's surface and no
+    // column has been drilled yet, so no rocks can spawn until the
+    // driller has actively dug a hole.
+    const needRow = Math.min(rows - 1, d.row + MIN_FALL_CELLS)
+    let blocked = false
+    for (let r = topRow + 1; r <= needRow; r++) {
+      if (tiles[r * cols + col] !== TILE_AIR) {
+        blocked = true
+        break
       }
-      break
     }
-    if (airCells < MIN_FALL_CELLS) continue
+    if (blocked) continue
     candidates.push({ col, warningRow: topRow })
   }
   if (candidates.length === 0) return
