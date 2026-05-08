@@ -12,10 +12,10 @@ import {
   Grid,
   TILE_AIR,
   TILE_EXPLOSIVE,
-  TILE_FIXTURE_BASE,
   TILE_ROCK,
   TILE_SOIL,
   TILE_STONE,
+  isFixtureTile,
 } from '../traits'
 import { MIN_PLAY_ROWS, PLAY_COLS, TILE_PX } from '../constants'
 import { biomeAt } from '../biomes'
@@ -34,9 +34,13 @@ const POOL_SIZE = PLAY_COLS * POOL_ROWS
 const TINT_ROCK = [0.55, 0.45, 0.35] as const // breakable rock — distinct from STONE
 const TINT_EXPLOSIVE = [0.85, 0.20, 0.15] as const
 const TINT_EXPLOSIVE_LIT = [1.0, 0.55, 0.20] as const // pulsing when triggered
-const TINT_FIXTURE_BONE = [0.91, 0.90, 0.83] as const
-const TINT_FIXTURE_MUSHROOM = [0.66, 0.55, 0.98] as const
-const TINT_FIXTURE_CRYSTAL = [0.49, 0.23, 0.93] as const
+// Unified placeholder amber — "honeycomb / safe haven" colour, distinct
+// from biome palettes (browns/greens/purples), rocks (gray-tan), and
+// explosives (red). All five fixture variants render with this tint
+// until the proper art pass introduces per-variant sprites; the visual
+// goal here is "this is mother nature's safe haven, no matter what
+// kind of fixture it is".
+const TINT_FIXTURE = [0.88, 0.74, 0.40] as const
 // Sag lifecycle visual tiers. PRECARIOUS reads as "this is becoming
 // unstable", SAG reads as "this WILL fall", and SHAKE adds rumble on
 // top of the SAG tint. The constants are tuned so each tier is
@@ -67,12 +71,7 @@ function pickBaseTint(
   if (tile === TILE_STONE) return palette.stone
   if (tile === TILE_ROCK) return TINT_ROCK
   if (tile === TILE_EXPLOSIVE) return triggeredExplosive ? TINT_EXPLOSIVE_LIT : TINT_EXPLOSIVE
-  if (tile >= TILE_FIXTURE_BASE && tile < TILE_FIXTURE_BASE + 8) {
-    const v = tile - TILE_FIXTURE_BASE
-    if (v === 0) return TINT_FIXTURE_BONE
-    if (v === 1) return TINT_FIXTURE_MUSHROOM
-    return TINT_FIXTURE_CRYSTAL
-  }
+  if (isFixtureTile(tile)) return TINT_FIXTURE
   return palette.edge
 }
 

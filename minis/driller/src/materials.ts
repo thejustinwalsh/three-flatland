@@ -12,9 +12,10 @@ export const TILE_COLORS = {
   soilEdge: '#6b4a2b',
   soilDeep: '#5d3f24',
   stone: '#71717a',
-  fixtureBone: '#e7e5d4',
-  fixtureMushroom: '#a78bfa',
-  fixtureCrystal: '#7c3aed',
+  // Unified amber placeholder — fixtures all render the same colour
+  // until per-variant sprites land with the art pass. See
+  // TileRenderer's TINT_FIXTURE for the matching tint vector.
+  fixture: '#e0bd66',
   gemEmerald: '#34d399',
   gemTopaz: '#fcd34d',
   gemRuby: '#f43f5e',

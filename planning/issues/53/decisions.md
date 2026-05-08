@@ -300,3 +300,15 @@ Hard rules:
 - `… non-stone non-soil neighbors (fixture, AIR) are untouched`
 
 **Verification:** 119/119 unit tests pass (was 114/114; +5 new). Typecheck clean.
+
+## Plan 1 / item F — fixture placeholder amber tint
+**File:** `minis/driller/src/components/TileRenderer.tsx`, `src/materials.ts`
+**Date:** 2026-05-08
+
+**Decision:** Collapse the three placeholder fixture tints (bone, mushroom, crystal) into a single unified amber `TINT_FIXTURE = [0.88, 0.74, 0.40]`. All five fixture variants (`TILE_FIXTURE_BASE+0..+4`) render with this color until per-variant sprites land with the proper art pass.
+
+**Why:** the code wasn't really showing three distinct fixtures — variants 2-4 were all rendering as `TINT_FIXTURE_CRYSTAL` (the "else" branch of the bone/mushroom/crystal switch), and the bone color (`[0.91, 0.90, 0.83]`) blended too easily with deep biome soils. The unified amber gives fixtures a single instantly-recognizable visual identity ("mother nature's safe haven"), distinct from biome palettes (browns/greens/purples), rocks (gray-tan), and explosives (red).
+
+**Side cleanup:** the renderer's fixture range check was using the off-by-3 `< TILE_FIXTURE_BASE + 8` pattern (same latent bug item A fixed in driller.ts and ai-planner.ts — would mis-classify TILE_ROCK and TILE_EXPLOSIVE as fixtures). Replaced with the canonical `isFixtureTile` helper. Also dropped the obsolete `fixtureBone / fixtureMushroom / fixtureCrystal` keys from `TILE_COLORS` in `materials.ts`; replaced with a single `fixture` key.
+
+**Verification:** 119/119 unit tests pass; typecheck clean. Visual check deferred — placeholder hue change has no behavioral consequences and the integration suite doesn't gate on render output.
