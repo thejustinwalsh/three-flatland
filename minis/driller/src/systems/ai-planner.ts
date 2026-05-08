@@ -44,18 +44,75 @@ export function planGreedy(world: World, d: DrillerCell): [number, number] | nul
   return null
 }
 
+/**
+ * Line-of-sight (LOS) for the gem-pull heuristic. Two cases count:
+ *
+ *   1. Same row as the driller, with every cell between them already
+ *      AIR. Walk-and-grab — no digging required.
+ *   2. Same column on a row above the driller, where the gem is "stuck
+ *      in a rock" overhead. The driller can't reach it directly but
+ *      shouldn't ignore it either — drilling up will eventually free
+ *      it, or a hazard rock might land near it.
+ *
+ * Diagonal and straight-down LOS are intentionally excluded — straight
+ * down is the default greedy path anyway, and diagonal lines aren't
+ * walkable on a 4-connected grid.
+ */
+function hasLOS(
+  grid: { cols: number; tiles: Uint8Array },
+  dc: number,
+  dr: number,
+  gc: number,
+  gr: number,
+): boolean {
+  const { cols, tiles } = grid
+  if (dr === gr) {
+    const lo = Math.min(dc, gc)
+    const hi = Math.max(dc, gc)
+    for (let c = lo + 1; c < hi; c++) {
+      if (tiles[dr * cols + c] !== TILE_AIR) return false
+    }
+    return true
+  }
+  if (dc === gc && gr < dr) {
+    // Gem above the driller, pinned overhead. Treat as LOS regardless
+    // of whatever soil/rock sits between — the AI should weight these
+    // gems heavily so it considers tactical drill-ups.
+    const overhead = tiles[gr * cols + gc]
+    if (overhead === TILE_ROCK || overhead === TILE_SOIL) return true
+  }
+  return false
+}
+
 export function planSeeker(world: World, d: DrillerCell): [number, number] | null {
   const grid = world.get(Grid)
   if (!grid) return null
   const { cols, rows, tiles } = grid
 
-  const gemSet = new Set<number>()
+  // First pass: gems with direct cardinal LOS through AIR. These are the
+  // strongest pull — a gem the driller can visibly see at the end of a
+  // tunnel should never lose out to a buried gem behind soil. We also
+  // give LOS gems a much wider scan range (LOS_SCAN) since you can see
+  // farther through a tunnel than you'd reasonably dig.
+  const losGems = new Set<number>()
+  const buriedGems = new Set<number>()
+  const LOS_SCAN = 18
+  const BURIED_SCAN = 12
   world.query(Gem).forEach((entity) => {
     const g = entity.get(Gem)
     if (!g || g.collected || g.scatteredUntilTick > 0) return
-    if (Math.abs(g.col - d.col) + Math.abs(g.row - d.row) > 12) return
-    gemSet.add(g.row * cols + g.col)
+    const dist = Math.abs(g.col - d.col) + Math.abs(g.row - d.row)
+    if (dist <= LOS_SCAN && hasLOS(grid, d.col, d.row, g.col, g.row)) {
+      losGems.add(g.row * cols + g.col)
+      return
+    }
+    if (dist <= BURIED_SCAN) buriedGems.add(g.row * cols + g.col)
   })
+
+  // LOS gems take priority. Only fall back to buried gems if no LOS
+  // candidate exists, so the seeker never detours through soil while a
+  // visible gem sits at the end of an open tunnel.
+  const gemSet = losGems.size > 0 ? losGems : buriedGems
   if (gemSet.size === 0) return null
 
   return bfsNextStep(
@@ -70,9 +127,10 @@ export function planSeeker(world: World, d: DrillerCell): [number, number] | nul
       // Stone, rock and fixtures block the path entirely.
       if (t === TILE_STONE || t === TILE_ROCK) return false
       if (isFixture(t)) return false
-      // Gravity rule: an UPWARD step (r < fromR) is only valid if the
-      // destination is already AIR. The driller can't dig up.
-      if (fromR >= 0 && r < fromR && t !== TILE_AIR) return false
+      // Gravity-strict: the driller never walks up. Reject any upward
+      // step. (Drilling-up is a separate tactical action, not a pathing
+      // primitive.)
+      if (fromR >= 0 && r < fromR) return false
       return true
     },
     6,
@@ -105,7 +163,8 @@ export function planCautious(world: World, d: DrillerCell): [number, number] | n
     const t = tiles[r * cols + c]
     if (t === undefined) return false
     if (t !== TILE_AIR && t !== TILE_SOIL) return false
-    if (fromR >= 0 && r < fromR && t !== TILE_AIR) return false
+    // Same gravity rule: never walk up.
+    if (fromR >= 0 && r < fromR) return false
     return true
   }
 
@@ -135,6 +194,7 @@ function isFixture(t: number): boolean {
  * imminent crush hazards override everything.
  */
 const GEM_SCAN_RADIUS = 6
+const GEM_LOS_SCAN_RADIUS = 18
 
 export function selectPlanner(world: World): PlannerName {
   const moodEntity = world.queryFirst(Mood)
@@ -143,17 +203,23 @@ export function selectPlanner(world: World): PlannerName {
   const mood = moodEntity.get(Mood)!
 
   // Hard rule: visible gem → seeker. No mood gating.
+  // LOS gems pull from far (clear tunnel = strong magnet); buried gems
+  // only count within the close scan radius.
   const driller = world.queryFirst(Driller)
-  if (driller) {
+  const grid = world.get(Grid)
+  if (driller && grid) {
     const d = driller.get(Driller)!
     let gemVisible = false
     world.query(Gem).forEach((entity) => {
       if (gemVisible) return
       const g = entity.get(Gem)
       if (!g || g.collected || g.scatteredUntilTick > 0) return
-      if (Math.abs(g.col - d.col) + Math.abs(g.row - d.row) <= GEM_SCAN_RADIUS) {
+      const dist = Math.abs(g.col - d.col) + Math.abs(g.row - d.row)
+      if (dist <= GEM_LOS_SCAN_RADIUS && hasLOS(grid, d.col, d.row, g.col, g.row)) {
         gemVisible = true
+        return
       }
+      if (dist <= GEM_SCAN_RADIUS) gemVisible = true
     })
     if (gemVisible) {
       if (mood.planner !== 'seeker') {

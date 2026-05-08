@@ -12,10 +12,19 @@ export const Driller = trait({
    * Current cell (col, row) — integer. The driller occupies this cell as
    * AIR; the cell directly below (col, row+1) is the SUPPORT they're
    * standing on. If the support cell becomes AIR, gravity drops the
-   * driller one row per FALL_INTERVAL_MS.
+   * driller one row per step interval.
    */
   col: 9,
   row: 0,
+  /**
+   * The previous cell the driller was in. We snap (col,row) to the
+   * destination at the START of a step, then linearly lerp the visible
+   * pixel position from (prevCol,prevRow) → (col,row) across the
+   * step's cooldown window. This is what gives walking and falling
+   * the same uniform per-cell cadence with smooth interpolation.
+   */
+  prevCol: 9,
+  prevRow: 0,
   /** Floating-point world-pixel position; used during smooth animation. */
   px: 0,
   py: 0,
@@ -25,6 +34,12 @@ export const Driller = trait({
   digCooldownMs: 0,
   /** Cooldown until next gravity step when falling (ms). */
   fallCooldownMs: 0,
+  /**
+   * Total duration of the in-flight step (ms). Used to compute the
+   * linear lerp progress from prev cell → current cell. 0 when the
+   * driller is at rest.
+   */
+  stepDurationMs: 0,
 })
 
 /**

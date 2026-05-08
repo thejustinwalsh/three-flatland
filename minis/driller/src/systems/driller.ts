@@ -20,7 +20,6 @@ import {
   DEPTH_AT_FULL_SPEED,
   DIG_INTERVAL_MS_DEEP,
   DIG_INTERVAL_MS_SHALLOW,
-  FALL_INTERVAL_MS,
   PONDER_GEM_MS,
   PONDER_GEM_RADIUS,
   ROCK_HITS,
@@ -30,11 +29,15 @@ import { markCellAndNeighborsDirty } from './autotile-pass'
 import { driftMood, moodTarget } from './ai-mood'
 
 /**
- * Depth-scaled dig interval. At depth 0 the driller is deliberate
- * (~360ms/cell — gives the player time to see gem decisions); by
+ * Depth-scaled per-cell step interval. ALL grid movement (walking,
+ * digging, falling) uses this same cadence — Mr. Driller-style
+ * "you move on a grid with a measured delay between cells" — so the
+ * driller's apparent speed feels uniform regardless of direction.
+ *
+ * At depth 0 the driller is deliberate (~360ms/cell); by
  * DEPTH_AT_FULL_SPEED the interval drops to ~130ms (frantic pace).
  */
-function digIntervalForDepth(row: number): number {
+function stepIntervalForDepth(row: number): number {
   const t = Math.min(1, Math.max(0, row / DEPTH_AT_FULL_SPEED))
   return DIG_INTERVAL_MS_SHALLOW + (DIG_INTERVAL_MS_DEEP - DIG_INTERVAL_MS_SHALLOW) * t
 }
@@ -64,16 +67,28 @@ export function drillerSystem(world: World, deltaMs: number): void {
     markCellAndNeighborsDirty(world, d.col, d.row)
   }
 
-  // Smooth pixel chase toward the target cell.
+  // Linear pixel lerp from prev cell → current cell, parameterised by
+  // the active cooldown ratio. The driller "begins to lerp toward the
+  // hole" the instant a step is committed, but the visual position
+  // doesn't ARRIVE at the new cell until the step's cooldown elapses.
+  // Walking, digging, and falling all share this cadence.
+  const activeCD = d.fallCooldownMs > 0 ? d.fallCooldownMs : d.digCooldownMs
+  const lerpProgress = d.stepDurationMs > 0
+    ? Math.min(1, Math.max(0, 1 - activeCD / d.stepDurationMs))
+    : 1
+  const fromPx = d.prevCol * TILE_PX + TILE_PX / 2
+  const fromPy = d.prevRow * TILE_PX + TILE_PX / 2
   const targetPx = d.col * TILE_PX + TILE_PX / 2
   const targetPy = d.row * TILE_PX + TILE_PX / 2
-  const px = d.px + (targetPx - d.px) * 0.4
-  const py = d.py + (targetPy - d.py) * 0.4
+  const px = fromPx + (targetPx - fromPx) * lerpProgress
+  const py = fromPy + (targetPy - fromPy) * lerpProgress
 
   // ----- Gravity --------------------------------------------------------
   // The driller stands ON the cell directly below them. If that cell is
-  // AIR (or off the world), they fall one row per FALL_INTERVAL_MS until
+  // AIR (or off the world), they fall one row per step interval until
   // they land on a solid tile. While falling, no dig/move actions.
+  // Falling uses the SAME per-cell cadence as walking/digging — Mr.
+  // Driller-style uniform grid pace, regardless of direction.
   const supportRow = d.row + 1
   const supportIdx = supportRow * cols + d.col
   const onGround = supportRow >= rows || (grid.tiles[supportIdx] !== undefined && grid.tiles[supportIdx] !== TILE_AIR)
@@ -85,13 +100,17 @@ export function drillerSystem(world: World, deltaMs: number): void {
       drillerEntity.set(Driller, { fallCooldownMs: fallCD, px, py })
       return
     }
-    // Drop one row.
+    // Drop one row. Snap prev → current cell at the START of the step;
+    // the lerp at the top of the next tick interpolates from prevRow
+    // back to row across the step's full duration.
     const newRow = d.row + 1
+    const stepMs = stepIntervalForDepth(newRow)
     drillerEntity.set(Driller, {
+      prevCol: d.col,
+      prevRow: d.row,
       row: newRow,
-      px,
-      py,
-      fallCooldownMs: FALL_INTERVAL_MS,
+      fallCooldownMs: stepMs,
+      stepDurationMs: stepMs,
     })
     if (newRow > gs.depthM) {
       world.set(GameState, { depthM: newRow, deepestM: Math.max(gs.deepestM, newRow) })
@@ -126,31 +145,60 @@ export function drillerSystem(world: World, deltaMs: number): void {
   }
 
   // ----- Resolve action ------------------------------------------------
-  // Down step → dig the support cell (driller stays put; gravity will
-  // drop them on a subsequent tick when the cell becomes AIR).
-  // Side step → dig the side cell if needed, then move into it (gravity
-  // tick will continue the fall if the side has no support either).
-  // Up step → only allowed if cell above is AIR; you can't dig upward.
+  // ONE STEP = ONE CELL OF MOTION. Whether the driller is just walking
+  // through AIR or drilling through SOIL, the cadence is identical —
+  // the lerp animates smooth pixel motion across the step duration so
+  // the driller appears to drill INTO the wall in real time, never
+  // sitting in place between dig and step.
+  //
+  //   Side step:
+  //     side is AIR  → walk into it
+  //     side is SOIL → drill + walk into it (one step)
+  //     side is STONE/fixture → blocked
+  //     side is ROCK → chip in place (no advance)
+  //   Down step (driller is on ground, planner wants down):
+  //     dig support cell; gravity drops driller in the SAME tick.
+  //   Up step:
+  //     drill the cell above. Driller never moves up.
 
   let actionCell: { col: number; row: number } | null = null
   let nextDrillerCell: { col: number; row: number } = { col: d.col, row: d.row }
   let isSideMove = false
   if (stepRow > 0) {
+    // Drill the support cell AND advance into it in one tick.
     actionCell = { col: d.col, row: d.row + 1 }
+    nextDrillerCell = { col: d.col, row: d.row + 1 }
   } else if (stepCol !== 0) {
-    actionCell = { col: d.col + stepCol, row: d.row }
-    nextDrillerCell = { col: d.col + stepCol, row: d.row }
-    isSideMove = true
-  } else if (stepRow < 0) {
-    const upIdx = (d.row - 1) * cols + d.col
-    if (d.row - 1 >= 0 && grid.tiles[upIdx] === TILE_AIR) {
-      nextDrillerCell = { col: d.col, row: d.row - 1 }
-    } else {
-      // Blocked — can't dig up. Fall back to drive-greedy behavior on
-      // next planner tick; for now just absorb the cooldown.
+    const sideCol = d.col + stepCol
+    if (sideCol < 0 || sideCol >= cols) {
       drillerEntity.set(Driller, { digCooldownMs: cooldown, px, py })
       return
     }
+    const sideIdx = d.row * cols + sideCol
+    const sideTile = grid.tiles[sideIdx]
+    if (sideTile === TILE_AIR) {
+      // Open path — walk only.
+      nextDrillerCell = { col: sideCol, row: d.row }
+      isSideMove = true
+    } else if (sideTile === TILE_STONE || (sideTile !== undefined && isFixture(sideTile))) {
+      // Blocked. Absorb cooldown; planner will retarget.
+      drillerEntity.set(Driller, { digCooldownMs: cooldown, px, py })
+      return
+    } else {
+      // SOIL / EXPLOSIVE / ROCK: drill it. ROCK is multi-hit (handled
+      // below) and does NOT advance; SOIL becomes AIR and the driller
+      // walks into it in the same tick.
+      actionCell = { col: sideCol, row: d.row }
+      if (sideTile !== TILE_ROCK) {
+        nextDrillerCell = { col: sideCol, row: d.row }
+        isSideMove = true
+      }
+    }
+  } else if (stepRow < 0) {
+    // Drill straight up — never moves the driller. Useful for freeing
+    // gems above (gem-gravity will drop them into the new AIR cell) or
+    // chipping a rock that's blocking a column.
+    actionCell = { col: d.col, row: d.row - 1 }
   }
 
   if (actionCell) {
@@ -178,7 +226,14 @@ export function drillerSystem(world: World, deltaMs: number): void {
         markCellAndNeighborsDirty(world, ac, ar)
       }
       // Driller does NOT move/fall this tick — chip + cooldown.
-      drillerEntity.set(Driller, { digCooldownMs: digIntervalForDepth(d.row), px, py })
+      // prev = current so the lerp keeps the sprite at rest.
+      const chipMs = stepIntervalForDepth(d.row)
+      drillerEntity.set(Driller, {
+        prevCol: d.col,
+        prevRow: d.row,
+        digCooldownMs: chipMs,
+        stepDurationMs: chipMs,
+      })
       return
     }
 
@@ -196,23 +251,27 @@ export function drillerSystem(world: World, deltaMs: number): void {
   const facing = stepCol !== 0 ? (stepCol > 0 ? 1 : -1) : d.facing
 
   let nearbyGem = false
-  if (isSideMove) {
+  const advanced = isSideMove || (stepRow > 0 && nextDrillerCell.row !== d.row)
+  if (advanced) {
     collectGemAt(world, gs, nextDrillerCell.col, nextDrillerCell.row)
     nearbyGem = gemNearby(world, nextDrillerCell.col, nextDrillerCell.row)
-  } else if (stepRow > 0) {
-    nearbyGem = gemNearby(world, d.col, d.row + 1)
   }
 
-  const baseCooldown = digIntervalForDepth(nextDrillerCell.row)
+  const baseCooldown = stepIntervalForDepth(nextDrillerCell.row)
   const cooldownAfter = nearbyGem ? baseCooldown + PONDER_GEM_MS : baseCooldown
 
+  // Snap prev = old cell (so the lerp animates from the OLD center to
+  // the new one over the cooldown window). For dig-only ticks where
+  // the driller stays put, prev = current = old cell, so the lerp is
+  // a no-op visually.
   drillerEntity.set(Driller, {
+    prevCol: d.col,
+    prevRow: d.row,
     col: nextDrillerCell.col,
     row: nextDrillerCell.row,
-    px,
-    py,
     facing,
     digCooldownMs: cooldownAfter,
+    stepDurationMs: cooldownAfter,
   })
 
   if (nextDrillerCell.row > gs.depthM) {
