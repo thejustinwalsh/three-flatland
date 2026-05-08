@@ -44,7 +44,7 @@ const {
     id,
     type,
     title = 'flatland',
-    tagline = 'Composable 2D for Three.js + R3F. Sprites, tilemaps, skia, TSL — rebuilt small and fast.',
+    tagline = 'Composable 2D for Three.js + R3F. Sprites, tilemaps, skia, TSL — small and fast.',
     info = true,
     isCapture = false,
 } = Astro.props
@@ -166,7 +166,7 @@ const wreath = [
             <Fragment>
                 <div class:list={['brand-stack', { 'is-wide': isWide }]}>
                     <div class="brand-mark">
-                        <BrandIcon size={isWide ? '12cqi' : '18cqi'} />
+                        <BrandIcon size={isWide ? '11cqi' : '15cqi'} />
                     </div>
                     <div class="brand-text">
                         <div class="brand-eyebrow">
@@ -334,9 +334,9 @@ const wreath = [
         flex-direction: column;
         justify-content: center;
         align-items: stretch;
-        padding: 5cqi 5cqi 4cqi 6cqi;
+        padding: 6cqi 5cqi 4cqi 6cqi;
         box-sizing: border-box;
-        gap: 3cqi;
+        gap: 2.5cqi;
     }
     .wide .brand-content {
         padding: 4cqi 5cqi 4cqi 6cqi;
@@ -344,7 +344,12 @@ const wreath = [
     }
     .social-x .brand-content,
     .og .brand-content {
-        padding: 5cqi 5cqi 4cqi 5.5cqi;
+        padding: 6cqi 5cqi 4cqi 5.5cqi;
+        gap: 2cqi;
+    }
+    .banner .brand-content {
+        padding: 6cqi 5cqi 4cqi 6cqi;
+        gap: 2.2cqi;
     }
 
     /* ── icon-only — gauntlet wreath ── */
@@ -406,25 +411,21 @@ const wreath = [
             rotate(calc(-1 * var(--dot-angle)));
     }
 
-    /* Stacked composition — non-icon-only formats. */
+    /* Horizontal composition — icon left, text stack right. Used for all
+     * non-icon-only formats; the canvases are 1.9:1 to 3:1 aspect, all
+     * wider than tall, so a vertical column with the icon stacked above
+     * the text feels like a card-header element rather than a brand
+     * lockup. Horizontal reads as a unified mark. */
     .brand-stack {
         display: flex;
-        flex-direction: column;
-        align-items: flex-start;
-        text-align: left;
-        gap: 2.5cqi;
-    }
-    .brand-stack.is-wide {
         flex-direction: row;
         align-items: center;
-        gap: 4cqi;
+        gap: 3.2cqi;
         width: 100%;
         justify-content: flex-start;
     }
-    .is-wide .brand-text {
-        flex: 1;
-        align-items: flex-start;
-        text-align: left;
+    .brand-stack.is-wide {
+        gap: 4cqi;
     }
 
     .brand-mark {
@@ -434,14 +435,16 @@ const wreath = [
         line-height: 0;
         flex-shrink: 0;
         filter: drop-shadow(
-            0 1.2cqi 2.5cqi color-mix(in oklab, var(--gold) 32%, transparent)
+            0 1cqi 2cqi color-mix(in oklab, var(--gold) 28%, transparent)
         );
     }
 
     .brand-text {
+        flex: 1;
+        min-width: 0;
         display: flex;
         flex-direction: column;
-        gap: 1.4cqi;
+        gap: 1.2cqi;
         align-items: flex-start;
     }
 
