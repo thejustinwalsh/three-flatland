@@ -1,6 +1,7 @@
 import type { World } from 'koota'
 import {
   Animation,
+  Camera,
   Driller,
   Explosive,
   FallingChunk,
@@ -30,12 +31,26 @@ let ghostRow = 0
 
 const SCATTER_RADIUS = 6
 /**
- * How many ticks per row of ghost ascent. Lower = faster rise. The
- * ghost rises GHOST_HEIGHT rows total before the respawn fires.
+ * Per-row tick rate for the rising ghost beam. Lower = faster rise.
+ * The beam rises until it reaches the top of the visible viewport,
+ * with `GHOST_MAX_ROWS` as a safety ceiling so a deeply-buried death
+ * doesn't cap the rise budget. The respawn fires once the beam has
+ * either escaped the viewport or hit the safety ceiling.
  */
 const GHOST_TICKS_PER_ROW = 2
-const GHOST_HEIGHT = 12
-const GHOST_TICKS = GHOST_TICKS_PER_ROW * GHOST_HEIGHT
+const GHOST_MAX_ROWS = 60
+
+/**
+ * Live snapshot of the ghost beam used by the renderer. Updated each
+ * tick during the 'ghost' death phase; `active=false` between deaths.
+ */
+export const ghostBeam = {
+  active: false,
+  col: 9,
+  row: 0,
+  startTick: 0,
+  elapsedTicks: 0,
+}
 
 export function deathSystem(world: World): void {
   const gs = world.get(GameState)
@@ -64,6 +79,11 @@ export function deathSystem(world: World): void {
       deathPhase = 'ghost'
       deathTick = gs.tick
       ghostRow = deathRow
+      ghostBeam.active = true
+      ghostBeam.col = deathCol
+      ghostBeam.row = ghostRow
+      ghostBeam.startTick = gs.tick
+      ghostBeam.elapsedTicks = 0
       // Clear the death cell itself immediately — the rest rises on
       // a per-tick schedule below.
       clearGhostRow(world, deathCol, ghostRow)
@@ -72,18 +92,29 @@ export function deathSystem(world: World): void {
   }
 
   if (deathPhase === 'ghost') {
-    // Sine-wave ghost beam rises one row at a time, clearing a 3-wide
-    // chute as it goes. Anything in those cells (soil, rock, stone,
-    // explosive) is wiped INSTANTLY; gems are left alone, so they
-    // free-fall through the cleared chute and the player keeps any
-    // they manage to land on the next surface.
+    // Rising ghost beam clears a 3-wide chute as it ascends. It
+    // continues all the way to the top of the visible viewport
+    // (capped by GHOST_MAX_ROWS) so the player sees the column
+    // wiped clean to the heavens. The beam's own sprite is rendered
+    // by GhostBeam.tsx using the snapshot below.
     const elapsed = gs.tick - deathTick
     const targetRow = deathRow - Math.floor(elapsed / GHOST_TICKS_PER_ROW)
     while (ghostRow > targetRow && ghostRow > 0) {
       ghostRow--
       clearGhostRow(world, deathCol, ghostRow)
     }
-    if (elapsed >= GHOST_TICKS) {
+    ghostBeam.row = ghostRow
+    ghostBeam.elapsedTicks = elapsed
+
+    // Stop conditions: beam has escaped the visible viewport, or hit
+    // the safety ceiling, or reached row 0.
+    const cam = world.get(Camera)
+    const cameraTopRow = cam ? Math.floor(cam.y / TILE_PX) - 2 : -10
+    const escapedViewport = ghostRow <= cameraTopRow
+    const hitCeiling = deathRow - ghostRow >= GHOST_MAX_ROWS
+    const atWorldTop = ghostRow <= 0
+    if (escapedViewport || hitCeiling || atWorldTop) {
+      ghostBeam.active = false
       deathPhase = 'respawn'
     }
     return

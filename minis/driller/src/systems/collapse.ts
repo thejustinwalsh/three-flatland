@@ -7,6 +7,7 @@ import {
   FLAG_FALLING,
   FLAG_PRECARIOUS,
   FLAG_SAGGING,
+  FLAG_SHAKING,
   GameState,
   Grid,
   PlannerTarget,
@@ -143,6 +144,14 @@ function filterBottomRows(chunk: SoilChunk, cols: number, maxHeight: number): nu
   return chunk.cells.filter((idx) => Math.floor(idx / cols) >= minRowKept)
 }
 
+/**
+ * Final-window ticks during which a sagging chunk gets FLAG_SHAKING
+ * set on its cells — the lock-in rumble right before release. Tuned
+ * to roughly match the avalanche shake duration so soil and rock
+ * telegraph at the same cadence.
+ */
+const SAG_SHAKE_LEAD_TICKS = 18
+
 export function tickSagging(world: World): void {
   const grid = world.get(Grid)
   const gs = world.get(GameState)
@@ -154,12 +163,24 @@ export function tickSagging(world: World): void {
     const sag = entity.get(SaggingChunk)!
     if (tick < sag.bracedUntilTick) return
     const elapsed = tick - sag.startTick
+
+    // Final-window shake: in the last SAG_SHAKE_LEAD_TICKS before
+    // release, mark cells as SHAKING so the renderer rumbles them.
+    // Sag chunks that get braced or never reach this window stay
+    // mid-wobble (color tint) without the rumble — only chunks that
+    // are ABOUT to drop get the shake telegraph.
+    if (elapsed >= sag.durationTicks - SAG_SHAKE_LEAD_TICKS) {
+      for (const cell of sag.cells) {
+        const idx = cell.row * cols + cell.col
+        flags[idx] = (flags[idx] ?? 0) | FLAG_SHAKING
+      }
+    }
     if (elapsed < sag.durationTicks) return
 
     for (const cell of sag.cells) {
       const idx = cell.row * cols + cell.col
       tiles[idx] = TILE_AIR
-      flags[idx] = ((flags[idx]! & ~FLAG_SAGGING) | FLAG_AUTOTILE_DIRTY) as number
+      flags[idx] = ((flags[idx]! & ~FLAG_SAGGING & ~FLAG_SHAKING) | FLAG_AUTOTILE_DIRTY) as number
       markCellAndNeighborsDirty(world, cell.col, cell.row)
     }
 

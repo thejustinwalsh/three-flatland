@@ -21,6 +21,7 @@ import { AIDebugPanel, shouldShowAIDebug } from './AIDebugPanel'
 import { DrillerView } from './DrillerView'
 import { FallingChunkView } from './FallingChunkView'
 import { GemRenderer } from './GemRenderer'
+import { GhostBeam } from './GhostBeam'
 import { HazardView } from './HazardView'
 import { PlayfieldOverlay } from './PlayfieldOverlay'
 import { TileRenderer } from './TileRenderer'
@@ -150,6 +151,7 @@ export function Scene({ onShellStateChange }: SceneProps) {
       <GemRenderer material={material} />
       <HazardView material={material} />
       <DrillerView material={material} />
+      <GhostBeam material={material} />
       <PlayfieldOverlay material={material} />
       {shouldShowAIDebug() && <AIDebugPanel />}
     </flatland>

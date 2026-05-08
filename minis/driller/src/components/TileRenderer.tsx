@@ -156,15 +156,15 @@ export function TileRenderer({ material }: TileRendererProps) {
         const litExplosive = tile === TILE_EXPLOSIVE && triggeredExplosives.has(idx) && pulse
         const palette = biomeAt(r).palette
         const tint = pickTint(tile, frameIndex[idx]!, sagging, falling, precarious, litExplosive, now, palette)
-        // Shake telegraph applies to ANY block that's 100% going to
-        // fall — sagging soil mid-countdown OR an avalanche rock
-        // cluster mid-disturbance. All the cells of one block move in
-        // UNISON, not per-cell jitter, so it reads as a single mass
-        // shuddering before collapse rather than a swarm of
-        // independently-wiggling tiles.
+        // Shake telegraph IS the lock-in moment right before fall —
+        // not an extra delay layered on top. Cells get FLAG_SHAKING
+        // only in the last few hundred ms of their commit window
+        // (sag chunks: last ~300ms before release; avalanche rocks:
+        // entire pre-fall telegraph). When you see shake, the block
+        // is dropping next.
         let jitterX = 0
         let jitterY = 0
-        if (shaking || sagging) {
+        if (shaking) {
           const phase = (now / 1000) * Math.PI * 2 * 30
           jitterX = Math.sin(phase) * 1.2
           jitterY = Math.cos(phase * 1.3) * 0.6
