@@ -2,12 +2,18 @@ import type { World } from 'koota'
 import {
   Animation,
   Driller,
+  Explosive,
+  FallingChunk,
   FLAG_AUTOTILE_DIRTY,
   GameState,
   Gem,
   Grid,
+  Hazard,
   Mood,
+  Particle,
   PetEvents,
+  PlannerTarget,
+  SaggingChunk,
   TILE_AIR,
 } from '../traits'
 import type { GemColor, GemSize } from '../atlas-regions'
@@ -169,11 +175,49 @@ export function heroWorldFallSystem(world: World): void {
   const gs = world.get(GameState)
   if (!gs || gs.mode !== 'hero') return
   if (gs.depthM < 250) return
+
+  // Bumping worldNumber is the trigger Scene.tsx watches to clear the
+  // grid + reset streaming. We also have to teleport the driller back
+  // to the surface and despawn any in-flight Hazard / Chunk / Gem /
+  // Explosive entities — otherwise the driller's old row (~250+)
+  // immediately re-pumps depthM past the threshold next tick and the
+  // game flickers between current depth and zero forever.
   world.set(GameState, {
     worldNumber: gs.worldNumber + 1,
     depthM: 0,
     deepestM: 0,
+    gems: 0,
   })
+
+  const drillerEntity = world.queryFirst(Driller)
+  if (drillerEntity) {
+    drillerEntity.set(Driller, {
+      col: 9,
+      row: 0,
+      px: 9 * TILE_PX + TILE_PX / 2,
+      py: TILE_PX / 2,
+      destCol: 9,
+      destRow: 0,
+      facing: 1,
+      drillCooldownMs: 0,
+      drillCol: 0,
+      drillRow: 0,
+    })
+    if (drillerEntity.has(PlannerTarget)) {
+      drillerEntity.set(PlannerTarget, { col: 9, row: 0, reservedAtTick: gs.tick })
+    }
+    if (drillerEntity.has(Animation)) {
+      drillerEntity.set(Animation, { state: 'idle' })
+    }
+  }
+
+  // Wipe transient entities — their (col, row) refer to the old world.
+  world.query(Hazard).forEach((e) => e.destroy())
+  world.query(SaggingChunk).forEach((e) => e.destroy())
+  world.query(FallingChunk).forEach((e) => e.destroy())
+  world.query(Gem).forEach((e) => e.destroy())
+  world.query(Explosive).forEach((e) => e.destroy())
+  world.query(Particle).forEach((e) => e.destroy())
 }
 
 export function scatteredGemsSystem(world: World): void {

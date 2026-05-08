@@ -14,7 +14,7 @@ import { explosiveSystem } from '../systems/explosive'
 import { gemGravitySystem } from '../systems/gem-gravity'
 import { plannerTick } from '../systems/ai-planner'
 import { resetStreaming, streamChunks } from '../systems/generation'
-import { hazardSpawnSystem, hazardTickSystem, resetHazardSpawn, rockAvalancheSystem } from '../systems/hazard'
+import { hazardSpawnSystem, hazardTickSystem, resetAvalanche, resetHazardSpawn, rockAvalancheSystem } from '../systems/hazard'
 import { particlesSystem } from '../systems/particles'
 import { useDrillerMaterial } from '../materials'
 import { AIDebugPanel, shouldShowAIDebug } from './AIDebugPanel'
@@ -72,6 +72,7 @@ export function Scene({ onShellStateChange }: SceneProps) {
     if (gsAfterFall && gsAfterFall.worldNumber !== prevWorldNumber) {
       resetStreaming()
       resetHazardSpawn()
+      resetAvalanche()
       const grid = world.get(Grid)
       if (grid) {
         grid.tiles.fill(0)
