@@ -280,6 +280,19 @@ export function rockAvalancheSystem(world: World): void {
   const winBot = Math.min(rows, dRow + 192)
   const startIdx = winTop * cols
   const endIdx = winBot * cols
+
+  // Universal pre-pass: clear FLAG_SHAKING from every TILE_STONE in
+  // the scan window. The cluster iteration below re-sets it ONLY for
+  // cells in clusters that are actively shaking this tick. Without
+  // this, a cluster that shrinks below 4 cells (because a rock
+  // broke) leaves the surviving cells with stuck SHAKING flags —
+  // the cluster is no longer eligible so the iteration's continue
+  // never reaches its cleanup, and the cells rumble forever with no
+  // intent to fall.
+  for (let i = startIdx; i < endIdx; i++) {
+    if (tiles[i] === TILE_STONE) flags[i]! &= ~FLAG_SHAKING
+  }
+
   const seen = new Uint8Array(tiles.length)
   const stack: number[] = []
   let advancedAny = false
@@ -307,7 +320,13 @@ export function rockAvalancheSystem(world: World): void {
         }
       }
     }
-    if (cells.length < AVALANCHE_THRESHOLD) continue
+    if (cells.length < AVALANCHE_THRESHOLD) {
+      // Cluster too small to fall — drop any stale shake bookkeeping
+      // for these cells so a future grow-back-to-4 starts a fresh
+      // telegraph.
+      for (const idx of cells) shakeStartTick.delete(idx)
+      continue
+    }
 
     // Stability rule: a cluster only falls if it has been DISTURBED
     // (a fresh rock landed on/near it, or the driller drilled an
