@@ -108,23 +108,60 @@ function isFixture(t: number): boolean {
   return t >= TILE_FIXTURE_BASE && t < TILE_FIXTURE_BASE + 8
 }
 
+/**
+ * Planner selection rules — hard priorities first, mood as tiebreaker.
+ *
+ *   1. ANY gem visible within scan-radius → seeker.
+ *      Collecting gems is the goal of the game; there is no version of
+ *      the game where the driller should ignore a gem they can reach.
+ *      This bypasses mood hysteresis so a gem appearing next to a
+ *      mid-greedy-dig immediately yanks the planner into seeker mode.
+ *
+ *   2. Otherwise, mood-driven (with hysteresis + sunk-cost window):
+ *      Fear dominant → cautious; Greed → seeker; Drive → greedy.
+ *
+ * The cautious planner still wins over a gem when sag/hazard fear is
+ * spiking: planEvadeHazard runs BEFORE selectPlanner in plannerTick, so
+ * imminent crush hazards override everything.
+ */
+const GEM_SCAN_RADIUS = 6
+
 export function selectPlanner(world: World): PlannerName {
   const moodEntity = world.queryFirst(Mood)
   const gs = world.get(GameState)
   if (!moodEntity || !gs) return 'greedy'
   const mood = moodEntity.get(Mood)!
 
+  // Hard rule: visible gem → seeker. No mood gating.
+  const driller = world.queryFirst(Driller)
+  if (driller) {
+    const d = driller.get(Driller)!
+    let gemVisible = false
+    world.query(Gem).forEach((entity) => {
+      if (gemVisible) return
+      const g = entity.get(Gem)
+      if (!g || g.collected || g.scatteredUntilTick > 0) return
+      if (Math.abs(g.col - d.col) + Math.abs(g.row - d.row) <= GEM_SCAN_RADIUS) {
+        gemVisible = true
+      }
+    })
+    if (gemVisible) {
+      if (mood.planner !== 'seeker') {
+        moodEntity.set(Mood, { planner: 'seeker', switchAtTick: gs.tick })
+      }
+      return 'seeker'
+    }
+  }
+
+  // Fear dominant → cautious. Otherwise drive → greedy.
   const candidate: PlannerName =
     mood.fear >= mood.greed && mood.fear >= mood.drive
       ? 'cautious'
-      : mood.greed >= mood.drive
-        ? 'seeker'
-        : 'greedy'
+      : 'greedy'
 
   if (candidate === mood.planner) return mood.planner
 
-  const candidateValue =
-    candidate === 'cautious' ? mood.fear : candidate === 'seeker' ? mood.greed : mood.drive
+  const candidateValue = candidate === 'cautious' ? mood.fear : mood.drive
   const currentValue =
     mood.planner === 'cautious'
       ? mood.fear
