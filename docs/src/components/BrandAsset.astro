@@ -1,4 +1,34 @@
 ---
+/**
+ * BrandAsset — gauntlet final form.
+ *
+ * Composition language: every gem from the design system is present and
+ * doing semantic meaning-work. Gold leads as structural primary (vertical
+ * spine + wordmark glow + tally + npm chip + wreath-12). Amethyst and
+ * diamond serve as emphasis stripes in the lower signal rail. Five
+ * ambient gems (emerald, ruby, turquoize, salmon, pink) round out the
+ * "all channels lit" lower edge. Each gem stripe carries a tech-feature
+ * label (TSL, WEBGPU, R3F, BATCH, SPRITES, ANIM, TILES) so the asset
+ * communicates what the library actually does, not just our internal
+ * color taxonomy.
+ *
+ * Per-aspect:
+ *   - icon-only (512×512): no rail. Brand mark + GAUNTLET WREATH ring
+ *     of 8 gem dots, gold at noon walking clockwise.
+ *   - wide (3000×1000): horizontal lockup. Emphasis stripes gain
+ *     sub-role copy ("TSL · COMPOSABLE", "WEBGPU · RENDERER") so the
+ *     wide banner reads as a system manifest.
+ *   - banner / og / social-x: stacked vertical composition with the
+ *     tighter rail (single-word feature labels, no sub-copy).
+ *
+ * Tokens are mirrored locally inside `.brand-asset-root` so capture mode
+ * is hermetic regardless of how :root tokens propagate.
+ *
+ * Original meaning preserved from the retro v1: brand mark (BrandIcon
+ * unchanged), TSL/three.js/R3F positioning (now in tagline + rail),
+ * github + npm install info chips. The retro pixel-art identity stays
+ * via the icon; the canvas around it upgraded to the gem substrate.
+ */
 import BrandIcon from './BrandIcon.astro'
 
 interface Props {
@@ -14,7 +44,7 @@ const {
     id,
     type,
     title = 'flatland',
-    tagline = 'Sprite-first 2D for Three.js + R3F. WebGPU-native.',
+    tagline = 'Composable 2D for Three.js + R3F. Sprites, tilemaps, skia, TSL — rebuilt small and fast.',
     info = true,
     isCapture = false,
 } = Astro.props
@@ -35,13 +65,70 @@ const dimensions: Record<Props['type'], Dimensions> = {
 const { w: width, h: height } = dimensions[type] ?? dimensions['og']
 const showInfo = info && type !== 'icon-only'
 const isWide = type === 'wide'
+const isIconOnly = type === 'icon-only'
 
-// Compose-around layout per artifact:
-// - icon-only: centered icon, small accent halo
-// - banner / og / social-x: stacked icon + wordmark + tagline, info row
-// - wide: horizontal icon + wordmark/tagline block, info row at right
 const repoLine = 'thejustinwalsh/three-flatland'
 const installLine = '# npm i three-flatland@alpha'
+const eyebrowText = 'v0.1.0-α · COMPOSABLE · LEAN'
+
+/**
+ * Signal rail — 7 gem stripes (gold lives in the structural spine
+ * above). Two emphasis stripes (amethyst, diamond) lead with the most
+ * eye-catching tech anchors; five ambient stripes round out the channel
+ * chord. The role labels are LIBRARY CAPABILITIES, not internal system
+ * roles — what someone scrolling past the asset will care about.
+ */
+/**
+ * Each gem stripe is a real package or capability you can pick à la
+ * carte. The rail reads as "what's in the box, take what you need" —
+ * the composability story made visual.
+ *
+ *   amethyst TSL       — @three-flatland/nodes (composable shaders)
+ *   diamond  WEBGPU    — renderer target
+ *   emerald  R3F       — first-class React Three Fiber integration
+ *   ruby     BATCH     — auto-instanced sprite batching
+ *   turquoize SPRITES  — core sprite system
+ *   salmon   SKIA      — @three-flatland/skia (vector / text)
+ *   pink     TILES     — Tiled / LDtk loaders + chunked render
+ *
+ * TODO post-SLUG-merge: rotate one ambient stripe → SLUG. Strongest
+ * candidate to swap is TILES (Tiled / LDtk loaders are common in the
+ * three.js space; SLUG's GPU-rendered vector text is genuinely rare
+ * and a stronger differentiation hook). Pink stays as the SLUG color
+ * (warm-soft → text-feels-handwritten) and a new ambient gem rotates
+ * in for TILES — emerald could pull double duty if R3F moves into
+ * an emphasis slot, otherwise consider extending the rail to 8
+ * (gold-low for the new stripe; gold spine stays). Re-capture +
+ * optimize after the rotation.
+ */
+const railEmphasis = [
+    { gem: 'amethyst', role: 'TSL', sub: 'COMPOSABLE' },
+    { gem: 'diamond', role: 'WEBGPU', sub: 'RENDERER' },
+]
+const railAmbient = [
+    { gem: 'emerald', role: 'R3F' },
+    { gem: 'ruby', role: 'BATCH' },
+    { gem: 'turquoize', role: 'SPRITES' },
+    { gem: 'salmon', role: 'SKIA' },
+    { gem: 'pink', role: 'TILES' },
+]
+
+/**
+ * Gauntlet wreath — 8 gem dots positioned clockwise around the icon
+ * halo for the icon-only format. Gold sits at noon (12 o'clock = the
+ * leading channel), then we walk clockwise through the spectrum.
+ * Angles in CSS rotate convention (0 = top, 90 = right).
+ */
+const wreath = [
+    { gem: 'gold', angle: 0 },
+    { gem: 'salmon', angle: 45 },
+    { gem: 'amethyst', angle: 90 },
+    { gem: 'emerald', angle: 135 },
+    { gem: 'diamond', angle: 180 },
+    { gem: 'ruby', angle: 225 },
+    { gem: 'turquoize', angle: 270 },
+    { gem: 'pink', angle: 315 },
+]
 ---
 
 <div
@@ -49,29 +136,43 @@ const installLine = '# npm i three-flatland@alpha'
     id={id}
     style={`--asset-width: ${width}; --asset-height: ${height};`}
 >
-    {/* Ambient gem glow — gold radial, off-center, low intensity. */}
+    {/* Asymmetric ambient — amethyst (primary) upper-right, emerald
+        (counter-light) lower-left. Deliberately NOT a rainbow halo. */}
     <div class="brand-bg-glow" aria-hidden="true"></div>
 
-    {/* Sub-perceptual fractal noise overlay — same texture spirit as the
-        site, baked into the asset so social previews feel of-a-piece. */}
+    {/* Sub-perceptual fractal noise overlay (≤4%). */}
     <div class="brand-bg-noise" aria-hidden="true"></div>
 
-    {/* Diagonal gem rule — subtle gold/diamond hairline that anchors
-        the composition without competing with the wordmark. */}
-    <div class="brand-bg-rule" aria-hidden="true"></div>
+    {/* Gold structural spine — vertical foil bar at the left edge.
+        Suppressed in icon-only (the wreath replaces it). */}
+    <div class="brand-spine" aria-hidden="true"></div>
 
     <div class="brand-content">
-        {type === 'icon-only' ? (
+        {isIconOnly ? (
             <div class="icon-only-frame">
+                {/* Gauntlet wreath — 8 gem dots around the icon halo. */}
+                <div class="wreath" aria-hidden="true">
+                    {wreath.map(({ gem, angle }) => (
+                        <span
+                            class="wreath-dot"
+                            data-gem={gem}
+                            style={`--dot-angle: ${angle}deg; --dot-accent: var(--${gem});`}
+                        ></span>
+                    ))}
+                </div>
                 <BrandIcon size="64%" />
             </div>
         ) : (
             <Fragment>
-                <div class:list={['brand-stack', { 'brand-stack-wide': isWide }]}>
+                <div class:list={['brand-stack', { 'is-wide': isWide }]}>
                     <div class="brand-mark">
-                        <BrandIcon size={isWide ? '14cqi' : '22cqi'} />
+                        <BrandIcon size={isWide ? '12cqi' : '18cqi'} />
                     </div>
                     <div class="brand-text">
+                        <div class="brand-eyebrow">
+                            <span class="brand-eyebrow-tally" aria-hidden="true">▍</span>
+                            <span class="brand-eyebrow-text">{eyebrowText}</span>
+                        </div>
                         <h1 class="brand-wordmark">{title}</h1>
                         <p class="brand-tagline">{tagline}</p>
                         {isWide && showInfo && (
@@ -81,6 +182,32 @@ const installLine = '# npm i three-flatland@alpha'
                             </div>
                         )}
                     </div>
+                </div>
+
+                {/* Lower signal rail — 7 stripes, library capabilities
+                    per gem. Emphasis pair (amethyst TSL, diamond WEBGPU)
+                    leads, ambient five (R3F / BATCH / SPRITES / ANIM /
+                    TILES) round out the chord. */}
+                <div class="signal-rail" aria-label="FLATLAND capabilities">
+                    {railEmphasis.map(({ gem, role, sub }) => (
+                        <div
+                            class="signal-stripe is-emphasis"
+                            data-gem={gem}
+                            style={`--stripe-accent: var(--${gem});`}
+                        >
+                            <span class="signal-bar" aria-hidden="true"></span>
+                            <span class="signal-role">
+                                {role}
+                                {isWide && <span class="signal-sub">{` · ${sub}`}</span>}
+                            </span>
+                        </div>
+                    ))}
+                    {railAmbient.map(({ gem, role }) => (
+                        <div class="signal-stripe" data-gem={gem} style={`--stripe-accent: var(--${gem});`}>
+                            <span class="signal-bar" aria-hidden="true"></span>
+                            <span class="signal-role">{role}</span>
+                        </div>
+                    ))}
                 </div>
             </Fragment>
         )}
@@ -95,19 +222,26 @@ const installLine = '# npm i three-flatland@alpha'
 </div>
 
 <style>
-    /* Gem palette is mirrored locally so the composition reads the
-     * same in capture mode (where the parent's :root tokens may not
-     * propagate predictably) as in the rendered branding page. */
     .brand-asset-root {
         --tf-bg: #111418;
         --tf-fg: #f5f6f9;
         --tf-fg-muted: #b3b8c4;
-        --tf-gold: #f1c45f;
-        --tf-gold-soft: rgba(241, 196, 95, 0.18);
-        --tf-diamond: #6cb8ff;
-        --tf-diamond-soft: rgba(108, 184, 255, 0.16);
-        --tf-amethyst: #b88af7;
         --tf-border: rgba(255, 255, 255, 0.08);
+
+        /* All 8 gems mirrored locally for capture mode hermeticity.
+         * Sourced from packages/starlight-theme/styles/theme.css OKLCH
+         * dark-mode primitives, converted to RGB equivalents. */
+        --gold: #f1c45f;
+        --gold-high: #ffd47a;
+        --ruby: #e0577a;
+        --emerald: #4cd1b1;
+        --diamond: #6cb8ff;
+        --diamond-high: #9bd0ff;
+        --amethyst: #b88af7;
+        --amethyst-high: #cfa8ff;
+        --pink: #e89cd0;
+        --salmon: #ff8a6b;
+        --turquoize: #6fd9d0;
 
         position: relative;
         overflow: hidden;
@@ -123,9 +257,7 @@ const installLine = '# npm i three-flatland@alpha'
         aspect-ratio: var(--asset-width) / var(--asset-height);
     }
 
-    /* Preview mode (not capture) — fluid for the branding page; capture
-     * mode pins exact pixel dimensions so DevTools node screenshot
-     * gets the right output resolution. */
+    /* Preview mode (not capture) — fluid for the branding page. */
     :not(.capture-mode).brand-asset-root {
         width: 100%;
         height: auto;
@@ -136,13 +268,13 @@ const installLine = '# npm i three-flatland@alpha'
         inset: 0;
         background:
             radial-gradient(
-                70% 60% at 78% 22%,
-                var(--tf-gold-soft) 0%,
+                65% 60% at 80% 20%,
+                color-mix(in oklab, var(--amethyst) 16%, transparent) 0%,
                 transparent 60%
             ),
             radial-gradient(
-                90% 70% at 12% 88%,
-                var(--tf-diamond-soft) 0%,
+                75% 65% at 10% 90%,
+                color-mix(in oklab, var(--emerald) 12%, transparent) 0%,
                 transparent 65%
             );
         z-index: 0;
@@ -160,28 +292,38 @@ const installLine = '# npm i three-flatland@alpha'
         pointer-events: none;
     }
 
-    /* Diagonal gold rule — sub-perceptual brand thread, anchored to the
-     * lower-left → upper-right diagonal so it complements the wordmark
-     * without colliding with it. */
-    .brand-bg-rule {
+    /* Gold structural spine — vertical foil bar at the left edge. */
+    .brand-spine {
         position: absolute;
-        inset: 0;
-        background:
-            linear-gradient(
-                135deg,
-                transparent 47.5%,
-                color-mix(in oklab, var(--tf-gold) 35%, transparent) 49.5%,
-                color-mix(in oklab, var(--tf-gold) 70%, transparent) 50%,
-                color-mix(in oklab, var(--tf-gold) 35%, transparent) 50.5%,
-                transparent 52.5%
-            );
-        opacity: 0.18;
+        left: 0;
+        top: 0;
+        bottom: 0;
+        width: 0.55cqi;
+        min-width: 4px;
+        background: linear-gradient(
+            to bottom,
+            transparent 0%,
+            color-mix(in oklab, var(--gold) 40%, transparent) 10%,
+            var(--gold) 50%,
+            color-mix(in oklab, var(--gold) 40%, transparent) 90%,
+            transparent 100%
+        );
+        box-shadow:
+            0 0 2cqi color-mix(in oklab, var(--gold) 35%, transparent),
+            inset 0 0 0.4cqi color-mix(in oklab, var(--gold-high) 60%, transparent);
         z-index: 1;
         pointer-events: none;
     }
-
-    .icon-only .brand-bg-rule {
-        opacity: 0.1;
+    .wide .brand-spine {
+        width: 0.4cqi;
+        min-width: 6px;
+    }
+    .social-x .brand-spine,
+    .og .brand-spine {
+        width: 0.5cqi;
+    }
+    .icon-only .brand-spine {
+        display: none;
     }
 
     .brand-content {
@@ -191,13 +333,21 @@ const installLine = '# npm i three-flatland@alpha'
         display: flex;
         flex-direction: column;
         justify-content: center;
-        align-items: center;
-        padding: 6cqi;
+        align-items: stretch;
+        padding: 5cqi 5cqi 4cqi 6cqi;
         box-sizing: border-box;
-        gap: 4cqi;
+        gap: 3cqi;
+    }
+    .wide .brand-content {
+        padding: 4cqi 5cqi 4cqi 6cqi;
+        gap: 2.5cqi;
+    }
+    .social-x .brand-content,
+    .og .brand-content {
+        padding: 5cqi 5cqi 4cqi 5.5cqi;
     }
 
-    /* icon-only — center the mark in a soft gold halo. */
+    /* ── icon-only — gauntlet wreath ── */
     .icon-only .brand-content {
         padding: 8cqi;
         justify-content: center;
@@ -209,7 +359,7 @@ const installLine = '# npm i three-flatland@alpha'
         display: flex;
         align-items: center;
         justify-content: center;
-        width: 78cqi;
+        width: 70cqi;
         max-width: 100%;
         aspect-ratio: 1;
     }
@@ -220,42 +370,61 @@ const installLine = '# npm i three-flatland@alpha'
         border-radius: 50%;
         background: radial-gradient(
             circle,
-            color-mix(in oklab, var(--tf-gold) 22%, transparent) 0%,
+            color-mix(in oklab, var(--gold) 22%, transparent) 0%,
             transparent 60%
         );
         filter: blur(2cqi);
         z-index: -1;
     }
+    .wreath {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        z-index: 1;
+    }
+    .wreath-dot {
+        --dot-angle: 0deg;
+        --dot-accent: var(--gold);
+        --wreath-radius: 50%;
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        width: 2cqi;
+        height: 2cqi;
+        min-width: 8px;
+        min-height: 8px;
+        margin-top: calc(-1 * 1cqi);
+        margin-left: calc(-1 * 1cqi);
+        border-radius: 50%;
+        background: var(--dot-accent);
+        box-shadow:
+            0 0 1.2cqi color-mix(in oklab, var(--dot-accent) 60%, transparent),
+            0 0 2cqi color-mix(in oklab, var(--dot-accent) 30%, transparent);
+        transform:
+            rotate(var(--dot-angle))
+            translateY(calc(-1 * var(--wreath-radius)))
+            rotate(calc(-1 * var(--dot-angle)));
+    }
 
-    /* Stacked composition for banner / og / social-x. */
+    /* Stacked composition — non-icon-only formats. */
     .brand-stack {
         display: flex;
         flex-direction: column;
-        align-items: center;
-        text-align: center;
-        gap: 3cqi;
+        align-items: flex-start;
+        text-align: left;
+        gap: 2.5cqi;
     }
-
-    .brand-stack-wide {
+    .brand-stack.is-wide {
         flex-direction: row;
         align-items: center;
-        text-align: left;
         gap: 4cqi;
         width: 100%;
         justify-content: flex-start;
-        padding-inline: 6cqi;
     }
-    .wide .brand-content {
-        justify-content: center;
-        align-items: stretch;
-        padding: 4cqi 6cqi;
-    }
-    .wide .brand-mark {
-        flex-shrink: 0;
-    }
-    .wide .brand-text {
+    .is-wide .brand-text {
         flex: 1;
-        min-width: 0;
+        align-items: flex-start;
+        text-align: left;
     }
 
     .brand-mark {
@@ -263,63 +432,172 @@ const installLine = '# npm i three-flatland@alpha'
         align-items: center;
         justify-content: center;
         line-height: 0;
+        flex-shrink: 0;
         filter: drop-shadow(
-            0 1.5cqi 3cqi color-mix(in oklab, var(--tf-gold) 28%, transparent)
+            0 1.2cqi 2.5cqi color-mix(in oklab, var(--gold) 32%, transparent)
         );
     }
 
     .brand-text {
         display: flex;
         flex-direction: column;
-        gap: 2cqi;
-        align-items: center;
-    }
-    .brand-stack-wide .brand-text {
+        gap: 1.4cqi;
         align-items: flex-start;
     }
 
-    /* Silkscreen wordmark — same font as the site header, all-lowercase. */
+    /* Eyebrow — "v0.1.0-α · WEBGPU · TSL" tech-credential header. */
+    .brand-eyebrow {
+        display: inline-flex;
+        align-items: baseline;
+        gap: 0.6cqi;
+        font-family: 'JetBrains Mono', ui-monospace, monospace;
+        font-size: clamp(8px, 1.1cqi, 14px);
+        font-weight: 600;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+    }
+    .brand-eyebrow-tally {
+        color: var(--gold);
+        font-size: 1.2em;
+        line-height: 0.8;
+        text-shadow: 0 0 0.4cqi color-mix(in oklab, var(--gold) 60%, transparent);
+    }
+    .brand-eyebrow-text {
+        color: color-mix(in oklab, var(--gold-high) 65%, var(--tf-fg-muted));
+    }
+
+    /* Silkscreen wordmark — gold-glow primary tone. */
     .brand-wordmark {
         font-family: 'Silkscreen', monospace;
         font-weight: 700;
-        font-size: clamp(36px, 11cqi, 168px);
+        font-size: clamp(36px, 10cqi, 152px);
         line-height: 0.95;
         letter-spacing: -0.04em;
         color: var(--tf-fg);
         margin: 0;
         text-shadow:
-            0 0 0.4cqi color-mix(in oklab, var(--tf-gold) 35%, transparent),
-            0 1.5cqi 4cqi color-mix(in oklab, var(--tf-diamond) 25%, transparent);
+            0 0 0.4cqi color-mix(in oklab, var(--gold) 38%, transparent),
+            0 1.5cqi 4cqi color-mix(in oklab, var(--amethyst) 22%, transparent);
     }
     .banner .brand-wordmark,
     .wide .brand-wordmark {
-        font-size: clamp(36px, 8cqi, 124px);
+        font-size: clamp(36px, 7.5cqi, 116px);
     }
-    .social-x .brand-wordmark {
-        font-size: clamp(36px, 12cqi, 156px);
+    .social-x .brand-wordmark,
+    .og .brand-wordmark {
+        font-size: clamp(36px, 9.5cqi, 138px);
+        text-shadow:
+            0 0 0.3cqi color-mix(in oklab, var(--gold) 30%, transparent),
+            0 1.2cqi 3cqi color-mix(in oklab, var(--amethyst) 18%, transparent);
     }
 
-    /* Public Sans tagline — engineering-log register, gem-tinted accent. */
     .brand-tagline {
         font-family: 'Public Sans', system-ui, sans-serif;
         font-weight: 400;
-        font-size: clamp(12px, 2.4cqi, 32px);
+        font-size: clamp(11px, 2cqi, 26px);
         line-height: 1.5;
         color: var(--tf-fg-muted);
         margin: 0;
-        max-width: 70cqi;
+        max-width: 64cqi;
         letter-spacing: -0.005em;
     }
     .wide .brand-tagline {
-        font-size: clamp(11px, 1.8cqi, 22px);
+        font-size: clamp(11px, 1.5cqi, 20px);
         max-width: none;
     }
-    .banner .brand-tagline {
-        font-size: clamp(11px, 2cqi, 26px);
+
+    /* ── SIGNAL RAIL ── 7 stripes, library-capability roles. */
+    .signal-rail {
+        display: flex;
+        flex-wrap: nowrap;
+        gap: 0;
+        align-items: stretch;
+        margin-top: auto;
+        padding-top: 1.4cqi;
+        border-top: 1px solid color-mix(in oklab, white 6%, transparent);
+        width: 100%;
+        min-width: 0;
+    }
+    .wide .signal-rail {
+        padding-top: 1cqi;
     }
 
-    /* Info row — repo + install command. JetBrains Mono for the
-     * developer register; gold + diamond gem mapping. */
+    .signal-stripe {
+        --stripe-accent: var(--amethyst);
+        position: relative;
+        flex: 1 1 0;
+        display: flex;
+        flex-direction: column;
+        gap: 0.7cqi;
+        padding: 0.9cqi 1.4cqi 0.4cqi 0;
+        min-width: 0;
+        border-right: 1px solid color-mix(in oklab, white 5%, transparent);
+    }
+    .signal-stripe:last-child {
+        border-right: none;
+        padding-right: 0;
+    }
+    .signal-stripe.is-emphasis {
+        flex: 1.35 1 0;
+    }
+    .wide .signal-stripe {
+        gap: 0.5cqi;
+        padding: 0.7cqi 1.4cqi 0.3cqi 0;
+    }
+    .wide .signal-stripe.is-emphasis {
+        flex: 1.6 1 0;
+    }
+
+    /* Emphasis bar — 4px, brighter, larger glow. */
+    .signal-bar {
+        display: block;
+        height: 1.5px;
+        width: 100%;
+        background: linear-gradient(
+            90deg,
+            var(--stripe-accent) 0%,
+            color-mix(in oklab, var(--stripe-accent) 45%, transparent) 100%
+        );
+        box-shadow: 0 0 0.5cqi color-mix(in oklab, var(--stripe-accent) 30%, transparent);
+        border-radius: 1px;
+    }
+    .signal-stripe.is-emphasis .signal-bar {
+        height: 4px;
+        background: linear-gradient(
+            90deg,
+            var(--stripe-accent) 0%,
+            color-mix(in oklab, var(--stripe-accent) 65%, transparent) 100%
+        );
+        box-shadow:
+            0 0 1.2cqi color-mix(in oklab, var(--stripe-accent) 55%, transparent),
+            0 0 0.4cqi color-mix(in oklab, var(--stripe-accent) 80%, transparent);
+        border-radius: 2px;
+    }
+
+    .signal-role {
+        font-family: 'JetBrains Mono', ui-monospace, monospace;
+        font-weight: 600;
+        font-size: clamp(7px, 0.95cqi, 11px);
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: color-mix(in oklab, var(--stripe-accent) 50%, var(--tf-fg-muted));
+        line-height: 1;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: clip;
+    }
+    .signal-stripe.is-emphasis .signal-role {
+        font-size: clamp(8px, 1.1cqi, 13px);
+        color: color-mix(in oklab, var(--stripe-accent) 75%, var(--tf-fg));
+        font-weight: 700;
+    }
+    .signal-sub {
+        font-weight: 500;
+        opacity: 0.55;
+        letter-spacing: 0.1em;
+    }
+
+    /* Info row — gold + diamond chips. */
     .brand-info-row,
     .brand-info-inline {
         display: flex;
@@ -330,12 +608,13 @@ const installLine = '# npm i three-flatland@alpha'
         opacity: 0.92;
     }
     .brand-info-row {
-        margin-top: 2cqi;
+        margin-top: 0;
+        padding-top: 1cqi;
     }
     .wide .brand-info-inline {
-        margin-top: 1.5cqi;
-        font-size: clamp(9px, 1cqi, 14px);
-        gap: 3cqi;
+        margin-top: 1cqi;
+        font-size: clamp(8px, 0.95cqi, 12px);
+        gap: 2.5cqi;
     }
     .info-chip {
         display: inline-flex;
@@ -345,20 +624,18 @@ const installLine = '# npm i three-flatland@alpha'
         letter-spacing: 0.01em;
     }
     .info-chip.github {
-        color: var(--tf-diamond);
+        color: var(--diamond);
     }
     .info-chip.github::before {
         content: '↗';
         opacity: 0.7;
     }
     .info-chip.npm {
-        color: var(--tf-gold);
+        color: var(--gold);
     }
 
-    /* Slight accent border on hover when previewing — visual cue that
-     * it's clickable to open the capture modal. */
     .asset-preview-link:hover .brand-asset-root {
-        outline: 1px solid color-mix(in oklab, var(--tf-gold) 40%, transparent);
+        outline: 1px solid color-mix(in oklab, var(--gold) 45%, transparent);
         outline-offset: 4px;
     }
 </style>
