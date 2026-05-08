@@ -444,3 +444,266 @@ A single monolithic component would force opt-out flags or branching logic. Thre
 **Evidence:** Tile poster is currently a CSS radial gradient (`circle at 30% 30%, gem-40%-card → gem-12%-bg → bg`). Replicating that as a TSL fragment with the same color stops produces a matching screenshot. skia's existing pipeline composes its surface via TSL, so a TSL-Node export is the right shape for that integration.
 
 **How to apply:** Each example author picks the layers that fit. Default = L1 + L2. Sync only handles file copy + `gem.ts` codegen — wiring layer calls into entry files is manual content editing per example (deliberately, to avoid invasive entry-file rewrites).
+
+# Phase 4 polish decisions
+
+## vtbot rework: ProgressBar custom, AutoNameSelected dropped, replaceSidebarContent off
+**File(s):** `docs/src/components/Head.astro`
+**Date:** 2026-05-07
+
+**Decision:** Three vtbot-related defaults reverted/replaced in one go.
+
+1. `<ProgressBar/>` from `astro-vtbot/components/` removed; replaced with a custom `<div id="tf-progress">` driven by `astro:before-preparation` / `astro:after-swap` lifecycle events plus pure CSS animation. The vtbot ProgressBar imports `@swup/progress-plugin@3` from unpkg.com at runtime (`<script>import 'https://unpkg.com/...'</script>`), and the swup plugin behavior under Astro view-transitions was unreliable — the `.swup-progress-bar` element often never inserted into the DOM. Custom implementation is fully self-contained and predictable.
+2. `<AutoNameSelected />` removed entirely. Its default `vtbot-hx-N` naming is positional — the first `<h1>` of one page morphs into the first `<h1>` of the next page regardless of semantic relationship. This produced the user-reported "headers fly around the screen changing text" effect. Browser default page cross-fade is a cleaner read than fake morphs across unrelated content.
+3. `replaceSidebarContent` flag removed from `<VtBotBase/>`. vtbot's default is to PRESERVE the sidebar DOM on navigation; the flag was an explicit opt-in to replacement. Default behavior gives us scroll-position + `<details open>` state preservation for free.
+
+**Why:** Each vtbot default we'd opted out of created a regression. ProgressBar's external CDN dependency made initial paint of the progress bar racy; AutoNameSelected's positional naming had no useful "morph between pages" semantic; replaceSidebarContent inverted the desired persistence behavior.
+
+**Evidence:** Live debugging via Chrome MCP confirmed: with vtbot ProgressBar, the `.swup-progress-bar` element was missing from the DOM at idle AND during nav (verified with `document.querySelector('.swup-progress-bar')`). Custom progress bar appears reliably on every nav. AutoNameSelected removed → header chrome no longer morphs across unrelated pages. replaceSidebarContent removed → sidebar `<details open>` survives across page-loads.
+
+**How to apply:** When wiring view-transition libraries to a non-trivial site, prefer custom lifecycle handlers over plugin-of-a-plugin imports (especially CDN-hosted ones). Test each vtbot flag empirically — defaults were generally chosen well.
+
+## White-flash on every navigation: html element bg explicit + hex fallback
+**File(s):** `packages/starlight-theme/styles/base.css`
+**Date:** 2026-05-07
+
+**Decision:** `html { background-color: var(--background, #111418); }` (with a `:root[data-theme='light']` companion for the paper-toned variant). Previously only `body` had a bg-color, and `:root[data-theme='dark']` defined `--background` but didn't apply it as a property anywhere on the html element itself.
+
+**Why:** During CSS view-transitions, the browser captures `::view-transition-old(root)` / `::view-transition-new(root)` snapshots; under those snapshots, the html element shows through. With no html bg, that's the browser default white — which is the full-screen white flash users were seeing on every navigation. Setting the bg on `html` itself eliminates the flash. The hex fallback (`#111418` for dark, `#f6f5f1` for light) makes the rule land even before custom-property tokens resolve at first paint — `--background` is defined on `:root[data-theme='dark']`, which only matches AFTER the StarlightThemeProvider script applies the data attribute.
+
+**Evidence:** Chrome MCP debug session: `getComputedStyle(document.documentElement).backgroundColor` returned `rgba(0, 0, 0, 0)` before fix → `oklch(...)` after.
+
+**How to apply:** Any site using CSS view-transitions or full-page snapshots should set bg on both `html` AND `body`, with hex fallbacks on tokens that resolve via theme-applied data attributes. The body-only pattern is incomplete.
+
+## Sidebar `<details>` state preservation: mutate event.newDocument on astro:before-swap
+**File(s):** `docs/src/scripts/motion.ts`
+**Date:** 2026-05-07
+
+**Decision:** localStorage handler restores sidebar `<details>` open state in two places: (a) initial page load via `initSidebarDetailsPersistence()` on the live document, and (b) BEFORE Astro commits a view-transition swap via `astro:before-swap` mutating `event.newDocument`. Storage key per group: `tf:sidebar-open:<label>`.
+
+**Why:** Earlier attempt put restoration in `astro:page-load`, which fires AFTER the new DOM has painted — the SSR-rendered `<details open={!entry.collapsed}>` flashed through before localStorage could correct it. `astro:before-swap` fires after the new doc is parsed but BEFORE it's committed as the live DOM, so the open state is mutated pre-paint, no flash.
+
+**How to apply:** For ANY UI state that survives navigation but is server-rendered with default values (form inputs, toggle buttons, etc.), restore via `astro:before-swap` mutation, not `astro:page-load`. The latter is post-paint.
+
+## Foil rim system on cards: three-layer (scene + cursor hotspot + lens flare)
+**File(s):** `docs/src/components/FeatureCard.astro`, `docs/src/components/gallery/GalleryTile.astro`
+**Date:** 2026-05-07
+
+**Decision:** A consistent foil rim treatment on `.feature-card` and `.gallery-tile` via three layered effects on the existing `.card-edge` / `.tile-edge` pseudo-element:
+
+1. Base ring — conic gradient driven by `--effective-light-angle` (perlin-modulated `--scene-angle`), broad gem-tinted "lit half" reading.
+2. `::before` — narrow 30°-wide cursor hotspot at `--light-angle`, opacity tracks `--mouse-active` so the glint fades in/out with hover. Bright peak centered AT light-angle (not 90° off) so the glint is on the SAME side as the cursor — earlier `from calc(... - 105deg)` produced a 90°-counterclockwise glint, fixed to `from calc(... - 22deg)`.
+3. `::after` — small star-shaped lens flare anchored at `(--mx, --my)` with mix-blend-mode: screen, masked into a 4-point cross via three layered linear-gradients + radial-gradient.
+
+All three layers respect `prefers-reduced-motion: reduce` (pseudo-elements `display: none`).
+
+**Why:** The previous treatment was a pure ambient glow that didn't react to cursor — felt static. Three discrete layers separately address ambient-light direction (scene-angle), cursor-direction-as-light-position (light-angle), and cursor-position-as-eye-anchor (mx/my). Together they read as a foil card: ambient scene light bathes the lit half, the cursor drags a sharp glint along the rim, and a star flare blooms where the eye is looking.
+
+**How to apply:** New surfaces wanting the foil treatment opt in via `class="u-light"` (registers with motion.ts) plus a `.card-edge` / `.tile-edge` child element with the layered conic + radial structure. The cursor-stripe / star-flare math is portable to any rounded-rect surface.
+
+## Holographic icon foil on FeatureList + FeatureCard
+**File(s):** `docs/src/components/FeatureList.astro`, `docs/src/components/FeatureCard.astro`
+**Date:** 2026-05-07
+
+**Decision:** Replace the default `background-color: currentColor` from UnoCSS's preset-icons mask mode with a layered gradient on icon spans inside FeatureList rows + FeatureCard headers. Two background-image layers: (1) cursor-tracked highlight stripe at `--light-angle`, (2) holographic rainbow base with hue-ladder phase-shifted by `--scene-angle` and mixed 50–60% into the per-row/per-card gem accent so it stays in-family. `background-blend-mode: screen, normal`. Filter saturate/contrast scales with `--mouse-active` so hovered surfaces sweep a sharper prismatic streak. Reduced-motion collapses to a static gem-tinted gradient.
+
+**Why:** Plain monochrome icons on gem-themed rows read as clip-art over content. Foil treatment turns icons into trading-card-foil moments — same identity, more dimension — without inflating asset count (the lucide glyph is still the source).
+
+**How to apply:** New iconified rows can adopt the same recipe by wrapping the Icon component's class in `.card-icon-holo` / `.feature-icon-holo` style scope and inheriting `--feature-accent` / `--card-accent` / `--mouse-active` / `--light-angle` / `--scene-angle` from a `.u-light`-registered ancestor.
+
+## Drop-shadow glow removal pass (site-wide)
+**File(s):** `docs/src/components/StatsBanner.astro`, `docs/src/components/ValueProp.astro`, `docs/src/components/FeatureList.astro`, `docs/src/components/FeatureCard.astro`, `docs/src/components/gallery/GalleryTile.astro`, `docs/src/components/ExampleSplitView.astro`, `packages/starlight-theme/components/overrides/parts/toc/TableOfContentsList.astro`, `packages/starlight-theme/components/overrides/parts/SidebarSublist.astro`, `packages/starlight-theme/styles/base.css`
+**Date:** 2026-05-07
+
+**Decision:** Remove decorative drop-shadow glows site-wide. Specifically:
+
+- text-shadow glows on stat values, feature titles
+- box-shadow gem-tinted directional / radial halos on .vp-rule, FeatureCard:hover, GalleryTile:hover, .sl-link-button.{primary,secondary}:hover, TOC active marker, SidebarSublist active marker, ExampleSplitView grid (kept the 1px ring, dropped the diamond-tinted lift glow)
+
+Kept: focus-visible rings (3px gem at 35% — accessibility), CaptureModal staging shadow (theatrical context), Card.astro retro pixel-offset shadow (intentional retro), button hover lift transforms (gem-tinted halo gone, `transform: translateY(-1px)` lift retained), 1px ring shadows that act as borders (no blur).
+
+BrandAsset retro glows kept untouched — separate domain (only used for OG-image generation, not user-facing pages).
+
+**Why:** Decorative gem-tinted halos on hover read as "every-other-website glow." Restraint over chroma per Design Context. The cursor-tracked foil rim system carries the hover affordance more deliberately; lift-on-hover via translate is enough motion cue. Glows pulled the eye to ambient surfaces instead of the actual interactive moment.
+
+**How to apply:** Future surfaces should use the foil rim + cursor hotspot system for hover affordance, not gem-tinted box-shadows. If lift is needed, use `transform: translateY` over `box-shadow` with a colored bloom.
+
+## Filter alpha-clip via feComposite
+**File(s):** `docs/src/components/Head.astro` (#tf-gem-perturb / #tf-foil-perturb SVG filters)
+**Date:** 2026-05-07
+
+**Decision:** Both displacement filters now end with `<feComposite in="displaced" in2="SourceGraphic" operator="in" />` to clip displaced output through the source's alpha. Foil-perturb scale also dropped 6 → 4.
+
+**Why:** Without the composite, displaced pixels at the rounded-corner edges sample beyond the source rect (transparent), rendering as black "specs" against the page bg. Visible especially on the gold card. The "in" operator keeps only displaced pixels that overlap the original source's alpha — no out-of-shape bleed regardless of corner radius.
+
+**How to apply:** Any displacement/turbulence filter on a rounded surface should end with `feComposite operator="in"` against `SourceGraphic` to prevent edge-artifact bleed.
+
+## API ref tree: continuous guide line, chevron-centered pip, truncate-ellipsis, deepest-level skip
+**File(s):** `packages/starlight-theme/components/overrides/parts/SidebarSublist.astro`
+**Date:** 2026-05-07
+
+**Decision:** Multiple coordinated changes to the collapsable sidebar tree (used by API Reference):
+
+1. Indent guide line moved from per-nested-group `border-left` to a continuous absolutely-positioned `::before` on each parent `.container-group-link`. Eliminates gaps between sibling groups (the 2px gap from `.container-group-link { gap: 2px }` between sibling borders broke the line).
+2. Guide line scoped via `:has(.container-sidebar-entry)` so only folders that contain MORE nested folders get the guide. Deepest level (entry-links only) skips it — the chevron of the parent + the entry's own active/hover pip already communicate structure.
+3. Chevron moved from trailing (right) to leading (left) — folder-tree convention. Closed-state rotation pre-existing (`-90deg`) repurposed; path geometry kept (v chevron) so closed = right-pointing `>`.
+4. Active / hover pip moved from `.entry-link-inner::before` (positioned relative to inner pad-box) to `.entry-link::before` (positioned relative to the link, with `.entry-link` now `position: relative`). Both pip and guide use `left: 0.375rem; transform: translateX(-50%)` so they're centered at chevron's middle.
+5. `entry-link-inner` `padding-left` raised from `var(--spacing) * 2` → `var(--spacing) * 4` and gap dropped 0.4rem → 0.25rem so there's clear space between pip and content.
+6. Long unbreakable identifiers (e.g. `MaterialEffectClass`) truncate with ellipsis instead of wrapping. `.entry-label` gets `overflow: hidden; text-overflow: ellipsis; white-space: nowrap`. Sidebar column no longer grows with the longest typedoc symbol.
+7. Singleton-collapsable selectors switched from `:only-child` to `:only-of-type` because GalleryTile inlines a hover-video `<script type="module">` as a sibling of the `<a>`, breaking `:only-child`. `:only-of-type` ignores other element types.
+8. Hover rect + collapsable summary inset padding both removed — chevron + indent guide carry the affordance; an extra hover-fill on top reads as overactive chrome and breaks visual continuity with the indent line. Static `h4.entry-title` keeps its inset for top-level section breathing room.
+
+**Why:** The previous sidebar API tree had multiple coordinated visual issues (gaps in guide, off-center pip, wrapping breaks layout, wrong chevron position). Untangling them required this batch — most decisions are interdependent.
+
+**How to apply:** Future sidebar tree work should preserve: chevron-leading layout, single-element guide on parent (not per-child border), pip and guide co-aligned at chevron-center via `transform: translateX(-50%)`, truncation over wrapping, `:only-of-type` for singleton selectors when a sibling script is in play.
+
+## Top-nav per-section gem accents
+**File(s):** `packages/starlight-theme/components/overrides/parts/NavBar.astro`
+**Date:** 2026-05-07
+
+**Decision:** Each top-nav link (Docs / Examples / Showcases) carries its own gem hue for hover + active states, set via inline `--nav-gem` derived from the link's first path segment:
+- Docs (`/getting-started/`) → amethyst
+- Examples (`/examples/`) → diamond
+- Showcases (`/showcases/`) → ruby
+
+Active-state matching also rewritten to handle the "Docs is the catch-all for any docs cluster path" case — Docs lights up across `/getting-started`, `/guides`, `/branding`, `/llm-prompts`, `/api`. Examples + Showcases match by their first path segment.
+
+**Why:** Single-accent active state didn't read as section-identity; users navigating between Introduction / Installation / Guides lost the "Docs" indicator entirely (originally exact-prefix match against `/getting-started/introduction/`). Gem-per-section is consistent with the design system's color-as-taxonomy convention.
+
+**How to apply:** New nav links carry their own gem via the same `linkFirstSegment` derivation. Default fallback is diamond.
+
+## Primary CTA gold (token-local override) + LinkButton black-inner-edge fix
+**File(s):** `packages/starlight-theme/styles/base.css`
+**Date:** 2026-05-07
+
+**Decision:** Two coordinated changes on `.sl-link-button.primary`:
+
+1. Color theme: amethyst (purple) → gold gradient. Text color hardcoded to `oklch(0.18 0.04 80)` (dark warm-tinted) so it reads high-contrast on the bright gold gradient in both light + dark mode. The `--primary` TOKEN itself stays at amethyst — only the LinkButton's local CSS swaps to gold. Other `--primary` consumers (FeatureCard default, ValueProp default, sidebar fallback) keep their existing color narrative.
+2. `border: 1px solid transparent` removed entirely (set to `border: 0`). The `::before` foil rim sits at `inset: 0` of the button's border-box; a 1px transparent border pushed the ring 1px inward, exposing the page bg as a thin black inner edge artifact. Border-zero means the ring sits at the very outer pixel of the button. Secondary button got the same treatment for parity.
+
+**Why:** User flagged purple as wrong for primary CTA energy + visible black artifact on the foil's inner edge. Localizing the gold change to LinkButton (not the global `--primary` token) preserves the token narrative for downstream consumers while updating the most prominent CTA to a stronger gem.
+
+**How to apply:** When a button's foil rim or background gradient should sit at the outer pixel, drop the border entirely. Use a transparent ::before-based rim instead of border-image (more flexible, alpha-aware).
+
+## Alpha ribbon: 45° square restore + scale (not transform) for hover
+**File(s):** `packages/starlight-theme/components/overrides/PageFrame.astro`
+**Date:** 2026-05-07
+
+**Decision:** Ribbon wrapper is a strict 12rem × 12rem square (was 36×13 wider non-square). Tape rotated -45° with `transform: rotate(-45deg)` static. Hover scale via the individual `scale` property (`scale: 1.03`) instead of compounding `transform: rotate(-45deg) scale(1.03)`. Reduced-motion override pins `scale: 1`. Mobile breakpoint dropped — same size at all viewports.
+
+**Why:** Original wider non-square ribbon was added to clear the wordmark logo column. Stakeholder feedback: square + 45° + allowing logo overlap is the correct sticker concept. Critical detail: keeping `transform` static (not in the transition list) prevents initial-load rotate animation. The browser was animating from `rotate(0)` → `rotate(-45deg)` on first paint when transform was on the transition list — splitting rotation (static) from scale (animatable) avoids it. The individual `scale` property animates independently of transform.
+
+**How to apply:** When a static transform should not animate on initial load, leave it OUT of the `transition` list. Use individual transform-property properties (`scale`, `rotate`, `translate`) for the parts that should animate.
+
+## Custom progress bar — destination-tinted gem gradient + 150ms show-delay
+**File(s):** `docs/src/components/Head.astro`
+**Date:** 2026-05-07
+
+**Decision:** Top-edge progress bar implemented as a fixed-position 3px `<div id="tf-progress">` driven by view-transition lifecycle events:
+
+- `astro:before-preparation` schedules a 150ms timer to flip `data-state="loading"` (CSS sweeps width 0 → 92% over 9s with cubic-bezier easing).
+- `astro:after-swap` either cancels the pending timer (cached/instant nav, bar never shown) or flips to `data-state="done"` (CSS sweeps width 92% → 100% + opacity 1 → 0 over 350ms, then resets).
+- Gradient runs `gem-low → gem-high` based on the destination's section (mapping mirrors NavBar's): landing → gold, /examples → diamond, /showcases → ruby, docs cluster → amethyst.
+
+**Why:** Replaces vtbot's `<ProgressBar/>` (CDN-dependent, unreliable). 150ms show-delay matches the standard "don't show a spinner for instant operations" UX guideline — fast/cached navigations stay silent. Destination-tinted gradient gives visual continuity with the destination's nav-link gem accent.
+
+**How to apply:** Per-destination theming pattern transfers to any progress/loading affordance. Read `event.to.pathname` in `astro:before-preparation` to derive theme inputs.
+
+## ValueProp .vp-rule: cursor-driven foil bar
+**File(s):** `docs/src/components/ValueProp.astro`
+**Date:** 2026-05-07
+
+**Decision:** `.vp-rule` (vertical 3px gem stripe in ValueProp) replaced its static dim → bright → dim gradient with a cursor-driven foil treatment. Bright peak position anchored to `--my` (cursor's vertical position 0..100% across the section). Section gains `u-light` so motion.ts wires the cursor vars; `.u-light::before / ::after` gem-facet pseudos suppressed and section-level perspective tilt disabled (large prose sections shouldn't lean toward the cursor).
+
+**Why:** Static fade was decorative-only; cursor-driven peak makes the bar feel alive without the heavy treatment a card or button gets.
+
+**How to apply:** Section-scale "live" affordances should use `u-light` cursor variables but suppress the full-card pseudo treatment when the design wants a quieter result.
+
+## FeatureList background damped to 12% scene-angle drift
+**File(s):** `docs/src/components/FeatureList.astro`
+**Date:** 2026-05-07
+
+**Decision:** FeatureList rows keep the `.u-light::before` gem-faceted background, but with a damped scene-angle response: `linear-gradient(calc(90deg + (var(--scene-angle, 135deg) - 90deg) * 0.12), …)` — biased hard to 90° (light from left, where the gem rule lives) with only 12% drift via scene-angle. The displacement filter (`#tf-gem-perturb`) is dropped on row scale (visible). Cursor-radial pseudo (`::after`) stays disabled on rows — too busy on a thin row, and the holographic icon's filter already responds to cursor.
+
+**Why:** Default scene-angle reactivity rotated the gradient across the row's full width, which read as wonky on a thin 1-row strip when light arced to the opposite side. The deliberate left-rule background-image carries the row's color identity; the gem-faceted bg should be quieter on rows than on cards.
+
+**How to apply:** Surfaces where full scene-angle rotation would distort layout (thin rows, narrow strips) should override `.u-light::before`'s background with a damped angle expression.
+
+# Phase 3.x decisions (showcases redesign + capture pipeline)
+
+## Showcases: 2-col max grid + singleton featured layout
+**File(s):** `docs/src/components/gallery/ShowcaseGrid.astro`, `docs/src/components/gallery/ShowcaseTilePlaceholder.astro`, `docs/src/content/docs/showcases/index.mdx`
+**Date:** 2026-05-08
+
+**Decision:** Showcases get a dedicated `<ShowcaseGrid>` (2-col max at >=768px, 1-col below; 64rem container max). When only one `<a class="gallery-tile">` is present, `:only-of-type` triggers a singleton-featured layout: spans both columns at 38rem max-width, justify-self center, with bigger inner padding + larger title/description and a 6s ambient brightness/saturation breath animation.
+
+`ShowcaseTilePlaceholder` is a non-interactive `<div>` mirror of GalleryTile's chrome (gem accent, foil rim, body type) plus a centered "Coming Soon" badge. Renders alongside the real Breakout tile on the index so the per-showcase frontmatter theme system is visible without uncommenting code. Critically: placeholders are `<div>` (not `<a>`), so they're a different element TYPE — `:only-of-type` still matches Breakout's `<a>` and the singleton-featured layout STILL applies. Result: Breakout featured/centered on row 1, two themed placeholders on row 2.
+
+**Why:** User direction was 2-col grid (not carousel) with single-item centered at half-width; placeholders demonstrate the multi-showcase theming without committing real `<a>` siblings that would break the singleton layout.
+
+**Evidence:** Initial `:only-child` selector failed because GalleryTile inlines a hover-video `<script type="module">` as a sibling of the `<a>` — script counts as a child. `:only-of-type` (counts by element tag) ignores the script. Cross-component CSS overrides (cross-tile body padding/typography) require `<style is:global>` because GalleryTile's styles are scoped under its own astro hash; without `is:global`, selectors from this file would only match elements rendered BY this file.
+
+**How to apply:** When stretching one component's CSS to reach into another component's internal markup in Astro, use `<style is:global>`. When sibling-counting selectors need to ignore inlined component scripts, prefer `:only-of-type` over `:only-child`.
+
+## ShowcaseDetailLayout: drop inline editor, external CTAs, gem-tinted chrome
+**File(s):** `docs/src/components/ShowcaseDetailLayout.astro`, `docs/src/content/docs/showcases/breakout.mdx`
+**Date:** 2026-05-08
+
+**Decision:** Showcase detail pages use `<ShowcaseDetailLayout>` instead of `<ExampleDetailLayout>` + Tabs+StackBlitzEmbed. Differences:
+- No inline SplitView code editor — full-app showcases are best read on GitHub, not tinkered with inline.
+- External "Open in StackBlitz" + "View on GitHub" CTAs in the header, primary tinted by the showcase's gem.
+- `<slot name="preview" />` for the live `<ShowcaseGame />` at full panel width.
+- Default `<slot />` = MDX prose (architecture / design story / controls), rendered inside `.sl-markdown-content`.
+- Per-showcase gem flows through chrome via `--showcase-accent` (back link, primary CTA, stage ring all track the same gem).
+
+**Why:** Examples and Showcases serve different reads. Examples are tinker-targets; Showcases are curated narratives. Inline code editing on a full game adds noise without value.
+
+**How to apply:** New showcases pass `slug`, `sourcePath`, and `gem` props; URL convention is `https://stackblitz.com/github/<repo>/tree/<branch>/<sourcePath>` + matching GitHub URL. The layout handles all chrome — MDX file is just the prose.
+
+## Capture scripts: canvas pixel buffer read, not Playwright element screenshot
+**File(s):** `docs/scripts/capture-examples.mjs`, `docs/scripts/capture-minis.mjs`
+**Date:** 2026-05-08
+
+**Decision:** Both capture scripts (examples + minis) read the canvas's pixel buffer directly via Canvas API in page context, NOT Playwright's `locator.screenshot()`. The Node-side gets bytes via:
+
+```js
+const base64 = await page.evaluate(() => new Promise((resolve, reject) => {
+  requestAnimationFrame(() => {
+    const c = document.querySelector('canvas')           // (or scoped selector)
+    const snap = document.createElement('canvas')
+    snap.width = c.width; snap.height = c.height
+    snap.getContext('2d').drawImage(c, 0, 0)
+    snap.toBlob(async (blob) => {
+      const buf = new Uint8Array(await blob.arrayBuffer())
+      let bin = ''; for (let i = 0; i < buf.length; i++) bin += String.fromCharCode(buf[i])
+      resolve(btoa(bin))
+    }, 'image/png')
+  })
+}))
+const pngBuffer = Buffer.from(base64, 'base64')
+```
+
+Done inside `requestAnimationFrame` so the capture happens right after a frame draws — works for r3f canvases without `preserveDrawingBuffer: true`. Alpha is preserved end-to-end (2D canvas + PNG natively). WEBP gets `alphaQuality: 100` for clean transparent edges.
+
+**Why:** Playwright's `locator.screenshot()` is an ELEMENT screenshot — captures the rendered region of the page within the element's bounding box, INCLUDING any DOM that overlaps it (Astro dev overlay, view-transition pseudos, vtbot scripts, alpha ribbon, progress bar). Direct canvas-buffer read bypasses all of that.
+
+`omitBackground: true` was needed when we used Playwright screenshots to preserve alpha — but since we're now reading the canvas buffer directly, the alpha just comes through naturally. Earlier attempts to flatten the alpha via `sharp().flatten()` were exactly wrong: the GalleryTile's tile bg is gem-tinted, and the video (via `canvas.captureStream`) preserves alpha and composites on the tile bg at display time. The still needs to do the same — store alpha, let the tile composite at display time. Both still + video are now the same source mechanism (canvas pixel buffer) and look visually identical.
+
+**Evidence:** User report: dev overlay was visible in the still but not in the video, even though both were "of the canvas." Confirmed Playwright element screenshot includes overlapping DOM. Confirmed `drawImage(canvas)` reads the canvas's pixel buffer directly, no overlapping DOM. Same mechanism as `canvas.captureStream` (which is why video never had this issue).
+
+**How to apply:** Any future capture script that needs the canvas's actual pixel content should use the `drawImage + toBlob + base64 across page.evaluate` pattern. Playwright's element screenshot is for rendered-page captures (component screenshots), not for canvas-only buffer extraction.
+
+## Capture-minis: server probe specific route, per-stage logging, 8s settle
+**File(s):** `docs/scripts/capture-minis.mjs`
+**Date:** 2026-05-08
+
+**Decision:** Three diagnostic improvements on capture-minis (also useful for capture-examples in future iterations):
+
+1. Server probe hits the actual showcase URL (`/showcases/<slug>/`), not generic `/`. Generic 200 responses from unrelated leftover servers (orphan astro dev, stray python http.server) used to trigger false-positive reuse — Playwright then navigated to a server without our actual routes and the page never resolved.
+2. Per-stage logging: `[capture-minis]   navigating... ok / waiting for canvas... ok / settling Xms... ok / capturing...` so any future hang is immediately visible at the exact stage.
+3. `domcontentloaded` instead of `load` for `page.goto`. The docs site has lazy fonts + images + view-transition scripts that can keep the `load` event open for many seconds; React.lazy + Suspense mount AFTER DOMContentLoaded anyway.
+4. Settle bumped from 3s → 8s. WebGPU init + flatland scene compile + first attract-mode AI tick + first paint takes longer than 3s on the docs dev server. 8s gives ample headroom.
+
+**Why:** A silent hang in a long-running capture script is much harder to debug than an explicit error. Per-stage logging surfaces the failure point. The specific-route probe prevents the "probe says reuse, capture says hang" trap.
+
+**How to apply:** Capture scripts that probe an existing dev server should always probe a route specific to the test target, not just `/`. Long-running scripts should log per-stage so silent hangs become visible failures.

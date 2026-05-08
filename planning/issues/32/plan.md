@@ -491,4 +491,156 @@ planning/issues/32/
   plan.md         (this file — mirrored as issue comment)
   decisions.md    (appended during each phase's implementation)
   phase-2-audit.md  (created at end of Phase 2 by /impeccable:audit)
+  phase-3-audit.md  (created at end of Phase 3 punch list by /impeccable:audit)
 ```
+
+---
+
+# Session deliveries — 2026-05-07 / 2026-05-08 (Phase 4 polish + Phase 3.x finish)
+
+This section consolidates what was delivered in the late-Phase-3 / Phase-4
+polish rounds + the showcases redesign + capture pipeline. Decisions for
+each cluster live in `decisions.md` under the same headlines.
+
+## Phase 2 acceptance — complete ✅
+
+All Phase 2 acceptance items shipped before Phase 3 work began (tracked
+under decisions.md "Phase 2 decisions"). The earlier `[ ]` checkboxes in
+the Phase 2 Acceptance section above are stale; treat them as complete.
+
+## Phase 3 substrate item 0 — complete ✅
+
+All eight bullets under "Theme substrate redo" delivered:
+- Bearded-theme gem palette in `theme.css` + `uno.config.ts` (`gold` /
+  `ruby` / `emerald` / `diamond` / `amethyst` / `pink` / `salmon` /
+  `turquoize` + soft variants)
+- Semantic-token taxonomy expansion (`--link`, `--link-hover`,
+  `--sidebar-section-1..7`, `--card-accent`, `--vp-accent`, `--stat-accent`,
+  `--code-chip-accent`)
+- Site-wide `font-family` rules in `base.css`
+- Silkscreen restored (wordmark only)
+- Retro pixel-art icon restored
+- Sub-perceptual texture overlay (4% dark / 2.5% light fractal noise on
+  body, fixed-attachment, honors `prefers-reduced-transparency`)
+- Motion-as-craft substrate via `docs/src/scripts/motion.ts` (perlin
+  scene-light + cursor-coupling + reveal-on-scroll + tilt + holo)
+
+## Phase 3 punch-list components — most done ⚠️
+
+Component-by-component status (fully through impeccable loop unless
+noted):
+- ✅ Header (`d1edfc1`, refined with VT cleanup `83e46b9`)
+- ✅ Sidebar (`35dadfa`, deep refactor for API ref tree `7dad523` /
+  `836f69a` / `ad01603`; pip-to-content gap `ad01603`)
+- ✅ MarkdownContent — heading hierarchy `889a894`; aside link colors
+  `c8bd8f0`; inline-code chip per-context theming via `--code-chip-*`
+- ✅ Aside callouts — gem accents per type, link colors track
+  `--aside-title`
+- ✅ LinkButton primary (gold) + secondary (diamond) — foil rim
+  on `::before`, no border, `c8bd8f0` / `a9eda80`
+- ✅ FeatureCard — three-layer foil rim (scene + cursor hotspot + lens
+  flare), holographic icon
+- ✅ FeatureList — holographic icons, damped scene-angle bg
+  (`c8bd8f0` / `f7ff688`)
+- ✅ ValueProp — cursor-driven foil rule (replaces static fade)
+- ✅ StatsBanner — staggered reveal, drop-shadow glow removed
+- ✅ Top-nav — per-section gem accents (Docs/amethyst, Examples/diamond,
+  Showcases/ruby), active-state catch-all for docs cluster
+- ✅ Alpha ribbon — 45° square restored, scale-not-transform for hover
+- ✅ TOC + Sidebar markers — drop-shadow glows removed, indent guide
+  refactor
+- ⚠️ Hero (Starlight marketing-page hero) — not redesigned this pass
+- ⚠️ ContentPanel — not redesigned this pass
+- ⚠️ PageSidebar (TOC) — drop-shadow glow removed but not full impeccable
+  loop
+- ⚠️ Search modal interior — not redesigned this pass
+- ⚠️ Pagination — not redesigned this pass
+- ⚠️ Footer — not redesigned this pass
+
+## Phase 3 punch-list landing-page rebuild — partial ⚠️
+
+- ✅ FeatureCard / StatsBanner / ValueProp re-skin (`ae6db57`)
+- ✅ Reveal-on-scroll wired (`u-reveal` applied to landing sections with
+  `--reveal-delay` stagger)
+- ⚠️ Embedded three-flatland scenes per the brief (HeroGame stays as
+  the hero; no additional bespoke scenes added in this pass)
+
+## Phase 3 punch-list other items — not started ⏳
+
+- BrandAsset compositions (banner / OG / wide / social-x) — retro icon
+  preserved per stakeholder direction; the surrounding compositions
+  haven't been redesigned in this pass
+- Per-page interactive scenes (tsl-nodes, pass-effects, tilemaps guides)
+- Heading-badges sweep
+- `/impeccable:optimize` final pass
+
+## Phase 3.x gem-background system — complete ✅
+
+- ✅ Phase 1 foundation (`7219a0e`)
+- ✅ Phase 2 Three.js entries (`62031e5`)
+- ✅ Phase 3 React entries (`ee1ee47`)
+- ✅ Phase 4 polish — multi-pass tuning of OKLab + sRGB-encoded gradient
+  stops to match CSS card poster; skia FloorEdgeFade port; per-example
+  gem assignment via `examples/_shared/gems.config.ts`
+
+## NEW: Showcases redesign — complete ✅ (2026-05-08)
+
+Direction shift mid-pass — user originally leaned toward carousel for the
+showcases index, settled on 2-col grid with single-tile featured layout
+when only one showcase exists. Detail page also simplified — no inline
+StackBlitz editor, just the live preview + external CTAs.
+
+- ✅ `<ShowcaseGrid>` — 2-col max grid (`docs/src/components/gallery/ShowcaseGrid.astro`)
+- ✅ Singleton-featured layout via `a.gallery-tile:only-of-type` (not
+  `:only-child` because GalleryTile inlines a hover-video script as a
+  sibling). Bigger inner type, 38rem max-width centered, 6s ambient
+  brightness/saturation breath animation
+- ✅ `<ShowcaseTilePlaceholder>` — non-interactive `<div>` mirror of
+  GalleryTile chrome with "Coming Soon" badge. Renders alongside
+  Breakout to demonstrate per-showcase frontmatter theming without
+  breaking the singleton selector (different element TYPE)
+- ✅ `<ShowcaseDetailLayout>` — replaces ExampleDetailLayout for
+  showcases. Drops inline editor, adds external StackBlitz + GitHub
+  CTAs (primary tinted by showcase's gem), `<slot name="preview" />`
+  for the live game, default slot for MDX prose
+
+## NEW: Capture-minis script + canvas-buffer-direct technique ✅ (2026-05-08)
+
+Examples + Showcases capture pipeline now use a unified buffer-direct
+technique: read canvas pixel buffer via `drawImage(canvas) → toBlob`
+inside `requestAnimationFrame`, ship base64 across the Playwright
+bridge, decode on Node side. Bypasses Playwright's `locator.screenshot`
+which captures overlapping DOM (Astro dev overlay, vtbot scripts, etc).
+Same source mechanism as `canvas.captureStream` for video, so still +
+video are visually identical. Alpha preserved end-to-end.
+
+- ✅ `docs/scripts/capture-minis.mjs` — sibling of capture-examples,
+  spawns docs dev server on 4321, navigates to
+  `/three-flatland/showcases/<slug>/`, captures the canvas inside
+  `.showcase-detail-stage`. 8s settle for r3f + WebGPU init.
+  Per-stage logging. Specific-route probe (not `/`) so leftover
+  servers don't false-trigger reuse. Wired as `pnpm --filter=docs
+  capture:minis` in package.json.
+- ✅ `docs/scripts/capture-examples.mjs` — parity update to use the
+  same buffer-direct technique (`833deaa`)
+
+## Updated acceptance — what remains for PR #33 ready
+
+For ready-for-review, the remaining items from the original Phase 3
+acceptance list:
+
+- [ ] Hero / ContentPanel / Search / Pagination / Footer — full impeccable
+      loop pass (currently have drive-by polish from the substrate work
+      but not deliberate redesign per-component)
+- [ ] BrandAsset compositions (5 artifacts: banner, OG, wide, social-x,
+      icon-only)
+- [ ] At least 2 guide pages with embedded interactive visualizations
+- [ ] `/impeccable:audit` final regression-delta vs Phase 2 baseline —
+      partial via `phase-3-audit.md`
+- [ ] `/impeccable:optimize` final pass — bundle size, image optimization,
+      font loading, animation cost
+- [ ] Heading-badges sweep on version-tied / platform-divergent sections
+
+If stakeholder authorizes deferral of any of these, log per
+`implementing-github-issues` skill Phase 10 acceptance gate (writing
+authorization required, not unilateral scope cut).
