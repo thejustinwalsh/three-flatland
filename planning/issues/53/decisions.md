@@ -312,3 +312,28 @@ Hard rules:
 **Side cleanup:** the renderer's fixture range check was using the off-by-3 `< TILE_FIXTURE_BASE + 8` pattern (same latent bug item A fixed in driller.ts and ai-planner.ts — would mis-classify TILE_ROCK and TILE_EXPLOSIVE as fixtures). Replaced with the canonical `isFixtureTile` helper. Also dropped the obsolete `fixtureBone / fixtureMushroom / fixtureCrystal` keys from `TILE_COLORS` in `materials.ts`; replaced with a single `fixture` key.
 
 **Verification:** 119/119 unit tests pass; typecheck clean. Visual check deferred — placeholder hue change has no behavioral consequences and the integration suite doesn't gate on render output.
+
+## Phase 2 / item G — TILE_ROCK + TILE_STONE unification
+**File:** `minis/driller/src/traits/grid-traits.ts`, `src/constants.ts`, `src/systems/driller.ts`, `src/systems/hazard.ts`, `src/systems/explosive.ts`, `src/systems/ai-planner.ts`, `src/systems/generation.ts`, `src/components/TileRenderer.tsx`, `tests/_world-helper.ts`, `tests/unified-stone.test.ts`
+**Date:** 2026-05-08
+
+**Decision:** Drop `TILE_ROCK` (was id=8) entirely; promote `TILE_STONE` (id=2) to be the unified hard-tile class. All stones track damage in `Grid.hits[idx]` (= hits TAKEN, not lives remaining), break at `>= STONE_MAX_HITS`. Worldgen "speed-bump" stones spawn pre-damaged at `STONE_MAX_HITS - 1` so they break in one drill — preserving the prior TILE_ROCK gameplay feel via initial state, not via tile class.
+
+**Why these specifics:**
+
+1. **Inverted hits semantics.** Pre-unification, `driller.ts` used hits as "lives remaining" (decrement on drill, break at 0) while `hazard.ts` used hits as "damage taken" (increment on soil-crush, break at 4). They never collided because rock-drill and stone-cluster were disjoint paths. Phase 2 G makes them share the field, so they MUST share the convention. Damage-taken is cleaner: fresh = 0 (matches Uint8Array default, no init needed), broken = MAX. Inverting was free here.
+2. **One tuning knob.** `STONE_MAX_HITS = 4` is shared by drill (`completeDrill`) and avalanche break-off (`AVALANCHE_HITS_TO_BREAK`). Pre-unification these were `ROCK_HITS = 3` (drill) and `4` (avalanche). Now they match — tuning either changes both.
+3. **Stones are drillable.** `pickAction` no longer idles on a stone neighbor; the driller drills any non-fixture, non-AIR cell. Codex implication ("driller can drill a 1hp rock to save themselves") is now expressible — pre-damaged speed-bump stones are 1 drill from breaking.
+4. **Stones survive explosions.** Pre-unification rocks vaporized in blasts and stones survived. Unification could have gone either way; chose "stones survive" because the design intent (per `decisions.md` rock-codex entry) is that explosions only ADD hits via fall-crush adjacency, not via blast directly. Drill + fall-crush remain the only ways to damage stones.
+5. **Worldgen contract.** `GeneratedChunk` gained `damagedStones: number[]` so the chunk-copier in `loadChunk` knows which stone cells need pre-damage. Keeping the speed-bump signal in the generated structure (vs. encoding "damaged" in the tile class) means a stone+0 hits and a stone+3 hits are the same tile — only the `Grid.hits` payload distinguishes them.
+6. **Visual feedback.** New `TINT_DAMAGED_STONE` (= old `TINT_ROCK`) tints any stone with hits > 0 so the player sees "drillable / cracked" at a glance. The proper art pass introduces a 4-frame damage progression; this is the placeholder.
+
+**Tests pinning the rule:**
+- `unified-stone.test.ts: a fresh stone (hits=0) takes STONE_MAX_HITS drills to break`
+- `... a pre-damaged stone (R in helper) breaks in a single drill`
+- `... an isolated fresh stone over AIR does NOT fall (sub-threshold cluster, regression guard)`
+- `fixture-indestructible.test.ts` updated: stone (was TILE_ROCK, now damaged TILE_STONE) survives the blast — pinning the new explosion behavior.
+- `generation.test.ts` updated: the "stone scatter" assertion now reads `c.damagedStones` for the speed-bump count instead of TILE_ROCK count.
+- All 18 prior test files unchanged still pass — the unification didn't break codex invariants.
+
+**Verification:** 122/122 unit tests pass (was 119/119; +3 new in `unified-stone.test.ts`). Typecheck clean.

@@ -12,7 +12,6 @@ import {
   type PlannerName,
   PlannerTarget,
   TILE_AIR,
-  TILE_ROCK,
   TILE_SOIL,
   TILE_STONE,
   isFixtureTile,
@@ -83,7 +82,7 @@ function hasLOS(
     // of whatever soil/rock sits between — the AI should weight these
     // gems heavily so it considers tactical drill-ups.
     const overhead = tiles[gr * cols + gc]
-    if (overhead === TILE_ROCK || overhead === TILE_SOIL) return true
+    if (overhead === TILE_STONE || overhead === TILE_SOIL) return true
   }
   return false
 }
@@ -129,7 +128,7 @@ export function planSeeker(world: World, d: DrillerCell): [number, number] | nul
       const t = tiles[r * cols + c]
       if (t === undefined) return false
       // Stone, rock and fixtures block the path entirely.
-      if (t === TILE_STONE || t === TILE_ROCK) return false
+      if (t === TILE_STONE) return false
       if (isFixtureTile(t)) return false
       // Gravity-strict: the driller never walks up. Reject any upward
       // step. (Drilling-up is a separate tactical action, not a pathing
@@ -300,7 +299,7 @@ export function planEvadeHazard(world: World, d: { col: number; row: number }): 
       const idx = d.row * cols + c
       const t = tiles[idx]
       if (t === undefined) continue
-      if (t === TILE_STONE || t === TILE_ROCK) continue
+      if (t === TILE_STONE) continue
       if (isFixtureTile(t)) continue
       return [c, d.row]
     }
@@ -363,7 +362,7 @@ export function planEvadeFallingChunk(
       const idx = d.row * cols + c
       const t = tiles[idx]
       if (t === undefined) continue
-      if (t === TILE_STONE || t === TILE_ROCK) continue
+      if (t === TILE_STONE) continue
       if (isFixtureTile(t)) continue
       return [c, d.row]
     }
@@ -417,7 +416,7 @@ export function planEvadeMovingStoneCluster(
       const idx = d.row * cols + c
       const t = tiles[idx]
       if (t === undefined) continue
-      if (t === TILE_STONE || t === TILE_ROCK) continue
+      if (t === TILE_STONE) continue
       if (isFixtureTile(t)) continue
       return [c, d.row]
     }

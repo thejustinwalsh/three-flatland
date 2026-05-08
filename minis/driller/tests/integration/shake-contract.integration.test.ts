@@ -36,10 +36,20 @@ describe('integration: shake contract', () => {
     // If this fails, the world isn't producing collapses — check
     // that GameState.runState is 'playing' and that the AI driller
     // is drilling. Probe sets runState=playing on bootstrap.
+    //
+    // Threshold is intentionally loose (>= 5) because the driller's
+    // mood-driven AI is non-deterministic across runs. After Phase 2
+    // G (TILE_ROCK + TILE_STONE unification), stones became drillable
+    // and driller paths can now go straight down through what used
+    // to be impassable rock walls — resulting in fewer overhangs and
+    // fewer sag events on some seeds. The codex assertion below
+    // (honestShakes == totalCells) holds regardless of activity
+    // volume; the threshold here only guards against "AI never moved
+    // and we'd be silently passing on zero observations".
     expect(
       data.totalCells,
       `Probe observed only ${data.totalCells} cells flipping FLAG_SHAKING in 90s — too few to assert the contract. Is the AI driller making progress?`,
-    ).toBeGreaterThan(20)
+    ).toBeGreaterThanOrEqual(5)
 
     if (data.violators > 0) {
       const samples = data.violatorSamples

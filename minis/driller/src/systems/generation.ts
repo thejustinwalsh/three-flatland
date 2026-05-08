@@ -2,7 +2,7 @@ import type { World } from 'koota'
 import {
   CHUNK_ROWS,
   PLAY_COLS,
-  ROCK_HITS,
+  STONE_MAX_HITS,
 } from '../constants'
 import {
   Explosive,
@@ -13,7 +13,6 @@ import {
   TILE_AIR,
   TILE_EXPLOSIVE,
   TILE_FIXTURE_BASE,
-  TILE_ROCK,
   TILE_SOIL,
   TILE_STONE,
 } from '../traits'
@@ -33,6 +32,14 @@ export interface GeneratedChunk {
   gems: GeneratedGem[]
   /** Explosive placements (col, rowInChunk) — Explosive entities spawned at load. */
   explosives: { col: number; rowInChunk: number }[]
+  /**
+   * Phase 2 unification: stone indices that should spawn pre-damaged
+   * (one drill from breaking). The previous TILE_ROCK speed-bump role
+   * lives on as a `STONE_MAX_HITS - 1` initial hit count on these
+   * cells; the copier in `loadChunk` consumes this list when stamping
+   * `Grid.hits`.
+   */
+  damagedStones: number[]
 }
 
 export interface GeneratedGem {
@@ -209,6 +216,7 @@ export function generateChunk(seed: number, chunkY: number): GeneratedChunk {
   const cols = PLAY_COLS
   const rows = CHUNK_ROWS
   const tiles = new Uint8Array(cols * rows)
+  const damagedStones: number[] = []
 
   const rng = createRng((Math.imul(seed, 0x9e3779b1) + chunkY) >>> 0)
   const depthMid = chunkY * rows + rows / 2
@@ -275,7 +283,14 @@ export function generateChunk(seed: number, chunkY: number): GeneratedChunk {
     const x = rng.intRange(1, cols - 2)
     const y = rng.intRange(2, rows - 2)
     const idx = y * cols + x
-    if (tiles[idx] === TILE_SOIL) tiles[idx] = TILE_ROCK
+    // Phase 2 unification: "rocks" are now stones, but speed-bump
+    // stones spawn pre-damaged so the driller can drill through them
+    // in a single hit (matches the previous TILE_ROCK feel). The
+    // damage is stamped into Grid.hits below at the chunk-copy step.
+    if (tiles[idx] === TILE_SOIL) {
+      tiles[idx] = TILE_STONE
+      damagedStones.push(idx)
+    }
   }
 
   // EXPLOSIVE — sparse in stoneworks+, denser in core. Always inside soil.
@@ -364,7 +379,7 @@ export function generateChunk(seed: number, chunkY: number): GeneratedChunk {
     }
   }
 
-  return { tiles, gems, explosives: explosivePlacements }
+  return { tiles, gems, explosives: explosivePlacements, damagedStones }
 }
 
 /* ------------------------------------------------------------------ */
@@ -423,9 +438,18 @@ function loadChunk(world: World, chunkY: number, seed: number): void {
       tiles[dst] = t
       flags[dst] = FLAG_AUTOTILE_DIRTY
       frameIndex[dst] = 0
-      // Initialize hit counter for ROCK tiles; non-rocks stay 0.
-      hits[dst] = t === TILE_ROCK ? ROCK_HITS : 0
+      // Phase 2 unification: hits = damage TAKEN. Fresh stones from
+      // worldgen start at 0; speed-bump stones (the spiritual
+      // successor of TILE_ROCK) get pre-damaged below.
+      hits[dst] = 0
     }
+  }
+  // Apply pre-damage to speed-bump stones — one drill from breaking.
+  for (const localIdx of generated.damagedStones) {
+    const localR = Math.floor(localIdx / cols)
+    const localC = localIdx % cols
+    const dst = (baseRow + localR) * cols + localC
+    hits[dst] = STONE_MAX_HITS - 1
   }
 
   // Track bottommost loaded row.

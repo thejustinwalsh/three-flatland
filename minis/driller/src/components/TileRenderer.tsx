@@ -12,7 +12,6 @@ import {
   Grid,
   TILE_AIR,
   TILE_EXPLOSIVE,
-  TILE_ROCK,
   TILE_SOIL,
   TILE_STONE,
   isFixtureTile,
@@ -31,7 +30,11 @@ const POOL_SIZE = PLAY_COLS * POOL_ROWS
  * current biome's palette (see `biomes.ts`) so the world visually
  * shifts as the driller descends.
  */
-const TINT_ROCK = [0.55, 0.45, 0.35] as const // breakable rock — distinct from STONE
+// Damaged stones (hits > 0) tint warmer/redder so the player can
+// visually identify "drill me to escape" stones at a glance. This is
+// the placeholder visual; the proper art pass introduces a 4-frame
+// damage progression.
+const TINT_DAMAGED_STONE = [0.55, 0.45, 0.35] as const
 const TINT_EXPLOSIVE = [0.85, 0.20, 0.15] as const
 const TINT_EXPLOSIVE_LIT = [1.0, 0.55, 0.20] as const // pulsing when triggered
 // Unified placeholder amber — "honeycomb / safe haven" colour, distinct
@@ -60,6 +63,7 @@ const TINT_FALL = [0.85, 0.48, 0.24] as const
 function pickBaseTint(
   tile: number,
   frame: number,
+  hits: number,
   triggeredExplosive: boolean,
   palette: { grass: readonly [number, number, number]; edge: readonly [number, number, number]; deep: readonly [number, number, number]; stone: readonly [number, number, number] },
 ): readonly [number, number, number] {
@@ -68,8 +72,12 @@ function pickBaseTint(
     if (frame === 0xf) return palette.deep
     return palette.edge
   }
-  if (tile === TILE_STONE) return palette.stone
-  if (tile === TILE_ROCK) return TINT_ROCK
+  if (tile === TILE_STONE) {
+    // Phase 2 unification: damaged stones (hits > 0) tint warmer so
+    // the player can ID drillable speed-bumps and partly-cracked
+    // stones at a glance.
+    return hits > 0 ? TINT_DAMAGED_STONE : palette.stone
+  }
   if (tile === TILE_EXPLOSIVE) return triggeredExplosive ? TINT_EXPLOSIVE_LIT : TINT_EXPLOSIVE
   if (isFixtureTile(tile)) return TINT_FIXTURE
   return palette.edge
@@ -78,6 +86,7 @@ function pickBaseTint(
 function pickTint(
   tile: number,
   frame: number,
+  hits: number,
   precarious: boolean,
   sagging: boolean,
   falling: boolean,
@@ -87,7 +96,7 @@ function pickTint(
 ): readonly [number, number, number] {
   void now
   if (falling) return TINT_FALL
-  const base = pickBaseTint(tile, frame, triggeredExplosive, palette)
+  const base = pickBaseTint(tile, frame, hits, triggeredExplosive, palette)
   // SAGGING dominates PRECARIOUS — by the time the second phase
   // begins, the visual escalates. SHAKE shares the SAGGING tint and
   // adds jitter via the position offset elsewhere.
@@ -128,7 +137,7 @@ export function TileRenderer({ material }: TileRendererProps) {
     const grid = world.get(Grid)
     const cam = world.get(Camera)
     if (!grid || !cam || grid.rows === 0) return
-    const { cols, rows, tiles, flags, frameIndex } = grid
+    const { cols, rows, tiles, flags, frameIndex, hits } = grid
     const pool = refs.current
 
     const topRow = Math.max(0, Math.floor(cam.y / TILE_PX) - 1)
@@ -164,7 +173,7 @@ export function TileRenderer({ material }: TileRendererProps) {
         const shaking = (flags[idx]! & FLAG_SHAKING) !== 0
         const litExplosive = tile === TILE_EXPLOSIVE && triggeredExplosives.has(idx) && pulse
         const palette = biomeAt(r).palette
-        const tint = pickTint(tile, frameIndex[idx]!, precarious, sagging, falling, litExplosive, now, palette)
+        const tint = pickTint(tile, frameIndex[idx]!, hits[idx] ?? 0, precarious, sagging, falling, litExplosive, now, palette)
         // Shake telegraph: deliberate "crack" rather than a buzz. A
         // few wide shudders at ~6 Hz (1 cycle ≈ 170 ms) so over the
         // ~300 ms window the player sees roughly two heavy lurches

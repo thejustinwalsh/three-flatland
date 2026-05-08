@@ -136,7 +136,14 @@ export const PONDER_GEM_MS = 140
 export const FALL_INTERVAL_MS = 320
 
 /** Multi-hit ROCK tile — number of dig actions to break. */
-export const ROCK_HITS = 3
+/**
+ * Hits-taken threshold at which a TILE_STONE breaks. Drilling adds 1
+ * hit; an avalanche cluster cell crushing soil during its fall adds 1
+ * hit. Fresh stones have 0 hits; worldgen "speed bump" stones spawn
+ * pre-damaged at STONE_MAX_HITS - 1 so the driller can drill through
+ * them in a single hit (the spiritual successor of the old TILE_ROCK).
+ */
+export const STONE_MAX_HITS = 4
 
 /** Explosive fuse — ticks from trigger to detonation (~0.5s @ 60Hz). */
 export const EXPLOSIVE_FUSE_TICKS = 30

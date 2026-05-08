@@ -53,19 +53,25 @@ describe('generateChunk', () => {
     expect(air).toBeGreaterThan(0)
   })
 
-  it('topsoil chunkY=0 stays mostly SOIL/AIR with light stone/rock scatter', () => {
+  it('topsoil chunkY=0 stays mostly SOIL/AIR with light stone scatter', () => {
     // The first biome was previously absurdly empty; it now allows a
-    // small budget of TILE_STONE clusters and TILE_ROCK speed bumps so
-    // it isn't a straight-down boring drill. Floor the count so the
-    // assertion still catches accidental flooding.
+    // small budget of TILE_STONE clusters and pre-damaged speed-bump
+    // stones (Phase 2 G unification rolled the old TILE_ROCK class into
+    // TILE_STONE via Grid.hits). Floor the count so the assertion still
+    // catches accidental flooding.
     const c = generateChunk(42, 0)
-    let stones = 0, rocks = 0
+    let stones = 0
+    let damaged = 0
     for (let i = 4 * PLAY_COLS; i < c.tiles.length; i++) {
-      const t = c.tiles[i]
-      if (t === 2 /* TILE_STONE */) stones++
-      else if (t === 8 /* TILE_ROCK */) rocks++
+      if (c.tiles[i] === 2 /* TILE_STONE */) stones++
     }
-    expect(stones + rocks).toBeLessThan(15)
+    for (const idx of c.damagedStones) {
+      if (idx >= 4 * PLAY_COLS) damaged++
+    }
+    expect(stones).toBeLessThan(15)
+    // Speed-bump stones are a SUBSET of all stones — the count must
+    // not exceed total stones, and shouldn't dominate either.
+    expect(damaged).toBeLessThanOrEqual(stones)
   })
 
   it('produces a gem-count range matching the chunk biome', () => {

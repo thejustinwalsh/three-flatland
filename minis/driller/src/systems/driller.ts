@@ -11,7 +11,6 @@ import {
   Mood,
   PlannerTarget,
   TILE_AIR,
-  TILE_ROCK,
   TILE_SOIL,
   TILE_STONE,
   isFixtureTile,
@@ -21,7 +20,7 @@ import {
   DIG_INTERVAL_MS_DEEP,
   DIG_INTERVAL_MS_SHALLOW,
   DRILL_COOLDOWN_MS,
-  ROCK_HITS,
+  STONE_MAX_HITS,
   TILE_PX,
 } from '../constants'
 import { markCellAndNeighborsDirty } from './autotile-pass'
@@ -99,12 +98,15 @@ function pickAction(
 
   const facing = stepCol !== 0 ? (stepCol > 0 ? 1 : -1) : currentFacing
 
+  // Phase 2 unification: stones are now drillable (multi-hit). Only
+  // fixtures still hard-block the drill — they're indestructible.
   if (stepRow > 0) {
     // Down → drill the support cell.
     const drillRow = snappedRow + 1
     if (drillRow >= rows) return { kind: 'idle', facing }
     const t = tiles[drillRow * cols + snappedCol]
-    if (t === undefined || t === TILE_STONE || (t !== undefined && isFixtureTile(t))) return { kind: 'idle', facing }
+    if (t === undefined || t === TILE_AIR) return { kind: 'idle', facing }
+    if (isFixtureTile(t)) return { kind: 'idle', facing }
     return { kind: 'drill', drillCol: snappedCol, drillRow, facing, animState: 'drillDown' }
   }
   if (stepCol !== 0) {
@@ -114,9 +116,8 @@ function pickAction(
     if (sideTile === TILE_AIR) {
       return { kind: 'walk', destCol: sideCol, destRow: snappedRow, facing, animState: 'walk' }
     }
-    if (sideTile === TILE_STONE || (sideTile !== undefined && isFixtureTile(sideTile))) {
-      return { kind: 'idle', facing }
-    }
+    if (sideTile === undefined) return { kind: 'idle', facing }
+    if (isFixtureTile(sideTile)) return { kind: 'idle', facing }
     return {
       kind: 'drill',
       drillCol: sideCol,
@@ -129,7 +130,8 @@ function pickAction(
   const upRow = snappedRow - 1
   if (upRow < 0) return { kind: 'idle', facing }
   const t = tiles[upRow * cols + snappedCol]
-  if (t === undefined || t === TILE_STONE || (t !== undefined && isFixtureTile(t))) return { kind: 'idle', facing }
+  if (t === undefined || t === TILE_AIR) return { kind: 'idle', facing }
+  if (isFixtureTile(t)) return { kind: 'idle', facing }
   return { kind: 'drill', drillCol: snappedCol, drillRow: upRow, facing, animState: 'drillUp' }
 }
 
@@ -140,12 +142,24 @@ function pickAction(
 function completeDrill(world: World, grid: { cols: number; rows: number; tiles: Uint8Array; flags: Uint8Array; hits: Uint8Array }, col: number, row: number): void {
   const idx = row * grid.cols + col
   const tile = grid.tiles[idx]
-  if (tile === TILE_ROCK) {
-    const remaining = (grid.hits[idx] ?? ROCK_HITS) - 1
-    grid.hits[idx] = Math.max(0, remaining)
-    if (remaining <= 0) {
+  if (tile === TILE_STONE) {
+    // Stones absorb damage — break only when total hits taken hits the
+    // unified threshold. Worldgen places "speed bump" stones at hits =
+    // STONE_MAX_HITS - 1 so they break in a single drill, the spiritual
+    // successor of the old TILE_ROCK.
+    const next = (grid.hits[idx] ?? 0) + 1
+    if (next >= STONE_MAX_HITS) {
       grid.tiles[idx] = TILE_AIR
+      grid.hits[idx] = 0
       grid.flags[idx] = FLAG_AUTOTILE_DIRTY
+      markCellAndNeighborsDirty(world, col, row)
+    } else {
+      grid.hits[idx] = next
+      // Drilling a stone disturbs adjacent ones (existing semantics)
+      // — markCellAndNeighborsDirty does that for us, even when the
+      // stone itself doesn't break this hit. Tag the cell as dirty so
+      // the renderer redraws with the damaged tint.
+      grid.flags[idx] = (grid.flags[idx] ?? 0) | FLAG_AUTOTILE_DIRTY
       markCellAndNeighborsDirty(world, col, row)
     }
   } else if (tile === TILE_SOIL) {

@@ -14,14 +14,19 @@ import { trait } from 'koota'
  * cell?" — never re-derive the range inline (8 ≠ TILE_FIXTURE_BASE+5; the
  * range is exactly +0..+4).
  *
- * `TILE_ROCK` is a multi-hit breakable hard tile — anchors soil while intact.
+ * `TILE_STONE` is the unified hard-tile class (Phase 2 unification). Stones
+ * track damage in `Grid.hits[idx]` — fresh stones have 0 hits, each drill
+ * or fall-crush adds 1, and a stone breaks at `>= STONE_MAX_HITS`. Worldgen
+ * "speed bump" stones spawn pre-damaged so the driller can drill through
+ * them in a single hit. The previous `TILE_ROCK` is gone — rocks are just
+ * stones with extra hits.
+ *
  * `TILE_EXPLOSIVE` triggers on driller adjacency, blows a 5×5 hole.
  */
 export const TILE_AIR = 0
 export const TILE_SOIL = 1
 export const TILE_STONE = 2
 export const TILE_FIXTURE_BASE = 3
-export const TILE_ROCK = 8
 export const TILE_EXPLOSIVE = 9
 
 /** True if `t` is one of the 5 fixture variants (TILE_FIXTURE_BASE+0..+4). */
@@ -31,7 +36,7 @@ export function isFixtureTile(t: number): boolean {
 
 /** Helper — true if the tile anchors adjacent SOIL (used by collapse). */
 export function isAnchorTile(t: number): boolean {
-  return t === TILE_STONE || t === TILE_ROCK || isFixtureTile(t)
+  return t === TILE_STONE || isFixtureTile(t)
 }
 
 /** Reserved bits in `Grid.flags`. */

@@ -22,6 +22,7 @@ import {
   HAZARD_WARNING_TICKS,
   PLAYFIELD_TOP_OFFSET_ROWS,
   PLAY_COLS,
+  STONE_MAX_HITS,
   TILE_PX,
 } from '../constants'
 import { biomeAt, isFreeFall } from '../biomes'
@@ -155,7 +156,7 @@ export function hazardTickSystem(world: World): void {
   if (!gs) return
   const grid = world.get(Grid)
   if (!grid) return
-  const { cols, rows, tiles, flags } = grid
+  const { cols, rows, tiles, flags, hits } = grid
 
   // Once the driller enters the free-fall void, nothing that was
   // already in flight should chase them through it. Despawn all
@@ -220,6 +221,12 @@ export function hazardTickSystem(world: World): void {
         const restIdx = restRow * cols + h.col
         if (tiles[restIdx] === TILE_AIR) {
           tiles[restIdx] = TILE_STONE
+          // Fresh stone — full health (hits-taken = 0). Clear any
+          // residual hit count from when this cell was previously
+          // occupied (hazard land branch can stamp into a slot whose
+          // last occupant was a damaged stone that subsequently got
+          // drilled to AIR).
+          hits[restIdx] = 0
           flags[restIdx] = (flags[restIdx] ?? 0) | FLAG_AUTOTILE_DIRTY | FLAG_DISTURBED
           markCellAndNeighborsDirty(world, h.col, restRow)
           for (const [dc, dr] of [[-1, 0], [1, 0], [0, -1], [0, 1]] as const) {
@@ -257,7 +264,9 @@ export function hazardTickSystem(world: World): void {
  * descent reads as a heavy crash, not a single-tick teleport.
  */
 const AVALANCHE_THRESHOLD = 4
-const AVALANCHE_HITS_TO_BREAK = 4
+// Phase 2 unification: avalanche break-off and the player's drill
+// share STONE_MAX_HITS — one tuning knob, not two.
+const AVALANCHE_HITS_TO_BREAK = STONE_MAX_HITS
 const AVALANCHE_FALL_INTERVAL_TICKS = 12 // ~200ms at 60Hz
 // Stones use the same SHAKE duration as soil sag so the player
 // reads "this is about to fall" with the same cadence regardless

@@ -6,7 +6,6 @@ import {
   Grid,
   TILE_AIR,
   TILE_FIXTURE_BASE,
-  TILE_ROCK,
   TILE_SOIL,
   TILE_STONE,
 } from '../src/traits'
@@ -71,8 +70,9 @@ function tickThroughDetonation(world: ReturnType<typeof makeWorldFromGrid>): voi
 describe('fixture indestructibility', () => {
   it('explosive blast leaves fixture cells intact', () => {
     // Layout: driller (D) west of explosive (X); fixture (F) directly
-    // east of the explosive within blast radius. Surrounding SOIL/ROCK
-    // are inside the radius too — they should vaporize.
+    // east of the explosive within blast radius. Phase 2 G also rolled
+    // damaged stones (R = pre-damaged STONE) into the same survival
+    // class as fresh stones — explosives no longer destroy stones.
     //
     //   . . . . . .
     //   # # # # # .
@@ -89,17 +89,19 @@ describe('fixture indestructibility', () => {
     spawnExplosiveAndDriller(world)
     const grid = world.get(Grid)!
     const fixtureIdx = 2 * grid.cols + 3 // row 2, col 3 = 'F'
-    const rockIdx = 2 * grid.cols + 4 // row 2, col 4 = 'R'
+    const stoneIdx = 2 * grid.cols + 4 // row 2, col 4 = 'R' (damaged stone)
     const explosiveIdx = 2 * grid.cols + 2 // row 2, col 2 = 'X'
 
     expect(grid.tiles[fixtureIdx]).toBe(TILE_FIXTURE_BASE)
-    expect(grid.tiles[rockIdx]).toBe(TILE_ROCK)
+    expect(grid.tiles[stoneIdx]).toBe(TILE_STONE)
 
     tickThroughDetonation(world)
 
     expect(grid.tiles[fixtureIdx]).toBe(TILE_FIXTURE_BASE) // SURVIVES
     expect(grid.tiles[explosiveIdx]).toBe(TILE_AIR) // detonated
-    expect(grid.tiles[rockIdx]).toBe(TILE_AIR) // vaporized
+    // Phase 2 G: stones (including damaged ones) survive explosions —
+    // the only ways to add hits to a stone are drill + fall-crush.
+    expect(grid.tiles[stoneIdx]).toBe(TILE_STONE)
     // Surrounding soil within blast radius vaporized.
     expect(grid.tiles[1 * grid.cols + 2]).toBe(TILE_AIR)
     expect(grid.tiles[3 * grid.cols + 2]).toBe(TILE_AIR)
@@ -107,7 +109,7 @@ describe('fixture indestructibility', () => {
 
   it('explosive blast preserves all 5 fixture variants', () => {
     // Variants TILE_FIXTURE_BASE+0..+4 must all survive identically.
-    // Codex range is [+0, +4]; +5 is TILE_ROCK and must NOT be treated
+    // Codex range is [+0, +4]; cells outside that range must NOT be treated
     // as a fixture.
     for (let variant = 0; variant <= 4; variant++) {
       const world = makeWorldFromGrid([
