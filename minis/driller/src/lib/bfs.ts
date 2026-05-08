@@ -5,6 +5,11 @@
  * (find nearest STONE/FIXTURE adjacency). The work is bounded by
  * `maxRadius² × 4` cells; for `maxRadius=6` that's at most 144 cell
  * visits, comfortably under per-tick budgets.
+ *
+ * `isPassable(col, row, fromCol, fromRow)` — receives the ORIGIN cell
+ * so the caller can implement direction-aware constraints (e.g.,
+ * "upward moves only allowed if destination is already AIR" for the
+ * gravity-based driller). Origin args are -1, -1 only for the seed.
  */
 export function bfsNextStep(
   startCol: number,
@@ -12,7 +17,7 @@ export function bfsNextStep(
   cols: number,
   rows: number,
   isGoal: (col: number, row: number) => boolean,
-  isPassable: (col: number, row: number) => boolean,
+  isPassable: (col: number, row: number, fromCol: number, fromRow: number) => boolean,
   maxRadius: number,
 ): [number, number] | null {
   const startKey = startRow * cols + startCol
@@ -41,7 +46,7 @@ export function bfsNextStep(
       if (nc < 0 || nc >= cols || nr < 0 || nr >= rows) continue
       if (Math.abs(nc - startCol) + Math.abs(nr - startRow) > maxRadius * 2) continue
       const key = nr * cols + nc
-      if (visited.has(key) || !isPassable(nc, nr)) continue
+      if (visited.has(key) || !isPassable(nc, nr, c, r)) continue
       visited.add(key)
       parents.set(key, r * cols + c)
       queue.push([nc, nr])

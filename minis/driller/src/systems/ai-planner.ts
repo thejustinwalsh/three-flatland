@@ -14,6 +14,8 @@ import {
   TILE_SOIL,
   TILE_STONE,
 } from '../traits'
+
+void TILE_SOIL // import kept for clarity in passability rules
 import { MOOD_SWITCH_THRESHOLD, PLAN_COMMIT_TICKS } from '../constants'
 import { bfsNextStep } from '../lib/bfs'
 
@@ -62,10 +64,16 @@ export function planSeeker(world: World, d: DrillerCell): [number, number] | nul
     cols,
     rows,
     (c, r) => gemSet.has(r * cols + c),
-    (c, r) => {
+    (c, r, _fromC, fromR) => {
       const t = tiles[r * cols + c]
       if (t === undefined) return false
-      return t !== TILE_STONE && !isFixture(t)
+      // Stone, rock and fixtures block the path entirely.
+      if (t === TILE_STONE || t === TILE_ROCK) return false
+      if (isFixture(t)) return false
+      // Gravity rule: an UPWARD step (r < fromR) is only valid if the
+      // destination is already AIR. The driller can't dig up.
+      if (fromR >= 0 && r < fromR && t !== TILE_AIR) return false
+      return true
     },
     6,
   )
@@ -93,10 +101,12 @@ export function planCautious(world: World, d: DrillerCell): [number, number] | n
     }
     return false
   }
-  const isPassable = (c: number, r: number): boolean => {
+  const isPassable = (c: number, r: number, _fromC: number, fromR: number): boolean => {
     const t = tiles[r * cols + c]
     if (t === undefined) return false
-    return t === TILE_AIR || t === TILE_SOIL
+    if (t !== TILE_AIR && t !== TILE_SOIL) return false
+    if (fromR >= 0 && r < fromR && t !== TILE_AIR) return false
+    return true
   }
 
   const next = bfsNextStep(d.col, d.row, cols, rows, isShelter, isPassable, 6)
@@ -223,22 +233,21 @@ export function plannerTick(world: World): void {
   if (!drillerEntity) return
   const d = drillerEntity.get(Driller)!
 
-  // Highest-priority override: evade falling rocks regardless of mood.
+  // 1. Highest-priority override: evade falling rocks regardless of mood.
   const evade = planEvadeHazard(world, d)
   let next: [number, number] | null = evade
 
+  // 2. Selected planner. If the chosen planner returns null (e.g., seeker
+  //    can't find a gravity-reachable gem) → fall through to greedy so the
+  //    driller never just stands there staring at an unreachable gem.
   if (!next) {
     const which = selectPlanner(world)
-    switch (which) {
-      case 'greedy':
-        next = planGreedy(world, d)
-        break
-      case 'seeker':
-        next = planSeeker(world, d)
-        break
-      case 'cautious':
-        next = planCautious(world, d)
-        break
+    if (which === 'seeker') {
+      next = planSeeker(world, d) ?? planGreedy(world, d)
+    } else if (which === 'cautious') {
+      next = planCautious(world, d) ?? planGreedy(world, d)
+    } else {
+      next = planGreedy(world, d)
     }
   }
   if (!next) return
