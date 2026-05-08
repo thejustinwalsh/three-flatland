@@ -6,6 +6,7 @@ import {
   FLAG_AUTOTILE_DIRTY,
   FLAG_FALLING,
   FLAG_PRECARIOUS,
+  FLAG_SAG_RECHECK,
   FLAG_SAGGING,
   FLAG_SHAKING,
   GameState,
@@ -54,41 +55,44 @@ export function detectAndSag(world: World): void {
   const winTop = Math.max(0, dRow - SCAN_WINDOW_ROWS_ABOVE)
   const winBot = Math.min(rows, dRow + SCAN_WINDOW_ROWS_BELOW)
 
-  // First pass: cantilever sag detection. Cells too far from any
-  // anchor (STONE, ROCK, fixture, or world bottom — left/right walls
-  // are NO LONGER anchors so wide soil bands above wall-to-wall
-  // tunnels can become unsupported overhangs that fall on the
-  // driller). Returns a Set of cell indices flagged unstable.
-  const unstable = unstableCells(tiles, cols, rows, MAX_REACH)
-  if (unstable.size > 0) {
-    // Group unstable cells into chunks via the same flood-fill as
-    // detectChunks but limited to the unstable set.
-    const allChunks = detectChunks(tiles, cols, rows, winTop, winBot)
-    for (const ch of allChunks) {
-      if (chunkHasFlag(ch, flags, FLAG_SAGGING | FLAG_FALLING)) continue
-      const unstableIdxs = ch.cells.filter((idx) => unstable.has(idx))
-      if (unstableIdxs.length === 0) continue
+  // Cantilever sag detection — gated by FLAG_SAG_RECHECK so we only
+  // re-evaluate chunks the player has actually disturbed this tick.
+  // Without the gate, fresh worldgen-loaded chunks would immediately
+  // sag for the natural overhangs in their cellular-automata caves,
+  // and stable chunks across the loaded world would re-trigger every
+  // frame.
+  const allChunks = detectChunks(tiles, cols, rows, winTop, winBot)
+  for (const ch of allChunks) {
+    if (chunkHasFlag(ch, flags, FLAG_SAGGING | FLAG_FALLING)) continue
+    if (!chunkHasFlag(ch, flags, FLAG_SAG_RECHECK)) continue
 
-      const chosen = filterBottomRows(
-        { ...ch, cells: unstableIdxs, maxRow: Math.max(...unstableIdxs.map((i) => Math.floor(i / cols))) },
-        cols,
-        MAX_CHUNK_HEIGHT,
-      )
-      if (chosen.length === 0) continue
-      for (const idx of chosen) flags[idx] = (flags[idx] ?? 0) | FLAG_SAGGING
-      world.spawn(
-        SaggingChunk({
-          cells: chosen.map((idx) => ({
-            col: idx % cols,
-            row: Math.floor(idx / cols),
-            tile: tiles[idx]!,
-          })),
-          startTick: gs.tick,
-          durationTicks: SAG_DURATION_TICKS,
-          bracedUntilTick: 0,
-        }),
-      )
-    }
+    // Compute unstable cells once we know this chunk needs it.
+    const unstable = unstableCells(tiles, cols, rows, MAX_REACH)
+    const unstableIdxs = ch.cells.filter((idx) => unstable.has(idx))
+    // Clear SAG_RECHECK on this chunk's cells so it doesn't re-fire
+    // every tick — the gate has done its job for this disturbance.
+    for (const idx of ch.cells) flags[idx]! &= ~FLAG_SAG_RECHECK
+    if (unstableIdxs.length === 0) continue
+
+    const chosen = filterBottomRows(
+      { ...ch, cells: unstableIdxs, maxRow: Math.max(...unstableIdxs.map((i) => Math.floor(i / cols))) },
+      cols,
+      MAX_CHUNK_HEIGHT,
+    )
+    if (chosen.length === 0) continue
+    for (const idx of chosen) flags[idx] = (flags[idx] ?? 0) | FLAG_SAGGING
+    world.spawn(
+      SaggingChunk({
+        cells: chosen.map((idx) => ({
+          col: idx % cols,
+          row: Math.floor(idx / cols),
+          tile: tiles[idx]!,
+        })),
+        startTick: gs.tick,
+        durationTicks: SAG_DURATION_TICKS,
+        bracedUntilTick: 0,
+      }),
+    )
   }
 
   // Second pass: PRECARIOUS prediction — "if the driller drills its

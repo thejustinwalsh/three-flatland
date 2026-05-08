@@ -195,16 +195,15 @@ export function hazardTickSystem(world: World): void {
     const idx = newRow * cols + h.col
     const tileHere = tiles[idx]!
 
-    // STOP on first non-AIR cell. Drop a STONE in the cell immediately
-    // above (the last AIR cell the rock occupied). The new stone is
-    // born DISTURBED — a freshly-landed rock counts as destabilising
-    // any adjacent stone cluster.
+    // STOP on first non-AIR cell. Normal rocks deposit a STONE one
+    // cell above the obstacle and disturb adjacent stone clusters.
+    // DEBRIS rocks (from a broken avalanche cluster) just die on
+    // impact — they don't deposit, otherwise the deposited stone
+    // re-clusters with the shrinking avalanche above and the cluster
+    // walks downward forever instead of dying.
     if (tileHere !== TILE_AIR) {
       const restRow = newRow - 1
-      if (restRow >= 0) {
-        // Squish check: driller IS the resting cell AND has ground
-        // below them (no escape downward). If they're floating mid-
-        // descent the rock just thuds past — see comment above.
+      if (restRow >= 0 && !h.isDebris) {
         const driller = world.queryFirst(Driller)
         if (driller) {
           const d = driller.get(Driller)!
@@ -461,6 +460,7 @@ export function rockAvalancheSystem(world: World): void {
             vy: HAZARD_TERMINAL_PX,
             phase: 'falling',
             fallAtTick: gs.tick,
+            isDebris: true,
           }),
         )
         continue

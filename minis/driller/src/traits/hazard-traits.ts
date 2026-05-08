@@ -18,4 +18,13 @@ export const Hazard = trait({
   phase: 'warning' as HazardPhase,
   /** Tick at which the hazard transitions into falling. */
   fallAtTick: 0,
+  /**
+   * Debris hazards are spawned by broken avalanche rocks (after they
+   * accumulate 4 crush impacts). They fall to the earth like normal
+   * rocks but DO NOT deposit a STONE on landing — they just die.
+   * Otherwise the deposited STONE re-clusters with the shrinking
+   * avalanche above and the cluster effectively walks down forever
+   * instead of disintegrating.
+   */
+  isDebris: false,
 })

@@ -59,6 +59,20 @@ export const FLAG_DISTURBED = 1 << 4
 export const FLAG_SHAKING = 1 << 5
 
 /**
+ * Set on a SOIL cell when something nearby changes (driller drills,
+ * hazard lands, chunk re-attaches, explosion clears, avalanche
+ * crush). Acts as a per-tick gate for the cantilever sag detector:
+ * a SOIL chunk is only re-evaluated for unstable overhangs if at
+ * least one of its cells carries this bit. Fresh worldgen-loaded
+ * chunks DON'T get this flag, so they stay stable until the player
+ * does something that could destabilise them.
+ *
+ * detectAndSag clears this bit on a chunk's cells once it processes
+ * the chunk; subsequent ticks re-check only on the next mutation.
+ */
+export const FLAG_SAG_RECHECK = 1 << 6
+
+/**
  * Singleton tile grid. The world is 18 columns wide (matches `PLAY_COLS`)
  * and grows vertically as chunks stream in. `topRow` and `bottomRow` are
  * absolute row indices in world space (a chunk near the surface has a
