@@ -143,7 +143,7 @@ Three.js: import from `@three-flatland/skia` (core) and `@three-flatland/skia/th
 React: import from `@three-flatland/skia/react` which re-exports everything plus hooks and attach helpers.
 :::
 
-## SkiaCanvas
+## SkiaCanvas :badge[Alpha]{variant=caution}
 
 The root node that owns the render target and walks children to draw. Two modes:
 
@@ -223,7 +223,7 @@ SkiaCanvas does not auto-render. Call `render()` each frame — it automatically
   </TabItem>
 </Tabs>
 
-## Drawing Nodes
+## Drawing Nodes :badge[Alpha]{variant=caution}
 
 All nodes extend `SkiaNode` (which extends Three.js `Object3D`) and accept inline paint props.
 
@@ -279,7 +279,7 @@ Requires a `SkiaFont` loaded via `SkiaFontLoader`:
               fill={[1, 1, 1, 1]} x={20} y={40} />
 ```
 
-## SkiaGroup
+## SkiaGroup :badge[Alpha]{variant=caution}
 
 Groups apply 2D transforms, clipping, and layer effects to all children:
 

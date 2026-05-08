@@ -14,7 +14,7 @@ three-flatland provides two ways to use TSL:
 
 TSL node functions (tint, hueShift, outline, dissolve, etc.) are exported from `@three-flatland/nodes`. The effect system (`createMaterialEffect`, `createPassEffect`) and core classes are exported from `three-flatland`.
 
-## Material Effects
+## Material Effects :badge[Recommended]{variant=success}
 
 The Material Effect system lets you define shader effects as reusable classes with typed, animatable properties. Effects are composed into the sprite's shader pipeline automatically.
 
@@ -105,7 +105,7 @@ const Dissolve = createMaterialEffect({
 
 See the [TSL Nodes example](../../examples/tsl-nodes/) for all 8 effects in action.
 
-## Low-Level TSL Usage
+## Low-Level TSL Usage :badge[Advanced]{variant=note}
 
 For full shader control, you can compose TSL nodes directly on a `MeshBasicNodeMaterial`. This is useful for custom materials outside the sprite pipeline:
 
