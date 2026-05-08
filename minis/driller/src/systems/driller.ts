@@ -16,11 +16,27 @@ import {
   TILE_SOIL,
   TILE_STONE,
 } from '../traits'
-import { ROCK_HITS, TILE_PX } from '../constants'
+import {
+  DEPTH_AT_FULL_SPEED,
+  DIG_INTERVAL_MS_DEEP,
+  DIG_INTERVAL_MS_SHALLOW,
+  PONDER_GEM_MS,
+  PONDER_GEM_RADIUS,
+  ROCK_HITS,
+  TILE_PX,
+} from '../constants'
 import { markCellAndNeighborsDirty } from './autotile-pass'
 import { driftMood, moodTarget } from './ai-mood'
 
-const DIG_INTERVAL_MS = 180
+/**
+ * Depth-scaled dig interval. At depth 0 the driller is deliberate
+ * (~360ms/cell — gives the player time to see gem decisions); by
+ * DEPTH_AT_FULL_SPEED the interval drops to ~130ms (frantic pace).
+ */
+function digIntervalForDepth(row: number): number {
+  const t = Math.min(1, Math.max(0, row / DEPTH_AT_FULL_SPEED))
+  return DIG_INTERVAL_MS_SHALLOW + (DIG_INTERVAL_MS_DEEP - DIG_INTERVAL_MS_SHALLOW) * t
+}
 
 /**
  * Move the driller toward its current PlannerTarget, digging through SOIL
@@ -88,7 +104,7 @@ export function drillerSystem(world: World, deltaMs: number): void {
       markCellAndNeighborsDirty(world, nc, nr)
       // ROCK broke — driller still doesn't move this tick (chip then advance next).
     }
-    drillerEntity.set(Driller, { digCooldownMs: DIG_INTERVAL_MS, px, py })
+    drillerEntity.set(Driller, { digCooldownMs: digIntervalForDepth(d.row), px, py })
     return
   }
 
@@ -99,28 +115,37 @@ export function drillerSystem(world: World, deltaMs: number): void {
     markCellAndNeighborsDirty(world, nc, nr)
   }
 
-  // Auto-collect gem on entered cell.
+  // Auto-collect gem on entered cell + measure gem proximity for ponder.
   let collectedGem = false
+  let nearbyGem = false
   world.query(Gem).forEach((entity) => {
-    if (collectedGem) return
     const g = entity.get(Gem)
     if (!g || g.collected) return
     if (g.col === nc && g.row === nr && g.scatteredUntilTick === 0) {
-      world.set(GameState, { gems: gs.gems + 1 })
-      entity.destroy()
-      collectedGem = true
+      if (!collectedGem) {
+        world.set(GameState, { gems: gs.gems + 1 })
+        entity.destroy()
+        collectedGem = true
+      }
+      return
+    }
+    // Gem within PONDER_GEM_RADIUS (Manhattan) → driller hesitates a beat.
+    if (g.scatteredUntilTick === 0 && Math.abs(g.col - nc) + Math.abs(g.row - nr) <= PONDER_GEM_RADIUS) {
+      nearbyGem = true
     }
   })
 
   // Move + animate.
   const facing = stepCol !== 0 ? (stepCol > 0 ? 1 : -1) : d.facing
+  const baseCooldown = digIntervalForDepth(nr)
+  const cooldownAfter = nearbyGem ? baseCooldown + PONDER_GEM_MS : baseCooldown
   drillerEntity.set(Driller, {
     col: nc,
     row: nr,
     px,
     py,
     facing,
-    digCooldownMs: DIG_INTERVAL_MS,
+    digCooldownMs: cooldownAfter,
   })
 
   // Update depth tracking.

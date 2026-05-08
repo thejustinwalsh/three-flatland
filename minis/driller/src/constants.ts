@@ -46,6 +46,18 @@ export const OVER_PET_THRESHOLD = 3
 /** Cantilever collapse — SOIL cells more than this many cells from any anchor sag. */
 export const MAX_REACH = 5
 
+/**
+ * Dig cadence scales with depth — driller is methodical at the surface
+ * (lots of thinking, gems matter) and gets faster as they descend.
+ */
+export const DIG_INTERVAL_MS_SHALLOW = 360 // ~2.8 cells/sec at start
+export const DIG_INTERVAL_MS_DEEP = 130    // ~7.6 cells/sec near the core
+export const DEPTH_AT_FULL_SPEED = 250     // depth row at which interval = DEEP
+
+/** Extra cooldown when a gem is within this many cells (driller pauses to consider). */
+export const PONDER_GEM_RADIUS = 3
+export const PONDER_GEM_MS = 140
+
 /** Multi-hit ROCK tile — number of dig actions to break. */
 export const ROCK_HITS = 3
 
