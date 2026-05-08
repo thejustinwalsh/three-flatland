@@ -33,10 +33,17 @@ export const SaggingChunk = trait({
  * `px` / `py` are the floating-point world-pixel position of the body's
  * top-left origin. The cells in `cells` are at integer-grid offsets from
  * that origin. On landing, the body snaps back to the grid and despawns.
+ *
+ * `releaseRow` is the absolute world row the chunk's top originated at
+ * (= initial py / TILE_PX). Used by the landing-time codex check: a
+ * 0-displacement landing (final row == release row) means the path
+ * closed mid-flight despite shake-entry guarantees, and the cells must
+ * be silently restored — never re-stamped at the same grid location.
  */
 export const FallingChunk = trait({
   cells: () => [] as ChunkCell[],
   px: 0,
   py: 0,
   vy: 0,
+  releaseRow: 0,
 })

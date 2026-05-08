@@ -178,7 +178,19 @@ function filterBottomRows(chunk: SoilChunk, cols: number, maxHeight: number): nu
  * before releasing — the rule is "if it shakes, it WILL fall by ≥1
  * tile."
  */
-function sagBottomEdgeStillClear(
+/**
+ * Returns true iff EVERY bottom-edge cell of the sag chunk has AIR
+ * directly below it RIGHT NOW.
+ *
+ * The earlier "at least one bottom edge has AIR" check passed in
+ * cases where the chunk would still 0-displacement land: 5 cells
+ * across, 4 with AIR below, 1 with SOIL below → the FallingChunk's
+ * landing detection fires on tick 1 (the one SOIL cell triggers
+ * `landed=true`) and the chunk lands at its release row. Shake
+ * with no fall — rule 1 violation. Strict semantics: ALL bottom
+ * edges must be clear or the chunk is too constrained to displace.
+ */
+function sagAllBottomEdgesAir(
   cells: ReadonlyArray<{ col: number; row: number }>,
   cols: number,
   rows: number,
@@ -187,12 +199,55 @@ function sagBottomEdgeStillClear(
   const occupied = new Set<number>()
   for (const c of cells) occupied.add(c.row * cols + c.col)
   for (const c of cells) {
-    if (c.row + 1 >= rows) continue
+    if (c.row + 1 >= rows) return false // world-floor blocks
     const belowIdx = (c.row + 1) * cols + c.col
-    if (occupied.has(belowIdx)) continue
-    if (tiles[belowIdx] === TILE_AIR) return true
+    if (occupied.has(belowIdx)) continue // interior, doesn't count
+    if (tiles[belowIdx] !== TILE_AIR) return false
   }
-  return false
+  return true
+}
+
+/**
+ * Returns true iff some other in-flight FallingChunk is positioned
+ * such that it could land in our chunk's release area BEFORE our
+ * own first physics tick — i.e., there's a sibling above us in any
+ * of our columns at or above our top row. If so, we defer entering
+ * SHAKE: committing now risks a 0-displacement landing once that
+ * sibling's cells become solid in the row directly below us.
+ *
+ * Used at the PRECARIOUS→SAGGING and SAGGING→SHAKING phase boundaries.
+ * A deferred sag stays in its current phase for one tick and re-checks
+ * next tick. By then either the conflicting chunk has landed (path
+ * either becomes truly clear, in which case we proceed; or becomes
+ * blocked, in which case we cancel) or it has moved on.
+ */
+function inFlightConflictAbove(
+  world: World,
+  cells: ReadonlyArray<{ col: number; row: number }>,
+): boolean {
+  let topRow = Infinity
+  const ourCols = new Set<number>()
+  for (const c of cells) {
+    ourCols.add(c.col)
+    if (c.row < topRow) topRow = c.row
+  }
+  let conflict = false
+  world.query(FallingChunk).forEach((entity) => {
+    if (conflict) return
+    const fall = entity.get(FallingChunk)
+    if (!fall) return
+    const baseRow = Math.floor(fall.py / TILE_PX)
+    const baseCol = Math.floor(fall.px / TILE_PX)
+    for (const c of fall.cells) {
+      const fc = baseCol + c.col
+      const fr = baseRow + c.row
+      if (ourCols.has(fc) && fr <= topRow) {
+        conflict = true
+        return
+      }
+    }
+  })
+  return conflict
 }
 
 /**
@@ -331,15 +386,22 @@ export function tickSagging(world: World): void {
       : elapsed < sag.durationTicks ? 'shaking'
       : 'release'
 
-    // Path re-check at every phase boundary AND on the release tick.
-    // If the chunk's path closed (another fall sealed the gap), we
-    // cancel — never display a tier without a real promise of motion.
-    const isFirstTickOfPhase =
-      (phase === 'sagging' && elapsed === PHASE_SAG_START) ||
-      (phase === 'shaking' && elapsed === PHASE_SHAKE_START) ||
-      (phase === 'release' && elapsed === sag.durationTicks)
-    if (isFirstTickOfPhase || phase === 'release') {
-      if (!sagBottomEdgeStillClear(sag.cells, cols, rows, tiles)) {
+    // Codex enforcement (PRECARIOUS / SAGGING entry):
+    //   - PRECARIOUS→SAGGING boundary: cancel if path no longer
+    //     clear. PRECARIOUS doesn't promise motion so cancelling is
+    //     fine. Cells return to inert SOIL.
+    //   - SAGGING→SHAKING boundary: this is the COMMIT point. Run
+    //     two strict checks:
+    //       (a) all bottom-edge cells have AIR directly below
+    //       (b) no in-flight FallingChunk converges into our
+    //           release area
+    //     If EITHER fails, we DEFER — extend bracedUntilTick by 6
+    //     ticks (~100ms) and re-evaluate at next tick. The chunk
+    //     stays in SAGGING phase visually. Only when both pass do
+    //     we enter SHAKING; once SHAKING, the fall WILL happen
+    //     (rule 1: shake = real fall; rule 3: shake at most once).
+    if (phase === 'sagging' && elapsed === PHASE_SAG_START) {
+      if (!sagAllBottomEdgesAir(sag.cells, cols, rows, tiles)) {
         for (const cell of sag.cells) {
           const idx = cell.row * cols + cell.col
           flags[idx] = (flags[idx] ?? 0) & ~FLAG_PRECARIOUS & ~FLAG_SAGGING & ~FLAG_SHAKING
@@ -365,6 +427,24 @@ export function tickSagging(world: World): void {
       }
       return
     }
+    // phase === 'shaking' or 'release': SHAKE-entry commit gate.
+    // Defer if the path isn't truly clear OR a sibling will
+    // intercept us. Deferral keeps us in SAGGING for ~6 more ticks.
+    if (phase === 'shaking' && elapsed === PHASE_SHAKE_START) {
+      if (
+        !sagAllBottomEdgesAir(sag.cells, cols, rows, tiles) ||
+        inFlightConflictAbove(world, sag.cells)
+      ) {
+        // Reverse one tick so we re-enter the SAGGING-end check
+        // next tick; bracedUntilTick freezes elapsed-tick advance
+        // for 6 ticks.
+        entity.set(SaggingChunk, {
+          startTick: sag.startTick + 6, // shift forward → re-evaluate phase
+          bracedUntilTick: tick + 6,
+        })
+        return
+      }
+    }
     if (phase === 'shaking') {
       for (const cell of sag.cells) {
         const idx = cell.row * cols + cell.col
@@ -373,7 +453,7 @@ export function tickSagging(world: World): void {
       }
       return
     }
-    // phase === 'release' — fall through to the release block below.
+    // phase === 'release' — fall through. SHAKE-entry already committed.
 
     for (const cell of sag.cells) {
       const idx = cell.row * cols + cell.col
@@ -406,6 +486,7 @@ export function tickSagging(world: World): void {
         px,
         py,
         vy: 0,
+        releaseRow: minR,
       }),
     )
     entity.destroy()
@@ -469,6 +550,7 @@ interface FallingChunkData {
   px: number
   py: number
   vy: number
+  releaseRow: number
 }
 
 function landAndReattach(
@@ -481,6 +563,31 @@ function landAndReattach(
 ): void {
   const baseCellRow = Math.round(fall.py / TILE_PX)
   const baseCellCol = Math.round(fall.px / TILE_PX)
+
+  // CODEX RULE 1: a chunk that shook MUST have moved by ≥1 cell. If
+  // the SHAKE-entry guards (sagAllBottomEdgesAir + inFlightConflict
+  // Above) somehow let through a fall whose landing row equals its
+  // release row, we're producing a "shake without fall in same grid
+  // location" — the bug. Restore cells silently rather than re-stamp
+  // SOIL at the same location. This is a belt-and-suspenders fallback;
+  // the test suite asserts the count stays at zero in real play.
+  if (baseCellRow === fall.releaseRow) {
+    for (const c of fall.cells) {
+      const r = baseCellRow + c.row
+      const cc = baseCellCol + c.col
+      if (r < 0 || cc < 0 || cc >= cols) continue
+      const idx = r * cols + cc
+      if (idx >= tiles.length) continue
+      tiles[idx] = c.tile
+      flags[idx] = ((flags[idx]! & ~FLAG_FALLING) | FLAG_AUTOTILE_DIRTY) as number
+      // Re-cascade so the area gets another evaluation pass: cells
+      // around us probably changed (a sibling chunk landed below us),
+      // so neighbours need to re-check stability.
+      markCellAndNeighborsDirty(world, cc, r)
+    }
+    entity.destroy()
+    return
+  }
 
   // Squish check. A falling chunk only KILLS if the driller is in a
   // cell the chunk lands on AND the driller is on ground (can't
