@@ -45,12 +45,16 @@ minis/driller/
 │   │   ├── rng.ts                   # Task 7
 │   │   ├── scale.ts                 # Task 8
 │   │   ├── autotile.ts              # Task 9
+│   │   ├── atlas-uv.ts              # Task 14 — region rect → UV bounds
 │   │   ├── chunk-detect.ts          # Task 20
 │   │   ├── bfs.ts                   # Task 27 (shared by planners)
 │   │   └── mulberry-presets.ts      # Task 7 helpers
 │   ├── biomes.ts                    # Task 16
-│   ├── textures.ts                  # Task 13
-│   ├── materials.ts                 # Task 14
+│   ├── textures.ts                  # Task 13 — inlines tileset PNG as data URL
+│   ├── atlas-regions.ts             # Task 13 — named (x,y,w,h) regions in the source PNG
+│   ├── assets/
+│   │   └── tileset.png              # Task 13 — copy of canonical asset
+│   ├── materials.ts                 # Task 14 — single shared Sprite2DMaterial
 │   ├── systems/
 │   │   ├── input.ts                 # Task 30
 │   │   ├── generation.ts            # Tasks 17–19
@@ -1133,83 +1137,175 @@ git commit -m "feat(driller): deadzone camera follow"
 
 ## Phase 5 — Tiles, materials, autotile pass
 
-### Task 13: Inline tile textures
+### Task 13: Slice the source tileset PNG into atlas regions
+
+**Source asset (canonical):** `planning/superpowers/specs/2026-05-07-driller-mini-tileset.png` (1536 × 1024). Contains driller sprite sheet, tileset (SOIL/STONE/FIXTURES/AIR), themed props, gem pickups (4 colors × 4 sizes), per-biome tile variants, in-game moments, and title art. **Do not re-author** — slice this PNG.
 
 **Files:**
-- Create: `minis/driller/src/textures.ts`
+- Create: `minis/driller/src/textures.ts` — inlines the source PNG as a data URL
+- Create: `minis/driller/src/atlas-regions.ts` — named region map `{ name: [x, y, w, h] }`
+- Copy: source PNG into `minis/driller/src/assets/` (or reference via build) — see Step 1
 
-- [ ] **Step 1: Author SVGs for soil, grass, stone, fixtures, gems, driller**
+- [ ] **Step 1: Bring the source PNG into the package**
 
-A 16x16 SVG per atlas cell, then concatenated into a tileset SVG with one row per material × 16 columns (one per autotile mask). Inline as data URLs per the mini-game skill.
-
-```typescript
-const SOIL_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="256" height="16" viewBox="0 0 256 16" shape-rendering="crispEdges">
-  <!-- 16 cells horizontally, one per autotile mask 0..15 -->
-  <!-- mask 0: isolated dirt -->
-  <rect x="0" y="0" width="16" height="16" fill="#6b4a2b"/>
-  <!-- ... fill remaining 15 mask variants with appropriate edge tones ... -->
-</svg>`
-
-// Author analogous SVGs for: GRASS_CAP_SVG, STONE_SVG, BONE_SVG, MUSHROOM_SVG, CRYSTAL_SVG, GEM_SVG, DRILLER_SVG
-function svgToDataUrl(svg: string): string {
-  return `data:image/svg+xml;base64,${btoa(svg)}`
-}
-
-export const TEXTURES = {
-  soil: svgToDataUrl(SOIL_SVG),
-  // ... etc
-} as const
-```
-
-- [ ] **Step 2: Render each SVG in dev browser to confirm tiles look right** (visual check; no test)
-
-- [ ] **Step 3: Commit**
+Copy the canonical asset into the package so it's part of the bundle and won't be lost if the planning doc moves:
 
 ```bash
-git add minis/driller/src/textures.ts
-git commit -m "feat(driller): inline tileset textures as data URLs"
+mkdir -p minis/driller/src/assets
+cp planning/superpowers/specs/2026-05-07-driller-mini-tileset.png minis/driller/src/assets/tileset.png
 ```
 
-### Task 14: Sprite2DMaterials
+- [ ] **Step 2: Inline the PNG as a data URL — `src/textures.ts`**
+
+Vite's `?inline` query encodes assets at import time as base64 data URLs (no network fetch at runtime, works in library mode per the mini-game skill rule):
+
+```typescript
+import tilesetUrl from './assets/tileset.png?inline'
+
+export const TILESET_URL: string = tilesetUrl
+```
+
+- [ ] **Step 3: Build the named region map — `src/atlas-regions.ts`**
+
+Open the source PNG in an image viewer (e.g. Preview's measure tool, or use a small `node:canvas` script) and record `(x, y, w, h)` for each region described in spec §11.0. Group as logical atlas slots. Coordinates below are placeholders — measure against the actual asset and replace.
+
+```typescript
+/** All region rects are [x, y, w, h] in source PNG pixel coordinates. */
+export interface Rect { x: number; y: number; w: number; h: number }
+
+/** SOIL autotile rows — one row per biome, 16 columns for the 16 mask variants (0..15). */
+export const SOIL_ROWS: Record<BiomeName, Rect> = {
+  topsoil:           { x: 0, y: 0, w: 256, h: 16 },         // TODO: measure
+  'deep-dirt':       { x: 0, y: 16, w: 256, h: 16 },        // TODO: measure
+  stoneworks:        { x: 0, y: 32, w: 256, h: 16 },        // TODO: measure
+  'crystal-caverns': { x: 0, y: 48, w: 256, h: 16 },        // TODO: measure
+  core:              { x: 0, y: 64, w: 256, h: 16 },        // TODO: measure
+}
+
+export const STONE_VARIANTS: Rect[] = [
+  // 4–6 anchor variants
+]
+
+export const FIXTURE_REGIONS = {
+  bone:     { x: 0, y: 0, w: 32, h: 32 },                   // TODO
+  mushroom: { x: 0, y: 0, w: 32, h: 32 },                   // TODO
+  crystal:  { x: 0, y: 0, w: 32, h: 32 },                   // TODO
+}
+
+export type GemColor = 'emerald' | 'topaz' | 'ruby' | 'amethyst'
+export type GemSize = 'small' | 'medium' | 'large' | 'huge'
+
+/** 4 colors × 4 sizes — index by [color][size]. */
+export const GEM_REGIONS: Record<GemColor, Record<GemSize, Rect>> = {
+  emerald: { small: {x:0,y:0,w:16,h:16}, medium: {x:0,y:0,w:16,h:16}, large: {x:0,y:0,w:16,h:16}, huge: {x:0,y:0,w:16,h:16} },
+  topaz:   { small: {x:0,y:0,w:16,h:16}, medium: {x:0,y:0,w:16,h:16}, large: {x:0,y:0,w:16,h:16}, huge: {x:0,y:0,w:16,h:16} },
+  ruby:    { small: {x:0,y:0,w:16,h:16}, medium: {x:0,y:0,w:16,h:16}, large: {x:0,y:0,w:16,h:16}, huge: {x:0,y:0,w:16,h:16} },
+  amethyst:{ small: {x:0,y:0,w:16,h:16}, medium: {x:0,y:0,w:16,h:16}, large: {x:0,y:0,w:16,h:16}, huge: {x:0,y:0,w:16,h:16} },
+}
+
+/** Driller sprite sheet — one rect per animation strip; frames stride by 16 px horizontally. */
+export const DRILLER_ANIMS = {
+  idle:        { rect: { x: 0, y: 0, w: 64,  h: 16 }, frames: 4 },   // TODO measure
+  walk:        { rect: { x: 0, y: 0, w: 64,  h: 16 }, frames: 4 },
+  drillDown:   { rect: { x: 0, y: 0, w: 64,  h: 16 }, frames: 4 },
+  drillUp:     { rect: { x: 0, y: 0, w: 64,  h: 16 }, frames: 4 },
+  drillLeft:   { rect: { x: 0, y: 0, w: 64,  h: 16 }, frames: 4 },
+  drillRight:  { rect: { x: 0, y: 0, w: 64,  h: 16 }, frames: 4 },
+  trip:        { rect: { x: 0, y: 0, w: 32,  h: 16 }, frames: 2 },
+  dodge:       { rect: { x: 0, y: 0, w: 32,  h: 16 }, frames: 2 },
+  fall:        { rect: { x: 0, y: 0, w: 64,  h: 16 }, frames: 4 },
+  ghost:       { rect: { x: 0, y: 0, w: 48,  h: 16 }, frames: 3 },
+}
+
+/** Title-attract art region (full-mode title screen). */
+export const TITLE_ART: Rect = { x: 0, y: 0, w: 256, h: 96 }   // TODO: measure
+
+/** Themed props per biome — small accent decorations placed in the Background layer. */
+export const PROP_REGIONS: Rect[] = []  // TODO: list
+```
+
+> **Important:** the placeholder `(x, y, w, h)` values above must be replaced by exact measurements taken from the source PNG. Slicing the actual asset is the bulk of this task.
+
+- [ ] **Step 4: Visual check — render an atlas debug overlay**
+
+Drop a temporary `<DebugAtlas />` component into the dev `App.tsx` that renders the source PNG with semi-transparent rectangles overlaid for every region in the map. Each region gets a label. Visually verify each rectangle bounds the right art in the source. Iterate on coordinates until clean.
+
+- [ ] **Step 5: Remove `<DebugAtlas />`** from `App.tsx` and commit only the production code.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add minis/driller/src/textures.ts minis/driller/src/atlas-regions.ts minis/driller/src/assets
+git commit -m "feat(driller): slice source tileset PNG into named atlas regions"
+```
+
+### Task 14: Sprite2DMaterial from single tileset texture
+
+Single shared `Sprite2DMaterial` references the whole tileset texture; sprites pick their visible window via UV ranges derived from the atlas region map.
 
 **Files:**
 - Create: `minis/driller/src/materials.ts`
 
-- [ ] **Step 1: Build `Sprite2DMaterial` instances per source texture**
+- [ ] **Step 1: Load the tileset texture once and build the shared material**
 
 ```typescript
 import { useMemo } from 'react'
-import { TextureLoader, NearestFilter, SRGBColorSpace } from 'three'
+import { TextureLoader, NearestFilter, SRGBColorSpace, type Texture } from 'three'
 import { Sprite2DMaterial } from 'three-flatland/react'
-import { TEXTURES } from './textures'
+import { TILESET_URL } from './textures'
 
-function loadTexture(dataUrl: string) {
-  const t = new TextureLoader().load(dataUrl)
+function loadTilesetTexture(): Texture {
+  const t = new TextureLoader().load(TILESET_URL)
   t.minFilter = NearestFilter
   t.magFilter = NearestFilter
   t.colorSpace = SRGBColorSpace
+  t.flipY = true   // standard for 2D sprites
   return t
 }
 
-export function useDrillerMaterials() {
-  return useMemo(() => ({
-    soil:    new Sprite2DMaterial({ map: loadTexture(TEXTURES.soil) }),
-    grass:   new Sprite2DMaterial({ map: loadTexture(TEXTURES.grass) }),
-    stone:   new Sprite2DMaterial({ map: loadTexture(TEXTURES.stone) }),
-    bone:    new Sprite2DMaterial({ map: loadTexture(TEXTURES.bone) }),
-    mushroom: new Sprite2DMaterial({ map: loadTexture(TEXTURES.mushroom) }),
-    crystal: new Sprite2DMaterial({ map: loadTexture(TEXTURES.crystal) }),
-    gem:     new Sprite2DMaterial({ map: loadTexture(TEXTURES.gem) }),
-    driller: new Sprite2DMaterial({ map: loadTexture(TEXTURES.driller) }),
-  }), [])
+/**
+ * Single texture, shared by every sprite in the game. Per-sprite UV ranges
+ * derived from atlas-regions.ts at sprite emission time (in Scene.tsx).
+ */
+export function useDrillerMaterial() {
+  return useMemo(() => {
+    const tex = loadTilesetTexture()
+    return new Sprite2DMaterial({ map: tex })
+  }, [])
 }
 ```
 
-- [ ] **Step 2: Commit**
+- [ ] **Step 2: Helper — convert a region rect into UV bounds**
+
+In `src/lib/atlas-uv.ts`:
+
+```typescript
+import type { Rect } from '../atlas-regions'
+
+const TILESET_W = 1536
+const TILESET_H = 1024
+
+export interface UvRect { u0: number; v0: number; u1: number; v1: number }
+
+export function rectToUv(r: Rect): UvRect {
+  return {
+    u0: r.x / TILESET_W,
+    v0: 1 - (r.y + r.h) / TILESET_H,
+    u1: (r.x + r.w) / TILESET_W,
+    v1: 1 - r.y / TILESET_H,
+  }
+}
+
+export function frameUv(stripRect: Rect, frameIndex: number, frameW: number): UvRect {
+  return rectToUv({ ...stripRect, x: stripRect.x + frameIndex * frameW, w: frameW })
+}
+```
+
+- [ ] **Step 3: Commit**
 
 ```bash
-git add minis/driller/src/materials.ts
-git commit -m "feat(driller): Sprite2DMaterials with inlined data URLs"
+git add minis/driller/src/materials.ts minis/driller/src/lib/atlas-uv.ts
+git commit -m "feat(driller): single tileset Sprite2DMaterial + UV helpers"
 ```
 
 ### Task 15: Autotile pass + tile sprite rendering

@@ -331,11 +331,11 @@ For each new chunk `(seed, chunkY)`:
 
 | Biome             | Depth (m) | Soil density | Caves           | Fixtures               | Gem palette                  | Notes                                  |
 |-------------------|-----------|--------------|-----------------|------------------------|------------------------------|----------------------------------------|
-| **Topsoil**       | 0–20      | High         | None            | None                   | Green (rare), Blue (rare)    | Onboarding band; small chunks only.    |
-| **Deep dirt**     | 20–50     | High         | Small           | Dino bones (rare)      | Red, Blue, Green             | First risk band; larger chunks.        |
+| **Topsoil**       | 0–20      | High         | None            | None                   | Emerald (rare)               | Onboarding band; small chunks only.    |
+| **Deep dirt**     | 20–50     | High         | Small           | Dino bones (rare)      | Emerald, Topaz, Ruby         | First risk band; larger chunks.        |
 | **Stoneworks**    | 50–100    | Medium       | Larger          | Stone pillars (common) | All four (peak density)      | Sweet-spot risk/reward band.           |
-| **Crystal caverns** | 100–200 | Low          | Network of caves| Crystal clusters (lit) | Violet/blue (huge clusters)  | Lighting showcase. Sparse soil.        |
-| **Core**          | 200+      | Very low     | Vast voids      | Massive crystals       | Rare, large gems             | Endgame. Hero mode falls through into a new world here. |
+| **Crystal caverns** | 100–200 | Low          | Network of caves| Crystal clusters (lit) | Amethyst (huge clusters), Topaz | Lighting showcase. Sparse soil.    |
+| **Core**          | 200+      | Very low     | Vast voids      | Massive crystals       | Amethyst (rare, large)       | Endgame. Hero mode falls through into a new world here. |
 
 ### 10.4 Generation safeguards
 
@@ -347,29 +347,67 @@ For each new chunk `(seed, chunkY)`:
 
 ## 11. Visual style
 
-**Direction A — Cozy Chibi (Mr. Driller-true).** Bright, warm pixel-art at 16px tile scale, 2× rendered scale. Character is a small chibi miner with a yellow helmet/lamp. Earthy browns for soil, warm green grass cap, gem tones tied to the brand palette.
+**Direction A — Cozy Chibi (Mr. Driller-true).** Bright, warm pixel-art at 16×16 source tile size, rendered at integer-pixel scale per §4.4. Character is a chibi miner with a red helmet and yellow lamp. Earthy browns for soil, warm green grass cap, gem tones tied to the brand palette.
 
-### 11.1 Palette
+### 11.0 Source asset (canonical)
 
-| Role       | Hex        |
-|------------|------------|
-| Sky        | `#5a8fc7` → `#87b3df` (gradient) |
-| Grass      | `#5fa847`  |
-| Dirt       | `#6b4a2b` (top), `#5d3f24` (deep) |
-| Stone      | `#71717a` → `#4a4a55` (gradient) |
-| Driller    | `#fcd34d` (lamp) on `#1a1a2a` (silhouette body) |
-| Ruby       | `#f43f5e`  |
-| Sapphire   | `#38bdf8`  |
-| Emerald    | `#34d399`  |
-| Amethyst   | `#a78bfa`  |
-| Topaz      | `#fcd34d`  |
+The hand-authored visual reference for the entire mini lives at:
 
-### 11.2 Texture authoring
+**`planning/superpowers/specs/2026-05-07-driller-mini-tileset.png`** (1536 × 1024, 8-bit RGB)
 
-- Tileset atlas: 16×16 cells, 4 columns × N rows for SOIL, STONE, FIXTURE variants.
-- Inline as data URLs per the mini-game skill rule (`materials.ts` exports compiled `Sprite2DMaterial` instances with NearestFilter and SRGBColorSpace).
-- Driller character: 2-frame idle bob + 2-frame dig animation, stored as a sprite sheet inlined as data URL.
-- Fixtures: 4–6 hand-authored sprite variants per biome.
+This is the source of truth for all sprite content. The implementation slices regions out of this PNG into a runtime atlas; do not re-author. Contents (regions tagged in the asset itself):
+
+- **Driller sprite sheet** (16×16 frames): Idle, Walk cycle (right; flip H for left), Drill down, Drill up, Drill left, Drill right, Trip/stumble, Dodge/narrow miss, Fall/death, Ghost float-up.
+- **Tileset (16×16)**: SOIL (top cap + inner soil with autotile edges), STONE (anchor variants), FIXTURES (dino bones, mushroom shelf, crystal cluster), AIR (sentinel empty cell).
+- **Themed props** (decor / background): small accent props per biome.
+- **Gem pickups**: 4 colors × 4 sizes — Emerald (green), Topaz (yellow), Ruby (red), Amethyst (violet).
+- **Biome tile variants** (autotile examples for each band): Topsoil 0–20m, Deep dirt 20–50m, Stoneworks 50–100m, Crystal caverns 100–200m, Core 200m+. Implementation references these regions for biome-specific tile recoloring/swap.
+- **Example in-game moments**: dig→collect, sag-then-fall, anchor-holds, narrow-miss, fall-into-the-core. Reference for visual-feel verification during QA.
+- **Title art**: "Driller Homie — Dig Deep. Get Gems. Help (or Harm)." Used as the Title Attract screen art (full mode).
+
+> **Open question** — the asset titles the mini "Driller Homie." Spec §16 lists `driller` as the working package name. Implementation can either rename the package or keep `driller` and use "Driller Homie" as the display title in title-attract art only. Default: keep package as `driller`, display title from asset.
+
+### 11.1 Palette (4-color gem palette — corrected from asset)
+
+| Role       | Hex        | Notes                                                  |
+|------------|------------|--------------------------------------------------------|
+| Sky        | `#5a8fc7` → `#87b3df` (gradient) | Background fill at surface           |
+| Grass      | `#5fa847`  | Autotile cap on top SOIL cells                         |
+| Dirt       | `#6b4a2b` (top), `#5d3f24` (deep) | Source values; biome variants in asset |
+| Stone      | `#71717a` → `#4a4a55` (gradient) | Anchor                                  |
+| Driller    | Red helmet + `#fcd34d` lamp on chibi body                       |
+| Emerald    | `#34d399`  |                                                        |
+| Topaz      | `#fcd34d`  |                                                        |
+| Ruby       | `#f43f5e`  |                                                        |
+| Amethyst   | `#a78bfa`  |                                                        |
+
+> Sapphire (`#38bdf8`) is **removed** from the gem palette — the source asset has only 4 gem colors. Biome `gemPalette` definitions in §10.3 must be revised: emerald/topaz/ruby/amethyst only.
+
+### 11.2 Atlas slicing & texture pipeline
+
+- The source PNG is sliced at build/runtime into named regions (one canvas atlas per logical group: `soil`, `stone`, `fixtures`, `gems-by-color-by-size`, `props`, `driller`).
+- Strategy: a single inlined data URL of the source PNG (or a small build step that emits a stripped/optimized version) feeds `TextureLoader`. A region map (`atlas-regions.ts`, JSON-shaped) records the `(x, y, w, h)` of each named slice; sprites set their `Sprite2DMaterial` UV ranges from the map.
+- `NearestFilter` for both min/mag, `SRGBColorSpace`.
+- All sprite art is authored at 1× (16×16 source). The integer scale step from §4.4 applies at the canvas level (`imageRendering: pixelated`); never resample in the GPU.
+
+### 11.3 Biome-specific tile variants
+
+The source asset includes pre-rendered tile variants per biome band. For each biome (topsoil / deep-dirt / stoneworks / crystal-caverns / core), the autotile resolver picks frames from that biome's region of the atlas — same bitmask, different art row. This avoids runtime tinting and preserves authored detail per biome.
+
+### 11.4 Animation frame plan (driller)
+
+Frame counts and timings per asset state. Refresh rate: 12 fps unless noted.
+
+| State          | Frames | Loop | Notes                                       |
+|----------------|--------|------|---------------------------------------------|
+| `idle`         | 3–4    | yes  | Subtle bob; pull from "Idle" row.           |
+| `walk`         | 4      | yes  | "Walk cycle (right)" — flip H for left.     |
+| `drill-down`   | 4      | yes  | Plays during dig action, downward.          |
+| `drill-up/left/right` | 4 each | yes | Used by panic-shelter pathing animations. |
+| `trip`         | 2      | one-shot | Used on small impacts (over-pet annoyance scoot). |
+| `dodge`        | 2      | one-shot | Used on near-miss survival ("phew" bob).  |
+| `fall`         | 4      | one-shot | Used on death; transitions to `ghost`.    |
+| `ghost`        | 3      | yes  | Float-up animation for the ghost-chute respawn. |
 
 ### 11.3 Animations
 
@@ -558,9 +596,16 @@ Per `feedback_acceptance_criteria_gate`, every item below must be met or carry s
 ## 16. Open questions
 
 1. **Hero mode embedding location.** Is this on the docs landing page (`apps/docs`) only, or also exported as a standalone npm package per the mini-game skill's lib export pattern? Default assumption: both — package is `minis/driller`, docs imports it.
-2. **Mini name.** "driller" is direct. Could be themed (e.g. "delve", "pluto", "burrow"). Default: `driller` until rebrand requested.
+2. **Mini name.** Package is `driller` (direct). Source asset titles the mini **"Driller Homie"** with tagline "Dig Deep. Get Gems. Help (or Harm)." — used as title-attract art in full mode. Package name remains `driller`.
 3. **Audio prop wiring.** The mini-game skill expects `zzfx` from props. Does the docs hero get a real ZzFX bridge, or is it muted-by-default-only at launch? Default: muted-by-default; standalone full mode wires real audio.
 4. **Lighting pass timing.** Lighting integration is gated by `feat-lighting-postprocess-flatland` merging. If that merge slips, ship the mini with the un-lit material and add lighting in a follow-up PR.
+5. **Action labels reconcile.** The source asset legend lists one-tap actions as "Add Support / Boost Speed? / Drop Rocks / Chase Gems," which diverges from spec §8.1's "Collect / Brace / Trigger / Pet." Mapping:
+   - "Add Support" ≈ **Brace** (gives a sagging chunk a temporary anchor)
+   - "Drop Rocks" ≈ **Trigger** (force-sag a chunk)
+   - "Chase Gems" — *new mechanic candidate*: nudge the AI's Greed mood directly so they detour toward a tapped gem region, rather than the user collecting it themselves. Replaces or complements **Collect**?
+   - "Boost Speed?" — *new mechanic candidate*: the trailing `?` in the asset suggests this was tentative. Could speed up dig cooldown for a few seconds.
+
+   **Default for v1:** ship the spec's four actions (Collect / Brace / Trigger / Pet). The asset's "Chase Gems" and "Boost Speed?" are deferred to a follow-up if proven worthwhile. The asset's labels are visual placeholders only.
 
 ---
 
