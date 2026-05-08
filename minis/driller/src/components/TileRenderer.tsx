@@ -156,14 +156,18 @@ export function TileRenderer({ material }: TileRendererProps) {
         const litExplosive = tile === TILE_EXPLOSIVE && triggeredExplosives.has(idx) && pulse
         const palette = biomeAt(r).palette
         const tint = pickTint(tile, frameIndex[idx]!, sagging, falling, precarious, litExplosive, now, palette)
-        // Shake telegraph for avalanche clusters: small horizontal +
-        // vertical jitter at ~30Hz so it reads as a quick rumble.
+        // Shake telegraph applies to ANY block that's 100% going to
+        // fall — sagging soil mid-countdown OR an avalanche rock
+        // cluster mid-disturbance. All the cells of one block move in
+        // UNISON, not per-cell jitter, so it reads as a single mass
+        // shuddering before collapse rather than a swarm of
+        // independently-wiggling tiles.
         let jitterX = 0
         let jitterY = 0
-        if (shaking) {
+        if (shaking || sagging) {
           const phase = (now / 1000) * Math.PI * 2 * 30
-          jitterX = Math.sin(phase + (idx * 0.31)) * 1.2
-          jitterY = Math.cos(phase * 1.3 + (idx * 0.17)) * 0.6
+          jitterX = Math.sin(phase) * 1.2
+          jitterY = Math.cos(phase * 1.3) * 0.6
         }
         sprite.position.set(c * TILE_PX + TILE_PX / 2 + jitterX, -(r * TILE_PX + TILE_PX / 2) + jitterY, 0)
         sprite.scale.set(TILE_PX, TILE_PX, 1)

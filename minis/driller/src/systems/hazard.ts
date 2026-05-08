@@ -433,38 +433,29 @@ export function rockAvalancheSystem(world: World): void {
         continue
       }
       // Otherwise translate stone + carry its hit count to new cell.
-      // The DISTURBED bit travels with the moving stone — the cluster
-      // keeps falling next interval until it lands on something solid
-      // OR shrinks below the threshold, at which point the unset
-      // DISTURBED at the bottom of the loop renders it inert again.
+      // The DISTURBED bit travels with the moving stone so the cluster
+      // keeps falling. We also sentinel the new cell's shake-start
+      // entry to -1, meaning "already telegraphed" — subsequent fall
+      // steps after the first commit go straight to descent without
+      // replaying the shake every interval.
       tiles[idx] = TILE_AIR
       flags[idx] = (flags[idx] ?? 0) | FLAG_AUTOTILE_DIRTY
       tiles[newIdx] = TILE_STONE
       flags[newIdx] = (flags[newIdx] ?? 0) | FLAG_AUTOTILE_DIRTY | FLAG_DISTURBED
       hits[newIdx] = rockHits
       hits[idx] = 0
+      shakeStartTick.set(newIdx, -1)
       markCellAndNeighborsDirty(world, c, r)
       markCellAndNeighborsDirty(world, c, r + 1)
     }
     advancedAny = true
   }
 
-  // Clear the disturbance bit from any cluster cell that DIDN'T move
-  // this tick. Untriggered clusters become inert again until the next
-  // destabilisation event.
-  if (advancedAny) {
-    // Cells that moved have FLAG_DISTURBED set on their new positions
-    // (above). For any leftover stone with DISTURBED, leave it: it'll
-    // be picked up next interval.
-  } else {
-    // No cluster fell — clear DISTURBED on stones in the window so
-    // they don't keep that stale flag forever.
-    for (let i = startIdx; i < endIdx; i++) {
-      if (tiles[i] === TILE_STONE && (flags[i]! & FLAG_DISTURBED) !== 0) {
-        flags[i]! &= ~FLAG_DISTURBED
-      }
-    }
-  }
+  // DISTURBED is sticky and only clears when a cluster cell actually
+  // moves (handled inline at the commit branch). The previous version
+  // wiped DISTURBED on every "didn't fall this tick" pass, which made
+  // shaking clusters lose their disturbed bit mid-telegraph — they'd
+  // shake forever and never commit to falling.
 
   if (advancedAny) lastAvalancheTick = gs.tick
 }
