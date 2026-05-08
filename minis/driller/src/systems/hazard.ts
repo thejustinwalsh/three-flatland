@@ -258,7 +258,14 @@ export function hazardTickSystem(world: World): void {
 const AVALANCHE_THRESHOLD = 4
 const AVALANCHE_HITS_TO_BREAK = 4
 const AVALANCHE_FALL_INTERVAL_TICKS = 12 // ~200ms at 60Hz
-const AVALANCHE_SHAKE_TICKS = 18  // ~300ms quick rumble
+// Stones use the same SHAKE duration as soil sag so the player
+// reads "this is about to fall" with the same cadence regardless
+// of tile class. Soil's full 3-phase telegraph (PRECARIOUS=600ms +
+// SAGGING=600ms + SHAKING=400ms) doesn't apply here — the rock
+// avalanche skips PRECARIOUS/SAGGING (no anchor-based prediction
+// for stones; disturbance is sudden) and uses just SHAKE → settle
+// → commit. SHAKE duration matches SAG_SHAKING_TICKS=24 ticks.
+const AVALANCHE_SHAKE_TICKS = 24  // ~400ms — matches soil SAG_SHAKING_TICKS
 const AVALANCHE_SETTLE_TICKS = 6  // ~100ms steady pause before commit
 let lastAvalancheTick = 0
 /**

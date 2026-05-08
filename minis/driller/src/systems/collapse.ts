@@ -467,29 +467,59 @@ export function tickSagging(world: World): void {
     if (tick < sag.bracedUntilTick) return
     const elapsed = tick - sag.startTick
 
-    // Tile-class invariant: every cell in this sag must still hold
-    // the tile it reserved at spawn. If any cell got drilled,
-    // ghost-cleared, or unloaded under our feet, the chunk is stale.
-    // Without this guard the entity keeps ticking against AIR cells,
-    // re-stamps SOIL via FallingChunk, and produces phantom shakes /
-    // re-grown chunks far from where the player is acting.
-    let stale = false
-    for (const cell of sag.cells) {
+    // Partial-drill re-evaluation (codex follow-up). When the driller
+    // (or any other mutator) clears one or more cells of an active
+    // sag, the chunk shouldn't lose its telegraph wholesale — that
+    // would mean drilling part of an unstable structure makes LESS of
+    // it fall, not more. Instead:
+    //
+    //   1. Filter to cells whose grid tile still matches their
+    //      reserved tile.
+    //   2. If none survive: cancel.
+    //   3. If the survivors no longer satisfy the codex bottom-edge
+    //      check (the drilled cell was load-bearing for fall, so
+    //      what's left can no longer displace ≥1 cell), cancel.
+    //   4. Otherwise: SHRINK the entity to its surviving cells and
+    //      preserve the current phase. Drilled cells already went
+    //      AIR via the driller system; clear any leftover flags on
+    //      them. The remaining cells continue their PRECARIOUS /
+    //      SAGGING / SHAKING countdown unchanged.
+    const validCells = sag.cells.filter((cell) => {
       const idx = cell.row * cols + cell.col
-      if (idx < 0 || idx >= tiles.length || tiles[idx] !== cell.tile) {
-        stale = true
-        break
-      }
+      return idx >= 0 && idx < tiles.length && tiles[idx] === cell.tile
+    })
+    if (validCells.length === 0) {
+      entity.destroy()
+      return
     }
-    if (stale) {
+    if (validCells.length < sag.cells.length) {
+      // Some cells got drilled or otherwise removed. Re-validate the
+      // surviving structure: still cantilever-fallable?
+      if (!sagAllBottomEdgesAir(validCells, cols, rows, tiles)) {
+        // Drilled cell was load-bearing for the fall path, OR the
+        // remaining cells can't displace cleanly. Cancel.
+        for (const cell of sag.cells) {
+          const idx = cell.row * cols + cell.col
+          if (idx >= 0 && idx < flags.length) {
+            flags[idx]! &= ~FLAG_PRECARIOUS & ~FLAG_SAGGING & ~FLAG_SHAKING
+          }
+        }
+        entity.destroy()
+        return
+      }
+      // Clear flags from cells that left the chunk (defensive — the
+      // mutator should have already cleared their flag-byte but
+      // belt-and-suspenders).
+      const survivingIdxs = new Set(validCells.map((c) => c.row * cols + c.col))
       for (const cell of sag.cells) {
         const idx = cell.row * cols + cell.col
-        if (idx >= 0 && idx < flags.length) {
+        if (!survivingIdxs.has(idx) && idx >= 0 && idx < flags.length) {
           flags[idx]! &= ~FLAG_PRECARIOUS & ~FLAG_SAGGING & ~FLAG_SHAKING
         }
       }
-      entity.destroy()
-      return
+      entity.set(SaggingChunk, { cells: validCells })
+      // Continue with the current phase logic on the shrunk cell list.
+      sag.cells = validCells
     }
 
     // 3-phase state machine driven by elapsed-tick arithmetic. One

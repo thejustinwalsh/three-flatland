@@ -260,10 +260,12 @@ describe('no-false-shake invariant', () => {
     expect(remaining).toBe(1)
   })
 
-  it('a sag whose cells got drilled / cleared mid-wobble cancels (tile-class invariant)', () => {
-    // Spawn a sag, then mutate one of its cells to AIR. The tile-class
-    // invariant says: the entity is now stale, destroy it. No shake,
-    // no release, no FallingChunk.
+  it('partial-drill of a sag (1 cell) shrinks the chunk and the rest still falls', () => {
+    // Codex follow-up: drilling part of an unstable structure should
+    // make the rest fall through the normal lifecycle (predictable
+    // for the AI driller). We drill ONE cell of a 6-cell sag; the
+    // remaining 5 cells stay cantilever-unstable AND still have a
+    // clear fall path → the sag releases as a FallingChunk.
     const world = makeWorldFromGrid([
       '..............',
       '..............',
@@ -276,22 +278,60 @@ describe('no-false-shake invariant', () => {
       if (grid.tiles[i] === TILE_SOIL) grid.flags[i]! |= FLAG_SAG_RECHECK
     }
     detectAndSag(world)
-    // Drill out the leftmost cell of the sag chunk.
+    // Drill out the leftmost cell of the sag chunk mid-wobble.
     grid.tiles[2 * grid.cols + 2] = TILE_AIR
-    // Tick past the release window.
+    // Tick past the release window. The 5 surviving cells should
+    // run through PRECARIOUS → SAGGING → SHAKING → release.
+    for (let t = 0; t < 140; t++) {
+      tickWorld(world, 1)
+      tickSagging(world)
+      tickFalling(world)
+    }
+    // Sag entity gone (released into a FallingChunk and that landed).
+    let sagCount = 0
+    world.query(SaggingChunk).forEach(() => sagCount++)
+    expect(sagCount).toBe(0)
+    // The 5 surviving cells fell out of row 2 — they should now be AIR.
+    let drilledThenFell = 0
+    for (let c = 3; c < 8; c++) {
+      if (grid.tiles[2 * grid.cols + c] === TILE_AIR) drilledThenFell++
+    }
+    expect(drilledThenFell).toBe(5)
+    // No cell should carry SHAKING.
+    for (let i = 0; i < grid.flags.length; i++) {
+      expect(grid.flags[i]! & FLAG_SHAKING).toBe(0)
+    }
+  })
+
+  it('drilling all cells of a sag cancels it (no survivors)', () => {
+    // Counterpart to the partial-drill case: if every cell of the
+    // sag gets cleared mid-wobble, there are no survivors to fall
+    // through. The entity must be destroyed; no FallingChunk spawns;
+    // no SHAKING on any cell.
+    const world = makeWorldFromGrid([
+      '..............',
+      '..............',
+      '..######......',
+      '..............',
+      'SSSSSSSSSSSSSS',
+    ])
+    const grid = world.get(Grid)!
+    for (let i = 0; i < grid.tiles.length; i++) {
+      if (grid.tiles[i] === TILE_SOIL) grid.flags[i]! |= FLAG_SAG_RECHECK
+    }
+    detectAndSag(world)
+    // Drill out EVERY cell of the sag chunk.
+    for (let c = 2; c < 8; c++) grid.tiles[2 * grid.cols + c] = TILE_AIR
     for (let t = 0; t < 140; t++) {
       tickWorld(world, 1)
       tickSagging(world)
     }
-    // Entity must be gone. No FallingChunk should have spawned (the
-    // entity died of staleness, not via the normal release path).
     let sagCount = 0
     world.query(SaggingChunk).forEach(() => sagCount++)
     expect(sagCount).toBe(0)
     let fallCount = 0
     world.query(FallingChunk).forEach(() => fallCount++)
     expect(fallCount).toBe(0)
-    // No cell should carry SHAKING.
     for (let i = 0; i < grid.flags.length; i++) {
       expect(grid.flags[i]! & FLAG_SHAKING).toBe(0)
     }

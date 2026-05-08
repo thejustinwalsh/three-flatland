@@ -1,6 +1,7 @@
 import type { World } from 'koota'
 import {
   Driller,
+  FallingChunk,
   GameState,
   Gem,
   Grid,
@@ -16,7 +17,7 @@ import {
 } from '../traits'
 
 void TILE_SOIL // import kept for clarity in passability rules
-import { MOOD_SWITCH_THRESHOLD, PLAN_COMMIT_TICKS } from '../constants'
+import { MOOD_SWITCH_THRESHOLD, PLAN_COMMIT_TICKS, TILE_PX } from '../constants'
 import { bfsNextStep } from '../lib/bfs'
 import { isFreeFall } from '../biomes'
 
@@ -309,13 +310,79 @@ export function planEvadeHazard(world: World, d: { col: number; row: number }): 
   return null
 }
 
+/**
+ * Phase 2 correctness: avoid columns where a FallingChunk is in
+ * mid-air ABOVE the driller. Until now the driller had no awareness
+ * of falling soil chunks (they're entities, not grid cells), so the
+ * AI would walk straight into a landing zone. Same shape as
+ * planEvadeHazard: identify threatened columns, search outward for
+ * the closest passable safe column, return that as the next step.
+ *
+ * "Threatened" = any FallingChunk whose cells occupy `d.col` (or
+ * within ±1 col halo) AND whose lowest cell is currently AT or
+ * ABOVE the driller's row. We don't care about chunks already past
+ * the driller (they can't crush a driller they've already passed).
+ */
+export function planEvadeFallingChunk(
+  world: World,
+  d: { col: number; row: number },
+): [number, number] | null {
+  const grid = world.get(Grid)
+  if (!grid) return null
+  const { cols, tiles } = grid
+
+  const threatenedCols = new Set<number>()
+  let threatened = false
+  world.query(FallingChunk).forEach((entity) => {
+    const fall = entity.get(FallingChunk)
+    if (!fall) return
+    const baseRow = Math.floor(fall.py / TILE_PX)
+    const baseCol = Math.floor(fall.px / TILE_PX)
+    let lowestRow = -Infinity
+    const occupiedCols: number[] = []
+    for (const c of fall.cells) {
+      const fc = baseCol + c.col
+      const fr = baseRow + c.row
+      occupiedCols.push(fc)
+      if (fr > lowestRow) lowestRow = fr
+    }
+    // Already past the driller — its bottom is BELOW driller's row.
+    if (lowestRow > d.row) return
+    for (const fc of occupiedCols) {
+      threatenedCols.add(fc - 1)
+      threatenedCols.add(fc)
+      threatenedCols.add(fc + 1)
+    }
+    if (occupiedCols.includes(d.col)) threatened = true
+  })
+  if (!threatened) return null
+
+  for (let dist = 1; dist < cols; dist++) {
+    for (const sign of [-1, 1] as const) {
+      const c = d.col + dist * sign
+      if (c < 0 || c >= cols) continue
+      if (threatenedCols.has(c)) continue
+      const idx = d.row * cols + c
+      const t = tiles[idx]
+      if (t === undefined) continue
+      if (t === TILE_STONE || t === TILE_ROCK) continue
+      if (t >= TILE_FIXTURE_BASE && t < TILE_FIXTURE_BASE + 5) continue
+      return [c, d.row]
+    }
+  }
+  return null
+}
+
 export function plannerTick(world: World): void {
   const drillerEntity = world.queryFirst(Driller)
   if (!drillerEntity) return
   const d = drillerEntity.get(Driller)!
 
-  // 1. Highest-priority override: evade falling rocks regardless of mood.
-  const evade = planEvadeHazard(world, d)
+  // 1. Highest-priority overrides: evade incoming falling rocks AND
+  //    in-flight FallingChunks. Either threat trumps mood-based plans.
+  const evadeFalling = planEvadeFallingChunk(world, d)
+  const evadeHazard = evadeFalling ? null : planEvadeHazard(world, d)
+  const evade = evadeFalling ?? evadeHazard
   let next: [number, number] | null = evade
 
   // 2. Selected planner. If the chosen planner returns null (e.g., seeker
