@@ -17,7 +17,10 @@ import {
 } from '../traits'
 import { MIN_PLAY_ROWS, PLAY_COLS, TILE_PX } from '../constants'
 
-const POOL_ROWS = MIN_PLAY_ROWS + 4
+// Generous pool: covers tall viewports without stale-cell artifacts. The
+// tile-iteration window is `cam.rows + 4` rows; pool must cover the
+// largest plausible cam.rows for any viewport on a 1× scale step.
+const POOL_ROWS = MIN_PLAY_ROWS + 24
 const POOL_SIZE = PLAY_COLS * POOL_ROWS
 
 /**

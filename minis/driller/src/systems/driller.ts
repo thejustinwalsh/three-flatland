@@ -50,6 +50,17 @@ export function drillerSystem(world: World, deltaMs: number): void {
   const gs = world.get(GameState)
   if (!grid || !gs) return
 
+  // Safety: if the driller's current cell is not AIR (e.g., a chunk
+  // landed on the cell after respawn), force-clear it. Without this,
+  // the driller appears to dig but stays atop a SOIL cell that never
+  // gets cleared (the dig branch only runs for the *next* cell).
+  const hereIdx = d.row * grid.cols + d.col
+  if (grid.tiles[hereIdx] !== undefined && grid.tiles[hereIdx] !== TILE_AIR) {
+    grid.tiles[hereIdx] = TILE_AIR
+    grid.flags[hereIdx] = FLAG_AUTOTILE_DIRTY
+    markCellAndNeighborsDirty(world, d.col, d.row)
+  }
+
   // Cooldown
   const cooldown = Math.max(0, d.digCooldownMs - deltaMs)
 

@@ -13,6 +13,7 @@ import {
 import type { GemColor, GemSize } from '../atlas-regions'
 import { TILE_PX } from '../constants'
 import { createRng } from '../lib/rng'
+import { markCellAndNeighborsDirty } from './autotile-pass'
 
 let deathPhase: 'idle' | 'scatter' | 'ghost' | 'respawn' = 'idle'
 let deathTick = 0
@@ -112,30 +113,31 @@ function scatterGems(world: World, count: number, col: number, row: number, tick
 }
 
 /**
- * Ghost rises 3 rows above the death position and clears soil in a
- * 3-wide × 3-tall halo (cols ±1, rows -3..-1). STONE / ROCK / FIXTURE
- * survive the ghost's pass; only SOIL is cleared. This gives the
- * driller a small bubble to respawn into without immediately re-dying
- * to a chunk above the death point.
+ * Ghost rises through the death position and clears a 3-wide × 4-tall
+ * bubble: the death cell itself plus 3 rows above, ±1 column. ANY
+ * non-AIR tile in this region is cleared (soil, rock, stone, even
+ * explosives). The bubble guarantees the driller respawns into open
+ * space — without it, a chunk that crushed the driller would leave
+ * the respawn cell stamped as solid soil/stone and the new driller
+ * would spawn inside material.
  */
 function clearGhostHalo(world: World, deathCol: number, deathRow: number): void {
   const grid = world.get(Grid)
   if (!grid) return
   const { cols, rows, tiles, flags } = grid
-  for (let dr = 1; dr <= 3; dr++) {
+  for (let dr = 0; dr <= 3; dr++) {
     const r = deathRow - dr
     if (r < 0) continue
+    if (r >= rows) continue
     for (let dc = -1; dc <= 1; dc++) {
       const c = deathCol + dc
       if (c < 0 || c >= cols) continue
       const idx = r * cols + c
       if (idx >= tiles.length) continue
-      const t = tiles[idx]!
-      // Only SOIL clears — stone/rock/fixture/explosive survive.
-      if (t === TILE_AIR) continue
-      if (t > 1) continue
+      if (tiles[idx] === TILE_AIR) continue
       tiles[idx] = TILE_AIR
       flags[idx] = (flags[idx] ?? 0) | FLAG_AUTOTILE_DIRTY
+      markCellAndNeighborsDirty(world, c, r)
     }
   }
 }
