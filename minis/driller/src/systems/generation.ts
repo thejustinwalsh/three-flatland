@@ -90,6 +90,85 @@ export function carveCaves(
 }
 
 /**
+ * Tetris-style stone shapes for cluster generation. Each shape is a
+ * list of (col-offset, row-offset) cells relative to an anchor. The
+ * shape pool mixes singles, dominoes, triominoes and tetrominoes so
+ * worldgen produces visual variety AND a steady supply of disturbance-
+ * eligible 4+ piles for the avalanche system.
+ *
+ * Frequencies (lower index = higher weight): smaller shapes appear
+ * more often than the rarer 5+ tile blobs, keeping most encounters
+ * quick obstacles while making the bigger piles feel earned.
+ */
+type StoneShape = readonly [number, number][]
+
+const STONE_SHAPES: { weight: number; cells: StoneShape }[] = [
+  // 1: single rock — the most common obstacle
+  { weight: 12, cells: [[0, 0]] },
+  // 2: domino — horizontal + vertical
+  { weight: 8, cells: [[0, 0], [1, 0]] },
+  { weight: 8, cells: [[0, 0], [0, 1]] },
+  // 3: triomino — line + L-tris (4 rotations)
+  { weight: 5, cells: [[0, 0], [1, 0], [2, 0]] },
+  { weight: 5, cells: [[0, 0], [0, 1], [0, 2]] },
+  { weight: 5, cells: [[0, 0], [1, 0], [0, 1]] },
+  { weight: 5, cells: [[0, 0], [1, 0], [1, 1]] },
+  // 4: tetrominoes (Tetris pieces)
+  { weight: 4, cells: [[0, 0], [1, 0], [2, 0], [3, 0]] }, // I horizontal
+  { weight: 4, cells: [[0, 0], [0, 1], [0, 2], [0, 3]] }, // I vertical
+  { weight: 4, cells: [[0, 0], [1, 0], [0, 1], [1, 1]] }, // O / square
+  { weight: 3, cells: [[0, 0], [1, 0], [2, 0], [1, 1]] }, // T
+  { weight: 3, cells: [[0, 0], [1, 0], [2, 0], [0, 1]] }, // L
+  { weight: 3, cells: [[0, 0], [1, 0], [2, 0], [2, 1]] }, // J
+  { weight: 3, cells: [[1, 0], [2, 0], [0, 1], [1, 1]] }, // S
+  { weight: 3, cells: [[0, 0], [1, 0], [1, 1], [2, 1]] }, // Z
+  // 5+: big avalanche-bait piles, rare
+  { weight: 1, cells: [[0, 0], [1, 0], [2, 0], [0, 1], [1, 1]] },     // P / pent
+  { weight: 1, cells: [[0, 0], [1, 0], [0, 1], [0, 2], [1, 2]] },     // U
+  { weight: 1, cells: [[0, 0], [1, 0], [2, 0], [1, 1], [1, 2]] },     // T-tall
+]
+
+const STONE_SHAPE_WEIGHT_TOTAL = STONE_SHAPES.reduce((s, sh) => s + sh.weight, 0)
+
+function pickStoneShape(rng: Rng, biome: string): StoneShape {
+  // Deeper biomes bias the pick toward larger shapes by skewing the
+  // weighted roll into the tail of the table.
+  const biasFactor = biome === 'stoneworks' || biome === 'crystal-caverns' || biome === 'core' ? 0.7 : 1
+  let r = rng.chance(0.999) ? rng.intRange(0, STONE_SHAPE_WEIGHT_TOTAL - 1) * biasFactor : 0
+  for (const shape of STONE_SHAPES) {
+    if (r < shape.weight) return shape.cells
+    r -= shape.weight
+  }
+  return STONE_SHAPES[0]!.cells
+}
+
+function placeStoneCluster(
+  tiles: Uint8Array,
+  cols: number,
+  rows: number,
+  rng: Rng,
+  biome: string,
+): void {
+  const shape = pickStoneShape(rng, biome)
+  // Bounding box of the shape, used to clamp the anchor placement.
+  let maxC = 0
+  let maxR = 0
+  for (const [c, r] of shape) {
+    if (c > maxC) maxC = c
+    if (r > maxR) maxR = r
+  }
+  const ax = rng.intRange(1, Math.max(1, cols - maxC - 2))
+  const ay = rng.intRange(2, Math.max(2, rows - maxR - 3))
+  // Only stamp into SOIL — a shape that overlaps existing AIR / cave
+  // would leave floating fragments, which the avalanche system can't
+  // distinguish from intentional piles.
+  for (const [c, r] of shape) {
+    const idx = (ay + r) * cols + (ax + c)
+    if (tiles[idx] === TILE_SOIL) tiles[idx] = TILE_STONE
+  }
+}
+
+/**
  * Generate a chunk of tiles + gems for the (seed, chunkY) coordinate.
  *
  * Deterministic: the same inputs always produce the same output. Used
@@ -118,16 +197,19 @@ export function generateChunk(seed: number, chunkY: number): GeneratedChunk {
   const caves = rng.intRange(biome.caveCount[0], biome.caveCount[1])
   carveCaves(tiles, cols, rows, caves, rng)
 
-  // Stone scatter (no stone in topsoil; deeper biomes denser)
+  // Stone clusters — tetris-like shapes embedded in soil. Most are
+  // small (1–3 tiles, just an obstacle to drill around); occasional
+  // 4+ piles become avalanche threats once disturbed by the player.
+  // Skipped in topsoil so the surface always feels safe.
   if (biome.name !== 'topsoil') {
-    const pillars = biome.name === 'stoneworks' ? rng.intRange(1, 3) : rng.intRange(0, 1)
-    for (let i = 0; i < pillars; i++) {
-      const x = rng.intRange(1, cols - 2)
-      const y = rng.intRange(2, rows - 4)
-      const h = rng.intRange(3, 6)
-      for (let dy = 0; dy < h && y + dy < rows; dy++) {
-        tiles[(y + dy) * cols + x] = TILE_STONE
-      }
+    const clusterBudget =
+      biome.name === 'stoneworks'
+        ? rng.intRange(2, 5)
+        : biome.name === 'crystal-caverns' || biome.name === 'core'
+          ? rng.intRange(3, 6)
+          : rng.intRange(1, 3)
+    for (let i = 0; i < clusterBudget; i++) {
+      placeStoneCluster(tiles, cols, rows, rng, biome.name)
     }
   }
 
