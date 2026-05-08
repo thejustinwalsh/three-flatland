@@ -1,0 +1,538 @@
+---
+/**
+ * BrandAssetD-Ruby-v2 — RUBY-anchored "spec sheet" composition.
+ *
+ * Critique of v1:
+ *   - Centered vertical cascade (badge → wordmark → tagline → stats → info)
+ *     read as the default AI-poster template.
+ *   - Underline-stats were too quiet to scroll-stop.
+ *   - Ruby was tinting decoration but not carrying structure.
+ *
+ * v2 fixes (frontend-design):
+ *   - Asymmetric two-pane layout: brand identity (icon + wordmark + tagline)
+ *     on the left, data plate (3 perf-stats stacked) on the right. The
+ *     stats are now compositional content, not a row at the bottom.
+ *   - Left ruby spine — a vertical 2px hairline running floor-to-ceiling
+ *     between panes. Ruby as STRUCTURE, not paint.
+ *   - Stats sit on a tinted ruby-soft plate (mirrors FeatureCard
+ *     data-gem='ruby' resting tint via var(--ruby-soft) recipe), with
+ *     full-width ruby separators between rows. Each row reads as a
+ *     spec-sheet line: VALUE on the left, label on the right.
+ *   - Wordmark gains a leading ruby tally-mark "▍" + showcase eyebrow,
+ *     borrowed from the showcases index header eyebrow recipe.
+ *   - Diagonal rule REMOVED — its only job in v1 was decoration; v2
+ *     replaces it with a meaningful spine.
+ *
+ * No invented colors. Ruby triplet (-low/base/-high) + ruby-soft surface,
+ * gold + diamond preserved on info chips per spec.
+ */
+import BrandIcon from '../BrandIcon.astro'
+
+interface Props {
+    id: string
+    type: 'banner' | 'og' | 'wide' | 'social-x' | 'icon-only'
+    title?: string
+    tagline?: string
+    info?: boolean
+    isCapture?: boolean
+}
+
+const {
+    id,
+    type,
+    title = 'flatland',
+    tagline = 'Sprite-first 2D for Three.js + R3F. WebGPU-native.',
+    info = true,
+    isCapture = false,
+} = Astro.props
+
+interface Dimensions {
+    w: number
+    h: number
+}
+
+const dimensions: Record<Props['type'], Dimensions> = {
+    banner: { w: 1280, h: 640 },
+    og: { w: 1200, h: 630 },
+    wide: { w: 3000, h: 1000 },
+    'social-x': { w: 1200, h: 628 },
+    'icon-only': { w: 512, h: 512 },
+}
+
+const { w: width, h: height } = dimensions[type] ?? dimensions['og']
+const showInfo = info && type !== 'icon-only'
+const isWide = type === 'wide'
+
+const repoLine = 'thejustinwalsh/three-flatland'
+const installLine = '# npm i three-flatland@alpha'
+
+// Spec-sheet rows — each row is a single perf claim, value left, label right.
+const specs = [
+    { value: '20K+', label: 'sprites · 60fps' },
+    { value: 'WebGPU', label: 'TSL native' },
+    { value: 'v0.1', label: 'public alpha' },
+]
+---
+
+<div
+    class:list={['brand-asset-root', 'not-content', type, { 'capture-mode': isCapture }]}
+    id={id}
+    style={`--asset-width: ${width}; --asset-height: ${height};`}
+>
+    {/* Ruby ambient spotlight — radial at upper-right (the showcase pose).
+        Diamond counter-light at lower-left for cool balance. */}
+    <div class="brand-bg-glow" aria-hidden="true"></div>
+
+    {/* Sub-perceptual fractal noise overlay (≤4%). */}
+    <div class="brand-bg-noise" aria-hidden="true"></div>
+
+    <div class="brand-content">
+        {type === 'icon-only' ? (
+            <div class="icon-only-frame">
+                <BrandIcon size="64%" />
+            </div>
+        ) : (
+            <Fragment>
+                <div class:list={['brand-layout', { 'is-wide': isWide }]}>
+                    {/* Left pane — brand identity. Icon + ruby eyebrow +
+                        wordmark + tagline, left-aligned. */}
+                    <div class="brand-pane">
+                        <div class="brand-mark">
+                            <BrandIcon size={isWide ? '11cqi' : '16cqi'} />
+                        </div>
+                        <div class="brand-text">
+                            <div class="brand-eyebrow">
+                                <span class="brand-eyebrow-tally" aria-hidden="true">▍</span>
+                                <span class="brand-eyebrow-text">SHOWCASE · v0.1 ALPHA</span>
+                            </div>
+                            <h1 class="brand-wordmark">{title}</h1>
+                            <p class="brand-tagline">{tagline}</p>
+                        </div>
+                    </div>
+
+                    {/* Ruby spine — vertical hairline, ruby-tinted, the
+                        compositional anchor between brand pane and spec
+                        plate. Structure, not decoration. */}
+                    <div class="brand-spine" aria-hidden="true"></div>
+
+                    {/* Right pane — spec plate. Ruby-soft tinted surface
+                        (FeatureCard data-gem='ruby' recipe) with 3 spec
+                        rows separated by ruby hairlines. */}
+                    <div class="spec-plate">
+                        <div class="spec-plate-header" aria-hidden="true">
+                            <span class="spec-plate-dot"></span>
+                            <span class="spec-plate-label">PERF · RECEIPTS</span>
+                        </div>
+                        <ul class="spec-list">
+                            {specs.map((spec) => (
+                                <li class="spec-row">
+                                    <span class="spec-value">{spec.value}</span>
+                                    <span class="spec-label">{spec.label}</span>
+                                </li>
+                            ))}
+                        </ul>
+                        {isWide && showInfo && (
+                            <div class="brand-info-inline">
+                                <span class="info-chip github">{repoLine}</span>
+                                <span class="info-chip npm">{installLine}</span>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            </Fragment>
+        )}
+
+        {showInfo && !isWide && (
+            <div class="brand-info-row">
+                <span class="info-chip github">{repoLine}</span>
+                <span class="info-chip npm">{installLine}</span>
+            </div>
+        )}
+    </div>
+</div>
+
+<style>
+    .brand-asset-root {
+        --tf-bg: #111418;
+        --tf-fg: #f5f6f9;
+        --tf-fg-muted: #b3b8c4;
+        --tf-border: rgba(255, 255, 255, 0.08);
+
+        /* Ruby triplet — direct mirrors of theme.css OKLCH equivalents. */
+        --tf-ruby: #c62f52;
+        --tf-ruby-high: #e25771;
+        --tf-ruby-low: #6e1827;
+        /* Ruby-soft = FeatureCard's resting tint for data-gem='ruby'. */
+        --tf-ruby-soft: rgba(198, 47, 82, 0.10);
+        --tf-ruby-plate: rgba(198, 47, 82, 0.06);
+
+        --tf-gold: #f1c45f;
+        --tf-diamond: #6cb8ff;
+        --tf-diamond-soft: rgba(108, 184, 255, 0.14);
+
+        position: relative;
+        overflow: hidden;
+        color: var(--tf-fg);
+        background: linear-gradient(135deg, #0e1117 0%, #15121a 100%);
+        container-type: inline-size;
+
+        font-family: 'Public Sans', system-ui, sans-serif;
+        font-feature-settings: 'ss01';
+
+        width: calc(var(--asset-width) * 1px);
+        height: calc(var(--asset-height) * 1px);
+        aspect-ratio: var(--asset-width) / var(--asset-height);
+    }
+
+    :not(.capture-mode).brand-asset-root {
+        width: 100%;
+        height: auto;
+    }
+
+    /* Asymmetric ambient — ruby spotlight upper-right, diamond
+     * counter-light lower-left. Sub-15% peak luminance. */
+    .brand-bg-glow {
+        position: absolute;
+        inset: 0;
+        background:
+            radial-gradient(
+                60% 55% at 82% 18%,
+                color-mix(in oklab, var(--tf-ruby) 18%, transparent) 0%,
+                transparent 60%
+            ),
+            radial-gradient(
+                75% 60% at 8% 92%,
+                var(--tf-diamond-soft) 0%,
+                transparent 65%
+            );
+        z-index: 0;
+        pointer-events: none;
+    }
+
+    .brand-bg-noise {
+        position: absolute;
+        inset: 0;
+        opacity: 0.04;
+        background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0.6 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+        background-size: 220px 220px;
+        mix-blend-mode: overlay;
+        z-index: 1;
+        pointer-events: none;
+    }
+
+    .brand-content {
+        position: relative;
+        z-index: 2;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: stretch;
+        padding: 5cqi 6cqi;
+        box-sizing: border-box;
+        gap: 3cqi;
+    }
+
+    /* icon-only — center the mark in a soft ruby halo. */
+    .icon-only .brand-content {
+        padding: 8cqi;
+        justify-content: center;
+        align-items: center;
+        gap: 0;
+    }
+    .icon-only-frame {
+        position: relative;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 78cqi;
+        max-width: 100%;
+        aspect-ratio: 1;
+    }
+    .icon-only-frame::before {
+        content: '';
+        position: absolute;
+        inset: -4cqi;
+        border-radius: 50%;
+        background: radial-gradient(
+            circle,
+            color-mix(in oklab, var(--tf-ruby) 22%, transparent) 0%,
+            transparent 60%
+        );
+        filter: blur(2cqi);
+        z-index: -1;
+    }
+
+    /* Asymmetric two-pane grid — brand identity left, spec plate right,
+     * ruby spine between. */
+    .brand-layout {
+        flex: 1;
+        display: grid;
+        grid-template-columns: minmax(0, 1.15fr) auto minmax(0, 0.85fr);
+        align-items: center;
+        gap: 4cqi;
+        min-height: 0;
+    }
+    .brand-layout.is-wide {
+        grid-template-columns: minmax(0, 1.4fr) auto minmax(0, 0.6fr);
+        gap: 5cqi;
+    }
+    .social-x .brand-layout,
+    .og .brand-layout,
+    .banner .brand-layout {
+        grid-template-columns: minmax(0, 1.1fr) auto minmax(0, 0.9fr);
+    }
+
+    /* Left pane — icon stacked above wordmark block. */
+    .brand-pane {
+        display: flex;
+        flex-direction: column;
+        gap: 2.5cqi;
+        align-items: flex-start;
+        text-align: left;
+        min-width: 0;
+    }
+    .is-wide .brand-pane {
+        flex-direction: row;
+        align-items: center;
+        gap: 3cqi;
+    }
+
+    .brand-mark {
+        display: flex;
+        align-items: center;
+        justify-content: flex-start;
+        line-height: 0;
+        flex-shrink: 0;
+        filter: drop-shadow(
+            0 1.5cqi 3cqi color-mix(in oklab, var(--tf-ruby) 32%, transparent)
+        );
+    }
+
+    .brand-text {
+        display: flex;
+        flex-direction: column;
+        gap: 1.5cqi;
+        align-items: flex-start;
+        min-width: 0;
+    }
+
+    /* Ruby eyebrow — "SHOWCASE · v0.1 ALPHA" with a leading tally-mark
+     * "▍" glyph in ruby-high. Mirrors the showcases-eyebrow recipe but
+     * uppercased + monospaced for the spec-sheet register. */
+    .brand-eyebrow {
+        display: inline-flex;
+        align-items: baseline;
+        gap: 0.6cqi;
+        font-family: 'JetBrains Mono', ui-monospace, monospace;
+        font-size: clamp(8px, 1.1cqi, 14px);
+        font-weight: 600;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+    }
+    .brand-eyebrow-tally {
+        color: var(--tf-ruby);
+        font-size: 1.2em;
+        line-height: 0.8;
+        text-shadow: 0 0 0.4cqi color-mix(in oklab, var(--tf-ruby) 60%, transparent);
+    }
+    .brand-eyebrow-text {
+        color: color-mix(in oklab, var(--tf-ruby-high) 70%, var(--tf-fg-muted));
+    }
+
+    /* Silkscreen wordmark — left-aligned, ruby glow. */
+    .brand-wordmark {
+        font-family: 'Silkscreen', monospace;
+        font-weight: 700;
+        font-size: clamp(36px, 10cqi, 156px);
+        line-height: 0.95;
+        letter-spacing: -0.04em;
+        color: var(--tf-fg);
+        margin: 0;
+        text-shadow:
+            0 0 0.4cqi color-mix(in oklab, var(--tf-ruby) 38%, transparent),
+            0 1.5cqi 4cqi color-mix(in oklab, var(--tf-ruby) 28%, transparent);
+    }
+    .banner .brand-wordmark,
+    .wide .brand-wordmark {
+        font-size: clamp(36px, 7.5cqi, 116px);
+    }
+    .social-x .brand-wordmark {
+        font-size: clamp(36px, 10cqi, 144px);
+    }
+
+    .brand-tagline {
+        font-family: 'Public Sans', system-ui, sans-serif;
+        font-weight: 400;
+        font-size: clamp(11px, 1.9cqi, 24px);
+        line-height: 1.5;
+        color: var(--tf-fg-muted);
+        margin: 0;
+        max-width: 32cqi;
+        letter-spacing: -0.005em;
+    }
+    .wide .brand-tagline {
+        font-size: clamp(11px, 1.5cqi, 20px);
+        max-width: 48cqi;
+    }
+
+    /* Ruby spine — vertical 2px hairline, the structural anchor. */
+    .brand-spine {
+        align-self: stretch;
+        width: 2px;
+        background: linear-gradient(
+            to bottom,
+            transparent 0%,
+            color-mix(in oklab, var(--tf-ruby) 25%, transparent) 12%,
+            color-mix(in oklab, var(--tf-ruby) 70%, transparent) 50%,
+            color-mix(in oklab, var(--tf-ruby) 25%, transparent) 88%,
+            transparent 100%
+        );
+        box-shadow: 0 0 1.5cqi color-mix(in oklab, var(--tf-ruby) 30%, transparent);
+    }
+
+    /* Right pane — spec plate. Ruby-soft tinted surface, ruby border. */
+    .spec-plate {
+        display: flex;
+        flex-direction: column;
+        align-self: stretch;
+        gap: 1.5cqi;
+        padding: 2.5cqi 3cqi;
+        background: linear-gradient(
+            180deg,
+            var(--tf-ruby-plate) 0%,
+            var(--tf-ruby-soft) 100%
+        );
+        border: 1px solid color-mix(in oklab, var(--tf-ruby) 22%, var(--tf-border));
+        border-radius: 6px;
+        justify-content: center;
+        min-width: 0;
+    }
+    .is-wide .spec-plate {
+        gap: 1.2cqi;
+        padding: 2cqi 2.5cqi;
+    }
+
+    .spec-plate-header {
+        display: inline-flex;
+        align-items: center;
+        gap: 1cqi;
+        font-family: 'JetBrains Mono', ui-monospace, monospace;
+        font-size: clamp(7px, 0.95cqi, 12px);
+        font-weight: 600;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+        color: color-mix(in oklab, var(--tf-ruby) 50%, var(--tf-fg-muted));
+        padding-bottom: 0.5cqi;
+        border-bottom: 1px solid color-mix(in oklab, var(--tf-ruby) 25%, transparent);
+    }
+    .spec-plate-dot {
+        width: 0.7cqi;
+        height: 0.7cqi;
+        min-width: 5px;
+        min-height: 5px;
+        border-radius: 50%;
+        background: var(--tf-ruby);
+        box-shadow: 0 0 1cqi color-mix(in oklab, var(--tf-ruby) 60%, transparent);
+    }
+
+    .spec-list {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        display: flex;
+        flex-direction: column;
+    }
+    .spec-row {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 2cqi;
+        padding: 1.4cqi 0;
+        /* Ruby separator hairline — recipe lifted from StatsBanner's
+         * gem-tinted gradient underline. Last row drops the line. */
+        background-image: linear-gradient(
+            90deg,
+            color-mix(in oklab, var(--tf-ruby) 60%, transparent) 0%,
+            color-mix(in oklab, var(--tf-ruby) 30%, transparent) 60%,
+            transparent 100%
+        );
+        background-size: 100% 1px;
+        background-repeat: no-repeat;
+        background-position: 0 100%;
+    }
+    .spec-row:last-child {
+        background-image: none;
+    }
+    .spec-value {
+        font-family: 'Commit Mono', 'JetBrains Mono', ui-monospace, monospace;
+        font-feature-settings: 'tnum' 1, 'ss01' 1;
+        font-size: clamp(13px, 2.2cqi, 32px);
+        font-weight: 500;
+        color: color-mix(in oklab, var(--tf-ruby-high) 70%, var(--tf-fg));
+        line-height: 1;
+        letter-spacing: -0.025em;
+    }
+    .is-wide .spec-value {
+        font-size: clamp(11px, 1.5cqi, 22px);
+    }
+    .spec-label {
+        font-family: 'Inter', system-ui, sans-serif;
+        font-weight: 500;
+        font-size: clamp(8px, 1.1cqi, 14px);
+        color: var(--tf-fg-muted);
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        text-align: right;
+    }
+    .is-wide .spec-label {
+        font-size: clamp(7px, 0.85cqi, 11px);
+    }
+
+    /* Info row — gold + diamond chips preserved per spec. */
+    .brand-info-row,
+    .brand-info-inline {
+        display: flex;
+        gap: 4cqi;
+        font-family: 'JetBrains Mono', ui-monospace, monospace;
+        font-size: clamp(9px, 1.4cqi, 16px);
+        font-weight: 500;
+        opacity: 0.92;
+    }
+    .brand-info-row {
+        margin-top: 0;
+        justify-content: space-between;
+        align-items: center;
+        padding-top: 1.5cqi;
+        border-top: 1px solid color-mix(in oklab, var(--tf-ruby) 18%, var(--tf-border));
+    }
+    .wide .brand-info-inline {
+        margin-top: 1cqi;
+        font-size: clamp(8px, 0.95cqi, 12px);
+        gap: 2cqi;
+        padding-top: 1cqi;
+        border-top: 1px solid color-mix(in oklab, var(--tf-ruby) 22%, transparent);
+    }
+    .info-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.6em;
+        white-space: nowrap;
+        letter-spacing: 0.01em;
+    }
+    .info-chip.github {
+        color: var(--tf-diamond);
+    }
+    .info-chip.github::before {
+        content: '↗';
+        opacity: 0.7;
+    }
+    .info-chip.npm {
+        color: var(--tf-gold);
+    }
+
+    .asset-preview-link:hover .brand-asset-root {
+        outline: 1px solid color-mix(in oklab, var(--tf-ruby) 45%, transparent);
+        outline-offset: 4px;
+    }
+</style>

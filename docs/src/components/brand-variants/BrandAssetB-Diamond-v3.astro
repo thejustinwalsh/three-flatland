@@ -1,0 +1,548 @@
+---
+/**
+ * BrandAssetB-Diamond-v3 — shippable
+ * --------------------------------------------------------------
+ * Polish pass on v2:
+ *  - Tightened vertical rhythm: breadcrumb→wordmark→tagline→info-row
+ *    now hits a 1×/8×/2×/1× ratio rather than the looser stack v2 had.
+ *  - Version badge regrouped with the breadcrumb crumb instead of
+ *    fighting the wordmark for "first eye-line affordance"; the
+ *    wordmark gets full visual weight.
+ *  - Distinctive memorable detail: a TOC-style ghost-page pattern
+ *    rendered on the right side of the asset — a stack of diamond-
+ *    tinted hairlines suggesting docs-page text content. This is the
+ *    "that's clearly the docs site" signal that no other variant
+ *    has, and it ties the diamond gem to the docs identity directly.
+ *
+ * Adapt pass — per-aspect tuning:
+ *  - WIDE 3000×1000: horizontal "doc spread" — left half is icon +
+ *    wordmark + tagline, right half is a structured docs-info pane
+ *    with the breadcrumb above and install/repo cluster below,
+ *    separated by a vertical diamond divider rule. The gutter
+ *    pip rail still anchors the left edge.
+ *  - BANNER / OG / SOCIAL-X: vertical doc-page composition; ghost-
+ *    page pattern peeks in from the right edge.
+ *  - ICON-ONLY 512×512: dedicated treatment — diamond pip rail to the
+ *    LEFT of the icon (centered vertically), gem-tinted halo behind
+ *    the icon, no text. The pip rail itself becomes the diamond
+ *    signal rather than relying on perimeter chrome.
+ */
+import BrandIcon from '../BrandIcon.astro'
+
+interface Props {
+    id: string
+    type: 'banner' | 'og' | 'wide' | 'social-x' | 'icon-only'
+    title?: string
+    tagline?: string
+    info?: boolean
+    isCapture?: boolean
+}
+
+const {
+    id,
+    type,
+    title = 'flatland',
+    tagline = 'Sprite-first 2D for Three.js + R3F. WebGPU-native.',
+    info = true,
+    isCapture = false,
+} = Astro.props
+
+interface Dimensions {
+    w: number
+    h: number
+}
+
+const dimensions: Record<Props['type'], Dimensions> = {
+    banner: { w: 1280, h: 640 },
+    og: { w: 1200, h: 630 },
+    wide: { w: 3000, h: 1000 },
+    'social-x': { w: 1200, h: 628 },
+    'icon-only': { w: 512, h: 512 },
+}
+
+const { w: width, h: height } = dimensions[type] ?? dimensions['og']
+const showInfo = info && type !== 'icon-only'
+const isWide = type === 'wide'
+const isIconOnly = type === 'icon-only'
+
+const repoLine = 'thejustinwalsh/three-flatland'
+const installLine = '# npm i three-flatland@alpha'
+
+// Ghost-page bars — variable-width hairlines that suggest docs-page
+// text content. The widths are deterministic (not random) so the
+// pattern is consistent across renders. Values are flex-basis %.
+const ghostBars = [86, 72, 92, 64, 80, 58, 88, 70, 76, 60, 84, 50]
+---
+
+<div
+    class:list={['brand-asset-root', 'not-content', type, { 'capture-mode': isCapture }]}
+    id={id}
+    style={`--asset-width: ${width}; --asset-height: ${height};`}
+>
+    <div class="bg-noise" aria-hidden="true"></div>
+
+    {/* Gutter — composition-scale TOC active-marker pip rail. */}
+    <div class:list={['gutter', { 'gutter-icon': isIconOnly }]} aria-hidden="true"></div>
+
+    {/* Frame — docs-content boundary, inset and diamond-tinted. */}
+    {!isIconOnly && <div class="frame" aria-hidden="true"></div>}
+
+    {/* Ghost-page content marks — the distinctive detail. Hidden on
+        icon-only (no docs-page metaphor at icon scale) and styled
+        differently for wide vs other aspects. */}
+    {!isIconOnly && (
+        <div class="ghost-page" aria-hidden="true">
+            {ghostBars.map((w) => (
+                <span class="ghost-bar" style={`width: ${w}%;`}></span>
+            ))}
+        </div>
+    )}
+
+    <div class="content">
+        {isIconOnly ? (
+            <div class="icon-only-frame">
+                <BrandIcon size="62%" />
+            </div>
+        ) : isWide ? (
+            <Fragment>
+                {/* WIDE — split spread: left identity column, right
+                    docs-info pane separated by a vertical diamond rule. */}
+                <div class="spread-left">
+                    <div class="mark">
+                        <BrandIcon size="11cqi" />
+                    </div>
+                    <div class="text-block">
+                        <h1 class="wordmark">{title}</h1>
+                        <p class="tagline">{tagline}</p>
+                    </div>
+                </div>
+                <div class="spread-rule" aria-hidden="true"></div>
+                <div class="spread-right">
+                    <div class="crumb">
+                        <span class="crumb-seg muted">docs</span>
+                        <span class="crumb-sep" aria-hidden="true">/</span>
+                        <span class="crumb-seg muted">branding</span>
+                        <span class="crumb-sep" aria-hidden="true">/</span>
+                        <span class="crumb-seg here">{title}</span>
+                        <span class="version-badge">v0.1-α</span>
+                    </div>
+                    {showInfo && (
+                        <div class="info-cluster">
+                            <span class="info-chip github">{repoLine}</span>
+                            <span class="info-chip npm">{installLine}</span>
+                        </div>
+                    )}
+                </div>
+            </Fragment>
+        ) : (
+            <Fragment>
+                <div class="text-block">
+                    <div class="crumb">
+                        <span class="crumb-seg muted">docs</span>
+                        <span class="crumb-sep" aria-hidden="true">/</span>
+                        <span class="crumb-seg muted">branding</span>
+                        <span class="crumb-sep" aria-hidden="true">/</span>
+                        <span class="crumb-seg here">{title}</span>
+                        <span class="version-badge">v0.1-α</span>
+                    </div>
+                    <div class="wordmark-row">
+                        <div class="mark mark-inline">
+                            <BrandIcon size="14cqi" />
+                        </div>
+                        <h1 class="wordmark">{title}</h1>
+                    </div>
+                    <p class="tagline">{tagline}</p>
+                </div>
+                {showInfo && (
+                    <div class="info-row">
+                        <div class="info-divider" aria-hidden="true"></div>
+                        <div class="info-chips">
+                            <span class="info-chip github">{repoLine}</span>
+                            <span class="info-chip npm">{installLine}</span>
+                        </div>
+                    </div>
+                )}
+            </Fragment>
+        )}
+    </div>
+</div>
+
+<style>
+    .brand-asset-root {
+        --tf-bg: var(--background, #111418);
+        --tf-fg: var(--foreground, #f5f6f9);
+        --tf-fg-muted: var(--muted-foreground, #b3b8c4);
+        --tf-border: var(--border, rgba(255, 255, 255, 0.08));
+        --tf-card: var(--card, oklch(20% 0.008 250));
+
+        --tf-diamond: var(--diamond, oklch(75% 0.15 215));
+        --tf-diamond-low: var(--diamond-low, oklch(36% 0.10 215));
+        --tf-diamond-high: var(--diamond-high, oklch(85% 0.13 215));
+        --tf-diamond-soft: var(--diamond-soft, oklch(20% 0.026 215));
+        --tf-gold: var(--gold, oklch(72% 0.16 85));
+
+        position: relative;
+        overflow: hidden;
+        color: var(--tf-fg);
+        background: var(--tf-bg);
+        container-type: inline-size;
+
+        font-family: 'Public Sans', system-ui, sans-serif;
+        font-feature-settings: 'ss01';
+
+        width: calc(var(--asset-width) * 1px);
+        height: calc(var(--asset-height) * 1px);
+        aspect-ratio: var(--asset-width) / var(--asset-height);
+    }
+
+    :not(.capture-mode).brand-asset-root {
+        width: 100%;
+        height: auto;
+    }
+
+    .bg-noise {
+        position: absolute;
+        inset: 0;
+        opacity: 0.04;
+        background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0.6 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+        background-size: 220px 220px;
+        mix-blend-mode: overlay;
+        z-index: 1;
+        pointer-events: none;
+    }
+
+    /* Gutter pip rail — composition-scale TOC active-marker. */
+    .gutter {
+        position: absolute;
+        top: 6cqi;
+        bottom: 6cqi;
+        left: 0;
+        width: 0.4cqi;
+        min-width: 3px;
+        background-color: var(--tf-diamond);
+        border-radius: 0 0.2cqi 0.2cqi 0;
+        z-index: 2;
+        pointer-events: none;
+    }
+    .gutter::after {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 100%;
+        width: 6cqi;
+        height: 100%;
+        background: linear-gradient(
+            to right,
+            color-mix(in oklab, var(--tf-diamond) 22%, transparent) 0%,
+            transparent 100%
+        );
+        pointer-events: none;
+    }
+    /* Icon-only — gutter is shorter, centered vertically, with a glow halo. */
+    .gutter-icon {
+        top: 22%;
+        bottom: 22%;
+    }
+    .icon-only .gutter::after {
+        width: 14cqi;
+    }
+
+    /* Frame — docs-content boundary, hidden on icon-only. */
+    .frame {
+        position: absolute;
+        top: 4cqi;
+        right: 4cqi;
+        bottom: 4cqi;
+        left: 4cqi;
+        border: 1px solid color-mix(in oklab, var(--tf-diamond) 14%, var(--tf-border));
+        border-radius: 1cqi;
+        z-index: 1;
+        pointer-events: none;
+    }
+
+    /* Ghost-page hairlines — the distinctive detail. Stack of variable-
+     * width diamond-tinted bars on the right edge that read as the
+     * faint outline of docs page text. Sub-perceptual at first; the
+     * "ohhh, that's the docs" lands on second glance. */
+    .ghost-page {
+        position: absolute;
+        top: 12cqi;
+        right: 6cqi;
+        bottom: 12cqi;
+        width: 28cqi;
+        max-width: 340px;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        align-items: flex-end;
+        z-index: 1;
+        opacity: 0.18;
+        pointer-events: none;
+    }
+    .wide .ghost-page {
+        display: none; /* wide aspect uses real content on the right */
+    }
+    .ghost-bar {
+        display: block;
+        height: 0.25cqi;
+        min-height: 2px;
+        max-height: 4px;
+        background: linear-gradient(
+            to right,
+            transparent 0%,
+            color-mix(in oklab, var(--tf-diamond) 80%, transparent) 30%,
+            color-mix(in oklab, var(--tf-diamond) 80%, transparent) 100%
+        );
+        border-radius: 1px;
+    }
+
+    .content {
+        position: relative;
+        z-index: 3;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: flex-start;
+        padding: 6cqi 6cqi 6cqi 8cqi;
+        box-sizing: border-box;
+        gap: 2cqi;
+    }
+
+    /* WIDE — split spread layout. */
+    .wide .content {
+        flex-direction: row;
+        align-items: stretch;
+        justify-content: space-between;
+        padding: 5cqi 5cqi 5cqi 7cqi;
+        gap: 4cqi;
+    }
+    .spread-left {
+        flex: 1.4;
+        display: flex;
+        flex-direction: row;
+        align-items: center;
+        gap: 4cqi;
+        min-width: 0;
+    }
+    .spread-rule {
+        width: 1px;
+        background: linear-gradient(
+            to bottom,
+            transparent 0%,
+            color-mix(in oklab, var(--tf-diamond) 28%, transparent) 20%,
+            color-mix(in oklab, var(--tf-diamond) 28%, transparent) 80%,
+            transparent 100%
+        );
+        flex-shrink: 0;
+    }
+    .spread-right {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        padding: 1cqi 0;
+        min-width: 0;
+        gap: 2cqi;
+    }
+
+    /* ICON-ONLY — center the mark with a soft diamond halo. */
+    .icon-only .content {
+        padding: 8cqi 8cqi 8cqi 10cqi;
+        align-items: center;
+        justify-content: center;
+        gap: 0;
+    }
+    .icon-only-frame {
+        position: relative;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 68cqi;
+        max-width: 100%;
+        aspect-ratio: 1;
+    }
+    .icon-only-frame::before {
+        content: '';
+        position: absolute;
+        inset: -4cqi;
+        border-radius: 50%;
+        background: radial-gradient(
+            circle,
+            color-mix(in oklab, var(--tf-diamond) 24%, transparent) 0%,
+            transparent 60%
+        );
+        filter: blur(2cqi);
+        z-index: -1;
+    }
+    /* Icon-only — light diamond hairline ring around the icon, mirroring
+     * a TOC item's selected state pulled tight around the mark. */
+    .icon-only-frame::after {
+        content: '';
+        position: absolute;
+        inset: -1.5cqi;
+        border-radius: 50%;
+        border: 1px solid color-mix(in oklab, var(--tf-diamond) 24%, transparent);
+        z-index: -1;
+    }
+
+    /* Non-wide text composition. */
+    .text-block {
+        display: flex;
+        flex-direction: column;
+        gap: 2cqi;
+        align-items: flex-start;
+        max-width: 70cqi;
+    }
+    .wordmark-row {
+        display: flex;
+        align-items: center;
+        gap: 2.5cqi;
+    }
+    .mark {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        line-height: 0;
+        flex-shrink: 0;
+        filter: drop-shadow(
+            0 1.5cqi 3cqi color-mix(in oklab, var(--tf-diamond) 28%, transparent)
+        );
+    }
+    .mark-inline {
+        filter: drop-shadow(
+            0 1cqi 2cqi color-mix(in oklab, var(--tf-diamond) 24%, transparent)
+        );
+    }
+
+    /* Breadcrumb — JetBrains Mono path; terminal segment in diamond. */
+    .crumb {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.6em;
+        font-family: 'JetBrains Mono', ui-monospace, monospace;
+        font-size: clamp(9px, 1.3cqi, 14px);
+        font-weight: 500;
+        letter-spacing: 0.04em;
+        flex-wrap: wrap;
+    }
+    .wide .crumb {
+        font-size: clamp(9px, 1.1cqi, 14px);
+    }
+    .crumb-seg.muted {
+        color: var(--tf-fg-muted);
+    }
+    .crumb-seg.here {
+        color: var(--tf-diamond);
+        font-weight: 600;
+    }
+    .crumb-sep {
+        color: color-mix(in oklab, var(--tf-fg-muted) 50%, transparent);
+    }
+    /* Version badge — diamond, tucked into the crumb row's tail with
+     * a thin diamond hairline rim that mirrors aside-note borders. */
+    .version-badge {
+        font-family: 'JetBrains Mono', ui-monospace, monospace;
+        font-size: 0.85em;
+        font-weight: 500;
+        letter-spacing: 0.04em;
+        color: var(--tf-diamond);
+        padding: 0.15em 0.5em;
+        border: 1px solid color-mix(in oklab, var(--tf-diamond) 30%, transparent);
+        border-radius: 0.3em;
+        margin-left: 0.4em;
+        white-space: nowrap;
+        background-color: color-mix(in oklab, var(--tf-diamond) 6%, transparent);
+    }
+
+    .wordmark {
+        font-family: 'Silkscreen', monospace;
+        font-weight: 700;
+        font-size: clamp(36px, 12cqi, 168px);
+        line-height: 0.9;
+        letter-spacing: -0.04em;
+        color: var(--tf-fg);
+        margin: 0;
+    }
+    .banner .wordmark,
+    .wide .wordmark {
+        font-size: clamp(36px, 8.5cqi, 124px);
+    }
+    .og .wordmark {
+        font-size: clamp(36px, 11cqi, 156px);
+    }
+    .social-x .wordmark {
+        font-size: clamp(36px, 12cqi, 156px);
+    }
+
+    .tagline {
+        font-family: 'Public Sans', system-ui, sans-serif;
+        font-weight: 400;
+        font-size: clamp(12px, 2.4cqi, 32px);
+        line-height: 1.5;
+        color: var(--tf-fg-muted);
+        margin: 0;
+        max-width: 56cqi;
+        letter-spacing: -0.005em;
+    }
+    .wide .tagline {
+        font-size: clamp(11px, 1.7cqi, 22px);
+        max-width: 100%;
+    }
+    .banner .tagline {
+        font-size: clamp(11px, 2cqi, 26px);
+    }
+
+    /* Info row — diamond hairline above + mono chips. Pinned to the
+     * footer of the content box on non-wide aspects. */
+    .info-row {
+        margin-top: auto;
+        padding-top: 2cqi;
+        width: 100%;
+        display: flex;
+        flex-direction: column;
+        gap: 1.5cqi;
+    }
+    .info-divider {
+        height: 1px;
+        background: linear-gradient(
+            to right,
+            color-mix(in oklab, var(--tf-diamond) 32%, transparent) 0%,
+            color-mix(in oklab, var(--tf-diamond) 8%, transparent) 60%,
+            transparent 100%
+        );
+    }
+    .info-chips,
+    .info-cluster {
+        display: flex;
+        gap: 4cqi;
+        align-items: center;
+    }
+    .wide .info-cluster {
+        gap: 2.5cqi;
+    }
+
+    .info-chip {
+        font-family: 'JetBrains Mono', ui-monospace, monospace;
+        font-size: clamp(9px, 1.4cqi, 16px);
+        font-weight: 500;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.6em;
+        white-space: nowrap;
+        letter-spacing: 0.01em;
+    }
+    .wide .info-chip {
+        font-size: clamp(9px, 1.05cqi, 14px);
+    }
+    .info-chip.github {
+        color: var(--tf-diamond);
+    }
+    .info-chip.github::before {
+        content: '↗';
+        opacity: 0.75;
+    }
+    .info-chip.npm {
+        color: var(--tf-gold);
+    }
+</style>

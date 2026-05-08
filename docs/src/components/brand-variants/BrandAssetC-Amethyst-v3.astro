@@ -1,0 +1,617 @@
+---
+/**
+ * BrandAssetC-Amethyst-v3
+ * ----------------------
+ * Polish + per-aspect adapt pass on v2. Shippable revision.
+ *
+ * Polish:
+ *   - Pip is now a child of the wordmark `<h1>` itself (positioned via
+ *     ::before), so its vertical span is exactly the glyph row, not the
+ *     wordmark-block (which included the baseline rule and overflowed).
+ *   - Silkscreen wordmark gets `text-rendering: geometricPrecision` for
+ *     crisper capture-mode raster.
+ *   - npm chip drops the `$` glyph — the `#` in `# npm i three-flatland`
+ *     already reads as a shell prompt, so the chip stays clean.
+ *   - Right measure rule fades behind the right-side eyebrow metadata
+ *     so the rule reads as composition-bound, not chrome-bound.
+ *   - Tagline uses `min(ch, cqi)` measure so prose stays at 55ch on wide
+ *     aspects and respects the asset frame on narrow ones.
+ *
+ * Per-aspect adapt:
+ *   - banner (1280×640, 2:1):     vertical stack, single-line eyebrow,
+ *                                 wordmark hero, tagline 1 line, info row.
+ *   - og (1200×630, ~1.9:1):      same as banner; tagline can wrap to 2.
+ *   - social-x (1200×628):        identical metric to og.
+ *   - wide (3000×1000, 3:1):      icon-left + spine guide + typographic
+ *                                 block on right, info chips inline with
+ *                                 chrome eyebrow metadata.
+ *   - icon-only (512×512):        center mark, amethyst halo, no chrome.
+ *
+ * Vocabulary stays sidebar-rooted: continuous left guide, tracked-uppercase
+ * eyebrow with chevron, active-state pip on the wordmark, hairline rule
+ * above eyebrow + below wordmark, gem-mixed soft chip pills.
+ */
+
+import BrandIcon from '../BrandIcon.astro'
+
+interface Props {
+    id: string
+    type: 'banner' | 'og' | 'wide' | 'social-x' | 'icon-only'
+    title?: string
+    tagline?: string
+    info?: boolean
+    isCapture?: boolean
+}
+
+const {
+    id,
+    type,
+    title = 'flatland',
+    tagline = 'Sprite-first 2D for Three.js + R3F. WebGPU-native.',
+    info = true,
+    isCapture = false,
+} = Astro.props
+
+interface Dimensions {
+    w: number
+    h: number
+}
+
+const dimensions: Record<Props['type'], Dimensions> = {
+    banner: { w: 1280, h: 640 },
+    og: { w: 1200, h: 630 },
+    wide: { w: 3000, h: 1000 },
+    'social-x': { w: 1200, h: 628 },
+    'icon-only': { w: 512, h: 512 },
+}
+
+const { w: width, h: height } = dimensions[type] ?? dimensions['og']
+const showInfo = info && type !== 'icon-only'
+const isWide = type === 'wide'
+const isIconOnly = type === 'icon-only'
+
+const repoLine = 'thejustinwalsh/three-flatland'
+const installLine = '# npm i three-flatland@alpha'
+
+const eyebrowLeft = 'THE FLATLAND LIBRARY · DOCS'
+const eyebrowRight = 'CH. 01 · V0.1-ALPHA'
+---
+
+<div
+    class:list={['brand-asset-root', 'not-content', type, { 'capture-mode': isCapture }]}
+    id={id}
+    style={`--asset-width: ${width}; --asset-height: ${height};`}
+>
+    <div class="brand-bg-noise" aria-hidden="true"></div>
+    <div class="brand-bg-glow" aria-hidden="true"></div>
+
+    {!isIconOnly && <div class="brand-guide guide-left" aria-hidden="true"></div>}
+    {!isIconOnly && <div class="brand-guide guide-right" aria-hidden="true"></div>}
+
+    {/* Wide-aspect "spine" — vertical hairline between the icon column and
+        the typographic block. Reinforces the book-cover metaphor. */}
+    {isWide && <div class="brand-spine" aria-hidden="true"></div>}
+
+    <div class="brand-content">
+        {isIconOnly ? (
+            <div class="icon-only-frame">
+                <BrandIcon size="64%" />
+            </div>
+        ) : isWide ? (
+            <Fragment>
+                <div class="wide-icon">
+                    <BrandIcon size="100%" />
+                </div>
+                <div class="wide-block">
+                    <div class="chrome-rule" aria-hidden="true"></div>
+                    <div class="chrome-eyebrow">
+                        <span class="eyebrow-left">
+                            <span class="eyebrow-caret" aria-hidden="true">
+                                <svg viewBox="0 0 16 16" width="0.7em" height="0.7em">
+                                    <path d="M4 6l4 4 4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none" />
+                                </svg>
+                            </span>
+                            <span class="eyebrow-text">{eyebrowLeft}</span>
+                        </span>
+                        <span class="eyebrow-right">{eyebrowRight}</span>
+                    </div>
+
+                    <div class="wordmark-row">
+                        <div class="wordmark-block">
+                            <h1 class="brand-wordmark"><span class="wordmark-text">{title}</span></h1>
+                            <div class="wordmark-baseline" aria-hidden="true"></div>
+                        </div>
+                    </div>
+
+                    <div class="wide-footer">
+                        <p class="brand-tagline">{tagline}</p>
+                        {showInfo && (
+                            <div class="brand-info-row">
+                                <span class="info-chip github">
+                                    <span class="chip-glyph" aria-hidden="true">↗</span>
+                                    <span class="chip-text">{repoLine}</span>
+                                </span>
+                                <span class="info-chip npm">
+                                    <span class="chip-text">{installLine}</span>
+                                </span>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            </Fragment>
+        ) : (
+            <Fragment>
+                <div class="chrome-rule" aria-hidden="true"></div>
+                <div class="chrome-eyebrow">
+                    <span class="eyebrow-left">
+                        <span class="eyebrow-caret" aria-hidden="true">
+                            <svg viewBox="0 0 16 16" width="0.7em" height="0.7em">
+                                <path d="M4 6l4 4 4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none" />
+                            </svg>
+                        </span>
+                        <span class="eyebrow-icon" aria-hidden="true">
+                            <BrandIcon size="100%" />
+                        </span>
+                        <span class="eyebrow-text">{eyebrowLeft}</span>
+                    </span>
+                    <span class="eyebrow-right">{eyebrowRight}</span>
+                </div>
+
+                <div class="wordmark-row">
+                    <div class="wordmark-block">
+                        <h1 class="brand-wordmark"><span class="wordmark-text">{title}</span></h1>
+                        <div class="wordmark-baseline" aria-hidden="true"></div>
+                    </div>
+                </div>
+
+                <p class="brand-tagline">{tagline}</p>
+
+                {showInfo && (
+                    <div class="brand-info-row">
+                        <span class="info-chip github">
+                            <span class="chip-glyph" aria-hidden="true">↗</span>
+                            <span class="chip-text">{repoLine}</span>
+                        </span>
+                        <span class="info-chip npm">
+                            <span class="chip-text">{installLine}</span>
+                        </span>
+                    </div>
+                )}
+            </Fragment>
+        )}
+    </div>
+</div>
+
+<style>
+    .brand-asset-root {
+        --tf-bg: #111418;
+        --tf-fg: #e8eaef;
+        --tf-fg-muted: #9aa0ad;
+        --tf-border: rgba(255, 255, 255, 0.08);
+        --tf-card: #181b21;
+
+        --tf-amethyst: #a85ff1;
+        --tf-amethyst-high: #c08cff;
+        --tf-amethyst-low: #5a3499;
+        --tf-amethyst-soft: rgba(168, 95, 241, 0.10);
+
+        --tf-gold: #c7910c;
+        --tf-gold-high: #e0aa3a;
+        --tf-diamond: #11b7d4;
+        --tf-diamond-high: #4dd0e8;
+
+        position: relative;
+        overflow: hidden;
+        color: var(--tf-fg);
+        background: var(--tf-bg);
+        container-type: inline-size;
+
+        font-family: 'Public Sans', system-ui, sans-serif;
+        font-feature-settings: 'ss01';
+
+        width: calc(var(--asset-width) * 1px);
+        height: calc(var(--asset-height) * 1px);
+        aspect-ratio: var(--asset-width) / var(--asset-height);
+    }
+
+    :not(.capture-mode).brand-asset-root {
+        width: 100%;
+        height: auto;
+    }
+
+    .brand-bg-noise {
+        position: absolute;
+        inset: 0;
+        opacity: 0.04;
+        background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0.6 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+        background-size: 220px 220px;
+        mix-blend-mode: overlay;
+        z-index: 1;
+        pointer-events: none;
+    }
+
+    .brand-bg-glow {
+        position: absolute;
+        inset: 0;
+        background:
+            radial-gradient(
+                70% 60% at 92% 78%,
+                var(--tf-amethyst-soft) 0%,
+                transparent 60%
+            ),
+            radial-gradient(
+                40% 30% at 8% 12%,
+                color-mix(in oklab, var(--tf-amethyst) 6%, transparent) 0%,
+                transparent 70%
+            );
+        z-index: 0;
+        pointer-events: none;
+    }
+
+    /* Continuous left guide + right measure rule — sidebar pattern. */
+    .brand-guide {
+        position: absolute;
+        top: 6cqi;
+        bottom: 6cqi;
+        width: 1px;
+        z-index: 1;
+        pointer-events: none;
+    }
+    .guide-left {
+        left: 6cqi;
+        background-color: color-mix(in oklab, var(--tf-amethyst) 30%, var(--tf-border));
+    }
+    /* Right rule fades top + bottom so it doesn't feel like a hard frame. */
+    .guide-right {
+        right: 6cqi;
+        background: linear-gradient(
+            180deg,
+            transparent 0%,
+            color-mix(in oklab, var(--tf-amethyst) 18%, var(--tf-border)) 18%,
+            color-mix(in oklab, var(--tf-amethyst) 18%, var(--tf-border)) 82%,
+            transparent 100%
+        );
+    }
+    .wide .brand-guide {
+        top: 12cqi;
+        bottom: 12cqi;
+    }
+    .wide .guide-left {
+        left: 4cqi;
+    }
+    .wide .guide-right {
+        right: 4cqi;
+    }
+
+    /* Wide-aspect spine — vertical hairline between icon col and text col. */
+    .brand-spine {
+        position: absolute;
+        top: 18cqi;
+        bottom: 18cqi;
+        left: 22cqi;
+        width: 1px;
+        background: linear-gradient(
+            180deg,
+            transparent 0%,
+            color-mix(in oklab, var(--tf-amethyst) 22%, var(--tf-border)) 20%,
+            color-mix(in oklab, var(--tf-amethyst) 22%, var(--tf-border)) 80%,
+            transparent 100%
+        );
+        z-index: 1;
+        pointer-events: none;
+    }
+
+    /* Default content grid — vertical stack used by banner / og / social-x.
+     * Wide overrides to a two-column grid below. */
+    .brand-content {
+        position: relative;
+        z-index: 3;
+        height: 100%;
+        display: grid;
+        grid-template-rows: auto auto auto auto auto;
+        align-content: center;
+        row-gap: 1.25cqi;
+        padding: 6cqi 11cqi 6cqi 12cqi;
+        box-sizing: border-box;
+    }
+
+    /* social-x slightly tighter horizontally — its 1200×628 frame leaves
+     * less vertical room than og. */
+    .social-x .brand-content {
+        padding-block: 5.5cqi;
+        row-gap: 1cqi;
+    }
+    .banner .brand-content {
+        row-gap: 1cqi;
+    }
+
+    /* Wide — icon-left + spine + typographic block on the right. */
+    .wide .brand-content {
+        grid-template-columns: 18cqi 1fr;
+        grid-template-rows: 1fr;
+        align-content: center;
+        column-gap: 8cqi;
+        row-gap: 0;
+        padding: 8cqi 8cqi 8cqi 9cqi;
+    }
+    .wide-icon {
+        grid-column: 1;
+        align-self: center;
+        justify-self: center;
+        width: 18cqi;
+        height: 18cqi;
+        line-height: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        filter: drop-shadow(
+            0 0.6cqi 1.6cqi color-mix(in oklab, var(--tf-amethyst) 35%, transparent)
+        );
+    }
+    .wide-block {
+        grid-column: 2;
+        display: grid;
+        grid-template-rows: auto auto auto 1fr auto;
+        align-content: center;
+        row-gap: 1cqi;
+    }
+    .wide-footer {
+        margin-top: 1.5cqi;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 4cqi;
+        flex-wrap: wrap;
+    }
+    .wide-footer .brand-tagline {
+        flex: 1 1 auto;
+        margin: 0;
+        padding-left: 0;
+    }
+    .wide-footer .brand-info-row {
+        margin-top: 0;
+        padding-left: 0;
+    }
+
+    /* Tagline gap pulls air between wordmark cluster and prose body. */
+    .brand-content > .brand-tagline {
+        margin-top: 2.5cqi;
+    }
+    .banner .brand-content > .brand-tagline,
+    .og .brand-content > .brand-tagline,
+    .social-x .brand-content > .brand-tagline {
+        margin-top: 2cqi;
+    }
+
+    /* icon-only — centered mark, amethyst halo, no chrome. */
+    .icon-only .brand-content {
+        padding: 8cqi;
+        grid-template-rows: 1fr;
+        place-items: center;
+        row-gap: 0;
+    }
+    .icon-only-frame {
+        position: relative;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 78cqi;
+        max-width: 100%;
+        aspect-ratio: 1;
+    }
+    .icon-only-frame::before {
+        content: '';
+        position: absolute;
+        inset: -4cqi;
+        border-radius: 50%;
+        background: radial-gradient(
+            circle,
+            color-mix(in oklab, var(--tf-amethyst) 22%, transparent) 0%,
+            transparent 60%
+        );
+        filter: blur(2cqi);
+        z-index: -1;
+    }
+
+    /* Top hairline — sidebar/StatsBanner rule. */
+    .chrome-rule {
+        height: 1px;
+        width: 100%;
+        background: linear-gradient(
+            90deg,
+            color-mix(in oklab, var(--tf-amethyst) 55%, var(--tf-border)) 0%,
+            color-mix(in oklab, var(--tf-amethyst) 25%, var(--tf-border)) 30%,
+            color-mix(in oklab, var(--tf-amethyst) 8%, var(--tf-border)) 100%
+        );
+    }
+
+    .chrome-eyebrow {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 2cqi;
+        font-family: 'Inter', system-ui, sans-serif;
+        font-weight: 600;
+        font-size: clamp(10px, 1.4cqi, 16px);
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--tf-amethyst-high);
+    }
+    .wide .chrome-eyebrow {
+        font-size: clamp(10px, 1.1cqi, 14px);
+    }
+    .eyebrow-left {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.6em;
+        min-width: 0;
+    }
+    .eyebrow-caret {
+        display: inline-flex;
+        align-items: center;
+        color: color-mix(in oklab, var(--tf-amethyst) 70%, var(--tf-amethyst-high));
+        line-height: 0;
+    }
+    .eyebrow-icon {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 1.6em;
+        height: 1.6em;
+        line-height: 0;
+        flex-shrink: 0;
+    }
+    .eyebrow-text {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    .eyebrow-right {
+        font-family: 'JetBrains Mono', ui-monospace, monospace;
+        font-weight: 500;
+        font-size: 0.85em;
+        letter-spacing: 0.06em;
+        color: color-mix(in oklab, var(--tf-amethyst) 50%, var(--tf-fg-muted));
+        white-space: nowrap;
+    }
+
+    /* Wordmark row + block — pip is a child of <h1> via ::before so its
+     * geometry is exactly the glyph row, not the surrounding block. */
+    .wordmark-row {
+        display: flex;
+        align-items: center;
+        width: 100%;
+    }
+    .wordmark-block {
+        position: relative;
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        flex: 1 1 auto;
+        min-width: 0;
+        padding-left: 1.5cqi;
+    }
+
+    .brand-wordmark {
+        position: relative;
+        font-family: 'Silkscreen', monospace;
+        font-weight: 700;
+        font-size: clamp(36px, 12cqi, 168px);
+        line-height: 0.92;
+        letter-spacing: -0.04em;
+        color: var(--tf-fg);
+        margin: 0;
+        text-rendering: geometricPrecision;
+    }
+    .banner .brand-wordmark,
+    .og .brand-wordmark {
+        font-size: clamp(36px, 10cqi, 152px);
+    }
+    .social-x .brand-wordmark {
+        font-size: clamp(36px, 11cqi, 156px);
+    }
+    .wide .brand-wordmark {
+        font-size: clamp(36px, 8.5cqi, 132px);
+    }
+
+    /* Active-state pip — sits at the left of the wordmark glyph row,
+     * 2px wide, exactly spanning the cap-height-ish region. The
+     * negative left offset puts it on the wordmark-block's padding-left
+     * gutter, aligned with the wordmark's optical leading edge. */
+    .brand-wordmark::before {
+        content: '';
+        position: absolute;
+        top: 8%;
+        bottom: 12%;
+        left: -1.5cqi;
+        width: 2px;
+        border-radius: 1px;
+        background-color: var(--tf-amethyst);
+    }
+
+    /* Wordmark baseline — gem-tinted hairline, sidebar rule recipe. */
+    .wordmark-baseline {
+        margin-top: 1cqi;
+        height: 1px;
+        width: 60%;
+        background: linear-gradient(
+            90deg,
+            var(--tf-amethyst) 0%,
+            color-mix(in oklab, var(--tf-amethyst) 50%, transparent) 60%,
+            transparent 100%
+        );
+    }
+    .wide .wordmark-baseline {
+        width: 50%;
+    }
+
+    .brand-tagline {
+        font-family: 'Public Sans', system-ui, sans-serif;
+        font-weight: 400;
+        font-size: clamp(12px, 2.2cqi, 28px);
+        line-height: 1.5;
+        color: var(--tf-fg-muted);
+        margin: 0;
+        max-width: min(55ch, 60cqi);
+        letter-spacing: -0.005em;
+        padding-left: 1.5cqi;
+    }
+    .banner .brand-tagline,
+    .og .brand-tagline {
+        font-size: clamp(11px, 2cqi, 24px);
+        max-width: min(50ch, 60cqi);
+    }
+    .social-x .brand-tagline {
+        font-size: clamp(11px, 2cqi, 24px);
+        max-width: min(48ch, 58cqi);
+    }
+    .wide .brand-tagline {
+        font-size: clamp(11px, 1.5cqi, 19px);
+        max-width: min(60ch, 50cqi);
+    }
+
+    .brand-info-row {
+        display: flex;
+        gap: 2cqi;
+        margin-top: 2cqi;
+        padding-left: 1.5cqi;
+        flex-wrap: wrap;
+    }
+    .info-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5em;
+        padding: 0.4em 0.8em;
+        font-family: 'JetBrains Mono', ui-monospace, monospace;
+        font-size: clamp(9px, 1.4cqi, 15px);
+        font-weight: 500;
+        letter-spacing: 0.01em;
+        white-space: nowrap;
+        border-radius: 4px;
+        border: 1px solid var(--chip-border);
+        background-color: var(--chip-bg);
+        color: var(--chip-fg);
+    }
+    .info-chip.github {
+        --chip-fg: var(--tf-diamond-high);
+        --chip-bg: color-mix(in oklab, var(--tf-diamond) 8%, transparent);
+        --chip-border: color-mix(in oklab, var(--tf-diamond) 22%, var(--tf-border));
+    }
+    .info-chip.npm {
+        --chip-fg: var(--tf-gold-high);
+        --chip-bg: color-mix(in oklab, var(--tf-gold) 8%, transparent);
+        --chip-border: color-mix(in oklab, var(--tf-gold) 22%, var(--tf-border));
+    }
+    .chip-glyph {
+        opacity: 0.7;
+        font-weight: 600;
+    }
+    .banner .info-chip,
+    .og .info-chip,
+    .social-x .info-chip {
+        font-size: clamp(9px, 1.3cqi, 14px);
+    }
+    .wide .info-chip {
+        font-size: clamp(9px, 1cqi, 13px);
+    }
+</style>

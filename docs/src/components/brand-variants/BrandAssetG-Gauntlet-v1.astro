@@ -1,0 +1,504 @@
+---
+/**
+ * BrandAssetG-Gauntlet-v1 — THE FULL GAUNTLET.
+ *
+ * Approach A: 8-cell gem-strip taxonomy legend. Beneath the brand mark sits
+ * a horizontal strip of 8 cells, one per gem in the FLATLAND palette. Each
+ * cell carries:
+ *   - a tinted top-rule (the gem's hairline — borrowed from StatsBanner's
+ *     gem-tinted gradient underline)
+ *   - the gem name in JetBrains Mono uppercase tracked-out
+ *   - the gem's system ROLE in tiny tracked monospace ("CTA", "DOCS", etc.)
+ *
+ * Lore: the brand mark is FLATLAND's center; the strip below it is its
+ * declared color taxonomy — every section, aside type, status hue, surface
+ * accent the system speaks. Read top-down: WORDMARK → "the system contains
+ * these colors, each with this meaning."
+ *
+ * Gem roles (per gauntlet brief):
+ *   gold       CTA · ship-it             (sun energy)
+ *   ruby       SHOWCASE · spike          (drama)
+ *   emerald    OK · success              (calm)
+ *   diamond    DOCS · compass            (clarity)
+ *   amethyst   DEEP · primary            (depth)
+ *   pink       SOFT · friendly           (approachable)
+ *   salmon     WARM · invite             (warm-soft)
+ *   turquoize  COOL · clarify            (cool-soft)
+ *
+ * Non-decorative deployment: the wordmark stays Silkscreen primary tone
+ * (NOT rainbow); ambient ring is amethyst (the system primary) with cool
+ * counter-light from diamond — no rainbow halo. Gold + diamond keep their
+ * info-chip duty per spec. The 8 cells carry the entire spectrum's
+ * meaning-load; the rest of the composition stays disciplined.
+ *
+ * No invented hex values; brand mark unchanged.
+ */
+import BrandIcon from '../BrandIcon.astro'
+
+interface Props {
+    id: string
+    type: 'banner' | 'og' | 'wide' | 'social-x' | 'icon-only'
+    title?: string
+    tagline?: string
+    info?: boolean
+    isCapture?: boolean
+}
+
+const {
+    id,
+    type,
+    title = 'flatland',
+    tagline = 'Sprite-first 2D for Three.js + R3F. WebGPU-native.',
+    info = true,
+    isCapture = false,
+} = Astro.props
+
+interface Dimensions {
+    w: number
+    h: number
+}
+
+const dimensions: Record<Props['type'], Dimensions> = {
+    banner: { w: 1280, h: 640 },
+    og: { w: 1200, h: 630 },
+    wide: { w: 3000, h: 1000 },
+    'social-x': { w: 1200, h: 628 },
+    'icon-only': { w: 512, h: 512 },
+}
+
+const { w: width, h: height } = dimensions[type] ?? dimensions['og']
+const showInfo = info && type !== 'icon-only'
+const isWide = type === 'wide'
+
+const repoLine = 'thejustinwalsh/three-flatland'
+const installLine = '# npm i three-flatland@alpha'
+
+// The 8 gems, in declared system order (primary first, then cool ladder,
+// then warm ladder, soft tones last). Each cell carries (a) the gem name
+// and (b) its declared system role.
+const gauntlet = [
+    { gem: 'amethyst', role: 'DEEP' },
+    { gem: 'diamond', role: 'DOCS' },
+    { gem: 'emerald', role: 'OK' },
+    { gem: 'turquoize', role: 'COOL' },
+    { gem: 'gold', role: 'CTA' },
+    { gem: 'salmon', role: 'WARM' },
+    { gem: 'pink', role: 'SOFT' },
+    { gem: 'ruby', role: 'SPIKE' },
+]
+---
+
+<div
+    class:list={['brand-asset-root', 'not-content', type, { 'capture-mode': isCapture }]}
+    id={id}
+    style={`--asset-width: ${width}; --asset-height: ${height};`}
+>
+    {/* Ambient — amethyst (system primary) upper-right, diamond cool
+        counter-light lower-left. NOT a rainbow halo. */}
+    <div class="brand-bg-glow" aria-hidden="true"></div>
+
+    {/* Sub-perceptual fractal noise overlay (≤4%). */}
+    <div class="brand-bg-noise" aria-hidden="true"></div>
+
+    <div class="brand-content">
+        {type === 'icon-only' ? (
+            <div class="icon-only-frame">
+                <BrandIcon size="64%" />
+            </div>
+        ) : (
+            <Fragment>
+                <div class:list={['brand-stack', { 'is-wide': isWide }]}>
+                    <div class="brand-mark">
+                        <BrandIcon size={isWide ? '12cqi' : '18cqi'} />
+                    </div>
+                    <div class="brand-text">
+                        <div class="brand-eyebrow">
+                            <span class="brand-eyebrow-dot" aria-hidden="true"></span>
+                            <span class="brand-eyebrow-text">FLATLAND · COLOR TAXONOMY</span>
+                        </div>
+                        <h1 class="brand-wordmark">{title}</h1>
+                        <p class="brand-tagline">{tagline}</p>
+                        {isWide && showInfo && (
+                            <div class="brand-info-inline">
+                                <span class="info-chip github">{repoLine}</span>
+                                <span class="info-chip npm">{installLine}</span>
+                            </div>
+                        )}
+                    </div>
+                </div>
+
+                {/* The 8-cell gauntlet strip — the meaning-load lives here.
+                    Each cell: top hairline in its gem, gem name in
+                    Inter-tracked, role in JetBrains Mono. */}
+                <ul class="gauntlet-strip" aria-label="FLATLAND color taxonomy">
+                    {gauntlet.map(({ gem, role }) => (
+                        <li class="gauntlet-cell" data-gem={gem} style={`--cell-accent: var(--${gem});`}>
+                            <span class="gauntlet-cell-name">{gem}</span>
+                            <span class="gauntlet-cell-role">{role}</span>
+                        </li>
+                    ))}
+                </ul>
+            </Fragment>
+        )}
+
+        {showInfo && !isWide && (
+            <div class="brand-info-row">
+                <span class="info-chip github">{repoLine}</span>
+                <span class="info-chip npm">{installLine}</span>
+            </div>
+        )}
+    </div>
+</div>
+
+<style>
+    .brand-asset-root {
+        --tf-bg: #111418;
+        --tf-fg: #f5f6f9;
+        --tf-fg-muted: #b3b8c4;
+        --tf-border: rgba(255, 255, 255, 0.08);
+
+        /* All 8 gems mirrored locally — capture mode can't rely on
+         * :root token propagation. Same OKLCH equivalents as theme.css. */
+        --gold: #f1c45f;
+        --ruby: #e0577a;
+        --emerald: #4cd1b1;
+        --diamond: #6cb8ff;
+        --amethyst: #b88af7;
+        --pink: #e89cd0;
+        --salmon: #ff8a6b;
+        --turquoize: #6fd9d0;
+
+        /* Soft surface tints — used for cell backgrounds at very low
+         * intensity, mirrors theme.css `--<gem>-soft`. */
+        --gold-soft: rgba(241, 196, 95, 0.10);
+        --ruby-soft: rgba(224, 87, 122, 0.10);
+        --emerald-soft: rgba(76, 209, 177, 0.10);
+        --diamond-soft: rgba(108, 184, 255, 0.10);
+        --amethyst-soft: rgba(184, 138, 247, 0.10);
+        --pink-soft: rgba(232, 156, 208, 0.10);
+        --salmon-soft: rgba(255, 138, 107, 0.10);
+        --turquoize-soft: rgba(111, 217, 208, 0.10);
+
+        position: relative;
+        overflow: hidden;
+        color: var(--tf-fg);
+        background: linear-gradient(135deg, #0e1117 0%, #131722 100%);
+        container-type: inline-size;
+
+        font-family: 'Public Sans', system-ui, sans-serif;
+        font-feature-settings: 'ss01';
+
+        width: calc(var(--asset-width) * 1px);
+        height: calc(var(--asset-height) * 1px);
+        aspect-ratio: var(--asset-width) / var(--asset-height);
+    }
+
+    :not(.capture-mode).brand-asset-root {
+        width: 100%;
+        height: auto;
+    }
+
+    /* Amethyst primary spotlight + diamond cool counter — NOT a rainbow.
+     * The strip carries the spectrum; the ambient stays disciplined. */
+    .brand-bg-glow {
+        position: absolute;
+        inset: 0;
+        background:
+            radial-gradient(
+                70% 60% at 78% 22%,
+                color-mix(in oklab, var(--amethyst) 16%, transparent) 0%,
+                transparent 60%
+            ),
+            radial-gradient(
+                85% 70% at 12% 88%,
+                color-mix(in oklab, var(--diamond) 14%, transparent) 0%,
+                transparent 65%
+            );
+        z-index: 0;
+        pointer-events: none;
+    }
+
+    .brand-bg-noise {
+        position: absolute;
+        inset: 0;
+        opacity: 0.04;
+        background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0.6 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+        background-size: 220px 220px;
+        mix-blend-mode: overlay;
+        z-index: 1;
+        pointer-events: none;
+    }
+
+    .brand-content {
+        position: relative;
+        z-index: 2;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        padding: 5cqi 5cqi 4cqi;
+        box-sizing: border-box;
+        gap: 3.5cqi;
+    }
+
+    /* icon-only — center the mark in an amethyst halo (system primary). */
+    .icon-only .brand-content {
+        padding: 8cqi;
+        justify-content: center;
+        align-items: center;
+        gap: 0;
+    }
+    .icon-only-frame {
+        position: relative;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 78cqi;
+        max-width: 100%;
+        aspect-ratio: 1;
+    }
+    .icon-only-frame::before {
+        content: '';
+        position: absolute;
+        inset: -4cqi;
+        border-radius: 50%;
+        background: radial-gradient(
+            circle,
+            color-mix(in oklab, var(--amethyst) 22%, transparent) 0%,
+            transparent 60%
+        );
+        filter: blur(2cqi);
+        z-index: -1;
+    }
+
+    /* Stacked composition — icon + wordmark on top, gauntlet strip below.
+     * Wide form goes side-by-side. */
+    .brand-stack {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+        gap: 2.5cqi;
+    }
+    .brand-stack.is-wide {
+        flex-direction: row;
+        align-items: center;
+        text-align: left;
+        gap: 4cqi;
+        width: 100%;
+        justify-content: flex-start;
+    }
+    .wide .brand-content {
+        justify-content: center;
+        align-items: stretch;
+        padding: 4cqi 5cqi;
+        gap: 2.5cqi;
+    }
+    .is-wide .brand-text {
+        flex: 1;
+        align-items: flex-start;
+        text-align: left;
+    }
+
+    .brand-mark {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        line-height: 0;
+        flex-shrink: 0;
+        filter: drop-shadow(
+            0 1.2cqi 2.5cqi color-mix(in oklab, var(--amethyst) 28%, transparent)
+        );
+    }
+
+    .brand-text {
+        display: flex;
+        flex-direction: column;
+        gap: 1.4cqi;
+        align-items: center;
+    }
+
+    /* Eyebrow — declares the strip's purpose. Amethyst dot (primary). */
+    .brand-eyebrow {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.8cqi;
+        font-family: 'JetBrains Mono', ui-monospace, monospace;
+        font-size: clamp(8px, 1.05cqi, 13px);
+        font-weight: 600;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        color: color-mix(in oklab, var(--amethyst) 55%, var(--tf-fg-muted));
+    }
+    .brand-eyebrow-dot {
+        width: 0.6cqi;
+        height: 0.6cqi;
+        min-width: 4px;
+        min-height: 4px;
+        border-radius: 50%;
+        background: var(--amethyst);
+        box-shadow: 0 0 1cqi color-mix(in oklab, var(--amethyst) 60%, transparent);
+    }
+
+    /* Silkscreen wordmark — single primary tone. NOT rainbow-colored.
+     * The strip below carries the spectrum; the wordmark stays disciplined. */
+    .brand-wordmark {
+        font-family: 'Silkscreen', monospace;
+        font-weight: 700;
+        font-size: clamp(36px, 10cqi, 152px);
+        line-height: 0.95;
+        letter-spacing: -0.04em;
+        color: var(--tf-fg);
+        margin: 0;
+        text-shadow:
+            0 0 0.4cqi color-mix(in oklab, var(--amethyst) 35%, transparent),
+            0 1.5cqi 4cqi color-mix(in oklab, var(--diamond) 22%, transparent);
+    }
+    .banner .brand-wordmark,
+    .wide .brand-wordmark {
+        font-size: clamp(36px, 7.5cqi, 116px);
+    }
+    .social-x .brand-wordmark {
+        font-size: clamp(36px, 11cqi, 144px);
+    }
+
+    .brand-tagline {
+        font-family: 'Public Sans', system-ui, sans-serif;
+        font-weight: 400;
+        font-size: clamp(11px, 2cqi, 26px);
+        line-height: 1.5;
+        color: var(--tf-fg-muted);
+        margin: 0;
+        max-width: 64cqi;
+        letter-spacing: -0.005em;
+    }
+    .wide .brand-tagline {
+        font-size: clamp(11px, 1.5cqi, 20px);
+        max-width: none;
+    }
+
+    /* ── THE GAUNTLET STRIP ──
+     * 8 cells in a row. Each cell:
+     *   - top hairline = its gem (StatsBanner-style gradient hairline)
+     *   - vertical separators between cells (border-right) at low opacity
+     *     so the strip reads as one continuous bar segmented by hairlines
+     *   - gem name (Inter, tinted toward the gem)
+     *   - role (JetBrains Mono, gem-tinted at lower intensity) */
+    .gauntlet-strip {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        display: grid;
+        grid-template-columns: repeat(8, 1fr);
+        width: 100%;
+        max-width: 86cqi;
+        gap: 0;
+        border-top: 1px solid color-mix(in oklab, white 8%, transparent);
+        border-bottom: 1px solid color-mix(in oklab, white 5%, transparent);
+        background: color-mix(in oklab, white 1.5%, transparent);
+    }
+    .wide .gauntlet-strip {
+        max-width: none;
+    }
+
+    .gauntlet-cell {
+        --cell-accent: var(--amethyst);
+        position: relative;
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        justify-content: center;
+        gap: 0.7cqi;
+        padding: 1.4cqi 1.2cqi;
+        min-width: 0;
+        /* Top hairline = the gem. StatsBanner recipe: gem at left,
+         * fading to transparent at right. Gives the cell a clear gem
+         * "stamp" without filling the cell with color. */
+        background-image: linear-gradient(
+            90deg,
+            var(--cell-accent) 0%,
+            color-mix(in oklab, var(--cell-accent) 60%, transparent) 75%,
+            transparent 100%
+        );
+        background-size: 100% 1.5px;
+        background-repeat: no-repeat;
+        background-position: 0 0;
+        /* Soft hover separator between cells. */
+        border-right: 1px solid color-mix(in oklab, white 4%, transparent);
+    }
+    .gauntlet-cell:last-child {
+        border-right: none;
+    }
+    .wide .gauntlet-cell {
+        gap: 0.5cqi;
+        padding: 1cqi 1.2cqi;
+    }
+
+    .gauntlet-cell-name {
+        font-family: 'Inter', system-ui, sans-serif;
+        font-weight: 600;
+        font-size: clamp(8px, 1.15cqi, 14px);
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+        color: color-mix(in oklab, var(--cell-accent) 75%, var(--tf-fg));
+        line-height: 1;
+    }
+    .wide .gauntlet-cell-name {
+        font-size: clamp(8px, 0.85cqi, 12px);
+    }
+
+    .gauntlet-cell-role {
+        font-family: 'JetBrains Mono', ui-monospace, monospace;
+        font-weight: 500;
+        font-size: clamp(7px, 0.95cqi, 11px);
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: color-mix(in oklab, var(--cell-accent) 35%, var(--tf-fg-muted));
+        line-height: 1;
+    }
+    .wide .gauntlet-cell-role {
+        font-size: clamp(6px, 0.7cqi, 10px);
+    }
+
+    /* Info row — gold + diamond chips per spec. */
+    .brand-info-row,
+    .brand-info-inline {
+        display: flex;
+        gap: 4cqi;
+        font-family: 'JetBrains Mono', ui-monospace, monospace;
+        font-size: clamp(9px, 1.4cqi, 16px);
+        font-weight: 500;
+        opacity: 0.92;
+    }
+    .brand-info-row {
+        margin-top: 0;
+    }
+    .wide .brand-info-inline {
+        margin-top: 1cqi;
+        font-size: clamp(8px, 0.95cqi, 12px);
+        gap: 2.5cqi;
+    }
+    .info-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.6em;
+        white-space: nowrap;
+        letter-spacing: 0.01em;
+    }
+    .info-chip.github {
+        color: var(--diamond);
+    }
+    .info-chip.github::before {
+        content: '↗';
+        opacity: 0.7;
+    }
+    .info-chip.npm {
+        color: var(--gold);
+    }
+
+    .asset-preview-link:hover .brand-asset-root {
+        outline: 1px solid color-mix(in oklab, var(--amethyst) 45%, transparent);
+        outline-offset: 4px;
+    }
+</style>

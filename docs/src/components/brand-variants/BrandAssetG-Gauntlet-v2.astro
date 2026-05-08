@@ -1,0 +1,573 @@
+---
+/**
+ * BrandAssetG-Gauntlet-v2 — THE FULL GAUNTLET, hierarchical edition.
+ *
+ * Critique of v1:
+ *   - 8 equal-weight cells read as a LEGEND CHART, not a brand asset.
+ *     The "infinity stones assembled" energy needs ONE gem leading and
+ *     the others supporting. v1 was flat — every gem was a peer.
+ *   - Gold (the CTA, the system's ship-it color) wasn't actually in
+ *     primary position; it was just one cell among eight.
+ *   - Pink and salmon read as filler in a flat strip — they need a
+ *     compositional role, not just a slot.
+ *   - The "COLOR TAXONOMY" eyebrow over-narrated. Tell, not show.
+ *
+ * v2 fixes (frontend-design):
+ *   - GOLD LEADS. Vertical gold spine on the left edge (the "ship-it"
+ *     primary axis), gold drop-shadow on the wordmark, gold tally-mark
+ *     on the eyebrow. Gold is doing CTA structural work, not paint.
+ *   - The other 7 gems serve as a LOWER SIGNAL RAIL — narrow horizontal
+ *     stripes (think Pantone strip / Linear product-status row) that
+ *     read as "these are the channels the system speaks on." Each
+ *     stripe = one gem, narrow filled bar + tracked label.
+ *   - The rail is HIERARCHICAL — diamond (DOCS) and amethyst (PRIMARY)
+ *     get emphasis (slightly wider, brighter labels) because they carry
+ *     the most semantic load in actual UI. Emerald, ruby, turquoize,
+ *     pink, salmon are equal-weight ambient tones.
+ *   - Eyebrow becomes "v0.1 · ALL CHANNELS LIT" — nods to the
+ *     gauntlet metaphor without literal "color taxonomy" labeling.
+ *   - Removed the `gem-name` text on each cell — names are obvious to
+ *     anyone reading the system, and the labels were stealing the
+ *     show. Now: gem stripe + tiny role glyph only.
+ *
+ * Gem deployment audit (this is the gauntlet acceptance gate):
+ *   gold      — PRIMARY structural spine + wordmark glow (LEADS)
+ *   diamond   — emphasis stripe in rail + GitHub info chip (DOCS / link)
+ *   amethyst  — ambient halo upper-right + emphasis stripe (DEEP / primary)
+ *   emerald   — ambient halo lower-left + signal stripe (OK)
+ *   ruby      — signal stripe with "·" pulse glyph (SPIKE)
+ *   turquoize — signal stripe (COOL)
+ *   pink      — signal stripe (SOFT)
+ *   salmon    — signal stripe (WARM)
+ *
+ * Every gem has a role. None are decoration.
+ */
+import BrandIcon from '../BrandIcon.astro'
+
+interface Props {
+    id: string
+    type: 'banner' | 'og' | 'wide' | 'social-x' | 'icon-only'
+    title?: string
+    tagline?: string
+    info?: boolean
+    isCapture?: boolean
+}
+
+const {
+    id,
+    type,
+    title = 'flatland',
+    tagline = 'Sprite-first 2D for Three.js + R3F. WebGPU-native.',
+    info = true,
+    isCapture = false,
+} = Astro.props
+
+interface Dimensions {
+    w: number
+    h: number
+}
+
+const dimensions: Record<Props['type'], Dimensions> = {
+    banner: { w: 1280, h: 640 },
+    og: { w: 1200, h: 630 },
+    wide: { w: 3000, h: 1000 },
+    'social-x': { w: 1200, h: 628 },
+    'icon-only': { w: 512, h: 512 },
+}
+
+const { w: width, h: height } = dimensions[type] ?? dimensions['og']
+const showInfo = info && type !== 'icon-only'
+const isWide = type === 'wide'
+
+const repoLine = 'thejustinwalsh/three-flatland'
+const installLine = '# npm i three-flatland@alpha'
+
+// Lower signal rail — 7 gems (gold leads structurally above so it's not in
+// the rail). The two emphasis gems (diamond=DOCS, amethyst=DEEP) come
+// first; ambient tones follow. Glyphs use system characters (no emoji)
+// per the engineering register.
+const railEmphasis = [
+    { gem: 'amethyst', role: 'PRIMARY', glyph: '◆' },
+    { gem: 'diamond', role: 'DOCS', glyph: '◇' },
+]
+const railAmbient = [
+    { gem: 'emerald', role: 'OK', glyph: '·' },
+    { gem: 'ruby', role: 'SPIKE', glyph: '·' },
+    { gem: 'turquoize', role: 'COOL', glyph: '·' },
+    { gem: 'salmon', role: 'WARM', glyph: '·' },
+    { gem: 'pink', role: 'SOFT', glyph: '·' },
+]
+---
+
+<div
+    class:list={['brand-asset-root', 'not-content', type, { 'capture-mode': isCapture }]}
+    id={id}
+    style={`--asset-width: ${width}; --asset-height: ${height};`}
+>
+    {/* Asymmetric ambient — amethyst (primary) upper-right, emerald
+        (OK / calm) lower-left. NO rainbow halo. */}
+    <div class="brand-bg-glow" aria-hidden="true"></div>
+
+    {/* Sub-perceptual fractal noise overlay (≤4%). */}
+    <div class="brand-bg-noise" aria-hidden="true"></div>
+
+    {/* Gold structural spine — vertical foil bar at the left edge.
+        Gold = CTA / ship-it / sun. The system's primary axis. */}
+    <div class="brand-spine" aria-hidden="true"></div>
+
+    <div class="brand-content">
+        {type === 'icon-only' ? (
+            <div class="icon-only-frame">
+                <BrandIcon size="64%" />
+            </div>
+        ) : (
+            <Fragment>
+                <div class:list={['brand-stack', { 'is-wide': isWide }]}>
+                    <div class="brand-mark">
+                        <BrandIcon size={isWide ? '12cqi' : '18cqi'} />
+                    </div>
+                    <div class="brand-text">
+                        <div class="brand-eyebrow">
+                            <span class="brand-eyebrow-tally" aria-hidden="true">▍</span>
+                            <span class="brand-eyebrow-text">v0.1 · ALL CHANNELS LIT</span>
+                        </div>
+                        <h1 class="brand-wordmark">{title}</h1>
+                        <p class="brand-tagline">{tagline}</p>
+                        {isWide && showInfo && (
+                            <div class="brand-info-inline">
+                                <span class="info-chip github">{repoLine}</span>
+                                <span class="info-chip npm">{installLine}</span>
+                            </div>
+                        )}
+                    </div>
+                </div>
+
+                {/* Lower signal rail — 7 stripes (gold above as structure).
+                    Emphasis stripes lead, ambient tones follow. Each
+                    stripe: gem-filled bar + tiny role glyph + uppercase
+                    role label in JetBrains Mono. */}
+                <div class="signal-rail" aria-label="FLATLAND signal channels">
+                    {railEmphasis.map(({ gem, role, glyph }) => (
+                        <div class="signal-stripe is-emphasis" data-gem={gem} style={`--stripe-accent: var(--${gem});`}>
+                            <span class="signal-bar" aria-hidden="true"></span>
+                            <span class="signal-glyph" aria-hidden="true">{glyph}</span>
+                            <span class="signal-role">{role}</span>
+                        </div>
+                    ))}
+                    {railAmbient.map(({ gem, role, glyph }) => (
+                        <div class="signal-stripe" data-gem={gem} style={`--stripe-accent: var(--${gem});`}>
+                            <span class="signal-bar" aria-hidden="true"></span>
+                            <span class="signal-glyph" aria-hidden="true">{glyph}</span>
+                            <span class="signal-role">{role}</span>
+                        </div>
+                    ))}
+                </div>
+            </Fragment>
+        )}
+
+        {showInfo && !isWide && (
+            <div class="brand-info-row">
+                <span class="info-chip github">{repoLine}</span>
+                <span class="info-chip npm">{installLine}</span>
+            </div>
+        )}
+    </div>
+</div>
+
+<style>
+    .brand-asset-root {
+        --tf-bg: #111418;
+        --tf-fg: #f5f6f9;
+        --tf-fg-muted: #b3b8c4;
+        --tf-border: rgba(255, 255, 255, 0.08);
+
+        /* All 8 gems mirrored locally for capture mode. */
+        --gold: #f1c45f;
+        --gold-high: #ffd47a;
+        --ruby: #e0577a;
+        --emerald: #4cd1b1;
+        --diamond: #6cb8ff;
+        --diamond-high: #9bd0ff;
+        --amethyst: #b88af7;
+        --amethyst-high: #cfa8ff;
+        --pink: #e89cd0;
+        --salmon: #ff8a6b;
+        --turquoize: #6fd9d0;
+
+        position: relative;
+        overflow: hidden;
+        color: var(--tf-fg);
+        background: linear-gradient(135deg, #0e1117 0%, #131722 100%);
+        container-type: inline-size;
+
+        font-family: 'Public Sans', system-ui, sans-serif;
+        font-feature-settings: 'ss01';
+
+        width: calc(var(--asset-width) * 1px);
+        height: calc(var(--asset-height) * 1px);
+        aspect-ratio: var(--asset-width) / var(--asset-height);
+    }
+
+    :not(.capture-mode).brand-asset-root {
+        width: 100%;
+        height: auto;
+    }
+
+    /* Amethyst primary spotlight + emerald counter-light. NOT rainbow. */
+    .brand-bg-glow {
+        position: absolute;
+        inset: 0;
+        background:
+            radial-gradient(
+                65% 60% at 80% 20%,
+                color-mix(in oklab, var(--amethyst) 16%, transparent) 0%,
+                transparent 60%
+            ),
+            radial-gradient(
+                75% 65% at 10% 90%,
+                color-mix(in oklab, var(--emerald) 12%, transparent) 0%,
+                transparent 65%
+            );
+        z-index: 0;
+        pointer-events: none;
+    }
+
+    .brand-bg-noise {
+        position: absolute;
+        inset: 0;
+        opacity: 0.04;
+        background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0.6 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+        background-size: 220px 220px;
+        mix-blend-mode: overlay;
+        z-index: 1;
+        pointer-events: none;
+    }
+
+    /* Gold structural spine — vertical foil bar at the left edge.
+     * Gold = CTA. The system's primary axis. Not decoration: it carries
+     * the "this is FLATLAND, we ship" energy. */
+    .brand-spine {
+        position: absolute;
+        left: 0;
+        top: 0;
+        bottom: 0;
+        width: 0.6cqi;
+        min-width: 4px;
+        background: linear-gradient(
+            to bottom,
+            transparent 0%,
+            color-mix(in oklab, var(--gold) 40%, transparent) 10%,
+            var(--gold) 50%,
+            color-mix(in oklab, var(--gold) 40%, transparent) 90%,
+            transparent 100%
+        );
+        box-shadow:
+            0 0 2cqi color-mix(in oklab, var(--gold) 35%, transparent),
+            inset 0 0 0.4cqi color-mix(in oklab, var(--gold-high) 60%, transparent);
+        z-index: 1;
+        pointer-events: none;
+    }
+    .icon-only .brand-spine {
+        display: none;
+    }
+
+    .brand-content {
+        position: relative;
+        z-index: 2;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: stretch;
+        padding: 5cqi 5cqi 4cqi;
+        padding-left: 6cqi;
+        box-sizing: border-box;
+        gap: 3cqi;
+    }
+    .wide .brand-content {
+        padding: 4cqi 5cqi;
+        padding-left: 6cqi;
+        gap: 2.5cqi;
+    }
+
+    /* icon-only — center the mark in a gold halo (the spine consolidates
+     * to a glow). */
+    .icon-only .brand-content {
+        padding: 8cqi;
+        justify-content: center;
+        align-items: center;
+        gap: 0;
+    }
+    .icon-only-frame {
+        position: relative;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 78cqi;
+        max-width: 100%;
+        aspect-ratio: 1;
+    }
+    .icon-only-frame::before {
+        content: '';
+        position: absolute;
+        inset: -4cqi;
+        border-radius: 50%;
+        background: radial-gradient(
+            circle,
+            color-mix(in oklab, var(--gold) 22%, transparent) 0%,
+            transparent 60%
+        );
+        filter: blur(2cqi);
+        z-index: -1;
+    }
+
+    /* Stacked composition — icon + wordmark on top, signal rail below.
+     * Wide goes side-by-side. */
+    .brand-stack {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        text-align: left;
+        gap: 2.5cqi;
+    }
+    .brand-stack.is-wide {
+        flex-direction: row;
+        align-items: center;
+        gap: 4cqi;
+        width: 100%;
+        justify-content: flex-start;
+    }
+    .is-wide .brand-text {
+        flex: 1;
+        align-items: flex-start;
+        text-align: left;
+    }
+
+    .brand-mark {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        line-height: 0;
+        flex-shrink: 0;
+        filter: drop-shadow(
+            0 1.2cqi 2.5cqi color-mix(in oklab, var(--gold) 32%, transparent)
+        );
+    }
+
+    .brand-text {
+        display: flex;
+        flex-direction: column;
+        gap: 1.4cqi;
+        align-items: flex-start;
+    }
+
+    /* Eyebrow — "v0.1 · ALL CHANNELS LIT" with leading gold tally-mark.
+     * Gold tally because it's the leading channel. */
+    .brand-eyebrow {
+        display: inline-flex;
+        align-items: baseline;
+        gap: 0.6cqi;
+        font-family: 'JetBrains Mono', ui-monospace, monospace;
+        font-size: clamp(8px, 1.1cqi, 14px);
+        font-weight: 600;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+    }
+    .brand-eyebrow-tally {
+        color: var(--gold);
+        font-size: 1.2em;
+        line-height: 0.8;
+        text-shadow: 0 0 0.4cqi color-mix(in oklab, var(--gold) 60%, transparent);
+    }
+    .brand-eyebrow-text {
+        color: color-mix(in oklab, var(--gold-high) 65%, var(--tf-fg-muted));
+    }
+
+    /* Silkscreen wordmark — gold-glow primary tone. */
+    .brand-wordmark {
+        font-family: 'Silkscreen', monospace;
+        font-weight: 700;
+        font-size: clamp(36px, 10cqi, 152px);
+        line-height: 0.95;
+        letter-spacing: -0.04em;
+        color: var(--tf-fg);
+        margin: 0;
+        text-shadow:
+            0 0 0.4cqi color-mix(in oklab, var(--gold) 38%, transparent),
+            0 1.5cqi 4cqi color-mix(in oklab, var(--amethyst) 22%, transparent);
+    }
+    .banner .brand-wordmark,
+    .wide .brand-wordmark {
+        font-size: clamp(36px, 7.5cqi, 116px);
+    }
+    .social-x .brand-wordmark {
+        font-size: clamp(36px, 11cqi, 144px);
+    }
+
+    .brand-tagline {
+        font-family: 'Public Sans', system-ui, sans-serif;
+        font-weight: 400;
+        font-size: clamp(11px, 2cqi, 26px);
+        line-height: 1.5;
+        color: var(--tf-fg-muted);
+        margin: 0;
+        max-width: 64cqi;
+        letter-spacing: -0.005em;
+    }
+    .wide .brand-tagline {
+        font-size: clamp(11px, 1.5cqi, 20px);
+        max-width: none;
+    }
+
+    /* ── SIGNAL RAIL ──
+     * 7 stripes in a row. Two emphasis (amethyst, diamond) lead, five
+     * ambient follow. Each stripe has a gem-filled bar + glyph + role.
+     * The bar is 2px tall — a hairline channel readout, NOT a paint
+     * stripe. */
+    .signal-rail {
+        display: flex;
+        flex-wrap: nowrap;
+        gap: 0;
+        align-items: stretch;
+        margin-top: auto;
+        padding-top: 1.2cqi;
+        border-top: 1px solid color-mix(in oklab, white 6%, transparent);
+        width: 100%;
+        min-width: 0;
+    }
+    .wide .signal-rail {
+        padding-top: 1cqi;
+    }
+
+    .signal-stripe {
+        --stripe-accent: var(--amethyst);
+        position: relative;
+        flex: 1 1 0;
+        display: flex;
+        flex-direction: column;
+        gap: 0.6cqi;
+        padding: 0.8cqi 1.4cqi 0.4cqi 0;
+        min-width: 0;
+        /* Soft right-edge separator — keeps the rail reading as one unit
+         * subdivided into channels. */
+        border-right: 1px solid color-mix(in oklab, white 5%, transparent);
+    }
+    .signal-stripe:last-child {
+        border-right: none;
+        padding-right: 0;
+    }
+    .signal-stripe.is-emphasis {
+        flex: 1.25 1 0;
+    }
+    .wide .signal-stripe {
+        gap: 0.4cqi;
+        padding: 0.6cqi 1.4cqi 0.3cqi 0;
+    }
+
+    /* The signal bar — 2px gem-filled hairline. The "channel readout"
+     * shape. Emphasis stripes get a 3px taller bar + brighter glow. */
+    .signal-bar {
+        display: block;
+        height: 2px;
+        width: 100%;
+        background: linear-gradient(
+            90deg,
+            var(--stripe-accent) 0%,
+            color-mix(in oklab, var(--stripe-accent) 50%, transparent) 100%
+        );
+        box-shadow: 0 0 0.6cqi color-mix(in oklab, var(--stripe-accent) 35%, transparent);
+        border-radius: 1px;
+    }
+    .signal-stripe.is-emphasis .signal-bar {
+        height: 3px;
+        background: linear-gradient(
+            90deg,
+            var(--stripe-accent) 0%,
+            color-mix(in oklab, var(--stripe-accent) 60%, transparent) 100%
+        );
+        box-shadow: 0 0 1cqi color-mix(in oklab, var(--stripe-accent) 50%, transparent);
+    }
+
+    .signal-glyph {
+        display: inline-block;
+        font-family: 'JetBrains Mono', ui-monospace, monospace;
+        font-size: clamp(7px, 0.9cqi, 11px);
+        line-height: 1;
+        color: var(--stripe-accent);
+        opacity: 0.85;
+    }
+    .signal-stripe.is-emphasis .signal-glyph {
+        font-size: clamp(8px, 1cqi, 12px);
+        opacity: 1;
+    }
+
+    .signal-role {
+        font-family: 'JetBrains Mono', ui-monospace, monospace;
+        font-weight: 600;
+        font-size: clamp(7px, 0.95cqi, 11px);
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: color-mix(in oklab, var(--stripe-accent) 50%, var(--tf-fg-muted));
+        line-height: 1;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: clip;
+    }
+    .signal-stripe.is-emphasis .signal-role {
+        font-size: clamp(7px, 1.05cqi, 12px);
+        color: color-mix(in oklab, var(--stripe-accent) 70%, var(--tf-fg));
+    }
+
+    /* Glyph + role on the same baseline row, below the bar. */
+    .signal-stripe::after {
+        content: '';
+    }
+    .signal-stripe {
+        flex-direction: column;
+    }
+    .signal-stripe .signal-glyph {
+        margin-top: 0;
+    }
+
+    /* Info row — gold + diamond chips per spec. */
+    .brand-info-row,
+    .brand-info-inline {
+        display: flex;
+        gap: 4cqi;
+        font-family: 'JetBrains Mono', ui-monospace, monospace;
+        font-size: clamp(9px, 1.4cqi, 16px);
+        font-weight: 500;
+        opacity: 0.92;
+    }
+    .brand-info-row {
+        margin-top: 0;
+        padding-top: 1cqi;
+    }
+    .wide .brand-info-inline {
+        margin-top: 1cqi;
+        font-size: clamp(8px, 0.95cqi, 12px);
+        gap: 2.5cqi;
+    }
+    .info-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.6em;
+        white-space: nowrap;
+        letter-spacing: 0.01em;
+    }
+    .info-chip.github {
+        color: var(--diamond);
+    }
+    .info-chip.github::before {
+        content: '↗';
+        opacity: 0.7;
+    }
+    .info-chip.npm {
+        color: var(--gold);
+    }
+
+    .asset-preview-link:hover .brand-asset-root {
+        outline: 1px solid color-mix(in oklab, var(--gold) 45%, transparent);
+        outline-offset: 4px;
+    }
+</style>

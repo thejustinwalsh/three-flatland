@@ -1,0 +1,478 @@
+---
+/**
+ * BrandAssetF-RubyAmethyst-v1 — "Featured Showcase Card" (Drama From Depth)
+ *
+ * Pair lore: Ruby (showcase / attention spike) + Amethyst (docs cluster /
+ * authoritative depth wash). Asset reads as a major-project drop with
+ * structural depth visibly underneath — "scroll-stopping showcase backed
+ * by authority."
+ *
+ * Compositional substrate, beat-for-beat from the docs site primitives:
+ *
+ *   AMETHYST = WASH (~35%)
+ *     - Continuous left guide rule → SidebarSublist
+ *       `.container-group-link::before` (1px vertical, section-accent
+ *       blended into --border). Scaled up to span the full asset height.
+ *     - Lower-left soft radial wash → amethyst-soft tinted gradient
+ *       suggesting "this is part of a deeper system" (sidebar gravity).
+ *
+ *   RUBY = SPIKE (~65%)
+ *     - "SHOWCASE · ALPHA" eyebrow → StatsBanner stat-label register
+ *       (uppercase Inter, 0.08em tracking) but ruby-tinted instead of
+ *       muted-foreground.
+ *     - Wordmark underline → StatsBanner stat-item ruby gradient
+ *       hairline scaled up to flatland-wordmark width.
+ *     - Pip badge near the wordmark → SidebarSublist active pip
+ *       (2px vertical) reframed as an attention dot.
+ *
+ *   GOLD + DIAMOND preserved on info chips per spec.
+ *
+ * Tokens only. Hex values mirrored locally for capture-mode predictability
+ * (parent :root may not propagate when the asset is captured via DevTools
+ * node screenshot at fixed pixel dimensions).
+ */
+
+import BrandIcon from '../BrandIcon.astro'
+
+interface Props {
+    id: string
+    type: 'banner' | 'og' | 'wide' | 'social-x' | 'icon-only'
+    title?: string
+    tagline?: string
+    info?: boolean
+    isCapture?: boolean
+}
+
+const {
+    id,
+    type,
+    title = 'flatland',
+    tagline = 'Sprite-first 2D for Three.js + R3F. WebGPU-native.',
+    info = true,
+    isCapture = false,
+} = Astro.props
+
+interface Dimensions {
+    w: number
+    h: number
+}
+
+const dimensions: Record<Props['type'], Dimensions> = {
+    banner: { w: 1280, h: 640 },
+    og: { w: 1200, h: 630 },
+    wide: { w: 3000, h: 1000 },
+    'social-x': { w: 1200, h: 628 },
+    'icon-only': { w: 512, h: 512 },
+}
+
+const { w: width, h: height } = dimensions[type] ?? dimensions['og']
+const showInfo = info && type !== 'icon-only'
+const isWide = type === 'wide'
+
+const repoLine = 'thejustinwalsh/three-flatland'
+const installLine = '# npm i three-flatland@alpha'
+---
+
+<div
+    class:list={['brand-asset-root', 'not-content', type, { 'capture-mode': isCapture }]}
+    id={id}
+    style={`--asset-width: ${width}; --asset-height: ${height};`}
+>
+    {/* Amethyst depth wash — soft radial in the lower-left corner.
+        Suggests "this surface has system gravity underneath it." */}
+    <div class="brand-bg-glow" aria-hidden="true"></div>
+
+    {/* Sub-perceptual fractal noise overlay (≤4%). */}
+    <div class="brand-bg-noise" aria-hidden="true"></div>
+
+    {/* Amethyst left guide rule — sidebar pattern at hero scale.
+        Continuous 1px vertical line indicating "you are inside a
+        deeper system." Skipped on icon-only. */}
+    {type !== 'icon-only' && (
+        <div class="brand-bg-guide" aria-hidden="true"></div>
+    )}
+
+    <div class="brand-content">
+        {type === 'icon-only' ? (
+            <div class="icon-only-frame">
+                <BrandIcon size="64%" />
+            </div>
+        ) : (
+            <Fragment>
+                <div class:list={['brand-stack', { 'brand-stack-wide': isWide }]}>
+                    <div class="brand-mark">
+                        <BrandIcon size={isWide ? '14cqi' : '22cqi'} />
+                    </div>
+                    <div class="brand-text">
+                        {/* Ruby eyebrow + amethyst secondary marker —
+                            tracked-uppercase, the StatsBanner register. */}
+                        <div class="brand-eyebrow-row">
+                            <span class="eyebrow-pip" data-gem="ruby" aria-hidden="true"></span>
+                            <span class="eyebrow ruby">SHOWCASE</span>
+                            <span class="eyebrow-sep" aria-hidden="true">·</span>
+                            <span class="eyebrow amethyst">ALPHA · v0.1</span>
+                        </div>
+                        <h1 class="brand-wordmark">{title}</h1>
+                        <p class="brand-tagline">{tagline}</p>
+                        {isWide && showInfo && (
+                            <div class="brand-info-inline">
+                                <span class="info-chip github">{repoLine}</span>
+                                <span class="info-chip npm">{installLine}</span>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            </Fragment>
+        )}
+
+        {showInfo && !isWide && (
+            <div class="brand-info-row">
+                <span class="info-chip github">{repoLine}</span>
+                <span class="info-chip npm">{installLine}</span>
+            </div>
+        )}
+    </div>
+</div>
+
+<style>
+    /* Tokens — local mirror so capture mode stays predictable.
+     * Ruby = #c62f52 (showcases gem), Amethyst = #a85ff1 (docs gem). */
+    .brand-asset-root {
+        --tf-bg: #111418;
+        --tf-fg: #f5f6f9;
+        --tf-fg-muted: #b3b8c4;
+        --tf-border: rgba(255, 255, 255, 0.08);
+
+        /* Ruby — showcase / attention spike. */
+        --tf-ruby: #c62f52;
+        --tf-ruby-high: #e25771;
+        --tf-ruby-low: #6e1827;
+        --tf-ruby-soft: rgba(198, 47, 82, 0.12);
+
+        /* Amethyst — docs / depth wash. */
+        --tf-amethyst: #a85ff1;
+        --tf-amethyst-high: #c089ff;
+        --tf-amethyst-low: #4f2a82;
+        --tf-amethyst-soft: rgba(168, 95, 241, 0.14);
+
+        /* Gold + diamond preserved on info chips. */
+        --tf-gold: #f1c45f;
+        --tf-diamond: #6cb8ff;
+
+        position: relative;
+        overflow: hidden;
+        color: var(--tf-fg);
+        background: linear-gradient(135deg, #0e1117 0%, #14111c 100%);
+        container-type: inline-size;
+
+        font-family: 'Public Sans', system-ui, sans-serif;
+        font-feature-settings: 'ss01';
+
+        width: calc(var(--asset-width) * 1px);
+        height: calc(var(--asset-height) * 1px);
+        aspect-ratio: var(--asset-width) / var(--asset-height);
+    }
+
+    :not(.capture-mode).brand-asset-root {
+        width: 100%;
+        height: auto;
+    }
+
+    /* Amethyst depth wash — lower-left soft radial. The "deeper system"
+     * reading: gravity coming from inside the docs cluster. */
+    .brand-bg-glow {
+        position: absolute;
+        inset: 0;
+        background:
+            radial-gradient(
+                95% 75% at 8% 92%,
+                var(--tf-amethyst-soft) 0%,
+                transparent 60%
+            ),
+            radial-gradient(
+                55% 45% at 88% 18%,
+                color-mix(in oklab, var(--tf-ruby) 9%, transparent) 0%,
+                transparent 65%
+            );
+        z-index: 0;
+        pointer-events: none;
+    }
+
+    .brand-bg-noise {
+        position: absolute;
+        inset: 0;
+        opacity: 0.04;
+        background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0.6 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+        background-size: 220px 220px;
+        mix-blend-mode: overlay;
+        z-index: 1;
+        pointer-events: none;
+    }
+
+    /* Amethyst left guide — continuous vertical rule, sidebar pattern
+     * at hero scale. 1px wide, runs the full asset height, sits at
+     * ~5cqi from the left edge so the wordmark stack reads as
+     * "indented inside a section." */
+    .brand-bg-guide {
+        position: absolute;
+        top: 6cqi;
+        bottom: 6cqi;
+        left: 5cqi;
+        width: 1px;
+        background: linear-gradient(
+            to bottom,
+            transparent 0%,
+            color-mix(in oklab, var(--tf-amethyst) 55%, transparent) 18%,
+            color-mix(in oklab, var(--tf-amethyst) 80%, transparent) 50%,
+            color-mix(in oklab, var(--tf-amethyst) 55%, transparent) 82%,
+            transparent 100%
+        );
+        opacity: 0.7;
+        z-index: 1;
+        pointer-events: none;
+    }
+    /* Wide aspect — guide hugs further inside so the row composition
+     * reads cleanly. */
+    .wide .brand-bg-guide {
+        left: 3cqi;
+        top: 4cqi;
+        bottom: 4cqi;
+    }
+    .social-x .brand-bg-guide {
+        left: 4cqi;
+    }
+
+    .brand-content {
+        position: relative;
+        z-index: 2;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: flex-start;
+        /* Indent past the amethyst guide line so the stack reads as
+         * "inside a section." The guide line sits at 5cqi; content
+         * starts at ~8cqi for breathing room. */
+        padding: 6cqi 6cqi 6cqi 8cqi;
+        box-sizing: border-box;
+        gap: 4cqi;
+    }
+    .social-x .brand-content {
+        padding-left: 7cqi;
+    }
+    .wide .brand-content {
+        justify-content: center;
+        padding: 4cqi 6cqi 4cqi 6cqi;
+    }
+
+    /* icon-only — no guide rule; soft amethyst halo + ruby outer ring. */
+    .icon-only .brand-content {
+        padding: 8cqi;
+        justify-content: center;
+        align-items: center;
+        gap: 0;
+    }
+    .icon-only-frame {
+        position: relative;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 78cqi;
+        max-width: 100%;
+        aspect-ratio: 1;
+    }
+    .icon-only-frame::before {
+        content: '';
+        position: absolute;
+        inset: -4cqi;
+        border-radius: 50%;
+        background: radial-gradient(
+            circle,
+            color-mix(in oklab, var(--tf-amethyst) 22%, transparent) 0%,
+            color-mix(in oklab, var(--tf-ruby) 6%, transparent) 50%,
+            transparent 70%
+        );
+        filter: blur(2cqi);
+        z-index: -1;
+    }
+
+    /* Stack — left-aligned (sidebar register). */
+    .brand-stack {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        text-align: left;
+        gap: 3cqi;
+    }
+
+    .brand-stack-wide {
+        flex-direction: row;
+        align-items: center;
+        text-align: left;
+        gap: 4cqi;
+        width: 100%;
+        justify-content: flex-start;
+    }
+    .wide .brand-mark {
+        flex-shrink: 0;
+    }
+    .wide .brand-text {
+        flex: 1;
+        min-width: 0;
+    }
+
+    .brand-mark {
+        display: flex;
+        align-items: center;
+        justify-content: flex-start;
+        line-height: 0;
+        /* Drop shadow blends ruby (spike) + amethyst (depth) — the
+         * mark sits at the seam of attention and authority. */
+        filter:
+            drop-shadow(0 1cqi 2cqi color-mix(in oklab, var(--tf-amethyst) 30%, transparent))
+            drop-shadow(0 0.4cqi 0.8cqi color-mix(in oklab, var(--tf-ruby) 22%, transparent));
+    }
+
+    .brand-text {
+        display: flex;
+        flex-direction: column;
+        gap: 2cqi;
+        align-items: flex-start;
+    }
+
+    /* Eyebrow row — "SHOWCASE · ALPHA · v0.1" tracked uppercase.
+     * Ruby pip + ruby "SHOWCASE" + muted separator + amethyst meta. */
+    .brand-eyebrow-row {
+        display: inline-flex;
+        align-items: center;
+        gap: 1.4cqi;
+        font-family: 'Inter', system-ui, sans-serif;
+        font-weight: 600;
+        font-size: clamp(9px, 1.2cqi, 14px);
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        line-height: 1;
+    }
+    .eyebrow-pip {
+        display: inline-block;
+        width: 0.6cqi;
+        height: 1.4cqi;
+        min-width: 4px;
+        min-height: 10px;
+        border-radius: 1px;
+        background-color: var(--tf-ruby);
+        box-shadow: 0 0 0.8cqi color-mix(in oklab, var(--tf-ruby) 60%, transparent);
+    }
+    .eyebrow.ruby {
+        color: var(--tf-ruby-high);
+    }
+    .eyebrow.amethyst {
+        color: color-mix(in oklab, var(--tf-amethyst-high) 80%, var(--tf-fg-muted));
+    }
+    .eyebrow-sep {
+        color: var(--tf-fg-muted);
+        opacity: 0.5;
+    }
+
+    /* Silkscreen wordmark — left-aligned. Ruby spike underline
+     * sits beneath as a separate child via ::after pseudo-element. */
+    .brand-wordmark {
+        font-family: 'Silkscreen', monospace;
+        font-weight: 700;
+        font-size: clamp(36px, 11cqi, 168px);
+        line-height: 0.95;
+        letter-spacing: -0.04em;
+        color: var(--tf-fg);
+        margin: 0;
+        position: relative;
+        padding-bottom: 1.4cqi;
+        text-shadow:
+            0 0 0.4cqi color-mix(in oklab, var(--tf-ruby) 28%, transparent),
+            0 1.2cqi 3cqi color-mix(in oklab, var(--tf-amethyst) 22%, transparent);
+    }
+    /* Ruby spike underline — StatsBanner pattern, scaled up.
+     * Width-clamped to ~70% so it reads as a deliberate accent
+     * spike, not a full underline. */
+    .brand-wordmark::after {
+        content: '';
+        position: absolute;
+        left: 0;
+        bottom: 0;
+        width: 62%;
+        height: 2.5px;
+        background: linear-gradient(
+            90deg,
+            var(--tf-ruby) 0%,
+            color-mix(in oklab, var(--tf-ruby) 70%, transparent) 70%,
+            transparent 100%
+        );
+        border-radius: 1px;
+        box-shadow: 0 0 1.2cqi color-mix(in oklab, var(--tf-ruby) 35%, transparent);
+    }
+    .banner .brand-wordmark,
+    .wide .brand-wordmark {
+        font-size: clamp(36px, 8cqi, 124px);
+    }
+    .social-x .brand-wordmark {
+        font-size: clamp(36px, 12cqi, 156px);
+    }
+
+    .brand-tagline {
+        font-family: 'Public Sans', system-ui, sans-serif;
+        font-weight: 400;
+        font-size: clamp(12px, 2.4cqi, 32px);
+        line-height: 1.5;
+        color: var(--tf-fg-muted);
+        margin: 0;
+        max-width: 70cqi;
+        letter-spacing: -0.005em;
+    }
+    .wide .brand-tagline {
+        font-size: clamp(11px, 1.8cqi, 22px);
+        max-width: none;
+    }
+    .banner .brand-tagline {
+        font-size: clamp(11px, 2cqi, 26px);
+    }
+
+    /* Info row — gold + diamond preserved per spec. */
+    .brand-info-row,
+    .brand-info-inline {
+        display: flex;
+        gap: 4cqi;
+        font-family: 'JetBrains Mono', ui-monospace, monospace;
+        font-size: clamp(9px, 1.4cqi, 16px);
+        font-weight: 500;
+        opacity: 0.92;
+    }
+    .brand-info-row {
+        margin-top: 2cqi;
+    }
+    .wide .brand-info-inline {
+        margin-top: 1.5cqi;
+        font-size: clamp(9px, 1cqi, 14px);
+        gap: 3cqi;
+    }
+    .info-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.6em;
+        white-space: nowrap;
+        letter-spacing: 0.01em;
+    }
+    .info-chip.github {
+        color: var(--tf-diamond);
+    }
+    .info-chip.github::before {
+        content: '↗';
+        opacity: 0.7;
+    }
+    .info-chip.npm {
+        color: var(--tf-gold);
+    }
+
+    .asset-preview-link:hover .brand-asset-root {
+        outline: 1px solid color-mix(in oklab, var(--tf-ruby) 45%, transparent);
+        outline-offset: 4px;
+    }
+</style>

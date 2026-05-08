@@ -1,0 +1,470 @@
+---
+/**
+ * BrandAssetB-Diamond-v2
+ * --------------------------------------------------------------
+ * Critique pass on v1:
+ *  - The diamond-soft mark-highlight backplate around the wordmark
+ *    read as a bland blob — "search match" in v1 was the wrong primitive
+ *    when the composition is the whole page, not a single token.
+ *  - Generic radial-glow at upper-left was AI-slop "atmospheric lighting."
+ *  - Wordmark-row chevron was decorative noise.
+ *  - Eyebrow + perimeter frame competed for "where do I anchor?"
+ *  - Symmetric stack didn't earn the wide aspect.
+ *
+ * Fixes (frontend-design pass):
+ *  - Anchor the whole composition to a LEFT-EDGE ACTIVE GUTTER — a
+ *    full-height diamond pip rail that mirrors the TOC active-marker
+ *    bar, but composition-scale. The asset reads as "this page is
+ *    selected" at a glance.
+ *  - Replace the wordmark-row backplate with a docs-page breadcrumb
+ *    crumb above the wordmark: `docs / branding / flatland` — the
+ *    `flatland` segment renders in diamond as the "you-are-here"
+ *    terminal, mirroring how breadcrumbs work on the live site.
+ *  - Drop the right-side chevron; replace it with a small inline-doc
+ *    badge to the right of the wordmark (`v0.1-α`) — JetBrains Mono,
+ *    diamond, with a thin diamond hairline above and below.
+ *  - For non-wide aspects, info row sits behind a diamond hairline
+ *    divider that visually closes the page — mirrors Pagination's
+ *    `border-top` in MarkdownContent.
+ *  - Wide aspect: gutter rail + horizontal page metaphor reads correct
+ *    at 3:1; left block is wordmark/tagline, right block is the
+ *    install/repo info as a true "docs sidebar" cluster.
+ */
+import BrandIcon from '../BrandIcon.astro'
+
+interface Props {
+    id: string
+    type: 'banner' | 'og' | 'wide' | 'social-x' | 'icon-only'
+    title?: string
+    tagline?: string
+    info?: boolean
+    isCapture?: boolean
+}
+
+const {
+    id,
+    type,
+    title = 'flatland',
+    tagline = 'Sprite-first 2D for Three.js + R3F. WebGPU-native.',
+    info = true,
+    isCapture = false,
+} = Astro.props
+
+interface Dimensions {
+    w: number
+    h: number
+}
+
+const dimensions: Record<Props['type'], Dimensions> = {
+    banner: { w: 1280, h: 640 },
+    og: { w: 1200, h: 630 },
+    wide: { w: 3000, h: 1000 },
+    'social-x': { w: 1200, h: 628 },
+    'icon-only': { w: 512, h: 512 },
+}
+
+const { w: width, h: height } = dimensions[type] ?? dimensions['og']
+const showInfo = info && type !== 'icon-only'
+const isWide = type === 'wide'
+const isIconOnly = type === 'icon-only'
+
+const repoLine = 'thejustinwalsh/three-flatland'
+const installLine = '# npm i three-flatland@alpha'
+---
+
+<div
+    class:list={['brand-asset-root', 'not-content', type, { 'capture-mode': isCapture }]}
+    id={id}
+    style={`--asset-width: ${width}; --asset-height: ${height};`}
+>
+    {/* Sub-perceptual fractal noise — unchanged from v1. */}
+    <div class="bg-noise" aria-hidden="true"></div>
+
+    {/* Diamond active gutter — full-height left-edge pip rail. The
+        composition-scale version of the TOC active-marker bar. */}
+    {!isIconOnly && <div class="gutter" aria-hidden="true"></div>}
+
+    {/* TOC indent guide — diamond-tinted hairline frame inset slightly
+        from the edges, leaving room for the gutter rail to land
+        flush against the asset's left edge. */}
+    <div class="frame" aria-hidden="true"></div>
+
+    <div class="content">
+        {isIconOnly ? (
+            <div class="icon-only-frame">
+                <BrandIcon size="64%" />
+            </div>
+        ) : (
+            <Fragment>
+                <div class:list={['stack', { 'stack-wide': isWide }]}>
+                    <div class="mark">
+                        <BrandIcon size={isWide ? '12cqi' : '20cqi'} />
+                    </div>
+                    <div class="text-block">
+                        {/* Breadcrumb — JetBrains Mono path with the
+                            terminal segment rendered in diamond as
+                            "you are here". */}
+                        <div class="crumb">
+                            <span class="crumb-seg muted">docs</span>
+                            <span class="crumb-sep" aria-hidden="true">/</span>
+                            <span class="crumb-seg muted">branding</span>
+                            <span class="crumb-sep" aria-hidden="true">/</span>
+                            <span class="crumb-seg here">{title}</span>
+                        </div>
+
+                        {/* Wordmark row — wordmark + version badge to the
+                            right. The wordmark sits flush; the badge
+                            reads as a docs-style annotation. */}
+                        <div class="wordmark-row">
+                            <h1 class="wordmark">{title}</h1>
+                            <span class="version-badge">v0.1-α</span>
+                        </div>
+
+                        <p class="tagline">{tagline}</p>
+
+                        {isWide && showInfo && (
+                            <div class="info-cluster wide">
+                                <div class="info-divider" aria-hidden="true"></div>
+                                <span class="info-chip github">{repoLine}</span>
+                                <span class="info-chip npm">{installLine}</span>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            </Fragment>
+        )}
+
+        {showInfo && !isWide && (
+            <div class="info-row">
+                <div class="info-divider" aria-hidden="true"></div>
+                <div class="info-chips">
+                    <span class="info-chip github">{repoLine}</span>
+                    <span class="info-chip npm">{installLine}</span>
+                </div>
+            </div>
+        )}
+    </div>
+</div>
+
+<style>
+    .brand-asset-root {
+        --tf-bg: var(--background, #111418);
+        --tf-fg: var(--foreground, #f5f6f9);
+        --tf-fg-muted: var(--muted-foreground, #b3b8c4);
+        --tf-border: var(--border, rgba(255, 255, 255, 0.08));
+
+        --tf-diamond: var(--diamond, oklch(75% 0.15 215));
+        --tf-diamond-low: var(--diamond-low, oklch(36% 0.10 215));
+        --tf-diamond-high: var(--diamond-high, oklch(85% 0.13 215));
+        --tf-diamond-soft: var(--diamond-soft, oklch(20% 0.026 215));
+        --tf-gold: var(--gold, oklch(72% 0.16 85));
+
+        position: relative;
+        overflow: hidden;
+        color: var(--tf-fg);
+        background: var(--tf-bg);
+        container-type: inline-size;
+
+        font-family: 'Public Sans', system-ui, sans-serif;
+        font-feature-settings: 'ss01';
+
+        width: calc(var(--asset-width) * 1px);
+        height: calc(var(--asset-height) * 1px);
+        aspect-ratio: var(--asset-width) / var(--asset-height);
+    }
+
+    :not(.capture-mode).brand-asset-root {
+        width: 100%;
+        height: auto;
+    }
+
+    .bg-noise {
+        position: absolute;
+        inset: 0;
+        opacity: 0.04;
+        background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0.6 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+        background-size: 220px 220px;
+        mix-blend-mode: overlay;
+        z-index: 1;
+        pointer-events: none;
+    }
+
+    /* Active gutter — full-height diamond bar at the left edge with a
+     * soft glow to its right. The TOC active-marker pattern at
+     * composition scale: 2px solid pip + radial bleed. */
+    .gutter {
+        position: absolute;
+        top: 6cqi;
+        bottom: 6cqi;
+        left: 0;
+        width: 0.4cqi;
+        min-width: 3px;
+        background-color: var(--tf-diamond);
+        border-radius: 0 0.2cqi 0.2cqi 0;
+        z-index: 2;
+        pointer-events: none;
+    }
+    .gutter::after {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 100%;
+        width: 8cqi;
+        height: 100%;
+        background: linear-gradient(
+            to right,
+            color-mix(in oklab, var(--tf-diamond) 25%, transparent) 0%,
+            transparent 100%
+        );
+        pointer-events: none;
+    }
+
+    /* Frame — TOC indent-guide-style hairline, inset from the edges
+     * with a left-side cutout so the gutter lands flush. */
+    .frame {
+        position: absolute;
+        top: 4cqi;
+        right: 4cqi;
+        bottom: 4cqi;
+        left: 4cqi;
+        border: 1px solid color-mix(in oklab, var(--tf-diamond) 14%, var(--tf-border));
+        border-radius: 1cqi;
+        z-index: 1;
+        pointer-events: none;
+    }
+    .icon-only .frame {
+        inset: 6cqi;
+        border-radius: 4cqi;
+    }
+
+    .content {
+        position: relative;
+        z-index: 3;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: flex-start;
+        padding: 6cqi 6cqi 6cqi 8cqi;
+        box-sizing: border-box;
+        gap: 3cqi;
+    }
+    .icon-only .content {
+        padding: 8cqi;
+        align-items: center;
+        justify-content: center;
+        gap: 0;
+    }
+    .social-x .content,
+    .og .content {
+        align-items: flex-start;
+        justify-content: center;
+    }
+    .banner .content {
+        align-items: flex-start;
+        justify-content: center;
+    }
+
+    .icon-only-frame {
+        position: relative;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 70cqi;
+        max-width: 100%;
+        aspect-ratio: 1;
+    }
+    .icon-only-frame::before {
+        content: '';
+        position: absolute;
+        inset: -4cqi;
+        border-radius: 50%;
+        background: radial-gradient(
+            circle,
+            color-mix(in oklab, var(--tf-diamond) 22%, transparent) 0%,
+            transparent 60%
+        );
+        filter: blur(2cqi);
+        z-index: -1;
+    }
+
+    .stack {
+        display: flex;
+        flex-direction: row;
+        align-items: center;
+        text-align: left;
+        gap: 4cqi;
+        width: 100%;
+    }
+    .stack-wide {
+        gap: 5cqi;
+    }
+    .wide .content {
+        justify-content: center;
+        padding: 5cqi 6cqi 5cqi 7cqi;
+    }
+    .wide .mark {
+        flex-shrink: 0;
+    }
+    .wide .text-block {
+        flex: 1;
+        min-width: 0;
+    }
+
+    .mark {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        line-height: 0;
+        flex-shrink: 0;
+        filter: drop-shadow(
+            0 1.5cqi 3cqi color-mix(in oklab, var(--tf-diamond) 28%, transparent)
+        );
+    }
+
+    .text-block {
+        display: flex;
+        flex-direction: column;
+        gap: 1.4cqi;
+        align-items: flex-start;
+        flex: 1;
+        min-width: 0;
+    }
+
+    /* Breadcrumb — docs path with the terminal segment in diamond. */
+    .crumb {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.6em;
+        font-family: 'JetBrains Mono', ui-monospace, monospace;
+        font-size: clamp(9px, 1.3cqi, 14px);
+        font-weight: 500;
+        letter-spacing: 0.04em;
+    }
+    .crumb-seg.muted {
+        color: var(--tf-fg-muted);
+    }
+    .crumb-seg.here {
+        color: var(--tf-diamond);
+        font-weight: 600;
+    }
+    .crumb-sep {
+        color: color-mix(in oklab, var(--tf-fg-muted) 50%, transparent);
+    }
+
+    .wordmark-row {
+        display: inline-flex;
+        align-items: baseline;
+        gap: 1.6cqi;
+    }
+
+    .wordmark {
+        font-family: 'Silkscreen', monospace;
+        font-weight: 700;
+        font-size: clamp(36px, 11cqi, 168px);
+        line-height: 0.95;
+        letter-spacing: -0.04em;
+        color: var(--tf-fg);
+        margin: 0;
+    }
+    .banner .wordmark,
+    .wide .wordmark {
+        font-size: clamp(36px, 8cqi, 124px);
+    }
+    .social-x .wordmark {
+        font-size: clamp(36px, 12cqi, 156px);
+    }
+
+    /* Version badge — JetBrains Mono, diamond, hairline borders top + bottom.
+     * Reads as a docs-style annotation pinned to the wordmark. */
+    .version-badge {
+        font-family: 'JetBrains Mono', ui-monospace, monospace;
+        font-size: clamp(9px, 1.3cqi, 14px);
+        font-weight: 500;
+        letter-spacing: 0.04em;
+        color: var(--tf-diamond);
+        padding: 0.3em 0.6em;
+        border-top: 1px solid color-mix(in oklab, var(--tf-diamond) 35%, transparent);
+        border-bottom: 1px solid color-mix(in oklab, var(--tf-diamond) 35%, transparent);
+        white-space: nowrap;
+    }
+
+    .tagline {
+        font-family: 'Public Sans', system-ui, sans-serif;
+        font-weight: 400;
+        font-size: clamp(12px, 2.4cqi, 32px);
+        line-height: 1.5;
+        color: var(--tf-fg-muted);
+        margin: 0;
+        max-width: 60cqi;
+        letter-spacing: -0.005em;
+    }
+    .wide .tagline {
+        font-size: clamp(11px, 1.8cqi, 22px);
+        max-width: none;
+    }
+    .banner .tagline {
+        font-size: clamp(11px, 2cqi, 26px);
+    }
+
+    /* Info row — diamond hairline divider above, then chips. Mirrors
+     * MarkdownContent's footer-section pattern. */
+    .info-row {
+        margin-top: auto;
+        padding-top: 2cqi;
+        width: 100%;
+        display: flex;
+        flex-direction: column;
+        gap: 1.5cqi;
+    }
+    .info-cluster.wide {
+        margin-top: 1.5cqi;
+        position: relative;
+        display: flex;
+        align-items: center;
+        gap: 2.5cqi;
+    }
+    .info-divider {
+        height: 1px;
+        background: linear-gradient(
+            to right,
+            color-mix(in oklab, var(--tf-diamond) 30%, transparent) 0%,
+            color-mix(in oklab, var(--tf-diamond) 8%, transparent) 60%,
+            transparent 100%
+        );
+    }
+    .info-cluster.wide .info-divider {
+        position: absolute;
+        top: -1.5cqi;
+        left: 0;
+        right: 0;
+    }
+    .info-chips {
+        display: flex;
+        gap: 4cqi;
+    }
+
+    .info-chip {
+        font-family: 'JetBrains Mono', ui-monospace, monospace;
+        font-size: clamp(9px, 1.4cqi, 16px);
+        font-weight: 500;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.6em;
+        white-space: nowrap;
+        letter-spacing: 0.01em;
+    }
+    .wide .info-chip {
+        font-size: clamp(9px, 1cqi, 14px);
+    }
+    .info-chip.github {
+        color: var(--tf-diamond);
+    }
+    .info-chip.github::before {
+        content: '↗';
+        opacity: 0.75;
+    }
+    .info-chip.npm {
+        color: var(--tf-gold);
+    }
+</style>

@@ -5,11 +5,35 @@ template: doc
 ---
 
 import BrandAsset from '../../components/BrandAsset.astro';
-import BrandAssetA from '../../components/brand-variants/BrandAssetA-Holo.astro';
-import BrandAssetB from '../../components/brand-variants/BrandAssetB-Prism.astro';
-import BrandAssetC from '../../components/brand-variants/BrandAssetC-Editorial.astro';
-import BrandAssetD from '../../components/brand-variants/BrandAssetD-Cosmic.astro';
 import CaptureModal from '../../components/CaptureModal.astro';
+
+import GoldV1 from '../../components/brand-variants/BrandAssetA-Gold-v1.astro';
+import GoldV2 from '../../components/brand-variants/BrandAssetA-Gold-v2.astro';
+import GoldV3 from '../../components/brand-variants/BrandAssetA-Gold-v3.astro';
+
+import DiamondV1 from '../../components/brand-variants/BrandAssetB-Diamond-v1.astro';
+import DiamondV2 from '../../components/brand-variants/BrandAssetB-Diamond-v2.astro';
+import DiamondV3 from '../../components/brand-variants/BrandAssetB-Diamond-v3.astro';
+
+import AmethystV1 from '../../components/brand-variants/BrandAssetC-Amethyst-v1.astro';
+import AmethystV2 from '../../components/brand-variants/BrandAssetC-Amethyst-v2.astro';
+import AmethystV3 from '../../components/brand-variants/BrandAssetC-Amethyst-v3.astro';
+
+import RubyV1 from '../../components/brand-variants/BrandAssetD-Ruby-v1.astro';
+import RubyV2 from '../../components/brand-variants/BrandAssetD-Ruby-v2.astro';
+import RubyV3 from '../../components/brand-variants/BrandAssetD-Ruby-v3.astro';
+
+import GoldDiamondV1 from '../../components/brand-variants/BrandAssetE-GoldDiamond-v1.astro';
+import GoldDiamondV2 from '../../components/brand-variants/BrandAssetE-GoldDiamond-v2.astro';
+import GoldDiamondV3 from '../../components/brand-variants/BrandAssetE-GoldDiamond-v3.astro';
+
+import RubyAmethystV1 from '../../components/brand-variants/BrandAssetF-RubyAmethyst-v1.astro';
+import RubyAmethystV2 from '../../components/brand-variants/BrandAssetF-RubyAmethyst-v2.astro';
+import RubyAmethystV3 from '../../components/brand-variants/BrandAssetF-RubyAmethyst-v3.astro';
+
+import GauntletV1 from '../../components/brand-variants/BrandAssetG-Gauntlet-v1.astro';
+import GauntletV2 from '../../components/brand-variants/BrandAssetG-Gauntlet-v2.astro';
+import GauntletV3 from '../../components/brand-variants/BrandAssetG-Gauntlet-v3.astro';
 
 This page provides live-rendered versions of the `three-flatland` marketing assets.
 
@@ -47,78 +71,184 @@ This page provides live-rendered versions of the `three-flatland` marketing asse
 
 ---
 
-## Variant Explorations
+## Variant Explorations — gem-led, design-system-grounded
 
-Four parallel design directions for the BrandAsset compositions. Each variant
-keeps the retro pixel-art icon and Silkscreen wordmark intact (those are the
-established brand) but reimagines the surrounding canvas with a different
-aesthetic vocabulary. Each variant is shown at the OG card size (1200×630),
-the Bluesky banner size (3000×1000), and the icon-only size (512×512) so you
-can judge how the language scales across aspect ratios.
+Seven parallel design directions, each anchored to a specific gem (or
+gem-combo) from the design system's palette. Each variant iterated through
+three revisions — **v1** (direct hit on the brief), **v2** (impeccable
+critique + frontend-design fixes), **v3** (impeccable polish + per-aspect
+adapt — the "shippable" version). All revisions render at the OG card
+size (1200×630) so you can compare evolution within a variant + across
+variants on common ground.
 
-### Variant A — Holographic Foil
+Each variant uses **only real `var(--<gem>)` tokens** from `theme.css`,
+keeps the retro pixel-art icon and Silkscreen wordmark intact, and extends
+existing site primitives (FeatureCard foil rim, sidebar section pip, TOC
+active marker, StatsBanner gem underlines, Pagination per-destination
+gem, aside type indicators).
 
-*Layered conic gradients + chromatic-aberration ghosts on the wordmark + per-gem SVG specular filters in `<defs>`. Reads as a foil-stamped trading card; the wordmark literally is the foil.*
+### A — GOLD (CTA / "Production Launch" energy)
 
+*FeatureCard's three-layer foil rim scaled up to fill the perimeter.
+Gold ambient warmth + frozen specular streak + inset stroke. Reads as
+"the FLATLAND library, shipped."*
+
+<p className="variant-rev-label">v1 — direct foil-rim hit</p>
 <div className="asset-preview-link" data-type="og">
-  <BrandAssetA id="variant-a-og" type="og" />
+  <GoldV1 id="gold-v1" type="og" />
 </div>
 
-<div className="asset-preview-link" data-type="wide">
-  <BrandAssetA id="variant-a-wide" type="wide" />
-</div>
-
-<div className="asset-preview-link" data-type="icon-only">
-  <BrandAssetA id="variant-a-icon" type="icon-only" />
-</div>
-
-### Variant B — Crystalline Prism
-
-*Clip-path facet shards at 30°/60° angles + chromatic dispersion on the wordmark (R/G/B color-channel offsets) + concentric prism rings around the icon + caustic streaks. Reads as light bending through cut glass.*
-
+<p className="variant-rev-label">v2 — critique: anatomy + asymmetric streak + StatsBanner-gradient underline</p>
 <div className="asset-preview-link" data-type="og">
-  <BrandAssetB id="variant-b-og" type="og" />
+  <GoldV2 id="gold-v2" type="og" />
 </div>
 
-<div className="asset-preview-link" data-type="wide">
-  <BrandAssetB id="variant-b-wide" type="wide" />
-</div>
-
-<div className="asset-preview-link" data-type="icon-only">
-  <BrandAssetB id="variant-b-icon" type="icon-only" />
-</div>
-
-### Variant C — Editorial Gold-Leaf
-
-*Gold-leaf gradient `background-clip: text` on Silkscreen + ornamental SVG double-rules + wax-stamp seal with `<textPath>` perimeter text + thin-weight Public Sans watermark. Penguin Classics meets Linear meets a Moleskine.*
-
+<p className="variant-rev-label">v3 — polish: rotated radial envelope, version chip refined, per-aspect tuning</p>
 <div className="asset-preview-link" data-type="og">
-  <BrandAssetC id="variant-c-og" type="og" />
+  <GoldV3 id="gold-v3" type="og" />
 </div>
 
-<div className="asset-preview-link" data-type="wide">
-  <BrandAssetC id="variant-c-wide" type="wide" />
-</div>
+### B — DIAMOND (compass / "Doc Page" precision)
 
-<div className="asset-preview-link" data-type="icon-only">
-  <BrandAssetC id="variant-c-icon" type="icon-only" />
-</div>
+*Doc-page composition — JetBrains Mono breadcrumb eyebrow with
+diamond "you-are-here" terminal, TOC active-marker pip on the wordmark,
+diamond mark-highlight backplate, ghost-page hairlines on the right.
+The asset reads as a captured docs spread.*
 
-### Variant D — Cosmic Nebula
-
-*Six layered radial-gradient gem-cloud blooms + deterministic 150-star field + SVG aurora streaks via cubic-bezier paths + 4-stop drop-shadow corona on the icon. Brand mark drifting through gem dust.*
-
+<p className="variant-rev-label">v1 — doc-page composition + diamond pip + frame</p>
 <div className="asset-preview-link" data-type="og">
-  <BrandAssetD id="variant-d-og" type="og" />
+  <DiamondV1 id="diamond-v1" type="og" />
 </div>
 
-<div className="asset-preview-link" data-type="wide">
-  <BrandAssetD id="variant-d-wide" type="wide" />
+<p className="variant-rev-label">v2 — eyebrow → breadcrumb, gutter rail at left edge, diamond fade hairline divider</p>
+<div className="asset-preview-link" data-type="og">
+  <DiamondV2 id="diamond-v2" type="og" />
 </div>
 
-<div className="asset-preview-link" data-type="icon-only">
-  <BrandAssetD id="variant-d-icon" type="icon-only" />
+<p className="variant-rev-label">v3 — polish: ghost-page detail at right edge, per-aspect spread layout</p>
+<div className="asset-preview-link" data-type="og">
+  <DiamondV3 id="diamond-v3" type="og" />
 </div>
+
+### C — AMETHYST (depth / "Section Header" book-spine)
+
+*Sidebar section-accent identity scaled up. Continuous left guide line +
+tracked-uppercase eyebrow with chevron + sidebar-style active pip on
+the wordmark + amethyst ambient depth wash. Reads as a book-chapter
+divider for the FLATLAND library.*
+
+<p className="variant-rev-label">v1 — sidebar-section recipe at hero scale</p>
+<div className="asset-preview-link" data-type="og">
+  <AmethystV1 id="amethyst-v1" type="og" />
+</div>
+
+<p className="variant-rev-label">v2 — pip moved into wordmark row, StatsBanner top hairline, badge-style chips</p>
+<div className="asset-preview-link" data-type="og">
+  <AmethystV2 id="amethyst-v2" type="og" />
+</div>
+
+<p className="variant-rev-label">v3 — polish: pip on h1 ::before, per-aspect widths, geometricPrecision rendering</p>
+<div className="asset-preview-link" data-type="og">
+  <AmethystV3 id="amethyst-v3" type="og" />
+</div>
+
+### D — RUBY (showcase / "Spec Sheet" attention)
+
+*Asymmetric two-pane spec sheet. Brand identity on the left, ruby-tinted
+spec plate (perf rows, registration brackets) on the right. Reads as a
+tech-flex announcement card — designed to scroll-stop on social.*
+
+<p className="variant-rev-label">v1 — StatsBanner stats row + ruby SHOWCASE pill</p>
+<div className="asset-preview-link" data-type="og">
+  <RubyV1 id="ruby-v1" type="og" />
+</div>
+
+<p className="variant-rev-label">v2 — refactor to asymmetric two-pane spec plate (ruby as structure, not paint)</p>
+<div className="asset-preview-link" data-type="og">
+  <RubyV2 id="ruby-v2" type="og" />
+</div>
+
+<p className="variant-rev-label">v3 — polish: corner registration brackets, [REC] indicator, per-aspect grid tuning</p>
+<div className="asset-preview-link" data-type="og">
+  <RubyV3 id="ruby-v3" type="og" />
+</div>
+
+### E — GOLD + DIAMOND (production combo)
+
+*Pair lore: "ship + compass." Gold drives the foil surface; diamond
+grounds the structural scaffold (TOC pip rail at left, hairline rules,
+crosshair anchor). Reads as a polished, navigable production drop.*
+
+<p className="variant-rev-label">v1 — gold foil (FeatureCard scaled) + diamond eyebrow + pip rail</p>
+<div className="asset-preview-link" data-type="og">
+  <GoldDiamondV1 id="goldd-v1" type="og" />
+</div>
+
+<p className="variant-rev-label">v2 — eyebrow bracket terminator, two-axis structure (diamond left + gold bottom)</p>
+<div className="asset-preview-link" data-type="og">
+  <GoldDiamondV2 id="goldd-v2" type="og" />
+</div>
+
+<p className="variant-rev-label">v3 — polish: corner-tick eyebrow, F.L · 0.1α blueprint stamp, per-aspect adapts</p>
+<div className="asset-preview-link" data-type="og">
+  <GoldDiamondV3 id="goldd-v3" type="og" />
+</div>
+
+### F — RUBY + AMETHYST (drama-from-depth combo)
+
+*Pair lore: "showcase emerging from authority." Amethyst sidebar guide
+on the left + ruby spike accents (tick, eyebrow, badge). Ruby attention
+backed by visible structural depth.*
+
+<p className="variant-rev-label">v1 — amethyst guide rule + lower-left depth wash + ruby underline</p>
+<div className="asset-preview-link" data-type="og">
+  <RubyAmethystV1 id="rubya-v1" type="og" />
+</div>
+
+<p className="variant-rev-label">v2 — ruby tick over amethyst guide (sidebar-pip recipe) + amethyst terminal rule</p>
+<div className="asset-preview-link" data-type="og">
+  <RubyAmethystV2 id="rubya-v2" type="og" />
+</div>
+
+<p className="variant-rev-label">v3 — polish: per-format tick sizing, slug top-border, icon-only halo reorder</p>
+<div className="asset-preview-link" data-type="og">
+  <RubyAmethystV3 id="rubya-v3" type="og" />
+</div>
+
+### G — FULL GAUNTLET (all 8 gems, infinity-stones lore)
+
+*All 8 gems present, each doing semantic meaning-work. Designed as a
+"color taxonomy" statement — gold leads, every other gem holds its
+system role. Approach evolved across revisions to find the best
+gem-deployment that doesn't read as rainbow-flag.*
+
+<p className="variant-rev-label">v1 — Approach A: 8-cell taxonomy legend (one cell per gem)</p>
+<div className="asset-preview-link" data-type="og">
+  <GauntletV1 id="gauntlet-v1" type="og" />
+</div>
+
+<p className="variant-rev-label">v2 — gold promoted to structural lead; 7-channel signal rail (emphasis: amethyst + diamond)</p>
+<div className="asset-preview-link" data-type="og">
+  <GauntletV2 id="gauntlet-v2" type="og" />
+</div>
+
+<p className="variant-rev-label">v3 — polish: dropped per-stripe glyph row, sharper hierarchy, gauntlet wreath for icon-only</p>
+<div className="asset-preview-link" data-type="og">
+  <GauntletV3 id="gauntlet-v3" type="og" />
+</div>
+
+<style>{`
+  .variant-rev-label {
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-size: 0.75rem;
+    font-weight: 500;
+    letter-spacing: 0.04em;
+    color: color-mix(in oklab, var(--diamond) 30%, var(--muted-foreground));
+    margin-block: calc(var(--spacing) * 6) calc(var(--spacing) * 1.5);
+    padding-bottom: calc(var(--spacing) * 1);
+    border-bottom: 1px dashed color-mix(in oklab, var(--border) 70%, transparent);
+  }
+`}</style>
 
 <div className="hidden-capture-targets">
   <BrandAsset id="capture-icon-only" type="icon-only" isCapture={true} />

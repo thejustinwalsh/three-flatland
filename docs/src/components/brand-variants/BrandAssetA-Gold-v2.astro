@@ -1,0 +1,569 @@
+---
+/**
+ * BrandAssetA — Gold-anchored foil trading-card variant.
+ *
+ * REVISION 2 (v2) — applies impeccable critique to v1.
+ *
+ * What changed from v1:
+ *
+ *  - Trading-card ANATOMY introduced. Composition now reads as a card,
+ *    not just "stuff in middle":
+ *      ┌──────────────────────────────────────────┐
+ *      │  eyebrow ··················  edition      │  ← top rail
+ *      │                                            │
+ *      │           [icon]  flatland v0.1            │  ← hero block
+ *      │           tagline goes here                │
+ *      │                                            │
+ *      │  ─────────────────────────────────────── │  ← StatsBanner-style hairline
+ *      │  ↗ repo                       # install   │  ← bottom rail
+ *      └──────────────────────────────────────────┘
+ *  - Lens-flare star REPLACED with a single asymmetric specular streak
+ *    sweeping diagonally across the surface. The conic ring + streak
+ *    sells "lit foil" without competing radial blooms.
+ *  - Radial glow replaced with a single soft gold pool at upper-left
+ *    pinned to the streak's bright pole — one consistent light source.
+ *  - Wordmark text-shadow removed; the foil rim does the heavy lifting.
+ *    Subtle gold underline gradient (StatsBanner pattern) replaces the
+ *    glow.
+ *  - Eyebrow (`engineering log // 2026 — alpha`) added above wordmark in
+ *    JetBrains Mono — gives the asset spoken voice.
+ *  - Edition chip at top-right (`ed. gold/01`) — tiny, treated like a
+ *    trading-card edition number, gold tinted.
+ *  - Diamond rule diagonal removed — was decorative not taxonomic.
+ *    Replaced with a vertical gold ValueProp-style rail on the left edge
+ *    that connects the top rail to the bottom rail (frame thread).
+ *  - Per-variant composition tuning: wide gets a horizontal band layout
+ *    that takes advantage of the 3:1 aspect; icon-only gets a stripped
+ *    treatment (no anatomy, just centered icon with foil halo).
+ */
+import BrandIcon from '../BrandIcon.astro'
+
+interface Props {
+    id: string
+    type: 'banner' | 'og' | 'wide' | 'social-x' | 'icon-only'
+    title?: string
+    tagline?: string
+    info?: boolean
+    isCapture?: boolean
+}
+
+const {
+    id,
+    type,
+    title = 'flatland',
+    tagline = 'Sprite-first 2D for Three.js + R3F. WebGPU-native.',
+    info = true,
+    isCapture = false,
+} = Astro.props
+
+interface Dimensions {
+    w: number
+    h: number
+}
+
+const dimensions: Record<Props['type'], Dimensions> = {
+    banner: { w: 1280, h: 640 },
+    og: { w: 1200, h: 630 },
+    wide: { w: 3000, h: 1000 },
+    'social-x': { w: 1200, h: 628 },
+    'icon-only': { w: 512, h: 512 },
+}
+
+const { w: width, h: height } = dimensions[type] ?? dimensions['og']
+const showInfo = info && type !== 'icon-only'
+const isWide = type === 'wide'
+const isIconOnly = type === 'icon-only'
+
+// Frozen foil pose — single off-camera light coming from upper-left.
+const sceneAngle = '125deg'
+const lightAngle = '128deg'
+
+const repoLine = 'thejustinwalsh/three-flatland'
+const installLine = '# npm i three-flatland@alpha'
+const eyebrow = 'engineering log · 2026 // alpha'
+const editionChip = 'ed. gold/01'
+---
+
+<div
+    class:list={['brand-asset-root', 'not-content', type, { 'capture-mode': isCapture }]}
+    id={id}
+    style={`--asset-width: ${width}; --asset-height: ${height}; --scene-angle: ${sceneAngle}; --light-angle: ${lightAngle};`}
+>
+    {/* Layer 1 — gold soft surface tint, anchored to single light pole. */}
+    <div class="brand-bg-tint" aria-hidden="true"></div>
+
+    {/* Layer 2 — scene-angle conic foil rim (full surface). */}
+    <div class="brand-foil-base" aria-hidden="true"></div>
+
+    {/* Layer 3 — cursor hotspot peak on the rim (frozen). */}
+    <div class="brand-foil-hotspot" aria-hidden="true"></div>
+
+    {/* Layer 4 — single asymmetric specular streak across surface. */}
+    <div class="brand-foil-streak" aria-hidden="true"></div>
+
+    {/* Sub-perceptual fractal noise overlay (≤4%, overlay blend). */}
+    <div class="brand-noise" aria-hidden="true"></div>
+
+    {/* ValueProp-style left rail — vertical gold thread. */}
+    {!isIconOnly && <div class="brand-rail" aria-hidden="true"></div>}
+
+    <div class="brand-content">
+        {isIconOnly ? (
+            <div class="icon-only-frame">
+                <BrandIcon size="62%" />
+            </div>
+        ) : (
+            <Fragment>
+                {/* TOP RAIL — eyebrow + edition. */}
+                <div class="top-rail">
+                    <span class="eyebrow">{eyebrow}</span>
+                    <span class="edition">{editionChip}</span>
+                </div>
+
+                {/* HERO BLOCK — icon + wordmark stack. */}
+                <div class:list={['brand-stack', { 'brand-stack-wide': isWide }]}>
+                    <div class="brand-mark">
+                        <BrandIcon size={isWide ? '14cqi' : '20cqi'} />
+                    </div>
+                    <div class="brand-text">
+                        <h1 class="brand-wordmark">
+                            {title}
+                            <span class="wordmark-version">v0.1</span>
+                        </h1>
+                        <p class="brand-tagline">{tagline}</p>
+                    </div>
+                </div>
+
+                {/* HAIRLINE — StatsBanner-style gem-tinted gradient bar. */}
+                {showInfo && <div class="brand-hairline" aria-hidden="true"></div>}
+
+                {/* BOTTOM RAIL — info chips. */}
+                {showInfo && (
+                    <div class="bottom-rail">
+                        <span class="info-chip github">{repoLine}</span>
+                        <span class="info-chip npm">{installLine}</span>
+                    </div>
+                )}
+            </Fragment>
+        )}
+    </div>
+</div>
+
+<style>
+    .brand-asset-root {
+        --tf-bg: #111418;
+        --tf-card: #1a1d22;
+        --tf-fg: #e5e7eb;
+        --tf-fg-muted: #9aa3b2;
+        --tf-fg-dim: #6b7280;
+        --tf-border: rgba(255, 255, 255, 0.08);
+
+        --tf-gold: #e0a740;
+        --tf-gold-low: #6b4810;
+        --tf-gold-high: #f1c45f;
+        --tf-gold-soft: rgba(224, 167, 64, 0.10);
+
+        --tf-diamond: #4ec0e0;
+
+        position: relative;
+        overflow: hidden;
+        color: var(--tf-fg);
+        background: var(--tf-bg);
+        container-type: inline-size;
+        isolation: isolate;
+
+        font-family: 'Public Sans', system-ui, sans-serif;
+
+        width: calc(var(--asset-width) * 1px);
+        height: calc(var(--asset-height) * 1px);
+        aspect-ratio: var(--asset-width) / var(--asset-height);
+
+        box-shadow:
+            inset 0 0 0 1px color-mix(in oklab, var(--tf-gold) 38%, transparent);
+    }
+
+    :not(.capture-mode).brand-asset-root {
+        width: 100%;
+        height: auto;
+    }
+
+    /* ── Single light pole — gold soft tint flowing from upper-left. */
+    .brand-bg-tint {
+        position: absolute;
+        inset: 0;
+        background:
+            radial-gradient(
+                90% 70% at 18% 14%,
+                color-mix(in oklab, var(--tf-gold) 16%, transparent) 0%,
+                transparent 60%
+            ),
+            linear-gradient(
+                calc(var(--scene-angle) - 45deg),
+                var(--tf-gold-soft) 0%,
+                transparent 75%
+            );
+        z-index: 0;
+        pointer-events: none;
+    }
+
+    /* ── Foil rim ring (FeatureCard pattern, baked). */
+    .brand-foil-base {
+        position: absolute;
+        inset: 0;
+        padding: 1.5px;
+        background: conic-gradient(
+            from calc(var(--light-angle) - 90deg),
+            color-mix(in oklab, var(--tf-gold-high) 80%, transparent) 0deg,
+            color-mix(in oklab, var(--tf-gold) 28%, var(--tf-border)) 95deg,
+            color-mix(in oklab, var(--tf-border) 95%, transparent) 180deg,
+            color-mix(in oklab, var(--tf-gold) 28%, var(--tf-border)) 265deg,
+            color-mix(in oklab, var(--tf-gold-high) 80%, transparent) 360deg
+        );
+        -webkit-mask:
+            linear-gradient(#000, #000) content-box,
+            linear-gradient(#000, #000);
+        -webkit-mask-composite: xor;
+        mask:
+            linear-gradient(#000, #000) content-box,
+            linear-gradient(#000, #000);
+        mask-composite: exclude;
+        z-index: 1;
+        pointer-events: none;
+    }
+
+    /* ── Frozen rim hotspot — narrow bright peak. */
+    .brand-foil-hotspot {
+        position: absolute;
+        inset: 0;
+        padding: 1.5px;
+        background: conic-gradient(
+            from calc(var(--light-angle) - 18deg),
+            transparent 0deg,
+            color-mix(in oklab, white 75%, var(--tf-gold-high)) 18deg,
+            transparent 38deg,
+            transparent 360deg
+        );
+        -webkit-mask:
+            linear-gradient(#000, #000) content-box,
+            linear-gradient(#000, #000);
+        -webkit-mask-composite: xor;
+        mask:
+            linear-gradient(#000, #000) content-box,
+            linear-gradient(#000, #000);
+        mask-composite: exclude;
+        opacity: 0.85;
+        mix-blend-mode: screen;
+        z-index: 2;
+        pointer-events: none;
+    }
+
+    /* ── Single asymmetric specular streak — lit foil sheen across the
+     * surface. Replaces v1's lens-flare star (too generic / too AI-glow). */
+    .brand-foil-streak {
+        position: absolute;
+        inset: -10%;
+        background: linear-gradient(
+            calc(var(--light-angle) + 35deg),
+            transparent 38%,
+            color-mix(in oklab, var(--tf-gold-high) 22%, transparent) 46%,
+            color-mix(in oklab, white 55%, var(--tf-gold-high)) 50%,
+            color-mix(in oklab, var(--tf-gold-high) 22%, transparent) 54%,
+            transparent 62%
+        );
+        opacity: 0.32;
+        mix-blend-mode: screen;
+        z-index: 1;
+        pointer-events: none;
+        filter: blur(0.6cqi);
+    }
+
+    .brand-noise {
+        position: absolute;
+        inset: 0;
+        opacity: 0.04;
+        background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0.6 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+        background-size: 220px 220px;
+        mix-blend-mode: overlay;
+        z-index: 3;
+        pointer-events: none;
+    }
+
+    /* ── Vertical left rail — ValueProp foil-bar pattern, scaled to
+     * the asset edge. Connects top rail and bottom rail visually. */
+    .brand-rail {
+        position: absolute;
+        left: 4cqi;
+        top: 12%;
+        bottom: 12%;
+        width: 2px;
+        background: linear-gradient(
+            180deg,
+            color-mix(in oklab, var(--tf-gold) 20%, transparent) 0%,
+            color-mix(in oklab, var(--tf-gold) 40%, transparent) 25%,
+            color-mix(in oklab, var(--tf-gold-high) 92%, white) 50%,
+            color-mix(in oklab, var(--tf-gold) 40%, transparent) 75%,
+            color-mix(in oklab, var(--tf-gold) 20%, transparent) 100%
+        );
+        border-radius: 1px;
+        z-index: 4;
+        pointer-events: none;
+    }
+
+    .wide .brand-rail {
+        left: 3cqi;
+    }
+    .banner .brand-rail {
+        left: 3.5cqi;
+    }
+
+    .brand-content {
+        position: relative;
+        z-index: 5;
+        height: 100%;
+        display: grid;
+        grid-template-rows: auto 1fr auto auto;
+        padding: 4.5cqi 5cqi 4.5cqi 8cqi;
+        box-sizing: border-box;
+        gap: 0;
+    }
+
+    .wide .brand-content {
+        padding: 4cqi 5cqi 4cqi 7cqi;
+        grid-template-rows: auto 1fr auto auto;
+    }
+
+    /* ── icon-only — strip anatomy, just the icon with a gold halo. */
+    .icon-only .brand-content {
+        display: flex;
+        padding: 8cqi;
+        justify-content: center;
+        align-items: center;
+        grid-template-rows: none;
+    }
+    .icon-only-frame {
+        position: relative;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 76cqi;
+        max-width: 100%;
+        aspect-ratio: 1;
+    }
+    .icon-only-frame::before {
+        content: '';
+        position: absolute;
+        inset: -3cqi;
+        border-radius: 50%;
+        background: radial-gradient(
+            circle,
+            color-mix(in oklab, var(--tf-gold-high) 26%, transparent) 0%,
+            transparent 65%
+        );
+        filter: blur(1.6cqi);
+        z-index: -1;
+    }
+
+    /* ── TOP RAIL — eyebrow + edition. */
+    .top-rail {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 2cqi;
+        font-family: 'JetBrains Mono', ui-monospace, monospace;
+        font-size: clamp(8px, 1.2cqi, 14px);
+        font-weight: 500;
+        color: var(--tf-fg-dim);
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+    }
+    .wide .top-rail {
+        font-size: clamp(8px, 0.9cqi, 12px);
+    }
+
+    .eyebrow {
+        color: color-mix(in oklab, var(--tf-gold) 60%, var(--tf-fg-muted));
+    }
+
+    .edition {
+        padding: 0.4cqi 0.9cqi;
+        border-radius: 0.3cqi;
+        color: var(--tf-gold-high);
+        background: color-mix(in oklab, var(--tf-gold) 10%, transparent);
+        border: 1px solid color-mix(in oklab, var(--tf-gold) 30%, transparent);
+        text-transform: none;
+        letter-spacing: 0.02em;
+        font-feature-settings: 'tnum';
+    }
+
+    /* ── HERO STACK — icon + wordmark + tagline. */
+    .brand-stack {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        text-align: left;
+        gap: 2.5cqi;
+        align-self: center;
+        justify-self: start;
+    }
+
+    .brand-stack-wide {
+        flex-direction: row;
+        align-items: center;
+        gap: 4cqi;
+        width: 100%;
+        justify-content: flex-start;
+    }
+    .wide .brand-mark {
+        flex-shrink: 0;
+    }
+    .wide .brand-text {
+        flex: 1;
+        min-width: 0;
+    }
+
+    .brand-mark {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        line-height: 0;
+        filter: drop-shadow(
+            0 1cqi 2.5cqi color-mix(in oklab, var(--tf-gold) 36%, transparent)
+        );
+    }
+
+    .brand-text {
+        display: flex;
+        flex-direction: column;
+        gap: 1.6cqi;
+        align-items: flex-start;
+    }
+
+    /* Silkscreen wordmark — no glow, foil rim handles "lit" energy. */
+    .brand-wordmark {
+        font-family: 'Silkscreen', monospace;
+        font-weight: 700;
+        font-size: clamp(36px, 11cqi, 168px);
+        line-height: 0.95;
+        letter-spacing: -0.04em;
+        color: var(--tf-fg);
+        margin: 0;
+        display: inline-flex;
+        align-items: baseline;
+        gap: 1.2cqi;
+        position: relative;
+    }
+    .banner .brand-wordmark,
+    .wide .brand-wordmark {
+        font-size: clamp(36px, 8cqi, 128px);
+    }
+    .social-x .brand-wordmark {
+        font-size: clamp(36px, 11cqi, 152px);
+    }
+
+    /* StatsBanner-style gold gradient underline fused to the wordmark. */
+    .brand-wordmark::after {
+        content: '';
+        position: absolute;
+        left: 0;
+        right: 12%;
+        bottom: -0.6cqi;
+        height: 2px;
+        background: linear-gradient(
+            90deg,
+            var(--tf-gold-high) 0%,
+            color-mix(in oklab, var(--tf-gold) 65%, transparent) 60%,
+            transparent 100%
+        );
+    }
+
+    /* Inline version chip — sits AT baseline next to wordmark. */
+    .wordmark-version {
+        font-family: 'JetBrains Mono', ui-monospace, monospace;
+        font-weight: 500;
+        font-size: 1.5cqi;
+        letter-spacing: 0;
+        line-height: 1;
+        padding: 0.5cqi 0.9cqi;
+        border-radius: 0.3cqi;
+        color: var(--tf-gold-high);
+        background: color-mix(in oklab, var(--tf-gold) 12%, transparent);
+        border: 1px solid color-mix(in oklab, var(--tf-gold) 32%, transparent);
+        align-self: end;
+        margin-bottom: 1.2cqi;
+    }
+    .banner .wordmark-version,
+    .wide .wordmark-version {
+        font-size: 1.1cqi;
+        margin-bottom: 0.8cqi;
+    }
+    .social-x .wordmark-version {
+        font-size: 1.6cqi;
+    }
+
+    .brand-tagline {
+        font-family: 'Public Sans', system-ui, sans-serif;
+        font-weight: 400;
+        font-size: clamp(12px, 2.2cqi, 30px);
+        line-height: 1.45;
+        color: var(--tf-fg-muted);
+        margin: 0;
+        max-width: 70cqi;
+        letter-spacing: -0.005em;
+    }
+    .wide .brand-tagline {
+        font-size: clamp(11px, 1.6cqi, 20px);
+        max-width: 65cqi;
+    }
+    .banner .brand-tagline {
+        font-size: clamp(11px, 1.9cqi, 24px);
+    }
+
+    /* ── HAIRLINE — fades from gold to nothing across surface. */
+    .brand-hairline {
+        height: 1px;
+        background: linear-gradient(
+            90deg,
+            color-mix(in oklab, var(--tf-gold) 60%, transparent) 0%,
+            color-mix(in oklab, var(--tf-gold) 25%, transparent) 50%,
+            transparent 100%
+        );
+        margin-top: 2.5cqi;
+        margin-bottom: 2cqi;
+    }
+    .wide .brand-hairline {
+        margin-top: 1.8cqi;
+        margin-bottom: 1.5cqi;
+    }
+
+    /* ── BOTTOM RAIL — info chips. */
+    .bottom-rail {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 4cqi;
+        font-family: 'JetBrains Mono', ui-monospace, monospace;
+        font-size: clamp(9px, 1.4cqi, 16px);
+        font-weight: 500;
+    }
+    .wide .bottom-rail {
+        font-size: clamp(9px, 1cqi, 14px);
+        gap: 3cqi;
+    }
+    .info-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.6em;
+        white-space: nowrap;
+        letter-spacing: 0.01em;
+    }
+    .info-chip.github {
+        color: var(--tf-diamond);
+    }
+    .info-chip.github::before {
+        content: '↗';
+        opacity: 0.7;
+    }
+    .info-chip.npm {
+        color: var(--tf-gold-high);
+    }
+</style>
