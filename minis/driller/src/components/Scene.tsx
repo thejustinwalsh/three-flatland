@@ -18,6 +18,7 @@ import {
 import { TILE_PX } from '../constants'
 import { cameraSystem } from '../systems/camera'
 import { autotilePass } from '../systems/autotile-pass'
+import { streamChunks } from '../systems/generation'
 import { TILE_COLORS, useDrillerMaterial } from '../materials'
 
 extend({ Flatland, Sprite2D, Sprite2DMaterial })
@@ -73,6 +74,14 @@ export function Scene() {
     gs.tick++
 
     cameraSystem(world)
+
+    // Stream chunks based on the current camera row.
+    const camForStream = world.get(Camera)
+    if (camForStream) {
+      const cameraRow = Math.floor(camForStream.y / TILE_PX)
+      streamChunks(world, cameraRow)
+    }
+
     autotilePass(world)
 
     // Apply camera trait to Flatland's internal orthographic camera.
