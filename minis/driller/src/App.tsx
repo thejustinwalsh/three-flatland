@@ -101,9 +101,22 @@ function createZzfx(): PlaySoundFn {
   }
 }
 
+/**
+ * Read `?mode=hero|full` from the URL. Default = hero (infinite,
+ * no title attract, no leaderboard) so the dev page boots straight
+ * into the loop. Pass `?mode=full` to test the title attract +
+ * 3-life leaderboard flow.
+ */
+function readModeFromUrl(): 'hero' | 'full' {
+  if (typeof window === 'undefined') return 'hero'
+  const m = new URLSearchParams(window.location.search).get('mode')
+  return m === 'full' ? 'full' : 'hero'
+}
+
 export default function App() {
   const [zzfx, setZzfx] = useState<PlaySoundFn>(() => () => {})
   const initRef = useRef(false)
+  const mode = readModeFromUrl()
 
   useEffect(() => {
     const init = () => {
@@ -121,7 +134,7 @@ export default function App() {
 
   return (
     <div style={{ width: '100%', height: '100%' }}>
-      <Driller mode="full" zzfx={zzfx} isVisible />
+      <Driller mode={mode} zzfx={zzfx} isVisible />
     </div>
   )
 }

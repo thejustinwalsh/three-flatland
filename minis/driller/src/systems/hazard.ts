@@ -13,6 +13,7 @@ import {
   HAZARD_DEPTH_BOOST,
   HAZARD_GRAVITY_PX,
   HAZARD_SPAWN_COL_RANGE,
+  HAZARD_SPAWN_INTERVAL_FLOOR,
   HAZARD_SPAWN_INTERVAL_TICKS,
   HAZARD_TERMINAL_PX,
   HAZARD_WARNING_TICKS,
@@ -53,7 +54,10 @@ export function hazardSpawnSystem(world: World): void {
   const boost = HAZARD_DEPTH_BOOST[biome.name] ?? 0
   if (boost <= 0) return
 
-  const interval = Math.max(60, Math.floor(HAZARD_SPAWN_INTERVAL_TICKS / (1 + boost)))
+  const interval = Math.max(
+    HAZARD_SPAWN_INTERVAL_FLOOR,
+    Math.floor(HAZARD_SPAWN_INTERVAL_TICKS / (1 + boost)),
+  )
   if (gs.tick - lastSpawnTick < interval) return
 
   // Don't stack hazards: skip if any non-landed Hazard is within the spawn range.

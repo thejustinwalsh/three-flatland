@@ -64,14 +64,16 @@ export const HAZARD_GRAVITY_PX = 0.8
 export const HAZARD_TERMINAL_PX = 18
 
 /** Spawn cadence — one hazard every N ticks (when conditions met). */
-export const HAZARD_SPAWN_INTERVAL_TICKS = 240   // ~4s baseline
-/** Per-biome multiplier (deeper biomes spawn more). Index by biome name. */
+export const HAZARD_SPAWN_INTERVAL_TICKS = 600   // ~10s baseline
+/** Hard floor on the per-spawn interval after biome scaling. */
+export const HAZARD_SPAWN_INTERVAL_FLOOR = 360   // ~6s minimum
+/** Per-biome multiplier (deeper biomes spawn more). Lower = less aggressive. */
 export const HAZARD_DEPTH_BOOST = {
   topsoil: 0,
-  'deep-dirt': 0.5,
-  stoneworks: 1,
-  'crystal-caverns': 1.2,
-  core: 1.5,
+  'deep-dirt': 0.2,
+  stoneworks: 0.4,
+  'crystal-caverns': 0.6,
+  core: 0.8,
 } as const
 /** Spawn skipped if a hazard already exists in this column. */
 export const HAZARD_SPAWN_COL_RANGE = 3        // ±3 columns from driller

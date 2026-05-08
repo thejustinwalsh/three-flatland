@@ -48,7 +48,7 @@ export function deathSystem(world: World): void {
     if (gs.tick - deathTick >= 12) {
       deathPhase = 'ghost'
       deathTick = gs.tick
-      clearGhostChute(world, deathCol)
+      clearGhostHalo(world, deathCol, deathRow)
     }
     return
   }
@@ -61,17 +61,21 @@ export function deathSystem(world: World): void {
   }
 
   if (deathPhase === 'respawn') {
-    respawnDriller(world)
-
     if (gs.mode === 'full') {
       const newLives = gs.lives - 1
       if (newLives <= 0) {
+        // Third death — full reset goes via leaderboard prompt; the
+        // restart handler in Game.tsx wipes seed + grid + lives.
+        // Driller is NOT respawned here; restart flow does that.
         world.set(GameState, { lives: 0, runState: 'leaderboard' })
         deathPhase = 'idle'
         return
       }
+      respawnDrillerAtDeath(world)
       world.set(GameState, { lives: newLives, runState: 'playing' })
     } else {
+      // Hero / infinite mode — always respawn at the death cell.
+      respawnDrillerAtDeath(world)
       world.set(GameState, { runState: 'playing' })
     }
     deathPhase = 'idle'
@@ -107,31 +111,47 @@ function scatterGems(world: World, count: number, col: number, row: number, tick
   }
 }
 
-function clearGhostChute(world: World, deathCol: number): void {
+/**
+ * Ghost rises 3 rows above the death position and clears soil in a
+ * 3-wide × 3-tall halo (cols ±1, rows -3..-1). STONE / ROCK / FIXTURE
+ * survive the ghost's pass; only SOIL is cleared. This gives the
+ * driller a small bubble to respawn into without immediately re-dying
+ * to a chunk above the death point.
+ */
+function clearGhostHalo(world: World, deathCol: number, deathRow: number): void {
   const grid = world.get(Grid)
   if (!grid) return
   const { cols, rows, tiles, flags } = grid
-  for (let r = 0; r < rows; r++) {
+  for (let dr = 1; dr <= 3; dr++) {
+    const r = deathRow - dr
+    if (r < 0) continue
     for (let dc = -1; dc <= 1; dc++) {
       const c = deathCol + dc
       if (c < 0 || c >= cols) continue
       const idx = r * cols + c
       if (idx >= tiles.length) continue
       const t = tiles[idx]!
-      if (t === TILE_AIR || t > 1) continue
+      // Only SOIL clears — stone/rock/fixture/explosive survive.
+      if (t === TILE_AIR) continue
+      if (t > 1) continue
       tiles[idx] = TILE_AIR
       flags[idx] = (flags[idx] ?? 0) | FLAG_AUTOTILE_DIRTY
     }
   }
 }
 
-function respawnDriller(world: World): void {
+/**
+ * Respawn the driller AT the death position (not at the world top).
+ * Top-of-world reset only happens after 3 deaths in full mode (handled
+ * via the leaderboard branch in the deathSystem state machine).
+ */
+function respawnDrillerAtDeath(world: World): void {
   world.spawn(
     Driller({
       col: deathCol,
-      row: 0,
+      row: deathRow,
       px: deathCol * TILE_PX + TILE_PX / 2,
-      py: TILE_PX / 2,
+      py: deathRow * TILE_PX + TILE_PX / 2,
       facing: 1,
       digCooldownMs: 0,
     }),
