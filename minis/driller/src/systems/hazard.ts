@@ -1,12 +1,12 @@
 import type { World } from 'koota'
 import {
-  Camera,
   Driller,
   FLAG_AUTOTILE_DIRTY,
   GameState,
   Grid,
   Hazard,
   TILE_AIR,
+  TILE_SOIL,
   TILE_STONE,
 } from '../traits'
 import {
@@ -17,6 +17,7 @@ import {
   HAZARD_SPAWN_INTERVAL_TICKS,
   HAZARD_TERMINAL_PX,
   HAZARD_WARNING_TICKS,
+  PLAYFIELD_TOP_OFFSET_ROWS,
   PLAY_COLS,
   TILE_PX,
 } from '../constants'
@@ -47,8 +48,7 @@ export function hazardSpawnSystem(world: World): void {
   if (!driller) return
   const d = driller.get(Driller)!
   const grid = world.get(Grid)
-  const cam = world.get(Camera)
-  if (!grid || !cam) return
+  if (!grid) return
 
   const biome = biomeAt(d.row)
   const boost = HAZARD_DEPTH_BOOST[biome.name] ?? 0
@@ -70,9 +70,13 @@ export function hazardSpawnSystem(world: World): void {
   })
   if (nearbyExists) return
 
-  // Find candidate columns near the driller with a visible AIR column from
-  // the viewport top down at least MIN_FALL_CELLS.
-  const topRow = Math.max(0, Math.floor(cam.y / TILE_PX))
+  // Find candidate columns near the driller with a visible AIR column
+  // from the LOGICAL playfield top (a fixed N rows above the driller)
+  // down at least MIN_FALL_CELLS. A taller viewport must NOT be a
+  // hazard-dodging advantage, so we ignore cam.y here on purpose —
+  // rocks spawn at the same logical position regardless of how far
+  // back into history the renderer is showing.
+  const topRow = Math.max(0, d.row - PLAYFIELD_TOP_OFFSET_ROWS)
   const { cols, rows, tiles } = grid
   const candidates: { col: number; warningRow: number }[] = []
   for (let dc = -HAZARD_SPAWN_COL_RANGE; dc <= HAZARD_SPAWN_COL_RANGE; dc++) {
@@ -176,6 +180,74 @@ export function hazardTickSystem(world: World): void {
 
     entity.set(Hazard, { py: newPy, vy: newVy })
   })
+}
+
+/**
+ * Kirby-style avalanche cascade. When 4+ TILE_STONE cells form a
+ * 4-connected cluster, the pile is heavy enough to crush the soil
+ * below it: every SOIL cell directly under the cluster's bottom edge
+ * is converted to AIR. This vacates support for the soil chunk that
+ * was holding everything up, so the next `detectAndSag` tick will
+ * mark THAT chunk as sagging and the avalanche cascades naturally
+ * through the existing collapse system — no new entity types needed.
+ *
+ * Runs after `hazardTickSystem` so a freshly-landed rock is included
+ * in cluster detection on the SAME tick.
+ */
+const AVALANCHE_THRESHOLD = 4
+
+export function rockAvalancheSystem(world: World): void {
+  const grid = world.get(Grid)
+  if (!grid) return
+  const { cols, rows, tiles, flags } = grid
+
+  // 4-connected flood-fill over TILE_STONE.
+  const seen = new Uint8Array(tiles.length)
+  const stack: number[] = []
+  for (let i = 0; i < tiles.length; i++) {
+    if (seen[i] || tiles[i] !== TILE_STONE) continue
+    const cells: number[] = []
+    stack.length = 0
+    stack.push(i)
+    seen[i] = 1
+    while (stack.length) {
+      const idx = stack.pop()!
+      cells.push(idx)
+      const c = idx % cols
+      const r = (idx - c) / cols
+      const ns: number[] = []
+      if (c > 0) ns.push(idx - 1)
+      if (c < cols - 1) ns.push(idx + 1)
+      if (r > 0) ns.push(idx - cols)
+      if (r < rows - 1) ns.push(idx + cols)
+      for (const ni of ns) {
+        if (!seen[ni] && tiles[ni] === TILE_STONE) {
+          seen[ni] = 1
+          stack.push(ni)
+        }
+      }
+    }
+    if (cells.length < AVALANCHE_THRESHOLD) continue
+
+    // Punch through SOIL directly below any STONE in the cluster whose
+    // immediate neighbour-down is SOIL (not AIR, not another STONE in
+    // the cluster). The cluster itself doesn't move on this tick — the
+    // collapse system picks up the now-unsupported soil above next tick.
+    for (const idx of cells) {
+      const c = idx % cols
+      const r = (idx - c) / cols
+      if (r + 1 >= rows) continue
+      const belowIdx = (r + 1) * cols + c
+      const below = tiles[belowIdx]
+      if (below === TILE_SOIL) {
+        // Crush only diggable cells (SOIL). Leave other STONE / fixtures /
+        // rocks alone — those would each be their own design call.
+        tiles[belowIdx] = TILE_AIR
+        flags[belowIdx] = (flags[belowIdx] ?? 0) | FLAG_AUTOTILE_DIRTY
+        markCellAndNeighborsDirty(world, c, r + 1)
+      }
+    }
+  }
 }
 
 /** Reset module-level state on world rotation / restart. */

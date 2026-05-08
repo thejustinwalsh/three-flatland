@@ -14,13 +14,14 @@ import { explosiveSystem } from '../systems/explosive'
 import { gemGravitySystem } from '../systems/gem-gravity'
 import { plannerTick } from '../systems/ai-planner'
 import { resetStreaming, streamChunks } from '../systems/generation'
-import { hazardSpawnSystem, hazardTickSystem, resetHazardSpawn } from '../systems/hazard'
+import { hazardSpawnSystem, hazardTickSystem, resetHazardSpawn, rockAvalancheSystem } from '../systems/hazard'
 import { particlesSystem } from '../systems/particles'
 import { useDrillerMaterial } from '../materials'
 import { AIDebugPanel, shouldShowAIDebug } from './AIDebugPanel'
 import { DrillerView } from './DrillerView'
 import { GemRenderer } from './GemRenderer'
 import { HazardView } from './HazardView'
+import { PlayfieldOverlay } from './PlayfieldOverlay'
 import { TileRenderer } from './TileRenderer'
 import { shallowEqual } from '../shallow'
 
@@ -88,6 +89,7 @@ export function Scene({ onShellStateChange }: SceneProps) {
       hazardSpawnSystem(world)
     }
     hazardTickSystem(world)
+    rockAvalancheSystem(world)
     explosiveSystem(world)
     gemGravitySystem(world, deltaMs)
     collapseTick(world)
@@ -145,6 +147,7 @@ export function Scene({ onShellStateChange }: SceneProps) {
       <GemRenderer material={material} />
       <HazardView material={material} />
       <DrillerView material={material} />
+      <PlayfieldOverlay material={material} />
       {shouldShowAIDebug() && <AIDebugPanel />}
     </flatland>
   )

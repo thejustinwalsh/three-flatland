@@ -6,6 +6,7 @@ import {
   Camera,
   Explosive,
   FLAG_FALLING,
+  FLAG_PRECARIOUS,
   FLAG_SAGGING,
   Grid,
   TILE_AIR,
@@ -37,12 +38,42 @@ const TINT_EXPLOSIVE_LIT = [1.0, 0.55, 0.20] as const // pulsing when triggered
 const TINT_FIXTURE_BONE = [0.91, 0.90, 0.83] as const
 const TINT_FIXTURE_MUSHROOM = [0.66, 0.55, 0.98] as const
 const TINT_FIXTURE_CRYSTAL = [0.49, 0.23, 0.93] as const
-const TINT_SAG = [0.66, 0.48, 0.24] as const
+// Sag flash: warm desaturated sand that pulses to a bright orange. The
+// flash period (~280ms) is long enough to read clearly without feeling
+// frantic at the surface; the SAG_DURATION_TICKS ≈ 0.7s gives the
+// player ~3 pulses to react before the chunk falls.
+const TINT_SAG_LO = [0.66, 0.48, 0.24] as const
+const TINT_SAG_HI = [0.95, 0.62, 0.28] as const
 const TINT_FALL = [0.85, 0.48, 0.24] as const
+// Predictive "your next move makes this fall". Faster pulse, cooler
+// hue so it reads distinctly from an active sag — this is "danger
+// AHEAD", not "danger NOW".
+const TINT_PRECARIOUS_LO = [0.55, 0.34, 0.20] as const
+const TINT_PRECARIOUS_HI = [0.92, 0.40, 0.30] as const
 
-function pickTint(tile: number, frame: number, sagging: boolean, falling: boolean, triggeredExplosive: boolean): readonly [number, number, number] {
+function lerp3(a: readonly [number, number, number], b: readonly [number, number, number], t: number): readonly [number, number, number] {
+  return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t]
+}
+
+function pickTint(
+  tile: number,
+  frame: number,
+  sagging: boolean,
+  falling: boolean,
+  precarious: boolean,
+  triggeredExplosive: boolean,
+  now: number,
+): readonly [number, number, number] {
   if (falling) return TINT_FALL
-  if (sagging) return TINT_SAG
+  if (sagging) {
+    // (sin*0.5 + 0.5) maps to 0..1 — smooth pulse, no hard flicker.
+    const t = Math.sin((now / 280) * Math.PI * 2) * 0.5 + 0.5
+    return lerp3(TINT_SAG_LO, TINT_SAG_HI, t)
+  }
+  if (precarious) {
+    const t = Math.sin((now / 180) * Math.PI * 2) * 0.5 + 0.5
+    return lerp3(TINT_PRECARIOUS_LO, TINT_PRECARIOUS_HI, t)
+  }
   if (tile === TILE_SOIL) {
     if ((frame & 0x01) === 0) return TINT_GRASS // top-exposed → grass cap
     if (frame === 0xf) return TINT_SOIL_DEEP
@@ -101,7 +132,8 @@ export function TileRenderer({ material }: TileRendererProps) {
       if (e?.triggered) triggeredExplosives.add(e.row * cols + e.col)
     })
     // Pulse: alternate the lit tint every 8 ticks for a flashing effect.
-    const pulse = Math.floor(Date.now() / 80) % 2 === 0
+    const now = Date.now()
+    const pulse = Math.floor(now / 80) % 2 === 0
 
     let slot = 0
     for (let r = topRow; r < bottomRow && slot < POOL_SIZE; r++) {
@@ -119,8 +151,9 @@ export function TileRenderer({ material }: TileRendererProps) {
         }
         const sagging = (flags[idx]! & FLAG_SAGGING) !== 0
         const falling = (flags[idx]! & FLAG_FALLING) !== 0
+        const precarious = (flags[idx]! & FLAG_PRECARIOUS) !== 0
         const litExplosive = tile === TILE_EXPLOSIVE && triggeredExplosives.has(idx) && pulse
-        const tint = pickTint(tile, frameIndex[idx]!, sagging, falling, litExplosive)
+        const tint = pickTint(tile, frameIndex[idx]!, sagging, falling, precarious, litExplosive, now)
         sprite.position.set(c * TILE_PX + TILE_PX / 2, -(r * TILE_PX + TILE_PX / 2), 0)
         sprite.scale.set(TILE_PX, TILE_PX, 1)
         sprite.tint.r = tint[0]

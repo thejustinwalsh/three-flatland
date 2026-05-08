@@ -12,6 +12,18 @@ export const PLAY_COLS = 18
 /** Minimum visible row count; taller viewports show more. */
 export const MIN_PLAY_ROWS = 22
 
+/**
+ * Logical playfield bounds. The playfield is anchored to the driller —
+ * `PLAYFIELD_TOP_OFFSET_ROWS` rows above is the LOGICAL top (where rocks
+ * spawn from, regardless of viewport size). Rows above the logical top
+ * are "out of play" and rendered with a darkening overlay so a taller
+ * viewport can't be exploited for hazard-dodging room.
+ *
+ * The downward reveal is unchanged: tiles stream in `DOWNWARD_REVEAL_ROWS`
+ * rows ahead of the driller via the chunk streamer in `generation.ts`.
+ */
+export const PLAYFIELD_TOP_OFFSET_ROWS = 8
+
 /** Allowed integer pixel-scale steps (largest fitting one is chosen). */
 export const SCALE_STEPS = [1, 2, 4, 8] as const
 

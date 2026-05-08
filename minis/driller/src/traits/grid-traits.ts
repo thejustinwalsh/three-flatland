@@ -30,6 +30,13 @@ export function isAnchorTile(t: number): boolean {
 export const FLAG_SAGGING = 1 << 0
 export const FLAG_FALLING = 1 << 1
 export const FLAG_AUTOTILE_DIRTY = 1 << 2
+/**
+ * Predictive: this cell is part of a SOIL chunk that becomes
+ * unsupported the moment the driller drills its current planner
+ * target. A "your next move makes this fall" warning bit. Recomputed
+ * each tick by `detectAndSag` (the same system that produces SAGGING).
+ */
+export const FLAG_PRECARIOUS = 1 << 3
 
 /**
  * Singleton tile grid. The world is 18 columns wide (matches `PLAY_COLS`)

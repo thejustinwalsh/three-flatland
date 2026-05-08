@@ -5,9 +5,11 @@ import {
   FallingChunk,
   FLAG_AUTOTILE_DIRTY,
   FLAG_FALLING,
+  FLAG_PRECARIOUS,
   FLAG_SAGGING,
   GameState,
   Grid,
+  PlannerTarget,
   SaggingChunk,
   TILE_AIR,
 } from '../traits'
@@ -32,6 +34,7 @@ export function detectAndSag(world: World): void {
   if (!grid || !gs) return
   const { cols, rows, tiles, flags } = grid
 
+  // First pass: regular sag detection on the live tile grid.
   const allChunks = detectChunks(tiles, cols, rows)
   for (const ch of allChunks) {
     if (chunkHasFlag(ch, flags, FLAG_SAGGING | FLAG_FALLING)) continue
@@ -52,6 +55,38 @@ export function detectAndSag(world: World): void {
         bracedUntilTick: 0,
       }),
     )
+  }
+
+  // Second pass: PRECARIOUS prediction — "if the driller drills its
+  // current planner target, what would become unsupported?". Re-runs
+  // chunk detection on a temp tile array with the target cell punched
+  // to AIR and flags any newly-unsupported chunk's cells with
+  // FLAG_PRECARIOUS so the renderer can flash a "danger ahead" tint.
+  // Always cleared first — the warning is per-tick and per-target.
+  for (let i = 0; i < flags.length; i++) {
+    if ((flags[i]! & FLAG_PRECARIOUS) !== 0) flags[i]! &= ~FLAG_PRECARIOUS
+  }
+  const driller = world.queryFirst(Driller)
+  if (!driller) return
+  const d = driller.get(Driller)!
+  const target = driller.get(PlannerTarget)
+  if (!target) return
+  // Predict only if the target cell currently holds something
+  // diggable (SOIL/ROCK). Driller's already-AIR moves don't change
+  // support topology.
+  const tIdx = target.row * cols + target.col
+  const tTile = tiles[tIdx]
+  if (tTile === undefined || tTile === TILE_AIR) return
+  if (target.col === d.col && target.row === d.row) return
+
+  const sim = new Uint8Array(tiles)
+  sim[tIdx] = TILE_AIR
+  const simChunks = detectChunks(sim, cols, rows)
+  for (const ch of simChunks) {
+    // Skip chunks already in flight — they'd be flagged anyway.
+    if (chunkHasFlag(ch, flags, FLAG_SAGGING | FLAG_FALLING)) continue
+    if (isSupported(ch, sim, cols, rows)) continue
+    for (const idx of ch.cells) flags[idx] = (flags[idx] ?? 0) | FLAG_PRECARIOUS
   }
 }
 
