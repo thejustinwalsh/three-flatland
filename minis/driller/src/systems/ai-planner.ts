@@ -2,6 +2,8 @@ import type { World } from 'koota'
 import {
   Driller,
   FallingChunk,
+  FLAG_FALLING,
+  FLAG_SHAKING,
   GameState,
   Gem,
   Grid,
@@ -369,16 +371,72 @@ export function planEvadeFallingChunk(
   return null
 }
 
+/**
+ * Phase 2 correctness: avoid columns where a rock cluster is
+ * mid-telegraph or in-motion ABOVE the driller. Mirrors
+ * planEvadeFallingChunk for soil chunks, but operates on grid cells
+ * (rocks have no entity representation — they're FLAG_FALLING /
+ * FLAG_SHAKING bits on TILE_STONE cells).
+ *
+ * "Threatened" = any cell with TILE_STONE && (FLAG_FALLING || FLAG_SHAKING)
+ * whose row is AT or ABOVE the driller's row, with a ±1 col halo
+ * (a falling rock can scatter sideways on impact / break-off).
+ */
+export function planEvadeMovingStoneCluster(
+  world: World,
+  d: { col: number; row: number },
+): [number, number] | null {
+  const grid = world.get(Grid)
+  if (!grid) return null
+  const { cols, rows, tiles, flags } = grid
+
+  const threatenedCols = new Set<number>()
+  // Bounded scan window — we only care about rows near and above the
+  // driller. Below-driller rocks can't crush the driller.
+  const winTop = Math.max(0, d.row - 32)
+  const winBot = Math.min(rows, d.row + 1)
+  for (let r = winTop; r < winBot; r++) {
+    for (let c = 0; c < cols; c++) {
+      const idx = r * cols + c
+      if (tiles[idx] !== TILE_STONE) continue
+      const f = flags[idx] ?? 0
+      if ((f & (FLAG_FALLING | FLAG_SHAKING)) === 0) continue
+      threatenedCols.add(c - 1)
+      threatenedCols.add(c)
+      threatenedCols.add(c + 1)
+    }
+  }
+  // Driller is in danger iff its column is in the threatened set.
+  if (!threatenedCols.has(d.col)) return null
+
+  for (let dist = 1; dist < cols; dist++) {
+    for (const sign of [-1, 1] as const) {
+      const c = d.col + dist * sign
+      if (c < 0 || c >= cols) continue
+      if (threatenedCols.has(c)) continue
+      const idx = d.row * cols + c
+      const t = tiles[idx]
+      if (t === undefined) continue
+      if (t === TILE_STONE || t === TILE_ROCK) continue
+      if (isFixtureTile(t)) continue
+      return [c, d.row]
+    }
+  }
+  return null
+}
+
 export function plannerTick(world: World): void {
   const drillerEntity = world.queryFirst(Driller)
   if (!drillerEntity) return
   const d = drillerEntity.get(Driller)!
 
   // 1. Highest-priority overrides: evade incoming falling rocks AND
-  //    in-flight FallingChunks. Either threat trumps mood-based plans.
+  //    in-flight FallingChunks AND in-motion / shaking rock clusters.
+  //    Any of these threats trumps mood-based plans.
   const evadeFalling = planEvadeFallingChunk(world, d)
-  const evadeHazard = evadeFalling ? null : planEvadeHazard(world, d)
-  const evade = evadeFalling ?? evadeHazard
+  const evadeStones = evadeFalling ? null : planEvadeMovingStoneCluster(world, d)
+  const evadeHazard = evadeFalling || evadeStones ? null : planEvadeHazard(world, d)
+  const evade = evadeFalling ?? evadeStones ?? evadeHazard
   let next: [number, number] | null = evade
 
   // 2. Selected planner. If the chosen planner returns null (e.g., seeker

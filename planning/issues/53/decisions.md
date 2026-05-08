@@ -257,3 +257,25 @@ Hard rules:
 - `... refuses to brace an AIR cell`.
 
 **Verification:** 108/108 unit tests pass (was 104/104; +4 new). Typecheck clean.
+
+## Plan 1 / item D — AI evades in-motion / shaking stone clusters
+**File:** `minis/driller/src/systems/ai-planner.ts:planEvadeMovingStoneCluster`, `tests/evade-stones.test.ts`
+**Date:** 2026-05-08
+
+**Decision:** Mirror `planEvadeFallingChunk` for stones. The new `planEvadeMovingStoneCluster` scans grid cells in a window above the driller (winTop = max(0, driller.row − 32), winBot = driller.row + 1) for `TILE_STONE && (FLAG_FALLING || FLAG_SHAKING)`. Each such cell contributes its column ± 1 to a `threatenedCols` set. Driller is in danger iff `threatenedCols.has(driller.col)`. Search outward for the closest passable safe column (skip stone/rock/fixture cells), return as next step.
+
+**Why per-cell, not per-cluster:** rocks have no entity representation — the canonical state is on the grid bits. A cell-level scan captures both shaking telegraphs and in-motion clusters in one pass. Bounded window (32 rows up) avoids O(rows·cols) — at MAX_REACH=10 there are at most ~300 cells in the window for an 18-col grid.
+
+**Why ±1 col halo:** matches the existing `planEvadeHazard` and `planEvadeFallingChunk` patterns. A rock at col 6 shaking → cols {5, 6, 7} are threatened. A driller standing at col 5 still has a falling debris fragment risk (rock break-off can scatter sideways).
+
+**Wired into plannerTick:** evade priority is now `planEvadeFallingChunk` → `planEvadeMovingStoneCluster` → `planEvadeHazard`. Soil chunks first because they cover more area; stone clusters second; ambient hazards last (rocks falling from offscreen).
+
+**Tests pinning the rule:**
+- `evade-stones.test.ts: returns null when no rock cluster is in motion or shaking`
+- `... returns a side-step when a SHAKING cluster is directly above`
+- `... returns a side-step when a FALLING cluster is directly above`
+- `... ignores clusters BELOW the driller (already past)`
+- `... halos to ±1 column — cluster 1 col over still threatens`
+- `... returns null when driller is well away`
+
+**Verification:** 114/114 unit tests pass (was 108/108; +6 new). Typecheck clean.
