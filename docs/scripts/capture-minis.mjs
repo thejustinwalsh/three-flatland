@@ -242,26 +242,48 @@ for (const { slug, path } of targets) {
     })
 
     // ─── Still (PNG + WEBP) ───────────────────────────────────
-    // Preserve the canvas's alpha channel — `omitBackground: true`
-    // tells Playwright NOT to fill transparent pixels with white
-    // before encoding (the default `omitBackground: false` forces
-    // a white background, which is what was producing white
-    // posters where transparent canvas areas should have been).
-    // PNG + WEBP both support alpha; consumers (GalleryTile)
-    // composite the transparent areas onto the tile's gem-tinted
-    // bg at display time, exactly like the video already does.
-    //
-    // RAF paint sync ensures the canvas's most recent draw is in
-    // the front buffer before snapshot.
-    await page.evaluate(
+    // Pull the canvas's PIXEL BUFFER directly via the Canvas API in
+    // page context — NOT Playwright's locator.screenshot, which
+    // captures the rendered region of the page including any DOM
+    // that overlaps the canvas (Astro dev overlay, vtbot scripts,
+    // etc). `drawImage(canvas, 0, 0)` into a fresh 2D canvas reads
+    // the current canvas contents directly, bypassing the
+    // composited page layer. Done inside requestAnimationFrame so
+    // we read right after a frame draws — works for r3f canvases
+    // without `preserveDrawingBuffer: true`. Alpha is preserved
+    // through 2d canvas + PNG encode.
+    const canvasPngBase64 = await page.evaluate(
       () =>
-        new Promise((res) =>
-          requestAnimationFrame(() => requestAnimationFrame(res)),
-        ),
+        new Promise((resolve, reject) => {
+          requestAnimationFrame(() => {
+            try {
+              const c = document.querySelector(
+                '.showcase-detail-stage canvas',
+              )
+              if (!c) return reject(new Error('canvas missing at capture time'))
+              const snap = document.createElement('canvas')
+              snap.width = c.width
+              snap.height = c.height
+              const ctx = snap.getContext('2d')
+              if (!ctx) return reject(new Error('2d context unavailable'))
+              ctx.drawImage(c, 0, 0)
+              snap.toBlob(async (blob) => {
+                if (!blob) return reject(new Error('toBlob returned null'))
+                const ab = await blob.arrayBuffer()
+                const buf = new Uint8Array(ab)
+                let bin = ''
+                for (let i = 0; i < buf.length; i++) bin += String.fromCharCode(buf[i])
+                resolve(btoa(bin))
+              }, 'image/png')
+            } catch (e) {
+              reject(e)
+            }
+          })
+        }),
     )
+    const pngBuffer = Buffer.from(/** @type {string} */ (canvasPngBase64), 'base64')
     const pngPath = resolve(OUT_DIR, `${slug}.png`)
     const webpPath = resolve(OUT_DIR, `${slug}.webp`)
-    const pngBuffer = await canvas.screenshot({ omitBackground: true })
     await writeFile(pngPath, pngBuffer)
     const webpBuffer = await sharp(pngBuffer)
       .webp({ quality: 95, smartSubsample: true, alphaQuality: 100 })
