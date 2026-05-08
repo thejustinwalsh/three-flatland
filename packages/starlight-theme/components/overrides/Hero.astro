@@ -37,10 +37,10 @@ if (image) {
 ---
 
 <ContainerSection>
-    <div class="hero" data-layout={heroLayout} data-has-image={hasImage ? '' : undefined}>
+    <div class="hero hero-enter" data-layout={heroLayout} data-has-image={hasImage ? '' : undefined}>
         {
             hasImage && (
-                <div class="hero-image">
+                <div class="hero-image" data-stagger="3">
                     {darkImage && (
                         <Image
                             src={darkImage}
@@ -60,22 +60,24 @@ if (image) {
             <div class="hero-title-container">
                 {
                     announcement && (
-                        <LinkButton href={announcement.link} variant="secondary" size="2xs">
-                            {announcement.text}
-                            <Icon name="right-arrow" size="16px" />
-                        </LinkButton>
+                        <div data-stagger="0">
+                            <LinkButton href={announcement.link} variant="secondary" size="2xs">
+                                {announcement.text}
+                                <Icon name="right-arrow" size="16px" />
+                            </LinkButton>
+                        </div>
                     )
                 }
 
-                <h1 id={PAGE_TITLE_ID} data-page-title set:html={title} />
+                <h1 id={PAGE_TITLE_ID} data-page-title data-stagger="1" set:html={title} />
             </div>
 
             <div class="hero-content-container">
-                {tagline && <div class="tagline" set:html={tagline} />}
+                {tagline && <div class="tagline" data-stagger="2" set:html={tagline} />}
 
                 {
                     actions.length > 0 && (
-                        <div class="actions">
+                        <div class="actions" data-stagger="3">
                             {actions.map(
                                 ({
                                     attrs: { class: className, ...attrs } = {},
@@ -109,20 +111,85 @@ if (image) {
         flex-direction: column;
         align-items: center;
         justify-content: center;
-        padding-block: calc(var(--spacing) * 24) calc(var(--spacing) * 16);
-        gap: calc(var(--spacing) * 12);
+        padding-block: calc(var(--spacing) * 16) calc(var(--spacing) * 10);
+        gap: calc(var(--spacing) * 8);
+    }
+    @media (min-width: 768px) {
+        .hero {
+            padding-block: calc(var(--spacing) * 24) calc(var(--spacing) * 16);
+            gap: calc(var(--spacing) * 12);
+        }
+    }
+
+    /* On-load entrance — staggered fade-rise. Unlike u-reveal (scroll
+     * triggered), this fires immediately on page load so the hero
+     * lands choreographed rather than popping in. data-stagger N maps
+     * to delay = N * 80ms. Reduced motion strips the animation. */
+    .hero-enter [data-stagger] {
+        opacity: 0;
+        transform: translateY(8px);
+        animation: hero-rise 480ms cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+        animation-delay: calc(var(--stagger-index, 0) * 80ms + 60ms);
+    }
+    .hero-enter [data-stagger='0'] {
+        --stagger-index: 0;
+    }
+    .hero-enter [data-stagger='1'] {
+        --stagger-index: 1;
+    }
+    .hero-enter [data-stagger='2'] {
+        --stagger-index: 2;
+    }
+    .hero-enter [data-stagger='3'] {
+        --stagger-index: 3;
+    }
+
+    @keyframes hero-rise {
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        .hero-enter [data-stagger] {
+            animation: none;
+            opacity: 1;
+            transform: none;
+        }
     }
 
     .hero-image {
         max-width: 100%;
         width: 100%;
+        position: relative;
     }
 
-    .hero-image img {
+    /* Image gets a subtle gem-tinted ring + soft drop, so it reads as
+     * 'lit by the local theme' rather than dropped onto a flat slab.
+     * Diamond is the default frame; authors can override per-instance
+     * by setting --hero-image-gem on the .hero-image element. */
+    .hero-image img,
+    .hero-image .hero-html {
         width: 100%;
         height: auto;
         aspect-ratio: attr(width) / attr(height);
         border-radius: var(--radius);
+        outline: 1px solid
+            color-mix(
+                in oklab,
+                var(--hero-image-gem, var(--diamond)) 18%,
+                var(--border)
+            );
+        outline-offset: -1px;
+        box-shadow:
+            0 24px 60px -28px
+                color-mix(
+                    in oklab,
+                    var(--hero-image-gem, var(--diamond)) 35%,
+                    transparent
+                ),
+            0 8px 24px -12px rgb(0 0 0 / 0.35);
     }
 
     .hero-info {
