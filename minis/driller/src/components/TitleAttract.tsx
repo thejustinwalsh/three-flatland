@@ -16,8 +16,7 @@ export function TitleAttract({ topScores }: Props) {
   return (
     <div
       onClick={() => {
-        const gs = world.get(GameState)
-        if (gs) gs.runState = 'playing'
+        world.set(GameState, { runState: 'playing' })
       }}
       style={{
         position: 'absolute',

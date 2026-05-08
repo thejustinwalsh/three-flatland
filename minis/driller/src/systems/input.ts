@@ -23,36 +23,29 @@ import {
 import { detectChunks } from '../lib/chunk-detect'
 import { applyMoodEvent } from './ai-mood'
 
-/**
- * Resolve the action a click would fire at the current cursor cell, by
- * walking the priority ladder defined in spec §8.1.
- */
-export function resolveHoverAction(world: World, col: number, row: number): {
-  action: ActionKind
-  gemEntity: Entity | null
-} {
+export function resolveHoverAction(
+  world: World,
+  col: number,
+  row: number,
+): { action: ActionKind; gemEntity: Entity | null } {
   const grid = world.get(Grid)
   if (!grid) return { action: 'none', gemEntity: null }
   const { cols, rows: gridRows, tiles, flags } = grid
 
-  // 1) Driller cell
   const drillerEntity = world.queryFirst(Driller)
   if (drillerEntity) {
     const d = drillerEntity.get(Driller)!
     if (d.col === col && d.row === row) return { action: 'pet', gemEntity: null }
   }
 
-  // 2) Gem on this cell
   let gemEntity: Entity | null = null
   world.query(Gem).forEach((entity) => {
     const g = entity.get(Gem)
     if (!g || g.collected) return
-    // Allow tapping gems anywhere on screen — just match cell.
     if (g.col === col && g.row === row && !gemEntity) gemEntity = entity
   })
   if (gemEntity) return { action: 'collect', gemEntity }
 
-  // Out-of-bounds → none
   if (col < 0 || col >= cols || row < 0 || row >= gridRows) {
     return { action: 'none', gemEntity: null }
   }
@@ -61,12 +54,10 @@ export function resolveHoverAction(world: World, col: number, row: number): {
   const tile = tiles[idx] ?? TILE_AIR
   const flag = flags[idx] ?? 0
 
-  // 3) Sagging chunk → brace
   if (tile === TILE_SOIL && (flag & FLAG_SAGGING) !== 0) {
     return { action: 'brace', gemEntity: null }
   }
 
-  // 4) Intact ceiling above driller → trigger
   if (
     tile === TILE_SOIL &&
     drillerEntity &&
@@ -78,10 +69,6 @@ export function resolveHoverAction(world: World, col: number, row: number): {
   return { action: 'none', gemEntity: null }
 }
 
-/**
- * Map a canvas-space pointer to a world cell. The Game container passes
- * its scale + camera Y so this stays free of trait dependencies.
- */
 export function pointerWorldCell(args: {
   canvasX: number
   canvasY: number
@@ -92,23 +79,15 @@ export function pointerWorldCell(args: {
   cols: number
   rows: number
 }): { col: number; row: number } {
-  const { canvasX, canvasY, canvasW, canvasH, scale, cameraY, cols, rows } = args
-  // Convert canvas-pixel coords to source pixels (un-scale).
+  const { canvasX, canvasY, scale, cameraY, cols, rows } = args
   const sourceX = canvasX / scale
   const sourceY = canvasY / scale
-  // Source X: 0 at the left of the play canvas; col = floor(sourceX / TILE_PX)
   const col = Math.max(0, Math.min(cols - 1, Math.floor(sourceX / TILE_PX)))
   const worldY = cameraY + sourceY
   const row = Math.max(0, Math.min(rows - 1, Math.floor(worldY / TILE_PX)))
-  void canvasW
-  void canvasH
   return { col, row }
 }
 
-/**
- * Commit one of the four actions. Returns true if the action fired so
- * the caller can play SFX / show feedback.
- */
 export function commitAction(world: World, action: ActionKind, target: Entity | null): boolean {
   const gs = world.get(GameState)
   if (!gs) return false
@@ -131,29 +110,26 @@ function doPet(world: World): boolean {
   if (!drillerEntity) return false
   const petEvents = drillerEntity.get(PetEvents)
   const moodTrait = drillerEntity.get(Mood)
-  const gs = world.get(GameState)!
-  if (!petEvents || !moodTrait) return false
+  const gs = world.get(GameState)
+  if (!petEvents || !moodTrait || !gs) return false
 
-  // Prune sliding-window
-  petEvents.recentTicks = petEvents.recentTicks.filter(
-    (t) => gs.tick - t <= OVER_PET_WINDOW_TICKS,
-  )
-  petEvents.recentTicks.push(gs.tick)
+  const pruned = petEvents.recentTicks.filter((t) => gs.tick - t <= OVER_PET_WINDOW_TICKS)
+  pruned.push(gs.tick)
+  drillerEntity.set(PetEvents, { recentTicks: pruned })
 
-  if (petEvents.recentTicks.length > OVER_PET_THRESHOLD) {
-    // Over-pet flips polarity to annoyance
-    const next = applyMoodEvent({ greed: moodTrait.greed, fear: moodTrait.fear, drive: moodTrait.drive }, 'over-pet')
-    moodTrait.greed = next.greed
-    moodTrait.fear = next.fear
-    moodTrait.drive = next.drive
+  if (pruned.length > OVER_PET_THRESHOLD) {
+    const next = applyMoodEvent(
+      { greed: moodTrait.greed, fear: moodTrait.fear, drive: moodTrait.drive },
+      'over-pet',
+    )
+    drillerEntity.set(Mood, next)
     return true
   }
-
-  const next = applyMoodEvent({ greed: moodTrait.greed, fear: moodTrait.fear, drive: moodTrait.drive }, 'pet')
-  moodTrait.greed = next.greed
-  moodTrait.fear = next.fear
-  moodTrait.drive = next.drive
-  moodTrait.trust += 1
+  const next = applyMoodEvent(
+    { greed: moodTrait.greed, fear: moodTrait.fear, drive: moodTrait.drive },
+    'pet',
+  )
+  drillerEntity.set(Mood, { ...next, trust: moodTrait.trust + 1 })
   return true
 }
 
@@ -162,39 +138,31 @@ function doCollect(world: World, target: Entity): boolean {
   const gs = world.get(GameState)
   if (!gem || !gs) return false
   if (gem.collected) return false
-  gem.collected = true
-  gs.gems += 1
 
-  // Mood: relieved greed pressure
+  world.set(GameState, { gems: gs.gems + 1 })
   const drillerEntity = world.queryFirst(Driller)
   if (drillerEntity) {
     const m = drillerEntity.get(Mood)
     if (m) {
       const next = applyMoodEvent({ greed: m.greed, fear: m.fear, drive: m.drive }, 'gem-collected')
-      m.greed = next.greed
-      m.fear = next.fear
-      m.drive = next.drive
+      drillerEntity.set(Mood, next)
     }
   }
-
-  // Despawn the gem entity (Phase 13 will spawn a collect-arc particle here)
   target.destroy()
   return true
 }
 
 function doBrace(world: World): boolean {
   const gs = world.get(GameState)
-  if (!gs) return false
+  const ptr = world.get(Pointer)
+  if (!gs || !ptr) return false
   if (gs.gems < BRACE_COST) return false
 
-  const ptr = world.get(Pointer)
-  if (!ptr) return false
-
-  // Find the SaggingChunk entity covering the hovered cell.
   let target: Entity | null = null
   world.query(SaggingChunk).forEach((entity) => {
+    if (target) return
     const sag = entity.get(SaggingChunk)
-    if (!sag || target) return
+    if (!sag) return
     for (const c of sag.cells) {
       if (c.col === ptr.hoverTargetCol && c.row === ptr.hoverTargetRow) {
         target = entity
@@ -204,18 +172,15 @@ function doBrace(world: World): boolean {
   })
   if (!target) return false
 
-  const sag = (target as Entity).get(SaggingChunk)!
-  sag.bracedUntilTick = gs.tick + 120 // 2s @ 60Hz
-  gs.gems -= BRACE_COST
+  ;(target as Entity).set(SaggingChunk, { bracedUntilTick: gs.tick + 120 })
+  world.set(GameState, { gems: gs.gems - BRACE_COST })
 
   const drillerEntity = world.queryFirst(Driller)
   if (drillerEntity) {
     const m = drillerEntity.get(Mood)
     if (m) {
       const next = applyMoodEvent({ greed: m.greed, fear: m.fear, drive: m.drive }, 'helpful-tap')
-      m.greed = next.greed
-      m.fear = next.fear
-      m.drive = next.drive
+      drillerEntity.set(Mood, next)
     }
   }
   return true
@@ -231,18 +196,16 @@ function doTrigger(world: World): boolean {
   const t = tiles[idx]
   if (t !== TILE_SOIL) return false
 
-  // Find the SOIL chunk containing this cell; force it into sagging state.
   const allChunks = detectChunks(tiles, cols, rows)
   const owning = allChunks.find((ch) => ch.cells.includes(idx))
   if (!owning) return false
 
-  // Skip if any cell in this chunk is already sagging/falling.
   for (const i of owning.cells) {
     const f = flags[i] ?? 0
     if (f & FLAG_SAGGING) return false
   }
-
   for (const i of owning.cells) flags[i] = (flags[i] ?? 0) | FLAG_SAGGING
+
   world.spawn(
     SaggingChunk({
       cells: owning.cells.map((i) => ({
@@ -261,11 +224,8 @@ function doTrigger(world: World): boolean {
     const m = drillerEntity.get(Mood)
     if (m) {
       const next = applyMoodEvent({ greed: m.greed, fear: m.fear, drive: m.drive }, 'evil-tap')
-      m.greed = next.greed
-      m.fear = next.fear
-      m.drive = next.drive
+      drillerEntity.set(Mood, next)
     }
   }
   return true
 }
-

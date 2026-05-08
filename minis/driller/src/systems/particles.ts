@@ -66,10 +66,16 @@ export function particlesSystem(world: World, deltaMs: number): void {
   world.query(Particle).forEach((entity) => {
     const p = entity.get(Particle)
     if (!p) return
-    p.ageMs += deltaMs
-    p.px += p.vx
-    p.py += p.vy + (p.kind === 'dust' ? 0.05 : 0) // dust gravity
-    if (p.ageMs >= p.lifeMs) entity.destroy()
+    const newAge = p.ageMs + deltaMs
+    if (newAge >= p.lifeMs) {
+      entity.destroy()
+      return
+    }
+    entity.set(Particle, {
+      ageMs: newAge,
+      px: p.px + p.vx,
+      py: p.py + p.vy + (p.kind === 'dust' ? 0.05 : 0),
+    })
   })
 }
 

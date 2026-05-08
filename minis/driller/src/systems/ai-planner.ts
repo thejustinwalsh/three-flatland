@@ -1,23 +1,18 @@
 import type { World } from 'koota'
 import {
   Driller,
+  GameState,
   Gem,
   Grid,
   Mood,
+  type PlannerName,
   PlannerTarget,
   TILE_AIR,
   TILE_FIXTURE_BASE,
   TILE_SOIL,
   TILE_STONE,
-  type PlannerName,
 } from '../traits'
-import {
-  GameState,
-} from '../traits'
-import {
-  MOOD_SWITCH_THRESHOLD,
-  PLAN_COMMIT_TICKS,
-} from '../constants'
+import { MOOD_SWITCH_THRESHOLD, PLAN_COMMIT_TICKS } from '../constants'
 import { bfsNextStep } from '../lib/bfs'
 
 interface DrillerCell {
@@ -25,10 +20,6 @@ interface DrillerCell {
   row: number
 }
 
-/**
- * Greedy descender: prefer cells directly below the driller. Sideways only
- * when blocked (anchored neighbor). Score = depth gain.
- */
 export function planGreedy(world: World, d: DrillerCell): [number, number] | null {
   const grid = world.get(Grid)
   if (!grid) return null
@@ -37,7 +28,6 @@ export function planGreedy(world: World, d: DrillerCell): [number, number] | nul
   if (d.row + 1 < rows && tiles[below] !== TILE_STONE && !isFixture(tiles[below] ?? TILE_AIR)) {
     return [d.col, d.row + 1]
   }
-  // Try sides
   for (const dc of [-1, 1]) {
     const nc = d.col + dc
     if (nc < 0 || nc >= cols) continue
@@ -50,16 +40,11 @@ export function planGreedy(world: World, d: DrillerCell): [number, number] | nul
   return null
 }
 
-/**
- * Seeker: BFS toward the nearest visible gem within radius 6. Returns the
- * next-step cell; planner will commit to it for ≥ PLAN_COMMIT_TICKS.
- */
 export function planSeeker(world: World, d: DrillerCell): [number, number] | null {
   const grid = world.get(Grid)
   if (!grid) return null
   const { cols, rows, tiles } = grid
 
-  // Build a quick gem-position lookup constrained to BFS window.
   const gemSet = new Set<number>()
   world.query(Gem).forEach((entity) => {
     const g = entity.get(Gem)
@@ -84,17 +69,12 @@ export function planSeeker(world: World, d: DrillerCell): [number, number] | nul
   )
 }
 
-/**
- * Cautious: find the nearest STONE/FIXTURE-adjacent passable cell. If
- * none nearby, fall back to greedy.
- */
 export function planCautious(world: World, d: DrillerCell): [number, number] | null {
   const grid = world.get(Grid)
   if (!grid) return null
   const { cols, rows, tiles } = grid
 
   const isShelter = (c: number, r: number): boolean => {
-    // Shelter = adjacent to STONE or FIXTURE (and itself passable).
     const t = tiles[r * cols + c]
     if (t === undefined || t === TILE_STONE || isFixture(t)) return false
     for (const [dc, dr] of [
@@ -126,19 +106,11 @@ function isFixture(t: number): boolean {
   return t >= TILE_FIXTURE_BASE && t < TILE_FIXTURE_BASE + 8
 }
 
-/**
- * Decide which planner to run this tick.
- *
- * Dominant axis = max(greed, fear, drive). Switching planners requires the
- * new dominant axis to exceed the current by at least MOOD_SWITCH_THRESHOLD,
- * AND the previous planner's PLAN_COMMIT_TICKS sunk-cost window must have
- * elapsed.
- */
 export function selectPlanner(world: World): PlannerName {
-  const m = world.queryFirst(Mood)
+  const moodEntity = world.queryFirst(Mood)
   const gs = world.get(GameState)
-  if (!m || !gs) return 'greedy'
-  const mood = m.get(Mood)!
+  if (!moodEntity || !gs) return 'greedy'
+  const mood = moodEntity.get(Mood)!
 
   const candidate: PlannerName =
     mood.fear >= mood.greed && mood.fear >= mood.drive
@@ -149,23 +121,21 @@ export function selectPlanner(world: World): PlannerName {
 
   if (candidate === mood.planner) return mood.planner
 
-  // Hysteresis: require the candidate's axis to exceed the current by threshold.
   const candidateValue =
     candidate === 'cautious' ? mood.fear : candidate === 'seeker' ? mood.greed : mood.drive
   const currentValue =
-    mood.planner === 'cautious' ? mood.fear : mood.planner === 'seeker' ? mood.greed : mood.drive
+    mood.planner === 'cautious'
+      ? mood.fear
+      : mood.planner === 'seeker'
+        ? mood.greed
+        : mood.drive
   if (candidateValue - currentValue < MOOD_SWITCH_THRESHOLD) return mood.planner
-
-  // Sunk cost: don't switch within PLAN_COMMIT_TICKS of the last switch.
   if (gs.tick - mood.switchAtTick < PLAN_COMMIT_TICKS) return mood.planner
 
-  // Commit the switch.
-  mood.planner = candidate
-  mood.switchAtTick = gs.tick
+  moodEntity.set(Mood, { planner: candidate, switchAtTick: gs.tick })
   return candidate
 }
 
-/** Drive a single planner tick: pick a target cell and write to PlannerTarget. */
 export function plannerTick(world: World): void {
   const drillerEntity = world.queryFirst(Driller)
   if (!drillerEntity) return
@@ -186,19 +156,18 @@ export function plannerTick(world: World): void {
   }
   if (!next) return
 
-  // Write or update the target.
   const target = drillerEntity.get(PlannerTarget)
   const gs = world.get(GameState)
   if (!gs) return
 
   if (target) {
-    // Sunk-cost commit window: don't re-target within PLAN_COMMIT_TICKS.
-    if (gs.tick - target.reservedAtTick < PLAN_COMMIT_TICKS && (target.col !== d.col || target.row !== d.row)) {
+    if (
+      gs.tick - target.reservedAtTick < PLAN_COMMIT_TICKS &&
+      (target.col !== d.col || target.row !== d.row)
+    ) {
       return
     }
-    target.col = next[0]
-    target.row = next[1]
-    target.reservedAtTick = gs.tick
+    drillerEntity.set(PlannerTarget, { col: next[0], row: next[1], reservedAtTick: gs.tick })
   } else {
     drillerEntity.add(PlannerTarget({ col: next[0], row: next[1], reservedAtTick: gs.tick }))
   }
