@@ -224,11 +224,19 @@ export function rockAvalancheSystem(world: World): void {
   const { cols, rows, tiles, flags, hits } = grid
 
   // 4-connected flood-fill over TILE_STONE to find each cluster.
+  // Bounded to a window around the driller — cleared / un-streamed
+  // rows far above or below are pure AIR and not worth scanning.
+  const driller = world.queryFirst(Driller)
+  const dRow = driller ? driller.get(Driller)!.row : 0
+  const winTop = Math.max(0, dRow - 96)
+  const winBot = Math.min(rows, dRow + 192)
+  const startIdx = winTop * cols
+  const endIdx = winBot * cols
   const seen = new Uint8Array(tiles.length)
   const stack: number[] = []
   let advancedAny = false
 
-  for (let i = 0; i < tiles.length; i++) {
+  for (let i = startIdx; i < endIdx; i++) {
     if (seen[i] || tiles[i] !== TILE_STONE) continue
     const cells: number[] = []
     stack.length = 0
@@ -347,9 +355,9 @@ export function rockAvalancheSystem(world: World): void {
     // (above). For any leftover stone with DISTURBED, leave it: it'll
     // be picked up next interval.
   } else {
-    // No cluster fell — clear all DISTURBED on stones to avoid stale
-    // state on clusters that couldn't fall (e.g., blocked below).
-    for (let i = 0; i < tiles.length; i++) {
+    // No cluster fell — clear DISTURBED on stones in the window so
+    // they don't keep that stale flag forever.
+    for (let i = startIdx; i < endIdx; i++) {
       if (tiles[i] === TILE_STONE && (flags[i]! & FLAG_DISTURBED) !== 0) {
         flags[i]! &= ~FLAG_DISTURBED
       }

@@ -17,13 +17,27 @@ export interface SoilChunk {
  * 4-connected flood-fill over a tile array. Returns one SoilChunk per
  * distinct SOIL component. Cost: O(cells). Uses an iterative stack so we
  * don't blow the call stack on large chunks.
+ *
+ * Optional `topRow` / `bottomRow` clip the seeding scan to a row window
+ * (the flood-fill itself still walks any reachable connected SOIL — so
+ * a chunk that crosses the window edge is detected fully). This lets
+ * collapse and avalanche systems skip iterating millions of cleared
+ * cells in deep / virtualised grids.
  */
-export function detectChunks(tiles: Uint8Array, cols: number, rows: number): SoilChunk[] {
+export function detectChunks(
+  tiles: Uint8Array,
+  cols: number,
+  rows: number,
+  topRow = 0,
+  bottomRow = rows,
+): SoilChunk[] {
   const seen = new Uint8Array(tiles.length)
   const chunks: SoilChunk[] = []
   const stack: number[] = []
 
-  for (let i = 0; i < tiles.length; i++) {
+  const startIdx = Math.max(0, topRow * cols)
+  const endIdx = Math.min(tiles.length, bottomRow * cols)
+  for (let i = startIdx; i < endIdx; i++) {
     if (seen[i] || tiles[i] !== TILE_SOIL) continue
     const cells: number[] = []
     let minR = Infinity

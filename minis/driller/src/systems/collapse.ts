@@ -14,6 +14,15 @@ import {
   TILE_AIR,
 } from '../traits'
 import { MAX_CHUNK_HEIGHT, SAG_DURATION_TICKS, TILE_PX } from '../constants'
+
+/**
+ * How far above and below the driller's row we run the chunk-detect
+ * scan each tick. Anything outside is either un-streamed (still AIR)
+ * or far enough behind that any sag there would never affect the
+ * play area before the world rotates anyway.
+ */
+const SCAN_WINDOW_ROWS_ABOVE = 96  // ~3 chunks of history
+const SCAN_WINDOW_ROWS_BELOW = 192 // ~6 chunks streamed-ahead
 import { detectChunks, isSupported, type SoilChunk } from '../lib/chunk-detect'
 import { markCellAndNeighborsDirty } from './autotile-pass'
 
@@ -34,8 +43,17 @@ export function detectAndSag(world: World): void {
   if (!grid || !gs) return
   const { cols, rows, tiles, flags } = grid
 
+  // Bound chunk detection to the visible-history window around the
+  // driller. Cleared rows far above (after world rotation) or far below
+  // (un-streamed) contain only AIR and would just churn the flood-fill
+  // for nothing.
+  const driller = world.queryFirst(Driller)
+  const dRow = driller ? driller.get(Driller)!.row : 0
+  const winTop = Math.max(0, dRow - SCAN_WINDOW_ROWS_ABOVE)
+  const winBot = Math.min(rows, dRow + SCAN_WINDOW_ROWS_BELOW)
+
   // First pass: regular sag detection on the live tile grid.
-  const allChunks = detectChunks(tiles, cols, rows)
+  const allChunks = detectChunks(tiles, cols, rows, winTop, winBot)
   for (const ch of allChunks) {
     if (chunkHasFlag(ch, flags, FLAG_SAGGING | FLAG_FALLING)) continue
     if (isSupported(ch, tiles, cols, rows)) continue
@@ -63,10 +81,12 @@ export function detectAndSag(world: World): void {
   // to AIR and flags any newly-unsupported chunk's cells with
   // FLAG_PRECARIOUS so the renderer can flash a "danger ahead" tint.
   // Always cleared first — the warning is per-tick and per-target.
-  for (let i = 0; i < flags.length; i++) {
+  // Bound the clear sweep to the same scan window as the detection.
+  const clearStart = winTop * cols
+  const clearEnd = Math.min(flags.length, winBot * cols)
+  for (let i = clearStart; i < clearEnd; i++) {
     if ((flags[i]! & FLAG_PRECARIOUS) !== 0) flags[i]! &= ~FLAG_PRECARIOUS
   }
-  const driller = world.queryFirst(Driller)
   if (!driller) return
   const d = driller.get(Driller)!
   const target = driller.get(PlannerTarget)
@@ -81,7 +101,7 @@ export function detectAndSag(world: World): void {
 
   const sim = new Uint8Array(tiles)
   sim[tIdx] = TILE_AIR
-  const simChunks = detectChunks(sim, cols, rows)
+  const simChunks = detectChunks(sim, cols, rows, winTop, winBot)
   for (const ch of simChunks) {
     // Skip chunks already in flight — they'd be flagged anyway.
     if (chunkHasFlag(ch, flags, FLAG_SAGGING | FLAG_FALLING)) continue
