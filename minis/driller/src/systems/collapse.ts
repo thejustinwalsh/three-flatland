@@ -26,7 +26,7 @@ import { MAX_CHUNK_HEIGHT, MAX_REACH, SAG_DURATION_TICKS, TILE_PX } from '../con
 const SCAN_WINDOW_ROWS_ABOVE = 96  // ~3 chunks of history
 const SCAN_WINDOW_ROWS_BELOW = 192 // ~6 chunks streamed-ahead
 import { detectChunks, type SoilChunk, unstableCells } from '../lib/chunk-detect'
-import { markCellAndNeighborsDirty } from './autotile-pass'
+import { markAutotileDirty } from './autotile-pass'
 import { isFreeFall } from '../biomes'
 
 /**
@@ -224,7 +224,13 @@ export function tickSagging(world: World): void {
       const idx = cell.row * cols + cell.col
       tiles[idx] = TILE_AIR
       flags[idx] = ((flags[idx]! & ~FLAG_SAGGING & ~FLAG_SHAKING) | FLAG_AUTOTILE_DIRTY) as number
-      markCellAndNeighborsDirty(world, cell.col, cell.row)
+      // Autotile-only — releasing a sag does NOT cascade-trigger
+      // re-evaluation on the surrounding chunk. Chunks above stay
+      // stable until the player actively drills near them. Otherwise
+      // we get a perpetual sag-fall-land-sag avalanche in the same
+      // area (the false-shake bug repros at e.g. row 200 stayed in
+      // SAG for 27 seconds).
+      markAutotileDirty(world, cell.col, cell.row)
     }
 
     let minR = Infinity
@@ -357,7 +363,12 @@ function landAndReattach(
     if (idx >= tiles.length) continue
     tiles[idx] = c.tile
     flags[idx] = ((flags[idx]! & ~FLAG_FALLING) | FLAG_AUTOTILE_DIRTY) as number
-    markCellAndNeighborsDirty(world, cc, r)
+    // Autotile-only re-stamp. Do NOT trigger sag re-check on the
+    // landed cells — they JUST settled. Re-checking them immediately
+    // creates a perpetual sag → fall → land → sag cycle in the same
+    // area (the false-shake bug). Future PLAYER mutations near here
+    // will re-tag SAG_RECHECK normally.
+    markAutotileDirty(world, cc, r)
   }
 
   entity.destroy()

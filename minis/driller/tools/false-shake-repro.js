@@ -10,16 +10,10 @@ const traits = await import('/src/traits/index.ts')
 const w = window.__drillerWorld
 w.set(traits.GameState, { runState: 'playing' })
 
-// Teleport the driller to a deeper biome where there are stone
-// clusters + avalanche risk + hazards. Lets us observe shake
-// behaviour where it actually matters.
-let driller = null
-w.query(traits.Driller).forEach(e => { driller ??= e })
-driller.set(traits.Driller, {
-  col: 9, row: 220,
-  px: 9 * 16 + 8, py: 220 * 16 + 8,
-  destCol: 9, destRow: 220,
-})
+// Stay in the first biome — the user's reported repro. Don't
+// teleport; let the driller actually play through the first
+// biome (and its void, and the next) so we observe the bug in
+// the natural flow.
 await new Promise(r => setTimeout(r, 500))
 
 const FLAG_SHAKING = 1 << 5
@@ -35,9 +29,14 @@ const FLAG_FALLING = 1 << 1
 const tracker = new Map()
 
 const t0 = performance.now()
-const SAMPLE_INTERVAL_MS = 50
-const RUN_DURATION_MS = 25000
-const FALL_DEADLINE_MS = 1500 // generous window after last shake
+const SAMPLE_INTERVAL_MS = 33   // ~30Hz so we don't miss a 300ms shake
+const RUN_DURATION_MS = 180000  // 3 min — patient observation through several biome cycles
+const FALL_DEADLINE_MS = 1500   // generous window after last shake
+const STUCK_THRESHOLD_MS = 500  // shake longer than this without resolution = bug
+
+// Also track FLAG_SAGGING. A cell that stays in SAG for > SAG_DURATION
+// (700ms) without resolving is a stalled sag — same bug class.
+const sagTracker = new Map()
 
 const interval = setInterval(() => {
   const grid = w.get(traits.Grid)
@@ -45,6 +44,23 @@ const interval = setInterval(() => {
   for (let i = 0; i < grid.tiles.length; i++) {
     const f = grid.flags[i] ?? 0
     const tile = grid.tiles[i]
+    const isSagging = (f & FLAG_SAGGING) !== 0
+    let sagEntry = sagTracker.get(i)
+    if (isSagging) {
+      if (!sagEntry) {
+        sagEntry = { firstAt: tNow, lastAt: tNow, currentRun: tNow, longest: 0, finalTile: tile, stillSet: true }
+        sagTracker.set(i, sagEntry)
+      } else {
+        if (tNow - sagEntry.lastAt > SAMPLE_INTERVAL_MS * 2.5) sagEntry.currentRun = tNow
+        sagEntry.lastAt = tNow
+        sagEntry.stillSet = true
+        const cont = tNow - sagEntry.currentRun
+        if (cont > sagEntry.longest) sagEntry.longest = cont
+      }
+    } else if (sagEntry) {
+      sagEntry.stillSet = false
+    }
+    if (sagEntry) sagEntry.finalTile = tile
     const isShaking = (f & FLAG_SHAKING) !== 0
     let entry = tracker.get(i)
 
@@ -53,26 +69,36 @@ const interval = setInterval(() => {
         entry = {
           firstShakeAt: tNow,
           lastShakeAt: tNow,
+          currentRunStart: tNow,        // start of current continuous-on run
+          longestContinuousMs: 0,
           startedAsTile: tile,
           firstFlags: f,
           resolved: false,
           finalTile: tile,
           finalFlags: f,
-          maxShakeDuration: 0,
+          stillShakingAtEnd: true,
         }
         tracker.set(i, entry)
       } else {
+        // If we missed a sample (>2 sample intervals since last
+        // shake), this is a NEW continuous run.
+        if (tNow - entry.lastShakeAt > SAMPLE_INTERVAL_MS * 2.5) {
+          entry.currentRunStart = tNow
+        }
         entry.lastShakeAt = tNow
-        const dur = entry.lastShakeAt - entry.firstShakeAt
-        if (dur > entry.maxShakeDuration) entry.maxShakeDuration = dur
+        const continuous = tNow - entry.currentRunStart
+        if (continuous > entry.longestContinuousMs) {
+          entry.longestContinuousMs = continuous
+        }
+        entry.stillShakingAtEnd = true
       }
+    } else if (entry) {
+      entry.stillShakingAtEnd = false
     }
 
     if (entry) {
       entry.finalTile = tile
       entry.finalFlags = f
-      // Resolved = the cell is now AIR (truly fell) OR it lost
-      // FLAG_SHAKING but is in some non-shake state for a while.
       if (tile === 0 && !entry.resolved) {
         entry.resolved = true
         entry.resolvedAt = tNow
@@ -87,39 +113,60 @@ clearInterval(interval)
 // Classify each tracked cell.
 const stats = {
   total: tracker.size,
-  resolvedFell: 0,        // good — became AIR after shake
-  shookButStillSolid: 0,  // BAD — shook, never fell, still tile != AIR at end
-  shookBriefly: 0,        // OK — shook 1 frame then stopped (false alarm but not stuck)
+  resolvedFell: 0,
+  longestContinuousMs: 0,
+  stillShakingAtEnd: 0,
+  trueStuckShakes: 0, // continuous shake > STUCK_THRESHOLD_MS
 }
-const offenders = []
+const stuck = []
+const grid = w.get(traits.Grid)
 for (const [idx, e] of tracker) {
-  const finishedAt = performance.now() - t0
-  const sinceLastShake = finishedAt - e.lastShakeAt
-  const shakeDuration = e.lastShakeAt - e.firstShakeAt
-  if (e.resolved) {
-    stats.resolvedFell++
-  } else if (sinceLastShake > FALL_DEADLINE_MS && e.finalTile !== 0) {
-    stats.shookButStillSolid++
-    if (offenders.length < 20) {
-      const grid = w.get(traits.Grid)
-      const c = idx % grid.cols
-      const r = (idx - c) / grid.cols
-      offenders.push({
-        c, r, tile: e.finalTile, finalFlags: e.finalFlags,
+  const c = idx % grid.cols
+  const r = (idx - c) / grid.cols
+  const tag = e.finalTile === 1 ? 'SOIL' : e.finalTile === 2 ? 'STONE' : `t${e.finalTile}`
+  if (e.longestContinuousMs > stats.longestContinuousMs) stats.longestContinuousMs = e.longestContinuousMs
+  if (e.resolved) stats.resolvedFell++
+  if (e.stillShakingAtEnd) stats.stillShakingAtEnd++
+  if (e.longestContinuousMs > STUCK_THRESHOLD_MS) {
+    stats.trueStuckShakes++
+    if (stuck.length < 30) {
+      stuck.push({
+        c, r, tag, finalFlags: e.finalFlags, resolved: e.resolved,
+        stillShakingAtEnd: e.stillShakingAtEnd,
+        longestContinuousMs: Math.round(e.longestContinuousMs),
         firstShakeAt: Math.round(e.firstShakeAt),
         lastShakeAt: Math.round(e.lastShakeAt),
-        shakeDurationMs: Math.round(shakeDuration),
       })
     }
-  } else if (shakeDuration < 100) {
-    stats.shookBriefly++
   }
 }
 
-console.log('=== FALSE-SHAKE STATS over ' + RUN_DURATION_MS + 'ms ===')
+const driller = w.queryFirst(traits.Driller)
+const dRow = driller ? driller.get(traits.Driller).row : -1
+console.log('=== FALSE-SHAKE STATS over ' + RUN_DURATION_MS + 'ms (driller depth ' + dRow + ') ===')
 console.log(JSON.stringify(stats, null, 2))
-console.log('\n=== OFFENDERS (shook + still solid + no shake recently) ===')
-for (const o of offenders) {
-  const tag = o.tile === 1 ? 'SOIL' : o.tile === 2 ? 'STONE' : `t${o.tile}`
-  console.log(`  @(${o.c},${o.r}) ${tag} flags=${o.finalFlags.toString(2).padStart(8, '0')} shakeDur=${o.shakeDurationMs}ms (first=${o.firstShakeAt}ms last=${o.lastShakeAt}ms)`)
+console.log('\n=== TRUE STUCK SHAKES (continuous shake > ' + STUCK_THRESHOLD_MS + 'ms) ===')
+for (const s of stuck) {
+  console.log(`  @(${s.c},${s.r}) ${s.tag} flags=${s.finalFlags.toString(2).padStart(8, '0')} continuousMs=${s.longestContinuousMs} resolved=${s.resolved} stillShakingAtEnd=${s.stillShakingAtEnd}`)
+}
+
+// Sag tracking
+const stalledSags = []
+let stillSagging = 0, sagOver1s = 0
+for (const [idx, s] of sagTracker) {
+  if (s.stillSet) stillSagging++
+  if (s.longest > 1000) sagOver1s++
+  if (s.longest > 1500) {
+    if (stalledSags.length < 30) {
+      const c = idx % grid.cols
+      const r = (idx - c) / grid.cols
+      stalledSags.push({ c, r, finalTile: s.finalTile, longestSagMs: Math.round(s.longest), stillSet: s.stillSet })
+    }
+  }
+}
+console.log('\n=== SAG STATS ===')
+console.log(JSON.stringify({ totalCellsSagged: sagTracker.size, stillSaggingAtEnd: stillSagging, sagOver1s }, null, 2))
+console.log('\n=== STALLED SAGS (continuous SAG > 1.5s — should never exceed SAG_DURATION_TICKS=700ms) ===')
+for (const s of stalledSags) {
+  console.log(`  @(${s.c},${s.r}) tile=${s.finalTile} continuousSagMs=${s.longestSagMs} stillSagging=${s.stillSet}`)
 }

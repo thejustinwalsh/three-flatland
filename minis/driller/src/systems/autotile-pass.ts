@@ -46,30 +46,18 @@ export function autotilePass(world: World): void {
 }
 
 /**
- * Helper used by tests + generators to mark the just-changed cell and its
- * 8-neighbor halo as dirty (autotile resolves the cell + every neighbor
- * whose mask changed).
- *
- * Also tags the 4-neighbor SOIL cells with FLAG_SAG_RECHECK so the
- * cantilever sag detector knows to re-evaluate the chunks containing
- * those cells. Without this gate, the sag rule would fire every tick
- * on every soil chunk in the world (including freshly-loaded chunks
- * that nobody disturbed) — the cause of "half a fully-attached wall
- * shaking" + "just-spawned things shaking" symptoms.
+ * Mark a cell and its 8-neighbor halo as autotile-dirty AND tag
+ * 4-neighbor SOIL cells with FLAG_SAG_RECHECK so the cantilever
+ * sag detector re-evaluates them. Use this for PLAYER-driven
+ * mutations (drilling, hazard land, explosion) — events that
+ * actually destabilise the world.
  */
 export function markCellAndNeighborsDirty(world: World, col: number, row: number): void {
+  markAutotileDirty(world, col, row)
+  // Tag the 4-neighbor SOIL cells for sag re-check.
   const grid = world.get(Grid)
   if (!grid) return
   const { cols, rows, tiles, flags } = grid
-  for (let dr = -1; dr <= 1; dr++) {
-    for (let dc = -1; dc <= 1; dc++) {
-      const nc = col + dc
-      const nr = row + dr
-      if (nc < 0 || nc >= cols || nr < 0 || nr >= rows) continue
-      flags[nr * cols + nc]! |= FLAG_AUTOTILE_DIRTY
-    }
-  }
-  // Tag the 4-neighbor SOIL cells for sag re-check.
   for (const [dc, dr] of [[-1, 0], [1, 0], [0, -1], [0, 1]] as const) {
     const nc = col + dc
     const nr = row + dr
@@ -77,6 +65,27 @@ export function markCellAndNeighborsDirty(world: World, col: number, row: number
     const nIdx = nr * cols + nc
     if (tiles[nIdx] === TILE_SOIL) {
       flags[nIdx]! |= FLAG_SAG_RECHECK
+    }
+  }
+}
+
+/**
+ * Mark a cell + 8-neighbor halo as autotile-dirty WITHOUT triggering
+ * sag re-check. Use this when re-stamping cells that just settled
+ * from a fall (FallingChunk landing) — they don't need to be
+ * re-evaluated for instability the moment they touch down, otherwise
+ * we get a perpetual sag-fall-land-sag cycle in the same area.
+ */
+export function markAutotileDirty(world: World, col: number, row: number): void {
+  const grid = world.get(Grid)
+  if (!grid) return
+  const { cols, rows, flags } = grid
+  for (let dr = -1; dr <= 1; dr++) {
+    for (let dc = -1; dc <= 1; dc++) {
+      const nc = col + dc
+      const nr = row + dr
+      if (nc < 0 || nc >= cols || nr < 0 || nr >= rows) continue
+      flags[nr * cols + nc]! |= FLAG_AUTOTILE_DIRTY
     }
   }
 }
