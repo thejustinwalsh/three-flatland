@@ -41,9 +41,11 @@ function GemSprite({ entity, material }: ViewProps) {
       sprite.visible = false
       return
     }
-    const px = g.scatteredUntilTick > 0 ? g.px : g.col * TILE_PX + TILE_PX / 2
-    const py = g.scatteredUntilTick > 0 ? -g.py : -(g.row * TILE_PX + TILE_PX / 2)
-    sprite.position.set(px, py, 0)
+    // Always read the smoothly-lerped px/py from the gem-gravity
+    // system. Both at-rest gems (prev === row) and falling gems use the
+    // same fields; scattered gems also write px/py via their own scatter
+    // tween. World Y is positive-down — flip sign for Three's Y-up.
+    sprite.position.set(g.px, -g.py, 0)
     sprite.visible = true
   })
 
@@ -56,7 +58,7 @@ function GemSprite({ entity, material }: ViewProps) {
       ref={spriteRef}
       material={material}
       tint={tintHex}
-      position={[g.col * TILE_PX + TILE_PX / 2, -(g.row * TILE_PX + TILE_PX / 2), 0]}
+      position={[g.px || g.col * TILE_PX + TILE_PX / 2, -(g.py || g.row * TILE_PX + TILE_PX / 2), 0]}
       scale={[size, size, 1]}
     />
   )

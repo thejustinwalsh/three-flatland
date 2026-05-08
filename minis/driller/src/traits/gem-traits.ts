@@ -22,6 +22,13 @@ export type GemSize = 'small' | 'medium' | 'large' | 'huge'
 export const Gem = trait({
   col: 0,
   row: 0,
+  /**
+   * Previous row before the in-flight fall step. Used to smoothly lerp
+   * the visible py from prev → current cell across the fall step's
+   * duration. When the gem is at rest, prev === row and the lerp is a
+   * no-op.
+   */
+  prevRow: 0,
   color: 'amethyst' as GemColor,
   size: 'small' as GemSize,
   collected: false,
@@ -32,4 +39,9 @@ export const Gem = trait({
   collectProgress: 0,
   /** Gravity step cooldown (ms); gem falls one row when this hits 0. */
   fallCooldownMs: 0,
+  /**
+   * Total duration of the in-flight fall step (ms). Used with
+   * fallCooldownMs to compute lerp progress from prevRow → row.
+   */
+  stepDurationMs: 0,
 })

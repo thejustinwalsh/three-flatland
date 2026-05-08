@@ -36,7 +36,7 @@ function initWorld(world: World): void {
   // Driller entity — single instance, replaced on respawn (Phase 10).
   // Spawn at the surface (col 9 ≈ middle of 18-wide world, row 0).
   world.spawn(
-    Driller({ col: 9, row: 0, px: 9 * 16 + 8, py: 8, facing: 1, digCooldownMs: 0 }),
+    Driller({ col: 9, row: 0, px: 9 * 16 + 8, py: 8, destCol: 9, destRow: 0, facing: 1, drillCooldownMs: 0 }),
     Mood({ greed: 0.2, fear: 0.1, drive: 0.7, planner: 'greedy', switchAtTick: 0, trust: 0 }),
     Animation({ state: 'idle', frame: 0, frameAccumMs: 0 }),
     PetEvents(),

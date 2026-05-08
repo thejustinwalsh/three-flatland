@@ -9,37 +9,42 @@ export type DrillerAnimState = 'idle' | 'walk' | 'drillDown' | 'drillUp' | 'dril
  */
 export const Driller = trait({
   /**
-   * Current cell (col, row) — integer. The driller occupies this cell as
-   * AIR; the cell directly below (col, row+1) is the SUPPORT they're
-   * standing on. If the support cell becomes AIR, gravity drops the
-   * driller one row per step interval.
+   * Snapped (col, row) — the cell the driller currently OWNS. While
+   * walking or falling between two cells, (col, row) holds the SOURCE
+   * cell until the continuous (px, py) position arrives within ε of
+   * the destination cell's center, at which point we snap to it.
    */
   col: 9,
   row: 0,
   /**
-   * The previous cell the driller was in. We snap (col,row) to the
-   * destination at the START of a step, then linearly lerp the visible
-   * pixel position from (prevCol,prevRow) → (col,row) across the
-   * step's cooldown window. This is what gives walking and falling
-   * the same uniform per-cell cadence with smooth interpolation.
+   * Continuous world-pixel position. The renderer reads (px, py)
+   * directly — this is THE position. (col, row) is just the snapped
+   * cell-grid coordinate derived from it.
    */
-  prevCol: 9,
-  prevRow: 0,
-  /** Floating-point world-pixel position; used during smooth animation. */
   px: 0,
   py: 0,
-  /** 1 = facing right, -1 = facing left. Determines walk-cycle flip. */
-  facing: 1 as 1 | -1,
-  /** Cooldown until the next dig action is allowed (ms). */
-  digCooldownMs: 0,
-  /** Cooldown until next gravity step when falling (ms). */
-  fallCooldownMs: 0,
   /**
-   * Total duration of the in-flight step (ms). Used to compute the
-   * linear lerp progress from prev cell → current cell. 0 when the
-   * driller is at rest.
+   * Movement target cell. While moving, (px, py) advances toward the
+   * (destCol, destRow) center at a fixed pixels-per-ms rate. When at
+   * rest, destCol === col and destRow === row.
    */
-  stepDurationMs: 0,
+  destCol: 9,
+  destRow: 0,
+  /** 1 = facing right, -1 = facing left. */
+  facing: 1 as 1 | -1,
+  /**
+   * Drill state. When `drillCooldownMs > 0`, the driller is locked at
+   * its current cell playing the drill animation; when it expires the
+   * cell at (drillCol, drillRow) is converted to AIR and a movement
+   * target is set so the driller can step into the cleared space on
+   * subsequent frames.
+   *
+   * Drilling can ONLY start when the driller is "fully snapped" — at
+   * rest at (col, row) with (px, py) on the cell center.
+   */
+  drillCooldownMs: 0,
+  drillCol: 0,
+  drillRow: 0,
 })
 
 /**

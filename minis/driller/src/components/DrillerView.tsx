@@ -23,8 +23,10 @@ function DrillerSprite({ entity, material }: ViewProps) {
     const d = entity.get(Driller)!
     const sprite = spriteRef.current
     if (!sprite) return
-    // World Y is positive-down; Three is Y-up — flip sign.
-    sprite.position.set(d.col * TILE_PX + TILE_PX / 2, -(d.row * TILE_PX + TILE_PX / 2), 0)
+    // Read the smoothly-interpolated pixel position written by the
+    // driller system, NOT the snapped (col,row). World Y is
+    // positive-down; Three is Y-up — flip sign.
+    sprite.position.set(d.px, -d.py, 0)
   })
 
   const d = entity.get(Driller)!
@@ -33,7 +35,7 @@ function DrillerSprite({ entity, material }: ViewProps) {
       ref={spriteRef}
       material={material}
       tint="#fcd34d"
-      position={[d.col * TILE_PX + TILE_PX / 2, -(d.row * TILE_PX + TILE_PX / 2), 0]}
+      position={[d.px, -d.py, 0]}
       scale={[12, 12, 1]}
     />
   )

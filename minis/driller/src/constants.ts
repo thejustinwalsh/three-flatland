@@ -47,10 +47,26 @@ export const OVER_PET_THRESHOLD = 3
 export const MAX_REACH = 5
 
 /**
- * Dig cadence scales with depth — driller is methodical at the surface
- * (lots of thinking, gems matter) and gets faster as they descend.
+ * Two-phase per-cell cadence — Mr. Driller-style drill THEN step:
+ *
+ *   1. DRILL phase: driller stops at the wall, plays the drill
+ *      animation, and the target cell is converted to AIR after
+ *      `DRILL_COOLDOWN_MS`. The sprite does NOT move during this
+ *      phase — it's the "punch through the wall" beat.
+ *   2. STEP phase: driller smoothly lerps across the now-cleared
+ *      cell over `stepIntervalForDepth(row)` ms, snapping to grid on
+ *      arrival.
+ *
+ * Walking through pre-existing AIR uses STEP only (no drill phase).
+ * Falling under gravity also uses STEP cadence so the per-cell motion
+ * speed is identical regardless of direction.
+ *
+ * Drill cadence is constant (a drill cycle is a drill cycle); step
+ * cadence scales with depth so the driller feels increasingly frantic
+ * the deeper they go.
  */
-export const DIG_INTERVAL_MS_SHALLOW = 360 // ~2.8 cells/sec at start
+export const DRILL_COOLDOWN_MS = 180       // ~5.5 drills/sec, fixed
+export const DIG_INTERVAL_MS_SHALLOW = 280 // ~3.6 cells/sec at start
 export const DIG_INTERVAL_MS_DEEP = 130    // ~7.6 cells/sec near the core
 export const DEPTH_AT_FULL_SPEED = 250     // depth row at which interval = DEEP
 
@@ -58,8 +74,12 @@ export const DEPTH_AT_FULL_SPEED = 250     // depth row at which interval = DEEP
 export const PONDER_GEM_RADIUS = 3
 export const PONDER_GEM_MS = 140
 
-/** Time per cell while falling under gravity (ms). */
-export const FALL_INTERVAL_MS = 70
+/**
+ * Time per cell while a gem is falling under gravity (ms). Slow enough
+ * that the lerp visibly smears between cells — instant 70ms snaps look
+ * stuttery even with proper interpolation.
+ */
+export const FALL_INTERVAL_MS = 200
 
 /** Multi-hit ROCK tile — number of dig actions to break. */
 export const ROCK_HITS = 3

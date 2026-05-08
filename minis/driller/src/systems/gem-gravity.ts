@@ -35,6 +35,15 @@ export function gemGravitySystem(world: World, deltaMs: number): void {
     const g = entity.get(Gem)
     if (!g || g.collected || g.scatteredUntilTick !== 0) return
 
+    // Smooth-py lerp from prevRow → row across the active fall step.
+    const fromPy = g.prevRow * TILE_PX + TILE_PX / 2
+    const toPy = g.row * TILE_PX + TILE_PX / 2
+    const progress = g.stepDurationMs > 0
+      ? Math.min(1, Math.max(0, 1 - g.fallCooldownMs / g.stepDurationMs))
+      : 1
+    const smoothPx = g.col * TILE_PX + TILE_PX / 2
+    const smoothPy = fromPy + (toPy - fromPy) * progress
+
     // Touch-pickup at the driller's CURRENT cell. Done first so a gem
     // that's already in the driller's cell (e.g. fell onto the driller
     // last tick while ground was being dug out) gets collected even if
@@ -44,17 +53,36 @@ export function gemGravitySystem(world: World, deltaMs: number): void {
       return
     }
 
-    if (g.row < topRow || g.row > bottomRow) return // out of view
+    if (g.row < topRow || g.row > bottomRow) {
+      // Out of view — still write smoothPx/Py so a gem that scrolls
+      // back into view doesn't briefly show its previous lerp state.
+      entity.set(Gem, { px: smoothPx, py: smoothPy })
+      return
+    }
 
     const belowRow = g.row + 1
-    if (belowRow >= grid.rows) return
+    if (belowRow >= grid.rows) {
+      entity.set(Gem, { px: smoothPx, py: smoothPy })
+      return
+    }
     const belowIdx = belowRow * grid.cols + g.col
     const below = grid.tiles[belowIdx]
-    if (below === undefined || below !== TILE_AIR) return
+    if (below === undefined || below !== TILE_AIR) {
+      // At rest — clear any in-flight step state and keep px/py at the
+      // current cell center.
+      entity.set(Gem, {
+        prevRow: g.row,
+        px: smoothPx,
+        py: toPy,
+        fallCooldownMs: 0,
+        stepDurationMs: 0,
+      })
+      return
+    }
 
     const cd = Math.max(0, g.fallCooldownMs - deltaMs)
     if (cd > 0) {
-      entity.set(Gem, { fallCooldownMs: cd })
+      entity.set(Gem, { fallCooldownMs: cd, px: smoothPx, py: smoothPy })
       return
     }
 
@@ -65,7 +93,16 @@ export function gemGravitySystem(world: World, deltaMs: number): void {
       return
     }
 
-    entity.set(Gem, { row: belowRow, fallCooldownMs: FALL_INTERVAL_MS })
+    // Commit a new fall step. Snap visible py to the OLD cell so the
+    // next tick's lerp begins at progress 0.
+    entity.set(Gem, {
+      prevRow: g.row,
+      row: belowRow,
+      px: smoothPx,
+      py: toPy,
+      fallCooldownMs: FALL_INTERVAL_MS,
+      stepDurationMs: FALL_INTERVAL_MS,
+    })
   })
 }
 
