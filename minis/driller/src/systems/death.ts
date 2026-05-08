@@ -20,6 +20,7 @@ import type { GemColor, GemSize } from '../atlas-regions'
 import { TILE_PX } from '../constants'
 import { createRng } from '../lib/rng'
 import { markCellAndNeighborsDirty } from './autotile-pass'
+import { setHazardSafeMinRow } from './hazard'
 
 let deathPhase: 'idle' | 'scatter' | 'ghost' | 'respawn' = 'idle'
 let deathTick = 0
@@ -178,6 +179,10 @@ function clearGhostRow(world: World, deathCol: number, row: number): void {
  * Top-of-world reset only happens after 3 deaths in full mode (handled
  * via the leaderboard branch in the deathSystem state machine).
  */
+/** Rows the driller has to dig down past the death cell before
+ *  hazard rocks are allowed to spawn again. */
+const POST_RESPAWN_ROCK_COOLDOWN_ROWS = 3
+
 function respawnDrillerAtDeath(world: World): void {
   world.spawn(
     Driller({
@@ -194,6 +199,7 @@ function respawnDrillerAtDeath(world: World): void {
     Animation({ state: 'idle', frame: 0, frameAccumMs: 0 }),
     PetEvents(),
   )
+  setHazardSafeMinRow(deathRow + POST_RESPAWN_ROCK_COOLDOWN_ROWS)
 }
 
 /**

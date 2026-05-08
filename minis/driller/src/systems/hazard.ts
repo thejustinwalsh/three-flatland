@@ -27,8 +27,21 @@ import { createRng } from '../lib/rng'
 import { markCellAndNeighborsDirty } from './autotile-pass'
 
 let lastSpawnTick = 0
+/**
+ * Post-respawn rock safety. After a death, the rising ghost beam
+ * leaves a clean AIR chute above the driller — which would otherwise
+ * satisfy the spawn rule and drop a rock right onto the fresh respawn.
+ * `hazardSafeMinRow` is the minimum driller row required before
+ * hazards can spawn again. Death system sets it to `respawnRow + 3`
+ * so the driller has to dig down a few cells before the sky reopens.
+ */
+let hazardSafeMinRow = -1
 
 const MIN_FALL_CELLS = 3 // need at least this many AIR cells below the warning before spawning
+
+export function setHazardSafeMinRow(row: number): void {
+  hazardSafeMinRow = row
+}
 
 /**
  * Spawn telegraphed falling-rock hazards above the driller. Rocks ONLY
@@ -58,6 +71,11 @@ export function hazardSpawnSystem(world: World): void {
   // sky is reserved for the gem shower — no rocks until the player
   // has drilled deep enough into the next world.
   if (isFreeFall(d.row)) return
+  // Post-respawn safety window — driller has to drill down past
+  // `hazardSafeMinRow` before the sky reopens. Without this, the
+  // ghost-beam clears a perfect AIR chute above the respawn cell
+  // and a rock would drop on the player's head immediately.
+  if (d.row < hazardSafeMinRow) return
 
   const interval = Math.max(
     HAZARD_SPAWN_INTERVAL_FLOOR,
@@ -405,4 +423,5 @@ export function resetAvalanche(): void {
 /** Reset module-level state on world rotation / restart. */
 export function resetHazardSpawn(): void {
   lastSpawnTick = 0
+  hazardSafeMinRow = -1
 }
