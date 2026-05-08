@@ -18,7 +18,7 @@ import {
   TILE_STONE,
 } from '../traits'
 import type { GemColor, GemSize } from '../atlas-regions'
-import { biomeAt } from '../biomes'
+import { biomeAt, isFreeFall, WORLD_LENGTH_ROWS } from '../biomes'
 import { createRng, type Rng } from '../lib/rng'
 
 /**
@@ -183,12 +183,23 @@ export function generateChunk(seed: number, chunkY: number): GeneratedChunk {
   const depthMid = chunkY * rows + rows / 2
   const biome = biomeAt(depthMid)
 
-  // Base fill: SOIL everywhere (chunk 0's top 4 rows become AIR for sky).
+  // Base fill: SOIL everywhere (chunk 0's top 4 rows become AIR for
+  // sky). After the base fill we punch out any rows that fall inside
+  // the void band of their world — those are the free-fall gaps
+  // between layers.
   tiles.fill(TILE_SOIL)
   if (chunkY === 0) {
     for (let y = 0; y < 4; y++) {
       for (let x = 0; x < cols; x++) {
         tiles[y * cols + x] = TILE_AIR
+      }
+    }
+  }
+  for (let r = 0; r < rows; r++) {
+    const absRow = chunkY * rows + r
+    if (isFreeFall(absRow)) {
+      for (let c = 0; c < cols; c++) {
+        tiles[r * cols + c] = TILE_AIR
       }
     }
   }
@@ -262,7 +273,11 @@ export function generateChunk(seed: number, chunkY: number): GeneratedChunk {
     }
   }
 
-  // Gems — placed in SOIL or AIR; biome-weighted color + size
+  // Gems — placed in SOIL or AIR; biome-weighted color + size. Gems
+  // landing in a void band become free-fall obstacles: gem gravity
+  // makes them drop, but the driller falls faster, so they appear to
+  // scroll up past the player. If they leave the top of the camera
+  // they fade and despawn (handled by gem-gravity).
   const gemCount = rng.intRange(biome.gemCount[0], biome.gemCount[1])
   const gems: GeneratedGem[] = []
   for (let i = 0; i < gemCount; i++) {
@@ -274,6 +289,36 @@ export function generateChunk(seed: number, chunkY: number): GeneratedChunk {
       const sizeRoll = rng.next()
       const size: GemSize = sizeRoll < 0.5 ? 'small' : sizeRoll < 0.8 ? 'medium' : sizeRoll < 0.95 ? 'large' : 'huge'
       gems.push({ col: x, rowInChunk: y, color, size })
+    }
+  }
+
+  // Void band bonus: every chunk that contains void rows gets
+  // generously seeded with extra gems of all colours and sizes. The
+  // void is the reward zone — falling through it should feel like a
+  // gem shower, with the driller drifting laterally to snag whatever
+  // they can before being outpaced.
+  //
+  // Progressive jackpot: deeper worlds pack the void with more gems.
+  // World 0's void is generous; by world 5+ it's a torrential shower
+  // (capped so it doesn't tip over into a gem soup that hides the
+  // driller).
+  const voidColors: GemColor[] = ['emerald', 'topaz', 'ruby', 'amethyst']
+  for (let r = 0; r < rows; r++) {
+    const absRow = chunkY * rows + r
+    if (!isFreeFall(absRow)) continue
+    const worldIndex = Math.floor(absRow / WORLD_LENGTH_ROWS)
+    const baseAttempts = Math.min(8, 2 + worldIndex)
+    const attempts = rng.intRange(baseAttempts, baseAttempts + 2)
+    for (let i = 0; i < attempts; i++) {
+      const x = rng.intRange(0, cols - 1)
+      const idx = r * cols + x
+      if (tiles[idx] !== TILE_AIR) continue
+      // Avoid stacking two gems in the same cell.
+      if (gems.some((g) => g.col === x && g.rowInChunk === r)) continue
+      const color = voidColors[rng.intRange(0, voidColors.length - 1)]!
+      const sizeRoll = rng.next()
+      const size: GemSize = sizeRoll < 0.45 ? 'small' : sizeRoll < 0.75 ? 'medium' : sizeRoll < 0.92 ? 'large' : 'huge'
+      gems.push({ col: x, rowInChunk: r, color, size })
     }
   }
 

@@ -1,6 +1,6 @@
 import type { Entity, World } from 'koota'
 import { Camera, Driller, GameState, Gem, Grid, TILE_AIR } from '../traits'
-import { FALL_INTERVAL_MS, TILE_PX } from '../constants'
+import { FALL_INTERVAL_MS, PLAYFIELD_TOP_OFFSET_ROWS, TILE_PX } from '../constants'
 
 /**
  * Gravity for gems — once a gem has entered the camera viewport, it
@@ -53,9 +53,19 @@ export function gemGravitySystem(world: World, deltaMs: number): void {
       return
     }
 
-    if (g.row < topRow || g.row > bottomRow) {
-      // Out of view — still write smoothPx/Py so a gem that scrolls
-      // back into view doesn't briefly show its previous lerp state.
+    // Above the LOGICAL playfield top = inside the darkening overlay
+    // band. The grey box kills gems no matter what — the driller has
+    // fallen past them and they can never be caught from there. We
+    // give the renderer a 4-row death window above the playfield top
+    // to play an eased scale-out before the entity is destroyed.
+    const playfieldTop = drillerCell ? drillerCell.row - PLAYFIELD_TOP_OFFSET_ROWS : topRow
+    if (g.row < playfieldTop - GEM_DEATH_ROWS) {
+      entity.destroy()
+      return
+    }
+    if (g.row > bottomRow) {
+      // Out of view below — keep px/py up to date so it doesn't pop
+      // when the driller next descends past it.
       entity.set(Gem, { px: smoothPx, py: smoothPy })
       return
     }
@@ -94,7 +104,8 @@ export function gemGravitySystem(world: World, deltaMs: number): void {
     }
 
     // Commit a new fall step. Snap visible py to the OLD cell so the
-    // next tick's lerp begins at progress 0.
+    // next tick's lerp begins at progress 0. Same FALL_INTERVAL_MS for
+    // all gems everywhere — no special free-fall mode.
     entity.set(Gem, {
       prevRow: g.row,
       row: belowRow,
@@ -105,6 +116,12 @@ export function gemGravitySystem(world: World, deltaMs: number): void {
     })
   })
 }
+
+/**
+ * How many rows above the playfield top a gem keeps existing while
+ * it scales out. Mirrored by GemRenderer's death-tween window.
+ */
+export const GEM_DEATH_ROWS = 4
 
 function collectGem(world: World, entity: Entity): void {
   const gs = world.get(GameState)

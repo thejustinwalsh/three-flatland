@@ -163,13 +163,34 @@ export function drillerSystem(world: World, deltaMs: number): void {
     supportRow >= rows ||
     (grid.tiles[supportIdx] !== undefined && grid.tiles[supportIdx] !== TILE_AIR)
   if (!onGround) {
+    // Free-fall steering: if the planner target is in another column
+    // AND the diagonally-down cell is AIR (no SOIL/STONE/fixture
+    // bumping us), drift one column toward the target as we fall.
+    // This is what lets the AI aim its landing through the void band
+    // between biomes — chase floating gems, avoid stone pillars on
+    // the next biome's surface.
+    let driftCol = snappedCol
+    const target = drillerEntity.get(PlannerTarget)
+    if (target) {
+      const dir = Math.sign(target.col - snappedCol)
+      if (dir !== 0) {
+        const candidateCol = snappedCol + dir
+        if (candidateCol >= 0 && candidateCol < cols) {
+          const diagIdx = (snappedRow + 1) * cols + candidateCol
+          const diag = grid.tiles[diagIdx]
+          if (diag === TILE_AIR) driftCol = candidateCol
+        }
+      }
+    }
+    const facing = driftCol === snappedCol ? d.facing : (driftCol > snappedCol ? 1 : -1)
     drillerEntity.set(Driller, {
       col: snappedCol,
       row: snappedRow,
       px: snappedPx,
       py: snappedPy,
-      destCol: snappedCol,
+      destCol: driftCol,
       destRow: snappedRow + 1,
+      facing,
     })
     const animFall = drillerEntity.get(Animation)
     if (animFall) drillerEntity.set(Animation, { state: 'fall' })

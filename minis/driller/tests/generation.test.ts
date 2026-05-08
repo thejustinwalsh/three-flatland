@@ -1,7 +1,19 @@
 import { describe, it, expect } from 'vitest'
 import { generateChunk } from '../src/systems/generation'
 import { CHUNK_ROWS, PLAY_COLS } from '../src/constants'
+import { biomeAt, WORLD_LENGTH_ROWS } from '../src/biomes'
 import { TILE_AIR, TILE_SOIL } from '../src/traits'
+
+/**
+ * Per the new world model (single biome per layer separated by void
+ * bands), the chunkY → biome mapping depends on `WORLD_LENGTH_ROWS`.
+ * World 0 spans rows 0..119; chunkY 0..3 (rows 0..127) all sit in or
+ * straddle world 0 → biome 0 (topsoil). Subsequent worlds rotate
+ * through BIOMES.
+ */
+const ROWS_PER_WORLD_IN_CHUNKS = WORLD_LENGTH_ROWS / CHUNK_ROWS
+const CHUNK_TOPSOIL = 0
+const CHUNK_WORLD_2 = Math.ceil(2 * ROWS_PER_WORLD_IN_CHUNKS) // safely inside world 2
 
 describe('generateChunk', () => {
   it('produces a chunk-sized array', () => {
@@ -17,10 +29,11 @@ describe('generateChunk', () => {
   })
 
   it('different seeds yield different chunks (deeper biome with caves)', () => {
-    // chunkY=0 in topsoil has no caves/stone/fixtures, so tiles can match
-    // across seeds (only gem positions differ). Test stoneworks instead.
-    const a = generateChunk(42, 2)
-    const b = generateChunk(43, 2)
+    // Pick a chunk from world 2+ where caves and stone scatter introduce
+    // RNG-driven divergence between seeds. World 2 corresponds to BIOMES[2]
+    // (stoneworks) which has caves[2,3] + clusters + rocks.
+    const a = generateChunk(42, CHUNK_WORLD_2)
+    const b = generateChunk(43, CHUNK_WORLD_2)
     expect(a.tiles).not.toEqual(b.tiles)
   })
 
@@ -33,35 +46,35 @@ describe('generateChunk', () => {
     }
   })
 
-  it('chunkY=2 (≈64m, stoneworks) has at least one AIR cell from caves', () => {
-    const c = generateChunk(42, 2)
+  it('a deeper-world chunk has at least one AIR cell from caves or void band', () => {
+    const c = generateChunk(42, CHUNK_WORLD_2)
     let air = 0
     for (let i = 0; i < c.tiles.length; i++) if (c.tiles[i] === TILE_AIR) air++
     expect(air).toBeGreaterThan(0)
   })
 
-  it('topsoil (chunkY=0) has no stone scatter', () => {
-    // Skip the AIR sky rows; in topsoil only SOIL & AIR should appear.
+  it('topsoil chunkY=0 outside the void band has no stone scatter', () => {
+    // World 0 (topsoil) only emits SOIL + AIR. Skip the sky rows.
     const c = generateChunk(42, 0)
     for (let i = 4 * PLAY_COLS; i < c.tiles.length; i++) {
       expect([TILE_AIR, TILE_SOIL]).toContain(c.tiles[i])
     }
   })
 
-  it('produces the spec gem-count range per biome', () => {
-    // chunkY=0 → topsoil (1-2 gems)
-    const top = generateChunk(42, 0)
-    expect(top.gems.length).toBeGreaterThanOrEqual(1)
-    expect(top.gems.length).toBeLessThanOrEqual(2)
+  it('produces a gem-count range matching the chunk biome', () => {
+    const top = generateChunk(42, CHUNK_TOPSOIL)
+    const topBiome = biomeAt(CHUNK_TOPSOIL * CHUNK_ROWS + CHUNK_ROWS / 2)
+    expect(top.gems.length).toBeGreaterThanOrEqual(topBiome.gemCount[0])
+    expect(top.gems.length).toBeLessThanOrEqual(topBiome.gemCount[1])
 
-    // chunkY=2 → stoneworks (4-6 gems)
-    const stone = generateChunk(42, 2)
-    expect(stone.gems.length).toBeGreaterThanOrEqual(4)
-    expect(stone.gems.length).toBeLessThanOrEqual(6)
+    const deeper = generateChunk(42, CHUNK_WORLD_2)
+    const deeperBiome = biomeAt(CHUNK_WORLD_2 * CHUNK_ROWS + CHUNK_ROWS / 2)
+    expect(deeper.gems.length).toBeGreaterThanOrEqual(deeperBiome.gemCount[0])
+    expect(deeper.gems.length).toBeLessThanOrEqual(deeperBiome.gemCount[1])
   })
 
   it('topsoil gems are emerald only', () => {
-    const c = generateChunk(7, 0)
+    const c = generateChunk(7, CHUNK_TOPSOIL)
     for (const g of c.gems) {
       expect(g.color).toBe('emerald')
     }

@@ -4,6 +4,7 @@ import { getWorld } from './world'
 import { Camera, GameState, Grid, Pointer, Seed } from './traits'
 import { PlayCanvas } from './components/PlayCanvas'
 import { Background } from './components/Background'
+import { BiomeTransition } from './components/BiomeTransition'
 import { Scene, type ShellState } from './components/Scene'
 import { HoverCursor } from './components/HoverCursor'
 import { DepthBar } from './components/DepthBar'
@@ -198,6 +199,7 @@ export default function Driller({
         <PlayCanvas hostRef={hostRef} onMetrics={onMetricsCombined}>
           <Scene onShellStateChange={setShellState} />
         </PlayCanvas>
+        <BiomeTransition />
         <DepthBar />
         <GemCounter />
         {mode === 'hero' && <HeroHint />}

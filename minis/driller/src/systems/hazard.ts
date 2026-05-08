@@ -22,7 +22,7 @@ import {
   PLAY_COLS,
   TILE_PX,
 } from '../constants'
-import { biomeAt } from '../biomes'
+import { biomeAt, isFreeFall } from '../biomes'
 import { createRng } from '../lib/rng'
 import { markCellAndNeighborsDirty } from './autotile-pass'
 
@@ -54,6 +54,10 @@ export function hazardSpawnSystem(world: World): void {
   const biome = biomeAt(d.row)
   const boost = HAZARD_DEPTH_BOOST[biome.name] ?? 0
   if (boost <= 0) return
+  // During free fall (driller in the void band between biomes) the
+  // sky is reserved for the gem shower — no rocks until the player
+  // has drilled deep enough into the next world.
+  if (isFreeFall(d.row)) return
 
   const interval = Math.max(
     HAZARD_SPAWN_INTERVAL_FLOOR,

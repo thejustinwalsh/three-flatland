@@ -1,10 +1,11 @@
 import { useRef } from 'react'
 import { useFrame } from '@react-three/fiber/webgpu'
-import { useQuery } from 'koota/react'
+import { useQuery, useWorld } from 'koota/react'
 import type { Entity } from 'koota'
 import type { Sprite2DMaterial, Sprite2D as Sprite2DType } from 'three-flatland/react'
-import { Gem } from '../traits'
-import { TILE_PX } from '../constants'
+import { Driller, Gem } from '../traits'
+import { PLAYFIELD_TOP_OFFSET_ROWS, TILE_PX } from '../constants'
+import { GEM_DEATH_ROWS } from '../systems/gem-gravity'
 
 const GEM_HEX = {
   emerald: '#34d399',
@@ -30,7 +31,9 @@ interface ViewProps {
 }
 
 function GemSprite({ entity, material }: ViewProps) {
+  const world = useWorld()
   const spriteRef = useRef<Sprite2DType>(null)
+  const sizeRef = useRef(8)
 
   useFrame(() => {
     if (!entity.has(Gem)) return
@@ -41,17 +44,47 @@ function GemSprite({ entity, material }: ViewProps) {
       sprite.visible = false
       return
     }
-    // Always read the smoothly-lerped px/py from the gem-gravity
-    // system. Both at-rest gems (prev === row) and falling gems use the
-    // same fields; scattered gems also write px/py via their own scatter
-    // tween. World Y is positive-down — flip sign for Three's Y-up.
+    // Smoothly-lerped px/py from the gem-gravity system.
     sprite.position.set(g.px, -g.py, 0)
     sprite.visible = true
+
+    // Death tween: when a gem crosses ABOVE the playfield top (into
+    // the dark history overlay) it has GEM_DEATH_ROWS rows of life
+    // left while we play a fun anticipation-then-collapse scale-out.
+    // 0..0.25 of the window: tiny pop up to 1.2× as the gem "reacts"
+    // to leaving the play area. 0.25..1.0: cubic ease-out collapse to
+    // zero. Alpha follows a complementary curve so the colour fades
+    // alongside the size.
+    const driller = world.queryFirst(Driller)
+    let scale = 1
+    let alpha = 1
+    if (driller) {
+      const d = driller.get(Driller)!
+      const playfieldTop = d.row - PLAYFIELD_TOP_OFFSET_ROWS
+      const rowsAbove = playfieldTop - g.row
+      if (rowsAbove > 0) {
+        const t = Math.min(1, rowsAbove / GEM_DEATH_ROWS)
+        if (t < 0.25) {
+          // anticipation pop
+          scale = 1 + (t / 0.25) * 0.2
+          alpha = 1
+        } else {
+          // collapse — 1 - cubic
+          const u = (t - 0.25) / 0.75
+          scale = (1 - u * u * u) * 1.2
+          alpha = 1 - u
+        }
+      }
+    }
+    const baseSize = sizeRef.current
+    sprite.scale.set(baseSize * scale, baseSize * scale, 1)
+    sprite.alpha = alpha
   })
 
   const g = entity.get(Gem)!
   const tintHex = GEM_HEX[g.color] ?? '#a78bfa'
   const size = GEM_SIZE_PX[g.size] ?? 8
+  sizeRef.current = size
 
   return (
     <sprite2D

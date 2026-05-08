@@ -87,11 +87,14 @@ export const PONDER_GEM_RADIUS = 3
 export const PONDER_GEM_MS = 140
 
 /**
- * Time per cell while a gem is falling under gravity (ms). Slow enough
- * that the lerp visibly smears between cells — instant 70ms snaps look
- * stuttery even with proper interpolation.
+ * Time per cell while a gem is falling under gravity (ms). Reliably
+ * SLOWER than the driller's slowest step (`DIG_INTERVAL_MS_SHALLOW`),
+ * so the driller — both walking and free-falling through the void
+ * band — always overtakes gems. Mr. Driller's "you outrun the gems
+ * during free fall" feel comes from this asymmetry: gems scroll
+ * upward in the camera frame as the driller drops past them.
  */
-export const FALL_INTERVAL_MS = 200
+export const FALL_INTERVAL_MS = 320
 
 /** Multi-hit ROCK tile — number of dig actions to break. */
 export const ROCK_HITS = 3

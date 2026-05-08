@@ -17,6 +17,7 @@ import {
   TILE_STONE,
 } from '../traits'
 import { MIN_PLAY_ROWS, PLAY_COLS, TILE_PX } from '../constants'
+import { biomeAt } from '../biomes'
 
 // Generous pool: covers tall viewports without stale-cell artifacts. The
 // tile-iteration window is `cam.rows + 4` rows; pool must cover the
@@ -25,14 +26,11 @@ const POOL_ROWS = MIN_PLAY_ROWS + 24
 const POOL_SIZE = PLAY_COLS * POOL_ROWS
 
 /**
- * Tile tints stored as packed [r, g, b] floats (0..1) so we can update a
- * Sprite2D's tint without allocating a Color object each frame.
+ * Static tints for non-soil tiles. SOIL / STONE colours come from the
+ * current biome's palette (see `biomes.ts`) so the world visually
+ * shifts as the driller descends.
  */
-const TINT_SOIL_DEEP = [0.36, 0.25, 0.14] as const
-const TINT_SOIL_EDGE = [0.42, 0.29, 0.17] as const
-const TINT_GRASS = [0.37, 0.66, 0.28] as const
-const TINT_STONE = [0.44, 0.44, 0.48] as const
-const TINT_ROCK = [0.55, 0.45, 0.35] as const // distinct from stone — warmer, breakable
+const TINT_ROCK = [0.55, 0.45, 0.35] as const // breakable rock — distinct from STONE
 const TINT_EXPLOSIVE = [0.85, 0.20, 0.15] as const
 const TINT_EXPLOSIVE_LIT = [1.0, 0.55, 0.20] as const // pulsing when triggered
 const TINT_FIXTURE_BONE = [0.91, 0.90, 0.83] as const
@@ -63,6 +61,7 @@ function pickTint(
   precarious: boolean,
   triggeredExplosive: boolean,
   now: number,
+  palette: { grass: readonly [number, number, number]; edge: readonly [number, number, number]; deep: readonly [number, number, number]; stone: readonly [number, number, number] },
 ): readonly [number, number, number] {
   if (falling) return TINT_FALL
   if (sagging) {
@@ -75,11 +74,11 @@ function pickTint(
     return lerp3(TINT_PRECARIOUS_LO, TINT_PRECARIOUS_HI, t)
   }
   if (tile === TILE_SOIL) {
-    if ((frame & 0x01) === 0) return TINT_GRASS // top-exposed → grass cap
-    if (frame === 0xf) return TINT_SOIL_DEEP
-    return TINT_SOIL_EDGE
+    if ((frame & 0x01) === 0) return palette.grass // top-exposed → grass cap
+    if (frame === 0xf) return palette.deep
+    return palette.edge
   }
-  if (tile === TILE_STONE) return TINT_STONE
+  if (tile === TILE_STONE) return palette.stone
   if (tile === TILE_ROCK) return TINT_ROCK
   if (tile === TILE_EXPLOSIVE) return triggeredExplosive ? TINT_EXPLOSIVE_LIT : TINT_EXPLOSIVE
   if (tile >= TILE_FIXTURE_BASE && tile < TILE_FIXTURE_BASE + 8) {
@@ -88,7 +87,7 @@ function pickTint(
     if (v === 1) return TINT_FIXTURE_MUSHROOM
     return TINT_FIXTURE_CRYSTAL
   }
-  return TINT_SOIL_EDGE
+  return palette.edge
 }
 
 interface TileRendererProps {
@@ -153,7 +152,8 @@ export function TileRenderer({ material }: TileRendererProps) {
         const falling = (flags[idx]! & FLAG_FALLING) !== 0
         const precarious = (flags[idx]! & FLAG_PRECARIOUS) !== 0
         const litExplosive = tile === TILE_EXPLOSIVE && triggeredExplosives.has(idx) && pulse
-        const tint = pickTint(tile, frameIndex[idx]!, sagging, falling, precarious, litExplosive, now)
+        const palette = biomeAt(r).palette
+        const tint = pickTint(tile, frameIndex[idx]!, sagging, falling, precarious, litExplosive, now, palette)
         sprite.position.set(c * TILE_PX + TILE_PX / 2, -(r * TILE_PX + TILE_PX / 2), 0)
         sprite.scale.set(TILE_PX, TILE_PX, 1)
         sprite.tint.r = tint[0]
