@@ -2,6 +2,7 @@ import type { World } from 'koota'
 import {
   Driller,
   FLAG_AUTOTILE_DIRTY,
+  FLAG_DISTURBED,
   GameState,
   Grid,
   Hazard,
@@ -162,16 +163,29 @@ export function hazardTickSystem(world: World): void {
     const tileHere = tiles[idx]!
 
     // STOP on first non-AIR cell. Drop a STONE in the cell immediately
-    // above (the last AIR cell the rock occupied).
+    // above (the last AIR cell the rock occupied). The new stone is
+    // born DISTURBED — a freshly-landed rock counts as destabilising
+    // any adjacent stone cluster, which is precisely how "rocks fall
+    // when a 4th joins them" works.
     if (tileHere !== TILE_AIR) {
       const restRow = newRow - 1
       if (restRow >= 0) {
         const restIdx = restRow * cols + h.col
-        // Only stamp a STONE if the resting cell is AIR (sanity).
         if (tiles[restIdx] === TILE_AIR) {
           tiles[restIdx] = TILE_STONE
-          flags[restIdx] = (flags[restIdx] ?? 0) | FLAG_AUTOTILE_DIRTY
+          flags[restIdx] = (flags[restIdx] ?? 0) | FLAG_AUTOTILE_DIRTY | FLAG_DISTURBED
           markCellAndNeighborsDirty(world, h.col, restRow)
+          // Disturb any STONE in the 4-neighbourhood — the impact
+          // shakes the existing pile.
+          for (const [dc, dr] of [[-1, 0], [1, 0], [0, -1], [0, 1]] as const) {
+            const nc = h.col + dc
+            const nr = restRow + dr
+            if (nc < 0 || nc >= cols || nr < 0 || nr >= rows) continue
+            const nIdx = nr * cols + nc
+            if (tiles[nIdx] === TILE_STONE) {
+              flags[nIdx] = (flags[nIdx] ?? 0) | FLAG_DISTURBED
+            }
+          }
         }
       }
       entity.set(Hazard, { phase: 'landed' })
@@ -183,27 +197,37 @@ export function hazardTickSystem(world: World): void {
 }
 
 /**
- * Kirby-style avalanche cascade. When 4+ TILE_STONE cells form a
- * 4-connected cluster, the pile is heavy enough to crush the soil
- * below it: every SOIL cell directly under the cluster's bottom edge
- * is converted to AIR. This vacates support for the soil chunk that
- * was holding everything up, so the next `detectAndSag` tick will
- * mark THAT chunk as sagging and the avalanche cascades naturally
- * through the existing collapse system — no new entity types needed.
+ * Avalanche cascade. When 4+ TILE_STONE cells form a 4-connected
+ * cluster, the pile is heavy enough to fall as a unit. Each "fall
+ * step" the cluster shifts down one row; columns where the bottom
+ * edge sits over SOIL get crushed (SOIL → AIR) and the rock that did
+ * the crushing accumulates a hit on `grid.hits[idx]`. After 4 hits
+ * that rock disintegrates — same model as drilling a rock (also 4
+ * hits to break in the user-facing mental model).
  *
- * Runs after `hazardTickSystem` so a freshly-landed rock is included
- * in cluster detection on the SAME tick.
+ * Once a cluster shrinks below 4 rocks it's no longer "heavy enough"
+ * and stops falling — remaining stones become static brace tiles.
+ *
+ * Falling cadence is throttled by `lastAvalancheTick` so cluster
+ * descent reads as a heavy crash, not a single-tick teleport.
  */
 const AVALANCHE_THRESHOLD = 4
+const AVALANCHE_HITS_TO_BREAK = 4
+const AVALANCHE_FALL_INTERVAL_TICKS = 12 // ~200ms at 60Hz
+let lastAvalancheTick = 0
 
 export function rockAvalancheSystem(world: World): void {
+  const gs = world.get(GameState)
   const grid = world.get(Grid)
-  if (!grid) return
-  const { cols, rows, tiles, flags } = grid
+  if (!gs || !grid) return
+  if (gs.tick - lastAvalancheTick < AVALANCHE_FALL_INTERVAL_TICKS) return
+  const { cols, rows, tiles, flags, hits } = grid
 
-  // 4-connected flood-fill over TILE_STONE.
+  // 4-connected flood-fill over TILE_STONE to find each cluster.
   const seen = new Uint8Array(tiles.length)
   const stack: number[] = []
+  let advancedAny = false
+
   for (let i = 0; i < tiles.length; i++) {
     if (seen[i] || tiles[i] !== TILE_STONE) continue
     const cells: number[] = []
@@ -229,25 +253,115 @@ export function rockAvalancheSystem(world: World): void {
     }
     if (cells.length < AVALANCHE_THRESHOLD) continue
 
-    // Punch through SOIL directly below any STONE in the cluster whose
-    // immediate neighbour-down is SOIL (not AIR, not another STONE in
-    // the cluster). The cluster itself doesn't move on this tick — the
-    // collapse system picks up the now-unsupported soil above next tick.
+    // Stability rule: a cluster only falls if it has been DISTURBED
+    // (a fresh rock landed on/near it, or the driller drilled an
+    // adjacent tile). Untouched 4+ piles from world generation are
+    // inert until the player actually destabilises them.
+    let disturbed = false
+    for (const idx of cells) {
+      if ((flags[idx]! & FLAG_DISTURBED) !== 0) {
+        disturbed = true
+        break
+      }
+    }
+    if (!disturbed) continue
+
+    // The cluster can fall iff every cell directly under the cluster's
+    // bottom edge (not part of the cluster) is AIR or SOIL — anything
+    // else (fixture, rock, world-floor) blocks the whole pile.
+    const inCluster = new Set(cells)
+    let canFall = true
+    const bottomEdge: number[] = []
     for (const idx of cells) {
       const c = idx % cols
       const r = (idx - c) / cols
-      if (r + 1 >= rows) continue
+      if (r + 1 >= rows) {
+        canFall = false
+        break
+      }
       const belowIdx = (r + 1) * cols + c
+      if (inCluster.has(belowIdx)) continue
       const below = tiles[belowIdx]
-      if (below === TILE_SOIL) {
-        // Crush only diggable cells (SOIL). Leave other STONE / fixtures /
-        // rocks alone — those would each be their own design call.
+      if (below !== TILE_AIR && below !== TILE_SOIL) {
+        canFall = false
+        break
+      }
+      bottomEdge.push(idx)
+    }
+    if (!canFall) continue
+
+    // Crush soil under the bottom edge (each crush = +1 hit on the
+    // rock that did the crushing). Then physically translate the
+    // cluster down one row.
+    for (const idx of bottomEdge) {
+      const c = idx % cols
+      const r = (idx - c) / cols
+      const belowIdx = (r + 1) * cols + c
+      if (tiles[belowIdx] === TILE_SOIL) {
         tiles[belowIdx] = TILE_AIR
         flags[belowIdx] = (flags[belowIdx] ?? 0) | FLAG_AUTOTILE_DIRTY
+        hits[idx] = (hits[idx] ?? 0) + 1
         markCellAndNeighborsDirty(world, c, r + 1)
       }
     }
+
+    // Translate the cluster down. Process bottom rows first so we
+    // don't overwrite a cell still occupied by another cluster cell.
+    cells.sort((a, b) => Math.floor(b / cols) - Math.floor(a / cols))
+    for (const idx of cells) {
+      const c = idx % cols
+      const r = (idx - c) / cols
+      const newIdx = (r + 1) * cols + c
+      const rockHits = hits[idx] ?? 0
+      // Disintegrate this rock if it's accumulated enough hits to
+      // break — leaves AIR behind, no descent.
+      if (rockHits >= AVALANCHE_HITS_TO_BREAK) {
+        tiles[idx] = TILE_AIR
+        flags[idx] = (flags[idx] ?? 0) | FLAG_AUTOTILE_DIRTY
+        hits[idx] = 0
+        markCellAndNeighborsDirty(world, c, r)
+        continue
+      }
+      // Otherwise translate stone + carry its hit count to new cell.
+      // The DISTURBED bit travels with the moving stone — the cluster
+      // keeps falling next interval until it lands on something solid
+      // OR shrinks below the threshold, at which point the unset
+      // DISTURBED at the bottom of the loop renders it inert again.
+      tiles[idx] = TILE_AIR
+      flags[idx] = (flags[idx] ?? 0) | FLAG_AUTOTILE_DIRTY
+      tiles[newIdx] = TILE_STONE
+      flags[newIdx] = (flags[newIdx] ?? 0) | FLAG_AUTOTILE_DIRTY | FLAG_DISTURBED
+      hits[newIdx] = rockHits
+      hits[idx] = 0
+      markCellAndNeighborsDirty(world, c, r)
+      markCellAndNeighborsDirty(world, c, r + 1)
+    }
+    advancedAny = true
   }
+
+  // Clear the disturbance bit from any cluster cell that DIDN'T move
+  // this tick. Untriggered clusters become inert again until the next
+  // destabilisation event.
+  if (advancedAny) {
+    // Cells that moved have FLAG_DISTURBED set on their new positions
+    // (above). For any leftover stone with DISTURBED, leave it: it'll
+    // be picked up next interval.
+  } else {
+    // No cluster fell — clear all DISTURBED on stones to avoid stale
+    // state on clusters that couldn't fall (e.g., blocked below).
+    for (let i = 0; i < tiles.length; i++) {
+      if (tiles[i] === TILE_STONE && (flags[i]! & FLAG_DISTURBED) !== 0) {
+        flags[i]! &= ~FLAG_DISTURBED
+      }
+    }
+  }
+
+  if (advancedAny) lastAvalancheTick = gs.tick
+}
+
+/** Reset avalanche timer on world rotation / restart. */
+export function resetAvalanche(): void {
+  lastAvalancheTick = 0
 }
 
 /** Reset module-level state on world rotation / restart. */

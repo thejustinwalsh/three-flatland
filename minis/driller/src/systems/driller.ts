@@ -4,6 +4,7 @@ import {
   Driller,
   type DrillerAnimState,
   FLAG_AUTOTILE_DIRTY,
+  FLAG_DISTURBED,
   GameState,
   Gem,
   Grid,
@@ -21,8 +22,6 @@ import {
   DIG_INTERVAL_MS_DEEP,
   DIG_INTERVAL_MS_SHALLOW,
   DRILL_COOLDOWN_MS,
-  PONDER_GEM_MS,
-  PONDER_GEM_RADIUS,
   ROCK_HITS,
   TILE_PX,
 } from '../constants'
@@ -99,11 +98,13 @@ export function drillerSystem(world: World, deltaMs: number): void {
           grid.tiles[drillIdx] = TILE_AIR
           grid.flags[drillIdx] = FLAG_AUTOTILE_DIRTY
           markCellAndNeighborsDirty(world, d.drillCol, d.drillRow)
+          disturbAdjacentStones(grid, d.drillCol, d.drillRow)
         }
       } else if (tile === TILE_SOIL) {
         grid.tiles[drillIdx] = TILE_AIR
         grid.flags[drillIdx] = FLAG_AUTOTILE_DIRTY
         markCellAndNeighborsDirty(world, d.drillCol, d.drillRow)
+        disturbAdjacentStones(grid, d.drillCol, d.drillRow)
       }
     }
     drillerEntity.set(Driller, {
@@ -294,26 +295,12 @@ export function drillerSystem(world: World, deltaMs: number): void {
   }
 
   if (walkDest) {
-    // Add the gem-ponder pause as a small extra hold once the cell is
-    // entered: a nearby gem causes the AI to pause and consider its
-    // options just before stepping in. Implemented as a brief drill of
-    // an already-AIR cell (no grid mutation; just the timer).
-    const nearby = gemNearby(world, walkDest.col, walkDest.row)
-    if (nearby) {
-      drillerEntity.set(Driller, {
-        col: snappedCol,
-        row: snappedRow,
-        px: snappedPx,
-        py: snappedPy,
-        destCol: snappedCol,
-        destRow: snappedRow,
-        facing,
-        drillCooldownMs: PONDER_GEM_MS,
-        drillCol: walkDest.col,
-        drillRow: walkDest.row,
-      })
-      return
-    }
+    // The previous version added a "ponder" drill cooldown when a gem
+    // was within PONDER_GEM_RADIUS, but that fired EVERY snap-and-pick
+    // cycle, soft-locking the driller in a loop of "ponder → expire →
+    // ponder again" because the gem stayed nearby. Walking now just
+    // commits the new dest immediately and lets the planner / mood
+    // system handle attention pacing instead.
     drillerEntity.set(Driller, {
       col: snappedCol,
       row: snappedRow,
@@ -359,17 +346,24 @@ function collectGemAt(
   })
 }
 
-function gemNearby(world: World, col: number, row: number): boolean {
-  let nearby = false
-  world.query(Gem).forEach((entity) => {
-    if (nearby) return
-    const g = entity.get(Gem)
-    if (!g || g.collected || g.scatteredUntilTick !== 0) return
-    if (Math.abs(g.col - col) + Math.abs(g.row - row) <= PONDER_GEM_RADIUS) {
-      nearby = true
+/**
+ * Mark any TILE_STONE in the 4-neighbourhood of (col, row) with
+ * FLAG_DISTURBED. Drilling adjacent to a rock cluster is one of the
+ * three destabilising events that lets the avalanche system kick in
+ * (the others: a fresh hazard landing on a cluster, and the cluster
+ * itself already mid-fall).
+ */
+function disturbAdjacentStones(grid: { cols: number; rows: number; tiles: Uint8Array; flags: Uint8Array }, col: number, row: number): void {
+  const { cols, rows, tiles, flags } = grid
+  for (const [dc, dr] of [[-1, 0], [1, 0], [0, -1], [0, 1]] as const) {
+    const nc = col + dc
+    const nr = row + dr
+    if (nc < 0 || nc >= cols || nr < 0 || nr >= rows) continue
+    const nIdx = nr * cols + nc
+    if (tiles[nIdx] === TILE_STONE) {
+      flags[nIdx] = (flags[nIdx] ?? 0) | FLAG_DISTURBED
     }
-  })
-  return nearby
+  }
 }
 
 function isFixture(t: number): boolean {

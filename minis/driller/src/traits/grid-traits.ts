@@ -39,6 +39,18 @@ export const FLAG_AUTOTILE_DIRTY = 1 << 2
 export const FLAG_PRECARIOUS = 1 << 3
 
 /**
+ * Stone-disturbance bit. A 4+ rock cluster is otherwise stable; only
+ * a destabilising event (driller drills nearby, fresh rock lands on
+ * the pile, adjacent soil falls away) sets this bit. Cleared after
+ * the avalanche tick processes the cluster.
+ *
+ * "Naturally occurring" rock clusters from world generation never get
+ * this bit set, so they remain inert until the player actually
+ * disturbs them.
+ */
+export const FLAG_DISTURBED = 1 << 4
+
+/**
  * Singleton tile grid. The world is 18 columns wide (matches `PLAY_COLS`)
  * and grows vertically as chunks stream in. `topRow` and `bottomRow` are
  * absolute row indices in world space (a chunk near the surface has a
