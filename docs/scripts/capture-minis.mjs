@@ -242,15 +242,14 @@ for (const { slug, path } of targets) {
     })
 
     // ─── Still (PNG + WEBP) ───────────────────────────────────
-    // Canvas screenshot keeps alpha (mini uses `clearAlpha={0}` so
-    // empty playfield areas are transparent). The video composites
-    // correctly on the GalleryTile's gem-tinted bg at display
-    // time, but a PNG file shown standalone renders alpha-zero
-    // pixels as WHITE in most viewers — which is what the user
-    // hit. Solution: read the .showcase-detail-stage's computed bg
-    // color and flatten the canvas screenshot against it via
-    // sharp, producing an opaque PNG that visually matches what
-    // the video looks like inside the tile.
+    // Preserve the canvas's alpha channel — `omitBackground: true`
+    // tells Playwright NOT to fill transparent pixels with white
+    // before encoding (the default `omitBackground: false` forces
+    // a white background, which is what was producing white
+    // posters where transparent canvas areas should have been).
+    // PNG + WEBP both support alpha; consumers (GalleryTile)
+    // composite the transparent areas onto the tile's gem-tinted
+    // bg at display time, exactly like the video already does.
     //
     // RAF paint sync ensures the canvas's most recent draw is in
     // the front buffer before snapshot.
@@ -260,29 +259,12 @@ for (const { slug, path } of targets) {
           requestAnimationFrame(() => requestAnimationFrame(res)),
         ),
     )
-    const stageBg = await page.evaluate(() => {
-      const el = document.querySelector('.showcase-detail-stage')
-      if (!el) return 'rgb(22, 25, 30)'
-      return getComputedStyle(el).backgroundColor || 'rgb(22, 25, 30)'
-    })
-    // sharp's flatten accepts CSS rgb()/rgba() strings via its named
-    // `background` option that takes a color object. Parse the
-    // rgb(R, G, B) string ourselves for portability.
-    const m = String(stageBg).match(/rgb(?:a)?\((\d+),\s*(\d+),\s*(\d+)/)
-    const flattenBg = m
-      ? { r: Number(m[1]), g: Number(m[2]), b: Number(m[3]) }
-      : { r: 22, g: 25, b: 30 }
     const pngPath = resolve(OUT_DIR, `${slug}.png`)
     const webpPath = resolve(OUT_DIR, `${slug}.webp`)
-    const rawCanvasPng = await canvas.screenshot({ omitBackground: false })
-    const flatPngBuffer = await sharp(rawCanvasPng)
-      .flatten({ background: flattenBg })
-      .png()
-      .toBuffer()
-    await writeFile(pngPath, flatPngBuffer)
-    const webpBuffer = await sharp(rawCanvasPng)
-      .flatten({ background: flattenBg })
-      .webp({ quality: 95, smartSubsample: true })
+    const pngBuffer = await canvas.screenshot({ omitBackground: true })
+    await writeFile(pngPath, pngBuffer)
+    const webpBuffer = await sharp(pngBuffer)
+      .webp({ quality: 95, smartSubsample: true, alphaQuality: 100 })
       .toBuffer()
     await writeFile(webpPath, webpBuffer)
 
