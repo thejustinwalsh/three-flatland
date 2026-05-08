@@ -15,6 +15,31 @@ import GalleryTile from '../../../components/gallery/GalleryTile.astro'
   <p class="showcases-tagline">Each showcase is a complete app built with three-flatland and shipped as a public mini package. Hover any tile for a live preview; click through to play it inline and read the source.</p>
 </header>
 
+{/*
+  ─── Frontmatter theme system ──────────────────────────────────────
+  Each <GalleryTile> on this index reflects fields that live in the
+  showcase's MDX frontmatter (see showcases/breakout.mdx for the
+  shape). The tile prop names mirror the frontmatter:
+
+    color   gem accent  → drives card-edge rim, cursor hotspot,
+                          lens-flare gem, hover affordance
+                          ('gold' | 'ruby' | 'emerald' | 'diamond' |
+                           'amethyst' | 'pink' | 'salmon' | 'turquoize')
+    aspect  media ratio → '16 / 10' (cinematic), '4 / 3' (compact),
+                          '1 / 1' (square — fits a single-screen game)
+
+  When showcase count goes to ≥2, the grid swaps from the featured
+  single-tile layout to the standard 2-col grid automatically (see
+  ShowcaseGrid.astro: a.gallery-tile:only-of-type for the singleton
+  styling).
+
+  Future extension hooks (not yet wired):
+    - data-effect="breathe|sparkle|pulse" for per-showcase ambient
+      hover effects beyond the shared foil rim.
+    - frontmatter `eyebrow` for a per-showcase tagline above the
+      title (e.g. "Arcade Classic" / "Action RPG").
+*/}
+
 <ShowcaseGrid>
   <GalleryTile
     surface="showcases"
@@ -24,6 +49,39 @@ import GalleryTile from '../../../components/gallery/GalleryTile.astro'
     color="ruby"
     aspect="16 / 10"
   />
+  {/*
+    Placeholder examples — uncomment any (and add a matching MDX
+    file under showcases/) to see how the 2-col grid layout
+    + per-showcase gem theming reads side-by-side. Adding a
+    second tile auto-collapses the singleton featured layout.
+
+    <GalleryTile
+      surface="showcases"
+      slug="platformer"
+      title="Platformer"
+      description="Tile-perfect platformer demo with Aseprite-driven sprite atlases, parallax scrolling, and frame-stepped physics."
+      color="emerald"
+      aspect="16 / 10"
+    />
+
+    <GalleryTile
+      surface="showcases"
+      slug="puzzler"
+      title="Puzzler"
+      description="Match-N puzzle game built on a board ECS with cascade resolution, score multipliers, and animated tile dissolves."
+      color="amethyst"
+      aspect="1 / 1"
+    />
+
+    <GalleryTile
+      surface="showcases"
+      slug="shoot-em-up"
+      title="Shoot 'em up"
+      description="Bullet-hell SHMUP demonstrating SpriteGroup batching at scale — 1k+ active projectiles in a single draw call."
+      color="gold"
+      aspect="9 / 16"
+    />
+  */}
 </ShowcaseGrid>
 
 </div>

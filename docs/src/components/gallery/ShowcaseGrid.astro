@@ -42,15 +42,52 @@
     }
   }
 
-  /* Single showcase (Breakout today) sits at one-tile width and
-   * centers inside the 2-col container — visually as if it were
-   * one of two tiles, with the other slot empty. Caps at a natural
-   * max so it doesn't read as "ad" billboard-large at high
-   * resolutions. */
-  .showcase-grid > *:only-child {
+  /* Single-showcase featured layout — when only one tile is in the
+   * grid (current state with just Breakout), it gets a featured
+   * treatment: bigger overall, wider aspect, larger inner type, more
+   * deliberate body padding. Reads as "this is THE showcase" rather
+   * than "one of many." When a second showcase is added the
+   * `:only-child` selector stops matching and tiles fall back to the
+   * normal 2-col grid sizing. */
+  .showcase-grid > a.gallery-tile:only-of-type {
     grid-column: 1 / -1;
     justify-self: center;
     width: 100%;
-    max-width: 30rem;
+    max-width: 38rem;
+  }
+</style>
+
+{/* Cross-component overrides for the featured single-tile layout —
+   reach into GalleryTile's internal markup to scale the body
+   typography + padding so the lone tile reads as a feature card,
+   not just a stretched grid cell. is:global because GalleryTile's
+   styles are scoped; without is:global these selectors would only
+   match elements rendered by THIS file. */}
+<style is:global>
+  .showcase-grid > a.gallery-tile:only-of-type .gallery-tile-body {
+    padding: 1.25rem 1.5rem 1.5rem;
+    gap: 0.4rem;
+  }
+  .showcase-grid > a.gallery-tile:only-of-type .gallery-tile-title {
+    font-size: clamp(1.125rem, 2vw, 1.375rem);
+    line-height: 1.2;
+    letter-spacing: -0.018em;
+  }
+  .showcase-grid > a.gallery-tile:only-of-type .gallery-tile-desc {
+    font-size: 0.9375rem;
+    line-height: 1.55;
+  }
+  /* Subtle ambient breathing on the featured tile's border ring —
+   * gem-tinted box-shadow that pulses very slowly so the single
+   * tile reads as a "live" feature without competing with the
+   * cursor-tracked foil rim. Disabled under reduced-motion. */
+  @media (prefers-reduced-motion: no-preference) {
+    .showcase-grid > a.gallery-tile:only-of-type {
+      animation: showcase-feature-breath 6s ease-in-out infinite;
+    }
+    @keyframes showcase-feature-breath {
+      0%, 100% { filter: brightness(1) saturate(1); }
+      50%      { filter: brightness(1.04) saturate(1.06); }
+    }
   }
 </style>
