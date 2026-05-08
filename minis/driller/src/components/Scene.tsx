@@ -19,6 +19,8 @@ import { TILE_PX } from '../constants'
 import { cameraSystem } from '../systems/camera'
 import { autotilePass } from '../systems/autotile-pass'
 import { collapseTick } from '../systems/collapse'
+import { drillerSystem, moodDriftSystem } from '../systems/driller'
+import { plannerTick } from '../systems/ai-planner'
 import { streamChunks } from '../systems/generation'
 import { TILE_COLORS, useDrillerMaterial } from '../materials'
 
@@ -68,11 +70,12 @@ export function Scene() {
   const tickVersion = useRef(0)
 
   // Update phase: simulation logic
-  useFrame(() => {
+  useFrame((_, delta) => {
     if (!world.has(GameState)) return
     const gs = world.get(GameState)
     if (!gs) return
     gs.tick++
+    const deltaMs = Math.min(delta, 0.05) * 1000
 
     cameraSystem(world)
 
@@ -83,6 +86,9 @@ export function Scene() {
       streamChunks(world, cameraRow)
     }
 
+    moodDriftSystem(world, gs.tick)
+    plannerTick(world)
+    drillerSystem(world, deltaMs)
     collapseTick(world)
     autotilePass(world)
 
