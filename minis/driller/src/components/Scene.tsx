@@ -4,7 +4,7 @@ import { Flatland, Sprite2D, Sprite2DMaterial, type Flatland as FlatlandType } f
 import { useWorld } from 'koota/react'
 import type { WebGPURenderer } from 'three/webgpu'
 import { Camera, GameState, Grid, type RunState } from '../traits'
-import { TILE_PX } from '../constants'
+import { PLAY_COLS, TILE_PX } from '../constants'
 import { autotilePass } from '../systems/autotile-pass'
 import { cameraSystem } from '../systems/camera'
 import { collapseTick } from '../systems/collapse'
@@ -103,7 +103,11 @@ export function Scene({ onShellStateChange }: SceneProps) {
       const flatland = flatlandRef.current
       if (cam && flatland) {
         const halfH = (cam.rows * TILE_PX) / 2
+        const halfW = (PLAY_COLS * TILE_PX) / 2
+        // Center horizontally on the play area (cols span 0..PLAY_COLS in world x).
+        flatland.camera.position.x = halfW
         flatland.camera.position.y = -(cam.y + halfH)
+        if (typeof window !== 'undefined') (window as { __drillerFlat?: unknown }).__drillerFlat = flatland
       }
     }
   })
