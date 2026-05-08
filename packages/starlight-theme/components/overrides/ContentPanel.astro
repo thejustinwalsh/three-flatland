@@ -1,1 +1,30 @@
-<slot />
+{/*
+    ContentPanel is intentionally a passthrough. Starlight calls this
+    component multiple times per page (hero / title / content / footer
+    blocks) and its default adds padding + a max-width container + a
+    divider between successive panels. Our framing lives elsewhere:
+
+      - TwoColumnContent owns the page-level grid + padding
+      - PageTitle owns the title block padding + actions row
+      - MarkdownContent owns prose width + typography
+      - Pagination + Footer own the trailing block
+
+    Wrapping content here would double-pad and fight those overrides.
+    The structural `content-panel` class is preserved so any third-party
+    CSS or future tooling that targets it still works, but the layout
+    rules attached to it in Starlight core are deliberately not carried
+    over. If you find yourself wanting padding or a divider here, add
+    it to the inner component (PageTitle / MarkdownContent / Footer)
+    instead — that's where the design system's framing lives.
+*/}
+<div class="content-panel">
+    <slot />
+</div>
+
+<style>
+    /* No padding, no max-width, no divider rules — see comment above.
+     * The class exists for selector stability only. */
+    .content-panel {
+        display: contents;
+    }
+</style>
