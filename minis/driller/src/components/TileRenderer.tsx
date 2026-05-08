@@ -154,18 +154,18 @@ export function TileRenderer({ material }: TileRendererProps) {
         const litExplosive = tile === TILE_EXPLOSIVE && triggeredExplosives.has(idx) && pulse
         const palette = biomeAt(r).palette
         const tint = pickTint(tile, frameIndex[idx]!, sagging, falling, litExplosive, now, palette)
-        // Shake telegraph IS the lock-in moment right before fall —
-        // not an extra delay layered on top. Cells get FLAG_SHAKING
-        // only in the last few hundred ms of their commit window
-        // (sag chunks: last ~300ms before release; avalanche rocks:
-        // entire pre-fall telegraph). When you see shake, the block
-        // is dropping next.
+        // Shake telegraph: deliberate "crack" rather than a buzz. A
+        // few wide shudders at ~6 Hz (1 cycle ≈ 170 ms) so over the
+        // ~300 ms window the player sees roughly two heavy lurches
+        // before the fall actually animates. Larger amplitude gives
+        // each pulse weight; both axes share the same phase so the
+        // whole block lurches together (no electron-bouncing).
         let jitterX = 0
         let jitterY = 0
         if (shaking) {
-          const phase = (now / 1000) * Math.PI * 2 * 30
-          jitterX = Math.sin(phase) * 1.2
-          jitterY = Math.cos(phase * 1.3) * 0.6
+          const phase = (now / 1000) * Math.PI * 2 * 6
+          jitterX = Math.sin(phase) * 2.4
+          jitterY = Math.sin(phase * 0.5) * 1.2
         }
         sprite.position.set(c * TILE_PX + TILE_PX / 2 + jitterX, -(r * TILE_PX + TILE_PX / 2) + jitterY, 0)
         sprite.scale.set(TILE_PX, TILE_PX, 1)
