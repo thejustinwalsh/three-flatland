@@ -11,6 +11,7 @@ import { collapseTick } from '../systems/collapse'
 import { deathSystem, heroWorldFallSystem, scatteredGemsSystem } from '../systems/death'
 import { drillerSystem, moodDriftSystem } from '../systems/driller'
 import { explosiveSystem } from '../systems/explosive'
+import { gemGravitySystem } from '../systems/gem-gravity'
 import { plannerTick } from '../systems/ai-planner'
 import { resetStreaming, streamChunks } from '../systems/generation'
 import { hazardSpawnSystem, hazardTickSystem, resetHazardSpawn } from '../systems/hazard'
@@ -87,6 +88,7 @@ export function Scene({ onShellStateChange }: SceneProps) {
     }
     hazardTickSystem(world)
     explosiveSystem(world)
+    gemGravitySystem(world, deltaMs)
     collapseTick(world)
     particlesSystem(world, deltaMs)
     autotilePass(world)

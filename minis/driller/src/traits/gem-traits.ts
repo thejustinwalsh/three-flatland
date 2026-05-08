@@ -30,4 +30,6 @@ export const Gem = trait({
   py: 0,
   /** During collect-arc tween: 0 = at source, 1 = at driller. */
   collectProgress: 0,
+  /** Gravity step cooldown (ms); gem falls one row when this hits 0. */
+  fallCooldownMs: 0,
 })
