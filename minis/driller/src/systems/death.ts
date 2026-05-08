@@ -21,6 +21,7 @@ import type { GemColor, GemSize } from '../atlas-regions'
 import { TILE_PX } from '../constants'
 import { createRng } from '../lib/rng'
 import { markCellAndNeighborsDirty } from './autotile-pass'
+import { clearAllChunkEntities } from './collapse'
 import { setHazardSafeMinRow } from './hazard'
 
 /**
@@ -89,6 +90,11 @@ export function deathSystem(world: World): void {
       drillerEntity.set(Driller, { destCol: d.col, destRow: d.row })
       drillerEntity.set(PlannerTarget, { col: d.col, row: d.row, reservedAtTick: gs.tick })
     }
+    // Wipe in-flight chunk entities. The chunk that just killed the
+    // driller (or any other sag/fall in-progress) MUST NOT survive
+    // into respawn — otherwise it lands again on top of the new
+    // driller exactly where we put them.
+    clearAllChunkEntities(world)
     deathPhase = 'settle'
     deathTick = gs.tick
     ghostRow = deathRow

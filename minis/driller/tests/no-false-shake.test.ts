@@ -1,7 +1,15 @@
 import { describe, it, expect } from 'vitest'
-import { collapseTick, detectAndSag, tickSagging, tickFalling } from '../src/systems/collapse'
+import {
+  clearAllChunkEntities,
+  clearChunkEntitiesInRowRange,
+  collapseTick,
+  detectAndSag,
+  tickSagging,
+  tickFalling,
+} from '../src/systems/collapse'
 import { rockAvalancheSystem, resetAvalanche } from '../src/systems/hazard'
 import {
+  FallingChunk,
   FLAG_DISTURBED,
   FLAG_SAG_RECHECK,
   FLAG_SHAKING,
@@ -184,6 +192,107 @@ describe('no-false-shake invariant', () => {
     // not AIR. (A 0-tile "release" is the bug we're forbidding.)
     for (let c = 2; c < 8; c++) {
       expect(grid.tiles[2 * grid.cols + c]).toBe(TILE_SOIL)
+    }
+  })
+
+  it('clearAllChunkEntities wipes sag/fall on death entry', () => {
+    // Pin the death-replay bug: a SaggingChunk that was alive when
+    // the driller died MUST NOT survive into respawn. After
+    // clearAllChunkEntities the world has zero SaggingChunk and zero
+    // FallingChunk entities, and no cell carries SAGGING or SHAKING.
+    const world = makeWorldFromGrid([
+      '..............',
+      '..............',
+      '..######......',
+      '..............',
+      'SSSSSSSSSSSSSS',
+    ])
+    const grid = world.get(Grid)!
+    for (let i = 0; i < grid.tiles.length; i++) {
+      if (grid.tiles[i] === TILE_SOIL) grid.flags[i]! |= FLAG_SAG_RECHECK
+    }
+    detectAndSag(world)
+    let preCount = 0
+    world.query(SaggingChunk).forEach(() => preCount++)
+    expect(preCount).toBeGreaterThan(0)
+    clearAllChunkEntities(world)
+    let postSag = 0
+    world.query(SaggingChunk).forEach(() => postSag++)
+    let postFall = 0
+    world.query(FallingChunk).forEach(() => postFall++)
+    expect(postSag).toBe(0)
+    expect(postFall).toBe(0)
+    for (let i = 0; i < grid.flags.length; i++) {
+      expect(grid.flags[i]! & FLAG_SHAKING).toBe(0)
+    }
+  })
+
+  it('clearChunkEntitiesInRowRange wipes only entities in unloaded rows', () => {
+    // Two sag chunks at different rows. Unloading one row range must
+    // drop the entity in that range and leave the other intact.
+    const world = makeWorldFromGrid([
+      '..............',
+      '..######......',
+      '..............',
+      '..............',
+      '..######......',
+      '..............',
+      'SSSSSSSSSSSSSS',
+    ])
+    const grid = world.get(Grid)!
+    for (let i = 0; i < grid.tiles.length; i++) {
+      if (grid.tiles[i] === TILE_SOIL) grid.flags[i]! |= FLAG_SAG_RECHECK
+    }
+    detectAndSag(world)
+    let total = 0
+    world.query(SaggingChunk).forEach(() => total++)
+    expect(total).toBe(2)
+    // Unload rows [0,3) — only the upper sag chunk is in range.
+    clearChunkEntitiesInRowRange(world, 0, 3)
+    let remaining = 0
+    world.query(SaggingChunk).forEach((entity) => {
+      const sag = entity.get(SaggingChunk)!
+      // The surviving entity's cells must all be at row >= 3.
+      for (const c of sag.cells) expect(c.row).toBeGreaterThanOrEqual(3)
+      remaining++
+    })
+    expect(remaining).toBe(1)
+  })
+
+  it('a sag whose cells got drilled / cleared mid-wobble cancels (tile-class invariant)', () => {
+    // Spawn a sag, then mutate one of its cells to AIR. The tile-class
+    // invariant says: the entity is now stale, destroy it. No shake,
+    // no release, no FallingChunk.
+    const world = makeWorldFromGrid([
+      '..............',
+      '..............',
+      '..######......',
+      '..............',
+      'SSSSSSSSSSSSSS',
+    ])
+    const grid = world.get(Grid)!
+    for (let i = 0; i < grid.tiles.length; i++) {
+      if (grid.tiles[i] === TILE_SOIL) grid.flags[i]! |= FLAG_SAG_RECHECK
+    }
+    detectAndSag(world)
+    // Drill out the leftmost cell of the sag chunk.
+    grid.tiles[2 * grid.cols + 2] = TILE_AIR
+    // Tick past the release window.
+    for (let t = 0; t < 80; t++) {
+      tickWorld(world, 1)
+      tickSagging(world)
+    }
+    // Entity must be gone. No FallingChunk should have spawned (the
+    // entity died of staleness, not via the normal release path).
+    let sagCount = 0
+    world.query(SaggingChunk).forEach(() => sagCount++)
+    expect(sagCount).toBe(0)
+    let fallCount = 0
+    world.query(FallingChunk).forEach(() => fallCount++)
+    expect(fallCount).toBe(0)
+    // No cell should carry SHAKING.
+    for (let i = 0; i < grid.flags.length; i++) {
+      expect(grid.flags[i]! & FLAG_SHAKING).toBe(0)
     }
   })
 

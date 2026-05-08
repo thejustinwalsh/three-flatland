@@ -20,6 +20,7 @@ import {
 import type { GemColor, GemSize } from '../atlas-regions'
 import { biomeAt, isFreeFall, WORLD_BODY_ROWS, WORLD_LENGTH_ROWS, WORLD_VOID_ROWS } from '../biomes'
 import { createRng, type Rng } from '../lib/rng'
+import { clearChunkEntitiesInRowRange } from './collapse'
 
 /**
  * Output of a per-chunk generation pass. The generator does not touch the
@@ -468,6 +469,13 @@ function unloadChunk(world: World, chunkY: number): void {
   if (!grid) return
   const { cols, tiles, flags } = grid
   const baseRow = chunkY * CHUNK_ROWS
+
+  // Despawn in-flight sag / fall entities pointing into this chunk
+  // BEFORE we wipe the tiles. A SaggingChunk whose cells were in this
+  // range would otherwise persist with stale row references — its
+  // next tick would re-stamp SOIL via FallingChunk into a chunk that
+  // should no longer exist.
+  clearChunkEntitiesInRowRange(world, baseRow, baseRow + CHUNK_ROWS)
 
   for (let r = 0; r < CHUNK_ROWS; r++) {
     for (let c = 0; c < cols; c++) {

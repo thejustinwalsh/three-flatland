@@ -19,11 +19,20 @@ import { MAX_CHUNK_HEIGHT, MAX_REACH, SAG_DURATION_TICKS, TILE_PX } from '../con
 
 /**
  * How far above and below the driller's row we run the chunk-detect
- * scan each tick. Anything outside is either un-streamed (still AIR)
- * or far enough behind that any sag there would never affect the
- * play area before the world rotates anyway.
+ * scan each tick. ABOVE is tight: anything more than a handful of
+ * rows above the driller is "out of play" and the player's drilling
+ * shouldn't be re-triggering sag detection there. BELOW is wider so
+ * the streamer's just-loaded chunks get evaluated for any natural
+ * cantilevers worth telegraphing as the driller approaches.
+ *
+ * The above value is intentionally a hair larger than
+ * PLAYFIELD_TOP_OFFSET_ROWS (8): cantilever cells reach up to
+ * MAX_REACH=10 from their anchor, so we want enough margin that a
+ * chunk's anchor at row=dRow-PLAYFIELD_TOP-1 is still seen. Anything
+ * further up is rendered as history but not load-bearing for the
+ * cantilever check.
  */
-const SCAN_WINDOW_ROWS_ABOVE = 96  // ~3 chunks of history
+const SCAN_WINDOW_ROWS_ABOVE = 16
 const SCAN_WINDOW_ROWS_BELOW = 192 // ~6 chunks streamed-ahead
 import { detectChunks, type SoilChunk, unstableCells } from '../lib/chunk-detect'
 import { markAutotileDirty } from './autotile-pass'
@@ -205,6 +214,73 @@ function sagBottomEdgeStillClear(
   return false
 }
 
+/**
+ * Despawn every SaggingChunk and FallingChunk entity in the world,
+ * clearing FLAG_SAGGING / FLAG_SHAKING / FLAG_FALLING from any cells
+ * those entities reference. Use at lifecycle boundaries that
+ * invalidate the entities' assumptions:
+ *   - death entry (so a chunk that just killed the driller doesn't
+ *     keep falling onto the respawn cell)
+ *   - chunk unload (so a sag/fall entity tied to unloaded rows doesn't
+ *     re-stamp stale tiles into now-AIR territory)
+ */
+export function clearAllChunkEntities(world: World): void {
+  const grid = world.get(Grid)
+  if (!grid) return
+  const { cols, flags } = grid
+  world.query(SaggingChunk).forEach((entity) => {
+    const sag = entity.get(SaggingChunk)
+    if (sag) {
+      for (const cell of sag.cells) {
+        const idx = cell.row * cols + cell.col
+        if (idx >= 0 && idx < flags.length) {
+          flags[idx]! &= ~FLAG_SAGGING & ~FLAG_SHAKING
+        }
+      }
+    }
+    entity.destroy()
+  })
+  world.query(FallingChunk).forEach((entity) => entity.destroy())
+}
+
+/**
+ * Despawn SaggingChunk entities whose cells fall in [rowStart, rowEnd).
+ * Called by `unloadChunk`. Without this, a sag entity tagged with
+ * absolute row indices in an unloaded chunk keeps living: the unloader
+ * resets `tiles[i] = TILE_AIR` and `flags[i] = AUTOTILE_DIRTY`, but
+ * the entity persists with stale references. On its next tick it
+ * spawns a FallingChunk into formerly-loaded territory, which
+ * re-stamps SOIL into a chunk that should be unloaded.
+ */
+export function clearChunkEntitiesInRowRange(
+  world: World,
+  rowStart: number,
+  rowEnd: number,
+): void {
+  world.query(SaggingChunk).forEach((entity) => {
+    const sag = entity.get(SaggingChunk)
+    if (!sag) return
+    for (const cell of sag.cells) {
+      if (cell.row >= rowStart && cell.row < rowEnd) {
+        entity.destroy()
+        return
+      }
+    }
+  })
+  world.query(FallingChunk).forEach((entity) => {
+    const fall = entity.get(FallingChunk)
+    if (!fall) return
+    const baseRow = fall.py / TILE_PX
+    for (const c of fall.cells) {
+      const r = baseRow + c.row
+      if (r >= rowStart && r < rowEnd) {
+        entity.destroy()
+        return
+      }
+    }
+  })
+}
+
 export function tickSagging(world: World): void {
   const grid = world.get(Grid)
   const gs = world.get(GameState)
@@ -231,6 +307,31 @@ export function tickSagging(world: World): void {
     const sag = entity.get(SaggingChunk)!
     if (tick < sag.bracedUntilTick) return
     const elapsed = tick - sag.startTick
+
+    // Tile-class invariant: every cell in this sag must still hold
+    // the tile it reserved at spawn. If any cell got drilled,
+    // ghost-cleared, or unloaded under our feet, the chunk is stale.
+    // Without this guard the entity keeps ticking against AIR cells,
+    // re-stamps SOIL via FallingChunk, and produces phantom shakes /
+    // re-grown chunks far from where the player is acting.
+    let stale = false
+    for (const cell of sag.cells) {
+      const idx = cell.row * cols + cell.col
+      if (idx < 0 || idx >= tiles.length || tiles[idx] !== cell.tile) {
+        stale = true
+        break
+      }
+    }
+    if (stale) {
+      for (const cell of sag.cells) {
+        const idx = cell.row * cols + cell.col
+        if (idx >= 0 && idx < flags.length) {
+          flags[idx]! &= ~FLAG_SAGGING & ~FLAG_SHAKING
+        }
+      }
+      entity.destroy()
+      return
+    }
 
     // Final-window shake: in the last SAG_SHAKE_LEAD_TICKS before
     // release, mark cells as SHAKING so the renderer rumbles them.
