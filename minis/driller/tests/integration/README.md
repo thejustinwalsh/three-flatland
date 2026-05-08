@@ -57,16 +57,29 @@ Each `*.integration.test.ts` file:
 
 See `shake-contract.integration.test.ts` for the canonical pattern.
 
-## Timeouts are failures
+## Timeouts and fail-fast: silence is never green
 
-The runner enforces a hard timeout (`timeoutSec + 60s` margin) and SIGKILLs the vitexec process if it doesn't exit. The resulting test failure message names the most likely causes (dev server failed to start, page didn't load, probe crashed before emitting `INTEGRATION_RESULT`, etc.).
+The runner has three layers of failure-detection so a misconfigured suite can't waste minutes:
 
-**A timeout is a failure, never a "skip" or "in-progress" result.** Silence is not success — if the suite ever reports green while a test ran for the full envelope, something is wrong with the runner.
+| Layer | When it fires | Typical wall-clock cost |
+|---|---|---|
+| **Fail-fast pattern match** | Stdout/stderr matches a known-fatal regex (`vitexec failed:`, `EADDRINUSE`, `Port \d+ is already in use`, `failed to load config from`, missing Playwright browser, …) | ~1–3s |
+| **First-output deadline** | No bytes on stdout OR stderr within 30s of spawn (vite normally prints "VITE ready in …ms" within ~3s) | 30s |
+| **Hard timeout** | `timeoutSec + 60s` margin elapsed after spawn | 60–240s+ |
 
-Tunable knobs:
+All three result in `SIGKILL` against vitexec and a thrown error whose message names likely causes and includes the captured stdout/stderr tail. **A timeout is a failure, never a "skip" or "in-progress" result.** Silence is not success — if the suite ever reports green while a test ran for the full envelope, something is wrong with the runner.
+
+The fail-fast patterns are conservative — false positives would short-circuit working tests. Add a new pattern only after you've personally hit a debugging session where the wall-clock cost of the hard timeout was high and the symptom was obvious from the message.
+
+### Port collisions
+
+`vite.integration.config.ts` reads its port from `$DRILLER_INTEGRATION_PORT` and uses `strictPort: false`. The runner pre-allocates a free port via `net.createServer().listen(0)` before each spawn, so the suite never collides with a workspace `pnpm dev` that's holding 5173. If the picked port gets stolen between bind and vite-startup (rare race), the runner retries up to 3 times.
+
+### Tunable knobs
 
 - Probe-side `timeoutSec` (in the test file): vitexec's own `--timeout`. Should comfortably exceed the probe's internal `RUN_MS` window (e.g., 150s for a 90s probe).
 - Runner-side hard timeout (in `_runner.ts`): `timeoutSec + 60s`. Surfaces a stuck vitexec.
+- Runner-side first-output deadline (in `_runner.ts`): 30s. Surfaces a hung spawn before any output.
 - Vitest-side `testTimeout` (in `vitest.integration.config.ts`): outer bound, larger than the runner's hard timeout for the slowest test.
 
 ## Headless rendering: `--gpu`

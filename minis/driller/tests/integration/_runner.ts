@@ -127,6 +127,34 @@ function isPortCollision(msg: string): boolean {
   )
 }
 
+/**
+ * Known-fatal substrings that should kill vitexec early instead of
+ * waiting for the hard timeout. Match anywhere in stdout or stderr.
+ *
+ * Be conservative — false positives would short-circuit working
+ * tests. Each pattern below corresponds to a debugging session where
+ * the wall-clock cost of waiting for the hard timeout was high and
+ * the fix was obvious from the error.
+ */
+const FAIL_FAST_PATTERNS = new RegExp(
+  [
+    'EADDRINUSE',
+    'Port \\d+ is already in use',
+    'strictPort enabled',
+    // vitexec's own bail-out prefix — covers config-resolve errors,
+    // bundling failures, missing entries, etc. Verified against real
+    // failure modes (e.g. `vitexec failed: Build failed with 1 error:
+    // Cannot resolve entry module …`).
+    'vitexec failed:',
+    'failed to load config from',
+    // playwright bootstrap failures (rare but punishing — Chromium
+    // missing, dyld errors, codesign rejected).
+    "Executable doesn't exist",
+    'browserType\\.launch:.*Process exited',
+  ].join('|'),
+  'i',
+)
+
 async function runOnce<T>(
   probePath: string,
   code: string,
@@ -158,6 +186,13 @@ async function runOnce<T>(
   )
   const startedAt = Date.now()
 
+  // First-output deadline — vite normally prints "VITE ready in …ms"
+  // within ~3s of spawn. If 30s passes with NO output of any kind,
+  // we know something's wrong (dead config, missing dep, port stuck
+  // even with strictPort:false, missing browser binary). Fail fast
+  // instead of waiting the full hard timeout for silence.
+  const FIRST_OUTPUT_DEADLINE_MS = 30_000
+
   return new Promise<ProbeResult<T>>((resolveResult, reject) => {
     const proc = spawn('pnpm', args, {
       cwd: resolve(here, '../../'),
@@ -170,6 +205,29 @@ async function runOnce<T>(
     let stdout = ''
     let stderr = ''
     let killedByTimeout = false
+    let killedBySilence = false
+    let killedByFatal: string | null = null
+    let sawAnyOutput = false
+
+    const firstOutputTimer = setTimeout(() => {
+      if (sawAnyOutput) return
+      killedBySilence = true
+      try { proc.kill('SIGKILL') } catch { /* already exited */ }
+    }, FIRST_OUTPUT_DEADLINE_MS)
+
+    const noteOutput = (): void => {
+      if (sawAnyOutput) return
+      sawAnyOutput = true
+      clearTimeout(firstOutputTimer)
+    }
+
+    const checkFatal = (chunk: string): void => {
+      if (killedByFatal !== null) return
+      const m = chunk.match(FAIL_FAST_PATTERNS)
+      if (!m) return
+      killedByFatal = m[0]
+      try { proc.kill('SIGKILL') } catch { /* already exited */ }
+    }
 
     // Stream vitexec output to OUR stderr in real time so the user
     // sees the probe working during a 60–180s run. Vitest's reporter
@@ -179,11 +237,15 @@ async function runOnce<T>(
     proc.stdout.on('data', (chunk: Buffer) => {
       const s = chunk.toString('utf-8')
       stdout += s
+      noteOutput()
+      checkFatal(s)
       forwardLines(s, probeLabelOuter)
     })
     proc.stderr.on('data', (chunk: Buffer) => {
       const s = chunk.toString('utf-8')
       stderr += s
+      noteOutput()
+      checkFatal(s)
       forwardLines(s, probeLabelOuter)
     })
     const hardTimer = setTimeout(() => {
@@ -194,18 +256,47 @@ async function runOnce<T>(
     }, hardTimeoutMs)
     proc.on('error', (err) => {
       clearTimeout(hardTimer)
+      clearTimeout(firstOutputTimer)
       reject(err)
     })
     proc.on('close', (code) => {
       clearTimeout(hardTimer)
+      clearTimeout(firstOutputTimer)
       const trimmedLog = limitLines(stdout, opts.maxLogLines ?? 80)
+      if (killedBySilence) {
+        reject(
+          new Error(
+            `vitexec produced no output within ${FIRST_OUTPUT_DEADLINE_MS / 1000}s of spawn.\n` +
+              `This is a fail-fast bail-out — vite normally prints "ready in …ms" within ~3s.\n` +
+              `Likely causes:\n` +
+              `  - vite config error (try: \`pnpm exec vite -c vite.integration.config.ts\` manually)\n` +
+              `  - port ${port} stuck despite strictPort:false (rare)\n` +
+              `  - vitexec / playwright binary missing or broken (try: \`pnpm exec vitexec --help\`)\n` +
+              `  - pnpm could not resolve the workspace (check pnpm-workspace.yaml)\n\n` +
+              `--- stdout ---\n${trimmedLog || '(empty)'}\n` +
+              `--- stderr ---\n${limitLines(stderr, 40) || '(empty)'}`,
+          ),
+        )
+        return
+      }
+      if (killedByFatal !== null) {
+        reject(
+          new Error(
+            `vitexec emitted a fatal error pattern and was killed early: ${killedByFatal}\n` +
+              `Fail-fast bail-out — no point waiting the full hard timeout once we've ` +
+              `seen a known-fatal message.\n\n` +
+              `--- stdout (last ${opts.maxLogLines ?? 80} lines) ---\n${trimmedLog}\n` +
+              `--- stderr ---\n${limitLines(stderr, 40)}`,
+          ),
+        )
+        return
+      }
       if (killedByTimeout) {
         reject(
           new Error(
             `vitexec hard-timed-out after ${hardTimeoutMs / 1000}s ` +
               `(probe budget ${opts.timeoutSec}s + ${HARD_TIMEOUT_MARGIN_SEC}s overhead).\n` +
               `A timeout IS a failure — silence is not success. Likely causes:\n` +
-              `  - dev server failed to start (vite config error, port conflict)\n` +
               `  - probe page never loaded (check that '/' renders the driller)\n` +
               `  - probe code threw before emitting INTEGRATION_RESULT\n` +
               `  - browser bootstrap hung (rare; try \`pnpm exec vitexec --gpu\` manually)\n\n` +
