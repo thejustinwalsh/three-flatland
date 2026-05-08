@@ -11,6 +11,7 @@ import { rockAvalancheSystem, resetAvalanche } from '../src/systems/hazard'
 import {
   FallingChunk,
   FLAG_DISTURBED,
+  FLAG_JUST_LANDED,
   FLAG_SAG_RECHECK,
   FLAG_SHAKING,
   GameState,
@@ -294,6 +295,92 @@ describe('no-false-shake invariant', () => {
     for (let i = 0; i < grid.flags.length; i++) {
       expect(grid.flags[i]! & FLAG_SHAKING).toBe(0)
     }
+  })
+
+  it('a landing cascade tags surrounding terrain (not landed cells) and terminates', () => {
+    // A 4-wide soil shelf hangs off a stone anchor. Drilling out the
+    // pillar releases it; it falls onto a small marginal stack below.
+    // Contract: the impact triggers a re-check on terrain *around*
+    // the landing site, not on the landed cells themselves. The
+    // chain settles in finite time (no infinite loop).
+    const world = makeWorldFromGrid([
+      '..............',
+      '..............',
+      'S####.........',
+      'S....#........',
+      '..............',
+      'SSSSSSSSSSSSSS',
+    ])
+    const grid = world.get(Grid)!
+    // Disturb everything so detectAndSag has work.
+    for (let i = 0; i < grid.tiles.length; i++) {
+      if (grid.tiles[i] === TILE_SOIL) grid.flags[i]! |= FLAG_SAG_RECHECK
+    }
+    // Run until the world settles or we run out of patience.
+    let ticksToSettle = 0
+    const MAX_TICKS = 500
+    for (let t = 0; t < MAX_TICKS; t++) {
+      tickWorld(world, 1)
+      collapseTick(world)
+      let inFlight = 0
+      world.query(SaggingChunk).forEach(() => inFlight++)
+      world.query(FallingChunk).forEach(() => inFlight++)
+      if (inFlight === 0) {
+        ticksToSettle = t
+        break
+      }
+    }
+    expect(ticksToSettle).toBeGreaterThan(0)
+    expect(ticksToSettle).toBeLessThan(MAX_TICKS)
+    // Run one more tick — JUST_LANDED is set during tickFalling and
+    // cleared by the NEXT tick's detectAndSag (since that's the
+    // pass that uses it as a filter). After that tick, no leftover.
+    tickWorld(world, 1)
+    collapseTick(world)
+    for (let i = 0; i < grid.flags.length; i++) {
+      expect(grid.flags[i]! & FLAG_JUST_LANDED).toBe(0)
+    }
+    for (let i = 0; i < grid.flags.length; i++) {
+      expect(grid.flags[i]! & FLAG_SHAKING).toBe(0)
+    }
+  })
+
+  it('JUST_LANDED grace prevents same-tick re-sag of just-landed cells', () => {
+    // Direct test: stamp FLAG_JUST_LANDED on a chunk of cells that
+    // would otherwise be cantilever-unstable. detectAndSag must NOT
+    // pick them up this tick. They become regular candidates next
+    // tick (after the end-of-pass clear).
+    const world = makeWorldFromGrid([
+      '..............',
+      '..............',
+      '..######......',
+      '..............',
+      'SSSSSSSSSSSSSS',
+    ])
+    const grid = world.get(Grid)!
+    // Tag the cantilever cells with both SAG_RECHECK and JUST_LANDED.
+    for (let i = 0; i < grid.tiles.length; i++) {
+      if (grid.tiles[i] === TILE_SOIL) {
+        grid.flags[i]! |= FLAG_SAG_RECHECK | FLAG_JUST_LANDED
+      }
+    }
+    detectAndSag(world)
+    // No sag entity should have been spawned this pass.
+    let sagCount = 0
+    world.query(SaggingChunk).forEach(() => sagCount++)
+    expect(sagCount).toBe(0)
+    // JUST_LANDED was cleared at end of pass.
+    for (let i = 0; i < grid.flags.length; i++) {
+      expect(grid.flags[i]! & FLAG_JUST_LANDED).toBe(0)
+    }
+    // Re-tag SAG_RECHECK and run again — this time it should sag.
+    for (let i = 0; i < grid.tiles.length; i++) {
+      if (grid.tiles[i] === TILE_SOIL) grid.flags[i]! |= FLAG_SAG_RECHECK
+    }
+    detectAndSag(world)
+    let sagCount2 = 0
+    world.query(SaggingChunk).forEach(() => sagCount2++)
+    expect(sagCount2).toBeGreaterThan(0)
   })
 
   it('tickSagging does not set SHAKING on cells that are no longer SOIL', () => {

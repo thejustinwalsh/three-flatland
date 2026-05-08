@@ -73,6 +73,22 @@ export const FLAG_SHAKING = 1 << 5
 export const FLAG_SAG_RECHECK = 1 << 6
 
 /**
+ * Single-tick grace period for cells that JUST landed via a
+ * FallingChunk. The cells stamp into the grid AND propagate
+ * SAG_RECHECK into the surrounding terrain (so impact-driven
+ * cascades work in the Mr. Driller way), but the LANDED cells
+ * themselves are excluded from the unstable-set on the very next
+ * detectAndSag pass — otherwise the chunk that just landed gets
+ * re-evaluated as the leaf-end of a bigger cantilever and
+ * immediately sags again, creating same-tick perpetual loops.
+ *
+ * Cleared at the END of detectAndSag so the cells are full
+ * participants from the NEXT tick onward (with the standard story:
+ * detect → darken → shake → fall).
+ */
+export const FLAG_JUST_LANDED = 1 << 7
+
+/**
  * Singleton tile grid. The world is 18 columns wide (matches `PLAY_COLS`)
  * and grows vertically as chunks stream in. `topRow` and `bottomRow` are
  * absolute row indices in world space (a chunk near the surface has a

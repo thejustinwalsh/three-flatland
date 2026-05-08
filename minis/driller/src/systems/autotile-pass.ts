@@ -70,11 +70,47 @@ export function markCellAndNeighborsDirty(world: World, col: number, row: number
 }
 
 /**
+ * Same as markCellAndNeighborsDirty but skips SAG_RECHECK on
+ * neighbors whose grid index appears in `excludeSet`. Used by
+ * FallingChunk.landAndReattach: the landed cells propagate impact
+ * into surrounding terrain (so cascades work) but do NOT tag each
+ * other — that would re-evaluate the just-landed group as a single
+ * unstable chunk on the same tick.
+ *
+ * The landed cells themselves are also tagged with FLAG_JUST_LANDED
+ * by the caller — detectAndSag filters those out of the unstable
+ * set for one pass and clears the flag at the end. Net effect: the
+ * full sag → darken → shake → fall story plays out from the NEXT
+ * tick onward, with chain reactions intact, and no same-tick loops.
+ */
+export function markCellAndNeighborsDirtyExcept(
+  world: World,
+  col: number,
+  row: number,
+  excludeSet: Set<number>,
+): void {
+  markAutotileDirty(world, col, row)
+  const grid = world.get(Grid)
+  if (!grid) return
+  const { cols, rows, tiles, flags } = grid
+  for (const [dc, dr] of [[-1, 0], [1, 0], [0, -1], [0, 1]] as const) {
+    const nc = col + dc
+    const nr = row + dr
+    if (nc < 0 || nc >= cols || nr < 0 || nr >= rows) continue
+    const nIdx = nr * cols + nc
+    if (excludeSet.has(nIdx)) continue
+    if (tiles[nIdx] === TILE_SOIL) {
+      flags[nIdx]! |= FLAG_SAG_RECHECK
+    }
+  }
+}
+
+/**
  * Mark a cell + 8-neighbor halo as autotile-dirty WITHOUT triggering
- * sag re-check. Use this when re-stamping cells that just settled
- * from a fall (FallingChunk landing) — they don't need to be
- * re-evaluated for instability the moment they touch down, otherwise
- * we get a perpetual sag-fall-land-sag cycle in the same area.
+ * sag re-check. Use ONLY for purely cosmetic re-resolves (changing
+ * a non-SOIL frame, etc.). Mutations that change the support
+ * topology should use markCellAndNeighborsDirty (player events) or
+ * markCellAndNeighborsDirtyExcept (chain reactions).
  */
 export function markAutotileDirty(world: World, col: number, row: number): void {
   const grid = world.get(Grid)

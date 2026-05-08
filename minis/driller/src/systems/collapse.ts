@@ -5,6 +5,7 @@ import {
   FallingChunk,
   FLAG_AUTOTILE_DIRTY,
   FLAG_FALLING,
+  FLAG_JUST_LANDED,
   FLAG_PRECARIOUS,
   FLAG_SAG_RECHECK,
   FLAG_SAGGING,
@@ -35,7 +36,10 @@ import { MAX_CHUNK_HEIGHT, MAX_REACH, SAG_DURATION_TICKS, TILE_PX } from '../con
 const SCAN_WINDOW_ROWS_ABOVE = 16
 const SCAN_WINDOW_ROWS_BELOW = 192 // ~6 chunks streamed-ahead
 import { detectChunks, type SoilChunk, unstableCells } from '../lib/chunk-detect'
-import { markAutotileDirty } from './autotile-pass'
+import {
+  markCellAndNeighborsDirty,
+  markCellAndNeighborsDirtyExcept,
+} from './autotile-pass'
 import { isFreeFall } from '../biomes'
 
 /**
@@ -77,7 +81,15 @@ export function detectAndSag(world: World): void {
 
     // Compute unstable cells once we know this chunk needs it.
     const unstable = unstableCells(tiles, cols, rows, MAX_REACH)
-    const unstableIdxs = ch.cells.filter((idx) => unstable.has(idx))
+    // JUST_LANDED grace: cells stamped by a FallingChunk this tick
+    // are excluded from the unstable set for one detect pass. They
+    // still drive cascades (the impact tagged SAG_RECHECK on
+    // surrounding terrain), but the just-settled cells themselves
+    // aren't immediately re-sagged. They become full participants on
+    // the NEXT tick, with the standard story.
+    const unstableIdxs = ch.cells.filter(
+      (idx) => unstable.has(idx) && (flags[idx]! & FLAG_JUST_LANDED) === 0,
+    )
     // Clear SAG_RECHECK on this chunk's cells so it doesn't re-fire
     // every tick — the gate has done its job for this disturbance.
     for (const idx of ch.cells) flags[idx]! &= ~FLAG_SAG_RECHECK
@@ -125,6 +137,16 @@ export function detectAndSag(world: World): void {
         bracedUntilTick: 0,
       }),
     )
+  }
+
+  // Clear JUST_LANDED for all cells in the scan window. The grace
+  // is one detect pass — by the next tick, the just-settled cells
+  // are full participants and the standard story applies (detect →
+  // darken → shake → fall) if they're cantilever-unstable.
+  const jlClearStart = winTop * cols
+  const jlClearEnd = Math.min(flags.length, winBot * cols)
+  for (let i = jlClearStart; i < jlClearEnd; i++) {
+    if ((flags[i]! & FLAG_JUST_LANDED) !== 0) flags[i]! &= ~FLAG_JUST_LANDED
   }
 
   // Second pass: PRECARIOUS prediction — "if the driller drills its
@@ -371,13 +393,12 @@ export function tickSagging(world: World): void {
       const idx = cell.row * cols + cell.col
       tiles[idx] = TILE_AIR
       flags[idx] = ((flags[idx]! & ~FLAG_SAGGING & ~FLAG_SHAKING) | FLAG_AUTOTILE_DIRTY) as number
-      // Autotile-only — releasing a sag does NOT cascade-trigger
-      // re-evaluation on the surrounding chunk. Chunks above stay
-      // stable until the player actively drills near them. Otherwise
-      // we get a perpetual sag-fall-land-sag avalanche in the same
-      // area (the false-shake bug repros at e.g. row 200 stayed in
-      // SAG for 27 seconds).
-      markAutotileDirty(world, cell.col, cell.row)
+      // Sag release IS a destabilising event: cells that depended on
+      // these for support need re-evaluation. The released cells are
+      // now AIR (not SOIL) so they don't accumulate SAG_RECHECK
+      // themselves; only neighboring SOIL cells get the flag, which
+      // is exactly the cascade we want.
+      markCellAndNeighborsDirty(world, cell.col, cell.row)
     }
 
     let minR = Infinity
@@ -501,7 +522,26 @@ function landAndReattach(
     }
   }
 
-  // Stamp cells back into the grid.
+  // Build the landed-cell index set first so cascade propagation can
+  // exclude these from SAG_RECHECK on each other (otherwise the
+  // landed group is immediately re-evaluated as one unstable chunk).
+  const landedSet = new Set<number>()
+  for (const c of fall.cells) {
+    const r = baseCellRow + c.row
+    const cc = baseCellCol + c.col
+    if (r < 0 || cc < 0 || cc >= cols) continue
+    const idx = r * cols + cc
+    if (idx >= tiles.length) continue
+    landedSet.add(idx)
+  }
+
+  // Stamp cells back into the grid + mark JUST_LANDED on each so
+  // detectAndSag's grace pass excludes them for one tick. The
+  // cascade IS propagated (chain reactions are part of the genre):
+  // markCellAndNeighborsDirtyExcept tags SAG_RECHECK on neighboring
+  // SOIL cells that are NOT also landed cells. Result: surrounding
+  // terrain destabilises through the standard story (darken → shake
+  // → fall) while the just-settled cells get one tick to breathe.
   for (const c of fall.cells) {
     const r = baseCellRow + c.row
     const cc = baseCellCol + c.col
@@ -509,13 +549,8 @@ function landAndReattach(
     const idx = r * cols + cc
     if (idx >= tiles.length) continue
     tiles[idx] = c.tile
-    flags[idx] = ((flags[idx]! & ~FLAG_FALLING) | FLAG_AUTOTILE_DIRTY) as number
-    // Autotile-only re-stamp. Do NOT trigger sag re-check on the
-    // landed cells — they JUST settled. Re-checking them immediately
-    // creates a perpetual sag → fall → land → sag cycle in the same
-    // area (the false-shake bug). Future PLAYER mutations near here
-    // will re-tag SAG_RECHECK normally.
-    markAutotileDirty(world, cc, r)
+    flags[idx] = ((flags[idx]! & ~FLAG_FALLING) | FLAG_AUTOTILE_DIRTY | FLAG_JUST_LANDED) as number
+    markCellAndNeighborsDirtyExcept(world, cc, r, landedSet)
   }
 
   entity.destroy()
