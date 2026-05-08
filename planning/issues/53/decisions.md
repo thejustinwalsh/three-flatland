@@ -232,3 +232,28 @@ Hard rules:
 - `glom-fix.test.ts: ... no support → merged cluster lands inert` — pins rule 7 (FLAG_DISTURBED clears on landing inert).
 
 **Verification:** 104/104 unit tests pass (was 102/102; +2 new). All existing avalanche tests still pass; typecheck clean.
+
+## Plan 1 / item C — mouse-brace extends to shaking rock clusters
+**File:** `minis/driller/src/systems/hazard.ts:braceShakingCluster`, `src/systems/input.ts`, `src/constants.ts`, `tests/rock-brace.test.ts`
+**Date:** 2026-05-08
+
+**Decision:** Add `braceShakingCluster(world, col, row, extendTicks)` exported from `hazard.ts`. It flood-fills the cluster from the seed and bumps every cell's `shakeStartTick` forward by `extendTicks`, which delays the per-tick `earliestShake = min` and extends the telegraph by exactly that many ticks before the cluster commits.
+
+`input.ts` `resolveHoverAction` now returns `'brace'` for `TILE_STONE && FLAG_SHAKING && !FLAG_FALLING`. `doBrace` falls back to `braceShakingCluster` when no `SaggingChunk` is found at the hover cell. The 1-gem cost is the same as the soil brace.
+
+**Why a separate function rather than re-using SaggingChunk's bracedUntilTick pattern:** rocks don't have persistent cluster entities — they're flood-filled per tick. A bracedUntil signal would have to be stored on the cells (the `Grid.flags` Uint8Array) which we'd have to allocate a new flag for. Bumping `shakeStartTick` reuses existing state and the existing min-over-cluster pulse logic; the brace effect is automatically scoped to the SHAKING phase.
+
+**Codex compliance:**
+- Rule 5 enforced — in-motion (FLAG_FALLING) clusters refuse the brace. The function early-returns false at the FALLING check.
+- The brace is consumable: the gem cost is deducted only on success. Repeated tap on the same cluster works, but each tap costs a gem.
+
+**Constants:**
+- `ROCK_BRACE_EXTEND_TICKS = 30` (one full telegraph window, ~500ms) — matches AVALANCHE_SHAKE_TICKS + AVALANCHE_SETTLE_TICKS = 24 + 6.
+
+**Tests pinning the rule:**
+- `rock-brace.test.ts: braces a shaking 4-cluster — delays the cluster commit` — observes the cluster still at row 0 after 30 ticks past the brace point (without brace it would have committed).
+- `... refuses to brace an in-motion cluster (codex rule 5)`.
+- `... refuses to brace a non-shaking, non-falling stone cell` (the cell is just a static stone).
+- `... refuses to brace an AIR cell`.
+
+**Verification:** 108/108 unit tests pass (was 104/104; +4 new). Typecheck clean.

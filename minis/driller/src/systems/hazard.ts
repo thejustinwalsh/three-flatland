@@ -556,6 +556,65 @@ export function resetAvalanche(): void {
   shakeStartTick.clear()
 }
 
+/**
+ * Mouse-brace extension for in-flight rock telegraphs (codex rule
+ * 5: in-motion clusters can't be braced — once started, they resolve
+ * fully). Called from input.ts when the player taps a SHAKING rock
+ * cluster cell. Floods the cluster from the seed and bumps every
+ * cell's `shakeStartTick` forward by `extendTicks` so the elapsed
+ * shake metric resets toward zero — buying the player one fresh
+ * telegraph window. Returns true iff a valid SHAKING cluster was
+ * found at the seed.
+ */
+export function braceShakingCluster(
+  world: World,
+  col: number,
+  row: number,
+  extendTicks: number,
+): boolean {
+  const grid = world.get(Grid)
+  if (!grid) return false
+  const { cols, rows: gridRows, tiles, flags } = grid
+  if (col < 0 || col >= cols || row < 0 || row >= gridRows) return false
+  const seedIdx = row * cols + col
+  if (tiles[seedIdx] !== TILE_STONE) return false
+  // In-motion clusters can't be braced (codex rule 5).
+  if ((flags[seedIdx]! & FLAG_FALLING) !== 0) return false
+  // Cell must currently be in the SHAKE telegraph.
+  if ((flags[seedIdx]! & FLAG_SHAKING) === 0) return false
+  // Flood-fill the connected cluster from the seed.
+  const seenLocal = new Set<number>([seedIdx])
+  const stack: number[] = [seedIdx]
+  const cells: number[] = []
+  while (stack.length) {
+    const idx = stack.pop()!
+    cells.push(idx)
+    const c = idx % cols
+    const r = (idx - c) / cols
+    const ns: number[] = []
+    if (c > 0) ns.push(idx - 1)
+    if (c < cols - 1) ns.push(idx + 1)
+    if (r > 0) ns.push(idx - cols)
+    if (r < gridRows - 1) ns.push(idx + cols)
+    for (const ni of ns) {
+      if (!seenLocal.has(ni) && tiles[ni] === TILE_STONE) {
+        seenLocal.add(ni)
+        stack.push(ni)
+      }
+    }
+  }
+  // Push every cluster cell's shake-start tick forward. earliestShake
+  // (the per-tick min over cluster cells) shifts forward by the same
+  // amount, extending the telegraph by `extendTicks` before commit.
+  for (const idx of cells) {
+    const start = shakeStartTick.get(idx)
+    if (start !== undefined && start >= 0) {
+      shakeStartTick.set(idx, start + extendTicks)
+    }
+  }
+  return true
+}
+
 /** Reset module-level state on world rotation / restart. */
 export function resetHazardSpawn(): void {
   lastSpawnTick = 0

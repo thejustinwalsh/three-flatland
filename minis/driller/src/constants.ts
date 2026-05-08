@@ -74,6 +74,15 @@ export const PLAN_COMMIT_TICKS = 30
 /** Cost (gems) of the Brace one-touch action. */
 export const BRACE_COST = 1
 
+/**
+ * Brace extension applied when the player taps a SHAKING rock cluster
+ * cell. Adds this many ticks to every cluster cell's `shakeStartTick`
+ * so the elapsed-since-shake-start metric shrinks — buying the player
+ * one extra full telegraph window before the cluster commits to fall.
+ * In-motion (FLAG_FALLING) clusters cannot be braced (codex rule 5).
+ */
+export const ROCK_BRACE_EXTEND_TICKS = 30
+
 /** Pet over-pet flaw — sliding window length and threshold count. */
 export const OVER_PET_WINDOW_TICKS = 240
 export const OVER_PET_THRESHOLD = 3

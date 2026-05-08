@@ -2,7 +2,9 @@ import type { Entity, World } from 'koota'
 import {
   type ActionKind,
   Driller,
+  FLAG_FALLING,
   FLAG_SAGGING,
+  FLAG_SHAKING,
   GameState,
   Gem,
   Grid,
@@ -12,16 +14,19 @@ import {
   SaggingChunk,
   TILE_AIR,
   TILE_SOIL,
+  TILE_STONE,
 } from '../traits'
 import {
   BRACE_COST,
   OVER_PET_THRESHOLD,
   OVER_PET_WINDOW_TICKS,
+  ROCK_BRACE_EXTEND_TICKS,
   SAG_DURATION_TICKS,
   TILE_PX,
 } from '../constants'
 import { detectChunks } from '../lib/chunk-detect'
 import { applyMoodEvent } from './ai-mood'
+import { braceShakingCluster } from './hazard'
 
 export function resolveHoverAction(
   world: World,
@@ -55,6 +60,17 @@ export function resolveHoverAction(
   const flag = flags[idx] ?? 0
 
   if (tile === TILE_SOIL && (flag & FLAG_SAGGING) !== 0) {
+    return { action: 'brace', gemEntity: null }
+  }
+
+  // A SHAKING rock cluster is brace-able too — the player can stall
+  // an avalanche the same way they stall a soil sag. In-motion
+  // (FLAG_FALLING) rocks are NOT brace-able per codex rule 5.
+  if (
+    tile === TILE_STONE &&
+    (flag & FLAG_SHAKING) !== 0 &&
+    (flag & FLAG_FALLING) === 0
+  ) {
     return { action: 'brace', gemEntity: null }
   }
 
@@ -158,21 +174,35 @@ function doBrace(world: World): boolean {
   if (!gs || !ptr) return false
   if (gs.gems < BRACE_COST) return false
 
-  let target: Entity | null = null
+  // Try soil sag first.
+  let braced = false
+  let soilTarget: Entity | null = null
   world.query(SaggingChunk).forEach((entity) => {
-    if (target) return
+    if (soilTarget) return
     const sag = entity.get(SaggingChunk)
     if (!sag) return
     for (const c of sag.cells) {
       if (c.col === ptr.hoverTargetCol && c.row === ptr.hoverTargetRow) {
-        target = entity
+        soilTarget = entity
         return
       }
     }
   })
-  if (!target) return false
-
-  ;(target as Entity).set(SaggingChunk, { bracedUntilTick: gs.tick + 120 })
+  if (soilTarget) {
+    ;(soilTarget as Entity).set(SaggingChunk, { bracedUntilTick: gs.tick + 120 })
+    braced = true
+  } else {
+    // Fall through to rock SHAKE clusters. doBrace is silent on success
+    // here — `braceShakingCluster` returns true iff the cell is a
+    // brace-able shaking rock.
+    braced = braceShakingCluster(
+      world,
+      ptr.hoverTargetCol,
+      ptr.hoverTargetRow,
+      ROCK_BRACE_EXTEND_TICKS,
+    )
+  }
+  if (!braced) return false
   world.set(GameState, { gems: gs.gems - BRACE_COST })
 
   const drillerEntity = world.queryFirst(Driller)
