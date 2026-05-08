@@ -42,20 +42,19 @@ const TINT_FIXTURE_CRYSTAL = [0.49, 0.23, 0.93] as const
 const SAG_DARKEN = 0.72
 const TINT_FALL = [0.85, 0.48, 0.24] as const
 
-function pickTint(
+/**
+ * Per-tile base tint — what the cell would look like normally, with
+ * no transient state applied. The "darken on sag" effect is a true
+ * multiplicative dim of THIS color, not a substitution with the
+ * biome's edge tint, so a sagging grass-cap stays GREEN-but-dimmer
+ * and a sagging deep-soil stays DARK-soil-but-dimmer.
+ */
+function pickBaseTint(
   tile: number,
   frame: number,
-  sagging: boolean,
-  falling: boolean,
   triggeredExplosive: boolean,
-  now: number,
   palette: { grass: readonly [number, number, number]; edge: readonly [number, number, number]; deep: readonly [number, number, number]; stone: readonly [number, number, number] },
 ): readonly [number, number, number] {
-  void now
-  if (falling) return TINT_FALL
-  if (sagging) {
-    return [palette.edge[0] * SAG_DARKEN, palette.edge[1] * SAG_DARKEN, palette.edge[2] * SAG_DARKEN] as const
-  }
   if (tile === TILE_SOIL) {
     if ((frame & 0x01) === 0) return palette.grass
     if (frame === 0xf) return palette.deep
@@ -71,6 +70,24 @@ function pickTint(
     return TINT_FIXTURE_CRYSTAL
   }
   return palette.edge
+}
+
+function pickTint(
+  tile: number,
+  frame: number,
+  sagging: boolean,
+  falling: boolean,
+  triggeredExplosive: boolean,
+  now: number,
+  palette: { grass: readonly [number, number, number]; edge: readonly [number, number, number]; deep: readonly [number, number, number]; stone: readonly [number, number, number] },
+): readonly [number, number, number] {
+  void now
+  if (falling) return TINT_FALL
+  const base = pickBaseTint(tile, frame, triggeredExplosive, palette)
+  if (sagging) {
+    return [base[0] * SAG_DARKEN, base[1] * SAG_DARKEN, base[2] * SAG_DARKEN] as const
+  }
+  return base
 }
 
 interface TileRendererProps {
