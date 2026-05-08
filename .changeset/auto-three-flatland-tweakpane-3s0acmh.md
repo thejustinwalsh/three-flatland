@@ -5,18 +5,19 @@
 > Branch: mini-game-showcase
 > PR: https://github.com/thejustinwalsh/three-flatland/pull/59
 
-### Fixes
+## New features
 
-- **Checkbox hit target** — stretched `.tp-ckbv_i` to the full box size (`width/height: var(--cnt-usz)`); clicks now land on the input directly rather than relying on flaky label-forwarding under certain pointer-events/z-index combinations
-- **z-index** — `z-index: 1000` now applied to the `.tp-dfwv` body-level wrapper instead of the inner pane root, so the pane correctly stacks above other page overlays
+- `usePaneRadioGrid` hook (react subpath) — inline button-bar selector backed by Tweakpane essentials' `radiogrid` blade; deferred disposal + synchronous creation match existing hook patterns
+- `PaneInputOptions` extended with `readonly` and `format` so React hook users can create readonly monitors with custom formatters
+- `createPane`: `z-index: 1000` now applied to the `.tp-dfwv` body-sibling wrapper instead of the inner pane root, fixing stacking against other overlays
 
-### New
+## Bug fixes
 
-- **`usePaneRadioGrid` hook** (React subpath) — inline button-bar selector backed by the tweakpane-plugin-essentials `radiogrid` blade; deferred disposal and synchronous creation mirror the existing `usePaneButton`/`usePaneInput` pattern
-- **`PaneInputOptions.readonly` + `format`** — React hook users can now create read-only monitors with custom value formatters
+- Checkbox hit area: `.tp-ckbv_i` stretched to full `var(--cnt-usz)` box size so clicks land directly on the input without relying on flaky `<label>` forwarding
+- Checkbox theme: box surface matches other controls (`rgba(28,40,77,0.6)`) with hover/focus/active parity; check stroke turns accent pink on `:checked`
+- `useWindowSize` now tracks `{ w, h, dpr }` and subscribes to a `(resolution: Ndppx)` media query so monitor swaps (DPR change without dimension change) trigger canvas re-size
 
-### Theme
+---
 
-- Checkbox box surface updated to match other controls (`rgba(28,40,77,0.6)`) with hover/focus/active parity; check stroke turns accent pink on `:checked`
+Adds `usePaneRadioGrid`, `readonly`/`format` monitor support, and fixes checkbox visibility and DPR tracking for multi-monitor setups.
 
-`@three-flatland/tweakpane` controls are now a complete drop-in replacement for Web Awesome controls in both Three.js and React examples.
