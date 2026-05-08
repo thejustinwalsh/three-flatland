@@ -1,4 +1,3 @@
-import { useMemo } from 'react'
 import { createWorld, type World } from 'koota'
 import { Camera, GameState, Grid, Pointer, Seed } from './traits'
 
@@ -41,11 +40,4 @@ export function getWorld(): World {
   initWorld(world)
   globalThis.__drillerWorld = world
   return world
-}
-
-/**
- * React hook — memoizes the world handle once per component instance.
- */
-export function useWorld(): World {
-  return useMemo(() => getWorld(), [])
 }
