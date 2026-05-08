@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { WorldProvider } from 'koota/react'
 import { getWorld } from './world'
-import { Camera, GameState, Pointer } from './traits'
+import { Camera, GameState, Grid, Pointer, Seed } from './traits'
 import { PlayCanvas } from './components/PlayCanvas'
 import { Background } from './components/Background'
 import { Scene } from './components/Scene'
@@ -9,6 +9,9 @@ import { HoverCursor } from './components/HoverCursor'
 import { DepthBar } from './components/DepthBar'
 import { GemCounter } from './components/GemCounter'
 import { HeroHint } from './components/HeroHint'
+import { TitleAttract } from './components/TitleAttract'
+import { Leaderboard, loadLeaderboard } from './components/Leaderboard'
+import { resetStreaming } from './systems/generation'
 import { commitAction, pointerWorldCell, resolveHoverAction } from './systems/input'
 import type { DrillerProps } from './types'
 import type { PlayCanvasMetrics } from './lib/scale'
@@ -28,10 +31,56 @@ export default function Driller({
   mode = 'hero',
   isVisible: _isVisible = true,
   zzfx: _zzfx,
-  seed: _seed,
+  seed,
 }: DrillerProps) {
   const hostRef = useRef<HTMLDivElement>(null)
   const [world] = useState(() => (typeof window !== 'undefined' ? getWorld() : null))
+  const [, forceRender] = useState(0)
+
+  // Initialize seed + initial runState based on mode.
+  useEffect(() => {
+    if (!world) return
+    const gs = world.get(GameState)
+    if (gs) {
+      gs.mode = mode
+      gs.runState = mode === 'full' ? 'attract' : 'playing'
+    }
+    if (seed !== undefined) {
+      world.set(Seed, { value: seed })
+    }
+  }, [world, mode, seed])
+
+  // Poll runState to drive shell rendering.
+  useEffect(() => {
+    if (!world) return
+    let raf = 0
+    const tick = () => {
+      forceRender((n) => (n + 1) % 1024)
+      raf = requestAnimationFrame(tick)
+    }
+    raf = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(raf)
+  }, [world])
+
+  const handleRestart = useCallback(() => {
+    if (!world) return
+    const gs = world.get(GameState)
+    if (!gs) return
+    gs.lives = 3
+    gs.gems = 0
+    gs.depthM = 0
+    gs.deepestM = 0
+    gs.runState = 'attract'
+    resetStreaming()
+    // Quick way to reset world: bump seed so chunks regenerate fresh.
+    world.set(Seed, { value: ((Date.now() & 0xffff) ^ Math.floor(Math.random() * 0xffff)) >>> 0 })
+    const grid = world.get(Grid)
+    if (grid) {
+      grid.tiles.fill(0)
+      grid.flags.fill(0)
+      grid.frameIndex.fill(0)
+    }
+  }, [world])
 
   // Sync mode + canvas metrics into world singletons whenever they change.
   const onMetrics = useCallback(
@@ -140,6 +189,10 @@ export default function Driller({
 
   if (!world) return null
 
+  const gs = world.get(GameState)
+  const showTitle = mode === 'full' && gs?.runState === 'attract'
+  const showLeaderboard = mode === 'full' && gs?.runState === 'leaderboard'
+
   return (
     <div
       ref={hostRef}
@@ -162,6 +215,8 @@ export default function Driller({
         <DepthBar />
         <GemCounter />
         {mode === 'hero' && <HeroHint />}
+        {showTitle && <TitleAttract topScores={loadLeaderboard().slice(0, 3)} />}
+        {showLeaderboard && <Leaderboard onRestart={handleRestart} />}
         <HoverCursor />
       </WorldProvider>
     </div>

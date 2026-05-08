@@ -155,6 +155,30 @@ function respawnDriller(world: World): void {
   )
 }
 
+/**
+ * Hero-mode world-fall transition. Triggered when the driller crosses
+ * ~250m (past the core biome's typical playable depth). The current world
+ * resets: new seed, depth → 0, world number ticks up, chunks regenerate.
+ *
+ * The driller stays alive through this — the visual effect is a quick
+ * fade-to-black handled at the renderer level (TBD), but the data
+ * mechanics are: reset Grid + Seed + depth state.
+ */
+export function heroWorldFallSystem(world: World): void {
+  const gs = world.get(GameState)
+  if (!gs || gs.mode !== 'hero') return
+  if (gs.depthM < 250) return
+  // Trigger world-fall:
+  gs.worldNumber += 1
+  gs.depthM = 0
+  gs.deepestM = 0
+  // Caller must reset the streaming state; we do not import generation here
+  // to keep death.ts decoupled. The Scene wires `resetStreaming()` after
+  // this system ticks if worldNumber changed.
+  // (Fresh chunk generation happens automatically next tick when streamChunks
+  // sees no loaded chunks.)
+}
+
 /** Tick scattered gems toward expiry; despawn timed-out ones. */
 export function scatteredGemsSystem(world: World): void {
   const gs = world.get(GameState)

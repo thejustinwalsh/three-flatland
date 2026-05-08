@@ -19,10 +19,10 @@ import { TILE_PX } from '../constants'
 import { cameraSystem } from '../systems/camera'
 import { autotilePass } from '../systems/autotile-pass'
 import { collapseTick } from '../systems/collapse'
-import { deathSystem, scatteredGemsSystem } from '../systems/death'
+import { deathSystem, heroWorldFallSystem, scatteredGemsSystem } from '../systems/death'
+import { resetStreaming, streamChunks } from '../systems/generation'
 import { drillerSystem, moodDriftSystem } from '../systems/driller'
 import { plannerTick } from '../systems/ai-planner'
-import { streamChunks } from '../systems/generation'
 import { TILE_COLORS, useDrillerMaterial } from '../materials'
 
 extend({ Flatland, Sprite2D, Sprite2DMaterial })
@@ -89,6 +89,20 @@ export function Scene() {
 
     deathSystem(world)
     scatteredGemsSystem(world)
+
+    // Hero mode world-fall: reset streaming + grid when depth crosses the
+    // core threshold so a fresh world is generated.
+    const prevWorld = gs.worldNumber
+    heroWorldFallSystem(world)
+    if (gs.worldNumber !== prevWorld) {
+      resetStreaming()
+      const grid = world.get(Grid)
+      if (grid) {
+        grid.tiles.fill(0)
+        grid.flags.fill(0)
+        grid.frameIndex.fill(0)
+      }
+    }
 
     if (gs.runState === 'playing') {
       moodDriftSystem(world, gs.tick)
