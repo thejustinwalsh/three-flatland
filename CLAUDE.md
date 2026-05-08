@@ -31,6 +31,14 @@
 ## Workflow
 - Use Conventional Commits — releases are cut from changesets generated from the commit history
 
+## Verification
+- **Unit tests** (`pnpm test` per package): fast deterministic invariants. Always run before committing simulation/system code.
+- **Integration tests** (`pnpm test:integration` per package): live-browser observation via vitexec. Slow (60–180s each). Run after changes to a mini's simulation pipeline (collapse, hazard, scene loop, tick budgets).
+- **vitexec probes**: never accumulate one-off probes in `/tmp/`. If a probe surfaced a real bug, fold it into the integration suite under `tests/integration/`. Each probe is browser-runnable JS that ends with `console.log('INTEGRATION_RESULT: ' + JSON.stringify(result))`; the matching `*.integration.test.ts` parses that and asserts.
+- **Failure messages are part of the contract**: every integration test must throw a custom Error on failure that names (a) what was expected, (b) likely root causes with file paths, (c) sample offending data. See `minis/driller/tests/integration/shake-contract.integration.test.ts` for the canonical pattern.
+- **Timeouts are failures**: the runner SIGKILLs vitexec at `timeoutSec + 60s` and surfaces a clear timeout error. Never let a hung browser show as green.
+- See `minis/driller/tests/integration/README.md` for full conventions when adding new integration tests or probes.
+
 ## Constraints
 - Performance is critical — minimize draw calls, batch sprites via SpriteGroup, watch frame budgets
 - All custom Three.js classes must work with R3F's no-arg construction + property-setting pattern
