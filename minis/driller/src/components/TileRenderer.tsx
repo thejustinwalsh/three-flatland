@@ -37,12 +37,10 @@ const TINT_EXPLOSIVE_LIT = [1.0, 0.55, 0.20] as const // pulsing when triggered
 const TINT_FIXTURE_BONE = [0.91, 0.90, 0.83] as const
 const TINT_FIXTURE_MUSHROOM = [0.66, 0.55, 0.98] as const
 const TINT_FIXTURE_CRYSTAL = [0.49, 0.23, 0.93] as const
-// Sag flash: warm desaturated sand that pulses to a bright orange. The
-// flash period (~280ms) is long enough to read clearly without feeling
-// frantic at the surface; the SAG_DURATION_TICKS ≈ 0.7s gives the
-// player ~3 pulses to react before the chunk falls.
-const TINT_SAG_LO = [0.66, 0.48, 0.24] as const
-const TINT_SAG_HI = [0.95, 0.62, 0.28] as const
+// Sag = subtle darken on the biome's regular soil tint. Just enough
+// of a hue shift that the player can spot a wobbling chunk; the
+// SHAKE jitter does the louder "this is about to fall" signalling.
+const SAG_DARKEN = 0.72
 const TINT_FALL = [0.85, 0.48, 0.24] as const
 // Predictive "your next move makes this fall". Faster pulse, cooler
 // hue so it reads distinctly from an active sag — this is "danger
@@ -66,9 +64,12 @@ function pickTint(
 ): readonly [number, number, number] {
   if (falling) return TINT_FALL
   if (sagging) {
-    // (sin*0.5 + 0.5) maps to 0..1 — smooth pulse, no hard flicker.
-    const t = Math.sin((now / 280) * Math.PI * 2) * 0.5 + 0.5
-    return lerp3(TINT_SAG_LO, TINT_SAG_HI, t)
+    // Subtle darken on the biome's edge tint. No flash, no pulse —
+    // just a quiet "this is loose" indicator. The shake telegraph
+    // (separately driven by FLAG_SHAKING in the last ~300ms before
+    // release) is what announces the actual drop.
+    void now
+    return [palette.edge[0] * SAG_DARKEN, palette.edge[1] * SAG_DARKEN, palette.edge[2] * SAG_DARKEN] as const
   }
   if (precarious) {
     const t = Math.sin((now / 180) * Math.PI * 2) * 0.5 + 0.5
