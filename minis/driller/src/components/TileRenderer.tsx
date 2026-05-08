@@ -18,6 +18,11 @@ import {
 } from '../traits'
 import { MIN_PLAY_ROWS, PLAY_COLS, TILE_PX } from '../constants'
 import { biomeAt } from '../biomes'
+import {
+  ensureDebugRenderState,
+  recordCellRender,
+  tickDebugRenderFrame,
+} from '../dev/render-instrument'
 
 // Generous pool: covers tall viewports without stale-cell artifacts. The
 // tile-iteration window is `cam.rows + 4` rows; pool must cover the
@@ -143,6 +148,19 @@ export function TileRenderer({ material }: TileRendererProps) {
     const topRow = Math.max(0, Math.floor(cam.y / TILE_PX) - 1)
     const bottomRow = Math.min(rows, topRow + cam.rows + 3)
 
+    // Dev-only render-side instrumentation. `import.meta.env.DEV` is
+    // `true` under vite dev (vitexec / pnpm dev:app); tsup builds
+    // (consumed by docs / examples) replace it with `false` via
+    // tsup.config.ts → esbuild dead-code-eliminates the entire branch
+    // and `src/dev/render-instrument.ts` is tree-shaken out of dist.
+    // Verified by grepping the built bundle for `__drillerRender`.
+    const debugRender = import.meta.env.DEV
+      ? ensureDebugRenderState(tiles.length)
+      : undefined
+    if (import.meta.env.DEV && debugRender) {
+      tickDebugRenderFrame(debugRender, flags, topRow, bottomRow)
+    }
+
     // Index triggered explosives by cell for fast tint lookup.
     const triggeredExplosives = new Set<number>()
     world.query(Explosive).forEach((entity) => {
@@ -192,6 +210,9 @@ export function TileRenderer({ material }: TileRendererProps) {
         sprite.tint.r = tint[0]
         sprite.tint.g = tint[1]
         sprite.tint.b = tint[2]
+        if (import.meta.env.DEV && debugRender) {
+          recordCellRender(debugRender, idx, shaking, jitterX !== 0 || jitterY !== 0)
+        }
       }
     }
     // Hide leftover slots that didn't get assigned a cell this frame.
