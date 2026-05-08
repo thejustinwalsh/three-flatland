@@ -242,28 +242,46 @@ for (const { slug, path } of targets) {
     })
 
     // ─── Still (PNG + WEBP) ───────────────────────────────────
-    // Capture the canvas itself (matches the video, which is
-    // sourced from canvas.captureStream). The canvas content is
-    // what reads as the showcase preview — same source for poster
-    // and clip means the two stay in visual sync.
+    // Canvas screenshot keeps alpha (mini uses `clearAlpha={0}` so
+    // empty playfield areas are transparent). The video composites
+    // correctly on the GalleryTile's gem-tinted bg at display
+    // time, but a PNG file shown standalone renders alpha-zero
+    // pixels as WHITE in most viewers — which is what the user
+    // hit. Solution: read the .showcase-detail-stage's computed bg
+    // color and flatten the canvas screenshot against it via
+    // sharp, producing an opaque PNG that visually matches what
+    // the video looks like inside the tile.
     //
-    // Force a paint synchronization: request two RAFs back-to-back
-    // before the screenshot so the canvas's most recent draw has
-    // been committed to the framebuffer. Without this the still
-    // can land between a clear and a draw, capturing transparent
-    // pixels that render as white in PNG viewers (which is what
-    // user saw — the video had gem content but the still didn't).
+    // RAF paint sync ensures the canvas's most recent draw is in
+    // the front buffer before snapshot.
     await page.evaluate(
       () =>
         new Promise((res) =>
           requestAnimationFrame(() => requestAnimationFrame(res)),
         ),
     )
+    const stageBg = await page.evaluate(() => {
+      const el = document.querySelector('.showcase-detail-stage')
+      if (!el) return 'rgb(22, 25, 30)'
+      return getComputedStyle(el).backgroundColor || 'rgb(22, 25, 30)'
+    })
+    // sharp's flatten accepts CSS rgb()/rgba() strings via its named
+    // `background` option that takes a color object. Parse the
+    // rgb(R, G, B) string ourselves for portability.
+    const m = String(stageBg).match(/rgb(?:a)?\((\d+),\s*(\d+),\s*(\d+)/)
+    const flattenBg = m
+      ? { r: Number(m[1]), g: Number(m[2]), b: Number(m[3]) }
+      : { r: 22, g: 25, b: 30 }
     const pngPath = resolve(OUT_DIR, `${slug}.png`)
     const webpPath = resolve(OUT_DIR, `${slug}.webp`)
-    const pngBuffer = await canvas.screenshot({ omitBackground: false })
-    await writeFile(pngPath, pngBuffer)
-    const webpBuffer = await sharp(pngBuffer)
+    const rawCanvasPng = await canvas.screenshot({ omitBackground: false })
+    const flatPngBuffer = await sharp(rawCanvasPng)
+      .flatten({ background: flattenBg })
+      .png()
+      .toBuffer()
+    await writeFile(pngPath, flatPngBuffer)
+    const webpBuffer = await sharp(rawCanvasPng)
+      .flatten({ background: flattenBg })
       .webp({ quality: 95, smartSubsample: true })
       .toBuffer()
     await writeFile(webpPath, webpBuffer)
