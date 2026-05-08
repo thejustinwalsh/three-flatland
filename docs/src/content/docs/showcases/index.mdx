@@ -6,6 +6,7 @@ template: splash
 
 import ShowcaseGrid from '../../../components/gallery/ShowcaseGrid.astro'
 import GalleryTile from '../../../components/gallery/GalleryTile.astro'
+import ShowcaseTilePlaceholder from '../../../components/gallery/ShowcaseTilePlaceholder.astro'
 
 <div class="showcases-page not-content">
 
@@ -49,39 +50,27 @@ import GalleryTile from '../../../components/gallery/GalleryTile.astro'
     color="ruby"
     aspect="16 / 10"
   />
-  {/*
-    Placeholder examples — uncomment any (and add a matching MDX
-    file under showcases/) to see how the 2-col grid layout
-    + per-showcase gem theming reads side-by-side. Adding a
-    second tile auto-collapses the singleton featured layout.
-
-    <GalleryTile
-      surface="showcases"
-      slug="platformer"
-      title="Platformer"
-      description="Tile-perfect platformer demo with Aseprite-driven sprite atlases, parallax scrolling, and frame-stepped physics."
-      color="emerald"
-      aspect="16 / 10"
-    />
-
-    <GalleryTile
-      surface="showcases"
-      slug="puzzler"
-      title="Puzzler"
-      description="Match-N puzzle game built on a board ECS with cascade resolution, score multipliers, and animated tile dissolves."
-      color="amethyst"
-      aspect="1 / 1"
-    />
-
-    <GalleryTile
-      surface="showcases"
-      slug="shoot-em-up"
-      title="Shoot 'em up"
-      description="Bullet-hell SHMUP demonstrating SpriteGroup batching at scale — 1k+ active projectiles in a single draw call."
-      color="gold"
-      aspect="9 / 16"
-    />
-  */}
+  {/* Placeholder tiles demonstrate the per-showcase frontmatter theme
+      system — each carries its own gem accent (color), aspect ratio,
+      and inherits the foil rim + cursor hotspot + lens-flare hover
+      treatment in that gem. Replace each with a real <GalleryTile>
+      pointing to a new MDX file under `showcases/<slug>.mdx` when
+      adding a showcase. ShowcaseTilePlaceholder renders as <div>
+      (non-interactive) so the singleton-featured layout stays
+      possible: remove the placeholders and Breakout's <a> becomes
+      `:only-of-type` again. */}
+  <ShowcaseTilePlaceholder
+    title="Platformer"
+    description="Tile-perfect platformer demo — Aseprite atlases, parallax scrolling, frame-stepped physics."
+    color="emerald"
+    aspect="16 / 10"
+  />
+  <ShowcaseTilePlaceholder
+    title="Shoot 'em up"
+    description="Bullet-hell SHMUP — SpriteGroup batching at scale, 1k+ active projectiles in a single draw call."
+    color="gold"
+    aspect="16 / 10"
+  />
 </ShowcaseGrid>
 
 </div>

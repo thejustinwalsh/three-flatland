@@ -1,0 +1,83 @@
+---
+/**
+ * ShowcaseTilePlaceholder — non-interactive "Coming Soon" tile that
+ * mirrors GalleryTile's chrome (gem-tinted gradient backdrop, foil
+ * rim, body typography) so the multi-showcase grid layout can be
+ * previewed before more showcases land. Demonstrates the
+ * frontmatter theme system: each placeholder tile carries its own
+ * `color` (gem accent) + `aspect`, and the foil rim / cursor
+ * hotspot / lens flare reads in that gem on hover, exactly like
+ * a real showcase tile would.
+ *
+ * Renders as a <div> (not <a>) so it's not a link, and the singleton-
+ * featured selector (`a.gallery-tile:only-of-type`) ignores it —
+ * meaning a real showcase tile + placeholders can coexist without
+ * the placeholders breaking the singleton-featured count.
+ */
+type Gem =
+  | 'gold'
+  | 'ruby'
+  | 'emerald'
+  | 'diamond'
+  | 'amethyst'
+  | 'pink'
+  | 'salmon'
+  | 'turquoize'
+
+interface Props {
+  title: string
+  description: string
+  color?: Gem
+  aspect?: string
+}
+
+const { title, description, color = 'diamond', aspect = '4 / 3' } = Astro.props
+---
+
+<div
+  class:list={['gallery-tile', 'showcase-tile-placeholder', 'not-content', 'u-light']}
+  data-gem={color}
+  data-placeholder=""
+  style={{
+    '--tile-accent': `var(--${color})`,
+    '--tile-aspect': aspect,
+  }}
+  aria-hidden="true"
+>
+  <div class="gallery-tile-media" aria-hidden="true">
+    <span class="placeholder-badge">Coming Soon</span>
+  </div>
+  <div class="gallery-tile-body">
+    <h3 class="gallery-tile-title">{title}</h3>
+    <p class="gallery-tile-desc">{description}</p>
+  </div>
+  <span class="tile-edge" aria-hidden="true"></span>
+</div>
+
+<style>
+  /* Placeholder tile inherits the .gallery-tile chrome (foil rim,
+   * radius, bg, hover transform) from GalleryTile's styles since we
+   * apply the same class. We just suppress the cursor (no link)
+   * and add the centered "Coming Soon" badge. */
+  .showcase-tile-placeholder {
+    cursor: default;
+    /* Pull saturation back so placeholder tiles don't compete with
+     * the real showcase tile next to them. The gem identity still
+     * reads — it's just quieter. */
+    opacity: 0.85;
+  }
+
+  .placeholder-badge {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'Inter', system-ui, sans-serif;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: color-mix(in oklab, var(--tile-accent) 60%, var(--muted-foreground));
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+  }
+</style>
