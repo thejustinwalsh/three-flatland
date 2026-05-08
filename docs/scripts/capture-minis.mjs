@@ -49,10 +49,12 @@ const MINIS = [
 
 const VIDEO_DURATION_MS = 6_000
 const VIDEO_FPS = 30
-// Minis lazy-load (React.lazy + Suspense) and the docs page has
-// view-transitions / image preload chrome to settle. Bump the settle
-// window past examples' 1.5s.
-const CANVAS_SETTLE_MS = 3_000
+// Minis lazy-load (React.lazy + Suspense) AND the WebGPU context
+// + flatland scene needs time to compile / mount / kick off attract-
+// mode AI before rendering paints colored content. 3s wasn't enough —
+// scripts fired before the first frame and captured the empty
+// canvas. Bumped to 5s.
+const CANVAS_SETTLE_MS = 5_000
 const VIEWPORT = { width: 1280, height: 800 }
 const OUT_DIR = resolve(__dirname, '..', 'public', 'captures')
 
@@ -239,9 +241,18 @@ for (const { slug, path } of targets) {
     })
 
     // ─── Still (PNG + WEBP) ───────────────────────────────────
+    // Screenshot the .showcase-detail-stage container, NOT just the
+    // canvas. Minis use `<flatland clearAlpha={0}>` for a transparent
+    // canvas so the surrounding stage's gem-tinted CSS bg shows
+    // through in the live page. Capturing just the canvas produces
+    // alpha-zero pixels that render WHITE in PNG viewers (the user
+    // expected the gem tone to be visible). The stage's bg is the
+    // intended visual context — capture both layers together.
+    const stage = page.locator('.showcase-detail-stage').first()
+    await stage.waitFor({ state: 'visible', timeout: 5_000 })
     const pngPath = resolve(OUT_DIR, `${slug}.png`)
     const webpPath = resolve(OUT_DIR, `${slug}.webp`)
-    const pngBuffer = await canvas.screenshot({ omitBackground: false })
+    const pngBuffer = await stage.screenshot({ omitBackground: false })
     await writeFile(pngPath, pngBuffer)
     const webpBuffer = await sharp(pngBuffer)
       .webp({ quality: 95, smartSubsample: true })
