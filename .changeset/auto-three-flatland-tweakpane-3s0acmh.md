@@ -5,22 +5,15 @@
 > Branch: mini-game-showcase
 > PR: https://github.com/thejustinwalsh/three-flatland/pull/59
 
-## New APIs
+### New features
 
-- `usePaneRadioGrid` hook (react subpath) — inline button-bar selector backed by the Tweakpane Essentials `radiogrid` blade; deferred disposal and synchronous creation mirror `usePaneButton` / `usePaneInput`
-- `PaneInputOptions` extended with `readonly` and `format` — allows creating readonly monitors with value formatters
+- `usePaneRadioGrid` hook (react subpath) — inline button-bar selector backed by Tweakpane Essentials' radiogrid blade; deferred disposal and synchronous creation match existing hook patterns
+- `PaneInputOptions` extended with `readonly` and `format` — create readonly monitor bindings with custom value formatters
 
-## Bug Fixes
+### Bug fixes
 
-- Fixed checkbox requiring multiple clicks: `.tp-ckbv_i` now stretches to `width/height: var(--cnt-usz)` so clicks land directly on the input instead of relying on flaky `<label>` forwarding
-- Fixed `useWindowSize` not re-running on monitor swap: hook now tracks `{ w, h, dpr }` and subscribes to a `(resolution: Ndppx)` media query so DPR changes trigger canvas re-sizing
-- Fixed fullscreen-return leaving stale viewport dimensions: `document.fullscreenchange` listener re-measures immediately and once more in the next RAF to catch post-transition layout settles
-- Fixed `z-index` not applying when no container is provided: z-index is now set on the `.tp-dfwv` wrapper element instead of the inner pane root
+- Checkbox hit target: `.tp-ckbv_i` stretched to full box size via `width/height: var(--cnt-usz)` — clicks now land on the input directly, eliminating flaky label-forwarding under certain pointer-events/z-index combinations
+- Checkbox box surface now matches other controls visually (`rgba(28,40,77,0.6)` with hover/focus/active parity); check stroke turns accent color on `:checked`
+- `z-index: 1000` applied to `.tp-dfwv` wrapper (not inner pane root) — fixes stacking against overlays when no explicit container is provided
 
-## Theme
-
-- Checkbox box surface updated to `rgba(28,40,77,0.6)` with hover/focus/active state parity matching other controls; check stroke turns accent pink on `:checked`
-
----
-
-Fixes DPR + fullscreen tracking, resolves flaky checkbox hit targets, adds `usePaneRadioGrid` for scene/mode toggles, and extends `PaneInputOptions` with `readonly` and `format`.
+Adds `usePaneRadioGrid` for compact scene/mode toggles, extends input options with monitor support, and fixes checkbox hit targets and pane z-index stacking.
