@@ -75,9 +75,18 @@ const SERVER_POLL_INTERVAL_MS = 750
 let spawnedServer = null
 
 async function probeServer() {
+  // Probe a SPECIFIC showcase route, not just `/`. Generic 200 responses
+  // from unrelated leftover servers (e.g. an orphaned `astro dev` on
+  // a different project, a stray python http.server) used to trigger
+  // false-positive reuse and cause silent hangs in chromium when the
+  // page never resolved. Probing the actual nav target makes reuse
+  // happen only against a real docs server with our routes mounted.
+  const sample = MINIS[0]
+  if (!sample) return false
   try {
-    const res = await fetch(`${BASE_URL}/`, {
+    const res = await fetch(`${BASE_URL}/${sample.path}/`, {
       signal: AbortSignal.timeout(2_000),
+      redirect: 'follow',
     })
     return res.ok
   } catch {
@@ -171,6 +180,7 @@ if (!existsSync(OUT_DIR)) await mkdir(OUT_DIR, { recursive: true })
 
 // ── Capture loop ───────────────────────────────────────────────────────
 
+process.stdout.write(`[capture-minis] launching chromium...\n`)
 const browser = await chromium.launch({
   args: [
     '--autoplay-policy=no-user-gesture-required',
@@ -178,6 +188,7 @@ const browser = await chromium.launch({
     '--enable-features=Vulkan',
   ],
 })
+process.stdout.write(`[capture-minis] chromium ready\n`)
 
 let totalOk = 0
 let totalFail = 0
@@ -193,13 +204,23 @@ for (const { slug, path } of targets) {
   const page = await ctx.newPage()
 
   try {
-    await page.goto(url, { waitUntil: 'load', timeout: 30_000 })
+    process.stdout.write(`\n[capture-minis]   navigating...`)
+    // `domcontentloaded` (not `load`) — the docs site has lazy assets
+    // that can keep the `load` event open for many seconds, and
+    // React.lazy + Suspense components mount AFTER DOMContentLoaded
+    // anyway. Waiting for `load` here just gives more wall-clock for
+    // resources we don't care about (fonts, images) before we even
+    // start watching for the canvas.
+    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 20_000 })
+    process.stdout.write(` ok\n[capture-minis]   waiting for canvas...`)
 
     // The mini lazy-loads via React.lazy + Suspense — the canvas may
     // not be in the DOM at page-load. Wait for it to appear.
     const canvas = page.locator('.showcase-detail-stage canvas').first()
     await canvas.waitFor({ state: 'attached', timeout: 30_000 })
+    process.stdout.write(` ok\n[capture-minis]   settling ${CANVAS_SETTLE_MS}ms...`)
     await page.waitForTimeout(CANVAS_SETTLE_MS)
+    process.stdout.write(` ok\n[capture-minis]   capturing... `)
 
     // Hide any chrome that would intrude on the captured frame —
     // alpha ribbon (landing only, but defensive), tweakpane panel
