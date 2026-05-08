@@ -6,7 +6,6 @@ import {
   Camera,
   Explosive,
   FLAG_FALLING,
-  FLAG_PRECARIOUS,
   FLAG_SAGGING,
   FLAG_SHAKING,
   Grid,
@@ -42,41 +41,23 @@ const TINT_FIXTURE_CRYSTAL = [0.49, 0.23, 0.93] as const
 // SHAKE jitter does the louder "this is about to fall" signalling.
 const SAG_DARKEN = 0.72
 const TINT_FALL = [0.85, 0.48, 0.24] as const
-// Predictive "your next move makes this fall". Faster pulse, cooler
-// hue so it reads distinctly from an active sag — this is "danger
-// AHEAD", not "danger NOW".
-const TINT_PRECARIOUS_LO = [0.55, 0.34, 0.20] as const
-const TINT_PRECARIOUS_HI = [0.92, 0.40, 0.30] as const
-
-function lerp3(a: readonly [number, number, number], b: readonly [number, number, number], t: number): readonly [number, number, number] {
-  return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t]
-}
 
 function pickTint(
   tile: number,
   frame: number,
   sagging: boolean,
   falling: boolean,
-  precarious: boolean,
   triggeredExplosive: boolean,
   now: number,
   palette: { grass: readonly [number, number, number]; edge: readonly [number, number, number]; deep: readonly [number, number, number]; stone: readonly [number, number, number] },
 ): readonly [number, number, number] {
+  void now
   if (falling) return TINT_FALL
   if (sagging) {
-    // Subtle darken on the biome's edge tint. No flash, no pulse —
-    // just a quiet "this is loose" indicator. The shake telegraph
-    // (separately driven by FLAG_SHAKING in the last ~300ms before
-    // release) is what announces the actual drop.
-    void now
     return [palette.edge[0] * SAG_DARKEN, palette.edge[1] * SAG_DARKEN, palette.edge[2] * SAG_DARKEN] as const
   }
-  if (precarious) {
-    const t = Math.sin((now / 180) * Math.PI * 2) * 0.5 + 0.5
-    return lerp3(TINT_PRECARIOUS_LO, TINT_PRECARIOUS_HI, t)
-  }
   if (tile === TILE_SOIL) {
-    if ((frame & 0x01) === 0) return palette.grass // top-exposed → grass cap
+    if ((frame & 0x01) === 0) return palette.grass
     if (frame === 0xf) return palette.deep
     return palette.edge
   }
@@ -152,11 +133,10 @@ export function TileRenderer({ material }: TileRendererProps) {
         }
         const sagging = (flags[idx]! & FLAG_SAGGING) !== 0
         const falling = (flags[idx]! & FLAG_FALLING) !== 0
-        const precarious = (flags[idx]! & FLAG_PRECARIOUS) !== 0
         const shaking = (flags[idx]! & FLAG_SHAKING) !== 0
         const litExplosive = tile === TILE_EXPLOSIVE && triggeredExplosives.has(idx) && pulse
         const palette = biomeAt(r).palette
-        const tint = pickTint(tile, frameIndex[idx]!, sagging, falling, precarious, litExplosive, now, palette)
+        const tint = pickTint(tile, frameIndex[idx]!, sagging, falling, litExplosive, now, palette)
         // Shake telegraph IS the lock-in moment right before fall —
         // not an extra delay layered on top. Cells get FLAG_SHAKING
         // only in the last few hundred ms of their commit window
