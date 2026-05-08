@@ -35,23 +35,27 @@ export const ACTIVE_CHUNK_CAP = 8
 
 /**
  * Sag lifecycle phases (consistent timing, perfect synchronization).
- * The 700ms total budget read as "darken and shake at the same
- * time" because the SAG→SHAKE delta (~200ms) sits below human
- * change-detection threshold. Three-phase state machine restores
- * legibility:
+ * Three-phase state machine — every phase well above human change-
+ * detection threshold (~300ms) so the player reads the tells as
+ * distinct beats instead of one blur:
  *
  *   PRECARIOUS  ──── 36 ticks (~600ms) ──── slight darken
  *   SAGGING     ──── 36 ticks (~600ms) ──── heavy darken
- *   SHAKING     ──── 18 ticks (~300ms) ──── darken + jitter
+ *   SHAKING     ──── 24 ticks (~400ms) ──── darken + jitter
  *   ──── release (fall) ────
  *
- * Total ~1.5s from detect to fall. Each phase is well above the
- * ~300ms change-detection threshold, so the player reads the tells
- * as distinct beats instead of one blur.
+ * Total ~1.6s from detect to fall. SHAKING is sized so a drill+step
+ * (180ms drill cooldown + 280ms shallow step = 460ms) can JUST
+ * complete before the chunk's first fall-cell impact (~100ms after
+ * release): the player's sideways-into-the-hole escape lands at
+ * t≈460ms while the falling chunk has only moved ~3px from its
+ * release position. Drop SHAKING below 400ms and that "narrow
+ * escape" becomes physically impossible — Mr. Driller's signature
+ * last-second-find-a-hole moment relies on this margin.
  */
 export const SAG_PRECARIOUS_TICKS = 36
 export const SAG_SAGGING_TICKS = 36
-export const SAG_SHAKING_TICKS = 18
+export const SAG_SHAKING_TICKS = 24
 export const SAG_DURATION_TICKS =
   SAG_PRECARIOUS_TICKS + SAG_SAGGING_TICKS + SAG_SHAKING_TICKS
 
