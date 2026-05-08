@@ -292,28 +292,27 @@ export function generateChunk(seed: number, chunkY: number): GeneratedChunk {
     }
   }
 
-  // Void band bonus: every chunk that contains void rows gets
-  // generously seeded with extra gems of all colours and sizes. The
-  // void is the reward zone — falling through it should feel like a
-  // gem shower, with the driller drifting laterally to snag whatever
-  // they can before being outpaced.
+  // Void band bonus: void rows get extra gems of all colours and
+  // sizes. Density is sparse — falling through the void should feel
+  // like a generous reward without becoming a soup of sprites that
+  // hides the driller.
   //
-  // Progressive jackpot: deeper worlds pack the void with more gems.
-  // World 0's void is generous; by world 5+ it's a torrential shower
-  // (capped so it doesn't tip over into a gem soup that hides the
-  // driller).
+  // Progressive jackpot: deeper worlds add a small bonus per world
+  // index, capped so the screen never overflows.
   const voidColors: GemColor[] = ['emerald', 'topaz', 'ruby', 'amethyst']
   for (let r = 0; r < rows; r++) {
     const absRow = chunkY * rows + r
     if (!isFreeFall(absRow)) continue
     const worldIndex = Math.floor(absRow / WORLD_LENGTH_ROWS)
-    const baseAttempts = Math.min(8, 2 + worldIndex)
-    const attempts = rng.intRange(baseAttempts, baseAttempts + 2)
+    // 1 attempt every other row at world 0; up to 2 attempts at deep
+    // worlds. With 55 void rows total that yields ~30–60 gems per
+    // free fall, not 100+.
+    const bonus = Math.min(1, Math.floor(worldIndex / 2))
+    const attempts = rng.chance(0.6) ? 1 + bonus : 0
     for (let i = 0; i < attempts; i++) {
       const x = rng.intRange(0, cols - 1)
       const idx = r * cols + x
       if (tiles[idx] !== TILE_AIR) continue
-      // Avoid stacking two gems in the same cell.
       if (gems.some((g) => g.col === x && g.rowInChunk === r)) continue
       const color = voidColors[rng.intRange(0, voidColors.length - 1)]!
       const sizeRoll = rng.next()

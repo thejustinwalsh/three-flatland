@@ -48,13 +48,13 @@ export interface Biome {
  */
 export const WORLD_BODY_ROWS = 100
 /**
- * Long enough that the driller — falling at ~245 ms/cell — outpaces
- * gems (320 ms/cell) by enough rows that a meaningful share of them
- * scroll off the top of the screen and despawn before the driller
- * lands on the next biome's surface. Previously 20 rows; 35 lets
- * roughly a third of the void's gems get away from the player.
+ * Tuned so plenty of gems escape the top of the playfield before the
+ * driller lands. Driller free-fall ≈ 245 ms/cell, gems ≈ 320 ms/cell;
+ * over 55 void rows the driller outruns gems by roughly 14 rows,
+ * which is more than the 8-row playfield-top offset, so the back
+ * portion of the gem column is reliably consumed by the death tween.
  */
-export const WORLD_VOID_ROWS = 35
+export const WORLD_VOID_ROWS = 55
 export const WORLD_LENGTH_ROWS = WORLD_BODY_ROWS + WORLD_VOID_ROWS
 
 export const BIOMES: Biome[] = [
