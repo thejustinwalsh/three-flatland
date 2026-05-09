@@ -102,9 +102,9 @@ export const OVER_PET_THRESHOLD = 3
 // whose 4-connected SOIL-path to an anchor exceeds this become
 // unstable. Smaller value = falls trigger easier = more interesting
 // gameplay, more wall-shears. The cracking gradient renders 5
-// discrete bands across [0..MAX_REACH], so 8 gives ~2-cell-per-band
-// resolution.
-export const MAX_REACH = 8
+// discrete bands across [0..MAX_REACH], so 4 gives ~1-cell-per-band
+// resolution — the fragility distinction is sharp at every cell.
+export const MAX_REACH = 4
 
 /**
  * Two-phase per-cell cadence — Mr. Driller-style drill THEN step:
