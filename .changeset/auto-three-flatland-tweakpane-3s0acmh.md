@@ -5,23 +5,15 @@
 > Branch: mini-game-showcase
 > PR: https://github.com/thejustinwalsh/three-flatland/pull/59
 
-## What's new in `@three-flatland/tweakpane`
+## New Features
 
-### New hooks
+- `usePaneRadioGrid` hook (react subpath) — inline button-bar selector backed by Tweakpane Essentials `radiogrid` blade; deferred disposal + synchronous creation match `usePaneButton` / `usePaneInput` pattern
+- `PaneInputOptions` extended with `readonly` and `format` — enables readonly monitors with custom value formatters in React hooks
 
-- `usePaneRadioGrid` (react subpath) — inline button-bar selector backed by tweakpane-plugin-essentials `radiogrid` blade; active-state affordance without a dropdown; deferred disposal + synchronous creation match the existing `usePaneButton`/`usePaneInput` pattern
+## Fixes
 
-### Extended API
+- Checkbox hit target expanded to full control box size (`.tp-ckbv_i` set to `var(--cnt-usz)`) — eliminates multi-click failure caused by browser label-forwarding for the hidden `<input>` element
+- Checkbox surface theme updated to match other controls (`rgba(28,40,77,0.6)`) with hover/focus/active parity; check stroke now uses accent color on `:checked`
+- `z-index: 1000` now applied to the `.tp-dfwv` body-sibling wrapper instead of the inner pane element, where it had no stacking-context effect
 
-- `PaneInputOptions` extended with `readonly` and `format` fields so React hook users can create readonly monitors with custom value formatters
-
-### Bug fixes
-
-- `createPane`: `z-index: 1000` now applied to the outer `.tp-dfwv` wrapper element instead of the inner `pane.element`; fixes tweakpane appearing behind other overlays when no container is provided
-- Checkbox hit target expanded: `.tp-ckbv_i` stretched to `width/height: var(--cnt-usz)` so clicks land directly on the input rather than relying on flaky `<label>` forwarding under complex pointer-events/z-index stacks
-
-### Theme
-
-- Checkbox box surface color set to `rgba(28,40,77,0.6)` with hover/focus/active parity matching other controls; check stroke turns accent pink on `:checked`
-
-Adds a `usePaneRadioGrid` hook, readonly monitor support, a z-index stacking fix, and a checkbox hit-target and theme fix.
+New `usePaneRadioGrid` hook and monitor formatter support round out the React API surface; checkbox and z-index fixes resolve persistent UX regressions.
