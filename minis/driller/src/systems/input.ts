@@ -25,6 +25,7 @@ import {
   TILE_PX,
 } from '../constants'
 import { detectChunks } from '../lib/chunk-detect'
+import { isFreeFall } from '../biomes'
 import { applyMoodEvent } from './ai-mood'
 import { braceShakingCluster } from './hazard'
 
@@ -38,6 +39,34 @@ export function resolveHoverAction(
   const { cols, rows: gridRows, tiles, flags } = grid
 
   const drillerEntity = world.queryFirst(Driller)
+
+  // Free-fall mini-game: while the driller is dropping through the
+  // void band between worlds, the player can collect ANY visible gem
+  // by clicking anywhere — no exact-cell alignment required. Click
+  // resolves to the nearest non-collected gem regardless of distance.
+  // Once the driller lands and starts drilling again, normal exact-
+  // cell hover rules return.
+  if (drillerEntity) {
+    const d = drillerEntity.get(Driller)!
+    if (isFreeFall(d.row)) {
+      let nearestGem: Entity | null = null
+      let nearestDistSq = Infinity
+      world.query(Gem).forEach((entity) => {
+        const g = entity.get(Gem)
+        if (!g || g.collected) return
+        const dc = g.col - col
+        const dr = g.row - row
+        const distSq = dc * dc + dr * dr
+        if (distSq < nearestDistSq) {
+          nearestDistSq = distSq
+          nearestGem = entity
+        }
+      })
+      if (nearestGem) return { action: 'collect', gemEntity: nearestGem }
+      return { action: 'none', gemEntity: null }
+    }
+  }
+
   if (drillerEntity) {
     const d = drillerEntity.get(Driller)!
     if (d.col === col && d.row === row) return { action: 'pet', gemEntity: null }
