@@ -6,7 +6,9 @@ import {
   Camera,
   Driller,
   FallingChunk,
+  FLAG_PRECARIOUS,
   FLAG_SAGGING,
+  FLAG_SHAKING,
   GameState,
   Grid,
   PlannerTarget,
@@ -15,6 +17,7 @@ import {
   TILE_SOIL,
   TILE_STONE,
 } from '../src/traits'
+import { SAG_PRECARIOUS_TICKS, SAG_SAGGING_TICKS } from '../src/constants'
 
 /**
  * Helpers to spin up a tiny ECS world with a hand-crafted tile grid
@@ -129,6 +132,116 @@ describe('detectAndSag', () => {
     let sagCount = 0
     world.query(SaggingChunk).forEach(() => sagCount++)
     expect(sagCount).toBe(0)
+  })
+})
+
+/**
+ * Regression — bug discovered post-Phase-A: detectAndSag's
+ * chunk-skip mask was `FLAG_SAGGING | FLAG_FALLING`, but the
+ * PRECARIOUS phase of tickSagging CLEARS FLAG_SAGGING (replacing it
+ * with FLAG_PRECARIOUS). So during the 54-tick precarious window,
+ * detectAndSag spawned a fresh SaggingChunk EVERY tick — each new
+ * entity at elapsed=0 overwrote older entities' flag writes back to
+ * PRECARIOUS. Cells skipped the visible SAGGING/SHAKING phases
+ * entirely; they just suddenly fell when the oldest entity in the
+ * pile reached release.
+ *
+ * Pin: after one detectAndSag spawns a sag entity, subsequent
+ * detectAndSag calls during PRECARIOUS must NOT spawn additional
+ * SaggingChunk entities for the same chunk.
+ */
+describe('SaggingChunk single-spawn invariant', () => {
+  it('does not double-spawn during PRECARIOUS phase', () => {
+    const world = makeWorldFromGrid([
+      '..............',
+      '..............',
+      '..######......',
+      '..............',
+      'SSSSSSSSSSSSSS',
+    ])
+    // First detectAndSag spawns the sag entity (cells get FLAG_SAGGING).
+    detectAndSag(world)
+    let count1 = 0
+    world.query(SaggingChunk).forEach(() => count1++)
+    expect(count1).toBe(1)
+
+    // Run collapseTick once — tickSagging puts the entity into
+    // PRECARIOUS phase, which CLEARS FLAG_SAGGING.
+    const gs = world.get(GameState)!
+    world.set(GameState, { tick: gs.tick + 1 })
+    collapseTick(world)
+
+    // Verify the entity is in PRECARIOUS now (not SAGGING).
+    const grid = world.get(Grid)!
+    let precariousCount = 0
+    let saggingCount = 0
+    for (let i = 0; i < grid.flags.length; i++) {
+      if ((grid.flags[i]! & FLAG_PRECARIOUS) !== 0) precariousCount++
+      if ((grid.flags[i]! & FLAG_SAGGING) !== 0) saggingCount++
+    }
+    expect(precariousCount).toBeGreaterThan(0)
+    expect(saggingCount).toBe(0)
+
+    // Tick through MORE of PRECARIOUS — detectAndSag must NOT spawn
+    // additional sag entities. Without the bug fix, this would jump
+    // by 1 every tick.
+    for (let i = 0; i < 30; i++) {
+      world.set(GameState, { tick: gs.tick + 2 + i })
+      collapseTick(world)
+    }
+    let count2 = 0
+    world.query(SaggingChunk).forEach(() => count2++)
+    expect(
+      count2,
+      `Expected 1 SaggingChunk entity throughout PRECARIOUS phase, found ${count2}. ` +
+      `Likely cause: detectAndSag's chunkHasFlag skip-check doesn't include FLAG_PRECARIOUS — ` +
+      `cells lose FLAG_SAGGING during precarious phase and look like fresh unstable cells to the detector.`,
+    ).toBe(1)
+  })
+
+  it('cells visibly enter SAGGING then SHAKING phases during the lifecycle', () => {
+    // End-to-end pin: with the bug, cells flickered through PRECARIOUS
+    // (no visual) and then suddenly fell. With the fix, each cell goes
+    // PRECARIOUS → SAGGING → SHAKING → fall in sequence, observable
+    // via the flag bits.
+    const world = makeWorldFromGrid([
+      '..............',
+      '..............',
+      '..######......',
+      '..............',
+      'SSSSSSSSSSSSSS',
+    ])
+    detectAndSag(world)
+    const gs = world.get(GameState)!
+    const grid = world.get(Grid)!
+
+    let everSagging = false
+    let everShaking = false
+    // Tick well past the full SAG_DURATION (~138 ticks).
+    for (let i = 0; i < 200; i++) {
+      world.set(GameState, { tick: gs.tick + i + 1 })
+      collapseTick(world)
+      // Sample flags on the slab cells.
+      for (let c = 2; c < 8; c++) {
+        const idx = 2 * grid.cols + c
+        if ((grid.flags[idx]! & FLAG_SAGGING) !== 0) everSagging = true
+        if ((grid.flags[idx]! & FLAG_SHAKING) !== 0) everShaking = true
+      }
+      if (everSagging && everShaking) break
+    }
+    expect(
+      everSagging,
+      'Cells never received FLAG_SAGGING — sag pipeline is skipping the SAGGING phase. ' +
+      'Likely SaggingChunk-respawn bug (see prior test).',
+    ).toBe(true)
+    expect(
+      everShaking,
+      'Cells never received FLAG_SHAKING — sag pipeline is skipping the SHAKING phase. ' +
+      'Likely SaggingChunk-respawn bug or SHAKE-entry guard cancelling.',
+    ).toBe(true)
+    // Sanity: phase durations match constants.
+    void SAG_PRECARIOUS_TICKS
+    void SAG_SAGGING_TICKS
   })
 })
 

@@ -184,6 +184,67 @@ describe('seedAnchorsBFS — anchor topology', () => {
   })
 })
 
+/**
+ * Regression — bug: anchor seeds were pinned to literal row 0. Once
+ * the driller descended past the first chunk and that chunk got
+ * unloaded → all-AIR, no row-0 cells were conductors and the BFS lost
+ * all top-edge seeds. The entire visible world's anchor distances
+ * climbed to INF, triggering cascading delayed collapses unrelated to
+ * the player's actions.
+ *
+ * Pin: passing `topRow > 0` to seedAnchorsBFS / relaxAnchorDist must
+ * use that row as the anchor seed, not literal row 0.
+ */
+describe('topRow seed reference (post-unload streaming)', () => {
+  it('honors topRow > 0 as the seed reference, ignoring rows above', () => {
+    // Simulate post-unload state: rows 0-2 are AIR (chunk unloaded),
+    // rows 3+ have actual world content. With topRow=3, the cells in
+    // row 3 should be the new seeds.
+    const cols = 4
+    const rows = 8
+    const tiles = new Uint8Array(cols * rows)
+    // Rows 0-2: AIR (unloaded chunk).
+    // Rows 3-7: SOIL (loaded chunk).
+    for (let r = 3; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        tiles[r * cols + c] = TILE_SOIL
+      }
+    }
+    const dist = new Uint8Array(tiles.length).fill(255)
+    seedAnchorsBFS(tiles, dist, cols, rows, 3) // topRow = 3
+
+    // Row 3 SOIL should now be seeds (distance 0).
+    for (let c = 0; c < cols; c++) {
+      expect(
+        dist[3 * cols + c],
+        `Cell (3, ${c}) should be a seed (distance 0) when topRow=3`,
+      ).toBe(0)
+    }
+    // Distance grows downward from row 3.
+    expect(dist[4 * cols]).toBe(1)
+    expect(dist[5 * cols]).toBe(2)
+    expect(dist[6 * cols]).toBe(3)
+    // Row 0-2 are AIR — they get INF (not in graph).
+    for (let r = 0; r < 3; r++) {
+      for (let c = 0; c < cols; c++) {
+        expect(dist[r * cols + c]).toBe(ANCHOR_DIST_INF)
+      }
+    }
+  })
+
+  it('with default topRow=0 keeps backward compat (row 0 is the seed)', () => {
+    const cols = 3
+    const rows = 4
+    const tiles = new Uint8Array(cols * rows)
+    for (let i = 0; i < tiles.length; i++) tiles[i] = TILE_SOIL
+    const dist = new Uint8Array(tiles.length).fill(255)
+    seedAnchorsBFS(tiles, dist, cols, rows) // omit topRow → default 0
+    for (let c = 0; c < cols; c++) expect(dist[c]).toBe(0)
+    expect(dist[1 * cols]).toBe(1)
+    expect(dist[2 * cols]).toBe(2)
+  })
+})
+
 describe('unstableCells', () => {
   it('cells with distance > maxReach are unstable', () => {
     const cols = 4

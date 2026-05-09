@@ -332,8 +332,11 @@ export function TileRenderer({ material }: TileRendererProps) {
         let jitterY = 0
         if (shaking) {
           const phase = (now / 1000) * Math.PI * 2 * 6
+          // Same amplitude on both axes — block lurches as a unit
+          // rather than wobbling lopsidedly. Phases differ slightly
+          // so the motion reads as a wobble, not a 1D vibration.
           jitterX = Math.sin(phase) * 1.0
-          jitterY = Math.sin(phase * 0.5) * 0.5
+          jitterY = Math.sin(phase * 0.5) * 1.0
         }
         const posX = c * TILE_PX + TILE_PX / 2 + jitterX
         const posY = -(r * TILE_PX + TILE_PX / 2) + jitterY
