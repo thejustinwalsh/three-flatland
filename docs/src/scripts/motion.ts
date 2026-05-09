@@ -57,6 +57,25 @@ interface MotionTarget {
     lastTiltX: number
     lastTiltY: number
     lastEffective: number
+    /**
+     * Last-written --scene-angle for THIS target. Scene-angle is now
+     * scoped per-element (was set on :root) so each surface receives
+     * its own scene-angle write rather than broadcasting through the
+     * cascade. Combined with contain:paint, this means a global
+     * scene-angle tick invalidates ONLY the on-screen rim-bearing
+     * elements, not every descendant of `<html>`. Critical Safari fix
+     * — `:root` writes triggered cascade-wide style recalc on N
+     * readers; per-element writes with a single reader = N-fold
+     * reduction in style work.
+     */
+    lastScene: number
+    /**
+     * Whether this target is currently in the viewport. Set by an
+     * IntersectionObserver. When false, the per-target write block
+     * skips entirely — offscreen rim-bearing elements pay zero motion
+     * cost (the user can't see them, no need to update the foil pose).
+     */
+    visible: boolean
 }
 
 /**
@@ -68,10 +87,18 @@ const EPS_DEG = 0.1       // degrees (light-angle / tilt / scene-angle)
 const EPS_SCALAR = 0.005  // 0..1 scalars (--mouse-active)
 
 /**
- * Last-written value for the global :root custom properties, mirroring
- * the per-target gating below.
+ * Per-target IntersectionObserver tracker. Toggles target.visible so
+ * the frame loop can skip offscreen surfaces. Single shared observer
+ * across all targets is much cheaper than N observers.
  */
-let lastSceneAngle = NaN
+let visObs: IntersectionObserver | null = null
+
+/**
+ * Most recent scene-angle computed by the frame loop. Stored once;
+ * pushed to each visible target during the per-target loop. Replaces
+ * the prior `:root.style.setProperty('--scene-angle', ...)` broadcast.
+ */
+let currentSceneAngle = 90 // matches @property initial-value
 
 const REDUCED_MOTION = (() => {
     if (typeof window === 'undefined') return false
@@ -138,8 +165,14 @@ function registerTarget(el: HTMLElement) {
         lastTiltX: NaN,
         lastTiltY: NaN,
         lastEffective: NaN,
+        lastScene: NaN,
+        // Default to visible so the first paint isn't a stale-pose
+        // initial frame; the IntersectionObserver corrects on first
+        // observation (which fires synchronously after .observe()).
+        visible: true,
     }
     targets.push(t)
+    if (visObs) visObs.observe(el)
 
     const setTarget = (e: PointerEvent) => {
         const r = el.getBoundingClientRect()
@@ -220,19 +253,40 @@ function frame(now: number) {
     // rather than reversing abruptly.
     const eased = cyclePos * cyclePos * (3 - 2 * cyclePos)
     const sceneAngle = ARC_MIN_DEG + eased * (ARC_MAX_DEG - ARC_MIN_DEG)
-    if (
-        Number.isNaN(lastSceneAngle) ||
-        Math.abs(sceneAngle - lastSceneAngle) >= EPS_DEG
-    ) {
-        document.documentElement.style.setProperty(
-            '--scene-angle',
-            `${sceneAngle.toFixed(1)}deg`,
-        )
-        lastSceneAngle = sceneAngle
-    }
+    // Stored once per frame; per-target write happens below inside the
+    // per-target loop, gated on visibility + value-change. Stops the
+    // cascade-walk that --scene-angle on :root used to trigger.
+    currentSceneAngle = sceneAngle
 
     for (const t of targets) {
         t.t = time
+
+        /* OFFSCREEN GATE — IntersectionObserver toggles visible. When
+         * an element is offscreen (scrolled past, in a closed details
+         * panel, behind the search modal, etc.) skip the entire
+         * per-target write block. Invisible elements pay zero cost.
+         * Scene-angle is also skipped — when the viewer scrolls back,
+         * the next visible-frame writes the current value, which is
+         * indistinguishable from "kept up to date" because the human
+         * eye can't compare against an offscreen state. */
+        if (!t.visible) continue
+
+        /* PER-TARGET SCENE-ANGLE — replaces the prior :root broadcast.
+         * Each visible rim-bearing surface gets the global scene-angle
+         * written DIRECTLY on it, gated on value-change. Combined with
+         * contain:paint per element, this means a scene-angle tick
+         * invalidates only the on-screen rim layer, not the entire
+         * cascade. */
+        if (
+            Number.isNaN(t.lastScene) ||
+            Math.abs(currentSceneAngle - t.lastScene) >= EPS_DEG
+        ) {
+            t.el.style.setProperty(
+                '--scene-angle',
+                `${currentSceneAngle.toFixed(1)}deg`,
+            )
+            t.lastScene = currentSceneAngle
+        }
 
         /* MOUSE LIGHT — cursor-driven with inertia. When cursor is over
          * the surface, --mouse-active eases toward 1 and position eases
@@ -338,6 +392,11 @@ function frame(now: number) {
         const ampY = isHolo ? 14 : 8
         const tiltY = (0.5 - mx) * ampY * t.active
         const tiltX = (my - 0.5) * ampX * t.active
+        /* TILT — written ON A COUPLE-OF-CONSUMER ELEMENTS only, but
+         * still write the custom props so per-component CSS that reads
+         * them keeps working. The remaining cost is small now that
+         * @property registration types these as <angle> (compositor-
+         * eligible) and contain:paint isolates the layer. */
         if (
             Number.isNaN(t.lastTiltX) ||
             Math.abs(tiltX - t.lastTiltX) >= EPS_DEG
@@ -361,7 +420,7 @@ function frame(now: number) {
          * RIGHT relative to the surface. Multiplier 2.5× keeps the
          * response visually clear at modest tilts. */
         const tiltMul = 2.5
-        const effective = sceneAngle + tiltY * tiltMul - tiltX * tiltMul * 0.4
+        const effective = currentSceneAngle + tiltY * tiltMul - tiltX * tiltMul * 0.4
         if (
             Number.isNaN(t.lastEffective) ||
             Math.abs(effective - t.lastEffective) >= EPS_DEG
@@ -391,6 +450,24 @@ function startLoop() {
 
 function initMotion() {
     if (typeof document === 'undefined') return
+
+    // Single shared IntersectionObserver — toggles target.visible so
+    // the frame loop skips offscreen elements. Cheaper than N
+    // observers; the rootMargin pre-warms targets just before they
+    // scroll into view so the first visible frame already has the
+    // current pose written rather than catching up on next tick.
+    if ('IntersectionObserver' in window && !visObs) {
+        visObs = new IntersectionObserver(
+            entries => {
+                for (const e of entries) {
+                    const t = targets.find(t => t.el === e.target)
+                    if (t) t.visible = e.isIntersecting
+                }
+            },
+            { rootMargin: '100px' },
+        )
+    }
+
     const els = document.querySelectorAll<HTMLElement>(
         '.u-light, .u-holo, [data-light], [data-holo], .sl-link-button.primary, .sl-link-button.secondary'
     )

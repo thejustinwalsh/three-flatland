@@ -1,3 +1,62 @@
+/**
+ * Motion-loop CSS custom properties — registered with @property so the
+ * browser knows their type ahead of time. Two perf wins from registration:
+ *   1. Type-aware values can interpolate on the COMPOSITOR (vs full
+ *      style-recalc per write). Critical for Safari, which otherwise
+ *      treats untyped custom-prop writes as cascade-wide invalidation.
+ *   2. `inherits: true` paired with the explicit type lets the engine
+ *      avoid re-resolving the value through the cascade per consumer.
+ *
+ * Pure perf hint — zero visual change. Initial values match the motion
+ * script's first-frame defaults; consumers already use `var(--name,
+ * fallback)` so a registered initial-value just makes the fallback
+ * path consistent across browsers.
+ *
+ * Browser support: Safari 16.4+, Chrome 85+, Firefox 128+. Older
+ * browsers ignore @property entirely and fall back to existing
+ * untyped-custom-prop behavior; no breakage.
+ */
+@property --mx {
+    syntax: '<percentage>';
+    inherits: true;
+    initial-value: 50%;
+}
+@property --my {
+    syntax: '<percentage>';
+    inherits: true;
+    initial-value: 50%;
+}
+@property --mouse-active {
+    syntax: '<number>';
+    inherits: true;
+    initial-value: 0;
+}
+@property --light-angle {
+    syntax: '<angle>';
+    inherits: true;
+    initial-value: 135deg;
+}
+@property --effective-light-angle {
+    syntax: '<angle>';
+    inherits: true;
+    initial-value: 135deg;
+}
+@property --scene-angle {
+    syntax: '<angle>';
+    inherits: true;
+    initial-value: 90deg;
+}
+@property --tilt-x {
+    syntax: '<angle>';
+    inherits: true;
+    initial-value: 0deg;
+}
+@property --tilt-y {
+    syntax: '<angle>';
+    inherits: true;
+    initial-value: 0deg;
+}
+
 @layer theme {
     /* theme */
     :root {
