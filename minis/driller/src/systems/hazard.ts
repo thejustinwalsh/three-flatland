@@ -40,7 +40,21 @@ let lastSpawnTick = 0
  */
 let hazardSafeMinRow = -1
 
-const MIN_FALL_CELLS = 3 // need at least this many AIR cells below the warning before spawning
+/**
+ * Minimum vertical AIR shaft depth (in cells) from the top of the
+ * camera viewport down to qualify for a punishment-rock drop. The
+ * design intent: the player's autonomous driller is rewarded for
+ * meandering / interesting tunnels and PUNISHED for straight-down
+ * descents. An open vertical shaft taller than this signals "the
+ * driller has been digging straight" — a rock is dropped down it.
+ *
+ * 8 tiles is roughly half a viewport, so the shaft has to be visibly
+ * "boring" to the player before a rock fires.
+ */
+const SHAFT_MIN_DEPTH = 8
+/** Per-column cooldown so the same shaft doesn't spam rocks. */
+const PER_COL_SPAWN_COOLDOWN_TICKS = 240 // ~4s at 60Hz
+const lastSpawnByCol = new Int32Array(32) // grown lazily; PLAY_COLS=18 fits
 
 export function setHazardSafeMinRow(row: number): void {
   hazardSafeMinRow = row
@@ -80,67 +94,75 @@ export function hazardSpawnSystem(world: World): void {
   // and a rock would drop on the player's head immediately.
   if (d.row < hazardSafeMinRow) return
 
+  // Punish-straight-down: rock spawn rule is now driven by SHAFT
+  // visibility, not driller proximity. Any column whose AIR shaft
+  // from the top of the camera viewport extends >= SHAFT_MIN_DEPTH
+  // cells gets a rock lobbed down it — the player is told via this
+  // signal "you've been digging straight, the world is going to
+  // throw something at you." Per-column cooldown prevents the same
+  // shaft from spamming rocks; the global cadence still applies as
+  // a depth-scaled minimum interval between ANY two rock spawns.
+  const cam = world.get(Camera)
+  const topRow = Math.max(0, Math.floor((cam?.y ?? d.row * TILE_PX) / TILE_PX))
+  const { cols, rows, tiles } = grid
+
+  // Don't stack hazards in the same column.
+  const colsWithActiveHazard = new Set<number>()
+  world.query(Hazard).forEach((entity) => {
+    const h = entity.get(Hazard)!
+    if (h.phase !== 'landed') colsWithActiveHazard.add(h.col)
+  })
+
   const interval = Math.max(
     HAZARD_SPAWN_INTERVAL_FLOOR,
     Math.floor(HAZARD_SPAWN_INTERVAL_TICKS / (1 + boost)),
   )
-  if (gs.tick - lastSpawnTick < interval) return
+  const globalCooldownDone = gs.tick - lastSpawnTick >= interval
 
-  // Don't stack hazards: skip if any non-landed Hazard is within the spawn range.
-  let nearbyExists = false
-  world.query(Hazard).forEach((entity) => {
-    if (nearbyExists) return
-    const h = entity.get(Hazard)!
-    if (h.phase === 'landed') return
-    if (Math.abs(h.col - d.col) <= HAZARD_SPAWN_COL_RANGE) nearbyExists = true
-  })
-  if (nearbyExists) return
-
-  // Find candidate columns near the driller with a visible AIR column
-  // from the TOP OF THE CAMERA VIEWPORT down at least MIN_FALL_CELLS.
-  // The PlayfieldOverlay no longer mutes the rows above; the entire
-  // viewport is now the playfield, so rocks spawn from the actual
-  // top of what the player can see — gives the player the same lead
-  // time regardless of viewport height.
-  const cam = world.get(Camera)
-  const topRow = Math.max(0, Math.floor((cam?.y ?? d.row * TILE_PX) / TILE_PX))
-  const { cols, rows, tiles } = grid
-  const candidates: { col: number; warningRow: number }[] = []
+  // Walk columns within HAZARD_SPAWN_COL_RANGE of the driller. For
+  // each, count contiguous AIR cells from the camera top downward
+  // until hitting a non-AIR. Columns whose shaft is at least
+  // SHAFT_MIN_DEPTH and whose per-col cooldown has expired become
+  // candidates. We still rate-limit globally so multiple shafts
+  // don't all dump rocks the same tick. Scoping to the driller's
+  // vicinity keeps rocks RELEVANT to homie's straight-down behavior
+  // rather than firing on arbitrary far-away shafts the player can't
+  // see.
+  const candidates: number[] = []
   for (let dc = -HAZARD_SPAWN_COL_RANGE; dc <= HAZARD_SPAWN_COL_RANGE; dc++) {
-    const col = Math.max(0, Math.min(PLAY_COLS - 1, d.col + dc))
-    // Need topRow itself to be AIR (the rock spawns there visibly).
+    const col = d.col + dc
+    if (col < 0 || col >= cols || col >= PLAY_COLS) continue
+    if (colsWithActiveHazard.has(col)) continue
+    if (gs.tick - (lastSpawnByCol[col] ?? 0) < PER_COL_SPAWN_COOLDOWN_TICKS) continue
     if (tiles[topRow * cols + col] !== TILE_AIR) continue
-    // Strict hole rule: the column must be CONTINUOUS AIR from playfield
-    // top all the way down to at least `driller.row + MIN_FALL_CELLS`.
-    // This guarantees the rock has somewhere to actually fall — right
-    // after a void, the driller is at the new biome's surface and no
-    // column has been drilled yet, so no rocks can spawn until the
-    // driller has actively dug a hole.
-    const needRow = Math.min(rows - 1, d.row + MIN_FALL_CELLS)
-    let blocked = false
-    for (let r = topRow + 1; r <= needRow; r++) {
-      if (tiles[r * cols + col] !== TILE_AIR) {
-        blocked = true
-        break
-      }
+    let depth = 0
+    for (let r = topRow; r < rows; r++) {
+      if (tiles[r * cols + col] !== TILE_AIR) break
+      depth++
+      if (depth >= SHAFT_MIN_DEPTH) break
     }
-    if (blocked) continue
-    candidates.push({ col, warningRow: topRow })
+    if (depth < SHAFT_MIN_DEPTH) continue
+    candidates.push(col)
   }
   if (candidates.length === 0) return
+  if (!globalCooldownDone) return
 
   const rng = createRng((gs.tick * 0x9e3779b1 + d.col) >>> 0)
-  const pick = candidates[rng.intRange(0, candidates.length - 1)]!
+  const col = candidates[rng.intRange(0, candidates.length - 1)]!
 
   world.spawn(
     Hazard({
-      col: pick.col,
-      py: pick.warningRow * TILE_PX + TILE_PX / 2,
+      col,
+      // Spawn the warning indicator AT the top of the camera viewport,
+      // aligned to the cell grid. The warning sprite renders here for
+      // HAZARD_WARNING_TICKS, then the rock falls down the shaft.
+      py: topRow * TILE_PX + TILE_PX / 2,
       vy: 0,
       phase: 'warning',
       fallAtTick: gs.tick + HAZARD_WARNING_TICKS,
     }),
   )
+  lastSpawnByCol[col] = gs.tick
   lastSpawnTick = gs.tick
 }
 

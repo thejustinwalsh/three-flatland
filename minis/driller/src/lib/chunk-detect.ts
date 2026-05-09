@@ -1,4 +1,4 @@
-import { isAnchorTile, TILE_SOIL } from '../traits'
+import { isAnchorTile, isFixtureTile, TILE_SOIL, TILE_STONE } from '../traits'
 
 /**
  * A connected-component of SOIL cells, plus its bounding box and cell list.
@@ -98,12 +98,18 @@ export function detectChunks(
  * Compute the distance-to-nearest-anchor for every cell.
  *
  * Anchors (distance 0):
- *   - STONE / FIXTURE cells (always — even if "floating" mid-air;
- *     soil hangs off them regardless of their own stability)
- *   - SOIL cells touching the TOP edge (row 0) — the sky cap
- *   - SOIL cells touching the BOTTOM edge (last row) — the floor
- *   - Side walls (col 0, col cols-1) are NOT anchors. A wall-segment
- *     hanging in mid-air should fall, not float forever.
+ *   - STONE cells anchor SOIL ABOVE and to the SIDES, but NOT BELOW.
+ *     Stones are subject to gravity themselves: they "lift" what's
+ *     on top of them but don't "hold up" what dangles beneath. This
+ *     keeps soil-below-rock cells unanchored and falling, which is
+ *     what surfaces rock clusters as avalanche threats — without
+ *     the asymmetry, soil masses would hang off floating stones
+ *     forever and rock clusters would never get disturbed.
+ *   - FIXTURE cells anchor SOIL in all 4 directions (they're load-
+ *     bearing and indestructible — the only true mid-air anchors).
+ *   - SOIL cells touching the TOP edge (row 0) — the sky cap.
+ *   - SOIL cells touching the BOTTOM edge (last row) — the floor.
+ *   - Side walls (col 0, col cols-1) are NOT anchors.
  *
  * Distance propagates through SOIL cells only (4-connected). Returns
  * an `Int32Array` parallel to `tiles`:
@@ -112,10 +118,9 @@ export function detectChunks(
  *    N — SOIL cell whose shortest 4-connected soil-path to an anchor
  *        is N edges long
  *
- * This is the shared core used by both `unstableCells` (for the
- * collapse system) and the renderer's always-on weakness gradient
- * (which tints SOIL by its anchor distance — closer = solid, farther
- * = visibly cracked). Cost: O(cells) — single multi-source BFS.
+ * Cost: O(cells) — single multi-source BFS. The directional asymmetry
+ * for STONE cells lives in the per-pop neighbor expansion: when the
+ * popped cell is a STONE, the SOUTH neighbor is skipped.
  */
 export function anchorDistanceMap(
   tiles: Uint8Array,
@@ -155,18 +160,30 @@ export function anchorDistanceMap(
 
   // Relaxed BFS — propagate distance through SOIL cells only.
   // FIFO via queue index pointer (avoids shift O(n)).
+  //
+  // Per-cell directional rule (ruleset described above):
+  //   STONE       → expands UP / LEFT / RIGHT, NOT DOWN. Stones
+  //                 anchor what's above and beside them, but not
+  //                 what dangles below.
+  //   FIXTURE     → expands all 4 directions (full anchor).
+  //   SOIL        → expands all 4 directions (no asymmetry — the
+  //                 cell already has a path; relay it onward).
   let head = 0
   while (head < queue.length) {
     const idx = queue[head++]!
     const c = idx % cols
     const r = (idx - c) / cols
     const d = dist[idx]!
+    const tHere = tiles[idx]!
+    const blockSouth = tHere === TILE_STONE
     for (let k = 0; k < 4; k++) {
       const dc = k === 0 ? -1 : k === 1 ? 1 : 0
       const dr = k === 2 ? -1 : k === 3 ? 1 : 0
       const nc = c + dc
       const nr = r + dr
       if (nc < 0 || nc >= cols || nr < 0 || nr >= rows) continue
+      // Stones don't anchor SOIL hanging directly below them.
+      if (blockSouth && k === 3) continue
       const ni = nr * cols + nc
       if (tiles[ni] !== TILE_SOIL) continue
       const nd = d + 1
@@ -175,6 +192,7 @@ export function anchorDistanceMap(
       queue.push(ni)
     }
   }
+  void isFixtureTile // referenced in docstring only
   return dist
 }
 

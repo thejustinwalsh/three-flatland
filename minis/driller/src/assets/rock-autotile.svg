@@ -128,21 +128,17 @@
   <rect x="302" y="2"  width="16" height="16" fill="#ffffff"/>
 
   <!-- Frame 16: NW corner overlay. Drawn over the base frame when the
-       cell has N AND W cardinals but NO NW diagonal — produces the
-       inside-of-an-L stroke at the top-left corner. The 6×2 + 2×6 L
-       wraps the concave corner inside the cell's content area. -->
-  <rect x="322" y="2"  width="6" height="2"  fill="#2d2d2d"/>
-  <rect x="322" y="2"  width="2" height="6"  fill="#2d2d2d"/>
+       cell has N AND W cardinals but NO NW diagonal. A 2×2 black
+       block at the top-left corner of the content area "fills in" the
+       missing corner of the Tetris-piece silhouette. -->
+  <rect x="322" y="2"  width="2" height="2"  fill="#2d2d2d"/>
 
   <!-- Frame 17: NE corner overlay. N AND E cardinals, no NE diagonal. -->
-  <rect x="352" y="2"  width="6" height="2"  fill="#2d2d2d"/>
-  <rect x="356" y="2"  width="2" height="6"  fill="#2d2d2d"/>
+  <rect x="356" y="2"  width="2" height="2"  fill="#2d2d2d"/>
 
   <!-- Frame 18: SW corner overlay. S AND W cardinals, no SW diagonal. -->
-  <rect x="362" y="16" width="6" height="2"  fill="#2d2d2d"/>
-  <rect x="362" y="12" width="2" height="6"  fill="#2d2d2d"/>
+  <rect x="362" y="16" width="2" height="2"  fill="#2d2d2d"/>
 
   <!-- Frame 19: SE corner overlay. S AND E cardinals, no SE diagonal. -->
-  <rect x="392" y="16" width="6" height="2"  fill="#2d2d2d"/>
-  <rect x="396" y="12" width="2" height="6"  fill="#2d2d2d"/>
+  <rect x="396" y="16" width="2" height="2"  fill="#2d2d2d"/>
 </svg>
