@@ -36,7 +36,7 @@ import { Tabs, TabItem, Aside } from 'starlight-theme/components';
         </a>
       </div>
     </div>
-    <div class="hero-scrollcue" aria-hidden="true">
+    <div class="hero-scrollcue" aria-hidden="true" data-scroll-cue>
       <span>Scroll</span>
       <svg viewBox="0 0 16 16" width="14" height="14"><path d="M4 6l4 4 4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
     </div>
@@ -179,6 +179,13 @@ function Game() {
 
 </div>
 
+{/* Scroll-cue visibility — hide the indicator the moment any below-fold
+   content (.page-body) is intersecting with the viewport. On a 60vh
+   hero, StatsBanner peeks above the fold immediately; showing a "scroll"
+   cue while content below is already visible is redundant.
+   IntersectionObserver, scoped to landing. */}
+<script is:inline set:html={`(()=>{const cue=document.querySelector('[data-scroll-cue]'),body=document.querySelector('.page-body');if(!cue||!body||!('IntersectionObserver' in window))return;const io=new IntersectionObserver(es=>{for(const e of es){if(e.isIntersecting)cue.setAttribute('data-hidden','');else cue.removeAttribute('data-hidden')}},{threshold:0.01});io.observe(body)})()`} />
+
 <style>
 {`
   /* Half-viewport hero — canvas extends UP behind the transparent
@@ -300,6 +307,14 @@ function Game() {
     z-index: 4;
     pointer-events: none;
     animation: scroll-cue-bob 2.4s ease-in-out infinite;
+    /* Faded out when below-fold content is already in view (set via the
+     * IntersectionObserver below). The user doesn't need a "scroll"
+     * cue when they can already see what's below. */
+    opacity: 1;
+    transition: opacity 280ms ease-out;
+  }
+  .hero-scrollcue[data-hidden] {
+    opacity: 0;
   }
   @keyframes scroll-cue-bob {
     0%, 100% { transform: translateX(-50%) translateY(0); opacity: 0.55; }
