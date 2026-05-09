@@ -325,16 +325,15 @@ export function TileRenderer({ material }: TileRendererProps) {
         }
         // Shake telegraph: deliberate "crack" rather than a buzz. A
         // few wide shudders at ~6 Hz (1 cycle ≈ 170 ms) so over the
-        // ~300 ms window the player sees roughly two heavy lurches
-        // before the fall actually animates. Larger amplitude gives
-        // each pulse weight; both axes share the same phase so the
-        // whole block lurches together (no electron-bouncing).
+        // shake window the player sees rhythmic lurches before the
+        // fall animates. Both axes share the same phase so the whole
+        // block lurches together (no electron-bouncing).
         let jitterX = 0
         let jitterY = 0
         if (shaking) {
           const phase = (now / 1000) * Math.PI * 2 * 6
-          jitterX = Math.sin(phase) * 2.4
-          jitterY = Math.sin(phase * 0.5) * 1.2
+          jitterX = Math.sin(phase) * 1.0
+          jitterY = Math.sin(phase * 0.5) * 0.5
         }
         const posX = c * TILE_PX + TILE_PX / 2 + jitterX
         const posY = -(r * TILE_PX + TILE_PX / 2) + jitterY
