@@ -101,8 +101,8 @@ export function carveCaves(
     // which produces more cantilever falls.
     const cx = rng.intRange(0, cols - 1)
     const cy = rng.intRange(2, rows - 3)
-    const w = rng.intRange(3, 7)
-    const h = rng.intRange(2, 5)
+    const w = rng.intRange(2, 5)
+    const h = rng.intRange(2, 4)
     for (let y = cy - h; y <= cy + h; y++) {
       for (let x = cx - w; x <= cx + w; x++) {
         // Clip to playfield bounds; allow x=0 and x=cols-1 (edges).
@@ -111,7 +111,7 @@ export function carveCaves(
         // floor intact for streaming math.
         if (x < 0 || x >= cols) continue
         if (y <= 0 || y >= rows - 1) continue
-        if (rng.chance(0.6)) chunk[y * cols + x] = TILE_AIR
+        if (rng.chance(0.55)) chunk[y * cols + x] = TILE_AIR
       }
     }
     for (let k = 0; k < 4; k++) smoothCA(chunk, cols, rows)
