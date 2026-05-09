@@ -30,6 +30,15 @@ import { clearChunkEntitiesInRowRange } from './collapse'
 export interface GeneratedChunk {
   /** Cell array sized PLAY_COLS × CHUNK_ROWS, row-major. */
   tiles: Uint8Array
+  /**
+   * Cluster ids parallel to `tiles`. 0 = no cluster (non-stone).
+   * Each Tetris-shape placement gets a unique cluster id; speed-bump
+   * stones each get their own. Cluster ids never exceed Uint16 range
+   * (~65k clusters per session). The copier in loadChunk maps these
+   * local ids onto fresh GLOBAL ids so per-chunk numbering doesn't
+   * collide across chunks.
+   */
+  clusterId: Uint16Array
   gems: GeneratedGem[]
   /** Explosive placements (col, rowInChunk) — Explosive entities spawned at load. */
   explosives: { col: number; rowInChunk: number }[]
@@ -195,10 +204,12 @@ function pickStoneShape(rng: Rng, biome: string): StoneShape {
 
 function placeStoneCluster(
   tiles: Uint8Array,
+  clusterId: Uint16Array,
   cols: number,
   rows: number,
   rng: Rng,
   biome: string,
+  newClusterId: number,
 ): void {
   const shape = pickStoneShape(rng, biome)
   // Bounding box of the shape, used to clamp the anchor placement.
@@ -212,10 +223,15 @@ function placeStoneCluster(
   const ay = rng.intRange(2, Math.max(2, rows - maxR - 3))
   // Only stamp into SOIL — a shape that overlaps existing AIR / cave
   // would leave floating fragments, which the avalanche system can't
-  // distinguish from intentional piles.
+  // distinguish from intentional piles. All stamped cells share the
+  // same cluster id so the renderer's autotile mask gloms them
+  // visually and the avalanche flood-fill treats them as one unit.
   for (const [c, r] of shape) {
     const idx = (ay + r) * cols + (ax + c)
-    if (tiles[idx] === TILE_SOIL) tiles[idx] = TILE_STONE
+    if (tiles[idx] === TILE_SOIL) {
+      tiles[idx] = TILE_STONE
+      clusterId[idx] = newClusterId
+    }
   }
 }
 
@@ -229,6 +245,10 @@ export function generateChunk(seed: number, chunkY: number): GeneratedChunk {
   const cols = PLAY_COLS
   const rows = CHUNK_ROWS
   const tiles = new Uint8Array(cols * rows)
+  // Local cluster ids start at 1 (0 = no cluster); the chunk-copier in
+  // loadChunk maps these to globally-unique ids before stamping.
+  const clusterId = new Uint16Array(cols * rows)
+  let nextLocalId = 1
   const damagedStones: number[] = []
 
   const rng = createRng((Math.imul(seed, 0x9e3779b1) + chunkY) >>> 0)
@@ -279,7 +299,7 @@ export function generateChunk(seed: number, chunkY: number): GeneratedChunk {
           ? rng.intRange(3, 6)
           : rng.intRange(1, 3)
   for (let i = 0; i < clusterBudget; i++) {
-    placeStoneCluster(tiles, cols, rows, rng, biome.name)
+    placeStoneCluster(tiles, clusterId, cols, rows, rng, biome.name, nextLocalId++)
   }
 
   // Multi-hit ROCK clusters — speed bumps that slow the driller.
@@ -302,6 +322,9 @@ export function generateChunk(seed: number, chunkY: number): GeneratedChunk {
     // damage is stamped into Grid.hits below at the chunk-copy step.
     if (tiles[idx] === TILE_SOIL) {
       tiles[idx] = TILE_STONE
+      // Speed-bump stones each get their own cluster id — they're
+      // standalone obstacles, not part of any pile.
+      clusterId[idx] = nextLocalId++
       damagedStones.push(idx)
     }
   }
@@ -366,6 +389,21 @@ export function generateChunk(seed: number, chunkY: number): GeneratedChunk {
         // bands don't recolor each other into a Frankenstein stripe.
         if (t === TILE_STONE) continue
         if (t !== undefined && t >= TILE_FIXTURE_BASE && t < TILE_FIXTURE_BASE + 5) continue
+        // No-adjacency rule: rocks and fixtures must have at least 1
+        // cell of padding between them. Skip this fixture cell if any
+        // 4-neighbor is currently a stone — keeps the two anchor
+        // classes visually + behaviorally distinct.
+        let nextToStone = false
+        for (const [dc, dr] of [[-1, 0], [1, 0], [0, -1], [0, 1]] as const) {
+          const nc = c + dc
+          const nr = r + dr
+          if (nc < 0 || nc >= cols || nr < 0 || nr >= rows) continue
+          if (tiles[nr * cols + nc] === TILE_STONE) {
+            nextToStone = true
+            break
+          }
+        }
+        if (nextToStone) continue
         // Only paint where the chunk has SOIL — leaves caves clean.
         if (t === TILE_SOIL) {
           tiles[idx] = TILE_FIXTURE_BASE + variant
@@ -428,7 +466,7 @@ export function generateChunk(seed: number, chunkY: number): GeneratedChunk {
     }
   }
 
-  return { tiles, gems, explosives: explosivePlacements, damagedStones }
+  return { tiles, clusterId, gems, explosives: explosivePlacements, damagedStones }
 }
 
 /* ------------------------------------------------------------------ */
@@ -441,9 +479,21 @@ export function generateChunk(seed: number, chunkY: number): GeneratedChunk {
  */
 const loadedChunks = new Set<number>()
 
+/**
+ * Monotonically-increasing global cluster id counter. Each Tetris-shape
+ * placement, each speed-bump stone, and each hazard-landed rock claims
+ * a fresh id. Uint16 (65k) is plenty for a single play session.
+ */
+let nextGlobalClusterId = 1
+
+export function allocateClusterId(): number {
+  return nextGlobalClusterId++
+}
+
 /** Reset streaming state — called on world rotation (hero-mode world-fall). */
 export function resetStreaming(): void {
   loadedChunks.clear()
+  nextGlobalClusterId = 1
 }
 
 /**
@@ -460,11 +510,13 @@ function ensureRows(world: World, neededRows: number): void {
   const flags = new Uint8Array(newSize)
   const frameIndex = new Uint8Array(newSize)
   const hits = new Uint8Array(newSize)
+  const clusterId = new Uint16Array(newSize)
   tiles.set(grid.tiles)
   flags.set(grid.flags)
   frameIndex.set(grid.frameIndex)
   hits.set(grid.hits)
-  world.set(Grid, { ...grid, tiles, flags, frameIndex, hits, rows: newRows })
+  clusterId.set(grid.clusterId)
+  world.set(Grid, { ...grid, tiles, flags, frameIndex, hits, clusterId, rows: newRows })
 }
 
 /** Splice a generated chunk's tiles into the live grid at chunkY × CHUNK_ROWS. */
@@ -477,8 +529,20 @@ function loadChunk(world: World, chunkY: number, seed: number): void {
   ensureRows(world, baseRow + CHUNK_ROWS)
 
   const refreshed = world.get(Grid)!
-  const { cols, tiles, flags, frameIndex, hits } = refreshed
+  const { cols, tiles, flags, frameIndex, hits, clusterId } = refreshed
   const generated = generateChunk(seed, chunkY)
+  // Remap the chunk's local cluster ids (1..N) onto fresh globally-
+  // unique ids drawn from `nextGlobalClusterId`. Without this, two
+  // chunks both numbered 1..N would collide and unrelated stones
+  // would visually glom across the chunk seam.
+  const localToGlobal = new Map<number, number>()
+  for (let i = 0; i < generated.clusterId.length; i++) {
+    const local = generated.clusterId[i]!
+    if (local === 0) continue
+    if (!localToGlobal.has(local)) {
+      localToGlobal.set(local, nextGlobalClusterId++)
+    }
+  }
 
   for (let r = 0; r < CHUNK_ROWS; r++) {
     for (let c = 0; c < cols; c++) {
@@ -503,6 +567,10 @@ function loadChunk(world: World, chunkY: number, seed: number): void {
       // worldgen start at 0; speed-bump stones (the spiritual
       // successor of TILE_ROCK) get pre-damaged below.
       hits[dst] = 0
+      // Cluster id: mapped through localToGlobal so cross-chunk
+      // numbering doesn't collide. 0 → 0 (no cluster).
+      const local = generated.clusterId[r * cols + c]!
+      clusterId[dst] = local === 0 ? 0 : (localToGlobal.get(local) ?? 0)
     }
   }
   // Apply pre-damage to speed-bump stones — one drill from breaking.

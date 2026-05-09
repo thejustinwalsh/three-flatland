@@ -29,6 +29,7 @@ import {
 import { biomeAt, isFreeFall } from '../biomes'
 import { createRng } from '../lib/rng'
 import { markCellAndNeighborsDirty } from './autotile-pass'
+import { allocateClusterId } from './generation'
 
 let lastSpawnTick = 0
 /**
@@ -186,7 +187,7 @@ export function hazardTickSystem(world: World): void {
   if (!gs) return
   const grid = world.get(Grid)
   if (!grid) return
-  const { cols, rows, tiles, flags, hits } = grid
+  const { cols, rows, tiles, flags, hits, clusterId: clusterIdArr } = grid
 
   // Once the driller enters the free-fall void, nothing that was
   // already in flight should chase them through it. Despawn all
@@ -249,7 +250,22 @@ export function hazardTickSystem(world: World): void {
           }
         }
         const restIdx = restRow * cols + h.col
-        if (tiles[restIdx] === TILE_AIR) {
+        // No-adjacency rule: if any 4-neighbor of the rest cell is a
+        // FIXTURE, the rock can't land here — fixtures and stones
+        // must always have ≥ 1 cell of padding. Skip the stamp; the
+        // hazard just dies on impact (kill the entity).
+        let blockedByFixture = false
+        for (const [dc, dr] of [[-1, 0], [1, 0], [0, -1], [0, 1]] as const) {
+          const nc = h.col + dc
+          const nr = restRow + dr
+          if (nc < 0 || nc >= cols || nr < 0 || nr >= rows) continue
+          const nT = tiles[nr * cols + nc]
+          if (nT !== undefined && nT >= 3 /* TILE_FIXTURE_BASE */ && nT < 8) {
+            blockedByFixture = true
+            break
+          }
+        }
+        if (!blockedByFixture && tiles[restIdx] === TILE_AIR) {
           tiles[restIdx] = TILE_STONE
           // Fresh stone — full health (hits-taken = 0). Clear any
           // residual hit count from when this cell was previously
@@ -257,17 +273,23 @@ export function hazardTickSystem(world: World): void {
           // last occupant was a damaged stone that subsequently got
           // drilled to AIR).
           hits[restIdx] = 0
-          flags[restIdx] = (flags[restIdx] ?? 0) | FLAG_AUTOTILE_DIRTY | FLAG_DISTURBED
+          flags[restIdx] = (flags[restIdx] ?? 0) | FLAG_AUTOTILE_DIRTY
           markCellAndNeighborsDirty(world, h.col, restRow)
-          // Max-out rule (Kirby's-Avalanche-style): a fresh stone
-          // landing on an existing pile that pushes the connected
-          // cluster to >= MAX_CLUSTER_DIM in either width or height
-          // becomes a "doom block" — the whole cluster is disturbed
-          // and the pile breaks free. Combined with the bottom-most-
-          // row canFall + shake-propagates-sag-recheck, this almost
-          // always commits to a fall: the surrounding soil cascades
-          // first, then the rock follows.
-          floodFillAndDisturbIfMaxed(tiles, flags, cols, rows, h.col, restRow)
+          // Cluster id assignment with 4×4 cap. Tries to join an
+          // adjacent cluster; if joining would exceed MAX_CLUSTER_DIM
+          // in either axis, allocates a NEW cluster id so the rock
+          // visually sits beside (with strokes) rather than gloming
+          // into a "frankenglom". The avalanche flood-fill respects
+          // cluster ids so adjacent-but-independent clusters fall
+          // separately.
+          clusterIdArr[restIdx] = pickClusterIdForNewStone(
+            tiles,
+            clusterIdArr,
+            cols,
+            rows,
+            h.col,
+            restRow,
+          )
         }
       }
       entity.set(Hazard, { phase: 'landed' })
@@ -308,57 +330,55 @@ const AVALANCHE_HITS_TO_BREAK = STONE_MAX_HITS
 const MAX_CLUSTER_DIM = 4
 
 /**
- * Flood-fill the connected stone cluster containing `(seedCol, seedRow)`,
- * compute its bounding box, and if width OR height >= MAX_CLUSTER_DIM,
- * propagate FLAG_DISTURBED to every cluster cell. Called by the hazard
- * land branch when a fresh rock lands on an existing pile.
+ * Pick a cluster id for a freshly-stamped stone at (col, row). Looks
+ * at 4-neighbor stones; for each adjacent cluster, computes the bbox
+ * the cluster would have IF the new stone joins, and accepts the
+ * first whose bbox stays ≤ MAX_CLUSTER_DIM in both axes. If no
+ * adjacent cluster can absorb (or there are no neighbors), allocates
+ * a fresh global cluster id — the new stone becomes its own cluster
+ * and renders with strokes between it and its non-cluster neighbors.
+ *
+ * This is the placement-time enforcement of the no-frankenglom rule.
+ * The avalanche flood-fill keys on cluster id, so the visual and
+ * gameplay representations are guaranteed consistent.
  */
-function floodFillAndDisturbIfMaxed(
+function pickClusterIdForNewStone(
   tiles: Uint8Array,
-  flags: Uint8Array,
+  clusterId: Uint16Array,
   cols: number,
   rows: number,
-  seedCol: number,
-  seedRow: number,
-): void {
-  if (seedCol < 0 || seedCol >= cols || seedRow < 0 || seedRow >= rows) return
-  const seedIdx = seedRow * cols + seedCol
-  if (tiles[seedIdx] !== TILE_STONE) return
-  const seen = new Set<number>([seedIdx])
-  const stack: number[] = [seedIdx]
-  const cluster: number[] = []
-  let minR = seedRow
-  let maxR = seedRow
-  let minC = seedCol
-  let maxC = seedCol
-  while (stack.length) {
-    const idx = stack.pop()!
-    cluster.push(idx)
-    const c = idx % cols
-    const r = (idx - c) / cols
-    if (r < minR) minR = r
-    if (r > maxR) maxR = r
-    if (c < minC) minC = c
-    if (c > maxC) maxC = c
-    const ns: number[] = []
-    if (c > 0) ns.push(idx - 1)
-    if (c < cols - 1) ns.push(idx + 1)
-    if (r > 0) ns.push(idx - cols)
-    if (r < rows - 1) ns.push(idx + cols)
-    for (const ni of ns) {
-      if (!seen.has(ni) && tiles[ni] === TILE_STONE) {
-        seen.add(ni)
-        stack.push(ni)
-      }
+  col: number,
+  row: number,
+): number {
+  const adjacentIds = new Set<number>()
+  for (const [dc, dr] of [[-1, 0], [1, 0], [0, -1], [0, 1]] as const) {
+    const nc = col + dc
+    const nr = row + dr
+    if (nc < 0 || nc >= cols || nr < 0 || nr >= rows) continue
+    const nIdx = nr * cols + nc
+    if (tiles[nIdx] !== TILE_STONE) continue
+    const id = clusterId[nIdx]
+    if (id !== undefined && id !== 0) adjacentIds.add(id)
+  }
+  for (const id of adjacentIds) {
+    let minC = col
+    let maxC = col
+    let minR = row
+    let maxR = row
+    for (let i = 0; i < clusterId.length; i++) {
+      if (clusterId[i] !== id) continue
+      const cc = i % cols
+      const rr = (i - cc) / cols
+      if (cc < minC) minC = cc
+      if (cc > maxC) maxC = cc
+      if (rr < minR) minR = rr
+      if (rr > maxR) maxR = rr
+    }
+    if ((maxC - minC + 1) <= MAX_CLUSTER_DIM && (maxR - minR + 1) <= MAX_CLUSTER_DIM) {
+      return id
     }
   }
-  const width = maxC - minC + 1
-  const height = maxR - minR + 1
-  if (width >= MAX_CLUSTER_DIM || height >= MAX_CLUSTER_DIM) {
-    for (const idx of cluster) {
-      flags[idx]! |= FLAG_DISTURBED
-    }
-  }
+  return allocateClusterId()
 }
 const AVALANCHE_FALL_INTERVAL_TICKS = 12 // ~200ms at 60Hz
 // Stones use the same SHAKE duration as soil sag so the player
@@ -403,7 +423,7 @@ export function rockAvalancheSystem(world: World): void {
   // Run cluster detection EVERY tick so the shake telegraph updates
   // smoothly. The fall step itself is throttled below so cluster
   // descent reads as a heavy crash, not a single-tick teleport.
-  const { cols, rows, tiles, flags, hits } = grid
+  const { cols, rows, tiles, flags, hits, clusterId: clusterIdArr } = grid
 
   // 4-connected flood-fill over TILE_STONE to find each cluster.
   // Bounded to a window around the driller — cleared / un-streamed
@@ -432,10 +452,22 @@ export function rockAvalancheSystem(world: World): void {
 
   for (let i = startIdx; i < endIdx; i++) {
     if (seen[i] || tiles[i] !== TILE_STONE) continue
+    const seedClusterId = clusterIdArr[i] ?? 0
+    if (seedClusterId === 0) {
+      // Rocks without a cluster id are orphaned (shouldn't happen in
+      // healthy play; defensive). Mark seen and skip so the outer
+      // loop doesn't churn on them every tick.
+      seen[i] = 1
+      continue
+    }
     const cells: number[] = []
     stack.length = 0
     stack.push(i)
     seen[i] = 1
+    // Cluster-id-aware flood-fill — only stones with the SAME cluster
+    // id glom together. Two adjacent-but-independent clusters fall as
+    // separate avalanches (visible 1-cell air-gap rendering, no
+    // frankenglom).
     while (stack.length) {
       const idx = stack.pop()!
       cells.push(idx)
@@ -447,18 +479,16 @@ export function rockAvalancheSystem(world: World): void {
       if (r > 0) ns.push(idx - cols)
       if (r < rows - 1) ns.push(idx + cols)
       for (const ni of ns) {
-        if (!seen[ni] && tiles[ni] === TILE_STONE) {
+        if (!seen[ni] && tiles[ni] === TILE_STONE && clusterIdArr[ni] === seedClusterId) {
           seen[ni] = 1
           stack.push(ni)
         }
       }
     }
     // Rock codex: a cluster currently in motion (FLAG_FALLING set on
-    // any cell) bypasses the threshold and disturbance gates — once
-    // started, it must resolve fully. This is what makes rocks
-    // dangerous: they don't stop and reconsider mid-fall the way
-    // soil sag does. Cluster shrinks (via break-offs) → still falls.
-    // Cluster splits → each piece keeps falling rigidly.
+    // any cell) bypasses the canFall reconsideration — once started,
+    // it must resolve fully. Cluster shrinks (via break-offs) → still
+    // falls. Cluster splits → each piece keeps falling rigidly.
     let inMotion = false
     for (const idx of cells) {
       if ((flags[idx]! & FLAG_FALLING) !== 0) {
@@ -467,29 +497,13 @@ export function rockAvalancheSystem(world: World): void {
       }
     }
 
-    if (!inMotion && cells.length < AVALANCHE_THRESHOLD) {
-      // Cluster too small to INITIATE a fall — drop any stale shake
-      // bookkeeping so a future grow-back-to-4 starts a fresh
-      // telegraph. (A sub-4 inert cluster is allowed to float as
-      // soil support, per rule 6.)
-      for (const idx of cells) shakeStartTick.delete(idx)
-      continue
-    }
-
-    // Stability rule: a cluster only INITIATES a fall if it has been
-    // DISTURBED (a fresh rock landed on/near it, or another cluster
-    // commit nearby). Untouched 4+ piles from world generation are
-    // inert until the player or another rock disturbs them.
-    if (!inMotion) {
-      let disturbed = false
-      for (const idx of cells) {
-        if ((flags[idx]! & FLAG_DISTURBED) !== 0) {
-          disturbed = true
-          break
-        }
-      }
-      if (!disturbed) continue
-    }
+    // Force-eval rule (replaces the old disturbance + threshold gates):
+    // every cluster gets canFall'd every tick. If air is below the
+    // bottom-most row, the cluster falls — period. No threshold check
+    // (single rocks fall too if their support is gone). No DISTURBED
+    // gate (rocks evaluate continuously, no need to pre-disturb them).
+    // The 4×4 max-cluster cap is enforced at PLACEMENT time via the
+    // cluster_id assignment in `pickClusterIdForNewStone`, not here.
 
     // The cluster can fall iff every cell of the BOTTOM-MOST row of
     // the cluster has AIR or SOIL directly below it. A column whose
@@ -639,6 +653,7 @@ export function rockAvalancheSystem(world: World): void {
         tiles[idx] = TILE_AIR
         flags[idx] = (flags[idx] ?? 0) | FLAG_AUTOTILE_DIRTY
         hits[idx] = 0
+        clusterIdArr[idx] = 0
         markCellAndNeighborsDirty(world, c, r)
         world.spawn(
           Hazard({
@@ -654,15 +669,17 @@ export function rockAvalancheSystem(world: World): void {
       }
       // Otherwise translate stone + carry its hit count to new cell.
       // FLAG_FALLING marks the new cell as in-motion: next tick the
-      // cluster bypasses the threshold/disturbance gates and the
-      // shake telegraph (rule: rocks resolve fully once started).
-      // DISTURBED also travels so the cluster keeps falling. The -1
-      // sentinel on shake-start means "already telegraphed" — extra
-      // safety in case a non-inMotion path re-enters here.
+      // cluster bypasses the canFall reconsideration (rule: rocks
+      // resolve fully once started). The -1 sentinel on shake-start
+      // means "already telegraphed". Cluster id moves with the cell
+      // so the cluster preserves identity through the fall.
+      const movingClusterId = clusterIdArr[idx] ?? 0
       tiles[idx] = TILE_AIR
       flags[idx] = (flags[idx] ?? 0) | FLAG_AUTOTILE_DIRTY
+      clusterIdArr[idx] = 0
       tiles[newIdx] = TILE_STONE
-      flags[newIdx] = (flags[newIdx] ?? 0) | FLAG_AUTOTILE_DIRTY | FLAG_DISTURBED | FLAG_FALLING
+      flags[newIdx] = (flags[newIdx] ?? 0) | FLAG_AUTOTILE_DIRTY | FLAG_FALLING
+      clusterIdArr[newIdx] = movingClusterId
       hits[newIdx] = rockHits
       hits[idx] = 0
       shakeStartTick.set(newIdx, -1)

@@ -165,15 +165,13 @@ describe('avalanche cluster rules', () => {
     expect(lastFallingCount).toBe(0)
   })
 
-  it('rock codex: landed cluster requires fresh disturbance to fall again', () => {
-    // 4-stack lands on bedrock with no soil to crush. Cluster never
-    // moves (canFall=false from the start), DISTURBED stays sticky
-    // (covered by an earlier test). Now the codex case: a cluster
-    // that DID complete a fall loop must clear DISTURBED on land.
-    // Setup: 4-stack above 1 soil, above bedrock. Cluster falls 1
-    // row, crushes 1 soil, lands. After landing FLAG_DISTURBED MUST
-    // be cleared on all stones — they need fresh disturbance to
-    // move again.
+  it('landed cluster goes inert (no FLAG_FALLING after coming to rest)', () => {
+    // 4-stack above 1 soil, above bedrock. Cluster falls 1 row,
+    // crushes 1 soil, lands. Force-eval rule (post-DISTURBED-gate
+    // removal): after landing, no stones should still carry
+    // FLAG_FALLING — the cluster has stopped. DISTURBED is now
+    // irrelevant; the cluster won't move unless air opens up below
+    // its bottom-most row, which it can't since bedrock is below.
     const world = makeWorldFromGrid([
       '......S.......',
       '......S.......',
@@ -189,18 +187,18 @@ describe('avalanche cluster rules', () => {
       rockAvalancheSystem(world)
     }
     const grid = world.get(Grid)!
-    let disturbedAfter = 0
+    let stillFalling = 0
     let stoneAfter = 0
     for (let i = 0; i < grid.tiles.length; i++) {
       if (grid.tiles[i] === TILE_STONE) {
         stoneAfter++
-        if ((grid.flags[i]! & FLAG_DISTURBED) !== 0) disturbedAfter++
+        if ((grid.flags[i]! & FLAG_FALLING) !== 0) stillFalling++
       }
     }
     expect(stoneAfter).toBeGreaterThan(0)
     expect(
-      disturbedAfter,
-      'After a completed fall loop, the landed cluster must clear FLAG_DISTURBED (rule 7: requires fresh disturbance + 4+ to move again).',
+      stillFalling,
+      'After a completed fall loop, no stone should still carry FLAG_FALLING.',
     ).toBe(0)
   })
 

@@ -139,7 +139,7 @@ function pickAction(
  * Resolve a completed drill (cooldown hit zero) — convert the target
  * cell to AIR, decrement ROCK hit counters, disturb adjacent stones.
  */
-function completeDrill(world: World, grid: { cols: number; rows: number; tiles: Uint8Array; flags: Uint8Array; hits: Uint8Array }, col: number, row: number): void {
+function completeDrill(world: World, grid: { cols: number; rows: number; tiles: Uint8Array; flags: Uint8Array; hits: Uint8Array; clusterId: Uint16Array }, col: number, row: number): void {
   const idx = row * grid.cols + col
   const tile = grid.tiles[idx]
   if (tile === TILE_STONE) {
@@ -151,6 +151,7 @@ function completeDrill(world: World, grid: { cols: number; rows: number; tiles: 
     if (next >= STONE_MAX_HITS) {
       grid.tiles[idx] = TILE_AIR
       grid.hits[idx] = 0
+      grid.clusterId[idx] = 0
       grid.flags[idx] = FLAG_AUTOTILE_DIRTY
       markCellAndNeighborsDirty(world, col, row)
     } else {

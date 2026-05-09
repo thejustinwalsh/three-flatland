@@ -223,7 +223,7 @@ export function TileRenderer({ material }: TileRendererProps) {
     const grid = world.get(Grid)
     const cam = world.get(Camera)
     if (!grid || !cam || grid.rows === 0) return
-    const { cols, rows, tiles, flags, frameIndex, hits } = grid
+    const { cols, rows, tiles, flags, frameIndex, hits, clusterId } = grid
     const pool = refs.current
 
     const topRow = Math.max(0, Math.floor(cam.y / TILE_PX) - 1)
@@ -264,13 +264,15 @@ export function TileRenderer({ material }: TileRendererProps) {
     const heatmapMode = import.meta.env.DEV && getRenderMode() === 'anchor-heatmap'
     const distances = anchorDistanceMap(tiles, cols, rows)
 
-    // Stone autotile lookup — closure over the current tiles buffer
-    // so `autotileMask` can probe 4-neighbors. Matches the SOIL
-    // autotile call shape (col, row, isMatch). Same 4-bit layout:
-    // bit 0 = N, 1 = S, 2 = E, 3 = W.
-    const isStone = (cc: number, rr: number): boolean => {
+    // Stone autotile lookup — cluster-id-aware so two adjacent-but-
+    // independent clusters render with strokes between them (no
+    // frankenglom). The factory closes over the seed cell's cluster
+    // id; the returned isMatch returns true only for neighbors that
+    // are stones AND in the same cluster.
+    const makeIsSameCluster = (seedClusterId: number) => (cc: number, rr: number): boolean => {
       if (cc < 0 || cc >= cols || rr < 0 || rr >= rows) return false
-      return tiles[rr * cols + cc] === TILE_STONE
+      const idx = rr * cols + cc
+      return tiles[idx] === TILE_STONE && (clusterId[idx] ?? 0) === seedClusterId
     }
     const rockPool = rockRefs.current
     const cornerPool = cornerRefs.current
@@ -332,9 +334,11 @@ export function TileRenderer({ material }: TileRendererProps) {
           // we don't double-paint with the flat color underneath. The
           // slot was already consumed by `slot++` above.
           sprite.scale.set(0, 0, 1)
+          const seedCluster = clusterId[idx] ?? 0
+          const isMatch = makeIsSameCluster(seedCluster)
           const rockSprite = rockPool[rockSlot++]
           if (rockSprite) {
-            const mask = autotileMask(c, r, isStone) & 0xf
+            const mask = autotileMask(c, r, isMatch) & 0xf
             const frame = ROCK_FRAMES[mask]!
             rockSprite.setFrame(frame)
             rockSprite.position.set(posX, posY, 0)
@@ -348,7 +352,7 @@ export function TileRenderer({ material }: TileRendererProps) {
           // base rock. Most stones contribute 0 corners; interior /
           // T / L joints can need up to 4. Pool capacity is POOL_SIZE
           // — far more than worst-case visible inner-corners.
-          const corners = cornerMask(c, r, isStone)
+          const corners = cornerMask(c, r, isMatch)
           if (corners !== 0) {
             for (let bit = 0; bit < 4 && cornerSlot < POOL_SIZE; bit++) {
               if ((corners & (1 << bit)) === 0) continue

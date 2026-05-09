@@ -30,6 +30,7 @@ function initWorld(world: World): void {
     flags: new Uint8Array(0),
     frameIndex: new Uint8Array(0),
     hits: new Uint8Array(0),
+    clusterId: new Uint16Array(0),
   }))
   world.add(Pointer({ px: 0, py: 0, active: false, hoverAction: 'none', hoverTargetCol: 0, hoverTargetRow: 0, hoverGemEntity: 0 }))
 

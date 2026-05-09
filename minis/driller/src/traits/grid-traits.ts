@@ -124,6 +124,17 @@ export const Grid = trait({
   frameIndex: () => new Uint8Array(0),
   /** Hit counter for ROCK tiles — non-rock cells stay 0. */
   hits: () => new Uint8Array(0),
+  /**
+   * Cluster id per cell. Non-stone cells stay 0 (no cluster). Stones
+   * are grouped into clusters at placement time (worldgen Tetris-
+   * shapes; single hazard rocks; merge attempts at hazard land).
+   * Two stones with different cluster ids DON'T glom visually
+   * (autotile renders strokes between them) and DON'T merge in the
+   * avalanche flood-fill — each cluster is an independent doom block,
+   * capped at 4×4 bounding box. Without this cap a "frankenglom"
+   * could grow to arbitrary size from successive single-rock drops.
+   */
+  clusterId: () => new Uint16Array(0),
   topRow: 0,
   bottomRow: 0,
 })
