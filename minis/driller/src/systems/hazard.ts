@@ -3,9 +3,7 @@ import {
   Camera,
   Driller,
   FLAG_AUTOTILE_DIRTY,
-  FLAG_DISTURBED,
   FLAG_FALLING,
-  FLAG_SAG_RECHECK,
   FLAG_SHAKING,
   GameState,
   Grid,
@@ -497,22 +495,10 @@ export function rockAvalancheSystem(world: World): void {
       }
     }
 
-    // Force-eval rule (replaces the old disturbance + threshold gates):
-    // every cluster gets canFall'd every tick. If air is below the
-    // bottom-most row, the cluster falls — period. No threshold check
-    // (single rocks fall too if their support is gone). No DISTURBED
-    // gate (rocks evaluate continuously, no need to pre-disturb them).
-    // The 4×4 max-cluster cap is enforced at PLACEMENT time via the
-    // cluster_id assignment in `pickClusterIdForNewStone`, not here.
-
-    // The cluster can fall iff every cell of the BOTTOM-MOST row of
-    // the cluster has AIR or SOIL directly below it. A column whose
-    // lowest cluster-cell is NOT in the bottom-most row is allowed to
-    // hang in mid-air — the cluster falls as a rigid unit and that
-    // overhung cell goes along for the ride. This makes irregular
-    // shapes (L-pieces, T-pieces, 7-shapes) MORE deadly: a small
-    // 3-piece cluster's "bottom-most row" is just 1–2 cells, so the
-    // cluster gets angry the moment those few cells have AIR below.
+    // canFall: every cell of the bottom-most row needs AIR (idle) or
+    // AIR/SOIL (in-motion crushing through soil) directly below.
+    // Defer if the streaming frontier hasn't extended below the
+    // bottom-most row yet.
     const inCluster = new Set(cells)
     let maxRowInCluster = -1
     for (const idx of cells) {
@@ -527,25 +513,16 @@ export function rockAvalancheSystem(world: World): void {
       const r = (idx - c) / cols
       if (r !== maxRowInCluster) continue
       if (r + 1 >= rows) {
-        // Streamer hasn't extended the world below this row yet.
-        // Don't decide either way — defer evaluation. Without this,
-        // a cluster sitting on the streaming frontier would be
-        // marked canFall=false (treated as blocked) and go inert
-        // until the player got closer; with this, the cluster waits
-        // for the row below to load, then re-evaluates next tick.
         unstreamedBelow = true
         break
       }
       const belowIdx = (r + 1) * cols + c
       if (inCluster.has(belowIdx)) continue
       const below = tiles[belowIdx]
-      // Tightened canFall for !inMotion: idle clusters need AIR
-      // below to start falling (NOT soil — soil-supported clusters
-      // wait until the soil cascades). In-motion clusters keep the
-      // looser AIR-or-SOIL rule so they can crush soil mid-fall.
-      // Without this split, force-eval would tip every worldgen
-      // cluster that's sitting on soil into immediate fall on the
-      // first tick after load.
+      // In-motion clusters keep crushing through SOIL; idle clusters
+      // need AIR-only below to start. Without the split a cluster
+      // sitting on natural-worldgen soil would tip into immediate
+      // fall on the first tick after pre-settle.
       if (inMotion) {
         if (below !== TILE_AIR && below !== TILE_SOIL) {
           canFall = false
@@ -561,22 +538,11 @@ export function rockAvalancheSystem(world: World): void {
     }
     if (unstreamedBelow) continue
     if (!canFall) {
-      // Cluster is blocked. Two cases:
-      //   - inMotion: this is LANDING. The cluster has resolved its
-      //     full fall loop; it goes inert. Clear FLAG_FALLING (no
-      //     longer moving), FLAG_DISTURBED (per rule 7: needs fresh
-      //     disturbance + 4+ to move again), FLAG_SHAKING.
-      //   - !inMotion: cluster is disturbed-but-blocked. Drop any
-      //     stale shake bookkeeping but keep DISTURBED so a future
-      //     change (drilled rock below) lets it fall.
-      if (inMotion) {
-        for (const idx of cells) {
-          shakeStartTick.delete(idx)
-          flags[idx]! &= ~FLAG_SHAKING & ~FLAG_FALLING & ~FLAG_DISTURBED
-        }
-      } else {
-        for (const idx of cells) {
-          shakeStartTick.delete(idx)
+      for (const idx of cells) {
+        shakeStartTick.delete(idx)
+        if (inMotion) {
+          flags[idx]! &= ~FLAG_SHAKING & ~FLAG_FALLING
+        } else {
           flags[idx]! &= ~FLAG_SHAKING
         }
       }
@@ -599,28 +565,11 @@ export function rockAvalancheSystem(world: World): void {
         }
         if (t < earliestShake) earliestShake = t
       }
-      // First-shake propagation: when an angry cluster enters its
-      // telegraph for the first time, force a sag re-check on EVERY
-      // SOIL cell touching the cluster's perimeter. This way the
-      // surrounding earth gets a chance to fail FIRST during the
-      // ~2s shake window — soil cascades fire, the world below the
-      // rock churns — and only THEN does the rock commit. Produces
-      // the "rock dislodges, chaos ensues" cadence the design wants.
-      if (anyNew) {
-        for (const idx of cells) {
-          const c = idx % cols
-          const r = (idx - c) / cols
-          for (const [dc, dr] of [[-1, 0], [1, 0], [0, -1], [0, 1]] as const) {
-            const nc = c + dc
-            const nr = r + dr
-            if (nc < 0 || nc >= cols || nr < 0 || nr >= rows) continue
-            const nIdx = nr * cols + nc
-            if (tiles[nIdx] === TILE_SOIL) {
-              flags[nIdx]! |= FLAG_SAG_RECHECK
-            }
-          }
-        }
-      }
+      // First-shake propagation: relaxation handles surrounding
+      // soil's stability re-evaluation automatically each tick. The
+      // pre-diffusion code stamped FLAG_SAG_RECHECK on the cluster's
+      // perimeter here; that's now a no-op the relaxer covers.
+      void anyNew
       const shakeElapsed = gs.tick - earliestShake
       const inShakePhase = shakeElapsed < AVALANCHE_SHAKE_TICKS
       const stillTelegraphing = shakeElapsed < AVALANCHE_SHAKE_TICKS + AVALANCHE_SETTLE_TICKS

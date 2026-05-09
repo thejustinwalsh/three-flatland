@@ -111,21 +111,17 @@ describe('glom-fix — falling cluster + static stone independence', () => {
     }
 
     // After settle: every stone should be inert (no FLAG_FALLING anywhere).
+    // Diffusion model retired the DISTURBED concept — anchor distance
+    // drives stability, no per-cluster disturbance bit needed.
     let stillFalling = 0
-    let stillDisturbed = 0
     for (let i = 0; i < grid.tiles.length; i++) {
       if (grid.tiles[i] === TILE_STONE) {
         if ((grid.flags[i]! & FLAG_FALLING) !== 0) stillFalling++
-        if ((grid.flags[i]! & FLAG_DISTURBED) !== 0) stillDisturbed++
       }
     }
     expect(
       stillFalling,
       'After landing on bedrock, no stone should retain FLAG_FALLING.',
-    ).toBe(0)
-    expect(
-      stillDisturbed,
-      'After landing inert, FLAG_DISTURBED must clear (rule 7).',
     ).toBe(0)
   })
 })

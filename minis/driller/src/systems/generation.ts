@@ -7,7 +7,6 @@ import {
 import {
   Explosive,
   FLAG_AUTOTILE_DIRTY,
-  FLAG_SAG_RECHECK,
   Gem,
   Grid,
   Seed,
@@ -595,19 +594,11 @@ function loadChunk(world: World, chunkY: number, seed: number): void {
       const dst = (baseRow + r) * cols + c
       const t = generated.tiles[r * cols + c]!
       tiles[dst] = t
-      // Stamp SAG_RECHECK on every fresh SOIL cell so the collapse
-      // detector evaluates it on the next tick. Without this, a
-      // worldgen-placed unanchored chunk stays dormant until a nearby
-      // drill action propagates the flag to it via 4-neighbor
-      // markCellAndNeighborsDirty — meaning chunks could "wake up
-      // and fall" minutes after loading, when the player is nowhere
-      // near. With SAG_RECHECK stamped at load, any cantilever-
-      // unstable chunk falls IMMEDIATELY on first eval (or, if
-      // outside the scan window, the first time the driller's
-      // window reaches it).
-      flags[dst] = t === TILE_SOIL
-        ? FLAG_AUTOTILE_DIRTY | FLAG_SAG_RECHECK
-        : FLAG_AUTOTILE_DIRTY
+      // Diffusion model: the post-load `seedAnchorsBFS()` call
+      // pre-settles anchorDist for every fresh cell, so the sag
+      // detector picks up unanchored chunks on the next tick
+      // automatically without needing a per-cell wake-up flag.
+      flags[dst] = FLAG_AUTOTILE_DIRTY
       frameIndex[dst] = 0
       // Phase 2 unification: hits = damage TAKEN. Fresh stones from
       // worldgen start at 0; speed-bump stones (the spiritual
