@@ -7,20 +7,18 @@
 
 ## New Features
 
-- `usePaneRadioGrid` hook (react subpath): inline button-bar selector backed by tweakpane-plugin-essentials `radiogrid` blade; active-state affordance reads better than a dropdown for scene/mode toggles
-- `PaneInputOptions` extended with `readonly` and `format` so React hook users can create readonly monitors with custom formatters
-- `createPane`: z-index now applied to the `.tp-dfwv` body-sibling wrapper (not the inner pane root) so tweakpane correctly stacks above other overlays
+- `usePaneRadioGrid` hook (react subpath) — inline button-bar selector backed by essentials' radiogrid blade; deferred disposal + synchronous creation match `usePaneButton`/`usePaneInput` patterns
+- `PaneInputOptions` extended with `readonly` and `format` fields — enables readonly monitors with value formatters
+- Checkbox CSS: `.tp-ckbv_i` stretched to full `var(--cnt-usz)` box — click lands on the input directly, no label forwarding required; box surface themed `rgba(28,40,77,0.6)` with hover/focus/active parity; check stroke turns accent pink on `:checked`
 
-## Bug Fixes
+## Fixes
 
-- Checkbox hit target expanded to full 20×20 visible box: `.tp-ckbv_i` stretched via `width/height: var(--cnt-usz)` so clicks land directly on the input — no flaky `<label>` forwarding
-- Theme: checkbox box surface matches other controls (`rgba(28,40,77,0.6)`) with hover/focus/active parity; check stroke turns accent pink on `:checked`
-- DPR tracking: `useWindowSize` now tracks `{ w, h, dpr }` and subscribes to a `(resolution: Ndppx)` media query so monitor swaps trigger canvas resize
-- Fullscreen: `document.fullscreenchange` listener added alongside `resize`; re-measures immediately and once in the next RAF to catch post-transition layout settles
+- `z-index: 1000` applied to `.tp-dfwv` wrapper element instead of the inner pane root — pane now correctly stacks above other overlays
+- Checkbox hit target covers the full 20×20 visible area; previously relied on flaky `<label>` → `<input>` click forwarding
 
-## Migration
+## Refactor
 
-- Examples migrated from Web Awesome (`@awesome.me/webawesome`) to `@three-flatland/tweakpane`; all `wa-*` selectors, CSS, and `useWrappingGroup` / `setupWrappingGroup` helpers removed
+- Both slug-text examples (React + Three) migrated from Web Awesome controls to `@three-flatland/tweakpane`; Settings + Mode folders with identical parameter bindings in each example
 
-`@three-flatland/tweakpane` now covers DPR/fullscreen-aware sizing, correct stacking context z-index, and reliable checkbox interaction across browsers.
+The tweakpane package gains a radio-grid hook, read-only monitor support, and corrected stacking and checkbox hit-target behavior.
 
