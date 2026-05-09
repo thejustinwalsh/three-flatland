@@ -43,13 +43,18 @@ function drill(world: ReturnType<typeof makeWorldFromGrid>, col: number, row: nu
 }
 
 describe('integration: drill + cantilever sag', () => {
-  it('drilling one cell of a wall fully anchored on both sides does NOT sag', () => {
-    // 14-wide world; wide soil wall touching both side walls. Drill
-    // the cell at col 7, row 1. The chunk is now (row 1 minus col 7)
-    // — still touching both side walls — middle distance from wall
-    // is 6 cells, well within MAX_REACH=10. NO SAG.
+  it('drilling one cell of a wall that reaches the top does NOT sag', () => {
+    // 14-wide world; wall extends from row 0 (top anchor) down. After
+    // drilling the cell at col 7 row 1, the wall is split into two
+    // 4-connected SOIL components, each anchored by its own top-row
+    // cells. Middle distance from anchor stays within MAX_REACH=10.
+    // NO SAG.
+    //
+    // (Anchor topology — Phase 3+ spike: top + bottom edges are
+    // anchors; side walls are NOT. STONE / FIXTURE cells are anchors
+    // even when floating.)
     const world = makeWorldFromGrid([
-      '..............',
+      '##############',
       '##############',
       '..............',
       'SSSSSSSSSSSSSS',

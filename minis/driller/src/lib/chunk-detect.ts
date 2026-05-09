@@ -98,9 +98,12 @@ export function detectChunks(
  * Compute the distance-to-nearest-anchor for every cell.
  *
  * Anchors (distance 0):
- *   - STONE / FIXTURE cells
- *   - SOIL cells touching the left / right / bottom world edge
- *   - The top edge is NOT an anchor (sky).
+ *   - STONE / FIXTURE cells (always — even if "floating" mid-air;
+ *     soil hangs off them regardless of their own stability)
+ *   - SOIL cells touching the TOP edge (row 0) — the sky cap
+ *   - SOIL cells touching the BOTTOM edge (last row) — the floor
+ *   - Side walls (col 0, col cols-1) are NOT anchors. A wall-segment
+ *     hanging in mid-air should fall, not float forever.
  *
  * Distance propagates through SOIL cells only (4-connected). Returns
  * an `Int32Array` parallel to `tiles`:
@@ -110,8 +113,9 @@ export function detectChunks(
  *        is N edges long
  *
  * This is the shared core used by both `unstableCells` (for the
- * collapse system) and the dev heatmap overlay (for visualizing the
- * cantilever rule). Cost: O(cells) — single multi-source BFS.
+ * collapse system) and the renderer's always-on weakness gradient
+ * (which tints SOIL by its anchor distance — closer = solid, farther
+ * = visibly cracked). Cost: O(cells) — single multi-source BFS.
  */
 export function anchorDistanceMap(
   tiles: Uint8Array,
@@ -129,17 +133,18 @@ export function anchorDistanceMap(
       queue.push(i)
     }
   }
-  // Seed: SOIL cells touching a world edge (left/right/bottom only)
-  // are themselves anchored at distance 0.
-  for (let r = 0; r < rows; r++) {
-    for (const c of [0, cols - 1]) {
-      const idx = r * cols + c
-      if (tiles[idx] === TILE_SOIL && dist[idx] === -1) {
-        dist[idx] = 0
-        queue.push(idx)
-      }
+  // Seed: SOIL cells touching the TOP edge (row 0) are anchored.
+  for (let c = 0; c < cols; c++) {
+    const idx = c // row 0 col c
+    if (tiles[idx] === TILE_SOIL && dist[idx] === -1) {
+      dist[idx] = 0
+      queue.push(idx)
     }
   }
+  // Seed: SOIL cells touching the BOTTOM edge (last loaded row) are
+  // anchored. This moves down as the streamer extends the world; soil
+  // that was anchored to the previous bottom can become unanchored if
+  // the new bottom is too far for its path-through-soil.
   for (let c = 0; c < cols; c++) {
     const idx = (rows - 1) * cols + c
     if (tiles[idx] === TILE_SOIL && dist[idx] === -1) {

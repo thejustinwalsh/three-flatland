@@ -56,7 +56,11 @@ const TINT_FIXTURE = [0.88, 0.74, 0.40] as const
 // top of the SAG tint. The constants are tuned so each tier is
 // visually distinct at a glance — a SHAKE'ing block looks like a
 // SAGGING block plus motion, not a separate colour.
-const PRECARIOUS_DARKEN = 0.86
+// PRECARIOUS_DARKEN was a state-driven extra darken; it's been
+// replaced by the always-on cracking gradient (`crackMultiplier`)
+// which signals weakness BEFORE a sag entity is born. SAGGING still
+// gets its own discrete darken on top of the gradient — the
+// committed-fall signal — and SHAKE adds the position jitter.
 const SAG_DARKEN = 0.72
 const TINT_FALL = [0.85, 0.48, 0.24] as const
 
@@ -90,10 +94,36 @@ function pickBaseTint(
   return palette.edge
 }
 
+/**
+ * Convert a SOIL cell's anchor distance into a "cracking" multiplier.
+ * Far-from-anchor cells render visibly darker / cooler; close-to-
+ * anchor cells render at full brightness. The player reads the
+ * gradient as "cracked = dig-this-and-things-fall" without the sim
+ * having to commit a sag entity first.
+ *
+ *   d == 0           full brightness     (anchor cells)
+ *   d in [1, 4]      ~95-100% brightness (solid)
+ *   d in [5, 8]      ~85-95% brightness  (slightly cracked)
+ *   d == 9           ~75% brightness     (cracked — caution)
+ *   d == MAX_REACH   ~65% brightness     (right at threshold)
+ *   d > MAX_REACH    not seen here — those cells are in the sag
+ *                    pipeline and use TINT_FALL once committed
+ */
+function crackMultiplier(distance: number, maxReach: number): number {
+  if (distance < 0) return 1 // AIR / unreachable — caller handles
+  if (distance === 0) return 1
+  // Linear ramp from full brightness at d=1 to ~0.65 at d=maxReach.
+  // A small shoulder so the early distances stay almost-fresh.
+  const t = Math.min(1, distance / maxReach)
+  return 1 - 0.35 * (t * t) // quadratic so far-away cells feel more cracked
+}
+
 function pickTint(
   tile: number,
   frame: number,
   hits: number,
+  distance: number,
+  maxReach: number,
   precarious: boolean,
   sagging: boolean,
   falling: boolean,
@@ -104,14 +134,26 @@ function pickTint(
   void now
   if (falling) return TINT_FALL
   const base = pickBaseTint(tile, frame, hits, triggeredExplosive, palette)
-  // SAGGING dominates PRECARIOUS — by the time the second phase
-  // begins, the visual escalates. SHAKE shares the SAGGING tint and
-  // adds jitter via the position offset elsewhere.
+  // SAGGING is now an overlay on top of the cracking gradient — the
+  // sag entity has committed, so we add an extra darken on top of
+  // whatever cracking already showed. Player reads: "the cracked
+  // area I was watching just committed."
   if (sagging) {
     return [base[0] * SAG_DARKEN, base[1] * SAG_DARKEN, base[2] * SAG_DARKEN] as const
   }
-  if (precarious) {
-    return [base[0] * PRECARIOUS_DARKEN, base[1] * PRECARIOUS_DARKEN, base[2] * PRECARIOUS_DARKEN] as const
+  // PRECARIOUS dropped: the cracking gradient already shows weakness
+  // BEFORE the sag entity is born. PRECARIOUS used to be the "this
+  // chunk just got a sag entity" state-darken; now that's redundant
+  // with the gradient signal.
+  void precarious
+  // Cracking gradient — only applies to SOIL (other tile classes have
+  // their own visual identity). Anchored cells (d=0) and very close
+  // cells stay fresh; far cells are noticeably darker.
+  if (tile === TILE_SOIL && distance > 0) {
+    const m = crackMultiplier(distance, maxReach)
+    if (m < 1) {
+      return [base[0] * m, base[1] * m, base[2] * m] as const
+    }
   }
   return base
 }
@@ -173,16 +215,17 @@ export function TileRenderer({ material }: TileRendererProps) {
     const now = Date.now()
     const pulse = Math.floor(now / 80) % 2 === 0
 
-    // Dev-only anchor-heatmap mode. When the debug panel toggles it
-    // on, we compute the distance-from-nearest-anchor map once per
-    // frame and tint each cell by its distance instead of by tile
-    // class. Black for anchors. Useful for visualizing the cantilever
-    // rule. Tree-shaken out of production via the same `import.meta.env.DEV`
-    // gate that strips the rest of `src/dev/`.
+    // Always-on "weakness gradient" — tint SOIL by distance from
+    // the nearest anchor. Cells close to anchors look solid; cells
+    // far away look visibly cracked, so the player can see where
+    // the world is fragile BEFORE a sag entity exists. Replaces the
+    // old PRECARIOUS / SAGGING state-darken which only kicked in
+    // after the sim had already committed to a fall — too late to
+    // be a "watch out" signal.
+    //
+    // The same map is also used by the debug heatmap mode.
     const heatmapMode = import.meta.env.DEV && getRenderMode() === 'anchor-heatmap'
-    const heatmapDistances = heatmapMode
-      ? anchorDistanceMap(tiles, cols, rows)
-      : null
+    const distances = anchorDistanceMap(tiles, cols, rows)
 
     let slot = 0
     for (let r = topRow; r < bottomRow && slot < POOL_SIZE; r++) {
@@ -204,20 +247,20 @@ export function TileRenderer({ material }: TileRendererProps) {
         const shaking = (flags[idx]! & FLAG_SHAKING) !== 0
         const litExplosive = tile === TILE_EXPLOSIVE && triggeredExplosives.has(idx) && pulse
         const palette = biomeAt(r).palette
+        const distance = distances[idx] ?? -1
         let tint: readonly [number, number, number]
-        if (heatmapMode && heatmapDistances) {
+        if (heatmapMode) {
           // Heatmap path: ignore tile class, color by anchor distance.
           // Anchors render black; non-soil non-anchor cells (AIR is
           // already filtered above; EXPLOSIVE etc.) keep their normal
           // tint so the player can still see hazards.
-          const d = heatmapDistances[idx] ?? -1
-          const ht = heatmapTint(d, MAX_REACH)
+          const ht = heatmapTint(distance, MAX_REACH)
           tint =
             ht !== null
               ? ht
-              : pickTint(tile, frameIndex[idx]!, hits[idx] ?? 0, precarious, sagging, falling, litExplosive, now, palette)
+              : pickTint(tile, frameIndex[idx]!, hits[idx] ?? 0, distance, MAX_REACH, precarious, sagging, falling, litExplosive, now, palette)
         } else {
-          tint = pickTint(tile, frameIndex[idx]!, hits[idx] ?? 0, precarious, sagging, falling, litExplosive, now, palette)
+          tint = pickTint(tile, frameIndex[idx]!, hits[idx] ?? 0, distance, MAX_REACH, precarious, sagging, falling, litExplosive, now, palette)
         }
         // Shake telegraph: deliberate "crack" rather than a buzz. A
         // few wide shudders at ~6 Hz (1 cycle ≈ 170 ms) so over the
