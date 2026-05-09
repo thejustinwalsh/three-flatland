@@ -68,6 +68,12 @@ const accentStyle = resolvedGem ? `--vp-accent: var(--${resolvedGem});` : undefi
     padding-block: calc(var(--spacing) * 1);
     margin-block: calc(var(--spacing) * 6);
     max-width: 56rem;
+    /* Safari paint-isolation — see GalleryTile for diagnosis. The
+     * vp-rule's foil-reactive glow uses --vp-accent + cursor light
+     * vars that bubble through the stacking context. contain:paint
+     * locks repaint to the section box. */
+    contain: paint;
+    isolation: isolate;
   }
 
   .value-prop.align-right {

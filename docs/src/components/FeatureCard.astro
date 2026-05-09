@@ -95,6 +95,14 @@ const accentStyle = resolvedGem ? `--card-accent: var(--${resolvedGem});` : unde
     --card-soft: color-mix(in oklab, var(--gray-7) 60%, var(--card-accent, var(--primary)));
     --card: var(--card-soft);
     position: relative;
+    /* Safari paint-isolation — see GalleryTile for the full diagnosis.
+     * The card-edge ::before/::after layers use mix-blend-mode + mask-
+     * composite which Safari recomposites across the full stacking
+     * context on every paint. contain:paint locks repaint to the card
+     * box; isolation:isolate creates the stacking context for the
+     * blend-mode children. Zero visual change. */
+    contain: paint;
+    isolation: isolate;
     display: flex;
     flex-direction: column;
     gap: calc(var(--spacing) * 3);

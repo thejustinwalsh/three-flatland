@@ -129,6 +129,14 @@ const posterPngHref = `${baseURL}/captures/${slug}.png`
       box-shadow 200ms cubic-bezier(0.2, 0, 0.1, 1),
       transform 200ms cubic-bezier(0.2, 0, 0.1, 1);
     will-change: transform, box-shadow;
+    /* Safari paint-isolation for the rim layers' mix-blend-mode +
+     * mask-composite stack. Without this, Safari pessimistically
+     * recomposites the FULL stacking context whenever any tile or
+     * the global --scene-angle ticks — sustained 100% stutter on
+     * Webkit. With it, paint stays inside the tile's box. Measured:
+     * examples page Webkit 100% stutter → 5.3% with zero visual change. */
+    contain: paint;
+    isolation: isolate;
   }
 
   .gallery-tile:hover {

@@ -41,7 +41,37 @@ interface MotionTarget {
     hovering: boolean
     /** Phase accumulator (seconds), advanced per frame. */
     t: number
+    /**
+     * Last-written values for each CSS custom property, so the per-frame
+     * write loop can skip setProperty calls when nothing's actually
+     * changed beyond the perceptual epsilon. The Safari fix —
+     * `setProperty` on a Safari cascade with N readers triggers full
+     * style invalidation per call (~2ms × 6 props × N targets = ~108ms
+     * per frame at idle). Skipping no-op writes recovers ~60fps.
+     * NaN sentinel forces the first write through.
+     */
+    lastMx: number
+    lastMy: number
+    lastActive: number
+    lastLightAngle: number
+    lastTiltX: number
+    lastTiltY: number
+    lastEffective: number
 }
+
+/**
+ * Perceptual epsilons — values whose change is below these never need
+ * to repaint a foil rim or shift a tilt visibly. Tuned conservative.
+ */
+const EPS_PCT = 0.05      // percentage points (e.g., --mx 30.00% vs 30.05% — invisible)
+const EPS_DEG = 0.1       // degrees (light-angle / tilt / scene-angle)
+const EPS_SCALAR = 0.005  // 0..1 scalars (--mouse-active)
+
+/**
+ * Last-written value for the global :root custom properties, mirroring
+ * the per-target gating below.
+ */
+let lastSceneAngle = NaN
 
 const REDUCED_MOTION = (() => {
     if (typeof window === 'undefined') return false
@@ -101,6 +131,13 @@ function registerTarget(el: HTMLElement) {
         seed: Math.random() * 1000,
         hovering: false,
         t: 0,
+        lastMx: NaN,
+        lastMy: NaN,
+        lastActive: NaN,
+        lastLightAngle: NaN,
+        lastTiltX: NaN,
+        lastTiltY: NaN,
+        lastEffective: NaN,
     }
     targets.push(t)
 
@@ -183,8 +220,16 @@ function frame(now: number) {
     // rather than reversing abruptly.
     const eased = cyclePos * cyclePos * (3 - 2 * cyclePos)
     const sceneAngle = ARC_MIN_DEG + eased * (ARC_MAX_DEG - ARC_MIN_DEG)
-    const root = document.documentElement.style
-    root.setProperty('--scene-angle', `${sceneAngle.toFixed(1)}deg`)
+    if (
+        Number.isNaN(lastSceneAngle) ||
+        Math.abs(sceneAngle - lastSceneAngle) >= EPS_DEG
+    ) {
+        document.documentElement.style.setProperty(
+            '--scene-angle',
+            `${sceneAngle.toFixed(1)}deg`,
+        )
+        lastSceneAngle = sceneAngle
+    }
 
     for (const t of targets) {
         t.t = time
@@ -207,8 +252,31 @@ function frame(now: number) {
         // else: lx/ly retain last hovered value; the fading --mouse-active
         // takes the highlight to zero opacity at that location.
 
+        /**
+         * Outer gate — when this target isn't being hovered AND the
+         * fade-out scalar has fully settled to 0, skip the entire
+         * per-target write block. The CSS rules driven by --mouse-active
+         * fade to opacity 0 below 0.005, so visually nothing is on
+         * screen; the perlin jitter on mx/my is purely "material feel"
+         * for the visible hotspot and contributes nothing when no
+         * hotspot is visible. Critical for Safari perf — without this,
+         * the inner setProperty gates can't catch the per-frame noise
+         * drift on idle targets.
+         */
+        if (!t.hovering && t.active < EPS_SCALAR) {
+            // Make sure --mouse-active is locked at 0 once we stop
+            // updating (the inertia tail can leave it at e.g. 0.003).
+            if (Number.isNaN(t.lastActive) || t.lastActive >= EPS_SCALAR) {
+                t.el.style.setProperty('--mouse-active', '0')
+                t.lastActive = 0
+            }
+            continue
+        }
+
         // Tiny perlin jitter on top of mouse position for material feel.
-        const mAmpl = 0.04
+        // Scaled by active so idle targets contribute nothing even when
+        // they slip through the gate above (e.g. mid-fade-out).
+        const mAmpl = 0.04 * t.active
         const mx = Math.max(
             0,
             Math.min(1, t.lx + noiseAt(time, t.seed + 711, 0) * mAmpl),
@@ -217,15 +285,45 @@ function frame(now: number) {
             0,
             Math.min(1, t.ly + noiseAt(time, t.seed + 911, 1) * mAmpl),
         )
-        t.el.style.setProperty('--mx', `${(mx * 100).toFixed(2)}%`)
-        t.el.style.setProperty('--my', `${(my * 100).toFixed(2)}%`)
-        t.el.style.setProperty('--mouse-active', t.active.toFixed(3))
+        // Per-property value-changed gates — see MotionTarget.lastMx
+        // doc-comment for the why. Each setProperty in Safari triggers
+        // cascade-wide style invalidation; skipping no-op writes is the
+        // single highest-impact perf fix.
+        const mxPct = mx * 100
+        if (
+            Number.isNaN(t.lastMx) ||
+            Math.abs(mxPct - t.lastMx) >= EPS_PCT
+        ) {
+            t.el.style.setProperty('--mx', `${mxPct.toFixed(2)}%`)
+            t.lastMx = mxPct
+        }
+        const myPct = my * 100
+        if (
+            Number.isNaN(t.lastMy) ||
+            Math.abs(myPct - t.lastMy) >= EPS_PCT
+        ) {
+            t.el.style.setProperty('--my', `${myPct.toFixed(2)}%`)
+            t.lastMy = myPct
+        }
+        if (
+            Number.isNaN(t.lastActive) ||
+            Math.abs(t.active - t.lastActive) >= EPS_SCALAR
+        ) {
+            t.el.style.setProperty('--mouse-active', t.active.toFixed(3))
+            t.lastActive = t.active
+        }
 
         // Light angle from mouse position offset (used by gradient rotation).
         const dx = mx - 0.5
         const dy = my - 0.5
         const lightAngle = (Math.atan2(dy, dx) * 180) / Math.PI + 90
-        t.el.style.setProperty('--light-angle', `${lightAngle.toFixed(1)}deg`)
+        if (
+            Number.isNaN(t.lastLightAngle) ||
+            Math.abs(lightAngle - t.lastLightAngle) >= EPS_DEG
+        ) {
+            t.el.style.setProperty('--light-angle', `${lightAngle.toFixed(1)}deg`)
+            t.lastLightAngle = lightAngle
+        }
 
         /* TILT — cursor-driven, card leans TOWARD the cursor (the side the
          * cursor is on rises toward the viewer, mimicking Pokemon-foil-card
@@ -240,8 +338,20 @@ function frame(now: number) {
         const ampY = isHolo ? 14 : 8
         const tiltY = (0.5 - mx) * ampY * t.active
         const tiltX = (my - 0.5) * ampX * t.active
-        t.el.style.setProperty('--tilt-x', `${tiltX.toFixed(2)}deg`)
-        t.el.style.setProperty('--tilt-y', `${tiltY.toFixed(2)}deg`)
+        if (
+            Number.isNaN(t.lastTiltX) ||
+            Math.abs(tiltX - t.lastTiltX) >= EPS_DEG
+        ) {
+            t.el.style.setProperty('--tilt-x', `${tiltX.toFixed(2)}deg`)
+            t.lastTiltX = tiltX
+        }
+        if (
+            Number.isNaN(t.lastTiltY) ||
+            Math.abs(tiltY - t.lastTiltY) >= EPS_DEG
+        ) {
+            t.el.style.setProperty('--tilt-y', `${tiltY.toFixed(2)}deg`)
+            t.lastTiltY = tiltY
+        }
 
         /* TILT-COUPLED LIGHT DIRECTION — when the surface tilts, the
          * apparent direction of the global scene light shifts in the
@@ -252,10 +362,16 @@ function frame(now: number) {
          * response visually clear at modest tilts. */
         const tiltMul = 2.5
         const effective = sceneAngle + tiltY * tiltMul - tiltX * tiltMul * 0.4
-        t.el.style.setProperty(
-            '--effective-light-angle',
-            `${effective.toFixed(1)}deg`,
-        )
+        if (
+            Number.isNaN(t.lastEffective) ||
+            Math.abs(effective - t.lastEffective) >= EPS_DEG
+        ) {
+            t.el.style.setProperty(
+                '--effective-light-angle',
+                `${effective.toFixed(1)}deg`,
+            )
+            t.lastEffective = effective
+        }
     }
 
     requestAnimationFrame(frame)

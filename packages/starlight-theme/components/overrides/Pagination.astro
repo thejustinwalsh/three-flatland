@@ -131,6 +131,13 @@ const nextGem = gemForHref(next?.href)
         color: var(--foreground);
         text-decoration: none;
 
+        /* Safari paint-isolation — the foil-rim ::before/::after with
+         * mask-composite + radial-gradient on cursor-light vars needs
+         * its stacking context isolated to avoid Safari recompositing
+         * the entire page on hover state changes. */
+        contain: paint;
+        isolation: isolate;
+
         background-color: transparent;
         border: 1px solid
             color-mix(
