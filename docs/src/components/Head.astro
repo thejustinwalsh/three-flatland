@@ -164,59 +164,16 @@ import PageOrder from 'astro-vtbot/components/starlight/PageOrder.astro';
   import '../scripts/motion'
 </script>
 
-{/* Inline SVG filter library for the gem material model. CSS rules
-    reference these by id (`filter: url(#tf-gem-perturb)`). Inline (not
-    via data: URL) because Chrome/Safari require the filter to live in a
-    fragment document context, not embedded in the stylesheet. The svg is
-    aria-hidden and zero-sized so it doesn't affect layout. */}
-<svg
-  xmlns="http://www.w3.org/2000/svg"
-  width="0"
-  height="0"
-  style="position:absolute;width:0;height:0;pointer-events:none"
-  aria-hidden="true"
->
-  <defs>
-    {/* Gem perturb — fine fractal noise displacing the source image to
-        fake a normal-mapped polished gem surface. Subtle (scale 3).
-        Filter region tightened to 0/0/100/100 so the warp doesn't leak
-        past the element's bounding box.
-
-        feComposite operator="in" at the end clips the displaced result
-        through the source's alpha — pixels displaced beyond the original
-        shape (e.g. at rounded corners) get cut off instead of rendering
-        as transparent black bleed onto the page bg. */}
-    <filter id="tf-gem-perturb" x="0" y="0" width="100%" height="100%">
-      <feTurbulence
-        type="fractalNoise"
-        baseFrequency="0.7"
-        numOctaves="2"
-        seed="3"
-        stitchTiles="stitch"
-        result="noise"
-      />
-      <feDisplacementMap in="SourceGraphic" in2="noise" scale="3" result="displaced" />
-      <feComposite in="displaced" in2="SourceGraphic" operator="in" />
-    </filter>
-    {/* Foil perturb — coarser, anisotropic noise (different x/y freq) so
-        gold catches a "metallic streak" quality rather than uniform
-        scatter. Used by data-gem="gold" surfaces. Scale dropped from 6
-        to 4 to reduce edge headroom needed; feComposite clips any
-        residual leak through the source alpha. */}
-    <filter id="tf-foil-perturb" x="0" y="0" width="100%" height="100%">
-      <feTurbulence
-        type="fractalNoise"
-        baseFrequency="0.3 0.9"
-        numOctaves="2"
-        seed="7"
-        stitchTiles="stitch"
-        result="noise"
-      />
-      <feDisplacementMap in="SourceGraphic" in2="noise" scale="4" result="displaced" />
-      <feComposite in="displaced" in2="SourceGraphic" operator="in" />
-    </filter>
-  </defs>
-</svg>
+{/* Inline SVG filter library was here for the gem material model
+    (`#tf-gem-perturb`, `#tf-foil-perturb` — feTurbulence + feDisplacementMap
+    + feComposite chains). Removed because the chains were CPU-rasterized
+    per frame in Safari (~330ms across ~20 active rim layers on landing
+    in Safari's "Other" timeline bucket). The rim's visual identity is
+    now carried by the local per-component primitives — `<div class=
+    "card-edge">` on FeatureCard, `<span class="tile-edge">` on
+    GalleryTile — both pure-GPU mask-composite + conic-gradient +
+    radial-gradient. See packages/starlight-theme/styles/base.css
+    `.u-light::before` rule for the kept scene-light gradient layer. */}
 
 <!-- Self hosted metrics -->
 {import.meta.env.PROD && (

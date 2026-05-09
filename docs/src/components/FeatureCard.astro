@@ -132,6 +132,15 @@ const accentStyle = resolvedGem ? `--card-accent: var(--${resolvedGem});` : unde
    * Together they read as a foil card: ambient scene light bathes the
    * lit half, the cursor drags a sharp glint along the rim, and a
    * star flare blooms where the eye is looking. */
+  /* FeatureCard scene-light wash — slightly softer than the
+   * GalleryTile default. The global `.u-light::before` rule uses
+   * blur(0.6px) for crisp gallery-tile rims; here we bump to 1.4px
+   * to give the larger card surface a more diffuse "lit gem" feel.
+   * Pure GPU compositor work; cost is negligible at this radius. */
+  .feature-card.u-light::before {
+    filter: blur(1.4px) saturate(1.12);
+  }
+
   .feature-card > .card-edge {
     position: absolute;
     inset: 0;

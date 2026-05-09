@@ -115,6 +115,13 @@ const posterPngHref = `${baseURL}/captures/${slug}.png`
 <style>
   .gallery-tile {
     --tile-accent: var(--diamond);
+    /* Bridge into --card-accent so the global `.u-light::before` scene-
+     * light gradient picks up THIS tile's gem rather than falling back
+     * to `var(--primary)` (which is amethyst — the docs-cluster gem).
+     * Bug surfaced when we removed the SVG displacement filter — the
+     * noise warp had been visually obscuring the wrong-gem fallback;
+     * cleanly-rendered gradient now exposes it. */
+    --card-accent: var(--tile-accent);
     position: relative;
     display: flex;
     flex-direction: column;
@@ -265,13 +272,10 @@ const posterPngHref = `${baseURL}/captures/${slug}.png`
     position: relative;
     width: 100%;
     aspect-ratio: var(--tile-aspect, 4 / 3);
-    background:
-      radial-gradient(
-        circle at 30% 30%,
-        color-mix(in oklab, var(--tile-accent) 40%, var(--card)) 0%,
-        color-mix(in oklab, var(--tile-accent) 12%, var(--background)) 60%,
-        var(--background) 100%
-      );
+    /* Solid base under the placeholder gradient — the radial sits on
+     * a ::before pseudo (below) so we can blur the gradient
+     * independently without softening the loaded poster/video. */
+    background-color: var(--background);
     overflow: hidden;
     /* Round only the TOP corners of the media area — matches the
      * tile's top while leaving a hard bottom edge where the body's
@@ -283,8 +287,36 @@ const posterPngHref = `${baseURL}/captures/${slug}.png`
     clip-path: inset(0 round calc(var(--radius) + 0.25rem) calc(var(--radius) + 0.25rem) 0 0);
   }
 
+  /* Placeholder gem-radial — sits BEHIND the poster/video content via
+   * z-index 0. Blurred independently of the loaded media for two
+   * reasons: (1) anti-banding — radial gradients in low-saturation
+   * gem ranges show visible quantization steps in 8-bit color, and
+   * a small Gaussian blur smooths the steps into continuous tone;
+   * (2) tonal match — the captured TSL canvas backgrounds aren't
+   * sharp gradients either (TSL noise + filtering soften them at
+   * paint time), so a blurred placeholder transitions cleanly into
+   * the loaded canvas without a visible "sharpening" shift. */
+  .gallery-tile-media::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    background: radial-gradient(
+      circle at 30% 30%,
+      color-mix(in oklab, var(--tile-accent) 22%, var(--card)) 0%,
+      color-mix(in oklab, var(--tile-accent) 6%, var(--background)) 50%,
+      var(--background) 90%
+    );
+    /* 1.5px Gaussian — small enough to read as polished surface,
+     * large enough to dither the visible banding in the gem-soft
+     * → background fade. Pure GPU compositor work. */
+    filter: blur(1.5px);
+  }
+
   .gallery-tile-poster,
   .gallery-tile-video {
+    z-index: 1;
     position: absolute;
     inset: 0;
     width: 100%;

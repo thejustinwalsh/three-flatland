@@ -1705,7 +1705,19 @@
             transparent 65%,
             color-mix(in oklab, var(--background) 20%, transparent) 100%
         );
-        filter: url(#tf-gem-perturb);
+        /* GPU-only filter — replaces the prior SVG `feTurbulence` +
+         * `feDisplacementMap` chain (CPU-rasterized; cost ~330ms in
+         * Safari "Other" with ~20 active rim layers). Both primitives
+         * are GPU compositor work: blur softens the gradient
+         * transition so it reads as polished surface, saturate lifts
+         * the gem hue in the lit half so the color identity carries
+         * through the transparent-mixed alpha. Tuned conservative —
+         * 0.6px blur is below most viewers' visual threshold for
+         * "soft," 1.1 saturate is barely a chroma bump. The local
+         * rim primitives (.card-edge / .tile-edge) carry the actual
+         * gem-rim character; this layer is the diffuse scene-light
+         * wash on top. */
+        filter: blur(0.6px) saturate(1.1);
         opacity: 0.85;
         z-index: 1;
         mix-blend-mode: screen;
@@ -1747,7 +1759,12 @@
             color-mix(in oklab, var(--orange) 22%, transparent) 60%,
             color-mix(in oklab, var(--gold-low) 18%, transparent) 100%
         );
-        filter: url(#tf-foil-perturb);
+        /* SVG `filter: url(#tf-foil-perturb)` removed — same reason as
+         * the gem-perturb above. The metallic warm/cool gradient
+         * sequence (gold-high → gold → orange → gold-low) reads as
+         * foil on its own; the displacement-map streak was a
+         * sub-perceptual finishing touch that cost full-frame CPU
+         * rasterization. */
     }
     .u-light[data-gem='gold']::after,
     [data-light][data-gem='gold']::after {
