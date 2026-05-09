@@ -25,6 +25,9 @@ import {
 } from '../dev/render-instrument'
 import { getRenderMode, heatmapTint } from '../dev/render-mode'
 import { anchorDistanceMap } from '../lib/chunk-detect'
+import { autotileMask } from '../lib/autotile'
+import { ROCK_FRAMES } from '../lib/rock-frames'
+import { useRockAutotileMaterial } from '../materials'
 
 // Generous pool: covers tall viewports without stale-cell artifacts. The
 // tile-iteration window is `cam.rows + 4` rows; pool must cover the
@@ -185,13 +188,25 @@ interface TileRendererProps {
 export function TileRenderer({ material }: TileRendererProps) {
   const world = useWorld()
   const refs = useRef<(Sprite2DType | null)[]>([])
+  // Second pool for stones — uses the rock autotile atlas material so
+  // each stone sprite picks a frame from `ROCK_FRAMES` based on its
+  // 4-neighbor stone-mask. The autotile asset has 16 frames indexed
+  // 0..15 by mask = N|S<<1|E<<2|W<<3 (matches the soil autotile).
+  // Frame 15 is the stroke-free interior; frame 0 is the all-isolated
+  // case with strokes on every edge.
+  const rockRefs = useRef<(Sprite2DType | null)[]>([])
+  const rockMaterial = useRockAutotileMaterial()
   if (refs.current.length !== POOL_SIZE) {
     refs.current = new Array<Sprite2DType | null>(POOL_SIZE).fill(null)
+  }
+  if (rockRefs.current.length !== POOL_SIZE) {
+    rockRefs.current = new Array<Sprite2DType | null>(POOL_SIZE).fill(null)
   }
 
   // Initial: hide everything (zero-scale) until the first useFrame reads the grid.
   useEffect(() => {
     for (const s of refs.current) if (s) s.scale.set(0, 0, 1)
+    for (const s of rockRefs.current) if (s) s.scale.set(0, 0, 1)
   }, [])
 
   useFrame(() => {
@@ -239,9 +254,20 @@ export function TileRenderer({ material }: TileRendererProps) {
     const heatmapMode = import.meta.env.DEV && getRenderMode() === 'anchor-heatmap'
     const distances = anchorDistanceMap(tiles, cols, rows)
 
+    // Stone autotile lookup — closure over the current tiles buffer
+    // so `autotileMask` can probe 4-neighbors. Matches the SOIL
+    // autotile call shape (col, row, isMatch). Same 4-bit layout:
+    // bit 0 = N, 1 = S, 2 = E, 3 = W.
+    const isStone = (cc: number, rr: number): boolean => {
+      if (cc < 0 || cc >= cols || rr < 0 || rr >= rows) return false
+      return tiles[rr * cols + cc] === TILE_STONE
+    }
+    const rockPool = rockRefs.current
+
     let slot = 0
-    for (let r = topRow; r < bottomRow && slot < POOL_SIZE; r++) {
-      for (let c = 0; c < cols && slot < POOL_SIZE; c++) {
+    let rockSlot = 0
+    for (let r = topRow; r < bottomRow && slot < POOL_SIZE && rockSlot < POOL_SIZE; r++) {
+      for (let c = 0; c < cols && slot < POOL_SIZE && rockSlot < POOL_SIZE; c++) {
         const idx = r * cols + c
         const tile = tiles[idx] ?? TILE_AIR
         const sprite = pool[slot++]
@@ -287,11 +313,31 @@ export function TileRenderer({ material }: TileRendererProps) {
           jitterX = Math.sin(phase) * 2.4
           jitterY = Math.sin(phase * 0.5) * 1.2
         }
-        sprite.position.set(c * TILE_PX + TILE_PX / 2 + jitterX, -(r * TILE_PX + TILE_PX / 2) + jitterY, 0)
-        sprite.scale.set(TILE_PX, TILE_PX, 1)
-        sprite.tint.r = tint[0]
-        sprite.tint.g = tint[1]
-        sprite.tint.b = tint[2]
+        const posX = c * TILE_PX + TILE_PX / 2 + jitterX
+        const posY = -(r * TILE_PX + TILE_PX / 2) + jitterY
+        if (tile === TILE_STONE) {
+          // Route to the rock-autotile pool; hide the regular slot so
+          // we don't double-paint with the flat color underneath. The
+          // slot was already consumed by `slot++` above.
+          sprite.scale.set(0, 0, 1)
+          const rockSprite = rockPool[rockSlot++]
+          if (rockSprite) {
+            const mask = autotileMask(c, r, isStone) & 0xf
+            const frame = ROCK_FRAMES[mask]!
+            rockSprite.setFrame(frame)
+            rockSprite.position.set(posX, posY, 0)
+            rockSprite.scale.set(TILE_PX, TILE_PX, 1)
+            rockSprite.tint.r = tint[0]
+            rockSprite.tint.g = tint[1]
+            rockSprite.tint.b = tint[2]
+          }
+        } else {
+          sprite.position.set(posX, posY, 0)
+          sprite.scale.set(TILE_PX, TILE_PX, 1)
+          sprite.tint.r = tint[0]
+          sprite.tint.g = tint[1]
+          sprite.tint.b = tint[2]
+        }
         if (import.meta.env.DEV && debugRender) {
           recordCellRender(debugRender, idx, shaking, jitterX !== 0 || jitterY !== 0)
         }
@@ -300,6 +346,10 @@ export function TileRenderer({ material }: TileRendererProps) {
     // Hide leftover slots that didn't get assigned a cell this frame.
     for (; slot < POOL_SIZE; slot++) {
       const s = pool[slot]
+      if (s) s.scale.set(0, 0, 1)
+    }
+    for (; rockSlot < POOL_SIZE; rockSlot++) {
+      const s = rockPool[rockSlot]
       if (s) s.scale.set(0, 0, 1)
     }
   })
@@ -318,6 +368,19 @@ export function TileRenderer({ material }: TileRendererProps) {
           tint="#6b4a2b"
           position={[0, 0, 0]}
           scale={[TILE_PX, TILE_PX, 1]}
+        />
+      ))}
+      {slots.map((i) => (
+        <sprite2D
+          key={`rock-${i}`}
+          ref={(el) => {
+            rockRefs.current[i] = el
+          }}
+          material={rockMaterial}
+          tint="#71717a"
+          position={[0, 0, 0]}
+          scale={[0, 0, 1]}
+          frame={ROCK_FRAMES[15]}
         />
       ))}
     </>

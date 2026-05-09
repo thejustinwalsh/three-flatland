@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
-import { DataTexture, NearestFilter, RGBAFormat, SRGBColorSpace } from 'three'
+import { DataTexture, NearestFilter, RGBAFormat, SRGBColorSpace, TextureLoader } from 'three'
 import { Sprite2DMaterial } from 'three-flatland/react'
+import { ROCK_AUTOTILE_URL } from './textures'
 
 /**
  * Tile-class palette — used for placeholder solid-color sprites until the
@@ -46,4 +47,24 @@ function createWhiteTexture(): DataTexture {
  */
 export function useDrillerMaterial(): Sprite2DMaterial {
   return useMemo(() => new Sprite2DMaterial({ map: createWhiteTexture(), transparent: true }), [])
+}
+
+/**
+ * Rock-autotile material. Uses the 320×20 SVG atlas (16 frames
+ * indexed by 4-bit mask: low bits N/S/E/W of stone-neighbor presence).
+ * Each stone sprite picks its frame via Sprite2D.setFrame() with
+ * normalized UVs computed from the slot stride + 2px transparent
+ * gutters baked into the asset. The atlas is white-on-transparent
+ * with darker strokes only on edges where there's no neighbor, so
+ * runtime tinting (TINT_STONE / TINT_DAMAGED_STONE / cracking
+ * gradient) recolors the rock body while strokes stay legible.
+ */
+export function useRockAutotileMaterial(): Sprite2DMaterial {
+  return useMemo(() => {
+    const tex = new TextureLoader().load(ROCK_AUTOTILE_URL)
+    tex.minFilter = NearestFilter
+    tex.magFilter = NearestFilter
+    tex.colorSpace = SRGBColorSpace
+    return new Sprite2DMaterial({ map: tex, transparent: true })
+  }, [])
 }
