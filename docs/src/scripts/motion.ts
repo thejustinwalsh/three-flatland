@@ -578,9 +578,32 @@ if (typeof document !== 'undefined') {
     }
     document.addEventListener('astro:page-load', () => {
         // Drop stale targets and re-scan; old DOM nodes were swapped out.
+        // Disconnect the IO so observe() on new targets doesn't accumulate
+        // dangling references to the now-removed page DOM.
+        if (visObs) {
+            visObs.disconnect()
+            visObs = null
+        }
         targets.length = 0
         initMotion()
     })
+    /* HMR cleanup — without this, every dev save re-evaluates this
+     * module but the previous instance's rAF loop + IntersectionObserver
+     * keep running, accumulating across HMR cycles. After enough saves
+     * you've got 5+ motion loops fighting for the same CSS vars; vite
+     * eventually destabilizes and the dev server gets SIGTERM'd. The
+     * dispose hook stops the loop, drops targets, and disconnects the
+     * observer so the new module instance starts clean. */
+    if (import.meta.hot) {
+        import.meta.hot.dispose(() => {
+            running = false
+            if (visObs) {
+                visObs.disconnect()
+                visObs = null
+            }
+            targets.length = 0
+        })
+    }
     // Pre-empt the sidebar <details> state flash: apply stored state
     // to the about-to-be-swapped document BEFORE Astro commits the
     // swap, so the new DOM paints in the user's preferred state.
