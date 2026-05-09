@@ -48,12 +48,18 @@ let hazardSafeMinRow = -1
  * descents. An open vertical shaft taller than this signals "the
  * driller has been digging straight" — a rock is dropped down it.
  *
- * 8 tiles is roughly half a viewport, so the shaft has to be visibly
- * "boring" to the player before a rock fires.
+ * 5 tiles ≈ a third of a typical viewport. Shafts shorter than that
+ * are short enough to read as "homie just changed direction" and
+ * shouldn't trigger; anything longer is the AI committing to a
+ * straight descent and earning a rock.
  */
-const SHAFT_MIN_DEPTH = 8
-/** Per-column cooldown so the same shaft doesn't spam rocks. */
-const PER_COL_SPAWN_COOLDOWN_TICKS = 240 // ~4s at 60Hz
+const SHAFT_MIN_DEPTH = 5
+/**
+ * Per-column cooldown so the same shaft doesn't spam rocks faster
+ * than the player can read them. ~2s at 60Hz lets multiple rocks
+ * funnel down the SAME shaft if the AI keeps digging it open.
+ */
+const PER_COL_SPAWN_COOLDOWN_TICKS = 120
 const lastSpawnByCol = new Int32Array(32) // grown lazily; PLAY_COLS=18 fits
 
 export function setHazardSafeMinRow(row: number): void {
@@ -298,8 +304,13 @@ const AVALANCHE_FALL_INTERVAL_TICKS = 12 // ~200ms at 60Hz
 // avalanche skips PRECARIOUS/SAGGING (no anchor-based prediction
 // for stones; disturbance is sudden) and uses just SHAKE → settle
 // → commit. SHAKE duration matches SAG_SHAKING_TICKS=24 ticks.
-const AVALANCHE_SHAKE_TICKS = 24  // ~400ms — matches soil SAG_SHAKING_TICKS
-const AVALANCHE_SETTLE_TICKS = 6  // ~100ms steady pause before commit
+// Sized so homie can drill a 4-cell-wide escape from under a
+// worst-case 4-wide cluster before the rocks land. Drill cadence is
+// ~250ms/cell, so 4 cells = ~1s minimum; the telegraph gives a
+// comfortable margin (~1.5s shake + 0.5s settle = 2s total) plus
+// brace can extend it further (ROCK_BRACE_EXTEND_TICKS = 30).
+const AVALANCHE_SHAKE_TICKS = 90  // ~1.5s
+const AVALANCHE_SETTLE_TICKS = 30 // ~0.5s steady pause before commit
 let lastAvalancheTick = 0
 /**
  * For each cluster cell currently in the pre-fall telegraph, this

@@ -321,20 +321,56 @@ export function generateChunk(seed: number, chunkY: number): GeneratedChunk {
       explosivePlacements.push({ col: x, rowInChunk: y })
     }
   }
-  void TILE_STONE  // keep import alive
-
-  // Fixtures — placed along cave roofs/floors as anchors + shelter
+  // Fixtures — placed as horizontal STRATA (bands), 1–3 rows thick
+  // and 4–12 cells wide. Bands are obstacles that force homie into
+  // lateral movement (can't drill straight through), and they anchor
+  // the soil above them — drilling around the band creates lateral
+  // cantilevers that produce more interesting falls.
+  //
+  // Placement rules:
+  //   - Skip cells already occupied by STONE (rocks render on top of
+  //     fixtures and the previous overlap looked muddy; user req).
+  //   - Skip cells already in another fixture (no overlap between
+  //     bands of different variants).
+  //   - SOIL cells become fixtures; AIR cells stay AIR (so the band
+  //     is a "stratum embedded in the dirt" not a floating slab).
+  //   - Variant is consistent within a band — looks like a single
+  //     rock layer / bone layer / mushroom shelf etc.
   const fixtureCount = rng.intRange(biome.fixtureCount[0], biome.fixtureCount[1])
+  // Thickness weights: thin bands are most common; 3-row strata are rare.
+  const pickThickness = (): number => {
+    const r = rng.intRange(0, 9)
+    if (r < 6) return 1
+    if (r < 9) return 2
+    return 3
+  }
   for (let i = 0; i < fixtureCount; i++) {
-    const x = rng.intRange(1, cols - 2)
-    const y = rng.intRange(1, rows - 2)
-    if (tiles[y * cols + x] === TILE_AIR) {
-      // Variant: 0=bone, 1=mushroom, 2=crystal — biome decides allowed kinds.
-      const allowed = biome.fixtureKinds.filter((k) => k !== 'stone-pillar')
-      if (allowed.length === 0) continue
-      const kind = allowed[rng.intRange(0, allowed.length - 1)]!
-      const variant = kind === 'bone' ? 0 : kind === 'mushroom' ? 1 : 2
-      tiles[y * cols + x] = TILE_FIXTURE_BASE + variant
+    const allowed = biome.fixtureKinds.filter((k) => k !== 'stone-pillar')
+    if (allowed.length === 0) continue
+    const kind = allowed[rng.intRange(0, allowed.length - 1)]!
+    const variant = kind === 'bone' ? 0 : kind === 'mushroom' ? 1 : 2
+
+    const thickness = pickThickness()
+    const width = rng.intRange(4, Math.min(12, cols - 2))
+    const startCol = rng.intRange(1, Math.max(1, cols - 1 - width))
+    // Avoid the very top/bottom rows of the chunk so bands don't
+    // butt against the chunk seam (visually awkward when streaming).
+    const startRow = rng.intRange(2, Math.max(2, rows - 1 - thickness))
+
+    for (let r = startRow; r < startRow + thickness && r < rows; r++) {
+      for (let c = startCol; c < startCol + width && c < cols; c++) {
+        const idx = r * cols + c
+        const t = tiles[idx]
+        // Stone overlay rule: rocks have priority — never paint
+        // fixture over stone. Also skip already-fixture cells so
+        // bands don't recolor each other into a Frankenstein stripe.
+        if (t === TILE_STONE) continue
+        if (t !== undefined && t >= TILE_FIXTURE_BASE && t < TILE_FIXTURE_BASE + 5) continue
+        // Only paint where the chunk has SOIL — leaves caves clean.
+        if (t === TILE_SOIL) {
+          tiles[idx] = TILE_FIXTURE_BASE + variant
+        }
+      }
     }
   }
 

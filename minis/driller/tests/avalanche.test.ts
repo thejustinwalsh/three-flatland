@@ -100,8 +100,10 @@ describe('avalanche cluster rules', () => {
     ])
     disturbAllStones(world)
     resetAvalanche()
-    // Run enough ticks for the shake-telegraph + commit fall.
-    for (let i = 0; i < 60; i++) {
+    // Run enough ticks for the shake-telegraph + commit fall. Telegraph
+    // is now AVALANCHE_SHAKE_TICKS + AVALANCHE_SETTLE_TICKS = 90+30 =
+    // 120 ticks; pad with margin for the commit translate.
+    for (let i = 0; i < 200; i++) {
       tickWorld(world, 1)
       rockAvalancheSystem(world)
     }

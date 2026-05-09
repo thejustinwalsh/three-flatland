@@ -100,9 +100,11 @@ describe('mouse-brace on shaking rock cluster', () => {
     resetAvalanche()
 
     // Tick past the telegraph + first commit so cells are FALLING.
+    // Telegraph is 120 ticks (90 SHAKE + 30 SETTLE); allow margin
+    // for the first commit step too.
     let foundFalling: { col: number; row: number } | null = null
     const grid = world.get(Grid)!
-    for (let i = 0; i < 80 && !foundFalling; i++) {
+    for (let i = 0; i < 200 && !foundFalling; i++) {
       tickWorld(world, 1)
       rockAvalancheSystem(world)
       for (let r = 0; r < grid.rows; r++) {

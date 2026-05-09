@@ -166,15 +166,27 @@ export const EXPLOSION_RADIUS = 2
 /** Driller radius for explosive adjacency trigger (1 = 8-neighbor). */
 export const EXPLOSIVE_TRIGGER_RADIUS = 1
 
-/** Falling-rock hazard — telegraphed warning before drop. */
-export const HAZARD_WARNING_TICKS = 60       // ~1.0s @ 60Hz
+/**
+ * Falling-rock hazard — telegraphed warning before drop. Sized so
+ * the AI driller has time to drill a 4-wide escape tunnel from under
+ * a worst-case-incoming rock without dying. Drill cadence is
+ * ~250ms/cell at typical depths, so 4 cells = ~1s; extra margin
+ * means brace + reaction is feasible too.
+ */
+export const HAZARD_WARNING_TICKS = 90       // ~1.5s @ 60Hz
 export const HAZARD_GRAVITY_PX = 0.8
 export const HAZARD_TERMINAL_PX = 18
 
-/** Spawn cadence — one hazard every N ticks (when conditions met). */
-export const HAZARD_SPAWN_INTERVAL_TICKS = 600   // ~10s baseline
+/**
+ * Spawn cadence — global throttle between any two hazard spawns.
+ * Tightened (was 600/360) so straight-down digging gets punished
+ * fast enough that the AI can't out-run the rocks. With per-col
+ * cooldown of 120t (~2s), a sustained shaft drops a rock every
+ * ~3s in topsoil and faster in deeper biomes via depth boost.
+ */
+export const HAZARD_SPAWN_INTERVAL_TICKS = 300   // ~5s baseline
 /** Hard floor on the per-spawn interval after biome scaling. */
-export const HAZARD_SPAWN_INTERVAL_FLOOR = 360   // ~6s minimum
+export const HAZARD_SPAWN_INTERVAL_FLOOR = 180   // ~3s minimum
 /** Per-biome multiplier (deeper biomes spawn more). Lower = less aggressive. */
 export const HAZARD_DEPTH_BOOST = {
   topsoil: 0,
