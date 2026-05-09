@@ -214,9 +214,18 @@ function clearJustLandedInWindow(
   winBot: number,
   cols: number,
 ): void {
+  // When clearing JUST_LANDED we ALSO set SAG_RECHECK on those cells.
+  // The just-landed cells were filtered out of the unstable set for
+  // one tick (to avoid same-tick re-sag false-shake loops); on the
+  // NEXT tick they need to be re-evaluated. Without this, a landed
+  // chunk that's still unanchored (not connected to any anchor
+  // through soil) would never re-evaluate, leaving "floating soil"
+  // that the player observes as bug.
   if (recentlyLandedIdxs.length > 0) {
     for (const idx of recentlyLandedIdxs) {
-      if (idx >= 0 && idx < flags.length) flags[idx]! &= ~FLAG_JUST_LANDED
+      if (idx >= 0 && idx < flags.length) {
+        flags[idx]! = (flags[idx]! & ~FLAG_JUST_LANDED) | FLAG_SAG_RECHECK
+      }
     }
     recentlyLandedIdxs.length = 0
     return
@@ -224,7 +233,9 @@ function clearJustLandedInWindow(
   const jlClearStart = winTop * cols
   const jlClearEnd = Math.min(flags.length, winBot * cols)
   for (let i = jlClearStart; i < jlClearEnd; i++) {
-    if ((flags[i]! & FLAG_JUST_LANDED) !== 0) flags[i]! &= ~FLAG_JUST_LANDED
+    if ((flags[i]! & FLAG_JUST_LANDED) !== 0) {
+      flags[i]! = (flags[i]! & ~FLAG_JUST_LANDED) | FLAG_SAG_RECHECK
+    }
   }
 }
 

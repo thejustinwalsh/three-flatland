@@ -93,14 +93,25 @@ export function carveCaves(
   rng: Rng,
 ): void {
   for (let i = 0; i < count; i++) {
-    const cx = rng.intRange(2, cols - 3)
-    const cy = rng.intRange(3, rows - 4)
-    const w = rng.intRange(3, 6)
-    const h = rng.intRange(2, 4)
+    // Cave centers can sit ANYWHERE in the chunk — including right
+    // up against the side walls. Caves carving off the side of the
+    // playfield are encouraged: side walls aren't anchors anyway,
+    // so a cave that opens through the left or right wall just means
+    // the soil above no longer routes that way to the bottom edge,
+    // which produces more cantilever falls.
+    const cx = rng.intRange(0, cols - 1)
+    const cy = rng.intRange(2, rows - 3)
+    const w = rng.intRange(3, 7)
+    const h = rng.intRange(2, 5)
     for (let y = cy - h; y <= cy + h; y++) {
       for (let x = cx - w; x <= cx + w; x++) {
-        if (x <= 0 || y <= 0 || x >= cols - 1 || y >= rows - 1) continue
-        if (rng.chance(0.55)) chunk[y * cols + x] = TILE_AIR
+        // Clip to playfield bounds; allow x=0 and x=cols-1 (edges).
+        // Top row stays solid (start-of-game guarantee enforces row<4
+        // anyway). Bottom row gets a 1-cell buffer to keep the world
+        // floor intact for streaming math.
+        if (x < 0 || x >= cols) continue
+        if (y <= 0 || y >= rows - 1) continue
+        if (rng.chance(0.6)) chunk[y * cols + x] = TILE_AIR
       }
     }
     for (let k = 0; k < 4; k++) smoothCA(chunk, cols, rows)
@@ -411,15 +422,22 @@ export function generateChunk(seed: number, chunkY: number): GeneratedChunk {
   // they fade and despawn (handled by gem-gravity).
   const gemCount = rng.intRange(biome.gemCount[0], biome.gemCount[1])
   const gems: GeneratedGem[] = []
+  // Retry on stone/fixture overlap so the placement honors the biome's
+  // count range even when caves + rocks + fixtures are dense. Up to
+  // GEM_PLACEMENT_RETRIES attempts per gem.
+  const GEM_PLACEMENT_RETRIES = 8
   for (let i = 0; i < gemCount; i++) {
-    const x = rng.intRange(1, cols - 2)
-    const y = rng.intRange(1, rows - 2)
-    const idx = y * cols + x
-    if (tiles[idx] === TILE_SOIL || tiles[idx] === TILE_AIR) {
-      const color = biome.gemPalette[rng.intRange(0, biome.gemPalette.length - 1)]!
-      const sizeRoll = rng.next()
-      const size: GemSize = sizeRoll < 0.5 ? 'small' : sizeRoll < 0.8 ? 'medium' : sizeRoll < 0.95 ? 'large' : 'huge'
-      gems.push({ col: x, rowInChunk: y, color, size })
+    for (let attempt = 0; attempt < GEM_PLACEMENT_RETRIES; attempt++) {
+      const x = rng.intRange(1, cols - 2)
+      const y = rng.intRange(1, rows - 2)
+      const idx = y * cols + x
+      if (tiles[idx] === TILE_SOIL || tiles[idx] === TILE_AIR) {
+        const color = biome.gemPalette[rng.intRange(0, biome.gemPalette.length - 1)]!
+        const sizeRoll = rng.next()
+        const size: GemSize = sizeRoll < 0.5 ? 'small' : sizeRoll < 0.8 ? 'medium' : sizeRoll < 0.95 ? 'large' : 'huge'
+        gems.push({ col: x, rowInChunk: y, color, size })
+        break
+      }
     }
   }
 
