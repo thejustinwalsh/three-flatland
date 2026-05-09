@@ -10,6 +10,7 @@ import {
   TILE_STONE,
 } from '../src/traits'
 import { STONE_MAX_HITS } from '../src/constants'
+import { seedAnchorsBFS } from '../src/lib/chunk-detect'
 
 /**
  * String-art grid → Koota world helper.
@@ -45,6 +46,11 @@ export function makeWorldFromGrid(art: string[]) {
       tiles[idx] = t
     }
   }
+  // Pre-settle anchor distance so tests don't need to manually run
+  // dozens of relax ticks before assertions reflect the steady state.
+  const anchorDist = new Uint8Array(cols * rows).fill(255)
+  seedAnchorsBFS(tiles, anchorDist, cols, rows)
+
   const world = createWorld()
   world.add(GameState({ tick: 0, runState: 'playing' }))
   world.add(
@@ -58,6 +64,7 @@ export function makeWorldFromGrid(art: string[]) {
       frameIndex: new Uint8Array(cols * rows),
       hits,
       clusterId: assignClusterIds(tiles, cols, rows),
+      anchorDist,
     }),
   )
   world.add(Camera({ y: 0, rows, scale: 1 }))

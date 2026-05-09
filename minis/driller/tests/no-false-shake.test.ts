@@ -385,42 +385,26 @@ describe('no-false-shake invariant', () => {
     }
   })
 
-  it('JUST_LANDED grace prevents same-tick re-sag of just-landed cells', () => {
-    // Direct test: stamp FLAG_JUST_LANDED on a chunk of cells that
-    // would otherwise be cantilever-unstable. detectAndSag must NOT
-    // pick them up this tick. They become regular candidates next
-    // tick (after the end-of-pass clear).
+  it('a chunk that lands ON an anchor path becomes anchored same-tick (snap-down rule)', () => {
+    // Diffusion model replaces the JUST_LANDED grace. When a chunk
+    // lands on cells that are already anchored, the relaxation
+    // step's "snap down" rule pulls the new cells' anchor distance
+    // down to (neighbor + 1) instantly. No sag should fire.
     const world = makeWorldFromGrid([
-      '..............',
-      '..............',
-      '..######......',
-      '..............',
+      '##############',  // row 0: top edge — seeds row 0 at distance 0
+      '##############',  // row 1: distance 1
+      '##############',  // row 2: distance 2
+      '##############',  // row 3: distance 3
       'SSSSSSSSSSSSSS',
     ])
     const grid = world.get(Grid)!
-    // Tag the cantilever cells with both SAG_RECHECK and JUST_LANDED.
-    for (let i = 0; i < grid.tiles.length; i++) {
-      if (grid.tiles[i] === TILE_SOIL) {
-        grid.flags[i]! |= FLAG_SAG_RECHECK | FLAG_JUST_LANDED
-      }
-    }
+    // Pre-settle already ran in makeWorldFromGrid; verify a non-edge
+    // cell is anchored. With MAX_REACH=4 the slab is fully stable.
+    expect(grid.anchorDist[3 * grid.cols + 5]).toBeLessThanOrEqual(3)
     detectAndSag(world)
-    // No sag entity should have been spawned this pass.
     let sagCount = 0
     world.query(SaggingChunk).forEach(() => sagCount++)
     expect(sagCount).toBe(0)
-    // JUST_LANDED was cleared at end of pass.
-    for (let i = 0; i < grid.flags.length; i++) {
-      expect(grid.flags[i]! & FLAG_JUST_LANDED).toBe(0)
-    }
-    // Re-tag SAG_RECHECK and run again — this time it should sag.
-    for (let i = 0; i < grid.tiles.length; i++) {
-      if (grid.tiles[i] === TILE_SOIL) grid.flags[i]! |= FLAG_SAG_RECHECK
-    }
-    detectAndSag(world)
-    let sagCount2 = 0
-    world.query(SaggingChunk).forEach(() => sagCount2++)
-    expect(sagCount2).toBeGreaterThan(0)
   })
 
   it('tickSagging does not set SHAKING on cells that are no longer SOIL', () => {

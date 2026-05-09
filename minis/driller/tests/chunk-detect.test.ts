@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { detectChunks, isSupported, type SoilChunk } from '../src/lib/chunk-detect'
-import { TILE_AIR, TILE_FIXTURE_BASE, TILE_SOIL, TILE_STONE } from '../src/traits'
+import { detectChunks, seedAnchorsBFS, unstableCells } from '../src/lib/chunk-detect'
+import { ANCHOR_DIST_INF, TILE_AIR, TILE_FIXTURE_BASE, TILE_SOIL, TILE_STONE } from '../src/traits'
 
 const A = TILE_AIR
 const D = TILE_SOIL
@@ -64,87 +64,152 @@ describe('detectChunks', () => {
   })
 })
 
-describe('isSupported', () => {
-  it('a chunk touching the bottom edge is supported', () => {
-    const cols = 3
-    const rows = 3
-    // prettier-ignore
-    const tiles = new Uint8Array([
-      A,A,A,
-      A,D,A,
-      A,D,A,
+/**
+ * Diffusion-aware anchor topology tests. Pin the new model:
+ *   - Anchor seeds: row 0 conductors, cell-above-fixture
+ *   - Conductors: SOIL + STONE both at +1 cost
+ *   - Walls: AIR (not in graph), FIXTURE (no propagation)
+ *   - Side walls: NOT anchors
+ *   - Bottom-loaded edge: NOT a seed
+ */
+describe('seedAnchorsBFS — anchor topology', () => {
+  function build(rows: string[]): { tiles: Uint8Array; dist: Uint8Array; cols: number; rows: number } {
+    const cols = rows[0]!.length
+    const r = rows.length
+    const tiles = new Uint8Array(cols * r)
+    for (let i = 0; i < r; i++) {
+      for (let c = 0; c < cols; c++) {
+        const ch = rows[i]![c]!
+        let t: number = TILE_AIR
+        if (ch === '#') t = TILE_SOIL
+        else if (ch === 'S') t = TILE_STONE
+        else if (ch === 'F') t = TILE_FIXTURE_BASE
+        tiles[i * cols + c] = t
+      }
+    }
+    const dist = new Uint8Array(cols * r).fill(255)
+    seedAnchorsBFS(tiles, dist, cols, r)
+    return { tiles, dist, cols, rows: r }
+  }
+
+  it('row 0 SOIL cells are seeds at distance 0', () => {
+    const { dist, cols } = build([
+      '######',
+      '######',
+      '######',
     ])
-    const chunk: SoilChunk = detectChunks(tiles, cols, rows)[0]!
-    expect(isSupported(chunk, tiles, cols, rows)).toBe(true)
+    for (let c = 0; c < cols; c++) expect(dist[c]).toBe(0)
   })
 
-  it('a chunk touching the left edge is supported', () => {
-    const cols = 3
-    const rows = 3
-    // prettier-ignore
-    const tiles = new Uint8Array([
-      D,A,A,
-      D,A,A,
-      A,A,A,
+  it('distance grows by 1 per row downward through SOIL', () => {
+    const { dist, cols } = build([
+      '######',
+      '######',
+      '######',
+      '######',
     ])
-    const chunk: SoilChunk = detectChunks(tiles, cols, rows)[0]!
-    expect(isSupported(chunk, tiles, cols, rows)).toBe(true)
+    expect(dist[0 * cols]).toBe(0)
+    expect(dist[1 * cols]).toBe(1)
+    expect(dist[2 * cols]).toBe(2)
+    expect(dist[3 * cols]).toBe(3)
   })
 
-  it('a chunk touching the right edge is supported', () => {
-    const cols = 3
-    const rows = 3
-    // prettier-ignore
-    const tiles = new Uint8Array([
-      A,A,D,
-      A,A,D,
-      A,A,A,
+  it('STONE conducts anchor distance at +1 cost (same as SOIL)', () => {
+    const { dist, cols } = build([
+      '######',
+      'SSSSSS', // row 1: stone — should still get distance 1 from row 0 SOIL above
+      '######',
     ])
-    const chunk: SoilChunk = detectChunks(tiles, cols, rows)[0]!
-    expect(isSupported(chunk, tiles, cols, rows)).toBe(true)
+    for (let c = 0; c < cols; c++) expect(dist[1 * cols + c]).toBe(1)
+    for (let c = 0; c < cols; c++) expect(dist[2 * cols + c]).toBe(2)
   })
 
-  it('a chunk adjacent to STONE is supported', () => {
-    const cols = 3
-    const rows = 3
-    // prettier-ignore
-    const tiles = new Uint8Array([
-      A,D,A,
-      A,S,A,
-      A,A,A,
+  it('FIXTURE seeds the cell directly above at distance 0; cells beside the fixture are NOT seeded', () => {
+    // Fixture at (4, 2). Cell (3, 2) is above → seed. Sides not.
+    const { dist, cols } = build([
+      '......',
+      '......',
+      '......',
+      '..#...',
+      '..F...',
     ])
-    const chunks = detectChunks(tiles, cols, rows)
-    expect(chunks.length).toBe(1)
-    expect(isSupported(chunks[0]!, tiles, cols, rows)).toBe(true)
+    expect(dist[3 * cols + 2]).toBe(0) // above fixture: seed
+    // Side neighbors of the fixture itself: AIR or whatever, but not
+    // seeded with 0 (they're AIR here).
   })
 
-  it('a chunk adjacent to FIXTURE is supported', () => {
-    const cols = 3
-    const rows = 3
-    // prettier-ignore
-    const tiles = new Uint8Array([
-      A,D,A,
-      A,F,A,
-      A,A,A,
+  it('FIXTURE is a wall — distance does not propagate through it', () => {
+    // Fixture at (1, 2). SOIL on both sides at row 1. Anchor source
+    // is row 0 SOIL above fixture's column too (it's also seeded at 0
+    // since row 0 SOIL is a seed). The point: distance from (1,0) to
+    // (1,4) routing THROUGH the fixture cell is forbidden — they
+    // route through row 0 instead.
+    const { dist, cols } = build([
+      '#####',
+      '#F###',
     ])
-    const chunks = detectChunks(tiles, cols, rows)
-    expect(chunks.length).toBe(1)
-    expect(isSupported(chunks[0]!, tiles, cols, rows)).toBe(true)
+    // (1, 0) routes via row 0: distance 1.
+    expect(dist[1 * cols + 0]).toBe(1)
+    // (1, 2) routes via (0, 2) at distance 0 → 1. Same path-length.
+    expect(dist[1 * cols + 2]).toBe(1)
   })
 
-  it('a fully-floating chunk is NOT supported', () => {
-    const cols = 5
-    const rows = 5
+  it('side walls are NOT anchors — soil at col 0 has no special seed', () => {
+    // SOIL at (5, 0) with no other anchor path: only routes via
+    // upward. Distance = 5.
+    const { dist, cols } = build([
+      '#.....',
+      '#.....',
+      '#.....',
+      '#.....',
+      '#.....',
+      '#.....',
+    ])
+    expect(dist[5 * cols + 0]).toBe(5)
+  })
+
+  it('bottom edge is NOT a seed — cells far from top edge get large distances', () => {
+    // No fixtures, no anchors except row 0.
+    const { dist, cols } = build([
+      '.....',
+      '.....',
+      '.....',
+      '.....',
+      '#####',
+    ])
+    // Floating row of SOIL at row 4 with no path to row 0 → INF.
+    for (let c = 0; c < cols; c++) {
+      expect(dist[4 * cols + c]).toBe(ANCHOR_DIST_INF)
+    }
+  })
+})
+
+describe('unstableCells', () => {
+  it('cells with distance > maxReach are unstable', () => {
+    const cols = 4
+    const rows = 6
     // prettier-ignore
     const tiles = new Uint8Array([
-      A,A,A,A,A,
-      A,D,D,A,A,
-      A,A,A,A,A,
-      A,A,A,A,A,
-      A,A,A,A,A,
+      D,D,D,D,
+      D,D,D,D,
+      D,D,D,D,
+      D,D,D,D,
+      D,D,D,D,
+      D,D,D,D,
     ])
-    const chunks = detectChunks(tiles, cols, rows)
-    expect(chunks.length).toBe(1)
-    expect(isSupported(chunks[0]!, tiles, cols, rows)).toBe(false)
+    const dist = new Uint8Array(tiles.length).fill(255)
+    seedAnchorsBFS(tiles, dist, cols, rows)
+    // With MAX_REACH=2, rows 3-5 are unstable.
+    const unstable = unstableCells(tiles, dist, 2)
+    for (let r = 0; r < 3; r++) {
+      for (let c = 0; c < cols; c++) {
+        expect(unstable.has(r * cols + c)).toBe(false)
+      }
+    }
+    for (let r = 3; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        expect(unstable.has(r * cols + c)).toBe(true)
+      }
+    }
   })
 })

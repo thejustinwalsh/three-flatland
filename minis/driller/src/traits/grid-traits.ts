@@ -53,52 +53,36 @@ export const FLAG_AUTOTILE_DIRTY = 1 << 2
 export const FLAG_PRECARIOUS = 1 << 3
 
 /**
- * Stone-disturbance bit. A 4+ rock cluster is otherwise stable; only
- * a destabilising event (driller drills nearby, fresh rock lands on
- * the pile, adjacent soil falls away) sets this bit. Cleared after
- * the avalanche tick processes the cluster.
- *
- * "Naturally occurring" rock clusters from world generation never get
- * this bit set, so they remain inert until the player actually
- * disturbs them.
+ * Stone-disturbance bit. Legacy from the pre-diffusion model. New
+ * code should not read or write this bit — the relaxation-based
+ * `Grid.anchorDist` is the source of truth for stability. Removed
+ * fully in Phase C of the collapse redesign once the avalanche
+ * canFall path simplifies.
  */
 export const FLAG_DISTURBED = 1 << 4
 
 /**
- * Pre-fall telegraph: a disturbed avalanche cluster shakes for a few
- * hundred ms before committing to its first descent step. The
- * renderer adds a small oscillating offset to cells with this bit so
- * the player has a clear "this is about to fall" visual.
+ * Pre-fall telegraph: a falling rock cluster shakes for a few hundred
+ * ms before committing to its first descent step. The renderer adds
+ * a small oscillating offset to cells with this bit so the player
+ * has a clear "this is about to fall" visual.
  */
 export const FLAG_SHAKING = 1 << 5
 
 /**
- * Set on a SOIL cell when something nearby changes (driller drills,
- * hazard lands, chunk re-attaches, explosion clears, avalanche
- * crush). Acts as a per-tick gate for the cantilever sag detector:
- * a SOIL chunk is only re-evaluated for unstable overhangs if at
- * least one of its cells carries this bit. Fresh worldgen-loaded
- * chunks DON'T get this flag, so they stay stable until the player
- * does something that could destabilise them.
- *
- * detectAndSag clears this bit on a chunk's cells once it processes
- * the chunk; subsequent ticks re-check only on the next mutation.
+ * Legacy gate: pre-diffusion the sag detector ran a fresh BFS each
+ * tick over chunks marked with this flag. With persistent
+ * `Grid.anchorDist` driven by per-tick relaxation, the sag detector
+ * scans `anchorDist > MAX_REACH` directly; this flag is no longer
+ * read. Removed in Phase C.
  */
 export const FLAG_SAG_RECHECK = 1 << 6
 
 /**
- * Single-tick grace period for cells that JUST landed via a
- * FallingChunk. The cells stamp into the grid AND propagate
- * SAG_RECHECK into the surrounding terrain (so impact-driven
- * cascades work in the Mr. Driller way), but the LANDED cells
- * themselves are excluded from the unstable-set on the very next
- * detectAndSag pass — otherwise the chunk that just landed gets
- * re-evaluated as the leaf-end of a bigger cantilever and
- * immediately sags again, creating same-tick perpetual loops.
- *
- * Cleared at the END of detectAndSag so the cells are full
- * participants from the NEXT tick onward (with the standard story:
- * detect → darken → shake → fall).
+ * Legacy 1-tick grace bit. The diffusion model converges naturally —
+ * a freshly-landed cell's anchor distance will be re-derived from its
+ * new neighbors over a few relax ticks, so no special grace is needed.
+ * Removed in Phase C.
  */
 export const FLAG_JUST_LANDED = 1 << 7
 
@@ -135,6 +119,24 @@ export const Grid = trait({
    * could grow to arbitrary size from successive single-rock drops.
    */
   clusterId: () => new Uint16Array(0),
+  /**
+   * Per-cell anchor distance, persistent across ticks. Driven by the
+   * diffusion-based collapse system: pre-settled by a single full BFS
+   * on chunk gen, then nudged each tick by `relaxAnchorDist()` toward
+   * the true value. Rising stress (becoming less stable) propagates
+   * at +1/tick; falling stress (becoming more stable) snaps instantly.
+   *
+   * 255 = "infinitely far" (no anchor path). 0 = anchor seed cell.
+   * SOIL/STONE cells get finite values; AIR is left at 255.
+   *
+   * Read by the renderer for the cracking gradient visual and by the
+   * sag detector to gate the precarious→sagging→shaking pipeline
+   * (`anchorDist > MAX_REACH` ⇒ unstable).
+   */
+  anchorDist: () => new Uint8Array(0),
   topRow: 0,
   bottomRow: 0,
 })
+
+/** Sentinel value in `Grid.anchorDist` for "no anchor path / AIR". */
+export const ANCHOR_DIST_INF = 255

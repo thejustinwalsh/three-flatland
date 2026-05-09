@@ -130,11 +130,11 @@ describe('shake telegraph rules', () => {
   })
 })
 
-describe('SAG_RECHECK gate', () => {
-  it('does NOT sag on the FIRST tick after worldgen (no SAG_RECHECK on cells)', () => {
-    // Floating slab — cantilever-unstable, willFall = true. But
-    // without FLAG_SAG_RECHECK on any of its cells, detectAndSag
-    // must skip it entirely.
+describe('diffusion-based sag detection', () => {
+  it('a chunk with no anchor path enters the sag pipeline (post-pre-settle)', () => {
+    // Floating slab — pre-settle assigns INF anchor distance to its
+    // cells (no path to top edge or any fixture). On detectAndSag,
+    // the chunk should immediately become a SaggingChunk.
     const world = makeWorldFromGrid([
       '..............',
       '..............',
@@ -143,10 +143,13 @@ describe('SAG_RECHECK gate', () => {
       'SSSSSSSSSSSSSS',
     ])
     detectAndSag(world)
-    expect(countSagging(world)).toBe(0)
+    expect(countSagging(world)).toBeGreaterThan(0)
   })
 
-  it('clears FLAG_SAG_RECHECK after processing so the chunk does not re-sag every tick', () => {
+  it('does not double-spawn the same chunk if detectAndSag runs twice with no mutations', () => {
+    // First call spawns a SaggingChunk; the cells get FLAG_SAGGING.
+    // Second call sees the FLAG_SAGGING and skips re-spawning (the
+    // chunkHasFlag(FLAG_SAGGING|FLAG_FALLING) check).
     const world = makeWorldFromGrid([
       '..............',
       '..............',
@@ -154,21 +157,10 @@ describe('SAG_RECHECK gate', () => {
       '..............',
       'SSSSSSSSSSSSSS',
     ])
-    tagSagRecheck(world)
     detectAndSag(world)
-    // After detectAndSag, FLAG_SAG_RECHECK should be cleared on the
-    // chunk's cells — re-running detectAndSag on the same world (no
-    // new mutations) must not spawn additional sags.
-    const sagCountAfterFirst = countSagging(world)
+    const after1 = countSagging(world)
     detectAndSag(world)
-    expect(countSagging(world)).toBe(sagCountAfterFirst)
-    // FLAG_SAG_RECHECK should be 0 on every soil cell at this point.
-    const grid = world.get(Grid)!
-    for (let i = 0; i < grid.tiles.length; i++) {
-      if (grid.tiles[i] === TILE_SOIL) {
-        expect(grid.flags[i]! & FLAG_SAG_RECHECK).toBe(0)
-      }
-    }
+    expect(countSagging(world)).toBe(after1)
   })
 })
 

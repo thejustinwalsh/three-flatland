@@ -20,6 +20,7 @@ import {
 import type { GemColor, GemSize } from '../atlas-regions'
 import { biomeAt, isFreeFall, WORLD_BODY_ROWS, WORLD_LENGTH_ROWS, WORLD_VOID_ROWS } from '../biomes'
 import { createRng, type Rng } from '../lib/rng'
+import { seedAnchorsBFS } from '../lib/chunk-detect'
 import { clearChunkEntitiesInRowRange } from './collapse'
 
 /**
@@ -551,12 +552,17 @@ function ensureRows(world: World, neededRows: number): void {
   const frameIndex = new Uint8Array(newSize)
   const hits = new Uint8Array(newSize)
   const clusterId = new Uint16Array(newSize)
+  // Anchor distance grid is parallel to tiles. AIR / unloaded cells
+  // start at INF so they don't pollute the gradient until they get
+  // populated by chunk gen + pre-settle.
+  const anchorDist = new Uint8Array(newSize).fill(255)
   tiles.set(grid.tiles)
   flags.set(grid.flags)
   frameIndex.set(grid.frameIndex)
   hits.set(grid.hits)
   clusterId.set(grid.clusterId)
-  world.set(Grid, { ...grid, tiles, flags, frameIndex, hits, clusterId, rows: newRows })
+  anchorDist.set(grid.anchorDist)
+  world.set(Grid, { ...grid, tiles, flags, frameIndex, hits, clusterId, anchorDist, rows: newRows })
 }
 
 /** Splice a generated chunk's tiles into the live grid at chunkY × CHUNK_ROWS. */
@@ -625,6 +631,16 @@ function loadChunk(world: World, chunkY: number, seed: number): void {
   if (baseRow + CHUNK_ROWS > refreshed.bottomRow) {
     world.set(Grid, { ...refreshed, bottomRow: baseRow + CHUNK_ROWS })
   }
+
+  // Pre-settle: run the full anchor-distance BFS once over the
+  // whole grid so the newly-loaded chunk's cells start at their
+  // steady-state distance. After this, only `relaxAnchorDist()` runs
+  // per tick. Without pre-settle, every freshly-loaded cell would
+  // start at INF and slowly converge over MAX_REACH ticks — visible
+  // as a jarring sweep of unstable cells flashing into "precarious"
+  // before the wavefront resolves.
+  const refreshed2 = world.get(Grid)!
+  seedAnchorsBFS(refreshed2.tiles, refreshed2.anchorDist, refreshed2.cols, refreshed2.rows)
 
   // Spawn gem entities.
   for (const g of generated.gems) {

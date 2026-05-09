@@ -1,11 +1,11 @@
 import { describe, it, expect } from 'vitest'
 import { createWorld } from 'koota'
 import { collapseTick, detectAndSag } from '../src/systems/collapse'
+import { seedAnchorsBFS } from '../src/lib/chunk-detect'
 import {
   Camera,
   Driller,
   FallingChunk,
-  FLAG_SAG_RECHECK,
   FLAG_SAGGING,
   GameState,
   Grid,
@@ -37,6 +37,8 @@ function makeWorldFromGrid(art: string[]) {
       tiles[r * cols + c] = ch === '#' ? TILE_SOIL : ch === 'S' ? TILE_STONE : TILE_AIR
     }
   }
+  const anchorDist = new Uint8Array(cols * rows).fill(255)
+  seedAnchorsBFS(tiles, anchorDist, cols, rows)
   const world = createWorld()
   world.add(GameState({ tick: 0, runState: 'playing' }))
   world.add(
@@ -49,19 +51,11 @@ function makeWorldFromGrid(art: string[]) {
       flags: new Uint8Array(cols * rows),
       frameIndex: new Uint8Array(cols * rows),
       hits: new Uint8Array(cols * rows),
+      anchorDist,
     }),
   )
   world.add(Camera({ y: 0, rows: rows, scale: 1 }))
   return world
-}
-
-function tagSagRecheck(world: ReturnType<typeof makeWorldFromGrid>): void {
-  // Mark every SOIL cell with FLAG_SAG_RECHECK so detectAndSag's
-  // gate doesn't skip the chunk.
-  const grid = world.get(Grid)!
-  for (let i = 0; i < grid.tiles.length; i++) {
-    if (grid.tiles[i] === TILE_SOIL) grid.flags[i]! |= FLAG_SAG_RECHECK
-  }
 }
 
 describe('detectAndSag', () => {
@@ -77,7 +71,7 @@ describe('detectAndSag', () => {
       '..S..',
       'SSSSS',
     ])
-    tagSagRecheck(world)
+
     detectAndSag(world)
     let sagCount = 0
     world.query(SaggingChunk).forEach(() => sagCount++)
@@ -113,7 +107,7 @@ describe('detectAndSag', () => {
       '..............',
       'SSSSSSSSSSSSSS',
     ])
-    tagSagRecheck(world)
+
     detectAndSag(world)
     let sagCount = 0
     world.query(SaggingChunk).forEach(() => sagCount++)
@@ -130,7 +124,7 @@ describe('detectAndSag', () => {
       '#################',
       'SSSSSSSSSSSSSSSSS',
     ])
-    tagSagRecheck(world)
+
     detectAndSag(world)
     let sagCount = 0
     world.query(SaggingChunk).forEach(() => sagCount++)
@@ -149,7 +143,7 @@ describe('collapseTick (sag → fall release)', () => {
       '..............',
       'SSSSSSSSSSSSSS',
     ])
-    tagSagRecheck(world)
+
     world.spawn(
       Driller({ col: 7, row: 1, px: 7 * 16 + 8, py: 1 * 16 + 8, destCol: 7, destRow: 1, facing: 1 }),
     )

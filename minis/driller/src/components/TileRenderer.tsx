@@ -24,7 +24,6 @@ import {
   tickDebugRenderFrame,
 } from '../dev/render-instrument'
 import { getRenderMode, heatmapTint } from '../dev/render-mode'
-import { anchorDistanceMap } from '../lib/chunk-detect'
 import { autotileMask } from '../lib/autotile'
 import { CORNER_FRAME_INDEX, cornerMask, ROCK_FRAMES } from '../lib/rock-frames'
 import { useRockAutotileMaterial } from '../materials'
@@ -223,7 +222,7 @@ export function TileRenderer({ material }: TileRendererProps) {
     const grid = world.get(Grid)
     const cam = world.get(Camera)
     if (!grid || !cam || grid.rows === 0) return
-    const { cols, rows, tiles, flags, frameIndex, hits, clusterId } = grid
+    const { cols, rows, tiles, flags, frameIndex, hits, clusterId, anchorDist } = grid
     const pool = refs.current
 
     const topRow = Math.max(0, Math.floor(cam.y / TILE_PX) - 1)
@@ -252,17 +251,15 @@ export function TileRenderer({ material }: TileRendererProps) {
     const now = Date.now()
     const pulse = Math.floor(now / 80) % 2 === 0
 
-    // Always-on "weakness gradient" — tint SOIL by distance from
-    // the nearest anchor. Cells close to anchors look solid; cells
-    // far away look visibly cracked, so the player can see where
-    // the world is fragile BEFORE a sag entity exists. Replaces the
-    // old PRECARIOUS / SAGGING state-darken which only kicked in
-    // after the sim had already committed to a fall — too late to
-    // be a "watch out" signal.
+    // Always-on "weakness gradient" — tint SOIL by the persistent
+    // anchor distance written by the diffusion model
+    // (`relaxAnchorDist()` runs each tick from `collapseTick`). The
+    // player sees a slow wavefront of cracking spread outward from
+    // drilled cells over several frames — cause and effect is legible.
     //
-    // The same map is also used by the debug heatmap mode.
+    // ANCHOR_DIST_INF = 255 means "no anchor path"; the renderer
+    // treats this the same as "max cracking" (about to fall).
     const heatmapMode = import.meta.env.DEV && getRenderMode() === 'anchor-heatmap'
-    const distances = anchorDistanceMap(tiles, cols, rows)
 
     // Stone autotile lookup — cluster-id-aware so two adjacent-but-
     // independent clusters render with strokes between them (no
@@ -299,7 +296,12 @@ export function TileRenderer({ material }: TileRendererProps) {
         const shaking = (flags[idx]! & FLAG_SHAKING) !== 0
         const litExplosive = tile === TILE_EXPLOSIVE && triggeredExplosives.has(idx) && pulse
         const palette = biomeAt(r).palette
-        const distance = distances[idx] ?? -1
+        // Persistent anchor distance from the diffusion model. 255 = INF
+        // (no anchor path); renderer treats >= MAX_REACH (or any value
+        // beyond the gradient bands) as max cracking. Stones render
+        // uniform — the gradient only paints SOIL.
+        const rawDist = anchorDist[idx] ?? 255
+        const distance = rawDist >= 255 ? -1 : rawDist
         let tint: readonly [number, number, number]
         if (heatmapMode) {
           // Heatmap path: ignore tile class, color by anchor distance.
