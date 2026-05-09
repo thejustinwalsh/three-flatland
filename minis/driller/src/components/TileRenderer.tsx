@@ -26,7 +26,7 @@ import {
 import { getRenderMode, heatmapTint } from '../dev/render-mode'
 import { anchorDistanceMap } from '../lib/chunk-detect'
 import { autotileMask } from '../lib/autotile'
-import { ROCK_FRAMES } from '../lib/rock-frames'
+import { CORNER_FRAME_INDEX, cornerMask, ROCK_FRAMES } from '../lib/rock-frames'
 import { useRockAutotileMaterial } from '../materials'
 
 // Generous pool: covers tall viewports without stale-cell artifacts. The
@@ -195,6 +195,12 @@ export function TileRenderer({ material }: TileRendererProps) {
   // Frame 15 is the stroke-free interior; frame 0 is the all-isolated
   // case with strokes on every edge.
   const rockRefs = useRef<(Sprite2DType | null)[]>([])
+  // Corner-overlay pool — composites L-strokes onto stones whose
+  // cardinal neighbors are present but a diagonal is missing. A
+  // single stone can need up to 4 corner overlays (one per
+  // direction); pool sized at POOL_SIZE comfortably covers even
+  // dense interior-cluster scenarios since most cells consume 0.
+  const cornerRefs = useRef<(Sprite2DType | null)[]>([])
   const rockMaterial = useRockAutotileMaterial()
   if (refs.current.length !== POOL_SIZE) {
     refs.current = new Array<Sprite2DType | null>(POOL_SIZE).fill(null)
@@ -202,11 +208,15 @@ export function TileRenderer({ material }: TileRendererProps) {
   if (rockRefs.current.length !== POOL_SIZE) {
     rockRefs.current = new Array<Sprite2DType | null>(POOL_SIZE).fill(null)
   }
+  if (cornerRefs.current.length !== POOL_SIZE) {
+    cornerRefs.current = new Array<Sprite2DType | null>(POOL_SIZE).fill(null)
+  }
 
   // Initial: hide everything (zero-scale) until the first useFrame reads the grid.
   useEffect(() => {
     for (const s of refs.current) if (s) s.scale.set(0, 0, 1)
     for (const s of rockRefs.current) if (s) s.scale.set(0, 0, 1)
+    for (const s of cornerRefs.current) if (s) s.scale.set(0, 0, 1)
   }, [])
 
   useFrame(() => {
@@ -263,9 +273,11 @@ export function TileRenderer({ material }: TileRendererProps) {
       return tiles[rr * cols + cc] === TILE_STONE
     }
     const rockPool = rockRefs.current
+    const cornerPool = cornerRefs.current
 
     let slot = 0
     let rockSlot = 0
+    let cornerSlot = 0
     for (let r = topRow; r < bottomRow && slot < POOL_SIZE && rockSlot < POOL_SIZE; r++) {
       for (let c = 0; c < cols && slot < POOL_SIZE && rockSlot < POOL_SIZE; c++) {
         const idx = r * cols + c
@@ -331,6 +343,28 @@ export function TileRenderer({ material }: TileRendererProps) {
             rockSprite.tint.g = tint[1]
             rockSprite.tint.b = tint[2]
           }
+          // Corner overlays — for each missing-diagonal-but-cardinals-
+          // present corner, composite a small L-stroke on top of the
+          // base rock. Most stones contribute 0 corners; interior /
+          // T / L joints can need up to 4. Pool capacity is POOL_SIZE
+          // — far more than worst-case visible inner-corners.
+          const corners = cornerMask(c, r, isStone)
+          if (corners !== 0) {
+            for (let bit = 0; bit < 4 && cornerSlot < POOL_SIZE; bit++) {
+              if ((corners & (1 << bit)) === 0) continue
+              const cs = cornerPool[cornerSlot++]
+              if (!cs) continue
+              cs.setFrame(ROCK_FRAMES[CORNER_FRAME_INDEX[bit]!]!)
+              cs.position.set(posX, posY, 0)
+              cs.scale.set(TILE_PX, TILE_PX, 1)
+              // Tint corners the same as the body — strokes already
+              // baked into the alpha-only L glyph; multiplying by the
+              // body tint keeps them in the same color family.
+              cs.tint.r = tint[0]
+              cs.tint.g = tint[1]
+              cs.tint.b = tint[2]
+            }
+          }
         } else {
           sprite.position.set(posX, posY, 0)
           sprite.scale.set(TILE_PX, TILE_PX, 1)
@@ -350,6 +384,10 @@ export function TileRenderer({ material }: TileRendererProps) {
     }
     for (; rockSlot < POOL_SIZE; rockSlot++) {
       const s = rockPool[rockSlot]
+      if (s) s.scale.set(0, 0, 1)
+    }
+    for (; cornerSlot < POOL_SIZE; cornerSlot++) {
+      const s = cornerPool[cornerSlot]
       if (s) s.scale.set(0, 0, 1)
     }
   })
@@ -381,6 +419,19 @@ export function TileRenderer({ material }: TileRendererProps) {
           position={[0, 0, 0]}
           scale={[0, 0, 1]}
           frame={ROCK_FRAMES[15]}
+        />
+      ))}
+      {slots.map((i) => (
+        <sprite2D
+          key={`corner-${i}`}
+          ref={(el) => {
+            cornerRefs.current[i] = el
+          }}
+          material={rockMaterial}
+          tint="#71717a"
+          position={[0, 0, 0]}
+          scale={[0, 0, 1]}
+          frame={ROCK_FRAMES[16]}
         />
       ))}
     </>

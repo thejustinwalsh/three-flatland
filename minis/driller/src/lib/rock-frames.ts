@@ -5,6 +5,10 @@ import {
   ROCK_AUTOTILE_SLOT,
   ROCK_AUTOTILE_TILE,
   ROCK_AUTOTILE_W,
+  ROCK_CORNER_NE_FRAME,
+  ROCK_CORNER_NW_FRAME,
+  ROCK_CORNER_SE_FRAME,
+  ROCK_CORNER_SW_FRAME,
 } from '../textures'
 
 /**
@@ -51,3 +55,43 @@ export const ROCK_FRAMES: ReadonlyArray<RockFrame> = (() => {
   }
   return frames
 })()
+
+/**
+ * 4-bit corner mask — bit 0 = NW, 1 = NE, 2 = SW, 3 = SE. Set when
+ * the cell has BOTH adjacent cardinal stones AND a missing diagonal,
+ * i.e. an inside-of-an-L corner. Renderer composites the matching
+ * overlay frame on top of the base.
+ */
+export const CORNER_NW = 1 << 0
+export const CORNER_NE = 1 << 1
+export const CORNER_SW = 1 << 2
+export const CORNER_SE = 1 << 3
+
+export type IsStoneFn = (col: number, row: number) => boolean
+
+/**
+ * Return the 4-bit corner mask for `(col, row)`. A corner bit is set
+ * iff the cell has BOTH cardinals adjacent to that corner (e.g. for
+ * NW: N and W both stones) AND the diagonal cell at that corner is
+ * NOT a stone. Out-of-bounds cells count as non-stone.
+ */
+export function cornerMask(col: number, row: number, isStone: IsStoneFn): number {
+  const n = isStone(col, row - 1)
+  const s = isStone(col, row + 1)
+  const e = isStone(col + 1, row)
+  const w = isStone(col - 1, row)
+  let m = 0
+  if (n && w && !isStone(col - 1, row - 1)) m |= CORNER_NW
+  if (n && e && !isStone(col + 1, row - 1)) m |= CORNER_NE
+  if (s && w && !isStone(col - 1, row + 1)) m |= CORNER_SW
+  if (s && e && !isStone(col + 1, row + 1)) m |= CORNER_SE
+  return m
+}
+
+/** Frame indices for the four corner overlays, parallel to CORNER_*. */
+export const CORNER_FRAME_INDEX: ReadonlyArray<number> = [
+  ROCK_CORNER_NW_FRAME,
+  ROCK_CORNER_NE_FRAME,
+  ROCK_CORNER_SW_FRAME,
+  ROCK_CORNER_SE_FRAME,
+]
