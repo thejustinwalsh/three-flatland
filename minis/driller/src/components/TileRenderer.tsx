@@ -78,10 +78,15 @@ function pickBaseTint(
   frame: number,
   hits: number,
   triggeredExplosive: boolean,
+  northIsAir: boolean,
   palette: { grass: readonly [number, number, number]; edge: readonly [number, number, number]; deep: readonly [number, number, number]; stone: readonly [number, number, number] },
 ): readonly [number, number, number] {
   if (tile === TILE_SOIL) {
-    if ((frame & 0x01) === 0) return palette.grass
+    // Grass-cap only when the cell directly above is AIR (open sky).
+    // Without this check, soil cells beneath a STONE or FIXTURE would
+    // render with the grass tint because their north autotile bit is
+    // 0 (no soil above) — but they're not actually surface cells.
+    if ((frame & 0x01) === 0 && northIsAir) return palette.grass
     if (frame === 0xf) return palette.deep
     return palette.edge
   }
@@ -139,12 +144,13 @@ function pickTint(
   sagging: boolean,
   falling: boolean,
   triggeredExplosive: boolean,
+  northIsAir: boolean,
   now: number,
   palette: { grass: readonly [number, number, number]; edge: readonly [number, number, number]; deep: readonly [number, number, number]; stone: readonly [number, number, number] },
 ): readonly [number, number, number] {
   void now
   if (falling) return TINT_FALL
-  const base = pickBaseTint(tile, frame, hits, triggeredExplosive, palette)
+  const base = pickBaseTint(tile, frame, hits, triggeredExplosive, northIsAir, palette)
   // SAGGING is now an overlay on top of the cracking gradient — the
   // sag entity has committed, so we add an extra darken on top of
   // whatever cracking already showed. Player reads: "the cracked
@@ -302,19 +308,20 @@ export function TileRenderer({ material }: TileRendererProps) {
         // uniform — the gradient only paints SOIL.
         const rawDist = anchorDist[idx] ?? 255
         const distance = rawDist >= 255 ? -1 : rawDist
+        // North-is-AIR test for grass-cap classification: SOIL with
+        // STONE/FIXTURE above is NOT a grass cell — only SOIL with
+        // open sky above is.
+        const northIdx = r > 0 ? (r - 1) * cols + c : -1
+        const northIsAir = northIdx === -1 || (tiles[northIdx] ?? TILE_AIR) === TILE_AIR
         let tint: readonly [number, number, number]
         if (heatmapMode) {
-          // Heatmap path: ignore tile class, color by anchor distance.
-          // Anchors render black; non-soil non-anchor cells (AIR is
-          // already filtered above; EXPLOSIVE etc.) keep their normal
-          // tint so the player can still see hazards.
           const ht = heatmapTint(distance, MAX_REACH)
           tint =
             ht !== null
               ? ht
-              : pickTint(tile, frameIndex[idx]!, hits[idx] ?? 0, distance, MAX_REACH, precarious, sagging, falling, litExplosive, now, palette)
+              : pickTint(tile, frameIndex[idx]!, hits[idx] ?? 0, distance, MAX_REACH, precarious, sagging, falling, litExplosive, northIsAir, now, palette)
         } else {
-          tint = pickTint(tile, frameIndex[idx]!, hits[idx] ?? 0, distance, MAX_REACH, precarious, sagging, falling, litExplosive, now, palette)
+          tint = pickTint(tile, frameIndex[idx]!, hits[idx] ?? 0, distance, MAX_REACH, precarious, sagging, falling, litExplosive, northIsAir, now, palette)
         }
         // Shake telegraph: deliberate "crack" rather than a buzz. A
         // few wide shudders at ~6 Hz (1 cycle ≈ 170 ms) so over the
