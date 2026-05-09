@@ -259,15 +259,15 @@ export function hazardTickSystem(world: World): void {
           hits[restIdx] = 0
           flags[restIdx] = (flags[restIdx] ?? 0) | FLAG_AUTOTILE_DIRTY | FLAG_DISTURBED
           markCellAndNeighborsDirty(world, h.col, restRow)
-          for (const [dc, dr] of [[-1, 0], [1, 0], [0, -1], [0, 1]] as const) {
-            const nc = h.col + dc
-            const nr = restRow + dr
-            if (nc < 0 || nc >= cols || nr < 0 || nr >= rows) continue
-            const nIdx = nr * cols + nc
-            if (tiles[nIdx] === TILE_STONE) {
-              flags[nIdx] = (flags[nIdx] ?? 0) | FLAG_DISTURBED
-            }
-          }
+          // Max-out rule (Kirby's-Avalanche-style): a fresh stone
+          // landing on an existing pile that pushes the connected
+          // cluster to >= MAX_CLUSTER_DIM in either width or height
+          // becomes a "doom block" — the whole cluster is disturbed
+          // and the pile breaks free. Combined with the bottom-most-
+          // row canFall + shake-propagates-sag-recheck, this almost
+          // always commits to a fall: the surrounding soil cascades
+          // first, then the rock follows.
+          floodFillAndDisturbIfMaxed(tiles, flags, cols, rows, h.col, restRow)
         }
       }
       entity.set(Hazard, { phase: 'landed' })
@@ -297,6 +297,69 @@ const AVALANCHE_THRESHOLD = 4
 // Phase 2 unification: avalanche break-off and the player's drill
 // share STONE_MAX_HITS — one tuning knob, not two.
 const AVALANCHE_HITS_TO_BREAK = STONE_MAX_HITS
+/**
+ * Max-out cluster cap (Kirby's Avalanche-style fairness primitive).
+ * A connected stone cluster whose bounding box reaches this size in
+ * EITHER axis is "doom-blocked" — the whole pile is disturbed when
+ * a new rock pushes it past the threshold, ensuring the player sees
+ * the avalanche coming rather than a slowly-creeping pile that
+ * eventually surprises them.
+ */
+const MAX_CLUSTER_DIM = 4
+
+/**
+ * Flood-fill the connected stone cluster containing `(seedCol, seedRow)`,
+ * compute its bounding box, and if width OR height >= MAX_CLUSTER_DIM,
+ * propagate FLAG_DISTURBED to every cluster cell. Called by the hazard
+ * land branch when a fresh rock lands on an existing pile.
+ */
+function floodFillAndDisturbIfMaxed(
+  tiles: Uint8Array,
+  flags: Uint8Array,
+  cols: number,
+  rows: number,
+  seedCol: number,
+  seedRow: number,
+): void {
+  if (seedCol < 0 || seedCol >= cols || seedRow < 0 || seedRow >= rows) return
+  const seedIdx = seedRow * cols + seedCol
+  if (tiles[seedIdx] !== TILE_STONE) return
+  const seen = new Set<number>([seedIdx])
+  const stack: number[] = [seedIdx]
+  const cluster: number[] = []
+  let minR = seedRow
+  let maxR = seedRow
+  let minC = seedCol
+  let maxC = seedCol
+  while (stack.length) {
+    const idx = stack.pop()!
+    cluster.push(idx)
+    const c = idx % cols
+    const r = (idx - c) / cols
+    if (r < minR) minR = r
+    if (r > maxR) maxR = r
+    if (c < minC) minC = c
+    if (c > maxC) maxC = c
+    const ns: number[] = []
+    if (c > 0) ns.push(idx - 1)
+    if (c < cols - 1) ns.push(idx + 1)
+    if (r > 0) ns.push(idx - cols)
+    if (r < rows - 1) ns.push(idx + cols)
+    for (const ni of ns) {
+      if (!seen.has(ni) && tiles[ni] === TILE_STONE) {
+        seen.add(ni)
+        stack.push(ni)
+      }
+    }
+  }
+  const width = maxC - minC + 1
+  const height = maxR - minR + 1
+  if (width >= MAX_CLUSTER_DIM || height >= MAX_CLUSTER_DIM) {
+    for (const idx of cluster) {
+      flags[idx]! |= FLAG_DISTURBED
+    }
+  }
+}
 const AVALANCHE_FALL_INTERVAL_TICKS = 12 // ~200ms at 60Hz
 // Stones use the same SHAKE duration as soil sag so the player
 // reads "this is about to fall" with the same cadence regardless
