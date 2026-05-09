@@ -631,7 +631,7 @@ function loadChunk(world: World, chunkY: number, seed: number): void {
   // as a jarring sweep of unstable cells flashing into "precarious"
   // before the wavefront resolves.
   const refreshed2 = world.get(Grid)!
-  seedAnchorsBFS(refreshed2.tiles, refreshed2.anchorDist, refreshed2.cols, refreshed2.rows)
+  seedAnchorsBFS(refreshed2.tiles, refreshed2.anchorDist, refreshed2.cols, refreshed2.rows, refreshed2.topRow)
 
   // Spawn gem entities.
   for (const g of generated.gems) {
@@ -660,6 +660,35 @@ function loadChunk(world: World, chunkY: number, seed: number): void {
   }
 
   loadedChunks.add(chunkY)
+  updateLoadedTopRow(world)
+}
+
+/**
+ * Sync `Grid.topRow` to the topmost-loaded chunk's first row. Used as
+ * the anchor seed reference by `seedAnchorsBFS` / `relaxAnchorDist`:
+ * cells in this row act as distance-0 seeds (the world surface, even
+ * after the original row 0 has been unloaded). Without this, when the
+ * driller descends past the literal row-0 chunk and that chunk gets
+ * unloaded → all-AIR, no seeds remain at row 0 and the entire visible
+ * world's anchor distances climb to INF over a few seconds → cascading
+ * delayed collapses unrelated to anything the player did.
+ */
+function updateLoadedTopRow(world: World): void {
+  const grid = world.get(Grid)
+  if (!grid) return
+  let minChunk = Infinity
+  for (const cy of loadedChunks) {
+    if (cy < minChunk) minChunk = cy
+  }
+  const newTopRow = minChunk === Infinity ? 0 : minChunk * CHUNK_ROWS
+  if (newTopRow !== grid.topRow) {
+    world.set(Grid, { ...grid, topRow: newTopRow })
+    // Re-run the full BFS so cells near the new top row get distance-0
+    // seeds applied immediately (snap-down rule will pull their stored
+    // distance down on the next relax tick).
+    const refreshed = world.get(Grid)!
+    seedAnchorsBFS(refreshed.tiles, refreshed.anchorDist, refreshed.cols, refreshed.rows, newTopRow)
+  }
 }
 
 /** Mark a chunk's cells as AIR and despawn its gems. */
@@ -703,6 +732,7 @@ function unloadChunk(world: World, chunkY: number): void {
   })
 
   loadedChunks.delete(chunkY)
+  updateLoadedTopRow(world)
 }
 
 /**

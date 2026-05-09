@@ -727,7 +727,7 @@ export function collapseTick(world: World): void {
   // the previous tick begin their wavefront here.
   const grid = world.get(Grid)
   if (grid && grid.anchorDist.length === grid.tiles.length) {
-    relaxAnchorDist(grid.tiles, grid.anchorDist, grid.cols, grid.rows)
+    relaxAnchorDist(grid.tiles, grid.anchorDist, grid.cols, grid.rows, grid.topRow)
   }
   detectAndSag(world)
   tickSagging(world)

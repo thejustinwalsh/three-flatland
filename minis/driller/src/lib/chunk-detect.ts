@@ -115,14 +115,23 @@ function isConductor(t: number): boolean {
  * Collect anchor seed indices for the diffusion model.
  *
  * Seeds (cells whose anchor distance is pinned at 0):
- *   - Row 0 SOIL/STONE cells (top edge — the world surface)
+ *   - Conductors in `topRow` (the topmost LOADED row of the world —
+ *     follows the streaming frontier as old chunks unload above)
  *   - The cell DIRECTLY ABOVE each FIXTURE (if SOIL/STONE) — the
  *     fixture acts as a load-bearing pillar that anchors the column
  *     above it. Fixtures themselves are walls (no propagation).
  *
- * Note: bottom-loaded edge is NOT a seed (we drop the streaming-defer
- * hack). The pre-settle BFS bakes the steady-state distance for the
- * chunk as it loads; when the floor recedes (chunks below stream in),
+ * Why `topRow` instead of literal row 0: as the driller descends,
+ * upper chunks get unloaded → all-AIR → nothing in row 0 anchors.
+ * Without tracking the moving top, the entire visible world's anchor
+ * distances climb to INF over a few seconds and cells start
+ * collapsing for no apparent reason. With `topRow`, the surface
+ * always feels "up there, somewhere" — players retain a stable
+ * mental model of structural ground.
+ *
+ * Bottom-loaded edge is NOT a seed (we drop the streaming-defer
+ * hack). Pre-settle bakes the steady-state distance for the chunk as
+ * it loads; when the floor recedes (chunks below stream in), the
  * relaxation handles the transition naturally — previously-floor
  * cells climb in distance over several ticks and the player sees the
  * wavefront.
@@ -131,12 +140,15 @@ function collectAnchorSeeds(
   tiles: Uint8Array,
   cols: number,
   rows: number,
+  topRow: number,
 ): number[] {
   const seeds: number[] = []
-  // Top edge — row 0 conductors.
-  for (let c = 0; c < cols; c++) {
-    const idx = c
-    if (isConductor(tiles[idx]!)) seeds.push(idx)
+  // Top edge — conductors in the topmost-loaded row.
+  if (topRow >= 0 && topRow < rows) {
+    for (let c = 0; c < cols; c++) {
+      const idx = topRow * cols + c
+      if (isConductor(tiles[idx]!)) seeds.push(idx)
+    }
   }
   // Fixtures emit a seed into the cell DIRECTLY ABOVE (if conductor).
   for (let i = 0; i < tiles.length; i++) {
@@ -148,7 +160,6 @@ function collectAnchorSeeds(
     const aboveIdx = above * cols + c
     if (isConductor(tiles[aboveIdx]!)) seeds.push(aboveIdx)
   }
-  void rows
   return seeds
 }
 
@@ -166,10 +177,11 @@ export function seedAnchorsBFS(
   dist: Uint8Array,
   cols: number,
   rows: number,
+  topRow = 0,
 ): void {
   // Reset to infinity, then seed.
   dist.fill(ANCHOR_DIST_INF)
-  const seeds = collectAnchorSeeds(tiles, cols, rows)
+  const seeds = collectAnchorSeeds(tiles, cols, rows, topRow)
   const queue: number[] = []
   for (const s of seeds) {
     if (dist[s] !== 0) {
@@ -228,12 +240,13 @@ export function relaxAnchorDist(
   dist: Uint8Array,
   cols: number,
   rows: number,
+  topRow = 0,
 ): number {
   let changed = 0
   // Pre-compute seed mask in a single pass: a cell is a seed if it's
-  // a conductor in row 0, or the conductor directly above a fixture.
-  // We can't easily memoize this without extra storage, so we test
-  // inline per cell — cheap (no allocations).
+  // a conductor in `topRow` (the topmost loaded row of the world), or
+  // the conductor directly above a fixture. We test inline per cell —
+  // cheap (no allocations).
   for (let i = 0; i < tiles.length; i++) {
     const t = tiles[i]!
     if (t === TILE_AIR) {
@@ -258,7 +271,7 @@ export function relaxAnchorDist(
     const c = i % cols
     const r = (i - c) / cols
     const isSeed =
-      r === 0 || (r > 0 && isFixtureTile(tiles[(r - 1) * cols + c]!))
+      r === topRow || (r > 0 && isFixtureTile(tiles[(r - 1) * cols + c]!))
     let target: number
     if (isSeed) {
       target = 0
