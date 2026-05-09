@@ -5,6 +5,7 @@ import {
   FLAG_AUTOTILE_DIRTY,
   FLAG_DISTURBED,
   FLAG_FALLING,
+  FLAG_SAG_RECHECK,
   FLAG_SHAKING,
   GameState,
   Grid,
@@ -427,15 +428,26 @@ export function rockAvalancheSystem(world: World): void {
       if (!disturbed) continue
     }
 
-    // The cluster can fall iff every cell directly under the cluster's
-    // bottom edge (not part of the cluster) is AIR or SOIL — anything
-    // else (fixture, rock, world-floor) blocks the whole pile.
+    // The cluster can fall iff every cell of the BOTTOM-MOST row of
+    // the cluster has AIR or SOIL directly below it. A column whose
+    // lowest cluster-cell is NOT in the bottom-most row is allowed to
+    // hang in mid-air — the cluster falls as a rigid unit and that
+    // overhung cell goes along for the ride. This makes irregular
+    // shapes (L-pieces, T-pieces, 7-shapes) MORE deadly: a small
+    // 3-piece cluster's "bottom-most row" is just 1–2 cells, so the
+    // cluster gets angry the moment those few cells have AIR below.
     const inCluster = new Set(cells)
+    let maxRowInCluster = -1
+    for (const idx of cells) {
+      const r = (idx - (idx % cols)) / cols
+      if (r > maxRowInCluster) maxRowInCluster = r
+    }
     let canFall = true
     const bottomEdge: number[] = []
     for (const idx of cells) {
       const c = idx % cols
       const r = (idx - c) / cols
+      if (r !== maxRowInCluster) continue
       if (r + 1 >= rows) {
         canFall = false
         break
@@ -488,7 +500,28 @@ export function rockAvalancheSystem(world: World): void {
         }
         if (t < earliestShake) earliestShake = t
       }
-      void anyNew
+      // First-shake propagation: when an angry cluster enters its
+      // telegraph for the first time, force a sag re-check on EVERY
+      // SOIL cell touching the cluster's perimeter. This way the
+      // surrounding earth gets a chance to fail FIRST during the
+      // ~2s shake window — soil cascades fire, the world below the
+      // rock churns — and only THEN does the rock commit. Produces
+      // the "rock dislodges, chaos ensues" cadence the design wants.
+      if (anyNew) {
+        for (const idx of cells) {
+          const c = idx % cols
+          const r = (idx - c) / cols
+          for (const [dc, dr] of [[-1, 0], [1, 0], [0, -1], [0, 1]] as const) {
+            const nc = c + dc
+            const nr = r + dr
+            if (nc < 0 || nc >= cols || nr < 0 || nr >= rows) continue
+            const nIdx = nr * cols + nc
+            if (tiles[nIdx] === TILE_SOIL) {
+              flags[nIdx]! |= FLAG_SAG_RECHECK
+            }
+          }
+        }
+      }
       const shakeElapsed = gs.tick - earliestShake
       const inShakePhase = shakeElapsed < AVALANCHE_SHAKE_TICKS
       const stillTelegraphing = shakeElapsed < AVALANCHE_SHAKE_TICKS + AVALANCHE_SETTLE_TICKS
