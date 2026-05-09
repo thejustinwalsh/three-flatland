@@ -99,12 +99,16 @@ export const OVER_PET_THRESHOLD = 3
  * sagging happens but doesn't cascade across the whole chunk.
  */
 // MAX_REACH controls the cantilever distance threshold — SOIL cells
-// whose 4-connected SOIL-path to an anchor exceeds this become
-// unstable. Smaller value = falls trigger easier = more interesting
-// gameplay, more wall-shears. The cracking gradient renders 5
-// discrete bands across [0..MAX_REACH], so 4 gives ~1-cell-per-band
-// resolution — the fragility distinction is sharp at every cell.
-export const MAX_REACH = 4
+// whose 4-connected conductor-path to an anchor exceeds this become
+// unstable. With the diffusion model:
+//   - Anchor seeds: top edge + cell-above-fixture
+//   - Conductors: SOIL + STONE (rocks are "really sturdy soil")
+//   - FIXTUREs are walls; side walls and bottom edge are not seeds
+// Bumped from 4 → 6 to compensate for the stricter anchor topology
+// (fixtures emit only upward; sides/bottom no longer seed). Larger
+// reach lets fixture-density rules in biomes.ts produce mostly-
+// stable worlds with intentional cantilever overhangs.
+export const MAX_REACH = 6
 
 /**
  * Two-phase per-cell cadence — Mr. Driller-style drill THEN step:

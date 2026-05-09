@@ -72,7 +72,12 @@ export const BIOMES: Biome[] = [
     maxDepth: WORLD_BODY_ROWS,
     caveCount: [2, 3],
     tunnelCount: [3, 5],
-    fixtureCount: [1, 3],
+    // Mario-progression: topsoil leans HEAVY on fixtures so the
+    // player learns the world is mostly stable. With MAX_REACH=6
+    // and fixtures-up-only-as-anchor, we need ~1 fixture per 6 row
+    // band to keep the world from collapsing on stream-in. Bumped
+    // from [1,3] → [4,6] for the new diffusion topology.
+    fixtureCount: [4, 6],
     fixtureKinds: ['bone'],
     gemCount: [4, 6],
     gemPalette: ['emerald', 'topaz', 'ruby', 'amethyst'],
@@ -91,7 +96,7 @@ export const BIOMES: Biome[] = [
     maxDepth: WORLD_BODY_ROWS,
     caveCount: [3, 4],
     tunnelCount: [2, 3],
-    fixtureCount: [2, 4],
+    fixtureCount: [4, 6],
     fixtureKinds: ['bone'],
     gemCount: [4, 6],
     gemPalette: ['emerald', 'topaz', 'ruby'],
@@ -110,6 +115,8 @@ export const BIOMES: Biome[] = [
     maxDepth: WORLD_BODY_ROWS,
     caveCount: [3, 5],
     tunnelCount: [1, 2],
+    // Mid-progression: rocks become a bigger contributor to stability
+    // (they conduct anchor distance). Fixture density tapers slightly.
     fixtureCount: [3, 5],
     fixtureKinds: ['stone-pillar', 'bone', 'mushroom'],
     gemCount: [4, 6],
@@ -129,7 +136,10 @@ export const BIOMES: Biome[] = [
     maxDepth: WORLD_BODY_ROWS,
     caveCount: [4, 6],
     tunnelCount: [1, 2],
-    fixtureCount: [4, 6],
+    // Late progression: caves dominate, fixtures rarer — chaos rises.
+    // Rocks (which conduct anchor distance) carry more of the stability
+    // load. Players see frequent sag cascades.
+    fixtureCount: [3, 5],
     fixtureKinds: ['crystal', 'stone-pillar'],
     gemCount: [3, 5],
     gemPalette: ['amethyst', 'topaz'],
@@ -148,7 +158,10 @@ export const BIOMES: Biome[] = [
     maxDepth: WORLD_BODY_ROWS,
     caveCount: [5, 7],
     tunnelCount: [1, 2],
-    fixtureCount: [5, 7],
+    // Endgame: chaos. Sparser fixtures, dense caves, lots of rocks.
+    // The whole field churns; player has to dig with constant
+    // awareness of cascading collapses. Mario "game in full swing".
+    fixtureCount: [3, 5],
     fixtureKinds: ['crystal'],
     gemCount: [2, 3],
     gemPalette: ['amethyst', 'topaz'],
