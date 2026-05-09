@@ -109,7 +109,16 @@ export function detectAndSag(world: World): void {
   if (unstable.size === 0) return
 
   for (const ch of allChunks) {
-    if (chunkHasFlag(ch, flags, FLAG_SAGGING | FLAG_FALLING)) continue
+    // Skip chunks already in any phase of the sag lifecycle. PRECARIOUS
+    // is critical here: the precarious phase CLEARS FLAG_SAGGING (replacing
+    // it with FLAG_PRECARIOUS), so without this check detectAndSag would
+    // spawn a fresh SaggingChunk every tick during the 54-tick precarious
+    // window — each new entity at elapsed=0 overwriting the older ones'
+    // flag writes back to PRECARIOUS. The visual telegraph (sagging →
+    // shaking) would never fire; cells would skip straight to release
+    // when the oldest pile reached the duration boundary. FLAG_SHAKING
+    // included as belt-and-suspenders.
+    if (chunkHasFlag(ch, flags, FLAG_SAGGING | FLAG_FALLING | FLAG_PRECARIOUS | FLAG_SHAKING)) continue
 
     const unstableIdxs = ch.cells.filter((idx) => unstable.has(idx))
     if (unstableIdxs.length === 0) continue
