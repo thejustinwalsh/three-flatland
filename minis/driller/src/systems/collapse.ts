@@ -26,18 +26,12 @@ import {
 
 /**
  * How far above and below the driller's row we run the chunk-detect
- * scan each tick. ABOVE is tight: anything more than a handful of
- * rows above the driller is "out of play" and the player's drilling
- * shouldn't be re-triggering sag detection there. BELOW is wider so
- * the streamer's just-loaded chunks get evaluated for any natural
- * cantilevers worth telegraphing as the driller approaches.
- *
- * The above value is intentionally a hair larger than
- * PLAYFIELD_TOP_OFFSET_ROWS (8): cantilever cells reach up to
- * MAX_REACH=10 from their anchor, so we want enough margin that a
- * chunk's anchor at row=dRow-PLAYFIELD_TOP-1 is still seen. Anything
- * further up is rendered as history but not load-bearing for the
- * cantilever check.
+ * scan each tick. ABOVE is wide enough to cover the camera viewport
+ * (cells the player can see above homie) plus a margin for MAX_REACH;
+ * the player needs to read weakness building up there before chunks
+ * fall into reach. BELOW is wider still so the streamer's just-loaded
+ * chunks get evaluated for any natural cantilevers worth telegraphing
+ * as the driller approaches.
  */
 const SCAN_WINDOW_ROWS_ABOVE = 16
 const SCAN_WINDOW_ROWS_BELOW = 192 // ~6 chunks streamed-ahead

@@ -1,5 +1,6 @@
 import type { World } from 'koota'
 import {
+  Camera,
   Driller,
   FLAG_AUTOTILE_DIRTY,
   FLAG_DISTURBED,
@@ -20,7 +21,6 @@ import {
   HAZARD_SPAWN_INTERVAL_TICKS,
   HAZARD_TERMINAL_PX,
   HAZARD_WARNING_TICKS,
-  PLAYFIELD_TOP_OFFSET_ROWS,
   PLAY_COLS,
   STONE_MAX_HITS,
   TILE_PX,
@@ -97,12 +97,13 @@ export function hazardSpawnSystem(world: World): void {
   if (nearbyExists) return
 
   // Find candidate columns near the driller with a visible AIR column
-  // from the LOGICAL playfield top (a fixed N rows above the driller)
-  // down at least MIN_FALL_CELLS. A taller viewport must NOT be a
-  // hazard-dodging advantage, so we ignore cam.y here on purpose —
-  // rocks spawn at the same logical position regardless of how far
-  // back into history the renderer is showing.
-  const topRow = Math.max(0, d.row - PLAYFIELD_TOP_OFFSET_ROWS)
+  // from the TOP OF THE CAMERA VIEWPORT down at least MIN_FALL_CELLS.
+  // The PlayfieldOverlay no longer mutes the rows above; the entire
+  // viewport is now the playfield, so rocks spawn from the actual
+  // top of what the player can see — gives the player the same lead
+  // time regardless of viewport height.
+  const cam = world.get(Camera)
+  const topRow = Math.max(0, Math.floor((cam?.y ?? d.row * TILE_PX) / TILE_PX))
   const { cols, rows, tiles } = grid
   const candidates: { col: number; warningRow: number }[] = []
   for (let dc = -HAZARD_SPAWN_COL_RANGE; dc <= HAZARD_SPAWN_COL_RANGE; dc++) {

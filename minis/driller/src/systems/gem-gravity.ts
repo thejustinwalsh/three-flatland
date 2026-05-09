@@ -1,6 +1,6 @@
 import type { Entity, World } from 'koota'
 import { Camera, Driller, GameState, Gem, Grid, TILE_AIR } from '../traits'
-import { FALL_INTERVAL_MS, PLAYFIELD_TOP_OFFSET_ROWS, TILE_PX } from '../constants'
+import { FALL_INTERVAL_MS, TILE_PX } from '../constants'
 
 /**
  * Gravity for gems — once a gem has entered the camera viewport, it
@@ -53,12 +53,11 @@ export function gemGravitySystem(world: World, deltaMs: number): void {
       return
     }
 
-    // Above the LOGICAL playfield top = inside the darkening overlay
-    // band. The grey box kills gems no matter what — the driller has
-    // fallen past them and they can never be caught from there. We
-    // give the renderer a 4-row death window above the playfield top
-    // to play an eased scale-out before the entity is destroyed.
-    const playfieldTop = drillerCell ? drillerCell.row - PLAYFIELD_TOP_OFFSET_ROWS : topRow
+    // Above the camera viewport = the driller has descended past the
+    // gem and it can no longer be caught. We give the renderer a
+    // GEM_DEATH_ROWS-row death window above the camera top before
+    // destroying the entity (eased scale-out plays during that window).
+    const playfieldTop = Math.floor(cam.y / TILE_PX)
     if (g.row < playfieldTop - GEM_DEATH_ROWS) {
       entity.destroy()
       return

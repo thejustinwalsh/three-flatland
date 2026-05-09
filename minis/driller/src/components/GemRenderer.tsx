@@ -3,8 +3,8 @@ import { useFrame } from '@react-three/fiber/webgpu'
 import { useQuery, useWorld } from 'koota/react'
 import type { Entity } from 'koota'
 import type { Sprite2DMaterial, Sprite2D as Sprite2DType } from 'three-flatland/react'
-import { Driller, Gem } from '../traits'
-import { PLAYFIELD_TOP_OFFSET_ROWS, TILE_PX } from '../constants'
+import { Camera, Gem } from '../traits'
+import { TILE_PX } from '../constants'
 import { GEM_DEATH_ROWS } from '../systems/gem-gravity'
 
 const GEM_HEX = {
@@ -48,19 +48,18 @@ function GemSprite({ entity, material }: ViewProps) {
     sprite.position.set(g.px, -g.py, 0)
     sprite.visible = true
 
-    // Death tween: when a gem crosses ABOVE the playfield top (into
-    // the dark history overlay) it has GEM_DEATH_ROWS rows of life
-    // left while we play a fun anticipation-then-collapse scale-out.
-    // 0..0.25 of the window: tiny pop up to 1.2× as the gem "reacts"
-    // to leaving the play area. 0.25..1.0: cubic ease-out collapse to
-    // zero. Alpha follows a complementary curve so the colour fades
+    // Death tween: when a gem crosses ABOVE the top of the camera
+    // viewport, it has GEM_DEATH_ROWS rows of life left while we
+    // play a fun anticipation-then-collapse scale-out. 0..0.25 of
+    // the window: tiny pop up to 1.2× as the gem "reacts" to leaving
+    // the play area. 0.25..1.0: cubic ease-out collapse to zero.
+    // Alpha follows a complementary curve so the colour fades
     // alongside the size.
-    const driller = world.queryFirst(Driller)
+    const cam = world.get(Camera)
     let scale = 1
     let alpha = 1
-    if (driller) {
-      const d = driller.get(Driller)!
-      const playfieldTop = d.row - PLAYFIELD_TOP_OFFSET_ROWS
+    if (cam) {
+      const playfieldTop = Math.floor(cam.y / TILE_PX)
       const rowsAbove = playfieldTop - g.row
       if (rowsAbove > 0) {
         const t = Math.min(1, rowsAbove / GEM_DEATH_ROWS)
