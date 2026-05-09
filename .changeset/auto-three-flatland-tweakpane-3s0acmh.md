@@ -5,15 +5,16 @@
 > Branch: mini-game-showcase
 > PR: https://github.com/thejustinwalsh/three-flatland/pull/59
 
-## New Features
+## New
 
-- `usePaneRadioGrid` hook (react subpath) — inline button-bar selector backed by Tweakpane Essentials `radiogrid` blade; deferred disposal + synchronous creation match `usePaneButton` / `usePaneInput` pattern
-- `PaneInputOptions` extended with `readonly` and `format` — enables readonly monitors with custom value formatters in React hooks
+- `usePaneRadioGrid` hook (react subpath) — inline button-bar selector backed by the tweakpane-essentials radiogrid blade; deferred disposal and synchronous creation match `usePaneButton`/`usePaneInput` conventions
+- `PaneInputOptions` extended with `readonly` and `format` fields, enabling read-only monitors with custom formatters via the existing `usePaneInput` hook
 
-## Fixes
+## Fixed
 
-- Checkbox hit target expanded to full control box size (`.tp-ckbv_i` set to `var(--cnt-usz)`) — eliminates multi-click failure caused by browser label-forwarding for the hidden `<input>` element
-- Checkbox surface theme updated to match other controls (`rgba(28,40,77,0.6)`) with hover/focus/active parity; check stroke now uses accent color on `:checked`
-- `z-index: 1000` now applied to the `.tp-dfwv` body-sibling wrapper instead of the inner pane element, where it had no stacking-context effect
+- `createPane` z-index now applied to the `.tp-dfwv` wrapper element (not the inner pane root) so the pane correctly stacks above other overlays
+- Checkbox hit target stretched to the full 20×20 visible box via `width/height: var(--cnt-usz)` — eliminates multi-click failures caused by flaky `<label>`→`<input>` forwarding
+- Checkbox surface color updated to match other controls (`rgba(28,40,77,0.6)`) with hover/focus/active parity; check stroke turns accent pink when checked
+- `useWindowSize` now tracks `{ w, h, dpr }` and subscribes to a `(resolution: Ndppx)` media query so monitor swaps that change DPR without resizing the viewport are correctly detected
 
-New `usePaneRadioGrid` hook and monitor formatter support round out the React API surface; checkbox and z-index fixes resolve persistent UX regressions.
+Adds `usePaneRadioGrid` and read-only monitor support; fixes pane z-index stacking, checkbox reliability, and DPR tracking on monitor swap.
