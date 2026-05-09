@@ -1156,6 +1156,12 @@
         border: 0;
         overflow: hidden;
         isolation: isolate;
+        /* Safari paint-isolation — same pattern as FeatureCard /
+         * GalleryTile / etc. The ::before foil rim reads --scene-angle
+         * + --effective-light-angle every motion tick; without
+         * contain:paint the buttons drag every other rim-bearing
+         * surface into their repaint cycle. */
+        contain: paint;
         font-weight: 600;
         letter-spacing: 0.01em;
         transition:
@@ -1244,6 +1250,7 @@
         border: 0;
         overflow: hidden;
         isolation: isolate;
+        contain: paint;
         font-weight: 500;
         letter-spacing: 0.01em;
         transition:

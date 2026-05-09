@@ -102,6 +102,13 @@ function resolveGem(c: StatItem['color']): Gem | undefined {
     gap: calc(var(--spacing) * 1.5);
     align-items: flex-start;
     padding-bottom: calc(var(--spacing) * 2);
+    /* Safari paint-isolation — see GalleryTile / FeatureCard for the
+     * full diagnosis. The gem-tinted underline reads --stat-accent
+     * which is per-item; pinning paint to the box stops the global
+     * --scene-angle motion arc from invalidating other stat items
+     * when one re-renders. */
+    contain: paint;
+    isolation: isolate;
     /* Gem-tinted underline — thin foil hairline beneath each stat
      * that catches the global scene light direction (cosmetic shadow
      * shifts with --scene-angle). */
