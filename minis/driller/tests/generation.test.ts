@@ -37,11 +37,16 @@ describe('generateChunk', () => {
     expect(a.tiles).not.toEqual(b.tiles)
   })
 
-  it('chunkY=0 has AIR sky in the top 4 rows', () => {
+  it('chunkY=0 starts with the top 4 rows full of SOIL', () => {
+    // Start-of-game guarantee: every run begins with 4 rows of solid
+    // earth above the procedural mess. The driller spawns at (col=9,
+    // row=0) inside this block; its own-cell-must-be-AIR safety
+    // clears the spawn cell to AIR, leaving homie standing in a
+    // single-cell hole punched into solid earth.
     const c = generateChunk(42, 0)
     for (let y = 0; y < 4; y++) {
       for (let x = 0; x < PLAY_COLS; x++) {
-        expect(c.tiles[y * PLAY_COLS + x]).toBe(TILE_AIR)
+        expect(c.tiles[y * PLAY_COLS + x]).toBe(TILE_SOIL)
       }
     }
   })

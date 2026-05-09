@@ -88,15 +88,18 @@ describe('avalanche cluster rules', () => {
     expect(disturbedCount).toBeGreaterThan(0) // DISTURBED preserved
   })
 
-  it('a disturbed 4-stack ABOVE soil falls (cluster commits)', () => {
-    // 4 stones with soil-and-air below: cluster falls 1 row.
+  it('a 4-stack with AIR below falls (force-eval, no DISTURBED gate)', () => {
+    // 4 stones sitting directly above AIR. Force-eval rule: any
+    // cluster with AIR below its bottom-most row falls, regardless
+    // of disturbance status. (Old rule required DISTURBED + 4+; new
+    // rule is just canFall — air-only-below for !inMotion clusters.)
     const world = makeWorldFromGrid([
       '......S.......',
       '......S.......',
       '......S.......',
       '......S.......',
-      '......#.......',
       '..............',
+      'SSSSSSSSSSSSSS',
     ])
     disturbAllStones(world)
     resetAvalanche()
@@ -115,18 +118,19 @@ describe('avalanche cluster rules', () => {
   })
 
   it('rock codex: in-motion cluster keeps falling even when shrunk below threshold', () => {
-    // 4-stack on a deep soil column. The cluster starts falling
-    // (4+, disturbed, AIR/SOIL below), crushes through soil, and
-    // each crush stacks a hit on the bottom rock. After 4 hits the
-    // bottom rock breaks off → cluster has 3 stones. Per the rock
-    // codex, the surviving 3-stone unit MUST keep falling until it
-    // lands; it doesn't stop because it dropped below threshold.
+    // 4-stack with one AIR row below to start the fall, then a deep
+    // soil column for the in-motion cluster to crush through. Each
+    // crush stacks a hit on the bottom rock. After STONE_MAX_HITS
+    // hits the bottom rock breaks off → cluster has 3 stones. Per
+    // the rock codex, the surviving 3-stone unit MUST keep falling
+    // until it lands; it doesn't stop because it dropped below
+    // threshold (force-eval honors in-motion via FLAG_FALLING).
     const world = makeWorldFromGrid([
       '......S.......',
       '......S.......',
       '......S.......',
       '......S.......',
-      '......#.......',
+      '..............',
       '......#.......',
       '......#.......',
       '......#.......',

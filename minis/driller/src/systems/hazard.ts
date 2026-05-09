@@ -520,24 +520,46 @@ export function rockAvalancheSystem(world: World): void {
       if (r > maxRowInCluster) maxRowInCluster = r
     }
     let canFall = true
+    let unstreamedBelow = false
     const bottomEdge: number[] = []
     for (const idx of cells) {
       const c = idx % cols
       const r = (idx - c) / cols
       if (r !== maxRowInCluster) continue
       if (r + 1 >= rows) {
-        canFall = false
+        // Streamer hasn't extended the world below this row yet.
+        // Don't decide either way — defer evaluation. Without this,
+        // a cluster sitting on the streaming frontier would be
+        // marked canFall=false (treated as blocked) and go inert
+        // until the player got closer; with this, the cluster waits
+        // for the row below to load, then re-evaluates next tick.
+        unstreamedBelow = true
         break
       }
       const belowIdx = (r + 1) * cols + c
       if (inCluster.has(belowIdx)) continue
       const below = tiles[belowIdx]
-      if (below !== TILE_AIR && below !== TILE_SOIL) {
-        canFall = false
-        break
+      // Tightened canFall for !inMotion: idle clusters need AIR
+      // below to start falling (NOT soil — soil-supported clusters
+      // wait until the soil cascades). In-motion clusters keep the
+      // looser AIR-or-SOIL rule so they can crush soil mid-fall.
+      // Without this split, force-eval would tip every worldgen
+      // cluster that's sitting on soil into immediate fall on the
+      // first tick after load.
+      if (inMotion) {
+        if (below !== TILE_AIR && below !== TILE_SOIL) {
+          canFall = false
+          break
+        }
+      } else {
+        if (below !== TILE_AIR) {
+          canFall = false
+          break
+        }
       }
       bottomEdge.push(idx)
     }
+    if (unstreamedBelow) continue
     if (!canFall) {
       // Cluster is blocked. Two cases:
       //   - inMotion: this is LANDING. The cluster has resolved its

@@ -45,13 +45,16 @@ function tickUntilSomeShaking(
 
 describe('mouse-brace on shaking rock cluster', () => {
   it('braces a shaking 4-cluster — delays the cluster commit', () => {
+    // 4-stack with AIR directly below so canFall=true under the new
+    // strict-AIR rule for !inMotion clusters. Without the AIR row
+    // the cluster wouldn't enter SHAKING in the first place.
     const world = makeWorldFromGrid([
       '......S.......',
       '......S.......',
       '......S.......',
       '......S.......',
-      '......#.......',
       '..............',
+      'SSSSSSSSSSSSSS',
     ])
     disturbAllStones(world)
     resetAvalanche()
@@ -59,10 +62,12 @@ describe('mouse-brace on shaking rock cluster', () => {
     const gotShaking = tickUntilSomeShaking(world, 30)
     expect(gotShaking, 'cluster should enter SHAKING phase before brace').toBe(true)
 
-    // Snapshot state at brace-time.
+    // Snapshot state at brace-time. Walk only the cluster rows
+    // (above the bedrock floor at row 5) to verify the 4-stack hasn't
+    // moved yet.
     const grid = world.get(Grid)!
     const beforeStoneRows: number[] = []
-    for (let r = 0; r < grid.rows; r++) {
+    for (let r = 0; r < 5; r++) {
       if (grid.tiles[r * grid.cols + 6] === TILE_STONE) beforeStoneRows.push(r)
     }
     expect(beforeStoneRows).toEqual([0, 1, 2, 3])
@@ -84,17 +89,18 @@ describe('mouse-brace on shaking rock cluster', () => {
   })
 
   it('refuses to brace an in-motion cluster (codex rule 5)', () => {
-    // Set up cluster, let it commit and start falling. Then try to
-    // brace one of its FLAG_FALLING cells — must return false.
+    // Set up cluster with AIR below to start the fall, then a deep
+    // soil column for the in-motion cluster to crush through. Once
+    // a cell carries FLAG_FALLING the brace must refuse it.
     const world = makeWorldFromGrid([
       '......S.......',
       '......S.......',
       '......S.......',
       '......S.......',
-      '......#.......',
-      '......#.......',
-      '......#.......',
       '..............',
+      '......#.......',
+      '......#.......',
+      'SSSSSSSSSSSSSS',
     ])
     disturbAllStones(world)
     resetAvalanche()

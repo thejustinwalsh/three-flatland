@@ -255,18 +255,10 @@ export function generateChunk(seed: number, chunkY: number): GeneratedChunk {
   const depthMid = chunkY * rows + rows / 2
   const biome = biomeAt(depthMid)
 
-  // Base fill: SOIL everywhere (chunk 0's top 4 rows become AIR for
-  // sky). After the base fill we punch out any rows that fall inside
-  // the void band of their world — those are the free-fall gaps
-  // between layers.
+  // Base fill: SOIL everywhere. After the base fill we punch out
+  // any rows that fall inside the void band of their world — those
+  // are the free-fall gaps between layers.
   tiles.fill(TILE_SOIL)
-  if (chunkY === 0) {
-    for (let y = 0; y < 4; y++) {
-      for (let x = 0; x < cols; x++) {
-        tiles[y * cols + x] = TILE_AIR
-      }
-    }
-  }
   for (let r = 0; r < rows; r++) {
     const absRow = chunkY * rows + r
     if (isFreeFall(absRow)) {
@@ -463,6 +455,36 @@ export function generateChunk(seed: number, chunkY: number): GeneratedChunk {
       const sizeRoll = rng.next()
       const size: GemSize = sizeRoll < 0.45 ? 'small' : sizeRoll < 0.75 ? 'medium' : sizeRoll < 0.92 ? 'large' : 'huge'
       gems.push({ col: x, rowInChunk: r, color, size })
+    }
+  }
+
+  // Start-of-game guarantee: the first 4 rows of chunkY=0 are FULL
+  // SOIL — no caves, no tunnels, no stones, no gems, no explosives.
+  // The driller spawns at (col=9, row=0) inside this solid block; its
+  // own-cell-must-be-AIR safety in driller.ts clears the spawn cell
+  // immediately, leaving homie standing in a one-cell hole punched
+  // into solid earth. Drilling proceeds downward from there. This
+  // gives every run an identical, calm intro before the world's
+  // procedural mess starts at row 4.
+  if (chunkY === 0) {
+    for (let r = 0; r < 4; r++) {
+      for (let c = 0; c < cols; c++) {
+        const idx = r * cols + c
+        tiles[idx] = TILE_SOIL
+        clusterId[idx] = 0
+      }
+    }
+    // Filter any gem / explosive / damagedStone placements that
+    // landed in the now-solid top band — they've been overwritten by
+    // SOIL above and the entities they describe should not spawn.
+    const filteredGems = gems.filter((g) => g.rowInChunk >= 4)
+    gems.length = 0
+    for (const g of filteredGems) gems.push(g)
+    const filteredExplosives = explosivePlacements.filter((e) => e.rowInChunk >= 4)
+    explosivePlacements.length = 0
+    for (const e of filteredExplosives) explosivePlacements.push(e)
+    for (let i = damagedStones.length - 1; i >= 0; i--) {
+      if (damagedStones[i]! < 4 * cols) damagedStones.splice(i, 1)
     }
   }
 
