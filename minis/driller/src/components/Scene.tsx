@@ -24,7 +24,6 @@ import { FallingChunkView } from './FallingChunkView'
 import { GemRenderer } from './GemRenderer'
 import { GhostBeam } from './GhostBeam'
 import { HazardView } from './HazardView'
-import { PlayfieldOverlay } from './PlayfieldOverlay'
 import { TileRenderer } from './TileRenderer'
 import { shallowEqual } from '../shallow'
 
@@ -112,7 +111,6 @@ export function Scene({ onShellStateChange }: SceneProps) {
       <HazardView material={material} />
       <DrillerView material={material} />
       <GhostBeam material={material} />
-      <PlayfieldOverlay material={material} />
       {shouldShowDebugPanel() && <DebugPanel />}
     </flatland>
   )
