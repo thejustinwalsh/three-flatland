@@ -95,26 +95,29 @@ export function detectChunks(
 }
 
 /**
- * Cantilever collapse rule.
+ * Compute the distance-to-nearest-anchor for every cell.
  *
- * Multi-source BFS over SOIL from anchor seeds (STONE / ROCK / FIXTURE
- * cells, plus left/right/bottom world edges). Returns a Set of SOIL cell
- * indices whose Manhattan-along-soil distance to the nearest anchor
- * exceeds `maxReach` (or which are unreachable).
+ * Anchors (distance 0):
+ *   - STONE / FIXTURE cells
+ *   - SOIL cells touching the left / right / bottom world edge
+ *   - The top edge is NOT an anchor (sky).
  *
- * These cells are "unstable" — they should sag and fall. As cells fall,
- * the new tile arrangement is re-evaluated next tick; cells that used to
- * be safely chained to an anchor through their neighbors may now be
- * stranded → cascading sags.
+ * Distance propagates through SOIL cells only (4-connected). Returns
+ * an `Int32Array` parallel to `tiles`:
+ *   -1 — AIR cell, OR a SOIL cell unreachable from any anchor
+ *    0 — anchor cell
+ *    N — SOIL cell whose shortest 4-connected soil-path to an anchor
+ *        is N edges long
  *
- * Top edge does NOT anchor (sky).
+ * This is the shared core used by both `unstableCells` (for the
+ * collapse system) and the dev heatmap overlay (for visualizing the
+ * cantilever rule). Cost: O(cells) — single multi-source BFS.
  */
-export function unstableCells(
+export function anchorDistanceMap(
   tiles: Uint8Array,
   cols: number,
   rows: number,
-  maxReach: number,
-): Set<number> {
+): Int32Array {
   const dist = new Int32Array(tiles.length)
   dist.fill(-1)
   const queue: number[] = []
@@ -167,7 +170,26 @@ export function unstableCells(
       queue.push(ni)
     }
   }
+  return dist
+}
 
+/**
+ * Cantilever collapse rule.
+ *
+ * Returns the SOIL cell indices whose 4-connected soil-path to the
+ * nearest anchor is longer than `maxReach`, plus any unreachable
+ * SOIL cells. These are "unstable" — they should sag and fall. As
+ * cells fall, the new tile arrangement is re-evaluated next tick;
+ * cells that used to be safely chained to an anchor through their
+ * neighbors may now be stranded → cascading sags.
+ */
+export function unstableCells(
+  tiles: Uint8Array,
+  cols: number,
+  rows: number,
+  maxReach: number,
+): Set<number> {
+  const dist = anchorDistanceMap(tiles, cols, rows)
   const out = new Set<number>()
   for (let i = 0; i < tiles.length; i++) {
     if (tiles[i] !== TILE_SOIL) continue

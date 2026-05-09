@@ -18,8 +18,7 @@ import { resetStreaming, streamChunks } from '../systems/generation'
 import { hazardSpawnSystem, hazardTickSystem, resetAvalanche, resetHazardSpawn, rockAvalancheSystem } from '../systems/hazard'
 import { particlesSystem } from '../systems/particles'
 import { useDrillerMaterial } from '../materials'
-import { AIDebugPanel, shouldShowAIDebug } from './AIDebugPanel'
-import { PerfDebugPanel, shouldShowPerfDebug } from './PerfDebugPanel'
+import { DebugPanel, shouldShowDebugPanel } from './DebugPanel'
 import { DrillerView } from './DrillerView'
 import { FallingChunkView } from './FallingChunkView'
 import { GemRenderer } from './GemRenderer'
@@ -114,8 +113,7 @@ export function Scene({ onShellStateChange }: SceneProps) {
       <DrillerView material={material} />
       <GhostBeam material={material} />
       <PlayfieldOverlay material={material} />
-      {shouldShowAIDebug() && <AIDebugPanel />}
-      {shouldShowPerfDebug() && <PerfDebugPanel />}
+      {shouldShowDebugPanel() && <DebugPanel />}
     </flatland>
   )
 }

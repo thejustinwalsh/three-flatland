@@ -16,13 +16,15 @@ import {
   TILE_STONE,
   isFixtureTile,
 } from '../traits'
-import { MIN_PLAY_ROWS, PLAY_COLS, TILE_PX } from '../constants'
+import { MAX_REACH, MIN_PLAY_ROWS, PLAY_COLS, TILE_PX } from '../constants'
 import { biomeAt } from '../biomes'
 import {
   ensureDebugRenderState,
   recordCellRender,
   tickDebugRenderFrame,
 } from '../dev/render-instrument'
+import { getRenderMode, heatmapTint } from '../dev/render-mode'
+import { anchorDistanceMap } from '../lib/chunk-detect'
 
 // Generous pool: covers tall viewports without stale-cell artifacts. The
 // tile-iteration window is `cam.rows + 4` rows; pool must cover the
@@ -171,6 +173,17 @@ export function TileRenderer({ material }: TileRendererProps) {
     const now = Date.now()
     const pulse = Math.floor(now / 80) % 2 === 0
 
+    // Dev-only anchor-heatmap mode. When the debug panel toggles it
+    // on, we compute the distance-from-nearest-anchor map once per
+    // frame and tint each cell by its distance instead of by tile
+    // class. Black for anchors. Useful for visualizing the cantilever
+    // rule. Tree-shaken out of production via the same `import.meta.env.DEV`
+    // gate that strips the rest of `src/dev/`.
+    const heatmapMode = import.meta.env.DEV && getRenderMode() === 'anchor-heatmap'
+    const heatmapDistances = heatmapMode
+      ? anchorDistanceMap(tiles, cols, rows)
+      : null
+
     let slot = 0
     for (let r = topRow; r < bottomRow && slot < POOL_SIZE; r++) {
       for (let c = 0; c < cols && slot < POOL_SIZE; c++) {
@@ -191,7 +204,21 @@ export function TileRenderer({ material }: TileRendererProps) {
         const shaking = (flags[idx]! & FLAG_SHAKING) !== 0
         const litExplosive = tile === TILE_EXPLOSIVE && triggeredExplosives.has(idx) && pulse
         const palette = biomeAt(r).palette
-        const tint = pickTint(tile, frameIndex[idx]!, hits[idx] ?? 0, precarious, sagging, falling, litExplosive, now, palette)
+        let tint: readonly [number, number, number]
+        if (heatmapMode && heatmapDistances) {
+          // Heatmap path: ignore tile class, color by anchor distance.
+          // Anchors render black; non-soil non-anchor cells (AIR is
+          // already filtered above; EXPLOSIVE etc.) keep their normal
+          // tint so the player can still see hazards.
+          const d = heatmapDistances[idx] ?? -1
+          const ht = heatmapTint(d, MAX_REACH)
+          tint =
+            ht !== null
+              ? ht
+              : pickTint(tile, frameIndex[idx]!, hits[idx] ?? 0, precarious, sagging, falling, litExplosive, now, palette)
+        } else {
+          tint = pickTint(tile, frameIndex[idx]!, hits[idx] ?? 0, precarious, sagging, falling, litExplosive, now, palette)
+        }
         // Shake telegraph: deliberate "crack" rather than a buzz. A
         // few wide shudders at ~6 Hz (1 cycle ≈ 170 ms) so over the
         // ~300 ms window the player sees roughly two heavy lurches
