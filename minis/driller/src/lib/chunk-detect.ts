@@ -98,13 +98,14 @@ export function detectChunks(
  * Compute the distance-to-nearest-anchor for every cell.
  *
  * Anchors (distance 0):
- *   - STONE cells anchor SOIL ABOVE and to the SIDES, but NOT BELOW.
- *     Stones are subject to gravity themselves: they "lift" what's
- *     on top of them but don't "hold up" what dangles beneath. This
- *     keeps soil-below-rock cells unanchored and falling, which is
- *     what surfaces rock clusters as avalanche threats — without
- *     the asymmetry, soil masses would hang off floating stones
- *     forever and rock clusters would never get disturbed.
+ *   - STONE cells anchor SOIL DIRECTLY ABOVE them and nothing else.
+ *     Not sides. Not below. Stones are subject to gravity themselves:
+ *     they "lift" what sits directly on top of them, but a soil cell
+ *     beside or below a stone has to find its own path to a fixture
+ *     or the top/bottom edge. This keeps soil-around-rock unanchored
+ *     and falling, which is what surfaces rock clusters as avalanche
+ *     threats — without the asymmetry, soil masses would hang off
+ *     floating stones and rock clusters would never get disturbed.
  *   - FIXTURE cells anchor SOIL in all 4 directions (they're load-
  *     bearing and indestructible — the only true mid-air anchors).
  *   - SOIL cells touching the TOP edge (row 0) — the sky cap.
@@ -162,9 +163,10 @@ export function anchorDistanceMap(
   // FIFO via queue index pointer (avoids shift O(n)).
   //
   // Per-cell directional rule (ruleset described above):
-  //   STONE       → expands UP / LEFT / RIGHT, NOT DOWN. Stones
-  //                 anchor what's above and beside them, but not
-  //                 what dangles below.
+  //   STONE       → expands UP ONLY. Stones anchor what's directly
+  //                 above them and nothing else. Sides and below
+  //                 don't get a free anchor path through the stone.
+  //                 (k order: 0=W 1=E 2=N 3=S; only k=2 propagates.)
   //   FIXTURE     → expands all 4 directions (full anchor).
   //   SOIL        → expands all 4 directions (no asymmetry — the
   //                 cell already has a path; relay it onward).
@@ -175,15 +177,17 @@ export function anchorDistanceMap(
     const r = (idx - c) / cols
     const d = dist[idx]!
     const tHere = tiles[idx]!
-    const blockSouth = tHere === TILE_STONE
+    const stoneOnly = tHere === TILE_STONE
     for (let k = 0; k < 4; k++) {
+      // STONE cells: only expand to the cell directly above (k=2).
+      // All other directions stay at -1, forcing those soil cells
+      // to find their own path to a fixture / top edge / bottom edge.
+      if (stoneOnly && k !== 2) continue
       const dc = k === 0 ? -1 : k === 1 ? 1 : 0
       const dr = k === 2 ? -1 : k === 3 ? 1 : 0
       const nc = c + dc
       const nr = r + dr
       if (nc < 0 || nc >= cols || nr < 0 || nr >= rows) continue
-      // Stones don't anchor SOIL hanging directly below them.
-      if (blockSouth && k === 3) continue
       const ni = nr * cols + nc
       if (tiles[ni] !== TILE_SOIL) continue
       const nd = d + 1

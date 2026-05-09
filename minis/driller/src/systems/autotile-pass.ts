@@ -50,12 +50,16 @@ export function autotilePass(world: World): void {
 /**
  * Mark a cell and its 8-neighbor halo as autotile-dirty AND propagate
  * support-topology disturbance into the 4-neighbor halo:
- *   - SOIL gets `FLAG_SAG_RECHECK` so the cantilever sag detector
- *     re-evaluates the cell on the next tick.
- *   - STONE gets `FLAG_DISTURBED` so otherwise-inert clusters wake up
- *     when a neighboring cell changes (drill, sag-release, explosion,
- *     hazard land). Without this, world-gen rock piles would never
- *     fall unless a hazard happened to land directly adjacent.
+ *   - SOIL in any 4-neighbor direction gets `FLAG_SAG_RECHECK` so the
+ *     cantilever sag detector re-evaluates it next tick.
+ *   - STONE only gets `FLAG_DISTURBED` if it sits DIRECTLY ABOVE the
+ *     changed cell (i.e. the changed cell was directly below the
+ *     stone, "what was supporting me is gone"). Drilling beside a
+ *     stone or above it does NOT disturb it — that would let the
+ *     player accidentally trigger rock falls every time they walked
+ *     past. The looming-rock design wants rocks to fall when their
+ *     SUPPORT changes, mirroring the directional anchoring rule
+ *     (stones anchor only what's directly above them).
  *
  * Use this for PLAYER-driven mutations and the natural cascades they
  * create — events that actually destabilise the world.
@@ -74,7 +78,8 @@ export function markCellAndNeighborsDirty(world: World, col: number, row: number
     const nTile = tiles[nIdx]
     if (nTile === TILE_SOIL) {
       flags[nIdx]! |= FLAG_SAG_RECHECK
-    } else if (nTile === TILE_STONE) {
+    } else if (nTile === TILE_STONE && dc === 0 && dr === -1) {
+      // Stone above the changed cell — its support just changed.
       flags[nIdx]! |= FLAG_DISTURBED
     }
   }
@@ -113,7 +118,9 @@ export function markCellAndNeighborsDirtyExcept(
     const nTile = tiles[nIdx]
     if (nTile === TILE_SOIL) {
       flags[nIdx]! |= FLAG_SAG_RECHECK
-    } else if (nTile === TILE_STONE) {
+    } else if (nTile === TILE_STONE && dc === 0 && dr === -1) {
+      // Stone directly above the changed cell — its support changed.
+      // Same directional rule as markCellAndNeighborsDirty.
       flags[nIdx]! |= FLAG_DISTURBED
     }
   }
