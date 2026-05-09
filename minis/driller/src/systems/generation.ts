@@ -7,6 +7,7 @@ import {
 import {
   Explosive,
   FLAG_AUTOTILE_DIRTY,
+  FLAG_SAG_RECHECK,
   Gem,
   Grid,
   Seed,
@@ -141,29 +142,41 @@ export function carveTunnels(
 type StoneShape = readonly [number, number][]
 
 const STONE_SHAPES: { weight: number; cells: StoneShape }[] = [
-  // 1: single rock — the most common obstacle
-  { weight: 12, cells: [[0, 0]] },
+  // 1: single rock — still common but less dominant. Singles act as
+  // anchors-in-mid-air after the Phase 2 cantilever rule, so they're
+  // gameplay-meaningful, but the chunky shapes are what give the
+  // world its visual mass and avalanche risk.
+  { weight: 6, cells: [[0, 0]] },
   // 2: domino — horizontal + vertical
-  { weight: 8, cells: [[0, 0], [1, 0]] },
-  { weight: 8, cells: [[0, 0], [0, 1]] },
+  { weight: 6, cells: [[0, 0], [1, 0]] },
+  { weight: 6, cells: [[0, 0], [0, 1]] },
   // 3: triomino — line + L-tris (4 rotations)
   { weight: 5, cells: [[0, 0], [1, 0], [2, 0]] },
   { weight: 5, cells: [[0, 0], [0, 1], [0, 2]] },
   { weight: 5, cells: [[0, 0], [1, 0], [0, 1]] },
   { weight: 5, cells: [[0, 0], [1, 0], [1, 1]] },
-  // 4: tetrominoes (Tetris pieces)
-  { weight: 4, cells: [[0, 0], [1, 0], [2, 0], [3, 0]] }, // I horizontal
-  { weight: 4, cells: [[0, 0], [0, 1], [0, 2], [0, 3]] }, // I vertical
-  { weight: 4, cells: [[0, 0], [1, 0], [0, 1], [1, 1]] }, // O / square
-  { weight: 3, cells: [[0, 0], [1, 0], [2, 0], [1, 1]] }, // T
-  { weight: 3, cells: [[0, 0], [1, 0], [2, 0], [0, 1]] }, // L
-  { weight: 3, cells: [[0, 0], [1, 0], [2, 0], [2, 1]] }, // J
-  { weight: 3, cells: [[1, 0], [2, 0], [0, 1], [1, 1]] }, // S
-  { weight: 3, cells: [[0, 0], [1, 0], [1, 1], [2, 1]] }, // Z
-  // 5+: big avalanche-bait piles, rare
-  { weight: 1, cells: [[0, 0], [1, 0], [2, 0], [0, 1], [1, 1]] },     // P / pent
-  { weight: 1, cells: [[0, 0], [1, 0], [0, 1], [0, 2], [1, 2]] },     // U
-  { weight: 1, cells: [[0, 0], [1, 0], [2, 0], [1, 1], [1, 2]] },     // T-tall
+  // 4: tetrominoes (Tetris pieces) — these reach the avalanche
+  // threshold (4+ cells) and become live threats once disturbed.
+  { weight: 5, cells: [[0, 0], [1, 0], [2, 0], [3, 0]] }, // I horizontal
+  { weight: 5, cells: [[0, 0], [0, 1], [0, 2], [0, 3]] }, // I vertical
+  { weight: 6, cells: [[0, 0], [1, 0], [0, 1], [1, 1]] }, // O / square — solid 2x2
+  { weight: 5, cells: [[0, 0], [1, 0], [2, 0], [1, 1]] }, // T
+  { weight: 5, cells: [[0, 0], [1, 0], [2, 0], [0, 1]] }, // L
+  { weight: 5, cells: [[0, 0], [1, 0], [2, 0], [2, 1]] }, // J
+  { weight: 4, cells: [[1, 0], [2, 0], [0, 1], [1, 1]] }, // S
+  { weight: 4, cells: [[0, 0], [1, 0], [1, 1], [2, 1]] }, // Z
+  // 5: pentominoes — chunky and visually distinct. These look like
+  // glom-rocks even without autotile rendering.
+  { weight: 3, cells: [[0, 0], [1, 0], [2, 0], [0, 1], [1, 1]] },     // P
+  { weight: 3, cells: [[0, 0], [1, 0], [0, 1], [0, 2], [1, 2]] },     // U
+  { weight: 3, cells: [[0, 0], [1, 0], [2, 0], [1, 1], [1, 2]] },     // T-tall
+  { weight: 3, cells: [[0, 0], [1, 0], [2, 0], [3, 0], [1, 1]] },     // bumped-line
+  { weight: 3, cells: [[1, 0], [0, 1], [1, 1], [2, 1], [1, 2]] },     // plus / cross
+  { weight: 3, cells: [[0, 0], [1, 0], [2, 0], [0, 1], [2, 1]] },     // pi
+  // 6+: big piles — true avalanche fodder, mostly in deep biomes.
+  { weight: 2, cells: [[0, 0], [1, 0], [2, 0], [0, 1], [1, 1], [2, 1]] }, // 3x2 block
+  { weight: 2, cells: [[0, 0], [1, 0], [0, 1], [1, 1], [0, 2], [1, 2]] }, // 2x3 block
+  { weight: 2, cells: [[0, 0], [1, 0], [2, 0], [3, 0], [1, 1], [2, 1]] }, // 4x2 staggered
 ]
 
 const STONE_SHAPE_WEIGHT_TOTAL = STONE_SHAPES.reduce((s, sh) => s + sh.weight, 0)
@@ -436,7 +449,19 @@ function loadChunk(world: World, chunkY: number, seed: number): void {
       const dst = (baseRow + r) * cols + c
       const t = generated.tiles[r * cols + c]!
       tiles[dst] = t
-      flags[dst] = FLAG_AUTOTILE_DIRTY
+      // Stamp SAG_RECHECK on every fresh SOIL cell so the collapse
+      // detector evaluates it on the next tick. Without this, a
+      // worldgen-placed unanchored chunk stays dormant until a nearby
+      // drill action propagates the flag to it via 4-neighbor
+      // markCellAndNeighborsDirty — meaning chunks could "wake up
+      // and fall" minutes after loading, when the player is nowhere
+      // near. With SAG_RECHECK stamped at load, any cantilever-
+      // unstable chunk falls IMMEDIATELY on first eval (or, if
+      // outside the scan window, the first time the driller's
+      // window reaches it).
+      flags[dst] = t === TILE_SOIL
+        ? FLAG_AUTOTILE_DIRTY | FLAG_SAG_RECHECK
+        : FLAG_AUTOTILE_DIRTY
       frameIndex[dst] = 0
       // Phase 2 unification: hits = damage TAKEN. Fresh stones from
       // worldgen start at 0; speed-bump stones (the spiritual

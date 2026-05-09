@@ -159,11 +159,13 @@ describe('collapseTick (sag → fall release)', () => {
     world.query(SaggingChunk).forEach(() => initialSag++)
     expect(initialSag).toBeGreaterThan(0)
 
-    // Tick the world forward past SAG_DURATION_TICKS (90 = PRECARIOUS
-    // 36 + SAGGING 36 + SHAKING 18). Use a generous window so the
-    // FallingChunk can also resolve.
+    // Tick the world forward past SAG_DURATION_TICKS (138 = PRECARIOUS
+    // 54 + SAGGING 54 + SHAKING 30 — bumped for slower telegraph
+    // anticipation now that the cracking gradient gives advance
+    // notice). Use a generous window so the FallingChunk can also
+    // resolve.
     const gs = world.get(GameState)!
-    for (let i = 0; i < 130; i++) {
+    for (let i = 0; i < 200; i++) {
       world.set(GameState, { tick: gs.tick + i + 1 })
       collapseTick(world)
     }

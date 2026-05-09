@@ -49,9 +49,16 @@ export const ACTIVE_CHUNK_CAP = 8
  * escape" becomes physically impossible — Mr. Driller's signature
  * last-second-find-a-hole moment relies on this margin.
  */
-export const SAG_PRECARIOUS_TICKS = 36
-export const SAG_SAGGING_TICKS = 36
-export const SAG_SHAKING_TICKS = 24
+// Telegraph extended (was 36/36/24 = 1.6s) now that the always-on
+// cracking gradient gives the player advance notice BEFORE a sag
+// entity exists. Cells get visibly darker as their anchor distance
+// grows, so by the time PRECARIOUS engages, the player already has
+// a sense of where weakness is. The slower phase progression then
+// builds anticipation without feeling sudden — total telegraph is
+// now ~2.3s.
+export const SAG_PRECARIOUS_TICKS = 54
+export const SAG_SAGGING_TICKS = 54
+export const SAG_SHAKING_TICKS = 30
 export const SAG_DURATION_TICKS =
   SAG_PRECARIOUS_TICKS + SAG_SAGGING_TICKS + SAG_SHAKING_TICKS
 
@@ -91,7 +98,13 @@ export const OVER_PET_THRESHOLD = 3
  * leaves only the deepest center-of-overhang cells unstable, so
  * sagging happens but doesn't cascade across the whole chunk.
  */
-export const MAX_REACH = 10
+// MAX_REACH controls the cantilever distance threshold — SOIL cells
+// whose 4-connected SOIL-path to an anchor exceeds this become
+// unstable. Smaller value = falls trigger easier = more interesting
+// gameplay, more wall-shears. The cracking gradient renders 5
+// discrete bands across [0..MAX_REACH], so 8 gives ~2-cell-per-band
+// resolution.
+export const MAX_REACH = 8
 
 /**
  * Two-phase per-cell cadence — Mr. Driller-style drill THEN step:
@@ -129,7 +142,10 @@ export const PONDER_GEM_MS = 140
  * during free fall" feel comes from this asymmetry: gems scroll
  * upward in the camera frame as the driller drops past them.
  */
-export const FALL_INTERVAL_MS = 320
+// Half the previous gem fall speed — gems drift down deliberately,
+// giving the driller AI time to reach them and the player time to
+// see them tumbling. Was 320ms; now 640ms per cell.
+export const FALL_INTERVAL_MS = 640
 
 /** Multi-hit ROCK tile — number of dig actions to break. */
 /**

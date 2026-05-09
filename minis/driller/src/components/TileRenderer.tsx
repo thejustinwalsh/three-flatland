@@ -96,26 +96,35 @@ function pickBaseTint(
 
 /**
  * Convert a SOIL cell's anchor distance into a "cracking" multiplier.
- * Far-from-anchor cells render visibly darker / cooler; close-to-
- * anchor cells render at full brightness. The player reads the
- * gradient as "cracked = dig-this-and-things-fall" without the sim
- * having to commit a sag entity first.
+ * The visual reads as cracking, so darker = more solid (deeper, more
+ * pigment, less weathered) and lighter = more cracked / weathered /
+ * about to fall. Five discrete bands across [0..MAX_REACH] give the
+ * player a clear "I'm at level N of 5" signal instead of a smooth
+ * gradient that's hard to count.
  *
- *   d == 0           full brightness     (anchor cells)
- *   d in [1, 4]      ~95-100% brightness (solid)
- *   d in [5, 8]      ~85-95% brightness  (slightly cracked)
- *   d == 9           ~75% brightness     (cracked — caution)
- *   d == MAX_REACH   ~65% brightness     (right at threshold)
- *   d > MAX_REACH    not seen here — those cells are in the sag
- *                    pipeline and use TINT_FALL once committed
+ *   distance band      brightness     read
+ *   ────────────────── ─────────────── ────────────────────────
+ *   d == 0             0.65 (darkest)  anchor itself / very solid
+ *   d in [1, 0.2*MAX]  0.75            solid
+ *   d in [..., 0.4]    0.85            hairline cracks
+ *   d in [..., 0.6]    0.92            visible cracks
+ *   d in [..., 0.8]    0.97            heavily cracked
+ *   d >= ~0.8 * MAX    1.00 (lightest) max cracking — about to fall
+ *
+ * Cells with d > MAX_REACH are usually in the sag pipeline and use
+ * TINT_FALL once committed; if they're not in the pipeline yet
+ * (within the same tick the gradient sees them) they render at the
+ * brightest band.
  */
 function crackMultiplier(distance: number, maxReach: number): number {
   if (distance < 0) return 1 // AIR / unreachable — caller handles
-  if (distance === 0) return 1
-  // Linear ramp from full brightness at d=1 to ~0.65 at d=maxReach.
-  // A small shoulder so the early distances stay almost-fresh.
-  const t = Math.min(1, distance / maxReach)
-  return 1 - 0.35 * (t * t) // quadratic so far-away cells feel more cracked
+  if (distance === 0) return 0.7 // anchor / fully solid → darkest band
+  if (distance >= maxReach) return 1.0 // about to fall → lightest band
+  const t = distance / maxReach
+  if (t < 0.2) return 0.78
+  if (t < 0.4) return 0.85
+  if (t < 0.6) return 0.91
+  return 0.96
 }
 
 function pickTint(
@@ -147,9 +156,12 @@ function pickTint(
   // with the gradient signal.
   void precarious
   // Cracking gradient — only applies to SOIL (other tile classes have
-  // their own visual identity). Anchored cells (d=0) and very close
-  // cells stay fresh; far cells are noticeably darker.
-  if (tile === TILE_SOIL && distance > 0) {
+  // their own visual identity). Inverted from the original direction:
+  // closer-to-anchor cells render DARKER (more pigment, more solid),
+  // and far-from-anchor cells render at full brightness (visibly
+  // weathered / cracked / about to fall). Five discrete bands so the
+  // player can count the level instead of reading a smooth ramp.
+  if (tile === TILE_SOIL && distance >= 0) {
     const m = crackMultiplier(distance, maxReach)
     if (m < 1) {
       return [base[0] * m, base[1] * m, base[2] * m] as const
