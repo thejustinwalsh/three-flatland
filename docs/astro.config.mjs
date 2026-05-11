@@ -336,7 +336,45 @@ export default defineConfig({
     resolve: {
       conditions: ['source'],
     },
-    plugins: [watchExamples(), copyExamples()],
+    plugins: [
+      watchExamples(),
+      copyExamples(),
+      /**
+       * Disable bfcache on HTML responses in dev — Chrome's in-memory
+       * back/forward cache restores a frozen DOM + JS state when you
+       * navigate via the browser's back/forward arrows, AND under
+       * some conditions also on Cmd-R reload. Combined with the
+       * ClientRouter + ReplacementSwap SPA layer + HMR, that means a
+       * page poisoned mid-session can persist across reloads. Clear-
+       * cache button doesn't fix it (bfcache is in-memory, not in
+       * cleared storage). DevTools "Disable cache" doesn't fix it
+       * (HTTP cache only). Incognito works (bfcache off by default).
+       *
+       * `Cache-Control: no-store` is the only directive that disables
+       * bfcache eligibility. Scoped to HTML responses via URL pattern
+       * so JS/CSS modules still get Vite's normal cache headers.
+       *
+       * Dev-only (configureServer never fires in build).
+       */
+      {
+        name: 'tf-disable-bfcache-html-dev',
+        configureServer(server) {
+          server.middlewares.use((req, res, next) => {
+            const url = req.url ?? '';
+            const path = url.split('?')[0];
+            // HTML: no extension, ends with `/`, or explicit .html
+            const isHtml =
+              path.endsWith('/') ||
+              path.endsWith('.html') ||
+              !path.includes('.');
+            if (isHtml) {
+              res.setHeader('Cache-Control', 'no-store, must-revalidate');
+            }
+            next();
+          });
+        },
+      },
+    ],
     optimizeDeps: {
       // Pre-bundle the React JSX runtimes alongside `react-dom/client`.
       // Without this, dev mode lazy-resolves `react/jsx-dev-runtime` on
