@@ -11,38 +11,37 @@ import { PLAY_COLS, PLAY_ROWS, TILE_PX } from '../src/constants'
  */
 
 describe('pickScale (fixed PLAY_ROWS layout)', () => {
-  it('picks 1× when 2× would exceed height on a 1080p viewport', () => {
-    // PLAY_ROWS=40, TILE_PX=16. 2× height = 40*16*2 = 1280 > 1080.
-    // 1× height = 640 ≤ 1080. 1× width = 288 ≤ 1920. Largest = 1.
-    expect(pickScale(1920, 1080)).toBe(1)
+  // Height-fit tolerance: 75% of the gameplay rect rows must fit the
+  // viewport at the chosen scale. The rest crops above/below (bg
+  // ambient layer fills that area). Numbers below assume
+  // HEIGHT_FIT_RATIO = 0.75 in src/lib/scale.ts.
+  it('picks 2× on 1080p — minor vertical overflow accepted', () => {
+    // 2× width = 576 ≤ 1920. 2× height-fit threshold = 40*16*2*0.75 = 960 ≤ 1080.
+    // 4× height-fit = 40*16*4*0.75 = 1920 > 1080.
+    expect(pickScale(1920, 1080)).toBe(2)
   })
 
   it('picks 2× when viewport comfortably fits both dimensions', () => {
-    // 1× width = 288, 2× = 576, 4× = 1152, 8× = 2304.
-    // 1× height = 640, 2× = 1280, 4× = 2560, 8× = 5120.
-    // At 1920 × 1500: 2× height (1280) fits, 4× (2560) doesn't.
     expect(pickScale(1920, 1500)).toBe(2)
   })
 
   it('picks 4× for a 4K-tall viewport', () => {
-    // 4× height = 2560 ≤ 2700. 4× width = 1152 ≤ 3840.
-    // 8× height = 5120 > 2700, so 4 is the cap.
+    // 4× height-fit = 1920 ≤ 2700. 8× height-fit = 3840 > 2700.
     expect(pickScale(3840, 2700)).toBe(4)
   })
 
   it('picks 8× when both dimensions are very tall', () => {
-    // 8× height = 5120, 8× width = 2304.
+    // 8× width = 2304 ≤ 3840. 8× height-fit = 40*16*8*0.75 = 3840 ≤ 5500.
     expect(pickScale(3840, 5500)).toBe(8)
   })
 
   it('falls back to 1× when no step fits both dimensions', () => {
-    // Very small mobile portrait — 1× is the floor.
     expect(pickScale(200, 200)).toBe(1)
   })
 
   it('picks 1× on a typical mobile portrait viewport', () => {
-    // iPhone-ish 414×896: 1× width = 288 ≤ 414; 1× height = 640 ≤ 896.
-    // 2× width = 576 > 414. So 1.
+    // iPhone-ish 414×896: 1× width = 288 ≤ 414; height-fit = 480 ≤ 896.
+    // 2× width = 576 > 414 — width caps at 1×.
     expect(pickScale(414, 896)).toBe(1)
   })
 })
