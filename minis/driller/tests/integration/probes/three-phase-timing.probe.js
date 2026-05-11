@@ -1,13 +1,13 @@
 // Probe: verify the 3-phase sag state machine produces wall-clock
 // timings that match the design spec, regardless of monitor refresh
-// rate. Constants in src/constants.ts: SAG_PRECARIOUS_TICKS=36,
-// SAG_SAGGING_TICKS=36, SAG_SHAKING_TICKS=24, all at 60Hz fixed
+// rate. Constants in src/constants.ts: SAG_PRECARIOUS_TICKS=12,
+// SAG_SAGGING_TICKS=30, SAG_SHAKING_TICKS=30, all at 60Hz fixed
 // simulation step.
 //
 // Expected p50 (with ±60ms tolerance):
-//   PRECARIOUS → SAGGING : 600ms
-//   SAGGING    → SHAKING : 600ms
-//   SHAKING    → release : 400ms
+//   PRECARIOUS → SAGGING : 200ms
+//   SAGGING    → SHAKING : 500ms
+//   SHAKING    → release : 500ms
 //
 // Final line MUST emit INTEGRATION_RESULT: {...}.
 

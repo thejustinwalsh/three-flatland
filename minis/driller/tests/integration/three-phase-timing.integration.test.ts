@@ -19,9 +19,13 @@ interface ThreePhaseResult {
 
 /** Allowed deviation around the design target, per phase (ms). */
 const TIMING_TOLERANCE_MS = 60
-const TARGET_PRECARIOUS_MS = 600
-const TARGET_SAGGING_MS = 600
-const TARGET_SHAKING_MS = 400
+// Diffusion-model sag timing (see src/constants.ts):
+//   PRECARIOUS = 12t = 200ms (invisible commit beat — gradient leads)
+//   SAGGING    = 30t = 500ms (heavy darken)
+//   SHAKING    = 30t = 500ms (jitter + narrow-escape window)
+const TARGET_PRECARIOUS_MS = 200
+const TARGET_SAGGING_MS = 500
+const TARGET_SHAKING_MS = 500
 
 function assertPhaseP50(label: string, p50: number, target: number, log: string): void {
   const lo = target - TIMING_TOLERANCE_MS

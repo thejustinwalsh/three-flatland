@@ -30,34 +30,41 @@ export const CHUNK_ROWS = 32
 export const ACTIVE_CHUNK_CAP = 8
 
 /**
- * Sag lifecycle phases (consistent timing, perfect synchronization).
- * Three-phase state machine — every phase well above human change-
- * detection threshold (~300ms) so the player reads the tells as
- * distinct beats instead of one blur:
+ * Sag lifecycle phases.
  *
- *   PRECARIOUS  ──── 36 ticks (~600ms) ──── slight darken
- *   SAGGING     ──── 36 ticks (~600ms) ──── heavy darken
- *   SHAKING     ──── 24 ticks (~400ms) ──── darken + jitter
+ *   PRECARIOUS  ──── 12 ticks (~200ms) ──── invisible (gradient leads)
+ *   SAGGING     ──── 30 ticks (~500ms) ──── heavy darken
+ *   SHAKING     ──── 30 ticks (~500ms) ──── darken + jitter
  *   ──── release (fall) ────
  *
- * Total ~1.6s from detect to fall. SHAKING is sized so a drill+step
- * (180ms drill cooldown + 280ms shallow step = 460ms) can JUST
- * complete before the chunk's first fall-cell impact (~100ms after
- * release): the player's sideways-into-the-hole escape lands at
- * t≈460ms while the falling chunk has only moved ~3px from its
- * release position. Drop SHAKING below 400ms and that "narrow
- * escape" becomes physically impossible — Mr. Driller's signature
- * last-second-find-a-hole moment relies on this margin.
+ * Total ~1.0s from detect to fall.
+ *
+ * Why these values, under the diffusion model:
+ *   - PRECARIOUS is now a brief commit beat (12t/~200ms). It's
+ *     deliberately invisible — the cracking gradient is already
+ *     showing weakness via `anchorDist` over the preceding
+ *     wavefront-propagation ticks (each cell rises +1/tick toward
+ *     INF). By the time PRECARIOUS fires, the player has already
+ *     watched the affected region darken; we don't need another
+ *     invisible beat. Was 54t (~900ms) — that was straight dead
+ *     time and made the perceived delay-to-visible-warning feel
+ *     sluggish.
+ *   - SAGGING is the first visible state-darken (~500ms, > human
+ *     change-detection threshold of ~300ms). "This WILL fall."
+ *   - SHAKING (~500ms) is sized so a drill+step escape
+ *     (180ms drill cooldown + 280ms shallow step = 460ms) can JUST
+ *     complete before the chunk's first impact (~100ms after
+ *     release). The narrow-escape beat — drop below 400ms and Mr.
+ *     Driller's signature last-second-find-a-hole moment becomes
+ *     physically impossible.
+ *
+ * The diffusion model now contributes additional pre-sag telegraph
+ * via the cracking gradient (cells visibly darken over MANY ticks
+ * as the wavefront approaches), so total perceived warning >> 1.0s
+ * even though the sag-pipeline portion is shorter.
  */
-// Telegraph extended (was 36/36/24 = 1.6s) now that the always-on
-// cracking gradient gives the player advance notice BEFORE a sag
-// entity exists. Cells get visibly darker as their anchor distance
-// grows, so by the time PRECARIOUS engages, the player already has
-// a sense of where weakness is. The slower phase progression then
-// builds anticipation without feeling sudden — total telegraph is
-// now ~2.3s.
-export const SAG_PRECARIOUS_TICKS = 54
-export const SAG_SAGGING_TICKS = 54
+export const SAG_PRECARIOUS_TICKS = 12
+export const SAG_SAGGING_TICKS = 30
 export const SAG_SHAKING_TICKS = 30
 export const SAG_DURATION_TICKS =
   SAG_PRECARIOUS_TICKS + SAG_SAGGING_TICKS + SAG_SHAKING_TICKS
