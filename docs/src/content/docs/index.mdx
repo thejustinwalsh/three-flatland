@@ -301,7 +301,13 @@ function Game() {
     color: color-mix(in oklab, var(--gold) 50%, var(--muted-foreground));
     margin-block: 0 calc(var(--spacing) * 4);
     margin-inline: auto;
-    text-shadow: 0 1px 12px color-mix(in oklab, var(--background) 80%, transparent);
+    /* Layered halo — close shadow carves the character edges out of
+     * the dithered canvas, wider shadow gives breathing room. Tuned
+     * to compete with the (capped) ~75% max brightness of the
+     * pixelated hero behind. */
+    text-shadow:
+      0 1px 3px color-mix(in oklab, var(--background) 90%, transparent),
+      0 2px 16px color-mix(in oklab, var(--background) 70%, transparent);
   }
 
   /* Editorial display heading — h1 now carries the value-proposition
@@ -322,7 +328,19 @@ function Game() {
     margin-block: 0 calc(var(--spacing) * 5);
     margin-inline: auto;
     text-wrap: balance;
-    text-shadow: 0 2px 32px color-mix(in oklab, var(--background) 75%, transparent);
+    /* Triple-layer halo against the dithered pixel-art canvas:
+     *   - 1px close: carves a hard edge around character strokes so
+     *     8px big-pixels behind don't bleed visually into glyph forms
+     *   - 24px medium: punchy character separation
+     *   - 56px wide: gentle outer wash so the title sits on its own
+     *     "lit pad" instead of competing with the busy posterized bg
+     * Without these the (capped) 75%-brightness big-pixels still
+     * sit close enough to white-ish to make the thin 200-weight
+     * Public Sans display strokes vibrate. */
+    text-shadow:
+      0 1px 3px color-mix(in oklab, var(--background) 92%, transparent),
+      0 2px 24px color-mix(in oklab, var(--background) 75%, transparent),
+      0 0 56px color-mix(in oklab, var(--background) 55%, transparent);
   }
   /* Supporting line below the hero tagline — claim-stack pattern
      (shadcn-style). Each comma-separated phrase lands one ecosystem
@@ -342,7 +360,11 @@ function Game() {
        <p> 1em top margin; bottom pushes the CTAs into a clear band. */
     margin-block: 0 calc(var(--spacing) * 10);
     margin-inline: auto;
-    text-shadow: 0 1px 12px color-mix(in oklab, var(--background) 80%, transparent);
+    /* Two-layer halo — same idea as .hero-title but pulled back since
+     * the subtagline is small mono and reads through faster. */
+    text-shadow:
+      0 1px 3px color-mix(in oklab, var(--background) 90%, transparent),
+      0 2px 18px color-mix(in oklab, var(--background) 70%, transparent);
   }
   .hero-actions {
     display: flex;

@@ -93,7 +93,7 @@ float fbm(vec2 p) {
 
 void main() {
   // ────────────────────────────────────────────────────────────────
-  // PIXELATE — snap fragment coord to a 4-CSS-pixel grid before
+  // PIXELATE — snap fragment coord to an 8-CSS-pixel grid before
   // anything else samples space. Every fragment inside a big-pixel
   // block computes the same color, so the whole hero reads as a
   // chunky retro pixel-art canvas.
@@ -208,9 +208,20 @@ void main() {
   // (gold / ruby / emerald / amethyst / diamond / pink) read
   // distinctly, but coarse enough that the dither pattern is visibly
   // doing work in transition zones.
+  //
+  // The *maxBrightness* multiplier on the quantized result is load-
+  // bearing for text legibility. Without it, posterize promotes
+  // anything within 1/6 (~0.17) of full brightness UP to a pure 1.0
+  // quantized level — hard white-ish big-pixels that compete with
+  // the hero title for visual mass. By rescaling the quantized
+  // 0..1 range down to 0..0.75, the brightest possible big-pixel
+  // tops out at ~75% gray and the hero title's text-shadow halo
+  // can carry the contrast. Gem identities stay intact because the
+  // scale is uniform across channels.
   float levels = 6.0;
+  float maxBrightness = 0.75;
   vec3 quantized = floor(col * (levels - 1.0) + threshold) / (levels - 1.0);
-  col = clamp(quantized, 0.0, 1.0);
+  col = clamp(quantized, 0.0, 1.0) * maxBrightness;
 
   fragColor = vec4(col, 1.0);
 }
@@ -266,10 +277,11 @@ void main() {
     const uPixelSize = gl.getUniformLocation(prog, 'u_pixel_size')
 
     /* Pixel size in device pixels — set on resize so it tracks DPR.
-     * 4 CSS pixels × DPR keeps the visual chunkiness consistent
-     * across retina / non-retina displays. The shader's pixelate and
-     * bayer-dither both consume this value. */
-    let pixelSizeDev = 4
+     * 8 CSS pixels × DPR (was 4) — the chunkier 8px reads more
+     * deliberately pixel-art and pairs better with the lowered
+     * maxBrightness ceiling in the shader. 16 was too coarse on
+     * small viewports (single big-pixel ate ~2% of the hero width). */
+    let pixelSizeDev = 8
 
     let mouse = { x: 0.5, y: 0.5 }
     let mouseActive = 0
@@ -300,7 +312,7 @@ void main() {
         cvs.width = W
         cvs.height = H
       }
-      pixelSizeDev = 4 * dpr
+      pixelSizeDev = 8 * dpr
       gl.viewport(0, 0, W, H)
     }
     window.addEventListener('resize', resize, { passive: true })
