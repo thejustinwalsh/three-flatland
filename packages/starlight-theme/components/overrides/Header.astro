@@ -1,5 +1,6 @@
 ---
 import config from 'virtual:starlight/user-config';
+import MobileTableOfContents from 'virtual:starlight/components/MobileTableOfContents';
 import Search from './Search.astro';
 import SocialIcons from './SocialIcons.astro';
 
@@ -21,6 +22,18 @@ const shouldRenderSearch =
 </div>
 
 <div class="header-right">
+    {/* On-this-page (mobile/tablet) — moved from PageSidebar where it
+        used to render as a position:fixed strip below the header. At
+        narrow viewports (<1280px) where the desktop right-rail TOC is
+        hidden, this provides the in-header trigger users can pop to
+        jump around the article without losing the single-row chrome.
+        Hidden at ≥1280px where the desktop TOC takes over. CSS
+        overrides in the global block below convert the upstream
+        position:fixed nav into an inline-dropdown affordance. */}
+    <div class="header-toc">
+        <MobileTableOfContents />
+    </div>
+
     {shouldRenderSearch && <Search />}
 
     <nav class="header-nav">
@@ -89,6 +102,37 @@ const shouldRenderSearch =
     @media (min-width: 768px) {
         .header-right :global(site-search button[data-open-modal]) {
             max-width: 12rem;
+        }
+    }
+
+    /* In-header TOC trigger — only visible when the desktop right-rail
+     * TOC is hidden (<1280px). At ≥1280px we hide it to avoid a
+     * duplicate affordance with the sticky desktop TOC. The wrapper is
+     * `display: contents`-like (just a flex item) so the inner custom
+     * element flows naturally. */
+    .header-toc {
+        display: flex;
+        align-items: center;
+        min-width: 0;
+        /* Cap the trigger width so a long "you are here" heading
+         * doesn't push the search/social cluster off the edge on
+         * narrow tablets. The .display-current inside ellipsises. */
+        max-width: clamp(8rem, 32vw, 18rem);
+    }
+    .header-toc:empty {
+        display: none;
+    }
+    @media (min-width: 1280px) {
+        .header-toc {
+            display: none;
+        }
+    }
+    /* Very narrow phones — drop the in-header TOC entirely. The dropdown
+     * crowds the right cluster on <420px screens; users still have
+     * native scroll + heading anchors. */
+    @media (max-width: 26.25rem) {
+        .header-toc {
+            display: none;
         }
     }
 
@@ -174,5 +218,158 @@ const shouldRenderSearch =
                 }
             }
         }
+    }
+</style>
+
+<style is:global>
+    /* ────────── In-header mobile TOC ──────────
+     * Upstream Starlight's <mobile-starlight-toc> renders a position:fixed
+     * nav strip pinned below the header at full viewport width. We need
+     * it inline INSIDE the header at narrow viewports so the page chrome
+     * stays a single row. These rules apply only when the custom element
+     * is mounted inside .header-toc (Header.astro). The strip variant is
+     * dead — PageSidebar no longer renders it. */
+
+    .header-toc mobile-starlight-toc,
+    .header-toc mobile-starlight-toc nav {
+        position: static;
+        inset-inline: auto;
+        top: auto;
+        border-top: none;
+        background: transparent;
+        backdrop-filter: none;
+        -webkit-backdrop-filter: none;
+        z-index: auto;
+        width: auto;
+    }
+
+    /* `details` is the relative anchor for the absolutely-positioned
+     * dropdown — without this, the dropdown would position against the
+     * nearest non-static ancestor (probably the header itself, which
+     * works but couples the dropdown's edge to header padding rather
+     * than the toggle button's edge). */
+    .header-toc mobile-starlight-toc details {
+        position: relative;
+    }
+
+    .header-toc mobile-starlight-toc summary {
+        gap: 0.5rem;
+        align-items: center;
+        height: auto;
+        border-bottom: none;
+        padding: 0;
+        font-size: 0.8125rem;
+        cursor: pointer;
+        outline-offset: 2px;
+    }
+    .header-toc mobile-starlight-toc summary::marker,
+    .header-toc mobile-starlight-toc summary::-webkit-details-marker {
+        display: none;
+    }
+
+    /* The toggle button — sized to sit alongside the header's search
+     * pill and theme select without dominating the row. Uses the same
+     * diamond accent system as the previously-strip TOC styling. */
+    .header-toc mobile-starlight-toc .toggle {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        min-height: 2rem;
+        padding: 0 0.625rem 0 0.75rem;
+        font-family: 'Inter', system-ui, sans-serif;
+        font-weight: 500;
+        font-size: 0.8125rem;
+        line-height: 1;
+        color: var(--muted-foreground);
+        background-color: color-mix(
+            in oklab,
+            var(--background) 80%,
+            var(--card)
+        );
+        border: 1px solid
+            color-mix(in oklab, var(--diamond) 16%, var(--border));
+        border-radius: calc(var(--radius) - 2px);
+        cursor: pointer;
+        user-select: none;
+        transition:
+            color 180ms cubic-bezier(0.2, 0.8, 0.2, 1),
+            border-color 180ms cubic-bezier(0.2, 0.8, 0.2, 1),
+            background-color 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
+    }
+    .header-toc mobile-starlight-toc details[open] .toggle,
+    .header-toc mobile-starlight-toc details .toggle:hover {
+        color: var(--foreground);
+        border-color: color-mix(in oklab, var(--diamond) 50%, var(--border));
+        background-color: color-mix(in oklab, var(--diamond) 8%, var(--card));
+    }
+
+    /* The "you are here" heading inside the summary — truncates with
+     * ellipsis since the toggle button width is capped by .header-toc's
+     * max-width. Hidden on the very narrowest tablet column where it
+     * would crowd out the search button. */
+    .header-toc mobile-starlight-toc .display-current {
+        white-space: nowrap;
+        text-overflow: ellipsis;
+        overflow: hidden;
+        font-size: 0.75rem;
+        color: color-mix(in oklab, var(--diamond) 60%, var(--foreground));
+        font-weight: 500;
+        max-width: 12rem;
+    }
+    @media (max-width: 56rem) {
+        .header-toc mobile-starlight-toc .display-current {
+            display: none;
+        }
+    }
+
+    /* Open-state dropdown — anchored to the right edge of the toggle so
+     * it never extends off-screen on small viewports. min-width keeps
+     * the list readable; max-width clamps to the viewport with a
+     * gutter. max-height: viewport-relative with the header subtracted
+     * so the user can always reach the bottom of the list. */
+    .header-toc mobile-starlight-toc details[open] .dropdown {
+        position: absolute;
+        top: calc(100% + 0.5rem);
+        right: 0;
+        min-width: 18rem;
+        max-width: calc(100vw - 2rem);
+        max-height: calc(85vh - var(--header-height, 3.5rem));
+        margin-top: 0;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+        background-color: var(--card);
+        border: 1px solid color-mix(in oklab, var(--border) 70%, transparent);
+        border-top-color: color-mix(in oklab, var(--diamond) 14%, var(--border));
+        border-radius: var(--radius);
+        box-shadow:
+            0 10px 32px -8px color-mix(in oklab, var(--background) 60%, transparent),
+            0 2px 8px -2px color-mix(in oklab, var(--background) 80%, transparent);
+        /* Above article content but below modals/search-modal which use
+         * a higher Starlight z layer. */
+        z-index: var(--sl-z-index-toc, 40);
+    }
+
+    /* Caret rotation — preserved from upstream so the affordance still
+     * reads as "click to open". Adds a transition so the open/close
+     * doesn't snap (upstream omits it). */
+    .header-toc mobile-starlight-toc .caret {
+        transition: transform 200ms cubic-bezier(0.2, 0.8, 0.2, 1);
+    }
+    .header-toc mobile-starlight-toc details[open] .caret {
+        transform: rotateZ(90deg);
+    }
+    @media (prefers-reduced-motion: reduce) {
+        .header-toc mobile-starlight-toc .caret {
+            transition: none;
+        }
+    }
+
+    /* Heading badges (starlight-heading-badges) inside the
+     * "you are here" line — keep them small so they don't blow out
+     * the truncating display-current width. */
+    .header-toc mobile-starlight-toc .display-current span[data-shb-badge] {
+        margin-inline-start: 0.4em;
+        font-size: 0.625rem;
+        padding: 0.0625rem 0.3rem;
     }
 </style>
