@@ -12,19 +12,32 @@ export interface PlayCanvasMetrics {
 }
 
 /**
- * Pick the largest integer scale from SCALE_STEPS such that the fixed
- * PLAY_COLS × PLAY_ROWS gameplay rect fits both dimensions of the
- * viewport. Height-first then width: in practice we check both, but
- * a portrait viewport will hit the height limit first while a
- * landscape viewport will hit the width limit first.
+ * Pick the largest integer scale from SCALE_STEPS such that:
+ *   - The full gameplay-rect WIDTH fits the viewport at this scale, AND
+ *   - At least HEIGHT_FIT_RATIO of the gameplay-rect HEIGHT fits.
  *
- * Falls back to 1× if no step fits (very small mobile portrait).
+ * The relaxed height check is what lets common desktop viewports
+ * (1080p, 1440p) get a 2× or 4× scale even though the fixed
+ * mobile-portrait gameplay rect is intentionally taller than wide.
+ * The bg compositor fills the cropped-off top/bottom region with
+ * the blurred ambient layer, so the viewport never shows raw
+ * black there. The gameplay rect is centered; vertical overflow
+ * splits evenly above and below the viewport.
+ *
+ * At 1280×720: 2× → 576w (fits) + 1280h (overflows by 560px = ~44%
+ * of rows cropped). Too aggressive — stays at 1×.
+ * At 1920×1080: 2× → 576w + 1280h (overflows by 200px = ~15% cropped).
+ * Accepted because HEIGHT_FIT_RATIO=0.75 means 75% of rows must fit.
+ * At 2560×1440: 4× → 1152w + 2560h. Overflows 1120px (~44%) — too much.
+ * Falls back to 2×: 576w + 1280h, easily fits.
  */
+const HEIGHT_FIT_RATIO = 0.75
+
 export function pickScale(viewportW: number, viewportH: number): number {
   let chosen: number = SCALE_STEPS[0]
   for (const s of SCALE_STEPS) {
-    const fitsH = PLAY_ROWS * TILE_PX * s <= viewportH
     const fitsW = PLAY_COLS * TILE_PX * s <= viewportW
+    const fitsH = PLAY_ROWS * TILE_PX * s * HEIGHT_FIT_RATIO <= viewportH
     if (fitsH && fitsW) chosen = s
   }
   return chosen
