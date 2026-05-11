@@ -48,19 +48,24 @@ function resolveGem(c: StatItem['color']): Gem | undefined {
 }
 ---
 
-<aside class="not-content stats-banner" aria-label="Performance highlights">
+<aside class="not-content stats-banner u-reveal" aria-label="Performance highlights">
   <div class="stats-grid">
-    {stats.map((stat, i) => {
+    {stats.map((stat) => {
       const gem = resolveGem(stat.color)
-      // Reveal delay stays inline (per-instance staggering); the gem
-      // accent is driven by `data-gem` + per-gem CSS rules below
-      // rather than inline `--stat-accent: var(--<gem>)`. Safari has
-      // a known `color-mix(in oklab, var(--x), ...)` resolution bug
-      // when --x is set to another var() in inline style — values
-      // resolve correctly through CSS rules but not through
+      // Gem accent is driven by `data-gem` + per-gem CSS rules in the
+      // <style> block below rather than inline `--stat-accent: var(--<gem>)`.
+      // Safari has a known `color-mix(in oklab, var(--x), ...)` resolution
+      // bug when --x is set to another var() in inline style — values
+      // resolve correctly through normal CSS cascade but not through
       // double-indirected inline custom properties.
+      //
+      // Reveal animation moved to the .stats-banner wrapper (singular
+      // u-reveal). The four stats are one component visually; staggering
+      // them individually read as "loading" rather than "appearing"
+      // because they all sit in one row already at the same scroll
+      // position. One unified fade is the right gesture.
       return (
-        <div class="stat-item u-reveal" data-gem={gem} style={`--reveal-delay: ${i * 80}ms`}>
+        <div class="stat-item" data-gem={gem}>
           <span class="stat-value">{stat.value}</span>
           <span class="stat-label">{stat.label}</span>
         </div>

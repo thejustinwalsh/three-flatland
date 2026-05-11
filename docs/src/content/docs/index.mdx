@@ -279,14 +279,19 @@ function Game() {
     line-height: 1.4;
     color: var(--foreground);
     max-width: 42rem;
-    margin: 0 auto calc(var(--spacing) * 3);
+    /* All four sides explicit — without margin-top:0 explicitly,
+       browser-default <p> top margin (~1em) was sneaking through
+       and creating a huge gap between the tagline and subtagline. */
+    margin-block: 0 calc(var(--spacing) * 1);
+    margin-inline: auto;
     text-shadow: 0 1px 12px color-mix(in oklab, var(--background) 80%, transparent);
   }
   /* Supporting line below the hero tagline — claim-stack pattern
      (shadcn-style). Each comma-separated phrase lands one ecosystem
-     perk: primitives (composability), TSL (modern shader stack), R3F
-     (ecosystem), performance (no opt-in tax). Smaller, lighter weight
-     so it reads as supporting evidence, not the headline. */
+     perk: primitives (composability), TSL (modern shader stack),
+     react-three-fiber (ecosystem), performance (no opt-in tax).
+     Smaller, lighter weight so it reads as supporting evidence,
+     not the headline. */
   .hero-subtagline {
     font-family: 'JetBrains Mono', ui-monospace, monospace;
     font-size: clamp(0.7rem, 1vw, 0.8125rem);
@@ -295,9 +300,10 @@ function Game() {
     letter-spacing: 0.01em;
     color: color-mix(in oklab, var(--muted-foreground) 80%, var(--foreground));
     max-width: 48rem;
-    /* Bigger gap below so the CTAs read as a distinct call-to-action,
-       not a continuation of the prose. */
-    margin: 0 auto calc(var(--spacing) * 10);
+    /* Explicit margin-block:0 top so we don't pick up browser-default
+       <p> 1em top margin; bottom pushes the CTAs into a clear band. */
+    margin-block: 0 calc(var(--spacing) * 10);
+    margin-inline: auto;
     text-shadow: 0 1px 12px color-mix(in oklab, var(--background) 80%, transparent);
   }
   .hero-actions {
