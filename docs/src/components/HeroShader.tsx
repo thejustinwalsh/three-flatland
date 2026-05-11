@@ -144,8 +144,16 @@ void main() {
   col += C_GOLD * smoothstep(0.55, 0.95, dirShade) * 0.35;
   col -= 0.10 * smoothstep(0.0, 0.5, 1.0 - dirShade);
 
-  // Vignette so the edges fade into the page bg cleanly.
-  float v = smoothstep(1.4, 0.55, length(p));
+  // Vignette so the edges fade into the page bg cleanly. p is
+  // aspect-corrected (p.x scaled by res.x/res.y above), so on a
+  // wide viewport (e.g. 1440x540 = 2.67:1 aspect) the corner
+  // distance length(p) reaches ~2.85. Previous radii (0.55 / 1.4)
+  // faded everything past x=1.4 to black — the gem effect only
+  // showed in a ~52% center bubble. New radii: full effect out
+  // to radius 1.8 (covers most aspect ratios' visible area),
+  // gentle fade to bg by 3.2 (past the corners on widescreen).
+  // Gem flow now spans the full viewport width with soft falloff.
+  float v = smoothstep(3.2, 1.8, length(p));
   col = mix(C_BG, col, v);
 
   // Sub-perceptual film grain — keeps the surface from reading "flat
