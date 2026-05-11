@@ -5,12 +5,12 @@
 > Branch: docs-refresh-foundation
 > PR: https://github.com/thejustinwalsh/three-flatland/pull/33
 
-### StatsBanner: gem-accented stat values and underlines (`docs`)
+## StatsBanner: gem color accents restored
 
-- Re-enabled the previously deprecated `color` prop on `StatsBanner` stat items; it now resolves to a gem accent and is applied visually
-- Legacy color names (`cyan`, `blue`, `green`, `orange`, `red`, `yellow`, `purple`) map to their nearest gem via a `legacyToGem` lookup, matching the same table used by `FeatureCard` and `ValueProp` — no MDX call-site changes required
-- Each stat sets `--stat-accent` inline from the resolved gem; the value text renders at 65% gem + 35% foreground for legibility with a soft gem-tinted `text-shadow` glow
-- Added a gem-tinted hairline underline (gradient fading right to transparent) per stat, so a row of four stats reads as a colored chord rather than a flat band
-- Minor README heading tweak: "Why three-flatland?" → "Why Flatland?"
+- `color` prop on `StatsBanner` stat items is no longer ignored; passing a gem name (`diamond`, `gold`, `ruby`, `emerald`, `amethyst`, `pink`, `salmon`, `turquoize`) or a legacy color alias (`cyan`, `blue`, `green`, `orange`, `red`, `yellow`, `purple`) now applies a visible accent
+- Legacy color names are mapped to their gem equivalents (e.g. `cyan` → `diamond`, `red` → `ruby`) via the same `legacyToGem` table used by `FeatureCard` and `ValueProp` — no MDX call-site changes required
+- Each stat's value text is rendered with `color-mix(in oklab, gem 65%, foreground)` plus a soft gem-tinted `text-shadow` glow, keeping legibility while conveying color identity
+- A gem-tinted hairline underline (gradient fading right to transparent) is painted beneath each stat via `background-image`, so a row of four stats reads as a colored chord rather than a flat monochrome band
+- README heading updated from "Why three-flatland?" to "Why Flatland?" for consistency with the visual brand
 
-`StatsBanner` on the docs landing page now renders each stat in its assigned gem color with a matching accent underline, turning the stats strip from a monochrome band into a visually distinct chord of four gem-tinted highlights.
+Restores the intended gem-colored accent system to the landing page stats strip; existing MDX call sites require no changes.
