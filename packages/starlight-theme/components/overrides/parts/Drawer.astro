@@ -372,6 +372,14 @@ function sectionAccent(idx: number): string {
         gap: 2px;
     }
 
+    /* Single-indicator rule (Design Context): for these doc sidebar
+     * entries, the left-pip is the active/hover indicator — no
+     * rounded-rect background fill alongside it. The top nav-link
+     * buttons are different (they're the page-level action buttons,
+     * not list items) and keep the pill/bg treatment.
+     *
+     * Active/hover here = color shift on text + entry-link::before pip
+     * in section-accent gem. That's it. */
     .entry-link {
         position: relative;
         display: flex;
@@ -383,27 +391,14 @@ function sectionAccent(idx: number): string {
         line-height: 1.25rem;
         color: var(--muted-foreground);
         text-decoration: none;
-        border-radius: calc(var(--radius) - 2px);
-        transition:
-            color 150ms cubic-bezier(0.2, 0.8, 0.2, 1),
-            background-color 150ms cubic-bezier(0.2, 0.8, 0.2, 1);
+        transition: color 150ms cubic-bezier(0.2, 0.8, 0.2, 1);
     }
     .entry-link:hover {
         color: var(--foreground);
-        background-color: color-mix(
-            in oklab,
-            var(--section-accent, var(--primary)) 10%,
-            transparent
-        );
     }
     .entry-link[aria-current='page'] {
         color: var(--foreground);
         font-weight: 500;
-        background-color: color-mix(
-            in oklab,
-            var(--section-accent, var(--primary)) 16%,
-            transparent
-        );
     }
     /* Left pip — same indicator system as desktop sidebar's
      * .entry-link[aria-current='page']::before. Matches the section gem
