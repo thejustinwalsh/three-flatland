@@ -1,6 +1,6 @@
 ---
 title: three-flatland
-description: The complete 2D solution for Three.js and React Three Fiber. Built for WebGPU with composable TSL shaders.
+description: The composable 2D library for Three.js. Primitives for 2D graphics, TSL composability, react-three-fiber, performance by default.
 template: splash
 ---
 
@@ -18,8 +18,10 @@ import { Tabs, TabItem, Aside } from 'starlight-theme/components';
     <div class="hero-overlay-inner">
       <h1 class="hero-title">three-flatland</h1>
       <p class="hero-tagline">
-        2D toolkit for Three.js + React Three Fiber. WebGPU-native.
-        TSL-composable. Designed to render thousands of things at 60fps without you having to think about it.
+        The composable 2D library for Three.js.
+      </p>
+      <p class="hero-subtagline">
+        Primitives for 2D graphics, TSL composability, react-three-fiber, performance by default.
       </p>
       <div class="hero-actions">
         <a href="/three-flatland/getting-started/introduction/" class="sl-link-button primary">
@@ -272,13 +274,29 @@ function Game() {
   }
   .hero-tagline {
     font-family: 'Public Sans', system-ui, sans-serif;
-    font-size: clamp(0.95rem, 1.4vw, 1.0625rem);
-    font-weight: 400;
-    line-height: 1.6;
-    color: color-mix(in oklab, var(--foreground) 88%, var(--muted-foreground));
+    font-size: clamp(1.05rem, 1.6vw, 1.2rem);
+    font-weight: 500;
+    line-height: 1.4;
+    color: var(--foreground);
     max-width: 42rem;
-    /* Bigger gap between tagline and CTAs so the buttons read as a
-       distinct call-to-action, not a continuation of the prose. */
+    margin: 0 auto calc(var(--spacing) * 3);
+    text-shadow: 0 1px 12px color-mix(in oklab, var(--background) 80%, transparent);
+  }
+  /* Supporting line below the hero tagline — claim-stack pattern
+     (shadcn-style). Each comma-separated phrase lands one ecosystem
+     perk: primitives (composability), TSL (modern shader stack), R3F
+     (ecosystem), performance (no opt-in tax). Smaller, lighter weight
+     so it reads as supporting evidence, not the headline. */
+  .hero-subtagline {
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-size: clamp(0.7rem, 1vw, 0.8125rem);
+    font-weight: 400;
+    line-height: 1.5;
+    letter-spacing: 0.01em;
+    color: color-mix(in oklab, var(--muted-foreground) 80%, var(--foreground));
+    max-width: 48rem;
+    /* Bigger gap below so the CTAs read as a distinct call-to-action,
+       not a continuation of the prose. */
     margin: 0 auto calc(var(--spacing) * 10);
     text-shadow: 0 1px 12px color-mix(in oklab, var(--background) 80%, transparent);
   }
