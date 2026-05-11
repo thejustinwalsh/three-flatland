@@ -5,54 +5,58 @@
 > Branch: mini-game-showcase
 > PR: https://github.com/thejustinwalsh/three-flatland/pull/59
 
-## New APIs
+## New features
 
-**Text measurement**
-- `SlugFont.measureText(text, fontSize)` → `TextMetrics` — single-line measurement aligned with `CanvasRenderingContext2D.measureText` (width, actualBoundingBox*, fontBoundingBox*)
-- `SlugFont.measureParagraph(text, fontSize, { maxWidth?, lineHeight? })` → `ParagraphMetrics` — multi-line convenience over wrapText + per-line measureText, respects the same lineHeight default (1.2) as SlugText
-- `SlugFont.wrapText(text, fontSize, maxWidth?)` → `string[]` — line-break computation matching Slug's shaper output exactly
-- `SlugFont.hasCharCode(c)` — codepoint coverage check for font fallback routing
+### Analytic GPU text rendering pipeline
+- Initial `@three-flatland/slug` package: font parsing, text shaping, band-based GPU curve + band texture packing, analytic winding-number fill shader (`slugFragment`) for subpixel-accurate per-fragment coverage
+- `SlugText` Three.js object with instanced rendering; `SlugFont` / `SlugFontLoader` for runtime and baked font data
+- Dynamic instance-quad dilation for AA at any DPI
 
-**Text decoration**
-- `StyleSpan { start, end, underline?, strike? }` — character-range decoration spans
-- `SlugText.styles: StyleSpan[]` — runtime setter, underline and strikethrough rendered in the same draw call as fill
+### Baked fonts + CLI (`slug-bake`)
+- `slug-bake` CLI tool pre-bakes `.ttf` fonts to `.slug.{json,bin}` for zero-opentype-runtime cost
+- `--output / -o` flag for custom output path bases
+- `--stroke-widths / --stroke-join / --stroke-cap / --miter-limit` flags bake stroke pseudo-glyphs into the same texture pair; `SlugFont.getStrokeGlyph()` for runtime lookup
 
-**Outline / stroke**
-- `SlugText.outline: SlugOutlineOptions | null` — opt-in stroke outline sharing the fill mesh's instance data, with runtime `setOutlineWidth(v)` and `setOutlineColor(v)` (zero rebuild)
-- `SlugText.setOpacity(value)` — fade fill without rebuilding geometry (enables outline-only mode)
-- `SlugStrokeMaterial`, `SlugOutlineOptions` exported from package root
+### Text measurement
+- `SlugFont.measureText(text, fontSize)` → `TextMetrics` aligned with `CanvasRenderingContext2D.measureText`
+- `SlugFont.measureParagraph(text, fontSize, { maxWidth?, lineHeight? })` → `ParagraphMetrics`
+- `SlugFont.wrapText(text, fontSize, maxWidth?)` → `string[]`; dispatches to baked or runtime path
 
-**Font stack (multi-font fallback)**
-- `SlugFontStack(fonts)` — ordered fallback chain; `resolveCodepoint(c)` returns the first covering font index
-- `SlugFontStack.wrapText(text, fontSize, maxWidth?)` → `string[]` — per-codepoint font resolution with same wrap policy as `shapeStackText`, enables Canvas2D overlays to match line breaks exactly
-- `SlugStackText` (extends `Group`) — multi-font renderable with one `InstancedMesh` per font; supports `.styles`, `.outline`, `.setOpacity()` at parity with `SlugText`
+### Text decorations
+- `StyleSpan` API with `underline` and `strike` fields; decoration metrics sourced from OpenType post + os2 tables and baked into `BakedJSON.metrics`
+- `SlugGeometry.setGlyphs` accepts optional decorations array; rect sentinel renders in same draw call as glyphs
 
-**slug-bake CLI**
-- `--output / -o` flag for custom output path base
-- `--stroke-widths / --stroke-join / --stroke-cap / --miter-limit` flags: pre-bakes stroke glyph sets into the same curve/band textures as fill glyphs; baked strokes render through the existing fill shader at no extra shader cost
-- Bake-time warning emitted when any band exceeds `MAX_CURVES_PER_BAND`
+### Stroke / outline
+- `SlugStrokeMaterial`: per-fragment distance-to-quadratic-Bezier stroke shader (TSL); axis-aligned quad expansion for correct exterior clipping; reduced Newton seed count for faster first-compile
+- `SlugText.outline`: opt-in child InstancedMesh sharing the fill mesh's `instanceMatrix`; runtime-uniform `setOutlineWidth` / `setOutlineColor` (zero rebuild)
+- `SlugText.setOpacity()` for fill / outline-only modes
+- `SlugOutlineOptions` exported from package root
+- Full quadratic-Bezier stroke offsetter pipeline: adaptive subdivision, per-segment Tiller-Hanson offset, join geometry (bevel / miter / round), cap geometry (flat / square / triangle / round), CCW+CW annular contour stitching
+- `bakeStrokeForGlyph` helper bridges offsetter output to `SlugGlyphData`; `slug-bake` packs stroke sets into baked format via `BakedJSON.strokeSets`
 
-## Performance
+### Font stacks + fallback
+- `SlugFontStack(fonts)`: per-codepoint fallback chain; `resolveCodepoint` / `resolveText` / `wrapText` / `emitDecorations`
+- `SlugFont.hasCharCode(c)` for cheap codepoint-coverage checks
+- `SlugStackText extends Group`: one `InstancedMesh` per font in the stack; styles, outline, and `setOpacity` at parity with `SlugText`
 
-- GPU texture bandwidth reduced ~45%: curve texture switched to `RGBA16F`, band texture to `RG32F`; `MAX_CURVES_PER_BAND` lowered 64→40 (covers 100% of Inter's corpus with margin); `.slug.bin` shrinks ~45% on disk
-- `bandCount` increased 8→16, halving expected curves per band (~50% less per-fragment ALU in the hot loop)
-- Shader skips the full distance solve for curves whose ray root-code is zero (~30% of curves in a typical band)
-- Stroke shader: reduced Newton seeds from 3 to 1 (+ 2 endpoint candidates), cutting WGSL size in half and halving pipeline compile time; per-fragment GPU cost drops ~⅔
+### Performance
+- Curve texture: `RGBA16F` (8 bytes/texel, down from 16); band texture: `RG32F` (8 bytes/texel)
+- Band count 8 → 16: halves expected curves/band; `MAX_CURVES_PER_BAND` 64 → 40
+- Shader skips post-rootCode work for ~30% of non-crossing curves
 
-## Bug Fixes
+## Bug fixes
+- Stroke quad exterior clipping: expansion now axis-aligned per quadrant instead of along unit normal (fixes squared-off outer ring)
+- Shader compile lag on first outline-enable: reduced from 3 Newton seeds × 3 iterations to 1 seed + 2 endpoints, halving WGSL size
+- `SlugText._setFont` defers `visible = true` until `_rebuild` has written glyph data, preventing WebGPU "binding size is zero" on R3F first-render pass
+- `parseFont` emits advance-only glyph entries for space/tab/zero-width controls; runtime shapers pass `{ features: [] }` to prevent `liga`/`rlig` array-length drift at wrap points
+- Kern extractor now filters to source IDs only, preventing crash when stroke glyph IDs fall outside opentype's known range
+- `SlugStackText.dispose()` tears down outline meshes before disposing shared geometry, preventing GPU leaks on scene toggle
 
-- Stroke outline clipped square at glyph extents: quad now expands axis-aligned by `strokeHalfWidth` before the AA dilation pass
-- WebGPU "Binding size is zero" error on R3F first render: `SlugText` no longer flips `visible=true` until after the first `_rebuild` writes real glyph data
-- Word-wrap drift at break points: runtime shapers now pass `{ features: [] }` to `stringToGlyphs`, preventing `liga`/`rlig` from collapsing tokens and misaligning `text[i]===' '` checks
-- `SlugStackText.dispose()` now properly tears down outline meshes and stroke materials before disposing shared geometries
-- Kerning extraction skips stroke-glyph IDs so the kern extractor no longer errors on pre-baked stroke ranges
-- DPR desync on monitor swap or fullscreen transition fixed in examples (media-query + `fullscreenchange` listener, `<DprSync>` component for R3F)
+## Breaking changes
 
-## BREAKING CHANGES
+> `BAKED_VERSION` was bumped twice: 2 → 3 (texture format changes) and 3 → 4 (decoration metrics). Any previously baked `.slug.{json,bin}` files must be re-baked with the current `slug-bake` CLI. The `SlugFontLoader.BAKED_VERSION` / `clearCache` static members were removed.
 
-- **BAKED_VERSION 2→3**: `.slug.bin`/`.slug.json` files must be re-baked with `slug-bake` — texture format changed to RGBA16F/RG32F, MAX_CURVES_PER_BAND reduced to 40
-- **BAKED_VERSION 3→4**: existing baked files must be re-baked to include font decoration metrics (underlinePosition, underlineThickness, strikethroughPosition, strikethroughThickness)
-- `SlugFontLoader.clearCache` removed (the static cache is already keyed on `url:runtime?`)
+---
 
-Comprehensive release covering the full Slug text-rendering stack: measurement, decoration, multi-font fallback, analytic stroke outline with quadratic-Bezier offsetter and pre-bake pipeline, and significant GPU performance improvements (~45% smaller baked files, ~50% less per-fragment ALU).
+`@three-flatland/slug` ships a full analytic WebGPU text-rendering pipeline: baked or runtime font loading, text measurement, word-wrap, underline/strike decorations, per-font-stack rendering with fallback chains, and a quadratic-Bezier stroke offsetter with bake-time stroke-set integration.
 
