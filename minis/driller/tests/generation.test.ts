@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { generateChunk } from '../src/systems/generation'
 import { CHUNK_ROWS, PLAY_COLS } from '../src/constants'
 import { biomeAt, WORLD_LENGTH_ROWS } from '../src/biomes'
-import { TILE_AIR, TILE_SOIL } from '../src/traits'
+import { isFixtureTile, TILE_AIR, TILE_SOIL } from '../src/traits'
 
 /**
  * Per the new world model (single biome per layer separated by void
@@ -97,5 +97,126 @@ describe('generateChunk', () => {
     for (const g of c.gems) {
       expect(allowed).toContain(g.color)
     }
+  })
+})
+
+/**
+ * Fixture placement rules:
+ *   - Each fixture is anchored LEFT (col 0), RIGHT (col cols-1), or
+ *     CENTER (interior, with asymmetric gap).
+ *   - Always ≥ 1 cell of clearance on at least one side (navigable
+ *     corridor).
+ *   - Sequence (top→bottom) honors alternation: no two LEFTs in a row,
+ *     no two RIGHTs in a row, no more than two CENTERs in a row.
+ */
+describe('fixture placement pattern', () => {
+  /**
+   * Detect fixture bands. Generation enforces at least 1 row of
+   * vertical clearance between bands, so a "band" is a maximal run
+   * of consecutive rows containing fixture tiles, separated by
+   * rows containing none. Band type is read from the TOP row of
+   * the band (caves can punch through interior rows and shift the
+   * min/max column inside the band).
+   */
+  function detectFixtures(c: ReturnType<typeof generateChunk>): {
+    type: 'left' | 'right' | 'center'
+    topRow: number
+  }[] {
+    const tiles = c.tiles
+    const cols = PLAY_COLS
+    const rows = CHUNK_ROWS
+    const fixtures: { type: 'left' | 'right' | 'center'; topRow: number }[] = []
+    let inBand = false
+    for (let r = 0; r < rows; r++) {
+      const fixCols: number[] = []
+      for (let x = 0; x < cols; x++) {
+        if (isFixtureTile(tiles[r * cols + x]!)) fixCols.push(x)
+      }
+      if (fixCols.length === 0) {
+        inBand = false
+        continue
+      }
+      if (inBand) continue
+      // First row of a new band — classify by column extent.
+      inBand = true
+      const minC = Math.min(...fixCols)
+      const maxC = Math.max(...fixCols)
+      const touchesLeft = minC === 0
+      const touchesRight = maxC === cols - 1
+      const type: 'left' | 'right' | 'center' =
+        touchesLeft && !touchesRight
+          ? 'left'
+          : touchesRight && !touchesLeft
+          ? 'right'
+          : 'center'
+      fixtures.push({ type, topRow: r })
+    }
+    return fixtures
+  }
+
+  it('every fixture leaves ≥ 1 clear column on at least one side', () => {
+    // Sample many seeds to exercise the placement variation.
+    for (let seed = 1; seed <= 20; seed++) {
+      const c = generateChunk(seed, CHUNK_WORLD_2)
+      const cols = PLAY_COLS
+      const rows = CHUNK_ROWS
+      // For every row that has fixture tiles, check there's at least
+      // one non-fixture column.
+      for (let r = 0; r < rows; r++) {
+        let fixCells = 0
+        for (let x = 0; x < cols; x++) {
+          if (isFixtureTile(c.tiles[r * cols + x]!)) fixCells++
+        }
+        if (fixCells > 0) {
+          expect(
+            fixCells,
+            `seed=${seed} row=${r}: fixture fills entire row (no navigable corridor)`,
+          ).toBeLessThan(cols)
+        }
+      }
+    }
+  })
+
+  it('placement sequence honors alternation rules across many seeds', () => {
+    // Test the PLACEMENT DECISIONS directly via generateChunk's
+    // fixturePlacements field. Cave generation can split or visually
+    // disguise individual bands, so we don't rely on tile-level
+    // detection here.
+    for (let seed = 1; seed <= 50; seed++) {
+      const c = generateChunk(seed, CHUNK_WORLD_2)
+      let consecutiveLeft = 0
+      let consecutiveRight = 0
+      let consecutiveCenter = 0
+      for (const p of c.fixturePlacements) {
+        if (p === 'left') {
+          consecutiveLeft++
+          consecutiveRight = 0
+          consecutiveCenter = 0
+        } else if (p === 'right') {
+          consecutiveRight++
+          consecutiveLeft = 0
+          consecutiveCenter = 0
+        } else {
+          consecutiveCenter++
+          consecutiveLeft = 0
+          consecutiveRight = 0
+        }
+        expect(consecutiveLeft, `seed=${seed} two lefts in a row`).toBeLessThanOrEqual(1)
+        expect(consecutiveRight, `seed=${seed} two rights in a row`).toBeLessThanOrEqual(1)
+        expect(consecutiveCenter, `seed=${seed} >2 centers in a row`).toBeLessThanOrEqual(2)
+      }
+    }
+  })
+
+  it('produces variety: across many seeds we observe all three placement types', () => {
+    const seen = new Set<string>()
+    for (let seed = 1; seed <= 30; seed++) {
+      const c = generateChunk(seed, CHUNK_WORLD_2)
+      for (const p of c.fixturePlacements) seen.add(p)
+      if (seen.size === 3) break
+    }
+    expect(seen).toContain('left')
+    expect(seen).toContain('right')
+    expect(seen).toContain('center')
   })
 })

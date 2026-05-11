@@ -50,6 +50,14 @@ export interface GeneratedChunk {
    * `Grid.hits`.
    */
   damagedStones: number[]
+  /**
+   * Placement-type history for the chunk's fixture bands, in
+   * top→bottom order. Used by tests to verify the alternation rules
+   * (no 2 lefts / 2 rights / >2 centers in a row) directly against
+   * the placement DECISIONS, independent of cave-induced visual
+   * splits to the rendered band tiles.
+   */
+  fixturePlacements: ('left' | 'right' | 'center')[]
 }
 
 export interface GeneratedGem {
@@ -347,55 +355,109 @@ export function generateChunk(seed: number, chunkY: number): GeneratedChunk {
       explosivePlacements.push({ col: x, rowInChunk: y })
     }
   }
-  // Fixtures — placed as horizontal STRATA (bands), 1–3 rows thick
-  // and 4–12 cells wide. Bands are obstacles that force homie into
-  // lateral movement (can't drill straight through), and they anchor
-  // the soil above them — drilling around the band creates lateral
-  // cantilevers that produce more interesting falls.
+  // Fixtures — placed as horizontal STRATA (bands), 1–3 rows thick,
+  // with a STRUCTURED PATTERN that drives the player's lateral
+  // movement through the depth of each biome.
   //
-  // Placement rules:
-  //   - Skip cells already occupied by STONE (rocks render on top of
-  //     fixtures and the previous overlap looked muddy; user req).
-  //   - Skip cells already in another fixture (no overlap between
-  //     bands of different variants).
-  //   - SOIL cells become fixtures; AIR cells stay AIR (so the band
-  //     is a "stratum embedded in the dirt" not a floating slab).
-  //   - Variant is consistent within a band — looks like a single
-  //     rock layer / bone layer / mushroom shelf etc.
+  // Each fixture has a `placement` type:
+  //   - LEFT:   anchored to col 0, width 4–12, leaves a clear corridor
+  //             on the right.
+  //   - RIGHT:  anchored to col cols-1, width 4–12, clear corridor on
+  //             the left.
+  //   - CENTER: spans most of the playfield with ASYMMETRIC gaps on
+  //             each side (1-cell on one side, 3+ on the other) so
+  //             the wider corridor naturally pulls the player toward
+  //             that side.
+  //
+  // Alternation rules within a chunk's fixture sequence (top → bottom):
+  //   - No two LEFTs in a row.
+  //   - No two RIGHTs in a row.
+  //   - No more than two CENTERs in a row.
+  //
+  // Navigation invariant: every placement leaves ≥ 1 cell of dead
+  // space adjacent to the fixture (a 1-cell-wide corridor is enough
+  // for the driller to pass).
+  type Placement = 'left' | 'right' | 'center'
   const fixtureCount = rng.intRange(biome.fixtureCount[0], biome.fixtureCount[1])
-  // Thickness weights: thin bands are most common; 3-row strata are rare.
   const pickThickness = (): number => {
     const r = rng.intRange(0, 9)
     if (r < 6) return 1
     if (r < 9) return 2
     return 3
   }
+  // Pick a placement type honoring the alternation rules.
+  const placementHistory: Placement[] = []
+  const pickPlacement = (): Placement => {
+    const len = placementHistory.length
+    const last = len > 0 ? placementHistory[len - 1] : null
+    const second = len > 1 ? placementHistory[len - 2] : null
+    let options: Placement[]
+    if (last === 'left') options = ['right', 'center']
+    else if (last === 'right') options = ['left', 'center']
+    else if (last === 'center' && second === 'center') options = ['left', 'right']
+    else options = ['left', 'right', 'center']
+    return options[rng.intRange(0, options.length - 1)]!
+  }
+  // Divide the chunk's usable depth into bands so fixtures distribute
+  // through the depth instead of clumping. Leave 2 rows of buffer at
+  // top/bottom so bands don't butt against the chunk seam.
+  const topMargin = 2
+  const bottomMargin = 2
+  const usableDepth = Math.max(1, rows - topMargin - bottomMargin)
+  const bandHeight = Math.max(3, Math.floor(usableDepth / Math.max(1, fixtureCount)))
+
   for (let i = 0; i < fixtureCount; i++) {
     const allowed = biome.fixtureKinds.filter((k) => k !== 'stone-pillar')
     if (allowed.length === 0) continue
     const kind = allowed[rng.intRange(0, allowed.length - 1)]!
     const variant = kind === 'bone' ? 0 : kind === 'mushroom' ? 1 : 2
 
-    const thickness = pickThickness()
-    const width = rng.intRange(4, Math.min(12, cols - 2))
-    const startCol = rng.intRange(1, Math.max(1, cols - 1 - width))
-    // Avoid the very top/bottom rows of the chunk so bands don't
-    // butt against the chunk seam (visually awkward when streaming).
-    const startRow = rng.intRange(2, Math.max(2, rows - 1 - thickness))
+    const placement = pickPlacement()
+    placementHistory.push(placement)
+
+    // Cap thickness so that every band slot has at least 1 row of
+    // vertical clearance between bands. Without this, a thickness=3
+    // band in a bandHeight=3 slot consumes the whole slot and
+    // touches the next band → looks like one giant band visually,
+    // and the player has no vertical-gap navigation between bands.
+    const thickness = Math.min(pickThickness(), Math.max(1, bandHeight - 1))
+    // Resolve the fixture's (startCol, width).
+    let startCol: number
+    let width: number
+    if (placement === 'left') {
+      // Anchored to col 0; 1+ cell clearance on the right.
+      width = rng.intRange(4, Math.min(12, cols - 1))
+      startCol = 0
+    } else if (placement === 'right') {
+      // Anchored to col cols-1; 1+ cell clearance on the left.
+      width = rng.intRange(4, Math.min(12, cols - 1))
+      startCol = cols - width
+    } else {
+      // CENTER — asymmetric gap. Total gap = 4-6 cells (split between
+      // sides). One side gets the minimum 1 cell; the other gets the
+      // remainder. The wider side is the player's preferred corridor.
+      const totalGap = rng.intRange(4, 6)
+      const narrowGap = 1
+      const wideGap = totalGap - narrowGap
+      width = cols - totalGap
+      const wideSideIsLeft = rng.chance(0.5)
+      startCol = wideSideIsLeft ? wideGap : narrowGap
+    }
+
+    // Row within this fixture's band. Top of band leaves at least 1
+    // row of vertical clearance between adjacent fixtures (so the
+    // player can navigate horizontally between bands).
+    const bandStart = topMargin + i * bandHeight
+    const slack = Math.max(0, bandHeight - thickness - 1)
+    const startRow = bandStart + rng.intRange(0, slack)
 
     for (let r = startRow; r < startRow + thickness && r < rows; r++) {
       for (let c = startCol; c < startCol + width && c < cols; c++) {
         const idx = r * cols + c
         const t = tiles[idx]
-        // Stone overlay rule: rocks have priority — never paint
-        // fixture over stone. Also skip already-fixture cells so
-        // bands don't recolor each other into a Frankenstein stripe.
         if (t === TILE_STONE) continue
         if (t !== undefined && t >= TILE_FIXTURE_BASE && t < TILE_FIXTURE_BASE + 5) continue
-        // No-adjacency rule: rocks and fixtures must have at least 1
-        // cell of padding between them. Skip this fixture cell if any
-        // 4-neighbor is currently a stone — keeps the two anchor
-        // classes visually + behaviorally distinct.
+        // No-adjacency rule with stones (1-cell padding).
         let nextToStone = false
         for (const [dc, dr] of [[-1, 0], [1, 0], [0, -1], [0, 1]] as const) {
           const nc = c + dc
@@ -407,7 +469,6 @@ export function generateChunk(seed: number, chunkY: number): GeneratedChunk {
           }
         }
         if (nextToStone) continue
-        // Only paint where the chunk has SOIL — leaves caves clean.
         if (t === TILE_SOIL) {
           tiles[idx] = TILE_FIXTURE_BASE + variant
         }
@@ -506,7 +567,14 @@ export function generateChunk(seed: number, chunkY: number): GeneratedChunk {
     }
   }
 
-  return { tiles, clusterId, gems, explosives: explosivePlacements, damagedStones }
+  return {
+    tiles,
+    clusterId,
+    gems,
+    explosives: explosivePlacements,
+    damagedStones,
+    fixturePlacements: placementHistory,
+  }
 }
 
 /* ------------------------------------------------------------------ */
