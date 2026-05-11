@@ -119,14 +119,23 @@ export function Scene({ onShellStateChange }: SceneProps) {
     }
     syncRenderState(world, flatlandRef.current, onShellStateChange)
     // Reposition the biome gradient mesh to track the Flatland camera
-    // and update the parallax uniform from the live camera Y.
+    // and update the parallax uniform.
+    //
+    // Snap cam.y to TILE_PX multiples for the render-side position.
+    // cam.y itself smooth-scrolls in 1-pixel increments (cameraSystem
+    // Math.rounds it), but that produces fractional-row offsets at
+    // the viewport edges (e.g. cam.y = -13 → world Y of viewport top
+    // = -13 = 13/16 of a row above surface → top row half-cut, bottom
+    // row half-visible). Snapping to TILE_PX keeps full rows aligned
+    // to the viewport edges. Game logic still uses smooth cam.y.
     const cam = world.get(Camera)
     if (cam) {
       const halfH = (PLAY_ROWS * TILE_PX) / 2
       const halfW = (PLAY_COLS * TILE_PX) / 2
+      const snappedY = Math.round(cam.y / TILE_PX) * TILE_PX
       gradient.mesh.position.x = halfW
-      gradient.mesh.position.y = -(cam.y + halfH)
-      gradient.camYUniform.value = cam.y
+      gradient.mesh.position.y = -(snappedY + halfH)
+      gradient.camYUniform.value = snappedY
     }
   })
 
@@ -252,12 +261,18 @@ function syncRenderState(
   // World cell Y grows downward (row 0 at top); the camera in Three uses
   // Y-up. Center the camera vertically: cam.y is the top of the visible
   // play window in world pixels, so the camera looks at y = -(cam.y + halfH).
+  //
+  // Snap cam.y to TILE_PX multiples here so the camera frustum's top
+  // edge falls on a row boundary. Without snapping, the smooth-scroll
+  // (1-pixel-per-frame Math.round in cameraSystem) lands at fractional-
+  // row offsets and produces half-row crops at viewport top/bottom.
   const cam = world.get(Camera)
   if (cam && flatland) {
     const halfH = (cam.rows * TILE_PX) / 2
     const halfW = (PLAY_COLS * TILE_PX) / 2
+    const snappedY = Math.round(cam.y / TILE_PX) * TILE_PX
     flatland.camera.position.x = halfW
-    flatland.camera.position.y = -(cam.y + halfH)
+    flatland.camera.position.y = -(snappedY + halfH)
     if (typeof window !== 'undefined') (window as { __drillerFlat?: unknown }).__drillerFlat = flatland
   }
 }
