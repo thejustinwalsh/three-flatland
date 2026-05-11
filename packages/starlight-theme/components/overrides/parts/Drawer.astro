@@ -2,6 +2,7 @@
 import userConfig from 'virtual:starlight-theme-config';
 import { getTranslation } from './NavBar.astro';
 import { getRelativeLocaleUrl } from 'astro:i18n';
+import DrawerSublist from './DrawerSublist.astro';
 
 const { sidebar } = Astro.locals.starlightRoute;
 const currentPath = Astro.url.pathname;
@@ -112,27 +113,16 @@ function sectionAccent(idx: number): string {
                                     style={sectionAccent(idx)}
                                 >
                                     <h4 class="entry-title">{entry.label}</h4>
-                                    <div class="entry-links">
-                                        {entry.entries.map(
-                                            (link) =>
-                                                link.type === 'link' && (
-                                                    <a
-                                                        href={link.href}
-                                                        class="entry-link"
-                                                        aria-current={
-                                                            currentPath === link.href
-                                                                ? 'page'
-                                                                : undefined
-                                                        }
-                                                        {...link.attrs}
-                                                    >
-                                                        <span class="entry-link-label">
-                                                            {link.label}
-                                                        </span>
-                                                    </a>
-                                                )
-                                        )}
-                                    </div>
+                                    {/* Recursive sub-list. Handles both flat
+                                       sections (Getting Started, Guides —
+                                       leaf links only) and nested sections
+                                       (API Reference — groups within groups
+                                       within groups, typedoc-generated).
+                                       The previous inline `.map(link =>
+                                       link.type === 'link')` rendered NOTHING
+                                       for nested sections because API ref's
+                                       direct children are groups, not links. */}
+                                    <DrawerSublist sublist={entry.entries} />
                                 </section>
                             )
                     )
@@ -167,14 +157,16 @@ function sectionAccent(idx: number): string {
         overflow: hidden;
     }
 
-    /* Stronger backdrop tint + saturate so the page reads dimmed and
-     * the drawer pops as the foreground. Was straight black 80%; the
-     * extra saturate(120%) on the underlying canvas keeps the gem
-     * accents on the page from going gray when the backdrop kicks in. */
+    /* Backdrop — lean on heavy blur + light black tint so the page
+     * stays visible as "context behind frosted glass" rather than a
+     * black void. Previous 84% black + 6px blur was so opaque it
+     * read as a full-screen modal cover. 50% black + 12px blur +
+     * mild saturate keeps the gem accents on the page visible while
+     * clearly dimming for foreground focus. */
     [popover]::backdrop {
-        background: color-mix(in oklab, black 84%, transparent);
-        backdrop-filter: blur(6px) saturate(120%);
-        -webkit-backdrop-filter: blur(6px) saturate(120%);
+        background: color-mix(in oklab, black 50%, transparent);
+        backdrop-filter: blur(12px) saturate(115%);
+        -webkit-backdrop-filter: blur(12px) saturate(115%);
     }
 
     [popover]:popover-open {
@@ -366,77 +358,15 @@ function sectionAccent(idx: number): string {
         padding: 0;
     }
 
-    .entry-links {
-        display: flex;
-        flex-direction: column;
-        gap: 2px;
-    }
-
-    /* Single-indicator rule (Design Context): for these doc sidebar
-     * entries, the left-pip is the active/hover indicator — no
-     * rounded-rect background fill alongside it. The top nav-link
-     * buttons are different (they're the page-level action buttons,
-     * not list items) and keep the pill/bg treatment.
-     *
-     * Active/hover here = color shift on text + entry-link::before pip
-     * in section-accent gem. That's it. */
-    .entry-link {
-        position: relative;
-        display: flex;
-        align-items: center;
-        min-height: 2.25rem;
-        padding: calc(var(--spacing) * 1.5) calc(var(--spacing) * 3);
-        font-family: 'Inter', system-ui, sans-serif;
-        font-size: 0.875rem;
-        line-height: 1.25rem;
-        color: var(--muted-foreground);
-        text-decoration: none;
-        transition: color 150ms cubic-bezier(0.2, 0.8, 0.2, 1);
-    }
-    .entry-link:hover {
-        color: var(--foreground);
-    }
-    .entry-link[aria-current='page'] {
-        color: var(--foreground);
-        font-weight: 500;
-    }
-    /* Left pip — same indicator system as desktop sidebar's
-     * .entry-link[aria-current='page']::before. Matches the section gem
-     * so the active page reads "you are here, in section X". */
-    .entry-link[aria-current='page']::before,
-    .entry-link:hover:not([aria-current='page'])::before {
-        content: '';
-        position: absolute;
-        top: 0.4375rem;
-        bottom: 0.4375rem;
-        left: 0;
-        width: 2px;
-        border-radius: 1px;
-        pointer-events: none;
-    }
-    .entry-link[aria-current='page']::before {
-        background-color: var(--section-accent, var(--primary));
-    }
-    .entry-link:hover:not([aria-current='page'])::before {
-        background-color: color-mix(
-            in oklab,
-            var(--section-accent, var(--primary)) 40%,
-            transparent
-        );
-    }
-
-    .entry-link-label {
-        flex: 1 1 auto;
-        min-width: 0;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-    }
+    /* Note: doc-sidebar entry-link / nested-group styles live in
+     * DrawerSublist.astro since the recursive component owns those
+     * elements and Astro scopes styles per file. The section-gem
+     * accent (`--section-accent`) is set on `.container-sidebar-entry`
+     * above and inherits through every nested level via CSS cascade. */
 
     @media (prefers-reduced-motion: reduce) {
         .content,
         .links-nav .nav-link,
-        .entry-link,
         .header .drag-icon span {
             transition: none;
         }
