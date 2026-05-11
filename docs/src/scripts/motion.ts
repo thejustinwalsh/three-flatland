@@ -306,39 +306,11 @@ function frame(now: number) {
         // else: lx/ly retain last hovered value; the fading --mouse-active
         // takes the highlight to zero opacity at that location.
 
-        /**
-         * Outer gate — when this target isn't being hovered AND the
-         * fade-out scalar has fully settled to 0, skip the entire
-         * per-target write block. The CSS rules driven by --mouse-active
-         * fade to opacity 0 below 0.005, so visually nothing is on
-         * screen; the perlin jitter on mx/my is purely "material feel"
-         * for the visible hotspot and contributes nothing when no
-         * hotspot is visible. Critical for Safari perf — without this,
-         * the inner setProperty gates can't catch the per-frame noise
-         * drift on idle targets.
-         *
-         * BEFORE skipping the mouse-driven branch, keep --effective-
-         * light-angle in sync with --scene-angle. Reason: the
-         * @property registration in base.css gives --effective-light-
-         * angle an initial-value of 135deg. With a registered initial,
-         * the CSS `var(--effective-light-angle, var(--scene-angle, …))`
-         * fallback chain doesn't kick in — the property always resolves
-         * to its registered initial 135deg until JS writes a value.
-         * Without this sync, idle surfaces sat at 135deg statically;
-         * on hover-begin the hover-path code wrote currentSceneAngle ±
-         * tilt as the first --effective-light-angle value, which
-         * SNAPPED visually from 135deg to whatever the slow scene
-         * cycle had drifted to (could be 30-150°). Bug surfaced after
-         * the scene-angle :root broadcast was replaced with per-target
-         * writes and the @property registration was added — those two
-         * changes together broke the fallback continuity.
-         *
-         * Gated on value-change against --scene-angle so the cost
-         * matches the scene-angle write itself: one extra setProperty
-         * per visible idle target per scene-angle perceptible tick
-         * (~once every 0.5-1s in practice given EPS_DEG = 0.1°).
-         */
+        // Idle gate: skip mouse-driven writes when not hovering and
+        // fade-out has settled.
         if (!t.hovering && t.active < EPS_SCALAR) {
+            // Sync effective-light-angle to scene so hover-begin doesn't
+            // snap from the @property initial 135deg to currentScene.
             if (
                 Number.isNaN(t.lastEffective) ||
                 Math.abs(currentSceneAngle - t.lastEffective) >= EPS_DEG
@@ -349,8 +321,7 @@ function frame(now: number) {
                 )
                 t.lastEffective = currentSceneAngle
             }
-            // Make sure --mouse-active is locked at 0 once we stop
-            // updating (the inertia tail can leave it at e.g. 0.003).
+            // Lock --mouse-active at 0 (inertia tail can leave it at ~0.003).
             if (Number.isNaN(t.lastActive) || t.lastActive >= EPS_SCALAR) {
                 t.el.style.setProperty('--mouse-active', '0')
                 t.lastActive = 0
