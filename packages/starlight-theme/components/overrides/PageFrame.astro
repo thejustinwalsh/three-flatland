@@ -281,9 +281,13 @@ const isLanding = path === base || path === '';
             align-items: center;
 
             [data-slot='footer-text'] {
-                /* Footer text — Inter at a smaller size, muted grey
-                 * pulled from gray-5 (more muted than --muted-foreground).
-                 * Reads as quiet attribution, not page content. */
+                /* Footer text — Inter at a smaller size, muted but
+                 * legible. Previously used `--gray-5` which sits below
+                 * the WCAG AA 4.5:1 contrast threshold against the page
+                 * bg (Lighthouse axe `color-contrast` rule). Bumped to
+                 * `--muted-foreground` which is the design-system token
+                 * for "muted-but-readable" body copy. Reads as quiet
+                 * attribution without failing contrast. */
                 width: 100%;
                 max-width: var(--container-max-width);
                 margin-inline: auto;
@@ -293,14 +297,21 @@ const isLanding = path === base || path === '';
                 line-height: 1.45;
                 font-weight: 400;
                 letter-spacing: 0.005em;
-                color: var(--gray-5);
+                color: var(--muted-foreground);
                 text-wrap: balance;
                 text-align: center;
             }
             [data-slot='footer-text'] :global(a) {
-                color: color-mix(in oklab, var(--gray-5) 80%, var(--diamond));
+                /* Link color + underline carry the affordance independently
+                 * of hue (axe `link-in-text-block`). The previous
+                 * `text-decoration-color: gray-5 50% + transparent` was
+                 * too faint to read as a clear "this is a link" cue —
+                 * Lighthouse flagged it. Full-opacity diamond-tinted
+                 * underline at full intensity matches the on-page link
+                 * style. */
+                color: color-mix(in oklab, var(--muted-foreground) 60%, var(--diamond));
                 text-decoration: underline;
-                text-decoration-color: color-mix(in oklab, var(--gray-5) 50%, transparent);
+                text-decoration-color: color-mix(in oklab, var(--diamond) 70%, var(--muted-foreground));
                 text-underline-offset: 2px;
                 transition: color 0.15s, text-decoration-color 0.15s;
             }

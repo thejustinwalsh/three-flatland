@@ -16,14 +16,24 @@ if (project.trailingSlash === 'never') dataAttributes['data-strip-trailing-slash
 ---
 
 <site-search class={Astro.props.class} {...dataAttributes}>
+    {/*
+     * The visible label "Search" + kbd hint "⌘K" sits inside the button.
+     * No explicit aria-label: the accessible name resolves from the
+     * non-aria-hidden child content, which is just the "Search" span
+     * (the <kbd> elements are visual hints that screen-readers can
+     * still announce, but we want the canonical button name to be
+     * "Search"). Removing the redundant aria-label fixes Lighthouse's
+     * label-content-name-mismatch rule (axe `label-content-name-mismatch`)
+     * which fired because the prior `aria-label="Search"` overrode the
+     * visible label including the kbd hint, producing a mismatch.
+     */}
     <button
         data-open-modal
         disabled
-        aria-label={Astro.locals.t('search.label')}
         aria-keyshortcuts="Control+K"
     >
-        <span aria-hidden="true">{Astro.locals.t('search.label')}</span>
-        <kbd class="sl-hidden md:sl-flex" style="display: none;">
+        <span>{Astro.locals.t('search.label')}</span>
+        <kbd class="sl-hidden md:sl-flex" style="display: none;" aria-hidden="true">
             <kbd>{Astro.locals.t('search.ctrlKey')}</kbd><kbd>K</kbd>
         </kbd>
     </button>

@@ -233,8 +233,11 @@ export default defineConfig({
           // ensures the value is part of the user-config virtual module
           // and re-evaluates cleanly across dev-server reloads.
           starlightTheme({
+            // Descriptive link text ("our issue tracker on GitHub") fixes
+            // Lighthouse's link-text + link-in-text-block + a11y "links rely
+            // on color alone" trio that fired on a generic "[here]" label.
             footerText:
-              'This documentation was created with AI assistance. AI can make mistakes — please verify claims and test code examples. Submit corrections [here](https://github.com/thejustinwalsh/three-flatland/issues).',
+              'This documentation was created with AI assistance. AI can make mistakes — please verify claims and test code examples. Submit corrections on [our issue tracker on GitHub](https://github.com/thejustinwalsh/three-flatland/issues).',
             // Top-of-page navigation. Three top-level surfaces:
             //   - Docs       → introduction (the entry point into the
             //                  prose docs; subsequent pages flow from
@@ -388,11 +391,22 @@ export default defineConfig({
     define: {
       'import.meta.env.VITE_EXAMPLES_PORT': JSON.stringify(examplesPort),
     },
-    server: {
-      headers: {
-        'Cross-Origin-Embedder-Policy': 'require-corp',
-        'Cross-Origin-Opener-Policy': 'same-origin',
-      },
-    },
+    // COEP/COOP previously set here to enable SharedArrayBuffer + cross-
+    // origin isolation. Removed because:
+    //   1. No code in the workspace uses SAB or any isolation-gated API
+    //      (no Atomics, no pthread, no wasm-threads, no crossOriginIsolated
+    //      checks). It was defensive without a purpose.
+    //   2. GitHub Pages can't set custom response headers, so the production
+    //      deploy will never have cross-origin isolation anyway. Keeping
+    //      them in dev/preview made those environments stricter than prod
+    //      and misled testing (preview surfaced COEP-blocked third-party
+    //      scripts that load fine on the live site).
+    //   3. They blocked legitimate cross-origin scripts (e.g. Umami metrics
+    //      at metrics.tjw.dev, which serves `Access-Control-Allow-Origin: *`
+    //      but doesn't send the Cross-Origin-Resource-Policy header that
+    //      COEP `require-corp` additionally demands — and we don't control
+    //      that endpoint to add CORP).
+    // If a future use case genuinely needs SAB on a host that supports
+    // custom headers, re-add them at that point.
   },
 });

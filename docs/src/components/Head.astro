@@ -176,6 +176,13 @@ import PageOrder from 'astro-vtbot/components/starlight/PageOrder.astro';
     `.u-light::before` rule for the kept scene-light gradient layer. */}
 
 <!-- Self hosted metrics -->
+{/* Plain script tag — Umami at metrics.tjw.dev serves with
+    `Access-Control-Allow-Origin: *`, so no crossorigin attribute is
+    needed. The earlier crossorigin="anonymous" was a workaround for
+    COEP `require-corp` which we previously had set in vite config.
+    Since COEP is gone (see astro.config.mjs comment), the workaround
+    can come off too — keeps the script tag clean and lets the
+    browser use whatever credentials policy is appropriate. */}
 {import.meta.env.PROD && (
   <>
     <link rel="preconnect" href="https://metrics.tjw.dev" />
