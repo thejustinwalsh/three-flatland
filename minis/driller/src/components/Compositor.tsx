@@ -1,7 +1,8 @@
 import { useMemo } from 'react'
-import { type Texture, Vector2 } from 'three'
+import { type Texture } from 'three'
 import { MeshBasicNodeMaterial } from 'three/webgpu'
 import { Fn, color, mix, texture as textureNode, uv, vec2, vec3, vec4 } from 'three/tsl'
+import { gaussianBlur } from 'three/addons/tsl/display/GaussianBlurNode.js'
 import { PLAY_COLS, PLAY_ROWS, TILE_PX } from '../constants'
 import { pickScale } from '../lib/scale'
 
@@ -42,45 +43,34 @@ export function Compositor({ gameTexture, viewportSize }: Props) {
   const bgH = bgW * bgAspect
   const bgY = -viewportSize.height / 2 + bgH / 2 // bottom-aligned
 
-  // Blur kernel offset in UV space. Larger = blurrier bg. Tuned to
-  // be readable as "the world is back there" without competing with
-  // the gameplay rect for attention.
-  const blurStep = useMemo(() => new Vector2(5 / (PLAY_COLS * TILE_PX), 5 / (PLAY_ROWS * TILE_PX)), [])
 
 
-  // Ambient material — sample game RT with a 9-tap box blur (center
-  // + 8 neighbors). Bottom of bg = bottom of viewport (no V-flip on
-  // bg sampling: plane V=0 → texture V=0 = deep rows of game).
-  // Mild desat + low alpha so the CSS gradient does most of the
-  // color work and the bg reads as "back there, faded".
+  // Ambient material — built-in three.js separable two-pass gaussian
+  // blur applied to the game RT. Sigma controls kernel width; the
+  // node manages its own intermediate render target internally so
+  // we get a real high-quality gaussian without writing a multi-tap
+  // kernel ourselves.
+  // V-flip the UV so plane bottom (= viewport bottom) maps to the
+  // bottom of the rendered scene, aligning the bg with the
+  // foreground orientation.
   const ambientMaterial = useMemo(() => {
     const m = new MeshBasicNodeMaterial()
-    const blurredColor = Fn(() => {
-      const u = uv()
-      const dx = blurStep.x
-      const dy = blurStep.y
-      // 9-tap blur: center + 4 cross + 4 diagonal neighbors.
-      const c = textureNode(gameTexture, u)
-      const n = textureNode(gameTexture, u.add(vec2(0, dy)))
-      const s = textureNode(gameTexture, u.sub(vec2(0, dy)))
-      const e = textureNode(gameTexture, u.add(vec2(dx, 0)))
-      const w = textureNode(gameTexture, u.sub(vec2(dx, 0)))
-      const ne = textureNode(gameTexture, u.add(vec2(dx, dy)))
-      const nw = textureNode(gameTexture, u.add(vec2(-dx, dy)))
-      const se = textureNode(gameTexture, u.add(vec2(dx, -dy)))
-      const sw = textureNode(gameTexture, u.sub(vec2(dx, dy)))
-      const sum = c.add(n).add(s).add(e).add(w).add(ne).add(nw).add(se).add(sw)
-      const rgb = sum.rgb.mul(1 / 9)
+    // Sample the game texture with flipped V, then blur the resulting
+    // node. directionNode = null lets the node compute an isotropic
+    // blur (two-pass separable internally). sigma=4 gives a clearly
+    // blurred read without obliterating the world's structural color.
+    const flippedTex = textureNode(gameTexture, vec2(uv().x, uv().y.oneMinus()))
+    const blurred = gaussianBlur(flippedTex, null, 4)
+    const composed = Fn(() => {
+      const rgb = blurred.rgb
       const lum = rgb.dot(vec3(0.299, 0.587, 0.114))
       const desat = mix(rgb, vec3(lum, lum, lum), 0.25)
-      // Low alpha — the bg should sit visually BEHIND the gameplay,
-      // not compete. CSS gradient on the host blends through.
       return vec4(desat, 0.22)
     })
-    m.colorNode = blurredColor()
+    m.colorNode = composed()
     m.transparent = true
     return m
-  }, [gameTexture, blurStep])
+  }, [gameTexture])
 
   // Foreground material — V-flipped sample of the game RT. Texture
   // alpha is preserved so AIR cells are transparent; the opaque
