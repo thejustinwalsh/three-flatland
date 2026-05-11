@@ -67,7 +67,12 @@ const accentStyle = resolvedGem ? `--vp-accent: var(--${resolvedGem});` : undefi
     gap: calc(var(--spacing) * 4);
     padding-block: calc(var(--spacing) * 1);
     margin-block: calc(var(--spacing) * 6);
-    max-width: 56rem;
+    /* Was 56rem (~62% of a 1440 viewport, leaving a 38% gap that
+     * read as 'wasted center column' when left/right cards alternated).
+     * 72rem at 1440 = 80% — fills more of the viewport, gap between
+     * alternating cards shrinks. On narrower screens the grid still
+     * caps naturally via page-body padding. */
+    max-width: 72rem;
     /* Safari paint-isolation — see GalleryTile for diagnosis. The
      * vp-rule's foil-reactive glow uses --vp-accent + cursor light
      * vars that bubble through the stacking context. contain:paint
