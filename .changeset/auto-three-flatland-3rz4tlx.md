@@ -5,12 +5,13 @@
 > Branch: docs-refresh-foundation
 > PR: https://github.com/thejustinwalsh/three-flatland/pull/33
 
-## StatsBanner: gem-accented stats
+### StatsBanner: gem-accented values and underlines
 
-- Re-enabled the `color` prop on `StatsBanner` stat items — previously accepted but silently ignored, causing all stats to render in `--foreground`
-- `color` now resolves to a gem accent (`gold`, `ruby`, `emerald`, `diamond`, `amethyst`, `pink`, `salmon`, `turquoize`); conventional names (`cyan`, `blue`, `green`, `orange`, `red`, `yellow`, `purple`) map to their nearest gem via the shared `legacyToGem` table
-- Stat value text is tinted with a gem-mixed color (65% gem + 35% foreground) and a soft gem-tinted `text-shadow` glow
-- Each stat now renders a thin gem-tinted hairline underline (linear gradient fading right) so the stat row reads as a colored chord rather than a flat band
-- Existing MDX call sites with named colors continue to compile without changes
+- Re-enabled the `color` prop on `StatItem` (was accepted but silently ignored)
+- Each stat's value text now renders in its gem color (65% gem / 35% foreground mix) with a soft glow shadow
+- A gem-tinted hairline underline (linear gradient fading right) appears beneath each stat, making the row read as a colored chord
+- Legacy color names (`cyan`, `blue`, `green`, `orange`, `red`, `yellow`, `purple`) are mapped to their gem equivalents via `legacyToGem`, matching the same table used by `FeatureCard` and `ValueProp`
+- `--stat-accent` CSS custom property is set inline per stat from the resolved gem token
+- README heading updated from "Why three-flatland?" to "Why Flatland?" to align with brand naming
 
-Restores intentional gem-color taxonomy to the landing page stats strip; no breaking changes — legacy color names are silently remapped.
+The `StatsBanner` component now gives each stat its own gem identity rather than rendering all values in a uniform foreground color.
