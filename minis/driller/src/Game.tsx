@@ -108,10 +108,7 @@ export default function Driller({
       const m = metricsRef.current
       if (!m) return
       const cam = world.get(Camera)
-      const grid = world.get(Pointer) // ptr ref read
-      const grid2 = world.get(Camera)
-      void grid
-      void grid2
+      const grid = world.get(Grid)
       // Compute gameplay-rect-relative coords. The Canvas is full
       // viewport, but the gameplay rect is centered both H and V
       // within it (compositor draws it at canvas center).
@@ -126,6 +123,12 @@ export default function Driller({
         return
       }
       const camY = cam?.y ?? 0
+      // Row clamp must use the GRID's row count, not cam.rows (the
+      // viewport row count). With cam.rows=40, every click in the
+      // bottom half of the rect resolved to row 39 once the camera
+      // scrolled past depth 40 — every fixture, gem, or cell deeper
+      // than row 39 was unclickable.
+      const gridRows = grid?.rows ?? 256
       const cell = pointerWorldCell({
         canvasX,
         canvasY,
@@ -134,7 +137,7 @@ export default function Driller({
         scale: m.scale,
         cameraY: camY,
         cols: 18,
-        rows: world.get(Camera)?.rows ?? 40,
+        rows: gridRows,
       })
       const { action, gemEntity } = resolveHoverAction(world, cell.col, cell.row)
       world.set(Pointer, {
