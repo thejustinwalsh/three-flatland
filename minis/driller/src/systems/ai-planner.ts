@@ -25,6 +25,7 @@ import { isFreeFall } from '../biomes'
 interface DrillerCell {
   col: number
   row: number
+  facing?: 1 | -1
 }
 
 export function planGreedy(world: World, d: DrillerCell): [number, number] | null {
@@ -35,7 +36,16 @@ export function planGreedy(world: World, d: DrillerCell): [number, number] | nul
   if (d.row + 1 < rows && tiles[below] !== TILE_STONE && !isFixtureTile(tiles[below] ?? TILE_AIR)) {
     return [d.col, d.row + 1]
   }
-  for (const dc of [-1, 1]) {
+  // Anti-oscillation: when forced into a sideways step (down is blocked),
+  // prefer the direction the driller is already FACING. Without this,
+  // the driller can flip-flop between two cells when both have a
+  // blocked-down state and the planner alternately picks left then right
+  // by static iteration order. Keying off facing means once the driller
+  // commits to a direction, it keeps going that way until that side
+  // becomes blocked too.
+  const order = d.facing === -1 ? [-1, 1] : [1, -1]
+  // First pass: prefer the facing direction.
+  for (const dc of order) {
     const nc = d.col + dc
     if (nc < 0 || nc >= cols) continue
     const idx = d.row * cols + nc

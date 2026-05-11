@@ -421,27 +421,44 @@ export function generateChunk(seed: number, chunkY: number): GeneratedChunk {
     // touches the next band → looks like one giant band visually,
     // and the player has no vertical-gap navigation between bands.
     const thickness = Math.min(pickThickness(), Math.max(1, bandHeight - 1))
-    // Resolve the fixture's (startCol, width).
+    // Resolve the fixture's (startCol, width). Sizes dialed back
+    // (user feedback: 'somewhere between old and new is ideal').
+    // L/R blocks are now mid-sized obstacles (3-7 wide), not heavy
+    // wall-spanning anchors. CENTER occasionally has wide asymmetric
+    // gaps that pull the player to one side, but also sometimes
+    // sits as a narrower interior block (more variation, less
+    // every-band-is-a-deliberate-corridor feel).
     let startCol: number
     let width: number
     if (placement === 'left') {
-      // Anchored to col 0; 1+ cell clearance on the right.
-      width = rng.intRange(4, Math.min(12, cols - 1))
+      // Anchored to col 0; ≥1 cell clearance on the right.
+      width = rng.intRange(3, Math.min(7, cols - 1))
       startCol = 0
     } else if (placement === 'right') {
-      // Anchored to col cols-1; 1+ cell clearance on the left.
-      width = rng.intRange(4, Math.min(12, cols - 1))
+      // Anchored to col cols-1; ≥1 cell clearance on the left.
+      width = rng.intRange(3, Math.min(7, cols - 1))
       startCol = cols - width
     } else {
-      // CENTER — asymmetric gap. Total gap = 4-6 cells (split between
-      // sides). One side gets the minimum 1 cell; the other gets the
-      // remainder. The wider side is the player's preferred corridor.
-      const totalGap = rng.intRange(4, 6)
-      const narrowGap = 1
-      const wideGap = totalGap - narrowGap
-      width = cols - totalGap
-      const wideSideIsLeft = rng.chance(0.5)
-      startCol = wideSideIsLeft ? wideGap : narrowGap
+      // CENTER — two modes:
+      //  - 'wide-directing' (40%): a near-full-width block with one
+      //    narrow gap and one wider gap — pulls the player to the
+      //    wider side. The original directing-fixture concept.
+      //  - 'free' (60%): a smaller interior block (width 3-7),
+      //    placed freely with ≥1 cell margin on both sides. Adds
+      //    variation and reduces the 'every band is a corridor'
+      //    cadence.
+      if (rng.chance(0.4)) {
+        const totalGap = rng.intRange(5, 8)
+        const narrowGap = 1
+        const wideGap = totalGap - narrowGap
+        width = cols - totalGap
+        const wideSideIsLeft = rng.chance(0.5)
+        startCol = wideSideIsLeft ? wideGap : narrowGap
+      } else {
+        width = rng.intRange(3, 7)
+        const maxStart = cols - 1 - width
+        startCol = rng.intRange(1, Math.max(1, maxStart))
+      }
     }
 
     // Row within this fixture's band. Top of band leaves at least 1
