@@ -112,10 +112,12 @@ export default function Driller({
       const grid2 = world.get(Camera)
       void grid
       void grid2
-      // Compute canvas-relative coords (the canvas is centered horizontally)
+      // Compute gameplay-rect-relative coords. The Canvas is full
+      // viewport, but the gameplay rect is centered both H and V
+      // within it (compositor draws it at canvas center).
       const rect = host.getBoundingClientRect()
       const canvasLeft = rect.left + (rect.width - m.canvasWidth) / 2
-      const canvasTop = rect.top
+      const canvasTop = rect.top + (rect.height - m.canvasHeight) / 2
       const canvasX = clientX - canvasLeft
       const canvasY = clientY - canvasTop
       if (canvasX < 0 || canvasY < 0 || canvasX > m.canvasWidth || canvasY > m.canvasHeight) {
@@ -132,7 +134,7 @@ export default function Driller({
         scale: m.scale,
         cameraY: camY,
         cols: 18,
-        rows: world.get(Camera)?.rows ?? 22,
+        rows: world.get(Camera)?.rows ?? 40,
       })
       const { action, gemEntity } = resolveHoverAction(world, cell.col, cell.row)
       world.set(Pointer, {
