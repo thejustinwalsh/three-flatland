@@ -1,9 +1,24 @@
 import { useMemo } from 'react'
+import { useFrame } from '@react-three/fiber/webgpu'
+import { useWorld } from 'koota/react'
 import { type Texture } from 'three'
 import { MeshBasicNodeMaterial } from 'three/webgpu'
-import { Fn, color, mix, texture as textureNode, uv, vec2, vec3, vec4 } from 'three/tsl'
+import {
+  Fn,
+  color,
+  float,
+  mix,
+  texture as textureNode,
+  uniform,
+  uv,
+  vec2,
+  vec3,
+  vec4,
+} from 'three/tsl'
 import { gaussianBlur } from 'three/addons/tsl/display/GaussianBlurNode.js'
+import { Camera } from '../traits'
 import { PLAY_COLS, PLAY_ROWS, TILE_PX } from '../constants'
+import { buildBiomeGradientTexture } from '../lib/biome-gradient'
 import { pickScale } from '../lib/scale'
 
 interface Props {
@@ -12,70 +27,90 @@ interface Props {
 }
 
 /**
- * Two in-canvas composite layers (with CSS gradient bg behind the
- * canvas providing layer 0):
+ * In-canvas compositor — 4 layers, back-to-front:
  *
- *   layer 0 — biome-tinted CSS gradient (PlayCanvas host div)
- *   layer 1 — ambient blur+desat sample of game RT (fullscreen quad)
- *   layer 2 — solid biome bg + game RT passthrough (gameplay-rect
- *             quad, centered). The game's transparent AIR pixels
- *             reveal the solid biome color underneath — NOT the
- *             blurred bg behind, per the design.
+ *   layer 0 (z=-2)    — depth-aware biome gradient. Pre-baked 1×N
+ *                       DataTexture cycling through all biomes; the
+ *                       shader maps each viewport row to a world row
+ *                       (with parallax-scaled camera Y) and samples
+ *                       the gradient. Voids are mostly pure black
+ *                       with quick fades at the edges.
+ *   layer 1 (z=-1)    — gaussian-blurred sample of the game RT,
+ *                       fit-width / clip-height / bottom-aligned,
+ *                       low alpha. Adds "shape" to the bg.
+ *   layer 2 (z=-0.01) — opaque biome-colored quad behind the
+ *                       gameplay rect. Blocks the bg layers from
+ *                       bleeding through AIR cells in the gameplay.
+ *   layer 3 (z=0)     — pixel-perfect game RT at PLAY_COLS × PLAY_ROWS,
+ *                       centered. The actual gameplay rect.
  *
- * Future: layer 2's solid biome color becomes 3-4 parallax tile-art
- * layers each rendered as their own quad. The blurred ambient stays
- * as the deepest in-canvas scene texture.
+ * The host element's CSS background is now a single solid color —
+ * no gradients in HTML. All color depth lives in layer 0.
  */
 export function Compositor({ gameTexture, viewportSize }: Props) {
+  const world = useWorld()
   const scale = pickScale(viewportSize.width, viewportSize.height)
   const rectW = PLAY_COLS * TILE_PX * scale
   const rectH = PLAY_ROWS * TILE_PX * scale
 
-  // Ambient bg: fit WIDTH, clip height, bias bottom to viewport.
-  // Maintains the gameplay rect's 9:20 aspect when scaled up — no
-  // stretching. Width = viewport width; height = viewport width *
-  // (PLAY_ROWS / PLAY_COLS). Position so the BOTTOM of the ambient
-  // bg aligns with the bottom of the viewport (top can overflow
-  // upward, off-screen). In the orthographic scene the viewport
-  // bottom is at y = -viewportSize.height/2.
-  const bgAspect = PLAY_ROWS / PLAY_COLS // 40/18 ≈ 2.22
+  // Layer 1 bg sizing — aspect-preserving fit-width, bottom-aligned.
+  const bgAspect = PLAY_ROWS / PLAY_COLS
   const bgW = viewportSize.width
   const bgH = bgW * bgAspect
-  const bgY = -viewportSize.height / 2 + bgH / 2 // bottom-aligned
+  const bgY = -viewportSize.height / 2 + bgH / 2
 
+  // Layer 0 — biome gradient texture (1×N) + uniform for parallax
+  // camera Y. Update the uniform each frame from the Camera trait.
+  const { texture: gradientTexture, totalRows: gradientTotalRows } = useMemo(
+    () => buildBiomeGradientTexture(),
+    [],
+  )
+  const camYUniform = useMemo(() => uniform(0), [])
+  useFrame(() => {
+    const cam = world.get(Camera)
+    if (cam) camYUniform.value = cam.y
+  })
 
+  // Layer 0 material — biome depth gradient. The plane is fullscreen
+  // (viewport-sized), positioned at z=-2. Per-fragment math:
+  //   fragWorldPxY = (1 - uv.y) * viewportH  + camY * parallax
+  //   gradientV    = (fragWorldPxY / TILE_PX) / TOTAL_ROWS  (mod 1)
+  //
+  // (1 - uv.y) because uv.y grows UP in three but world rows grow DOWN.
+  // PARALLAX < 1 makes the bg gradient scroll slower than the gameplay
+  // foreground — distant-feel.
+  const PARALLAX = 0.35
+  const gradientMaterial = useMemo(() => {
+    const m = new MeshBasicNodeMaterial()
+    const totalPx = gradientTotalRows * TILE_PX
+    const colorNode = Fn(() => {
+      const viewportPxY = uv().y.oneMinus().mul(viewportSize.height)
+      const worldPxY = viewportPxY.add(camYUniform.mul(PARALLAX))
+      const gradV = worldPxY.div(totalPx)
+      return textureNode(gradientTexture, vec2(float(0.5), gradV))
+    })
+    m.colorNode = colorNode()
+    m.transparent = false
+    return m
+  }, [gradientTexture, gradientTotalRows, viewportSize.height, camYUniform])
 
-  // Ambient material — built-in three.js separable two-pass gaussian
-  // blur applied to the game RT. Sigma controls kernel width; the
-  // node manages its own intermediate render target internally so
-  // we get a real high-quality gaussian without writing a multi-tap
-  // kernel ourselves.
-  // V-flip the UV so plane bottom (= viewport bottom) maps to the
-  // bottom of the rendered scene, aligning the bg with the
-  // foreground orientation.
+  // Layer 1 — gaussian-blurred ambient bg (game RT).
   const ambientMaterial = useMemo(() => {
     const m = new MeshBasicNodeMaterial()
-    // Sample the game texture with flipped V, then blur the resulting
-    // node. directionNode = null lets the node compute an isotropic
-    // blur (two-pass separable internally). sigma=4 gives a clearly
-    // blurred read without obliterating the world's structural color.
     const flippedTex = textureNode(gameTexture, vec2(uv().x, uv().y.oneMinus()))
     const blurred = gaussianBlur(flippedTex, null, 4)
     const composed = Fn(() => {
       const rgb = blurred.rgb
       const lum = rgb.dot(vec3(0.299, 0.587, 0.114))
       const desat = mix(rgb, vec3(lum, lum, lum), 0.25)
-      return vec4(desat, 0.22)
+      return vec4(desat, 0.18)
     })
     m.colorNode = composed()
     m.transparent = true
     return m
   }, [gameTexture])
 
-  // Foreground material — V-flipped sample of the game RT. Texture
-  // alpha is preserved so AIR cells are transparent; the opaque
-  // biome rect immediately behind provides the solid color the user
-  // sees through them.
+  // Layer 3 — pixel-perfect gameplay rect (V-flipped game RT sample).
   const fgMaterial = useMemo(() => {
     const m = new MeshBasicNodeMaterial()
     m.colorNode = textureNode(gameTexture, vec2(uv().x, uv().y.oneMinus()))
@@ -83,10 +118,7 @@ export function Compositor({ gameTexture, viewportSize }: Props) {
     return m
   }, [gameTexture])
 
-  // Solid biome-colored quad at the gameplay rect. OPAQUE. Sits
-  // immediately behind the foreground via explicit z (z=-0.01)
-  // so depth ordering is enforced regardless of how the renderer
-  // sorts transparent objects.
+  // Layer 2 — opaque biome-colored quad behind the foreground.
   // TODO(parallax): replace with 3-4 tile-art layers per biome.
   const biomeRectMaterial = useMemo(() => {
     const m = new MeshBasicNodeMaterial()
@@ -95,12 +127,11 @@ export function Compositor({ gameTexture, viewportSize }: Props) {
     return m
   }, [])
 
-  // Z ordering: ambient (z=-1, far back, transparent), biome rect
-  // (z=-0.01, opaque, immediately behind foreground), foreground
-  // (z=0, transparent). The biome rect writes depth which guarantees
-  // the ambient doesn't bleed through the gameplay area.
   return (
     <>
+      <mesh material={gradientMaterial} position={[0, 0, -2]}>
+        <planeGeometry args={[viewportSize.width, viewportSize.height]} />
+      </mesh>
       <mesh material={ambientMaterial} position={[0, bgY, -1]}>
         <planeGeometry args={[bgW, bgH]} />
       </mesh>
