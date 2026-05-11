@@ -48,8 +48,8 @@ import { Tabs, TabItem, Aside } from 'starlight-theme/components';
         Fix: keep tag + content on a single line so MDX skips the
         markdown-paragraph auto-wrap. */}
     <div class="hero-overlay-inner">
-      <h1 class="hero-title">three-flatland</h1>
-      <p class="hero-tagline">The composable 2D library for Three.js.</p>
+      <p class="hero-eyebrow">three-flatland</p>
+      <h1 class="hero-title">The composable 2D library for Three.js.</h1>
       <p class="hero-subtagline">Primitives for 2D graphics, TSL composability, react-three-fiber, performance by default.</p>
       <div class="hero-actions">
         <a href="/three-flatland/getting-started/introduction/" class="sl-link-button primary"><span>Get Started</span><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M12 5l7 7-7 7" /></svg></a>
@@ -285,33 +285,44 @@ function Game() {
     backdrop-filter: blur(0.5px);
   }
 
-  /* Editorial nameplate — uppercase, lightly tracked, Thin weight.
-     The size carries the visual mass; tracking opens it up so 'three-
-     flatland' reads as a wordmark, not a sentence. */
-  .hero-title {
-    font-family: 'Public Sans', system-ui, sans-serif;
-    font-size: clamp(2.25rem, 5vw, 4rem);
-    font-weight: 200;
-    line-height: 1.05;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
-    color: var(--foreground);
-    margin: 0 0 calc(var(--spacing) * 6);
-    text-shadow: 0 2px 32px color-mix(in oklab, var(--background) 75%, transparent);
-  }
-  .hero-tagline {
-    font-family: 'Public Sans', system-ui, sans-serif;
-    font-size: clamp(1.05rem, 1.6vw, 1.2rem);
+  /* Package-name eyebrow — small mono, tracked uppercase, reads as
+     'install name' / code reference rather than competing for visual
+     mass with the h1 below. The brand 'flatland' is already in the
+     header wordmark; this eyebrow exists so first-time visitors
+     landing from a search for 'three-flatland' get immediate
+     confirmation they're on the right page, but without sacrificing
+     the SEO-load-bearing h1 below. */
+  .hero-eyebrow {
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-size: clamp(0.75rem, 1vw, 0.875rem);
     font-weight: 500;
-    line-height: 1.4;
-    color: var(--foreground);
-    max-width: 42rem;
-    /* All four sides explicit — without margin-top:0 explicitly,
-       browser-default <p> top margin (~1em) was sneaking through
-       and creating a huge gap between the tagline and subtagline. */
-    margin-block: 0 calc(var(--spacing) * 1);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: color-mix(in oklab, var(--gold) 50%, var(--muted-foreground));
+    margin-block: 0 calc(var(--spacing) * 4);
     margin-inline: auto;
     text-shadow: 0 1px 12px color-mix(in oklab, var(--background) 80%, transparent);
+  }
+
+  /* Editorial display heading — h1 now carries the value-proposition
+     statement (Tailwind/Vercel/Linear hero pattern). Public Sans 200
+     at editorial display size; sentence case (no uppercase transform)
+     because the longer text reads better in sentence flow. Slightly
+     smaller clamp than the old wordmark-h1 since the longer string
+     would overflow on common viewports — text-wrap: balance gives a
+     clean 2-line wrap on most screens. */
+  .hero-title {
+    font-family: 'Public Sans', system-ui, sans-serif;
+    font-size: clamp(2rem, 4.5vw, 3.5rem);
+    font-weight: 200;
+    line-height: 1.05;
+    letter-spacing: -0.015em;
+    color: var(--foreground);
+    max-width: 28ch;
+    margin-block: 0 calc(var(--spacing) * 5);
+    margin-inline: auto;
+    text-wrap: balance;
+    text-shadow: 0 2px 32px color-mix(in oklab, var(--background) 75%, transparent);
   }
   /* Supporting line below the hero tagline — claim-stack pattern
      (shadcn-style). Each comma-separated phrase lands one ecosystem
