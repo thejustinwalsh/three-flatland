@@ -1,4 +1,4 @@
-import { useMemo, useRef, type Dispatch, type SetStateAction } from 'react'
+import { useEffect, useMemo, useRef, type Dispatch, type SetStateAction } from 'react'
 import { extend, useFrame, useThree } from '@react-three/fiber/webgpu'
 import { Flatland, Sprite2D, Sprite2DMaterial, type Flatland as FlatlandType } from 'three-flatland/react'
 import { useWorld } from 'koota/react'
@@ -27,6 +27,7 @@ import { GhostBeam } from './GhostBeam'
 import { HazardView } from './HazardView'
 import { TileRenderer } from './TileRenderer'
 import { Compositor } from './Compositor'
+import { buildBiomeGradientMesh } from '../lib/biome-gradient-material'
 import { shallowEqual } from '../shallow'
 
 extend({ Flatland, Sprite2D, Sprite2DMaterial })
@@ -84,6 +85,22 @@ export function Scene({ onShellStateChange }: SceneProps) {
     return rt
   }, [])
 
+  // Biome gradient mesh — lives INSIDE Flatland's scene as a sibling
+  // of the sprite group. Renders into the same RT as the game
+  // sprites, so the RT naturally contains the composite of gradient
+  // + sprites. The mesh covers the camera frustum and is repositioned
+  // each frame to track the camera.
+  const gradient = useMemo(() => buildBiomeGradientMesh(), [])
+  // Attach the mesh once the Flatland is mounted.
+  useEffect(() => {
+    const fl = flatlandRef.current
+    if (!fl) return
+    fl.add(gradient.mesh)
+    return () => {
+      fl.remove(gradient.mesh)
+    }
+  }, [gradient])
+
   // Update phase: fixed-timestep simulation accumulator.
   // Render frame rate (variable: 30/60/120/144Hz) is decoupled from
   // simulation tick rate (constant 60Hz). Every render frame we
@@ -101,6 +118,16 @@ export function Scene({ onShellStateChange }: SceneProps) {
       runSimulationTick(world)
     }
     syncRenderState(world, flatlandRef.current, onShellStateChange)
+    // Reposition the biome gradient mesh to track the Flatland camera
+    // and update the parallax uniform from the live camera Y.
+    const cam = world.get(Camera)
+    if (cam) {
+      const halfH = (PLAY_ROWS * TILE_PX) / 2
+      const halfW = (PLAY_COLS * TILE_PX) / 2
+      gradient.mesh.position.x = halfW
+      gradient.mesh.position.y = -(cam.y + halfH)
+      gradient.camYUniform.value = cam.y
+    }
   })
 
   // Render phase: two-pass.
