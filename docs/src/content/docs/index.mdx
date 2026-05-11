@@ -15,27 +15,23 @@ import { Tabs, TabItem, Aside } from 'starlight-theme/components';
     <HeroShader client:only="react" />
   </div>
   <div class="hero-overlay">
+    {/* MDX auto-wraps any text content that sits on its own line
+        inside a JSX tag with a markdown <p>. Net result: the text
+        ends up in a sibling <p>, leaving the tagged tag empty —
+        my .hero-tagline / .hero-subtagline classes were attached to
+        EMPTY <p> elements while the actual text lived in unclassed
+        siblings (broken CSS, voided SEO of the keyword-dense text).
+        Same issue inside <a> tags — link labels were wrapped in
+        block <p>, producing invalid `<a><p>text</p><svg/></a>`.
+        Fix: keep tag + content on a single line so MDX skips the
+        markdown-paragraph auto-wrap. */}
     <div class="hero-overlay-inner">
       <h1 class="hero-title">three-flatland</h1>
-      <p class="hero-tagline">
-        The composable 2D library for Three.js.
-      </p>
-      <p class="hero-subtagline">
-        Primitives for 2D graphics, TSL composability, react-three-fiber, performance by default.
-      </p>
+      <p class="hero-tagline">The composable 2D library for Three.js.</p>
+      <p class="hero-subtagline">Primitives for 2D graphics, TSL composability, react-three-fiber, performance by default.</p>
       <div class="hero-actions">
-        <a href="/three-flatland/getting-started/introduction/" class="sl-link-button primary">
-          Get Started
-          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="M5 12h14M12 5l7 7-7 7" />
-          </svg>
-        </a>
-        <a href="https://github.com/thejustinwalsh/three-flatland" class="sl-link-button secondary">
-          View on GitHub
-          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="M7 17l9.2-9.2M17 17V7H7" />
-          </svg>
-        </a>
+        <a href="/three-flatland/getting-started/introduction/" class="sl-link-button primary"><span>Get Started</span><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M12 5l7 7-7 7" /></svg></a>
+        <a href="https://github.com/thejustinwalsh/three-flatland" class="sl-link-button secondary"><span>View on GitHub</span><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17l9.2-9.2M17 17V7H7" /></svg></a>
       </div>
     </div>
     <div class="hero-scrollcue" aria-hidden="true" data-scroll-cue>
