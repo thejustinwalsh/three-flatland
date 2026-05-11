@@ -187,7 +187,12 @@ export default function Driller({
         position: 'relative',
         width: '100%',
         height: '100%',
-        background: '#0a0a14',
+        // Biome-tinted vertical gradient (deepest parallax layer,
+        // placeholder for future per-biome tile-art layers). The
+        // canvas above is alpha-transparent except where the
+        // compositor's ambient+biome-rect layers paint.
+        background:
+          'linear-gradient(180deg, #0a0a14 0%, #1a1411 50%, #0a0608 100%)',
         overflow: 'hidden',
         touchAction: 'none',
       }}
