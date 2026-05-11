@@ -181,9 +181,29 @@ const isLanding = path === base || path === '';
      * — the wordmark stays anchored to the natural header-left so the
      * brand position doesn't shift between views. The alpha ribbon
      * floats above the wordmark on z-index instead of pushing it aside. */
+    /* Landing-page header: starts transparent (so the hero canvas
+     * reads through behind it) but otherwise has the SAME box
+     * dimensions as the docs-page header — keeps `border-bottom`
+     * present (transparent, just 1px of unused height) so the header
+     * is byte-identical between landing and docs.
+     *
+     * Two reasons we need pixel parity:
+     *   1. View-transition cross-fade between landing and docs morphs
+     *      between the two headers; any height delta painted a "black
+     *      slab" mid-morph.
+     *   2. The compact-on-scroll fade animation (in Header.astro) now
+     *      runs on landing too. The keyframe animates background-color
+     *      + border-bottom-color; if landing had `border-bottom: none`
+     *      the keyframe's transparent-to-visible border transition
+     *      would add 1px of layout height at the start of the scroll,
+     *      visible as a 4-8px gap above the hero.
+     *
+     * Result: header reads as "no chrome" at scroll=0 on landing, fades
+     * to the same semi-opaque chrome as docs as the user scrolls down,
+     * and the view-transition between landing/docs is layout-stable. */
     [data-slot='layout'][data-landing] > header {
         background: transparent;
-        border-bottom: none;
+        border-bottom-color: transparent;
     }
 
     [data-slot='layout'] {

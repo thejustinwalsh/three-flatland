@@ -250,7 +250,16 @@ function Game() {
     z-index: 3;
     pointer-events: auto;
     text-align: center;
+    /* width:100% + max-width:56rem so this container expands up to its
+     * cap and the children's max-widths and margin-inline:auto resolve
+     * against a stable width. Without width:100%, the flex parent's
+     * align-items:center sized this to its widest child (the tagline
+     * at 42rem ~672px) — buttons and subtagline ended up off-center
+     * relative to the viewport because their auto margins resolved
+     * against the constrained 672px container, not the intended 56rem. */
+    width: 100%;
     max-width: 56rem;
+    margin-inline: auto;
     backdrop-filter: blur(0.5px);
   }
 

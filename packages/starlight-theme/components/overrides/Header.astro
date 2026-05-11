@@ -129,21 +129,26 @@ const shouldRenderSearch =
      * codeblock titles, which would otherwise inherit the scroll-tied
      * background fade and read as a phantom alpha fade on captions).
      *
-     * The animation only changes paint-time properties (background,
-     * backdrop-filter, border-bottom). Layout properties (padding,
-     * height) stay constant so the header's bounding box is identical
-     * between landing and docs pages — that prevents the view-transition
-     * cross-fade from showing a "black bar" slab above the landing
-     * canvas when navigating back from a docs page (the slab was the
-     * height delta between a padded docs header and the previously
-     * unpadded landing header, briefly painted opaque during morph).
+     * The animation only changes paint-time properties (background-
+     * color, backdrop-filter, border-bottom-color). Layout properties
+     * (padding, height, border-bottom-width) stay constant so the
+     * header's bounding box is byte-identical between landing and
+     * docs pages — that's load-bearing for two things:
+     *   1. View-transition cross-fade between landing and docs morphs
+     *      between identical-sized headers (no "black slab" mid-morph
+     *      from height delta).
+     *   2. Pre-scroll layout is stable — keyframe doesn't add layout
+     *      height at the start of scroll (no 4-8px gap above the hero).
      *
-     * Excluded on `[data-landing]` so the landing's transparent header
-     * stays transparent on scroll — keyframe's bg-color clobber would
-     * otherwise opacify it and hide the canvas. */
+     * Runs on EVERY page including landing. Landing's transparent
+     * initial state (set in PageFrame's `[data-landing]` override)
+     * means the header starts see-through; on scroll the keyframe
+     * fades it to the same semi-opaque chrome as docs. The landing
+     * override only changes the AT-REST background — the keyframe's
+     * 0%/100% values still drive the from/to. */
     @supports (animation-timeline: scroll()) {
         @media (prefers-reduced-motion: no-preference) {
-            :global([data-slot='layout']:not([data-landing]) > header) {
+            :global([data-slot='layout'] > header) {
                 animation: hdr-compact linear both;
                 animation-timeline: scroll(root);
                 animation-range: 0 96px;
