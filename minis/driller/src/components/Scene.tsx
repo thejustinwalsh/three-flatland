@@ -1,11 +1,12 @@
-import { useRef, type Dispatch, type SetStateAction } from 'react'
+import { useMemo, useRef, type Dispatch, type SetStateAction } from 'react'
 import { extend, useFrame, useThree } from '@react-three/fiber/webgpu'
 import { Flatland, Sprite2D, Sprite2DMaterial, type Flatland as FlatlandType } from 'three-flatland/react'
 import { useWorld } from 'koota/react'
 import type { World } from 'koota'
+import { NearestFilter, RenderTarget } from 'three'
 import type { WebGPURenderer } from 'three/webgpu'
 import { Camera, GameState, Grid, type RunState } from '../traits'
-import { PLAY_COLS, TILE_PX } from '../constants'
+import { PLAY_COLS, PLAY_ROWS, TILE_PX } from '../constants'
 import { autotilePass } from '../systems/autotile-pass'
 import { cameraSystem } from '../systems/camera'
 import { collapseTick } from '../systems/collapse'
@@ -25,6 +26,7 @@ import { GemRenderer } from './GemRenderer'
 import { GhostBeam } from './GhostBeam'
 import { HazardView } from './HazardView'
 import { TileRenderer } from './TileRenderer'
+import { Compositor } from './Compositor'
 import { shallowEqual } from '../shallow'
 
 extend({ Flatland, Sprite2D, Sprite2DMaterial })
@@ -68,6 +70,20 @@ export function Scene({ onShellStateChange }: SceneProps) {
   const material = useDrillerMaterial()
   const accumRef = useRef(0)
 
+  // Game render target — Flatland renders into this texture at the
+  // gameplay rect's LOGICAL pixel size (288 × 640 = PLAY_COLS × PLAY_ROWS
+  // × TILE_PX). The compositor (sibling component) samples this texture
+  // for the blurred ambient bg AND the pixel-perfect foreground draw.
+  // Static size: changing scale doesn't resize the RT, only the
+  // foreground quad's screen-space size.
+  const gameRt = useMemo(() => {
+    const rt = new RenderTarget(PLAY_COLS * TILE_PX, PLAY_ROWS * TILE_PX)
+    rt.texture.minFilter = NearestFilter
+    rt.texture.magFilter = NearestFilter
+    rt.texture.generateMipmaps = false
+    return rt
+  }, [])
+
   // Update phase: fixed-timestep simulation accumulator.
   // Render frame rate (variable: 30/60/120/144Hz) is decoupled from
   // simulation tick rate (constant 60Hz). Every render frame we
@@ -87,32 +103,46 @@ export function Scene({ onShellStateChange }: SceneProps) {
     syncRenderState(world, flatlandRef.current, onShellStateChange)
   })
 
-  // Render phase: composite. Skips R3F's default scene render.
-  useFrame(() => {
+  // Render phase: two-pass.
+  //   1. Flatland → RT (game scene at logical resolution)
+  //   2. R3F default scene → canvas (the compositor's bg/ambient/fg
+  //      quads sample gameRt.texture). The compositor lives in the
+  //      default scene because it's NOT a Flatland sprite — it's a
+  //      handful of fullscreen-ish quads with custom TSL materials.
+  useFrame((state) => {
     const flatland = flatlandRef.current
     if (!flatland) return
-    flatland.resize(size.width, size.height)
+    // Flatland resizes the RT internally (via setSize) — pass the
+    // logical pixel size so it doesn't try to match the canvas.
+    flatland.resize(PLAY_COLS * TILE_PX, PLAY_ROWS * TILE_PX)
     flatland.render(gl as unknown as WebGPURenderer)
+    // After Flatland.render, the renderer's target is restored to
+    // null (the canvas). Now render the R3F default scene.
+    state.gl.render(state.scene, state.camera)
   }, { phase: 'render' })
 
   const cam = world.get(Camera)
-  const viewSize = (cam?.rows ?? 22) * TILE_PX
+  const viewSize = (cam?.rows ?? PLAY_ROWS) * TILE_PX
 
   return (
-    <flatland
-      ref={flatlandRef}
-      viewSize={viewSize}
-      clearColor={0x0a0a14}
-      clearAlpha={0}
-    >
-      <TileRenderer material={material} />
-      <FallingChunkView material={material} />
-      <GemRenderer material={material} />
-      <HazardView material={material} />
-      <DrillerView material={material} />
-      <GhostBeam material={material} />
-      {shouldShowDebugPanel() && <DebugPanel />}
-    </flatland>
+    <>
+      <flatland
+        ref={flatlandRef}
+        viewSize={viewSize}
+        clearColor={0x0a0a14}
+        clearAlpha={0}
+        renderTarget={gameRt}
+      >
+        <TileRenderer material={material} />
+        <FallingChunkView material={material} />
+        <GemRenderer material={material} />
+        <HazardView material={material} />
+        <DrillerView material={material} />
+        <GhostBeam material={material} />
+        {shouldShowDebugPanel() && <DebugPanel />}
+      </flatland>
+      <Compositor gameTexture={gameRt.texture} viewportSize={size} />
+    </>
   )
 }
 

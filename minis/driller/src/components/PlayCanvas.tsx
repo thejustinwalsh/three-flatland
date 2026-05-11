@@ -43,16 +43,17 @@ export function PlayCanvas({ hostRef, children, onMetrics }: Props) {
     <div
       style={{
         position: 'absolute',
-        left: '50%',
+        left: 0,
         top: 0,
-        transform: 'translateX(-50%)',
-        width: metrics.canvasWidth,
-        height: metrics.canvasHeight,
+        width: '100%',
+        height: '100%',
         imageRendering: 'pixelated',
         zIndex: 1,
       }}
     >
       <Canvas
+        orthographic
+        camera={{ position: [0, 0, 1], zoom: 1, near: 0, far: 10 }}
         renderer={{ antialias: false, alpha: true }}
         style={{ touchAction: 'none', imageRendering: 'pixelated' }}
         onCreated={({ gl }) => {
