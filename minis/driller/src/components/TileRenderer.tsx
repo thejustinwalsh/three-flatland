@@ -16,7 +16,7 @@ import {
   TILE_STONE,
   isFixtureTile,
 } from '../traits'
-import { MAX_REACH, MIN_PLAY_ROWS, PLAY_COLS, TILE_PX } from '../constants'
+import { MAX_REACH, PLAY_COLS, PLAY_ROWS, TILE_PX } from '../constants'
 import { biomeAt } from '../biomes'
 import {
   ensureDebugRenderState,
@@ -28,10 +28,10 @@ import { autotileMask } from '../lib/autotile'
 import { CORNER_FRAME_INDEX, cornerMask, ROCK_FRAMES } from '../lib/rock-frames'
 import { useRockAutotileMaterial } from '../materials'
 
-// Generous pool: covers tall viewports without stale-cell artifacts. The
-// tile-iteration window is `cam.rows + 4` rows; pool must cover the
-// largest plausible cam.rows for any viewport on a 1× scale step.
-const POOL_ROWS = MIN_PLAY_ROWS + 24
+// Fixed playfield + a small margin for the iteration window's
+// cam.rows+3 lookahead. PLAY_ROWS is constant under the composition
+// refactor (mobile-portrait shape regardless of host).
+const POOL_ROWS = PLAY_ROWS + 8
 const POOL_SIZE = PLAY_COLS * POOL_ROWS
 
 /**

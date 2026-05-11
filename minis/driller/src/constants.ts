@@ -9,8 +9,24 @@ export const TILE_PX = 16
 /** Fixed gameplay column count. The world is always 18 cells wide. */
 export const PLAY_COLS = 18
 
-/** Minimum visible row count; taller viewports show more. */
-export const MIN_PLAY_ROWS = 22
+/**
+ * Fixed gameplay row count. 9:20 ratio with PLAY_COLS=18 — matches
+ * modern mobile portrait (iPhone 15, Pixel 8 family). Logical
+ * gameplay rect is 288×640 px at 1× scale; the compositor scales
+ * this rect up by pixel-perfect integer steps that fit the viewport
+ * height-first then width.
+ *
+ * Pre-refactor the playfield grew with the viewport; now it's a
+ * fixed mobile-portrait shape regardless of host size, with the
+ * remaining viewport filled by the blurred ambient bg layer.
+ */
+export const PLAY_ROWS = 40
+
+/**
+ * @deprecated kept for source-compat in callers that still read it.
+ * New code should use PLAY_ROWS directly.
+ */
+export const MIN_PLAY_ROWS = PLAY_ROWS
 
 /**
  * Downward reveal: tiles stream in `DOWNWARD_REVEAL_ROWS` rows ahead

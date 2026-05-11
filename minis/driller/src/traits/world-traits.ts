@@ -42,11 +42,12 @@ export const Seed = trait({ value: 0 })
  * `y` is the floating-point world-pixel Y of the top edge of the visible play canvas.
  * `targetY` is where the deadzone-follow algorithm wants `y` to be.
  * `scale` is the integer pixel scale (1, 2, 4, or 8) chosen by `lib/scale.ts`.
- * `rows` is the dynamic visible row count given the host viewport at this scale.
+ * `rows` is the visible row count — always PLAY_ROWS=40 under the
+ * fixed mobile-portrait layout.
  */
 export const Camera = trait({
   y: 0,
   targetY: 0,
   scale: 4,
-  rows: 22,
+  rows: 40,
 })
