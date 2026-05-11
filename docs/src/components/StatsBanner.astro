@@ -151,9 +151,23 @@ function resolveGem(c: StatItem['color']): Gem | undefined {
     font-size: clamp(1.75rem, 3.2vw, 2.75rem);
     font-weight: 500;
     /* Value pulls from the gem accent so each stat reads its own
-     * color; mixed slightly with the foreground so the value stays
-     * legible on the banner background. */
-    color: color-mix(in oklab, var(--stat-accent) 65%, var(--foreground));
+     * color. Was: color-mix(in oklab, var(--stat-accent) 65%,
+     * var(--foreground)) for a foreground-softened version, but
+     * Safari has a confirmed resolution bug where
+     * color-mix(in oklab, var(), var()) returns just the second arg
+     * when the first is a chained custom property — verified via
+     * docs/scripts/diag-stats-color.mjs which read computedStyle
+     * and showed the value resolving to --foreground alone, ignoring
+     * the gem. In light mode that incidentally resolves to dark text
+     * (legible by accident); in dark mode it resolves to near-white
+     * text (the user-visible bug). The fallback CSS pattern (two
+     * color: declarations) doesn't help because Safari considers
+     * the broken color-mix syntactically valid.
+     *
+     * Fix: use the gem color directly with no mix. Reads slightly
+     * more saturated than the previous foreground-mixed version
+     * but works identically in both browsers and both themes. */
+    color: var(--stat-accent);
     line-height: 1;
     letter-spacing: -0.025em;
   }

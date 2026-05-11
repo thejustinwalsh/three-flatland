@@ -18,7 +18,7 @@ import { Tabs, TabItem, Aside } from 'starlight-theme/components';
     <div class="hero-overlay-inner">
       <h1 class="hero-title">three-flatland</h1>
       <p class="hero-tagline">
-        Sprite-first 2D for Three.js + React Three Fiber. WebGPU-native.
+        2D toolkit for Three.js + React Three Fiber. WebGPU-native.
         TSL-composable. Designed to render thousands of things at 60fps without you having to think about it.
       </p>
       <div class="hero-actions">
@@ -314,6 +314,11 @@ function Game() {
     transition: opacity 280ms ease-out;
   }
   .hero-scrollcue[data-hidden] {
+    /* Kill the bob keyframe animation when hiding. Without animation:
+     * none, the keyframe's opacity 0.55 to 0.95 continuously overwrites
+     * the opacity: 0 we want here (CSS animation overrides regular
+     * property values during animation). */
+    animation: none;
     opacity: 0;
   }
   @keyframes scroll-cue-bob {
