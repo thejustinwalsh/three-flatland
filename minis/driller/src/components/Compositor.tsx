@@ -110,22 +110,36 @@ export function Compositor({ gameTexture, viewportSize }: Props) {
     return m
   }, [gameTexture])
 
-  // Layer 3 — pixel-perfect gameplay rect (V-flipped game RT sample).
+  // Layer 3 — pixel-perfect gameplay rect. The foreground composites
+  // the game RT OVER the biome gradient sampled at the gameplay's
+  // ACTUAL world depth (parallax=1, not the bg's 0.35). So AIR cells
+  // in the game (alpha=0) reveal the biome gradient at the current
+  // depth — matching what the player would expect to see "behind"
+  // the world. Solid output (transparent=false): no leak-through
+  // from the layers behind.
   const fgMaterial = useMemo(() => {
     const m = new MeshBasicNodeMaterial()
-    m.colorNode = textureNode(gameTexture, vec2(uv().x, uv().y.oneMinus()))
-    m.transparent = true
-    return m
-  }, [gameTexture])
-
-  // Layer 2 — opaque biome-colored quad behind the foreground.
-  // TODO(parallax): replace with 3-4 tile-art layers per biome.
-  const biomeRectMaterial = useMemo(() => {
-    const m = new MeshBasicNodeMaterial()
-    m.colorNode = vec4(color(0x1a1411).toVec3(), 1)
+    const totalPx = gradientTotalRows * TILE_PX
+    const composed = Fn(() => {
+      const u = uv()
+      // Gameplay rect's world depth: at uv.y=1 (rect top), worldPxY = camY.
+      // At uv.y=0 (rect bottom), worldPxY = camY + PLAY_ROWS*TILE_PX.
+      const worldPxY = u.y.oneMinus().mul(PLAY_ROWS * TILE_PX).add(camYUniform)
+      const gradV = worldPxY.div(totalPx)
+      const bg = textureNode(gradientTexture, vec2(float(0.5), gradV))
+      // V-flip the game RT sample (texture stores Y-up, screen is Y-down).
+      const game = textureNode(gameTexture, vec2(u.x, u.y.oneMinus()))
+      // mix(bg, game, alpha): AIR (alpha=0) → bg, sprite (alpha=1) → game.
+      const rgb = mix(bg.rgb, game.rgb, game.a)
+      return vec4(rgb, 1)
+    })
+    m.colorNode = composed()
     m.transparent = false
     return m
-  }, [])
+  }, [gameTexture, gradientTexture, gradientTotalRows, camYUniform])
+
+  // Suppress unused-import after dropping biome-rect.
+  void color
 
   return (
     <>
@@ -134,9 +148,6 @@ export function Compositor({ gameTexture, viewportSize }: Props) {
       </mesh>
       <mesh material={ambientMaterial} position={[0, bgY, -1]}>
         <planeGeometry args={[bgW, bgH]} />
-      </mesh>
-      <mesh material={biomeRectMaterial} position={[0, 0, -0.01]}>
-        <planeGeometry args={[rectW, rectH]} />
       </mesh>
       <mesh material={fgMaterial} position={[0, 0, 0]}>
         <planeGeometry args={[rectW, rectH]} />
