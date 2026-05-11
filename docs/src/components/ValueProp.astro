@@ -143,7 +143,15 @@ const accentStyle = resolvedGem ? `--vp-accent: var(--${resolvedGem});` : undefi
     display: flex;
     flex-direction: column;
     gap: calc(var(--spacing) * 2);
-    max-width: 60ch;
+    /* Was 60ch — conservative prose-readability cap, but it was the
+     * REAL width limit on the section (the outer .value-prop's
+     * max-width didn't matter visually because the content stayed
+     * narrower). Bumped to 80ch: still in the comfortable-reading
+     * range (~10-15 words per line for mono prose), but actually
+     * lets the card grow when the outer container has room. The
+     * outer .value-prop max-width: 72rem is now the binding
+     * constraint on widescreen, as originally intended. */
+    max-width: 80ch;
   }
 
   .value-prop.align-right .vp-content {
