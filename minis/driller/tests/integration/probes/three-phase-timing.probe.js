@@ -24,10 +24,34 @@ const FLAG_PRECARIOUS = 1 << 3
 const FLAG_SAGGING = 1 << 0
 const FLAG_SHAKING = 1 << 5
 
+// Per-incarnation transition tracker. Each cell may go through the
+// sag lifecycle multiple times if a fresh chunk lands on it after
+// it falls. We collect the FIRST transition timings per incarnation,
+// emit them on cell-release (or on cell-AIR), then reset. Without
+// the reset, p50 gets polluted by cross-incarnation correlations
+// (precOn from one sag, sagOn from a different sag on the same idx).
 const tracker = new Map()
+const precToSag = []
+const sagToShake = []
+const shakeToRelease = []
 const t0 = performance.now()
 const RUN_MS = 90_000
 const PROGRESS_MS = 10_000
+
+function flushIncarnation(e, releaseTime) {
+  if (e.precOn !== null && e.sagOn !== null) {
+    precToSag.push(e.sagOn - e.precOn)
+  }
+  if (e.sagOn !== null && e.shakeOn !== null) {
+    sagToShake.push(e.shakeOn - e.sagOn)
+  }
+  if (e.shakeOn !== null && releaseTime !== null) {
+    shakeToRelease.push(releaseTime - e.shakeOn)
+  }
+  e.precOn = null
+  e.sagOn = null
+  e.shakeOn = null
+}
 
 let lastProgressAt = 0
 const interval = setInterval(() => {
@@ -38,22 +62,20 @@ const interval = setInterval(() => {
     const p = (f & FLAG_PRECARIOUS) !== 0
     const s = (f & FLAG_SAGGING) !== 0
     const k = (f & FLAG_SHAKING) !== 0
+    const isAir = grid.tiles[i] === 0
     let e = tracker.get(i)
     if ((p || s || k) && !e) {
-      e = {
-        precOn: p ? tNow : null,
-        sagOn: s ? tNow : null,
-        shakeOn: k ? tNow : null,
-        releaseAt: null,
-      }
+      e = { precOn: null, sagOn: null, shakeOn: null }
       tracker.set(i, e)
     }
     if (e) {
       if (p && e.precOn === null) e.precOn = tNow
       if (s && e.sagOn === null) e.sagOn = tNow
       if (k && e.shakeOn === null) e.shakeOn = tNow
-      if (grid.tiles[i] === 0 && e.releaseAt === null && e.shakeOn !== null) {
-        e.releaseAt = tNow
+      // Cell released (went AIR while we had any phase observation)
+      // → flush this incarnation's transitions and reset.
+      if (isAir && (e.precOn !== null || e.sagOn !== null || e.shakeOn !== null)) {
+        flushIncarnation(e, tNow)
       }
     }
   }
@@ -76,15 +98,10 @@ const interval = setInterval(() => {
 await new Promise((r) => setTimeout(r, RUN_MS))
 clearInterval(interval)
 
-const precToSag = []
-const sagToShake = []
-const shakeToRelease = []
+// Any incarnations still in-flight at end of observation get their
+// pending transitions flushed too (with no release).
 for (const [, e] of tracker) {
-  if (e.precOn !== null && e.sagOn !== null) precToSag.push(e.sagOn - e.precOn)
-  if (e.sagOn !== null && e.shakeOn !== null) sagToShake.push(e.shakeOn - e.sagOn)
-  if (e.shakeOn !== null && e.releaseAt !== null) {
-    shakeToRelease.push(e.releaseAt - e.shakeOn)
-  }
+  flushIncarnation(e, null)
 }
 
 function quantiles(arr) {
