@@ -441,21 +441,27 @@ export function plannerTick(world: World): void {
 
   // 1. Highest-priority overrides: evade incoming falling rocks AND
   //    in-flight FallingChunks AND in-motion / shaking rock clusters.
-  //    Any of these threats trumps mood-based plans.
+  //    Any of these threats trumps everything else.
   const evadeFalling = planEvadeFallingChunk(world, d)
   const evadeStones = evadeFalling ? null : planEvadeMovingStoneCluster(world, d)
   const evadeHazard = evadeFalling || evadeStones ? null : planEvadeHazard(world, d)
   const evade = evadeFalling ?? evadeStones ?? evadeHazard
   let next: [number, number] | null = evade
 
-  // 2. Selected planner. If the chosen planner returns null (e.g., seeker
-  //    can't find a gravity-reachable gem) → fall through to greedy so the
-  //    driller never just stands there staring at an unreachable gem.
+  // 2. Gems are life — try seeker BEFORE any mood-selected planner.
+  //    If there's a reachable gem in scan range (LOS or buried within
+  //    the BFS depth), the driller goes for it regardless of mood.
+  //    Without this gate the default 'drive' mood routes to greedy
+  //    which only digs down — gems get ignored unless mood shifts to
+  //    'greed', which the user noted is the wrong default behavior.
+  if (!next) {
+    next = planSeeker(world, d)
+  }
+
+  // 3. No gem in reach — fall back to mood-selected planner.
   if (!next) {
     const which = selectPlanner(world)
-    if (which === 'seeker') {
-      next = planSeeker(world, d) ?? planGreedy(world, d)
-    } else if (which === 'cautious') {
+    if (which === 'cautious') {
       next = planCautious(world, d) ?? planGreedy(world, d)
     } else {
       next = planGreedy(world, d)
