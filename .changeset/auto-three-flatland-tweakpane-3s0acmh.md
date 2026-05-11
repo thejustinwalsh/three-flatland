@@ -5,21 +5,23 @@
 > Branch: mini-game-showcase
 > PR: https://github.com/thejustinwalsh/three-flatland/pull/59
 
-## New Hooks
+## New APIs
 
-- `usePaneRadioGrid` (React subpath) — inline button-bar selector backed by tweakpane-essentials `radiogrid` blade; active-state affordance suits scene/mode toggles better than a dropdown; deferred disposal + synchronous creation match `usePaneButton` / `usePaneInput` lifecycle
-
-## Input Options
-
-- `PaneInputOptions` gains `readonly` and `format` fields — React hook users can now create readonly monitors with custom value formatters
-
-## Theme
-
-- Checkbox `.tp-ckbv_i` input now covers the full 20×20 hit box (`width/height: var(--cnt-usz)`) — eliminates multi-click failures caused by flaky `<label>` → `<input>` pointer-event forwarding
-- Checkbox box surface changed to `rgba(28,40,77,0.6)` with hover/focus/active parity; check stroke turns accent pink on `:checked` — previously blended invisibly into the container background
+- `usePaneRadioGrid(pane, options)` (React subpath) — inline button-bar selector backed by `@tweakpane/plugin-essentials` radiogrid blade; active-state affordance, deferred disposal, synchronous creation matching `usePaneButton`/`usePaneInput` pattern
+- `PaneInputOptions.readonly` — mark a monitor as read-only
+- `PaneInputOptions.format` — formatter callback for readonly monitors
 
 ## Bug Fixes
 
-- `createPane` z-index now applied to the `.tp-dfwv` body-sibling wrapper instead of the inner `pane.element` root — setting z-index on the inner element had no effect on stacking against other overlays
+- `createPane`: z-index now applied to `.tp-dfwv` wrapper (the body-sibling stacking context) instead of the inner pane root; previously had no visible effect against other overlays
+- Checkbox hit target stretched to full `var(--cnt-usz)` box via `.tp-ckbv_i { width/height }`; eliminates reliance on flaky `<label>` → `<input>` click forwarding under some pointer-events/z-index combinations
+- `useWindowSize` now tracks `{ w, h, dpr }` and subscribes to a `(resolution: Ndppx)` media query; monitor-swap DPR changes now trigger canvas resize without a window dimension change
+- Fullscreen enter/exit resize: listens to `document.fullscreenchange` in addition to `resize`; re-measures immediately and once in the next RAF to catch post-transition layout settle
 
-This release adds the `usePaneRadioGrid` hook, readonly/format monitor support, and fixes checkbox hit-target and z-index stacking issues.
+## Theme
+
+- Checkbox box surface matches other controls (`rgba(28,40,77,0.6)`) with hover/focus/active parity
+- Check stroke turns accent pink on `:checked`
+
+Fixes three cross-cutting bugs (DPR desync on monitor swap, fullscreen-return wonky dimensions, multi-click checkboxes) and adds `usePaneRadioGrid` for inline mode/scene toggles.
+
