@@ -25,6 +25,7 @@ import {
 } from '../constants'
 import { markCellAndNeighborsDirty } from './autotile-pass'
 import { driftMood, moodTarget } from './ai-mood'
+import { isFreeFall } from '../biomes'
 
 /**
  * Depth-scaled per-cell step interval. ALL grid movement (walking,
@@ -35,7 +36,18 @@ import { driftMood, moodTarget } from './ai-mood'
  * At depth 0 the driller is deliberate (~360ms/cell); by
  * DEPTH_AT_FULL_SPEED the interval drops to ~130ms (frantic pace).
  */
+/**
+ * Free-fall ms/cell — faster than the driller's normal step pace so
+ * the void band reads as a real plummet between biomes. With
+ * cell-spacing 16px and ~80ms/cell, the driller moves at ~200px/s
+ * through the void (still slower than gem fall at 640ms/cell — gems
+ * scroll upward past the falling driller, preserving the
+ * 'outrun-the-gems' feel).
+ */
+const FREE_FALL_INTERVAL_MS = 80
+
 function stepIntervalForDepth(row: number): number {
+  if (isFreeFall(row)) return FREE_FALL_INTERVAL_MS
   const t = Math.min(1, Math.max(0, row / DEPTH_AT_FULL_SPEED))
   return DIG_INTERVAL_MS_SHALLOW + (DIG_INTERVAL_MS_DEEP - DIG_INTERVAL_MS_SHALLOW) * t
 }

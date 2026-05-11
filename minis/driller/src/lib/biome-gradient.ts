@@ -3,14 +3,14 @@ import { BIOMES, WORLD_BODY_ROWS, WORLD_LENGTH_ROWS, WORLD_VOID_ROWS } from '../
 
 /**
  * Width of the void-band transition zone, in rows, at each end of
- * the void. The void is otherwise pure black — only the top
+ * the void. The void is mostly pure black — only the top
  * `VOID_TRANSITION_ROWS` rows fade biome-end-color → black, and the
  * bottom `VOID_TRANSITION_ROWS` rows fade black → next biome's
- * start color. 8 rows ≈ 15% of the 55-row void band; the player
- * spends most of free-fall in pure black with quick fade-outs at
- * each boundary.
+ * start color. 3 rows ≈ 5% of the 55-row void band; the falloff is
+ * sharp so the player feels they've fallen into something deeper as
+ * the biome color drops out quickly.
  */
-const VOID_TRANSITION_ROWS = 8
+const VOID_TRANSITION_ROWS = 3
 
 function parseHex(hex: string): [number, number, number] {
   const m = hex.replace(/^#/, '')
