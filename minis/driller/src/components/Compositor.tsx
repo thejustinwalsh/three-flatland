@@ -5,6 +5,7 @@ import { type Texture } from 'three'
 import { MeshBasicNodeMaterial } from 'three/webgpu'
 import {
   Fn,
+  clamp,
   color,
   float,
   mix,
@@ -79,7 +80,22 @@ export function Compositor({ gameTexture, viewportSize }: Props) {
   // (1 - uv.y) because uv.y grows UP in three but world rows grow DOWN.
   // PARALLAX < 1 makes the bg gradient scroll slower than the gameplay
   // foreground — distant-feel.
-  const PARALLAX = 0.35
+  // Parallax factor for the biome gradient layer. <1 means the
+  // gradient scrolls slower than the digger — distant feel. 0.85 is
+  // close enough to 1 that the player observably traverses the
+  // start → end color fade WITHIN each biome's body descent (a
+  // little lag, not so much that the gradient never reaches the
+  // end color before crossing into the next biome). Bumped up from
+  // 0.35 which was too slow to see transitions.
+  const PARALLAX = 0.85
+  // At absolute world depth 0 (the world's surface, before any
+  // descent), the gradient fades from a "sky blue" overlay color
+  // through the topsoil biome's natural start color across the
+  // first SKY_FADE_PX of depth. This applies ONLY at true depth
+  // 0..SKY_FADE_PX — once the player descends or the gradient
+  // texture cycles past one full world, the sky doesn't re-appear.
+  const SKY_BLUE: [number, number, number] = [0.30, 0.45, 0.66] // ~#4d73a8
+  const SKY_FADE_PX = 30 * TILE_PX // 30 rows
   const gradientMaterial = useMemo(() => {
     const m = new MeshBasicNodeMaterial()
     const totalPx = gradientTotalRows * TILE_PX
@@ -87,14 +103,26 @@ export function Compositor({ gameTexture, viewportSize }: Props) {
       const viewportPxY = uv().y.oneMinus().mul(viewportSize.height)
       const worldPxY = viewportPxY.add(camYUniform.mul(PARALLAX))
       const gradV = worldPxY.div(totalPx)
-      return textureNode(gradientTexture, vec2(float(0.5), gradV))
+      const baseColor = textureNode(gradientTexture, vec2(float(0.5), gradV)).rgb
+      // Sky-fade: only for the very first descent. Once worldPxY >
+      // SKY_FADE_PX, skyMix = 0 (no sky influence).
+      const skyMix = clamp(float(1).sub(worldPxY.div(SKY_FADE_PX)), 0, 1)
+      const sky = vec3(SKY_BLUE[0], SKY_BLUE[1], SKY_BLUE[2])
+      const finalColor = mix(baseColor, sky, skyMix)
+      return vec4(finalColor, 1)
     })
     m.colorNode = colorNode()
     m.transparent = false
     return m
   }, [gradientTexture, gradientTotalRows, viewportSize.height, camYUniform])
 
-  // Layer 1 — gaussian-blurred ambient bg (game RT).
+  // Layer 1 — gaussian-blurred ambient bg. OPAQUE — covers the
+  // gradient layer (z=-2) wherever the ambient plane draws. This
+  // keeps the gradient from "applying twice" (showing through a
+  // semi-transparent ambient on top of the gradient). The gradient
+  // is reserved for the gameplay rect's AIR cells (via fg composite)
+  // — that's the only place it's visible. Outside the gameplay rect,
+  // the player sees the scaled+blurred game ambient.
   const ambientMaterial = useMemo(() => {
     const m = new MeshBasicNodeMaterial()
     const flippedTex = textureNode(gameTexture, vec2(uv().x, uv().y.oneMinus()))
@@ -103,40 +131,58 @@ export function Compositor({ gameTexture, viewportSize }: Props) {
       const rgb = blurred.rgb
       const lum = rgb.dot(vec3(0.299, 0.587, 0.114))
       const desat = mix(rgb, vec3(lum, lum, lum), 0.25)
-      return vec4(desat, 0.18)
+      return vec4(desat, 1)
     })
     m.colorNode = composed()
-    m.transparent = true
+    m.transparent = false
     return m
   }, [gameTexture])
 
-  // Layer 3 — pixel-perfect gameplay rect. The foreground composites
-  // the game RT OVER the biome gradient sampled at the gameplay's
-  // ACTUAL world depth (parallax=1, not the bg's 0.35). So AIR cells
-  // in the game (alpha=0) reveal the biome gradient at the current
-  // depth — matching what the player would expect to see "behind"
-  // the world. Solid output (transparent=false): no leak-through
-  // from the layers behind.
+  // Layer 3 — pixel-perfect gameplay rect. The game RT (= what the
+  // user calls "the game") composites OVER the biome gradient
+  // sampled at the SAME parallax rate as the bg layer. The
+  // gradient is a "distant" parallax layer; it scrolls slower than
+  // the digger, both behind the viewport AND inside the gameplay
+  // rect's AIR cells. Visually, the gradient looks continuous
+  // across the screen at any moment — same fragment in screen
+  // coords sees the same gradient row.
+  //
+  // Math for converting fg uv.y → screen DOM Y (Y grows down,
+  // 0 = top, viewportH = bottom): the gameplay rect is centered, so
+  //   u.y=1 (rect top)    → screenDomY = (viewportH - rectH) / 2
+  //   u.y=0 (rect bottom) → screenDomY = (viewportH + rectH) / 2
+  // Then worldPxY = screenDomY + camY * PARALLAX (same formula as bg).
   const fgMaterial = useMemo(() => {
     const m = new MeshBasicNodeMaterial()
     const totalPx = gradientTotalRows * TILE_PX
     const composed = Fn(() => {
       const u = uv()
-      // Gameplay rect's world depth: at uv.y=1 (rect top), worldPxY = camY.
-      // At uv.y=0 (rect bottom), worldPxY = camY + PLAY_ROWS*TILE_PX.
-      const worldPxY = u.y.oneMinus().mul(PLAY_ROWS * TILE_PX).add(camYUniform)
+      const rectBottom = (viewportSize.height + rectH) / 2
+      const screenDomY = float(rectBottom).sub(u.y.mul(rectH))
+      const worldPxY = screenDomY.add(camYUniform.mul(PARALLAX))
       const gradV = worldPxY.div(totalPx)
-      const bg = textureNode(gradientTexture, vec2(float(0.5), gradV))
-      // V-flip the game RT sample (texture stores Y-up, screen is Y-down).
+      const baseColor = textureNode(gradientTexture, vec2(float(0.5), gradV)).rgb
+      // Same sky-fade as bg layer — applies only at absolute world
+      // depth 0..SKY_FADE_PX. Keeps the gameplay rect's AIR cells
+      // continuous with the bg.
+      const skyMix = clamp(float(1).sub(worldPxY.div(SKY_FADE_PX)), 0, 1)
+      const sky = vec3(SKY_BLUE[0], SKY_BLUE[1], SKY_BLUE[2])
+      const bgColor = mix(baseColor, sky, skyMix)
       const game = textureNode(gameTexture, vec2(u.x, u.y.oneMinus()))
-      // mix(bg, game, alpha): AIR (alpha=0) → bg, sprite (alpha=1) → game.
-      const rgb = mix(bg.rgb, game.rgb, game.a)
+      const rgb = mix(bgColor, game.rgb, game.a)
       return vec4(rgb, 1)
     })
     m.colorNode = composed()
     m.transparent = false
     return m
-  }, [gameTexture, gradientTexture, gradientTotalRows, camYUniform])
+  }, [
+    gameTexture,
+    gradientTexture,
+    gradientTotalRows,
+    camYUniform,
+    rectH,
+    viewportSize.height,
+  ])
 
   // Suppress unused-import after dropping biome-rect.
   void color
