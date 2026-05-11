@@ -6,7 +6,6 @@ import { PlayCanvas } from './components/PlayCanvas'
 import { Background } from './components/Background'
 import { BiomeTransition } from './components/BiomeTransition'
 import { Scene, type ShellState } from './components/Scene'
-import { HoverCursor } from './components/HoverCursor'
 import { DepthBar } from './components/DepthBar'
 import { GemCounter } from './components/GemCounter'
 import { HeroHint } from './components/HeroHint'
@@ -190,7 +189,6 @@ export default function Driller({
         height: '100%',
         background: '#0a0a14',
         overflow: 'hidden',
-        cursor: 'none',
         touchAction: 'none',
       }}
     >
@@ -205,7 +203,6 @@ export default function Driller({
         {mode === 'hero' && <HeroHint />}
         {showTitle && <TitleAttract topScores={loadLeaderboard().slice(0, 3)} />}
         {showLeaderboard && <Leaderboard onRestart={handleRestart} />}
-        <HoverCursor />
       </WorldProvider>
     </div>
   )
