@@ -146,6 +146,16 @@ const shouldRenderSearch =
      * fades it to the same semi-opaque chrome as docs. The landing
      * override only changes the AT-REST background — the keyframe's
      * 0%/100% values still drive the from/to. */
+    /* Backdrop-filter was previously animated here (saturate(140%)) to
+     * boost the canvas color through the header tint, but Safari has
+     * a known bug where scroll-driven animations of `backdrop-filter`
+     * don't reset their progress correctly after `visibilitychange`
+     * (minimize the tab and return → the filter stays applied even at
+     * scroll=0, visible as a phantom desaturation/chrome over the hero
+     * canvas). Removed the filter from the keyframe entirely; the
+     * background-color tint alone carries the chrome signal. The
+     * border-bottom-color animates but the width is 0 so it's
+     * defensive — no visible effect either way. */
     @supports (animation-timeline: scroll()) {
         @media (prefers-reduced-motion: no-preference) {
             :global([data-slot='layout'] > header) {
@@ -156,8 +166,6 @@ const shouldRenderSearch =
             @keyframes hdr-compact {
                 to {
                     background-color: color-mix(in oklab, var(--background) 88%, transparent);
-                    backdrop-filter: saturate(140%);
-                    -webkit-backdrop-filter: saturate(140%);
                     border-bottom-color: color-mix(
                         in oklab,
                         var(--border) 70%,
