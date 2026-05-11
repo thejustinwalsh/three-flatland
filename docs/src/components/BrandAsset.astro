@@ -1,25 +1,20 @@
 ---
 /**
- * BrandAsset — gauntlet final form.
+ * BrandAsset — gem-led brand composition.
  *
  * Composition language: every gem from the design system is present and
  * doing semantic meaning-work. Gold leads as structural primary (vertical
- * spine + wordmark glow + tally + npm chip + wreath-12). Amethyst and
- * diamond serve as emphasis stripes in the lower signal rail. Five
- * ambient gems (emerald, ruby, turquoize, salmon, pink) round out the
- * "all channels lit" lower edge. Each gem stripe carries a tech-feature
- * label (TSL, WEBGPU, R3F, BATCH, SPRITES, ANIM, TILES) so the asset
- * communicates what the library actually does, not just our internal
- * color taxonomy.
+ * spine + wordmark glow + tally + npm chip). Amethyst and diamond serve
+ * as emphasis stripes in the lower signal rail. Five ambient gems
+ * (emerald, ruby, turquoize, salmon, pink) round out the "all channels
+ * lit" lower edge. Each gem stripe carries a tech-feature label (TSL,
+ * WEBGPU, R3F, BATCH, SPRITES, SKIA, TILES) so the asset communicates
+ * what the library actually does, not just our internal color taxonomy.
  *
  * Per-aspect:
- *   - icon-only (512×512): no rail. Brand mark + GAUNTLET WREATH ring
- *     of 8 gem dots, gold at noon walking clockwise.
- *   - wide (3000×1000): horizontal lockup. Emphasis stripes gain
- *     sub-role copy ("TSL · COMPOSABLE", "WEBGPU · RENDERER") so the
- *     wide banner reads as a system manifest.
- *   - banner / og / social-x: stacked vertical composition with the
- *     tighter rail (single-word feature labels, no sub-copy).
+ *   - icon-only (512×512): clean brand mark on a tinted halo backdrop.
+ *   - wide / banner / og / social-x: horizontal lockup with the
+ *     gem-stripe signal rail along the lower edge.
  *
  * Tokens are mirrored locally inside `.brand-asset-root` so capture mode
  * is hermetic regardless of how :root tokens propagate.
@@ -44,7 +39,9 @@ const {
     id,
     type,
     title = 'flatland',
-    tagline = 'Composable 2D for Three.js + R3F. Sprites, tilemaps, skia, TSL — small and fast.',
+    // Matches the landing hero h1 exactly so brand-asset captures
+    // (banner, OG, wide, social-x) speak in one voice with the site.
+    tagline = 'The composable 2D library for Three.js.',
     info = true,
     isCapture = false,
 } = Astro.props
@@ -102,8 +99,8 @@ const eyebrowText = 'v0.1.0-α · COMPOSABLE · LEAN'
  * optimize after the rotation.
  */
 const railEmphasis = [
-    { gem: 'amethyst', role: 'TSL', sub: 'COMPOSABLE' },
-    { gem: 'diamond', role: 'WEBGPU', sub: 'RENDERER' },
+    { gem: 'amethyst', role: 'TSL' },
+    { gem: 'diamond', role: 'WEBGPU' },
 ]
 const railAmbient = [
     { gem: 'emerald', role: 'R3F' },
@@ -113,22 +110,6 @@ const railAmbient = [
     { gem: 'pink', role: 'TILES' },
 ]
 
-/**
- * Gauntlet wreath — 8 gem dots positioned clockwise around the icon
- * halo for the icon-only format. Gold sits at noon (12 o'clock = the
- * leading channel), then we walk clockwise through the spectrum.
- * Angles in CSS rotate convention (0 = top, 90 = right).
- */
-const wreath = [
-    { gem: 'gold', angle: 0 },
-    { gem: 'salmon', angle: 45 },
-    { gem: 'amethyst', angle: 90 },
-    { gem: 'emerald', angle: 135 },
-    { gem: 'diamond', angle: 180 },
-    { gem: 'ruby', angle: 225 },
-    { gem: 'turquoize', angle: 270 },
-    { gem: 'pink', angle: 315 },
-]
 ---
 
 <div
@@ -144,22 +125,12 @@ const wreath = [
     <div class="brand-bg-noise" aria-hidden="true"></div>
 
     {/* Gold structural spine — vertical foil bar at the left edge.
-        Suppressed in icon-only (the wreath replaces it). */}
+        Suppressed in icon-only via the `.icon-only` rule below. */}
     <div class="brand-spine" aria-hidden="true"></div>
 
     <div class="brand-content">
         {isIconOnly ? (
             <div class="icon-only-frame">
-                {/* Gauntlet wreath — 8 gem dots around the icon halo. */}
-                <div class="wreath" aria-hidden="true">
-                    {wreath.map(({ gem, angle }) => (
-                        <span
-                            class="wreath-dot"
-                            data-gem={gem}
-                            style={`--dot-angle: ${angle}deg; --dot-accent: var(--${gem});`}
-                        ></span>
-                    ))}
-                </div>
                 <BrandIcon size="64%" />
             </div>
         ) : (
@@ -189,17 +160,14 @@ const wreath = [
                     leads, ambient five (R3F / BATCH / SPRITES / ANIM /
                     TILES) round out the chord. */}
                 <div class="signal-rail" aria-label="FLATLAND capabilities">
-                    {railEmphasis.map(({ gem, role, sub }) => (
+                    {railEmphasis.map(({ gem, role }) => (
                         <div
                             class="signal-stripe is-emphasis"
                             data-gem={gem}
                             style={`--stripe-accent: var(--${gem});`}
                         >
                             <span class="signal-bar" aria-hidden="true"></span>
-                            <span class="signal-role">
-                                {role}
-                                {isWide && <span class="signal-sub">{` · ${sub}`}</span>}
-                            </span>
+                            <span class="signal-role">{role}</span>
                         </div>
                     ))}
                     {railAmbient.map(({ gem, role }) => (
@@ -352,7 +320,7 @@ const wreath = [
         gap: 2.2cqi;
     }
 
-    /* ── icon-only — gauntlet wreath ── */
+    /* ── icon-only ── */
     .icon-only .brand-content {
         padding: 8cqi;
         justify-content: center;
@@ -381,36 +349,6 @@ const wreath = [
         filter: blur(2cqi);
         z-index: -1;
     }
-    .wreath {
-        position: absolute;
-        inset: 0;
-        pointer-events: none;
-        z-index: 1;
-    }
-    .wreath-dot {
-        --dot-angle: 0deg;
-        --dot-accent: var(--gold);
-        --wreath-radius: 50%;
-        position: absolute;
-        top: 50%;
-        left: 50%;
-        width: 2cqi;
-        height: 2cqi;
-        min-width: 8px;
-        min-height: 8px;
-        margin-top: calc(-1 * 1cqi);
-        margin-left: calc(-1 * 1cqi);
-        border-radius: 50%;
-        background: var(--dot-accent);
-        box-shadow:
-            0 0 1.2cqi color-mix(in oklab, var(--dot-accent) 60%, transparent),
-            0 0 2cqi color-mix(in oklab, var(--dot-accent) 30%, transparent);
-        transform:
-            rotate(var(--dot-angle))
-            translateY(calc(-1 * var(--wreath-radius)))
-            rotate(calc(-1 * var(--dot-angle)));
-    }
-
     /* Horizontal composition — icon left, text stack right. Used for all
      * non-icon-only formats; the canvases are 1.9:1 to 3:1 aspect, all
      * wider than tall, so a vertical column with the icon stacked above
@@ -594,12 +532,6 @@ const wreath = [
         color: color-mix(in oklab, var(--stripe-accent) 75%, var(--tf-fg));
         font-weight: 700;
     }
-    .signal-sub {
-        font-weight: 500;
-        opacity: 0.55;
-        letter-spacing: 0.1em;
-    }
-
     /* Info row — gold + diamond chips. */
     .brand-info-row,
     .brand-info-inline {
