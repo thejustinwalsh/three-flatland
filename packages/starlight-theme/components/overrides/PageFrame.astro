@@ -219,12 +219,38 @@ const isLanding = path === base || path === '';
          * any nested <header> in slotted content (e.g., the example detail
          * page's title/back-link header) and sticks it to the viewport too. */
         > header {
-            /* sticky top-0 z-50 w-full bg-background */
+            /* sticky top-0 z-50 w-full bg-transparent.
+             *
+             * Header starts TRANSPARENT at scroll=0 on every page —
+             * not just landing. Two reasons:
+             *
+             *   1. View-transition flash fix: when navigating landing
+             *      → docs, the root cross-fade was interpolating the
+             *      header's background from landing's `transparent`
+             *      to docs' opaque `var(--background)`. Mid-fade
+             *      painted a partial-opacity chrome band that the
+             *      user perceived as a flash. With both pages
+             *      starting transparent, there's nothing to
+             *      interpolate; the morph is flash-free.
+             *
+             *   2. Visually neutral: the body behind a transparent
+             *      header has `background: var(--background)` —
+             *      same color the opaque header rule was painting.
+             *      At scroll=0, transparent-header-on-bg-body reads
+             *      identical to opaque-header. The behavior change
+             *      is only on scroll, where content now passes
+             *      under the chrome at 88% opacity (the common
+             *      Linear / Vercel / Apple-docs pattern).
+             *
+             * The compact-on-scroll keyframe (in Header.astro)
+             * still fades both pages from transparent → 88% opaque
+             * chrome as the user scrolls past 96px, so the chrome
+             * still appears when needed. */
             position: sticky;
             top: 0;
             z-index: 50;
             width: 100%;
-            background: var(--background);
+            background: transparent;
             transition: background-color 200ms ease;
 
             .container-wrapper {
