@@ -301,24 +301,11 @@ const isLanding = path === base || path === '';
                 text-wrap: balance;
                 text-align: center;
             }
-            [data-slot='footer-text'] :global(a) {
-                /* Link color + underline carry the affordance independently
-                 * of hue (axe `link-in-text-block`). The previous
-                 * `text-decoration-color: gray-5 50% + transparent` was
-                 * too faint to read as a clear "this is a link" cue —
-                 * Lighthouse flagged it. Full-opacity diamond-tinted
-                 * underline at full intensity matches the on-page link
-                 * style. */
-                color: color-mix(in oklab, var(--muted-foreground) 60%, var(--diamond));
-                text-decoration: underline;
-                text-decoration-color: color-mix(in oklab, var(--diamond) 70%, var(--muted-foreground));
-                text-underline-offset: 2px;
-                transition: color 0.15s, text-decoration-color 0.15s;
-            }
-            [data-slot='footer-text'] :global(a:hover) {
-                color: var(--diamond);
-                text-decoration-color: var(--diamond);
-            }
+            /* Footer link styles live in packages/starlight-theme/styles/base.css
+             * (search "[data-slot='footer-text'] a"). Astro's scoped-CSS
+             * processor doesn't reliably strip `:global(a)` when nested
+             * inside other scoped rules, so the rule has to be global
+             * to actually apply. */
 
             &:is(:where(body):has(*[data-slot='docs']) *) {
                 display: none;

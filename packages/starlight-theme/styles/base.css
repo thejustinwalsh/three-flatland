@@ -218,6 +218,70 @@
      * so before the StarlightThemeProvider script applies the data
      * attribute, an unfallback'd `var(--background)` would resolve
      * empty (= transparent = browser white). */
+    /* ────────── Metric-adjusted font fallbacks (CLS fix) ──────────
+     * Lighthouse flagged 0.33 CLS on the landing page's .page-body —
+     * the dominant cause is web fonts loading after first paint and
+     * reflowing every h1/h2 + body run as glyph metrics shift from
+     * system-ui to Public Sans / Inter / JetBrains Mono / Commit
+     * Mono.
+     *
+     * Standard fix: define fallback @font-face entries with the same
+     * family name as the web font but with `src: local(...)` for
+     * system fonts plus metric overrides (size-adjust, ascent-override,
+     * descent-override) tuned to match the web font's metrics. When
+     * the web font hasn't loaded yet, the browser uses the local
+     * system font scaled to the same metrics — text occupies the same
+     * width/height it WILL occupy when the web font arrives, so font
+     * swap doesn't cause layout shift.
+     *
+     * Values approximate from screen-span.net / font-style-matcher
+     * for each web font against Arial (system fallback on most
+     * platforms). Slight deviations from perfect are acceptable;
+     * eliminating *most* of the shift is the goal.
+     *
+     * IMPORTANT: declared BEFORE the fontsource @font-face imports
+     * resolve at runtime (those come via customCss array in Astro
+     * config). The web-font face has higher priority because it
+     * specifies a src that actually has glyphs; this fallback face
+     * is used only when the web font is still loading. */
+
+    /* Public Sans — display/headings (matches Arial baseline) */
+    @font-face {
+        font-family: 'Public Sans';
+        src: local('Arial');
+        ascent-override: 92%;
+        descent-override: 24%;
+        line-gap-override: 0%;
+        size-adjust: 100%;
+    }
+    /* Inter — UI labels (matches Helvetica/Arial) */
+    @font-face {
+        font-family: 'Inter';
+        src: local('Arial');
+        ascent-override: 90%;
+        descent-override: 22%;
+        line-gap-override: 0%;
+        size-adjust: 107%;
+    }
+    /* JetBrains Mono — body prose mono (matches Courier New) */
+    @font-face {
+        font-family: 'JetBrains Mono';
+        src: local('Courier New');
+        ascent-override: 85%;
+        descent-override: 22%;
+        line-gap-override: 0%;
+        size-adjust: 110%;
+    }
+    /* Commit Mono — code blocks (matches Courier New) */
+    @font-face {
+        font-family: 'Commit Mono';
+        src: local('Courier New');
+        ascent-override: 88%;
+        descent-override: 22%;
+        line-gap-override: 0%;
+        size-adjust: 105%;
+    }
+
     html {
         background-color: #111418;
         background-color: var(--background, #111418);
@@ -1550,15 +1614,32 @@
         color: color-mix(in oklab, var(--foreground) 72%, var(--muted-foreground));
     }
 
-    /* footer link styles */
+    /* Footer link — needs to be a global rule (not Astro-scoped) because
+     * the equivalent rule in PageFrame.astro got compiled with a
+     * stray `:global(a)` token in the output that browsers ignore as
+     * invalid (Astro's scoped-style processor doesn't always strip
+     * `:global()` when it's deeply nested inside other scoped rules).
+     * axe `link-in-text-block` was then failing because the underline
+     * styling never reached the rendered link.
+     *
+     * Distinguishing the link from surrounding muted-foreground text
+     * uses TWO non-color cues (axe requires at least one):
+     *   1. font-weight 500 (vs surrounding 400) — readable even with
+     *      severe color-vision deficits
+     *   2. explicit text-decoration: underline diamond — distinct hue
+     *      from surrounding text, full-strength color
+     * Plus a 3:1+ visual contrast against the page background. */
     [data-slot='footer-text'] a {
+        color: var(--diamond);
+        font-weight: 500;
         text-decoration: underline;
-        text-underline-offset: calc(var(--spacing) * 1);
-        color: var(--muted-foreground);
+        text-decoration-color: var(--diamond);
+        text-underline-offset: 2px;
+        transition: color 0.15s, text-decoration-color 0.15s;
     }
-
     [data-slot='footer-text'] a:hover {
-        color: var(--foreground);
+        color: color-mix(in oklab, var(--diamond) 80%, white);
+        text-decoration-color: color-mix(in oklab, var(--diamond) 80%, white);
     }
 
     /* ─────────────────────────────────────────────────────────────────────
