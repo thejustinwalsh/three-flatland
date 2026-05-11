@@ -865,3 +865,99 @@ Tagline ladder (longer to shorter, by surface):
 **Why:** Concrete byte counts (skia 857KB vs CanvasKit 2.2MB), per-package READMEs as independent SEO surfaces, and the "you ship sprites; we'll keep skia compiling" framing of maintenance-as-feature are the high-leverage marketing surfaces. Marketing hyperbole + "platform" language are explicit anti-patterns.
 
 **How to apply:** When drafting README or launch copy, lead with composability, support with concrete byte counts, close with maintenance-as-feature. Do not pitch the gem palette / design system to devs — they care about code; the visual identity is what they remember after deciding to try it.
+
+---
+
+# Session 2026-05-09 / 2026-05-11 — Safari rim-lighting perf workstream
+
+## Diagnosis — Safari "Other" bucket dominated by SVG displacement filter chains
+**File(s):** `packages/starlight-theme/styles/base.css`, `docs/src/components/Head.astro`
+**Date:** 2026-05-09
+
+**Decision:** User reported Safari catastrophically slow on landing page (sustained 100% stutter under cursor activity); Chrome unaffected. Built a Playwright + Webkit perf-probe harness (`docs/scripts/perf-rim-*.mjs`, `diag-*.mjs`) and isolated the cause through systematic hypothesis-test scripts.
+
+Root cause: `filter: url(#tf-gem-perturb)` and `filter: url(#tf-foil-perturb)` on the global `.u-light::before` rule applied a `feTurbulence` + `feDisplacementMap` + `feComposite` SVG filter chain to every rim-bearing element. These are **CPU-rasterized per frame** in both Safari and Chrome (Chrome much faster). With ~20 active rim layers on landing (6 FeatureCards + 3 ValueProps + 4 stat-items + 5 feature-items + 2 buttons), the per-frame filter raster work hit ~330ms in Safari's "Other" timeline bucket.
+
+Secondary issues found in the same investigation:
+- `:root.style.setProperty('--scene-angle', …)` triggered cascade-wide style invalidation in Safari (every descendant got marked dirty)
+- `mix-blend-mode` + `mask-composite` children forced Safari to recomposite the full stacking context on every paint
+- motion.ts had no HMR cleanup → leaked rAF loops + IntersectionObservers piled up across dev saves → eventually crashed vite
+
+**Why:** Webkit's compositor is memory-conservative (vs Chrome's CPU-conservative). It doesn't auto-promote blend-mode elements to GPU surfaces and recomputes filter rasters more eagerly. CSS techniques that work fine on Chrome can stack catastrophically on Safari.
+
+**How to apply:** When perf-investigating Safari-specific issues, build a Playwright+Webkit probe rather than relying on real-Safari profiling alone (faster iteration, reproducible). Suspect: SVG filter chains (CPU), `:root` custom-property writes that inherit (cascade invalidation), blend-mode without `contain:paint` (recomposite amplification).
+
+## Fix #0 — contain:paint isolation on rim-bearing containers
+**File(s):** `docs/src/components/FeatureCard.astro`, `docs/src/components/ValueProp.astro`, `docs/src/components/gallery/GalleryTile.astro`, `docs/src/components/StatsBanner.astro`, `docs/src/components/FeatureList.astro`, `packages/starlight-theme/components/overrides/Pagination.astro`, `packages/starlight-theme/styles/base.css` (LinkButton)
+**Date:** 2026-05-09
+
+**Decision:** Added `contain: paint; isolation: isolate` to each rim-bearing container. The blend-mode + mask-composite layers force Safari to recomposite their full stacking context on every paint without isolation; `contain: paint` locks repaint to the element's box, `isolation: isolate` creates the local stacking context the blend-mode children need.
+
+**Evidence:** Examples page Webkit headless 100% stutter → 5.3% with zero visual change (probe `diag-blend.mjs` isolated each rim-CSS feature individually).
+
+**How to apply:** Any element using `mix-blend-mode` or `mask-composite` on its `::before`/`::after` should have `contain: paint; isolation: isolate` on the host. Cheap, zero visual change, dramatic Safari perf benefit.
+
+## Fix #1 — setProperty value-changed gates in motion.ts
+**File(s):** `docs/src/scripts/motion.ts`
+**Date:** 2026-05-09
+
+**Decision:** Per-target last-value tracking with perceptual epsilons (0.05% for percentages, 0.1° for angles, 0.005 for normalized scalars). Skip `setProperty` calls when value delta is below threshold. Outer gate: skip the entire per-target write block when not hovering AND `--mouse-active` has fully settled.
+
+**Why:** Defensively correct (zero visual change). Probe-confirmed the gates work (32 setProperty calls in 4s vs unbounded before). Not the primary perf fix — Fix #0 was — but prerequisite for the per-element scoping (Fix #51) and HMR-safe.
+
+## Fix #2 — @property registration for motion-loop custom properties
+**File(s):** `packages/starlight-theme/styles/base.css`
+**Date:** 2026-05-09
+
+**Decision:** Registered `--mx`, `--my`, `--mouse-active`, `--light-angle`, `--effective-light-angle`, `--scene-angle`, `--tilt-x`, `--tilt-y` via CSS Houdini `@property` with typed values (`<percentage>` / `<number>` / `<angle>`) and `inherits: true`.
+
+**Why:** Type-aware values interpolate on the compositor in modern browsers; untyped custom-property writes trigger full style recalc. Browser support: Safari 16.4+ / Chrome 85+ / Firefox 128+. Older browsers ignore `@property` and fall back to existing behavior (no breakage).
+
+## Fix #51 — per-element scene-angle scoping (the unlock)
+**File(s):** `docs/src/scripts/motion.ts`
+**Date:** 2026-05-09
+
+**Decision:** Stop writing `--scene-angle` on `:root`. Write per-element via the existing per-target motion loop, gated on visibility via a shared IntersectionObserver (`rootMargin: 100px`). Each visible rim-bearing element receives its own `--scene-angle` directly.
+
+**Why:** The `:root` write triggered cascade-wide style invalidation — every descendant got marked dirty even though only N rim-bearing elements actually read the var. Per-element writes turn one-write-N-invalidations into N-writes-one-invalidation-each. Chrome's compositor was doing this automatically; Safari needed it manual.
+
+**Evidence:** This was the unlock — examples gallery in Webkit went from bimodal (17ms / 138ms / 34ms p50 across 3 identical runs) to **17ms / 17ms / 17ms** with 0% stutter. The measurement noise floor itself collapsed because the cascade-walk thrashing was the variance source.
+
+**How to apply:** When a CSS custom property animated per-frame is read by N distinct rim-bearing elements, scope writes per-element rather than broadcasting from `:root`. Use IntersectionObserver to skip offscreen elements entirely.
+
+## Fix — SVG displacement filters removed, swapped to CSS blur + saturate
+**File(s):** `packages/starlight-theme/styles/base.css`, `docs/src/components/Head.astro`
+**Date:** 2026-05-11
+
+**Decision:** Dropped `filter: url(#tf-gem-perturb)` and `filter: url(#tf-foil-perturb)` from the global `.u-light::before` scene-light wash. Replaced with `filter: blur(0.6px) saturate(1.1)` (pure GPU compositor primitives). FeatureCard-specific override at `blur(1.4px) saturate(1.12)` for a softer "lit gem" feel on the larger surface. Deleted the now-orphan SVG filter `<defs>` from Head.astro.
+
+**Why:** `feTurbulence` + `feDisplacementMap` are CPU-rasterized. CSS `filter: blur()` is GPU-accelerated Gaussian (separable 2-pass shader). Visual delta is subtle — the displacement-warp finishing texture was sub-perceptual on most surfaces; the local rim primitives (FeatureCard's `.card-edge`, GalleryTile's `.tile-edge`) carry the actual gem-rim character via pure-GPU mask-composite + conic-gradient.
+
+User considered baked SVG noise overlay + blur as a replacement but it looked visibly wrong (overlay-blended noise reads as stippling, fundamentally different from gradient-pixel displacement). Settled on simple blur + saturate; the alpha-mixed gradient + cursor-light + scene-arc animation carry the visual identity.
+
+**How to apply:** SVG filter chains using `feTurbulence` + `feDisplacementMap` should be considered last-resort for live-animated surfaces. They're CPU-rasterized per frame and don't scale with N elements. Bake to a static image (cached as bitmap, GPU-composited) or use CSS GPU primitives (`blur`, `saturate`, `contrast`, `brightness`).
+
+## Latent bug — GalleryTile `--card-accent` bridge missing
+**File(s):** `docs/src/components/gallery/GalleryTile.astro`
+**Date:** 2026-05-11
+
+**Decision:** GalleryTile uses `--tile-accent` for its rim work but the global `.u-light::before` rule reads `var(--card-accent, var(--primary))`. Without bridging, GalleryTile's scene-light wash fell back to `--primary` (amethyst, the docs-cluster gem). The displacement filter had been visually obscuring this — cleanly-rendered gradient surfaced the bug. Bridge: GalleryTile now sets `--card-accent: var(--tile-accent)`.
+
+**How to apply:** When a global rule reads `--card-accent`, components that style themselves with a different accent variable need to bridge — otherwise they pick up the wrong gem from the cascade fallback. Audit other components that use private accent vars (`--vp-accent`, `--stat-accent`, `--feature-accent`) — they already bypass the global rule with local overrides.
+
+## HMR cleanup in motion.ts
+**File(s):** `docs/src/scripts/motion.ts`
+**Date:** 2026-05-09
+
+**Decision:** Added `import.meta.hot.dispose()` handler that stops the rAF loop, disconnects the IntersectionObserver, and clears the targets array. Also disconnect the IO on `astro:page-load` re-init.
+
+**Why:** Without this, dev-saves accumulated leaked rAF loops + IO observers across HMR cycles. Eventually vite's HMR client saw inconsistent state, threw WebSocket protocol errors, and turbo cascade-killed both `docs:dev` and `examples:dev` with SIGTERM. User reported the dev server crashing repeatedly.
+
+**How to apply:** Any module with top-level state (rAF loop, observer, event listener) needs an HMR dispose handler. Vite re-evaluates the module on save but the previous instance's side effects keep running unless explicitly torn down.
+
+## Misc polish on top
+**Date:** 2026-05-09 / 2026-05-11
+
+- **Scroll-cue auto-hide** (`docs/src/content/docs/index.mdx`) — IntersectionObserver hides the "scroll" indicator when below-fold content is visible. On a 60vh hero, StatsBanner peeks above the fold immediately; the cue was redundant.
+- **"Early Alpha" → "Alpha"** (`packages/starlight-theme/components/overrides/PageFrame.astro`) — corner ribbon rename. Brand maturity tweak; "early" was redundant with the v0.1.0-α version stamp elsewhere.
+- **GalleryTile placeholder gem-radial** moved to a `::before` pseudo with `filter: blur(1.5px)` for anti-banding. The loaded poster/video sits at `z-index: 1` over it, unaffected by the blur. Tonality also toned down (40% → 22% accent center) to match captured TSL canvas backgrounds.

@@ -52,12 +52,15 @@ function resolveGem(c: StatItem['color']): Gem | undefined {
   <div class="stats-grid">
     {stats.map((stat, i) => {
       const gem = resolveGem(stat.color)
-      const accentParts = []
-      if (gem) accentParts.push(`--stat-accent: var(--${gem})`)
-      accentParts.push(`--reveal-delay: ${i * 80}ms`)
-      const accentStyle = accentParts.join('; ')
+      // Reveal delay stays inline (per-instance staggering); the gem
+      // accent is driven by `data-gem` + per-gem CSS rules below
+      // rather than inline `--stat-accent: var(--<gem>)`. Safari has
+      // a known `color-mix(in oklab, var(--x), ...)` resolution bug
+      // when --x is set to another var() in inline style — values
+      // resolve correctly through CSS rules but not through
+      // double-indirected inline custom properties.
       return (
-        <div class="stat-item u-reveal" data-gem={gem} style={accentStyle}>
+        <div class="stat-item u-reveal" data-gem={gem} style={`--reveal-delay: ${i * 80}ms`}>
           <span class="stat-value">{stat.value}</span>
           <span class="stat-label">{stat.label}</span>
         </div>
@@ -93,6 +96,22 @@ function resolveGem(c: StatItem['color']): Gem | undefined {
       grid-template-columns: 1fr;
     }
   }
+
+  /* Per-gem accent assignment — sets --stat-accent DIRECTLY in CSS
+   * via the data-gem attribute rather than via inline-style
+   * `--stat-accent: var(--<gem>)`. Safari has a known resolution bug
+   * where `color-mix(in oklab, var(--customProp), ...)` fails when
+   * --customProp is set to another var() in inline style; values
+   * resolve correctly through normal CSS cascade. Mirrors the same
+   * data-gem pattern FeatureCard uses for --card-soft. */
+  .stat-item[data-gem='gold']      { --stat-accent: var(--gold); }
+  .stat-item[data-gem='ruby']      { --stat-accent: var(--ruby); }
+  .stat-item[data-gem='emerald']   { --stat-accent: var(--emerald); }
+  .stat-item[data-gem='diamond']   { --stat-accent: var(--diamond); }
+  .stat-item[data-gem='amethyst']  { --stat-accent: var(--amethyst); }
+  .stat-item[data-gem='pink']      { --stat-accent: var(--pink); }
+  .stat-item[data-gem='salmon']    { --stat-accent: var(--salmon); }
+  .stat-item[data-gem='turquoize'] { --stat-accent: var(--turquoize); }
 
   .stat-item {
     --stat-accent: var(--primary);
