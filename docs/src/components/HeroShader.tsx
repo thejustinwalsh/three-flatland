@@ -1,15 +1,23 @@
 import { useEffect, useRef } from 'react'
 
 /**
- * HeroShader — WebGL2 fragment-shader hero background. Pure animated
- * gem-palette ambient motion with mouse-driven dynamic light. No game,
- * no library overhead — just a fullscreen quad and a noise-driven
- * fragment shader that runs the gem taxonomy through layered domain
- * warps.
+ * HeroShader — WebGL2 fragment-shader hero background. Animated
+ * gem-palette ambient motion with mouse-driven dynamic light, the
+ * whole composition snapped to a 4-CSS-pixel grid + Bayer-4x4
+ * ordered dither so it reads as crafted pixel art instead of a
+ * smooth gradient hero.
+ *
+ * The pixelate + bayer-dither math mirrors three-flatland's TSL
+ * nodes (packages/nodes/src/sprite/pixelate.ts +
+ * packages/nodes/src/retro/bayerDither.ts) — same algorithms, just
+ * inlined in GLSL because this hero is a one-off fullscreen quad
+ * with no Three.js renderer. If the hero ever ports to a TSL scene
+ * the inline math swaps 1:1 with the node calls.
  *
  * Inputs: time + mouse + resolution + scene-angle (read from CSS var
  * each frame so the global day-cycle drives the shader's directional
- * light). Pointer leave releases the mouse light gracefully.
+ * light) + pixel size in device pixels (4 * DPR). Pointer leave
+ * releases the mouse light gracefully.
  *
  * Falls back gracefully when WebGL2 is unavailable.
  */
@@ -40,6 +48,7 @@ uniform float u_time;
 uniform vec2  u_mouse;       // 0..1
 uniform float u_mouse_active; // 0..1
 uniform float u_scene_angle; // radians
+uniform float u_pixel_size;  // device pixels per "big pixel" (4 * DPR)
 
 out vec4 fragColor;
 
@@ -83,7 +92,21 @@ float fbm(vec2 p) {
 }
 
 void main() {
-  vec2 uv = gl_FragCoord.xy / u_res;
+  // ────────────────────────────────────────────────────────────────
+  // PIXELATE — snap fragment coord to a 4-CSS-pixel grid before
+  // anything else samples space. Every fragment inside a big-pixel
+  // block computes the same color, so the whole hero reads as a
+  // chunky retro pixel-art canvas.
+  //
+  // Mirrors three-flatland's TSL pixelate node:
+  //   pixelate(uv, resolution / u_pixel_size, [0.5, 0.5])
+  // from packages/nodes/src/sprite/pixelate.ts. The +0.5*pixelSize
+  // offset matches the node's halfPixel pivot recentering. Authored
+  // in GLSL here only because the hero is a one-off WebGL2 fullscreen
+  // quad with no Three.js renderer — same math, same visual.
+  // ────────────────────────────────────────────────────────────────
+  vec2 pixCoord = floor(gl_FragCoord.xy / u_pixel_size) * u_pixel_size + u_pixel_size * 0.5;
+  vec2 uv = pixCoord / u_res;
   vec2 p = uv * 2.0 - 1.0;
   p.x *= u_res.x / u_res.y;
 
@@ -156,10 +179,38 @@ void main() {
   float v = smoothstep(3.2, 1.8, length(p));
   col = mix(C_BG, col, v);
 
-  // Sub-perceptual film grain — keeps the surface from reading "flat
-  // gradient" on dark areas.
-  float grain = (hash(gl_FragCoord.xy + u_time) - 0.5) * 0.04;
-  col += grain;
+  // ────────────────────────────────────────────────────────────────
+  // BAYER 4x4 ORDERED DITHER + POSTERIZE — quantize the smooth gem
+  // gradients into a stepped palette with a classic 4x4 Bayer
+  // threshold pattern breaking up the bands. Replaces the previous
+  // hash-based film grain: ordered dither lands far cleaner inside
+  // the chunky-pixel canvas (random noise per device pixel would
+  // jitter inside each big-pixel block — Bayer is deterministic per
+  // big-pixel, so the dither pattern is part of the pixel-art look).
+  //
+  // Mirrors three-flatland's TSL bayerDither4x4 node:
+  //   bayerDither4x4(vec4(col, 1.0), 6.0, u_pixel_size)
+  // from packages/nodes/src/retro/bayerDither.ts. The /u_pixel_size
+  // anchors the 4x4 pattern to the big-pixel grid (one threshold
+  // sample per big-pixel; full pattern tiles every 16 device pixels).
+  // ────────────────────────────────────────────────────────────────
+  float bayer4[16] = float[16](
+     0.0,  8.0,  2.0, 10.0,
+    12.0,  4.0, 14.0,  6.0,
+     3.0, 11.0,  1.0,  9.0,
+    15.0,  7.0, 13.0,  5.0
+  );
+  int bx = int(mod(floor(gl_FragCoord.x / u_pixel_size), 4.0));
+  int by = int(mod(floor(gl_FragCoord.y / u_pixel_size), 4.0));
+  float threshold = bayer4[by * 4 + bx] / 16.0;
+
+  // 6 levels per channel — enough fidelity that gem identities
+  // (gold / ruby / emerald / amethyst / diamond / pink) read
+  // distinctly, but coarse enough that the dither pattern is visibly
+  // doing work in transition zones.
+  float levels = 6.0;
+  vec3 quantized = floor(col * (levels - 1.0) + threshold) / (levels - 1.0);
+  col = clamp(quantized, 0.0, 1.0);
 
   fragColor = vec4(col, 1.0);
 }
@@ -212,6 +263,13 @@ void main() {
     const uMouse = gl.getUniformLocation(prog, 'u_mouse')
     const uMouseActive = gl.getUniformLocation(prog, 'u_mouse_active')
     const uSceneAngle = gl.getUniformLocation(prog, 'u_scene_angle')
+    const uPixelSize = gl.getUniformLocation(prog, 'u_pixel_size')
+
+    /* Pixel size in device pixels — set on resize so it tracks DPR.
+     * 4 CSS pixels × DPR keeps the visual chunkiness consistent
+     * across retina / non-retina displays. The shader's pixelate and
+     * bayer-dither both consume this value. */
+    let pixelSizeDev = 4
 
     let mouse = { x: 0.5, y: 0.5 }
     let mouseActive = 0
@@ -242,6 +300,7 @@ void main() {
         cvs.width = W
         cvs.height = H
       }
+      pixelSizeDev = 4 * dpr
       gl.viewport(0, 0, W, H)
     }
     window.addEventListener('resize', resize, { passive: true })
@@ -276,6 +335,7 @@ void main() {
       gl.uniform2f(uMouse, mouse.x, mouse.y)
       gl.uniform1f(uMouseActive, mouseActive)
       gl.uniform1f(uSceneAngle, readSceneAngleRad())
+      gl.uniform1f(uPixelSize, pixelSizeDev)
       gl.drawArrays(gl.TRIANGLES, 0, 3)
       raf = requestAnimationFrame(frame)
     }
