@@ -5,18 +5,21 @@
 > Branch: mini-game-showcase
 > PR: https://github.com/thejustinwalsh/three-flatland/pull/59
 
+## New Hooks
 
-## New features
+- `usePaneRadioGrid` (React subpath) — inline button-bar selector backed by tweakpane-essentials `radiogrid` blade; active-state affordance suits scene/mode toggles better than a dropdown; deferred disposal + synchronous creation match `usePaneButton` / `usePaneInput` lifecycle
 
-- `usePaneRadioGrid` hook (react subpath) backed by `@tweakpane/plugin-essentials` radiogrid blade; inline button-bar selector with active-state affordance, deferred disposal and synchronous creation matching existing hook patterns
-- `PaneInputOptions.readonly` and `format` fields so React hook users can create readonly monitors with custom formatters
-- Tweakpane wrapper z-index: `createPane` now applies `z-index: 1000` to the `.tp-dfwv` body-sibling wrapper instead of the inner pane element, so the pane stacks correctly above overlays
+## Input Options
 
-## Bug fixes
+- `PaneInputOptions` gains `readonly` and `format` fields — React hook users can now create readonly monitors with custom value formatters
 
-- Checkbox hit target: `.tp-ckbv_i` stretched to fill the full 20×20 box via `width/height: var(--cnt-usz)`, so clicks land on the input directly without relying on flaky `<label>` forwarding under pointer-events / z-index combinations
-- Checkbox theme: box surface now matches other controls (`rgba(28,40,77,0.6)`) with hover/focus/active parity; check stroke turns accent pink on `:checked`
+## Theme
 
----
+- Checkbox `.tp-ckbv_i` input now covers the full 20×20 hit box (`width/height: var(--cnt-usz)`) — eliminates multi-click failures caused by flaky `<label>` → `<input>` pointer-event forwarding
+- Checkbox box surface changed to `rgba(28,40,77,0.6)` with hover/focus/active parity; check stroke turns accent pink on `:checked` — previously blended invisibly into the container background
 
-Adds a radio-grid hook for inline button-bar selections, fixes the checkbox hit target and theme, and corrects the pane wrapper z-index stacking.
+## Bug Fixes
+
+- `createPane` z-index now applied to the `.tp-dfwv` body-sibling wrapper instead of the inner `pane.element` root — setting z-index on the inner element had no effect on stacking against other overlays
+
+This release adds the `usePaneRadioGrid` hook, readonly/format monitor support, and fixes checkbox hit-target and z-index stacking issues.
