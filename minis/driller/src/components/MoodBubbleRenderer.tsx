@@ -48,8 +48,10 @@ const FRAMES: Record<IconName, ReturnType<typeof frameOf>> = {} as Record<
 >
 for (const k of Object.keys(ICON_REGIONS) as IconName[]) FRAMES[k] = frameOf(ICON_REGIONS[k])
 
-const ICON_PX = 12 // larger than the standard 8 — chibi bubble = oversize
-const BUBBLE_PX = 16 // soft background behind the icon
+// Scaled up — the previous 12/16px sizing was visible but small.
+// 20/28 reads as a proper chibi speech bubble over a 16px tile.
+const ICON_PX = 20
+const BUBBLE_PX = 28
 
 interface Props {
   iconsMaterial: Sprite2DMaterial

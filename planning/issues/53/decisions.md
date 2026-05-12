@@ -642,3 +642,25 @@ Total icons in sheet: 10. Sheet dimensions unchanged at 128×16 (it already had 
 The user specifically called out "a little chibi pixelated bubble" — that's a graphic, not a meter. The bar version conflated two different feedback modes (status indicator for time-bound actions like drag/paint, vs interaction confirmation for one-shot tap actions like pet). Splitting them clarifies both: pet = bubble, held-actions = info-popup with bar, gem-spend = particle "-N" popup.
 
 **Verification:** Typecheck clean. 187/187 unit tests pass (no behavioral state changes — pure renderer/asset reshape). Manual visual verification deferred to the user — the asset URL switch is the key fix and is best confirmed in-browser.
+
+## In-canvas feedback HUD — Phase 5c (texture flipY + sizing + cluster perimeter)
+**File:** `minis/driller/src/{materials.ts,components/{HoverOutlineRenderer.tsx,GemSpendPopupRenderer.tsx,MoodBubbleRenderer.tsx,InfoPopupRenderer.tsx,OverPetRenderer.tsx,Scene.tsx}}`
+**Date:** 2026-05-12
+
+**Decisions:**
+
+1. **`texture.flipY = false` for sprite-sheet materials.** Three.js's default is `flipY = true` (rotate image rows to match WebGL's bottom-left UV origin). My `REGIONS` table uses top-left pixel coordinates, so `flipY = true` was sampling the wrong row of the sheet → icons rendered as blank or wrong glyphs. This is the actual root cause of "I don't see any pixelated emojis." `useSheetMaterial` now disables flipY explicitly with a comment naming the trap.
+
+2. **All HUD elements scaled up.** Tile is 16px; the original 6–8px sprite sizes were below the legibility floor. New sizes:
+   - Gem-spend popup: digits 6→12, icons 8→16, gap 1→2
+   - Mood bubble: icon 12→20, bubble bg 16→28
+   - Info popup: icon 8→14, bar 16×3→24×4, gap 1→2
+   - Over-pet shake icon: 8→20
+
+3. **Cluster outline is now a perimeter, not per-cell boxes.** The previous render filled in a hollow square on every cluster cell — produced a "grid of rects" look the user explicitly called out. New approach: for each cluster cell, check 4 cardinal neighbors; for each neighbor that's NOT in the cluster set, draw a 2-pixel solid-fill line on that cell's edge. Result: a single continuous outline that traces the cluster's actual shape.
+
+4. **Two material pools in `HoverOutlineRenderer`.** Cluster perimeter edges need a solid-fill sprite (lines), but single-cell outlines (collect, paint) still want the hollow-square texture. Renderer now accepts `outlineMaterial` (hollow square) + `fillMaterial` (solid white = `useDrillerMaterial`). 32 hollow-square slots + 256 edge slots — covers worst-case ~60-cell soil chunks with 4 edges each.
+
+5. **Outline edge thickness = 2px.** 1px would alias at fractional scales; 2px reads cleanly as a deliberate line.
+
+**Verification:** Typecheck clean. 187/187 unit tests pass.

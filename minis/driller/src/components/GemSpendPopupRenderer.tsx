@@ -35,9 +35,11 @@ import {
  */
 
 const POOL = 64
-const DIGIT_PX = 6
-const ICON_PX = 8
-const GAP_PX = 1
+// 2x the source-pixel size so the popup is legible at the game's
+// scale (tiles are 16px; a 6px digit was unreadably small).
+const DIGIT_PX = 12
+const ICON_PX = 16
+const GAP_PX = 2
 
 interface Props {
   iconsMaterial: Sprite2DMaterial

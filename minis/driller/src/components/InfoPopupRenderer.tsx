@@ -27,10 +27,12 @@ import {
  * above the anchor cell so it doesn't cover the action target.
  */
 
-const ICON_PX = 8
-const BAR_W = 16
-const BAR_H = 3
-const SLOT_GAP = 1
+// Scaled up — original sizing was below the legibility floor at the
+// game's 16px tile size.
+const ICON_PX = 14
+const BAR_W = 24
+const BAR_H = 4
+const SLOT_GAP = 2
 
 interface Props {
   iconsMaterial: Sprite2DMaterial

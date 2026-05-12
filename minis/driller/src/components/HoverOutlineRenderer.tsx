@@ -17,23 +17,28 @@ import { TILE_PX } from '../constants'
 
 /**
  * Hover-target outline. Reads `Pointer.hoverAction` each frame and
- * draws a 1-pixel cell border around the cells the click would affect.
- * Color encodes the action type so the player learns the priority
- * visually:
+ * draws a colored marker around the cells the click would affect:
  *
- *   collect → gold       (gem cell)
- *   pet     → pink       (driller's cell)
- *   drag    → sky        (all cluster cells in motion)
- *   brace   → orange     (all cells of the sagging chunk)
- *   paint   → red        (single cell under cursor)
+ *   collect → gold pulsing hollow-square around the gem cell
+ *   drag    → sky perimeter line around the cluster's outer edge
+ *   brace   → orange perimeter line around the SaggingChunk
+ *   paint   → red hollow-square on the hover cell
  *   none    → invisible
  *
- * Single pool of `POOL_SIZE` outline sprites. Each frame: hide all,
- * then position + tint the first N for whichever target cells are
- * active. Pool sized to 64 covers a worst-case multi-cell chunk.
+ * Two pools:
+ *   - `outlinePool` (32) — hollow 16×16 squares for single-cell
+ *     outlines (collect/paint), using the hollow-square outline
+ *     material.
+ *   - `edgePool` (256) — solid line segments for cluster perimeters,
+ *     using the solid white material (driller material). Each
+ *     cluster cell contributes 0–4 edges; only edges that face a
+ *     non-cluster cell are drawn → the result is a continuous
+ *     outline of the cluster shape, not a grid of per-cell boxes.
  */
 
-const POOL_SIZE = 64
+const OUTLINE_POOL = 32
+const EDGE_POOL = 256
+const EDGE_THICKNESS = 2 // px
 
 const TINT = {
   collect: '#fcd34d',
@@ -43,45 +48,93 @@ const TINT = {
 } as const
 
 interface Props {
-  material: Sprite2DMaterial
+  outlineMaterial: Sprite2DMaterial
+  fillMaterial: Sprite2DMaterial
 }
 
-export function HoverOutlineRenderer({ material }: Props) {
-  const world = useWorld()
-  const poolRefs = useRef<(Sprite2DType | null)[]>([])
+function setTintHex(sprite: Sprite2DType, hex: string): void {
+  sprite.tint.r = parseInt(hex.slice(1, 3), 16) / 255
+  sprite.tint.g = parseInt(hex.slice(3, 5), 16) / 255
+  sprite.tint.b = parseInt(hex.slice(5, 7), 16) / 255
+}
 
-  // Hide all sprites on mount.
+export function HoverOutlineRenderer({ outlineMaterial, fillMaterial }: Props) {
+  void outlineMaterial // bound to JSX below
+  void fillMaterial
+  const world = useWorld()
+  const outlineRefs = useRef<(Sprite2DType | null)[]>([])
+  const edgeRefs = useRef<(Sprite2DType | null)[]>([])
+
   useEffect(() => {
-    for (const s of poolRefs.current) if (s) s.scale.set(0, 0, 1)
+    for (const s of outlineRefs.current) if (s) s.scale.set(0, 0, 1)
+    for (const s of edgeRefs.current) if (s) s.scale.set(0, 0, 1)
   }, [])
 
   useFrame(() => {
     const ptr = world.get(Pointer)
-    const pool = poolRefs.current
-    let used = 0
+    let outlineUsed = 0
+    let edgeUsed = 0
 
-    // Time-modulated pulse for the gem outline so the player notices
-    // it (subtle 1-px borders on small gems can be invisible). Cycles
-    // ~1.6Hz, amplitude ~25% over base scale.
+    // Single-cell hollow-square outline (pulse optional).
     const now = Date.now()
-    const place = (col: number, row: number, tintHex: string, pulse = false) => {
-      const sprite = pool[used++]
+    const placeOutline = (col: number, row: number, tintHex: string, pulse = false) => {
+      const sprite = outlineRefs.current[outlineUsed++]
       if (!sprite) return
-      const s = pulse ? TILE_PX * (1 + 0.25 * (0.5 + 0.5 * Math.sin((now / 1000) * Math.PI * 3.2))) : TILE_PX
+      const s = pulse
+        ? TILE_PX * (1 + 0.25 * (0.5 + 0.5 * Math.sin((now / 1000) * Math.PI * 3.2)))
+        : TILE_PX
       sprite.position.set(col * TILE_PX + TILE_PX / 2, -(row * TILE_PX + TILE_PX / 2), 0)
       sprite.scale.set(s, s, 1)
-      sprite.tint.r = parseInt(tintHex.slice(1, 3), 16) / 255
-      sprite.tint.g = parseInt(tintHex.slice(3, 5), 16) / 255
-      sprite.tint.b = parseInt(tintHex.slice(5, 7), 16) / 255
+      setTintHex(sprite, tintHex)
+    }
+
+    // Single edge segment — px-thick line on one side of a cell.
+    const placeEdge = (px: number, py: number, w: number, h: number, tintHex: string) => {
+      const sprite = edgeRefs.current[edgeUsed++]
+      if (!sprite) return
+      sprite.position.set(px, py, 0)
+      sprite.scale.set(w, h, 1)
+      setTintHex(sprite, tintHex)
+    }
+
+    // For a set of cells (col, row), draw only edges that border a
+    // non-set neighbor. Produces a clean perimeter outline of the
+    // arbitrary shape instead of a grid of per-cell boxes.
+    const placePerimeter = (
+      cells: Iterable<{ col: number; row: number }>,
+      tintHex: string,
+    ) => {
+      const set = new Set<string>()
+      for (const c of cells) set.add(`${c.col},${c.row}`)
+      const inSet = (col: number, row: number) => set.has(`${col},${row}`)
+      for (const key of set) {
+        const [cs, rs] = key.split(',') as [string, string]
+        const c = { col: Number(cs), row: Number(rs) }
+        const cx = c.col * TILE_PX + TILE_PX / 2
+        const cy = -(c.row * TILE_PX + TILE_PX / 2)
+        // Top edge
+        if (!inSet(c.col, c.row - 1)) {
+          placeEdge(cx, cy + TILE_PX / 2 - EDGE_THICKNESS / 2, TILE_PX, EDGE_THICKNESS, tintHex)
+        }
+        // Bottom edge
+        if (!inSet(c.col, c.row + 1)) {
+          placeEdge(cx, cy - TILE_PX / 2 + EDGE_THICKNESS / 2, TILE_PX, EDGE_THICKNESS, tintHex)
+        }
+        // Left edge
+        if (!inSet(c.col - 1, c.row)) {
+          placeEdge(cx - TILE_PX / 2 + EDGE_THICKNESS / 2, cy, EDGE_THICKNESS, TILE_PX, tintHex)
+        }
+        // Right edge
+        if (!inSet(c.col + 1, c.row)) {
+          placeEdge(cx + TILE_PX / 2 - EDGE_THICKNESS / 2, cy, EDGE_THICKNESS, TILE_PX, tintHex)
+        }
+      }
     }
 
     if (ptr) {
       const action = ptr.hoverAction
       switch (action) {
         case 'collect': {
-          // Pulse the gem's outline so small gems still feel grabable.
-          // Halo collects target the gem's EXACT cell (not the hover
-          // cell), so the player sees which gem the click will hit.
           let found = false
           world.query(Gem).forEach((entity) => {
             if (found) return
@@ -90,19 +143,14 @@ export function HoverOutlineRenderer({ material }: Props) {
             const dc = Math.abs(g.col - ptr.hoverTargetCol)
             const dr = Math.abs(g.row - ptr.hoverTargetRow)
             if (Math.max(dc, dr) > 1) return
-            place(g.col, g.row, TINT.collect, true)
+            placeOutline(g.col, g.row, TINT.collect, true)
             found = true
           })
-          if (!found) place(ptr.hoverTargetCol, ptr.hoverTargetRow, TINT.collect, true)
+          if (!found) placeOutline(ptr.hoverTargetCol, ptr.hoverTargetRow, TINT.collect, true)
           break
         }
-        // Pet: no selection box on the driller — the mood bubble that
-        // spawns on pet is the feedback. Outlining the driller cell
-        // would be redundant + ugly.
+        // Pet: no outline (mood bubble is the feedback).
         case 'drag': {
-          // Outline every cluster cell in motion. If a drag is already
-          // active, use Drag.clusterId; else use the clusterId at the
-          // hover cell (the chunk we're ABOUT to grab).
           const grid = world.get(Grid)
           const drag = world.get(Drag)
           if (grid) {
@@ -111,64 +159,58 @@ export function HoverOutlineRenderer({ material }: Props) {
                 ? drag.clusterId
                 : grid.clusterId[ptr.hoverTargetRow * grid.cols + ptr.hoverTargetCol] ?? 0
             if (targetCid !== 0) {
-              for (let i = 0; i < grid.clusterId.length && used < POOL_SIZE; i++) {
+              const cells: { col: number; row: number }[] = []
+              for (let i = 0; i < grid.clusterId.length; i++) {
                 if (grid.clusterId[i] !== targetCid) continue
                 if (grid.tiles[i] !== TILE_STONE) continue
                 const f = grid.flags[i] ?? 0
                 if ((f & (FLAG_SHAKING | FLAG_FALLING)) === 0) continue
-                const c = i % grid.cols
-                const r = Math.floor(i / grid.cols)
-                place(c, r, TINT.drag)
+                cells.push({ col: i % grid.cols, row: Math.floor(i / grid.cols) })
               }
+              if (cells.length > 0) placePerimeter(cells, TINT.drag)
             } else {
-              // Falling soil chunk (SaggingChunk entity) — outline its cells.
+              // Soil-chunk SaggingChunk perimeter.
               world.query(SaggingChunk).forEach((entity) => {
-                if (used > 0) return
+                if (edgeUsed > 0) return
                 const sag = entity.get(SaggingChunk)
                 if (!sag) return
                 const containsHover = sag.cells.some(
                   (c) => c.col === ptr.hoverTargetCol && c.row === ptr.hoverTargetRow,
                 )
                 if (!containsHover) return
-                for (const c of sag.cells) {
-                  if (used >= POOL_SIZE) break
-                  place(c.col, c.row, TINT.drag)
-                }
+                placePerimeter(sag.cells, TINT.drag)
               })
-              if (used === 0) place(ptr.hoverTargetCol, ptr.hoverTargetRow, TINT.drag)
+              if (edgeUsed === 0) {
+                placeOutline(ptr.hoverTargetCol, ptr.hoverTargetRow, TINT.drag)
+              }
             }
           }
           break
         }
         case 'brace': {
-          // Outline every cell of the sagging chunk under the cursor.
           world.query(SaggingChunk).forEach((entity) => {
-            if (used > 0) return
+            if (edgeUsed > 0) return
             const sag = entity.get(SaggingChunk)
             if (!sag) return
             const containsHover = sag.cells.some(
               (c) => c.col === ptr.hoverTargetCol && c.row === ptr.hoverTargetRow,
             )
             if (!containsHover) return
-            for (const c of sag.cells) {
-              if (used >= POOL_SIZE) break
-              place(c.col, c.row, TINT.brace)
-            }
+            placePerimeter(sag.cells, TINT.brace)
           })
-          if (used === 0) {
-            // Fallback: at least outline the hovered cell.
+          if (edgeUsed === 0) {
             const grid = world.get(Grid)
             if (grid) {
               const idx = ptr.hoverTargetRow * grid.cols + ptr.hoverTargetCol
               if ((grid.flags[idx] ?? 0) & FLAG_SAGGING) {
-                place(ptr.hoverTargetCol, ptr.hoverTargetRow, TINT.brace)
+                placeOutline(ptr.hoverTargetCol, ptr.hoverTargetRow, TINT.brace)
               }
             }
           }
           break
         }
         case 'paint': {
-          place(ptr.hoverTargetCol, ptr.hoverTargetRow, TINT.paint)
+          placeOutline(ptr.hoverTargetCol, ptr.hoverTargetRow, TINT.paint)
           break
         }
         default:
@@ -176,26 +218,42 @@ export function HoverOutlineRenderer({ material }: Props) {
       }
     }
 
-    // Hide unused sprites.
-    for (let i = used; i < POOL_SIZE; i++) {
-      const s = pool[i]
+    for (let i = outlineUsed; i < OUTLINE_POOL; i++) {
+      const s = outlineRefs.current[i]
+      if (s) s.scale.set(0, 0, 1)
+    }
+    for (let i = edgeUsed; i < EDGE_POOL; i++) {
+      const s = edgeRefs.current[i]
       if (s) s.scale.set(0, 0, 1)
     }
   })
 
   return (
     <>
-      {Array.from({ length: POOL_SIZE }).map((_, i) => (
+      {Array.from({ length: OUTLINE_POOL }).map((_, i) => (
         <sprite2D
-          key={i}
+          key={`o${i}`}
           ref={(el) => {
-            poolRefs.current[i] = el
+            outlineRefs.current[i] = el
           }}
-          material={material}
+          material={outlineMaterial}
           tint="#ffffff"
           position={[-9999, -9999, 0]}
           scale={[0, 0, 1]}
           renderOrder={100}
+        />
+      ))}
+      {Array.from({ length: EDGE_POOL }).map((_, i) => (
+        <sprite2D
+          key={`e${i}`}
+          ref={(el) => {
+            edgeRefs.current[i] = el
+          }}
+          material={fillMaterial}
+          tint="#ffffff"
+          position={[-9999, -9999, 0]}
+          scale={[0, 0, 1]}
+          renderOrder={101}
         />
       ))}
     </>

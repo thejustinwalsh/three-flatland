@@ -114,6 +114,12 @@ function useSheetMaterial(url: string): Sprite2DMaterial {
     tex.minFilter = NearestFilter
     tex.magFilter = NearestFilter
     tex.colorSpace = SRGBColorSpace
+    // Three.js defaults flipY = true (WebGL UV origin is bottom-left,
+    // image rows are top-down → flip to match). Our REGIONS table is
+    // expressed in image-pixel coordinates (top-left origin) so we
+    // need flipY OFF or the sprite samples the wrong row → icons
+    // render as the wrong glyph (or blank if the row is empty).
+    tex.flipY = false
     return new Sprite2DMaterial({ map: tex, transparent: true })
   }, [url])
 }

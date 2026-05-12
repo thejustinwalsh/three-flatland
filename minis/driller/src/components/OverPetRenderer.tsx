@@ -34,7 +34,7 @@ const ANGRY_FRAME = (() => {
 })()
 
 const POOL = 4
-const ICON_PX = 8
+const ICON_PX = 20
 
 interface Props {
   iconsMaterial: Sprite2DMaterial

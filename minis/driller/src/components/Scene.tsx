@@ -181,7 +181,7 @@ export function Scene({ onShellStateChange }: SceneProps) {
         <HazardView material={material} />
         <DrillerView material={material} />
         <GhostBeam material={material} />
-        <HoverOutlineRenderer material={outlineMaterial} />
+        <HoverOutlineRenderer outlineMaterial={outlineMaterial} fillMaterial={material} />
         <GemSpendPopupRenderer iconsMaterial={iconsMaterial} digitsMaterial={digitsMaterial} />
         <InfoPopupRenderer iconsMaterial={iconsMaterial} barMaterial={material} />
         <MoodBubbleRenderer iconsMaterial={iconsMaterial} bubbleMaterial={material} />
