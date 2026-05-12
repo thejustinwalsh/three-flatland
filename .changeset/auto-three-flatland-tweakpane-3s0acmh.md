@@ -7,18 +7,13 @@
 
 ## New features
 
-- `usePaneRadioGrid` hook (react subpath) — inline button-bar selector backed by essentials' radiogrid blade; deferred disposal + synchronous creation match the existing hook pattern
-- `PaneInputOptions` extended with `readonly` and `format` — enables readonly monitor inputs with custom formatters
+- `usePaneRadioGrid` hook (react subpath) — inline button-bar selector backed by Tweakpane Essentials `radiogrid` blade; deferred disposal and synchronous creation match `usePaneButton`/`usePaneInput` patterns
+- `PaneInputOptions` extended with `readonly` and `format` — enables read-only monitor bindings with custom formatters from React hooks
 
 ## Bug fixes
 
-- Checkbox hit target: `.tp-ckbv_i` stretched to full 20×20 box size via `width/height: var(--cnt-usz)`; the hidden input now covers the entire visible area, eliminating multi-click behavior from failed label forwarding
-- Checkbox theme: background now matches other controls (`rgba(28,40,77,0.6)`) with hover/focus/active parity; check stroke turns accent pink on `:checked`
-- `z-index: 1000` applied to the `.tp-dfwv` body-sibling wrapper (not the inner pane root); previously setting z-index on the inner element had no effect on stacking against other overlays
+- Checkbox hit target stretched to full `--cnt-usz` box size; `input` now covers the visible checkbox directly so label-forwarding workarounds are no longer needed
+- `createPane` z-index now applied to `.tp-dfwv` wrapper (the actual body-sibling stacking context) rather than the inner pane root element — pane now stacks correctly above other overlays
+- Checkbox box surface and hover/focus/active styling aligned with other controls (`rgba(28,40,77,0.6)` background, accent-pink check stroke on `:checked`)
 
-## Examples migration
-
-- Both slug-text examples (Three.js + React) migrated from Web Awesome controls to `@three-flatland/tweakpane`; all `@awesome.me/webawesome` imports, CSS, and `wa-*` selectors removed
-
-`@three-flatland/tweakpane` gains a radio-grid hook, readonly monitor support, and corrects checkbox hit-target and z-index stacking bugs.
-
+`@three-flatland/tweakpane` gains readonly monitor support and a radio-grid hook for inline scene/mode toggles, with three visual and hit-testing fixes for checkboxes and pane layering.
