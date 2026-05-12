@@ -71,11 +71,35 @@ export function planGreedy(world: World, d: DrillerCell): [number, number] | nul
   if (!grid) return null
   const { cols, rows, tiles } = grid
 
+  // Hazard-aware passability: while a falling rock is active near the
+  // driller, treat the rock's column AND its ±1 halo as impassable
+  // for both direct DOWN and side steps. Without this gate the cost-
+  // based descent can yank the driller BACK into the danger zone after
+  // a flee (e.g., the original tunnel column has the best descent path
+  // and would otherwise win on cost) — producing the visible "play
+  // chicken" dance between the safe cell and the threat column.
+  // The flee target from planEvadeHazard PLUS this passability gate
+  // give the driller a fear-driven commitment: flee outward, don't
+  // step back until the hazard is gone.
+  const hazardBlocked = new Set<number>()
+  world.query(Hazard).forEach((entity) => {
+    const h = entity.get(Hazard)
+    if (!h || h.phase === 'landed') return
+    hazardBlocked.add(h.col - 1)
+    hazardBlocked.add(h.col)
+    hazardBlocked.add(h.col + 1)
+  })
+
   const descendCostFrom = (c: number, r: number): number => {
+    if (hazardBlocked.has(c)) return Infinity
     // Bottom of streaming grid → assume the next chunk is soft (deeper
     // chunks load in, this is the natural fall-off-the-bottom case).
     if (r + 1 >= rows) return COST_AIR_OR_SOIL
     return tileStepCost(tiles[(r + 1) * cols + c])
+  }
+  const sideStepCost = (c: number): number => {
+    if (hazardBlocked.has(c)) return Infinity
+    return tileStepCost(tiles[d.row * cols + c])
   }
 
   type Candidate = { col: number; row: number; cost: number; lateralOnly: boolean }
@@ -91,7 +115,7 @@ export function planGreedy(world: World, d: DrillerCell): [number, number] | nul
   for (const dc of [-1, 1] as const) {
     const nc = d.col + dc
     if (nc < 0 || nc >= cols) continue
-    const sStep = tileStepCost(tiles[d.row * cols + nc])
+    const sStep = sideStepCost(nc)
     if (!Number.isFinite(sStep)) continue
     const sDown = descendCostFrom(nc, d.row)
     if (Number.isFinite(sDown)) {
@@ -361,24 +385,34 @@ export function selectPlanner(world: World): PlannerName {
 }
 
 /**
- * Hazard evade — find the nearest LATERAL cell that's not under any
- * active falling rock. Highest-priority response; runs before any
- * mood-driven planner. Returns null if no hazard threat or driller
- * already safe.
+ * Hazard evade — flee in fear from any active rock within the driller's
+ * column ±1 (the halo). Runs before any mood-driven planner. Returns
+ * null only when the driller is truly safe (outside the halo of every
+ * active hazard).
+ *
+ * The wider trigger eliminates the "play chicken" dance: previously
+ * the trigger fired only when DIRECTLY under a rock, so the driller
+ * fled one cell, relaxed, then cost-based greedy yanked him back into
+ * the threat zone (the original tunnel had the best descent). With
+ * the halo-wide trigger PLUS the hazard-aware passability gate in
+ * planGreedy, the driller commits to fleeing OUTWARD until the entire
+ * halo is behind him.
  *
  * Two gating questions before fleeing:
  *
  *   1. Can the rock actually reach the driller? If there's anything
- *      between the hazard and the driller in his column (soil/stone/
- *      fixture), the rock will land on that — driller is safe. Without
- *      this check the AI flees from offscreen rocks that can't possibly
- *      hit him, producing a back-and-forth dance.
+ *      between the hazard and the driller in the SAME column (soil/
+ *      stone/fixture), the rock will land on that — not a threat.
+ *      (Only checked for hazards directly above; halo-adjacent
+ *      hazards always count, since their landing scatter or the
+ *      driller's next step toward them is the real concern.)
  *
- *   2. If a path IS open: weigh urgency (warning vs falling, vertical
- *      distance) against anchor pull (mood.greed + closest-gem distance).
- *      A greedy driller mid-gem-grab shouldn't bail on a 12-row-out
- *      warning telegraph. A falling-phase rock directly overhead always
- *      wins, regardless of mood.
+ *   2. Falling-phase rocks always win — no anchor weighting.
+ *      Warning-phase rocks weigh urgency vs greed + gem proximity:
+ *      a greedy driller mid-gem-grab can ignore a 12-row-out warning
+ *      telegraph if it's directly above (column 0 offset). Halo
+ *      hazards (±1 col) ALWAYS flee — no anchor override; the rock
+ *      is too close to gamble.
  */
 export function planEvadeHazard(world: World, d: { col: number; row: number }): [number, number] | null {
   const grid = world.get(Grid)
@@ -386,30 +420,40 @@ export function planEvadeHazard(world: World, d: { col: number; row: number }): 
   const { cols, tiles } = grid
 
   const threatenedCols = new Set<number>()
-  type DirectThreat = { row: number; phase: 'warning' | 'falling' }
+  type DirectThreat = { row: number; phase: 'warning' | 'falling'; offset: number }
   let directThreat: DirectThreat | null = null
   world.query(Hazard).forEach((entity) => {
     const h = entity.get(Hazard)
     if (!h || h.phase === 'landed') return
-    // ±1 halo kept for flee-target preference (avoid landing zones on
-    // impact scatter) — but it's no longer a flee TRIGGER.
     for (let dc = -1; dc <= 1; dc++) threatenedCols.add(h.col + dc)
-    if (h.col !== d.col) return
-    // Roof check: walk driller's column from one above driller up to
-    // the hazard's row. Any non-AIR cell catches the rock first.
-    const hazardRow = Math.max(0, Math.floor(h.py / TILE_PX))
-    let pathOpen = true
-    for (let r = d.row - 1; r > hazardRow; r--) {
-      const cell = tiles[r * cols + d.col]
-      if (cell !== undefined && cell !== TILE_AIR) {
-        pathOpen = false
-        break
+    const offset = Math.abs(h.col - d.col)
+    // New: trigger flee anywhere in ±1 halo, not just directly under.
+    if (offset > 1) return
+    // Roof check — only meaningful when h.col === d.col (rock falls
+    // straight down its column). Halo hazards always count, since
+    // a halo step into the rock column is also the trigger condition
+    // for those cases.
+    if (offset === 0) {
+      const hazardRow = Math.max(0, Math.floor(h.py / TILE_PX))
+      let pathOpen = true
+      for (let r = d.row - 1; r > hazardRow; r--) {
+        const cell = tiles[r * cols + d.col]
+        if (cell !== undefined && cell !== TILE_AIR) {
+          pathOpen = false
+          break
+        }
       }
+      if (!pathOpen) return
     }
-    if (!pathOpen) return
-    // Pick the most-urgent direct threat (falling > warning).
-    if (!directThreat || (h.phase === 'falling' && directThreat.phase === 'warning')) {
-      directThreat = { row: hazardRow, phase: h.phase }
+    const hazardRow = Math.max(0, Math.floor(h.py / TILE_PX))
+    // Pick the most-urgent direct threat (falling > warning; closer offset wins ties).
+    const newer: DirectThreat = { row: hazardRow, phase: h.phase, offset }
+    if (
+      !directThreat ||
+      (newer.phase === 'falling' && directThreat.phase === 'warning') ||
+      (newer.phase === directThreat.phase && newer.offset < directThreat.offset)
+    ) {
+      directThreat = newer
     }
   })
   if (!directThreat) return null
@@ -417,8 +461,11 @@ export function planEvadeHazard(world: World, d: { col: number; row: number }): 
   const threat: DirectThreat = directThreat
 
   // Falling phase: always flee — rock is committed, no time to dawdle.
-  // Warning phase: weigh urgency vs greed + gem anchor.
-  let shouldFlee = threat.phase === 'falling'
+  // Halo hazards (offset > 0): always flee — the rock is too close
+  // to gamble. Anchor weighting only applies for directly-overhead
+  // warning-phase rocks where the driller has time to consider the
+  // tradeoff.
+  let shouldFlee = threat.phase === 'falling' || threat.offset > 0
   if (!shouldFlee) {
     const mood = world.queryFirst(Mood)?.get(Mood)
     const greed = mood?.greed ?? 0
@@ -429,11 +476,9 @@ export function planEvadeHazard(world: World, d: { col: number; row: number }): 
       const dist = Math.abs(g.col - d.col) + Math.abs(g.row - d.row)
       if (dist < closestGemDist) closestGemDist = dist
     })
-    // Urgency: 5 rows above = ~0.83, 12 = ~0.25, 15+ = 0. Closer warning
-    // = more urgent because the driller has less time to relocate.
+    // Urgency: 5 rows above = ~0.83, 12 = ~0.25, 15+ = 0.
     const verticalDist = Math.max(1, d.row - threat.row)
     const urgency = Math.max(0, Math.min(1, (15 - verticalDist) / 12))
-    // Anchor: very-close gem (≤3) and high greed both pull toward staying.
     const gemAnchor = closestGemDist <= 3 ? 0.7 : closestGemDist <= 6 ? 0.3 : 0
     const anchor = gemAnchor + greed * 0.5
     shouldFlee = urgency > anchor

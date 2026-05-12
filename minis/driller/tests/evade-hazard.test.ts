@@ -114,6 +114,45 @@ describe('planEvadeHazard — roof check', () => {
     expect(next).toBeNull()
   })
 
+  it('triggers in the ±1 halo of an active hazard (not just directly under)', () => {
+    // Driller at col 5, hazard at col 6 (one cell to the right). The
+    // old rule only triggered when h.col === d.col; the new halo rule
+    // triggers any time the hazard is within ±1 col. This is what
+    // makes the driller commit to fleeing further out, instead of
+    // relaxing one cell over and getting yanked back into the threat
+    // zone by greedy.
+    const rows = [
+      '..........',
+      '..........',
+      '..........',
+      '..........',
+      '..........',
+      '..........',
+      '..........',
+      '..........',
+      '..........',
+      '##########',
+    ]
+    const world = makeWorldFromGrid(rows)
+    world.spawn(Driller({ col: 5, row: 8 }))
+    world.spawn(
+      Hazard({
+        col: 6, // one column to the right of driller
+        py: 1 * TILE_PX,
+        vy: 0,
+        phase: 'falling',
+        fallAtTick: 0,
+      }),
+    )
+    const next = planEvadeHazard(world, { col: 5, row: 8 })
+    expect(next).not.toBeNull()
+    // Flee target must be OUTSIDE the halo of col 6 — i.e., col 6-2=4
+    // or lower (left) or col 6+2=8 or higher (right). The closer side
+    // wins (left, since col 5 is adjacent to col 4 which is just
+    // outside the halo).
+    expect(next![0]).toBeLessThanOrEqual(4)
+  })
+
   it('warning at close range overrides anchor', () => {
     const rows = [
       '..........',
@@ -289,6 +328,48 @@ describe('planGreedy — drills through stones', () => {
     expect(next).not.toEqual([5, 6])
     expect([4, 5, 6]).toContain(next![0])
     expect(next![1]).toBe(5)
+  })
+
+  it('treats hazard-halo columns as impassable so greedy never steps back into the threat zone', () => {
+    // Driller has fled one cell left of an active hazard. Without the
+    // hazard-aware passability gate, greedy's cost-based descent would
+    // see the original tunnel column (which has soft descent) and step
+    // RIGHT back toward the hazard — the dance. With the gate, that
+    // column is ∞ cost, so the driller's only viable move is DOWN at
+    // the safe column (or further left).
+    //
+    //   . . . . . .  row 4 (driller here, just fled left from col 4)
+    //   . . . . . .  row 5
+    //   . . . . . .  row 6 — all SOIL below (soft descent)
+    const rows = [
+      '..........',
+      '..........',
+      '..........',
+      '..........',
+      '..........',
+      '##########',
+      '##########',
+      '##########',
+      '##########',
+      '##########',
+    ]
+    const world = makeWorldFromGrid(rows)
+    // Hazard at col 4, driller at col 3 (one cell left, in halo).
+    world.spawn(
+      Hazard({
+        col: 4,
+        py: 0,
+        vy: 0,
+        phase: 'falling',
+        fallAtTick: 0,
+      }),
+    )
+    const next = planGreedy(world, { col: 3, row: 4, facing: -1 })
+    expect(next).not.toBeNull()
+    // The blocked halo is cols 3, 4, 5. col 3 (driller's column) is in
+    // the halo, so DOWN is ∞ too. The only viable step is sideways to
+    // col 2 (outside halo). Greedy must NOT pick col 4 or 5 (in halo).
+    expect(next![0]).toBeLessThanOrEqual(2)
   })
 
   it('drills straight down through SOIL when the side detour is more expensive', () => {
