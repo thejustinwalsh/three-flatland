@@ -207,16 +207,13 @@ void main() {
   col += C_GOLD * smoothstep(0.55, 0.95, dirShade) * 0.35;
   col -= 0.10 * smoothstep(0.0, 0.5, 1.0 - dirShade);
 
-  // Vignette in canvas-edge space. Tracks canvas edges regardless of
-  // aspect: left + right fade across 0.7→1.0 (generous), bottom fades
-  // only across 0.9→1.0 (tight band right at the edge), top stays a
-  // hard edge so the hero meets the page header cleanly.
-  // vp.y is +1 at top, -1 at bottom; max(0, -vp.y) is non-zero only
-  // in the lower half.
+  // Vignette in canvas-edge space — left + right only (0.7→1.0 fade).
+  // Top stays a hard edge to meet the page header cleanly; the bottom
+  // is handled by `.hero-overlay::after`'s CSS linear-gradient alpha
+  // fade in index.mdx, which lands cleaner against the page bg than
+  // a shader-side vignette could.
   vec2 vp = uv * 2.0 - 1.0; // -1..1, NOT aspect-corrected
-  float vxAmt = smoothstep(0.7, 1.0, abs(vp.x));
-  float vyAmt = smoothstep(0.9, 1.0, max(0.0, -vp.y));
-  float v = 1.0 - max(vxAmt, vyAmt);
+  float v = 1.0 - smoothstep(0.7, 1.0, abs(vp.x));
   col = mix(C_BG, col, v);
 
   // ────────────────────────────────────────────────────────────────
