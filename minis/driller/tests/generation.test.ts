@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { generateChunk } from '../src/systems/generation'
 import { CHUNK_ROWS, PLAY_COLS } from '../src/constants'
-import { biomeAt, WORLD_LENGTH_ROWS } from '../src/biomes'
+import { biomeAt, isFreeFall, WORLD_LENGTH_ROWS } from '../src/biomes'
 import { isFixtureTile, TILE_AIR, TILE_SOIL } from '../src/traits'
 
 /**
@@ -264,6 +264,33 @@ describe('fixture placement pattern', () => {
               isTrap,
               `seed=${seed} chunkY=${chunkY} trap pocket at row=${r} cols=${lo}-${hi}: AIR enclosed by fixtures with no drillable escape`,
             ).toBe(false)
+          }
+        }
+      }
+    }
+  })
+
+  it('never generates a fixture in a void-band row', () => {
+    // The void is reserved for free-fall and the inter-biome gem shower.
+    // Fixtures, stones, and other structural features must stay inside
+    // the biome body. We scan all rows across many seeds + chunkY
+    // values that straddle the void boundary; any fixture tile in a
+    // free-fall row is a regression.
+    for (let seed = 1; seed <= 20; seed++) {
+      // Pick chunks that cover both body and void rows of a biome cycle.
+      // CHUNK_ROWS=32; WORLD_LENGTH_ROWS=205. chunkY values 3, 4, 5
+      // around biome 0's void band (rows ~150-204).
+      for (const chunkY of [3, 4, 5, 6, 7]) {
+        const c = generateChunk(seed, chunkY)
+        for (let r = 0; r < CHUNK_ROWS; r++) {
+          const absRow = chunkY * CHUNK_ROWS + r
+          if (!isFreeFall(absRow)) continue
+          for (let col = 0; col < PLAY_COLS; col++) {
+            const t = c.tiles[r * PLAY_COLS + col]
+            expect(
+              t === undefined || !isFixtureTile(t),
+              `seed=${seed} chunkY=${chunkY} row=${r} (absRow=${absRow}) col=${col}: fixture in void`,
+            ).toBe(true)
           }
         }
       }

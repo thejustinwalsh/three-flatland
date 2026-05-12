@@ -384,6 +384,18 @@ export function generateChunk(seed: number, chunkY: number): GeneratedChunk {
     const bandStart = topMargin + i * bandHeight
     const slack = Math.max(0, bandHeight - thickness - 1)
     const startRow = bandStart + rng.intRange(0, slack)
+    // Void-band guard: skip the placement if any row of the bounding
+    // box falls inside the world's void band. The void is reserved
+    // for free-fall and the gem shower between biomes; nothing
+    // structural generates there.
+    let touchesVoid = false
+    for (let r = startRow; r < startRow + thickness && r < rows; r++) {
+      if (isFreeFall(chunkY * rows + r)) {
+        touchesVoid = true
+        break
+      }
+    }
+    if (touchesVoid) continue
     // Stamp the FULL bounding box. Everything else hasn't been placed
     // yet, so the cells are all SOIL — no holes from cave/stone overlap
     // can occur. The driller cannot get trapped in a hole because
