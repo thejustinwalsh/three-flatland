@@ -32,26 +32,31 @@ export function planGreedy(world: World, d: DrillerCell): [number, number] | nul
   const grid = world.get(Grid)
   if (!grid) return null
   const { cols, rows, tiles } = grid
-  const below = (d.row + 1) * cols + d.col
-  if (d.row + 1 < rows && tiles[below] !== TILE_STONE && !isFixtureTile(tiles[below] ?? TILE_AIR)) {
-    return [d.col, d.row + 1]
+
+  // Stones aren't impassable — drill cadence breaks them in
+  // STONE_MAX_HITS=4 hits. Two-pass search: first prefer soft (AIR/SOIL)
+  // cells, then fall back to drilling through stones. Without the
+  // stone-aware fallback the driller dances sideways forever in front
+  // of any stone column instead of just punching through.
+  // Fixtures stay impassable; they cannot be drilled.
+  const canMove = (idx: number, includeStone: boolean): boolean => {
+    const t = tiles[idx] ?? TILE_AIR
+    if (isFixtureTile(t)) return false
+    if (!includeStone && t === TILE_STONE) return false
+    return true
   }
-  // Anti-oscillation: when forced into a sideways step (down is blocked),
-  // prefer the direction the driller is already FACING. Without this,
-  // the driller can flip-flop between two cells when both have a
-  // blocked-down state and the planner alternately picks left then right
-  // by static iteration order. Keying off facing means once the driller
-  // commits to a direction, it keeps going that way until that side
-  // becomes blocked too.
+  // Anti-oscillation: prefer facing direction when forced sideways.
   const order = d.facing === -1 ? [-1, 1] : [1, -1]
-  // First pass: prefer the facing direction.
-  for (const dc of order) {
-    const nc = d.col + dc
-    if (nc < 0 || nc >= cols) continue
-    const idx = d.row * cols + nc
-    const t = tiles[idx]
-    if (t !== undefined && t !== TILE_STONE && !isFixtureTile(t)) {
-      return [nc, d.row]
+  for (const includeStone of [false, true] as const) {
+    const belowIdx = (d.row + 1) * cols + d.col
+    if (d.row + 1 < rows && canMove(belowIdx, includeStone)) {
+      return [d.col, d.row + 1]
+    }
+    for (const dc of order) {
+      const nc = d.col + dc
+      if (nc < 0 || nc >= cols) continue
+      const idx = d.row * cols + nc
+      if (canMove(idx, includeStone)) return [nc, d.row]
     }
   }
   return null
@@ -280,9 +285,19 @@ export function selectPlanner(world: World): PlannerName {
  * mood-driven planner. Returns null if no hazard threat or driller
  * already safe.
  *
- * The driller's column is "threatened" if any non-landed Hazard is in
- * column ±1. Evasion target: a SOIL or AIR cell at the same row in
- * the closest non-threatened column.
+ * Two gating questions before fleeing:
+ *
+ *   1. Can the rock actually reach the driller? If there's anything
+ *      between the hazard and the driller in his column (soil/stone/
+ *      fixture), the rock will land on that — driller is safe. Without
+ *      this check the AI flees from offscreen rocks that can't possibly
+ *      hit him, producing a back-and-forth dance.
+ *
+ *   2. If a path IS open: weigh urgency (warning vs falling, vertical
+ *      distance) against anchor pull (mood.greed + closest-gem distance).
+ *      A greedy driller mid-gem-grab shouldn't bail on a 12-row-out
+ *      warning telegraph. A falling-phase rock directly overhead always
+ *      wins, regardless of mood.
  */
 export function planEvadeHazard(world: World, d: { col: number; row: number }): [number, number] | null {
   const grid = world.get(Grid)
@@ -290,14 +305,59 @@ export function planEvadeHazard(world: World, d: { col: number; row: number }): 
   const { cols, tiles } = grid
 
   const threatenedCols = new Set<number>()
-  let threatened = false
+  type DirectThreat = { row: number; phase: 'warning' | 'falling' }
+  let directThreat: DirectThreat | null = null
   world.query(Hazard).forEach((entity) => {
     const h = entity.get(Hazard)
     if (!h || h.phase === 'landed') return
+    // ±1 halo kept for flee-target preference (avoid landing zones on
+    // impact scatter) — but it's no longer a flee TRIGGER.
     for (let dc = -1; dc <= 1; dc++) threatenedCols.add(h.col + dc)
-    if (Math.abs(h.col - d.col) <= 1) threatened = true
+    if (h.col !== d.col) return
+    // Roof check: walk driller's column from one above driller up to
+    // the hazard's row. Any non-AIR cell catches the rock first.
+    const hazardRow = Math.max(0, Math.floor(h.py / TILE_PX))
+    let pathOpen = true
+    for (let r = d.row - 1; r > hazardRow; r--) {
+      const cell = tiles[r * cols + d.col]
+      if (cell !== undefined && cell !== TILE_AIR) {
+        pathOpen = false
+        break
+      }
+    }
+    if (!pathOpen) return
+    // Pick the most-urgent direct threat (falling > warning).
+    if (!directThreat || (h.phase === 'falling' && directThreat.phase === 'warning')) {
+      directThreat = { row: hazardRow, phase: h.phase }
+    }
   })
-  if (!threatened) return null
+  if (!directThreat) return null
+  // const capture preserves narrowing across the gem-query closure below.
+  const threat: DirectThreat = directThreat
+
+  // Falling phase: always flee — rock is committed, no time to dawdle.
+  // Warning phase: weigh urgency vs greed + gem anchor.
+  let shouldFlee = threat.phase === 'falling'
+  if (!shouldFlee) {
+    const mood = world.queryFirst(Mood)?.get(Mood)
+    const greed = mood?.greed ?? 0
+    let closestGemDist = Infinity
+    world.query(Gem).forEach((entity) => {
+      const g = entity.get(Gem)
+      if (!g || g.collected || g.scatteredUntilTick > 0) return
+      const dist = Math.abs(g.col - d.col) + Math.abs(g.row - d.row)
+      if (dist < closestGemDist) closestGemDist = dist
+    })
+    // Urgency: 5 rows above = ~0.83, 12 = ~0.25, 15+ = 0. Closer warning
+    // = more urgent because the driller has less time to relocate.
+    const verticalDist = Math.max(1, d.row - threat.row)
+    const urgency = Math.max(0, Math.min(1, (15 - verticalDist) / 12))
+    // Anchor: very-close gem (≤3) and high greed both pull toward staying.
+    const gemAnchor = closestGemDist <= 3 ? 0.7 : closestGemDist <= 6 ? 0.3 : 0
+    const anchor = gemAnchor + greed * 0.5
+    shouldFlee = urgency > anchor
+  }
+  if (!shouldFlee) return null
 
   // Search outward from driller for the closest passable column not under threat.
   for (let dist = 1; dist < cols; dist++) {
