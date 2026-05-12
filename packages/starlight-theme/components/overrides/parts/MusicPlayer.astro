@@ -293,12 +293,28 @@
                 this.loadSounds()
             })
 
-            // No scroll-to-hide — the popover stays pinned beneath the
-            // header (position: fixed at `top: --header-height + gap`),
-            // so it tracks with the chrome and reads as attached to the
-            // trigger button rather than as a transient toast. User
-            // dismisses via outside click, Escape, or clicking the
-            // trigger again (all browser-native via popover="auto").
+            // Auto-close on scroll. Re-opening at any scroll position
+            // re-anchors the popover at its CSS `top: --header-height +
+            // gap` (position: fixed via popover UA), so it always
+            // floats right under the header on reopen. Passive listener
+            // keeps scrolling smooth; the `:popover-open` check is O(1).
+            window.addEventListener(
+                'scroll',
+                () => {
+                    if (
+                        (this.popoverEl as HTMLElement & {
+                            matches: (s: string) => boolean
+                        }).matches(':popover-open')
+                    ) {
+                        try {
+                            ;(this.popoverEl as HTMLElement & {
+                                hidePopover: () => void
+                            }).hidePopover()
+                        } catch {}
+                    }
+                },
+                { passive: true, signal }
+            )
 
             // Manual pointer-tracking for the rim-glint. motion.ts'
             // global registry doesn't pick up the popover because it's
@@ -837,6 +853,12 @@
     .music-popover {
         --player-gem: var(--amethyst);
         --player-gem-low: var(--amethyst-low, var(--amethyst));
+        /* The `.u-light` utility on this element sets `position:
+         * relative` which overrides the popover UA's `position: fixed`,
+         * so without pinning here the popover would scroll with the
+         * document. Force fixed so the popover always anchors to the
+         * viewport (right under the sticky header) regardless of scroll. */
+        position: fixed;
         top: calc(var(--header-height, 3.5rem) + 0.5rem);
         right: calc(var(--spacing) * 6);
         bottom: auto;
