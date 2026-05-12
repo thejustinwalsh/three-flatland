@@ -223,7 +223,20 @@ class AudioBridge {
 
     private buildMusicBuffer(track: Track): AudioBuffer | null {
         if (!this.zzfxmModule) return null
-        const [left, right] = this.zzfxmModule.ZZFXM.build(track.instruments, track.patterns, track.sequence, track.bpm)
+        // Tracks ingested from zzfxm one-liners preserve elided params as
+        // `null` (JSON has no notion of array holes). ZzFX's positional
+        // defaults only trigger on `undefined`, so we coerce here. Numbers
+        // pass through untouched.
+        const denull = <T>(arr: T): T => {
+            if (Array.isArray(arr)) {
+                return arr.map((v) => (v === null ? undefined : Array.isArray(v) ? denull(v) : v)) as T
+            }
+            return arr
+        }
+        const instruments = denull(track.instruments) as unknown as number[][]
+        const patterns = denull(track.patterns) as unknown as number[][][]
+        const sequence = denull(track.sequence) as unknown as number[]
+        const [left, right] = this.zzfxmModule.ZZFXM.build(instruments, patterns, sequence, track.bpm)
         if (!left || left.length === 0) return null
         const length = left.length
         const buffer = this.ctx.createBuffer(2, length, this.zzfxmModule.ZZFXM.sampleRate)

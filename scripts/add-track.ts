@@ -1,0 +1,298 @@
+#!/usr/bin/env tsx
+/**
+ * add-track — ingest a `zzfxm(...)` one-liner exported from ZzFX Studio
+ * (https://thejustinwalsh.github.io/zzfx-studio) and append it to
+ * `docs/public/audio/tracks.json`. Run as `pnpm tracks:add` from repo
+ * root.
+ *
+ * Usage:
+ *   pnpm tracks:add                            # interactive — paste snippet on stdin
+ *   pnpm tracks:add path/to/song.js            # parse a file
+ *   pnpm tracks:add --id foil --title Foil --gem gold --credit "zzfx-studio" path/to/song.js
+ *
+ * Snippet shape (output of ZzFX Studio's "Copy Oneliner" / Export Code):
+ *   zzfxm([...instruments],[...patterns],[...sequence],bpm);
+ *   // or a // @zzfx-studio metadata comment + the same call below
+ *
+ * Parser strategy: locate `zzfxm(` then balanced-bracket walk through
+ * each of the four top-level arguments. Numeric-only contents mean
+ * `JSON.parse` can read each argument once isolated. NO `eval` — we
+ * don't execute the snippet.
+ */
+
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs'
+import { dirname, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { createInterface } from 'node:readline/promises'
+import { stdin as input, stdout as output } from 'node:process'
+
+const __dirname = dirname(fileURLToPath(import.meta.url))
+const REPO_ROOT = resolve(__dirname, '..')
+const TRACKS_PATH = resolve(REPO_ROOT, 'docs/public/audio/tracks.json')
+
+type Gem = 'gold' | 'ruby' | 'emerald' | 'diamond' | 'amethyst' | 'pink' | 'salmon' | 'turquoize'
+const GEM_VALUES: readonly Gem[] = ['gold', 'ruby', 'emerald', 'diamond', 'amethyst', 'pink', 'salmon', 'turquoize']
+
+type Track = {
+    id: string
+    title: string
+    credit?: string
+    gem?: Gem
+    bpm: number
+    instruments: number[][]
+    patterns: number[][][]
+    sequence: number[]
+}
+
+type TracksLibrary = {
+    version: 1
+    tracks: Track[]
+}
+
+type Args = {
+    file?: string
+    id?: string
+    title?: string
+    gem?: Gem
+    credit?: string
+    force: boolean
+}
+
+function parseArgs(argv: string[]): Args {
+    const args: Args = { force: false }
+    for (let i = 0; i < argv.length; i++) {
+        const a = argv[i]!
+        if (a === '--force') args.force = true
+        else if (a === '--id' && argv[i + 1]) args.id = argv[++i]
+        else if (a === '--title' && argv[i + 1]) args.title = argv[++i]
+        else if (a === '--gem' && argv[i + 1]) {
+            const v = argv[++i] as Gem
+            if (!GEM_VALUES.includes(v)) throw new Error(`Invalid gem '${v}'. Valid: ${GEM_VALUES.join(', ')}`)
+            args.gem = v
+        } else if (a === '--credit' && argv[i + 1]) args.credit = argv[++i]
+        else if (!a.startsWith('--')) args.file = a
+    }
+    return args
+}
+
+/** Normalize a JS array literal so JSON.parse can read it.
+ *
+ *   - Empty array slots (`,,`, `[,`, `,]`) → explicit `null`.
+ *     ZzFX/ZzFXM exports use array holes for elided default params
+ *     (the parameter array `[1,,.1,,1]` skips positions 2 and 4).
+ *   - Bare decimals (`.5`) → leading-zero form (`0.5`).
+ *   - Negative bare decimals (`-.5`) → `-0.5`.
+ *
+ * Operates on the textual array literal — does NOT evaluate. */
+function normalizeJsArrayLiteral(src: string): string {
+    let out = src
+    // Insert `null` for consecutive commas (repeated until none remain —
+    // a run of 3 commas would otherwise produce only 1 fill on a single
+    // pass).
+    while (/,\s*,/.test(out)) out = out.replace(/,(\s*),/g, ',$1null,$1')
+    // Leading hole: `[ ,` → `[null,`
+    out = out.replace(/\[(\s*),/g, '[$1null,')
+    // Trailing hole: `, ]` → `,null]`
+    out = out.replace(/,(\s*)\]/g, ',$1null]')
+    // Bare decimal: `.5` → `0.5`. Match where preceded by start, comma,
+    // bracket, whitespace, or operator (so we don't break e.g. `1.5`).
+    out = out.replace(/(^|[,\[\s\-+])\.(\d)/g, '$10.$2')
+    return out
+}
+
+/** Walk forward from `i` matching `open`/`close` brackets, return the
+ * index of the matching `close`. Throws if unbalanced. Ignores brackets
+ * inside string literals (zzfxm exports are number-only so we don't
+ * actually expect strings, but the guard is cheap). */
+function matchBracket(src: string, i: number, open: string, close: string): number {
+    let depth = 0
+    let inString: string | null = null
+    for (; i < src.length; i++) {
+        const ch = src[i]!
+        if (inString) {
+            if (ch === '\\') {
+                i++ // skip escaped char
+                continue
+            }
+            if (ch === inString) inString = null
+        } else if (ch === '"' || ch === "'") {
+            inString = ch
+        } else if (ch === open) {
+            depth++
+        } else if (ch === close) {
+            depth--
+            if (depth === 0) return i
+        }
+    }
+    throw new Error(`Unbalanced '${open}'`)
+}
+
+/** Parse the four-argument shape `zzfxm([...],[...],[...],N)`. Returns
+ * `[instruments, patterns, sequence, bpm]` — the four pieces ready to
+ * JSON.parse and assemble into a Track. */
+function parseZzfxmSnippet(src: string): {
+    instruments: number[][]
+    patterns: number[][][]
+    sequence: number[]
+    bpm: number
+} {
+    const callStart = src.search(/zzfxm\s*\(/)
+    if (callStart < 0) throw new Error('No `zzfxm(` call found in snippet.')
+    const parenOpen = src.indexOf('(', callStart)
+    const parenClose = matchBracket(src, parenOpen, '(', ')')
+    const argsStr = src.slice(parenOpen + 1, parenClose)
+
+    // Walk the three array args by matching `[` ... `]`, then the trailing BPM.
+    const arrays: string[] = []
+    let cursor = 0
+    while (arrays.length < 3) {
+        const lb = argsStr.indexOf('[', cursor)
+        if (lb < 0) throw new Error(`Expected 3 array arguments, found ${arrays.length}.`)
+        const rb = matchBracket(argsStr, lb, '[', ']')
+        arrays.push(argsStr.slice(lb, rb + 1))
+        cursor = rb + 1
+    }
+    const tail = argsStr.slice(cursor).replace(/^[\s,]+/, '').replace(/[\s,;]+$/, '')
+    const bpm = parseFloat(tail || '125')
+    if (!Number.isFinite(bpm)) throw new Error(`Could not parse BPM from '${tail}'.`)
+
+    const [instruments, patterns, sequence] = arrays.map((s, idx) => {
+        const normalized = normalizeJsArrayLiteral(s)
+        try {
+            return JSON.parse(normalized)
+        } catch (e) {
+            throw new Error(`Failed to JSON.parse argument ${idx + 1}: ${(e as Error).message}\nNormalized: ${normalized.slice(0, 200)}`)
+        }
+    }) as [number[][], number[][][], number[]]
+
+    return { instruments, patterns, sequence, bpm }
+}
+
+function validateShape(parsed: ReturnType<typeof parseZzfxmSnippet>): string | null {
+    const { instruments, patterns, sequence, bpm } = parsed
+    if (!Array.isArray(instruments) || instruments.length === 0) return 'instruments must be a non-empty array.'
+    for (const ins of instruments) {
+        if (!Array.isArray(ins)) return 'every instrument must be an array.'
+        // Holes/nulls are valid — they correspond to elided zzfx default params.
+        for (const v of ins) {
+            if (v !== null && typeof v !== 'number') return 'instrument values must be numbers or null (for default param).'
+        }
+    }
+    if (!Array.isArray(patterns) || patterns.length === 0) return 'patterns must be a non-empty array.'
+    for (const p of patterns) {
+        if (!Array.isArray(p)) return 'every pattern must be an array of channels.'
+        for (const ch of p) {
+            if (!Array.isArray(ch)) return 'every channel must be an array.'
+        }
+    }
+    if (!Array.isArray(sequence)) return 'sequence must be an array of pattern indices.'
+    for (const n of sequence) if (!Number.isInteger(n)) return 'sequence values must be integer pattern indices.'
+    if (!Number.isFinite(bpm) || bpm <= 0) return 'BPM must be a positive number.'
+    return null
+}
+
+function loadLibrary(): TracksLibrary {
+    if (!existsSync(TRACKS_PATH)) return { version: 1, tracks: [] }
+    try {
+        return JSON.parse(readFileSync(TRACKS_PATH, 'utf-8')) as TracksLibrary
+    } catch {
+        return { version: 1, tracks: [] }
+    }
+}
+
+function saveLibrary(lib: TracksLibrary): void {
+    mkdirSync(dirname(TRACKS_PATH), { recursive: true })
+    writeFileSync(TRACKS_PATH, JSON.stringify(lib, null, 2) + '\n', 'utf-8')
+}
+
+function slugify(s: string): string {
+    return s
+        .toLowerCase()
+        .replace(/[^\w\s-]/g, '')
+        .trim()
+        .replace(/\s+/g, '-')
+}
+
+async function readSnippet(args: Args): Promise<string> {
+    if (args.file) return readFileSync(args.file, 'utf-8')
+    // stdin mode — read until EOF
+    console.error('Paste your zzfxm(...) snippet, then press Ctrl-D:')
+    const chunks: Buffer[] = []
+    for await (const chunk of input) chunks.push(chunk as Buffer)
+    return Buffer.concat(chunks).toString('utf-8')
+}
+
+async function prompt(rl: ReturnType<typeof createInterface>, q: string, fallback?: string): Promise<string> {
+    const ans = await rl.question(fallback ? `${q} [${fallback}]: ` : `${q}: `)
+    return ans.trim() || fallback || ''
+}
+
+async function main(): Promise<void> {
+    const args = parseArgs(process.argv.slice(2))
+    const snippet = await readSnippet(args)
+    const parsed = parseZzfxmSnippet(snippet)
+    const shapeErr = validateShape(parsed)
+    if (shapeErr) {
+        console.error(`Error: ${shapeErr}`)
+        process.exitCode = 1
+        return
+    }
+
+    let title = args.title
+    let id = args.id
+    let gem = args.gem
+    let credit = args.credit
+
+    if (!title || !id || !gem) {
+        const rl = createInterface({ input, output })
+        title = title || (await prompt(rl, 'Track title'))
+        if (!title) {
+            console.error('Title is required.')
+            rl.close()
+            process.exitCode = 1
+            return
+        }
+        id = id || (await prompt(rl, 'Track id', slugify(title)))
+        const gemStr = gem || ((await prompt(rl, `Gem (${GEM_VALUES.join('|')})`, 'amethyst')) as Gem)
+        if (!GEM_VALUES.includes(gemStr as Gem)) {
+            console.error(`Invalid gem '${gemStr}'. Valid: ${GEM_VALUES.join(', ')}`)
+            rl.close()
+            process.exitCode = 1
+            return
+        }
+        gem = gemStr as Gem
+        credit = credit ?? (await prompt(rl, 'Credit', 'zzfx-studio'))
+        rl.close()
+    }
+
+    const track: Track = {
+        id: id!,
+        title: title!,
+        credit: credit || undefined,
+        gem: gem!,
+        bpm: parsed.bpm,
+        instruments: parsed.instruments,
+        patterns: parsed.patterns,
+        sequence: parsed.sequence,
+    }
+
+    const lib = loadLibrary()
+    const existingIdx = lib.tracks.findIndex((t) => t.id === track.id)
+    if (existingIdx >= 0 && !args.force) {
+        console.error(`Track with id '${track.id}' already exists. Use --force to overwrite.`)
+        process.exitCode = 1
+        return
+    }
+    if (existingIdx >= 0) lib.tracks[existingIdx] = track
+    else lib.tracks.push(track)
+
+    saveLibrary(lib)
+    console.error(
+        `${existingIdx >= 0 ? 'Updated' : 'Added'} '${track.id}' (${track.title}, gem=${track.gem}, bpm=${track.bpm}). Library now has ${lib.tracks.length} track(s).`
+    )
+}
+
+main().catch((err) => {
+    console.error(`Error: ${err instanceof Error ? err.message : String(err)}`)
+    process.exitCode = 1
+})

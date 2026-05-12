@@ -30,6 +30,7 @@
     "release": "turbo run build && changeset publish",
     "sync:pack": "tsx scripts/sync-pack.ts",
     "sync:pack:verify": "tsx scripts/sync-pack.ts --verify",
+    "tracks:add": "tsx scripts/add-track.ts",
     "sync:react": "tsx scripts/sync-react-subpaths.ts",
     "sync:react:verify": "tsx scripts/sync-react-subpaths.ts --verify",
     "sync:examples": "tsx scripts/sync-examples.ts",
