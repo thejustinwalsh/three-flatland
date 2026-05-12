@@ -184,8 +184,32 @@ export const FALL_INTERVAL_MS = 640
  */
 export const STONE_MAX_HITS = 4
 
-/** Explosive fuse — ticks from trigger to detonation (~0.5s @ 60Hz). */
-export const EXPLOSIVE_FUSE_TICKS = 30
+/**
+ * Explosive fuse — ticks from trigger to detonation.
+ *
+ * Tuned for a 5×5 explosion radius (EXPLOSION_RADIUS=2). To survive,
+ * the driller needs to move 3+ cells away in some direction. At 60Hz:
+ *
+ *   - Drilling SOIL costs DRILL_COOLDOWN_MS (180ms = 11 ticks) per cell.
+ *   - Walking through AIR costs ~stepIntervalForDepth (varies, ~12-30
+ *     ticks at depth, less in topsoil).
+ *
+ * Escaping 3 cells of mixed SOIL/AIR realistically takes 45-90 ticks
+ * (~0.75-1.5s). The fuse is set to 105 ticks (~1.75s) so the player
+ * has margin to plan a route AND execute it, without making bombs
+ * trivially safe.
+ *
+ * Positional context (not tuned via this constant, but worth noting):
+ *   - Bombs detonating ABOVE the driller leave AIR pockets that can
+ *     funnel falling rocks/collapses onto him later — secondary
+ *     hazard the player has to read.
+ *   - Bombs detonating BELOW the driller create downward pressure;
+ *     the safe direction is back the way he came (less progress).
+ *
+ * Bombs are a deep-biome mechanic, so the difficulty curve naturally
+ * scales with the player having already navigated earlier biomes.
+ */
+export const EXPLOSIVE_FUSE_TICKS = 105
 
 /** Explosion radius in cells (Chebyshev / king-move distance). 2 = 5×5 area. */
 export const EXPLOSION_RADIUS = 2
