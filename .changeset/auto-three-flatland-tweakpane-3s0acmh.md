@@ -5,15 +5,25 @@
 > Branch: mini-game-showcase
 > PR: https://github.com/thejustinwalsh/three-flatland/pull/59
 
+## `@three-flatland/tweakpane` changes
+
 ### New features
 
-- `usePaneRadioGrid` hook (react subpath) — inline button-bar selector backed by tweakpane essentials `radiogrid` blade; active-state affordance, deferred disposal pattern matching `usePaneButton`/`usePaneInput`
-- `PaneInputOptions` extended with `readonly` and `format` — create read-only monitors with custom value formatters via `usePaneInput`
+- `usePaneRadioGrid` React hook (`/react` subpath) — inline button-bar selector backed by tweakpane-plugin-essentials' `radiogrid` blade; deferred disposal + synchronous creation match `usePaneButton`/`usePaneInput` pattern
+- `PaneInputOptions` extended with `readonly` and `format` — allows readonly monitor bindings with custom formatters
+- `createPane` z-index fix: applies `z-index: 1000` to the `.tp-dfwv` body-level wrapper (not the inner pane root) so the pane correctly stacks above all overlays
 
 ### Bug fixes
 
-- z-index now applied to the `.tp-dfwv` wrapper element (not the inner pane root) so the panel stacks correctly above other page overlays
-- Checkbox hit target stretched to full control box size (`--cnt-usz` width/height); eliminates flaky pointer-events label-forwarding click failures
-- Checkbox surface styled to match other controls (rgba background, hover/focus/active states); check stroke turns accent color on `:checked`
+- Checkbox hit target: `.tp-ckbv_i` now stretches to the full `var(--cnt-usz)` box via explicit `width`/`height`; clicks land directly on the input without relying on flaky `<label>`→`<input>` forwarding under certain pointer-events/z-index combinations
+- Theme: checkbox box surface now uses `rgba(28,40,77,0.6)` with hover/focus/active parity; check stroke turns accent pink on `:checked`; default blended box was essentially invisible against the container background
 
-Adds `usePaneRadioGrid` for inline radio selection and extends `usePaneInput` with `readonly`/`format` options; fixes checkbox hit-target sizing and z-index stacking.
+### Example integration
+
+- Both React and Three.js slug-text examples migrated from Web Awesome to `@three-flatland/tweakpane` — Settings + Mode folders with identical parameter bindings in both examples
+- Stats monitor via `useStatsMonitor` / `stats.begin()`+`stats.end()` with `trackTimestamp: true` for GPU-time mode
+
+---
+
+Adds `usePaneRadioGrid`, readonly monitor support, and fixes checkbox reliability and z-index stacking for the tweakpane wrapper.
+
