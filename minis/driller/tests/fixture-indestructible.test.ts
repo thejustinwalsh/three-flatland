@@ -3,6 +3,7 @@ import { explosiveSystem } from '../src/systems/explosive'
 import {
   Driller,
   Explosive,
+  FLAG_FALLING,
   Grid,
   TILE_AIR,
   TILE_FIXTURE_BASE,
@@ -68,11 +69,10 @@ function tickThroughDetonation(world: ReturnType<typeof makeWorldFromGrid>): voi
 }
 
 describe('fixture indestructibility', () => {
-  it('explosive blast leaves fixture cells intact', () => {
-    // Layout: driller (D) west of explosive (X); fixture (F) directly
-    // east of the explosive within blast radius. Phase 2 G also rolled
-    // damaged stones (R = pre-damaged STONE) into the same survival
-    // class as fresh stones — explosives no longer destroy stones.
+  it('explosive blast leaves fixture cells intact (but destroys stones)', () => {
+    // Fixtures are the ONLY blast survivor — they're mother nature's
+    // anchor. Stones (including pre-damaged ones) are now destroyed
+    // by direct blast (new rule: bombs destroy rocks too).
     //
     //   . . . . . .
     //   # # # # # .
@@ -97,11 +97,9 @@ describe('fixture indestructibility', () => {
 
     tickThroughDetonation(world)
 
-    expect(grid.tiles[fixtureIdx]).toBe(TILE_FIXTURE_BASE) // SURVIVES
+    expect(grid.tiles[fixtureIdx]).toBe(TILE_FIXTURE_BASE) // fixture survives
     expect(grid.tiles[explosiveIdx]).toBe(TILE_AIR) // detonated
-    // Phase 2 G: stones (including damaged ones) survive explosions —
-    // the only ways to add hits to a stone are drill + fall-crush.
-    expect(grid.tiles[stoneIdx]).toBe(TILE_STONE)
+    expect(grid.tiles[stoneIdx]).toBe(TILE_AIR) // stone destroyed by direct blast
     // Surrounding soil within blast radius vaporized.
     expect(grid.tiles[1 * grid.cols + 2]).toBe(TILE_AIR)
     expect(grid.tiles[3 * grid.cols + 2]).toBe(TILE_AIR)
@@ -129,23 +127,49 @@ describe('fixture indestructibility', () => {
     }
   })
 
-  it('STONE within the blast radius also survives (anchor codex)', () => {
-    // Sanity: STONE is the OTHER survivor of an explosion. If a future
-    // refactor accidentally drops the stone-survival rule, this test
-    // catches it.
+  it('direct blast destroys stones and cascades the rest of the cluster as falling', () => {
+    // New bomb codex: direct blast kills the stone. Any other stone
+    // sharing a cluster id with a destroyed stone enters the falling
+    // state immediately (no shake telegraph) — the blast IS the
+    // warning. EXPLOSION_RADIUS=2, so a bomb at col 2 covers cols
+    // 0..4. Cluster spans cols 4..6 so col 4 is the direct hit and
+    // cols 5, 6 fall as cascade.
+    //
+    //   . . . . . . . . . .
+    //   # # # # # # # # # .
+    //   . D X . S S S . . .
+    //   # # # # # # # # # .
+    //   . . . . . . . . . .
     const world = makeWorldFromGrid([
-      '......',
-      '#####.',
-      '.DXS..',
-      '#####.',
-      '......',
+      '..........',
+      '##########',
+      '.DX.SSS...',
+      '##########',
+      '..........',
     ])
     spawnExplosiveAndDriller(world)
     const grid = world.get(Grid)!
-    const stoneIdx = 2 * grid.cols + 3
-    expect(grid.tiles[stoneIdx]).toBe(TILE_STONE)
+    const blasted = 2 * grid.cols + 4 // direct hit (within radius=2 of col 2)
+    const glommed1 = 2 * grid.cols + 5 // outside blast, shares cluster
+    const glommed2 = 2 * grid.cols + 6 // outside blast, shares cluster
+    expect(grid.tiles[blasted]).toBe(TILE_STONE)
+    expect(grid.tiles[glommed1]).toBe(TILE_STONE)
+    expect(grid.tiles[glommed2]).toBe(TILE_STONE)
+    // All three start with the same cluster id (set by the helper).
+    const cid = grid.clusterId[blasted]
+    expect(cid).not.toBe(0)
+    expect(grid.clusterId[glommed1]).toBe(cid)
+    expect(grid.clusterId[glommed2]).toBe(cid)
     tickThroughDetonation(world)
-    expect(grid.tiles[stoneIdx]).toBe(TILE_STONE)
+    // Direct hit gone.
+    expect(grid.tiles[blasted]).toBe(TILE_AIR)
+    // Glommed stones flagged FLAG_FALLING (no shake telegraph). The
+    // avalanche system isn't ticked in this test harness, so the
+    // tiles remain in place — but the flag is the contract.
+    expect(grid.tiles[glommed1]).toBe(TILE_STONE)
+    expect(grid.tiles[glommed2]).toBe(TILE_STONE)
+    expect((grid.flags[glommed1]! & FLAG_FALLING) !== 0).toBe(true)
+    expect((grid.flags[glommed2]! & FLAG_FALLING) !== 0).toBe(true)
   })
 
   it('SOIL outside the blast radius is untouched', () => {

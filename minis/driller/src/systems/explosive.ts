@@ -3,12 +3,15 @@ import {
   Driller,
   Explosive,
   FLAG_AUTOTILE_DIRTY,
+  FLAG_FALLING,
+  FLAG_SHAKING,
   GameState,
   Gem,
   Grid,
   TILE_AIR,
   TILE_EXPLOSIVE,
   TILE_SOIL,
+  TILE_STONE,
   isFixtureTile,
 } from '../traits'
 import {
@@ -34,7 +37,7 @@ export function explosiveSystem(world: World): void {
   if (!gs) return
   const grid = world.get(Grid)
   if (!grid) return
-  const { cols, rows, tiles, flags } = grid
+  const { cols, rows, tiles, flags, clusterId } = grid
   const drillerEntity = world.queryFirst(Driller)
   const driller = drillerEntity?.get(Driller)
 
@@ -67,7 +70,7 @@ export function explosiveSystem(world: World): void {
 
   // Pass 3: apply detonations. May chain-trigger neighbors which fire next tick.
   for (const det of detonations) {
-    detonate(world, det.col, det.row, cols, rows, tiles, flags)
+    detonate(world, det.col, det.row, cols, rows, tiles, flags, clusterId)
     // Chain: any other explosive in radius → triggered with 0 fuse.
     world.query(Explosive).forEach((entity) => {
       const e = entity.get(Explosive)!
@@ -96,7 +99,14 @@ function detonate(
   rows: number,
   tiles: Uint8Array,
   flags: Uint8Array,
+  clusterIdArr: Uint16Array,
 ): void {
+  // Track cluster ids whose stones the blast directly destroyed —
+  // every remaining stone glommed to those clusters drops INSTANTLY
+  // (FLAG_FALLING set; no shake telegraph). The avalanche system
+  // detects in-motion clusters via FLAG_FALLING and runs them through
+  // the fall path without the shake/settle gate.
+  const droppedClusters = new Set<number>()
   for (let dr = -EXPLOSION_RADIUS; dr <= EXPLOSION_RADIUS; dr++) {
     for (let dc = -EXPLOSION_RADIUS; dc <= EXPLOSION_RADIUS; dc++) {
       const c = col + dc
@@ -104,18 +114,35 @@ function detonate(
       if (c < 0 || c >= cols || r < 0 || r >= rows) continue
       const idx = r * cols + c
       const t = tiles[idx]!
-      // Codex: fixtures are indestructible — bombs cannot consume them.
-      // STONE also survives the blast (Phase 2 unification rolled the
-      // breakable TILE_ROCK into TILE_STONE; explosives don't ADD hits
-      // to stones — only drill + fall-crush do — so blasts now leave
-      // all stones intact). SOIL and chained EXPLOSIVE vaporize.
+      // Fixtures are indestructible — bombs cannot consume them.
       if (t === TILE_AIR) continue
       if (isFixtureTile(t)) continue
+      if (t === TILE_STONE) {
+        // Direct blast kills the stone outright. Record the cluster
+        // so the rest of the glom can be set to falling.
+        const cid = clusterIdArr[idx] ?? 0
+        if (cid !== 0) droppedClusters.add(cid)
+        tiles[idx] = TILE_AIR
+        clusterIdArr[idx] = 0
+        flags[idx] = ((flags[idx] ?? 0) & ~FLAG_FALLING & ~FLAG_SHAKING) | FLAG_AUTOTILE_DIRTY
+        markCellAndNeighborsDirty(world, c, r)
+        continue
+      }
       if (t === TILE_SOIL || t === TILE_EXPLOSIVE) {
         tiles[idx] = TILE_AIR
         flags[idx] = (flags[idx] ?? 0) | FLAG_AUTOTILE_DIRTY
         markCellAndNeighborsDirty(world, c, r)
       }
+    }
+  }
+  // Cascade: every remaining stone in any affected cluster starts
+  // falling immediately. No shake — the blast IS the warning.
+  if (droppedClusters.size > 0) {
+    for (let i = 0; i < clusterIdArr.length; i++) {
+      const cid = clusterIdArr[i] ?? 0
+      if (cid === 0 || !droppedClusters.has(cid)) continue
+      if (tiles[i] !== TILE_STONE) continue
+      flags[i] = ((flags[i] ?? 0) & ~FLAG_SHAKING) | FLAG_FALLING | FLAG_AUTOTILE_DIRTY
     }
   }
   // Vaporize gems in radius.
