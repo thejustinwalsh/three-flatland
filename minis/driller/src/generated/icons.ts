@@ -10,7 +10,9 @@ export const REGIONS = {
   "pet.happy": { x: 31, y: 1, w: 8, h: 8 },
   "pet.neutral": { x: 41, y: 1, w: 8, h: 8 },
   "pet.angry": { x: 51, y: 1, w: 8, h: 8 },
-  "timer": { x: 61, y: 1, w: 8, h: 8 },
-  "gem": { x: 71, y: 1, w: 8, h: 8 },
+  "pet.love": { x: 61, y: 1, w: 8, h: 8 },
+  "pet.warning": { x: 71, y: 1, w: 8, h: 8 },
+  "timer": { x: 81, y: 1, w: 8, h: 8 },
+  "gem": { x: 91, y: 1, w: 8, h: 8 },
 } as const
 export type IconName = keyof typeof REGIONS

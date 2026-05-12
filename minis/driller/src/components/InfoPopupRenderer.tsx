@@ -7,12 +7,14 @@ import {
   Driller,
   GameState,
   Gem,
-  Mood,
+  PetEvents,
   Pointer,
 } from '../traits'
 import {
   DRAG_COST_INTERVAL_TICKS,
   GEM_FADE_TICKS,
+  OVER_PET_THRESHOLD,
+  OVER_PET_WINDOW_TICKS,
   PET_PAUSE_TICKS,
   TILE_PX,
 } from '../constants'
@@ -192,23 +194,38 @@ function pickInfo(
       fillHex: '#ef4444',
     }
   }
-  // 2. Pet pause — bar = pause remaining; icon = mood.
+  // 2. Pet pause — bar = pause remaining; icon escalates with pet
+  //    count in the current window so the player gets explicit
+  //    feedback about how close they are to over-petting:
+  //      1 pet  → love     (positive reinforcement — first touch)
+  //      2 pets → happy    (still good, second touch)
+  //      3 pets → warning  (one more pet would over-pet — back off)
+  //      4+ pets → handled by OverPetRenderer (angry shake)
   const drillerEntity = world.queryFirst(Driller)
   const d = drillerEntity?.get(Driller)
   if (d && gs.tick < d.pausedUntilTick) {
     const remaining = d.pausedUntilTick - gs.tick
-    const m = drillerEntity?.get(Mood)
-    let iconName: IconName = 'pet.neutral'
-    if (m) {
-      if (m.fear > 0.6) iconName = 'pet.angry'
-      else if (m.trust > 5) iconName = 'pet.happy'
+    const pe = drillerEntity?.get(PetEvents)
+    const inWindow = pe
+      ? pe.recentTicks.filter((t) => gs.tick - t <= OVER_PET_WINDOW_TICKS).length
+      : 0
+    let iconName: IconName = 'pet.happy'
+    let fillHex = '#f472b6'
+    if (inWindow >= OVER_PET_THRESHOLD) {
+      // 3rd pet — one more would over-pet.
+      iconName = 'pet.warning'
+      fillHex = '#fbbf24' // amber
+    } else if (inWindow === 1) {
+      iconName = 'pet.love'
+    } else {
+      iconName = 'pet.happy'
     }
     return {
       col: d.col,
       row: d.row,
       iconName,
       fill: remaining / PET_PAUSE_TICKS,
-      fillHex: '#f472b6',
+      fillHex,
     }
   }
   // 3. Held paint — bar = gem runway at current burn rate.

@@ -11,6 +11,7 @@ import {
   Gem,
   Grid,
   Mood,
+  OverPetIndicator,
   PetEvents,
   Pointer,
   SaggingChunk,
@@ -212,13 +213,17 @@ function doPet(world: World): boolean {
   if (pruned.length > OVER_PET_THRESHOLD) {
     // Over-pet: fear spikes, pause is INSTANTLY cleared so the driller
     // bolts. The mood-driven planner now sees high fear and routes via
-    // cautious — the practical effect of "fleeing the touch".
+    // cautious — the practical effect of "fleeing the touch". Spawn
+    // a brief angry-shake indicator at the driller's cell so the
+    // player sees WHY the driller bolted.
     const next = applyMoodEvent(
       { greed: moodTrait.greed, fear: moodTrait.fear, drive: moodTrait.drive },
       'over-pet',
     )
     drillerEntity.set(Mood, next)
+    const dNow = drillerEntity.get(Driller)!
     drillerEntity.set(Driller, { pausedUntilTick: 0, petPauseQueuedTicks: 0 })
+    world.spawn(OverPetIndicator({ col: dNow.col, row: dNow.row, startTick: gs.tick }))
     return true
   }
   // Regular pet: stops the driller in place for PET_PAUSE_TICKS — but

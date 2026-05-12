@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { commitAction } from '../src/systems/input'
-import { Driller, GameState, Mood, PetEvents } from '../src/traits'
+import { Driller, GameState, Mood, OverPetIndicator, PetEvents } from '../src/traits'
 import { OVER_PET_THRESHOLD, PET_COST, PET_PAUSE_TICKS } from '../src/constants'
 import { makeWorldFromGrid } from './_world-helper'
 
@@ -69,6 +69,21 @@ describe('doPet', () => {
     const m = world.queryFirst(Mood)!.get(Mood)!
     expect(d.pausedUntilTick).toBe(0) // instant unpause on over-pet
     expect(m.fear).toBeGreaterThan(0.1) // fear bumped above baseline
+  })
+
+  it('over-pet spawns an OverPetIndicator entity at the driller cell', () => {
+    const world = makeWorld()
+    world.set(GameState, { gems: 99 })
+    for (let i = 0; i < OVER_PET_THRESHOLD + 1; i++) commitAction(world, 'pet', null)
+    const d = world.queryFirst(Driller)!.get(Driller)!
+    let found: { col: number; row: number } | null = null
+    world.query(OverPetIndicator).forEach((entity) => {
+      const p = entity.get(OverPetIndicator)!
+      found = { col: p.col, row: p.row }
+    })
+    expect(found).not.toBeNull()
+    expect(found!.col).toBe(d.col)
+    expect(found!.row).toBe(d.row)
   })
 
   it('pet while airborne queues the pause instead of pausing mid-fall', () => {

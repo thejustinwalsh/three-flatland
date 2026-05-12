@@ -117,6 +117,12 @@ export const OVER_PET_THRESHOLD = 3
 export const PET_COST = 1
 /** Driller pause duration per non-over-pet pet, in ticks (~1s @ 60Hz). */
 export const PET_PAUSE_TICKS = 60
+/**
+ * Lifetime of the over-pet "angry shake" indicator, in ticks
+ * (~0.33s @ 60Hz). The renderer oscillates the icon horizontally
+ * over this window before the entity destroys itself.
+ */
+export const OVER_PET_SHAKE_TICKS = 20
 
 /** Gem cost per cell-tick of paint (continuous, while button held). */
 export const PAINT_COST_PER_TICK = 1

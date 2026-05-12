@@ -71,6 +71,20 @@ export const GemSpendPopup = trait({
 })
 
 /**
+ * Brief "you over-petted me" indicator. Spawned when the player taps
+ * the driller past the over-pet threshold; renders an angry mood
+ * icon over the driller's cell with horizontal shake for
+ * `OVER_PET_SHAKE_TICKS` ticks, then destroys itself. Conveys
+ * cursor-rejection: the pause is instantly cleared (driller bolts)
+ * but the visual confirms WHY.
+ */
+export const OverPetIndicator = trait({
+  col: 0,
+  row: 0,
+  startTick: 0,
+})
+
+/**
  * Sliding window of recent pet ticks. If size > OVER_PET_THRESHOLD within
  * OVER_PET_WINDOW_TICKS, the next pet flips polarity to annoyance: Fear ↑,
  * AI scoots, Animation = 'trip'.

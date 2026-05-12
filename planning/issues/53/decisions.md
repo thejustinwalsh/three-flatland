@@ -591,3 +591,30 @@ Each site previously called `world.set(GameState, { gems: gs.gems - X })` direct
 - That material wraps a 1×1 white pixel texture, which is exactly what a flat tinted bar needs. No new material; no new texture upload.
 
 **Verification:** Typecheck clean. 186/186 unit tests pass. No new tests — this is pure renderer code (no commitable state mutation) and the underlying state (Drag, Driller, Pointer, Gem) is already tested in earlier suites.
+
+## In-canvas feedback HUD — Phase 5 (pet mood icon + over-pet shake)
+**File:** `minis/driller/src/{traits/input-traits.ts,constants.ts,systems/{input.ts,gem-spend.ts},components/{InfoPopupRenderer.tsx,OverPetRenderer.tsx,Scene.tsx},generated/icons.{png,ts}}`, `tests/pet.test.ts`
+**Date:** 2026-05-12
+
+**Decision:** Pet feedback escalates over the pet count within the window so the player gets positive reinforcement on the way in AND an explicit warning before crossing the over-pet line.
+
+**Per-pet-count icon (rendered by InfoPopupRenderer while paused):**
+- 1 pet → `pet.love` (❤️, pink bar) — positive first-touch reinforcement
+- 2 pets → `pet.happy` (😊, pink bar)
+- 3 pets → `pet.warning` (⚠️, amber bar) — "one more pet would be too many"
+- 4+ pets → over-pet path: pause cleared, `OverPetIndicator` spawned
+
+**Over-pet visual:** A new entity-based trait `OverPetIndicator({col, row, startTick})` spawns in `doPet`'s over-pet branch. `OverPetRenderer` draws an `pet.angry` (😠) icon over the driller's cell with horizontal sine shake (5 cycles, 2px peak, dampening across `OVER_PET_SHAKE_TICKS=20` ticks ~ 0.33s). The shared `gemSpendPopupSystem` reaps these past TTL (extended to handle both popup types).
+
+**Why a separate renderer (not folded into InfoPopupRenderer):**
+- The over-pet visual fires AFTER the pause is cleared, when InfoPopupRenderer has no pet to show.
+- The shake animation is unique to over-pet and doesn't fit the icon+bar layout.
+- Multiple entities possible if the player rapid-fires over-pets (rare but supported with a 4-slot pool).
+
+**Icon sheet update:** Re-baked `icons.png` with two new entries:
+- `pet.love=❤️`
+- `pet.warning=⚠️`
+
+Total icons in sheet: 10. Sheet dimensions unchanged at 128×16 (it already had room).
+
+**Verification:** `tests/pet.test.ts` extended with an OverPetIndicator-spawn case. 187/187 unit tests pass; typecheck clean.

@@ -1,6 +1,10 @@
 import type { World } from 'koota'
-import { GameState, GemSpendPopup } from '../traits'
-import { GEM_SPEND_POPUP_STACK_WINDOW, GEM_SPEND_POPUP_TTL_TICKS } from '../constants'
+import { GameState, GemSpendPopup, OverPetIndicator } from '../traits'
+import {
+  GEM_SPEND_POPUP_STACK_WINDOW,
+  GEM_SPEND_POPUP_TTL_TICKS,
+  OVER_PET_SHAKE_TICKS,
+} from '../constants'
 
 /**
  * Deduct gems AND spawn (or stack) a floating "-N + gem" popup at the
@@ -37,6 +41,8 @@ export function spendGems(world: World, amount: number, col: number, row: number
 
 /**
  * Destroy popups past their TTL. Runs unconditionally each tick.
+ * Also reaps over-pet indicator entities once their shake window
+ * elapses (they share the same lifecycle pattern).
  */
 export function gemSpendPopupSystem(world: World): void {
   const gs = world.get(GameState)
@@ -44,5 +50,9 @@ export function gemSpendPopupSystem(world: World): void {
   world.query(GemSpendPopup).forEach((entity) => {
     const p = entity.get(GemSpendPopup)!
     if (gs.tick - p.startTick >= GEM_SPEND_POPUP_TTL_TICKS) entity.destroy()
+  })
+  world.query(OverPetIndicator).forEach((entity) => {
+    const p = entity.get(OverPetIndicator)!
+    if (gs.tick - p.startTick >= OVER_PET_SHAKE_TICKS) entity.destroy()
   })
 }
