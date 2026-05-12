@@ -7,31 +7,25 @@
 
 ### Docs site footer
 
-- Added `SiteFooter` component: brand lockup (FL | Flatland), three link columns (Docs, Packages, Community), version row, gem-tinted section headings, foil rule accent -- renders on every page including examples
-- Added `lib/packages.ts`: shared build-time workspace-package discovery drives both the footer Packages column and the landing alpha-ribbon from a single source; suppresses badges that match project baseline to reduce noise
-- `packages/three-flatland/package.json`: added `flatland.badge="Alpha"` field used by the alpha-ribbon component
-- Header wordmark: removed +2px vertical offset so it baseline-aligns with surrounding header text
-- Removed legacy `[data-slot=footer-text]` CSS rules
-
-### API reference routing
-
-- Added `typedoc-plugins/strip-index-links.mjs`: remark plugin that strips trailing `/index/` from generated TypeDoc link URLs, ensuring per-module index pages resolve to their directory root
-- `astro.config.mjs`: set `entryFileName=index`, wired `stripIndexLinks` remark plugin, set `starlight.description` (feeds footer tagline and `<meta>` description), cleared `footerText`
-- `SidebarSublist`: API ref nested groups are now always-open via `forceCollapsable` cascade -- full API tree visible on any API reference page
+- Added `SiteFooter` component: brand lockup, three link columns (Docs, Packages, Community), version row with gem-tinted headings and per-section hover colors
+- Added `lib/packages.ts`: build-time workspace-package discovery shared between footer Packages column and landing alpha ribbon; suppresses badges matching project-wide baseline
+- API reference links now resolve to directory roots — new `strip-index-links` remark plugin strips trailing `/index/` segments; `entryFileName: 'index'` set in TypeDoc config
+- API reference sidebar groups always-open on any API page via `forceCollapsable` cascade in `SidebarSublist`
+- Site `<meta description>` now populated from `starlight.description`; removed legacy AI-disclaimer `footerText`
+- Header wordmark vertical offset removed; aligns with header baseline
 
 ### Landing page copy
 
-- Section heading: "Built into three.js, not on top of it" -> "Built for three.js" (previous wording implied an upstream fork/PR relationship)
-- VP1 opener: reworded to drop false-universal categorical claim about all 2D rendering libraries
-- Hero subtagline: replaced em-dash construction with two short declaratives
-- StatsBanner: updated sprite count from 10K+ to 20K+
-- `HeroShader.tsx`: removed side vignette; gem flow now runs edge-to-edge
+- Hero subtagline: em-dash removed, split into two declaratives
+- Section heading "Built into three.js" corrected to "Built for three.js"
+- VP1 opener reframed to avoid false-universal categorical claim
+- StatsBanner sprite count updated: 10K+ → 20K+
+- Hero shader side vignette removed; gem flow runs edge-to-edge
 
-### StatsBanner gem colors
+### StatsBanner gem accents
 
-- Re-enabled the `color` prop on `StatsBanner` stats (was deprecated/ignored, causing all stats to render in `--foreground`)
-- `color` now resolves through the same `legacyToGem` table used by `FeatureCard` and `ValueProp`
-- Stat value text rendered with a 65/35 gem-foreground mix plus a soft gem-tinted `text-shadow` glow for legibility
-- Each stat gets a gem-tinted hairline underline (gradient fading right) so the four stats read as a colored chord across the row
+- `color` prop on `StatsBanner` stats re-enabled (was accepted but ignored)
+- Conventional color names (`cyan`, `blue`, `green`, etc.) map to gem equivalents via `legacyToGem` table; existing MDX call sites unchanged
+- Stat value text tinted with gem color; each stat has a gem-tinted hairline underline (gradient fading right) so the four stats read as a colored chord across the row
 
-Adds a proper docs site footer with workspace-aware package discovery, fixes API reference link routing, tightens landing copy, and restores per-stat gem color accents in the stats banner.
+Adds a structured site footer, fixes API reference URL routing, refreshes landing copy for accuracy, and restores gem accent colors to the stats strip.
