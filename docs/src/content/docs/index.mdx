@@ -214,6 +214,49 @@ function Game() {
 
 <style>
 {`
+  /* Hero stays dark-mode regardless of the site-wide theme.
+     The hero canvas is a near-black gem-flow shader; the H1, eyebrow,
+     subtagline, and CTAs are all tuned to read against that surface.
+     In light mode the surrounding page goes paper-toned, but the hero
+     itself must stay on its own dark stage so the typography halos and
+     gem-tinted highlights still land.
+
+     Token override — mirror the dark-mode :root tokens that the hero
+     subtree consumes (background, foreground, muted-foreground, the
+     gem palette for eyebrow + buttons, plus the link-button surface
+     tokens like --card and --primary-foreground). Only listed tokens
+     are overridden; tokens we do NOT use (sidebar, popover, etc.) are
+     left to inherit from the active site theme. */
+  :root[data-theme='light'] .hero-fullscreen {
+    --background: oklch(18% 0.006 250);
+    --foreground: oklch(92% 0.008 250);
+    --muted-foreground: oklch(68% 0.011 250);
+    --card: oklch(20% 0.008 250);
+    --border: oklch(28% 0.008 245);
+    --primary: oklch(63% 0.24 295);
+    --primary-foreground: oklch(99% 0 0);
+    --secondary: oklch(24% 0.010 250);
+    --secondary-foreground: oklch(92% 0.008 250);
+    /* Gems re-tuned to their dark-mode vibrant values (light-mode
+       palette runs darker for paper-bg legibility, which kills the
+       eyebrow + CTA halos against the dark canvas). */
+    --gold: oklch(72% 0.16 85);
+    --gold-high: oklch(82% 0.17 88);
+    --gold-low: oklch(34% 0.10 80);
+    --diamond: oklch(75% 0.15 215);
+    --amethyst: oklch(63% 0.24 295);
+    --link: oklch(75% 0.15 215);
+    --link-hover: oklch(85% 0.13 215);
+    /* Hero-to-page fade: the canvas is dark but the page below is
+       paper. The fade meets the page bg, not the overridden hero bg.
+       Light-mode fade is 12% — about half of the prior 20% (which was
+       already shorter than dark mode's 33%). The dark→paper contrast
+       carries the transition; a smaller fade band reads as a crisp
+       horizon line rather than a long wash. Dark mode unchanged. */
+    --hero-fade-end: oklch(98% 0.008 80);
+    --hero-fade-height: 12%;
+  }
+
   /* Half-viewport hero — canvas extends UP behind the transparent
      site header so the gem flow reads as one uninterrupted plane
      from the very top of the viewport down to the hero's end.
@@ -257,19 +300,24 @@ function Game() {
     z-index: 2;
   }
   /* Bottom-fade gradient masks the canvas to the page background so the
-     transition into the .page-body content reads as a soft horizon. */
+     transition into the .page-body content reads as a soft horizon.
+     Uses --hero-fade-end (NOT --background) because the hero's
+     darkmode-lock override redefines --background to the dark value;
+     the fade needs to meet the actual page below, which is paper in
+     light mode and near-black in dark mode. See the
+     [data-theme='light'] block below for the light-mode override. */
   .hero-overlay::after {
     content: '';
     position: absolute;
     left: 0;
     right: 0;
     bottom: 0;
-    height: 33%;
+    height: var(--hero-fade-height, 33%);
     background: linear-gradient(
       to bottom,
       transparent 0%,
-      color-mix(in oklab, var(--background) 70%, transparent) 60%,
-      var(--background) 100%
+      color-mix(in oklab, var(--hero-fade-end, var(--background)) 70%, transparent) 60%,
+      var(--hero-fade-end, var(--background)) 100%
     );
     pointer-events: none;
   }

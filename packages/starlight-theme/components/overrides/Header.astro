@@ -219,8 +219,45 @@ const shouldRenderSearch =
                     );
                 }
             }
+
+            /* Landing + light-mode only: the hero stays dark beneath a
+             * transparent header, so header text needs the dark-mode
+             * white at scroll=0 and must fade to the light-mode dark
+             * foreground as the chrome opacifies past ~96px.
+             *
+             * Selector strategy: scope to `[data-theme='light']` +
+             * `[data-landing]` so docs pages in light mode are
+             * untouched (their bg is already paper, header text is
+             * already dark). Animate `color` on the wordmark and nav
+             * links — these are bare text drawn directly on the hero
+             * canvas. Skip the Search and theme-select buttons since
+             * they have their own light-pill backgrounds that already
+             * provide local contrast for the dark text. Animating
+             * those would put white text on white pills at scroll=0.
+             * Same scroll timeline as the chrome fade — crossfades in
+             * lockstep. */
+            :global(:root[data-theme='light'] [data-slot='layout'][data-landing] > header .title-text),
+            :global(:root[data-theme='light'] [data-slot='layout'][data-landing] > header .header-nav a),
+            :global(:root[data-theme='light'] [data-slot='layout'][data-landing] > header nav a) {
+                animation: hdr-text-light-fade linear both;
+                animation-timeline: scroll(root);
+                animation-range: 0 96px;
+            }
+            @keyframes hdr-text-light-fade {
+                from {
+                    color: oklch(92% 0.008 250);
+                }
+                to {
+                    color: var(--foreground);
+                }
+            }
         }
     }
+
+    /* Reduced-motion / unsupported scroll-driven: pin header text to
+     * the final (light-mode foreground) state on landing in light mode.
+     * Default rendering already does this since the natural CSS color
+     * is var(--foreground); no override needed. */
 </style>
 
 <style is:global>

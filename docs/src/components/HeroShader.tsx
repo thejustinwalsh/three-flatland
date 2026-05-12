@@ -52,17 +52,35 @@ uniform float u_press_time;  // seconds since current press began (0 when not pr
 uniform float u_scene_angle; // radians
 uniform float u_pixel_size;  // device pixels per "big pixel" (4 * DPR)
 
+// Gem palette — seeded from CSS tokens at runtime (and re-seeded on
+// theme change) so the shader tracks the active mode's gem tuning.
+// Light + dark modes use different OKLCH tokens (see theme.css); JS
+// converts OKLab→linear sRGB→gamma-encoded sRGB and uploads as uniforms.
+// The OVERLAY UI is dark-mode locked (see .hero-fullscreen overrides in
+// index.mdx) but the canvas behind it shifts gem hue with the theme.
+// u_bg is intentionally a separate uniform — kept dark always so the
+// dark-mode overlay text remains readable. Override its source in JS
+// if the shader is ever meant to fully theme-track.
+uniform vec3 u_gold;
+uniform vec3 u_ruby;
+uniform vec3 u_emerald;
+uniform vec3 u_diamond;
+uniform vec3 u_amethyst;
+uniform vec3 u_pink;
+uniform vec3 u_salmon;
+uniform vec3 u_bg;
+
 out vec4 fragColor;
 
-// Gem palette — bearded-theme-inspired vibrancy.
-const vec3 C_GOLD     = vec3(0.78, 0.57, 0.05);
-const vec3 C_RUBY     = vec3(0.78, 0.18, 0.32);
-const vec3 C_EMERALD  = vec3(0.00, 0.66, 0.52);
-const vec3 C_DIAMOND  = vec3(0.07, 0.72, 0.83);
-const vec3 C_AMETHYST = vec3(0.66, 0.37, 0.95);
-const vec3 C_PINK     = vec3(0.83, 0.43, 0.75);
-const vec3 C_SALMON   = vec3(0.89, 0.33, 0.21);
-const vec3 C_BG       = vec3(0.067, 0.078, 0.094);
+// Alias for readability — these were "const vec3 C_*" before.
+#define C_GOLD     u_gold
+#define C_RUBY     u_ruby
+#define C_EMERALD  u_emerald
+#define C_DIAMOND  u_diamond
+#define C_AMETHYST u_amethyst
+#define C_PINK     u_pink
+#define C_SALMON   u_salmon
+#define C_BG       u_bg
 
 // IQ's classic 2D simplex-ish hash + value noise (cheap, smooth).
 float hash(vec2 p) {
@@ -257,17 +275,18 @@ void main() {
   col = clamp(quantized, 0.0, 1.0) * maxBrightness;
 
   // ────────────────────────────────────────────────────────────────
-  // PRESS VOID — pure-black hole at cursor when pressed. Applied
-  // AFTER posterize so the hole is dither-free black, not a
-  // dithered dark patch. Combined with the press-amplified push
-  // above, the visual is: gems flow away from finger/cursor + a
-  // crisp black circle appears underneath. Releases as the finger
-  // lifts (u_press eases to 0 over ~150ms).
+  // PRESS VOID — bg-colored hole at cursor when pressed. Applied
+  // AFTER posterize so the hole is dither-free, not a dithered patch.
+  // Mixes back to u_bg (theme-aware) rather than pure-black so the
+  // hole reads as "back to the surface, no gems" in light mode too —
+  // a pure-black void on the lifted charcoal bg would look like a
+  // separate darker plane underneath instead of a clean punch.
+  // Releases as the finger lifts (u_press eases to 0 over ~150ms).
   // ────────────────────────────────────────────────────────────────
   float voidRadius = 0.45;
   float voidMask = 1.0 - smoothstep(0.0, voidRadius, md);
   voidMask = pow(voidMask, 2.5) * u_press;
-  col = mix(col, vec3(0.0), voidMask);
+  col = mix(col, u_bg, voidMask);
 
   fragColor = vec4(col, 1.0);
 }
@@ -324,6 +343,130 @@ void main() {
     const uSceneAngle = gl.getUniformLocation(prog, 'u_scene_angle')
     const uPixelSize = gl.getUniformLocation(prog, 'u_pixel_size')
 
+    /* `root` — shared shorthand for the documentElement. Hosts both the
+     * `--scene-angle` CSS var (driven by motion.ts) and the gem tokens
+     * (--gold, --diamond, etc.) plus the `data-theme` attribute. Declared
+     * here so the gem-uniform block below + readSceneAngleRad below + the
+     * MutationObserver can all share one reference. */
+    const root = document.documentElement
+
+    // ────────────────────────────────────────────────────────────────
+    // Gem palette uniforms — seeded from CSS gem tokens (OKLCH) at
+    // init AND re-seeded whenever the active theme changes. The
+    // OVERLAY UI is dark-mode locked, but the canvas gem flow tracks
+    // whichever mode the page is in, since light + dark have
+    // intentionally different OKLCH tunings (see theme.css).
+    //
+    // u_bg is a special case: kept on the dark-mode background ALWAYS
+    // so the dark-mode-locked overlay text stays readable against the
+    // canvas. If the shader is ever meant to fully theme-track, change
+    // bgFallback below to read from --background instead.
+    // ────────────────────────────────────────────────────────────────
+    const gemUniforms = {
+      gold:     gl.getUniformLocation(prog, 'u_gold'),
+      ruby:     gl.getUniformLocation(prog, 'u_ruby'),
+      emerald:  gl.getUniformLocation(prog, 'u_emerald'),
+      diamond:  gl.getUniformLocation(prog, 'u_diamond'),
+      amethyst: gl.getUniformLocation(prog, 'u_amethyst'),
+      pink:     gl.getUniformLocation(prog, 'u_pink'),
+      salmon:   gl.getUniformLocation(prog, 'u_salmon'),
+      bg:       gl.getUniformLocation(prog, 'u_bg'),
+    }
+
+    /** Fallback sRGB triplets — match the dark-mode OKLCH tokens, so
+     * if a `getComputedStyle` read fails (e.g., CSS variable not yet
+     * resolved during the first paint) the shader still renders in a
+     * sensible palette instead of showing a pure-black canvas. */
+    const fallback: Record<string, [number, number, number]> = {
+      gold:     [0.824, 0.605, 0.000],
+      ruby:     [0.922, 0.237, 0.402],
+      emerald:  [0.000, 0.765, 0.546],
+      diamond:  [0.000, 0.770, 0.912],
+      amethyst: [0.598, 0.358, 1.000],
+      pink:     [0.911, 0.459, 0.775],
+      salmon:   [0.954, 0.337, 0.182],
+      bg:       [0.061, 0.070, 0.079],
+    }
+
+    /** Light-mode shader background — charcoal lifted clearly off pure
+     * void so the hero surface reads as "dark plane, deliberately," not
+     * "black hole." Hue matches the dark-mode bg family (250) but at
+     * OKLCH L=42%, which leaves enough contrast headroom for the
+     * dark-mode-locked overlay text (white-ish) to stay 4.5:1 readable
+     * while the surface itself is obviously gray, not black. Computed
+     * from oklch(42% 0.006 250). */
+    const bgLight: [number, number, number] = [0.292, 0.302, 0.313]
+
+    /** Parse `oklch(L% C H[ / A])` to [L%, C, H°]. Returns null on miss. */
+    function parseOklch(value: string): [number, number, number] | null {
+      const m = /oklch\(\s*([\d.]+)%?\s+([\d.]+)\s+([\d.]+)/i.exec(value)
+      if (!m) return null
+      return [parseFloat(m[1]), parseFloat(m[2]), parseFloat(m[3])]
+    }
+
+    /** OKLCH → gamma-encoded sRGB (0..1 floats). Uses the standard
+     * OKLab→linear-sRGB matrix and the sRGB transfer function. */
+    function oklchToSrgb(Lpct: number, C: number, Hdeg: number): [number, number, number] {
+      const L = Lpct / 100
+      const H = (Hdeg * Math.PI) / 180
+      const a = C * Math.cos(H)
+      const b = C * Math.sin(H)
+      const l_ = L + 0.3963377774 * a + 0.2158037573 * b
+      const m_ = L - 0.1055613458 * a - 0.0638541728 * b
+      const s_ = L - 0.0894841775 * a - 1.291485548 * b
+      const ll = l_ * l_ * l_
+      const mm = m_ * m_ * m_
+      const ss = s_ * s_ * s_
+      const r  =  4.0767416621 * ll - 3.3077115913 * mm + 0.2309699292 * ss
+      const g  = -1.2684380046 * ll + 2.6097574011 * mm - 0.3413193965 * ss
+      const bl = -0.0041960863 * ll - 0.7034186147 * mm + 1.7076147010 * ss
+      const comp = (x: number): number => {
+        if (x <= 0) return 0
+        if (x >= 1) return 1
+        return x <= 0.0031308 ? 12.92 * x : 1.055 * Math.pow(x, 1 / 2.4) - 0.055
+      }
+      return [comp(r), comp(g), comp(bl)]
+    }
+
+    /** Read a CSS gem token, convert to sRGB. */
+    function readGemSrgb(name: string): [number, number, number] {
+      const raw = getComputedStyle(root).getPropertyValue(`--${name}`).trim()
+      const parsed = parseOklch(raw)
+      if (!parsed) return fallback[name]
+      return oklchToSrgb(parsed[0], parsed[1], parsed[2])
+    }
+
+    /** Seed all gem uniforms from CSS. u_bg switches between dark and
+     * light variants based on the active theme — dark mode uses the
+     * page's near-black bg, light mode uses a lifted charcoal so the
+     * shader surface reads as a soft dark plane against the paper page
+     * rather than a hard black void. */
+    function updateGemUniforms() {
+      gl.useProgram(prog)
+      const set = (name: keyof typeof gemUniforms, rgb: [number, number, number]) => {
+        gl.uniform3f(gemUniforms[name], rgb[0], rgb[1], rgb[2])
+      }
+      set('gold',     readGemSrgb('gold'))
+      set('ruby',     readGemSrgb('ruby'))
+      set('emerald',  readGemSrgb('emerald'))
+      set('diamond',  readGemSrgb('diamond'))
+      set('amethyst', readGemSrgb('amethyst'))
+      set('pink',     readGemSrgb('pink'))
+      set('salmon',   readGemSrgb('salmon'))
+      const isLight = root.getAttribute('data-theme') === 'light'
+      set('bg',       isLight ? bgLight : fallback.bg)
+    }
+
+    /** Re-seed gem uniforms when `data-theme` flips on documentElement.
+     * Cheap — runs a few getComputedStyle reads + 8 uniform3f calls. */
+    const themeObserver = new MutationObserver(() => updateGemUniforms())
+    themeObserver.observe(root, { attributes: true, attributeFilter: ['data-theme'] })
+
+    /** Initial seed — without this, uniforms default to vec3(0,0,0) and
+     * the shader composites a pure-black canvas. Must run before the
+     * first draw call. */
+    updateGemUniforms()
+
     /* Pixel size in device pixels — set on resize so it tracks DPR.
      * Experimenting with 1 CSS pixel: kills the chunky spatial
      * quantization entirely, leaves just the Bayer 4x4 ordered
@@ -349,7 +492,6 @@ void main() {
     let visible = true // toggled by IntersectionObserver below
     const start = performance.now()
 
-    const root = document.documentElement
     function readSceneAngleRad(): number {
       const raw = getComputedStyle(root).getPropertyValue('--scene-angle').trim()
       if (!raw) return Math.PI * 0.75
@@ -507,6 +649,7 @@ void main() {
       alive = false
       cancelAnimationFrame(raf)
       io.disconnect()
+      themeObserver.disconnect()
       window.removeEventListener('resize', resize)
       window.removeEventListener('pointermove', onMove)
       window.removeEventListener('pointerdown', onDown)

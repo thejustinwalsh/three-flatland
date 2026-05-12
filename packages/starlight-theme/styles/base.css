@@ -1020,13 +1020,21 @@
     /* Links inside asides inherit the aside's accent (--aside-title) so
      * a link in a warning callout reads in the warning's hue, not the
      * default global link blue. Underline color softens to the accent
-     * mixed with transparency so it doesn't fight the body text. */
-    .sl-markdown-content .starlight-aside a {
+     * mixed with transparency so it doesn't fight the body text.
+     *
+     * Specificity hack: bare `.starlight-aside a` is (0,2,1), tying the
+     * earlier `.sl-markdown-content a:not([class]):not([role='tab'])`
+     * rule at line ~365 (also (0,2,1) but ALSO scored as (0,3,1) once
+     * the two `:not()` are counted as class-equivalents). The
+     * `a:not([class])` extension here matches the same class-equiv
+     * structure, pushing us to (0,3,1) so we beat the global markdown
+     * link rule and the aside-tinted color actually applies. */
+    .sl-markdown-content .starlight-aside a:not([class]) {
         color: var(--aside-title);
         text-decoration-color: color-mix(in oklab, var(--aside-title) 50%, transparent);
         transition: color 0.15s, text-decoration-color 0.15s;
     }
-    .sl-markdown-content .starlight-aside a:hover {
+    .sl-markdown-content .starlight-aside a:not([class]):hover {
         color: color-mix(in oklab, var(--aside-title) 85%, var(--foreground));
         text-decoration-color: var(--aside-title);
     }
@@ -1041,12 +1049,12 @@
         color: var(--aside-content);
     }
 
-    .sl-markdown-content .starlight-aside__content a {
+    .sl-markdown-content .starlight-aside__content a:not([class]) {
         color: var(--aside-title);
         text-decoration-color: color-mix(in oklab, var(--aside-title) 45%, transparent);
     }
 
-    .sl-markdown-content .starlight-aside__content a:hover {
+    .sl-markdown-content .starlight-aside__content a:not([class]):hover {
         text-decoration-color: currentColor;
     }
 
@@ -2037,6 +2045,36 @@
         .u-holo::after,
         [data-holo]::after {
             opacity: 0.35;
+        }
+    }
+
+    /* Light-mode holo tuning — `color-dodge` against paper backgrounds
+     * blows out to near-white and pumps saturation past the point where
+     * the gem identity reads cleanly. Three calibrations:
+     *
+     *   1. Specular blend mode → `overlay` (instead of color-dodge).
+     *      Overlay respects the underlying lightness; it brightens
+     *      where the base is light and darkens where it's dark, which
+     *      preserves the facet structure without blowing out.
+     *   2. Specular opacity 0.6 → 0.28. The conic facets still register
+     *      as a foil pattern, just at a level paper can hold.
+     *   3. Diffuse opacity 1 → 0.78. Gem hue still carries, but its
+     *      saturation reads as "tinted card" rather than "stained glass."
+     *
+     * Dark mode is untouched. */
+    :root[data-theme='light'] .u-holo::before,
+    :root[data-theme='light'] [data-holo]::before {
+        opacity: 0.78;
+    }
+    :root[data-theme='light'] .u-holo::after,
+    :root[data-theme='light'] [data-holo]::after {
+        mix-blend-mode: overlay;
+        opacity: 0.28;
+    }
+    @media (prefers-reduced-motion: reduce) {
+        :root[data-theme='light'] .u-holo::after,
+        :root[data-theme='light'] [data-holo]::after {
+            opacity: 0.18;
         }
     }
 

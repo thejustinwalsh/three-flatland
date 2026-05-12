@@ -38,7 +38,7 @@ if (project.trailingSlash === 'never') dataAttributes['data-strip-trailing-slash
         </kbd>
     </button>
 
-    <dialog style="padding:0" aria-label={Astro.locals.t('search.label')}>
+    <dialog style="padding:0" aria-label={Astro.locals.t('search.label')} data-search-empty>
         <div class="dialog-frame sl-flex">
             {
                 /* TODO: Make the layout of this button flexible to accommodate different word lengths. Currently hard-coded for English: “Cancel” */
@@ -52,9 +52,50 @@ if (project.trailingSlash === 'never') dataAttributes['data-strip-trailing-slash
                         <p>{Astro.locals.t('search.devWarning')}</p>
                     </div>
                 ) : (
-                    <div class="search-container">
-                        <div id="starlight__search" />
-                    </div>
+                    <>
+                        <div class="search-container">
+                            <div id="starlight__search" />
+                        </div>
+                        {/* Default browse panel — visible when the input is empty so
+                         * the modal never reads as "broken with a giant gap." Hides
+                         * the moment the user types (driven by `data-search-empty`
+                         * on the dialog, toggled by the input listener below). */}
+                        <nav class="search-default" aria-label="Browse the docs">
+                            <p class="search-default-hint">Or jump to a section</p>
+                            <ul class="search-default-list">
+                                <li>
+                                    <a href={`${import.meta.env.BASE_URL.replace(/\/$/, '')}/getting-started/introduction/`} data-gem="diamond">
+                                        <span class="search-default-label">Get started</span>
+                                        <span class="search-default-desc">Install + first scene</span>
+                                    </a>
+                                </li>
+                                <li>
+                                    <a href={`${import.meta.env.BASE_URL.replace(/\/$/, '')}/guides/sprites/`} data-gem="emerald">
+                                        <span class="search-default-label">Guides</span>
+                                        <span class="search-default-desc">Sprites, tilemaps, effects</span>
+                                    </a>
+                                </li>
+                                <li>
+                                    <a href={`${import.meta.env.BASE_URL.replace(/\/$/, '')}/api/`} data-gem="amethyst">
+                                        <span class="search-default-label">API reference</span>
+                                        <span class="search-default-desc">Generated TypeScript docs</span>
+                                    </a>
+                                </li>
+                                <li>
+                                    <a href={`${import.meta.env.BASE_URL.replace(/\/$/, '')}/examples/`} data-gem="gold">
+                                        <span class="search-default-label">Examples</span>
+                                        <span class="search-default-desc">Focused single-feature demos</span>
+                                    </a>
+                                </li>
+                                <li>
+                                    <a href={`${import.meta.env.BASE_URL.replace(/\/$/, '')}/showcases/`} data-gem="ruby">
+                                        <span class="search-default-label">Showcases</span>
+                                        <span class="search-default-desc">Full apps, full source</span>
+                                    </a>
+                                </li>
+                            </ul>
+                        </nav>
+                    </>
                 )
             }
         </div>
@@ -96,13 +137,50 @@ if (project.trailingSlash === 'never') dataAttributes['data-strip-trailing-slash
 <script>
     import { pagefindUserConfig } from 'virtual:starlight/pagefind-config';
 
+    /**
+     * SiteSearch — custom element that wires the search button + dialog +
+     * Pagefind UI together.
+     *
+     * View-transition correctness: when astro-vtbot's ClientRouter swaps
+     * the page, the OLD <site-search> is removed and a NEW one is parsed.
+     * `customElements.define` runs once at module load (hence the
+     * `get()` guard), and the constructor runs on each new element
+     * instance. Two things had to be fixed for this to work:
+     *
+     *   1. PagefindUI init used to live behind `window.addEventListener
+     *      ('DOMContentLoaded', …)`. That event fires once per document
+     *      and never refires on view-transition navigations, so post-
+     *      navigation pages had a fresh `#starlight__search` that was
+     *      never mounted — opening search the second time on the same
+     *      session showed an empty modal. Now the init runs directly
+     *      from the constructor (still gated by `requestIdleCallback`).
+     *
+     *   2. Window-level listeners (keydown for ⌘K, click-outside-to-
+     *      close) were attached with `addEventListener` but never
+     *      cleaned up when the element disconnected. Each navigation
+     *      stacked another set of ghost listeners pointing at dead
+     *      dialogs. Now each instance owns an `AbortController` and
+     *      `disconnectedCallback` aborts it — listeners auto-detach.
+     */
     class SiteSearch extends HTMLElement {
+        private cleanup?: AbortController;
+
         constructor() {
             super();
+            const ctrl = new AbortController();
+            this.cleanup = ctrl;
+            const { signal } = ctrl;
+
             const openBtn = this.querySelector<HTMLButtonElement>('button[data-open-modal]')!;
             const closeBtn = this.querySelector<HTMLButtonElement>('button[data-close-modal]')!;
             const dialog = this.querySelector('dialog')!;
             const dialogFrame = this.querySelector('.dialog-frame')!;
+
+            /** Per-open AbortController for the click-outside listener — created
+             * fresh on each open, aborted on close, so the listener only runs
+             * while the modal is actually visible (not for the entire element
+             * lifetime). */
+            let openCtrl: AbortController | null = null;
 
             /** Close the modal if a user clicks on a link or outside of the modal. */
             const onClick = (event: MouseEvent) => {
@@ -121,27 +199,38 @@ if (project.trailingSlash === 'never') dataAttributes['data-strip-trailing-slash
                 document.body.toggleAttribute('data-search-modal-open', true);
                 this.querySelector('input')?.focus();
                 event?.stopPropagation();
-                window.addEventListener('click', onClick);
+                openCtrl?.abort();
+                openCtrl = new AbortController();
+                window.addEventListener('click', onClick, { signal: openCtrl.signal });
             };
 
             const closeModal = () => dialog.close();
 
-            openBtn.addEventListener('click', openModal);
+            openBtn.addEventListener('click', openModal, { signal });
             openBtn.disabled = false;
-            closeBtn.addEventListener('click', closeModal);
+            closeBtn.addEventListener('click', closeModal, { signal });
 
-            dialog.addEventListener('close', () => {
-                document.body.toggleAttribute('data-search-modal-open', false);
-                window.removeEventListener('click', onClick);
-            });
+            dialog.addEventListener(
+                'close',
+                () => {
+                    document.body.toggleAttribute('data-search-modal-open', false);
+                    openCtrl?.abort();
+                    openCtrl = null;
+                },
+                { signal }
+            );
 
             // Listen for `ctrl + k` and `cmd + k` keyboard shortcuts.
-            window.addEventListener('keydown', (e) => {
-                if ((e.metaKey === true || e.ctrlKey === true) && e.key === 'k') {
-                    dialog.open ? closeModal() : openModal();
-                    e.preventDefault();
-                }
-            });
+            window.addEventListener(
+                'keydown',
+                (e) => {
+                    if ((e.metaKey === true || e.ctrlKey === true) && e.key === 'k') {
+                        dialog.open ? closeModal() : openModal();
+                        e.preventDefault();
+                    }
+                },
+                { signal }
+            );
 
             let translations = {};
             try {
@@ -152,12 +241,40 @@ if (project.trailingSlash === 'never') dataAttributes['data-strip-trailing-slash
             const stripTrailingSlash = (path: string) => path.replace(/(.)\/(#.*)?$/, '$1$2');
             const formatURL = shouldStrip ? stripTrailingSlash : (path: string) => path;
 
-            window.addEventListener('DOMContentLoaded', () => {
-                if (import.meta.env.DEV) return;
+            /** Toggle `data-search-empty` on the dialog so CSS can show the
+             * default browse panel when the input has no value. Pagefind's
+             * input is async-rendered after `PagefindUI` initializes, so we
+             * watch for it with a MutationObserver and then attach the
+             * `input` listener. */
+            const wireEmptyStateTracking = () => {
+                const input = this.querySelector<HTMLInputElement>('.pagefind-ui__search-input');
+                if (!input) return false;
+                const update = () => {
+                    dialog.toggleAttribute('data-search-empty', input.value.trim() === '');
+                };
+                update();
+                input.addEventListener('input', update, { signal });
+                return true;
+            };
+
+            if (!wireEmptyStateTracking()) {
+                const searchHost = this.querySelector('#starlight__search');
+                if (searchHost) {
+                    const observer = new MutationObserver(() => {
+                        if (wireEmptyStateTracking()) observer.disconnect();
+                    });
+                    observer.observe(searchHost, { childList: true, subtree: true });
+                    signal.addEventListener('abort', () => observer.disconnect());
+                }
+            }
+
+            if (!import.meta.env.DEV) {
                 const onIdle = window.requestIdleCallback || ((cb) => setTimeout(cb, 1));
                 onIdle(async () => {
+                    if (signal.aborted) return;
                     // @ts-expect-error — Missing types for @pagefind/default-ui package.
                     const { PagefindUI } = await import('@pagefind/default-ui');
+                    if (signal.aborted) return;
                     new PagefindUI({
                         ...pagefindUserConfig,
                         element: '#starlight__search',
@@ -178,10 +295,18 @@ if (project.trailingSlash === 'never') dataAttributes['data-strip-trailing-slash
                         },
                     });
                 });
-            });
+            }
+        }
+
+        disconnectedCallback() {
+            this.cleanup?.abort();
+            this.cleanup = undefined;
         }
     }
-    customElements.define('site-search', SiteSearch);
+
+    if (!customElements.get('site-search')) {
+        customElements.define('site-search', SiteSearch);
+    }
 </script>
 
 <style>
@@ -377,13 +502,132 @@ if (project.trailingSlash === 'never') dataAttributes['data-strip-trailing-slash
             border-radius: 0.5rem;
             width: 90%;
             max-width: 40rem;
+            /* Empty-state shrinks the dialog to its content (search input
+             * + browse panel). Non-empty (user typing) gets the larger
+             * fixed height so results have room to render without the
+             * dialog jumping size as results stream in. */
             height: max-content;
-            min-height: 15rem;
             max-height: calc(100% - 8rem);
+        }
+
+        dialog:not([data-search-empty]) {
+            min-height: 15rem;
         }
 
         .dialog-frame {
             padding: 1.5rem;
+        }
+    }
+
+    /* ────────── Default browse panel (empty-state) ──────────
+     * Visible when the search input has no value (driven by
+     * `data-search-empty` on the dialog, toggled by the input listener
+     * in the SiteSearch element). Hidden as soon as the user types.
+     * Hides the empty Pagefind container too so we don't render two
+     * stacked search-result regions. */
+    .search-default {
+        display: none;
+        font-family: 'Inter', system-ui, sans-serif;
+    }
+    dialog[data-search-empty] .search-default {
+        display: block;
+    }
+    dialog[data-search-empty] .search-container {
+        /* Pagefind UI uses the same container for the input AND the
+         * results — we keep the input visible and only suppress the
+         * (empty) results area below it when in the empty state. The
+         * results area is `.pagefind-ui__results-area`; the global rule
+         * for that lives below in the is:global block. */
+    }
+
+    .search-default-hint {
+        font-size: 0.6875rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+        color: var(--muted-foreground);
+        margin: 0 0 calc(var(--spacing) * 3) 0;
+        padding-inline-start: 0.125rem;
+    }
+
+    .search-default-list {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 1px;
+    }
+
+    .search-default-list a {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: calc(var(--spacing) * 4);
+        padding: calc(var(--spacing) * 2.5) calc(var(--spacing) * 3);
+        border-radius: var(--radius);
+        color: var(--foreground);
+        text-decoration: none;
+        position: relative;
+        outline: 1px solid transparent;
+        transition:
+            background-color 180ms cubic-bezier(0.2, 0.8, 0.2, 1),
+            outline-color 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
+    }
+
+    /* Left accent rail — mirrors the result-hover affordance below so
+     * the empty state feels like part of the same surface. */
+    .search-default-list a::after {
+        content: '';
+        position: absolute;
+        inset-block: 0.4rem;
+        inset-inline-start: 0;
+        width: 2px;
+        border-radius: 1px;
+        background-color: var(--gem, var(--diamond));
+        opacity: 0;
+        transform: scaleY(0.5);
+        transition:
+            opacity 200ms cubic-bezier(0.2, 0.8, 0.2, 1),
+            transform 200ms cubic-bezier(0.2, 0.8, 0.2, 1);
+        pointer-events: none;
+    }
+
+    .search-default-list a[data-gem='diamond']  { --gem: var(--diamond); }
+    .search-default-list a[data-gem='emerald']  { --gem: var(--emerald); }
+    .search-default-list a[data-gem='amethyst'] { --gem: var(--amethyst); }
+    .search-default-list a[data-gem='gold']     { --gem: var(--gold); }
+    .search-default-list a[data-gem='ruby']     { --gem: var(--ruby); }
+
+    .search-default-list a:hover,
+    .search-default-list a:focus-visible {
+        background-color: color-mix(in oklab, var(--gem, var(--diamond)) 12%, var(--background));
+        outline-color: color-mix(in oklab, var(--gem, var(--diamond)) 50%, transparent);
+    }
+    .search-default-list a:hover::after,
+    .search-default-list a:focus-visible::after {
+        opacity: 1;
+        transform: scaleY(1);
+    }
+
+    .search-default-label {
+        font-family: 'Public Sans', system-ui, sans-serif;
+        font-size: 0.9375rem;
+        font-weight: 600;
+        color: var(--foreground);
+    }
+
+    .search-default-desc {
+        font-size: 0.75rem;
+        font-weight: 400;
+        color: var(--muted-foreground);
+        text-align: end;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        .search-default-list a,
+        .search-default-list a::after {
+            transition: none;
         }
     }
 </style>

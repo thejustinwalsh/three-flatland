@@ -6,7 +6,6 @@ template: splash
 
 import ShowcaseGrid from '../../../components/gallery/ShowcaseGrid.astro'
 import GalleryTile from '../../../components/gallery/GalleryTile.astro'
-import ShowcaseTilePlaceholder from '../../../components/gallery/ShowcaseTilePlaceholder.astro'
 
 <div class="showcases-page not-content">
 
@@ -16,31 +15,6 @@ import ShowcaseTilePlaceholder from '../../../components/gallery/ShowcaseTilePla
   <p class="showcases-tagline">Each showcase is a complete app built with three-flatland and shipped as a public mini package. Hover any tile for a live preview; click through to play it inline and read the source.</p>
 </header>
 
-{/*
-  ─── Frontmatter theme system ──────────────────────────────────────
-  Each <GalleryTile> on this index reflects fields that live in the
-  showcase's MDX frontmatter (see showcases/breakout.mdx for the
-  shape). The tile prop names mirror the frontmatter:
-
-    color   gem accent  → drives card-edge rim, cursor hotspot,
-                          lens-flare gem, hover affordance
-                          ('gold' | 'ruby' | 'emerald' | 'diamond' |
-                           'amethyst' | 'pink' | 'salmon' | 'turquoize')
-    aspect  media ratio → '16 / 10' (cinematic), '4 / 3' (compact),
-                          '1 / 1' (square — fits a single-screen game)
-
-  When showcase count goes to ≥2, the grid swaps from the featured
-  single-tile layout to the standard 2-col grid automatically (see
-  ShowcaseGrid.astro: a.gallery-tile:only-of-type for the singleton
-  styling).
-
-  Future extension hooks (not yet wired):
-    - data-effect="breathe|sparkle|pulse" for per-showcase ambient
-      hover effects beyond the shared foil rim.
-    - frontmatter `eyebrow` for a per-showcase tagline above the
-      title (e.g. "Arcade Classic" / "Action RPG").
-*/}
-
 <ShowcaseGrid>
   <GalleryTile
     surface="showcases"
@@ -48,27 +22,6 @@ import ShowcaseTilePlaceholder from '../../../components/gallery/ShowcaseTilePla
     title="Breakout"
     description="The classic, rebuilt as a koota-driven ECS using SpriteGroup, batched sprite effects, and a single draw call."
     color="ruby"
-    aspect="16 / 10"
-  />
-  {/* Placeholder tiles demonstrate the per-showcase frontmatter theme
-      system — each carries its own gem accent (color), aspect ratio,
-      and inherits the foil rim + cursor hotspot + lens-flare hover
-      treatment in that gem. Replace each with a real <GalleryTile>
-      pointing to a new MDX file under `showcases/<slug>.mdx` when
-      adding a showcase. ShowcaseTilePlaceholder renders as <div>
-      (non-interactive) so the singleton-featured layout stays
-      possible: remove the placeholders and Breakout's <a> becomes
-      `:only-of-type` again. */}
-  <ShowcaseTilePlaceholder
-    title="Platformer"
-    description="Tile-perfect platformer demo — Aseprite atlases, parallax scrolling, frame-stepped physics."
-    color="emerald"
-    aspect="16 / 10"
-  />
-  <ShowcaseTilePlaceholder
-    title="Shoot 'em up"
-    description="Bullet-hell SHMUP — SpriteGroup batching at scale, 1k+ active projectiles in a single draw call."
-    color="gold"
     aspect="16 / 10"
   />
 </ShowcaseGrid>

@@ -155,6 +155,27 @@ const posterPngHref = `${baseURL}/captures/${slug}.png`
     transform: translateY(-2px);
   }
 
+  /* Light-mode-only neutral drop shadow — layered ALONGSIDE the
+   * existing gem ring (which still carries the brand affordance).
+   * Dark mode keeps the ring-only treatment because the rim glow
+   * reads cleanly on near-black. On paper bg the ring alone is
+   * almost invisible past a foot away — the neutral shadow gives
+   * the tile form to sit on. Multi-stop list keeps the gem ring
+   * (inset 0,0,0,1px equivalent via box-shadow first slot) and
+   * adds y-offset ambient shadow stops below it. */
+  :global(:root[data-theme='light']) .gallery-tile {
+    box-shadow:
+      0 0 0 1px color-mix(in oklab, var(--border) 75%, transparent),
+      0 1px 2px rgba(0, 0, 0, 0.08),
+      0 8px 20px rgba(0, 0, 0, 0.10);
+  }
+  :global(:root[data-theme='light']) .gallery-tile:hover {
+    box-shadow:
+      0 0 0 1px color-mix(in oklab, var(--tile-accent) 60%, transparent),
+      0 2px 4px rgba(0, 0, 0, 0.10),
+      0 14px 32px rgba(0, 0, 0, 0.13);
+  }
+
   /* ── Foil rim ──
    * Three-layer system mirroring FeatureCard:
    *   1. Base conic — broad scene-angle rim (ambient).
@@ -323,6 +344,16 @@ const posterPngHref = `${baseURL}/captures/${slug}.png`
     height: 100%;
     object-fit: cover;
     transition: opacity 200ms ease-out;
+    /* Round ONLY the top corners — the bottom of the image flows
+     * seamlessly into the info bar below. The global
+     * `.sl-markdown-content img { border-radius: ... }` rule (in
+     * base.css) reaches into here because example/showcase pages
+     * still render through Starlight's markdown wrapper; without this
+     * override the image picks up an 8px all-sides radius and the
+     * bottom curves create dark wedges where the info bar abuts the
+     * curved underside. Match the .gallery-tile-media wrapper's
+     * top-corner radius so the image edge meets the wrapper edge. */
+    border-radius: calc(var(--radius) + 0.25rem) calc(var(--radius) + 0.25rem) 0 0;
   }
 
   /* Video sits on top of the poster; opacity flip on hover swaps

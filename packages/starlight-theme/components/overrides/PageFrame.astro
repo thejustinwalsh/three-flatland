@@ -181,6 +181,21 @@ const projectBadge = getPackageBadge('three-flatland');
         }
     }
 
+    /* Light-mode override: the ribbon is anchored to the viewport corner,
+     * physically overlapping the (still-dark) landing hero. The light
+     * palette's deeper gold reads as drab brown over the gem canvas; the
+     * brand mark wants the dark-mode vibrant gold to land it as actual
+     * foil. Override the gem tokens consumed by the tape so the gradient
+     * snaps back to dark-mode chroma. Scoped to the landing layout so
+     * docs-page consumers of `--gold` aren't affected (the ribbon is
+     * landing-only anyway, but keeping the scope tight). */
+    :root[data-theme='light'] [data-slot='layout'][data-landing] .alpha-ribbon {
+        --gold: oklch(72% 0.16 85);
+        --gold-high: oklch(82% 0.17 88);
+        --gold-low: oklch(34% 0.10 80);
+        --orange: oklch(67% 0.18 60);
+    }
+
     /* Landing: header is FULLY transparent (no glass backdrop) so the
      * canvas reads as a single uninterrupted plane behind the wordmark.
      * The header content (FL icon + FLATLAND + nav + search) floats

@@ -961,3 +961,93 @@ User considered baked SVG noise overlay + blur as a replacement but it looked vi
 - **Scroll-cue auto-hide** (`docs/src/content/docs/index.mdx`) — IntersectionObserver hides the "scroll" indicator when below-fold content is visible. On a 60vh hero, StatsBanner peeks above the fold immediately; the cue was redundant.
 - **"Early Alpha" → "Alpha"** (`packages/starlight-theme/components/overrides/PageFrame.astro`) — corner ribbon rename. Brand maturity tweak; "early" was redundant with the v0.1.0-α version stamp elsewhere.
 - **GalleryTile placeholder gem-radial** moved to a `::before` pseudo with `filter: blur(1.5px)` for anti-banding. The loaded poster/video sits at `z-index: 1` over it, unaffected by the blur. Tonality also toned down (40% → 22% accent center) to match captured TSL canvas backgrounds.
+
+
+# Session 2026-05-12 — Light-mode polish brief (5 flaws)
+
+**Status:** Briefed but not yet executed. Recorded here so the next iteration picks up the corrected interpretation of flaw #3.
+
+The five flaws to address in the light-mode polish task:
+
+1. **Hero darkmode lock** — the landing hero (HeroShader region) should stay on its dark substrate regardless of the site's theme. Light-mode users still see the dark hero canvas with appropriate contrast on overlaid text/CTAs.
+2. **Header text crossfade** — the header brand mark / nav text should crossfade between dark- and light-mode token colors instead of hard-cutting when the theme toggle flips.
+3. **Card depth in light mode (CORRECTED)** — see below.
+4. **Aside link theming** — links inside Starlight asides (Note/Tip/Caution/Danger) need light-mode color tokens that maintain WCAG AA on the aside's tinted background. Currently they inherit the global link token and can wash out on lighter aside surfaces.
+5. **Gallery card corner radii** — GalleryTile media area top corner radii vs body bottom corners should match the outer tile rounding more cleanly in light mode (the bright bg makes any mismatched radii visible where the dark bg hid them).
+
+## Flaw #3 — Card depth in light mode (CORRECTED)
+
+**Original (incorrect) brief:** "replace the colored rim glow with dark shadows in light mode."
+
+**Correct interpretation:**
+- **Keep the colored gem rim** (`.card-edge` on `.feature-card`, `.tile-edge` on `.gallery-tile`, equivalent on `.sl-link-button.primary`/`.secondary`) in light mode. The rim is the brand-identity / gem-accent affordance and MUST stay in both modes.
+- **ADD a typical neutral drop shadow** in light mode only, layered alongside the existing rim. Shadow is a plain `rgba(0,0,0,0.08)`-style soft drop, y-offset 4–12px, no gem tint. Its job is to give the card form to sit on against the bright `#f6f5f1` background.
+- Mental model: **the rim is the highlight; the shadow is the form**. Together they read "lit object on paper" rather than "floating gem outline."
+- **Dark mode: untouched.** The existing decision (`Decorative drop-shadow glows — removed site-wide`) stands for dark mode — the rim alone carries the card on the near-black substrate. Light mode is the deliberate exception because the bright bg gives the card nothing to sit on otherwise.
+
+**Implementation sketch (for the next iteration):**
+
+```css
+/* Inside the .feature-card style (and mirrored on .gallery-tile, .sl-link-button.primary/.secondary):
+   light-mode-only neutral form shadow. Keep alongside the existing rim. */
+:root[data-theme='light'] .feature-card {
+  box-shadow:
+    0 2px 4px rgba(0, 0, 0, 0.05),
+    0 8px 24px rgba(0, 0, 0, 0.08);
+}
+:root[data-theme='light'] .feature-card:hover {
+  box-shadow:
+    0 3px 6px rgba(0, 0, 0, 0.06),
+    0 12px 32px rgba(0, 0, 0, 0.10);
+}
+```
+
+(Final tuning values left to the polish iteration — these are starting points. Mirror onto `.gallery-tile`, `.sl-link-button.primary`, `.sl-link-button.secondary`. Honor `prefers-reduced-motion` for the hover transition only; the static shadow itself stays.)
+
+**Why this matters:** The earlier rim-only decision was made against the dark substrate where there was always tonal separation between the card surface and the page bg. Light mode collapses that separation: card and page sit at similar luminance, and the rim alone reads as a thin outline floating in space instead of an object with weight. A neutral shadow (no gem tint, intentionally generic) restores the "object on paper" reading without compromising the gem-as-taxonomy principle — the rim still carries the gem identity; the shadow just provides the substrate.
+
+**Anti-pattern reminder:** Do NOT tint the new light-mode shadow with the gem. The colored rim does the chroma work; the shadow's job is purely form. A gem-tinted shadow doubles up on the chroma and reads as "every-other-website glow," which is the exact failure mode the original drop-shadow-removal decision was reacting to.
+
+
+# Session 2026-05-12 — What landed (polish + search reliability + shader theme tracking)
+
+The five-flaw light-mode brief above shipped, plus three adjacent fixes that surfaced during the same session.
+
+## Light-mode polish (5 flaws as briefed)
+
+1. **Hero darkmode lock** — `docs/src/content/docs/index.mdx`, `packages/starlight-theme/components/overrides/PageFrame.astro`. A `:root[data-theme='light'] .hero-fullscreen` block mirrors the dark-mode token values for `--background`, `--foreground`, `--card`, `--gold`/`--gold-high`/`--gold-low`, `--diamond`, `--amethyst`, `--link` so the hero subtree reads as dark-mode even in light mode. Bottom fade uses `var(--hero-fade-end)` (paper bg in light mode) + `--hero-fade-height: 12%` (vs default 33%) so the dark→paper seam reads as a crisp horizon, not a long wash. Alpha-ribbon dark-mode lock scoped to `[data-slot='layout'][data-landing] .alpha-ribbon` in PageFrame so the gold foil stays vibrant against the dark canvas.
+2. **Header text crossfade on scroll (light mode)** — `packages/starlight-theme/components/overrides/Header.astro`. New `@keyframes hdr-text-light-fade` hooked into the existing `animation-timeline: scroll(root); animation-range: 0 96px` — animates header brand + nav `color` from dark-mode foreground (`oklch(92% ...)`) to light-mode foreground as the chrome opacifies. Scoped to `:root[data-theme='light'] [data-slot='layout'][data-landing] > header`. Search button + ThemeSelect intentionally excluded (they carry their own pill backgrounds). `prefers-reduced-motion: no-preference` gate honored.
+3. **Rim cards — colored rim + neutral light-mode drop shadow** — `docs/src/components/FeatureCard.astro`, `docs/src/components/gallery/GalleryTile.astro`. Kept the gem-accent rim in light mode. Added two-stop neutral shadow in light mode only: `0 1px 2px rgba(0,0,0,0.08)` + `0 8px 20px rgba(0,0,0,0.10)`, deepening to `0.10/0.13` on hover. Slightly above the briefed 0.06–0.10 ceiling (judgment call — paper-bg + gem-soft card tints needed more depth to read as raised). Pure black, zero gem tint per anti-pattern note above.
+4. **Aside links specificity fix** — `packages/starlight-theme/styles/base.css`. The upstream Starlight rule `.sl-markdown-content a:not([class]):not([role='tab'])` (specificity 0,3,1) was beating `.starlight-aside a` (0,2,1) on same-layer source-order resolution. Added `:not([class])` to both `.starlight-aside a` selectors to match specificity 0,3,1. Aside links now read in their gem accent.
+5. **Gallery card image radii** — `docs/src/components/gallery/GalleryTile.astro`. Global `.sl-markdown-content img { border-radius }` was forcing all-sides rounding on the gallery poster image, creating dark wedges at the seam with the info bar. Pinned top-only rounding on `.gallery-tile-poster, .gallery-tile-video` so the image flushes flat into the info bar — seam is square in both static and hover-video states.
+
+## Hero shader gem palette — theme tracking (adjacent)
+
+- **`docs/src/components/HeroShader.tsx`** — gem colors were hardcoded GLSL constants that pre-dated the OKLCH retune; in light mode they didn't match the active gem palette. Refactored: gems now uniforms (`u_gold`, `u_ruby`, `u_emerald`, `u_diamond`, `u_amethyst`, `u_pink`, `u_salmon`, `u_bg`), seeded at init AND re-seeded on `data-theme` flip via a `MutationObserver`. OKLab→linear-sRGB→gamma-encoded sRGB conversion in JS (~30 lines).
+- **`u_bg` is theme-aware too** — dark mode keeps the near-black `vec3(0.061, 0.070, 0.079)` (OKLCH L=18%); light mode lifts to `vec3(0.292, 0.302, 0.313)` (OKLCH L=42%) so the canvas reads as a clear charcoal plane against paper, not a hard black void. Dark-mode-locked overlay text still has >4.5:1 contrast.
+- **Press-void now mixes to `u_bg`** instead of hardcoded `vec3(0.0)` — the hole-punch returns to the surface color (no gems), not pure black on charcoal which would look like a separate plane underneath.
+- **Anti-pattern recurrence**: backticks in GLSL comments inside the `fragSrc` template literal break the TS parse. Fixed twice this session. Future edits to `HeroShader.tsx` must use plain quotes in GLSL comments, never backticks. Same class as commit `92ee95f0`.
+
+## Holo calibration in light mode (adjacent)
+
+- **`packages/starlight-theme/styles/base.css`** — card-wide `.u-holo` specular layer in light mode: blend mode `color-dodge` → `overlay` (color-dodge against paper blows out), opacity 0.6 → 0.28, diffuse `::before` opacity 1 → 0.78. Reduced-motion variant scaled accordingly (0.35 → 0.18). Dark mode untouched.
+- **`docs/src/components/FeatureCard.astro`** — icon holo (`.card-icon-holo`) in light mode: filter saturate/contrast curves pulled back (0.85+0.5 → 0.55+0.25 saturate; 1.0+0.15 → 0.92+0.08 contrast). Glint stripe and rainbow base also swapped to **gem-dominant** mixes (75% accent / 25% white at the peak; 70% accent / 30% prismatic on the rainbow base) so the highlight reads as "lit gem" instead of a white slash that washes the icon silhouette into the paper bg.
+
+## Search modal reliability + empty-state UX (adjacent)
+
+- **`packages/starlight-theme/components/overrides/Search.astro`** — two bugs fixed and an empty-state added.
+  - **View-transition reinit**: PagefindUI init was inside `window.addEventListener('DOMContentLoaded', …)` — that event never refires on `astro:after-swap`, so the second search-open after any client-router navigation showed an empty modal. Moved init out of DOMContentLoaded; constructor now calls a `requestIdleCallback` directly so each new `<site-search>` instance mounts pagefind into its own fresh `#starlight__search`.
+  - **Listener leak fix**: each instance now owns an `AbortController`; `disconnectedCallback` aborts. Window-level `keydown` / `click` listeners auto-detach. Click-outside-to-close uses a per-open child controller so it's only live while the modal is visible.
+  - **Empty-state browse panel**: when the input is empty, the dialog gets `data-search-empty` and renders a curated browse nav (Get started / Guides / API reference / Examples / Showcases — each with a gem accent). Dialog drops its `min-height: 15rem` in this state so it sizes to content. An `input` listener (attached after pagefind's input mounts via a `MutationObserver`) toggles the attribute as the user types.
+  - **`customElements.define` guarded** with a `customElements.get()` check.
+
+## Scope cleanup
+
+- **Showcase placeholders removed** — `docs/src/content/docs/showcases/index.mdx` no longer renders the Platformer / Shoot-em-up "Coming Soon" tiles; `docs/src/components/gallery/ShowcaseTilePlaceholder.astro` deleted. Breakout is once again the singleton-featured tile via the existing `:only-of-type` selector in `ShowcaseGrid.astro`.
+
+## Things to revisit
+
+- **Shadow intensity on rim cards (0.10/0.13 hover)** — slightly above the briefed 0.06–0.10 ceiling. Flagged for review.
+- **Header crossfade excludes the alpha-ribbon** — intentional (ribbon owns its own colors).
+- **Aside-link `:not([class])` hack** — excludes aside descendants that have a class (e.g., `sl-link-card`). Behavior matches the brief; flag if ALL aside descendants should theme.
+- **Hero token override list in `index.mdx`** — hand-curated to what the hero subtree actually consumes. If new hero components are added later that read different tokens, append to the override block.
