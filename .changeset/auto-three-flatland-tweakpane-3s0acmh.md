@@ -5,22 +5,21 @@
 > Branch: mini-game-showcase
 > PR: https://github.com/thejustinwalsh/three-flatland/pull/59
 
-## New APIs
+## What's New
 
-- `usePaneRadioGrid` hook (react subpath) — inline button-bar selector backed by essentials' radiogrid blade; active-state affordance reads better than a dropdown for scene/mode toggles
-- `PaneInputOptions` extended with `readonly` and `format` — lets React hook users create read-only monitor inputs with custom formatters
+### New hooks and controls
+- `usePaneRadioGrid` (React subpath) — inline button-bar selector backed by essentials' radiogrid blade; active-state affordance works better than a dropdown for scene/mode toggles; deferred disposal + synchronous creation mirrors existing `usePaneButton`/`usePaneInput` pattern
+- `PaneInputOptions` extended with `readonly` and `format` — create readonly monitor bindings with custom formatters from React hooks
 
-## Bug Fixes
+### Fixes
+- `createPane`: z-index 1000 now applied to the `.tp-dfwv` body-sibling wrapper instead of the inner pane root — previously had no effect on stacking against other overlays
+- Checkbox hit target stretched to full 20×20 box via `width/height: var(--cnt-usz)` on `.tp-ckbv_i` — eliminates multi-click failures caused by flaky `<label>→<input>` forwarding under pointer-events/z-index combinations
+- `useWindowSize` now tracks `{ w, h, dpr }` and subscribes to a `(resolution: Ndppx)` media-query; monitor swaps that change DPR without changing dimensions now trigger canvas resize
 
-- z-index now applied to `.tp-dfwv` wrapper element (the actual stacking context) instead of the inner `pane.element` — fixes tweakpane floating behind other overlays
-- Checkbox hit target fixed: `.tp-ckbv_i` stretched to the full box size via `width/height: var(--cnt-usz)` — clicks land on the input directly without relying on flaky `<label>` forwarding
-- `useWindowSize` now tracks `{ w, h, dpr }` and subscribes to a `(resolution: Ndppx)` media query — monitor swaps that change DPR without changing pixel dimensions now trigger a canvas resize
+### Theme
+- Checkbox box surface styled to match other controls (`rgba(28,40,77,0.6)`) with hover/focus/active parity; check stroke turns accent pink on `:checked` — previously the hit target was effectively invisible against the container background
 
-## Theme
+### Examples migration
+- Replaced all Web Awesome (`@awesome.me/webawesome`) controls with `@three-flatland/tweakpane` in both React and Three slug-text examples; `wa-*` selectors, CSS, and `useWrappingGroup`/`setupWrappingGroup` helpers removed
 
-- Checkbox box surface matches other controls (`rgba(28,40,77,0.6)`) with hover/focus/active parity
-- Check stroke turns accent pink on `:checked`
-
-## Summary
-
-Adds `usePaneRadioGrid` and extends `PaneInputOptions` with `readonly`/`format` support. Fixes the pane stacking context, checkbox hit targets, and DPR tracking on monitor swap.
+Bug fixes for DPR sync on monitor swap/fullscreen, checkbox reliability, and pane z-index stacking; new `usePaneRadioGrid` hook and `readonly`/`format` monitor options for the React subpath.
