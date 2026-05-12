@@ -20,6 +20,8 @@ import {
   BRACE_COST,
   OVER_PET_THRESHOLD,
   OVER_PET_WINDOW_TICKS,
+  PET_COST,
+  PET_PAUSE_TICKS,
   ROCK_BRACE_EXTEND_TICKS,
   SAG_DURATION_TICKS,
   TILE_PX,
@@ -157,24 +159,34 @@ function doPet(world: World): boolean {
   const moodTrait = drillerEntity.get(Mood)
   const gs = world.get(GameState)
   if (!petEvents || !moodTrait || !gs) return false
+  if (gs.gems < PET_COST) return false
 
   const pruned = petEvents.recentTicks.filter((t) => gs.tick - t <= OVER_PET_WINDOW_TICKS)
   pruned.push(gs.tick)
   drillerEntity.set(PetEvents, { recentTicks: pruned })
+  world.set(GameState, { gems: gs.gems - PET_COST })
 
   if (pruned.length > OVER_PET_THRESHOLD) {
+    // Over-pet: fear spikes, pause is INSTANTLY cleared so the driller
+    // bolts. The mood-driven planner now sees high fear and routes via
+    // cautious — the practical effect of "fleeing the touch".
     const next = applyMoodEvent(
       { greed: moodTrait.greed, fear: moodTrait.fear, drive: moodTrait.drive },
       'over-pet',
     )
     drillerEntity.set(Mood, next)
+    drillerEntity.set(Driller, { pausedUntilTick: 0 })
     return true
   }
+  // Regular pet: stops the driller in place for PET_PAUSE_TICKS so he
+  // can enjoy it. Each pet RESETS the timer (stacking taps extend the
+  // pause up to over-pet). Trust counter ticks up.
   const next = applyMoodEvent(
     { greed: moodTrait.greed, fear: moodTrait.fear, drive: moodTrait.drive },
     'pet',
   )
   drillerEntity.set(Mood, { ...next, trust: moodTrait.trust + 1 })
+  drillerEntity.set(Driller, { pausedUntilTick: gs.tick + PET_PAUSE_TICKS })
   return true
 }
 

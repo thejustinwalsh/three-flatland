@@ -235,6 +235,19 @@ export function drillerSystem(world: World, deltaMs: number): void {
     markCellAndNeighborsDirty(world, d.col, d.row)
   }
 
+  // Pet-pause: driller freezes in place to enjoy the pet. Skip the
+  // entire motion budget loop; the sprite stays on its current cell
+  // and the animation system holds an idle frame. Over-pet flips the
+  // pausedUntilTick to 0 (set in `doPet`), so this gate clears
+  // immediately when the driller has had enough.
+  if (gs.tick < d.pausedUntilTick) {
+    const animEntity = drillerEntity.get(Animation)
+    if (animEntity && animEntity.state !== 'idle') {
+      drillerEntity.set(Animation, { state: 'idle', frame: 0, frameAccumMs: 0 })
+    }
+    return
+  }
+
   // ----- BUDGET LOOP ---------------------------------------------------
   // We split deltaMs in two halves and run the loop body twice. This
   // is the "integrate twice per frame" smoothing trick: it lets a

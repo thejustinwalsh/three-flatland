@@ -45,6 +45,15 @@ export const Driller = trait({
   drillCooldownMs: 0,
   drillCol: 0,
   drillRow: 0,
+  /**
+   * Pet-pause: gameplay tick after which the driller resumes acting.
+   * While `gs.tick < pausedUntilTick`, the driller stays at his cell
+   * with an idle animation — the player has petted him and he's
+   * enjoying it for a moment. Set by `doPet`; cleared automatically
+   * when the tick clock passes the value, or instantly forced to 0
+   * on over-pet (when fear takes over and he flees the touch).
+   */
+  pausedUntilTick: 0,
 })
 
 /**

@@ -113,6 +113,11 @@ export const ROCK_BRACE_EXTEND_TICKS = 30
 export const OVER_PET_WINDOW_TICKS = 240
 export const OVER_PET_THRESHOLD = 3
 
+/** Gem cost per pet. */
+export const PET_COST = 1
+/** Driller pause duration per non-over-pet pet, in ticks (~1s @ 60Hz). */
+export const PET_PAUSE_TICKS = 60
+
 /**
  * Cantilever collapse — SOIL cells whose Manhattan-along-soil distance
  * to the nearest anchor (STONE / ROCK / fixture / world side+bottom
