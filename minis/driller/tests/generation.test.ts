@@ -208,6 +208,68 @@ describe('fixture placement pattern', () => {
     }
   })
 
+  it('never produces a fixture-enclosed AIR pocket the driller could fall into and not escape', () => {
+    // Trap: an AIR pocket sitting on a fixture, fully enclosed by
+    // fixtures on both lateral sides (not world edges), with no
+    // drillable floor anywhere across the pocket's width. The driller
+    // falls in, can't drill any fixture, can't drill down (fixture
+    // floor), and the AI doesn't climb out. Generation must carve a
+    // SOIL escape through one of the walls. Tested across many seeds
+    // and several biomes (different fixture density).
+    const cols = PLAY_COLS
+    const biomes = [CHUNK_TOPSOIL, CHUNK_WORLD_2, CHUNK_WORLD_2 + 5]
+    for (let seed = 1; seed <= 30; seed++) {
+      for (const chunkY of biomes) {
+        const c = generateChunk(seed, chunkY)
+        const rows = CHUNK_ROWS
+        const handled = new Uint8Array(cols * rows)
+        for (let r = 0; r < rows - 1; r++) {
+          for (let cc = 0; cc < cols; cc++) {
+            const idx = r * cols + cc
+            if (handled[idx]) continue
+            if (c.tiles[idx] !== TILE_AIR) continue
+            const below = c.tiles[(r + 1) * cols + cc] ?? TILE_AIR
+            if (!isFixtureTile(below)) continue
+            // Walk the pocket.
+            let lo = cc
+            while (
+              lo - 1 >= 0 &&
+              c.tiles[r * cols + (lo - 1)] === TILE_AIR &&
+              isFixtureTile(c.tiles[(r + 1) * cols + (lo - 1)] ?? TILE_AIR)
+            ) lo--
+            let hi = cc
+            while (
+              hi + 1 < cols &&
+              c.tiles[r * cols + (hi + 1)] === TILE_AIR &&
+              isFixtureTile(c.tiles[(r + 1) * cols + (hi + 1)] ?? TILE_AIR)
+            ) hi++
+            for (let pc = lo; pc <= hi; pc++) handled[r * cols + pc] = 1
+            // Pocket has a floor exit anywhere?
+            let hasFloorExit = false
+            for (let pc = lo; pc <= hi; pc++) {
+              const beneath = c.tiles[(r + 1) * cols + pc]
+              if (beneath === undefined || !isFixtureTile(beneath)) {
+                hasFloorExit = true
+                break
+              }
+            }
+            if (hasFloorExit) continue
+            // Walls: edge counts as openable.
+            const leftWallC = lo - 1
+            const rightWallC = hi + 1
+            const leftIsFixture = leftWallC >= 0 && isFixtureTile(c.tiles[r * cols + leftWallC] ?? TILE_AIR)
+            const rightIsFixture = rightWallC < cols && isFixtureTile(c.tiles[r * cols + rightWallC] ?? TILE_AIR)
+            const isTrap = leftIsFixture && rightIsFixture
+            expect(
+              isTrap,
+              `seed=${seed} chunkY=${chunkY} trap pocket at row=${r} cols=${lo}-${hi}: AIR enclosed by fixtures with no drillable escape`,
+            ).toBe(false)
+          }
+        }
+      }
+    }
+  })
+
   it('produces variety: across many seeds we observe all three placement types', () => {
     const seen = new Set<string>()
     for (let seed = 1; seed <= 30; seed++) {

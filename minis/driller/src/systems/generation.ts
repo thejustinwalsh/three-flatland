@@ -15,6 +15,7 @@ import {
   TILE_FIXTURE_BASE,
   TILE_SOIL,
   TILE_STONE,
+  isFixtureTile,
 } from '../traits'
 import type { GemColor, GemSize } from '../atlas-regions'
 import { biomeAt, isFreeFall, WORLD_BODY_ROWS, WORLD_LENGTH_ROWS, WORLD_VOID_ROWS } from '../biomes'
@@ -70,6 +71,94 @@ export interface GeneratedGem {
 }
 
 /** Smooth a chunk-local tile array using B5/S45 cellular automata rules. */
+/**
+ * Detect AIR pockets sitting on fixtures with no lateral escape and
+ * carve a single-cell drillable opening so the driller can break out.
+ *
+ * Trap definition: starting from an AIR cell whose `r+1` neighbor is
+ * a fixture (or out-of-chunk bottom — treated as "continues to next
+ * chunk so it's a valid escape"), flood the contiguous AIR pocket
+ * laterally. The pocket is a trap iff:
+ *   - every cell in the pocket has a fixture directly below (no
+ *     drillable floor anywhere across the pocket's width), and
+ *   - both lateral walls of the pocket are fixtures (not edges,
+ *     because an edge means the pocket reaches the world boundary
+ *     which would be navigable from neighboring chunks).
+ *
+ * Carve strategy: convert the leftmost or rightmost fixture cell of
+ * the wall (whichever creates the shortest drill-out path) into SOIL.
+ * The driller can then drill through that one SOIL cell — 1 hit —
+ * and continue sideways into open terrain on the other side.
+ */
+export function carveFixtureTrapEscapes(tiles: Uint8Array, cols: number, rows: number): void {
+  const isDrillableFloor = (idx: number): boolean => {
+    const t = tiles[idx]
+    if (t === undefined) return true // out-of-chunk → escapes downward
+    return !isFixtureTile(t)
+  }
+  // Track which rows we've already validated to avoid reprocessing
+  // every cell in the same pocket. A pocket is a maximal lateral run
+  // of AIR cells at row r whose r+1 is fixture.
+  const handled = new Uint8Array(cols * rows)
+  for (let r = 0; r < rows - 1; r++) {
+    for (let c = 0; c < cols; c++) {
+      const idx = r * cols + c
+      if (handled[idx]) continue
+      if (tiles[idx] !== TILE_AIR) continue
+      const belowIdx = (r + 1) * cols + c
+      if (!isFixtureTile(tiles[belowIdx] ?? TILE_AIR)) continue
+      // Walk left to pocket start.
+      let lo = c
+      while (lo - 1 >= 0 && tiles[r * cols + (lo - 1)] === TILE_AIR && isFixtureTile(tiles[(r + 1) * cols + (lo - 1)] ?? TILE_AIR)) {
+        lo--
+      }
+      // Walk right to pocket end.
+      let hi = c
+      while (hi + 1 < cols && tiles[r * cols + (hi + 1)] === TILE_AIR && isFixtureTile(tiles[(r + 1) * cols + (hi + 1)] ?? TILE_AIR)) {
+        hi++
+      }
+      // Mark the pocket as handled.
+      for (let pc = lo; pc <= hi; pc++) handled[r * cols + pc] = 1
+      // Check for an escape: any cell in the pocket with a non-fixture
+      // (or out-of-chunk) cell below is an exit.
+      let hasFloorExit = false
+      for (let pc = lo; pc <= hi; pc++) {
+        if (isDrillableFloor((r + 1) * cols + pc)) {
+          hasFloorExit = true
+          break
+        }
+      }
+      if (hasFloorExit) continue
+      // Check lateral walls. Edge counts as "wall but openable" — the
+      // pocket reaches the world boundary, where a neighboring chunk
+      // might be present; treat as non-trap so we don't carve out the
+      // world edge.
+      const leftWallC = lo - 1
+      const rightWallC = hi + 1
+      const leftIsFixture = leftWallC >= 0 && isFixtureTile(tiles[r * cols + leftWallC] ?? TILE_AIR)
+      const rightIsFixture = rightWallC < cols && isFixtureTile(tiles[r * cols + rightWallC] ?? TILE_AIR)
+      // Pocket needs to be fully enclosed laterally (no edge exit).
+      // If at least one side opens to the chunk edge, the driller can
+      // drop into the next chunk via that path — not a trap.
+      if (!leftIsFixture || !rightIsFixture) continue
+      // True trap. Pick the closer wall to carve. Default: left.
+      const leftDist = c - leftWallC // always 1 from cell c
+      const rightDist = rightWallC - c // always 1 from cell c
+      // Both walls are 1 cell away from the rightmost / leftmost AIR
+      // cell, so pick the side whose carved cell sits adjacent to the
+      // most-open AIR region. Simpler heuristic: carve LEFT unless the
+      // left wall is at world edge (leftWallC == 0 means carving the
+      // very first column → still works but feels visually wrong),
+      // in which case carve right.
+      void leftDist
+      void rightDist
+      const carveCol = leftWallC === 0 ? rightWallC : leftWallC
+      const carveIdx = r * cols + carveCol
+      tiles[carveIdx] = TILE_SOIL
+    }
+  }
+}
+
 function smoothCA(chunk: Uint8Array, cols: number, rows: number): void {
   const next = new Uint8Array(chunk)
   for (let y = 1; y < rows - 1; y++) {
@@ -492,6 +581,17 @@ export function generateChunk(seed: number, chunkY: number): GeneratedChunk {
       }
     }
   }
+
+  // Trap-escape carving: ensure no AIR pocket sits on a fixture with
+  // no lateral escape. The driller can't drill fixtures, so a pocket
+  // bounded by fixtures on all three of {left, right, below} is a
+  // dead end the AI can fall into and never escape (it won't drill
+  // upward). For each AIR cell sitting on a fixture, walk laterally
+  // through the contiguous AIR pocket: if no cell in the pocket has
+  // a non-fixture cell below (a drillable floor), the pocket is a
+  // trap. Carve: convert the leftmost OR rightmost fixture wall cell
+  // at the pocket's row into SOIL so the driller can drill through it.
+  carveFixtureTrapEscapes(tiles, cols, rows)
 
   // Gems — placed in SOIL or AIR; biome-weighted color + size. Gems
   // landing in a void band become free-fall obstacles: gem gravity
