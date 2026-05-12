@@ -476,17 +476,26 @@ void main() {
     }
     raf = requestAnimationFrame(frame)
 
-    // Visibility gate via IntersectionObserver — pause the rAF loop
-    // when the hero is fully scrolled out of view. 100px rootMargin
-    // keeps the loop alive a bit past the edge so resuming on
-    // scroll-back-up is already running by the time the canvas is
-    // visible again. `last` resets on resume so the first dt isn't
-    // the whole offscreen duration (which would hammer the inertia
-    // smoothings).
+    // Visibility gate via IntersectionObserver — does TWO things when
+    // the hero scrolls off-screen:
+    //   1. Pause the rAF loop (cheap; saves WebGL draw + JS work).
+    //   2. Toggle `visibility: hidden` on the canvas element. This
+    //      removes the canvas's composited LAYER from Safari's
+    //      compositor entirely. WebGL canvases always get their own
+    //      composited layer; on a real-Safari scroll trace that 1527×512
+    //      layer was being re-composited on every scroll tick (~12ms
+    //      per recompose × 100+ scroll ticks = bulk of the bottleneck).
+    //      Pausing the rAF only stopped the draw — the layer still
+    //      existed and still composited.
+    //   `visibility: hidden` (vs `display: none`) keeps the WebGL
+    //   context alive — only the layer is dropped from the compositor
+    //   tree. Resume on scroll-back-up is instant; the canvas shows
+    //   its last-drawn content for ~1 frame before the rAF tick.
     const io = new IntersectionObserver((entries) => {
       for (const e of entries) {
         const wasVisible = visible
         visible = e.isIntersecting
+        cvs.style.visibility = visible ? '' : 'hidden'
         if (visible && !wasVisible && alive && raf === 0) {
           last = performance.now()
           raf = requestAnimationFrame(frame)
