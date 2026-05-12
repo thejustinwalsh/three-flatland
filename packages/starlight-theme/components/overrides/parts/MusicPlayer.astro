@@ -206,10 +206,38 @@
             this.nextBtn.addEventListener('click', () => this.handleNext(), { signal })
             this.volumeInput.addEventListener('input', (e) => this.handleVolume(e), { signal })
 
-            // Popover position is static — CSS pins it relative to the
-            // header (top: header-height + gap; right: container padding).
-            // The trigger button doesn't move laterally between routes,
-            // so no per-open position computation needed.
+            // Anchor the popover's right edge + width to the header's
+            // search button so the player + search read as a visually-
+            // aligned vertical strip. When the search button isn't
+            // present (e.g., Starlight pagefind disabled, or narrow
+            // viewports), fall back to the search button's standard
+            // width (16rem ≈ 256px at desktop) at the same offset the
+            // audio cluster sits at, so the popover keeps a consistent
+            // place regardless of search rendering.
+            this.popoverEl.addEventListener(
+                'beforetoggle',
+                (e: Event) => {
+                    const ev = e as { newState?: string } & Event
+                    if (ev.newState !== 'open') return
+                    const search = document.querySelector<HTMLElement>(
+                        'site-search button[data-open-modal], button[data-open-modal]'
+                    )
+                    if (search) {
+                        const r = search.getBoundingClientRect()
+                        const right = window.innerWidth - r.right
+                        this.popoverEl.style.right = `${Math.max(8, right)}px`
+                        this.popoverEl.style.width = `${r.width}px`
+                    } else {
+                        // No search — match search's natural width but keep
+                        // the popover under the audio cluster's right edge.
+                        this.popoverEl.style.right = ''
+                        this.popoverEl.style.width = window.matchMedia('(min-width: 64rem)').matches
+                            ? '16rem'
+                            : '12rem'
+                    }
+                },
+                { signal }
+            )
 
             // Toast logic + progress loop hook into the popover's state
             // changes. `toggle` fires after the state has changed.
