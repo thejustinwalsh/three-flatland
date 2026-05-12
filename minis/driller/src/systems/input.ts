@@ -23,6 +23,7 @@ import {
   DRAG_COST_INTERVAL_TICKS,
   DRAG_COST_PER_INTERVAL,
   DRAG_COST_SCALE_PER_INTERVAL,
+  GEM_FADE_TICKS,
   OVER_PET_THRESHOLD,
   OVER_PET_WINDOW_TICKS,
   PAINT_ANCHOR_BUMP,
@@ -355,6 +356,18 @@ function doPaint(world: World): boolean {
   const next = Math.min(255, cur + PAINT_ANCHOR_BUMP)
   anchorDist[idx] = next
   flags[idx] = (flags[idx] ?? 0) | FLAG_AUTOTILE_DIRTY
+
+  // Arm fade timers on any gems on the painted row — same exposure
+  // logic as drilling. Painted rows count as mutated.
+  const paintRow = ptr.hoverTargetRow
+  world.query(Gem).forEach((entity) => {
+    const g = entity.get(Gem)!
+    if (g.collected) return
+    if (g.expireAtTick !== 0) return
+    if (g.row !== paintRow) return
+    if (isFreeFall(g.row)) return
+    entity.set(Gem, { expireAtTick: gs.tick + GEM_FADE_TICKS })
+  })
 
   world.set(GameState, { gems: gs.gems - PAINT_COST_PER_TICK })
   // Evil-tap event each commit so the driller's mood reflects the

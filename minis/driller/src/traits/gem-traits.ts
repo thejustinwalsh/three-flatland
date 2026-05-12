@@ -44,4 +44,17 @@ export const Gem = trait({
    * fallCooldownMs to compute lerp progress from prevRow → row.
    */
   stepDurationMs: 0,
+  /**
+   * Time-pressure expiry: tick after which the gem self-destroys.
+   * Triggered when the row the gem sits on is mutated (drill or
+   * paint), giving the player a window to grab it before it fades.
+   * 0 = no expiry armed (default; only the void-band shower and the
+   * just-spawned in-soil state).
+   *
+   * `expireAtTick - GEM_FADE_TICKS` marks the moment the fade
+   * animation starts; the renderer interpolates an ease-in grow
+   * followed by an elastic-snap shrink + alpha fade across that
+   * window. After expireAtTick the entity destroys itself.
+   */
+  expireAtTick: 0,
 })

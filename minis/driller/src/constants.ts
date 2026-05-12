@@ -139,6 +139,18 @@ export const PAINT_COST_PER_TICK = 1
  */
 export const PAINT_ANCHOR_BUMP = 16
 
+/**
+ * Gem time-pressure window. Once a gem's row is mutated (drill or
+ * paint), `Gem.expireAtTick` is set to `gs.tick + GEM_FADE_TICKS` and
+ * the renderer animates an ease-in grow + elastic-snap shrink+fade
+ * across the window. At expireAtTick the gem destroys itself. The
+ * void-band gem shower is exempt — those are always grabbable.
+ *
+ * ~3s @ 60Hz: enough time for the player to react and click, short
+ * enough to genuinely apply pressure if many gems are exposed at once.
+ */
+export const GEM_FADE_TICKS = 180
+
 /** Hold-and-drag base cost per tick (~1s @ 60Hz → 1 gem). */
 export const DRAG_COST_INTERVAL_TICKS = 60
 export const DRAG_COST_PER_INTERVAL = 1

@@ -366,3 +366,19 @@ Hard rules:
 5. **Single-click on a shake-hover cell is a no-op.** The pointerup → handleClick path explicitly skips `commitAction` for `action === 'shake'` so accidental clicks (no motion) don't drop the rock. The wiggle is the entry point.
 
 **Tests pinning the rule:** `tests/shake-action.test.ts` covers (a) cluster-wide FLAG_FALLING + gem deduction, (b) no-gem refusal, (c) non-stone hover refusal, (d) in-motion stone refusal (no double-fire on already-falling clusters).
+
+## User-action skill reform — Phase 3 (gem time-pressure)
+**File:** `minis/driller/src/{traits/gem-traits.ts,constants.ts,systems/{driller.ts,input.ts,gem-expiry.ts},components/{Scene.tsx,GemRenderer.tsx}}`, `tests/gem-expiry.test.ts`
+**Date:** 2026-05-12
+
+**Decision:** Gems now have an expiry timer. When the row a gem sits on is mutated (drill via `completeDrill` OR paint via `doPaint`), `Gem.expireAtTick` arms to `gs.tick + GEM_FADE_TICKS=180` (~3s @ 60Hz). At that tick the gem self-destroys. Visual: the renderer reads the expiry against the window to play an ease-in grow (0..0.3) then elastic-snap shrink + alpha fade (0.3..1.0) — sin-wave wobble overshoots zero to feel snappy. Void-band gems are exempt (their free-fall lifecycle handles them).
+
+**Why:**
+1. **Row-mutation is the natural exposure event.** A gem buried in soil is hidden; the moment you drill or paint that row you've seen it. Starting the timer on exposure (rather than on every drill click globally, or on driller proximity) ties the pressure to "you uncovered this gem, now grab it." Trivially testable: the gem's row vs the mutated row, an integer comparison.
+2. **Single fixed window across all gems.** Considered scaling fade time with gem size or biome depth; rejected because the player builds intuition fastest when one number applies everywhere. The render-time elastic-snap visual carries the size-difference signal (larger gems read more "pop" purely from their base size).
+3. **Paint arming inside `doPaint`, drill arming inside `completeDrill`.** Both row-mutation paths arm the timer at the source, so any future "row mutation" pathway (a future explosion that aerates a row, say) needs one line added there — not in a central exposure broker.
+4. **`gemExpirySystem` runs unconditionally per tick.** Not gated on `runState === 'playing'` because gems shouldn't reset if the player pauses; once armed, the countdown is committed. Cheap query (gems with `expireAtTick > 0`).
+5. **Don't re-arm.** Paint-twice on the same row keeps the original deadline — the gem is exposed once, not progressively-more-exposed. Tested explicitly so a refactor can't accidentally extend the window.
+6. **Fade visual runs in parallel with the existing off-top death tween.** Both compute a scale/alpha; the renderer takes whichever is MORE faded (min of both). A gem leaving the camera while expire-fading visually composes correctly without a phase ordering.
+
+**Tests pinning the rule:** `tests/gem-expiry.test.ts` covers (a) destroyed at expiry, (b) un-armed gems untouched, (c) paint arms expiry, (d) paint on different row doesn't arm, (e) no re-arm on second paint.

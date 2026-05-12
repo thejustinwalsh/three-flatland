@@ -14,6 +14,7 @@ import { deathSystem, heroWorldFallSystem, scatteredGemsSystem } from '../system
 import { drillerSystem, moodDriftSystem } from '../systems/driller'
 import { explosiveSystem } from '../systems/explosive'
 import { gemGravitySystem } from '../systems/gem-gravity'
+import { gemExpirySystem } from '../systems/gem-expiry'
 import { plannerTick } from '../systems/ai-planner'
 import { resetStreaming, streamChunks } from '../systems/generation'
 import { hazardSpawnSystem, hazardTickSystem, resetAvalanche, resetHazardSpawn, rockAvalancheSystem } from '../systems/hazard'
@@ -225,6 +226,7 @@ function runSimulationTick(world: World): void {
   rockAvalancheSystem(world)
   explosiveSystem(world)
   gemGravitySystem(world, deltaMs)
+  gemExpirySystem(world)
   collapseTick(world)
   particlesSystem(world, deltaMs)
   autotilePass(world)

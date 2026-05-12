@@ -3,8 +3,8 @@ import { useFrame } from '@react-three/fiber/webgpu'
 import { useQuery, useWorld } from 'koota/react'
 import type { Entity } from 'koota'
 import type { Sprite2DMaterial, Sprite2D as Sprite2DType } from 'three-flatland/react'
-import { Camera, Gem } from '../traits'
-import { TILE_PX } from '../constants'
+import { Camera, GameState, Gem } from '../traits'
+import { GEM_FADE_TICKS, TILE_PX } from '../constants'
 import { GEM_DEATH_ROWS } from '../systems/gem-gravity'
 
 const GEM_HEX = {
@@ -73,6 +73,32 @@ function GemSprite({ entity, material }: ViewProps) {
           scale = (1 - u * u * u) * 1.2
           alpha = 1 - u
         }
+      }
+    }
+    // Expire-fade tween: armed when a row mutation exposes the gem.
+    // Two-phase scale: ease-in GROW 1.0 → 1.4 across the first 30%
+    // of the window (gem "reacts" to being exposed), then elastic-
+    // snap shrink with a sin-wobble overshoot, alpha fade to 0
+    // across the remaining 70%. Runs in parallel with the off-top
+    // death tween — whichever takes more away from full size wins.
+    const gs = world.get(GameState)
+    if (gs && g.expireAtTick > 0 && !g.collected) {
+      const ticksLeft = g.expireAtTick - gs.tick
+      if (ticksLeft > 0 && ticksLeft <= GEM_FADE_TICKS) {
+        const t = 1 - ticksLeft / GEM_FADE_TICKS // 0..1
+        let fadeScale = 1
+        let fadeAlpha = 1
+        if (t < 0.3) {
+          const u = t / 0.3
+          fadeScale = 1 + u * u * 0.4
+        } else {
+          const u = (t - 0.3) / 0.7
+          const wobble = Math.sin(u * Math.PI * 2) * 0.15 * (1 - u)
+          fadeScale = 1.4 * (1 - u) * (1 - u) + wobble
+          fadeAlpha = (1 - u) * (1 - u)
+        }
+        if (fadeScale < scale) scale = fadeScale
+        if (fadeAlpha < alpha) alpha = fadeAlpha
       }
     }
     const baseSize = sizeRef.current

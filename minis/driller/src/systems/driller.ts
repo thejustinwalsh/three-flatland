@@ -22,6 +22,7 @@ import {
   DIG_INTERVAL_MS_SHALLOW,
   DRILL_COOLDOWN_MS,
   EXPLOSIVE_FUSE_TICKS,
+  GEM_FADE_TICKS,
   STONE_MAX_HITS,
   TILE_PX,
 } from '../constants'
@@ -171,6 +172,23 @@ function completeDrill(world: World, grid: { cols: number; rows: number; tiles: 
     if (e.row !== row) return
     entity.set(Explosive, { triggered: true, fuseRemaining: EXPLOSIVE_FUSE_TICKS })
   })
+
+  // Gem time-pressure: drilling a row "exposes" any gems sitting on it
+  // — they're visible to the player. Start a fade timer. The player
+  // has GEM_FADE_TICKS to click before the gem destroys itself. Void-
+  // band gems (the free-for-all shower) are exempt: they already have
+  // their own free-fall lifecycle handled in gem-gravity.
+  const gsForGem = world.get(GameState)
+  if (gsForGem) {
+    world.query(Gem).forEach((entity) => {
+      const g = entity.get(Gem)!
+      if (g.collected) return
+      if (g.expireAtTick !== 0) return // already armed
+      if (g.row !== row) return
+      if (isFreeFall(g.row)) return
+      entity.set(Gem, { expireAtTick: gsForGem.tick + GEM_FADE_TICKS })
+    })
+  }
   const idx = row * grid.cols + col
   const tile = grid.tiles[idx]
   if (tile === TILE_STONE) {
