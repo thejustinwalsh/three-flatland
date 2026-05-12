@@ -29,6 +29,7 @@ import { FallingChunkView } from './FallingChunkView'
 import { GemRenderer } from './GemRenderer'
 import { HoverOutlineRenderer } from './HoverOutlineRenderer'
 import { GemSpendPopupRenderer } from './GemSpendPopupRenderer'
+import { InfoPopupRenderer } from './InfoPopupRenderer'
 import { GhostBeam } from './GhostBeam'
 import { HazardView } from './HazardView'
 import { TileRenderer } from './TileRenderer'
@@ -180,6 +181,7 @@ export function Scene({ onShellStateChange }: SceneProps) {
         <GhostBeam material={material} />
         <HoverOutlineRenderer material={outlineMaterial} />
         <GemSpendPopupRenderer iconsMaterial={iconsMaterial} digitsMaterial={digitsMaterial} />
+        <InfoPopupRenderer iconsMaterial={iconsMaterial} barMaterial={material} />
         {shouldShowDebugPanel() && <DebugPanel />}
       </flatland>
       <Compositor gameTexture={gameRt.texture} viewportSize={size} />

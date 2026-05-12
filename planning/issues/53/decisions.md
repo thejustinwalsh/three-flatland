@@ -560,3 +560,34 @@ Each site previously called `world.set(GameState, { gems: gs.gems - X })` direct
 - Materials: `useIconsMaterial` + `useDigitsMaterial` factories in `materials.ts` load the baked PNGs with `NearestFilter` for pixel-art crispness; Sprite2D `setFrame()` picks the cell from the regions table.
 
 **Verification:** `tests/gem-spend.test.ts` covers (a) deduct + spawn, (b) refuse when broke, (c) stack within window, (d) no stacking across cells, (e) no stacking past window, (f) TTL destroys, (g) alive before TTL. 186/186 unit tests pass; typecheck clean.
+
+## In-canvas feedback HUD — Phase 4 (action info-popup)
+**File:** `minis/driller/src/components/{InfoPopupRenderer.tsx,Scene.tsx}`
+**Date:** 2026-05-12
+
+**Decision:** A single info-popup (icon + bar) renders next to the active interaction. Priority order (highest visible source wins): active drag → pet pause → held paint → hovered armed gem. One cell above the anchor cell, three sprites (icon + bar track + bar fill).
+
+**Bar metric per source:**
+- **drag** → `(elapsed % DRAG_COST_INTERVAL_TICKS) / interval`. Fills red as the next cost-tick approaches. Tells the player "you're about to be billed."
+- **pet** → `(pausedUntilTick - tick) / PET_PAUSE_TICKS`. Pink, drains as the pause ends.
+- **paint** → `min(1, gems / 20)`. Green when ≥5 gems remain, red salmon when running low — the player sees their runway evaporate as they paint.
+- **gem-fade** → `(expireAtTick - tick) / GEM_FADE_TICKS`. Yellow→pink as the timer drains; triggered when the cursor hovers an armed gem (including its halo).
+
+**Pet mood icon source:**
+- `fear > 0.6` → `pet.angry`
+- `trust > 5` → `pet.happy`
+- else → `pet.neutral`
+
+**Why a single popup, not per-source:**
+- The popups would otherwise overlap visually if e.g. dragging while hovering an armed gem.
+- The priority cascade matches the resolveHoverAction semantics (drag is the active state, others are passive informational).
+- Three sprite refs total — no pool needed because there's at most one popup at a time.
+
+**Bar implementation:**
+- The fill sprite is anchored at the bar-left edge: `position.x = barLeft + fillW/2` with `scale.x = fillW`. Sprite2D scales around its center, so this keeps the left edge fixed as the fill width changes.
+- Bar bg uses 50% alpha for legibility over busy tile backgrounds without being opaque.
+
+**Why reuse `useDrillerMaterial` for the bar:**
+- That material wraps a 1×1 white pixel texture, which is exactly what a flat tinted bar needs. No new material; no new texture upload.
+
+**Verification:** Typecheck clean. 186/186 unit tests pass. No new tests — this is pure renderer code (no commitable state mutation) and the underlying state (Drag, Driller, Pointer, Gem) is already tested in earlier suites.
