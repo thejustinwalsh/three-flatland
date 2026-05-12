@@ -179,22 +179,34 @@ function Game() {
 
 <h2 class="section-heading">Why Flatland?</h2>
 
-<ValueProp title="WebGPU and WebGL, Same API" color="diamond">
-  three-flatland is authored in **TSL (Three Shader Language)** — Three.js's renderer-agnostic shader graph that compiles to **both WebGPU and WebGL2**. Parity isn't free, though — we hand-roll dedicated WebGL paths in TSL where they earn real performance gains, so the **1:1 experience** holds up under load. Same scenes, same effects, both renderers.
+<ValueProp title="One renderer. One reconciler." color="diamond">
+  You wanted 2D in your Three.js scene. What you got was **two renderers** competing for the frame, hand-rolled resource sharing, and a render loop held together by hacks. Add **react-three-fiber** and you're now marshaling state across **two reconcilers** that don't know the other exists.
 
-  Where WebGPU genuinely unlocks new ground — compute passes, storage buffers, effects WebGL can't reach — three-flatland exposes that ceiling cleanly so you can opt in. **Consistent baseline, expressive ceiling.** No GLSL strings, no per-renderer forks for users.
+  Flatland deletes that whole class of bug. **Three.js renders. R3F reconciles.** Every 2D primitive is a real `Object3D` participating in the scene graph you already know. No bridge, no sync, no dark arts.
 </ValueProp>
 
-<ValueProp title="Performance Obsessed" color="emerald" align="right">
-  Every sprite in your scene shares the same geometry and materials through **automatic batching**. Whether you have 10 sprites or 10,000, three-flatland keeps your draw calls minimal and your frame rate high.
+<ValueProp title="Batches that survive your effects" color="emerald" align="right">
+  Flash one sprite, dissolve another, palette-swap a third — all in the same draw call. Flatland's batcher applies effects without rebuilding the shader or reflowing the scene graph, so the moment you add a glow to one sprite isn't the moment your perf falls off a cliff.
 
-  Sprite batching state is managed by **[koota](https://github.com/pmndrs/koota)**, an expressive ECS. Per-frame work runs as tight, cache-friendly batch updates over only what actually changed — and because the same component layout that makes the CPU side fast also defines the GPU buffer layout, the upload to the renderer is a packed memcpy, not a scattered rebuild.
+  Under the hood: per-sprite effects ride on a shared **TSL** shader that compiles away the branches you aren't using. An **ECS** keeps batches optimal as effects come and go. You don't have to think about any of it — but the seams are public if you want to.
 </ValueProp>
 
-<ValueProp title="Developer Joy" color="gold">
-  Full **TypeScript** support with types that actually help. React Three Fiber users get JSX components that integrate seamlessly. Three.js users get a clean, intuitive API.
+<ValueProp title="Override the node, not the library." color="gold">
+  When the defaults don't fit, you don't fork Flatland's renderer. You don't monkey-patch a shader.
 
-  No configuration hell. No boilerplate. Import, create, render. **Ship your game, not your build config.**
+  You **override the color node**. You **compose an effect**. You **swap a sampler**. **TSL** is the public surface — the same primitives we used to build the library are the ones you use to extend it.
+</ValueProp>
+
+<ValueProp title="The ecosystem is Three.js." color="amethyst" align="right">
+  Flatland isn't a walled garden. The core package is **subpath-imported and tree-shakable** — your bundle ships only what you actually import. Every `@three-flatland/*` package is independent: drop **Skia** into a vanilla Three.js scene with SIMD on across WebGL and WebGPU. Pull in the **Slug-style** TSL font renderer with zero deps. Use the **KTX2 Basis** transcoder, the **WebP** runtime encoder, the VS Code tooling — with Flatland or without.
+
+  Use any of it. Use none of it.
+</ValueProp>
+
+<ValueProp title="When not to reach for Flatland." color="ruby">
+  If your only 2D need is **app UI**, there are better-fit options in the ecosystem — react-aria, the platform's own primitives, or any of the established UI kits. Flatland's gravity is on **graphics work** that touches sprites, tilemaps, particles, shaders, and the GPU.
+
+  Beyond that: the modular shape means "should I use Flatland?" is rarely a binary call. Pull the packages that fit your project. Skip the ones that don't.
 </ValueProp>
 
 </div>
@@ -282,7 +294,6 @@ function Game() {
     width: 100%;
     max-width: 56rem;
     margin-inline: auto;
-    backdrop-filter: blur(0.5px);
   }
 
   /* Package-name eyebrow — small mono, tracked uppercase, reads as
@@ -356,8 +367,8 @@ function Game() {
     letter-spacing: 0.01em;
     color: color-mix(in oklab, var(--muted-foreground) 80%, var(--foreground));
     max-width: 48rem;
-    /* Explicit margin-block:0 top so we don't pick up browser-default
-       <p> 1em top margin; bottom pushes the CTAs into a clear band. */
+    /* Explicit margin-block:0 top so we don't pick up the default
+       1em top margin on paragraphs; bottom pushes CTAs into a clear band. */
     margin-block: 0 calc(var(--spacing) * 10);
     margin-inline: auto;
     /* Two-layer halo — same idea as .hero-title but pulled back since
