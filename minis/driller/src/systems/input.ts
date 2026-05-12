@@ -1,6 +1,7 @@
 import type { Entity, World } from 'koota'
 import {
   type ActionKind,
+  Drag,
   Driller,
   FLAG_AUTOTILE_DIRTY,
   FLAG_FALLING,
@@ -39,6 +40,27 @@ import { applyMoodEvent } from './ai-mood'
 import { braceShakingCluster } from './hazard'
 import { markCellAndNeighborsDirty } from './autotile-pass'
 
+/**
+ * Resolve the action that fires when the user clicks at (col, row).
+ *
+ * Priority (high → low):
+ *   1. Active drag — while a drag is in progress, every hover resolves
+ *      to 'drag' so the press stays exclusively in drag mode. Stops
+ *      the user from accidentally collecting / petting / painting on
+ *      release after a drag.
+ *   2. Gem (exact cell match OR ±1 Chebyshev halo) — slightly oversized
+ *      touch target so clicks adjacent to a small gem still collect it.
+ *   3. Pet (driller's exact cell).
+ *   4. Drag (chunk currently SHAKING/FALLING in this cell).
+ *   5. Brace (soil chunk currently SAGGING).
+ *   6. Paint (any soil cell).
+ *   7. None.
+ *
+ * Free-fall is the exception: in the void band the player can collect
+ * the nearest gem by clicking anywhere (no halo limit), and other
+ * actions are unreachable anyway (no SOIL, no driller-cell pet because
+ * the driller is mid-fall).
+ */
 export function resolveHoverAction(
   world: World,
   col: number,
@@ -48,14 +70,15 @@ export function resolveHoverAction(
   if (!grid) return { action: 'none', gemEntity: null }
   const { cols, rows: gridRows, tiles, flags } = grid
 
+  // 1. Active drag locks the hover action.
+  const drag = world.get(Drag)
+  if (drag && drag.clusterId !== 0) {
+    return { action: 'drag', gemEntity: null }
+  }
+
   const drillerEntity = world.queryFirst(Driller)
 
-  // Free-fall mini-game: while the driller is dropping through the
-  // void band between worlds, the player can collect ANY visible gem
-  // by clicking anywhere — no exact-cell alignment required. Click
-  // resolves to the nearest non-collected gem regardless of distance.
-  // Once the driller lands and starts drilling again, normal exact-
-  // cell hover rules return.
+  // Free-fall: nearest gem anywhere, no halo, no other actions.
   if (drillerEntity) {
     const d = drillerEntity.get(Driller)!
     if (isFreeFall(d.row)) {
@@ -77,43 +100,47 @@ export function resolveHoverAction(
     }
   }
 
+  // 2. Gem with ±1 cell halo. Exact-cell match wins over halo neighbors.
+  let gemEntity: Entity | null = null
+  let gemDist = Infinity
+  world.query(Gem).forEach((entity) => {
+    const g = entity.get(Gem)
+    if (!g || g.collected) return
+    const dc = Math.abs(g.col - col)
+    const dr = Math.abs(g.row - row)
+    const cheby = Math.max(dc, dr)
+    if (cheby > 1) return
+    if (cheby < gemDist) {
+      gemDist = cheby
+      gemEntity = entity
+    }
+  })
+  if (gemEntity) return { action: 'collect', gemEntity }
+
+  // 3. Pet — driller's exact cell.
   if (drillerEntity) {
     const d = drillerEntity.get(Driller)!
     if (d.col === col && d.row === row) return { action: 'pet', gemEntity: null }
   }
 
-  let gemEntity: Entity | null = null
-  world.query(Gem).forEach((entity) => {
-    const g = entity.get(Gem)
-    if (!g || g.collected) return
-    if (g.col === col && g.row === row && !gemEntity) gemEntity = entity
-  })
-  if (gemEntity) return { action: 'collect', gemEntity }
-
   if (col < 0 || col >= cols || row < 0 || row >= gridRows) {
     return { action: 'none', gemEntity: null }
   }
-
   const idx = row * cols + col
   const tile = tiles[idx] ?? TILE_AIR
   const flag = flags[idx] ?? 0
 
-  // Anything currently in motion (SHAKING or FALLING) is drag-grabbable —
-  // soil chunks from a sag, rock clusters from an avalanche/bomb cascade.
-  // The player can intercept the chunk mid-fall, drag it to a new
-  // location with tile collision, and re-drop it. Cost ramps per second.
+  // 4. Drag (this cell is currently in motion).
   if ((flag & (FLAG_SHAKING | FLAG_FALLING)) !== 0 && !isFixtureTile(tile)) {
     return { action: 'drag', gemEntity: null }
   }
 
+  // 5. Brace (sagging soil).
   if (tile === TILE_SOIL && (flag & FLAG_SAGGING) !== 0) {
     return { action: 'brace', gemEntity: null }
   }
 
-  // SOIL anywhere → 'paint'. The player click-and-holds to accelerate
-  // the cell toward collapse (anchor-distance bump per tick). Above
-  // OR below the driller — paint is just a creative-chaos tool that
-  // costs gems per tick regardless of direction.
+  // 6. Paint (any soil).
   if (tile === TILE_SOIL) {
     return { action: 'paint', gemEntity: null }
   }

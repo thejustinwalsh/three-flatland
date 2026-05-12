@@ -460,3 +460,28 @@ E. **Paint pivot: destroy, don't weaken.** The anchor-bump version (1 gem per ti
 5. **No follow-up needed.** This is a strict deletion — no replacement mechanic, no migration. The user's instinct ("my bad, paint covers it") was the simplification.
 
 **Tests:** `tests/shake-action.test.ts` deleted. 172/172 total pass (was 177; -5 shake tests).
+
+## User-action skill reform — Phase 7 (hover priority + gem halo)
+**File:** `minis/driller/src/{systems/input.ts,Game.tsx}`, `tests/hover-priority.test.ts`
+**Date:** 2026-05-12
+
+**Decision:** Reordered `resolveHoverAction` to explicit priority + added a ±1 cell Chebyshev halo for gem touch targets. While a drag is in progress, every hover resolves to `'drag'` and the pointerup click-commit is skipped (drag's intentional release shouldn't suddenly fire collect/pet/paint on the cursor's resting cell).
+
+**Priority (high → low):**
+1. Active drag (any cell → 'drag')
+2. Gem (exact-cell OR ±1 halo)
+3. Pet (driller's exact cell)
+4. Drag (this cell is currently SHAKING/FALLING)
+5. Brace (sagging soil)
+6. Paint (any soil)
+7. None
+
+**Why:**
+1. **Gems are the time-pressured target.** Under the new fade timer, a missed click on a fading gem is a real loss. Sticking gem priority above pet (and adding a halo) makes the touch interaction forgiving without changing other mechanics.
+2. **Halo is Chebyshev 1 (3×3 around the cursor cell).** Bigger halos start false-positive into adjacent gem territory; ±1 covers a fingertip-sized error region for a single-cell gem.
+3. **Exact-cell match wins over halo match.** The resolver tracks the minimum Chebyshev distance across all gems and picks the closest, so dropping a click ON a gem still selects THAT gem, even when a neighbor gem is in halo range.
+4. **Active drag is the topmost gate.** Without it, mid-drag pointermove could surface a "collect"/"paint" hoverAction, which is a misleading UI cue. With it, the cursor always shows "drag" while you're dragging.
+5. **Skip the click-commit on drag release.** `endDrag` runs, then `handleClick` is skipped — otherwise a release over a gem cell would auto-collect (free gem after paid drag) or over soil would fire a stray paint commit.
+6. **Free-fall branch unchanged.** The void band already had its own "nearest gem anywhere, no halo limit" logic; the new halo applies only to the gameplay branch.
+
+**Tests pinning the rule:** `tests/hover-priority.test.ts` covers (a) active drag overrides every cell, (b) exact-cell gem beats pet, (c) halo collect on ±1 cell, (d) halo does NOT extend past Chebyshev 1, (e) exact-cell gem wins over halo neighbor, (f) pet beats paint when no gem nearby, (g) paint as fallback. 179/179 total pass.

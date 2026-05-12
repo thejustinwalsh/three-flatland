@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { WorldProvider } from 'koota/react'
 import { getWorld } from './world'
-import { Camera, GameState, Grid, Pointer, Seed } from './traits'
+import { Camera, Drag, GameState, Grid, Pointer, Seed } from './traits'
 import { PlayCanvas } from './components/PlayCanvas'
 import { Background } from './components/Background'
 import { BiomeTransition } from './components/BiomeTransition'
@@ -180,6 +180,8 @@ export default function Driller({
       // Releasing re-arms FLAG_FALLING on the dragged cluster so the
       // avalanche resumes from wherever the player left it. endDrag
       // is idempotent if no drag is active.
+      const drag = world.get(Drag)
+      const wasDragging = !!(drag && drag.clusterId !== 0)
       endDrag(world)
       world.set(Pointer, {
         active: false,
@@ -188,7 +190,10 @@ export default function Driller({
         dragLastCostTick: 0,
         lockedAction: 'none',
       })
-      handleClick(e.clientX, e.clientY)
+      // Skip the click-commit if this release ended a drag: the press
+      // was dedicated to drag, and the cursor's resting cell shouldn't
+      // suddenly trigger collect / pet / paint on release.
+      if (!wasDragging) handleClick(e.clientX, e.clientY)
     }
 
     host.addEventListener('pointermove', onPointerMove)
