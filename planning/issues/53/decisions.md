@@ -664,3 +664,17 @@ The user specifically called out "a little chibi pixelated bubble" — that's a 
 5. **Outline edge thickness = 2px.** 1px would alias at fractional scales; 2px reads cleanly as a deliberate line.
 
 **Verification:** Typecheck clean. 187/187 unit tests pass.
+
+## Drag bug — gravity reapplied each tick
+**File:** `minis/driller/src/systems/hazard.ts`, `tests/drag-action.test.ts`
+**Date:** 2026-05-12
+
+**Decision:** `rockAvalancheSystem` now reads `Drag.clusterId` at the top of its per-cluster loop and SKIPS the cluster currently being held by the player.
+
+**The bug:** `startDrag` cleared `FLAG_FALLING`/`FLAG_SHAKING` on the cluster cells to "pause" gravity, but the avalanche system runs flood-fill detection every tick and re-applies the flags based on whether cells have air below. Mid-air cluster → re-flagged → kept falling → player could never actually hold it still.
+
+**The fix:** the avalanche system now treats the held cluster as off-limits. It reads `Drag.clusterId` once at loop start; when the seed cluster matches, the cell is marked `seen` and skipped. The dragSystem owns the cluster's position while held. On `endDrag`, `Drag.clusterId` resets to 0 and the avalanche resumes normal processing.
+
+**This is the "trait + NOT" pattern** the user prescribed: a single ECS source-of-truth (`Drag`) that other systems consult to know whether they should be touching a particular cell. Pause via "skip in the right systems" rather than via per-cell flags that get overwritten by the next system to look at them.
+
+**Regression test:** `tests/drag-action.test.ts > rockAvalancheSystem skips the held cluster` — starts a drag, ticks the avalanche 5× across multiple game ticks, asserts FLAG_FALLING/SHAKING stay zero on all cluster cells. Would have caught this immediately.

@@ -91,6 +91,32 @@ describe('drag', () => {
     }
   })
 
+  it('rockAvalancheSystem skips the held cluster (gravity stays paused mid-drag)', async () => {
+    // Without this skip, the avalanche re-applies FLAG_FALLING every
+    // tick to any mid-air cluster — undoing the drag's flag-clear
+    // pause and making the cluster un-pauseable.
+    const { rockAvalancheSystem } = await import('../src/systems/hazard')
+    const world = setupDragWorld()
+    world.set(GameState, { gems: 99 })
+    startDrag(world, 4, 2)
+    const grid = world.get(Grid)!
+    // Sanity: starts paused.
+    for (const c of [3, 4, 5]) {
+      const f = grid.flags[2 * grid.cols + c]!
+      expect((f & FLAG_FALLING) === 0).toBe(true)
+    }
+    // Run the avalanche several ticks. It must NOT re-add FLAG_FALLING.
+    for (let i = 0; i < 5; i++) {
+      tickWorld(world, 1)
+      rockAvalancheSystem(world)
+    }
+    for (const c of [3, 4, 5]) {
+      const f = grid.flags[2 * grid.cols + c]!
+      expect((f & FLAG_FALLING) === 0).toBe(true)
+      expect((f & FLAG_SHAKING) === 0).toBe(true)
+    }
+  })
+
   it('endDrag re-arms FLAG_FALLING on the cluster', () => {
     const world = setupDragWorld()
     startDrag(world, 4, 2)

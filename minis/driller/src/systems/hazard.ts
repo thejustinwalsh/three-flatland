@@ -1,6 +1,7 @@
 import type { World } from 'koota'
 import {
   Camera,
+  Drag,
   Driller,
   FLAG_AUTOTILE_DIRTY,
   FLAG_FALLING,
@@ -462,6 +463,13 @@ export function rockAvalancheSystem(world: World): void {
   const stack: number[] = []
   let advancedAny = false
 
+  // The cluster currently being held by the player's drag — gravity
+  // is suspended for it; the drag system owns its position. Without
+  // this gate, the avalanche re-applies FLAG_FALLING every tick to
+  // any mid-air cluster, undoing the drag's flag-clear pause.
+  const dragHeld = world.get(Drag)
+  const heldClusterId = dragHeld?.clusterId ?? 0
+
   for (let i = startIdx; i < endIdx; i++) {
     if (seen[i] || tiles[i] !== TILE_STONE) continue
     const seedClusterId = clusterIdArr[i] ?? 0
@@ -469,6 +477,12 @@ export function rockAvalancheSystem(world: World): void {
       // Rocks without a cluster id are orphaned (shouldn't happen in
       // healthy play; defensive). Mark seen and skip so the outer
       // loop doesn't churn on them every tick.
+      seen[i] = 1
+      continue
+    }
+    if (heldClusterId !== 0 && seedClusterId === heldClusterId) {
+      // Player is dragging this cluster — drag system owns it.
+      // Mark all cluster cells as seen so the outer loop skips them.
       seen[i] = 1
       continue
     }
