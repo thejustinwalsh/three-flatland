@@ -368,7 +368,13 @@ void main() {
     }
 
     function resize() {
-      const dpr = Math.min(window.devicePixelRatio || 1, 2)
+      // DPR pinned to 1 — the shader output is already chunky-pixelated
+      // + dithered + posterized, so a higher-DPR backing store would
+      // just multiply the pixel count for compositor work that Safari
+      // pays per recompose. At DPR 1 on a 1527×CSS-px hero this is
+      // ~781K → ~196K backing pixels on retina, ≈4× less compositor
+      // work per frame for indistinguishable visual output.
+      const dpr = 1
       const w = cvs.clientWidth | 0
       const h = cvs.clientHeight | 0
       const W = (w * dpr) | 0
