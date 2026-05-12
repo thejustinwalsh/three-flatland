@@ -22,6 +22,7 @@ import { createZzfxProxy } from '../audio/proxy'
 import { getBridge, getBridgeSync, hasBridge } from '../audio/bridge'
 import {
     loadVolumeLevel,
+    saveVolumeLevel,
     hasVolumePreference as hasVolumePreferenceFromStorage,
     type VolumeLevel,
 } from '../audio/storage'
@@ -69,18 +70,21 @@ export function hasVolumePreference(): boolean {
 
 export function setVolumeLevel(level: VolumeLevel): void {
     currentVolumeLevel = level
-    // Sync to the bridge — if it's loaded, apply immediately; otherwise
-    // defer until the lazy import resolves (the bridge reads localStorage
-    // for its initial state, so the value is correct on first construction).
+    // Persist before any bridge construction so a cold-load constructor
+    // sees the latest value via loadVolumeLevel(). Then sync the running
+    // bridge — either now (hot path) or on resolve (cold path). The
+    // cold-path bridge.setMasterLevel call is what triggers the first-
+    // unmute music-autostart logic.
+    saveVolumeLevel(level)
     const sync = getBridgeSync()
     if (sync) {
         sync.setMasterLevel(level)
     } else if (level > 0) {
-        // Unmuting before the bridge exists triggers the lazy import. The
-        // bridge constructor reads the persisted level itself, so we don't
-        // need to call setMasterLevel a second time on resolve.
         getBridge()
-            .then(() => notifyAudioReady())
+            .then((bridge) => {
+                bridge.setMasterLevel(level)
+                notifyAudioReady()
+            })
             .catch(() => {})
     }
 }
