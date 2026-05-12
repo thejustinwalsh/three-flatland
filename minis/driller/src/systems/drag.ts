@@ -16,6 +16,7 @@ import {
   DRAG_COST_SCALE_PER_INTERVAL,
 } from '../constants'
 import { markCellAndNeighborsDirty } from './autotile-pass'
+import { spendGems } from './gem-spend'
 
 /**
  * Start a drag on the stone cluster at (col, row). Pauses gravity on
@@ -86,7 +87,8 @@ export function dragSystem(world: World): void {
     return
   }
 
-  // Bill any newly-crossed cost intervals.
+  // Bill any newly-crossed cost intervals. The popup pops over the
+  // cluster's current anchor cell so the cost is visible in-world.
   const elapsed = gs.tick - drag.startTick
   const intervalsNow = Math.floor(elapsed / DRAG_COST_INTERVAL_TICKS)
   if (intervalsNow > drag.intervalsCharged) {
@@ -94,11 +96,10 @@ export function dragSystem(world: World): void {
     for (let i = drag.intervalsCharged; i < intervalsNow; i++) {
       owed += DRAG_COST_PER_INTERVAL + i * DRAG_COST_SCALE_PER_INTERVAL
     }
-    if (gs.gems < owed) {
+    if (!spendGems(world, owed, drag.anchorCol, drag.anchorRow)) {
       endDrag(world)
       return
     }
-    world.set(GameState, { gems: gs.gems - owed })
     world.set(Drag, { intervalsCharged: intervalsNow })
   }
 

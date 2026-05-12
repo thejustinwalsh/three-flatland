@@ -17,16 +17,18 @@ import { gemGravitySystem } from '../systems/gem-gravity'
 import { gemExpirySystem } from '../systems/gem-expiry'
 import { pointerHeldTick } from '../systems/input'
 import { dragSystem } from '../systems/drag'
+import { gemSpendPopupSystem } from '../systems/gem-spend'
 import { plannerTick } from '../systems/ai-planner'
 import { resetStreaming, streamChunks } from '../systems/generation'
 import { hazardSpawnSystem, hazardTickSystem, resetAvalanche, resetHazardSpawn, rockAvalancheSystem } from '../systems/hazard'
 import { particlesSystem } from '../systems/particles'
-import { useDrillerMaterial, useOutlineMaterial } from '../materials'
+import { useDigitsMaterial, useDrillerMaterial, useIconsMaterial, useOutlineMaterial } from '../materials'
 import { DebugPanel, shouldShowDebugPanel } from './DebugPanel'
 import { DrillerView } from './DrillerView'
 import { FallingChunkView } from './FallingChunkView'
 import { GemRenderer } from './GemRenderer'
 import { HoverOutlineRenderer } from './HoverOutlineRenderer'
+import { GemSpendPopupRenderer } from './GemSpendPopupRenderer'
 import { GhostBeam } from './GhostBeam'
 import { HazardView } from './HazardView'
 import { TileRenderer } from './TileRenderer'
@@ -74,6 +76,8 @@ export function Scene({ onShellStateChange }: SceneProps) {
   const size = useThree((s) => s.size)
   const material = useDrillerMaterial()
   const outlineMaterial = useOutlineMaterial()
+  const iconsMaterial = useIconsMaterial()
+  const digitsMaterial = useDigitsMaterial()
   const accumRef = useRef(0)
 
   // Game render target — Flatland renders into this texture at the
@@ -175,6 +179,7 @@ export function Scene({ onShellStateChange }: SceneProps) {
         <DrillerView material={material} />
         <GhostBeam material={material} />
         <HoverOutlineRenderer material={outlineMaterial} />
+        <GemSpendPopupRenderer iconsMaterial={iconsMaterial} digitsMaterial={digitsMaterial} />
         {shouldShowDebugPanel() && <DebugPanel />}
       </flatland>
       <Compositor gameTexture={gameRt.texture} viewportSize={size} />
@@ -234,6 +239,7 @@ function runSimulationTick(world: World): void {
   explosiveSystem(world)
   gemGravitySystem(world, deltaMs)
   gemExpirySystem(world)
+  gemSpendPopupSystem(world)
   collapseTick(world)
   particlesSystem(world, deltaMs)
   autotilePass(world)

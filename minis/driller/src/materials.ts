@@ -98,3 +98,27 @@ function createOutlineTexture(): DataTexture {
 export function useOutlineMaterial(): Sprite2DMaterial {
   return useMemo(() => new Sprite2DMaterial({ map: createOutlineTexture(), transparent: true }), [])
 }
+
+/**
+ * Sprite-sheet material loader for the baked HUD glyph sheets. Both
+ * `icons.png` (emoji icons) and `digits.png` (number digits) follow
+ * the same pattern: PNG → NearestFilter → opaque/transparent
+ * Sprite2DMaterial. Sprite2D `setFrame()` picks the cell via UV.
+ */
+function useSheetMaterial(url: string): Sprite2DMaterial {
+  return useMemo(() => {
+    const tex = new TextureLoader().load(url)
+    tex.minFilter = NearestFilter
+    tex.magFilter = NearestFilter
+    tex.colorSpace = SRGBColorSpace
+    return new Sprite2DMaterial({ map: tex, transparent: true })
+  }, [url])
+}
+
+export function useIconsMaterial(): Sprite2DMaterial {
+  return useSheetMaterial(new URL('./generated/icons.png', import.meta.url).href)
+}
+
+export function useDigitsMaterial(): Sprite2DMaterial {
+  return useSheetMaterial(new URL('./generated/digits.png', import.meta.url).href)
+}

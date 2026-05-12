@@ -536,3 +536,27 @@ E. **Paint pivot: destroy, don't weaken.** The anchor-bump version (1 gem per ti
 **Render order = 100** so outlines draw on top of tiles within the Flatland scene.
 
 **Verification:** typecheck clean; 179/179 tests pass (no behavior change for existing tests — the renderer is read-only).
+
+## In-canvas feedback HUD — Phase 3 (spendGems + -N popup)
+**File:** `minis/driller/src/{traits/input-traits.ts,constants.ts,systems/{gem-spend.ts,input.ts,drag.ts},materials.ts,components/{GemSpendPopupRenderer.tsx,Scene.tsx}}`, `tests/gem-spend.test.ts`
+**Date:** 2026-05-12
+
+**Decision:** Every gem-spend site now routes through `spendGems(world, amount, col, row)` which both deducts AND spawns/stacks a floating "-N + gem" popup. The new `GemSpendPopup` trait holds `{col, row, amount, startTick}`; the renderer animates it across `GEM_SPEND_POPUP_TTL_TICKS=36` (~0.6 s @ 60 Hz). `gemSpendPopupSystem` destroys popups past TTL each tick.
+
+**Stacking rule (the load-bearing part):** a held paint drag would otherwise spawn 60 popups per second. `spendGems` looks for an existing popup at `(col, row)` within `GEM_SPEND_POPUP_STACK_WINDOW=4` ticks; if found, it increments `amount` and resets `startTick` (visual restarts on the larger value). Without the stack window the screen becomes confetti during sustained paint.
+
+**Refactored call sites:**
+- `doPet` — spends `PET_COST` at `(driller.col, driller.row)`
+- `doBrace` — spends `BRACE_COST` at `(pointer.hoverTargetCol, hoverTargetRow)`
+- `doPaint` — spends `PAINT_COST_PER_TICK` at the painted cell
+- `dragSystem` — spends per-interval cost at `(drag.anchorCol, anchorRow)`
+
+Each site previously called `world.set(GameState, { gems: gs.gems - X })` directly; that pattern is now banned (no other code touches `GameState.gems` for the spend path).
+
+**Renderer design:**
+- Two pools of `Sprite2D`: 64 digit slots + 64 icon slots. Realistically a popup uses 2-4 sprites (minus + digits + gem icon), so 64 of each comfortably covers 16 simultaneous popups.
+- Per-popup composition: "-" + digit(s) for the amount, gap, then gem icon. Layout centered on the popup's cell with the whole row treated as a single unit.
+- Animation curve: ease-in pop (0→0.22 of TTL: scale 0.6→1.2), settle (0.22→0.55: scale → 1.0, y rises), fade (0.55→1: scale 1.0→0.9, alpha 1→0).
+- Materials: `useIconsMaterial` + `useDigitsMaterial` factories in `materials.ts` load the baked PNGs with `NearestFilter` for pixel-art crispness; Sprite2D `setFrame()` picks the cell from the regions table.
+
+**Verification:** `tests/gem-spend.test.ts` covers (a) deduct + spawn, (b) refuse when broke, (c) stack within window, (d) no stacking across cells, (e) no stacking past window, (f) TTL destroys, (g) alive before TTL. 186/186 unit tests pass; typecheck clean.

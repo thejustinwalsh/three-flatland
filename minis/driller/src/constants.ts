@@ -148,6 +148,18 @@ export const GEM_FADE_TICKS = 180
  */
 export const GEM_COLLECT_COOLDOWN_TICKS = 12
 
+/**
+ * Floating "-N gem" popup lifetime in ticks (~600 ms @ 60Hz). The
+ * renderer scales (pop), rises, and fades across this window.
+ */
+export const GEM_SPEND_POPUP_TTL_TICKS = 36
+/**
+ * Stack window: a second spend at the same cell within this many
+ * ticks consolidates into the existing popup (amount += new). Without
+ * stacking a held paint drag would spawn one popup per tick.
+ */
+export const GEM_SPEND_POPUP_STACK_WINDOW = 4
+
 /** Hold-and-drag base cost per tick (~1s @ 60Hz → 1 gem). */
 export const DRAG_COST_INTERVAL_TICKS = 60
 export const DRAG_COST_PER_INTERVAL = 1

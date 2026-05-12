@@ -37,10 +37,10 @@ export const Pointer = trait({
    */
   lockedAction: 'none' as ActionKind,
   /**
-   * Hold-and-drag state. Set when the pointer presses down on a chunk
-   * that's currently in SHAKE or FALLING phase; while non-zero, the
-   * pointer system follows the cursor and moves the chunk's cells.
-   * `dragHeldSinceTick` drives the per-tick cost ramp.
+   * Hold-and-drag bookkeeping. Set on pointerdown over a SHAKING /
+   * FALLING cell; cleared on pointer-up. The actual drag state lives
+   * on the singleton `Drag` trait — these fields are duplicate
+   * tracking kept on Pointer for the dragSystem's accounting.
    */
   dragEntity: 0,
   dragHeldSinceTick: 0,
@@ -52,6 +52,22 @@ export const Pointer = trait({
    * gem bonus zone is meant to be a click-frenzy free-for-all).
    */
   collectCooldownUntilTick: 0,
+})
+
+/**
+ * Floating "-N + gem" popup spawned every time gems are spent. The
+ * renderer reads `startTick` against `GEM_SPEND_POPUP_TTL_TICKS` to
+ * animate scale (pop), Y offset (rise), and alpha (fade). Stacking
+ * rule: a second spend at the same cell within
+ * `GEM_SPEND_POPUP_STACK_WINDOW` ticks increments `amount` on the
+ * existing entity instead of spawning a new one — without this, a
+ * held paint drag would spawn one popup per game tick.
+ */
+export const GemSpendPopup = trait({
+  col: 0,
+  row: 0,
+  amount: 1,
+  startTick: 0,
 })
 
 /**

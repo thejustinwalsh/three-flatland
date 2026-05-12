@@ -39,6 +39,7 @@ import { isFreeFall } from '../biomes'
 import { applyMoodEvent } from './ai-mood'
 import { braceShakingCluster } from './hazard'
 import { markCellAndNeighborsDirty } from './autotile-pass'
+import { spendGems } from './gem-spend'
 
 /**
  * Resolve the action that fires when the user clicks at (col, row).
@@ -204,7 +205,9 @@ function doPet(world: World): boolean {
   const pruned = petEvents.recentTicks.filter((t) => gs.tick - t <= OVER_PET_WINDOW_TICKS)
   pruned.push(gs.tick)
   drillerEntity.set(PetEvents, { recentTicks: pruned })
-  world.set(GameState, { gems: gs.gems - PET_COST })
+  // Pet cost popup over the driller's current cell.
+  const dPos = drillerEntity.get(Driller)!
+  spendGems(world, PET_COST, dPos.col, dPos.row)
 
   if (pruned.length > OVER_PET_THRESHOLD) {
     // Over-pet: fear spikes, pause is INSTANTLY cleared so the driller
@@ -320,7 +323,8 @@ function doBrace(world: World): boolean {
     )
   }
   if (!braced) return false
-  world.set(GameState, { gems: gs.gems - BRACE_COST })
+  // Pop the cost over the cell the player braced (pointer's hover cell).
+  spendGems(world, BRACE_COST, ptr.hoverTargetCol, ptr.hoverTargetRow)
 
   const drillerEntity = world.queryFirst(Driller)
   if (drillerEntity) {
@@ -375,7 +379,9 @@ function doPaint(world: World): boolean {
     entity.set(Gem, { expireAtTick: gs.tick + GEM_FADE_TICKS })
   })
 
-  world.set(GameState, { gems: gs.gems - PAINT_COST_PER_TICK })
+  // Pop the per-tick cost over the painted cell; stacking turns held
+  // paint into one growing "-N" popup instead of per-tick confetti.
+  spendGems(world, PAINT_COST_PER_TICK, ptr.hoverTargetCol, ptr.hoverTargetRow)
   const drillerEntity = world.queryFirst(Driller)
   if (drillerEntity) {
     const m = drillerEntity.get(Mood)
