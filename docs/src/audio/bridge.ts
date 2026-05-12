@@ -264,24 +264,9 @@ class AudioBridge {
         const rawPatterns = denull(track.patterns) as unknown as number[][][]
         const sequence = denull(track.sequence) as unknown as number[]
 
-        // Recover the canonical pattern row count from the GLOBAL max
-        // channel length across the entire song. zzfx-studio's
-        // `fmtChannel` serializer trims trailing zeros from each channel
-        // independently, so when EVERY channel in a single pattern
-        // happens to end with rests (e.g. a breakdown with only
-        // sustained drone channels), the per-pattern max-channel-length
-        // undercounts the true row count and that pattern plays slightly
-        // shorter than intended — audible as a phase shift / ghost note
-        // at the song loop boundary that compounds with each loop.
-        //
-        // The studio's generator hardcodes ROWS=32 (channel length 34),
-        // and across an entire song at least one channel reaches the
-        // canonical length because some non-zero note lands in the final
-        // row somewhere. Using global-max as the canonical and padding
-        // every pattern's channels to it recovers the row count for any
-        // song where any channel anywhere in the song preserved its
-        // trailing slot. The fix is additive — only zeros are introduced
-        // — so it can never alter audible content.
+        // Defensive pad — recover canonical row count from global max
+        // channel length for tracks ingested before the studio's
+        // row-count-preserving serializer (see zzfx-studio PR #5).
         let canonicalLen = 0
         for (const pat of rawPatterns) {
             for (const ch of pat) {
