@@ -118,6 +118,36 @@ export const PET_COST = 1
 /** Driller pause duration per non-over-pet pet, in ticks (~1s @ 60Hz). */
 export const PET_PAUSE_TICKS = 60
 
+/** Gem cost to wiggle-shake a stable rock into FALLING. */
+export const SHAKE_COST = 1
+/**
+ * Logical-pixel total path the pointer must travel while held over the
+ * SAME rock cell to register as a "wiggle" and trigger shake. Tuned to
+ * filter accidental clicks (no movement) and deliberate hover-and-drag
+ * sweeps (move off the cell) while still catching a natural back-and-
+ * forth wiggle gesture.
+ */
+export const WIGGLE_THRESHOLD_PX = 80
+
+/** Gem cost per cell-tick of paint (continuous, while button held). */
+export const PAINT_COST_PER_TICK = 1
+/**
+ * How much each paint tick advances the painted cell's anchor distance
+ * toward collapse. The relaxation pass naturally caps anchorDist at
+ * 255; painting bumps it by this amount per tick, so a held click on
+ * one cell reaches the sag threshold in a handful of ticks.
+ */
+export const PAINT_ANCHOR_BUMP = 16
+
+/** Hold-and-drag base cost per tick (~1s @ 60Hz → 1 gem). */
+export const DRAG_COST_INTERVAL_TICKS = 60
+export const DRAG_COST_PER_INTERVAL = 1
+/**
+ * Drag-cost scaling: each subsequent interval costs +N gems on top of
+ * the base. After 5 seconds of holding, cost has ramped to 1+5=6/sec.
+ */
+export const DRAG_COST_SCALE_PER_INTERVAL = 1
+
 /**
  * Cantilever collapse — SOIL cells whose Manhattan-along-soil distance
  * to the nearest anchor (STONE / ROCK / fixture / world side+bottom

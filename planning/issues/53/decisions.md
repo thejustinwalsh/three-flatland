@@ -337,3 +337,32 @@ Hard rules:
 - All 18 prior test files unchanged still pass — the unification didn't break codex invariants.
 
 **Verification:** 122/122 unit tests pass (was 119/119; +3 new in `unified-stone.test.ts`). Typecheck clean.
+
+## User-action skill reform — Phase 1 (pet)
+**File:** `minis/driller/src/{traits/driller-traits.ts,constants.ts,systems/driller.ts,systems/input.ts}`, `tests/pet.test.ts`
+**Date:** 2026-05-12
+
+**Decision:** Petting is no longer a free mood interaction — it costs 1 gem, pauses the driller for `PET_PAUSE_TICKS=60` (~1s @ 60Hz), and over-pet (>3 pets in `OVER_PET_WINDOW_TICKS`) flips fear UP and INSTANTLY clears the pause so the driller bolts.
+
+**Why:**
+1. **Gem cost matters because petting is a player choice that should compete with other spends** (shake, paint, drag). Without a cost the player would just spam-pet for the trust bump, neutralizing the over-pet flaw entirely.
+2. **Pause via `Driller.pausedUntilTick` rather than an `Animation: 'paused'` state.** The motion system already runs every tick — gating the entire budget loop with a single early-return is simpler than threading an explicit paused state through every action-picker branch. The animation system holds idle naturally because the planner never advances destCol/destRow.
+3. **Over-pet "flee" emerges from the existing mood system** — `applyMoodEvent('over-pet')` already bumps fear, and the cautious planner takes over at high fear. No dedicated flee state; the unpause + fear-spike produces visibly different behavior in-game because the planner immediately routes via cautious BFS.
+4. **Pause refresh, not stack.** Each pet sets pausedUntilTick = gs.tick + PET_PAUSE_TICKS — second tap during the pause extends it from "now" rather than queuing additional time. Matches the user mental model: pets feel continuous.
+
+**Tests pinning the rule:** `tests/pet.test.ts` covers (a) pause-and-deduct, (b) no-gem refusal, (c) over-pet instant unpause + fear spike, (d) tap-during-pause refreshes the timer.
+
+## User-action skill reform — Phase 2 (shake)
+**File:** `minis/driller/src/{traits/input-traits.ts,constants.ts,systems/input.ts,Game.tsx}`, `tests/shake-action.test.ts`
+**Date:** 2026-05-12
+
+**Decision:** Added a deliberate-gesture `shake` action: while the pointer is held over a stable TILE_STONE cell, accumulated raw pixel travel exceeds `WIGGLE_THRESHOLD_PX=80` → commit. Costs `SHAKE_COST=1` gem. Every stone sharing a cluster id with the wiggled cell gets `FLAG_FALLING` (clears `FLAG_SHAKING`). The wiggle IS the telegraph — the rock skips the normal shake/settle pipeline and enters falling immediately.
+
+**Why:**
+1. **Path-distance threshold over click-count or hold-duration.** "Use clicks and gives their mouse/finger a wiggle" maps best to actual pointer motion, not a multi-tap. Path-distance is direction-agnostic (works for circular wiggles, back-and-forth, vertical) and naturally filters accidental clicks (no motion → no shake). 80px is roughly 4-5 tile widths in canvas space — too big to be incidental, small enough to feel responsive.
+2. **Cluster cascade is automatic.** Same mechanic as the bomb cascade from `detonate`: walk the grid, set FLAG_FALLING on every cell sharing the cluster id. Reuses the avalanche system's `inMotion` path so falling resolves without any new code.
+3. **Solo stones (clusterId === 0) only drop the clicked cell.** A speed-bump damaged stone isn't part of a cluster; cascade-by-id would no-op. Special-case the single cell so the action still works on solo rocks.
+4. **`Pointer.wiggleCol/Row/Distance` lives on the trait, not in Game.tsx component state.** Pointer is a singleton world trait already; the wiggle session is naturally pointer-scoped state. Resetting on hover-cell-change or pointer-up is one set-trait call.
+5. **Single-click on a shake-hover cell is a no-op.** The pointerup → handleClick path explicitly skips `commitAction` for `action === 'shake'` so accidental clicks (no motion) don't drop the rock. The wiggle is the entry point.
+
+**Tests pinning the rule:** `tests/shake-action.test.ts` covers (a) cluster-wide FLAG_FALLING + gem deduction, (b) no-gem refusal, (c) non-stone hover refusal, (d) in-motion stone refusal (no double-fire on already-falling clusters).

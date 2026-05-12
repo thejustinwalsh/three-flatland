@@ -11,7 +11,7 @@ import { trait } from 'koota'
  *   4. cell above driller in intact soil → 'trigger'
  *   5. anything else                   → 'none'
  */
-export type ActionKind = 'none' | 'collect' | 'brace' | 'trigger' | 'pet'
+export type ActionKind = 'none' | 'collect' | 'brace' | 'trigger' | 'pet' | 'shake' | 'paint' | 'drag'
 
 /**
  * Pointer state. Updated by DOM event handlers in the input system.
@@ -29,6 +29,24 @@ export const Pointer = trait({
   hoverTargetRow: 0,
   /** Entity id of the gem currently under the cursor (0 = none). */
   hoverGemEntity: 0,
+  /**
+   * Wiggle-shake state. While the pointer is held down on a stable rock,
+   * `wiggleCol/Row` lock to that cell and `wiggleDistance` accumulates
+   * raw pointer-pixel travel. When the total crosses WIGGLE_THRESHOLD_PX
+   * the shake action commits. Reset on pointer-up or hover-cell change.
+   */
+  wiggleCol: -1,
+  wiggleRow: -1,
+  wiggleDistance: 0,
+  /**
+   * Hold-and-drag state. Set when the pointer presses down on a chunk
+   * that's currently in SHAKE or FALLING phase; while non-zero, the
+   * pointer system follows the cursor and moves the chunk's cells.
+   * `dragHeldSinceTick` drives the per-tick cost ramp.
+   */
+  dragEntity: 0,
+  dragHeldSinceTick: 0,
+  dragLastCostTick: 0,
 })
 
 /**

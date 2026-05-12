@@ -13,6 +13,7 @@ import { TitleAttract } from './components/TitleAttract'
 import { Leaderboard, loadLeaderboard } from './components/Leaderboard'
 import { resetStreaming } from './systems/generation'
 import { commitAction, pointerWorldCell, resolveHoverAction } from './systems/input'
+import { WIGGLE_THRESHOLD_PX } from './constants'
 import type { DrillerProps } from './types'
 import type { PlayCanvasMetrics } from './lib/scale'
 
@@ -104,14 +105,16 @@ export default function Driller({
     const host = hostRef.current
     if (!host) return
 
+    // Wiggle / drag tracking — held in refs so we don't blow re-renders
+    // for every pointer event. Both are tied to a specific cell; if the
+    // hover cell changes mid-interaction the session resets.
+    const wiggleRef = { lastX: 0, lastY: 0, primed: false }
+
     const handleMove = (clientX: number, clientY: number) => {
       const m = metricsRef.current
       if (!m) return
       const cam = world.get(Camera)
       const grid = world.get(Grid)
-      // Compute gameplay-rect-relative coords. The Canvas is full
-      // viewport, but the gameplay rect is centered both H and V
-      // within it (compositor draws it at canvas center).
       const rect = host.getBoundingClientRect()
       const canvasLeft = rect.left + (rect.width - m.canvasWidth) / 2
       const canvasTop = rect.top + (rect.height - m.canvasHeight) / 2
@@ -123,11 +126,6 @@ export default function Driller({
         return
       }
       const camY = cam?.y ?? 0
-      // Row clamp must use the GRID's row count, not cam.rows (the
-      // viewport row count). With cam.rows=40, every click in the
-      // bottom half of the rect resolved to row 39 once the camera
-      // scrolled past depth 40 — every fixture, gem, or cell deeper
-      // than row 39 was unclickable.
       const gridRows = grid?.rows ?? 256
       const cell = pointerWorldCell({
         canvasX,
@@ -139,6 +137,7 @@ export default function Driller({
         cols: 18,
         rows: gridRows,
       })
+      const ptrPrev = world.get(Pointer)
       const { action, gemEntity } = resolveHoverAction(world, cell.col, cell.row)
       world.set(Pointer, {
         px: clientX,
@@ -148,6 +147,29 @@ export default function Driller({
         hoverAction: action,
         hoverGemEntity: gemEntity ? (gemEntity as unknown as { id?: number }).id ?? 0 : 0,
       })
+
+      // Wiggle: while the button is held over a stable rock, accumulate
+      // raw pointer-pixel travel until WIGGLE_THRESHOLD_PX. When crossed,
+      // commit the shake. If the hover cell changes mid-wiggle, reset.
+      if (ptrPrev?.active && wiggleRef.primed && ptrPrev.wiggleCol === cell.col && ptrPrev.wiggleRow === cell.row) {
+        const dx = clientX - wiggleRef.lastX
+        const dy = clientY - wiggleRef.lastY
+        const dist = Math.hypot(dx, dy)
+        const next = ptrPrev.wiggleDistance + dist
+        wiggleRef.lastX = clientX
+        wiggleRef.lastY = clientY
+        if (next >= WIGGLE_THRESHOLD_PX) {
+          commitAction(world, 'shake', null)
+          world.set(Pointer, { wiggleCol: -1, wiggleRow: -1, wiggleDistance: 0 })
+          wiggleRef.primed = false
+        } else {
+          world.set(Pointer, { wiggleDistance: next })
+        }
+      } else if (ptrPrev?.active && wiggleRef.primed) {
+        // Hover cell changed → cancel the wiggle.
+        world.set(Pointer, { wiggleCol: -1, wiggleRow: -1, wiggleDistance: 0 })
+        wiggleRef.primed = false
+      }
     }
 
     const handleClick = (clientX: number, clientY: number) => {
@@ -156,6 +178,11 @@ export default function Driller({
       if (!ptr) return
       const cell = { col: ptr.hoverTargetCol, row: ptr.hoverTargetRow }
       const { action, gemEntity } = resolveHoverAction(world, cell.col, cell.row)
+      // Single-click commits everything EXCEPT shake (which is gated by
+      // the wiggle gesture) and drag (held primitive, no click-commit).
+      // Paint is one-shot per pointerdown here; the held-paint loop is
+      // driven by the per-frame paint tick below.
+      if (action === 'shake' || action === 'drag') return
       commitAction(world, action, gemEntity)
     }
 
@@ -163,9 +190,50 @@ export default function Driller({
     const onPointerDown = (e: PointerEvent) => {
       world.set(Pointer, { active: true })
       handleMove(e.clientX, e.clientY)
+      const ptr = world.get(Pointer)
+      if (!ptr) return
+      // Prime wiggle on stable rocks; first move-delta starts accumulating.
+      if (ptr.hoverAction === 'shake') {
+        world.set(Pointer, {
+          wiggleCol: ptr.hoverTargetCol,
+          wiggleRow: ptr.hoverTargetRow,
+          wiggleDistance: 0,
+        })
+        wiggleRef.lastX = e.clientX
+        wiggleRef.lastY = e.clientY
+        wiggleRef.primed = true
+      }
+      // First paint commit fires on pointerdown so a single tap still
+      // costs a gem + bumps the cell. Continuous paint runs from
+      // pointerPaintTick (driven by drillerSystem each tick).
+      if (ptr.hoverAction === 'paint') {
+        commitAction(world, 'paint', null)
+      }
+      // Drag pickup: when pointer goes down on a SHAKING/FALLING cell,
+      // arm Pointer.dragEntity. Per-tick drag-cost + chunk translation
+      // is driven by the pointer drag tick system (added in phase 5).
+      if (ptr.hoverAction === 'drag') {
+        const gs = world.get(GameState)
+        if (gs) {
+          world.set(Pointer, {
+            dragEntity: -1, // sentinel: grid-cell drag (no entity), col/row in hoverTarget
+            dragHeldSinceTick: gs.tick,
+            dragLastCostTick: gs.tick,
+          })
+        }
+      }
     }
     const onPointerUp = (e: PointerEvent) => {
-      world.set(Pointer, { active: false })
+      world.set(Pointer, {
+        active: false,
+        wiggleCol: -1,
+        wiggleRow: -1,
+        wiggleDistance: 0,
+        dragEntity: 0,
+        dragHeldSinceTick: 0,
+        dragLastCostTick: 0,
+      })
+      wiggleRef.primed = false
       handleClick(e.clientX, e.clientY)
     }
 

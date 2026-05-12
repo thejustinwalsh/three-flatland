@@ -2,6 +2,7 @@ import type { Entity, World } from 'koota'
 import {
   type ActionKind,
   Driller,
+  FLAG_AUTOTILE_DIRTY,
   FLAG_FALLING,
   FLAG_SAGGING,
   FLAG_SHAKING,
@@ -15,15 +16,22 @@ import {
   TILE_AIR,
   TILE_SOIL,
   TILE_STONE,
+  isFixtureTile,
 } from '../traits'
 import {
   BRACE_COST,
+  DRAG_COST_INTERVAL_TICKS,
+  DRAG_COST_PER_INTERVAL,
+  DRAG_COST_SCALE_PER_INTERVAL,
   OVER_PET_THRESHOLD,
   OVER_PET_WINDOW_TICKS,
+  PAINT_ANCHOR_BUMP,
+  PAINT_COST_PER_TICK,
   PET_COST,
   PET_PAUSE_TICKS,
   ROCK_BRACE_EXTEND_TICKS,
   SAG_DURATION_TICKS,
+  SHAKE_COST,
   TILE_PX,
 } from '../constants'
 import { detectChunks } from '../lib/chunk-detect'
@@ -90,27 +98,32 @@ export function resolveHoverAction(
   const tile = tiles[idx] ?? TILE_AIR
   const flag = flags[idx] ?? 0
 
+  // Anything currently in motion (SHAKING or FALLING) is drag-grabbable —
+  // soil chunks from a sag, rock clusters from an avalanche/bomb cascade.
+  // The player can intercept the chunk mid-fall, drag it to a new
+  // location with tile collision, and re-drop it. Cost ramps per second.
+  if ((flag & (FLAG_SHAKING | FLAG_FALLING)) !== 0 && !isFixtureTile(tile)) {
+    return { action: 'drag', gemEntity: null }
+  }
+
   if (tile === TILE_SOIL && (flag & FLAG_SAGGING) !== 0) {
     return { action: 'brace', gemEntity: null }
   }
 
-  // A SHAKING rock cluster is brace-able too — the player can stall
-  // an avalanche the same way they stall a soil sag. In-motion
-  // (FLAG_FALLING) rocks are NOT brace-able per codex rule 5.
-  if (
-    tile === TILE_STONE &&
-    (flag & FLAG_SHAKING) !== 0 &&
-    (flag & FLAG_FALLING) === 0
-  ) {
-    return { action: 'brace', gemEntity: null }
+  // A stable rock cell (not in motion, not yet shaking) → 'shake'.
+  // Wiggle-detection in Game.tsx upgrades a stable-rock hover into the
+  // commit; a plain click on the cell does nothing. The wiggle gesture
+  // is the deliberate trigger that prevents accidental rock drops.
+  if (tile === TILE_STONE && (flag & (FLAG_SHAKING | FLAG_FALLING)) === 0) {
+    return { action: 'shake', gemEntity: null }
   }
 
-  if (
-    tile === TILE_SOIL &&
-    drillerEntity &&
-    row < drillerEntity.get(Driller)!.row
-  ) {
-    return { action: 'trigger', gemEntity: null }
+  // SOIL anywhere → 'paint'. The player click-and-holds to accelerate
+  // the cell toward collapse (anchor-distance bump per tick). Above
+  // OR below the driller — paint is just a creative-chaos tool that
+  // costs gems per tick regardless of direction.
+  if (tile === TILE_SOIL) {
+    return { action: 'paint', gemEntity: null }
   }
 
   return { action: 'none', gemEntity: null }
@@ -146,7 +159,17 @@ export function commitAction(world: World, action: ActionKind, target: Entity | 
     case 'brace':
       return doBrace(world)
     case 'trigger':
-      return doTrigger(world)
+      // Legacy alias for paint — kept so any older callers still work.
+      return doPaint(world)
+    case 'shake':
+      return doShake(world)
+    case 'paint':
+      return doPaint(world)
+    case 'drag':
+      // Drag is a held primitive driven by the pointer system per-tick,
+      // not a one-shot commit. The Game.tsx pointerdown handler arms
+      // it directly via Pointer.dragEntity; this branch is a no-op.
+      return false
     case 'none':
       return false
   }
@@ -257,39 +280,41 @@ function doBrace(world: World): boolean {
   return true
 }
 
-function doTrigger(world: World): boolean {
+/**
+ * Shake action: a deliberate wiggle gesture on a stable rock dislodges
+ * it and the entire cluster instantly enters the falling state — no
+ * shake telegraph (the user's wiggle WAS the telegraph). Used for
+ * non-chunk solo rocks the player wants to drop on something. The
+ * wiggle-detection lives in Game.tsx (pointer-path threshold); this
+ * function just applies the gameplay consequence: 1 gem cost, set
+ * FLAG_FALLING on the rock + every cluster sibling, clear FLAG_SHAKING.
+ */
+function doShake(world: World): boolean {
+  const gs = world.get(GameState)
   const ptr = world.get(Pointer)
   const grid = world.get(Grid)
-  const gs = world.get(GameState)
-  if (!ptr || !grid || !gs) return false
-  const { cols, rows, tiles, flags } = grid
+  if (!gs || !ptr || !grid) return false
+  if (gs.gems < SHAKE_COST) return false
+  const { cols, tiles, flags, clusterId } = grid
   const idx = ptr.hoverTargetRow * cols + ptr.hoverTargetCol
   const t = tiles[idx]
-  if (t !== TILE_SOIL) return false
+  if (t !== TILE_STONE) return false
+  // Already in motion → no-op (the avalanche path is already running).
+  if (((flags[idx] ?? 0) & (FLAG_SHAKING | FLAG_FALLING)) !== 0) return false
 
-  const allChunks = detectChunks(tiles, cols, rows)
-  const owning = allChunks.find((ch) => ch.cells.includes(idx))
-  if (!owning) return false
-
-  for (const i of owning.cells) {
-    const f = flags[i] ?? 0
-    if (f & FLAG_SAGGING) return false
+  const cid = clusterId[idx] ?? 0
+  for (let i = 0; i < clusterId.length; i++) {
+    if (tiles[i] !== TILE_STONE) continue
+    // Solo stone (cluster id 0): only the clicked cell falls.
+    if (cid === 0) {
+      if (i !== idx) continue
+    } else {
+      if (clusterId[i] !== cid) continue
+    }
+    flags[i] = ((flags[i] ?? 0) & ~FLAG_SHAKING) | FLAG_FALLING | FLAG_AUTOTILE_DIRTY
   }
-  for (const i of owning.cells) flags[i] = (flags[i] ?? 0) | FLAG_SAGGING
 
-  world.spawn(
-    SaggingChunk({
-      cells: owning.cells.map((i) => ({
-        col: i % cols,
-        row: Math.floor(i / cols),
-        tile: tiles[i]!,
-      })),
-      startTick: gs.tick,
-      durationTicks: SAG_DURATION_TICKS,
-      bracedUntilTick: 0,
-    }),
-  )
-
+  world.set(GameState, { gems: gs.gems - SHAKE_COST })
   const drillerEntity = world.queryFirst(Driller)
   if (drillerEntity) {
     const m = drillerEntity.get(Mood)
@@ -300,3 +325,65 @@ function doTrigger(world: World): boolean {
   }
   return true
 }
+
+/**
+ * Paint action: each commit ticks the hovered SOIL cell's anchor
+ * distance up by PAINT_ANCHOR_BUMP, costing PAINT_COST_PER_TICK gems.
+ * The held-pointer loop in Game.tsx calls this every relaxation tick
+ * while the button is down on a soil cell. Once the cell crosses the
+ * collapse threshold (the existing sag detector picks it up on the
+ * next relaxation pass), the chunk shakes and falls normally — paint
+ * doesn't bypass the SHAKE → FALL pipeline, it just accelerates entry.
+ *
+ * Replaces the old `trigger` action (which spawned a SaggingChunk
+ * outright). Paint is the soft-evil version: ongoing gem cost, visual
+ * decay, the player can stop or grab the resulting chunk mid-fall.
+ */
+function doPaint(world: World): boolean {
+  const gs = world.get(GameState)
+  const ptr = world.get(Pointer)
+  const grid = world.get(Grid)
+  if (!gs || !ptr || !grid) return false
+  if (gs.gems < PAINT_COST_PER_TICK) return false
+  const { cols, tiles, anchorDist, flags } = grid
+  const idx = ptr.hoverTargetRow * cols + ptr.hoverTargetCol
+  if (tiles[idx] !== TILE_SOIL) return false
+  // Already sagging → don't double-charge; paint did its job.
+  if (((flags[idx] ?? 0) & FLAG_SAGGING) !== 0) return false
+
+  const cur = anchorDist[idx] ?? 0
+  const next = Math.min(255, cur + PAINT_ANCHOR_BUMP)
+  anchorDist[idx] = next
+  flags[idx] = (flags[idx] ?? 0) | FLAG_AUTOTILE_DIRTY
+
+  world.set(GameState, { gems: gs.gems - PAINT_COST_PER_TICK })
+  // Evil-tap event each commit so the driller's mood reflects the
+  // ongoing harassment, not just the first tick.
+  const drillerEntity = world.queryFirst(Driller)
+  if (drillerEntity) {
+    const m = drillerEntity.get(Mood)
+    if (m) {
+      const np = applyMoodEvent({ greed: m.greed, fear: m.fear, drive: m.drive }, 'evil-tap')
+      drillerEntity.set(Mood, np)
+    }
+  }
+  return true
+}
+
+/**
+ * Compute the gem cost for the current drag tick. Base
+ * DRAG_COST_PER_INTERVAL each DRAG_COST_INTERVAL_TICKS, scaling by
+ * DRAG_COST_SCALE_PER_INTERVAL per elapsed interval. Exported for
+ * the pointer drag tick in Game.tsx.
+ */
+export function dragCostForElapsed(elapsedTicks: number): number {
+  const intervals = Math.floor(elapsedTicks / DRAG_COST_INTERVAL_TICKS)
+  return DRAG_COST_PER_INTERVAL + intervals * DRAG_COST_SCALE_PER_INTERVAL
+}
+
+// `detectChunks` import retained only because the previous trigger
+// implementation used it; kept available for future paint-cluster
+// work if we ever want to limit paint to chunk-cells only.
+void detectChunks
+void SaggingChunk
+void SAG_DURATION_TICKS
