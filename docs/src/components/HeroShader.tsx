@@ -209,7 +209,7 @@ void main() {
 
   // Vignette in canvas-edge space — left + right only (0.7→1.0 fade).
   // Top stays a hard edge to meet the page header cleanly; the bottom
-  // is handled by `.hero-overlay::after`'s CSS linear-gradient alpha
+  // is handled by the .hero-overlay ::after CSS linear-gradient alpha
   // fade in index.mdx, which lands cleaner against the page bg than
   // a shader-side vignette could.
   vec2 vp = uv * 2.0 - 1.0; // -1..1, NOT aspect-corrected
