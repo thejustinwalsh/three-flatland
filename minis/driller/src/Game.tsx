@@ -13,6 +13,7 @@ import { TitleAttract } from './components/TitleAttract'
 import { Leaderboard, loadLeaderboard } from './components/Leaderboard'
 import { resetStreaming } from './systems/generation'
 import { commitAction, pointerWorldCell, resolveHoverAction } from './systems/input'
+import { endDrag, startDrag } from './systems/drag'
 import { WIGGLE_THRESHOLD_PX } from './constants'
 import type { DrillerProps } from './types'
 import type { PlayCanvasMetrics } from './lib/scale'
@@ -210,20 +211,17 @@ export default function Driller({
         commitAction(world, 'paint', null)
       }
       // Drag pickup: when pointer goes down on a SHAKING/FALLING cell,
-      // arm Pointer.dragEntity. Per-tick drag-cost + chunk translation
-      // is driven by the pointer drag tick system (added in phase 5).
+      // start the drag session. The per-tick dragSystem handles cost
+      // billing + chunk translation while the pointer is held.
       if (ptr.hoverAction === 'drag') {
-        const gs = world.get(GameState)
-        if (gs) {
-          world.set(Pointer, {
-            dragEntity: -1, // sentinel: grid-cell drag (no entity), col/row in hoverTarget
-            dragHeldSinceTick: gs.tick,
-            dragLastCostTick: gs.tick,
-          })
-        }
+        startDrag(world, ptr.hoverTargetCol, ptr.hoverTargetRow)
       }
     }
     const onPointerUp = (e: PointerEvent) => {
+      // Releasing the pointer re-arms FLAG_FALLING on the dragged
+      // cluster so the avalanche resumes from wherever the player
+      // left it. endDrag is idempotent if no drag is active.
+      endDrag(world)
       world.set(Pointer, {
         active: false,
         wiggleCol: -1,

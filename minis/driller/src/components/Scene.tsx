@@ -16,6 +16,7 @@ import { explosiveSystem } from '../systems/explosive'
 import { gemGravitySystem } from '../systems/gem-gravity'
 import { gemExpirySystem } from '../systems/gem-expiry'
 import { pointerHeldTick } from '../systems/input'
+import { dragSystem } from '../systems/drag'
 import { plannerTick } from '../systems/ai-planner'
 import { resetStreaming, streamChunks } from '../systems/generation'
 import { hazardSpawnSystem, hazardTickSystem, resetAvalanche, resetHazardSpawn, rockAvalancheSystem } from '../systems/hazard'
@@ -223,6 +224,7 @@ function runSimulationTick(world: World): void {
     drillerSystem(world, deltaMs)
     hazardSpawnSystem(world)
     pointerHeldTick(world)
+    dragSystem(world)
   }
   hazardTickSystem(world)
   rockAvalancheSystem(world)

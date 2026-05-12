@@ -397,3 +397,34 @@ Hard rules:
 5. **Paint anywhere, not just above driller.** The old trigger only allowed clicks on soil ABOVE the driller (so it could fall on him). Paint has no such restriction — the player can soften any soil cell anywhere. With the new hold-and-drag (phase 5), painting below to weaken a floor or sideways to expose a hidden gem are both legitimate uses.
 
 **Tests pinning the rule:** `tests/paint-action.test.ts` covers (a) anchor bump + gem deduction, (b) non-soil refusal, (c) no-gem refusal, (d) anchor cap at 255, (e) held-tick re-fires paint, (f) inactive pointer is a no-op.
+
+## User-action skill reform — Phase 5 (hold-and-drag) + mid-stream tweaks
+**File:** `minis/driller/src/{traits/{input-traits.ts,driller-traits.ts},systems/{drag.ts,input.ts,driller.ts,hazard.ts},world.ts,components/Scene.tsx,Game.tsx,constants.ts}`, `tests/{drag-action.test.ts,paint-action.test.ts,pet.test.ts,gem-expiry.test.ts,freefall-collect.test.ts}`
+**Date:** 2026-05-12
+
+**Decision:** Hold-and-drag is a per-tick system that physically translates a STONE CLUSTER while the pointer is held over any cell in it. Gravity is paused (FLAG_FALLING/FLAG_SHAKING cleared) at grab time; the cluster cells move as a rigid block when the pointer cell shifts, gated on collision (every target must be AIR or already part of the cluster). Cost ramps per `DRAG_COST_INTERVAL_TICKS=60` (~1s): tick N bills `1 + N * DRAG_COST_SCALE_PER_INTERVAL` gems, so 5s of holding = 15 gems total. Insolvency auto-releases. Pointer-up restores FLAG_FALLING so the avalanche resumes from wherever the drag ended.
+
+Soil chunk drag (SaggingChunk entities) explicitly deferred for now — the chunk lifecycle has its own translation logic in collapse.ts; bolting drag onto that is a larger surface change. Stone-cluster drag is the primary use case (post-bomb cascades, post-shake clusters), and ships.
+
+**Why:**
+1. **Pause-by-flag-clear, restore-by-flag-set.** Stones with FLAG_FALLING are visible to the avalanche system; clearing the flag silently removes them from gravity processing without a new "is-dragged" predicate. Restoring on release re-enters them with no special path.
+2. **Atomic snapshot move.** Translating the cluster naively (write target before clearing source) corrupts cells that move into a position another cluster cell was vacating. Two-pass — capture all source tile/flag/hits/cid into a snapshot, clear all sources, write all targets — avoids any intermediate state where the cluster looks malformed.
+3. **Anchor follows the cluster.** `Drag.anchorCol/Row` updates on every successful translation, not just at grab. The pointer-to-cluster offset is relative to the LAST valid position, so the player drags incrementally instead of jumping all at once when they move far.
+4. **Cost-ramp via summed-interval bills.** Each tick the system checks `intervalsNow > intervalsCharged`; if so, sums the costs of newly-crossed intervals and bills in one `world.set`. Cheap; one allocation; resilient to tick coalescing (a frame that crosses 3 intervals at once still pays all 3).
+
+**Coupled mid-stream tweaks landed in the same commit:**
+
+A. **Gem value scales by size.** `doCollect` now adds `GEM_VALUE[gem.size]` (`small=1, medium=3, large=5, huge=10`) instead of a flat 1. Huge gems are the jackpot find.
+
+B. **Gem collect cooldown during gameplay.** `Pointer.collectCooldownUntilTick` gates successive collects to `GEM_COLLECT_COOLDOWN_TICKS=12` (~0.2s @ 60Hz). Bypassed in the void band (the bonus zone is intentionally a click-frenzy). Prevents auto-clicker farming under the new time-pressure rules.
+
+C. **Pet defers pause while airborne.** Petting mid-fall doesn't levitate the driller. `doPet` checks `tiles[supportRow][col]` for ground; if airborne, sets `Driller.petPauseQueuedTicks` instead of `pausedUntilTick`. The driller motion system converts the queue to an active pause the first tick after landing.
+
+D. **Rock-on-head always kills.** The `onGround` gate inside `hazardTickSystem`'s landing-kill check is gone — if the rock's rest cell equals the driller's cell, runState flips to 'dying' regardless of fall state. The previous gate let the driller dodge a rock by being mid-air through the landing tick (related to the "play chicken" dance fix); now the kill is unconditional.
+
+E. **Paint pivot: destroy, don't weaken.** The anchor-bump version (1 gem per tick, +16 to anchorDist, slow collapse) felt unresponsive. New rule: `doPaint` instantly converts SOIL → AIR for 1 gem per tick. Held-pointer drag carves a hole as wide as the player can afford. Overhangs that result trip the existing sag detector on the next relaxation tick.
+
+**Tests pinning the rules:** `tests/drag-action.test.ts` (7 cases: grab, cluster-id capture, gravity-pause, translate, collision-rejection, release-rearm, cost-bill-and-release, auto-release). `tests/gem-expiry.test.ts` extended with the size-value matrix (1/3/5/10). `tests/freefall-collect.test.ts` updated for the new medium=3 value. `tests/pet.test.ts` extended with the airborne-queue case. `tests/paint-action.test.ts` rewritten for the destroy-instead-of-weaken semantics.
+
+## Phase summary (all 5 phases shipped 2026-05-12)
+176/176 unit tests pass, typecheck clean. ActionKind = `'none' | 'collect' | 'brace' | 'trigger' | 'pet' | 'shake' | 'paint' | 'drag'` — `'trigger'` retained as a legacy alias for `'paint'`. New constants in `constants.ts` (PET_COST, PET_PAUSE_TICKS, SHAKE_COST, WIGGLE_THRESHOLD_PX, PAINT_COST_PER_TICK, GEM_FADE_TICKS, GEM_COLLECT_COOLDOWN_TICKS, DRAG_COST_*) are the player-facing tuning surface — visible at a glance and easy to adjust without touching mechanics.

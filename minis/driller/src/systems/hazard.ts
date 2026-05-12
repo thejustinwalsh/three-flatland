@@ -252,13 +252,13 @@ export function hazardTickSystem(world: World): void {
         const driller = world.queryFirst(Driller)
         if (driller) {
           const d = driller.get(Driller)!
+          // Rock-on-head ALWAYS kills, even mid-fall. The previous
+          // onGround gate let the driller "play chicken" with a rock
+          // by jumping into a hole as it landed; that's been removed
+          // — if the rock's rest cell is the driller's cell, it's a
+          // direct hit and a kill.
           if (d.col === h.col && d.row === restRow) {
-            const supportRow = d.row + 1
-            const supportIdx = supportRow * cols + d.col
-            const onGround =
-              supportRow >= rows ||
-              (tiles[supportIdx] !== undefined && tiles[supportIdx] !== TILE_AIR)
-            if (onGround) world.set(GameState, { runState: 'dying' })
+            world.set(GameState, { runState: 'dying' })
           }
         }
         const restIdx = restRow * cols + h.col

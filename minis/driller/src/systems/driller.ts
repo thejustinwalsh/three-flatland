@@ -258,6 +258,32 @@ export function drillerSystem(world: World, deltaMs: number): void {
   // and the animation system holds an idle frame. Over-pet flips the
   // pausedUntilTick to 0 (set in `doPet`), so this gate clears
   // immediately when the driller has had enough.
+  //
+  // Queued pause: if the player petted while the driller was airborne,
+  // the pause was deferred (gravity wins over pet). Convert the
+  // queued duration to pausedUntilTick the moment we touch ground.
+  if (d.petPauseQueuedTicks > 0) {
+    const supportRow = d.row + 1
+    const onGround =
+      supportRow >= rows ||
+      (grid.tiles[supportRow * cols + d.col] !== undefined &&
+        grid.tiles[supportRow * cols + d.col] !== TILE_AIR)
+    if (onGround) {
+      drillerEntity.set(Driller, {
+        pausedUntilTick: gs.tick + d.petPauseQueuedTicks,
+        petPauseQueuedTicks: 0,
+      })
+      // Re-read so the early-return below picks up the new pause value.
+      const d2 = drillerEntity.get(Driller)!
+      if (gs.tick < d2.pausedUntilTick) {
+        const animEntity = drillerEntity.get(Animation)
+        if (animEntity && animEntity.state !== 'idle') {
+          drillerEntity.set(Animation, { state: 'idle', frame: 0, frameAccumMs: 0 })
+        }
+        return
+      }
+    }
+  }
   if (gs.tick < d.pausedUntilTick) {
     const animEntity = drillerEntity.get(Animation)
     if (animEntity && animEntity.state !== 'idle') {

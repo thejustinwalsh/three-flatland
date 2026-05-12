@@ -7,6 +7,7 @@ import {
   GameState,
   Gem,
   Grid,
+  Pointer,
 } from '../src/traits'
 import { WORLD_BODY_ROWS } from '../src/biomes'
 
@@ -36,6 +37,7 @@ function makeMinimalWorld(drillerRow: number) {
     }),
   )
   world.add(Camera({ y: 0, rows: 22, scale: 1 }))
+  world.add(Pointer({}))
   world.spawn(
     Driller({ col: 9, row: drillerRow, px: 0, py: 0, destCol: 9, destRow: drillerRow, facing: 1 }),
   )
@@ -55,9 +57,9 @@ describe('free-fall click-to-collect', () => {
     expect(action).toBe('collect')
     expect(target).toBe(gemEntity)
 
-    // Commit → gem destroyed, gem count incremented.
+    // Commit → gem destroyed, gem count incremented by the medium-gem value (3).
     expect(commitAction(world, action, target)).toBe(true)
-    expect(world.get(GameState)!.gems).toBe(1)
+    expect(world.get(GameState)!.gems).toBe(3)
     let liveGems = 0
     world.query(Gem).forEach((e) => {
       const g = e.get(Gem)

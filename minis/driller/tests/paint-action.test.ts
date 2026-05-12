@@ -8,19 +8,22 @@ import {
   Mood,
   PetEvents,
   Pointer,
+  TILE_AIR,
+  TILE_SOIL,
 } from '../src/traits'
-import { PAINT_ANCHOR_BUMP, PAINT_COST_PER_TICK } from '../src/constants'
+import { PAINT_COST_PER_TICK } from '../src/constants'
 import { makeWorldFromGrid } from './_world-helper'
 
 /**
  * Paint replaces the old `trigger` action: click-and-hold to
- * accelerate a soil cell's anchor-distance toward collapse.
+ * INSTANTLY destroy soil cells.
  *
- *   - Each commit: anchorDist += PAINT_ANCHOR_BUMP, gems -= PAINT_COST_PER_TICK.
- *   - Cell tagged FLAG_AUTOTILE_DIRTY so the renderer redraws decay.
+ *   - Each commit: tile SOIL → AIR, gems -= PAINT_COST_PER_TICK.
+ *   - Cell tagged FLAG_AUTOTILE_DIRTY so the renderer redraws.
  *   - Held-pointer ticks re-fire paint each game tick via pointerHeldTick.
- *   - No double-charge if the cell is already FLAG_SAGGING (chunk
- *     already in the pipeline).
+ *   - Anchor recomputation handled by the existing relaxation pass
+ *     on the next tick — paint just opens holes, the sag detector
+ *     observes any new overhangs and routes them through SHAKE → FALL.
  */
 
 function setupPaintWorld() {
@@ -42,17 +45,17 @@ function setupPaintWorld() {
 }
 
 describe('doPaint', () => {
-  it('bumps anchorDist by PAINT_ANCHOR_BUMP and costs PAINT_COST_PER_TICK gems', () => {
+  it('destroys the soil cell and costs PAINT_COST_PER_TICK gems', () => {
     const world = setupPaintWorld()
     world.set(GameState, { gems: 10 })
     world.set(Pointer, { hoverTargetCol: 5, hoverTargetRow: 2 })
     const grid = world.get(Grid)!
     const idx = 2 * grid.cols + 5
-    const beforeAnchor = grid.anchorDist[idx] ?? 0
+    expect(grid.tiles[idx]).toBe(TILE_SOIL)
     const ok = commitAction(world, 'paint', null)
     expect(ok).toBe(true)
     expect(world.get(GameState)!.gems).toBe(10 - PAINT_COST_PER_TICK)
-    expect(grid.anchorDist[idx]).toBe(Math.min(255, beforeAnchor + PAINT_ANCHOR_BUMP))
+    expect(grid.tiles[idx]).toBe(TILE_AIR)
     expect((grid.flags[idx]! & FLAG_AUTOTILE_DIRTY) !== 0).toBe(true)
   })
 
@@ -73,15 +76,14 @@ describe('doPaint', () => {
     expect(ok).toBe(false)
   })
 
-  it('caps anchor distance at 255', () => {
+  it('does not re-destroy an already-destroyed cell', () => {
     const world = setupPaintWorld()
-    world.set(GameState, { gems: 999 })
+    world.set(GameState, { gems: 10 })
     world.set(Pointer, { hoverTargetCol: 5, hoverTargetRow: 2 })
-    const grid = world.get(Grid)!
-    const idx = 2 * grid.cols + 5
-    grid.anchorDist[idx] = 250
     commitAction(world, 'paint', null)
-    expect(grid.anchorDist[idx]).toBe(255)
+    const okSecond = commitAction(world, 'paint', null)
+    expect(okSecond).toBe(false) // cell is AIR now
+    expect(world.get(GameState)!.gems).toBe(10 - PAINT_COST_PER_TICK)
   })
 })
 
@@ -89,18 +91,20 @@ describe('pointerHeldTick', () => {
   it('ticks paint each frame while button is held on a soil cell', () => {
     const world = setupPaintWorld()
     world.set(GameState, { gems: 10 })
-    world.set(Pointer, {
-      active: true,
-      hoverTargetCol: 5,
-      hoverTargetRow: 2,
-      hoverAction: 'paint',
-    })
     const grid = world.get(Grid)!
-    const idx = 2 * grid.cols + 5
-    const before = grid.anchorDist[idx] ?? 0
-    // Run the held tick 3 times → 3 paint commits.
-    for (let i = 0; i < 3; i++) pointerHeldTick(world)
-    expect(grid.anchorDist[idx]).toBe(Math.min(255, before + 3 * PAINT_ANCHOR_BUMP))
+    // Move the pointer across three soil cells across three ticks.
+    for (let c = 4; c <= 6; c++) {
+      world.set(Pointer, {
+        active: true,
+        hoverTargetCol: c,
+        hoverTargetRow: 2,
+        hoverAction: 'paint',
+      })
+      pointerHeldTick(world)
+    }
+    for (let c = 4; c <= 6; c++) {
+      expect(grid.tiles[2 * grid.cols + c]).toBe(TILE_AIR)
+    }
     expect(world.get(GameState)!.gems).toBe(10 - 3 * PAINT_COST_PER_TICK)
   })
 

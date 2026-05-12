@@ -22,6 +22,24 @@ function makeWorld() {
   return world
 }
 
+function makeAirborneWorld() {
+  // Driller at row 0 with AIR below (no ground). The world helper's
+  // floor at row 9 keeps the column passable in between.
+  const world = makeWorldFromGrid([
+    '..........',
+    '..........',
+    '..........',
+    '..........',
+    '##########',
+  ])
+  world.spawn(
+    Driller({ col: 5, row: 0, destCol: 5, destRow: 0 }),
+    Mood({ greed: 0.2, fear: 0.1, drive: 0.7, planner: 'greedy', switchAtTick: 0, trust: 0 }),
+    PetEvents({ recentTicks: [] }),
+  )
+  return world
+}
+
 describe('doPet', () => {
   it('pauses the driller and costs 1 gem', () => {
     const world = makeWorld()
@@ -51,6 +69,19 @@ describe('doPet', () => {
     const m = world.queryFirst(Mood)!.get(Mood)!
     expect(d.pausedUntilTick).toBe(0) // instant unpause on over-pet
     expect(m.fear).toBeGreaterThan(0.1) // fear bumped above baseline
+  })
+
+  it('pet while airborne queues the pause instead of pausing mid-fall', () => {
+    const world = makeAirborneWorld()
+    world.set(GameState, { gems: 5 })
+    const drillerEntity = world.queryFirst(Driller)!
+    commitAction(world, 'pet', null)
+    const d = drillerEntity.get(Driller)!
+    // Pause NOT applied directly; queued for the landing tick instead.
+    expect(d.pausedUntilTick).toBe(0)
+    expect(d.petPauseQueuedTicks).toBe(PET_PAUSE_TICKS)
+    // Gem still consumed and mood still applied.
+    expect(world.get(GameState)!.gems).toBe(5 - 1)
   })
 
   it('each pet refreshes the pause window', () => {

@@ -23,10 +23,10 @@ import {
   DRAG_COST_INTERVAL_TICKS,
   DRAG_COST_PER_INTERVAL,
   DRAG_COST_SCALE_PER_INTERVAL,
+  GEM_COLLECT_COOLDOWN_TICKS,
   GEM_FADE_TICKS,
   OVER_PET_THRESHOLD,
   OVER_PET_WINDOW_TICKS,
-  PAINT_ANCHOR_BUMP,
   PAINT_COST_PER_TICK,
   PET_COST,
   PET_PAUSE_TICKS,
@@ -39,6 +39,7 @@ import { detectChunks } from '../lib/chunk-detect'
 import { isFreeFall } from '../biomes'
 import { applyMoodEvent } from './ai-mood'
 import { braceShakingCluster } from './hazard'
+import { markCellAndNeighborsDirty } from './autotile-pass'
 
 export function resolveHoverAction(
   world: World,
@@ -199,29 +200,65 @@ function doPet(world: World): boolean {
       'over-pet',
     )
     drillerEntity.set(Mood, next)
-    drillerEntity.set(Driller, { pausedUntilTick: 0 })
+    drillerEntity.set(Driller, { pausedUntilTick: 0, petPauseQueuedTicks: 0 })
     return true
   }
-  // Regular pet: stops the driller in place for PET_PAUSE_TICKS so he
-  // can enjoy it. Each pet RESETS the timer (stacking taps extend the
-  // pause up to over-pet). Trust counter ticks up.
+  // Regular pet: stops the driller in place for PET_PAUSE_TICKS — but
+  // ONLY when grounded. Petting in mid-fall doesn't levitate him; the
+  // pause is queued in petPauseQueuedTicks and applied on landing.
+  const driller = drillerEntity.get(Driller)!
+  const grid = world.get(Grid)
+  let grounded = true
+  if (grid) {
+    const supportRow = driller.row + 1
+    if (supportRow < grid.rows) {
+      const supportTile = grid.tiles[supportRow * grid.cols + driller.col]
+      grounded = supportTile !== undefined && supportTile !== TILE_AIR
+    }
+  }
   const next = applyMoodEvent(
     { greed: moodTrait.greed, fear: moodTrait.fear, drive: moodTrait.drive },
     'pet',
   )
   drillerEntity.set(Mood, { ...next, trust: moodTrait.trust + 1 })
-  drillerEntity.set(Driller, { pausedUntilTick: gs.tick + PET_PAUSE_TICKS })
+  if (grounded) {
+    drillerEntity.set(Driller, { pausedUntilTick: gs.tick + PET_PAUSE_TICKS, petPauseQueuedTicks: 0 })
+  } else {
+    drillerEntity.set(Driller, { petPauseQueuedTicks: PET_PAUSE_TICKS })
+  }
   return true
 }
+
+/**
+ * Gem cash-out values per size. Bigger gems are visually larger AND
+ * worth more — they're both the rarer drop and the better find.
+ *   small  = 1   (most common)
+ *   medium = 3
+ *   large  = 5
+ *   huge   = 10  (jackpot)
+ */
+const GEM_VALUE = { small: 1, medium: 3, large: 5, huge: 10 } as const
 
 function doCollect(world: World, target: Entity): boolean {
   const gem = target.get(Gem)
   const gs = world.get(GameState)
-  if (!gem || !gs) return false
+  const ptr = world.get(Pointer)
+  if (!gem || !gs || !ptr) return false
   if (gem.collected) return false
 
-  world.set(GameState, { gems: gs.gems + 1 })
+  // Per-collect cooldown — prevents auto-clicker farming in gameplay.
+  // Bypassed in the void band (gem bonus zone is intentionally a free-
+  // for-all click frenzy).
   const drillerEntity = world.queryFirst(Driller)
+  const driller = drillerEntity ? drillerEntity.get(Driller) : null
+  const inVoid = driller ? isFreeFall(driller.row) : false
+  if (!inVoid && gs.tick < ptr.collectCooldownUntilTick) return false
+
+  const value = GEM_VALUE[gem.size] ?? 1
+  world.set(GameState, { gems: gs.gems + value })
+  if (!inVoid) {
+    world.set(Pointer, { collectCooldownUntilTick: gs.tick + GEM_COLLECT_COOLDOWN_TICKS })
+  }
   if (drillerEntity) {
     const m = drillerEntity.get(Mood)
     if (m) {
@@ -328,17 +365,20 @@ function doShake(world: World): boolean {
 }
 
 /**
- * Paint action: each commit ticks the hovered SOIL cell's anchor
- * distance up by PAINT_ANCHOR_BUMP, costing PAINT_COST_PER_TICK gems.
- * The held-pointer loop in Game.tsx calls this every relaxation tick
- * while the button is down on a soil cell. Once the cell crosses the
- * collapse threshold (the existing sag detector picks it up on the
- * next relaxation pass), the chunk shakes and falls normally — paint
- * doesn't bypass the SHAKE → FALL pipeline, it just accelerates entry.
+ * Paint action: instantly DESTROYS the hovered soil cell (SOIL → AIR)
+ * for PAINT_COST_PER_TICK gems. The held-pointer loop in Game.tsx
+ * re-fires this each game tick while the button stays down — drag
+ * the cursor across soil to carve a hole as wide as you can afford.
+ *
+ * Anchor distances are recomputed by the existing relaxation pass on
+ * the next tick, so any overhang the destruction creates will trip
+ * the SHAKE → FALL pipeline organically. Paint doesn't manually
+ * spawn sags; it just opens holes and lets the existing collapse
+ * detector observe the consequences.
  *
  * Replaces the old `trigger` action (which spawned a SaggingChunk
- * outright). Paint is the soft-evil version: ongoing gem cost, visual
- * decay, the player can stop or grab the resulting chunk mid-fall.
+ * outright). The earlier anchor-distance-bump version was the wrong
+ * curve — too slow to feel responsive given the per-tick cost.
  */
 function doPaint(world: World): boolean {
   const gs = world.get(GameState)
@@ -346,19 +386,16 @@ function doPaint(world: World): boolean {
   const grid = world.get(Grid)
   if (!gs || !ptr || !grid) return false
   if (gs.gems < PAINT_COST_PER_TICK) return false
-  const { cols, tiles, anchorDist, flags } = grid
+  const { cols, tiles, flags } = grid
   const idx = ptr.hoverTargetRow * cols + ptr.hoverTargetCol
   if (tiles[idx] !== TILE_SOIL) return false
-  // Already sagging → don't double-charge; paint did its job.
-  if (((flags[idx] ?? 0) & FLAG_SAGGING) !== 0) return false
 
-  const cur = anchorDist[idx] ?? 0
-  const next = Math.min(255, cur + PAINT_ANCHOR_BUMP)
-  anchorDist[idx] = next
+  tiles[idx] = TILE_AIR
   flags[idx] = (flags[idx] ?? 0) | FLAG_AUTOTILE_DIRTY
+  markCellAndNeighborsDirty(world, ptr.hoverTargetCol, ptr.hoverTargetRow)
 
   // Arm fade timers on any gems on the painted row — same exposure
-  // logic as drilling. Painted rows count as mutated.
+  // logic as drilling. A destroyed cell IS a row mutation.
   const paintRow = ptr.hoverTargetRow
   world.query(Gem).forEach((entity) => {
     const g = entity.get(Gem)!
@@ -370,8 +407,6 @@ function doPaint(world: World): boolean {
   })
 
   world.set(GameState, { gems: gs.gems - PAINT_COST_PER_TICK })
-  // Evil-tap event each commit so the driller's mood reflects the
-  // ongoing harassment, not just the first tick.
   const drillerEntity = world.queryFirst(Driller)
   if (drillerEntity) {
     const m = drillerEntity.get(Mood)

@@ -54,6 +54,14 @@ export const Driller = trait({
    * on over-pet (when fear takes over and he flees the touch).
    */
   pausedUntilTick: 0,
+  /**
+   * Queued pet-pause duration in ticks. Petting the driller while he
+   * is mid-air (falling) doesn't pause him — gravity wins — but the
+   * pause shouldn't be lost either. Instead the duration is queued
+   * here and the driller system converts it to `pausedUntilTick` on
+   * the first tick the driller is grounded. 0 = no pause queued.
+   */
+  petPauseQueuedTicks: 0,
 })
 
 /**

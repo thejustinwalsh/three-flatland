@@ -1,5 +1,5 @@
 import { createWorld, type World } from 'koota'
-import { Animation, Camera, Driller, GameState, Grid, Mood, PetEvents, Pointer, Seed } from './traits'
+import { Animation, Camera, Drag, Driller, GameState, Grid, Mood, PetEvents, Pointer, Seed } from './traits'
 
 /**
  * HMR-safe global handle. Module re-evaluation under HMR creates a new
@@ -34,6 +34,7 @@ function initWorld(world: World): void {
     anchorDist: new Uint8Array(0),
   }))
   world.add(Pointer({ px: 0, py: 0, active: false, hoverAction: 'none', hoverTargetCol: 0, hoverTargetRow: 0, hoverGemEntity: 0 }))
+  world.add(Drag({ clusterId: 0, anchorCol: 0, anchorRow: 0, startTick: 0, intervalsCharged: 0 }))
 
   // Driller entity — single instance, replaced on respawn (Phase 10).
   // Spawn at the surface (col 9 ≈ middle of 18-wide world, row 0).

@@ -47,6 +47,13 @@ export const Pointer = trait({
   dragEntity: 0,
   dragHeldSinceTick: 0,
   dragLastCostTick: 0,
+  /**
+   * Gem-collect cooldown: the tick after which the next gem collect
+   * is allowed. Prevents 60Hz auto-clicker farming during gameplay.
+   * Bypassed entirely while the driller is in the void band (the
+   * gem bonus zone is meant to be a click-frenzy free-for-all).
+   */
+  collectCooldownUntilTick: 0,
 })
 
 /**
@@ -56,4 +63,24 @@ export const Pointer = trait({
  */
 export const PetEvents = trait({
   recentTicks: () => [] as number[],
+})
+
+/**
+ * Active drag state. Singleton trait — only one drag at a time.
+ * `clusterId === 0` means no drag in progress; otherwise the trait
+ * holds the cluster being moved and the pointer cell at the moment
+ * the cluster was last successfully translated.
+ *
+ * Gem cost accrues across `DRAG_COST_INTERVAL_TICKS` intervals. Each
+ * crossed interval bills `DRAG_COST_PER_INTERVAL +
+ * intervalIdx * DRAG_COST_SCALE_PER_INTERVAL` gems — so holding for
+ * 5 seconds costs 1 + 2 + 3 + 4 + 5 = 15 gems total. The cost-ramp
+ * is the primary tuning lever for how long a drag is feasible.
+ */
+export const Drag = trait({
+  clusterId: 0,
+  anchorCol: 0,
+  anchorRow: 0,
+  startTick: 0,
+  intervalsCharged: 0,
 })

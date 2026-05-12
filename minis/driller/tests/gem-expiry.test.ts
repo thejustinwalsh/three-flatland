@@ -71,6 +71,22 @@ describe('gem expiry', () => {
     expect(g.expireAtTick).toBe(0)
   })
 
+  it('collect value scales by gem size: small=1, medium=3, large=5, huge=10', () => {
+    const cases: Array<{ size: 'small' | 'medium' | 'large' | 'huge'; value: number }> = [
+      { size: 'small', value: 1 },
+      { size: 'medium', value: 3 },
+      { size: 'large', value: 5 },
+      { size: 'huge', value: 10 },
+    ]
+    for (const { size, value } of cases) {
+      const world = setupGemWorld()
+      world.set(GameState, { gems: 0 })
+      const e = world.spawn(Gem({ col: 7, row: 0, color: 'emerald', size, collected: false, scatteredUntilTick: 0 }))
+      commitAction(world, 'collect', e)
+      expect(world.get(GameState)!.gems).toBe(value)
+    }
+  })
+
   it('does not re-arm an already-armed gem (paint twice on same row)', () => {
     const world = setupGemWorld()
     world.set(GameState, { gems: 10, tick: 5 })

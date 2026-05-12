@@ -151,6 +151,14 @@ export const PAINT_ANCHOR_BUMP = 16
  */
 export const GEM_FADE_TICKS = 180
 
+/**
+ * Cooldown between successive gem collects during gameplay (~0.2s @
+ * 60Hz). Prevents auto-clicker farming under the new time-pressure
+ * rules. Bypassed during free-fall (the void gem bonus zone is a
+ * deliberate click-frenzy).
+ */
+export const GEM_COLLECT_COOLDOWN_TICKS = 12
+
 /** Hold-and-drag base cost per tick (~1s @ 60Hz → 1 gem). */
 export const DRAG_COST_INTERVAL_TICKS = 60
 export const DRAG_COST_PER_INTERVAL = 1
