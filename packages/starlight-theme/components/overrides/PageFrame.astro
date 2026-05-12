@@ -1,12 +1,12 @@
 ---
-import { marked } from 'marked';
-import userConfig from 'virtual:starlight-theme-config';
+import SiteFooter from '../SiteFooter.astro';
 import Drawer from './parts/Drawer.astro';
+import { getPackageBadge } from '../../lib/packages';
 
 const { hasSidebar } = Astro.locals.starlightRoute;
 
 /**
- * Landing-only check — the early-alpha ribbon stuck to the corner only
+ * Landing-only check — the corner ribbon stuck to the viewport only
  * makes sense on the marketing landing page. Detect via path: landing
  * is the root of the Starlight base (with or without trailing slash).
  * Path-based instead of entry-id-based because Astro 6 + Starlight
@@ -15,17 +15,26 @@ const { hasSidebar } = Astro.locals.starlightRoute;
 const path = Astro.url.pathname.replace(/\/$/, '');
 const base = (import.meta.env.BASE_URL || '/').replace(/\/$/, '');
 const isLanding = path === base || path === '';
+
+/**
+ * Project-level release badge sourced from the brand package's
+ * `flatland.badge` field in package.json (lib/packages.ts). When the
+ * project goes stable, drop the field and the ribbon disappears.
+ * One location to rule them all — same field drives SiteFooter's
+ * Packages-column badge and any future per-package badge surface.
+ */
+const projectBadge = getPackageBadge('three-flatland');
 ---
 
 <div data-slot="layout" data-landing={isLanding ? '' : undefined}>
-    {isLanding && (
-        <aside class="alpha-ribbon" aria-label="Early alpha release">
+    {isLanding && projectBadge && (
+        <aside class="alpha-ribbon" aria-label={`Project status: ${projectBadge}`}>
             <a class="alpha-ribbon-tape" href="https://github.com/thejustinwalsh/three-flatland/issues">
                 {/* Square 45° ribbon: tape spans the wrapper's diagonal
                     exactly, so `text-align: center` on the tape lands
                     the text at the visible center of the diagonal —
                     no margin offset needed. */}
-                <span class="alpha-ribbon-text">Alpha</span>
+                <span class="alpha-ribbon-text">{projectBadge}</span>
             </a>
         </aside>
     )}
@@ -55,9 +64,7 @@ const isLanding = path === base || path === '';
         }
     </main>
 
-    <footer>
-        <div data-slot="footer-text" set:html={marked.parseInline(userConfig.footerText)} />
-    </footer>
+    <SiteFooter />
 </div>
 
 <Drawer />
@@ -274,58 +281,5 @@ const isLanding = path === base || path === '';
             min-height: 0;
         }
 
-        > footer {
-            border-top: none;
-            height: 6rem;
-            display: flex;
-            align-items: center;
-
-            [data-slot='footer-text'] {
-                /* Footer text — Inter at a smaller size, muted but
-                 * legible. Previously used `--gray-5` which sits below
-                 * the WCAG AA 4.5:1 contrast threshold against the page
-                 * bg (Lighthouse axe `color-contrast` rule). Bumped to
-                 * `--muted-foreground` which is the design-system token
-                 * for "muted-but-readable" body copy. Reads as quiet
-                 * attribution without failing contrast. */
-                width: 100%;
-                max-width: var(--container-max-width);
-                margin-inline: auto;
-                padding-inline: calc(var(--spacing) * 6);
-                font-family: 'Inter', system-ui, sans-serif;
-                font-size: 0.75rem;
-                line-height: 1.45;
-                font-weight: 400;
-                letter-spacing: 0.005em;
-                color: var(--muted-foreground);
-                text-wrap: balance;
-                text-align: center;
-            }
-            /* Footer link styles live in packages/starlight-theme/styles/base.css
-             * (search "[data-slot='footer-text'] a"). Astro's scoped-CSS
-             * processor doesn't reliably strip `:global(a)` when nested
-             * inside other scoped rules, so the rule has to be global
-             * to actually apply. */
-
-            &:is(:where(body):has(*[data-slot='docs']) *) {
-                display: none;
-            }
-
-            &:is(:where(body):has(.docs-nav)) {
-                padding-bottom: calc(var(--spacing) * 20);
-
-                @media (min-width: 640px) {
-                    padding-bottom: 0;
-                }
-            }
-
-            &:is(:where(body):has(.section-soft)) {
-                background: var(--surface-40);
-            }
-
-            &:is(:where(body):has(*[data-slot='designer']) *) {
-                display: none;
-            }
-        }
     }
 </style>

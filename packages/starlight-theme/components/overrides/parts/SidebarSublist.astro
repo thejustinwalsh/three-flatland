@@ -64,7 +64,19 @@ function isCollapsableGroup(label: string, collapsed: boolean, forced: boolean):
             <details
                 class="container-sidebar-entry collapsable"
                 style={!nested ? sectionAccent(idx) : undefined}
-                open={!entry.collapsed}
+                {/*
+                 * Nested groups inside a force-collapsable parent (the
+                 * API Reference tree) always render open. Starlight
+                 * auto-collapses non-current groups at runtime, which
+                 * hides the rest of the API tree when on a deep page —
+                 * for a typedoc-generated reference the user wants to
+                 * see the full structure so they can navigate to other
+                 * pages without re-expanding everything. Top-level
+                 * collapsable groups still respect entry.collapsed so
+                 * the API Reference itself can be folded on non-API
+                 * pages.
+                 */}
+                open={!!forceCollapsable || !entry.collapsed}
             >
                 <summary class="entry-title-row">
                     <svg class="caret" viewBox="0 0 16 16" aria-hidden="true">

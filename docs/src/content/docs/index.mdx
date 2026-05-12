@@ -1,5 +1,5 @@
 ---
-title: 'three-flatland: Composable 2D library for Three.js + R3F'
+title: 'three-flatland: Composable 2D library for three.js + react-three-fiber'
 description: The composable 2D library for Three.js. Primitives for 2D graphics, TSL composability, react-three-fiber, performance by default.
 template: splash
 head:
@@ -50,7 +50,7 @@ import { Tabs, TabItem, Aside } from 'starlight-theme/components';
     <div class="hero-overlay-inner">
       <p class="hero-eyebrow">three-flatland</p>
       <h1 class="hero-title">The composable 2D library for Three.js</h1>
-      <p class="hero-subtagline">Sprites, tilemaps, particles, shadows for Three.js or react-three-fiber — batched, lit, and composed in TSL.</p>
+      <p class="hero-subtagline">2D primitives for three.js or react-three-fiber. Instanced batching, composable TSL effects.</p>
       <div class="hero-actions">
         <a href="/three-flatland/getting-started/introduction/" class="sl-link-button primary"><span>Get Started</span><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M12 5l7 7-7 7" /></svg></a>
         <a href="https://github.com/thejustinwalsh/three-flatland" class="sl-link-button secondary"><span>View on GitHub</span><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17l9.2-9.2M17 17V7H7" /></svg></a>
@@ -66,23 +66,23 @@ import { Tabs, TabItem, Aside } from 'starlight-theme/components';
 <div class="page-body not-content">
 
 <StatsBanner stats={[
-  { value: "10K+", label: "Sprites at 60fps", color: "diamond" },
-  { value: "Forward+", label: "Tiled lighting", color: "pink" },
+  { value: "20K+", label: "Sprites at 60fps", color: "diamond" },
+  { value: "Auto", label: "Instanced GPU batches", color: "pink" },
   { value: "TSL", label: "Composable shader nodes", color: "gold" },
   { value: "WebGPU", label: "and WebGL rendering", color: "amethyst" },
 ]} />
 
-<h2 class="section-heading">What ships in three-flatland</h2>
+<h2 class="section-heading">Features</h2>
 
 <div class="feature-grid">
   <FeatureCard
     icon="image"
     title="Sprites"
     color="diamond"
-    stat="Atlas"
-    statLabel="JSON spritesheet loader"
+    stat="Instanced"
+    statLabel="Atlas + per-instance animation"
   >
-    `Sprite2D` and `AnimatedSprite2D` are the foundational primitives — both Three.js objects that join an instanced batch as they enter the scenegraph. The spritesheet loader speaks TexturePacker, and the animation system drives per-instance playback with fps control, looping, and callbacks.
+    Sprites should be cheap enough to scatter without counting them. `Sprite2D` and `AnimatedSprite2D` join an instanced batch on scenegraph entry. The spritesheet loader speaks TexturePacker; the animation system drives per-instance playback.
   </FeatureCard>
 
   <FeatureCard
@@ -92,7 +92,7 @@ import { Tabs, TabItem, Aside } from 'starlight-theme/components';
     stat="ECS"
     statLabel="Dynamic batch archetypes"
   >
-    An ECS holds the batch relationships and packs sprite state into compact GPU buffers, so per-sprite effects render through a shared material instead of fragmenting the batch. Tint, outline, dissolve, palette swap — written in TSL, branch-pruned at compile time.
+    An ECS packs sprite state into compact GPU buffers, so per-sprite effects share one material without fragmenting the batch. Tint, outline, dissolve, palette swap — written in TSL, branch-pruned at compile time.
   </FeatureCard>
 
   <FeatureCard
@@ -102,25 +102,25 @@ import { Tabs, TabItem, Aside } from 'starlight-theme/components';
     stat="v10 Alpha"
     statLabel="Three.js >= 0.183"
   >
-    Every primitive ships a typed JSX wrapper — `<sprite2D>`, `<tileMap2D>`, `<sprite2DGroup>`. Compatible with react-three-fiber v10's alpha WebGPU canvas, mounts inside `<Canvas>` like any other react-three-fiber element.
+    Every primitive ships a typed JSX wrapper — `<sprite2D>`, `<tileMap2D>`, `<spriteGroup>`, `<flatland>`. Hooks compose with `useFrame` and `useThree`. Compatible with react-three-fiber v10's alpha WebGPU canvas, mounts inside `<Canvas>` like any other element.
   </FeatureCard>
 
   <FeatureCard
-    icon="lightbulb"
-    title="Lighting and shadows"
+    icon="palette"
+    title="Pixel-art rendering"
     color="gold"
-    stat="SDF"
-    statLabel="Signed-distance shadows"
+    stat="Retro"
+    statLabel="Pixel-art shader effects"
   >
-    Sprites carry normal maps and lights carry height, so 2D scenes light directionally — a torch above a sprite lights its top differently than its side. SDF-driven shadows stay smooth at any zoom. Tiled Forward+ keeps per-fragment cost bounded as light counts grow.
+    The retro effect category — CRT scanlines, dithering, pixelation, palette quantization — runs as per-sprite TSL nodes. `TextureLoader` applies pixel-art presets: nearest-neighbor filtering, no mipmaps, no subpixel bleeding.
   </FeatureCard>
 
   <FeatureCard
     icon="sparkles"
     title="Composable TSL effects"
     color="salmon"
-    stat="30+"
-    statLabel="Effect nodes"
+    stat="50+"
+    statLabel="Composable shader effects"
   >
     Pixelate, dither, CRT scanlines, dissolve, palette swap, chromatic aberration — a TSL effect library composed per-sprite via a typed schema. Override the color node to drop in your own.
   </FeatureCard>
@@ -132,11 +132,11 @@ import { Tabs, TabItem, Aside } from 'starlight-theme/components';
     stat="Chunked"
     statLabel="Per-chunk visibility"
   >
-    `TileMap2D` batches like sprites, with chunks instead of per-tile draws — only visible chunks render, so large worlds stay cheap to scroll. Loads directly from Tiled or LDtk JSON, with multiple layers, animated tiles, and collision data.
+    `TileMap2D` batches like sprites, with chunks instead of per-tile draws — only visible chunks render. Loads from Tiled or LDtk JSON, with multiple layers, animated tiles, and collision data.
   </FeatureCard>
 </div>
 
-<h2 class="section-heading">Quick start: 2D in Three.js</h2>
+<h2 class="section-heading">Quick start: 2D in three.js</h2>
 
 <Tabs>
   <TabItem label="Three.js" icon="simple-icons:threedotjs">
@@ -177,18 +177,18 @@ function Game() {
   </TabItem>
 </Tabs>
 
-<h2 class="section-heading">Why Flatland?</h2>
+<h2 class="section-heading">Built for three.js</h2>
 
-<ValueProp title="Built into three.js, not on top of it" color="diamond">
-  Most 2D rendering libraries on the web don't compose with three.js. Pull one in and you're running a second full renderer that competes for the frame, with GPU resources shared by hand and the integration held together by hacks. Inside react-three-fiber the cost doubles: a second reconciler, state marshaled across two React instances.
+<ValueProp title="Native to the three.js scenegraph" color="diamond">
+  Composing existing 2D rendering libraries with three.js is hard. Pull one in and you're running a second full renderer that competes for the frame, with GPU resources shared by hand and the integration held together by hacks. Inside react-three-fiber the cost doubles: another reconciler, state marshaled across two React instances.
 
-  three-flatland is built directly on three.js. There's no second renderer to coordinate, no bridge between React instances to maintain. three.js is the renderer, react-three-fiber is the reconciler, and every 2D primitive — `Sprite2D`, `TileMap2D`, particle systems, lighting passes — is an `Object3D` that mounts into the scenegraph the same way a `Mesh` does.
+  three-flatland is built directly on three.js. There's no parallel renderer to coordinate, no bridge between React instances to maintain. three.js is the renderer, react-three-fiber is the reconciler, and every 2D primitive — `Sprite2D`, `TileMap2D`, `SpriteGroup` — is a Three.js object that mounts into the scenegraph the same way a `Mesh` does.
 </ValueProp>
 
 <ValueProp title="Sprite batches that survive your effects" color="emerald" align="right">
   Most sprite batchers fall apart the moment a single sprite needs special treatment. Changing a uniform tanks the batch; shifting a z-index forces a scenegraph reorder; attaching an effect reflows the scene around it.
 
-  three-flatland's batcher applies effects on a shared material instead of rebuilding the shader. An ECS holds the batch relationships, so batch archetypes stay optimal as effects come and go; an effect schema describes per-sprite effects; the uber-shader prunes dead branches via TSL, so cost scales with what's actually used. To customize, override the color node or compose your own effect.
+  three-flatland's batcher composes effects on a single shared material — adding a glow to one sprite doesn't fragment the batch or rebuild the shader. The cost stays proportional to what's actually used: the uber-shader prunes unused branches at compile time, and the ECS keeps batch archetypes optimal as effects appear and disappear. To customize beyond the defaults, swap the color node or write a new effect against the same schema.
 </ValueProp>
 
 <ValueProp title="The ecosystem is three.js" color="amethyst">

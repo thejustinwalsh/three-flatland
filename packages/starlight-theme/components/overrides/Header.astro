@@ -62,9 +62,13 @@ const shouldRenderSearch =
     }
 
     /* Wordmark — Silkscreen pixel font for the "flatland" brand mark.
-     * Sized to balance with the 32px FL icon. Sits slightly raised so
-     * the pixel baseline aligns with the icon's visual center, not its
-     * em box. Tight to the icon (controlled by SiteTitle.astro's gap). */
+     * Sized to balance with the 32px FL icon. Sits at its natural
+     * baseline so it lines up with the rest of the header text (nav
+     * links, search button, etc.); the icon is vertically centered
+     * with the text via `align-items: center` on `.site-title` in
+     * SiteTitle.astro, which is what the user wants (icon centered on
+     * the text height, not baselined to it). Tight to the icon
+     * (controlled by SiteTitle.astro's gap). */
     .site-title-wrapper :global(.title-text) {
         font-family: 'Silkscreen', system-ui, sans-serif;
         font-weight: 400;
@@ -72,8 +76,6 @@ const shouldRenderSearch =
         letter-spacing: 0.02em;
         color: var(--foreground);
         line-height: 1;
-        position: relative;
-        top: 2px;
     }
 
     .header-right {

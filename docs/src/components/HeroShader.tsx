@@ -207,14 +207,10 @@ void main() {
   col += C_GOLD * smoothstep(0.55, 0.95, dirShade) * 0.35;
   col -= 0.10 * smoothstep(0.0, 0.5, 1.0 - dirShade);
 
-  // Vignette in canvas-edge space — left + right only (0.7→1.0 fade).
-  // Top stays a hard edge to meet the page header cleanly; the bottom
-  // is handled by the .hero-overlay ::after CSS linear-gradient alpha
-  // fade in index.mdx, which lands cleaner against the page bg than
-  // a shader-side vignette could.
-  vec2 vp = uv * 2.0 - 1.0; // -1..1, NOT aspect-corrected
-  float v = 1.0 - smoothstep(0.7, 1.0, abs(vp.x));
-  col = mix(C_BG, col, v);
+  // Side vignette removed — let the gem flow run to the canvas edges.
+  // The bottom horizon is still handled by the .hero-overlay ::after
+  // CSS linear-gradient alpha fade in index.mdx, which transitions
+  // into the page background cleanly.
 
   // ────────────────────────────────────────────────────────────────
   // BAYER 4x4 ORDERED DITHER + POSTERIZE — quantize the smooth gem

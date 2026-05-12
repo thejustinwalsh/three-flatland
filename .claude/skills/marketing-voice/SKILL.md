@@ -280,6 +280,28 @@ Em-dashes are for parenthetical asides. Use sparingly — one per
 paragraph at most. Two if the paragraph is long. Multiple consecutive
 em-dashed clauses read as Opus.
 
+**Zero em-dashes above the fold.** Hero subtagline, H1/H2 headings,
+opening sentence of a launch post, hero callout cards — these
+positions are where readers pattern-match against LLM defaults
+hardest. One em-dash in the hero burns the credibility budget for
+the rest of the page. The em-dash is THE apex AI tell; in the most
+visible slot it's the most identifiable LLM signature. Use periods,
+commas, colons, or sentence restructure for high-prominence copy.
+
+```
+❌  2D primitives for three.js or react-three-fiber — instanced
+    batching, composable TSL effects.
+
+✅  2D primitives for three.js or react-three-fiber. Instanced
+    batching, composable TSL effects.
+
+❌  three-flatland is here — built for WebGPU, ready for
+    react-three-fiber.
+
+✅  three-flatland is here. Built for WebGPU, ready for
+    react-three-fiber.
+```
+
 ### Cute closing lines
 
 ```

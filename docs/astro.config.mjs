@@ -12,6 +12,7 @@ import react from '@astrojs/react';
 import { watchExamples } from './vite-plugins/watch-examples.js';
 import { copyExamples } from './vite-plugins/copy-examples.js';
 import { rehypeExternalLinks } from './rehype-plugins/external-links.js';
+import stripIndexLinks from './typedoc-plugins/strip-index-links.mjs';
 
 // Read examples server port from microfrontends.json (single source of truth)
 const mfe = JSON.parse(readFileSync('../microfrontends.json', 'utf-8'));
@@ -61,6 +62,9 @@ export default defineConfig({
         // for SEO and Three.js / R3F ecosystem discoverability — see Design
         // Context (CLAUDE.md > Naming).
         title: 'flatland',
+        // Site description — feeds Starlight's <meta description> and
+        // the SiteFooter's brand tagline (falls back via config.description).
+        description: 'Composable 2D library for three.js. Sprites, tilemaps, batching, and TSL effects, for three.js or react-three-fiber.',
         logo: {
           src: './src/assets/icon.svg',
         },
@@ -134,6 +138,15 @@ export default defineConfig({
             typeDoc: {
               gitRevision: 'main',
               plugin: ['./typedoc-plugins/external-source-links.js'],
+              // Generate `index.md` per module directory so Astro routes
+              // module roots cleanly to `/api/three-flatland/src/` (no
+              // `/readme/` intermediate). typedoc-plugin-markdown's URL
+              // builder includes `/index/` segments in the generated
+              // links (e.g., `/api/foo/src/react/index/`) — the
+              // `stripIndexLinks` remark plugin (wired in `markdown.
+              // remarkPlugins`) strips that segment so links resolve
+              // to the directory root Astro serves.
+              entryFileName: 'index',
               externalSymbolLinkMappings: {
                 '@types/three': {
                   // Core
@@ -233,11 +246,12 @@ export default defineConfig({
           // ensures the value is part of the user-config virtual module
           // and re-evaluates cleanly across dev-server reloads.
           starlightTheme({
-            // Descriptive link text ("our issue tracker on GitHub") fixes
-            // Lighthouse's link-text + link-in-text-block + a11y "links rely
-            // on color alone" trio that fired on a generic "[here]" label.
-            footerText:
-              'This documentation was created with AI assistance. AI can make mistakes — please verify claims and test code examples. Submit corrections on [our issue tracker on GitHub](https://github.com/thejustinwalsh/three-flatland/issues).',
+            // SiteFooter (packages/starlight-theme/components/SiteFooter.astro)
+            // owns the site footer now: structured columns + brand block +
+            // attribution row, props-driven. The legacy single-string
+            // footerText is no longer rendered; leave empty for schema
+            // compat, slated for removal when the schema drops the field.
+            footerText: '',
             // Top-of-page navigation. Three top-level surfaces:
             //   - Docs       → introduction (the entry point into the
             //                  prose docs; subsequent pages flow from
@@ -333,6 +347,7 @@ export default defineConfig({
     react(),
   ],
   markdown: {
+    remarkPlugins: [stripIndexLinks],
     rehypePlugins: [rehypeExternalLinks],
   },
   vite: {
