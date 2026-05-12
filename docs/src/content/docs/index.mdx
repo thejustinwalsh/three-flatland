@@ -180,7 +180,7 @@ function Game() {
 <h2 class="section-heading">Why Flatland?</h2>
 
 <ValueProp title="Built into three.js, not on top of it" color="diamond">
-  Most 2D rendering libraries on the web run their own renderer alongside three.js. You end up coordinating two render loops, sharing GPU resources by hand, and inside react-three-fiber the trouble multiplies into two reconcilers passing state between React instances.
+  Most 2D rendering libraries on the web run their own renderer alongside three.js. You end up coordinating two render loops, sharing GPU resources by hand, and inside react-three-fiber it doubles: two reconcilers passing state between React instances.
 
   three-flatland is built directly on three.js. Sprites, tilemaps, particles — every primitive is an `Object3D` that mounts into the scenegraph and react-three-fiber the same way any `Mesh` does.
 </ValueProp>
