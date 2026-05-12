@@ -39,6 +39,28 @@ export const Pointer = trait({
   wiggleRow: -1,
   wiggleDistance: 0,
   /**
+   * Cluster id locked at the start of the wiggle so the renderer can
+   * tell "is this cell part of the rock the player is currently
+   * shaking?" → render with cursor-coupled motion instead of the
+   * default avalanche canned wobble. 0 = no wiggle in progress.
+   */
+  wiggleClusterId: 0,
+  /**
+   * Smoothed cursor speed during wiggle. Bumped on pointermove,
+   * decayed each render frame. The renderer multiplies the shake-
+   * jitter amplitude by this so the rock follows the user's wiggle
+   * literally — still cursor = still rock, fast wiggle = big wobble.
+   */
+  wiggleVelocity: 0,
+  /**
+   * Mode lock — what action was bound at pointerdown. The held-tick
+   * loop refuses to switch modes mid-press (clicking a rock and
+   * dragging onto soil should NOT silently start consuming paint;
+   * clicking soil and crossing a rock should NOT trigger shake).
+   * Cleared to 'none' on pointer-up.
+   */
+  lockedAction: 'none' as ActionKind,
+  /**
    * Hold-and-drag state. Set when the pointer presses down on a chunk
    * that's currently in SHAKE or FALLING phase; while non-zero, the
    * pointer system follows the cursor and moves the chunk's cells.

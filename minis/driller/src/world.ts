@@ -33,7 +33,21 @@ function initWorld(world: World): void {
     clusterId: new Uint16Array(0),
     anchorDist: new Uint8Array(0),
   }))
-  world.add(Pointer({ px: 0, py: 0, active: false, hoverAction: 'none', hoverTargetCol: 0, hoverTargetRow: 0, hoverGemEntity: 0 }))
+  world.add(Pointer({
+    px: 0,
+    py: 0,
+    active: false,
+    hoverAction: 'none',
+    hoverTargetCol: 0,
+    hoverTargetRow: 0,
+    hoverGemEntity: 0,
+    wiggleCol: -1,
+    wiggleRow: -1,
+    wiggleDistance: 0,
+    wiggleClusterId: 0,
+    wiggleVelocity: 0,
+    lockedAction: 'none',
+  }))
   world.add(Drag({ clusterId: 0, anchorCol: 0, anchorRow: 0, startTick: 0, intervalsCharged: 0 }))
 
   // Driller entity — single instance, replaced on respawn (Phase 10).

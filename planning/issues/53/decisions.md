@@ -428,3 +428,20 @@ E. **Paint pivot: destroy, don't weaken.** The anchor-bump version (1 gem per ti
 
 ## Phase summary (all 5 phases shipped 2026-05-12)
 176/176 unit tests pass, typecheck clean. ActionKind = `'none' | 'collect' | 'brace' | 'trigger' | 'pet' | 'shake' | 'paint' | 'drag'` — `'trigger'` retained as a legacy alias for `'paint'`. New constants in `constants.ts` (PET_COST, PET_PAUSE_TICKS, SHAKE_COST, WIGGLE_THRESHOLD_PX, PAINT_COST_PER_TICK, GEM_FADE_TICKS, GEM_COLLECT_COOLDOWN_TICKS, DRAG_COST_*) are the player-facing tuning surface — visible at a glance and easy to adjust without touching mechanics.
+
+## User-action skill reform — Phase 5 follow-up (mode mutex + cursor-coupled shake)
+**File:** `minis/driller/src/{traits/input-traits.ts,systems/input.ts,Game.tsx,components/TileRenderer.tsx,world.ts}`, `tests/paint-action.test.ts`
+**Date:** 2026-05-12
+
+**Decision A — Mode mutex.** `Pointer.lockedAction` captures the resolved hover action at pointerdown and `pointerHeldTick` refuses to fire any action OTHER than the locked one. Clicking a rock then dragging onto soil no longer silently consumes paint; clicking soil and crossing a rock no longer triggers shake. Modes are strictly press-bound — release and click again to switch.
+
+**Decision B — Cursor-coupled shake visual.** On pointerdown over a stable rock, the cluster gets `FLAG_SHAKING` stamped immediately (instant visual feedback). The TileRenderer now distinguishes "shake from avalanche" (canned 6Hz sin wobble) from "shake from active wiggle gesture" (cursor-velocity-driven amplitude at 14Hz, max 3px). `Pointer.wiggleVelocity` accumulates raw cursor motion on pointermove (`+dist * 0.08`, clamped at 1.0) and decays each render frame (`*= 0.85`). Still cursor = settled rock; fast wiggle = big visible wobble. Release without crossing the wiggle distance threshold clears `FLAG_SHAKING` so the rock settles back.
+
+**Why:**
+1. **Lock at pointerdown, not at first commit.** Resolving the action on every held-tick (the previous behavior) means a cursor crossing cells silently switches modes. The locked action makes the press-and-hold a single atomic interaction.
+2. **Per-cluster wiggle amplitude via `wiggleClusterId`.** Captured at pointerdown from the clicked stone's `clusterId`. The renderer checks `clusterId[idx] === wiggleClusterId` to gate the cursor-coupled wobble — so OTHER shaking clusters (avalanche-triggered) keep the canned 6Hz visual. Visual provenance preserved.
+3. **Decay velocity in the renderer's useFrame, not in a system.** The render frame is the natural cadence for visual smoothing — runs at display rate, not tick rate. Avoids a separate "wiggle velocity tick" system.
+4. **The wiggle distance threshold stays the trigger.** Visual coupling is decoupled from the commit gate — the rock falls once the player has accumulated WIGGLE_THRESHOLD_PX of cursor travel. The cursor-coupled wobble is just feedback; it doesn't change WHEN the rock falls.
+5. **Restoring on release.** If the player releases before crossing the threshold, the cluster's FLAG_SHAKING is cleared so the rock visually settles back. FLAG_FALLING is left alone in case the threshold was already crossed and the cluster is now committed.
+
+**Tests pinning the rule:** `tests/paint-action.test.ts` extended with the mode-mutex case: `lockedAction='shake'` over a paint-resolved soil cell, `pointerHeldTick` must NOT fire paint. Existing paint tests updated to include `lockedAction='paint'` so they exercise the gated path. 177/177 total pass.

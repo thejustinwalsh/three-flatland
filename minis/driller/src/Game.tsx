@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { WorldProvider } from 'koota/react'
 import { getWorld } from './world'
-import { Camera, GameState, Grid, Pointer, Seed } from './traits'
+import { Camera, FLAG_SHAKING, GameState, Grid, Pointer, Seed, TILE_STONE } from './traits'
 import { PlayCanvas } from './components/PlayCanvas'
 import { Background } from './components/Background'
 import { BiomeTransition } from './components/BiomeTransition'
@@ -159,16 +159,36 @@ export default function Driller({
         const next = ptrPrev.wiggleDistance + dist
         wiggleRef.lastX = clientX
         wiggleRef.lastY = clientY
+        // Cursor-coupled shake: bump wiggleVelocity proportional to
+        // recent motion. The renderer reads this to scale the rock
+        // sprite's render-offset, so the rock literally follows the
+        // user's cursor while wiggling (instead of the canned 6Hz
+        // sin wobble). Capped at 1.0 so big sudden motions don't
+        // teleport the visual.
+        const VELOCITY_GAIN = 0.08
+        const nextVel = Math.min(1, ptrPrev.wiggleVelocity + dist * VELOCITY_GAIN)
         if (next >= WIGGLE_THRESHOLD_PX) {
           commitAction(world, 'shake', null)
-          world.set(Pointer, { wiggleCol: -1, wiggleRow: -1, wiggleDistance: 0 })
+          world.set(Pointer, {
+            wiggleCol: -1,
+            wiggleRow: -1,
+            wiggleDistance: 0,
+            wiggleClusterId: 0,
+            wiggleVelocity: 0,
+          })
           wiggleRef.primed = false
         } else {
-          world.set(Pointer, { wiggleDistance: next })
+          world.set(Pointer, { wiggleDistance: next, wiggleVelocity: nextVel })
         }
       } else if (ptrPrev?.active && wiggleRef.primed) {
-        // Hover cell changed → cancel the wiggle.
-        world.set(Pointer, { wiggleCol: -1, wiggleRow: -1, wiggleDistance: 0 })
+        // Hover cell changed → cancel the wiggle visual + state.
+        world.set(Pointer, {
+          wiggleCol: -1,
+          wiggleRow: -1,
+          wiggleDistance: 0,
+          wiggleClusterId: 0,
+          wiggleVelocity: 0,
+        })
         wiggleRef.primed = false
       }
     }
@@ -193,20 +213,41 @@ export default function Driller({
       handleMove(e.clientX, e.clientY)
       const ptr = world.get(Pointer)
       if (!ptr) return
-      // Prime wiggle on stable rocks; first move-delta starts accumulating.
+      // Lock the action mode for the duration of this press. The
+      // held-tick loop refuses to switch modes mid-press (clicking
+      // a rock and dragging onto soil should NOT silently paint;
+      // clicking soil and crossing a rock should NOT shake).
+      world.set(Pointer, { lockedAction: ptr.hoverAction })
       if (ptr.hoverAction === 'shake') {
-        world.set(Pointer, {
-          wiggleCol: ptr.hoverTargetCol,
-          wiggleRow: ptr.hoverTargetRow,
-          wiggleDistance: 0,
-        })
+        // Instant visual feedback: stamp FLAG_SHAKING on the cluster
+        // so the rock starts wobbling under cursor control right
+        // away (renderer scales wobble amplitude by wiggleVelocity).
+        const grid = world.get(Grid)
+        if (grid) {
+          const idx = ptr.hoverTargetRow * grid.cols + ptr.hoverTargetCol
+          const cid = grid.clusterId[idx] ?? 0
+          if (cid !== 0) {
+            for (let i = 0; i < grid.clusterId.length; i++) {
+              if (grid.clusterId[i] !== cid) continue
+              if (grid.tiles[i] !== TILE_STONE) continue
+              grid.flags[i] = (grid.flags[i] ?? 0) | FLAG_SHAKING
+            }
+          }
+          world.set(Pointer, {
+            wiggleCol: ptr.hoverTargetCol,
+            wiggleRow: ptr.hoverTargetRow,
+            wiggleDistance: 0,
+            wiggleClusterId: cid,
+            wiggleVelocity: 0,
+          })
+        }
         wiggleRef.lastX = e.clientX
         wiggleRef.lastY = e.clientY
         wiggleRef.primed = true
       }
       // First paint commit fires on pointerdown so a single tap still
-      // costs a gem + bumps the cell. Continuous paint runs from
-      // pointerPaintTick (driven by drillerSystem each tick).
+      // destroys a cell + charges a gem. Continuous paint runs from
+      // pointerHeldTick.
       if (ptr.hoverAction === 'paint') {
         commitAction(world, 'paint', null)
       }
@@ -218,6 +259,23 @@ export default function Driller({
       }
     }
     const onPointerUp = (e: PointerEvent) => {
+      // If the user released while still mid-wiggle (didn't hit the
+      // distance threshold), clear FLAG_SHAKING on the cluster so the
+      // rock settles back instead of wobbling forever.
+      const ptr = world.get(Pointer)
+      if (ptr && ptr.wiggleClusterId !== 0) {
+        const grid = world.get(Grid)
+        if (grid) {
+          for (let i = 0; i < grid.clusterId.length; i++) {
+            if (grid.clusterId[i] !== ptr.wiggleClusterId) continue
+            if (grid.tiles[i] !== TILE_STONE) continue
+            // Only clear FLAG_SHAKING — leave FLAG_FALLING alone in
+            // case the wiggle threshold was already crossed and the
+            // cluster is committed to falling.
+            grid.flags[i] = (grid.flags[i] ?? 0) & ~FLAG_SHAKING
+          }
+        }
+      }
       // Releasing the pointer re-arms FLAG_FALLING on the dragged
       // cluster so the avalanche resumes from wherever the player
       // left it. endDrag is idempotent if no drag is active.
@@ -227,9 +285,12 @@ export default function Driller({
         wiggleCol: -1,
         wiggleRow: -1,
         wiggleDistance: 0,
+        wiggleClusterId: 0,
+        wiggleVelocity: 0,
         dragEntity: 0,
         dragHeldSinceTick: 0,
         dragLastCostTick: 0,
+        lockedAction: 'none',
       })
       wiggleRef.primed = false
       handleClick(e.clientX, e.clientY)

@@ -88,17 +88,17 @@ describe('doPaint', () => {
 })
 
 describe('pointerHeldTick', () => {
-  it('ticks paint each frame while button is held on a soil cell', () => {
+  it('ticks paint each frame while button is held on a soil cell (mode lock = paint)', () => {
     const world = setupPaintWorld()
     world.set(GameState, { gems: 10 })
     const grid = world.get(Grid)!
-    // Move the pointer across three soil cells across three ticks.
     for (let c = 4; c <= 6; c++) {
       world.set(Pointer, {
         active: true,
         hoverTargetCol: c,
         hoverTargetRow: 2,
         hoverAction: 'paint',
+        lockedAction: 'paint',
       })
       pointerHeldTick(world)
     }
@@ -116,8 +116,27 @@ describe('pointerHeldTick', () => {
       hoverTargetCol: 5,
       hoverTargetRow: 2,
       hoverAction: 'paint',
+      lockedAction: 'paint',
     })
     pointerHeldTick(world)
     expect(world.get(GameState)!.gems).toBe(10)
+  })
+
+  it('mode lock: pressing a rock then dragging onto soil does NOT consume paint', () => {
+    // The user pressed down on a rock (lockedAction = 'shake'). Their
+    // cursor then crosses a soil cell — paint must NOT fire because
+    // the press was bound to shake.
+    const world = setupPaintWorld()
+    world.set(GameState, { gems: 10 })
+    world.set(Pointer, {
+      active: true,
+      hoverTargetCol: 5,
+      hoverTargetRow: 2,
+      hoverAction: 'paint', // cursor IS over soil now (re-resolved)
+      lockedAction: 'shake', // but the press was on a rock
+    })
+    pointerHeldTick(world)
+    expect(world.get(GameState)!.gems).toBe(10)
+    expect(world.get(Grid)!.tiles[2 * world.get(Grid)!.cols + 5]).toBe(TILE_SOIL)
   })
 })

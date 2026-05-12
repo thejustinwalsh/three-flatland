@@ -445,7 +445,10 @@ export function pointerHeldTick(world: World): void {
   const ptr = world.get(Pointer)
   if (!ptr || !ptr.active) return
   // Hover cell may have shifted state since the last pointermove —
-  // re-resolve so we don't keep paying for an already-collapsed cell.
+  // refresh the displayed hoverAction so the cursor UI keeps in
+  // sync. But the COMMIT action is gated by the locked mode from
+  // pointerdown; switching what's under the cursor doesn't switch
+  // which action fires while the button is held.
   const { action, gemEntity } = resolveHoverAction(world, ptr.hoverTargetCol, ptr.hoverTargetRow)
   if (action !== ptr.hoverAction) {
     world.set(Pointer, {
@@ -453,10 +456,12 @@ export function pointerHeldTick(world: World): void {
       hoverGemEntity: gemEntity ? (gemEntity as unknown as { id?: number }).id ?? 0 : 0,
     })
   }
-  if (action === 'paint') {
+  // Mode lock: only the action that was bound at pointerdown ticks.
+  // 'paint' is the only continuously-tickable action (shake fires on
+  // wiggle threshold, drag is its own system, etc.).
+  if (ptr.lockedAction === 'paint' && action === 'paint') {
     commitAction(world, 'paint', null)
   }
-  // 'drag' tick is handled in phase 5's pointerDragTick.
 }
 
 // `detectChunks` import retained only because the previous trigger
