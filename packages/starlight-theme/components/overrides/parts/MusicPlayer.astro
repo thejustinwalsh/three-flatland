@@ -340,25 +340,41 @@
                 this.loadSounds()
             })
 
-            // Auto-close on scroll. Re-opening at any scroll position
-            // re-anchors the popover at its CSS `top: --header-height +
-            // gap` (position: fixed via popover UA), so it always
-            // floats right under the header on reopen. Passive listener
-            // keeps scrolling smooth; the `:popover-open` check is O(1).
+            // Auto-close on scroll — same exit animation as click-outside
+            // and Escape. Re-opening at any scroll position re-anchors
+            // the popover at its CSS `top: --header-height + gap`
+            // (position: fixed via popover UA), so it always floats
+            // right under the header on reopen.
+            //
+            // We defer the hidePopover call to the next animation frame
+            // so the exit transition composites in a clean paint frame
+            // instead of being torn apart by the in-progress scroll
+            // commit. Calling hidePopover() synchronously inside a
+            // high-frequency scroll handler lets the browser drop the
+            // popover's display/opacity/transform transition under
+            // compositor pressure — looks like a snap-closed instead
+            // of the gentle fade you get from click-outside.
+            //
+            // The pending flag dedupes — repeated scroll events while
+            // one dismiss is already queued become no-ops, so the
+            // transition isn't restarted mid-flight.
+            let scrollDismissPending = false
             window.addEventListener(
                 'scroll',
                 () => {
-                    if (
-                        (this.popoverEl as HTMLElement & {
-                            matches: (s: string) => boolean
-                        }).matches(':popover-open')
-                    ) {
-                        try {
-                            ;(this.popoverEl as HTMLElement & {
-                                hidePopover: () => void
-                            }).hidePopover()
-                        } catch {}
+                    if (scrollDismissPending) return
+                    const popover = this.popoverEl as HTMLElement & {
+                        matches: (s: string) => boolean
+                        hidePopover: () => void
                     }
+                    if (!popover.matches(':popover-open')) return
+                    scrollDismissPending = true
+                    requestAnimationFrame(() => {
+                        scrollDismissPending = false
+                        if (popover.matches(':popover-open')) {
+                            try { popover.hidePopover() } catch {}
+                        }
+                    })
                 },
                 { passive: true, signal }
             )
