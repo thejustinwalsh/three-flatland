@@ -284,26 +284,50 @@ class AudioBridge {
         return tracks[Math.min(this.state.musicTrackIndex, tracks.length - 1)] ?? tracks[0]
     }
 
-    /** Start a track from the beginning. Resets position; rebuilds buffer
-     * if the track changed. Marks the user-stopped flag false (because
-     * an explicit play wipes the "I don't want music" preference). */
+    /** Set the active track. When master is unmuted, also starts the
+     * source from the beginning. When master is muted but the call came
+     * from a user gesture (next/prev click while muted), updates the
+     * displayed track without starting audio — user is scrolling the
+     * library. Resets `musicUserStopped` because any explicit "play this"
+     * intent wipes the prior "I don't want music" preference. */
     playTrack(track: Track, opts: { fromUserGesture?: boolean } = {}): void {
-        if (this.state.masterLevel === 0 && !opts.fromUserGesture) return
         if (this.state.musicDuckedExternal) return // ignore while game owns the bus
+        const muted = this.state.masterLevel === 0
+        // Non-gesture call (autostart, programmatic queue) while muted:
+        // don't even update state — that would alter the user's apparent
+        // queue position without their action.
+        if (muted && !opts.fromUserGesture) return
         // Reset user-stopped on explicit play.
         if (this.state.musicUserStopped) {
             this.state.musicUserStopped = false
             saveMusicUserStopped(false)
         }
+        // State updates fire regardless of mute — the popover needs to
+        // reflect the new track so the user can see what's queued.
         const sameTrack = this.state.currentTrack?.id === track.id && this.musicBuffer !== null
         if (!sameTrack) {
-            this.musicBuffer = this.buildMusicBuffer(track)
             this.state.currentTrack = track
             const idx = this.state.library?.tracks.findIndex((t) => t.id === track.id) ?? -1
             if (idx >= 0) {
                 this.state.musicTrackIndex = idx
                 saveMusicTrackIndex(idx)
             }
+        }
+        if (muted) {
+            // Skipping while muted — kill any leftover source from a
+            // pre-mute state, drop the stale buffer so the next unmute
+            // rebuilds from the now-current track, and emit so the
+            // popover updates the title/avatar/gem.
+            this.stopMusicSource()
+            this.musicBuffer = null
+            this.state.musicPlaying = false
+            this.musicPosition = 0
+            this.emit()
+            return
+        }
+        // Unmuted path — full play.
+        if (!sameTrack) {
+            this.musicBuffer = this.buildMusicBuffer(track)
         }
         this.startMusicSource(0)
         this.emit()
@@ -355,7 +379,13 @@ class AudioBridge {
         const next = (this.state.musicTrackIndex + 1) % tracks.length
         this.state.musicTrackIndex = next
         saveMusicTrackIndex(next)
-        this.playTrack(tracks[next]!)
+        // fromUserGesture: callers of nextTrack/prevTrack come from UI
+        // clicks (the MusicPlayer skip button). Without the flag,
+        // playTrack bails when masterLevel === 0 and the user sees no
+        // change after clicking — they should still be able to scroll
+        // the library while muted, see the new track in the popover,
+        // and have it queued for the next unmute/play.
+        this.playTrack(tracks[next]!, { fromUserGesture: true })
     }
 
     prevTrack(): void {
@@ -365,7 +395,7 @@ class AudioBridge {
         const prev = (this.state.musicTrackIndex - 1 + tracks.length) % tracks.length
         this.state.musicTrackIndex = prev
         saveMusicTrackIndex(prev)
-        this.playTrack(tracks[prev]!)
+        this.playTrack(tracks[prev]!, { fromUserGesture: true })
     }
 
     /** Live music position (seconds since track start, wrapping at the

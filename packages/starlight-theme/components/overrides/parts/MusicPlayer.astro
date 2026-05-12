@@ -43,7 +43,7 @@
 
     <div
         id="flatland-music-popover"
-        class="music-popover u-light"
+        class="music-popover"
         role="dialog"
         aria-label="Music player"
         popover="auto"
@@ -149,12 +149,43 @@
 
     const TOAST_MS = 3000
 
+    /** Session-level state that survives client-router navigation. Stored
+     * on `window` so re-mounted MusicPlayer instances (after `astro:after-
+     * swap`) pick up where the previous instance left off:
+     *   - `lastTrackId`: the last track id we ran the toast for. Used to
+     *     decide whether a popover open is "track change" (toast-worthy)
+     *     or "initial state sync after nav" (skip toast).
+     *   - `initialToastShown`: true once the first-visit toast has fired.
+     *     Prevents the toast from re-firing on the next page load if the
+     *     user closed it before navigating.
+     *   - `closedByUser`: true once the user has explicitly dismissed the
+     *     popover this session. Track-change toasts still override this
+     *     (per spec: "It will toast when any example or mini/showcase
+     *     requests to play a song"), but the auto-open on initial state
+     *     sync is suppressed across nav once set. */
+    type SessionState = {
+        lastTrackId: string | null
+        initialToastShown: boolean
+        closedByUser: boolean
+    }
+    const SESSION_KEY = '__flatlandMusicPlayerSession'
+    function readSession(): SessionState {
+        const w = window as unknown as { [SESSION_KEY]?: SessionState }
+        if (!w[SESSION_KEY]) {
+            w[SESSION_KEY] = { lastTrackId: null, initialToastShown: false, closedByUser: false }
+        }
+        return w[SESSION_KEY]!
+    }
+
     class FlatlandMusicPlayer extends HTMLElement {
         private cleanup?: AbortController
         private toastTimer: number | null = null
         private soundsPromise?: Promise<SoundsModule>
-        private lastTrackId: string | null = null
         private userInteractedDuringToast = false
+        /** True until the first applyState call fires. Used to detect the
+         * "initial state sync after subscribe" so we can hydrate
+         * `session.lastTrackId` from the bridge without firing a toast. */
+        private firstStateSync = true
 
         private trigger!: HTMLButtonElement
         private popoverEl!: HTMLElement
@@ -251,14 +282,30 @@
 
             // Toast logic + progress loop hook into the popover's state
             // changes. `toggle` fires after the state has changed.
+            //
+            // Close detection: if a close fires WITHOUT the toast timer
+            // being the trigger AND the user interacted with the popover,
+            // assume they explicitly dismissed it. Record in session so
+            // the next page-mount's initial state sync doesn't re-toast.
+            // (Track-change toasts still override closedByUser per spec.)
             this.popoverEl.addEventListener(
                 'toggle',
                 (e: Event) => {
-                    const ev = e as { newState?: string } & Event
+                    const ev = e as { newState?: string; oldState?: string } & Event
                     if (ev.newState === 'open') {
                         this.startProgressLoop()
                     } else {
                         this.stopProgressLoop()
+                        // Distinguish toast-auto-close (timer fired) from
+                        // user dismissal. If the timer is still pending
+                        // we treat this as auto-close (light-dismiss
+                        // outside the toast window). Otherwise it's a
+                        // deliberate close.
+                        const userDismissed =
+                            this.toastTimer === null || this.userInteractedDuringToast
+                        if (userDismissed) {
+                            readSession().closedByUser = true
+                        }
                         if (this.toastTimer !== null) {
                             clearTimeout(this.toastTimer)
                             this.toastTimer = null
@@ -317,22 +364,28 @@
             )
 
             // Manual pointer-tracking for the rim-glint. motion.ts'
-            // global registry doesn't pick up the popover because it's
-            // a native top-layer element (display: none until opened,
-            // and its IntersectionObserver semantics differ from
-            // regular flow elements). Run a scoped pointermove listener
-            // here so the cursor-driven `--mx`/`--my` highlight ON THE
-            // popover surface tracks the actual mouse position, like
-            // every other .u-light card/button in the design system.
+            // global registry doesn't reliably pick up the popover —
+            // top-layer rendering (display: none until showPopover())
+            // gives the IntersectionObserver inconsistent layout signals.
+            // We drive the same vars motion.ts would: --mx, --my,
+            // --mouse-active for the radial hotspot + --light-angle for
+            // the conic glint sweep on the rim ::before.
             this.popoverEl.addEventListener(
                 'pointermove',
                 (e: PointerEvent) => {
                     const r = this.popoverEl.getBoundingClientRect()
-                    const mx = ((e.clientX - r.left) / r.width) * 100
-                    const my = ((e.clientY - r.top) / r.height) * 100
-                    this.popoverEl.style.setProperty('--mx', `${mx.toFixed(2)}%`)
-                    this.popoverEl.style.setProperty('--my', `${my.toFixed(2)}%`)
+                    const nx = (e.clientX - r.left) / r.width
+                    const ny = (e.clientY - r.top) / r.height
+                    this.popoverEl.style.setProperty('--mx', `${(nx * 100).toFixed(2)}%`)
+                    this.popoverEl.style.setProperty('--my', `${(ny * 100).toFixed(2)}%`)
                     this.popoverEl.style.setProperty('--mouse-active', '1')
+                    // Same atan2 mapping motion.ts uses — cursor angle
+                    // around the surface center, offset +90° so the glint
+                    // points TOWARD the cursor rather than orthogonal.
+                    const dx = nx - 0.5
+                    const dy = ny - 0.5
+                    const angle = (Math.atan2(dy, dx) * 180) / Math.PI + 90
+                    this.popoverEl.style.setProperty('--light-angle', `${angle.toFixed(1)}deg`)
                 },
                 { passive: true, signal }
             )
@@ -340,6 +393,29 @@
                 'pointerleave',
                 () => {
                     this.popoverEl.style.setProperty('--mouse-active', '0')
+                },
+                { signal }
+            )
+
+            // Close-on-nav: the popover is part of the Header. With
+            // astro-vtbot's ClientRouter the header may be replaced or
+            // persisted depending on transition: directives. Either way,
+            // dismissing the popover before swap gives a clean exit
+            // animation and ensures `:popover-open` doesn't survive into
+            // the next page (where the toast-already-shown checkpoint
+            // would otherwise need to be re-evaluated on a still-open
+            // popover). Also marks closedByUser=false so the post-nav
+            // applyState path doesn't bias toward "stay closed."
+            document.addEventListener(
+                'astro:before-preparation',
+                () => {
+                    const popoverEl = this.popoverEl as HTMLElement & {
+                        matches: (s: string) => boolean
+                        hidePopover: () => void
+                    }
+                    if (popoverEl.matches(':popover-open')) {
+                        try { popoverEl.hidePopover() } catch {}
+                    }
                 },
                 { signal }
             )
@@ -510,10 +586,48 @@
             // see the music dipped without opening the popover.
             this.trigger.dataset.state = ducked ? 'ducked' : playing ? 'playing' : 'idle'
 
-            // Track changed → open as toast (unless popover already open).
+            // Toast policy (session-aware, survives client-router nav):
+            //   - First applyState after subscribe = "initial state sync".
+            //     Hydrate session.lastTrackId from the bridge so a track
+            //     id transition isn't falsely detected on every page mount.
+            //     Then, ONLY on the very first page visit of the session
+            //     (initialToastShown === false), open the toast — and only
+            //     if audio is enabled at master (level > 0) AND the user
+            //     hasn't explicitly stopped music. Subsequent client-router
+            //     navigations skip the open entirely so the popover doesn't
+            //     re-toast on every page load.
+            //   - Subsequent applyState calls fire on bridge mutations
+            //     (next, prev, duckForExternal, etc.). Any track-id
+            //     transition opens the toast UNCONDITIONALLY — explicit
+            //     song change is always toast-worthy, including when
+            //     ducked-for-external (game requested a song). Per spec:
+            //     "It will toast when any example or mini/showcase
+            //     requests to play a song."
             const trackId = track?.id ?? null
-            if (trackId !== this.lastTrackId && trackId !== null) {
-                this.lastTrackId = trackId
+            const session = readSession()
+            if (this.firstStateSync) {
+                this.firstStateSync = false
+                session.lastTrackId = trackId
+                if (
+                    !session.initialToastShown &&
+                    !session.closedByUser &&
+                    trackId !== null &&
+                    state.masterLevel > 0 &&
+                    !state.musicUserStopped
+                ) {
+                    session.initialToastShown = true
+                    this.openAsToast()
+                } else if (trackId !== null) {
+                    // Mark the initial-toast checkpoint as "passed" even
+                    // when we suppressed the open — otherwise muting,
+                    // navigating, and unmuting would re-trigger the
+                    // first-visit auto-toast.
+                    session.initialToastShown = true
+                }
+                return
+            }
+            if (trackId !== session.lastTrackId && trackId !== null) {
+                session.lastTrackId = trackId
                 this.openAsToast()
             }
         }
@@ -615,29 +729,36 @@
                 bridge.pauseMusic()
                 return
             }
-            // Authority model: SoundToggle is the global audio gate.
-            //   - level > 0           → play normally
-            //   - level = 0, never set → auto-unlock to low (icon updates
-            //                            reactively via bridge subscription)
-            //   - level = 0, explicit  → respect user's mute, don't play
-            // Explicit mute is detected by the presence of the localStorage
-            // key (any value set, even "0", means the user has interacted).
+            // Authority model: clicking Play is unambiguous intent to
+            // hear music NOW, regardless of prior mute state.
+            //   - level > 0   → resume music (audio context unlocks on the
+            //                   gesture if it was suspended)
+            //   - level = 0   → unmute to low + resume. Whether the mute
+            //                   was the default-off state or an explicit
+            //                   user mute doesn't matter: clicking play
+            //                   IS the user asking to be unmuted.
+            // setVolumeLevel triggers the bridge's first-unmute autostart
+            // path (0 → 1 + !userStopped → playTrack); we follow with an
+            // idempotent resumeMusic to cover the userStopped branch where
+            // setMasterLevel intentionally does NOT auto-resume.
             if (state.masterLevel === 0) {
-                const explicit = localStorage.getItem('flatland-sound-volume') !== null
-                if (explicit) return // muted on purpose; honor the choice
-                // Default off → elevate to low. setVolumeLevel writes
-                // storage + calls bridge.setMasterLevel which fires the
-                // first-unmute autostart path (music begins automatically
-                // because we've now transitioned from 0 → 1).
                 sounds.setVolumeLevel(1)
-                return
             }
             bridge.resumeMusic()
         }
 
         private async handleNext(): Promise<void> {
             const bridge = await this.ensureBridge()
-            bridge?.nextTrack()
+            if (!bridge) return
+            // Next/prev should let users SCROLL through the library even
+            // when audio isn't started yet — they're previewing what's
+            // available, or queuing up the track that'll start on next
+            // play click. The bridge's nextTrack calls playTrack which
+            // starts a source on a suspended/silent context if master is
+            // muted — that's actually fine (track id updates emit; state
+            // shows new track; gain is 0 so nothing audible). The toast
+            // fires on the track-id transition in applyState.
+            bridge.nextTrack()
         }
 
         private async handleVolume(e: Event): Promise<void> {
@@ -790,9 +911,16 @@
 </script>
 
 <style>
+    /* Host element — use inline-flex + align-items: center so the
+     * trigger button sits on the same baseline as the sibling
+     * SoundToggle / SocialIcons buttons. `inline-block` defaults to
+     * baseline alignment, which made the icon float a pixel or two
+     * above the other 2rem icons in the cluster. */
     flatland-music-player {
         position: relative;
-        display: inline-block;
+        display: inline-flex;
+        align-items: center;
+        height: 2rem;
     }
 
     .music-trigger {
@@ -853,11 +981,12 @@
     .music-popover {
         --player-gem: var(--amethyst);
         --player-gem-low: var(--amethyst-low, var(--amethyst));
-        /* The `.u-light` utility on this element sets `position:
-         * relative` which overrides the popover UA's `position: fixed`,
-         * so without pinning here the popover would scroll with the
-         * document. Force fixed so the popover always anchors to the
-         * viewport (right under the sticky header) regardless of scroll. */
+        /* Popover UA defaults `position: fixed` which is what we want —
+         * but we set it explicitly because earlier iterations of this
+         * component layered `.u-light` on the panel and that utility
+         * sets `position: relative`. Keeping the explicit declaration
+         * here so a future utility-class addition can't quietly break
+         * the sticky-to-header behavior. */
         position: fixed;
         top: calc(var(--header-height, 3.5rem) + 0.5rem);
         right: calc(var(--spacing) * 6);
@@ -865,16 +994,20 @@
         left: auto;
         margin: 0;
         width: 15rem;
+        /* Surface — same diamond-tinted gradient ramp as
+         * `.sl-link-button.secondary`, scaled to a panel, swapping
+         * `--diamond` for the per-track `--player-gem`. The
+         * scene-angle reference keeps the gradient's bright corner
+         * tied to the global day-cycle. */
         background:
             linear-gradient(
-                135deg,
-                color-mix(in oklab, var(--player-gem) 8%, var(--background)) 0%,
-                color-mix(in oklab, var(--background) 94%, var(--player-gem)) 100%
+                calc(var(--effective-light-angle, var(--scene-angle, 135deg)) + 90deg),
+                color-mix(in oklab, var(--player-gem) 14%, var(--background)) 0%,
+                color-mix(in oklab, var(--background) 92%, var(--player-gem)) 100%
             );
         border: 0;
         border-radius: var(--radius);
         box-shadow:
-            inset 0 0 0 1px color-mix(in oklab, var(--player-gem) 32%, transparent),
             0 10px 30px -10px rgb(0 0 0 / 0.5),
             0 0 0 1px color-mix(in oklab, var(--player-gem) 5%, transparent);
         padding: 0.625rem 0.75rem 0.5rem;
@@ -882,6 +1015,80 @@
         gap: 0.5rem;
         font-family: 'Inter', system-ui, sans-serif;
         isolation: isolate;
+        overflow: hidden;
+        contain: paint;
+    }
+
+    /* Foil rim — conic-gradient ring + cursor glint sweep, mirroring
+     * `.sl-link-button.secondary::before`. The first conic is the
+     * cursor-driven glint (bright 22° wedge at --light-angle); the
+     * second is the scene-light rim (slow drift). `mask-composite:
+     * exclude` carves out the inner content area so only a 1px ring
+     * is painted. The rim retints to the active track's gem via
+     * --player-gem. */
+    .music-popover::before {
+        content: '';
+        position: absolute;
+        inset: 0;
+        border-radius: inherit;
+        padding: 1px;
+        background:
+            conic-gradient(
+                from calc(var(--light-angle, 135deg) - 22deg),
+                transparent 0deg,
+                color-mix(in oklab, white 60%, var(--player-gem)) 22deg,
+                transparent 45deg,
+                transparent 360deg
+            ),
+            conic-gradient(
+                from calc(var(--scene-angle, 135deg) - 90deg),
+                color-mix(in oklab, var(--player-gem) 70%, transparent) 0deg,
+                color-mix(in oklab, var(--player-gem) 28%, var(--border)) 90deg,
+                color-mix(in oklab, var(--border) 90%, transparent) 180deg,
+                color-mix(in oklab, var(--player-gem) 28%, var(--border)) 270deg,
+                color-mix(in oklab, var(--player-gem) 70%, transparent) 360deg
+            );
+        background-blend-mode: screen, normal;
+        -webkit-mask:
+            linear-gradient(#000, #000) content-box,
+            linear-gradient(#000, #000);
+        -webkit-mask-composite: xor;
+        mask:
+            linear-gradient(#000, #000) content-box,
+            linear-gradient(#000, #000);
+        mask-composite: exclude;
+        pointer-events: none;
+        /* Rim paints ABOVE content (z-index: 2) so the glint always
+         * reads over the FFT canvas and text. The mask cutout means
+         * only the 1px outer ring is painted; the interior stays
+         * transparent so the content beneath shows through. */
+        z-index: 2;
+    }
+
+    /* Cursor hotspot — soft radial gem tint that follows the mouse.
+     * Gated by --mouse-active so the hotspot fades in/out on enter/leave.
+     * Sits BEHIND the content (z-index 0) so the FFT canvas and text
+     * remain crisp; the foil rim still paints on top via ::before. */
+    .music-popover::after {
+        content: '';
+        position: absolute;
+        inset: 0;
+        border-radius: inherit;
+        pointer-events: none;
+        background: radial-gradient(
+            circle at var(--mx, 50%) var(--my, 50%),
+            color-mix(in oklab, var(--player-gem) 26%, transparent) 0%,
+            transparent 38%
+        );
+        opacity: calc(var(--mouse-active, 0) * 0.85);
+        mix-blend-mode: screen;
+        z-index: 0;
+    }
+
+    /* Content sits above the cursor hotspot but below the foil rim. */
+    .music-popover > * {
+        position: relative;
+        z-index: 1;
     }
     /* Bidirectional entry/exit transition. transition-behavior:
      * allow-discrete lets `display` and `overlay` animate alongside
@@ -1087,17 +1294,25 @@
         cursor: pointer;
         color: var(--foreground);
         background: color-mix(in oklab, var(--card) 80%, var(--background));
-        box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--foreground) 18%, transparent);
+        /* Gem-themed border keyed to the active song. The ring picks up
+         * --player-gem so the buttons read as part of the same gem
+         * taxonomy as the popover rim, FFT, progress fill, and avatar.
+         * Double-stop box-shadow: an inset 1px ring for the visible
+         * border + an outer 1px halo at low opacity so the gem identity
+         * carries beyond the strict edge into the panel surface. */
+        box-shadow:
+            inset 0 0 0 1px color-mix(in oklab, var(--player-gem) 60%, var(--border)),
+            0 0 0 1px color-mix(in oklab, var(--player-gem) 10%, transparent);
         transition:
             background-color 140ms cubic-bezier(0.2, 0.8, 0.2, 1),
             box-shadow 140ms cubic-bezier(0.2, 0.8, 0.2, 1);
         flex: none;
         isolation: isolate;
-        /* Neutralize the u-holo foil — same effect stack (perspective
-         * tilt, scene-light drift, mouse-driven highlight, sparkle
-         * conic flecks) but with the gem palette swapped for grayscale
-         * tokens. Reads as a "polished metal" button rather than a
-         * gem-tinted holofoil. */
+        /* Holo foil stays neutral metallic — same effect stack (perspective
+         * tilt, scene-light drift, mouse-driven highlight, sparkle conic
+         * flecks) but with the gem palette swapped for grayscale tokens
+         * so the FILL reads as polished metal while the gem-themed BORDER
+         * (above) carries the active-song color identity. */
         --gem-base: color-mix(in oklab, var(--foreground) 25%, var(--background));
         --gem-spec: color-mix(in oklab, var(--foreground) 65%, var(--background));
         --gem-low: var(--card);
@@ -1108,11 +1323,13 @@
         pointer-events: none;
     }
     .music-btn:hover:not(:disabled) {
-        background: color-mix(in oklab, var(--card) 65%, var(--background));
-        box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--foreground) 32%, transparent);
+        background: color-mix(in oklab, var(--card) 60%, var(--player-gem));
+        box-shadow:
+            inset 0 0 0 1px color-mix(in oklab, var(--player-gem) 85%, var(--border)),
+            0 0 0 1px color-mix(in oklab, var(--player-gem) 22%, transparent);
     }
     .music-btn:focus-visible {
-        outline: 2px solid color-mix(in oklab, var(--foreground) 50%, transparent);
+        outline: 2px solid color-mix(in oklab, var(--player-gem) 70%, transparent);
         outline-offset: 2px;
     }
     .music-btn:disabled {

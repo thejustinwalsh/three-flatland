@@ -149,6 +149,14 @@
 </script>
 
 <style>
+    /* Host element — inline-flex centered so the button sits on the same
+     * baseline as the sibling MusicPlayer + SocialIcons. */
+    flatland-sound-toggle {
+        display: inline-flex;
+        align-items: center;
+        height: 2rem;
+    }
+
     /* Button visuals match the previous ThemeSelect dimensions so the
      * header row keeps its rhythm. Same 2rem × 2rem, gem-tinted hover. */
     .sound-toggle {
