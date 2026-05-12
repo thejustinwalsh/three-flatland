@@ -164,23 +164,17 @@ class AudioBridge {
             library,
         }
 
-        // Construction-time autostart — the bridge only ever materializes
-        // on a real user gesture (SoundToggle click, popover open, or
-        // first `[data-sound]` interaction), so the AudioContext is in
-        // a valid state to start playback immediately. Triggers when:
-        //   - persisted master volume > 0 (user previously unmuted)
-        //   - track library is non-empty
-        //   - user hasn't explicitly paused music before
-        // Without this, returning visitors would have to click
-        // SoundToggle again before music resumed across reloads.
-        if (masterLevel > 0 && !userStopped && trackList[safeTrackIndex]) {
-            // Defer to next microtask so the constructor returns first
-            // and subscribers can register before the play emit fires.
-            queueMicrotask(() => {
-                const track = trackList[safeTrackIndex]
-                if (track) this.playTrack(track, { fromUserGesture: true })
-            })
-        }
+        // NO construction-time autostart. Music is per-session: even with
+        // `masterLevel > 0` persisted from a prior visit, music doesn't
+        // start until the user explicitly clicks Play on this visit. The
+        // tighter policy matches spec-compliant autoplay expectations and
+        // avoids surprising returning users with audio they didn't ask
+        // for in this session. `musicUserStopped` is now a per-session
+        // hint (pause within a session, don't auto-resume on track
+        // change); SoundToggle's `masterLevel` is the global mute gate
+        // for all audio (SFX + music). When `masterLevel === 0`, NOTHING
+        // plays — full mute — whether triggered from the popover, a
+        // mini's first-interaction handler, or any SFX call.
     }
 
     // ────────── Subscriptions ──────────
@@ -347,6 +341,11 @@ class AudioBridge {
     resumeMusic(): void {
         if (this.state.musicPlaying) return
         if (this.state.musicDuckedExternal) return
+        // Mute is full mute — when masterLevel === 0, NOTHING plays. SFX,
+        // music, mini audio, all silent. Callers are expected to unmute
+        // before calling resumeMusic; this guard is defense in depth so
+        // any direct bridge consumer can't bypass the global mute.
+        if (this.state.masterLevel === 0) return
         if (!this.musicBuffer) {
             const track = this.currentTrackOrFirst()
             if (track) this.musicBuffer = this.buildMusicBuffer(track)
