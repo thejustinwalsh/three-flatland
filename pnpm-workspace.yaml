@@ -16,7 +16,7 @@ catalog:
   # The audio engine lives in docs/src/audio/ and is dynamically imported
   # (NOT in the main bundle); the minis import zzfx directly for standalone
   # playback.
-  '@zzfx-studio/zzfxm': ^0.1.2
+  '@zzfx-studio/zzfxm': ^0.1.3
   zzfx: ^1.3.2
   # Pinned (no caret) — `^10.0.0-alpha.2` semver-matches `10.0.0-canary.X`
   # because canary > alpha alphabetically on the same 10.0.0 base. Our
