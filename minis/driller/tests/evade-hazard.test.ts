@@ -173,6 +173,94 @@ describe('planGreedy — drills through stones', () => {
     expect(next).toEqual([5, 6])
   })
 
+  it('on a fixture with edge+rock, drills the rock', () => {
+    // Driller at col 0 row 5 (against the left edge), fixture below,
+    // rock to the right. The only escape is drilling the rock.
+    const rows = [
+      '..........',
+      '..........',
+      '..........',
+      '..........',
+      '..........',
+      'PS........', // driller col 0, stone col 1
+      'FF........', // fixture below
+      '..........',
+      '..........',
+      '##########',
+    ]
+    // Strip the 'P' placeholder — driller is passed explicitly to planner.
+    rows[5] = '.S........'
+    const world = makeWorldFromGrid(rows)
+    // Facing=1 (right). Forward = right (stone). Drill it.
+    const next = planGreedy(world, { col: 0, row: 5, facing: 1 })
+    expect(next).toEqual([1, 5])
+  })
+
+  it('on a fixture with rock on both sides, drills the facing-side rock', () => {
+    const rows = [
+      '..........',
+      '..........',
+      '..........',
+      '..........',
+      '..........',
+      '....S.S...', // stones at col 4 and col 6, driller col 5
+      '....FFF...', // fixture below
+      '..........',
+      '..........',
+      '##########',
+    ]
+    const world = makeWorldFromGrid(rows)
+    // Facing right → drill right stone.
+    const next = planGreedy(world, { col: 5, row: 5, facing: 1 })
+    expect(next).toEqual([6, 5])
+  })
+
+  it('on a fixture with rock+fixture sides, drills the rock', () => {
+    // Left = rock, right = fixture. Forward (right) is fixture → reverse
+    // and target the rock on the left.
+    const rows = [
+      '..........',
+      '..........',
+      '..........',
+      '..........',
+      '..........',
+      '....S.F...', // stone col 4, driller col 5, fixture col 6
+      '....FFF...',
+      '..........',
+      '..........',
+      '##########',
+    ]
+    const world = makeWorldFromGrid(rows)
+    const next = planGreedy(world, { col: 5, row: 5, facing: 1 })
+    expect(next).toEqual([4, 5])
+  })
+
+  it('on a fixture, facing into AIR with rock-blocked side, walks forward (no bounce)', () => {
+    // The classic dance: left=AIR, right=rock. Previous behavior: walk
+    // left (soft pref), then come back, never drill. New behavior:
+    // commit to facing direction. With facing=-1 (left), walk left into
+    // AIR. After walking, facing stays -1 and the driller keeps going
+    // left instead of reversing.
+    const rows = [
+      '..........',
+      '..........',
+      '..........',
+      '..........',
+      '..........',
+      '...A.S....', // air col 3, driller col 5 (col 4 = air), stone col 5? wait
+      '....FFF...',
+      '..........',
+      '..........',
+      '##########',
+    ]
+    // Setup: driller (5,5), col 4 = AIR, col 6 = STONE, fixture below.
+    rows[5] = '....A.S...'
+    const world = makeWorldFromGrid(rows)
+    // Facing left (-1). Forward = left = AIR → walk left.
+    const next = planGreedy(world, { col: 5, row: 5, facing: -1 })
+    expect(next).toEqual([4, 5])
+  })
+
   it('prefers drilling down through a stone over sidestepping into AIR', () => {
     // Greedy = "down at all costs". Even if AIR is open to the sides,
     // a stone below is the preferred target. Without this priority the

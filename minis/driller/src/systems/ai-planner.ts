@@ -34,38 +34,45 @@ export function planGreedy(world: World, d: DrillerCell): [number, number] | nul
   const { cols, rows, tiles } = grid
 
   // Greedy = "go down at all costs". Priority:
-  //   1. Down through AIR/SOIL (soft)
-  //   2. Down through STONE (4-hit drill — slower, but breaks ANY
-  //      sideways oscillation, since a stone-below scenario with
-  //      open sides used to trap the driller in a left-right dance)
-  //   3. Side through AIR/SOIL
-  //   4. Side through STONE
+  //   1. Down through AIR/SOIL (soft) → walk/fall
+  //   2. Down through STONE (4-hit drill — breaks any side-oscillation
+  //      that would otherwise occur with open sides flanking a stone
+  //      below)
+  //   3. Sideways: commit to FACING direction. Whatever's there
+  //      (AIR / SOIL / STONE) is the target — STONE gets drilled. Only
+  //      reverse if facing direction is truly blocked (fixture/edge).
+  //      Without this commit, a driller on a fixture with one AIR side
+  //      and one rock-blocked side walks into AIR, reverses (facing
+  //      flips), walks back, and never drills the rock that would let
+  //      him drop off the fixture.
   // Fixtures stay impassable in all passes — they can't be drilled.
-  const canMove = (idx: number, includeStone: boolean): boolean => {
-    const t = tiles[idx] ?? TILE_AIR
-    if (isFixtureTile(t)) return false
-    if (!includeStone && t === TILE_STONE) return false
-    return true
+  const isPassable = (t: number | undefined): boolean => {
+    if (t === undefined) return false
+    return !isFixtureTile(t)
   }
-  const tryDown = (includeStone: boolean): [number, number] | null => {
-    const belowIdx = (d.row + 1) * cols + d.col
-    if (d.row + 1 < rows && canMove(belowIdx, includeStone)) {
-      return [d.col, d.row + 1]
-    }
-    return null
+  // Down preference: include stones in the SAME pass — drilling down
+  // through stone always beats sidewinding around it.
+  if (d.row + 1 < rows) {
+    const below = tiles[(d.row + 1) * cols + d.col]
+    if (isPassable(below)) return [d.col, d.row + 1]
   }
-  // Anti-oscillation: prefer facing direction when forced sideways.
-  const order = d.facing === -1 ? [-1, 1] : [1, -1]
-  const trySides = (includeStone: boolean): [number, number] | null => {
-    for (const dc of order) {
-      const nc = d.col + dc
-      if (nc < 0 || nc >= cols) continue
-      const idx = d.row * cols + nc
-      if (canMove(idx, includeStone)) return [nc, d.row]
-    }
-    return null
+  // Sideways commit. Try facing direction first; ANY non-fixture cell
+  // (AIR, SOIL, or STONE) is acceptable — the side-cell drill path
+  // handles each correctly.
+  const forward = (d.facing ?? 1) as 1 | -1
+  const fc = d.col + forward
+  if (fc >= 0 && fc < cols && isPassable(tiles[d.row * cols + fc])) {
+    return [fc, d.row]
   }
-  return tryDown(false) ?? tryDown(true) ?? trySides(false) ?? trySides(true)
+  // Forward blocked by fixture/edge — reverse. This flips facing on
+  // the next tick, so subsequent ticks commit to the new direction
+  // and don't ping-pong back.
+  const back = -forward as 1 | -1
+  const bc = d.col + back
+  if (bc >= 0 && bc < cols && isPassable(tiles[d.row * cols + bc])) {
+    return [bc, d.row]
+  }
+  return null
 }
 
 /**
