@@ -186,17 +186,20 @@
         outline-offset: 2px;
     }
 
-    /* Muted state has a faint ruby tint so "intentionally off" reads
-     * distinct from "interactive but at low volume." */
+    /* Muted state stays monochrome — a red/ruby tint reads too loud
+     * for a passive "audio off" state and clashes with the rest of the
+     * header chrome. Use the muted-foreground variant so it just reads
+     * as "inactive" alongside the other icons. */
     .sound-toggle[data-state='0'] {
-        color: color-mix(in oklab, var(--muted-foreground) 70%, var(--ruby) 30%);
+        color: var(--muted-foreground);
     }
 
-    /* Higher volumes warm slightly toward diamond — the gem identity
-     * for sound (matches the search-modal compass affordance). */
+    /* Higher volumes also stay monochrome at the toggle — the gem
+     * identity belongs to the MusicPlayer (where --player-gem is the
+     * active song's color); the SoundToggle is just a master gate. */
     .sound-toggle[data-state='2'],
     .sound-toggle[data-state='3'] {
-        color: color-mix(in oklab, var(--foreground) 70%, var(--diamond) 30%);
+        color: var(--foreground);
     }
 
     .sound-toggle svg {
