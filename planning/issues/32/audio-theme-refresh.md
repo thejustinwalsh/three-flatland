@@ -511,3 +511,320 @@ These are decision points the plan cannot resolve without you. Please address be
    The latter guarantees ordering (Starlight prepends nothing before its own `head` entries). **Recommend**: the astro.config.mjs entry.
 
 10. **WebSearch / WebFetch denied in this session.** I could not confirm the published state of `@zzfx-studio` or read its README. If you can paste the relevant docs back into the next prompt, I can sharpen Step C and Step E based on the real API.
+
+---
+
+## 7 — Update (2026-05-12): `@zzfx-studio` reality check resolved
+
+Open question #1 + #2 closed. Source: `github.com/thejustinwalsh/zzfx-studio` (public), `@zzfx-studio/zzfxm` v0.1.2 on npm.
+
+### What it actually is
+
+Two layers shipped under the same umbrella:
+
+- **`@zzfx-studio/zzfxm`** — the **runtime library** we install and use. Modern TypeScript port of Keith Clark + Frank Force's ZzFXM music sequencer. Published, ~1.4KB gzipped (micro build). `zzfx` is a peer dep (optional — micro build inlines it). MIT-licensed, owned by the user.
+- **`zzfx-studio`** — the **DAW** that *generates* tracks. PWA at `thejustinwalsh.github.io/zzfx-studio` (also a desktop launcher via `npx zzfx-studio`). Vibe templates (Adventure, Battle, Dungeon, Title Screen, Boss), 4-channel tracker grid, per-channel regeneration, live playback, oscilloscope, ADSR cards. **Exports tracks as JS snippets, `.js` files, or `.wav` files.** This is where the four landing-page tracks come from — we click vibes until we get bangers, hit Export Code, paste into `docs/src/audio/tracks/<name>.ts`.
+
+### Resolved API surface
+
+```ts
+import { zzfxm, ZZFXM } from '@zzfx-studio/zzfxm'
+
+// One-shot play (uses zzfx's internal AudioContext — convenient but
+// bypasses our gain bus, so NOT what we want for the jukebox):
+zzfxm(instruments, patterns, sequence, 120) // → AudioBufferSourceNode
+
+// Lower-level — what audio-bridge actually uses:
+const [left, right]: [number[], number[]] = ZZFXM.build(
+    instruments, patterns, sequence, 120
+)
+// We then wrap [left, right] in an AudioBuffer on OUR AudioContext and
+// pipe through master gain → music gain → destination, giving us
+// control over master mute, music slider, and ducking.
+
+// Or with their convenience helper (still routes through zzfx's context):
+ZZFXM.play([left, right], volumeScale?, rate?, pan?, loop?)
+
+ZZFXM.sampleRate // 44100
+```
+
+### Song format
+
+```
+Instrument = number[]              // ZzFX 21-param sound array
+Channel    = [instrument, panning, ...notes]
+Pattern    = Channel[]             // 4 channels: lead, harmony, bass, drums
+Sequence   = number[]              // pattern indices, defines playback order
+```
+
+Notes are MIDI-style integers; 12 = root pitch, 0 = silence, fractional values for fadeout attenuation.
+
+### Implementation impact on Step C — adjusted
+
+C0 (new). **Add catalog entries** to `pnpm-workspace.yaml`:
+```yaml
+catalog:
+  '@zzfx-studio/zzfxm': ^0.1.2
+  zzfx: ^1.x  # confirm latest; already needed for SFX in breakout mini
+```
+Then run `pnpm sync:pack` per repo convention (existing script).
+
+C1 (revised). **Skip the "verify the package" step** — we just did. Move on.
+
+C2 (revised). **`packages/audio-bridge/` → reconsider.** Since the minis bundle their own `@zzfx-studio/zzfxm` (or just `zzfx` for SFX-only) and don't need our master/music-bus plumbing, the bridge is only consumed by docs + the theme's SoundToggle. **Recommendation flip from §2.2:** put the singleton + proxy in `docs/src/audio/` (not a new workspace package), and let the theme's SoundToggle import via a Vite alias `'#audio'` or a tsconfig path. One less workspace package; the audio plumbing lives next to its only real consumer. The theme keeps zero docs dependencies in its public surface.
+
+C3 (revised). The audio-bridge (now `docs/src/audio/`) flow:
+- One AudioContext, created on first user gesture (existing pattern at `sounds.ts:470-476`).
+- Three gain nodes wired master → SFX/music splits:
+  ```
+  AudioContext.destination
+        ↑
+   masterGain (SoundToggle 4-level)
+        ├── sfxGain (no per-channel volume — UI sounds + demo SFX share)
+        └── musicGain (jukebox slider, ducks on demo music)
+  ```
+- SFX: existing `zzfx()` calls route through `sfxGain`. Replace the `zzfx` package's destination-write with an explicit `connect(sfxGain)` — either via a small fork of the call (`zzfx` exposes `ZZFX.playSamples` similarly to ZZFXM, so we can build samples + route to our context) OR by wrapping each play in a fresh `BufferSource` we construct manually.
+- Music: `ZZFXM.build()` returns `[left, right]` → stuff into a stereo `AudioBuffer` on our context → `BufferSource` → connect to `musicGain` → start.
+- Ducking: `musicGain.gain.exponentialRampToValueAtTime(0.1 * userVolume, currentTime + 0.2)` on demo-music-takeover; ramp back over 0.4s.
+
+C4 (no change). Minis still import `@zzfx-studio/zzfxm` directly for standalone use; docs passes a proxy as the `zzfx` prop when embedded.
+
+### Implementation impact on Step E — adjusted
+
+E1 (revised). **Track composition is now 30 minutes of clicking, not hours of composing.**
+- Open `thejustinwalsh.github.io/zzfx-studio` in a browser.
+- Click vibe template → instant 4-channel song. Regenerate channels you don't like.
+- Tweak BPM, instruments, effects as needed.
+- Export Code → copy the `zzfxm([...],[...],[...],120)` snippet.
+- Paste into `docs/src/audio/tracks/<name>.ts` as named exports:
+  ```ts
+  // docs/src/audio/tracks/foil.ts
+  export const FOIL = {
+    title: 'Foil',
+    gem: 'gold' as const,
+    bpm: 110,
+    instruments: [/* … */],
+    patterns: [/* … */],
+    sequence: [/* … */],
+  }
+  ```
+- One track per gem (gold/amethyst/diamond/ruby) — 4 tracks total. The DAW's vibe templates roughly map: Title Screen → gold (Foil), Adventure → amethyst (Docs), Boss/Battle → diamond (Index, kinetic), Dungeon → ruby (Showcase, confident).
+- Verify each loops cleanly: open the exported sequence, ensure last pattern transitions smoothly to first.
+
+E2 (revised). audio-bridge now uses `ZZFXM.build()` + custom `AudioBuffer` + `connect(musicGain)`, per C3 above.
+
+### Open questions closed by this update
+
+| # | Status | Notes |
+|---|---|---|
+| 1 | **Resolved** | Real, published, ours. No new package authoring needed. |
+| 2 | **Resolved** | Use the DAW to generate tracks via vibe templates → export → paste. No from-scratch composition. |
+| 10 | **Resolved** | This section is the answer. |
+
+Questions #3, #4, #5, #6, #7, #8, #9 still open. **Recommendation for those**: defer the rest to first PR review — they're UX tuning, not architecture, and can iterate once Step E ships.
+
+### One unresolved subtlety
+
+The `zzfx` peer dep creates an `AudioContext` **at module import time** (per the `@zzfx-studio/zzfxm` README's "Differences from the original ZzFXM" → "AudioContext in Workers" section). This is fine for the main thread but means importing `zzfx` (or `@zzfx-studio/zzfxm` without `/micro`) eagerly creates a context that we then ignore in favor of our own. Two paths:
+
+- **A**: Live with the extra context. It's idle, draws no audio output, costs a few KB of memory. Simplest.
+- **B**: Use `@zzfx-studio/zzfxm/micro` which inlines `zzfx` and still creates the context at import. Same problem.
+- **C**: Lazy-import behind `unlockAudioContext()`. Adds 1-2 frames to the first-gesture unlock but isolates the spurious context to "after we already have one we're using." Slightly cleaner.
+
+**Recommendation**: A. The cost is negligible and pursuing B/C is engineering ceremony.
+
+---
+
+## 8 — Update #2 (2026-05-12): track ingestion + lazy-load strategy
+
+Two new constraints from the user:
+
+1. **Ingestion tool**: workflow is "paste a `zzfxm(...)` one-liner from the DAW, get a JSON library entry." We don't hand-author track objects — we paste copy-paste lines.
+2. **Loading is lazy but eagerly lazy**: track data + the `@zzfx-studio/zzfxm` runtime must NOT block first paint / TTI / Lighthouse metrics. Fetch after main document loads, non-blocking. Hydrate only when needed (first user gesture / popover open / idle), with prefetch hints to make the "needed" moment feel instant.
+
+### Ingestion tool — `pnpm tracks:add`
+
+`scripts/add-track.ts` (workspace-root script, runnable as `pnpm tracks:add`). Single-file tool, ~80 lines:
+
+- Reads a `zzfxm([instruments],[patterns],[sequence],BPM)` snippet from **stdin** OR from a file argument (e.g., `pnpm tracks:add ~/Downloads/foil.js`).
+- Parses by extracting the four arrays via a regex (looking for `zzfxm\(`, then balanced-bracket matching) and `JSON.parse`'ing each. **No `eval`.** zzfxm exports contain only numeric literals + nested arrays, so JSON.parse works once square-bracket spans are isolated.
+- Asks for the track metadata: title, gem (gold/amethyst/diamond/ruby), credit (defaults to "zzfx-studio"). Interactive prompts via `node:readline` or accept as flags.
+- Validates the parsed shape: `instruments[]`, `patterns[][][]`, `sequence[]`, `BPM`. Bails with a clear error on mismatch.
+- Writes the entry into `docs/public/audio/tracks.json` — keyed by gem (one track per gem at first, replaceable later). File lives under `public/` so it's served as a static asset and fetchable at runtime via `fetch('/three-flatland/audio/tracks.json')` after first paint. Schema:
+  ```json
+  {
+    "version": 1,
+    "tracks": [
+      {
+        "id": "foil",
+        "title": "Foil",
+        "gem": "gold",
+        "credit": "zzfx-studio",
+        "bpm": 110,
+        "instruments": [/* number[][] */],
+        "patterns": [/* number[][][] */],
+        "sequence": [/* number[] */]
+      }
+    ]
+  }
+  ```
+- Existing-ID handling: if a track with the same `id` exists, prompts "overwrite?" (or `--force` flag for non-interactive).
+- Optionally prints `// @zzfx-studio` source-of-truth metadata as a leading comment in the snippet section so the parsed-from line is traceable. The DAW's export already emits this comment — preserve it through ingestion.
+
+**Acceptance**: paste a zzfxm one-liner → tracks.json updated → `pnpm --filter=docs dev` shows the new track in the popover.
+
+### Lazy-load strategy — three layers
+
+The audio system has three things that could weight the initial bundle: (a) the `@zzfx-studio/zzfxm` runtime (~1.4KB micro, ~3KB regular), (b) the `tracks.json` payload (variable; 4 tracks ≈ 8-15KB depending on density), (c) the `docs/src/audio/` bridge code (~5-10KB once it's the deduped single engine).
+
+**None of this loads before first paint.** Load order, eagerly lazy:
+
+#### Layer 1 — Inline boot script (already non-blocking)
+
+`docs/src/components/Head.astro` inline script (the Step A1 theme-setter, ~300 bytes) keeps doing what it does — set `data-theme` before paint. **No audio code here.**
+
+#### Layer 2 — Idle prefetch (zero TTI cost)
+
+After `astro:page-load` (vtbot's `:after-swap` equivalent), schedule a `requestIdleCallback` that issues **link prefetch** hints, not actual loads:
+
+```html
+<link rel="prefetch" href="/three-flatland/audio/tracks.json" as="fetch" crossorigin="anonymous">
+<link rel="modulepreload" href="/three-flatland/_astro/audio-bridge.<hash>.js">
+```
+
+These hints tell the browser "you'll probably need this; fetch it during idle." Lighthouse counts modulepreload + prefetch as zero-cost during the initial render budget; they only consume bandwidth after the page is interactive.
+
+Wired in `docs/src/components/Head.astro` as a deferred `<script>` that injects these hints once the first `astro:page-load` event fires. Cleaner: put them in the static head with `media="(min-resolution: 0.01dppx)"` or similar always-true media query, AS IS (no JS needed) — the browser already treats them as low-priority.
+
+#### Layer 3 — On-demand hydrate
+
+The audio-bridge module is dynamically imported ONLY when one of the following happens (whichever fires first):
+
+- User clicks the SoundToggle (mute → unmute path).
+- User opens the jukebox popover.
+- User interacts with any `[data-sound]` element (existing UI-sound trigger).
+- 5 seconds after `astro:page-load` AND `requestIdleCallback` fires AND the prefetch above completed. (Optional: this just warms the AudioContext so the first gesture has zero perceived latency. Skip if Lighthouse is sensitive.)
+
+The bridge's first call awaits `import('@zzfx-studio/zzfxm')` + `fetch('/three-flatland/audio/tracks.json')` in parallel. Both resolve in <100ms when the prefetch did its job; ~300-500ms cold. The SoundToggle shows a tiny spinner / pulse during the unlock if cold, none if warm.
+
+```ts
+// docs/src/audio/bridge.ts (sketch)
+let bridgePromise: Promise<AudioBridge> | undefined
+
+export function getBridge(): Promise<AudioBridge> {
+  if (!bridgePromise) {
+    bridgePromise = (async () => {
+      const [{ ZZFXM }, tracksResponse] = await Promise.all([
+        import('@zzfx-studio/zzfxm'),
+        fetch(import.meta.env.BASE_URL + 'audio/tracks.json'),
+      ])
+      const { tracks } = await tracksResponse.json()
+      return new AudioBridge(ZZFXM, tracks)
+    })()
+  }
+  return bridgePromise
+}
+```
+
+#### Layer 4 — SoundToggle is render-cheap (always)
+
+The SoundToggle button itself stays a tiny SSR-rendered button (~200 bytes of HTML + 1 inline icon SVG mask via UnoCSS). It does NOT import the bridge. Its only JS is a `click` listener that calls `getBridge().then(b => b.toggleMute())`. The button is fully clickable from first paint; the click "blocks" on the dynamic import only on the very first interaction, and only if Layer 2 prefetch didn't already warm the cache.
+
+#### Lighthouse expectations
+
+With this loading model:
+
+- LCP: unaffected (audio is post-load).
+- FID/INP: unaffected for SoundToggle clicks if Layer 2 prefetch landed; cold-start adds 100-300ms one-time latency on first interaction.
+- TBT: unaffected — dynamic import is a separate task that runs after main-thread is idle.
+- Bundle size budget (Starlight monitors): audio-bridge code stays in a code-split chunk, NOT in the main JS bundle. Verify via Astro build output: `dist/_astro/audio-bridge.<hash>.js` should appear as a separate file, NOT inlined into a page or shared chunk.
+
+Acceptance criteria for "doesn't slam Lighthouse":
+- Lighthouse Performance on the landing page stays ≥ 95.
+- Total Bytes (main thread JS) increase from this work ≤ 2KB (the boot script + dynamic-import stub + SoundToggle handler).
+- All audio code lives in `dist/_astro/audio-bridge.<hash>.js` and `dist/_astro/zzfxm.<hash>.js`, code-split.
+- `tracks.json` is in `dist/audio/` (served statically), prefetched but not blocking.
+
+### Implementation impact on Steps
+
+- **Step C2 (audio-bridge)**: ALL bridge code is in `docs/src/audio/`, dynamically imported via `getBridge()`. The static SoundToggle component never imports the bridge synchronously. Verify with Astro's build chunk analysis (`pnpm --filter=docs build` then inspect `dist/_astro/`).
+- **Step C3 (sounds.ts migration)**: existing UI sound triggers (`playClick`, `playHover`, etc.) become async — they `await getBridge()` before playing. The first call has the cold-start cost; subsequent calls are fast. Re-evaluate whether the UI sound triggers should fire at ALL on first-page-load hover events (they currently can — a user hovering a `[data-sound]` element 50ms after load would trigger a bridge import that wouldn't be ready in time). Add a "first user gesture" gate: until the user has clicked something, suppress hover sounds. Document this as a deliberate UX choice.
+- **Step E (jukebox popover)**: trigger button stays SSR-cheap. Opening the popover awaits `getBridge()` if cold, with a visual loading state for ≤ 500ms.
+- **NEW Step G — Verify Lighthouse**: after all five steps land, run `pnpm --filter=docs build && pnpm --filter=docs preview` + Lighthouse on `/`, `/getting-started/introduction/`, `/api/`, `/examples/`. Confirm Performance ≥ 95, no audio bytes in the main bundle.
+
+### Closed open questions
+
+| # | Status | Notes |
+|---|---|---|
+| 2 | **Further refined** | Ingestion is the `pnpm tracks:add` tool consuming zzfxm one-liners → tracks.json. No hand-authored track objects. |
+| 6 | **Resolved via lazy-load gate** | "Music auto-starts on first SoundToggle unmute?" — answer: no, because the bridge isn't even loaded until the user opens the popover. First unmute via SoundToggle just enables the SFX path; music requires explicitly opening the popover. Cleaner UX and aligns with the lazy-load model. |
+
+---
+
+## 9 — Update #3 (2026-05-12): package surface clarification
+
+User intent: minimize install ceremony — ideally one package to add.
+
+Practical reality of `@zzfx-studio/zzfxm` v0.1.2 exports:
+
+| Entry | Exports | Includes zzfx for SFX? |
+|---|---|---|
+| `@zzfx-studio/zzfxm` | `zzfxm(...)`, `ZZFXM` | No — `zzfx` is a peer dep, separate install |
+| `@zzfx-studio/zzfxm/micro` | `zzfxm(...)`, `ZZFXM` | Bundled inline, but **not re-exported** — only accessible through `ZZFXM.build`/`zzfxm()` |
+
+So out-of-the-box, "just install `@zzfx-studio/zzfxm`" gives us **music** but not **direct SFX**. The plan above assumed two installs (zzfxm + zzfx). Three paths to honor the "one install" intent:
+
+### Path A (recommended) — re-export `zzfx` from the zzfxm package
+
+One-line PR to `thejustinwalsh/zzfx-studio` (`packages/zzfxm/src/zzfxm.ts`):
+
+```ts
+import { ZZFX } from 'zzfx'
+export { ZZFX as zzfx }
+export type { ZZFX as ZzfxFn } from 'zzfx'  // if useful
+```
+
+Then in this repo:
+```ts
+import { zzfxm, ZZFXM, zzfx } from '@zzfx-studio/zzfxm/micro'
+//   ^^^^^ music     ^^^^ SFX, one import
+```
+
+Single install (`@zzfx-studio/zzfxm`), single import path, micro build keeps the bundle at ~1.4KB. **Recommended.**
+
+### Path B — install both packages, conceptually-one
+
+```yaml
+# pnpm-workspace.yaml catalog:
+'@zzfx-studio/zzfxm': ^0.1.2
+zzfx: ^1.x
+```
+
+zzfxm + its peer dep zzfx — two packages on paper, pnpm shares one install. Slightly more ceremony but no upstream change needed. Same end-state.
+
+### Path C — render SFX via ZZFXM.build with single-note songs
+
+Use `ZZFXM.build()` with a degenerate song (one instrument, one pattern, one note) to render every SFX call. Works in principle, but each SFX call pays the sequencer-build overhead and the API is awkward. **Not recommended.**
+
+### Recommendation
+
+**Path B (confirmed with user).** Install both `@zzfx-studio/zzfxm` and `zzfx` as catalog entries. zzfx is the peer dep of zzfxm — pnpm resolves both to a single underlying zzfx install, so the synth engine is shared end-to-end (no duplicated `~1KB` of code, no two AudioContexts fighting). Two import lines on paper, one shared package on disk.
+
+```yaml
+# pnpm-workspace.yaml catalog:
+'@zzfx-studio/zzfxm': ^0.1.2
+zzfx: ^1.x
+```
+
+```ts
+import zzfx from 'zzfx'                              // SFX (one-shot 21-param arrays)
+import { zzfxm, ZZFXM } from '@zzfx-studio/zzfxm'    // music (sequenced songs)
+```
+
+No upstream change to zzfx-studio needed. Path A (the re-export PR) is unnecessary unless the install ceremony becomes a friction point later.
+
+### Plan steps adjusted
+
+- **Step C0 (revised)**: add `'@zzfx-studio/zzfxm': ^0.1.2` and `zzfx: ^1.x` to the workspace catalog (`pnpm-workspace.yaml`). Run `pnpm sync:pack` per repo convention.
+- **Step C3 (revised)**: `docs/src/audio/bridge.ts` imports `{ zzfxm, ZZFXM } from '@zzfx-studio/zzfxm'` for music and `import zzfx from 'zzfx'` for SFX. The 2× inline ZzFX duplication in current `docs/src/scripts/sounds.ts` (L128-275 + L630-756) is replaced with the `zzfx` import.
+- **Step C4 (revised)**: `minis/breakout/src/App.tsx`'s inlined ZzFX (L7-109) → `import zzfx from 'zzfx'`. The mini drops ~100 lines of vendored synth.
