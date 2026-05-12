@@ -5,27 +5,35 @@
 > Branch: docs-refresh-foundation
 > PR: https://github.com/thejustinwalsh/three-flatland/pull/33
 
-### Docs site footer
+## Docs site: footer, API routing, landing copy, stat gem colors
 
-- Added `SiteFooter` component: brand lockup, three link columns (Docs, Packages, Community), version row with gem-tinted headings and per-section hover colors
-- Added `lib/packages.ts`: build-time workspace-package discovery shared between footer Packages column and landing alpha ribbon; suppresses badges matching project-wide baseline
-- API reference links now resolve to directory roots — new `strip-index-links` remark plugin strips trailing `/index/` segments; `entryFileName: 'index'` set in TypeDoc config
-- API reference sidebar groups always-open on any API page via `forceCollapsable` cascade in `SidebarSublist`
-- Site `<meta description>` now populated from `starlight.description`; removed legacy AI-disclaimer `footerText`
-- Header wordmark vertical offset removed; aligns with header baseline
+### Site footer
 
-### Landing page copy
+- New `SiteFooter.astro`: brand lockup (FL | Flatland wordmark), three link columns (Docs, Packages, Community), version row, gem-tinted section headings with per-column hover colors, and a foil rule top accent; replaces the AI-disclaimer `footerText` and renders on every page
+- New `packages/starlight-theme/lib/packages.ts`: reads `packages/*/package.json` at build time to drive both the footer Packages column and the landing alpha-ribbon from one source; suppresses badges that match the project baseline (alpha-everywhere = noise)
+- `packages/three-flatland/package.json`: added `flatland.badge="Alpha"` field so the corner ribbon reflects project-level alpha state
+- `Header.astro`: removed +2px wordmark offset; wordmark now baseline-aligns with header text
+- `SidebarSublist.astro`: API reference nested groups forced always-open via `forceCollapsable` cascade, so the full tree is visible on any API page
+- `styles/base.css`: removed legacy `[data-slot=footer-text]` rules
 
-- Hero subtagline: em-dash removed, split into two declaratives
-- Section heading "Built into three.js" corrected to "Built for three.js"
-- VP1 opener reframed to avoid false-universal categorical claim
-- StatsBanner sprite count updated: 10K+ → 20K+
-- Hero shader side vignette removed; gem flow runs edge-to-edge
+### API reference routing
 
-### StatsBanner gem accents
+- New `docs/typedoc-plugins/strip-index-links.mjs`: remark plugin that strips trailing `/index/` from generated TypeDoc link URLs, pairing with `entryFileName=index` so module index pages resolve to directory roots rather than `/index/` subpaths
+- `astro.config.mjs`: wired `stripIndexLinks` plugin, set `entryFileName=index`, populated `starlight.description` (feeds footer tagline and meta description), cleared `footerText`
 
-- `color` prop on `StatsBanner` stats re-enabled (was accepted but ignored)
-- Conventional color names (`cyan`, `blue`, `green`, etc.) map to gem equivalents via `legacyToGem` table; existing MDX call sites unchanged
-- Stat value text tinted with gem color; each stat has a gem-tinted hairline underline (gradient fading right) so the four stats read as a colored chord across the row
+### Landing copy
 
-Adds a structured site footer, fixes API reference URL routing, refreshes landing copy for accuracy, and restores gem accent colors to the stats strip.
+- Section heading corrected: "Built into three.js, not on top of it" -> "Built for three.js" (avoids implying an upstream fork/PR relationship)
+- VP1 opener rewritten: drops false-universal categorical claim about all 2D libraries
+- Hero subtagline: removed em-dash; replaced with two short declaratives
+- StatsBanner: sprite count updated 10K+ -> 20K+
+- `HeroShader.tsx`: side vignette removed; gem flow renders edge-to-edge
+
+### StatsBanner gem colors (previously broken)
+
+- Re-enabled `color` prop on `StatsBanner` stats; was marked deprecated and silently ignored, causing all four stats to render in `--foreground`
+- Color resolves through the same `legacyToGem` table used by `FeatureCard` and `ValueProp`
+- Stat value text now renders with a gem-mixed color (65% gem + 35% foreground) and a soft gem-tinted text-shadow glow
+- Each stat gets a thin gem-tinted hairline underline (gradient fading right) so the four stats read as a colored chord across the row
+
+Adds a site-wide footer, fixes API reference link routing, corrects landing copy accuracy, and restores gem accent colors to the stats banner.
