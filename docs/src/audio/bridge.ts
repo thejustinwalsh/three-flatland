@@ -368,6 +368,20 @@ class AudioBridge {
         this.playTrack(tracks[prev]!)
     }
 
+    /** Live music position (seconds since track start, wrapping at the
+     * loop boundary) + total duration in seconds. Used by the popover
+     * progress bar + time display. Returns zeros when paused or no
+     * buffer is loaded. */
+    getMusicProgress(): { position: number; duration: number } {
+        if (!this.musicBuffer) return { position: 0, duration: 0 }
+        const duration = this.musicBuffer.duration
+        if (this.state.musicPlaying) {
+            const elapsed = this.ctx.currentTime - this.musicStartedAt
+            return { position: elapsed % duration, duration }
+        }
+        return { position: this.musicPosition, duration }
+    }
+
     setMusicVolume(v: number): void {
         const clamped = Math.max(0, Math.min(1, v))
         this.state.musicVolume = clamped
