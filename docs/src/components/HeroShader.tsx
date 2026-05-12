@@ -47,6 +47,8 @@ uniform vec2  u_res;
 uniform float u_time;
 uniform vec2  u_mouse;       // 0..1
 uniform float u_mouse_active; // 0..1
+uniform float u_press;       // 0..1 (pointerdown / touchstart)
+uniform float u_press_time;  // seconds since current press began (0 when not pressed)
 uniform float u_scene_angle; // radians
 uniform float u_pixel_size;  // device pixels per "big pixel" (4 * DPR)
 
@@ -93,10 +95,11 @@ float fbm(vec2 p) {
 
 void main() {
   // ────────────────────────────────────────────────────────────────
-  // PIXELATE — snap fragment coord to an 8-CSS-pixel grid before
-  // anything else samples space. Every fragment inside a big-pixel
-  // block computes the same color, so the whole hero reads as a
-  // chunky retro pixel-art canvas.
+  // PIXELATE — snap fragment coord to a 1-CSS-pixel grid (i.e.
+  // effectively no spatial quantization at DPR=1, 0.5 CSS at DPR=2).
+  // Spatial chunkiness is off; the dither pattern alone carries the
+  // "pixel art" character. Bumping u_pixel_size to 4/8/16 brings
+  // back the chunky retro feel at whatever big-pixel size.
   //
   // Mirrors three-flatland's TSL pixelate node:
   //   pixelate(uv, resolution / u_pixel_size, [0.5, 0.5])
@@ -113,27 +116,64 @@ void main() {
   float t = u_time * 0.05;
 
   // MOUSE-AS-FORCE-FIELD — cursor acts like a soft repulsive field.
-  // We sample noise from a position INWARD of p (toward the mouse), so
-  // the gem pattern that "would have been" near the cursor appears
+  // Two-stage push:
+  //   • HOVER (u_mouse_active) — subtle ambient breathing as the
+  //     cursor passes through. Tight radius (0.7), low amplitude
+  //     (0.10) — you feel it, you don't see-it-see-it.
+  //   • PRESS (u_press) — a firm "punch" with much wider radius
+  //     (1.1) and higher amplitude (0.38). Combined with the void
+  //     mask near end-of-pipeline this clears the gems out from
+  //     under the cursor, leaving a black hole.
+  // We sample noise from a position INWARD of p (toward the mouse),
+  // so the gem pattern that "would have been" near the cursor appears
   // pushed OUT to where p is — visually the gems flow away from the
-  // cursor like particles fleeing a force field. Wider falloff (1.1
-  // NDC radius) and lower amplitude (0.22) for a gentler, slower
-  // displacement than the previous suck behavior.
+  // cursor like particles fleeing a force field.
   vec2 m = u_mouse * 2.0 - 1.0;
   m.x *= u_res.x / u_res.y;
   vec2 mouseOffset = p - m;
   float md = length(mouseOffset);
-  // Inverse-quadratic-ish falloff — strongest right at the cursor,
-  // tapering very gradually to zero by ~1.1 units. Easing keeps the
-  // edge soft, no sharp boundary.
-  float falloff = 1.0 - smoothstep(0.0, 1.1, md);
-  falloff = falloff * falloff; // soften further
-  float push = falloff * u_mouse_active * 0.22;
+
+  // Hover falloff — tight quadratic edge, peaks at cursor.
+  float falloffHover = 1.0 - smoothstep(0.0, 0.7, md);
+  falloffHover = falloffHover * falloffHover;
+  float pushHover = falloffHover * u_mouse_active * 0.10;
+
+  // Press falloff — wider, harder push out.
+  float falloffPress = 1.0 - smoothstep(0.0, 1.1, md);
+  falloffPress = falloffPress * falloffPress;
+  float pushPress = falloffPress * u_press * 0.38;
+
+  float push = pushHover + pushPress;
   // SAMPLE FROM CLOSER TO CURSOR than p — this is the inverse of
   // pushing pp away. Effect: noise that "lives" near the cursor gets
   // sampled at p (further out), so visually the gem pattern is
   // displaced away from the cursor.
   vec2 pp = p - (md > 0.0001 ? normalize(mouseOffset) : vec2(0.0)) * push;
+
+  // ────────────────────────────────────────────────────────────────
+  // BLACK-HOLE SWIRL — while pressed, rotate the sample position
+  // around the cursor by an angle that grows with both proximity
+  // (closer = more rotation, Kepler-style angular velocity) and
+  // press-time (continuous spin while held). The radial push above
+  // pulls the gem mass outward; this twist drags the edge tangentially
+  // around the void — together they read as "fluid being sucked into
+  // a spinning black hole."
+  //
+  // u_press_time resets to 0 on each press onset (JS side), so every
+  // press starts the swirl from rest — no jarring jump when the
+  // shader re-engages after a long idle.
+  // ────────────────────────────────────────────────────────────────
+  float swirlFalloff = 1.0 - smoothstep(0.0, 1.05, md);
+  swirlFalloff = pow(swirlFalloff, 1.4);
+  // Angular velocity: ~2.8 rad/s at the cursor, fading out by radius
+  // 1.05. The +0.6 baseline gives a small instantaneous twist on
+  // press onset (before pressTime accumulates) so the rotation
+  // doesn't read as "delayed" right when you click.
+  float swirlAngle = swirlFalloff * u_press * (u_press_time * 2.8 + 0.6);
+  vec2 ofs = pp - m;
+  float scs = cos(swirlAngle);
+  float ssn = sin(swirlAngle);
+  pp = m + vec2(scs * ofs.x - ssn * ofs.y, ssn * ofs.x + scs * ofs.y);
 
   // Domain-warp layer (sampled at PERTURBED pp) — gems flow around
   // the cursor naturally because subsequent fbm() calls sample from pp.
@@ -223,6 +263,19 @@ void main() {
   vec3 quantized = floor(col * (levels - 1.0) + threshold) / (levels - 1.0);
   col = clamp(quantized, 0.0, 1.0) * maxBrightness;
 
+  // ────────────────────────────────────────────────────────────────
+  // PRESS VOID — pure-black hole at cursor when pressed. Applied
+  // AFTER posterize so the hole is dither-free black, not a
+  // dithered dark patch. Combined with the press-amplified push
+  // above, the visual is: gems flow away from finger/cursor + a
+  // crisp black circle appears underneath. Releases as the finger
+  // lifts (u_press eases to 0 over ~150ms).
+  // ────────────────────────────────────────────────────────────────
+  float voidRadius = 0.45;
+  float voidMask = 1.0 - smoothstep(0.0, voidRadius, md);
+  voidMask = pow(voidMask, 2.5) * u_press;
+  col = mix(col, vec3(0.0), voidMask);
+
   fragColor = vec4(col, 1.0);
 }
 `
@@ -273,22 +326,34 @@ void main() {
     const uTime = gl.getUniformLocation(prog, 'u_time')
     const uMouse = gl.getUniformLocation(prog, 'u_mouse')
     const uMouseActive = gl.getUniformLocation(prog, 'u_mouse_active')
+    const uPress = gl.getUniformLocation(prog, 'u_press')
+    const uPressTime = gl.getUniformLocation(prog, 'u_press_time')
     const uSceneAngle = gl.getUniformLocation(prog, 'u_scene_angle')
     const uPixelSize = gl.getUniformLocation(prog, 'u_pixel_size')
 
     /* Pixel size in device pixels — set on resize so it tracks DPR.
-     * 8 CSS pixels × DPR (was 4) — the chunkier 8px reads more
-     * deliberately pixel-art and pairs better with the lowered
-     * maxBrightness ceiling in the shader. 16 was too coarse on
-     * small viewports (single big-pixel ate ~2% of the hero width). */
-    let pixelSizeDev = 8
+     * Experimenting with 1 CSS pixel: kills the chunky spatial
+     * quantization entirely, leaves just the Bayer 4x4 ordered
+     * dither + posterize doing the work. Result reads as a
+     * fine-grained ordered-dither film over smooth gem flow — the
+     * "tasteful retro" end of the spectrum rather than the
+     * "deliberately chunky pixel-art" end. */
+    let pixelSizeDev = 1
 
     let mouse = { x: 0.5, y: 0.5 }
     let mouseActive = 0
     let mouseTarget = 0
+    let pressActive = 0
+    let pressTarget = 0
+    /* Press-time accumulator — ticks up only while pressed, resets
+     * on each press onset. Drives the black-hole swirl rotation in
+     * the shader so each tap starts the spin from rest (no "jump"
+     * from a long-tail accumulated time value). */
+    let pressTime = 0
     let last = performance.now()
     let raf = 0
     let alive = true
+    let visible = true // toggled by IntersectionObserver below
     const start = performance.now()
 
     const root = document.documentElement
@@ -312,40 +377,86 @@ void main() {
         cvs.width = W
         cvs.height = H
       }
-      pixelSizeDev = 8 * dpr
+      pixelSizeDev = 1 * dpr
       gl.viewport(0, 0, W, H)
     }
     window.addEventListener('resize', resize, { passive: true })
     resize()
 
-    function onMove(e: PointerEvent) {
+    function updateMouseFromEvent(e: PointerEvent) {
       const r = cvs.getBoundingClientRect()
       mouse.x = (e.clientX - r.left) / r.width
       mouse.y = 1 - (e.clientY - r.top) / r.height // flip Y
+    }
+    function onMove(e: PointerEvent) {
+      updateMouseFromEvent(e)
       mouseTarget = 1
     }
     function onLeave() {
       mouseTarget = 0
+      pressTarget = 0 // releasing capture also releases press
+    }
+    function onDown(e: PointerEvent) {
+      // Sync mouse position for touch (touchstart fires without prior
+      // pointermove on mobile, so the press would otherwise apply at
+      // the last known cursor location — typically (0.5, 0.5)).
+      updateMouseFromEvent(e)
+      mouseTarget = 1
+      pressTarget = 1
+      pressTime = 0 // restart the swirl from rest on each new press
+    }
+    function onUp() {
+      pressTarget = 0
     }
     cvs.addEventListener('pointermove', onMove, { passive: true })
     cvs.addEventListener('pointerenter', () => { mouseTarget = 1 })
     cvs.addEventListener('pointerleave', onLeave)
+    cvs.addEventListener('pointerdown', onDown, { passive: true })
+    /* Listen on window for up/cancel — pointer might leave the canvas
+     * while still pressed (drag-off), and we want the press to release
+     * cleanly rather than stick. */
+    window.addEventListener('pointerup', onUp, { passive: true })
+    window.addEventListener('pointercancel', onUp, { passive: true })
 
     gl.useProgram(prog)
 
     function frame() {
-      if (!alive) return
+      // Visibility gate: when the hero scrolls off-screen we stop
+      // rescheduling rAFs. Saves the full WebGL paint + JS work per
+      // frame for the rest of the page scroll. WebKit benefits most —
+      // off-screen canvas paint isn't free there. Restart in the IO
+      // callback below.
+      if (!alive || !visible) { raf = 0; return }
       const now = performance.now()
       const dt = Math.min(0.05, (now - last) / 1000)
       last = now
       // Smooth mouse_active toward target with ~150ms half-life.
       const k = 1 - Math.pow(0.5, dt / 0.15)
       mouseActive += (mouseTarget - mouseActive) * k
+      /* Press eases faster (~80ms half-life) — feel pressure
+       * register/release as soon as the finger goes down/up. Too
+       * slow and the void hole "fades up" rather than "appears." */
+      const kp = 1 - Math.pow(0.5, dt / 0.08)
+      pressActive += (pressTarget - pressActive) * kp
+      /* Press-time advances while the press is held; resets to 0
+       * once both the target and the smoothed press value have
+       * fully released. Keeping the counter running through the
+       * release tail prevents the swirl angle from instantly
+       * snapping to zero as soon as the finger lifts. */
+      if (pressTarget > 0.5) {
+        pressTime += dt
+      } else if (pressActive < 0.01) {
+        pressTime = 0
+      } else {
+        pressTime += dt
+      }
 
       gl.uniform2f(uRes, cvs.width, cvs.height)
       gl.uniform1f(uTime, (now - start) / 1000)
       gl.uniform2f(uMouse, mouse.x, mouse.y)
       gl.uniform1f(uMouseActive, mouseActive)
+      gl.uniform1f(uPress, pressActive)
+      gl.uniform1f(uPressTime, pressTime)
       gl.uniform1f(uSceneAngle, readSceneAngleRad())
       gl.uniform1f(uPixelSize, pixelSizeDev)
       gl.drawArrays(gl.TRIANGLES, 0, 3)
@@ -353,12 +464,35 @@ void main() {
     }
     raf = requestAnimationFrame(frame)
 
+    // Visibility gate via IntersectionObserver — pause the rAF loop
+    // when the hero is fully scrolled out of view. 100px rootMargin
+    // keeps the loop alive a bit past the edge so resuming on
+    // scroll-back-up is already running by the time the canvas is
+    // visible again. `last` resets on resume so the first dt isn't
+    // the whole offscreen duration (which would hammer the inertia
+    // smoothings).
+    const io = new IntersectionObserver((entries) => {
+      for (const e of entries) {
+        const wasVisible = visible
+        visible = e.isIntersecting
+        if (visible && !wasVisible && alive && raf === 0) {
+          last = performance.now()
+          raf = requestAnimationFrame(frame)
+        }
+      }
+    }, { rootMargin: '100px' })
+    io.observe(cvs)
+
     return () => {
       alive = false
       cancelAnimationFrame(raf)
+      io.disconnect()
       window.removeEventListener('resize', resize)
+      window.removeEventListener('pointerup', onUp)
+      window.removeEventListener('pointercancel', onUp)
       cvs.removeEventListener('pointermove', onMove)
       cvs.removeEventListener('pointerleave', onLeave)
+      cvs.removeEventListener('pointerdown', onDown)
       gl.deleteProgram(prog)
       gl.deleteShader(vs)
       gl.deleteShader(fs)
