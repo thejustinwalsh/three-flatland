@@ -263,7 +263,7 @@ function clearGhostRow(world: World, deathCol: number, row: number): void {
  */
 /** Rows the driller has to dig down past the death cell before
  *  hazard rocks are allowed to spawn again. */
-const POST_RESPAWN_ROCK_COOLDOWN_ROWS = 3
+const POST_RESPAWN_ROCK_COOLDOWN_ROWS = 4
 
 function respawnDrillerAtDeath(world: World): void {
   world.spawn(

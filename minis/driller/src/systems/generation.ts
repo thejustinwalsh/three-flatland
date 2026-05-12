@@ -71,125 +71,30 @@ export interface GeneratedGem {
 }
 
 /** Smooth a chunk-local tile array using B5/S45 cellular automata rules. */
-/**
- * Detect AIR pockets sitting on fixtures with no lateral escape and
- * carve a single-cell drillable opening so the driller can break out.
- *
- * Trap definition: starting from an AIR cell whose `r+1` neighbor is
- * a fixture (or out-of-chunk bottom — treated as "continues to next
- * chunk so it's a valid escape"), flood the contiguous AIR pocket
- * laterally. The pocket is a trap iff:
- *   - every cell in the pocket has a fixture directly below (no
- *     drillable floor anywhere across the pocket's width), and
- *   - both lateral walls of the pocket are fixtures (not edges,
- *     because an edge means the pocket reaches the world boundary
- *     which would be navigable from neighboring chunks).
- *
- * Carve strategy: convert the leftmost or rightmost fixture cell of
- * the wall (whichever creates the shortest drill-out path) into SOIL.
- * The driller can then drill through that one SOIL cell — 1 hit —
- * and continue sideways into open terrain on the other side.
- */
-export function carveFixtureTrapEscapes(tiles: Uint8Array, cols: number, rows: number): void {
-  const isDrillableFloor = (idx: number): boolean => {
-    const t = tiles[idx]
-    if (t === undefined) return true // out-of-chunk → escapes downward
-    return !isFixtureTile(t)
-  }
-  // Track which rows we've already validated to avoid reprocessing
-  // every cell in the same pocket. A pocket is a maximal lateral run
-  // of AIR cells at row r whose r+1 is fixture.
-  const handled = new Uint8Array(cols * rows)
-  for (let r = 0; r < rows - 1; r++) {
-    for (let c = 0; c < cols; c++) {
-      const idx = r * cols + c
-      if (handled[idx]) continue
-      if (tiles[idx] !== TILE_AIR) continue
-      const belowIdx = (r + 1) * cols + c
-      if (!isFixtureTile(tiles[belowIdx] ?? TILE_AIR)) continue
-      // Walk left to pocket start.
-      let lo = c
-      while (lo - 1 >= 0 && tiles[r * cols + (lo - 1)] === TILE_AIR && isFixtureTile(tiles[(r + 1) * cols + (lo - 1)] ?? TILE_AIR)) {
-        lo--
-      }
-      // Walk right to pocket end.
-      let hi = c
-      while (hi + 1 < cols && tiles[r * cols + (hi + 1)] === TILE_AIR && isFixtureTile(tiles[(r + 1) * cols + (hi + 1)] ?? TILE_AIR)) {
-        hi++
-      }
-      // Mark the pocket as handled.
-      for (let pc = lo; pc <= hi; pc++) handled[r * cols + pc] = 1
-      // Check for an escape: any cell in the pocket with a non-fixture
-      // (or out-of-chunk) cell below is an exit.
-      let hasFloorExit = false
-      for (let pc = lo; pc <= hi; pc++) {
-        if (isDrillableFloor((r + 1) * cols + pc)) {
-          hasFloorExit = true
-          break
-        }
-      }
-      if (hasFloorExit) continue
-      // Check lateral walls. Edge counts as "wall but openable" — the
-      // pocket reaches the world boundary, where a neighboring chunk
-      // might be present; treat as non-trap so we don't carve out the
-      // world edge.
-      const leftWallC = lo - 1
-      const rightWallC = hi + 1
-      const leftIsFixture = leftWallC >= 0 && isFixtureTile(tiles[r * cols + leftWallC] ?? TILE_AIR)
-      const rightIsFixture = rightWallC < cols && isFixtureTile(tiles[r * cols + rightWallC] ?? TILE_AIR)
-      // Pocket needs to be fully enclosed laterally (no edge exit).
-      // If at least one side opens to the chunk edge, the driller can
-      // drop into the next chunk via that path — not a trap.
-      if (!leftIsFixture || !rightIsFixture) continue
-      // True trap. Carve the SHORTER fixture chain from the pocket
-      // wall to the first non-fixture cell beyond — converting EVERY
-      // fixture cell in between to SOIL. Carving a single cell isn't
-      // enough: if the fixture wall is 2+ cols thick, the driller
-      // would drill the carved SOIL and immediately hit another
-      // fixture cell, creating a new 1-cell trap. The full-chain
-      // carve guarantees one straight drill path connects the pocket
-      // to drillable terrain.
-      let leftChainEnd = leftWallC // walk left from the wall
-      while (leftChainEnd >= 0 && isFixtureTile(tiles[r * cols + leftChainEnd] ?? TILE_AIR)) {
-        leftChainEnd--
-      }
-      let rightChainEnd = rightWallC
-      while (rightChainEnd < cols && isFixtureTile(tiles[r * cols + rightChainEnd] ?? TILE_AIR)) {
-        rightChainEnd++
-      }
-      const leftChainLen = leftChainEnd >= 0 ? leftWallC - leftChainEnd : Infinity
-      const rightChainLen = rightChainEnd < cols ? rightChainEnd - rightWallC : Infinity
-      // Both chains run to the world edge without ever finding non-fixture
-      // terrain at this row → the entire row is enclosed (worldgen
-      // pathology, shouldn't happen with current band widths). Skip;
-      // no carve can rescue this.
-      if (!Number.isFinite(leftChainLen) && !Number.isFinite(rightChainLen)) continue
-      const carveLeft = leftChainLen <= rightChainLen
-      if (carveLeft) {
-        for (let cc = leftWallC; cc > leftChainEnd; cc--) {
-          tiles[r * cols + cc] = TILE_SOIL
-        }
-      } else {
-        for (let cc = rightWallC; cc < rightChainEnd; cc++) {
-          tiles[r * cols + cc] = TILE_SOIL
-        }
-      }
-    }
-  }
-}
-
 function smoothCA(chunk: Uint8Array, cols: number, rows: number): void {
   const next = new Uint8Array(chunk)
   for (let y = 1; y < rows - 1; y++) {
     for (let x = 1; x < cols - 1; x++) {
+      const i = y * cols + x
+      // Preserve fixtures — they're the structural backbone of each
+      // biome and the CA must route around them (caves stop at fixture
+      // walls). Without this, smoothing fills fixture cells with
+      // SOIL/AIR and leaves holes in the fixture body.
+      const here = chunk[i]
+      if (here !== undefined && isFixtureTile(here)) {
+        next[i] = here
+        continue
+      }
       let n = 0
       for (let dy = -1; dy <= 1; dy++) {
         for (let dx = -1; dx <= 1; dx++) {
-          if (chunk[(y + dy) * cols + (x + dx)] !== TILE_AIR) n++
+          const nt = chunk[(y + dy) * cols + (x + dx)]
+          // Fixtures count as solid neighbors so caves naturally
+          // terminate when they approach a fixture wall.
+          if (nt !== TILE_AIR) n++
         }
       }
-      const i = y * cols + x
-      next[i] = n >= 5 ? TILE_SOIL : n <= 4 ? TILE_AIR : (chunk[i] ?? TILE_SOIL)
+      next[i] = n >= 5 ? TILE_SOIL : n <= 4 ? TILE_AIR : (here ?? TILE_SOIL)
     }
   }
   chunk.set(next)
@@ -227,7 +132,11 @@ export function carveCaves(
         // floor intact for streaming math.
         if (x < 0 || x >= cols) continue
         if (y <= 0 || y >= rows - 1) continue
-        if (rng.chance(0.55)) chunk[y * cols + x] = TILE_AIR
+        const idx = y * cols + x
+        const t = chunk[idx]
+        // Don't carve into fixtures — they're structural.
+        if (t !== undefined && isFixtureTile(t)) continue
+        if (rng.chance(0.55)) chunk[idx] = TILE_AIR
       }
     }
     for (let k = 0; k < 4; k++) smoothCA(chunk, cols, rows)
@@ -258,7 +167,10 @@ export function carveTunnels(
       if (r <= 0 || r >= rows - 1) continue
       for (let x = startX; x <= endX; x++) {
         if (x < 0 || x >= cols) continue
-        chunk[r * cols + x] = TILE_AIR
+        const idx = r * cols + x
+        const t = chunk[idx]
+        if (t !== undefined && isFixtureTile(t)) continue
+        chunk[idx] = TILE_AIR
       }
     }
   }
@@ -395,7 +307,96 @@ export function generateChunk(seed: number, chunkY: number): GeneratedChunk {
     }
   }
 
-  // Pre-cut caves
+  // Fixtures FIRST — they're the structural backbone of each biome.
+  // Placing them before caves/tunnels/stones guarantees solid
+  // rectangles with no internal holes: caves carve AROUND fixtures,
+  // stones avoid fixture cells (their placement rule already only
+  // stamps into SOIL), and the driller can never fall into a fixture-
+  // bounded AIR pocket because fixtures don't have any AIR inside
+  // them to fall into. The driller can only walk/drill/fall (never
+  // climb), so any AIR cell enclosed by fixtures laterally and below
+  // is a trap; this ordering makes those AIR cells impossible to
+  // generate without carving the fixtures (which we no longer do).
+  //
+  // Each fixture has a `placement` type:
+  //   - LEFT:   anchored to col 0, leaves a clear corridor on the right.
+  //   - RIGHT:  anchored to col cols-1, clear corridor on the left.
+  //   - CENTER: interior block with asymmetric or symmetric gaps.
+  //
+  // Alternation rules within a chunk's fixture sequence (top → bottom):
+  //   - No two LEFTs in a row.
+  //   - No two RIGHTs in a row.
+  //   - No more than two CENTERs in a row.
+  type Placement = 'left' | 'right' | 'center'
+  const fixtureCount = rng.intRange(biome.fixtureCount[0], biome.fixtureCount[1])
+  const pickThickness = (): number => {
+    const r = rng.intRange(0, 9)
+    if (r < 6) return 1
+    if (r < 9) return 2
+    return 3
+  }
+  const placementHistory: Placement[] = []
+  const pickPlacement = (): Placement => {
+    const len = placementHistory.length
+    const last = len > 0 ? placementHistory[len - 1] : null
+    const second = len > 1 ? placementHistory[len - 2] : null
+    let options: Placement[]
+    if (last === 'left') options = ['right', 'center']
+    else if (last === 'right') options = ['left', 'center']
+    else if (last === 'center' && second === 'center') options = ['left', 'right']
+    else options = ['left', 'right', 'center']
+    return options[rng.intRange(0, options.length - 1)]!
+  }
+  const topMargin = 2
+  const bottomMargin = 2
+  const usableDepth = Math.max(1, rows - topMargin - bottomMargin)
+  const bandHeight = Math.max(3, Math.floor(usableDepth / Math.max(1, fixtureCount)))
+  for (let i = 0; i < fixtureCount; i++) {
+    const allowed = biome.fixtureKinds.filter((k) => k !== 'stone-pillar')
+    if (allowed.length === 0) continue
+    const kind = allowed[rng.intRange(0, allowed.length - 1)]!
+    const variant = kind === 'bone' ? 0 : kind === 'mushroom' ? 1 : 2
+    const placement = pickPlacement()
+    placementHistory.push(placement)
+    const thickness = Math.min(pickThickness(), Math.max(1, bandHeight - 1))
+    let startCol: number
+    let width: number
+    if (placement === 'left') {
+      width = rng.intRange(3, Math.min(7, cols - 1))
+      startCol = 0
+    } else if (placement === 'right') {
+      width = rng.intRange(3, Math.min(7, cols - 1))
+      startCol = cols - width
+    } else {
+      if (rng.chance(0.4)) {
+        const totalGap = rng.intRange(5, 8)
+        const narrowGap = 1
+        const wideGap = totalGap - narrowGap
+        width = cols - totalGap
+        const wideSideIsLeft = rng.chance(0.5)
+        startCol = wideSideIsLeft ? wideGap : narrowGap
+      } else {
+        width = rng.intRange(3, 7)
+        const maxStart = cols - 1 - width
+        startCol = rng.intRange(1, Math.max(1, maxStart))
+      }
+    }
+    const bandStart = topMargin + i * bandHeight
+    const slack = Math.max(0, bandHeight - thickness - 1)
+    const startRow = bandStart + rng.intRange(0, slack)
+    // Stamp the FULL bounding box. Everything else hasn't been placed
+    // yet, so the cells are all SOIL — no holes from cave/stone overlap
+    // can occur. The driller cannot get trapped in a hole because
+    // fixtures have no holes.
+    for (let r = startRow; r < startRow + thickness && r < rows; r++) {
+      for (let c = startCol; c < startCol + width && c < cols; c++) {
+        tiles[r * cols + c] = TILE_FIXTURE_BASE + variant
+      }
+    }
+  }
+
+  // Pre-cut caves (carve AROUND fixtures — smoothCA + carveCaves both
+  // preserve fixture cells).
   const caves = rng.intRange(biome.caveCount[0], biome.caveCount[1])
   carveCaves(tiles, cols, rows, caves, rng)
 
@@ -463,155 +464,6 @@ export function generateChunk(seed: number, chunkY: number): GeneratedChunk {
       explosivePlacements.push({ col: x, rowInChunk: y })
     }
   }
-  // Fixtures — placed as horizontal STRATA (bands), 1–3 rows thick,
-  // with a STRUCTURED PATTERN that drives the player's lateral
-  // movement through the depth of each biome.
-  //
-  // Each fixture has a `placement` type:
-  //   - LEFT:   anchored to col 0, width 4–12, leaves a clear corridor
-  //             on the right.
-  //   - RIGHT:  anchored to col cols-1, width 4–12, clear corridor on
-  //             the left.
-  //   - CENTER: spans most of the playfield with ASYMMETRIC gaps on
-  //             each side (1-cell on one side, 3+ on the other) so
-  //             the wider corridor naturally pulls the player toward
-  //             that side.
-  //
-  // Alternation rules within a chunk's fixture sequence (top → bottom):
-  //   - No two LEFTs in a row.
-  //   - No two RIGHTs in a row.
-  //   - No more than two CENTERs in a row.
-  //
-  // Navigation invariant: every placement leaves ≥ 1 cell of dead
-  // space adjacent to the fixture (a 1-cell-wide corridor is enough
-  // for the driller to pass).
-  type Placement = 'left' | 'right' | 'center'
-  const fixtureCount = rng.intRange(biome.fixtureCount[0], biome.fixtureCount[1])
-  const pickThickness = (): number => {
-    const r = rng.intRange(0, 9)
-    if (r < 6) return 1
-    if (r < 9) return 2
-    return 3
-  }
-  // Pick a placement type honoring the alternation rules.
-  const placementHistory: Placement[] = []
-  const pickPlacement = (): Placement => {
-    const len = placementHistory.length
-    const last = len > 0 ? placementHistory[len - 1] : null
-    const second = len > 1 ? placementHistory[len - 2] : null
-    let options: Placement[]
-    if (last === 'left') options = ['right', 'center']
-    else if (last === 'right') options = ['left', 'center']
-    else if (last === 'center' && second === 'center') options = ['left', 'right']
-    else options = ['left', 'right', 'center']
-    return options[rng.intRange(0, options.length - 1)]!
-  }
-  // Divide the chunk's usable depth into bands so fixtures distribute
-  // through the depth instead of clumping. Leave 2 rows of buffer at
-  // top/bottom so bands don't butt against the chunk seam.
-  const topMargin = 2
-  const bottomMargin = 2
-  const usableDepth = Math.max(1, rows - topMargin - bottomMargin)
-  const bandHeight = Math.max(3, Math.floor(usableDepth / Math.max(1, fixtureCount)))
-
-  for (let i = 0; i < fixtureCount; i++) {
-    const allowed = biome.fixtureKinds.filter((k) => k !== 'stone-pillar')
-    if (allowed.length === 0) continue
-    const kind = allowed[rng.intRange(0, allowed.length - 1)]!
-    const variant = kind === 'bone' ? 0 : kind === 'mushroom' ? 1 : 2
-
-    const placement = pickPlacement()
-    placementHistory.push(placement)
-
-    // Cap thickness so that every band slot has at least 1 row of
-    // vertical clearance between bands. Without this, a thickness=3
-    // band in a bandHeight=3 slot consumes the whole slot and
-    // touches the next band → looks like one giant band visually,
-    // and the player has no vertical-gap navigation between bands.
-    const thickness = Math.min(pickThickness(), Math.max(1, bandHeight - 1))
-    // Resolve the fixture's (startCol, width). Sizes dialed back
-    // (user feedback: 'somewhere between old and new is ideal').
-    // L/R blocks are now mid-sized obstacles (3-7 wide), not heavy
-    // wall-spanning anchors. CENTER occasionally has wide asymmetric
-    // gaps that pull the player to one side, but also sometimes
-    // sits as a narrower interior block (more variation, less
-    // every-band-is-a-deliberate-corridor feel).
-    let startCol: number
-    let width: number
-    if (placement === 'left') {
-      // Anchored to col 0; ≥1 cell clearance on the right.
-      width = rng.intRange(3, Math.min(7, cols - 1))
-      startCol = 0
-    } else if (placement === 'right') {
-      // Anchored to col cols-1; ≥1 cell clearance on the left.
-      width = rng.intRange(3, Math.min(7, cols - 1))
-      startCol = cols - width
-    } else {
-      // CENTER — two modes:
-      //  - 'wide-directing' (40%): a near-full-width block with one
-      //    narrow gap and one wider gap — pulls the player to the
-      //    wider side. The original directing-fixture concept.
-      //  - 'free' (60%): a smaller interior block (width 3-7),
-      //    placed freely with ≥1 cell margin on both sides. Adds
-      //    variation and reduces the 'every band is a corridor'
-      //    cadence.
-      if (rng.chance(0.4)) {
-        const totalGap = rng.intRange(5, 8)
-        const narrowGap = 1
-        const wideGap = totalGap - narrowGap
-        width = cols - totalGap
-        const wideSideIsLeft = rng.chance(0.5)
-        startCol = wideSideIsLeft ? wideGap : narrowGap
-      } else {
-        width = rng.intRange(3, 7)
-        const maxStart = cols - 1 - width
-        startCol = rng.intRange(1, Math.max(1, maxStart))
-      }
-    }
-
-    // Row within this fixture's band. Top of band leaves at least 1
-    // row of vertical clearance between adjacent fixtures (so the
-    // player can navigate horizontally between bands).
-    const bandStart = topMargin + i * bandHeight
-    const slack = Math.max(0, bandHeight - thickness - 1)
-    const startRow = bandStart + rng.intRange(0, slack)
-
-    for (let r = startRow; r < startRow + thickness && r < rows; r++) {
-      for (let c = startCol; c < startCol + width && c < cols; c++) {
-        const idx = r * cols + c
-        const t = tiles[idx]
-        if (t === TILE_STONE) continue
-        if (t !== undefined && t >= TILE_FIXTURE_BASE && t < TILE_FIXTURE_BASE + 5) continue
-        // No-adjacency rule with stones (1-cell padding).
-        let nextToStone = false
-        for (const [dc, dr] of [[-1, 0], [1, 0], [0, -1], [0, 1]] as const) {
-          const nc = c + dc
-          const nr = r + dr
-          if (nc < 0 || nc >= cols || nr < 0 || nr >= rows) continue
-          if (tiles[nr * cols + nc] === TILE_STONE) {
-            nextToStone = true
-            break
-          }
-        }
-        if (nextToStone) continue
-        if (t === TILE_SOIL) {
-          tiles[idx] = TILE_FIXTURE_BASE + variant
-        }
-      }
-    }
-  }
-
-  // Trap-escape carving: ensure no AIR pocket sits on a fixture with
-  // no lateral escape. The driller can't drill fixtures, so a pocket
-  // bounded by fixtures on all three of {left, right, below} is a
-  // dead end the AI can fall into and never escape (it won't drill
-  // upward). For each AIR cell sitting on a fixture, walk laterally
-  // through the contiguous AIR pocket: if no cell in the pocket has
-  // a non-fixture cell below (a drillable floor), the pocket is a
-  // trap. Carve: convert the leftmost OR rightmost fixture wall cell
-  // at the pocket's row into SOIL so the driller can drill through it.
-  carveFixtureTrapEscapes(tiles, cols, rows)
-
   // Gems — placed in SOIL or AIR; biome-weighted color + size. Gems
   // landing in a void band become free-fall obstacles: gem gravity
   // makes them drop, but the driller falls faster, so they appear to

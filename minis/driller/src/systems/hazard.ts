@@ -24,7 +24,7 @@ import {
   STONE_MAX_HITS,
   TILE_PX,
 } from '../constants'
-import { biomeAt, isFreeFall } from '../biomes'
+import { biomeAt, isFreeFall, WORLD_LENGTH_ROWS } from '../biomes'
 import { createRng } from '../lib/rng'
 import { markCellAndNeighborsDirty } from './autotile-pass'
 import { allocateClusterId } from './generation'
@@ -41,19 +41,28 @@ let lastSpawnTick = 0
 let hazardSafeMinRow = -1
 
 /**
- * Minimum vertical AIR shaft depth (in cells) from the top of the
- * camera viewport down to qualify for a punishment-rock drop. The
- * design intent: the player's autonomous driller is rewarded for
- * meandering / interesting tunnels and PUNISHED for straight-down
- * descents. An open vertical shaft taller than this signals "the
- * driller has been digging straight" — a rock is dropped down it.
+ * Minimum number of rows the driller must have DUG below the current
+ * biome's surface before a punishment rock can spawn in that column.
  *
- * 5 tiles ≈ a third of a typical viewport. Shafts shorter than that
- * are short enough to read as "homie just changed direction" and
- * shouldn't trigger; anything longer is the AI committing to a
- * straight descent and earning a rock.
+ * Previously this counted contiguous AIR cells from the camera-top
+ * row downward, which conflated three different "AIR" sources:
+ *   1. Sky / void band above the biome's natural surface,
+ *   2. Ghost-beam chutes carved on death,
+ *   3. Actual tunnels the driller dug.
+ *
+ * Only #3 should attract rocks. The new gate uses
+ * `firstSolidRow - biomeSurfaceRow ≥ MIN_DUG_DEPTH` — i.e. the first
+ * non-AIR cell going down from the camera top must be at least 4 rows
+ * BELOW the biome's first row. Consequences:
+ *   - Pristine biome surface (no tunnel) → firstSolid = biomeSurface,
+ *     dugDepth = 0 → no spawn.
+ *   - Ghost chute (no solid above driller at all) → firstSolid = -1
+ *     → no spawn. Rocks can't ride ghost chutes back down.
+ *   - Tunneled column → firstSolid sits inside the dug tunnel → spawn
+ *     eligible once dugDepth ≥ 4. The rock falls into the tunnel and
+ *     lands at its bottom (a hole), never on top of the surface.
  */
-const SHAFT_MIN_DEPTH = 5
+const MIN_DUG_DEPTH = 4
 /**
  * Per-column cooldown so the same shaft doesn't spam rocks faster
  * than the player can read them. ~2s at 60Hz lets multiple rocks
@@ -125,15 +134,13 @@ export function hazardSpawnSystem(world: World): void {
   )
   const globalCooldownDone = gs.tick - lastSpawnTick >= interval
 
-  // Walk columns within HAZARD_SPAWN_COL_RANGE of the driller. For
-  // each, count contiguous AIR cells from the camera top downward
-  // until hitting a non-AIR. Columns whose shaft is at least
-  // SHAFT_MIN_DEPTH and whose per-col cooldown has expired become
-  // candidates. We still rate-limit globally so multiple shafts
-  // don't all dump rocks the same tick. Scoping to the driller's
-  // vicinity keeps rocks RELEVANT to homie's straight-down behavior
-  // rather than firing on arbitrary far-away shafts the player can't
-  // see.
+  // Per-column dug-depth gate (see MIN_DUG_DEPTH for rationale).
+  // The biome's surface row is the first row of the current biome
+  // body. We require the column's first solid cell (where the rock
+  // would land) to sit at least MIN_DUG_DEPTH below that surface —
+  // proving the driller actually dug here. Sky/void AIR above the
+  // surface no longer qualifies; ghost chutes (no solid found) skip.
+  const biomeSurfaceRow = Math.floor(d.row / WORLD_LENGTH_ROWS) * WORLD_LENGTH_ROWS
   const candidates: number[] = []
   for (let dc = -HAZARD_SPAWN_COL_RANGE; dc <= HAZARD_SPAWN_COL_RANGE; dc++) {
     const col = d.col + dc
@@ -141,13 +148,20 @@ export function hazardSpawnSystem(world: World): void {
     if (colsWithActiveHazard.has(col)) continue
     if (gs.tick - (lastSpawnByCol[col] ?? 0) < PER_COL_SPAWN_COOLDOWN_TICKS) continue
     if (tiles[topRow * cols + col] !== TILE_AIR) continue
-    let depth = 0
+    let firstSolid = -1
     for (let r = topRow; r < rows; r++) {
-      if (tiles[r * cols + col] !== TILE_AIR) break
-      depth++
-      if (depth >= SHAFT_MIN_DEPTH) break
+      if (tiles[r * cols + col] !== TILE_AIR) {
+        firstSolid = r
+        break
+      }
     }
-    if (depth < SHAFT_MIN_DEPTH) continue
+    if (firstSolid === -1) continue // ghost chute / nothing solid → skip
+    if (firstSolid - biomeSurfaceRow < MIN_DUG_DEPTH) continue
+    // Stack-saturation cutoff: a rock lands at firstSolid - 1. If
+    // that lands ABOVE the driller's row (firstSolid <= d.row), the
+    // rock has no chance of hitting him — it just piles uselessly
+    // on top of previous stones. Stop spawning in saturated columns.
+    if (firstSolid <= d.row) continue
     candidates.push(col)
   }
   if (candidates.length === 0) return
