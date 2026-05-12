@@ -382,3 +382,18 @@ Hard rules:
 6. **Fade visual runs in parallel with the existing off-top death tween.** Both compute a scale/alpha; the renderer takes whichever is MORE faded (min of both). A gem leaving the camera while expire-fading visually composes correctly without a phase ordering.
 
 **Tests pinning the rule:** `tests/gem-expiry.test.ts` covers (a) destroyed at expiry, (b) un-armed gems untouched, (c) paint arms expiry, (d) paint on different row doesn't arm, (e) no re-arm on second paint.
+
+## User-action skill reform — Phase 4 (paint replaces trigger)
+**File:** `minis/driller/src/{traits/input-traits.ts,constants.ts,systems/{input.ts,driller.ts},components/Scene.tsx}`, `tests/paint-action.test.ts`
+**Date:** 2026-05-12
+
+**Decision:** The old `trigger` action (single click on soil-above-driller → spawn SaggingChunk outright) is replaced by `paint`. Hover over ANY soil cell → 'paint' action. Click-and-hold accelerates the cell's `Grid.anchorDist` by `PAINT_ANCHOR_BUMP=16` per game tick at `PAINT_COST_PER_TICK=1` gem each. The existing sag detector picks up the bumped cells naturally and produces a normal SHAKE → FALL chunk — paint doesn't bypass any pipeline, just accelerates entry.
+
+**Why:**
+1. **Reuse anchor-distance, don't carry separate "paint progress".** The sag detector already gates on anchorDist crossing a threshold. Bumping anchorDist from outside is the cheapest possible inversion of the existing collapse plumbing; no new field, no new system to drive collapse from paint.
+2. **Per-tick re-resolution in `pointerHeldTick`.** The held-pointer loop re-runs `resolveHoverAction` each tick. The first paint that pushes a cell into FLAG_SAGGING causes the next tick's resolveHoverAction to return `'drag'` (the now-shaking chunk is grabbable). Without re-resolution, a held button would keep charging paint costs forever even after the chunk left the soft state.
+3. **Mood event still fires per tick.** Each paint commit applies the `evil-tap` mood event, so a sustained paint mounts continuous fear pressure on the driller. The previous `trigger` only fired once; paint's continuous flavor matches the new "ongoing harassment, not one-shot" intent.
+4. **Legacy `'trigger'` alias preserved.** `commitAction('trigger', null)` now routes to `doPaint`. Saves churn on any existing test/UI that still names the old action — they get the new behavior with no code change.
+5. **Paint anywhere, not just above driller.** The old trigger only allowed clicks on soil ABOVE the driller (so it could fall on him). Paint has no such restriction — the player can soften any soil cell anywhere. With the new hold-and-drag (phase 5), painting below to weaken a floor or sideways to expose a hidden gem are both legitimate uses.
+
+**Tests pinning the rule:** `tests/paint-action.test.ts` covers (a) anchor bump + gem deduction, (b) non-soil refusal, (c) no-gem refusal, (d) anchor cap at 255, (e) held-tick re-fires paint, (f) inactive pointer is a no-op.

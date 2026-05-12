@@ -394,6 +394,36 @@ export function dragCostForElapsed(elapsedTicks: number): number {
   return DRAG_COST_PER_INTERVAL + intervals * DRAG_COST_SCALE_PER_INTERVAL
 }
 
+/**
+ * Per-tick held-action driver. Paint and drag are held primitives
+ * (button down → ongoing effect each tick). Game.tsx fires the first
+ * paint commit on pointerdown; this system fires every subsequent
+ * tick while the button stays down on a paintable cell.
+ *
+ * Re-resolves the hover action each tick because the cell underneath
+ * can shift state (paint pushes a soil cell into FLAG_SAGGING; then
+ * the next tick's correct action is 'drag', not 'paint'). Without
+ * the re-resolve a player could keep paying paint costs after the
+ * cell already triggered a chunk.
+ */
+export function pointerHeldTick(world: World): void {
+  const ptr = world.get(Pointer)
+  if (!ptr || !ptr.active) return
+  // Hover cell may have shifted state since the last pointermove —
+  // re-resolve so we don't keep paying for an already-collapsed cell.
+  const { action, gemEntity } = resolveHoverAction(world, ptr.hoverTargetCol, ptr.hoverTargetRow)
+  if (action !== ptr.hoverAction) {
+    world.set(Pointer, {
+      hoverAction: action,
+      hoverGemEntity: gemEntity ? (gemEntity as unknown as { id?: number }).id ?? 0 : 0,
+    })
+  }
+  if (action === 'paint') {
+    commitAction(world, 'paint', null)
+  }
+  // 'drag' tick is handled in phase 5's pointerDragTick.
+}
+
 // `detectChunks` import retained only because the previous trigger
 // implementation used it; kept available for future paint-cluster
 // work if we ever want to limit paint to chunk-cells only.
