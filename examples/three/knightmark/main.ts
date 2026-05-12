@@ -338,7 +338,8 @@ async function main() {
     })
   }
 
-  spawnBatch(10)
+  const urlSpawn = parseInt(new URLSearchParams(window.location.search).get('spawn') ?? '', 10)
+  spawnBatch(Number.isFinite(urlSpawn) && urlSpawn > 0 ? urlSpawn : 10)
 
   // --- UI ---
   const addBtn = document.getElementById('btn-add')!

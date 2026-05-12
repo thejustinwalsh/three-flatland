@@ -12,11 +12,14 @@ nothing like the developer-tooling voice three-flatland's audience
 reads every day.
 
 The patterns and verbatim examples in this skill are extracted from a
-focused study of five source voices: official React documentation
-(react.dev), the react-three-fiber docs, the TanStack docs and blog,
-the Expo docs and blog, and Epic Games' Unreal Engine rendering-feature
-documentation and launch posts. The skill teaches the techniques those
-voices share; the examples are quoted directly from them.
+focused study of best-in-class developer-tooling voices across five
+families: an official React-style framework documentation site, a
+React 3D rendering library's docs and release notes, a type-safe
+React data-library's docs and blog, a React Native tooling platform's
+docs and blog, and a best-in-class real-time rendering engine's
+feature documentation and launch posts. The skill teaches the
+techniques those voices share; examples are quoted verbatim and
+attributed by category, not by brand.
 
 ## The voice in one line
 
@@ -60,7 +63,11 @@ concept introductions on first use, quiet first-person plural for
 recommendation only.
 
 **What it doesn't do:** no exclamation points, no superlatives, no
-emoji, no "today we're…" timestamps, no celebratory openers.
+emoji, no "today we're…" timestamps, no celebratory openers, **no
+first-person attribution.** No "I built X." No "we shipped Y." Landing
+pages and reference docs put the system on the stage. The library does
+the work; the prose names the mechanism. First-person belongs in
+authored surfaces only — see "First-person rule by surface" below.
 
 ### Dialed-up register (allowed, rationed)
 
@@ -98,6 +105,57 @@ body in calm register.
 
 If three or more marketing-register moves are stacking up in one
 piece, the piece has crossed into trope territory. Cut one.
+
+### First-person rule by surface
+
+The studied corpus is consistent on this and it's worth making
+explicit because LLMs tend to import "I" and "we" from any source
+prose they're handed.
+
+**Surfaces that take first person:**
+- Blog launch posts ("Introducing X," "X is here")
+- Release notes from the team / changelog summaries
+- Milestone retrospectives
+- Personal-stakes essays from a maintainer
+- Social posts, HN comments, conference recaps
+
+These surfaces have an implicit or explicit author byline. The reader
+expects a voice. "We built," "we measured," "we ship" land here.
+"I went all in" lands here when the founder is telling a real story.
+
+**Surfaces that DO NOT take first person:**
+- Landing-page sections and ValueProps
+- Feature pages
+- API reference and concept docs
+- README intros for the project or sub-packages
+- SEO-load-bearing copy
+
+These surfaces speak for the project, not for any individual. The
+system goes on the stage. Use present-tense and present-tense passive
+(technique #7). Name the mechanism. Let the work be the argument.
+
+```
+✅  three-flatland is built directly on three.js, so the coordination
+    layer doesn't exist.
+✅  Sprite batches stay intact when effects change.
+✅  The batcher applies effects on a shared material.
+
+❌  I built three-flatland to remove that class of problem.
+❌  We engineered the batcher to keep batches stable.
+❌  We're proud to ship the new pipeline.
+```
+
+The rule is independent of the calm/dialed-up register. A landing
+page hero can be in the dialed-up register (one superlative, one
+time-stamped opener) and still avoid first-person attribution. A
+release-note blog post is the inverse: calm body register, but "we
+shipped" earns its place because there's a byline.
+
+**The exception inside the calm register:** technique #9's three
+approved uses for "we" — recommendation, roadmap commitment, caution
+— are still allowed in concept docs and reference pages because
+they're functional, not promotional. "We recommend X" is project
+guidance, not project self-promotion.
 
 ## Banned patterns
 
@@ -149,6 +207,41 @@ A sentence using any of these is almost always a sentence saying
 nothing. Replace with a specific claim or delete. Even in the
 dialed-up register: at most ONE superlative on the page, used in the
 lede, then back to plain language.
+
+### Business / finance / sales jargon
+
+Words and phrases that sound like a deck pitch, a board update, or a
+sales-engineering slide. Senior engineers don't use these and they
+read instantly as Voice From The Wrong Department.
+
+Banned:
+
+- `carve-out`, `table stakes`, `moat`, `value prop`, `value add`
+- `unlock value`, `leverage` (as a verb), `bandwidth` (as a metaphor)
+- `land and expand`, `north star`, `north-star metric`, `OKR`,
+  `deliverable`, `action item`
+- `low-hanging fruit`, `race to the bottom`, `blue ocean`,
+  `synergy`, `alignment`, `stakeholder`
+- `hat tip`, `give a shoutout`, `circle back`, `double-click on`
+- `enterprise-grade`, `SaaS-grade`, `mission-critical`
+- `at scale` as a hand-wave (use specific scale: "at 100k sprites,"
+  not "at scale")
+
+These trip the LLM-default trap because they sound like "marketing
+copy" — but the studied corpus avoids them entirely. A claim that
+needs business jargon to sound important isn't an important claim.
+
+```
+❌  uikit is purpose-built for that. That's the only carve-out.
+✅  uikit is purpose-built for that. Flatland isn't.
+
+❌  Composability is table stakes for our value prop.
+✅  Each package works in any three.js project, with or without
+    Flatland.
+
+❌  We're focused on shipping at scale.
+✅  three-flatland holds 60fps with 20K sprites in the batch.
+```
 
 ### Pejorative metaphors for the prior thing
 
@@ -239,7 +332,7 @@ number first.
 ✅  ~1 MB of WASM (less than half CanvasKit's size)
 ✅  20K sprites at 60fps
 ✅  16k × 16k virtual shadow map
-✅  Reanimated SV hits 36ms on a Moto G8 Plus
+✅  Shared-value updates land in 36ms on a Moto G8 Plus
 
 ❌  Powerful sprite batching
 ❌  Blazing-fast WebGL renderer
@@ -248,6 +341,30 @@ number first.
 
 The good versions are also more compelling to a technical reader,
 not less.
+
+**Inverse rule: capabilities replace numbers when the capability IS
+the differentiator.** A binary capability claim ("they don't ship X")
+lands harder than a gradient comparison ("we measure X% better at
+Y") when both are true at once. Numbers compete on a slope;
+capabilities compete on a yes/no. If the alternative *can't do the
+thing*, lead with that — the size/speed delta is supporting prose,
+not the headline.
+
+```
+✅  brings Skia to Three.js — with a native WebGPU backend that
+    CanvasKit doesn't ship
+❌  857 KB WebGPU build (less than half of CanvasKit's 2.2 MB)
+
+✅  GPU-rendered text with real dynamic kerning, instead of
+    bitmap atlas sampling
+❌  18× more glyphs per draw vs SDF atlases
+```
+
+Both bad examples cite a real number; the better versions lead with
+the binary differentiator and let the number live in supporting
+prose, or drop it entirely if the capability claim is sufficient.
+The trap: when you have a flashy stat AND a stronger qualitative
+claim, the stat seduces. Resist it.
 
 ### 4. Comparative claim without naming the competitor
 
@@ -299,7 +416,10 @@ first definition.
 
 ### 9. First-person plural earns its place
 
-"We" is rationed. Three places it earns its keep:
+"We" is rationed and surface-gated. See the **First-person rule by
+surface** section above for the full rule. Quick version:
+
+**On reference docs and concept pages**, three uses earn their keep:
 
 - **Recommendation** — "We recommend solid state drives for runtime
   storage."
@@ -308,8 +428,15 @@ first definition.
 - **Caution** — "We do not recommend shipping projects with
   Experimental features."
 
-In the dialed-up register, "we" can also be load-bearing for
-team-visibility: "we built," "we shipped," "we measured."
+**On authored surfaces (blog posts, release notes, retrospectives)**,
+"we" can also be load-bearing for team visibility: "we built," "we
+shipped," "we measured."
+
+**On landing pages, feature pages, and SEO-load-bearing copy**, "we"
+does not appear. The system goes on the stage; the prose names the
+mechanism. The same applies to first-person singular — reserve "I"
+for retrospectives or maintainer-byline posts, never for landing
+copy.
 
 ### 10. Honest about scope and shipping state
 
@@ -342,7 +469,7 @@ vibe-match this skill; study the moves and select.
 > "When you build a user interface with React, you will first break
 > it apart into pieces called *components*."
 >
-> — *react.dev/learn/thinking-in-react*
+> — best-in-class React framework documentation
 
 The defined noun (italicized) is the closing word of the clause; the
 surrounding sentence shows the concept in action. Definition,
@@ -351,7 +478,7 @@ example, and naming collapse into one sentence.
 #### Flat constraint, no softeners
 > "You can't call it inside loops or conditions."
 >
-> — *react.dev/reference/react/useState*
+> — best-in-class React framework API reference
 
 No "Note that…", no "It's important to remember…", no "Generally
 speaking…" — just the rule. Treats the reader as someone who can
@@ -365,7 +492,7 @@ take direction.
 > Components render outside of React. It outperforms Threejs in
 > scale due to React's scheduling abilities."
 >
-> — *r3f.docs.pmnd.rs/getting-started/introduction*
+> — best-in-class React 3D rendering library docs
 
 Self-asks the obvious skeptical question, gives a one-word answer in
 bold, then explains in two short sentences. Confidence by structure,
@@ -376,7 +503,7 @@ Demonstrates technique #5.
 > "It merely expresses Threejs in JSX, `<mesh />` dynamically turns
 > into `new THREE.Mesh()`."
 >
-> — *r3f.docs.pmnd.rs/getting-started/introduction*
+> — best-in-class React 3D rendering library docs
 
 Architectural pitch in 13 words. "Merely" is a humility move that's
 actually a flex — it implies the rest is mechanical. Demonstrates
@@ -387,7 +514,7 @@ technique #1.
 > spin up. But if the moving parts in your scene are allowed to come
 > to rest, then it would be wasteful to keep rendering."
 >
-> — *r3f.docs.pmnd.rs/advanced/scaling-performance*
+> — best-in-class React 3D rendering library docs (performance section)
 
 The reader feels the consequence (battery drain, fan noise) before
 any prop or API is mentioned. Sensory anchoring earns the technical
@@ -398,7 +525,7 @@ explanation that follows.
 > with client state, but not so great at working with async or server
 > state."
 >
-> — *tanstack.com/query/latest/docs/framework/react/overview*
+> — best-in-class React data-library docs (overview)
 
 Pitches against a category, not a brand. The reader supplies the
 brand mentally. Demonstrates technique #4.
@@ -410,51 +537,52 @@ brand mentally. Demonstrates technique #4.
 > notes or evidence of claims) using the 'Edit this page on Github'
 > link at the bottom of this page."
 >
-> — *tanstack.com/query/latest/docs/framework/react/comparison*
+> — best-in-class React data-library docs (comparison page)
 
 The disclaimer plus an "edit on GitHub" invitation earns the right
 to compare. They also explicitly include themselves in shared
 limitations on the same page.
 
 #### Concrete physical metaphor for a platform constraint
-> "Expo Go is a pre-built native app that works like a playground —
-> it can't be changed after you install it."
+> "[Sandbox client] is a pre-built native app that works like a
+> playground — it can't be changed after you install it."
 >
-> — *docs.expo.dev/develop/development-builds/introduction*
+> — best-in-class React Native tooling docs
 
 Maps an abstract restriction (immutable native runtime) onto a
 concrete object (a playground). The metaphor pays off the moment
-the reader hits a use case Expo Go can't serve. Demonstrates
-technique #8.
+the reader hits a use case the sandbox client can't serve.
+Demonstrates technique #8.
 
 #### Verb-led service one-liner
-> "EAS Build — Compile and sign Android/iOS apps with custom native
-> code in the cloud."
+> "[Build service] — Compile and sign Android/iOS apps with custom
+> native code in the cloud."
 >
-> — *docs.expo.dev/eas*
+> — best-in-class React Native tooling docs (build service)
 
 Outcome verb first ("Compile and sign"), no adjectives. The verb is
-the value proposition. Each EAS service has the same shape: name,
-em-dash, verb, object, where.
+the value proposition. Each service in this catalog has the same
+shape: name, em-dash, verb, object, where.
 
 #### Definition + scope + default in one sentence
-> "Lumen is Unreal Engine's fully dynamic global illumination and
-> reflections system that is designed for next-generation consoles,
-> and it is the default global illumination and reflections system."
+> "[Feature] is [the engine]'s fully dynamic global illumination
+> and reflections system that is designed for next-generation
+> consoles, and it is the default global illumination and
+> reflections system."
 >
-> — *dev.epicgames.com/.../lumen-global-illumination-and-reflections*
+> — best-in-class real-time rendering engine docs (global-illumination feature)
 
 One sentence does three jobs: names the thing, says what it is,
 declares it the default. No adjectives beyond "fully dynamic" (which
 is a scope claim, not a marketing word).
 
 #### Mechanism in the second sentence
-> "Nanite is Unreal Engine's virtualized geometry system which uses
-> an internal mesh format and rendering technology to render pixel
-> scale detail and high object counts. It intelligently does work on
-> only the detail that is visible on-screen and no more."
+> "[Feature] is [the engine]'s virtualized geometry system which
+> uses an internal mesh format and rendering technology to render
+> pixel scale detail and high object counts. It intelligently does
+> work on only the detail that is visible on-screen and no more."
 >
-> — *dev.epicgames.com/.../nanite-virtualized-geometry*
+> — best-in-class real-time rendering engine docs (virtualized-geometry feature)
 
 First sentence: noun + scope. Second sentence: mechanism in one
 breath. The "why this matters" is implicit in the how. Demonstrates
@@ -466,7 +594,7 @@ technique #1.
 > material complexity, output resolution, and performance should be
 > carefully measured for any combination of content and hardware."
 >
-> — *dev.epicgames.com/.../nanite-virtualized-geometry*
+> — best-in-class real-time rendering engine docs (limitations section)
 
 Allow yourself one superlative on the page. Immediately follow it
 with a list of things the reader has to measure. The hedge earns
@@ -479,7 +607,7 @@ the brag. Demonstrates technique #6.
 > often created issues sharing files between multiple users, and
 > viewing the whole world in context became a difficult task."
 >
-> — *dev.epicgames.com/.../world-partition*
+> — best-in-class real-time rendering engine docs (large-world streaming feature)
 
 Two sentences of "here's how it sucked" before the feature is even
 named. The reader recognizes themselves before any claim is made.
@@ -490,7 +618,7 @@ Demonstrates technique #2.
 #### The release IS the headline
 > "React v19 is now available on npm!"
 >
-> — *react.dev/blog/2024/12/05/react-19*
+> — best-in-class React framework release announcement
 
 The launch announcement, the headline, and the first sentence
 collapse into one declarative line with a single exclamation. Same
@@ -501,7 +629,7 @@ to do a hype opener*.
 > "Ever tried using `<shaderMaterial uniforms={{ time: { value: time } }} />`
 > and ran into immediate issues with desync? No more."
 >
-> — *github.com/pmndrs/react-three-fiber/releases (v9.6.0)*
+> — best-in-class React 3D rendering library release notes
 
 Code-shaped problem statement, then "No more." as the punchline.
 Same structural move as the Q&A flex (#5), used in the marketing
@@ -511,7 +639,7 @@ register.
 > "If you've ever muttered 'why is this still so hard in 2025?',
 > same."
 >
-> — *tanstack.com/blog/tanstack-db-0.1*
+> — best-in-class React data-library launch blog post
 
 A one-line scene of the reader's frustrated inner voice, in actual
 quotes. Empathy enacted, not described. Almost no other framework
@@ -520,29 +648,29 @@ launch opens like this.
 #### Numbers do the bragging
 > "0.7 ms to update one row in a sorted 100k collection on an M1 Pro."
 >
-> — *tanstack.com/blog/tanstack-db-0.1*
+> — best-in-class React data-library launch blog post
 
 Specific timing, specific dataset, specific hardware. No "blazing
 fast." The number plus the test conditions is the brag. Demonstrates
 technique #3.
 
 #### Mission sentence with single allowed superlative, then mechanism
-> "Our goal at Expo is to create the best possible way to make apps.
-> We are doing that through tooling that leverages the best of native
-> and the most cutting-edge web patterns."
+> "Our goal at [the project] is to create the best possible way to
+> make apps. We are doing that through tooling that leverages the
+> best of native and the most cutting-edge web patterns."
 >
-> — *expo.dev/blog/introducing-expo-atlas*
+> — best-in-class React Native tooling launch blog post
 
 One marketing sentence as throat-clearing ("best possible"), then
 direct into mechanism. The superlative is allowed because there's
 exactly one and the rest of the post is technical.
 
 #### Hype acknowledged with self-aware glyph
-> "Expo Router v6 is here, and it's all about capturing that iconic
+> "[Router v6] is here, and it's all about capturing that iconic
 > native feel. We're exposing complex native APIs through clever
 > React-first abstractions that just work™."
 >
-> — *expo.dev/blog/expo-router-v6*
+> — best-in-class React Native tooling release blog post
 
 The trademark glyph on "just work™" winks at the cliché — they get
 hype credit while signaling self-awareness. A specific, transferable
@@ -553,7 +681,7 @@ move for landing copy that wants energy without sounding like an ad.
 > or draw count budgets; there is no need to bake details to normal
 > maps or manually author LODs; and there is no loss in quality."
 >
-> — *Epic Games Nanite blog*
+> — best-in-class real-time rendering engine feature blog post (virtualized geometry)
 
 Lead with what the reader no longer has to do. Three "no more"s are
 deliberately joined with semicolons into a single sentence rather
@@ -561,11 +689,12 @@ than three short sentences — same content as a three-beat slogan
 but the prose shape stays grounded.
 
 #### Position the new feature in your own internal lineage
-> "Like Nanite did for triangles or Lumen for global illumination,
-> MegaLights removes limitation in a whole new category: direct
-> lighting and shadows."
+> "Like [virtualized-geometry feature] did for triangles or
+> [global-illumination feature] for global illumination, [direct-
+> lighting feature] removes limitation in a whole new category:
+> direct lighting and shadows."
 >
-> — *Wyeth Johnson, Epic Games (MegaLights launch)*
+> — best-in-class real-time rendering engine feature launch post (direct-lighting system)
 
 Each new feature canonizes the prior breakthroughs. Builds an
 internal mythology where the reader learns to recognize "an X-class
@@ -576,37 +705,40 @@ features the reader can mentally invoke.
 > "There will be bugs. There will be rough edges… We're not perfect.
 > But we're honest."
 >
-> — *tanstack.com/blog/tanstack-ai-alpha-your-ai-your-way*
+> — best-in-class React data-library alpha launch blog post
 
 Marketing closer that admits the cost of shipping early.
 Vulnerability is the flex. Lands harder than any "ready for
 production" line.
 
 #### First-person singular for personal stakes
-> "Two years ago I went all in on TanStack. No consulting, no safety
-> nets."
+> "Two years ago I went all in on [the project]. No consulting, no
+> safety nets."
 >
-> — *tanstack.com/blog/tanstack-2-years*
+> — best-in-class React data-library milestone retrospective
 
-Maintainer voice in marketing post. Terse sentences, no hedging,
-admits cost. Use when there's a real personal-stakes story behind
-the work — not for routine releases.
+Maintainer voice in a marketing post with an explicit author byline.
+Terse sentences, no hedging, admits cost. Use when there's a real
+personal-stakes story behind the work — not for routine releases,
+**and never on landing pages or reference docs.** See the
+First-person rule by surface section.
 
 #### The off-cuff sign-off
 > "Who know,s you could be the reason 👀. Happy building!"
 >
-> — *github.com/pmndrs/react-three-fiber/releases (v10 alpha)*
+> — best-in-class React 3D rendering library alpha release notes
 
 Typo left in. Eye-emoji wink. "Happy building" is a recurring
-pmndrs sign-off. Personality through restraint plus a wink. Don't
-imitate the signature directly; study the calibration: tiny
-irregularity signals a human typed this.
+sign-off in this voice family. Personality through restraint plus a
+wink. Don't imitate the signature directly; study the calibration:
+tiny irregularity signals a human typed this.
 
 ## Graphics, games, and rendering features
 
 three-flatland sits at a specific intersection — graphics library,
-game-adjacent, perf-sensitive. The audience reads Epic's Unreal docs
-and watches GDC talks. The voice that works for them differs from the
+game-adjacent, perf-sensitive. The audience reads best-in-class
+real-time rendering engine docs and watches industry technical
+conference talks. The voice that works for them differs from the
 voice that sells a UI component library.
 
 When introducing a graphics or rendering feature, follow the shape
@@ -614,11 +746,11 @@ the strongest pages in the field follow:
 
 1. **Sentence one names the thing and its scope** — often using the
    word "system" and locating it in a default ("X is the default Y
-   for Z"). Anchored in the Lumen and Nanite definition examples
-   above.
+   for Z"). Anchored in the global-illumination and virtualized-
+   geometry definition examples above.
 2. **Sentence two is the mechanism in one breath** — what it does at
    a technical level, not what it lets you do. Anchored in the
-   Nanite mechanism example above.
+   virtualized-geometry mechanism example above.
 3. **Specific capacities and resolutions before any benchmark.**
    "Infinite bounces." "Millimeters to kilometers." "16k × 16k."
    "20K sprites at 60fps." Numbers are the proof — anchored in
@@ -628,8 +760,8 @@ the strongest pages in the field follow:
    "traditional draw calls," "screen-space approximations."
 5. **A "Limitations" section is mandatory.** Non-negotiable. The
    page that lists what the feature doesn't support is the page
-   that gets believed — anchored in the Nanite earned-superlative
-   example above.
+   that gets believed — anchored in the virtualized-geometry
+   earned-superlative example above.
 
 What this register avoids:
 
@@ -642,10 +774,19 @@ What this register avoids:
   scope nouns ("fully dynamic," "real-time," "GPU-driven").
 - Aspirational stat counters ("0,000,000+ developers") on the
   homepage — don't lie with placeholders or invent metrics.
+- **Draw-call counting as the headline metric.** WebGL-era
+  shorthand; reads as dated to anyone who's worked in WebGPU,
+  Vulkan, or modern engines. Modern graphics performance is a
+  pipeline story: CPU-side batch archetypes, data packing into
+  compact GPU buffers, instanced draws, branch-pruned shaders,
+  shared materials avoiding shader rebuilds. Name the architectural
+  choices that compose into perf — "ECS-driven batching,"
+  "branch-pruned uber-shader," "packed GPU buffers" — not the
+  one-number summary. "1 draw call" is a consequence, not a claim.
 
 When you can flex: naming a research-grade technique. Use it without
 apology, then explain the implementation. Example pattern (anchored
-in the Nanite mechanism move):
+in the virtualized-geometry mechanism move):
 
 > A port of the Slug glyph-rendering algorithm to TSL — fully
 > shader-driven, accurate at any scale, with real dynamic kerning
@@ -665,9 +806,9 @@ would type into search.
 
 Three patterns work, in priority order:
 
-1. **Gerund phrase** — "Building large worlds with World Partition,"
-   "Manipulating the DOM with refs." Naming an action.
-2. **Noun phrase as topic** — "Goals of Virtual Shadow Maps," "When
+1. **Gerund phrase** — "Building large worlds with partitioned
+   streaming," "Manipulating the DOM with refs." Naming an action.
+2. **Noun phrase as topic** — "Goals of virtual shadow maps," "When
    not to reach for Flatland." Naming the subject.
 3. **Full descriptive claim** — "Built into three.js, not on top of
    it," "Type-safe routing for React and Solid applications." A
@@ -677,7 +818,7 @@ Three patterns work, in priority order:
 ✅  Built into three.js, not on top of it
 ✅  Sprite batches that survive your effects
 ✅  When not to reach for Flatland
-✅  Goals of Virtual Shadow Maps
+✅  Goals of virtual shadow maps
 
 ❌  One renderer. One reconciler.        — slogan-shape three-beat
 ❌  Override the node, not the library.  — clever inversion
@@ -696,12 +837,34 @@ bolded, none of them are emphasized. Most ValueProps should have
 **zero or one** bolded phrase. A long ValueProp with two distinct
 claims might earn two. Three or more is the trope.
 
+**Bold subject-value pairs, never bare values or stat blobs.** A
+bolded "857 KB" or "10K" or "857 KB brotli on WebGPU" without an
+adjacent subject noun reads as a stat thrown at the reader with no
+anchor. The bolded text must be self-contained meaning when read in
+isolation.
+
+```
+✅  an **857 KB WebGPU build** (brotli, less than half of CanvasKit's 2.2 MB)
+✅  **~1 MB of WASM** (less than half CanvasKit's size)
+✅  **20K sprites at 60fps**
+
+❌  **857 KB brotli on WebGPU** vs CanvasKit's 2.2 MB
+❌  is **857 KB** vs CanvasKit's 2.2 MB
+❌  hits **60fps** under load
+```
+
+The bad versions all bold a metric or modifier without naming what
+it's a metric *of*. The good versions bold a (subject + value) pair
+that makes sense when scanned alone.
+
 What to bold (when you bold at all):
-- The single most load-bearing technical noun in the paragraph
-- A real numeric claim ("**~1 MB of WASM**") if it's the punchline
+- The most load-bearing **subject + value pair** in the paragraph
+  (e.g., "**857 KB WebGPU build**", "**20K sprites at 60fps**")
 - A name the reader is supposed to remember from this section
 
 What NOT to bold:
+- A bare numeric value with no subject noun adjacent
+- A metric whose subject is implied or several words away
 - Every brand mention
 - Every gem-palette color name
 - Modifiers ("**fully** shader-driven", "**real** dynamic kerning") —
@@ -732,10 +895,20 @@ they're trying to. Five rules:
    `<code>` content. `Object3D`, `Sprite2D`, `react-three-fiber`,
    `WebGPU`, `@three-flatland/skia` should all be in code formatting
    when they appear inline.
-2. **Repeat keywords naturally; never reach for synonyms.** A page
-   about state can say "state" twenty times. If your draft has gone
-   to a thesaurus to vary the noun, the SEO and the prose both
-   suffer.
+2. **Repeat technical nouns; vary sentence constructions and
+   colorful verb phrases.** A page about state can say "state"
+   twenty times — SEO weights the technical term, and forcing
+   synonyms ("the data," "the value," "the stored bit") reads like
+   the writer wasn't sure which noun mattered. But colorful verb
+   phrases and catch-constructions ("X rides the same Y," "X cuts
+   through Y," "no more Z," "X out of the box") MUST vary across
+   the page. Repeated framings flag the writing as machine-generated
+   and dilute the technical terms by drowning them in pattern noise.
+   Vary the verb, vary the metaphor, vary the sentence shape; never
+   vary the noun. The test: search the draft for any 3+ word phrase
+   that appears more than once. If it appears twice and isn't a
+   technical noun phrase (`Object3D`, `react-three-fiber`,
+   `WebGPU + WebGL`), rewrite one of them.
 3. **Headings are search targets.** Sentence-case full descriptive
    phrases double as the queries developers actually type. "Built
    into three.js, not on top of it" is a heading and a search hit.
@@ -780,6 +953,26 @@ linked PR.
    package README, look at the source, or ask. The vague version is
    always worse than the specific version, even when the specific
    version is denser.
+
+6. **Preserve categorical scope from the source.** If the source
+   says *"libraries that try to compose with three.js end up running
+   two renderers,"* don't paraphrase to *"most libraries run two
+   renderers alongside three.js."* The first is a conditional claim
+   about composition; the second is a false universal. The most
+   common version of this trap: turning a conditional pain ("when
+   you do X, you hit Y") into a categorical pain ("everyone hits Y")
+   because the categorical version sounds punchier. Punchier and
+   wrong is worse than longer and right. Re-read the source clause
+   by clause and check that every quantifier ("most," "all,"
+   "always," "usually," "everyone") matches the source's actual
+   scope.
+
+7. **Preserve usefulness scope from the source.** If the source flags
+   a feature as "useful in tooling but not at runtime" or "novel
+   only in this specific configuration," landing-page copy must
+   either reflect that scope or omit the feature. Don't promote a
+   tooling-only thing as a runtime capability; don't promote a
+   runtime thing as a build-time tool.
 
 ## Technical correctness over marketing simplification
 
@@ -826,9 +1019,166 @@ model of *what the library does*, it belongs. If it only changes
 their model of *how the library is built internally*, save it for
 the deeper docs.
 
-## Drafting checklist
+## Audience-review workflow (mandatory for new marketing copy)
 
-When you're about to write a section, walk through this:
+Single-draft self-authored marketing copy ships LLM defaults.
+Multi-variant copy ranked by the target audience ships *intent*.
+Before any marketing surface goes live, run this workflow. No
+silent ships; no single-draft posts.
+
+### Model enforcement: Opus orchestrates, Sonnet drafts and reviews
+
+Opus and Sonnet have different strengths. This workflow assigns
+each to the layer where it's strong:
+
+- **Opus** — orchestration and code research. Opus excels at
+  reading the codebase, validating claims against the actual
+  implementation, drawing architectural conclusions about what the
+  library does. Use Opus as the orchestrator (the parent agent
+  invoking this skill) and as the model for any research subagents
+  spawned to gather facts before drafting.
+- **Sonnet** — drafting and audience review. Opus's defaults
+  (technical-spec density, multi-clause hedge, over-comprehensive
+  enumeration, jargon-stack reflex) are the same defaults the rest
+  of this skill spends thousands of words trying to suppress.
+  Sonnet writes flatter, more direct prose by default and stays
+  aligned with the calm marketing register with less corrective
+  effort.
+
+**Hard rules — model assignment by role:**
+
+| Role | Model | Required? |
+|---|---|---|
+| Orchestrator (parent) | Opus or Sonnet | No — both work |
+| Research subagent (codebase, validation) | Opus preferred, Sonnet fine | No |
+| **Variant generator (Step 1)** | **Sonnet** | **Yes — hard requirement** |
+| **Audience-persona reviewer (Step 2)** | **Sonnet** | **Yes — hard requirement** |
+| Synthesis + final response (Step 3-4) | Same as orchestrator | No |
+
+Set `model: "sonnet"` on every Agent tool call for variant
+generation and persona review. No exceptions. Opus-on-Opus review
+converges on "technically thorough" verdicts and misses the
+marketing tells the user actually cares about.
+
+**Practical flow on an Opus parent:**
+
+1. (Optional) Spawn Opus research subagent(s) to inventory the
+   codebase, validate technical claims, gather the facts the copy
+   needs to reflect.
+2. Spawn a Sonnet variant-generation subagent in Step 1, briefed
+   with the research findings.
+3. Spawn three Sonnet persona-reviewer subagents in parallel in
+   Step 2.
+4. Synthesize the reviews yourself (orchestrator) and surface the
+   final copy.
+
+Do not silently delegate the entire workflow to a Sonnet subagent
+— Opus is doing real work as the orchestrator and the researcher,
+and the user benefits from that work happening at the parent
+level. Just route the *writing and review* steps to Sonnet.
+
+### Scope
+
+**Applies to:**
+- Any new or rewritten ValueProp, FeatureCard, hero section, or
+  stats banner
+- Any rewrite that changes more than ~50% of an existing section
+- README intros, blog launch posts, release-note summaries
+- Page meta (title, description, OG copy) when those are
+  reader-facing
+
+**Does NOT apply to:**
+- Single-sentence edits or word swaps
+- Typo fixes
+- Stat value updates (numeric corrections to already-shipped stats)
+- Internal code comments, commit messages, API reference text
+
+When in doubt, run the workflow. The cost is bounded; the cost of
+shipping LLM defaults is not.
+
+### Step 1 — Generate at least three STRUCTURALLY DIFFERENT variants
+
+Three rephrasings of the same draft are not three variants — they
+are one draft with three coats of paint. Genuine variants make
+**different architectural choices** for the prose:
+
+- **Different lead-in** — pain-first vs mechanism-first vs
+  definition+scope vs comparative-without-naming vs sympathetic-
+  mutter (dialed-up only).
+- **Different technique mix** — pick a different 2-3 from the
+  10-technique list per variant; don't reuse the same combo.
+- **Different emphasis position** — different bolded subject-value
+  pair (or no bold at all in some variants).
+- **Different length** — terse (45-60 words) vs full (80-110 words)
+  vs single-sentence punch.
+
+If the three variants share the same banned-pattern violation, the
+prompt is leading you toward a trope. Step back, re-read the brief,
+and try again — don't proceed to Step 2 with a polluted variant
+set.
+
+Apply the **Drafting checklist** (below) to EACH variant before
+submitting for review. Variants that don't pass the checklist on
+their own get discarded, not reviewed.
+
+### Step 2 — Dispatch audience-persona subagents in parallel
+
+For each variant set, spawn **three Agent subagents in a single
+message with parallel tool calls** — one per target persona from
+"The reader" section above. Persona prompts must brief the agent
+on:
+- Who they are (role, what they've shipped, what they care about)
+- What they bounce off (jargon walls, marketing tropes, surface
+  flattery)
+- What earns their attention (specific architectural claims,
+  mechanism descriptions, honest scope)
+
+Each persona reviews **all variants** and reports:
+- **Ranking** from strongest to weakest, with a one-line rationale
+  per position
+- **What landed** — name specific phrases or beats that worked
+- **What bounced** — name specific phrases or beats that felt like
+  noise, jargon, trope, or marketing-deck slop
+- **Trope flags** — explicit calls of any banned patterns from this
+  skill (three-beats, business jargon, contextless stats, first-
+  person on landing copy, draw-call shorthand, repeated catch-
+  phrases, etc.)
+
+Cap each persona response at ~250 words so the synthesis stays
+manageable.
+
+### Step 3 — Synthesize and decide
+
+After all three reviews come back, classify the result:
+
+- **Clear winner** — consistent #1 across all three personas. Select
+  it. Apply minor edits if reviews surfaced small fixes (a single
+  word, a punctuation tweak).
+- **Split ranking** — different personas pick different winners.
+  Build a synthesized v4 by taking the strongest beats from the
+  top-ranked variants per persona. Re-run Step 2 on v4 alongside
+  the previous top-2 if v4 is substantially different from both.
+- **Universal critique** — all variants got critical feedback on
+  the same dimension. Return to Step 1 with that feedback in hand.
+  Don't ship a piece the personas all disliked even if one of them
+  ranked it least-bad.
+
+### Step 4 — Surface the work in your response
+
+When you reply to the user with the final copy, include:
+- A 1-2 line summary per persona of their top-ranked feedback
+- The decision rationale (why this draft won, or what synthesis
+  shaped v4)
+- Any trade-offs the personas surfaced that the user might want to
+  weigh in on (e.g., "Persona A flagged the closer as flat;
+  Persona B liked it. Kept it because…")
+
+The user is hiring you to ship copy that survives audience contact.
+The audience-review trail is the receipt that you did the work.
+
+## Drafting checklist (per variant)
+
+Apply this to EACH variant before submitting it to audience review:
 
 1. **Which register does this surface need?**
    - Docs page / API reference / sub-package README → calm only.
@@ -864,7 +1214,15 @@ When you're about to write a section, walk through this:
    banned words; replace each instance with a specific claim or
    delete the sentence.
 
-10. **Check word count.** Per ValueProp: 45-110 words, 2 paragraphs
+10. **Audit first-person.** Search the draft for "I" and "we." If
+    the surface is a landing page, feature page, README, or
+    reference doc, every hit needs to go (rewrite as system-on-
+    stage). If the surface is a blog post or release note with a
+    byline, "we" is fine for team-visibility moves and "I" is fine
+    for personal-stakes story — see the First-person rule by
+    surface section.
+
+11. **Check word count.** Per ValueProp: 45-110 words, 2 paragraphs
     max.
 
 If anything fails this checklist, fix it before shipping — even if
@@ -884,3 +1242,12 @@ of restraint.
 If you're writing internal comments, technical docs explaining APIs,
 or commit messages, use the project's normal voice — this skill is
 for the marketing/landing surface specifically.
+
+**The Audience-review workflow is mandatory** for any of the above
+when the change is more than a single-sentence tweak. Single drafts
+that skip audience review ship the LLM defaults the rest of this
+skill is built to prevent. If you find yourself writing a single
+draft and shipping it, stop — go back to Step 1 of the workflow,
+generate three structurally different variants, and dispatch the
+three persona reviewers. The skill catches *what's wrong with one
+draft*; the workflow catches *which draft is the right shape to ship*.
