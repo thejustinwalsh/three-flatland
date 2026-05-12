@@ -4,7 +4,6 @@ import { useWorld } from 'koota/react'
 import type { Sprite2DMaterial, Sprite2D as Sprite2DType } from 'three-flatland/react'
 import {
   Drag,
-  Driller,
   FLAG_FALLING,
   FLAG_SAGGING,
   FLAG_SHAKING,
@@ -38,7 +37,6 @@ const POOL_SIZE = 64
 
 const TINT = {
   collect: '#fcd34d',
-  pet: '#f472b6',
   drag: '#60a5fa',
   brace: '#fb923c',
   paint: '#ef4444',
@@ -62,11 +60,16 @@ export function HoverOutlineRenderer({ material }: Props) {
     const pool = poolRefs.current
     let used = 0
 
-    const place = (col: number, row: number, tintHex: string) => {
+    // Time-modulated pulse for the gem outline so the player notices
+    // it (subtle 1-px borders on small gems can be invisible). Cycles
+    // ~1.6Hz, amplitude ~25% over base scale.
+    const now = Date.now()
+    const place = (col: number, row: number, tintHex: string, pulse = false) => {
       const sprite = pool[used++]
       if (!sprite) return
+      const s = pulse ? TILE_PX * (1 + 0.25 * (0.5 + 0.5 * Math.sin((now / 1000) * Math.PI * 3.2))) : TILE_PX
       sprite.position.set(col * TILE_PX + TILE_PX / 2, -(row * TILE_PX + TILE_PX / 2), 0)
-      sprite.scale.set(TILE_PX, TILE_PX, 1)
+      sprite.scale.set(s, s, 1)
       sprite.tint.r = parseInt(tintHex.slice(1, 3), 16) / 255
       sprite.tint.g = parseInt(tintHex.slice(3, 5), 16) / 255
       sprite.tint.b = parseInt(tintHex.slice(5, 7), 16) / 255
@@ -76,27 +79,26 @@ export function HoverOutlineRenderer({ material }: Props) {
       const action = ptr.hoverAction
       switch (action) {
         case 'collect': {
-          // Outline the exact gem cell (NOT the halo, so the player
-          // sees which gem the click will hit).
-          const gemId = ptr.hoverGemEntity
-          if (gemId !== 0) {
-            world.query(Gem).forEach((entity) => {
-              if (used > 0) return
-              if ((entity as unknown as { id?: number }).id !== gemId) return
-              const g = entity.get(Gem)
-              if (!g || g.collected) return
-              place(g.col, g.row, TINT.collect)
-            })
-          }
-          // Fallback: hover cell if entity-id lookup didn't fire.
-          if (used === 0) place(ptr.hoverTargetCol, ptr.hoverTargetRow, TINT.collect)
+          // Pulse the gem's outline so small gems still feel grabable.
+          // Halo collects target the gem's EXACT cell (not the hover
+          // cell), so the player sees which gem the click will hit.
+          let found = false
+          world.query(Gem).forEach((entity) => {
+            if (found) return
+            const g = entity.get(Gem)
+            if (!g || g.collected) return
+            const dc = Math.abs(g.col - ptr.hoverTargetCol)
+            const dr = Math.abs(g.row - ptr.hoverTargetRow)
+            if (Math.max(dc, dr) > 1) return
+            place(g.col, g.row, TINT.collect, true)
+            found = true
+          })
+          if (!found) place(ptr.hoverTargetCol, ptr.hoverTargetRow, TINT.collect, true)
           break
         }
-        case 'pet': {
-          const d = world.queryFirst(Driller)?.get(Driller)
-          if (d) place(d.col, d.row, TINT.pet)
-          break
-        }
+        // Pet: no selection box on the driller — the mood bubble that
+        // spawns on pet is the feedback. Outlining the driller cell
+        // would be redundant + ugly.
         case 'drag': {
           // Outline every cluster cell in motion. If a drag is already
           // active, use Drag.clusterId; else use the clusterId at the

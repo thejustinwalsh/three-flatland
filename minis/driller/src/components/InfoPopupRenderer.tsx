@@ -2,22 +2,8 @@ import { useEffect, useRef } from 'react'
 import { useFrame } from '@react-three/fiber/webgpu'
 import { useWorld } from 'koota/react'
 import type { Sprite2DMaterial, Sprite2D as Sprite2DType } from 'three-flatland/react'
-import {
-  Drag,
-  Driller,
-  GameState,
-  Gem,
-  PetEvents,
-  Pointer,
-} from '../traits'
-import {
-  DRAG_COST_INTERVAL_TICKS,
-  GEM_FADE_TICKS,
-  OVER_PET_THRESHOLD,
-  OVER_PET_WINDOW_TICKS,
-  PET_PAUSE_TICKS,
-  TILE_PX,
-} from '../constants'
+import { Drag, GameState, Gem, Pointer } from '../traits'
+import { DRAG_COST_INTERVAL_TICKS, GEM_FADE_TICKS, TILE_PX } from '../constants'
 import {
   REGIONS as ICON_REGIONS,
   SHEET_H as ICON_SHEET_H,
@@ -194,41 +180,8 @@ function pickInfo(
       fillHex: '#ef4444',
     }
   }
-  // 2. Pet pause — bar = pause remaining; icon escalates with pet
-  //    count in the current window so the player gets explicit
-  //    feedback about how close they are to over-petting:
-  //      1 pet  → love     (positive reinforcement — first touch)
-  //      2 pets → happy    (still good, second touch)
-  //      3 pets → warning  (one more pet would over-pet — back off)
-  //      4+ pets → handled by OverPetRenderer (angry shake)
-  const drillerEntity = world.queryFirst(Driller)
-  const d = drillerEntity?.get(Driller)
-  if (d && gs.tick < d.pausedUntilTick) {
-    const remaining = d.pausedUntilTick - gs.tick
-    const pe = drillerEntity?.get(PetEvents)
-    const inWindow = pe
-      ? pe.recentTicks.filter((t) => gs.tick - t <= OVER_PET_WINDOW_TICKS).length
-      : 0
-    let iconName: IconName = 'pet.happy'
-    let fillHex = '#f472b6'
-    if (inWindow >= OVER_PET_THRESHOLD) {
-      // 3rd pet — one more would over-pet.
-      iconName = 'pet.warning'
-      fillHex = '#fbbf24' // amber
-    } else if (inWindow === 1) {
-      iconName = 'pet.love'
-    } else {
-      iconName = 'pet.happy'
-    }
-    return {
-      col: d.col,
-      row: d.row,
-      iconName,
-      fill: remaining / PET_PAUSE_TICKS,
-      fillHex,
-    }
-  }
-  // 3. Held paint — bar = gem runway at current burn rate.
+  // 2. Held paint — bar = gem runway at current burn rate.
+  //    (Pet feedback is handled by MoodBubbleRenderer, not here.)
   if (ptr && ptr.active && ptr.lockedAction === 'paint') {
     return {
       col: ptr.hoverTargetCol,
@@ -238,7 +191,7 @@ function pickInfo(
       fillHex: gs.gems > 5 ? '#86efac' : '#fca5a5',
     }
   }
-  // 4. Hovering an armed gem — bar = time until expire (drains).
+  // 3. Hovering an armed gem — bar = time until expire (drains).
   if (ptr && ptr.hoverAction === 'collect') {
     let armed: { col: number; row: number; ticksLeft: number } | null = null
     world.query(Gem).forEach((entity) => {

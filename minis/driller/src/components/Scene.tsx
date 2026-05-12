@@ -31,6 +31,7 @@ import { HoverOutlineRenderer } from './HoverOutlineRenderer'
 import { GemSpendPopupRenderer } from './GemSpendPopupRenderer'
 import { InfoPopupRenderer } from './InfoPopupRenderer'
 import { OverPetRenderer } from './OverPetRenderer'
+import { MoodBubbleRenderer } from './MoodBubbleRenderer'
 import { GhostBeam } from './GhostBeam'
 import { HazardView } from './HazardView'
 import { TileRenderer } from './TileRenderer'
@@ -183,6 +184,7 @@ export function Scene({ onShellStateChange }: SceneProps) {
         <HoverOutlineRenderer material={outlineMaterial} />
         <GemSpendPopupRenderer iconsMaterial={iconsMaterial} digitsMaterial={digitsMaterial} />
         <InfoPopupRenderer iconsMaterial={iconsMaterial} barMaterial={material} />
+        <MoodBubbleRenderer iconsMaterial={iconsMaterial} bubbleMaterial={material} />
         <OverPetRenderer iconsMaterial={iconsMaterial} />
         {shouldShowDebugPanel() && <DebugPanel />}
       </flatland>

@@ -100,11 +100,14 @@ export function useOutlineMaterial(): Sprite2DMaterial {
 }
 
 /**
- * Sprite-sheet material loader for the baked HUD glyph sheets. Both
- * `icons.png` (emoji icons) and `digits.png` (number digits) follow
- * the same pattern: PNG → NearestFilter → opaque/transparent
- * Sprite2DMaterial. Sprite2D `setFrame()` picks the cell via UV.
+ * Sprite-sheet material loader for the baked HUD glyph sheets. The
+ * PNG is imported via Vite's `?inline` so the sheet is bundled as a
+ * data URL — matches the project's existing texture loading pattern
+ * (see `textures.ts`), required for the library-mode build.
  */
+import { SHEET_URL as ICONS_SHEET_URL } from './generated/icons'
+import { SHEET_URL as DIGITS_SHEET_URL } from './generated/digits'
+
 function useSheetMaterial(url: string): Sprite2DMaterial {
   return useMemo(() => {
     const tex = new TextureLoader().load(url)
@@ -116,9 +119,9 @@ function useSheetMaterial(url: string): Sprite2DMaterial {
 }
 
 export function useIconsMaterial(): Sprite2DMaterial {
-  return useSheetMaterial(new URL('./generated/icons.png', import.meta.url).href)
+  return useSheetMaterial(ICONS_SHEET_URL)
 }
 
 export function useDigitsMaterial(): Sprite2DMaterial {
-  return useSheetMaterial(new URL('./generated/digits.png', import.meta.url).href)
+  return useSheetMaterial(DIGITS_SHEET_URL)
 }

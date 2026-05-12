@@ -618,3 +618,27 @@ Each site previously called `world.set(GameState, { gems: gs.gems - X })` direct
 Total icons in sheet: 10. Sheet dimensions unchanged at 128×16 (it already had room).
 
 **Verification:** `tests/pet.test.ts` extended with an OverPetIndicator-spawn case. 187/187 unit tests pass; typecheck clean.
+
+## In-canvas feedback HUD — Phase 5b (asset loader + mood-bubble redesign)
+**File:** `scripts/bake-icons.ts`, `minis/driller/src/{generated/*,materials.ts,components/{HoverOutlineRenderer.tsx,InfoPopupRenderer.tsx,MoodBubbleRenderer.tsx,Scene.tsx}}`
+**Date:** 2026-05-12
+
+**Decisions:**
+
+1. **Asset loader: standard `import url from './x.png'`** (no `?inline` suffix). Vite emits the PNG to dist/ and returns a URL string; tsup library build inherits the same handling. StackBlitz / similar sandboxes can substitute the URL to point back to the repo's raw asset URL. This replaces the `new URL(..., import.meta.url)` pattern which doesn't survive the library build. `bake-icons.ts` now generates the import statement directly.
+
+2. **No outline on the driller cell.** The pet interaction has its own visible feedback (mood bubble) so a colored selection box on top of the driller was redundant + ugly. The `pet` case is removed from `HoverOutlineRenderer`. Other actions keep their unique tints (collect=gold, drag=sky, brace=orange, paint=red).
+
+3. **Mood bubble redesign — new `MoodBubbleRenderer`.** Pet feedback moved OUT of the bar-based InfoPopupRenderer into a dedicated chibi-bubble visual:
+   - Two sprites: soft tinted "bubble" background (white-pixel material at 16×16 with 65% alpha, color shifts with mood: pink for love, cream for happy, amber for warning) + mood icon (12×12, scaled-up from 8×8 source).
+   - No status bar — the bubble pops in (scale 0.4→1.2 across the first 15% of the pause window), settles (1.0 through 80%), then fades out (alpha + scale → 0 across the last 20%).
+   - Icon picked from pet-count-in-window: 1=love, 2=happy, ≥3=warning. Over-pet is handled by the existing OverPetRenderer (pause cleared, angry shake).
+
+4. **Gem hover outline pulses + uses Chebyshev-1 halo match.** Small gems in 8×8 visual size made the static 16×16 outline easy to miss. The pulse scales the outline ±25% at ~1.6Hz so it's unmistakable. Also fixed: clicking adjacent to a gem (halo collect) now outlines the GEM's exact cell, not the hover cell, so the player sees which gem the click will catch.
+
+5. **Bake-icons CLI updated** to emit standard asset imports (`import sheetUrl from './x.png'`). Re-baked both sheets so the generated TS files use the new form.
+
+**Why the bar approach was wrong for pet:**
+The user specifically called out "a little chibi pixelated bubble" — that's a graphic, not a meter. The bar version conflated two different feedback modes (status indicator for time-bound actions like drag/paint, vs interaction confirmation for one-shot tap actions like pet). Splitting them clarifies both: pet = bubble, held-actions = info-popup with bar, gem-spend = particle "-N" popup.
+
+**Verification:** Typecheck clean. 187/187 unit tests pass (no behavioral state changes — pure renderer/asset reshape). Manual visual verification deferred to the user — the asset URL switch is the key fix and is best confirmed in-browser.
