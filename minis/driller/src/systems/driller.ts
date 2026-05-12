@@ -3,6 +3,7 @@ import {
   Animation,
   Driller,
   type DrillerAnimState,
+  Explosive,
   FLAG_AUTOTILE_DIRTY,
   GameState,
   Gem,
@@ -20,6 +21,7 @@ import {
   DIG_INTERVAL_MS_DEEP,
   DIG_INTERVAL_MS_SHALLOW,
   DRILL_COOLDOWN_MS,
+  EXPLOSIVE_FUSE_TICKS,
   STONE_MAX_HITS,
   TILE_PX,
 } from '../constants'
@@ -150,8 +152,25 @@ function pickAction(
 /**
  * Resolve a completed drill (cooldown hit zero) — convert the target
  * cell to AIR, decrement ROCK hit counters, disturb adjacent stones.
+ *
+ * Also arms any explosive on the same row: a drill IS a row
+ * mutation, and bombs on a mutated row start their countdown so the
+ * player sees a fuse the moment they begin disturbing the bomb's
+ * horizontal stratum (rather than waiting for the 8-neighbor
+ * adjacency trigger). The 8-neighbor trigger in `explosiveSystem`
+ * stays as a safety net (e.g., for bombs disturbed by avalanches or
+ * other systems that don't go through completeDrill).
  */
 function completeDrill(world: World, grid: { cols: number; rows: number; tiles: Uint8Array; flags: Uint8Array; hits: Uint8Array; clusterId: Uint16Array }, col: number, row: number): void {
+  // Arm any explosives on the same row — they were either visible to
+  // the driller on this row, or in the same horizontal slice, and a
+  // drill here is the trigger for them.
+  world.query(Explosive).forEach((entity) => {
+    const e = entity.get(Explosive)!
+    if (e.triggered) return
+    if (e.row !== row) return
+    entity.set(Explosive, { triggered: true, fuseRemaining: EXPLOSIVE_FUSE_TICKS })
+  })
   const idx = row * grid.cols + col
   const tile = grid.tiles[idx]
   if (tile === TILE_STONE) {
